@@ -1,0 +1,24 @@
+# --- Arduino IDE Temp & Build Files ---
+.build/
+applet/
+*.spec
+*.d
+*.o
+*.elf
+*.bin
+*.hex
+
+# --- Operating System Files ---
+.DS_Store
+Thumbs.db
+
+# --- Secrets & Configurations (CRITICAL) ---
+# 비밀번호나 API Key는 이 파일에 몰아넣고 로컬에서만 관리하세요.
+secrets.h
+config.json
+.env
+
+# --- IDE Project Files ---
+.vscode/
+.idea/
+.clion/
