@@ -121,3 +121,29 @@
 ## [2026-06-27] fix | README.md 릴레이 핀 번호 정정 및 Git 커밋 준비
 
 - `README.md`에서 릴레이 핀 번호가 `GPIO 23`으로 잘못 표기되어 있던 부분을 `config.h` 및 `wiki/pin_mapping.md`와 일치하도록 `GPIO 3`으로 수정.
+
+## [2026-06-27] fix | src/ToFSensor.cpp — 에러 메시지 구 핀 번호 하드코딩 버그 수정
+
+- `[ERROR]` 메시지에 구 ESP32 핀 번호 `(SDA=GPIO21, SCL=GPIO22)` 가 하드코딩되어 있어 실제 설정 `GPIO6/7` 과 불일치.
+- → `Check wiring (SDA=GPIO6, SCL=GPIO7)` 으로 수정.
+
+## [2026-06-27] compile | wiki/env_setup.md 전면 재작성 (ESP32-C6 + pioarduino 기준)
+
+- 구 ESP32(esp32dev) 기준 `platformio.ini` 예제 코드를 실제 사용 중인 ESP32-C6 + pioarduino 설정으로 전면 교체.
+- 3개 빌드 환경(`esp32c6`, `tof_test`, `relay_test`) 예제 모두 반영.
+- 빌드 환경별 업로드 명령어 테이블 추가 (§5 신설).
+- 첫 빌드 체크리스트 실제 출력 메시지에 맞게 업데이트.
+- 별첨 A(Arduino IDE): v2.x→v3.x 요구사항, `USB CDC On Boot` 설정 필수 항목 추가.
+
+## [2026-06-27] compile | wiki/hardware_test.md 합격 기준 메시지 실제 코드와 동기화
+
+- Test #1 합격 기준: `VL53L0X initialized` → 실제 출력 `[INFO] ToFSensor: VL53L0X initialized. Continuous mode @ 100ms interval.` 으로 수정.
+- Test #2 합격 기준: 실제 `main.cpp` 출력 포맷 `[Relay] ON (t=xxx ms)` 으로 수정.
+
+## [2026-06-27] lint | 5차 위키 전체 검사 (전체 프로젝트 상세 분석)
+
+- 분석 범위: 모든 src/, include/, wiki/, raw/, platformio.ini, schema.md, AGENTS.md
+- 깨진 링크: 없음
+- 모순 정보: 없음 (모든 핀 번호, 플랫폼 설정, 에러 메시지가 단일 진실 소스와 일치)
+- Last updated 날짜 동기화: index.md, architecture.md, hardware_test.md → 2026-06-27
+

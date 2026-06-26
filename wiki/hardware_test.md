@@ -1,6 +1,6 @@
 # hardware_test.md — 하드웨어 테스트 절차 및 결과
 > Phase: Step 1 (Local PoC)
-> Last updated: 2026-06-26
+> Last updated: 2026-06-27
 
 ---
 
@@ -30,7 +30,7 @@ mm 단위 거리를 I2C로 읽어 시리얼 모니터에 실시간 출력
 
 | 항목 | 기준 |
 |------|------|
-| 초기화 | "[INFO] VL53L0X initialized" 출력 |
+| 초기화 | `[INFO] ToFSensor: VL53L0X initialized. Continuous mode @ 100ms interval.` 출력 |
 | 거리 측정 범위 | 20mm ~ 1200mm 정상 값 |
 | 측정 주기 | 100ms 이하 |
 | 에러 처리 | I2C 연결 실패 시 "[ERROR]" 메시지 후 무한 루프 방지 |
@@ -69,7 +69,7 @@ mm 단위 거리를 I2C로 읽어 시리얼 모니터에 실시간 출력
 | 스위칭 주기 | 2000ms ± 50ms |
 | 동작음 | 릴레이 코일 딸깍 소리 |
 | LED | ON/OFF 교번 점멸 |
-| 시리얼 로그 | 타임스탬프 포함 ON/OFF 메시지 |
+| 시리얼 로그 | `[Relay] ON  (t=xxx ms)` / `[Relay] OFF (t=xxx ms)` 타임스탬프 포함 교번 출력 |
 
 ### 결과 기록
 

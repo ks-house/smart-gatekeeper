@@ -32,7 +32,7 @@ bool ToFSensor::begin() {
   // VL53L0X 초기화 — 실패 시 false 반환
   if (!_sensor.init()) {
     Serial.println("[ERROR] ToFSensor: VL53L0X init failed. "
-                   "Check wiring (SDA=GPIO21, SCL=GPIO22) and 3.3V supply.");
+                   "Check wiring (SDA=GPIO6, SCL=GPIO7) and 3.3V supply.");
     _ready = false;
     return false;
   }

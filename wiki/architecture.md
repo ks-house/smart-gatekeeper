@@ -1,5 +1,5 @@
 # architecture.md — 시스템 아키텍처 및 로드맵
-> Last updated: 2026-06-26
+> Last updated: 2026-06-27
 
 ---
 
