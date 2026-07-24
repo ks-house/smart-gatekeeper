@@ -146,6 +146,13 @@ void MqttManager::publishAutoDiscovery() {
             bool ok = client.publish(topic, payload, true); // Retain flag true
             xSemaphoreGive(mqttMutex);
             LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
+
+            // ESP32-C6 TLS 소켓 버퍼 폭발 (unexpected eof) 방지를 위한 강제 TCP 패킷 펌핑 및 딜레이
+            vTaskDelay(pdMS_TO_TICKS(150));
+            if (mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                client.loop();
+                xSemaphoreGive(mqttMutex);
+            }
         }
     };
 
