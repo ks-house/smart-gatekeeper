@@ -46,7 +46,8 @@ static VL53L0X sensor;
 static GateState state                  = GateState::IDLE;
 static uint32_t  stateMs                = 0;
 static uint32_t  lastMqttMs             = 0;
-static uint32_t last_ble_log_time = 0; // BLE 로그 출력 과도 스팸 방지 디바운싱 시각
+static uint32_t  last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각
+static uint32_t  last_ble_log_time      = 0; // BLE 로그 출력 과도 스팸 방지 디바운싱 시각
 static int      currentBleRssiThreshold = -80; // 동적 BLE RSSI 임계값 (NVS 및 MQTT로 제어)
 
 void updateBleRssiThreshold(int newRssi) {

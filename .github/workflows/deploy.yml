@@ -38,7 +38,7 @@ jobs:
           #define SECRET_API_KEY "${{ secrets.SECRET_API_KEY }}"
           #define SECRET_TEST_BLE_MAC "${{ secrets.SECRET_TEST_BLE_MAC }}"
           #define SECRET_MQTT_HOST "${{ secrets.SECRET_MQTT_HOST }}"
-          #define SECRET_MQTT_PORT ${{ secrets.SECRET_MQTT_PORT || 4883 }}
+          #define SECRET_MQTT_PORT ${{ secrets.SECRET_MQTT_PORT || '4883' }}
           #define SECRET_MQTT_USER "${{ secrets.SECRET_MQTT_USER }}"
           #define SECRET_MQTT_PASSWORD "${{ secrets.SECRET_MQTT_PASSWORD }}"
           #define SECRET_OTA_VERSION_URL "${{ secrets.SECRET_OTA_VERSION_URL }}"
@@ -57,7 +57,8 @@ jobs:
           FULL_VERSION="1.0.0-g${SHORT_SHA}"
           echo "FULL_VERSION=${FULL_VERSION}" >> $GITHUB_ENV
           echo "Building version: ${FULL_VERSION}"
-          PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\"\\\"${FULL_VERSION}\\\"\"" pio run -e esp32c6
+          export PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\\\"${FULL_VERSION}\\\""
+          pio run -e esp32c6
 
       - name: Prepare Deployment Artifacts (firmware.bin & version.json)
         run: |
