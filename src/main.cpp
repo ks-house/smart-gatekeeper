@@ -67,11 +67,9 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
 
     bool uuidMatch = false;
 
-    // 1. 표준 Service UUID 객체 검사
+    // 1. 표준 Service UUID 객체 검사 (String 객체 생성 없이 직접 비교)
     if (advertisedDevice.haveServiceUUID()) {
-      BLEUUID devUUID = advertisedDevice.getServiceUUID();
-      String devUUIDStr = devUUID.toString().c_str();
-      if (devUUID.equals(BLEUUID(BLE_TARGET_UUID)) || devUUIDStr.equalsIgnoreCase(BLE_TARGET_UUID)) {
+      if (advertisedDevice.getServiceUUID().equals(BLEUUID(BLE_TARGET_UUID))) {
         uuidMatch = true;
       }
     }
@@ -90,20 +88,33 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
         0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc
       };
 
-      for (size_t i = 0; i <= len - 16; i++) {
-        if (memcmp(payload + i, targetUuidLittle, 16) == 0 ||
-            memcmp(payload + i, targetUuidBig, 16) == 0) {
-          uuidMatch = true;
-          break;
+      if (len >= 16) {
+        for (size_t i = 0; i <= len - 16; i++) {
+          if (memcmp(payload + i, targetUuidLittle, 16) == 0 ||
+              memcmp(payload + i, targetUuidBig, 16) == 0) {
+            uuidMatch = true;
+            break;
+          }
         }
       }
     }
 
-    // 3. Name 또는 Address / MAC 검사
-    String devName = advertisedDevice.getName().c_str();
-    String devAddr = advertisedDevice.getAddress().toString().c_str();
+    // 3. Name / Address 검사 — String 객체를 만들지 않고 C 문자열로 직접 비교 (스택 절약 핵심!)
+    if (!uuidMatch) {
+      const char* name = advertisedDevice.getName().c_str();
+      if (name && strstr(name, "SmartKey") != nullptr) {
+        uuidMatch = true;
+      }
+    }
 
-    if (uuidMatch || devName.indexOf("SmartKey") >= 0 || devAddr.equalsIgnoreCase(TEST_BLE_MAC)) {
+    if (!uuidMatch) {
+      std::string addrStr = advertisedDevice.getAddress().toString();
+      if (strcasecmp(addrStr.c_str(), TEST_BLE_MAC) == 0) {
+        uuidMatch = true;
+      }
+    }
+
+    if (uuidMatch) {
       uint32_t nowMs = millis();
       last_ble_detected_time = nowMs; // 백그라운드 BLE 감지 시각은 매 250ms마다 즉시 갱신 (ToF 검증용)
       last_target_ble_rssi = rssi;     // 실시간 감도 RSSI 값 저장 (메인 loop 스레드가 안전하게 발송)
