@@ -1,3 +1,10 @@
+# --- PlatformIO & Build Artifacts ---
+.pio/
+.pioenvs/
+.piolibdeps/
+compile_commands.json
+.clangd/
+
 # --- Arduino IDE Temp & Build Files ---
 .build/
 applet/
@@ -12,11 +19,17 @@ applet/
 .DS_Store
 Thumbs.db
 
+# --- Python & Backend ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
 # --- Secrets & Configurations (CRITICAL) ---
-# 비밀번호나 API Key는 이 파일에 몰아넣고 로컬에서만 관리하세요.
+include/secrets.h
 secrets.h
 config.json
-.env
 
 # --- IDE Project Files ---
 .vscode/

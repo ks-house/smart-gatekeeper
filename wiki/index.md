@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-06-27
+> Last updated: 2026-07-24 (Step 1 Local PoC 완료 🟢 -> Step 2 백엔드/BLE 진입)
 
 ---
 

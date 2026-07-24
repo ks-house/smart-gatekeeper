@@ -147,3 +147,152 @@
 - 모순 정보: 없음 (모든 핀 번호, 플랫폼 설정, 에러 메시지가 단일 진실 소스와 일치)
 - Last updated 날짜 동기화: index.md, architecture.md, hardware_test.md → 2026-06-27
 
+## [2026-07-24] test | VL53L0X 부품 도착 및 ESP32-C6 배선 완료
+
+- 부품(VL53L0X ToF 센서) 실물 수령 확인
+- 아래 4핀 물리 배선 완료 (브레드보드):
+  - VL53L0X VCC  → ESP32-C6 3V3
+  - VL53L0X GND  → ESP32-C6 GND
+  - VL53L0X SDA  → ESP32-C6 **GPIO6**
+  - VL53L0X SCL  → ESP32-C6 **GPIO7**
+  - XSHUT: **미연결** (단일 센서 운용이므로 문제 없음)
+
+## [2026-07-24] compile | wiki/pin_mapping.md — 배선 완료 상태 반영
+
+- §2 I2C 테이블에 `상태` 열 추가 (배선 완료 ✅ / 미연결 ⬜ 표시)
+- XSHUT 핀 미연결 안내 주석 추가
+- Last updated: 2026-06-27 → 2026-07-24
+
+## [2026-07-24] code | src/main.cpp — ToF 거리 측정 테스트 코드 재작성
+
+- 기존 통합 데모/릴레이 코드 제거, ToF 단독 mm 거리 출력에 집중
+- 핵심 구현:
+  - `Wire.begin(PIN_SDA, PIN_SCL, 400000UL)` — GPIO6/7, 400kHz 명시
+  - `sensor.setTimeout(500)` — init() 전 설정 (I2C 단선 블로킹 방지)
+  - `sensor.startContinuous(POLL_MS)` — 연속 측정 모드
+  - 65535 sentinel 및 `timeoutOccurred()` 이중 체크
+  - `Serial.printf("[ToF] Distance: %4u mm\n", mm)` 출력 포맷
+- 빌드 환경: `pio run -e tof_test -t upload` (`-DTEST_TOF_ONLY` 플래그)
+- `config.h` 상수만 참조, 핀 하드코딩 없음
+
+## [2026-07-24] test | 1차 플래싱 결과 — I2C 초기화 성공, VL53L0X init 결과 미확인
+
+- 플래싱 성공, 시리얼 출력 확인:
+  - `i2cInit(): sda=6 scl=7 freq=400000` ← I2C 초기화 ✅
+  - 이후 출력 없음 (USB-CDC 타이밍 문제로 배너 유실, 또는 sensor.init() 블로킹)
+- 원인 후보:
+  1. USB-CDC: `delay(500)` 동안 모니터 미연결 → 배너 유실
+  2. XSHUT 미연결 floating → 일부 저가 VL53L0X 모듈에서 LOW 유지 → 센서 리셋 상태 지속
+
+## [2026-07-24] fix | src/main.cpp — USB-CDC 대기 + XSHUT 명시 + I2C 스캐너 추가
+
+- `while(!Serial)` + 5초 타임아웃: USB-CDC 연결 전 출력 유실 방지
+- `pinMode(PIN_TOF_XSHUT, OUTPUT); digitalWrite(PIN_TOF_XSHUT, HIGH)`: XSHUT floating 문제 해결
+- I2C 스캔 함수 `i2cScan()` 추가: 0x29 응답 여부로 배선 문제 vs. 라이브러리 문제 구분
+- `Serial.flush()` before `sensor.init()`: init 전 메시지 반드시 전송 보장
+
+## [2026-07-24] test | 2차 테스트 — [5127ms] 타임스탬프로 USB-CDC 타이밍 문제 확인
+
+- i2cInit 로그가 [5127ms]에 출력됨 → `while(!Serial)` 이 5000ms 풀 타임아웃 소진
+  - USB-CDC DTR 신호가 늦게 올라와 Serial이 준비되지 않은 것으로 판단
+- Wire.begin() 이후 코드 출력 없음 → XSHUT floating LOW 가능성 높음
+  - 저가 VL53L0X 모듈: XSHUT 내부 풀업 저항 없음 → 미연결 = LOW = 센서 리셋 상태
+  - sensor.init() 타임아웃 후 [FATAL] 출력됐으나 USB 버퍼 플러시 전 유실
+
+## [2026-07-24] fix | src/main.cpp — USB-CDC/XSHUT/flush 3중 안정화
+
+- Wire.begin()을 Serial.begin() 전으로 이동 (USB-CDC 안정화 유도)
+- `logln()` 헬퍼 함수 추가: 모든 출력 후 `Serial.flush()` 강제 실행
+- I2C 스캔 → 0x29 미응답 시 sensor.init() 호출 전 [FATAL] 분기 (배선 문제 조기 진단)
+- 하드웨어 조치 안내: XSHUT → 3V3 직결 또는 GPIO10 → XSHUT 점퍼 배선 필요
+
+## [2026-07-24] test | 3차 테스트 — [2027ms] 타임스탬프, Serial.begin 순서 수정 후에도 동일 현상
+
+- i2cInit [2027ms] 확인 → Serial.begin() + delay(2000) + Wire.begin() 순서는 정상
+- 그러나 Wire.begin() 이후 logln() (Serial.println 기반) 출력 여전히 미표시
+- 결론: **Arduino Serial.println()이 ESP32-C6 USB-CDC에서 ESP-IDF stdout과 다른 버퍼 경로 사용**
+  - ESP-IDF 로그 (i2cInit 등): `stdout` → USB-CDC FIFO 직접 기록 → 항상 표시
+  - Arduino Serial.println(): 별도 CDC 래퍼 → 버퍼링/플러시 타이밍 불일치로 유실
+
+## [2026-07-24] fix | src/main.cpp — Serial.println → printf/fflush(stdout) 전환 (최종 해결)
+
+- `LOGF()` 매크로 정의: `printf(fmt "\n", ...) + fflush(stdout)`
+- ESP-IDF stdout 경로 = i2cInit 로그와 동일 → 반드시 모니터에 출력됨
+- **동작 확인: "굿" (2026-07-24 09:44 KST)**
+- Wire.begin() 이전 배너, I2C 스캔, sensor.init() 결과 모두 정상 표시
+
+## [2026-07-24] compile | wiki/hardware_test.md 업데이트 예정 (Test #1 결과 기록 필요)
+
+- VL53L0X 단독 테스트 통과 여부 → hardware_test.md 결과 테이블에 기록 예정
+
+## [2026-07-24] test | Test #1 합격 — VL53L0X ToF 단독 테스트 성공
+
+- 배선: SDA=GPIO6, SCL=GPIO7, XSHUT=GPIO10, VCC=3.3V
+- mm 단위 거리 정상 출력 확인 (`[ToF] Distance: xxxx mm`)
+- 핵심 해결책:
+  1. `Serial.println()` → `printf()+fflush(stdout)` 전환 (ESP32-C6 USB-CDC 특이사항)
+  2. XSHUT 명시적 HIGH 구동 필수 (저가 모듈 floating LOW 문제)
+- hardware_test.md Test #1 결과: 🟢 합격 기록
+
+## [2026-07-24] fix | include/config.h — PIN_RELAY 변경: GPIO3 → GPIO23
+
+- 계획: GPIO3 | 실제 배선: GPIO23 (사용자 확인)
+- `config.h: constexpr uint8_t PIN_RELAY = 23;` 으로 수정
+- 동시 업데이트: pin_mapping.md §3 릴레이 테이블, §4 배선 요약, §5 config.h 스니펫
+
+## [2026-07-24] compile | wiki/pin_mapping.md — GPIO23 릴레이 배선 완료 반영
+
+- §2 XSHUT: ⬜ 미연결 → ✅ 배선 완료 (GPIO10 연결)
+- §3 릴레이 핀: GPIO3 → GPIO23, 배선 완료 상태 표시
+- §4 전체 배선 요약: GPIO10/GPIO23 완료 표시로 업데이트
+
+## [2026-07-24] code | src/main.cpp — 릴레이 단독 토글 테스트 코드 작성
+
+- `RELAY_TOGGLE_MS` (2000ms) 주기 millis() 기반 비블로킹 ON/OFF 토글
+- `relayOn()` / `relayOff()`: `RELAY_ACTIVE_LOW` 상수로 극성 분기
+- setup()에서 반드시 `relayOff()` 초기화 (안전)
+- `LOGF()` 매크로: `printf()+fflush(stdout)` (ToF 테스트에서 검증된 방식)
+- 빌드 환경: `pio run -e relay_test -t upload`
+
+## [2026-07-24] test | Test #2 합격 — 릴레이 단독 테스트 성공
+
+- 배선: IN=GPIO23, VCC=5V, GND=GND
+- 문제: 초록불(상태 LED) 상시 ON, 소리 없음 → 3.3V HIGH ≠ 5V 릴레이 OFF
+- 원인: 5V - 3.3V = 1.7V > 포토커플러 Vf(1.2~1.4V) → 미세전류로 릴레이 상시 ON
+- 해결: `relayOff()` = `pinMode(INPUT)` (고임피던스) → 모듈 풀업으로 IN=5V → OFF 확실
+- 출처: smartbox/reports/26061301_릴레이연결_report.md (동일 하드웨어, 동일 증상)
+- hardware_test.md Test #2 결과: 🟢 합격
+
+## [2026-07-24] fix | include/config.h — 통합 파라미터 추가
+
+- `GATE_THRESHOLD_MM`: 300 → 500 (50cm)
+- `RELAY_ON_DURATION_MS`: 1000ms (신규 추가)
+- `RELAY_COOLDOWN_MS`: 2000ms (신규 추가)
+- `RELAY_ACTIVE_LOW`: true 유지 (relayOn()에서 LOW 출력 기준)
+
+## [2026-07-24] code | src/main.cpp — Step 1 로컬 통합 코드 작성 (ToF + Relay)
+
+- 상태 머신 3단계: IDLE → RELAY_ON(1초) → COOLDOWN(2초) → IDLE
+- `GateState` enum class로 상태 명시
+- 비블로킹 millis() 기반 타이밍
+- ToF: Wire.begin(GPIO6,7,400kHz), XSHUT=GPIO10, 65535 sentinel 체크
+- Relay: INPUT 모드 트릭 (smartbox 26061301 보고서 방식)
+
+## [2026-07-24] test | Test #3 합격 — Step 1 (Local PoC) 최종 완료 🟢
+
+- ToF 센서 500mm 이하 감지 시 릴레이 1초 ON 후 자동 OFF (2초 쿨다운) 비블로킹 상태 머신 정상 작동
+- hardware_test.md, index.md 등 문서 업데이트 완료
+- Step 1 (하드웨어 단독 및 연동 검증) 최종 성공 완료 처리
+
+## [2026-07-24] code | backend/ 뼈대 파일 생성 — Step 2 시놀로지 NAS 백엔드 구축 시작
+
+- `backend/docker-compose.yml`: MariaDB 및 FastAPI 서비스 구성
+- `backend/db/schema.sql`: Tenants (세입자 정보), AccessLogs (출입 기록) DDL 작성
+- `backend/app/main.py`: FastAPI 기반 출입 자격 검증 및 로그 저장 API 뼈대 작성
+
+
+
+
+
+
+

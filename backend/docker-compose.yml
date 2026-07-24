@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: gatekeeper-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-gatekeeper_root_pass}
+      MYSQL_DATABASE: ${DB_NAME:-smart_gatekeeper}
+      MYSQL_USER: ${DB_USER:-gatekeeper_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-gatekeeper_pass}
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: gatekeeper-api
+    restart: always
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-smart_gatekeeper}
+      DB_USER: ${DB_USER:-gatekeeper_user}
+      DB_PASSWORD: ${DB_PASSWORD:-gatekeeper_pass}
+      TZ: Asia/Seoul
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mariadb_data:

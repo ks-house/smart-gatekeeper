@@ -1,7 +1,7 @@
 # pin_mapping.md — 핀 매핑 마스터 테이블
 > MCU: **ESP32-C6-DevKitC-1** (RISC-V, 3.3V)
 > Phase: Step 1 (Local PoC)
-> Last updated: 2026-06-27
+> Last updated: 2026-07-24
 > ⚠️ Open Question #2: 릴레이 모듈 극성(Active-HIGH/LOW) 확인 필요
 
 ---
@@ -28,16 +28,19 @@
 
 ## 2. I2C 버스 — VL53L0X ToF 센서
 
-| ESP32-C6 핀 | GPIO# | VL53L0X 핀 | 비고 |
-|------------|-------|----------|------|
-| SDA | **GPIO6** | SDA | ✅ 안전 핀 (스트래핑 無) |
-| SCL | **GPIO7** | SCL | ✅ 안전 핀 (스트래핑 無) |
-| 3.3V | 3V3 | VIN / VDD | **반드시 3.3V** — 5V 인가 시 센서 손상 |
-| GND | GND | GND | |
-| (선택) GPIO10 | GPIO10 | XSHUT | 센서 하드 리셋 / 다중 센서 주소 변경용 |
+> 🟢 **[2026-07-24 배선 완료]** 부품 도착, 아래 4핀 실제 연결 확인됨.
+
+| ESP32-C6 핀 | GPIO# | VL53L0X 핀 | 상태 | 비고 |
+|------------|-------|----------|------|------|
+| SDA | **GPIO6** | SDA | ✅ **배선 완료** | 안전 핀 (스트래핑 無) |
+| SCL | **GPIO7** | SCL | ✅ **배선 완료** | 안전 핀 (스트래핑 無) |
+| 3.3V | 3V3 | VCC | ✅ **배선 완료** | **반드시 3.3V** — 5V 인가 시 센서 손상 |
+| GND | GND | GND | ✅ **배선 완료** | |
+| (선택) GPIO10 | GPIO10 | XSHUT | ✅ **배선 완료** | 2026-07-24 연결 완료 (소프트 제어) |
 
 > ⚠️ **구 ESP32 핀(GPIO21/22)은 사용 금지**: C6에서 용도가 다를 수 있음.
 > ⚠️ **VL53L0X는 3.3V only** — 5V 공급 시 즉시 파손.
+> ℹ️ **XSHUT 미연결 시**: 센서는 항상 활성 상태 (소프트 리셋 불가, 단일 센서는 문제 없음).
 
 ### I2C 초기화 코드 (필수)
 ```cpp
@@ -52,11 +55,14 @@ Wire.begin(6, 7, 400000UL);  // SDA=GPIO6, SCL=GPIO7, 400kHz
 
 ## 3. 릴레이 모듈 (1채널 5V)
 
-| ESP32-C6 핀 | GPIO# | 릴레이 모듈 핀 | 비고 |
-|------------|-------|------------|------|
-| GPIO3 | **GPIO3** | IN (Signal) | ✅ 안전 핀. Active-LOW: LOW=ON ⚠️ 극성 확인 필요 |
-| 5V (VIN) | 5V | VCC | 릴레이 코일 구동 전원 (USB 5V에서 직접) |
-| GND | GND | GND | ESP32-C6 GND와 공통 접지 필수 |
+> 🟢 **[2026-07-24 배선 완료]**  실제 GPIO23에 연결 확인됨.
+> ⚠️ GPIO3 계획에서 실제 배선 확인 후 GPIO23으로 정정.
+
+| ESP32-C6 핀 | GPIO# | 릴레이 모듈 핀 | 상태 | 비고 |
+|------------|-------|------------|------|------|
+| GPIO23 | **GPIO23** | IN (Signal) | ✅ **배선 완료** | 안전 핀. Active-LOW: LOW=ON ⚠️ 극성 확인 필요 |
+| 5V (VIN) | 5V | VCC | ✅ **배선 완료** | 릴레이 코일 구동 전원 (USB 5V에서 직접) |
+| GND | GND | GND | ✅ **배선 완료** | ESP32-C6 GND와 공통 접지 필수 |
 
 > ⚠️ **안전 주의사항**:
 > 1. ESP32-C6 GPIO: 권장 최대 **12mA**. 릴레이 코일 직접 구동 불가.
@@ -69,15 +75,15 @@ Wire.begin(6, 7, 400000UL);  // SDA=GPIO6, SCL=GPIO7, 400kHz
 ## 4. 전체 배선 요약
 
 ```
-[VL53L0X] ──3.3V──┐
+[VL53L0X] ───VCC(3.3V)─┬
                    ├── ESP32-C6 3V3
-[릴레이 VCC]──5V──┘    (별도 5V rail)
+[릴레이 VCC]───5V─┘    (별도 5V rail)
 
 [VL53L0X SDA]  ──── GPIO6
 [VL53L0X SCL]  ──── GPIO7
+[VL53L0X XSHUT]──── GPIO10  (✅ 연결 완료)
 [VL53L0X GND]  ──── GND ──── [릴레이 GND]
-[릴레이 IN]    ──── GPIO3
-[VL53L0X XSHUT]──── GPIO10  (선택)
+[릴레이 IN]    ──── GPIO23  (✅ 연결 완료)
 ```
 
 ---
@@ -88,8 +94,8 @@ Wire.begin(6, 7, 400000UL);  // SDA=GPIO6, SCL=GPIO7, 400kHz
 // include/config.h (현재 값)
 constexpr uint8_t PIN_SDA        = 6;   // I2C SDA (ESP32-C6 안전 핀)
 constexpr uint8_t PIN_SCL        = 7;   // I2C SCL (ESP32-C6 안전 핀)
-constexpr uint8_t PIN_TOF_XSHUT  = 10;  // VL53L0X XSHUT (선택)
-constexpr uint8_t PIN_RELAY      = 3;   // 릴레이 IN (안전 핀)
+constexpr uint8_t PIN_TOF_XSHUT  = 10;  // VL53L0X XSHUT (✅ GPIO10 연결)
+constexpr uint8_t PIN_RELAY      = 23;  // 릴레이 IN (✅ GPIO23 배선, 2026-07-24 변경)
 constexpr bool    RELAY_ACTIVE_LOW = true;  // ⚠️ 모듈 확인 후 수정
 ```
 
