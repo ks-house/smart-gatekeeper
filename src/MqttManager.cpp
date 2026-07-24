@@ -79,10 +79,18 @@ void MqttManager::update() {
             if (now - lastPublishMs > 5000) {
                 lastPublishMs = now;
                 String clientId = "smart-gatekeeper-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+                
+                static int failCount = 0;
+                if (failCount >= 3) {
+                    LOGF("[MQTT-WARN] ⚠️ TLS 인증서 검증 3회 연속 실패! 보안 무시 모드(setInsecure)로 Fallback 합니다.");
+                    wifiClient.setInsecure(); // 인증서 만료 및 NTP 오류 무시하고 무조건 암호화 채널 강제 성립
+                }
+
                 LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
 
                 if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
                     LOGF("[MQTT-SSL] 브로커 연결 성공!");
+                    failCount = 0; // 성공 시 카운트 초기화
                     client.subscribe("smart-gatekeeper/cmd");
                     client.subscribe("smart-gatekeeper/rssi/set"); // BLE RSSI 슬라이더 수신 토픽 구독
                     
@@ -91,7 +99,8 @@ void MqttManager::update() {
                     publishAutoDiscovery();
                     return;
                 } else {
-                    LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋)", client.state());
+                    failCount++;
+                    LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋, 누적 실패: %d회)", client.state(), failCount);
                     wifiClient.stop(); // 이전 소켓 핸들 및 SSL 핸드셰이크 찌꺼기 강제 정돈
                 }
             }

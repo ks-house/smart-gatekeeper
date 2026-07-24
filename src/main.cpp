@@ -236,6 +236,23 @@ void setup() {
     // Wi-Fi 연결 성공 시 NTP 시간 동기화 (TLS 안정성 보장)
     configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
     LOGF("[TIME] NTP 시간 동기화 요청 (KST UTC+9)");
+    
+    // TLS Root CA 인증서 검증(유효기간)을 위해 시간 동기화가 완료될 때까지 확실히 대기합니다.
+    struct tm timeinfo;
+    uint32_t startMs = millis();
+    LOGF("[TIME] 시간 동기화 대기 중...");
+    while (!getLocalTime(&timeinfo, 1000) && (millis() - startMs < 10000)) {
+      printf(".");
+      fflush(stdout);
+    }
+    printf("\n");
+    if (getLocalTime(&timeinfo, 0)) {
+      LOGF("[TIME] 🕒 동기화 성공: %04d-%02d-%02d %02d:%02d:%02d", 
+           timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    } else {
+      LOGF("[TIME-ERROR] ❌ NTP 동기화 타임아웃! (인증서 검증에 실패할 수 있습니다)");
+    }
 
     // MQTT 및 OTA 관리자 초기화
     MqttManager::init();
