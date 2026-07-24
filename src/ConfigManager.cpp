@@ -35,6 +35,14 @@ String ConfigManager::getApiKey() {
     return preferences.getString("api_key", API_KEY);
 }
 
+int ConfigManager::getBleRssiThreshold() {
+    return preferences.getInt("ble_rssi", BLE_RSSI_THRESHOLD);
+}
+
+void ConfigManager::setBleRssiThreshold(int rssi) {
+    preferences.putInt("ble_rssi", rssi);
+}
+
 void ConfigManager::setWifiCredentials(const String& ssid, const String& password) {
     preferences.putString("ssid", ssid);
     preferences.putString("pass", password);

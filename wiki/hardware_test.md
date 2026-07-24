@@ -13,7 +13,7 @@ ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto
 | **#3** | E2E | HTTPS NAS Auth | ToF 50cm 감지 -> NAS REST API POST -> 릴레이 ON | 🟢 PASS | HTTP 200 / granted:true 수신 즉시 스위칭 |
 | **#4** | Network | Captive Portal | AP 모드(`SmartGatekeeper-Setup`) NVS 저장 | 🟢 PASS | 브라우저 팝업 Wi-Fi 저장 및 자동 재접속 |
 | **#5** | Security | MQTTS (4883) | Let's Encrypt Root CA Certificate Pinning | 🟢 PASS | TLS 4883 포트 보안 접속 및 텔레메트리 발행 |
-| **#6** | IoT | HA Auto-Discovery | Home Assistant 5개 엔티티 자동 검색 및 원격 제어 | 🟢 PASS | `open_gate`, `ota_update`, `reboot`, 센서 정상 작동 |
+| **#6** | IoT | HA Auto-Discovery | Home Assistant 6개 엔티티 (RSSI 슬라이더 포함) 자동 검색 | 🟢 PASS | `open_gate`, `ota_update`, `reboot`, `ble_rssi_threshold` 슬라이더 완벽 동작 |
 | **#7** | OTA | GitHub CI/CD OTA | GitHub Push -> SFTP 업로드 -> ESP32-C6 무선 업데이트 | 🟢 PASS | `1.0.0-g<sha>` 동적 버전 오버라이드 및 무선 플래싱 완벽 통과 |
 | **#8** | BLE | BLE + ToF FSM | BLE 5.0 선인증 & 문 주변 상주 시 동적 쿨다운 리셋 | 🟢 PASS | 문 주변 상주 중 중복 릴레이 연타 차단 & 이탈 시 3초 후 복귀 |
 

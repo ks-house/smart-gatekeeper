@@ -46,9 +46,14 @@ static VL53L0X sensor;
 static GateState state                  = GateState::IDLE;
 static uint32_t  stateMs                = 0;
 static uint32_t  lastMqttMs             = 0;
-static uint32_t  last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각
-
 static uint32_t last_ble_log_time = 0; // BLE 로그 출력 과도 스팸 방지 디바운싱 시각
+static int      currentBleRssiThreshold = -80; // 동적 BLE RSSI 임계값 (NVS 및 MQTT로 제어)
+
+void updateBleRssiThreshold(int newRssi) {
+  currentBleRssiThreshold = newRssi;
+  ConfigManager::setBleRssiThreshold(newRssi);
+  LOGF("[BLE-CONFIG] ⚙️ BLE RSSI 임계값이 %d dBm 으로 동적 변경 & NVS 저장되었습니다!", newRssi);
+}
 
 // ─────────────────────────────────────────────────────────────
 // ESP32 BLE 비동기 스캔 콜백 클래스 (NON-CONNECTABLE & 128-bit Raw Payload 완벽 대응)
@@ -102,10 +107,10 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
       // 로그 시리얼 출력 스팸 억제 (3초에 1번만 조용하게 출력)
       if (nowMs - last_ble_log_time >= 3000) {
         last_ble_log_time = nowMs;
-        if (rssi >= BLE_RSSI_THRESHOLD) {
-          LOGF("[BLE-SCAN] 📱 Target BLE (128-bit UUID) 감지 중! RSSI: %d dBm (유효시간 갱신)", rssi);
+        if (rssi >= currentBleRssiThreshold) {
+          LOGF("[BLE-SCAN] 📱 Target BLE (128-bit UUID) 감지 중! RSSI: %d dBm (임계값: %d dBm)", rssi, currentBleRssiThreshold);
         } else {
-          LOGF("[BLE-SCAN] Target BLE 감지되었으나 신호 약함 (RSSI: %d dBm < %d dBm)", rssi, BLE_RSSI_THRESHOLD);
+          LOGF("[BLE-SCAN] Target BLE 감지되었으나 신호 약함 (RSSI: %d dBm < %d dBm)", rssi, currentBleRssiThreshold);
         }
       }
     }
@@ -250,6 +255,9 @@ void setup() {
     LOGF("[INFO] ToF 센서 초기화 성공!");
   }
 
+  // NVS 저장소에서 동적 BLE RSSI 임계값 불러오기
+  currentBleRssiThreshold = ConfigManager::getBleRssiThreshold();
+
   // 7. BLE 5.0 비동기 스캐너 시작 (setup의 맨 마지막 단계에서 비동기 구동)
   LOGF("[BLE] 7. BLE 5.0 비동기 스캐너 시작 (Active Scan 활성화)");
   BLEDevice::init("SmartGatekeeper-Scan");
@@ -260,7 +268,7 @@ void setup() {
   pScan->setWindow(99);
   pScan->start(0, nullptr, false); // 0, nullptr: 메인 스레드 멈춤 없는 순수 백그라운드 비동기 스캔
   LOGF("[BLE] 타겟 UUID: %s | RSSI 임계값: %d dBm | 유효 시간: %lu ms",
-       BLE_TARGET_UUID, BLE_RSSI_THRESHOLD, (unsigned long)BLE_VALID_MS);
+       BLE_TARGET_UUID, currentBleRssiThreshold, (unsigned long)BLE_VALID_MS);
 
   LOGF("============================================");
   LOGF(" [SYSTEM] setup() 초기화 완료! 메인 루프 진입");

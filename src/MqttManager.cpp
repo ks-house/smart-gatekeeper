@@ -10,6 +10,7 @@
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
 extern void triggerManualDoorOpen(); // main.cpp 의 수동 개방 함수 참조
+extern void updateBleRssiThreshold(int newRssi); // main.cpp 의 RSSI 갱신 함수 참조
 
 WiFiClientSecure MqttManager::wifiClient;
 PubSubClient MqttManager::client(wifiClient);
@@ -42,6 +43,11 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         if (String(cmd) == "open_gate" || String(cmd) == "force_open") {
             LOGF("[MQTT-CMD] 원격 출입문 개방 명령 수신!");
             triggerManualDoorOpen();
+        } else if (String(cmd) == "set_rssi" || String(cmd) == "set_ble_rssi") {
+            int newRssi = doc["rssi"] | doc["value"] | -80;
+            LOGF("[MQTT-CMD] BLE RSSI 임계값 변경 명령 수신: %d dBm", newRssi);
+            updateBleRssiThreshold(newRssi);
+            publishEvent("rssi_changed", ("BLE RSSI Threshold set to " + String(newRssi) + " dBm").c_str());
         } else if (String(cmd) == "ota_update" || String(cmd) == "trigger_ota") {
             LOGF("[MQTT-CMD] 원격 OTA 업데이트 명령 수신!");
             OtaManager::checkAndUpdate(true);
@@ -49,6 +55,12 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
             LOGF("[MQTT-CMD] 원격 재부팅 명령 수신!");
             ESP.restart();
         }
+    } else if (String(topic).endsWith("/rssi/set")) {
+        // Home Assistant Number Entity 슬라이더 패킷 직접 수신
+        int newRssi = atoi(message);
+        LOGF("[MQTT-HA] HA UI 슬라이더 BLE RSSI 설정 수신: %d dBm", newRssi);
+        updateBleRssiThreshold(newRssi);
+        publishEvent("rssi_changed", ("BLE RSSI Threshold set to " + String(newRssi) + " dBm").c_str());
     }
 }
 
@@ -65,6 +77,7 @@ void MqttManager::update() {
             if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
                 LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 client.subscribe("smart-gatekeeper/cmd");
+                client.subscribe("smart-gatekeeper/rssi/set"); // BLE RSSI 슬라이더 수신 토픽 구독
                 publishEvent("connected", "ESP32-C6 Online (SSL)");
 
                 // Home Assistant MQTT Auto-Discovery 설정 발행
@@ -164,7 +177,21 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("binary_sensor", "door_binary", doc);
     }
 
-    LOGF("[MQTT-HA] Auto-Discovery 엔티티 5개 등록 완료!");
+    // 6. Number: BLE RSSI 임계값 튜닝 슬라이더 (-100 dBm ~ -50 dBm)
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] BLE RSSI 감도 임계값", "ble_rssi_threshold");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.ble_rssi_threshold }}";
+        doc["command_topic"]   = "smart-gatekeeper/rssi/set";
+        doc["min"]             = -100;
+        doc["max"]             = -50;
+        doc["step"]            = 1;
+        doc["unit_of_meas"]    = "dBm";
+        doc["icon"]            = "mdi:signal-distance-variant";
+        pubConfig("number", "ble_rssi_threshold", doc);
+    }
+
+    LOGF("[MQTT-HA] Auto-Discovery 엔티티 6개 등록 완료!");
     
     // Auto-Discovery 발행 직후 TLS SSL 송신 버퍼 안정화를 위한 소켓 플러시
     for (int i = 0; i < 3; i++) {
@@ -177,10 +204,11 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
     if (!client.connected()) return;
 
     StaticJsonDocument<256> doc;
-    doc["distance_mm"] = distance_mm;
-    doc["state"]       = stateStr ? stateStr : "UNKNOWN";
-    doc["ip"]          = WifiManager::getIP();
-    doc["free_heap"]   = ESP.getFreeHeap();
+    doc["distance_mm"]        = distance_mm;
+    doc["state"]              = stateStr ? stateStr : "UNKNOWN";
+    doc["ble_rssi_threshold"] = ConfigManager::getBleRssiThreshold();
+    doc["ip"]                 = WifiManager::getIP();
+    doc["free_heap"]          = ESP.getFreeHeap();
 
     String jsonStr;
     serializeJson(doc, jsonStr);
