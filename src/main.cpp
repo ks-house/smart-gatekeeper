@@ -277,13 +277,19 @@ void loop() {
   uint16_t mm = sensor.readRangeContinuousMillimeters();
   bool validReading = !(sensor.timeoutOccurred() || mm == 65535);
 
-  // 10초 주기 MQTT 텔레메트리 발행
+  // 10초 주기 MQTT 텔레메트리 발행 및 BLE 스캔 결과 메모리 청소 (RAM Out-Of-Memory 누수 방지)
   if (now - lastMqttMs >= 10000) {
     lastMqttMs = now;
     const char* stateStr = (state == GateState::IDLE) ? "IDLE" :
                            (state == GateState::VERIFYING) ? "VERIFYING" :
                            (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
     MqttManager::publishTelemetry(validReading ? mm : 0, stateStr);
+
+    // BLE 스캔 결과 맵/벡터 메모리 주기적 초기화 (Failed to allocate / reallocate 누수 방지)
+    BLEScan* pScan = BLEDevice::getScan();
+    if (pScan) {
+      pScan->clearResults();
+    }
   }
 
   switch (state) {
