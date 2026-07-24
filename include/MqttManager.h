@@ -16,7 +16,6 @@ private:
     static PubSubClient client;
     static uint32_t lastPublishMs;
     static bool connected;
-    static SemaphoreHandle_t mqttMutex;
 
     static void callback(char* topic, byte* payload, unsigned int length);
 

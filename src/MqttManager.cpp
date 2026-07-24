@@ -16,12 +16,8 @@ WiFiClientSecure MqttManager::wifiClient;
 PubSubClient MqttManager::client(wifiClient);
 uint32_t MqttManager::lastPublishMs = 0;
 bool MqttManager::connected = false;
-SemaphoreHandle_t MqttManager::mqttMutex = nullptr;
 
 void MqttManager::init() {
-    if (mqttMutex == nullptr) {
-        mqttMutex = xSemaphoreCreateMutex();
-    }
     wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
     client.setBufferSize(1024); // HA Auto-Discovery JSON 패킷 전송을 위해 버퍼 1024 bytes로 확장
@@ -73,41 +69,37 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 void MqttManager::update() {
     if (!WifiManager::isConnected()) return;
 
-    if (mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        if (!client.connected()) {
-            uint32_t now = millis();
-            if (now - lastPublishMs > 5000) {
-                lastPublishMs = now;
-                String clientId = "smart-gatekeeper-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-                
-                static int failCount = 0;
-                if (failCount >= 3) {
-                    LOGF("[MQTT-WARN] ⚠️ TLS 인증서 검증 3회 연속 실패! 보안 무시 모드(setInsecure)로 Fallback 합니다.");
-                    wifiClient.setInsecure(); // 인증서 만료 및 NTP 오류 무시하고 무조건 암호화 채널 강제 성립
-                }
-
-                LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
-
-                if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
-                    LOGF("[MQTT-SSL] 브로커 연결 성공!");
-                    failCount = 0; // 성공 시 카운트 초기화
-                    client.subscribe("smart-gatekeeper/cmd");
-                    client.subscribe("smart-gatekeeper/rssi/set"); // BLE RSSI 슬라이더 수신 토픽 구독
-                    
-                    xSemaphoreGive(mqttMutex); // Auto Discovery 호출 전 임시 언락
-                    publishEvent("connected", "ESP32-C6 Online (SSL)");
-                    publishAutoDiscovery();
-                    return;
-                } else {
-                    failCount++;
-                    LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋, 누적 실패: %d회)", client.state(), failCount);
-                    wifiClient.stop(); // 이전 소켓 핸들 및 SSL 핸드셰이크 찌꺼기 강제 정돈
-                }
+    if (!client.connected()) {
+        uint32_t now = millis();
+        if (now - lastPublishMs > 5000) {
+            lastPublishMs = now;
+            String clientId = "smart-gatekeeper-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+            
+            static int failCount = 0;
+            if (failCount >= 3) {
+                LOGF("[MQTT-WARN] ⚠️ TLS 인증서 검증 3회 연속 실패! 보안 무시 모드(setInsecure)로 Fallback 합니다.");
+                wifiClient.setInsecure(); // 인증서 만료 및 NTP 오류 무시하고 무조건 암호화 채널 강제 성립
             }
-        } else {
-            client.loop();
+
+            LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
+
+            if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
+                LOGF("[MQTT-SSL] 브로커 연결 성공!");
+                failCount = 0; // 성공 시 카운트 초기화
+                client.subscribe("smart-gatekeeper/cmd");
+                client.subscribe("smart-gatekeeper/rssi/set"); // BLE RSSI 슬라이더 수신 토픽 구독
+                
+                publishEvent("connected", "ESP32-C6 Online (SSL)");
+                publishAutoDiscovery();
+                return;
+            } else {
+                failCount++;
+                LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋, 누적 실패: %d회)", client.state(), failCount);
+                wifiClient.stop(); // 이전 소켓 핸들 및 SSL 핸드셰이크 찌꺼기 강제 정돈
+            }
         }
-        xSemaphoreGive(mqttMutex);
+    } else {
+        client.loop();
     }
 }
 
@@ -142,18 +134,11 @@ void MqttManager::publishAutoDiscovery() {
         char payload[512];
         serializeJson(doc, payload, sizeof(payload));
         
-        if (mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
-            bool ok = client.publish(topic, payload, true); // Retain flag true
-            xSemaphoreGive(mqttMutex);
-            LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
+        bool ok = client.publish(topic, payload, true); // Retain flag true
+        LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
 
-            // ESP32-C6 TLS 소켓 버퍼 폭발 (unexpected eof) 방지를 위한 강제 TCP 패킷 펌핑 및 딜레이
-            vTaskDelay(pdMS_TO_TICKS(150));
-            if (mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                client.loop();
-                xSemaphoreGive(mqttMutex);
-            }
-        }
+        // ESP32-C6 TLS 소켓 버퍼 폭발 방지를 위한 딜레이
+        vTaskDelay(pdMS_TO_TICKS(50)); 
     };
 
     // 1. Buttons (원격 개방, OTA, 재부팅)
@@ -255,9 +240,8 @@ void MqttManager::publishBleRssi(int rssi) {
     char buf[128];
     serializeJson(doc, buf, sizeof(buf));
 
-    if (isConnected() && mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (isConnected()) {
         client.publish("smart-gatekeeper/ble_rssi", buf);
-        xSemaphoreGive(mqttMutex);
     }
 }
 
@@ -281,9 +265,8 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
     char buf[256];
     serializeJson(doc, buf, sizeof(buf));
 
-    if (isConnected() && mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (isConnected()) {
         client.publish("smart-gatekeeper/status", buf);
-        xSemaphoreGive(mqttMutex);
     }
 }
 
@@ -299,8 +282,7 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     char buf[256];
     serializeJson(doc, buf, sizeof(buf));
 
-    if (isConnected() && mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (isConnected()) {
         client.publish("smart-gatekeeper/event", buf);
-        xSemaphoreGive(mqttMutex);
     }
 }
