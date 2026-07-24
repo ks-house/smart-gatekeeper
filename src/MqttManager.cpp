@@ -25,6 +25,8 @@ void MqttManager::init() {
     wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
     client.setBufferSize(1024); // HA Auto-Discovery JSON 패킷 전송을 위해 버퍼 1024 bytes로 확장
+    client.setKeepAlive(30);
+    client.setSocketTimeout(15); // TLS Handshake 대기 타임아웃 15초로 확장 (rc=-4 방지)
     client.setCallback(callback);
 }
 
@@ -89,7 +91,8 @@ void MqttManager::update() {
                     publishAutoDiscovery();
                     return;
                 } else {
-                    LOGF("[MQTT-ERROR] 연결 실패 rc=%d", client.state());
+                    LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋)", client.state());
+                    wifiClient.stop(); // 이전 소켓 핸들 및 SSL 핸드셰이크 찌꺼기 강제 정돈
                 }
             }
         } else {
