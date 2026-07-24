@@ -1,6 +1,6 @@
 # 하드웨어 테스트 결과 (hardware_test.md)
 
-ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto-Discovery 및 무선 OTA 무선 통합 테스트 기록 문서입니다.
+ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto-Discovery, BLE 5.0 스마트 쿨다운 리셋 및 무선 OTA 무선 통합 테스트 기록 문서입니다.
 
 ---
 
@@ -15,6 +15,7 @@ ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto
 | **#5** | Security | MQTTS (4883) | Let's Encrypt Root CA Certificate Pinning | 🟢 PASS | TLS 4883 포트 보안 접속 및 텔레메트리 발행 |
 | **#6** | IoT | HA Auto-Discovery | Home Assistant 5개 엔티티 자동 검색 및 원격 제어 | 🟢 PASS | `open_gate`, `ota_update`, `reboot`, 센서 정상 작동 |
 | **#7** | OTA | GitHub CI/CD OTA | GitHub Push -> SFTP 업로드 -> ESP32-C6 무선 업데이트 | 🟢 PASS | `1.0.0-g<sha>` 동적 버전 오버라이드 및 무선 플래싱 완벽 통과 |
+| **#8** | BLE | BLE + ToF FSM | BLE 5.0 선인증 & 문 주변 상주 시 동적 쿨다운 리셋 | 🟢 PASS | 문 주변 상주 중 중복 릴레이 연타 차단 & 이탈 시 3초 후 복귀 |
 
 ---
 
@@ -24,12 +25,14 @@ ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto
 +-----------------------------------------------------------------------------------+
 |                            E2E Integration Test Flow                              |
 +-----------------------------------------------------------------------------------+
-| 1. ToF Sensor (GPIO6/7)  --> 50cm 이내 진입 감지                                   |
-| 2. WiFiClientSecure      --> HTTPS POST https://tworimpa.synology.me:4442/verify  |
-| 3. FastAPI Backend       --> MariaDB 세입자 검증 (HTTP 200, granted: true)          |
-| 4. Relay Drive (GPIO23)  --> 릴레이 1000ms ON (Active-LOW LOW) -> OFF (INPUT HighZ) |
-| 5. MQTTS (4883 TLS)      --> HA Auto-Discovery & smart-gatekeeper/status 텔레메트리|
-| 6. OTA Updater           --> GitHub CI -> NAS SFTP -> ESP32-C6 무선 업그레이드     |
+| 1. BLE 5.0 Scanner       --> 128-bit UUID & RSSI >= -80dBm 비동기 선인증           |
+| 2. ToF Sensor (GPIO6/7)  --> 50cm 이내 진입 감지                                   |
+| 3. WiFiClientSecure      --> HTTPS POST https://tworimpa.synology.me:4442/verify  |
+| 4. FastAPI Backend       --> MariaDB 세입자 검증 (HTTP 200, granted: true)          |
+| 5. Relay Drive (GPIO23)  --> 릴레이 1000ms ON (Active-LOW LOW) -> OFF (INPUT HighZ) |
+| 6. Smart Cooldown        --> 문 주변 상주 시 쿨다운 지속 리셋 (이탈 시 3초 후 IDLE)   |
+| 7. MQTTS (4883 TLS)      --> HA Auto-Discovery & smart-gatekeeper/status 텔레메트리|
+| 8. OTA Updater           --> GitHub CI -> NAS SFTP -> ESP32-C6 무선 업그레이드     |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -38,10 +41,11 @@ ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto
 | 항목 | 설정값 | 비고 |
 |---|---|---|
 | `DISTANCE_THRESHOLD_MM` | `500` (mm) | ToF 트리거 임계값 |
+| `BLE_RSSI_THRESHOLD` | `-80` (dBm) | BLE 수신 인지 임계값 |
+| `BLE_VALID_MS` | `10000` (ms) | BLE 인증 신호 유효 인정 시간 |
 | `RELAY_HOLD_MS` | `1000` (ms) | 릴레이 유지 시간 |
-| `RELAY_COOLDOWN_MS` | `2000` (ms) | 연속 요청 방지 쿨다운 |
-| `MQTT_PORT` | `4883` | MQTTS SSL/TLS 포트 |
+| `COOLDOWN_MS` | `3000` (ms) | 이탈 후 복귀 대기 시간 |
 | `API_URL` | `https://tworimpa.synology.me:4442/api/v1/auth/verify` | 자격 검증 API |
 
 ### 🏆 결론
-타겟 보드(ESP32-C6)에서 ToF 거리 센서, Wi-Fi 캡티브 포털, 시놀로지 NAS HTTPS 백엔드 연동, MQTTS Home Assistant Auto Discovery 및 무선 OTA 파이프라인까지 **전체 통합 시스템 테스트가 100% 정상 완수**되었습니다.
+타겟 보드(ESP32-C6 N16)에서 ToF 거리 센서, Wi-Fi 캡티브 포털, 시놀로지 NAS HTTPS 백엔드 연동, MQTTS Home Assistant Auto Discovery, BLE 5.0 선인증 & 스마트 쿨다운 리셋 FSM 및 무선 OTA 파이프라인까지 **전체 통합 시스템 테스트가 100% 정상 완수**되었습니다.
