@@ -1,15 +1,19 @@
 // include/config.h
 // =============================================================
-// smart-gatekeeper — 전역 핀 상수 및 프로젝트 설정 (Step 4 OTA/MQTT 추가)
+// smart-gatekeeper — 전역 핀 상수 및 프로젝트 설정 (Step 4 OTA/MQTT)
 // =============================================================
 #pragma once
 
 #include <cstdint>
 #include "secrets.h"
 
-// ─── 펌웨어 버전 (GitHub CI 오버라이드 지원) ─────────────────
+// ─── 펌웨어 버전 (GitHub CI 동적 오버라이드 지원) ─────────────────
+#ifdef FIRMWARE_VERSION_OVERRIDE
+#define FIRMWARE_VERSION FIRMWARE_VERSION_OVERRIDE
+#else
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION "1.0.0"
+#endif
 #endif
 
 // ─── 네트워크 & 시놀로지 NAS 백엔드 API 설정 ────────────────────
