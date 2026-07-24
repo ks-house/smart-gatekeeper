@@ -49,35 +49,60 @@ static uint32_t  lastMqttMs             = 0;
 static uint32_t  last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각
 
 // ─────────────────────────────────────────────────────────────
-// ESP32 BLE 비동기 스캔 콜백 클래스
+// ESP32 BLE 비동기 스캔 콜백 클래스 (NON-CONNECTABLE & 128-bit Raw Payload 완벽 대응)
 // ─────────────────────────────────────────────────────────────
 class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) override {
     int rssi = advertisedDevice.getRSSI();
 
-    // 1. Service UUID 검사 (128-bit UUID 지원 강화)
     bool uuidMatch = false;
+
+    // 1. 표준 Service UUID 객체 검사
     if (advertisedDevice.haveServiceUUID()) {
       BLEUUID devUUID = advertisedDevice.getServiceUUID();
       String devUUIDStr = devUUID.toString().c_str();
-      
-      // Target UUID와 대소문자 구분 없이 비교
       if (devUUID.equals(BLEUUID(BLE_TARGET_UUID)) || devUUIDStr.equalsIgnoreCase(BLE_TARGET_UUID)) {
         uuidMatch = true;
       }
     }
 
-    // 2. Name 또는 Address / MAC 검사 (스마트폰 키)
+    // 2. NON-CONNECTABLE (ADV_NONCONN_IND) Raw Payload 128-bit UUID 바이트 매칭
+    //    12345678-1234-1234-1234-123456789abc 바이트열 (Big/Little Endian 호환)
+    if (!uuidMatch && advertisedDevice.getPayloadLength() > 0) {
+      uint8_t* payload = advertisedDevice.getPayload();
+      size_t len = advertisedDevice.getPayloadLength();
+
+      // Big-Endian / Little-Endian 128-bit UUID 바이트 매핑
+      // 12345678-1234-1234-1234-123456789abc
+      static const uint8_t targetUuidLittle[16] = {
+        0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12, 0x34, 0x12,
+        0x34, 0x12, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12
+      };
+      static const uint8_t targetUuidBig[16] = {
+        0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x12, 0x34,
+        0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc
+      };
+
+      for (size_t i = 0; i <= len - 16; i++) {
+        if (memcmp(payload + i, targetUuidLittle, 16) == 0 ||
+            memcmp(payload + i, targetUuidBig, 16) == 0) {
+          uuidMatch = true;
+          break;
+        }
+      }
+    }
+
+    // 3. Name 또는 Address / MAC 검사
     String devName = advertisedDevice.getName().c_str();
     String devAddr = advertisedDevice.getAddress().toString().c_str();
 
     if (uuidMatch || devName.indexOf("SmartKey") >= 0 || devAddr.equalsIgnoreCase(TEST_BLE_MAC)) {
       if (rssi >= BLE_RSSI_THRESHOLD) {
         last_ble_detected_time = millis();
-        LOGF("[BLE-SCAN] 📱 타겟 스마트폰/UUID 감지! RSSI: %d dBm (임계값 %d dBm 이상) -> BLE 유효시간 갱신",
-             rssi, BLE_RSSI_THRESHOLD);
+        LOGF("[BLE-SCAN] 📱 Target BLE (NON-CONNECTABLE / 128-bit UUID) 감지! RSSI: %d dBm -> 유효시간 갱신",
+             rssi);
       } else {
-        LOGF("[BLE-SCAN] 타겟 스마트폰/UUID 발견되었으나 신호 약함 (RSSI: %d dBm < %d dBm)",
+        LOGF("[BLE-SCAN] Target BLE 수신되었으나 RSSI 부족 (RSSI: %d dBm < %d dBm)",
              rssi, BLE_RSSI_THRESHOLD);
       }
     }
