@@ -1,9 +1,11 @@
 // src/main.cpp
 // =============================================================
-// smart-gatekeeper — Step 1 로컬 통합 테스트 (ToF + Relay)
+// smart-gatekeeper — Captive Portal Wi-Fi 등록 통합 펌웨어
 //
-// 동작: ToF 거리 ≤ 500mm 감지 시 릴레이 1초 ON → 자동 OFF
-//       2초 쿨다운 후 재트리거 가능
+// 동작 시퀀스:
+//   1. 부팅 시 NVS 저장 Wi-Fi 자동 접속 시도 (WifiManager)
+//   2. 접속 실패/최초 부팅 시: AP 모드 'SmartGatekeeper-Setup' (192.168.4.1) 가동
+//   3. Wi-Fi 연결 성공 후 ToF 50cm 감지 -> 시놀로지 NAS HTTPS 자격 검증 -> 릴레이 1초 ON
 //
 // 배선:
 //   VL53L0X VCC   → ESP32-C6 3V3
@@ -14,25 +16,23 @@
 //   릴레이 VCC    → ESP32-C6 5V
 //   릴레이 GND    → ESP32-C6 GND
 //   릴레이 IN     → ESP32-C6 GPIO23
-//
-// 빌드: pio run -e esp32c6 -t upload
 // =============================================================
 #include <Arduino.h>
 #include <Wire.h>
 #include <VL53L0X.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 
 #include "config.h"
+#include "ConfigManager.h"
+#include "WifiManager.h"
 
-// ─────────────────────────────────────────────────────────────
-// ESP-IDF stdout 경로 출력 (Serial.println 대신)
-// ─────────────────────────────────────────────────────────────
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
 // ─────────────────────────────────────────────────────────────
-// 릴레이 제어 — INPUT 모드 트릭
-// 이유: ESP32-C6 3.3V HIGH로는 5V 릴레이 포토커플러(Vf=1.4V) 완전 차단 불가
-//      INPUT(고임피던스) 시 모듈 내부 풀업이 IN을 5V로 올려 완전 OFF
-// 출처: smartbox/reports/26061301_릴레이연결_report.md
+// 릴레이 제어 — INPUT 모드 트릭 (3.3V ↔ 5V 릴레이 상시 ON 우회)
 // ─────────────────────────────────────────────────────────────
 static inline void relayOn() {
   pinMode(PIN_RELAY, OUTPUT);
@@ -43,21 +43,89 @@ static inline void relayOff() {
   pinMode(PIN_RELAY, INPUT);      // 고임피던스: 전류 차단 = 확실한 OFF
 }
 
-// ─────────────────────────────────────────────────────────────
-// 상태 머신 (State Machine)
-// ─────────────────────────────────────────────────────────────
+// FSM 상태
 enum class GateState {
-  IDLE,       // 대기 중 — 트리거 가능
-  RELAY_ON,   // 릴레이 ON 중 (1초 유지)
-  COOLDOWN    // 쿨다운 중 (2초, 재트리거 방지)
+  IDLE,         // 대기 중 (50cm 진입 감시)
+  VERIFYING,    // NAS HTTPS API 요청 및 인증 대기 중
+  RELAY_HOLD,   // 인증 승인 -> 릴레이 1초 ON 유지 중
+  COOLDOWN      // 연속 요청 방지 쿨다운 중 (2초)
 };
 
-// ─────────────────────────────────────────────────────────────
-// 전역 객체
-// ─────────────────────────────────────────────────────────────
 static VL53L0X sensor;
-static GateState state     = GateState::IDLE;
-static uint32_t  stateMs   = 0;   // 상태 진입 시각
+static GateState state   = GateState::IDLE;
+static uint32_t  stateMs = 0;
+
+// ─────────────────────────────────────────────────────────────
+// 시놀로지 NAS HTTPS POST 자격 검증 API 호출 함수
+// ─────────────────────────────────────────────────────────────
+static bool requestNASVerification(uint16_t distance_mm) {
+  if (!WifiManager::isConnected()) {
+    LOGF("[WARN] Wi-Fi 미연결 상태 — 자격 검증 요청 건너뜀");
+    return false;
+  }
+
+  String apiUrl = ConfigManager::getApiUrl();
+  String apiKey = ConfigManager::getApiKey();
+
+  LOGF("[HTTPS] NAS API 인증 요청 중... (%s)", apiUrl.c_str());
+
+  WiFiClientSecure client;
+  client.setInsecure();  // SSL/TLS 인증서 체인 검증 생략
+
+  HTTPClient http;
+  if (!http.begin(client, apiUrl)) {
+    LOGF("[ERROR] HTTPS 연결 실패: URL 파싱 에러");
+    return false;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-API-KEY", apiKey);
+  http.setTimeout(8000);  // 8초 타임아웃
+
+  // JSON Body 구성 (오타 수정: ble_mac = TEST_BLE_MAC)
+  StaticJsonDocument<256> doc;
+  doc["ble_mac"]     = TEST_BLE_MAC;
+  doc["auth_key"]    = apiKey;
+  doc["distance_mm"] = distance_mm;
+
+  String requestBody;
+  serializeJson(doc, requestBody);
+
+  LOGF("[HTTPS] Request Body: %s", requestBody.c_str());
+
+  int httpCode = http.POST(requestBody);
+  bool isAuthorized = false;
+
+  if (httpCode > 0) {
+    String responseBody = http.getString();
+    LOGF("[HTTPS] HTTP Status: %d | Response: %s", httpCode, responseBody.c_str());
+
+    if (httpCode == HTTP_CODE_OK || httpCode == 201) {
+      StaticJsonDocument<512> respDoc;
+      DeserializationError err = deserializeJson(respDoc, responseBody);
+
+      if (!err) {
+        bool granted = respDoc["granted"] | respDoc["authorized"] | false;
+        const char* msg = respDoc["message"] | "응답 메시지 없음";
+        const char* tenant = respDoc["tenant_name"] | "알 수 없음";
+
+        LOGF("[HTTPS] 파싱 결과: granted=%s | 세입자: %s | 메시지: %s",
+             granted ? "TRUE" : "FALSE", tenant, msg);
+
+        isAuthorized = granted;
+      } else {
+        LOGF("[ERROR] JSON 파싱 실패: %s", err.c_str());
+      }
+    } else {
+      LOGF("[ERROR] 서버 응답 오류 HTTP Code: %d", httpCode);
+    }
+  } else {
+    LOGF("[ERROR] HTTPS POST 실패, 에러: %s", http.errorToString(httpCode).c_str());
+  }
+
+  http.end();
+  return isAuthorized;
+}
 
 // ─────────────────────────────────────────────────────────────
 // setup()
@@ -65,87 +133,107 @@ static uint32_t  stateMs   = 0;   // 상태 진입 시각
 void setup() {
   Serial.begin(115200);
 
-  // 릴레이 초기화 — INPUT 모드(고임피던스) = 확실한 OFF
+  // 1. 릴레이 초기화
   relayOff();
 
-  // XSHUT HIGH → VL53L0X 활성화
-  // (저가 모듈은 내부 풀업 없음 → 미연결 시 LOW floating → 센서 리셋 상태)
+  // 2. VL53L0X XSHUT 핀 HIGH 구동
   pinMode(PIN_TOF_XSHUT, OUTPUT);
   digitalWrite(PIN_TOF_XSHUT, HIGH);
-  delay(10);  // t_boot: 최대 1.2ms
+  delay(10);
 
-  // I2C 초기화 (Wire.begin 이후 Serial 출력 가능)
+  // 3. I2C 버스 초기화
   Wire.begin(PIN_SDA, PIN_SCL, 400000UL);
   delay(20);
 
-  // 배너
+  // 4. 배너 출력
   LOGF("\n============================================");
-  LOGF(" smart-gatekeeper — Step 1 로컬 통합 테스트");
-  LOGF(" ToF(GPIO6/7/10) + Relay(GPIO23)");
-  LOGF(" 임계값: %u mm | ON: %lu ms | 쿨다운: %lu ms",
-       GATE_THRESHOLD_MM,
-       (unsigned long)RELAY_ON_DURATION_MS,
-       (unsigned long)RELAY_COOLDOWN_MS);
+  LOGF(" smart-gatekeeper — Captive Portal Wi-Fi 등록 통합 펌웨어");
   LOGF("============================================");
 
-  // VL53L0X 초기화
-  sensor.setTimeout(500);
-  LOGF("[INFO] sensor.init() 호출...");
-  if (!sensor.init()) {
-    LOGF("[FATAL] VL53L0X init 실패! 배선 확인 후 리셋.");
-    while (true) { delay(1000); }
+  // 5. WifiManager 초기화 및 NVS Wi-Fi 접속 시도
+  WifiManager::init();
+  if (WifiManager::connectSTA(10000)) {
+    // Wi-Fi 연결 성공 시 NTP 시간 동기화 (TLS 안정성 보장)
+    configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+    LOGF("[TIME] NTP 시간 동기화 요청 (KST UTC+9)");
+  } else {
+    LOGF("[WIFI] 접속 실패 -> AP 설정 모드로 전환합니다.");
+    WifiManager::startAP();
   }
-  sensor.startContinuous(TOF_POLL_INTERVAL_MS);
-  LOGF("[INFO] VL53L0X 초기화 성공! 측정 시작.");
+
+  // 6. VL53L0X 센서 초기화
+  sensor.setTimeout(500);
+  LOGF("[INFO] ToF 센서 초기화 중...");
+  if (!sensor.init()) {
+    LOGF("[WARN] VL53L0X init 실패 (센서 연결 상태 점검 필요)");
+  } else {
+    sensor.startContinuous(TOF_POLL_INTERVAL_MS);
+    LOGF("[INFO] ToF 센서 초기화 성공!");
+  }
   LOGF("--------------------------------------------");
 }
 
 // ─────────────────────────────────────────────────────────────
-// loop() — millis() 기반 비블로킹 상태 머신
+// loop()
 // ─────────────────────────────────────────────────────────────
 void loop() {
   uint32_t now = millis();
 
-  // ── ToF 거리 측정 ──────────────────────────────────────────
+  // AP 모드일 때 웹 서버 및 Captive Portal 요청 처리
+  if (WifiManager::isAPMode()) {
+    WifiManager::handleClient();
+    delay(10);
+    return;
+  }
+
+  // ToF 거리 측정
   uint16_t mm = sensor.readRangeContinuousMillimeters();
   bool validReading = !(sensor.timeoutOccurred() || mm == 65535);
 
-  if (!validReading) {
-    LOGF("[ERROR] ToF 측정 실패 (타임아웃/범위초과)");
-  }
-
-  // ── 상태 머신 ─────────────────────────────────────────────
   switch (state) {
 
     case GateState::IDLE:
       if (validReading) {
         LOGF("[ToF] %4u mm  |  State: IDLE", mm);
       }
-      // 임계값 이내 감지 시 트리거
-      if (validReading && mm <= GATE_THRESHOLD_MM) {
-        LOGF("[GATE] *** 감지! %u mm <= %u mm → 릴레이 ON ***",
-             mm, GATE_THRESHOLD_MM);
-        relayOn();
-        state   = GateState::RELAY_ON;
+
+      // 감지 임계값 (50cm) 이내 진입 시 NAS 자격 검증 트리거
+      if (validReading && mm <= DISTANCE_THRESHOLD_MM) {
+        LOGF("[GATE] *** %u mm 감지! NAS 자격 검증 요청 시작 ***", mm);
+        state = GateState::VERIFYING;
         stateMs = now;
+
+        bool authorized = requestNASVerification(mm);
+
+        if (authorized) {
+          LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)",
+               (unsigned long)RELAY_HOLD_MS);
+          relayOn();
+          state = GateState::RELAY_HOLD;
+          stateMs = millis();
+        } else {
+          LOGF("[GATE] *** 출입 거부! 릴레이 미작동 ***. 쿨다운 진입.");
+          state = GateState::COOLDOWN;
+          stateMs = millis();
+        }
       }
       break;
 
-    case GateState::RELAY_ON:
-      // 1초 후 자동 OFF
-      if (now - stateMs >= RELAY_ON_DURATION_MS) {
+    case GateState::VERIFYING:
+      break;
+
+    case GateState::RELAY_HOLD:
+      if (now - stateMs >= RELAY_HOLD_MS) {
         relayOff();
-        LOGF("[GATE] 릴레이 OFF (1초 경과). 쿨다운 %lu ms 시작.",
-             (unsigned long)RELAY_COOLDOWN_MS);
-        state   = GateState::COOLDOWN;
+        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
+        state = GateState::COOLDOWN;
         stateMs = now;
       }
       break;
 
     case GateState::COOLDOWN:
-      // 쿨다운 종료 후 IDLE 복귀
       if (now - stateMs >= RELAY_COOLDOWN_MS) {
-        LOGF("[GATE] 쿨다운 완료. IDLE 상태 복귀.");
+        LOGF("[GATE] 쿨다운 완료 -> IDLE 대기 상태 복귀.");
         state = GateState::IDLE;
       }
       break;

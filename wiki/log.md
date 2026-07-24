@@ -287,8 +287,27 @@
 ## [2026-07-24] code | backend/ 뼈대 파일 생성 — Step 2 시놀로지 NAS 백엔드 구축 시작
 
 - `backend/docker-compose.yml`: MariaDB 및 FastAPI 서비스 구성
-- `backend/db/schema.sql`: Tenants (세입자 정보), AccessLogs (출입 기록) DDL 작성
-- `backend/app/main.py`: FastAPI 기반 출입 자격 검증 및 로그 저장 API 뼈대 작성
+
+## [2026-07-24] test | Step 2 성공 — cURL 기반 NAS HTTPS API 자격 검증 검증 완료 🟢
+
+- 시놀로지 NAS 도커 환경(tworimpa.synology.me:4443)에서 `/api/v1/auth/verify` 통신 성공
+- 허용 MAC 요청: `granted: true`, 세입자 `홍길동` 정상 반환 확인
+- 거부 MAC 요청: `granted: false`, 출입 거부 정상 반환 확인
+- FastAPI 응답 `Content-Type: application/json; charset=utf-8` 명시 보장 반영 완료
+
+## [2026-07-24] code | 3단계 WiFi + HTTPS 연동 펌웨어 구현 진입
+
+- `include/secrets.h.example` 및 `include/secrets.h` 구성 (보안 규정 준수)
+- `include/config.h`: Wi-Fi 설정, NAS API_URL, 임계값(500mm), RELAY_HOLD_MS(1000ms) 추가
+- `platformio.ini`: `bblanchon/ArduinoJson` 의존성 추가
+
+## [2026-07-24] test | Test #3 합격 — Step 3 엔드-투-엔드 통합 검증 완전 성공 🟢
+
+- ToF 센서 225mm 거리 감지 ➔ 시놀로지 NAS HTTPS POST 요청 (`https://tworimpa.synology.me:4442/api/v1/auth/verify`)
+- `ble_mac`: `AA:BB:CC:DD:EE:01` 자격 검증 성공 (`granted: true`, 세입자: `홍길동(101호)`)
+- 출입 승인 결과 수신에 따른 릴레이 1000ms ON 구동 (딸깍!) 및 2000ms 쿨다운 비블로킹 FSM 완벽 작동
+- Captive Portal AP 설정, NVS ConfigManager, NTP 시간 동기화 모듈 통합 성공
+- hardware_test.md, architecture.md, index.md 상태 🟢 완료 업데이트
 
 
 

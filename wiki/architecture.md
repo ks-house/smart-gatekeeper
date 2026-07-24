@@ -1,5 +1,5 @@
 # architecture.md — 시스템 아키텍처 및 로드맵
-> Last updated: 2026-06-27
+> Last updated: 2026-07-24
 
 ---
 
@@ -9,15 +9,14 @@
 ┌─────────────────────────────────────────────────────────┐
 │                   smart-gatekeeper                      │
 │                                                         │
-│  [스마트폰 BLE] ──── ESP32 ──── [VL53L0X ToF × N]      │
-│                        │                                │
-│                  [릴레이 1ch] ──── [도어락/전자문]      │
-│                        │                                │
-│                  [WiFi/MQTT] ──── [시놀로지 NAS]         │
-│                                        │                │
-│                                   [Node-RED]            │
-│                                   [InfluxDB]            │
-│                                   [Grafana]             │
+│  [스마트폰 BLE/HTTPS] ── ESP32 ─── [VL53L0X ToF × N]   │
+│                          │                              │
+│                    [릴레이 1ch] ─── [도어락/전자문]    │
+│                          │                              │
+│                    [WiFi/HTTPS] ── [시놀로지 NAS]       │
+│                                           │             │
+│                                      [FastAPI]          │
+│                                      [MariaDB]          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -27,10 +26,10 @@
 
 | 단계 | 이름 | 목표 | 상태 |
 |------|------|------|------|
-| **Step 1** | Local PoC | ToF + Relay 단독 하드웨어 검증 | 🟡 진행 중 |
-| Step 2 | BLE 연동 | 스마트폰 BLE → ESP32 잠금/해제 명령 | 🔲 미시작 |
-| Step 3 | WiFi + MQTT | 시놀로지 NAS MQTT 브로커 연동 | 🔲 미시작 |
-| Step 4 | 방향 감지 | ToF 2채널 IN/OUT 방향 판별 알고리즘 | 🔲 미시작 |
+| **Step 1** | Local PoC | ToF + Relay 단독 및 로컬 연동 검증 | 🟢 **완료** (2026-07-24) |
+| **Step 2** | 백엔드 구축 | 시놀로지 NAS FastAPI + MariaDB Docker 구축 & HTTPS API 검증 | 🟢 **완료** (2026-07-24) |
+| **Step 3** | WiFi + NAS 연동 | ESP32-C6 WiFi/CaptivePortal + NAS HTTPS 자격검증 및 릴레이 연동 | 🟢 **완료** (2026-07-24) |
+| Step 4 | BLE / 방향 감지 | 스마트폰 BLE 키 인증 및 2채널 ToF IN/OUT 판별 | 🔲 미시작 |
 | Step 5 | 프로덕션 | PCB 설계, 케이스, OTA 업데이트 | 🔲 미시작 |
 
 ---
