@@ -197,6 +197,13 @@ static bool requestNASVerification(uint16_t distance_mm) {
 void setup() {
   Serial.begin(115200);
 
+  // Native USB CDC 연결 안정화 대기 (재부팅 시 초반 OTA / Wifi 시리얼 로그 유실 완전 방지)
+  uint32_t serialStart = millis();
+  while (!Serial && (millis() - serialStart < 1500)) {
+    delay(10);
+  }
+  delay(100);
+
   // 1. 릴레이 초기화
   relayOff();
 
