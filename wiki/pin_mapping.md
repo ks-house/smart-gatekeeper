@@ -1,5 +1,5 @@
 # pin_mapping.md — 핀 매핑 및 무선 파라미터 마스터 테이블
-> MCU: **ESP32-C6-DevKitC-1** (RISC-V, 3.3V)
+> MCU: **ESP32-C6-DevKitC-1 N16** (RISC-V, 16MB Flash, 3.3V)
 > Phase: Step 4 (BLE 5.0 + ToF 이중 검증 Walk-through 완료)
 > Last updated: 2026-07-24
 
@@ -47,7 +47,7 @@
 
 ---
 
-## 4. 무선 파라미터 & 파티션 스키마 (Step 4)
+## 4. 무선 파라미터 & N16 16MB 파티션 스키마 (Step 4)
 
 | 항목 | 설정값 | 설명 |
 |------|-------|------|
@@ -55,4 +55,4 @@
 | **`BLE_RSSI_THRESHOLD`** | `-70` (dBm) | BLE 근접 인정 수신 신호 강도 |
 | **`BLE_VALID_MS`** | `10000` (ms) | BLE 감지 후 인정 유효 시간 (10초) |
 | **`COOLDOWN_MS`** | `10000` (ms) | 재출입 방지 쿨다운 시간 (10초) |
-| **`board_build.partitions`** | `huge_app.csv` | App 파티션 3MB 확장 (BLE + WiFi + MQTTS + OTA) |
+| **`board_build.partitions`** | `partitions_16MB_ota.csv` | N16 16MB Dual-OTA 파티션 (App 영역 각 7.0MB 확장) |
