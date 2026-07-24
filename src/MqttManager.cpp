@@ -192,7 +192,18 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("number", "ble_rssi_threshold", doc);
     }
 
-    LOGF("[MQTT-HA] Auto-Discovery 엔티티 6개 등록 완료!");
+    // 7. Sensor: 인증된 타겟 BLE 실시간 수신 감도 (RSSI)
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 타겟 BLE 실시간 수신 감도", "target_ble_rssi");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.target_ble_rssi }}";
+        doc["unit_of_meas"]    = "dBm";
+        doc["device_class"]    = "signal_strength";
+        doc["icon"]            = "mdi:bluetooth-connect";
+        pubConfig("sensor", "target_ble_rssi", doc);
+    }
+
+    LOGF("[MQTT-HA] Auto-Discovery 엔티티 7개 등록 완료!");
     
     // Auto-Discovery 발행 직후 TLS SSL 송신 버퍼 안정화를 위한 소켓 플러시
     for (int i = 0; i < 3; i++) {
@@ -201,13 +212,35 @@ void MqttManager::publishAutoDiscovery() {
     }
 }
 
+void MqttManager::publishBleRssi(int rssi) {
+    if (!isConnected()) return;
+
+    StaticJsonDocument<256> doc;
+    doc["target_ble_rssi"] = rssi;
+    doc["time"]            = millis();
+
+    String jsonStr;
+    serializeJson(doc, jsonStr);
+
+    if (isConnected()) {
+        client.publish("smart-gatekeeper/ble_rssi", jsonStr.c_str());
+    }
+}
+
 void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
     if (!isConnected()) return;
+
+    extern int last_target_ble_rssi;
+    extern uint32_t last_ble_detected_time;
+
+    // 10초 이내 신호 수신 시만 실제 RSSI, 아니면 0 표시
+    int activeRssi = (millis() - last_ble_detected_time < 10000) ? last_target_ble_rssi : 0;
 
     StaticJsonDocument<256> doc;
     doc["distance_mm"]        = distance_mm;
     doc["state"]              = stateStr ? stateStr : "UNKNOWN";
     doc["ble_rssi_threshold"] = ConfigManager::getBleRssiThreshold();
+    doc["target_ble_rssi"]    = activeRssi;
     doc["ip"]                 = WifiManager::getIP();
     doc["free_heap"]          = ESP.getFreeHeap();
 

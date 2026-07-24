@@ -48,7 +48,9 @@ static uint32_t  stateMs                = 0;
 static uint32_t  lastMqttMs             = 0;
 static uint32_t  last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각
 static uint32_t  last_ble_log_time      = 0; // BLE 로그 출력 과도 스팸 방지 디바운싱 시각
-static int      currentBleRssiThreshold = -80; // 동적 BLE RSSI 임계값 (NVS 및 MQTT로 제어)
+static uint32_t  last_ble_mqtt_pub_time = 0; // BLE RSSI MQTT 실시간 발신 디바운싱 시각
+int              last_target_ble_rssi   = 0; // 인증된 타겟 BLE 스마트폰 실시간 RSSI 값
+static int       currentBleRssiThreshold = -80; // 동적 BLE RSSI 임계값 (NVS 및 MQTT로 제어)
 
 void updateBleRssiThreshold(int newRssi) {
   currentBleRssiThreshold = newRssi;
@@ -104,6 +106,13 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (uuidMatch || devName.indexOf("SmartKey") >= 0 || devAddr.equalsIgnoreCase(TEST_BLE_MAC)) {
       uint32_t nowMs = millis();
       last_ble_detected_time = nowMs; // 백그라운드 BLE 감지 시각은 매 250ms마다 즉시 갱신 (ToF 검증용)
+      last_target_ble_rssi = rssi;     // 실시간 감도 RSSI 값 저장
+
+      // 인증된 BLE 타겟 감지 시 1초마다 MQTT 실시간 전파 (스마트폰 신호 세기 실시간 모니터링)
+      if (nowMs - last_ble_mqtt_pub_time >= 1000) {
+        last_ble_mqtt_pub_time = nowMs;
+        MqttManager::publishBleRssi(rssi);
+      }
 
       // 로그 시리얼 출력 스팸 억제 (3초에 1번만 조용하게 출력)
       if (nowMs - last_ble_log_time >= 3000) {
