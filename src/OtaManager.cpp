@@ -26,7 +26,7 @@ void OtaManager::checkAndUpdate(bool force) {
     LOGF("[OTA] 펌웨어 버전 체크 중... (%s)", OTA_VERSION_URL);
 
     WiFiClientSecure client;
-    client.setInsecure();
+    client.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA verification
 
     HTTPClient http;
     if (!http.begin(client, OTA_VERSION_URL)) {

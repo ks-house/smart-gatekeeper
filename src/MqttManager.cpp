@@ -1,6 +1,6 @@
 // src/MqttManager.cpp
 // =============================================================
-// smart-gatekeeper — MqttManager 구현
+// smart-gatekeeper — MqttManager 구현 (SSL/TLS 4883 포트 지원)
 // =============================================================
 #include "MqttManager.h"
 #include "config.h"
@@ -9,12 +9,13 @@
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
-WiFiClient MqttManager::wifiClient;
+WiFiClientSecure MqttManager::wifiClient;
 PubSubClient MqttManager::client(wifiClient);
 uint32_t MqttManager::lastPublishMs = 0;
 bool MqttManager::connected = false;
 
 void MqttManager::init() {
+    wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
     client.setCallback(callback);
 }
@@ -53,12 +54,12 @@ void MqttManager::update() {
         if (now - lastPublishMs > 5000) {
             lastPublishMs = now;
             String clientId = "smart-gatekeeper-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-            LOGF("[MQTT] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
+            LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
 
             if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
-                LOGF("[MQTT] 브로커 연결 성공!");
+                LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 client.subscribe("smart-gatekeeper/cmd");
-                publishEvent("connected", "ESP32-C6 Online");
+                publishEvent("connected", "ESP32-C6 Online (SSL)");
             } else {
                 LOGF("[MQTT-ERROR] 연결 실패 rc=%d", client.state());
             }

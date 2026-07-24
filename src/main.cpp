@@ -59,7 +59,7 @@ static bool requestNASVerification(uint16_t distance_mm) {
   LOGF("[HTTPS] NAS API 인증 요청 중... (%s)", apiUrl.c_str());
 
   WiFiClientSecure client;
-  client.setInsecure();  // SSL/TLS 인증서 체인 검증 생략
+  client.setCACert(SECRET_ROOT_CA_CERT);  // TLS Root CA 검증 (Let's Encrypt ISRG Root X1)
 
   HTTPClient http;
   if (!http.begin(client, apiUrl)) {

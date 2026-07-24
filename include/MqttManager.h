@@ -1,19 +1,18 @@
-// include/OtaManager.h
 // include/MqttManager.h
 // =============================================================
-// smart-gatekeeper — MQTT 통신 매니저
-// 시놀로지 NAS MQTT 브로커(Mosquitto) 연동 및 텔레메트리/원격 제어
+// smart-gatekeeper — MQTT 통신 매니저 (SSL/TLS 지원)
 // =============================================================
 #pragma once
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
 class MqttManager {
 private:
-    static WiFiClient wifiClient;
+    static WiFiClientSecure wifiClient;  // SSL/TLS MQTTS 지원 (4883 포트용)
     static PubSubClient client;
     static uint32_t lastPublishMs;
     static bool connected;
