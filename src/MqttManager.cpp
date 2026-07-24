@@ -165,6 +165,12 @@ void MqttManager::publishAutoDiscovery() {
     }
 
     LOGF("[MQTT-HA] Auto-Discovery 엔티티 5개 등록 완료!");
+    
+    // Auto-Discovery 발행 직후 TLS SSL 송신 버퍼 안정화를 위한 소켓 플러시
+    for (int i = 0; i < 3; i++) {
+        client.loop();
+        delay(10);
+    }
 }
 
 void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
@@ -172,7 +178,7 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
 
     StaticJsonDocument<256> doc;
     doc["distance_mm"] = distance_mm;
-    doc["state"]       = stateStr;
+    doc["state"]       = stateStr ? stateStr : "UNKNOWN";
     doc["ip"]          = WifiManager::getIP();
     doc["free_heap"]   = ESP.getFreeHeap();
 
@@ -184,10 +190,11 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
 
 void MqttManager::publishEvent(const char* eventType, const char* detail) {
     if (!client.connected()) return;
+    if (!eventType) return;
 
     StaticJsonDocument<256> doc;
     doc["event"]  = eventType;
-    doc["detail"] = detail;
+    doc["detail"] = detail ? detail : "";
     doc["time"]   = millis();
 
     String jsonStr;
