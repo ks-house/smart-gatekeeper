@@ -22,7 +22,7 @@ private:
 public:
     static void init();
     static void update();
-    static bool isConnected() { return client.connected(); }
+    static bool isConnected() { return wifiClient.connected() && client.connected(); }
     static void publishTelemetry(uint16_t distance_mm, const char* stateStr);
     static void publishEvent(const char* eventType, const char* detail);
     static void publishAutoDiscovery(); // Home Assistant MQTT Auto-Discovery

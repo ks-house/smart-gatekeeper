@@ -92,7 +92,7 @@ void MqttManager::update() {
 }
 
 void MqttManager::publishAutoDiscovery() {
-    if (!client.connected()) return;
+    if (!isConnected()) return;
 
     LOGF("[MQTT-HA] Home Assistant MQTT Auto-Discovery 엔티티 설정 발행 중...");
 
@@ -115,6 +115,7 @@ void MqttManager::publishAutoDiscovery() {
     };
 
     auto pubConfig = [&](const char* component, const char* objectId, StaticJsonDocument<512>& doc) {
+        if (!isConnected()) return;
         String topic = "homeassistant/" + String(component) + "/" + deviceId + "/" + String(objectId) + "/config";
         String payload;
         serializeJson(doc, payload);
@@ -195,13 +196,13 @@ void MqttManager::publishAutoDiscovery() {
     
     // Auto-Discovery 발행 직후 TLS SSL 송신 버퍼 안정화를 위한 소켓 플러시
     for (int i = 0; i < 3; i++) {
-        client.loop();
+        if (isConnected()) client.loop();
         delay(10);
     }
 }
 
 void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
-    if (!client.connected()) return;
+    if (!isConnected()) return;
 
     StaticJsonDocument<256> doc;
     doc["distance_mm"]        = distance_mm;
@@ -213,11 +214,13 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
     String jsonStr;
     serializeJson(doc, jsonStr);
 
-    client.publish("smart-gatekeeper/status", jsonStr.c_str());
+    if (isConnected()) {
+        client.publish("smart-gatekeeper/status", jsonStr.c_str());
+    }
 }
 
 void MqttManager::publishEvent(const char* eventType, const char* detail) {
-    if (!client.connected()) return;
+    if (!isConnected()) return;
     if (!eventType) return;
 
     StaticJsonDocument<256> doc;
@@ -228,5 +231,7 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     String jsonStr;
     serializeJson(doc, jsonStr);
 
-    client.publish("smart-gatekeeper/event", jsonStr.c_str());
+    if (isConnected()) {
+        client.publish("smart-gatekeeper/event", jsonStr.c_str());
+    }
 }
