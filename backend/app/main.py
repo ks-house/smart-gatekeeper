@@ -6,12 +6,14 @@ import os
 from typing import Optional, List
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Depends, Query, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI(
     title="Smart Gatekeeper API",
     description="시놀로지 NAS 백엔드 연동형 스마트폰 BLE + ToF 출입 통제 API",
-    version="0.1.0"
+    version="0.1.0",
+    default_response_class=JSONResponse
 )
 
 # ─────────────────────────────────────────────────────────────
@@ -26,7 +28,7 @@ class AuthVerifyResponse(BaseModel):
     granted: bool = Field(..., description="출입 허가 여부 (True: 문 열림, False: 거부)")
     tenant_name: Optional[str] = Field(None, example="홍길동")
     unit_number: Optional[str] = Field(None, example="101호")
-    message: str = Field(..., example="출입 자격 확인 완료")
+    message: str = Field(..., example="인증 성공: 문을 엽니다.")
 
 class AccessLogItem(BaseModel):
     id: int
@@ -43,11 +45,14 @@ class AccessLogItem(BaseModel):
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
     """서버 헬스 체크 엔드포인트"""
-    return {
-        "status": "healthy",
-        "service": "smart-gatekeeper-api",
-        "timestamp": datetime.now().isoformat()
-    }
+    return JSONResponse(
+        content={
+            "status": "healthy",
+            "service": "smart-gatekeeper-api",
+            "timestamp": datetime.now().isoformat()
+        },
+        headers={"Content-Type": "application/json; charset=utf-8"}
+    )
 
 @app.post("/api/v1/auth/verify", response_model=AuthVerifyResponse)
 def verify_access(req: AuthVerifyRequest):
@@ -59,18 +64,23 @@ def verify_access(req: AuthVerifyRequest):
     
     # 예시: 특정 MAC 주소 허용
     if req.ble_mac.upper() in ["AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02"]:
-        return AuthVerifyResponse(
+        resp_data = AuthVerifyResponse(
             granted=True,
             tenant_name="홍길동" if "01" in req.ble_mac else "김철수",
             unit_number="101호" if "01" in req.ble_mac else "102호",
-            message="출입 허가: 자격 검증 성공"
+            message="인증 성공: 출입이 허가되었습니다."
+        )
+    else:
+        resp_data = AuthVerifyResponse(
+            granted=False,
+            tenant_name=None,
+            unit_number=None,
+            message="인증 실패: 미등록 기기 또는 자격 미달"
         )
     
-    return AuthVerifyResponse(
-        granted=False,
-        tenant_name=None,
-        unit_number=None,
-        message="출입 거부: 등록되지 않은 디바이스 또는 자격 미달"
+    return JSONResponse(
+        content=resp_data.model_dump(),
+        headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
 @app.get("/api/v1/logs", response_model=List[AccessLogItem])
@@ -81,16 +91,18 @@ def get_access_logs(
     """
     출입 기록 최근 로그 조회 API (뼈대 구현)
     """
-    # 더미 로그 반환 (추후 DB 연결 예정)
     dummy_logs = [
-        AccessLogItem(
-            id=1,
-            tenant_id=1,
-            auth_method="BLE",
-            is_success=True,
-            distance_mm=320,
-            failure_reason=None,
-            created_at=datetime.now()
-        )
+        {
+            "id": 1,
+            "tenant_id": 1,
+            "auth_method": "BLE",
+            "is_success": True,
+            "distance_mm": 320,
+            "failure_reason": None,
+            "created_at": datetime.now().isoformat()
+        }
     ]
-    return dummy_logs
+    return JSONResponse(
+        content=dummy_logs,
+        headers={"Content-Type": "application/json; charset=utf-8"}
+    )
