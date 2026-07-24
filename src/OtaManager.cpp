@@ -64,27 +64,31 @@ void OtaManager::checkAndUpdate(bool force) {
     const char* serverVersion = doc["version"] | "";
     const char* firmwareUrl   = doc["firmware_url"] | OTA_FIRMWARE_URL;
 
-    LOGF("[OTA] 현재 버젼: %s | 서버 버젼: %s", FIRMWARE_VERSION, serverVersion);
+    LOGF("--------------------------------------------");
+    LOGF("[OTA] 현재 보드 펌웨어 버전: %s", FIRMWARE_VERSION);
+    LOGF("[OTA] NAS 서버 최신 펌웨어 버전: %s", serverVersion);
+    LOGF("--------------------------------------------");
 
     if (!force && String(serverVersion) == String(FIRMWARE_VERSION)) {
         status = OtaStatus::UP_TO_DATE;
-        LOGF("[OTA] 이미 최신 버전입니다.");
+        LOGF("[OTA] ✅ 보드가 이미 최신 버전(%s)입니다. (별도 펌웨어 다운로드 없음)", FIRMWARE_VERSION);
         return;
     }
 
     // OTA 업데이트 진행
     status = OtaStatus::UPDATING;
-    LOGF("[OTA] 새 펌웨어 다운로드 및 업데이트 시작! URL: %s", firmwareUrl);
+    LOGF("[OTA] 🚀 새 펌웨어(%s) 다운로드 및 무선 업그레이드를 시작합니다!", serverVersion);
+    LOGF("[OTA] 다운로드 URL: %s", firmwareUrl);
 
     // HTTPUpdate callback
-    httpUpdate.onStart([]() { LOGF("[OTA-UPDATE] 시작..."); });
-    httpUpdate.onEnd([]() { LOGF("[OTA-UPDATE] 완료!"); });
+    httpUpdate.onStart([]() { LOGF("\n[OTA-UPDATE] ⚡ 무선 플래싱 시작..."); });
+    httpUpdate.onEnd([]() { LOGF("\n[OTA-UPDATE] 🎉 펌웨어 플래싱 완료! 보드를 자동 재부팅합니다..."); });
     httpUpdate.onProgress([](int cur, int total) {
-        printf("[OTA-PROGRESS] %d / %d bytes (%.1f%%)\r", cur, total, (float)cur / total * 100);
+        printf("[OTA-PROGRESS] 다운로드 중: %d / %d bytes (%.1f%%)\r", cur, total, (float)cur / total * 100.0f);
         fflush(stdout);
     });
     httpUpdate.onError([](int err) {
-        LOGF("\n[OTA-ERROR] 코드 %d: %s", err, httpUpdate.getLastErrorString().c_str());
+        LOGF("\n[OTA-ERROR] ❌ 오류 발생 (코드 %d): %s", err, httpUpdate.getLastErrorString().c_str());
     });
 
     t_httpUpdate_return ret = httpUpdate.update(client, firmwareUrl);
