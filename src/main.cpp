@@ -48,6 +48,8 @@ static uint32_t  stateMs                = 0;
 static uint32_t  lastMqttMs             = 0;
 static uint32_t  last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각
 
+static uint32_t last_ble_log_time = 0; // BLE 로그 출력 과도 스팸 방지 디바운싱 시각
+
 // ─────────────────────────────────────────────────────────────
 // ESP32 BLE 비동기 스캔 콜백 클래스 (NON-CONNECTABLE & 128-bit Raw Payload 완벽 대응)
 // ─────────────────────────────────────────────────────────────
@@ -67,13 +69,10 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     }
 
     // 2. NON-CONNECTABLE (ADV_NONCONN_IND) Raw Payload 128-bit UUID 바이트 매칭
-    //    12345678-1234-1234-1234-123456789abc 바이트열 (Big/Little Endian 호환)
     if (!uuidMatch && advertisedDevice.getPayloadLength() > 0) {
       uint8_t* payload = advertisedDevice.getPayload();
       size_t len = advertisedDevice.getPayloadLength();
 
-      // Big-Endian / Little-Endian 128-bit UUID 바이트 매핑
-      // 12345678-1234-1234-1234-123456789abc
       static const uint8_t targetUuidLittle[16] = {
         0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12, 0x34, 0x12,
         0x34, 0x12, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12
@@ -97,13 +96,17 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     String devAddr = advertisedDevice.getAddress().toString().c_str();
 
     if (uuidMatch || devName.indexOf("SmartKey") >= 0 || devAddr.equalsIgnoreCase(TEST_BLE_MAC)) {
-      if (rssi >= BLE_RSSI_THRESHOLD) {
-        last_ble_detected_time = millis();
-        LOGF("[BLE-SCAN] 📱 Target BLE (NON-CONNECTABLE / 128-bit UUID) 감지! RSSI: %d dBm -> 유효시간 갱신",
-             rssi);
-      } else {
-        LOGF("[BLE-SCAN] Target BLE 수신되었으나 RSSI 부족 (RSSI: %d dBm < %d dBm)",
-             rssi, BLE_RSSI_THRESHOLD);
+      uint32_t nowMs = millis();
+      last_ble_detected_time = nowMs; // 백그라운드 BLE 감지 시각은 매 250ms마다 즉시 갱신 (ToF 검증용)
+
+      // 로그 시리얼 출력 스팸 억제 (3초에 1번만 조용하게 출력)
+      if (nowMs - last_ble_log_time >= 3000) {
+        last_ble_log_time = nowMs;
+        if (rssi >= BLE_RSSI_THRESHOLD) {
+          LOGF("[BLE-SCAN] 📱 Target BLE (128-bit UUID) 감지 중! RSSI: %d dBm (유효시간 갱신)", rssi);
+        } else {
+          LOGF("[BLE-SCAN] Target BLE 감지되었으나 신호 약함 (RSSI: %d dBm < %d dBm)", rssi, BLE_RSSI_THRESHOLD);
+        }
       }
     }
   }
