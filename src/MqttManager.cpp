@@ -19,6 +19,7 @@ bool MqttManager::connected = false;
 void MqttManager::init() {
     wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
+    client.setBufferSize(1024); // HA Auto-Discovery JSON 패킷 전송을 위해 버퍼 1024 bytes로 확장
     client.setCallback(callback);
 }
 
@@ -104,7 +105,8 @@ void MqttManager::publishAutoDiscovery() {
         String topic = "homeassistant/" + String(component) + "/" + deviceId + "/" + String(objectId) + "/config";
         String payload;
         serializeJson(doc, payload);
-        client.publish(topic.c_str(), payload.c_str(), true); // Retain flag true
+        bool ok = client.publish(topic.c_str(), payload.c_str(), true); // Retain flag true
+        LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
     };
 
     // 1. Buttons (원격 개방, OTA, 재부팅)
