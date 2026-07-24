@@ -287,6 +287,15 @@ void setup() {
     LOGF("[INFO] ToF 센서 초기화 성공!");
   }
 
+// BLE 스캔 완료 시 호출되는 콜백 (스캔이 안전하게 멈춘 상태에서 메모리 청소 및 재시작)
+static void onScanComplete(BLEScanResults scanResults) {
+  BLEScan* pScan = BLEDevice::getScan();
+  if (pScan) {
+    pScan->clearResults(); // 스액 안전한 타이밍에 스캔 결과 맵 초기화 (18KB 팽창 및 스레드 충돌 원천 차단)
+    pScan->start(2, onScanComplete, false); // 2초 비동기 스캔 지속 재개
+  }
+}
+
   // NVS 저장소에서 동적 BLE RSSI 임계값 불러오기
   currentBleRssiThreshold = ConfigManager::getBleRssiThreshold();
 
@@ -294,11 +303,11 @@ void setup() {
   LOGF("[BLE] 7. BLE 5.0 비동기 스캐너 시작 (Active Scan 활성화)");
   BLEDevice::init("SmartGatekeeper-Scan");
   BLEScan* pScan = BLEDevice::getScan();
-  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), true); // duplicates 수신 허용
+  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), false); // wantDuplicates=false : 18KB 패이로드 누적 팽창 차단
   pScan->setActiveScan(true); // Active Scan: Scan Response 데이터 요청 (휴대폰 128bit UUID 수신 필수!)
   pScan->setInterval(100);
   pScan->setWindow(99);
-  pScan->start(0, nullptr, false); // 0, nullptr: 메인 스레드 멈춤 없는 순수 백그라운드 비동기 스캔
+  pScan->start(2, onScanComplete, false); // 2초 비동기 주기적 스캔 시작 (onScanComplete로 지속 순환)
   LOGF("[BLE] 타겟 UUID: %s | RSSI 임계값: %d dBm | 유효 시간: %lu ms",
        BLE_TARGET_UUID, currentBleRssiThreshold, (unsigned long)BLE_VALID_MS);
 
