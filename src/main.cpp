@@ -247,9 +247,10 @@ void setup() {
     MqttManager::init();
     OtaManager::init();
 
-    // 부팅 시 시놀로지 NAS version.json 기반 자동 OTA 체크
-    LOGF("[OTA] 부팅 시 펌웨어 업데이트 확인 시작...");
-    OtaManager::checkAndUpdate(false);
+    // 부팅 시 시놀로지 NAS version.json 기반 자동 OTA 체크 (사용자 요청으로 잠시 Disable, 수동 OTA만 유지)
+    // LOGF("[OTA] 부팅 시 펌웨어 업데이트 확인 시작...");
+    // OtaManager::checkAndUpdate(false);
+    LOGF("[OTA] 부팅 시 자동 OTA 체크가 비활성화 상태입니다. (MQTT/HA 수동 OTA 트리거만 유지)");
   } else {
     LOGF("[WIFI] 접속 실패 -> AP 설정 모드로 전환합니다.");
     WifiManager::startAP();
