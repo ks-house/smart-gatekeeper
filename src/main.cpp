@@ -46,7 +46,7 @@ static VL53L0X sensor;
 static GateState state                  = GateState::IDLE;
 static uint32_t  stateMs                = 0;
 static uint32_t  lastMqttMs             = 0;
-static uint32_t  last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각
+uint32_t         last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각 (MqttManager에서도 참조)
 static uint32_t  last_ble_log_time      = 0; // BLE 로그 출력 과도 스팸 방지 디바운싱 시각
 static uint32_t  last_ble_mqtt_pub_time = 0; // BLE RSSI MQTT 실시간 발신 디바운싱 시각
 int              last_target_ble_rssi   = 0; // 인증된 타겟 BLE 스마트폰 실시간 RSSI 값
