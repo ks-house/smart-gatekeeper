@@ -108,8 +108,7 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     }
 
     if (!uuidMatch) {
-      std::string addrStr = advertisedDevice.getAddress().toString();
-      if (strcasecmp(addrStr.c_str(), TEST_BLE_MAC) == 0) {
+      if (strcasecmp(advertisedDevice.getAddress().toString().c_str(), TEST_BLE_MAC) == 0) {
         uuidMatch = true;
       }
     }
