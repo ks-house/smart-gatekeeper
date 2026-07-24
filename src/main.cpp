@@ -1,7 +1,7 @@
 // src/main.cpp
 // =============================================================
-// smart-gatekeeper — OTA 및 MQTT 연동 통합 펌웨어
-// (ToF 50cm 감지 + Captive Portal WiFi + 시놀로지 NAS HTTPS POST + MQTT 텔레메트리 + OTA)
+// smart-gatekeeper — Step 4: BLE 5.0 스캔 & ToF 이중 검증 (Walk-through) 펌웨어
+// (BLEDevice 비동기 스캔 + ToF 50cm 감지 + NAS HTTPS API + MQTTS + OTA + 릴레이)
 // =============================================================
 #include <Arduino.h>
 #include <Wire.h>
@@ -10,6 +10,9 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <BLEDevice.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
 
 #include "config.h"
 #include "ConfigManager.h"
@@ -33,16 +36,49 @@ static inline void relayOff() {
 
 // FSM 상태
 enum class GateState {
-  IDLE,         // 대기 중 (50cm 진입 감시)
+  IDLE,         // 대기 중 (BLE & ToF 감시)
   VERIFYING,    // NAS HTTPS API 요청 및 인증 대기 중
   RELAY_HOLD,   // 인증 승인 -> 릴레이 1초 ON 유지 중
-  COOLDOWN      // 연속 요청 방지 쿨다운 중 (2초)
+  COOLDOWN      // 연속 요청 방지 쿨다운 중 (10초)
 };
 
 static VL53L0X sensor;
-static GateState state       = GateState::IDLE;
-static uint32_t  stateMs     = 0;
-static uint32_t  lastMqttMs  = 0;
+static GateState state                  = GateState::IDLE;
+static uint32_t  stateMs                = 0;
+static uint32_t  lastMqttMs             = 0;
+static uint32_t  last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각
+
+// ─────────────────────────────────────────────────────────────
+// ESP32 BLE 비동기 스캔 콜백 클래스
+// ─────────────────────────────────────────────────────────────
+class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
+  void onResult(BLEAdvertisedDevice advertisedDevice) override {
+    int rssi = advertisedDevice.getRSSI();
+
+    // 1. Service UUID 검사
+    bool uuidMatch = false;
+    if (advertisedDevice.haveServiceUUID()) {
+      if (advertisedDevice.isAdvertisingService(BLEUUID(BLE_TARGET_UUID))) {
+        uuidMatch = true;
+      }
+    }
+
+    // 2. Name 또는 Address / MAC 검사 (스마트폰 키)
+    String devName = advertisedDevice.getName().c_str();
+    String devAddr = advertisedDevice.getAddress().toString().c_str();
+
+    if (uuidMatch || devName.indexOf("SmartKey") >= 0 || devAddr.equalsIgnoreCase(TEST_BLE_MAC)) {
+      if (rssi >= BLE_RSSI_THRESHOLD) {
+        last_ble_detected_time = millis();
+        LOGF("[BLE-SCAN] 📱 타겟 스마트폰 감지! RSSI: %d dBm (임계값 %d dBm 이상) -> BLE 유효시간 갱신",
+             rssi, BLE_RSSI_THRESHOLD);
+      } else {
+        LOGF("[BLE-SCAN] 타겟 스마트폰 발견되었으나 신호 약함 (RSSI: %d dBm < %d dBm)",
+             rssi, BLE_RSSI_THRESHOLD);
+      }
+    }
+  }
+};
 
 // MQTT 원격 명령 수신 시 호출되는 수동 문 열기 함수
 void triggerManualDoorOpen() {
@@ -143,17 +179,29 @@ void setup() {
 
   // 4. 배너 출력
   LOGF("\n============================================");
-  LOGF(" smart-gatekeeper v%s — OTA & MQTT 통합 펌웨어", FIRMWARE_VERSION);
+  LOGF(" smart-gatekeeper v%s — BLE 5.0 & ToF 이중 검증 펌웨어", FIRMWARE_VERSION);
   LOGF("============================================");
 
-  // 5. WifiManager 초기화 및 NVS Wi-Fi 접속 시도
+  // 5. BLE 5.0 비동기 스캐너 초기화
+  LOGF("[BLE] BLE 5.0 비동기 스캐너 초기화 중...");
+  BLEDevice::init("SmartGatekeeper-BLE");
+  BLEScan* pScan = BLEDevice::getScan();
+  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), true);
+  pScan->setActiveScan(true);
+  pScan->setInterval(100);
+  pScan->setWindow(99);
+  pScan->start(0, false); // 0: 백그라운드 무한 비동기 스캔
+  LOGF("[BLE] 타겟 UUID: %s | RSSI 임계값: %d dBm | 유효 시간: %lu ms",
+       BLE_TARGET_UUID, BLE_RSSI_THRESHOLD, (unsigned long)BLE_VALID_MS);
+
+  // 6. WifiManager 초기화 및 NVS Wi-Fi 접속 시도
   WifiManager::init();
   if (WifiManager::connectSTA(10000)) {
     // Wi-Fi 연결 성공 시 NTP 시간 동기화 (TLS 안정성 보장)
     configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
     LOGF("[TIME] NTP 시간 동기화 요청 (KST UTC+9)");
 
-    // 6. MQTT 및 OTA 관리자 초기화
+    // MQTT 및 OTA 관리자 초기화
     MqttManager::init();
     OtaManager::init();
 
@@ -213,26 +261,39 @@ void loop() {
         LOGF("[ToF] %4u mm  |  State: IDLE", mm);
       }
 
-      // 감지 임계값 (50cm) 이내 진입 시 NAS 자격 검증 트리거
+      // ToF 거리 50cm (500mm) 이내 진입 시 BLE 이중 조건 검사
       if (validReading && mm <= DISTANCE_THRESHOLD_MM) {
-        LOGF("[GATE] *** %u mm 감지! NAS 자격 검증 요청 시작 ***", mm);
-        state = GateState::VERIFYING;
-        stateMs = now;
+        uint32_t bleAge = now - last_ble_detected_time;
+        bool isBleValid = (last_ble_detected_time > 0) && (bleAge < BLE_VALID_MS);
 
-        MqttManager::publishEvent("gate_trigger", "ToF Threshold Detected");
+        LOGF("[GATE] *** %u mm 감지! BLE 이중 검증 체크 (경과: %lu ms / 유효: %lu ms) ***",
+             mm, (unsigned long)(last_ble_detected_time > 0 ? bleAge : 999999), (unsigned long)BLE_VALID_MS);
 
-        bool authorized = requestNASVerification(mm);
+        if (isBleValid) {
+          LOGF("[GATE] ✅ BLE 5.0 + ToF 이중 검증 조건 충족! NAS 자격 검증 요청 시작...");
+          state = GateState::VERIFYING;
+          stateMs = now;
 
-        if (authorized) {
-          LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)",
-               (unsigned long)RELAY_HOLD_MS);
-          relayOn();
-          MqttManager::publishEvent("door_open", "Access Granted");
-          state = GateState::RELAY_HOLD;
-          stateMs = millis();
+          MqttManager::publishEvent("gate_trigger", "BLE + ToF Double Validation Passed");
+
+          bool authorized = requestNASVerification(mm);
+
+          if (authorized) {
+            LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)",
+                 (unsigned long)RELAY_HOLD_MS);
+            relayOn();
+            MqttManager::publishEvent("door_open", "Access Granted");
+            state = GateState::RELAY_HOLD;
+            stateMs = millis();
+          } else {
+            LOGF("[GATE] *** 출입 거부! 릴레이 미작동 ***. 10초 쿨다운 진입.");
+            MqttManager::publishEvent("door_deny", "Access Denied");
+            state = GateState::COOLDOWN;
+            stateMs = millis();
+          }
         } else {
-          LOGF("[GATE] *** 출입 거부! 릴레이 미작동 ***. 쿨다운 진입.");
-          MqttManager::publishEvent("door_deny", "Access Denied");
+          LOGF("[GATE-WARN] ❌ ToF 50cm 이내 진입했으나, 10초 이내의 유효한 BLE 스마트폰 인증(>-70dBm) 없음!");
+          MqttManager::publishEvent("ble_missing", "BLE Signal Missing or Expired");
           state = GateState::COOLDOWN;
           stateMs = millis();
         }
@@ -245,7 +306,7 @@ void loop() {
     case GateState::RELAY_HOLD:
       if (millis() - stateMs >= RELAY_HOLD_MS) {
         relayOff();
-        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
+        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 10초 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
         MqttManager::publishEvent("door_close", "Relay Timeout OFF");
         state = GateState::COOLDOWN;
         stateMs = millis();
@@ -253,8 +314,8 @@ void loop() {
       break;
 
     case GateState::COOLDOWN:
-      if (millis() - stateMs >= RELAY_COOLDOWN_MS) {
-        LOGF("[GATE] 쿨다운 완료 -> IDLE 대기 상태 복귀.");
+      if (millis() - stateMs >= COOLDOWN_MS) {
+        LOGF("[GATE] 10초 쿨다운 완료 -> IDLE 대기 상태 복귀.");
         state = GateState::IDLE;
       }
       break;

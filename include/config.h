@@ -1,6 +1,6 @@
 // include/config.h
 // =============================================================
-// smart-gatekeeper — 전역 핀 상수 및 프로젝트 설정 (Step 4 OTA/MQTT)
+// smart-gatekeeper — 전역 핀 상수 및 프로젝트 설정 (Step 4 BLE & 이중 검증)
 // =============================================================
 #pragma once
 
@@ -34,6 +34,11 @@ constexpr const char* MQTT_PASSWORD = SECRET_MQTT_PASSWORD;
 constexpr const char* OTA_VERSION_URL  = SECRET_OTA_VERSION_URL;
 constexpr const char* OTA_FIRMWARE_URL = SECRET_OTA_FIRMWARE_URL;
 
+// ─── BLE 5.0 스캔 및 이중 검증 설정 ──────────────────────────────
+constexpr const char* BLE_TARGET_UUID   = "12345678-1234-1234-1234-123456789abc";
+constexpr int         BLE_RSSI_THRESHOLD = -70; // dBm
+constexpr uint32_t    BLE_VALID_MS       = 10000; // BLE 유효 인정 시간 (10초)
+
 // ─── I2C & 핀 매핑 ───────────────────────────────────────────
 constexpr uint8_t PIN_SDA        = 6;
 constexpr uint8_t PIN_SCL        = 7;
@@ -50,6 +55,7 @@ constexpr uint16_t GATE_THRESHOLD_MM     = DISTANCE_THRESHOLD_MM;
 constexpr uint32_t RELAY_HOLD_MS        = 1000;
 constexpr uint32_t RELAY_ON_DURATION_MS = RELAY_HOLD_MS;
 
-constexpr uint32_t RELAY_COOLDOWN_MS    = 2000;
+constexpr uint32_t COOLDOWN_MS          = 10000; // 쿨다운 10초
+constexpr uint32_t RELAY_COOLDOWN_MS    = COOLDOWN_MS;
 constexpr uint32_t TOF_POLL_INTERVAL_MS = 100;
 constexpr uint32_t RELAY_TOGGLE_MS      = 2000;

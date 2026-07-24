@@ -115,3 +115,10 @@
 - HA 원격 명령(`open_gate`) 수신 ➔ 릴레이 1초 ON 스위칭 완벽 가동
 - 무선 OTA 배포 파이프라인 성공 (`[OTA-PROGRESS] 87.3%` 수신 및 무선 재부팅 완료)
 - hardware_test.md, architecture.md, log.md 최종 통합 완료 기록
+
+## [2026-07-24] code | Step 4 완료 — BLE 5.0 비동기 스캔 & Walk-through 이중 검증 상태기계 개편 🟢
+
+- `platformio.ini`: `board_build.partitions = huge_app.csv` 지정 (BLE+WiFi+OTA App 영역 3MB 확보)
+- `config.h`: `BLE_TARGET_UUID`, `BLE_RSSI_THRESHOLD`(-70dBm), `BLE_VALID_MS`(10000ms), `COOLDOWN_MS`(10000ms) 파라미터 추가
+- `src/main.cpp`: ESP32 내장 BLE 스캐너 비동기 백그라운드 구동 + ToF 감지 50cm 이내 진입 시 BLE 유효시간(10초) 이중 검증 FSM 완비
+- `architecture.md`, `pin_mapping.md`, `log.md` 지식 베이스 문서 업데이트 완료
