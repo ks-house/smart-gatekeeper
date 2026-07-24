@@ -36,7 +36,7 @@ constexpr const char* OTA_FIRMWARE_URL = SECRET_OTA_FIRMWARE_URL;
 
 // ─── BLE 5.0 스캔 및 이중 검증 설정 ──────────────────────────────
 constexpr const char* BLE_TARGET_UUID   = "12345678-1234-1234-1234-123456789abc";
-constexpr int         BLE_RSSI_THRESHOLD = -70; // dBm
+constexpr int         BLE_RSSI_THRESHOLD = -80; // dBm (실제 현장 주머니/1~2m 수신 세기에 맞게 -80dBm으로 최적화)
 constexpr uint32_t    BLE_VALID_MS       = 10000; // BLE 유효 인정 시간 (10초)
 
 // ─── I2C & 핀 매핑 ───────────────────────────────────────────
