@@ -221,19 +221,7 @@ void setup() {
   LOGF(" smart-gatekeeper v%s — BLE 5.0 & ToF 이중 검증 펌웨어", FIRMWARE_VERSION);
   LOGF("============================================");
 
-  // 5. BLE 5.0 비동기 스캐너 초기화
-  LOGF("[BLE] 5. BLE 5.0 비동기 스캐너 시작 (Active Scan 활성화 -> 스마트폰 Scan Response 수신)");
-  BLEDevice::init("SmartGatekeeper-Scan");
-  BLEScan* pScan = BLEDevice::getScan();
-  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), true); // duplicates 수신 허용
-  pScan->setActiveScan(true); // Active Scan: Scan Response 데이터 요청 (휴대폰 128bit UUID 수신 필수!)
-  pScan->setInterval(100);
-  pScan->setWindow(99);
-  pScan->start(0, false); // 0: 백그라운드 무한 비동기 스캔
-  LOGF("[BLE] 타겟 UUID: %s | RSSI 임계값: %d dBm | 유효 시간: %lu ms",
-       BLE_TARGET_UUID, BLE_RSSI_THRESHOLD, (unsigned long)BLE_VALID_MS);
-
-  // 6. WifiManager 초기화 및 NVS Wi-Fi 접속 시도
+  // 5. WifiManager 초기화 및 NVS Wi-Fi 접속 시도
   WifiManager::init();
   if (WifiManager::connectSTA(10000)) {
     // Wi-Fi 연결 성공 시 NTP 시간 동기화 (TLS 안정성 보장)
@@ -252,7 +240,7 @@ void setup() {
     WifiManager::startAP();
   }
 
-  // 7. VL53L0X 센서 초기화
+  // 6. VL53L0X 센서 초기화
   sensor.setTimeout(500);
   LOGF("[INFO] ToF 센서 초기화 중...");
   if (!sensor.init()) {
@@ -261,7 +249,22 @@ void setup() {
     sensor.startContinuous(TOF_POLL_INTERVAL_MS);
     LOGF("[INFO] ToF 센서 초기화 성공!");
   }
-  LOGF("--------------------------------------------");
+
+  // 7. BLE 5.0 비동기 스캐너 시작 (setup의 맨 마지막 단계에서 비동기 구동)
+  LOGF("[BLE] 7. BLE 5.0 비동기 스캐너 시작 (Active Scan 활성화)");
+  BLEDevice::init("SmartGatekeeper-Scan");
+  BLEScan* pScan = BLEDevice::getScan();
+  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), true); // duplicates 수신 허용
+  pScan->setActiveScan(true); // Active Scan: Scan Response 데이터 요청 (휴대폰 128bit UUID 수신 필수!)
+  pScan->setInterval(100);
+  pScan->setWindow(99);
+  pScan->start(0, nullptr, false); // 0, nullptr: 메인 스레드 멈춤 없는 순수 백그라운드 비동기 스캔
+  LOGF("[BLE] 타겟 UUID: %s | RSSI 임계값: %d dBm | 유효 시간: %lu ms",
+       BLE_TARGET_UUID, BLE_RSSI_THRESHOLD, (unsigned long)BLE_VALID_MS);
+
+  LOGF("============================================");
+  LOGF(" [SYSTEM] setup() 초기화 완료! 메인 루프 진입");
+  LOGF("============================================");
 }
 
 // ─────────────────────────────────────────────────────────────
