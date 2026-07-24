@@ -1,0 +1,83 @@
+name: SmartGatekeeper CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  test_and_build:
+    name: Build Firmware and Deploy to Synology NAS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Create secrets.h from GitHub Secrets
+        env:
+          SECRET_ROOT_CA_CERT: ${{ secrets.SECRET_ROOT_CA_CERT }}
+        run: |
+          cat <<'HEREDOC' > include/secrets.h
+          #ifndef SECRETS_H
+          #define SECRETS_H
+          HEREDOC
+
+          cat <<EOF >> include/secrets.h
+          #define SECRET_WIFI_SSID "${{ secrets.SECRET_WIFI_SSID }}"
+          #define SECRET_WIFI_PASSWORD "${{ secrets.SECRET_WIFI_PASSWORD }}"
+          #define SECRET_API_URL "${{ secrets.SECRET_API_URL }}"
+          #define SECRET_API_KEY "${{ secrets.SECRET_API_KEY }}"
+          #define SECRET_TEST_BLE_MAC "${{ secrets.SECRET_TEST_BLE_MAC }}"
+          #define SECRET_MQTT_HOST "${{ secrets.SECRET_MQTT_HOST }}"
+          #define SECRET_MQTT_PORT ${{ secrets.SECRET_MQTT_PORT || 1883 }}
+          #define SECRET_MQTT_USER "${{ secrets.SECRET_MQTT_USER }}"
+          #define SECRET_MQTT_PASSWORD "${{ secrets.SECRET_MQTT_PASSWORD }}"
+          #define SECRET_OTA_VERSION_URL "${{ secrets.SECRET_OTA_VERSION_URL }}"
+          #define SECRET_OTA_FIRMWARE_URL "${{ secrets.SECRET_OTA_FIRMWARE_URL }}"
+          EOF
+
+          echo '#endif // SECRETS_H' >> include/secrets.h
+          echo "[CI] include/secrets.h generated successfully."
+
+      - name: Build ESP32-C6 Firmware
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "FULL_VERSION=1.0.0-g${SHORT_SHA}" >> $GITHUB_ENV
+          pio run -e esp32c6
+
+      - name: Prepare Deployment Artifacts (firmware.bin & version.json)
+        run: |
+          mkdir -p dist
+          cp .pio/build/esp32c6/firmware.bin dist/gatekeeper-firmware.bin
+          
+          cat <<EOF > dist/version.json
+          {
+            "version": "${{ env.FULL_VERSION }}",
+            "build_id": "${{ github.run_id }}",
+            "commit": "${{ github.sha }}",
+            "firmware_url": "https://tworimpa.synology.me:4442/firmware/gatekeeper-firmware.bin"
+          }
+          EOF
+          
+          ls -la dist/
+
+      - name: Deploy to Synology NAS via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.NAS_HOST }}
+          username: ${{ secrets.NAS_USER }}
+          password: ${{ secrets.NAS_PASSWORD }}
+          port: ${{ secrets.NAS_PORT || 22 }}
+          local_path: './dist/*'
+          remote_path: ${{ secrets.NAS_TARGET_DIR || '//volume1/docker/smart-gatekeeper-ota/' }}
+          sftp_only: true

@@ -1,21 +1,7 @@
 // src/main.cpp
 // =============================================================
-// smart-gatekeeper — Captive Portal Wi-Fi 등록 통합 펌웨어
-//
-// 동작 시퀀스:
-//   1. 부팅 시 NVS 저장 Wi-Fi 자동 접속 시도 (WifiManager)
-//   2. 접속 실패/최초 부팅 시: AP 모드 'SmartGatekeeper-Setup' (192.168.4.1) 가동
-//   3. Wi-Fi 연결 성공 후 ToF 50cm 감지 -> 시놀로지 NAS HTTPS 자격 검증 -> 릴레이 1초 ON
-//
-// 배선:
-//   VL53L0X VCC   → ESP32-C6 3V3
-//   VL53L0X GND   → ESP32-C6 GND
-//   VL53L0X SDA   → ESP32-C6 GPIO6
-//   VL53L0X SCL   → ESP32-C6 GPIO7
-//   VL53L0X XSHUT → ESP32-C6 GPIO10
-//   릴레이 VCC    → ESP32-C6 5V
-//   릴레이 GND    → ESP32-C6 GND
-//   릴레이 IN     → ESP32-C6 GPIO23
+// smart-gatekeeper — OTA 및 MQTT 연동 통합 펌웨어
+// (ToF 50cm 감지 + Captive Portal WiFi + 시놀로지 NAS HTTPS POST + MQTT 텔레메트리 + OTA)
 // =============================================================
 #include <Arduino.h>
 #include <Wire.h>
@@ -28,6 +14,8 @@
 #include "config.h"
 #include "ConfigManager.h"
 #include "WifiManager.h"
+#include "OtaManager.h"
+#include "MqttManager.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -52,8 +40,9 @@ enum class GateState {
 };
 
 static VL53L0X sensor;
-static GateState state   = GateState::IDLE;
-static uint32_t  stateMs = 0;
+static GateState state       = GateState::IDLE;
+static uint32_t  stateMs     = 0;
+static uint32_t  lastMqttMs  = 0;
 
 // ─────────────────────────────────────────────────────────────
 // 시놀로지 NAS HTTPS POST 자격 검증 API 호출 함수
@@ -82,7 +71,6 @@ static bool requestNASVerification(uint16_t distance_mm) {
   http.addHeader("X-API-KEY", apiKey);
   http.setTimeout(8000);  // 8초 타임아웃
 
-  // JSON Body 구성 (오타 수정: ble_mac = TEST_BLE_MAC)
   StaticJsonDocument<256> doc;
   doc["ble_mac"]     = TEST_BLE_MAC;
   doc["auth_key"]    = apiKey;
@@ -147,7 +135,7 @@ void setup() {
 
   // 4. 배너 출력
   LOGF("\n============================================");
-  LOGF(" smart-gatekeeper — Captive Portal Wi-Fi 등록 통합 펌웨어");
+  LOGF(" smart-gatekeeper v%s — OTA & MQTT 통합 펌웨어", FIRMWARE_VERSION);
   LOGF("============================================");
 
   // 5. WifiManager 초기화 및 NVS Wi-Fi 접속 시도
@@ -156,12 +144,20 @@ void setup() {
     // Wi-Fi 연결 성공 시 NTP 시간 동기화 (TLS 안정성 보장)
     configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
     LOGF("[TIME] NTP 시간 동기화 요청 (KST UTC+9)");
+
+    // 6. MQTT 및 OTA 관리자 초기화
+    MqttManager::init();
+    OtaManager::init();
+
+    // 부팅 시 시놀로지 NAS version.json 기반 자동 OTA 체크
+    LOGF("[OTA] 부팅 시 펌웨어 업데이트 확인 시작...");
+    OtaManager::checkAndUpdate(false);
   } else {
     LOGF("[WIFI] 접속 실패 -> AP 설정 모드로 전환합니다.");
     WifiManager::startAP();
   }
 
-  // 6. VL53L0X 센서 초기화
+  // 7. VL53L0X 센서 초기화
   sensor.setTimeout(500);
   LOGF("[INFO] ToF 센서 초기화 중...");
   if (!sensor.init()) {
@@ -186,9 +182,21 @@ void loop() {
     return;
   }
 
+  // MQTT 루프 처리
+  MqttManager::update();
+
   // ToF 거리 측정
   uint16_t mm = sensor.readRangeContinuousMillimeters();
   bool validReading = !(sensor.timeoutOccurred() || mm == 65535);
+
+  // 10초 주기 MQTT 텔레메트리 발행
+  if (now - lastMqttMs >= 10000) {
+    lastMqttMs = now;
+    const char* stateStr = (state == GateState::IDLE) ? "IDLE" :
+                           (state == GateState::VERIFYING) ? "VERIFYING" :
+                           (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
+    MqttManager::publishTelemetry(validReading ? mm : 0, stateStr);
+  }
 
   switch (state) {
 
@@ -203,16 +211,20 @@ void loop() {
         state = GateState::VERIFYING;
         stateMs = now;
 
+        MqttManager::publishEvent("gate_trigger", "ToF Threshold Detected");
+
         bool authorized = requestNASVerification(mm);
 
         if (authorized) {
           LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)",
                (unsigned long)RELAY_HOLD_MS);
           relayOn();
+          MqttManager::publishEvent("door_open", "Access Granted");
           state = GateState::RELAY_HOLD;
           stateMs = millis();
         } else {
           LOGF("[GATE] *** 출입 거부! 릴레이 미작동 ***. 쿨다운 진입.");
+          MqttManager::publishEvent("door_deny", "Access Denied");
           state = GateState::COOLDOWN;
           stateMs = millis();
         }
@@ -226,6 +238,7 @@ void loop() {
       if (now - stateMs >= RELAY_HOLD_MS) {
         relayOff();
         LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
+        MqttManager::publishEvent("door_close", "Relay Timeout OFF");
         state = GateState::COOLDOWN;
         stateMs = now;
       }
