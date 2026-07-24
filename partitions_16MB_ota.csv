@@ -1,4 +1,4 @@
-# partitions_16MB_ota.csv — 16MB Flash Dual OTA Partition Scheme (App: 7.0MB each for N16 model)
+# partitions_16MB_ota.csv - 16MB Flash Dual OTA Partition Scheme
 # Name,   Type, SubType, Offset,  Size,     Flags
 nvs,      data, nvs,     0x9000,  0x5000,
 otadata,  data, ota,     0xe000,  0x2000,
