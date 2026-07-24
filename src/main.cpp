@@ -55,10 +55,14 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) override {
     int rssi = advertisedDevice.getRSSI();
 
-    // 1. Service UUID 검사
+    // 1. Service UUID 검사 (128-bit UUID 지원 강화)
     bool uuidMatch = false;
     if (advertisedDevice.haveServiceUUID()) {
-      if (advertisedDevice.isAdvertisingService(BLEUUID(BLE_TARGET_UUID))) {
+      BLEUUID devUUID = advertisedDevice.getServiceUUID();
+      String devUUIDStr = devUUID.toString().c_str();
+      
+      // Target UUID와 대소문자 구분 없이 비교
+      if (devUUID.equals(BLEUUID(BLE_TARGET_UUID)) || devUUIDStr.equalsIgnoreCase(BLE_TARGET_UUID)) {
         uuidMatch = true;
       }
     }
@@ -70,10 +74,10 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (uuidMatch || devName.indexOf("SmartKey") >= 0 || devAddr.equalsIgnoreCase(TEST_BLE_MAC)) {
       if (rssi >= BLE_RSSI_THRESHOLD) {
         last_ble_detected_time = millis();
-        LOGF("[BLE-SCAN] 📱 타겟 스마트폰 감지! RSSI: %d dBm (임계값 %d dBm 이상) -> BLE 유효시간 갱신",
+        LOGF("[BLE-SCAN] 📱 타겟 스마트폰/UUID 감지! RSSI: %d dBm (임계값 %d dBm 이상) -> BLE 유효시간 갱신",
              rssi, BLE_RSSI_THRESHOLD);
       } else {
-        LOGF("[BLE-SCAN] 타겟 스마트폰 발견되었으나 신호 약함 (RSSI: %d dBm < %d dBm)",
+        LOGF("[BLE-SCAN] 타겟 스마트폰/UUID 발견되었으나 신호 약함 (RSSI: %d dBm < %d dBm)",
              rssi, BLE_RSSI_THRESHOLD);
       }
     }
@@ -183,11 +187,11 @@ void setup() {
   LOGF("============================================");
 
   // 5. BLE 5.0 비동기 스캐너 초기화
-  LOGF("[BLE] BLE 5.0 비동기 스캐너 초기화 중...");
-  BLEDevice::init("SmartGatekeeper-BLE");
+  LOGF("[BLE] 5. BLE 5.0 비동기 스캐너 시작 (Active Scan 활성화 -> 스마트폰 Scan Response 수신)");
+  BLEDevice::init("SmartGatekeeper-Scan");
   BLEScan* pScan = BLEDevice::getScan();
-  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), true);
-  pScan->setActiveScan(true);
+  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), true); // duplicates 수신 허용
+  pScan->setActiveScan(true); // Active Scan: Scan Response 데이터 요청 (휴대폰 128bit UUID 수신 필수!)
   pScan->setInterval(100);
   pScan->setWindow(99);
   pScan->start(0, false); // 0: 백그라운드 무한 비동기 스캔
