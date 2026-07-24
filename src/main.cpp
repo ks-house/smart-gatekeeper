@@ -325,11 +325,12 @@ void loop() {
                            (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
     MqttManager::publishTelemetry(validReading ? mm : 0, stateStr);
 
-    // BLE 스캔 결과 맵/벡터 메모리 주기적 초기화 (Failed to allocate / reallocate 누수 방지)
-    BLEScan* pScan = BLEDevice::getScan();
-    if (pScan) {
-      pScan->clearResults();
-    }
+    // BLE 스캔 결과 맵/벡터 메모리 주기적 초기화는 비동기 무한 스캔 중에 
+    // 메인 스레드에서 강제 호출 시 std::map 메모리 구조 파괴(Load access fault)를 유발하므로 제거함!
+    // BLEScan* pScan = BLEDevice::getScan();
+    // if (pScan) {
+    //   pScan->clearResults();
+    // }
   }
 
   // 인증된 BLE 스마트폰 신호 실시간 전송 (메인 스레드 단일 접근으로 스레드 충돌 100% 방지)
