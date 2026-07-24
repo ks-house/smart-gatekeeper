@@ -1,147 +1,47 @@
-# hardware_test.md — 하드웨어 테스트 절차 및 결과
-> Phase: Step 1 (Local PoC) — 🟢 **완료 (Step 1 통과)**
-> Last updated: 2026-07-24
+# 하드웨어 테스트 결과 (hardware_test.md)
+
+ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto-Discovery 및 무선 OTA 무선 통합 테스트 기록 문서입니다.
 
 ---
 
-## Test #1: VL53L0X ToF 센서 단독 테스트
+## 1. 테스트 이력 종합 (Test History Matrix)
 
-### 목표
-mm 단위 거리를 I2C로 읽어 시리얼 모니터에 실시간 출력
-
-### 사전 조건
-- [ ] `env_setup.md` 기준 환경 구축 완료
-- [ ] `pin_mapping.md` 기준 배선 완료
-- [ ] VL53L0X 모듈에 3.3V 공급 확인
-
-### 테스트 절차
-
-```
-1. platformio.ini 에서 [env:tof_test] 환경 선택
-2. pio run -e tof_test -t upload
-3. pio device monitor --baud 115200
-4. 시리얼 모니터에서 다음 확인:
-   - "[INFO] VL53L0X initialized" 출력
-   - 거리 값 (mm) 주기적 출력
-   - 손을 가져다 대면 값 변화 확인
-```
-
-### 합격 기준
-
-| 항목 | 기준 |
-|------|------|
-| 초기화 | `[INFO] ToFSensor: VL53L0X initialized. Continuous mode @ 100ms interval.` 출력 |
-| 거리 측정 범위 | 20mm ~ 1200mm 정상 값 |
-| 측정 주기 | 100ms 이하 |
-| 에러 처리 | I2C 연결 실패 시 "[ERROR]" 메시지 후 무한 루프 방지 |
-
-### 결과 기록
-
-| 날짜 | 결과 | 비고 |
-|------|------|------|
-| 2026-07-24 | 🟢 **합격** | GPIO6/7/10 배선 완료. `printf()+fflush()` 필수 |
-
-**학습된 트릭 (ESP32-C6 특이사항):**
-- `Serial.println()` → 철주히 사용 금지 — USB-CDC 버퍼 모드 불일치로 출력 유실
-- `printf() + fflush(stdout)` → ESP-IDF stdout 경로 = i2cInit 로그와 동일, 항상 표시
-- XSHUT 미연결 시 저가 모듈은 floating LOW → 센서 리셋 상태 고정 → GPIO10 명시 구동 필수
+| Test ID | 구분 | 대상 | 검증 내용 | 결과 | 비고 |
+|:---:|:---:|:---:|:---|:---:|:---|
+| **#1** | Unit | ToF VL53L0X | I2C (SDA:6, SCL:7) 400kHz 연속 거리 측정 | 🟢 PASS | 20mm~1200mm 정상 측정 |
+| **#2** | Unit | Relay Module | GPIO23 INPUT-HighZ 트릭 릴레이 토글 | 🟢 PASS | 5V Active-LOW 모듈 상시 ON 우회 성공 |
+| **#3** | E2E | HTTPS NAS Auth | ToF 50cm 감지 -> NAS REST API POST -> 릴레이 ON | 🟢 PASS | HTTP 200 / granted:true 수신 즉시 스위칭 |
+| **#4** | Network | Captive Portal | AP 모드(`SmartGatekeeper-Setup`) NVS 저장 | 🟢 PASS | 브라우저 팝업 Wi-Fi 저장 및 자동 재접속 |
+| **#5** | Security | MQTTS (4883) | Let's Encrypt Root CA Certificate Pinning | 🟢 PASS | TLS 4883 포트 보안 접속 및 텔레메트리 발행 |
+| **#6** | IoT | HA Auto-Discovery | Home Assistant 5개 엔티티 자동 검색 및 원격 제어 | 🟢 PASS | `open_gate`, `ota_update`, `reboot`, 센서 정상 작동 |
+| **#7** | OTA | GitHub CI/CD OTA | GitHub Push -> SFTP 업로드 -> ESP32-C6 무선 업데이트 | 🟢 PASS | `1.0.0-g<sha>` 동적 버전 오버라이드 및 무선 플래싱 완벽 통과 |
 
 ---
 
-## Test #2: 릴레이 단독 테스트
-
-### 목표
-2초 주기로 릴레이를 ON/OFF 스위칭하여 동작음 및 접점 확인
-
-### 사전 조건
-- [ ] 릴레이 모듈 Active-HIGH/LOW 극성 확인
-- [ ] `pin_mapping.md` 기준 배선 완료
-- [ ] 릴레이 접점에는 테스트용 LED+저항만 연결 (AC 전원 미연결)
-
-### 테스트 절차
+## 2. Step 3 & Step 4 통합 E2E 테스트 검증 보고
 
 ```
-1. platformio.ini 에서 [env:relay_test] 환경 선택
-2. pio run -e relay_test -t upload
-3. pio device monitor -b 115200
-4. 시리얼 모니터에서 다음 확인:
-   - "[Relay] ON  (t=xxx ms)" / "[Relay] OFF (t=xxx ms)" 교번 출력
-   - 릴레이 동작음(딱낙) 2초 간격 확인
-5. config.h 에서 RELAY_ACTIVE_LOW 값 조정 후 재테스트 (실제 모듈 실크스크린 확인)
++-----------------------------------------------------------------------------------+
+|                            E2E Integration Test Flow                              |
++-----------------------------------------------------------------------------------+
+| 1. ToF Sensor (GPIO6/7)  --> 50cm 이내 진입 감지                                   |
+| 2. WiFiClientSecure      --> HTTPS POST https://tworimpa.synology.me:4442/verify  |
+| 3. FastAPI Backend       --> MariaDB 세입자 검증 (HTTP 200, granted: true)          |
+| 4. Relay Drive (GPIO23)  --> 릴레이 1000ms ON (Active-LOW LOW) -> OFF (INPUT HighZ) |
+| 5. MQTTS (4883 TLS)      --> HA Auto-Discovery & smart-gatekeeper/status 텔레메트리|
+| 6. OTA Updater           --> GitHub CI -> NAS SFTP -> ESP32-C6 무선 업그레이드     |
++-----------------------------------------------------------------------------------+
 ```
 
-### 합격 기준
+### 파라미터 구성 (`include/config.h`)
 
-| 항목 | 기준 |
-|------|------|
-| 스위칭 핀 | GPIO23 (`config.h: PIN_RELAY=23`) |
-| 스위칭 주기 | 2000ms ± 50ms |
-| 동작음 | 릴레이 코일 딱낙 소리 |
-| 시리얼 로그 | `[Relay] ON  (t=xxx ms)` / `[Relay] OFF (t=xxx ms)` 연속 출력 |
-| 출력 매쪭 | `printf()+fflush(stdout)` 사용 (`Serial.println` 사용 금지) |
+| 항목 | 설정값 | 비고 |
+|---|---|---|
+| `DISTANCE_THRESHOLD_MM` | `500` (mm) | ToF 트리거 임계값 |
+| `RELAY_HOLD_MS` | `1000` (ms) | 릴레이 유지 시간 |
+| `RELAY_COOLDOWN_MS` | `2000` (ms) | 연속 요청 방지 쿨다운 |
+| `MQTT_PORT` | `4883` | MQTTS SSL/TLS 포트 |
+| `API_URL` | `https://tworimpa.synology.me:4442/api/v1/auth/verify` | 자격 검증 API |
 
-### 결과 기록
-
-| 날짜 | 결과 | 비고 |
-|------|------|------|
-| 2026-07-24 | 🟢 **합격** | GPIO23, INPUT 모드 트릭 적용. 딸깍 소리 + 시리얼 정상 출력 |
-
-**학습된 트릭 (3.3V ESP32 ↔ 5V 릴레이 전압 호환성):**
-- 문제: 5V - 3.3V = 1.7V > 포토커플러 Vf(1.2~1.4V) → 3.3V HIGH에도 전류 흐름 → 상시 ON
-- 해결: `relayOff()` = `pinMode(INPUT)` (고임피던스) → 모듈 풀업으로 IN=5V → 포토커플러 OFF
-- 출처: smartbox/reports/26061301_릴레이연결_report.md
-
----
-
-## Test #3: 통합 테스트 (ToF + Relay) — Step 1 Local PoC 최종
-> Test #1(VL53L0X) ✅ + Test #2(Relay) ✅ 통과 후 진행
-
-### 목표
-ToF 거리 ≤ 500mm 감지 시 릴레이 1초 ON → 자동 OFF (쿨다운 2초)
-
-### 동작 설계 (상태 머신)
-
-```
-[IDLE] ──감지(<= 500mm)──▶ [RELAY_ON] ──1초 경과──▶ [COOLDOWN] ──2초 경과──▶ [IDLE]
-  ▲                                                                                  │
-  └──────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 파라미터 (config.h)
-
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `GATE_THRESHOLD_MM` | `500` | 트리거 거리 (mm) |
-| `RELAY_ON_DURATION_MS` | `1000` | 릴레이 ON 유지 시간 |
-| `RELAY_COOLDOWN_MS` | `2000` | 재트리거 방지 쿨다운 |
-| `TOF_POLL_INTERVAL_MS` | `100` | ToF 측정 주기 |
-
-### 테스트 절차
-
-```
-1. pio run -e esp32c6 -t upload   (통합 빌드 환경)
-2. pio device monitor -b 115200
-3. 손을 센서 앞 50cm 이내로 접근
-4. 시리얼 출력 확인:
-   "[GATE] *** 감지! XXX mm <= 500 mm → 릴레이 ON ***"
-   릴레이 딸깍(ON)
-   1초 후 "[GATE] 릴레이 OFF (1초 경과)"
-   릴레이 딸깍(OFF)
-   2초 쿨다운 후 "[GATE] 쿨다운 완료. IDLE 상태 복귀."
-```
-
-### 합격 기준
-
-| 항목 | 기준 |
-|------|------|
-| 감지 거리 | ≤ 500mm 진입 시 릴레이 ON |
-| ON 유지 | 1000ms ± 100ms |
-| 자동 OFF | 1초 후 자동 OFF (수동 개입 없음) |
-| 쿨다운 | 2초 내 재트리거 없음 |
-| 시리얼 로그 | IDLE/RELAY_ON/COOLDOWN 상태 전환 출력 |
-
-### 결과 기록
-
-| 날짜 | 결과 | 비고 |
-|------|------|------|
-| 2026-07-24 | 🟢 **합격** | ToF 500mm 감지 -> 시놀로지 NAS HTTPS POST 자격검증(HTTP 200/granted:true) -> 릴레이 1초 ON 후 자동 OFF 완벽 확인 |
+### 🏆 결론
+타겟 보드(ESP32-C6)에서 ToF 거리 센서, Wi-Fi 캡티브 포털, 시놀로지 NAS HTTPS 백엔드 연동, MQTTS Home Assistant Auto Discovery 및 무선 OTA 파이프라인까지 **전체 통합 시스템 테스트가 100% 정상 완수**되었습니다.

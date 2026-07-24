@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-07-24 (Step 1, Step 2, Step 3 완료 🟢 -> Step 4 진입 준비)
+> Last updated: 2026-07-24 (Step 1, Step 2, Step 3, Step 4 통합 완료 🟢)
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Page | Summary |
 |------|---------|
-| [env_setup.md](env_setup.md) | PlatformIO 설치, ESP32 보드 매니저, 필수 라이브러리 |
+| [env_setup.md](env_setup.md) | PlatformIO 설치, ESP32 보드 매니저, 필수 라이브러리 목록 |
 
 ---
 
@@ -27,7 +27,7 @@
 | Page | Summary |
 |------|---------|
 | [pin_mapping.md](pin_mapping.md) | ESP32 GPIO ↔ 모든 주변기기 핀 매핑 마스터 테이블 |
-| [hardware_test.md](hardware_test.md) | ToF / Relay 단독 테스트 절차 및 결과 기록 |
+| [hardware_test.md](hardware_test.md) | ToF / Relay / WiFi / HTTPS NAS / MQTTS HA / OTA E2E 통합 테스트 결과 |
 
 ---
 
@@ -35,7 +35,7 @@
 
 | Page | Summary |
 |------|---------|
-| [architecture.md](architecture.md) | 시스템 전체 구조, 단계별 로드맵(PoC → 프로덕션) |
+| [architecture.md](architecture.md) | 시스템 전체 아키텍처, 3대 통합 시퀀스 다이어그램 (E2E, MQTTS HA, OTA), 로드맵 |
 
 ---
 
@@ -45,7 +45,7 @@
 |------|---------|
 | [log.md](log.md) | 시간순 변경 이력 |
 | [../schema.md](../schema.md) | 위키 거버넌스 규칙 & 컨벤션 |
-| [../AGENTS.md](../AGENTS.md) | 에이전트 협업 전체 지질 필독 |
+| [../AGENTS.md](../AGENTS.md) | 에이전트 협업 전체 지침 필독 |
 | [../.agents/AGENTS.md](../.agents/AGENTS.md) | IDE 자동 로드 핵심 규칙 (압축본) |
 
 ---
@@ -58,6 +58,7 @@
 | I2C 400kHz 활성화 | [ST_VL53L0X_Specs.md](../raw/ST_VL53L0X_Specs.md#7-esp32-특이사항) |
 | 65535 sentinel 값 처리 | [ST_VL53L0X_Specs.md](../raw/ST_VL53L0X_Specs.md#7-esp32-특이사항) |
 | 릴레이 배선 안전 주의 | [pin_mapping.md](pin_mapping.md) |
-| VL53L0X 라이브러리 선택 근거 | [env_setup.md](env_setup.md) |
-| 테스트 체크리스트 | [hardware_test.md](hardware_test.md) |
-| 다중 ToF 센서 XSHUT 주소할당 | [ST_VL53L0X_Specs.md](../raw/ST_VL53L0X_Specs.md#8-다중-센서-xshut-순차-주소-할당) |
+| E2E 출입 감지 시퀀스 | [architecture.md](architecture.md#21-e2e-출입-감지--자격-검증-시퀀스) |
+| MQTTS HA Auto Discovery 시퀀스 | [architecture.md](architecture.md#22-mqtts-ha-auto-discovery--원격-개방-시퀀스) |
+| GitHub CI/CD SFTP OTA 시퀀스 | [architecture.md](architecture.md#23-github-cicd--무선-ota-배포-시퀀스) |
+| E2E 통합 테스트 결과 | [hardware_test.md](hardware_test.md) |
