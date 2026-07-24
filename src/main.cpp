@@ -302,48 +302,42 @@ void loop() {
     }
   }
 
+  uint32_t bleAge = (last_ble_detected_time > 0) ? (now - last_ble_detected_time) : 999999;
+  bool isBleValid = (last_ble_detected_time > 0) && (bleAge < BLE_VALID_MS);
+
   switch (state) {
 
     case GateState::IDLE:
-      if (validReading) {
-        LOGF("[ToF] %4u mm  |  State: IDLE", mm);
-      }
+      // 1. BLE 인증 신호가 10초 이내에 수신된 유효 사용자 상태인가?
+      if (isBleValid && validReading && mm <= DISTANCE_THRESHOLD_MM) {
+        LOGF("[GATE] 📱 BLE 인증 신호 수신 상태에서 ToF %u mm 감지! (BLE 경과: %lu ms)", mm, (unsigned long)bleAge);
+        LOGF("[GATE] ✅ BLE + ToF 이중 검증 성공! NAS 자격 검증 요청...");
+        
+        state = GateState::VERIFYING;
+        stateMs = now;
+        MqttManager::publishEvent("gate_trigger", "BLE + ToF Validation Passed");
 
-      // ToF 거리 50cm (500mm) 이내 진입 시 BLE 이중 조건 검사
-      if (validReading && mm <= DISTANCE_THRESHOLD_MM) {
-        uint32_t bleAge = now - last_ble_detected_time;
-        bool isBleValid = (last_ble_detected_time > 0) && (bleAge < BLE_VALID_MS);
+        bool authorized = requestNASVerification(mm);
 
-        LOGF("[GATE] *** %u mm 감지! BLE 이중 검증 체크 (경과: %lu ms / 유효: %lu ms) ***",
-             mm, (unsigned long)(last_ble_detected_time > 0 ? bleAge : 999999), (unsigned long)BLE_VALID_MS);
-
-        if (isBleValid) {
-          LOGF("[GATE] ✅ BLE 5.0 + ToF 이중 검증 조건 충족! NAS 자격 검증 요청 시작...");
-          state = GateState::VERIFYING;
-          stateMs = now;
-
-          MqttManager::publishEvent("gate_trigger", "BLE + ToF Double Validation Passed");
-
-          bool authorized = requestNASVerification(mm);
-
-          if (authorized) {
-            LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)",
-                 (unsigned long)RELAY_HOLD_MS);
-            relayOn();
-            MqttManager::publishEvent("door_open", "Access Granted");
-            state = GateState::RELAY_HOLD;
-            stateMs = millis();
-          } else {
-            LOGF("[GATE] *** 출입 거부! 릴레이 미작동 ***. 10초 쿨다운 진입.");
-            MqttManager::publishEvent("door_deny", "Access Denied");
-            state = GateState::COOLDOWN;
-            stateMs = millis();
-          }
+        if (authorized) {
+          LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)", (unsigned long)RELAY_HOLD_MS);
+          relayOn();
+          MqttManager::publishEvent("door_open", "Access Granted");
+          state = GateState::RELAY_HOLD;
+          stateMs = millis();
         } else {
-          LOGF("[GATE-WARN] ❌ ToF 50cm 이내 진입했으나, 10초 이내의 유효한 BLE 스마트폰 인증(>-70dBm) 없음!");
-          MqttManager::publishEvent("ble_missing", "BLE Signal Missing or Expired");
+          LOGF("[GATE] *** 출입 거부 (NAS 미승인) ***. 쿨다운 진입.");
+          MqttManager::publishEvent("door_deny", "Access Denied");
           state = GateState::COOLDOWN;
           stateMs = millis();
+        }
+      } else if (!isBleValid && validReading && mm <= DISTANCE_THRESHOLD_MM) {
+        // BLE 없이 ToF 센서만 감지된 경우 (외부인 진입)
+        static uint32_t lastWarnMs = 0;
+        if (now - lastWarnMs >= 3000) {
+          lastWarnMs = now;
+          LOGF("[GATE-WARN] ❌ ToF %u mm 감지되었으나, 유효한 BLE 스마트폰 신호가 없음 (외부인/미인증)", mm);
+          MqttManager::publishEvent("ble_missing", "BLE Signal Missing");
         }
       }
       break;
@@ -354,7 +348,7 @@ void loop() {
     case GateState::RELAY_HOLD:
       if (millis() - stateMs >= RELAY_HOLD_MS) {
         relayOff();
-        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 10초 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
+        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 문 주변 상주 여부 감시 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
         MqttManager::publishEvent("door_close", "Relay Timeout OFF");
         state = GateState::COOLDOWN;
         stateMs = millis();
@@ -362,8 +356,11 @@ void loop() {
       break;
 
     case GateState::COOLDOWN:
-      if (millis() - stateMs >= COOLDOWN_MS) {
-        LOGF("[GATE] 10초 쿨다운 완료 -> IDLE 대기 상태 복귀.");
+      // 쿨다운 스마트 리셋: 인증된 BLE 신호가 계속 잡히거나 ToF 50cm 이내에 사람이 계속 머무르면 쿨다운 타임 리셋!
+      if (isBleValid || (validReading && mm <= DISTANCE_THRESHOLD_MM)) {
+        stateMs = now; // 문 주변에 상주하는 동안 쿨다운 타이머를 지속 리셋 (재오픈 차단)
+      } else if (millis() - stateMs >= 3000) { // 문 주변(BLE 및 ToF)을 완전히 벗어나고 3초 경과 시 복귀
+        LOGF("[GATE] 🚪 문 주변 이탈 확인 -> IDLE 대기 상태 복귀 (다음 출입 승인 준비 완료)");
         state = GateState::IDLE;
       }
       break;
