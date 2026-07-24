@@ -106,13 +106,7 @@ class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (uuidMatch || devName.indexOf("SmartKey") >= 0 || devAddr.equalsIgnoreCase(TEST_BLE_MAC)) {
       uint32_t nowMs = millis();
       last_ble_detected_time = nowMs; // 백그라운드 BLE 감지 시각은 매 250ms마다 즉시 갱신 (ToF 검증용)
-      last_target_ble_rssi = rssi;     // 실시간 감도 RSSI 값 저장
-
-      // 인증된 BLE 타겟 감지 시 1초마다 MQTT 실시간 전파 (스마트폰 신호 세기 실시간 모니터링)
-      if (nowMs - last_ble_mqtt_pub_time >= 1000) {
-        last_ble_mqtt_pub_time = nowMs;
-        MqttManager::publishBleRssi(rssi);
-      }
+      last_target_ble_rssi = rssi;     // 실시간 감도 RSSI 값 저장 (메인 loop 스레드가 안전하게 발송)
 
       // 로그 시리얼 출력 스팸 억제 (3초에 1번만 조용하게 출력)
       if (nowMs - last_ble_log_time >= 3000) {
@@ -318,6 +312,14 @@ void loop() {
     BLEScan* pScan = BLEDevice::getScan();
     if (pScan) {
       pScan->clearResults();
+    }
+  }
+
+  // 인증된 BLE 스마트폰 신호 실시간 전송 (메인 스레드 단일 접근으로 스레드 충돌 100% 방지)
+  if (last_ble_detected_time > 0 && (now - last_ble_detected_time < 10000)) {
+    if (now - last_ble_mqtt_pub_time >= 1000) {
+      last_ble_mqtt_pub_time = now;
+      MqttManager::publishBleRssi(last_target_ble_rssi);
     }
   }
 

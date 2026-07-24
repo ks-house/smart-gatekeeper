@@ -16,8 +16,12 @@ WiFiClientSecure MqttManager::wifiClient;
 PubSubClient MqttManager::client(wifiClient);
 uint32_t MqttManager::lastPublishMs = 0;
 bool MqttManager::connected = false;
+SemaphoreHandle_t MqttManager::mqttMutex = nullptr;
 
 void MqttManager::init() {
+    if (mqttMutex == nullptr) {
+        mqttMutex = xSemaphoreCreateMutex();
+    }
     wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
     client.setBufferSize(1024); // HA Auto-Discovery JSON 패킷 전송을 위해 버퍼 1024 bytes로 확장
@@ -67,27 +71,31 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 void MqttManager::update() {
     if (!WifiManager::isConnected()) return;
 
-    if (!client.connected()) {
-        uint32_t now = millis();
-        if (now - lastPublishMs > 5000) {
-            lastPublishMs = now;
-            String clientId = "smart-gatekeeper-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-            LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
+    if (mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (!client.connected()) {
+            uint32_t now = millis();
+            if (now - lastPublishMs > 5000) {
+                lastPublishMs = now;
+                String clientId = "smart-gatekeeper-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+                LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
 
-            if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
-                LOGF("[MQTT-SSL] 브로커 연결 성공!");
-                client.subscribe("smart-gatekeeper/cmd");
-                client.subscribe("smart-gatekeeper/rssi/set"); // BLE RSSI 슬라이더 수신 토픽 구독
-                publishEvent("connected", "ESP32-C6 Online (SSL)");
-
-                // Home Assistant MQTT Auto-Discovery 설정 발행
-                publishAutoDiscovery();
-            } else {
-                LOGF("[MQTT-ERROR] 연결 실패 rc=%d", client.state());
+                if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
+                    LOGF("[MQTT-SSL] 브로커 연결 성공!");
+                    client.subscribe("smart-gatekeeper/cmd");
+                    client.subscribe("smart-gatekeeper/rssi/set"); // BLE RSSI 슬라이더 수신 토픽 구독
+                    
+                    xSemaphoreGive(mqttMutex); // Auto Discovery 호출 전 임시 언락
+                    publishEvent("connected", "ESP32-C6 Online (SSL)");
+                    publishAutoDiscovery();
+                    return;
+                } else {
+                    LOGF("[MQTT-ERROR] 연결 실패 rc=%d", client.state());
+                }
             }
+        } else {
+            client.loop();
         }
-    } else {
-        client.loop();
+        xSemaphoreGive(mqttMutex);
     }
 }
 
@@ -122,8 +130,11 @@ void MqttManager::publishAutoDiscovery() {
         char payload[512];
         serializeJson(doc, payload, sizeof(payload));
         
-        bool ok = client.publish(topic, payload, true); // Retain flag true
-        LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
+        if (mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+            bool ok = client.publish(topic, payload, true); // Retain flag true
+            xSemaphoreGive(mqttMutex);
+            LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
+        }
     };
 
     // 1. Buttons (원격 개방, OTA, 재부팅)
@@ -225,8 +236,9 @@ void MqttManager::publishBleRssi(int rssi) {
     char buf[128];
     serializeJson(doc, buf, sizeof(buf));
 
-    if (isConnected()) {
+    if (isConnected() && mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         client.publish("smart-gatekeeper/ble_rssi", buf);
+        xSemaphoreGive(mqttMutex);
     }
 }
 
@@ -250,8 +262,9 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
     char buf[256];
     serializeJson(doc, buf, sizeof(buf));
 
-    if (isConnected()) {
+    if (isConnected() && mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         client.publish("smart-gatekeeper/status", buf);
+        xSemaphoreGive(mqttMutex);
     }
 }
 
@@ -267,7 +280,8 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     char buf[256];
     serializeJson(doc, buf, sizeof(buf));
 
-    if (isConnected()) {
+    if (isConnected() && mqttMutex != nullptr && xSemaphoreTake(mqttMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         client.publish("smart-gatekeeper/event", buf);
+        xSemaphoreGive(mqttMutex);
     }
 }
