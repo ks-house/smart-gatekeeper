@@ -210,6 +210,15 @@ static bool requestNASVerification(uint16_t distance_mm) {
   return isAuthorized;
 }
 
+// BLE 스캔 완료 시 호출되는 콜백 (스캔이 안전하게 멈춘 상태에서 메모리 청소 및 재시작)
+static void onScanComplete(BLEScanResults scanResults) {
+  BLEScan* pScan = BLEDevice::getScan();
+  if (pScan) {
+    pScan->clearResults(); // 스레드 안전한 타이밍에 스캔 결과 맵 초기화 (18KB 팽창 및 스레드 충돌 원천 차단)
+    pScan->start(2, onScanComplete, false); // 2초 비동기 스캔 지속 재개
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // setup()
 // ─────────────────────────────────────────────────────────────
@@ -286,15 +295,6 @@ void setup() {
     sensor.startContinuous(TOF_POLL_INTERVAL_MS);
     LOGF("[INFO] ToF 센서 초기화 성공!");
   }
-
-// BLE 스캔 완료 시 호출되는 콜백 (스캔이 안전하게 멈춘 상태에서 메모리 청소 및 재시작)
-static void onScanComplete(BLEScanResults scanResults) {
-  BLEScan* pScan = BLEDevice::getScan();
-  if (pScan) {
-    pScan->clearResults(); // 스액 안전한 타이밍에 스캔 결과 맵 초기화 (18KB 팽창 및 스레드 충돌 원천 차단)
-    pScan->start(2, onScanComplete, false); // 2초 비동기 스캔 지속 재개
-  }
-}
 
   // NVS 저장소에서 동적 BLE RSSI 임계값 불러오기
   currentBleRssiThreshold = ConfigManager::getBleRssiThreshold();
