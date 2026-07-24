@@ -181,8 +181,6 @@ void setup() {
 // loop()
 // ─────────────────────────────────────────────────────────────
 void loop() {
-  uint32_t now = millis();
-
   // AP 모드일 때 웹 서버 및 Captive Portal 요청 처리
   if (WifiManager::isAPMode()) {
     WifiManager::handleClient();
@@ -190,8 +188,10 @@ void loop() {
     return;
   }
 
-  // MQTT 루프 처리
+  // MQTT 루프 처리 (이 안에서 triggerManualDoorOpen이 호출될 수 있음)
   MqttManager::update();
+
+  uint32_t now = millis(); // MQTT 수신 후 최신 시각으로 갱신
 
   // ToF 거리 측정
   uint16_t mm = sensor.readRangeContinuousMillimeters();
@@ -243,17 +243,17 @@ void loop() {
       break;
 
     case GateState::RELAY_HOLD:
-      if (now - stateMs >= RELAY_HOLD_MS) {
+      if (millis() - stateMs >= RELAY_HOLD_MS) {
         relayOff();
         LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
         MqttManager::publishEvent("door_close", "Relay Timeout OFF");
         state = GateState::COOLDOWN;
-        stateMs = now;
+        stateMs = millis();
       }
       break;
 
     case GateState::COOLDOWN:
-      if (now - stateMs >= RELAY_COOLDOWN_MS) {
+      if (millis() - stateMs >= RELAY_COOLDOWN_MS) {
         LOGF("[GATE] 쿨다운 완료 -> IDLE 대기 상태 복귀.");
         state = GateState::IDLE;
       }
