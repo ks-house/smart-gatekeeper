@@ -65,7 +65,7 @@ jobs:
             "version": "${{ env.FULL_VERSION }}",
             "build_id": "${{ github.run_id }}",
             "commit": "${{ github.sha }}",
-            "firmware_url": "https://tworimpa.synology.me:4442/firmware/gatekeeper-firmware.bin"
+            "firmware_url": "https://tworimpa.synology.me:4443/firmware/gatekeeper-firmware.bin"
           }
           EOF
           
