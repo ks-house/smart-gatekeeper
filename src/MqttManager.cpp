@@ -116,10 +116,13 @@ void MqttManager::publishAutoDiscovery() {
 
     auto pubConfig = [&](const char* component, const char* objectId, StaticJsonDocument<512>& doc) {
         if (!isConnected()) return;
-        String topic = "homeassistant/" + String(component) + "/" + deviceId + "/" + String(objectId) + "/config";
-        String payload;
-        serializeJson(doc, payload);
-        bool ok = client.publish(topic.c_str(), payload.c_str(), true); // Retain flag true
+        char topic[128];
+        snprintf(topic, sizeof(topic), "homeassistant/%s/%s/%s/config", component, deviceId.c_str(), objectId);
+        
+        char payload[512];
+        serializeJson(doc, payload, sizeof(payload));
+        
+        bool ok = client.publish(topic, payload, true); // Retain flag true
         LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
     };
 
@@ -215,15 +218,15 @@ void MqttManager::publishAutoDiscovery() {
 void MqttManager::publishBleRssi(int rssi) {
     if (!isConnected()) return;
 
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<128> doc;
     doc["target_ble_rssi"] = rssi;
     doc["time"]            = millis();
 
-    String jsonStr;
-    serializeJson(doc, jsonStr);
+    char buf[128];
+    serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {
-        client.publish("smart-gatekeeper/ble_rssi", jsonStr.c_str());
+        client.publish("smart-gatekeeper/ble_rssi", buf);
     }
 }
 
@@ -244,11 +247,11 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
     doc["ip"]                 = WifiManager::getIP();
     doc["free_heap"]          = ESP.getFreeHeap();
 
-    String jsonStr;
-    serializeJson(doc, jsonStr);
+    char buf[256];
+    serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {
-        client.publish("smart-gatekeeper/status", jsonStr.c_str());
+        client.publish("smart-gatekeeper/status", buf);
     }
 }
 
@@ -261,10 +264,10 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     doc["detail"] = detail ? detail : "";
     doc["time"]   = millis();
 
-    String jsonStr;
-    serializeJson(doc, jsonStr);
+    char buf[256];
+    serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {
-        client.publish("smart-gatekeeper/event", jsonStr.c_str());
+        client.publish("smart-gatekeeper/event", buf);
     }
 }

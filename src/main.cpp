@@ -353,7 +353,7 @@ void loop() {
       } else if (!isBleValid && validReading && mm <= DISTANCE_THRESHOLD_MM) {
         // BLE 없이 ToF 센서만 감지된 경우 (외부인 진입)
         static uint32_t lastWarnMs = 0;
-        if (now - lastWarnMs >= 3000) {
+        if (now - lastWarnMs >= 5000) {
           lastWarnMs = now;
           LOGF("[GATE-WARN] ❌ ToF %u mm 감지되었으나, 유효한 BLE 스마트폰 신호가 없음 (외부인/미인증)", mm);
           MqttManager::publishEvent("ble_missing", "BLE Signal Missing");
