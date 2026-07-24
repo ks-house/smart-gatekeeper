@@ -1,6 +1,6 @@
 // include/MqttManager.h
 // =============================================================
-// smart-gatekeeper — MQTT 통신 매니저 (SSL/TLS 지원)
+// smart-gatekeeper — MQTT 통신 매니저 (HA Auto-Discovery 지원)
 // =============================================================
 #pragma once
 
@@ -12,7 +12,7 @@
 
 class MqttManager {
 private:
-    static WiFiClientSecure wifiClient;  // SSL/TLS MQTTS 지원 (4883 포트용)
+    static WiFiClientSecure wifiClient;
     static PubSubClient client;
     static uint32_t lastPublishMs;
     static bool connected;
@@ -25,4 +25,5 @@ public:
     static bool isConnected() { return client.connected(); }
     static void publishTelemetry(uint16_t distance_mm, const char* stateStr);
     static void publishEvent(const char* eventType, const char* detail);
+    static void publishAutoDiscovery(); // Home Assistant MQTT Auto-Discovery
 };

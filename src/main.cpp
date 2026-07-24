@@ -44,6 +44,14 @@ static GateState state       = GateState::IDLE;
 static uint32_t  stateMs     = 0;
 static uint32_t  lastMqttMs  = 0;
 
+// MQTT 원격 명령 수신 시 호출되는 수동 문 열기 함수
+void triggerManualDoorOpen() {
+  LOGF("[GATE-MANUAL] *** 원격/MQTT 명령으로 출입문 개방 릴레이 ON *** (딸깍!)");
+  relayOn();
+  state = GateState::RELAY_HOLD;
+  stateMs = millis();
+}
+
 // ─────────────────────────────────────────────────────────────
 // 시놀로지 NAS HTTPS POST 자격 검증 API 호출 함수
 // ─────────────────────────────────────────────────────────────
