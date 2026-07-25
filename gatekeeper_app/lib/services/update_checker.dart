@@ -65,11 +65,19 @@ class UpdateChecker {
 
   /// 최신 APK 다운로드 링크 외부 브라우저로 열기
   Future<bool> downloadUpdate({String? overrideUrl}) async {
-    final targetUrl = overrideUrl ?? downloadUrl ?? downloadUrlFromEnv;
+    final targetUrl = (overrideUrl != null && overrideUrl.isNotEmpty)
+        ? overrideUrl
+        : ((downloadUrl != null && downloadUrl!.isNotEmpty)
+            ? downloadUrl!
+            : (downloadUrlFromEnv.isNotEmpty
+                ? downloadUrlFromEnv
+                : 'https://tworimpa.synology.me:4443/gatekeeper_apk/ks-house-gatekeeper.apk'));
+
     if (targetUrl.isEmpty) {
       debugPrint('[UpdateChecker] APK 다운로드 URL이 설정되지 않았습니다.');
       return false;
     }
+
 
     try {
       final uri = Uri.parse(targetUrl);

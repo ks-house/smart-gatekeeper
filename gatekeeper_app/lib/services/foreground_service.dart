@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'ble_scanner.dart';
@@ -10,33 +12,27 @@ void startCallback() {
 
 class GatekeeperTaskHandler extends TaskHandler {
   @override
-  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+  Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
     debugPrint('[ForegroundTask] 🛡️ 백그라운드 상주 포그라운드 서비스 구동 시작');
     await BleScanner().initialize();
   }
 
   @override
-  Future<void> onRepeatEvent(DateTime timestamp) async {
+  Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
     if (!BleScanner().isScanning) {
       await BleScanner().startScanning();
     }
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp) async {
+  Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {
     debugPrint('[ForegroundTask] 백그라운드 서비스 정지');
   }
 
   @override
-  void onNotificationButtonPressed(String id) {}
-
-  @override
-  void onNotificationNotificationPressed() {
+  void onNotificationPressed() {
     FlutterForegroundTask.launchApp();
   }
-
-  @override
-  void onNotificationDismissed() {}
 }
 
 class ForegroundServiceManager {
@@ -46,7 +42,7 @@ class ForegroundServiceManager {
         channelId: 'smart_key_foreground_channel',
         channelName: 'Smart Key Background Scan Service',
         channelDescription: '화면이 꺼져도 출입문 자동 감지 서비스를 지속 유지합니다.',
-        channelImportance: NotificationImportance.LOW,
+        channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
         iconData: const NotificationIconData(
           resType: ResourceType.mipmap,

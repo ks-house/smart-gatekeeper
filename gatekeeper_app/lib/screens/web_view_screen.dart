@@ -50,9 +50,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
             if (request.url.endsWith('.apk') || request.url.contains('/gatekeeper_apk/')) {
               try {
                 final uri = Uri.parse(request.url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
+                debugPrint('[WebView] APK 다운로드 브라우저 전환 시도: $uri');
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
               } catch (e) {
                 debugPrint('[WebView] APK 다운로드 처리 중 오류: $e');
               }
@@ -60,6 +59,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             }
             return NavigationDecision.navigate;
           },
+
           onWebResourceError: (WebResourceError error) {
             debugPrint('[WebView] Page error: ${error.description}');
           },
