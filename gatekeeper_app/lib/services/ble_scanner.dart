@@ -17,7 +17,8 @@ class BleScanner {
       ? backendUrlFromEnv 
       : 'https://tworimpa.synology.me:4442/api/v1';
 
-  String targetBeaconUuid = '12345678-1234-5678-1234-567812345678';
+  String targetBeaconUuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+
   int cooldownSeconds = 30;
 
   DateTime? _lastPrearmTime;

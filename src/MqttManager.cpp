@@ -109,12 +109,12 @@ void MqttManager::update() {
                 LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 failCount = 0; // 성공 시 카운트 초기화
 
-                // v2.0 핵심: gatekeeper/arm Pre-arm 토픽 구독 추가
+                // v2.0 핵심: gatekeeper/arm 및 gatekeeper/force_open 토픽 구독
                 client.subscribe(MQTT_TOPIC_ARM);
-                LOGF("[MQTT] Pre-arm 토픽 구독: %s", MQTT_TOPIC_ARM);
-
-                // 기존 원격 명령 토픽 구독 유지
+                client.subscribe("gatekeeper/force_open");
                 client.subscribe("smart-gatekeeper/cmd");
+                LOGF("[MQTT] 토픽 구독 완료: %s, gatekeeper/force_open, smart-gatekeeper/cmd", MQTT_TOPIC_ARM);
+
                 
                 publishEvent("connected", "ESP32-C6 v2.0 Online (SSL) - BLE Beacon Mode");
                 publishAutoDiscovery();
