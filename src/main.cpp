@@ -108,20 +108,20 @@ static void initBleAdvertiser() {
   // Scan Response에 장치 이름 실어 전송
   pAdv->setScanResponse(true);
 
-  // Non-connectable 광고 모드 설정 (연결 시도 차단 — 보안 강화)
-  // ADV_TYPE_NONCONN_IND = 0x03 (esp_gap_ble_api.h의 esp_ble_adv_type_t enum)
-  // 사용자 소스에서 헤더 직접 include 불가 → 리터럴 사용
-  pAdv->setAdvertisementType(0x03);
+  // Scannable 비연결형 광고 모드 설정 (연결 시도 차단 & Scan Response 수신으로 이름 노출)
+  // ADV_TYPE_SCAN_IND = 0x02 (esp_gap_ble_api.h의 esp_ble_adv_type_t enum)
+  // 0x03(NONCONN_IND)과 달리 스캔 요청(SCAN_REQ)에 응답하여 "SmartGatekeeper" 이름을 nRF Connect 등에 노출
+  pAdv->setAdvertisementType(0x02);
 
-  // 광고 인터밬: 100ms (0x00A0 = 160 x 0.625ms)
+  // 광고 인터벌: 100ms (0x00A0 = 160 x 0.625ms)
   pAdv->setMinInterval(0x00A0);
   pAdv->setMaxInterval(0x00A0);
 
-  // 비콘 발신 시작 (무한 지속, minPreferred=0 설정으로 예곰 또는 빠른 동작 모드 맞춤)
+  // 비콘 발신 시작 (무한 지속)
   pAdv->setMinPreferred(0x00);
   pAdv->start();
 
-  LOGF("[BLE-ADV] \u2705 비콘 발신 시작! UUID: %s | Non-connectable | 무한 지속",
+  LOGF("[BLE-ADV] ✅ 비콘 발신 시작! Name: SmartGatekeeper | UUID: %s | ADV_TYPE_SCAN_IND (0x02) | 무한 지속",
        GATEKEEPER_BEACON_UUID);
 }
 

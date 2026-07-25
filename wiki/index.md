@@ -31,11 +31,14 @@
 
 ---
 
-## 🗂️ Category: Architecture
+## 🗂️ Category: Architecture & Planning
 
 | Page | Summary |
 |------|---------|
 | [architecture.md](architecture.md) | 시스템 전체 아키텍처, 3대 통합 시퀀스 다이어그램 (E2E, MQTTS HA, OTA), 로드맵 |
+| [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |
+
+
 
 ---
 
