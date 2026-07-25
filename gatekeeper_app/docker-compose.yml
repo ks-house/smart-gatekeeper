@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  flutter-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gatekeeper-flutter-builder
+    volumes:
+      - ./:/workspace
+    tty: true
+    stdin_open: true
+    command: sleep infinity
