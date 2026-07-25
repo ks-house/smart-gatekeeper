@@ -345,12 +345,10 @@
   - `POST /api/v1/admin/tenants/{id}/approve`: 세입자 출입 권한 즉시 승인 (`is_active = true`)
   - `POST /api/v1/admin/tenants/{id}/reject`: 세입자 출입 권한 회수 (`is_active = false`)
 
-## [2026-07-25] code | CI/CD deploy_backend.yml — NAS /docker/smart-gatekeeper/smart-gatekeeper git pull 배포 동기화
+## [2026-07-25] fix | 백엔드 수동 배포 방식으로 변경 (deploy_backend.yml 제거)
 
-- **`.github/workflows/deploy_backend.yml` 파이프라인 개편**:
-  - 타겟 경로 `/docker/smart-gatekeeper/smart-gatekeeper` 로 이동하여 SSH 기반 `git pull origin main` 수행
-  - `cd backend && docker compose up -d --build api` 로 FastAPI 백엔드 및 관리자 UI(`/admin`, `/app`) 즉시 재기동 반영
-- **모든 워크플로우 경로 통일**: `deploy.yml`, `build_app.yml` 기본 타겟 디렉토리를 `/docker/...` 경로로 교정
+- **배포 방식 변경**: NAS 권한 이슈로 인해 `deploy_backend.yml` 워크플로우 제거. 백엔드 및 관리자 UI는 사용자가 NAS 상에서 수동으로 `git pull origin main && docker compose up -d --build api` 실행하여 배포 진행.
+
 
 
 
