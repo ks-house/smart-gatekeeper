@@ -83,5 +83,6 @@ jobs:
           password: ${{ secrets.NAS_PASSWORD }}
           port: ${{ secrets.NAS_PORT || 22 }}
           local_path: './dist/*'
-          remote_path: ${{ secrets.NAS_TARGET_DIR || '/volume1/docker/smart-gatekeeper-ota/' }}
+          remote_path: ${{ secrets.NAS_TARGET_DIR || '/docker/smart-gatekeeper-ota/' }}
+
           sftp_only: true

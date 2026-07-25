@@ -345,11 +345,13 @@
   - `POST /api/v1/admin/tenants/{id}/approve`: 세입자 출입 권한 즉시 승인 (`is_active = true`)
   - `POST /api/v1/admin/tenants/{id}/reject`: 세입자 출입 권한 회수 (`is_active = false`)
 
-## [2026-07-25] code | CI/CD deploy_backend.yml — 백엔드 및 관리자 UI 시놀로지 NAS 자동 배포 구축
+## [2026-07-25] code | CI/CD deploy_backend.yml — NAS /docker/smart-gatekeeper/smart-gatekeeper git pull 배포 동기화
 
-- **`.github/workflows/deploy_backend.yml` 신규 생성**:
-  - `backend/` 폴더 내 소스/정적파일 변경 감지 시 시놀로지 NAS로 SFTP 동기화 및 SSH 재기동 실행
-  - NAS에 `/admin` 및 `/app` 정적 UI 및 최신 FastAPI 백엔드 즉시 반영
+- **`.github/workflows/deploy_backend.yml` 파이프라인 개편**:
+  - 타겟 경로 `/docker/smart-gatekeeper/smart-gatekeeper` 로 이동하여 SSH 기반 `git pull origin main` 수행
+  - `cd backend && docker compose up -d --build api` 로 FastAPI 백엔드 및 관리자 UI(`/admin`, `/app`) 즉시 재기동 반영
+- **모든 워크플로우 경로 통일**: `deploy.yml`, `build_app.yml` 기본 타겟 디렉토리를 `/docker/...` 경로로 교정
+
 
 
 

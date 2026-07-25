@@ -85,7 +85,8 @@ jobs:
           password: ${{ secrets.NAS_PASSWORD }}
           port: ${{ secrets.NAS_PORT || 22 }}
           local_path: './dist/*'
-          remote_path: ${{ secrets.NAS_APK_TARGET_DIR || '/volume1/docker/smartbox_ota/gatekeeper_apk/' }}
+          remote_path: ${{ secrets.NAS_APK_TARGET_DIR || '/docker/smartbox_ota/gatekeeper_apk/' }}
+
           sftp_only: true
 
       - name: Upload APK Artifact to GitHub Actions
