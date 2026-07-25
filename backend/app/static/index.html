@@ -53,7 +53,7 @@
     header {
       text-align: center;
       margin-top: 10px;
-      margin-bottom: 10px;
+      margin-bottom: 6px;
     }
 
     header h1 {
@@ -129,7 +129,7 @@
       border: 1px solid rgba(245, 158, 11, 0.3);
     }
 
-    .status-revoked {
+    .status-unregistered {
       background: rgba(239, 68, 68, 0.15);
       color: var(--danger);
       border: 1px solid rgba(239, 68, 68, 0.3);
@@ -173,7 +173,14 @@
       transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .btn-force-open:hover, .btn-force-open:active {
+    .btn-force-open:disabled {
+      background: rgba(51, 65, 85, 0.5);
+      color: var(--text-muted);
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .btn-force-open:not(:disabled):active {
       transform: scale(0.96);
       box-shadow: 0 0 60px rgba(56, 189, 248, 0.6);
     }
@@ -247,6 +254,14 @@
       margin-top: 10px;
     }
 
+    .device-id-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      word-break: break-all;
+      text-align: center;
+      margin-top: 8px;
+    }
+
     /* Log List */
     .logs-section h3 {
       font-size: 16px;
@@ -284,22 +299,53 @@
       <p>Synology NAS Powered Smart Key System</p>
     </header>
 
-    <!-- 사용자 카드 -->
-    <div class="glass-card user-info-card" id="userCard">
+    <!-- 사용자 상단 카드 -->
+    <div class="glass-card user-info-card">
       <div class="user-details">
-        <span class="user-name" id="userName">101호 홍길동 님</span>
-        <span class="unit-number" id="unitNo">101호 세입자</span>
+        <span class="user-name" id="userName">사용자 정보 확인 중...</span>
+        <span class="unit-number" id="unitNo">기기 식별 중</span>
       </div>
-      <div class="status-badge status-active" id="statusBadge">
+      <div class="status-badge status-unregistered" id="statusBadge">
         <span class="status-dot"></span>
-        <span id="statusText">출입 승인 (Active)</span>
+        <span id="statusText">확인 중</span>
       </div>
     </div>
 
-    <!-- Door Open Action Area -->
+    <!-- 최초 가입 신청 Form (미등록 기기일 때 표시) -->
+    <div class="glass-card" id="signupSection" style="display: none;">
+      <h2 style="font-size: 18px; margin-bottom: 8px;">🔑 최초 세입자 출입 신청</h2>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 18px;">
+        처음 접속하신 세입자분은 아래 정보를 작성하여 관리자 승인을 요청해 주세요.
+      </p>
+      <form onsubmit="handleSignup(event)">
+        <div class="form-group">
+          <label>세입자 이름</label>
+          <input type="text" class="form-input" id="inputName" placeholder="예: 홍길동" required>
+        </div>
+        <div class="form-group">
+          <label>동/호수</label>
+          <input type="text" class="form-input" id="inputRoom" placeholder="예: 101호" required>
+        </div>
+        <button type="submit" class="btn-submit">출입 권한 신청하기</button>
+      </form>
+      <div class="device-id-label" id="deviceIdLabel"></div>
+    </div>
+
+    <!-- 승인 대기 안내 (Pending 상태일 때 표시) -->
+    <div class="glass-card" id="pendingSection" style="display: none; text-align: center; padding: 30px 20px;">
+      <div style="font-size: 48px; margin-bottom: 12px;">⏳</div>
+      <h2 style="font-size: 20px; font-weight: 700; color: var(--warning); margin-bottom: 8px;">관리자 승인 대기 중</h2>
+      <p style="font-size: 14px; color: var(--text-muted); line-height: 1.6;">
+        세입자 출입 권한 신청이 접수되었습니다.<br>
+        건물 관리자(건물주) 승인 후 문 열기 기능이 자동 활성화됩니다.
+      </p>
+      <button class="btn-submit" style="margin-top: 20px; background: rgba(255,255,255,0.1);" onclick="checkUserStatus()">🔄 승인 상태 확인</button>
+    </div>
+
+    <!-- Door Open Action Area (Approved 상태일 때만 활성화) -->
     <div class="glass-card door-control-section" id="activeSection">
-      <button class="btn-force-open" onclick="triggerDoorOpen()">
-        <div class="pulse-ring"></div>
+      <button class="btn-force-open" id="btnOpen" onclick="triggerDoorOpen()" disabled>
+        <div class="pulse-ring" id="pulseRing" style="display: none;"></div>
         <svg viewBox="0 0 24 24">
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -307,65 +353,133 @@
         <span>문 열기</span>
       </button>
       <p style="margin-top: 20px; font-size: 13px; color: var(--text-muted);" id="actionStatus">
-        버튼을 누르면 출입문 릴레이가 즉시 1초간 작동합니다.
+        관리자 승인 완료 시 터치하여 문을 열 수 있습니다.
       </p>
-    </div>
-
-    <!-- 가입 신청 Form (Pending / Unregistered) -->
-    <div class="glass-card" id="signupSection" style="display: none;">
-      <h2 style="font-size: 18px; margin-bottom: 16px;">세입자 권한 신청</h2>
-      <form onsubmit="handleSignup(event)">
-        <div class="form-group">
-          <label>이름</label>
-          <input type="text" class="form-input" id="inputName" placeholder="예: 홍길동" required>
-        </div>
-        <div class="form-group">
-          <label>동/호수</label>
-          <input type="text" class="form-input" id="inputRoom" placeholder="예: 101호" required>
-        </div>
-        <button type="submit" class="btn-submit">권한 신청하기</button>
-      </form>
     </div>
 
     <!-- 최근 출입 이력 -->
     <div class="glass-card logs-section" id="logsSection">
-      <h3>최근 출입 이력</h3>
+      <h3>최근 출입 감지 이력</h3>
       <div id="logsList">
         <div class="log-item">
           <div>
-            <div class="log-title">자동 감지 출입 (ToF)</div>
-            <div class="log-time">오늘 22:15</div>
+            <div class="log-title">시스템 대기 중</div>
+            <div class="log-time">최근 감지 이력 없음</div>
           </div>
-          <span style="color: var(--success); font-size: 13px; font-weight:600;">승인됨</span>
         </div>
       </div>
     </div>
   </div>
 
   <script>
+    let currentDeviceId = '';
+
+    // Unique Device ID 생성 및 로드
+    function getOrCreateDeviceId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      let devId = urlParams.get('device_id');
+      
+      if (!devId) {
+        devId = localStorage.getItem('gatekeeper_device_id');
+      }
+      
+      if (!devId) {
+        devId = 'DEV-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+        localStorage.setItem('gatekeeper_device_id', devId);
+      }
+      
+      currentDeviceId = devId;
+      document.getElementById('deviceIdLabel').innerText = '내 기기 식별 코드: ' + devId;
+      return devId;
+    }
+
+    // 서버로부터 사용자 승인 상태 조회
+    async function checkUserStatus() {
+      const devId = getOrCreateDeviceId();
+      try {
+        const res = await fetch(`/api/v1/user/me?device_id=${encodeURIComponent(devId)}`);
+        const data = await res.json();
+
+        const nameEl = document.getElementById('userName');
+        const unitEl = document.getElementById('unitNo');
+        const badgeEl = document.getElementById('statusBadge');
+        const statusTextEl = document.getElementById('statusText');
+        const btnOpen = document.getElementById('btnOpen');
+        const pulseRing = document.getElementById('pulseRing');
+        const actionStatus = document.getElementById('actionStatus');
+
+        const signupSection = document.getElementById('signupSection');
+        const pendingSection = document.getElementById('pendingSection');
+
+        if (data.status === 'approved') {
+          nameEl.innerText = `${data.tenant_name} 님`;
+          unitEl.innerText = `${data.unit_number} 세입자`;
+          badgeEl.className = 'status-badge status-active';
+          statusTextEl.innerText = '출입 승인 (Active)';
+
+          signupSection.style.display = 'none';
+          pendingSection.style.display = 'none';
+
+          btnOpen.disabled = false;
+          pulseRing.style.display = 'block';
+          actionStatus.innerText = '버튼을 누르면 출입문 릴레이가 즉시 작동합니다.';
+          loadLogs();
+        } else if (data.status === 'pending') {
+          nameEl.innerText = `${data.tenant_name || '신청자'} 님`;
+          unitEl.innerText = `${data.unit_number || '-'} (승인 대기)`;
+          badgeEl.className = 'status-badge status-pending';
+          statusTextEl.innerText = '승인 대기 (Pending)';
+
+          signupSection.style.display = 'none';
+          pendingSection.style.display = 'block';
+
+          btnOpen.disabled = true;
+          pulseRing.style.display = 'none';
+          actionStatus.innerText = '관리자 승인 완료 후 문 열기 기능이 활성화됩니다.';
+        } else {
+          nameEl.innerText = '미등록 기기';
+          unitEl.innerText = '출입 권한 신청 필요';
+          badgeEl.className = 'status-badge status-unregistered';
+          statusTextEl.innerText = '미등록 (Unregistered)';
+
+          signupSection.style.display = 'block';
+          pendingSection.style.display = 'none';
+
+          btnOpen.disabled = true;
+          pulseRing.style.display = 'none';
+          actionStatus.innerText = '최초 출입 신청을 작성해 주세요.';
+        }
+      } catch (e) {
+        console.error('Status check failed:', e);
+      }
+    }
+
     async function triggerDoorOpen() {
       const statusEl = document.getElementById('actionStatus');
+      statusEl.style.color = "var(--primary)";
       statusEl.innerText = "제어 명령 전송 중...";
       try {
         const res = await fetch('/api/v1/door/open', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: 'manual_click' })
+          body: JSON.stringify({ reason: 'manual_click', device_id: currentDeviceId })
         });
+        const data = await res.json();
         if (res.ok) {
           statusEl.style.color = "#10b981";
-          statusEl.innerText = "✅ 문이 성공적으로 열렸습니다!";
+          statusEl.innerText = "✅ " + (data.message || "문이 성공적으로 열렸습니다!");
           setTimeout(() => {
             statusEl.style.color = "var(--text-muted)";
-            statusEl.innerText = "버튼을 누르면 출입문 릴레이가 즉시 1초간 작동합니다.";
+            statusEl.innerText = "버튼을 누르면 출입문 릴레이가 즉시 작동합니다.";
           }, 3000);
+          loadLogs();
         } else {
           statusEl.style.color = "#ef4444";
-          statusEl.innerText = "❌ 문 열기 요청 실패";
+          statusEl.innerText = "❌ " + (data.message || "문 열기 권한이 없습니다.");
         }
       } catch (e) {
         statusEl.style.color = "#ef4444";
-        statusEl.innerText = "❌ 서버 통신 에러";
+        statusEl.innerText = "❌ 서버 통신 에러가 발생했습니다.";
       }
     }
 
@@ -378,16 +492,47 @@
         const res = await fetch('/api/v1/user/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, room_no: room, device_id: 'WEB-UI-001' })
+          body: JSON.stringify({ name: name, room_no: room, device_id: currentDeviceId })
         });
         if (res.ok) {
-          alert("가입 신청이 완료되었습니다. 관리자 승인을 기다려주세요.");
-          location.reload();
+          alert("출입 권한 신청이 성공적으로 접수되었습니다.\n관리자 승인을 기다려주세요.");
+          checkUserStatus();
         }
       } catch (err) {
         alert("신청 실패: " + err);
       }
     }
+
+    async function loadLogs() {
+      try {
+        const res = await fetch('/api/v1/logs?limit=5');
+        if (!res.ok) return;
+        const logs = await res.json();
+        const logsList = document.getElementById('logsList');
+        if (logs.length > 0) {
+          logsList.innerHTML = '';
+          logs.forEach(l => {
+            const timeStr = new Date(l.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            item.innerHTML = `
+              <div>
+                <div class="log-title">${l.auth_method === 'BLE_BEACON' ? '자동 감지 개방' : '수동 원격 개방'}</div>
+                <div class="log-time">${timeStr}</div>
+              </div>
+              <span style="color: ${l.is_success ? '#10b981' : '#ef4444'}; font-size: 13px; font-weight:600;">
+                ${l.is_success ? '승인됨' : '거절됨'}
+              </span>
+            `;
+            logsList.appendChild(item);
+          });
+        }
+      } catch (e) {}
+    }
+
+    window.onload = function() {
+      checkUserStatus();
+    };
   </script>
 </body>
 </html>

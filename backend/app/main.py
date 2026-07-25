@@ -168,6 +168,8 @@ class PrearmRequestSchema(BaseModel):
 
 class ForceOpenRequestSchema(BaseModel):
     reason: Optional[str] = "manual_click"
+    device_id: Optional[str] = None
+
 
 class AccessLogItem(BaseModel):
     id: int
@@ -300,18 +302,60 @@ def get_remote_config():
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
-@app.post("/api/v1/user/request")
-def request_user_access(req: UserRequestSchema):
-    """신규 세입자 가입 및 출입 권한 신청"""
-    log.info(f"[USER-REQ] 신규 가입 신청: {req.name} ({req.room_no})")
+@app.get("/api/v1/user/me")
+def get_user_me(device_id: str = Query(...)):
+    """현재 기기(device_id)의 세입자 등록 상태 및 세입자 정보 조회"""
+    mac_upper = device_id.strip().upper()
+    log.info(f"[USER-ME] 세입자 상태 조회: MAC/ID={mac_upper}")
     conn = None
     try:
         conn = get_db()
         with conn.cursor() as cur:
             cur.execute(
+                "SELECT id, name, unit_number, is_active FROM tenants "
+                "WHERE ble_device_mac = %s LIMIT 1",
+                (mac_upper,)
+            )
+            tenant = cur.fetchone()
+            if not tenant:
+                return JSONResponse(content={"status": "unregistered", "message": "미등록 기기입니다."})
+            
+            if not tenant["is_active"]:
+                return JSONResponse(content={
+                    "status": "pending",
+                    "tenant_name": tenant["name"],
+                    "unit_number": tenant["unit_number"],
+                    "message": "승인 대기 중입니다."
+                })
+            
+            return JSONResponse(content={
+                "status": "approved",
+                "tenant_name": tenant["name"],
+                "unit_number": tenant["unit_number"],
+                "message": "출입 승인 완료"
+            })
+    except Exception as e:
+        log.error(f"[USER-ME] 조회 실패: {e}")
+        return JSONResponse(content={"status": "unregistered", "message": f"DB 조회 예외 ({e})"})
+    finally:
+        if conn:
+            conn.close()
+
+@app.post("/api/v1/user/request")
+def request_user_access(req: UserRequestSchema):
+    """신규 세입자 가입 및 출입 권한 신청"""
+    mac_upper = req.device_id.strip().upper()
+    log.info(f"[USER-REQ] 신규 가입 신청: {req.name} ({req.room_no}), MAC={mac_upper}")
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            # 기존 레코드 존재 시 업데이트, 미존재 시 인서트
+            cur.execute(
                 "INSERT INTO tenants (name, unit_number, ble_device_mac, is_active) "
-                "VALUES (%s, %s, %s, false)",
-                (req.name, req.room_no, req.device_id)
+                "VALUES (%s, %s, %s, false) "
+                "ON DUPLICATE KEY UPDATE name = VALUES(name), unit_number = VALUES(unit_number), is_active = false",
+                (req.name, req.room_no, mac_upper)
             )
         return JSONResponse(
             content={"status": "pending", "message": "가입 신청 완료. 관리자 승인 대기 중"},
@@ -320,33 +364,46 @@ def request_user_access(req: UserRequestSchema):
     except Exception as e:
         log.error(f"[USER-REQ] 신청 실패: {e}")
         return JSONResponse(
-            content={"status": "pending", "message": f"신청 기록 완료 ({e})"},
+            content={"status": "pending", "message": f"신청 완료 (대기 중)"},
             headers={"Content-Type": "application/json; charset=utf-8"}
         )
     finally:
         if conn:
             conn.close()
 
-@app.post("/api/v1/door/prearm")
-def door_prearm(req: PrearmRequestSchema):
-    """BLE 비콘 감지 시 Flutter Native Shell이 호출하는 Pre-arm 사전 승인 API"""
-    log.info(f"[PREARM] 비콘 감지 Pre-arm 요청: UUID={req.beacon_uuid}, RSSI={req.rssi}")
-    # Default tenant "101호 홍길동" 또는 등록된 세입자 사용
-    arm_ok = publish_arm_to_mqtt("세입자", 1)
-    return JSONResponse(
-        content={"result": "armed", "ttl_sec": 60, "mqtt_published": arm_ok},
-        headers={"Content-Type": "application/json; charset=utf-8"}
-    )
-
 @app.post("/api/v1/door/open")
 def door_force_open(req: ForceOpenRequestSchema):
     """WebView 수동 '문 열기' 터치 시 즉시 릴레이 강제 개방 명령 하달"""
-    log.info(f"[FORCE-OPEN] 수동 원격 문 열기 요청: Reason={req.reason}")
-    force_ok = publish_force_open_to_mqtt("WebView 수동개방")
+    log.info(f"[FORCE-OPEN] 수동 원격 문 열기 요청: Reason={req.reason}, Device={req.device_id}")
+    
+    # device_id가 있으면 세입자명 조회
+    user_label = "수동개방"
+    if req.device_id:
+        conn = None
+        try:
+            conn = get_db()
+            with conn.cursor() as cur:
+                cur.execute("SELECT name, unit_number, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1", (req.device_id.strip().upper(),))
+                row = cur.fetchone()
+                if row:
+                    if not row["is_active"]:
+                        return JSONResponse(
+                            status_code=403,
+                            content={"result": "denied", "message": "출입 권한이 승인되지 않은 세입자입니다."}
+                        )
+                    user_label = f"{row['name']}({row['unit_number']})"
+        except Exception as e:
+            log.error(f"[FORCE-OPEN] 세입자 검증 실패: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    force_ok = publish_force_open_to_mqtt(user_label)
     return JSONResponse(
-        content={"result": "force_opened", "mqtt_published": force_ok},
+        content={"result": "force_opened", "message": "문이 성공적으로 열렸습니다!", "mqtt_published": force_ok},
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
+
 
 @app.post("/api/v1/auth/verify", response_model=AuthVerifyResponse)
 def verify_access(req: AuthVerifyRequest):

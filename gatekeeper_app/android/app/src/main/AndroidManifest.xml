@@ -22,7 +22,20 @@
     <!-- Declare BLE hardware feature -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
+    <!-- Intent Queries for external URL opening & APK downloads -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+
     <application
+
         android:label="Smart Key"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"

@@ -73,15 +73,15 @@ class UpdateChecker {
 
     try {
       final uri = Uri.parse(targetUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return true;
-      } else {
-        debugPrint('[UpdateChecker] URL을 실행할 수 없습니다: $targetUrl');
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
       }
+      return true;
     } catch (e) {
       debugPrint('[UpdateChecker] APK 다운로드 실행 오류: $e');
     }
+
     return false;
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/update_checker.dart';
 
@@ -44,6 +45,20 @@ class _WebViewScreenState extends State<WebViewScreen> {
             setState(() {
               _isLoading = false;
             });
+          },
+          onNavigationRequest: (NavigationRequest request) async {
+            if (request.url.endsWith('.apk') || request.url.contains('/gatekeeper_apk/')) {
+              try {
+                final uri = Uri.parse(request.url);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              } catch (e) {
+                debugPrint('[WebView] APK 다운로드 처리 중 오류: $e');
+              }
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint('[WebView] Page error: ${error.description}');
