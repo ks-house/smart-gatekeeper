@@ -384,12 +384,14 @@
   <script>
     let currentDeviceId = '';
 
-    // Unique Device ID 생성 및 로드
+    // Unique Device ID 생성 및 로드 (URL 파라미터 영구 하드웨어 ID 최우선)
     function getOrCreateDeviceId() {
       const urlParams = new URLSearchParams(window.location.search);
       let devId = urlParams.get('device_id');
       
-      if (!devId) {
+      if (devId) {
+        localStorage.setItem('gatekeeper_device_id', devId);
+      } else {
         devId = localStorage.getItem('gatekeeper_device_id');
       }
       

@@ -174,8 +174,10 @@ class UserRequestSchema(BaseModel):
 
 class PrearmRequestSchema(BaseModel):
     beacon_uuid: str
+    device_id: Optional[str] = None
     rssi: Optional[int] = None
     timestamp: Optional[str] = None
+
 
 class ForceOpenRequestSchema(BaseModel):
     reason: Optional[str] = "manual_click"
@@ -424,13 +426,49 @@ def request_user_access(req: UserRequestSchema):
 
 @app.post("/api/v1/door/prearm")
 def door_prearm(req: PrearmRequestSchema):
-    """BLE 비콘 감지 시 Flutter Native Shell이 호출하는 Pre-arm 사전 승인 API"""
-    log.info(f"[PREARM] 비콘 감지 Pre-arm 요청: UUID={req.beacon_uuid}, RSSI={req.rssi}")
-    arm_ok = publish_arm_to_mqtt("비콘자동감지", 1)
+    """BLE 비콘 감지 시 Flutter Native Shell이 호출하는 Pre-arm 사전 승인 API (세입자 승인자 검증 포함)"""
+    log.info(f"[PREARM] 비콘 감지 Pre-arm 요청: UUID={req.beacon_uuid}, Device={req.device_id}, RSSI={req.rssi}")
+
+    user_label = "비콘자동감지"
+    tenant_id = 1
+
+    # device_id가 전달된 경우 DB 승인(is_active=True) 세입자인지 검증
+    if req.device_id:
+        conn = None
+        try:
+            conn = get_db()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, unit_number, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1",
+                    (req.device_id.strip().upper(),)
+                )
+                row = cur.fetchone()
+                if not row:
+                    log.warning(f"[PREARM-REJECT] 미등록 기기의 Pre-arm 요청 거부: {req.device_id}")
+                    return JSONResponse(
+                        status_code=403,
+                        content={"result": "denied", "message": "미등록 세입자 기기입니다."}
+                    )
+                if not row["is_active"]:
+                    log.warning(f"[PREARM-REJECT] 승인 대기 중 세입자의 Pre-arm 요청 거부: {row['name']}({row['unit_number']})")
+                    return JSONResponse(
+                        status_code=403,
+                        content={"result": "denied", "message": "관리자 승인 대기 중인 세입자입니다."}
+                    )
+                user_label = f"{row['name']}({row['unit_number']})"
+                tenant_id = row["id"]
+        except Exception as e:
+            log.error(f"[PREARM] 세입자 검증 중 DB 예외: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    arm_ok = publish_arm_to_mqtt(user_label, tenant_id)
     return JSONResponse(
-        content={"result": "armed", "ttl_sec": 60, "mqtt_published": arm_ok},
+        content={"result": "armed", "ttl_sec": 60, "mqtt_published": arm_ok, "user": user_label},
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
+
 
 @app.post("/api/v1/door/open")
 def door_force_open(req: ForceOpenRequestSchema):

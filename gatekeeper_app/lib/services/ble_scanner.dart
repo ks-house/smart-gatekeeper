@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
+import 'device_id_service.dart';
 import 'update_checker.dart';
+
 
 /// Smart Gatekeeper BLE Beacon Background Scanner Singleton
 class BleScanner {
@@ -146,16 +148,16 @@ class BleScanner {
   /// 백엔드 Pre-arm REST API 호출
   Future<void> _sendPrearmRequest(int rssi) async {
     try {
-      debugPrint('[BleScanner] Pre-arm REST API 호출 중...');
+      final deviceId = await DeviceIdService.getDeviceId();
+      debugPrint('[BleScanner] Pre-arm REST API 호출 중... (DeviceId: $deviceId)');
       final response = await http.post(
         Uri.parse('$backendBaseUrl/door/prearm'),
         headers: {
           'Content-Type': 'application/json',
-          // 향후 SecureStorage에서 저장된 JWT 토큰 주입 예정
-          // 'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
           'beacon_uuid': targetBeaconUuid,
+          'device_id': deviceId,
           'rssi': rssi,
           'timestamp': DateTime.now().toIso8601String(),
         }),
@@ -164,8 +166,7 @@ class BleScanner {
       if (response.statusCode == 200) {
         debugPrint('[BleScanner] ✅ Pre-arm 성공! (Status: 200 OK)');
       } else if (response.statusCode == 403) {
-        debugPrint('[BleScanner] 🚨 권한 회수(Revoked)됨! (Status: 403 Forbidden) -> 스캔 중지');
-        stopScanning();
+        debugPrint('[BleScanner] 🚨 권한 미승인/거부됨 (Status: 403 Forbidden)');
       } else {
         debugPrint('[BleScanner] Pre-arm 실패: HTTP ${response.statusCode}');
       }
@@ -173,6 +174,7 @@ class BleScanner {
       debugPrint('[BleScanner] Pre-arm API 통신 오류: $e');
     }
   }
+
 
   /// 스캐닝 중지
   Future<void> stopScanning() async {

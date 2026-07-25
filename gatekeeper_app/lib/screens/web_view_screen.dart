@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../services/device_id_service.dart';
 import '../services/update_checker.dart';
 
 class WebViewScreen extends StatefulWidget {
@@ -25,26 +26,29 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   void initState() {
     super.initState();
+    _setupController();
+    _loadUrlWithDeviceId();
+  }
 
-    final targetUrl = widget.initialUrl ??
-        (WebViewScreen.webviewUrlFromEnv.isNotEmpty
-            ? WebViewScreen.webviewUrlFromEnv
-            : 'https://tworimpa.synology.me:4442/app');
-
+  void _setupController() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF121212))
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            setState(() {
-              _isLoading = true;
-            });
+            if (mounted) {
+              setState(() {
+                _isLoading = true;
+              });
+            }
           },
           onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
-            });
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
           },
           onNavigationRequest: (NavigationRequest request) async {
             if (request.url.endsWith('.apk') || request.url.contains('/gatekeeper_apk/')) {
@@ -59,13 +63,27 @@ class _WebViewScreenState extends State<WebViewScreen> {
             }
             return NavigationDecision.navigate;
           },
-
           onWebResourceError: (WebResourceError error) {
             debugPrint('[WebView] Page error: ${error.description}');
           },
         ),
-      )
-      ..loadRequest(Uri.parse(targetUrl));
+      );
+  }
+
+  Future<void> _loadUrlWithDeviceId() async {
+    final devId = await DeviceIdService.getDeviceId();
+    String targetUrl = widget.initialUrl ??
+        (WebViewScreen.webviewUrlFromEnv.isNotEmpty
+            ? WebViewScreen.webviewUrlFromEnv
+            : 'https://tworimpa.synology.me:4442/app');
+
+    if (!targetUrl.contains('device_id=')) {
+      final separator = targetUrl.contains('?') ? '&' : '?';
+      targetUrl = '$targetUrl${separator}device_id=$devId';
+    }
+
+    debugPrint('[WebView] 🚀 영구 Device ID 반영 웹뷰 로드: $targetUrl');
+    await _controller.loadRequest(Uri.parse(targetUrl));
   }
 
   @override
