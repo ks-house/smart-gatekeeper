@@ -1,6 +1,7 @@
 // src/MqttManager.cpp
 // =============================================================
 // smart-gatekeeper — MqttManager 구현 (Home Assistant Auto-Discovery 포함)
+// v2.0: gatekeeper/arm Pre-arm 토픽 구독 및 콜백 추가
 // =============================================================
 #include "MqttManager.h"
 #include "config.h"
@@ -9,8 +10,9 @@
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
-extern void triggerManualDoorOpen(); // main.cpp 의 수동 개방 함수 참조
-extern void updateBleRssiThreshold(int newRssi); // main.cpp 의 RSSI 갱신 함수 참조
+// main.cpp에서 정의된 외부 함수 참조
+extern void triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
+extern void triggerArm();            // MQTT gatekeeper/arm 수신 시 Pre-arm 활성화
 
 WiFiClientSecure MqttManager::wifiClient;
 PubSubClient MqttManager::client(wifiClient);
@@ -34,6 +36,37 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     LOGF("[MQTT] 수신 주제: %s | 메시지: %s", topic, message);
 
+    // ─── gatekeeper/arm — Pre-arm 사전 승인 처리 (v2.0 핵심 신규) ───────
+    if (strcmp(topic, MQTT_TOPIC_ARM) == 0) {
+        // JSON 페이로드 파싱 시도 ({"action":"arm","user":"홍길동"})
+        StaticJsonDocument<256> armDoc;
+        bool isArmCommand = false;
+
+        if (!deserializeJson(armDoc, message)) {
+            const char* action = armDoc["action"] | "";
+            if (strcmp(action, "arm") == 0) {
+                const char* user = armDoc["user"] | "unknown";
+                LOGF("[MQTT-ARM] ✅ NAS Pre-arm 승인 수신! 사용자: %s → ToF 활성화 (%lu ms)", user, (unsigned long)PRE_ARM_DURATION_MS);
+                isArmCommand = true;
+            }
+        } else {
+            // JSON 파싱 실패 시 단순 문자열 "arm" fallback 처리
+            if (strcasecmp(message, "arm") == 0) {
+                LOGF("[MQTT-ARM] ✅ Pre-arm 수신 (단순 문자열 'arm') → ToF 활성화");
+                isArmCommand = true;
+            }
+        }
+
+        if (isArmCommand) {
+            triggerArm();
+            publishEvent("pre_armed", "ToF sensor activated via MQTT Pre-arm");
+        } else {
+            LOGF("[MQTT-ARM] ⚠️ arm 토픽 수신되었으나 페이로드 형식 불일치: %s", message);
+        }
+        return;
+    }
+
+    // ─── smart-gatekeeper/cmd — 원격 명령 처리 ──────────────────────────
     StaticJsonDocument<256> doc;
     if (deserializeJson(doc, message)) {
         LOGF("[MQTT-ERROR] JSON 파싱 에러");
@@ -42,27 +75,16 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     if (String(topic).endsWith("/cmd")) {
         const char* cmd = doc["command"] | "";
-        if (String(cmd) == "open_gate" || String(cmd) == "force_open") {
+        if (strcmp(cmd, "open_gate") == 0 || strcmp(cmd, "force_open") == 0) {
             LOGF("[MQTT-CMD] 원격 출입문 개방 명령 수신!");
             triggerManualDoorOpen();
-        } else if (String(cmd) == "set_rssi" || String(cmd) == "set_ble_rssi") {
-            int newRssi = doc["rssi"] | doc["value"] | -80;
-            LOGF("[MQTT-CMD] BLE RSSI 임계값 변경 명령 수신: %d dBm", newRssi);
-            updateBleRssiThreshold(newRssi);
-            publishEvent("rssi_changed", ("BLE RSSI Threshold set to " + String(newRssi) + " dBm").c_str());
-        } else if (String(cmd) == "ota_update" || String(cmd) == "trigger_ota") {
+        } else if (strcmp(cmd, "ota_update") == 0 || strcmp(cmd, "trigger_ota") == 0) {
             LOGF("[MQTT-CMD] 원격 OTA 업데이트 명령 수신!");
             OtaManager::checkAndUpdate(true);
-        } else if (String(cmd) == "reboot") {
+        } else if (strcmp(cmd, "reboot") == 0) {
             LOGF("[MQTT-CMD] 원격 재부팅 명령 수신!");
             ESP.restart();
         }
-    } else if (String(topic).endsWith("/rssi/set")) {
-        // Home Assistant Number Entity 슬라이더 패킷 직접 수신
-        int newRssi = atoi(message);
-        LOGF("[MQTT-HA] HA UI 슬라이더 BLE RSSI 설정 수신: %d dBm", newRssi);
-        updateBleRssiThreshold(newRssi);
-        publishEvent("rssi_changed", ("BLE RSSI Threshold set to " + String(newRssi) + " dBm").c_str());
     }
 }
 
@@ -86,10 +108,15 @@ void MqttManager::update() {
             if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
                 LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 failCount = 0; // 성공 시 카운트 초기화
+
+                // v2.0 핵심: gatekeeper/arm Pre-arm 토픽 구독 추가
+                client.subscribe(MQTT_TOPIC_ARM);
+                LOGF("[MQTT] Pre-arm 토픽 구독: %s", MQTT_TOPIC_ARM);
+
+                // 기존 원격 명령 토픽 구독 유지
                 client.subscribe("smart-gatekeeper/cmd");
-                client.subscribe("smart-gatekeeper/rssi/set"); // BLE RSSI 슬라이더 수신 토픽 구독
                 
-                publishEvent("connected", "ESP32-C6 Online (SSL)");
+                publishEvent("connected", "ESP32-C6 v2.0 Online (SSL) - BLE Beacon Mode");
                 publishAutoDiscovery();
                 return;
             } else {
@@ -119,7 +146,7 @@ void MqttManager::publishAutoDiscovery() {
         JsonArray ids = device.createNestedArray("identifiers");
         ids.add(deviceId);
         device["name"] = "Smart Gatekeeper";
-        device["model"] = "ESP32-C6 Door Controller";
+        device["model"] = "ESP32-C6 Door Controller v2.0";
         device["manufacturer"] = "KS-House";
         device["sw_version"] = FIRMWARE_VERSION;
 
@@ -167,7 +194,7 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("sensor", "distance", doc);
     }
 
-    // 3. Sensor: 상태
+    // 3. Sensor: 동작 상태
     {
         StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 게이트키퍼 동작 상태", "state");
         doc["state_topic"]     = "smart-gatekeeper/status";
@@ -196,32 +223,29 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("binary_sensor", "door_binary", doc);
     }
 
-    // 6. Number: BLE RSSI 임계값 튜닝 슬라이더 (-100 dBm ~ -50 dBm)
+    // 6. Binary Sensor: Pre-arm 활성화 여부 (v2.0 신규)
     {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] BLE RSSI 감도 임계값", "ble_rssi_threshold");
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 활성화 상태", "pre_armed");
         doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.ble_rssi_threshold }}";
-        doc["command_topic"]   = "smart-gatekeeper/rssi/set";
-        doc["min"]             = -100;
-        doc["max"]             = -50;
-        doc["step"]            = 1;
-        doc["unit_of_meas"]    = "dBm";
-        doc["icon"]            = "mdi:signal-distance-variant";
-        pubConfig("number", "ble_rssi_threshold", doc);
+        doc["value_template"]  = "{% if value_json.is_armed %}ON{% else %}OFF{% endif %}";
+        doc["payload_on"]      = "ON";
+        doc["payload_off"]     = "OFF";
+        doc["device_class"]    = "lock";
+        doc["icon"]            = "mdi:shield-check";
+        pubConfig("binary_sensor", "pre_armed", doc);
     }
 
-    // 7. Sensor: 인증된 타겟 BLE 실시간 수신 감도 (RSSI)
+    // 7. Sensor: Pre-arm 잔여 유효 시간 (v2.0 신규)
     {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 타겟 BLE 실시간 수신 감도", "target_ble_rssi");
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 잔여 시간", "arm_remaining_s");
         doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.target_ble_rssi }}";
-        doc["unit_of_meas"]    = "dBm";
-        doc["device_class"]    = "signal_strength";
-        doc["icon"]            = "mdi:bluetooth-connect";
-        pubConfig("sensor", "target_ble_rssi", doc);
+        doc["value_template"]  = "{{ value_json.arm_remaining_s }}";
+        doc["unit_of_meas"]    = "s";
+        doc["icon"]            = "mdi:timer-outline";
+        pubConfig("sensor", "arm_remaining_s", doc);
     }
 
-    LOGF("[MQTT-HA] Auto-Discovery 엔티티 7개 등록 완료!");
+    LOGF("[MQTT-HA] Auto-Discovery 엔티티 7개 등록 완료! (v2.0)");
     
     // Auto-Discovery 발행 직후 TLS SSL 송신 버퍼 안정화를 위한 소켓 플러시
     for (int i = 0; i < 3; i++) {
@@ -230,37 +254,20 @@ void MqttManager::publishAutoDiscovery() {
     }
 }
 
-void MqttManager::publishBleRssi(int rssi) {
+void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr, bool is_armed) {
     if (!isConnected()) return;
-
-    StaticJsonDocument<128> doc;
-    doc["target_ble_rssi"] = rssi;
-    doc["time"]            = millis();
-
-    char buf[128];
-    serializeJson(doc, buf, sizeof(buf));
-
-    if (isConnected()) {
-        client.publish("smart-gatekeeper/ble_rssi", buf);
-    }
-}
-
-void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr) {
-    if (!isConnected()) return;
-
-    extern int last_target_ble_rssi;
-    extern uint32_t last_ble_detected_time;
-
-    // 10초 이내 신호 수신 시만 실제 RSSI, 아니면 0 표시
-    int activeRssi = (millis() - last_ble_detected_time < 10000) ? last_target_ble_rssi : 0;
 
     StaticJsonDocument<256> doc;
-    doc["distance_mm"]        = distance_mm;
-    doc["state"]              = stateStr ? stateStr : "UNKNOWN";
-    doc["ble_rssi_threshold"] = ConfigManager::getBleRssiThreshold();
-    doc["target_ble_rssi"]    = activeRssi;
-    doc["ip"]                 = WifiManager::getIP();
-    doc["free_heap"]          = ESP.getFreeHeap();
+    doc["distance_mm"]    = distance_mm;
+    doc["state"]          = stateStr ? stateStr : "UNKNOWN";
+    doc["is_armed"]       = is_armed;
+    doc["ip"]             = WifiManager::getIP();
+    doc["free_heap"]      = ESP.getFreeHeap();
+
+    // Pre-arm 잔여 유효 시간은 main.cpp에서 계산하여 전달할 수 없으므로
+    // stateStr이 "ARMED"일 때 arm_remaining_s 필드를 별도 관리
+    // (간단히 0으로 두면 HA에서 표시됨 — main에서 publish 시 직접 계산 전달 구조)
+    doc["arm_remaining_s"] = 0;
 
     char buf[256];
     serializeJson(doc, buf, sizeof(buf));

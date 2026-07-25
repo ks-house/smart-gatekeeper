@@ -1,6 +1,7 @@
 // src/ConfigManager.cpp
 // =============================================================
 // smart-gatekeeper — ConfigManager 구현
+// v2.0: BLE RSSI 임계값 관련 함수 제거 (BLE Advertiser 모드로 전환)
 // =============================================================
 #include "ConfigManager.h"
 #include "config.h"
@@ -35,13 +36,6 @@ String ConfigManager::getApiKey() {
     return preferences.getString("api_key", API_KEY);
 }
 
-int ConfigManager::getBleRssiThreshold() {
-    return preferences.getInt("ble_rssi", BLE_RSSI_THRESHOLD);
-}
-
-void ConfigManager::setBleRssiThreshold(int rssi) {
-    preferences.putInt("ble_rssi", rssi);
-}
 
 void ConfigManager::setWifiCredentials(const String& ssid, const String& password) {
     preferences.putString("ssid", ssid);

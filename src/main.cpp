@@ -1,18 +1,23 @@
 // src/main.cpp
 // =============================================================
-// smart-gatekeeper — Step 4: BLE 5.0 스캔 & ToF 이중 검증 (Walk-through) 펌웨어
-// (BLEDevice 비동기 스캔 + ToF 50cm 감지 + NAS HTTPS API + MQTTS + OTA + 릴레이)
+// smart-gatekeeper v2.0 — BLE Beacon Advertiser + MQTT Pre-arm + ToF 출입 통제
+// (ESP32-C6 상시 비콘 발신 → 스마트폰 비콘 수신 → NAS 인증 → MQTT arm → ToF 50cm → 릴레이)
 // =============================================================
 #include <Arduino.h>
 #include <Wire.h>
 #include <VL53L0X.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <HTTPClient.h>
 #include <ArduinoJson.h>
+
+// BLE Beacon Advertiser — Arduino-ESP32 내장 Bluedroid BLE (v2.0)
+// NimBLE 교체 이유: NimBLE-Arduino 1.4.x가 pioarduino IDF5.x와 호환 불가 → 내장 Bluedroid 사용
+// Advertiser 전용으로 Bluedroid이 충분하며 별도 라이브러리 불필요
 #include <BLEDevice.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
+#include <BLEAdvertising.h>
+#include <BLEUtils.h>
+// Note: ADV_TYPE_NONCONN_IND(=0x03) 은 esp_gap_ble_api.h 내부 상수이나
+// 사용자 소스 파일에서 직접 include 불가(빌드 경로 제한) → 리터럴로 대체
 
 #include "config.h"
 #include "ConfigManager.h"
@@ -34,189 +39,90 @@ static inline void relayOff() {
   pinMode(PIN_RELAY, INPUT);      // 고임피던스: 전류 차단 = 확실한 OFF
 }
 
-// FSM 상태
+// ─────────────────────────────────────────────────────────────
+// FSM 상태 정의 (v2.0 — ARMED 상태 신규 도입)
+// IDLE     : 대기 중 (ToF 측정 중단, 비콘 발신만 유지)
+// ARMED    : MQTT Pre-arm 수신 후 ToF 활성화 (PRE_ARM_DURATION_MS 이내)
+// RELAY_HOLD: 릴레이 1초 ON 유지 중
+// COOLDOWN : 연속 요청 방지 쿨다운 (10초)
+// ─────────────────────────────────────────────────────────────
 enum class GateState {
-  IDLE,         // 대기 중 (BLE & ToF 감시)
-  VERIFYING,    // NAS HTTPS API 요청 및 인증 대기 중
-  RELAY_HOLD,   // 인증 승인 -> 릴레이 1초 ON 유지 중
-  COOLDOWN      // 연속 요청 방지 쿨다운 중 (10초)
+  IDLE,
+  ARMED,
+  RELAY_HOLD,
+  COOLDOWN
 };
 
 static VL53L0X sensor;
-static GateState state                  = GateState::IDLE;
-static uint32_t  stateMs                = 0;
-static uint32_t  lastMqttMs             = 0;
-uint32_t         last_ble_detected_time = 0; // BLE 타겟 스마트폰 감지 최신 시각 (MqttManager에서도 참조)
-static uint32_t  last_ble_log_time      = 0; // BLE 로그 출력 과도 스팸 방지 디바운싱 시각
-static uint32_t  last_ble_mqtt_pub_time = 0; // BLE RSSI MQTT 실시간 발신 디바운싱 시각
-int              last_target_ble_rssi   = 0; // 인증된 타겟 BLE 스마트폰 실시간 RSSI 값
-static int       currentBleRssiThreshold = -80; // 동적 BLE RSSI 임계값 (NVS 및 MQTT로 제어)
+static GateState state       = GateState::IDLE;
+static uint32_t  stateMs     = 0;
+static uint32_t  lastMqttMs  = 0;
 
-void updateBleRssiThreshold(int newRssi) {
-  currentBleRssiThreshold = newRssi;
-  ConfigManager::setBleRssiThreshold(newRssi);
-  LOGF("[BLE-CONFIG] ⚙️ BLE RSSI 임계값이 %d dBm 으로 동적 변경 & NVS 저장되었습니다!", newRssi);
+// Pre-arm 상태 변수
+static bool     is_armed      = false;
+static uint32_t arm_timestamp = 0;  // millis() 기준 arm 활성화 시각
+
+// ─────────────────────────────────────────────────────────────
+// triggerArm() — MqttManager 콜백에서 호출 (MQTT gatekeeper/arm 수신)
+// ─────────────────────────────────────────────────────────────
+void triggerArm() {
+  is_armed      = true;
+  arm_timestamp = millis();
+  state         = GateState::ARMED;
+  stateMs       = arm_timestamp;
+  LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! ToF 센서 활성화 (%lu ms 유효)", (unsigned long)PRE_ARM_DURATION_MS);
 }
 
 // ─────────────────────────────────────────────────────────────
-// ESP32 BLE 비동기 스캔 콜백 클래스 (NON-CONNECTABLE & 128-bit Raw Payload 완벽 대응)
+// triggerManualDoorOpen() — MQTT 원격 수동 개방 명령 (기존 유지)
 // ─────────────────────────────────────────────────────────────
-class BleScanCallbacks : public BLEAdvertisedDeviceCallbacks {
-  void onResult(BLEAdvertisedDevice advertisedDevice) override {
-    int rssi = advertisedDevice.getRSSI();
-
-    bool uuidMatch = false;
-
-    // 1. 표준 Service UUID 객체 검사 (String 객체 생성 없이 직접 비교)
-    if (advertisedDevice.haveServiceUUID()) {
-      if (advertisedDevice.getServiceUUID().equals(BLEUUID(BLE_TARGET_UUID))) {
-        uuidMatch = true;
-      }
-    }
-
-    // 2. NON-CONNECTABLE (ADV_NONCONN_IND) Raw Payload 128-bit UUID 바이트 매칭
-    if (!uuidMatch && advertisedDevice.getPayloadLength() > 0) {
-      uint8_t* payload = advertisedDevice.getPayload();
-      size_t len = advertisedDevice.getPayloadLength();
-
-      static const uint8_t targetUuidLittle[16] = {
-        0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12, 0x34, 0x12,
-        0x34, 0x12, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12
-      };
-      static const uint8_t targetUuidBig[16] = {
-        0x12, 0x34, 0x56, 0x78, 0x12, 0x34, 0x12, 0x34,
-        0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc
-      };
-
-      if (len >= 16) {
-        for (size_t i = 0; i <= len - 16; i++) {
-          if (memcmp(payload + i, targetUuidLittle, 16) == 0 ||
-              memcmp(payload + i, targetUuidBig, 16) == 0) {
-            uuidMatch = true;
-            break;
-          }
-        }
-      }
-    }
-
-    // 3. Name / Address 검사 — String 객체를 만들지 않고 C 문자열로 직접 비교 (스택 절약 핵심!)
-    if (!uuidMatch) {
-      const char* name = advertisedDevice.getName().c_str();
-      if (name && strstr(name, "SmartKey") != nullptr) {
-        uuidMatch = true;
-      }
-    }
-
-    if (!uuidMatch) {
-      if (strcasecmp(advertisedDevice.getAddress().toString().c_str(), TEST_BLE_MAC) == 0) {
-        uuidMatch = true;
-      }
-    }
-
-    if (uuidMatch) {
-      uint32_t nowMs = millis();
-      last_ble_detected_time = nowMs; // 백그라운드 BLE 감지 시각은 매 250ms마다 즉시 갱신 (ToF 검증용)
-      last_target_ble_rssi = rssi;     // 실시간 감도 RSSI 값 저장 (메인 loop 스레드가 안전하게 발송)
-
-      // 로그 시리얼 출력 스팸 억제 (3초에 1번만 조용하게 출력)
-      if (nowMs - last_ble_log_time >= 3000) {
-        last_ble_log_time = nowMs;
-        if (rssi >= currentBleRssiThreshold) {
-          LOGF("[BLE-SCAN] 📱 Target BLE (128-bit UUID) 감지 중! RSSI: %d dBm (임계값: %d dBm)", rssi, currentBleRssiThreshold);
-        } else {
-          LOGF("[BLE-SCAN] Target BLE 감지되었으나 신호 약함 (RSSI: %d dBm < %d dBm)", rssi, currentBleRssiThreshold);
-        }
-      }
-    }
-  }
-};
-
-// MQTT 원격 명령 수신 시 호출되는 수동 문 열기 함수
 void triggerManualDoorOpen() {
   LOGF("[GATE-MANUAL] *** 원격/MQTT 명령으로 출입문 개방 릴레이 ON *** (딸깍!)");
   relayOn();
-  state = GateState::RELAY_HOLD;
+  state   = GateState::RELAY_HOLD;
   stateMs = millis();
 }
 
 // ─────────────────────────────────────────────────────────────
-// 시놀로지 NAS HTTPS POST 자격 검증 API 호출 함수
+// BLE Beacon Advertiser 초기화 (Arduino-ESP32 내장 Bluedroid BLE, v2.0)
+// 목표: 실외 10~15m 도달 범위, Non-connectable 비콘 상시 발신
+// 스마트폰 앱은 이 UUID를 수신하면 NAS 인증 절차를 개시한다
 // ─────────────────────────────────────────────────────────────
-static bool requestNASVerification(uint16_t distance_mm) {
-  if (!WifiManager::isConnected()) {
-    LOGF("[WARN] Wi-Fi 미연결 상태 — 자격 검증 요청 건너뜀");
-    return false;
-  }
+static void initBleAdvertiser() {
+  LOGF("[BLE-ADV] BLE Beacon Advertiser 초기화 시작... (Arduino-ESP32 내장 Bluedroid 스택)");
 
-  String apiUrl = ConfigManager::getApiUrl();
-  String apiKey = ConfigManager::getApiKey();
+  // Bluedroid BLE 스택 초기화
+  BLEDevice::init("SmartGatekeeper");
 
-  LOGF("[HTTPS] NAS API 인증 요청 중... (%s)", apiUrl.c_str());
+  // Tx Power 최대 설정 (+9 dBm) — 실외 10~15m 도달 목표
+  // ESP_PWR_LVL_P9: +9 dBm (ESP32-C6 BLE 5.3 허용 범위 내)
+  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_ADV);
+  LOGF("[BLE-ADV] Tx Power: +9 dBm (최대 출력, 실외 10~15m 도달)");
 
-  WiFiClientSecure client;
-  client.setCACert(SECRET_ROOT_CA_CERT);  // TLS Root CA 검증 (Let's Encrypt ISRG Root X1)
+  BLEAdvertising* pAdv = BLEDevice::getAdvertising();
 
-  HTTPClient http;
-  if (!http.begin(client, apiUrl)) {
-    LOGF("[ERROR] HTTPS 연결 실패: URL 파싱 에러");
-    return false;
-  }
+  // 광고 페이로드: 128-bit 서비스 UUID 포함
+  // 스마트폰 앱이 이 UUID를 수신하면 NAS 인증 절차를 개시한다
+  pAdv->addServiceUUID(GATEKEEPER_BEACON_UUID);
 
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-KEY", apiKey);
-  http.setTimeout(8000);  // 8초 타임아웃
+  // Scan Response에 장치 이름 실어 전송
+  pAdv->setScanResponse(true);
 
-  StaticJsonDocument<256> doc;
-  doc["ble_mac"]     = TEST_BLE_MAC;
-  doc["auth_key"]    = apiKey;
-  doc["distance_mm"] = distance_mm;
+  // Non-connectable 광고 모드 설정 (연결 시도 차단 — 보안 강화)
+  // ADV_TYPE_NONCONN_IND = 0x03 (esp_gap_ble_api.h의 esp_ble_adv_type_t enum)
+  // 사용자 소스에서 헤더 직접 include 불가 → 리터럴 사용
+  pAdv->setAdvertisementType(0x03);
 
-  String requestBody;
-  serializeJson(doc, requestBody);
+  // 광고 인터밬: 100ms (0x00A0 = 160 x 0.625ms)
+  pAdv->setMinInterval(0x00A0);
+  pAdv->setMaxInterval(0x00A0);
 
-  LOGF("[HTTPS] Request Body: %s", requestBody.c_str());
+  // 비콘 발신 시작 (무한 지속, minPreferred=0 설정으로 예곰 또는 빠른 동작 모드 맞춤)
+  pAdv->setMinPreferred(0x00);
+  pAdv->start();
 
-  int httpCode = http.POST(requestBody);
-  bool isAuthorized = false;
-
-  if (httpCode > 0) {
-    String responseBody = http.getString();
-    LOGF("[HTTPS] HTTP Status: %d | Response: %s", httpCode, responseBody.c_str());
-
-    if (httpCode == HTTP_CODE_OK || httpCode == 201) {
-      StaticJsonDocument<512> respDoc;
-      DeserializationError err = deserializeJson(respDoc, responseBody);
-
-      if (!err) {
-        bool granted = respDoc["granted"] | respDoc["authorized"] | false;
-        const char* msg = respDoc["message"] | "응답 메시지 없음";
-        const char* tenant = respDoc["tenant_name"] | "알 수 없음";
-
-        LOGF("[HTTPS] 파싱 결과: granted=%s | 세입자: %s | 메시지: %s",
-             granted ? "TRUE" : "FALSE", tenant, msg);
-
-        isAuthorized = granted;
-      } else {
-        LOGF("[ERROR] JSON 파싱 실패: %s", err.c_str());
-      }
-    } else {
-      LOGF("[ERROR] 서버 응답 오류 HTTP Code: %d", httpCode);
-    }
-  } else {
-    LOGF("[ERROR] HTTPS POST 실패, 에러: %s", http.errorToString(httpCode).c_str());
-  }
-
-  http.end();
-  return isAuthorized;
-}
-
-// BLE 스캔 완료 시 호출되는 콜백 (스캔이 안전하게 멈춘 상태에서 메모리 청소 및 재시작)
-static void onScanComplete(BLEScanResults scanResults) {
-  BLEScan* pScan = BLEDevice::getScan();
-  if (pScan) {
-    pScan->clearResults(); // 스레드 안전한 타이밍에 스캔 결과 맵 초기화 (18KB 팽창 및 스레드 충돌 원천 차단)
-    pScan->start(2, onScanComplete, false); // 2초 비동기 스캔 지속 재개
-  }
+  LOGF("[BLE-ADV] \u2705 비콘 발신 시작! UUID: %s | Non-connectable | 무한 지속",
+       GATEKEEPER_BEACON_UUID);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -232,7 +138,7 @@ void setup() {
   }
   delay(100);
 
-  // 1. 릴레이 초기화
+  // 1. 릴레이 초기화 (안전 상태: OFF)
   relayOff();
 
   // 2. VL53L0X XSHUT 핀 HIGH 구동
@@ -240,23 +146,23 @@ void setup() {
   digitalWrite(PIN_TOF_XSHUT, HIGH);
   delay(10);
 
-  // 3. I2C 버스 초기화
+  // 3. I2C 버스 초기화 (400kHz 명시 필수 — raw/ST_VL53L0X_Specs.md 참조)
   Wire.begin(PIN_SDA, PIN_SCL, 400000UL);
   delay(20);
 
   // 4. 배너 출력
   LOGF("\n============================================");
-  LOGF(" smart-gatekeeper v%s — BLE 5.0 & ToF 이중 검증 펌웨어", FIRMWARE_VERSION);
+  LOGF(" smart-gatekeeper v%s — BLE Beacon + MQTT Pre-arm", FIRMWARE_VERSION);
   LOGF("============================================");
 
-  // 5. WifiManager 초기화 및 NVS Wi-Fi 접속 시도
+  // 5. WiFi 초기화 및 NVS Wi-Fi 접속 시도
   WifiManager::init();
   if (WifiManager::connectSTA(10000)) {
     // Wi-Fi 연결 성공 시 NTP 시간 동기화 (TLS 안정성 보장)
     configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
     LOGF("[TIME] NTP 시간 동기화 요청 (KST UTC+9)");
     
-    // TLS Root CA 인증서 검증(유효기간)을 위해 시간 동기화가 완료될 때까지 확실히 대기합니다.
+    // TLS Root CA 인증서 검증(유효기간)을 위해 시간 동기화가 완료될 때까지 확실히 대기
     struct tm timeinfo;
     uint32_t startMs = millis();
     LOGF("[TIME] 시간 동기화 대기 중...");
@@ -277,42 +183,29 @@ void setup() {
     MqttManager::init();
     OtaManager::init();
 
-    // 부팅 시 시놀로지 NAS version.json 기반 자동 OTA 체크 (사용자 요청으로 잠시 Disable, 수동 OTA만 유지)
-    // LOGF("[OTA] 부팅 시 펌웨어 업데이트 확인 시작...");
-    // OtaManager::checkAndUpdate(false);
-    LOGF("[OTA] 부팅 시 자동 OTA 체크가 비활성화 상태입니다. (MQTT/HA 수동 OTA 트리거만 유지)");
+    LOGF("[OTA] 부팅 시 자동 OTA 체크 비활성화 상태. (MQTT/HA 수동 OTA 트리거만 유지)");
   } else {
     LOGF("[WIFI] 접속 실패 -> AP 설정 모드로 전환합니다.");
     WifiManager::startAP();
   }
 
-  // 6. VL53L0X 센서 초기화
-  sensor.setTimeout(500);
+  // 6. VL53L0X 센서 초기화 (항상 초기화, 측정은 ARMED 상태에서만 수행)
+  sensor.setTimeout(500); // init() 전 반드시 설정 (I2C 단선 시 무한 블로킹 방지)
   LOGF("[INFO] ToF 센서 초기화 중...");
   if (!sensor.init()) {
     LOGF("[WARN] VL53L0X init 실패 (센서 연결 상태 점검 필요)");
   } else {
+    // 연속 측정 모드 시작 (항상 준비 상태 유지, ARMED 여부는 FSM이 판단)
     sensor.startContinuous(TOF_POLL_INTERVAL_MS);
-    LOGF("[INFO] ToF 센서 초기화 성공!");
+    LOGF("[INFO] ToF 센서 초기화 성공! (연속 측정 모드, ARMED 상태에서만 활용)");
   }
 
-  // NVS 저장소에서 동적 BLE RSSI 임계값 불러오기
-  currentBleRssiThreshold = ConfigManager::getBleRssiThreshold();
-
-  // 7. BLE 5.0 비동기 스캐너 시작 (setup의 맨 마지막 단계에서 비동기 구동)
-  LOGF("[BLE] 7. BLE 5.0 비동기 스캐너 시작 (Active Scan 활성화)");
-  BLEDevice::init("SmartGatekeeper-Scan");
-  BLEScan* pScan = BLEDevice::getScan();
-  pScan->setAdvertisedDeviceCallbacks(new BleScanCallbacks(), false); // wantDuplicates=false : 18KB 패이로드 누적 팽창 차단
-  pScan->setActiveScan(true); // Active Scan: Scan Response 데이터 요청 (휴대폰 128bit UUID 수신 필수!)
-  pScan->setInterval(100);
-  pScan->setWindow(99);
-  pScan->start(2, onScanComplete, false); // 2초 비동기 주기적 스캔 시작 (onScanComplete로 지속 순환)
-  LOGF("[BLE] 타겟 UUID: %s | RSSI 임계값: %d dBm | 유효 시간: %lu ms",
-       BLE_TARGET_UUID, currentBleRssiThreshold, (unsigned long)BLE_VALID_MS);
+  // 7. BLE Beacon Advertiser 시작 (v2.0 핵심 — 스캐너 완전 대체)
+  initBleAdvertiser();
 
   LOGF("============================================");
   LOGF(" [SYSTEM] setup() 초기화 완료! 메인 루프 진입");
+  LOGF(" [SYSTEM] FSM 초기 상태: IDLE (MQTT Pre-arm 대기)");
   LOGF("============================================");
 }
 
@@ -327,99 +220,109 @@ void loop() {
     return;
   }
 
-  // MQTT 루프 처리 (이 안에서 triggerManualDoorOpen이 호출될 수 있음)
+  // MQTT 루프 처리 (이 안에서 triggerArm, triggerManualDoorOpen 호출 가능)
   MqttManager::update();
 
-  uint32_t now = millis(); // MQTT 수신 후 최신 시각으로 갱신
+  uint32_t now = millis();
 
-  // ToF 거리 측정
+  // ─── ToF 거리 측정 (ARMED 상태에서만 실질적으로 활용) ───────────────
   uint16_t mm = sensor.readRangeContinuousMillimeters();
   bool validReading = !(sensor.timeoutOccurred() || mm == 65535);
 
-  // 10초 주기 MQTT 텔레메트리 발행 및 BLE 스캔 결과 메모리 청소 (RAM Out-Of-Memory 누수 방지)
-  if (now - lastMqttMs >= 10000) {
-    lastMqttMs = now;
-    const char* stateStr = (state == GateState::IDLE) ? "IDLE" :
-                           (state == GateState::VERIFYING) ? "VERIFYING" :
-                           (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
-    MqttManager::publishTelemetry(validReading ? mm : 0, stateStr);
-
-    // BLE 스캔 결과 맵/벡터 메모리 주기적 초기화는 비동기 무한 스캔 중에 
-    // 메인 스레드에서 강제 호출 시 std::map 메모리 구조 파괴(Load access fault)를 유발하므로 제거함!
-    // BLEScan* pScan = BLEDevice::getScan();
-    // if (pScan) {
-    //   pScan->clearResults();
-    // }
+  // ─── Pre-arm 만료 체크 (ARMED 상태에서만 수행) ──────────────────────
+  if (is_armed && (now - arm_timestamp >= PRE_ARM_DURATION_MS)) {
+    LOGF("[GATE] ⏱️ Pre-arm 유효 시간 만료 (%lu ms 경과). IDLE 복귀.", (unsigned long)PRE_ARM_DURATION_MS);
+    is_armed = false;
+    state    = GateState::IDLE;
+    MqttManager::publishEvent("arm_expired", "Pre-arm timeout, returning to IDLE");
   }
 
-  // 인증된 BLE 스마트폰 신호 실시간 전송 (메인 스레드 단일 접근으로 스레드 충돌 100% 방지)
-  if (last_ble_detected_time > 0 && (now - last_ble_detected_time < 10000)) {
-    if (now - last_ble_mqtt_pub_time >= 1000) {
-      last_ble_mqtt_pub_time = now;
-      MqttManager::publishBleRssi(last_target_ble_rssi);
+  // ─── Pre-arm 잔여 시간 계산 (텔레메트리용) ──────────────────────────
+  uint32_t armRemainingMs = 0;
+  if (is_armed && arm_timestamp > 0) {
+    uint32_t elapsed = now - arm_timestamp;
+    armRemainingMs = (elapsed < PRE_ARM_DURATION_MS) ? (PRE_ARM_DURATION_MS - elapsed) : 0;
+  }
+
+  // ─── 10초 주기 MQTT 텔레메트리 발행 ────────────────────────────────
+  if (now - lastMqttMs >= 10000) {
+    lastMqttMs = now;
+    const char* stateStr = (state == GateState::IDLE)      ? "IDLE" :
+                           (state == GateState::ARMED)      ? "ARMED" :
+                           (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
+    MqttManager::publishTelemetry(validReading ? mm : 0, stateStr, is_armed);
+
+    // Pre-arm 잔여 시간을 별도 이벤트로 발행 (ARMED 상태일 때만)
+    if (is_armed) {
+      LOGF("[GATE] PRE-ARMED 상태 유지 중. 잔여 유효 시간: %lu 초", (unsigned long)(armRemainingMs / 1000));
     }
   }
 
-  uint32_t bleAge = (last_ble_detected_time > 0) ? (now - last_ble_detected_time) : 999999;
-  bool isBleValid = (last_ble_detected_time > 0) && (bleAge < BLE_VALID_MS);
-
+  // ─────────────────────────────────────────────────────────────
+  // FSM (Finite State Machine) — v2.0
+  // ─────────────────────────────────────────────────────────────
   switch (state) {
 
+    // ──────────────────────────────────────────────────────────
+    // IDLE: MQTT Pre-arm 대기 상태
+    // ToF 측정 결과는 무시 (is_armed == false)
+    // BLE Beacon만 상시 발신 중
+    // ──────────────────────────────────────────────────────────
     case GateState::IDLE:
-      // 1. BLE 인증 신호가 10초 이내에 수신된 유효 사용자 상태인가?
-      if (isBleValid && validReading && mm <= DISTANCE_THRESHOLD_MM) {
-        LOGF("[GATE] 📱 BLE 인증 신호 수신 상태에서 ToF %u mm 감지! (BLE 경과: %lu ms)", mm, (unsigned long)bleAge);
-        LOGF("[GATE] ✅ BLE + ToF 이중 검증 성공! NAS 자격 검증 요청...");
-        
-        state = GateState::VERIFYING;
-        stateMs = now;
-        MqttManager::publishEvent("gate_trigger", "BLE + ToF Validation Passed");
+      // IDLE 상태에서 ToF 감지는 완전히 무시 (미인증 접근자 차단)
+      // triggerArm() 호출 시 ARMED 상태로 전이 (MqttManager 콜백 경로)
+      break;
 
-        bool authorized = requestNASVerification(mm);
+    // ──────────────────────────────────────────────────────────
+    // ARMED: MQTT Pre-arm 수신 후 ToF 활성 상태 (최대 PRE_ARM_DURATION_MS)
+    // 50cm 이내 감지 시 릴레이 1초 ON → RELAY_HOLD → COOLDOWN
+    // ──────────────────────────────────────────────────────────
+    case GateState::ARMED:
+      if (validReading && mm <= DISTANCE_THRESHOLD_MM) {
+        LOGF("[GATE] ✅ ARMED 상태에서 ToF %u mm 감지! (PRE-ARM 유효 — arm 경과: %lu ms)",
+             mm, (unsigned long)(now - arm_timestamp));
+        LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)", (unsigned long)RELAY_HOLD_MS);
 
-        if (authorized) {
-          LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)", (unsigned long)RELAY_HOLD_MS);
-          relayOn();
-          MqttManager::publishEvent("door_open", "Access Granted");
-          state = GateState::RELAY_HOLD;
-          stateMs = millis();
-        } else {
-          LOGF("[GATE] *** 출입 거부 (NAS 미승인) ***. 쿨다운 진입.");
-          MqttManager::publishEvent("door_deny", "Access Denied");
-          state = GateState::COOLDOWN;
-          stateMs = millis();
-        }
-      } else if (!isBleValid && validReading && mm <= DISTANCE_THRESHOLD_MM) {
-        // BLE 없이 ToF 센서만 감지된 경우 (외부인 진입)
-        static uint32_t lastWarnMs = 0;
-        if (now - lastWarnMs >= 5000) {
-          lastWarnMs = now;
-          LOGF("[GATE-WARN] ❌ ToF %u mm 감지되었으나, 유효한 BLE 스마트폰 신호가 없음 (외부인/미인증)", mm);
-          MqttManager::publishEvent("ble_missing", "BLE Signal Missing");
+        relayOn();
+
+        is_armed = false; // Pre-arm 소비 (단발 사용)
+        MqttManager::publishEvent("door_open", "Access Granted via MQTT Pre-arm + ToF");
+
+        state   = GateState::RELAY_HOLD;
+        stateMs = millis();
+
+      } else if (!validReading) {
+        // ToF 읽기 오류 — 실외 태양광 간섭 가능성 (로그만 남김)
+        static uint32_t lastTofErrMs = 0;
+        if (now - lastTofErrMs >= 3000) {
+          lastTofErrMs = now;
+          LOGF("[WARN] ARMED 상태에서 ToF 유효하지 않은 읽기 (태양광 IR 간섭 또는 센서 오류 의심)");
         }
       }
       break;
 
-    case GateState::VERIFYING:
-      break;
-
+    // ──────────────────────────────────────────────────────────
+    // RELAY_HOLD: 릴레이 1초 ON 유지
+    // ──────────────────────────────────────────────────────────
     case GateState::RELAY_HOLD:
       if (millis() - stateMs >= RELAY_HOLD_MS) {
         relayOff();
-        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 문 주변 상주 여부 감시 쿨다운 시작.", (unsigned long)RELAY_HOLD_MS);
+        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 쿨다운 진입.", (unsigned long)RELAY_HOLD_MS);
         MqttManager::publishEvent("door_close", "Relay Timeout OFF");
-        state = GateState::COOLDOWN;
+        state   = GateState::COOLDOWN;
         stateMs = millis();
       }
       break;
 
+    // ──────────────────────────────────────────────────────────
+    // COOLDOWN: 연속 개방 방지 (COOLDOWN_MS = 10초)
+    // 쿨다운 종료 시 IDLE 복귀 (다음 Pre-arm 준비)
+    // ──────────────────────────────────────────────────────────
     case GateState::COOLDOWN:
-      // 쿨다운 스마트 리셋: 인증된 BLE 신호가 계속 잡히거나 ToF 50cm 이내에 사람이 계속 머무르면 쿨다운 타임 리셋!
-      if (isBleValid || (validReading && mm <= DISTANCE_THRESHOLD_MM)) {
-        stateMs = now; // 문 주변에 상주하는 동안 쿨다운 타이머를 지속 리셋 (재오픈 차단)
-      } else if (millis() - stateMs >= 3000) { // 문 주변(BLE 및 ToF)을 완전히 벗어나고 3초 경과 시 복귀
-        LOGF("[GATE] 🚪 문 주변 이탈 확인 -> IDLE 대기 상태 복귀 (다음 출입 승인 준비 완료)");
+      if (millis() - stateMs >= COOLDOWN_MS) {
+        LOGF("[GATE] 🚪 쿨다운 완료 -> IDLE 대기 상태 복귀 (다음 MQTT Pre-arm 승인 대기)");
         state = GateState::IDLE;
+        MqttManager::publishEvent("gate_idle", "Cooldown complete, ready for next Pre-arm");
       }
       break;
   }

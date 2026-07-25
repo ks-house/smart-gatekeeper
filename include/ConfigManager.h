@@ -19,8 +19,6 @@ public:
     static String getApiUrl();
     static String getApiKey();
 
-    static int getBleRssiThreshold();
-    static void setBleRssiThreshold(int rssi);
 
     static void setWifiCredentials(const String& ssid, const String& password);
     static void setApiCredentials(const String& url, const String& key);

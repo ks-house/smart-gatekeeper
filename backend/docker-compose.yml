@@ -17,7 +17,8 @@ services:
       - mariadb_data:/var/lib/mysql
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$MYSQL_ROOT_PASSWORD"]
+      # MariaDB 공식 내장 헬스체크 스크립트 활용 (가장 안전함)
+      test: [ "CMD-SHELL", "healthcheck.sh --connect --innodb_initialized" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,12 +30,22 @@ services:
     container_name: gatekeeper-api
     restart: always
     environment:
+      # ── DB 연결 ──────────────────────────────────────────────
       DB_HOST: db
       DB_PORT: 3306
       DB_NAME: ${DB_NAME:-smart_gatekeeper}
       DB_USER: ${DB_USER:-gatekeeper_user}
       DB_PASSWORD: ${DB_PASSWORD:-gatekeeper_pass}
       TZ: Asia/Seoul
+      # ── MQTT Broker (v2.0 — gatekeeper/arm Pre-arm 발행용) ──
+      # ESP32-C6가 구독 중인 MQTTS 브로커 접속 정보
+      # 시놀로지 NAS의 MQTT 브로커 주소 및 포트를 .env 파일에 설정
+      MQTT_HOST: ${MQTT_HOST:-}
+      MQTT_PORT: ${MQTT_PORT:-8883}
+      MQTT_USER: ${MQTT_USER:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_USE_TLS: ${MQTT_USE_TLS:-true}
+      MQTT_TOPIC_ARM: ${MQTT_TOPIC_ARM:-gatekeeper/arm}
     ports:
       - "8000:8000"
     depends_on:
