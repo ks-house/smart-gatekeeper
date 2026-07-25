@@ -42,7 +42,10 @@ jobs:
           #define SECRET_MQTT_PASSWORD "${{ secrets.SECRET_MQTT_PASSWORD }}"
           #define SECRET_OTA_VERSION_URL "${{ secrets.SECRET_OTA_VERSION_URL }}"
           #define SECRET_OTA_FIRMWARE_URL "${{ secrets.SECRET_OTA_FIRMWARE_URL }}"
+          #define SECRET_APK_VERSION_URL "${{ secrets.SECRET_APK_VERSION_URL }}"
+          #define SECRET_APK_DOWNLOAD_URL "${{ secrets.SECRET_APK_DOWNLOAD_URL }}"
           EOF
+
 
           # Append multi-line Root CA cert using Raw String Literal
           printf '#define SECRET_ROOT_CA_CERT R\"(\n%s\n)\"\n' "${SECRET_ROOT_CA_CERT}" >> include/secrets.h
