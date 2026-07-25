@@ -73,14 +73,31 @@ class UpdateChecker {
 
     try {
       final uri = Uri.parse(targetUrl);
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      debugPrint('[UpdateChecker] APK 다운로드 시도: $targetUrl');
+      bool launched = false;
+      
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        debugPrint('[UpdateChecker] externalApplication 실행 실패: $e');
+      }
+
+      if (!launched) {
+        try {
+          launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+        } catch (e) {
+          debugPrint('[UpdateChecker] inAppBrowserView 실행 실패: $e');
+        }
+      }
+
       if (!launched) {
         await launchUrl(uri, mode: LaunchMode.platformDefault);
       }
       return true;
     } catch (e) {
-      debugPrint('[UpdateChecker] APK 다운로드 실행 오류: $e');
+      debugPrint('[UpdateChecker] APK 다운로드 실행 최종 오류: $e');
     }
+
 
     return false;
   }
