@@ -394,8 +394,10 @@
   - `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `POST_NOTIFICATIONS` 권한 및 Service 컴포넌트 선언
 - **`gatekeeper_app/lib/services/foreground_service.dart`**:
   - 화면이 꺼지거나 주머니 속 잠금 상태에서도 안드로이드 Doze Mode를 극복하고 24시간 BLE 비콘 스캐너를 백그라운드에서 지속 유지하는 포그라운드 서비스 및 알림창 헬퍼 구축
-- **`gatekeeper_app/lib/main.dart`**:
-  - `WithForegroundTask` 래퍼 및 최초 실행 시 배터리 최적화 제외 동의 및 포그라운드 서비스 자동 시작 로직 적용
+- **`backend/app/main.py` & `backend/docker-compose.yml`**:
+  - 타사 포트 `4443` 차단 이슈 극복을 위해, 웹뷰가 정상 구동 중인 동일 포트(`4442`)에서 `GET /api/v1/download/apk` 및 `/gatekeeper_apk/ks-house-gatekeeper.apk` 직접 서비스 추가 ➔ 헤더 `application/vnd.android.package-archive` 명시
+  - `docker-compose.yml` 내 `/docker/smartbox_ota/gatekeeper_apk` 경로 볼륨 바인딩 추가
+
 
 
 

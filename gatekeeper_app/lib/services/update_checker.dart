@@ -71,7 +71,8 @@ class UpdateChecker {
             ? downloadUrl!
             : (downloadUrlFromEnv.isNotEmpty
                 ? downloadUrlFromEnv
-                : 'https://tworimpa.synology.me:4443/gatekeeper_apk/ks-house-gatekeeper.apk'));
+                : 'https://tworimpa.synology.me:4442/api/v1/download/apk'));
+
 
     if (targetUrl.isEmpty) {
       debugPrint('[UpdateChecker] APK 다운로드 URL이 설정되지 않았습니다.');

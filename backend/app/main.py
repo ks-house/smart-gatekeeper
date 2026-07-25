@@ -59,9 +59,10 @@ MQTT_TOPIC_ARM      = os.getenv("MQTT_TOPIC_ARM", "gatekeeper/arm")
 MQTT_TOPIC_FORCE    = os.getenv("MQTT_TOPIC_FORCE_OPEN", "gatekeeper/force_open")
 
 BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-APK_VERSION_URL     = os.getenv("APK_VERSION_URL", "https://tworimpa.synology.me:4443/gatekeeper_apk/version.json")
-APK_DOWNLOAD_URL    = os.getenv("APK_DOWNLOAD_URL", "https://tworimpa.synology.me:4443/gatekeeper_apk/ks-house-gatekeeper.apk")
+APK_VERSION_URL     = os.getenv("APK_VERSION_URL", "https://tworimpa.synology.me:4442/api/v1/download/version.json")
+APK_DOWNLOAD_URL    = os.getenv("APK_DOWNLOAD_URL", "https://tworimpa.synology.me:4442/api/v1/download/apk")
 WEBVIEW_URL         = os.getenv("WEBVIEW_URL", "https://tworimpa.synology.me:4442/app")
+
 
 # ─── DB 연결 헬퍼 ─────────────────────────────────────────────
 def get_db():
@@ -298,7 +299,47 @@ def health_check():
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
+@app.get("/api/v1/download/apk")
+@app.get("/gatekeeper_apk/{filename}")
+def download_latest_apk(filename: str = "ks-house-gatekeeper.apk"):
+    """Port 4442 동일 포트에서 최신 APK 파일 직접 다운로드 제공"""
+    apk_paths = [
+        os.path.join("/app/gatekeeper_apk", filename),
+        os.path.join("/app/gatekeeper_apk", "ks-house-gatekeeper.apk"),
+        os.path.join("/app/static/gatekeeper_apk", filename),
+        "/docker/smartbox_ota/gatekeeper_apk/" + filename,
+        "/volume1/docker/smartbox_ota/gatekeeper_apk/" + filename,
+    ]
+    for path in apk_paths:
+        if os.path.exists(path):
+            log.info(f"[APK-DOWNLOAD] APK 파일 직접 전송: {path}")
+            return FileResponse(
+                path=path,
+                filename="ks-house-gatekeeper.apk",
+                media_type="application/vnd.android.package-archive"
+            )
+    log.error("[APK-DOWNLOAD] APK 파일을 서버에서 찾을 수 없습니다.")
+    return JSONResponse(status_code=404, content={"error": "APK file not found on server"})
+
+@app.get("/api/v1/download/version.json")
+def download_version_json():
+    """Port 4442 동일 포트에서 version.json 동적 제공"""
+    v_paths = [
+        "/app/gatekeeper_apk/version.json",
+        "/docker/smartbox_ota/gatekeeper_apk/version.json",
+        "/volume1/docker/smartbox_ota/gatekeeper_apk/version.json",
+    ]
+    for path in v_paths:
+        if os.path.exists(path):
+            return FileResponse(path=path, media_type="application/json")
+    return JSONResponse(content={
+        "version": "1.0.0",
+        "build_number": 10,
+        "apk_url": "https://tworimpa.synology.me:4442/api/v1/download/apk"
+    })
+
 @app.get("/api/v1/config")
+
 def get_remote_config():
     """Flutter Native Shell 및 모바일 앱에 동적 설정 반환 (Remote Config)"""
     return JSONResponse(

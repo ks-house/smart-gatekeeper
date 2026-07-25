@@ -70,7 +70,8 @@ jobs:
             "version": "${{ env.FULL_VERSION }}",
             "build_number": ${{ github.run_number }},
             "commit": "${{ github.sha }}",
-            "apk_url": "${{ secrets.SECRET_APK_DOWNLOAD_URL || 'https://tworimpa.synology.me:4443/gatekeeper_apk/ks-house-gatekeeper.apk' }}",
+            "apk_url": "${{ secrets.SECRET_APK_DOWNLOAD_URL || 'https://tworimpa.synology.me:4442/api/v1/download/apk' }}",
+
             "updated_at": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           }
           EOF
