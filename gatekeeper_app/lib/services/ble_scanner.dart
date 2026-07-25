@@ -113,7 +113,8 @@ class BleScanner {
     if (_lastPrearmTime != null) {
       final difference = now.difference(_lastPrearmTime!).inSeconds;
       if (difference < cooldownSeconds) {
-        debugPrint('[BleScanner] 쿨다운 대기 중... ($difference초 경과 / ${cooldownSeconds}초)');
+        debugPrint('[BleScanner] 쿨다운 대기 중... ($difference초 경과 / $cooldownSeconds초)');
+
         return;
       }
     }
