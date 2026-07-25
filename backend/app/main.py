@@ -65,6 +65,15 @@ def get_db():
     )
 
 # ─── MQTT Helper Functions ────────────────────────────────────
+def _create_mqtt_client(client_id: str):
+    """paho-mqtt 1.x 및 2.x 버전 호환 클라이언트 생성 헬퍼"""
+    try:
+        if hasattr(mqtt, "CallbackAPIVersion"):
+            return mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, protocol=mqtt.MQTTv5)
+        return mqtt.Client(client_id=client_id, protocol=mqtt.MQTTv5)
+    except Exception:
+        return mqtt.Client(client_id=client_id)
+
 def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/arm 토픽 발행."""
     if not HAS_PAHO_MQTT:
@@ -75,9 +84,8 @@ def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
         log.warning("[MQTT-ARM] MQTT_HOST 미설정 — arm 발행 건너뜀")
         return False
 
-
     try:
-        client = mqtt.Client(client_id=f"gatekeeper-api-{tenant_id}", protocol=mqtt.MQTTv5)
+        client = _create_mqtt_client(f"gatekeeper-api-{tenant_id}")
         client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
         if MQTT_USE_TLS:
@@ -105,7 +113,7 @@ def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
         log.error(f"[MQTT-ARM] ❌ MQTT 예외: {e}")
         return False
 
-def publish_force_open_to_mqtt(tenant_name: str = " 수동원격") -> bool:
+def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/force_open 강제 개방 토픽 발행."""
     if not HAS_PAHO_MQTT:
         log.warning("[MQTT-FORCE] paho-mqtt 패키지 미설치 — force_open 발행 건너뜀")
@@ -115,9 +123,8 @@ def publish_force_open_to_mqtt(tenant_name: str = " 수동원격") -> bool:
         log.warning("[MQTT-FORCE] MQTT_HOST 미설정 — force_open 발행 건너뜀")
         return False
 
-
     try:
-        client = mqtt.Client(client_id="gatekeeper-force-open", protocol=mqtt.MQTTv5)
+        client = _create_mqtt_client("gatekeeper-force-open")
         client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
         if MQTT_USE_TLS:
@@ -143,6 +150,7 @@ def publish_force_open_to_mqtt(tenant_name: str = " 수동원격") -> bool:
     except Exception as e:
         log.error(f"[MQTT-FORCE] ❌ MQTT 예외: {e}")
         return False
+
 
 # ─── Pydantic 스키마 ──────────────────────────────────────────
 class AuthVerifyRequest(BaseModel):
