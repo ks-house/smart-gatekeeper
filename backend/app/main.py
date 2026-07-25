@@ -12,10 +12,11 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 
 import pymysql
+
 try:
     import paho.mqtt.client as mqtt
     HAS_PAHO_MQTT = True
-except ImportError:
+except Exception:
     mqtt = None
     HAS_PAHO_MQTT = False
 
@@ -27,6 +28,19 @@ from pydantic import BaseModel, Field
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
+
+# paho-mqtt 미설치 시 자동 동적 설치 시도 (도커 이미지 캐시 문제 완전 방어)
+if not HAS_PAHO_MQTT:
+    try:
+        import subprocess, sys
+        log.info("[STARTUP] paho-mqtt 라이브러리 자동 동기화 설치 진행 중...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "paho-mqtt==1.6.1"])
+        import paho.mqtt.client as mqtt
+        HAS_PAHO_MQTT = True
+        log.info("[STARTUP] ✅ paho-mqtt 라이브러리 동적 설치 및 로드 성공!")
+    except Exception as _install_err:
+        log.error(f"[STARTUP] ❌ paho-mqtt 라이브러리 동적 설치 실패: {_install_err}")
+
 
 # ─── 환경변수 (docker-compose에서 주입) ──────────────────────
 DB_HOST     = os.getenv("DB_HOST", "db")
