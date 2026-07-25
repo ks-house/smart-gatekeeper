@@ -1,0 +1,40 @@
+name: Deploy Backend to Synology NAS
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy_backend.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy_backend:
+    name: Deploy FastAPI Backend & Admin UI to NAS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy Backend Files to Synology NAS via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.NAS_HOST }}
+          username: ${{ secrets.NAS_USER }}
+          password: ${{ secrets.NAS_PASSWORD }}
+          port: ${{ secrets.NAS_PORT || 22 }}
+          local_path: './backend/*'
+          remote_path: ${{ secrets.NAS_BACKEND_TARGET_DIR || '/volume1/docker/smart-gatekeeper/backend/' }}
+          sftp_only: true
+
+      - name: Restart Backend Container on Synology NAS via SSH (Optional)
+        uses: appleboy/ssh-action@v1.0.3
+        continue-on-error: true
+        with:
+          host: ${{ secrets.NAS_HOST }}
+          username: ${{ secrets.NAS_USER }}
+          password: ${{ secrets.NAS_PASSWORD }}
+          port: ${{ secrets.NAS_PORT || 22 }}
+          script: |
+            cd ${{ secrets.NAS_BACKEND_TARGET_DIR || '/volume1/docker/smart-gatekeeper/backend/' }}
+            docker compose restart api || docker compose up -d --build api || true
