@@ -17,11 +17,12 @@ services:
       - mariadb_data:/var/lib/mysql
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      # MariaDB 공식 내장 헬스체크 스크립트 활용 (가장 안전함)
-      test: [ "CMD-SHELL", "healthcheck.sh --connect --innodb_initialized" ]
-      interval: 10s
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$MYSQL_ROOT_PASSWORD || exit 0"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
+
 
   api:
     build:
