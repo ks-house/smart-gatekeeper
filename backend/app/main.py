@@ -12,7 +12,13 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 
 import pymysql
-import paho.mqtt.client as mqtt
+try:
+    import paho.mqtt.client as mqtt
+    HAS_PAHO_MQTT = True
+except ImportError:
+    mqtt = None
+    HAS_PAHO_MQTT = False
+
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -60,9 +66,14 @@ def get_db():
 # ─── MQTT Helper Functions ────────────────────────────────────
 def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/arm 토픽 발행."""
+    if not HAS_PAHO_MQTT:
+        log.warning("[MQTT-ARM] paho-mqtt 패키지 미설치 — arm 발행 건너뜀")
+        return False
+
     if not MQTT_HOST:
         log.warning("[MQTT-ARM] MQTT_HOST 미설정 — arm 발행 건너뜀")
         return False
+
 
     try:
         client = mqtt.Client(client_id=f"gatekeeper-api-{tenant_id}", protocol=mqtt.MQTTv5)
@@ -95,9 +106,14 @@ def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
 
 def publish_force_open_to_mqtt(tenant_name: str = " 수동원격") -> bool:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/force_open 강제 개방 토픽 발행."""
+    if not HAS_PAHO_MQTT:
+        log.warning("[MQTT-FORCE] paho-mqtt 패키지 미설치 — force_open 발행 건너뜀")
+        return False
+
     if not MQTT_HOST:
         log.warning("[MQTT-FORCE] MQTT_HOST 미설정 — force_open 발행 건너뜀")
         return False
+
 
     try:
         client = mqtt.Client(client_id="gatekeeper-force-open", protocol=mqtt.MQTTv5)
