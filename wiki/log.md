@@ -323,6 +323,19 @@
 - **Flutter Build 명시**: `flutter build apk --build-name="${FULL_VERSION}" --build-number=${{ github.run_number }}` 주입
 - **`dist/version.json` 업데이트**: `"version": "${{ env.FULL_VERSION }}"` 동기화 적용
 
+## [2026-07-25] code | 백엔드 호스팅 WebView 웹 어플리케이션(index.html) 및 REST API 구현 완료
+
+- **`backend/app/static/index.html` 신규 구축**:
+  - 모바일 WebView 전용 리치 웹 어플리케이션 UI (Glassmorphism, Dark Mode, Pulse 릴레이 개방 버튼)
+  - 세입자 승인 상태 카드, 원격 문 열기 수동 조작 UI, 가입 신청 폼 및 최근 출입 이력 컴포넌트 포함
+- **`backend/app/main.py` 기능 확장**:
+  - `GET /app`: WebView 메인 화면 반환 (Static HTML 라우트)
+  - `GET /api/v1/config`: Remote Config 제공 (`beacon_uuid`, `cooldown_sec`, `apk_version_url`, `apk_download_url`, `webview_url`)
+  - `POST /api/v1/user/request`: 세입자 권한 가입 신청 API
+  - `POST /api/v1/door/prearm`: 비콘 감지 사전 승인 MQTT arm 발행 API
+  - `POST /api/v1/door/open`: WebView 수동 문 열기 MQTT force_open 발행 API
+
+
 
 
 
