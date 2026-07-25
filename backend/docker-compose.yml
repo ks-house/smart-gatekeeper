@@ -48,9 +48,12 @@ services:
       MQTT_TOPIC_ARM: ${MQTT_TOPIC_ARM:-gatekeeper/arm}
     ports:
       - "8000:8000"
+    volumes:
+      - ./app:/app
     depends_on:
       db:
         condition: service_healthy
+
 
 volumes:
   mariadb_data:
