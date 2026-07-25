@@ -66,6 +66,14 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         return;
     }
 
+    // ─── gatekeeper/force_open — 수동 원격 강제 개방 처리 (v2.0) ─────────
+    if (strcmp(topic, "gatekeeper/force_open") == 0) {
+        LOGF("[MQTT-FORCE] ✅ 수동 원격 문 열기 수신 → 릴레이 개방 (딸깍!)");
+        triggerManualDoorOpen();
+        publishEvent("force_opened", "Gate opened via MQTT force_open");
+        return;
+    }
+
     // ─── smart-gatekeeper/cmd — 원격 명령 처리 ──────────────────────────
     StaticJsonDocument<256> doc;
     if (deserializeJson(doc, message)) {
@@ -86,6 +94,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
             ESP.restart();
         }
     }
+
 }
 
 void MqttManager::update() {
