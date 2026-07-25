@@ -35,10 +35,11 @@ DB_NAME     = os.getenv("DB_NAME", "smart_gatekeeper")
 DB_USER     = os.getenv("DB_USER", "gatekeeper_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "gatekeeper_pass")
 
-MQTT_HOST           = os.getenv("MQTT_HOST", "")
-MQTT_PORT           = int(os.getenv("MQTT_PORT", "8883"))
-MQTT_USER           = os.getenv("MQTT_USER", "")
-MQTT_PASSWORD       = os.getenv("MQTT_PASSWORD", "")
+MQTT_HOST           = os.getenv("MQTT_HOST", "tworimpa.synology.me")
+MQTT_PORT           = int(os.getenv("MQTT_PORT", "4883"))
+MQTT_USER           = os.getenv("MQTT_USER", "gatekeeper_mqtt")
+MQTT_PASSWORD       = os.getenv("MQTT_PASSWORD", "gatekeeper_mqtt_pass")
+
 MQTT_USE_TLS        = os.getenv("MQTT_USE_TLS", "true").lower() == "true"
 MQTT_TOPIC_ARM      = os.getenv("MQTT_TOPIC_ARM", "gatekeeper/arm")
 MQTT_TOPIC_FORCE    = os.getenv("MQTT_TOPIC_FORCE_OPEN", "gatekeeper/force_open")
