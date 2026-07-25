@@ -1,0 +1,89 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'ble_scanner.dart';
+
+@pragma('vm:entry-point')
+void startCallback() {
+  FlutterForegroundTask.setTaskHandler(GatekeeperTaskHandler());
+}
+
+class GatekeeperTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    debugPrint('[ForegroundTask] 🛡️ 백그라운드 상주 포그라운드 서비스 구동 시작');
+    await BleScanner().initialize();
+  }
+
+  @override
+  Future<void> onRepeatEvent(DateTime timestamp) async {
+    if (!BleScanner().isScanning) {
+      await BleScanner().startScanning();
+    }
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp) async {
+    debugPrint('[ForegroundTask] 백그라운드 서비스 정지');
+  }
+
+  @override
+  void onNotificationButtonPressed(String id) {}
+
+  @override
+  void onNotificationNotificationPressed() {
+    FlutterForegroundTask.launchApp();
+  }
+
+  @override
+  void onNotificationDismissed() {}
+}
+
+class ForegroundServiceManager {
+  static Future<void> initForegroundTask() async {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'smart_key_foreground_channel',
+        channelName: 'Smart Key Background Scan Service',
+        channelDescription: '화면이 꺼져도 출입문 자동 감지 서비스를 지속 유지합니다.',
+        channelImportance: NotificationImportance.LOW,
+        priority: NotificationPriority.LOW,
+        iconData: const NotificationIconData(
+          resType: ResourceType.mipmap,
+          resPrefix: ResourcePrefix.ic,
+          name: 'launcher',
+        ),
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: false,
+      ),
+      foregroundTaskOptions: const ForegroundTaskOptions(
+        interval: 5000,
+        isOnceEvent: false,
+        autoRunOnBoot: true,
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+  }
+
+  static Future<void> startService() async {
+    if (await FlutterForegroundTask.isRunningService) {
+      return;
+    }
+
+    // 안드로이드 배터리 최적화 제외 요청 (화면 OFF / Doze 모드 극복)
+    if (Platform.isAndroid) {
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+    }
+
+    await FlutterForegroundTask.startService(
+      notificationTitle: '🛡️ Smart Key 자동 출입 감지 중',
+      notificationText: '화면이 꺼져 있어도 다가가면 출입문이 자동으로 열립니다.',
+      callback: startCallback,
+    );
+  }
+}

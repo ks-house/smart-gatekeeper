@@ -387,6 +387,17 @@
 - **`src/MqttManager.cpp` (ESP32-C6)**:
   - `MqttManager::callback` 내 `gatekeeper/force_open` 전용 분기 처리 추가 ➔ 수동 원격 개방 메시지 수신 시 `triggerManualDoorOpen()` (릴레이 1초 개방) 확실한 구동 완결
 
+## [2026-07-26] feat | 모바일 앱 안드로이드 포그라운드 상주 서비스(Foreground Service) 구축 (화면 OFF / 주머니 속 자동 출입문 감지 지원)
+
+- **`gatekeeper_app/pubspec.yaml`**: `flutter_foreground_task: ^6.2.0` 의존성 추가
+- **`gatekeeper_app/android/app/src/main/AndroidManifest.xml`**:
+  - `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `POST_NOTIFICATIONS` 권한 및 Service 컴포넌트 선언
+- **`gatekeeper_app/lib/services/foreground_service.dart`**:
+  - 화면이 꺼지거나 주머니 속 잠금 상태에서도 안드로이드 Doze Mode를 극복하고 24시간 BLE 비콘 스캐너를 백그라운드에서 지속 유지하는 포그라운드 서비스 및 알림창 헬퍼 구축
+- **`gatekeeper_app/lib/main.dart`**:
+  - `WithForegroundTask` 래퍼 및 최초 실행 시 배터리 최적화 제외 동의 및 포그라운드 서비스 자동 시작 로직 적용
+
+
 
 
 
