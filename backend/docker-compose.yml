@@ -53,7 +53,8 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/app
-      - /docker/smartbox_ota/gatekeeper_apk:/app/gatekeeper_apk:ro
+      - /volume1/docker/smartbox_ota/gatekeeper_apk:/app/gatekeeper_apk:ro
+
 
     depends_on:
       db:
