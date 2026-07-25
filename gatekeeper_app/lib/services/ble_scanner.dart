@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
+import 'update_checker.dart';
 
 /// Smart Gatekeeper BLE Beacon Background Scanner Singleton
 class BleScanner {
@@ -10,9 +11,13 @@ class BleScanner {
   factory BleScanner() => _instance;
   BleScanner._internal();
 
-  // 기본 설정값 (향후 Remote Config GET /api/v1/config 호출로 동적 업데이트)
+  // 환경변수(--dart-define=BACKEND_URL=...)로부터 백엔드 주소 동적 로드 (하드코딩 방지)
+  static const String backendUrlFromEnv = String.fromEnvironment('BACKEND_URL');
+  String backendBaseUrl = backendUrlFromEnv.isNotEmpty 
+      ? backendUrlFromEnv 
+      : 'https://tworimpa.synology.me:4442/api/v1';
+
   String targetBeaconUuid = '12345678-1234-5678-1234-567812345678';
-  String backendBaseUrl = 'https://tworimpa.synology.me:4442/api/v1';
   int cooldownSeconds = 30;
 
   DateTime? _lastPrearmTime;
@@ -21,9 +26,10 @@ class BleScanner {
 
   bool get isScanning => _isScanning;
 
-  /// 초기화 및 백업 Remote Config 동기화
+  /// 초기화 및 Remote Config 동기화 / 버전 검사
   Future<void> initialize() async {
     await fetchRemoteConfig();
+    await UpdateChecker().checkForUpdates();
     startScanning();
   }
 
@@ -42,12 +48,24 @@ class BleScanner {
         if (data['cooldown_sec'] != null) {
           cooldownSeconds = data['cooldown_sec'];
         }
+
+        // 백엔드 Remote Config에 포함된 APK 버전/다운로드 URL 전달
+        final apkVersionUrl = data['apk_version_url']?.toString();
+        final apkDownloadUrl = data['apk_download_url']?.toString();
+        if (apkVersionUrl != null && apkVersionUrl.isNotEmpty) {
+          await UpdateChecker().checkForUpdates(
+            customVersionUrl: apkVersionUrl,
+            customDownloadUrl: apkDownloadUrl,
+          );
+        }
+
         debugPrint('[BleScanner] Remote Config 로드 성공: UUID=$targetBeaconUuid, Cooldown=${cooldownSeconds}s');
       }
     } catch (e) {
       debugPrint('[BleScanner] Remote Config 로드 실패 (기본값 사용): $e');
     }
   }
+
 
   /// 백그라운드 BLE 비콘 스캐닝 시작
   Future<void> startScanning() async {

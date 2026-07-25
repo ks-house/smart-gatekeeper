@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../services/update_checker.dart';
 
 class WebViewScreen extends StatefulWidget {
-  final String initialUrl;
+  final String? initialUrl;
 
   const WebViewScreen({
     super.key,
-    this.initialUrl = 'https://tworimpa.synology.me:4442/app',
+    this.initialUrl,
   });
+
+  // 환경변수(--dart-define=WEBVIEW_URL=...)로부터 웹뷰 URL 동적 로드 (하드코딩 방지)
+  static const String webviewUrlFromEnv = String.fromEnvironment('WEBVIEW_URL');
 
   @override
   State<WebViewScreen> createState() => _WebViewScreenState();
@@ -20,6 +24,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   void initState() {
     super.initState();
+
+    final targetUrl = widget.initialUrl ??
+        (WebViewScreen.webviewUrlFromEnv.isNotEmpty
+            ? WebViewScreen.webviewUrlFromEnv
+            : 'https://tworimpa.synology.me:4442/app');
+
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF121212))
@@ -40,11 +50,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
           },
         ),
       )
-      ..loadRequest(Uri.parse(widget.initialUrl));
+      ..loadRequest(Uri.parse(targetUrl));
   }
 
   @override
   Widget build(BuildContext context) {
+    final updateChecker = UpdateChecker();
+
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
@@ -59,13 +71,49 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ),
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          WebViewWidget(controller: _controller),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(),
+          // 업데이트 감지 시 상단 안내 배너 표시
+          if (updateChecker.isUpdateAvailable)
+            Container(
+              color: Colors.amber.shade900,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.system_update, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '새로운 Smart Key v${updateChecker.remoteVersion ?? ''} 업데이트 가능!',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => updateChecker.downloadUpdate(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    child: const Text('다운로드'),
+                  ),
+                ],
+              ),
             ),
+          Expanded(
+            child: Stack(
+              children: [
+                WebViewWidget(controller: _controller),
+                if (_isLoading)
+                  const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );

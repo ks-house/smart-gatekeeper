@@ -1,4 +1,4 @@
-name: Build Flutter Smart Key App APK
+name: Build and Deploy Flutter Smart Key App APK
 
 on:
   push:
@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_apk:
-    name: Build Android APK
+  build_and_deploy_apk:
+    name: Build Android APK & Deploy to Synology NAS
     runs-on: ubuntu-latest
 
     steps:
@@ -32,7 +32,6 @@ jobs:
         run: yes | flutter doctor --android-licenses || true
 
       - name: Install dependencies
-
         run: |
           cd gatekeeper_app
           flutter pub get
@@ -42,14 +41,47 @@ jobs:
           cd gatekeeper_app
           flutter analyze --no-fatal-infos
 
-      - name: Build Android Release APK
+      - name: Build Android Release APK with Dart Defines
+        env:
+          APK_VERSION_URL: ${{ secrets.SECRET_APK_VERSION_URL }}
+          APK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_DOWNLOAD_URL }}
         run: |
           cd gatekeeper_app
-          flutter build apk --release
+          flutter build apk --release \
+            --dart-define=APK_VERSION_URL="${APK_VERSION_URL:-https://tworimpa.synology.me:4443/gatekeeper_apk/version.json}" \
+            --dart-define=APK_DOWNLOAD_URL="${APK_DOWNLOAD_URL:-https://tworimpa.synology.me:4443/gatekeeper_apk/ks-house-gatekeeper.apk}"
 
-      - name: Upload APK Artifact
+      - name: Prepare NAS Deployment Artifacts (ks-house-gatekeeper.apk & version.json)
+        run: |
+          mkdir -p dist
+          cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk dist/ks-house-gatekeeper.apk
+
+          cat <<EOF > dist/version.json
+          {
+            "version": "1.0.0",
+            "build_number": ${{ github.run_number }},
+            "commit": "${{ github.sha }}",
+            "apk_url": "${{ secrets.SECRET_APK_DOWNLOAD_URL || 'https://tworimpa.synology.me:4443/gatekeeper_apk/ks-house-gatekeeper.apk' }}",
+            "updated_at": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          }
+          EOF
+
+          ls -la dist/
+
+      - name: Deploy APK to Synology NAS via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.NAS_HOST }}
+          username: ${{ secrets.NAS_USER }}
+          password: ${{ secrets.NAS_PASSWORD }}
+          port: ${{ secrets.NAS_PORT || 22 }}
+          local_path: './dist/*'
+          remote_path: ${{ secrets.NAS_APK_TARGET_DIR || '/volume1/docker/smartbox_ota/gatekeeper_apk/' }}
+          sftp_only: true
+
+      - name: Upload APK Artifact to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: smart-key-app-release
-          path: gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk
+          path: dist/ks-house-gatekeeper.apk
           if-no-files-found: error
