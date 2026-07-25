@@ -88,82 +88,65 @@ def _create_mqtt_client(client_id: str):
     except Exception:
         return mqtt.Client(client_id=client_id)
 
+def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
+    """MQTT 메시지 발행 헬퍼 (로컬 Docker 내부망 172.17.0.1 / host.docker.internal 자동 Fallback)"""
+    if not HAS_PAHO_MQTT:
+        log.warning(f"[{label}] paho-mqtt 패키지 미설치 — {topic} 발행 건너뜀")
+        return False
+
+    hosts_to_try = [
+        (MQTT_HOST, MQTT_PORT, MQTT_USE_TLS),
+        ("172.17.0.1", 1883, False),
+        ("172.22.0.1", 1883, False),
+        ("host.docker.internal", 1883, False),
+        ("127.0.0.1", 1883, False)
+    ]
+
+    for host, port, use_tls in hosts_to_try:
+        if not host:
+            continue
+        try:
+            client = _create_mqtt_client(f"gatekeeper-api-{int(datetime.now().timestamp())}")
+            if MQTT_USER:
+                client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+
+            if use_tls:
+                client.tls_set(cert_reqs=ssl.CERT_NONE)
+                client.tls_insecure_set(True)
+
+            client.connect(host, port, keepalive=5)
+            result = client.publish(topic, payload, qos=1)
+            client.disconnect()
+
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                log.info(f"[{label}] ✅ {topic} 발행 성공 → (Host: {host}:{port})")
+                return True
+        except Exception as e:
+            log.debug(f"[{label}] {host}:{port} 접속 시도 시 예외: {e}")
+            continue
+
+    log.error(f"[{label}] ❌ 모든 MQTT 브로커 접속 시도 실패 → {topic}")
+    return False
+
 def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/arm 토픽 발행."""
-    if not HAS_PAHO_MQTT:
-        log.warning("[MQTT-ARM] paho-mqtt 패키지 미설치 — arm 발행 건너뜀")
-        return False
-
-    if not MQTT_HOST:
-        log.warning("[MQTT-ARM] MQTT_HOST 미설정 — arm 발행 건너뜀")
-        return False
-
-    try:
-        client = _create_mqtt_client(f"gatekeeper-api-{tenant_id}")
-        client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
-
-        if MQTT_USE_TLS:
-            client.tls_set(cert_reqs=ssl.CERT_NONE)
-            client.tls_insecure_set(True)
-
-        client.connect(MQTT_HOST, MQTT_PORT, keepalive=10)
-        payload = json.dumps({
-            "action": "arm",
-            "user": tenant_name,
-            "tenant_id": tenant_id,
-            "issued_at": datetime.now().isoformat()
-        }, ensure_ascii=False)
-
-        result = client.publish(MQTT_TOPIC_ARM, payload, qos=1)
-        client.disconnect()
-
-        if result.rc == mqtt.MQTT_ERR_SUCCESS:
-            log.info(f"[MQTT-ARM] ✅ arm 발행 성공 → {MQTT_TOPIC_ARM} | 사용자: {tenant_name}")
-            return True
-        else:
-            log.error(f"[MQTT-ARM] ❌ 발행 실패 rc={result.rc}")
-            return False
-    except Exception as e:
-        log.error(f"[MQTT-ARM] ❌ MQTT 예외: {e}")
-        return False
+    payload = json.dumps({
+        "action": "arm",
+        "user": tenant_name,
+        "tenant_id": tenant_id,
+        "issued_at": datetime.now().isoformat()
+    }, ensure_ascii=False)
+    return _publish_mqtt_msg(MQTT_TOPIC_ARM, payload, "MQTT-ARM")
 
 def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/force_open 강제 개방 토픽 발행."""
-    if not HAS_PAHO_MQTT:
-        log.warning("[MQTT-FORCE] paho-mqtt 패키지 미설치 — force_open 발행 건너뜀")
-        return False
+    payload = json.dumps({
+        "action": "force_open",
+        "user": tenant_name,
+        "issued_at": datetime.now().isoformat()
+    }, ensure_ascii=False)
+    return _publish_mqtt_msg(MQTT_TOPIC_FORCE, payload, "MQTT-FORCE")
 
-    if not MQTT_HOST:
-        log.warning("[MQTT-FORCE] MQTT_HOST 미설정 — force_open 발행 건너뜀")
-        return False
-
-    try:
-        client = _create_mqtt_client("gatekeeper-force-open")
-        client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
-
-        if MQTT_USE_TLS:
-            client.tls_set(cert_reqs=ssl.CERT_NONE)
-            client.tls_insecure_set(True)
-
-        client.connect(MQTT_HOST, MQTT_PORT, keepalive=10)
-        payload = json.dumps({
-            "action": "force_open",
-            "user": tenant_name,
-            "issued_at": datetime.now().isoformat()
-        }, ensure_ascii=False)
-
-        result = client.publish(MQTT_TOPIC_FORCE, payload, qos=1)
-        client.disconnect()
-
-        if result.rc == mqtt.MQTT_ERR_SUCCESS:
-            log.info(f"[MQTT-FORCE] ✅ force_open 발행 성공 → {MQTT_TOPIC_FORCE}")
-            return True
-        else:
-            log.error(f"[MQTT-FORCE] ❌ 발행 실패 rc={result.rc}")
-            return False
-    except Exception as e:
-        log.error(f"[MQTT-FORCE] ❌ MQTT 예외: {e}")
-        return False
 
 
 # ─── Pydantic 스키마 ──────────────────────────────────────────
@@ -394,8 +377,19 @@ def request_user_access(req: UserRequestSchema):
         if conn:
             conn.close()
 
+@app.post("/api/v1/door/prearm")
+def door_prearm(req: PrearmRequestSchema):
+    """BLE 비콘 감지 시 Flutter Native Shell이 호출하는 Pre-arm 사전 승인 API"""
+    log.info(f"[PREARM] 비콘 감지 Pre-arm 요청: UUID={req.beacon_uuid}, RSSI={req.rssi}")
+    arm_ok = publish_arm_to_mqtt("비콘자동감지", 1)
+    return JSONResponse(
+        content={"result": "armed", "ttl_sec": 60, "mqtt_published": arm_ok},
+        headers={"Content-Type": "application/json; charset=utf-8"}
+    )
+
 @app.post("/api/v1/door/open")
 def door_force_open(req: ForceOpenRequestSchema):
+
     """WebView 수동 '문 열기' 터치 시 즉시 릴레이 강제 개방 명령 하달"""
     log.info(f"[FORCE-OPEN] 수동 원격 문 열기 요청: Reason={req.reason}, Device={req.device_id}")
     
