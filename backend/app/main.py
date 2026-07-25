@@ -89,16 +89,19 @@ def _create_mqtt_client(client_id: str):
         return mqtt.Client(client_id=client_id)
 
 def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
-    """MQTT 메시지 발행 헬퍼 (로컬 Docker 내부망 172.17.0.1 / host.docker.internal 자동 Fallback)"""
+    """MQTT 메시지 발행 헬퍼 (로컬 Docker 내부망 172.17.0.1 / host.docker.internal 초고속 우선 시도)"""
     if not HAS_PAHO_MQTT:
         log.warning(f"[{label}] paho-mqtt 패키지 미설치 — {topic} 발행 건너뜀")
         return False
 
+    import socket
+    socket.setdefaulttimeout(1.0) # 소켓 타임아웃 1초로 제한하여 지연 완전 방어
+
     hosts_to_try = [
-        (MQTT_HOST, MQTT_PORT, MQTT_USE_TLS),
         ("172.17.0.1", 1883, False),
         ("172.22.0.1", 1883, False),
         ("host.docker.internal", 1883, False),
+        (MQTT_HOST, MQTT_PORT, MQTT_USE_TLS),
         ("127.0.0.1", 1883, False)
     ]
 
@@ -127,6 +130,7 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
 
     log.error(f"[{label}] ❌ 모든 MQTT 브로커 접속 시도 실패 → {topic}")
     return False
+
 
 def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/arm 토픽 발행."""

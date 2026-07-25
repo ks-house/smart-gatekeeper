@@ -41,12 +41,13 @@ services:
       # ── MQTT Broker (v2.0 — gatekeeper/arm Pre-arm 발행용) ──
       # ESP32-C6가 구독 중인 MQTTS 브로커 접속 정보
       # 시놀로지 NAS의 MQTT 브로커 주소 및 포트를 .env 파일에 설정
-      MQTT_HOST: ${MQTT_HOST:-tworimpa.synology.me}
-      MQTT_PORT: ${MQTT_PORT:-4883}
+      MQTT_HOST: ${MQTT_HOST:-172.17.0.1}
+      MQTT_PORT: ${MQTT_PORT:-1883}
       MQTT_USER: ${MQTT_USER:-gatekeeper_mqtt}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-gatekeeper_mqtt_pass}
 
-      MQTT_USE_TLS: ${MQTT_USE_TLS:-true}
+      MQTT_USE_TLS: ${MQTT_USE_TLS:-false}
+
       MQTT_TOPIC_ARM: ${MQTT_TOPIC_ARM:-gatekeeper/arm}
     ports:
       - "8000:8000"
