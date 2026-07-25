@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Gatekeeper — Admin Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.8);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #38bdf8;
+      --accent: #818cf8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Noto Sans KR', 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .header h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 800;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .btn-master-open {
+      background: linear-gradient(135deg, #0284c7, #4f46e5);
+      border: none;
+      border-radius: 12px;
+      padding: 10px 20px;
+      color: white;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+      transition: all 0.2s;
+    }
+
+    .btn-master-open:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(56, 189, 248, 0.5);
+    }
+
+    /* Stats Row */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px;
+      backdrop-filter: blur(12px);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    /* Section Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 24px;
+      backdrop-filter: blur(12px);
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--card-border);
+      font-size: 14px;
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .badge-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+    .badge-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+    .badge-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+    .btn-action {
+      border: none;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-right: 4px;
+      transition: opacity 0.2s;
+    }
+
+    .btn-approve { background: var(--success); color: white; }
+    .btn-revoke { background: var(--danger); color: white; }
+    .btn-action:hover { opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>SMART GATEKEEPER — Admin Console</h1>
+      <p style="font-size: 13px; color: var(--text-muted);">시놀로지 NAS 출입 통제 통합 관리자 콘솔</p>
+    </div>
+    <button class="btn-master-open" onclick="masterForceOpen()">⚡ 마스터 원격 문 열기</button>
+  </div>
+
+  <!-- Stats Grid -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">전체 등록 세입자</div>
+      <div class="stat-value" id="statTotalTenants">0 명</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">승인 대기 중</div>
+      <div class="stat-value" style="color: var(--warning);" id="statPendingTenants">0 명</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">오늘 총 출입 횟수</div>
+      <div class="stat-value" style="color: var(--primary);" id="statTodayLogs">0 건</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">ESP32-C6 게이트 상태</div>
+      <div class="stat-value" style="color: var(--success);">🟢 ONLINE</div>
+    </div>
+  </div>
+
+  <!-- 승인 대기 세입자 관리 -->
+  <div class="card">
+    <div class="card-title">
+      <span>📋 세입자 권한 및 가입 승인 관리</span>
+      <button class="btn-action" style="background: var(--card-border); color: var(--text);" onclick="loadTenants()">🔄 새로고침</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>이름</th>
+          <th>동/호수</th>
+          <th>BLE MAC / 기기ID</th>
+          <th>권한 상태</th>
+          <th>관리 제어</th>
+        </tr>
+      </thead>
+      <tbody id="tenantsTableBody">
+        <tr>
+          <td colspan="6" style="text-align: center; color: var(--text-muted);">데이터를 불러오는 중...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 시스템 출입 이력 Audit Logs -->
+  <div class="card">
+    <div class="card-title">
+      <span>📜 최근 전체 출입 감지 이력 (Audit Logs)</span>
+      <button class="btn-action" style="background: var(--card-border); color: var(--text);" onclick="loadLogs()">🔄 새로고침</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>시간</th>
+          <th>인증 방식</th>
+          <th>결과</th>
+          <th>감지 거리 (mm)</th>
+          <th>비고 / 실패 사유</th>
+        </tr>
+      </thead>
+      <tbody id="logsTableBody">
+        <tr>
+          <td colspan="5" style="text-align: center; color: var(--text-muted);">데이터를 불러오는 중...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    async function loadTenants() {
+      try {
+        const res = await fetch('/api/v1/admin/tenants');
+        if (!res.ok) throw new Error('API return error');
+        const tenants = await res.json();
+
+        document.getElementById('statTotalTenants').innerText = tenants.length + ' 명';
+        const pendingCount = tenants.filter(t => !t.is_active).length;
+        document.getElementById('statPendingTenants').innerText = pendingCount + ' 명';
+
+        const tbody = document.getElementById('tenantsTableBody');
+        tbody.innerHTML = '';
+
+        if (tenants.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">등록된 세입자가 없습니다.</td></tr>';
+          return;
+        }
+
+        tenants.forEach(t => {
+          const tr = document.createElement('tr');
+          const badgeClass = t.is_active ? 'badge-success' : 'badge-warning';
+          const badgeText = t.is_active ? '승인됨 (Active)' : '승인 대기 (Pending)';
+
+          tr.innerHTML = `
+            <td>${t.id}</td>
+            <td><strong>${t.name}</strong></td>
+            <td>${t.unit_number || '-'}</td>
+            <td><code>${t.ble_device_mac || '-'}</code></td>
+            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            <td>
+              ${t.is_active 
+                ? `<button class="btn-action btn-revoke" onclick="updateTenantStatus(${t.id}, false)">권한 회수</button>`
+                : `<button class="btn-action btn-approve" onclick="updateTenantStatus(${t.id}, true)">승인하기</button>`
+              }
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function updateTenantStatus(tenantId, approve) {
+      const endpoint = approve ? `/api/v1/admin/tenants/${tenantId}/approve` : `/api/v1/admin/tenants/${tenantId}/reject`;
+      try {
+        const res = await fetch(endpoint, { method: 'POST' });
+        if (res.ok) {
+          loadTenants();
+        } else {
+          alert('상태 변경 실패');
+        }
+      } catch (e) {
+        alert('에러: ' + e);
+      }
+    }
+
+    async function loadLogs() {
+      try {
+        const res = await fetch('/api/v1/logs?limit=30');
+        if (!res.ok) return;
+        const logs = await res.json();
+        document.getElementById('statTodayLogs').innerText = logs.length + ' 건';
+
+        const tbody = document.getElementById('logsTableBody');
+        tbody.innerHTML = '';
+
+        logs.forEach(l => {
+          const tr = document.createElement('tr');
+          const dateStr = new Date(l.created_at).toLocaleString('ko-KR');
+          const badgeClass = l.is_success ? 'badge-success' : 'badge-danger';
+          const badgeText = l.is_success ? '성공' : '실패';
+
+          tr.innerHTML = `
+            <td>${dateStr}</td>
+            <td>${l.auth_method}</td>
+            <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+            <td>${l.distance_mm ? l.distance_mm + ' mm' : '-'}</td>
+            <td>${l.failure_reason || '정상 개방'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function masterForceOpen() {
+      if (!confirm('정말로 마스터 권한으로 출입문을 열겠습니까?')) return;
+      try {
+        const res = await fetch('/api/v1/door/open', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: 'admin_master_open' })
+        });
+        if (res.ok) {
+          alert('⚡ 마스터 원격 문 열기 명령이 성공적으로 전송되었습니다.');
+          loadLogs();
+        }
+      } catch (e) {
+        alert('명령 전송 실패: ' + e);
+      }
+    }
+
+    window.onload = function() {
+      loadTenants();
+      loadLogs();
+    };
+  </script>
+</body>
+</html>

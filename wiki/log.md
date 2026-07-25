@@ -335,6 +335,17 @@
   - `POST /api/v1/door/prearm`: 비콘 감지 사전 승인 MQTT arm 발행 API
   - `POST /api/v1/door/open`: WebView 수동 문 열기 MQTT force_open 발행 API
 
+## [2026-07-25] code | 관리자 콘솔 대시보드(admin.html) 및 관리자 전용 REST API 구축
+
+- **`backend/app/static/admin.html` 신규 구축**:
+  - 건물 관리자 전용 웹 대시보드 UI (실시간 통계, 세입자 승인/권한 회수 테이블, 전체 출입 Audit Logs, 마스터 원격 문 열기)
+- **`backend/app/main.py` 관리자 라우트 추가**:
+  - `GET /admin`: 관리자 콘솔 웹페이지 반환
+  - `GET /api/v1/admin/tenants`: 전체 세입자 및 승인 대기 세입자 목록 조회
+  - `POST /api/v1/admin/tenants/{id}/approve`: 세입자 출입 권한 즉시 승인 (`is_active = true`)
+  - `POST /api/v1/admin/tenants/{id}/reject`: 세입자 출입 권한 회수 (`is_active = false`)
+
+
 
 
 

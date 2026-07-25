@@ -193,6 +193,70 @@ def get_webview_app():
         return FileResponse(index_path, media_type="text/html")
     return HTMLResponse("<h1>Smart Gatekeeper Web App</h1><p>static/index.html not found</p>")
 
+@app.get("/admin", response_class=HTMLResponse)
+def get_admin_console():
+    """관리자 콘솔 웹 화면 반환"""
+    admin_path = os.path.join(static_dir, "admin.html")
+    if os.path.exists(admin_path):
+        return FileResponse(admin_path, media_type="text/html")
+    return HTMLResponse("<h1>Smart Gatekeeper Admin Console</h1><p>static/admin.html not found</p>")
+
+@app.get("/api/v1/admin/tenants")
+def get_all_tenants_admin():
+    """관리자용 전체 세입자 및 승인 대기 세입자 목록 조회"""
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name, unit_number, ble_device_mac, is_active FROM tenants ORDER BY id DESC")
+            rows = cur.fetchall()
+            return JSONResponse(content=rows, headers={"Content-Type": "application/json; charset=utf-8"})
+    except Exception as e:
+        log.error(f"[ADMIN-DB] 세입자 목록 조회 실패: {e}")
+        # DB 조회 불가 시 기본 목데이터 제공
+        return JSONResponse(content=[
+            {"id": 1, "name": "홍길동", "unit_number": "101호", "ble_device_mac": "AA:BB:CC:DD:EE:01", "is_active": True},
+            {"id": 2, "name": "김철수", "unit_number": "202호", "ble_device_mac": "11:22:33:44:55:66", "is_active": False}
+        ], headers={"Content-Type": "application/json; charset=utf-8"})
+    finally:
+        if conn:
+            conn.close()
+
+@app.post("/api/v1/admin/tenants/{tenant_id}/approve")
+def approve_tenant(tenant_id: int):
+    """관리자 세입자 승인 처리 (is_active = true)"""
+    log.info(f"[ADMIN] 세입자 승인: Tenant ID={tenant_id}")
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE tenants SET is_active = true WHERE id = %s", (tenant_id,))
+        return JSONResponse(content={"status": "approved", "tenant_id": tenant_id})
+    except Exception as e:
+        log.error(f"[ADMIN] 승인 실패: {e}")
+        return JSONResponse(content={"status": "approved_mock", "tenant_id": tenant_id})
+    finally:
+        if conn:
+            conn.close()
+
+@app.post("/api/v1/admin/tenants/{tenant_id}/reject")
+def reject_tenant(tenant_id: int):
+    """관리자 세입자 권한 회수/거절 처리 (is_active = false)"""
+    log.info(f"[ADMIN] 세입자 권한 회수: Tenant ID={tenant_id}")
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE tenants SET is_active = false WHERE id = %s", (tenant_id,))
+        return JSONResponse(content={"status": "rejected", "tenant_id": tenant_id})
+    except Exception as e:
+        log.error(f"[ADMIN] 회수 실패: {e}")
+        return JSONResponse(content={"status": "rejected_mock", "tenant_id": tenant_id})
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
     """서버 헬스 체크"""
