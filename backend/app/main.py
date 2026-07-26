@@ -152,7 +152,7 @@ def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
     }, ensure_ascii=False)
     return _publish_mqtt_msg(MQTT_TOPIC_FORCE, payload, "MQTT-FORCE")
 
-def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, duration: Optional[int] = None) -> dict:
+def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, duration: Optional[int] = None, relay_cooldown: Optional[int] = None) -> dict:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/config/... 엔지니어 튜닝 토픽 및 gatekeeper/config/set 일괄 발행."""
     results = {}
     if tx_power is not None:
@@ -164,6 +164,9 @@ def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: O
     if duration is not None:
         ok = _publish_mqtt_msg("gatekeeper/config/duration", str(duration), "MQTT-CONFIG-DUR")
         results["duration"] = {"value": duration, "success": ok}
+    if relay_cooldown is not None:
+        ok = _publish_mqtt_msg("gatekeeper/config/relay_cooldown", str(relay_cooldown), "MQTT-CONFIG-COOL")
+        results["relay_cooldown"] = {"value": relay_cooldown, "success": ok}
     
     set_payload = json.dumps(current_target_config, ensure_ascii=False)
     _publish_mqtt_msg("gatekeeper/config/set", set_payload, "MQTT-CONFIG-SET")
@@ -205,7 +208,9 @@ class ForceOpenRequestSchema(BaseModel):
 class AdminConfigRequestSchema(BaseModel):
     tx_power: Optional[int] = Field(None, example=-6, description="BLE Tx Power dBm (-6, 0, 3, 9)")
     tof_distance: Optional[int] = Field(None, example=50, description="ToF 감지 기준 거리 cm (5 ~ 200)")
-    duration: Optional[int] = Field(None, example=5000, description="Pre-arm 유효 유지 시간 ms (1000 ~ 60000)")
+    duration: Optional[int] = Field(None, example=60000, description="Pre-arm 유효 유지 시간 ms (1000 ~ 60000)")
+    relay_cooldown: Optional[int] = Field(None, example=3000, description="Target 릴레이 쿨다운 ms (1000 ~ 30000)")
+
 
 
 
@@ -537,6 +542,7 @@ def load_target_config() -> dict:
         "tx_power": 9,
         "tof_distance": 50,
         "duration": 60000,
+        "relay_cooldown": 3000,
         "updated_at": None
     }
     if os.path.exists(TARGET_CONFIG_FILE):
@@ -567,10 +573,11 @@ def get_admin_config():
     return JSONResponse(
         content={
             "result": "success",
-            "tx_power": current_target_config["tx_power"],
-            "tof_distance": current_target_config["tof_distance"],
-            "duration": current_target_config["duration"],
-            "updated_at": current_target_config["updated_at"]
+            "tx_power": current_target_config.get("tx_power", 9),
+            "tof_distance": current_target_config.get("tof_distance", 50),
+            "duration": current_target_config.get("duration", 60000),
+            "relay_cooldown": current_target_config.get("relay_cooldown", 3000),
+            "updated_at": current_target_config.get("updated_at")
         },
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
@@ -579,9 +586,9 @@ def get_admin_config():
 @app.post("/admin/config")
 @app.post("/api/v1/admin/config")
 def update_admin_config(req: AdminConfigRequestSchema):
-    """엔지니어 원격 튜닝 API — ESP32-C6 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간) 실시간 변경 및 영구 저장"""
-    log.info(f"[ADMIN-CONFIG] 원격 파라미터 변경 요청: tx_power={req.tx_power}, tof_distance={req.tof_distance}, duration={req.duration}")
-    if req.tx_power is None and req.tof_distance is None and req.duration is None:
+    """엔지니어 원격 튜닝 API — ESP32-C6 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간, 릴레이 쿨다운) 실시간 변경 및 영구 저장"""
+    log.info(f"[ADMIN-CONFIG] 원격 파라미터 변경 요청: tx_power={req.tx_power}, tof_distance={req.tof_distance}, duration={req.duration}, relay_cooldown={req.relay_cooldown}")
+    if req.tx_power is None and req.tof_distance is None and req.duration is None and req.relay_cooldown is None:
         return JSONResponse(
             status_code=400,
             content={"result": "error", "message": "최소 하나 이상의 튜닝 파라미터를 전달해야 합니다."}
@@ -593,13 +600,16 @@ def update_admin_config(req: AdminConfigRequestSchema):
         current_target_config["tof_distance"] = req.tof_distance
     if req.duration is not None:
         current_target_config["duration"] = req.duration
+    if req.relay_cooldown is not None:
+        current_target_config["relay_cooldown"] = req.relay_cooldown
     current_target_config["updated_at"] = datetime.now().isoformat()
     save_target_config(current_target_config)
 
     mqtt_results = publish_admin_config_to_mqtt(
         tx_power=req.tx_power,
         tof_distance=req.tof_distance,
-        duration=req.duration
+        duration=req.duration,
+        relay_cooldown=req.relay_cooldown
     )
 
     return JSONResponse(
@@ -611,6 +621,7 @@ def update_admin_config(req: AdminConfigRequestSchema):
         },
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
+
 
 
 

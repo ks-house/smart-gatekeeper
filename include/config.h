@@ -72,9 +72,10 @@ constexpr uint16_t GATE_THRESHOLD_MM     = DISTANCE_THRESHOLD_MM;
 constexpr uint32_t RELAY_HOLD_MS        = 1000;
 constexpr uint32_t RELAY_ON_DURATION_MS = RELAY_HOLD_MS;
 
-// 릴레이 작동 후 쿨다운 시간 (10초, 중복 개방 방지)
-constexpr uint32_t COOLDOWN_MS          = 10000;
-constexpr uint32_t RELAY_COOLDOWN_MS    = COOLDOWN_MS;
+// 릴레이 작동 후 쿨다운 시간 (기본 3초, 원격 가변 조절 가능)
+constexpr uint32_t DEFAULT_RELAY_COOLDOWN_MS = 3000;
+extern uint32_t g_relay_cooldown_ms;
+
 
 // ToF 폴링 인터벌 (ARMED 상태에서만 적용)
 constexpr uint32_t TOF_POLL_INTERVAL_MS = 100;

@@ -48,6 +48,10 @@ uint32_t ConfigManager::getPreArmDurationMs(uint32_t defaultVal) {
     return preferences.getUInt("prearm_dur", defaultVal);
 }
 
+uint32_t ConfigManager::getRelayCooldownMs(uint32_t defaultVal) {
+    return preferences.getUInt("relay_cool", defaultVal);
+}
+
 
 void ConfigManager::setWifiCredentials(const String& ssid, const String& password) {
     preferences.putString("ssid", ssid);
@@ -71,7 +75,12 @@ void ConfigManager::setPreArmDurationMs(uint32_t durationMs) {
     preferences.putUInt("prearm_dur", durationMs);
 }
 
+void ConfigManager::setRelayCooldownMs(uint32_t cooldownMs) {
+    preferences.putUInt("relay_cool", cooldownMs);
+}
+
 void ConfigManager::clearConfig() {
+
     preferences.clear();
 }
 

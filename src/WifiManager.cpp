@@ -16,10 +16,13 @@ static bool webServerStarted = false;
 extern int g_tx_power_dbm;
 extern uint16_t g_distance_threshold_mm;
 extern uint32_t g_pre_arm_duration_ms;
+extern uint32_t g_relay_cooldown_ms;
 
 extern void setTxPower(int powerDbm);
 extern void setTofDistanceCm(int distanceCm);
 extern void setPreArmDurationMs(uint32_t durationMs);
+extern void setRelayCooldownMs(uint32_t cooldownMs);
+
 
 void WifiManager::init() {
     ConfigManager::begin();
@@ -163,6 +166,10 @@ void WifiManager::handleRoot() {
               "<input type='number' name='duration' min='1000' max='60000' step='1000' value='");
     html += String((int)g_pre_arm_duration_ms);
     html += F("'>"
+              "<label style='font-size:12px;color:#8b949e;'>Target 릴레이 쿨다운 (초)</label>"
+              "<input type='number' name='relay_cooldown' min='1000' max='10000' step='500' value='");
+    html += String((int)g_relay_cooldown_ms);
+    html += F("'>"
               "<button type='submit' style='background:#8957e5;'>⚙️ 튜닝 파라미터 NVS 저장</button>"
               "</form>"
               "</div>"
@@ -237,9 +244,14 @@ void WifiManager::handleConfigSave() {
     if (webServer.hasArg("duration")) {
         setPreArmDurationMs(webServer.arg("duration").toInt());
     }
+    if (webServer.hasArg("relay_cooldown")) {
+        extern void setRelayCooldownMs(uint32_t cooldownMs);
+        setRelayCooldownMs(webServer.arg("relay_cooldown").toInt());
+    }
     webServer.sendHeader("Location", "/", true);
     webServer.send(302, "text/plain", "Updated");
 }
+
 
 void WifiManager::handleNotFound() {
     if (apModeActive) {

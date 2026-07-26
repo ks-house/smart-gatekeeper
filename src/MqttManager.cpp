@@ -106,14 +106,26 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         return;
     }
 
+    // ─── gatekeeper/config/relay_cooldown — Target 릴레이 쿨다운 동적 튜닝 ─────────
+    if (strcmp(topic, "gatekeeper/config/relay_cooldown") == 0) {
+        int val = atoi(message);
+        LOGF("[MQTT-CONFIG] ⚙️ Target 릴레이 쿨다운 설정 수신: %d ms", val);
+        extern void setRelayCooldownMs(uint32_t cooldownMs);
+        setRelayCooldownMs((uint32_t)val);
+        publishEvent("config_relay_cooldown", String(val).c_str());
+        return;
+    }
+
     // ─── gatekeeper/config/set — 일괄 JSON 설정 수신 ───────────────────────
     if (strcmp(topic, "gatekeeper/config/set") == 0) {
         StaticJsonDocument<256> setDoc;
         if (!deserializeJson(setDoc, message)) {
             LOGF("[MQTT-CONFIG] ⚙️ 일괄 JSON 튜닝 설정 수신: %s", message);
+            extern void setRelayCooldownMs(uint32_t cooldownMs);
             if (setDoc.containsKey("tx_power")) setTxPower(setDoc["tx_power"].as<int>());
             if (setDoc.containsKey("tof_distance")) setTofDistanceCm(setDoc["tof_distance"].as<int>());
             if (setDoc.containsKey("duration")) setPreArmDurationMs(setDoc["duration"].as<uint32_t>());
+            if (setDoc.containsKey("relay_cooldown")) setRelayCooldownMs(setDoc["relay_cooldown"].as<uint32_t>());
         }
         return;
     }
@@ -124,7 +136,8 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         extern int g_tx_power_dbm;
         extern uint16_t g_distance_threshold_mm;
         extern uint32_t g_pre_arm_duration_ms;
-        publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms);
+        extern uint32_t g_relay_cooldown_ms;
+        publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms, g_relay_cooldown_ms);
         return;
     }
 
@@ -179,6 +192,7 @@ void MqttManager::update() {
                 client.subscribe(MQTT_TOPIC_CONFIG_TX_POWER);
                 client.subscribe(MQTT_TOPIC_CONFIG_TOF_DIST);
                 client.subscribe(MQTT_TOPIC_CONFIG_DURATION);
+                client.subscribe("gatekeeper/config/relay_cooldown");
                 client.subscribe("gatekeeper/config/set");
                 client.subscribe("gatekeeper/config/get");
                 LOGF("[MQTT] 토픽 구독 완료: %s, gatekeeper/force_open, gatekeeper/config/#", MQTT_TOPIC_ARM);
@@ -189,7 +203,8 @@ void MqttManager::update() {
                 extern int g_tx_power_dbm;
                 extern uint16_t g_distance_threshold_mm;
                 extern uint32_t g_pre_arm_duration_ms;
-                publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms);
+                extern uint32_t g_relay_cooldown_ms;
+                publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms, g_relay_cooldown_ms);
                 return;
             } else {
                 failCount++;
@@ -202,13 +217,14 @@ void MqttManager::update() {
     }
 }
 
-void MqttManager::publishConfigState(int txPower, int tofDistanceCm, uint32_t durationMs) {
+void MqttManager::publishConfigState(int txPower, int tofDistanceCm, uint32_t durationMs, uint32_t relayCooldownMs) {
     if (!isConnected()) return;
 
     StaticJsonDocument<256> doc;
     doc["tx_power"] = txPower;
     doc["tof_distance_cm"] = tofDistanceCm;
     doc["duration_ms"] = durationMs;
+    doc["relay_cooldown_ms"] = relayCooldownMs;
     doc["status"] = "applied_nvs";
 
     char buffer[256];
@@ -216,6 +232,7 @@ void MqttManager::publishConfigState(int txPower, int tofDistanceCm, uint32_t du
     client.publish("gatekeeper/config/state", buffer, true); // Retained = true
     LOGF("[MQTT-CONFIG] 📡 Retained Config State 발행 완료: %s", buffer);
 }
+
 
 
 void MqttManager::publishAutoDiscovery() {

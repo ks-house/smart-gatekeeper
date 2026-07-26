@@ -67,6 +67,7 @@ static uint32_t arm_timestamp = 0;  // millis() 기준 arm 활성화 시각
 // ─────────────────────────────────────────────────────────────
 uint16_t g_distance_threshold_mm = DISTANCE_THRESHOLD_MM;
 uint32_t g_pre_arm_duration_ms  = PRE_ARM_DURATION_MS;
+uint32_t g_relay_cooldown_ms    = DEFAULT_RELAY_COOLDOWN_MS;
 int      g_tx_power_dbm          = 9;
 
 void setTxPower(int powerDbm) {
@@ -80,7 +81,7 @@ void setTxPower(int powerDbm) {
 
   BLEDevice::setPower(pwrLevel, ESP_BLE_PWR_TYPE_ADV);
   ConfigManager::setTxPower(powerDbm);
-  MqttManager::publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms);
+  MqttManager::publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms, g_relay_cooldown_ms);
   LOGF("[CONFIG-TUNING] ⚙️ BLE Tx Power 동적 변경 & NVS 저장: %d dBm", powerDbm);
 }
 
@@ -89,7 +90,7 @@ void setTofDistanceCm(int distanceCm) {
   if (distanceCm > 200) distanceCm = 200;
   g_distance_threshold_mm = (uint16_t)(distanceCm * 10);
   ConfigManager::setTofDistanceCm(distanceCm);
-  MqttManager::publishConfigState(g_tx_power_dbm, distanceCm, g_pre_arm_duration_ms);
+  MqttManager::publishConfigState(g_tx_power_dbm, distanceCm, g_pre_arm_duration_ms, g_relay_cooldown_ms);
   LOGF("[CONFIG-TUNING] ⚙️ ToF 감지 거리 동적 변경 & NVS 저장: %d cm (%u mm)", distanceCm, g_distance_threshold_mm);
 }
 
@@ -97,9 +98,19 @@ void setPreArmDurationMs(uint32_t durationMs) {
   if (durationMs < 1000) durationMs = 1000;
   g_pre_arm_duration_ms = durationMs;
   ConfigManager::setPreArmDurationMs(durationMs);
-  MqttManager::publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), durationMs);
+  MqttManager::publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), durationMs, g_relay_cooldown_ms);
   LOGF("[CONFIG-TUNING] ⚙️ Pre-arm 유효 시간 동적 변경 & NVS 저장: %lu ms", (unsigned long)g_pre_arm_duration_ms);
 }
+
+void setRelayCooldownMs(uint32_t cooldownMs) {
+  if (cooldownMs < 1000) cooldownMs = 1000;
+  if (cooldownMs > 30000) cooldownMs = 30000;
+  g_relay_cooldown_ms = cooldownMs;
+  ConfigManager::setRelayCooldownMs(cooldownMs);
+  MqttManager::publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms, cooldownMs);
+  LOGF("[CONFIG-TUNING] ⚙️ Target 릴레이 쿨다운 동적 변경 & NVS 저장: %lu ms", (unsigned long)g_relay_cooldown_ms);
+}
+
 
 
 // ─────────────────────────────────────────────────────────────
@@ -201,13 +212,16 @@ void setup() {
   int savedTx = ConfigManager::getTxPower(9);
   int savedTof = ConfigManager::getTofDistanceCm(50);
   uint32_t savedDur = ConfigManager::getPreArmDurationMs(60000);
+  uint32_t savedCool = ConfigManager::getRelayCooldownMs(3000);
 
   g_tx_power_dbm = savedTx;
   g_distance_threshold_mm = (uint16_t)(savedTof * 10);
   g_pre_arm_duration_ms = savedDur;
+  g_relay_cooldown_ms = savedCool;
 
-  LOGF("[CONFIG-NVS] ✅ NVS 플래시 저장 설정 복원 완료 -> Tx: %d dBm | ToF: %d cm (%u mm) | Duration: %lu ms",
-       g_tx_power_dbm, savedTof, g_distance_threshold_mm, (unsigned long)g_pre_arm_duration_ms);
+  LOGF("[CONFIG-NVS] ✅ NVS 플래시 저장 설정 복원 완료 -> Tx: %d dBm | ToF: %d cm | Duration: %lu ms | Relay Cooldown: %lu ms",
+       g_tx_power_dbm, savedTof, (unsigned long)g_pre_arm_duration_ms, (unsigned long)g_relay_cooldown_ms);
+
 
   WifiManager::init();
 
@@ -372,11 +386,12 @@ void loop() {
     // 쿨다운 종료 시 IDLE 복귀 (다음 Pre-arm 준비)
     // ──────────────────────────────────────────────────────────
     case GateState::COOLDOWN:
-      if (millis() - stateMs >= COOLDOWN_MS) {
-        LOGF("[GATE] 🚪 쿨다운 완료 -> IDLE 대기 상태 복귀 (다음 MQTT Pre-arm 승인 대기)");
+      if (millis() - stateMs >= g_relay_cooldown_ms) {
+        LOGF("[GATE] 🚪 릴레이 쿨다운 완료 (%lu ms) -> IDLE 대기 상태 복귀", (unsigned long)g_relay_cooldown_ms);
         state = GateState::IDLE;
         MqttManager::publishEvent("gate_idle", "Cooldown complete, ready for next Pre-arm");
       }
+
       break;
   }
 

@@ -17,11 +17,13 @@ class _DebugScreenState extends State<DebugScreen> {
   int _selectedTxPower = 9; // dBm (-6, 0, 3, 9)
   double _tofDistanceCm = 50; // cm (5 ~ 200)
   double _durationMs = 60000; // ms (1000 ~ 60000)
+  double _relayCooldownMs = 3000; // ms (1000 ~ 10000)
 
   // Target 현재 적용 상태 변수 (서버/Target 실제 반영 상태)
   int _appliedTxPower = 9;
   double _appliedTofDistanceCm = 50;
   double _appliedDurationMs = 60000;
+  double _appliedRelayCooldownMs = 3000;
   String _lastSyncTimeStr = '미동기화';
 
   bool _isSending = false;
@@ -64,9 +66,13 @@ class _DebugScreenState extends State<DebugScreen> {
               _durationMs = (data['duration'] as num).toDouble();
               _appliedDurationMs = _durationMs;
             }
+            if (data['relay_cooldown'] != null) {
+              _relayCooldownMs = (data['relay_cooldown'] as num).toDouble();
+              _appliedRelayCooldownMs = _relayCooldownMs;
+            }
             final now = DateTime.now();
             _lastSyncTimeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-            _targetResponseMsg = '🔄 최신 실시간 설정 동기화 완료 ($_lastSyncTimeStr)\n[적용 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s';
+            _targetResponseMsg = '🔄 최신 실시간 설정 동기화 완료 ($_lastSyncTimeStr)\n[적용 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
           });
         }
       }
@@ -97,6 +103,7 @@ class _DebugScreenState extends State<DebugScreen> {
               'tx_power': _selectedTxPower,
               'tof_distance': _tofDistanceCm.toInt(),
               'duration': _durationMs.toInt(),
+              'relay_cooldown': _relayCooldownMs.toInt(),
             }),
           )
           .timeout(const Duration(seconds: 5));
@@ -109,8 +116,12 @@ class _DebugScreenState extends State<DebugScreen> {
           _appliedTxPower = _selectedTxPower;
           _appliedTofDistanceCm = _tofDistanceCm;
           _appliedDurationMs = _durationMs;
+          _appliedRelayCooldownMs = _relayCooldownMs;
           _lastSyncTimeStr = timeStr;
-          _targetResponseMsg = '✅ Target 파라미터 NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s';
+          _targetResponseMsg = '✅ Target 파라미터 NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
+        });
+      }
+ NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s';
 
         });
       } else {
@@ -302,6 +313,30 @@ class _DebugScreenState extends State<DebugScreen> {
               },
             ),
             const Divider(color: Colors.white10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('모바일 앱 비콘 API 쿨다운:', style: TextStyle(color: Colors.white70)),
+                Text(
+                  '${_scanner.cooldownSeconds} 초',
+                  style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            Slider(
+              value: _scanner.cooldownSeconds.toDouble(),
+              min: 1.0,
+              max: 30.0,
+              divisions: 29,
+              activeColor: Colors.amber.shade700,
+              label: '${_scanner.cooldownSeconds} 초',
+              onChanged: (val) {
+                setState(() {
+                  _scanner.setCooldownSeconds(val.round());
+                });
+              },
+            ),
+            const Divider(color: Colors.white10),
             CheckboxListTile(
               title: const Text('스마트 쿨다운 무시 (Ignore Cooldown)', style: TextStyle(color: Colors.white, fontSize: 14)),
               subtitle: Text('체크 시 문 열기 직후에도 쿨다운 없이 비콘 API 연타 가능', style: TextStyle(color: Colors.grey, fontSize: 12)),
@@ -320,6 +355,7 @@ class _DebugScreenState extends State<DebugScreen> {
       ),
     );
   }
+
 
   Widget _buildTargetRemoteControlCard() {
     return Card(
@@ -403,7 +439,29 @@ class _DebugScreenState extends State<DebugScreen> {
                 });
               },
             ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('4. Target 릴레이 쿨다운:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Text('${(_relayCooldownMs / 1000).toStringAsFixed(1)} 초 (${_relayCooldownMs.round()} ms)', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Slider(
+              value: _relayCooldownMs,
+              min: 1000,
+              max: 10000,
+              divisions: 18,
+              activeColor: Colors.cyan,
+              label: '${(_relayCooldownMs / 1000).toStringAsFixed(1)}초',
+              onChanged: (val) {
+                setState(() {
+                  _relayCooldownMs = val;
+                });
+              },
+            ),
             const SizedBox(height: 16),
+
             Row(
               children: [
                 Expanded(

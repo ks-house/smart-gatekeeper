@@ -24,7 +24,7 @@ class BleScanner {
 
   String targetBeaconUuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
-  int cooldownSeconds = 30;
+  int cooldownSeconds = 10;
 
   // ─── 엔지니어 원격 튜닝용 파라미터 (DebugScreen 연동) ────────────
   int rssiThreshold = -75;       // 동적 RSSI Threshold (-90 ~ -30 dBm)
@@ -48,9 +48,19 @@ class BleScanner {
       final prefs = await SharedPreferences.getInstance();
       ignoreCooldown = prefs.getBool('ignore_cooldown') ?? false;
       rssiThreshold = prefs.getInt('rssi_threshold') ?? -75;
+      cooldownSeconds = prefs.getInt('cooldown_seconds') ?? 10;
     } catch (e) {
       debugPrint('[BleScanner] SharedPreferences 로드 실패: $e');
     }
+  }
+
+  Future<void> setCooldownSeconds(int value) async {
+    cooldownSeconds = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('cooldown_seconds', value);
+    } catch (_) {}
+    debugPrint('[BleScanner] cooldownSeconds 변경: $value초');
   }
 
   Future<void> setIgnoreCooldown(bool value) async {
@@ -70,6 +80,7 @@ class BleScanner {
       await prefs.setInt('rssi_threshold', value);
     } catch (_) {}
   }
+
 
 
   void _startTimeoutCheckTimer() {
