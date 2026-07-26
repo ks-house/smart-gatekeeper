@@ -47,3 +47,11 @@ app.*.map.json
 /android/build/
 /android/.gradle/
 
+# Android Keystore & Secrets Security
+*.jks
+*.keystore
+*.txt
+key.properties
+
+
+
