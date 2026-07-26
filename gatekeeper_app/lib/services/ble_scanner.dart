@@ -35,6 +35,7 @@ class BleScanner {
   final ValueNotifier<bool> isBeaconConnected = ValueNotifier<bool>(false);
 
   DateTime? _lastPrearmTime;
+  DateTime? _lastArmSuccessTime;
   Timer? _timeoutTimer;
   bool _isPrearmInProgress = false;
 
@@ -42,6 +43,17 @@ class BleScanner {
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
   bool get isScanning => _isScanning;
+
+  void _updateNotification({required String title, required String text}) {
+    try {
+      FlutterForegroundTask.updateService(
+        notificationTitle: title,
+        notificationText: text,
+      );
+    } catch (e) {
+      debugPrint('[BleScanner] Notification update error: $e');
+    }
+  }
 
   Future<void> loadSavedPreferences() async {
     try {
@@ -93,7 +105,19 @@ class BleScanner {
             liveRssi.value = null;
             isBeaconConnected.value = false;
             debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (2.5초 초과) -> "연결 안됨" 전환');
+            _updateNotification(
+              title: '🔴 Target 비콘 연결 안됨 (탐색 중)',
+              text: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
+            );
           }
+        }
+      } else {
+        if (isBeaconConnected.value) {
+          isBeaconConnected.value = false;
+          _updateNotification(
+            title: '🔴 Target 비콘 연결 안됨 (탐색 중)',
+            text: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
+          );
         }
       }
     });
@@ -160,6 +184,10 @@ class BleScanner {
 
     _isScanning = true;
     debugPrint('[BleScanner] 비콘 실시간 고속 스캐닝 시작... (Target UUID: $targetBeaconUuid)');
+    _updateNotification(
+      title: '🔴 Target 비콘 연결 안됨 (탐색 중)',
+      text: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
+    );
 
     // 스캔 결과 리스너 등록
     _scanSubscription?.cancel();
@@ -224,9 +252,18 @@ class BleScanner {
       return;
     }
 
+    final isRecentArm = _lastArmSuccessTime != null &&
+        DateTime.now().difference(_lastArmSuccessTime!).inSeconds < 4;
+
     // 동적 RSSI 임계치 필터링
     if (rssi < rssiThreshold) {
       debugPrint('[BleScanner] 비콘 감지되었으나 RSSI 기준 미달: $rssi dBm < $rssiThreshold dBm (무시)');
+      if (!isRecentArm) {
+        _updateNotification(
+          title: '🟡 Target 비콘 신호 약함 ($rssi dBm)',
+          text: '센서 근접 필요 (현재: $rssi dBm / 기준: $rssiThreshold dBm)',
+        );
+      }
       return;
     }
 
@@ -237,7 +274,14 @@ class BleScanner {
     if (!ignoreCooldown && _lastPrearmTime != null) {
       final difference = now.difference(_lastPrearmTime!).inSeconds;
       if (difference < cooldownSeconds) {
+        final remainSec = cooldownSeconds - difference;
         debugPrint('[BleScanner] 쿨다운 대기 중... ($difference초 경과 / $cooldownSeconds초)');
+        if (!isRecentArm) {
+          _updateNotification(
+            title: '⏳ 출입 쿨다운 대기 중 ($remainSec초)',
+            text: 'Target 비콘 감지됨 ($rssi dBm) — 연속 개방 방지 대기 중',
+          );
+        }
         return;
       }
     }
@@ -271,17 +315,23 @@ class BleScanner {
 
       if (response.statusCode == 200) {
         debugPrint('[BleScanner] ✅ Pre-arm 성공! (Status: 200 OK)');
-        try {
-          FlutterForegroundTask.updateService(
-            notificationTitle: '🟢 Smart Key 출입문 승인 완료!',
-            notificationText: 'Target 비콘 감지 ($rssi dBm) → 다가가면 출입문 자동 개방!',
-          );
-        } catch (_) {}
+        _lastArmSuccessTime = DateTime.now();
+        _updateNotification(
+          title: '🟢 Smart Key 출입문 승인 완료!',
+          text: 'Target 비콘 감지 ($rssi dBm) → ToF 센서로 다가가면 문이 열립니다!',
+        );
       } else if (response.statusCode == 403) {
-
         debugPrint('[BleScanner] 🚨 권한 미승인/거부됨 (Status: 403 Forbidden)');
+        _updateNotification(
+          title: '⛔ 출입 권한 거부/미승인',
+          text: '관리자 승인이 필요한 세입자 기기입니다.',
+        );
       } else {
         debugPrint('[BleScanner] Pre-arm 실패: HTTP ${response.statusCode}');
+        _updateNotification(
+          title: '⚠️ 출입 승인 실패 (HTTP ${response.statusCode})',
+          text: '서버 통신 오류가 발생했습니다.',
+        );
       }
     } catch (e) {
       debugPrint('[BleScanner] Pre-arm API 통신 오류: $e');
@@ -301,6 +351,11 @@ class BleScanner {
     await _scanSubscription?.cancel();
     await FlutterBluePlus.stopScan();
     debugPrint('[BleScanner] 비콘 스캐닝 중지됨.');
+    _updateNotification(
+      title: '⏹️ Target 비콘 감지 중지됨',
+      text: '스캔 서비스가 일시 정지되었습니다.',
+    );
   }
 
 }
+

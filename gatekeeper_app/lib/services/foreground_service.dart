@@ -83,9 +83,10 @@ class ForegroundServiceManager {
     }
 
     await FlutterForegroundTask.startService(
-      notificationTitle: '🛡️ Smart Key 자동 출입 감지 중',
-      notificationText: '화면이 꺼져 있어도 다가가면 출입문이 자동으로 열립니다.',
+      notificationTitle: '🔴 Target 비콘 연결 안됨 (탐색 중)',
+      notificationText: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
       callback: startCallback,
     );
+
   }
 }
