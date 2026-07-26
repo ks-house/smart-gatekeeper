@@ -419,6 +419,9 @@
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
   - `lib/services/ble_scanner.dart`: 동적 RSSI Threshold 필터링, 실시간 RSSI ValueNotifier 업데이트, 쿨다운 무시 선택적 패스 구현
   - `lib/screens/web_view_screen.dart`: AppBar 상단에 엔지니어 디버그 화면 진입 아이콘 버튼(`Icons.tune`) 추가
+- **`gatekeeper_app/android/app/upload-keystore.jks` & `build.gradle.kts`**:
+  - 앱 업데이트(덮어쓰기 설치) 실패 원인인 CI 무작위 서명 키(Signature Mismatch) 해결을 위해 고정 키스토어 `upload-keystore.jks` 도입 ➔ 기존 앱 삭제 없이 덮어쓰기 업데이트 100% 정상화
+
 
 
 
