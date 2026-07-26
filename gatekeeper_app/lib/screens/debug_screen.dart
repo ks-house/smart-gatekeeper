@@ -101,10 +101,12 @@ class _DebugScreenState extends State<DebugScreen> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'tx_power': _selectedTxPower,
+              'distance_threshold': _tofDistanceCm.toInt(),
               'tof_distance': _tofDistanceCm.toInt(),
               'duration': _durationMs.toInt(),
               'relay_cooldown': _relayCooldownMs.toInt(),
             }),
+
           )
           .timeout(const Duration(seconds: 5));
 
@@ -398,15 +400,15 @@ class _DebugScreenState extends State<DebugScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('2. ToF 감지 기준 거리:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const Text('2. 초음파 감지 기준 거리:', style: TextStyle(color: Colors.white70, fontSize: 13)),
                 Text('${_tofDistanceCm.round()} cm', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
               ],
             ),
             Slider(
-              value: _tofDistanceCm,
-              min: 10,
+              value: _tofDistanceCm < 20 ? 20 : _tofDistanceCm,
+              min: 20,
               max: 150,
-              divisions: 28,
+              divisions: 26,
               activeColor: Colors.cyan,
               label: '${_tofDistanceCm.round()} cm',
               onChanged: (val) {
@@ -415,6 +417,7 @@ class _DebugScreenState extends State<DebugScreen> {
                 });
               },
             ),
+
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

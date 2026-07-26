@@ -26,7 +26,8 @@ public:
     static bool isConnected() { return wifiClient.connected() && client.connected(); }
     static void publishTelemetry(uint16_t distance_mm, const char* stateStr, bool is_armed);
     static void publishEvent(const char* eventType, const char* detail);
-    static void publishConfigState(int txPower, int tofDistanceCm, uint32_t durationMs, uint32_t relayCooldownMs);
+    static void publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs);
+
 
     static void publishAutoDiscovery(); // Home Assistant MQTT Auto-Discovery
 };

@@ -14,7 +14,7 @@
 extern void triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
 extern void triggerArm();            // MQTT gatekeeper/arm 수신 시 Pre-arm 활성화
 extern void setTxPower(int powerDbm);
-extern void setTofDistanceCm(int distanceCm);
+extern void setDistanceThresholdCm(int distanceCm);
 extern void setPreArmDurationMs(uint32_t durationMs);
 
 
@@ -50,20 +50,20 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
             const char* action = armDoc["action"] | "";
             if (strcmp(action, "arm") == 0) {
                 const char* user = armDoc["user"] | "unknown";
-                LOGF("[MQTT-ARM] ✅ NAS Pre-arm 승인 수신! 사용자: %s → ToF 활성화 (%lu ms)", user, (unsigned long)PRE_ARM_DURATION_MS);
+                LOGF("[MQTT-ARM] ✅ NAS Pre-arm 승인 수신! 사용자: %s → 초음파 활성화 (%lu ms)", user, (unsigned long)PRE_ARM_DURATION_MS);
                 isArmCommand = true;
             }
         } else {
             // JSON 파싱 실패 시 단순 문자열 "arm" fallback 처리
             if (strcasecmp(message, "arm") == 0) {
-                LOGF("[MQTT-ARM] ✅ Pre-arm 수신 (단순 문자열 'arm') → ToF 활성화");
+                LOGF("[MQTT-ARM] ✅ Pre-arm 수신 (단순 문자열 'arm') → 초음파 활성화");
                 isArmCommand = true;
             }
         }
 
         if (isArmCommand) {
             triggerArm();
-            publishEvent("pre_armed", "ToF sensor activated via MQTT Pre-arm");
+            publishEvent("pre_armed", "Ultrasonic sensor activated via MQTT Pre-arm");
         } else {
             LOGF("[MQTT-ARM] ⚠️ arm 토픽 수신되었으나 페이로드 형식 불일치: %s", message);
         }
@@ -87,16 +87,15 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         return;
     }
 
-    // ─── gatekeeper/config/tof_distance — ToF 감지 거리 동적 튜닝 ───────────
-    if (strcmp(topic, MQTT_TOPIC_CONFIG_TOF_DIST) == 0) {
+    // ─── gatekeeper/config/distance_threshold — 초음파 감지 기준 거리 동적 튜닝 ───
+    if (strcmp(topic, MQTT_TOPIC_CONFIG_DISTANCE_THRESH) == 0 || strcmp(topic, MQTT_TOPIC_CONFIG_TOF_DIST) == 0) {
         int val = atoi(message);
-        LOGF("[MQTT-CONFIG] ⚙️ ToF 감지 거리 설정 수신: %d cm", val);
-        setTofDistanceCm(val);
-        publishEvent("config_tof_distance", String(val).c_str());
+        LOGF("[MQTT-CONFIG] ⚙️ 초음파 감지 기준 거리 설정 수신: %d cm", val);
+        setDistanceThresholdCm(val);
+        publishEvent("config_distance_threshold", String(val).c_str());
         return;
     }
 
-    // ─── gatekeeper/config/duration — Pre-arm 유효 시간 동적 튜닝 ─────────────
     // ─── gatekeeper/config/duration — Pre-arm 유효 시간 동적 튜닝 ─────────────
     if (strcmp(topic, MQTT_TOPIC_CONFIG_DURATION) == 0) {
         int val = atoi(message);
@@ -123,7 +122,9 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
             LOGF("[MQTT-CONFIG] ⚙️ 일괄 JSON 튜닝 설정 수신: %s", message);
             extern void setRelayCooldownMs(uint32_t cooldownMs);
             if (setDoc.containsKey("tx_power")) setTxPower(setDoc["tx_power"].as<int>());
-            if (setDoc.containsKey("tof_distance")) setTofDistanceCm(setDoc["tof_distance"].as<int>());
+            if (setDoc.containsKey("distance_threshold")) setDistanceThresholdCm(setDoc["distance_threshold"].as<int>());
+            else if (setDoc.containsKey("target_distance")) setDistanceThresholdCm(setDoc["target_distance"].as<int>());
+            else if (setDoc.containsKey("tof_distance")) setDistanceThresholdCm(setDoc["tof_distance"].as<int>());
             if (setDoc.containsKey("duration")) setPreArmDurationMs(setDoc["duration"].as<uint32_t>());
             if (setDoc.containsKey("relay_cooldown")) setRelayCooldownMs(setDoc["relay_cooldown"].as<uint32_t>());
         }
@@ -134,12 +135,13 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     if (strcmp(topic, "gatekeeper/config/get") == 0) {
         LOGF("[MQTT-CONFIG] ⚙️ 설정 상태 요청(get) 수신 → 쿼리 응답 전송");
         extern int g_tx_power_dbm;
-        extern uint16_t g_distance_threshold_mm;
+        extern uint16_t g_distance_threshold_cm;
         extern uint32_t g_pre_arm_duration_ms;
         extern uint32_t g_relay_cooldown_ms;
-        publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms, g_relay_cooldown_ms);
+        publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, g_relay_cooldown_ms);
         return;
     }
+
 
     // ─── smart-gatekeeper/cmd — 원격 명령 처리 ──────────────────────────
     StaticJsonDocument<256> doc;
@@ -190,6 +192,7 @@ void MqttManager::update() {
                 client.subscribe("gatekeeper/force_open");
                 client.subscribe("smart-gatekeeper/cmd");
                 client.subscribe(MQTT_TOPIC_CONFIG_TX_POWER);
+                client.subscribe(MQTT_TOPIC_CONFIG_DISTANCE_THRESH);
                 client.subscribe(MQTT_TOPIC_CONFIG_TOF_DIST);
                 client.subscribe(MQTT_TOPIC_CONFIG_DURATION);
                 client.subscribe("gatekeeper/config/relay_cooldown");
@@ -197,14 +200,14 @@ void MqttManager::update() {
                 client.subscribe("gatekeeper/config/get");
                 LOGF("[MQTT] 토픽 구독 완료: %s, gatekeeper/force_open, gatekeeper/config/#", MQTT_TOPIC_ARM);
 
-                publishEvent("connected", "ESP32-C6 v2.0 Online (SSL) - BLE Beacon Mode");
+                publishEvent("connected", "ESP32-C6 v2.0 Online (SSL) — AJ-SR04T Ultrasonic Sensor");
                 publishAutoDiscovery();
 
                 extern int g_tx_power_dbm;
-                extern uint16_t g_distance_threshold_mm;
+                extern uint16_t g_distance_threshold_cm;
                 extern uint32_t g_pre_arm_duration_ms;
                 extern uint32_t g_relay_cooldown_ms;
-                publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms, g_relay_cooldown_ms);
+                publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, g_relay_cooldown_ms);
                 return;
             } else {
                 failCount++;
@@ -217,12 +220,13 @@ void MqttManager::update() {
     }
 }
 
-void MqttManager::publishConfigState(int txPower, int tofDistanceCm, uint32_t durationMs, uint32_t relayCooldownMs) {
+void MqttManager::publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs) {
     if (!isConnected()) return;
 
     StaticJsonDocument<256> doc;
     doc["tx_power"] = txPower;
-    doc["tof_distance_cm"] = tofDistanceCm;
+    doc["distance_threshold_cm"] = distanceThresholdCm;
+    doc["tof_distance_cm"] = distanceThresholdCm; // 호환용 하위 별칭
     doc["duration_ms"] = durationMs;
     doc["relay_cooldown_ms"] = relayCooldownMs;
     doc["status"] = "applied_nvs";
@@ -232,6 +236,7 @@ void MqttManager::publishConfigState(int txPower, int tofDistanceCm, uint32_t du
     client.publish("gatekeeper/config/state", buffer, true); // Retained = true
     LOGF("[MQTT-CONFIG] 📡 Retained Config State 발행 완료: %s", buffer);
 }
+
 
 
 

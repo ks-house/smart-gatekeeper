@@ -46,27 +46,30 @@ constexpr uint32_t BLE_ADV_INTERVAL_MS = 100;
 // NAS로부터 승인 명령(arm)을 수신할 MQTT 구독 토픽
 constexpr const char* MQTT_TOPIC_ARM = "gatekeeper/arm";
 constexpr const char* MQTT_TOPIC_CONFIG_TX_POWER = "gatekeeper/config/tx_power";
-constexpr const char* MQTT_TOPIC_CONFIG_TOF_DIST = "gatekeeper/config/tof_distance";
+constexpr const char* MQTT_TOPIC_CONFIG_DISTANCE_THRESH = "gatekeeper/config/distance_threshold";
+constexpr const char* MQTT_TOPIC_CONFIG_TOF_DIST = "gatekeeper/config/tof_distance"; // 호환용 하위 별칭
 constexpr const char* MQTT_TOPIC_CONFIG_DURATION = "gatekeeper/config/duration";
 
-// MQTT arm 메시지 수신 후 ToF 센서를 활성화해 둘 유효 시간 (60초)
-// 이 시간 내에 ToF 감지가 없으면 자동으로 IDLE 복귀
+// MQTT arm 메시지 수신 후 초음파 센서를 활성화해 둘 유효 시간 (60초)
+// 이 시간 내에 초음파 접근 감지가 없으면 자동으로 IDLE 복귀
 constexpr uint32_t PRE_ARM_DURATION_MS = 60000;
 
 
-// ─── I2C & 핀 매핑 ───────────────────────────────────────────
-constexpr uint8_t PIN_SDA        = 6;
-constexpr uint8_t PIN_SCL        = 7;
-constexpr uint8_t PIN_TOF_XSHUT  = 10;
+// ─── AJ-SR04T (JSN-SR04T) 방수 초음파 센서 핀 매핑 ─────────────────
+// ESP32-C6 안전 GPIO 사용 (스트래핑 핀 4, 5, 8, 9, 15 및 USB 핀 17~20 회피)
+constexpr uint8_t PIN_TRIG = 10; // TRIG: GPIO 10 (OUTPUT)
+constexpr uint8_t PIN_ECHO = 11; // ECHO: GPIO 11 (INPUT)
 
 // ─── 릴레이 제어 핀 ───────────────────────────────────────────
 constexpr uint8_t PIN_RELAY      = 23;
 constexpr bool    RELAY_ACTIVE_LOW = true;
 
 // ─── 애플리케이션 파라미터 ───────────────────────────────────
-// ToF 감지 임계 거리 (50cm = 500mm)
-constexpr uint16_t DISTANCE_THRESHOLD_MM = 500;
-constexpr uint16_t GATE_THRESHOLD_MM     = DISTANCE_THRESHOLD_MM;
+// 초음파 센서 맹점(Blind Zone): 0 ~ 19.9cm 구간은 난반사 노이즈로 간주하고 무시
+constexpr float ULTRASONIC_MIN_DISTANCE_CM = 20.0f;
+
+// 초음파 감지 기준 거리 (기본값 50cm, 범위 20cm ~ 200cm)
+constexpr uint16_t DEFAULT_DISTANCE_THRESHOLD_CM = 50;
 
 // 릴레이 ON 유지 시간 (1초)
 constexpr uint32_t RELAY_HOLD_MS        = 1000;
@@ -76,6 +79,6 @@ constexpr uint32_t RELAY_ON_DURATION_MS = RELAY_HOLD_MS;
 constexpr uint32_t DEFAULT_RELAY_COOLDOWN_MS = 3000;
 extern uint32_t g_relay_cooldown_ms;
 
+// 초음파 폴링 인터벌 (ARMED 상태에서만 적용)
+constexpr uint32_t ULTRASONIC_POLL_INTERVAL_MS = 100;
 
-// ToF 폴링 인터벌 (ARMED 상태에서만 적용)
-constexpr uint32_t TOF_POLL_INTERVAL_MS = 100;

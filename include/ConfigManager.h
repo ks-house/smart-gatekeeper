@@ -19,19 +19,22 @@ public:
     static String getApiUrl();
     static String getApiKey();
 
-    // NVS 영구 저장 튜닝 파라미터 (Tx Power, ToF 거리, Pre-arm 유효시간, 릴레이 쿨다운)
+    // NVS 영구 저장 튜닝 파라미터 (Tx Power, 초음파 감지 기준 거리, Pre-arm 유효시간, 릴레이 쿨다운)
     static int getTxPower(int defaultVal = 9);
-    static int getTofDistanceCm(int defaultVal = 50);
+    static int getDistanceThresholdCm(int defaultVal = 50);
+    static int getTofDistanceCm(int defaultVal = 50); // 하위 호환용 별칭
     static uint32_t getPreArmDurationMs(uint32_t defaultVal = 60000);
     static uint32_t getRelayCooldownMs(uint32_t defaultVal = 3000);
 
     static void setWifiCredentials(const String& ssid, const String& password);
     static void setApiCredentials(const String& url, const String& key);
     static void setTxPower(int powerDbm);
-    static void setTofDistanceCm(int distanceCm);
+    static void setDistanceThresholdCm(int distanceCm);
+    static void setTofDistanceCm(int distanceCm); // 하위 호환용 별칭
     static void setPreArmDurationMs(uint32_t durationMs);
     static void setRelayCooldownMs(uint32_t cooldownMs);
     static void clearConfig();
+
 
 };
 

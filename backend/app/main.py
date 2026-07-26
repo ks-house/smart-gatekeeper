@@ -152,15 +152,17 @@ def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
     }, ensure_ascii=False)
     return _publish_mqtt_msg(MQTT_TOPIC_FORCE, payload, "MQTT-FORCE")
 
-def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, duration: Optional[int] = None, relay_cooldown: Optional[int] = None) -> dict:
+def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, distance_threshold: Optional[int] = None, duration: Optional[int] = None, relay_cooldown: Optional[int] = None) -> dict:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/config/... 엔지니어 튜닝 토픽 및 gatekeeper/config/set 일괄 발행."""
     results = {}
+    dist_val = distance_threshold if distance_threshold is not None else tof_distance
     if tx_power is not None:
         ok = _publish_mqtt_msg("gatekeeper/config/tx_power", str(tx_power), "MQTT-CONFIG-TX")
         results["tx_power"] = {"value": tx_power, "success": ok}
-    if tof_distance is not None:
-        ok = _publish_mqtt_msg("gatekeeper/config/tof_distance", str(tof_distance), "MQTT-CONFIG-TOF")
-        results["tof_distance"] = {"value": tof_distance, "success": ok}
+    if dist_val is not None:
+        ok1 = _publish_mqtt_msg("gatekeeper/config/distance_threshold", str(dist_val), "MQTT-CONFIG-DIST")
+        ok2 = _publish_mqtt_msg("gatekeeper/config/tof_distance", str(dist_val), "MQTT-CONFIG-TOF")
+        results["distance_threshold"] = {"value": dist_val, "success": ok1 and ok2}
     if duration is not None:
         ok = _publish_mqtt_msg("gatekeeper/config/duration", str(duration), "MQTT-CONFIG-DUR")
         results["duration"] = {"value": duration, "success": ok}
@@ -180,7 +182,7 @@ def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: O
 class AuthVerifyRequest(BaseModel):
     ble_mac: str = Field(..., example="AA:BB:CC:DD:EE:01", description="스마트폰 BLE MAC 주소")
     auth_key: Optional[str] = Field(None, description="인증 토큰/키 (선택)")
-    distance_mm: Optional[int] = Field(None, description="ToF 센서 측정 거리(mm)")
+    distance_mm: Optional[int] = Field(None, description="센서 측정 거리(mm)")
 
 class AuthVerifyResponse(BaseModel):
     granted: bool
@@ -207,9 +209,11 @@ class ForceOpenRequestSchema(BaseModel):
 
 class AdminConfigRequestSchema(BaseModel):
     tx_power: Optional[int] = Field(None, example=-6, description="BLE Tx Power dBm (-6, 0, 3, 9)")
-    tof_distance: Optional[int] = Field(None, example=50, description="ToF 감지 기준 거리 cm (5 ~ 200)")
+    distance_threshold: Optional[int] = Field(None, example=50, description="초음파 감지 기준 거리 cm (20 ~ 200)")
+    tof_distance: Optional[int] = Field(None, example=50, description="하위 호환용 감지 기준 거리 cm (20 ~ 200)")
     duration: Optional[int] = Field(None, example=60000, description="Pre-arm 유효 유지 시간 ms (1000 ~ 60000)")
     relay_cooldown: Optional[int] = Field(None, example=3000, description="Target 릴레이 쿨다운 ms (1000 ~ 30000)")
+
 
 
 

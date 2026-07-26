@@ -40,8 +40,15 @@ int ConfigManager::getTxPower(int defaultVal) {
     return preferences.getInt("tx_pwr", defaultVal);
 }
 
-int ConfigManager::getTofDistanceCm(int defaultVal) {
+int ConfigManager::getDistanceThresholdCm(int defaultVal) {
+    if (preferences.isKey("dist_thresh")) {
+        return preferences.getInt("dist_thresh", defaultVal);
+    }
     return preferences.getInt("tof_dist", defaultVal);
+}
+
+int ConfigManager::getTofDistanceCm(int defaultVal) {
+    return getDistanceThresholdCm(defaultVal);
 }
 
 uint32_t ConfigManager::getPreArmDurationMs(uint32_t defaultVal) {
@@ -67,9 +74,15 @@ void ConfigManager::setTxPower(int powerDbm) {
     preferences.putInt("tx_pwr", powerDbm);
 }
 
-void ConfigManager::setTofDistanceCm(int distanceCm) {
+void ConfigManager::setDistanceThresholdCm(int distanceCm) {
+    preferences.putInt("dist_thresh", distanceCm);
     preferences.putInt("tof_dist", distanceCm);
 }
+
+void ConfigManager::setTofDistanceCm(int distanceCm) {
+    setDistanceThresholdCm(distanceCm);
+}
+
 
 void ConfigManager::setPreArmDurationMs(uint32_t durationMs) {
     preferences.putUInt("prearm_dur", durationMs);

@@ -14,14 +14,17 @@ String WifiManager::stationIp = "";
 static bool webServerStarted = false;
 
 extern int g_tx_power_dbm;
-extern uint16_t g_distance_threshold_mm;
+extern uint16_t g_distance_threshold_cm;
 extern uint32_t g_pre_arm_duration_ms;
 extern uint32_t g_relay_cooldown_ms;
 
 extern void setTxPower(int powerDbm);
+extern void setDistanceThresholdCm(int distanceCm);
 extern void setTofDistanceCm(int distanceCm);
 extern void setPreArmDurationMs(uint32_t durationMs);
 extern void setRelayCooldownMs(uint32_t cooldownMs);
+
+
 
 
 void WifiManager::init() {
@@ -107,7 +110,7 @@ void WifiManager::startAP() {
 
 void WifiManager::handleRoot() {
     String currentSsid = ConfigManager::getWifiSsid();
-    int tofCm = (int)(g_distance_threshold_mm / 10);
+    int distCm = (int)g_distance_threshold_cm;
 
 
     String html = F("<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -158,9 +161,9 @@ void WifiManager::handleRoot() {
     }
 
     html += F("</select>"
-              "<label style='font-size:12px;color:#8b949e;'>ToF 감지 거리 (cm)</label>"
-              "<input type='number' name='tof_distance' min='5' max='200' value='");
-    html += String(tofCm);
+              "<label style='font-size:12px;color:#8b949e;'>초음파 감지 기준 거리 (cm) [20~200]</label>"
+              "<input type='number' name='distance_threshold' min='20' max='200' value='");
+    html += String(distCm);
     html += F("'>"
               "<label style='font-size:12px;color:#8b949e;'>Pre-arm 유지 시간 (초)</label>"
               "<input type='number' name='duration' min='1000' max='60000' step='1000' value='");
@@ -238,8 +241,11 @@ void WifiManager::handleConfigSave() {
     if (webServer.hasArg("tx_power")) {
         setTxPower(webServer.arg("tx_power").toInt());
     }
+    if (webServer.hasArg("distance_threshold")) {
+        setDistanceThresholdCm(webServer.arg("distance_threshold").toInt());
+    }
     if (webServer.hasArg("tof_distance")) {
-        setTofDistanceCm(webServer.arg("tof_distance").toInt());
+        setDistanceThresholdCm(webServer.arg("tof_distance").toInt());
     }
     if (webServer.hasArg("duration")) {
         setPreArmDurationMs(webServer.arg("duration").toInt());
@@ -251,6 +257,7 @@ void WifiManager::handleConfigSave() {
     webServer.sendHeader("Location", "/", true);
     webServer.send(302, "text/plain", "Updated");
 }
+
 
 
 void WifiManager::handleNotFound() {
