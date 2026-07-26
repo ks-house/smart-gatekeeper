@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'device_id_service.dart';
 import 'update_checker.dart';
 
@@ -33,11 +34,41 @@ class BleScanner {
 
   DateTime? _lastPrearmTime;
   Timer? _timeoutTimer;
+  bool _isPrearmInProgress = false;
 
   bool _isScanning = false;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
   bool get isScanning => _isScanning;
+
+  Future<void> loadSavedPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      ignoreCooldown = prefs.getBool('ignore_cooldown') ?? false;
+      rssiThreshold = prefs.getInt('rssi_threshold') ?? -75;
+    } catch (e) {
+      debugPrint('[BleScanner] SharedPreferences 로드 실패: $e');
+    }
+  }
+
+  Future<void> setIgnoreCooldown(bool value) async {
+    ignoreCooldown = value;
+    _lastPrearmTime = DateTime.now(); // 체크 해제 즉시 현재 시각으로 쿨다운 타이머 리셋!
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('ignore_cooldown', value);
+    } catch (_) {}
+    debugPrint('[BleScanner] ignoreCooldown 변경: $value (쿨다운 리셋 완료)');
+  }
+
+  Future<void> setRssiThreshold(int value) async {
+    rssiThreshold = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('rssi_threshold', value);
+    } catch (_) {}
+  }
+
 
   void _startTimeoutCheckTimer() {
     _timeoutTimer?.cancel();
@@ -59,10 +90,12 @@ class BleScanner {
 
   /// 초기화 및 Remote Config 동기화 / 버전 검사
   Future<void> initialize() async {
+    await loadSavedPreferences();
     await fetchRemoteConfig();
     await UpdateChecker().checkForUpdates();
     startScanning();
   }
+
 
   /// 백엔드로부터 동적 설정 (/api/v1/config) 로드
   Future<void> fetchRemoteConfig() async {
@@ -173,6 +206,11 @@ class BleScanner {
 
 
 
+    // 진행 중인 Pre-arm HTTP 요청이 있으면 수신 중복 요청 차단
+    if (_isPrearmInProgress) {
+      return;
+    }
+
     // 동적 RSSI 임계치 필터링
     if (rssi < rssiThreshold) {
       debugPrint('[BleScanner] 비콘 감지되었으나 RSSI 기준 미달: $rssi dBm < $rssiThreshold dBm (무시)');
@@ -199,6 +237,9 @@ class BleScanner {
 
   /// 백엔드 Pre-arm REST API 호출
   Future<void> _sendPrearmRequest(int rssi) async {
+    if (_isPrearmInProgress) return;
+    _isPrearmInProgress = true;
+
     try {
       final deviceId = await DeviceIdService.getDeviceId();
       debugPrint('[BleScanner] Pre-arm REST API 호출 중... (DeviceId: $deviceId)');
@@ -224,8 +265,11 @@ class BleScanner {
       }
     } catch (e) {
       debugPrint('[BleScanner] Pre-arm API 통신 오류: $e');
+    } finally {
+      _isPrearmInProgress = false;
     }
   }
+
 
 
   /// 스캐닝 중지

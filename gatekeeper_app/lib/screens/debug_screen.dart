@@ -293,7 +293,7 @@ class _DebugScreenState extends State<DebugScreen> {
               label: '${_scanner.rssiThreshold} dBm',
               onChanged: (val) {
                 setState(() {
-                  _scanner.rssiThreshold = val.round();
+                  _scanner.setRssiThreshold(val.round());
                 });
               },
             ),
@@ -305,10 +305,11 @@ class _DebugScreenState extends State<DebugScreen> {
               activeColor: Colors.amber.shade800,
               onChanged: (val) {
                 setState(() {
-                  _scanner.ignoreCooldown = val ?? false;
+                  _scanner.setIgnoreCooldown(val ?? false);
                 });
               },
             ),
+
           ],
         ),
       ),
