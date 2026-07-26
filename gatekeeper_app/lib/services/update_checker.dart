@@ -17,18 +17,15 @@ class UpdateChecker {
   String? remoteVersion;
   int? remoteBuildNumber;
   String? downloadUrl;
-  bool isUpdateAvailable = false;
+  final ValueNotifier<bool> isUpdateAvailable = ValueNotifier<bool>(false);
 
   /// 백엔드 또는 환경변수 URL로 앱 업데이트 여부 확인
   Future<bool> checkForUpdates({String? customVersionUrl, String? customDownloadUrl}) async {
     final targetUrl = (customVersionUrl != null && customVersionUrl.isNotEmpty)
         ? customVersionUrl
-        : versionUrlFromEnv;
-
-    if (targetUrl.isEmpty) {
-      debugPrint('[UpdateChecker] APK_VERSION_URL이 설정되지 않아 버전 검사를 건너땁니다.');
-      return false;
-    }
+        : (versionUrlFromEnv.isNotEmpty
+            ? versionUrlFromEnv
+            : 'https://tworimpa.synology.me:4442/api/v1/download/version.json');
 
     try {
       debugPrint('[UpdateChecker] 앱 버전 검사 시작: $targetUrl');
@@ -42,16 +39,23 @@ class UpdateChecker {
         remoteBuildNumber = int.tryParse(data['build_number']?.toString() ?? '');
         downloadUrl = (data['apk_url']?.toString() != null && data['apk_url'].toString().isNotEmpty)
             ? data['apk_url'].toString()
-            : ((customDownloadUrl != null && customDownloadUrl.isNotEmpty) ? customDownloadUrl : downloadUrlFromEnv);
+            : ((customDownloadUrl != null && customDownloadUrl.isNotEmpty)
+                ? customDownloadUrl
+                : (downloadUrlFromEnv.isNotEmpty
+                    ? downloadUrlFromEnv
+                    : 'https://tworimpa.synology.me:4442/api/v1/download/apk'));
 
         final packageInfo = await PackageInfo.fromPlatform();
         final currentBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
 
         debugPrint('[UpdateChecker] 현재 버전: ${packageInfo.version} (Build $currentBuildNumber) / 최신 버전: v$remoteVersion (Build $remoteBuildNumber)');
 
-        if (remoteBuildNumber != null && remoteBuildNumber! > currentBuildNumber) {
-          isUpdateAvailable = true;
-          debugPrint('[UpdateChecker] 🚀 새로운 앱 업데이트 감지됨!');
+        bool hasNewBuild = remoteBuildNumber != null && remoteBuildNumber! > currentBuildNumber;
+        bool hasNewVersionName = remoteVersion != null && remoteVersion!.isNotEmpty && remoteVersion != packageInfo.version;
+
+        if (hasNewBuild || hasNewVersionName) {
+          isUpdateAvailable.value = true;
+          debugPrint('[UpdateChecker] 🚀 새로운 앱 업데이트 감지됨! (Build: $currentBuildNumber -> $remoteBuildNumber)');
           return true;
         }
       } else {
@@ -62,6 +66,7 @@ class UpdateChecker {
     }
     return false;
   }
+
 
   /// 최신 APK 다운로드 링크 외부 브라우저로 열기
   Future<bool> downloadUpdate({String? overrideUrl}) async {

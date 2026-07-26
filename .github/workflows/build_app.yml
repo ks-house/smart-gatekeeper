@@ -69,8 +69,9 @@ jobs:
           flutter build apk --release \
             --build-name="${{ env.FULL_VERSION }}" \
             --build-number=${{ github.run_number }} \
-            --dart-define=APK_VERSION_URL="${APK_VERSION_URL:-https://tworimpa.synology.me:4443/gatekeeper_apk/version.json}" \
-            --dart-define=APK_DOWNLOAD_URL="${APK_DOWNLOAD_URL:-https://tworimpa.synology.me:4443/gatekeeper_apk/ks-house-gatekeeper.apk}"
+            --dart-define=APK_VERSION_URL="${APK_VERSION_URL:-https://tworimpa.synology.me:4442/api/v1/download/version.json}" \
+            --dart-define=APK_DOWNLOAD_URL="${APK_DOWNLOAD_URL:-https://tworimpa.synology.me:4442/api/v1/download/apk}"
+
 
       - name: Prepare NAS Deployment Artifacts (ks-house-gatekeeper.apk & version.json)
         run: |

@@ -417,8 +417,9 @@
   - `AdminConfigRequestSchema` 및 `POST /admin/config` REST API 추가하여 원격 튜닝 요청 수신 시 MQTT 토픽 즉시 릴레이 발행
 - **`gatekeeper_app` (Flutter Shell App)**:
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
-- **`gatekeeper_app/lib/screens/web_view_screen.dart` & `debug_screen.dart` & `backend/app/static/index.html`**:
-  - 하단 안드로이드 시스템 네비게이션 패널(홈/뒤로가기/제스처 바) UI 가림 현상 완벽 해결: Flutter `SafeArea(bottom: true)` 적용 및 웹 HTML `viewport-fit=cover` & `env(safe-area-inset-bottom)` 동적 여백 자동 계산 적용
+- **`gatekeeper_app/lib/services/update_checker.dart` & `web_view_screen.dart` & `.github/workflows/build_app.yml`**:
+  - 신규 APK 등록 시 업데이트 배너 미표출 이슈 완전 정복: `UpdateChecker`를 `ValueNotifier<bool>` 반응형으로 개편하여 백그라운드 버전 검기 완료 즉시 배너 자동 노출, 통신 차단 없는 Port 4442 직통 URL 경로 적용
+
 
 
 
