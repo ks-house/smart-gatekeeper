@@ -417,8 +417,9 @@
   - `AdminConfigRequestSchema` 및 `POST /admin/config` REST API 추가하여 원격 튜닝 요청 수신 시 MQTT 토픽 즉시 릴레이 발행
 - **`gatekeeper_app` (Flutter Shell App)**:
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
-- **`gatekeeper_app/lib/services/ble_scanner.dart` & `debug_screen.dart`**:
-  - 스마트 쿨다운 무시 해제 시 지속 요청 버그 완전 해결: `setIgnoreCooldown()` 호출 시 즉시 쿨다운 타이머 리셋(`_lastPrearmTime = DateTime.now()`), HTTP 비동기 락(`_isPrearmInProgress`) 및 `SharedPreferences` 동기화 탑재
+- **`gatekeeper_app/lib/screens/debug_screen.dart`**:
+  - CI 빌드 오류(Run #30185904647) 해결: `const [...]` 리스트 리터럴 내부의 동적 Material Color(`Colors.greenAccent`, `Colors.cyanAccent`)를 `const Icon`, `const SizedBox`, `const Text` 개별 위젯 레벨로 분리하여 컴파일 에러 완전 정복
+
 
 
 
