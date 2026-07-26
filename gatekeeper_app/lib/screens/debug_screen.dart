@@ -18,6 +18,12 @@ class _DebugScreenState extends State<DebugScreen> {
   double _tofDistanceCm = 50; // cm (5 ~ 200)
   double _durationMs = 60000; // ms (1000 ~ 60000)
 
+  // Target 현재 적용 상태 변수 (서버/Target 실제 반영 상태)
+  int _appliedTxPower = 9;
+  double _appliedTofDistanceCm = 50;
+  double _appliedDurationMs = 60000;
+  String _lastSyncTimeStr = '미동기화';
+
   bool _isSending = false;
   bool _isFetching = false;
   String _targetResponseMsg = '';
@@ -48,16 +54,19 @@ class _DebugScreenState extends State<DebugScreen> {
           setState(() {
             if (data['tx_power'] != null) {
               _selectedTxPower = data['tx_power'];
+              _appliedTxPower = data['tx_power'];
             }
             if (data['tof_distance'] != null) {
               _tofDistanceCm = (data['tof_distance'] as num).toDouble();
+              _appliedTofDistanceCm = _tofDistanceCm;
             }
             if (data['duration'] != null) {
               _durationMs = (data['duration'] as num).toDouble();
+              _appliedDurationMs = _durationMs;
             }
             final now = DateTime.now();
-            final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-            _targetResponseMsg = '🔄 최신 실시간 설정 로드 완료 ($timeStr)\nTx: ${_selectedTxPower}dBm | ToF: ${_tofDistanceCm.round()}cm | Duration: ${(_durationMs / 1000).round()}s';
+            _lastSyncTimeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+            _targetResponseMsg = '🔄 최신 실시간 설정 동기화 완료 ($_lastSyncTimeStr)\n[적용 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s';
           });
         }
       }
@@ -71,8 +80,6 @@ class _DebugScreenState extends State<DebugScreen> {
       }
     }
   }
-
-
 
   Future<void> _sendAdminConfig() async {
     setState(() {
@@ -96,8 +103,14 @@ class _DebugScreenState extends State<DebugScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        final now = DateTime.now();
+        final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
         setState(() {
-          _targetResponseMsg = '✅ 성공: ${data['message'] ?? '파라미터 전송 완료'}';
+          _appliedTxPower = _selectedTxPower;
+          _appliedTofDistanceCm = _tofDistanceCm;
+          _appliedDurationMs = _durationMs;
+          _lastSyncTimeStr = timeStr;
+          _targetResponseMsg = '✅ Target 파라미터 전송 & 실시간 적용 완료! ($timeStr)\n[적용 중] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s';
         });
       } else {
         setState(() {
@@ -114,6 +127,7 @@ class _DebugScreenState extends State<DebugScreen> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -302,9 +316,13 @@ class _DebugScreenState extends State<DebugScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '🎯 Target (ESP32-C6) 원격 튜닝 (POST /admin/config)',
+              '🎯 Target (ESP32-C6) 원격 튜닝',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
             ),
+            const SizedBox(height: 12),
+            _buildActiveTargetStatusBox(),
+            const SizedBox(height: 16),
+
             const SizedBox(height: 16),
             const Text('1. BLE Tx Power 출력:', style: TextStyle(color: Colors.white70, fontSize: 13)),
             const SizedBox(height: 8),
@@ -427,4 +445,62 @@ class _DebugScreenState extends State<DebugScreen> {
       ),
     );
   }
+
+  Widget _buildActiveTargetStatusBox() {
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black45,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.cyan.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 16),
+                  SizedBox(width: 6),
+                  Text(
+                    'Target 현재 적용 상태 (Live Applied)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
+                  ),
+                ],
+              ),
+              Text(
+                _lastSyncTimeStr,
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildActiveParamItem('Tx Power', '$_appliedTxPower dBm', Colors.amberAccent),
+              Container(width: 1, height: 28, color: Colors.white12),
+              _buildActiveParamItem('ToF 거리', '${_appliedTofDistanceCm.round()} cm', Colors.greenAccent),
+              Container(width: 1, height: 28, color: Colors.white12),
+              _buildActiveParamItem('Pre-arm 시간', '${(_appliedDurationMs / 1000).round()} 초', Colors.cyanAccent),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveParamItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        const SizedBox(height: 3),
+        Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
+      ],
+    );
+  }
 }
+
