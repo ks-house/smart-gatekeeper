@@ -473,14 +473,15 @@ class _DebugScreenState extends State<DebugScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 16),
+                  Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 16),
                   const SizedBox(width: 6),
-                  const Text(
+                  Text(
                     'Target 현재 적용 상태 (Live Applied)',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
                   ),
                 ],
               ),
+
 
 
               Text(
