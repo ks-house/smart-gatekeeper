@@ -17,6 +17,8 @@ dependencies:
   url_launcher: ^6.3.0
   flutter_foreground_task: ^6.2.0
   device_info_plus: ^10.1.0
+  shared_preferences: ^2.2.3
+
 
 
 
