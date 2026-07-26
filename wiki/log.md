@@ -417,8 +417,9 @@
   - `AdminConfigRequestSchema` 및 `POST /admin/config` REST API 추가하여 원격 튜닝 요청 수신 시 MQTT 토픽 즉시 릴레이 발행
 - **`gatekeeper_app` (Flutter Shell App)**:
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
-- **`gatekeeper_app/lib/services/ble_scanner.dart` & `debug_screen.dart`**:
-  - Target UUID 미수신 시 실시간 수신 중단 및 "연결 안됨" 전환 기능 구현: 2.5초 타임아웃 감지 타이머 탑재, Target UUID 비콘 패킷 수신 시에만 dBm 수치 표출 및 미수신 시 "연결 안됨" 빨간색 뱃지/텍스트 전환 처리
+- **`gatekeeper_app/lib/screens/debug_screen.dart`**:
+  - Flutter 앱 CI 빌드 에러 해결: `const Row` 구문 컴파일 오류 수정 및 `Row(children: const [...])`로 유효화 완료
+
 
 
 

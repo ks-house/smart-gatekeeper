@@ -470,8 +470,8 @@ class _DebugScreenState extends State<DebugScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
+              Row(
+                children: const [
                   Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 16),
                   SizedBox(width: 6),
                   Text(
@@ -480,6 +480,7 @@ class _DebugScreenState extends State<DebugScreen> {
                   ),
                 ],
               ),
+
               Text(
                 _lastSyncTimeStr,
                 style: const TextStyle(fontSize: 11, color: Colors.grey),
