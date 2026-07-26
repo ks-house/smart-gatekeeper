@@ -36,6 +36,18 @@ String ConfigManager::getApiKey() {
     return preferences.getString("api_key", API_KEY);
 }
 
+int ConfigManager::getTxPower(int defaultVal) {
+    return preferences.getInt("tx_pwr", defaultVal);
+}
+
+int ConfigManager::getTofDistanceCm(int defaultVal) {
+    return preferences.getInt("tof_dist", defaultVal);
+}
+
+uint32_t ConfigManager::getPreArmDurationMs(uint32_t defaultVal) {
+    return preferences.getUInt("prearm_dur", defaultVal);
+}
+
 
 void ConfigManager::setWifiCredentials(const String& ssid, const String& password) {
     preferences.putString("ssid", ssid);
@@ -47,6 +59,19 @@ void ConfigManager::setApiCredentials(const String& url, const String& key) {
     preferences.putString("api_key", key);
 }
 
+void ConfigManager::setTxPower(int powerDbm) {
+    preferences.putInt("tx_pwr", powerDbm);
+}
+
+void ConfigManager::setTofDistanceCm(int distanceCm) {
+    preferences.putInt("tof_dist", distanceCm);
+}
+
+void ConfigManager::setPreArmDurationMs(uint32_t durationMs) {
+    preferences.putUInt("prearm_dur", durationMs);
+}
+
 void ConfigManager::clearConfig() {
     preferences.clear();
 }
+

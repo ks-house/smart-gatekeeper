@@ -417,8 +417,12 @@
   - `AdminConfigRequestSchema` 및 `POST /admin/config` REST API 추가하여 원격 튜닝 요청 수신 시 MQTT 토픽 즉시 릴레이 발행
 - **`gatekeeper_app` (Flutter Shell App)**:
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
-- **`gatekeeper_app/lib/screens/debug_screen.dart`**:
-  - `gh` CLI로 Run #30186160156 실패 로그 정밀 추출 및 해결: `SafeArea` 위젯의 누락된 닫기 괄호 `),` 보정 및 미사용 변수 제거로 `flutter analyze` 100% 정상 통과
+- **`smart-gatekeeper Target (ESP32-C6 Firmware) & NAS Backend`**:
+  - Target 원격 튜닝 NVS Flash 영구 저장 및 MQTT 2Way 양방향 동기화 구현:
+    - `ConfigManager`: `tx_pwr`, `tof_dist`, `prearm_dur` 키를 ESP32 NVS 플래시에 저장 및 `setup()` 재부팅 시 자동 복원 로직 탑재
+    - `MqttManager`: `gatekeeper/config/set` (일괄 JSON 튜닝), `gatekeeper/config/get` (상태 쿼리) 및 `gatekeeper/config/state` (retained=true JSON 상태 발행) 토픽 모듈 연동
+    - NAS 백엔드(`main.py`): `target_config.json` 로컬 저장소 구축으로 백엔드 서버 재시작 후에도 튜닝 설정 영구 보존
+
 
 
 

@@ -63,11 +63,11 @@ static bool     is_armed      = false;
 static uint32_t arm_timestamp = 0;  // millis() 기준 arm 활성화 시각
 
 // ─────────────────────────────────────────────────────────────
-// 엔지니어 원격 튜닝용 동적 설정 변수 (기본값: config.h 설정치)
+// 엔지니어 원격 튜닝용 동적 설정 변수 (기본값: config.h 설정치, NVS 복원)
 // ─────────────────────────────────────────────────────────────
-static uint16_t g_distance_threshold_mm = DISTANCE_THRESHOLD_MM;
-static uint32_t g_pre_arm_duration_ms  = PRE_ARM_DURATION_MS;
-static int      g_tx_power_dbm          = 9;
+uint16_t g_distance_threshold_mm = DISTANCE_THRESHOLD_MM;
+uint32_t g_pre_arm_duration_ms  = PRE_ARM_DURATION_MS;
+int      g_tx_power_dbm          = 9;
 
 void setTxPower(int powerDbm) {
   g_tx_power_dbm = powerDbm;
@@ -79,21 +79,28 @@ void setTxPower(int powerDbm) {
   else                     pwrLevel = ESP_PWR_LVL_P9;
 
   BLEDevice::setPower(pwrLevel, ESP_BLE_PWR_TYPE_ADV);
-  LOGF("[CONFIG-TUNING] ⚙️ BLE Tx Power 동적 변경: %d dBm", powerDbm);
+  ConfigManager::setTxPower(powerDbm);
+  MqttManager::publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), g_pre_arm_duration_ms);
+  LOGF("[CONFIG-TUNING] ⚙️ BLE Tx Power 동적 변경 & NVS 저장: %d dBm", powerDbm);
 }
 
 void setTofDistanceCm(int distanceCm) {
   if (distanceCm < 5) distanceCm = 5;
   if (distanceCm > 200) distanceCm = 200;
   g_distance_threshold_mm = (uint16_t)(distanceCm * 10);
-  LOGF("[CONFIG-TUNING] ⚙️ ToF 감지 거리 동적 변경: %d cm (%u mm)", distanceCm, g_distance_threshold_mm);
+  ConfigManager::setTofDistanceCm(distanceCm);
+  MqttManager::publishConfigState(g_tx_power_dbm, distanceCm, g_pre_arm_duration_ms);
+  LOGF("[CONFIG-TUNING] ⚙️ ToF 감지 거리 동적 변경 & NVS 저장: %d cm (%u mm)", distanceCm, g_distance_threshold_mm);
 }
 
 void setPreArmDurationMs(uint32_t durationMs) {
   if (durationMs < 1000) durationMs = 1000;
   g_pre_arm_duration_ms = durationMs;
-  LOGF("[CONFIG-TUNING] ⚙️ Pre-arm 유효 시간 동적 변경: %lu ms", (unsigned long)g_pre_arm_duration_ms);
+  ConfigManager::setPreArmDurationMs(durationMs);
+  MqttManager::publishConfigState(g_tx_power_dbm, (int)(g_distance_threshold_mm / 10), durationMs);
+  LOGF("[CONFIG-TUNING] ⚙️ Pre-arm 유효 시간 동적 변경 & NVS 저장: %lu ms", (unsigned long)g_pre_arm_duration_ms);
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // triggerArm() — MqttManager 콜백에서 호출 (MQTT gatekeeper/arm 수신)
@@ -190,7 +197,20 @@ void setup() {
   LOGF("============================================");
 
   // 5. WiFi 초기화 및 NVS Wi-Fi 접속 시도
+  ConfigManager::begin();
+  int savedTx = ConfigManager::getTxPower(9);
+  int savedTof = ConfigManager::getTofDistanceCm(50);
+  uint32_t savedDur = ConfigManager::getPreArmDurationMs(60000);
+
+  g_tx_power_dbm = savedTx;
+  g_distance_threshold_mm = (uint16_t)(savedTof * 10);
+  g_pre_arm_duration_ms = savedDur;
+
+  LOGF("[CONFIG-NVS] ✅ NVS 플래시 저장 설정 복원 완료 -> Tx: %d dBm | ToF: %d cm (%u mm) | Duration: %lu ms",
+       g_tx_power_dbm, savedTof, g_distance_threshold_mm, (unsigned long)g_pre_arm_duration_ms);
+
   WifiManager::init();
+
   if (WifiManager::connectSTA(10000)) {
     // Wi-Fi 연결 성공 시 NTP 시간 동기화 (TLS 안정성 보장)
     configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");

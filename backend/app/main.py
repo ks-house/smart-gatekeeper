@@ -153,7 +153,7 @@ def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
     return _publish_mqtt_msg(MQTT_TOPIC_FORCE, payload, "MQTT-FORCE")
 
 def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, duration: Optional[int] = None) -> dict:
-    """NAS → MQTT Broker → ESP32-C6 gatekeeper/config/... 엔지니어 튜닝 토픽 발행."""
+    """NAS → MQTT Broker → ESP32-C6 gatekeeper/config/... 엔지니어 튜닝 토픽 및 gatekeeper/config/set 일괄 발행."""
     results = {}
     if tx_power is not None:
         ok = _publish_mqtt_msg("gatekeeper/config/tx_power", str(tx_power), "MQTT-CONFIG-TX")
@@ -164,7 +164,11 @@ def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: O
     if duration is not None:
         ok = _publish_mqtt_msg("gatekeeper/config/duration", str(duration), "MQTT-CONFIG-DUR")
         results["duration"] = {"value": duration, "success": ok}
+    
+    set_payload = json.dumps(current_target_config, ensure_ascii=False)
+    _publish_mqtt_msg("gatekeeper/config/set", set_payload, "MQTT-CONFIG-SET")
     return results
+
 
 
 
@@ -526,12 +530,34 @@ def door_force_open(req: ForceOpenRequestSchema):
     )
 
 
-current_target_config = {
-    "tx_power": 9,
-    "tof_distance": 50,
-    "duration": 60000,
-    "updated_at": None
-}
+TARGET_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "target_config.json")
+
+def load_target_config() -> dict:
+    default_config = {
+        "tx_power": 9,
+        "tof_distance": 50,
+        "duration": 60000,
+        "updated_at": None
+    }
+    if os.path.exists(TARGET_CONFIG_FILE):
+        try:
+            with open(TARGET_CONFIG_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                default_config.update(saved)
+                log.info(f"[CONFIG-STORE] ✅ target_config.json 영구 설정 로드 완료: {default_config}")
+        except Exception as e:
+            log.error(f"[CONFIG-STORE] 로드 예외: {e}")
+    return default_config
+
+def save_target_config(config: dict):
+    try:
+        with open(TARGET_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+            log.info(f"[CONFIG-STORE] 💾 target_config.json 영구 저장 완료")
+    except Exception as e:
+        log.error(f"[CONFIG-STORE] 저장 예외: {e}")
+
+current_target_config = load_target_config()
 
 
 @app.get("/admin/config")
@@ -553,7 +579,7 @@ def get_admin_config():
 @app.post("/admin/config")
 @app.post("/api/v1/admin/config")
 def update_admin_config(req: AdminConfigRequestSchema):
-    """엔지니어 원격 튜닝 API — ESP32-C6 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간) 실시간 변경"""
+    """엔지니어 원격 튜닝 API — ESP32-C6 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간) 실시간 변경 및 영구 저장"""
     log.info(f"[ADMIN-CONFIG] 원격 파라미터 변경 요청: tx_power={req.tx_power}, tof_distance={req.tof_distance}, duration={req.duration}")
     if req.tx_power is None and req.tof_distance is None and req.duration is None:
         return JSONResponse(
@@ -568,6 +594,7 @@ def update_admin_config(req: AdminConfigRequestSchema):
     if req.duration is not None:
         current_target_config["duration"] = req.duration
     current_target_config["updated_at"] = datetime.now().isoformat()
+    save_target_config(current_target_config)
 
     mqtt_results = publish_admin_config_to_mqtt(
         tx_power=req.tx_power,
@@ -578,12 +605,13 @@ def update_admin_config(req: AdminConfigRequestSchema):
     return JSONResponse(
         content={
             "result": "success",
-            "message": "엔지니어 원격 튜닝 파라미터가 MQTT로 전송 및 갱신되었습니다.",
+            "message": "엔지니어 원격 튜닝 파라미터가 영구 저장 및 MQTT로 전송되었습니다.",
             "current_config": current_target_config,
             "details": mqtt_results
         },
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
+
 
 
 
