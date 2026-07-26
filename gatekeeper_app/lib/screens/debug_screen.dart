@@ -175,80 +175,89 @@ class _DebugScreenState extends State<DebugScreen> {
   }
 
   Widget _buildRssiMonitorCard() {
-    return ValueListenableBuilder<int>(
-      valueListenable: _scanner.packetCount,
-      builder: (context, count, _) {
-        final rssi = _scanner.liveRssi.value;
-        final lastTime = _scanner.lastRssiUpdateTime.value;
-        final String timeStr = lastTime != null
-            ? '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}.${(lastTime.millisecond ~/ 100)}'
-            : '미감지';
+    return ValueListenableBuilder<bool>(
+      valueListenable: _scanner.isBeaconConnected,
+      builder: (context, isConnected, _) {
+        return ValueListenableBuilder<int>(
+          valueListenable: _scanner.packetCount,
+          builder: (context, count, _) {
+            final rssi = isConnected ? _scanner.liveRssi.value : null;
+            final lastTime = _scanner.lastRssiUpdateTime.value;
+            final String timeStr = (isConnected && lastTime != null)
+                ? '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}.${(lastTime.millisecond ~/ 100)}'
+                : '미수신 (연결 안됨)';
 
-        Color badgeColor = Colors.grey;
-        String badgeText = '미감지';
-        if (rssi != null) {
-          if (rssi >= -60) {
-            badgeColor = Colors.green;
-            badgeText = '매우 강함 (근접)';
-          } else if (rssi >= -75) {
-            badgeColor = Colors.blue;
-            badgeText = '보통 (감지 범위)';
-          } else {
-            badgeColor = Colors.orange;
-            badgeText = '약함 (경계)';
-          }
-        }
+            Color badgeColor = Colors.grey;
+            String badgeText = '🔴 신호 없음 (연결 안됨)';
 
-        return Card(
-          color: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            if (isConnected && rssi != null) {
+              if (rssi >= -60) {
+                badgeColor = Colors.green;
+                badgeText = '🟢 매우 강함 (근접)';
+              } else if (rssi >= -75) {
+                badgeColor = Colors.blue;
+                badgeText = '🔵 보통 (감지 범위)';
+              } else {
+                badgeColor = Colors.orange;
+                badgeText = '🟠 약함 (경계)';
+              }
+            }
+
+            return Card(
+              color: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
                   children: [
-                    const Text(
-                      '📡 실시간 비콘 RSSI 모니터',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '📡 실시간 비콘 RSSI 모니터',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: badgeColor.withOpacity(0.2),
+                            border: Border.all(color: badgeColor),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: TextStyle(color: badgeColor, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: badgeColor.withOpacity(0.2),
-                        border: Border.all(color: badgeColor),
-                        borderRadius: BorderRadius.circular(20),
+                    const SizedBox(height: 16),
+                    Text(
+                      (isConnected && rssi != null) ? '$rssi dBm' : '연결 안됨',
+                      style: TextStyle(
+                        fontSize: (isConnected && rssi != null) ? 48 : 36,
+                        fontWeight: FontWeight.bold,
+                        color: (isConnected && rssi != null) ? Colors.cyanAccent : Colors.redAccent,
                       ),
-                      child: Text(
-                        badgeText,
-                        style: TextStyle(color: badgeColor, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isConnected
+                          ? 'UUID: ${_scanner.targetBeaconUuid}\n수신 시각: $timeStr | 누적 패킷: $count개'
+                          : 'Target 비콘 UUID (${_scanner.targetBeaconUuid}) 미수신 중...\n수신을 멈추고 연결 대기 중입니다.',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  rssi != null ? '$rssi dBm' : '-- dBm',
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: rssi != null ? Colors.cyanAccent : Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'UUID: ${_scanner.targetBeaconUuid}\n수신 시각: $timeStr | 누적 패킷: $count개',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
   }
+
 
 
   Widget _buildLocalConfigCard() {

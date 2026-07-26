@@ -29,13 +29,32 @@ class BleScanner {
   final ValueNotifier<int?> liveRssi = ValueNotifier<int?>(null);
   final ValueNotifier<DateTime?> lastRssiUpdateTime = ValueNotifier<DateTime?>(null);
   final ValueNotifier<int> packetCount = ValueNotifier<int>(0);
+  final ValueNotifier<bool> isBeaconConnected = ValueNotifier<bool>(false);
 
   DateTime? _lastPrearmTime;
+  Timer? _timeoutTimer;
 
   bool _isScanning = false;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
   bool get isScanning => _isScanning;
+
+  void _startTimeoutCheckTimer() {
+    _timeoutTimer?.cancel();
+    _timeoutTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) {
+      if (lastRssiUpdateTime.value != null) {
+        final elapsedMs = DateTime.now().difference(lastRssiUpdateTime.value!).inMilliseconds;
+        if (elapsedMs > 2500) { // 2.5초 동안 비콘 UUID 미수신 시
+          if (isBeaconConnected.value || liveRssi.value != null) {
+            liveRssi.value = null;
+            isBeaconConnected.value = false;
+            debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (2.5초 초과) -> "연결 안됨" 전환');
+          }
+        }
+      }
+    });
+  }
+
 
 
   /// 초기화 및 Remote Config 동기화 / 버전 검사
@@ -108,6 +127,7 @@ class BleScanner {
 
     // 실시간 연속 RSSI 감지를 위해 continuousUpdates 및 Low Latency 모드 적용
     try {
+      _startTimeoutCheckTimer();
       await FlutterBluePlus.startScan(
         timeout: null, // continuous scan
         continuousUpdates: true, // 수신될 때마다 RSSI 패킷 갱신 허용
@@ -119,6 +139,7 @@ class BleScanner {
       _isScanning = false;
     }
   }
+
 
 
   /// 감지된 비콘 검증 및 Pre-arm API 호출
@@ -144,10 +165,12 @@ class BleScanner {
 
     if (!isMatch) return;
 
-    // 실시간 RSSI 모니터링 업데이트 (DebugScreen 노출용)
+    // 실시간 RSSI 모니터링 업데이트 (Target UUID 매칭 성공 시에만 활성화)
     liveRssi.value = rssi;
     lastRssiUpdateTime.value = DateTime.now();
+    isBeaconConnected.value = true;
     packetCount.value++;
+
 
 
     // 동적 RSSI 임계치 필터링
@@ -208,8 +231,12 @@ class BleScanner {
   /// 스캐닝 중지
   Future<void> stopScanning() async {
     _isScanning = false;
+    _timeoutTimer?.cancel();
+    liveRssi.value = null;
+    isBeaconConnected.value = false;
     await _scanSubscription?.cancel();
     await FlutterBluePlus.stopScan();
     debugPrint('[BleScanner] 비콘 스캐닝 중지됨.');
   }
+
 }
