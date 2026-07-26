@@ -526,6 +526,30 @@ def door_force_open(req: ForceOpenRequestSchema):
     )
 
 
+current_target_config = {
+    "tx_power": 9,
+    "tof_distance": 50,
+    "duration": 60000,
+    "updated_at": None
+}
+
+
+@app.get("/admin/config")
+@app.get("/api/v1/admin/config")
+def get_admin_config():
+    """현재 적용되어 있는 Target (ESP32-C6) 원격 튜닝 파라미터 조회"""
+    return JSONResponse(
+        content={
+            "result": "success",
+            "tx_power": current_target_config["tx_power"],
+            "tof_distance": current_target_config["tof_distance"],
+            "duration": current_target_config["duration"],
+            "updated_at": current_target_config["updated_at"]
+        },
+        headers={"Content-Type": "application/json; charset=utf-8"}
+    )
+
+
 @app.post("/admin/config")
 @app.post("/api/v1/admin/config")
 def update_admin_config(req: AdminConfigRequestSchema):
@@ -537,6 +561,14 @@ def update_admin_config(req: AdminConfigRequestSchema):
             content={"result": "error", "message": "최소 하나 이상의 튜닝 파라미터를 전달해야 합니다."}
         )
 
+    if req.tx_power is not None:
+        current_target_config["tx_power"] = req.tx_power
+    if req.tof_distance is not None:
+        current_target_config["tof_distance"] = req.tof_distance
+    if req.duration is not None:
+        current_target_config["duration"] = req.duration
+    current_target_config["updated_at"] = datetime.now().isoformat()
+
     mqtt_results = publish_admin_config_to_mqtt(
         tx_power=req.tx_power,
         tof_distance=req.tof_distance,
@@ -546,11 +578,13 @@ def update_admin_config(req: AdminConfigRequestSchema):
     return JSONResponse(
         content={
             "result": "success",
-            "message": "엔지니어 원격 튜닝 파라미터가 MQTT로 전송되었습니다.",
+            "message": "엔지니어 원격 튜닝 파라미터가 MQTT로 전송 및 갱신되었습니다.",
+            "current_config": current_target_config,
             "details": mqtt_results
         },
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
+
 
 
 

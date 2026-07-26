@@ -417,8 +417,9 @@
   - `AdminConfigRequestSchema` 및 `POST /admin/config` REST API 추가하여 원격 튜닝 요청 수신 시 MQTT 토픽 즉시 릴레이 발행
 - **`gatekeeper_app` (Flutter Shell App)**:
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
-- **`gatekeeper_app/lib/services/ble_scanner.dart` & `debug_screen.dart`**:
-  - RSSI 실시간 미갱신 이슈 해결: `continuousUpdates: true` 및 `AndroidScanMode.lowLatency` 적용, `packetCount` ValueNotifier 연동 ➔ 초당 수신 패킷 및 밀리초 수신 시각 real-time 갱신 구현
+- **`backend/app/main.py` & `gatekeeper_app/lib/screens/debug_screen.dart`**:
+  - 엔지니어 튜닝 파라미터 실시간 동기화 지원: `GET /admin/config` REST API 신설, 디버그 화면 오픈 시 자동으로 현재 Target 적용치 조회 및 [🔄 현재 설정 불러오기] 버튼 구축 완료
+
 
 - **`gatekeeper_app/android/app/upload-keystore.jks` & `.github/workflows/build_app.yml`**:
   - 보안 강화: 바이너리 `.jks` 키스토어 파일의 Git 추적 제외(`git rm --cached`, `.gitignore`) 및 GitHub Secrets(`ANDROID_KEYSTORE_BASE64`) 주입 동적 복원 구조 개편 완료

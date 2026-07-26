@@ -19,6 +19,7 @@ class _DebugScreenState extends State<DebugScreen> {
   double _durationMs = 60000; // ms (1000 ~ 60000)
 
   bool _isSending = false;
+  bool _isFetching = false;
   String _targetResponseMsg = '';
 
   @override
@@ -26,7 +27,51 @@ class _DebugScreenState extends State<DebugScreen> {
     super.initState();
     // 디버그 화면 진입 시 고속 저지연 실시간 비콘 스캔 모드로 전환
     _scanner.startScanning(forceRestart: true);
+    // 현재 서버/Target에 적용된 실시간 튜닝 설정값 로드
+    _fetchAdminConfig();
   }
+
+  Future<void> _fetchAdminConfig() async {
+    setState(() {
+      _isFetching = true;
+    });
+
+    try {
+      final url = Uri.parse('${_scanner.backendBaseUrl}/admin/config');
+      final response = await http
+          .get(url)
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['result'] == 'success') {
+          setState(() {
+            if (data['tx_power'] != null) {
+              _selectedTxPower = data['tx_power'];
+            }
+            if (data['tof_distance'] != null) {
+              _tofDistanceCm = (data['tof_distance'] as num).toDouble();
+            }
+            if (data['duration'] != null) {
+              _durationMs = (data['duration'] as num).toDouble();
+            }
+            final now = DateTime.now();
+            final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+            _targetResponseMsg = '🔄 최신 실시간 설정 로드 완료 ($timeStr)\nTx: ${_selectedTxPower}dBm | ToF: ${_tofDistanceCm.round()}cm | Duration: ${(_durationMs / 1000).round()}s';
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[DebugScreen] _fetchAdminConfig 에러: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFetching = false;
+        });
+      }
+    }
+  }
+
 
 
   Future<void> _sendAdminConfig() async {
@@ -78,7 +123,17 @@ class _DebugScreenState extends State<DebugScreen> {
         title: const Text('🔧 엔지니어 디버그 & 튜닝'),
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: _isFetching
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent))
+                : const Icon(Icons.refresh, color: Colors.cyanAccent),
+            tooltip: '최신 튜닝 설정 새로고침',
+            onPressed: _isFetching ? null : _fetchAdminConfig,
+          ),
+        ],
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -313,22 +368,41 @@ class _DebugScreenState extends State<DebugScreen> {
               },
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: _isSending ? null : _sendAdminConfig,
-                icon: _isSending
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                    : const Icon(Icons.send),
-                label: const Text('Target 파라미터 원격 전송', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.cyan,
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isFetching ? null : _fetchAdminConfig,
+                    icon: _isFetching
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyan))
+                        : const Icon(Icons.sync, color: Colors.cyan),
+                    label: const Text('현재 설정 불러오기', style: TextStyle(color: Colors.cyan, fontSize: 13, fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.cyan),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isSending ? null : _sendAdminConfig,
+                    icon: _isSending
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        : const Icon(Icons.send),
+                    label: const Text('Target 파라미터 전송', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.cyan,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
             ),
+
             if (_targetResponseMsg.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
