@@ -21,14 +21,17 @@ private:
     static void handleRoot();
     static void handleScan();
     static void handleSave();
+    static void handleConfigSave();
     static void handleNotFound();
 
 public:
     static void init();
     static bool connectSTA(uint32_t timeoutMs = 12000);
     static void startAP();
+    static void startWebServer();
     static void handleClient();
     static bool isConnected();
     static bool isAPMode();
     static String getIP();
 };
+

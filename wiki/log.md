@@ -417,11 +417,12 @@
   - `AdminConfigRequestSchema` 및 `POST /admin/config` REST API 추가하여 원격 튜닝 요청 수신 시 MQTT 토픽 즉시 릴레이 발행
 - **`gatekeeper_app` (Flutter Shell App)**:
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
-- **`smart-gatekeeper Target (ESP32-C6 Firmware) & NAS Backend`**:
-  - Target 원격 튜닝 NVS Flash 영구 저장 및 MQTT 2Way 양방향 동기화 구현:
-    - `ConfigManager`: `tx_pwr`, `tof_dist`, `prearm_dur` 키를 ESP32 NVS 플래시에 저장 및 `setup()` 재부팅 시 자동 복원 로직 탑재
-    - `MqttManager`: `gatekeeper/config/set` (일괄 JSON 튜닝), `gatekeeper/config/get` (상태 쿼리) 및 `gatekeeper/config/state` (retained=true JSON 상태 발행) 토픽 모듈 연동
-    - NAS 백엔드(`main.py`): `target_config.json` 로컬 저장소 구축으로 백엔드 서버 재시작 후에도 튜닝 설정 영구 보존
+- **`smart-gatekeeper Target (ESP32-C6 Firmware)`**:
+  - Target 웹 접속 시 주변 Wi-Fi 스캔 및 설정 변경 불능 버그 완전 해결:
+    - `WifiManager`: `startWebServer()` 모듈화로 STA 연결 성공 시에도 로컬 IP(192.168.x.x) WebServer(Port 80) 상시 구동 및 개방
+    - Wi-Fi 스캔 (`/scan`): `WiFi.scanNetworks(false, false, false, 150)` 채널별 액티브 스캔 적용으로 STA 연결 중에도 주변 AP 실시간 수집 목록(SSID, RSSI) JSON 제공
+    - 웹 UI 대시보드 개편: 현재 Wi-Fi 연결 상태(SSID/IP) 뱃지, 주변 AP 실시간 재검색 & 변경 폼, 엔지니어 원격 튜닝 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간) NVS 저장 폼 제공
+
 - **`gatekeeper_app` (Flutter Shell App)**:
   - 앱 닫힘/백그라운드 비콘 감지 및 Pre-arm 수신 수거 버그 완벽 정복:
     - `AndroidManifest.xml`: `BLUETOOTH_SCAN`에서 `neverForLocation` 플래그 수거하여 백그라운드 BLE 스캔 패킷 차단 해제 및 `ACCESS_BACKGROUND_LOCATION` 권한 연동

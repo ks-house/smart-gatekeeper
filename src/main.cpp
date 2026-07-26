@@ -267,12 +267,9 @@ void setup() {
 // loop()
 // ─────────────────────────────────────────────────────────────
 void loop() {
-  // AP 모드일 때 웹 서버 및 Captive Portal 요청 처리
-  if (WifiManager::isAPMode()) {
-    WifiManager::handleClient();
-    delay(10);
-    return;
-  }
+  // WebServer 및 Captive Portal 요청 상시 처리 (STA 모드 & AP 모드 공용 개방)
+  WifiManager::handleClient();
+
 
   // MQTT 루프 처리 (이 안에서 triggerArm, triggerManualDoorOpen 호출 가능)
   MqttManager::update();
