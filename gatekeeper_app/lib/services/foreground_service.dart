@@ -13,16 +13,20 @@ void startCallback() {
 class GatekeeperTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
+    WidgetsFlutterBinding.ensureInitialized();
     debugPrint('[ForegroundTask] 🛡️ 백그라운드 상주 포그라운드 서비스 구동 시작');
     await BleScanner().initialize();
+    await BleScanner().startScanning(forceRestart: true);
   }
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
     if (!BleScanner().isScanning) {
-      await BleScanner().startScanning();
+      debugPrint('[ForegroundTask] 🔄 백그라운드 스캔 상태 재점검 -> 스캐닝 강제 재시작');
+      await BleScanner().startScanning(forceRestart: true);
     }
   }
+
 
   @override
   Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {

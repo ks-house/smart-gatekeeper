@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'device_id_service.dart';
 import 'update_checker.dart';
+
 
 
 /// Smart Gatekeeper BLE Beacon Background Scanner Singleton
@@ -258,7 +260,14 @@ class BleScanner {
 
       if (response.statusCode == 200) {
         debugPrint('[BleScanner] ✅ Pre-arm 성공! (Status: 200 OK)');
+        try {
+          FlutterForegroundTask.updateService(
+            notificationTitle: '🟢 Smart Key 출입문 승인 완료!',
+            notificationText: 'Target 비콘 감지 ($rssi dBm) → 다가가면 출입문 자동 개방!',
+          );
+        } catch (_) {}
       } else if (response.statusCode == 403) {
+
         debugPrint('[BleScanner] 🚨 권한 미승인/거부됨 (Status: 403 Forbidden)');
       } else {
         debugPrint('[BleScanner] Pre-arm 실패: HTTP ${response.statusCode}');

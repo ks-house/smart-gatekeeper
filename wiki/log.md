@@ -422,6 +422,12 @@
     - `ConfigManager`: `tx_pwr`, `tof_dist`, `prearm_dur` 키를 ESP32 NVS 플래시에 저장 및 `setup()` 재부팅 시 자동 복원 로직 탑재
     - `MqttManager`: `gatekeeper/config/set` (일괄 JSON 튜닝), `gatekeeper/config/get` (상태 쿼리) 및 `gatekeeper/config/state` (retained=true JSON 상태 발행) 토픽 모듈 연동
     - NAS 백엔드(`main.py`): `target_config.json` 로컬 저장소 구축으로 백엔드 서버 재시작 후에도 튜닝 설정 영구 보존
+- **`gatekeeper_app` (Flutter Shell App)**:
+  - 앱 닫힘/백그라운드 비콘 감지 및 Pre-arm 수신 수거 버그 완벽 정복:
+    - `AndroidManifest.xml`: `BLUETOOTH_SCAN`에서 `neverForLocation` 플래그 수거하여 백그라운드 BLE 스캔 패킷 차단 해제 및 `ACCESS_BACKGROUND_LOCATION` 권한 연동
+    - `foreground_service.dart`: `GatekeeperTaskHandler.onStart()`에서 `startScanning(forceRestart: true)`를 명시적으로 구동하여 앱 UI 닫힘 시에도 백그라운드 서비스 Isolate에서 고속 비콘 스캔 지속 유지
+    - Pre-arm 승인 성공 시 상단 포그라운드 알림 텍스트 실시간 갱신 (`🟢 Smart Key 출입문 승인 완료!`)
+
 
 
 

@@ -32,11 +32,17 @@ class _SmartKeyAppState extends State<SmartKeyApp> {
     // 1. OS 필수 권한 요청 (위치, 블루투스 스캔/연결, 알림)
     Map<Permission, PermissionStatus> statuses = await [
       Permission.locationWhenInUse,
-      Permission.locationAlways,
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
       Permission.notification,
     ].request();
+
+    if (await Permission.locationWhenInUse.isGranted) {
+      if (!await Permission.locationAlways.isGranted) {
+        await Permission.locationAlways.request();
+      }
+    }
+
 
     bool allGranted = true;
     statuses.forEach((permission, status) {
