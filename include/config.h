@@ -45,10 +45,14 @@ constexpr uint32_t BLE_ADV_INTERVAL_MS = 100;
 // ─── MQTT Pre-arm 사전 승인 설정 (v2.0 신규) ──────────────────
 // NAS로부터 승인 명령(arm)을 수신할 MQTT 구독 토픽
 constexpr const char* MQTT_TOPIC_ARM = "gatekeeper/arm";
+constexpr const char* MQTT_TOPIC_CONFIG_TX_POWER = "gatekeeper/config/tx_power";
+constexpr const char* MQTT_TOPIC_CONFIG_TOF_DIST = "gatekeeper/config/tof_distance";
+constexpr const char* MQTT_TOPIC_CONFIG_DURATION = "gatekeeper/config/duration";
 
 // MQTT arm 메시지 수신 후 ToF 센서를 활성화해 둘 유효 시간 (60초)
 // 이 시간 내에 ToF 감지가 없으면 자동으로 IDLE 복귀
 constexpr uint32_t PRE_ARM_DURATION_MS = 60000;
+
 
 // ─── I2C & 핀 매핑 ───────────────────────────────────────────
 constexpr uint8_t PIN_SDA        = 6;

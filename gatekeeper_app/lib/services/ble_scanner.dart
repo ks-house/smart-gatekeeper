@@ -23,11 +23,18 @@ class BleScanner {
 
   int cooldownSeconds = 30;
 
+  // ─── 엔지니어 원격 튜닝용 파라미터 (DebugScreen 연동) ────────────
+  int rssiThreshold = -75;       // 동적 RSSI Threshold (-90 ~ -30 dBm)
+  bool ignoreCooldown = false;    // 쿨다운 무시 모드 (테스트용)
+  final ValueNotifier<int?> liveRssi = ValueNotifier<int?>(null);
+  final ValueNotifier<DateTime?> lastRssiUpdateTime = ValueNotifier<DateTime?>(null);
+
   DateTime? _lastPrearmTime;
   bool _isScanning = false;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
   bool get isScanning => _isScanning;
+
 
   /// 초기화 및 Remote Config 동기화 / 버전 검사
   Future<void> initialize() async {
@@ -127,15 +134,24 @@ class BleScanner {
 
     if (!isMatch) return;
 
-    debugPrint('[BleScanner] Target Gatekeeper 비콘 감지! RSSI: $rssi dBm');
+    // 실시간 RSSI 모니터링 업데이트 (DebugScreen 노출용)
+    liveRssi.value = rssi;
+    lastRssiUpdateTime.value = DateTime.now();
 
-    // 쿨다운 검증 (중복 API 호출 방지)
+    // 동적 RSSI 임계치 필터링
+    if (rssi < rssiThreshold) {
+      debugPrint('[BleScanner] 비콘 감지되었으나 RSSI 기준 미달: $rssi dBm < $rssiThreshold dBm (무시)');
+      return;
+    }
+
+    debugPrint('[BleScanner] Target Gatekeeper 비콘 감지! RSSI: $rssi dBm (Threshold: $rssiThreshold dBm)');
+
+    // 쿨다운 검증 (중복 API 호출 방지 — ignoreCooldown 선택 시 패스)
     final now = DateTime.now();
-    if (_lastPrearmTime != null) {
+    if (!ignoreCooldown && _lastPrearmTime != null) {
       final difference = now.difference(_lastPrearmTime!).inSeconds;
       if (difference < cooldownSeconds) {
         debugPrint('[BleScanner] 쿨다운 대기 중... ($difference초 경과 / $cooldownSeconds초)');
-
         return;
       }
     }
@@ -144,6 +160,7 @@ class BleScanner {
     _lastPrearmTime = now;
     _sendPrearmRequest(rssi);
   }
+
 
   /// 백엔드 Pre-arm REST API 호출
   Future<void> _sendPrearmRequest(int rssi) async {

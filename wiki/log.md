@@ -408,6 +408,19 @@
 - **`gatekeeper_app/pubspec.yaml`**: `shared_preferences: ^2.2.3` 명시적 의존성 선언 추가
 - **`gatekeeper_app/lib/services/device_id_service.dart`**: `device_info_plus` 패키지 패스 `.dart` 확장자 누락 오기 정정 ➔ GitHub Actions CI 빌드 정상화 완결
 
+## [2026-07-26] feat | 엔지니어 원격 튜닝(Engineer Remote Calibration & Tuning System) 구축
+
+- **`include/config.h` & `src/main.cpp` & `src/MqttManager.cpp` (Target)**:
+  - `gatekeeper/config/tx_power`, `gatekeeper/config/tof_distance`, `gatekeeper/config/duration` MQTT 구독 및 콜백 처리 추가
+  - `setTxPower()`, `setTofDistanceCm()`, `setPreArmDurationMs()` 동적 세터 추가하여 실시간 파라미터 적용 지원
+- **`backend/app/main.py` (NAS Backend)**:
+  - `AdminConfigRequestSchema` 및 `POST /admin/config` REST API 추가하여 원격 튜닝 요청 수신 시 MQTT 토픽 즉시 릴레이 발행
+- **`gatekeeper_app` (Flutter Shell App)**:
+  - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
+  - `lib/services/ble_scanner.dart`: 동적 RSSI Threshold 필터링, 실시간 RSSI ValueNotifier 업데이트, 쿨다운 무시 선택적 패스 구현
+  - `lib/screens/web_view_screen.dart`: AppBar 상단에 엔지니어 디버그 화면 진입 아이콘 버튼(`Icons.tune`) 추가
+
+
 
 
 

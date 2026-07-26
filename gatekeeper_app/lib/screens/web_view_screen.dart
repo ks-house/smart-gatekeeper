@@ -3,8 +3,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/device_id_service.dart';
 import '../services/update_checker.dart';
+import 'debug_screen.dart';
 
 class WebViewScreen extends StatefulWidget {
+
   final String? initialUrl;
 
   const WebViewScreen({
@@ -99,10 +101,21 @@ class _WebViewScreenState extends State<WebViewScreen> {
         elevation: 0,
         actions: [
           IconButton(
+            icon: const Icon(Icons.tune, color: Colors.cyanAccent),
+            tooltip: '엔지니어 디버그 모드',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DebugScreen()),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => _controller.reload(),
           ),
         ],
+
       ),
       body: Column(
         children: [

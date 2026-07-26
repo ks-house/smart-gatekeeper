@@ -152,6 +152,21 @@ def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
     }, ensure_ascii=False)
     return _publish_mqtt_msg(MQTT_TOPIC_FORCE, payload, "MQTT-FORCE")
 
+def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, duration: Optional[int] = None) -> dict:
+    """NAS → MQTT Broker → ESP32-C6 gatekeeper/config/... 엔지니어 튜닝 토픽 발행."""
+    results = {}
+    if tx_power is not None:
+        ok = _publish_mqtt_msg("gatekeeper/config/tx_power", str(tx_power), "MQTT-CONFIG-TX")
+        results["tx_power"] = {"value": tx_power, "success": ok}
+    if tof_distance is not None:
+        ok = _publish_mqtt_msg("gatekeeper/config/tof_distance", str(tof_distance), "MQTT-CONFIG-TOF")
+        results["tof_distance"] = {"value": tof_distance, "success": ok}
+    if duration is not None:
+        ok = _publish_mqtt_msg("gatekeeper/config/duration", str(duration), "MQTT-CONFIG-DUR")
+        results["duration"] = {"value": duration, "success": ok}
+    return results
+
+
 
 
 # ─── Pydantic 스키마 ──────────────────────────────────────────
@@ -182,6 +197,12 @@ class PrearmRequestSchema(BaseModel):
 class ForceOpenRequestSchema(BaseModel):
     reason: Optional[str] = "manual_click"
     device_id: Optional[str] = None
+
+class AdminConfigRequestSchema(BaseModel):
+    tx_power: Optional[int] = Field(None, example=-6, description="BLE Tx Power dBm (-6, 0, 3, 9)")
+    tof_distance: Optional[int] = Field(None, example=50, description="ToF 감지 기준 거리 cm (5 ~ 200)")
+    duration: Optional[int] = Field(None, example=5000, description="Pre-arm 유효 유지 시간 ms (1000 ~ 60000)")
+
 
 
 class AccessLogItem(BaseModel):
@@ -503,6 +524,34 @@ def door_force_open(req: ForceOpenRequestSchema):
         content={"result": "force_opened", "message": "문이 성공적으로 열렸습니다!", "mqtt_published": force_ok},
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
+
+
+@app.post("/admin/config")
+@app.post("/api/v1/admin/config")
+def update_admin_config(req: AdminConfigRequestSchema):
+    """엔지니어 원격 튜닝 API — ESP32-C6 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간) 실시간 변경"""
+    log.info(f"[ADMIN-CONFIG] 원격 파라미터 변경 요청: tx_power={req.tx_power}, tof_distance={req.tof_distance}, duration={req.duration}")
+    if req.tx_power is None and req.tof_distance is None and req.duration is None:
+        return JSONResponse(
+            status_code=400,
+            content={"result": "error", "message": "최소 하나 이상의 튜닝 파라미터를 전달해야 합니다."}
+        )
+
+    mqtt_results = publish_admin_config_to_mqtt(
+        tx_power=req.tx_power,
+        tof_distance=req.tof_distance,
+        duration=req.duration
+    )
+
+    return JSONResponse(
+        content={
+            "result": "success",
+            "message": "엔지니어 원격 튜닝 파라미터가 MQTT로 전송되었습니다.",
+            "details": mqtt_results
+        },
+        headers={"Content-Type": "application/json; charset=utf-8"}
+    )
+
 
 
 @app.post("/api/v1/auth/verify", response_model=AuthVerifyResponse)

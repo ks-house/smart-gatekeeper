@@ -63,6 +63,39 @@ static bool     is_armed      = false;
 static uint32_t arm_timestamp = 0;  // millis() 기준 arm 활성화 시각
 
 // ─────────────────────────────────────────────────────────────
+// 엔지니어 원격 튜닝용 동적 설정 변수 (기본값: config.h 설정치)
+// ─────────────────────────────────────────────────────────────
+static uint16_t g_distance_threshold_mm = DISTANCE_THRESHOLD_MM;
+static uint32_t g_pre_arm_duration_ms  = PRE_ARM_DURATION_MS;
+static int      g_tx_power_dbm          = 9;
+
+void setTxPower(int powerDbm) {
+  g_tx_power_dbm = powerDbm;
+  esp_power_level_t pwrLevel = ESP_PWR_LVL_P9;
+  if (powerDbm <= -6)      pwrLevel = ESP_PWR_LVL_N6;
+  else if (powerDbm <= 0)  pwrLevel = ESP_PWR_LVL_N0;
+  else if (powerDbm <= 3)  pwrLevel = ESP_PWR_LVL_P3;
+  else if (powerDbm <= 6)  pwrLevel = ESP_PWR_LVL_P6;
+  else                     pwrLevel = ESP_PWR_LVL_P9;
+
+  BLEDevice::setPower(pwrLevel, ESP_BLE_PWR_TYPE_ADV);
+  LOGF("[CONFIG-TUNING] ⚙️ BLE Tx Power 동적 변경: %d dBm", powerDbm);
+}
+
+void setTofDistanceCm(int distanceCm) {
+  if (distanceCm < 5) distanceCm = 5;
+  if (distanceCm > 200) distanceCm = 200;
+  g_distance_threshold_mm = (uint16_t)(distanceCm * 10);
+  LOGF("[CONFIG-TUNING] ⚙️ ToF 감지 거리 동적 변경: %d cm (%u mm)", distanceCm, g_distance_threshold_mm);
+}
+
+void setPreArmDurationMs(uint32_t durationMs) {
+  if (durationMs < 1000) durationMs = 1000;
+  g_pre_arm_duration_ms = durationMs;
+  LOGF("[CONFIG-TUNING] ⚙️ Pre-arm 유효 시간 동적 변경: %lu ms", (unsigned long)g_pre_arm_duration_ms);
+}
+
+// ─────────────────────────────────────────────────────────────
 // triggerArm() — MqttManager 콜백에서 호출 (MQTT gatekeeper/arm 수신)
 // ─────────────────────────────────────────────────────────────
 void triggerArm() {
@@ -70,8 +103,9 @@ void triggerArm() {
   arm_timestamp = millis();
   state         = GateState::ARMED;
   stateMs       = arm_timestamp;
-  LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! ToF 센서 활성화 (%lu ms 유효)", (unsigned long)PRE_ARM_DURATION_MS);
+  LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! ToF 센서 활성화 (%lu ms 유효)", (unsigned long)g_pre_arm_duration_ms);
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // triggerManualDoorOpen() — MQTT 원격 수동 개방 명령 (기존 유지)
@@ -230,8 +264,8 @@ void loop() {
   bool validReading = !(sensor.timeoutOccurred() || mm == 65535);
 
   // ─── Pre-arm 만료 체크 (ARMED 상태에서만 수행) ──────────────────────
-  if (is_armed && (now - arm_timestamp >= PRE_ARM_DURATION_MS)) {
-    LOGF("[GATE] ⏱️ Pre-arm 유효 시간 만료 (%lu ms 경과). IDLE 복귀.", (unsigned long)PRE_ARM_DURATION_MS);
+  if (is_armed && (now - arm_timestamp >= g_pre_arm_duration_ms)) {
+    LOGF("[GATE] ⏱️ Pre-arm 유효 시간 만료 (%lu ms 경과). IDLE 복귀.", (unsigned long)g_pre_arm_duration_ms);
     is_armed = false;
     state    = GateState::IDLE;
     MqttManager::publishEvent("arm_expired", "Pre-arm timeout, returning to IDLE");
@@ -241,8 +275,9 @@ void loop() {
   uint32_t armRemainingMs = 0;
   if (is_armed && arm_timestamp > 0) {
     uint32_t elapsed = now - arm_timestamp;
-    armRemainingMs = (elapsed < PRE_ARM_DURATION_MS) ? (PRE_ARM_DURATION_MS - elapsed) : 0;
+    armRemainingMs = (elapsed < g_pre_arm_duration_ms) ? (g_pre_arm_duration_ms - elapsed) : 0;
   }
+
 
   // ─── 10초 주기 MQTT 텔레메트리 발행 ────────────────────────────────
   if (now - lastMqttMs >= 10000) {
@@ -278,7 +313,8 @@ void loop() {
     // 50cm 이내 감지 시 릴레이 1초 ON → RELAY_HOLD → COOLDOWN
     // ──────────────────────────────────────────────────────────
     case GateState::ARMED:
-      if (validReading && mm <= DISTANCE_THRESHOLD_MM) {
+      if (validReading && mm <= g_distance_threshold_mm) {
+
         LOGF("[GATE] ✅ ARMED 상태에서 ToF %u mm 감지! (PRE-ARM 유효 — arm 경과: %lu ms)",
              mm, (unsigned long)(now - arm_timestamp));
         LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)", (unsigned long)RELAY_HOLD_MS);

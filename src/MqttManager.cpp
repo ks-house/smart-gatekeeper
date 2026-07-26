@@ -13,6 +13,10 @@
 // main.cpp에서 정의된 외부 함수 참조
 extern void triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
 extern void triggerArm();            // MQTT gatekeeper/arm 수신 시 Pre-arm 활성화
+extern void setTxPower(int powerDbm);
+extern void setTofDistanceCm(int distanceCm);
+extern void setPreArmDurationMs(uint32_t durationMs);
+
 
 WiFiClientSecure MqttManager::wifiClient;
 PubSubClient MqttManager::client(wifiClient);
@@ -74,6 +78,34 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         return;
     }
 
+    // ─── gatekeeper/config/tx_power — BLE 발신 출력 동적 튜닝 ───────────────
+    if (strcmp(topic, MQTT_TOPIC_CONFIG_TX_POWER) == 0) {
+        int val = atoi(message);
+        LOGF("[MQTT-CONFIG] ⚙️ Tx Power 설정 수신: %d dBm", val);
+        setTxPower(val);
+        publishEvent("config_tx_power", String(val).c_str());
+        return;
+    }
+
+    // ─── gatekeeper/config/tof_distance — ToF 감지 거리 동적 튜닝 ───────────
+    if (strcmp(topic, MQTT_TOPIC_CONFIG_TOF_DIST) == 0) {
+        int val = atoi(message);
+        LOGF("[MQTT-CONFIG] ⚙️ ToF 감지 거리 설정 수신: %d cm", val);
+        setTofDistanceCm(val);
+        publishEvent("config_tof_distance", String(val).c_str());
+        return;
+    }
+
+    // ─── gatekeeper/config/duration — Pre-arm 유효 시간 동적 튜닝 ─────────────
+    if (strcmp(topic, MQTT_TOPIC_CONFIG_DURATION) == 0) {
+        int val = atoi(message);
+        LOGF("[MQTT-CONFIG] ⚙️ Pre-arm 유효 시간 설정 수신: %d ms", val);
+        setPreArmDurationMs((uint32_t)val);
+        publishEvent("config_duration", String(val).c_str());
+        return;
+    }
+
+
     // ─── smart-gatekeeper/cmd — 원격 명령 처리 ──────────────────────────
     StaticJsonDocument<256> doc;
     if (deserializeJson(doc, message)) {
@@ -118,11 +150,15 @@ void MqttManager::update() {
                 LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 failCount = 0; // 성공 시 카운트 초기화
 
-                // v2.0 핵심: gatekeeper/arm 및 gatekeeper/force_open 토픽 구독
+                // v2.0 핵심: gatekeeper/arm, gatekeeper/force_open 및 설정 튜닝 토픽 구독
                 client.subscribe(MQTT_TOPIC_ARM);
                 client.subscribe("gatekeeper/force_open");
                 client.subscribe("smart-gatekeeper/cmd");
-                LOGF("[MQTT] 토픽 구독 완료: %s, gatekeeper/force_open, smart-gatekeeper/cmd", MQTT_TOPIC_ARM);
+                client.subscribe(MQTT_TOPIC_CONFIG_TX_POWER);
+                client.subscribe(MQTT_TOPIC_CONFIG_TOF_DIST);
+                client.subscribe(MQTT_TOPIC_CONFIG_DURATION);
+                LOGF("[MQTT] 토픽 구독 완료: %s, gatekeeper/force_open, gatekeeper/config/#", MQTT_TOPIC_ARM);
+
 
                 
                 publishEvent("connected", "ESP32-C6 v2.0 Online (SSL) - BLE Beacon Mode");
