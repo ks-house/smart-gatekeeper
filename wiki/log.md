@@ -422,6 +422,8 @@
     - `WifiManager`: `startWebServer()` 모듈화로 STA 연결 성공 시에도 로컬 IP(192.168.x.x) WebServer(Port 80) 상시 구동 및 개방
     - Wi-Fi 스캔 (`/scan`): `WiFi.scanNetworks(false, false, false, 150)` 채널별 액티브 스캔 적용으로 STA 연결 중에도 주변 AP 실시간 수집 목록(SSID, RSSI) JSON 제공
     - 웹 UI 대시보드 개편: 현재 Wi-Fi 연결 상태(SSID/IP) 뱃지, 주변 AP 실시간 재검색 & 변경 폼, 엔지니어 원격 튜닝 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간) NVS 저장 폼 제공
+    - AP 접속 불능 버그 정복: STA 접속 실패 시 `WiFi.disconnect(true, true)`로 백그라운드 무선 채널 호핑 차단 후 `WiFi.softAP("SmartGatekeeper-Setup", NULL, 1, 0, 4)` 채널 1 고정으로 스마트폰/노트북 스캔 비콘 브로드캐스트 즉시 노출
+
 
 - **`gatekeeper_app` (Flutter Shell App)**:
   - 앱 닫힘/백그라운드 비콘 감지 및 Pre-arm 수신 수거 버그 완벽 정복:
