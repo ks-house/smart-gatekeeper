@@ -134,11 +134,14 @@ class _DebugScreenState extends State<DebugScreen> {
         ],
       ),
 
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: SafeArea(
+        bottom: true,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+
             // ─── SECTION 1: 실시간 RSSI 모니터 ───────────────────
             _buildRssiMonitorCard(),
 

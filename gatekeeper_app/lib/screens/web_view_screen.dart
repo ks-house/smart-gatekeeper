@@ -117,51 +117,55 @@ class _WebViewScreenState extends State<WebViewScreen> {
         ],
 
       ),
-      body: Column(
-        children: [
-          // 업데이트 감지 시 상단 안내 배너 표시
-          if (updateChecker.isUpdateAvailable)
-            Container(
-              color: Colors.amber.shade900,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                children: [
-                  const Icon(Icons.system_update, color: Colors.white),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '새로운 Smart Key v${updateChecker.remoteVersion ?? ''} 업데이트 가능!',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+      body: SafeArea(
+        bottom: true,
+        child: Column(
+          children: [
+            // 업데이트 감지 시 상단 안내 배너 표시
+            if (updateChecker.isUpdateAvailable)
+              Container(
+                color: Colors.amber.shade900,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.system_update, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '새로운 Smart Key v${updateChecker.remoteVersion ?? ''} 업데이트 가능!',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => updateChecker.downloadUpdate(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ElevatedButton(
+                      onPressed: () => updateChecker.downloadUpdate(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      child: const Text('다운로드'),
                     ),
-                    child: const Text('다운로드'),
-                  ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: Stack(
+                children: [
+                  WebViewWidget(controller: _controller),
+                  if (_isLoading)
+                    const Center(
+                      child: CircularProgressIndicator(),
+                    ),
                 ],
               ),
             ),
-          Expanded(
-            child: Stack(
-              children: [
-                WebViewWidget(controller: _controller),
-                if (_isLoading)
-                  const Center(
-                    child: CircularProgressIndicator(),
-                  ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+
   }
 }
