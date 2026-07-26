@@ -418,7 +418,8 @@
 - **`gatekeeper_app` (Flutter Shell App)**:
   - `lib/screens/debug_screen.dart` 신규 생성: 실시간 비콘 RSSI 대형 텍스트 모니터, 동적 RSSI Threshold 슬라이더, 쿨다운 무시 체크박스, Target 원격 튜닝 전송 폼 탑재
 - **`gatekeeper_app/lib/screens/debug_screen.dart`**:
-  - CI 빌드 컴파일 오류(Run #30185975118) 완전 정복: `Icon` 및 `Text` 개별 위젯의 `const` 키워드 제거(마테리얼 `Colors.greenAccent`, `Colors.cyanAccent` 동적 속성 컴파일 바인딩 충돌 해제) 완료
+  - Flutter 3.22/3.24 CI 컴파일 오류(Run #30186070520) 해결: `MaterialColor`(`Colors.grey`)를 사용하는 `const TextStyle` / `const Text` 위젯의 `const` 키워드 완전 수거하여 타입 체크 100% 정상화
+
 
 
 

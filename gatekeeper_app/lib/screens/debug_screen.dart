@@ -245,7 +245,8 @@ class _DebugScreenState extends State<DebugScreen> {
                       isConnected
                           ? 'UUID: ${_scanner.targetBeaconUuid}\n수신 시각: $timeStr | 누적 패킷: $count개'
                           : 'Target 비콘 UUID (${_scanner.targetBeaconUuid}) 미수신 중...\n수신을 멈추고 연결 대기 중입니다.',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -300,7 +301,8 @@ class _DebugScreenState extends State<DebugScreen> {
             const Divider(color: Colors.white10),
             CheckboxListTile(
               title: const Text('스마트 쿨다운 무시 (Ignore Cooldown)', style: TextStyle(color: Colors.white, fontSize: 14)),
-              subtitle: const Text('체크 시 문 열기 직후에도 쿨다운 없이 비콘 API 연타 가능', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              subtitle: Text('체크 시 문 열기 직후에도 쿨다운 없이 비콘 API 연타 가능', style: TextStyle(color: Colors.grey, fontSize: 12)),
+
               value: _scanner.ignoreCooldown,
               activeColor: Colors.amber.shade800,
               onChanged: (val) {
@@ -486,7 +488,7 @@ class _DebugScreenState extends State<DebugScreen> {
 
               Text(
                 _lastSyncTimeStr,
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
           ),
@@ -509,11 +511,12 @@ class _DebugScreenState extends State<DebugScreen> {
   Widget _buildActiveParamItem(String label, String value, Color color) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey)),
         const SizedBox(height: 3),
         Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
+
 }
 
