@@ -102,8 +102,8 @@ class _DebugScreenState extends State<DebugScreen> {
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
         final now = DateTime.now();
+
         final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
         setState(() {
           _appliedTxPower = _selectedTxPower;
@@ -171,7 +171,9 @@ class _DebugScreenState extends State<DebugScreen> {
           ],
         ),
       ),
-    );
+    ),
+  );
+
   }
 
   Widget _buildRssiMonitorCard() {
