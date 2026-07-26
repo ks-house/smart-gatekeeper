@@ -332,8 +332,11 @@ def health_check():
     )
 
 @app.get("/api/v1/download/apk")
+@app.get("/download/apk")
+@app.get("/api/v1/download/ks-house-gatekeeper.apk")
 @app.get("/gatekeeper_apk/{filename}")
 def download_latest_apk(filename: str = "ks-house-gatekeeper.apk"):
+
     """Port 4442 동일 포트에서 최신 APK 파일 직접 다운로드 제공"""
     apk_paths = [
         os.path.join("/app/gatekeeper_apk", filename),

@@ -429,12 +429,12 @@
     - **MQTT 2-Way**: `gatekeeper/config/relay_cooldown` 구독 및 `gatekeeper/config/state` / `gatekeeper/config/set` JSON에 `relay_cooldown` 파라미터 양방향 동기화
 
 
+- **`gatekeeper_app` (Flutter Shell App) & Web Dashboard**:
+  - 앱 하단 "Smart Key APK 최신버전 수동 다운로드" 버튼 동작 불능 해결:
+    - **`web_view_screen.dart`**: WebView `onNavigationRequest` 필터에 `/download/apk` 및 `/download/` 경로 감지 로직 추가. 터치 시 internal WebView 인라인 바이너리 렌더링 시도를 차단하고 `LaunchMode.externalApplication` (크롬/기본 브라우저)으로 시그널 전환 하달
+    - **`index.html`**: 수동 다운로드 앵커 태그에 `target="_blank" download="ks-house-gatekeeper.apk"` 속성 명시
+    - **`main.py`**: `/download/apk` 및 `/api/v1/download/ks-house-gatekeeper.apk` 라우팅 라우트 추가
 
-- **`gatekeeper_app` (Flutter Shell App)**:
-  - 앱 닫힘/백그라운드 비콘 감지 및 Pre-arm 수신 수거 버그 완벽 정복:
-    - `AndroidManifest.xml`: `BLUETOOTH_SCAN`에서 `neverForLocation` 플래그 수거하여 백그라운드 BLE 스캔 패킷 차단 해제 및 `ACCESS_BACKGROUND_LOCATION` 권한 연동
-    - `foreground_service.dart`: `GatekeeperTaskHandler.onStart()`에서 `startScanning(forceRestart: true)`를 명시적으로 구동하여 앱 UI 닫힘 시에도 백그라운드 서비스 Isolate에서 고속 비콘 스캔 지속 유지
-    - Pre-arm 승인 성공 시 상단 포그라운드 알림 텍스트 실시간 갱신 (`🟢 Smart Key 출입문 승인 완료!`)
 
 
 
