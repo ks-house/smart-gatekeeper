@@ -120,11 +120,8 @@ class _DebugScreenState extends State<DebugScreen> {
           _lastSyncTimeStr = timeStr;
           _targetResponseMsg = '✅ Target 파라미터 NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
         });
-      }
- NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s';
-
-        });
       } else {
+
         setState(() {
           _targetResponseMsg = '❌ 실패 (HTTP ${response.statusCode}): ${response.body}';
         });
