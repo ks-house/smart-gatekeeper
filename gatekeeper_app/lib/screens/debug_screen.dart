@@ -24,11 +24,10 @@ class _DebugScreenState extends State<DebugScreen> {
   @override
   void initState() {
     super.initState();
-    // 스캔 구동 보장
-    if (!_scanner.isScanning) {
-      _scanner.startScanning();
-    }
+    // 디버그 화면 진입 시 고속 저지연 실시간 비콘 스캔 모드로 전환
+    _scanner.startScanning(forceRestart: true);
   }
+
 
   Future<void> _sendAdminConfig() async {
     setState(() {
@@ -104,12 +103,13 @@ class _DebugScreenState extends State<DebugScreen> {
   }
 
   Widget _buildRssiMonitorCard() {
-    return ValueListenableBuilder<int?>(
-      valueListenable: _scanner.liveRssi,
-      builder: (context, rssi, _) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _scanner.packetCount,
+      builder: (context, count, _) {
+        final rssi = _scanner.liveRssi.value;
         final lastTime = _scanner.lastRssiUpdateTime.value;
         final String timeStr = lastTime != null
-            ? '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}'
+            ? '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}.${(lastTime.millisecond ~/ 100)}'
             : '미감지';
 
         Color badgeColor = Colors.grey;
@@ -166,7 +166,7 @@ class _DebugScreenState extends State<DebugScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'UUID: ${_scanner.targetBeaconUuid}\n최근 수신: $timeStr',
+                  'UUID: ${_scanner.targetBeaconUuid}\n수신 시각: $timeStr | 누적 패킷: $count개',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                   textAlign: TextAlign.center,
                 ),
@@ -177,6 +177,7 @@ class _DebugScreenState extends State<DebugScreen> {
       },
     );
   }
+
 
   Widget _buildLocalConfigCard() {
     return Card(

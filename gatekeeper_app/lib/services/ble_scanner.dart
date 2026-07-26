@@ -28,8 +28,10 @@ class BleScanner {
   bool ignoreCooldown = false;    // 쿨다운 무시 모드 (테스트용)
   final ValueNotifier<int?> liveRssi = ValueNotifier<int?>(null);
   final ValueNotifier<DateTime?> lastRssiUpdateTime = ValueNotifier<DateTime?>(null);
+  final ValueNotifier<int> packetCount = ValueNotifier<int>(0);
 
   DateTime? _lastPrearmTime;
+
   bool _isScanning = false;
   StreamSubscription<List<ScanResult>>? _scanSubscription;
 
@@ -78,8 +80,12 @@ class BleScanner {
 
 
   /// 백그라운드 BLE 비콘 스캐닝 시작
-  Future<void> startScanning() async {
-    if (_isScanning) return;
+  Future<void> startScanning({bool forceRestart = false}) async {
+    if (_isScanning && !forceRestart) return;
+
+    if (forceRestart) {
+      await stopScanning();
+    }
 
     // 블루투스 지원 및 활성화 여부 확인
     if (await FlutterBluePlus.isSupported == false) {
@@ -88,9 +94,10 @@ class BleScanner {
     }
 
     _isScanning = true;
-    debugPrint('[BleScanner] 비콘 스캐닝 시작... (Target UUID: $targetBeaconUuid)');
+    debugPrint('[BleScanner] 비콘 실시간 고속 스캐닝 시작... (Target UUID: $targetBeaconUuid)');
 
     // 스캔 결과 리스너 등록
+    _scanSubscription?.cancel();
     _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
       for (ScanResult r in results) {
         _checkAndProcessBeacon(r);
@@ -99,10 +106,12 @@ class BleScanner {
       debugPrint('[BleScanner] Scan Error: $e');
     });
 
-    // 지속적 비콘 감지를 위해 androidUsesFineLocation=true 옵션 적용
+    // 실시간 연속 RSSI 감지를 위해 continuousUpdates 및 Low Latency 모드 적용
     try {
       await FlutterBluePlus.startScan(
         timeout: null, // continuous scan
+        continuousUpdates: true, // 수신될 때마다 RSSI 패킷 갱신 허용
+        androidScanMode: AndroidScanMode.lowLatency, // 고속 감지 모드
         androidUsesFineLocation: true,
       );
     } catch (e) {
@@ -110,6 +119,7 @@ class BleScanner {
       _isScanning = false;
     }
   }
+
 
   /// 감지된 비콘 검증 및 Pre-arm API 호출
   void _checkAndProcessBeacon(ScanResult result) {
@@ -137,6 +147,8 @@ class BleScanner {
     // 실시간 RSSI 모니터링 업데이트 (DebugScreen 노출용)
     liveRssi.value = rssi;
     lastRssiUpdateTime.value = DateTime.now();
+    packetCount.value++;
+
 
     // 동적 RSSI 임계치 필터링
     if (rssi < rssiThreshold) {
