@@ -270,12 +270,11 @@ void loop() {
 
   uint32_t now = millis();
 
-  // ─── 초음파 거리 측정 (is_armed == true 무장 상태일 때만 센서 작동) ───
-  float distCm = -1.0f;
+  // ─── 초음파 거리 측정 (실시간 모니터링을 위해 상시 작동) ───
+  float distCm = UltrasonicSensor::readDistanceCm();
   bool validReading = false;
 
   if (is_armed && state == GateState::ARMED) {
-    distCm = UltrasonicSensor::readDistanceCm();
     // 20cm 미만 맹점은 -1.0f 반환되므로, 20cm ~ g_distance_threshold_cm 범위만 유효
     validReading = (distCm >= ULTRASONIC_MIN_DISTANCE_CM && distCm <= (float)g_distance_threshold_cm);
   }
@@ -295,13 +294,14 @@ void loop() {
     armRemainingMs = (elapsed < g_pre_arm_duration_ms) ? (g_pre_arm_duration_ms - elapsed) : 0;
   }
 
-  // ─── 10초 주기 MQTT 텔레메트리 발행 ────────────────────────────────
-  if (now - lastMqttMs >= 10000) {
+  // ─── 1초 주기 MQTT 텔레메트리 발행 (실시간 센서값 모니터링) ────────────────────────────────
+  if (now - lastMqttMs >= 1000) {
     lastMqttMs = now;
     const char* stateStr = (state == GateState::IDLE)      ? "IDLE" :
                            (state == GateState::ARMED)      ? "ARMED" :
                            (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
-    MqttManager::publishTelemetry(validReading ? (uint16_t)(distCm * 10.0f) : 0, stateStr, is_armed);
+    uint16_t distance_mm = (distCm > 0.0f) ? (uint16_t)(distCm * 10.0f) : 0;
+    MqttManager::publishTelemetry(distance_mm, stateStr, is_armed);
 
     if (is_armed) {
       LOGF("[GATE] PRE-ARMED 상태 유지 중. 잔여 유효 시간: %lu 초", (unsigned long)(armRemainingMs / 1000));

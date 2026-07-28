@@ -502,3 +502,8 @@
 
 
 
+## [2026-07-28] code | Real-time ultrasonic sensor monitoring via MQTT
+
+- Updated `src/main.cpp` to continuously read the ultrasonic sensor instead of only reading it during the ARMED state.
+- Changed the MQTT telemetry publish interval from 10 seconds to 1 second to support real-time dashboard monitoring.
+- Made sure that the valid trigger threshold check still works properly.
