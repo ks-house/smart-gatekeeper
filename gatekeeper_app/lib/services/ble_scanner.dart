@@ -152,13 +152,21 @@ class BleScanner {
     if (_isScanning && !forceRestart) return;
 
     if (forceRestart) {
-      await stopScanning();
+      _isScanning = false;
+      _timeoutTimer?.cancel();
+      liveRssi.value = null;
+      isBeaconConnected.value = false;
+      await _streamRanging?.cancel();
     }
 
     try {
       await flutterBeacon.initializeScanning;
     } catch (e) {
       debugPrint('[BleScanner] flutterBeacon 초기화 실패: $e');
+      _updateNotification(
+        title: '⚠️ BLE 비콘 스캔 초기화 실패',
+        text: '블루투스/위치 서비스 또는 권한 상태를 확인해주세요 ($e)',
+      );
       return;
     }
 
