@@ -592,6 +592,11 @@
 - **Single Persistent Ranging Stream**: Converted `_streamRanging` in `gatekeeper_app/lib/services/ble_scanner.dart` to a single persistent singleton stream initialized once at app startup.
 - **Eliminated Native IPC Race Condition**: Completely removed `forceRefresh: true` and stream cancellation inside `didEnterRegion` callbacks, preventing AltBeacon native `BeaconService` race conditions and native Android process crashes while ensuring uninterrupted real-time RSSI tracking.
 
+## [2026-07-28] fix | Remove Unused `_stopRangingStream` Function to Resolve CI Analyze Warning
+
+- **CI/CD Analyze Fix**: Removed unused `_stopRangingStream()` method in `gatekeeper_app/lib/services/ble_scanner.dart` to resolve `unused_element` warning flagged during `flutter analyze` in GitHub Actions run 30377115788.
+
+
 
 
 

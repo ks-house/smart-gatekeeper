@@ -238,17 +238,6 @@ class BleScanner {
     _startTimeoutCheckTimer();
   }
 
-  void _stopRangingStream() {
-    _streamRanging?.cancel();
-    _streamRanging = null;
-    liveRssi.value = null;
-    isBeaconConnected.value = false;
-    _updateNotification(
-      title: '💤 Target 비콘 구역 수면 감시 중 (저전력 모드)',
-      text: 'Target 비콘 구역 접근 시 OS가 자동으로 비콘을 감지합니다.',
-    );
-  }
-
   void _processBeacon(Beacon beacon) {
     if (beacon.proximityUUID.isEmpty) return;
 
