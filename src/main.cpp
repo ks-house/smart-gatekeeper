@@ -12,6 +12,7 @@
 #include <BLEDevice.h>
 #include <BLEAdvertising.h>
 #include <BLEUtils.h>
+#include <BLEBeacon.h>
 
 #include "config.h"
 #include "ConfigManager.h"
@@ -73,6 +74,49 @@ void setTxPower(int powerDbm) {
   ConfigManager::setTxPower(powerDbm);
   MqttManager::publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, g_relay_cooldown_ms);
   LOGF("[CONFIG-TUNING] ⚙️ BLE Tx Power 동적 변경 & NVS 저장: %d dBm", powerDbm);
+
+  // iBeacon payload needs to be updated with the new "Measured Power"
+  BLEAdvertising* pAdv = BLEDevice::getAdvertising();
+  pAdv->stop();
+
+  BLEBeacon oBeacon = BLEBeacon();
+  oBeacon.setManufacturerId(0x004C);
+  BLEUUID bleUUID(GATEKEEPER_BEACON_UUID);
+
+  // Create a reversed UUID bytes representation for the iBeacon structure
+  // Apple standard byte order requirements for iBeacon UUID payload
+  uint8_t uuid_bytes[16];
+  memcpy(uuid_bytes, bleUUID.getNative()->uuid.uuid128, 16);
+  // Reversing the 16 bytes for little-endian to big-endian match inside the library
+  for(int i=0; i<8; i++){
+    uint8_t temp = uuid_bytes[i];
+    uuid_bytes[i] = uuid_bytes[15-i];
+    uuid_bytes[15-i] = temp;
+  }
+
+  oBeacon.setProximityUUID(BLEUUID(uuid_bytes, 16, false));
+  oBeacon.setMajor(1);
+  oBeacon.setMinor(1);
+  // Approximate measured power (1m RSSI) based on TX power
+  // A typical mapping: at 0 dBm, 1m RSSI is around -59 dBm.
+  int8_t measuredPower = -59 + powerDbm;
+  oBeacon.setSignalPower(measuredPower);
+
+  BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
+  BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
+
+  oAdvertisementData.setFlags(0x04); // BR_EDR_NOT_SUPPORTED 0x04
+
+  std::string strServiceData = "";
+  strServiceData += (char)26;     // Len
+  strServiceData += (char)0xFF;   // Type
+  strServiceData += oBeacon.getData().c_str();
+  oAdvertisementData.addData(strServiceData);
+
+  pAdv->setAdvertisementData(oAdvertisementData);
+  pAdv->setScanResponseData(oScanResponseData);
+  pAdv->start();
+  LOGF("[CONFIG-TUNING] ⚙️ iBeacon 페이로드 (Measured Power %d) 업데이트 및 ADV 재시작 완료", measuredPower);
 }
 
 void setDistanceThresholdCm(int distanceCm) {
@@ -130,23 +174,14 @@ void triggerManualDoorOpen() {
 // BLE Beacon Advertiser 초기화 (Arduino-ESP32 내장 Bluedroid BLE)
 // ─────────────────────────────────────────────────────────────
 static void initBleAdvertiser() {
-  LOGF("[BLE-ADV] BLE Beacon Advertiser 초기화 시작... (Arduino-ESP32 내장 Bluedroid 스택)");
+  LOGF("[BLE-ADV] iBeacon Advertiser 초기화 시작... (Arduino-ESP32 내장 Bluedroid 스택)");
 
   BLEDevice::init("SmartGatekeeper");
-  BLEDevice::setPower(ESP_PWR_LVL_P9, ESP_BLE_PWR_TYPE_ADV);
-  LOGF("[BLE-ADV] Tx Power: +9 dBm (최대 출력, 실외 10~15m 도달)");
 
-  BLEAdvertising* pAdv = BLEDevice::getAdvertising();
-  pAdv->addServiceUUID(GATEKEEPER_BEACON_UUID);
-  pAdv->setScanResponse(true);
-  pAdv->setAdvertisementType(0x02);
-  pAdv->setMinInterval(0x00A0);
-  pAdv->setMaxInterval(0x00A0);
-  pAdv->setMinPreferred(0x00);
-  pAdv->start();
+  // NVS에서 불러온 송신 출력을 기준으로 초기화
+  setTxPower(g_tx_power_dbm);
 
-  LOGF("[BLE-ADV] ✅ 비콘 발신 시작! Name: SmartGatekeeper | UUID: %s | ADV_TYPE_SCAN_IND (0x02)",
-       GATEKEEPER_BEACON_UUID);
+  LOGF("[BLE-ADV] ✅ iBeacon 발신 시작! UUID: %s", GATEKEEPER_BEACON_UUID);
 }
 
 // ─────────────────────────────────────────────────────────────
