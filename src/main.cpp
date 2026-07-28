@@ -107,14 +107,9 @@ void setTxPower(int powerDbm) {
 
   oAdvertisementData.setFlags(0x04); // BR_EDR_NOT_SUPPORTED 0x04
 
-  std::string strServiceData = "";
-  strServiceData += (char)26;     // Len
-  strServiceData += (char)0xFF;   // Type
+  oAdvertisementData.setManufacturerData(oBeacon.getData());
 
-  String beaconData = oBeacon.getData();
-  strServiceData += std::string(beaconData.c_str(), beaconData.length());
-
-  oAdvertisementData.addData((char*)strServiceData.c_str(), strServiceData.length());
+  oScanResponseData.setName("SmartGatekeeper");
 
   pAdv->setAdvertisementData(oAdvertisementData);
   pAdv->setScanResponseData(oScanResponseData);

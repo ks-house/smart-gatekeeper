@@ -174,13 +174,18 @@ class BleScanner {
     ];
 
     _streamRanging?.cancel();
-    _streamRanging = flutterBeacon.ranging(regions).listen((RangingResult result) {
-      if (result.beacons.isNotEmpty) {
-        for (var beacon in result.beacons) {
-          _processBeacon(beacon);
+    _streamRanging = flutterBeacon.ranging(regions).listen(
+      (RangingResult result) {
+        if (result.beacons.isNotEmpty) {
+          for (var beacon in result.beacons) {
+            _processBeacon(beacon);
+          }
         }
-      }
-    });
+      },
+      onError: (dynamic error) {
+        debugPrint('[BleScanner] ⚠️ Ranging stream error: $error');
+      },
+    );
 
     _startTimeoutCheckTimer();
   }

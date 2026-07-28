@@ -17,15 +17,23 @@ class GatekeeperTaskHandler extends TaskHandler {
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
     WidgetsFlutterBinding.ensureInitialized();
     debugPrint('[ForegroundTask] 🛡️ 백그라운드 상주 포그라운드 서비스 구동 시작');
-    await BleScanner().initialize();
-    await BleScanner().startScanning(forceRestart: true);
+    try {
+      await BleScanner().initialize();
+      await BleScanner().startScanning(forceRestart: true);
+    } catch (e) {
+      debugPrint('[ForegroundTask] ⚠️ 포그라운드 이솔렛 초기화 경고: $e');
+    }
   }
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
-    if (!BleScanner().isScanning) {
-      debugPrint('[ForegroundTask] 🔄 백그라운드 스캔 상태 재점검 -> 스캐닝 강제 재시작');
-      await BleScanner().startScanning(forceRestart: true);
+    try {
+      if (!BleScanner().isScanning) {
+        debugPrint('[ForegroundTask] 🔄 백그라운드 스캔 상태 재점검 -> 스캐닝 강제 재시작');
+        await BleScanner().startScanning(forceRestart: true);
+      }
+    } catch (e) {
+      debugPrint('[ForegroundTask] ⚠️ 포그라운드 RepeatEvent 오류: $e');
     }
   }
 
