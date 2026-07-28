@@ -81,20 +81,7 @@ void setTxPower(int powerDbm) {
 
   BLEBeacon oBeacon = BLEBeacon();
   oBeacon.setManufacturerId(0x004C);
-  BLEUUID bleUUID(GATEKEEPER_BEACON_UUID);
-
-  // Create a reversed UUID bytes representation for the iBeacon structure
-  // Apple standard byte order requirements for iBeacon UUID payload
-  uint8_t uuid_bytes[16];
-  memcpy(uuid_bytes, bleUUID.getNative()->u128.value, 16);
-  // Reversing the 16 bytes for little-endian to big-endian match inside the library
-  for(int i=0; i<8; i++){
-    uint8_t temp = uuid_bytes[i];
-    uuid_bytes[i] = uuid_bytes[15-i];
-    uuid_bytes[15-i] = temp;
-  }
-
-  oBeacon.setProximityUUID(BLEUUID(uuid_bytes, 16, false));
+  oBeacon.setProximityUUID(BLEUUID(GATEKEEPER_BEACON_UUID));
   oBeacon.setMajor(1);
   oBeacon.setMinor(1);
   // Approximate measured power (1m RSSI) based on TX power

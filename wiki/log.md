@@ -581,6 +581,13 @@
 
 - **BLE Advertising Interval**: Updated `src/main.cpp` `setTxPower()` to explicitly set `pAdv->setMinInterval(160);` and `pAdv->setMaxInterval(160);` (100ms in 0.625ms steps = Apple iBeacon standard interval / 10 times per second), guaranteeing fast BLE responsiveness without relying on default stack values.
 
+## [2026-07-28] fix | Resolve Target Board UUID Byte Reversal & App UUID Normalization
+
+- **Target Board UUID Reversal Fix**: Removed 16-byte byte reversal loop in `src/main.cpp` `setTxPower()`. Passing `oBeacon.setProximityUUID(BLEUUID(GATEKEEPER_BEACON_UUID))` directly guarantees standard over-the-air UUID transmission (`a1b2c3d4-e5f6-7890-abcd-ef1234567890`) without byte order corruption.
+- **Mobile App UUID Normalization**: Updated `gatekeeper_app/lib/services/ble_scanner.dart` to clean and normalize UUID comparison (`replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase()`), eliminating hyphen/case mismatches.
+- **Ranging Refresh on `didEnterRegion`**: Updated `_startRangingStream(regions, forceRefresh: true)` and status notification update upon receiving OS `didEnterRegion` events.
+
+
 
 
 

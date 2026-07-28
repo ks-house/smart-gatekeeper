@@ -193,8 +193,12 @@ class BleScanner {
         if (result.monitoringEventType == MonitoringEventType.didEnterRegion) {
           debugPrint('[BleScanner] 🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 스캔 개시');
           AppErrorLogger().log('🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 개시');
+          _updateNotification(
+            title: '🔴 Target 비콘 구역 진입! (신호 포착 중)',
+            text: 'Target 비콘 구역에 진입했습니다. 출입 신호를 확인 중입니다...',
+          );
           scheduleMicrotask(() {
-            _startRangingStream(regions);
+            _startRangingStream(regions, forceRefresh: true);
           });
         } else if (result.monitoringEventType == MonitoringEventType.didExitRegion) {
           debugPrint('[BleScanner] 🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈) -> Ranging 정지 및 저전력 감시 모드 복귀');
@@ -212,8 +216,12 @@ class BleScanner {
     _startRangingStream(regions);
   }
 
-  void _startRangingStream(List<Region> regions) {
-    if (_streamRanging != null) return; // 이미 Ranging 스트림 구독 중이면 중복 생성 방지 (네이티브 바인딩 충돌 예방)
+  void _startRangingStream(List<Region> regions, {bool forceRefresh = false}) {
+    if (_streamRanging != null && !forceRefresh) return; // 미강제시 이미 Ranging 구독 중이면 중복 방지
+
+    if (forceRefresh) {
+      _streamRanging?.cancel();
+    }
 
     _streamRanging = flutterBeacon.ranging(regions).listen(
       (RangingResult result) {
@@ -245,7 +253,12 @@ class BleScanner {
 
   void _processBeacon(Beacon beacon) {
     if (beacon.proximityUUID.isEmpty) return;
-    if (beacon.proximityUUID.toLowerCase() != targetBeaconUuid.toLowerCase()) return;
+
+    // UUID 알파벳/숫자 정규화 (하이픈 제거 및 소문자 통일)
+    final String cleanBeaconUuid = beacon.proximityUUID.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+    final String cleanTargetUuid = targetBeaconUuid.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+
+    if (cleanBeaconUuid != cleanTargetUuid) return;
     final int rssi = beacon.rssi;
     if (rssi == 0 || rssi == -1) return; // Invalid RSSI
 
