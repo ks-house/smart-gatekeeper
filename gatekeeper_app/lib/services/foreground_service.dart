@@ -4,9 +4,6 @@ import 'dart:isolate';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-
-import 'ble_scanner.dart';
-
 @pragma('vm:entry-point')
 void startCallback() {
   FlutterForegroundTask.setTaskHandler(GatekeeperTaskHandler());
