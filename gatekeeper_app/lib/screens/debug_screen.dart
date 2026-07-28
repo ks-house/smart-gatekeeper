@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/ble_scanner.dart';
+import '../services/error_logger.dart';
 
 class DebugScreen extends StatefulWidget {
   const DebugScreen({super.key});
@@ -179,6 +180,11 @@ class _DebugScreenState extends State<DebugScreen> {
 
             // ─── SECTION 3: Target 원격 제어 UI ─────────────────
             _buildTargetRemoteControlCard(),
+
+            const SizedBox(height: 16),
+
+            // ─── SECTION 4: 실시간 이벤트 & 에러 콘솔 UI ──────────────
+            _buildAppLogConsoleCard(),
           ],
         ),
       ),
@@ -579,5 +585,90 @@ class _DebugScreenState extends State<DebugScreen> {
     );
   }
 
+  Widget _buildAppLogConsoleCard() {
+    return Card(
+      color: const Color(0xFF1E1E1E),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.terminal, color: Colors.greenAccent, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      '실시간 앱 이벤트 & 에러 로그 (Live Console)',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                TextButton(
+                  onPressed: () => AppErrorLogger().clearLogs(),
+                  child: const Text('클리어', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ValueListenableBuilder<List<String>>(
+              valueListenable: AppErrorLogger().logs,
+              builder: (context, logList, _) {
+                if (logList.isEmpty) {
+                  return Container(
+                    height: 120,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: const Text(
+                      '기록된 로그 및 에러가 없습니다.',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                  );
+                }
+                return Container(
+                  height: 180,
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
+                  ),
+                  child: ListView.builder(
+                    itemCount: logList.length,
+                    reverse: true,
+                    itemBuilder: (context, index) {
+                      final item = logList[logList.length - 1 - index];
+                      final isError = item.contains('⚠️') || item.contains('오류') || item.contains('Error');
+                      return SelectableText(
+                        item,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: isError ? Colors.redAccent : Colors.lightGreenAccent,
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 

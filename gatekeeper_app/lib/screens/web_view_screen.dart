@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/device_id_service.dart';
 import '../services/update_checker.dart';
+import '../services/error_logger.dart';
 import 'debug_screen.dart';
 
 class WebViewScreen extends StatefulWidget {
@@ -129,6 +130,40 @@ class _WebViewScreenState extends State<WebViewScreen> {
         bottom: true,
         child: Column(
           children: [
+            // 앱 실행 중 에러 발생 시 상단 빨간색 유리질감 패널로 실시간 에러 메시지 알림
+            ValueListenableBuilder<String?>(
+              valueListenable: AppErrorLogger().latestError,
+              builder: (context, errorMessage, _) {
+                if (errorMessage == null || errorMessage.isEmpty) return const SizedBox.shrink();
+                return Container(
+                  color: Colors.red.shade900,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          errorMessage,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                        onPressed: () => AppErrorLogger().clearError(),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
             // 업데이트 감지 시 상단 안내 배너 반응형 표시
             ValueListenableBuilder<bool>(
               valueListenable: updateChecker.isUpdateAvailable,

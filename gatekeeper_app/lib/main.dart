@@ -5,8 +5,21 @@ import 'screens/web_view_screen.dart';
 import 'services/ble_scanner.dart';
 import 'services/foreground_service.dart';
 
+import 'services/error_logger.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    AppErrorLogger().logError('UI Framework Error: ${details.exception}', details.exception, details.stack);
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    AppErrorLogger().logError('Uncaught App Exception: $error', error, stack);
+    return true;
+  };
+
   await ForegroundServiceManager.initForegroundTask();
   runApp(const SmartKeyApp());
 }

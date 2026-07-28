@@ -8,6 +8,7 @@ import 'package:flutter_beacon/flutter_beacon.dart';
 
 import 'device_id_service.dart';
 import 'update_checker.dart';
+import 'error_logger.dart';
 
 class BleScanner {
   static final BleScanner _instance = BleScanner._internal();
@@ -165,6 +166,7 @@ class BleScanner {
       await flutterBeacon.initializeScanning;
     } catch (e) {
       debugPrint('[BleScanner] flutterBeacon 초기화 실패: $e');
+      AppErrorLogger().logError('BLE 비콘 스캔 초기화 실패', e);
       _updateNotification(
         title: '⚠️ BLE 비콘 스캔 초기화 실패',
         text: '블루투스/위치 서비스 또는 권한 상태를 확인해주세요 ($e)',
@@ -174,6 +176,7 @@ class BleScanner {
 
     _isScanning = true;
     debugPrint('[BleScanner] 🛡️ iBeacon 저전력 OS 구역 감시(Monitoring) 시작... (Target UUID: $targetBeaconUuid)');
+    AppErrorLogger().log('🛡️ iBeacon 저전력 OS 구역 감시(Monitoring) 시작 (UUID: $targetBeaconUuid)');
     _updateNotification(
       title: '💤 Target 비콘 구역 수면 감시 중 (저전력 모드)',
       text: 'Target 비콘 구역 접근 시 OS가 자동으로 비콘을 감지합니다.',
@@ -189,16 +192,19 @@ class BleScanner {
       (MonitoringResult result) {
         if (result.monitoringEventType == MonitoringEventType.didEnterRegion) {
           debugPrint('[BleScanner] 🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 스캔 개시');
+          AppErrorLogger().log('🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 개시');
           scheduleMicrotask(() {
             _startRangingStream(regions);
           });
         } else if (result.monitoringEventType == MonitoringEventType.didExitRegion) {
           debugPrint('[BleScanner] 🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈) -> Ranging 정지 및 저전력 감시 모드 복귀');
+          AppErrorLogger().log('🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈) -> 저전력 모드 복귀');
           _stopRangingStream();
         }
       },
       onError: (dynamic error) {
         debugPrint('[BleScanner] ⚠️ Monitoring stream error: $error');
+        AppErrorLogger().logError('Monitoring 스트림 오류', error);
       },
     );
 
@@ -219,6 +225,7 @@ class BleScanner {
       },
       onError: (dynamic error) {
         debugPrint('[BleScanner] ⚠️ Ranging stream error: $error');
+        AppErrorLogger().logError('Ranging 스트림 오류', error);
       },
     );
 
