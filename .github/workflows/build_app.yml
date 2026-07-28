@@ -59,6 +59,19 @@ jobs:
             echo "⚠️ ANDROID_KEYSTORE_BASE64 Secret 미설정."
           fi
 
+      - name: Create key.properties from Secrets
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          cat <<EOF > gatekeeper_app/android/key.properties
+          storePassword=${KEYSTORE_PASSWORD}
+          keyPassword=${KEYSTORE_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          storeFile=upload-keystore.jks
+          EOF
+          echo "✅ android/key.properties 동적 생성 완료!"
+
       - name: Build Android Release APK with Dart Defines
 
         env:

@@ -592,9 +592,12 @@
 - **Single Persistent Ranging Stream**: Converted `_streamRanging` in `gatekeeper_app/lib/services/ble_scanner.dart` to a single persistent singleton stream initialized once at app startup.
 - **Eliminated Native IPC Race Condition**: Completely removed `forceRefresh: true` and stream cancellation inside `didEnterRegion` callbacks, preventing AltBeacon native `BeaconService` race conditions and native Android process crashes while ensuring uninterrupted real-time RSSI tracking.
 
-## [2026-07-28] fix | Remove Unused `_stopRangingStream` Function to Resolve CI Analyze Warning
+## [2026-07-29] code | Flutter Android Release Keystore 서명 및 CI/CD 동적 키스토어 주입 파이프라인 구축
 
-- **CI/CD Analyze Fix**: Removed unused `_stopRangingStream()` method in `gatekeeper_app/lib/services/ble_scanner.dart` to resolve `unused_element` warning flagged during `flutter analyze` in GitHub Actions run 30377115788.
+- **`gatekeeper_app/android/app/build.gradle.kts`**: `key.properties` 동적 로드 로직 추가 및 `signingConfigs.release` 서명 매핑 적용 (키스토어 미존재 시 debug 키스토어 fallback 처리).
+- **`.github/workflows/build_app.yml`**: `flutter build apk` 직전 `ANDROID_KEYSTORE_BASE64` 디코딩 및 `android/key.properties` 동적 생성 step 추가 (보안 secret 분리 완료).
+- **`.gitignore`**: 루트 `.gitignore`에 `android/key.properties`, `**/key.properties`, `*.jks`, `*.keystore` 보안 예외 추가.
+
 
 
 

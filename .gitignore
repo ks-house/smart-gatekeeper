@@ -30,8 +30,14 @@ __pycache__/
 include/secrets.h
 secrets.h
 config.json
+android/key.properties
+**/key.properties
+*.jks
+*.keystore
 
 # --- IDE Project Files ---
 .vscode/
 .idea/
 .clion/
+
+upload-keystore.jks

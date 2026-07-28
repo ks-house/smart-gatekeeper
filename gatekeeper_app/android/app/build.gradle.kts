@@ -1,3 +1,12 @@
+import java.io.FileInputStream
+import java.util.Properties
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -28,12 +37,21 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystoreFile = file("upload-keystore.jks")
-            if (keystoreFile.exists()) {
-                storeFile = keystoreFile
-                storePassword = "smartgatekeeper"
-                keyAlias = "key"
-                keyPassword = "smartgatekeeper"
+            val storeFilePath = keystoreProperties.getProperty("storeFile")
+            if (storeFilePath != null) {
+                val storeFileCandidate = file(storeFilePath)
+                val resolvedStoreFile = if (storeFileCandidate.exists()) storeFileCandidate else rootProject.file(storeFilePath)
+                if (resolvedStoreFile.exists()) {
+                    storeFile = resolvedStoreFile
+                    storePassword = keystoreProperties.getProperty("storePassword")
+                    keyAlias = keystoreProperties.getProperty("keyAlias")
+                    keyPassword = keystoreProperties.getProperty("keyPassword")
+                } else {
+                    storeFile = signingConfigs.getByName("debug").storeFile
+                    storePassword = signingConfigs.getByName("debug").storePassword
+                    keyAlias = signingConfigs.getByName("debug").keyAlias
+                    keyPassword = signingConfigs.getByName("debug").keyPassword
+                }
             } else {
                 storeFile = signingConfigs.getByName("debug").storeFile
                 storePassword = signingConfigs.getByName("debug").storePassword
