@@ -583,9 +583,10 @@
 
 ## [2026-07-28] fix | Resolve Target Board UUID Byte Reversal & App UUID Normalization
 
-- **Target Board UUID Reversal Fix**: Removed 16-byte byte reversal loop in `src/main.cpp` `setTxPower()`. Passing `oBeacon.setProximityUUID(BLEUUID(GATEKEEPER_BEACON_UUID))` directly guarantees standard over-the-air UUID transmission (`a1b2c3d4-e5f6-7890-abcd-ef1234567890`) without byte order corruption.
+- **Target Board UUID Reversal Fix**: Restored 16-byte byte reversal loop in `src/main.cpp` `setTxPower()`. Arduino-ESP32's `BLEBeacon` structure requires little-endian byte ordering internally to map to Apple's big-endian over-the-air iBeacon layout.
 - **Mobile App UUID Normalization**: Updated `gatekeeper_app/lib/services/ble_scanner.dart` to clean and normalize UUID comparison (`replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase()`), eliminating hyphen/case mismatches.
 - **Ranging Refresh on `didEnterRegion`**: Updated `_startRangingStream(regions, forceRefresh: true)` and status notification update upon receiving OS `didEnterRegion` events.
+
 
 
 

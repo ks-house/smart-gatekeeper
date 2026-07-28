@@ -81,7 +81,18 @@ void setTxPower(int powerDbm) {
 
   BLEBeacon oBeacon = BLEBeacon();
   oBeacon.setManufacturerId(0x004C);
-  oBeacon.setProximityUUID(BLEUUID(GATEKEEPER_BEACON_UUID));
+  BLEUUID bleUUID(GATEKEEPER_BEACON_UUID);
+
+  // Apple iBeacon 표준 바이트 순서를 맞추기 위한 16바이트 반전 처리
+  uint8_t uuid_bytes[16];
+  memcpy(uuid_bytes, bleUUID.getNative()->u128.value, 16);
+  for(int i=0; i<8; i++){
+    uint8_t temp = uuid_bytes[i];
+    uuid_bytes[i] = uuid_bytes[15-i];
+    uuid_bytes[15-i] = temp;
+  }
+
+  oBeacon.setProximityUUID(BLEUUID(uuid_bytes, 16, false));
   oBeacon.setMajor(1);
   oBeacon.setMinor(1);
   // Approximate measured power (1m RSSI) based on TX power
