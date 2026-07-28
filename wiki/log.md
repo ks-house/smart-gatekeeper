@@ -511,3 +511,10 @@
 
 - **Ultrasonic Sensor 0cm Issue**: Fixed an issue where the ultrasonic sensor returned `0` when no object was detected or the reading timed out. Updated `src/UltrasonicSensor.cpp` to return `999.0f` on timeout or out of bounds (blind zone). Updated `src/main.cpp` telemetry logic to send `9990` mm instead of `0` when `distCm <= 0.0f`.
 - **BLE Beacon Payload Truncation**: Fixed an issue in `src/main.cpp` where the iBeacon payload string was inadvertently truncated at the first null byte due to the use of `.c_str()` when constructing `strServiceData`. Replaced `.c_str()` with explicit string length constructor `std::string(beaconData.c_str(), beaconData.length())` to preserve the full raw binary payload.
+## [2026-07-28] fix | Ultrasonic sensor distance accuracy and raw info via MQTT
+
+- Adjusted the speed of sound calculation in `UltrasonicSensor.cpp` to `0.0343` (at 20°C) instead of `0.034` for improved accuracy.
+- Increased the trigger pulse from 10µs to 20µs for better stability with the AJ-SR04T sensor.
+- Modified `UltrasonicSensor::readDistanceCm()` to output the raw duration in microseconds.
+- Added `MqttManager::publishSensorInfo()` to send `duration_us` and `distance_cm` to a new `smart-gatekeeper/sensor/ultrasonic` MQTT topic.
+- Updated `main.cpp` to call `publishSensorInfo()` and log the raw info during the 1-second interval loop.

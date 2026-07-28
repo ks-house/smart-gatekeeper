@@ -274,7 +274,8 @@ void loop() {
   uint32_t now = millis();
 
   // ─── 초음파 거리 측정 (실시간 모니터링을 위해 상시 작동) ───
-  float distCm = UltrasonicSensor::readDistanceCm();
+  unsigned long durationUs = 0;
+  float distCm = UltrasonicSensor::readDistanceCm(&durationUs);
   bool validReading = false;
 
   if (is_armed && state == GateState::ARMED) {
@@ -305,6 +306,9 @@ void loop() {
                            (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
     uint16_t distance_mm = (distCm > 0.0f) ? (uint16_t)(distCm * 10.0f) : 9990;
     MqttManager::publishTelemetry(distance_mm, stateStr, is_armed);
+    MqttManager::publishSensorInfo(durationUs, distCm);
+
+    LOGF("[SENSOR] 초음파 raw duration: %lu us, calculated distance: %.1f cm", durationUs, distCm);
 
     if (is_armed) {
       LOGF("[GATE] PRE-ARMED 상태 유지 중. 잔여 유효 시간: %lu 초", (unsigned long)(armRemainingMs / 1000));

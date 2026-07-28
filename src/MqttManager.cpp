@@ -403,3 +403,18 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
         client.publish("smart-gatekeeper/event", buf);
     }
 }
+
+void MqttManager::publishSensorInfo(unsigned long duration_us, float distance_cm) {
+    if (!isConnected()) return;
+
+    StaticJsonDocument<256> doc;
+    doc["duration_us"] = duration_us;
+    doc["distance_cm"] = distance_cm;
+
+    char buf[256];
+    serializeJson(doc, buf, sizeof(buf));
+
+    if (isConnected()) {
+        client.publish("smart-gatekeeper/sensor/ultrasonic", buf);
+    }
+}
