@@ -69,8 +69,12 @@ class ForegroundServiceManager {
 
     // 안드로이드 배터리 최적화 제외 요청 (화면 OFF / Doze 모드 극복)
     if (Platform.isAndroid) {
-      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      try {
+        if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+          await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+        }
+      } catch (e) {
+        debugPrint('[ForegroundServiceManager] 배터리 최적화 요청 예외 (무시 후 계속 진행): $e');
       }
     }
 

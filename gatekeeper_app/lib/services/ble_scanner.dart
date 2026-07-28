@@ -244,6 +244,7 @@ class BleScanner {
   }
 
   void _processBeacon(Beacon beacon) {
+    if (beacon.proximityUUID.isEmpty) return;
     if (beacon.proximityUUID.toLowerCase() != targetBeaconUuid.toLowerCase()) return;
     final int rssi = beacon.rssi;
     if (rssi == 0 || rssi == -1) return; // Invalid RSSI

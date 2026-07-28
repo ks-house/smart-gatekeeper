@@ -54,6 +54,7 @@ class _DebugScreenState extends State<DebugScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['result'] == 'success') {
+          if (!mounted) return;
           setState(() {
             if (data['tx_power'] != null) {
               _selectedTxPower = data['tx_power'];
@@ -89,6 +90,7 @@ class _DebugScreenState extends State<DebugScreen> {
   }
 
   Future<void> _sendAdminConfig() async {
+    if (!mounted) return;
     setState(() {
       _isSending = true;
       _targetResponseMsg = '전송 중...';
@@ -115,6 +117,7 @@ class _DebugScreenState extends State<DebugScreen> {
         final now = DateTime.now();
 
         final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+        if (!mounted) return;
         setState(() {
           _appliedTxPower = _selectedTxPower;
           _appliedTofDistanceCm = _tofDistanceCm;
@@ -124,19 +127,22 @@ class _DebugScreenState extends State<DebugScreen> {
           _targetResponseMsg = '✅ Target 파라미터 NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
         });
       } else {
-
+        if (!mounted) return;
         setState(() {
           _targetResponseMsg = '❌ 실패 (HTTP ${response.statusCode}): ${response.body}';
         });
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _targetResponseMsg = '🚨 통신 오류: $e';
       });
     } finally {
-      setState(() {
-        _isSending = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
     }
   }
 

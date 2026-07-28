@@ -43,37 +43,47 @@ class _SmartKeyAppState extends State<SmartKeyApp> {
   }
 
   Future<void> _initializeApp() async {
-    // 1. OS 필수 권한 요청 (위치, 블루투스 스캔/연결, 알림)
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.locationWhenInUse,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.notification,
-    ].request();
+    try {
+      // 1. OS 필수 권한 요청 (위치, 블루투스 스캔/연결, 알림)
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.locationWhenInUse,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.notification,
+      ].request();
 
-    if (await Permission.locationWhenInUse.isGranted) {
-      if (!await Permission.locationAlways.isGranted) {
-        await Permission.locationAlways.request();
+      if (await Permission.locationWhenInUse.isGranted) {
+        if (!await Permission.locationAlways.isGranted) {
+          await Permission.locationAlways.request();
+        }
       }
-    }
 
-
-    bool allGranted = true;
-    statuses.forEach((permission, status) {
-      if (status.isDenied || status.isPermanentlyDenied) {
-        allGranted = false;
-      }
-    });
-
-    // 2. 백그라운드 BLE 스캐너 초기화 및 포그라운드 서비스 시작
-    await BleScanner().initialize();
-    await ForegroundServiceManager.startService();
-
-    if (mounted) {
-      setState(() {
-        _initialized = true;
-        _permissionStatus = allGranted ? '모든 권한 승인 완료' : '일부 권한이 거부되었습니다.';
+      bool allGranted = true;
+      statuses.forEach((permission, status) {
+        if (status.isDenied || status.isPermanentlyDenied) {
+          allGranted = false;
+        }
       });
+
+      // 2. 백그라운드 BLE 스캐너 초기화 및 포그라운드 서비스 시작
+      await BleScanner().initialize();
+      await ForegroundServiceManager.startService();
+
+      if (mounted) {
+        setState(() {
+          _initialized = true;
+          _permissionStatus = allGranted ? '모든 권한 승인 완료' : '일부 권한이 거부되었습니다.';
+        });
+      }
+    } catch (e, stack) {
+      debugPrint('[SmartKeyApp] 초기화 예외: $e');
+      AppErrorLogger().logError('앱 초기화 오류', e, stack);
+      if (mounted) {
+        setState(() {
+          _initialized = true;
+          _permissionStatus = '초기화 오류 발생 ($e)';
+        });
+      }
     }
   }
 
