@@ -507,3 +507,7 @@
 - Updated `src/main.cpp` to continuously read the ultrasonic sensor instead of only reading it during the ARMED state.
 - Changed the MQTT telemetry publish interval from 10 seconds to 1 second to support real-time dashboard monitoring.
 - Made sure that the valid trigger threshold check still works properly.
+## [2026-07-28] fix | Ultrasonic sensor default value and BLE beacon parsing
+
+- **Ultrasonic Sensor 0cm Issue**: Fixed an issue where the ultrasonic sensor returned `0` when no object was detected or the reading timed out. Updated `src/UltrasonicSensor.cpp` to return `999.0f` on timeout or out of bounds (blind zone). Updated `src/main.cpp` telemetry logic to send `9990` mm instead of `0` when `distCm <= 0.0f`.
+- **BLE Beacon Payload Truncation**: Fixed an issue in `src/main.cpp` where the iBeacon payload string was inadvertently truncated at the first null byte due to the use of `.c_str()` when constructing `strServiceData`. Replaced `.c_str()` with explicit string length constructor `std::string(beaconData.c_str(), beaconData.length())` to preserve the full raw binary payload.

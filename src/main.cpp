@@ -110,7 +110,10 @@ void setTxPower(int powerDbm) {
   std::string strServiceData = "";
   strServiceData += (char)26;     // Len
   strServiceData += (char)0xFF;   // Type
-  strServiceData += oBeacon.getData().c_str();
+
+  String beaconData = oBeacon.getData();
+  strServiceData += std::string(beaconData.c_str(), beaconData.length());
+
   oAdvertisementData.addData((char*)strServiceData.c_str(), strServiceData.length());
 
   pAdv->setAdvertisementData(oAdvertisementData);
@@ -300,7 +303,7 @@ void loop() {
     const char* stateStr = (state == GateState::IDLE)      ? "IDLE" :
                            (state == GateState::ARMED)      ? "ARMED" :
                            (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
-    uint16_t distance_mm = (distCm > 0.0f) ? (uint16_t)(distCm * 10.0f) : 0;
+    uint16_t distance_mm = (distCm > 0.0f) ? (uint16_t)(distCm * 10.0f) : 9990;
     MqttManager::publishTelemetry(distance_mm, stateStr, is_armed);
 
     if (is_armed) {
