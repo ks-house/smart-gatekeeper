@@ -14,7 +14,7 @@ public:
   static void init();
 
   /// 초음파 거리 측정 (cm)
-  /// - 10µs HIGH 펄스로 발사 후 pulseIn(30ms 타임아웃)으로 펄스 수신
+  /// - 20µs HIGH 펄스로 발사 후 pulseIn(30ms 타임아웃)으로 펄스 수신
   /// - 맹점(0~19.9cm) 또는 타임아웃(0) 시 -1.0f (유효하지 않음) 반환
-  static float readDistanceCm();
+  static float readDistanceCm(unsigned long* outDurationUs = nullptr);
 };
