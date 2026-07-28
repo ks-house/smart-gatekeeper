@@ -111,6 +111,9 @@ void setTxPower(int powerDbm) {
 
   oScanResponseData.setName("SmartGatekeeper");
 
+  pAdv->setMinInterval(160); // 100ms (160 * 0.625ms) — Apple iBeacon 표준 추천 인터벌
+  pAdv->setMaxInterval(160); // 100ms
+
   pAdv->setAdvertisementData(oAdvertisementData);
   pAdv->setScanResponseData(oScanResponseData);
   pAdv->start();
