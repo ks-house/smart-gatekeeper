@@ -125,17 +125,25 @@ class FlutterBeaconScanner {
     @Override
     public void didRangeBeaconsInRegion(Collection<Beacon> collection, Region region) {
       if (eventSinkRanging != null) {
-        final Map<String, Object> map = new HashMap<>();
-        map.put("region", FlutterBeaconUtils.regionToMap(region));
-        map.put("beacons", FlutterBeaconUtils.beaconsToArray(new ArrayList<>(collection)));
-        handler.post(new Runnable(){
-          @Override
-          public void run() {
-            if(eventSinkRanging != null){
-              eventSinkRanging.success(map);
+        try {
+          final Map<String, Object> map = new HashMap<>();
+          map.put("region", FlutterBeaconUtils.regionToMap(region));
+          map.put("beacons", FlutterBeaconUtils.beaconsToArray(new ArrayList<>(collection)));
+          handler.post(new Runnable(){
+            @Override
+            public void run() {
+              try {
+                if(eventSinkRanging != null){
+                  eventSinkRanging.success(map);
+                }
+              } catch (Exception e) {
+                Log.e("RANGING", "Error posting ranging event: " + e);
+              }
             }
-          }
-        });
+          });
+        } catch (Exception e) {
+          Log.e("RANGING", "Error in didRangeBeaconsInRegion: " + e);
+        }
       }
     }
   };

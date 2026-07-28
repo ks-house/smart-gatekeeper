@@ -35,9 +35,21 @@ class FlutterBeaconUtils {
   private static Map<String, Object> beaconToMap(Beacon beacon) {
     Map<String, Object> map = new HashMap<>();
 
-    map.put("proximityUUID", beacon.getId1().toString().toUpperCase());
-    map.put("major", beacon.getId2().toInt());
-    map.put("minor", beacon.getId3().toInt());
+    if (beacon.getId1() != null) {
+      map.put("proximityUUID", beacon.getId1().toString().toUpperCase());
+    } else {
+      map.put("proximityUUID", "");
+    }
+    if (beacon.getId2() != null) {
+      map.put("major", beacon.getId2().toInt());
+    } else {
+      map.put("major", 0);
+    }
+    if (beacon.getId3() != null) {
+      map.put("minor", beacon.getId3().toInt());
+    } else {
+      map.put("minor", 0);
+    }
     map.put("rssi", beacon.getRssi());
     map.put("txPower", beacon.getTxPower());
     map.put("accuracy", String.format(Locale.US, "%.2f", beacon.getDistance()));
