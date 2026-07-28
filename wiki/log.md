@@ -517,4 +517,9 @@
 - Increased the trigger pulse from 10µs to 20µs for better stability with the AJ-SR04T sensor.
 - Modified `UltrasonicSensor::readDistanceCm()` to output the raw duration in microseconds.
 - Added `MqttManager::publishSensorInfo()` to send `duration_us` and `distance_cm` to a new `smart-gatekeeper/sensor/ultrasonic` MQTT topic.
-- Updated `main.cpp` to call `publishSensorInfo()` and log the raw info during the 1-second interval loop.
+- Modified `main.cpp` to call `publishSensorInfo()` and log the raw info during the 1-second interval loop.
+
+## [2026-07-28] fix | AJ-SR04T 501mm (2.9ms Ghost Read) Out-of-Range Timeout Filter
+
+- **Ghost Read Filter**: Fixed AJ-SR04T / JSN-SR04T hardware bug where the module outputs a fixed ~2.92ms (2880~2950µs / ~501mm) pulse when no obstacle is present (Out of Range). Added exception filtering in `UltrasonicSensor.cpp` to return `999.0f` for this specific duration range.
+- **MQTT Out-of-Range Handling**: Updated `src/main.cpp` to map distances >= 900cm or `999.0f` to `9990` mm (999 cm) in `smart-gatekeeper/status` MQTT telemetry.

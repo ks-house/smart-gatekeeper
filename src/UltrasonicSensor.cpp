@@ -37,7 +37,13 @@ float UltrasonicSensor::readDistanceCm(unsigned long* outDurationUs) {
   // 4. 시간을 거리(cm)로 환산 (음속 343m/s = 0.0343cm/µs, 왕복이므로 / 2)
   float distanceCm = (float)durationUs * 0.0343f / 2.0f;
 
-  // 5. [매우 중요] 맹점 (Blind Zone 0 ~ 20cm) 및 이상 범위 방어
+  // 5. [AJ-SR04T 고질적 버그 필터링] 무반사/타임아웃 시 모듈 내부 칩셋이
+  // 약 2900~2940µs (약 49.7cm~50.4cm, 501mm) 고정 에코 펄스를 내보내는 Ghost Read 방어
+  if (durationUs >= 2880UL && durationUs <= 2950UL) {
+    return 999.0f; // 무반사 타임아웃 노이즈로 처리하여 999.0f 반환
+  }
+
+  // 6. [매우 중요] 맹점 (Blind Zone 0 ~ 20cm) 및 이상 범위 방어
   // AJ-SR04T 초음파 특성상 0~20cm 구간은 진동잔향 난반사 노이즈이므로 무시(999.0f)
   if (distanceCm < ULTRASONIC_MIN_DISTANCE_CM || distanceCm > 400.0f) {
     return 999.0f;
