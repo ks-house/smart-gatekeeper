@@ -33,6 +33,7 @@ class BleScanner {
   bool _isPrearmInProgress = false;
 
   bool _isScanning = false;
+  StreamSubscription<MonitoringResult>? _streamMonitoring;
   StreamSubscription<RangingResult>? _streamRanging;
 
   bool get isScanning => _isScanning;
@@ -89,14 +90,14 @@ class BleScanner {
     _timeoutTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) {
       if (lastRssiUpdateTime.value != null) {
         final elapsedMs = DateTime.now().difference(lastRssiUpdateTime.value!).inMilliseconds;
-        if (elapsedMs > 2500) {
+        if (elapsedMs > 3000) {
           if (isBeaconConnected.value || liveRssi.value != null) {
             liveRssi.value = null;
             isBeaconConnected.value = false;
-            debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (2.5초 초과) -> "연결 안됨" 전환');
+            debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (3초 초과) -> 저전력 감시 모드 유지');
             _updateNotification(
-              title: '🔴 Target 비콘 연결 안됨 (탐색 중)',
-              text: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
+              title: '💤 Target 비콘 구역 수면 감시 중 (저전력 모드)',
+              text: 'Target 비콘 구역 접근 시 OS가 자동으로 비콘을 감지합니다.',
             );
           }
         }
@@ -104,8 +105,8 @@ class BleScanner {
         if (isBeaconConnected.value) {
           isBeaconConnected.value = false;
           _updateNotification(
-            title: '🔴 Target 비콘 연결 안됨 (탐색 중)',
-            text: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
+            title: '💤 Target 비콘 구역 수면 감시 중 (저전력 모드)',
+            text: 'Target 비콘 구역 접근 시 OS가 자동으로 비콘을 감지합니다.',
           );
         }
       }
@@ -157,6 +158,7 @@ class BleScanner {
       liveRssi.value = null;
       isBeaconConnected.value = false;
       await _streamRanging?.cancel();
+      await _streamMonitoring?.cancel();
     }
 
     try {
@@ -171,16 +173,38 @@ class BleScanner {
     }
 
     _isScanning = true;
-    debugPrint('[BleScanner] iBeacon 백그라운드 모니터링 시작... (Target UUID: $targetBeaconUuid)');
+    debugPrint('[BleScanner] 🛡️ iBeacon 저전력 OS 구역 감시(Monitoring) 시작... (Target UUID: $targetBeaconUuid)');
     _updateNotification(
-      title: '🔴 Target 비콘 연결 안됨 (탐색 중)',
-      text: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
+      title: '💤 Target 비콘 구역 수면 감시 중 (저전력 모드)',
+      text: 'Target 비콘 구역 접근 시 OS가 자동으로 비콘을 감지합니다.',
     );
 
     final regions = <Region>[
       Region(identifier: 'SmartGatekeeper', proximityUUID: targetBeaconUuid),
     ];
 
+    // 1. OS iBeacon Region Monitoring 구독 (저전력 구역 진입 깨우기)
+    _streamMonitoring?.cancel();
+    _streamMonitoring = flutterBeacon.monitoring(regions).listen(
+      (MonitoringResult result) {
+        if (result.monitoringEventType == MonitoringEventType.didEnterRegion) {
+          debugPrint('[BleScanner] 🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 스캔 개시');
+          _startRangingStream(regions);
+        } else if (result.monitoringEventType == MonitoringEventType.didExitRegion) {
+          debugPrint('[BleScanner] 🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈) -> Ranging 정지 및 저전력 감시 모드 복귀');
+          _stopRangingStream();
+        }
+      },
+      onError: (dynamic error) {
+        debugPrint('[BleScanner] ⚠️ Monitoring stream error: $error');
+      },
+    );
+
+    // 2. 초기 기동 시 즉시 Ranging 스트림 활성화 (앱 실행 직후 즉시 비콘 패킷 수집)
+    _startRangingStream(regions);
+  }
+
+  void _startRangingStream(List<Region> regions) {
     _streamRanging?.cancel();
     _streamRanging = flutterBeacon.ranging(regions).listen(
       (RangingResult result) {
@@ -196,6 +220,16 @@ class BleScanner {
     );
 
     _startTimeoutCheckTimer();
+  }
+
+  void _stopRangingStream() {
+    _streamRanging?.cancel();
+    liveRssi.value = null;
+    isBeaconConnected.value = false;
+    _updateNotification(
+      title: '💤 Target 비콘 구역 수면 감시 중 (저전력 모드)',
+      text: 'Target 비콘 구역 접근 시 OS가 자동으로 비콘을 감지합니다.',
+    );
   }
 
   void _processBeacon(Beacon beacon) {
@@ -291,6 +325,7 @@ class BleScanner {
     liveRssi.value = null;
     isBeaconConnected.value = false;
     await _streamRanging?.cancel();
+    await _streamMonitoring?.cancel();
     debugPrint('[BleScanner] 비콘 스캐닝 중지됨.');
     _updateNotification(
       title: '⏹️ Target 비콘 감지 중지됨',
