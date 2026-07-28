@@ -1,4 +1,4 @@
-package com.smartgatekeeper.gatekeeper_app
+package com.kshouse.gatekeeper_app
 
 import io.flutter.embedding.android.FlutterActivity
 

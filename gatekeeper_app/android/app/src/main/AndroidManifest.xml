@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.smartgatekeeper.gatekeeper_app">
+    package="com.kshouse.gatekeeper_app">
 
     <!-- Network Permission -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -43,7 +43,7 @@
 
     <application
 
-        android:label="Smart Key"
+        android:label="경성하우스 스마트키"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

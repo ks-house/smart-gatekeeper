@@ -592,11 +592,12 @@
 - **Single Persistent Ranging Stream**: Converted `_streamRanging` in `gatekeeper_app/lib/services/ble_scanner.dart` to a single persistent singleton stream initialized once at app startup.
 - **Eliminated Native IPC Race Condition**: Completely removed `forceRefresh: true` and stream cancellation inside `didEnterRegion` callbacks, preventing AltBeacon native `BeaconService` race conditions and native Android process crashes while ensuring uninterrupted real-time RSSI tracking.
 
-## [2026-07-29] code | Flutter Android Release Keystore 서명 및 CI/CD 동적 키스토어 주입 파이프라인 구축
+## [2026-07-29] code | Android 앱 패키지명(com.kshouse.gatekeeper_app) 및 표시 이름(경성하우스 스마트키) 변경
 
-- **`gatekeeper_app/android/app/build.gradle.kts`**: `key.properties` 동적 로드 로직 추가 및 `signingConfigs.release` 서명 매핑 적용 (키스토어 미존재 시 debug 키스토어 fallback 처리).
-- **`.github/workflows/build_app.yml`**: `flutter build apk` 직전 `ANDROID_KEYSTORE_BASE64` 디코딩 및 `android/key.properties` 동적 생성 step 추가 (보안 secret 분리 완료).
-- **`.gitignore`**: 루트 `.gitignore`에 `android/key.properties`, `**/key.properties`, `*.jks`, `*.keystore` 보안 예외 추가.
+- **`AndroidManifest.xml`**: `package` 속성을 `com.kshouse.gatekeeper_app`으로 변경 및 `android:label`을 `"경성하우스 스마트키"`로 변경.
+- **`build.gradle.kts`**: `namespace` 및 `applicationId`를 `com.kshouse.gatekeeper_app`으로 통일.
+- **`MainActivity.kt`**: 패키지 경로를 `com/kshouse/gatekeeper_app/MainActivity.kt`로 재배치 및 패키지 선언 수정.
+
 
 
 
