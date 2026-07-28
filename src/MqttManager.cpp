@@ -99,19 +99,21 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     // ─── gatekeeper/config/duration — Pre-arm 유효 시간 동적 튜닝 ─────────────
     if (strcmp(topic, MQTT_TOPIC_CONFIG_DURATION) == 0) {
         int val = atoi(message);
-        LOGF("[MQTT-CONFIG] ⚙️ Pre-arm 유효 시간 설정 수신: %d ms", val);
-        setPreArmDurationMs((uint32_t)val);
-        publishEvent("config_duration", String(val).c_str());
+        LOGF("[MQTT-CONFIG] ⚙️ Pre-arm 유효 시간 설정 수신: %d", val);
+        uint32_t ms = (val < 1000) ? (uint32_t)(val * 1000) : (uint32_t)val;
+        setPreArmDurationMs(ms);
+        publishEvent("config_duration", String(ms).c_str());
         return;
     }
 
     // ─── gatekeeper/config/relay_cooldown — Target 릴레이 쿨다운 동적 튜닝 ─────────
     if (strcmp(topic, "gatekeeper/config/relay_cooldown") == 0) {
         int val = atoi(message);
-        LOGF("[MQTT-CONFIG] ⚙️ Target 릴레이 쿨다운 설정 수신: %d ms", val);
+        LOGF("[MQTT-CONFIG] ⚙️ Target 릴레이 쿨다운 설정 수신: %d", val);
+        uint32_t ms = (val < 100) ? (uint32_t)(val * 1000) : (uint32_t)val;
         extern void setRelayCooldownMs(uint32_t cooldownMs);
-        setRelayCooldownMs((uint32_t)val);
-        publishEvent("config_relay_cooldown", String(val).c_str());
+        setRelayCooldownMs(ms);
+        publishEvent("config_relay_cooldown", String(ms).c_str());
         return;
     }
 
@@ -278,7 +280,7 @@ void MqttManager::publishAutoDiscovery() {
         vTaskDelay(pdMS_TO_TICKS(50)); 
     };
 
-    // 1. Buttons (원격 개방, OTA, 재부팅)
+    // ─── 1. Buttons (원격 개방, OTA, 재부팅) ───────────────────────
     struct ButtonDef { const char* id; const char* name; const char* cmd; const char* icon; };
     ButtonDef buttons[] = {
         {"open_gate", "[Gatekeeper] 출입문 원격 개방", "{\"command\": \"open_gate\"}", "mdi:door-open"},
@@ -294,9 +296,10 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("button", b.id, doc);
     }
 
-    // 2. Sensor: ToF 감지 거리
+    // ─── 2. Sensors: 실시간 측정 및 진단 센서 ────────────────────────
+    // 2-1. Sensor: ToF/초음파 감지 거리 (mm)
     {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] ToF 감지 거리", "distance");
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 초음파 감지 거리 (mm)", "distance");
         doc["state_topic"]     = "smart-gatekeeper/status";
         doc["value_template"]  = "{{ value_json.distance_mm }}";
         doc["unit_of_meas"]    = "mm";
@@ -304,7 +307,17 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("sensor", "distance", doc);
     }
 
-    // 3. Sensor: 동작 상태
+    // 2-2. Sensor: ToF/초음파 감지 거리 (cm)
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 초음파 감지 거리 (cm)", "distance_cm");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.distance_cm }}";
+        doc["unit_of_meas"]    = "cm";
+        doc["icon"]            = "mdi:ruler-square";
+        pubConfig("sensor", "distance_cm", doc);
+    }
+
+    // 2-3. Sensor: 동작 상태
     {
         StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 게이트키퍼 동작 상태", "state");
         doc["state_topic"]     = "smart-gatekeeper/status";
@@ -313,7 +326,7 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("sensor", "state", doc);
     }
 
-    // 4. Sensor: IP 주소
+    // 2-4. Sensor: IP 주소
     {
         StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] IP 주소", "ip");
         doc["state_topic"]     = "smart-gatekeeper/status";
@@ -322,7 +335,63 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("sensor", "ip", doc);
     }
 
-    // 5. Binary Sensor: 도어 개방 상태
+    // 2-5. Sensor: Pre-arm 잔여 유효 시간
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 잔여 시간", "arm_remaining_s");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.arm_remaining_s }}";
+        doc["unit_of_meas"]    = "s";
+        doc["icon"]            = "mdi:timer-outline";
+        pubConfig("sensor", "arm_remaining_s", doc);
+    }
+
+    // 2-6. Sensor [진단]: Wi-Fi RSSI
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Wi-Fi 신호 강도 (RSSI)", "wifi_rssi");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.wifi_rssi }}";
+        doc["unit_of_meas"]    = "dBm";
+        doc["device_class"]    = "signal_strength";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:wifi";
+        pubConfig("sensor", "wifi_rssi", doc);
+    }
+
+    // 2-7. Sensor [진단]: Free Heap 메모리
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Free Heap 메모리", "free_heap");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.free_heap }}";
+        doc["unit_of_meas"]    = "B";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:memory";
+        pubConfig("sensor", "free_heap", doc);
+    }
+
+    // 2-8. Sensor [진단]: 시스템 업타임
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 시스템 가동 시간", "uptime_s");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.uptime_s }}";
+        doc["unit_of_meas"]    = "s";
+        doc["device_class"]    = "duration";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:clock-outline";
+        pubConfig("sensor", "uptime_s", doc);
+    }
+
+    // 2-9. Sensor [진단]: 펌웨어 버전
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 펌웨어 버전", "firmware");
+        doc["state_topic"]     = "smart-gatekeeper/status";
+        doc["value_template"]  = "{{ value_json.firmware }}";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:information-outline";
+        pubConfig("sensor", "firmware", doc);
+    }
+
+    // ─── 3. Binary Sensors ─────────────────────────────────────────
+    // 3-1. Binary Sensor: 도어 개방 상태
     {
         StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 도어 개방 여부", "door_binary");
         doc["state_topic"]     = "smart-gatekeeper/status";
@@ -333,7 +402,7 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("binary_sensor", "door_binary", doc);
     }
 
-    // 6. Binary Sensor: Pre-arm 활성화 여부 (v2.0 신규)
+    // 3-2. Binary Sensor: Pre-arm 활성화 여부
     {
         StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 활성화 상태", "pre_armed");
         doc["state_topic"]     = "smart-gatekeeper/status";
@@ -345,17 +414,109 @@ void MqttManager::publishAutoDiscovery() {
         pubConfig("binary_sensor", "pre_armed", doc);
     }
 
-    // 7. Sensor: Pre-arm 잔여 유효 시간 (v2.0 신규)
+    // ─── 4. Numbers: 동적 설정값 제어 엔티티 (HA 대시보드 조작) ─────────────
+    // 4-1. Number: BLE Tx Power (-6 ~ 9 dBm)
     {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 잔여 시간", "arm_remaining_s");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.arm_remaining_s }}";
-        doc["unit_of_meas"]    = "s";
-        doc["icon"]            = "mdi:timer-outline";
-        pubConfig("sensor", "arm_remaining_s", doc);
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] BLE Tx Power 설정", "config_tx_power_num");
+        doc["command_topic"]   = MQTT_TOPIC_CONFIG_TX_POWER;
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ value_json.tx_power }}";
+        doc["min"]             = -6;
+        doc["max"]             = 9;
+        doc["step"]            = 3;
+        doc["unit_of_meas"]    = "dBm";
+        doc["icon"]            = "mdi:bluetooth";
+        pubConfig("number", "config_tx_power_num", doc);
     }
 
-    LOGF("[MQTT-HA] Auto-Discovery 엔티티 7개 등록 완료! (v2.0)");
+    // 4-2. Number: 초음파 감지 기준 거리 (20 ~ 200 cm)
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 초음파 감지 기준 거리", "config_dist_thresh_num");
+        doc["command_topic"]   = MQTT_TOPIC_CONFIG_DISTANCE_THRESH;
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ value_json.distance_threshold_cm }}";
+        doc["min"]             = 20;
+        doc["max"]             = 200;
+        doc["step"]            = 1;
+        doc["unit_of_meas"]    = "cm";
+        doc["icon"]            = "mdi:ruler-square";
+        pubConfig("number", "config_dist_thresh_num", doc);
+    }
+
+    // 4-3. Number: Pre-arm 유효 시간 (5 ~ 300 초)
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 유효 시간", "config_duration_num");
+        doc["command_topic"]   = MQTT_TOPIC_CONFIG_DURATION;
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ (value_json.duration_ms / 1000) | int }}";
+        doc["min"]             = 5;
+        doc["max"]             = 300;
+        doc["step"]            = 5;
+        doc["unit_of_meas"]    = "s";
+        doc["icon"]            = "mdi:timer-sand";
+        pubConfig("number", "config_duration_num", doc);
+    }
+
+    // 4-4. Number: Target 릴레이 쿨다운 시간 (1 ~ 30 초)
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 릴레이 쿨다운 시간", "config_relay_cooldown_num");
+        doc["command_topic"]   = "gatekeeper/config/relay_cooldown";
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ (value_json.relay_cooldown_ms / 1000) | int }}";
+        doc["min"]             = 1;
+        doc["max"]             = 30;
+        doc["step"]            = 1;
+        doc["unit_of_meas"]    = "s";
+        doc["icon"]            = "mdi:snowflake-alert";
+        pubConfig("number", "config_relay_cooldown_num", doc);
+    }
+
+    // ─── 5. Configuration State Sensors: 저장된 설정값 조회 ─────────────
+    // 5-1. Config Sensor: BLE Tx Power
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] BLE Tx Power", "cfg_tx_power");
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ value_json.tx_power }}";
+        doc["unit_of_meas"]    = "dBm";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:bluetooth-settings";
+        pubConfig("sensor", "cfg_tx_power", doc);
+    }
+
+    // 5-2. Config Sensor: 초음파 감지 기준 거리
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] 초음파 감지 기준 거리", "cfg_distance_thresh");
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ value_json.distance_threshold_cm }}";
+        doc["unit_of_meas"]    = "cm";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:tune-vertical";
+        pubConfig("sensor", "cfg_distance_thresh", doc);
+    }
+
+    // 5-3. Config Sensor: Pre-arm 유효 시간
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] Pre-arm 유효 시간", "cfg_prearm_duration");
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ (value_json.duration_ms / 1000) | int }}";
+        doc["unit_of_meas"]    = "s";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:clock-edit-outline";
+        pubConfig("sensor", "cfg_prearm_duration", doc);
+    }
+
+    // 5-4. Config Sensor: 릴레이 쿨다운 시간
+    {
+        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] 릴레이 쿨다운 시간", "cfg_relay_cooldown");
+        doc["state_topic"]     = "gatekeeper/config/state";
+        doc["value_template"]  = "{{ (value_json.relay_cooldown_ms / 1000) | int }}";
+        doc["unit_of_meas"]    = "s";
+        doc["entity_category"] = "diagnostic";
+        doc["icon"]            = "mdi:timer-cog-outline";
+        pubConfig("sensor", "cfg_relay_cooldown", doc);
+    }
+
+    LOGF("[MQTT-HA] Auto-Discovery 엔티티 22개 자동 등록 완료!");
     
     // Auto-Discovery 발행 직후 TLS SSL 송신 버퍼 안정화를 위한 소켓 플러시
     for (int i = 0; i < 3; i++) {
@@ -364,22 +525,22 @@ void MqttManager::publishAutoDiscovery() {
     }
 }
 
-void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr, bool is_armed) {
+void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr, bool is_armed, uint32_t armRemainingMs) {
     if (!isConnected()) return;
 
-    StaticJsonDocument<256> doc;
-    doc["distance_mm"]    = distance_mm;
-    doc["state"]          = stateStr ? stateStr : "UNKNOWN";
-    doc["is_armed"]       = is_armed;
-    doc["ip"]             = WifiManager::getIP();
-    doc["free_heap"]      = ESP.getFreeHeap();
+    StaticJsonDocument<512> doc;
+    doc["distance_mm"]     = distance_mm;
+    doc["distance_cm"]     = (float)distance_mm / 10.0f;
+    doc["state"]           = stateStr ? stateStr : "UNKNOWN";
+    doc["is_armed"]        = is_armed;
+    doc["arm_remaining_s"] = armRemainingMs / 1000;
+    doc["ip"]              = WifiManager::getIP();
+    doc["free_heap"]       = ESP.getFreeHeap();
+    doc["wifi_rssi"]       = WiFi.RSSI();
+    doc["uptime_s"]        = millis() / 1000;
+    doc["firmware"]        = FIRMWARE_VERSION;
 
-    // Pre-arm 잔여 유효 시간은 main.cpp에서 계산하여 전달할 수 없으므로
-    // stateStr이 "ARMED"일 때 arm_remaining_s 필드를 별도 관리
-    // (간단히 0으로 두면 HA에서 표시됨 — main에서 publish 시 직접 계산 전달 구조)
-    doc["arm_remaining_s"] = 0;
-
-    char buf[256];
+    char buf[512];
     serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {

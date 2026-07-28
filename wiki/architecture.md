@@ -177,6 +177,35 @@ IDLE ──[MQTT arm 수신]──► ARMED (60초 타이머 시작)
 ARMED ──[60초 만료, 미진입]──► IDLE (자동 만료)
 ```
 
+### 5.4. Home Assistant MQTT Auto-Discovery 엔티티 자동 등록 (22개)
+
+ESP32-C6 보드 부팅 및 MQTT 연결 시 Home Assistant 브로커(`homeassistant/<component>/smart_gatekeeper_01/<object_id>/config`)로 22개 엔티티 설정을 자동 발행하여 대시보드에 자동 등록됩니다.
+
+| 분류 | Object ID | 엔티티 명칭 | 토픽 / 템플릿 / 범위 |
+|------|-----------|--------------|----------------------|
+| **Button** | `open_gate` | [Gatekeeper] 출입문 원격 개방 | `smart-gatekeeper/cmd` (`{"command":"open_gate"}`) |
+| **Button** | `trigger_ota` | [Gatekeeper] 펌웨어 무선 업데이트 | `smart-gatekeeper/cmd` (`{"command":"ota_update"}`) |
+| **Button** | `reboot` | [Gatekeeper] 장치 재부팅 | `smart-gatekeeper/cmd` (`{"command":"reboot"}`) |
+| **Sensor** | `distance` | [Gatekeeper] 초음파 감지 거리 (mm) | `smart-gatekeeper/status` (`distance_mm`) |
+| **Sensor** | `distance_cm` | [Gatekeeper] 초음파 감지 거리 (cm) | `smart-gatekeeper/status` (`distance_cm`) |
+| **Sensor** | `state` | [Gatekeeper] 게이트키퍼 동작 상태 | `smart-gatekeeper/status` (`state`) |
+| **Sensor** | `ip` | [Gatekeeper] IP 주소 | `smart-gatekeeper/status` (`ip`) |
+| **Sensor** | `arm_remaining_s` | [Gatekeeper] Pre-arm 잔여 시간 | `smart-gatekeeper/status` (`arm_remaining_s`) |
+| **Sensor** | `wifi_rssi` | [Gatekeeper] Wi-Fi 신호 강도 (RSSI) | `smart-gatekeeper/status` (`wifi_rssi`) [진단] |
+| **Sensor** | `free_heap` | [Gatekeeper] Free Heap 메모리 | `smart-gatekeeper/status` (`free_heap`) [진단] |
+| **Sensor** | `uptime_s` | [Gatekeeper] 시스템 가동 시간 | `smart-gatekeeper/status` (`uptime_s`) [진단] |
+| **Sensor** | `firmware` | [Gatekeeper] 펌웨어 버전 | `smart-gatekeeper/status` (`firmware`) [진단] |
+| **Binary Sensor** | `door_binary` | [Gatekeeper] 도어 개방 여부 | `smart-gatekeeper/status` (`state == 'RELAY_HOLD'`) |
+| **Binary Sensor** | `pre_armed` | [Gatekeeper] Pre-arm 활성화 상태 | `smart-gatekeeper/status` (`is_armed`) |
+| **Number** | `config_tx_power_num` | [Gatekeeper] BLE Tx Power 설정 | `gatekeeper/config/tx_power` (-6 ~ 9 dBm) |
+| **Number** | `config_dist_thresh_num` | [Gatekeeper] 초음파 감지 기준 거리 | `gatekeeper/config/distance_threshold` (20 ~ 200 cm) |
+| **Number** | `config_duration_num` | [Gatekeeper] Pre-arm 유효 시간 | `gatekeeper/config/duration` (5 ~ 300 s) |
+| **Number** | `config_relay_cooldown_num`| [Gatekeeper] 릴레이 쿨다운 시간 | `gatekeeper/config/relay_cooldown` (1 ~ 30 s) |
+| **Config Sensor** | `cfg_tx_power` | [Gatekeeper] [설정] BLE Tx Power | `gatekeeper/config/state` (`tx_power`) |
+| **Config Sensor** | `cfg_distance_thresh` | [Gatekeeper] [설정] 초음파 기준 거리 | `gatekeeper/config/state` (`distance_threshold_cm`) |
+| **Config Sensor** | `cfg_prearm_duration` | [Gatekeeper] [설정] Pre-arm 유효 시간 | `gatekeeper/config/state` (`duration_ms / 1000`) |
+| **Config Sensor** | `cfg_relay_cooldown` | [Gatekeeper] [설정] 릴레이 쿨다운 시간 | `gatekeeper/config/state` (`relay_cooldown_ms / 1000`) |
+
 ---
 
 ## 6. 실외 설치 주의사항 (태양광 ToF 간섭 대책)
