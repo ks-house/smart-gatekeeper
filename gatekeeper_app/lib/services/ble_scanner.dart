@@ -189,7 +189,9 @@ class BleScanner {
       (MonitoringResult result) {
         if (result.monitoringEventType == MonitoringEventType.didEnterRegion) {
           debugPrint('[BleScanner] 🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 스캔 개시');
-          _startRangingStream(regions);
+          scheduleMicrotask(() {
+            _startRangingStream(regions);
+          });
         } else if (result.monitoringEventType == MonitoringEventType.didExitRegion) {
           debugPrint('[BleScanner] 🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈) -> Ranging 정지 및 저전력 감시 모드 복귀');
           _stopRangingStream();
@@ -205,7 +207,8 @@ class BleScanner {
   }
 
   void _startRangingStream(List<Region> regions) {
-    _streamRanging?.cancel();
+    if (_streamRanging != null) return; // 이미 Ranging 스트림 구독 중이면 중복 생성 방지 (네이티브 바인딩 충돌 예방)
+
     _streamRanging = flutterBeacon.ranging(regions).listen(
       (RangingResult result) {
         if (result.beacons.isNotEmpty) {
@@ -224,6 +227,7 @@ class BleScanner {
 
   void _stopRangingStream() {
     _streamRanging?.cancel();
+    _streamRanging = null;
     liveRssi.value = null;
     isBeaconConnected.value = false;
     _updateNotification(
@@ -282,18 +286,20 @@ class BleScanner {
 
     try {
       final deviceId = await DeviceIdService.getDeviceId();
-      final response = await http.post(
-        Uri.parse('$backendBaseUrl/door/prearm'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'beacon_uuid': targetBeaconUuid,
-          'device_id': deviceId,
-          'rssi': rssi,
-          'timestamp': DateTime.now().toIso8601String(),
-        }),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$backendBaseUrl/door/prearm'),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'beacon_uuid': targetBeaconUuid,
+              'device_id': deviceId,
+              'rssi': rssi,
+              'timestamp': DateTime.now().toIso8601String(),
+            }),
+          )
+          .timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
         _lastArmSuccessTime = DateTime.now();
