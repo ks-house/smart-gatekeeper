@@ -191,19 +191,21 @@ class BleScanner {
     _streamMonitoring = flutterBeacon.monitoring(regions).listen(
       (MonitoringResult result) {
         if (result.monitoringEventType == MonitoringEventType.didEnterRegion) {
-          debugPrint('[BleScanner] 🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 스캔 개시');
-          AppErrorLogger().log('🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입) -> Ranging 개시');
+          debugPrint('[BleScanner] 🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입)');
+          AppErrorLogger().log('🔔 OS didEnterRegion 감지! (Target 비콘 구역 진입)');
           _updateNotification(
             title: '🔴 Target 비콘 구역 진입! (신호 포착 중)',
             text: 'Target 비콘 구역에 진입했습니다. 출입 신호를 확인 중입니다...',
           );
-          scheduleMicrotask(() {
-            _startRangingStream(regions, forceRefresh: true);
-          });
         } else if (result.monitoringEventType == MonitoringEventType.didExitRegion) {
-          debugPrint('[BleScanner] 🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈) -> Ranging 정지 및 저전력 감시 모드 복귀');
-          AppErrorLogger().log('🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈) -> 저전력 모드 복귀');
-          _stopRangingStream();
+          debugPrint('[BleScanner] 🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈)');
+          AppErrorLogger().log('🚪 OS didExitRegion 감지! (Target 비콘 구역 이탈)');
+          liveRssi.value = null;
+          isBeaconConnected.value = false;
+          _updateNotification(
+            title: '💤 Target 비콘 구역 수면 감시 중 (저전력 모드)',
+            text: 'Target 비콘 구역 접근 시 OS가 자동으로 비콘을 감지합니다.',
+          );
         }
       },
       onError: (dynamic error) {
@@ -212,16 +214,12 @@ class BleScanner {
       },
     );
 
-    // 2. 초기 기동 시 즉시 Ranging 스트림 활성화 (앱 실행 직후 즉시 비콘 패킷 수집)
+    // 2. 초기 기동 시 단 1회의 상시 Ranging 스트림 활성화 (영구 싱글톤 스트림)
     _startRangingStream(regions);
   }
 
-  void _startRangingStream(List<Region> regions, {bool forceRefresh = false}) {
-    if (_streamRanging != null && !forceRefresh) return; // 미강제시 이미 Ranging 구독 중이면 중복 방지
-
-    if (forceRefresh) {
-      _streamRanging?.cancel();
-    }
+  void _startRangingStream(List<Region> regions) {
+    if (_streamRanging != null) return; // 이미 Ranging 스트림 구독 중이면 영구 유지 (네이티브 바인딩 재설정 차단)
 
     _streamRanging = flutterBeacon.ranging(regions).listen(
       (RangingResult result) {
