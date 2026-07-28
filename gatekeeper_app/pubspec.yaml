@@ -18,9 +18,7 @@ dependencies:
   device_info_plus: ^10.1.0
   shared_preferences: ^2.2.3
   flutter_beacon:
-    git:
-      url: https://github.com/alann-maulana/flutter_beacon.git
-      ref: master
+    path: ./android/app/libs/flutter_beacon_local
 
 dev_dependencies:
   flutter_test:

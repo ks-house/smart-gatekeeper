@@ -86,7 +86,7 @@ void setTxPower(int powerDbm) {
   // Create a reversed UUID bytes representation for the iBeacon structure
   // Apple standard byte order requirements for iBeacon UUID payload
   uint8_t uuid_bytes[16];
-  memcpy(uuid_bytes, bleUUID.getNative()->uuid.uuid128, 16);
+  memcpy(uuid_bytes, bleUUID.getNative()->u128.value, 16);
   // Reversing the 16 bytes for little-endian to big-endian match inside the library
   for(int i=0; i<8; i++){
     uint8_t temp = uuid_bytes[i];
@@ -111,7 +111,7 @@ void setTxPower(int powerDbm) {
   strServiceData += (char)26;     // Len
   strServiceData += (char)0xFF;   // Type
   strServiceData += oBeacon.getData().c_str();
-  oAdvertisementData.addData(strServiceData);
+  oAdvertisementData.addData((char*)strServiceData.c_str(), strServiceData.length());
 
   pAdv->setAdvertisementData(oAdvertisementData);
   pAdv->setScanResponseData(oScanResponseData);

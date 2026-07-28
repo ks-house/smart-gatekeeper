@@ -89,11 +89,9 @@ packages:
   flutter_beacon:
     dependency: "direct main"
     description:
-      path: "."
-      ref: master
-      resolved-ref: "0c63b2d8fb534d720c6430aabcd20704e87e69b0"
-      url: "https://github.com/alann-maulana/flutter_beacon.git"
-    source: git
+      path: "android/app/libs/flutter_beacon_local"
+      relative: true
+    source: path
     version: "0.5.1"
   flutter_foreground_task:
     dependency: "direct main"
