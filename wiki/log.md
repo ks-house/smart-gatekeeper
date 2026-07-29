@@ -646,3 +646,8 @@
 - 다운로드 진행 상태를 상단 배너에 실시간 프로그레스 바(LinearProgressIndicator)로 표출하여 UX 극대화
 - 다운로드 완료 시 open_filex 를 통해 안드로이드 패키지 설치 화면 자동 호출 기능 탑재
 - AndroidManifest.xml 에 REQUEST_INSTALL_PACKAGES 권한 추가
+
+## [2026-07-30] fix | CI 빌드 실패 해결: dart:io 미사용 import 제거
+
+- GitHub Actions CI 환경의 flutter analyze 단계에서 unused_import 경고(dart:io)로 인해 빌드가 실패(Exit 1)하는 문제 수정
+- update_checker.dart 파일에서 불필요한 import 제거 완료
