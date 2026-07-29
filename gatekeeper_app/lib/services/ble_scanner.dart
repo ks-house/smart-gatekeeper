@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'foreground_service.dart';
 import 'package:flutter_beacon/flutter_beacon.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -555,18 +556,16 @@ class BleScanner {
 
   void _syncToMain() {
     try {
-      if (FlutterForegroundTask.isTaskHandlerRunning) {
-        FlutterForegroundTask.sendDataToMain({
-          'type': 'BleScanner',
-          'liveRssi': liveRssi.value,
-          'smoothedRssi': smoothedRssi.value,
-          'packetCount': packetCount.value,
-          'isBeaconConnected': isBeaconConnected.value,
-          'mode': _mode.name,
-          'state': _currentState.name,
-          'lastRssiUpdateTime': lastRssiUpdateTime.value?.toIso8601String(),
-        });
-      }
+      backgroundSendPort?.send({
+        'type': 'BleScanner',
+        'liveRssi': liveRssi.value,
+        'smoothedRssi': smoothedRssi.value,
+        'packetCount': packetCount.value,
+        'isBeaconConnected': isBeaconConnected.value,
+        'mode': _mode.name,
+        'state': _currentState.name,
+        'lastRssiUpdateTime': lastRssiUpdateTime.value?.toIso8601String(),
+      });
     } catch (_) {}
   }
 

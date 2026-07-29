@@ -11,6 +11,8 @@ void startCallback() {
   FlutterForegroundTask.setTaskHandler(GatekeeperTaskHandler());
 }
 
+SendPort? backgroundSendPort;
+
 /// 포그라운드 서비스 isolate 의 태스크 핸들러.
 ///
 /// ⚠️ **현재 실제 BLE 스캔은 이 isolate 가 아니라 UI isolate 의
@@ -31,6 +33,7 @@ void startCallback() {
 class GatekeeperTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
+    backgroundSendPort = sendPort;
     WidgetsFlutterBinding.ensureInitialized();
     debugPrint('[ForegroundTask] 🛡️ 백그라운드 상주 포그라운드 서비스 구동 시작');
     

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'foreground_service.dart';
 
 class AppErrorLogger {
   static final AppErrorLogger _instance = AppErrorLogger._internal();
@@ -22,13 +23,11 @@ class AppErrorLogger {
     logs.value = current;
 
     try {
-      if (FlutterForegroundTask.isTaskHandlerRunning) {
-        FlutterForegroundTask.sendDataToMain({
-          'type': 'AppErrorLogger',
-          'action': 'log',
-          'message': formatted,
-        });
-      }
+      backgroundSendPort?.send({
+        'type': 'AppErrorLogger',
+        'action': 'log',
+        'message': formatted,
+      });
     } catch (_) {}
   }
 
@@ -52,14 +51,12 @@ class AppErrorLogger {
     logs.value = current;
 
     try {
-      if (FlutterForegroundTask.isTaskHandlerRunning) {
-        FlutterForegroundTask.sendDataToMain({
-          'type': 'AppErrorLogger',
-          'action': 'logError',
-          'message': formatted,
-          'latestError': latestError.value,
-        });
-      }
+      backgroundSendPort?.send({
+        'type': 'AppErrorLogger',
+        'action': 'logError',
+        'message': formatted,
+        'latestError': latestError.value,
+      });
     } catch (_) {}
   }
 
