@@ -102,6 +102,7 @@ class BleScanner {
       ValueNotifier<ScanDiagnostics>(ScanDiagnostics.unknown(_kDefaultBeaconUuid));
 
   // ── 내부 상태 ────────────────────────────────────────────────────────────
+  ScannerState _currentState = ScannerState.stopped;
   ScanMode _mode = ScanMode.stopped;
   bool _debugForced = false;
   bool _backgroundTuningApplied = false;
@@ -502,11 +503,7 @@ class BleScanner {
       await _teardownStreamsLocked();
       _setMode(ScanMode.stopped);
       debugPrint('[BleScanner] 비콘 스캐닝 중지됨.');
-      _updateNotification(
-        title: '⏹️ Target 비콘 감지 중지됨',
-        text: '스캔 서비스가 일시 정지되었습니다.',
-        force: true,
-      );
+      _syncStateAndNotify();
       await refreshDiagnostics();
     });
   }
@@ -631,6 +628,79 @@ class BleScanner {
     _enterIdleMode(reason: source);
   }
 
+  void _syncStateAndNotify() {
+    ScannerState newState = ScannerState.stopped;
+    String title = '';
+    String text = '';
+    bool force = false;
+
+    if (_mode == ScanMode.stopped) {
+      newState = ScannerState.stopped;
+      title = '❌ 스캔 중지됨';
+      text = '블루투스 권한이나 설정 오류로 중지되었습니다.';
+    } else if (_mode == ScanMode.idle) {
+      newState = ScannerState.idleMonitoring;
+      title = '💤 저전력 감시 중';
+      text = 'Target 비콘 구역 진입 대기 중...';
+    } else if (_mode == ScanMode.active) {
+      final now = DateTime.now();
+      
+      final isCooldown = !ignoreCooldown && _nextPrearmAllowedAt != null && now.isBefore(_nextPrearmAllowedAt!);
+      final isRecentArm = _lastArmSuccessTime != null && now.difference(_lastArmSuccessTime!).inMilliseconds < _kRecentArmSuppressMs;
+      
+      final last = lastRssiUpdateTime.value;
+      final isStale = last == null 
+          ? (_lastEnterRegionAt != null && now.difference(_lastEnterRegionAt!).inMilliseconds > _kRangingTimeoutMs)
+          : now.difference(last).inMilliseconds > _kRangingTimeoutMs;
+
+      if (isRecentArm) {
+        // 이미 승인 성공 알림을 보냈으므로, 여기서는 쿨다운 상태로 전이만 기록하고 알림은 덮어쓰지 않는다.
+        newState = ScannerState.cooldown;
+      } else if (isCooldown) {
+        newState = ScannerState.cooldown;
+        final remainSec = (_nextPrearmAllowedAt!.difference(now).inMilliseconds / 1000).ceil();
+        title = '⏳ 출입 쿨다운 대기 중 ($remainSec초)';
+        text = 'Target 비콘 감지됨 — 연속 개방 방지 대기 중';
+        force = true; // 초 단위 카운트다운을 위해 강제 갱신
+      } else if (isStale || last == null) {
+        newState = ScannerState.activeSearching;
+        title = '🔴 Target 비콘 신호 탐색 중';
+        text = '구역 내에 있지만 신호가 일시적으로 약합니다...';
+      } else if (!_aboveThreshold) {
+        newState = ScannerState.activeWeak;
+        final ema = _smoothedRssiValue ?? liveRssi.value?.toDouble() ?? 0.0;
+        title = '🟡 Target 비콘 신호 약함 (${liveRssi.value} dBm)';
+        text = '센서 근접 필요 (평활 ${ema.toStringAsFixed(1)} dBm / 기준 $rssiThreshold dBm)';
+      } else {
+        newState = ScannerState.activeConnected;
+        title = '🟢 Target 비콘 감지됨 (RSSI: ${liveRssi.value} dBm)';
+        text = '출입 통제 구역에 연결되었습니다.';
+      }
+    }
+
+    if (_currentState != newState) {
+      AppErrorLogger().log('[BleScanner State] ${_currentState.name} ➡️ ${newState.name}');
+      _currentState = newState;
+    }
+
+    // isRecentArm 일 때는 기존 "승인 완료" 알림을 유지하기 위해 업데이트를 건너뛴다.
+    if (newState == ScannerState.cooldown && _lastArmSuccessTime != null && 
+        DateTime.now().difference(_lastArmSuccessTime!).inMilliseconds < _kRecentArmSuppressMs) {
+      return;
+    }
+
+    // 서버 통신 오류(401, 403, 500 등)로 인해 특별한 알림이 떠있는 경우도 덮어쓰지 않는다.
+    // _isPrearmInProgress 가 끝난 직후 에러 상태를 2초 정도 유지한다.
+    final bool isRecentError = _lastPrearmAt != null && 
+        _lastPrearmStatusCode != 200 && 
+        DateTime.now().difference(_lastPrearmAt!).inMilliseconds < _kRecentArmSuppressMs;
+    if (isRecentError) {
+      return;
+    }
+
+    _updateNotification(title: title, text: text, force: force);
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // 모드 전환
   // ═══════════════════════════════════════════════════════════════════════
@@ -673,14 +743,7 @@ class BleScanner {
       final bool alreadyRanging = _streamRanging != null;
       _subscribeRangingLocked();
       _setMode(ScanMode.active);
-
-      if (!alreadyRanging) {
-        _updateNotification(
-          title: '🔴 Target 비콘 구역 진입 (신호 계측 중)',
-          text: '출입 신호를 확인하고 있습니다...',
-          force: true,
-        );
-      }
+      _syncStateAndNotify();
       await refreshDiagnostics();
     });
   }
@@ -704,7 +767,7 @@ class BleScanner {
 
       _resetSignalState();
       _setMode(ScanMode.idle);
-      _notifyIdleWatching();
+      _syncStateAndNotify();
       await refreshDiagnostics();
     });
   }
@@ -736,48 +799,29 @@ class BleScanner {
       final last = lastRssiUpdateTime.value;
       final now = DateTime.now();
       
-      // ACTIVE 모드 진입 후 단 한 번도 패킷이 안 들어온 경우(last == null),
-      // 진입 시점(_lastEnterRegionAt)을 기준으로 타임아웃을 계산한다.
       final isStale = last == null 
           ? (_lastEnterRegionAt != null && now.difference(_lastEnterRegionAt!).inMilliseconds > _kRangingTimeoutMs)
           : now.difference(last).inMilliseconds > _kRangingTimeoutMs;
 
-      if (!isStale) {
-        // 비콘 패킷 유실 중(최대 6초)에도 쿨다운 타이머가 화면에서 멈추지 않게 1초마다 강제 갱신
-        if (!ignoreCooldown && _nextPrearmAllowedAt != null && now.isBefore(_nextPrearmAllowedAt!)) {
-          final isRecentArm = _lastArmSuccessTime != null && now.difference(_lastArmSuccessTime!).inMilliseconds < _kRecentArmSuppressMs;
-          if (!isRecentArm) {
-            final remainSec = (_nextPrearmAllowedAt!.difference(now).inMilliseconds / 1000).ceil();
-            _updateNotification(
-              title: '⏳ 출입 쿨다운 대기 중 ($remainSec초)',
-              text: 'Target 비콘 감지됨 — 연속 개방 방지 대기 중',
-              force: true,
-            );
-          }
-        }
-        return;
-      }
-
       // 타임아웃(6초 초과) 발생 시 처리
-      if (isBeaconConnected.value || liveRssi.value != null || (last == null && isStale)) {
+      if (isStale && (isBeaconConnected.value || liveRssi.value != null)) {
         _resetSignalState();
         debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (${_kRangingTimeoutMs}ms 초과)');
         AppErrorLogger().log('⚠️ ranging 신호 미수신 (${_kRangingTimeoutMs}ms 초과). 네이티브 구역 이탈(didExitRegion) 대기 중...');
-        
-        // 6초 이상 신호 소실 시 알림을 초기화
-        _updateNotification(
-          title: '🔴 Target 비콘 신호 탐색 중',
-          text: '구역 내에 있지만 신호가 일시적으로 약합니다...',
-          force: true,
-        );
-        
-        // 안드로이드 AltBeacon 버그(ranging 이 시작되지 않고 먹통되는 현상) 방지:
-        // 만약 패킷이 처음부터 한 번도 안 들어왔다면 1회에 한해 IDLE 로 강제 강등시켜서 재시작을 유도한다.
-        if (last == null && _mode == ScanMode.active) {
-          AppErrorLogger().log('🔧 초기 패킷 완전 유실 감지 — IDLE 모드로 강제 복귀하여 리셋 유도');
-          _enterIdleMode(reason: 'ranging 초기 타임아웃');
-        }
       }
+
+      // 4층 등 물리적으로 신호가 불가능한 곳에서 앱을 켰을 때, 
+      // 디버그 모드가 켜져있더라도 IDLE 강등을 막으면 상태가 영원히 ACTIVE(계측 중)에 빠지게 된다.
+      // 이를 방지하기 위해 isStale 이고 초기 패킷 유실 상태면 디버그 여부와 상관없이 IDLE 로 강등한다.
+      if (isStale && last == null && _mode == ScanMode.active) {
+        AppErrorLogger().log('🔧 초기 패킷 완전 유실 감지 — IDLE 모드로 강제 복귀하여 리셋 유도');
+        // 디버그 강제 모드 무시용 flag 를 줘서 강등시키거나 직접 끈다.
+        _setMode(ScanMode.idle);
+        _streamRanging?.cancel();
+        _streamRanging = null;
+      }
+
+      _syncStateAndNotify();
     });
   }
 
@@ -827,12 +871,7 @@ class BleScanner {
     }
 
     if (!_aboveThreshold) {
-      if (!isRecentArm) {
-        _updateNotification(
-          title: '🟡 Target 비콘 신호 약함 ($rssi dBm)',
-          text: '센서 근접 필요 (평활 ${ema.toStringAsFixed(1)} dBm / 기준 $rssiThreshold dBm)',
-        );
-      }
+      _syncStateAndNotify();
       return;
     }
 
@@ -841,14 +880,7 @@ class BleScanner {
     if (!ignoreCooldown &&
         _nextPrearmAllowedAt != null &&
         now.isBefore(_nextPrearmAllowedAt!)) {
-      if (!isRecentArm) {
-        final remainSec =
-            (_nextPrearmAllowedAt!.difference(now).inMilliseconds / 1000).ceil();
-        _updateNotification(
-          title: '⏳ 출입 쿨다운 대기 중 ($remainSec초)',
-          text: 'Target 비콘 감지됨 ($rssi dBm) — 연속 개방 방지 대기 중',
-        );
-      }
+      _syncStateAndNotify();
       return;
     }
 
@@ -991,11 +1023,8 @@ class BleScanner {
     if (!snapshot.canScan) {
       final reason = snapshot.blockingReasons.join(' / ');
       AppErrorLogger().logError('🔄 워치독: 스캔 전제조건 상실 — $reason');
-      _updateNotification(
-        title: '⚠️ 비콘 감지 중단',
-        text: reason,
-        force: true,
-      );
+      _setMode(ScanMode.idle);
+      _syncStateAndNotify();
     }
   }
 
