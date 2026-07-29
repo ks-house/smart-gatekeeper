@@ -9,6 +9,23 @@ void startCallback() {
   FlutterForegroundTask.setTaskHandler(GatekeeperTaskHandler());
 }
 
+/// 포그라운드 서비스 isolate 의 태스크 핸들러.
+///
+/// ⚠️ **현재 실제 BLE 스캔은 이 isolate 가 아니라 UI isolate 의
+/// [BleScanner] 싱글톤에서 수행된다** (issue.md P0-4).
+///
+/// 이 서비스의 역할은 프로세스를 포그라운드 우선순위로 유지해
+/// UI isolate 의 FlutterEngine 이 살아 있게 하고, 알림을 통해 상태를
+/// 표시하는 것이다. 그 결과 다음 한계가 남는다:
+///
+/// * Activity 가 **파괴**되면 UI isolate 의 엔진도 사라져 스캔이 멈춘다.
+///   ("활동 유지 안 함" 개발자 옵션, 강한 메모리 압박, 스와이프 종료)
+/// * 화면 OFF 나 일반적인 백그라운드 전환은 Activity 를 파괴하지 않으므로
+///   영향받지 않는다.
+///
+/// 완전한 해결책은 스캐너를 이 isolate 로 옮기고 `sendDataToMain` /
+/// `sendDataToTask` 로 UI 와 통신하는 것이다(issue.md P0-4 안 A).
+/// 그때까지는 [BleScanner] 내부의 30초 워치독과 앱 복귀 훅이 안전망 역할을 한다.
 class GatekeeperTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
@@ -18,7 +35,9 @@ class GatekeeperTaskHandler extends TaskHandler {
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
-    // Keep background service alive and wake lock maintained
+    // 프로세스를 살아 있게 유지하고 wake lock 을 붙잡아 두는 것이 목적이다.
+    // 스캔 상태 점검은 UI isolate 의 BleScanner 워치독이 담당한다 —
+    // isolate 경계를 넘어 스캐너 상태를 볼 수 없기 때문이다.
   }
 
 
@@ -79,8 +98,8 @@ class ForegroundServiceManager {
     }
 
     await FlutterForegroundTask.startService(
-      notificationTitle: '🔴 Target 비콘 연결 안됨 (탐색 중)',
-      notificationText: 'SmartGatekeeper 비콘 신호를 찾는 중입니다...',
+      notificationTitle: '💤 저전력 감시 준비 중',
+      notificationText: 'SmartGatekeeper 비콘 감지를 시작하고 있습니다...',
       callback: startCallback,
     );
 

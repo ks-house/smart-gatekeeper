@@ -190,6 +190,59 @@ class FlutterBeacon {
         'setBetweenScanPeriod', {"betweenScanPeriod": scanPeriod});
   }
 
+  /// Customize duration of the beacon scan while in background mode (Android only).
+  ///
+  /// AltBeacon defaults to 10000ms.
+  Future<bool> setBackgroundScanPeriod(int scanPeriod) async {
+    if (!Platform.isAndroid) return false;
+    return await _methodChannel
+        .invokeMethod('setBackgroundScanPeriod', {"scanPeriod": scanPeriod});
+  }
+
+  /// Customize duration spent not scanning between each background scan cycle
+  /// (Android only).
+  ///
+  /// AltBeacon defaults to 300000ms (5 minutes). Leaving the default in place
+  /// means ranging results — and therefore RSSI updates — arrive only once
+  /// every 5 minutes while in background mode.
+  Future<bool> setBackgroundBetweenScanPeriod(int scanPeriod) async {
+    if (!Platform.isAndroid) return false;
+    return await _methodChannel.invokeMethod(
+        'setBackgroundBetweenScanPeriod', {"betweenScanPeriod": scanPeriod});
+  }
+
+  /// Toggle AltBeacon's background scanning mode (Android only).
+  ///
+  /// This single flag decides two things at once inside AltBeacon:
+  ///
+  /// | value   | ScanSettings          | ScanFilter | screen-off |
+  /// |---------|-----------------------|------------|------------|
+  /// | `false` | SCAN_MODE_LOW_LATENCY | none       | no results |
+  /// | `true`  | SCAN_MODE_LOW_POWER   | present    | works      |
+  ///
+  /// Android 8.1+ silently discards results of an unfiltered scan while the
+  /// screen is off, so `true` is required for screen-off operation even when a
+  /// foreground service is running.
+  Future<bool> setBackgroundMode(bool backgroundMode) async {
+    if (!Platform.isAndroid) return false;
+    return await _methodChannel
+        .invokeMethod('setBackgroundMode', {"backgroundMode": backgroundMode});
+  }
+
+  /// Enable or disable AltBeacon's JobScheduler-based scanning (Android only).
+  ///
+  /// Must be `false` for apps that run their own foreground service, otherwise
+  /// scanning is delegated to `ScanJob` and throttled to the background
+  /// JobScheduler minimum period (roughly 15 minutes).
+  ///
+  /// Call this **before** [initializeScanning] — AltBeacon may refuse the change
+  /// once the beacon service is bound.
+  Future<bool> setEnableScheduledScanJobs(bool enabled) async {
+    if (!Platform.isAndroid) return false;
+    return await _methodChannel
+        .invokeMethod('setEnableScheduledScanJobs', {"enabled": enabled});
+  }
+
   /// Close scanning API.
   Future<bool> get close async {
     final result = await _methodChannel.invokeMethod('close');

@@ -49,6 +49,12 @@ services:
       MQTT_USE_TLS: ${MQTT_USE_TLS:-false}
 
       MQTT_TOPIC_ARM: ${MQTT_TOPIC_ARM:-gatekeeper/arm}
+      # ── 모바일 앱 Remote Config ──────────────────────────────
+      GATEKEEPER_BEACON_UUID: ${GATEKEEPER_BEACON_UUID:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}
+      APP_COOLDOWN_SEC: ${APP_COOLDOWN_SEC:-10}
+      # ── 문 제어 API 인증 키 (issue.md P3-22) ─────────────────
+      # 비워 두면 키 인증이 비활성된다. 배포 순서는 .env.example 참조.
+      GATEKEEPER_API_KEY: ${GATEKEEPER_API_KEY:-}
     ports:
       - "8000:8000"
     volumes:

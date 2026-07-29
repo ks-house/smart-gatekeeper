@@ -77,13 +77,18 @@ jobs:
         env:
           APK_VERSION_URL: ${{ secrets.SECRET_APK_VERSION_URL }}
           APK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_DOWNLOAD_URL }}
+          # 서버의 GATEKEEPER_API_KEY 환경변수와 같은 값이어야 한다 (issue.md P3-22).
+          # 미설정 시 앱은 X-API-KEY 헤더를 보내지 않으며, 서버가 키를 설정한
+          # 상태라면 Pre-arm 이 401 로 거부된다.
+          GATEKEEPER_API_KEY: ${{ secrets.GATEKEEPER_API_KEY }}
         run: |
           cd gatekeeper_app
           flutter build apk --release \
             --build-name="${{ env.FULL_VERSION }}" \
             --build-number=${{ github.run_number }} \
             --dart-define=APK_VERSION_URL="${APK_VERSION_URL:-https://tworimpa.synology.me:4442/api/v1/download/version.json}" \
-            --dart-define=APK_DOWNLOAD_URL="${APK_DOWNLOAD_URL:-https://tworimpa.synology.me:4442/api/v1/download/apk}"
+            --dart-define=APK_DOWNLOAD_URL="${APK_DOWNLOAD_URL:-https://tworimpa.synology.me:4442/api/v1/download/apk}" \
+            --dart-define=GATEKEEPER_API_KEY="${GATEKEEPER_API_KEY:-}"
 
 
       - name: Prepare NAS Deployment Artifacts (ks-house-gatekeeper.apk & version.json)
