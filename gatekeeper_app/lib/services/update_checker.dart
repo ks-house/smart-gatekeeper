@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
 
 /// APK Version Checker & Auto Download Service
 class UpdateChecker {
@@ -17,7 +20,9 @@ class UpdateChecker {
   String? remoteVersion;
   int? remoteBuildNumber;
   String? downloadUrl;
+  
   final ValueNotifier<bool> isUpdateAvailable = ValueNotifier<bool>(false);
+  final ValueNotifier<double?> downloadProgress = ValueNotifier<double?>(null);
 
   /// 백엔드 또는 환경변수 URL로 앱 업데이트 여부 확인
   Future<bool> checkForUpdates({String? customVersionUrl, String? customDownloadUrl}) async {
@@ -67,9 +72,13 @@ class UpdateChecker {
     return false;
   }
 
-
-  /// 최신 APK 다운로드 링크 외부 브라우저로 열기
+  /// 최신 APK 다운로드 (앱 내 파일 다운로드 방식)
   Future<bool> downloadUpdate({String? overrideUrl}) async {
+    if (downloadProgress.value != null && downloadProgress.value! < 1.0) {
+      debugPrint('[UpdateChecker] 이미 다운로드가 진행 중입니다.');
+      return false;
+    }
+
     final targetUrl = (overrideUrl != null && overrideUrl.isNotEmpty)
         ? overrideUrl
         : ((downloadUrl != null && downloadUrl!.isNotEmpty)
@@ -78,40 +87,46 @@ class UpdateChecker {
                 ? downloadUrlFromEnv
                 : 'https://tworimpa.synology.me:4442/api/v1/download/apk'));
 
-
     if (targetUrl.isEmpty) {
       debugPrint('[UpdateChecker] APK 다운로드 URL이 설정되지 않았습니다.');
       return false;
     }
 
-
     try {
-      final uri = Uri.parse(targetUrl);
-      debugPrint('[UpdateChecker] APK 다운로드 시도: $targetUrl');
-      bool launched = false;
+      debugPrint('[UpdateChecker] 앱 내 APK 다운로드 시작: $targetUrl');
+      downloadProgress.value = 0.0;
       
-      try {
-        launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } catch (e) {
-        debugPrint('[UpdateChecker] externalApplication 실행 실패: $e');
-      }
-
-      if (!launched) {
-        try {
-          launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-        } catch (e) {
-          debugPrint('[UpdateChecker] inAppBrowserView 실행 실패: $e');
-        }
-      }
-
-      if (!launched) {
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
-      }
+      final tempDir = await getTemporaryDirectory();
+      final filePath = '${tempDir.path}/ks-house-gatekeeper.apk';
+      
+      final dio = Dio();
+      
+      await dio.download(
+        targetUrl,
+        filePath,
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            downloadProgress.value = received / total;
+          }
+        },
+      );
+      
+      downloadProgress.value = 1.0;
+      debugPrint('[UpdateChecker] 다운로드 완료. 패키지 설치 팝업 호출: $filePath');
+      
+      final result = await OpenFilex.open(filePath);
+      debugPrint('[UpdateChecker] 설치 실행 결과: ${result.message}');
+      
+      // 다운로드 완료 3초 후 프로그레스 바 초기화 (설치 화면이 뜬 후)
+      Future.delayed(const Duration(seconds: 3), () {
+        downloadProgress.value = null;
+      });
+      
       return true;
     } catch (e) {
-      debugPrint('[UpdateChecker] APK 다운로드 실행 최종 오류: $e');
+      debugPrint('[UpdateChecker] APK 다운로드 실패: $e');
+      downloadProgress.value = null;
     }
-
 
     return false;
   }

@@ -39,6 +39,7 @@
       플러그인 매니페스트 병합에 의존하지 않고 앱에서 명시한다. (issue.md P1-10)
     -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Declare BLE hardware feature -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />

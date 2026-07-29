@@ -169,33 +169,57 @@ class _WebViewScreenState extends State<WebViewScreen> {
               valueListenable: updateChecker.isUpdateAvailable,
               builder: (context, available, _) {
                 if (!available) return const SizedBox.shrink();
-                return Container(
-                  color: Colors.amber.shade900,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.system_update, color: Colors.white),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '새로운 Smart Key v${updateChecker.remoteVersion ?? ''} 업데이트 가능!',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                
+                return ValueListenableBuilder<double?>(
+                  valueListenable: updateChecker.downloadProgress,
+                  builder: (context, progress, _) {
+                    final isDownloading = progress != null;
+                    
+                    return Container(
+                      color: Colors.amber.shade900,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.system_update, color: Colors.white),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  isDownloading 
+                                    ? (progress >= 1.0 ? '다운로드 완료! 설치를 진행합니다.' : '업데이트 다운로드 중... ${(progress * 100).toStringAsFixed(0)}%')
+                                    : '새로운 Smart Key v${updateChecker.remoteVersion ?? ''} 업데이트 가능!',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              if (!isDownloading)
+                                ElevatedButton(
+                                  onPressed: () => updateChecker.downloadUpdate(),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  ),
+                                  child: const Text('다운로드'),
+                                ),
+                            ],
                           ),
-                        ),
+                          if (isDownloading && progress < 1.0) ...[
+                            const SizedBox(height: 10),
+                            LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: Colors.white30,
+                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ],
+                        ],
                       ),
-                      ElevatedButton(
-                        onPressed: () => updateChecker.downloadUpdate(),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                        ),
-                        child: const Text('다운로드'),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 );
               },
             ),
