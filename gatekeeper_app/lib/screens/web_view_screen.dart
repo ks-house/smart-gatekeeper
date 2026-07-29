@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -22,15 +23,37 @@ class WebViewScreen extends StatefulWidget {
   State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
-class _WebViewScreenState extends State<WebViewScreen> {
+class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _isLoading = true;
+  Timer? _updateCheckTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setupController();
     _loadUrlWithDeviceId();
+
+    // 앱이 포그라운드에 계속 켜져 있을 때를 대비해 15분마다 정기적으로 업데이트 확인 (Push 대체)
+    _updateCheckTimer = Timer.periodic(const Duration(minutes: 15), (_) {
+      UpdateChecker().checkForUpdates();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _updateCheckTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 앱이 백그라운드에서 다시 돌아올 때마다 업데이트 즉시 확인
+      UpdateChecker().checkForUpdates();
+    }
   }
 
   void _setupController() {
@@ -60,12 +83,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 url.contains('/download/apk') ||
                 url.contains('/download/')) {
               try {
-                final uri = Uri.parse(url);
-                debugPrint('[WebView] 🚀 APK 다운로드 외부 브라우저 전환 시도: $uri');
-                bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-                if (!launched) {
-                  await launchUrl(uri, mode: LaunchMode.platformDefault);
-                }
+                debugPrint('[WebView] 🚀 APK 다운로드 앱 내부 처리 시도: $url');
+                UpdateChecker().downloadUpdate(overrideUrl: url);
               } catch (e) {
                 debugPrint('[WebView] APK 다운로드 처리 중 오류: $e');
               }
