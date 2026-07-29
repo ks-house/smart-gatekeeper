@@ -14,6 +14,15 @@ import 'update_checker.dart';
 import 'error_logger.dart';
 import 'scan_diagnostics.dart';
 
+enum ScannerState {
+  stopped,
+  idleMonitoring,
+  activeSearching,
+  activeWeak,
+  activeConnected,
+  cooldown,
+}
+
 /// iBeacon 수신 · RSSI 계측 · Pre-arm 요청을 담당하는 싱글톤.
 ///
 /// ## 전력 모델 (issue.md §2.2 / P0-5)
