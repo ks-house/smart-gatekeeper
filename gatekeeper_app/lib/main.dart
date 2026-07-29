@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/web_view_screen.dart';
-import 'services/ble_scanner.dart';
 import 'services/foreground_service.dart';
 
 import 'services/error_logger.dart';
