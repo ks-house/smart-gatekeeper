@@ -635,11 +635,20 @@ class BleScanner {
   // 모드 전환
   // ═══════════════════════════════════════════════════════════════════════
 
+  List<Region> get _rangingRegions {
+    return [
+      Region(
+        identifier: 'GatekeeperRangingRegion',
+        proximityUUID: targetBeaconUuid,
+      )
+    ];
+  }
+
   /// ranging 구독을 시작한다. **반드시 뮤텍스 안에서 호출**할 것.
   void _subscribeRangingLocked() {
     if (_streamRanging != null) return;
 
-    _streamRanging = flutterBeacon.ranging(_regions).listen(
+    _streamRanging = flutterBeacon.ranging(_rangingRegions).listen(
       (RangingResult result) {
         _lastRangingCallbackAt = DateTime.now();
         _rangingCallbackCount++;
@@ -726,8 +735,12 @@ class BleScanner {
     _timeoutTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       final last = lastRssiUpdateTime.value;
       final now = DateTime.now();
-      final isStale = last == null ||
-          now.difference(last).inMilliseconds > _kRangingTimeoutMs;
+      
+      // ACTIVE 모드 진입 후 단 한 번도 패킷이 안 들어온 경우(last == null),
+      // 진입 시점(_lastEnterRegionAt)을 기준으로 타임아웃을 계산한다.
+      final isStale = last == null 
+          ? (_lastEnterRegionAt != null && now.difference(_lastEnterRegionAt!).inMilliseconds > _kRangingTimeoutMs)
+          : now.difference(last).inMilliseconds > _kRangingTimeoutMs;
 
       if (!isStale) {
         // 비콘 패킷 유실 중(최대 6초)에도 쿨다운 타이머가 화면에서 멈추지 않게 1초마다 강제 갱신
@@ -745,17 +758,25 @@ class BleScanner {
         return;
       }
 
-      if (isBeaconConnected.value || liveRssi.value != null) {
+      // 타임아웃(6초 초과) 발생 시 처리
+      if (isBeaconConnected.value || liveRssi.value != null || (last == null && isStale)) {
         _resetSignalState();
         debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (${_kRangingTimeoutMs}ms 초과)');
         AppErrorLogger().log('⚠️ ranging 신호 미수신 (${_kRangingTimeoutMs}ms 초과). 네이티브 구역 이탈(didExitRegion) 대기 중...');
         
-        // 6초 이상 신호 소실 시 "4초" 등에 멈춰있는 알림을 초기화
+        // 6초 이상 신호 소실 시 알림을 초기화
         _updateNotification(
           title: '🔴 Target 비콘 신호 탐색 중',
           text: '구역 내에 있지만 신호가 일시적으로 약합니다...',
           force: true,
         );
+        
+        // 안드로이드 AltBeacon 버그(ranging 이 시작되지 않고 먹통되는 현상) 방지:
+        // 만약 패킷이 처음부터 한 번도 안 들어왔다면 1회에 한해 IDLE 로 강제 강등시켜서 재시작을 유도한다.
+        if (last == null && _mode == ScanMode.active) {
+          AppErrorLogger().log('🔧 초기 패킷 완전 유실 감지 — IDLE 모드로 강제 복귀하여 리셋 유도');
+          _enterIdleMode(reason: 'ranging 초기 타임아웃');
+        }
       }
     });
   }
