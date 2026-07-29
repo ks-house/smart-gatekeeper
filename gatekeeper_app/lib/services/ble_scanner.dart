@@ -749,7 +749,6 @@ class BleScanner {
     return _synchronized('enterActive($reason)', () async {
       if (_mode == ScanMode.stopped) return;
 
-      final bool alreadyRanging = _streamRanging != null;
       _subscribeRangingLocked();
       _setMode(ScanMode.active);
       _syncStateAndNotify();
@@ -866,10 +865,6 @@ class BleScanner {
     smoothedRssi.value = ema;
 
     if (_isPrearmInProgress) return;
-
-    final isRecentArm = _lastArmSuccessTime != null &&
-        DateTime.now().difference(_lastArmSuccessTime!).inMilliseconds <
-            _kRecentArmSuppressMs;
 
     // ── 히스테리시스 판정 ────────────────────────────────────────────────
     // 진입은 threshold, 이탈은 threshold - 8dB. 문 앞에서 판정이 튀는 것을 막는다.
