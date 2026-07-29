@@ -32,14 +32,33 @@ class SmartKeyApp extends StatefulWidget {
   State<SmartKeyApp> createState() => _SmartKeyAppState();
 }
 
-class _SmartKeyAppState extends State<SmartKeyApp> {
+class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
   bool _initialized = false;
   String _permissionStatus = '권한 및 포그라운드 서비스 준비 중...';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeApp();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 포그라운드 복귀 시 스캔 상태를 점검·복구한다 (issue.md P0-4).
+  ///
+  /// 기존 코드에는 생애주기 훅이 전혀 없어서, 백그라운드에서 스트림이 끊긴 뒤
+  /// 포그라운드로 돌아와도 재구독을 시도하지 않았다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && _initialized) {
+      BleScanner().onAppResumed();
+    }
   }
 
   Future<void> _initializeApp() async {
@@ -65,9 +84,15 @@ class _SmartKeyAppState extends State<SmartKeyApp> {
         }
       });
 
-      // 2. 백그라운드 BLE 스캐너 초기화 및 포그라운드 서비스 시작
-      await BleScanner().initialize();
+      // 2. 포그라운드 서비스를 먼저 띄운다 (issue.md P0-4).
+      //    기존에는 BleScanner().initialize() 가 먼저 호출되어, 프로세스를
+      //    보호할 포그라운드 서비스 없이 BLE 스캔이 시작됐다.
       await ForegroundServiceManager.startService();
+
+      // 3. 스캐너 초기화. 권한/OS 스위치가 미충족이면 BleScanner 내부의
+      //    프리플라이트 게이트가 사유를 알림과 진단 패널에 남기고, 워치독이
+      //    사유 해소를 감지해 자동으로 재시작한다.
+      await BleScanner().initialize();
 
       if (mounted) {
         setState(() {

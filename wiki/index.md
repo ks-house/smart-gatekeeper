@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-07-24 (Step 1, Step 2, Step 3, Step 4 통합 완료 🟢)
+> Last updated: 2026-07-29 (모바일 앱 스캔 생애주기 문서 추가 🟢)
 
 ---
 
@@ -37,6 +37,7 @@
 |------|---------|
 | [architecture.md](architecture.md) | 시스템 전체 아키텍처, 3대 통합 시퀀스 다이어그램 (E2E, MQTTS HA, OTA), 로드맵 |
 | [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |
+| [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | ⚠️ 앱 비콘 스캔 생애주기 · Android 플랫폼 제약 · **상황별 동작 매트릭스와 잔존 한계** (신고 대응 시 필독) |
 
 
 
@@ -65,3 +66,7 @@
 | MQTTS HA Auto Discovery 시퀀스 | [architecture.md](architecture.md#22-mqtts-ha-auto-discovery--원격-개방-시퀀스) |
 | GitHub CI/CD SFTP OTA 시퀀스 | [architecture.md](architecture.md#23-github-cicd--무선-ota-배포-시퀀스) |
 | E2E 통합 테스트 결과 | [hardware_test.md](hardware_test.md) |
+| 앱 스캔이 언제 멈추는가 (매트릭스) | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#3-상황별-동작-매트릭스) |
+| Activity 파괴 시 스캔 정지 (잔존 한계) | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#31-잔존-한계--activity-파괴-시-스캔-정지) |
+| 반응 지연 3초 vs 전력 트레이드오프 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#4-반응-지연과-전력의-트레이드오프) |
+| 비콘 미감지 신고 대응 순서 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#5-신고-대응-순서) |

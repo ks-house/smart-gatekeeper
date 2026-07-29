@@ -330,17 +330,41 @@
       }
     }
 
+    // 마스터 개방은 서버의 GATEKEEPER_API_KEY 와 일치하는 키를 요구한다.
+    // (issue.md P3-22 — 예전에는 device_id 없이 누구나 문을 열 수 있었다)
+    // 키는 탭이 닫히면 사라지는 sessionStorage 에만 보관한다.
+    function getMasterKey() {
+      let key = sessionStorage.getItem('gatekeeperMasterKey');
+      if (!key) {
+        key = prompt('마스터 개방 키(X-API-KEY)를 입력하세요:');
+        if (!key) return null;
+        sessionStorage.setItem('gatekeeperMasterKey', key.trim());
+        key = key.trim();
+      }
+      return key;
+    }
+
     async function masterForceOpen() {
       if (!confirm('정말로 마스터 권한으로 출입문을 열겠습니까?')) return;
+      const masterKey = getMasterKey();
+      if (!masterKey) {
+        alert('마스터 개방 키가 없어 취소되었습니다.');
+        return;
+      }
       try {
         const res = await fetch('/api/v1/door/open', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-API-KEY': masterKey },
           body: JSON.stringify({ reason: 'admin_master_open' })
         });
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
           alert('⚡ 마스터 원격 문 열기 명령이 성공적으로 전송되었습니다.');
           loadLogs();
+        } else {
+          // 키가 틀렸을 수 있으므로 캐시를 비워 다음 시도에서 다시 묻는다.
+          sessionStorage.removeItem('gatekeeperMasterKey');
+          alert('❌ ' + (data.message || `마스터 개방이 거부되었습니다 (HTTP ${res.status}).`));
         }
       } catch (e) {
         alert('명령 전송 실패: ' + e);

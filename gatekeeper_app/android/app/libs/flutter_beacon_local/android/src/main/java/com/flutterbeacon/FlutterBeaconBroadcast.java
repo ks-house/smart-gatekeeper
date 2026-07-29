@@ -1,8 +1,8 @@
 package com.flutterbeacon;
 
-import android.app.Activity;
 import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseSettings;
+import android.content.Context;
 import android.os.Build;
 import android.util.Log;
 
@@ -20,8 +20,10 @@ class FlutterBeaconBroadcast {
   private static final String TAG = FlutterBeaconBroadcast.class.getSimpleName();
   private final BeaconTransmitter beaconTransmitter;
 
-  FlutterBeaconBroadcast(Activity activity, BeaconParser iBeaconLayout) {
-    this.beaconTransmitter = new BeaconTransmitter(activity, iBeaconLayout);
+  // BeaconTransmitter 는 Context 만 필요하다 — Activity 에 묶을 이유가 없다.
+  // (issue.md P0-3)
+  FlutterBeaconBroadcast(Context context, BeaconParser iBeaconLayout) {
+    this.beaconTransmitter = new BeaconTransmitter(context.getApplicationContext(), iBeaconLayout);
   }
 
   void isBroadcasting(@NonNull MethodChannel.Result result) {

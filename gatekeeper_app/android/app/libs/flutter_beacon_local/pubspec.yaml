@@ -4,7 +4,10 @@ version: 0.5.1
 homepage: https://github.com/alann-maulana/flutter_beacon
 
 environment:
-  sdk: ">=2.12.0 <3.0.0"
+  # 상위 앱(gatekeeper_app)이 '>=3.0.0 <4.0.0' 을 요구한다. 상한이 <3.0.0 인
+  # path 의존성은 clean `flutter pub get` 에서 버전 해석 실패를 일으킬 수 있다.
+  # (issue.md P2-20)
+  sdk: ">=3.0.0 <4.0.0"
   flutter: ">=1.12.13+hotfix.5"
 
 dependencies:

@@ -6,6 +6,7 @@
 import os
 import ssl
 import json
+import secrets
 import logging
 from typing import Optional, List
 from datetime import datetime
@@ -20,7 +21,7 @@ except Exception:
     mqtt = None
     HAS_PAHO_MQTT = False
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -59,9 +60,50 @@ MQTT_TOPIC_ARM      = os.getenv("MQTT_TOPIC_ARM", "gatekeeper/arm")
 MQTT_TOPIC_FORCE    = os.getenv("MQTT_TOPIC_FORCE_OPEN", "gatekeeper/force_open")
 
 BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+# ── 문 제어 API 인증 키 (issue.md P3-22) ──────────────────────────────
+# 모바일 앱은 빌드 시 --dart-define=GATEKEEPER_API_KEY=... 로 같은 값을 받는다.
+# 관리자 콘솔의 마스터 개방도 이 키를 사용한다.
+GATEKEEPER_API_KEY  = os.getenv("GATEKEEPER_API_KEY", "").strip()
+# 앱이 사용할 Pre-arm 쿨다운 기본값(초). 앱은 이 값을 "기본값"으로만 쓰고,
+# 사용자가 디버그 화면에서 직접 조정한 적이 있으면 로컬 값을 우선한다.
+# (issue.md P1-12 — 기존에는 30 이 하드코딩되어 매 부팅마다 로컬 설정을 덮어썼다)
+APP_COOLDOWN_SEC    = int(os.getenv("APP_COOLDOWN_SEC", "10"))
 APK_VERSION_URL     = os.getenv("APK_VERSION_URL", "https://tworimpa.synology.me:4442/api/v1/download/version.json")
 APK_DOWNLOAD_URL    = os.getenv("APK_DOWNLOAD_URL", "https://tworimpa.synology.me:4442/api/v1/download/apk")
 WEBVIEW_URL         = os.getenv("WEBVIEW_URL", "https://tworimpa.synology.me:4442/app")
+
+
+# ─── 문 제어 API 인증 (issue.md P3-22) ────────────────────────
+def _api_key_matches(candidate: Optional[str]) -> bool:
+    """타이밍 공격을 피하기 위해 상수 시간 비교를 사용한다."""
+    if not GATEKEEPER_API_KEY or not candidate:
+        return False
+    return secrets.compare_digest(candidate.strip(), GATEKEEPER_API_KEY)
+
+
+def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY")) -> None:
+    """
+    문 제어 API 인증 의존성.
+
+    · GATEKEEPER_API_KEY 미설정 → 인증을 강제할 수 없다. 경고만 남기고 통과시킨다.
+      여기서 막으면 키를 설정하기 전까지 **모든 세입자의 출입이 불가능해진다.**
+      실제 현관문을 다루므로 잠금(lockout)보다 경고를 택한다.
+      단, 이 상태에서는 아래 보호가 여전히 유효하다:
+        - 미등록/미승인 기기 거부
+        - device_id 누락 거부
+        - DB 장애 시 fail-closed
+    · 설정됨 → X-API-KEY 헤더가 일치해야 한다.
+    """
+    if not GATEKEEPER_API_KEY:
+        log.warning(
+            "[SECURITY] GATEKEEPER_API_KEY 미설정 — 문 제어 API가 키 인증 없이 열려 있습니다. "
+            "앱을 배포한 뒤 반드시 환경변수를 설정하고 재시작하십시오."
+        )
+        return
+    if not _api_key_matches(x_api_key):
+        log.warning("[SECURITY] X-API-KEY 불일치/누락 → 문 제어 요청 거부")
+        raise HTTPException(status_code=401, detail="invalid or missing X-API-KEY")
 
 
 # ─── DB 연결 헬퍼 ─────────────────────────────────────────────
@@ -233,6 +275,14 @@ async def lifespan(app: FastAPI):
     log.info(f"[STARTUP] Smart Gatekeeper API v2.0 시작")
     log.info(f"[STARTUP] DB: {DB_HOST}:{DB_PORT}/{DB_NAME}")
     log.info(f"[STARTUP] MQTT Broker: {MQTT_HOST}:{MQTT_PORT} | arm: {MQTT_TOPIC_ARM} | force: {MQTT_TOPIC_FORCE}")
+    if GATEKEEPER_API_KEY:
+        log.info("[STARTUP] 🔐 문 제어 API 키 인증 활성화 (X-API-KEY)")
+    else:
+        log.warning(
+            "[STARTUP] ⚠️ GATEKEEPER_API_KEY 미설정 — 문 제어 API 키 인증이 비활성 상태입니다. "
+            "Pre-arm 은 키 없이도 호출 가능하고, 관리자 마스터 개방은 사용할 수 없습니다. "
+            "미등록/미승인 기기 거부와 DB 장애 시 fail-closed 는 계속 동작합니다."
+        )
     yield
     log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
 
@@ -330,6 +380,8 @@ def health_check():
             "status": "healthy",
             "service": "smart-gatekeeper-api",
             "version": "2.0.0",
+            # 운영자가 키 인증 활성 여부를 확인할 수 있게 노출한다 (키 값은 노출하지 않는다)
+            "api_key_auth": bool(GATEKEEPER_API_KEY),
             "timestamp": datetime.now().isoformat()
         },
         headers={"Content-Type": "application/json; charset=utf-8"}
@@ -384,7 +436,7 @@ def get_remote_config():
     return JSONResponse(
         content={
             "beacon_uuid": BEACON_UUID,
-            "cooldown_sec": 30,
+            "cooldown_sec": APP_COOLDOWN_SEC,
             "apk_version_url": APK_VERSION_URL,
             "apk_download_url": APK_DOWNLOAD_URL,
             "webview_url": WEBVIEW_URL
@@ -462,44 +514,78 @@ def request_user_access(req: UserRequestSchema):
             conn.close()
 
 @app.post("/api/v1/door/prearm")
-def door_prearm(req: PrearmRequestSchema):
-    """BLE 비콘 감지 시 Flutter Native Shell이 호출하는 Pre-arm 사전 승인 API (세입자 승인자 검증 포함)"""
+def door_prearm(
+    req: PrearmRequestSchema,
+    _auth=Depends(require_api_key),
+):
+    """
+    BLE 비콘 감지 시 Flutter Native Shell이 호출하는 Pre-arm 사전 승인 API.
+
+    ⚠️ **fail-closed 설계** (issue.md P3-22).
+    이전 구현은 세 가지 경로로 무조건 arm 을 발행했다:
+      1. device_id 가 없으면 검증을 완전히 건너뛰었다
+      2. DB 예외가 나면 로그만 남기고 통과해 tenant_id=1 로 arm 을 발행했다
+         → DB 가 죽으면 미등록 기기에도 문이 열렸다
+      3. 인증이 전혀 없었다
+    지금은 세 경로 모두 거부한다. 승인은 "등록되고 승인된 기기"에만 부여된다.
+    """
     log.info(f"[PREARM] 비콘 감지 Pre-arm 요청: UUID={req.beacon_uuid}, Device={req.device_id}, RSSI={req.rssi}")
 
-    user_label = "비콘자동감지"
-    tenant_id = 1
+    # ── 1. device_id 는 필수 ────────────────────────────────────────────
+    device_id = (req.device_id or "").strip()
+    if not device_id:
+        log.warning("[PREARM-REJECT] device_id 없는 Pre-arm 요청 거부")
+        return JSONResponse(
+            status_code=400,
+            content={"result": "denied", "message": "기기 식별자가 없어 출입을 승인할 수 없습니다."},
+            headers={"Content-Type": "application/json; charset=utf-8"}
+        )
 
-    # device_id가 전달된 경우 DB 승인(is_active=True) 세입자인지 검증
-    if req.device_id:
-        conn = None
-        try:
-            conn = get_db()
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, name, unit_number, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1",
-                    (req.device_id.strip().upper(),)
-                )
-                row = cur.fetchone()
-                if not row:
-                    log.warning(f"[PREARM-REJECT] 미등록 기기의 Pre-arm 요청 거부: {req.device_id}")
-                    return JSONResponse(
-                        status_code=403,
-                        content={"result": "denied", "message": "미등록 세입자 기기입니다."}
-                    )
-                if not row["is_active"]:
-                    log.warning(f"[PREARM-REJECT] 승인 대기 중 세입자의 Pre-arm 요청 거부: {row['name']}({row['unit_number']})")
-                    return JSONResponse(
-                        status_code=403,
-                        content={"result": "denied", "message": "관리자 승인 대기 중인 세입자입니다."}
-                    )
-                user_label = f"{row['name']}({row['unit_number']})"
-                tenant_id = row["id"]
-        except Exception as e:
-            log.error(f"[PREARM] 세입자 검증 중 DB 예외: {e}")
-        finally:
-            if conn:
-                conn.close()
+    # ── 2. 등록 + 승인 세입자 검증 (실패 시 절대 arm 하지 않는다) ────────
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, unit_number, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1",
+                (device_id.upper(),)
+            )
+            row = cur.fetchone()
 
+        if not row:
+            log.warning(f"[PREARM-REJECT] 미등록 기기의 Pre-arm 요청 거부: {device_id}")
+            return JSONResponse(
+                status_code=403,
+                content={"result": "denied", "message": "미등록 세입자 기기입니다."},
+                headers={"Content-Type": "application/json; charset=utf-8"}
+            )
+        if not row["is_active"]:
+            log.warning(f"[PREARM-REJECT] 승인 대기 중 세입자의 Pre-arm 요청 거부: {row['name']}({row['unit_number']})")
+            return JSONResponse(
+                status_code=403,
+                content={"result": "denied", "message": "관리자 승인 대기 중인 세입자입니다."},
+                headers={"Content-Type": "application/json; charset=utf-8"}
+            )
+
+        user_label = f"{row['name']}({row['unit_number']})"
+        tenant_id = row["id"]
+
+    except Exception as e:
+        # fail-closed: 검증할 수 없으면 승인하지 않는다.
+        log.error(f"[PREARM-REJECT] 세입자 검증 중 DB 예외 → fail-closed 로 거부: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "result": "error",
+                "message": "출입 검증 서버 오류로 승인할 수 없습니다. 잠시 후 다시 시도해주세요."
+            },
+            headers={"Content-Type": "application/json; charset=utf-8"}
+        )
+    finally:
+        if conn:
+            conn.close()
+
+    # ── 3. 검증 통과 — arm 발행 ─────────────────────────────────────────
     arm_ok = publish_arm_to_mqtt(user_label, tenant_id)
     return JSONResponse(
         content={"result": "armed", "ttl_sec": 60, "mqtt_published": arm_ok, "user": user_label},
@@ -508,29 +594,91 @@ def door_prearm(req: PrearmRequestSchema):
 
 
 @app.post("/api/v1/door/open")
-def door_force_open(req: ForceOpenRequestSchema):
+def door_force_open(
+    req: ForceOpenRequestSchema,
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
+):
+    """
+    WebView 수동 '문 열기' 터치 시 즉시 릴레이 강제 개방 명령 하달.
 
-    """WebView 수동 '문 열기' 터치 시 즉시 릴레이 강제 개방 명령 하달"""
+    ⚠️ **fail-closed 설계** (issue.md P3-22).
+    Pre-arm 과 달리 이 API 는 초음파 게이트 없이 **즉시 문을 연다.** 그런데
+    이전 구현은 다음 경우에 모두 무조건 문을 열었다:
+      1. device_id 가 없으면 검증 없이 개방 (관리자 콘솔의 "마스터 개방"이 이에 의존했다)
+      2. device_id 가 미등록이어도 `if row:` 를 그냥 통과해 개방
+      3. DB 예외가 나면 로그만 남기고 개방
+
+    두 개의 명확한 경로만 허용한다:
+      · **세입자 경로** — 등록되고 승인된 device_id
+      · **마스터 경로** — device_id 없이 유효한 X-API-KEY
+
+    ⚠️ 이 엔드포인트는 정적 WebView 페이지에서 호출되므로 세입자 경로에는
+       키 인증을 요구하지 않는다(브라우저가 비밀을 안전히 보관할 수 없다).
+       세입자 경로의 실질적 인증은 device_id ↔ tenants 테이블 검증이다.
+       세션 기반 인증 도입은 issue.md P3-25 로 남겨 둔다.
+    """
     log.info(f"[FORCE-OPEN] 수동 원격 문 열기 요청: Reason={req.reason}, Device={req.device_id}")
-    
-    # device_id가 있으면 세입자명 조회
-    user_label = "수동개방"
-    if req.device_id:
+
+    device_id = (req.device_id or "").strip()
+
+    # ── 마스터 경로: device_id 없음 → 반드시 유효한 API 키가 필요하다 ──────
+    if not device_id:
+        if not _api_key_matches(x_api_key):
+            if not GATEKEEPER_API_KEY:
+                message = ("마스터 개방은 서버에 GATEKEEPER_API_KEY 를 설정해야 사용할 수 있습니다. "
+                           "관리자에게 문의하세요.")
+                log.error("[FORCE-OPEN-REJECT] 마스터 개방 요청 거부 — GATEKEEPER_API_KEY 미설정")
+            else:
+                message = "마스터 개방 권한이 없습니다. 관리자 키를 확인해주세요."
+                log.warning(f"[FORCE-OPEN-REJECT] 인증되지 않은 마스터 개방 요청 거부 (reason={req.reason})")
+            return JSONResponse(
+                status_code=403,
+                content={"result": "denied", "message": message},
+                headers={"Content-Type": "application/json; charset=utf-8"}
+            )
+        log.info("[FORCE-OPEN] 마스터 키 인증 성공 → 강제 개방 허용")
+        user_label = "마스터개방"
+
+    # ── 세입자 경로: 등록 + 승인 검증 (실패 시 절대 열지 않는다) ──────────
+    else:
         conn = None
         try:
             conn = get_db()
             with conn.cursor() as cur:
-                cur.execute("SELECT name, unit_number, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1", (req.device_id.strip().upper(),))
+                cur.execute(
+                    "SELECT name, unit_number, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1",
+                    (device_id.upper(),)
+                )
                 row = cur.fetchone()
-                if row:
-                    if not row["is_active"]:
-                        return JSONResponse(
-                            status_code=403,
-                            content={"result": "denied", "message": "출입 권한이 승인되지 않은 세입자입니다."}
-                        )
-                    user_label = f"{row['name']}({row['unit_number']})"
+
+            if not row:
+                log.warning(f"[FORCE-OPEN-REJECT] 미등록 기기의 개방 요청 거부: {device_id}")
+                return JSONResponse(
+                    status_code=403,
+                    content={"result": "denied", "message": "미등록 세입자 기기입니다."},
+                    headers={"Content-Type": "application/json; charset=utf-8"}
+                )
+            if not row["is_active"]:
+                log.warning(f"[FORCE-OPEN-REJECT] 미승인 세입자의 개방 요청 거부: {row['name']}({row['unit_number']})")
+                return JSONResponse(
+                    status_code=403,
+                    content={"result": "denied", "message": "출입 권한이 승인되지 않은 세입자입니다."},
+                    headers={"Content-Type": "application/json; charset=utf-8"}
+                )
+
+            user_label = f"{row['name']}({row['unit_number']})"
+
         except Exception as e:
-            log.error(f"[FORCE-OPEN] 세입자 검증 실패: {e}")
+            # fail-closed: 검증할 수 없으면 열지 않는다.
+            log.error(f"[FORCE-OPEN-REJECT] 세입자 검증 중 DB 예외 → fail-closed 로 거부: {e}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "result": "error",
+                    "message": "출입 검증 서버 오류로 문을 열 수 없습니다. 잠시 후 다시 시도해주세요."
+                },
+                headers={"Content-Type": "application/json; charset=utf-8"}
+            )
         finally:
             if conn:
                 conn.close()

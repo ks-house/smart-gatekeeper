@@ -83,7 +83,29 @@ void setTxPower(int powerDbm) {
   oBeacon.setManufacturerId(0x004C);
   BLEUUID bleUUID(GATEKEEPER_BEACON_UUID);
 
-  // Apple iBeacon 표준 바이트 순서를 맞추기 위한 16바이트 반전 처리
+  // ─────────────────────────────────────────────────────────────
+  // ⚠️ 검증 필요 (issue.md P2-13a) — 실측 전까지 이 블록을 고치지 말 것
+  //
+  // Apple iBeacon 은 UUID 를 MSB-first 로 광고한다. BLE 스택은 내부적으로
+  // LSB-first 로 저장하므로 반전이 필요하다. 아래 조합
+  //   (수동 16바이트 반전) + BLEUUID(..., msbFirst=false)
+  // 은 내부 저장이 LSB-first 라는 전제에서 이론상 올바르다.
+  //
+  // 그러나 이 저장 순서는 BLE 스택(Bluedroid vs NimBLE)과 Arduino-ESP32
+  // 버전에 따라 달라진다. 아래 getNative()->u128.value 는 NimBLE 타입
+  // 필드인데(Bluedroid 는 ->uuid.uuid128) 주변 주석은 Bluedroid 라고 적고
+  // 있어 실제 링크되는 스택이 불명확하다. (issue.md P2-13b)
+  //
+  // 틀리면 앱의 Region 필터가 절대 매칭되지 않아 RSSI 가 단 한 번도
+  // 올라오지 않는다. 검증 방법은 하나뿐이다:
+  //
+  //   nRF Connect(또는 btmon)로 raw advertising 을 열어
+  //   `4C 00 02 15` 다음 16바이트가 정확히 아래와 같은지 눈으로 확인한다.
+  //     A1 B2 C3 D4 E5 F6 78 90 AB CD EF 12 34 56 78 90
+  //   (UUID 가 회문이 아니므로 반전 여부가 즉시 구분된다)
+  //
+  //   역순으로 보이면 → 아래 반전 루프를 제거하거나 msbFirst 를 true 로.
+  // ─────────────────────────────────────────────────────────────
   uint8_t uuid_bytes[16];
   memcpy(uuid_bytes, bleUUID.getNative()->u128.value, 16);
   for(int i=0; i<8; i++){
@@ -93,17 +115,30 @@ void setTxPower(int powerDbm) {
   }
 
   oBeacon.setProximityUUID(BLEUUID(uuid_bytes, 16, false));
+  // ⚠️ Arduino BLEBeacon 의 major/minor 는 엔디안 처리에 알려진 이슈가 있다.
+  //    현재 앱은 major/minor 로 필터하지 않으므로 무해하지만, 나중에 필터를
+  //    추가하면 ENDIAN_CHANGE_U16 처리가 필요하다. (issue.md P2-13e)
   oBeacon.setMajor(1);
   oBeacon.setMinor(1);
   // Approximate measured power (1m RSSI) based on TX power
   // A typical mapping: at 0 dBm, 1m RSSI is around -59 dBm.
+  // ⚠️ 이 값은 추정치다. accuracy(거리) 값을 신뢰하려면 실제 1m RSSI 를
+  //    측정해 보정해야 한다. 현재 앱은 RSSI 임계값만 쓰므로 영향은 없다.
+  //    (issue.md P2-13d)
   int8_t measuredPower = -59 + powerDbm;
   oBeacon.setSignalPower(measuredPower);
 
   BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
   BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
 
-  oAdvertisementData.setFlags(0x04); // BR_EDR_NOT_SUPPORTED 0x04
+  // 표준 iBeacon 의 AD Flags 는 0x1A 다 (issue.md P2-13c):
+  //   0x02 LE General Discoverable Mode
+  //   0x18 BR/EDR Not Supported (0x04) + Simultaneous LE/BR-EDR (Controller/Host)
+  // 기존 0x04 는 BR/EDR Not Supported 만 세팅해 non-discoverable 광고였다.
+  // AltBeacon 은 manufacturer data 를 직접 파싱하므로 대개 동작하지만,
+  // 일부 OEM BLE 스택이 non-discoverable 광고를 걸러낼 수 있다.
+  // 페이로드 여유: flags 3B + manufacturer 27B = 30B ≤ 31B.
+  oAdvertisementData.setFlags(0x1A);
 
   oAdvertisementData.setManufacturerData(oBeacon.getData());
 

@@ -1,6 +1,5 @@
 package com.flutterbeacon;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
@@ -15,7 +14,6 @@ import org.altbeacon.beacon.MonitorNotifier;
 import org.altbeacon.beacon.RangeNotifier;
 import org.altbeacon.beacon.Region;
 
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -24,22 +22,30 @@ import java.util.Map;
 
 import io.flutter.plugin.common.EventChannel;
 
+/**
+ * Ranging / monitoring bridge.
+ *
+ * <p>Bound to the <b>application context</b>, not an Activity (issue.md P0-3).
+ * The previous implementation held a {@code WeakReference<Activity>} and bound the
+ * AltBeacon service through {@code Activity.bindService()}, so the binding died with
+ * the Activity and the weak reference could NPE after GC.
+ */
 class FlutterBeaconScanner {
   private static final String TAG = FlutterBeaconScanner.class.getSimpleName();
   private final FlutterBeaconPlugin plugin;
-  private final WeakReference<Activity> activity;
+  private final Context applicationContext;
 
-  private Handler handler;
+  private final Handler handler;
 
   private EventChannel.EventSink eventSinkRanging;
   private EventChannel.EventSink eventSinkMonitoring;
   private List<Region> regionRanging;
   private List<Region> regionMonitoring;
 
-  public FlutterBeaconScanner(FlutterBeaconPlugin plugin, Activity activity) {
+  FlutterBeaconScanner(FlutterBeaconPlugin plugin, Context context) {
     this.plugin = plugin;
-    this.activity = new WeakReference<>(activity);
-    handler = new Handler(Looper.getMainLooper());
+    this.applicationContext = context.getApplicationContext();
+    this.handler = new Handler(Looper.getMainLooper());
   }
 
   final EventChannel.StreamHandler rangingStreamHandler = new EventChannel.StreamHandler() {
@@ -71,6 +77,10 @@ class FlutterBeaconScanner {
           Region region = FlutterBeaconUtils.regionFromMap(map);
           if (region != null) {
             regionRanging.add(region);
+          } else {
+            // 잘못된 UUID 등으로 Region 생성이 실패하면 조용히 넘기지 않고 알린다.
+            // (issue.md P1-11)
+            Log.e("RANGING", "Invalid region for ranging, skipped: " + map);
           }
         }
       }
@@ -78,6 +88,12 @@ class FlutterBeaconScanner {
       eventSink.error("Beacon", "invalid region for ranging", null);
       return;
     }
+
+    if (regionRanging.isEmpty()) {
+      eventSink.error("Beacon", "no valid region for ranging", null);
+      return;
+    }
+
     eventSinkRanging = eventSink;
     if (plugin.getBeaconManager() != null && !plugin.getBeaconManager().isBound(beaconConsumer)) {
       plugin.getBeaconManager().bind(beaconConsumer);
@@ -108,7 +124,7 @@ class FlutterBeaconScanner {
   }
 
   void stopRanging() {
-    if (regionRanging != null && !regionRanging.isEmpty()) {
+    if (regionRanging != null && !regionRanging.isEmpty() && plugin.getBeaconManager() != null) {
       try {
         for (Region region : regionRanging) {
           plugin.getBeaconManager().stopRangingBeaconsInRegion(region);
@@ -174,13 +190,26 @@ class FlutterBeaconScanner {
         if (object instanceof Map) {
           Map map = (Map) object;
           Region region = FlutterBeaconUtils.regionFromMap(map);
-          regionMonitoring.add(region);
+          // ⚠️ 여기에 null 체크가 없어서 startMonitoringBeaconsInRegion(null) 로
+          //    NPE 가 났다. ranging 경로에는 있던 가드가 monitoring 경로에만
+          //    빠져 있었다. (issue.md P1-11)
+          if (region != null) {
+            regionMonitoring.add(region);
+          } else {
+            Log.e("MONITORING", "Invalid region for monitoring, skipped: " + map);
+          }
         }
       }
     } else {
       eventSink.error("Beacon", "invalid region for monitoring", null);
       return;
     }
+
+    if (regionMonitoring.isEmpty()) {
+      eventSink.error("Beacon", "no valid region for monitoring", null);
+      return;
+    }
+
     eventSinkMonitoring = eventSink;
     if (plugin.getBeaconManager() != null && !plugin.getBeaconManager().isBound(beaconConsumer)) {
       plugin.getBeaconManager().bind(beaconConsumer);
@@ -192,6 +221,10 @@ class FlutterBeaconScanner {
   void startMonitoring() {
     if (regionMonitoring == null || regionMonitoring.isEmpty()) {
       Log.e("MONITORING", "Region monitoring is null or empty. Monitoring not started.");
+      return;
+    }
+    if (plugin.getBeaconManager() == null) {
+      Log.e("MONITORING", "BeaconManager unavailable. Monitoring not started.");
       return;
     }
 
@@ -209,7 +242,7 @@ class FlutterBeaconScanner {
   }
 
   void stopMonitoring() {
-    if (regionMonitoring != null && !regionMonitoring.isEmpty()) {
+    if (regionMonitoring != null && !regionMonitoring.isEmpty() && plugin.getBeaconManager() != null) {
       try {
         for (Region region : regionMonitoring) {
           plugin.getBeaconManager().stopMonitoringBeaconsInRegion(region);
@@ -281,25 +314,27 @@ class FlutterBeaconScanner {
       if (plugin.flutterResult != null) {
         plugin.flutterResult.success(true);
         plugin.flutterResult = null;
-      } else {
-        startRanging();
-        startMonitoring();
       }
+      // initialize() 응답만 돌려주고 끝내면, 응답 전에 이미 등록된 region 이 있을 때
+      // 스캔이 시작되지 않는다. 등록된 region 이 있으면 항상 함께 시작한다.
+      // (region 이 비어 있으면 두 메서드가 스스로 no-op 이다.)
+      startRanging();
+      startMonitoring();
     }
 
     @Override
     public Context getApplicationContext() {
-      return activity.get().getApplicationContext();
+      return applicationContext;
     }
 
     @Override
     public void unbindService(ServiceConnection serviceConnection) {
-      activity.get().unbindService(serviceConnection);
+      applicationContext.unbindService(serviceConnection);
     }
 
     @Override
     public boolean bindService(Intent intent, ServiceConnection serviceConnection, int i) {
-      return activity.get().bindService(intent, serviceConnection, i);
+      return applicationContext.bindService(intent, serviceConnection, i);
     }
   };
 }

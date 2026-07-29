@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/ble_scanner.dart';
 import '../services/error_logger.dart';
+import '../services/scan_diagnostics.dart';
 
 class DebugScreen extends StatefulWidget {
   const DebugScreen({super.key});
@@ -34,10 +35,20 @@ class _DebugScreenState extends State<DebugScreen> {
   @override
   void initState() {
     super.initState();
-    // 디버그 화면 진입 시 고속 저지연 실시간 비콘 스캔 모드로 전환
-    _scanner.startScanning(forceRestart: true);
+    // 화면을 보고 있는 동안에는 RSSI 계측(ranging)을 강제로 유지한다.
+    // 예전에는 여기서 startScanning(forceRestart: true)를 호출했는데,
+    // ranging 스트림이 취소된 뒤 재구독되지 않아 RSSI가 영구히 멈췄다.
+    _scanner.enterDebugMode();
     // 현재 서버/Target에 적용된 실시간 튜닝 설정값 로드
     _fetchAdminConfig();
+    _scanner.refreshDiagnostics();
+  }
+
+  @override
+  void dispose() {
+    // 저전력 감시 모드로 복귀 (신호가 계속 잡히는 중이면 ACTIVE 유지)
+    _scanner.exitDebugMode();
+    super.dispose();
   }
 
   Future<void> _fetchAdminConfig() async {
@@ -179,6 +190,11 @@ class _DebugScreenState extends State<DebugScreen> {
 
             const SizedBox(height: 16),
 
+            // ─── SECTION 1-B: 스캔 진단 패널 ────────────────────
+            _buildDiagnosticsCard(),
+
+            const SizedBox(height: 16),
+
             // ─── SECTION 2: 로컬 파라미터 조절 UI ─────────────────
             _buildLocalConfigCard(),
 
@@ -200,88 +216,279 @@ class _DebugScreenState extends State<DebugScreen> {
   }
 
   Widget _buildRssiMonitorCard() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: _scanner.isBeaconConnected,
-      builder: (context, isConnected, _) {
-        return ValueListenableBuilder<int>(
-          valueListenable: _scanner.packetCount,
-          builder: (context, count, _) {
-            final rssi = isConnected ? _scanner.liveRssi.value : null;
-            final lastTime = _scanner.lastRssiUpdateTime.value;
-            final String timeStr = (isConnected && lastTime != null)
-                ? '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}.${(lastTime.millisecond ~/ 100)}'
-                : '미수신 (연결 안됨)';
+    // P2-17: 예전에는 isBeaconConnected / packetCount 만 듣고 liveRssi 와
+    // lastRssiUpdateTime 은 .value 로 직접 읽었다. 네 값이 항상 동시에
+    // 갱신되는 덕에 우연히 동작했을 뿐, 하나라도 단독으로 바뀌면 화면이 굳는다.
+    // 표시에 쓰는 모든 알림자를 병합해 듣는다.
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _scanner.isBeaconConnected,
+        _scanner.liveRssi,
+        _scanner.smoothedRssi,
+        _scanner.lastRssiUpdateTime,
+        _scanner.packetCount,
+        _scanner.modeNotifier,
+      ]),
+      builder: (context, _) {
+        final isConnected = _scanner.isBeaconConnected.value;
+        final count = _scanner.packetCount.value;
+        final rssi = isConnected ? _scanner.liveRssi.value : null;
+        final smoothed = isConnected ? _scanner.smoothedRssi.value : null;
+        final lastTime = _scanner.lastRssiUpdateTime.value;
+        final String timeStr = (isConnected && lastTime != null)
+            ? '${lastTime.hour.toString().padLeft(2, '0')}:${lastTime.minute.toString().padLeft(2, '0')}:${lastTime.second.toString().padLeft(2, '0')}.${(lastTime.millisecond ~/ 100)}'
+            : '미수신 (연결 안됨)';
 
-            Color badgeColor = Colors.grey;
-            String badgeText = '🔴 신호 없음 (연결 안됨)';
+        Color badgeColor = Colors.grey;
+        String badgeText = '🔴 신호 없음 (연결 안됨)';
 
-            if (isConnected && rssi != null) {
-              if (rssi >= -60) {
-                badgeColor = Colors.green;
-                badgeText = '🟢 매우 강함 (근접)';
-              } else if (rssi >= -75) {
-                badgeColor = Colors.blue;
-                badgeText = '🔵 보통 (감지 범위)';
-              } else {
-                badgeColor = Colors.orange;
-                badgeText = '🟠 약함 (경계)';
-              }
-            }
+        if (isConnected && rssi != null) {
+          if (rssi >= -60) {
+            badgeColor = Colors.green;
+            badgeText = '🟢 매우 강함 (근접)';
+          } else if (rssi >= -75) {
+            badgeColor = Colors.blue;
+            badgeText = '🔵 보통 (감지 범위)';
+          } else {
+            badgeColor = Colors.orange;
+            badgeText = '🟠 약함 (경계)';
+          }
+        }
 
-            return Card(
-              color: const Color(0xFF1E1E1E),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
+        final mode = _scanner.modeNotifier.value;
+        final String detail = isConnected
+            ? 'UUID: ${_scanner.targetBeaconUuid}\n'
+                '수신 시각: $timeStr | 누적 패킷: $count개\n'
+                '평활 RSSI(판정용): ${smoothed?.toStringAsFixed(1) ?? '-'} dBm | 모드: ${mode.label}'
+            : 'Target 비콘 UUID (${_scanner.targetBeaconUuid}) 미수신 중...\n'
+                '모드: ${mode.label} | 누적 패킷: $count개\n'
+                '${mode == ScanMode.idle ? '구역 진입이 감지되면 자동으로 계측을 시작합니다.' : '신호를 기다리고 있습니다.'}';
+
+        return Card(
+          color: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          '📡 실시간 비콘 RSSI 모니터',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: badgeColor.withOpacity(0.2),
-                            border: Border.all(color: badgeColor),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            badgeText,
-                            style: TextStyle(color: badgeColor, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
+                    const Text(
+                      '📡 실시간 비콘 RSSI 모니터',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      (isConnected && rssi != null) ? '$rssi dBm' : '연결 안됨',
-                      style: TextStyle(
-                        fontSize: (isConnected && rssi != null) ? 48 : 36,
-                        fontWeight: FontWeight.bold,
-                        color: (isConnected && rssi != null) ? Colors.cyanAccent : Colors.redAccent,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withOpacity(0.2),
+                        border: Border.all(color: badgeColor),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      isConnected
-                          ? 'UUID: ${_scanner.targetBeaconUuid}\n수신 시각: $timeStr | 누적 패킷: $count개'
-                          : 'Target 비콘 UUID (${_scanner.targetBeaconUuid}) 미수신 중...\n수신을 멈추고 연결 대기 중입니다.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-
-                      textAlign: TextAlign.center,
+                      child: Text(
+                        badgeText,
+                        style: TextStyle(color: badgeColor, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ],
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 16),
+                Text(
+                  (isConnected && rssi != null) ? '$rssi dBm' : '연결 안됨',
+                  style: TextStyle(
+                    fontSize: (isConnected && rssi != null) ? 48 : 36,
+                    fontWeight: FontWeight.bold,
+                    color: (isConnected && rssi != null) ? Colors.cyanAccent : Colors.redAccent,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  detail,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
+  }
+
+  /// 스캔이 왜 동작하지 않는지를 앱 안에서 확인할 수 있는 진단 패널
+  /// (issue.md P2-19).
+  Widget _buildDiagnosticsCard() {
+    return ValueListenableBuilder<ScanDiagnostics>(
+      valueListenable: _scanner.diagnostics,
+      builder: (context, d, _) {
+        final blockers = d.blockingReasons;
+        final warnings = d.warningReasons;
+
+        return Card(
+          color: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '🩺 스캔 진단',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 18, color: Colors.cyanAccent),
+                      tooltip: '진단 새로고침',
+                      onPressed: () => _scanner.refreshDiagnostics(),
+                    ),
+                  ],
+                ),
+                if (blockers.isNotEmpty)
+                  _buildReasonBox(
+                    title: '스캔 불가 — 아래를 해결해야 합니다',
+                    reasons: blockers,
+                    color: Colors.redAccent,
+                  ),
+                if (warnings.isNotEmpty)
+                  _buildReasonBox(
+                    title: '주의 — 백그라운드/화면 OFF 신뢰성 저하',
+                    reasons: warnings,
+                    color: Colors.amberAccent,
+                  ),
+                if (blockers.isEmpty && warnings.isEmpty)
+                  _buildReasonBox(
+                    title: '모든 전제조건 충족',
+                    reasons: const ['스캔에 필요한 권한과 OS 스위치가 모두 정상입니다.'],
+                    color: Colors.greenAccent,
+                  ),
+                const SizedBox(height: 12),
+                _buildCheckRow('위치 권한', d.locationWhenInUse, blocking: true),
+                _buildCheckRow('백그라운드 위치 권한', d.locationAlways),
+                if (d.requiresRuntimeBluetoothPermission) ...[
+                  _buildCheckRow('BLUETOOTH_SCAN 권한', d.bluetoothScan, blocking: true),
+                  _buildCheckRow('BLUETOOTH_CONNECT 권한', d.bluetoothConnect),
+                ],
+                _buildCheckRow('알림 권한', d.notification),
+                _buildCheckRow('블루투스 ON', d.bluetoothOn, blocking: true),
+                _buildCheckRow('위치 서비스(GPS) ON', d.locationServicesOn, blocking: true),
+                _buildCheckRow('배터리 최적화 예외', d.ignoringBatteryOptimizations),
+                _buildCheckRow('포그라운드 서비스 실행', d.foregroundServiceRunning),
+                _buildCheckRow('화면 OFF 대응 스캔 설정', d.backgroundScanTuningApplied),
+                const Divider(color: Colors.white10),
+                _buildCheckRow('monitoring 구독', d.monitoringSubscribed, blocking: true),
+                _buildCheckRow('ranging 구독', d.rangingSubscribed),
+                const SizedBox(height: 8),
+                _buildInfoRow('현재 모드', d.mode.label + (d.debugForced ? ' · 디버그 강제' : '')),
+                _buildInfoRow('Target UUID', d.targetBeaconUuid),
+                _buildInfoRow('Android SDK', d.androidSdkInt == 0 ? '미확인' : '${d.androidSdkInt}'),
+                _buildInfoRow('마지막 구역 진입', _formatTime(d.lastEnterRegionAt)),
+                _buildInfoRow('마지막 구역 이탈', _formatTime(d.lastExitRegionAt)),
+                _buildInfoRow('마지막 ranging 콜백', _formatTime(d.lastRangingCallbackAt)),
+                _buildInfoRow('ranging 콜백 누적', '${d.rangingCallbackCount}회'),
+                _buildInfoRow(
+                  '마지막 Pre-arm',
+                  d.lastPrearmAt == null
+                      ? '없음'
+                      : '${_formatTime(d.lastPrearmAt)} · '
+                          '${d.lastPrearmStatusCode ?? '-'} · ${d.lastPrearmMessage ?? '-'}',
+                ),
+                if (d.lastScanError != null)
+                  _buildInfoRow('마지막 스캔 오류', d.lastScanError!),
+                _buildInfoRow('진단 시각', _formatTime(d.updatedAt)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildReasonBox({
+    required String title,
+    required List<String> reasons,
+    required Color color,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        border: Border.all(color: color.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+          ),
+          const SizedBox(height: 4),
+          ...reasons.map(
+            (r) => Text('· $r', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckRow(String label, bool ok, {bool blocking = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            ok ? Icons.check_circle : (blocking ? Icons.cancel : Icons.warning_amber_rounded),
+            size: 14,
+            color: ok ? Colors.greenAccent : (blocking ? Colors.redAccent : Colors.amberAccent),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          ),
+          Text(
+            ok ? 'OK' : (blocking ? '차단' : '경고'),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: ok ? Colors.greenAccent : (blocking ? Colors.redAccent : Colors.amberAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: const TextStyle(fontSize: 11, color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatTime(DateTime? time) {
+    if (time == null || time.millisecondsSinceEpoch == 0) return '없음';
+    return '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}:'
+        '${time.second.toString().padLeft(2, '0')}';
   }
 
 
@@ -335,7 +542,9 @@ class _DebugScreenState extends State<DebugScreen> {
               ],
             ),
             Slider(
-              value: _scanner.cooldownSeconds.toDouble(),
+              // 원격 설정(APP_COOLDOWN_SEC)이 슬라이더 범위를 벗어나면
+              // Slider 가 assert 로 죽으므로 클램프한다.
+              value: _scanner.cooldownSeconds.clamp(1, 30).toDouble(),
               min: 1.0,
               max: 30.0,
               divisions: 29,

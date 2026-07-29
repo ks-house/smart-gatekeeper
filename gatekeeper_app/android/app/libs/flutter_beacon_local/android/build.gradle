@@ -1,5 +1,8 @@
 group 'com.flutterbeacon'
 version '1.0-SNAPSHOT'
+// TODO(issue.md P2-20): 이 buildscript 블록의 AGP 3.5.1 은 루트 프로젝트가
+//   제공하는 AGP 와 무관하게 남아 있는 잔재다. 제거해도 되는지는 실제 빌드로
+//   확인해야 하므로 지금은 손대지 않는다.
 buildscript {
     repositories {
         google()
@@ -18,8 +21,11 @@ rootProject.allprojects {
 }
 apply plugin: 'com.android.library'
 android {
+    // NOTE: namespace 와 Java 패키지(com.flutterbeacon)가 다르다. 합법이지만
+    //   혼란스럽다. 통일은 R 클래스 생성에 영향을 주므로 빌드 검증 후에 할 일이다.
     namespace 'com.alannmaulana.flutterbeacon'
-    compileSdkVersion 33
+    // 앱 모듈과 컴파일 SDK 를 맞춘다 (issue.md P2-20).
+    compileSdkVersion 34
 
     defaultConfig {
         minSdkVersion 18
@@ -31,6 +37,9 @@ android {
 }
 
 dependencies {
+    // TODO(issue.md P2-20): legacy-support-v4 는 deprecated 다. 다만 이 플러그인이
+    //   쓰는 androidx.core(ActivityCompat/ContextCompat)를 여기서 전이로 얻고 있어,
+    //   제거하려면 androidx.core:core 를 명시로 추가하고 빌드로 확인해야 한다.
     api 'androidx.legacy:legacy-support-v4:1.0.0'
     //api 'org.altbeacon:android-beacon-library:2.16.3'
     //api "org.altbeacon:android-beacon-library:2.17.1"
