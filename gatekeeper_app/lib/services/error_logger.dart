@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 class AppErrorLogger {
   static final AppErrorLogger _instance = AppErrorLogger._internal();
@@ -19,6 +20,16 @@ class AppErrorLogger {
     }
     current.add(formatted);
     logs.value = current;
+
+    try {
+      if (FlutterForegroundTask.isTaskHandlerRunning) {
+        FlutterForegroundTask.sendDataToMain({
+          'type': 'AppErrorLogger',
+          'action': 'log',
+          'message': formatted,
+        });
+      }
+    } catch (_) {}
   }
 
   void logError(String summary, [dynamic error, StackTrace? stackTrace]) {
@@ -39,6 +50,17 @@ class AppErrorLogger {
     }
     current.add(formatted);
     logs.value = current;
+
+    try {
+      if (FlutterForegroundTask.isTaskHandlerRunning) {
+        FlutterForegroundTask.sendDataToMain({
+          'type': 'AppErrorLogger',
+          'action': 'logError',
+          'message': formatted,
+          'latestError': latestError.value,
+        });
+      }
+    } catch (_) {}
   }
 
   void clearError() {
@@ -48,5 +70,20 @@ class AppErrorLogger {
   void clearLogs() {
     logs.value = [];
     latestError.value = null;
+  }
+
+  void syncFromMain(Map<String, dynamic> data) {
+    if (data['action'] == 'log' || data['action'] == 'logError') {
+      final String? message = data['message'];
+      if (message != null) {
+        final current = List<String>.from(logs.value);
+        if (current.length >= 100) current.removeAt(0);
+        current.add(message);
+        logs.value = current;
+      }
+    }
+    if (data['action'] == 'logError') {
+      latestError.value = data['latestError'];
+    }
   }
 }

@@ -550,8 +550,42 @@ class BleScanner {
     if (!Platform.isAndroid) return;
     try {
       await flutterBeacon.setEnableScheduledScanJobs(false);
-    } catch (e) {
-      debugPrint('[BleScanner] setEnableScheduledScanJobs 실패: $e');
+    } catch (_) {}
+  }
+
+  void _syncToMain() {
+    try {
+      if (FlutterForegroundTask.isTaskHandlerRunning) {
+        FlutterForegroundTask.sendDataToMain({
+          'type': 'BleScanner',
+          'liveRssi': liveRssi.value,
+          'smoothedRssi': smoothedRssi.value,
+          'packetCount': packetCount.value,
+          'isBeaconConnected': isBeaconConnected.value,
+          'mode': _mode.name,
+          'state': _currentState.name,
+          'lastRssiUpdateTime': lastRssiUpdateTime.value?.toIso8601String(),
+        });
+      }
+    } catch (_) {}
+  }
+
+  void syncFromMain(Map<String, dynamic> data) {
+    if (data['liveRssi'] != null) liveRssi.value = data['liveRssi'];
+    if (data['smoothedRssi'] != null) smoothedRssi.value = data['smoothedRssi'];
+    if (data['packetCount'] != null) packetCount.value = data['packetCount'];
+    if (data['isBeaconConnected'] != null) isBeaconConnected.value = data['isBeaconConnected'];
+    if (data['lastRssiUpdateTime'] != null) lastRssiUpdateTime.value = DateTime.tryParse(data['lastRssiUpdateTime']);
+    
+    final modeStr = data['mode'] as String?;
+    if (modeStr != null) {
+      _mode = ScanMode.values.firstWhere((e) => e.name == modeStr, orElse: () => ScanMode.stopped);
+      modeNotifier.value = _mode;
+    }
+    
+    final stateStr = data['state'] as String?;
+    if (stateStr != null) {
+      _currentState = ScannerState.values.firstWhere((e) => e.name == stateStr, orElse: () => ScannerState.stopped);
     }
   }
 
@@ -691,6 +725,8 @@ class BleScanner {
       AppErrorLogger().log('[BleScanner State] ${_currentState.name} ➡️ ${newState.name}');
       _currentState = newState;
     }
+
+    _syncToMain();
 
     // isRecentArm 일 때는 기존 "승인 완료" 알림을 유지하기 위해 업데이트를 건너뛴다.
     if (newState == ScannerState.cooldown && _lastArmSuccessTime != null && 
@@ -863,6 +899,7 @@ class BleScanner {
         : (_kRssiEmaAlpha * rssi + (1 - _kRssiEmaAlpha) * _smoothedRssiValue!);
     _smoothedRssiValue = ema;
     smoothedRssi.value = ema;
+    _syncToMain();
 
     if (_isPrearmInProgress) return;
 

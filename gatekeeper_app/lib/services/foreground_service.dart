@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:isolate';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'ble_scanner.dart';
+import 'error_logger.dart';
 
 @pragma('vm:entry-point')
 void startCallback() {
@@ -31,13 +33,14 @@ class GatekeeperTaskHandler extends TaskHandler {
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
     WidgetsFlutterBinding.ensureInitialized();
     debugPrint('[ForegroundTask] 🛡️ 백그라운드 상주 포그라운드 서비스 구동 시작');
+    
+    // UI 스레드가 아닌 이 백그라운드 스레드에서 실제 스캐너를 가동한다.
+    await BleScanner().initialize();
   }
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
-    // 프로세스를 살아 있게 유지하고 wake lock 을 붙잡아 두는 것이 목적이다.
-    // 스캔 상태 점검은 UI isolate 의 BleScanner 워치독이 담당한다 —
-    // isolate 경계를 넘어 스캐너 상태를 볼 수 없기 때문이다.
+    // BleScanner 내부 워치독이 스스로 돌아가므로 여기서 따로 호출하지 않아도 된다.
   }
 
 
@@ -103,5 +106,15 @@ class ForegroundServiceManager {
       callback: startCallback,
     );
 
+    // 백그라운드 스레드에서 올라오는 이벤트를 수신하여 UI 스레드의 상태를 동기화한다.
+    FlutterForegroundTask.receivePort?.listen((data) {
+      if (data is Map<String, dynamic>) {
+        if (data['type'] == 'BleScanner') {
+          BleScanner().syncFromMain(data);
+        } else if (data['type'] == 'AppErrorLogger') {
+          AppErrorLogger().syncFromMain(data);
+        }
+      }
+    });
   }
 }
