@@ -50,7 +50,6 @@ class BleScanner {
   // AltBeacon 스캔 주기가 약 1100ms 이고 SCAN_MODE_LOW_POWER 에서는 사이클 간
   // 편차가 커진다. 단발 미수신으로 뒤집지 않고 연속 카운트로 판정한다.
   static const int _kRangingTimeoutMs = 6000;
-  static const int _kMissedCyclesToIdle = 4;
 
   // ── RSSI 평활 / 히스테리시스 (issue.md P2-15) ───────────────────────────
   static const double _kRssiEmaAlpha = 0.3;
@@ -121,7 +120,6 @@ class BleScanner {
   /// `필드 null 대입 → await cancel → 재구독` 순서로 겹치지 않게 수행해야 한다.
   Future<void> _transitionLock = Future<void>.value();
 
-  int _missedRangingCycles = 0;
   double? _smoothedRssiValue;
   bool _aboveThreshold = false;
 
@@ -535,7 +533,6 @@ class BleScanner {
     isBeaconConnected.value = false;
     _smoothedRssiValue = null;
     _aboveThreshold = false;
-    _missedRangingCycles = 0;
   }
 
   void _setMode(ScanMode next) {
@@ -726,33 +723,39 @@ class BleScanner {
 
   void _startTimeoutCheckTimer() {
     _timeoutTimer?.cancel();
-    _missedRangingCycles = 0;
     _timeoutTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       final last = lastRssiUpdateTime.value;
+      final now = DateTime.now();
       final isStale = last == null ||
-          DateTime.now().difference(last).inMilliseconds > _kRangingTimeoutMs;
+          now.difference(last).inMilliseconds > _kRangingTimeoutMs;
 
       if (!isStale) {
-        _missedRangingCycles = 0;
+        // 비콘 패킷 유실 중(최대 6초)에도 쿨다운 타이머가 화면에서 멈추지 않게 1초마다 강제 갱신
+        if (!ignoreCooldown && _nextPrearmAllowedAt != null && now.isBefore(_nextPrearmAllowedAt!)) {
+          final isRecentArm = _lastArmSuccessTime != null && now.difference(_lastArmSuccessTime!).inMilliseconds < _kRecentArmSuppressMs;
+          if (!isRecentArm) {
+            final remainSec = (_nextPrearmAllowedAt!.difference(now).inMilliseconds / 1000).ceil();
+            _updateNotification(
+              title: '⏳ 출입 쿨다운 대기 중 ($remainSec초)',
+              text: 'Target 비콘 감지됨 — 연속 개방 방지 대기 중',
+              force: true,
+            );
+          }
+        }
         return;
       }
-
-      _missedRangingCycles++;
 
       if (isBeaconConnected.value || liveRssi.value != null) {
         _resetSignalState();
         debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (${_kRangingTimeoutMs}ms 초과)');
-      }
-
-      if (_missedRangingCycles >= _kMissedCyclesToIdle) {
-        _missedRangingCycles = 0;
-        // 디버그 강제 모드에서는 강등하지 않는다. 여기서 걸러내지 않으면
-        // _enterIdleMode 가 매번 조기 반환하면서 로그만 계속 쌓인다.
-        if (_debugForced) return;
-        AppErrorLogger().log(
-            '📉 ranging ${_kMissedCyclesToIdle}회 연속 무수신 → 저전력 감시 모드로 강등');
-        // ignore: unawaited_futures
-        _enterIdleMode(reason: 'ranging 연속 무수신');
+        AppErrorLogger().log('⚠️ ranging 신호 미수신 (${_kRangingTimeoutMs}ms 초과). 네이티브 구역 이탈(didExitRegion) 대기 중...');
+        
+        // 6초 이상 신호 소실 시 "4초" 등에 멈춰있는 알림을 초기화
+        _updateNotification(
+          title: '🔴 Target 비콘 신호 탐색 중',
+          text: '구역 내에 있지만 신호가 일시적으로 약합니다...',
+          force: true,
+        );
       }
     });
   }
@@ -780,7 +783,6 @@ class BleScanner {
     lastRssiUpdateTime.value = DateTime.now();
     isBeaconConnected.value = true;
     packetCount.value++;
-    _missedRangingCycles = 0;
 
     // ── 판정용: EMA 평활 (issue.md P2-15) ────────────────────────────────
     final double ema = _smoothedRssiValue == null
