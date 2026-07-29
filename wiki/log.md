@@ -626,3 +626,8 @@
 ⚠️ 빌드/실기기 검증 미수행 (툴체인 부재). 완료 판정은 IMPLEMENTATION_REPORT.md §5
 체크리스트 통과 후에 한다.
 
+
+## [2026-07-29] fix | Add ProGuard rules for release build crash
+
+- Added android/app/proguard-rules.pro to prevent R8 from obfuscating/shrinking org.altbeacon, com.flutterbeacon, and AsyncTask.
+- Updated android/app/build.gradle.kts to enable minifyEnabled and apply the proguard rules.
