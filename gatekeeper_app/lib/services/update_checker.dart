@@ -13,18 +13,21 @@ class UpdateChecker {
   UpdateChecker._internal();
 
   // 환경변수(--dart-define=APK_VERSION_URL=...)로부터 동적 로드 (하드코딩 금지)
-  static const String versionUrlFromEnv = String.fromEnvironment('APK_VERSION_URL');
-  static const String downloadUrlFromEnv = String.fromEnvironment('APK_DOWNLOAD_URL');
+  static const String versionUrlFromEnv =
+      String.fromEnvironment('APK_VERSION_URL');
+  static const String downloadUrlFromEnv =
+      String.fromEnvironment('APK_DOWNLOAD_URL');
 
   String? remoteVersion;
   int? remoteBuildNumber;
   String? downloadUrl;
-  
+
   final ValueNotifier<bool> isUpdateAvailable = ValueNotifier<bool>(false);
   final ValueNotifier<double?> downloadProgress = ValueNotifier<double?>(null);
 
   /// 백엔드 또는 환경변수 URL로 앱 업데이트 여부 확인
-  Future<bool> checkForUpdates({String? customVersionUrl, String? customDownloadUrl}) async {
+  Future<bool> checkForUpdates(
+      {String? customVersionUrl, String? customDownloadUrl}) async {
     final targetUrl = (customVersionUrl != null && customVersionUrl.isNotEmpty)
         ? customVersionUrl
         : (versionUrlFromEnv.isNotEmpty
@@ -40,8 +43,10 @@ class UpdateChecker {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         remoteVersion = data['version']?.toString();
-        remoteBuildNumber = int.tryParse(data['build_number']?.toString() ?? '');
-        downloadUrl = (data['apk_url']?.toString() != null && data['apk_url'].toString().isNotEmpty)
+        remoteBuildNumber =
+            int.tryParse(data['build_number']?.toString() ?? '');
+        downloadUrl = (data['apk_url']?.toString() != null &&
+                data['apk_url'].toString().isNotEmpty)
             ? data['apk_url'].toString()
             : ((customDownloadUrl != null && customDownloadUrl.isNotEmpty)
                 ? customDownloadUrl
@@ -52,14 +57,19 @@ class UpdateChecker {
         final packageInfo = await PackageInfo.fromPlatform();
         final currentBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
 
-        debugPrint('[UpdateChecker] 현재 버전: ${packageInfo.version} (Build $currentBuildNumber) / 최신 버전: v$remoteVersion (Build $remoteBuildNumber)');
+        debugPrint(
+            '[UpdateChecker] 현재 버전: ${packageInfo.version} (Build $currentBuildNumber) / 최신 버전: v$remoteVersion (Build $remoteBuildNumber)');
 
-        bool hasNewBuild = remoteBuildNumber != null && remoteBuildNumber! > currentBuildNumber;
-        bool hasNewVersionName = remoteVersion != null && remoteVersion!.isNotEmpty && remoteVersion != packageInfo.version;
+        bool hasNewBuild = remoteBuildNumber != null &&
+            remoteBuildNumber! > currentBuildNumber;
+        bool hasNewVersionName = remoteVersion != null &&
+            remoteVersion!.isNotEmpty &&
+            remoteVersion != packageInfo.version;
 
         if (hasNewBuild || hasNewVersionName) {
           isUpdateAvailable.value = true;
-          debugPrint('[UpdateChecker] 🚀 새로운 앱 업데이트 감지됨! (Build: $currentBuildNumber -> $remoteBuildNumber)');
+          debugPrint(
+              '[UpdateChecker] 🚀 새로운 앱 업데이트 감지됨! (Build: $currentBuildNumber -> $remoteBuildNumber)');
           return true;
         }
       } else {
@@ -94,12 +104,12 @@ class UpdateChecker {
     try {
       debugPrint('[UpdateChecker] 앱 내 APK 다운로드 시작: $targetUrl');
       downloadProgress.value = 0.0;
-      
+
       final tempDir = await getTemporaryDirectory();
       final filePath = '${tempDir.path}/ks-house-gatekeeper.apk';
-      
+
       final dio = Dio();
-      
+
       await dio.download(
         targetUrl,
         filePath,
@@ -109,18 +119,18 @@ class UpdateChecker {
           }
         },
       );
-      
+
       downloadProgress.value = 1.0;
       debugPrint('[UpdateChecker] 다운로드 완료. 패키지 설치 팝업 호출: $filePath');
-      
+
       final result = await OpenFilex.open(filePath);
       debugPrint('[UpdateChecker] 설치 실행 결과: ${result.message}');
-      
+
       // 다운로드 완료 3초 후 프로그레스 바 초기화 (설치 화면이 뜬 후)
       Future.delayed(const Duration(seconds: 3), () {
         downloadProgress.value = null;
       });
-      
+
       return true;
     } catch (e) {
       debugPrint('[UpdateChecker] APK 다운로드 실패: $e');

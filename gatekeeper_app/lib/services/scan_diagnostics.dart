@@ -120,6 +120,9 @@ class ScanDiagnostics {
   /// Android 12(API 31)부터 BLUETOOTH_SCAN / BLUETOOTH_CONNECT 가 런타임 권한이 된다.
   /// 그 이전 버전에서는 permission_handler 의 결과와 무관하게 차단 사유로 보지 않는다.
   bool get requiresRuntimeBluetoothPermission => androidSdkInt >= 31;
+  bool get requiresBackgroundLocationPermission => androidSdkInt >= 29;
+  bool get requiresBatteryOptimizationExemption => androidSdkInt > 0;
+  bool get requiresNotificationPermission => androidSdkInt >= 33;
 
   /// 스캔이 물리적으로 불가능한 사유들. 비어 있으면 스캔을 시작할 수 있다.
   List<String> get blockingReasons {
@@ -134,8 +137,20 @@ class ScanDiagnostics {
     if (!locationWhenInUse) {
       reasons.add('위치 권한이 없습니다');
     }
+    if (requiresBackgroundLocationPermission && !locationAlways) {
+      reasons.add('백그라운드 위치 권한(항상 허용)이 없습니다');
+    }
     if (requiresRuntimeBluetoothPermission && !bluetoothScan) {
       reasons.add('블루투스 스캔 권한이 없습니다');
+    }
+    if (requiresRuntimeBluetoothPermission && !bluetoothConnect) {
+      reasons.add('BLUETOOTH_CONNECT 권한이 없습니다');
+    }
+    if (requiresBatteryOptimizationExemption && !ignoringBatteryOptimizations) {
+      reasons.add('배터리 최적화 예외가 적용되지 않았습니다');
+    }
+    if (requiresNotificationPermission && !notification) {
+      reasons.add('알림 권한이 없습니다');
     }
     return reasons;
   }
@@ -143,14 +158,11 @@ class ScanDiagnostics {
   /// 동작은 하지만 백그라운드/화면 OFF 신뢰성을 떨어뜨리는 사유들.
   List<String> get warningReasons {
     final warnings = <String>[];
-    if (!locationAlways) {
+    if (!requiresBackgroundLocationPermission && !locationAlways) {
       warnings.add('백그라운드 위치 권한이 없어 화면 OFF/백그라운드 감지가 불안정할 수 있습니다');
     }
-    if (!notification) {
+    if (!requiresNotificationPermission && !notification) {
       warnings.add('알림 권한이 없어 상태 알림이 표시되지 않습니다');
-    }
-    if (!ignoringBatteryOptimizations) {
-      warnings.add('배터리 최적화 예외가 적용되지 않았습니다');
     }
     if (!foregroundServiceRunning) {
       warnings.add('포그라운드 서비스가 실행 중이 아닙니다');
@@ -158,13 +170,84 @@ class ScanDiagnostics {
     if (!backgroundScanTuningApplied) {
       warnings.add('화면 OFF 대응 스캔 설정(setBackgroundMode)이 적용되지 않았습니다');
     }
-    if (requiresRuntimeBluetoothPermission && !bluetoothConnect) {
-      warnings.add('BLUETOOTH_CONNECT 권한이 없습니다');
-    }
     return warnings;
   }
 
   bool get canScan => blockingReasons.isEmpty;
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'locationWhenInUse': locationWhenInUse,
+        'locationAlways': locationAlways,
+        'bluetoothScan': bluetoothScan,
+        'bluetoothConnect': bluetoothConnect,
+        'notification': notification,
+        'bluetoothOn': bluetoothOn,
+        'locationServicesOn': locationServicesOn,
+        'ignoringBatteryOptimizations': ignoringBatteryOptimizations,
+        'foregroundServiceRunning': foregroundServiceRunning,
+        'mode': mode.name,
+        'debugForced': debugForced,
+        'monitoringSubscribed': monitoringSubscribed,
+        'rangingSubscribed': rangingSubscribed,
+        'backgroundScanTuningApplied': backgroundScanTuningApplied,
+        'targetBeaconUuid': targetBeaconUuid,
+        'androidSdkInt': androidSdkInt,
+        'updatedAt': updatedAt.toIso8601String(),
+        'lastEnterRegionAt': lastEnterRegionAt?.toIso8601String(),
+        'lastExitRegionAt': lastExitRegionAt?.toIso8601String(),
+        'lastRangingCallbackAt': lastRangingCallbackAt?.toIso8601String(),
+        'rangingCallbackCount': rangingCallbackCount,
+        'lastPrearmStatusCode': lastPrearmStatusCode,
+        'lastPrearmAt': lastPrearmAt?.toIso8601String(),
+        'lastPrearmMessage': lastPrearmMessage,
+        'lastScanError': lastScanError,
+      };
+
+  factory ScanDiagnostics.fromMap(
+    Map<dynamic, dynamic> data,
+    String fallbackTargetBeaconUuid,
+  ) {
+    DateTime? parseDate(dynamic value) =>
+        value is String ? DateTime.tryParse(value) : null;
+
+    final modeName = data['mode']?.toString();
+    final parsedMode = ScanMode.values.firstWhere(
+      (value) => value.name == modeName,
+      orElse: () => ScanMode.stopped,
+    );
+
+    return ScanDiagnostics(
+      locationWhenInUse: data['locationWhenInUse'] == true,
+      locationAlways: data['locationAlways'] == true,
+      bluetoothScan: data['bluetoothScan'] == true,
+      bluetoothConnect: data['bluetoothConnect'] == true,
+      notification: data['notification'] == true,
+      bluetoothOn: data['bluetoothOn'] == true,
+      locationServicesOn: data['locationServicesOn'] == true,
+      ignoringBatteryOptimizations:
+          data['ignoringBatteryOptimizations'] == true,
+      foregroundServiceRunning: data['foregroundServiceRunning'] == true,
+      mode: parsedMode,
+      debugForced: data['debugForced'] == true,
+      monitoringSubscribed: data['monitoringSubscribed'] == true,
+      rangingSubscribed: data['rangingSubscribed'] == true,
+      backgroundScanTuningApplied: data['backgroundScanTuningApplied'] == true,
+      targetBeaconUuid:
+          data['targetBeaconUuid']?.toString() ?? fallbackTargetBeaconUuid,
+      androidSdkInt: (data['androidSdkInt'] as num?)?.toInt() ?? 0,
+      updatedAt: parseDate(data['updatedAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      lastEnterRegionAt: parseDate(data['lastEnterRegionAt']),
+      lastExitRegionAt: parseDate(data['lastExitRegionAt']),
+      lastRangingCallbackAt: parseDate(data['lastRangingCallbackAt']),
+      rangingCallbackCount:
+          (data['rangingCallbackCount'] as num?)?.toInt() ?? 0,
+      lastPrearmStatusCode: (data['lastPrearmStatusCode'] as num?)?.toInt(),
+      lastPrearmAt: parseDate(data['lastPrearmAt']),
+      lastPrearmMessage: data['lastPrearmMessage']?.toString(),
+      lastScanError: data['lastScanError']?.toString(),
+    );
+  }
 
   ScanDiagnostics copyWith({
     bool? locationWhenInUse,

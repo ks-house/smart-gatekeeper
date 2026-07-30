@@ -19,7 +19,7 @@
    - 모바일 앱은 ESP32-C6와 직접 BLE 연결을 맺지 않고, 비콘 감지 시 **백엔드(Synology NAS) REST API**로 Pre-arming(사전 승인)을 요청합니다.
    - 백엔드는 사용자 권한을 검증 후 **MQTTS 보안 암호화 채널**을 통해 ESP32-C6로 제어 명령을 하달하므로 BLE 스푸핑 및 재생(Replay) 공격을 완벽히 차단합니다.
 3. **외부 진입 전용 (Entry-Only Walk-through)**:
-   - 비콘 수신 및 사전 승인(Pre-arming)이 완료된 상태에서 세입자가 ToF 센서 50cm 이내로 접근할 때만 릴레이가 작동하여 문이 열립니다.
+   - 비콘 수신 및 사전 승인(Pre-arming)이 완료된 상태에서 세입자가 초음파 센서 유효 범위 20~50cm로 접근할 때만 릴레이가 작동하여 문이 열립니다.
 
 ### 1.2 소프트웨어 아키텍처 (Flutter Hybrid Zero-Update 전략)
 앱 스토어(App Store / Play Store) 심사 지연 및 세입자 앱 업데이트 번거로움을 최소화하기 위해 **Flutter 기반의 하이브리드(Thin Client + WebView)** 아키텍처로 설계합니다.
@@ -50,7 +50,7 @@
 │     │  (3) MQTTS                              │                                         │
 │     └───────── Topic: gatekeeper/arm ─────────┘                                         │
 │                                                                                         │
-│  [Target: ESP32-C6] ──ToF 50cm Detection──► Relay 1s Trigger (Door Open!)               │
+│  [Target: ESP32-C6] ──Ultrasonic 20~50cm──► Relay 1s Trigger (Door Open!)                │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,10 +60,10 @@
 
 | 컴포넌트 | 구분 / 모듈 | 주요 역할 및 핵심 기능 |
 |:---|:---|:---|
-| **App** | **Native Shell**<br>*(Flutter Engine)* | • **보이지 않는 엔진 역할**<br>• OS 필수 권한(위치, 블루투스, 푸시 알림, 백그라운드) 획득 및 관리<br>• 백엔드 동적 설정 API (`GET /api/v1/config`) 호출 ➔ Target 비콘 UUID, 스캔 주기 등 동적 로드 (Remote Config)<br>• 백그라운드 BLE 비콘 스캐닝 및 감지 시 Pre-arm API (`POST /api/v1/door/prearm`) 호출<br>• 연속 비콘 수신 시 중복 API 요청 방지를 위한 **쿨다운(Cooldown, 30초) 타이머 제어**<br>• FCM/APNs 푸시 알림 수신 및 알림 클릭 시 WebView 페이지 전환 핸들링 |
+| **App** | **Native Shell**<br>*(Flutter Engine)* | • **보이지 않는 엔진 역할**<br>• OS 필수 권한(위치, 블루투스, 푸시 알림, 백그라운드) 획득 및 관리<br>• 백엔드 동적 설정 API (`GET /api/v1/config`) 호출 ➔ Target 비콘 UUID, RSSI 기준, 쿨다운 등 동적 로드 (Remote Config)<br>• foreground-service isolate의 단일 BLE 스캐너가 비콘 감지 시 Pre-arm API (`POST /api/v1/door/prearm`) 호출<br>• 연속 비콘 수신 시 중복 API 요청 방지를 위한 **쿨다운(Cooldown, 기본 10초·원격 가변)** 타이머 제어<br>• FCM/APNs 푸시 알림 수신 및 알림 클릭 시 WebView 페이지 전환 핸들링 |
 | | **WebView UI**<br>*(NAS Hosted Web)* | • **눈에 보이는 UI 전체 (HTML/JS/CSS)**<br>• 세입자 회원가입 폼, 동/호수 입력 UI 렌더링<br>• 사용자 승인 상태 (`pending`, `active`, `revoked`) 안내 화면 표시<br>• 앱 내 수동 **'문 열기(Force Open)'** 원격 개방 버튼 UI 제공<br>• 출입 기록 및 사용자 프로필 관리 화면 제공 |
 | **Backend** | **Synology NAS**<br>*(FastAPI + MariaDB)* | • WebView 웹 프론트엔드 호스팅 (Nginx / FastAPI Static)<br>• 세입자 계정 및 권한 상태 관리 (`pending`, `active`, `revoked`)<br>• 동적 설정 API (`GET /api/v1/config`) 제공<br>• 모바일 앱 API 요청 인증/인가 검증 (JWT Token & Device Identifier)<br>• 검증 성공 시 MQTTS 브로커를 통해 Target으로 제어 명령(`gatekeeper/arm`, `gatekeeper/force_open`) 발행<br>• 출입 이력 및 모니터링 로그 DB 저장 |
-| **Target** | **ESP32-C6 Gatekeeper** | • `GATEKEEPER_BEACON_UUID` 상시 비콘 브로드캐스팅 (외부 10~15m 반경)<br>• MQTTS 암호화 채널 수신 대기<br>• `gatekeeper/arm` 수신 시 ToF 센서 60초간 대기(Armed) 상태로 전환<br>• Armed 상태에서 ToF 50cm 이내 물리적 접근 감지 시 릴레이(GPIO 23) 1초 개방 후 COOLDOWN 전환<br>• `gatekeeper/force_open` 수신 시 ToF 감지 조건 없이 즉시 릴레이 1초 개방 |
+| **Target** | **ESP32-C6 Gatekeeper** | • `GATEKEEPER_BEACON_UUID` 상시 비콘 브로드캐스팅 (외부 10~15m 반경)<br>• MQTTS 암호화 채널 수신 대기<br>• `gatekeeper/arm` 수신 시 초음파 센서 60초간 대기(Armed) 상태로 전환<br>• Armed 상태에서 초음파 20~50cm 물리적 접근 감지 시 릴레이(GPIO 23) 1초 개방 후 COOLDOWN 전환<br>• `gatekeeper/force_open` 수신 시 초음파 감지 조건 없이 즉시 릴레이 1초 개방 |
 
 ---
 
@@ -102,9 +102,9 @@ sequenceDiagram
     Shell->>NAS: POST /api/v1/door/prearm (Bearer Token)
     NAS-->>NAS: 세입자 active 상태 검증
     NAS->>Target: MQTT Topic: gatekeeper/arm (Payload: duration=60)
-    Target->>Target: ToF 센서 대기 상태 (Armed) 전환
-    User->>Target: 출입문 50cm 이내 접근
-    Target->>Target: VL53L0X ToF 50cm 감지 -> Relay 1초 ON
+    Target->>Target: 초음파 센서 대기 상태 (Armed) 전환
+    User->>Target: 초음파 유효 범위 20~50cm 접근
+    Target->>Target: AJ-SR04T 20~50cm 감지 -> Relay 1초 ON
     Target->>NAS: MQTT Topic: gatekeeper/event (DOOR_OPENED)
 
     Note over User, Target: Step 4. 원격 Open 기능 (수동 문 열기)
@@ -112,7 +112,7 @@ sequenceDiagram
     Web->>NAS: POST /api/v1/door/open (Bearer Token)
     NAS-->>NAS: 세입자 자격 검증
     NAS->>Target: MQTT Topic: gatekeeper/force_open
-    Target->>Target: 즉시 Relay 1초 ON (ToF 조건 무시)
+    Target->>Target: 즉시 Relay 1초 ON (초음파 조건 무시)
 
     Note over User, Target: Step 5. 권한 회수 (퇴실/계약 만료)
     Admin->>NAS: 관리자 대시보드에서 권한 회수 (revoked)
@@ -140,16 +140,16 @@ sequenceDiagram
 #### **Step 3. Smart Gatekeeper 동작 (Walk-through Automatic Entry)**
 1. 현관의 **ESP32-C6 (Target)**는 `GATEKEEPER_BEACON_UUID` 비콘을 상시 브로드캐스팅(외부 10~15m)합니다.
 2. 세입자가 접근하여 Native Shell이 백그라운드에서 비콘을 감지합니다.
-3. Native Shell은 쿨다운 타이머(30초 내 재발송 금지)를 확인 후 백엔드 Pre-arm API(`POST /api/v1/door/prearm`)를 호출합니다.
+3. Native Shell은 쿨다운 타이머(기본 10초, 원격 가변)를 확인 후 백엔드 Pre-arm API(`POST /api/v1/door/prearm`)를 호출합니다.
 4. 백엔드는 토큰 및 계정 상태(`active`) 검증 후 MQTT `gatekeeper/arm` 메시지를 Target으로 하달합니다.
-5. Target은 ToF 센서를 대기(Armed, 60초) 상태로 전환합니다.
-6. 세입자가 50cm 이내로 접근하면 ToF 센서가 감지하고 릴레이를 1초간 작동시켜 도어락을 개방합니다.
+5. Target은 초음파 센서를 대기(Armed, 60초) 상태로 전환합니다.
+6. 세입자가 초음파 유효 범위 20~50cm로 접근하면 센서가 감지하고 릴레이를 1초간 작동시켜 도어락을 개방합니다.
 
 #### **Step 4. 원격 Open 기능 (Manual Remote Open)**
 1. 세입자가 WebView 화면 중앙의 **'문 열기(Force Open)'** 버튼을 수동으로 터치합니다.
 2. WebView가 백엔드 원격 개방 API(`POST /api/v1/door/open`)를 호출합니다.
 3. 백엔드는 검증 후 MQTT `gatekeeper/force_open` 메시지를 Target으로 발행합니다.
-4. Target은 ToF 거리 조건 없이 즉시 릴레이를 1초간 작동시켜 문을 열어줍니다.
+4. Target은 초음파 거리 조건 없이 즉시 릴레이를 1초간 작동시켜 문을 열어줍니다.
 
 #### **Step 5. 권한 회수 (Auth Revocation & Security Enforcement)**
 1. 계약 만료/퇴실 시 관리자가 세입자 상태를 `revoked`(권한 회수)로 변경합니다.
@@ -162,7 +162,7 @@ sequenceDiagram
 
 ### 4.1 REST API 엔드포인트 명세 (Backend FastAPI)
 
-> 💡 **주요 포인트:** `/api/v1/config` 엔드포인트는 앱 시작 시 Native Shell이 호출하여 Target의 `GATEKEEPER_BEACON_UUID`, 스캔 간격(Scan Interval), Pre-arm 쿨다운 타임(Cooldown Time) 등의 설정을 백엔드로부터 동적으로 수신합니다. 이를 통해 Target 비콘 UUID가 변경되더라도 **앱 재배포 없이 백엔드 설정 변경만으로 즉시 적용** 가능합니다.
+> 💡 **주요 포인트:** `/api/v1/config` 엔드포인트는 앱 시작 시 Native Shell이 호출하여 Target의 `GATEKEEPER_BEACON_UUID`, RSSI threshold, Pre-arm 쿨다운 등의 설정을 백엔드로부터 동적으로 수신합니다. 이를 통해 Target 비콘 UUID나 접근 감도를 변경하더라도 **앱 재배포 없이 백엔드 설정 변경만으로 즉시 적용** 가능합니다.
 
 | 엔드포인트 | Method | 인증 필요 | 설명 | 요청/응답 주요 필드 (Payload Summary) |
 |:---|:---:|:---:|:---|:---|
@@ -177,10 +177,10 @@ sequenceDiagram
 
 | 토픽 (Topic) | Direction | Payload 예시 | 설명 및 Target 동작 |
 |:---|:---:|:---|:---|
-| `gatekeeper/arm` | NAS ➔ Target | `{"user_id": 101, "duration_sec": 60}` | **ToF 활성화 (Pre-arming)**<br>Target은 ToF 센서 대기(Armed) 상태로 60초간 전환 후 50cm 감지 대기 |
-| `gatekeeper/force_open` | NAS ➔ Target | `{"user_id": 101, "reason": "manual"}` | **강제 원격 개방**<br>Target은 ToF 감지 여부와 상관없이 즉시 릴레이 1초 ON |
+| `gatekeeper/arm` | NAS ➔ Target | `{"user_id": 101, "duration_sec": 60}` | **초음파 감지 활성화 (Pre-arming)**<br>Target은 초음파 센서 대기(Armed) 상태로 60초간 전환 후 20~50cm 감지 대기 |
+| `gatekeeper/force_open` | NAS ➔ Target | `{"user_id": 101, "reason": "manual"}` | **강제 원격 개방**<br>Target은 초음파 감지 여부와 상관없이 즉시 릴레이 1초 ON |
 | `gatekeeper/status` | Target ➔ NAS | `{"state": "IDLE", "wifi_rssi": -55}` | **Target 핑/상태 보고 (매 60초)**<br>Target의 현재 FSM 상태 및 네트워크 신호 주기적 보고 |
-| `gatekeeper/event` | Target ➔ NAS | `{"event": "DOOR_OPENED", "method": "TOF"}` | **출입 발생 로그 보고**<br>ToF 또는 Force Open으로 문이 열렸을 때 백엔드로 이력 전송 |
+| `gatekeeper/event` | Target ➔ NAS | `{"event": "DOOR_OPENED", "method": "ULTRASONIC"}` | **출입 발생 로그 보고**<br>초음파 또는 Force Open으로 문이 열렸을 때 백엔드로 이력 전송 |
 
 ---
 

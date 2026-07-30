@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: mariadb:10.11
@@ -17,7 +15,7 @@ services:
       - mariadb_data:/var/lib/mysql
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$MYSQL_ROOT_PASSWORD || exit 0"]
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -52,6 +50,7 @@ services:
       # ── 모바일 앱 Remote Config ──────────────────────────────
       GATEKEEPER_BEACON_UUID: ${GATEKEEPER_BEACON_UUID:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}
       APP_COOLDOWN_SEC: ${APP_COOLDOWN_SEC:-10}
+      APP_RSSI_THRESHOLD: ${APP_RSSI_THRESHOLD:--85}
       # ── 문 제어 API 인증 키 (issue.md P3-22) ─────────────────
       # 비워 두면 키 인증이 비활성된다. 배포 순서는 .env.example 참조.
       GATEKEEPER_API_KEY: ${GATEKEEPER_API_KEY:-}

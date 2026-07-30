@@ -110,7 +110,9 @@ class FlutterBeaconScanner {
 
     try {
       if (plugin.getBeaconManager() != null) {
-        plugin.getBeaconManager().removeAllRangeNotifiers();
+        // BeaconManager 는 여러 FlutterEngine이 공유하는 application singleton이다.
+        // 다른 엔진의 notifier까지 제거하지 말고 이 scanner의 notifier만 교체한다.
+        plugin.getBeaconManager().removeRangeNotifier(rangeNotifier);
         plugin.getBeaconManager().addRangeNotifier(rangeNotifier);
         for (Region region : regionRanging) {
           plugin.getBeaconManager().startRangingBeaconsInRegion(region);
@@ -229,7 +231,8 @@ class FlutterBeaconScanner {
     }
 
     try {
-      plugin.getBeaconManager().removeAllMonitorNotifiers();
+      // 다른 FlutterEngine/라이브러리 사용자의 notifier를 보존한다.
+      plugin.getBeaconManager().removeMonitorNotifier(monitorNotifier);
       plugin.getBeaconManager().addMonitorNotifier(monitorNotifier);
       for (Region region : regionMonitoring) {
         plugin.getBeaconManager().startMonitoringBeaconsInRegion(region);

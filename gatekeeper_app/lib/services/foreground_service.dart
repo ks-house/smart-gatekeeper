@@ -15,40 +15,30 @@ SendPort? backgroundSendPort;
 
 /// 포그라운드 서비스 isolate 의 태스크 핸들러.
 ///
-/// ⚠️ **현재 실제 BLE 스캔은 이 isolate 가 아니라 UI isolate 의
-/// [BleScanner] 싱글톤에서 수행된다** (issue.md P0-4).
-///
-/// 이 서비스의 역할은 프로세스를 포그라운드 우선순위로 유지해
-/// UI isolate 의 FlutterEngine 이 살아 있게 하고, 알림을 통해 상태를
-/// 표시하는 것이다. 그 결과 다음 한계가 남는다:
-///
-/// * Activity 가 **파괴**되면 UI isolate 의 엔진도 사라져 스캔이 멈춘다.
-///   ("활동 유지 안 함" 개발자 옵션, 강한 메모리 압박, 스와이프 종료)
-/// * 화면 OFF 나 일반적인 백그라운드 전환은 Activity 를 파괴하지 않으므로
-///   영향받지 않는다.
-///
-/// 완전한 해결책은 스캐너를 이 isolate 로 옮기고 `sendDataToMain` /
-/// `sendDataToTask` 로 UI 와 통신하는 것이다(issue.md P0-4 안 A).
-/// 그때까지는 [BleScanner] 내부의 30초 워치독과 앱 복귀 훅이 안전망 역할을 한다.
+/// 실제 BLE 스캔의 유일한 소유자다. UI isolate는 이 서비스가 보내는 상태만
+/// 표시하며 flutter_beacon 네이티브 채널을 직접 시작하지 않는다.
 class GatekeeperTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
     backgroundSendPort = sendPort;
     WidgetsFlutterBinding.ensureInitialized();
     debugPrint('[ForegroundTask] 🛡️ 백그라운드 상주 포그라운드 서비스 구동 시작');
-    
+
     // UI 스레드가 아닌 이 백그라운드 스레드에서 실제 스캐너를 가동한다.
     await BleScanner().initialize();
   }
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
-    // BleScanner 내부 워치독이 스스로 돌아가므로 여기서 따로 호출하지 않아도 된다.
+    backgroundSendPort = sendPort;
+    await BleScanner().reloadSavedPreferences();
+    await BleScanner().publishServiceState();
   }
-
 
   @override
   Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {
+    await BleScanner().stopScanning();
+    backgroundSendPort = null;
     debugPrint('[ForegroundTask] 백그라운드 서비스 정지');
   }
 
@@ -59,6 +49,9 @@ class GatekeeperTaskHandler extends TaskHandler {
 }
 
 class ForegroundServiceManager {
+  static ReceivePort? _receivePort;
+  static StreamSubscription<dynamic>? _receiveSubscription;
+
   static Future<void> initForegroundTask() async {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -67,6 +60,7 @@ class ForegroundServiceManager {
         channelDescription: '화면이 꺼져도 출입문 자동 감지 서비스를 지속 유지합니다.',
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
+        isSticky: true,
         iconData: const NotificationIconData(
           resType: ResourceType.mipmap,
           resPrefix: ResourcePrefix.ic,
@@ -81,6 +75,7 @@ class ForegroundServiceManager {
         interval: 5000,
         isOnceEvent: false,
         autoRunOnBoot: true,
+        autoRunOnMyPackageReplaced: true,
         allowWakeLock: true,
         allowWifiLock: true,
       ),
@@ -89,35 +84,67 @@ class ForegroundServiceManager {
 
   static Future<void> startService() async {
     if (await FlutterForegroundTask.isRunningService) {
+      await _registerReceivePort();
       return;
     }
 
-    // 안드로이드 배터리 최적화 제외 요청 (화면 OFF / Doze 모드 극복)
-    if (Platform.isAndroid) {
-      try {
-        if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-          await FlutterForegroundTask.requestIgnoreBatteryOptimization();
-        }
-      } catch (e) {
-        debugPrint('[ForegroundServiceManager] 배터리 최적화 요청 예외 (무시 후 계속 진행): $e');
-      }
-    }
-
-    await FlutterForegroundTask.startService(
+    final started = await FlutterForegroundTask.startService(
       notificationTitle: '💤 저전력 감시 준비 중',
       notificationText: 'SmartGatekeeper 비콘 감지를 시작하고 있습니다...',
       callback: startCallback,
     );
+    if (!started) {
+      throw StateError('foreground service 시작에 실패했습니다.');
+    }
 
-    // 백그라운드 스레드에서 올라오는 이벤트를 수신하여 UI 스레드의 상태를 동기화한다.
-    FlutterForegroundTask.receivePort?.listen((data) {
-      if (data is Map<String, dynamic>) {
-        if (data['type'] == 'BleScanner') {
-          BleScanner().syncFromMain(data);
-        } else if (data['type'] == 'AppErrorLogger') {
-          AppErrorLogger().syncFromMain(data);
-        }
+    await _registerReceivePort();
+  }
+
+  static Future<void> _registerReceivePort() async {
+    final newReceivePort = FlutterForegroundTask.receivePort;
+    if (newReceivePort == null || identical(_receivePort, newReceivePort)) {
+      return;
+    }
+
+    await _receiveSubscription?.cancel();
+    _receivePort?.close();
+    _receivePort = newReceivePort;
+    _receiveSubscription = newReceivePort.listen((data) {
+      if (data is! Map) return;
+      final message = Map<String, dynamic>.from(data);
+      if (message['type'] == 'BleScanner') {
+        BleScanner().syncFromService(message);
+      } else if (message['type'] == 'AppErrorLogger') {
+        AppErrorLogger().syncFromService(message);
       }
     });
+  }
+
+  static Future<bool> ensureBatteryOptimizationExemption({
+    bool requestIfMissing = true,
+  }) async {
+    if (!Platform.isAndroid) return true;
+    try {
+      if (await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        return true;
+      }
+      if (requestIfMissing) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+      return await FlutterForegroundTask.isIgnoringBatteryOptimizations;
+    } catch (e) {
+      debugPrint('[ForegroundServiceManager] 배터리 최적화 예외 확인 실패: $e');
+      return false;
+    }
+  }
+
+  static Future<void> stopService() async {
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.stopService();
+    }
+    await _receiveSubscription?.cancel();
+    _receiveSubscription = null;
+    _receivePort?.close();
+    _receivePort = null;
   }
 }

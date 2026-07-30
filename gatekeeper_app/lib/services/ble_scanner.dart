@@ -60,6 +60,7 @@ class BleScanner {
   // AltBeacon 스캔 주기가 약 1100ms 이고 SCAN_MODE_LOW_POWER 에서는 사이클 간
   // 편차가 커진다. 단발 미수신으로 뒤집지 않고 연속 카운트로 판정한다.
   static const int _kRangingTimeoutMs = 6000;
+  static const Duration _kRangingRestartMinInterval = Duration(seconds: 10);
 
   // ── RSSI 평활 / 히스테리시스 (issue.md P2-15) ───────────────────────────
   static const double _kRssiEmaAlpha = 0.3;
@@ -76,7 +77,8 @@ class BleScanner {
   // ── 워치독 (issue.md P0-4 부분) ─────────────────────────────────────────
   static const Duration _kWatchdogInterval = Duration(seconds: 30);
 
-  static const String _kDefaultBeaconUuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+  static const String _kDefaultBeaconUuid =
+      'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   static final RegExp _kUuidPattern = RegExp(
       r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
 
@@ -94,28 +96,32 @@ class BleScanner {
 
   String targetBeaconUuid = _kDefaultBeaconUuid;
   bool ignoreCooldown = false;
-  int rssiThreshold = -75;
+  int rssiThreshold = -85;
   int cooldownSeconds = 10;
 
   /// 사용자가 쿨다운을 직접 조정한 적이 있으면 원격 설정이 덮어쓰지 않는다.
   /// (issue.md P1-12)
   bool _cooldownOverriddenByUser = false;
+  bool _rssiThresholdOverriddenByUser = false;
 
   // ── UI 바인딩용 알림자 ───────────────────────────────────────────────────
   final ValueNotifier<int?> liveRssi = ValueNotifier<int?>(null);
   final ValueNotifier<double?> smoothedRssi = ValueNotifier<double?>(null);
-  final ValueNotifier<DateTime?> lastRssiUpdateTime = ValueNotifier<DateTime?>(null);
+  final ValueNotifier<DateTime?> lastRssiUpdateTime =
+      ValueNotifier<DateTime?>(null);
   final ValueNotifier<int> packetCount = ValueNotifier<int>(0);
   final ValueNotifier<bool> isBeaconConnected = ValueNotifier<bool>(false);
-  final ValueNotifier<ScanMode> modeNotifier = ValueNotifier<ScanMode>(ScanMode.stopped);
+  final ValueNotifier<ScanMode> modeNotifier =
+      ValueNotifier<ScanMode>(ScanMode.stopped);
   final ValueNotifier<ScanDiagnostics> diagnostics =
-      ValueNotifier<ScanDiagnostics>(ScanDiagnostics.unknown(_kDefaultBeaconUuid));
+      ValueNotifier<ScanDiagnostics>(
+          ScanDiagnostics.unknown(_kDefaultBeaconUuid));
 
   // ── 내부 상태 ────────────────────────────────────────────────────────────
   ScannerState _currentState = ScannerState.stopped;
   ScanMode _mode = ScanMode.stopped;
-  bool _debugForced = false;
   bool _backgroundTuningApplied = false;
+  bool _ownsNativeScanner = false;
 
   StreamSubscription<MonitoringResult>? _streamMonitoring;
   StreamSubscription<RangingResult>? _streamRanging;
@@ -140,6 +146,7 @@ class BleScanner {
   DateTime? _lastEnterRegionAt;
   DateTime? _lastExitRegionAt;
   DateTime? _lastRangingCallbackAt;
+  DateTime? _lastRangingRestartAt;
   int _rangingCallbackCount = 0;
   String? _lastScanError;
 
@@ -154,7 +161,6 @@ class BleScanner {
 
   bool get isScanning => _mode != ScanMode.stopped;
   ScanMode get mode => _mode;
-  bool get isDebugForced => _debugForced;
 
   List<Region> get _regions => <Region>[
         Region(identifier: 'SmartGatekeeper', proximityUUID: targetBeaconUuid),
@@ -189,9 +195,12 @@ class BleScanner {
     try {
       final prefs = await SharedPreferences.getInstance();
       ignoreCooldown = prefs.getBool('ignore_cooldown') ?? false;
-      rssiThreshold = prefs.getInt('rssi_threshold') ?? -75;
+      rssiThreshold = prefs.getInt('rssi_threshold') ?? -85;
       cooldownSeconds = prefs.getInt('cooldown_seconds') ?? 10;
-      _cooldownOverriddenByUser = prefs.getBool('cooldown_seconds_user_set') ?? false;
+      _cooldownOverriddenByUser =
+          prefs.getBool('cooldown_seconds_user_set') ?? false;
+      _rssiThresholdOverriddenByUser =
+          prefs.getBool('rssi_threshold_user_set') ?? false;
     } catch (e) {
       debugPrint('[BleScanner] SharedPreferences 로드 실패: $e');
     }
@@ -219,12 +228,55 @@ class BleScanner {
 
   Future<void> setRssiThreshold(int value) async {
     rssiThreshold = value;
+    _rssiThresholdOverriddenByUser = true;
     // 임계값이 바뀌면 히스테리시스 상태를 다시 판정해야 한다.
     _aboveThreshold = false;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('rssi_threshold', value);
+      await prefs.setBool('rssi_threshold_user_set', true);
     } catch (_) {}
+  }
+
+  /// UI isolate에서 저장한 설정을 서비스 isolate에 반영한다.
+  Future<void> reloadSavedPreferences() async {
+    final previousRssi = rssiThreshold;
+    final previousCooldown = cooldownSeconds;
+    final previousIgnoreCooldown = ignoreCooldown;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      ignoreCooldown =
+          prefs.getBool('ignore_cooldown') ?? previousIgnoreCooldown;
+
+      _cooldownOverriddenByUser =
+          prefs.getBool('cooldown_seconds_user_set') ?? false;
+      if (_cooldownOverriddenByUser) {
+        cooldownSeconds = prefs.getInt('cooldown_seconds') ?? previousCooldown;
+      }
+
+      _rssiThresholdOverriddenByUser =
+          prefs.getBool('rssi_threshold_user_set') ?? false;
+      if (_rssiThresholdOverriddenByUser) {
+        rssiThreshold = prefs.getInt('rssi_threshold') ?? previousRssi;
+      }
+    } catch (e) {
+      debugPrint('[BleScanner] 서비스 설정 동기화 실패: $e');
+    }
+
+    if (previousRssi != rssiThreshold) {
+      _aboveThreshold = false;
+    }
+    if (previousRssi != rssiThreshold ||
+        previousCooldown != cooldownSeconds ||
+        previousIgnoreCooldown != ignoreCooldown) {
+      AppErrorLogger().log(
+        '⚙️ 앱 설정 동기화: RSSI $rssiThreshold dBm, '
+        '쿨다운 ${cooldownSeconds}s, 무시=$ignoreCooldown',
+      );
+      await refreshDiagnostics();
+      _syncToUi();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -234,6 +286,7 @@ class BleScanner {
   /// 스캔을 네트워크에 블로킹시키지 않는다 (issue.md P2-18).
   /// 원격 설정과 업데이트 확인은 스캔이 시작된 뒤 백그라운드로 진행한다.
   Future<void> initialize() async {
+    _ownsNativeScanner = true;
     await loadSavedPreferences();
     await startScanning();
     // 의도적으로 await 하지 않는다.
@@ -254,7 +307,8 @@ class BleScanner {
     }
   }
 
-  static bool _isValidBeaconUuid(String value) => _kUuidPattern.hasMatch(value.trim());
+  static bool _isValidBeaconUuid(String value) =>
+      _kUuidPattern.hasMatch(value.trim());
 
   Future<void> fetchRemoteConfig() async {
     try {
@@ -274,7 +328,8 @@ class BleScanner {
           final normalized = rawUuid.trim().toLowerCase();
           if (normalized != targetBeaconUuid) {
             targetBeaconUuid = normalized;
-            AppErrorLogger().log('원격 설정으로 Target UUID 변경 → 스캔 재시작 ($normalized)');
+            AppErrorLogger()
+                .log('원격 설정으로 Target UUID 변경 → 스캔 재시작 ($normalized)');
             // Region 이 바뀌었으므로 반드시 재구독해야 한다.
             await startScanning(forceRestart: true);
           }
@@ -290,6 +345,14 @@ class BleScanner {
         cooldownSeconds = remoteCooldown.toInt();
       }
 
+      final remoteRssiThreshold = data['rssi_threshold'];
+      if (remoteRssiThreshold is num && !_rssiThresholdOverriddenByUser) {
+        final candidate = remoteRssiThreshold.toInt();
+        rssiThreshold =
+            candidate < -100 ? -100 : (candidate > -30 ? -30 : candidate);
+        _aboveThreshold = false;
+      }
+
       final apkVersionUrl = data['apk_version_url']?.toString();
       final apkDownloadUrl = data['apk_download_url']?.toString();
       if (apkVersionUrl != null && apkVersionUrl.isNotEmpty) {
@@ -298,6 +361,8 @@ class BleScanner {
           customDownloadUrl: apkDownloadUrl,
         );
       }
+      await refreshDiagnostics();
+      _syncToUi();
     } catch (e) {
       debugPrint('[BleScanner] Remote Config 로드 실패 (기본값 사용): $e');
     }
@@ -350,7 +415,8 @@ class BleScanner {
     bool batteryExempt = false;
     bool serviceRunning = false;
     try {
-      batteryExempt = await FlutterForegroundTask.isIgnoringBatteryOptimizations;
+      batteryExempt =
+          await FlutterForegroundTask.isIgnoringBatteryOptimizations;
     } catch (_) {}
     try {
       serviceRunning = await FlutterForegroundTask.isRunningService;
@@ -367,7 +433,7 @@ class BleScanner {
       ignoringBatteryOptimizations: batteryExempt,
       foregroundServiceRunning: serviceRunning,
       mode: _mode,
-      debugForced: _debugForced,
+      debugForced: false,
       monitoringSubscribed: _streamMonitoring != null,
       rangingSubscribed: _streamRanging != null,
       backgroundScanTuningApplied: _backgroundTuningApplied,
@@ -397,7 +463,7 @@ class BleScanner {
     required String text,
     bool force = false,
   }) {
-    final key = '$title $text';
+    final key = '$title|$text';
     final now = DateTime.now();
 
     if (!force) {
@@ -439,6 +505,13 @@ class BleScanner {
 
   Future<void> startScanning({bool forceRestart = false}) {
     return _synchronized('startScanning', () async {
+      if (!_ownsNativeScanner) {
+        AppErrorLogger().logError(
+          'UI isolate의 직접 스캔 시작을 차단했습니다. '
+          'BLE 스캔 소유자는 foreground-service isolate 하나뿐입니다.',
+        );
+        return;
+      }
       if (_mode != ScanMode.stopped && !forceRestart) return;
 
       await _teardownStreamsLocked();
@@ -494,13 +567,6 @@ class BleScanner {
       _setMode(ScanMode.idle);
       _notifyIdleWatching();
 
-      // 디버그 화면이 열린 상태에서 재시작된 경우(예: 워치독 복구) ranging 강제
-      // 유지를 복원해야 한다. 그러지 않으면 화면은 열려 있는데 RSSI 가 멈춘다.
-      if (_debugForced) {
-        _subscribeRangingLocked();
-        _setMode(ScanMode.active);
-      }
-
       _startWatchdog();
       await refreshDiagnostics();
     });
@@ -508,6 +574,7 @@ class BleScanner {
 
   Future<void> stopScanning() {
     return _synchronized('stopScanning', () async {
+      if (!_ownsNativeScanner) return;
       _watchdogTimer?.cancel();
       _watchdogTimer = null;
       await _teardownStreamsLocked();
@@ -554,7 +621,7 @@ class BleScanner {
     } catch (_) {}
   }
 
-  void _syncToMain() {
+  void _syncToUi() {
     try {
       backgroundSendPort?.send({
         'type': 'BleScanner',
@@ -565,27 +632,64 @@ class BleScanner {
         'mode': _mode.name,
         'state': _currentState.name,
         'lastRssiUpdateTime': lastRssiUpdateTime.value?.toIso8601String(),
+        'targetBeaconUuid': targetBeaconUuid,
+        'rssiThreshold': rssiThreshold,
+        'cooldownSeconds': cooldownSeconds,
+        'ignoreCooldown': ignoreCooldown,
+        'diagnostics': diagnostics.value.toMap(),
       });
     } catch (_) {}
   }
 
-  void syncFromMain(Map<String, dynamic> data) {
-    if (data['liveRssi'] != null) liveRssi.value = data['liveRssi'];
-    if (data['smoothedRssi'] != null) smoothedRssi.value = data['smoothedRssi'];
-    if (data['packetCount'] != null) packetCount.value = data['packetCount'];
-    if (data['isBeaconConnected'] != null) isBeaconConnected.value = data['isBeaconConnected'];
-    if (data['lastRssiUpdateTime'] != null) lastRssiUpdateTime.value = DateTime.tryParse(data['lastRssiUpdateTime']);
-    
+  void syncFromService(Map<String, dynamic> data) {
+    liveRssi.value = (data['liveRssi'] as num?)?.toInt();
+    smoothedRssi.value = (data['smoothedRssi'] as num?)?.toDouble();
+    if (data['packetCount'] is num) {
+      packetCount.value = (data['packetCount'] as num).toInt();
+    }
+    if (data['isBeaconConnected'] is bool) {
+      isBeaconConnected.value = data['isBeaconConnected'] as bool;
+    }
+    lastRssiUpdateTime.value = data['lastRssiUpdateTime'] is String
+        ? DateTime.tryParse(data['lastRssiUpdateTime'] as String)
+        : null;
+    if (data['targetBeaconUuid'] is String) {
+      targetBeaconUuid = data['targetBeaconUuid'] as String;
+    }
+    if (data['rssiThreshold'] is num) {
+      rssiThreshold = (data['rssiThreshold'] as num).toInt();
+    }
+    if (data['cooldownSeconds'] is num) {
+      cooldownSeconds = (data['cooldownSeconds'] as num).toInt();
+    }
+    if (data['ignoreCooldown'] is bool) {
+      ignoreCooldown = data['ignoreCooldown'] as bool;
+    }
+
     final modeStr = data['mode'] as String?;
     if (modeStr != null) {
-      _mode = ScanMode.values.firstWhere((e) => e.name == modeStr, orElse: () => ScanMode.stopped);
+      _mode = ScanMode.values
+          .firstWhere((e) => e.name == modeStr, orElse: () => ScanMode.stopped);
       modeNotifier.value = _mode;
     }
-    
+
     final stateStr = data['state'] as String?;
     if (stateStr != null) {
-      _currentState = ScannerState.values.firstWhere((e) => e.name == stateStr, orElse: () => ScannerState.stopped);
+      _currentState = ScannerState.values.firstWhere((e) => e.name == stateStr,
+          orElse: () => ScannerState.stopped);
     }
+
+    final diagnosticsData = data['diagnostics'];
+    if (diagnosticsData is Map) {
+      diagnostics.value =
+          ScanDiagnostics.fromMap(diagnosticsData, targetBeaconUuid);
+    }
+  }
+
+  Future<void> publishServiceState() async {
+    if (!_ownsNativeScanner) return;
+    await refreshDiagnostics();
+    _syncToUi();
   }
 
   /// 화면 OFF 상태에서도 스캔 결과를 받기 위한 설정 (issue.md P0-2).
@@ -650,6 +754,9 @@ class BleScanner {
         debugPrint('[BleScanner] ⚠️ Monitoring stream error: $error');
         AppErrorLogger().logError('Monitoring 스트림 오류', error, stack);
         _lastScanError = 'monitoring: $error';
+        _streamMonitoring = null;
+        // ignore: unawaited_futures
+        startScanning(forceRestart: true);
       },
     );
   }
@@ -686,13 +793,19 @@ class BleScanner {
       text = 'Target 비콘 구역 진입 대기 중...';
     } else if (_mode == ScanMode.active) {
       final now = DateTime.now();
-      
-      final isCooldown = !ignoreCooldown && _nextPrearmAllowedAt != null && now.isBefore(_nextPrearmAllowedAt!);
-      final isRecentArm = _lastArmSuccessTime != null && now.difference(_lastArmSuccessTime!).inMilliseconds < _kRecentArmSuppressMs;
-      
+
+      final isCooldown = !ignoreCooldown &&
+          _nextPrearmAllowedAt != null &&
+          now.isBefore(_nextPrearmAllowedAt!);
+      final isRecentArm = _lastArmSuccessTime != null &&
+          now.difference(_lastArmSuccessTime!).inMilliseconds <
+              _kRecentArmSuppressMs;
+
       final last = lastRssiUpdateTime.value;
-      final isStale = last == null 
-          ? (_lastEnterRegionAt != null && now.difference(_lastEnterRegionAt!).inMilliseconds > _kRangingTimeoutMs)
+      final isStale = last == null
+          ? (_lastEnterRegionAt != null &&
+              now.difference(_lastEnterRegionAt!).inMilliseconds >
+                  _kRangingTimeoutMs)
           : now.difference(last).inMilliseconds > _kRangingTimeoutMs;
 
       if (isRecentArm) {
@@ -700,7 +813,9 @@ class BleScanner {
         newState = ScannerState.cooldown;
       } else if (isCooldown) {
         newState = ScannerState.cooldown;
-        final remainSec = (_nextPrearmAllowedAt!.difference(now).inMilliseconds / 1000).ceil();
+        final remainSec =
+            (_nextPrearmAllowedAt!.difference(now).inMilliseconds / 1000)
+                .ceil();
         title = '⏳ 출입 쿨다운 대기 중 ($remainSec초)';
         text = 'Target 비콘 감지됨 — 연속 개방 방지 대기 중';
         force = true; // 초 단위 카운트다운을 위해 강제 갱신
@@ -712,7 +827,8 @@ class BleScanner {
         newState = ScannerState.activeWeak;
         final ema = _smoothedRssiValue ?? liveRssi.value?.toDouble() ?? 0.0;
         title = '🟡 Target 비콘 신호 약함 (${liveRssi.value} dBm)';
-        text = '센서 근접 필요 (평활 ${ema.toStringAsFixed(1)} dBm / 기준 $rssiThreshold dBm)';
+        text =
+            '센서 근접 필요 (평활 ${ema.toStringAsFixed(1)} dBm / 기준 $rssiThreshold dBm)';
       } else {
         newState = ScannerState.activeConnected;
         title = '🟢 Target 비콘 감지됨 (RSSI: ${liveRssi.value} dBm)';
@@ -721,23 +837,27 @@ class BleScanner {
     }
 
     if (_currentState != newState) {
-      AppErrorLogger().log('[BleScanner State] ${_currentState.name} ➡️ ${newState.name}');
+      AppErrorLogger()
+          .log('[BleScanner State] ${_currentState.name} ➡️ ${newState.name}');
       _currentState = newState;
     }
 
-    _syncToMain();
+    _syncToUi();
 
     // isRecentArm 일 때는 기존 "승인 완료" 알림을 유지하기 위해 업데이트를 건너뛴다.
-    if (newState == ScannerState.cooldown && _lastArmSuccessTime != null && 
-        DateTime.now().difference(_lastArmSuccessTime!).inMilliseconds < _kRecentArmSuppressMs) {
+    if (newState == ScannerState.cooldown &&
+        _lastArmSuccessTime != null &&
+        DateTime.now().difference(_lastArmSuccessTime!).inMilliseconds <
+            _kRecentArmSuppressMs) {
       return;
     }
 
     // 서버 통신 오류(401, 403, 500 등)로 인해 특별한 알림이 떠있는 경우도 덮어쓰지 않는다.
     // _isPrearmInProgress 가 끝난 직후 에러 상태를 2초 정도 유지한다.
-    final bool isRecentError = _lastPrearmAt != null && 
-        _lastPrearmStatusCode != 200 && 
-        DateTime.now().difference(_lastPrearmAt!).inMilliseconds < _kRecentArmSuppressMs;
+    final bool isRecentError = _lastPrearmAt != null &&
+        _lastPrearmStatusCode != 200 &&
+        DateTime.now().difference(_lastPrearmAt!).inMilliseconds <
+            _kRecentArmSuppressMs;
     if (isRecentError) {
       return;
     }
@@ -774,6 +894,9 @@ class BleScanner {
         debugPrint('[BleScanner] ⚠️ Ranging stream error: $error');
         AppErrorLogger().logError('Ranging 스트림 오류', error, stack);
         _lastScanError = 'ranging: $error';
+        _streamRanging = null;
+        // ignore: unawaited_futures
+        _restartRanging(reason: 'ranging stream 오류');
       },
     );
 
@@ -782,6 +905,7 @@ class BleScanner {
 
   Future<void> _enterActiveMode({required String reason}) {
     return _synchronized('enterActive($reason)', () async {
+      if (!_ownsNativeScanner) return;
       if (_mode == ScanMode.stopped) return;
 
       _subscribeRangingLocked();
@@ -793,13 +917,8 @@ class BleScanner {
 
   Future<void> _enterIdleMode({required String reason}) {
     return _synchronized('enterIdle($reason)', () async {
+      if (!_ownsNativeScanner) return;
       if (_mode == ScanMode.stopped) return;
-
-      if (_debugForced) {
-        // 디버그 화면을 보고 있는 동안에는 강등하지 않는다.
-        AppErrorLogger().log('🔧 디버그 강제 모드 — IDLE 강등 보류 ($reason)');
-        return;
-      }
 
       _timeoutTimer?.cancel();
       _timeoutTimer = null;
@@ -815,23 +934,6 @@ class BleScanner {
     });
   }
 
-  /// 디버그 화면 진입 — IDLE 이어도 ranging 을 강제로 유지한다.
-  Future<void> enterDebugMode() async {
-    _debugForced = true;
-    if (_mode == ScanMode.stopped) {
-      await startScanning();
-    }
-    await _enterActiveMode(reason: '디버그 화면 진입');
-  }
-
-  /// 디버그 화면 이탈 — 신호가 없으면 저전력 모드로 돌아간다.
-  Future<void> exitDebugMode() async {
-    _debugForced = false;
-    if (!isBeaconConnected.value) {
-      await _enterIdleMode(reason: '디버그 화면 이탈');
-    }
-  }
-
   // ═══════════════════════════════════════════════════════════════════════
   // 신호 소실 감시 (issue.md P1-6)
   // ═══════════════════════════════════════════════════════════════════════
@@ -841,43 +943,50 @@ class BleScanner {
     _timeoutTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       final last = lastRssiUpdateTime.value;
       final now = DateTime.now();
-      
-      final isStale = last == null 
-          ? (_lastEnterRegionAt != null && now.difference(_lastEnterRegionAt!).inMilliseconds > _kRangingTimeoutMs)
+
+      final isStale = last == null
+          ? (_lastEnterRegionAt != null &&
+              now.difference(_lastEnterRegionAt!).inMilliseconds >
+                  _kRangingTimeoutMs)
           : now.difference(last).inMilliseconds > _kRangingTimeoutMs;
 
       // 타임아웃(6초 초과) 발생 시 처리
       if (isStale && (isBeaconConnected.value || liveRssi.value != null)) {
         _resetSignalState();
-        debugPrint('[BleScanner] ⚠️ Target 비콘 신호 미수신 (${_kRangingTimeoutMs}ms 초과)');
-        AppErrorLogger().log('⚠️ ranging 신호 미수신 (${_kRangingTimeoutMs}ms 초과). 네이티브 구역 이탈(didExitRegion) 대기 중...');
+        debugPrint(
+            '[BleScanner] ⚠️ Target 비콘 신호 미수신 (${_kRangingTimeoutMs}ms 초과)');
+        AppErrorLogger().log(
+            '⚠️ ranging 신호 미수신 (${_kRangingTimeoutMs}ms 초과). 네이티브 구역 이탈(didExitRegion) 대기 중...');
       }
 
-      // 4층 등 물리적으로 신호가 불가능한 곳에서 앱을 켰을 때, 
-      // 디버그 모드가 켜져있더라도 IDLE 강등을 막으면 상태가 영원히 ACTIVE(계측 중)에 빠지게 된다.
-      // 이를 방지하기 위해 isStale 이고 초기 패킷 유실 상태면 디버그 여부와 상관없이 IDLE 로 강등한다.
-      if (isStale && last == null && _mode == ScanMode.active) {
-        AppErrorLogger().log('🔧 초기 패킷 완전 유실 감지 — IDLE 모드로 강제 복귀하여 리셋 유도');
-        _setMode(ScanMode.idle);
-        _streamRanging?.cancel();
-        _streamRanging = null;
-      }
-
-      // OS의 didExitRegion 이벤트가 누락되는 고질적인 문제 대응 (issue.md P1-6)
-      // 회사에 도착했는데도 "구역 내에 있지만 신호가 약합니다"라고 뜨는 현상 방지
+      // native region 은 여전히 INSIDE 일 수 있으므로 ranging 무수신을 이유로
+      // IDLE 로 내리면 다음 didEnterRegion 이 오지 않아 영구 정지할 수 있다.
+      // ACTIVE 를 유지한 채 ranging 구독만 안전하게 재생성한다.
       if (isStale && _mode == ScanMode.active) {
-        final staleDurationMs = last == null 
-            ? now.difference(_lastEnterRegionAt ?? now).inMilliseconds
-            : now.difference(last).inMilliseconds;
-            
-        if (staleDurationMs > 30000) {
-          AppErrorLogger().log('🔧 신호 완전 유실 30초 경과 — OS 구역 이탈 누락으로 간주, IDLE 모드 강제 복귀');
-          _setMode(ScanMode.idle);
-          _streamRanging?.cancel();
-          _streamRanging = null;
+        final canRestart = _lastRangingRestartAt == null ||
+            now.difference(_lastRangingRestartAt!) >=
+                _kRangingRestartMinInterval;
+        if (canRestart) {
+          _lastRangingRestartAt = now;
+          // ignore: unawaited_futures
+          _restartRanging(reason: '신호 무수신 자동 복구');
         }
       }
 
+      _syncStateAndNotify();
+    });
+  }
+
+  Future<void> _restartRanging({required String reason}) {
+    return _synchronized('restartRanging($reason)', () async {
+      if (!_ownsNativeScanner || _mode != ScanMode.active) return;
+
+      final ranging = _streamRanging;
+      _streamRanging = null;
+      await ranging?.cancel();
+      _subscribeRangingLocked();
+      AppErrorLogger().log('🔄 ranging 구독 재생성 완료 ($reason)');
+      await refreshDiagnostics();
       _syncStateAndNotify();
     });
   }
@@ -890,8 +999,9 @@ class BleScanner {
     if (beacon.proximityUUID.isEmpty) return;
 
     // UUID 정규화 (하이픈 제거 + 소문자). 네이티브는 대문자로 올려준다.
-    final String cleanBeaconUuid =
-        beacon.proximityUUID.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+    final String cleanBeaconUuid = beacon.proximityUUID
+        .replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')
+        .toLowerCase();
     final String cleanTargetUuid =
         targetBeaconUuid.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
 
@@ -903,6 +1013,7 @@ class BleScanner {
     // ── 표시용: 순간값 ──────────────────────────────────────────────────
     liveRssi.value = rssi;
     lastRssiUpdateTime.value = DateTime.now();
+    _lastRangingRestartAt = null;
     isBeaconConnected.value = true;
     packetCount.value++;
 
@@ -912,7 +1023,7 @@ class BleScanner {
         : (_kRssiEmaAlpha * rssi + (1 - _kRssiEmaAlpha) * _smoothedRssiValue!);
     _smoothedRssiValue = ema;
     smoothedRssi.value = ema;
-    _syncToMain();
+    _syncToUi();
 
     if (_isPrearmInProgress) return;
 
@@ -972,16 +1083,38 @@ class BleScanner {
       _lastPrearmStatusCode = response.statusCode;
 
       if (response.statusCode == 200) {
-        _lastArmSuccessTime = DateTime.now();
-        _lastPrearmMessage = '승인 완료';
-        // 성공했을 때만 정상 쿨다운을 적용한다.
-        _nextPrearmAllowedAt =
-            DateTime.now().add(Duration(seconds: cooldownSeconds));
-        _updateNotification(
-          title: '🟢 Smart Key 출입문 승인 완료!',
-          text: 'Target 비콘 감지 ($rssi dBm) → 센서로 다가가면 문이 열립니다!',
-          force: true,
-        );
+        Map<String, dynamic>? responseData;
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map<String, dynamic>) responseData = decoded;
+        } catch (_) {}
+
+        final mqttPublished = responseData?['mqtt_published'] == true;
+        final armed = responseData?['result'] == 'armed';
+        if (armed && mqttPublished) {
+          _lastArmSuccessTime = DateTime.now();
+          _lastPrearmMessage = '승인 완료 · MQTT 발행 확인';
+          // 성공했을 때만 정상 쿨다운을 적용한다.
+          _nextPrearmAllowedAt =
+              DateTime.now().add(Duration(seconds: cooldownSeconds));
+          _updateNotification(
+            title: '🟢 Smart Key 출입문 승인 완료!',
+            text: 'Target 비콘 감지 ($rssi dBm) → 센서로 다가가면 문이 열립니다!',
+            force: true,
+          );
+        } else {
+          _lastPrearmMessage = '서버 승인 응답 오류 또는 MQTT 미발행';
+          _scheduleFailureRetry();
+          AppErrorLogger().logError(
+            'Pre-arm 응답은 HTTP 200이지만 MQTT 발행이 확인되지 않았습니다',
+            response.body,
+          );
+          _updateNotification(
+            title: '⚠️ 출입 승인 전달 실패',
+            text: '서버가 Target에 승인 명령을 전달하지 못했습니다. 재시도합니다.',
+            force: true,
+          );
+        }
       } else if (response.statusCode == 401) {
         // 앱 빌드의 API 키가 서버 설정과 다르다 — 재설치/업데이트가 필요하다.
         _lastPrearmMessage = 'API 키 인증 실패 (401)';
@@ -1037,8 +1170,8 @@ class BleScanner {
   /// 실패 시에는 전체 쿨다운(최대 30초)이 아니라 짧은 재시도 간격만 적용한다.
   /// 문 앞에 선 사용자를 수십 초 기다리게 하지 않기 위한 것이다.
   void _scheduleFailureRetry() {
-    _nextPrearmAllowedAt =
-        DateTime.now().add(const Duration(milliseconds: _kPrearmFailureRetryMs));
+    _nextPrearmAllowedAt = DateTime.now()
+        .add(const Duration(milliseconds: _kPrearmFailureRetryMs));
   }
 
   // ═══════════════════════════════════════════════════════════════════════
