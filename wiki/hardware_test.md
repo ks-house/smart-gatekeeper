@@ -1,51 +1,44 @@
-# 하드웨어 테스트 결과 (hardware_test.md)
+# hardware_test.md — 테스트 증거와 현재 검증 상태
+> Last updated: 2026-07-30 (historical evidence separated from current architecture)
 
-ESP32-C6 기반 ToF 센서, 릴레이, Wi-Fi, HTTPS NAS 백엔드, MQTTS HA Auto-Discovery, BLE 5.0 스마트 쿨다운 리셋 및 무선 OTA 무선 통합 테스트 기록 문서입니다.
+## 1. 판정 원칙
 
----
+과거 VL53L0X/ESP32 BLE scanner 아키텍처의 PASS는 변경 이력으로 보존하지만, 현재 **iBeacon → Android → FastAPI → MQTT → AJ-SR04T → Relay** 경로의 합격 근거로 간주하지 않습니다. 소프트웨어 빌드 통과와 실기기 E2E 통과도 분리합니다.
 
-## 1. 테스트 이력 종합 (Test History Matrix)
+## 2. 현재 코드 기준 검증표
 
-| Test ID | 구분 | 대상 | 검증 내용 | 결과 | 비고 |
-|:---:|:---:|:---:|:---|:---:|:---|
-| **#1** | Unit | ToF VL53L0X | I2C (SDA:6, SCL:7) 400kHz 연속 거리 측정 | 🟢 PASS | 20mm~1200mm 정상 측정 |
-| **#2** | Unit | Relay Module | GPIO23 INPUT-HighZ 트릭 릴레이 토글 | 🟢 PASS | 5V Active-LOW 모듈 상시 ON 우회 성공 |
-| **#3** | E2E | HTTPS NAS Auth | ToF 50cm 감지 -> NAS REST API POST -> 릴레이 ON | 🟢 PASS | HTTP 200 / granted:true 수신 즉시 스위칭 |
-| **#4** | Network | Captive Portal | AP 모드(`SmartGatekeeper-Setup`) NVS 저장 | 🟢 PASS | 브라우저 팝업 Wi-Fi 저장 및 자동 재접속 |
-| **#5** | Security | MQTTS (4883) | Let's Encrypt Root CA Certificate Pinning | 🟢 PASS | TLS 4883 포트 보안 접속 및 텔레메트리 발행 |
-| **#6** | IoT | HA Auto-Discovery | Home Assistant 6개 엔티티 (RSSI 슬라이더 포함) 자동 검색 | 🟢 PASS | `open_gate`, `ota_update`, `reboot`, `ble_rssi_threshold` 슬라이더 완벽 동작 |
-| **#7** | OTA | GitHub CI/CD OTA | GitHub Push -> SFTP 업로드 -> ESP32-C6 무선 업데이트 | 🟢 PASS | `1.0.0-g<sha>` 동적 버전 오버라이드 및 무선 플래싱 완벽 통과 |
-| **#8** | BLE | BLE + ToF FSM | BLE 5.0 선인증 & 문 주변 상주 시 동적 쿨다운 리셋 | 🟢 PASS | 문 주변 상주 중 중복 릴레이 연타 차단 & 이탈 시 3초 후 복귀 |
+| 영역 | 마지막 증거 | 판정 | 비고 |
+|---|---|---|---|
+| Flutter format/analyze/unit test | 2026-07-30 Docker, 5 tests | 🟢 PASS | Flutter 3.44.8 / Dart 3.12.2 |
+| Android release APK build | 2026-07-30 Docker | 🟢 PASS | 당시 APK SHA-256은 `wiki/log.md` 기록 참조 |
+| Backend syntax/Compose config | 2026-07-30 | 🟢 PASS | 실 broker/DB E2E와는 별개 |
+| ESP32 current HEAD build | 최신 문서 재분석 시 재실행 필요 | 🟡 PENDING | pioarduino 의존성 포함 |
+| iBeacon raw UUID/interval | 실측 없음 | 🔴 REQUIRED | nRF Connect/btmon으로 manufacturer payload 확인 |
+| 화면 OFF·앱 swipe-away 접근 | 실기기 없음 | 🔴 REQUIRED | force-stop은 지원 불가 |
+| Backend MQTT QoS1 PUBACK fail-closed | 코드/단위 정적 확인 | 🟡 DEVICE/BROKER TEST | 성공 200, 실패 503 확인 |
+| AJ-SR04T 거리·ghost filter | 과거 현장 로그 존재 | 🟡 RE-TEST | 현재 전체 경로에서 20–50 cm 재검증 |
+| 릴레이 High-Z OFF/노이즈 내성 | freeze 이력 있음 | 🔴 REQUIRED | 전원 재인가 없이 반복 동작 확인 |
+| Wi-Fi/BLE coexistence | watchdog 수정됨 | 🔴 REQUIRED | 장기 soak test 필요 |
+| OTA rollback/16 MB partition | 과거 OTA 성공 기록 | 🟡 RE-TEST | current artifact와 양 슬롯 검증 |
 
----
+## 3. 현재 E2E 인수 절차
 
-## 2. Step 3 & Step 4 통합 E2E 테스트 검증 보고
+1. 보드 부팅 후 Wi-Fi, MQTT TLS, iBeacon 광고를 동시에 확인합니다.
+2. 광고 payload의 `4C 00 02 15` 뒤 UUID 16바이트와 100 ms interval을 캡처합니다.
+3. 승인/미승인 Android 기기로 화면 ON, 화면 OFF, task swipe-away를 각각 시험합니다.
+4. 승인 요청 성공 시 서버가 QoS 1 PUBACK을 받은 경우에만 HTTP 200과 `mqtt_published=true`를 반환하는지 확인합니다.
+5. ARMED 동안 20 cm 미만은 무시되고 20–50 cm 접근은 릴레이를 정확히 1초 구동하는지 확인합니다.
+6. 기본 3초 cooldown, 60초 arm expiry, 중복 요청 억제를 검증합니다.
+7. MQTT 단절, NAS 단절, 잘못된 API key에서 문이 열리지 않고 앱이 진단 가능한 오류를 표시하는지 확인합니다.
+8. 최소 100회 릴레이 반복과 24시간 Wi-Fi/BLE soak 동안 freeze/reset/광고 중단 여부를 기록합니다.
 
-```
-+-----------------------------------------------------------------------------------+
-|                            E2E Integration Test Flow                              |
-+-----------------------------------------------------------------------------------+
-| 1. BLE 5.0 Scanner       --> 128-bit UUID & RSSI >= -80dBm 비동기 선인증           |
-| 2. ToF Sensor (GPIO6/7)  --> 50cm 이내 진입 감지                                   |
-| 3. WiFiClientSecure      --> HTTPS POST https://tworimpa.synology.me:4442/verify  |
-| 4. FastAPI Backend       --> MariaDB 세입자 검증 (HTTP 200, granted: true)          |
-| 5. Relay Drive (GPIO23)  --> 릴레이 1000ms ON (Active-LOW LOW) -> OFF (INPUT HighZ) |
-| 6. Smart Cooldown        --> 문 주변 상주 시 쿨다운 지속 리셋 (이탈 시 3초 후 IDLE)   |
-| 7. MQTTS (4883 TLS)      --> HA Auto-Discovery & smart-gatekeeper/status 텔레메트리|
-| 8. OTA Updater           --> GitHub CI -> NAS SFTP -> ESP32-C6 무선 업그레이드     |
-+-----------------------------------------------------------------------------------+
-```
+## 4. 과거 검증 이력
 
-### 파라미터 구성 (`include/config.h`)
+| 날짜 | 당시 아키텍처 | 결과 | 현재 적용 범위 |
+|---|---|---|---|
+| 2026-07-24 | VL53L0X + relay Local PoC | PASS | 릴레이/보드 초기 PoC 이력만 인정 |
+| 2026-07-24 | ESP32 → NAS HTTPS → relay | PASS | 현재 역할 반전 흐름과 다름 |
+| 2026-07-24 | MQTTS/HA/OTA 통합 | PASS | 인프라 선행 증거, current regression 필요 |
+| 2026-07-28 이후 | AJ-SR04T 필터·모바일 beacon 수정 | 코드 변경 다수 | 최신 통합 실기기 재검증 필요 |
 
-| 항목 | 설정값 | 비고 |
-|---|---|---|
-| `DISTANCE_THRESHOLD_MM` | `500` (mm) | ToF 트리거 임계값 |
-| `BLE_RSSI_THRESHOLD` | `-80` (dBm) | BLE 수신 인지 임계값 |
-| `BLE_VALID_MS` | `10000` (ms) | BLE 인증 신호 유효 인정 시간 |
-| `RELAY_HOLD_MS` | `1000` (ms) | 릴레이 유지 시간 |
-| `COOLDOWN_MS` | `3000` (ms) | 이탈 후 복귀 대기 시간 |
-| `API_URL` | `https://tworimpa.synology.me:4442/api/v1/auth/verify` | 자격 검증 API |
-
-### 🏆 결론
-타겟 보드(ESP32-C6 N16)에서 ToF 거리 센서, Wi-Fi 캡티브 포털, 시놀로지 NAS HTTPS 백엔드 연동, MQTTS Home Assistant Auto Discovery, BLE 5.0 선인증 & 스마트 쿨다운 리셋 FSM 및 무선 OTA 파이프라인까지 **전체 통합 시스템 테스트가 100% 정상 완수**되었습니다.
+새 하드웨어 결과는 날짜, firmware commit, 앱 build, 환경, 반복 횟수, 원시 로그/캡처 위치와 함께 이 표에 추가합니다.

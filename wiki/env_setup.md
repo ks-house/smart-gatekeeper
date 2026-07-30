@@ -1,241 +1,79 @@
-# env_setup.md — 개발 환경 세팅 가이드
-> Phase: Step 1 (Local PoC)
-> Last updated: 2026-06-27
+# env_setup.md — 현재 개발·빌드 환경
+> Last updated: 2026-07-30 (current-code audit)
 
----
+## 1. 펌웨어
 
-## 1. 툴체인 선택: PlatformIO (VS Code)
+- MCU: ESP32-C6-DevKitC-1 N16 (RISC-V, 16 MB flash)
+- PlatformIO platform: pioarduino stable ZIP
+- Framework: Arduino
+- 환경: `esp32c6` 하나
+- 파티션: `partitions_16MB_ota.csv` (dual OTA)
+- 라이브러리: ArduinoJson 6.21.x, PubSubClient 2.8; BLE 헤더는 Arduino-ESP32 코어 제공
 
-> **결정 근거**: Arduino IDE 대비 PlatformIO는 의존성 관리(`platformio.ini`), 다중 타깃 빌드, CI 친화적 구조를 제공한다. 이미 `smartbox` 프로젝트에서 PlatformIO를 사용 중이므로 일관성을 유지한다.
-
-### 설치 순서
-
-```
-1. VS Code 설치 (https://code.visualstudio.com)
-2. Extension: PlatformIO IDE 설치
-3. Extension: C/C++ (Microsoft) 설치
-```
-
-> ⚠️ Arduino IDE를 반드시 써야 한다면 → [별첨 A: Arduino IDE 세팅](#별첨-a-arduino-ide-세팅) 참조
-
----
-
-## 2. platformio.ini 구성
-
-> ⚠️ **ESP32-C6는 공식 `espressif32` 플랫폼이 아닌 `pioarduino` 커뮤니티 fork를 사용해야 한다.**
-> 공식 플랫폼은 ESP32-C6의 Arduino 3.x 코어를 지원하지 않아 빌드가 불가능하다.
-
-```ini
-[platformio]
-default_envs = esp32c6
-
-[common]
-; pioarduino: ESP32-C6 Arduino 3.x 코어 지원하는 커뮤니티 fork
-platform      = https://github.com/pioarduino/platform-espressif32/releases/download/stable/platform-espressif32.zip
-board         = esp32-c6-devkitc-1
-framework     = arduino
-monitor_speed = 115200
-build_flags   =
-    -DCORE_DEBUG_LEVEL=3
-    -Wall
-    ; ESP32-C6 Native USB CDC 활성화 (없으면 시리얼 모니터 안 열림)
-    -DARDUINO_USB_CDC_ON_BOOT=1
-    -DARDUINO_USB_MODE=1
-lib_deps      =
-    pololu/VL53L0X @ ^1.3.1
-
-; 통합 빌드 (기본)
-[env:esp32c6]
-platform      = ${common.platform}
-board         = ${common.board}
-framework     = ${common.framework}
-monitor_speed = ${common.monitor_speed}
-build_flags   = ${common.build_flags}
-lib_deps      = ${common.lib_deps}
-
-; ToF 단독 테스트
-[env:tof_test]
-platform      = ${common.platform}
-board         = ${common.board}
-framework     = ${common.framework}
-monitor_speed = ${common.monitor_speed}
-build_flags   =
-    ${common.build_flags}
-    -DTEST_TOF_ONLY
-lib_deps      = ${common.lib_deps}
-
-; 릴레이 단독 테스트
-[env:relay_test]
-platform      = ${common.platform}
-board         = ${common.board}
-framework     = ${common.framework}
-monitor_speed = ${common.monitor_speed}
-build_flags   =
-    ${common.build_flags}
-    -DTEST_RELAY_ONLY
-lib_deps      = ${common.lib_deps}
+```bash
+cp include/secrets.h.example include/secrets.h  # 실제 값 입력, 커밋 금지
+pio run -e esp32c6
+pio run -e esp32c6 -t upload
+pio device monitor -b 115200
 ```
 
----
+`include/secrets.h`에는 Wi-Fi, API, MQTT, OTA 주소와 TLS Root CA가 필요합니다. CI는 GitHub Secrets로 이 파일을 생성하고 `FIRMWARE_VERSION_OVERRIDE`를 주입합니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재 `platformio.ini`에 없습니다.
 
-## 3. 라이브러리 선택 근거
+## 2. 백엔드
 
-### VL53L0X 라이브러리 비교
+요구사항은 Docker + Compose입니다. `backend/docker-compose.yml`이 MariaDB 10.11과 FastAPI 컨테이너을 구성합니다.
 
-| 라이브러리 | 저자 | 크기 | 특이사항 |
-|-----------|------|------|---------|
-| `pololu/VL53L0X` ✅ | Pololu | 경량 | 순수 C++, ST HAL 불필요, ESP32 완전 호환 |
-| `adafruit/Adafruit_VL53L0X` | Adafruit | 중간 | ST HAL 래핑, 추가 의존성 있음 |
-| ST 공식 API | ST Micro | 대형 | HAL 포팅 필요, 임베디드 전문가용 |
-
-**선택: `pololu/VL53L0X`** — 코드가 단순하고 ESP32 I2C와 직접 연동, 예외처리가 명확함.
-
----
-
-## 4. 프로젝트 디렉토리 구조
-
-```
-smart-gatekeeper/
-├── platformio.ini
-├── src/
-│   ├── main.cpp                ← 진입점 (빌드 플래그로 테스트 모드 전환)
-│   ├── ToFSensor.cpp           ← VL53L0X 드라이버 구현
-│   └── RelayController.cpp    ← 릴레이 드라이버 구현
-├── include/
-│   ├── config.h               ← 핀 상수 및 전역 설정 (하드코딩 금지)
-│   ├── ToFSensor.h
-│   └── RelayController.h
-└── wiki/ raw/ schema.md       ← 위키
+```bash
+cd backend
+cp .env.example .env
+# DB/MQTT/GATEKEEPER_API_KEY 값을 운영 환경에 맞게 설정
+docker compose config
+docker compose up -d --build
+docker compose ps
 ```
 
----
+`GATEKEEPER_API_KEY`를 활성화하면 앱도 같은 키로 빌드해야 합니다. MQTT TLS 여부와 broker 주소는 backend `.env`, Target TLS CA와 포트는 `include/secrets.h`에서 각각 설정하므로 서로 일치시켜야 합니다.
 
-## 5. 빌드 환경별 업로드 명령
+## 3. Android 앱
 
-| 환경 | 명령 | 설명 |
-|------|------|------|
-| 통합 빌드 | `pio run -e esp32c6 -t upload` | ToF + Relay 통합 데모 |
-| ToF 단독 | `pio run -e tof_test -t upload` | ToF 센서 단독 테스트 |
-| 릴레이 단독 | `pio run -e relay_test -t upload` | 릴레이 단독 테스트 |
-| 시리얼 모니터 | `pio device monitor --baud 115200` | 로그 출력 확인 |
+앱은 Flutter/Dart 3, Java 17, Android SDK/NDK가 필요하며 로컬 fork `gatekeeper_app/android/app/libs/flutter_beacon_local`을 path dependency로 사용합니다. 재현 가능한 검증은 Docker builder를 권장합니다.
 
----
-
-## 6. 첫 빌드 확인 체크리스트
-
-- [ ] `pio run -e esp32c6` 실행 시 컴파일 오류 없음
-- [ ] `pio device monitor` 로 시리얼 연결 확인 (115200 baud)
-- [ ] `pio lib list` 에서 `VL53L0X` 확인
-- [ ] 시리얼 모니터에 `smart-gatekeeper — Step 1 PoC` 출력 확인
-
----
-
-## 별첨 A: Arduino IDE 세팅
-
-PlatformIO 없이 Arduino IDE 2.x를 사용하는 경우:
-
-> ⚠️ ESP32-C6는 `esp32 by Espressif Systems` **v3.x** 이상이 필요하다. v2.x는 C6 미지원.
-
-1. File → Preferences → Additional boards manager URLs:
-   ```
-   https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-   ```
-2. Tools → Board → Boards Manager → `esp32 by Espressif Systems` 설치 (**v3.x** 권장)
-3. Sketch → Library Manager → `VL53L0X by Pololu` 검색 후 설치
-4. Tools → Board → `ESP32C6 Dev Module` 선택
-5. Tools → Port → 해당 COM 포트 선택
-6. Tools → USB CDC On Boot → `Enabled` (시리얼 모니터 활성화 필수)
-
-
----
-
-## 1. 툴체인 선택: PlatformIO (VS Code)
-
-> **결정 근거**: Arduino IDE 대비 PlatformIO는 의존성 관리(`platformio.ini`), 다중 타깃 빌드, CI 친화적 구조를 제공한다. 이미 `smartbox` 프로젝트에서 PlatformIO를 사용 중이므로 일관성을 유지한다.
-
-### 설치 순서
-
-```
-1. VS Code 설치 (https://code.visualstudio.com)
-2. Extension: PlatformIO IDE 설치
-3. Extension: C/C++ (Microsoft) 설치
+```bash
+cd gatekeeper_app
+docker compose build flutter-builder
+docker compose run --rm flutter-builder flutter pub get
+docker compose run --rm flutter-builder dart format --output=none --set-exit-if-changed lib test
+docker compose run --rm flutter-builder dart analyze lib test
+docker compose run --rm flutter-builder flutter test
 ```
 
-> ⚠️ Arduino IDE를 반드시 써야 한다면 → [별첨 A: Arduino IDE 세팅](#별첨-a-arduino-ide-세팅) 참조
+운영 APK는 release keystore와 다음 dart define이 필요합니다.
 
----
-
-## 2. platformio.ini 구성
-
-```ini
-[env:esp32dev]
-platform  = espressif32
-board     = esp32dev
-framework = arduino
-
-; 시리얼 모니터 속도
-monitor_speed = 115200
-
-; 필수 라이브러리
-lib_deps =
-    pololu/VL53L0X @ ^1.3.1   ; ToF 거리 센서 드라이버 (순수 C++, HAL 불필요)
-
-; 빌드 플래그 (strict warnings)
-build_flags =
-    -DCORE_DEBUG_LEVEL=3
-    -Wall
+```bash
+flutter build apk --release \
+  --dart-define=GATEKEEPER_API_KEY='<backend와 동일한 값>' \
+  --dart-define=APK_VERSION_URL='<version.json URL>' \
+  --dart-define=APK_DOWNLOAD_URL='<APK URL>'
 ```
 
----
+`BACKEND_URL`은 코드 기본값이 있지만 환경별 빌드에서는 명시적으로 주입하는 편이 안전합니다.
 
-## 3. 라이브러리 선택 근거
+## 4. CI/CD 동작
 
-### VL53L0X 라이브러리 비교
+| Workflow | Trigger | 결과 |
+|---|---|---|
+| `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드, firmware/version JSON, NAS SFTP 배포 |
+| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter analyze/release APK, NAS SFTP, Actions artifact |
 
-| 라이브러리 | 저자 | 크기 | 특이사항 |
-|-----------|------|------|---------|
-| `pololu/VL53L0X` ✅ | Pololu | 경량 | 순수 C++, ST HAL 불필요, ESP32 완전 호환 |
-| `adafruit/Adafruit_VL53L0X` | Adafruit | 중간 | ST HAL 래핑, 추가 의존성 있음 |
-| ST 공식 API | ST Micro | 대형 | HAL 포팅 필요, 임베디드 전문가용 |
+앱 workflow는 PR/feature branch에서 운영 NAS 배포가 실행되지 않도록 trigger와 job 조건을 모두 둡니다. 펌웨어 workflow는 현재 `main`의 모든 push에 배포되므로 문서-only 변경도 운영 배포를 촉발할 수 있다는 점을 운영 정책에서 검토해야 합니다.
 
-**선택: `pololu/VL53L0X`** — 코드가 단순하고 ESP32 I2C와 직접 연동, 예외처리가 명확함.
+## 5. 릴리스 전 체크
 
----
-
-## 4. 프로젝트 디렉토리 초기화
-
-```
-smart-gatekeeper/
-├── platformio.ini
-├── src/
-│   ├── main.cpp          ← 진입점 (빌드 환경별 조건부 컴파일)
-│   ├── ToFSensor.h/.cpp  ← VL53L0X 드라이버 래퍼
-│   └── RelayController.h/.cpp
-├── include/
-│   └── config.h          ← 핀 상수 및 전역 설정
-└── wiki/ raw/ schema.md  ← 위키
-```
-
----
-
-## 5. 첫 빌드 확인 체크리스트
-
-- [ ] `pio run` 실행 시 컴파일 오류 없음
-- [ ] `pio device monitor` 로 시리얼 연결 확인 (115200 baud)
-- [ ] `pio lib list` 에서 `VL53L0X` 확인
-
----
-
-## 별첨 A: Arduino IDE 세팅
-
-PlatformIO 없이 Arduino IDE 2.x를 사용하는 경우:
-
-1. File → Preferences → Additional boards manager URLs:
-   ```
-   https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-   ```
-2. Tools → Board → Boards Manager → `esp32 by Espressif Systems` 설치 (v2.x 권장)
-3. Sketch → Library Manager → `VL53L0X by Pololu` 검색 후 설치
-4. Tools → Board → `ESP32 Dev Module` 선택
-5. Tools → Port → 해당 COM 포트 선택
-6. Tools → Upload Speed → `921600`
+- [ ] `pio run -e esp32c6`
+- [ ] `docker compose config` (backend)
+- [ ] Dart format/analyze/test
+- [ ] Android release APK 서명 빌드
+- [ ] iBeacon raw payload UUID 순서·100 ms 간격 실측
+- [ ] 화면 OFF, task swipe-away, OEM 절전 정책별 접근 시험
+- [ ] MQTT PUBACK 실패 시 HTTP 503 및 앱 재시도 확인
+- [ ] ECHO 5V → 3.3V 레벨 시프터와 릴레이 절연 확인
