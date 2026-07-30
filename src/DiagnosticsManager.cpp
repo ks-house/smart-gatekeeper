@@ -33,7 +33,7 @@ struct RtcBreadcrumb {
 RTC_NOINIT_ATTR RtcBreadcrumb rtcBreadcrumb;
 
 RtcBreadcrumb previousBreadcrumb = {};
-bool previousBreadcrumbValid = false;
+bool previousBreadcrumbIsValid = false;
 
 char targetIdValue[16] = "unknown";
 char bootIdValue[20] = "unknown";
@@ -153,8 +153,8 @@ void inspectCoreDump() {
 void DiagnosticsManager::begin() {
   resetReasonValue = esp_reset_reason();
 
-  previousBreadcrumbValid = isBreadcrumbValid(rtcBreadcrumb);
-  if (previousBreadcrumbValid) {
+  previousBreadcrumbIsValid = isBreadcrumbValid(rtcBreadcrumb);
+  if (previousBreadcrumbIsValid) {
     previousBreadcrumb = rtcBreadcrumb;
   }
 
@@ -184,7 +184,7 @@ void DiagnosticsManager::begin() {
       bootIdValue, targetIdValue, static_cast<unsigned long>(bootCountValue),
       resetReason(), resetReasonCode(),
       plannedRestartValue[0] ? plannedRestartValue : "none",
-      previousBreadcrumbValid ? "true" : "false", coreDumpStatusValue,
+      previousBreadcrumbIsValid ? "true" : "false", coreDumpStatusValue,
       static_cast<unsigned int>(coreDumpSizeValue));
 }
 
@@ -255,32 +255,32 @@ const char* DiagnosticsManager::plannedRestartReason() {
 }
 
 bool DiagnosticsManager::previousBreadcrumbValid() {
-  return previousBreadcrumbValid;
+  return previousBreadcrumbIsValid;
 }
 
 uint32_t DiagnosticsManager::previousUptimeMs() {
-  return previousBreadcrumbValid ? previousBreadcrumb.uptimeMs : 0;
+  return previousBreadcrumbIsValid ? previousBreadcrumb.uptimeMs : 0;
 }
 
 const char* DiagnosticsManager::previousState() {
-  return previousBreadcrumbValid ? previousBreadcrumb.state : "unknown";
+  return previousBreadcrumbIsValid ? previousBreadcrumb.state : "unknown";
 }
 
 const char* DiagnosticsManager::previousAction() {
-  return previousBreadcrumbValid ? previousBreadcrumb.action : "unknown";
+  return previousBreadcrumbIsValid ? previousBreadcrumb.action : "unknown";
 }
 
 bool DiagnosticsManager::previousArmed() {
-  return previousBreadcrumbValid && previousBreadcrumb.isArmed != 0;
+  return previousBreadcrumbIsValid && previousBreadcrumb.isArmed != 0;
 }
 
 bool DiagnosticsManager::previousRelayCommandedOn() {
-  return previousBreadcrumbValid &&
+  return previousBreadcrumbIsValid &&
          previousBreadcrumb.relayCommandedOn != 0;
 }
 
 int DiagnosticsManager::previousRelayPinLevel() {
-  return previousBreadcrumbValid ? previousBreadcrumb.relayPinLevel : -1;
+  return previousBreadcrumbIsValid ? previousBreadcrumb.relayPinLevel : -1;
 }
 
 uint32_t DiagnosticsManager::mqttConnectCount() {
