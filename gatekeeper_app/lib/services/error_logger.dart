@@ -68,7 +68,7 @@ class AppErrorLogger {
     latestError.value = null;
   }
 
-  void syncFromMain(Map<String, dynamic> data) {
+  void syncFromService(Map<String, dynamic> data) {
     if (data['action'] == 'log' || data['action'] == 'logError') {
       final String? message = data['message'];
       if (message != null) {

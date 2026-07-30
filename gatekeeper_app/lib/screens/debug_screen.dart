@@ -35,19 +35,12 @@ class _DebugScreenState extends State<DebugScreen> {
   @override
   void initState() {
     super.initState();
-    // 화면을 보고 있는 동안에는 RSSI 계측(ranging)을 강제로 유지한다.
-    // 예전에는 여기서 startScanning(forceRestart: true)를 호출했는데,
-    // ranging 스트림이 취소된 뒤 재구독되지 않아 RSSI가 영구히 멈췄다.
-    _scanner.enterDebugMode();
     // 현재 서버/Target에 적용된 실시간 튜닝 설정값 로드
     _fetchAdminConfig();
-    _scanner.refreshDiagnostics();
   }
 
   @override
   void dispose() {
-    // 저전력 감시 모드로 복귀 (신호가 계속 잡히는 중이면 ACTIVE 유지)
-    _scanner.exitDebugMode();
     super.dispose();
   }
 
@@ -58,9 +51,7 @@ class _DebugScreenState extends State<DebugScreen> {
 
     try {
       final url = Uri.parse('${_scanner.backendBaseUrl}/admin/config');
-      final response = await http
-          .get(url)
-          .timeout(const Duration(seconds: 5));
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -84,8 +75,10 @@ class _DebugScreenState extends State<DebugScreen> {
               _appliedRelayCooldownMs = _relayCooldownMs;
             }
             final now = DateTime.now();
-            _lastSyncTimeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-            _targetResponseMsg = '🔄 최신 실시간 설정 동기화 완료 ($_lastSyncTimeStr)\n[적용 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
+            _lastSyncTimeStr =
+                '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+            _targetResponseMsg =
+                '🔄 최신 실시간 설정 동기화 완료 ($_lastSyncTimeStr)\n[적용 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
           });
         }
       }
@@ -120,14 +113,14 @@ class _DebugScreenState extends State<DebugScreen> {
               'duration': _durationMs.toInt(),
               'relay_cooldown': _relayCooldownMs.toInt(),
             }),
-
           )
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final now = DateTime.now();
 
-        final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+        final timeStr =
+            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
         if (!mounted) return;
         setState(() {
           _appliedTxPower = _selectedTxPower;
@@ -135,12 +128,14 @@ class _DebugScreenState extends State<DebugScreen> {
           _appliedDurationMs = _durationMs;
           _appliedRelayCooldownMs = _relayCooldownMs;
           _lastSyncTimeStr = timeStr;
-          _targetResponseMsg = '✅ Target 파라미터 NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
+          _targetResponseMsg =
+              '✅ Target 파라미터 NVS 영구 저장 & MQTT 2Way 동기화 완료! ($timeStr)\n[NVS 저장 상태] Tx: ${_appliedTxPower}dBm | ToF: ${_appliedTofDistanceCm.round()}cm | Duration: ${(_appliedDurationMs / 1000).round()}s | Relay Cooldown: ${(_appliedRelayCooldownMs / 1000).toStringAsFixed(1)}s';
         });
       } else {
         if (!mounted) return;
         setState(() {
-          _targetResponseMsg = '❌ 실패 (HTTP ${response.statusCode}): ${response.body}';
+          _targetResponseMsg =
+              '❌ 실패 (HTTP ${response.statusCode}): ${response.body}';
         });
       }
     } catch (e) {
@@ -157,7 +152,6 @@ class _DebugScreenState extends State<DebugScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,14 +163,17 @@ class _DebugScreenState extends State<DebugScreen> {
         actions: [
           IconButton(
             icon: _isFetching
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyanAccent))
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.cyanAccent))
                 : const Icon(Icons.refresh, color: Colors.cyanAccent),
             tooltip: '최신 튜닝 설정 새로고침',
             onPressed: _isFetching ? null : _fetchAdminConfig,
           ),
         ],
       ),
-
       body: SafeArea(
         bottom: true,
         child: SingleChildScrollView(
@@ -184,35 +181,33 @@ class _DebugScreenState extends State<DebugScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ─── SECTION 1: 실시간 RSSI 모니터 ───────────────────
+              _buildRssiMonitorCard(),
 
-            // ─── SECTION 1: 실시간 RSSI 모니터 ───────────────────
-            _buildRssiMonitorCard(),
+              const SizedBox(height: 16),
 
-            const SizedBox(height: 16),
+              // ─── SECTION 1-B: 스캔 진단 패널 ────────────────────
+              _buildDiagnosticsCard(),
 
-            // ─── SECTION 1-B: 스캔 진단 패널 ────────────────────
-            _buildDiagnosticsCard(),
+              const SizedBox(height: 16),
 
-            const SizedBox(height: 16),
+              // ─── SECTION 2: 로컬 파라미터 조절 UI ─────────────────
+              _buildLocalConfigCard(),
 
-            // ─── SECTION 2: 로컬 파라미터 조절 UI ─────────────────
-            _buildLocalConfigCard(),
+              const SizedBox(height: 16),
 
-            const SizedBox(height: 16),
+              // ─── SECTION 3: Target 원격 제어 UI ─────────────────
+              _buildTargetRemoteControlCard(),
 
-            // ─── SECTION 3: Target 원격 제어 UI ─────────────────
-            _buildTargetRemoteControlCard(),
+              const SizedBox(height: 16),
 
-            const SizedBox(height: 16),
-
-            // ─── SECTION 4: 실시간 이벤트 & 에러 콘솔 UI ──────────────
-            _buildAppLogConsoleCard(),
-          ],
+              // ─── SECTION 4: 실시간 이벤트 & 에러 콘솔 UI ──────────────
+              _buildAppLogConsoleCard(),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-
+    );
   }
 
   Widget _buildRssiMonitorCard() {
@@ -266,7 +261,8 @@ class _DebugScreenState extends State<DebugScreen> {
 
         return Card(
           color: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -276,18 +272,25 @@ class _DebugScreenState extends State<DebugScreen> {
                   children: [
                     const Text(
                       '📡 실시간 비콘 RSSI 모니터',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: badgeColor.withOpacity(0.2),
+                        color: badgeColor.withValues(alpha: 0.2),
                         border: Border.all(color: badgeColor),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         badgeText,
-                        style: TextStyle(color: badgeColor, fontSize: 12, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            color: badgeColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -298,7 +301,9 @@ class _DebugScreenState extends State<DebugScreen> {
                   style: TextStyle(
                     fontSize: (isConnected && rssi != null) ? 48 : 36,
                     fontWeight: FontWeight.bold,
-                    color: (isConnected && rssi != null) ? Colors.cyanAccent : Colors.redAccent,
+                    color: (isConnected && rssi != null)
+                        ? Colors.cyanAccent
+                        : Colors.redAccent,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -326,7 +331,8 @@ class _DebugScreenState extends State<DebugScreen> {
 
         return Card(
           color: const Color(0xFF1E1E1E),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -337,12 +343,22 @@ class _DebugScreenState extends State<DebugScreen> {
                   children: [
                     const Text(
                       '🩺 스캔 진단',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.refresh, size: 18, color: Colors.cyanAccent),
-                      tooltip: '진단 새로고침',
-                      onPressed: () => _scanner.refreshDiagnostics(),
+                      icon: const Icon(Icons.refresh,
+                          size: 18, color: Colors.cyanAccent),
+                      tooltip: '서비스 상태는 5초마다 자동 갱신됩니다',
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('서비스 진단 상태는 5초마다 자동 갱신됩니다.'),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -368,25 +384,32 @@ class _DebugScreenState extends State<DebugScreen> {
                 _buildCheckRow('위치 권한', d.locationWhenInUse, blocking: true),
                 _buildCheckRow('백그라운드 위치 권한', d.locationAlways),
                 if (d.requiresRuntimeBluetoothPermission) ...[
-                  _buildCheckRow('BLUETOOTH_SCAN 권한', d.bluetoothScan, blocking: true),
+                  _buildCheckRow('BLUETOOTH_SCAN 권한', d.bluetoothScan,
+                      blocking: true),
                   _buildCheckRow('BLUETOOTH_CONNECT 권한', d.bluetoothConnect),
                 ],
                 _buildCheckRow('알림 권한', d.notification),
                 _buildCheckRow('블루투스 ON', d.bluetoothOn, blocking: true),
-                _buildCheckRow('위치 서비스(GPS) ON', d.locationServicesOn, blocking: true),
+                _buildCheckRow('위치 서비스(GPS) ON', d.locationServicesOn,
+                    blocking: true),
                 _buildCheckRow('배터리 최적화 예외', d.ignoringBatteryOptimizations),
                 _buildCheckRow('포그라운드 서비스 실행', d.foregroundServiceRunning),
-                _buildCheckRow('화면 OFF 대응 스캔 설정', d.backgroundScanTuningApplied),
+                _buildCheckRow(
+                    '화면 OFF 대응 스캔 설정', d.backgroundScanTuningApplied),
                 const Divider(color: Colors.white10),
-                _buildCheckRow('monitoring 구독', d.monitoringSubscribed, blocking: true),
+                _buildCheckRow('monitoring 구독', d.monitoringSubscribed,
+                    blocking: true),
                 _buildCheckRow('ranging 구독', d.rangingSubscribed),
                 const SizedBox(height: 8),
-                _buildInfoRow('현재 모드', d.mode.label + (d.debugForced ? ' · 디버그 강제' : '')),
+                _buildInfoRow(
+                    '현재 모드', d.mode.label + (d.debugForced ? ' · 디버그 강제' : '')),
                 _buildInfoRow('Target UUID', d.targetBeaconUuid),
-                _buildInfoRow('Android SDK', d.androidSdkInt == 0 ? '미확인' : '${d.androidSdkInt}'),
+                _buildInfoRow('Android SDK',
+                    d.androidSdkInt == 0 ? '미확인' : '${d.androidSdkInt}'),
                 _buildInfoRow('마지막 구역 진입', _formatTime(d.lastEnterRegionAt)),
                 _buildInfoRow('마지막 구역 이탈', _formatTime(d.lastExitRegionAt)),
-                _buildInfoRow('마지막 ranging 콜백', _formatTime(d.lastRangingCallbackAt)),
+                _buildInfoRow(
+                    '마지막 ranging 콜백', _formatTime(d.lastRangingCallbackAt)),
                 _buildInfoRow('ranging 콜백 누적', '${d.rangingCallbackCount}회'),
                 _buildInfoRow(
                   '마지막 Pre-arm',
@@ -416,8 +439,8 @@ class _DebugScreenState extends State<DebugScreen> {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        border: Border.all(color: color.withOpacity(0.5)),
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -425,11 +448,13 @@ class _DebugScreenState extends State<DebugScreen> {
         children: [
           Text(
             title,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.bold, color: color),
           ),
           const SizedBox(height: 4),
           ...reasons.map(
-            (r) => Text('· $r', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+            (r) => Text('· $r',
+                style: const TextStyle(fontSize: 11, color: Colors.white70)),
           ),
         ],
       ),
@@ -442,20 +467,27 @@ class _DebugScreenState extends State<DebugScreen> {
       child: Row(
         children: [
           Icon(
-            ok ? Icons.check_circle : (blocking ? Icons.cancel : Icons.warning_amber_rounded),
+            ok
+                ? Icons.check_circle
+                : (blocking ? Icons.cancel : Icons.warning_amber_rounded),
             size: 14,
-            color: ok ? Colors.greenAccent : (blocking ? Colors.redAccent : Colors.amberAccent),
+            color: ok
+                ? Colors.greenAccent
+                : (blocking ? Colors.redAccent : Colors.amberAccent),
           ),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+            child: Text(label,
+                style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ),
           Text(
             ok ? 'OK' : (blocking ? '차단' : '경고'),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
-              color: ok ? Colors.greenAccent : (blocking ? Colors.redAccent : Colors.amberAccent),
+              color: ok
+                  ? Colors.greenAccent
+                  : (blocking ? Colors.redAccent : Colors.amberAccent),
             ),
           ),
         ],
@@ -471,7 +503,8 @@ class _DebugScreenState extends State<DebugScreen> {
         children: [
           SizedBox(
             width: 130,
-            child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            child: Text(label,
+                style: const TextStyle(fontSize: 11, color: Colors.grey)),
           ),
           Expanded(
             child: SelectableText(
@@ -491,8 +524,6 @@ class _DebugScreenState extends State<DebugScreen> {
         '${time.second.toString().padLeft(2, '0')}';
   }
 
-
-
   Widget _buildLocalConfigCard() {
     return Card(
       color: const Color(0xFF1E1E1E),
@@ -504,24 +535,29 @@ class _DebugScreenState extends State<DebugScreen> {
           children: [
             const Text(
               '📱 앱 로컬 동작 파라미터 조절',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
             ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('동적 RSSI Threshold:', style: TextStyle(color: Colors.white70)),
+                const Text('동적 RSSI Threshold:',
+                    style: TextStyle(color: Colors.white70)),
                 Text(
                   '${_scanner.rssiThreshold} dBm',
-                  style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.cyanAccent, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             Slider(
-              value: _scanner.rssiThreshold.toDouble(),
-              min: -90.0,
+              value: _scanner.rssiThreshold.clamp(-100, -30).toDouble(),
+              min: -100.0,
               max: -30.0,
-              divisions: 60,
+              divisions: 70,
               activeColor: Colors.cyan,
               label: '${_scanner.rssiThreshold} dBm',
               onChanged: (val) {
@@ -534,10 +570,12 @@ class _DebugScreenState extends State<DebugScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('모바일 앱 비콘 API 쿨다운:', style: TextStyle(color: Colors.white70)),
+                const Text('모바일 앱 비콘 API 쿨다운:',
+                    style: TextStyle(color: Colors.white70)),
                 Text(
                   '${_scanner.cooldownSeconds} 초',
-                  style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.amberAccent, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -558,9 +596,10 @@ class _DebugScreenState extends State<DebugScreen> {
             ),
             const Divider(color: Colors.white10),
             CheckboxListTile(
-              title: const Text('스마트 쿨다운 무시 (Ignore Cooldown)', style: TextStyle(color: Colors.white, fontSize: 14)),
-              subtitle: Text('체크 시 문 열기 직후에도 쿨다운 없이 비콘 API 연타 가능', style: TextStyle(color: Colors.grey, fontSize: 12)),
-
+              title: const Text('스마트 쿨다운 무시 (Ignore Cooldown)',
+                  style: TextStyle(color: Colors.white, fontSize: 14)),
+              subtitle: const Text('체크 시 문 열기 직후에도 쿨다운 없이 비콘 API 연타 가능',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
               value: _scanner.ignoreCooldown,
               activeColor: Colors.amber.shade800,
               onChanged: (val) {
@@ -569,13 +608,11 @@ class _DebugScreenState extends State<DebugScreen> {
                 });
               },
             ),
-
           ],
         ),
       ),
     );
   }
-
 
   Widget _buildTargetRemoteControlCard() {
     return Card(
@@ -588,14 +625,17 @@ class _DebugScreenState extends State<DebugScreen> {
           children: [
             const Text(
               '🎯 Target (ESP32-C6) 원격 튜닝',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
             ),
             const SizedBox(height: 12),
             _buildActiveTargetStatusBox(),
             const SizedBox(height: 16),
-
             const SizedBox(height: 16),
-            const Text('1. BLE Tx Power 출력:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            const Text('1. BLE Tx Power 출력:',
+                style: TextStyle(color: Colors.white70, fontSize: 13)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -606,7 +646,8 @@ class _DebugScreenState extends State<DebugScreen> {
                   selected: isSelected,
                   selectedColor: Colors.cyan,
                   backgroundColor: Colors.grey.shade800,
-                  labelStyle: TextStyle(color: isSelected ? Colors.black : Colors.white),
+                  labelStyle: TextStyle(
+                      color: isSelected ? Colors.black : Colors.white),
                   onSelected: (selected) {
                     if (selected) {
                       setState(() {
@@ -621,8 +662,11 @@ class _DebugScreenState extends State<DebugScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('2. 초음파 감지 기준 거리:', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                Text('${_tofDistanceCm.round()} cm', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+                const Text('2. 초음파 감지 기준 거리:',
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Text('${_tofDistanceCm.round()} cm',
+                    style: const TextStyle(
+                        color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
               ],
             ),
             Slider(
@@ -638,13 +682,16 @@ class _DebugScreenState extends State<DebugScreen> {
                 });
               },
             ),
-
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('3. Pre-arm 무장 유지 시간:', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                Text('${(_durationMs / 1000).toStringAsFixed(1)} 초 (${_durationMs.round()} ms)', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+                const Text('3. Pre-arm 무장 유지 시간:',
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Text(
+                    '${(_durationMs / 1000).toStringAsFixed(1)} 초 (${_durationMs.round()} ms)',
+                    style: const TextStyle(
+                        color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
               ],
             ),
             Slider(
@@ -664,8 +711,12 @@ class _DebugScreenState extends State<DebugScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('4. Target 릴레이 쿨다운:', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                Text('${(_relayCooldownMs / 1000).toStringAsFixed(1)} 초 (${_relayCooldownMs.round()} ms)', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+                const Text('4. Target 릴레이 쿨다운:',
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Text(
+                    '${(_relayCooldownMs / 1000).toStringAsFixed(1)} 초 (${_relayCooldownMs.round()} ms)',
+                    style: const TextStyle(
+                        color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
               ],
             ),
             Slider(
@@ -682,20 +733,28 @@ class _DebugScreenState extends State<DebugScreen> {
               },
             ),
             const SizedBox(height: 16),
-
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _isFetching ? null : _fetchAdminConfig,
                     icon: _isFetching
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.cyan))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.cyan))
                         : const Icon(Icons.sync, color: Colors.cyan),
-                    label: const Text('현재 설정 불러오기', style: TextStyle(color: Colors.cyan, fontSize: 13, fontWeight: FontWeight.bold)),
+                    label: const Text('현재 설정 불러오기',
+                        style: TextStyle(
+                            color: Colors.cyan,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold)),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Colors.cyan),
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ),
@@ -704,20 +763,26 @@ class _DebugScreenState extends State<DebugScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _isSending ? null : _sendAdminConfig,
                     icon: _isSending
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.black))
                         : const Icon(Icons.send),
-                    label: const Text('Target 파라미터 전송', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    label: const Text('Target 파라미터 전송',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.cyan,
                       foregroundColor: Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
                 ),
               ],
             ),
-
             if (_targetResponseMsg.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
@@ -741,13 +806,12 @@ class _DebugScreenState extends State<DebugScreen> {
   }
 
   Widget _buildActiveTargetStatusBox() {
-
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.black45,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.cyan.withOpacity(0.3)),
+        border: Border.all(color: Colors.cyan.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -755,22 +819,23 @@ class _DebugScreenState extends State<DebugScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              const Row(
                 children: [
-                  Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 16),
-                  const SizedBox(width: 6),
+                  Icon(Icons.check_circle_outline,
+                      color: Colors.greenAccent, size: 16),
+                  SizedBox(width: 6),
                   Text(
                     'Target 현재 적용 상태 (Live Applied)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.cyanAccent),
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.cyanAccent),
                   ),
                 ],
               ),
-
-
-
               Text(
                 _lastSyncTimeStr,
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
           ),
@@ -778,11 +843,16 @@ class _DebugScreenState extends State<DebugScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildActiveParamItem('Tx Power', '$_appliedTxPower dBm', Colors.amberAccent),
+              _buildActiveParamItem(
+                  'Tx Power', '$_appliedTxPower dBm', Colors.amberAccent),
               Container(width: 1, height: 28, color: Colors.white12),
-              _buildActiveParamItem('ToF 거리', '${_appliedTofDistanceCm.round()} cm', Colors.greenAccent),
+              _buildActiveParamItem('ToF 거리',
+                  '${_appliedTofDistanceCm.round()} cm', Colors.greenAccent),
               Container(width: 1, height: 28, color: Colors.white12),
-              _buildActiveParamItem('Pre-arm 시간', '${(_appliedDurationMs / 1000).round()} 초', Colors.cyanAccent),
+              _buildActiveParamItem(
+                  'Pre-arm 시간',
+                  '${(_appliedDurationMs / 1000).round()} 초',
+                  Colors.cyanAccent),
             ],
           ),
         ],
@@ -793,9 +863,11 @@ class _DebugScreenState extends State<DebugScreen> {
   Widget _buildActiveParamItem(String label, String value, Color color) {
     return Column(
       children: [
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
         const SizedBox(height: 3),
-        Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
+        Text(value,
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.bold, color: color)),
       ],
     );
   }
@@ -828,7 +900,8 @@ class _DebugScreenState extends State<DebugScreen> {
                 ),
                 TextButton(
                   onPressed: () => AppErrorLogger().clearLogs(),
-                  child: const Text('클리어', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                  child: const Text('클리어',
+                      style: TextStyle(color: Colors.redAccent, fontSize: 12)),
                 ),
               ],
             ),
@@ -859,20 +932,25 @@ class _DebugScreenState extends State<DebugScreen> {
                   decoration: BoxDecoration(
                     color: Colors.black,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
+                    border: Border.all(
+                        color: Colors.greenAccent.withValues(alpha: 0.3)),
                   ),
                   child: ListView.builder(
                     itemCount: logList.length,
                     reverse: true,
                     itemBuilder: (context, index) {
                       final item = logList[logList.length - 1 - index];
-                      final isError = item.contains('⚠️') || item.contains('오류') || item.contains('Error');
+                      final isError = item.contains('⚠️') ||
+                          item.contains('오류') ||
+                          item.contains('Error');
                       return SelectableText(
                         item,
                         style: TextStyle(
                           fontSize: 11,
                           fontFamily: 'monospace',
-                          color: isError ? Colors.redAccent : Colors.lightGreenAccent,
+                          color: isError
+                              ? Colors.redAccent
+                              : Colors.lightGreenAccent,
                         ),
                       );
                     },
@@ -886,4 +964,3 @@ class _DebugScreenState extends State<DebugScreen> {
     );
   }
 }
-

@@ -42,6 +42,10 @@ flutter analyze
 flutter build apk --release
 ```
 
+로컬 빌더는 정식 배포 키가 없을 때 컨테이너 내부의 디버그 키로 release
+컴파일을 검증합니다. 이 APK는 개발 검증용입니다. 실제 배포 APK는 GitHub Actions가
+`ANDROID_KEYSTORE_*` Secrets의 정식 키로 서명합니다.
+
 ---
 
 ## 3. 빌드 결과물 확인

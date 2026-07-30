@@ -69,6 +69,7 @@ GATEKEEPER_API_KEY  = os.getenv("GATEKEEPER_API_KEY", "").strip()
 # 사용자가 디버그 화면에서 직접 조정한 적이 있으면 로컬 값을 우선한다.
 # (issue.md P1-12 — 기존에는 30 이 하드코딩되어 매 부팅마다 로컬 설정을 덮어썼다)
 APP_COOLDOWN_SEC    = int(os.getenv("APP_COOLDOWN_SEC", "10"))
+APP_RSSI_THRESHOLD  = int(os.getenv("APP_RSSI_THRESHOLD", "-85"))
 APK_VERSION_URL     = os.getenv("APK_VERSION_URL", "https://tworimpa.synology.me:4442/api/v1/download/version.json")
 APK_DOWNLOAD_URL    = os.getenv("APK_DOWNLOAD_URL", "https://tworimpa.synology.me:4442/api/v1/download/apk")
 WEBVIEW_URL         = os.getenv("WEBVIEW_URL", "https://tworimpa.synology.me:4442/app")
@@ -151,6 +152,8 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
     for host, port, use_tls in hosts_to_try:
         if not host:
             continue
+        client = None
+        loop_started = False
         try:
             client = _create_mqtt_client(f"gatekeeper-api-{int(datetime.now().timestamp())}")
             if MQTT_USER:
@@ -161,15 +164,25 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
                 client.tls_insecure_set(True)
 
             client.connect(host, port, keepalive=5)
+            client.loop_start()
+            loop_started = True
             result = client.publish(topic, payload, qos=1)
-            client.disconnect()
+            result.wait_for_publish(timeout=2.0)
 
-            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+            if result.rc == mqtt.MQTT_ERR_SUCCESS and result.is_published():
                 log.info(f"[{label}] ✅ {topic} 발행 성공 → (Host: {host}:{port})")
                 return True
         except Exception as e:
             log.debug(f"[{label}] {host}:{port} 접속 시도 시 예외: {e}")
             continue
+        finally:
+            if client is not None:
+                if loop_started:
+                    client.loop_stop()
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
 
     log.error(f"[{label}] ❌ 모든 MQTT 브로커 접속 시도 실패 → {topic}")
     return False
@@ -437,6 +450,7 @@ def get_remote_config():
         content={
             "beacon_uuid": BEACON_UUID,
             "cooldown_sec": APP_COOLDOWN_SEC,
+            "rssi_threshold": APP_RSSI_THRESHOLD,
             "apk_version_url": APK_VERSION_URL,
             "apk_download_url": APK_DOWNLOAD_URL,
             "webview_url": WEBVIEW_URL
@@ -587,8 +601,28 @@ def door_prearm(
 
     # ── 3. 검증 통과 — arm 발행 ─────────────────────────────────────────
     arm_ok = publish_arm_to_mqtt(user_label, tenant_id)
+    if not arm_ok:
+        log.error(
+            f"[PREARM-ERROR] 사용자 검증은 통과했지만 MQTT arm 발행 실패: "
+            f"{user_label}"
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "result": "error",
+                "message": "Target에 출입 승인 명령을 전달하지 못했습니다.",
+                "mqtt_published": False,
+                "user": user_label,
+            },
+            headers={"Content-Type": "application/json; charset=utf-8"},
+        )
     return JSONResponse(
-        content={"result": "armed", "ttl_sec": 60, "mqtt_published": arm_ok, "user": user_label},
+        content={
+            "result": "armed",
+            "ttl_sec": 60,
+            "mqtt_published": True,
+            "user": user_label,
+        },
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 

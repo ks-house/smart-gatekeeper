@@ -206,8 +206,6 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     if (beaconManager != null && beaconScanner != null) {
       beaconScanner.stopRanging();
       beaconScanner.stopMonitoring();
-      beaconManager.removeAllRangeNotifiers();
-      beaconManager.removeAllMonitorNotifiers();
       if (beaconManager.isBound(beaconScanner.beaconConsumer)) {
         beaconManager.unbind(beaconScanner.beaconConsumer);
       }
@@ -438,9 +436,7 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     if (call.method.equals("close")) {
       if (beaconManager != null && beaconScanner != null) {
         beaconScanner.stopRanging();
-        beaconManager.removeAllRangeNotifiers();
         beaconScanner.stopMonitoring();
-        beaconManager.removeAllMonitorNotifiers();
         if (beaconManager.isBound(beaconScanner.beaconConsumer)) {
           beaconManager.unbind(beaconScanner.beaconConsumer);
         }

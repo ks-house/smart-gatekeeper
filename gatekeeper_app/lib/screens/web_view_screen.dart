@@ -7,7 +7,6 @@ import '../services/error_logger.dart';
 import 'debug_screen.dart';
 
 class WebViewScreen extends StatefulWidget {
-
   final String? initialUrl;
 
   const WebViewScreen({
@@ -22,7 +21,8 @@ class WebViewScreen extends StatefulWidget {
   State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
-class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserver {
+class _WebViewScreenState extends State<WebViewScreen>
+    with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _isLoading = true;
   Timer? _updateCheckTimer;
@@ -91,7 +91,6 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
             }
             return NavigationDecision.navigate;
           },
-
           onWebResourceError: (WebResourceError error) {
             debugPrint('[WebView] Page error: ${error.description}');
           },
@@ -142,7 +141,6 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
             onPressed: () => _controller.reload(),
           ),
         ],
-
       ),
       body: SafeArea(
         bottom: true,
@@ -152,13 +150,17 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
             ValueListenableBuilder<String?>(
               valueListenable: AppErrorLogger().latestError,
               builder: (context, errorMessage, _) {
-                if (errorMessage == null || errorMessage.isEmpty) return const SizedBox.shrink();
+                if (errorMessage == null || errorMessage.isEmpty) {
+                  return const SizedBox.shrink();
+                }
                 return Container(
                   color: Colors.red.shade900,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   child: Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.white),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -173,7 +175,8 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                        icon: const Icon(Icons.close,
+                            color: Colors.white70, size: 20),
                         onPressed: () => AppErrorLogger().clearError(),
                       ),
                     ],
@@ -187,27 +190,31 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
               valueListenable: updateChecker.isUpdateAvailable,
               builder: (context, available, _) {
                 if (!available) return const SizedBox.shrink();
-                
+
                 return ValueListenableBuilder<double?>(
                   valueListenable: updateChecker.downloadProgress,
                   builder: (context, progress, _) {
                     final isDownloading = progress != null;
-                    
+
                     return Container(
                       color: Colors.amber.shade900,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.system_update, color: Colors.white),
+                              const Icon(Icons.system_update,
+                                  color: Colors.white),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  isDownloading 
-                                    ? (progress >= 1.0 ? '다운로드 완료! 설치를 진행합니다.' : '업데이트 다운로드 중... ${(progress * 100).toStringAsFixed(0)}%')
-                                    : '새로운 Smart Key v${updateChecker.remoteVersion ?? ''} 업데이트 가능!',
+                                  isDownloading
+                                      ? (progress >= 1.0
+                                          ? '다운로드 완료! 설치를 진행합니다.'
+                                          : '업데이트 다운로드 중... ${(progress * 100).toStringAsFixed(0)}%')
+                                      : '새로운 Smart Key v${updateChecker.remoteVersion ?? ''} 업데이트 가능!',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
@@ -216,11 +223,13 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
                               ),
                               if (!isDownloading)
                                 ElevatedButton(
-                                  onPressed: () => updateChecker.downloadUpdate(),
+                                  onPressed: () =>
+                                      updateChecker.downloadUpdate(),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     foregroundColor: Colors.black,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12),
                                   ),
                                   child: const Text('다운로드'),
                                 ),
@@ -231,7 +240,8 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
                             LinearProgressIndicator(
                               value: progress,
                               backgroundColor: Colors.white30,
-                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.white),
                             ),
                           ],
                         ],
@@ -257,6 +267,5 @@ class _WebViewScreenState extends State<WebViewScreen> with WidgetsBindingObserv
         ),
       ),
     );
-
   }
 }

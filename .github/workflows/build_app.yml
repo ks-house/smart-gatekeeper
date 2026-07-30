@@ -2,14 +2,21 @@ name: Build and Deploy Flutter Smart Key App APK
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'gatekeeper_app/**'
       - '.github/workflows/build_app.yml'
+  # 운영 APK 배포가 필요할 때만 명시적으로 실행한다.
   workflow_dispatch:
 
 jobs:
   build_and_deploy_apk:
     name: Build Android APK & Deploy to Synology NAS
+    # PR/기능 브랜치 push에서 운영 NAS 배포가 실행되지 않도록 이중 방어한다.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
 
     steps:
