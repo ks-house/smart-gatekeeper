@@ -273,8 +273,8 @@ void setup() {
 
   // 0. I2C Bus Hang 현상 대비 (소프트 리셋 시 I2C 슬레이브 먹통 방지)
   // 현재 I2C 센서를 직접적으로 사용하고 있지 않지만, VL53L0X와 같은 센서 연결에 대비하여 복구 코드 삽입.
-  // 기본 I2C 핀인 21(SDA), 22(SCL) 가정 (C6는 필요 시 핀 변경 가능)
-  clearI2CBus(21, 22);
+  // C6 보드의 I2C 핀: SDA=6, SCL=7 (GPIO 21, 22 사용 금지)
+  clearI2CBus(6, 7);
 
   // 1. 릴레이 초기화 (안전 상태: OFF)
   relay.begin();
