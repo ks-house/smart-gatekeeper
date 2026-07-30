@@ -20,19 +20,60 @@
 #include "OtaManager.h"
 #include "MqttManager.h"
 #include "UltrasonicSensor.h"
+#include "RelayController.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
 // ─────────────────────────────────────────────────────────────
-// 릴레이 제어 — INPUT 모드 트릭 (3.3V ↔ 5V 릴레이 상시 ON 우회)
+// 릴레이 컨트롤러 인스턴스
 // ─────────────────────────────────────────────────────────────
+RelayController relay(PIN_RELAY, RELAY_ACTIVE_LOW);
+
 static inline void relayOn() {
-  pinMode(PIN_RELAY, OUTPUT);
-  digitalWrite(PIN_RELAY, LOW);   // Active-LOW: LOW = 코일 통전 = ON
+  LOGF("[RELAY] 릴레이 ON 상태로 변경 시도");
+  relay.on();
+  LOGF("[RELAY] 릴레이 ON 상태로 변경 완료");
 }
 
 static inline void relayOff() {
-  pinMode(PIN_RELAY, INPUT);      // 고임피던스: 전류 차단 = 확실한 OFF
+  LOGF("[RELAY] 릴레이 OFF 상태로 변경 시도");
+  relay.off();
+  LOGF("[RELAY] 릴레이 OFF 상태로 변경 완료");
+}
+
+// ─────────────────────────────────────────────────────────────
+// I2C Bus Hang 복구 함수
+// ─────────────────────────────────────────────────────────────
+static void clearI2CBus(uint8_t sdaPin, uint8_t sclPin) {
+  LOGF("[I2C] 버스 Hang 복구 시퀀스 시작 (SDA: %d, SCL: %d)", sdaPin, sclPin);
+  pinMode(sdaPin, INPUT_PULLUP);
+  pinMode(sclPin, INPUT_PULLUP);
+
+  if (digitalRead(sdaPin) == LOW) {
+    LOGF("[I2C] SDA 핀이 LOW 상태로 고정됨 감지! 클럭(SCL) 인가하여 해제 시도...");
+    pinMode(sclPin, OUTPUT);
+    for (int i = 0; i < 9; i++) {
+      digitalWrite(sclPin, LOW);
+      delayMicroseconds(5);
+      digitalWrite(sclPin, HIGH);
+      delayMicroseconds(5);
+      if (digitalRead(sdaPin) == HIGH) {
+        LOGF("[I2C] %d번째 클럭 펄스 후 SDA가 HIGH로 복구됨!", i + 1);
+        break;
+      }
+    }
+  }
+
+  pinMode(sdaPin, OUTPUT);
+  pinMode(sclPin, OUTPUT);
+  digitalWrite(sdaPin, LOW);
+  delayMicroseconds(5);
+  digitalWrite(sclPin, HIGH);
+  delayMicroseconds(5);
+  digitalWrite(sdaPin, HIGH);
+  delayMicroseconds(5);
+
+  LOGF("[I2C] 버스 Hang 복구 시퀀스 종료");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -230,7 +271,13 @@ void setup() {
   }
   delay(100);
 
+  // 0. I2C Bus Hang 현상 대비 (소프트 리셋 시 I2C 슬레이브 먹통 방지)
+  // 현재 I2C 센서를 직접적으로 사용하고 있지 않지만, VL53L0X와 같은 센서 연결에 대비하여 복구 코드 삽입.
+  // 기본 I2C 핀인 21(SDA), 22(SCL) 가정 (C6는 필요 시 핀 변경 가능)
+  clearI2CBus(21, 22);
+
   // 1. 릴레이 초기화 (안전 상태: OFF)
+  relay.begin();
   relayOff();
 
   // 2. 배너 출력
