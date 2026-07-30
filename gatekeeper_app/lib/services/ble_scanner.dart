@@ -858,10 +858,24 @@ class BleScanner {
       // 이를 방지하기 위해 isStale 이고 초기 패킷 유실 상태면 디버그 여부와 상관없이 IDLE 로 강등한다.
       if (isStale && last == null && _mode == ScanMode.active) {
         AppErrorLogger().log('🔧 초기 패킷 완전 유실 감지 — IDLE 모드로 강제 복귀하여 리셋 유도');
-        // 디버그 강제 모드 무시용 flag 를 줘서 강등시키거나 직접 끈다.
         _setMode(ScanMode.idle);
         _streamRanging?.cancel();
         _streamRanging = null;
+      }
+
+      // OS의 didExitRegion 이벤트가 누락되는 고질적인 문제 대응 (issue.md P1-6)
+      // 회사에 도착했는데도 "구역 내에 있지만 신호가 약합니다"라고 뜨는 현상 방지
+      if (isStale && _mode == ScanMode.active) {
+        final staleDurationMs = last == null 
+            ? now.difference(_lastEnterRegionAt ?? now).inMilliseconds
+            : now.difference(last).inMilliseconds;
+            
+        if (staleDurationMs > 30000) {
+          AppErrorLogger().log('🔧 신호 완전 유실 30초 경과 — OS 구역 이탈 누락으로 간주, IDLE 모드 강제 복귀');
+          _setMode(ScanMode.idle);
+          _streamRanging?.cancel();
+          _streamRanging = null;
+        }
       }
 
       _syncStateAndNotify();
