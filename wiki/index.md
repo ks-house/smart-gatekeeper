@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-07-30 (화면 OFF·앱 종료 모바일 동작 감사 추가)
+> Last updated: 2026-07-30 (최신 코드 기준 문서 재분석)
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Page | Summary |
 |------|---------|
-| [env_setup.md](env_setup.md) | PlatformIO 설치, ESP32 보드 매니저, 필수 라이브러리 목록 |
+| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, 시크릿, CI/CD 가이드 |
 
 ---
 
@@ -26,8 +26,9 @@
 
 | Page | Summary |
 |------|---------|
-| [pin_mapping.md](pin_mapping.md) | ESP32 GPIO ↔ 모든 주변기기 핀 매핑 마스터 테이블 |
-| [hardware_test.md](hardware_test.md) | ToF / Relay / WiFi / HTTPS NAS / MQTTS HA / OTA E2E 통합 테스트 결과 |
+| [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, relay GPIO23 및 3.3V 전기 안전 기준 |
+| [hardware_test.md](hardware_test.md) | 현재 아키텍처 검증표와 과거 ToF 테스트 증거 분리 |
+| [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO23 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
 
 ---
 
@@ -35,7 +36,8 @@
 
 | Page | Summary |
 |------|---------|
-| [architecture.md](architecture.md) | 시스템 전체 아키텍처, 3대 통합 시퀀스 다이어그램 (E2E, MQTTS HA, OTA), 로드맵 |
+| [architecture.md](architecture.md) | iBeacon → Android → FastAPI → MQTT → 초음파 → relay 현재 구조 |
+| [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |
 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | 서비스-isolate 단일 스캐너 생애주기, 시작 조건, 화면 OFF 설정, 복구·진단·신고 대응 |
 | [mobile_app_background_audit.md](mobile_app_background_audit.md) | 화면 OFF·앱 종료 구현 감사와 P0/P1 수정 결과, 남은 플랫폼 제약·실기기 검증표 |
@@ -59,15 +61,11 @@
 
 | Topic | Location |
 |-------|----------|
-| I2C 기본 핀 (SDA/SCL) | [pin_mapping.md](pin_mapping.md) |
-| I2C 400kHz 활성화 | [ST_VL53L0X_Specs.md](../raw/ST_VL53L0X_Specs.md#7-esp32-특이사항) |
-| 65535 sentinel 값 처리 | [ST_VL53L0X_Specs.md](../raw/ST_VL53L0X_Specs.md#7-esp32-특이사항) |
-| 릴레이 배선 안전 주의 | [pin_mapping.md](pin_mapping.md) |
-| E2E 출입 감지 시퀀스 | [architecture.md](architecture.md#21-e2e-출입-감지--자격-검증-시퀀스) |
-| MQTTS HA Auto Discovery 시퀀스 | [architecture.md](architecture.md#22-mqtts-ha-auto-discovery--원격-개방-시퀀스) |
-| GitHub CI/CD SFTP OTA 시퀀스 | [architecture.md](architecture.md#23-github-cicd--무선-ota-배포-시퀀스) |
-| E2E 통합 테스트 결과 | [hardware_test.md](hardware_test.md) |
+| 최신 코드 재분석 결론/위험 | [current_code_audit.md](current_code_audit.md) |
+| 현재 전체 출입 시퀀스 | [architecture.md](architecture.md#2-정상-출입-시퀀스) |
+| AJ-SR04T/Relay 핀과 전기 안전 | [pin_mapping.md](pin_mapping.md) |
+| 현재 빌드·시크릿·CI/CD | [env_setup.md](env_setup.md) |
+| 현재 검증 상태와 E2E 절차 | [hardware_test.md](hardware_test.md) |
 | 앱/서비스 상태별 동작 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#3-서비스-생애주기) |
-| 스캔 상태 머신과 무수신 복구 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#4-스캔-상태-머신) |
-| 화면 OFF 스캔 설정 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#5-화면-off-스캔-설정) |
-| 비콘 미감지 신고 대응 순서 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#9-신고-대응-순서) |
+| 화면 OFF·앱 종료 감사 | [mobile_app_background_audit.md](mobile_app_background_audit.md) |
+| 비콘 미감지 신고 대응 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#9-신고-대응-순서) |
