@@ -15,7 +15,6 @@ RelayController::RelayController(uint8_t pin, bool activeLow)
 // begin() — GPIO 초기화. 반드시 OFF 상태로 시작.
 // ─────────────────────────────────────────────────────────────
 void RelayController::begin() {
-  pinMode(_pin, OUTPUT);
   _state = RelayState::OFF;
   _applyState();
   Serial.printf("[INFO] RelayController: GPIO%d initialized. "
@@ -43,11 +42,21 @@ void RelayController::toggle() {
 
 // ─────────────────────────────────────────────────────────────
 // _applyState() — 논리 상태 → 실제 GPIO 전압 변환
-// Active-LOW 모듈: ON=LOW, OFF=HIGH
+// Active-LOW 모듈: ON=LOW, OFF=INPUT (High-Impedance to cut standby draw and prevent 3.3V/5V issue)
 // Active-HIGH 모듈: ON=HIGH, OFF=LOW
 // ─────────────────────────────────────────────────────────────
 void RelayController::_applyState() {
   bool logicOn = (_state == RelayState::ON);
-  // activeLow 이면 전압을 반전
-  digitalWrite(_pin, (_activeLow ? !logicOn : logicOn) ? HIGH : LOW);
+  
+  if (_activeLow) {
+    if (logicOn) {
+      pinMode(_pin, OUTPUT);
+      digitalWrite(_pin, LOW);
+    } else {
+      pinMode(_pin, INPUT); // High-Impedance for OFF state to prevent 3.3V to 5V leakage
+    }
+  } else {
+    pinMode(_pin, OUTPUT);
+    digitalWrite(_pin, logicOn ? HIGH : LOW);
+  }
 }
