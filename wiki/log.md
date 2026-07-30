@@ -675,3 +675,11 @@
 - **Root Cause 1**: I2C Bus Clear routine was erroneously using GPIO 21 and 22, which are forbidden (JTAG/MTDI) on ESP32-C6. This could cause the ESP32 to lock up on boot before BLE initialization. Fixed to use proper SDA=6, SCL=7.
 - **Root Cause 2**: Wi-Fi Auto-Reconnect watchdog in STA mode was aggressively calling WiFi.begin() every 5 seconds if not connected. The constant reset of the Wi-Fi modem starved the shared 2.4GHz RF PHY, completely blocking BLE advertising and causing the app to show '연결 안됨'.
 - **Fix**: Adjusted Wi-Fi watchdog to 15 seconds and replaced disconnect()/begin() with a non-blocking WiFi.reconnect().
+
+## [2026-07-30] compile | README 및 루트 에이전트 가이드를 v2.0 현행 구성으로 개정
+
+- BLE Scanner/전화번호 해시 UUID 설명을 ESP32-C6 iBeacon Advertiser → Flutter 앱 → NAS HTTPS 인증 → MQTTS Pre-arm 흐름으로 교체
+- 현재 거리 센서를 AJ-SR04T/JSN-SR04T 초음파(TRIG GPIO10, ECHO GPIO11), 릴레이를 `include/config.h` 기준 GPIO23으로 명시
+- BLE 5.3, FastAPI, MariaDB, MQTTS, 모바일 앱 및 OTA 저장소 구성을 README에 반영
+- 루트 `AGENTS.md`의 TL;DR, 로드맵, 하드웨어 규칙, 빌드 환경과 Open Questions를 v2.0 통합/현장 검증 상태로 재작성
+- VL53L0X `raw/` 자료는 수정하지 않는 과거 PoC 원본이자 역사적 참고자료이며 현재 장착 센서가 아님을 명시
