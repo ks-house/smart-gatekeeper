@@ -6,13 +6,11 @@
 #pragma once
 
 #include <WiFi.h>
-#include <DNSServer.h>
 #include <WebServer.h>
 #include "ConfigManager.h"
 
 class WifiManager {
 private:
-    static DNSServer dnsServer;
     static WebServer webServer;
     static bool apModeActive;
     static bool connected;
@@ -34,4 +32,3 @@ public:
     static bool isAPMode();
     static String getIP();
 };
-

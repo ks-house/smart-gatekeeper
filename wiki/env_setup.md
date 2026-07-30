@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-07-30 (current-code audit)
+> Last updated: 2026-07-31 (Target CI symbol-map retention)
 
 ## 1. 펌웨어
 
@@ -65,10 +65,12 @@ flutter build apk --release \
 
 | Workflow | Trigger | 결과 |
 |---|---|---|
-| `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드, firmware/version JSON, NAS SFTP 배포 |
+| `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드, firmware/version JSON, NAS SFTP 배포, 30일 symbol-map artifact |
 | `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter analyze/release APK, NAS SFTP, Actions artifact |
 
 앱 workflow는 PR/feature branch에서 운영 NAS 배포가 실행되지 않도록 trigger와 job 조건을 모두 둡니다. 펌웨어 workflow는 현재 `main`의 모든 push에 배포되므로 문서-only 변경도 운영 배포를 촉발할 수 있다는 점을 운영 정책에서 검토해야 합니다.
+Target workflow는 원격 panic 주소 해석용 `firmware.map`만 Actions artifact로 보존합니다.
+운영 자격 증명 문자열이 포함될 수 있는 `firmware.elf`는 public artifact/NAS에 게시하지 않습니다.
 
 ## 5. 릴리스 전 체크
 

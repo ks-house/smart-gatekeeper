@@ -349,25 +349,10 @@ void setup() {
   WifiManager::init();
 
   if (WifiManager::connectSTA(10000)) {
-    configTime(9 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-    LOGF("[TIME] NTP 시간 동기화 요청 (KST UTC+9)");
-    
-    struct tm timeinfo;
-    uint32_t startMs = millis();
-    LOGF("[TIME] 시간 동기화 대기 중...");
-    while (!getLocalTime(&timeinfo, 1000) && (millis() - startMs < 10000)) {
-      printf(".");
-      fflush(stdout);
-    }
-    printf("\n");
-    if (getLocalTime(&timeinfo, 0)) {
-      LOGF("[TIME] 🕒 동기화 성공: %04d-%02d-%02d %02d:%02d:%02d", 
-           timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
-           timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    } else {
-      LOGF("[TIME-ERROR] ❌ NTP 동기화 타임아웃!");
-    }
-
+    // Wall-clock time is not used by the Target. Avoid initializing lwIP's raw
+    // UDP SNTP client from loopTask; reset diagnostics previously captured a
+    // udp_new_ip_type core-lock assertion in this task.
+    DiagnosticsManager::noteAction("network_services_start");
     MqttManager::init();
     OtaManager::init();
   } else {

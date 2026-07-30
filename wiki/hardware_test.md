@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-07-31 (three unsolicited Target resets and v2.1 diagnostics pending CI)
+> Last updated: 2026-07-31 (v2.1 OTA and retained coredump diagnosis)
 
 ## 1. 판정 원칙
 
@@ -12,7 +12,7 @@
 | Flutter format/analyze/unit test | 2026-07-30 Docker, 5 tests | 🟢 PASS | Flutter 3.44.8 / Dart 3.12.2 |
 | Android release APK build | 2026-07-30 Docker | 🟢 PASS | 당시 APK SHA-256은 `wiki/log.md` 기록 참조 |
 | Backend syntax/Compose config | 2026-07-30 | 🟢 PASS | 실 broker/DB E2E와는 별개 |
-| ESP32 v2.1 diagnostics build | local PlatformIO 환경 실패, main CI 예정 | 🟡 PENDING | commit/push 뒤 cloud CI를 authoritative build로 사용 |
+| ESP32 v2.1 diagnostics build | Actions `30566577543` | 🟢 PASS | `2.1.0-g93cee8d`, NAS SFTP와 metadata 검증 성공 |
 | iBeacon raw UUID/interval | 실측 없음 | 🔴 REQUIRED | nRF Connect/btmon으로 manufacturer payload 확인 |
 | 화면 OFF·앱 swipe-away 접근 | 실기기 없음 | 🔴 REQUIRED | force-stop은 지원 불가 |
 | Backend MQTT QoS1 PUBACK fail-closed | 코드/단위 정적 확인 | 🟡 DEVICE/BROKER TEST | 성공 200, 실패 503 확인 |
@@ -21,7 +21,9 @@
 | AJ-SR04T 거리·ghost filter | 과거 현장 로그 존재 | 🟡 RE-TEST | 현재 전체 경로에서 20–50 cm 재검증 |
 | 릴레이 High-Z OFF/노이즈 내성 | freeze 이력 있음 | 🔴 REQUIRED | 전원 재인가 없이 반복 동작 확인 |
 | Wi-Fi/BLE coexistence | watchdog 수정됨 | 🔴 REQUIRED | 장기 soak test 필요 |
-| OTA rollback/16 MB partition | 과거 OTA 성공 기록 | 🟡 RE-TEST | current artifact와 양 슬롯 검증 |
+| v2.1 OTA 설치/재부팅 | 2026-07-31 remote MQTT/status | 🟢 PASS | `g8eb7cac` → `g93cee8d`, target/boot/reset telemetry 확인 |
+| retained flash coredump | v2.1 boot payload | 🔴 PANIC CONFIRMED | loopTask `udp_new_ip_type` core-lock assertion, 11,044 B valid coredump |
+| OTA rollback/16 MB partition | 과거 OTA 성공 기록 | 🟡 RE-TEST | 실패 rollback과 양 슬롯 검증은 별도 필요 |
 
 ## 3. 현재 E2E 인수 절차
 
@@ -45,5 +47,7 @@
 | 2026-07-31 | 공인 MQTTS → Target status 관측 | PARTIAL | certificate/hostname·CONNACK·SUBACK 확인; 분리된 20초+30초 안정성만 증명하며 reset 원인은 미확인 |
 | 2026-07-31 | 12분 status/control 연속 감시 | FAIL/DIAG | status 678건 뒤 uptime 919→7 reset; 정상 RSSI/heap, MQTT command 없음 |
 | 2026-07-31 | retained config/command wildcard 감사 | PASS | `gatekeeper/config/state`만 retained, destructive/config command 없음 |
+| 2026-07-31 | v2.1 CI → NAS → MQTT OTA | PASS | run `30566577543`, status의 firmware/reset/boot identity로 설치 확인 |
+| 2026-07-31 | OTA 후 retained coredump 회수 | FAIL/ROOT CAUSE | 이전 firmware의 loopTask lwIP UDP core-lock assertion 확인 |
 
 새 하드웨어 결과는 날짜, firmware commit, 앱 build, 환경, 반복 횟수, 원시 로그/캡처 위치와 함께 이 표에 추가합니다.

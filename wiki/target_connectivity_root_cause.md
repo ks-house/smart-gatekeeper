@@ -26,8 +26,15 @@ retained였다.
 사용자는 세 reset 시점에 전원 재인가, reboot, OTA, provisioning 조작을 하지 않았다고 확인했다.
 두 번째/세 번째 boot의 RSSI는 약 `-58 dBm`으로 양호했고 reset 직전 heap도 일정했으므로
 **약한 Wi-Fi와 누적 heap 고갈은 세 번째 MCU reset의 직접 원인에서 제외한다.** 현재 가장 유력한
-축은 전원 순간 강하/brownout/EN glitch, GPIO11 ECHO 과전압 또는 GPIO23 역주입, software panic이다.
+축은 software panic이며, 전원 순간 강하/brownout/EN glitch, GPIO11 ECHO 과전압 또는 GPIO23
+역주입은 별개의 reset을 일으킬 수 있는 물리 위험으로 남는다.
 MQTT 밖의 `/save` 호출은 논리상 남지만 반복 시각·정상 credential 유지와 맞지 않아 후순위다.
+
+v2.1 OTA 뒤 flash에 남아 있던 coredump를 원격으로 읽어 **적어도 한 번의 reset은 software
+panic이었음이 확정됐다.** panic은 `loopTask`에서
+`udp_new_ip_type ... (Required to lock TCPIP core functionality!)` assertion으로 발생했다.
+다만 coredump는 non-panic reset 뒤에도 남으므로 이것이 위 세 reset 중 정확히 어느 사건인지,
+세 사건 모두 같은 원인인지는 아직 단정하지 않는다.
 
 따라서 이번 사건은 “현재도 broker가 끊겨 있음”이 아니라 **정상 heartbeat 중 MCU가 갑자기
 reset되고 새 부팅으로 복귀하는 반복 사건**이다. 최초 통신 고착은 reset과 별개 사건일 수 있다.
@@ -609,3 +616,42 @@ OTA 직후 reset은 `planned_restart=ota_update`, `reset_reason=SOFTWARE`로 보
 전원 rail transient 같은 물리 위험을 제거하지 않는다. reset reason이 brownout/power glitch로
 나오거나 새 firmware에서도 reset이 지속되면 다음 현장 작업은 level shifter/분압과 절연 relay
 driver·전원 경로 점검이다.
+
+## 17. v2.1 OTA 결과와 lwIP panic 제거
+
+### 17.1 배포·원격 부팅 확인
+
+- GitHub Actions run `30566577543`에서 ESP32-C6 build, NAS SFTP, 공개 version metadata 검증이
+  모두 성공했다.
+- Target에 OTA 명령을 non-retained QoS 1로 한 번 발행했고 PUBACK을 확인했다.
+- Target status가 `2.0.0-g8eb7cac`에서 `2.1.0-g93cee8d`로 바뀌고 uptime이 새로 시작해 실제
+  설치와 재부팅까지 확인했다.
+- 새 boot identity는 `target_id=c0feffe6ebac`, `boot_id=2660ec9bffe6ebac`,
+  `boot_count=1`, reset reason은 OTA에 따른 `SOFTWARE`였다.
+
+### 17.2 과거 coredump에서 확인된 panic
+
+retained boot payload가 이전 flash coredump 11,044 bytes를 valid로 판정했다.
+
+| 필드 | 값 |
+|---|---|
+| panic task | `loopTask` |
+| panic reason | `assert failed: udp_new_ip_type ... (Required to lock TCPIP core functionality!)` |
+| exception PC | `0x4080EB28` |
+| RISC-V cause/value | `mcause=2`, `mtval=0` |
+| crashing ELF SHA prefix | `765974b7b` |
+
+구 firmware의 project-level raw UDP 시작점은 정상 Wi-Fi 분기의 SNTP `configTime()`과
+Wi-Fi 실패 분기의 captive `DNSServer::start()` 두 곳뿐이다. 둘 다 Arduino loop task에서
+초기화되고 출입 제어에는 필요하지 않다. exact call stack이 보존되지 않아 둘 중 하나만 지목하는
+대신 두 경로를 모두 제거한다.
+
+- Target은 wall-clock을 기능에 사용하지 않으므로 SNTP 초기화와 최대 10초 동기화 대기를 제거한다.
+- provisioning AP는 WebServer와 `192.168.4.1` 직접 접속만 유지하고 captive DNS를 제거한다.
+- AP 시작/성공/실패를 RTC breadcrumb action에 기록한다.
+- CI는 매 build의 `firmware.map`을 30일간 Actions artifact로 보존한다. ELF에는 운영 secret이
+  포함될 수 있어 public artifact로 올리지 않는다.
+
+이 조치는 확인된 `udp_new_ip_type` panic의 project-level 진입 경로를 닫는다. 다음 비계획
+reset이 생기면 새 `reset_reason`, planned marker, RTC breadcrumb, coredump와 동일 build의
+symbol map을 결합해 software와 전기 원인을 분리한다.

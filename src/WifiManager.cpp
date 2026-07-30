@@ -7,7 +7,6 @@
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
-DNSServer WifiManager::dnsServer;
 WebServer WifiManager::webServer(80);
 bool WifiManager::apModeActive = false;
 bool WifiManager::connected = false;
@@ -88,6 +87,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
 
 void WifiManager::startAP() {
     apModeActive = true;
+    DiagnosticsManager::noteAction("provisioning_ap_start");
     
     // 이전 STA 접속 시도로 인한 채널 호핑/비콘 브로드캐스트 블로킹 완정 방지
     WiFi.disconnect(true, true);
@@ -100,13 +100,13 @@ void WifiManager::startAP() {
     // 채널 1, 비숨김(0), 최대 4대 접속 설정하여 브로드캐스트 비콘 프레임 고정
     bool apSuccess = WiFi.softAP("SmartGatekeeper-Setup", NULL, 1, 0, 4);
 
-    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-    dnsServer.start(53, "*", apIP);
-
     startWebServer();
     if (apSuccess) {
+        DiagnosticsManager::noteAction("provisioning_ap_ready");
         LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: 'SmartGatekeeper-Setup' (채널 1, 192.168.4.1)");
+        LOGF("[WIFI-AP] Captive DNS disabled; open http://192.168.4.1 manually.");
     } else {
+        DiagnosticsManager::noteAction("provisioning_ap_failed");
         LOGF("[WIFI-AP] 🚨 설정 AP 가동 실패!");
     }
 }
@@ -286,9 +286,7 @@ void WifiManager::handleNotFound() {
 }
 
 void WifiManager::handleClient() {
-    if (apModeActive) {
-        dnsServer.processNextRequest();
-    } else {
+    if (!apModeActive) {
         // STA 모드 - Wi-Fi 연결 워치독 (Auto-Reconnect)
         static uint32_t lastWifiCheckMs = 0;
         if (millis() - lastWifiCheckMs > 15000) {
