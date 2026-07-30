@@ -273,12 +273,35 @@ void WifiManager::handleNotFound() {
 void WifiManager::handleClient() {
     if (apModeActive) {
         dnsServer.processNextRequest();
+    } else {
+        // STA 모드 - Wi-Fi 연결 워치독 (Auto-Reconnect)
+        static uint32_t lastWifiCheckMs = 0;
+        if (millis() - lastWifiCheckMs > 5000) {
+            lastWifiCheckMs = millis();
+            if (WiFi.status() != WL_CONNECTED) {
+                if (connected) {
+                    LOGF("[WIFI-WARN] ⚠️ 와이파이 연결 단절 감지! Auto-Reconnect 작동 시작...");
+                    connected = false;
+                }
+                // 이전 세션 강제 정리 후 비동기 재접속 시도 (Non-blocking)
+                WiFi.disconnect();
+                String ssid = ConfigManager::getWifiSsid();
+                String pass = ConfigManager::getWifiPassword();
+                WiFi.begin(ssid.c_str(), pass.c_str());
+            } else {
+                if (!connected) {
+                    connected = true;
+                    stationIp = WiFi.localIP().toString();
+                    LOGF("[WIFI-INFO] ✅ 와이파이 자동 재접속 성공! IP: %s", stationIp.c_str());
+                }
+            }
+        }
     }
     webServer.handleClient();
 }
 
 bool WifiManager::isConnected() {
-    return WiFi.status() == WL_CONNECTED;
+    return connected && (WiFi.status() == WL_CONNECTED);
 }
 
 bool WifiManager::isAPMode() {
