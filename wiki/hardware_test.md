@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-07-30 (historical evidence separated from current architecture)
+> Last updated: 2026-07-31 (three unsolicited Target resets and v2.1 diagnostics pending CI)
 
 ## 1. 판정 원칙
 
@@ -12,10 +12,12 @@
 | Flutter format/analyze/unit test | 2026-07-30 Docker, 5 tests | 🟢 PASS | Flutter 3.44.8 / Dart 3.12.2 |
 | Android release APK build | 2026-07-30 Docker | 🟢 PASS | 당시 APK SHA-256은 `wiki/log.md` 기록 참조 |
 | Backend syntax/Compose config | 2026-07-30 | 🟢 PASS | 실 broker/DB E2E와는 별개 |
-| ESP32 current HEAD build | 최신 문서 재분석 시 재실행 필요 | 🟡 PENDING | pioarduino 의존성 포함 |
+| ESP32 v2.1 diagnostics build | local PlatformIO 환경 실패, main CI 예정 | 🟡 PENDING | commit/push 뒤 cloud CI를 authoritative build로 사용 |
 | iBeacon raw UUID/interval | 실측 없음 | 🔴 REQUIRED | nRF Connect/btmon으로 manufacturer payload 확인 |
 | 화면 OFF·앱 swipe-away 접근 | 실기기 없음 | 🔴 REQUIRED | force-stop은 지원 불가 |
 | Backend MQTT QoS1 PUBACK fail-closed | 코드/단위 정적 확인 | 🟡 DEVICE/BROKER TEST | 성공 200, 실패 503 확인 |
+| Target MQTTS heartbeat/reset | 2026-07-31 remote, `g8eb7cac` | 🔴 RESET REPRODUCED | 세 번째 reset 직접 포착: uptime 919→7, gap 8.288초; 직전 heap 200,648 B/RSSI -58 |
+| MQTT reset command correlation | 12분 read-only subscribe | 🟡 MQTT PATH EXCLUDED | 세 번째 reset 전 cmd/arm/force/config 입력 0; retained는 config state뿐 |
 | AJ-SR04T 거리·ghost filter | 과거 현장 로그 존재 | 🟡 RE-TEST | 현재 전체 경로에서 20–50 cm 재검증 |
 | 릴레이 High-Z OFF/노이즈 내성 | freeze 이력 있음 | 🔴 REQUIRED | 전원 재인가 없이 반복 동작 확인 |
 | Wi-Fi/BLE coexistence | watchdog 수정됨 | 🔴 REQUIRED | 장기 soak test 필요 |
@@ -40,5 +42,8 @@
 | 2026-07-24 | ESP32 → NAS HTTPS → relay | PASS | 현재 역할 반전 흐름과 다름 |
 | 2026-07-24 | MQTTS/HA/OTA 통합 | PASS | 인프라 선행 증거, current regression 필요 |
 | 2026-07-28 이후 | AJ-SR04T 필터·모바일 beacon 수정 | 코드 변경 다수 | 최신 통합 실기기 재검증 필요 |
+| 2026-07-31 | 공인 MQTTS → Target status 관측 | PARTIAL | certificate/hostname·CONNACK·SUBACK 확인; 분리된 20초+30초 안정성만 증명하며 reset 원인은 미확인 |
+| 2026-07-31 | 12분 status/control 연속 감시 | FAIL/DIAG | status 678건 뒤 uptime 919→7 reset; 정상 RSSI/heap, MQTT command 없음 |
+| 2026-07-31 | retained config/command wildcard 감사 | PASS | `gatekeeper/config/state`만 retained, destructive/config command 없음 |
 
 새 하드웨어 결과는 날짜, firmware commit, 앱 build, 환경, 반복 횟수, 원시 로그/캡처 위치와 함께 이 표에 추가합니다.

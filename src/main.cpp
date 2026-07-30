@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <Ticker.h>
 
 // BLE Beacon Advertiser — Arduino-ESP32 내장 Bluedroid BLE
 #include <BLEDevice.h>
@@ -16,6 +17,7 @@
 
 #include "config.h"
 #include "ConfigManager.h"
+#include "DiagnosticsManager.h"
 #include "WifiManager.h"
 #include "OtaManager.h"
 #include "MqttManager.h"
@@ -28,16 +30,44 @@
 // 릴레이 컨트롤러 인스턴스
 // ─────────────────────────────────────────────────────────────
 RelayController relay(PIN_RELAY, RELAY_ACTIVE_LOW);
+static Ticker relayFailsafeTimer;
+static volatile bool relayDeadlineActive = false;
+static volatile bool relayFailsafeTriggered = false;
+static uint32_t relayActivatedMs = 0;
+
+static void forceRelayOffFromTimer() {
+  // esp_timer task에서 실행된다. 네트워크 loop가 block되어도 물리 출력을 먼저 끈다.
+  relay.off();
+  DiagnosticsManager::noteRelayState(false, relay.pinLevel(),
+                                     "relay_timer_off");
+  relayDeadlineActive = false;
+  relayFailsafeTriggered = true;
+}
 
 static inline void relayOn() {
+  if (relay.isOn()) {
+    DiagnosticsManager::noteAction("relay_on_duplicate");
+    LOGF("[RELAY-WARN] 이미 ON 상태이므로 hold timer를 연장하지 않음");
+    return;
+  }
+
   LOGF("[RELAY] 릴레이 ON 상태로 변경 시도");
   relay.on();
+  relayActivatedMs = millis();
+  relayDeadlineActive = true;
+  relayFailsafeTriggered = false;
+  relayFailsafeTimer.once_ms(RELAY_HOLD_MS, forceRelayOffFromTimer);
+  DiagnosticsManager::noteRelayState(true, relay.pinLevel(), "relay_on");
   LOGF("[RELAY] 릴레이 ON 상태로 변경 완료");
 }
 
 static inline void relayOff() {
   LOGF("[RELAY] 릴레이 OFF 상태로 변경 시도");
+  relayFailsafeTimer.detach();
   relay.off();
+  relayDeadlineActive = false;
+  relayFailsafeTriggered = false;
+  DiagnosticsManager::noteRelayState(false, relay.pinLevel(), "relay_off");
   LOGF("[RELAY] 릴레이 OFF 상태로 변경 완료");
 }
 
@@ -227,12 +257,20 @@ void setRelayCooldownMs(uint32_t cooldownMs) {
 // ─────────────────────────────────────────────────────────────
 // triggerArm() — MqttManager 콜백에서 호출 (MQTT gatekeeper/arm 수신)
 // ─────────────────────────────────────────────────────────────
-void triggerArm() {
+bool triggerArm() {
+  if (relay.isOn() || state == GateState::RELAY_HOLD) {
+    DiagnosticsManager::noteAction("arm_rejected_relay_on");
+    LOGF("[GATE-WARN] 릴레이 ON 중 Pre-arm 요청 거부 (안전 인터록)");
+    return false;
+  }
+
   is_armed      = true;
   arm_timestamp = millis();
   state         = GateState::ARMED;
   stateMs       = arm_timestamp;
+  DiagnosticsManager::noteAction("pre_armed");
   LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! AJ-SR04T 초음파 센서 활성화 (%lu ms 유효)", (unsigned long)g_pre_arm_duration_ms);
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -240,7 +278,9 @@ void triggerArm() {
 // ─────────────────────────────────────────────────────────────
 void triggerManualDoorOpen() {
   LOGF("[GATE-MANUAL] *** 원격/MQTT 명령으로 출입문 개방 릴레이 ON *** (딸깍!)");
+  is_armed = false;
   relayOn();
+  DiagnosticsManager::noteAction("relay_on_manual");
   state   = GateState::RELAY_HOLD;
   stateMs = millis();
 }
@@ -271,13 +311,19 @@ void setup() {
   }
   delay(100);
 
+  // 전원 인가 직후 가장 먼저 릴레이를 안전한 OFF 상태로 둔다.
+  relay.begin();
+
+  // reset reason/boot counter/이전 RTC breadcrumb를 다른 초기화 전에 보존한다.
+  ConfigManager::begin();
+  DiagnosticsManager::begin();
+
   // 0. I2C Bus Hang 현상 대비 (소프트 리셋 시 I2C 슬레이브 먹통 방지)
   // 현재 I2C 센서를 직접적으로 사용하고 있지 않지만, VL53L0X와 같은 센서 연결에 대비하여 복구 코드 삽입.
   // C6 보드의 I2C 핀: SDA=6, SCL=7 (GPIO 21, 22 사용 금지)
   clearI2CBus(6, 7);
 
-  // 1. 릴레이 초기화 (안전 상태: OFF)
-  relay.begin();
+  // 1. 릴레이 초기화 재확인 (안전 상태: OFF)
   relayOff();
 
   // 2. 배너 출력
@@ -286,7 +332,6 @@ void setup() {
   LOGF("============================================");
 
   // 3. NVS 설정 복원
-  ConfigManager::begin();
   int savedTx = ConfigManager::getTxPower(9);
   int savedDist = ConfigManager::getDistanceThresholdCm(DEFAULT_DISTANCE_THRESHOLD_CM);
   uint32_t savedDur = ConfigManager::getPreArmDurationMs(PRE_ARM_DURATION_MS);
@@ -346,23 +391,57 @@ void setup() {
 // loop()
 // ─────────────────────────────────────────────────────────────
 void loop() {
+  uint32_t now = millis();
+
+  if (relayFailsafeTriggered) {
+    relayFailsafeTriggered = false;
+    DiagnosticsManager::noteAction("relay_timer_off");
+    LOGF("[GATE] 독립 esp_timer가 릴레이를 OFF 처리함");
+    MqttManager::publishEvent("door_close", "Independent timer relay OFF");
+    state = GateState::COOLDOWN;
+    stateMs = now;
+  }
+
+  // 네트워크/TLS/WebServer보다 먼저 실행되는 독립 fail-safe.
+  // FSM state가 잘못 덮여도 물리 릴레이는 RELAY_HOLD_MS 이후 반드시 OFF.
+  if (relayDeadlineActive &&
+      (now - relayActivatedMs >= RELAY_HOLD_MS)) {
+    relayOff();
+    DiagnosticsManager::noteAction("relay_failsafe_off");
+    LOGF("[GATE] 릴레이 독립 fail-safe OFF (%lu ms 경과)",
+         (unsigned long)RELAY_HOLD_MS);
+    MqttManager::publishEvent("door_close", "Independent relay fail-safe OFF");
+    state = GateState::COOLDOWN;
+    stateMs = now;
+  }
+
   WifiManager::handleClient();
   MqttManager::update();
 
-  uint32_t now = millis();
+  now = millis();
+  if (relayFailsafeTriggered) {
+    relayFailsafeTriggered = false;
+    DiagnosticsManager::noteAction("relay_timer_off");
+    LOGF("[GATE] 네트워크 처리 중 독립 esp_timer가 릴레이를 OFF 처리함");
+    MqttManager::publishEvent("door_close", "Independent timer relay OFF");
+    state = GateState::COOLDOWN;
+    stateMs = now;
+  }
 
-  // ─── 초음파 거리 측정 (실시간 모니터링을 위해 상시 작동) ───
+  // ─── 초음파 거리 측정 (Pre-arm 중에만 동작) ───
   unsigned long durationUs = 0;
-  float distCm = UltrasonicSensor::readDistanceCm(&durationUs);
+  float distCm = 999.0f;
   bool validReading = false;
 
   if (is_armed && state == GateState::ARMED) {
+    distCm = UltrasonicSensor::readDistanceCm(&durationUs);
     // 20cm 미만 맹점은 -1.0f 반환되므로, 20cm ~ g_distance_threshold_cm 범위만 유효
     validReading = (distCm >= ULTRASONIC_MIN_DISTANCE_CM && distCm <= (float)g_distance_threshold_cm);
   }
 
   // ─── Pre-arm 만료 체크 (ARMED 상태에서만 수행) ──────────────────────
-  if (is_armed && (now - arm_timestamp >= g_pre_arm_duration_ms)) {
+  if (is_armed && state == GateState::ARMED &&
+      (now - arm_timestamp >= g_pre_arm_duration_ms)) {
     LOGF("[GATE] ⏱️ Pre-arm 유효 시간 만료 (%lu ms 경과). IDLE 복귀.", (unsigned long)g_pre_arm_duration_ms);
     is_armed = false;
     state    = GateState::IDLE;
@@ -383,8 +462,14 @@ void loop() {
                            (state == GateState::ARMED)      ? "ARMED" :
                            (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
     uint16_t distance_mm = (distCm > 0.0f && distCm < 900.0f) ? (uint16_t)(distCm * 10.0f) : 9990;
-    MqttManager::publishTelemetry(distance_mm, stateStr, is_armed, armRemainingMs);
-    MqttManager::publishSensorInfo(durationUs, distCm);
+    DiagnosticsManager::heartbeat(stateStr, is_armed, relay.isOn(),
+                                  relay.pinLevel());
+    MqttManager::publishTelemetry(distance_mm, stateStr, is_armed,
+                                  armRemainingMs, relay.isOn(),
+                                  relay.pinLevel());
+    if (is_armed && state == GateState::ARMED) {
+      MqttManager::publishSensorInfo(durationUs, distCm);
+    }
 
     LOGF("[SENSOR] 초음파 raw duration: %lu us, calculated distance: %.1f cm", durationUs, distCm);
 
@@ -407,6 +492,7 @@ void loop() {
         LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)", (unsigned long)RELAY_HOLD_MS);
 
         relayOn();
+        DiagnosticsManager::noteAction("relay_on_sensor");
 
         is_armed = false; // Pre-arm 소비 (단발 사용 & 즉시 무장 해제)
         MqttManager::publishEvent("door_open", "Access Granted via MQTT Pre-arm + Ultrasonic");
@@ -419,6 +505,7 @@ void loop() {
     case GateState::RELAY_HOLD:
       if (millis() - stateMs >= RELAY_HOLD_MS) {
         relayOff();
+        relayFailsafeTriggered = false;
         LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 쿨다운 진입.", (unsigned long)RELAY_HOLD_MS);
         MqttManager::publishEvent("door_close", "Relay Timeout OFF");
         state   = GateState::COOLDOWN;

@@ -4,6 +4,7 @@
 // =============================================================
 #include "OtaManager.h"
 #include "config.h"
+#include "DiagnosticsManager.h"
 #include "WifiManager.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
@@ -23,6 +24,7 @@ void OtaManager::checkAndUpdate(bool force) {
     }
 
     status = OtaStatus::CHECKING;
+    DiagnosticsManager::noteAction("ota_check");
     LOGF("[OTA] 펌웨어 버전 체크 중... (%s)", OTA_VERSION_URL);
 
     WiFiClientSecure client;
@@ -77,6 +79,7 @@ void OtaManager::checkAndUpdate(bool force) {
 
     // OTA 업데이트 진행
     status = OtaStatus::UPDATING;
+    DiagnosticsManager::noteAction("ota_download");
     LOGF("[OTA] 🚀 새 펌웨어(%s) 다운로드 및 무선 업그레이드를 시작합니다!", serverVersion);
     LOGF("[OTA] 다운로드 URL: %s", firmwareUrl);
 
@@ -91,23 +94,28 @@ void OtaManager::checkAndUpdate(bool force) {
         LOGF("\n[OTA-ERROR] ❌ 오류 발생 (코드 %d): %s", err, httpUpdate.getLastErrorString().c_str());
     });
 
+    // 성공 직후 원인을 NVS/RTC에 기록한 다음 명시적으로 재부팅한다.
+    httpUpdate.rebootOnUpdate(false);
     t_httpUpdate_return ret = httpUpdate.update(client, firmwareUrl);
 
     switch (ret) {
         case HTTP_UPDATE_FAILED:
             status = OtaStatus::FAILED;
             lastError = httpUpdate.getLastErrorString();
+            DiagnosticsManager::noteAction("ota_failed");
             LOGF("\n[OTA-FAILED] 업데이트 실패: %s", lastError.c_str());
             break;
 
         case HTTP_UPDATE_NO_UPDATES:
             status = OtaStatus::UP_TO_DATE;
+            DiagnosticsManager::noteAction("ota_no_update");
             LOGF("\n[OTA] 업데이트 없음.");
             break;
 
         case HTTP_UPDATE_OK:
             status = OtaStatus::SUCCESS;
             LOGF("\n[OTA-SUCCESS] 업데이트 성공! 디바이스를 재부팅합니다.");
+            DiagnosticsManager::markPlannedRestart("ota_update");
             delay(1000);
             ESP.restart();
             break;

@@ -56,7 +56,7 @@ jobs:
       - name: Build ESP32-C6 Firmware with Version Override
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          FULL_VERSION="2.0.0-g${SHORT_SHA}"
+          FULL_VERSION="2.1.0-g${SHORT_SHA}"
           echo "FULL_VERSION=${FULL_VERSION}" >> $GITHUB_ENV
           echo "Building version: ${FULL_VERSION}"
           export PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\\\"${FULL_VERSION}\\\""

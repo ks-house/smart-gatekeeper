@@ -34,6 +34,12 @@ public:
   /// 현재 논리 상태 반환
   RelayState state() const { return _state; }
 
+  /// 진단용 현재 논리 ON 여부
+  bool isOn() const { return _state == RelayState::ON; }
+
+  /// 진단용 GPIO 입력 레벨. High-Z OFF에서도 실제 핀 전압을 읽는다.
+  int pinLevel() const { return digitalRead(_pin); }
+
 private:
   uint8_t    _pin;
   bool       _activeLow;

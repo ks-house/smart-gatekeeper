@@ -1,5 +1,5 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-07-30 (v2.1 current-code audit)
+> Last updated: 2026-07-31 (v2.1 remote reset diagnostics and relay fail-safe)
 
 ## 1. 범위
 
@@ -58,13 +58,24 @@ IDLE --MQTT arm--> ARMED --valid ultrasonic--> RELAY_HOLD --1 s--> COOLDOWN --co
 - ARMED: 기본 60초, NVS/MQTT/Web 설정 가능
 - 거리: 5개 중앙값 필터, 20 cm 미만 무시, 기본 50 cm 임계값
 - manual open: `gatekeeper/force_open` 또는 `smart-gatekeeper/cmd`가 거리/arm을 우회
+- AJ-SR04T는 IDLE에서 상시 trigger하지 않고 ARMED 동안만 측정
+- relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
+  생겨도 timer task가 물리 출력을 OFF
+- relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소
 - telemetry: `smart-gatekeeper/status`, event/config/sensor-info 토픽
+- retained diagnostics: `smart-gatekeeper/boot`와 `smart-gatekeeper/availability`
+  - target/boot ID, boot count, reset reason, planned restart, 이전 RTC breadcrumb
+  - relay command/GPIO, heap/stack, BSSID/channel, MQTT reconnect
+  - flash coredump panic reason/task/PC/RISC-V cause/ELF SHA
 - HA discovery: 부팅 후 MQTT 연결 때 22개 entity retained config 발행
 - OTA: NAS의 `version.json`과 firmware binary 사용, 16 MB dual-OTA partition
 
 ### 3.2 네트워크와 설정
 
-Wi-Fi 연결 실패 시 `SmartGatekeeper-Setup` AP/WebServer로 자격 증명과 Target tuning 값을 NVS에 저장합니다. 연결 상태에서는 15초 간격 watchdog이 `WiFi.reconnect()`를 호출합니다. MQTT는 Root CA로 TLS 연결을 시작하지만 3회 실패 후 `setInsecure()`로 전환하는 현재 동작은 보안 부채입니다.
+Wi-Fi 연결 실패 시 `SmartGatekeeper-Setup` AP/WebServer로 자격 증명과 Target tuning 값을 NVS에 저장합니다.
+정상 연결은 pure `WIFI_STA`로 전환하고 SoftAP를 종료하며, credential `/save`는 provisioning AP mode에서만
+허용합니다. 연결 상태에서는 15초 간격 watchdog이 `WiFi.reconnect()`를 호출합니다. MQTT는 Root CA로
+TLS 연결을 시작하지만 3회 실패 후 `setInsecure()`로 전환하는 현재 동작은 보안 부채입니다.
 
 ### 3.3 BLE
 

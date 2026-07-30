@@ -13,7 +13,7 @@
 #define FIRMWARE_VERSION FIRMWARE_VERSION_OVERRIDE
 #else
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "2.0.0"
+#define FIRMWARE_VERSION "2.1.0"
 #endif
 #endif
 
@@ -81,4 +81,3 @@ extern uint32_t g_relay_cooldown_ms;
 
 // 초음파 폴링 인터벌 (ARMED 상태에서만 적용)
 constexpr uint32_t ULTRASONIC_POLL_INTERVAL_MS = 100;
-

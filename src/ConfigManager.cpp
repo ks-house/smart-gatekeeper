@@ -7,9 +7,15 @@
 #include "config.h"
 
 Preferences ConfigManager::preferences;
+static bool configManagerInitialized = false;
 
 void ConfigManager::begin() {
+    if (configManagerInitialized) {
+        return;
+    }
+
     preferences.begin("gatekeeper", false);
+    configManagerInitialized = true;
 
     // 기본값이 NVS에 없는 경우 기본 상수로 초기 세팅
     if (!preferences.isKey("api_url")) {
@@ -59,6 +65,20 @@ uint32_t ConfigManager::getRelayCooldownMs(uint32_t defaultVal) {
     return preferences.getUInt("relay_cool", defaultVal);
 }
 
+uint32_t ConfigManager::incrementBootCount() {
+    uint32_t count = preferences.getUInt("boot_count", 0) + 1;
+    preferences.putUInt("boot_count", count);
+    return count;
+}
+
+String ConfigManager::consumePlannedRestartReason() {
+    String reason = preferences.getString("next_restart", "");
+    if (preferences.isKey("next_restart")) {
+        preferences.remove("next_restart");
+    }
+    return reason;
+}
+
 
 void ConfigManager::setWifiCredentials(const String& ssid, const String& password) {
     preferences.putString("ssid", ssid);
@@ -92,8 +112,11 @@ void ConfigManager::setRelayCooldownMs(uint32_t cooldownMs) {
     preferences.putUInt("relay_cool", cooldownMs);
 }
 
+void ConfigManager::setPlannedRestartReason(const char* reason) {
+    preferences.putString("next_restart", reason ? reason : "unspecified");
+}
+
 void ConfigManager::clearConfig() {
 
     preferences.clear();
 }
-

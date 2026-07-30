@@ -3,6 +3,7 @@
 // smart-gatekeeper — Wi-Fi 매니저 구현 (STA/AP 모드 웹서버 상시 가동 & 주변 AP 스캔)
 // =============================================================
 #include "WifiManager.h"
+#include "DiagnosticsManager.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -55,7 +56,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
     }
 
     LOGF("[WIFI] NVS 저장 Wi-Fi '%s' 접속 시도 중...", ssid.c_str());
-    WiFi.mode(WIFI_AP_STA); // STA 모드와 AP 조회를 겸용할 수 있도록 AP_STA 모드 활성화
+    WiFi.mode(WIFI_STA);
     WiFi.begin(ssid.c_str(), pass.c_str());
 
     uint32_t startMs = millis();
@@ -69,7 +70,10 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
     if (WiFi.status() == WL_CONNECTED) {
         connected = true;
         apModeActive = false;
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_STA);
         stationIp = WiFi.localIP().toString();
+        DiagnosticsManager::noteAction("wifi_connected");
         LOGF("[WIFI] 접속 성공! IP 주소: %s", stationIp.c_str());
         startWebServer(); // STA 접속 성공 시에도 로컬 IP 웹 접속을 위해 웹서버 구동!
         return true;
@@ -88,7 +92,7 @@ void WifiManager::startAP() {
     // 이전 STA 접속 시도로 인한 채널 호핑/비콘 브로드캐스트 블로킹 완정 방지
     WiFi.disconnect(true, true);
     delay(100);
-    WiFi.mode(WIFI_AP_STA);
+    WiFi.mode(WIFI_AP);
     
     IPAddress apIP(192, 168, 4, 1);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
@@ -217,9 +221,18 @@ void WifiManager::handleScan() {
 }
 
 void WifiManager::handleSave() {
+    if (!apModeActive) {
+        DiagnosticsManager::noteAction("wifi_save_rejected");
+        webServer.send(
+            403, "text/plain",
+            "Wi-Fi credential changes are allowed only in provisioning AP mode.");
+        return;
+    }
+
     String ssid = webServer.arg("ssid");
     String pass = webServer.arg("password");
 
+    DiagnosticsManager::noteAction("wifi_credentials_save");
     LOGF("[WIFI-AP] 신규 Wi-Fi 설정 수신: SSID='%s'", ssid.c_str());
     ConfigManager::setWifiCredentials(ssid, pass);
 
@@ -234,10 +247,12 @@ void WifiManager::handleSave() {
                     "</div></body></html>");
     webServer.send(200, "text/html", html);
     delay(2000);
+    DiagnosticsManager::markPlannedRestart("provisioning_save");
     ESP.restart();
 }
 
 void WifiManager::handleConfigSave() {
+    DiagnosticsManager::noteAction("web_config_save");
     if (webServer.hasArg("tx_power")) {
         setTxPower(webServer.arg("tx_power").toInt());
     }
@@ -284,11 +299,13 @@ void WifiManager::handleClient() {
                     connected = false;
                 }
                 // 비동기 재접속 시도 (Non-blocking)
+                DiagnosticsManager::noteAction("wifi_reconnect");
                 WiFi.reconnect();
             } else {
                 if (!connected) {
                     connected = true;
                     stationIp = WiFi.localIP().toString();
+                    DiagnosticsManager::noteAction("wifi_reconnected");
                     LOGF("[WIFI-INFO] ✅ 와이파이 자동 재접속 성공! IP: %s", stationIp.c_str());
                 }
             }
@@ -308,4 +325,3 @@ bool WifiManager::isAPMode() {
 String WifiManager::getIP() {
     return stationIp;
 }
-

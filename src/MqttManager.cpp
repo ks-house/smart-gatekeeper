@@ -5,17 +5,30 @@
 // =============================================================
 #include "MqttManager.h"
 #include "config.h"
+#include "DiagnosticsManager.h"
 #include "WifiManager.h"
 #include "OtaManager.h"
+
+#include <esp_arduino_version.h>
+#include <esp_system.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
 // main.cpp에서 정의된 외부 함수 참조
 extern void triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
-extern void triggerArm();            // MQTT gatekeeper/arm 수신 시 Pre-arm 활성화
+extern bool triggerArm();            // MQTT gatekeeper/arm 수신 시 Pre-arm 활성화
 extern void setTxPower(int powerDbm);
 extern void setDistanceThresholdCm(int distanceCm);
 extern void setPreArmDurationMs(uint32_t durationMs);
+
+namespace {
+constexpr const char* kAvailabilityTopic = "smart-gatekeeper/availability";
+uint32_t mqttConnectAttempts = 0;
+uint32_t mqttConnectFailures = 0;
+int mqttLastError = 0;
+}  // namespace
 
 
 WiFiClientSecure MqttManager::wifiClient;
@@ -26,7 +39,7 @@ bool MqttManager::connected = false;
 void MqttManager::init() {
     wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
-    client.setBufferSize(1024); // HA Auto-Discovery JSON 패킷 전송을 위해 버퍼 1024 bytes로 확장
+    client.setBufferSize(2048); // boot diagnostics와 HA discovery payload 수용
     client.setKeepAlive(30);
     client.setSocketTimeout(15); // TLS Handshake 대기 타임아웃 15초로 확장 (rc=-4 방지)
     client.setCallback(callback);
@@ -62,8 +75,12 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         }
 
         if (isArmCommand) {
-            triggerArm();
-            publishEvent("pre_armed", "Ultrasonic sensor activated via MQTT Pre-arm");
+            DiagnosticsManager::noteAction("mqtt_arm");
+            if (triggerArm()) {
+                publishEvent("pre_armed", "Ultrasonic sensor activated via MQTT Pre-arm");
+            } else {
+                publishEvent("arm_rejected", "Relay is active; safety interlock");
+            }
         } else {
             LOGF("[MQTT-ARM] ⚠️ arm 토픽 수신되었으나 페이로드 형식 불일치: %s", message);
         }
@@ -73,6 +90,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     // ─── gatekeeper/force_open — 수동 원격 강제 개방 처리 (v2.0) ─────────
     if (strcmp(topic, "gatekeeper/force_open") == 0) {
         LOGF("[MQTT-FORCE] ✅ 수동 원격 문 열기 수신 → 릴레이 개방 (딸깍!)");
+        DiagnosticsManager::noteAction("mqtt_force_open");
         triggerManualDoorOpen();
         publishEvent("force_opened", "Gate opened via MQTT force_open");
         return;
@@ -80,6 +98,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     // ─── gatekeeper/config/tx_power — BLE 발신 출력 동적 튜닝 ───────────────
     if (strcmp(topic, MQTT_TOPIC_CONFIG_TX_POWER) == 0) {
+        DiagnosticsManager::noteAction("config_tx_power");
         int val = atoi(message);
         LOGF("[MQTT-CONFIG] ⚙️ Tx Power 설정 수신: %d dBm", val);
         setTxPower(val);
@@ -89,6 +108,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     // ─── gatekeeper/config/distance_threshold — 초음파 감지 기준 거리 동적 튜닝 ───
     if (strcmp(topic, MQTT_TOPIC_CONFIG_DISTANCE_THRESH) == 0 || strcmp(topic, MQTT_TOPIC_CONFIG_TOF_DIST) == 0) {
+        DiagnosticsManager::noteAction("config_distance");
         int val = atoi(message);
         LOGF("[MQTT-CONFIG] ⚙️ 초음파 감지 기준 거리 설정 수신: %d cm", val);
         setDistanceThresholdCm(val);
@@ -98,6 +118,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     // ─── gatekeeper/config/duration — Pre-arm 유효 시간 동적 튜닝 ─────────────
     if (strcmp(topic, MQTT_TOPIC_CONFIG_DURATION) == 0) {
+        DiagnosticsManager::noteAction("config_duration");
         int val = atoi(message);
         LOGF("[MQTT-CONFIG] ⚙️ Pre-arm 유효 시간 설정 수신: %d", val);
         uint32_t ms = (val < 1000) ? (uint32_t)(val * 1000) : (uint32_t)val;
@@ -108,6 +129,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     // ─── gatekeeper/config/relay_cooldown — Target 릴레이 쿨다운 동적 튜닝 ─────────
     if (strcmp(topic, "gatekeeper/config/relay_cooldown") == 0) {
+        DiagnosticsManager::noteAction("config_relay_cool");
         int val = atoi(message);
         LOGF("[MQTT-CONFIG] ⚙️ Target 릴레이 쿨다운 설정 수신: %d", val);
         uint32_t ms = (val < 100) ? (uint32_t)(val * 1000) : (uint32_t)val;
@@ -119,6 +141,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     // ─── gatekeeper/config/set — 일괄 JSON 설정 수신 ───────────────────────
     if (strcmp(topic, "gatekeeper/config/set") == 0) {
+        DiagnosticsManager::noteAction("config_set");
         StaticJsonDocument<256> setDoc;
         if (!deserializeJson(setDoc, message)) {
             LOGF("[MQTT-CONFIG] ⚙️ 일괄 JSON 튜닝 설정 수신: %s", message);
@@ -135,6 +158,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     // ─── gatekeeper/config/get — 설정 상태 요청 수신 ───────────────────────
     if (strcmp(topic, "gatekeeper/config/get") == 0) {
+        DiagnosticsManager::noteAction("config_get");
         LOGF("[MQTT-CONFIG] ⚙️ 설정 상태 요청(get) 수신 → 쿼리 응답 전송");
         extern int g_tx_power_dbm;
         extern uint16_t g_distance_threshold_cm;
@@ -156,12 +180,17 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         const char* cmd = doc["command"] | "";
         if (strcmp(cmd, "open_gate") == 0 || strcmp(cmd, "force_open") == 0) {
             LOGF("[MQTT-CMD] 원격 출입문 개방 명령 수신!");
+            DiagnosticsManager::noteAction("mqtt_cmd_open");
             triggerManualDoorOpen();
         } else if (strcmp(cmd, "ota_update") == 0 || strcmp(cmd, "trigger_ota") == 0) {
             LOGF("[MQTT-CMD] 원격 OTA 업데이트 명령 수신!");
+            DiagnosticsManager::noteAction("mqtt_cmd_ota");
             OtaManager::checkAndUpdate(true);
         } else if (strcmp(cmd, "reboot") == 0) {
             LOGF("[MQTT-CMD] 원격 재부팅 명령 수신!");
+            DiagnosticsManager::markPlannedRestart("mqtt_reboot");
+            publishEvent("planned_restart", "mqtt_reboot");
+            delay(100);
             ESP.restart();
         }
     }
@@ -175,7 +204,8 @@ void MqttManager::update() {
         uint32_t now = millis();
         if (now - lastPublishMs > 5000) {
             lastPublishMs = now;
-            String clientId = "smart-gatekeeper-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+            String clientId =
+                "smart-gatekeeper-" + String(DiagnosticsManager::targetId());
             
             static int failCount = 0;
             if (failCount >= 3) {
@@ -185,9 +215,30 @@ void MqttManager::update() {
 
             LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
 
-            if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
+            char willPayload[192];
+            snprintf(willPayload, sizeof(willPayload),
+                     "{\"status\":\"offline\",\"target_id\":\"%s\","
+                     "\"boot_id\":\"%s\"}",
+                     DiagnosticsManager::targetId(),
+                     DiagnosticsManager::bootId());
+            mqttConnectAttempts++;
+
+            if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD,
+                               kAvailabilityTopic, 1, true, willPayload)) {
                 LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 failCount = 0; // 성공 시 카운트 초기화
+                mqttLastError = 0;
+                DiagnosticsManager::noteMqttConnected();
+
+                char onlinePayload[192];
+                snprintf(onlinePayload, sizeof(onlinePayload),
+                         "{\"status\":\"online\",\"target_id\":\"%s\","
+                         "\"boot_id\":\"%s\",\"boot_count\":%lu}",
+                         DiagnosticsManager::targetId(),
+                         DiagnosticsManager::bootId(),
+                         static_cast<unsigned long>(
+                             DiagnosticsManager::bootCount()));
+                client.publish(kAvailabilityTopic, onlinePayload, true);
 
                 // v2.0 핵심: gatekeeper/arm, gatekeeper/force_open 및 설정 튜닝 토픽 구독
                 client.subscribe(MQTT_TOPIC_ARM);
@@ -202,7 +253,8 @@ void MqttManager::update() {
                 client.subscribe("gatekeeper/config/get");
                 LOGF("[MQTT] 토픽 구독 완료: %s, gatekeeper/force_open, gatekeeper/config/#", MQTT_TOPIC_ARM);
 
-                publishEvent("connected", "ESP32-C6 v2.0 Online (SSL) — AJ-SR04T Ultrasonic Sensor");
+                publishBootDiagnostics();
+                publishEvent("connected", "ESP32-C6 v2.1 Online (SSL) — AJ-SR04T Ultrasonic Sensor");
                 publishAutoDiscovery();
 
                 extern int g_tx_power_dbm;
@@ -213,6 +265,8 @@ void MqttManager::update() {
                 return;
             } else {
                 failCount++;
+                mqttConnectFailures++;
+                mqttLastError = client.state();
                 LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋, 누적 실패: %d회)", client.state(), failCount);
                 wifiClient.stop(); // 이전 소켓 핸들 및 SSL 핸드셰이크 찌꺼기 강제 정돈
             }
@@ -220,6 +274,69 @@ void MqttManager::update() {
     } else {
         client.loop();
     }
+}
+
+void MqttManager::publishBootDiagnostics() {
+    if (!isConnected()) return;
+
+    StaticJsonDocument<1536> doc;
+    doc["target_id"] = DiagnosticsManager::targetId();
+    doc["boot_id"] = DiagnosticsManager::bootId();
+    doc["boot_count"] = DiagnosticsManager::bootCount();
+    doc["firmware"] = FIRMWARE_VERSION;
+    doc["arduino_core"] = ESP_ARDUINO_VERSION_STR;
+    doc["idf_version"] = esp_get_idf_version();
+    doc["reset_reason"] = DiagnosticsManager::resetReason();
+    doc["reset_reason_code"] = DiagnosticsManager::resetReasonCode();
+    doc["planned_restart"] = DiagnosticsManager::plannedRestartReason();
+
+    doc["previous_valid"] = DiagnosticsManager::previousBreadcrumbValid();
+    doc["previous_uptime_ms"] = DiagnosticsManager::previousUptimeMs();
+    doc["previous_state"] = DiagnosticsManager::previousState();
+    doc["previous_action"] = DiagnosticsManager::previousAction();
+    doc["previous_armed"] = DiagnosticsManager::previousArmed();
+    doc["previous_relay_on"] =
+        DiagnosticsManager::previousRelayCommandedOn();
+    doc["previous_relay_pin"] =
+        DiagnosticsManager::previousRelayPinLevel();
+
+    doc["coredump_valid"] = DiagnosticsManager::coreDumpValid();
+    int resetCode = DiagnosticsManager::resetReasonCode();
+    doc["coredump_matches_reset"] =
+        DiagnosticsManager::coreDumpValid() &&
+        (resetCode == ESP_RST_PANIC || resetCode == ESP_RST_INT_WDT ||
+         resetCode == ESP_RST_TASK_WDT || resetCode == ESP_RST_WDT ||
+         resetCode == ESP_RST_CPU_LOCKUP);
+    doc["coredump_status"] = DiagnosticsManager::coreDumpStatus();
+    doc["coredump_size"] =
+        static_cast<uint32_t>(DiagnosticsManager::coreDumpSize());
+    doc["coredump_panic_reason"] =
+        DiagnosticsManager::coreDumpPanicReason();
+    doc["coredump_task"] = DiagnosticsManager::coreDumpTask();
+    doc["coredump_pc"] = DiagnosticsManager::coreDumpPc();
+    doc["coredump_mcause"] = DiagnosticsManager::coreDumpMcause();
+    doc["coredump_mtval"] = DiagnosticsManager::coreDumpMtval();
+    doc["coredump_elf_sha256"] =
+        DiagnosticsManager::coreDumpElfSha256();
+
+    doc["ip"] = WifiManager::getIP();
+    doc["wifi_bssid"] = WiFi.BSSIDstr();
+    doc["wifi_channel"] = WiFi.channel();
+    doc["wifi_rssi"] = WiFi.RSSI();
+    doc["free_heap"] = ESP.getFreeHeap();
+    doc["min_free_heap"] = ESP.getMinFreeHeap();
+    doc["largest_free_block"] = ESP.getMaxAllocHeap();
+    doc["loop_stack_hwm"] = uxTaskGetStackHighWaterMark(nullptr);
+    doc["mqtt_connect_attempts"] = mqttConnectAttempts;
+    doc["mqtt_connect_failures"] = mqttConnectFailures;
+    doc["mqtt_last_error"] = mqttLastError;
+
+    char buffer[1536];
+    size_t length = serializeJson(doc, buffer, sizeof(buffer));
+    bool ok = length > 0 &&
+              client.publish("smart-gatekeeper/boot", buffer, true);
+    LOGF("[MQTT-DIAG] retained boot diagnostics publish: %s (%u bytes)",
+         ok ? "OK" : "FAIL", static_cast<unsigned int>(length));
 }
 
 void MqttManager::publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs) {
@@ -258,7 +375,7 @@ void MqttManager::publishAutoDiscovery() {
         JsonArray ids = device.createNestedArray("identifiers");
         ids.add(deviceId);
         device["name"] = "Smart Gatekeeper";
-        device["model"] = "ESP32-C6 Door Controller v2.0";
+        device["model"] = "ESP32-C6 Door Controller v2.1";
         device["manufacturer"] = "KS-House";
         device["sw_version"] = FIRMWARE_VERSION;
 
@@ -525,10 +642,15 @@ void MqttManager::publishAutoDiscovery() {
     }
 }
 
-void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr, bool is_armed, uint32_t armRemainingMs) {
+void MqttManager::publishTelemetry(uint16_t distance_mm,
+                                   const char* stateStr,
+                                   bool is_armed,
+                                   uint32_t armRemainingMs,
+                                   bool relayCommandedOn,
+                                   int relayPinLevel) {
     if (!isConnected()) return;
 
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1536> doc;
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
     doc["state"]           = stateStr ? stateStr : "UNKNOWN";
@@ -539,8 +661,23 @@ void MqttManager::publishTelemetry(uint16_t distance_mm, const char* stateStr, b
     doc["wifi_rssi"]       = WiFi.RSSI();
     doc["uptime_s"]        = millis() / 1000;
     doc["firmware"]        = FIRMWARE_VERSION;
+    doc["target_id"]       = DiagnosticsManager::targetId();
+    doc["boot_id"]         = DiagnosticsManager::bootId();
+    doc["boot_count"]      = DiagnosticsManager::bootCount();
+    doc["reset_reason"]    = DiagnosticsManager::resetReason();
+    doc["relay_commanded_on"] = relayCommandedOn;
+    doc["relay_pin_level"] = relayPinLevel;
+    doc["min_free_heap"]   = ESP.getMinFreeHeap();
+    doc["largest_free_block"] = ESP.getMaxAllocHeap();
+    doc["loop_stack_hwm"]  = uxTaskGetStackHighWaterMark(nullptr);
+    doc["wifi_bssid"]      = WiFi.BSSIDstr();
+    doc["wifi_channel"]    = WiFi.channel();
+    doc["mqtt_connect_count"] =
+        DiagnosticsManager::mqttConnectCount();
+    doc["mqtt_connect_attempts"] = mqttConnectAttempts;
+    doc["mqtt_connect_failures"] = mqttConnectFailures;
 
-    char buf[512];
+    char buf[1536];
     serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {
@@ -552,12 +689,15 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     if (!isConnected()) return;
     if (!eventType) return;
 
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<384> doc;
     doc["event"]  = eventType;
     doc["detail"] = detail ? detail : "";
     doc["time"]   = millis();
+    doc["target_id"] = DiagnosticsManager::targetId();
+    doc["boot_id"] = DiagnosticsManager::bootId();
+    doc["boot_count"] = DiagnosticsManager::bootCount();
 
-    char buf[256];
+    char buf[384];
     serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {

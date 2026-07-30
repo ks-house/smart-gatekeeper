@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-07-30 (최신 코드 기준 문서 재분석)
+> Last updated: 2026-07-31 (Target 반복 reset 재현과 v2.1 원격 진단 firmware)
 
 ---
 
@@ -36,8 +36,9 @@
 
 | Page | Summary |
 |------|---------|
-| [architecture.md](architecture.md) | iBeacon → Android → FastAPI → MQTT → 초음파 → relay 현재 구조 |
+| [architecture.md](architecture.md) | iBeacon → Android → FastAPI → MQTT → 초음파 → relay, retained boot/reset 진단 구조 |
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
+| [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | 세 차례 MCU reset 실측, 전원/panic 우선순위, v2.1 원격 reset·coredump 진단과 relay fail-safe |
 | [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |
 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | 서비스-isolate 단일 스캐너 생애주기, 시작 조건, 화면 OFF 설정, 복구·진단·신고 대응 |
 | [mobile_app_background_audit.md](mobile_app_background_audit.md) | 화면 OFF·앱 종료 구현 감사와 P0/P1 수정 결과, 남은 플랫폼 제약·실기기 검증표 |
@@ -62,6 +63,7 @@
 | Topic | Location |
 |-------|----------|
 | 최신 코드 재분석 결론/위험 | [current_code_audit.md](current_code_audit.md) |
+| Target 통신 단절 근본 원인/현장 판별 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) |
 | 현재 전체 출입 시퀀스 | [architecture.md](architecture.md#2-정상-출입-시퀀스) |
 | AJ-SR04T/Relay 핀과 전기 안전 | [pin_mapping.md](pin_mapping.md) |
 | 현재 빌드·시크릿·CI/CD | [env_setup.md](env_setup.md) |
