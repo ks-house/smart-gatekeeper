@@ -456,11 +456,23 @@ class BleScanner {
   // 알림 (issue.md P2-14)
   // ═══════════════════════════════════════════════════════════════════════
 
-  void _updateNotification({
+  static Future<void> updateForegroundNotification({
     required String title,
     required String text,
     bool force = false,
-  }) {
+  }) async {
+    await BleScanner()._updateNotification(
+      title: title,
+      text: text,
+      force: force,
+    );
+  }
+
+  Future<void> _updateNotification({
+    required String title,
+    required String text,
+    bool force = false,
+  }) async {
     final key = '$title|$text';
     final now = DateTime.now();
 
@@ -480,12 +492,15 @@ class BleScanner {
     _lastNotificationAt = now;
 
     try {
-      FlutterForegroundTask.updateService(
+      final updated = await FlutterForegroundTask.updateService(
         notificationTitle: title,
         notificationText: text,
       );
+      if (!updated) {
+        AppErrorLogger().logError('foreground 알림 갱신이 거부되었습니다');
+      }
     } catch (e) {
-      debugPrint('[BleScanner] Notification update error: $e');
+      AppErrorLogger().logError('foreground 알림 갱신 실패', e);
     }
   }
 
@@ -958,9 +973,8 @@ class BleScanner {
           _lastRangingRestartAt = now;
           // ignore: unawaited_futures
           _restartRanging(
-            reason: callbackIsStale
-                ? 'native callback 무수신 자동 복구'
-                : '신호 무수신 자동 복구',
+            reason:
+                callbackIsStale ? 'native callback 무수신 자동 복구' : '신호 무수신 자동 복구',
           );
         }
       }

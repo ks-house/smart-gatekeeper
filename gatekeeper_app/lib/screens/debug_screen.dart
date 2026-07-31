@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/ble_scanner.dart';
 import '../services/error_logger.dart';
+import '../services/foreground_service.dart';
 import '../services/scan_diagnostics.dart';
 
 class DebugScreen extends StatefulWidget {
@@ -393,7 +394,20 @@ class _DebugScreenState extends State<DebugScreen> {
                 _buildCheckRow('위치 서비스(GPS) ON', d.locationServicesOn,
                     blocking: true),
                 _buildCheckRow('배터리 최적화 예외', d.ignoringBatteryOptimizations),
-                _buildCheckRow('포그라운드 서비스 실행', d.foregroundServiceRunning),
+                ValueListenableBuilder<ForegroundServiceHealth>(
+                  valueListenable: ForegroundServiceManager.health,
+                  builder: (context, health, _) => _buildCheckRow(
+                    '포그라운드 서비스 실행',
+                    health.running ?? d.foregroundServiceRunning,
+                  ),
+                ),
+                ValueListenableBuilder<ForegroundServiceHealth>(
+                  valueListenable: ForegroundServiceManager.health,
+                  builder: (context, health, _) => _buildInfoRow(
+                    '서비스·알림 채널 상태',
+                    health.detail,
+                  ),
+                ),
                 _buildCheckRow(
                     '화면 OFF 대응 스캔 설정', d.backgroundScanTuningApplied),
                 const Divider(color: Colors.white10),

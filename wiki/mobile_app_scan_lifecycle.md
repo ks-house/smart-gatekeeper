@@ -51,6 +51,118 @@ UI는 `flutter_beacon`의 monitoring/ranging을 직접 호출하지 않는다. �
 
 ## 3. 서비스 생애주기
 
+### 2026-07-31 상태바 알림 미표시 진단
+
+`519648b` 업데이트 전에는 초기 권한 요청 결과에 거부 항목이 있어도
+`ForegroundServiceManager.startService()`를 호출했다. 업데이트 후에는 아래 조건을
+모두 만족할 때만 서비스를 시작하고, 하나라도 부족하면 `stopService()`로 기존
+서비스까지 종료한다.
+
+- Android 10+ 백그라운드 위치 “항상 허용”
+- Android 12+ Bluetooth scan/connect
+- Android 13+ 알림
+- 위치 서비스(GPS) ON
+- 표준 배터리 최적화 예외
+
+foreground service의 지속 알림이 Android 상태바 표시의 소유자이므로 서비스가
+종료되면 상태바 알림도 함께 사라진다. 이 때문에 필수 항목을 확인하기 전의 정적 코드
+감사에서는 `main.dart`의 필수 조건 게이트를 1차 후보로 분류했다. 특히 최초 진입에서는 사용자 설명 전이라
+백그라운드 위치와 배터리 예외를 자동 요청하지 않고 미충족으로 판정할 수 있다.
+설정 화면의 **필수 권한·배터리 예외 다시 요청**을 거쳐 모든 항목을 완료해야 서비스와
+알림이 다시 시작된다.
+
+2026-07-31 사용자 후속 확인에서 최신 빌드, 미완료 필수 항목 없음, 거부 권한 없음이
+확인되었으므로 해당 기기의 현재 증상에서는 필수 조건 게이트를 직접 원인에서 제외했다.
+남은 두 경로는 다음과 같다.
+
+1. 서비스가 시작 후 예외·OS/OEM 정책으로 종료됨
+2. 서비스는 실행 중이지만 앱 전체 권한과 별개인 foreground 알림 채널이 차단·숨김됨
+
+현재 `ScanDiagnostics.notification`은 `Permission.notification` 전역 권한만 읽고
+`smart_key_foreground_channel`의 실제 importance/차단 상태를 읽지 않는다. 또한
+`foregroundServiceRunning=false`는 warning일 뿐 필수 항목 blocker가 아니어서,
+“미완료 필수 항목 없음”과 “현재 서비스 실행 중”은 동시에 성립하지 않을 수 있다.
+Debug 화면의 **포그라운드 서비스 실행** 값 또는 Android 13+ **활성 앱** 목록으로
+두 경로를 먼저 구분해야 한다.
+
+#### 실시간 이벤트·에러 로그 0건 원인
+
+사용자 후속 확인에서 Debug 화면의 실시간 앱 이벤트·에러 로그가 완전히 비어 있음이
+확인됐다. 이는 서비스 미실행의 확정 증거가 아니라 현재 IPC 등록 순서 결함으로도
+재현된다.
+
+- `ForegroundServiceManager.startService()`는 플러그인 서비스를 먼저 시작한다.
+- 서비스 시작이 반환된 뒤에야 `_registerReceivePort()`를 호출한다.
+- `flutter_foreground_task` 6.5.0 공식 예제는 서비스 시작 **전에** receive port를
+  등록해야 한다고 명시한다.
+- 서비스 isolate는 `onStart`에서 받은 nullable `SendPort`를
+  `backgroundSendPort`에 저장한다.
+- `AppErrorLogger`와 `BleScanner._syncToUi()`는 모두
+  `backgroundSendPort?.send(...)`를 사용하고 예외를 비워 두므로 port가 null이면
+  이벤트, 에러, 진단 snapshot이 아무 표시 없이 전부 유실된다.
+- `onStart` 자체의 시작 메시지는 `AppErrorLogger`가 아닌 `debugPrint`만 사용하므로
+  앱 내 이벤트 콘솔에는 원래 나타나지 않는다.
+
+따라서 빈 이벤트 콘솔은 현재 상태에서 서비스 실행/미실행을 판별할 수 없는 진단
+blind spot이다. 이 IPC 결함은 foreground 알림 생성·`updateService()` 호출과는 별도
+경로이므로 상태바 알림 미표시의 직접 원인으로 단정할 수는 없다. receive port 등록
+순서를 고치고 서비스 시작/주기 heartbeat를 UI 로그에 명시적으로 보내거나, 수정 전에는
+ADB/Android 13+ 활성 앱 목록으로 서비스 생존을 확인해야 한다.
+
+#### 현재 분석으로 가능한 복구 범위
+
+receive port 선등록만 수정하면 서비스→UI 이벤트, 에러, 진단 snapshot 전달은 복구될
+가능성이 높지만 Android foreground 알림은 플러그인의 native service가 별도로 생성하므로
+상태바 알림까지 자동 복구된다고 보장할 수 없다. 상태바를 포함한 복구판은 다음 항목을
+한 묶음으로 적용·검증해야 한다.
+
+1. 서비스 시작 전에 receive port를 등록하고 null/등록 실패를 시작 실패로 처리
+2. `startService()` 직후와 5초 heartbeat에서 실제 `isRunningService`를 확인해 UI에 전달
+3. `FlutterForegroundTask.updateService()`를 await하고 false/비동기 예외를 로그에 보존
+4. 전역 알림 권한과 별도로 `smart_key_foreground_channel`의 실제 차단/importance를 진단
+5. 채널이 사용자에 의해 차단됐으면 앱이 임의로 우회하지 않고 해당 Android 설정으로 안내
+6. receive port 선등록, 시작 실패, 서비스 중도 종료, 알림 갱신 실패를 포함한 테스트 추가
+
+이 수정 후에도 OEM 강제 종료나 사용자가 끈 알림 채널은 앱 코드만으로 강제 복구할 수
+없다. 완료 판정은 앱 이벤트 heartbeat 수신, Debug의 foreground service 실행=true,
+알림 표시, 화면 OFF 실기기 접근 성공을 함께 확인해야 한다.
+
+#### 2026-07-31 복구 구현
+
+복구 코드에는 다음을 적용했다.
+
+1. `startService()`가 `FlutterForegroundTask.receivePort`를 먼저 등록하고 실패하면
+   서비스를 시작하지 않도록 변경했다.
+2. 서비스 `onStart`/`onRepeatEvent`/`onDestroy`가 UI로 시작·5초 heartbeat·종료를
+   전송하고, 초기화와 heartbeat 예외를 앱 내 로그로 보존하도록 변경했다.
+3. 알림 갱신을 await하고 false 반환과 비동기 예외를 앱 내 로그에 남기도록 변경했다.
+4. 기존 LOW 채널은 Android가 importance를 변경하지 않으므로
+   `smart_key_foreground_channel_v2`를 DEFAULT·무음으로 새로 만들어 상태바 표시를
+   복구하도록 변경했다.
+5. Android native bridge로 앱 전체 알림, 새 채널 존재/차단/importance를 읽고 Debug
+   화면의 서비스 실행 행과 채널 상태 행에 표시하도록 변경했다.
+
+Docker Flutter 환경에서 변경 Dart 파일 정적 분석과 기존 단위 테스트는 통과했다.
+Android APK/Kotlin 전체 컴파일은 Gradle 초기화가 실행 환경의 2분 명령 제한을 넘어
+완료 결과를 얻지 못했으므로, 실제 기기 설치 후 아래 시나리오로 최종 검증해야 한다.
+
+1. 앱 실행 직후 실시간 콘솔에 `foreground service 시작`이 나타나는지 확인
+2. 5초 뒤 Debug의 서비스·알림 채널 상태와 foreground service 실행=true를 확인
+3. 상태바에 새 Smart Key 지속 알림이 나타나는지 확인
+4. Home 이동·화면 OFF 뒤 30초 이상 heartbeat가 계속되고 비콘 접근이 동작하는지 확인
+
+모든 필수 조건이 충족되고 Debug 화면에서 foreground service가 실행 중인데도 알림만
+보이지 않으면 다음 2차 원인을 확인한다.
+
+1. Android 설정에서 앱 전체 알림 또는 `smart_key_foreground_channel` 채널이 꺼졌는지
+2. 활성 앱 화면/강제 종료/OEM 절전 정책으로 service process가 제거됐는지
+
+현재 단위 테스트는 `ScanDiagnostics.canScan`의 개별 blocker만 검증하고
+`_initializeApp()`이 서비스 시작/종료를 선택하는 통합 경로와 알림 표시 자체는
+검증하지 않는다. 또한 receive port 선등록과 서비스→UI 로그 전달을 검증하는 테스트도
+없다. 따라서 IPC 수정 전 최종 원인 항목은 실기기 Android 서비스 상태나 ADB로
+확정해야 한다.
+
 ### 지원 범위 결론
 
 현재 코드 계약상 **화면 OFF, Home 이동, 뒤로 가기로 UI Activity 종료**에서는 계속
