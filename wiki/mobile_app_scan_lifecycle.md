@@ -1,6 +1,6 @@
 # 모바일 앱 비콘 스캔 생애주기
 
-> Last updated: 2026-07-30
+> Last updated: 2026-07-31
 > 대상: Android Smart Key 앱
 > 관련 문서: [mobile_app_background_audit.md](mobile_app_background_audit.md) · [mobile_app_scenario.md](mobile_app_scenario.md)
 
@@ -51,9 +51,30 @@ UI는 `flutter_beacon`의 monitoring/ranging을 직접 호출하지 않는다. �
 
 ## 3. 서비스 생애주기
 
+### 지원 범위 결론
+
+현재 코드 계약상 **화면 OFF, Home 이동, 뒤로 가기로 UI Activity 종료**에서는 계속
+동작한다. BLE 소유자는 UI가 아니라 foreground-service FlutterEngine/isolate이고,
+vendored beacon plugin도 Activity detach 때 scanner channel/binding을 해제하지 않는다.
+따라서 UI 화면이 없어져도 서비스 알림과 service process가 살아 있으면 병렬
+monitoring/ranging 및 Pre-arm은 계속 수행된다.
+
+단, 여기서 "앱 종료"는 상태가 서로 다르다.
+
+- Home/다른 앱/뒤로 가기 UI 종료: 지원
+- 최근 앱 스와이프: 표준 동작상 sticky service 유지·재시작 대상이지만 OEM 실측 필요
+- Android 13+ 활성 앱 화면의 `중지`: 미지원
+- 설정의 `강제 종료`: 미지원, 사용자가 앱을 다시 열어야 함
+- 삼성/샤오미 등 OEM이 service process를 강제 정리: 코드만으로 보장 불가
+
+즉 **정상적인 화면 OFF/UI 종료는 설계상 동작한다**가 정확한 답이고, 모든 제조사에서
+강제 종료까지 무조건 동작한다고 보장하는 것은 아니다. 아직 새 병렬-ranging APK의
+화면 OFF·UI 종료 실기기 반복시험이 완료되지 않았으므로 "검증 완료"가 아니라
+"구현 완료, 실기기 검증 필요" 상태다.
+
 | 상황 | 현재 동작 |
 |---|---|
-| 앱 포그라운드 | 서비스 isolate에서 계속 스캔 |
+| 앱 포그라운드 | 서비스 isolate에서 monitoring + ranging 계속 스캔 |
 | Home/앱 전환 | 계속 스캔 |
 | 화면 OFF | filtered background scan으로 계속 스캔 |
 | Activity 종료 | 서비스 FlutterEngine이 별도이므로 계속 스캔 |
@@ -77,24 +98,26 @@ UI는 `flutter_beacon`의 monitoring/ranging을 직접 호출하지 않는다. �
 ## 4. 스캔 상태 머신
 
 ```text
-STOPPED ── 필수 조건 충족 ──▶ IDLE
-IDLE ── didEnterRegion / didDetermineState(INSIDE) ──▶ ACTIVE
-ACTIVE ── didExitRegion / didDetermineState(OUTSIDE) ──▶ IDLE
-ACTIVE ── RSSI 6초 무수신 ──▶ ACTIVE 유지 + ranging 구독 재생성
+STOPPED ── 필수 조건 충족 ──▶ ACTIVE (monitoring + ranging 병렬)
+ACTIVE ── didEnterRegion / INSIDE ──▶ 진입 진단 기록, ranging 유지
+ACTIVE ── didExitRegion / OUTSIDE ──▶ 신호 상태 초기화, ranging 유지
+ACTIVE ── ranging callback 6초 무수신 ──▶ ranging 구독 재생성
 ```
 
 | 모드 | monitoring | ranging | Pre-arm |
 |---|---|---|---|
 | STOPPED | ✗ | ✗ | ✗ |
-| IDLE | ✓ | ✗ | ✗ |
 | ACTIVE | ✓ | ✓ | RSSI 조건 충족 시 |
 
 중요한 복구 규칙:
 
-- native region이 `INSIDE`인데 ranging 무수신을 이유로 IDLE로 내리면 다음
-  `didEnterRegion`이 오지 않아 영구 정지할 수 있다.
-- 따라서 6초 무수신 시 ACTIVE를 유지하고 ranging subscription만 직렬화해
-  재생성한다.
+- 화면 OFF에서 monitoring enter callback이 누락돼도 출입할 수 있도록 ranging을
+  시작 시점부터 병렬로 유지한다. monitoring과 ranging은 같은 native scan cycle을
+  공유하므로 별도 radio scan을 추가하지 않는다.
+- native OUTSIDE 오판 때 ranging을 끄면 다음 enter까지 누락될 경우 영구 정지하므로
+  신호 표시만 초기화하고 ranging subscription은 유지한다.
+- Target이 없어도 발생해야 하는 빈 ranging callback까지 6초간 없으면 Dart stream
+  객체가 살아 있어도 native silent stall로 판단하고 subscription을 재생성한다.
 - 재생성 최소 간격은 10초다.
 - monitoring/ranging stream error는 해당 구독을 null로 표시한 뒤 자동 재시작한다.
 - 30초 watchdog은 필수 조건과 monitoring subscription을 확인한다.

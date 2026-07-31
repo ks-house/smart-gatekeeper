@@ -29,19 +29,16 @@ enum ScannerState {
 /// ## 전력 모델 (issue.md §2.2 / P0-5)
 ///
 /// ```
-///   IDLE  ── didEnterRegion / didDetermineStateForRegion(INSIDE) ──▶  ACTIVE
-///     ▲                                                                 │
-///     └── didExitRegion / ranging N회 연속 무수신 ──────────────────────┘
+/// STOPPED ── 필수 조건 충족 ──▶ ACTIVE(monitoring + ranging)
+/// ACTIVE ── native callback 6초 무수신 ──▶ ranging 재구독
 /// ```
 ///
-/// * **IDLE** — monitoring 만 구독. ranging 콜백·타임아웃 타이머·알림 갱신·
-///   prearm HTTP 가 모두 멈춘다. RSSI 는 나오지 않는다.
-/// * **ACTIVE** — ranging 을 추가 구독해 약 1Hz 로 RSSI 를 계측한다.
-/// * **디버그 강제 모드** — 사용자가 화면을 보고 있으므로 IDLE 강등을 막는다.
+/// 화면 OFF에서 monitoring enter가 누락되는 경우를 막기 위해 monitoring과
+/// ranging을 시작부터 병렬 유지한다. RSSI threshold를 통과할 때만 prearm한다.
 ///
 /// AltBeacon 에서 monitoring 과 ranging 은 **같은 스캔 사이클을 공유**하므로,
-/// ranging 을 끄는 것이 라디오를 끄는 것은 아니다. IDLE 에서 실제로 절감되는
-/// 것은 콜백 파싱 · ValueNotifier 갱신 · 알림 IPC · 주기 타이머 · HTTP 시도다.
+/// ranging 을 끄는 것이 radio를 끄는 것은 아니다. 병렬 ranging의 추가 비용은
+/// callback 파싱 · ValueNotifier 갱신 · 알림 IPC이며 실기기 배터리로 검증한다.
 /// 스캔 자체의 전력은 [_kScanPeriodMs] / [_kBetweenScanPeriodMs] 와
 /// `setBackgroundMode` 가 선택하는 ScanSettings 모드가 결정한다.
 class BleScanner {
@@ -146,6 +143,7 @@ class BleScanner {
   DateTime? _lastEnterRegionAt;
   DateTime? _lastExitRegionAt;
   DateTime? _lastRangingCallbackAt;
+  DateTime? _rangingSubscribedAt;
   DateTime? _lastRangingRestartAt;
   int _rangingCallbackCount = 0;
   String? _lastScanError;
@@ -491,14 +489,6 @@ class BleScanner {
     }
   }
 
-  void _notifyIdleWatching() {
-    _updateNotification(
-      title: '💤 저전력 감시 중',
-      text: 'Target 비콘 신호를 저전력으로 탐색하고 있습니다.',
-      force: true,
-    );
-  }
-
   // ═══════════════════════════════════════════════════════════════════════
   // 스캔 시작 / 정지
   // ═══════════════════════════════════════════════════════════════════════
@@ -559,13 +549,17 @@ class BleScanner {
       // ── 4. 화면 OFF 대응 스캔 설정 (issue.md P0-2) ──────────────────────
       await _applyBackgroundScanTuning();
 
-      // ── 5. monitoring 구독 → IDLE 진입 ─────────────────────────────────
+      // ── 5. monitoring + ranging 병렬 구독 ──────────────────────────────
+      // 화면 OFF에서 OEM/AltBeacon monitoring enter callback이 누락돼도 ranging이
+      // 직접 Target 패킷을 받아 Pre-arm할 수 있어야 한다. monitoring과 ranging은
+      // 같은 native scan cycle을 공유하므로 radio scan을 하나 더 만드는 것이 아니다.
       final regions = _regions;
       AppErrorLogger()
           .log('🛡️ iBeacon 구역 감시(monitoring) 시작 (UUID: $targetBeaconUuid)');
       _subscribeMonitoringLocked(regions);
-      _setMode(ScanMode.idle);
-      _notifyIdleWatching();
+      _subscribeRangingLocked();
+      _setMode(ScanMode.active);
+      _syncStateAndNotify();
 
       _startWatchdog();
       await refreshDiagnostics();
@@ -595,6 +589,7 @@ class BleScanner {
     final monitoring = _streamMonitoring;
     _streamRanging = null;
     _streamMonitoring = null;
+    _rangingSubscribedAt = null;
     await ranging?.cancel();
     await monitoring?.cancel();
 
@@ -763,18 +758,20 @@ class BleScanner {
 
   void _onRegionEntered(String source) {
     _lastEnterRegionAt = DateTime.now();
-    if (_mode == ScanMode.active) return; // 이미 계측 중
-    AppErrorLogger().log('🔔 구역 진입 감지 ($source) → 고속 계측 모드로 승격');
-    // ignore: unawaited_futures
-    _enterActiveMode(reason: source);
+    AppErrorLogger().log('🔔 구역 진입 감지 ($source)');
+    if (_mode != ScanMode.active || _streamRanging == null) {
+      // ignore: unawaited_futures
+      _enterActiveMode(reason: source);
+    }
   }
 
   void _onRegionExited(String source) {
     _lastExitRegionAt = DateTime.now();
-    if (_mode != ScanMode.active) return;
-    AppErrorLogger().log('🚪 구역 이탈 감지 ($source) → 저전력 감시 모드로 강등');
-    // ignore: unawaited_futures
-    _enterIdleMode(reason: source);
+    // 화면 OFF 신뢰성을 위해 ranging은 계속 유지한다. monitoring의 OUTSIDE 오판으로
+    // ranging을 끄면 다음 enter callback도 누락됐을 때 영구 IDLE이 된다.
+    AppErrorLogger().log('🚪 구역 이탈 감지 ($source) — 병렬 ranging 유지');
+    _resetSignalState();
+    _syncStateAndNotify();
   }
 
   void _syncStateAndNotify() {
@@ -882,6 +879,8 @@ class BleScanner {
   void _subscribeRangingLocked() {
     if (_streamRanging != null) return;
 
+    _lastRangingCallbackAt = null;
+    _rangingSubscribedAt = DateTime.now();
     _streamRanging = flutterBeacon.ranging(_rangingRegions).listen(
       (RangingResult result) {
         _lastRangingCallbackAt = DateTime.now();
@@ -895,6 +894,7 @@ class BleScanner {
         AppErrorLogger().logError('Ranging 스트림 오류', error, stack);
         _lastScanError = 'ranging: $error';
         _streamRanging = null;
+        _rangingSubscribedAt = null;
         // ignore: unawaited_futures
         _restartRanging(reason: 'ranging stream 오류');
       },
@@ -915,25 +915,6 @@ class BleScanner {
     });
   }
 
-  Future<void> _enterIdleMode({required String reason}) {
-    return _synchronized('enterIdle($reason)', () async {
-      if (!_ownsNativeScanner) return;
-      if (_mode == ScanMode.stopped) return;
-
-      _timeoutTimer?.cancel();
-      _timeoutTimer = null;
-
-      final ranging = _streamRanging;
-      _streamRanging = null;
-      await ranging?.cancel();
-
-      _resetSignalState();
-      _setMode(ScanMode.idle);
-      _syncStateAndNotify();
-      await refreshDiagnostics();
-    });
-  }
-
   // ═══════════════════════════════════════════════════════════════════════
   // 신호 소실 감시 (issue.md P1-6)
   // ═══════════════════════════════════════════════════════════════════════
@@ -943,6 +924,13 @@ class BleScanner {
     _timeoutTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       final last = lastRssiUpdateTime.value;
       final now = DateTime.now();
+
+      // RSSI가 아니라 ranging callback 자체의 생존을 감시한다. AltBeacon은 Target이
+      // 없어도 빈 ranging result를 scan cycle마다 전달하므로, callback이 6초 이상
+      // 없으면 Dart subscription 객체가 남아 있어도 native scan이 silent-stall한 것.
+      final callbackReference = _lastRangingCallbackAt ?? _rangingSubscribedAt;
+      final callbackIsStale = callbackReference != null &&
+          now.difference(callbackReference).inMilliseconds > _kRangingTimeoutMs;
 
       final isStale = last == null
           ? (_lastEnterRegionAt != null &&
@@ -962,14 +950,18 @@ class BleScanner {
       // native region 은 여전히 INSIDE 일 수 있으므로 ranging 무수신을 이유로
       // IDLE 로 내리면 다음 didEnterRegion 이 오지 않아 영구 정지할 수 있다.
       // ACTIVE 를 유지한 채 ranging 구독만 안전하게 재생성한다.
-      if (isStale && _mode == ScanMode.active) {
+      if ((isStale || callbackIsStale) && _mode == ScanMode.active) {
         final canRestart = _lastRangingRestartAt == null ||
             now.difference(_lastRangingRestartAt!) >=
                 _kRangingRestartMinInterval;
         if (canRestart) {
           _lastRangingRestartAt = now;
           // ignore: unawaited_futures
-          _restartRanging(reason: '신호 무수신 자동 복구');
+          _restartRanging(
+            reason: callbackIsStale
+                ? 'native callback 무수신 자동 복구'
+                : '신호 무수신 자동 복구',
+          );
         }
       }
 
@@ -983,6 +975,7 @@ class BleScanner {
 
       final ranging = _streamRanging;
       _streamRanging = null;
+      _rangingSubscribedAt = null;
       await ranging?.cancel();
       _subscribeRangingLocked();
       AppErrorLogger().log('🔄 ranging 구독 재생성 완료 ($reason)');
@@ -1188,8 +1181,8 @@ class BleScanner {
 
   /// 스캔이 죽었거나 차단 사유가 해소된 경우를 주기적으로 확인해 복구한다.
   ///
-  /// 완전한 해결책은 스캐너를 포그라운드 서비스 isolate 로 옮기는 것이다
-  /// (issue.md P0-4 안 A). 그 작업이 완료될 때까지의 안전망이다.
+  /// 스캐너는 foreground-service isolate에 있으며, 이 watchdog은 native stream과
+  /// 런타임 전제조건이 바뀐 경우 전체 scanner를 재초기화하는 2차 안전망이다.
   Future<void> _watchdogTick() async {
     final snapshot = await refreshDiagnostics();
 
@@ -1210,8 +1203,10 @@ class BleScanner {
     if (!snapshot.canScan) {
       final reason = snapshot.blockingReasons.join(' / ');
       AppErrorLogger().logError('🔄 워치독: 스캔 전제조건 상실 — $reason');
-      _setMode(ScanMode.idle);
-      _syncStateAndNotify();
+      // stopped로 전환해야 조건이 복구됐을 때 위 분기에서 전체 native scanner를
+      // 다시 초기화한다. idle로만 바꾸면 subscription 객체가 남은 silent stall을
+      // 복구하지 못한다.
+      await startScanning(forceRestart: true);
     }
   }
 
