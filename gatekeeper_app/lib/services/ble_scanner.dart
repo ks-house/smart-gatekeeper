@@ -142,6 +142,9 @@ class BleScanner {
 
   DateTime? _lastEnterRegionAt;
   DateTime? _lastExitRegionAt;
+  // ranging은 OUTSIDE 뒤에도 의도적으로 유지한다. 따라서 스캔 모드와 별도로
+  // 마지막 native region 판정/실제 Target 패킷 기준의 위치 상태를 보존한다.
+  bool _isInsideRegion = false;
   DateTime? _lastRangingCallbackAt;
   DateTime? _rangingSubscribedAt;
   DateTime? _lastRangingRestartAt;
@@ -773,15 +776,19 @@ class BleScanner {
 
   void _onRegionEntered(String source) {
     _lastEnterRegionAt = DateTime.now();
+    _isInsideRegion = true;
     AppErrorLogger().log('🔔 구역 진입 감지 ($source)');
     if (_mode != ScanMode.active || _streamRanging == null) {
       // ignore: unawaited_futures
       _enterActiveMode(reason: source);
+    } else {
+      _syncStateAndNotify();
     }
   }
 
   void _onRegionExited(String source) {
     _lastExitRegionAt = DateTime.now();
+    _isInsideRegion = false;
     // 화면 OFF 신뢰성을 위해 ranging은 계속 유지한다. monitoring의 OUTSIDE 오판으로
     // ranging을 끄면 다음 enter callback도 누락됐을 때 영구 IDLE이 된다.
     AppErrorLogger().log('🚪 구역 이탈 감지 ($source) — 병렬 ranging 유지');
@@ -820,7 +827,13 @@ class BleScanner {
                   _kRangingTimeoutMs)
           : now.difference(last).inMilliseconds > _kRangingTimeoutMs;
 
-      if (isRecentArm) {
+      if (!_isInsideRegion) {
+        // OUTSIDE 뒤에도 ranging은 다음 진입 누락 복구를 위해 유지하지만, UI와
+        // 알림은 현재 위치를 "구역 밖"으로 표시해야 한다.
+        newState = ScannerState.idleMonitoring;
+        title = '💤 저전력 감시 중';
+        text = 'Target 비콘 구역 밖 — 다음 진입을 감시하고 있습니다.';
+      } else if (isRecentArm) {
         // 이미 승인 성공 알림을 보냈으므로, 여기서는 쿨다운 상태로 전이만 기록하고 알림은 덮어쓰지 않는다.
         newState = ScannerState.cooldown;
       } else if (isCooldown) {
@@ -1016,6 +1029,15 @@ class BleScanner {
 
     final int rssi = beacon.rssi;
     if (rssi == 0 || rssi == -1) return; // Invalid RSSI
+
+    // monitoring OUTSIDE가 먼저 왔어도 실제 Target 패킷은 구역 내의 더 강한
+    // 증거다. ranging을 유지하는 설계에서 이 경로가 화면 OFF 진입 누락도 복구한다.
+    final enteredByRanging = !_isInsideRegion;
+    _isInsideRegion = true;
+    if (enteredByRanging) {
+      _lastEnterRegionAt = DateTime.now();
+      AppErrorLogger().log('🔔 Target ranging 패킷 수신 — 구역 내 상태 복구');
+    }
 
     // ── 표시용: 순간값 ──────────────────────────────────────────────────
     liveRssi.value = rssi;

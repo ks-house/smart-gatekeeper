@@ -159,6 +159,17 @@ receive port 등록보다 먼저 시작할 수 있는데, 기존 구현은 실�
 3. 상태바에 새 Smart Key 지속 알림이 나타나는지 확인
 4. Home 이동·화면 OFF 뒤 30초 이상 heartbeat가 계속되고 비콘 접근이 동작하는지 확인
 
+#### 2026-08-01 구역 이탈 상태 표시 정합성 수정
+
+`didExitRegion`은 `_resetSignalState()`로 RSSI를 비우지만 ranging을 계속 유지한다.
+기존 상태 계산은 RSSI가 null이면 무조건 “구역 내에 있지만 신호가 일시적으로 약함”을
+표시해, `구역 이탈 감지 — 병렬 ranging 유지` 로그와 모순됐다.
+
+`_isInsideRegion`을 scan mode와 분리해 추가했다. monitoring INSIDE/OUTSIDE가 이를
+갱신하고, OUTSIDE 뒤에도 실제 Target ranging 패킷이 오면 IN으로 즉시 복구한다. 따라서
+OUTSIDE 뒤에는 “Target 비콘 구역 밖 — 다음 진입 감시”를 표시하면서 ranging은 계속
+유지하고, 화면 OFF에서 monitoring enter가 누락된 경우에도 패킷 수신으로 정상 진입한다.
+
 모든 필수 조건이 충족되고 Debug 화면에서 foreground service가 실행 중인데도 알림만
 보이지 않으면 다음 2차 원인을 확인한다.
 
