@@ -253,6 +253,27 @@ ACTIVE ── ranging callback 6초 무수신 ──▶ ranging 구독 재생성
 - monitoring/ranging stream error는 해당 구독을 null로 표시한 뒤 자동 재시작한다.
 - 30초 watchdog은 필수 조건과 monitoring subscription을 확인한다.
 
+#### 2026-08-01 알림창 복귀 시 스캔 재시작·오경고 제거
+
+알림창을 닫아 앱이 `resumed`가 될 때 초기화 루틴이 다시 실행된다. 기존에는 IPC
+heartbeat가 이미 UI에 연결된 foreground service도 무조건 `restartService()`로
+재시작해 scanner 초기화가 반복됐다. 이제 health가 실행 중으로 확인된 서비스는
+재시작하지 않고 상태만 새로고침한다. 자동 실행·업데이트 직후처럼 heartbeat가 아직
+없는 서비스만 재시작해 IPC를 복구한다.
+
+또한 `setBackgroundMode(true)`를 호출하기 전 진단의 false 값을 콘솔 경고로 기록하던
+순서를 수정했다. 설정 적용 뒤에만 warning을 기록하며, native API가 예외 없이 false를
+반환하는 경우도 실제 적용 실패로 처리한다.
+
+#### 2026-08-01 화면 OFF RSSI gate 임시 우회
+
+현장 진단을 위해 foreground-service engine에서 Android
+`PowerManager.isInteractive()`를 조회한다. 화면 OFF 중에는 Target UUID 패킷이
+수신되는지만 분리 확인할 수 있도록 RSSI 임계값을 임시 우회한다. 중복 Pre-arm 요청은
+기존 cooldown 정책으로 제한하며, Target이 IDLE에서만 ARM을 수락해 상태 전이 순서를
+보장한다.
+이 우회는 장기 운영 설정이 아니며 화면 OFF 수신 검증 뒤 제거한다.
+
 ## 5. 화면 OFF 스캔 설정
 
 Android는 화면이 꺼졌을 때 ScanFilter 없는 BLE scan 결과를 중단할 수 있다.

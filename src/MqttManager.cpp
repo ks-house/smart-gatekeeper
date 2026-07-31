@@ -17,7 +17,7 @@
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
 // main.cpp에서 정의된 외부 함수 참조
-extern void triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
+extern bool triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
 extern bool triggerArm();            // MQTT gatekeeper/arm 수신 시 Pre-arm 활성화
 extern void setTxPower(int powerDbm);
 extern void setDistanceThresholdCm(int distanceCm);
@@ -79,7 +79,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
             if (triggerArm()) {
                 publishEvent("pre_armed", "Ultrasonic sensor activated via MQTT Pre-arm");
             } else {
-                publishEvent("arm_rejected", "Relay is active; safety interlock");
+                publishEvent("arm_rejected", "Target is not IDLE");
             }
         } else {
             LOGF("[MQTT-ARM] ⚠️ arm 토픽 수신되었으나 페이로드 형식 불일치: %s", message);
@@ -91,8 +91,11 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     if (strcmp(topic, "gatekeeper/force_open") == 0) {
         LOGF("[MQTT-FORCE] ✅ 수동 원격 문 열기 수신 → 릴레이 개방 (딸깍!)");
         DiagnosticsManager::noteAction("mqtt_force_open");
-        triggerManualDoorOpen();
-        publishEvent("force_opened", "Gate opened via MQTT force_open");
+        if (triggerManualDoorOpen()) {
+            publishEvent("force_opened", "Gate opened via MQTT force_open");
+        } else {
+            publishEvent("force_open_rejected", "Target is not IDLE");
+        }
         return;
     }
 
@@ -181,7 +184,11 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         if (strcmp(cmd, "open_gate") == 0 || strcmp(cmd, "force_open") == 0) {
             LOGF("[MQTT-CMD] 원격 출입문 개방 명령 수신!");
             DiagnosticsManager::noteAction("mqtt_cmd_open");
-            triggerManualDoorOpen();
+            if (triggerManualDoorOpen()) {
+                publishEvent("force_opened", "Gate opened via command topic");
+            } else {
+                publishEvent("force_open_rejected", "Target is not IDLE");
+            }
         } else if (strcmp(cmd, "ota_update") == 0 || strcmp(cmd, "trigger_ota") == 0) {
             LOGF("[MQTT-CMD] 원격 OTA 업데이트 명령 수신!");
             DiagnosticsManager::noteAction("mqtt_cmd_ota");

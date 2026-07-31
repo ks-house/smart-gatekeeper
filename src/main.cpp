@@ -258,12 +258,16 @@ void setRelayCooldownMs(uint32_t cooldownMs) {
 // triggerArm() — MqttManager 콜백에서 호출 (MQTT gatekeeper/arm 수신)
 // ─────────────────────────────────────────────────────────────
 bool triggerArm() {
-  if (relay.isOn() || state == GateState::RELAY_HOLD) {
-    DiagnosticsManager::noteAction("arm_rejected_relay_on");
-    LOGF("[GATE-WARN] 릴레이 ON 중 Pre-arm 요청 거부 (안전 인터록)");
+  // 한 출입 세션은 IDLE -> ARMED -> RELAY_HOLD -> COOLDOWN -> IDLE 순서로
+  // 완료한다. ARMED 갱신과 COOLDOWN 우회를 허용하면 반복 개방될 수 있다.
+  if (state != GateState::IDLE || relay.isOn()) {
+    DiagnosticsManager::noteAction("arm_rejected_not_idle");
+    LOGF("[GATE-WARN] Pre-arm rejected: Target is not IDLE (state=%d, relay=%s)",
+         static_cast<int>(state), relay.isOn() ? "ON" : "OFF");
     return false;
   }
 
+  UltrasonicSensor::resetHistory();
   is_armed      = true;
   arm_timestamp = millis();
   state         = GateState::ARMED;
@@ -276,13 +280,20 @@ bool triggerArm() {
 // ─────────────────────────────────────────────────────────────
 // triggerManualDoorOpen() — MQTT 원격 수동 개방 명령
 // ─────────────────────────────────────────────────────────────
-void triggerManualDoorOpen() {
+bool triggerManualDoorOpen() {
+  if (state != GateState::IDLE || relay.isOn()) {
+    DiagnosticsManager::noteAction("manual_open_rejected_not_idle");
+    LOGF("[GATE-MANUAL-WARN] manual open rejected: Target is not IDLE");
+    return false;
+  }
+
   LOGF("[GATE-MANUAL] *** 원격/MQTT 명령으로 출입문 개방 릴레이 ON *** (딸깍!)");
   is_armed = false;
   relayOn();
   DiagnosticsManager::noteAction("relay_on_manual");
   state   = GateState::RELAY_HOLD;
   stateMs = millis();
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────

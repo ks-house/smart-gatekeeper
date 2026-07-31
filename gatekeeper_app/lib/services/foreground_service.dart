@@ -68,6 +68,7 @@ class GatekeeperTaskHandler extends TaskHandler {
       'timestamp': timestamp.toIso8601String(),
     });
     try {
+      await BleScanner().refreshScreenState();
       await BleScanner().reloadSavedPreferences();
       await BleScanner().publishServiceState();
     } catch (e, stack) {
@@ -153,6 +154,14 @@ class ForegroundServiceManager {
     }
 
     if (await FlutterForegroundTask.isRunningService) {
+      // 알림창을 닫고 앱으로 돌아오는 lifecycle resumed마다 서비스 isolate를
+      // 재시작하면 스캐너도 매번 초기화된다. heartbeat로 이미 UI IPC가 확인된
+      // 서비스는 그대로 유지한다.
+      if (health.value.running == true) {
+        await refreshHealth();
+        return;
+      }
+
       // 앱 업데이트/재부팅 자동 실행 서비스는 receive port가 등록되기 전에 시작돼
       // onStart의 SendPort가 null일 수 있다. 포트 등록 후 재시작해야 새 service
       // isolate가 UI 포트를 받아 이벤트·에러 로그를 전달한다.

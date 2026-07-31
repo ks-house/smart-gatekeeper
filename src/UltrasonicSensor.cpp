@@ -14,12 +14,16 @@ void UltrasonicSensor::init() {
   pinMode(PIN_ECHO, INPUT);
   digitalWrite(PIN_TRIG, LOW);
 
+  resetHistory();
+
+  LOGF("[ULTRASONIC] filter initialized (TRIG: GPIO %d, ECHO: GPIO %d)", PIN_TRIG, PIN_ECHO);
+}
+
+void UltrasonicSensor::resetHistory() {
   for (int i = 0; i < 5; i++) {
     history[i] = 999.0f;
   }
   historyIdx = 0;
-
-  LOGF("[ULTRASONIC] ✅ AJ-SR04T 방수 초음파 센서 및 5단 중앙값 필터 초기화 완료 (TRIG: GPIO %d, ECHO: GPIO %d)", PIN_TRIG, PIN_ECHO);
 }
 
 float UltrasonicSensor::readDistanceCmRaw(unsigned long* outDurationUs) {

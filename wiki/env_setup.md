@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-07-31 (Target CI symbol-map retention)
+> Last updated: 2026-08-01 (로컬 GitHub 인증 정책 반영)
 
 ## 1. 펌웨어
 
@@ -72,7 +72,17 @@ flutter build apk --release \
 Target workflow는 원격 panic 주소 해석용 `firmware.map`만 Actions artifact로 보존합니다.
 운영 자격 증명 문자열이 포함될 수 있는 `firmware.elf`는 public artifact/NAS에 게시하지 않습니다.
 
-## 5. 릴리스 전 체크
+## 5. 로컬 GitHub 인증
+
+로컬 에이전트와 GitHub CLI는 현재 프로세스의 `GITHUB_TOKEN` 환경 변수만 사용합니다.
+토큰 원문은 출력하거나 repository 파일, 로그, Git remote URL에 저장하지 않습니다.
+push 전에는 환경 변수의 존재 여부와 `gh auth status` 성공을 확인합니다. 환경 변수가 존재해도
+sandbox의 socket/network 차단으로 GitHub에 연결하지 못하면 토큰 오류로 판정하지 말고 네트워크
+권한을 적용해 다시 확인합니다. 실제 GitHub 연결 후에도 401/invalid가 확인될 때만 만료·폐기·오입력
+가능성으로 판정하며, `gh auth login`이나 저장 계정으로 우회하지 않고 실행 환경의
+`GITHUB_TOKEN`을 갱신해야 합니다.
+
+## 6. 릴리스 전 체크
 
 - [ ] `pio run -e esp32c6`
 - [ ] `docker compose config` (backend)

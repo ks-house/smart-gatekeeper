@@ -28,3 +28,9 @@ wiki/log.md     → 직전 에이전트 작업 내용
 - 핀 상수는 `include/config.h` 에서만 정의. 소스 파일 하드코딩 금지.
 - 에러 접두어: `[FATAL]` / `[ERROR]` / `[WARN]` / `[INFO]`
 - 라이브러리: `pololu/VL53L0X` (Adafruit 버전 사용 금지)
+
+### 5. GitHub 인증
+- GitHub CLI와 push는 현재 프로세스의 `GITHUB_TOKEN` 환경 변수만 사용한다.
+- 토큰 원문을 출력하거나 파일·로그·remote URL에 저장하지 않는다.
+- socket/network 차단을 인증 실패로 오판하지 말고 네트워크 권한을 적용한 `gh auth status`로 재검증한다.
+- GitHub 연결 후에도 401/invalid인 경우에만 `GITHUB_TOKEN` 갱신을 요청하며, `gh auth login` 또는 저장 계정으로 우회하지 않는다.

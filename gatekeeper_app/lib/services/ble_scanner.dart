@@ -119,6 +119,8 @@ class BleScanner {
   ScanMode _mode = ScanMode.stopped;
   bool _backgroundTuningApplied = false;
   bool _ownsNativeScanner = false;
+  bool _screenInteractive = true;
+  bool _screenOffPacketLogged = false;
 
   StreamSubscription<MonitoringResult>? _streamMonitoring;
   StreamSubscription<RangingResult>? _streamRanging;
@@ -289,6 +291,7 @@ class BleScanner {
   Future<void> initialize() async {
     _ownsNativeScanner = true;
     await loadSavedPreferences();
+    await refreshScreenState();
     await startScanning();
     // 의도적으로 await 하지 않는다.
     // ignore: unawaited_futures
@@ -539,10 +542,6 @@ class BleScanner {
         await refreshDiagnostics();
         return;
       }
-      for (final warning in snapshot.warningReasons) {
-        AppErrorLogger().log('⚠️ $warning');
-      }
-
       // ── 2. JobScheduler 위임 차단 — 반드시 바인딩 전 (issue.md P0-2) ────
       await _disableScheduledScanJobs();
 
@@ -566,6 +565,12 @@ class BleScanner {
 
       // ── 4. 화면 OFF 대응 스캔 설정 (issue.md P0-2) ──────────────────────
       await _applyBackgroundScanTuning();
+      // backgroundMode는 이 시점에야 적용된다. 적용 전 snapshot의 false 값을
+      // 경고로 출력하면 서비스 재시작마다 가짜 오류가 남는다.
+      final configuredSnapshot = await refreshDiagnostics();
+      for (final warning in configuredSnapshot.warningReasons) {
+        AppErrorLogger().log('⚠️ $warning');
+      }
 
       // ── 5. monitoring + ranging 병렬 구독 ──────────────────────────────
       // 화면 OFF에서 OEM/AltBeacon monitoring enter callback이 누락돼도 ranging이
@@ -620,6 +625,26 @@ class BleScanner {
     isBeaconConnected.value = false;
     _smoothedRssiValue = null;
     _aboveThreshold = false;
+  }
+
+  /// 임시 현장 진단용 화면 상태 갱신.
+  ///
+  /// 화면 OFF에서는 Target 패킷 수신 여부를 RSSI gate와 분리해 확인하기 위해
+  /// PowerManager 상태를 서비스 isolate에서 직접 읽는다.
+  Future<void> refreshScreenState() async {
+    if (!_ownsNativeScanner || !Platform.isAndroid) return;
+    try {
+      final interactive = await flutterBeacon.isScreenInteractive;
+      if (_screenInteractive != interactive) {
+        _screenInteractive = interactive;
+        _screenOffPacketLogged = false;
+        AppErrorLogger().log(interactive
+            ? '☀️ 화면 ON 감지 — 정상 RSSI 기준 적용'
+            : '🌙 화면 OFF 감지 — 현장 진단용 RSSI 기준 임시 우회 활성');
+      }
+    } catch (e, s) {
+      AppErrorLogger().logError('화면 ON/OFF 상태 확인 실패', e, s);
+    }
   }
 
   void _setMode(ScanMode next) {
@@ -720,13 +745,24 @@ class BleScanner {
       return;
     }
     try {
-      await flutterBeacon.setBackgroundMode(true);
+      final backgroundModeApplied = await flutterBeacon.setBackgroundMode(true);
       // 기본값 10000ms / 300000ms(5분)를 그대로 두면 RSSI 가 5분에 한 번 온다.
-      await flutterBeacon.setBackgroundScanPeriod(_kScanPeriodMs);
-      await flutterBeacon.setBackgroundBetweenScanPeriod(_kBetweenScanPeriodMs);
+      final backgroundScanPeriodApplied =
+          await flutterBeacon.setBackgroundScanPeriod(_kScanPeriodMs);
+      final backgroundBetweenScanPeriodApplied = await flutterBeacon
+          .setBackgroundBetweenScanPeriod(_kBetweenScanPeriodMs);
       // backgroundMode 가 어떤 이유로 false 로 되돌아가도 주기는 유지되도록.
-      await flutterBeacon.setScanPeriod(_kScanPeriodMs);
-      await flutterBeacon.setBetweenScanPeriod(_kBetweenScanPeriodMs);
+      final scanPeriodApplied =
+          await flutterBeacon.setScanPeriod(_kScanPeriodMs);
+      final betweenScanPeriodApplied =
+          await flutterBeacon.setBetweenScanPeriod(_kBetweenScanPeriodMs);
+      if (!backgroundModeApplied ||
+          !backgroundScanPeriodApplied ||
+          !backgroundBetweenScanPeriodApplied ||
+          !scanPeriodApplied ||
+          !betweenScanPeriodApplied) {
+        throw StateError('AltBeacon 스캔 설정 API가 false를 반환했습니다.');
+      }
       _backgroundTuningApplied = true;
       AppErrorLogger().log(
           '⚙️ 스캔 설정 적용: backgroundMode=true, scan=${_kScanPeriodMs}ms, between=${_kBetweenScanPeriodMs}ms');
@@ -1064,7 +1100,16 @@ class BleScanner {
       if (ema >= rssiThreshold) _aboveThreshold = true;
     }
 
-    if (!_aboveThreshold) {
+    // 현장 진단용 임시 우회: 화면이 실제로 꺼져 있으면 RSSI와 무관하게 Target
+    // 패킷 수신 자체를 Pre-arm 조건으로 사용한다. UUID/사용자 인증은 유지한다.
+    final screenOffRssiBypass = Platform.isAndroid && !_screenInteractive;
+    if (screenOffRssiBypass && !_screenOffPacketLogged) {
+      _screenOffPacketLogged = true;
+      AppErrorLogger()
+          .log('🌙 화면 OFF Target 비콘 수신 확인 (RSSI: $rssi dBm) — 임시 RSSI 기준 우회');
+    }
+
+    if (!screenOffRssiBypass && !_aboveThreshold) {
       _syncStateAndNotify();
       return;
     }

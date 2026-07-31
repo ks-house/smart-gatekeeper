@@ -229,6 +229,17 @@ class FlutterBeacon {
         .invokeMethod('setBackgroundMode', {"backgroundMode": backgroundMode});
   }
 
+  /// Returns whether the Android display is currently interactive.
+  ///
+  /// This is read from PowerManager in the foreground-service FlutterEngine,
+  /// so it remains available when the UI Activity is paused or destroyed.
+  Future<bool> get isScreenInteractive async {
+    if (!Platform.isAndroid) return true;
+    final result = await _methodChannel.invokeMethod('isScreenInteractive');
+    if (result is bool) return result;
+    return result == 1;
+  }
+
   /// Enable or disable AltBeacon's JobScheduler-based scanning (Android only).
   ///
   /// Must be `false` for apps that run their own foreground service, otherwise

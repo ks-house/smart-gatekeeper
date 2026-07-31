@@ -17,6 +17,9 @@ public:
   /// GPIO 핀 초기화 (TRIG=OUTPUT, ECHO=INPUT)
   static void init();
 
+  /// 새 Pre-arm 세션이 이전 사람의 거리 표본을 재사용하지 않도록 필터 이력 초기화.
+  static void resetHistory();
+
   /// 초음파 단발 측정 (Raw)
   static float readDistanceCmRaw(unsigned long* outDurationUs = nullptr);
 

@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-07-31 (Android foreground 상태바 알림·IPC 복구 반영)
+> Last updated: 2026-08-01 (출입 상태 전이·화면 OFF 진단·GitHub 인증 정책 반영)
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Page | Summary |
 |------|---------|
-| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, 시크릿, CI/CD 가이드 |
+| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, 시크릿, CI/CD와 GITHUB_TOKEN 인증 가이드 |
 
 ---
 
@@ -43,6 +43,7 @@
 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | 서비스-isolate monitoring/ranging, 상태바 알림·IPC 복구와 화면 OFF 진단 |
 | [mobile_app_background_audit.md](mobile_app_background_audit.md) | 화면 OFF·앱 종료 구현 감사와 P0/P1 수정 결과, 남은 플랫폼 제약·실기기 검증표 |
 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) | 화면 OFF 출입 실패의 확정 증거, 원인 우선순위, 단계별 판별·실기기 수집 절차 |
+| [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 
 
 

@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.RemoteException;
+import android.os.PowerManager;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -217,6 +218,17 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
 
   @Override
   public void onMethodCall(@NonNull MethodCall call, @NonNull final Result result) {
+    if (call.method.equals("isScreenInteractive")) {
+      if (applicationContext == null) {
+        result.error("Beacon", "application context unavailable", null);
+        return;
+      }
+      PowerManager powerManager =
+          (PowerManager) applicationContext.getSystemService(Context.POWER_SERVICE);
+      result.success(powerManager == null || powerManager.isInteractive());
+      return;
+    }
+
     if (call.method.equals("initialize")) {
       if (beaconManager != null && !beaconManager.isBound(beaconScanner.beaconConsumer)) {
         this.flutterResult = result;
