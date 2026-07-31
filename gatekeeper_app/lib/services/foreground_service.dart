@@ -153,10 +153,20 @@ class ForegroundServiceManager {
     }
 
     if (await FlutterForegroundTask.isRunningService) {
+      // 앱 업데이트/재부팅 자동 실행 서비스는 receive port가 등록되기 전에 시작돼
+      // onStart의 SendPort가 null일 수 있다. 포트 등록 후 재시작해야 새 service
+      // isolate가 UI 포트를 받아 이벤트·에러 로그를 전달한다.
+      AppErrorLogger().log('기존 foreground service 재시작 요청 (IPC 포트 연결)');
+      final restarted = await FlutterForegroundTask.restartService();
+      if (!restarted) {
+        _setHealth(false, '기존 foreground service 재시작 API가 false를 반환했습니다');
+        throw StateError('기존 foreground service 재시작에 실패했습니다.');
+      }
       await refreshHealth();
       return;
     }
 
+    AppErrorLogger().log('foreground service 시작 요청');
     final started = await FlutterForegroundTask.startService(
       notificationTitle: '💤 저전력 감시 준비 중',
       notificationText: 'SmartGatekeeper 비콘 감지를 시작하고 있습니다...',
@@ -192,6 +202,9 @@ class ForegroundServiceManager {
         _setHealth(event != 'stopped', '서비스 $event', timestamp);
       }
     });
+    // 이 메서드는 UI isolate에서만 호출한다. backgroundSendPort가 null이어도
+    // 콘솔의 ValueNotifier에는 즉시 남으므로 로그 UI 자체와 서비스 IPC를 구분한다.
+    AppErrorLogger().log('foreground service IPC 포트 등록 완료');
     return true;
   }
 

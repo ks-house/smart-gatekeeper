@@ -146,6 +146,14 @@ Docker Flutter 환경에서 변경 Dart 파일 정적 분석과 기존 단위 �
 Android APK/Kotlin 전체 컴파일은 Gradle 초기화가 실행 환경의 2분 명령 제한을 넘어
 완료 결과를 얻지 못했으므로, 실제 기기 설치 후 아래 시나리오로 최종 검증해야 한다.
 
+2026-08-01 실기기에서 이벤트 콘솔이 계속 비어 있는 후속 관측으로 자동 실행 경로를
+재검토했다. 앱 업데이트 때 `autoRunOnMyPackageReplaced`가 foreground service를 UI
+receive port 등록보다 먼저 시작할 수 있는데, 기존 구현은 실행 중인 서비스를 그대로
+반환했다. 그러면 해당 service isolate가 최초 `onStart`에서 null `SendPort`를 보존해
+모든 IPC가 계속 유실된다. 따라서 receive port 등록 후 실행 중인 서비스를
+`restartService()`하고, UI isolate에서 포트 등록·시작/재시작 요청 로그를 직접
+기록하도록 보완했다.
+
 1. 앱 실행 직후 실시간 콘솔에 `foreground service 시작`이 나타나는지 확인
 2. 5초 뒤 Debug의 서비스·알림 채널 상태와 foreground service 실행=true를 확인
 3. 상태바에 새 Smart Key 지속 알림이 나타나는지 확인
