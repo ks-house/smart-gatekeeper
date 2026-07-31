@@ -10,7 +10,7 @@
 
 1. 앱 최초 실행 시 BLE·위치·알림 권한 요청
 2. 별도 foreground-service Flutter isolate 시작
-3. 서비스 isolate 안에서 iBeacon monitoring/ranging 수행
+3. 서비스 isolate 안에서 iBeacon monitoring/ranging을 시작부터 병렬 수행
 4. 화면 OFF 대응 `ScanFilter`가 생기도록 AltBeacon background mode 적용
 5. Target UUID가 일치하고 RSSI EMA가 임계값 이상이면 `POST /api/v1/door/prearm`
 6. 백엔드가 등록·승인된 기기를 확인하고 MQTT `gatekeeper/arm` 발행
@@ -57,8 +57,8 @@
 
 - 기본 UUID는 펌웨어와 앱 모두
   `a1b2c3d4-e5f6-7890-abcd-ef1234567890`으로 일치한다.
-- 앱은 monitoring 상태에서 `didEnterRegion` 또는
-  `didDetermineStateForRegion(INSIDE)`를 받으면 ranging을 시작한다.
+- 앱은 시작부터 monitoring과 ranging을 병렬 구독한다. 화면 OFF에서
+  `didEnterRegion`이 누락돼도 ranging 패킷으로 Pre-arm할 수 있다.
 - Android 화면 OFF에서 필터 없는 BLE 스캔 결과가 중단되는 문제를 피하려고
   `setBackgroundMode(true)`를 유지한다.
 - background/foreground scan period는 1100 ms, between period는 0 ms다.
@@ -104,7 +104,8 @@ HTTP timeout은 4초다. 200이면 10초 쿨다운, 401/403이면 긴 쿨다운,
 
 | 항목 | 수정 결과 |
 |---|---|
-| P0-1 초기 ranging 무수신 후 영구 IDLE | ACTIVE를 유지하고 10초 최소 간격으로 ranging subscription만 재생성 |
+| P0-1 초기 ranging 무수신 후 영구 IDLE | 시작부터 ranging 병렬 유지, native callback 6초 무수신 시 10초 최소 간격으로 subscription 재생성 |
+| P0-5 화면 OFF monitoring enter 누락 | monitoring을 Pre-arm의 단일 관문에서 제거하고 OUTSIDE에도 ranging 유지 |
 | P0-2 UI/service AltBeacon 충돌 | 서비스 isolate 단일 소유로 고정, Debug 직접 스캔 제거, native `removeAll*Notifiers()` 제거 |
 | P0-3 background location 미승인 | 교육/설정 화면 추가, “항상 허용”·배터리 예외를 blocker로 승격, 미충족 시 서비스 중지 |
 | P0-4 MQTT 실패를 HTTP 200 성공 처리 | QoS 1 PUBACK 확인, 미발행 시 백엔드 503, 앱도 200 body의 `mqtt_published=true` 확인 |
