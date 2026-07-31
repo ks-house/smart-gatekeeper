@@ -70,6 +70,47 @@ IDLE --MQTT arm--> ARMED --valid ultrasonic--> RELAY_HOLD --1 s--> COOLDOWN --co
 - HA discovery: 부팅 후 MQTT 연결 때 22개 entity retained config 발행
 - OTA: NAS의 `version.json`과 firmware binary 사용, 16 MB dual-OTA partition
 
+#### MQTT 토픽 자동 등록 범위 감사 (2026-07-31)
+
+MQTT 브로커에는 토픽을 사전 "등록"하는 절차가 없습니다. 이 펌웨어에서 자동화되는 것은
+브로커 연결/재연결 직후의 **명령 토픽 subscribe**와 Home Assistant discovery config의
+**retained publish**입니다.
+
+| 구분 | 현재 자동 처리 | 판정 |
+|------|----------------|------|
+| 명령 수신 | `gatekeeper/arm`, `gatekeeper/force_open`, `smart-gatekeeper/cmd`, 개별 config 4개, `gatekeeper/config/set`, `gatekeeper/config/get`을 연결 성공 때마다 subscribe | 의도된 10개 토픽은 모두 자동 구독 요청됨 |
+| HA entity | button 3 + status sensor 9 + binary sensor 2 + config number 4 + config state sensor 4 | 22개 discovery config를 연결 성공 때마다 retained 발행 |
+| 상태 데이터 | availability, boot, config state는 retained 발행; status, event, ultrasonic raw sensor는 실행 중 발행 | MQTT publish는 자동이나 각각이 별도 HA entity로 모두 등록되는 것은 아님 |
+| discovery 범위 밖 | boot/coredump 상세, availability 자체, event, ultrasonic `duration_us`, v2.1 추가 status 진단 필드 | 이들은 22개 entity와 별개의 원시 토픽/필드이며, HA entity로 만들기로 정의한 항목이 아님 |
+| 전달 보장 | subscribe/publish 반환값은 일부 로그만 남기며 실패 항목 재시도·전체 성공 집계가 없음 | 연결 성공만으로 10개 구독/22개 discovery의 broker 수락을 보장하지 못함 |
+
+따라서 펌웨어가 정의한 **22개 HA entity의 자동 discovery는 구현되어 있습니다.** 다만
+"펌웨어가 사용하는 모든 원시 토픽/필드까지 HA entity로 변환"하거나 "22건의 broker 수락을 보장"하는
+구현은 아닙니다.
+완전 보장이 필요하면 각 subscribe/publish 결과를 검사하고 실패 목록만 재시도하며, boot/event/raw
+ultrasonic 및 추가 진단 필드 중 HA에 노출할 항목을 명시적으로 discovery entity로 추가해야 합니다.
+
+##### 기기 정보의 entity 수와 영역 화면 표시 수가 다른 이유
+
+Home Assistant의 **기기 정보**는 discovery로 생성된 entity 전체를 보여주지만, 자동 생성되는 **영역
+대시보드**는 그 전체 목록을 그대로 렌더링하지 않습니다. 영역 전략은 `entity_category`가 없는
+primary entity만 선별하고, 화면별로 지원하는 domain/device class만 카드 또는 요약에 포함합니다.
+이는 등록 실패가 아니라 Home Assistant UI의 의도된 필터링입니다.
+
+현재 22개 중 Wi-Fi RSSI, free heap, uptime, firmware와 설정 상태 센서 4개, 합계 **8개**가
+`entity_category: diagnostic`입니다. 이들은 기기 정보의 진단 섹션에는 존재하지만 영역 자동
+대시보드에서는 제외됩니다. 나머지 entity도 sensor/button/number/binary_sensor domain별 영역 카드
+지원 방식에 따라 요약되므로, 현장에서 약 11개만 보이는 현상은 22개 discovery 누락의 증거가
+아닙니다.
+
+모든 22개를 한 화면에 표시하려면 firmware의 진단 분류를 제거하지 말고 Home Assistant에서
+수동 대시보드의 Entities 카드를 만들어 해당 entity를 명시적으로 추가해야 합니다. 진단 분류를
+제거하면 영역 자동 화면에 일부가 더 노출될 수 있지만 RSSI/heap/firmware/저장 설정값을 primary
+entity로 오분류하고 기본 UI를 혼잡하게 하므로 적용하지 않습니다.
+
+근거: [Home Assistant entity registry properties](https://developers.home-assistant.io/docs/core/entity/#registry-properties),
+[Areas dashboard entity filters](https://github.com/home-assistant/frontend/blob/b1ccb6355d9671532d00369918f678fcc8cb1d28/src/panels/lovelace/strategies/areas/helpers/areas-strategy-helper.ts).
+
 ### 3.2 네트워크와 설정
 
 Wi-Fi 연결 실패 시 `SmartGatekeeper-Setup` AP/WebServer로 자격 증명과 Target tuning 값을 NVS에 저장합니다.
