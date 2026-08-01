@@ -1338,3 +1338,11 @@
 - `tests/test_trusted_workflow_policy.py`에 `paths`/`paths-ignore` 필터 부재 및 trust boundary 가드/권한 검증 리그레션 테스트 추가
 - `wiki/trusted_workflow_policy.md`에 paths 필터 제거와 required check 스케줄링 동작 업데이트
 - 65개 repository unit tests, protocol 16개, observability 18개, OTA contract, actionlint, relative link check, `git diff --check`, immutability 검사 통과
+
+## [2026-08-02] lint | PR #32 trusted workflow 구조 테스트 fail-closed 공백으로 차단
+
+- Head `e4735c744aba2ae1c1d7a662a8fb9baaaf4bd0c0`의 실제 workflow는 paths 필터만 제거하고 base/default guard, base-SHA sparse checkout, credentials 비보존, `contents: read`, inert candidate API byte 검증을 유지함을 확인
+- 새 구조 테스트가 checkout sparse scope를 `.`로 확장, verifier run에 PR title 직접 보간·실행, candidate checkout+실행 step 추가의 세 adversarial 변형을 모두 허용함을 독립 재현
+- exact top-level/job/step key와 정확히 2개 ordered step, pinned checkout SHA, exact sparse 2-path/cone-mode, exact verifier env/run body 및 extra/candidate 실행 금지를 회귀 테스트로 고정하기 전 병합 차단
+- 65개 repository test, protocol 16개, observability 18개, OTA contract/live validator, actionlint, YAML/JSON/JSONL/Python/link/diff/immutability nominal 검사는 통과하고 protected bundle·raw/runtime/manual_remote/OTA evidence는 byte-unchanged
+- COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/32#pullrequestreview-4835815859 게시; PR #32는 draft/unmerged로 유지하며 production과 Epic/물리 Gate는 계속 fail-closed/open
