@@ -24,6 +24,12 @@ TEST_PRIVATE_KEY_HEX = (
 
 
 class OtaContractGateTest(unittest.TestCase):
+  def _workflow_sources(self) -> dict[str, str]:
+    return {
+        path: (gate.ROOT / path).read_text(encoding="utf-8")
+        for path in gate.WORKFLOW_ARTIFACT_BINDINGS
+    }
+
   def _write_release_fixture(
       self,
       directory: Path,
@@ -217,10 +223,7 @@ class OtaContractGateTest(unittest.TestCase):
       gate.validate_recovery_and_faults(plan=plan)
 
   def test_workflow_cannot_upload_without_validating_same_artifact(self):
-    workflows = {
-        path: (gate.ROOT / path).read_text(encoding="utf-8")
-        for path in gate.WORKFLOW_ARTIFACT_BINDINGS
-    }
+    workflows = self._workflow_sources()
     target_workflow = ".github/workflows/deploy.yml"
     workflows[target_workflow] = workflows[target_workflow].replace(
         "--artifact dist/gatekeeper-firmware.bin",
@@ -228,6 +231,39 @@ class OtaContractGateTest(unittest.TestCase):
     )
     with self.assertRaisesRegex(gate.GateError, "artifact binding"):
       gate.validate_workflow_artifact_bindings(workflows)
+
+  def test_push_builds_canary_without_entering_production_release_job(self):
+    gate.validate_workflow_release_triggers(self._workflow_sources())
+
+  def test_push_condition_cannot_authorize_production_release(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "github.event_name == 'workflow_dispatch' &&\n"
+        "      inputs.release_target == 'production'",
+        "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    )
+    with self.assertRaisesRegex(gate.GateError, "authorized production trigger"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_explicit_release_cannot_bypass_evidence_validation(self):
+    workflows = self._workflow_sources()
+    app_workflow = ".github/workflows/build_app.yml"
+    workflows[app_workflow] = workflows[app_workflow].replace(
+        "python scripts/ota_contract_gate.py release", "echo bypass-release-gate"
+    )
+    with self.assertRaisesRegex(gate.GateError, "release evidence validation"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_explicit_release_cannot_bypass_pinned_signing_trust(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+        '--public-key-hex "$UNTRUSTED_KEY"',
+    )
+    with self.assertRaisesRegex(gate.GateError, "production release isolation"):
+      gate.validate_workflow_release_triggers(workflows)
 
 
 if __name__ == "__main__":

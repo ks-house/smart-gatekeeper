@@ -218,6 +218,9 @@ FAULT_REQUIREMENTS = {
 
 WORKFLOW_ARTIFACT_BINDINGS = {
     ".github/workflows/deploy.yml": {
+        "build_job": "test_and_build",
+        "release_job": "release_to_production",
+        "canary_name": "target-canary",
         "artifact": "dist/gatekeeper-firmware.bin",
         "build_copy": (
             "cp .pio/build/esp32c6/firmware.bin "
@@ -225,6 +228,9 @@ WORKFLOW_ARTIFACT_BINDINGS = {
         ),
     },
     ".github/workflows/build_app.yml": {
+        "build_job": "build_apk",
+        "release_job": "release_to_production",
+        "canary_name": "smart-key-app-canary",
         "artifact": "dist/ks-house-gatekeeper.apk",
         "build_copy": (
             "cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk "
@@ -477,12 +483,101 @@ def validate_workflow_artifact_bindings(
       )
 
 
+def _workflow_job(content: str, job_name: str, path: str) -> str:
+  match = re.search(
+      rf"(?ms)^  {re.escape(job_name)}:\s*$.*?(?=^  [A-Za-z0-9_-]+:\s*$|\Z)",
+      content,
+  )
+  if match is None:
+    raise GateError(f"{path}: missing workflow job {job_name}")
+  return match.group(0)
+
+
+def validate_workflow_release_triggers(
+    workflows: dict[str, str] | None = None,
+) -> None:
+  """Keep ordinary CI green while production remains explicit and fail-closed."""
+  if workflows is None:
+    workflows = {
+        path: (ROOT / path).read_text(encoding="utf-8")
+        for path in WORKFLOW_ARTIFACT_BINDINGS
+    }
+  authorized_condition = (
+      "github.event_name == 'workflow_dispatch' &&\n"
+      "      inputs.release_target == 'production'"
+  )
+  release_action = "python scripts/ota_contract_gate.py release"
+  deploy_action = "uses: wlixcc/SFTP-Deploy-Action@v1.2.4"
+  for path, binding in WORKFLOW_ARTIFACT_BINDINGS.items():
+    content = workflows.get(path, "")
+    build_job = _workflow_job(content, binding["build_job"], path)
+    release_job = _workflow_job(content, binding["release_job"], path)
+    trigger_snippets = {
+        "workflow_dispatch:",
+        "release_target:",
+        "default: canary",
+        "- production",
+    }
+    missing_triggers = sorted(
+        snippet for snippet in trigger_snippets if snippet not in content
+    )
+    if missing_triggers:
+      raise GateError(
+          f"{path}: explicit production release trigger missing: {missing_triggers}"
+      )
+    if authorized_condition not in release_job:
+      raise GateError(f"{path}: production job lacks authorized production trigger")
+    release_requirements = {
+        f"needs: {binding['build_job']}",
+        "environment: production",
+        "uses: actions/download-artifact@v4",
+        f"name: {binding['canary_name']}",
+        "path: dist",
+        release_action,
+        "--evidence ota/release-evidence.json",
+        "--manifest dist/version.json",
+        f"--artifact {binding['artifact']}",
+        '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+        deploy_action,
+        "local_path: './dist/*'",
+    }
+    if binding["artifact"].endswith(".apk"):
+      release_requirements.add('--apksigner "$APKSIGNER"')
+    missing_release = sorted(
+        snippet for snippet in release_requirements if snippet not in release_job
+    )
+    if missing_release:
+      label = (
+          "release evidence validation"
+          if release_action in missing_release
+          else "production release isolation"
+      )
+      raise GateError(f"{path}: {label} missing: {missing_release}")
+    build_requirements = {
+        "python scripts/ota_contract_gate.py contract",
+        "python -m unittest discover -s tests -p 'test_*.py' -v",
+        "uses: actions/upload-artifact@v4",
+        f"name: {binding['canary_name']}",
+        "path: dist/",
+    }
+    missing_build = sorted(
+        snippet for snippet in build_requirements if snippet not in build_job
+    )
+    if missing_build:
+      raise GateError(f"{path}: ordinary build/test contract missing: {missing_build}")
+    if release_action in build_job or deploy_action in build_job:
+      raise GateError(f"{path}: ordinary push build enters production release path")
+    if content.count(release_action) != 1 or content.count(deploy_action) != 1:
+      raise GateError(f"{path}: production release actions must exist only in release job")
+
+
 def validate_contract() -> None:
   validate_partitions()
   state_machines = validate_state_machines()
   validate_recovery_and_faults(state_machines=state_machines)
   validate_vectors()
   validate_workflow_artifact_bindings()
+  validate_workflow_release_triggers()
 
 
 def validate_release_evidence(path: Path) -> None:
