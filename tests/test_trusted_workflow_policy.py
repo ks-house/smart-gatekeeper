@@ -4,6 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -224,6 +225,79 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         candidate[changed_path] += b"X"
         with self.assertRaises(trusted.PolicyError):
           trusted.verify_candidate(policy, candidate.__getitem__)
+
+
+class TrustedWorkflowStructureTest(unittest.TestCase):
+  def setUp(self):
+    self.workflow_path = ROOT / ".github/workflows/trusted_workflow_policy.yml"
+    self.workflow_text = self.workflow_path.read_text(encoding="utf-8")
+    self.workflow_data = yaml.safe_load(self.workflow_text)
+
+  def test_no_paths_or_paths_ignore_suppression(self):
+    on_block = self.workflow_data.get("on") or self.workflow_data.get(True)
+    self.assertIsNotNone(on_block, "Workflow must have an 'on' trigger block")
+    pr_target = on_block.get("pull_request_target")
+    self.assertIsNotNone(pr_target, "Workflow must trigger on pull_request_target")
+    self.assertNotIn(
+        "paths", pr_target, "pull_request_target must not have a paths filter"
+    )
+    self.assertNotIn(
+        "paths-ignore",
+        pr_target,
+        "pull_request_target must not have a paths-ignore filter",
+    )
+    self.assertNotIn("paths", on_block, "on block must not have a paths filter")
+    self.assertNotIn(
+        "paths-ignore", on_block, "on block must not have a paths-ignore filter"
+    )
+    self.assertEqual(pr_target.get("branches"), ["main"])
+    self.assertEqual(
+        sorted(pr_target.get("types", [])),
+        ["opened", "reopened", "synchronize"],
+    )
+
+  def test_trust_boundary_guards_and_permissions(self):
+    self.assertEqual(
+        self.workflow_data.get("permissions"), {"contents": "read"}
+    )
+    jobs = self.workflow_data.get("jobs", {})
+    verify_job = jobs.get("verify", {})
+    self.assertEqual(
+        verify_job.get("name"),
+        "Verify protected files against trusted base policy",
+    )
+
+    job_if = verify_job.get("if", "")
+    self.assertIn(
+        "github.event.pull_request.base.repo.full_name == github.repository",
+        job_if,
+    )
+    self.assertIn(
+        "github.event.pull_request.base.ref =="
+        " github.event.repository.default_branch",
+        job_if,
+    )
+
+    steps = verify_job.get("steps", [])
+    self.assertGreaterEqual(len(steps), 2)
+
+    checkout_step = steps[0]
+    self.assertEqual(
+        checkout_step.get("with", {}).get("ref"),
+        "${{ github.event.pull_request.base.sha }}",
+    )
+    self.assertFalse(checkout_step.get("with", {}).get("persist-credentials"))
+
+    verify_step = steps[1]
+    env = verify_step.get("env", {})
+    self.assertEqual(
+        env.get("CANDIDATE_REPOSITORY"),
+        "${{ github.event.pull_request.head.repo.full_name }}",
+    )
+    self.assertEqual(
+        env.get("CANDIDATE_SHA"),
+        "${{ github.event.pull_request.head.sha }}",
+    )
 
 
 if __name__ == "__main__":

@@ -4,16 +4,6 @@ on:
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened]
-    paths:
-      - '.github/workflows/deploy.yml'
-      - '.github/workflows/build_app.yml'
-      - '.github/workflows/ota_contract.yml'
-      - 'scripts/ota_contract_gate.py'
-      - 'ota/requirements.txt'
-      - '.github/workflows/trusted_workflow_policy.yml'
-      - '.github/workflow-policy/trusted_workflow_policy.json'
-      - 'scripts/verify_trusted_workflow_policy.py'
-      - 'tests/test_trusted_workflow_policy.py'
 
 permissions:
   contents: read
