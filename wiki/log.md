@@ -1248,3 +1248,11 @@
 
 - `test_ota_contract_gate.py`에 리뷰 4834849103의 11개 변형 수단(same-line `|| true`, same-line `&& cp`, `printf -v`/`read` key rebind, duplicate evidence identity, alternate scp/sftp action, ordinary job `curl --upload-file`, 임의의 unknown action/step, top-level key/permission/trigger 오염, unallowed job)에 대해 양쪽 워크플로우(`deploy.yml`, `build_app.yml`) 검증을 수행하는 12개 adversarial unit test를 추가해 총 50개 OTA contract unit test 전건 통과
 - 18개 observability unit test, 16개 protocol unit test, actionlint, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 통과
+
+## [2026-08-01] test | PR #28 canonical allowlist final review remains blocked
+
+- Re-reviewed head `6d77f22` and reproduced all prior mutations against both firmware and APK workflows; the exact current workflows and the 50 nominal OTA tests pass, and PR Actions `30704554373`, `30704554344`, and `30704554347` are green with both production jobs skipped.
+- A deterministic 102-case structural audit found 50 accepted deviations, including a `python()` evidence bypass, an `EXIT` trap post-validation artifact replacement, sourced signing-key rebinding, decoy contract/test commands, arbitrary Python HTTP deployment in ordinary jobs, altered PR/main triggers, wrong/duplicate canary artifact paths, allowed-action extra steps, and unknown release step keys.
+- The canonical policy is self-authorizing because the PR checkout executes its own mutable `ota_contract_gate.py`; changing a workflow action and its `CANONICAL_RELEASE_STEPS` entry together was accepted by both validators.
+- The live `production` Environment still requires reviewer `tworimpa` and the sole custom branch policy `main`; manual_remote and all OTA invariant assets are unchanged, while issue #23 remains open for OTA-G1 through OTA-G4 physical/operator evidence.
+- Posted COMMENTED review `4834880424`; PR #28 remains draft and unmerged until exact trusted workflow schemas replace the partial, PR-mutable allowlist.
