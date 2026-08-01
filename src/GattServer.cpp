@@ -172,6 +172,8 @@ bool GattServer::handleClientHello(const uint8_t* payload, size_t len, uint8_t* 
   uint16_t client_max = (payload[2] << 8) | payload[3];
   uint8_t  framing_min = payload[4];
   uint8_t  framing_max = payload[5];
+  (void)framing_min;
+  (void)framing_max;
 
   uint16_t target_min = 1;
   uint16_t target_max = 1;
