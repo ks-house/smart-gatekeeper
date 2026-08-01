@@ -1174,6 +1174,7 @@
 - Re-ran Flutter tests (5/5), forced JVM tests (6/6), and the debug APK build; verified the PowerShell harness parses, package/merged-manifest receiver attributes are correct, wiki links are intact, `git diff --check` passes, and `raw/` is unchanged.
 - Recorded that repository-wide Android lint still has two pre-existing `MainActivity.kt` API-level errors and Flutter analyze has 17 pre-existing vendored-plugin info findings; PR-changed paths add no lint error. No ADB device was attached, so Samsung radio trials remain 0/20 and issue #14 plus OTA-G1/G2/G3 remain open hardware gates.
 
+<<<<<<< HEAD
 ## [2026-08-01] fix | main CI와 production OTA release trigger 분리
 
 - firmware/APK 일반 main push와 기본 canary dispatch는 build/test/OTA contract 검증 및 Actions canary 보존까지만 수행하고 production release/SFTP job을 skip하도록 변경
@@ -1256,3 +1257,32 @@
 - The canonical policy is self-authorizing because the PR checkout executes its own mutable `ota_contract_gate.py`; changing a workflow action and its `CANONICAL_RELEASE_STEPS` entry together was accepted by both validators.
 - The live `production` Environment still requires reviewer `tworimpa` and the sole custom branch policy `main`; manual_remote and all OTA invariant assets are unchanged, while issue #23 remains open for OTA-G1 through OTA-G4 physical/operator evidence.
 - Posted COMMENTED review `4834880424`; PR #28 remains draft and unmerged until exact trusted workflow schemas replace the partial, PR-mutable allowlist.
+
+## [2026-08-01] code | Bootstrap trusted workflow-policy Gate
+
+- Added a base-branch `pull_request_target` workflow with read-only contents permission, base-SHA-only sparse checkout, and GitHub API candidate byte retrieval; PR code is never checked out or executed.
+- Added a stdlib trusted validator and machine-readable exact digest policy protecting firmware/APK/OTA workflows, the OTA gate, and its dependency lock as one indivisible bundle.
+- Bootstrap policy accepts only current `origin/main` `8c36ead` or preapproved PR #28 head `7bae62f`; mixed bundles, missing files, and arbitrary byte changes fail closed.
+
+## [2026-08-01] compile | Trusted policy trust boundary and rotation contract
+
+- Documented UTF-8 LF normalization, SHA-256 bundle matching, candidate policy/validator self-modification isolation, and the two-step post-PR #28 policy rotation.
+- Confirmed the change does not alter manual mobile door-open, runtime firmware/app behavior, OTA rollback/recovery/N/N-1 contracts, or pending physical OTA Gate status.
+
+## [2026-08-01] test | Trusted workflow-policy adversarial coverage
+
+- Added tests for exact main/PR #28 bundles, line-ending normalization, arbitrary byte mutation, mixed bundle rejection, missing files, strict policy schema, approved current-checkout evidence, and PR-side policy/validator self-modification isolation.
+
+## [2026-08-01] lint | Trusted workflow-policy bootstrap verification
+
+- Verified the actual GitHub Contents API maps `8c36ead` to `origin-main-bootstrap` and `7bae62f` to `pr-28-preapproved` without checking out candidate code.
+- Passed 30 repository unit tests including 12 trusted-policy adversarial tests, OTA contract validation, Python compile, actionlint, workflow YAML and policy/OTA JSON parsing, wiki relative-link lint, `git diff --check`, and raw-source immutability check.
+- No physical Target or Android OTA trial was performed; OTA-G1 through OTA-G4 remain pending and issue #23 stays open.
+
+## [2026-08-01] fix | PR #28 branch `origin/main` (PR #29 `420783fc`) 병합 및 Trusted Policy `pr-28-preapproved` 검증
+
+- PR #29가 `origin/main` (`420783fc`)으로 병합됨에 따라 `origin/main`을 `tworimpa/fix-main-ci-release-gate`에 히스토리 재작성 없이 병합
+- 5개 보호 대상 파일 (`deploy.yml`, `build_app.yml`, `ota_contract.yml`, `scripts/ota_contract_gate.py`, `ota/requirements.txt`)을 `7bae62f` 승인 번들 바이트로 보존
+- `verify_trusted_workflow_policy.py` 실행 결과 후보 번들이 `pr-28-preapproved`와 100% 일치함을 기계적으로 검증
+- 수동 모바일 출입 및 미결 OTA-G1~G4 물리 증거 상태를 보존하고 12개 trusted policy test, 39개 OTA contract test, 18개 observability test, 16개 protocol test, actionlint, relative link check, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
+

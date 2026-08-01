@@ -335,12 +335,24 @@ N-1 소비자를 위해 Target `version == firmware_version`, Mobile
 ## 12. CI release gate 판정
 
 `.github/workflows/ota_contract.yml`은 PR/main에서 schema, signature tamper vector, dual-slot
+<<<<<<< HEAD
 layout, state/recovery/fault 계약을 검사한다. firmware/mobile build workflow의 일반 main push와
 기본 canary dispatch는 build/test/contract 검증과 Actions canary 보존까지만 수행하고 production
 release job을 실행하지 않는다. 운영 배포는 쓰기 권한자가 `workflow_dispatch`의
 `release_target=production`을 명시하고 `production` GitHub Environment 승인을 통과한 경우에만
 별도 job으로 진입한다. 이 job은 `ota/release-evidence.json`의 OTA-G0~G4, physical test, 승인자가
 모두 통과하지 않으면 production NAS SFTP 전에 실패한다.
+=======
+layout, state/recovery/fault 계약을 검사한다. firmware/mobile build workflow는 canary artifact를
+Actions에 먼저 보존한 뒤 `release` mode를 실행하고, `ota/release-evidence.json`의 OTA-G0~G4,
+physical test, 승인자가 모두 통과하지 않으면 production NAS SFTP 전에 실패한다.
+
+보호 workflow와 OTA gate 자체의 PR 변경은 `.github/workflows/trusted_workflow_policy.yml`이
+default-branch `base.sha`의 validator/policy만 실행해 별도로 승인한다. Candidate의 workflow, gate,
+dependency 파일은 GitHub API에서 inert bytes로만 읽고 normalized SHA-256이 하나의 approved bundle과
+전체 일치해야 한다. Candidate가 policy/validator를 함께 수정해도 현재 판정에는 사용되지 않으며,
+bootstrap과 2단계 rotation은 [trusted_workflow_policy.md](trusted_workflow_policy.md)를 따른다.
+>>>>>>> origin/main
 release mode는 해당 build의 manifest와 production pinned public key도 입력받아 schema와 실제
 Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올릴 바로 그 firmware/APK
 경로를 필수 입력받아 실제 byte length와 SHA-256을 signed manifest와 비교한다. Android는
