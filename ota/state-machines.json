@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "target": {
+    "initial": "IDLE",
+    "states": [
+      "IDLE", "UPDATE_REQUESTED", "WAIT_SAFE_STATE", "CHECK_MANIFEST",
+      "VERIFY_MANIFEST", "DOWNLOAD_INACTIVE_SLOT", "VERIFY_IMAGE",
+      "SET_PENDING_BOOT", "REBOOT", "BOOT_HEALTH_WINDOW", "MARK_VALID",
+      "ROLLBACK_PREVIOUS_SLOT", "FAILED_RETRYABLE"
+    ],
+    "terminal_success": "MARK_VALID",
+    "failure_preserves": ["active_slot", "previous_bootable_slot", "nvs_v_previous"],
+    "invariants": [
+      "relay_off_before_flash", "inactive_slot_only", "explicit_valid_mark",
+      "health_timeout_rolls_back", "commands_rejected_with_ota_busy"
+    ]
+  },
+  "mobile": {
+    "initial": "IDLE",
+    "states": [
+      "IDLE", "CHECK_METADATA", "VERIFY_METADATA", "COMPARE_COMPATIBILITY",
+      "CHECK_STORAGE", "DOWNLOAD_TEMP", "VERIFY_APK", "REQUEST_PACKAGE_INSTALL",
+      "USER_DENIED", "INSTALL_FAILED", "NEW_APP_FIRST_RUN_HEALTH", "COMPLETE"
+    ],
+    "terminal_success": "COMPLETE",
+    "failure_preserves": ["installed_apk", "credentials", "preferences_v_previous"],
+    "invariants": [
+      "scanner_independent", "webview_independent", "temporary_download",
+      "sha256_before_installer", "signing_identity_before_installer"
+    ]
+  }
+}

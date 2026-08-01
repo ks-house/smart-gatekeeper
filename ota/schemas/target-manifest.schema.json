@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-gatekeeper.invalid/schemas/target-manifest.schema.json",
+  "title": "Smart Gatekeeper Target OTA manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "artifact_type", "version", "firmware_version",
+    "protocol_min", "protocol_max", "board", "flash_layout",
+    "artifact_url", "artifact_size", "sha256", "signature_algorithm",
+    "signing_key_id", "signature", "mandatory_after", "published_at",
+    "build_id", "commit"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "artifact_type": {"const": "target-firmware"},
+    "version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "firmware_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "protocol_min": {"type": "integer", "minimum": 1},
+    "protocol_max": {"type": "integer", "minimum": 1},
+    "board": {"const": "esp32-c6-devkitc-1"},
+    "flash_layout": {"const": "dual-ota-16mb-v1"},
+    "artifact_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "artifact_size": {"type": "integer", "minimum": 1, "maximum": 7340032},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signature_algorithm": {"const": "Ed25519"},
+    "signing_key_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
+    "mandatory_after": {"type": ["string", "null"], "format": "date-time"},
+    "published_at": {"type": "string", "format": "date-time"},
+    "build_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+  }
+}
