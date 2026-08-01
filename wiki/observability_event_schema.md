@@ -23,6 +23,7 @@ update session으로 판정한다.
 | [`event_codes_v1.json`](../observability/event_codes_v1.json) | 고정 `event_code`와 허용 stage/outcome/reason 조합 |
 | [`event_parser.py`](../observability/event_parser.py) | 검증, replay dedupe, partial order, I7/I9 합격 판정 |
 | [`access_success_v1.jsonl`](../observability/fixtures/access_success_v1.jsonl) | 정상 local GATT 출입 timeline |
+| [`manual_remote_access_success_v1.jsonl`](../observability/fixtures/manual_remote_access_success_v1.jsonl) | 인증된 모바일 앱 버튼 기반 수동 개방 timeline |
 | [`target_ota_success_v1.jsonl`](../observability/fixtures/target_ota_success_v1.jsonl) | boot 전후 Target OTA timeline |
 
 `schema_version`은 문자열 `1.0`이다. v1 producer는 v1 필드를 삭제하거나 의미를 바꾸지
@@ -184,7 +185,28 @@ ACCESS_SESSION_STARTED
 실제 Android synced clock과 Target unsynced monotonic clock이 섞인 예시는
 [`access_success_v1.jsonl`](../observability/fixtures/access_success_v1.jsonl)에 있다.
 
-### 8.2 Target OTA
+### 8.2 인증된 모바일 앱 수동 개방
+
+Epic #13의 사용자 확인 불변조건에 따라 앱의 명시적 `문 열기` 버튼 경로는 hands-free
+`local_gatt`/`legacy_mqtt`와 별도의 `manual_remote` session으로 유지한다. 최소 합격 chain은
+다음과 같고, 이 path에는 wake/GATT/arm/sensor 기반 hands-free activation event를 섞지 않는다.
+
+```text
+ACCESS_SESSION_STARTED                         (path=manual_remote)
+→ ACCESS_MANUAL_OPEN_REQUESTED                 (MANUAL_BUTTON_PRESSED)
+→ ACCESS_MANUAL_OPEN_AUTHORIZED                (MANUAL_OPEN_AUTHORIZED)
+→ ACCESS_MANUAL_OPEN_RECEIVED                  (MANUAL_OPEN_RECEIVED)
+→ ACCESS_RELAY_ON
+→ ACCESS_RELAY_OFF
+→ ACCESS_SESSION_COMPLETED / ACCESS_GRANTED
+```
+
+요청 event는 인증된 모바일 앱의 명시적 버튼 동작을, authorized event는 Backend의 현재
+credential 승인 확인을, received event는 Target의 수동 command 수신을 각각 증명한다. 정상
+예시는 [`manual_remote_access_success_v1.jsonl`](../observability/fixtures/manual_remote_access_success_v1.jsonl)에
+있다.
+
+### 8.3 Target OTA
 
 같은 update `session_id`가 old boot에서 new boot로 이어진다.
 
@@ -206,7 +228,7 @@ UPDATE_SESSION_STARTED
 보존한다. upload, MQTT PUBACK, download 100%, flash 완료만으로 terminal success를 만들지 않는다.
 예시는 [`target_ota_success_v1.jsonl`](../observability/fixtures/target_ota_success_v1.jsonl)에 있다.
 
-### 8.3 Target OTA rollback
+### 8.4 Target OTA rollback
 
 Rollback 완료는 trigger/confirm 두 event만으로 성립하지 않는다. 최초 session event의
 `current_version`을 이전 정상 버전으로 고정하고 다음 causal chain 전체를 요구한다.
@@ -236,6 +258,9 @@ Target evidence는 모두 같은 `target_ref`와 하나의 새 recovery boot에�
 | Android HTTP 401 | `ACCESS_BACKEND_REJECTED/API_UNAUTHORIZED` 후 terminal | response body/공통 API key 기록 금지 |
 | Android HTTP 403 | `ACCESS_BACKEND_REJECTED/CREDENTIAL_INACTIVE` 후 terminal | tenant 이름/동호수 기록 금지 |
 | Android timeout/통신 오류 | terminal `BACKEND_UNAVAILABLE` | exception, URL query 원문 금지 |
+| 모바일 앱 `문 열기` 버튼 | `ACCESS_MANUAL_OPEN_REQUESTED/MANUAL_BUTTON_PRESSED` | hands-free wake/pre-arm과 별도 `manual_remote` session 생성 |
+| Backend `/door/open` 승인 | `ACCESS_MANUAL_OPEN_AUTHORIZED/MANUAL_OPEN_AUTHORIZED` | 등록·활성 credential 확인 후에만 emit; 사용자 원문 금지 |
+| Target `force_open` 수신 | `ACCESS_MANUAL_OPEN_RECEIVED/MANUAL_OPEN_RECEIVED` | 이어지는 relay ON/OFF와 같은 session/cause chain 유지 |
 | Backend `[PREARM]` 요청 | Android event의 cause를 가진 `ACCESS_BACKEND_REQUESTED` | 현재 UUID/device/RSSI/name 로그는 privacy 위반이므로 제거/HMAC 전환 |
 | Backend 등록·승인 확인 | `ACCESS_BACKEND_AUTHORIZED/BACKEND_ALLOW` | tenant row 원문 대신 `credential_ref` |
 | Backend MQTT publish 성공/실패 | `ACCESS_ARM_PUBLISHED/MQTT_ARM_PUBLISHED` 또는 `ACCESS_ARM_DELIVERY_FAILED/MQTT_PUBLISH_FAILED` | MQTT arm payload에 `session_id` 전달, raw payload 로그 금지 |
@@ -268,6 +293,9 @@ free-text 판정을 제거한다. Schema migration은 Backend DB의 expand→mig
   가리키며 그 event의 boot를 prior 값으로 기록하고 같은 Target의 새 boot가 emit한다.
 - Backend/MQTT offline queue를 재전송해도 event ID, boot, sequence, cause가 변하지 않는다.
 - proof/ACL 실패 session에 relay event가 존재하면 즉시 불합격이다.
+- 인증된 모바일 앱의 explicit button-driven `manual_remote` path는 manual request→Backend
+  authorization→Target command receipt→relay ON/OFF chain을 요구하고 hands-free wake/GATT/arm/sensor
+  event와 혼합되면 불합격이다.
 
 ### I9 E2E/fault injection
 
@@ -298,12 +326,12 @@ free-text 판정을 제거한다. Schema migration은 Backend DB의 expand→mig
 Repository root에서 실행한다.
 
 ```powershell
-python observability/event_parser.py validate observability/fixtures/access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl observability/fixtures/target_ota_rollback_success_v1.jsonl
-python observability/event_parser.py evaluate observability/fixtures/access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl observability/fixtures/target_ota_rollback_success_v1.jsonl
+python observability/event_parser.py validate observability/fixtures/access_success_v1.jsonl observability/fixtures/manual_remote_access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl observability/fixtures/target_ota_rollback_success_v1.jsonl
+python observability/event_parser.py evaluate observability/fixtures/access_success_v1.jsonl observability/fixtures/manual_remote_access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl observability/fixtures/target_ota_rollback_success_v1.jsonl
 python -m unittest discover -s observability/tests -v
 ```
 
-테스트는 정상 access/OTA, offline 역순 도착, exact replay dedupe, sequence conflict, unknown code,
+테스트는 정상 hands-free/manual access와 OTA, offline 역순 도착, exact replay dedupe, sequence conflict, unknown code,
 privacy 위반, boot 변경, terminal 누락, health confirmation 누락과 함께 digest 불일치, rollback 증거
 누락, 잘못된 reset prior/new boot 관계, uint64 overflow, causation cycle의 negative fixture를 검증한다.
 

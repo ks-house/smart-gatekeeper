@@ -24,6 +24,9 @@ class EventParserTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.access = load_jsonl(FIXTURE_DIR / "access_success_v1.jsonl")
+        cls.manual_access = load_jsonl(
+            FIXTURE_DIR / "manual_remote_access_success_v1.jsonl"
+        )
         cls.ota = load_jsonl(FIXTURE_DIR / "target_ota_success_v1.jsonl")
         cls.rollback = load_jsonl(
             FIXTURE_DIR / "target_ota_rollback_success_v1.jsonl"
@@ -53,6 +56,31 @@ class EventParserTests(unittest.TestCase):
         result = evaluate_access_session(self.access)
         self.assertTrue(result["passed"])
         self.assertEqual(result["terminal_reason_code"], "ACCESS_GRANTED")
+
+    def test_authenticated_manual_button_path_is_distinct_from_hands_free(self) -> None:
+        result = evaluate_access_session(self.manual_access)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["terminal_reason_code"], "ACCESS_GRANTED")
+
+        codes = {event["event_code"] for event in self.manual_access}
+        self.assertIn("ACCESS_MANUAL_OPEN_REQUESTED", codes)
+        self.assertIn("ACCESS_MANUAL_OPEN_AUTHORIZED", codes)
+        self.assertIn("ACCESS_MANUAL_OPEN_RECEIVED", codes)
+        self.assertNotIn("ACCESS_WAKE_DETECTED", codes)
+        self.assertNotIn("ACCESS_SENSOR_DETECTED", codes)
+
+        blurred = copy.deepcopy(self.manual_access)
+        inserted = copy.deepcopy(self.access[8])
+        inserted["event_id"] = "e1000008-0000-4000-8000-000000000008"
+        inserted["session_id"] = blurred[0]["session_id"]
+        inserted["sequence"] = 901
+        inserted["clock"]["monotonic_ms"] = 9001
+        inserted["causation_event_id"] = blurred[3]["event_id"]
+        for event in blurred[4:]:
+            event["sequence"] += 1
+        blurred[4]["causation_event_id"] = inserted["event_id"]
+        with self.assertRaisesRegex(EventValidationError, "distinct from hands-free"):
+            evaluate_access_session(blurred[:4] + [inserted] + blurred[4:])
 
     def test_offline_arrival_is_reordered_by_causation_and_sequence(self) -> None:
         ordered = order_events(reversed(self.access))

@@ -738,13 +738,32 @@ def evaluate_access_session(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
                 "ACCESS_RELAY_OFF",
                 "ACCESS_SESSION_COMPLETED",
             ]
-        else:
+        elif path == "manual_remote":
             required = [
                 "ACCESS_SESSION_STARTED",
+                "ACCESS_MANUAL_OPEN_REQUESTED",
+                "ACCESS_MANUAL_OPEN_AUTHORIZED",
+                "ACCESS_MANUAL_OPEN_RECEIVED",
                 "ACCESS_RELAY_ON",
                 "ACCESS_RELAY_OFF",
                 "ACCESS_SESSION_COMPLETED",
             ]
+            hands_free_codes = {
+                "ACCESS_WAKE_DETECTED",
+                "ACCESS_GATT_CONNECT_STARTED",
+                "ACCESS_GATT_CONNECTED",
+                "ACCESS_ARM_PUBLISHED",
+                "ACCESS_ARM_RECEIVED",
+                "ACCESS_ARMED",
+                "ACCESS_SENSOR_DETECTED",
+            }
+            if hands_free_codes.intersection(codes):
+                errors.append(
+                    "manual_remote path must remain distinct from hands-free unlock"
+                )
+        else:
+            errors.append(f"unsupported successful access path: {path}")
+            required = []
         missing, _ = _required_causal_chain(required, ordered)
         if missing:
             errors.append(f"successful {path} path is missing ordered required events")

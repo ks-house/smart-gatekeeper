@@ -161,6 +161,27 @@
       "allowed_reason_codes": ["TARGET_BUSY", "TARGET_NOT_IDLE", "OTA_BUSY"],
       "terminal": false
     },
+    "ACCESS_MANUAL_OPEN_REQUESTED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["MANUAL_BUTTON_PRESSED"],
+      "terminal": false
+    },
+    "ACCESS_MANUAL_OPEN_AUTHORIZED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["MANUAL_OPEN_AUTHORIZED"],
+      "terminal": false
+    },
+    "ACCESS_MANUAL_OPEN_RECEIVED": {
+      "session_kind": "access",
+      "stage": "ARMED",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["MANUAL_OPEN_RECEIVED"],
+      "terminal": false
+    },
     "ACCESS_SENSOR_DETECTED": {
       "session_kind": "access",
       "stage": "SENSOR",

@@ -1011,3 +1011,15 @@
 
 - Python compile, 전체 wiki 상대 링크, schema/catalog JSON parse와 `git diff --check` 통과
 - `observability/README.md`, `wiki/observability_event_schema.md`, `wiki/index.md`의 digest, rollback, reset, uint64와 causal ordering 계약을 parser/catalog/fixture와 동기화
+
+## [2026-08-01] fix | PR #26 수동 버튼 출입 경로 불변조건 보강
+
+- Epic #13의 사용자 확인에 따라 인증된 모바일 앱 `문 열기` 버튼을 hands-free unlock과 구분되는 `manual_remote` access path로 고정
+- manual button request, Backend authorization, Target command receipt의 고정 event/reason code와 relay ON/OFF causal chain을 catalog/parser에 추가
+- 정상 수동 개방 fixture와 hands-free activation event 혼합 거부 테스트를 추가하고 acceptance/migration 문서를 동기화
+
+## [2026-08-01] test | PR #26 수정 후 독립 재검증
+
+- immutable artifact digest, 이전 버전 install/boot/health rollback evidence, reset prior/new boot 관계, uint64 상한, causation cycle 거부 회귀 테스트를 재실행
+- hands-free access, authenticated manual button access, Target OTA, Target rollback positive fixture의 validate/evaluate와 unittest 18건 통과
+- JSON Schema Draft 2020-12 meta-schema와 fixture event 53건을 검사하고 의도된 sequence overflow maximum 위반을 확인
