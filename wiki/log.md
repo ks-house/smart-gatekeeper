@@ -959,3 +959,30 @@
 
 - Epic #13 하위에 `[OTA][I10] 모바일 앱·Target OTA 비회귀와 복구 계약` #23을 Wave 0 cross-cutting blocker로 등록
 - #17~#22 구현·통합·rollout은 #23의 OTA reachability, artifact integrity, dual-slot rollback, N/N-1 compatibility 계약을 통과해야 완료되도록 구현 계획에 반영
+
+## [2026-08-01] compile | Cross-layer access/update event schema v1 확정
+
+- GitHub issue #15의 Android·Target·Backend 공통 envelope와 UUIDv4 session/event ID, boot-local monotonic sequence, causal offline ordering 규칙을 `observability_event_schema.md`에 정의
+- 고정 access/update event·reason catalog, privacy whitelist, 기존 mobile/Backend/MQTT/Target 자유 텍스트 mapping과 dual-write migration을 문서화
+- I7 local FSM과 I9 fault matrix의 relay one-shot·terminal reason·reset 합격 판정, #23 install→boot/app first-run→health→valid/rollback OTA 상관관계를 release gate로 고정
+
+## [2026-08-01] code | Event schema reference parser와 fixture 구현
+
+- JSON Schema 2020-12 envelope와 authoritative event/reason compatibility catalog를 `observability/`에 추가
+- dependency-free Python parser에 privacy validation, exact replay dedupe, sequence conflict 검출, causal partial ordering, access/OTA 합격 판정을 구현
+- Android synced clock과 Target unsynced clock이 섞인 정상 access fixture, Target old/new boot를 잇는 OTA health/valid-mark fixture를 추가
+
+## [2026-08-01] test | Event schema parser 계약 검증
+
+- 정상 access/OTA, offline 역순 도착, exact replay, sequence 충돌, unknown code/reason, privacy 위반, reset, relay fail-closed, artifact digest, terminal/health 누락의 12개 unittest를 통과
+- reference parser로 두 fixture의 schema validation과 I7/I9/OTA acceptance evaluation 통과를 확인
+
+## [2026-08-01] test | Cross-layer schema 변경 비회귀 검사
+
+- repository Docker Flutter builder에서 기존 `scan_diagnostics_test.dart` 5개 테스트 통과
+- compile-only placeholder secret header를 사용한 ESP32-C6 PlatformIO 빌드는 toolchain 준비·컴파일을 진행했으나 두 차례 각각 5분 제한 시간에 도달해 완료 여부 미확정; 임시 header는 즉시 제거하고 firmware source·설정은 변경하지 않음
+
+## [2026-08-01] lint | Event schema와 wiki 일관성 검사
+
+- JSON Schema Draft 2020-12 meta-schema와 access/OTA JSONL fixture 구조 검증 통과
+- 전체 wiki 상대 링크, Python compile/unittest, parser validation/evaluation, `git diff --check` 통과
