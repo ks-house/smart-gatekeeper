@@ -23,6 +23,7 @@
 #include "MqttManager.h"
 #include "UltrasonicSensor.h"
 #include "RelayController.h"
+#include "GattServer.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -214,6 +215,9 @@ void setTxPower(int powerDbm) {
   oAdvertisementData.setManufacturerData(oBeacon.getData());
 
   oScanResponseData.setName("SmartGatekeeper");
+  if (GattServer::isEnabled()) {
+    oScanResponseData.setCompleteServices(BLEUUID(HARDWARELESS_SERVICE_UUID));
+  }
 
   pAdv->setMinInterval(160); // 100ms (160 * 0.625ms) — Apple iBeacon 표준 추천 인터벌
   pAdv->setMaxInterval(160); // 100ms
@@ -300,14 +304,19 @@ bool triggerManualDoorOpen() {
 // BLE Beacon Advertiser 초기화 (Arduino-ESP32 내장 Bluedroid BLE)
 // ─────────────────────────────────────────────────────────────
 static void initBleAdvertiser() {
-  LOGF("[BLE-ADV] iBeacon Advertiser 초기화 시작... (Arduino-ESP32 내장 Bluedroid 스택)");
+  LOGF("[BLE-ADV] iBeacon Advertiser 초기화 시작... (Arduino-ESP32 BLE 스택)");
 
   BLEDevice::init("SmartGatekeeper");
+
+  bool hwlessEnable = ConfigManager::getHardwarelessRcEnabled(ENABLE_HARDWARELESS_RC != 0);
+  GattServer::setEnabled(hwlessEnable);
+  GattServer::init();
 
   // NVS에서 불러온 송신 출력을 기준으로 초기화
   setTxPower(g_tx_power_dbm);
 
-  LOGF("[BLE-ADV] ✅ iBeacon 발신 시작! UUID: %s", GATEKEEPER_BEACON_UUID);
+  LOGF("[BLE-ADV] ✅ iBeacon 발신 시작! UUID: %s (GATT Hardwareless RC: %s)",
+       GATEKEEPER_BEACON_UUID, hwlessEnable ? "ENABLED" : "DISABLED");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -413,6 +422,7 @@ void loop() {
 
   WifiManager::handleClient();
   MqttManager::update();
+  GattServer::update();
 
   now = millis();
   if (relayFailsafeTriggered) {

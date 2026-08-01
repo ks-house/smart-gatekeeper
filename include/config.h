@@ -39,6 +39,18 @@ constexpr const char* OTA_FIRMWARE_URL = SECRET_OTA_FIRMWARE_URL;
 // 스마트폰 앱은 이 UUID를 수신하면 NAS 인증 절차를 개시한다.
 constexpr const char* GATEKEEPER_BEACON_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
+// Hardwareless RC compile flag (기본값 OFF)
+#ifndef ENABLE_HARDWARELESS_RC
+#define ENABLE_HARDWARELESS_RC 0
+#endif
+
+// Hardwareless RC Connectable GATT Service 및 Characteristic UUIDs
+constexpr const char* HARDWARELESS_SERVICE_UUID     = "9f4d1000-7d9e-4fb1-9c54-6f4d53474b31";
+constexpr const char* HARDWARELESS_CHAR_HELLO_UUID  = "9f4d1001-7d9e-4fb1-9c54-6f4d53474b31";
+constexpr const char* HARDWARELESS_CHAR_CHAL_UUID   = "9f4d1002-7d9e-4fb1-9c54-6f4d53474b31";
+constexpr const char* HARDWARELESS_CHAR_PROOF_UUID  = "9f4d1003-7d9e-4fb1-9c54-6f4d53474b31";
+constexpr const char* HARDWARELESS_CHAR_RESULT_UUID = "9f4d1004-7d9e-4fb1-9c54-6f4d53474b31";
+
 // 비콘 광고 인터벌 (ms) — 100ms: 반응성과 전력 균형
 constexpr uint32_t BLE_ADV_INTERVAL_MS = 100;
 

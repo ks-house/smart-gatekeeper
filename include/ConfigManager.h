@@ -25,6 +25,7 @@ public:
     static int getTofDistanceCm(int defaultVal = 50); // 하위 호환용 별칭
     static uint32_t getPreArmDurationMs(uint32_t defaultVal = 60000);
     static uint32_t getRelayCooldownMs(uint32_t defaultVal = 3000);
+    static bool getHardwarelessRcEnabled(bool defaultVal = false);
     static uint32_t incrementBootCount();
     static String consumePlannedRestartReason();
 
@@ -35,6 +36,7 @@ public:
     static void setTofDistanceCm(int distanceCm); // 하위 호환용 별칭
     static void setPreArmDurationMs(uint32_t durationMs);
     static void setRelayCooldownMs(uint32_t cooldownMs);
+    static void setHardwarelessRcEnabled(bool enabled);
     static void setPlannedRestartReason(const char* reason);
     static void clearConfig();
 

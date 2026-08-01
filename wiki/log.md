@@ -1385,5 +1385,14 @@
 - 인증된 explicit button `manual_remote` chain, runtime, raw/, 5-file protected bundle, 기존 OTA schema/evidence/state/recovery assets, legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성·fallback과 N/N-1은 main 대비 byte-unchanged
 - 81개 repository unit test, protocol 16개, observability 18개, canonical vector와 access/manual_remote/Target OTA/rollback fixture validate·evaluate, 16개 독립 gate negative mutation, OTA contract·pending release 거부, actionlint, 14 YAML/22 JSON/9 JSONL/12 Python, 38 Markdown/188 relative link, index/conflict/diff/immutability 검사 전건 통과
 - ESP32-C6 PlatformIO build는 ignored non-secret placeholder `include/secrets.h`로 RAM 47,032/327,680 bytes, flash 1,594,400/7,340,032 bytes에서 통과했고 임시 header를 제거해 worktree를 복원
-- `wiki/log.md`는 main 134,068-byte exact prefix와 기존 PR-only 3,964-byte suffix를 보존하고 645-byte merge 기록 뒤 본 reviewer 기록만 append했으며 invalid C0/DEL은 0건
 - hosted runs `30721749667`, `30721750617`, `30721750633`, `30721750649`는 exact reviewed head에서 성공하고 firmware/Android production job은 정확히 skipped; Epic #13과 #14/#18/#22/#23, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 radio·relay/sensor·bootloader physical/operator gates는 open/pending 유지
+
+## [2026-08-02] code | Issue 18 Hardwareless RC Connectable GATT Transport & Coexistence 구현
+
+- ESP32-C6 Connectable GATT transport (`GattServer.h`, `GattServer.cpp`) 구현: compile (`ENABLE_HARDWARELESS_RC`) 및 runtime (`ConfigManager::getHardwarelessRcEnabled`) default-OFF feature flag 설정
+- 기존 iBeacon manufacturer payload (`0x004C`, `02 15`, UUID `a1b2c3d4-e5f6-7890-abcd-ef1234567890`) 및 AD Flags `0x1A` 100% 보존하면서 Connectable GATT Service UUID `9f4d1000-7d9e-4fb1-9c54-6f4d53474b31` scan response 탑재
+- Canonical GATT characteristics (Hello `9f4d1001-...`, Challenge `9f4d1002-...`, Proof `9f4d1003-...`, Result `9f4d1004-...`), N/N-1 protocol version negotiation, 138-byte canonical challenge, 103-byte proof write, single-use CAS, 5s challenge expiry, 2s proof write completion, disconnect cleanup 및 connection limits 구현
+- OTA busy 중 GATT auth `BUSY` (reason=8) 거부 및 릴레이 safe-state arbitration, 텔레메트리 (`heap_free`, `heap_min`, `stack_high_watermark`, `latency`, `boot_id`, `reset_reason`) 지원
+- Boot relay OFF 및 fail-safe (GPIO23 active-low, esp_timer), SDA GPIO6, SCL GPIO7 I2C bus clear, pioarduino ESP32-C6 RISC-V, dual-slot OTA rollback, authenticated `manual_remote` explicit mobile button door-open 보존
+- `tests/test_hardwareless_rc.py` deterministic tests (100 cycles, fuzz/malformed inputs, timeout/reset, concurrent MQTT/OTA, relay safety, N/N-1, advertisement vs Android filter agreement) 통과
+- `python protocol/tools/verify_vectors.py`, `protocol/tests`, `observability/tests`, `tests` 총 88개 host tests 및 PlatformIO `esp32c6` 통합 빌드 통과

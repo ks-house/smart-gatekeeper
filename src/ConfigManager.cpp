@@ -65,6 +65,10 @@ uint32_t ConfigManager::getRelayCooldownMs(uint32_t defaultVal) {
     return preferences.getUInt("relay_cool", defaultVal);
 }
 
+bool ConfigManager::getHardwarelessRcEnabled(bool defaultVal) {
+    return preferences.getBool("hwless_rc", defaultVal);
+}
+
 uint32_t ConfigManager::incrementBootCount() {
     uint32_t count = preferences.getUInt("boot_count", 0) + 1;
     preferences.putUInt("boot_count", count);
@@ -110,6 +114,10 @@ void ConfigManager::setPreArmDurationMs(uint32_t durationMs) {
 
 void ConfigManager::setRelayCooldownMs(uint32_t cooldownMs) {
     preferences.putUInt("relay_cool", cooldownMs);
+}
+
+void ConfigManager::setHardwarelessRcEnabled(bool enabled) {
+    preferences.putBool("hwless_rc", enabled);
 }
 
 void ConfigManager::setPlannedRestartReason(const char* reason) {
