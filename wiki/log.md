@@ -1331,3 +1331,11 @@
 - strict main protection(enforce_admins: true), production Environment reviewer `tworimpa` 및 main-only policy 유지 확인
 - issue #23은 open 상태를 유지하고 OTA-G1~G4 physical evidence는 pending으로 관리
 
+## [2026-08-02] compile | Epic #13 Hardwareless RC와 production Gate 분리
+
+- 사용자 구현 승인을 `G0-SW / Hardwareless RC`로 한정해 Wave 0 계약 이후 #17~#22의 feature-flagged 구현, 자동 unit/integration/virtual-E2E, 리뷰·merge를 허용
+- `G0-HW / Production`은 Samsung/OEM·ESP32-C6, relay/AJ-SR04T/real BLE/bootloader, RELAY-G0~G2와 OTA-G1~G4 물리 증거 전까지 fail-closed로 유지
+- `ota/hardwareless-implementation-gates.json`과 4개 regression test를 추가해 production enable, legacy retirement, Epic closure와 실기기 완료 주장을 차단
+- 인증된 모바일 `manual_remote`, legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성, N/N-1 불변조건을 보존
+- #14/#18/#22/#23/Epic #13은 해당 물리 Gate가 남아 있는 동안 open 상태를 유지하며 `ota/release-evidence.json`의 production block은 변경하지 않음
+

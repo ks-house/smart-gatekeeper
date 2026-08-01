@@ -1,7 +1,7 @@
 # 추가 자격 하드웨어 없는 모바일 병목 축소 구현 계획
 
 > 작성일: 2026-08-01
-> 상태: **Wave 0 진행 중 — #14 code PoC 완료, Samsung 실기기 Gate pending**
+> 상태: **G0-SW Hardwareless RC 승인 — #17~#22 구현 가능, G0-HW production Gate pending**
 > 결정: secure BLE fob, NFC reader/card, QR scanner 등 추가 자격 하드웨어는 보류
 > 현재 하드웨어: ESP32-C6 Target + AJ-SR04T + relay 유지
 > 1차 플랫폼: 현재 운영 대상인 Android. iOS 자동 출입은 별도 후속 의사결정
@@ -11,7 +11,26 @@
 wake 경로로 선택하고 Flutter-independent native receiver, exact iBeacon filter contract,
 hardwareless test seam을 구현했다. 상세 결정과 미완료 20회 Gate는
 [android_ble_wake_adr.md](android_ble_wake_adr.md)를 따른다. Samsung 실기기 수치가
-없으므로 I1과 G0는 아직 완료가 아니다.
+없으므로 I1의 물리 완료와 G0-HW는 아직 완료가 아니다. 다만 2026-08-02 사용자 승인을
+근거로 Wave 0 계약을 준수하는 feature-flagged 구현과 hardwareless 자동 검증은 G0-SW 아래
+진행할 수 있다.
+
+## 0. 두 단계 구현 승인 계약
+
+`G0-SW`와 `G0-HW`는 서로 대체할 수 없는 별도 판정이다. 실행 가능한 기준은
+`../ota/hardwareless-implementation-gates.json`과
+`../tests/test_hardwareless_implementation_gates.py`에 고정한다.
+
+| Gate | 허용 범위 | 금지 범위 | 현재 상태 |
+|---|---|---|---|
+| **G0-SW / Hardwareless RC** | #14/#15/#16/#23 Wave 0 계약 이후 #17~#22의 feature-flagged 구현, 코드 리뷰·merge, unit/integration/virtual-E2E | production enable, 실기기 완료 주장, legacy 제거, Epic 종료 | **PASS — 2026-08-02 사용자 구현 승인** |
+| **G0-HW / Production** | Samsung/OEM과 ESP32-C6 물리 증거, OTA-G1~G4, RELAY-G0~G2, relay/sensor/real BLE/bootloader 검증을 모두 통과한 production 전환 | 필수 증거 일부를 synthetic/emulator/host 결과로 대체 | **PENDING / RELEASE BLOCKED** |
+
+G0-SW의 merge 허용은 production 승인이 아니다. 모든 새 경로는 기본 production OFF인
+feature flag 뒤에 두고, 인증된 모바일 `manual_remote` 문 열기와 legacy rollback 경로를
+유지한다. #14, #18, #22, #23과 Epic #13은 각 물리 완료 조건이 남아 있는 동안 open으로
+유지한다. 다른 구현 이슈도 해당 이슈의 실기기 완료 기준을 software-only 결과로 충족했다고
+표시하지 않는다.
 
 ## 1. 목표와 현실적 한계
 
@@ -423,12 +442,18 @@ GitHub [#23](https://github.com/ks-house/smart-gatekeeper/issues/23)을 따른�
 
 | Gate | 통과 조건 | 실패 시 |
 |---|---|---|
-| G0 설계 freeze | I1/I2/I3/I10 승인, protocol·OTA contract 확정 | 구현 시작 금지 |
+| G0-SW Hardwareless RC | I1/I2/I3/I10의 구현 선행 계약 준수, 사용자 구현 승인, production OFF feature flag와 자동 test seam | #17~#22 구현·리뷰·merge 시작 금지 |
+| G0-HW Production | Samsung/OEM wake, ESP32-C6 real GATT/coexistence, relay/sensor/real BLE/bootloader, OTA-G1~G4, RELAY-G0~G2 물리 증거 | production OFF, legacy 유지, Epic/물리 이슈 open |
 | G1 component PoC | I4/I5/I6 독립 테스트 통과 | 해당 track 재설계 |
 | G2 local E2E | Backend/MQTT 차단 상태에서 local auth→relay 성공 | legacy 유지, rollout 금지 |
 | G3 field canary | Samsung 실기기 100회, 화면 OFF 성공률/지연 목표 충족 | feature flag OFF |
 | G4 production | 회수·lease·OTA rollback·관측 runbook 승인 | legacy 병행 유지 |
 | G5 legacy retirement | 충분한 운영 기간 동안 new path SLO 충족 | legacy 제거 보류 |
+
+G1~G5의 software test는 G0-SW 아래 선행 수행할 수 있지만, G0-HW가 pending인 동안
+production enable이나 legacy retirement를 허가하지 않는다. 특히 OTA-G1~G4는 dual-slot
+health/rollback, periodic HTTPS, 인증된 local recovery, mobile updater 독립성, N/N-1과
+install→boot/first-run→health 증거를 실기기에서 확인해야 한다.
 
 ## 10. 이번 범위 밖
 

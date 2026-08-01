@@ -353,5 +353,24 @@ dispatch 조건, Environment, evidence validator, 동일 canary artifact 결합�
 ## 13. 운영 책임과 runbook
 
 canary, 중단 기준, Target rollback, mobile stable fallback, 장애별 복구, telemetry와 사후 기록은
-`wiki/ota_operations_runbook.md`를 따른다. 실제 ESP32/Android 결과는
-`wiki/hardware_test.md`에 원시 증거와 함께 추가한다.
+[ota_operations_runbook.md](ota_operations_runbook.md)를 따른다. 실제 ESP32/Android 결과는
+[hardware_test.md](hardware_test.md)에 원시 증거와 함께 추가한다.
+
+## 14. Hardwareless RC와 production 승인 분리
+
+2026-08-02의 Epic #13 구현 승인은 **G0-SW / Hardwareless RC**에 한정한다. Wave 0 계약을
+준수한 #17~#22의 feature-flagged 구현, 코드 리뷰·merge, unit/integration/virtual-E2E는
+물리 Samsung/ESP32-C6 없이 진행할 수 있다. 이는 OTA `contract` PASS와 같은 software
+evidence이며 OTA-G1~G4 또는 production evidence로 승격하지 않는다.
+
+**G0-HW / Production**은 계속 fail-closed다. Samsung/OEM BLE wake, ESP32-C6 real
+GATT/radio coexistence, relay/AJ-SR04T/real BLE, dual-slot bootloader health·rollback·power-loss,
+periodic HTTPS와 인증된 local recovery, mobile updater 독립성·fallback, N/N-1,
+RELAY-G0~G2, 물리 E2E·rollout 증거가 모두 필요하다. 이 Gate 전에는 production enable,
+legacy retirement, Epic closure를 금지하고 #14/#18/#22/#23/Epic #13을 open으로 유지한다.
+
+이 분리는 `../ota/hardwareless-implementation-gates.json`에서 기계 판독하며 기존
+`release-evidence.json`은 `release_blocked=true`, `physical_tests=pending`, OTA-G1~G4
+`pending`을 유지한다. 인증된 모바일 `manual_remote` 명시적 문 열기와 legacy rollback,
+Target dual-slot/rollback·periodic HTTPS·인증 local recovery, mobile manual updater 독립성,
+N/N-1 불변조건은 G0-SW 작업으로 약화할 수 없다.
