@@ -74,14 +74,9 @@ flutter build apk --release \
 | Workflow | Trigger | 결과 |
 |---|---|---|
 | `.github/workflows/ota_contract.yml` | OTA 영향 PR/main | schema, signature tamper vector, dual-slot/recovery/release blocker 자동 검사 |
-<<<<<<< HEAD
 | `.github/workflows/deploy.yml` | `main` push 또는 `workflow_dispatch` | PlatformIO 시험·빌드·contract 검증과 canary 보존; 운영 배포는 명시적 production dispatch에서만 별도 실행 |
 | `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter 분석·빌드·contract 검증과 canary 보존; 운영 배포는 명시적 production dispatch에서만 별도 실행 |
-=======
-| `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드와 canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
-| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter APK canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
 | `.github/workflows/trusted_workflow_policy.yml` | 보호 파일 변경 PR (`pull_request_target`) | default-branch validator/policy로 candidate bytes의 exact approved bundle 검증 |
->>>>>>> origin/main
 
 일반 `main` push와 기본 `workflow_dispatch`의 `release_target=canary`는 build/test/contract job만
 실행하고 production job을 skip하므로, physical Gate가 정직하게 pending이어도 CI 자체는 성공합니다.

@@ -1174,7 +1174,6 @@
 - Re-ran Flutter tests (5/5), forced JVM tests (6/6), and the debug APK build; verified the PowerShell harness parses, package/merged-manifest receiver attributes are correct, wiki links are intact, `git diff --check` passes, and `raw/` is unchanged.
 - Recorded that repository-wide Android lint still has two pre-existing `MainActivity.kt` API-level errors and Flutter analyze has 17 pre-existing vendored-plugin info findings; PR-changed paths add no lint error. No ADB device was attached, so Samsung radio trials remain 0/20 and issue #14 plus OTA-G1/G2/G3 remain open hardware gates.
 
-<<<<<<< HEAD
 ## [2026-08-01] fix | main CI와 production OTA release trigger 분리
 
 - firmware/APK 일반 main push와 기본 canary dispatch는 build/test/OTA contract 검증 및 Actions canary 보존까지만 수행하고 production release/SFTP job을 skip하도록 변경
@@ -1294,3 +1293,9 @@
 - Blocked merge because `git diff --check origin/main...HEAD` exits 2 on unresolved conflict markers in `wiki/env_setup.md`, `wiki/log.md`, and `wiki/ota_reliability_contract.md`, leaving the documented trigger and release contracts ambiguous and corrupting the append-only log history.
 - Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4834996277; PR #28 remains draft and unmerged pending a conflict-only correction and fresh independent review.
 
+## [2026-08-01] fix | PR #28 wiki 잔여 충돌 마커 전면 제거 및 conflict-only 정정 완료
+
+- `wiki/env_setup.md`, `wiki/log.md`, `wiki/ota_reliability_contract.md`에 남아 있던 `<<<<<<<`, `=======`, `>>>>>>>` 충돌 마커 라인을 전면 제거
+- 양쪽 변경 내용(PlatformIO/Flutter canary 보존, trusted workflow policy, 명시적 production dispatch)을 손실 없이 보존하고 중복된 마커 아티팩트만 정리
+- 런타임 코드, 테스트, raw/, 보호 workflow/policy/scripts 및 수동 모바일 출입 경로를 변경하지 않고 보존
+- 저장소 전체 conflict marker 0건, `git diff --check origin/main...HEAD` 0 error, wiki relative-link consistency 및 모든 unit test/actionlint 통과 확인
