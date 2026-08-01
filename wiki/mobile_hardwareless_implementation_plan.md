@@ -127,8 +127,17 @@ Target은 iBeacon-only advertiser에서 **connectable BLE GATT peripheral**을 �
 - session은 짧은 timeout과 단일 사용 nonce를 가진다.
 - GATT 연결이 Wi-Fi/MQTTS/OTA와 공존할 때 heap, latency, reset이 없는지 먼저 검증한다.
 - 광고 UUID/RSSI는 presence 후보일 뿐 최종 인증 자격이 아니다.
+- 현재 phone-only BLE proof는 key possession을 인증하지만 transparent real-time relay에 대한
+  proximity를 증명하지 않는다. hands-free production은
+  [security protocol의 RELAY-G](security_protocol.md#44-실시간-relaywormhole-경계와-배포-gate)를
+  통과하기 전 기본 비활성이다. `relay_resistant_channel` feature flag만으로 enable하지 않고,
+  threat-model/proxy 결과/risk-owner 승인(G0), 선택 경로와 일치하는 방어 evidence(G1), 같은 경로의
+  100회 전 성공 실기기 운용과 OTA rollback evidence(G2)가 모두 유효할 때만 fail-closed 정책을 연다.
 
 ### 3.3 기기 자격
+
+> 아래 보안 계약의 동결 기준과 canonical bytes는
+> [security_protocol.md](security_protocol.md)를 따른다.
 
 - 앱 최초 등록 때 Android Keystore에서 device별 P-256 key pair 생성
 - private key는 export하지 않으며 자동 출입을 위해 user-auth requirement는 두지 않는
@@ -139,6 +148,9 @@ Target은 iBeacon-only advertiser에서 **connectable BLE GATT peripheral**을 �
 
 자동 출입에서 잠금 해제를 요구하지 않는 선택은 편의성과 분실 휴대폰 위험의 trade-off다.
 회수 지연, Android 화면 잠금, 관리자 비활성화 정책을 보안 검토에서 확정한다.
+user-auth 없는 silent signing은 피해자 근처 proxy가 문 앞 real Target과 5초 안에 통신을 중계하는
+wormhole을 막지 못하므로, 이 모드는 low-consequence door의 명시적 risk acceptance 또는
+relay-resistant channel이 없으면 PoC에만 한정한다.
 
 ### 3.4 challenge-response
 
@@ -166,7 +178,8 @@ Android credential worker는 challenge 전체를 device private key로 서명하
 - Target은 서명·버전·expiry 검증 뒤 새 namespace에 저장하고 원자적으로 active 전환
 - revocation은 MQTT push + 주기적 HTTPS/MQTT pull 중 최소 두 경로로 수렴
 - ACL lease 만료 뒤에는 자동 출입 fail-closed
-- 운영 offline lease 기본 제안은 24시간이며 보안 검토 이슈에서 확정
+- issue #16 보안 검토 결과 offline lease는 기본 900초, hard max 3,600초로 확정
+- trusted UTC가 없는 reset 뒤에는 새 signed snapshot을 받기 전 자동 출입 fail-closed
 - 현재 broker 후보 순회는 ACL/명령 계약에서 제거하고 명시된 logical broker만 사용
 
 ## 4. Target 상태 머신
