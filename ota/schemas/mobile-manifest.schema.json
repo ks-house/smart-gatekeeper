@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-gatekeeper.invalid/schemas/mobile-manifest.schema.json",
+  "title": "Smart Gatekeeper Android OTA manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "artifact_type", "version", "version_name",
+    "build_number", "version_code", "protocol_min", "protocol_max",
+    "min_android_sdk", "apk_url", "fallback_url", "apk_size", "sha256",
+    "signing_certificate_digest", "signature_algorithm", "signing_key_id",
+    "signature", "mandatory_after", "release_notes_url", "published_at",
+    "commit"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "artifact_type": {"const": "android-apk"},
+    "version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "version_name": {"type": "string", "minLength": 1, "maxLength": 64},
+    "build_number": {"type": "integer", "minimum": 1},
+    "version_code": {"type": "integer", "minimum": 1},
+    "protocol_min": {"type": "integer", "minimum": 1},
+    "protocol_max": {"type": "integer", "minimum": 1},
+    "min_android_sdk": {"type": "integer", "minimum": 23},
+    "apk_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "fallback_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "apk_size": {"type": "integer", "minimum": 1},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signing_certificate_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signature_algorithm": {"const": "Ed25519"},
+    "signing_key_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
+    "mandatory_after": {"type": ["string", "null"], "format": "date-time"},
+    "release_notes_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "published_at": {"type": "string", "format": "date-time"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+  }
+}

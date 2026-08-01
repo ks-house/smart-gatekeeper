@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-gatekeeper.invalid/schemas/fault-injection-plan.schema.json",
+  "title": "Smart Gatekeeper OTA fault injection plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tests"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "tests": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "fault", "automation", "expected", "physical_gate"],
+        "properties": {
+          "id": {
+            "enum": [
+              "FI-01", "FI-02", "FI-03", "FI-04", "FI-05", "FI-06",
+              "FI-07", "FI-08", "FI-09", "FI-10"
+            ]
+          },
+          "fault": {"type": "string", "minLength": 1},
+          "automation": {"type": "string", "minLength": 1},
+          "expected": {
+            "enum": [
+              "active-artifact-preserved",
+              "digest-rejected-before-install-or-boot", "metadata-rejected",
+              "target-periodic-https-reachable", "previous-slot-boots-relay-off",
+              "rollback-before-valid-mark", "settings-update-path-available",
+              "secondary-mobile-path-installs", "installer-not-invoked",
+              "update-planes-and-access-compatible"
+            ]
+          },
+          "physical_gate": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

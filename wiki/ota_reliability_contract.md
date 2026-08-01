@@ -294,3 +294,62 @@ published_at
 
 새 모바일 병목 축소 아키텍처는 OTA-G0~G3을 통과하지 않으면 production rollout할 수
 없고, legacy path도 제거할 수 없다.
+
+## 10. 2026-08-01 구현 감사 결과
+
+| 구성요소 | 코드상 기준선 | P0 판정 |
+|---|---|---|
+| Target | `app0`/`app1`/`otadata`는 존재하나 `OtaManager`는 MQTT 호출 시 `HTTPUpdate`만 실행 | periodic HTTPS, safe-state 연동, signature, explicit valid mark, rollback 미구현 |
+| Mobile | app/WebView/scanner 경로에서 metadata를 읽고 임시 디렉터리에 APK 다운로드 후 installer 호출 | scanner/WebView 독립 UI, fallback, hash/certificate 검증, install health 미구현 |
+| Backend | APK와 mobile `version.json`을 동일 FastAPI/NAS 경로에서 제공 | 독립 secondary distribution과 signed metadata 보장 미구현 |
+| CI | firmware/APK와 legacy `version.json`을 빌드해 main push에서 NAS로 SFTP | production signing과 physical release evidence가 없었음 |
+
+dual partition의 존재나 과거 OTA 성공은 rollback 증거가 아니다. 따라서 현재 물리 Target과
+Android 완료 기준은 `pending`이며 issue #23을 자동 close하지 않는다.
+
+## 11. Machine-readable 계약과 서명 규칙
+
+실행 가능한 계약은 `ota/` 아래에 둔다.
+
+- Target/mobile schema: `ota/schemas/*.schema.json`
+- deterministic Ed25519 positive/tampered vectors: `ota/test-vectors/`
+- 상태 머신과 recovery/fault matrix: `ota/*.json`
+- validator/release blocker: `scripts/ota_contract_gate.py`
+
+manifest v1의 서명 입력 `sgk-json-v1`은 최상위 `signature`만 제거하고, nested/float 값을
+금지하며, UTF-8·key sort·공백 없음·ASCII escape 없음으로 직렬화한 바이트다. Ed25519를
+사용하고 `signing_key_id`로 rotation을 식별한다. test vector의 RFC 8032 key는 production
+trust root가 아니며 production private key는 GitHub secret/HSM 경계 밖으로 출력하거나 저장하지
+않는다.
+
+N-1 소비자를 위해 Target `version == firmware_version`, Mobile
+`version == version_name`, `build_number == version_code` alias를 schema semantic check로
+강제한다. fallback URL은 primary APK URL과 달라야 한다.
+
+상태 머신의 `failure_preserves`와 `invariants`는 단순 문자열 목록이 아니라 구성요소별
+필수 집합과 정확히 같아야 한다. initial/terminal success도 각각 Target
+`IDLE`/`MARK_VALID`, Mobile `IDLE`/`COMPLETE`로 고정한다. recovery matrix는 자유 텍스트를
+허용하지 않고 allowlist outcome/action과 선언된 상태 간 `from_state`→`to_state`를 사용하며,
+각 장애 ID의 Gate·결과·동작·전이가 기준 semantic mapping과 정확히 일치해야 한다.
+
+## 12. CI release gate 판정
+
+`.github/workflows/ota_contract.yml`은 PR/main에서 schema, signature tamper vector, dual-slot
+layout, state/recovery/fault 계약을 검사한다. firmware/mobile build workflow는 canary artifact를
+Actions에 먼저 보존한 뒤 `release` mode를 실행하고, `ota/release-evidence.json`의 OTA-G0~G4,
+physical test, 승인자가 모두 통과하지 않으면 production NAS SFTP 전에 실패한다.
+release mode는 해당 build의 manifest와 production pinned public key도 입력받아 schema와 실제
+Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올릴 바로 그 firmware/APK
+경로를 필수 입력받아 실제 byte length와 SHA-256을 signed manifest와 비교한다. Android는
+`apksigner verify --print-certs`가 보고한 단일 signing certificate SHA-256까지 signed metadata와
+일치해야 한다. artifact 누락·교체·truncation·digest/certificate mismatch는 모두 fail-closed다.
+따라서 evidence나 signed metadata만 맞추고 다른 bytes를 배포할 수 없다.
+
+`contract` PASS는 문서/벡터/정적 불변조건만 증명한다. `release` PASS만 production 배포 허가를
+뜻하며, evidence 파일을 형식적으로 수정하는 것은 시험을 대체하지 않는다.
+
+## 13. 운영 책임과 runbook
+
+canary, 중단 기준, Target rollback, mobile stable fallback, 장애별 복구, telemetry와 사후 기록은
+`wiki/ota_operations_runbook.md`를 따른다. 실제 ESP32/Android 결과는
+`wiki/hardware_test.md`에 원시 증거와 함께 추가한다.
