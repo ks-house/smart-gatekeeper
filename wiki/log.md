@@ -1307,3 +1307,18 @@
 - PR runs `30707293747`, `30707293730`, and `30707293735` completed successfully with OTA, firmware, Android contract/test/build/canary coverage; firmware and Android production jobs were accurately skipped, while direct production validation remained fail-closed on pending OTA-G1 through OTA-G4.
 - Confirmed the live `production` Environment requires reviewer `tworimpa` with the sole custom deployment branch `main`, and strict main protection requires `Verify protected files against trusted base policy` with admins enforced and force pushes/deletions disabled.
 - Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4835063820; issue #23 remains open for unavailable OTA-G1 through OTA-G4 physical/operator evidence.
+
+## [2026-08-01] compile | Trusted workflow policy를 merged main 단일 baseline으로 rotation
+
+- PR #28 merge commit `cc977e42770e6d88822459436a770295632c6e45`의 5개 보호 파일 normalized SHA-256을 `current-main-baseline` 단일 bundle로 고정
+- `origin-main-bootstrap@8c36ead`와 `pr-28-preapproved@7bae62f` 임시 entry를 제거하고 schema, protected path, exact whole-bundle matching 규칙은 변경 없이 보존
+- PR #28 보호 bytes는 merged main bytes와 동일하므로 digest는 새 main provenance로 재귀속하고, 과거 pre-PR #28 byte set은 더 이상 승인하지 않음
+
+## [2026-08-01] lint | Trusted policy rotation 범위와 보호 설정 확인
+
+- 변경 범위를 policy, trusted adversarial test, 기존 trusted-policy 문서와 append-only log로 제한하고 5개 보호 파일, runtime, raw, OTA evidence, `manual_remote`는 수정하지 않음
+- strict main required check, admins enforcement, force-push/delete 금지와 production Environment reviewer `tworimpa` 및 단일 `main` deployment branch policy를 live API로 확인
+- live GitHub API validator가 `cc977e4`를 `current-main-baseline`으로 승인하고 retired `8c36ead` byte bundle을 거부함을 확인
+- 63개 repository unit tests(OTA 50, trusted policy 13), observability 18개, protocol 16개, canonical vector와 access/manual_remote/OTA fixture validate/evaluate 전건 통과
+- actionlint, workflow YAML, 21개 JSON, 9개 JSONL, Python compile, wiki link, conflict marker, `git diff --check`와 raw/protected/runtime/OTA evidence immutability 검사 통과
+- issue #23은 open이고 OTA-G1 through OTA-G4 physical/operator evidence는 pending 상태를 유지

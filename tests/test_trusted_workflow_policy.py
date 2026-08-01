@@ -12,6 +12,47 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
+CURRENT_MAIN_COMMIT = "cc977e42770e6d88822459436a770295632c6e45"
+CURRENT_MAIN_DIGESTS = {
+    ".github/workflows/deploy.yml": (
+        "9bdf5a593907fa8225ebec54b9d305177836b9ace8376bced3914800c3ad5820"
+    ),
+    ".github/workflows/build_app.yml": (
+        "7816856a7ec1f465d016d54e8d50773f9f9e8b9f9b14a81a353852b6f5ab6494"
+    ),
+    ".github/workflows/ota_contract.yml": (
+        "8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001"
+    ),
+    "scripts/ota_contract_gate.py": (
+        "064c8848d914949383981376ab7ad4f23699b4b118a394793ad66cac9954a66f"
+    ),
+    "ota/requirements.txt": (
+        "d2dc1631f87992338c4779d89db7ac6c049abd79ce14de9e6e8e1b113f7f2ca4"
+    ),
+}
+RETIRED_BUNDLES = {
+    "origin-main-bootstrap": "8c36ead9f40e46959af721bbfffaeb00fcb2b2c1",
+    "pr-28-preapproved": "7bae62f6921ece5aabb08e994f7527391b7db746",
+}
+RETIRED_ORIGIN_MAIN_DIGESTS = {
+    ".github/workflows/deploy.yml": (
+        "d899c4c48412477d5496ac120fe2a9025662fe33763e5b4ab302e8374ffa64ad"
+    ),
+    ".github/workflows/build_app.yml": (
+        "0e3876199ef47652e4d8e9931cd29f5f5ab19bc8aa26249180ef96adb0c12ca4"
+    ),
+    ".github/workflows/ota_contract.yml": (
+        "8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001"
+    ),
+    "scripts/ota_contract_gate.py": (
+        "82edf10415a653b6ad64c7dd1be29e7eefe2e3df406fdbf73455fb5bbd245f66"
+    ),
+    "ota/requirements.txt": (
+        "ec9f21f0bffe9f3e4d6682cf164f15ae21d2cd5e2994beaaa53281da5f04a6d2"
+    ),
+}
+
+
 def _digest(content: bytes) -> str:
   return trusted.normalized_sha256(content)
 
@@ -22,9 +63,9 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         "workflow.yml": b"name: main\r\n",
         "gate.py": b"print('main')\n",
     }
-    self.pr_files = {
-        "workflow.yml": b"name: approved-pr\n",
-        "gate.py": b"print('approved-pr')\n",
+    self.alternate_files = {
+        "workflow.yml": b"name: alternate\n",
+        "gate.py": b"print('alternate')\n",
     }
     self.policy = {
         "format_version": 1,
@@ -43,14 +84,14 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
                 },
             },
             {
-                "id": "preapproved-pr",
+                "id": "alternate",
                 "source": {
                     "repository": "owner/repository",
                     "commit": "2" * 40,
                 },
                 "files": {
                     path: _digest(content)
-                    for path, content in self.pr_files.items()
+                    for path, content in self.alternate_files.items()
                 },
             },
         ],
@@ -60,9 +101,9 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     bundle = trusted.verify_candidate(self.policy, self.main_files.__getitem__)
     self.assertEqual(bundle["id"], "main")
 
-  def test_exact_preapproved_pr_bundle_is_approved(self):
-    bundle = trusted.verify_candidate(self.policy, self.pr_files.__getitem__)
-    self.assertEqual(bundle["id"], "preapproved-pr")
+  def test_exact_alternate_bundle_is_approved(self):
+    bundle = trusted.verify_candidate(self.policy, self.alternate_files.__getitem__)
+    self.assertEqual(bundle["id"], "alternate")
 
   def test_line_endings_are_normalized_but_other_bytes_are_exact(self):
     self.assertEqual(_digest(b"a\r\nb\r"), _digest(b"a\nb\n"))
@@ -77,7 +118,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
   def test_mixed_approved_bundles_are_rejected(self):
     mixed = {
         "workflow.yml": self.main_files["workflow.yml"],
-        "gate.py": self.pr_files["gate.py"],
+        "gate.py": self.alternate_files["gate.py"],
     }
     with self.assertRaisesRegex(trusted.PolicyError, "mix approved bundles"):
       trusted.verify_candidate(self.policy, mixed.__getitem__)
@@ -146,7 +187,28 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         path: (ROOT / path).read_bytes() for path in policy["protected_paths"]
     }
     bundle = trusted.verify_candidate(policy, current.__getitem__)
-    self.assertIn(bundle["id"], {"origin-main-bootstrap", "pr-28-preapproved"})
+    self.assertEqual(bundle["id"], "current-main-baseline")
+
+  def test_rotated_policy_has_only_current_main_baseline(self):
+    policy = trusted.load_policy(
+        ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
+    )
+    self.assertEqual(len(policy["approved_bundles"]), 1)
+    bundle = policy["approved_bundles"][0]
+    self.assertEqual(bundle["id"], "current-main-baseline")
+    self.assertEqual(
+        bundle["source"],
+        {
+            "repository": "ks-house/smart-gatekeeper",
+            "commit": CURRENT_MAIN_COMMIT,
+        },
+    )
+    self.assertEqual(bundle["files"], CURRENT_MAIN_DIGESTS)
+    self.assertNotEqual(bundle["files"], RETIRED_ORIGIN_MAIN_DIGESTS)
+    self.assertTrue(RETIRED_BUNDLES.keys().isdisjoint({bundle["id"]}))
+    self.assertTrue(
+        set(RETIRED_BUNDLES.values()).isdisjoint({bundle["source"]["commit"]})
+    )
 
   def test_every_real_protected_path_rejects_single_byte_mutation(self):
     policy = trusted.load_policy(
