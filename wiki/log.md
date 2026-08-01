@@ -1331,6 +1331,22 @@
 - strict main protection(enforce_admins: true), production Environment reviewer `tworimpa` 및 main-only policy 유지 확인
 - issue #23은 open 상태를 유지하고 OTA-G1~G4 physical evidence는 pending으로 관리
 
+## [2026-08-02] fix | Trusted workflow policy required-check deadlock 해제 및 parsed run 검증 강화
+
+- .github/workflows/trusted_workflow_policy.yml에서 paths 필터를 제거하여 docs-only PR을 포함한 모든 main 대상 PR에서 Verify protected files against trusted base policy 검사가 실행되도록 수정
+- pull_request_target 이벤트, base/default branch guards, trusted base-SHA checkout, inert candidate API bytes 처리 및 contents: read 권한을 모두 그대로 보존
+- tests/test_trusted_workflow_policy.py에 exact non-lossy parsed run validation (CR, LF, CRLF, tab, multiple spaces 거부) 및 structural regression tests (sparse-checkout dot, PR-title execution, extra steps, YAML boolean/string key collision, unsafe tags, unexpected jobs/steps/env/permissions, C0-control regression for wiki/log.md) 추가
+- wiki/trusted_workflow_policy.md 및 wiki/index.md에 paths 필터 제거와 required check 스케줄링 동작 업데이트
+- 77개 repository unit tests, protocol 16개, observability 18개, OTA contract, actionlint, relative link check, git diff --check, immutability 검사 통과
+
+## [2026-08-02] lint | PR #33 trusted required-check 독립 리뷰 및 병합 승인
+
+- exact author head `3c431c67509a2c4327677b4364d1ae195cf8d255`의 전체 diff와 이력을 독립 검토하고 same-account COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/33#pullrequestreview-4835921884 게시
+- LF, CRLF, bare CR, tab, multiple-space shell boundary와 sparse checkout broadening, expression injection, extra job/step/checkout/execution, permissions/env/ref/credentials/cone-mode, YAML key collision/alias/unsafe tag 변이를 독립 시험해 위험한 실행·권한 확장이 fail-closed로 거부됨을 확인
+- `origin/main:wiki/log.md` 131,280 bytes가 author head 132,413 bytes의 exact raw-byte prefix이고 invalid C0/DEL 0건임을 Python raw-byte 비교로 확인; raw/, 5-file protected bundle, runtime, `manual_remote`, OTA 계약·증거·복구 assets는 byte-unchanged
+- 77개 repository unit tests, protocol 16개, observability 18개, authenticated access/manual_remote/Target OTA/rollback validate·evaluate, OTA contract, actionlint, 5 YAML/21 JSON/9 JSONL/11 Python/31 Markdown link, conflict/diff 및 ESP32-C6 PlatformIO build 전건 통과
+- hosted trusted run `30720471619`가 trusted base `f2dc0b8d05a1f0868f751cbfcbefe32477abb795`에서 author head의 unchanged `current-main-baseline` 5-file bundle을 승인하고 OTA run `30720471625`가 77 tests를 통과함을 확인
+- strict main required check/admin/force-push·delete 보호와 production Environment reviewer `tworimpa`·single `main` policy 유지; Epic #13, issues #14/#17-#23 및 OTA-G1~G4 physical/operator gates는 open/pending으로 보존
 ## [2026-08-02] compile | Epic #13 Hardwareless RC와 production Gate 분리
 
 - 사용자 구현 승인을 `G0-SW / Hardwareless RC`로 한정해 Wave 0 계약 이후 #17~#22의 feature-flagged 구현, 자동 unit/integration/virtual-E2E, 리뷰·merge를 허용
@@ -1356,3 +1372,8 @@
 - `--admin`, branch-protection 변경, synthetic status, protected-file 위장 변경을 사용하지 않고 COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835786121 게시 후 PR을 draft/unmerged 상태로 복귀
 - 별도 trusted-policy rotation에서 base-SHA-only inert candidate validation의 신뢰 경계를 유지하면서 ordinary PR에도 required context가 발행되도록 고친 뒤 재리뷰가 필요
 - Epic #13과 #14/#18/#22/#23은 open이고 G0-HW, OTA-G1~G4, RELAY-G0~G2 및 물리/OEM/bootloader evidence는 pending으로 production fail-closed 유지
+## [2026-08-02] compile | PR #31 최신 main trusted required-check 수정 동기화
+
+- `origin/main` exact `e68f9f401354cd890a50ef5bb3f03cf6b70cc29c`를 history rewrite 없이 normal merge하여 ordinary PR에도 trusted required-check가 발행되는 수정 반영
+- `wiki/log.md`는 main log blob을 exact byte prefix로 두고 common base `f2dc0b8` 이후 PR #31 branch-only suffix를 byte-for-byte 연결해 append-only 양쪽 이력을 보존
+- trusted workflow/index 문서의 main 업데이트와 Hardwareless RC/G0-HW Gate 계약을 함께 보존하고 runtime, raw, protected bundle, `manual_remote`, OTA assets는 변경하지 않음
