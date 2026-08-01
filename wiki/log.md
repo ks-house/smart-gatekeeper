@@ -1010,3 +1010,15 @@
 - canonical verifier, 14개 unit test, Python compile, 독립 `cryptography` P-256 검증, workflow YAML parse, Markdown 구조·상대 링크, secret value scan, `git diff --check`, GitHub `canonical-vectors` check 통과
 - `ble_relay_assessment()`가 `relay_resistant_channel=true`이면 `risk_owner_approved=false`여도 배포를 허용하고 vector에 `RELAY-G0`·`RELAY-G2` 증거 필드가 없어 문서의 G0→G2 production fail-closed 계약을 CI가 강제하지 못함을 재현
 - PR #24에 구체적 재리뷰 결과를 남기고 RELAY-G0/G1/G2를 모두 명시적으로 요구하는 negative case가 추가되기 전 draft 유지·merge 금지로 판정
+
+## [2026-08-01] fix | PR #24 RELAY-G release gate 우회 차단
+
+- `ble_relay_assessment()`가 threat-model·두 proxy 결과·risk-owner 승인(G0), 선택 경로와 일치하는 control evidence(G1), 동일 경로의 100회 전 성공 운용·OTA rollback evidence(G2)를 모두 검증한 뒤에만 production enable하도록 fail-closed 판정을 구현
+- `relay_resistant_channel=true` 단일 flag 우회를 제거하고 G0/G1/G2 각각의 누락·false·evidence 불일치, 승인 없음, G2 100회 미달을 포함한 16개 공통 relay vector로 계약을 고정
+- 기존 ACL generation/high-watermark power-loss recovery와 strict semantic rejection vector 및 과거 review log는 변경하지 않고 security protocol·hardwareless plan·index를 동기화
+
+## [2026-08-01] test | PR #24 RELAY-G adversarial 검증 통과
+
+- canonical verifier와 16개 unit test에서 16개 relay/deployment case를 포함해 실행했으며 세 positive 경로만 G0/G1/G2가 모두 valid일 때 허용되고 12개 필수 negative case는 모두 배포 거부됨을 확인
+- Python compile, 독립 `cryptography` P-256 검증, JSON·workflow YAML parse, Markdown fence·상대 링크·RELAY-G anchor, 변경 diff secret pattern scan, `git diff --check` 통과
+- GitHub `canonical-vectors` check는 같은 PR #24 branch push 뒤 별도로 확인하며 PR은 draft·unmerged 상태를 유지

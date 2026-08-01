@@ -120,9 +120,50 @@ class CanonicalVectorTest(unittest.TestCase):
     def test_current_hands_free_protocol_does_not_block_wormholes(self):
         case = self.document["ble_relay_cases"][0]
         self.assertEqual(
-            {"wormhole_succeeds": True, "deployment_allowed": False},
+            {
+                "wormhole_succeeds": True,
+                "relay_g0_valid": False,
+                "relay_g1_valid": False,
+                "relay_g2_valid": False,
+                "deployment_allowed": False,
+            },
             vectors.ble_relay_assessment(case),
         )
+
+    def test_relay_gate_negative_vectors_fail_closed(self):
+        required_negative_cases = {
+            "relay_resistant_channel_only_no_policy_gates",
+            "relay_g0_missing",
+            "relay_g0_false",
+            "relay_g0_approval_absent",
+            "relay_g0_evidence_mismatch",
+            "relay_g1_missing",
+            "relay_g1_false",
+            "relay_g1_evidence_mismatch",
+            "relay_g2_missing",
+            "relay_g2_false",
+            "relay_g2_under_100_runs",
+            "relay_g2_evidence_mismatch",
+        }
+        cases = {case["name"]: case for case in self.document["ble_relay_cases"]}
+        self.assertTrue(required_negative_cases.issubset(cases))
+        for name in required_negative_cases:
+            with self.subTest(case=name):
+                self.assertFalse(vectors.ble_relay_assessment(cases[name])["deployment_allowed"])
+
+    def test_relay_gate_positive_vectors_require_all_gates(self):
+        positive_cases = [
+            case
+            for case in self.document["ble_relay_cases"]
+            if case["expected"]["deployment_allowed"]
+        ]
+        self.assertEqual(3, len(positive_cases))
+        for case in positive_cases:
+            with self.subTest(case=case["name"]):
+                assessment = vectors.ble_relay_assessment(case)
+                self.assertTrue(assessment["relay_g0_valid"])
+                self.assertTrue(assessment["relay_g1_valid"])
+                self.assertTrue(assessment["relay_g2_valid"])
 
 
 if __name__ == "__main__":

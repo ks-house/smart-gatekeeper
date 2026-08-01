@@ -130,7 +130,9 @@ Target은 iBeacon-only advertiser에서 **connectable BLE GATT peripheral**을 �
 - 현재 phone-only BLE proof는 key possession을 인증하지만 transparent real-time relay에 대한
   proximity를 증명하지 않는다. hands-free production은
   [security protocol의 RELAY-G](security_protocol.md#44-실시간-relaywormhole-경계와-배포-gate)를
-  통과하기 전 기본 비활성이다.
+  통과하기 전 기본 비활성이다. `relay_resistant_channel` feature flag만으로 enable하지 않고,
+  threat-model/proxy 결과/risk-owner 승인(G0), 선택 경로와 일치하는 방어 evidence(G1), 같은 경로의
+  100회 전 성공 실기기 운용과 OTA rollback evidence(G2)가 모두 유효할 때만 fail-closed 정책을 연다.
 
 ### 3.3 기기 자격
 

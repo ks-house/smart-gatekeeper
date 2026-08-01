@@ -394,21 +394,56 @@ def ble_relay_assessment(case: dict[str, Any]) -> dict[str, bool]:
         and case["relay_delay_ms"] < case["challenge_lifetime_ms"]
         and not case["relay_resistant_channel"]
     )
-    deployment_allowed = (
-        case["relay_resistant_channel"]
-        or (
-            case["risk_owner_approved"]
-            and (
-                case["user_presence_each_use"]
-                or (
-                    case["explicit_non_proximity_acceptance"]
-                    and case["low_consequence_door"]
-                )
-            )
-        )
+
+    relay_g0 = case.get("relay_g0")
+    relay_g1 = case.get("relay_g1")
+    relay_g2 = case.get("relay_g2")
+
+    relay_g0_valid = isinstance(relay_g0, dict) and (
+        relay_g0.get("threat_model_reviewed") is True
+        and relay_g0.get("proxy_test_complete") is True
+        and relay_g0.get("risk_owner_approved") is True
+        and isinstance(relay_g0.get("evidence_id"), str)
+        and bool(relay_g0["evidence_id"])
+        and relay_g0.get("expected_wormhole_succeeds") is wormhole_succeeds
+        and relay_g0.get("observed_wormhole_succeeds") is wormhole_succeeds
     )
+
+    selected_path = relay_g1.get("selected_path") if isinstance(relay_g1, dict) else None
+    path_control_valid = {
+        "relay_resistant_channel": case["relay_resistant_channel"],
+        "interactive_user_presence": case["user_presence_each_use"],
+        "low_consequence_acceptance": (
+            case["explicit_non_proximity_acceptance"] and case["low_consequence_door"]
+        ),
+    }.get(selected_path, False)
+    relay_g1_valid = isinstance(relay_g1, dict) and (
+        relay_g1.get("control_verified") is True
+        and isinstance(relay_g1.get("evidence_id"), str)
+        and bool(relay_g1["evidence_id"])
+        and relay_g1.get("evidence_path") == selected_path
+        and path_control_valid
+    )
+
+    operational_runs = relay_g2.get("operational_runs") if isinstance(relay_g2, dict) else None
+    relay_g2_valid = isinstance(relay_g2, dict) and (
+        relay_g2.get("regression_complete") is True
+        and relay_g2.get("selected_path") == selected_path
+        and isinstance(operational_runs, int)
+        and not isinstance(operational_runs, bool)
+        and operational_runs >= 100
+        and relay_g2.get("successful_runs") == operational_runs
+        and relay_g2.get("ota_rollback_verified") is True
+        and isinstance(relay_g2.get("evidence_id"), str)
+        and bool(relay_g2["evidence_id"])
+    )
+
+    deployment_allowed = relay_g0_valid and relay_g1_valid and relay_g2_valid
     return {
         "wormhole_succeeds": wormhole_succeeds,
+        "relay_g0_valid": relay_g0_valid,
+        "relay_g1_valid": relay_g1_valid,
+        "relay_g2_valid": relay_g2_valid,
         "deployment_allowed": deployment_allowed,
     }
 

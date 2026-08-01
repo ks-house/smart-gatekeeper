@@ -417,44 +417,450 @@
       "target_authenticated": false,
       "relay_resistant_channel": false,
       "user_presence_each_use": false,
-      "risk_owner_approved": false,
       "explicit_non_proximity_acceptance": false,
       "low_consequence_door": false,
       "expected": {
         "wormhole_succeeds": true,
+        "relay_g0_valid": false,
+        "relay_g1_valid": false,
+        "relay_g2_valid": false,
         "deployment_allowed": false
       }
     },
     {
-      "name": "target_authentication_alone_does_not_stop_forwarding",
+      "name": "relay_resistant_channel_only_no_policy_gates",
       "fresh_proof": true,
       "relay_delay_ms": 100,
       "challenge_lifetime_ms": 5000,
       "target_authenticated": true,
-      "relay_resistant_channel": false,
+      "relay_resistant_channel": true,
       "user_presence_each_use": false,
-      "risk_owner_approved": false,
       "explicit_non_proximity_acceptance": false,
       "low_consequence_door": false,
       "expected": {
-        "wormhole_succeeds": true,
+        "wormhole_succeeds": false,
+        "relay_g0_valid": false,
+        "relay_g1_valid": false,
+        "relay_g2_valid": false,
         "deployment_allowed": false
       }
     },
     {
-      "name": "interactive_user_presence_with_risk_approval",
+      "name": "relay_g0_missing",
       "fresh_proof": true,
       "relay_delay_ms": 100,
       "challenge_lifetime_ms": 5000,
       "target_authenticated": true,
-      "relay_resistant_channel": false,
-      "user_presence_each_use": true,
-      "risk_owner_approved": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
       "explicit_non_proximity_acceptance": false,
       "low_consequence_door": false,
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
       "expected": {
-        "wormhole_succeeds": true,
-        "deployment_allowed": true
+        "wormhole_succeeds": false,
+        "relay_g0_valid": false,
+        "relay_g1_valid": true,
+        "relay_g2_valid": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g0_false",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": false,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": false,
+        "relay_g1_valid": true,
+        "relay_g2_valid": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g0_approval_absent",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": false,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": false,
+        "relay_g1_valid": true,
+        "relay_g2_valid": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g0_evidence_mismatch",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": true,
+        "evidence_id": "RELAY-G0-MISMATCH-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": false,
+        "relay_g1_valid": true,
+        "relay_g2_valid": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g1_missing",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": false,
+        "relay_g2_valid": false,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g1_false",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": false,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": false,
+        "relay_g2_valid": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g1_evidence_mismatch",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "interactive_user_presence",
+        "evidence_id": "RELAY-G1-MISMATCH-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": false,
+        "relay_g2_valid": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g2_missing",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": true,
+        "relay_g2_valid": false,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g2_false",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": false,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": true,
+        "relay_g2_valid": false,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g2_under_100_runs",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 99,
+        "successful_runs": 99,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-099"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": true,
+        "relay_g2_valid": false,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "relay_g2_evidence_mismatch",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "interactive_user_presence",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-MISMATCH-001"
+      },
+      "expected": {
+        "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": true,
+        "relay_g2_valid": false,
+        "deployment_allowed": false
       }
     },
     {
@@ -465,27 +871,115 @@
       "target_authenticated": true,
       "relay_resistant_channel": true,
       "user_presence_each_use": false,
-      "risk_owner_approved": true,
       "explicit_non_proximity_acceptance": false,
       "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": false,
+        "observed_wormhole_succeeds": false,
+        "evidence_id": "RELAY-G0-RRC-001"
+      },
+      "relay_g1": {
+        "selected_path": "relay_resistant_channel",
+        "control_verified": true,
+        "evidence_path": "relay_resistant_channel",
+        "evidence_id": "RELAY-G1-RRC-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "relay_resistant_channel",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-RRC-001"
+      },
       "expected": {
         "wormhole_succeeds": false,
+        "relay_g0_valid": true,
+        "relay_g1_valid": true,
+        "relay_g2_valid": true,
         "deployment_allowed": true
       }
     },
     {
-      "name": "explicit_low_consequence_non_proximity_acceptance",
+      "name": "interactive_user_presence_all_gates",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": false,
+      "user_presence_each_use": true,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": true,
+        "observed_wormhole_succeeds": true,
+        "evidence_id": "RELAY-G0-INTERACTIVE-001"
+      },
+      "relay_g1": {
+        "selected_path": "interactive_user_presence",
+        "control_verified": true,
+        "evidence_path": "interactive_user_presence",
+        "evidence_id": "RELAY-G1-INTERACTIVE-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "interactive_user_presence",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-INTERACTIVE-001"
+      },
+      "expected": {
+        "wormhole_succeeds": true,
+        "relay_g0_valid": true,
+        "relay_g1_valid": true,
+        "relay_g2_valid": true,
+        "deployment_allowed": true
+      }
+    },
+    {
+      "name": "explicit_low_consequence_acceptance_all_gates",
       "fresh_proof": true,
       "relay_delay_ms": 100,
       "challenge_lifetime_ms": 5000,
       "target_authenticated": false,
       "relay_resistant_channel": false,
       "user_presence_each_use": false,
-      "risk_owner_approved": true,
       "explicit_non_proximity_acceptance": true,
       "low_consequence_door": true,
+      "relay_g0": {
+        "threat_model_reviewed": true,
+        "proxy_test_complete": true,
+        "risk_owner_approved": true,
+        "expected_wormhole_succeeds": true,
+        "observed_wormhole_succeeds": true,
+        "evidence_id": "RELAY-G0-ACCEPTANCE-001"
+      },
+      "relay_g1": {
+        "selected_path": "low_consequence_acceptance",
+        "control_verified": true,
+        "evidence_path": "low_consequence_acceptance",
+        "evidence_id": "RELAY-G1-ACCEPTANCE-001"
+      },
+      "relay_g2": {
+        "regression_complete": true,
+        "selected_path": "low_consequence_acceptance",
+        "operational_runs": 100,
+        "successful_runs": 100,
+        "ota_rollback_verified": true,
+        "evidence_id": "RELAY-G2-ACCEPTANCE-001"
+      },
       "expected": {
         "wormhole_succeeds": true,
+        "relay_g0_valid": true,
+        "relay_g1_valid": true,
+        "relay_g2_valid": true,
         "deployment_allowed": true
       }
     }

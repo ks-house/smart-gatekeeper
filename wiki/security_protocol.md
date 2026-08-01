@@ -240,9 +240,21 @@ production unlock은 기본 비활성이며 문별로 다음 중 **한 경로**�
    서면 수용하고, 감사/이상 동시 세션 탐지/즉시 disable/rollback을 운영한다. 주거 외부 출입문,
    고가 자산, 안전·법규 경계에는 이 예외를 사용할 수 없다.
 
-`RELAY-G0`는 두 BLE proxy가 byte-exact hello/challenge/proof를 전달하는 시험과 결과 기록,
-`RELAY-G1`은 위 경로 선택 및 risk-owner 승인, `RELAY-G2`는 선택한 방어/완화의 실기기 regression과
-OTA rollback 확인이다. 현재 hands-free v1은 vector상 wormhole이 성공하고 배포는 거부되는 상태다.
+production enable 판정은 아래 세 Gate를 순서와 무관하게 **모두** 만족해야 한다. 한 Gate 객체나 필수
+필드가 없거나 `false`이고, evidence 식별자가 비어 있고, 관측값·선택 경로·실행 횟수가 서로 맞지 않으면
+fail-closed 한다. `relay_resistant_channel=true`를 포함한 capability/feature flag 하나만으로는 어떤 Gate도
+대체하거나 우회할 수 없다.
+
+| Gate | release record의 필수 증거 | fail-closed 조건 |
+|---|---|---|
+| `RELAY-G0` | 검토 완료한 threat model, 두 proxy byte-exact 시험 완료, 계산한 wormhole 결과와 일치하는 expected/observed 결과, 비어 있지 않은 `evidence_id`, **risk-owner 승인** | 객체/필드 누락, review/test/승인 false, expected 또는 observed 불일치 |
+| `RELAY-G1` | `relay_resistant_channel`/`interactive_user_presence`/`low_consequence_acceptance` 중 하나의 `selected_path`, 실제 활성 control, 같은 경로를 지목하는 evidence와 비어 있지 않은 `evidence_id` | 경로 미선택·unknown, control false, capability와 경로 불일치, evidence 경로 불일치 |
+| `RELAY-G2` | G1과 동일한 `selected_path`, `regression_complete=true`, **연속 100회 이상 전부 성공한 실기기 운용 결과**, OTA rollback 확인, 비어 있지 않은 `evidence_id` | 객체/필드 누락, 100회 미만, 일부 실패, G1 경로 불일치, rollback false |
+
+따라서 `production_enabled = RELAY-G0.valid AND RELAY-G1.valid AND RELAY-G2.valid`다. G0의
+risk-owner 승인은 relay-resistant 경로에도 예외 없이 필요하다. 현재 hands-free v1은 vector상 wormhole이
+성공하고 세 Gate가 모두 없으므로 배포가 거부된다. interactive 또는 low-consequence 수용 경로는 G0/G2를
+통과해도 cryptographic proximity를 제공하지 않는다는 잔여 위험을 release record에 유지한다.
 
 ## 5. Challenge와 proof canonical bytes
 
@@ -516,9 +528,11 @@ firmware/app build다. 운영 환경에서 raw vector dump debug flag를 금지�
 
 repo의 stdlib-only verifier는 committed canonical hex/hash, RFC 6979 fixture signature, P-256 verify,
 high-S/wrong-key/mutation 거부, default MTU 23의 14-fragment framing, N/N-1 selection을 검증한다.
-또한 6개 ACL activation crash boundary, 8개 strict ACL semantic rejection, 5개 relay/deployment
-policy case를 같은 JSON에서 실행한다. hands-free v1 transparent wormhole은 `wormhole_succeeds=true`,
-`deployment_allowed=false`가 정답이며 이 결과를 green CI가 숨기지 않는다.
+또한 6개 ACL activation crash boundary, 8개 strict ACL semantic rejection, 16개 relay/deployment
+policy case를 같은 JSON에서 실행한다. relay case는 G0/G1/G2 각각의 누락·false·evidence 불일치,
+risk-owner 승인 없음, G2 100회 미달, 단일 relay-resistant flag 우회를 negative vector로 고정한다.
+hands-free v1 transparent wormhole은 `wormhole_succeeds=true`, `deployment_allowed=false`가 정답이며
+이 결과를 green CI가 숨기지 않는다.
 
 ```powershell
 python protocol/tools/verify_vectors.py
@@ -550,9 +564,9 @@ CI는 `.github/workflows/protocol.yml`에서 같은 명령을 실행한다. 실�
   격리, ACK/audit, expand-migrate-contract
 - 공통: positive vector, proof replay/cross-door/cross-session/cross-boot/high-S/malformed/stale ACL/
   clock rollback/N/N-1/rollback/no-overlap, ACL semantic negative/crash recovery 자동 시험
-- Relay: 두 proxy wormhole 실증(`RELAY-G0`), relay-resistant/interactive/명시적 low-consequence
-  수용 경로와 risk-owner 승인(`RELAY-G1`), 실기기·OTA rollback regression(`RELAY-G2`) 없이는
-  hands-free production unlock 비활성
+- Relay: threat-model review·두 proxy wormhole 결과·risk-owner 승인(`RELAY-G0`), evidence와 일치하는
+  relay-resistant/interactive/명시적 low-consequence 경로(`RELAY-G1`), 같은 경로의 100회 전 성공
+  실기기 운용·OTA rollback regression(`RELAY-G2`)을 모두 통과하지 않으면 production unlock 비활성
 - OTA: mobile install과 Target install→reboot→health confirmation, 기존 APK/bootable slot/credential/ACL
   보존을 [OTA 계약](ota_reliability_contract.md)의 G0~G3에서 확인
 
