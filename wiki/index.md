@@ -51,7 +51,7 @@
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
-| [trusted_workflow_policy.md](trusted_workflow_policy.md) | base-branch pull_request_target 신뢰 경계, exact digest bundle, PR #28 전환·rotation 절차 |
+| [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest Gate, policy rotation, paths 필터 제거와 required check 해제 |
 
 ---
 

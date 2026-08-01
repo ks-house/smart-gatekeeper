@@ -2,15 +2,9 @@
 
 ## 1. Trust boundary
 
-`.github/workflows/trusted_workflow_policy.yml` uses `pull_request_target`, but it never checks out or
-executes pull-request code. The workflow checks out only the trusted `base.sha` with credentials disabled
-and sparse paths limited to the base validator and policy. Candidate protected files are downloaded from
-the candidate repository and commit through the GitHub Contents API, decoded as inert bytes, normalized,
-and hashed.
+`.github/workflows/trusted_workflow_policy.yml` uses `pull_request_target` without `paths` or `paths-ignore` filters to prevent required-check deadlocks, ensuring `Verify protected files against trusted base policy` runs on all pull requests targeting `main` (including docs-only PRs). It never checks out or executes pull-request code. The workflow checks out only the trusted `base.sha` with credentials disabled and sparse paths limited to the base validator and policy. Candidate protected files are downloaded from the candidate repository and commit through the GitHub Contents API, decoded as inert bytes, normalized, and hashed.
 
-The job has only `contents: read`. Pull-request titles, branches, file contents, and other attacker-controlled
-values are never interpolated into an executable command. The candidate repository and 40-hex commit are
-passed as quoted environment variables and validated again by the base script.
+The job has only `contents: read`. Pull-request titles, branches, file contents, and other attacker-controlled values are never interpolated into an executable command. The candidate repository and 40-hex commit are passed as quoted environment variables and validated again by the base script.
 
 ## 2. Protected bundle decision
 
