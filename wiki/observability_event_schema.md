@@ -41,7 +41,7 @@ change는 새 major schema로 낸다. Collector는 알 수 없는 major를 원�
 | `source_component` | `android`, `target`, `backend`, `collector` |
 | `source_instance_id` | site-scoped HMAC 등 불투명 식별자. MAC, tenant/device 원문 금지 |
 | `source_boot_id` | process/OS/MCU boot마다 새 값. sequence namespace |
-| `sequence` | `(source_instance_id, source_boot_id)` 안에서 emit 직전에 증가하는 uint64 |
+| `sequence` | `(source_instance_id, source_boot_id)` 안에서 emit 직전에 증가하는 uint64 (`0..2^64-1`) |
 | `attempt` | 같은 session의 transport/install 재시도 번호. 1부터 증가 |
 | `event_code` | catalog에 등록된 고정 code |
 | `stage` | catalog가 event별로 고정한 lifecycle stage |
@@ -81,17 +81,21 @@ UUIDv4는 wall clock에 의존하지 않으므로 RTC가 틀리거나 Target이 
   `target_id`는 eFuse MAC 원문이므로 collector에서 site-scoped HMAC `target_ref`로 바꾸고 원문을
   canonical event에 복사하지 않는다.
 - `sequence`는 NVS에 매 event마다 쓰지 않고 boot-local RAM에서 증가한다. wrap 전에 새 boot
-  namespace를 열며, queue flush/retry에서도 원래 값을 보존한다.
+  namespace를 열며, queue flush/retry에서도 원래 값을 보존한다. 음수와 `2^64` 이상은 schema와
+  parser가 모두 거부한다.
 - `(source_instance_id, source_boot_id, sequence)`가 같은 두 event는 동일 `event_id`와 동일
   canonical payload여야 한다. 동일 event replay는 dedupe하고 다른 payload는 corruption으로
   거부한다.
 - Target reset이 active access 중 발생하면 RTC/NVS breadcrumb의 prior session을 읽어 새 boot에서
   `ACCESS_SESSION_TERMINATED/RESET_DURING_SESSION`을 emit한다. `prior_target_boot_id`를 포함하고
-  relay boot-default OFF를 먼저 보장한다. reset 뒤 기존 session을 성공으로 이어 붙이지 않는다.
+  relay boot-default OFF를 먼저 보장한다. terminal의 직접 cause는 직전 Target event여야 하고,
+  `prior_target_boot_id`는 그 event의 boot와 같아야 하며, terminal emitter는 같은 `target_ref`의
+  새 boot여야 한다. reset 뒤 기존 session을 성공으로 이어 붙이지 않는다.
 
 ## 5. 시간과 offline ordering
 
-`clock.wall_time`은 UTC RFC3339 `Z` 또는 `null`, `clock.monotonic_ms`는 boot-local uint64다.
+`clock.wall_time`은 UTC RFC3339 `Z` 또는 `null`, `clock.monotonic_ms`는 boot-local uint64
+(`0..2^64-1`)다.
 SNTP/OS clock을 신뢰할 수 있을 때만 `quality=SYNCED`와 `uncertainty_ms`를 기록한다. Target처럼
 wall clock을 초기화하지 않은 producer는 `UNSYNCED`와 `wall_time=null`을 사용한다.
 
@@ -107,6 +111,8 @@ event time이 아니다. Offline queue는 event를 생성할 때 ID/boot/sequenc
 flush 중 바꾸지 않는다. at-least-once 전송은 `event_id`로 dedupe한다. Collector는 서로 다른
 unsynced producer event에 임의의 total order를 부여하지 않는다. Reference parser의 `order`
 명령은 causal DAG를 지키는 결정적 표시 순서를 만들지만, tie-break는 인과 의미가 아니다.
+`validate_stream` 자체가 `causation_event_id`와 같은 producer boot의 sequence edge를 합친 graph의
+cycle을 거부하므로, `order`를 호출하지 않는 ingest 경로도 순환 인과를 수용하지 않는다.
 
 ## 6. 고정 event/reason code
 
@@ -143,6 +149,12 @@ Canonical event에 기록하지 않는다.
 두고 event에는 넣지 않는다. OTA `artifact_sha256`은 artifact 상관관계와 무결성 증거이므로
 허용하지만 URL, signature, signing private material은 금지한다. 운영 보존 기간과 접근 권한은
 Backend 정책에서 정하되 삭제 후에도 집계 통계만 남긴다.
+
+Update session에서 manifest 확인 전 `artifact_sha256`은 `null`일 수 있다. 최초 non-null digest가
+확정되면 manifest, download, verified artifact, installed image, 새 boot/health, valid mark와 rollback
+event는 모두 같은 값을 보존하며 terminal failure도 이미 알려진 digest를 지우지 않는다. 서로 다른
+digest 또는 확정 뒤 누락은 artifact/install 상관관계 실패로 fail-closed 처리하고 OTA 성공·rollback
+완료 판정에 사용하지 않는다.
 
 Reference parser는 금지 field name, raw MAC/전화번호, PEM private key/Bearer token,
 query-bearing URL을 fail-closed로 거부한다. 이는 완전한 DLP가 아니므로 producer whitelist도
@@ -194,6 +206,27 @@ UPDATE_SESSION_STARTED
 보존한다. upload, MQTT PUBACK, download 100%, flash 완료만으로 terminal success를 만들지 않는다.
 예시는 [`target_ota_success_v1.jsonl`](../observability/fixtures/target_ota_success_v1.jsonl)에 있다.
 
+### 8.3 Target OTA rollback
+
+Rollback 완료는 trigger/confirm 두 event만으로 성립하지 않는다. 최초 session event의
+`current_version`을 이전 정상 버전으로 고정하고 다음 causal chain 전체를 요구한다.
+
+```text
+UPDATE_SESSION_STARTED                       (previous version recorded)
+→ UPDATE_ROLLBACK_STARTED                    (failed candidate boot/version)
+→ UPDATE_ROLLBACK_PREVIOUS_INSTALL_CONFIRMED (previous version, INSTALLED)
+→ UPDATE_ROLLBACK_PREVIOUS_BOOT_CONFIRMED    (new recovery boot, BOOTED)
+→ UPDATE_ROLLBACK_PREVIOUS_HEALTH_CONFIRMED  (same recovery boot, HEALTH_CONFIRMED)
+→ UPDATE_ROLLBACK_CONFIRMED                  (same recovery boot, ROLLED_BACK)
+→ UPDATE_SESSION_COMPLETED / ROLLBACK_COMPLETED
+```
+
+Target evidence는 모두 같은 `target_ref`와 하나의 새 recovery boot에서 emit되고, 각 event의
+`current_version`은 기록된 이전 버전과 일치해야 한다. `artifact_sha256`은 실패 candidate와의
+상관관계를 잃지 않도록 session 전체에서 그대로 보존한다. 정상 예시는
+[`target_ota_rollback_success_v1.jsonl`](../observability/fixtures/target_ota_rollback_success_v1.jsonl)에
+있다.
+
 ## 9. 기존 코드와 migration mapping
 
 | 현재 신호 | v1 mapping | 전환 시 주의 |
@@ -231,7 +264,8 @@ free-text 판정을 제거한다. Schema migration은 Backend DB의 expand→mig
 - session당 `ACCESS_RELAY_ON`은 최대 1회이며 정확히 한 `ACCESS_RELAY_OFF`가 대응한다.
 - 거부/timeout/reset은 정확히 한 terminal event와 catalog의 고정 reason을 가진다.
 - Target boot가 바뀐 access는 성공 처리하지 않고 새 boot에서
-  `RESET_DURING_SESSION + prior_target_boot_id`로 종료한다.
+  `RESET_DURING_SESSION + prior_target_boot_id`로 종료한다. terminal은 직전 Target event를 직접
+  가리키며 그 event의 boot를 prior 값으로 기록하고 같은 Target의 새 boot가 emit한다.
 - Backend/MQTT offline queue를 재전송해도 event ID, boot, sequence, cause가 변하지 않는다.
 - proof/ACL 실패 session에 relay event가 존재하면 즉시 불합격이다.
 
@@ -251,8 +285,10 @@ free-text 판정을 제거한다. Schema migration은 Backend DB의 expand→mig
   mark 전체가 같은 update session에 있어야 한다.
 - Mobile success는 verified APK→package install→new app first-run health가 같은 session에 있어야
   한다. installer UI 호출만으로 성공하지 않는다.
-- rollback success는 `UPDATE_ROLLBACK_STARTED`, 이전 버전 boot/install 확인,
-  `UPDATE_ROLLBACK_CONFIRMED`, terminal `ROLLBACK_COMPLETED`를 요구한다.
+- rollback success는 `UPDATE_ROLLBACK_STARTED`, 이전 버전 install→boot→health의 개별 확인,
+  `UPDATE_ROLLBACK_CONFIRMED`, terminal `ROLLBACK_COMPLETED`를 하나의 causal chain으로 요구한다.
+- Update session에서 최초로 확정된 `artifact_sha256`은 immutable하다. manifest와 installed image,
+  boot/health 또는 failure terminal의 digest가 다르거나 사라지면 fail-closed한다.
 - 각 retry는 `attempt`를 증가시키며 target version과 artifact digest를 검증한다. 새 release를
   시도하면 새 session을 만든다.
 - OTA secret/private material은 어느 event에도 남지 않는다.
@@ -262,13 +298,14 @@ free-text 판정을 제거한다. Schema migration은 Backend DB의 expand→mig
 Repository root에서 실행한다.
 
 ```powershell
-python observability/event_parser.py validate observability/fixtures/access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl
-python observability/event_parser.py evaluate observability/fixtures/access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl
+python observability/event_parser.py validate observability/fixtures/access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl observability/fixtures/target_ota_rollback_success_v1.jsonl
+python observability/event_parser.py evaluate observability/fixtures/access_success_v1.jsonl observability/fixtures/target_ota_success_v1.jsonl observability/fixtures/target_ota_rollback_success_v1.jsonl
 python -m unittest discover -s observability/tests -v
 ```
 
 테스트는 정상 access/OTA, offline 역순 도착, exact replay dedupe, sequence conflict, unknown code,
-privacy 위반, boot 변경, terminal 누락, health confirmation 누락을 검증한다.
+privacy 위반, boot 변경, terminal 누락, health confirmation 누락과 함께 digest 불일치, rollback 증거
+누락, 잘못된 reset prior/new boot 관계, uint64 overflow, causation cycle의 negative fixture를 검증한다.
 
 ## 12. OTA 영향 판정
 

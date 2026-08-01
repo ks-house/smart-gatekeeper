@@ -363,6 +363,27 @@
       "allowed_reason_codes": ["ROLLBACK_TRIGGERED"],
       "terminal": false
     },
+    "UPDATE_ROLLBACK_PREVIOUS_INSTALL_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PREVIOUS_VERSION_INSTALLED"],
+      "terminal": false
+    },
+    "UPDATE_ROLLBACK_PREVIOUS_BOOT_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PREVIOUS_VERSION_BOOTED"],
+      "terminal": false
+    },
+    "UPDATE_ROLLBACK_PREVIOUS_HEALTH_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PREVIOUS_VERSION_HEALTHY"],
+      "terminal": false
+    },
     "UPDATE_ROLLBACK_CONFIRMED": {
       "session_kind": "update",
       "stage": "ROLLBACK",

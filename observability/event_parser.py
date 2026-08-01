@@ -17,6 +17,7 @@ from typing import Any, Iterable
 
 BASE_DIR = Path(__file__).resolve().parent
 CATALOG_PATH = BASE_DIR / "event_codes_v1.json"
+UINT64_MAX = (1 << 64) - 1
 
 REQUIRED_FIELDS = {
     "schema_version",
@@ -112,6 +113,9 @@ DIGEST_REQUIRED_EVENTS = {
     "UPDATE_HEALTH_CONFIRMED",
     "UPDATE_MARKED_VALID",
     "UPDATE_ROLLBACK_STARTED",
+    "UPDATE_ROLLBACK_PREVIOUS_INSTALL_CONFIRMED",
+    "UPDATE_ROLLBACK_PREVIOUS_BOOT_CONFIRMED",
+    "UPDATE_ROLLBACK_PREVIOUS_HEALTH_CONFIRMED",
     "UPDATE_ROLLBACK_CONFIRMED",
     "UPDATE_SESSION_COMPLETED",
 }
@@ -219,10 +223,16 @@ def validate_event(
         event["source_boot_id"]
     ):
         errors.append("source_boot_id is invalid")
-    for field in ("sequence", "attempt"):
-        minimum = 0 if field == "sequence" else 1
-        if isinstance(event[field], bool) or not isinstance(event[field], int) or event[field] < minimum:
-            errors.append(f"{field} must be an integer >= {minimum}")
+    sequence = event["sequence"]
+    if (
+        isinstance(sequence, bool)
+        or not isinstance(sequence, int)
+        or not 0 <= sequence <= UINT64_MAX
+    ):
+        errors.append(f"sequence must be an integer between 0 and {UINT64_MAX}")
+    attempt = event["attempt"]
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
+        errors.append("attempt must be an integer >= 1")
 
     code = catalog.get("event_codes", {}).get(event["event_code"])
     if code is None:
@@ -262,10 +272,15 @@ def validate_event(
                         _parse_wall_time(wall_time)
                     except ValueError:
                         errors.append("clock.wall_time is not a real timestamp")
-            if isinstance(clock["monotonic_ms"], bool) or not isinstance(
-                clock["monotonic_ms"], int
-            ) or clock["monotonic_ms"] < 0:
-                errors.append("clock.monotonic_ms must be an integer >= 0")
+            monotonic_ms = clock["monotonic_ms"]
+            if (
+                isinstance(monotonic_ms, bool)
+                or not isinstance(monotonic_ms, int)
+                or not 0 <= monotonic_ms <= UINT64_MAX
+            ):
+                errors.append(
+                    f"clock.monotonic_ms must be an integer between 0 and {UINT64_MAX}"
+                )
             if clock["quality"] not in CLOCK_QUALITIES:
                 errors.append("clock.quality is invalid")
             if clock["quality"] == "SYNCED":
@@ -454,10 +469,52 @@ def validate_stream(
         if group[0]["session_kind"] == "update":
             components = {event["update"]["component"] for event in group}
             target_versions = {event["update"]["target_version"] for event in group}
+            artifact_digests = {
+                event["update"]["artifact_sha256"]
+                for event in group
+                if event["update"]["artifact_sha256"] is not None
+            }
             if len(components) != 1:
                 errors.append(f"update session {session_id} mixes components")
             if len(target_versions) != 1:
                 errors.append(f"update session {session_id} changes target_version")
+            if len(artifact_digests) > 1:
+                errors.append(f"update session {session_id} changes artifact_sha256")
+            if artifact_digests:
+                for event in group:
+                    if (
+                        event["event_code"] == "UPDATE_SESSION_FAILED"
+                        and event["update"]["artifact_sha256"] is None
+                    ):
+                        errors.append(
+                            f"update session {session_id} drops artifact_sha256 "
+                            "at terminal failure"
+                        )
+
+    edges: dict[str, set[str]] = defaultdict(set)
+    indegree = {event_id: 0 for event_id in by_id}
+    for event in unique:
+        cause = event["causation_event_id"]
+        if cause is not None and cause in by_id:
+            edges[cause].add(event["event_id"])
+    for group in source_groups.values():
+        ordered = sorted(group, key=lambda value: value["sequence"])
+        for left, right in zip(ordered, ordered[1:]):
+            edges[left["event_id"]].add(right["event_id"])
+    for children in edges.values():
+        for child in children:
+            indegree[child] += 1
+    pending = [event_id for event_id, degree in indegree.items() if degree == 0]
+    visited = 0
+    while pending:
+        current = pending.pop()
+        visited += 1
+        for child in edges[current]:
+            indegree[child] -= 1
+            if indegree[child] == 0:
+                pending.append(child)
+    if visited != len(by_id):
+        errors.append("causation/sequence graph contains a cycle")
 
     if errors:
         raise EventValidationError(errors)
@@ -589,19 +646,59 @@ def evaluate_access_session(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
     ):
         errors.append("proof/ACL rejection must never activate relay")
 
+    target_events = [
+        event for event in ordered if event["source_component"] == "target"
+    ]
     target_boots = {
         event["target"]["boot_id"]
-        for event in ordered
-        if event["source_component"] == "target"
+        for event in target_events
     }
-    if len(target_boots) > 1:
-        reset_ok = (
-            terminal["event_code"] == "ACCESS_SESSION_TERMINATED"
-            and terminal["reason_code"] == "RESET_DURING_SESSION"
-            and "prior_target_boot_id" in terminal["attributes"]
+    is_reset_terminal = (
+        terminal["event_code"] == "ACCESS_SESSION_TERMINATED"
+        and terminal["reason_code"] == "RESET_DURING_SESSION"
+    )
+    if len(target_boots) > 1 and not is_reset_terminal:
+        errors.append("target boot changed without RESET_DURING_SESSION termination")
+    if is_reset_terminal:
+        prior_boot_id = terminal["attributes"].get("prior_target_boot_id")
+        prior_target_events = [
+            event
+            for event in target_events
+            if event["source_boot_id"] != terminal["source_boot_id"]
+        ]
+        actual_prior_target = prior_target_events[-1] if prior_target_events else None
+        cause = next(
+            (
+                event
+                for event in ordered
+                if event["event_id"] == terminal["causation_event_id"]
+            ),
+            None,
         )
-        if not reset_ok:
-            errors.append("target boot changed without RESET_DURING_SESSION termination")
+        if terminal["source_component"] != "target":
+            errors.append("reset terminal must be emitted by the new target boot")
+        if cause is None or cause["source_component"] != "target":
+            errors.append(
+                "reset terminal must directly reference the prior target event"
+            )
+        else:
+            if prior_boot_id != cause["source_boot_id"]:
+                errors.append("prior_target_boot_id does not match prior target boot")
+            if (
+                actual_prior_target is None
+                or cause["event_id"] != actual_prior_target["event_id"]
+            ):
+                errors.append(
+                    "reset terminal must directly reference the last prior target event"
+                )
+            if cause["target"]["target_ref"] != terminal["target"]["target_ref"]:
+                errors.append("reset terminal target_ref does not match prior target")
+            if cause["source_boot_id"] == terminal["source_boot_id"]:
+                errors.append("reset terminal must be emitted from a new target boot")
+        if len(target_boots) != 2:
+            errors.append(
+                "reset session must contain exactly one prior and one new target boot"
+            )
 
     if terminal["event_code"] == "ACCESS_SESSION_COMPLETED":
         path = next(
@@ -676,7 +773,15 @@ def evaluate_update_session(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
     if terminal["event_code"] == "UPDATE_SESSION_COMPLETED":
         component = terminal["update"]["component"]
         if terminal["reason_code"] == "ROLLBACK_COMPLETED":
-            required = ["UPDATE_ROLLBACK_STARTED", "UPDATE_ROLLBACK_CONFIRMED"]
+            required = [
+                "UPDATE_SESSION_STARTED",
+                "UPDATE_ROLLBACK_STARTED",
+                "UPDATE_ROLLBACK_PREVIOUS_INSTALL_CONFIRMED",
+                "UPDATE_ROLLBACK_PREVIOUS_BOOT_CONFIRMED",
+                "UPDATE_ROLLBACK_PREVIOUS_HEALTH_CONFIRMED",
+                "UPDATE_ROLLBACK_CONFIRMED",
+                "UPDATE_SESSION_COMPLETED",
+            ]
         elif component == "target":
             required = [
                 "UPDATE_SESSION_STARTED",
@@ -716,7 +821,82 @@ def evaluate_update_session(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
             ]
         missing, _ = _required_causal_chain(required, ordered)
         if missing:
-            errors.append(f"completed update is missing ordered stages: {', '.join(missing)}")
+            errors.append(
+                f"completed update is missing ordered stages: {', '.join(missing)}"
+            )
+        if terminal["reason_code"] == "ROLLBACK_COMPLETED" and not missing:
+            start = next(
+                event
+                for event in ordered
+                if event["event_code"] == "UPDATE_SESSION_STARTED"
+            )
+            previous_version = start["update"]["current_version"]
+            rollback_evidence_codes = {
+                "UPDATE_ROLLBACK_PREVIOUS_INSTALL_CONFIRMED": "INSTALLED",
+                "UPDATE_ROLLBACK_PREVIOUS_BOOT_CONFIRMED": "BOOTED",
+                "UPDATE_ROLLBACK_PREVIOUS_HEALTH_CONFIRMED": "HEALTH_CONFIRMED",
+                "UPDATE_ROLLBACK_CONFIRMED": "ROLLED_BACK",
+                "UPDATE_SESSION_COMPLETED": "ROLLED_BACK",
+            }
+            for event in ordered:
+                expected_confirmation = rollback_evidence_codes.get(event["event_code"])
+                if expected_confirmation is None:
+                    continue
+                if event["update"]["current_version"] != previous_version:
+                    errors.append(
+                        f"{event['event_code']} does not confirm previous version "
+                        f"{previous_version}"
+                    )
+                if event["update"]["confirmation"] != expected_confirmation:
+                    errors.append(
+                        f"{event['event_code']} must use confirmation "
+                        f"{expected_confirmation}"
+                    )
+            if previous_version == terminal["update"]["target_version"]:
+                errors.append(
+                    "rollback previous version must differ from failed target_version"
+                )
+            if component == "target":
+                rollback_start = next(
+                    event
+                    for event in ordered
+                    if event["event_code"] == "UPDATE_ROLLBACK_STARTED"
+                )
+                previous_boot = next(
+                    event
+                    for event in ordered
+                    if event["event_code"] == "UPDATE_ROLLBACK_PREVIOUS_BOOT_CONFIRMED"
+                )
+                if rollback_start["source_boot_id"] == previous_boot["source_boot_id"]:
+                    errors.append(
+                        "target rollback boot evidence must use a new target boot_id"
+                    )
+                recovery_evidence = [
+                    event
+                    for event in ordered
+                    if event["event_code"] in rollback_evidence_codes
+                ]
+                if any(
+                    event["source_component"] != "target"
+                    for event in recovery_evidence
+                ):
+                    errors.append(
+                        "target rollback evidence must be emitted by the target"
+                    )
+                recovery_boots = {
+                    event["source_boot_id"] for event in recovery_evidence
+                }
+                if len(recovery_boots) != 1:
+                    errors.append(
+                        "target rollback evidence must use one recovery boot_id"
+                    )
+                recovery_targets = {
+                    event["target"]["target_ref"] for event in recovery_evidence
+                }
+                if recovery_targets != {rollback_start["target"]["target_ref"]}:
+                    errors.append(
+                        "target rollback evidence must match the failed target_ref"
+                    )
         if terminal["update"]["confirmation"] not in {"HEALTH_CONFIRMED", "ROLLED_BACK"}:
             errors.append("completed update lacks health or rollback confirmation")
     if errors:

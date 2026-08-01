@@ -33,7 +33,11 @@
     },
     "source_instance_id": {"$ref": "#/$defs/opaque_ref"},
     "source_boot_id": {"$ref": "#/$defs/boot_id"},
-    "sequence": {"type": "integer", "minimum": 0},
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
     "attempt": {"type": "integer", "minimum": 1},
     "event_code": {
       "type": "string",
@@ -121,7 +125,11 @@
             {"type": "null"}
           ]
         },
-        "monotonic_ms": {"type": "integer", "minimum": 0},
+        "monotonic_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
         "quality": {"enum": ["SYNCED", "UNSYNCED", "UNKNOWN"]},
         "uncertainty_ms": {"type": "integer", "minimum": 0}
       }

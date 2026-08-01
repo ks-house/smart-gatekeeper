@@ -25,6 +25,24 @@ class EventParserTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.access = load_jsonl(FIXTURE_DIR / "access_success_v1.jsonl")
         cls.ota = load_jsonl(FIXTURE_DIR / "target_ota_success_v1.jsonl")
+        cls.rollback = load_jsonl(
+            FIXTURE_DIR / "target_ota_rollback_success_v1.jsonl"
+        )
+        cls.digest_mismatch = load_jsonl(
+            FIXTURE_DIR / "negative_update_digest_mismatch_v1.jsonl"
+        )
+        cls.rollback_missing_evidence = load_jsonl(
+            FIXTURE_DIR / "negative_rollback_missing_evidence_v1.jsonl"
+        )
+        cls.reset_wrong_prior_boot = load_jsonl(
+            FIXTURE_DIR / "negative_access_reset_wrong_prior_boot_v1.jsonl"
+        )
+        cls.sequence_overflow = load_jsonl(
+            FIXTURE_DIR / "negative_sequence_overflow_v1.jsonl"
+        )
+        cls.causation_cycle = load_jsonl(
+            FIXTURE_DIR / "negative_causation_cycle_v1.jsonl"
+        )
 
     def test_contract_artifacts_are_valid_json(self) -> None:
         for filename in ("event_schema_v1.json", "event_codes_v1.json"):
@@ -98,6 +116,26 @@ class EventParserTests(unittest.TestCase):
         with self.assertRaisesRegex(EventValidationError, "requires update.artifact_sha256"):
             validate_event(missing_digest)
 
+    def test_update_session_artifact_digest_is_immutable(self) -> None:
+        with self.assertRaisesRegex(EventValidationError, "changes artifact_sha256"):
+            validate_stream(self.digest_mismatch)
+
+        dropped_failure_digest = copy.deepcopy(self.ota)
+        dropped_failure_digest[-1]["event_code"] = "UPDATE_SESSION_FAILED"
+        dropped_failure_digest[-1]["outcome"] = "FAILED"
+        dropped_failure_digest[-1]["reason_code"] = "ARTIFACT_HASH_MISMATCH"
+        dropped_failure_digest[-1]["update"]["artifact_sha256"] = None
+        with self.assertRaisesRegex(EventValidationError, "drops artifact_sha256"):
+            validate_stream(dropped_failure_digest)
+
+    def test_rollback_requires_previous_install_boot_and_health_evidence(self) -> None:
+        result = evaluate_update_session(self.rollback)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["terminal_reason_code"], "ROLLBACK_COMPLETED")
+
+        with self.assertRaisesRegex(EventValidationError, "missing ordered stages"):
+            evaluate_update_session(self.rollback_missing_evidence)
+
     def test_proof_rejection_can_never_open_relay(self) -> None:
         rejected = copy.deepcopy(self.access)
         rejected[5]["event_code"] = "ACCESS_PROOF_REJECTED"
@@ -114,6 +152,52 @@ class EventParserTests(unittest.TestCase):
         reset_stream[-1]["clock"]["monotonic_ms"] = 10
         with self.assertRaisesRegex(EventValidationError, "RESET_DURING_SESSION"):
             evaluate_access_session(reset_stream)
+
+    def test_reset_requires_actual_prior_boot_and_new_target_emitter(self) -> None:
+        with self.assertRaisesRegex(
+            EventValidationError, "prior_target_boot_id does not match"
+        ):
+            evaluate_access_session(self.reset_wrong_prior_boot)
+
+        valid_reset = copy.deepcopy(self.reset_wrong_prior_boot)
+        valid_reset[-1]["attributes"]["prior_target_boot_id"] = valid_reset[-2][
+            "source_boot_id"
+        ]
+        result = evaluate_access_session(valid_reset)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["terminal_reason_code"], "RESET_DURING_SESSION")
+
+        stale_cause = copy.deepcopy(valid_reset)
+        stale_cause[-1]["causation_event_id"] = stale_cause[0]["event_id"]
+        with self.assertRaisesRegex(EventValidationError, "last prior target event"):
+            evaluate_access_session(stale_cause)
+
+        wrong_emitter = copy.deepcopy(valid_reset)
+        wrong_emitter[-1]["source_component"] = "android"
+        with self.assertRaisesRegex(EventValidationError, "emitted by the new target boot"):
+            evaluate_access_session(wrong_emitter)
+
+    def test_sequence_and_monotonic_clock_are_uint64(self) -> None:
+        boundary = copy.deepcopy(self.access[0])
+        boundary["sequence"] = (1 << 64) - 1
+        boundary["clock"]["monotonic_ms"] = (1 << 64) - 1
+        validate_event(boundary)
+
+        with self.assertRaisesRegex(
+            EventValidationError, "sequence must be an integer between"
+        ):
+            validate_event(self.sequence_overflow[0])
+
+        monotonic_overflow = copy.deepcopy(boundary)
+        monotonic_overflow["clock"]["monotonic_ms"] = 1 << 64
+        with self.assertRaisesRegex(
+            EventValidationError, "monotonic_ms must be an integer between"
+        ):
+            validate_event(monotonic_overflow)
+
+    def test_validate_stream_rejects_causation_cycle(self) -> None:
+        with self.assertRaisesRegex(EventValidationError, "contains a cycle"):
+            validate_stream(self.causation_cycle)
 
     def test_every_session_has_exactly_one_terminal_event(self) -> None:
         missing_terminal = self.access[:-1]
