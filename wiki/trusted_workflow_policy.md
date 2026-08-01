@@ -28,9 +28,11 @@ keys, steps, action versions, commands, or trailing newlines are otherwise ignor
 SHA-256. A candidate passes only when every protected path exactly matches one complete approved bundle;
 mixing individually approved files from different bundles is rejected.
 
-The bootstrap contains two bundles: `origin/main` at `8c36ead` and the pre-reviewed PR #28 head `7bae62f`.
-This permits ordinary PRs to keep the current main bytes while allowing PR #28's complete protected bundle
-during the transition. It does not approve later PR #28 heads or arbitrary edits.
+The transition is complete. The policy contains exactly one `current-main-baseline` bundle sourced from
+merged `main` at `cc977e42770e6d88822459436a770295632c6e45`. The temporary
+`origin-main-bootstrap@8c36ead` and `pr-28-preapproved@7bae62f` entries are retired. PR #28's protected
+bytes became the merged-main bytes, so their digest values are retained under the new main provenance;
+the old bundle identities and old pre-PR #28 byte set are no longer approved.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -42,18 +44,17 @@ validator are never imported, parsed, or executed, so changing them cannot chang
 Changes to these trust-control files still require an explicit security review before merge because their
 effect begins only after they become default-branch code.
 
-## 4. Two-step rotation after PR #28
+## 4. Rotation procedure
 
-1. Merge PR #28 only after the trusted check identifies the exact `pr-28-preapproved` bundle and the
-   independent review accepts the remaining OTA contract behavior. Keep issue #23 open and all OTA-G1
-   through OTA-G4 physical/operator evidence pending.
-2. From the resulting `main`, open a separate policy-only rotation PR. Replace the bootstrap's old-main and
-   temporary PR #28 entries with a single bundle pinned to the actual merged `main` commit, update the
-   source-evidence tests, obtain independent review, and merge the rotation. Do not combine operational
-   workflow edits with this trust-anchor rotation.
+The PR #28 transition used two steps: first merge the independently reviewed protected bytes through the
+temporary approval, then rotate the policy in this separate policy-only change to the actual merged-main
+commit. Future protected-file changes must follow the same separation: independently review an exact full
+bundle, merge only through trusted-base authorization, then use a separate policy-only PR to remove any
+temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
+exception, mixed bundle, or candidate-derived digest.
 
-If PR #28 changes after `7bae62f`, first review the new exact bytes and rotate the trusted base policy in a
-separate PR. Never add a wildcard, branch name, partial-file exception, or candidate-derived digest.
+Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
+policy rotation.
 
 ## 5. Scope and OTA status
 

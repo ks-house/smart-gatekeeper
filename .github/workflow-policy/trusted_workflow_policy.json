@@ -10,24 +10,10 @@
   ],
   "approved_bundles": [
     {
-      "id": "origin-main-bootstrap",
+      "id": "current-main-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "8c36ead9f40e46959af721bbfffaeb00fcb2b2c1"
-      },
-      "files": {
-        ".github/workflows/deploy.yml": "d899c4c48412477d5496ac120fe2a9025662fe33763e5b4ab302e8374ffa64ad",
-        ".github/workflows/build_app.yml": "0e3876199ef47652e4d8e9931cd29f5f5ab19bc8aa26249180ef96adb0c12ca4",
-        ".github/workflows/ota_contract.yml": "8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001",
-        "scripts/ota_contract_gate.py": "82edf10415a653b6ad64c7dd1be29e7eefe2e3df406fdbf73455fb5bbd245f66",
-        "ota/requirements.txt": "ec9f21f0bffe9f3e4d6682cf164f15ae21d2cd5e2994beaaa53281da5f04a6d2"
-      }
-    },
-    {
-      "id": "pr-28-preapproved",
-      "source": {
-        "repository": "ks-house/smart-gatekeeper",
-        "commit": "7bae62f6921ece5aabb08e994f7527391b7db746"
+        "commit": "cc977e42770e6d88822459436a770295632c6e45"
       },
       "files": {
         ".github/workflows/deploy.yml": "9bdf5a593907fa8225ebec54b9d305177836b9ace8376bced3914800c3ad5820",
