@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-01 (issue #16 device key·BLE proof·signed ACL v1 규격 반영)
+> Last updated: 2026-08-01 (PR #24 ACL power-loss·BLE relay security review 보완)
 
 ---
 
@@ -46,7 +46,7 @@
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
-| [security_protocol.md](security_protocol.md) | Android Keystore P-256 lifecycle, BLE canonical challenge/proof·framing, signed ACL lease·위협·N/N-1 규격과 공통 vector |
+| [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, BLE relay 배포 Gate, N/N-1과 공통 adversarial vector |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 
 

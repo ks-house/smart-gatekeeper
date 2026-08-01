@@ -24,6 +24,12 @@ Backend가 서명한 ACL snapshot 사이의 공통 계약을 고정한다. 고�
 - 인증 버전 불일치가 Android update manager나 Target periodic HTTPS/MQTT/local recovery OTA를
   막지 않는다.
 
+이 v1 proof가 인증하는 것은 **등록 private key의 실시간 possession**이다. 현재 하드웨어와 BLE
+GATT 왕복만으로 phone과 문 사이의 물리적 근접성이나 relay resistance를 증명하지 않는다. 문 앞의
+real Target과 피해자 phone 사이를 deadline 안에 투명 중계하는 wormhole은 fresh proof를 얻으므로
+nonce/session/boot binding을 통과한다. 따라서 hands-free production 배포는 §4.4의 `RELAY-G`를
+별도로 통과해야 한다.
+
 DoS, BLE radio jamming, 휴대폰 OS가 이미 완전히 장악된 경우, Backend ACL signing key 자체의
 탈취는 이 프로토콜만으로 없앨 수 없다. 각각 rate limit/운영 fallback, Android 무결성 신호,
 signing key 격리·교체 절차로 위험을 줄인다.
@@ -206,6 +212,38 @@ binding을 매 연결 다시 확인한다.
 `negotiation_hash = SHA256(CLIENT_HELLO payload || TARGET_HELLO payload)`이며 challenge와 proof에
 묶인다. hello 변조는 proof input을 바꾸거나 client security floor 검증에서 거부된다.
 
+### 4.4 실시간 relay/wormhole 경계와 배포 Gate
+
+공격자가 문 앞 proxy로 real Target의 hello/challenge를 받고 피해자 phone 근처 proxy로 그대로
+전달한 뒤, phone의 fresh proof를 real Target에 5초 안에 돌려주면 v1 검증은 성공한다. 이는 캡처된
+과거 proof의 replay가 아니며 `door_id`, `session_id`, `nonce`, `target_boot_id`, expiry가 모두
+정상이다. Target static key를 phone에 pin하거나 BLE Secure Connections를 켜도 bit-for-bit tunnel을
+종단하지 않는 한 이 transparent relay 자체는 막지 못한다.
+
+다음 항목은 relay resistance로 인정하지 않는다.
+
+- RSSI threshold, advertisement TX power, 연결 latency/5초 timeout만 사용
+- BLE MAC/service UUID/device ID pinning
+- Target signature 또는 mutual authentication만 추가하고 거리 제한 channel binding은 없음
+- relay 장비를 시험하지 않은 일반 E2E 성공
+
+production unlock은 기본 비활성이며 문별로 다음 중 **한 경로**를 release record에 선택해야 한다.
+
+1. **Relay-resistant 경로:** 검증된 distance-bounding/UWB 또는 측정 가능한 상한을 제공하는 전용
+   relay-resistant hardware transaction을 proof에 channel-bind한다. 두 proxy 공격이 정책 거리 밖에서
+   거부된 실기기 증거가 필요하다. 일반 BLE/NFC의 nominal range만으로 이 분류를 부여하지 않는다.
+2. **Interactive 완화:** 매 proof에 Android biometric/device credential과 명시적 door 확인을
+   요구하거나 사용자가 해당 문 reader를 직접 tap하도록 하고 보안 책임자가 잔여
+   social-engineering/NFC·BLE relay 위험을 승인한다. 이는 silent hands-free relay를 줄일 뿐
+   cryptographic proximity 보장은 아니다.
+3. **명시적 비근접성 수용:** 보안 책임자가 지정한 low-consequence door에만 possession-only임을
+   서면 수용하고, 감사/이상 동시 세션 탐지/즉시 disable/rollback을 운영한다. 주거 외부 출입문,
+   고가 자산, 안전·법규 경계에는 이 예외를 사용할 수 없다.
+
+`RELAY-G0`는 두 BLE proxy가 byte-exact hello/challenge/proof를 전달하는 시험과 결과 기록,
+`RELAY-G1`은 위 경로 선택 및 risk-owner 승인, `RELAY-G2`는 선택한 방어/완화의 실기기 regression과
+OTA rollback 확인이다. 현재 hands-free v1은 vector상 wormhole이 성공하고 배포는 거부되는 상태다.
+
 ## 5. Challenge와 proof canonical bytes
 
 ### 5.1 Challenge
@@ -320,8 +358,19 @@ permissions u32 | not_before_epoch_s u64 | not_after_epoch_s u64 |
 min_protocol u16 | max_protocol u16
 ```
 
-`status`: `0=REVOKED`, `1=ACTIVE`; `permissions` bit0은 OPEN이다. 알 수 없는 status, 필요한
-unknown permission bit, 잘못된 key/시간 범위, 64개 초과 entry를 거부한다. 서명은
+`status`: `0=REVOKED`, `1=ACTIVE`; `permissions` bit0은 OPEN이며 v1의 known mask는
+`0x00000001`이다. 다음 semantic 조건을 canonical encoding과 Target 수신 검증 양쪽에서 같은
+`MALFORMED`로 거부한다.
+
+- `schema_version != 1`, `acl_version < 1`, lease가 1..3,600초 밖인 snapshot
+- `issued_at <= not_before < expires_at` 또는 `1 <= min_protocol <= max_protocol`을 위반한 header
+- unknown status 또는 known mask 밖 permission bit
+- `entry.not_before < entry.not_after` 위반
+- `snapshot.min_protocol <= entry.min_protocol <= entry.max_protocol <= snapshot.max_protocol` 위반
+- SEC1 길이/prefix/좌표 범위/P-256 curve equation을 통과하지 못한 public key
+- 정렬되지 않거나 중복된 credential, 64개 초과 entry
+
+서명은
 `SHA256withECDSA(72-byte header || sorted entries)`의 low-S raw64이며 envelope에 별도 첨부한다.
 
 ACL은 door별 authoritative snapshot이다. snapshot에 없는 credential은 denied다. revoked tombstone은
@@ -330,19 +379,49 @@ ACL은 door별 authoritative snapshot이다. snapshot에 없는 credential은 de
 ### 6.2 검증과 atomic activation
 
 1. 최대 크기와 schema를 검사하고 `door_id`, trust anchor, signature를 검증한다.
-2. `acl_version > persisted_high_watermark`만 새 후보로 받는다. 같은 version+같은 digest는
+2. `acl_version > effective_high_watermark`만 새 후보로 받는다. 같은 version+같은 digest는
    idempotent ACK만 하며 lease를 다시 시작하지 않는다. 같은 version+다른 digest는 signer/backend
    충돌로 fail-closed한다.
 3. time/lease/protocol/entry semantic validation을 전부 완료한다.
 4. inactive NVS slot에 blob, signature, digest, metadata CRC를 쓰고 commit한다.
 5. read-back 후 다시 signature/digest를 검증한다.
-6. generation+CRC를 가진 작은 active pointer를 원자 commit한다.
-7. active pointer가 확인된 뒤 high-watermark를 갱신하고 ACK한다.
+6. 이전 record와 다른 NVS key에 다음 **단일 activation generation blob**을 한 번에 쓴다.
+
+   ```text
+   magic | record_schema | generation | active_slot |
+   acl_version | acl_digest | high_watermark(=acl_version) | CRC
+   ```
+
+7. blob commit/read-back/CRC가 성공한 뒤에만 runtime active를 새 slot으로 바꾸고 ACK한다. active
+   pointer와 high-watermark를 별도 commit하지 않는다. 두 generation key를 번갈아 써서 마지막
+   정상 record를 보존한다.
+
+candidate slot write 뒤 generation record 전에 crash하면 새 snapshot은 아직 활성화되지 않은 것으로
+간주하고 이전 record를 쓴다. generation record가 torn이면 CRC-invalid record를 무시한다. record가
+durable해진 뒤 crash하면 그 record 안의 pointer와 high-watermark가 함께 새 version이다.
+
+boot recovery는 ACL download/subscribe/auth service보다 먼저 다음을 수행한다.
+
+1. 두 activation record의 magic/schema/CRC/generation을 검사한다. CRC-valid record의 version은
+   참조 slot이 손상됐더라도 anti-rollback floor 계산에는 포함한다.
+2. `effective_high_watermark = max(all valid record versions, valid legacy active snapshot version,
+   persisted legacy high_watermark)`로 계산한다.
+3. 과거 split layout에서 `legacy active > legacy high-watermark`이면 repaired generation/floor를
+   **candidate 비교 전에 영구 commit**한다. 반대로 watermark가 active보다 앞서면 과거 active를
+   authorize하지 않고 fail-closed한다.
+4. 가장 높은 valid generation이 가리키는 slot의 digest/signature/semantic과 record version을
+   검증한다. 이 slot이 손상되거나 version이 effective floor보다 낮으면 이전 slot으로 권한 rollback하지
+   않고 fail-closed + 새 compatible snapshot fetch를 수행한다.
+5. 이후 모든 candidate 비교는 runtime/persisted 단일 값이 아니라 위 effective floor를 사용한다.
 
 전원 차단 시 이전 active snapshot과 credential blob을 덮어쓰지 않는다. 단, 더 높은 version을 한 번
 활성화한 뒤 과거 ACL로 **보안 rollback**해서는 안 된다. 새 active가 손상되면 이전 snapshot으로
 권한을 복구하지 말고 fail-closed + network/local recovery로 새 snapshot을 받는다. 이전 slot은
 forensic/복구 자료일 뿐 authorize source가 아니다.
+
+공통 crash vector는 candidate slot 전/후, torn record, record commit 직후, committed slot 손상,
+legacy pointer-first와 watermark-first 경계를 모두 고정한다. 예를 들어 legacy `active=v43,
+watermark=v41`은 boot에서 effective=43을 먼저 영구 복구하므로 signed v42를 거부한다.
 
 ### 6.3 lease와 부정확한 clock
 
@@ -382,10 +461,11 @@ ACL을 발행하지 않는다. signing key compromise 시 protocol version floor
 | equal ACL replay로 lease 연장 | 같은 version은 deadline 갱신 금지 | Backend가 lease마다 version 증가 |
 | clock rollback/power cycle | monotonic deadline, reboot 시 untrusted cached ACL 금지 | offline reset 뒤 자동 출입 불가 |
 | revoked/lost phone | 60초 sync, 15분 기본/1시간 hard lease | lease 동안 user-auth 없는 키 악용 가능 |
-| BLE MAC/UUID/device_id 복제 | 최종 승인 입력에서 제외 | presence spam 가능 |
+| BLE MAC/UUID/device_id 복제 | 복제 값만으로 proof 생성 불가 | presence spam과 wormhole의 phone-side 유인 endpoint로 사용 가능 |
 | malformed/oversized fragment | 2,048-byte cap, one buffer, strict sequence | connection-level DoS rate limit |
 | ACL signer 탈취 | 별도 key 격리, trust-anchor rotation | emergency firmware rollout 필요 |
 | Android 앱/OS 장악 | hardware-backed key, revoke, 짧은 lease | sign API를 호출할 수 있는 완전 장악은 방지 못함 |
+| 실시간 BLE relay/wormhole | v1 nonce/session/boot는 fresh 중계 proof를 거부하지 못함 | possession만 인증; §4.4 RELAY-G 전 production 기본 비활성 |
 | OTA rollback | protocol/ACL schema N/N-1, credential 보존 | 호환 snapshot 없으면 auth fail-closed, OTA는 계속 가능 |
 
 ## 8. OTA·N/N-1·rollback 불변조건
@@ -436,6 +516,9 @@ firmware/app build다. 운영 환경에서 raw vector dump debug flag를 금지�
 
 repo의 stdlib-only verifier는 committed canonical hex/hash, RFC 6979 fixture signature, P-256 verify,
 high-S/wrong-key/mutation 거부, default MTU 23의 14-fragment framing, N/N-1 selection을 검증한다.
+또한 6개 ACL activation crash boundary, 8개 strict ACL semantic rejection, 5개 relay/deployment
+policy case를 같은 JSON에서 실행한다. hands-free v1 transparent wormhole은 `wormhole_succeeds=true`,
+`deployment_allowed=false`가 정답이며 이 결과를 green CI가 숨기지 않는다.
 
 ```powershell
 python protocol/tools/verify_vectors.py
@@ -461,11 +544,15 @@ CI는 `.github/workflows/protocol.yml`에서 같은 명령을 실행한다. 실�
 - Android: non-export key, enrollment possession proof, missing/invalidated key 재등록, DER strict parser,
   low-S raw64, secret redaction 시험
 - Target: RNG/boot ID, 5초 single-use session, strict reassembly, ACL atomic/high-watermark, clock/reset,
-  signature/floor/FSM 검증, 100회 GATT+Wi-Fi/MQTT/OTA coexistence
+  signature/floor/FSM 검증, generation record의 각 write/commit 경계 power-cut, 100회
+  GATT+Wi-Fi/MQTT/OTA coexistence
 - Backend: unique public key, 관리자 승인/revoke, 60초 dual-path sync, monotonic snapshot, signing key
   격리, ACK/audit, expand-migrate-contract
 - 공통: positive vector, proof replay/cross-door/cross-session/cross-boot/high-S/malformed/stale ACL/
-  clock rollback/N/N-1/rollback/no-overlap 자동 시험
+  clock rollback/N/N-1/rollback/no-overlap, ACL semantic negative/crash recovery 자동 시험
+- Relay: 두 proxy wormhole 실증(`RELAY-G0`), relay-resistant/interactive/명시적 low-consequence
+  수용 경로와 risk-owner 승인(`RELAY-G1`), 실기기·OTA rollback regression(`RELAY-G2`) 없이는
+  hands-free production unlock 비활성
 - OTA: mobile install과 Target install→reboot→health confirmation, 기존 APK/bootable slot/credential/ACL
   보존을 [OTA 계약](ota_reliability_contract.md)의 G0~G3에서 확인
 
@@ -475,4 +562,5 @@ CI는 `.github/workflows/protocol.yml`에서 같은 명령을 실행한다. 실�
 - [KeyGenParameterSpec.Builder API](https://developer.android.com/reference/android/security/keystore/KeyGenParameterSpec.Builder)
 - [NIST FIPS 186-5 Digital Signature Standard](https://csrc.nist.gov/pubs/fips/186-5/final)
 - [Bluetooth Core Specification — GATT/ATT_MTU](https://www.bluetooth.com/specifications/specs/core-specification/)
+- [Bluetooth Channel Sounding — secure distance bounding and relay countermeasure](https://www.bluetooth.com/learn-about-bluetooth/feature-enhancements/channel-sounding/)
 - [ESP-IDF ESP32-C6 security overview](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/security/security.html)

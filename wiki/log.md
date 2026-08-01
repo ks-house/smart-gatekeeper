@@ -991,3 +991,15 @@
 - ACL active pointer를 persisted high-watermark보다 먼저 commit하는 순서가 전원 차단 뒤 signed intermediate snapshot의 보안 rollback을 허용할 수 있어 pointer와 high-watermark의 원자성 또는 `max(active_version, high_watermark)` 복구 규칙과 crash vector가 필요함을 확인
 - 인증된 Target 또는 relay-resistant channel binding 없이 공개 BLE discovery를 복제해 real Target challenge와 user-auth 없는 phone proof를 실시간 중계할 수 있으므로 relay 위협·잔여 위험·완화 또는 명시적 수용 기준이 필요함을 확인
 - ACL encoder/verifier가 문서상 거부 대상인 unknown status/permission, 역전된 time/protocol range, off-curve public key를 현재 수용하므로 negative vector와 CI 검증이 필요하며 PR #24는 수정 전 merge하지 않음
+
+## [2026-08-01] fix | PR #24 독립 보안 리뷰 차단 결함 수정
+
+- ACL pointer와 high-watermark를 하나의 이중 generation record로 commit하고 boot에서 `effective_high_watermark=max(valid record, valid legacy active, legacy watermark)`를 candidate보다 먼저 복구하도록 규격과 6개 crash-boundary vector를 추가
+- 현재 BLE v1은 fresh proof를 실시간 중계하는 wormhole을 막지 못하고 possession만 인증함을 명시해 RSSI·timeout·mutual auth를 relay 방어로 오인하지 않게 하고 relay-resistant/interactive/low-consequence risk acceptance의 RELAY-G0~G2 배포 Gate를 신설
+- verifier가 unknown status·permission bit, snapshot/entry time 및 protocol 역전·범위 이탈, hard lease 초과, off-curve SEC1을 encoding 전에 거부하도록 semantic validation과 8개 negative vector를 구현
+
+## [2026-08-01] test | PR #24 security review adversarial vector 검증 통과
+
+- canonical verifier와 14개 unit test에서 6개 ACL power-cut/legacy recovery, 8개 ACL semantic rejection, 5개 relay/deployment policy case를 포함해 모두 통과
+- Python compile, 독립 `cryptography` P-256 검증, workflow YAML parse, 변경 wiki 상대 링크와 RELAY-G anchor, secret placeholder scan, `git diff --check` 통과
+- current hands-free v1 transparent wormhole은 의도대로 `wormhole_succeeds=true`, `deployment_allowed=false`로 검증해 CI green이 proximity 보장을 의미하지 않도록 고정

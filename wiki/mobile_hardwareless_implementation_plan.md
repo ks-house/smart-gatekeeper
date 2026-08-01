@@ -127,6 +127,10 @@ Target은 iBeacon-only advertiser에서 **connectable BLE GATT peripheral**을 �
 - session은 짧은 timeout과 단일 사용 nonce를 가진다.
 - GATT 연결이 Wi-Fi/MQTTS/OTA와 공존할 때 heap, latency, reset이 없는지 먼저 검증한다.
 - 광고 UUID/RSSI는 presence 후보일 뿐 최종 인증 자격이 아니다.
+- 현재 phone-only BLE proof는 key possession을 인증하지만 transparent real-time relay에 대한
+  proximity를 증명하지 않는다. hands-free production은
+  [security protocol의 RELAY-G](security_protocol.md#44-실시간-relaywormhole-경계와-배포-gate)를
+  통과하기 전 기본 비활성이다.
 
 ### 3.3 기기 자격
 
@@ -142,6 +146,9 @@ Target은 iBeacon-only advertiser에서 **connectable BLE GATT peripheral**을 �
 
 자동 출입에서 잠금 해제를 요구하지 않는 선택은 편의성과 분실 휴대폰 위험의 trade-off다.
 회수 지연, Android 화면 잠금, 관리자 비활성화 정책을 보안 검토에서 확정한다.
+user-auth 없는 silent signing은 피해자 근처 proxy가 문 앞 real Target과 5초 안에 통신을 중계하는
+wormhole을 막지 못하므로, 이 모드는 low-consequence door의 명시적 risk acceptance 또는
+relay-resistant channel이 없으면 PoC에만 한정한다.
 
 ### 3.4 challenge-response
 

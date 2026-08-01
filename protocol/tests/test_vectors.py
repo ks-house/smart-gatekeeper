@@ -101,6 +101,29 @@ class CanonicalVectorTest(unittest.TestCase):
             vectors.acl_activation_decision(42, "aa", 42, "aa"),
         )
 
+    def test_acl_crash_boundary_vectors(self):
+        for case in self.document["acl_crash_recovery_cases"]:
+            with self.subTest(case=case["name"]):
+                self.assertEqual(case["expected"], vectors.acl_boot_recovery(case))
+
+    def test_acl_semantic_rejection_vectors(self):
+        for case in self.document["acl_semantic_rejection_cases"]:
+            with self.subTest(case=case["name"]):
+                acl = copy.deepcopy(self.document["acl"]["fields"])
+                for field, value in case.get("snapshot_overrides", {}).items():
+                    acl[field] = value
+                for field, value in case.get("entry_overrides", {}).items():
+                    acl["entries"][0][field] = value
+                with self.assertRaisesRegex(ValueError, case["expected_error"]):
+                    vectors.acl_bytes(acl)
+
+    def test_current_hands_free_protocol_does_not_block_wormholes(self):
+        case = self.document["ble_relay_cases"][0]
+        self.assertEqual(
+            {"wormhole_succeeds": True, "deployment_allowed": False},
+            vectors.ble_relay_assessment(case),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

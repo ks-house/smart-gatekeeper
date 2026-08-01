@@ -205,6 +205,291 @@
       "expected_decision": "reject_stale"
     }
   ],
+  "acl_crash_recovery_cases": [
+    {
+      "name": "crash_after_candidate_slot_before_generation_record",
+      "persisted_legacy_high_watermark": 0,
+      "legacy_active": null,
+      "activation_records": [
+        {
+          "generation": 1,
+          "version": 41,
+          "record_valid": true,
+          "slot_valid": true
+        }
+      ],
+      "candidate_version": 42,
+      "expected": {
+        "effective_high_watermark": 41,
+        "active_version": 41,
+        "authorization_mode": "ready",
+        "candidate_decision": "activate",
+        "repair_legacy_floor_before_candidates": false
+      }
+    },
+    {
+      "name": "crash_during_generation_record_commit",
+      "persisted_legacy_high_watermark": 0,
+      "legacy_active": null,
+      "activation_records": [
+        {
+          "generation": 1,
+          "version": 41,
+          "record_valid": true,
+          "slot_valid": true
+        },
+        {
+          "generation": 2,
+          "version": 43,
+          "record_valid": false,
+          "slot_valid": true
+        }
+      ],
+      "candidate_version": 42,
+      "expected": {
+        "effective_high_watermark": 41,
+        "active_version": 41,
+        "authorization_mode": "ready",
+        "candidate_decision": "activate",
+        "repair_legacy_floor_before_candidates": false
+      }
+    },
+    {
+      "name": "crash_after_atomic_generation_record_commit",
+      "persisted_legacy_high_watermark": 0,
+      "legacy_active": null,
+      "activation_records": [
+        {
+          "generation": 1,
+          "version": 41,
+          "record_valid": true,
+          "slot_valid": true
+        },
+        {
+          "generation": 2,
+          "version": 43,
+          "record_valid": true,
+          "slot_valid": true
+        }
+      ],
+      "candidate_version": 42,
+      "expected": {
+        "effective_high_watermark": 43,
+        "active_version": 43,
+        "authorization_mode": "ready",
+        "candidate_decision": "reject_stale_or_equal",
+        "repair_legacy_floor_before_candidates": false
+      }
+    },
+    {
+      "name": "committed_record_with_corrupt_active_slot",
+      "persisted_legacy_high_watermark": 0,
+      "legacy_active": null,
+      "activation_records": [
+        {
+          "generation": 1,
+          "version": 41,
+          "record_valid": true,
+          "slot_valid": true
+        },
+        {
+          "generation": 2,
+          "version": 43,
+          "record_valid": true,
+          "slot_valid": false
+        }
+      ],
+      "candidate_version": 42,
+      "expected": {
+        "effective_high_watermark": 43,
+        "active_version": null,
+        "authorization_mode": "fail_closed",
+        "candidate_decision": "reject_stale_or_equal",
+        "repair_legacy_floor_before_candidates": false
+      }
+    },
+    {
+      "name": "legacy_pointer_committed_before_watermark",
+      "persisted_legacy_high_watermark": 41,
+      "legacy_active": {
+        "version": 43,
+        "snapshot_valid": true
+      },
+      "activation_records": [],
+      "candidate_version": 42,
+      "expected": {
+        "effective_high_watermark": 43,
+        "active_version": 43,
+        "authorization_mode": "ready",
+        "candidate_decision": "reject_stale_or_equal",
+        "repair_legacy_floor_before_candidates": true
+      }
+    },
+    {
+      "name": "legacy_watermark_ahead_of_pointer",
+      "persisted_legacy_high_watermark": 43,
+      "legacy_active": {
+        "version": 41,
+        "snapshot_valid": true
+      },
+      "activation_records": [],
+      "candidate_version": 42,
+      "expected": {
+        "effective_high_watermark": 43,
+        "active_version": null,
+        "authorization_mode": "fail_closed",
+        "candidate_decision": "reject_stale_or_equal",
+        "repair_legacy_floor_before_candidates": false
+      }
+    }
+  ],
+  "acl_semantic_rejection_cases": [
+    {
+      "name": "unknown_status",
+      "entry_overrides": {
+        "status": 2
+      },
+      "expected_error": "unknown ACL status"
+    },
+    {
+      "name": "unknown_permission_bit",
+      "entry_overrides": {
+        "permissions": 2
+      },
+      "expected_error": "unknown ACL permission bits"
+    },
+    {
+      "name": "inverted_entry_time_range",
+      "entry_overrides": {
+        "not_before_epoch_s": 1788134400,
+        "not_after_epoch_s": 1785542400
+      },
+      "expected_error": "invalid ACL entry time range"
+    },
+    {
+      "name": "inverted_entry_protocol_range",
+      "snapshot_overrides": {
+        "max_protocol": 2
+      },
+      "entry_overrides": {
+        "min_protocol": 2,
+        "max_protocol": 1
+      },
+      "expected_error": "invalid ACL entry protocol range"
+    },
+    {
+      "name": "entry_protocol_outside_snapshot",
+      "entry_overrides": {
+        "min_protocol": 2,
+        "max_protocol": 2
+      },
+      "expected_error": "invalid ACL entry protocol range"
+    },
+    {
+      "name": "off_curve_sec1_public_key",
+      "entry_overrides": {
+        "public_key_sec1": "0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expected_error": "public key is not on P-256"
+    },
+    {
+      "name": "inverted_snapshot_time_range",
+      "snapshot_overrides": {
+        "not_before_epoch_s": 1785546000,
+        "expires_at_epoch_s": 1785542400
+      },
+      "expected_error": "invalid ACL snapshot time range"
+    },
+    {
+      "name": "lease_over_hard_max",
+      "snapshot_overrides": {
+        "lease_duration_s": 3601
+      },
+      "expected_error": "ACL lease_duration_s out of range"
+    }
+  ],
+  "ble_relay_cases": [
+    {
+      "name": "current_hands_free_v1_transparent_wormhole",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": false,
+      "relay_resistant_channel": false,
+      "user_presence_each_use": false,
+      "risk_owner_approved": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "expected": {
+        "wormhole_succeeds": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "target_authentication_alone_does_not_stop_forwarding",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": false,
+      "user_presence_each_use": false,
+      "risk_owner_approved": false,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "expected": {
+        "wormhole_succeeds": true,
+        "deployment_allowed": false
+      }
+    },
+    {
+      "name": "interactive_user_presence_with_risk_approval",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": false,
+      "user_presence_each_use": true,
+      "risk_owner_approved": true,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "expected": {
+        "wormhole_succeeds": true,
+        "deployment_allowed": true
+      }
+    },
+    {
+      "name": "approved_relay_resistant_distance_bound_channel",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": true,
+      "relay_resistant_channel": true,
+      "user_presence_each_use": false,
+      "risk_owner_approved": true,
+      "explicit_non_proximity_acceptance": false,
+      "low_consequence_door": false,
+      "expected": {
+        "wormhole_succeeds": false,
+        "deployment_allowed": true
+      }
+    },
+    {
+      "name": "explicit_low_consequence_non_proximity_acceptance",
+      "fresh_proof": true,
+      "relay_delay_ms": 100,
+      "challenge_lifetime_ms": 5000,
+      "target_authenticated": false,
+      "relay_resistant_channel": false,
+      "user_presence_each_use": false,
+      "risk_owner_approved": true,
+      "explicit_non_proximity_acceptance": true,
+      "low_consequence_door": true,
+      "expected": {
+        "wormhole_succeeds": true,
+        "deployment_allowed": true
+      }
+    }
+  ],
   "lease_cases": [
     {
       "name": "trusted_clock_valid",

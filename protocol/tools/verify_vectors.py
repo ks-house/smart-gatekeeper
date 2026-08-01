@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import hmac
 import json
@@ -26,6 +27,11 @@ ACL_DOMAIN = b"SGKACL01"
 FRAME_MAGIC = b"SG"
 FRAME_HEADER_SIZE = 10
 MAX_MESSAGE_SIZE = 2048
+ACL_SCHEMA_VERSION = 1
+ACL_MAX_ENTRIES = 64
+ACL_MAX_LEASE_SECONDS = 3600
+ACL_KNOWN_STATUSES = {0, 1}
+ACL_KNOWN_PERMISSION_MASK = 0x00000001
 
 
 def u8(value: int) -> bytes:
@@ -126,13 +132,52 @@ def proof_input_bytes(challenge: bytes, fields: dict[str, Any]) -> bytes:
     )
 
 
-def acl_bytes(fields: dict[str, Any]) -> bytes:
+def validate_acl_semantics(fields: dict[str, Any]) -> None:
     entries = fields["entries"]
-    if len(entries) > 64:
-        raise ValueError("ACL entry_count exceeds 64")
-    credential_ids = [entry["credential_id"] for entry in entries]
+    if fields["schema_version"] != ACL_SCHEMA_VERSION:
+        raise ValueError("unknown ACL schema_version")
+    if fields["acl_version"] < 1:
+        raise ValueError("ACL acl_version must be positive")
+    if not 1 <= fields["lease_duration_s"] <= ACL_MAX_LEASE_SECONDS:
+        raise ValueError("ACL lease_duration_s out of range")
+    if not (
+        fields["issued_at_epoch_s"]
+        <= fields["not_before_epoch_s"]
+        < fields["expires_at_epoch_s"]
+    ):
+        raise ValueError("invalid ACL snapshot time range")
+    if not 1 <= fields["min_protocol"] <= fields["max_protocol"]:
+        raise ValueError("invalid ACL snapshot protocol range")
+    if len(entries) > ACL_MAX_ENTRIES:
+        raise ValueError(f"ACL entry_count exceeds {ACL_MAX_ENTRIES}")
+
+    credential_ids = [hx(entry["credential_id"], 16, "credential_id") for entry in entries]
     if credential_ids != sorted(credential_ids) or len(set(credential_ids)) != len(entries):
         raise ValueError("ACL entries must be unique and sorted by credential_id")
+    for entry in entries:
+        public_key = hx(entry["public_key_sec1"], 65, "public_key_sec1")
+        parse_public_key(public_key)
+        if entry["status"] not in ACL_KNOWN_STATUSES:
+            raise ValueError("unknown ACL status")
+        permissions = entry["permissions"]
+        if not 0 <= permissions <= 0xFFFFFFFF:
+            raise ValueError("ACL permissions out of range")
+        if permissions & ~ACL_KNOWN_PERMISSION_MASK:
+            raise ValueError("unknown ACL permission bits")
+        if not entry["not_before_epoch_s"] < entry["not_after_epoch_s"]:
+            raise ValueError("invalid ACL entry time range")
+        if not (
+            fields["min_protocol"]
+            <= entry["min_protocol"]
+            <= entry["max_protocol"]
+            <= fields["max_protocol"]
+        ):
+            raise ValueError("invalid ACL entry protocol range")
+
+
+def acl_bytes(fields: dict[str, Any]) -> bytes:
+    validate_acl_semantics(fields)
+    entries = fields["entries"]
     encoded = bytearray(
         b"".join(
             (
@@ -154,8 +199,6 @@ def acl_bytes(fields: dict[str, Any]) -> bytes:
     for entry in entries:
         encoded.extend(hx(entry["credential_id"], 16, "credential_id"))
         public_key = hx(entry["public_key_sec1"], 65, "public_key_sec1")
-        if public_key[0] != 0x04:
-            raise ValueError("only uncompressed SEC1 public keys are canonical")
         encoded.extend(public_key)
         encoded.extend(u8(entry["status"]))
         encoded.extend(u32(entry["permissions"]))
@@ -295,18 +338,79 @@ def negotiate(client_min: int, client_max: int, target_min: int, target_max: int
 
 
 def acl_activation_decision(
-    current_version: int,
+    effective_high_watermark: int,
     current_digest: str,
     candidate_version: int,
     candidate_digest: str,
 ) -> str:
-    if candidate_version < current_version:
+    if candidate_version < effective_high_watermark:
         return "reject_stale"
-    if candidate_version == current_version:
+    if candidate_version == effective_high_watermark:
         if hmac.compare_digest(candidate_digest, current_digest):
             return "idempotent_no_lease_refresh"
         return "reject_version_conflict"
     return "activate"
+
+
+def acl_boot_recovery(case: dict[str, Any]) -> dict[str, Any]:
+    legacy_active = case.get("legacy_active")
+    valid_legacy_active_version = 0
+    if legacy_active is not None and legacy_active["snapshot_valid"]:
+        valid_legacy_active_version = legacy_active["version"]
+
+    records = [record for record in case["activation_records"] if record["record_valid"]]
+    record_floor = max((record["version"] for record in records), default=0)
+    effective = max(
+        case["persisted_legacy_high_watermark"],
+        valid_legacy_active_version,
+        record_floor,
+    )
+
+    active_version = None
+    if records:
+        newest = max(records, key=lambda record: record["generation"])
+        if newest["slot_valid"] and newest["version"] == effective:
+            active_version = newest["version"]
+    elif valid_legacy_active_version == effective and legacy_active is not None:
+        active_version = valid_legacy_active_version
+
+    candidate_decision = (
+        "activate" if case["candidate_version"] > effective else "reject_stale_or_equal"
+    )
+    return {
+        "effective_high_watermark": effective,
+        "active_version": active_version,
+        "authorization_mode": "ready" if active_version is not None else "fail_closed",
+        "candidate_decision": candidate_decision,
+        "repair_legacy_floor_before_candidates": (
+            effective > case["persisted_legacy_high_watermark"] and not records
+        ),
+    }
+
+
+def ble_relay_assessment(case: dict[str, Any]) -> dict[str, bool]:
+    wormhole_succeeds = (
+        case["fresh_proof"]
+        and case["relay_delay_ms"] < case["challenge_lifetime_ms"]
+        and not case["relay_resistant_channel"]
+    )
+    deployment_allowed = (
+        case["relay_resistant_channel"]
+        or (
+            case["risk_owner_approved"]
+            and (
+                case["user_presence_each_use"]
+                or (
+                    case["explicit_non_proximity_acceptance"]
+                    and case["low_consequence_door"]
+                )
+            )
+        )
+    )
+    return {
+        "wormhole_succeeds": wormhole_succeeds,
+        "deployment_allowed": deployment_allowed,
+    }
 
 
 def acl_lease_usable(case: dict[str, Any]) -> bool:
@@ -406,6 +510,36 @@ def verify_document(document: dict[str, Any], emit_expected: bool) -> dict[str, 
             case["candidate_digest"],
         )
         expect(f"ACL activation {case['name']}", decision, case["expected_decision"])
+
+    for case in document["acl_crash_recovery_cases"]:
+        expect(
+            f"ACL crash recovery {case['name']}",
+            acl_boot_recovery(case),
+            case["expected"],
+        )
+
+    for case in document["acl_semantic_rejection_cases"]:
+        mutated_acl = copy.deepcopy(document["acl"]["fields"])
+        for field, value in case.get("snapshot_overrides", {}).items():
+            mutated_acl[field] = value
+        for field, value in case.get("entry_overrides", {}).items():
+            mutated_acl["entries"][0][field] = value
+        try:
+            acl_bytes(mutated_acl)
+        except ValueError as exc:
+            if case["expected_error"] not in str(exc):
+                raise AssertionError(
+                    f"ACL semantic rejection {case['name']}: unexpected error {exc!r}"
+                ) from exc
+        else:
+            raise AssertionError(f"ACL semantic rejection {case['name']}: accepted")
+
+    for case in document["ble_relay_cases"]:
+        expect(
+            f"BLE relay {case['name']}",
+            ble_relay_assessment(case),
+            case["expected"],
+        )
 
     for case in document["lease_cases"]:
         expect(f"ACL lease {case['name']}", acl_lease_usable(case), case["expected_usable"])
