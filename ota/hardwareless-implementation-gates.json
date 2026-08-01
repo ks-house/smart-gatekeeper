@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "decision_date": "2026-08-02",
+  "decision_scope": "epic-13-hardwareless-implementation-authorization",
+  "gates": {
+    "G0-SW": {
+      "status": "passed",
+      "authorization": "hardwareless_rc_only",
+      "issues_authorized": [17, 18, 19, 20, 21, 22],
+      "requires_wave0_contracts": [14, 15, 16, 23],
+      "implementation_review_merge_allowed": true,
+      "automated_unit_integration_virtual_e2e_allowed": true,
+      "feature_flag_required": true,
+      "production_enable_allowed": false,
+      "physical_completion_claim_allowed": false
+    },
+    "G0-HW": {
+      "status": "pending",
+      "authorization": "production",
+      "production_enable_allowed": false,
+      "legacy_retirement_allowed": false,
+      "epic_closure_allowed": false,
+      "ota_gates_required": ["OTA-G1", "OTA-G2", "OTA-G3", "OTA-G4"],
+      "required_evidence": [
+        "samsung_oem_ble_wake",
+        "esp32_c6_real_ble_gatt_radio_coexistence",
+        "relay_one_shot_and_fail_safe",
+        "sensor_real_passage_detection",
+        "bootloader_dual_slot_health_rollback_power_loss",
+        "ota_g1_through_g4",
+        "mobile_target_n_n_minus_1",
+        "periodic_https_and_authenticated_local_recovery",
+        "manual_updater_independence_and_mobile_fallback",
+        "relay_g0_through_g2",
+        "physical_e2e_and_staged_rollout"
+      ],
+      "issues_must_remain_open": [13, 14, 18, 22, 23]
+    }
+  },
+  "invariants": {
+    "authenticated_mobile_manual_remote_preserved": true,
+    "legacy_rollback_path_preserved": true,
+    "production_release_fail_closed": true,
+    "target_dual_slot_health_rollback_preserved": true,
+    "target_periodic_https_preserved": true,
+    "target_authenticated_local_recovery_preserved": true,
+    "mobile_manual_updater_independent": true,
+    "mobile_target_n_n_minus_1_preserved": true
+  },
+  "production_release_evidence": "ota/release-evidence.json"
+}

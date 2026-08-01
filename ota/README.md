@@ -14,6 +14,10 @@ This directory is the machine-readable companion to
   allowlisted expected outcomes.
 - `release-evidence.json`: current Gate status. Pending evidence deliberately
   blocks production distribution.
+- `hardwareless-implementation-gates.json`: separates the authorized G0-SW
+  Hardwareless RC implementation scope from the still-pending G0-HW production
+  scope. It never upgrades synthetic, host, or virtual evidence to physical
+  completion.
 
 Validate contract-only assets:
 
@@ -43,6 +47,9 @@ Android SDK `apksigner`) and must match the signed certificate digest. The same
 artifact path passed to the gate must be the file uploaded by the workflow.
 A green contract check proves only the contract assets and adversarial negative
 vectors; it does not prove an ESP32 bootloader rollback or an Android install.
+The repository test suite also validates that G0-SW permits only feature-flagged
+implementation/review/merge while G0-HW, legacy retirement, and Epic closure
+remain blocked by physical evidence.
 
 Ordinary `main` pushes and the default `release_target=canary` manual run execute
 only build, test, contract validation, and canary artifact upload. Production NAS
