@@ -4,4 +4,15 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <application>
+        <!-- Debug builds only: explicit ADB command seam for hardwareless PoC tests. -->
+        <receiver
+            android:name=".blewake.BleWakeDebugCommandReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.kshouse.gatekeeper_app.blewake.DEBUG_COMMAND" />
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>

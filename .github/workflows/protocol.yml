@@ -1,0 +1,30 @@
+name: Security protocol vectors
+
+on:
+  pull_request:
+    paths:
+      - "protocol/**"
+      - "wiki/security_protocol.md"
+      - ".github/workflows/protocol.yml"
+  push:
+    branches: [main]
+    paths:
+      - "protocol/**"
+      - "wiki/security_protocol.md"
+      - ".github/workflows/protocol.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-vectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify committed canonical bytes and signatures
+        run: python protocol/tools/verify_vectors.py
+      - name: Run replay, mutation, framing, and compatibility tests
+        run: python -m unittest discover -s protocol/tests -v
