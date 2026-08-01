@@ -548,6 +548,34 @@ def validate_workflow_release_triggers(
     content = workflows.get(path, "")
     parsed = load_workflow_yaml(path, content)
 
+    all_jobs = parsed.get("jobs", {})
+    if not isinstance(all_jobs, dict):
+      raise GateError(f"{path}: workflow missing jobs mapping")
+
+    sftp_step_count = 0
+    for jname, jbody in all_jobs.items():
+      if not isinstance(jbody, dict):
+        continue
+      if jname != binding["release_job"]:
+        if "environment" in jbody:
+          raise GateError(f"{path}: build job must not use production environment or specify environment (string or object)")
+
+      for st in jbody.get("steps", []):
+        if not isinstance(st, dict):
+          continue
+        u = str(st.get("uses", ""))
+        r = str(st.get("run", ""))
+        if "wlixcc/SFTP-Deploy-Action" in u:
+          sftp_step_count += 1
+        if jname != binding["release_job"]:
+          if "wlixcc/SFTP-Deploy-Action" in u or "python scripts/ota_contract_gate.py release" in r:
+            raise GateError(f"{path}: ordinary push or PR build contains production or SFTP deployment capability")
+          if re.search(r'\b(sftp|scp|rsync|ssh)\b|curl\s+.*-T', r):
+            raise GateError(f"{path}: ordinary push or PR build contains production or SFTP deployment capability")
+
+    if sftp_step_count != 1:
+      raise GateError(f"{path}: workflow must contain exactly one SFTP deploy step")
+
     triggers = parsed.get("on")
     if not isinstance(triggers, dict):
       raise GateError(f"{path}: workflow triggers ('on') must be a mapping")
@@ -570,23 +598,16 @@ def validate_workflow_release_triggers(
     if "canary" not in options or "production" not in options:
       raise GateError(f"{path}: release_target options must include canary and production")
 
-    jobs = parsed.get("jobs")
-    if not isinstance(jobs, dict):
-      raise GateError(f"{path}: workflow missing jobs mapping")
-
     build_job_name = binding["build_job"]
     release_job_name = binding["release_job"]
 
-    if build_job_name not in jobs:
+    if build_job_name not in all_jobs:
       raise GateError(f"{path}: missing workflow job {build_job_name}")
-    if release_job_name not in jobs:
+    if release_job_name not in all_jobs:
       raise GateError(f"{path}: missing workflow job {release_job_name}")
 
-    build_job = jobs[build_job_name]
-    release_job = jobs[release_job_name]
-
-    if build_job.get("environment") == "production":
-      raise GateError(f"{path}: build job must not use production environment")
+    build_job = all_jobs[build_job_name]
+    release_job = all_jobs[release_job_name]
 
     build_steps = build_job.get("steps", [])
     if not isinstance(build_steps, list):
@@ -609,11 +630,6 @@ def validate_workflow_release_triggers(
         if isinstance(step_with, dict) and step_with.get("name") == binding["canary_name"]:
           has_canary_upload_step = True
 
-      if "python scripts/ota_contract_gate.py release" in run_cmd:
-        raise GateError(f"{path}: ordinary push build enters production release path")
-      if "wlixcc/SFTP-Deploy-Action" in uses_action:
-        raise GateError(f"{path}: ordinary push build enters production release path")
-
     if not has_contract_step or not has_test_step or not has_canary_upload_step:
       missing = []
       if not has_contract_step: missing.append("ota_contract_gate.py contract")
@@ -628,8 +644,9 @@ def validate_workflow_release_triggers(
     elif needs != build_job_name:
       raise GateError(f"{path}: release job needs must include {build_job_name}")
 
-    if release_job.get("environment") != "production":
-      raise GateError(f"{path}: release job must specify environment: production")
+    rel_env = release_job.get("environment")
+    if not isinstance(rel_env, str) or rel_env != "production":
+      raise GateError(f"{path}: release job environment must be exact string 'production'")
 
     release_if = release_job.get("if")
     if not release_if:
@@ -658,8 +675,32 @@ def validate_workflow_release_triggers(
 
       if "python scripts/ota_contract_gate.py release" in run_cmd:
         evidence_step_index = idx
+
+        if "continue-on-error" in step:
+          if step["continue-on-error"] is not False and str(step["continue-on-error"]).lower() != "false":
+            raise GateError(f"{path}: evidence step cannot specify continue-on-error")
+
         if "if" in step:
           raise GateError(f"{path}: evidence step cannot be conditionally disabled or bypassed")
+
+        if "|| true" in run_cmd or "; true" in run_cmd or "set +e" in run_cmd or "|| exit" in run_cmd or "|| echo" in run_cmd or "|| :" in run_cmd or "; :" in run_cmd:
+          raise GateError(f"{path}: evidence step release command must not swallow errors or suppress non-zero exit code")
+
+        cmd_parts = run_cmd.split("python scripts/ota_contract_gate.py release")
+        after_release = cmd_parts[-1]
+        lines_after = after_release.splitlines()
+        if len(lines_after) > 1:
+          prev_continued = True
+          for line in lines_after[1:]:
+            sline = line.strip()
+            if not sline or sline.startswith("#"):
+              continue
+            if not prev_continued and not sline.startswith("-"):
+              raise GateError(f"{path}: immutable artifact identity violated: evidence step run script cannot alter artifacts after validation")
+            prev_continued = sline.endswith("\\")
+
+        if re.search(r'\bOTA_SIGNING_PUBLIC_KEY_HEX\s*=', run_cmd):
+          raise GateError(f"{path}: signing key must come exactly from step env secret, cannot be redefined in run script")
 
         step_env = step.get("env", {})
         if not isinstance(step_env, dict) or step_env.get("OTA_SIGNING_PUBLIC_KEY_HEX") != "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}":
@@ -679,6 +720,9 @@ def validate_workflow_release_triggers(
 
       elif "wlixcc/SFTP-Deploy-Action" in uses_action:
         sftp_step_index = idx
+        step_with = step.get("with", {})
+        if not isinstance(step_with, dict) or step_with.get("local_path") != "./dist/*":
+          raise GateError(f"{path}: SFTP deploy local_path must be strictly './dist/*'")
 
     if evidence_step_index is None:
       raise GateError(f"{path}: release evidence validation step missing in release job")
@@ -693,6 +737,7 @@ def validate_workflow_release_triggers(
 
     if sftp_step_index != len(release_steps) - 1:
       raise GateError(f"{path}: immutable release steps order violated: no steps allowed after SFTP deploy step")
+
 
 
 

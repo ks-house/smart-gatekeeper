@@ -1220,3 +1220,13 @@
 - 기존 OR-push, evidence `if: false`, 잘못된 secret env, 별도 artifact replacement mutation은 거부되지만 evidence `continue-on-error`, release 명령 `|| true`, run 내부 signing key 재정의, 같은 step의 검증 후 artifact 교체, SFTP `local_path` 재결합, 검증 전 중복 SFTP, object형 build production Environment, 일반 build shell SFTP mutation 8건은 validator가 허용함을 확인
 - 구조화 validator가 evidence 실행 성공, signing secret의 shell provenance, 단일 SFTP와 exact upload identity, 같은 step 내 artifact 불변성, ordinary build의 모든 production/SFTP 경로를 fail-closed로 강제하기 전에는 ready 전환·병합하지 않기로 판정
 - 최신 main은 merge parent로 통합됐고 manual mobile button 출입, dual-slot/rollback, periodic HTTPS·authenticated local recovery, updater 독립성, N/N-1, size/SHA-256, APK certificate와 OTA-G0~G4 계약 파일은 변경되지 않았으며 issue #23의 실기기 Gate는 open으로 유지
+
+## [2026-08-01] fix | PR #28 release gate 8개 우회 수단 구조화 검증 및 fail-closed 차단
+
+- `ota_contract_gate.py`에 continue-on-error, error swallowing (`|| true`, `; true`, `set +e`), run 내부 `OTA_SIGNING_PUBLIC_KEY_HEX=` 재정의, 검증 후 동일 step artifact 변형, SFTP `local_path` 재결합, 중복/조기 SFTP step, object형/non-exact production Environment, build job의 shell SFTP/production capability 8개 우회 수단을 강제로 차단하는 구조화 검증 구현
+- evidence 실행 성공, signing secret provenance, 단일 SFTP와 exact upload identity, 동일 step 내 artifact 불변성, build job의 모든 production/SFTP 경로 차단을 fail-closed로 검증
+
+## [2026-08-01] test | PR #28 8개 우회 수단 adversarial unit tests 및 종합 회귀 검증
+
+- `test_ota_contract_gate.py`에 8개 bypass adversarial unit test를 추가하여 총 39개 OTA contract unit test 전건 통과
+- 18개 observability unit test, 16개 protocol unit test, actionlint, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
