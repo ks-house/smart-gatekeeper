@@ -959,3 +959,26 @@
 
 - Epic #13 하위에 `[OTA][I10] 모바일 앱·Target OTA 비회귀와 복구 계약` #23을 Wave 0 cross-cutting blocker로 등록
 - #17~#22 구현·통합·rollout은 #23의 OTA reachability, artifact integrity, dual-slot rollback, N/N-1 compatibility 계약을 통과해야 완료되도록 구현 계획에 반영
+
+## [2026-08-01] code | OTA P0 machine-readable 계약과 CI release blocker 구현
+
+- mobile/Target Ed25519 metadata schema, deterministic valid/tampered test vector, 상태 머신, recovery matrix와 fault-injection plan을 `ota/`에 추가
+- dual-slot layout, 필수 상태·복구 시나리오, signature tamper, pinned key와 mobile fallback 독립성을 검사하는 validator·단위 테스트 5건을 추가
+- OTA 영향 PR의 contract Gate를 추가하고 firmware/APK canary artifact는 보존하되 OTA-G0~G4·physical evidence·운영 승인 전 production NAS SFTP가 실패하도록 변경
+- 현재 Target periodic HTTPS/valid mark/rollback/local AP와 mobile scanner 독립 update/hash·certificate/fallback은 미구현임을 감사 결과로 기록하고 물리 ESP32/Android 검증을 pending release Gate로 유지
+
+## [2026-08-01] compile | OTA 운영 runbook과 증거 수준 동기화
+
+- canary, Target boot health·rollback, mobile fallback, 중단 조건, 장애별 recovery와 필수 telemetry를 `wiki/ota_operations_runbook.md`에 정의
+- 계약 PASS와 실기기 install/boot/rollback PASS를 분리하고 `wiki/hardware_test.md`, `wiki/env_setup.md`, `wiki/index.md`를 CI release blocker 상태와 동기화
+
+## [2026-08-01] fix | release evidence 단독 우회 방지
+
+- production release mode가 evidence뿐 아니라 해당 build의 manifest와 pinned Ed25519 public key를 필수 입력으로 받아 실제 서명을 재검증하도록 보강
+- 현재 legacy unsigned `version.json`과 미설정 production trust root는 canary artifact 생성 뒤 production SFTP를 계속 차단하며 signing pipeline·runtime consumer 구현을 pending Gate로 유지
+
+## [2026-08-01] test | OTA 계약 자동 검증과 pending release 차단 확인
+
+- contract validator, JSON/YAML parse, wiki 상대 링크, `git diff --check`, Python compile과 unit test 5건 통과
+- OTA-G1~G4가 pending인 release command가 production 배포를 예상대로 거부함을 확인
+- PlatformIO 로컬 build는 도구 설치 후 180초 제한을 초과해 완료 증거를 얻지 못했으며 firmware 소스 변경은 없으므로 GitHub Actions build 결과 확인을 pending으로 유지

@@ -1,0 +1,23 @@
+{
+  "apk_size": 20971520,
+  "apk_url": "https://updates.example.test/mobile/1.1.0-test.apk",
+  "artifact_type": "android-apk",
+  "build_number": 110,
+  "commit": "75b946aa173d7315de1903f7685ee3d00b5ceeea",
+  "fallback_url": "https://fallback.example.test/mobile/1.1.0-test.apk",
+  "mandatory_after": null,
+  "min_android_sdk": 23,
+  "protocol_max": 2,
+  "protocol_min": 1,
+  "published_at": "2026-08-01T00:00:00Z",
+  "release_notes_url": "https://updates.example.test/mobile/1.1.0-test-notes",
+  "schema_version": 1,
+  "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "signature": "RMvdUfcu2C0R0OjcwZ5ABmZZzOBCdmNuRh+xGBQcLPm0eMS9sfY/ATtV2q9cQInuGIjXoSXQ/IhilbZFO9p4AA==",
+  "signature_algorithm": "Ed25519",
+  "signing_certificate_digest": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "signing_key_id": "rfc8032-test-key-1",
+  "version": "1.1.0-test",
+  "version_code": 110,
+  "version_name": "1.1.0-test"
+}

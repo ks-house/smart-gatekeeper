@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-01 (로컬 GitHub 인증 정책 반영)
+> Last updated: 2026-08-01 (OTA P0 CI release Gate 반영)
 
 ## 1. 펌웨어
 
@@ -65,11 +65,14 @@ flutter build apk --release \
 
 | Workflow | Trigger | 결과 |
 |---|---|---|
-| `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드, firmware/version JSON, NAS SFTP 배포, 30일 symbol-map artifact |
-| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter analyze/release APK, NAS SFTP, Actions artifact |
+| `.github/workflows/ota_contract.yml` | OTA 영향 PR/main | schema, signature tamper vector, dual-slot/recovery/release blocker 자동 검사 |
+| `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드와 canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
+| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter APK canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
 
-앱 workflow는 PR/feature branch에서 운영 NAS 배포가 실행되지 않도록 trigger와 job 조건을 모두 둡니다. 펌웨어 workflow는 현재 `main`의 모든 push에 배포되므로 문서-only 변경도 운영 배포를 촉발할 수 있다는 점을 운영 정책에서 검토해야 합니다.
-Target workflow는 원격 panic 주소 해석용 `firmware.map`만 Actions artifact로 보존합니다.
+앱 workflow는 PR/feature branch에서 운영 NAS 배포가 실행되지 않도록 trigger와 job 조건을 모두 둡니다.
+두 production SFTP 단계는 `ota/release-evidence.json`이 physical Gate를 포함해 완전히 승인될 때까지
+의도적으로 실패합니다. Actions canary artifact를 받아 USB/emulator/실기기 시험을 수행한 뒤에만
+evidence를 갱신합니다. Target workflow는 원격 panic 주소 해석용 `firmware.map`도 보존합니다.
 운영 자격 증명 문자열이 포함될 수 있는 `firmware.elf`는 public artifact/NAS에 게시하지 않습니다.
 
 ## 5. 로컬 GitHub 인증
@@ -84,6 +87,8 @@ sandbox의 socket/network 차단으로 GitHub에 연결하지 못하면 토큰 �
 
 ## 6. 릴리스 전 체크
 
+- [ ] `python scripts/ota_contract_gate.py contract`
+- [ ] signed manifest와 `OTA_SIGNING_PUBLIC_KEY_HEX`를 전달한 `python scripts/ota_contract_gate.py release`
 - [ ] `pio run -e esp32c6`
 - [ ] `docker compose config` (backend)
 - [ ] Dart format/analyze/test

@@ -36,6 +36,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Set up Python for OTA contract gate
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ota/requirements.txt
+
       - name: Set up Flutter SDK
         uses: subosito/flutter-action@v2
         with:
@@ -49,6 +56,12 @@ jobs:
         run: |
           cd gatekeeper_app
           flutter pub get
+
+      - name: Install and validate OTA P0 contract
+        run: |
+          python -m pip install -r ota/requirements.txt
+          python scripts/ota_contract_gate.py contract
+          python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Analyze Flutter code
         run: |
@@ -116,6 +129,26 @@ jobs:
 
           ls -la dist/
 
+      - name: Upload unsigned canary APK for physical Gate validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-key-app-canary-${{ env.FULL_VERSION }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      # This intentionally fails while ota/release-evidence.json contains a
+      # pending physical Gate. The canary APK above remains downloadable for
+      # emulator/device validation, but production NAS distribution is blocked.
+      - name: Enforce OTA production release evidence
+        env:
+          OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+        run: |
+          python scripts/ota_contract_gate.py release \
+            --evidence ota/release-evidence.json \
+            --manifest dist/version.json \
+            --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"
+
       - name: Deploy APK to Synology NAS via SFTP
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
@@ -127,10 +160,3 @@ jobs:
           remote_path: ${{ secrets.NAS_APK_TARGET_DIR || '/docker/smartbox_ota/gatekeeper_apk/' }}
 
           sftp_only: true
-
-      - name: Upload APK Artifact to GitHub Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: smart-key-app-release
-          path: dist/ks-house-gatekeeper.apk
-          if-no-files-found: error

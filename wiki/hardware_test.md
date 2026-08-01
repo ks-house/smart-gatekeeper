@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-07-31 (v2.1 OTA and retained coredump diagnosis)
+> Last updated: 2026-08-01 (OTA P0 contract Gate 분리)
 
 ## 1. 판정 원칙
 
@@ -25,6 +25,8 @@
 | retained flash coredump | v2.1 boot payload | 🔴 PANIC CONFIRMED | loopTask `udp_new_ip_type` core-lock assertion, 11,044 B valid coredump |
 | Target OTA rollback/16 MB partition | 과거 OTA 성공 기록 | 🔴 P0 BLOCKER | #23: 양 slot, health mark, 실패 자동 rollback, power-loss 검증 필요 |
 | 모바일 APK update 비회귀 | 과거 NAS APK 다운로드 기록 | 🔴 P0 BLOCKER | #23: scanner 독립 update, hash/signing identity, fallback, N/N-1 검증 필요 |
+| OTA schema/signature negative vectors | 2026-08-01 host unit test 5건 | 🟢 CONTRACT PASS | 물리 install/boot/rollback 증거가 아닌 OTA-G0 자동 검증 |
+| OTA-G1~G4 physical matrix | 실측 없음 | 🔴 RELEASE BLOCKED | periodic HTTPS/local AP, Android fallback, N/N-1, power-loss/rollback 실기기 필요 |
 
 ## 3. 현재 E2E 인수 절차
 

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "rows": [
+    {"id": "primary-endpoint-down", "mobile": "secondary HTTPS metadata and APK", "target": "periodic HTTPS retry then authenticated local AP", "gate": "OTA-G3"},
+    {"id": "scanner-gatt-down", "mobile": "cold start/resume/settings/manual update remains reachable", "target": "OTA engine remains independent of access protocol", "gate": "OTA-G1"},
+    {"id": "mqtt-down", "mobile": "no impact", "target": "periodic HTTPS or authenticated local AP", "gate": "OTA-G1"},
+    {"id": "download-interrupted", "mobile": "discard or resume temp file; installed APK unchanged", "target": "inactive slot may be discarded; active slot unchanged", "gate": "OTA-G1"},
+    {"id": "hash-signature-invalid", "mobile": "installer is never invoked", "target": "image is never selected for boot", "gate": "OTA-G0"},
+    {"id": "power-loss", "mobile": "Android retains installed APK", "target": "bootloader selects previous bootable slot", "gate": "OTA-G3"},
+    {"id": "new-version-crash", "mobile": "stable fallback APK remains available", "target": "health timeout triggers bootloader rollback", "gate": "OTA-G3"},
+    {"id": "n-minus-one", "mobile": "update UI and legacy negotiation remain available", "target": "OTA and previous protocol remain available", "gate": "OTA-G2"},
+    {"id": "storage-full", "mobile": "clear recovery guidance; installed APK unchanged", "target": "active slot and NVS unchanged", "gate": "OTA-G1"}
+  ]
+}
