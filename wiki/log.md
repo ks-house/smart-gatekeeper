@@ -1377,3 +1377,13 @@
 - `origin/main` exact `e68f9f401354cd890a50ef5bb3f03cf6b70cc29c`를 history rewrite 없이 normal merge하여 ordinary PR에도 trusted required-check가 발행되는 수정 반영
 - `wiki/log.md`는 main log blob을 exact byte prefix로 두고 common base `f2dc0b8` 이후 PR #31 branch-only suffix를 byte-for-byte 연결해 append-only 양쪽 이력을 보존
 - trusted workflow/index 문서의 main 업데이트와 Hardwareless RC/G0-HW Gate 계약을 함께 보존하고 runtime, raw, protected bundle, `manual_remote`, OTA assets는 변경하지 않음
+
+## [2026-08-02] lint | PR #31 final-head 독립 재리뷰 및 protected merge 승인
+
+- Exact head `d3f5f0dface1f5050e40746549db32af049e5e66`의 전체 7-file diff를 current main `e68f9f401354cd890a50ef5bb3f03cf6b70cc29c` 기준으로 재검토하고 same-account COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4836020674 게시
+- G0-SW는 Wave 0 계약 이후 production-OFF feature-flagged #17~#22 구현·리뷰·merge와 자동 software 검증만 허용하며 G0-HW, production enable, physical completion, legacy retirement와 Epic closure는 계속 fail-closed임을 확인
+- 인증된 explicit button `manual_remote` chain, runtime, raw/, 5-file protected bundle, 기존 OTA schema/evidence/state/recovery assets, legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성·fallback과 N/N-1은 main 대비 byte-unchanged
+- 81개 repository unit test, protocol 16개, observability 18개, canonical vector와 access/manual_remote/Target OTA/rollback fixture validate·evaluate, 16개 독립 gate negative mutation, OTA contract·pending release 거부, actionlint, 14 YAML/22 JSON/9 JSONL/12 Python, 38 Markdown/188 relative link, index/conflict/diff/immutability 검사 전건 통과
+- ESP32-C6 PlatformIO build는 ignored non-secret placeholder `include/secrets.h`로 RAM 47,032/327,680 bytes, flash 1,594,400/7,340,032 bytes에서 통과했고 임시 header를 제거해 worktree를 복원
+- `wiki/log.md`는 main 134,068-byte exact prefix와 기존 PR-only 3,964-byte suffix를 보존하고 645-byte merge 기록 뒤 본 reviewer 기록만 append했으며 invalid C0/DEL은 0건
+- hosted runs `30721749667`, `30721750617`, `30721750633`, `30721750649`는 exact reviewed head에서 성공하고 firmware/Android production job은 정확히 skipped; Epic #13과 #14/#18/#22/#23, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 radio·relay/sensor·bootloader physical/operator gates는 open/pending 유지
