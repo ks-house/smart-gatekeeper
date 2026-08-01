@@ -1348,3 +1348,11 @@
 - strict main protection과 `production` Environment의 reviewer `tworimpa`·단일 `main` branch policy를 live API로 확인하고 COMMENTED 독립 리뷰 https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835756374 게시
 - Epic #13과 #14/#18/#22/#23은 open, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 BLE/radio·relay/sensor·bootloader evidence는 pending이며 production enable, legacy retirement, Epic closure는 계속 fail-closed
 
+## [2026-08-02] lint | PR #31 protected merge required-check 부재로 차단
+
+- Review-log final head `da4922304c47688daf2241ee77f86cf0e23c8b95`에서 PR Actions `30718493148`, `30718493150`, `30718493153`은 모두 성공하고 Android/firmware production job은 정확히 skip됨
+- main protection이 GitHub Actions context `Verify protected files against trusted base policy`를 strict required check로 요구하지만 trusted workflow는 protected workflow/policy 경로에만 path-filter되어 일반 문서 PR #31에는 실행되지 않음을 live API로 확인
+- Final head의 check run은 성공 3건과 production skip 2건뿐이며 required trusted-policy context가 없어 `mergeStateStatus=BLOCKED`; bypass 없는 `gh pr merge --merge`는 base branch policy에 의해 거부됨
+- `--admin`, branch-protection 변경, synthetic status, protected-file 위장 변경을 사용하지 않고 COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835786121 게시 후 PR을 draft/unmerged 상태로 복귀
+- 별도 trusted-policy rotation에서 base-SHA-only inert candidate validation의 신뢰 경계를 유지하면서 ordinary PR에도 required context가 발행되도록 고친 뒤 재리뷰가 필요
+- Epic #13과 #14/#18/#22/#23은 open이고 G0-HW, OTA-G1~G4, RELAY-G0~G2 및 물리/OEM/bootloader evidence는 pending으로 production fail-closed 유지
