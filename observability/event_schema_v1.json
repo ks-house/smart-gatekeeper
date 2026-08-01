@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ks-house.github.io/smart-gatekeeper/schemas/observability/event-v1.json",
+  "title": "Smart Gatekeeper cross-layer event envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "session_id",
+    "session_kind",
+    "source_component",
+    "source_instance_id",
+    "source_boot_id",
+    "sequence",
+    "attempt",
+    "event_code",
+    "stage",
+    "outcome",
+    "reason_code",
+    "clock",
+    "target",
+    "causation_event_id",
+    "attributes"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {"$ref": "#/$defs/uuid"},
+    "session_id": {"$ref": "#/$defs/uuid"},
+    "session_kind": {"enum": ["access", "update"]},
+    "source_component": {
+      "enum": ["android", "target", "backend", "collector"]
+    },
+    "source_instance_id": {"$ref": "#/$defs/opaque_ref"},
+    "source_boot_id": {"$ref": "#/$defs/boot_id"},
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "attempt": {"type": "integer", "minimum": 1},
+    "event_code": {
+      "type": "string",
+      "pattern": "^(ACCESS|UPDATE)_[A-Z0-9_]+$"
+    },
+    "stage": {
+      "enum": [
+        "SCAN_WAKE",
+        "GATT_CONNECT",
+        "PROOF",
+        "ACL",
+        "BACKEND_AUTH",
+        "ARMED",
+        "SENSOR",
+        "RELAY_ON",
+        "RELAY_OFF",
+        "UPDATE_REQUESTED",
+        "WAIT_SAFE_STATE",
+        "CHECK_MANIFEST",
+        "VERIFY_MANIFEST",
+        "DOWNLOAD",
+        "VERIFY_ARTIFACT",
+        "INSTALL",
+        "REBOOT",
+        "BOOT_HEALTH",
+        "MARK_VALID",
+        "ROLLBACK",
+        "COMPLETE"
+      ]
+    },
+    "outcome": {
+      "enum": [
+        "STARTED",
+        "PROGRESS",
+        "SUCCEEDED",
+        "DENIED",
+        "FAILED",
+        "TIMED_OUT",
+        "CANCELLED"
+      ]
+    },
+    "reason_code": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "clock": {"$ref": "#/$defs/clock"},
+    "target": {"$ref": "#/$defs/target"},
+    "causation_event_id": {
+      "oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]
+    },
+    "attributes": {"$ref": "#/$defs/attributes"},
+    "update": {"$ref": "#/$defs/update"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"session_kind": {"const": "update"}}},
+      "then": {"required": ["update"]},
+      "else": {"not": {"required": ["update"]}}
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "opaque_ref": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{7,63}$"
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]{7,63}$"
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_time", "monotonic_ms", "quality"],
+      "properties": {
+        "wall_time": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+            },
+            {"type": "null"}
+          ]
+        },
+        "monotonic_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "quality": {"enum": ["SYNCED", "UNSYNCED", "UNKNOWN"]},
+        "uncertainty_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_ref", "boot_id"],
+      "properties": {
+        "target_ref": {"$ref": "#/$defs/opaque_ref"},
+        "boot_id": {
+          "oneOf": [{"$ref": "#/$defs/boot_id"}, {"type": "null"}]
+        }
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {"enum": ["local_gatt", "legacy_mqtt", "manual_remote"]},
+        "credential_ref": {"$ref": "#/$defs/opaque_ref"},
+        "distance_mm": {"type": "integer", "minimum": 0, "maximum": 10000},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "relay_hold_ms": {"type": "integer", "minimum": 0},
+        "queue_depth": {"type": "integer", "minimum": 0},
+        "http_status": {"type": "integer", "minimum": 100, "maximum": 599},
+        "transport": {"enum": ["ble_gatt", "mqtt", "https", "local_ap", "package_installer"]},
+        "protocol_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+        "prior_target_boot_id": {"$ref": "#/$defs/boot_id"},
+        "reset_reason_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+        "progress_percent": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component",
+        "current_version",
+        "target_version",
+        "artifact_sha256",
+        "confirmation"
+      ],
+      "properties": {
+        "component": {"enum": ["mobile", "target"]},
+        "current_version": {"type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$"},
+        "target_version": {"type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$"},
+        "artifact_sha256": {
+          "oneOf": [
+            {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            {"type": "null"}
+          ]
+        },
+        "confirmation": {
+          "enum": [
+            "NONE",
+            "ARTIFACT_VERIFIED",
+            "INSTALLED",
+            "BOOTED",
+            "HEALTH_CONFIRMED",
+            "MARKED_VALID",
+            "ROLLED_BACK"
+          ]
+        }
+      }
+    }
+  }
+}
