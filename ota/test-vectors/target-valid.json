@@ -1,0 +1,20 @@
+{
+  "artifact_size": 1048576,
+  "artifact_type": "target-firmware",
+  "artifact_url": "https://updates.example.test/target/2.2.0-test.bin",
+  "board": "esp32-c6-devkitc-1",
+  "build_id": "test-target-220",
+  "commit": "75b946aa173d7315de1903f7685ee3d00b5ceeea",
+  "firmware_version": "2.2.0-test",
+  "flash_layout": "dual-ota-16mb-v1",
+  "mandatory_after": null,
+  "protocol_max": 2,
+  "protocol_min": 1,
+  "published_at": "2026-08-01T00:00:00Z",
+  "schema_version": 1,
+  "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "signature": "pNCgTFfEYmXO2naXVQd1dfx+civzaCaTeiMkRSDYg/01+ivoiXW30wUlde77FpzlxvPQc1z43xBnaKDs9PwbCw==",
+  "signature_algorithm": "Ed25519",
+  "signing_key_id": "rfc8032-test-key-1",
+  "version": "2.2.0-test"
+}

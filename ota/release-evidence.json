@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "release_blocked": true,
+  "gates": [
+    {"id": "OTA-G0", "status": "passed", "evidence": "schemas, signed vectors, state machines, recovery matrix and automated contract tests"},
+    {"id": "OTA-G1", "status": "pending", "evidence": "runtime mobile and Target component paths are not yet implemented and verified"},
+    {"id": "OTA-G2", "status": "pending", "evidence": "N/N-1 emulator and physical compatibility matrix not yet executed"},
+    {"id": "OTA-G3", "status": "pending", "evidence": "authenticated Target local AP recovery and mobile fallback distribution not yet proven"},
+    {"id": "OTA-G4", "status": "pending", "evidence": "canary install, reboot health confirmation and rollback drill not yet approved"}
+  ],
+  "physical_tests": "pending",
+  "approved_by": null,
+  "approved_at": null
+}

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "rows": [
+    {
+      "id": "primary-endpoint-down",
+      "mobile": {"outcome": "secondary-path-available", "action": "use-secondary-https", "from_state": "CHECK_METADATA", "to_state": "CHECK_METADATA"},
+      "target": {"outcome": "authenticated-recovery-available", "action": "retry-periodic-https-then-authenticated-local-ap", "from_state": "CHECK_MANIFEST", "to_state": "FAILED_RETRYABLE"},
+      "gate": "OTA-G3"
+    },
+    {
+      "id": "scanner-gatt-down",
+      "mobile": {"outcome": "update-control-available", "action": "cold-start-resume-settings-manual", "from_state": "IDLE", "to_state": "CHECK_METADATA"},
+      "target": {"outcome": "ota-engine-available", "action": "continue-ota-independent-of-access", "from_state": "IDLE", "to_state": "IDLE"},
+      "gate": "OTA-G1"
+    },
+    {
+      "id": "mqtt-down",
+      "mobile": {"outcome": "unaffected", "action": "none", "from_state": "IDLE", "to_state": "IDLE"},
+      "target": {"outcome": "authenticated-recovery-available", "action": "use-periodic-https-or-authenticated-local-ap", "from_state": "IDLE", "to_state": "UPDATE_REQUESTED"},
+      "gate": "OTA-G1"
+    },
+    {
+      "id": "download-interrupted",
+      "mobile": {"outcome": "installed-apk-preserved", "action": "discard-or-resume-temp", "from_state": "DOWNLOAD_TEMP", "to_state": "CHECK_METADATA"},
+      "target": {"outcome": "active-slot-preserved", "action": "discard-or-resume-inactive-slot", "from_state": "DOWNLOAD_INACTIVE_SLOT", "to_state": "FAILED_RETRYABLE"},
+      "gate": "OTA-G1"
+    },
+    {
+      "id": "hash-signature-invalid",
+      "mobile": {"outcome": "installer-not-invoked", "action": "reject-before-installer", "from_state": "VERIFY_APK", "to_state": "IDLE"},
+      "target": {"outcome": "image-not-selected", "action": "reject-before-boot-selection", "from_state": "VERIFY_IMAGE", "to_state": "FAILED_RETRYABLE"},
+      "gate": "OTA-G0"
+    },
+    {
+      "id": "power-loss",
+      "mobile": {"outcome": "installed-apk-preserved", "action": "retain-installed-apk", "from_state": "DOWNLOAD_TEMP", "to_state": "IDLE"},
+      "target": {"outcome": "previous-slot-booted", "action": "boot-previous-slot", "from_state": "SET_PENDING_BOOT", "to_state": "ROLLBACK_PREVIOUS_SLOT"},
+      "gate": "OTA-G3"
+    },
+    {
+      "id": "new-version-crash",
+      "mobile": {"outcome": "stable-fallback-available", "action": "use-stable-fallback", "from_state": "NEW_APP_FIRST_RUN_HEALTH", "to_state": "INSTALL_FAILED"},
+      "target": {"outcome": "rollback-completed", "action": "rollback-on-health-timeout", "from_state": "BOOT_HEALTH_WINDOW", "to_state": "ROLLBACK_PREVIOUS_SLOT"},
+      "gate": "OTA-G3"
+    },
+    {
+      "id": "n-minus-one",
+      "mobile": {"outcome": "n-minus-one-compatible", "action": "negotiate-legacy", "from_state": "COMPARE_COMPATIBILITY", "to_state": "CHECK_STORAGE"},
+      "target": {"outcome": "n-minus-one-compatible", "action": "retain-ota-and-previous-protocol", "from_state": "IDLE", "to_state": "UPDATE_REQUESTED"},
+      "gate": "OTA-G2"
+    },
+    {
+      "id": "storage-full",
+      "mobile": {"outcome": "storage-recovery-guidance", "action": "show-storage-guidance", "from_state": "CHECK_STORAGE", "to_state": "IDLE"},
+      "target": {"outcome": "active-slot-and-nvs-preserved", "action": "retain-active-slot-and-nvs", "from_state": "DOWNLOAD_INACTIVE_SLOT", "to_state": "FAILED_RETRYABLE"},
+      "gate": "OTA-G1"
+    }
+  ]
+}

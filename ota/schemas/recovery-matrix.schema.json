@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smart-gatekeeper.invalid/schemas/recovery-matrix.schema.json",
+  "title": "Smart Gatekeeper OTA recovery matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rows"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "rows": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "mobile", "target", "gate"],
+        "properties": {
+          "id": {
+            "enum": [
+              "primary-endpoint-down", "scanner-gatt-down", "mqtt-down",
+              "download-interrupted", "hash-signature-invalid", "power-loss",
+              "new-version-crash", "n-minus-one", "storage-full"
+            ]
+          },
+          "mobile": {"$ref": "#/$defs/mobileRecovery"},
+          "target": {"$ref": "#/$defs/targetRecovery"},
+          "gate": {"enum": ["OTA-G0", "OTA-G1", "OTA-G2", "OTA-G3"]}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "mobileRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "action", "from_state", "to_state"],
+      "properties": {
+        "outcome": {
+          "enum": [
+            "secondary-path-available", "update-control-available",
+            "unaffected", "installed-apk-preserved", "installer-not-invoked",
+            "stable-fallback-available", "n-minus-one-compatible",
+            "storage-recovery-guidance"
+          ]
+        },
+        "action": {
+          "enum": [
+            "use-secondary-https", "cold-start-resume-settings-manual", "none",
+            "discard-or-resume-temp", "reject-before-installer",
+            "retain-installed-apk", "use-stable-fallback", "negotiate-legacy",
+            "show-storage-guidance"
+          ]
+        },
+        "from_state": {
+          "enum": [
+            "IDLE", "CHECK_METADATA", "COMPARE_COMPATIBILITY",
+            "CHECK_STORAGE", "DOWNLOAD_TEMP", "VERIFY_APK",
+            "NEW_APP_FIRST_RUN_HEALTH"
+          ]
+        },
+        "to_state": {
+          "enum": [
+            "IDLE", "CHECK_METADATA", "CHECK_STORAGE", "INSTALL_FAILED"
+          ]
+        }
+      }
+    },
+    "targetRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "action", "from_state", "to_state"],
+      "properties": {
+        "outcome": {
+          "enum": [
+            "authenticated-recovery-available", "ota-engine-available",
+            "active-slot-preserved", "image-not-selected",
+            "previous-slot-booted", "rollback-completed",
+            "n-minus-one-compatible", "active-slot-and-nvs-preserved"
+          ]
+        },
+        "action": {
+          "enum": [
+            "retry-periodic-https-then-authenticated-local-ap",
+            "continue-ota-independent-of-access",
+            "use-periodic-https-or-authenticated-local-ap",
+            "discard-or-resume-inactive-slot", "reject-before-boot-selection",
+            "boot-previous-slot", "rollback-on-health-timeout",
+            "retain-ota-and-previous-protocol", "retain-active-slot-and-nvs"
+          ]
+        },
+        "from_state": {
+          "enum": [
+            "IDLE", "CHECK_MANIFEST", "DOWNLOAD_INACTIVE_SLOT", "VERIFY_IMAGE",
+            "SET_PENDING_BOOT", "BOOT_HEALTH_WINDOW"
+          ]
+        },
+        "to_state": {
+          "enum": [
+            "IDLE", "UPDATE_REQUESTED", "FAILED_RETRYABLE",
+            "ROLLBACK_PREVIOUS_SLOT"
+          ]
+        }
+      }
+    }
+  }
+}
