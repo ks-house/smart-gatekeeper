@@ -1174,6 +1174,89 @@
 - Re-ran Flutter tests (5/5), forced JVM tests (6/6), and the debug APK build; verified the PowerShell harness parses, package/merged-manifest receiver attributes are correct, wiki links are intact, `git diff --check` passes, and `raw/` is unchanged.
 - Recorded that repository-wide Android lint still has two pre-existing `MainActivity.kt` API-level errors and Flutter analyze has 17 pre-existing vendored-plugin info findings; PR-changed paths add no lint error. No ADB device was attached, so Samsung radio trials remain 0/20 and issue #14 plus OTA-G1/G2/G3 remain open hardware gates.
 
+## [2026-08-01] fix | main CI와 production OTA release trigger 분리
+
+- firmware/APK 일반 main push와 기본 canary dispatch는 build/test/OTA contract 검증 및 Actions canary 보존까지만 수행하고 production release/SFTP job을 skip하도록 변경
+- 운영 NAS 배포는 쓰기 권한자의 명시적 `workflow_dispatch` `release_target=production`과 `production` GitHub Environment를 요구하는 별도 job으로 격리
+- production job은 동일 run의 canary를 다시 내려받아 OTA-G0~G4·physical evidence·운영 승인, pinned Ed25519 서명, 실제 artifact size/SHA-256 및 APK signing certificate 검증을 통과한 뒤에만 SFTP 실행
+- push가 production 경로에 진입하거나 explicit release가 evidence validator·동일 artifact binding을 우회하면 실패하는 정적 workflow regression test 추가
+- dual-slot/health rollback, periodic HTTPS·authenticated local recovery, mobile updater 독립성, N/N-1 및 인증된 모바일 수동 문 열기 경로 불변조건은 변경하지 않음
+
+## [2026-08-01] test | PR #28 독립 리뷰에서 production release 격리 차단 결함 확인
+
+- OTA unit test 22건과 observability test 18건, `manual_remote` validate/evaluate, OTA contract, actionlint, YAML/JSON/schema parse, wiki 상대 링크, Python compile, ESP32-C6 PlatformIO build와 `git diff --check`는 통과했고 OTA-G1~G4 pending release가 fail-closed로 거부됨을 확인
+- 기존 4개 정적 mutation test는 통과했지만 허가 조건 뒤 push OR 추가, evidence step `if: false`, signing key 환경 변수의 비밀키 외 값 재결합, evidence 검증 뒤 artifact 교체 mutation은 모두 validator를 통과해 push authorization·evidence·pinned trust·동일 artifact 보장을 강제하지 못함
+- firmware/APK workflow에는 `pull_request` trigger가 없어 PR에서 실제 build/test/canary upload가 실행되지 않고 PR #28 Actions도 OTA P0 check 1개만 실행됐으며, GitHub Environments API는 environment 0개와 `production` 404를 반환해 보호 Environment가 실제로 구성되지 않음
+- PR은 최신 main과 충돌하는 draft 상태이며 위 release 격리 결함 수정, 실제 protected `production` Environment 구성과 PR build/canary 증거 전에는 ready 전환·병합하지 않기로 판정
+- 변경 범위가 orchestration·문서·validator test에 한정되어 dual-slot/rollback, periodic HTTPS·authenticated local recovery, updater 독립성, N/N-1 및 인증된 `manual_remote` 출입 계약 자체는 변경되지 않음
+
+## [2026-08-01] test | PR #28 기본 canary workflow 실실행 검증
+
+- head `c23792c`에서 OTA contract run `30702094971`, firmware canary `30702095030`, Android canary `30702095023`을 `workflow_dispatch` 기본 canary 대상으로 실행해 모두 성공
+- firmware와 Android run 모두 contract/test, 실제 build, canary artifact upload를 완료했고 각각의 production deploy job은 실패가 아니라 `skipped`로 종료되어 default canary가 production release validation·SFTP에 진입하지 않음을 확인
+- 이 성공은 명시적 canary dispatch 경로만 증명하며 PR 자동 build/canary trigger 부재, production Environment 미구성, 정적 validator 우회와 main 충돌 차단 판정은 그대로 유지
+
+## [2026-08-01] fix | PR #28 workflow 구조화 검증 및 우회 차단 구현
+
+- `ota_contract_gate.py`에 PyYAML 기반 `load_workflow_yaml` 및 구조화된 `validate_workflow_release_triggers` / `validate_workflow_artifact_bindings`를 추가
+- `if:` 조건에 `|| push` 등 임의 확장 차단, evidence step `if:` 비활성화 차단, `OTA_SIGNING_PUBLIC_KEY_HEX` provenance의 secret 직결 강제, release validation과 SFTP deploy step 간 순서 불변성 및 임의 step 삽입 차단 검증 구현
+- firmware 및 APK workflow 모두 `pull_request` trigger 포함 검증 및 PR 시 compile-only secrets/debug APK 빌드로 안전한 canary artifact 생성 보장
+
+## [2026-08-01] test | PR #28 우회 수단 adversarial unit tests 및 Environment 문서화
+
+- `test_ota_contract_gate.py`에 31개 단위 테스트(adversarial bypass 테스트 4건 포함: build job의 production environment 사용 차단, SFTP 후속 step 삽입 차단, needs 누락 차단, signing key secret 우회 차단) 통과
+- `wiki/env_setup.md` 및 `wiki/ota_operations_runbook.md`에 `environment: production` 기계적 검증(precondition) 및 Coordinator API 기반 external state 구성 요구사항 반영
+- actionlint, `git diff --check`, 31개 OTA tests, 18개 observability tests, 16개 protocol tests 전건 통과 확인
+
+## [2026-08-01] docs | PR #28 production Environment 외부 보호 구성 반영 및 최종 감사
+
+- Coordinator가 GitHub API를 통해 `production` Environment의 필수 승인자(`tworimpa`) 및 `main` 전용 브랜치 보호 정책을 실제 구성함을 확인하고 `wiki/env_setup.md`에 문서화 반영
+- workflow release job의 `environment: production` 기계적 검증(deployment precondition) 및 31개 OTA tests, 18개 observability tests, 16개 protocol tests, actionlint, PlatformIO esp32c6 빌드, `git diff --check` 재검증 통과
+
+## [2026-08-01] test | PR #28 구조화 release gate 재리뷰 차단 결함 확인
+
+- 코드 fix `04740b8`과 Environment 기록 `68c6c85`를 독립 재검증해 OTA 31건, observability 18건, protocol 16건, `manual_remote` validate/evaluate, actionlint, YAML/JSON/schema, wiki link, Python compile, ESP32-C6 PlatformIO build를 통과
+- PR Actions `30703085787`, `30703085742`, `30703085760`에서 contract, firmware와 Android debug APK build·canary upload가 성공하고 두 production job은 `skipped`였으며, 실제 `production` Environment의 필수 reviewer `tworimpa`와 custom branch policy `main`을 API로 확인
+- 기존 OR-push, evidence `if: false`, 잘못된 secret env, 별도 artifact replacement mutation은 거부되지만 evidence `continue-on-error`, release 명령 `|| true`, run 내부 signing key 재정의, 같은 step의 검증 후 artifact 교체, SFTP `local_path` 재결합, 검증 전 중복 SFTP, object형 build production Environment, 일반 build shell SFTP mutation 8건은 validator가 허용함을 확인
+- 구조화 validator가 evidence 실행 성공, signing secret의 shell provenance, 단일 SFTP와 exact upload identity, 같은 step 내 artifact 불변성, ordinary build의 모든 production/SFTP 경로를 fail-closed로 강제하기 전에는 ready 전환·병합하지 않기로 판정
+- 최신 main은 merge parent로 통합됐고 manual mobile button 출입, dual-slot/rollback, periodic HTTPS·authenticated local recovery, updater 독립성, N/N-1, size/SHA-256, APK certificate와 OTA-G0~G4 계약 파일은 변경되지 않았으며 issue #23의 실기기 Gate는 open으로 유지
+
+## [2026-08-01] fix | PR #28 release gate 8개 우회 수단 구조화 검증 및 fail-closed 차단
+
+- `ota_contract_gate.py`에 continue-on-error, error swallowing (`|| true`, `; true`, `set +e`), run 내부 `OTA_SIGNING_PUBLIC_KEY_HEX=` 재정의, 검증 후 동일 step artifact 변형, SFTP `local_path` 재결합, 중복/조기 SFTP step, object형/non-exact production Environment, build job의 shell SFTP/production capability 8개 우회 수단을 강제로 차단하는 구조화 검증 구현
+- evidence 실행 성공, signing secret provenance, 단일 SFTP와 exact upload identity, 동일 step 내 artifact 불변성, build job의 모든 production/SFTP 경로 차단을 fail-closed로 검증
+
+## [2026-08-01] test | PR #28 8개 우회 수단 adversarial unit tests 및 종합 회귀 검증
+
+- `test_ota_contract_gate.py`에 8개 bypass adversarial unit test를 추가하여 총 39개 OTA contract unit test 전건 통과
+- 18개 observability unit test, 16개 protocol unit test, actionlint, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
+
+## [2026-08-01] test | PR #28 final independent release-gate review remains blocked
+
+- Re-reviewed head `ba6d90c`, issue #23, prior reviews, the full diff and Actions; confirmed current main is integrated and the live `production` Environment requires reviewer `tworimpa` with the sole custom deployment branch policy `main`.
+- Re-ran 39 OTA, 18 observability and 16 protocol tests, authenticated `manual_remote` validate/evaluate, OTA contract/release rejection, actionlint, YAML/JSON/schema/JSONL/link/compile/diff/raw checks, and the ESP32-C6 PlatformIO build; all passed, while OTA-G1 through OTA-G4 remain honestly pending.
+- PR Actions runs `30703927174`, `30703927170`, and `30703927185` passed OTA, firmware, and Android contract/test/build/canary coverage; both production jobs were accurately skipped and no SFTP step ran.
+- Structured mutation review still found accepted bypasses in both firmware and APK validators: same-line evidence error swallowing, same-line post-validation artifact replacement, `printf -v`/`read` signing-key rebinding, duplicate evidence identity, alternate SFTP actions in release/build jobs, and ordinary-job `curl --upload-file` deployment.
+- Posted COMMENTED review `4834849103`; PR #28 remains draft and unmerged, and issue #23 remains open for unavailable OTA-G1 through OTA-G4 physical/operator evidence.
+
+## [2026-08-01] fix | PR #28 블랙리스트 검증을 엄격한 Canonical Allowlist Schema로 전면 대체
+
+- release job 및 ordinary build job 검증에 블랙리스트 방식을 제거하고 정형 allowlist schema (`ALLOWED_BUILD_ACTIONS`, `CANONICAL_RELEASE_STEPS`) 적용
+- exact job keys, exact ordered steps, exact action versions, exact run bodies, exact secret/env 및 artifact binding, exact top-level permissions/triggers를 기계적으로 강제하고 임의의 extra action, run command, key, step, same-line wrapper, error swallowing, key rebind, artifact mutation, curl upload-file, duplicate evidence, SFTP variant를 기본 차단(fail-closed)
+
+## [2026-08-01] test | PR #28 리뷰 4834849103의 11+ 변종 우회 공격 adversarial unit tests 및 50+ OTA 검증
+
+- `test_ota_contract_gate.py`에 리뷰 4834849103의 11개 변형 수단(same-line `|| true`, same-line `&& cp`, `printf -v`/`read` key rebind, duplicate evidence identity, alternate scp/sftp action, ordinary job `curl --upload-file`, 임의의 unknown action/step, top-level key/permission/trigger 오염, unallowed job)에 대해 양쪽 워크플로우(`deploy.yml`, `build_app.yml`) 검증을 수행하는 12개 adversarial unit test를 추가해 총 50개 OTA contract unit test 전건 통과
+- 18개 observability unit test, 16개 protocol unit test, actionlint, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 통과
+
+## [2026-08-01] test | PR #28 canonical allowlist final review remains blocked
+
+- Re-reviewed head `6d77f22` and reproduced all prior mutations against both firmware and APK workflows; the exact current workflows and the 50 nominal OTA tests pass, and PR Actions `30704554373`, `30704554344`, and `30704554347` are green with both production jobs skipped.
+- A deterministic 102-case structural audit found 50 accepted deviations, including a `python()` evidence bypass, an `EXIT` trap post-validation artifact replacement, sourced signing-key rebinding, decoy contract/test commands, arbitrary Python HTTP deployment in ordinary jobs, altered PR/main triggers, wrong/duplicate canary artifact paths, allowed-action extra steps, and unknown release step keys.
+- The canonical policy is self-authorizing because the PR checkout executes its own mutable `ota_contract_gate.py`; changing a workflow action and its `CANONICAL_RELEASE_STEPS` entry together was accepted by both validators.
+- The live `production` Environment still requires reviewer `tworimpa` and the sole custom branch policy `main`; manual_remote and all OTA invariant assets are unchanged, while issue #23 remains open for OTA-G1 through OTA-G4 physical/operator evidence.
+- Posted COMMENTED review `4834880424`; PR #28 remains draft and unmerged until exact trusted workflow schemas replace the partial, PR-mutable allowlist.
+
 ## [2026-08-01] code | Bootstrap trusted workflow-policy Gate
 
 - Added a base-branch `pull_request_target` workflow with read-only contents permission, base-SHA-only sparse checkout, and GitHub API candidate byte retrieval; PR code is never checked out or executed.
@@ -1194,3 +1277,33 @@
 - Verified the actual GitHub Contents API maps `8c36ead` to `origin-main-bootstrap` and `7bae62f` to `pr-28-preapproved` without checking out candidate code.
 - Passed 30 repository unit tests including 12 trusted-policy adversarial tests, OTA contract validation, Python compile, actionlint, workflow YAML and policy/OTA JSON parsing, wiki relative-link lint, `git diff --check`, and raw-source immutability check.
 - No physical Target or Android OTA trial was performed; OTA-G1 through OTA-G4 remain pending and issue #23 stays open.
+
+## [2026-08-01] fix | PR #28 branch `origin/main` (PR #29 `420783fc`) 병합 및 Trusted Policy `pr-28-preapproved` 검증
+
+- PR #29가 `origin/main` (`420783fc`)으로 병합됨에 따라 `origin/main`을 `tworimpa/fix-main-ci-release-gate`에 히스토리 재작성 없이 병합
+- 5개 보호 대상 파일 (`deploy.yml`, `build_app.yml`, `ota_contract.yml`, `scripts/ota_contract_gate.py`, `ota/requirements.txt`)을 `7bae62f` 승인 번들 바이트로 보존
+- `verify_trusted_workflow_policy.py` 실행 결과 후보 번들이 `pr-28-preapproved`와 100% 일치함을 기계적으로 검증
+- 수동 모바일 출입 및 미결 OTA-G1~G4 물리 증거 상태를 보존하고 12개 trusted policy test, 39개 OTA contract test, 18개 observability test, 16개 protocol test, actionlint, relative link check, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
+
+## [2026-08-01] test | PR #28 final trusted-policy review blocked by unresolved wiki conflicts
+
+- Independently verified head `55f8249753e21061b61eaf4d5669dd549796c511`: trusted base run `30706318220` checked base SHA `420783fc`, approved exactly `pr-28-preapproved`, and 12 trusted-policy tests plus a separate 102-case byte-mutation audit rejected every protected-file deviation and PR-side policy self-redefinition.
+- Re-ran 50 OTA, 18 observability, 16 protocol, authenticated `manual_remote`, OTA/access/rollback state-machine, actionlint, YAML/JSON/JSONL/schema/link/compile/raw-diff, and ESP32-C6 PlatformIO checks; all passed, and PR runs `30706319098`, `30706319103`, and `30706319133` completed successfully with both production jobs accurately skipped.
+- Confirmed the live `production` Environment still requires reviewer `tworimpa` and permits only the custom deployment branch `main`; branch protection requires the trusted policy status, while issue #23 remains open for OTA-G1 through OTA-G4 physical/operator evidence.
+- Blocked merge because `git diff --check origin/main...HEAD` exits 2 on unresolved conflict markers in `wiki/env_setup.md`, `wiki/log.md`, and `wiki/ota_reliability_contract.md`, leaving the documented trigger and release contracts ambiguous and corrupting the append-only log history.
+- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4834996277; PR #28 remains draft and unmerged pending a conflict-only correction and fresh independent review.
+
+## [2026-08-01] fix | PR #28 wiki 잔여 충돌 마커 전면 제거 및 conflict-only 정정 완료
+
+- `wiki/env_setup.md`, `wiki/log.md`, `wiki/ota_reliability_contract.md`에 남아 있던 `<<<<<<<`, `=======`, `>>>>>>>` 충돌 마커 라인을 전면 제거
+- 양쪽 변경 내용(PlatformIO/Flutter canary 보존, trusted workflow policy, 명시적 production dispatch)을 손실 없이 보존하고 중복된 마커 아티팩트만 정리
+- 런타임 코드, 테스트, raw/, 보호 workflow/policy/scripts 및 수동 모바일 출입 경로를 변경하지 않고 보존
+- 저장소 전체 conflict marker 0건, `git diff --check origin/main...HEAD` 0 error, wiki relative-link consistency 및 모든 unit test/actionlint 통과 확인
+
+## [2026-08-01] test | PR #28 final conflict-fix review approved for protected merge
+
+- Independently reviewed head `021105fa9e4227ad4e6961219d352c7c092dfc28`; confirmed `3befc28..021105f` changes only three wiki files, removes all seven conflict markers, preserves both the explicit production-dispatch and trusted-policy contracts, appends valid history, and leaves raw/runtime/tests/protected files plus `manual_remote` byte-identical.
+- The live base validator and hosted Trusted Workflow Policy run `30707292418` approved exactly `pr-28-preapproved` from trusted base SHA `420783fc`; 12 trusted-policy, 50 OTA, 18 observability, and 16 protocol tests, fixture validate/evaluate, actionlint, YAML/JSON/JSONL/link/compile/diff/raw checks, and ESP32-C6 PlatformIO build all passed.
+- PR runs `30707293747`, `30707293730`, and `30707293735` completed successfully with OTA, firmware, Android contract/test/build/canary coverage; firmware and Android production jobs were accurately skipped, while direct production validation remained fail-closed on pending OTA-G1 through OTA-G4.
+- Confirmed the live `production` Environment requires reviewer `tworimpa` with the sole custom deployment branch `main`, and strict main protection requires `Verify protected files against trusted base policy` with admins enforced and force pushes/deletions disabled.
+- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4835063820; issue #23 remains open for unavailable OTA-G1 through OTA-G4 physical/operator evidence.

@@ -74,17 +74,25 @@ flutter build apk --release \
 | Workflow | Trigger | 결과 |
 |---|---|---|
 | `.github/workflows/ota_contract.yml` | OTA 영향 PR/main | schema, signature tamper vector, dual-slot/recovery/release blocker 자동 검사 |
-| `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드와 canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
-| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter APK canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
+| `.github/workflows/deploy.yml` | `main` push 또는 `workflow_dispatch` | PlatformIO 시험·빌드·contract 검증과 canary 보존; 운영 배포는 명시적 production dispatch에서만 별도 실행 |
+| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter 분석·빌드·contract 검증과 canary 보존; 운영 배포는 명시적 production dispatch에서만 별도 실행 |
 | `.github/workflows/trusted_workflow_policy.yml` | 보호 파일 변경 PR (`pull_request_target`) | default-branch validator/policy로 candidate bytes의 exact approved bundle 검증 |
 
-앱 workflow는 PR/feature branch에서 운영 NAS 배포가 실행되지 않도록 trigger와 job 조건을 모두 둡니다.
-두 production SFTP 단계는 `ota/release-evidence.json`이 physical Gate를 포함해 완전히 승인될 때까지
-의도적으로 실패합니다. Actions canary artifact를 받아 USB/emulator/실기기 시험을 수행한 뒤에만
-evidence를 갱신합니다. release Gate는 signed manifest와 실제 SFTP 대상 firmware/APK를 1:1로
-입력받아 size·SHA-256을 비교하고, APK는 Android SDK `apksigner`로 signing certificate SHA-256도
+일반 `main` push와 기본 `workflow_dispatch`의 `release_target=canary`는 build/test/contract job만
+실행하고 production job을 skip하므로, physical Gate가 정직하게 pending이어도 CI 자체는 성공합니다.
+운영 NAS 배포는 저장소 쓰기 권한자가 `release_target=production`을 명시한 dispatch에서만 요청할 수
+있고 `production` GitHub Environment 정책을 통과해야 합니다. `ota_contract_gate.py`는 release job이
+`environment: production`을 기재했는지 기계적으로 검증하며(deployment precondition), 실제 저장소 외부
+Environment 구성(`PUT /repos/{owner}/{repo}/environments/production`)은 Coordinator가 인증된 GitHub API를
+통해 필수 승인자(`tworimpa`) 및 `main` 전용 브랜치 보호 정책을 지정하여 완성했습니다. 이 별도 job은
+`ota/release-evidence.json`의 OTA-G0~G4와 physical Gate가 완전히 승인되지 않으면 SFTP 전에
+fail-closed로 종료합니다. Actions canary artifact를 받아 USB/emulator/실기기
+
+시험을 수행한 뒤에만 evidence를 갱신합니다. release Gate는 signed manifest와 실제 SFTP 대상 firmware/APK를
+1:1로 입력받아 size·SHA-256을 비교하고, APK는 Android SDK `apksigner`로 signing certificate SHA-256도
 검증합니다. Gate에 전달한 파일과 upload 대상이 달라지면 안 됩니다. Target workflow는 원격 panic
 주소 해석용 `firmware.map`도 보존합니다.
+
 운영 자격 증명 문자열이 포함될 수 있는 `firmware.elf`는 public artifact/NAS에 게시하지 않습니다.
 
 Trusted workflow Gate는 PR code를 checkout하거나 실행하지 않습니다. `base.sha`의 sparse checkout에서

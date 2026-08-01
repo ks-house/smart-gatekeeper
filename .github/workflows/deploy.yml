@@ -1,12 +1,35 @@
 name: SmartGatekeeper CI/CD Pipeline
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/deploy.yml'
+      - 'include/**'
+      - 'src/**'
+      - 'platformio.ini'
+      - 'partitions_*MB_ota.csv'
+      - 'ota/**'
+      - 'scripts/ota_contract_gate.py'
+      - 'tests/test_ota_contract_gate.py'
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      release_target:
+        description: Build a canary or request an authorized production release
+        required: true
+        type: choice
+        default: canary
+        options:
+          - canary
+          - production
+
+permissions:
+  contents: read
 
 jobs:
   test_and_build:
-    name: Build Firmware and Deploy to Synology NAS
+    name: Test and build firmware canary
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,6 +51,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Create secrets.h from GitHub Secrets
+        if: github.event_name != 'pull_request'
         env:
           SECRET_ROOT_CA_CERT: ${{ secrets.SECRET_ROOT_CA_CERT }}
         run: |
@@ -57,6 +81,10 @@ jobs:
 
           echo '#endif // SECRETS_H' >> include/secrets.h
           echo "[CI] include/secrets.h generated successfully."
+
+      - name: Create compile-only secrets.h for pull requests
+        if: github.event_name == 'pull_request'
+        run: cp include/secrets.h.example include/secrets.h
 
       - name: Build ESP32-C6 Firmware with Version Override
         run: |
@@ -94,14 +122,37 @@ jobs:
       - name: Upload unsigned canary artifacts for physical Gate validation
         uses: actions/upload-artifact@v4
         with:
-          name: target-canary-${{ env.FULL_VERSION }}
+          name: target-canary
           path: dist/
           if-no-files-found: error
           retention-days: 14
 
-      # This intentionally fails while ota/release-evidence.json contains a
-      # pending physical Gate. The build artifacts above remain available for
-      # USB/canary validation, but production NAS distribution is blocked.
+  release_to_production:
+    name: Validate and deploy firmware to production
+    needs: test_and_build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.release_target == 'production'
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install OTA release gate dependencies
+        run: python -m pip install -r ota/requirements.txt
+
+      - name: Download the exact canary selected for production
+        uses: actions/download-artifact@v4
+        with:
+          name: target-canary
+          path: dist
+
       - name: Enforce OTA production release evidence
         env:
           OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}

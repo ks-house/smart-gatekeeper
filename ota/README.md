@@ -44,6 +44,14 @@ artifact path passed to the gate must be the file uploaded by the workflow.
 A green contract check proves only the contract assets and adversarial negative
 vectors; it does not prove an ESP32 bootloader rollback or an Android install.
 
+Ordinary `main` pushes and the default `release_target=canary` manual run execute
+only build, test, contract validation, and canary artifact upload. Production NAS
+SFTP exists in a separate `production` Environment job and is eligible only when
+an authorized manual dispatch explicitly selects `release_target=production`;
+that job still runs the release command above before deployment. Static tests
+reject workflows that move release/SFTP back into a push job or remove the
+explicit trigger, evidence check, or exact downloaded-canary binding.
+
 ## Signature serialization
 
 Manifest v1 uses `sgk-json-v1`: remove only the top-level `signature` field,
