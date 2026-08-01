@@ -959,3 +959,18 @@
 
 - Epic #13 하위에 `[OTA][I10] 모바일 앱·Target OTA 비회귀와 복구 계약` #23을 Wave 0 cross-cutting blocker로 등록
 - #17~#22 구현·통합·rollout은 #23의 OTA reachability, artifact integrity, dual-slot rollback, N/N-1 compatibility 계약을 통과해야 완료되도록 구현 계획에 반영
+
+## [2026-08-01] code | Android OS-managed BLE wake Wave 0 PoC
+
+- Added the filtered `BluetoothLeScanner` + `PendingIntent` path, exact iBeacon manufacturer filter, Flutter-independent native receiver/entrypoint, durable event journal, and opt-in boot/package-replace re-registration.
+- Added debug-only synthetic injection, a 20-attempt PowerShell reproduction script, and host JVM tests for filter and percentile contracts without representing synthetic observations as radio evidence.
+- Kept Samsung screen-off, Activity-exit, ordinary process-kill, and reboot measurements at 20 runs each, plus OTA-G1 through OTA-G3, explicitly pending.
+
+## [2026-08-01] test | Android BLE wake hardwareless PoC verification
+
+- Existing Flutter tests passed 5/5, Android `:app:testDebugUnitTest` passed 6/6, and `flutter build apk --debug` produced `app-debug.apk`.
+- The PowerShell harness parsed successfully; no installed-APK synthetic run or Samsung radio test was executed because `adb devices` reported no attached device.
+
+## [2026-08-01] lint | Android BLE wake ADR and wiki consistency
+
+- Verified local wiki links, no `raw/` changes, `git diff --check`, and synchronized ADR, environment, implementation-plan, OTA-contract, and index pages.

@@ -48,7 +48,15 @@ docker compose run --rm flutter-builder flutter pub get
 docker compose run --rm flutter-builder dart format --output=none --set-exit-if-changed lib test
 docker compose run --rm flutter-builder dart analyze lib test
 docker compose run --rm flutter-builder flutter test
+docker compose run --rm flutter-builder bash -lc \
+  "flutter pub get && cd android && ./gradlew :app:testDebugUnitTest"
+docker compose run --rm flutter-builder flutter build apk --debug
 ```
+
+Android Gradle wrapper script는 생성 파일로 취급되어 checkout 직후 없을 수 있으므로 native
+unit test 전에 `flutter pub get`을 같은 container에서 먼저 실행한다. #14 BLE wake의
+hardwareless installed-APK 재현은 `gatekeeper_app/tool/android_ble_wake_hardwareless.ps1`,
+실기기 Gate와 결과 구분은 [android_ble_wake_adr.md](android_ble_wake_adr.md)를 따른다.
 
 운영 APK는 release keystore와 다음 dart define이 필요합니다.
 

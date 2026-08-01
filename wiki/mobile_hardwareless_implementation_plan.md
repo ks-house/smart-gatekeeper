@@ -1,11 +1,17 @@
 # 추가 자격 하드웨어 없는 모바일 병목 축소 구현 계획
 
 > 작성일: 2026-08-01
-> 상태: **구현 계획 — 코드 변경 전 작업 분해**
+> 상태: **Wave 0 진행 중 — #14 code PoC 완료, Samsung 실기기 Gate pending**
 > 결정: secure BLE fob, NFC reader/card, QR scanner 등 추가 자격 하드웨어는 보류
 > 현재 하드웨어: ESP32-C6 Target + AJ-SR04T + relay 유지
 > 1차 플랫폼: 현재 운영 대상인 Android. iOS 자동 출입은 별도 후속 의사결정
 > P0 불변조건: 모바일 앱·Target OTA/rollback 가능성은 모든 단계에서 유지 ([#23](https://github.com/ks-house/smart-gatekeeper/issues/23))
+
+2026-08-01 #14 진행 상황: filtered `BluetoothLeScanner` + `PendingIntent`를 기준
+wake 경로로 선택하고 Flutter-independent native receiver, exact iBeacon filter contract,
+hardwareless test seam을 구현했다. 상세 결정과 미완료 20회 Gate는
+[android_ble_wake_adr.md](android_ble_wake_adr.md)를 따른다. Samsung 실기기 수치가
+없으므로 I1과 G0는 아직 완료가 아니다.
 
 ## 1. 목표와 현실적 한계
 

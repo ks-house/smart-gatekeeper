@@ -80,6 +80,18 @@
 - Android 정책상 sideload APK 설치는 사용자 확인이 필요하므로 완전 무인 설치는 보장할
   수 없다.
 
+### 3.3 #14 BLE wake PoC 비회귀 상태
+
+filtered PendingIntent scan PoC는 update discovery/control plane과 다른 receiver action과
+저장소를 사용하며 Flutter engine을 wake 전제조건으로 삼지 않는다. opt-in 등록은
+`BOOT_COMPLETED`와 `MY_PACKAGE_REPLACED` 뒤 native에서 복구하지만, 앱 업데이트 발견·APK
+검증·설치 자체는 BLE event나 이 receiver에 의존하지 않는다.
+
+이 분리는 설계·코드 수준 증거일 뿐 OTA Gate 통과가 아니다. Samsung 기기에서 package
+replace 뒤 scanner와 무관하게 start/resume/manual update가 접근 가능하고 기존 APK가
+설치 실패 때 보존되는지 확인하기 전에는 OTA-G1/G2/G3을 pending으로 유지한다. 상세는
+[android_ble_wake_adr.md](android_ble_wake_adr.md#8-otarollback-영향)를 따른다.
+
 ## 4. Target OTA 필수 경로
 
 ### 4.1 독립 trigger
