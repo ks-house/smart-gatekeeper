@@ -1,0 +1,451 @@
+{
+  "schema_version": "1.0",
+  "event_codes": {
+    "ACCESS_SESSION_STARTED": {
+      "session_kind": "access",
+      "stage": "SCAN_WAKE",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["SESSION_CREATED"],
+      "terminal": false
+    },
+    "ACCESS_WAKE_DETECTED": {
+      "session_kind": "access",
+      "stage": "SCAN_WAKE",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["WAKE_SIGNAL_DETECTED"],
+      "terminal": false
+    },
+    "ACCESS_WAKE_BLOCKED": {
+      "session_kind": "access",
+      "stage": "SCAN_WAKE",
+      "allowed_outcomes": ["DENIED", "FAILED"],
+      "allowed_reason_codes": [
+        "WAKE_OS_BLOCKED",
+        "PERMISSION_DENIED",
+        "BLUETOOTH_DISABLED",
+        "FORCE_STOPPED",
+        "BATTERY_RESTRICTED"
+      ],
+      "terminal": false
+    },
+    "ACCESS_GATT_CONNECT_STARTED": {
+      "session_kind": "access",
+      "stage": "GATT_CONNECT",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["GATT_CONNECT_REQUESTED"],
+      "terminal": false
+    },
+    "ACCESS_GATT_CONNECTED": {
+      "session_kind": "access",
+      "stage": "GATT_CONNECT",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["GATT_CONNECTED"],
+      "terminal": false
+    },
+    "ACCESS_GATT_FAILED": {
+      "session_kind": "access",
+      "stage": "GATT_CONNECT",
+      "allowed_outcomes": ["FAILED", "TIMED_OUT"],
+      "allowed_reason_codes": [
+        "GATT_CONNECT_FAILED",
+        "GATT_TIMEOUT",
+        "GATT_DISCONNECTED"
+      ],
+      "terminal": false
+    },
+    "ACCESS_PROOF_REQUESTED": {
+      "session_kind": "access",
+      "stage": "PROOF",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["PROOF_CHALLENGE_ISSUED"],
+      "terminal": false
+    },
+    "ACCESS_PROOF_VERIFIED": {
+      "session_kind": "access",
+      "stage": "PROOF",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PROOF_VALID"],
+      "terminal": false
+    },
+    "ACCESS_PROOF_REJECTED": {
+      "session_kind": "access",
+      "stage": "PROOF",
+      "allowed_outcomes": ["DENIED", "FAILED"],
+      "allowed_reason_codes": [
+        "SIGNATURE_INVALID",
+        "PROOF_EXPIRED",
+        "NONCE_REPLAYED",
+        "MALFORMED_PROOF",
+        "PROTOCOL_INCOMPATIBLE"
+      ],
+      "terminal": false
+    },
+    "ACCESS_ACL_ACCEPTED": {
+      "session_kind": "access",
+      "stage": "ACL",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ACL_ALLOW"],
+      "terminal": false
+    },
+    "ACCESS_ACL_REJECTED": {
+      "session_kind": "access",
+      "stage": "ACL",
+      "allowed_outcomes": ["DENIED", "FAILED"],
+      "allowed_reason_codes": [
+        "ACL_NOT_FOUND",
+        "ACL_REVOKED",
+        "ACL_EXPIRED",
+        "ACL_STALE",
+        "ACL_SIGNATURE_INVALID",
+        "CREDENTIAL_INACTIVE"
+      ],
+      "terminal": false
+    },
+    "ACCESS_BACKEND_REQUESTED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["AUTHORIZATION_REQUESTED"],
+      "terminal": false
+    },
+    "ACCESS_BACKEND_AUTHORIZED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["BACKEND_ALLOW"],
+      "terminal": false
+    },
+    "ACCESS_BACKEND_REJECTED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["DENIED", "FAILED"],
+      "allowed_reason_codes": [
+        "API_UNAUTHORIZED",
+        "CREDENTIAL_INACTIVE",
+        "BACKEND_ERROR"
+      ],
+      "terminal": false
+    },
+    "ACCESS_ARM_PUBLISHED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["MQTT_ARM_PUBLISHED"],
+      "terminal": false
+    },
+    "ACCESS_ARM_DELIVERY_FAILED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["FAILED"],
+      "allowed_reason_codes": ["MQTT_PUBLISH_FAILED", "TARGET_OFFLINE"],
+      "terminal": false
+    },
+    "ACCESS_ARM_RECEIVED": {
+      "session_kind": "access",
+      "stage": "ARMED",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ARM_RECEIVED"],
+      "terminal": false
+    },
+    "ACCESS_ARMED": {
+      "session_kind": "access",
+      "stage": "ARMED",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ARM_ACCEPTED"],
+      "terminal": false
+    },
+    "ACCESS_ARM_REJECTED": {
+      "session_kind": "access",
+      "stage": "ARMED",
+      "allowed_outcomes": ["DENIED", "FAILED"],
+      "allowed_reason_codes": ["TARGET_BUSY", "TARGET_NOT_IDLE", "OTA_BUSY"],
+      "terminal": false
+    },
+    "ACCESS_MANUAL_OPEN_REQUESTED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["MANUAL_BUTTON_PRESSED"],
+      "terminal": false
+    },
+    "ACCESS_MANUAL_OPEN_AUTHORIZED": {
+      "session_kind": "access",
+      "stage": "BACKEND_AUTH",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["MANUAL_OPEN_AUTHORIZED"],
+      "terminal": false
+    },
+    "ACCESS_MANUAL_OPEN_RECEIVED": {
+      "session_kind": "access",
+      "stage": "ARMED",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["MANUAL_OPEN_RECEIVED"],
+      "terminal": false
+    },
+    "ACCESS_SENSOR_DETECTED": {
+      "session_kind": "access",
+      "stage": "SENSOR",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["SENSOR_THRESHOLD_MET"],
+      "terminal": false
+    },
+    "ACCESS_SENSOR_FAILED": {
+      "session_kind": "access",
+      "stage": "SENSOR",
+      "allowed_outcomes": ["FAILED", "TIMED_OUT"],
+      "allowed_reason_codes": ["SENSOR_TIMEOUT", "SENSOR_INVALID", "SENSOR_IO_ERROR"],
+      "terminal": false
+    },
+    "ACCESS_RELAY_ON": {
+      "session_kind": "access",
+      "stage": "RELAY_ON",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["RELAY_ACTIVATED"],
+      "terminal": false
+    },
+    "ACCESS_RELAY_OFF": {
+      "session_kind": "access",
+      "stage": "RELAY_OFF",
+      "allowed_outcomes": ["SUCCEEDED", "FAILED"],
+      "allowed_reason_codes": [
+        "RELAY_HOLD_COMPLETE",
+        "RELAY_FAILSAFE_CUTOFF",
+        "RELAY_CONTROL_ERROR"
+      ],
+      "terminal": false
+    },
+    "ACCESS_SESSION_COMPLETED": {
+      "session_kind": "access",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ACCESS_GRANTED"],
+      "terminal": true
+    },
+    "ACCESS_SESSION_TERMINATED": {
+      "session_kind": "access",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["DENIED", "FAILED", "TIMED_OUT", "CANCELLED"],
+      "allowed_reason_codes": [
+        "WAKE_OS_BLOCKED",
+        "PERMISSION_DENIED",
+        "BLUETOOTH_DISABLED",
+        "FORCE_STOPPED",
+        "BATTERY_RESTRICTED",
+        "GATT_CONNECT_FAILED",
+        "GATT_TIMEOUT",
+        "GATT_DISCONNECTED",
+        "SIGNATURE_INVALID",
+        "PROOF_EXPIRED",
+        "NONCE_REPLAYED",
+        "MALFORMED_PROOF",
+        "PROTOCOL_INCOMPATIBLE",
+        "ACL_NOT_FOUND",
+        "ACL_REVOKED",
+        "ACL_EXPIRED",
+        "ACL_STALE",
+        "ACL_SIGNATURE_INVALID",
+        "CREDENTIAL_INACTIVE",
+        "API_UNAUTHORIZED",
+        "BACKEND_ERROR",
+        "BACKEND_UNAVAILABLE",
+        "MQTT_PUBLISH_FAILED",
+        "TARGET_OFFLINE",
+        "TARGET_BUSY",
+        "TARGET_NOT_IDLE",
+        "OTA_BUSY",
+        "ARM_TIMEOUT",
+        "SENSOR_TIMEOUT",
+        "SENSOR_INVALID",
+        "SENSOR_IO_ERROR",
+        "RELAY_CONTROL_ERROR",
+        "RESET_DURING_SESSION",
+        "SESSION_TIMEOUT",
+        "USER_CANCELLED",
+        "INTERNAL_ERROR"
+      ],
+      "terminal": true
+    },
+    "UPDATE_SESSION_STARTED": {
+      "session_kind": "update",
+      "stage": "UPDATE_REQUESTED",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["UPDATE_REQUESTED"],
+      "terminal": false
+    },
+    "UPDATE_WAIT_SAFE_STATE": {
+      "session_kind": "update",
+      "stage": "WAIT_SAFE_STATE",
+      "allowed_outcomes": ["STARTED", "PROGRESS"],
+      "allowed_reason_codes": ["ACCESS_SESSION_ACTIVE", "RELAY_ACTIVE", "UPDATE_QUEUED"],
+      "terminal": false
+    },
+    "UPDATE_MANIFEST_CHECK_STARTED": {
+      "session_kind": "update",
+      "stage": "CHECK_MANIFEST",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["MANIFEST_CHECK_REQUESTED"],
+      "terminal": false
+    },
+    "UPDATE_MANIFEST_VERIFIED": {
+      "session_kind": "update",
+      "stage": "VERIFY_MANIFEST",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["MANIFEST_VALID"],
+      "terminal": false
+    },
+    "UPDATE_MANIFEST_REJECTED": {
+      "session_kind": "update",
+      "stage": "VERIFY_MANIFEST",
+      "allowed_outcomes": ["DENIED", "FAILED"],
+      "allowed_reason_codes": [
+        "NETWORK_UNAVAILABLE",
+        "MANIFEST_FETCH_FAILED",
+        "MANIFEST_INVALID",
+        "PROTOCOL_INCOMPATIBLE",
+        "BOARD_MISMATCH",
+        "SIGNING_IDENTITY_MISMATCH"
+      ],
+      "terminal": false
+    },
+    "UPDATE_NO_UPDATE": {
+      "session_kind": "update",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ALREADY_CURRENT"],
+      "terminal": true
+    },
+    "UPDATE_DOWNLOAD_STARTED": {
+      "session_kind": "update",
+      "stage": "DOWNLOAD",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["UPDATE_AVAILABLE"],
+      "terminal": false
+    },
+    "UPDATE_DOWNLOAD_PROGRESS": {
+      "session_kind": "update",
+      "stage": "DOWNLOAD",
+      "allowed_outcomes": ["PROGRESS"],
+      "allowed_reason_codes": ["DOWNLOADING"],
+      "terminal": false
+    },
+    "UPDATE_ARTIFACT_VERIFIED": {
+      "session_kind": "update",
+      "stage": "VERIFY_ARTIFACT",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ARTIFACT_VALID"],
+      "terminal": false
+    },
+    "UPDATE_INSTALL_STARTED": {
+      "session_kind": "update",
+      "stage": "INSTALL",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["INSTALL_REQUESTED"],
+      "terminal": false
+    },
+    "UPDATE_INSTALLED": {
+      "session_kind": "update",
+      "stage": "INSTALL",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["IMAGE_INSTALLED", "PACKAGE_INSTALLED"],
+      "terminal": false
+    },
+    "UPDATE_REBOOT_REQUESTED": {
+      "session_kind": "update",
+      "stage": "REBOOT",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["REBOOT_PLANNED"],
+      "terminal": false
+    },
+    "UPDATE_BOOT_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "BOOT_HEALTH",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["EXPECTED_VERSION_BOOTED"],
+      "terminal": false
+    },
+    "UPDATE_HEALTH_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "BOOT_HEALTH",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["HEALTH_CHECK_PASSED", "APP_FIRST_RUN_HEALTH_PASSED"],
+      "terminal": false
+    },
+    "UPDATE_MARKED_VALID": {
+      "session_kind": "update",
+      "stage": "MARK_VALID",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["IMAGE_MARKED_VALID"],
+      "terminal": false
+    },
+    "UPDATE_ROLLBACK_STARTED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["STARTED"],
+      "allowed_reason_codes": ["ROLLBACK_TRIGGERED"],
+      "terminal": false
+    },
+    "UPDATE_ROLLBACK_PREVIOUS_INSTALL_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PREVIOUS_VERSION_INSTALLED"],
+      "terminal": false
+    },
+    "UPDATE_ROLLBACK_PREVIOUS_BOOT_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PREVIOUS_VERSION_BOOTED"],
+      "terminal": false
+    },
+    "UPDATE_ROLLBACK_PREVIOUS_HEALTH_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PREVIOUS_VERSION_HEALTHY"],
+      "terminal": false
+    },
+    "UPDATE_ROLLBACK_CONFIRMED": {
+      "session_kind": "update",
+      "stage": "ROLLBACK",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["PREVIOUS_VERSION_RESTORED"],
+      "terminal": false
+    },
+    "UPDATE_SESSION_COMPLETED": {
+      "session_kind": "update",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["UPDATE_HEALTH_CONFIRMED", "ROLLBACK_COMPLETED"],
+      "terminal": true
+    },
+    "UPDATE_SESSION_FAILED": {
+      "session_kind": "update",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["DENIED", "FAILED", "TIMED_OUT", "CANCELLED"],
+      "allowed_reason_codes": [
+        "OTA_BUSY",
+        "NETWORK_UNAVAILABLE",
+        "MANIFEST_FETCH_FAILED",
+        "MANIFEST_INVALID",
+        "PROTOCOL_INCOMPATIBLE",
+        "BOARD_MISMATCH",
+        "STORAGE_INSUFFICIENT",
+        "DOWNLOAD_FAILED",
+        "ARTIFACT_HASH_MISMATCH",
+        "SIGNING_IDENTITY_MISMATCH",
+        "INSTALL_REJECTED",
+        "INSTALL_FAILED",
+        "USER_DENIED_INSTALL",
+        "POWER_INTERRUPTED",
+        "BOOT_HEALTH_TIMEOUT",
+        "BOOT_HEALTH_FAILED",
+        "IMAGE_MARK_VALID_FAILED",
+        "ROLLBACK_FAILED",
+        "UPDATE_TIMEOUT",
+        "INTERNAL_ERROR"
+      ],
+      "terminal": true
+    }
+  }
+}

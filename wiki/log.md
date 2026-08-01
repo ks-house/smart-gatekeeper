@@ -1082,3 +1082,74 @@
 
 - `origin/main`의 PR #25 OTA P0 계약·runbook·CI 변경을 병합하고 양 branch의 append-only log 항목을 삭제 없이 보존
 - wiki index의 최신 상태를 OTA 실행 계약과 RELAY-G0/G1/G2 fail-closed 보완을 함께 나타내도록 조정
+
+## [2026-08-01] compile | Cross-layer access/update event schema v1 확정
+
+- GitHub issue #15의 Android·Target·Backend 공통 envelope와 UUIDv4 session/event ID, boot-local monotonic sequence, causal offline ordering 규칙을 `observability_event_schema.md`에 정의
+- 고정 access/update event·reason catalog, privacy whitelist, 기존 mobile/Backend/MQTT/Target 자유 텍스트 mapping과 dual-write migration을 문서화
+- I7 local FSM과 I9 fault matrix의 relay one-shot·terminal reason·reset 합격 판정, #23 install→boot/app first-run→health→valid/rollback OTA 상관관계를 release gate로 고정
+
+## [2026-08-01] code | Event schema reference parser와 fixture 구현
+
+- JSON Schema 2020-12 envelope와 authoritative event/reason compatibility catalog를 `observability/`에 추가
+- dependency-free Python parser에 privacy validation, exact replay dedupe, sequence conflict 검출, causal partial ordering, access/OTA 합격 판정을 구현
+- Android synced clock과 Target unsynced clock이 섞인 정상 access fixture, Target old/new boot를 잇는 OTA health/valid-mark fixture를 추가
+
+## [2026-08-01] test | Event schema parser 계약 검증
+
+- 정상 access/OTA, offline 역순 도착, exact replay, sequence 충돌, unknown code/reason, privacy 위반, reset, relay fail-closed, artifact digest, terminal/health 누락의 12개 unittest를 통과
+- reference parser로 두 fixture의 schema validation과 I7/I9/OTA acceptance evaluation 통과를 확인
+
+## [2026-08-01] test | Cross-layer schema 변경 비회귀 검사
+
+- repository Docker Flutter builder에서 기존 `scan_diagnostics_test.dart` 5개 테스트 통과
+- compile-only placeholder secret header를 사용한 ESP32-C6 PlatformIO 빌드는 toolchain 준비·컴파일을 진행했으나 두 차례 각각 5분 제한 시간에 도달해 완료 여부 미확정; 임시 header는 즉시 제거하고 firmware source·설정은 변경하지 않음
+
+## [2026-08-01] lint | Event schema와 wiki 일관성 검사
+
+- JSON Schema Draft 2020-12 meta-schema와 access/OTA JSONL fixture 구조 검증 통과
+- 전체 wiki 상대 링크, Python compile/unittest, parser validation/evaluation, `git diff --check` 통과
+
+## [2026-08-01] test | PR #26 event schema 독립 리뷰와 차단 결함 확인
+
+- parser unittest 12건, access/Target OTA fixture 25건의 JSON Schema Draft 2020-12 meta-schema 검증, parser validate/evaluate, Python compile, wiki 상대 링크와 `git diff --check`를 재실행해 기존 검사는 통과
+- 변형 fixture에서 같은 update session의 artifact digest 변경과 이전 버전 boot/install 증거 없는 rollback 완료가 acceptance parser를 통과해 OTA #23 상관관계와 rollback 합격 계약을 강제하지 못함을 확인
+- 존재하지 않은 `prior_target_boot_id`를 넣은 access reset terminal과 uint64 범위를 넘은 sequence도 허용되고, `validate_stream`이 causation cycle을 통과시키는 계약 공백을 확인
+- PR diff가 observability와 wiki 파일에만 한정되고 firmware source, include, PlatformIO 설정을 변경하지 않으므로 기존 PlatformIO 5분 timeout 자체는 이 문서·parser PR의 차단 사유가 아니지만, 위 acceptance 결함 수정 전에는 병합하지 않기로 판정
+
+## [2026-08-01] fix | PR #26 event schema 차단 결함 수정
+
+- update session의 최초 non-null `artifact_sha256`을 immutable하게 강제하고 manifest/installed image digest 불일치와 알려진 digest를 누락한 failure terminal을 fail-closed 처리
+- rollback 완료에 이전 정상 버전의 install, 새 recovery boot, health evidence를 고정 event chain으로 요구하고 version, confirmation, Target emitter, boot와 target 상관관계를 검증
+- access reset terminal이 실제 직전 Target event와 prior boot를 직접 연결하고 같은 Target의 새 boot에서 emit되는지 검증
+- sequence와 monotonic clock을 uint64 범위로 제한하고 `validate_stream`에서 causation/sequence cycle을 직접 거부
+
+## [2026-08-01] test | PR #26 차단 결함 회귀 fixture 검증
+
+- 정상 access, Target OTA와 Target rollback fixture의 parser validation/evaluation 및 unittest 17건 통과
+- digest 불일치, rollback evidence 누락, 잘못된 reset prior boot, uint64 overflow, causation cycle negative fixture가 각 계약 계층에서 거부됨을 확인
+- JSON Schema Draft 2020-12 meta-schema와 의도상 schema-valid fixture event 45건을 검증하고 uint64 overflow fixture의 maximum 위반을 확인
+
+## [2026-08-01] lint | Event schema review 수정 일관성 검사
+
+- Python compile, 전체 wiki 상대 링크, schema/catalog JSON parse와 `git diff --check` 통과
+- `observability/README.md`, `wiki/observability_event_schema.md`, `wiki/index.md`의 digest, rollback, reset, uint64와 causal ordering 계약을 parser/catalog/fixture와 동기화
+
+## [2026-08-01] fix | PR #26 수동 버튼 출입 경로 불변조건 보강
+
+- Epic #13의 사용자 확인에 따라 인증된 모바일 앱 `문 열기` 버튼을 hands-free unlock과 구분되는 `manual_remote` access path로 고정
+- manual button request, Backend authorization, Target command receipt의 고정 event/reason code와 relay ON/OFF causal chain을 catalog/parser에 추가
+- 정상 수동 개방 fixture와 hands-free activation event 혼합 거부 테스트를 추가하고 acceptance/migration 문서를 동기화
+
+## [2026-08-01] test | PR #26 수정 후 독립 재검증
+
+- immutable artifact digest, 이전 버전 install/boot/health rollback evidence, reset prior/new boot 관계, uint64 상한, causation cycle 거부 회귀 테스트를 재실행
+- hands-free access, authenticated manual button access, Target OTA, Target rollback positive fixture의 validate/evaluate와 unittest 18건 통과
+- JSON Schema Draft 2020-12 meta-schema와 fixture event 53건을 검사하고 의도된 sequence overflow maximum 위반을 확인
+
+## [2026-08-01] test | PR #24 3차 독립 보안·통합 리뷰 승인 및 main 병합
+
+- RELAY-G0/G1/G2 fail-closed 12개 negative vector, ACL power-loss/semantic rejection 14개 vector, canonical P-256 verifier, 16개 protocol unit tests, 18개 OTA contract unit tests, 18개 observability unit tests 모두 통과
+- single `relay_resistant_channel=true` 우회 차단, 수동 원격 개방(manual door-open `POST /api/v1/door/open`) 경로 독립 사용성 및 계약 보존 확인
+- PR #24 ready 전환 및 main 병합 완료, GitHub issue #16 closed 확인
+
