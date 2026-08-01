@@ -1339,3 +1339,12 @@
 - 인증된 모바일 `manual_remote`, legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성, N/N-1 불변조건을 보존
 - #14/#18/#22/#23/Epic #13은 해당 물리 Gate가 남아 있는 동안 open 상태를 유지하며 `ota/release-evidence.json`의 production block은 변경하지 않음
 
+## [2026-08-02] lint | PR #31 Hardwareless RC Gate split 독립 리뷰 승인
+
+- Head `aef3504cedc110fad56c6e9611e7d06f4164ca8c`의 전체 diff와 변경 파일을 독립 검토하고 G0-SW는 feature-flagged software 구현·review/merge·자동 검증만 허용하며 G0-HW production과 물리 완료를 대체하지 않음을 확인
+- 인증된 명시적 모바일 버튼 `manual_remote` chain과 legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성·fallback, N/N-1 불변조건이 byte-unchanged임을 확인
+- 67개 repository unit test, protocol 16개, observability 18개와 access/manual_remote/OTA fixture validate/evaluate, OTA contract와 pending production release 거부, live trusted-policy validator, actionlint, YAML/JSON/JSONL/Python, schema/link/fence/index/conflict/diff/immutability 검사를 전건 통과
+- ESP32-C6 PlatformIO build를 ignored dummy `include/secrets.h`로 검증 후 해당 임시 파일을 제거했으며 PR Actions `30717761352`, `30717761353`, `30717761366`은 성공하고 firmware/Android production job은 정확히 skip됨
+- strict main protection과 `production` Environment의 reviewer `tworimpa`·단일 `main` branch policy를 live API로 확인하고 COMMENTED 독립 리뷰 https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835756374 게시
+- Epic #13과 #14/#18/#22/#23은 open, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 BLE/radio·relay/sensor·bootloader evidence는 pending이며 production enable, legacy retirement, Epic closure는 계속 fail-closed
+
