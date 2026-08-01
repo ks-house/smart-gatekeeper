@@ -982,3 +982,10 @@
 - contract validator, JSON/YAML parse, wiki 상대 링크, `git diff --check`, Python compile과 unit test 5건 통과
 - OTA-G1~G4가 pending인 release command가 production 배포를 예상대로 거부함을 확인
 - PlatformIO 로컬 build는 도구 설치 후 180초 제한을 초과해 완료 증거를 얻지 못했으며 firmware 소스 변경은 없으므로 GitHub Actions build 결과 확인을 pending으로 유지
+
+## [2026-08-01] test | PR #25 독립 OTA 계약 리뷰에서 release blocker 결함 확인
+
+- contract validator, unit test 5건, Python compile, JSON/YAML parse, wiki 상대 링크와 `git diff --check`를 독립 재실행해 모두 통과
+- 서명된 manifest만으로 실제 firmware/APK artifact bytes 없이 release 검증이 통과해, 배포 artifact의 size·SHA-256·APK signing certificate를 production SFTP 전에 검증하지 못하는 차단 결함을 확인
+- state machine의 `failure_preserves`·`invariants`를 비우거나 recovery 결과를 파괴적 동작으로 바꿔도 필수 ID/state 이름만 남으면 contract Gate가 통과하는 비회귀 우회를 확인
+- PR #25는 병합하지 않고 issue #23을 open으로 유지하며 artifact 결합 검증과 의미 기반 invariant/recovery 검증 추가 후 재리뷰하도록 판정
