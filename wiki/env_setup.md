@@ -83,8 +83,10 @@ flutter build apk --release \
 있고 `production` GitHub Environment 정책을 통과해야 합니다. `ota_contract_gate.py`는 release job이
 `environment: production`을 기재했는지 기계적으로 검증하며(deployment precondition), 실제 저장소 외부
 Environment 구성(`PUT /repos/{owner}/{repo}/environments/production`)은 Coordinator가 인증된 GitHub API를
-통해 지정합니다. 이 별도 job은 `ota/release-evidence.json`의 OTA-G0~G4와 physical Gate가 완전히
-승인되지 않으면 SFTP 전에 fail-closed로 종료합니다. Actions canary artifact를 받아 USB/emulator/실기기
+통해 필수 승인자(`tworimpa`) 및 `main` 전용 브랜치 보호 정책을 지정하여 완성했습니다. 이 별도 job은
+`ota/release-evidence.json`의 OTA-G0~G4와 physical Gate가 완전히 승인되지 않으면 SFTP 전에
+fail-closed로 종료합니다. Actions canary artifact를 받아 USB/emulator/실기기
+
 시험을 수행한 뒤에만 evidence를 갱신합니다. release Gate는 signed manifest와 실제 SFTP 대상 firmware/APK를
 1:1로 입력받아 size·SHA-256을 비교하고, APK는 Android SDK `apksigner`로 signing certificate SHA-256도
 검증합니다. Gate에 전달한 파일과 upload 대상이 달라지면 안 됩니다. Target workflow는 원격 panic
