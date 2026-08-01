@@ -19,6 +19,7 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from jsonschema import Draft202012Validator, FormatChecker
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -459,6 +460,20 @@ def validate_vectors() -> None:
         raise GateError(f"negative test vector unexpectedly passed: {filename}")
 
 
+def load_workflow_yaml(path: str | Path, content: str | None = None) -> dict[str, Any]:
+  if content is None:
+    path_obj = Path(path)
+    if not path_obj.is_absolute():
+      path_obj = ROOT / path_obj
+    content = path_obj.read_text(encoding="utf-8")
+  parsed = yaml.safe_load(content)
+  if not isinstance(parsed, dict):
+    raise GateError(f"{path}: workflow YAML must be a top-level mapping")
+  if True in parsed and "on" not in parsed:
+    parsed["on"] = parsed.pop(True)
+  return parsed
+
+
 def validate_workflow_artifact_bindings(
     workflows: dict[str, str] | None = None,
 ) -> None:
@@ -469,28 +484,49 @@ def validate_workflow_artifact_bindings(
     }
   for path, binding in WORKFLOW_ARTIFACT_BINDINGS.items():
     content = workflows.get(path, "")
-    required_snippets = {
-        binding["build_copy"],
-        f'--manifest dist/version.json',
-        f'--artifact {binding["artifact"]}',
-        "path: dist/",
-        "local_path: './dist/*'",
-    }
-    missing = sorted(snippet for snippet in required_snippets if snippet not in content)
-    if missing:
+    parsed = load_workflow_yaml(path, content)
+    jobs = parsed.get("jobs", {})
+    build_job = jobs.get(binding["build_job"], {})
+    release_job = jobs.get(binding["release_job"], {})
+
+    build_steps = build_job.get("steps", [])
+    copy_found = False
+    for step in build_steps:
+      run_cmd = str(step.get("run", ""))
+      if binding["build_copy"] in run_cmd or binding["artifact"] in run_cmd:
+        copy_found = True
+        break
+    if not copy_found:
       raise GateError(
-          f"{path}: release Gate and upload artifact binding missing: {missing}"
+          f"{path}: release Gate and upload artifact binding missing artifact copy in build job"
       )
 
+    release_steps = release_job.get("steps", [])
+    evidence_found = False
+    evidence_idx = None
+    sftp_idx = None
 
-def _workflow_job(content: str, job_name: str, path: str) -> str:
-  match = re.search(
-      rf"(?ms)^  {re.escape(job_name)}:\s*$.*?(?=^  [A-Za-z0-9_-]+:\s*$|\Z)",
-      content,
-  )
-  if match is None:
-    raise GateError(f"{path}: missing workflow job {job_name}")
-  return match.group(0)
+    for idx, step in enumerate(release_steps):
+      run_cmd = str(step.get("run", ""))
+      uses_action = str(step.get("uses", ""))
+
+      if "python scripts/ota_contract_gate.py release" in run_cmd:
+        if f"--artifact {binding['artifact']}" in run_cmd and "--manifest dist/version.json" in run_cmd:
+          evidence_found = True
+          evidence_idx = idx
+      if "wlixcc/SFTP-Deploy-Action" in uses_action:
+        sftp_idx = idx
+
+    if not evidence_found:
+      raise GateError(
+          f"{path}: release Gate and upload artifact binding missing: artifact binding for {binding['artifact']}"
+      )
+
+    if evidence_idx is not None and sftp_idx is not None:
+      if sftp_idx != evidence_idx + 1:
+        raise GateError(
+            f"{path}: immutable release steps order violated between release validation and SFTP deploy"
+        )
 
 
 def validate_workflow_release_triggers(
@@ -502,73 +538,162 @@ def validate_workflow_release_triggers(
         path: (ROOT / path).read_text(encoding="utf-8")
         for path in WORKFLOW_ARTIFACT_BINDINGS
     }
-  authorized_condition = (
-      "github.event_name == 'workflow_dispatch' &&\n"
-      "      inputs.release_target == 'production'"
+
+  expected_authorized_condition = (
+      "github.event_name == 'workflow_dispatch' && "
+      "inputs.release_target == 'production'"
   )
-  release_action = "python scripts/ota_contract_gate.py release"
-  deploy_action = "uses: wlixcc/SFTP-Deploy-Action@v1.2.4"
+
   for path, binding in WORKFLOW_ARTIFACT_BINDINGS.items():
     content = workflows.get(path, "")
-    build_job = _workflow_job(content, binding["build_job"], path)
-    release_job = _workflow_job(content, binding["release_job"], path)
-    trigger_snippets = {
-        "workflow_dispatch:",
-        "release_target:",
-        "default: canary",
-        "- production",
-    }
-    missing_triggers = sorted(
-        snippet for snippet in trigger_snippets if snippet not in content
+    parsed = load_workflow_yaml(path, content)
+
+    triggers = parsed.get("on")
+    if not isinstance(triggers, dict):
+      raise GateError(f"{path}: workflow triggers ('on') must be a mapping")
+
+    if "pull_request" not in triggers:
+      raise GateError(f"{path}: workflow missing pull_request trigger")
+    if "push" not in triggers:
+      raise GateError(f"{path}: workflow missing push trigger")
+    if "workflow_dispatch" not in triggers:
+      raise GateError(f"{path}: explicit production release trigger missing: workflow_dispatch")
+
+    dispatch_input = (
+        triggers.get("workflow_dispatch", {})
+        .get("inputs", {})
+        .get("release_target", {})
     )
-    if missing_triggers:
-      raise GateError(
-          f"{path}: explicit production release trigger missing: {missing_triggers}"
-      )
-    if authorized_condition not in release_job:
+    if not isinstance(dispatch_input, dict) or dispatch_input.get("type") != "choice":
+      raise GateError(f"{path}: explicit production release trigger missing release_target choice input")
+    options = dispatch_input.get("options", [])
+    if "canary" not in options or "production" not in options:
+      raise GateError(f"{path}: release_target options must include canary and production")
+
+    jobs = parsed.get("jobs")
+    if not isinstance(jobs, dict):
+      raise GateError(f"{path}: workflow missing jobs mapping")
+
+    build_job_name = binding["build_job"]
+    release_job_name = binding["release_job"]
+
+    if build_job_name not in jobs:
+      raise GateError(f"{path}: missing workflow job {build_job_name}")
+    if release_job_name not in jobs:
+      raise GateError(f"{path}: missing workflow job {release_job_name}")
+
+    build_job = jobs[build_job_name]
+    release_job = jobs[release_job_name]
+
+    if build_job.get("environment") == "production":
+      raise GateError(f"{path}: build job must not use production environment")
+
+    build_steps = build_job.get("steps", [])
+    if not isinstance(build_steps, list):
+      raise GateError(f"{path}: build job steps must be a list")
+
+    has_contract_step = False
+    has_test_step = False
+    has_canary_upload_step = False
+
+    for step in build_steps:
+      run_cmd = str(step.get("run", ""))
+      uses_action = str(step.get("uses", ""))
+
+      if "python scripts/ota_contract_gate.py contract" in run_cmd:
+        has_contract_step = True
+      if "python -m unittest discover" in run_cmd or "pytest" in run_cmd:
+        has_test_step = True
+      if "actions/upload-artifact" in uses_action:
+        step_with = step.get("with", {})
+        if isinstance(step_with, dict) and step_with.get("name") == binding["canary_name"]:
+          has_canary_upload_step = True
+
+      if "python scripts/ota_contract_gate.py release" in run_cmd:
+        raise GateError(f"{path}: ordinary push build enters production release path")
+      if "wlixcc/SFTP-Deploy-Action" in uses_action:
+        raise GateError(f"{path}: ordinary push build enters production release path")
+
+    if not has_contract_step or not has_test_step or not has_canary_upload_step:
+      missing = []
+      if not has_contract_step: missing.append("ota_contract_gate.py contract")
+      if not has_test_step: missing.append("unittest discover")
+      if not has_canary_upload_step: missing.append(f"upload-artifact {binding['canary_name']}")
+      raise GateError(f"{path}: ordinary build/test contract missing: {missing}")
+
+    needs = release_job.get("needs")
+    if isinstance(needs, list):
+      if build_job_name not in needs:
+        raise GateError(f"{path}: release job needs must include {build_job_name}")
+    elif needs != build_job_name:
+      raise GateError(f"{path}: release job needs must include {build_job_name}")
+
+    if release_job.get("environment") != "production":
+      raise GateError(f"{path}: release job must specify environment: production")
+
+    release_if = release_job.get("if")
+    if not release_if:
       raise GateError(f"{path}: production job lacks authorized production trigger")
-    release_requirements = {
-        f"needs: {binding['build_job']}",
-        "environment: production",
-        "uses: actions/download-artifact@v4",
-        f"name: {binding['canary_name']}",
-        "path: dist",
-        release_action,
-        "--evidence ota/release-evidence.json",
-        "--manifest dist/version.json",
-        f"--artifact {binding['artifact']}",
-        '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"',
-        deploy_action,
-        "local_path: './dist/*'",
-    }
-    if binding["artifact"].endswith(".apk"):
-      release_requirements.add('--apksigner "$APKSIGNER"')
-    missing_release = sorted(
-        snippet for snippet in release_requirements if snippet not in release_job
-    )
-    if missing_release:
-      label = (
-          "release evidence validation"
-          if release_action in missing_release
-          else "production release isolation"
+
+    normalized_release_if = " ".join(str(release_if).split())
+    if "workflow_dispatch" not in normalized_release_if or "release_target" not in normalized_release_if:
+      raise GateError(f"{path}: production job lacks authorized production trigger")
+
+    if normalized_release_if != expected_authorized_condition:
+      raise GateError(
+          f"{path}: release job condition is extended or modified; "
+          f"must be exact production condition (got: '{normalized_release_if}')"
       )
-      raise GateError(f"{path}: {label} missing: {missing_release}")
-    build_requirements = {
-        "python scripts/ota_contract_gate.py contract",
-        "python -m unittest discover -s tests -p 'test_*.py' -v",
-        "uses: actions/upload-artifact@v4",
-        f"name: {binding['canary_name']}",
-        "path: dist/",
-    }
-    missing_build = sorted(
-        snippet for snippet in build_requirements if snippet not in build_job
-    )
-    if missing_build:
-      raise GateError(f"{path}: ordinary build/test contract missing: {missing_build}")
-    if release_action in build_job or deploy_action in build_job:
-      raise GateError(f"{path}: ordinary push build enters production release path")
-    if content.count(release_action) != 1 or content.count(deploy_action) != 1:
-      raise GateError(f"{path}: production release actions must exist only in release job")
+
+    release_steps = release_job.get("steps", [])
+    if not isinstance(release_steps, list):
+      raise GateError(f"{path}: release job steps must be a list")
+
+    evidence_step_index = None
+    sftp_step_index = None
+
+    for idx, step in enumerate(release_steps):
+      run_cmd = str(step.get("run", ""))
+      uses_action = str(step.get("uses", ""))
+
+      if "python scripts/ota_contract_gate.py release" in run_cmd:
+        evidence_step_index = idx
+        if "if" in step:
+          raise GateError(f"{path}: evidence step cannot be conditionally disabled or bypassed")
+
+        step_env = step.get("env", {})
+        if not isinstance(step_env, dict) or step_env.get("OTA_SIGNING_PUBLIC_KEY_HEX") != "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}":
+          raise GateError(
+              f"{path}: production signing secret provenance invalid; "
+              f"OTA_SIGNING_PUBLIC_KEY_HEX must come exactly from production signing secret"
+          )
+
+        if '--public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"' not in run_cmd:
+          raise GateError(
+              f"{path}: production release isolation violation: evidence validation must use pinned secret --public-key-hex \"$OTA_SIGNING_PUBLIC_KEY_HEX\""
+          )
+        if "--evidence ota/release-evidence.json" not in run_cmd or "--manifest dist/version.json" not in run_cmd:
+          raise GateError(f"{path}: release evidence validation step missing required flags")
+        if f"--artifact {binding['artifact']}" not in run_cmd:
+          raise GateError(f"{path}: release Gate and upload artifact binding missing or mismatched")
+
+      elif "wlixcc/SFTP-Deploy-Action" in uses_action:
+        sftp_step_index = idx
+
+    if evidence_step_index is None:
+      raise GateError(f"{path}: release evidence validation step missing in release job")
+    if sftp_step_index is None:
+      raise GateError(f"{path}: production release isolation missing: SFTP deploy step missing")
+
+    if sftp_step_index != evidence_step_index + 1:
+      raise GateError(
+          f"{path}: immutable release steps order violated: SFTP deploy step (index {sftp_step_index}) "
+          f"must immediately follow release evidence step (index {evidence_step_index}) with no intermediate steps"
+      )
+
+    if sftp_step_index != len(release_steps) - 1:
+      raise GateError(f"{path}: immutable release steps order violated: no steps allowed after SFTP deploy step")
+
 
 
 def validate_contract() -> None:

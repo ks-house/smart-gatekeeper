@@ -1,6 +1,13 @@
 name: Build and Deploy Flutter Smart Key App APK
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/build_app.yml'
+      - 'gatekeeper_app/**'
+      - 'ota/**'
+      - 'scripts/ota_contract_gate.py'
+      - 'tests/test_ota_contract_gate.py'
   push:
     branches:
       - main
@@ -76,6 +83,7 @@ jobs:
           flutter analyze --no-fatal-infos
 
       - name: Restore Android Release Keystore from Secrets
+        if: github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -87,6 +95,7 @@ jobs:
           fi
 
       - name: Create key.properties from Secrets
+        if: github.event_name != 'pull_request'
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -100,7 +109,7 @@ jobs:
           echo "✅ android/key.properties 동적 생성 완료!"
 
       - name: Build Android Release APK with Dart Defines
-
+        if: github.event_name != 'pull_request'
         env:
           APK_VERSION_URL: ${{ secrets.SECRET_APK_VERSION_URL }}
           APK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_DOWNLOAD_URL }}
@@ -117,11 +126,22 @@ jobs:
             --dart-define=APK_DOWNLOAD_URL="${APK_DOWNLOAD_URL:-https://tworimpa.synology.me:4442/api/v1/download/apk}" \
             --dart-define=GATEKEEPER_API_KEY="${GATEKEEPER_API_KEY:-}"
 
+      - name: Build Android debug APK for pull-request canary
+        if: github.event_name == 'pull_request'
+        run: |
+          cd gatekeeper_app
+          flutter build apk --debug \
+            --build-name="${{ env.FULL_VERSION }}" \
+            --build-number=${{ github.run_number }}
 
-      - name: Prepare NAS Deployment Artifacts (ks-house-gatekeeper.apk & version.json)
+      - name: Prepare canary artifacts (ks-house-gatekeeper.apk & version.json)
         run: |
           mkdir -p dist
-          cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk dist/ks-house-gatekeeper.apk
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            cp gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk dist/ks-house-gatekeeper.apk
+          else
+            cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk dist/ks-house-gatekeeper.apk
+          fi
 
           cat <<EOF > dist/version.json
           {

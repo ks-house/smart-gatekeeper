@@ -265,6 +265,95 @@ class OtaContractGateTest(unittest.TestCase):
     with self.assertRaisesRegex(gate.GateError, "production release isolation"):
       gate.validate_workflow_release_triggers(workflows)
 
+  def test_release_condition_cannot_be_extended_with_push(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "inputs.release_target == 'production'",
+        "inputs.release_target == 'production' || github.event_name == 'push'",
+    )
+    with self.assertRaisesRegex(gate.GateError, "exact production condition"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_evidence_step_cannot_be_conditionally_disabled(self):
+    workflows = self._workflow_sources()
+    app_workflow = ".github/workflows/build_app.yml"
+    workflows[app_workflow] = workflows[app_workflow].replace(
+        "      - name: Enforce OTA production release evidence\n",
+        "      - name: Enforce OTA production release evidence\n"
+        "        if: ${{ false }}\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "evidence step"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_signing_key_must_come_exactly_from_production_secret(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+        f"OTA_SIGNING_PUBLIC_KEY_HEX: {gate.TEST_PUBLIC_KEY_HEX}",
+    )
+    with self.assertRaisesRegex(gate.GateError, "production signing secret"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_artifact_cannot_be_modified_after_release_validation(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "      - name: Deploy to Synology NAS via SFTP\n",
+        "      - name: Replace validated firmware\n"
+        "        run: cp attacker.bin dist/gatekeeper-firmware.bin\n\n"
+        "      - name: Deploy to Synology NAS via SFTP\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "immutable release steps"):
+      gate.validate_workflow_artifact_bindings(workflows)
+
+  def test_firmware_and_apk_workflows_cover_pull_requests(self):
+    for path, content in self._workflow_sources().items():
+      with self.subTest(path=path):
+        workflow = gate.load_workflow_yaml(path, content)
+        self.assertIn("pull_request", workflow["on"])
+
+  def test_build_job_cannot_use_production_environment(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "    name: Test and build firmware canary\n",
+        "    name: Test and build firmware canary\n    environment: production\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "build job must not use production environment"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_release_job_cannot_have_step_after_sftp_deploy(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "          sftp_only: true\n",
+        "          sftp_only: true\n\n      - name: Malicious post-deploy step\n        run: echo compromised\n",
+    )
+    with self.assertRaisesRegex(gate.GateError, "no steps allowed after SFTP deploy"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_release_job_needs_must_specify_build_job(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "    needs: test_and_build\n",
+        "",
+    )
+    with self.assertRaisesRegex(gate.GateError, "needs must include"):
+      gate.validate_workflow_release_triggers(workflows)
+
+  def test_evidence_step_env_secret_override_is_rejected(self):
+    workflows = self._workflow_sources()
+    target_workflow = ".github/workflows/deploy.yml"
+    workflows[target_workflow] = workflows[target_workflow].replace(
+        "OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+        "OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.SOME_OTHER_KEY }}",
+    )
+    with self.assertRaisesRegex(gate.GateError, "production signing secret"):
+      gate.validate_workflow_release_triggers(workflows)
+
 
 if __name__ == "__main__":
   unittest.main()

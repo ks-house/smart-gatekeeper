@@ -1,6 +1,16 @@
 name: SmartGatekeeper CI/CD Pipeline
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/deploy.yml'
+      - 'include/**'
+      - 'src/**'
+      - 'platformio.ini'
+      - 'partitions_*MB_ota.csv'
+      - 'ota/**'
+      - 'scripts/ota_contract_gate.py'
+      - 'tests/test_ota_contract_gate.py'
   push:
     branches: [ main ]
   workflow_dispatch:
@@ -41,6 +51,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Create secrets.h from GitHub Secrets
+        if: github.event_name != 'pull_request'
         env:
           SECRET_ROOT_CA_CERT: ${{ secrets.SECRET_ROOT_CA_CERT }}
         run: |
@@ -70,6 +81,10 @@ jobs:
 
           echo '#endif // SECRETS_H' >> include/secrets.h
           echo "[CI] include/secrets.h generated successfully."
+
+      - name: Create compile-only secrets.h for pull requests
+        if: github.event_name == 'pull_request'
+        run: cp include/secrets.h.example include/secrets.h
 
       - name: Build ESP32-C6 Firmware with Version Override
         run: |
