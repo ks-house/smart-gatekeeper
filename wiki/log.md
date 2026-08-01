@@ -974,3 +974,9 @@
 ## [2026-08-01] lint | Android BLE wake ADR and wiki consistency
 
 - Verified local wiki links, no `raw/` changes, `git diff --check`, and synchronized ADR, environment, implementation-plan, OTA-contract, and index pages.
+
+## [2026-08-01] lint | PR #27 independent Android BLE wake review
+
+- Independently reviewed issue #14/#23, the ADR, and PR #27 at `07e7d27`; confirmed filtered `PendingIntent` scan selection, exact iBeacon manufacturer prefix/mask, Android 12+ mutable explicit `PendingIntent`, non-exported production receivers, Flutter-independent native journaling, unsupported force-stop/OEM contract, and legacy/OTA separation.
+- Re-ran Flutter tests (5/5), forced JVM tests (6/6), and the debug APK build; verified the PowerShell harness parses, package/merged-manifest receiver attributes are correct, wiki links are intact, `git diff --check` passes, and `raw/` is unchanged.
+- Recorded that repository-wide Android lint still has two pre-existing `MainActivity.kt` API-level errors and Flutter analyze has 17 pre-existing vendored-plugin info findings; PR-changed paths add no lint error. No ADB device was attached, so Samsung radio trials remain 0/20 and issue #14 plus OTA-G1/G2/G3 remain open hardware gates.
