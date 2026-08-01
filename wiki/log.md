@@ -1331,3 +1331,10 @@
 - strict main protection(enforce_admins: true), production Environment reviewer `tworimpa` 및 main-only policy 유지 확인
 - issue #23은 open 상태를 유지하고 OTA-G1~G4 physical evidence는 pending으로 관리
 
+## [2026-08-02] fix | Trusted workflow policy required-check deadlock 해제 및 parsed run 검증 강화
+
+- .github/workflows/trusted_workflow_policy.yml에서 paths 필터를 제거하여 docs-only PR을 포함한 모든 main 대상 PR에서 Verify protected files against trusted base policy 검사가 실행되도록 수정
+- pull_request_target 이벤트, base/default branch guards, trusted base-SHA checkout, inert candidate API bytes 처리 및 contents: read 권한을 모두 그대로 보존
+- tests/test_trusted_workflow_policy.py에 exact non-lossy parsed run validation (CR, LF, CRLF, tab, multiple spaces 거부) 및 structural regression tests (sparse-checkout dot, PR-title execution, extra steps, YAML boolean/string key collision, unsafe tags, unexpected jobs/steps/env/permissions, C0-control regression for wiki/log.md) 추가
+- wiki/trusted_workflow_policy.md 및 wiki/index.md에 paths 필터 제거와 required check 스케줄링 동작 업데이트
+- 77개 repository unit tests, protocol 16개, observability 18개, OTA contract, actionlint, relative link check, git diff --check, immutability 검사 통과
