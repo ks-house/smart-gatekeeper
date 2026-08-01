@@ -89,6 +89,21 @@
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
+
+        <!-- Wave 0 PoC: OS-managed filtered BLE wake enters native code only. -->
+        <receiver
+            android:name=".blewake.BleWakeScanReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".blewake.BleWakeBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
