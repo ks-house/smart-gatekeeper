@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-01 (모바일 앱·Target OTA 최상위 불변조건 반영)
+> Last updated: 2026-08-01 (issue #16 device key·BLE proof·signed ACL v1 규격 반영)
 
 ---
 
@@ -46,6 +46,7 @@
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
+| [security_protocol.md](security_protocol.md) | Android Keystore P-256 lifecycle, BLE canonical challenge/proof·framing, signed ACL lease·위협·N/N-1 규격과 공통 vector |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 
 
@@ -78,5 +79,6 @@
 | 화면 OFF 출입 실패 상세 분석 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) |
 | 모바일 병목 근본 재설계 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) |
 | 추가 하드웨어 없는 구현 로드맵 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) |
+| 기기 키·BLE proof·signed ACL v1 | [security_protocol.md](security_protocol.md) |
 | 모바일·Target OTA 최상위 계약 | [ota_reliability_contract.md](ota_reliability_contract.md) |
 | 비콘 미감지 신고 대응 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#9-신고-대응-순서) |

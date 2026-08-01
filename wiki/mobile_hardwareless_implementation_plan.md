@@ -130,6 +130,9 @@ Target은 iBeacon-only advertiser에서 **connectable BLE GATT peripheral**을 �
 
 ### 3.3 기기 자격
 
+> 아래 보안 계약의 동결 기준과 canonical bytes는
+> [security_protocol.md](security_protocol.md)를 따른다.
+
 - 앱 최초 등록 때 Android Keystore에서 device별 P-256 key pair 생성
 - private key는 export하지 않으며 자동 출입을 위해 user-auth requirement는 두지 않는
   안을 기본 PoC로 검토
@@ -166,7 +169,8 @@ Android credential worker는 challenge 전체를 device private key로 서명하
 - Target은 서명·버전·expiry 검증 뒤 새 namespace에 저장하고 원자적으로 active 전환
 - revocation은 MQTT push + 주기적 HTTPS/MQTT pull 중 최소 두 경로로 수렴
 - ACL lease 만료 뒤에는 자동 출입 fail-closed
-- 운영 offline lease 기본 제안은 24시간이며 보안 검토 이슈에서 확정
+- issue #16 보안 검토 결과 offline lease는 기본 900초, hard max 3,600초로 확정
+- trusted UTC가 없는 reset 뒤에는 새 signed snapshot을 받기 전 자동 출입 fail-closed
 - 현재 broker 후보 순회는 ACL/명령 계약에서 제거하고 명시된 logical broker만 사용
 
 ## 4. Target 상태 머신

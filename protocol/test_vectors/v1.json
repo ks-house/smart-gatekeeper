@@ -1,0 +1,282 @@
+{
+  "schema": "sgk-canonical-test-vectors-v1",
+  "note": "All private scalars are public, non-operational test fixtures and MUST NOT be used outside tests.",
+  "hello": {
+    "client": {
+      "protocol_min": 1,
+      "protocol_max": 1,
+      "framing_min": 1,
+      "framing_max": 1,
+      "max_rx_message": 2048,
+      "capabilities": 3,
+      "mobile_build": 100
+    },
+    "target": {
+      "selected_protocol": 1,
+      "protocol_min": 1,
+      "protocol_max": 1,
+      "selected_framing": 1,
+      "status": 0,
+      "max_rx_message": 2048,
+      "capabilities": 3,
+      "firmware_build": 200,
+      "security_floor": 1
+    },
+    "expected": {
+      "client_hex": "00010001010108000000000300000064",
+      "target_hex": "0001000100010100080000000003000000c80001",
+      "negotiation_hash": "45d76a3348fedc60d9219dd109bf1f86dc18ac3b9ede4e971000442bd95cbc8e"
+    }
+  },
+  "challenge": {
+    "fields": {
+      "protocol_version": 1,
+      "door_id": "00112233445566778899aabbccddeeff",
+      "session_id": "102132435465768798a9bacbdcedfe0f",
+      "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "target_boot_id": "ffeeddccbbaa99887766554433221100",
+      "expiry_monotonic_ms": 123456789,
+      "acl_version": 42,
+      "negotiation_hash": "45d76a3348fedc60d9219dd109bf1f86dc18ac3b9ede4e971000442bd95cbc8e"
+    },
+    "expected": {
+      "canonical_hex": "53474b4348414c31000100112233445566778899aabbccddeeff102132435465768798a9bacbdcedfe0f000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1fffeeddccbbaa9988776655443322110000000000075bcd15000000000000002a45d76a3348fedc60d9219dd109bf1f86dc18ac3b9ede4e971000442bd95cbc8e",
+      "sha256": "7cebae229af25267c8ae244cdb476a48a692feb81477cbc7f36e110e993bd464"
+    }
+  },
+  "proof": {
+    "fields": {
+      "credential_id": "aabbccddeeff00112233445566778899",
+      "action": 1,
+      "client_capabilities": 3
+    },
+    "fixture_private_scalar_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+    "expected": {
+      "input_hex": "53474b50524630317cebae229af25267c8ae244cdb476a48a692feb81477cbc7f36e110e993bd464aabbccddeeff001122334455667788990100000003",
+      "sha256": "7ea891a2a7270357f691240d0cc95cad3bfa4d8a9c48882a53482c809feadcae",
+      "public_key_sec1": "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+      "signature_raw64": "3894dfd39c70ee301d17346632461ac66f168c29fbada9bcaa18b9e408cf35dc22ed9694caebf65438228b0bfa4d456a6861c59f917ce3346090ec5f17ecfde8"
+    }
+  },
+  "acl": {
+    "fields": {
+      "schema_version": 1,
+      "door_id": "00112233445566778899aabbccddeeff",
+      "acl_version": 42,
+      "issued_at_epoch_s": 1785542400,
+      "not_before_epoch_s": 1785542400,
+      "expires_at_epoch_s": 1785546000,
+      "lease_duration_s": 900,
+      "min_protocol": 1,
+      "max_protocol": 1,
+      "signing_key_id": 7,
+      "entries": [
+        {
+          "credential_id": "aabbccddeeff00112233445566778899",
+          "public_key_sec1": "046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+          "status": 1,
+          "permissions": 1,
+          "not_before_epoch_s": 1785542400,
+          "not_after_epoch_s": 1788134400,
+          "min_protocol": 1,
+          "max_protocol": 1
+        }
+      ]
+    },
+    "fixture_signing_private_scalar_hex": "0000000000000000000000000000000000000000000000000000000000000002",
+    "expected": {
+      "canonical_hex": "53474b41434c3031000100112233445566778899aabbccddeeff000000000000002a000000006a6d3700000000006a6d3700000000006a6d45100000038400010001000000070001aabbccddeeff00112233445566778899046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f50100000001000000006a6d3700000000006a94c40000010001",
+      "sha256": "cc7010e328c5e5e89f5facf30fec10971e925cb34b8984245d623cb84544cea5",
+      "signing_public_key_sec1": "047cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1",
+      "signature_raw64": "13cdf7246422ab07576d0328bfe313db997c5d2689df26657b2ec338e690d4f11f2b0f9c7c6dfdc364cad779162817496b68139c67e38cc51a02aa255870ef8b"
+    }
+  },
+  "framing": {
+    "att_mtu": 23,
+    "message_type": 16,
+    "message_id": 4660,
+    "expected": {
+      "fragment_count": 14,
+      "frames_hex": [
+        "534701101234000e008a53474b4348414c310001",
+        "534701101234010e008a00112233445566778899",
+        "534701101234020e008aaabbccddeeff10213243",
+        "534701101234030e008a5465768798a9bacbdced",
+        "534701101234040e008afe0f0001020304050607",
+        "534701101234050e008a08090a0b0c0d0e0f1011",
+        "534701101234060e008a12131415161718191a1b",
+        "534701101234070e008a1c1d1e1fffeeddccbbaa",
+        "534701101234080e008a99887766554433221100",
+        "534701101234090e008a00000000075bcd150000",
+        "5347011012340a0e008a00000000002a45d76a33",
+        "5347011012340b0e008a48fedc60d9219dd109bf",
+        "5347011012340c0e008a1f86dc18ac3b9ede4e97",
+        "5347011012340d0e008a1000442bd95cbc8e"
+      ]
+    }
+  },
+  "negotiation_cases": [
+    {
+      "name": "N_N",
+      "client_min": 1,
+      "client_max": 2,
+      "target_min": 1,
+      "target_max": 2,
+      "security_floor": 1,
+      "expected_selected": 2
+    },
+    {
+      "name": "mobile_N_target_N_minus_1",
+      "client_min": 1,
+      "client_max": 2,
+      "target_min": 1,
+      "target_max": 1,
+      "security_floor": 1,
+      "expected_selected": 1
+    },
+    {
+      "name": "mobile_N_minus_1_target_N",
+      "client_min": 1,
+      "client_max": 1,
+      "target_min": 1,
+      "target_max": 2,
+      "security_floor": 1,
+      "expected_selected": 1
+    },
+    {
+      "name": "rollback_to_N_minus_1",
+      "client_min": 1,
+      "client_max": 1,
+      "target_min": 1,
+      "target_max": 2,
+      "security_floor": 1,
+      "expected_selected": 1
+    },
+    {
+      "name": "downgrade_below_floor",
+      "client_min": 1,
+      "client_max": 1,
+      "target_min": 1,
+      "target_max": 2,
+      "security_floor": 2,
+      "expected_selected": null
+    },
+    {
+      "name": "no_overlap",
+      "client_min": 2,
+      "client_max": 2,
+      "target_min": 1,
+      "target_max": 1,
+      "security_floor": 1,
+      "expected_selected": null
+    }
+  ],
+  "acl_activation_cases": [
+    {
+      "name": "newer_version",
+      "current_version": 41,
+      "current_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "candidate_version": 42,
+      "candidate_digest": "cc7010e328c5e5e89f5facf30fec10971e925cb34b8984245d623cb84544cea5",
+      "expected_decision": "activate"
+    },
+    {
+      "name": "same_version_same_digest",
+      "current_version": 42,
+      "current_digest": "cc7010e328c5e5e89f5facf30fec10971e925cb34b8984245d623cb84544cea5",
+      "candidate_version": 42,
+      "candidate_digest": "cc7010e328c5e5e89f5facf30fec10971e925cb34b8984245d623cb84544cea5",
+      "expected_decision": "idempotent_no_lease_refresh"
+    },
+    {
+      "name": "same_version_different_digest",
+      "current_version": 42,
+      "current_digest": "cc7010e328c5e5e89f5facf30fec10971e925cb34b8984245d623cb84544cea5",
+      "candidate_version": 42,
+      "candidate_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected_decision": "reject_version_conflict"
+    },
+    {
+      "name": "stale_version",
+      "current_version": 42,
+      "current_digest": "cc7010e328c5e5e89f5facf30fec10971e925cb34b8984245d623cb84544cea5",
+      "candidate_version": 41,
+      "candidate_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected_decision": "reject_stale"
+    }
+  ],
+  "lease_cases": [
+    {
+      "name": "trusted_clock_valid",
+      "lease_duration_s": 900,
+      "trusted_utc": true,
+      "now_epoch_s": 1785542500,
+      "not_before_epoch_s": 1785542400,
+      "expires_at_epoch_s": 1785546000,
+      "received_current_boot": true,
+      "receipt_monotonic_ms": 1000,
+      "now_monotonic_ms": 100000,
+      "expected_usable": true
+    },
+    {
+      "name": "trusted_clock_expired",
+      "lease_duration_s": 900,
+      "trusted_utc": true,
+      "now_epoch_s": 1785546000,
+      "not_before_epoch_s": 1785542400,
+      "expires_at_epoch_s": 1785546000,
+      "received_current_boot": true,
+      "receipt_monotonic_ms": 1000,
+      "now_monotonic_ms": 100000,
+      "expected_usable": false
+    },
+    {
+      "name": "untrusted_clock_fresh_current_boot",
+      "lease_duration_s": 900,
+      "trusted_utc": false,
+      "now_epoch_s": 0,
+      "not_before_epoch_s": 1785542400,
+      "expires_at_epoch_s": 1785546000,
+      "received_current_boot": true,
+      "receipt_monotonic_ms": 1000,
+      "now_monotonic_ms": 100000,
+      "expected_usable": true
+    },
+    {
+      "name": "untrusted_clock_after_reboot",
+      "lease_duration_s": 900,
+      "trusted_utc": false,
+      "now_epoch_s": 0,
+      "not_before_epoch_s": 1785542400,
+      "expires_at_epoch_s": 1785546000,
+      "received_current_boot": false,
+      "receipt_monotonic_ms": 0,
+      "now_monotonic_ms": 1000,
+      "expected_usable": false
+    },
+    {
+      "name": "monotonic_lease_expired",
+      "lease_duration_s": 900,
+      "trusted_utc": true,
+      "now_epoch_s": 1785542500,
+      "not_before_epoch_s": 1785542400,
+      "expires_at_epoch_s": 1785546000,
+      "received_current_boot": true,
+      "receipt_monotonic_ms": 1000,
+      "now_monotonic_ms": 901000,
+      "expected_usable": false
+    },
+    {
+      "name": "lease_over_hard_max",
+      "lease_duration_s": 3601,
+      "trusted_utc": true,
+      "now_epoch_s": 1785542500,
+      "not_before_epoch_s": 1785542400,
+      "expires_at_epoch_s": 1785546000,
+      "received_current_boot": true,
+      "receipt_monotonic_ms": 1000,
+      "now_monotonic_ms": 100000,
+      "expected_usable": false
+    }
+  ]
+}

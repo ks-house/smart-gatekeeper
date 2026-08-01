@@ -128,6 +128,11 @@ TLS 연결을 시작하지만 3회 실패 후 `setInsecure()`로 전환하는 �
 
 코드는 Arduino-ESP32 `BLEDevice` API를 사용하지만 UUID native field는 NimBLE 계열 형태를 참조하고 주석은 Bluedroid라고 명시하여 스택 정체가 불일치합니다. iBeacon manufacturer payload의 UUID byte order는 코드만으로 합격 판정하지 않으며 실측이 필요합니다.
 
+향후 connectable GATT local auth의 Android Keystore P-256 자격, MTU 독립 framing,
+canonical challenge/proof, signed ACL lease와 N/N-1 보안 계약은
+[security_protocol.md](security_protocol.md)를 따른다. 현재 iBeacon/MQTT 경로가 해당 계약을
+이미 구현했다는 뜻은 아니며 Wave 1 구현 전제 규격이다.
+
 ## 4. Android 앱
 
 - foreground-service isolate가 유일한 native scanner owner입니다.

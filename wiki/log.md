@@ -959,3 +959,28 @@
 
 - Epic #13 하위에 `[OTA][I10] 모바일 앱·Target OTA 비회귀와 복구 계약` #23을 Wave 0 cross-cutting blocker로 등록
 - #17~#22 구현·통합·rollout은 #23의 OTA reachability, artifact integrity, dual-slot rollback, N/N-1 compatibility 계약을 통과해야 완료되도록 구현 계획에 반영
+
+## [2026-08-01] compile | issue #16 device key·BLE proof·signed ACL v1 규격 확정
+
+- Android Keystore P-256 생성·enrollment·rotation·revocation과 user-auth 없는 자동 출입의 분실 휴대폰 위험, online 60초/기본 900초/hard max 3,600초 revoke 경계를 명시
+- BLE default ATT_MTU 23에서도 동작하는 10-byte framing, highest-common version negotiation, canonical challenge/proof bytes, low-S raw64 ECDSA와 고정 result reason을 확정
+- signed ACL canonical schema, 단조 version/high-watermark, copy-on-write atomic activation, clock 부정확·reset·stale/equal-version replay fail-closed 정책을 정의
+- mobile/Target/backend N/N-1·rollback, OTA control-plane 독립성, secret 비로그, replay·downgrade 위협 모델을 release gate로 연결
+
+## [2026-08-01] code | Android·ESP32·Backend 공통 canonical vector 자동 검증 추가
+
+- `protocol/test_vectors/v1.json`에 hello transcript, 138-byte challenge, 61-byte proof input, P-256 low-S raw64 signature, 178-byte ACL, ATT_MTU 23의 14개 fragment를 고정
+- stdlib-only verifier와 8개 mutation/replay/framing/downgrade/rollback unit test를 추가하고 protocol 변경 전용 GitHub Actions workflow를 구성
+- vector의 private scalar는 공개·비운영 test fixture이며 production 자격으로 재사용하거나 production log에 출력하지 않도록 명시
+
+## [2026-08-01] test | issue #16 canonical protocol vector 검증 통과
+
+- `python protocol/tools/verify_vectors.py`가 committed canonical hex/hash, RFC 6979 P-256 signature와 ACL signature를 검증
+- `python -m unittest discover -s protocol/tests -v`에서 cross-door/cross-boot proof reuse, high-S, unsorted ACL, MTU 23 reassembly, N/N-1 rollback/floor 8개 시험 통과
+- Python `cryptography` verifier로 raw64 fixture를 DER로 변환해 독립 P-256/SHA-256 검증 통과
+
+## [2026-08-01] lint | issue #16 protocol wiki·vector 일관성 점검
+
+- cross-session, stale/equal-version ACL, trusted/untrusted clock lease case를 추가해 최종 11개 unit test와 vector verifier, Python compile, `git diff --check` 통과
+- 변경된 wiki 4개 문서의 상대 Markdown link가 모두 존재하고 24시간 offline lease 제안이 확정된 기본 900초/hard max 3,600초 정책과 충돌하지 않음을 확인
+- 새 `security_protocol.md`를 wiki navigation/architecture/구현 계획에 연결하고 raw 파일 및 기존 log entry는 수정하지 않음
