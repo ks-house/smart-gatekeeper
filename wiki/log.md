@@ -1385,6 +1385,7 @@
 - 인증된 explicit button `manual_remote` chain, runtime, raw/, 5-file protected bundle, 기존 OTA schema/evidence/state/recovery assets, legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성·fallback과 N/N-1은 main 대비 byte-unchanged
 - 81개 repository unit test, protocol 16개, observability 18개, canonical vector와 access/manual_remote/Target OTA/rollback fixture validate·evaluate, 16개 독립 gate negative mutation, OTA contract·pending release 거부, actionlint, 14 YAML/22 JSON/9 JSONL/12 Python, 38 Markdown/188 relative link, index/conflict/diff/immutability 검사 전건 통과
 - ESP32-C6 PlatformIO build는 ignored non-secret placeholder `include/secrets.h`로 RAM 47,032/327,680 bytes, flash 1,594,400/7,340,032 bytes에서 통과했고 임시 header를 제거해 worktree를 복원
+- `wiki/log.md`는 main 134,068-byte exact prefix와 기존 PR-only 3,964-byte suffix를 보존하고 645-byte merge 기록 뒤 본 reviewer 기록만 append했으며 invalid C0/DEL은 0건
 - hosted runs `30721749667`, `30721750617`, `30721750633`, `30721750649`는 exact reviewed head에서 성공하고 firmware/Android production job은 정확히 skipped; Epic #13과 #14/#18/#22/#23, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 radio·relay/sensor·bootloader physical/operator gates는 open/pending 유지
 
 ## [2026-08-02] code | Issue 18 Hardwareless RC Connectable GATT Transport & Coexistence 구현
@@ -1396,3 +1397,13 @@
 - Boot relay OFF 및 fail-safe (GPIO23 active-low, esp_timer), SDA GPIO6, SCL GPIO7 I2C bus clear, pioarduino ESP32-C6 RISC-V, dual-slot OTA rollback, authenticated `manual_remote` explicit mobile button door-open 보존
 - `tests/test_hardwareless_rc.py` deterministic tests (100 cycles, fuzz/malformed inputs, timeout/reset, concurrent MQTT/OTA, relay safety, N/N-1, advertisement vs Android filter agreement) 통과
 - `python protocol/tools/verify_vectors.py`, `protocol/tests`, `observability/tests`, `tests` 총 88개 host tests 및 PlatformIO `esp32c6` 통합 빌드 통과
+
+## [2026-08-02] lint | PR #34 Hardwareless RC GATT 독립 리뷰 차단
+
+- 최초 author head `111598e40a05a781e28a1b6f3d0b98967f774614`의 전체 diff와 #13/#14/#16/#17/#18/#20/#23, canonical protocol·advertisement filter·observability·OTA 계약을 독립 검토하고 PR을 draft/unmerged 상태로 유지하기로 판정
+- 실제 firmware는 BLE server/service/characteristic/callback을 만들지 않고 GATT handler 호출점도 없으며 framing/reassembly, 2초 proof 조립 제한, 최대 1 connection, OTA busy 연결과 canonical telemetry emitter가 구현되지 않음
+- `handleProofWrite`는 exact 103-byte 크기, action, credential, signed ACL, raw64 low-S P-256 signature와 canonical input을 검증하지 않고 version/session만 맞는 103-byte 이상 payload에 `OK`를 반환하며 output pointer/length 안전성도 없어 #16/#20 fail-closed 경계를 충족하지 못함
+- 새 Python test는 실제 C++를 호출하지 않는 별도 simulator이고 임의 non-zero signature로 relay success를 생성해 100회, malformed, replay, OTA concurrency, advertisement/filter 결과를 firmware/radio/relay 증거로 사용할 수 없음
+- compile flag OFF 빌드도 전체 GATT 코드를 compile하고 persisted NVS `hwless_rc=true`로 활성화될 수 있으며, 새 문서가 supplied `AGENTS.md`와 `schema.md`의 relay GPIO3 대신 GPIO23을 완료 상태로 재확인한 충돌도 남음
+- 88개 repository, 16개 protocol, 18개 observability test, canonical vector, access/manual_remote/OTA fixture validate·evaluate, OTA contract, actionlint, JSON/JSONL/Python/link/raw 검사와 PlatformIO `esp32c6` build는 통과했으나 disconnected test가 위 blocker를 검출하지 못했고 `tof_test`/`relay_test` env는 정의되지 않아 실행 불가
+- 삭제됐던 이전 PR #31 log bullet을 exact 복원하고 `tests/test_hardwareless_rc.py` 두 곳의 trailing whitespace를 제거했으며, Samsung/ESP32-C6 radio·GPIO·relay·sensor·heap·power-loss·bootloader·OTA-G1~G4·RELAY-G0~G2 물리 증거는 생성하거나 주장하지 않음

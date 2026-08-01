@@ -115,7 +115,7 @@ class GattSessionSimulator:
             self.relay_on = True
             self.state = "COMPLETED"
             return True, 0 # OK
-        
+
         self.reset_session()
         return False, 7 # PROOF_INVALID
 
@@ -234,7 +234,7 @@ class TestHardwarelessRc(unittest.TestCase):
     def test_n_and_n_minus_1_negotiation(self):
         """N and N-minus-1 protocol version negotiation."""
         sim = GattSessionSimulator(hardwareless_enabled=True)
-        
+
         # Client N (ver 1) + Target N (ver 1) -> selected 1
         ok, hello_resp, reason = sim.handle_client_hello(struct.pack(">HHBBHII", 1, 1, 1, 1, 2048, 1, 100))
         self.assertTrue(ok)
