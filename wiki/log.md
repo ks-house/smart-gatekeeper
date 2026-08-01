@@ -1299,3 +1299,11 @@
 - 양쪽 변경 내용(PlatformIO/Flutter canary 보존, trusted workflow policy, 명시적 production dispatch)을 손실 없이 보존하고 중복된 마커 아티팩트만 정리
 - 런타임 코드, 테스트, raw/, 보호 workflow/policy/scripts 및 수동 모바일 출입 경로를 변경하지 않고 보존
 - 저장소 전체 conflict marker 0건, `git diff --check origin/main...HEAD` 0 error, wiki relative-link consistency 및 모든 unit test/actionlint 통과 확인
+
+## [2026-08-01] test | PR #28 final conflict-fix review approved for protected merge
+
+- Independently reviewed head `021105fa9e4227ad4e6961219d352c7c092dfc28`; confirmed `3befc28..021105f` changes only three wiki files, removes all seven conflict markers, preserves both the explicit production-dispatch and trusted-policy contracts, appends valid history, and leaves raw/runtime/tests/protected files plus `manual_remote` byte-identical.
+- The live base validator and hosted Trusted Workflow Policy run `30707292418` approved exactly `pr-28-preapproved` from trusted base SHA `420783fc`; 12 trusted-policy, 50 OTA, 18 observability, and 16 protocol tests, fixture validate/evaluate, actionlint, YAML/JSON/JSONL/link/compile/diff/raw checks, and ESP32-C6 PlatformIO build all passed.
+- PR runs `30707293747`, `30707293730`, and `30707293735` completed successfully with OTA, firmware, Android contract/test/build/canary coverage; firmware and Android production jobs were accurately skipped, while direct production validation remained fail-closed on pending OTA-G1 through OTA-G4.
+- Confirmed the live `production` Environment requires reviewer `tworimpa` with the sole custom deployment branch `main`, and strict main protection requires `Verify protected files against trusted base policy` with admins enforced and force pushes/deletions disabled.
+- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4835063820; issue #23 remains open for unavailable OTA-G1 through OTA-G4 physical/operator evidence.
