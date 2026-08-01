@@ -1346,3 +1346,11 @@
 - exact top-level/job/step key와 정확히 2개 ordered step, pinned checkout SHA, exact sparse 2-path/cone-mode, exact verifier env/run body 및 extra/candidate 실행 금지를 회귀 테스트로 고정하기 전 병합 차단
 - 65개 repository test, protocol 16개, observability 18개, OTA contract/live validator, actionlint, YAML/JSON/JSONL/Python/link/diff/immutability nominal 검사는 통과하고 protected bundle·raw/runtime/manual_remote/OTA evidence는 byte-unchanged
 - COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/32#pullrequestreview-4835815859 게시; PR #32는 draft/unmerged로 유지하며 production과 Epic/물리 Gate는 계속 fail-closed/open
+
+## [2026-08-02] fix | Trusted workflow policy structural regression test fail-closed 강화
+
+- 	ests/test_trusted_workflow_policy.py에 alidate_trusted_workflow_structure 엄격한 스키마 검증기 도입
+- exact allowed keys (top-level, on, pull_request_target, permissions, jobs, verify, steps, step 1 with, step 2 env), 정확히 2개 ordered steps, pinned checkout action SHA (ctions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683), exact base-SHA ref (${{ github.event.pull_request.base.sha }}), persist-credentials: false, exact 2개 sparse paths (.github/workflow-policy/trusted_workflow_policy.json, scripts/verify_trusted_workflow_policy.py), sparse-checkout-cone-mode: false, exact verifier env keys/values 및 exact trusted run command 검증 고정
+- 3개 adversarial 변형(sparse-checkout . 변형, verifier run ${{ github.event.pull_request.title }} 보간/실행 변형, 3번째/4번째 extra candidate checkout/execution step 변형)이 기계적으로 실패(ValueError)함을 유닛 테스트로 입증
+- .github/workflows/trusted_workflow_policy.yml은 paths 제거만 유지하고 raw/runtime/manual_remote/OTA/5개 protected bundle 파일 보존
+- 68개 repository unit tests, protocol 16개, observability 18개, OTA contract, actionlint, relative link check, git diff --check, raw immutability 검사 통과

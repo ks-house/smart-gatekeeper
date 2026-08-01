@@ -227,17 +227,218 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           trusted.verify_candidate(policy, candidate.__getitem__)
 
 
+def validate_trusted_workflow_structure(workflow_data: dict) -> None:
+  """Strictly validate that trusted_workflow_policy.yml matches exact schema and trust boundary."""
+  if not isinstance(workflow_data, dict):
+    raise ValueError("Workflow data must be a dictionary")
+
+  keys = set(workflow_data.keys())
+  normalized_keys = {("on" if k is True else k) for k in keys}
+  expected_top_keys = {"name", "on", "permissions", "jobs"}
+  if normalized_keys != expected_top_keys:
+    raise ValueError(
+        f"Top-level keys must be exactly {sorted(expected_top_keys)}; got"
+        f" {sorted(normalized_keys)}"
+    )
+
+  if workflow_data.get("name") != "Trusted Workflow Policy":
+    raise ValueError("Workflow name must be 'Trusted Workflow Policy'")
+
+  on_block = (
+      workflow_data.get("on")
+      if "on" in workflow_data
+      else workflow_data.get(True)
+  )
+  if not isinstance(on_block, dict):
+    raise ValueError("'on' block must be a dictionary")
+  if set(on_block.keys()) != {"pull_request_target"}:
+    raise ValueError("'on' block must only contain 'pull_request_target'")
+
+  pr_target = on_block.get("pull_request_target")
+  if not isinstance(pr_target, dict):
+    raise ValueError("'pull_request_target' must be a dictionary")
+  if set(pr_target.keys()) != {"branches", "types"}:
+    raise ValueError(
+        "'pull_request_target' keys must be exactly {'branches', 'types'}; got"
+        f" {set(pr_target.keys())}"
+    )
+  if pr_target.get("branches") != ["main"]:
+    raise ValueError("pull_request_target branches must be ['main']")
+  if (
+      sorted(pr_target.get("types", []))
+      != ["opened", "reopened", "synchronize"]
+  ):
+    raise ValueError(
+        "pull_request_target types must be opened, synchronize, reopened"
+    )
+
+  permissions = workflow_data.get("permissions")
+  if permissions != {"contents": "read"}:
+    raise ValueError(
+        f"Permissions must be exactly {{'contents': 'read'}}; got {permissions}"
+    )
+
+  jobs = workflow_data.get("jobs")
+  if not isinstance(jobs, dict) or set(jobs.keys()) != {"verify"}:
+    raise ValueError("jobs block must contain exactly one job named 'verify'")
+
+  verify_job = jobs.get("verify")
+  if not isinstance(verify_job, dict):
+    raise ValueError("'verify' job must be a dictionary")
+  expected_job_keys = {"name", "if", "runs-on", "steps"}
+  if set(verify_job.keys()) != expected_job_keys:
+    raise ValueError(
+        "'verify' job keys must be exactly"
+        f" {sorted(expected_job_keys)}; got {sorted(verify_job.keys())}"
+    )
+
+  if (
+      verify_job.get("name")
+      != "Verify protected files against trusted base policy"
+  ):
+    raise ValueError("Job name mismatch")
+
+  expected_if = (
+      "github.event.pull_request.base.repo.full_name == github.repository && "
+      "github.event.pull_request.base.ref =="
+      " github.event.repository.default_branch"
+  )
+  if verify_job.get("if") != expected_if:
+    raise ValueError("Job 'if' condition mismatch")
+
+  if verify_job.get("runs-on") != "ubuntu-latest":
+    raise ValueError("Job 'runs-on' must be 'ubuntu-latest'")
+
+  steps = verify_job.get("steps")
+  if not isinstance(steps, list) or len(steps) != 2:
+    raise ValueError(
+        "Job steps must be exactly 2 ordered steps; got"
+        f" {len(steps) if isinstance(steps, list) else type(steps)}"
+    )
+
+  step1, step2 = steps[0], steps[1]
+  if not isinstance(step1, dict) or not isinstance(step2, dict):
+    raise ValueError("Steps must be dictionaries")
+
+  # Step 1: Checkout
+  if set(step1.keys()) != {"name", "uses", "with"}:
+    raise ValueError(
+        "Step 1 keys must be exactly {'name', 'uses', 'with'}; got"
+        f" {set(step1.keys())}"
+    )
+  if step1.get("name") != "Checkout trusted policy from the PR base SHA":
+    raise ValueError("Step 1 name mismatch")
+  expected_uses = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+  if step1.get("uses") != expected_uses:
+    raise ValueError(f"Step 1 uses must be pinned action SHA '{expected_uses}'")
+
+  with1 = step1.get("with")
+  if not isinstance(with1, dict):
+    raise ValueError("Step 1 'with' block must be a dictionary")
+  expected_with1_keys = {
+      "ref",
+      "persist-credentials",
+      "sparse-checkout",
+      "sparse-checkout-cone-mode",
+  }
+  if set(with1.keys()) != expected_with1_keys:
+    raise ValueError(
+        "Step 1 'with' keys must be exactly"
+        f" {sorted(expected_with1_keys)}; got {sorted(with1.keys())}"
+    )
+
+  if with1.get("ref") != "${{ github.event.pull_request.base.sha }}":
+    raise ValueError(
+        "Step 1 ref must be exact base SHA"
+        " '${{ github.event.pull_request.base.sha }}'"
+    )
+  if with1.get("persist-credentials") is not False:
+    raise ValueError("Step 1 persist-credentials must be False")
+  if with1.get("sparse-checkout-cone-mode") is not False:
+    raise ValueError("Step 1 sparse-checkout-cone-mode must be False")
+
+  sparse_paths = [
+      line.strip()
+      for line in str(with1.get("sparse-checkout", "")).strip().splitlines()
+      if line.strip()
+  ]
+  expected_sparse = [
+      ".github/workflow-policy/trusted_workflow_policy.json",
+      "scripts/verify_trusted_workflow_policy.py",
+  ]
+  if sparse_paths != expected_sparse:
+    raise ValueError(
+        f"Step 1 sparse-checkout paths must be exactly {expected_sparse}; got"
+        f" {sparse_paths}"
+    )
+
+  # Step 2: Verifier
+  if set(step2.keys()) != {"name", "env", "run"}:
+    raise ValueError(
+        "Step 2 keys must be exactly {'name', 'env', 'run'}; got"
+        f" {set(step2.keys())}"
+    )
+  if step2.get("name") != "Verify candidate files as inert GitHub API bytes":
+    raise ValueError("Step 2 name mismatch")
+
+  env2 = step2.get("env")
+  if not isinstance(env2, dict):
+    raise ValueError("Step 2 'env' block must be a dictionary")
+  expected_env_keys = {
+      "GITHUB_TOKEN",
+      "GITHUB_API_URL",
+      "CANDIDATE_REPOSITORY",
+      "CANDIDATE_SHA",
+  }
+  if set(env2.keys()) != expected_env_keys:
+    raise ValueError(
+        "Step 2 env keys must be exactly"
+        f" {sorted(expected_env_keys)}; got {sorted(env2.keys())}"
+    )
+
+  if env2.get("GITHUB_TOKEN") != "${{ github.token }}":
+    raise ValueError("Step 2 GITHUB_TOKEN mismatch")
+  if env2.get("GITHUB_API_URL") != "${{ github.api_url }}":
+    raise ValueError("Step 2 GITHUB_API_URL mismatch")
+  if (
+      env2.get("CANDIDATE_REPOSITORY")
+      != "${{ github.event.pull_request.head.repo.full_name }}"
+  ):
+    raise ValueError("Step 2 CANDIDATE_REPOSITORY mismatch")
+  if env2.get("CANDIDATE_SHA") != "${{ github.event.pull_request.head.sha }}":
+    raise ValueError("Step 2 CANDIDATE_SHA mismatch")
+
+  expected_run = (
+      "python scripts/verify_trusted_workflow_policy.py "
+      "--policy .github/workflow-policy/trusted_workflow_policy.json "
+      '--candidate-repository "$CANDIDATE_REPOSITORY" '
+      '--candidate-ref "$CANDIDATE_SHA" '
+      '--api-url "$GITHUB_API_URL"'
+  )
+  actual_run = " ".join(str(step2.get("run", "")).split())
+  if actual_run != expected_run:
+    raise ValueError(
+        f"Step 2 run command mismatch: expected '{expected_run}', got"
+        f" '{actual_run}'"
+    )
+
+
 class TrustedWorkflowStructureTest(unittest.TestCase):
   def setUp(self):
     self.workflow_path = ROOT / ".github/workflows/trusted_workflow_policy.yml"
     self.workflow_text = self.workflow_path.read_text(encoding="utf-8")
     self.workflow_data = yaml.safe_load(self.workflow_text)
 
+  def test_current_workflow_matches_strict_policy(self):
+    validate_trusted_workflow_structure(self.workflow_data)
+
   def test_no_paths_or_paths_ignore_suppression(self):
     on_block = self.workflow_data.get("on") or self.workflow_data.get(True)
     self.assertIsNotNone(on_block, "Workflow must have an 'on' trigger block")
     pr_target = on_block.get("pull_request_target")
-    self.assertIsNotNone(pr_target, "Workflow must trigger on pull_request_target")
+    self.assertIsNotNone(
+        pr_target, "Workflow must trigger on pull_request_target"
+    )
     self.assertNotIn(
         "paths", pr_target, "pull_request_target must not have a paths filter"
     )
@@ -250,54 +451,40 @@ class TrustedWorkflowStructureTest(unittest.TestCase):
     self.assertNotIn(
         "paths-ignore", on_block, "on block must not have a paths-ignore filter"
     )
-    self.assertEqual(pr_target.get("branches"), ["main"])
-    self.assertEqual(
-        sorted(pr_target.get("types", [])),
-        ["opened", "reopened", "synchronize"],
-    )
 
-  def test_trust_boundary_guards_and_permissions(self):
-    self.assertEqual(
-        self.workflow_data.get("permissions"), {"contents": "read"}
-    )
-    jobs = self.workflow_data.get("jobs", {})
+  def test_rejects_sparse_checkout_mutation_dot(self):
+    mutated = copy.deepcopy(self.workflow_data)
+    jobs = mutated.get("jobs", {})
     verify_job = jobs.get("verify", {})
-    self.assertEqual(
-        verify_job.get("name"),
-        "Verify protected files against trusted base policy",
-    )
-
-    job_if = verify_job.get("if", "")
-    self.assertIn(
-        "github.event.pull_request.base.repo.full_name == github.repository",
-        job_if,
-    )
-    self.assertIn(
-        "github.event.pull_request.base.ref =="
-        " github.event.repository.default_branch",
-        job_if,
-    )
-
     steps = verify_job.get("steps", [])
-    self.assertGreaterEqual(len(steps), 2)
+    steps[0]["with"]["sparse-checkout"] = "."
+    with self.assertRaisesRegex(
+        ValueError, "Step 1 sparse-checkout paths must be exactly"
+    ):
+      validate_trusted_workflow_structure(mutated)
 
-    checkout_step = steps[0]
-    self.assertEqual(
-        checkout_step.get("with", {}).get("ref"),
-        "${{ github.event.pull_request.base.sha }}",
-    )
-    self.assertFalse(checkout_step.get("with", {}).get("persist-credentials"))
+  def test_rejects_verifier_run_mutation_pr_title(self):
+    mutated = copy.deepcopy(self.workflow_data)
+    jobs = mutated.get("jobs", {})
+    verify_job = jobs.get("verify", {})
+    steps = verify_job.get("steps", [])
+    steps[1]["run"] = "echo ${{ github.event.pull_request.title }}"
+    with self.assertRaisesRegex(ValueError, "Step 2 run command mismatch"):
+      validate_trusted_workflow_structure(mutated)
 
-    verify_step = steps[1]
-    env = verify_step.get("env", {})
-    self.assertEqual(
-        env.get("CANDIDATE_REPOSITORY"),
-        "${{ github.event.pull_request.head.repo.full_name }}",
-    )
-    self.assertEqual(
-        env.get("CANDIDATE_SHA"),
-        "${{ github.event.pull_request.head.sha }}",
-    )
+  def test_rejects_extra_candidate_execution_steps(self):
+    mutated = copy.deepcopy(self.workflow_data)
+    jobs = mutated.get("jobs", {})
+    verify_job = jobs.get("verify", {})
+    steps = verify_job.get("steps", [])
+    steps.append({
+        "name": "Candidate execution step",
+        "run": "python candidate.py",
+    })
+    with self.assertRaisesRegex(
+        ValueError, "Job steps must be exactly 2 ordered steps"
+    ):
+      validate_trusted_workflow_structure(mutated)
 
 
 if __name__ == "__main__":
