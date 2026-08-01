@@ -1286,3 +1286,11 @@
 - `verify_trusted_workflow_policy.py` 실행 결과 후보 번들이 `pr-28-preapproved`와 100% 일치함을 기계적으로 검증
 - 수동 모바일 출입 및 미결 OTA-G1~G4 물리 증거 상태를 보존하고 12개 trusted policy test, 39개 OTA contract test, 18개 observability test, 16개 protocol test, actionlint, relative link check, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
 
+## [2026-08-01] test | PR #28 final trusted-policy review blocked by unresolved wiki conflicts
+
+- Independently verified head `55f8249753e21061b61eaf4d5669dd549796c511`: trusted base run `30706318220` checked base SHA `420783fc`, approved exactly `pr-28-preapproved`, and 12 trusted-policy tests plus a separate 102-case byte-mutation audit rejected every protected-file deviation and PR-side policy self-redefinition.
+- Re-ran 50 OTA, 18 observability, 16 protocol, authenticated `manual_remote`, OTA/access/rollback state-machine, actionlint, YAML/JSON/JSONL/schema/link/compile/raw-diff, and ESP32-C6 PlatformIO checks; all passed, and PR runs `30706319098`, `30706319103`, and `30706319133` completed successfully with both production jobs accurately skipped.
+- Confirmed the live `production` Environment still requires reviewer `tworimpa` and permits only the custom deployment branch `main`; branch protection requires the trusted policy status, while issue #23 remains open for OTA-G1 through OTA-G4 physical/operator evidence.
+- Blocked merge because `git diff --check origin/main...HEAD` exits 2 on unresolved conflict markers in `wiki/env_setup.md`, `wiki/log.md`, and `wiki/ota_reliability_contract.md`, leaving the documented trigger and release contracts ambiguous and corrupting the append-only log history.
+- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4834996277; PR #28 remains draft and unmerged pending a conflict-only correction and fresh independent review.
+
