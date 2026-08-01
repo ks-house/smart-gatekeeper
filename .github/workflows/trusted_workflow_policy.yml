@@ -1,0 +1,50 @@
+name: Trusted Workflow Policy
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/build_app.yml'
+      - '.github/workflows/ota_contract.yml'
+      - 'scripts/ota_contract_gate.py'
+      - 'ota/requirements.txt'
+      - '.github/workflows/trusted_workflow_policy.yml'
+      - '.github/workflow-policy/trusted_workflow_policy.json'
+      - 'scripts/verify_trusted_workflow_policy.py'
+      - 'tests/test_trusted_workflow_policy.py'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify protected files against trusted base policy
+    if: >-
+      github.event.pull_request.base.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted policy from the PR base SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/workflow-policy/trusted_workflow_policy.json
+            scripts/verify_trusted_workflow_policy.py
+          sparse-checkout-cone-mode: false
+
+      - name: Verify candidate files as inert GitHub API bytes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          CANDIDATE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python scripts/verify_trusted_workflow_policy.py
+          --policy .github/workflow-policy/trusted_workflow_policy.json
+          --candidate-repository "$CANDIDATE_REPOSITORY"
+          --candidate-ref "$CANDIDATE_SHA"
+          --api-url "$GITHUB_API_URL"

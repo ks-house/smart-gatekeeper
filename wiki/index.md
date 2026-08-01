@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-01 (Android BLE wake, OTA P0, RELAY-G0/G1/G2, cross-layer event schema v1 반영)
+> Last updated: 2026-08-02 (trusted workflow-policy bootstrap 반영)
 
 ---
 
@@ -51,6 +51,7 @@
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
+| [trusted_workflow_policy.md](trusted_workflow_policy.md) | base-branch pull_request_target 신뢰 경계, exact digest bundle, PR #28 전환·rotation 절차 |
 
 ---
 
@@ -85,4 +86,5 @@
 | 모바일·Target OTA 최상위 계약 | [ota_reliability_contract.md](ota_reliability_contract.md) |
 | Cross-layer session/event code와 parser fixture | [observability_event_schema.md](observability_event_schema.md) |
 | OTA canary·rollback 운영 절차 | [ota_operations_runbook.md](ota_operations_runbook.md) |
+| Trusted workflow digest Gate와 policy rotation | [trusted_workflow_policy.md](trusted_workflow_policy.md) |
 | 비콘 미감지 신고 대응 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#9-신고-대응-순서) |

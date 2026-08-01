@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-01 (OTA P0 CI release Gate 반영)
+> Last updated: 2026-08-02 (trusted workflow-policy bootstrap 반영)
 
 ## 1. 펌웨어
 
@@ -76,6 +76,7 @@ flutter build apk --release \
 | `.github/workflows/ota_contract.yml` | OTA 영향 PR/main | schema, signature tamper vector, dual-slot/recovery/release blocker 자동 검사 |
 | `.github/workflows/deploy.yml` | `main` push | PlatformIO 빌드와 canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
 | `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter APK canary artifact 보존 후 OTA-G0~G4 미완료 시 NAS SFTP 차단 |
+| `.github/workflows/trusted_workflow_policy.yml` | 보호 파일 변경 PR (`pull_request_target`) | default-branch validator/policy로 candidate bytes의 exact approved bundle 검증 |
 
 앱 workflow는 PR/feature branch에서 운영 NAS 배포가 실행되지 않도록 trigger와 job 조건을 모두 둡니다.
 두 production SFTP 단계는 `ota/release-evidence.json`이 physical Gate를 포함해 완전히 승인될 때까지
@@ -85,6 +86,11 @@ evidence를 갱신합니다. release Gate는 signed manifest와 실제 SFTP 대�
 검증합니다. Gate에 전달한 파일과 upload 대상이 달라지면 안 됩니다. Target workflow는 원격 panic
 주소 해석용 `firmware.map`도 보존합니다.
 운영 자격 증명 문자열이 포함될 수 있는 `firmware.elf`는 public artifact/NAS에 게시하지 않습니다.
+
+Trusted workflow Gate는 PR code를 checkout하거나 실행하지 않습니다. `base.sha`의 sparse checkout에서
+validator와 policy만 읽고, candidate의 5개 보호 파일은 GitHub Contents API를 통해 inert bytes로
+가져와 `utf8-lf-v1` normalized SHA-256 bundle을 비교합니다. bootstrap/rotation 절차는
+[trusted_workflow_policy.md](trusted_workflow_policy.md)를 따릅니다.
 
 ## 5. 로컬 GitHub 인증
 
