@@ -69,6 +69,10 @@ IDLE --MQTT arm--> ARMED --valid ultrasonic--> RELAY_HOLD --1 s--> COOLDOWN --co
   - flash coredump panic reason/task/PC/RISC-V cause/ELF SHA
 - HA discovery: 부팅 후 MQTT 연결 때 22개 entity retained config 발행
 - OTA: NAS의 `version.json`과 firmware binary 사용, 16 MB dual-OTA partition
+- 모바일 앱·Target OTA는 출입 기능보다 우선하는 P0 불변조건이다. 새 local BLE 인증
+  구조도 update control plane을 scanner/FSM/MQTT 단일 경로와 독립시키고, dual-slot
+  health/rollback과 mobile/Target N/N-1 호환을 유지해야 한다. 상세 계약은
+  [ota_reliability_contract.md](ota_reliability_contract.md)를 따른다.
 
 #### MQTT 토픽 자동 등록 범위 감사 (2026-07-31)
 

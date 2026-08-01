@@ -926,3 +926,36 @@
 
 - 기본 sandbox에서 GitHub API와 remote socket 연결이 차단돼 `gh auth status`가 토큰을 invalid로 잘못 보고할 수 있음을 확인
 - 네트워크 권한을 적용한 재검증에서 `GITHUB_TOKEN` 계정과 repo/workflow 권한이 정상임을 확인하고, 실제 GitHub 연결 후의 401만 토큰 실패로 판정하도록 지침 보완
+
+## [2026-08-01] compile | 모바일 의존성 병목 분석과 문 중심 로컬 인증 재설계
+
+- 첨부 콘솔의 반복 IPC 등록과 10초 간격 `ranging 신호 무수신 자동 복구`를 실제 코드 분기와 대조해, 해당 구간은 API보다 앞선 유효 Target 패킷/RSSI 수신 단계가 우선 병목임을 기록
+- foreground service·권한·BLE/IPC·RSSI·쿨다운·REST를 모바일이 직렬 소유하는 현재 구조와 과거 화면 OFF, Backend 503, MQTT ACK, 반복 개방, 인증 경계 문제를 책임 관점에서 통합 분석
+- 정상 출입에서 모바일 background 실행과 WAN 실시간 의존을 제거하고 Door Controller가 presence/session/local ACL/relay를 소유하는 목표 구조를 제안
+- secure BLE fob hands-free + NFC/Wallet fallback을 신뢰성 우선안으로, phone-only일 때 NFC/Wallet tap + QR fallback을 차선으로 정리하고 단계적 전환·보안 계약·합격 기준을 추가
+
+## [2026-08-01] compile | 추가 자격 하드웨어 없는 모바일 병목 축소 구현 계획
+
+- secure BLE fob, NFC reader/card, QR scanner 도입을 보류하고 현재 ESP32-C6·AJ-SR04T·relay와 Android 스마트폰만 사용하는 구현 범위를 확정
+- Android OS-managed filtered wake, native GATT credential worker, Android Keystore device key, Target local challenge-response·ACL로 정상 출입의 Flutter foreground service와 REST·DB·MQTT 실시간 의존을 제거하는 목표 구조를 정의
+- 계약/측정, Android, Target BLE, Backend ACL, Target FSM, Flutter UI, E2E rollout을 I1~I9 작업으로 분해하고 Wave 0~3 병렬 의존 관계, 산출물, 완료 기준, 공통 DoD와 전환 gate를 문서화
+- force-stop·OEM restricted 상태는 추가 하드웨어 없이 자동 보장할 수 없음을 명시하고 사용자 동작 local retry/제한적 remote fallback을 설계 범위에 포함
+
+## [2026-08-01] compile | 모바일 병목 축소 Epic과 세부 GitHub 이슈 등록
+
+- `ks-house/smart-gatekeeper`에 전체 조정 Epic #13과 Wave 0~3 세부 이슈 #14~#22를 각각 등록
+- #14 Android wake ADR, #15 session 관측 schema, #16 보안·ACL protocol을 독립 Wave 0로 묶어 즉시 병렬 시작할 수 있게 구성
+- #17 Android native worker, #18 Target GATT, #19 Backend ACL을 Wave 1 병렬 트랙으로 연결하고 #20 Target local FSM, #21 Flutter thin UI, #22 E2E rollout의 선행 관계를 Epic checklist와 구현 계획 표에 동기화
+- 각 이슈에 추가 하드웨어 제외 범위, 산출물, 완료 기준, fail-closed·rollback·실기기 검증 조건을 명시
+
+## [2026-08-01] compile | 모바일 앱·Target OTA를 최상위 불변조건으로 승격
+
+- 모바일 앱과 ESP32-C6 Target의 OTA/rollback 가능성을 BLE 인증·local ACL·FSM 등 모든 새 기능보다 우선하는 P0 계약으로 루트 및 IDE 자동 로드 에이전트 지침에 추가
+- 즉시 OTA가 불가능한 전원·네트워크·Android 사용자 차단과, 외부 조건 복구 뒤 독립 update control plane으로 반드시 복구 가능한 운영 의미를 구분
+- Target dual-slot health/valid mark/자동 rollback, periodic HTTPS·MQTT·provisioning AP recovery와 모바일 scanner/UI 독립 update·artifact 검증·fallback distribution을 `ota_reliability_contract.md`에 정의
+- mobile/Target 독립 배포의 N/N-1 호환, 기존 정상 버전 보존, install/boot health confirmation, power-loss·잘못된 artifact 장애 주입을 release blocking Gate로 추가
+
+## [2026-08-01] compile | OTA 비회귀 전용 GitHub 이슈 #23 등록
+
+- Epic #13 하위에 `[OTA][I10] 모바일 앱·Target OTA 비회귀와 복구 계약` #23을 Wave 0 cross-cutting blocker로 등록
+- #17~#22 구현·통합·rollout은 #23의 OTA reachability, artifact integrity, dual-slot rollback, N/N-1 compatibility 계약을 통과해야 완료되도록 구현 계획에 반영

@@ -17,6 +17,7 @@ I2C 핀    : SDA=GPIO6, SCL=GPIO7 (GPIO21/22 절대 사용 금지)
 지식베이스: wiki/index.md 를 먼저 읽어라
 로그      : wiki/log.md 에 반드시 기록하라
 GitHub 인증: 프로세스 환경 변수 GITHUB_TOKEN만 사용 (출력·파일 저장 금지)
+OTA       : 모바일 앱·Target OTA/rollback 경로는 최상위 불변조건 (기능 변경으로 약화 금지)
 ```
 
 ---
@@ -225,7 +226,20 @@ lib_deps  = pololu/VL53L0X @ ^1.3.1
 
 ---
 
-## 10. GitHub 인증·게시 규칙
+## 10. OTA 최상위 불변조건
+
+1. **모바일 앱과 ESP32-C6 Target은 어떤 기능 변경 후에도 OTA 가능한 복구 경로를 유지해야 한다.**
+2. 새 BLE 인증, local ACL, FSM, Backend, storage, network 변경은 mobile/Target OTA 비회귀를 증명하기 전 병합·배포하지 않는다.
+3. Target은 dual OTA partition, 기존 bootable slot 보존, 새 image health 확인, 실패 rollback을 유지한다. single-slot 파티션으로 변경 금지.
+4. Target OTA는 MQTT 단일 trigger에만 의존하지 않고 periodic HTTPS pull과 인증된 local wireless recovery 경로를 유지해야 한다.
+5. 모바일 update manager는 BLE scanner, foreground service, WebView, tenant/Target 상태와 독립적으로 접근 가능해야 하며 기존 APK를 실패 시 보존한다.
+6. 모바일과 Target은 독립 배포를 전제로 N/N-1 protocol compatibility와 rollback을 검증한다.
+7. OTA 성공은 artifact 업로드/PUBACK/download 완료가 아니라 모바일 install 또는 Target install→reboot→health confirmation까지 확인한다.
+8. 세부 계약과 release blocking 시험은 `wiki/ota_reliability_contract.md` 및 GitHub issue #23을 따른다.
+
+---
+
+## 11. GitHub 인증·게시 규칙
 
 1. 이 프로젝트의 GitHub CLI와 push 인증은 **현재 프로세스의 `GITHUB_TOKEN` 환경 변수**를 사용한다.
 2. 토큰 원문을 콘솔, 로그, wiki, 커밋, `.env`, Git remote URL에 출력하거나 저장하지 않는다.

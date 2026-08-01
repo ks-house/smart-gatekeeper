@@ -23,7 +23,8 @@
 | Wi-Fi/BLE coexistence | watchdog 수정됨 | 🔴 REQUIRED | 장기 soak test 필요 |
 | v2.1 OTA 설치/재부팅 | 2026-07-31 remote MQTT/status | 🟢 PASS | `g8eb7cac` → `g93cee8d`, target/boot/reset telemetry 확인 |
 | retained flash coredump | v2.1 boot payload | 🔴 PANIC CONFIRMED | loopTask `udp_new_ip_type` core-lock assertion, 11,044 B valid coredump |
-| OTA rollback/16 MB partition | 과거 OTA 성공 기록 | 🟡 RE-TEST | 실패 rollback과 양 슬롯 검증은 별도 필요 |
+| Target OTA rollback/16 MB partition | 과거 OTA 성공 기록 | 🔴 P0 BLOCKER | #23: 양 slot, health mark, 실패 자동 rollback, power-loss 검증 필요 |
+| 모바일 APK update 비회귀 | 과거 NAS APK 다운로드 기록 | 🔴 P0 BLOCKER | #23: scanner 독립 update, hash/signing identity, fallback, N/N-1 검증 필요 |
 
 ## 3. 현재 E2E 인수 절차
 

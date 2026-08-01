@@ -29,7 +29,14 @@ wiki/log.md     → 직전 에이전트 작업 내용
 - 에러 접두어: `[FATAL]` / `[ERROR]` / `[WARN]` / `[INFO]`
 - 라이브러리: `pololu/VL53L0X` (Adafruit 버전 사용 금지)
 
-### 5. GitHub 인증
+### 5. OTA 최상위 불변조건
+- 모바일 앱과 Target은 **항상 OTA 가능한 복구 경로**를 유지해야 한다.
+- BLE/FSM/ACL/Backend/storage/network 변경은 mobile·Target OTA 비회귀와 N/N-1 호환을 증명하기 전 병합 금지.
+- Target dual OTA, 이전 slot 보존, health 확인·rollback, periodic HTTPS + MQTT + local wireless recovery를 유지.
+- 모바일 update는 scanner/foreground service/WebView와 독립시키고 설치 실패 시 기존 APK를 보존.
+- 세부 기준: `wiki/ota_reliability_contract.md`, GitHub #23.
+
+### 6. GitHub 인증
 - GitHub CLI와 push는 현재 프로세스의 `GITHUB_TOKEN` 환경 변수만 사용한다.
 - 토큰 원문을 출력하거나 파일·로그·remote URL에 저장하지 않는다.
 - socket/network 차단을 인증 실패로 오판하지 말고 네트워크 권한을 적용한 `gh auth status`로 재검증한다.
