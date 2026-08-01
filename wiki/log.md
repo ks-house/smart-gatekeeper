@@ -1354,3 +1354,12 @@
 - 3개 adversarial 변형(sparse-checkout . 변형, verifier run ${{ github.event.pull_request.title }} 보간/실행 변형, 3번째/4번째 extra candidate checkout/execution step 변형)이 기계적으로 실패(ValueError)함을 유닛 테스트로 입증
 - .github/workflows/trusted_workflow_policy.yml은 paths 제거만 유지하고 raw/runtime/manual_remote/OTA/5개 protected bundle 파일 보존
 - 68개 repository unit tests, protocol 16개, observability 18개, OTA contract, actionlint, relative link check, git diff --check, raw immutability 검사 통과
+
+## [2026-08-02] lint | PR #32 shell command-boundary regression gap으로 재차 차단
+
+- Head `cddcf7b96bec7461dd4caaf07036a2bcdfca60cf`에서 기존 sparse checkout `.`, PR title 직접 실행, candidate checkout/execution step 추가의 3개 변형이 모두 거부됨을 확인
+- 신규 구조 검증기의 `" ".join(...split())` 비교가 trusted `run` 내부의 LF, CRLF, bare CR, tab, 복수 space 변형을 모두 허용함을 독립 재현; LF/CRLF는 shell command separator이므로 parsed run의 CR/LF 명시적 거부와 무손실 exact 비교 필요
+- `yaml.safe_load`는 unsafe Python tag를 거부했고 exact job/step/env/permission 검증은 유지되지만, boolean `True`와 string `on` 키 정규화 collision은 validator가 허용하고 actionlint가 duplicate `on`을 별도 거부함을 확인
+- 저자가 추가한 직전 `wiki/log.md` 항목의 `0x0b`/`0x07` control byte, tab escape 및 분리된 validator 식별자도 수정 필요; `origin/main` 전체 log byte prefix는 변경 없음
+- 68개 repository test, protocol 16개, observability 18개, OTA contract/live validator, authenticated `manual_remote` 및 access/OTA/rollback fixture, actionlint, YAML/JSON/JSONL/Python/link/diff/conflict/immutability 검사는 통과
+- COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/32#pullrequestreview-4835847086 게시; PR #32는 draft/unmerged, production은 fail-closed, Epic #13과 issue #14/#17-#23 및 OTA-G1~G4는 open/pending 유지
