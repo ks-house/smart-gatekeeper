@@ -11,10 +11,13 @@
    모든 physical Gate 증거를 수집한다.
 3. `ota/release-evidence.json`에 증거 위치, 승인자, 승인 시각을 기록한다. 실제 증거 없이
    `pending`을 `passed`로 바꾸지 않는다.
-4. release manifest와 pinned production public key를 전달한
+4. release manifest, 실제 배포할 firmware/APK 경로, pinned production public key를 전달한
    `python scripts/ota_contract_gate.py release`가 통과한 경우에만 production NAS 배포를
-   허용한다. 현재 CI는 canary artifact를 먼저 보존하고 이 단계에서 production SFTP를
-   차단한다.
+   허용한다. Gate 입력 artifact는 이후 Actions/SFTP upload 대상과 동일한 경로여야 하며,
+   실제 byte length·SHA-256을 signed metadata와 비교한다. APK는 Android SDK `apksigner`로
+   서명 유효성과 certificate SHA-256도 확인한다. 누락·교체·truncation·certificate mismatch는
+   모두 배포 중단 조건이다. 현재 CI는 canary artifact를 먼저 보존하고 이 단계에서
+   production SFTP를 차단한다.
 5. mobile과 Target을 동시에 강제하지 않는다. 먼저 canary를 배포하고 N/N-1 telemetry를
    확인한 뒤 각 artifact를 독립적으로 확대한다.
 
@@ -77,3 +80,8 @@ error code, artifact digest, signing key ID, boot/install confirmation, rollback
 기록한다. 성공은 upload/PUBACK/download가 아니라 mobile install 또는 Target
 install→reboot→health confirmation이다. 모든 실기기 결과는 `wiki/hardware_test.md`에 날짜,
 commit/build, 반복 횟수와 원시 증거 위치를 추가한다.
+
+Recovery 자동 판정은 `ota/recovery-matrix.json`의 allowlist outcome/action과 안전한 상태 전이만
+허용한다. 운영자가 임의 자유 텍스트나 partition/APK erase 같은 파괴적 동작으로 바꾸지 않으며,
+새 recovery 동작이 필요하면 schema, semantic mapping, 장애 주입 negative test를 같은 PR에서
+먼저 갱신하고 재검토한다.

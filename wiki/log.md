@@ -989,3 +989,21 @@
 - 서명된 manifest만으로 실제 firmware/APK artifact bytes 없이 release 검증이 통과해, 배포 artifact의 size·SHA-256·APK signing certificate를 production SFTP 전에 검증하지 못하는 차단 결함을 확인
 - state machine의 `failure_preserves`·`invariants`를 비우거나 recovery 결과를 파괴적 동작으로 바꿔도 필수 ID/state 이름만 남으면 contract Gate가 통과하는 비회귀 우회를 확인
 - PR #25는 병합하지 않고 issue #23을 open으로 유지하며 artifact 결합 검증과 의미 기반 invariant/recovery 검증 추가 후 재리뷰하도록 판정
+
+## [2026-08-01] fix | PR #25 OTA release blocker 세 결함 fail-closed 보강
+
+- release Gate가 signed manifest와 실제 firmware/APK 경로를 1:1로 입력받아 byte length와 SHA-256을 비교하고, Android는 `apksigner`의 signing certificate SHA-256까지 검증하도록 수정
+- firmware/APK workflow의 Gate 입력을 이후 Actions/SFTP가 올리는 동일 `dist` artifact 경로에 결합하고, artifact 누락·교체·truncation·certificate mismatch를 production 배포 전에 차단
+- Target/mobile `failure_preserves`·`invariants`의 exact required set과 initial/terminal success를 schema·semantic validation으로 고정
+- recovery outcome/action과 상태 전이를 allowlist schema 및 장애별 exact mapping으로 제한하고, fault ID·expected outcome·physical Gate 분류의 의미 역전을 거부
+
+## [2026-08-01] test | OTA adversarial negative regression 18건 통과
+
+- artifact missing·byte substitution·truncation·APK certificate mismatch와 manifest pinned key mismatch가 모두 release validation에서 거부됨을 확인
+- preservation/invariant 빈 배열·필수 항목 제거, initial/terminal success 변경, 파괴적 unknown recovery text, allowlist 내부 action 바꿔치기, unsafe transition과 fault outcome 역전이 모두 거부됨을 확인
+- workflow가 실제 upload artifact 대신 다른 경로를 Gate에 전달하는 mutation을 contract validation이 거부하며, 기존 positive contract와 signed vector 검증도 유지됨을 확인
+
+## [2026-08-01] lint | OTA 계약 schema·workflow·문서 일관성 재검증
+
+- `python scripts/ota_contract_gate.py contract`, Python compile, unit test 18건, 전체 OTA JSON과 GitHub Actions YAML parse 통과
+- wiki 상대 링크와 `git diff --check` 통과; 기존 독립 review 증거와 OTA-G1~G4 physical pending 상태를 보존

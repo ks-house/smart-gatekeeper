@@ -144,9 +144,15 @@ jobs:
         env:
           OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
         run: |
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$ANDROID_SDK"
+          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
           python scripts/ota_contract_gate.py release \
             --evidence ota/release-evidence.json \
             --manifest dist/version.json \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --apksigner "$APKSIGNER" \
             --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"
 
       - name: Deploy APK to Synology NAS via SFTP

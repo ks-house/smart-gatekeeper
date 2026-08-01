@@ -8,8 +8,10 @@ This directory is the machine-readable companion to
   private key is the public RFC 8032 test key seed and is never a production
   trust root.
 - `state-machines.json`: required state names and failure-preservation rules.
-- `recovery-matrix.json`: required fallback behavior per injected failure.
-- `fault-injection-plan.json`: automated and physical test inventory.
+- `recovery-matrix.json`: enum-constrained outcomes, actions, and safe state
+  transitions for every required failure.
+- `fault-injection-plan.json`: exact automated and physical test inventory with
+  allowlisted expected outcomes.
 - `release-evidence.json`: current Gate status. Pending evidence deliberately
   blocks production distribution.
 
@@ -27,14 +29,20 @@ Enforce a production decision:
 python scripts/ota_contract_gate.py release \
   --evidence ota/release-evidence.json \
   --manifest dist/version.json \
+  --artifact dist/gatekeeper-firmware.bin \
   --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"
 ```
 
 The release command must fail until OTA-G0 through OTA-G4, physical tests, and
 operator approval are recorded as passed and every release manifest verifies
-under the pinned production public key. A green contract check proves only
-the contract artifacts and negative signature vectors; it does not prove an
-ESP32 bootloader rollback or an Android install.
+under the pinned production public key. Each repeated `--manifest` is paired by
+position with exactly one repeated `--artifact`; the gate reads those artifact
+bytes and compares their actual size and SHA-256 with the signed manifest.
+Android releases additionally require `--apksigner <path>` (or a discoverable
+Android SDK `apksigner`) and must match the signed certificate digest. The same
+artifact path passed to the gate must be the file uploaded by the workflow.
+A green contract check proves only the contract assets and adversarial negative
+vectors; it does not prove an ESP32 bootloader rollback or an Android install.
 
 ## Signature serialization
 

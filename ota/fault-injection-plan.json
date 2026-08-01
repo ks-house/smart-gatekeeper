@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "tests": [
-    {"id": "FI-01", "fault": "HTTP disconnect at 50 percent", "automation": "host fake server", "expected": "no active artifact replacement", "physical_gate": false},
-    {"id": "FI-02", "fault": "artifact byte flip", "automation": "signed vector tamper", "expected": "digest rejection before install or boot", "physical_gate": false},
-    {"id": "FI-03", "fault": "manifest signature byte flip", "automation": "signed vector tamper", "expected": "metadata rejection", "physical_gate": false},
-    {"id": "FI-04", "fault": "MQTT unavailable", "automation": "network deny rule", "expected": "Target periodic HTTPS remains reachable", "physical_gate": true},
-    {"id": "FI-05", "fault": "power cut during inactive-slot write", "automation": "programmable power switch", "expected": "previous slot boots and relay defaults OFF", "physical_gate": true},
-    {"id": "FI-06", "fault": "new Target image reset loop", "automation": "deliberately crashing canary", "expected": "rollback before valid mark", "physical_gate": true},
-    {"id": "FI-07", "fault": "BLE scanner and WebView failure", "automation": "Android instrumentation flags", "expected": "settings update path still works", "physical_gate": true},
-    {"id": "FI-08", "fault": "primary mobile endpoint unavailable", "automation": "HTTP 503 primary", "expected": "secondary metadata and APK install path works", "physical_gate": true},
-    {"id": "FI-09", "fault": "APK signing certificate mismatch", "automation": "alternate test keystore", "expected": "installer is not invoked", "physical_gate": true},
-    {"id": "FI-10", "fault": "N and N-1 protocol combinations", "automation": "versioned emulator and Target fixtures", "expected": "update control planes and negotiated access remain available", "physical_gate": true}
+    {"id": "FI-01", "fault": "HTTP disconnect at 50 percent", "automation": "host fake server", "expected": "active-artifact-preserved", "physical_gate": false},
+    {"id": "FI-02", "fault": "artifact byte flip", "automation": "signed vector tamper", "expected": "digest-rejected-before-install-or-boot", "physical_gate": false},
+    {"id": "FI-03", "fault": "manifest signature byte flip", "automation": "signed vector tamper", "expected": "metadata-rejected", "physical_gate": false},
+    {"id": "FI-04", "fault": "MQTT unavailable", "automation": "network deny rule", "expected": "target-periodic-https-reachable", "physical_gate": true},
+    {"id": "FI-05", "fault": "power cut during inactive-slot write", "automation": "programmable power switch", "expected": "previous-slot-boots-relay-off", "physical_gate": true},
+    {"id": "FI-06", "fault": "new Target image reset loop", "automation": "deliberately crashing canary", "expected": "rollback-before-valid-mark", "physical_gate": true},
+    {"id": "FI-07", "fault": "BLE scanner and WebView failure", "automation": "Android instrumentation flags", "expected": "settings-update-path-available", "physical_gate": true},
+    {"id": "FI-08", "fault": "primary mobile endpoint unavailable", "automation": "HTTP 503 primary", "expected": "secondary-mobile-path-installs", "physical_gate": true},
+    {"id": "FI-09", "fault": "APK signing certificate mismatch", "automation": "alternate test keystore", "expected": "installer-not-invoked", "physical_gate": true},
+    {"id": "FI-10", "fault": "N and N-1 protocol combinations", "automation": "versioned emulator and Target fixtures", "expected": "update-planes-and-access-compatible", "physical_gate": true}
   ]
 }

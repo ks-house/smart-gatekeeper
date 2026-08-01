@@ -314,6 +314,12 @@ N-1 소비자를 위해 Target `version == firmware_version`, Mobile
 `version == version_name`, `build_number == version_code` alias를 schema semantic check로
 강제한다. fallback URL은 primary APK URL과 달라야 한다.
 
+상태 머신의 `failure_preserves`와 `invariants`는 단순 문자열 목록이 아니라 구성요소별
+필수 집합과 정확히 같아야 한다. initial/terminal success도 각각 Target
+`IDLE`/`MARK_VALID`, Mobile `IDLE`/`COMPLETE`로 고정한다. recovery matrix는 자유 텍스트를
+허용하지 않고 allowlist outcome/action과 선언된 상태 간 `from_state`→`to_state`를 사용하며,
+각 장애 ID의 Gate·결과·동작·전이가 기준 semantic mapping과 정확히 일치해야 한다.
+
 ## 12. CI release gate 판정
 
 `.github/workflows/ota_contract.yml`은 PR/main에서 schema, signature tamper vector, dual-slot
@@ -321,7 +327,11 @@ layout, state/recovery/fault 계약을 검사한다. firmware/mobile build workf
 Actions에 먼저 보존한 뒤 `release` mode를 실행하고, `ota/release-evidence.json`의 OTA-G0~G4,
 physical test, 승인자가 모두 통과하지 않으면 production NAS SFTP 전에 실패한다.
 release mode는 해당 build의 manifest와 production pinned public key도 입력받아 schema와 실제
-Ed25519 signature를 재검증하므로 evidence 상태만 수정해서 unsigned artifact를 배포할 수 없다.
+Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올릴 바로 그 firmware/APK
+경로를 필수 입력받아 실제 byte length와 SHA-256을 signed manifest와 비교한다. Android는
+`apksigner verify --print-certs`가 보고한 단일 signing certificate SHA-256까지 signed metadata와
+일치해야 한다. artifact 누락·교체·truncation·digest/certificate mismatch는 모두 fail-closed다.
+따라서 evidence나 signed metadata만 맞추고 다른 bytes를 배포할 수 없다.
 
 `contract` PASS는 문서/벡터/정적 불변조건만 증명한다. `release` PASS만 production 배포 허가를
 뜻하며, evidence 파일을 형식적으로 수정하는 것은 시험을 대체하지 않는다.
