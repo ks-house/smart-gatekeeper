@@ -82,8 +82,7 @@ uint32_t TargetAclManager::computeCrc32(const uint8_t* data, size_t length) {
   for (size_t i = 0; i < length; ++i) {
     crc ^= data[i];
     for (int j = 0; j < 8; ++j) {
-      uint32_t mask = -(crc & 1);
-      crc = (crc >> 1) ^ (0xEDB88320 & mask);
+      crc = (crc & 1) ? ((crc >> 1) ^ 0xEDB88320) : (crc >> 1);
     }
   }
   return ~crc;
@@ -107,16 +106,26 @@ bool TargetAclManager::begin(const std::array<uint8_t, 16>& door_id,
   uint64_t hw = storage_->readHighWatermark();
   effective_high_watermark_ = hw;
 
-  GenerationRecord gen0{}, gen1{};
-  bool valid0 = storage_->readGenerationRecord(0, &gen0);
-  bool valid1 = storage_->readGenerationRecord(1, &gen1);
+  auto isValidGenerationRecord = [](const GenerationRecord& gen) {
+    if (gen.magic != kGenerationMagic) return false;
+    if (gen.record_schema != 1) return false;
+    if (gen.active_slot != 0 && gen.active_slot != 1) return false;
+    uint32_t computed_crc = computeCrc32(
+        reinterpret_cast<const uint8_t*>(&gen),
+        offsetof(GenerationRecord, crc32));
+    return gen.crc32 == computed_crc;
+  };
 
-  if (valid0 && gen0.magic == kGenerationMagic) {
+  GenerationRecord gen0{}, gen1{};
+  bool valid0 = storage_->readGenerationRecord(0, &gen0) && isValidGenerationRecord(gen0);
+  bool valid1 = storage_->readGenerationRecord(1, &gen1) && isValidGenerationRecord(gen1);
+
+  if (valid0) {
     if (gen0.high_watermark > effective_high_watermark_) {
       effective_high_watermark_ = gen0.high_watermark;
     }
   }
-  if (valid1 && gen1.magic == kGenerationMagic) {
+  if (valid1) {
     if (gen1.high_watermark > effective_high_watermark_) {
       effective_high_watermark_ = gen1.high_watermark;
     }
@@ -140,9 +149,12 @@ bool TargetAclManager::begin(const std::array<uint8_t, 16>& door_id,
     found_gen = true;
   }
 
-  if (!found_gen || selected_gen.magic != kGenerationMagic) {
+  if (!found_gen) {
     return true;
   }
+
+  generation_counter_ = selected_gen.generation;
+  active_slot_ = selected_gen.active_slot;
 
   // Load snapshot from active_slot
   uint8_t slot_buffer[4096] = {};
@@ -157,23 +169,48 @@ bool TargetAclManager::begin(const std::array<uint8_t, 16>& door_id,
     return true;
   }
 
+  if (!validateSnapshotSemantics(snapshot, 0)) {
+    return true;  // Invalid semantics -> reject on boot
+  }
+
+  if (!verifySnapshotSignature(snapshot)) {
+    return true;  // Invalid signature / untrusted signer -> reject on boot
+  }
+
+  if (snapshot.header.acl_version != selected_gen.acl_version) {
+    return true;  // Version mismatch with generation record -> reject on boot
+  }
+
   if (snapshot.header.acl_version < effective_high_watermark_) {
     return true;  // Anti-rollback rejection
   }
 
+  if (snapshot.digest != selected_gen.acl_digest) {
+    return true;  // Digest mismatch -> reject on boot
+  }
+
+  // Preserve anti-rollback floor and generation history.
+  // With no trusted wall clock on reboot, do not reactivate stored lease.
   active_snapshot_ = snapshot;
-  active_slot_ = selected_gen.active_slot;
-  generation_counter_ = selected_gen.generation;
-  active_ready_ = true;
-  receipt_monotonic_ms_ = now_ms;
+  active_ready_ = false;
 
   return true;
 }
 
-void TargetAclManager::setSignerPublicKey(
+bool TargetAclManager::setSignerPublicKey(
     const std::array<uint8_t, 65>& signer_pubkey) {
+  if (signer_pubkey[0] != 0x04) {
+    signer_set_ = false;
+    return false;
+  }
   signer_pubkey_ = signer_pubkey;
   signer_set_ = true;
+  return true;
+}
+
+void TargetAclManager::setExpectedSigningKeyId(uint32_t key_id) {
+  expected_signing_key_id_ = key_id;
+  signing_key_id_enforced_ = (key_id != 0);
 }
 
 bool TargetAclManager::parseHeader(const uint8_t* bytes, size_t length,
@@ -255,13 +292,19 @@ bool TargetAclManager::parseSnapshot(const uint8_t* payload, size_t length,
   return true;
 }
 
+static TargetAclManager::HostAclVerifierCallback s_host_acl_verifier_cb = nullptr;
+
+void TargetAclManager::setHostAclVerifierCallback(HostAclVerifierCallback cb) {
+  s_host_acl_verifier_cb = cb;
+}
+
 bool TargetAclManager::verifySnapshotSignature(
     const TargetAclSnapshot& snapshot) const {
   if (!isValidR(snapshot.signature_raw64.data()) ||
       !isLowS(snapshot.signature_raw64.data() + 32)) {
     return false;
   }
-  if (!signer_set_ || signer_pubkey_[0] != 0x04) {
+  if (!signer_set_ || signer_pubkey_[0] != 0x04 || expected_signing_key_id_ == 0) {
     return false;
   }
 
@@ -291,15 +334,10 @@ bool TargetAclManager::verifySnapshotSignature(
   mbedtls_mpi_free(&s_mpi);
   return ok;
 #else
-  // Host unit test fallback matcher for fixture signature
-  static constexpr uint8_t kFixtureSig[64] = {
-      0x13, 0xcd, 0xf7, 0x24, 0x64, 0x22, 0xab, 0x07, 0x57, 0x6d, 0x03,
-      0x28, 0xbf, 0xe3, 0x13, 0xdb, 0x99, 0x7c, 0x5d, 0x26, 0x89, 0xdf,
-      0x26, 0x65, 0x7b, 0x2e, 0xc3, 0x38, 0xe6, 0x90, 0xd4, 0xf1, 0x1f,
-      0x2b, 0x0f, 0x9c, 0x7c, 0x6d, 0xfd, 0xc3, 0x64, 0xca, 0xd7, 0x79,
-      0x16, 0x28, 0x17, 0x49, 0x6b, 0x68, 0x13, 0x9c, 0x67, 0xe3, 0x8c,
-      0xc5, 0x1a, 0x02, 0xaa, 0x25, 0x58, 0x70, 0xef, 0x8b};
-  return std::memcmp(snapshot.signature_raw64.data(), kFixtureSig, 64) == 0;
+  if (s_host_acl_verifier_cb != nullptr) {
+    return s_host_acl_verifier_cb(signer_pubkey_, snapshot.digest, snapshot.signature_raw64);
+  }
+  return false;
 #endif
 }
 
@@ -318,6 +356,9 @@ bool TargetAclManager::validateSnapshotSemantics(
     return false;
   }
   if (h.door_id != door_id_) return false;
+  if (signing_key_id_enforced_ && h.signing_key_id != expected_signing_key_id_) {
+    return false;
+  }
 
   for (size_t i = 0; i < snapshot.entries.size(); ++i) {
     const auto& e = snapshot.entries[i];
@@ -385,7 +426,7 @@ ResultReason TargetAclManager::applySignedAcl(const uint8_t* payload,
     gen.acl_digest = snapshot.digest;
     gen.high_watermark = snapshot.header.acl_version;
     gen.crc32 = computeCrc32(reinterpret_cast<const uint8_t*>(&gen),
-                             sizeof(GenerationRecord) - sizeof(uint32_t));
+                             offsetof(GenerationRecord, crc32));
 
     uint8_t gen_slot = (target_slot == 1) ? 1 : 0;
     if (!storage_->saveGenerationRecord(gen_slot, gen)) {

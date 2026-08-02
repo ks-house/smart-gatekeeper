@@ -9,6 +9,9 @@
 #include "WifiManager.h"
 #include "OtaManager.h"
 #include "TargetAclManager.h"
+#include "OfflineEventQueue.h"
+
+#include <cstring>
 
 #include <esp_arduino_version.h>
 #include <esp_system.h>
@@ -47,14 +50,6 @@ void MqttManager::init() {
 }
 
 void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
-    char message[256];
-
-    if (length >= sizeof(message)) length = sizeof(message) - 1;
-    memcpy(message, payload, length);
-    message[length] = '\0';
-
-    LOGF("[MQTT] 수신 주제: %s | 메시지: %s", topic, message);
-
     // ─── smart-gatekeeper/target/acl/push — Signed ACL push ───────────────
     if (strcmp(topic, "smart-gatekeeper/target/acl/push") == 0 ||
         strncmp(topic, "gatekeeper/acl/v1/", 18) == 0) {
@@ -78,6 +73,14 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         }
         return;
     }
+
+    char message[256];
+
+    if (length >= sizeof(message)) length = sizeof(message) - 1;
+    memcpy(message, payload, length);
+    message[length] = '\0';
+
+    LOGF("[MQTT] 수신 주제: %s | 메시지: %s", topic, message);
 
     // ─── gatekeeper/arm — Pre-arm 사전 승인 처리 (v2.0 핵심 신규) ───────
     if (strcmp(topic, MQTT_TOPIC_ARM) == 0) {
@@ -308,6 +311,83 @@ void MqttManager::update() {
         }
     } else {
         client.loop();
+
+        extern sgk::OfflineEventQueue g_offline_queue;
+        sgk::CanonicalEvent evt{};
+        while (client.connected() && g_offline_queue.peekFront(&evt)) {
+            bool pub_ok = false;
+            if (evt.is_canonical == 1 || std::strcmp(evt.event_type, "canonical_event") == 0) {
+                if (evt.event_id[0] != '\0' && evt.stage_text[0] != '\0' && evt.outcome_text[0] != '\0') {
+                    StaticJsonDocument<1024> doc;
+                    doc["schema_version"] = "1.0";
+                    doc["event_id"] = evt.event_id;
+                    doc["session_id"] = evt.session_id;
+                    doc["session_kind"] = "access";
+                    doc["source_component"] = "target";
+                    doc["source_instance_id"] = evt.target_ref;
+                    doc["source_boot_id"] = evt.source_boot_id;
+                    doc["sequence"] = evt.sequence;
+                    doc["attempt"] = evt.attempt > 0 ? evt.attempt : 1;
+
+                    doc["event_code"] = evt.event_type;
+                    doc["stage"] = evt.stage_text;
+                    doc["outcome"] = evt.outcome_text;
+                    doc["reason_code"] = evt.detail;
+
+                    JsonObject clock = doc.createNestedObject("clock");
+                    clock["wall_time"] = nullptr;
+                    clock["monotonic_ms"] = evt.monotonic_ms;
+                    clock["quality"] = "UNSYNCED";
+
+                    JsonObject target = doc.createNestedObject("target");
+                    target["target_ref"] = evt.target_ref;
+                    target["boot_id"] = evt.source_boot_id;
+
+                    if (evt.has_causation && evt.causation_event_id[0] != '\0') {
+                        doc["causation_event_id"] = evt.causation_event_id;
+                    } else {
+                        doc["causation_event_id"] = nullptr;
+                    }
+
+                    JsonObject attributes = doc.createNestedObject("attributes");
+                    attributes["path"] = "local_gatt";
+                    attributes["transport"] = "ble_gatt";
+
+                    char payload_buf[1024] = {};
+                    size_t bytes_needed = measureJson(doc);
+                    if (bytes_needed > 0 && bytes_needed < sizeof(payload_buf)) {
+                        size_t written = serializeJson(doc, payload_buf, sizeof(payload_buf));
+                        if (written > 0) {
+                            pub_ok = MqttManager::publishCanonicalEvent(payload_buf);
+                        }
+                    }
+                } else {
+                    pub_ok = false;
+                }
+            } else {
+                StaticJsonDocument<384> doc;
+                doc["event"] = evt.event_type[0] ? evt.event_type : "event";
+                doc["detail"] = evt.detail;
+                doc["time"] = evt.monotonic_ms;
+                if (evt.sequence > 0) doc["sequence"] = evt.sequence;
+                doc["target_id"] = evt.target_ref[0] ? evt.target_ref : DiagnosticsManager::targetId();
+                doc["boot_id"] = evt.source_boot_id[0] ? evt.source_boot_id : DiagnosticsManager::bootId();
+                doc["boot_count"] = evt.boot_count > 0 ? evt.boot_count : DiagnosticsManager::bootCount();
+                char buf[384];
+                size_t bytes_needed = measureJson(doc);
+                if (bytes_needed > 0 && bytes_needed < sizeof(buf)) {
+                    size_t written = serializeJson(doc, buf, sizeof(buf));
+                    if (written > 0) {
+                        pub_ok = client.publish("smart-gatekeeper/event", buf);
+                    }
+                }
+            }
+            if (pub_ok) {
+                g_offline_queue.popFront(); // Dequeue confirmed publish success
+            } else {
+                break; // Pause flushing if publish failed or record invalid
+            }
+        }
     }
 }
 
@@ -721,8 +801,16 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
 }
 
 void MqttManager::publishEvent(const char* eventType, const char* detail) {
-    if (!isConnected()) return;
     if (!eventType) return;
+
+    if (!isConnected()) {
+        extern sgk::OfflineEventQueue g_offline_queue;
+        g_offline_queue.pushEvent(eventType, detail, millis(), 0,
+                                  DiagnosticsManager::targetId(),
+                                  DiagnosticsManager::bootId(),
+                                  DiagnosticsManager::bootCount());
+        return;
+    }
 
     StaticJsonDocument<384> doc;
     doc["event"]  = eventType;
@@ -732,11 +820,19 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     doc["boot_id"] = DiagnosticsManager::bootId();
     doc["boot_count"] = DiagnosticsManager::bootCount();
 
-    char buf[384];
-    serializeJson(doc, buf, sizeof(buf));
+    char buf[384] = {};
+    const size_t bytes_needed = measureJson(doc);
+    if (bytes_needed == 0 || bytes_needed >= sizeof(buf) ||
+        serializeJson(doc, buf, sizeof(buf)) == 0) {
+        return;
+    }
 
-    if (isConnected()) {
-        client.publish("smart-gatekeeper/event", buf);
+    if (!client.publish("smart-gatekeeper/event", buf)) {
+        extern sgk::OfflineEventQueue g_offline_queue;
+        g_offline_queue.pushEvent(eventType, detail, millis(), 0,
+                                  DiagnosticsManager::targetId(),
+                                  DiagnosticsManager::bootId(),
+                                  DiagnosticsManager::bootCount());
     }
 }
 

@@ -23,9 +23,14 @@ class TargetAccessFsm {
 
   OtaSafeState otaSafeState() const;
 
-  // Interlocked activation: auth must succeed when FSM is in IDLE state.
-  bool handleAuthSuccess(uint32_t now_ms, uint32_t hold_duration_ms = 1000,
+  // State transitions
+  bool handleAuthPending(uint32_t now_ms, uint32_t timeout_ms = 5000);
+
+  // Local GATT Auth Proof verification success transitions AUTH_PENDING -> ARMED (arms target for passage sensor).
+  bool handleAuthSuccess(uint32_t now_ms, uint32_t arm_duration_ms = 60000,
                          uint32_t cooldown_duration_ms = 2000);
+
+  bool handleAuthAbort(uint32_t now_ms, const char* reason = "auth_aborted");
 
   // Manual remote trigger (MQTT): only allowed when IDLE.
   bool handleManualRemoteOpen(uint32_t now_ms,
@@ -38,6 +43,9 @@ class TargetAccessFsm {
   // Ultrasonic sensor trigger when ARMED.
   bool handleSensorTrigger(uint32_t now_ms, uint32_t hold_duration_ms = 1000,
                            uint32_t cooldown_duration_ms = 2000);
+
+  // Independent relay timeout / hardware failsafe transition to COOLDOWN.
+  void handleRelayFailsafeOff(uint32_t now_ms, uint32_t cooldown_duration_ms = 2000);
 
   // Called on session timeout, GATT disconnect, or reset cleanup.
   void cleanupToIdle(uint32_t now_ms);

@@ -333,3 +333,20 @@ execution으로 실행하고, broad staging 또는 parent repository file mutati
 - [ ] 화면 OFF, task swipe-away, OEM 절전 정책별 접근 시험
 - [ ] MQTT PUBACK 실패 시 HTTP 503 및 앱 재시도 확인
 - [ ] ECHO 5V → 3.3V 레벨 시프터와 릴레이 절연 확인
+
+## 7. PR #37 Windows build 및 에이전트 handoff 주의사항
+
+- 2026-08-02 review remediation 중 Antigravity 사용량 한도가 소진되어 해당 agent의 재개를
+  전제로 두지 않고 Orca dispatched worker로 인계했다. 인계 시 dirty worktree를 그대로 보존하고,
+  새 worker가 전체 diff를 독립 재검토해야 한다.
+- Windows/MSYS PlatformIO 복합 실행에서 간헐적으로
+  `C:\WINDOWS\System32\cmd.exe: Permission denied` (`Error 126`)가 발생할 수 있다. 이를 source
+  compiler error로 추정하지 말고 동일한 `PLATFORMIO_BUILD_DIR`로 targeted incremental
+  `pio run -e esp32c6`를 다시 실행해 첫 실제 compiler/linker diagnostic을 확보한다.
+- PR #37에서는 첫 incremental default-OFF 진단으로 missing C++ headers, 잘못된 `const char*`
+  `.c_str()` 사용, 그리고 feature-ON anonymous-namespace queue symbol link 오류를 식별해 수정했다.
+  기본-OFF가 green이 된 뒤에만 `PLATFORMIO_BUILD_FLAGS=-DENABLE_HARDWARELESS_RC=1` feature-ON을
+  순차 실행한다.
+- 위 빌드는 hardwareless software evidence다. Samsung/OEM 화면 OFF·task swipe-away,
+  ESP32-C6 BLE radio/GATT, GPIO3 relay/sensor timing, bootloader rollback 및 OTA-G1..G4 물리 gate를
+  대체하지 않는다.

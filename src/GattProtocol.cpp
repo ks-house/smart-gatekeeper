@@ -27,6 +27,74 @@ uint32_t rotateRight(uint32_t value, uint32_t bits) {
 
 }  // namespace
 
+void LocalGattLifecycleBridge::emit(const Event& event) {
+  if (event.code == EventCode::kAccessProofVerified) {
+    session_id_ = event.session_id;
+    boot_id_ = event.boot_id;
+    sequence_ = event.sequence;
+    verified_session_active_ = true;
+  }
+  if (downstream_ != nullptr) downstream_->emit(event);
+  if (event.code == EventCode::kAccessSessionTerminated &&
+      verified_session_active_ && event.session_id == session_id_) {
+    clearVerifiedSession();
+  }
+}
+
+bool LocalGattLifecycleBridge::emitLifecycle(
+    EventCode code, EventReason reason, ResultReason transport_reason,
+    uint64_t now_ms, bool terminal) {
+  if (!verified_session_active_ || downstream_ == nullptr) return false;
+  const uint64_t cause = sequence_;
+  const Event event{code, reason, transport_reason, now_ms, session_id_,
+                    boot_id_, ++sequence_, true, cause};
+  downstream_->emit(event);
+  if (terminal) clearVerifiedSession();
+  return true;
+}
+
+bool LocalGattLifecycleBridge::emitArmed(uint64_t now_ms) {
+  return emitLifecycle(EventCode::kAccessArmed, EventReason::kArmAccepted,
+                       ResultReason::kOk, now_ms, false);
+}
+
+bool LocalGattLifecycleBridge::emitSensorDetected(uint64_t now_ms) {
+  return emitLifecycle(EventCode::kAccessSensorDetected,
+                       EventReason::kSensorThresholdMet, ResultReason::kOk,
+                       now_ms, false);
+}
+
+bool LocalGattLifecycleBridge::emitRelayOn(uint64_t now_ms) {
+  return emitLifecycle(EventCode::kAccessRelayOn, EventReason::kRelayActivated,
+                       ResultReason::kOk, now_ms, false);
+}
+
+bool LocalGattLifecycleBridge::emitRelayOff(uint64_t now_ms, bool failsafe) {
+  return emitLifecycle(EventCode::kAccessRelayOff,
+                       failsafe ? EventReason::kRelayFailsafeCutoff
+                                : EventReason::kRelayHoldComplete,
+                       ResultReason::kOk, now_ms, false);
+}
+
+bool LocalGattLifecycleBridge::emitCompleted(uint64_t now_ms) {
+  return emitLifecycle(EventCode::kAccessSessionCompleted,
+                       EventReason::kAccessGranted, ResultReason::kOk, now_ms,
+                       true);
+}
+
+bool LocalGattLifecycleBridge::emitTerminated(uint64_t now_ms,
+                                               EventReason reason) {
+  return emitLifecycle(EventCode::kAccessSessionTerminated, reason,
+                       ResultReason::kExpiredOrReplay, now_ms, true);
+}
+
+void LocalGattLifecycleBridge::clearVerifiedSession() {
+  verified_session_active_ = false;
+  session_id_.fill(0);
+  boot_id_.fill(0);
+  sequence_ = 0;
+}
+
 bool AdapterState::acceptConnection(const ConnectionToken& owner) {
   if (!owner.valid() || active_owner_.valid()) return false;
   active_owner_ = owner;
@@ -319,10 +387,12 @@ bool ProtocolCore::connect(uint16_t connection_id, uint32_t now_ms,
 void ProtocolCore::disconnect(const ConnectionToken& owner, uint32_t now_ms) {
   if (!connection_active_ || owner != connectionOwner()) return;
   connection_active_ = false;
-  emit(EventCode::kAccessGattFailed, ResultReason::kSessionInvalid, now_ms);
-  if (state_ != SessionState::kIdle) {
-    emit(EventCode::kAccessSessionTerminated, ResultReason::kSessionInvalid,
-         now_ms);
+  if (state_ != SessionState::kCompleted) {
+    emit(EventCode::kAccessGattFailed, ResultReason::kSessionInvalid, now_ms);
+    if (state_ != SessionState::kIdle) {
+      emit(EventCode::kAccessSessionTerminated, ResultReason::kSessionInvalid,
+           now_ms);
+    }
   }
   resetSession();
 }

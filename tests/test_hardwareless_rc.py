@@ -102,8 +102,9 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
             ota.index("if (!WifiManager::isConnected())"),
             ota.index("WiFiClientSecure client"),
         )
-        self.assertIn(
-            "classifyOtaSafeState(state, is_armed, relay.isOn())", main
+        self.assertTrue(
+            "g_access_fsm.otaSafeState()" in main or
+            "classifyOtaSafeState(state, is_armed, relay.isOn())" in main
         )
         self.assertIn("OtaManager::setSafeStateProvider(currentOtaSafeState)", main)
 
@@ -121,6 +122,10 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("class CanonicalMqttEventSink", adapter)
         self.assertIn('document["sequence"] = event.sequence', adapter)
         self.assertIn('document["causation_event_id"]', adapter)
+        self.assertIn(
+            "selected_event_sink == &production_lifecycle_bridge", adapter
+        )
+        self.assertIn("production_event_sink.configure(door_id)", adapter)
         self.assertIn("GattServer::useProductionEventSink()", main)
 
     def test_android_filter_and_target_prefix_share_exact_bytes(self):

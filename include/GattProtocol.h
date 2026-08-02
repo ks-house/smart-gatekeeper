@@ -70,6 +70,11 @@ enum class EventCode : uint8_t {
   kAccessProofVerified,
   kAccessProofRejected,
   kAccessSessionTerminated,
+  kAccessArmed,
+  kAccessSensorDetected,
+  kAccessRelayOn,
+  kAccessRelayOff,
+  kAccessSessionCompleted,
 };
 
 enum class EventReason : uint8_t {
@@ -86,6 +91,13 @@ enum class EventReason : uint8_t {
   kOtaBusy,
   kSessionTimeout,
   kInternalError,
+  kArmAccepted,
+  kSensorThresholdMet,
+  kRelayActivated,
+  kRelayHoldComplete,
+  kRelayFailsafeCutoff,
+  kAccessGranted,
+  kArmTimeout,
 };
 
 struct Event {
@@ -104,6 +116,38 @@ class EventSink {
  public:
   virtual ~EventSink() = default;
   virtual void emit(const Event& event) = 0;
+};
+
+// Continues the canonical Target event chain after a locally verified GATT
+// proof. Non-GATT/manual paths cannot activate it, and terminal emission
+// clears the retained session context.
+class LocalGattLifecycleBridge final : public EventSink {
+ public:
+  explicit LocalGattLifecycleBridge(EventSink* downstream = nullptr)
+      : downstream_(downstream) {}
+
+  void setDownstream(EventSink* downstream) { downstream_ = downstream; }
+  void emit(const Event& event) override;
+  bool hasVerifiedSession() const { return verified_session_active_; }
+  uint64_t lastSequence() const { return sequence_; }
+  bool emitArmed(uint64_t now_ms);
+  bool emitSensorDetected(uint64_t now_ms);
+  bool emitRelayOn(uint64_t now_ms);
+  bool emitRelayOff(uint64_t now_ms, bool failsafe);
+  bool emitCompleted(uint64_t now_ms);
+  bool emitTerminated(uint64_t now_ms, EventReason reason);
+
+ private:
+  EventSink* downstream_ = nullptr;
+  bool verified_session_active_ = false;
+  std::array<uint8_t, 16> session_id_{};
+  std::array<uint8_t, 16> boot_id_{};
+  uint64_t sequence_ = 0;
+
+  bool emitLifecycle(EventCode code, EventReason reason,
+                     ResultReason transport_reason, uint64_t now_ms,
+                     bool terminal);
+  void clearVerifiedSession();
 };
 
 class RandomSource {
@@ -287,6 +331,9 @@ class ProtocolCore {
   const std::array<uint8_t, 16>& bootId() const { return boot_id_; }
   const std::array<uint8_t, 16>& sessionId() const { return session_id_; }
   uint32_t failedAttempts() const { return failed_attempts_; }
+  void advanceEventSequence(uint64_t used_sequence) {
+    if (used_sequence > event_sequence_) event_sequence_ = used_sequence;
+  }
 
   static bool copyOutput(const OutputMessage& source, uint8_t* destination,
                          size_t capacity, size_t* written);

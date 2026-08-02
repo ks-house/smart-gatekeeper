@@ -10,10 +10,16 @@
 
 namespace sgk {
 
+static TargetProofVerifier::HostProofVerifierCallback s_host_proof_verifier_cb = nullptr;
+
+void TargetProofVerifier::setHostProofVerifierCallback(HostProofVerifierCallback cb) {
+  s_host_proof_verifier_cb = cb;
+}
+
 namespace {
 
 bool verifyProofSignature(const uint8_t pubkey65[65], const uint8_t digest32[32],
-                          const uint8_t raw64[64]) {
+                          const uint8_t raw64[64], const uint8_t input61[61]) {
   (void)digest32;
   if (pubkey65[0] != 0x04) return false;
   if (!TargetAclManager::isValidR(raw64) ||
@@ -44,15 +50,16 @@ bool verifyProofSignature(const uint8_t pubkey65[65], const uint8_t digest32[32]
   mbedtls_mpi_free(&s_mpi);
   return ok;
 #else
-  // Host test fallback matcher for fixture proof signature
-  static constexpr uint8_t kFixtureProofSig[64] = {
-      0x38, 0x94, 0xdf, 0xd3, 0x9c, 0x70, 0xee, 0x30, 0x1d, 0x17, 0x34,
-      0x66, 0x32, 0x46, 0x1a, 0xc6, 0x6f, 0x16, 0x8c, 0x29, 0xfb, 0xad,
-      0xa9, 0xbc, 0xaa, 0x18, 0xb9, 0xe4, 0x08, 0xcf, 0x35, 0xdc, 0x22,
-      0xed, 0x96, 0x94, 0xca, 0xeb, 0xf6, 0x54, 0x38, 0x22, 0x8b, 0x0b,
-      0xfa, 0x4d, 0x45, 0x6a, 0x68, 0x61, 0xc5, 0x9f, 0x91, 0x7c, 0xe3,
-      0x34, 0x60, 0x90, 0xec, 0x5f, 0x17, 0xec, 0xfd, 0xe8};
-  return std::memcmp(raw64, kFixtureProofSig, 64) == 0;
+  if (s_host_proof_verifier_cb != nullptr) {
+    std::array<uint8_t, 65> key{};
+    std::array<uint8_t, 61> in{};
+    std::array<uint8_t, 64> sig{};
+    std::memcpy(key.data(), pubkey65, 65);
+    std::memcpy(in.data(), input61, 61);
+    std::memcpy(sig.data(), raw64, 64);
+    return s_host_proof_verifier_cb(key, in, sig);
+  }
+  return false;
 #endif
 }
 
@@ -119,7 +126,8 @@ VerifyResult TargetProofVerifier::verify(const VerifyRequest& request) {
                        request.signing_input.size(), digest);
 
   if (!verifyProofSignature(entry.public_key_sec1.data(), digest,
-                           request.signature_raw64.data())) {
+                           request.signature_raw64.data(),
+                           request.signing_input.data())) {
     return {ResultReason::kProofInvalid, acl_version};
   }
 

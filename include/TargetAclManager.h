@@ -48,13 +48,15 @@ struct TargetAclSnapshot {
 };
 
 struct GenerationRecord {
-  uint32_t magic = 0;           // 0x53474B41 "SGKA"
-  uint16_t record_schema = 0;   // 1
+  uint32_t magic = kGenerationMagic; // 0x53474B41 "SGKA"
+  uint16_t record_schema = 1;         // 1
+  uint16_t reserved = 0;              // explicit padding
   uint64_t generation = 0;
-  uint8_t active_slot = 0;      // 0 or 1
+  uint8_t active_slot = 0;            // 0 or 1
+  uint8_t padding[7] = {};            // explicit padding
   uint64_t acl_version = 0;
   std::array<uint8_t, 32> acl_digest{};
-  uint64_t high_watermark = 0;  // anti-rollback floor
+  uint64_t high_watermark = 0;        // anti-rollback floor
   uint32_t crc32 = 0;
 };
 
@@ -74,11 +76,18 @@ class TargetAclStorage {
 
 class TargetAclManager {
  public:
+  using HostAclVerifierCallback = bool (*)(const std::array<uint8_t, 65>& pubkey,
+                                          const std::array<uint8_t, 32>& digest,
+                                          const std::array<uint8_t, 64>& sig);
+  static void setHostAclVerifierCallback(HostAclVerifierCallback cb);
+
   explicit TargetAclManager(TargetAclStorage* storage = nullptr);
 
   bool begin(const std::array<uint8_t, 16>& door_id, uint32_t now_ms);
 
-  void setSignerPublicKey(const std::array<uint8_t, 65>& signer_pubkey);
+  bool setSignerPublicKey(const std::array<uint8_t, 65>& signer_pubkey);
+  void setExpectedSigningKeyId(uint32_t key_id);
+  bool isSignerPublicKeySet() const { return signer_set_; }
 
   ResultReason applySignedAcl(const uint8_t* payload, size_t length,
                               uint32_t now_ms, uint64_t now_epoch_s = 0);
@@ -109,6 +118,8 @@ class TargetAclManager {
   std::array<uint8_t, 16> door_id_{};
   std::array<uint8_t, 65> signer_pubkey_{};
   bool signer_set_ = false;
+  uint32_t expected_signing_key_id_ = 0;
+  bool signing_key_id_enforced_ = false;
 
   bool active_ready_ = false;
   uint8_t active_slot_ = 0;

@@ -8,6 +8,9 @@
 
 #include "ConfigManager.h"
 #include "MqttManager.h"
+#include "OfflineEventQueue.h"
+
+extern sgk::OfflineEventQueue g_offline_queue;
 
 #if ENABLE_HARDWARELESS_RC
 #include <BLE2901.h>
@@ -35,7 +38,9 @@ bool requested_enabled = false;
 sgk::FailClosedProofVerifier fail_closed_verifier;
 sgk::ProofVerifier* selected_verifier = &fail_closed_verifier;
 sgk::EventSink* selected_event_sink = nullptr;
+static void (*s_auth_pending_callback)(uint32_t now_ms) = nullptr;
 static void (*s_auth_grant_callback)(uint32_t now_ms) = nullptr;
+static void (*s_auth_abort_callback)(uint32_t now_ms) = nullptr;
 
 #if ENABLE_HARDWARELESS_RC
 constexpr uint16_t kNimbleSubscribeIndicate = 0x0002;
@@ -154,15 +159,65 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         serializeJson(document, payload, sizeof(payload)) == 0) {
       return;
     }
-    MqttManager::publishCanonicalEvent(payload);
-    if (event.code == sgk::EventCode::kAccessProofVerified &&
-        s_auth_grant_callback != nullptr) {
-      s_auth_grant_callback(static_cast<uint32_t>(event.monotonic_ms));
+    if (!MqttManager::publishCanonicalEvent(payload)) {
+      sgk::CanonicalEvent queued_evt{};
+      queued_evt.is_canonical = 1;
+      queued_evt.code = static_cast<uint16_t>(event.code);
+      queued_evt.transport_reason = static_cast<uint16_t>(event.transport_reason);
+      queued_evt.monotonic_ms = event.monotonic_ms;
+      queued_evt.sequence = event.sequence;
+      queued_evt.attempt = 1;
+
+      const char* ev_code_str = document["event_code"];
+      const char* stage_str = document["stage"];
+      const char* outcome_str = document["outcome"];
+      const char* reason_str = document["reason_code"];
+
+      if (ev_code_str && ev_code_str[0] != '\0' &&
+          stage_str && stage_str[0] != '\0' &&
+          outcome_str && outcome_str[0] != '\0' &&
+          reason_str && reason_str[0] != '\0' &&
+          event_id_text[0] != '\0' &&
+          session_id_text[0] != '\0' &&
+          boot_id_text[0] != '\0' &&
+          target_ref_[0] != '\0') {
+        std::strncpy(queued_evt.event_type, ev_code_str, sizeof(queued_evt.event_type) - 1);
+        std::strncpy(queued_evt.stage_text, stage_str, sizeof(queued_evt.stage_text) - 1);
+        std::strncpy(queued_evt.outcome_text, outcome_str, sizeof(queued_evt.outcome_text) - 1);
+        std::strncpy(queued_evt.detail, reason_str, sizeof(queued_evt.detail) - 1);
+
+        std::strncpy(queued_evt.event_id, event_id_text, sizeof(queued_evt.event_id) - 1);
+        std::strncpy(queued_evt.session_id, session_id_text, sizeof(queued_evt.session_id) - 1);
+        std::strncpy(queued_evt.source_boot_id, boot_id_text, sizeof(queued_evt.source_boot_id) - 1);
+        std::strncpy(queued_evt.target_ref, target_ref_, sizeof(queued_evt.target_ref) - 1);
+        if (causal) {
+          queued_evt.has_causation = 1;
+          std::strncpy(queued_evt.causation_event_id, last_event_id_, sizeof(queued_evt.causation_event_id) - 1);
+        }
+        if (!g_offline_queue.push(queued_evt)) {
+          LOGF("[ERROR] CanonicalMqttEventSink: Offline queue enqueue failed for %s", ev_code_str);
+        }
+      }
     }
+
     last_session_ = schema_session;
     last_sequence_ = event.sequence;
     last_event_id_bytes_ = event_id;
     std::strncpy(last_event_id_, event_id_text, sizeof(last_event_id_) - 1);
+
+    if (event.code == sgk::EventCode::kAccessProofRequested &&
+        s_auth_pending_callback != nullptr) {
+      s_auth_pending_callback(static_cast<uint32_t>(event.monotonic_ms));
+    }
+    if (event.code == sgk::EventCode::kAccessProofVerified &&
+        s_auth_grant_callback != nullptr) {
+      s_auth_grant_callback(static_cast<uint32_t>(event.monotonic_ms));
+    }
+    if ((event.code == sgk::EventCode::kAccessProofRejected ||
+         event.code == sgk::EventCode::kAccessSessionTerminated) &&
+        s_auth_abort_callback != nullptr) {
+      s_auth_abort_callback(static_cast<uint32_t>(event.monotonic_ms));
+    }
   }
 
  private:
@@ -244,6 +299,39 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         document["outcome"] = "SUCCEEDED";
         document["reason_code"] = "PROOF_VALID";
         return true;
+      case sgk::EventCode::kAccessArmed:
+        document["event_code"] = "ACCESS_ARMED";
+        document["stage"] = "ARMED";
+        document["outcome"] = "SUCCEEDED";
+        document["reason_code"] = "ARM_ACCEPTED";
+        return true;
+      case sgk::EventCode::kAccessSensorDetected:
+        document["event_code"] = "ACCESS_SENSOR_DETECTED";
+        document["stage"] = "SENSOR";
+        document["outcome"] = "SUCCEEDED";
+        document["reason_code"] = "SENSOR_THRESHOLD_MET";
+        return true;
+      case sgk::EventCode::kAccessRelayOn:
+        document["event_code"] = "ACCESS_RELAY_ON";
+        document["stage"] = "RELAY_ON";
+        document["outcome"] = "SUCCEEDED";
+        document["reason_code"] = "RELAY_ACTIVATED";
+        return true;
+      case sgk::EventCode::kAccessRelayOff:
+        document["event_code"] = "ACCESS_RELAY_OFF";
+        document["stage"] = "RELAY_OFF";
+        document["outcome"] = "SUCCEEDED";
+        document["reason_code"] =
+            event.reason == sgk::EventReason::kRelayFailsafeCutoff
+                ? "RELAY_FAILSAFE_CUTOFF"
+                : "RELAY_HOLD_COMPLETE";
+        return true;
+      case sgk::EventCode::kAccessSessionCompleted:
+        document["event_code"] = "ACCESS_SESSION_COMPLETED";
+        document["stage"] = "COMPLETE";
+        document["outcome"] = "SUCCEEDED";
+        document["reason_code"] = "ACCESS_GRANTED";
+        return true;
       case sgk::EventCode::kAccessProofRejected:
         if (event.transport_reason == sgk::ResultReason::kAclUnavailable ||
             event.transport_reason == sgk::ResultReason::kCredentialDenied) {
@@ -265,8 +353,13 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
       case sgk::EventCode::kAccessSessionTerminated:
         document["event_code"] = "ACCESS_SESSION_TERMINATED";
         document["stage"] = "COMPLETE";
-        document["outcome"] = "FAILED";
-        document["reason_code"] = reasonCode(event.transport_reason);
+        if (event.reason == sgk::EventReason::kArmTimeout) {
+          document["outcome"] = "TIMED_OUT";
+          document["reason_code"] = "ARM_TIMEOUT";
+        } else {
+          document["outcome"] = "FAILED";
+          document["reason_code"] = reasonCode(event.transport_reason);
+        }
         return true;
     }
     return false;
@@ -281,6 +374,8 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
 };
 
 CanonicalMqttEventSink production_event_sink;
+sgk::LocalGattLifecycleBridge production_lifecycle_bridge(
+    &production_event_sink);
 
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
@@ -404,8 +499,10 @@ void GattServer::init() {
     LOGF("[FATAL] GATT door_id is absent/invalid; auth disabled");
     return;
   }
-  if (selected_event_sink == &production_event_sink &&
-      !production_event_sink.configure(door_id)) {
+  const bool production_sink_selected =
+      selected_event_sink == &production_event_sink ||
+      selected_event_sink == &production_lifecycle_bridge;
+  if (production_sink_selected && !production_event_sink.configure(door_id)) {
     requested_enabled = false;
     LOGF("[FATAL] GATT canonical event identity unavailable; auth disabled");
     return;
@@ -580,13 +677,80 @@ void GattServer::setEventSink(sgk::EventSink* sink) {
   selected_event_sink = sink;
 }
 
+void GattServer::setOnAuthPendingCallback(void (*callback)(uint32_t now_ms)) {
+  s_auth_pending_callback = callback;
+}
+
 void GattServer::setOnAuthGrantCallback(void (*callback)(uint32_t now_ms)) {
   s_auth_grant_callback = callback;
 }
 
+void GattServer::setOnAuthAbortCallback(void (*callback)(uint32_t now_ms)) {
+  s_auth_abort_callback = callback;
+}
+
 void GattServer::useProductionEventSink() {
 #if ENABLE_HARDWARELESS_RC
-  selected_event_sink = &production_event_sink;
+  selected_event_sink = &production_lifecycle_bridge;
+#endif
+}
+
+void GattServer::notifyAccessArmed(uint64_t now_ms) {
+#if ENABLE_HARDWARELESS_RC
+  if (production_lifecycle_bridge.emitArmed(now_ms) && core != nullptr) {
+    core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
+  }
+#endif
+}
+
+void GattServer::notifySensorDetected(uint64_t now_ms) {
+#if ENABLE_HARDWARELESS_RC
+  if (production_lifecycle_bridge.emitSensorDetected(now_ms) && core != nullptr) {
+    core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
+  }
+#endif
+}
+
+void GattServer::notifyRelayOn(uint64_t now_ms) {
+#if ENABLE_HARDWARELESS_RC
+  if (production_lifecycle_bridge.emitRelayOn(now_ms) && core != nullptr) {
+    core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
+  }
+#endif
+}
+
+void GattServer::notifyRelayOff(uint64_t now_ms, bool failsafe) {
+#if ENABLE_HARDWARELESS_RC
+  if (production_lifecycle_bridge.emitRelayOff(now_ms, failsafe) &&
+      core != nullptr) {
+    core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
+  }
+#else
+  (void)failsafe;
+#endif
+}
+
+void GattServer::notifySessionCompleted(uint64_t now_ms) {
+#if ENABLE_HARDWARELESS_RC
+  const uint64_t completed_sequence =
+      production_lifecycle_bridge.lastSequence() + 1;
+  if (production_lifecycle_bridge.emitCompleted(now_ms) && core != nullptr) {
+    core->advanceEventSequence(completed_sequence);
+  }
+#endif
+}
+
+void GattServer::notifySessionTerminated(uint64_t now_ms,
+                                         sgk::EventReason reason) {
+#if ENABLE_HARDWARELESS_RC
+  const uint64_t terminal_sequence =
+      production_lifecycle_bridge.lastSequence() + 1;
+  if (production_lifecycle_bridge.emitTerminated(now_ms, reason) &&
+      core != nullptr) {
+    core->advanceEventSequence(terminal_sequence);
+  }
+#else
+  (void)reason;
 #endif
 }
 

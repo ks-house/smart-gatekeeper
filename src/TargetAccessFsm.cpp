@@ -30,6 +30,17 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
     case GateState::IDLE:
       break;
 
+    case GateState::AUTH_PENDING:
+      if (now_ms - state_start_ms_ >= pre_arm_duration_ms_) {
+        state_ = GateState::IDLE;
+        state_start_ms_ = now_ms;
+        if (event_emit_ != nullptr) {
+          event_emit_("auth_pending_timeout", "AUTH_PENDING timeout, returning to IDLE");
+          event_emit_("session_terminated", "Session terminated due to pending timeout");
+        }
+      }
+      break;
+
     case GateState::ARMED:
       if (is_armed_ && pre_arm_start_ms_ > 0 &&
           (now_ms - pre_arm_start_ms_ >= pre_arm_duration_ms_)) {
@@ -38,6 +49,7 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
         state_start_ms_ = now_ms;
         if (event_emit_ != nullptr) {
           event_emit_("arm_expired", "Pre-arm timeout, returning to IDLE");
+          event_emit_("session_terminated", "Session terminated due to arm timeout");
         }
       }
       break;
@@ -49,6 +61,7 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
         state_start_ms_ = now_ms;
         if (event_emit_ != nullptr) {
           event_emit_("door_close", "Relay Timeout OFF");
+          event_emit_("session_completed", "Access session completed successfully");
         }
       }
       break;
@@ -65,28 +78,55 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
   }
 }
 
+bool TargetAccessFsm::handleAuthPending(uint32_t now_ms, uint32_t timeout_ms) {
+  if (state_ != GateState::IDLE || relay_on_) {
+    return false;
+  }
+  state_ = GateState::AUTH_PENDING;
+  state_start_ms_ = now_ms;
+  pre_arm_duration_ms_ = timeout_ms;
+  if (event_emit_ != nullptr) {
+    event_emit_("auth_pending", "AUTH_PENDING verification in progress");
+  }
+  return true;
+}
+
 bool TargetAccessFsm::handleAuthSuccess(uint32_t now_ms,
-                                        uint32_t hold_duration_ms,
+                                        uint32_t arm_duration_ms,
                                         uint32_t cooldown_duration_ms) {
-  // Fail-closed interlock: Relay will ONLY activate if FSM is in IDLE or ARMED state without active relay.
-  if ((state_ != GateState::IDLE && state_ != GateState::ARMED) || relay_on_) {
+  // Local GATT auth proof success requires AUTH_PENDING state and arms target for sensor passage
+  if (state_ != GateState::AUTH_PENDING || relay_on_) {
     if (event_emit_ != nullptr) {
-      event_emit_("auth_open_rejected", "Target is not IDLE");
+      event_emit_("auth_open_rejected", "Target is not in AUTH_PENDING state");
     }
     return false;
   }
 
-  is_armed_ = false;
-  hold_duration_ms_ = hold_duration_ms;
+  is_armed_ = true;
+  pre_arm_duration_ms_ = arm_duration_ms;
+  pre_arm_start_ms_ = now_ms;
   cooldown_duration_ms_ = cooldown_duration_ms;
-  state_ = GateState::RELAY_HOLD;
+  state_ = GateState::ARMED;
   state_start_ms_ = now_ms;
-  setRelay(true);
 
   if (event_emit_ != nullptr) {
-    event_emit_("door_open", "Access Granted via Local Auth Proof");
+    event_emit_("auth_verified_armed", "Proof Verified: Target Armed for passage sensor");
   }
   return true;
+}
+
+bool TargetAccessFsm::handleAuthAbort(uint32_t now_ms, const char* reason) {
+  if (state_ == GateState::AUTH_PENDING) {
+    state_ = GateState::IDLE;
+    is_armed_ = false;
+    state_start_ms_ = now_ms;
+    if (event_emit_ != nullptr) {
+      event_emit_(reason != nullptr ? reason : "auth_aborted",
+                  "Auth pending session aborted/disconnected");
+    }
+    return true;
+  }
+  return false;
 }
 
 bool TargetAccessFsm::handleManualRemoteOpen(uint32_t now_ms,
@@ -141,12 +181,33 @@ bool TargetAccessFsm::handleSensorTrigger(uint32_t now_ms,
   cooldown_duration_ms_ = cooldown_duration_ms;
   state_ = GateState::RELAY_HOLD;
   state_start_ms_ = now_ms;
+
+  if (event_emit_ != nullptr) {
+    event_emit_("sensor_detected", "Ultrasonic passage sensor triggered");
+  }
+
   setRelay(true);
 
   if (event_emit_ != nullptr) {
     event_emit_("relay_on_sensor", "Access Granted via MQTT Pre-arm + Ultrasonic");
   }
   return true;
+}
+
+void TargetAccessFsm::handleRelayFailsafeOff(uint32_t now_ms,
+                                             uint32_t cooldown_duration_ms) {
+  if (state_ != GateState::RELAY_HOLD || !relay_on_) {
+    return;
+  }
+  setRelay(false);
+  is_armed_ = false;
+  cooldown_duration_ms_ = cooldown_duration_ms;
+  state_ = GateState::COOLDOWN;
+  state_start_ms_ = now_ms;
+  if (event_emit_ != nullptr) {
+    event_emit_("door_close_failsafe", "Relay forced off, entering COOLDOWN");
+    event_emit_("session_completed", "Access session completed via failsafe");
+  }
 }
 
 void TargetAccessFsm::cleanupToIdle(uint32_t now_ms) {

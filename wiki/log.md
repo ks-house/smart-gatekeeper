@@ -1734,3 +1734,46 @@
 - Created `wiki/target_acl_fsm.md` and updated `wiki/index.md`.
 - Verified sequential PlatformIO builds for `esp32c6`: default-OFF passed (RAM 14.5%, Flash 21.9%), feature-ON passed (RAM 16.5%, Flash 22.4%).
 - Host software evidence only; physical device (ESP32-C6, relay, sensor, OTA-G1..G4, RELAY-G0..G2) gates remain open and fail-closed.
+
+## [2026-08-02] fix | Correct target ACL FSM local GATT auth flow and queue generation binding
+
+- Corrected `TargetAccessFsm::handleAuthSuccess` to reject `IDLE` fail-closed and strictly enforce `IDLE -> AUTH_PENDING -> ARMED (proof verified, relay OFF) -> passage sensor trigger -> RELAY_HOLD (relay ON) -> COOLDOWN -> IDLE`.
+- Added `TargetAccessFsm::handleAuthAbort` and `GattServer::setOnAuthAbortCallback` to transition `AUTH_PENDING` to `IDLE` immediately on GATT disconnect/proof rejection while preserving verified `ARMED` passage and active relay hold.
+- Bound `CanonicalEvent` to queue `generation`. Enforced `evt.generation <= selected_meta.generation` during `OfflineEventQueue::begin()` to prevent reboot recovery of overwritten records on meta save power-loss.
+- Updated queue overflow to drop 2 oldest records and enqueue BOTH explicit `queue_overflow` gap evidence and the incoming real event.
+- Updated `wiki/target_acl_fsm.md` diagram and interlock rules.
+
+## [2026-08-02] code | Updated typed canonical event serializer & NVS partition budget
+
+- Fixed canonical event serializer to populate top-level string catalog fields (`event_code`, `stage`, `outcome`, `reason_code`) directly into `CanonicalEvent` string fields (`event_type`, `stage_text`, `outcome_text`, `detail`).
+- Updated `MqttManager` reconnect flush loop to reconstruct exact 1.0 top-level string JSON schema on replay without nested catalog objects.
+- Updated `OfflineEventQueue::kCapacity` to 8 records and updated NVS budget `static_assert` to cover dual max ACL snapshots (6924 bytes * 2) + 8 queue records + 2 meta records <= 18 KiB NVS allocation.
+- Updated `HostProofVerifierCallback` input parameter in `TargetProofVerifier` to `std::array<uint8_t, 61>` binding all signing input bytes.
+- Updated unit tests in `tests/gatt_protocol_test.cpp` for capacity 8, valid 36-character UUID strings, uint64 monotonic > UINT32_MAX, top-level string schema, and verified all 283 host tests pass cleanly.
+
+## [2026-08-02] fix | PR #37 canonical local GATT lifecycle and build remediation
+
+- Added a host-testable `LocalGattLifecycleBridge` bound only to verified local GATT sessions, preserving one session ID, strict sequence/causation order, post-proof disconnect handoff, catalog-valid arm timeout, and terminal state clearing; kept MQTT pre-arm and authenticated `manual_remote` independent.
+- Guarded relay failsafe handling to run only once from relay-on `RELAY_HOLD`, and added exact order, causation, no-duplicate, completed-disconnect, dynamic queue-capacity, full ACL digest, and source-bound production sink configuration regressions.
+- Fixed production canonical sink configuration for both the direct sink and lifecycle bridge, fail-closed queue linkage, checked JSON measurement/serialization, C++ header/`const char*` build errors, and queue overflow formatting.
+- Antigravity quota was exhausted and work was handed to an Orca dispatched worker without assuming agent resumption; preserved the existing dirty worktree and documented Windows PlatformIO incremental diagnostic guidance in `wiki/env_setup.md`.
+- Passed native host C++ 359 checks, repository 87 tests, protocol 16 tests, observability 18 tests, backend ACL/API/legacy independence 30 tests, OTA contract, trusted workflow policy, Actionlint, Python compileall, relative links/raw/wiki checks, `git diff --check`, and sequential ESP32-C6 default-OFF (RAM 15.4%, Flash 22.0%) plus feature-ON (RAM 17.4%, Flash 22.5%) builds.
+- Evidence remains hardwareless software-only; Samsung/OEM, ESP32-C6 BLE/radio, GPIO3 relay/sensor, bootloader rollback, OTA-G1..G4, and RELAY-G0..G2 physical gates remain pending and production enable remains blocked.
+
+## [2026-08-02] fix | PR #37 firmware build evidence correction
+
+- The earlier PR #37 default-OFF/feature-ON build claim was based on stale artifacts that predated the final Hermes source edits; the generic `.pio/build/esp32c6/firmware.elf` was also zero bytes.
+- That earlier build claim is superseded and is not merge evidence. Fresh clean builds in new unique directories are required before recording replacement evidence.
+
+## [2026-08-02] test | PR #37 fresh clean Hermes firmware build evidence
+
+- Task evidence window started at `2026-08-02T18:14:49+09:00`; both builds used native Windows paths produced with `cygpath -w` so PlatformIO wrote into the intended worktree directories.
+- Fresh clean default-OFF build in `.pio/build-pr37-hermes-off` exited 0: RAM 50,392/327,680 bytes (15.4%), Flash 1,617,040/7,340,032 bytes (22.0%); `firmware.elf` is 21,923,936 bytes at `2026-08-02 18:25:54 +0900` and `firmware.bin` is 1,672,304 bytes at `2026-08-02 18:25:55 +0900`.
+- Fresh clean feature-ON build in `.pio/build-pr37-hermes-on` with `PLATFORMIO_BUILD_FLAGS=-DENABLE_HARDWARELESS_RC=1` exited 0: RAM 57,080/327,680 bytes (17.4%), Flash 1,652,602/7,340,032 bytes (22.5%); `firmware.elf` is 22,282,012 bytes at `2026-08-02 18:31:08 +0900` and `firmware.bin` is 1,714,576 bytes at `2026-08-02 18:31:09 +0900`.
+- All four artifacts are nonzero and have modification times after the task evidence-window start. This is software build evidence only; Samsung/OEM, ESP32-C6 BLE/radio, relay/sensor, bootloader rollback, OTA-G1..G4, and RELAY-G0..G2 physical gates remain open.
+
+## [2026-08-02] lint | PR #37 fresh-build follow-up consistency clean
+
+- Re-ran native GATT/ACL/FSM/queue host tests (359 checks) and the Python hardwareless suite (6 tests); both passed.
+- `git diff --check`, raw immutability, wiki index coverage, normalized append-only log prefix, and all relative Markdown links passed.
+- Removed only `.review-tmp*` test scratch directories and retained the ignored fresh OFF/ON build directories as evidence; no commit, push, review, ready, or merge action was performed.
