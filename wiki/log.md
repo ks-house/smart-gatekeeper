@@ -1278,103 +1278,6 @@
 - Passed 30 repository unit tests including 12 trusted-policy adversarial tests, OTA contract validation, Python compile, actionlint, workflow YAML and policy/OTA JSON parsing, wiki relative-link lint, `git diff --check`, and raw-source immutability check.
 - No physical Target or Android OTA trial was performed; OTA-G1 through OTA-G4 remain pending and issue #23 stays open.
 
-## [2026-08-01] fix | PR #28 branch `origin/main` (PR #29 `420783fc`) 병합 및 Trusted Policy `pr-28-preapproved` 검증
-
-- PR #29가 `origin/main` (`420783fc`)으로 병합됨에 따라 `origin/main`을 `tworimpa/fix-main-ci-release-gate`에 히스토리 재작성 없이 병합
-- 5개 보호 대상 파일 (`deploy.yml`, `build_app.yml`, `ota_contract.yml`, `scripts/ota_contract_gate.py`, `ota/requirements.txt`)을 `7bae62f` 승인 번들 바이트로 보존
-- `verify_trusted_workflow_policy.py` 실행 결과 후보 번들이 `pr-28-preapproved`와 100% 일치함을 기계적으로 검증
-- 수동 모바일 출입 및 미결 OTA-G1~G4 물리 증거 상태를 보존하고 12개 trusted policy test, 39개 OTA contract test, 18개 observability test, 16개 protocol test, actionlint, relative link check, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
-
-## [2026-08-01] test | PR #28 final trusted-policy review blocked by unresolved wiki conflicts
-
-- Independently verified head `55f8249753e21061b61eaf4d5669dd549796c511`: trusted base run `30706318220` checked base SHA `420783fc`, approved exactly `pr-28-preapproved`, and 12 trusted-policy tests plus a separate 102-case byte-mutation audit rejected every protected-file deviation and PR-side policy self-redefinition.
-- Re-ran 50 OTA, 18 observability, 16 protocol, authenticated `manual_remote`, OTA/access/rollback state-machine, actionlint, YAML/JSON/JSONL/schema/link/compile/raw-diff, and ESP32-C6 PlatformIO checks; all passed, and PR runs `30706319098`, `30706319103`, and `30706319133` completed successfully with both production jobs accurately skipped.
-- Confirmed the live `production` Environment still requires reviewer `tworimpa` and permits only the custom deployment branch `main`; branch protection requires the trusted policy status, while issue #23 remains open for OTA-G1 through OTA-G4 physical/operator evidence.
-- Blocked merge because `git diff --check origin/main...HEAD` exits 2 on unresolved conflict markers in `wiki/env_setup.md`, `wiki/log.md`, and `wiki/ota_reliability_contract.md`, leaving the documented trigger and release contracts ambiguous and corrupting the append-only log history.
-- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4834996277; PR #28 remains draft and unmerged pending a conflict-only correction and fresh independent review.
-
-## [2026-08-01] fix | PR #28 wiki 잔여 충돌 마커 전면 제거 및 conflict-only 정정 완료
-
-- `wiki/env_setup.md`, `wiki/log.md`, `wiki/ota_reliability_contract.md`에 남아 있던 `<<<<<<<`, `=======`, `>>>>>>>` 충돌 마커 라인을 전면 제거
-- 양쪽 변경 내용(PlatformIO/Flutter canary 보존, trusted workflow policy, 명시적 production dispatch)을 손실 없이 보존하고 중복된 마커 아티팩트만 정리
-- 런타임 코드, 테스트, raw/, 보호 workflow/policy/scripts 및 수동 모바일 출입 경로를 변경하지 않고 보존
-- 저장소 전체 conflict marker 0건, `git diff --check origin/main...HEAD` 0 error, wiki relative-link consistency 및 모든 unit test/actionlint 통과 확인
-
-## [2026-08-01] test | PR #28 final conflict-fix review approved for protected merge
-
-- Independently reviewed head `021105fa9e4227ad4e6961219d352c7c092dfc28`; confirmed `3befc28..021105f` changes only three wiki files, removes all seven conflict markers, preserves both the explicit production-dispatch and trusted-policy contracts, appends valid history, and leaves raw/runtime/tests/protected files plus `manual_remote` byte-identical.
-- The live base validator and hosted Trusted Workflow Policy run `30707292418` approved exactly `pr-28-preapproved` from trusted base SHA `420783fc`; 12 trusted-policy, 50 OTA, 18 observability, and 16 protocol tests, fixture validate/evaluate, actionlint, YAML/JSON/JSONL/link/compile/diff/raw checks, and ESP32-C6 PlatformIO build all passed.
-- PR runs `30707293747`, `30707293730`, and `30707293735` completed successfully with OTA, firmware, Android contract/test/build/canary coverage; firmware and Android production jobs were accurately skipped, while direct production validation remained fail-closed on pending OTA-G1 through OTA-G4.
-- Confirmed the live `production` Environment requires reviewer `tworimpa` with the sole custom deployment branch `main`, and strict main protection requires `Verify protected files against trusted base policy` with admins enforced and force pushes/deletions disabled.
-- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4835063820; issue #23 remains open for unavailable OTA-G1 through OTA-G4 physical/operator evidence.
-
-## [2026-08-01] compile | Trusted workflow policy를 merged main 단일 baseline으로 rotation
-
-- PR #28 merge commit `cc977e42770e6d88822459436a770295632c6e45`의 5개 보호 파일 normalized SHA-256을 `current-main-baseline` 단일 bundle로 고정
-- `origin-main-bootstrap@8c36ead`와 `pr-28-preapproved@7bae62f` 임시 entry를 제거하고 schema, protected path, exact whole-bundle matching 규칙은 변경 없이 보존
-- PR #28 보호 bytes는 merged main bytes와 동일하므로 digest는 새 main provenance로 재귀속하고, 과거 pre-PR #28 byte set은 더 이상 승인하지 않음
-
-## [2026-08-01] lint | Trusted policy rotation 범위와 보호 설정 확인
-
-- 변경 범위를 policy, trusted adversarial test, 기존 trusted-policy 문서와 append-only log로 제한하고 5개 보호 파일, runtime, raw, OTA evidence, `manual_remote`는 수정하지 않음
-- strict main required check, admins enforcement, force-push/delete 금지와 production Environment reviewer `tworimpa` 및 단일 `main` deployment branch policy를 live API로 확인
-- live GitHub API validator가 `cc977e4`를 `current-main-baseline`으로 승인하고 retired `8c36ead` byte bundle을 거부함을 확인
-- 63개 repository unit tests(OTA 50, trusted policy 13), observability 18개, protocol 16개, canonical vector와 access/manual_remote/OTA fixture validate/evaluate 전건 통과
-- actionlint, workflow YAML, 21개 JSON, 9개 JSONL, Python compile, wiki link, conflict marker, `git diff --check`와 raw/protected/runtime/OTA evidence immutability 검사 통과
-- issue #23은 open이고 OTA-G1 through OTA-G4 physical/operator evidence는 pending 상태를 유지
-
-## [2026-08-01] lint | PR #30 독립 리뷰 승인 및 최종 검증 기록
-
-- PR #30 head `2d23b52b3c41893fa1a1fbe87c13545be9002863`에 대해 독립 코드 및 정책 리뷰를 완료하고 COMMENTED 승인 기록 (https://github.com/ks-house/smart-gatekeeper/pull/30#pullrequestreview-4835169097)
-- merged main `cc977e42770e6d88822459436a770295632c6e45` baseline 단일 bundle 회귀 및 live GitHub API validator 승인 확인; 구 `8c36ead` fail-closed 거부 확인
-- 63개 unit tests, protocol 16개, observability 18개, OTA contract, actionlint, YAML/JSON/JSONL, PlatformIO ESP32-C6 빌드 및 immutability 검사 통과
-- strict main protection(enforce_admins: true), production Environment reviewer `tworimpa` 및 main-only policy 유지 확인
-- issue #23은 open 상태를 유지하고 OTA-G1~G4 physical evidence는 pending으로 관리
-
-## [2026-08-02] fix | Trusted workflow policy required-check deadlock 해제 및 parsed run 검증 강화
-
-- .github/workflows/trusted_workflow_policy.yml에서 paths 필터를 제거하여 docs-only PR을 포함한 모든 main 대상 PR에서 Verify protected files against trusted base policy 검사가 실행되도록 수정
-- pull_request_target 이벤트, base/default branch guards, trusted base-SHA checkout, inert candidate API bytes 처리 및 contents: read 권한을 모두 그대로 보존
-- tests/test_trusted_workflow_policy.py에 exact non-lossy parsed run validation (CR, LF, CRLF, tab, multiple spaces 거부) 및 structural regression tests (sparse-checkout dot, PR-title execution, extra steps, YAML boolean/string key collision, unsafe tags, unexpected jobs/steps/env/permissions, C0-control regression for wiki/log.md) 추가
-- wiki/trusted_workflow_policy.md 및 wiki/index.md에 paths 필터 제거와 required check 스케줄링 동작 업데이트
-- 77개 repository unit tests, protocol 16개, observability 18개, OTA contract, actionlint, relative link check, git diff --check, immutability 검사 통과
-
-## [2026-08-02] lint | PR #33 trusted required-check 독립 리뷰 및 병합 승인
-
-- exact author head `3c431c67509a2c4327677b4364d1ae195cf8d255`의 전체 diff와 이력을 독립 검토하고 same-account COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/33#pullrequestreview-4835921884 게시
-- LF, CRLF, bare CR, tab, multiple-space shell boundary와 sparse checkout broadening, expression injection, extra job/step/checkout/execution, permissions/env/ref/credentials/cone-mode, YAML key collision/alias/unsafe tag 변이를 독립 시험해 위험한 실행·권한 확장이 fail-closed로 거부됨을 확인
-- `origin/main:wiki/log.md` 131,280 bytes가 author head 132,413 bytes의 exact raw-byte prefix이고 invalid C0/DEL 0건임을 Python raw-byte 비교로 확인; raw/, 5-file protected bundle, runtime, `manual_remote`, OTA 계약·증거·복구 assets는 byte-unchanged
-- 77개 repository unit tests, protocol 16개, observability 18개, authenticated access/manual_remote/Target OTA/rollback validate·evaluate, OTA contract, actionlint, 5 YAML/21 JSON/9 JSONL/11 Python/31 Markdown link, conflict/diff 및 ESP32-C6 PlatformIO build 전건 통과
-- hosted trusted run `30720471619`가 trusted base `f2dc0b8d05a1f0868f751cbfcbefe32477abb795`에서 author head의 unchanged `current-main-baseline` 5-file bundle을 승인하고 OTA run `30720471625`가 77 tests를 통과함을 확인
-- strict main required check/admin/force-push·delete 보호와 production Environment reviewer `tworimpa`·single `main` policy 유지; Epic #13, issues #14/#17-#23 및 OTA-G1~G4 physical/operator gates는 open/pending으로 보존
-## [2026-08-02] compile | Epic #13 Hardwareless RC와 production Gate 분리
-
-- 사용자 구현 승인을 `G0-SW / Hardwareless RC`로 한정해 Wave 0 계약 이후 #17~#22의 feature-flagged 구현, 자동 unit/integration/virtual-E2E, 리뷰·merge를 허용
-- `G0-HW / Production`은 Samsung/OEM·ESP32-C6, relay/AJ-SR04T/real BLE/bootloader, RELAY-G0~G2와 OTA-G1~G4 물리 증거 전까지 fail-closed로 유지
-- `ota/hardwareless-implementation-gates.json`과 4개 regression test를 추가해 production enable, legacy retirement, Epic closure와 실기기 완료 주장을 차단
-- 인증된 모바일 `manual_remote`, legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성, N/N-1 불변조건을 보존
-- #14/#18/#22/#23/Epic #13은 해당 물리 Gate가 남아 있는 동안 open 상태를 유지하며 `ota/release-evidence.json`의 production block은 변경하지 않음
-
-## [2026-08-02] lint | PR #31 Hardwareless RC Gate split 독립 리뷰 승인
-
-- Head `aef3504cedc110fad56c6e9611e7d06f4164ca8c`의 전체 diff와 변경 파일을 독립 검토하고 G0-SW는 feature-flagged software 구현·review/merge·자동 검증만 허용하며 G0-HW production과 물리 완료를 대체하지 않음을 확인
-- 인증된 명시적 모바일 버튼 `manual_remote` chain과 legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성·fallback, N/N-1 불변조건이 byte-unchanged임을 확인
-- 67개 repository unit test, protocol 16개, observability 18개와 access/manual_remote/OTA fixture validate/evaluate, OTA contract와 pending production release 거부, live trusted-policy validator, actionlint, YAML/JSON/JSONL/Python, schema/link/fence/index/conflict/diff/immutability 검사를 전건 통과
-- ESP32-C6 PlatformIO build를 ignored dummy `include/secrets.h`로 검증 후 해당 임시 파일을 제거했으며 PR Actions `30717761352`, `30717761353`, `30717761366`은 성공하고 firmware/Android production job은 정확히 skip됨
-- strict main protection과 `production` Environment의 reviewer `tworimpa`·단일 `main` branch policy를 live API로 확인하고 COMMENTED 독립 리뷰 https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835756374 게시
-- Epic #13과 #14/#18/#22/#23은 open, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 BLE/radio·relay/sensor·bootloader evidence는 pending이며 production enable, legacy retirement, Epic closure는 계속 fail-closed
-
-## [2026-08-02] lint | PR #31 protected merge required-check 부재로 차단
-
-- Review-log final head `da4922304c47688daf2241ee77f86cf0e23c8b95`에서 PR Actions `30718493148`, `30718493150`, `30718493153`은 모두 성공하고 Android/firmware production job은 정확히 skip됨
-- main protection이 GitHub Actions context `Verify protected files against trusted base policy`를 strict required check로 요구하지만 trusted workflow는 protected workflow/policy 경로에만 path-filter되어 일반 문서 PR #31에는 실행되지 않음을 live API로 확인
-- Final head의 check run은 성공 3건과 production skip 2건뿐이며 required trusted-policy context가 없어 `mergeStateStatus=BLOCKED`; bypass 없는 `gh pr merge --merge`는 base branch policy에 의해 거부됨
-- `--admin`, branch-protection 변경, synthetic status, protected-file 위장 변경을 사용하지 않고 COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835786121 게시 후 PR을 draft/unmerged 상태로 복귀
-- 별도 trusted-policy rotation에서 base-SHA-only inert candidate validation의 신뢰 경계를 유지하면서 ordinary PR에도 required context가 발행되도록 고친 뒤 재리뷰가 필요
-- Epic #13과 #14/#18/#22/#23은 open이고 G0-HW, OTA-G1~G4, RELAY-G0~G2 및 물리/OEM/bootloader evidence는 pending으로 production fail-closed 유지
-## [2026-08-02] compile | PR #31 최신 main trusted required-check 수정 동기화
-
-- `origin/main` exact `e68f9f401354cd890a50ef5bb3f03cf6b70cc29c`를 history rewrite 없이 normal merge하여 ordinary PR에도 trusted required-check가 발행되는 수정 반영
 - `wiki/log.md`는 main log blob을 exact byte prefix로 두고 common base `f2dc0b8` 이후 PR #31 branch-only suffix를 byte-for-byte 연결해 append-only 양쪽 이력을 보존
 - trusted workflow/index 문서의 main 업데이트와 Hardwareless RC/G0-HW Gate 계약을 함께 보존하고 runtime, raw, protected bundle, `manual_remote`, OTA assets는 변경하지 않음
 
@@ -1388,6 +1291,7 @@
 - `wiki/log.md`는 main 134,068-byte exact prefix와 기존 PR-only 3,964-byte suffix를 보존하고 645-byte merge 기록 뒤 본 reviewer 기록만 append했으며 invalid C0/DEL은 0건
 - hosted runs `30721749667`, `30721750617`, `30721750633`, `30721750649`는 exact reviewed head에서 성공하고 firmware/Android production job은 정확히 skipped; Epic #13과 #14/#18/#22/#23, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 radio·relay/sensor·bootloader physical/operator gates는 open/pending 유지
 
+<<<<<<< HEAD
 ## [2026-08-02] code | Issue #17 hardwareless Android native GATT credential worker
 
 - Added a production-default-OFF WorkManager path from the existing PendingIntent BLE receiver to a Flutter-independent native GATT session with unique-work exclusion, durable HMAC duplicate coalescing, crash-safe session state, bounded retries, exponential backoff, and timeout.
@@ -1474,3 +1378,118 @@
 - Restored only tracked Linux/macOS/Windows Flutter registrants from exact HEAD after validation, verified no residual registrant diff or worktree lock, and removed the verified workspace-local `.review-tmp`, generated JUnit/report trees, and Android `.kotlin` test cache.
 - `git diff --check`, relative-link/index, conflict-marker, append-only log, raw immutability, protected workflow, manual runtime, OTA/recovery, and changed-path checks pass; no secret or private locator is recorded.
 - This remains software/host evidence only. PR #35 remains draft/open/unmerged; no Samsung/OEM, real ESP32-C6 radio/relay/sensor/bootloader, RELAY-G0 through G2, or OTA-G1 through G4 evidence is claimed, and production enablement plus legacy retirement remain fail-closed.
+=======
+## [2026-08-02] code | Backend public-key enrollment와 signed ACL Hardwareless RC 구현
+
+- expand-first MariaDB migration에 tenant canonical ID, public credential lifecycle, ACL snapshot, Target ACK, redacted audit와 OTA metadata/health state를 추가하고 기존 `ble_device_mac`·`auth_key`·manual_remote를 보존
+- single-use proof-of-possession enrollment, tenant-scoped admin approve/disable/revoke, canonical deterministic P-256 ACL signing, monotonic version·900초 기본/3600초 hard lease, MQTT push·periodic pull artifact와 idempotent ACK/fleet status API 구현
+- revoked/disabled credential은 다음 authoritative snapshot에서 제거하고 stale/equal-conflict/downgrade/invalid signature rejection, legacy device HMAC lookup flag와 Backend outage 중 unexpired local lease 독립성을 자동 시험으로 고정
+- primary/fallback OTA metadata와 install/boot health confirmation을 ACL credential 상태와 분리하고 feature init 실패 때 authenticated `manual_remote` 및 기존 APK/version/health 경로가 유지되도록 production-OFF flag로 격리
+
+## [2026-08-02] test | Backend ACL unit·API·isolated MariaDB migration 검증
+
+- isolated SQLite service/API tests에서 tenant boundary, enrollment proof/single-use, approval lifecycle, deterministic shared vector, revocation, stale/downgrade/invalid signature, duplicate ACK, offline lease, audit redaction, legacy flag, N/N-1와 OTA endpoint independence를 검증
+- disposable MariaDB 10.11에서 legacy schema→expand migration→N-1 legacy/N write→down migration을 실행하고 기존 legacy row가 rollback 뒤에도 읽히는 것을 확인
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 시험은 수행하지 않았으며 G0-HW, RELAY-G0~G2와 OTA-G1~G4는 pending 유지
+
+## [2026-08-02] fix | Backend ACL 독립 리뷰 보안·동시성 지적 보강
+
+- 승인 credential의 tenant 전체 door 암묵 허용을 제거하고 explicit tenant/door/credential grant만 canonical snapshot entry에 포함하도록 변경
+- Target credential을 tenant·Target ID·단일 door에 결합하고 ACK/health body Target 위조와 같은 tenant 내 다른 door pull/ACK를 403으로 거부
+- revoke/disable/grant removal과 durable replacement job을 단일 transaction으로 기록하고 영향 door마다 새 monotonic snapshot을 저장·MQTT publish하며 signer/MQTT 실패 후 periodic pull이 같은 queued artifact를 복구하도록 보강
+- per-door version atomic counter, duplicate ACK atomic upsert와 conflicting status 거부, legacy tenant UUID mapping과 ACK 이후 audited dual-mode 전환을 구현하고 frozen ACL header의 tenant 부재는 DB와 Target config의 globally unique door ownership으로 fail-closed 처리
+- malformed signer 값을 traceback에 노출하지 않고 ACL-only integer parsing을 feature guard 내부로 이동하여 ACL 설정 오류가 manual_remote·OTA 경로를 중단하지 않도록 수정
+
+## [2026-08-02] lint | Backend ACL 보강 후 software-only 회귀 검증
+
+- isolated backend 25개(SQLite/API 및 disposable MariaDB 10.11 concurrent version/ACK·legacy mapping/dual/down 포함), protocol 16개, observability 18개, repository policy/OTA/Hardwareless 81개와 OTA contract gate 전건 통과
+- canonical vector verifier, enabled/disabled router smoke, Python compile, `git diff --check`와 added-line secret/injection/eval/pickle/SQL-format scan을 통과
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 증거는 생성하지 않았으며 production enable과 legacy retirement는 계속 차단
+
+## [2026-08-02] fix | Backend ACL 최종 독립 리뷰 차단사항 해소
+
+- Target activation verifier가 trusted signer key-ID set, exact door, protocol overlap, trusted UTC, receipt/current boot identity, canonical digest/signature와 persisted version/digest high-watermark를 모두 확인하도록 보강하고 reboot 후 trusted UTC가 없으면 cached ACL을 fail-closed 처리
+- N-1 primary signer와 optional transition signer가 같은 canonical ACL을 dual-sign하도록 구현하고 transition public key 신뢰 배포 후에만 primary를 승격하는 rollback-compatible rotation 절차를 문서화
+- enrollment challenge consume와 public credential insert를 SQLite/MariaDB 단일 transaction으로 결합하여 insert 실패 시 challenge가 미사용 상태로 rollback되도록 수정
+- legacy lookup 활성화 시 explicit non-empty HMAC key를 필수화하고 Hardwareless RC의 unsafe tenant-wide dual-mode endpoint를 제거하여 expected Target inventory와 전체 ACK/physical evidence 전환 gate를 유지
+
+## [2026-08-02] test | Backend ACL 최종 software-only 회귀 검증
+
+- backend 27개(SQLite/API 및 disposable MariaDB 10.11 포함), protocol 16개, observability 18개, repository Hardwareless/OTA/trusted policy 81개와 OTA contract gate를 통과
+- Python compile, Docker Compose config, canonical vector와 `git diff --check`를 통과했으며 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 증거는 생성하지 않음
+
+## [2026-08-02] lint | PR #36 independent review blocked
+
+- Exact author head `7a1e6f511c10321d99ae5aef7adc5b49508b1d6b`의 전체 diff와 backend ACL enrollment, signing, activation, revocation, migration, Target API, OTA/manual 경계를 독립 검토하고 same-account `COMMENTED` review https://github.com/ks-house/smart-gatekeeper/pull/36#pullrequestreview-4836490385 를 게시
+- enrollment challenge가 tenant에만 묶이고 발급 actor에 결합되지 않아 같은 tenant의 다른 인증 actor가 submit할 수 있는 점, 실제 모바일 버튼 대신 admin master-open 경로만 실행하는 `manual_remote` regression, 금지된 `Closes #19`, Windows 기본 code page에서 disposable MariaDB stdin이 손상되는 재현성 문제를 merge blocker로 기록
+- `PYTHONUTF8=1` 보정 후 backend 27개와 MariaDB 10.11 migration, repository 81개, protocol 16개, observability 18개, OTA contract, Python compile, Compose, Actionlint, Markdown link, raw/log/diff 검사 및 hosted runs `30727103265`/`30727103255`는 통과했으나 blocker 해소 전 PR은 draft/open/unmerged 유지
+- Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4, RELAY-G0~G2 물리 증거는 없으며 production enable과 legacy retirement는 계속 fail-closed
+
+## [2026-08-02] fix | PR #36 blocking COMMENTED review correction
+
+- enrollment challenge에 stable one-way authenticated actor reference를 저장하고 SQLite/MariaDB의 challenge consume `UPDATE`에 tenant·enrollment ID·actor를 함께 조건화하여 credential insert와 단일 transaction으로 결합
+- 같은 tenant의 다른 인증 actor와 다른 tenant actor submit을 403/fail-closed로 거부하고 실패 뒤 원 actor가 같은 challenge를 정상 consume할 수 있는 service·API·MariaDB direct negative regression을 추가
+- 관리자 master-open 대신 WebView가 실제 전송하는 `manual_click`·approved `device_id`·no API key 요청을 실행하고 hands-free Pre-arm/RELAY 함수 미호출, ACL disabled/init failure와 OTA download 독립성을 명시적으로 검증
+- Windows Docker subprocess의 SQL stdin과 stdout/stderr를 explicit UTF-8 strict로 고정하고 migration client charset을 `utf8mb4`로 지정하여 별도 Python encoding 환경변수 없이 MariaDB 10.11 harness가 실행되도록 수정
+
+## [2026-08-02] test | PR #36 correction software-only regression verification
+
+- `PYTHONUTF8`와 `PYTHONIOENCODING`을 제거한 Windows 환경에서 disposable MariaDB 10.11을 포함한 backend 29개, repository Hardwareless/OTA/trusted policy 81개, protocol 16개, observability 18개와 canonical vector verifier 전건 통과
+- OTA contract, Actionlint, Python compile, Docker Compose config, wiki relative links, conflict marker, raw/·OTA/runtime immutability, append-only log prefix와 `git diff --check` 전건 통과
+- PR body에 issue-closing keyword가 없고 PR #36은 draft/open/unmerged 상태임을 확인했으며 `ACL_MANAGEMENT_ENABLED=false`, authenticated mobile `manual_remote`, OTA 복구 계약과 production fail-closed 상태를 보존
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 증거는 생성하거나 완료로 주장하지 않음
+
+## [2026-08-02] fix | PR #36 Windows review temporary-directory cleanup
+
+- disposable MariaDB 검증 완료 뒤 repository gate의 `TemporaryDirectory()` 6개가 이 worktree의 `.review-tmp` 아래에 남고 managed host에서 재접근할 때 `Permission denied`가 발생하는 증상을 확인
+- `Resolve-Path` 결과가 정확히 `C:\Users\shcat\orca\workspaces\smart-gatekeeper\issue19-backend-acl-hermes\.review-tmp`인지 검증하고, 이미 사용한 `mariadb:10.11` image에 해당 디렉터리만 bind mount하여 direct child 6개를 열거
+- repository root 또는 wildcard를 사용하지 않고 확인된 6개 경로만 container 내부에서 제거한 뒤 direct-child listing이 비어 있음을 확인했으며, 장시간 완료 시험은 불필요하게 재실행하지 않음
+- 증상, host access/ownership 경계라는 원인, scoped container cleanup과 후속 `git status --short`·`git diff --check` 검증 절차를 `wiki/env_setup.md`에 기록
+
+## [2026-08-02] lint | PR #36 corrected-head independent re-review blocked
+
+- Exact corrected head `9ac4bad7843bcca2f7730c9c5be1fca441e35f0f`를 독립 재검토하고 same-account `COMMENTED` review https://github.com/ks-house/smart-gatekeeper/pull/36#pullrequestreview-4836889140 게시
+- 기존 review `4836490385`의 actor-bound atomic enrollment, 실제 approved-device `manual_remote` button, issue-closing keyword 제거, Windows explicit UTF-8 MariaDB 재현성 4개 차단사항은 해소됨을 확인
+- issue #19 완료 기준의 tenant/credential 비활성화 중 credential disable/revoke는 replacement ACL을 생성하지만 tenant disable은 `acl_tenants` 상태·관리 API·replacement job 연결이 없고 legacy `tenants.is_active=false` 뒤에도 active public credential이 signed ACL에 남는 P1 차단사항을 새로 확인
+- Windows에서 Python encoding 보정 없이 real MariaDB 10.11 포함 backend 29개, repository policy/OTA/trusted 81개, protocol 16개, observability 18개, canonical vector, OTA contract, compile/Compose/Actionlint/wiki link·index/raw·protected·OTA·runtime/log 검증과 exact-head hosted checks는 통과
+- PR #36은 draft/open/unmerged로 유지하고 production enable·legacy retirement를 차단했으며 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 주장하지 않음
+
+## [2026-08-02] fix | PR #36 tenant-disable ACL replacement blocker 해소
+
+- 인증된 tenant-scope admin disable API가 `acl_tenants.status=DISABLED`, 단일 `TENANT_DISABLED` audit 의미와 모든 영향 door의 durable replacement job을 한 transaction으로 기록하도록 구현
+- authoritative credential query가 disabled tenant를 제외하고 signer failure는 미생성 job, MQTT failure는 exact generated version을 보존해 periodic pull·idempotent retry가 empty replacement ACL을 복구하도록 보강
+- exact retry는 완료 door의 job revision·ACL version·audit를 재생성하지 않으며 enrollment·approve·new grant는 disabled tenant에서 fail-closed, tenant registration과 legacy `is_active=true`는 re-enable하지 않도록 고정
+- legacy `is_active=false`는 registration, authoritative publish, enrollment-sensitive operation 또는 periodic pull에서 one-way ACL disable로 명시적으로 reconcile하고 authenticated ACL disable도 mapped legacy row를 같은 transaction에서 비활성화
+- `ACL_MANAGEMENT_ENABLED=false`, authenticated approved-device `manual_remote`, hands-free RELAY 경계, mobile/Target OTA 독립성·rollback·recovery 계약은 유지하고 물리 증거를 생성하거나 주장하지 않음
+
+## [2026-08-02] test | PR #36 tenant-disable software-only 회귀 검증
+
+- `PYTHONUTF8`·`PYTHONIOENCODING` 없이 disposable MariaDB 10.11과 migration repeat-apply를 포함한 backend 32개, repository Hardwareless/OTA/trusted 81개, protocol 16개, observability 18개와 canonical vector 전건 통과
+- active credential→tenant disable→2개 door empty replacement, no-grant, exact repeat, wrong tenant scope, signer failure, MQTT failure·exact version retry, single audit, legacy inactive one-way mapping과 fail-closed re-enable를 SQLite/API/MariaDB에서 검증
+- authenticated mobile `manual_remote`, hands-free 분리, challenge/credential 보존, OTA metadata/health 독립성, access/manual_remote/Target OTA/rollback fixture validate·evaluate와 OTA contract를 통과
+- Actionlint, Python compile, Docker Compose, 6 YAML·22 JSON·9 JSONL parse, 39 Markdown link·23-page index, conflict marker, raw/protected/runtime/OTA immutability, append-only log와 `git diff --check` 통과
+- ignored build-only `include/secrets.h`를 제거한 뒤 ESP32-C6 PlatformIO build가 RAM 47,032/327,680 bytes, flash 1,594,368/7,340,032 bytes에서 성공했으며 `.review-tmp`와 disposable MariaDB container 잔여물이 없음을 확인
+- Android/ESP32-C6 실기기, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 생성하거나 완료로 주장하지 않음
+
+## [2026-08-02] fix | Windows managed-runner PlatformIO global lock 경계 기록
+
+- sandbox 내부 `pio run -e esp32c6`가 compile 전에 user-global `C:\Users\shcat\.platformio\platforms.lock`을 열지 못해 `PermissionError`로 실패하는 증상을 재현
+- 원인은 worktree-only sandbox write scope와 PlatformIO package manager의 user-global lock/cache 접근 경계이며 firmware source나 pioarduino package 오류가 아님을 확인
+- 동일한 `pio run`만 scoped PlatformIO 권한으로 재실행하고 ignored example-based `include/secrets.h`를 `finally`에서 정확히 제거하는 안전 절차를 `wiki/env_setup.md`에 기록
+- scoped 재실행은 RAM 47,032/327,680 bytes, flash 1,596,456/7,340,032 bytes에서 성공했고 종료 후 관련 process와 `include/secrets.h`가 남지 않음을 확인
+
+## [2026-08-02] lint | PR #36 exact author head 최종 독립 재검토 clean
+
+- Exact local·remote·PR author head `4481209cfd64864712c7164872c83408502fa483`와 current main `b9c39b629c3e162be68760acfa224dd1f43b4389`를 대조하고 issue #19, 전체 16-file diff, 이전 same-account `COMMENTED` reviews 3개와 correction replies를 독립 재검토
+- authenticated tenant-scoped idempotent disable, atomic `DISABLED` state·단일 audit·모든 영향 door durable job, disabled-tenant snapshot exclusion, monotonic empty replacement, signer/MQTT failure와 periodic pull recovery, exact retry version/audit idempotency를 SQLite/API/MariaDB에서 확인
+- wrong tenant·same-tenant wrong actor·no grant·multi-door·repeated call, enrollment/approve/grant fail-closed, legacy `tenants.is_active` one-way boundary, approved-device `manual_remote`와 hands-free RELAY 분리, ACL initialization failure와 mobile/Target OTA 독립성을 확인
+- `PYTHONUTF8`·`PYTHONIOENCODING` 없이 disposable MariaDB 10.11을 포함한 backend 32개, repository 81개, protocol 16개, observability 18개, canonical vector, OTA contract, live trusted-policy `current-main-baseline`, Actionlint와 Docker Compose를 통과
+- tracked 7 YAML·7 YML·22 JSON·9 JSONL·18 Python parse, 39 Markdown·193 relative link, wiki index, append-only 140,689-byte main log prefix, raw/protected/runtime/OTA immutability, conflict marker와 `git diff --check`를 통과
+- author head hosted OTA/trusted runs `30731646894`·`30731646303`가 성공했으며 Android/ESP32-C6 실기기, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 생성하거나 완료로 주장하지 않고 production enable·legacy retirement를 계속 차단
+
+## [2026-08-02] fix | Windows managed-worktree Git administrative lock 경계 기록
+
+- verified review 문서 2개를 explicit staging하려 할 때 parent repository의 external `.git\worktrees\issue19-backend-acl-hermes\index.lock` 생성이 worktree-only sandbox에서 `Permission denied`로 실패하는 증상을 확인
+- visible worktree가 아니라 Git common administrative directory에 index lock을 써야 하는 managed-worktree 경계가 원인이며 source 권한이나 repository corruption이 아님을 확인
+- `git status`·explicit diff·`git diff --check`로 범위를 먼저 고정하고 verified path의 add/commit만 scoped Git administrative access로 실행한 뒤 clean status와 remote head를 재검증하는 절차를 `wiki/env_setup.md`에 기록
+>>>>>>> origin/main
