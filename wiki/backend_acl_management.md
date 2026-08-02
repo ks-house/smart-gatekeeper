@@ -55,9 +55,11 @@ actor, or claim another Target in an ACK/health body. Audit stores a one-way act
 the configured actor ID or key. The admin key is intentionally a global
 operator role, but every mutation still carries an explicit tenant scope and repository query.
 
-Enrollment challenges expire after five minutes and are single-use. The DB stores only a SHA-256
-nonce digest. Challenge consumption and public-credential insertion commit in one transaction, so
-an insertion failure leaves the challenge unused. Public keys must be valid P-256 points and the
+Enrollment challenges expire after five minutes and are single-use. The DB stores a stable one-way
+authenticated actor reference plus only the SHA-256 nonce digest. Submit must present the same
+authenticated actor and tenant that issued the challenge; the actor check, challenge consumption,
+and public-credential insertion commit in one transaction, so a cross-actor attempt or insertion
+failure leaves the challenge unused. Public keys must be valid P-256 points and the
 enrollment signature must be strict low-S raw64 over `SGKENR01` canonical bytes. A credential
 begins `PENDING`; only explicit admin approval makes it `ACTIVE`.
 
@@ -110,6 +112,11 @@ security protocol.
 
 ACL routes are mounted only when the feature and all prerequisites are valid. Initialization
 failure leaves legacy `manual_remote`, APK/version download, health and config routes active.
+The mobile WebView button contract is the authenticated/approved tenant request
+`POST /api/v1/door/open` with `{"reason":"manual_click","device_id":"<approved device>"}` and
+no administrator API key. It directly publishes `force_open` only after the device-to-tenant
+approval lookup; it does not call the hands-free Pre-arm/RELAY assessment path and remains
+available while ACL management is disabled or fails initialization.
 Management OTA metadata requires distinct primary/fallback HTTPS URLs, artifact digest,
 signature and N/N-1 protocol range. Target health confirmation must match the published version
 and digest; metadata upload or MQTT publication alone is not OTA success.
@@ -132,4 +139,15 @@ python scripts/ota_contract_gate.py contract
 
 The MariaDB integration test creates an isolated disposable MariaDB 10.11 container, applies the
 legacy schema and expand migration, performs both N-1 legacy and N credential writes, rolls down,
-and confirms the legacy row remains readable.
+and confirms the legacy row remains readable. It passes SQL to Docker and captures output with
+explicit UTF-8 plus a MariaDB `utf8mb4` client charset, so Windows does not require
+`PYTHONUTF8` or `PYTHONIOENCODING` overrides. The only additional prerequisite is a running Docker
+engine able to bind an ephemeral localhost port.
+
+Windows PowerShell invocation:
+
+```powershell
+$env:RUN_MARIADB_INTEGRATION = "1"
+python -m unittest backend.tests.test_migrations -v
+Remove-Item Env:RUN_MARIADB_INTEGRATION
+```

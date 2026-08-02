@@ -130,6 +130,42 @@ class AclManagementTest(unittest.TestCase):
                 actor_ref="user:a",
             )
 
+    def test_enrollment_challenge_is_bound_to_authenticated_actor(self) -> None:
+        challenge = self.service.issue_enrollment_challenge(
+            TENANT_A, actor_ref="user:a", actor_tenant_id=TENANT_A
+        )
+        signer = DeterministicP256Signer(6, signing_key_id=0)
+        payload = build_enrollment_input(
+            TENANT_A,
+            challenge["enrollment_id"],
+            challenge["nonce"],
+            signer.public_key_sec1.hex(),
+        )
+        with self.assertRaisesRegex(PermissionError, "actor boundary"):
+            self.service.submit_enrollment(
+                TENANT_A,
+                challenge["enrollment_id"],
+                challenge["nonce"],
+                signer.public_key_sec1.hex(),
+                signer.sign(payload).hex(),
+                actor_ref="user:same-tenant-peer",
+                actor_tenant_id=TENANT_A,
+            )
+        persisted = self.store.get_challenge(TENANT_A, challenge["enrollment_id"])
+        self.assertIsNone(persisted["used_at"])
+        self.assertEqual(0, len(self.store.list_credentials(TENANT_A, statuses=("PENDING",))))
+
+        accepted = self.service.submit_enrollment(
+            TENANT_A,
+            challenge["enrollment_id"],
+            challenge["nonce"],
+            signer.public_key_sec1.hex(),
+            signer.sign(payload).hex(),
+            actor_ref="user:a",
+            actor_tenant_id=TENANT_A,
+        )
+        self.assertEqual("PENDING", accepted["status"])
+
     def test_enrollment_insert_failure_does_not_consume_challenge(self) -> None:
         self.enroll(private_scalar=1)
         signer = DeterministicP256Signer(1, signing_key_id=0)

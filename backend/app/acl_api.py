@@ -138,8 +138,11 @@ def create_acl_router(
             raise HTTPException(status_code=403, detail="enrollment tenant boundary violation")
         if not x_enrollment_key or not secrets.compare_digest(x_enrollment_key, expected_key):
             raise HTTPException(status_code=401, detail="invalid enrollment authentication")
+        # Bind a challenge to a stable, non-secret identity reference. The key proves
+        # authentication but is deliberately excluded so key rotation cannot orphan an
+        # actor's outstanding challenge or leak key-derived identity into persistence.
         identity_ref = hashlib.sha256(
-            f"{x_enrollment_actor_id}|{x_enrollment_key}".encode("utf-8")
+            x_enrollment_actor_id.encode("utf-8")
         ).hexdigest()[:24]
         return x_tenant_id, f"enrollment:{identity_ref}"
 

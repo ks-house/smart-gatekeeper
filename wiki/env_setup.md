@@ -48,6 +48,17 @@ migration을 실행하지만 기존 volume은 명시적으로 적용해야 한�
 [backend_acl_management.md](backend_acl_management.md)를 따르며 production은 G0-HW와 #23
 Gate 전까지 OFF다.
 
+Windows의 disposable MariaDB 10.11 통합 검증은 실행 중인 Docker engine과 localhost 임시
+포트 bind 권한만 필요하다. harness가 SQL stdin과 subprocess stdout/stderr를 UTF-8로, MariaDB
+client charset을 `utf8mb4`로 명시하므로 `PYTHONUTF8` 또는 `PYTHONIOENCODING` 환경변수 보정은
+필요하지 않다.
+
+```powershell
+$env:RUN_MARIADB_INTEGRATION = "1"
+python -m unittest backend.tests.test_migrations -v
+Remove-Item Env:RUN_MARIADB_INTEGRATION
+```
+
 ## 3. Android 앱
 
 앱은 Flutter/Dart 3, Java 17, Android SDK/NDK가 필요하며 로컬 fork `gatekeeper_app/android/app/libs/flutter_beacon_local`을 path dependency로 사용합니다. 재현 가능한 검증은 Docker builder를 권장합니다.

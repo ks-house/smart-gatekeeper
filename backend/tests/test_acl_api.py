@@ -44,6 +44,10 @@ class AclApiTest(unittest.TestCase):
                     enabled=True,
                     enrollment_credentials={
                         "actor-a": {"tenant_id": TENANT_A, "key": "enroll-secret-a"},
+                        "actor-a-peer": {
+                            "tenant_id": TENANT_A,
+                            "key": "enroll-secret-a-peer",
+                        },
                         "actor-b": {"tenant_id": TENANT_B, "key": "enroll-secret-b"},
                     },
                     admin_key="admin-secret",
@@ -190,6 +194,59 @@ class AclApiTest(unittest.TestCase):
             f"/api/v1/admin/acl/fleet/{DOOR}", headers=admin_headers
         )
         self.assertEqual(1, fleet.json()["synced_targets"])
+
+    def test_enrollment_submit_rejects_different_authenticated_actor(self) -> None:
+        actor_a_headers = {
+            "X-Enrollment-Key": "enroll-secret-a",
+            "X-Enrollment-Actor-ID": "actor-a",
+            "X-Tenant-ID": TENANT_A,
+        }
+        challenge = self.client.post(
+            "/api/v1/acl/enrollment/challenge",
+            json={"tenant_id": TENANT_A},
+            headers=actor_a_headers,
+        ).json()
+        device = DeterministicP256Signer(5, signing_key_id=0)
+        payload = build_enrollment_input(
+            TENANT_A,
+            challenge["enrollment_id"],
+            challenge["nonce"],
+            device.public_key_sec1.hex(),
+        )
+        body = {
+            "tenant_id": TENANT_A,
+            "enrollment_id": challenge["enrollment_id"],
+            "nonce": challenge["nonce"],
+            "public_key_sec1": device.public_key_sec1.hex(),
+            "signature_raw64": device.sign(payload).hex(),
+        }
+        same_tenant_peer = self.client.post(
+            "/api/v1/acl/enrollment/submit",
+            json=body,
+            headers={
+                "X-Enrollment-Key": "enroll-secret-a-peer",
+                "X-Enrollment-Actor-ID": "actor-a-peer",
+                "X-Tenant-ID": TENANT_A,
+            },
+        )
+        self.assertEqual(403, same_tenant_peer.status_code)
+        self.assertIn("actor boundary", same_tenant_peer.json()["detail"])
+
+        cross_tenant_actor = self.client.post(
+            "/api/v1/acl/enrollment/submit",
+            json=body,
+            headers={
+                "X-Enrollment-Key": "enroll-secret-b",
+                "X-Enrollment-Actor-ID": "actor-b",
+                "X-Tenant-ID": TENANT_B,
+            },
+        )
+        self.assertEqual(403, cross_tenant_actor.status_code)
+
+        original_actor = self.client.post(
+            "/api/v1/acl/enrollment/submit", json=body, headers=actor_a_headers
+        )
+        self.assertEqual(200, original_actor.status_code, original_actor.text)
 
     def test_feature_flag_is_fail_closed(self) -> None:
         app = FastAPI()

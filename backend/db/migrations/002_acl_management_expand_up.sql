@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS acl_tenants (
 CREATE TABLE IF NOT EXISTS enrollment_challenges (
   enrollment_id CHAR(32) PRIMARY KEY,
   tenant_id CHAR(32) NOT NULL,
+  actor_ref VARCHAR(128) NOT NULL COMMENT 'Stable one-way authenticated enrollment identity',
   nonce_hash CHAR(64) NOT NULL COMMENT 'SHA-256 only; raw nonce is not persisted',
   expires_at BIGINT UNSIGNED NOT NULL,
   used_at BIGINT UNSIGNED NULL,

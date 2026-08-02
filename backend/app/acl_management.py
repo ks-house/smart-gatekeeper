@@ -409,6 +409,7 @@ def initialize_sqlite_test_schema(connection: sqlite3.Connection) -> None:
         CREATE TABLE enrollment_challenges (
           enrollment_id TEXT PRIMARY KEY,
           tenant_id TEXT NOT NULL,
+          actor_ref TEXT NOT NULL,
           nonce_hash TEXT NOT NULL,
           expires_at INTEGER NOT NULL,
           used_at INTEGER,
@@ -615,13 +616,19 @@ class AclStore:
         return self._one("SELECT tenant_id FROM acl_tenants WHERE tenant_id=?", (tenant_id,)) is not None
 
     def insert_challenge(
-        self, enrollment_id: str, tenant_id: str, nonce_hash: str, expires_at: int, now: int
+        self,
+        enrollment_id: str,
+        tenant_id: str,
+        actor_ref: str,
+        nonce_hash: str,
+        expires_at: int,
+        now: int,
     ) -> None:
         self._write(
             "INSERT INTO enrollment_challenges "
-            "(enrollment_id, tenant_id, nonce_hash, expires_at, used_at, created_at) "
-            "VALUES (?, ?, ?, ?, NULL, ?)",
-            (enrollment_id, tenant_id, nonce_hash, expires_at, now),
+            "(enrollment_id, tenant_id, actor_ref, nonce_hash, expires_at, used_at, created_at) "
+            "VALUES (?, ?, ?, ?, ?, NULL, ?)",
+            (enrollment_id, tenant_id, actor_ref, nonce_hash, expires_at, now),
         )
 
     def get_challenge(self, tenant_id: str, enrollment_id: str) -> Optional[dict[str, Any]]:
@@ -661,6 +668,7 @@ class AclStore:
         self,
         tenant_id: str,
         enrollment_id: str,
+        actor_ref: str,
         now: int,
         values: dict[str, Any],
     ) -> bool:
@@ -674,9 +682,10 @@ class AclStore:
             cursor.execute(
                 self._sql(
                     "UPDATE enrollment_challenges SET used_at=? "
-                    "WHERE tenant_id=? AND enrollment_id=? AND used_at IS NULL"
+                    "WHERE tenant_id=? AND enrollment_id=? AND actor_ref=? "
+                    "AND used_at IS NULL"
                 ),
-                (now, tenant_id, enrollment_id),
+                (now, tenant_id, enrollment_id, actor_ref),
             )
             if cursor.rowcount != 1:
                 connection.rollback()
@@ -1228,6 +1237,7 @@ class AclManagementService:
         self.store.insert_challenge(
             enrollment_id,
             tenant_id,
+            actor_ref,
             hashlib.sha256(bytes.fromhex(nonce)).hexdigest(),
             now + 300,
             now,
@@ -1256,6 +1266,8 @@ class AclManagementService:
         challenge = self.store.get_challenge(tenant_id, enrollment_id)
         if challenge is None:
             raise LookupError("enrollment challenge not found")
+        if not hmac.compare_digest(str(challenge["actor_ref"]), actor_ref):
+            raise PermissionError("enrollment actor boundary violation")
         if challenge["used_at"] is not None:
             raise ValueError("enrollment challenge already used")
         if int(challenge["expires_at"]) <= now:
@@ -1290,7 +1302,7 @@ class AclManagementService:
                 "updated_at": now,
             }
         if not self.store.consume_challenge_and_insert_credential(
-            tenant_id, enrollment_id, now, credential
+            tenant_id, enrollment_id, actor_ref, now, credential
         ):
             raise ValueError("enrollment challenge already used")
         metadata = {"legacy_device_ref": legacy_ref} if legacy_ref else {}

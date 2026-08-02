@@ -33,6 +33,7 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("ADD COLUMN IF NOT EXISTS tenant_uuid", up)
         self.assertIn("credential_mode", up)
         self.assertIn("CREATE TABLE IF NOT EXISTS credentials", up)
+        self.assertIn("actor_ref VARCHAR(128) NOT NULL", up)
         self.assertIn("CREATE TABLE IF NOT EXISTS credential_door_grants", up)
         self.assertIn("CREATE TABLE IF NOT EXISTS acl_door_state", up)
         self.assertIn("CREATE TABLE IF NOT EXISTS acl_snapshot_jobs", up)
@@ -61,6 +62,8 @@ class MigrationContractTest(unittest.TestCase):
                 ["docker", *args],
                 input=input_text,
                 text=True,
+                encoding="utf-8",
+                errors="strict",
                 capture_output=True,
                 check=check,
             )
@@ -119,6 +122,7 @@ class MigrationContractTest(unittest.TestCase):
                 "-i",
                 name,
                 "mariadb",
+                "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
                 input_text=combined,
@@ -172,19 +176,41 @@ class MigrationContractTest(unittest.TestCase):
                 tenant_id, actor_ref="user:test", actor_tenant_id=tenant_id
             )
             mobile = DeterministicP256Signer(3, 9)
+            enrollment_input = build_enrollment_input(
+                tenant_id,
+                challenge["enrollment_id"],
+                challenge["nonce"],
+                mobile.public_key_sec1.hex(),
+            )
+            with self.assertRaisesRegex(PermissionError, "actor boundary"):
+                service.submit_enrollment(
+                    tenant_id,
+                    challenge["enrollment_id"],
+                    challenge["nonce"],
+                    mobile.public_key_sec1.hex(),
+                    mobile.sign(enrollment_input).hex(),
+                    actor_ref="user:same-tenant-peer",
+                    actor_tenant_id=tenant_id,
+                )
+            with connection() as challenge_connection:
+                with challenge_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT used_at FROM enrollment_challenges "
+                        "WHERE tenant_id=%s AND enrollment_id=%s",
+                        (tenant_id, challenge["enrollment_id"]),
+                    )
+                    self.assertIsNone(cursor.fetchone()["used_at"])
+                    cursor.execute(
+                        "SELECT COUNT(*) AS count FROM credentials WHERE tenant_id=%s",
+                        (tenant_id,),
+                    )
+                    self.assertEqual(0, cursor.fetchone()["count"])
             credential = service.submit_enrollment(
                 tenant_id,
                 challenge["enrollment_id"],
                 challenge["nonce"],
                 mobile.public_key_sec1.hex(),
-                mobile.sign(
-                    build_enrollment_input(
-                        tenant_id,
-                        challenge["enrollment_id"],
-                        challenge["nonce"],
-                        mobile.public_key_sec1.hex(),
-                    )
-                ).hex(),
+                mobile.sign(enrollment_input).hex(),
                 actor_ref="user:test",
                 actor_tenant_id=tenant_id,
             )
@@ -285,6 +311,7 @@ class MigrationContractTest(unittest.TestCase):
                 "-i",
                 name,
                 "mariadb",
+                "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
                 input_text=DOWN.read_text(encoding="utf-8"),
