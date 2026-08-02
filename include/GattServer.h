@@ -29,6 +29,7 @@ class GattServer {
   static bool hasActiveOutput();
   static void setProofVerifier(sgk::ProofVerifier* verifier);
   static void setEventSink(sgk::EventSink* sink);
+  static void setOnAuthGrantCallback(void (*callback)(uint32_t now_ms));
   static void useProductionEventSink();
   static Telemetry getTelemetry();
 

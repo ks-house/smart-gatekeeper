@@ -19,8 +19,9 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
                 / ".platformio/packages/toolchain-gccmingw32/bin/g++.exe"
             )
         self.assertTrue(Path(compiler).is_file(), "native g++ compiler is required")
+        import uuid
         with tempfile.TemporaryDirectory() as directory:
-            executable = Path(directory) / "gatt_protocol_test.exe"
+            executable = Path(directory) / f"gatt_protocol_test_{uuid.uuid4().hex}.exe"
             compile_result = subprocess.run(
                 [
                     compiler,
@@ -33,6 +34,10 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
                     "-static-libstdc++",
                     "-Iinclude",
                     "src/GattProtocol.cpp",
+                    "src/TargetAclManager.cpp",
+                    "src/TargetProofVerifier.cpp",
+                    "src/TargetAccessFsm.cpp",
+                    "src/OfflineEventQueue.cpp",
                     "tests/gatt_protocol_test.cpp",
                     "-o",
                     str(executable),

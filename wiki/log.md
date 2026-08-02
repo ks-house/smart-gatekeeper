@@ -1718,3 +1718,10 @@
 - Executed forced Android JVM unit tests with `--rerun-tasks` inside Docker (`gatekeeper-flutter-builder`): 8 test suites, 36 tests, 0 failures, 0 errors, 0 skips (including 30 GATT worker tests).
 - Passed Flutter 6 unit tests, zero-change `dart format`, and clean `dart analyze` with 0 issues. Built `app-debug.apk` and verified ESP32-C6 firmware build (`pio run -e esp32c6` with RAM 14.4%, Flash 21.7%).
 - Actionlint 0 errors, relative markdown links clean, `git diff --check origin/main...HEAD` 0 errors. Preserved authenticated `manual_remote` and mobile/Target OTA contracts byte-unchanged. Software/host evidence only; Samsung/OEM, physical radio, ESP32-C6 GATT, relay/sensor, bootloader, and OTA-G1~G4 evidence remain pending.
+
+## [2026-08-02] code | Issue #20: Target local ACL verification and access-session FSM implementation
+
+- Implemented `TargetAclManager` for 72B header + 106B entry + 64B SEC1 P-256 raw64 signed ACL parsing, validation, dual-slot NVS storage, and anti-rollback high-watermark versioning.
+- Implemented `TargetProofVerifier` for canonical proof verification against active signed ACL with strict low-S (`s <= half n`) constraints.
+- Implemented `TargetAccessFsm` and `OfflineEventQueue` for Target-owned access-session state machine (`IDLE -> ARMED -> RELAY_HOLD -> COOLDOWN`) with fail-closed interlocking, MQTT manual remote opening, and OTA safe state classification.
+- Integrated components into main firmware (`main.cpp`, `GattServer.cpp`, `MqttManager.cpp`) and passed host C++ unit tests, Python test suites, and PlatformIO ESP32-C6 firmware build.

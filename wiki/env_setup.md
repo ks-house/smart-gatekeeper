@@ -19,7 +19,9 @@ pio device monitor -b 115200
 
 `include/secrets.h`에는 Wi-Fi, API, MQTT, OTA 주소와 TLS Root CA가 필요합니다. CI는 GitHub Secrets로
 이 파일을 생성하고 `FIRMWARE_VERSION_OVERRIDE`를 주입합니다. v2.1부터 main firmware build ID는
-`2.1.0-g<short_sha>` 형식입니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
+`2.1.0-g<short_sha>` 형식입니다. Target local ACL 및 access session FSM (Issue #20) 검증을 위한
+`TargetAclManager`, `TargetProofVerifier`, `TargetAccessFsm`, `OfflineEventQueue` 모듈이 포함되며
+host unit test는 `python -m unittest tests/test_hardwareless_rc.py`로 실행할 수 있습니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
 `platformio.ini`에 없습니다.
 
 ### 1.1 Windows에서 긴 PlatformIO 빌드가 timeout된 경우

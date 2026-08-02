@@ -35,6 +35,7 @@ bool requested_enabled = false;
 sgk::FailClosedProofVerifier fail_closed_verifier;
 sgk::ProofVerifier* selected_verifier = &fail_closed_verifier;
 sgk::EventSink* selected_event_sink = nullptr;
+static void (*s_auth_grant_callback)(uint32_t now_ms) = nullptr;
 
 #if ENABLE_HARDWARELESS_RC
 constexpr uint16_t kNimbleSubscribeIndicate = 0x0002;
@@ -154,6 +155,10 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
       return;
     }
     MqttManager::publishCanonicalEvent(payload);
+    if (event.code == sgk::EventCode::kAccessProofVerified &&
+        s_auth_grant_callback != nullptr) {
+      s_auth_grant_callback(static_cast<uint32_t>(event.monotonic_ms));
+    }
     last_session_ = schema_session;
     last_sequence_ = event.sequence;
     last_event_id_bytes_ = event_id;
@@ -573,6 +578,10 @@ void GattServer::setProofVerifier(sgk::ProofVerifier* verifier) {
 
 void GattServer::setEventSink(sgk::EventSink* sink) {
   selected_event_sink = sink;
+}
+
+void GattServer::setOnAuthGrantCallback(void (*callback)(uint32_t now_ms)) {
+  s_auth_grant_callback = callback;
 }
 
 void GattServer::useProductionEventSink() {

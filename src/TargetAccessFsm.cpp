@@ -1,0 +1,159 @@
+#include "TargetAccessFsm.h"
+
+namespace sgk {
+
+TargetAccessFsm::TargetAccessFsm(RelayDriveFn relay_drive,
+                                 EventEmitFn event_emit)
+    : relay_drive_(relay_drive), event_emit_(event_emit) {}
+
+void TargetAccessFsm::begin(uint32_t now_ms) {
+  state_ = GateState::IDLE;
+  is_armed_ = false;
+  relay_on_ = false;
+  state_start_ms_ = now_ms;
+  setRelay(false);
+}
+
+void TargetAccessFsm::setRelay(bool on) {
+  relay_on_ = on;
+  if (relay_drive_ != nullptr) {
+    relay_drive_(on);
+  }
+}
+
+OtaSafeState TargetAccessFsm::otaSafeState() const {
+  return classifyOtaSafeState(state_, is_armed_, relay_on_);
+}
+
+void TargetAccessFsm::tick(uint32_t now_ms) {
+  switch (state_) {
+    case GateState::IDLE:
+      break;
+
+    case GateState::ARMED:
+      if (is_armed_ && pre_arm_start_ms_ > 0 &&
+          (now_ms - pre_arm_start_ms_ >= pre_arm_duration_ms_)) {
+        is_armed_ = false;
+        state_ = GateState::IDLE;
+        state_start_ms_ = now_ms;
+        if (event_emit_ != nullptr) {
+          event_emit_("arm_expired", "Pre-arm timeout, returning to IDLE");
+        }
+      }
+      break;
+
+    case GateState::RELAY_HOLD:
+      if (now_ms - state_start_ms_ >= hold_duration_ms_) {
+        setRelay(false);
+        state_ = GateState::COOLDOWN;
+        state_start_ms_ = now_ms;
+        if (event_emit_ != nullptr) {
+          event_emit_("door_close", "Relay Timeout OFF");
+        }
+      }
+      break;
+
+    case GateState::COOLDOWN:
+      if (now_ms - state_start_ms_ >= cooldown_duration_ms_) {
+        state_ = GateState::IDLE;
+        state_start_ms_ = now_ms;
+        if (event_emit_ != nullptr) {
+          event_emit_("gate_idle", "Cooldown complete, ready for next access");
+        }
+      }
+      break;
+  }
+}
+
+bool TargetAccessFsm::handleAuthSuccess(uint32_t now_ms,
+                                        uint32_t hold_duration_ms,
+                                        uint32_t cooldown_duration_ms) {
+  // Fail-closed interlock: Relay will ONLY activate if FSM is in IDLE state.
+  if (state_ != GateState::IDLE || relay_on_) {
+    if (event_emit_ != nullptr) {
+      event_emit_("auth_open_rejected", "Target is not IDLE");
+    }
+    return false;
+  }
+
+  is_armed_ = false;
+  hold_duration_ms_ = hold_duration_ms;
+  cooldown_duration_ms_ = cooldown_duration_ms;
+  state_ = GateState::RELAY_HOLD;
+  state_start_ms_ = now_ms;
+  setRelay(true);
+
+  if (event_emit_ != nullptr) {
+    event_emit_("door_open", "Access Granted via Local Auth Proof");
+  }
+  return true;
+}
+
+bool TargetAccessFsm::handleManualRemoteOpen(uint32_t now_ms,
+                                             uint32_t hold_duration_ms,
+                                             uint32_t cooldown_duration_ms) {
+  if (state_ != GateState::IDLE || relay_on_) {
+    if (event_emit_ != nullptr) {
+      event_emit_("manual_open_rejected_not_idle",
+                  "manual open rejected: Target is not IDLE");
+    }
+    return false;
+  }
+
+  is_armed_ = false;
+  hold_duration_ms_ = hold_duration_ms;
+  cooldown_duration_ms_ = cooldown_duration_ms;
+  state_ = GateState::RELAY_HOLD;
+  state_start_ms_ = now_ms;
+  setRelay(true);
+
+  if (event_emit_ != nullptr) {
+    event_emit_("relay_on_manual", "Access Granted via MQTT manual remote");
+  }
+  return true;
+}
+
+bool TargetAccessFsm::handlePreArm(uint32_t now_ms, uint32_t pre_arm_duration_ms) {
+  if (state_ != GateState::IDLE || relay_on_) {
+    return false;
+  }
+  is_armed_ = true;
+  pre_arm_duration_ms_ = pre_arm_duration_ms;
+  pre_arm_start_ms_ = now_ms;
+  state_ = GateState::ARMED;
+  state_start_ms_ = now_ms;
+
+  if (event_emit_ != nullptr) {
+    event_emit_("pre_armed", "Pre-armed via MQTT");
+  }
+  return true;
+}
+
+bool TargetAccessFsm::handleSensorTrigger(uint32_t now_ms,
+                                           uint32_t hold_duration_ms,
+                                           uint32_t cooldown_duration_ms) {
+  if (state_ != GateState::ARMED || !is_armed_) {
+    return false;
+  }
+
+  is_armed_ = false;
+  hold_duration_ms_ = hold_duration_ms;
+  cooldown_duration_ms_ = cooldown_duration_ms;
+  state_ = GateState::RELAY_HOLD;
+  state_start_ms_ = now_ms;
+  setRelay(true);
+
+  if (event_emit_ != nullptr) {
+    event_emit_("relay_on_sensor", "Access Granted via MQTT Pre-arm + Ultrasonic");
+  }
+  return true;
+}
+
+void TargetAccessFsm::cleanupToIdle(uint32_t now_ms) {
+  setRelay(false);
+  is_armed_ = false;
+  state_ = GateState::IDLE;
+  state_start_ms_ = now_ms;
+}
+
+}  // namespace sgk

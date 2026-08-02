@@ -25,8 +25,104 @@
 #include "RelayController.h"
 #include "GattServer.h"
 #include "TargetState.h"
+#include "TargetAclManager.h"
+#include "TargetProofVerifier.h"
+#include "TargetAccessFsm.h"
+#include "OfflineEventQueue.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
+
+class NvsAclStorage final : public sgk::TargetAclStorage {
+ public:
+  bool saveSlot(uint8_t slot, const uint8_t* blob, size_t length) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", false)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "slot_%u", slot);
+    size_t written = prefs.putBytes(key, blob, length);
+    prefs.end();
+    return written == length;
+  }
+
+  bool readSlot(uint8_t slot, uint8_t* buffer, size_t capacity,
+                size_t* read_bytes) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", true)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "slot_%u", slot);
+    size_t len = prefs.getBytesLength(key);
+    if (len == 0 || len > capacity) {
+      prefs.end();
+      return false;
+    }
+    size_t read_len = prefs.getBytes(key, buffer, capacity);
+    prefs.end();
+    if (read_bytes != nullptr) *read_bytes = read_len;
+    return read_len == len;
+  }
+
+  bool saveGenerationRecord(uint8_t record_index,
+                             const sgk::GenerationRecord& record) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", false)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "gen_%u", record_index);
+    size_t written = prefs.putBytes(key, &record, sizeof(record));
+    prefs.end();
+    return written == sizeof(record);
+  }
+
+  bool readGenerationRecord(uint8_t record_index,
+                             sgk::GenerationRecord* record) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", true)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "gen_%u", record_index);
+    size_t len = prefs.getBytesLength(key);
+    if (len != sizeof(sgk::GenerationRecord)) {
+      prefs.end();
+      return false;
+    }
+    size_t read_len = prefs.getBytes(key, record, sizeof(sgk::GenerationRecord));
+    prefs.end();
+    return read_len == sizeof(sgk::GenerationRecord);
+  }
+
+  bool saveHighWatermark(uint64_t version) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", false)) return false;
+    size_t written = prefs.putBytes("hw_ver", &version, sizeof(version));
+    prefs.end();
+    return written == sizeof(version);
+  }
+
+  uint64_t readHighWatermark() override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", true)) return 0;
+    uint64_t version = 0;
+    prefs.getBytes("hw_ver", &version, sizeof(version));
+    prefs.end();
+    return version;
+  }
+};
+
+static NvsAclStorage g_nvs_acl_storage;
+sgk::TargetAclManager g_acl_manager(&g_nvs_acl_storage);
+static sgk::TargetProofVerifier g_proof_verifier(
+    g_acl_manager, []() -> uint32_t { return millis(); }, nullptr);
+static sgk::OfflineEventQueue g_offline_queue;
+
+static inline void relayOn();
+static inline void relayOff();
+
+static sgk::TargetAccessFsm g_access_fsm(
+    [](bool on) {
+      if (on) relayOn();
+      else relayOff();
+    },
+    [](const char* event, const char* message) {
+      MqttManager::publishEvent(event, message);
+    });
 
 // ─────────────────────────────────────────────────────────────
 // 릴레이 컨트롤러 인스턴스
@@ -330,6 +426,10 @@ static void initBleAdvertiser() {
       ConfigManager::getHardwarelessRcEnabled(false));
   GattServer::setEnabled(hwlessEnable);
   GattServer::useProductionEventSink();
+  GattServer::setProofVerifier(&g_proof_verifier);
+  GattServer::setOnAuthGrantCallback([](uint32_t now_ms) {
+    g_access_fsm.handleAuthSuccess(now_ms, RELAY_HOLD_MS, g_relay_cooldown_ms);
+  });
   GattServer::init();
 
   // NVS에서 불러온 송신 출력을 기준으로 초기화
@@ -404,7 +504,14 @@ void setup() {
   // 5. AJ-SR04T 방수 초음파 센서 초기화
   UltrasonicSensor::init();
 
-  // 6. BLE Beacon Advertiser 시작
+  // 6. Target Access FSM & ACL Manager 초기화
+  g_access_fsm.begin(millis());
+  std::array<uint8_t, 16> door_id{};
+  if (ConfigManager::getHardwarelessDoorId(&door_id)) {
+    g_acl_manager.begin(door_id, millis());
+  }
+
+  // 7. BLE Beacon Advertiser 시작
   initBleAdvertiser();
 
   LOGF("============================================");
@@ -418,6 +525,7 @@ void setup() {
 // ─────────────────────────────────────────────────────────────
 void loop() {
   uint32_t now = millis();
+  g_access_fsm.tick(now);
 
   if (relayFailsafeTriggered) {
     relayFailsafeTriggered = false;

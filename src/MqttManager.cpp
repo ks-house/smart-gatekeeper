@@ -8,6 +8,7 @@
 #include "DiagnosticsManager.h"
 #include "WifiManager.h"
 #include "OtaManager.h"
+#include "TargetAclManager.h"
 
 #include <esp_arduino_version.h>
 #include <esp_system.h>
@@ -47,11 +48,36 @@ void MqttManager::init() {
 
 void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     char message[256];
+
     if (length >= sizeof(message)) length = sizeof(message) - 1;
     memcpy(message, payload, length);
     message[length] = '\0';
 
     LOGF("[MQTT] 수신 주제: %s | 메시지: %s", topic, message);
+
+    // ─── smart-gatekeeper/target/acl/push — Signed ACL push ───────────────
+    if (strcmp(topic, "smart-gatekeeper/target/acl/push") == 0 ||
+        strncmp(topic, "gatekeeper/acl/v1/", 18) == 0) {
+        LOGF("[MQTT-ACL] Signed ACL push 수신 (길이: %u)", length);
+        extern sgk::TargetAclManager g_acl_manager;
+        sgk::ResultReason res = g_acl_manager.applySignedAcl(
+            reinterpret_cast<const uint8_t*>(payload), length, millis(), 0);
+        if (res == sgk::ResultReason::kOk) {
+            LOGF("[MQTT-ACL] ✅ Signed ACL 적용 성공 (v%llu)",
+                 (unsigned long long)g_acl_manager.activeAclVersion());
+            StaticJsonDocument<256> ackDoc;
+            ackDoc["status"] = "applied";
+            ackDoc["acl_version"] = g_acl_manager.activeAclVersion();
+            ackDoc["high_watermark"] = g_acl_manager.highWatermark();
+            char ackBuf[256] = {};
+            serializeJson(ackDoc, ackBuf, sizeof(ackBuf));
+            client.publish("smart-gatekeeper/target/acl/ack", ackBuf);
+        } else {
+            LOGF("[MQTT-ACL] ⚠️ Signed ACL 적용 거부 (reason code: %u)",
+                 static_cast<unsigned int>(res));
+        }
+        return;
+    }
 
     // ─── gatekeeper/arm — Pre-arm 사전 승인 처리 (v2.0 핵심 신규) ───────
     if (strcmp(topic, MQTT_TOPIC_ARM) == 0) {
@@ -251,6 +277,8 @@ void MqttManager::update() {
                 client.subscribe(MQTT_TOPIC_ARM);
                 client.subscribe("gatekeeper/force_open");
                 client.subscribe("smart-gatekeeper/cmd");
+                client.subscribe("smart-gatekeeper/target/acl/push");
+                client.subscribe("gatekeeper/acl/v1/#");
                 client.subscribe(MQTT_TOPIC_CONFIG_TX_POWER);
                 client.subscribe(MQTT_TOPIC_CONFIG_DISTANCE_THRESH);
                 client.subscribe(MQTT_TOPIC_CONFIG_TOF_DIST);
