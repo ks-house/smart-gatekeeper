@@ -240,3 +240,15 @@ force-stop은 성공률 시험 대상이 아니라 미지원 계약 확인 대�
 
 따라서 PR은 #14를 자동 close하지 않으며 실기기 Gate가 채워질 때까지 draft/미완료 상태로
 관리한다.
+
+## 10. Issue #17 native worker integration
+
+The production-default-OFF GATT worker consumes this ADR's `BleWakeNativeEntrypoint` only after the
+existing wake event has been recorded. Work scheduling is native and does not start or require a
+Flutter engine. The original wake journal remains redacted, while the device address required for a
+GATT connection is confined to private WorkManager input and is not serialized by `BleWakeEvent`.
+
+Legacy beacon scanning and the new worker are mutually exclusive through the validated, unexpired
+remote flag contract described in [android_gatt_worker.md](android_gatt_worker.md). This integration
+does not satisfy the Samsung 20-run gates above and does not weaken the independent mobile OTA or
+authenticated `manual_remote` paths.

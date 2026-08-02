@@ -1387,3 +1387,29 @@
 - ESP32-C6 PlatformIO build는 ignored non-secret placeholder `include/secrets.h`로 RAM 47,032/327,680 bytes, flash 1,594,400/7,340,032 bytes에서 통과했고 임시 header를 제거해 worktree를 복원
 - `wiki/log.md`는 main 134,068-byte exact prefix와 기존 PR-only 3,964-byte suffix를 보존하고 645-byte merge 기록 뒤 본 reviewer 기록만 append했으며 invalid C0/DEL은 0건
 - hosted runs `30721749667`, `30721750617`, `30721750633`, `30721750649`는 exact reviewed head에서 성공하고 firmware/Android production job은 정확히 skipped; Epic #13과 #14/#18/#22/#23, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 radio·relay/sensor·bootloader physical/operator gates는 open/pending 유지
+
+## [2026-08-02] code | Issue #17 hardwareless Android native GATT credential worker
+
+- Added a production-default-OFF WorkManager path from the existing PendingIntent BLE receiver to a Flutter-independent native GATT session with unique-work exclusion, durable HMAC duplicate coalescing, crash-safe session state, bounded retries, exponential backoff, and timeout.
+- Added a testable BLE/GATT transport, strict canonical challenge/proof/result and ATT framing codecs, AndroidKeyStore P-256 signing with exact low-S P1363 proof conversion, and a deterministic JVM signer; authentication never creates, logs, or exports a private key.
+- Added default-safe validated remote flag semantics and two-sided legacy/native BLE ownership exclusion, fixed Android blocker/outcome reasons mapped to the observability vocabulary, and a read-only Flutter health/reason/latency bridge.
+- Preserved the authenticated explicit-button `manual_remote` path and kept the mobile updater plus Target OTA/rollback/recovery contracts independent of every worker flag, failure, and crash state.
+
+## [2026-08-02] compile | Issue #17 native worker contract and operator guidance
+
+- Added `android_gatt_worker.md`, indexed it, linked the #14 wake ADR integration, and documented feature ownership, credential boundaries, durable diagnostics, stable reasons, hardwareless evidence, and pending G0-HW gates.
+- Documented the read-only canonical-vector Compose mount, named Gradle cache, bounded `--rerun-tasks` command, and JUnit XML inspection path.
+- Did not modify `raw/`; no Samsung/OEM screen-off, real BLE radio, ESP32-C6 interoperability, relay/sensor, bootloader, or physical OTA evidence is claimed.
+
+## [2026-08-02] test | Issue #17 forced JVM, Flutter, and debug APK validation
+
+- Forced `:app:testDebugUnitTest --tests 'com.kshouse.gatekeeper_app.gattworker.*' --rerun-tasks` under a five-minute bound; Gradle executed 208 tasks and completed successfully in 2m52s.
+- Inspected three targeted JUnit XML suites: 12 tests, 0 failures, 0 errors, and 0 skips; the full Android JVM run had 18 passing tests.
+- Flutter ran 6 passing tests and targeted analysis of the changed Dart bridge/test reported no issues; full analysis retained 17 pre-existing info-level findings under vendored `flutter_beacon_local`.
+- Built `gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk` successfully; hardwareless coverage includes duplicates, retries, timeout, malformed result, network off, worker restart, feature exclusion, canonical vectors, secret redaction, and OTA independence.
+
+## [2026-08-02] lint | Issue #17 Hardwareless RC repository contract verification
+
+- Passed 81 repository gate tests, 16 protocol canonical-vector tests, 18 observability tests, and the standalone canonical-vector verifier.
+- Passed Dart format for the changed bridge/test, wiki relative-link validation, `git diff --check`, and raw-source immutability validation; unrelated generated Linux/macOS/Windows Flutter plugin registrants were restored and excluded.
+- Confirmed no changes to authenticated `manual_remote`, update manager, OTA evidence/contracts, Target firmware, or `raw/`; G0-HW, Samsung/OEM, ESP32-C6 radio, relay/sensor, bootloader, and OTA-G1 through OTA-G4 evidence remain pending.

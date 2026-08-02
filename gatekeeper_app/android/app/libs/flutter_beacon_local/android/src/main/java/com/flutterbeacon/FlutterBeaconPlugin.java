@@ -230,6 +230,13 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     }
 
     if (call.method.equals("initialize")) {
+      if (nativeGattOwnsScanner()) {
+        result.error(
+            "BLE_OWNER_EXCLUDED",
+            "Native GATT worker owns BLE while the validated feature flag is active",
+            null);
+        return;
+      }
       if (beaconManager != null && !beaconManager.isBound(beaconScanner.beaconConsumer)) {
         this.flutterResult = result;
         this.beaconManager.bind(beaconScanner.beaconConsumer);
@@ -494,6 +501,17 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     }
 
     result.notImplemented();
+  }
+
+  /** Fail closed to legacy ownership unless a validated, enabled, unexpired remote flag exists. */
+  private boolean nativeGattOwnsScanner() {
+    if (applicationContext == null) return false;
+    android.content.SharedPreferences prefs = applicationContext.getSharedPreferences(
+        "ble_gatt_worker_flags", Context.MODE_PRIVATE);
+    return prefs.getBoolean("remote_present", false)
+        && prefs.getBoolean("remote_validated", false)
+        && prefs.getBoolean("remote_enabled", false)
+        && prefs.getLong("remote_expires_epoch_ms", 0L) > System.currentTimeMillis();
   }
 
   // ─── MethodChannel 인자 파싱 헬퍼 (언박싱 NPE 방지) ──────────────────────

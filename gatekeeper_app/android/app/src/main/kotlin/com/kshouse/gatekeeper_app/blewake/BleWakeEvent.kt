@@ -17,6 +17,8 @@ data class BleWakeEvent(
   val strongestRssi: Int?,
   val processId: String,
   val screenInteractive: Boolean,
+  /** Internal transport locator. Intentionally omitted from journal/log JSON. */
+  val deviceAddress: String? = null,
 ) {
   fun toJson(): JSONObject = JSONObject()
     .put("source", source)

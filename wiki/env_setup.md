@@ -53,6 +53,23 @@ docker compose run --rm flutter-builder bash -lc \
 docker compose run --rm flutter-builder flutter build apk --debug
 ```
 
+For issue #17 native GATT tests, Compose mounts the repository `protocol/` directory read-only at
+`/repo-protocol` so JVM tests consume the same canonical vector as firmware and backend tests. The
+named Gradle cache avoids re-downloading the Android toolchain. A forced, bounded targeted run is:
+
+```bash
+cd gatekeeper_app
+docker compose up -d flutter-builder
+docker compose exec -T flutter-builder bash -lc \
+  "cd android && timeout --signal=TERM --kill-after=15s 300s \
+  ./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests 'com.kshouse.gatekeeper_app.gattworker.*' --rerun-tasks"
+```
+
+Inspect `build/app/test-results/testDebugUnitTest/TEST-com.kshouse.gatekeeper_app.gattworker*.xml`
+afterward. `--rerun-tasks` and the XML counts distinguish executed tests from an `UP-TO-DATE` task.
+See [android_gatt_worker.md](android_gatt_worker.md) for scope and evidence boundaries.
+
 Android Gradle wrapper script는 생성 파일로 취급되어 checkout 직후 없을 수 있으므로 native
 unit test 전에 `flutter pub get`을 같은 container에서 먼저 실행한다. #14 BLE wake의
 hardwareless installed-APK 재현은 `gatekeeper_app/tool/android_ble_wake_hardwareless.ps1`,
