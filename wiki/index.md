@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-02 (#18 connection-owned GATT, OTA safe-state, provisioned door identity)
+> Last updated: 2026-08-02 (#18 correction and Windows PlatformIO safe recovery guidance)
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Page | Summary |
 |------|---------|
-| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, 시크릿, CI/CD와 GITHUB_TOKEN 인증 가이드 |
+| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, Windows PlatformIO timeout/orphan 안전 복구, 시크릿, CI/CD와 GITHUB_TOKEN 인증 가이드 |
 
 ---
 

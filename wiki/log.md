@@ -1449,3 +1449,10 @@
 - The protocol vector verifier, 16 protocol tests, 18 observability tests, access/manual_remote/Target OTA/rollback fixture validation and evaluation, OTA contract, trusted-policy coverage, actionlint, structured-file parsing, relative links, wiki index, raw immutability, append-only log prefix and diff checks passed.
 - ESP32-C6 default-OFF build passed at RAM 47,040/327,680 bytes and flash 1,596,024/7,340,032 bytes; `ENABLE_HARDWARELESS_RC=1` passed at RAM 53,592/327,680 bytes and flash 1,630,180/7,340,032 bytes and compiled the actual NimBLE adapter path.
 - No Samsung/OEM, physical ESP32-C6 GATT/MTU/radio/heap, GPIO3 relay/sensor, power-loss/bootloader, OTA-G1..G4 or RELAY-G0..G2 evidence was produced or claimed; PR #34 remains draft/unmerged and production remains fail closed.
+
+## [2026-08-02] compile | Windows PlatformIO timeout and orphan-build recovery guidance
+
+- Documented the reusable Windows symptom where a wrapper timeout leaves SCons RISC-V compiler children alive and concurrent retries multiply workers, plus the root cause that separate build directories prevent object collisions but do not prevent CPU/disk contention.
+- Added a fail-safe procedure to inspect only compiler command lines rooted in the exact worktree, verify PID/parent/creation context before targeted termination, avoid broad Python/compiler kills, and rerun default-OFF and feature-ON sequentially with separate build directories and four jobs.
+- Documented the ignored `include/secrets.h` compile prerequisite without exposing values: use only an authorized local secret or ephemeral non-secret placeholder, never stage it, and remove the placeholder after validation.
+- Verified the procedure with independent successful default-OFF and feature-ON ESP32-C6 builds, zero remaining worktree-owned compiler processes, no temporary secret/build artifact in Git status, and kept this local software evidence separate from terminal GitHub CI and all pending physical gates.
