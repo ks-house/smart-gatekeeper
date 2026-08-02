@@ -37,6 +37,9 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS credential_door_grants", up)
         self.assertIn("CREATE TABLE IF NOT EXISTS acl_door_state", up)
         self.assertIn("CREATE TABLE IF NOT EXISTS acl_snapshot_jobs", up)
+        self.assertIn("status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE'", up)
+        self.assertIn("chk_acl_tenant_status", up)
+        self.assertIn("ADD COLUMN IF NOT EXISTS status", up)
         self.assertIn("UNIQUE KEY uq_acl_door_global (door_id)", up)
         self.assertNotIn("DROP COLUMN ble_device_mac", up)
         self.assertNotIn("DROP COLUMN auth_key", up)
@@ -108,9 +111,11 @@ class MigrationContractTest(unittest.TestCase):
                 (
                     SCHEMA.read_text(encoding="utf-8"),
                     UP.read_text(encoding="utf-8"),
+                    UP.read_text(encoding="utf-8"),
                     "INSERT INTO tenants (name, unit_number, ble_device_mac, auth_key, is_active) "
                     "VALUES ('N-1 client', '999', 'AA:BB:CC:DD:EE:99', 'legacy-only', TRUE);",
-                    "INSERT INTO acl_tenants VALUES ('11111111111111111111111111111111', 'tenant', 1);",
+                    "INSERT INTO acl_tenants VALUES "
+                    "('11111111111111111111111111111111', 'tenant', 'ACTIVE', 1, 1);",
                     "INSERT INTO credentials VALUES "
                     "('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','11111111111111111111111111111111',"
                     "'046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5',"
@@ -305,6 +310,175 @@ class MigrationContractTest(unittest.TestCase):
             }
             self.assertEqual(1, len(accepted_statuses))
             self.assertEqual(2, sum(result == "conflict" for result, _ in conflict_results))
+
+            other_door_id = "0123456789abcdef0123456789abcdef"
+            service.grant_credential_to_door(
+                tenant_id,
+                other_door_id,
+                credential["credential_id"],
+                actor_ref="admin:test",
+            )
+            other_active = service.publish_snapshot(
+                tenant_id, other_door_id, actor_ref="admin:test"
+            )
+            self.assertEqual(1, other_active["fields"]["acl_version"])
+            self.assertEqual(1, len(other_active["fields"]["entries"]))
+
+            working_signer = service.signer
+
+            class FailingSigner:
+                signing_key_id = working_signer.signing_key_id
+                public_key_sec1 = working_signer.public_key_sec1
+
+                def sign(self, payload: bytes) -> bytes:
+                    raise RuntimeError("isolated signer unavailable")
+
+            service.signer = FailingSigner()
+            with self.assertRaisesRegex(RuntimeError, "durable job remains queued"):
+                service.disable_tenant(
+                    tenant_id,
+                    actor_ref="admin:test",
+                    actor_tenant_id=tenant_id,
+                )
+            with connection() as disabled_connection:
+                with disabled_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT a.status, t.is_active FROM acl_tenants a "
+                        "JOIN tenants t ON t.tenant_uuid=a.tenant_id "
+                        "WHERE a.tenant_id=%s",
+                        (tenant_id,),
+                    )
+                    disabled_state = cursor.fetchone()
+                    cursor.execute(
+                        "SELECT COUNT(*) AS count FROM acl_snapshot_jobs "
+                        "WHERE tenant_id=%s AND generated_version IS NULL",
+                        (tenant_id,),
+                    )
+                    pending_count = cursor.fetchone()["count"]
+                    cursor.execute(
+                        "SELECT status FROM credentials WHERE credential_id=%s",
+                        (credential["credential_id"],),
+                    )
+                    credential_status = cursor.fetchone()["status"]
+            self.assertEqual("DISABLED", disabled_state["status"])
+            self.assertFalse(disabled_state["is_active"])
+            self.assertEqual(2, pending_count)
+            self.assertEqual("ACTIVE", credential_status)
+
+            class FailingPublisher:
+                def publish(self, topic: str, envelope: dict) -> bool:
+                    return False
+
+            service.signer = working_signer
+            service.publisher = FailingPublisher()
+            with self.assertRaisesRegex(RuntimeError, "pull is current"):
+                service.disable_tenant(
+                    tenant_id,
+                    actor_ref="admin:test",
+                    actor_tenant_id=tenant_id,
+                )
+            with connection() as generated_connection:
+                with generated_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT door_id, generated_version FROM acl_snapshot_jobs "
+                        "WHERE tenant_id=%s ORDER BY door_id",
+                        (tenant_id,),
+                    )
+                    generated_jobs = cursor.fetchall()
+            self.assertEqual(2, len(generated_jobs))
+            generated_versions = {
+                row["door_id"]: int(row["generated_version"])
+                for row in generated_jobs
+            }
+            self.assertTrue(all(version >= 2 for version in generated_versions.values()))
+
+            recovered_publisher = RecordingPublisher()
+            service.publisher = recovered_publisher
+            recovered = service.disable_tenant(
+                tenant_id,
+                actor_ref="admin:test",
+                actor_tenant_id=tenant_id,
+            )
+            self.assertTrue(recovered["already_disabled"])
+            self.assertEqual(
+                sorted(generated_versions.values()),
+                sorted(
+                    item["fields"]["acl_version"]
+                    for item in recovered["replacement_snapshots"]
+                ),
+            )
+            for affected_door_id in (door_id, other_door_id):
+                replacement = service.pull_snapshot(tenant_id, affected_door_id)
+                self.assertEqual([], replacement["fields"]["entries"])
+                self.assertEqual(
+                    generated_versions[affected_door_id],
+                    replacement["fields"]["acl_version"],
+                )
+            final_retry = service.disable_tenant(
+                tenant_id,
+                actor_ref="admin:test",
+                actor_tenant_id=tenant_id,
+            )
+            self.assertTrue(final_retry["already_disabled"])
+            self.assertEqual([], final_retry["replacement_snapshots"])
+            with connection() as audit_connection:
+                with audit_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT COUNT(*) AS count FROM management_audit "
+                        "WHERE tenant_id=%s AND action='TENANT_DISABLED'",
+                        (tenant_id,),
+                    )
+                    self.assertEqual(1, cursor.fetchone()["count"])
+            with self.assertRaisesRegex(PermissionError, "tenant is disabled"):
+                service.issue_enrollment_challenge(
+                    tenant_id, actor_ref="user:test", actor_tenant_id=tenant_id
+                )
+
+            no_grant_tenant_id = "8899aabbccddeeff0011223344556677"
+            with connection() as legacy_connection:
+                with legacy_connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO tenants "
+                        "(name, unit_number, ble_device_mac, auth_key, is_active) "
+                        "VALUES (%s, %s, %s, %s, TRUE)",
+                        ("No Grant", "998", "AA:BB:CC:DD:EE:98", "legacy-two"),
+                    )
+                    no_grant_legacy_id = cursor.lastrowid
+                legacy_connection.commit()
+            service.register_tenant(
+                no_grant_tenant_id,
+                "No Grant",
+                int(no_grant_legacy_id),
+                actor_ref="admin:test",
+            )
+            with connection() as legacy_disable_connection:
+                with legacy_disable_connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE tenants SET is_active=FALSE WHERE id=%s",
+                        (no_grant_legacy_id,),
+                    )
+                legacy_disable_connection.commit()
+            with self.assertRaisesRegex(PermissionError, "tenant is disabled"):
+                service.issue_enrollment_challenge(
+                    no_grant_tenant_id,
+                    actor_ref="user:no-grant",
+                    actor_tenant_id=no_grant_tenant_id,
+                )
+            self.assertEqual("DISABLED", store.tenant_status(no_grant_tenant_id))
+            with connection() as legacy_reenable_connection:
+                with legacy_reenable_connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE tenants SET is_active=TRUE WHERE id=%s",
+                        (no_grant_legacy_id,),
+                    )
+                legacy_reenable_connection.commit()
+            service.register_tenant(
+                no_grant_tenant_id,
+                "No Grant Renamed",
+                int(no_grant_legacy_id),
+                actor_ref="admin:test",
+            )
+            self.assertEqual("DISABLED", store.tenant_status(no_grant_tenant_id))
 
             docker(
                 "exec",

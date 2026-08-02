@@ -20,7 +20,8 @@ server-only key; no static production default exists.
 ## 2. Expand → migrate → contract
 
 1. Apply `backend/db/migrations/002_acl_management_expand_up.sql`. It adds nullable
-   `tenants.tenant_uuid`, `credential_mode=legacy`, and new credential/ACL/ACK/audit/OTA tables;
+   `tenants.tenant_uuid`, `credential_mode=legacy`, and an `acl_tenants.status` authority plus new
+   credential/ACL/ACK/audit/OTA tables;
    it does not remove or reinterpret `ble_device_mac`, `auth_key`, `is_active`, or `access_logs`.
 2. Keep the flag OFF. Register canonical 16-byte tenant IDs through the authenticated admin API,
    then enroll P-256 public credentials. Keep old Backend N-1 and new Backend N operating against
@@ -46,7 +47,7 @@ All management endpoints fail closed if their independent server credential is a
 | Actor | Authentication | API |
 |---|---|---|
 | logged-in enrollment bridge | identity-bound `X-Enrollment-Actor-ID`, `X-Enrollment-Key`, `X-Tenant-ID` | challenge and proof-of-possession enrollment |
-| admin | `X-Admin-Key`, `X-Tenant-ID` | tenant registration, approve/disable/revoke, per-door grant/remove, snapshot publish, fleet status, OTA metadata |
+| admin | `X-Admin-Key`, `X-Tenant-ID` | tenant registration/disable, credential approve/disable/revoke, per-door grant/remove, snapshot publish, fleet status, OTA metadata |
 | Target | identity-bound `X-Target-ID`, `X-Target-Key`, `X-Tenant-ID` | periodic ACL pull, idempotent apply ACK, OTA metadata/health confirmation |
 
 Enrollment auth maps each login-bridge actor to its tenant and key; Target auth maps each Target ID
@@ -63,11 +64,30 @@ failure leaves the challenge unused. Public keys must be valid P-256 points and 
 enrollment signature must be strict low-S raw64 over `SGKENR01` canonical bytes. A credential
 begins `PENDING`; only explicit admin approval makes it `ACTIVE`.
 
+`POST /api/v1/admin/acl/tenants/disable` requires the admin credential and exact matching header/body
+tenant scope. The first request changes `acl_tenants.status` from `ACTIVE` to `DISABLED`, records one
+`TENANT_DISABLED` audit meaning, and queues every known grant/state/job door in the same transaction.
+An exact retry does not create another state transition, audit row, job revision, or ACL version; it
+only retries jobs that remain durable after signer or MQTT failure. Enrollment, approval and new grants
+fail closed for a disabled tenant. This RC intentionally exposes no tenant re-enable endpoint, and
+tenant registration/upsert cannot change `DISABLED` back to `ACTIVE`.
+
+Legacy compatibility is explicit and one-way. Registration maps an already inactive legacy
+`tenants.is_active` row to `acl_tenants.status=DISABLED`; the authenticated ACL disable transaction
+also writes the mapped legacy row inactive. If an N-1 legacy path or operator later changes
+`is_active=false`, the next enrollment-sensitive operation, authoritative publish, or periodic Target
+pull atomically reconciles it to the same durable ACL disable transition. A later legacy
+`is_active=true` change never re-enables public credentials. Operators must not use the unauthenticated
+legacy approve/reject endpoints as the public-ACL lifecycle API; re-enable remains unsupported and
+requires a future authenticated design with replacement snapshots and explicit authorization review.
+
 ## 4. ACL artifact and synchronization
 
 The Backend uses the exact canonical encoder and deterministic fixture from
 `protocol/test_vectors/v1.json`. Entries are sorted by raw credential ID, duplicate-free, and only
-unexpired `ACTIVE` credentials with an active grant for that exact door are included. Approval
+unexpired `ACTIVE` credentials with an active grant for that exact door and an `ACTIVE` ACL tenant are
+included. `AclStore.list_granted_credentials` joins the authoritative tenant state, so a disabled
+tenant cannot leak active public credentials into a newly signed artifact. Approval
 alone grants no door. A grant cannot authorize another door; disable/revoke or explicit grant
 removal excludes the credential from the next authoritative snapshot.
 
@@ -80,11 +100,12 @@ the envelope for periodic pull, and pushes that same envelope to
 `gatekeeper/acl/v1/{tenant_id}/{door_id}`. A Target must perform authenticated pull at least every
 60 seconds as recovery/source-of-truth; MQTT is not the only trigger.
 
-Disable, revoke, and door-grant removal synchronously publish monotonically newer replacement
-snapshots for every affected door. The credential/grant mutation and durable replacement job are
-committed in one transaction. The persisted replacement remains queued for MQTT retry and is
-available to periodic pull even when signing or MQTT delivery initially fails, so online Targets
-do not continue pulling the superseded artifact.
+Tenant disable, credential disable/revoke, and door-grant removal synchronously publish monotonically
+newer replacement snapshots for every affected door. The state/grant mutation and durable replacement
+job are committed in one transaction. A signer failure leaves an ungenerated job; MQTT failure leaves
+the exact persisted generated version. Periodic pull or an idempotent disable retry signs only pending
+work or republishes the exact queued artifact, so retries neither regress/increment an already generated
+version nor duplicate the disable audit meaning.
 The lease defaults to 900 seconds and is bounded to 3,600 seconds. Before activation the shared
 Target verifier checks canonical bytes/digest/signature, trusted signer ID, exact door, Target
 protocol overlap, trusted UTC validity, receipt boot identity and persisted version/digest
@@ -138,8 +159,10 @@ python scripts/ota_contract_gate.py contract
 ```
 
 The MariaDB integration test creates an isolated disposable MariaDB 10.11 container, applies the
-legacy schema and expand migration, performs both N-1 legacy and N credential writes, rolls down,
-and confirms the legacy row remains readable. It passes SQL to Docker and captures output with
+legacy schema and expand migration, performs both N-1 legacy and N credential writes, exercises
+multi-door tenant disable through signer and MQTT outages, exact retry, no-grant legacy reconciliation,
+and fail-closed re-enable, then rolls down and confirms the legacy row remains readable. It passes SQL
+to Docker and captures output with
 explicit UTF-8 plus a MariaDB `utf8mb4` client charset, so Windows does not require
 `PYTHONUTF8` or `PYTHONIOENCODING` overrides. The only additional prerequisite is a running Docker
 engine able to bind an ephemeral localhost port.

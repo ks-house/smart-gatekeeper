@@ -12,8 +12,18 @@ ALTER TABLE tenants
 CREATE TABLE IF NOT EXISTS acl_tenants (
   tenant_id CHAR(32) PRIMARY KEY,
   display_name VARCHAR(100) NOT NULL,
-  created_at BIGINT UNSIGNED NOT NULL
+  status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+  updated_at BIGINT UNSIGNED NOT NULL,
+  created_at BIGINT UNSIGNED NOT NULL,
+  CONSTRAINT chk_acl_tenant_status CHECK (status IN ('ACTIVE','DISABLED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Upgrade compatibility for volumes that applied an earlier Hardwareless RC revision.
+ALTER TABLE acl_tenants
+  ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' AFTER display_name,
+  ADD COLUMN IF NOT EXISTS updated_at BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER status,
+  ADD CONSTRAINT IF NOT EXISTS chk_acl_tenant_status CHECK (status IN ('ACTIVE','DISABLED'));
+UPDATE acl_tenants SET updated_at=created_at WHERE updated_at=0;
 
 CREATE TABLE IF NOT EXISTS enrollment_challenges (
   enrollment_id CHAR(32) PRIMARY KEY,

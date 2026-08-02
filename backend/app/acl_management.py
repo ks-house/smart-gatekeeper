@@ -404,6 +404,8 @@ def initialize_sqlite_test_schema(connection: sqlite3.Connection) -> None:
         CREATE TABLE acl_tenants (
           tenant_id TEXT PRIMARY KEY,
           display_name TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'DISABLED')),
+          updated_at INTEGER NOT NULL,
           created_at INTEGER NOT NULL
         );
         CREATE TABLE enrollment_challenges (
@@ -566,14 +568,21 @@ class AclStore:
 
     def create_tenant(self, tenant_id: str, display_name: str) -> None:
         _hex_bytes(tenant_id, 16, "tenant_id")
+        now = int(time.time())
         if self.dialect == "sqlite":
-            statement = "INSERT OR IGNORE INTO acl_tenants VALUES (?, ?, ?)"
+            statement = (
+                "INSERT OR IGNORE INTO acl_tenants "
+                "(tenant_id, display_name, status, updated_at, created_at) "
+                "VALUES (?, ?, 'ACTIVE', ?, ?)"
+            )
         else:
             statement = (
-                "INSERT INTO acl_tenants (tenant_id, display_name, created_at) VALUES (?, ?, ?) "
+                "INSERT INTO acl_tenants "
+                "(tenant_id, display_name, status, updated_at, created_at) "
+                "VALUES (?, ?, 'ACTIVE', ?, ?) "
                 "ON DUPLICATE KEY UPDATE display_name=VALUES(display_name)"
             )
-        self._write(statement, (tenant_id, display_name, int(time.time())))
+        self._write(statement, (tenant_id, display_name, now, now))
 
     def register_legacy_tenant(
         self, legacy_tenant_id: int, tenant_id: str, display_name: str, now: int
@@ -586,13 +595,14 @@ class AclStore:
             cursor = connection.cursor()
             cursor.execute("START TRANSACTION")
             cursor.execute(
-                "SELECT tenant_uuid FROM tenants WHERE id=%s FOR UPDATE",
+                "SELECT tenant_uuid, is_active FROM tenants WHERE id=%s FOR UPDATE",
                 (legacy_tenant_id,),
             )
             row = cursor.fetchone()
             if row is None:
                 raise LookupError("legacy tenant not found")
             existing = row["tenant_uuid"] if isinstance(row, dict) else row[0]
+            legacy_is_active = bool(row["is_active"] if isinstance(row, dict) else row[1])
             if existing is not None and not hmac.compare_digest(str(existing), tenant_id):
                 raise ValueError("legacy tenant already has a different canonical ID")
             cursor.execute(
@@ -600,9 +610,17 @@ class AclStore:
                 (tenant_id, legacy_tenant_id),
             )
             cursor.execute(
-                "INSERT INTO acl_tenants (tenant_id, display_name, created_at) VALUES (%s, %s, %s) "
+                "INSERT INTO acl_tenants "
+                "(tenant_id, display_name, status, updated_at, created_at) "
+                "VALUES (%s, %s, %s, %s, %s) "
                 "ON DUPLICATE KEY UPDATE display_name=VALUES(display_name)",
-                (tenant_id, display_name, now),
+                (
+                    tenant_id,
+                    display_name,
+                    "ACTIVE" if legacy_is_active else "DISABLED",
+                    now,
+                    now,
+                ),
             )
             connection.commit()
         except Exception:
@@ -614,6 +632,21 @@ class AclStore:
 
     def tenant_exists(self, tenant_id: str) -> bool:
         return self._one("SELECT tenant_id FROM acl_tenants WHERE tenant_id=?", (tenant_id,)) is not None
+
+    def tenant_status(self, tenant_id: str) -> Optional[str]:
+        row = self._one(
+            "SELECT status FROM acl_tenants WHERE tenant_id=?", (tenant_id,)
+        )
+        return str(row["status"]) if row else None
+
+    def legacy_tenant_is_active(self, tenant_id: str) -> Optional[bool]:
+        """Return the mapped legacy state; SQLite has no legacy tenant table."""
+        if self.dialect == "sqlite":
+            return None
+        row = self._one(
+            "SELECT is_active FROM tenants WHERE tenant_uuid=?", (tenant_id,)
+        )
+        return bool(row["is_active"]) if row else None
 
     def insert_challenge(
         self,
@@ -853,6 +886,101 @@ class AclStore:
         finally:
             self._close(connection)
 
+    def disable_tenant_and_queue(
+        self,
+        tenant_id: str,
+        reason: str,
+        now: int,
+        *,
+        actor_ref: str,
+    ) -> Optional[dict[str, Any]]:
+        """Persist one tenant-disable event and replacement jobs in one transaction."""
+        connection = self._connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                "BEGIN IMMEDIATE" if self.dialect == "sqlite" else "START TRANSACTION"
+            )
+            placeholder = "?" if self.dialect == "sqlite" else "%s"
+            lock_suffix = "" if self.dialect == "sqlite" else " FOR UPDATE"
+            cursor.execute(
+                f"SELECT status FROM acl_tenants WHERE tenant_id={placeholder}{lock_suffix}",
+                (tenant_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            status = str(row["status"] if isinstance(row, dict) else row[0])
+            if status not in {"ACTIVE", "DISABLED"}:
+                raise ValueError("unknown tenant status")
+
+            if self.dialect != "sqlite":
+                # Compatibility is deliberately one-way. Public ACL disable also disables the
+                # mapped legacy row, while a legacy re-enable never reactivates public grants.
+                cursor.execute(
+                    "UPDATE tenants SET is_active=FALSE "
+                    "WHERE tenant_uuid=%s AND is_active<>FALSE",
+                    (tenant_id,),
+                )
+
+            if status == "DISABLED":
+                cursor.execute(
+                    f"SELECT door_id FROM acl_snapshot_jobs WHERE tenant_id={placeholder} "
+                    "ORDER BY door_id",
+                    (tenant_id,),
+                )
+                pending_rows = cursor.fetchall()
+                pending_doors = [
+                    str(item["door_id"] if isinstance(item, dict) else item[0])
+                    for item in pending_rows
+                ]
+                connection.commit()
+                return {"changed": False, "door_ids": pending_doors}
+
+            cursor.execute(
+                "SELECT door_id FROM ("
+                f"SELECT door_id FROM acl_door_state WHERE tenant_id={placeholder} UNION "
+                f"SELECT door_id FROM credential_door_grants WHERE tenant_id={placeholder} UNION "
+                f"SELECT door_id FROM acl_snapshot_jobs WHERE tenant_id={placeholder}"
+                ") affected ORDER BY door_id",
+                (tenant_id, tenant_id, tenant_id),
+            )
+            affected_rows = cursor.fetchall()
+            door_ids = [
+                str(item["door_id"] if isinstance(item, dict) else item[0])
+                for item in affected_rows
+            ]
+            cursor.execute(
+                f"UPDATE acl_tenants SET status='DISABLED', updated_at={placeholder} "
+                f"WHERE tenant_id={placeholder} AND status='ACTIVE'",
+                (now, tenant_id),
+            )
+            if cursor.rowcount != 1:
+                raise RuntimeError("tenant disable transition lost its state lock")
+            for door_id in door_ids:
+                self._queue_snapshot_job_cursor(cursor, tenant_id, door_id, reason, now)
+            cursor.execute(
+                self._sql(
+                    "INSERT INTO management_audit "
+                    "(tenant_id, actor_ref, action, credential_id, metadata_json, created_at) "
+                    "VALUES (?, ?, 'TENANT_DISABLED', NULL, ?, ?)"
+                ),
+                (
+                    tenant_id,
+                    actor_ref,
+                    json.dumps({"status": "DISABLED"}, sort_keys=True),
+                    now,
+                ),
+            )
+            connection.commit()
+            return {"changed": True, "door_ids": door_ids}
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            self._close(connection)
+
     def snapshot_job(self, tenant_id: str, door_id: str) -> Optional[dict[str, Any]]:
         return self._one(
             "SELECT * FROM acl_snapshot_jobs WHERE tenant_id=? AND door_id=?",
@@ -880,6 +1008,7 @@ class AclStore:
     def list_granted_credentials(self, tenant_id: str, door_id: str) -> list[dict[str, Any]]:
         return self._all(
             "SELECT c.*, g.permissions FROM credentials c "
+            "JOIN acl_tenants t ON t.tenant_id=c.tenant_id AND t.status='ACTIVE' "
             "JOIN credential_door_grants g ON g.tenant_id=c.tenant_id "
             "AND g.credential_id=c.credential_id "
             "WHERE c.tenant_id=? AND g.door_id=? AND g.revoked_at IS NULL "
@@ -1174,6 +1303,24 @@ class AclManagementService:
         if not self.store.tenant_exists(tenant_id):
             raise LookupError("tenant not found")
 
+    def _active_tenant(self, tenant_id: str) -> None:
+        self._tenant(tenant_id)
+        self._reconcile_legacy_disable(tenant_id)
+        if self.store.tenant_status(tenant_id) != "ACTIVE":
+            raise PermissionError("tenant is disabled")
+
+    def _reconcile_legacy_disable(self, tenant_id: str) -> None:
+        """Map legacy inactive to ACL disabled; legacy active never re-enables ACL."""
+        if self.store.legacy_tenant_is_active(tenant_id) is False:
+            result = self.store.disable_tenant_and_queue(
+                tenant_id,
+                "LEGACY_TENANT_DISABLED",
+                self.clock(),
+                actor_ref="system:legacy-tenant-disable",
+            )
+            if result is None:
+                raise LookupError("tenant not found")
+
     def register_tenant(
         self,
         tenant_id: str,
@@ -1229,7 +1376,7 @@ class AclManagementService:
         actor_ref: str,
         actor_tenant_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        self._tenant(tenant_id)
+        self._active_tenant(tenant_id)
         self._authorize_tenant(tenant_id, actor_tenant_id)
         now = self.clock()
         enrollment_id = secrets.token_bytes(16).hex()
@@ -1260,7 +1407,7 @@ class AclManagementService:
         min_protocol: int = 1,
         max_protocol: int = 1,
     ) -> dict[str, Any]:
-        self._tenant(tenant_id)
+        self._active_tenant(tenant_id)
         self._authorize_tenant(tenant_id, actor_tenant_id)
         now = self.clock()
         challenge = self.store.get_challenge(tenant_id, enrollment_id)
@@ -1327,6 +1474,7 @@ class AclManagementService:
     def approve_credential(
         self, tenant_id: str, credential_id: str, *, actor_ref: str
     ) -> dict[str, Any]:
+        self._active_tenant(tenant_id)
         row = self.store.get_credential(tenant_id, credential_id)
         if row is None:
             raise LookupError("credential not found in tenant")
@@ -1345,7 +1493,7 @@ class AclManagementService:
         actor_ref: str,
         permissions: int = 1,
     ) -> dict[str, Any]:
-        self._tenant(tenant_id)
+        self._active_tenant(tenant_id)
         _hex_bytes(door_id, 16, "door_id")
         if permissions != 1:
             raise ValueError("only OPEN permission is defined in ACL v1")
@@ -1441,6 +1589,10 @@ class AclManagementService:
                 self.store.mark_snapshot_job_generated(
                     tenant_id, door_id, int(row["acl_version"]), job_revision
                 )
+            except Exception as exc:
+                raise RuntimeError(
+                    "ACL replacement generation failed; durable job remains queued"
+                ) from exc
             else:
                 self.store.delete_snapshot_job(tenant_id, door_id, job_revision)
             envelopes.append(envelope)
@@ -1449,6 +1601,33 @@ class AclManagementService:
                 f"ACL MQTT push failed for {mqtt_failures} replacement snapshot(s); pull is current"
             )
         return envelopes
+
+    def disable_tenant(
+        self,
+        tenant_id: str,
+        *,
+        actor_ref: str,
+        actor_tenant_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        self._tenant(tenant_id)
+        self._authorize_tenant(tenant_id, actor_tenant_id)
+        transition = self.store.disable_tenant_and_queue(
+            tenant_id,
+            "TENANT_DISABLED",
+            self.clock(),
+            actor_ref=actor_ref,
+        )
+        if transition is None:
+            raise LookupError("tenant not found")
+        result = {
+            "tenant_id": tenant_id,
+            "status": "DISABLED",
+            "already_disabled": not transition["changed"],
+        }
+        result["replacement_snapshots"] = self._publish_replacement_snapshots(
+            tenant_id, transition["door_ids"], actor_ref=actor_ref
+        )
+        return result
 
     def disable_credential(
         self, tenant_id: str, credential_id: str, *, actor_ref: str
@@ -1520,6 +1699,7 @@ class AclManagementService:
         max_protocol: int = 1,
     ) -> dict[str, Any]:
         self._tenant(tenant_id)
+        self._reconcile_legacy_disable(tenant_id)
         _hex_bytes(door_id, 16, "door_id")
         if not 1 <= min_protocol <= max_protocol:
             raise ValueError("invalid snapshot protocol range")
@@ -1579,6 +1759,7 @@ class AclManagementService:
 
     def pull_snapshot(self, tenant_id: str, door_id: str) -> dict[str, Any]:
         self._tenant(tenant_id)
+        self._reconcile_legacy_disable(tenant_id)
         if self.store.snapshot_job(tenant_id, door_id) is not None:
             self._publish_replacement_snapshots(
                 tenant_id,

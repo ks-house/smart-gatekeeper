@@ -267,6 +267,22 @@ def create_acl_router(
             actor_ref=actor,
         )
 
+    @router.post("/api/v1/admin/acl/tenants/disable")
+    def disable_tenant(
+        request: TenantRequest,
+        x_admin_key: Optional[str] = Header(default=None, alias="X-Admin-Key"),
+        x_tenant_id: Optional[str] = Header(default=None, alias="X-Tenant-ID"),
+    ) -> dict[str, Any]:
+        tenant_id, actor = scoped(
+            request.tenant_id, require_admin(x_admin_key, x_tenant_id)
+        )
+        return _invoke(
+            service.disable_tenant,
+            tenant_id,
+            actor_ref=actor,
+            actor_tenant_id=tenant_id,
+        )
+
 
     @router.post("/api/v1/admin/acl/credentials/approve")
     def approve(

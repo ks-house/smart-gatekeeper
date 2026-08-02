@@ -272,7 +272,7 @@ class AclManagementTest(unittest.TestCase):
                 raise RuntimeError("isolated signer unavailable")
 
         self.service.signer = FailingSigner()
-        with self.assertRaisesRegex(RuntimeError, "signer unavailable"):
+        with self.assertRaisesRegex(RuntimeError, "durable job remains queued"):
             self.service.revoke_credential(
                 TENANT_A, credential_id, actor_ref="admin:a"
             )
@@ -285,6 +285,131 @@ class AclManagementTest(unittest.TestCase):
         self.assertGreaterEqual(replacement["fields"]["acl_version"], 2)
         self.assertEqual([], replacement["fields"]["entries"])
         self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
+
+    def test_tenant_disable_is_atomic_idempotent_and_replaces_every_door(self) -> None:
+        credential_id = self.enroll()
+        other_door = "0123456789abcdef0123456789abcdef"
+        self.service.approve_credential(TENANT_A, credential_id, actor_ref="admin:a")
+        for door_id in (DOOR_A, other_door):
+            self.service.grant_credential_to_door(
+                TENANT_A, door_id, credential_id, actor_ref="admin:a"
+            )
+            active = self.service.publish_snapshot(
+                TENANT_A, door_id, actor_ref="admin:a"
+            )
+            self.assertEqual([credential_id], [
+                item["credential_id"] for item in active["fields"]["entries"]
+            ])
+
+        with self.assertRaisesRegex(PermissionError, "tenant boundary"):
+            self.service.disable_tenant(
+                TENANT_A, actor_ref="admin:b", actor_tenant_id=TENANT_B
+            )
+        result = self.service.disable_tenant(
+            TENANT_A, actor_ref="admin:a", actor_tenant_id=TENANT_A
+        )
+        self.assertFalse(result["already_disabled"])
+        self.assertEqual("DISABLED", self.store.tenant_status(TENANT_A))
+        self.assertEqual(2, len(result["replacement_snapshots"]))
+        for door_id in (DOOR_A, other_door):
+            replacement = self.service.pull_snapshot(TENANT_A, door_id)
+            self.assertEqual(2, replacement["fields"]["acl_version"])
+            self.assertEqual([], replacement["fields"]["entries"])
+            self.assertEqual([], self.store.list_granted_credentials(TENANT_A, door_id))
+
+        self.store.create_tenant(TENANT_A, "renamed")
+        self.assertEqual("DISABLED", self.store.tenant_status(TENANT_A))
+        repeated = self.service.disable_tenant(
+            TENANT_A, actor_ref="admin:a", actor_tenant_id=TENANT_A
+        )
+        self.assertTrue(repeated["already_disabled"])
+        self.assertEqual([], repeated["replacement_snapshots"])
+        self.assertEqual(
+            1,
+            sum(
+                row["action"] == "TENANT_DISABLED"
+                for row in self.store.list_audit(TENANT_A)
+            ),
+        )
+        self.assertEqual("ACTIVE", self.store.get_credential(TENANT_A, credential_id)["status"])
+        with self.assertRaisesRegex(PermissionError, "tenant is disabled"):
+            self.service.issue_enrollment_challenge(TENANT_A, actor_ref="user:a")
+
+    def test_tenant_disable_without_grants_is_a_single_fail_closed_event(self) -> None:
+        first = self.service.disable_tenant(
+            TENANT_B, actor_ref="admin:b", actor_tenant_id=TENANT_B
+        )
+        second = self.service.disable_tenant(
+            TENANT_B, actor_ref="admin:b", actor_tenant_id=TENANT_B
+        )
+        self.assertFalse(first["already_disabled"])
+        self.assertTrue(second["already_disabled"])
+        self.assertEqual([], first["replacement_snapshots"])
+        self.assertEqual([], second["replacement_snapshots"])
+        self.assertEqual("DISABLED", self.store.tenant_status(TENANT_B))
+        self.assertEqual(
+            ["TENANT_DISABLED"],
+            [row["action"] for row in self.store.list_audit(TENANT_B)],
+        )
+
+    def test_tenant_disable_retries_signer_and_publish_failures_without_new_meaning(self) -> None:
+        credential_id = self.enroll()
+        self.service.approve_credential(TENANT_A, credential_id, actor_ref="admin:a")
+        self.service.grant_credential_to_door(
+            TENANT_A, DOOR_A, credential_id, actor_ref="admin:a"
+        )
+        self.service.publish_snapshot(TENANT_A, DOOR_A, actor_ref="admin:a")
+        working_signer = self.service.signer
+
+        class FailingSigner:
+            signing_key_id = working_signer.signing_key_id
+            public_key_sec1 = working_signer.public_key_sec1
+
+            def sign(self, payload: bytes) -> bytes:
+                raise RuntimeError("signer unavailable")
+
+        self.service.signer = FailingSigner()
+        with self.assertRaisesRegex(RuntimeError, "durable job remains queued"):
+            self.service.disable_tenant(
+                TENANT_A, actor_ref="admin:a", actor_tenant_id=TENANT_A
+            )
+        pending = self.store.snapshot_job(TENANT_A, DOOR_A)
+        self.assertIsNone(pending["generated_version"])
+        self.assertEqual("DISABLED", self.store.tenant_status(TENANT_A))
+
+        class FailingPublisher:
+            def publish(self, topic: str, envelope: dict) -> bool:
+                return False
+
+        self.service.signer = working_signer
+        self.service.publisher = FailingPublisher()
+        with self.assertRaisesRegex(RuntimeError, "pull is current"):
+            self.service.disable_tenant(
+                TENANT_A, actor_ref="admin:a", actor_tenant_id=TENANT_A
+            )
+        generated = self.store.snapshot_job(TENANT_A, DOOR_A)
+        generated_version = int(generated["generated_version"])
+        self.assertGreaterEqual(generated_version, 2)
+
+        recovered = RecordingPublisher()
+        self.service.publisher = recovered
+        retry = self.service.disable_tenant(
+            TENANT_A, actor_ref="admin:a", actor_tenant_id=TENANT_A
+        )
+        self.assertTrue(retry["already_disabled"])
+        self.assertEqual(
+            generated_version,
+            retry["replacement_snapshots"][0]["fields"]["acl_version"],
+        )
+        self.assertEqual([], retry["replacement_snapshots"][0]["fields"]["entries"])
+        self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
+        self.assertEqual(
+            1,
+            sum(
+                row["action"] == "TENANT_DISABLED"
+                for row in self.store.list_audit(TENANT_A)
+            ),
+        )
 
     def test_canonical_acl_matches_shared_vector(self) -> None:
         envelope = self.service.sign_explicit_snapshot(VECTOR["acl"]["fields"])
@@ -546,6 +671,10 @@ class AclManagementTest(unittest.TestCase):
             self.service.publish_snapshot(TENANT_B, DOOR_A, actor_ref="admin:b")
 
     def test_ota_metadata_and_health_are_independent_of_acl_credential_state(self) -> None:
+        self.service.disable_tenant(
+            TENANT_A, actor_ref="admin:a", actor_tenant_id=TENANT_A
+        )
+        self.assertEqual("DISABLED", self.store.tenant_status(TENANT_A))
         metadata = {
             "component": "target",
             "version": "2.2.0",

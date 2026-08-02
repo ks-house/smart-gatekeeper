@@ -27,11 +27,11 @@ class AclApiTest(unittest.TestCase):
         self.conn = sqlite3.connect(":memory:", check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         initialize_sqlite_test_schema(self.conn)
-        store = AclStore(lambda: self.conn, dialect="sqlite", close_connections=False)
-        store.create_tenant(TENANT_A, "A")
-        store.create_tenant(TENANT_B, "B")
+        self.store = AclStore(lambda: self.conn, dialect="sqlite", close_connections=False)
+        self.store.create_tenant(TENANT_A, "A")
+        self.store.create_tenant(TENANT_B, "B")
         self.service = AclManagementService(
-            store,
+            self.store,
             DeterministicP256Signer(2, signing_key_id=7),
             RecordingPublisher(),
             clock=lambda: 1_785_542_400,
@@ -194,6 +194,46 @@ class AclApiTest(unittest.TestCase):
             f"/api/v1/admin/acl/fleet/{DOOR}", headers=admin_headers
         )
         self.assertEqual(1, fleet.json()["synced_targets"])
+
+        wrong_tenant_actor = self.client.post(
+            "/api/v1/admin/acl/tenants/disable",
+            json={"tenant_id": TENANT_A},
+            headers={"X-Admin-Key": "admin-secret", "X-Tenant-ID": TENANT_B},
+        )
+        self.assertEqual(403, wrong_tenant_actor.status_code)
+        disabled = self.client.post(
+            "/api/v1/admin/acl/tenants/disable",
+            json={"tenant_id": TENANT_A},
+            headers=admin_headers,
+        )
+        self.assertEqual(200, disabled.status_code, disabled.text)
+        self.assertFalse(disabled.json()["already_disabled"])
+        replacement = self.client.get(
+            f"/api/v1/acl/snapshots/{DOOR}", headers=target_headers
+        ).json()
+        self.assertEqual(2, replacement["fields"]["acl_version"])
+        self.assertEqual([], replacement["fields"]["entries"])
+        repeated = self.client.post(
+            "/api/v1/admin/acl/tenants/disable",
+            json={"tenant_id": TENANT_A},
+            headers=admin_headers,
+        )
+        self.assertEqual(200, repeated.status_code, repeated.text)
+        self.assertTrue(repeated.json()["already_disabled"])
+        self.assertEqual([], repeated.json()["replacement_snapshots"])
+        challenge_after_disable = self.client.post(
+            "/api/v1/acl/enrollment/challenge",
+            json={"tenant_id": TENANT_A},
+            headers=user_headers,
+        )
+        self.assertEqual(403, challenge_after_disable.status_code)
+        self.assertEqual(
+            1,
+            sum(
+                row["action"] == "TENANT_DISABLED"
+                for row in self.store.list_audit(TENANT_A)
+            ),
+        )
 
     def test_enrollment_submit_rejects_different_authenticated_actor(self) -> None:
         actor_a_headers = {
