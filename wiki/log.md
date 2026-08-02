@@ -1491,3 +1491,12 @@
 - verified review 문서 2개를 explicit staging하려 할 때 parent repository의 external `.git\worktrees\issue19-backend-acl-hermes\index.lock` 생성이 worktree-only sandbox에서 `Permission denied`로 실패하는 증상을 확인
 - visible worktree가 아니라 Git common administrative directory에 index lock을 써야 하는 managed-worktree 경계가 원인이며 source 권한이나 repository corruption이 아님을 확인
 - `git status`·explicit diff·`git diff --check`로 범위를 먼저 고정하고 verified path의 add/commit만 scoped Git administrative access로 실행한 뒤 clean status와 remote head를 재검증하는 절차를 `wiki/env_setup.md`에 기록
+
+## [2026-08-02] lint | PR #35 final disconnect classification and contract validation clean
+
+- Merged current `origin/main` (`f732c3dc9c0b4eb5468e9190690368025fd4de0e`) normally into branch `tworimpa/issue17-android-gatt-worker` without history rewrite and resolved `wiki/log.md` merge conflict.
+- Independently reviewed exact author head `7dceb0aa0adf13630526f2be19e88eaff5f96015` disconnect waiter semantics: monotonic transport generation isolation, generation-scoped callback capture, operation-scoped single-consumer operation latches, and atomic disconnect propagation preventing in-flight disconnects from misclassifying as `GATT_TIMEOUT`.
+- Passed 81 repository unit tests, 16 protocol tests, 18 observability tests, 32 backend tests, and OTA contract gate (`python scripts/ota_contract_gate.py contract`).
+- Executed forced Android JVM unit tests with `--rerun-tasks` inside Docker (`gatekeeper-flutter-builder`): 8 test suites, 36 tests, 0 failures, 0 errors, 0 skips (including 30 GATT worker tests).
+- Passed Flutter 6 unit tests, zero-change `dart format`, and clean `dart analyze` with 0 issues. Built `app-debug.apk` and verified ESP32-C6 firmware build (`pio run -e esp32c6` with RAM 14.4%, Flash 21.7%).
+- Actionlint 0 errors, relative markdown links clean, `git diff --check origin/main...HEAD` 0 errors. Preserved authenticated `manual_remote` and mobile/Target OTA contracts byte-unchanged. Software/host evidence only; Samsung/OEM, physical radio, ESP32-C6 GATT, relay/sensor, bootloader, and OTA-G1~G4 evidence remain pending.
