@@ -1,4 +1,5 @@
 #include "GattProtocol.h"
+#include "TargetState.h"
 
 #include <algorithm>
 #include <array>
@@ -69,6 +70,13 @@ SequenceRandom canonicalRandom(size_t sessions = 8) {
   return random;
 }
 
+std::array<uint8_t, 16> canonicalDoor() {
+  std::array<uint8_t, 16> door{};
+  const auto bytes = hex("00112233445566778899aabbccddeeff");
+  std::copy(bytes.begin(), bytes.end(), door.begin());
+  return door;
+}
+
 class FakeVerifier final : public sgk::ProofVerifier {
  public:
   explicit FakeVerifier(sgk::ResultReason reason, uint64_t version = 42)
@@ -83,6 +91,21 @@ class FakeVerifier final : public sgk::ProofVerifier {
   uint64_t version_;
   int calls = 0;
   sgk::VerifyRequest last{};
+};
+
+class HashSignatureVerifier final : public sgk::ProofVerifier {
+ public:
+  sgk::VerifyResult verify(const sgk::VerifyRequest& request) override {
+    uint8_t digest[32] = {};
+    sgk::ProtocolCore::sha256(request.signing_input.data(),
+                              request.signing_input.size(), digest);
+    const bool valid =
+        std::memcmp(request.signature_raw64.data(), digest, 32) == 0 &&
+        std::memcmp(request.signature_raw64.data() + 32, digest, 32) == 0;
+    return {valid ? sgk::ResultReason::kOk
+                  : sgk::ResultReason::kProofInvalid,
+            42};
+  }
 };
 
 class EventRecorder final : public sgk::EventSink {
@@ -126,7 +149,8 @@ std::vector<uint8_t> proof(const std::array<uint8_t, 16>& session_id,
 bool send(sgk::ProtocolCore& core, sgk::MessageType type,
           const uint8_t* payload, size_t length, uint32_t now,
           size_t fragment_capacity = 502, uint16_t message_id = 1,
-          uint16_t connection_id = 7) {
+          sgk::ConnectionToken owner = {}) {
+  if (!owner.valid()) owner = core.connectionOwner();
   const size_t count = (length + fragment_capacity - 1) / fragment_capacity;
   bool result = true;
   for (size_t index = 0; index < count; ++index) {
@@ -135,7 +159,7 @@ bool send(sgk::ProtocolCore& core, sgk::MessageType type,
         type, message_id, payload, length, fragment_capacity,
         static_cast<uint8_t>(index), frame, sizeof(frame));
     CHECK(frame_length != 0);
-    result = core.receiveFrame(type, connection_id, frame, frame_length,
+    result = core.receiveFrame(type, owner, frame, frame_length,
                                now + static_cast<uint32_t>(index)) &&
              result;
   }
@@ -152,7 +176,9 @@ std::vector<sgk::OutputMessage> drain(sgk::ProtocolCore& core) {
 void start(sgk::ProtocolCore& core, uint32_t now = 1000) {
   CHECK(core.initialize());
   core.setEnabled(true);
-  CHECK(core.connect(7, now));
+  sgk::ConnectionToken owner;
+  CHECK(core.connect(7, now, &owner));
+  CHECK(owner.valid());
 }
 
 void testCanonicalVectorsAndFraming() {
@@ -211,7 +237,7 @@ void testCanonicalSessionAndVerifier() {
   auto random = canonicalRandom();
   FakeVerifier verifier(sgk::ResultReason::kOk);
   EventRecorder events;
-  sgk::ProtocolCore core(random, verifier, &events);
+  sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events);
   start(core, 123451789);
   const auto client = hello();
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
@@ -249,7 +275,7 @@ void testCanonicalSessionAndVerifier() {
 void testFailClosedAndActions() {
   auto random = canonicalRandom();
   sgk::FailClosedProofVerifier verifier;
-  sgk::ProtocolCore core(random, verifier);
+  sgk::ProtocolCore core(random, verifier, canonicalDoor());
   start(core);
   auto client = hello();
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
@@ -262,7 +288,7 @@ void testFailClosedAndActions() {
   CHECK(output.size() == 1);
   CHECK(u16(output[0].bytes.data() + 18) == 5);
 
-  core.disconnect(7, 1200);
+  core.disconnect(core.connectionOwner(), 1200);
   CHECK(core.connect(7, 1300));
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
              1300, 502, 3));
@@ -277,7 +303,7 @@ void testFailClosedAndActions() {
 void testStrictParsingFragmentsAndTimeouts() {
   auto random = canonicalRandom(20);
   FakeVerifier verifier(sgk::ResultReason::kOk);
-  sgk::ProtocolCore core(random, verifier);
+  sgk::ProtocolCore core(random, verifier, canonicalDoor());
   start(core);
   auto client = hello();
 
@@ -309,7 +335,7 @@ void testStrictParsingFragmentsAndTimeouts() {
   auto result = drain(core);
   CHECK(u16(result[0].bytes.data() + 18) == 2);
 
-  core.disconnect(7, 1400);
+  core.disconnect(core.connectionOwner(), 1400);
   CHECK(core.connect(7, 1500));
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
              1500, 502, 5));
@@ -319,12 +345,12 @@ void testStrictParsingFragmentsAndTimeouts() {
   const size_t first_length = sgk::ProtocolCore::buildFrame(
       sgk::MessageType::kProof, 6, valid.data(), valid.size(), 10, 0, first,
       sizeof(first));
-  CHECK(core.receiveFrame(sgk::MessageType::kProof, 7, first, first_length,
+  CHECK(core.receiveFrame(sgk::MessageType::kProof, core.connectionOwner(), first, first_length,
                           1600));
-  CHECK(core.receiveFrame(sgk::MessageType::kProof, 7, first, first_length,
+  CHECK(core.receiveFrame(sgk::MessageType::kProof, core.connectionOwner(), first, first_length,
                           1601));  // exact duplicate is idempotent
   first[11] ^= 1;
-  CHECK(!core.receiveFrame(sgk::MessageType::kProof, 7, first, first_length,
+  CHECK(!core.receiveFrame(sgk::MessageType::kProof, core.connectionOwner(), first, first_length,
                            1602));
   drain(core);
   CHECK(!send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
@@ -332,7 +358,7 @@ void testStrictParsingFragmentsAndTimeouts() {
   auto limited = drain(core);
   CHECK(u16(limited[0].bytes.data() + 18) == 9);
 
-  core.disconnect(7, 4900);
+  core.disconnect(core.connectionOwner(), 4900);
   CHECK(core.connect(7, 5000));
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
              5000, 502, 7));
@@ -341,7 +367,7 @@ void testStrictParsingFragmentsAndTimeouts() {
   const size_t frame_length = sgk::ProtocolCore::buildFrame(
       sgk::MessageType::kProof, 8, valid.data(), valid.size(), 10, 0, first,
       sizeof(first));
-  CHECK(core.receiveFrame(sgk::MessageType::kProof, 7, first, frame_length,
+  CHECK(core.receiveFrame(sgk::MessageType::kProof, core.connectionOwner(), first, frame_length,
                           5100));
   core.tick(7100);  // exact 2s deadline
   result = drain(core);
@@ -351,7 +377,7 @@ void testStrictParsingFragmentsAndTimeouts() {
 void testLifecycleBusyReplayRolloverAndSafety() {
   auto random = canonicalRandom(30);
   FakeVerifier allow(sgk::ResultReason::kOk);
-  sgk::ProtocolCore core(random, allow);
+  sgk::ProtocolCore core(random, allow, canonicalDoor());
   start(core, 0xfffff000U);
   CHECK(!core.connect(8, 0xfffff010U));
   auto client = hello();
@@ -367,13 +393,18 @@ void testLifecycleBusyReplayRolloverAndSafety() {
   auto result = drain(core);
   CHECK(u16(result[0].bytes.data() + 18) == 4);
 
-  core.disconnect(7, 10);
+  core.disconnect(core.connectionOwner(), 10);
   CHECK(core.connect(7, 20));
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
              20, 502, 4));
-  drain(core);
+  const auto busy_session = core.sessionId();
   core.setOtaBusy(true, 30);
   CHECK(core.state() == sgk::SessionState::kIdle);
+  result = drain(core);
+  CHECK(result.size() == 1);
+  CHECK(u16(result[0].bytes.data() + 18) == 8);
+  CHECK(std::memcmp(result[0].bytes.data() + 2, busy_session.data(),
+                    busy_session.size()) == 0);
   valid = proof(core.sessionId());
   CHECK(!send(core, sgk::MessageType::kProof, valid.data(), valid.size(), 40,
               502, 5));
@@ -399,7 +430,7 @@ void testLifecycleBusyReplayRolloverAndSafety() {
 void testDenyVerifierFuzzAndRngGuards() {
   auto random = canonicalRandom(50);
   FakeVerifier deny(sgk::ResultReason::kCredentialDenied);
-  sgk::ProtocolCore core(random, deny);
+  sgk::ProtocolCore core(random, deny, canonicalDoor());
   start(core);
   auto client = hello();
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
@@ -413,7 +444,7 @@ void testDenyVerifierFuzzAndRngGuards() {
 
   // Deterministic malformed/fuzz corpus exercises the production parser.
   for (uint16_t mutation = 0; mutation < 64; ++mutation) {
-    core.disconnect(7, 2000 + mutation * 10);
+    core.disconnect(core.connectionOwner(), 2000 + mutation * 10);
     CHECK(core.connect(7, 2001 + mutation * 10));
     uint8_t frame[64] = {};
     const size_t frame_length = sgk::ProtocolCore::buildFrame(
@@ -421,7 +452,7 @@ void testDenyVerifierFuzzAndRngGuards() {
         client.data(), client.size(), client.size(), 0, frame, sizeof(frame));
     CHECK(frame_length != 0);
     frame[mutation % frame_length] ^= static_cast<uint8_t>(1U << (mutation % 8));
-    core.receiveFrame(sgk::MessageType::kClientHello, 7, frame, frame_length,
+    core.receiveFrame(sgk::MessageType::kClientHello, core.connectionOwner(), frame, frame_length,
                       2002 + mutation * 10);
     drain(core);
   }
@@ -430,7 +461,7 @@ void testDenyVerifierFuzzAndRngGuards() {
   zero.values = {std::vector<uint8_t>(16, 0), std::vector<uint8_t>(16, 0),
                  std::vector<uint8_t>(16, 0), std::vector<uint8_t>(16, 0)};
   sgk::FailClosedProofVerifier fail_closed;
-  sgk::ProtocolCore bad_rng(zero, fail_closed);
+  sgk::ProtocolCore bad_rng(zero, fail_closed, canonicalDoor());
   CHECK(!bad_rng.initialize());
   bad_rng.setEnabled(true);
   CHECK(!bad_rng.enabled());
@@ -441,16 +472,203 @@ void testDenyVerifierFuzzAndRngGuards() {
   const auto first_nonce = std::vector<uint8_t>(32, 0x33);
   duplicate.values = {boot, repeated_session, first_nonce, repeated_session,
                       repeated_session, repeated_session, repeated_session};
-  sgk::ProtocolCore duplicate_core(duplicate, fail_closed);
+  sgk::ProtocolCore duplicate_core(duplicate, fail_closed, canonicalDoor());
   start(duplicate_core);
   CHECK(send(duplicate_core, sgk::MessageType::kClientHello, client.data(),
              client.size(), 1000));
   drain(duplicate_core);
-  duplicate_core.disconnect(7, 1100);
+  duplicate_core.disconnect(duplicate_core.connectionOwner(), 1100);
   CHECK(duplicate_core.connect(7, 1200));
   CHECK(!send(duplicate_core, sgk::MessageType::kClientHello, client.data(),
               client.size(), 1200, 502, 2));
   CHECK(!duplicate_core.enabled());
+}
+
+void testAdapterConnectionOwnershipAndReconnectRace() {
+  auto random = canonicalRandom(12);
+  FakeVerifier verifier(sgk::ResultReason::kOk);
+  sgk::ProtocolCore core(random, verifier, canonicalDoor());
+  start(core);
+  const sgk::ConnectionToken first_owner = core.connectionOwner();
+  sgk::AdapterState adapter;
+  CHECK(adapter.acceptConnection(first_owner));
+  CHECK(!core.connect(8, 1001));
+  const auto client = hello();
+  uint8_t frame[64] = {};
+  const size_t frame_length = sgk::ProtocolCore::buildFrame(
+      sgk::MessageType::kClientHello, 1, client.data(), client.size(),
+      client.size(), 0, frame, sizeof(frame));
+  CHECK(frame_length != 0);
+  CHECK(!adapter.enqueueWrite(8, sgk::MessageType::kClientHello, frame,
+                              frame_length));
+  CHECK(adapter.enqueueWrite(7, sgk::MessageType::kClientHello, frame,
+                             frame_length));
+  sgk::PendingWrite stale;
+  CHECK(adapter.popWrite(&stale));
+  CHECK(stale.owner == first_owner);
+
+  core.disconnect(first_owner, 1010);
+  adapter.disconnect(first_owner.handle);
+  sgk::ConnectionToken second_owner;
+  CHECK(core.connect(7, 1020, &second_owner));
+  CHECK(second_owner.generation != first_owner.generation);
+  CHECK(adapter.acceptConnection(second_owner));
+  CHECK(!core.receiveFrame(stale.type, stale.owner, stale.bytes.data(),
+                           stale.length, 1030));
+  CHECK(core.state() == sgk::SessionState::kIdle);
+  CHECK(adapter.setSubscribed(7, sgk::MessageType::kResult, true));
+  sgk::OutputMessage stale_result;
+  stale_result.type = sgk::MessageType::kResult;
+  stale_result.connection_handle = first_owner.handle;
+  stale_result.connection_generation = first_owner.generation;
+  stale_result.length = sgk::kResultSize;
+  CHECK(!adapter.stageOutput(stale_result));
+}
+
+void testAdapterOverflowAndAckGating() {
+  auto random = canonicalRandom(12);
+  FakeVerifier verifier(sgk::ResultReason::kOk);
+  sgk::ProtocolCore core(random, verifier, canonicalDoor());
+  start(core);
+  sgk::AdapterState adapter;
+  CHECK(adapter.acceptConnection(core.connectionOwner()));
+  CHECK(adapter.setSubscribed(7, sgk::MessageType::kTargetHello, true));
+  CHECK(adapter.setSubscribed(7, sgk::MessageType::kChallenge, true));
+  CHECK(adapter.setSubscribed(7, sgk::MessageType::kResult, true));
+
+  const auto client = hello();
+  CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
+             1000));
+  drain(core);
+  const auto valid = proof(core.sessionId());
+  uint8_t proof_frame[sgk::kAdapterFrameCapacity] = {};
+  const size_t proof_frame_length = sgk::ProtocolCore::buildFrame(
+      sgk::MessageType::kProof, 2, valid.data(), valid.size(), valid.size(), 0,
+      proof_frame, sizeof(proof_frame));
+  for (size_t index = 0; index < sgk::kPendingWriteCapacity; ++index) {
+    CHECK(adapter.enqueueWrite(7, sgk::MessageType::kProof, proof_frame,
+                               proof_frame_length));
+  }
+  CHECK(!adapter.enqueueWrite(7, sgk::MessageType::kProof, proof_frame,
+                              proof_frame_length));
+  sgk::ConnectionToken overflow_owner;
+  CHECK(adapter.consumeOverflow(&overflow_owner));
+  sgk::PendingWrite discarded;
+  CHECK(!adapter.popWrite(&discarded));
+  CHECK(!core.receiveFrame(sgk::MessageType::kProof, overflow_owner, nullptr,
+                           0, 1100));
+  CHECK(verifier.calls == 0);
+
+  auto results = drain(core);
+  CHECK(results.size() == 1);
+  CHECK(adapter.stageOutput(results[0]));
+  uint8_t fragment[64] = {};
+  size_t written = 0;
+  sgk::MessageType type = sgk::MessageType::kError;
+  sgk::ConnectionToken owner;
+  CHECK(adapter.beginNextIndication(23, 1200, fragment, sizeof(fragment),
+                                    &written, &type, &owner));
+  CHECK(written != 0);
+  const sgk::ConnectionToken indication_owner = owner;
+  const sgk::MessageType indication_type = type;
+  CHECK(!adapter.beginNextIndication(23, 1201, fragment, sizeof(fragment),
+                                     &written, &type, &owner));
+  CHECK(adapter.confirmIndication({8, indication_owner.generation},
+                                  indication_type, true) ==
+        sgk::IndicationResult::kIgnored);
+  CHECK(adapter.confirmIndication(indication_owner,
+                                  sgk::MessageType::kChallenge, true) ==
+        sgk::IndicationResult::kIgnored);
+  CHECK(adapter.confirmIndication(indication_owner, indication_type, true) ==
+        sgk::IndicationResult::kFragmentConfirmed);
+  CHECK(adapter.beginNextIndication(23, 1202, fragment, sizeof(fragment),
+                                    &written, &type, &owner));
+  CHECK(adapter.confirmIndication(owner, type, false) ==
+        sgk::IndicationResult::kAborted);
+  CHECK(!adapter.outputActive());
+
+  sgk::OutputMessage timeout_output = results[0];
+  timeout_output.message_id++;
+  CHECK(adapter.stageOutput(timeout_output));
+  CHECK(adapter.beginNextIndication(64, 0xfffffff0U, fragment,
+                                    sizeof(fragment), &written, &type,
+                                    &owner));
+  CHECK(!adapter.confirmationTimedOut(0x0000049fU));
+  CHECK(adapter.confirmationTimedOut(0x000004a0U));
+  adapter.abortOutput();
+}
+
+void testProvisionedDoorBindingAndCanonicalEventFields() {
+  SequenceRandom missing_random = canonicalRandom();
+  sgk::FailClosedProofVerifier fail_closed;
+  std::array<uint8_t, 16> missing_door{};
+  sgk::ProtocolCore missing(missing_random, fail_closed, missing_door);
+  CHECK(!missing.initialize());
+
+  auto random_a = canonicalRandom();
+  auto random_b = canonicalRandom();
+  HashSignatureVerifier verifier_a;
+  HashSignatureVerifier verifier_b;
+  EventRecorder events;
+  const auto door_a = canonicalDoor();
+  auto door_b = door_a;
+  door_b[0] ^= 0x10;
+  sgk::ProtocolCore core_a(random_a, verifier_a, door_a, &events);
+  sgk::ProtocolCore core_b(random_b, verifier_b, door_b);
+  start(core_a, 1000);
+  start(core_b, 1000);
+  const auto client = hello();
+  CHECK(send(core_a, sgk::MessageType::kClientHello, client.data(),
+             client.size(), 1000));
+  CHECK(send(core_b, sgk::MessageType::kClientHello, client.data(),
+             client.size(), 1000));
+  const auto output_a = drain(core_a);
+  const auto output_b = drain(core_b);
+  CHECK(output_a.size() == 2 && output_b.size() == 2);
+  CHECK(output_a[1].bytes[10] != output_b[1].bytes[10]);
+
+  auto signed_proof = proof(core_a.sessionId());
+  std::array<uint8_t, 61> signing_input{};
+  std::memcpy(signing_input.data(), "SGKPRF01", 8);
+  sgk::ProtocolCore::sha256(output_a[1].bytes.data(), output_a[1].length,
+                            signing_input.data() + 8);
+  std::memcpy(signing_input.data() + 40, signed_proof.data() + 18, 16);
+  signing_input[56] = signed_proof[34];
+  std::memcpy(signing_input.data() + 57, signed_proof.data() + 35, 4);
+  uint8_t signature_digest[32] = {};
+  sgk::ProtocolCore::sha256(signing_input.data(), signing_input.size(),
+                            signature_digest);
+  std::memcpy(signed_proof.data() + 39, signature_digest, 32);
+  std::memcpy(signed_proof.data() + 71, signature_digest, 32);
+  CHECK(send(core_a, sgk::MessageType::kProof, signed_proof.data(),
+             signed_proof.size(), 1100, 502, 2));
+  CHECK(!send(core_b, sgk::MessageType::kProof, signed_proof.data(),
+              signed_proof.size(), 1100, 502, 2));
+  const auto denied = drain(core_b);
+  CHECK(denied.size() == 1);
+  CHECK(u16(denied[0].bytes.data() + 18) == 7);
+
+  CHECK(events.events.size() >= 3);
+  CHECK(events.events[0].sequence != 0);
+  CHECK(events.events[1].sequence == events.events[0].sequence + 1);
+  CHECK(events.events[1].has_causation);
+  CHECK(events.events[1].causation_sequence == events.events[0].sequence);
+  CHECK(events.events[0].monotonic_ms == 1000);
+  CHECK(events.events[0].session_id == core_a.sessionId());
+  CHECK(events.events[0].boot_id == core_a.bootId());
+}
+
+void testOtaSafeStateClassification() {
+  CHECK(classifyOtaSafeState(GateState::IDLE, false, false) ==
+        OtaSafeState::SAFE);
+  CHECK(classifyOtaSafeState(GateState::ARMED, true, false) ==
+        OtaSafeState::ACCESS_SESSION_ACTIVE);
+  CHECK(classifyOtaSafeState(GateState::COOLDOWN, false, false) ==
+        OtaSafeState::ACCESS_SESSION_ACTIVE);
+  CHECK(classifyOtaSafeState(GateState::IDLE, false, true) ==
+        OtaSafeState::RELAY_ACTIVE);
+  CHECK(classifyOtaSafeState(GateState::RELAY_HOLD, false, false) ==
+        OtaSafeState::RELAY_ACTIVE);
 }
 
 }  // namespace
@@ -462,6 +680,10 @@ int main() {
   testStrictParsingFragmentsAndTimeouts();
   testLifecycleBusyReplayRolloverAndSafety();
   testDenyVerifierFuzzAndRngGuards();
+  testAdapterConnectionOwnershipAndReconnectRace();
+  testAdapterOverflowAndAckGating();
+  testProvisionedDoorBindingAndCanonicalEventFields();
+  testOtaSafeStateClassification();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";
   return 0;
 }

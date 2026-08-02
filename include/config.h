@@ -44,6 +44,14 @@ constexpr const char* GATEKEEPER_BEACON_UUID = "a1b2c3d4-e5f6-7890-abcd-ef123456
 #define ENABLE_HARDWARELESS_RC 0
 #endif
 
+// Provision per Target through secrets.h or NVS key "hwless_door". Empty is
+// deliberately invalid: no firmware image ships the canonical sample door ID.
+#ifndef SECRET_HARDWARELESS_DOOR_ID_HEX
+#define SECRET_HARDWARELESS_DOOR_ID_HEX ""
+#endif
+constexpr const char* HARDWARELESS_DOOR_ID_HEX =
+    SECRET_HARDWARELESS_DOOR_ID_HEX;
+
 // Hardwareless RC Connectable GATT Service 및 Characteristic UUIDs
 constexpr const char* HARDWARELESS_SERVICE_UUID     = "9f4d1000-7d9e-4fb1-9c54-6f4d53474b31";
 constexpr const char* HARDWARELESS_CHAR_HELLO_UUID  = "9f4d1001-7d9e-4fb1-9c54-6f4d53474b31";

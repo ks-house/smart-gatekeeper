@@ -712,6 +712,11 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     }
 }
 
+bool MqttManager::publishCanonicalEvent(const char* payload) {
+    if (payload == nullptr || !client.connected()) return false;
+    return client.publish("smart-gatekeeper/canonical-event", payload, false);
+}
+
 void MqttManager::publishSensorInfo(unsigned long duration_us, float distance_cm) {
     if (!isConnected()) return;
 

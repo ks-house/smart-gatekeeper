@@ -10,7 +10,7 @@ ESP32-C6, Android 스마트키 앱, Synology NAS 백엔드를 결합한 **외부
 |---|---|
 | Target | ESP32-C6-DevKitC-1 N16, BLE 5.3 iBeacon advertiser, Wi-Fi, MQTTS, OTA |
 | 접근 센서 | AJ-SR04T/JSN-SR04T 호환 초음파 센서, TRIG GPIO10 / ECHO GPIO11 |
-| 도어 출력 | 5V Active-LOW 릴레이, GPIO23, OFF 시 INPUT High-Z |
+| 도어 출력 | 5V Active-LOW 릴레이, authoritative GPIO3, OFF 시 INPUT High-Z |
 | 모바일 | Flutter Android 앱 + 로컬 `flutter_beacon` fork + foreground service isolate |
 | 백엔드 | FastAPI + MariaDB + Paho MQTT, Docker Compose |
 | 자동화 | `main` push 시 펌웨어 빌드·NAS 배포, 앱은 `main` push 또는 수동 실행 시 빌드·배포 |

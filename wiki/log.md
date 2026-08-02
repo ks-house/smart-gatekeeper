@@ -1434,3 +1434,18 @@
 - Local evidence passed after rerunning 84 repository tests, the native executable over `src/GattProtocol.cpp`, 16 protocol tests, 18 observability tests, canonical vector verification, access/manual_remote/Target OTA/rollback fixture validation and evaluation, OTA/trusted policy, actionlint, 14 YAML/22 JSON/9 JSONL/13 Python parses, 185 relative links, raw immutability, append-only Git-blob prefix and `git diff --check`.
 - Default-OFF ESP32-C6 build passed at RAM 47,032/327,680 and flash 1,597,682/7,340,032 bytes; `ENABLE_HARDWARELESS_RC=1` passed at RAM 49,200/327,680 and flash 1,620,546/7,340,032 bytes. Exact-head hosted OTA P0, firmware canary and trusted-policy checks passed with production skipped.
 - No Samsung/OEM, physical ESP32-C6 GATT/MTU/radio/heap, GPIO3 relay/sensor, power-loss/bootloader, OTA-G1..G4 or RELAY-G0..G2 evidence was produced or claimed; production remains fail-closed and the open hardware/operator gates remain open.
+
+## [2026-08-02] fix | PR #34 corrected-head remaining production blockers resolved
+
+- Bound every accepted BLE connection to a handle plus monotonic generation, disconnected rejected peers, retained ownership on queued writes and results, rejected stale reconnect traffic, and targeted confirmed indications only to the accepted subscribed peer.
+- Added an adapter-level ACK-gated indication state machine with one fragment in flight, NimBLE `onStatus` advancement, confirmation error/timeout abort, session cleanup, and fail-closed overflow precedence before any queued proof can succeed.
+- Added OTA `WAIT_SAFE_STATE` arbitration against the actual access/relay state before network, download, or flash work; a protocol/session-bound `BUSY` result is emitted before reset, and the authenticated explicit-button `manual_remote` path remains independent and is waited out rather than cancelled.
+- Wired a canonical production event sink with uint64 monotonic time and sequence, boot/session identity and causal event links; its best-effort MQTT boundary is documented without claiming durable, complete, offline, or physical telemetry evidence.
+- Replaced the test-vector door identity with validated provisioned 16-byte configuration, made missing/invalid identity fail closed, added same-core cross-door replay denial, corrected current GPIO3 and executable-contract documentation while preserving historical GPIO23 records, and limited the RNG claim to the conservative implementation actually tested.
+
+## [2026-08-02] test | PR #34 corrected-head adapter and contract verification
+
+- All 87 repository tests passed, including the native production-core executable and shared adapter tests for second-peer rejection, disconnect/reconnect generation races, stale results, targeted subscription ownership, ACK/error/timeout indication behavior, overflow precedence, provisioned identity and cross-door replay denial.
+- The protocol vector verifier, 16 protocol tests, 18 observability tests, access/manual_remote/Target OTA/rollback fixture validation and evaluation, OTA contract, trusted-policy coverage, actionlint, structured-file parsing, relative links, wiki index, raw immutability, append-only log prefix and diff checks passed.
+- ESP32-C6 default-OFF build passed at RAM 47,040/327,680 bytes and flash 1,596,024/7,340,032 bytes; `ENABLE_HARDWARELESS_RC=1` passed at RAM 53,592/327,680 bytes and flash 1,630,180/7,340,032 bytes and compiled the actual NimBLE adapter path.
+- No Samsung/OEM, physical ESP32-C6 GATT/MTU/radio/heap, GPIO3 relay/sensor, power-loss/bootloader, OTA-G1..G4 or RELAY-G0..G2 evidence was produced or claimed; PR #34 remains draft/unmerged and production remains fail closed.

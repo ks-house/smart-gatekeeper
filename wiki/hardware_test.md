@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-02 (G0-SW hardwareless와 G0-HW production Gate 분리)
+> Last updated: 2026-08-02 (#18 connection ownership/ACK/OTA safe-state software evidence)
 
 ## 1. 판정 원칙
 
@@ -28,7 +28,7 @@
 | OTA artifact/schema/semantic negative vectors | 2026-08-01 host unit test 18건 | 🟢 CONTRACT PASS | 실제 artifact size/SHA-256·APK certificate binding과 invariant/recovery fail-closed 검증; 물리 install/boot/rollback 증거 아님 |
 | OTA-G1~G4 physical matrix | 실측 없음 | 🔴 RELEASE BLOCKED | periodic HTTPS/local AP, Android fallback, N/N-1, power-loss/rollback 실기기 필요 |
 | Epic #13 implementation authorization | 2026-08-02 사용자 승인 + machine-readable contract | 🟢 G0-SW ONLY | #17~#22 software 구현/리뷰/merge 허용; production·물리 완료 증거 아님 |
-| #18 production-core host tests | 2026-08-02 native C++ build/run | 🟢 SOFTWARE PASS | production `GattProtocol.cpp` direct compile/run; canonical framing/session/parser/fail-closed tests; no radio/GPIO/relay evidence |
+| #18 core/adapter host tests and builds | 2026-08-02, 87 repository tests + default-OFF/feature-ON ESP32-C6 builds | 🟢 SOFTWARE PASS | connection generation, second peer, reconnect race, overflow ordering, indication ACK/error/timeout, provisioned/cross-door binding, WAIT_SAFE_STATE contract; no radio/GPIO/relay/OTA physical evidence |
 | Epic #13 production authorization | 실측 없음 | 🔴 G0-HW BLOCKED | Samsung/OEM, ESP32-C6 real BLE, relay/sensor, bootloader, OTA-G1~G4, RELAY-G0~G2 필요 |
 
 ## 3. 현재 E2E 인수 절차

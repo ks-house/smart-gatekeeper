@@ -5,6 +5,7 @@
 // =============================================================
 #pragma once
 
+#include <array>
 #include <Arduino.h>
 #include <Preferences.h>
 
@@ -26,6 +27,7 @@ public:
     static uint32_t getPreArmDurationMs(uint32_t defaultVal = 60000);
     static uint32_t getRelayCooldownMs(uint32_t defaultVal = 3000);
     static bool getHardwarelessRcEnabled(bool defaultVal = false);
+    static bool getHardwarelessDoorId(std::array<uint8_t, 16>* doorId);
     static uint32_t incrementBootCount();
     static String consumePlannedRestartReason();
 
@@ -37,6 +39,7 @@ public:
     static void setPreArmDurationMs(uint32_t durationMs);
     static void setRelayCooldownMs(uint32_t cooldownMs);
     static void setHardwarelessRcEnabled(bool enabled);
+    static bool setHardwarelessDoorIdHex(const String& doorIdHex);
     static void setPlannedRestartReason(const char* reason);
     static void clearConfig();
 

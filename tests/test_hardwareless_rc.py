@@ -60,6 +60,57 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertNotIn("RelayController", adapter)
         self.assertNotIn("triggerManualDoorOpen", core + adapter)
 
+    def test_adapter_owns_connections_and_ack_gates_targeted_indications(self):
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(encoding="utf-8")
+        shared = (ROOT / "include" / "GattProtocol.h").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("if (!GattServer::handleConnect(connection_id))", adapter)
+        self.assertIn("server->disconnect(connection_id);", adapter)
+        self.assertIn("description->conn_handle, write_type_", adapter)
+        self.assertIn("ConnectionToken owner", shared)
+        self.assertIn("connection_generation", shared)
+        self.assertLess(
+            adapter.index("adapter_state.consumeOverflow"),
+            adapter.index("adapter_state.popWrite"),
+        )
+        self.assertIn("ble_gatts_indicate_custom(owner.handle", adapter)
+        self.assertIn("void onStatus(", adapter)
+        self.assertIn("confirmationTimedOut", adapter)
+
+    def test_ota_waits_on_real_target_state_before_network(self):
+        ota = (ROOT / "src" / "OtaManager.cpp").read_text(encoding="utf-8")
+        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+        self.assertIn("safeStateProvider() != OtaSafeState::SAFE", ota)
+        self.assertLess(
+            ota.index("status = OtaStatus::WAIT_SAFE_STATE"),
+            ota.index("if (!WifiManager::isConnected())"),
+        )
+        self.assertLess(
+            ota.index("if (!WifiManager::isConnected())"),
+            ota.index("WiFiClientSecure client"),
+        )
+        self.assertIn(
+            "classifyOtaSafeState(state, is_armed, relay.isOn())", main
+        )
+        self.assertIn("OtaManager::setSafeStateProvider(currentOtaSafeState)", main)
+
+    def test_provisioned_door_and_production_event_sink_are_wired(self):
+        header = (ROOT / "include" / "GattProtocol.h").read_text(encoding="utf-8")
+        config = (ROOT / "src" / "ConfigManager.cpp").read_text(encoding="utf-8")
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(encoding="utf-8")
+        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+        example = (ROOT / "include" / "secrets.h.example").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("0x00, 0x11, 0x22, 0x33", header)
+        self.assertIn('preferences.getString(\n        "hwless_door"', config)
+        self.assertIn('SECRET_HARDWARELESS_DOOR_ID_HEX ""', example)
+        self.assertIn("class CanonicalMqttEventSink", adapter)
+        self.assertIn('document["sequence"] = event.sequence', adapter)
+        self.assertIn('document["causation_event_id"]', adapter)
+        self.assertIn("GattServer::useProductionEventSink()", main)
+
     def test_android_filter_and_target_prefix_share_exact_bytes(self):
         android = (
             ROOT

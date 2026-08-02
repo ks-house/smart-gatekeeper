@@ -24,6 +24,7 @@
 #include "UltrasonicSensor.h"
 #include "RelayController.h"
 #include "GattServer.h"
+#include "TargetState.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -110,13 +111,6 @@ static void clearI2CBus(uint8_t sdaPin, uint8_t sclPin) {
 // ─────────────────────────────────────────────────────────────
 // FSM 상태 정의 (IDLE / ARMED / RELAY_HOLD / COOLDOWN)
 // ─────────────────────────────────────────────────────────────
-enum class GateState {
-  IDLE,
-  ARMED,
-  RELAY_HOLD,
-  COOLDOWN
-};
-
 static GateState state       = GateState::IDLE;
 static uint32_t  stateMs     = 0;
 static uint32_t  lastMqttMs  = 0;
@@ -261,6 +255,28 @@ void setRelayCooldownMs(uint32_t cooldownMs) {
 // ─────────────────────────────────────────────────────────────
 // triggerArm() — MqttManager 콜백에서 호출 (MQTT gatekeeper/arm 수신)
 // ─────────────────────────────────────────────────────────────
+static OtaSafeState currentOtaSafeState() {
+  // OtaManager is invoked from the MQTT callback and therefore temporarily
+  // owns loopTask. Advance only already-authorized/physical session expiry so
+  // manual_remote or legacy relay one-shots finish independently before OTA.
+  const uint32_t now = millis();
+  if (state == GateState::RELAY_HOLD && !relay.isOn()) {
+    relayFailsafeTriggered = false;
+    state = GateState::COOLDOWN;
+    stateMs = now;
+  }
+  if (state == GateState::ARMED &&
+      now - arm_timestamp >= g_pre_arm_duration_ms) {
+    is_armed = false;
+    state = GateState::IDLE;
+  }
+  if (state == GateState::COOLDOWN &&
+      now - stateMs >= g_relay_cooldown_ms) {
+    state = GateState::IDLE;
+  }
+  return classifyOtaSafeState(state, is_armed, relay.isOn());
+}
+
 bool triggerArm() {
   // 한 출입 세션은 IDLE -> ARMED -> RELAY_HOLD -> COOLDOWN -> IDLE 순서로
   // 완료한다. ARMED 갱신과 COOLDOWN 우회를 허용하면 반복 개방될 수 있다.
@@ -313,6 +329,7 @@ static void initBleAdvertiser() {
   bool hwlessEnable = sgk::effectiveFeatureEnabled(
       ConfigManager::getHardwarelessRcEnabled(false));
   GattServer::setEnabled(hwlessEnable);
+  GattServer::useProductionEventSink();
   GattServer::init();
 
   // NVS에서 불러온 송신 출력을 기준으로 초기화
@@ -377,6 +394,7 @@ void setup() {
     // udp_new_ip_type core-lock assertion in this task.
     DiagnosticsManager::noteAction("network_services_start");
     MqttManager::init();
+    OtaManager::setSafeStateProvider(currentOtaSafeState);
     OtaManager::init();
   } else {
     LOGF("[WIFI] 접속 실패 -> AP 설정 모드로 전환합니다.");

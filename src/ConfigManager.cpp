@@ -69,6 +69,47 @@ bool ConfigManager::getHardwarelessRcEnabled(bool defaultVal) {
     return preferences.getBool("hwless_rc", defaultVal);
 }
 
+namespace {
+int hexNibble(char value) {
+    if (value >= '0' && value <= '9') return value - '0';
+    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+    return -1;
+}
+
+bool parseDoorId(const String& value, std::array<uint8_t, 16>* doorId) {
+    if (doorId == nullptr) return false;
+    doorId->fill(0);
+    if (value.length() != 32) return false;
+    bool anyNonzero = false;
+    bool anyNotFf = false;
+    for (size_t index = 0; index < doorId->size(); ++index) {
+        const int high = hexNibble(value[index * 2]);
+        const int low = hexNibble(value[index * 2 + 1]);
+        if (high < 0 || low < 0) {
+            doorId->fill(0);
+            return false;
+        }
+        const uint8_t byte = static_cast<uint8_t>((high << 4) | low);
+        (*doorId)[index] = byte;
+        anyNonzero = anyNonzero || byte != 0;
+        anyNotFf = anyNotFf || byte != 0xff;
+    }
+    if (!anyNonzero || !anyNotFf) {
+        doorId->fill(0);
+        return false;
+    }
+    return true;
+}
+}  // namespace
+
+bool ConfigManager::getHardwarelessDoorId(
+        std::array<uint8_t, 16>* doorId) {
+    const String configured = preferences.getString(
+        "hwless_door", HARDWARELESS_DOOR_ID_HEX);
+    return parseDoorId(configured, doorId);
+}
+
 uint32_t ConfigManager::incrementBootCount() {
     uint32_t count = preferences.getUInt("boot_count", 0) + 1;
     preferences.putUInt("boot_count", count);
@@ -118,6 +159,12 @@ void ConfigManager::setRelayCooldownMs(uint32_t cooldownMs) {
 
 void ConfigManager::setHardwarelessRcEnabled(bool enabled) {
     preferences.putBool("hwless_rc", enabled);
+}
+
+bool ConfigManager::setHardwarelessDoorIdHex(const String& doorIdHex) {
+    std::array<uint8_t, 16> parsed{};
+    if (!parseDoorId(doorIdHex, &parsed)) return false;
+    return preferences.putString("hwless_door", doorIdHex) == doorIdHex.length();
 }
 
 void ConfigManager::setPlannedRestartReason(const char* reason) {

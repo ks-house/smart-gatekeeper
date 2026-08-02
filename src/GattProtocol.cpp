@@ -27,12 +27,234 @@ uint32_t rotateRight(uint32_t value, uint32_t bits) {
 
 }  // namespace
 
+bool AdapterState::acceptConnection(const ConnectionToken& owner) {
+  if (!owner.valid() || active_owner_.valid()) return false;
+  active_owner_ = owner;
+  subscriptions_ = 0;
+  clearWrites();
+  abortOutput();
+  return true;
+}
+
+void AdapterState::disconnect(uint16_t handle) {
+  if (!active_owner_.valid() || active_owner_.handle != handle) return;
+  active_owner_ = {};
+  subscriptions_ = 0;
+  clearWrites();
+  abortOutput();
+}
+
+void AdapterState::clear() {
+  active_owner_ = {};
+  subscriptions_ = 0;
+  clearWrites();
+  abortOutput();
+}
+
+bool AdapterState::ownerForHandle(uint16_t handle,
+                                  ConnectionToken* owner) const {
+  if (owner == nullptr) return false;
+  *owner = {};
+  if (!active_owner_.valid() || active_owner_.handle != handle) return false;
+  *owner = active_owner_;
+  return true;
+}
+
+uint8_t AdapterState::subscriptionBit(MessageType type) {
+  switch (type) {
+    case MessageType::kTargetHello:
+      return 0x01;
+    case MessageType::kChallenge:
+      return 0x02;
+    case MessageType::kResult:
+    case MessageType::kError:
+      return 0x04;
+    default:
+      return 0;
+  }
+}
+
+bool AdapterState::setSubscribed(uint16_t handle, MessageType type,
+                                 bool subscribed) {
+  if (!active_owner_.valid() || active_owner_.handle != handle) return false;
+  const uint8_t bit = subscriptionBit(type);
+  if (bit == 0) return false;
+  if (subscribed) {
+    subscriptions_ |= bit;
+  } else {
+    subscriptions_ &= static_cast<uint8_t>(~bit);
+  }
+  return true;
+}
+
+bool AdapterState::isSubscribed(const ConnectionToken& owner,
+                                MessageType type) const {
+  const uint8_t bit = subscriptionBit(type);
+  return owner.valid() && owner == active_owner_ && bit != 0 &&
+         (subscriptions_ & bit) != 0;
+}
+
+bool AdapterState::enqueueWrite(uint16_t handle, MessageType type,
+                                const uint8_t* value, size_t length) {
+  ConnectionToken owner;
+  if (!ownerForHandle(handle, &owner)) return false;
+  if (value == nullptr || length == 0 ||
+      length > pending_writes_[0].bytes.size() ||
+      pending_count_ == pending_writes_.size()) {
+    pending_overflow_ = true;
+    overflow_owner_ = owner;
+    return false;
+  }
+  const size_t slot = (pending_head_ + pending_count_) % pending_writes_.size();
+  pending_writes_[slot] = PendingWrite{};
+  pending_writes_[slot].owner = owner;
+  pending_writes_[slot].type = type;
+  pending_writes_[slot].length = length;
+  std::memcpy(pending_writes_[slot].bytes.data(), value, length);
+  pending_count_++;
+  return true;
+}
+
+bool AdapterState::consumeOverflow(ConnectionToken* owner) {
+  if (owner == nullptr) return false;
+  *owner = {};
+  if (!pending_overflow_) return false;
+  *owner = overflow_owner_;
+  clearWrites();
+  return owner->valid() && *owner == active_owner_;
+}
+
+bool AdapterState::popWrite(PendingWrite* pending) {
+  if (pending == nullptr || pending_count_ == 0) return false;
+  *pending = pending_writes_[pending_head_];
+  pending_head_ = (pending_head_ + 1) % pending_writes_.size();
+  pending_count_--;
+  return true;
+}
+
+void AdapterState::clearWrites() {
+  pending_head_ = 0;
+  pending_count_ = 0;
+  pending_overflow_ = false;
+  overflow_owner_ = {};
+}
+
+bool AdapterState::stageOutput(const OutputMessage& output) {
+  const ConnectionToken owner{output.connection_handle,
+                              output.connection_generation};
+  if (output_active_ || !owner.valid() || owner != active_owner_ ||
+      output.length == 0 || output.length > output.bytes.size() ||
+      !isSubscribed(owner, output.type)) {
+    return false;
+  }
+  output_ = output;
+  output_active_ = true;
+  confirmation_pending_ = false;
+  fragment_payload_capacity_ = 0;
+  fragment_count_ = 0;
+  fragment_index_ = 0;
+  confirmation_deadline_ms_ = 0;
+  return true;
+}
+
+bool AdapterState::beginNextIndication(uint16_t mtu, uint32_t now_ms,
+                                       uint8_t* frame, size_t capacity,
+                                       size_t* written, MessageType* type,
+                                       ConnectionToken* owner) {
+  if (written == nullptr || type == nullptr || owner == nullptr) return false;
+  *written = 0;
+  *type = MessageType::kError;
+  *owner = {};
+  if (!output_active_ || confirmation_pending_ ||
+      active_owner_ != ConnectionToken{output_.connection_handle,
+                                       output_.connection_generation} ||
+      !isSubscribed(active_owner_, output_.type)) {
+    return false;
+  }
+  const size_t payload_capacity =
+      mtu > kFrameHeaderSize + 3 ? mtu - 3 - kFrameHeaderSize : 1;
+  const size_t fragment_count =
+      (output_.length + payload_capacity - 1) / payload_capacity;
+  if (fragment_count == 0 || fragment_count > 255 ||
+      (fragment_payload_capacity_ != 0 &&
+       fragment_payload_capacity_ != payload_capacity)) {
+    return false;
+  }
+  fragment_payload_capacity_ = payload_capacity;
+  fragment_count_ = fragment_count;
+  const size_t frame_length = ProtocolCore::buildFrame(
+      output_.type, output_.message_id, output_.bytes.data(), output_.length,
+      fragment_payload_capacity_, static_cast<uint8_t>(fragment_index_), frame,
+      capacity);
+  if (frame_length == 0) return false;
+  confirmation_pending_ = true;
+  confirmation_deadline_ms_ = now_ms + kIndicationConfirmationTimeoutMs;
+  *written = frame_length;
+  *type = output_.type;
+  *owner = active_owner_;
+  return true;
+}
+
+IndicationResult AdapterState::confirmIndication(const ConnectionToken& owner,
+                                                  MessageType type,
+                                                  bool success) {
+  if (!output_active_ || !confirmation_pending_ || owner != active_owner_ ||
+      owner != ConnectionToken{output_.connection_handle,
+                               output_.connection_generation} ||
+      type != output_.type) {
+    return IndicationResult::kIgnored;
+  }
+  confirmation_pending_ = false;
+  confirmation_deadline_ms_ = 0;
+  if (!success) {
+    abortOutput();
+    return IndicationResult::kAborted;
+  }
+  fragment_index_++;
+  if (fragment_index_ >= fragment_count_) {
+    abortOutput();
+    return IndicationResult::kMessageConfirmed;
+  }
+  return IndicationResult::kFragmentConfirmed;
+}
+
+bool AdapterState::reached(uint32_t now_ms, uint32_t deadline_ms) {
+  return static_cast<int32_t>(now_ms - deadline_ms) >= 0;
+}
+
+bool AdapterState::confirmationTimedOut(uint32_t now_ms) const {
+  return confirmation_pending_ && reached(now_ms, confirmation_deadline_ms_);
+}
+
+void AdapterState::abortOutput() {
+  output_ = OutputMessage{};
+  output_active_ = false;
+  confirmation_pending_ = false;
+  fragment_payload_capacity_ = 0;
+  fragment_count_ = 0;
+  fragment_index_ = 0;
+  confirmation_deadline_ms_ = 0;
+}
+
 ProtocolCore::ProtocolCore(RandomSource& random, ProofVerifier& verifier,
+                           const std::array<uint8_t, 16>& door_id,
                            EventSink* event_sink)
-    : random_(random), verifier_(verifier), event_sink_(event_sink) {}
+    : random_(random),
+      verifier_(verifier),
+      event_sink_(event_sink),
+      door_id_(door_id) {
+  door_id_ready_ = !allZero(door_id_.data(), door_id_.size()) &&
+                   !std::all_of(door_id_.begin(), door_id_.end(),
+                                [](uint8_t value) { return value == 0xff; });
+}
 
 bool ProtocolCore::initialize() {
   resetSession();
+  if (!door_id_ready_) {
+    enabled_ = false;
+    rng_ready_ = false;
+    return false;
+  }
   rng_ready_ = randomUnique(boot_id_.data(), boot_id_.size(), nullptr);
   if (!rng_ready_) enabled_ = false;
   return rng_ready_;
@@ -49,28 +271,47 @@ void ProtocolCore::setEnabled(bool enabled) {
 void ProtocolCore::setOtaBusy(bool busy, uint32_t now_ms) {
   ota_busy_ = busy;
   if (busy && state_ != SessionState::kIdle) {
+    // Bind BUSY to the still-live protocol/session before clearing secrets.
+    // Supersede any unsent hello/challenge so the fixed-capacity output queue
+    // cannot prevent the terminal BUSY result from being staged.
+    outputs_ = {};
+    output_head_ = 0;
+    output_count_ = 0;
+    queueResult(ResultReason::kBusy, 1000, active_acl_version_);
     emit(EventCode::kAccessSessionTerminated, ResultReason::kBusy, now_ms);
-    resetSession();
+    resetSessionPreservingOutputs();
   }
 }
 
-bool ProtocolCore::connect(uint16_t connection_id, uint32_t now_ms) {
+bool ProtocolCore::connect(uint16_t connection_id, uint32_t now_ms,
+                           ConnectionToken* accepted_owner) {
+  if (accepted_owner != nullptr) *accepted_owner = {};
   if (!enabled() || connection_active_) return false;
   connection_active_ = true;
   connection_id_ = connection_id;
+  connection_generation_++;
+  if (connection_generation_ == 0) connection_generation_ = 1;
   resetSession();
-  emit(EventCode::kAccessGattConnected, ResultReason::kOk, now_ms);
+  if (accepted_owner != nullptr) *accepted_owner = connectionOwner();
+  (void)now_ms;
   return true;
 }
 
-void ProtocolCore::disconnect(uint16_t connection_id, uint32_t now_ms) {
-  if (!connection_active_ || connection_id != connection_id_) return;
+void ProtocolCore::disconnect(const ConnectionToken& owner, uint32_t now_ms) {
+  if (!connection_active_ || owner != connectionOwner()) return;
   connection_active_ = false;
   emit(EventCode::kAccessGattFailed, ResultReason::kSessionInvalid, now_ms);
   if (state_ != SessionState::kIdle) {
     emit(EventCode::kAccessSessionTerminated, ResultReason::kSessionInvalid,
          now_ms);
   }
+  resetSession();
+}
+
+void ProtocolCore::abortTransport(const ConnectionToken& owner,
+                                  ResultReason reason, uint32_t now_ms) {
+  if (!connection_active_ || owner != connectionOwner()) return;
+  emit(EventCode::kAccessSessionTerminated, reason, now_ms);
   resetSession();
 }
 
@@ -154,9 +395,10 @@ void ProtocolCore::tick(uint32_t now_ms) {
 }
 
 bool ProtocolCore::receiveFrame(MessageType expected_type,
-                                uint16_t connection_id, const uint8_t* frame,
+                                const ConnectionToken& owner,
+                                const uint8_t* frame,
                                 size_t frame_length, uint32_t now_ms) {
-  if (!enabled() || !connection_active_ || connection_id != connection_id_) {
+  if (!enabled() || !connection_active_ || owner != connectionOwner()) {
     return false;
   }
   if (ota_busy_) {
@@ -300,6 +542,8 @@ bool ProtocolCore::processHello(const uint8_t* payload, size_t length,
   selected_protocol_ = candidate;
   active_acl_version_ = verifier_.activeAclVersion();
   state_ = SessionState::kHelloReceived;
+  event_last_causation_sequence_ = 0;
+  emit(EventCode::kAccessGattConnected, ResultReason::kOk, now_ms);
 
   uint8_t target_hello[kTargetHelloSize] = {};
   writeU16(target_hello, selected_protocol_);
@@ -442,6 +686,8 @@ bool ProtocolCore::queue(MessageType type, const uint8_t* payload,
   outputs_[slot] = OutputMessage{};
   outputs_[slot].type = type;
   outputs_[slot].message_id = next_message_id_++;
+  outputs_[slot].connection_handle = connection_id_;
+  outputs_[slot].connection_generation = connection_generation_;
   if (next_message_id_ == 0) next_message_id_ = 1;
   outputs_[slot].length = length;
   std::memcpy(outputs_[slot].bytes.data(), payload, length);
@@ -475,6 +721,10 @@ void ProtocolCore::reject(ResultReason reason, uint32_t now_ms,
       backoff_until_ms_ = now_ms + (1000U << shift);
     }
   }
+  resetSessionPreservingOutputs();
+}
+
+void ProtocolCore::resetSessionPreservingOutputs() {
   const size_t preserved_output_head = output_head_;
   const size_t preserved_output_count = output_count_;
   const auto preserved_outputs = outputs_;
@@ -486,7 +736,22 @@ void ProtocolCore::reject(ResultReason reason, uint32_t now_ms,
 
 void ProtocolCore::emit(EventCode code, ResultReason reason, uint32_t now_ms) {
   if (event_sink_ != nullptr) {
-    event_sink_->emit({code, eventReason(code, reason), reason, now_ms});
+    if (event_time_initialized_ && now_ms < event_last_now_ms_) {
+      event_monotonic_high_ += (uint64_t{1} << 32);
+    }
+    event_time_initialized_ = true;
+    event_last_now_ms_ = now_ms;
+    const uint64_t sequence = ++event_sequence_;
+    event_sink_->emit({code,
+                       eventReason(code, reason),
+                       reason,
+                       event_monotonic_high_ + now_ms,
+                       session_id_,
+                       boot_id_,
+                       sequence,
+                       event_last_causation_sequence_ != 0,
+                       event_last_causation_sequence_});
+    event_last_causation_sequence_ = sequence;
   }
 }
 

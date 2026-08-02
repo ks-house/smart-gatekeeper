@@ -27,14 +27,18 @@ class GattServer {
   static void setOtaBusy(bool busy);
   static void setProofVerifier(sgk::ProofVerifier* verifier);
   static void setEventSink(sgk::EventSink* sink);
+  static void useProductionEventSink();
   static Telemetry getTelemetry();
 
   // Callback entrypoints are public only so the BLE callback shims can remain
   // allocation-free. Application code must not bypass the GATT characteristics.
-  static void handleConnect(uint16_t connection_id);
+  static bool handleConnect(uint16_t connection_id);
   static void handleDisconnect(uint16_t connection_id);
-  static void handleWrite(sgk::MessageType type, const uint8_t* value,
-                          size_t length);
+  static void handleWrite(uint16_t connection_id, sgk::MessageType type,
+                          const uint8_t* value, size_t length);
+  static void handleSubscribe(uint16_t connection_id, sgk::MessageType type,
+                              bool subscribed);
+  static void handleIndicationStatus(sgk::MessageType type, bool success);
 
  private:
   static void createService();
