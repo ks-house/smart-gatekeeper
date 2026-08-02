@@ -82,6 +82,25 @@ class GattSessionEngineTest {
   }
 
   @Test
+  fun structuredWriteDisconnectIsNeverMisclassifiedAsOuterTimeout() = runBlocking {
+    val transport = FakeTransport(targetHello, challenge, successResult(challenge.copyOfRange(26, 42))).apply {
+      negotiateFailure = GattTransportException(TransportFailureCode.DISCONNECTED, 19)
+    }
+    val result = GattSessionEngine(
+      transport,
+      DeterministicFakeCredentialSigner(fixtureSignature),
+      timeoutMs = 1000,
+      clock = MonotonicClock { 100 },
+      mobileBuild = 100,
+    ).run("00:11:22:33:44:55", credential) as SessionOutcome.Failure
+
+    assertEquals(AccessReasonCode.GATT_DISCONNECTED, result.reason)
+    assertEquals(TransportFailureCode.DISCONNECTED, result.transportFailure)
+    assertEquals(19, result.transportStatus)
+    assertTrue(transport.closed)
+  }
+
+  @Test
   fun targetBusyUsesBoundedRetryPolicy() = runBlocking {
     val resultBytes = successResult(challenge.copyOfRange(26, 42), reason = 9, retryAfterMs = 9000)
     val result = GattSessionEngine(
@@ -209,12 +228,14 @@ private class FakeTransport(
   var proofWrites = 0
   var closed = false
   var blockConnect = false
+  var negotiateFailure: GattTransportException? = null
 
   override suspend fun connect(deviceAddress: String) {
     if (blockConnect) delay(Long.MAX_VALUE)
   }
 
-  override suspend fun negotiate(clientHello: ByteArray): ByteArray = targetHello.copyOf()
+  override suspend fun negotiate(clientHello: ByteArray): ByteArray =
+    negotiateFailure?.let { throw it } ?: targetHello.copyOf()
   override suspend fun readChallenge(): ByteArray = challenge.copyOf()
   override suspend fun writeProof(proof: ByteArray) {
     proofWrites += 1

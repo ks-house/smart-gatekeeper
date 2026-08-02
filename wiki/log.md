@@ -1453,3 +1453,24 @@
 - Forced the complete Android JVM task with `--rerun-tasks`; all 208 tasks executed and eight inspected XML suites reported 29 tests, 0 failures, 0 errors, and 0 skips, including six GATT suites with 23 passing tests. Flutter passed 6 tests, zero-change targeted formatting, and clean targeted analysis; full analysis retained only 17 pre-existing info findings in unchanged vendored `flutter_beacon_local` Dart files.
 - Passed 81 repository tests, canonical-vector verification and 16 protocol tests, 18 observability tests, authenticated access/`manual_remote`/Target OTA/rollback fixture validation and evaluation, OTA contract gate, actionlint, relative-link/index, conflict, diff, raw immutability, append-only log, and protected-workflow checks. Hosted Android, OTA, and trusted-policy runs all succeeded on exact head `a65dcb7e5adaa361e22023550d29d1b3fb33b192`, with production deployment correctly skipped.
 - The authenticated explicit-button `manual_remote` chain is byte-unchanged and independently passes its seven-event contract outside hands-free RELAY gates. Mobile updater and Target dual-slot health/rollback, periodic HTTPS, authenticated local recovery, N/N-1, protected workflows, release evidence, and `raw/` are unchanged; PR #35 stays draft/unmerged and no Samsung/OEM, physical radio/relay/sensor/bootloader, RELAY-G0 through G2, or OTA-G1 through G4 evidence is claimed.
+
+## [2026-08-02] fix | PR #35 in-flight GATT disconnect propagation corrected
+
+- Replaced buffered characteristic-write and descriptor-write status channels with generation-scoped, single-consumer operation latches bound to the exact `BluetoothGatt` owner, operation kind, and characteristic UUID.
+- A disconnect now atomically terminates connection, service-discovery, message, characteristic-write, and CCCD-write waiters exactly once with structured `DISCONNECTED` and the original Android GATT status; every callback state other than successful `STATE_CONNECTED` fails closed.
+- Late callbacks after disconnect, callbacks captured by an older reconnect generation, wrong-target callbacks, and duplicate callbacks are ignored instead of becoming a later operation result; the outer session timeout no longer replaces a delivered disconnect with `GATT_TIMEOUT`.
+- Preserved exact Target reason/status/retry fields, durable proof uncertainty, authenticated rollout ownership, the independent authenticated explicit-button `manual_remote` path, and mobile/Target OTA recovery invariants.
+
+## [2026-08-02] test | PR #35 final disconnect regression and contract validation
+
+- Forced the complete Android `:app:testDebugUnitTest --rerun-tasks` run under the five-minute container bound; all 208 tasks executed, and fresh XML reported 8 suites, 36 tests, 0 failures, 0 errors, and 0 skips, including 6 GATT worker suites with 30 tests.
+- Added adversarial coverage for disconnect during client-hello and proof characteristic writes, disconnect during CCCD write, simultaneous waiter fan-out, exact status preservation, late and duplicate callbacks, reconnect generation isolation, and session-level rejection of timeout misclassification.
+- Flutter passed 6 tests, full `lib`/`test` analysis reported no issues, and the debug APK built successfully.
+- Passed 81 repository tests, standalone canonical-vector verification and 16 protocol tests, 18 observability tests, authenticated access/`manual_remote`/Target OTA/rollback fixture validation and evaluation, OTA contract validation, and actionlint.
+
+## [2026-08-02] lint | PR #35 final disconnect correction hygiene and evidence boundary
+
+- Documented reusable Windows sandbox temporary-directory, silent Gradle output, generated registrant, and transient worktree `index.lock` difficulties with symptom, cause, safe solution, and verification in `env_setup.md`.
+- Restored only tracked Linux/macOS/Windows Flutter registrants from exact HEAD after validation, verified no residual registrant diff or worktree lock, and removed the verified workspace-local `.review-tmp`, generated JUnit/report trees, and Android `.kotlin` test cache.
+- `git diff --check`, relative-link/index, conflict-marker, append-only log, raw immutability, protected workflow, manual runtime, OTA/recovery, and changed-path checks pass; no secret or private locator is recorded.
+- This remains software/host evidence only. PR #35 remains draft/open/unmerged; no Samsung/OEM, real ESP32-C6 radio/relay/sensor/bootloader, RELAY-G0 through G2, or OTA-G1 through G4 evidence is claimed, and production enablement plus legacy retirement remain fail-closed.

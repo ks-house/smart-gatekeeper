@@ -51,6 +51,8 @@ The RC intentionally exposes no Flutter mutation method for the feature flag or 
 
 `BleGattTransport` is the testable boundary between the state machine and Android Bluetooth APIs. The production transport performs service discovery, enables the result CCCD, writes client hello, reads the challenge, writes proof, and awaits a result indication. Protocol messages use the UUIDs, lengths, field ordering, unsigned integer encoding, SHA-256 inputs, ATT fragmentation, and reassembly rules in `security_protocol.md` and `protocol/test_vectors/v1.json`.
 
+Every `connectGatt` call now owns a monotonic transport generation and a callback object captured for that generation. The first callback and the returned `BluetoothGatt` must identify the same connection owner; callbacks from an older generation, a different GATT object, or a terminal connection are ignored. Characteristic and CCCD writes use operation-scoped single-consumer latches keyed by operation kind and characteristic UUID instead of buffered result channels. A disconnect atomically completes connection, service-discovery, message, characteristic-write, and descriptor-write waiters exactly once with `DISCONNECTED` and the original Android GATT status. Late or duplicate callbacks cannot be buffered for a later operation, and reconnect creates a clean generation, so an in-flight disconnect is never allowed to drift into the outer 15-second `GATT_TIMEOUT` classification.
+
 `AndroidKeystoreCredentialSigner` uses an AndroidKeyStore P-256 key configured for ECDSA/SHA-256. Signing converts ASN.1 DER output to exact 64-byte P1363 `r || low-S(s)` form. A missing credential is `CREDENTIAL_INACTIVE`; authentication never creates a new identity implicitly. Key creation is an enrollment-only operation, and neither private-key bytes nor raw challenges, proofs, peer addresses, tokens, or key material are returned to Flutter or written to logs.
 
 The JVM fake signer is deterministic and holds test-only material. It verifies canonical compatibility without invoking AndroidKeyStore.
@@ -103,14 +105,14 @@ Network-off is not a blocker: the worker has no WorkManager network constraint a
 ## 7. Hardwareless evidence (2026-08-02)
 
 - Forced targeted Android run: `:app:testDebugUnitTest --tests 'com.kshouse.gatekeeper_app.gattworker.*' --rerun-tasks`; 208 tasks executed.
-- Final JUnit XML: 6 targeted suites, 23 tests, 0 failures, 0 errors, 0 skipped.
-- Full Android JVM suite: 8 suites and 28 tests passed with 0 failures, 0 errors, and 0 skips.
+- Final JUnit XML: 6 targeted GATT worker suites, 30 tests, 0 failures, 0 errors, 0 skipped.
+- Full Android JVM suite: 8 suites and 36 tests passed with 0 failures, 0 errors, and 0 skips; all 208 Gradle tasks were freshly executed with `--rerun-tasks`.
 - Flutter: 6 tests passed.
 - Targeted Dart analysis of the two changed files: no issues. Full analysis retains 17 pre-existing info-level findings in vendored `flutter_beacon_local`.
 - Debug APK: `gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk` built successfully.
 - Protocol, observability, repository gates, and diff/link/immutability checks are recorded in the append-only log.
 
-The JVM coverage includes signed flag tamper/expiry/replay/key-binding negatives, two-process ownership transitions, canonical vector compatibility, ATT fragments, deterministic signing conversion, complete GATT exchange, every frozen Target reason, exact disconnect/read/malformed callback failures, bounded Target retry delay, process death after proof write/result receipt, duplicate delivery across restart/terminal state, plaintext-ledger migration and redaction, network-off operation, OTA independence, and default-safe legacy fallback.
+The JVM coverage includes signed flag tamper/expiry/replay/key-binding negatives, two-process ownership transitions, canonical vector compatibility, ATT fragments, deterministic signing conversion, complete GATT exchange, every frozen Target reason, disconnect during client-hello/proof characteristic writes and CCCD writes, exact status preservation without timeout misclassification, simultaneous waiter fan-out, late/duplicate callbacks, reconnect generation isolation, exact read/malformed callback failures, bounded Target retry delay, process death after proof write/result receipt, duplicate delivery across restart/terminal state, plaintext-ledger migration and redaction, network-off operation, OTA independence, and default-safe legacy fallback.
 
 ## 8. Pending physical gates
 
