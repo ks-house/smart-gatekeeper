@@ -74,6 +74,28 @@ APK_VERSION_URL     = os.getenv("APK_VERSION_URL", "https://tworimpa.synology.me
 APK_DOWNLOAD_URL    = os.getenv("APK_DOWNLOAD_URL", "https://tworimpa.synology.me:4442/api/v1/download/apk")
 WEBVIEW_URL         = os.getenv("WEBVIEW_URL", "https://tworimpa.synology.me:4442/app")
 
+# Issue #19 management plane is expand-first and production-OFF by default. Legacy
+# prearm/manual_remote and OTA download routes remain available when this flag is false.
+ACL_MANAGEMENT_ENABLED = os.getenv("ACL_MANAGEMENT_ENABLED", "false").lower() == "true"
+ACL_LEGACY_DEVICE_LOOKUP_ENABLED = os.getenv(
+    "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", "true"
+).lower() == "true"
+ACL_LEGACY_REF_HMAC_KEY = os.getenv("ACL_LEGACY_REF_HMAC_KEY", "").strip()
+ACL_ENROLLMENT_AUTH_JSON = os.getenv("ACL_ENROLLMENT_AUTH_JSON", "").strip()
+ACL_ADMIN_API_KEY = os.getenv("ACL_ADMIN_API_KEY", "").strip()
+ACL_TARGET_AUTH_JSON = os.getenv("ACL_TARGET_AUTH_JSON", "").strip()
+ACL_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
+    "ACL_SIGNING_PRIVATE_SCALAR_HEX", ""
+).strip()
+ACL_SIGNING_KEY_ID_RAW = os.getenv("ACL_SIGNING_KEY_ID", "1").strip()
+ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
+    "ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX", ""
+).strip()
+ACL_TRANSITION_SIGNING_KEY_ID_RAW = os.getenv(
+    "ACL_TRANSITION_SIGNING_KEY_ID", ""
+).strip()
+ACL_LEASE_SECONDS_RAW = os.getenv("ACL_LEASE_SECONDS", "900").strip()
+
 
 # ─── 문 제어 API 인증 (issue.md P3-22) ────────────────────────
 def _api_key_matches(candidate: Optional[str]) -> bool:
@@ -306,6 +328,153 @@ app = FastAPI(
     lifespan=lifespan,
     default_response_class=JSONResponse
 )
+
+# Mount the new management plane only when the feature is explicitly enabled and all
+# authentication/signing prerequisites are present. A bad RC configuration must not take
+# down the distinct legacy manual_remote or independent OTA download paths.
+if ACL_MANAGEMENT_ENABLED:
+    _acl_missing = [
+        name
+        for name, value in (
+            ("ACL_ENROLLMENT_AUTH_JSON", ACL_ENROLLMENT_AUTH_JSON),
+            ("ACL_ADMIN_API_KEY", ACL_ADMIN_API_KEY),
+            ("ACL_TARGET_AUTH_JSON", ACL_TARGET_AUTH_JSON),
+            ("ACL_SIGNING_PRIVATE_SCALAR_HEX", ACL_SIGNING_PRIVATE_SCALAR_HEX),
+        )
+        if not value
+    ]
+    if ACL_LEGACY_DEVICE_LOOKUP_ENABLED and not ACL_LEGACY_REF_HMAC_KEY:
+        _acl_missing.append("ACL_LEGACY_REF_HMAC_KEY")
+    if _acl_missing:
+        log.error(
+            "[ACL-MANAGEMENT] feature remains unavailable; missing required settings: %s",
+            ",".join(_acl_missing),
+        )
+    else:
+        try:
+            try:
+                from .acl_api import AclApiConfig, create_acl_router
+                from .acl_management import (
+                    AclManagementService,
+                    AclStore,
+                    DeterministicP256Signer,
+                )
+            except ImportError:  # Docker runs uvicorn with /app as the import root.
+                from acl_api import AclApiConfig, create_acl_router
+                from acl_management import (
+                    AclManagementService,
+                    AclStore,
+                    DeterministicP256Signer,
+                )
+
+            _acl_enrollment_credentials = json.loads(ACL_ENROLLMENT_AUTH_JSON)
+            _acl_target_credentials = json.loads(ACL_TARGET_AUTH_JSON)
+            _acl_signing_key_id = int(ACL_SIGNING_KEY_ID_RAW)
+            _acl_lease_seconds = int(ACL_LEASE_SECONDS_RAW)
+            if (
+                not isinstance(_acl_enrollment_credentials, dict)
+                or not _acl_enrollment_credentials
+                or not all(
+                    isinstance(actor_id, str)
+                    and actor_id
+                    and isinstance(value, dict)
+                    and isinstance(value.get("tenant_id"), str)
+                    and len(value["tenant_id"]) == 32
+                    and isinstance(value.get("key"), str)
+                    and bool(value["key"])
+                    for actor_id, value in _acl_enrollment_credentials.items()
+                )
+            ):
+                raise ValueError("ACL_ENROLLMENT_AUTH_JSON must map actor IDs to tenant_id/key")
+            if (
+                not isinstance(_acl_target_credentials, dict)
+                or not _acl_target_credentials
+                or not all(
+                    isinstance(target_id, str)
+                    and target_id
+                    and isinstance(value, dict)
+                    and isinstance(value.get("tenant_id"), str)
+                    and len(value["tenant_id"]) == 32
+                    and isinstance(value.get("door_id"), str)
+                    and len(value["door_id"]) == 32
+                    and all(char in "0123456789abcdef" for char in value["door_id"])
+                    and isinstance(value.get("key"), str)
+                    and bool(value["key"])
+                    for target_id, value in _acl_target_credentials.items()
+                )
+            ):
+                raise ValueError(
+                    "ACL_TARGET_AUTH_JSON must map target IDs to tenant_id/door_id/key"
+                )
+            _acl_target_door_owners: dict[str, str] = {}
+            for _target_credential in _acl_target_credentials.values():
+                _door_id = _target_credential["door_id"]
+                _tenant_id = _target_credential["tenant_id"]
+                _existing_owner = _acl_target_door_owners.setdefault(
+                    _door_id, _tenant_id
+                )
+                if not secrets.compare_digest(_existing_owner, _tenant_id):
+                    raise ValueError(
+                        "ACL_TARGET_AUTH_JSON cannot assign one door to multiple tenants"
+                    )
+
+            class _AclMqttPublisher:
+                def publish(self, topic: str, envelope: dict) -> bool:
+                    return _publish_mqtt_msg(
+                        topic,
+                        json.dumps(envelope, sort_keys=True, separators=(",", ":")),
+                        "MQTT-ACL",
+                    )
+
+            _acl_signer = DeterministicP256Signer(
+                int(ACL_SIGNING_PRIVATE_SCALAR_HEX, 16),
+                signing_key_id=_acl_signing_key_id,
+            )
+            _acl_transition_signers = ()
+            if bool(ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX) != bool(
+                ACL_TRANSITION_SIGNING_KEY_ID_RAW
+            ):
+                raise ValueError(
+                    "transition signer scalar and key ID must be configured together"
+                )
+            if ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX:
+                _acl_transition_signers = (
+                    DeterministicP256Signer(
+                        int(ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX, 16),
+                        signing_key_id=int(ACL_TRANSITION_SIGNING_KEY_ID_RAW),
+                    ),
+                )
+            _acl_service = AclManagementService(
+                AclStore(get_db, dialect="mysql", close_connections=True),
+                _acl_signer,
+                _AclMqttPublisher(),
+                lease_seconds=_acl_lease_seconds,
+                legacy_lookup_enabled=ACL_LEGACY_DEVICE_LOOKUP_ENABLED,
+                legacy_hmac_key=ACL_LEGACY_REF_HMAC_KEY.encode("utf-8"),
+                transition_signers=_acl_transition_signers,
+            )
+            app.include_router(
+                create_acl_router(
+                    _acl_service,
+                    AclApiConfig(
+                        enabled=True,
+                        enrollment_credentials=_acl_enrollment_credentials,
+                        admin_key=ACL_ADMIN_API_KEY,
+                        target_credentials=_acl_target_credentials,
+                    ),
+                )
+            )
+            log.info(
+                "[ACL-MANAGEMENT] Hardwareless RC enabled (signing_key_id=%s, lease=%ss, legacy_lookup=%s)",
+                _acl_signing_key_id,
+                _acl_lease_seconds,
+                ACL_LEGACY_DEVICE_LOOKUP_ENABLED,
+            )
+        except Exception:
+            # Do not log exception text/traceback: malformed signing input can contain key material.
+            log.error(
+                "[ACL-MANAGEMENT] initialization failed; legacy/manual_remote/OTA routes remain active"
+            )
 
 # 정적 파일 디렉토리 마운트
 static_dir = os.path.join(os.path.dirname(__file__), "static")

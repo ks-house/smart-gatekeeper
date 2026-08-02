@@ -14,6 +14,7 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/migrations/002_acl_management_expand_up.sql:/docker-entrypoint-initdb.d/02_acl_management_expand.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
@@ -54,6 +55,18 @@ services:
       # ── 문 제어 API 인증 키 (issue.md P3-22) ─────────────────
       # 비워 두면 키 인증이 비활성된다. 배포 순서는 .env.example 참조.
       GATEKEEPER_API_KEY: ${GATEKEEPER_API_KEY:-}
+      # ── Issue #19 Hardwareless RC ACL management (production-OFF) ──
+      ACL_MANAGEMENT_ENABLED: ${ACL_MANAGEMENT_ENABLED:-false}
+      ACL_LEGACY_DEVICE_LOOKUP_ENABLED: ${ACL_LEGACY_DEVICE_LOOKUP_ENABLED:-true}
+      ACL_LEGACY_REF_HMAC_KEY: ${ACL_LEGACY_REF_HMAC_KEY:-}
+      ACL_ENROLLMENT_AUTH_JSON: ${ACL_ENROLLMENT_AUTH_JSON:-}
+      ACL_ADMIN_API_KEY: ${ACL_ADMIN_API_KEY:-}
+      ACL_TARGET_AUTH_JSON: ${ACL_TARGET_AUTH_JSON:-}
+      ACL_SIGNING_PRIVATE_SCALAR_HEX: ${ACL_SIGNING_PRIVATE_SCALAR_HEX:-}
+      ACL_SIGNING_KEY_ID: ${ACL_SIGNING_KEY_ID:-1}
+      ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX: ${ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX:-}
+      ACL_TRANSITION_SIGNING_KEY_ID: ${ACL_TRANSITION_SIGNING_KEY_ID:-}
+      ACL_LEASE_SECONDS: ${ACL_LEASE_SECONDS:-900}
     ports:
       - "8000:8000"
     volumes:

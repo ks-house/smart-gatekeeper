@@ -1387,3 +1387,117 @@
 - ESP32-C6 PlatformIO build는 ignored non-secret placeholder `include/secrets.h`로 RAM 47,032/327,680 bytes, flash 1,594,400/7,340,032 bytes에서 통과했고 임시 header를 제거해 worktree를 복원
 - `wiki/log.md`는 main 134,068-byte exact prefix와 기존 PR-only 3,964-byte suffix를 보존하고 645-byte merge 기록 뒤 본 reviewer 기록만 append했으며 invalid C0/DEL은 0건
 - hosted runs `30721749667`, `30721750617`, `30721750633`, `30721750649`는 exact reviewed head에서 성공하고 firmware/Android production job은 정확히 skipped; Epic #13과 #14/#18/#22/#23, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 radio·relay/sensor·bootloader physical/operator gates는 open/pending 유지
+
+## [2026-08-02] code | Backend public-key enrollment와 signed ACL Hardwareless RC 구현
+
+- expand-first MariaDB migration에 tenant canonical ID, public credential lifecycle, ACL snapshot, Target ACK, redacted audit와 OTA metadata/health state를 추가하고 기존 `ble_device_mac`·`auth_key`·manual_remote를 보존
+- single-use proof-of-possession enrollment, tenant-scoped admin approve/disable/revoke, canonical deterministic P-256 ACL signing, monotonic version·900초 기본/3600초 hard lease, MQTT push·periodic pull artifact와 idempotent ACK/fleet status API 구현
+- revoked/disabled credential은 다음 authoritative snapshot에서 제거하고 stale/equal-conflict/downgrade/invalid signature rejection, legacy device HMAC lookup flag와 Backend outage 중 unexpired local lease 독립성을 자동 시험으로 고정
+- primary/fallback OTA metadata와 install/boot health confirmation을 ACL credential 상태와 분리하고 feature init 실패 때 authenticated `manual_remote` 및 기존 APK/version/health 경로가 유지되도록 production-OFF flag로 격리
+
+## [2026-08-02] test | Backend ACL unit·API·isolated MariaDB migration 검증
+
+- isolated SQLite service/API tests에서 tenant boundary, enrollment proof/single-use, approval lifecycle, deterministic shared vector, revocation, stale/downgrade/invalid signature, duplicate ACK, offline lease, audit redaction, legacy flag, N/N-1와 OTA endpoint independence를 검증
+- disposable MariaDB 10.11에서 legacy schema→expand migration→N-1 legacy/N write→down migration을 실행하고 기존 legacy row가 rollback 뒤에도 읽히는 것을 확인
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 시험은 수행하지 않았으며 G0-HW, RELAY-G0~G2와 OTA-G1~G4는 pending 유지
+
+## [2026-08-02] fix | Backend ACL 독립 리뷰 보안·동시성 지적 보강
+
+- 승인 credential의 tenant 전체 door 암묵 허용을 제거하고 explicit tenant/door/credential grant만 canonical snapshot entry에 포함하도록 변경
+- Target credential을 tenant·Target ID·단일 door에 결합하고 ACK/health body Target 위조와 같은 tenant 내 다른 door pull/ACK를 403으로 거부
+- revoke/disable/grant removal과 durable replacement job을 단일 transaction으로 기록하고 영향 door마다 새 monotonic snapshot을 저장·MQTT publish하며 signer/MQTT 실패 후 periodic pull이 같은 queued artifact를 복구하도록 보강
+- per-door version atomic counter, duplicate ACK atomic upsert와 conflicting status 거부, legacy tenant UUID mapping과 ACK 이후 audited dual-mode 전환을 구현하고 frozen ACL header의 tenant 부재는 DB와 Target config의 globally unique door ownership으로 fail-closed 처리
+- malformed signer 값을 traceback에 노출하지 않고 ACL-only integer parsing을 feature guard 내부로 이동하여 ACL 설정 오류가 manual_remote·OTA 경로를 중단하지 않도록 수정
+
+## [2026-08-02] lint | Backend ACL 보강 후 software-only 회귀 검증
+
+- isolated backend 25개(SQLite/API 및 disposable MariaDB 10.11 concurrent version/ACK·legacy mapping/dual/down 포함), protocol 16개, observability 18개, repository policy/OTA/Hardwareless 81개와 OTA contract gate 전건 통과
+- canonical vector verifier, enabled/disabled router smoke, Python compile, `git diff --check`와 added-line secret/injection/eval/pickle/SQL-format scan을 통과
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 증거는 생성하지 않았으며 production enable과 legacy retirement는 계속 차단
+
+## [2026-08-02] fix | Backend ACL 최종 독립 리뷰 차단사항 해소
+
+- Target activation verifier가 trusted signer key-ID set, exact door, protocol overlap, trusted UTC, receipt/current boot identity, canonical digest/signature와 persisted version/digest high-watermark를 모두 확인하도록 보강하고 reboot 후 trusted UTC가 없으면 cached ACL을 fail-closed 처리
+- N-1 primary signer와 optional transition signer가 같은 canonical ACL을 dual-sign하도록 구현하고 transition public key 신뢰 배포 후에만 primary를 승격하는 rollback-compatible rotation 절차를 문서화
+- enrollment challenge consume와 public credential insert를 SQLite/MariaDB 단일 transaction으로 결합하여 insert 실패 시 challenge가 미사용 상태로 rollback되도록 수정
+- legacy lookup 활성화 시 explicit non-empty HMAC key를 필수화하고 Hardwareless RC의 unsafe tenant-wide dual-mode endpoint를 제거하여 expected Target inventory와 전체 ACK/physical evidence 전환 gate를 유지
+
+## [2026-08-02] test | Backend ACL 최종 software-only 회귀 검증
+
+- backend 27개(SQLite/API 및 disposable MariaDB 10.11 포함), protocol 16개, observability 18개, repository Hardwareless/OTA/trusted policy 81개와 OTA contract gate를 통과
+- Python compile, Docker Compose config, canonical vector와 `git diff --check`를 통과했으며 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 증거는 생성하지 않음
+
+## [2026-08-02] lint | PR #36 independent review blocked
+
+- Exact author head `7a1e6f511c10321d99ae5aef7adc5b49508b1d6b`의 전체 diff와 backend ACL enrollment, signing, activation, revocation, migration, Target API, OTA/manual 경계를 독립 검토하고 same-account `COMMENTED` review https://github.com/ks-house/smart-gatekeeper/pull/36#pullrequestreview-4836490385 를 게시
+- enrollment challenge가 tenant에만 묶이고 발급 actor에 결합되지 않아 같은 tenant의 다른 인증 actor가 submit할 수 있는 점, 실제 모바일 버튼 대신 admin master-open 경로만 실행하는 `manual_remote` regression, 금지된 `Closes #19`, Windows 기본 code page에서 disposable MariaDB stdin이 손상되는 재현성 문제를 merge blocker로 기록
+- `PYTHONUTF8=1` 보정 후 backend 27개와 MariaDB 10.11 migration, repository 81개, protocol 16개, observability 18개, OTA contract, Python compile, Compose, Actionlint, Markdown link, raw/log/diff 검사 및 hosted runs `30727103265`/`30727103255`는 통과했으나 blocker 해소 전 PR은 draft/open/unmerged 유지
+- Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4, RELAY-G0~G2 물리 증거는 없으며 production enable과 legacy retirement는 계속 fail-closed
+
+## [2026-08-02] fix | PR #36 blocking COMMENTED review correction
+
+- enrollment challenge에 stable one-way authenticated actor reference를 저장하고 SQLite/MariaDB의 challenge consume `UPDATE`에 tenant·enrollment ID·actor를 함께 조건화하여 credential insert와 단일 transaction으로 결합
+- 같은 tenant의 다른 인증 actor와 다른 tenant actor submit을 403/fail-closed로 거부하고 실패 뒤 원 actor가 같은 challenge를 정상 consume할 수 있는 service·API·MariaDB direct negative regression을 추가
+- 관리자 master-open 대신 WebView가 실제 전송하는 `manual_click`·approved `device_id`·no API key 요청을 실행하고 hands-free Pre-arm/RELAY 함수 미호출, ACL disabled/init failure와 OTA download 독립성을 명시적으로 검증
+- Windows Docker subprocess의 SQL stdin과 stdout/stderr를 explicit UTF-8 strict로 고정하고 migration client charset을 `utf8mb4`로 지정하여 별도 Python encoding 환경변수 없이 MariaDB 10.11 harness가 실행되도록 수정
+
+## [2026-08-02] test | PR #36 correction software-only regression verification
+
+- `PYTHONUTF8`와 `PYTHONIOENCODING`을 제거한 Windows 환경에서 disposable MariaDB 10.11을 포함한 backend 29개, repository Hardwareless/OTA/trusted policy 81개, protocol 16개, observability 18개와 canonical vector verifier 전건 통과
+- OTA contract, Actionlint, Python compile, Docker Compose config, wiki relative links, conflict marker, raw/·OTA/runtime immutability, append-only log prefix와 `git diff --check` 전건 통과
+- PR body에 issue-closing keyword가 없고 PR #36은 draft/open/unmerged 상태임을 확인했으며 `ACL_MANAGEMENT_ENABLED=false`, authenticated mobile `manual_remote`, OTA 복구 계약과 production fail-closed 상태를 보존
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 증거는 생성하거나 완료로 주장하지 않음
+
+## [2026-08-02] fix | PR #36 Windows review temporary-directory cleanup
+
+- disposable MariaDB 검증 완료 뒤 repository gate의 `TemporaryDirectory()` 6개가 이 worktree의 `.review-tmp` 아래에 남고 managed host에서 재접근할 때 `Permission denied`가 발생하는 증상을 확인
+- `Resolve-Path` 결과가 정확히 `C:\Users\shcat\orca\workspaces\smart-gatekeeper\issue19-backend-acl-hermes\.review-tmp`인지 검증하고, 이미 사용한 `mariadb:10.11` image에 해당 디렉터리만 bind mount하여 direct child 6개를 열거
+- repository root 또는 wildcard를 사용하지 않고 확인된 6개 경로만 container 내부에서 제거한 뒤 direct-child listing이 비어 있음을 확인했으며, 장시간 완료 시험은 불필요하게 재실행하지 않음
+- 증상, host access/ownership 경계라는 원인, scoped container cleanup과 후속 `git status --short`·`git diff --check` 검증 절차를 `wiki/env_setup.md`에 기록
+
+## [2026-08-02] lint | PR #36 corrected-head independent re-review blocked
+
+- Exact corrected head `9ac4bad7843bcca2f7730c9c5be1fca441e35f0f`를 독립 재검토하고 same-account `COMMENTED` review https://github.com/ks-house/smart-gatekeeper/pull/36#pullrequestreview-4836889140 게시
+- 기존 review `4836490385`의 actor-bound atomic enrollment, 실제 approved-device `manual_remote` button, issue-closing keyword 제거, Windows explicit UTF-8 MariaDB 재현성 4개 차단사항은 해소됨을 확인
+- issue #19 완료 기준의 tenant/credential 비활성화 중 credential disable/revoke는 replacement ACL을 생성하지만 tenant disable은 `acl_tenants` 상태·관리 API·replacement job 연결이 없고 legacy `tenants.is_active=false` 뒤에도 active public credential이 signed ACL에 남는 P1 차단사항을 새로 확인
+- Windows에서 Python encoding 보정 없이 real MariaDB 10.11 포함 backend 29개, repository policy/OTA/trusted 81개, protocol 16개, observability 18개, canonical vector, OTA contract, compile/Compose/Actionlint/wiki link·index/raw·protected·OTA·runtime/log 검증과 exact-head hosted checks는 통과
+- PR #36은 draft/open/unmerged로 유지하고 production enable·legacy retirement를 차단했으며 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 주장하지 않음
+
+## [2026-08-02] fix | PR #36 tenant-disable ACL replacement blocker 해소
+
+- 인증된 tenant-scope admin disable API가 `acl_tenants.status=DISABLED`, 단일 `TENANT_DISABLED` audit 의미와 모든 영향 door의 durable replacement job을 한 transaction으로 기록하도록 구현
+- authoritative credential query가 disabled tenant를 제외하고 signer failure는 미생성 job, MQTT failure는 exact generated version을 보존해 periodic pull·idempotent retry가 empty replacement ACL을 복구하도록 보강
+- exact retry는 완료 door의 job revision·ACL version·audit를 재생성하지 않으며 enrollment·approve·new grant는 disabled tenant에서 fail-closed, tenant registration과 legacy `is_active=true`는 re-enable하지 않도록 고정
+- legacy `is_active=false`는 registration, authoritative publish, enrollment-sensitive operation 또는 periodic pull에서 one-way ACL disable로 명시적으로 reconcile하고 authenticated ACL disable도 mapped legacy row를 같은 transaction에서 비활성화
+- `ACL_MANAGEMENT_ENABLED=false`, authenticated approved-device `manual_remote`, hands-free RELAY 경계, mobile/Target OTA 독립성·rollback·recovery 계약은 유지하고 물리 증거를 생성하거나 주장하지 않음
+
+## [2026-08-02] test | PR #36 tenant-disable software-only 회귀 검증
+
+- `PYTHONUTF8`·`PYTHONIOENCODING` 없이 disposable MariaDB 10.11과 migration repeat-apply를 포함한 backend 32개, repository Hardwareless/OTA/trusted 81개, protocol 16개, observability 18개와 canonical vector 전건 통과
+- active credential→tenant disable→2개 door empty replacement, no-grant, exact repeat, wrong tenant scope, signer failure, MQTT failure·exact version retry, single audit, legacy inactive one-way mapping과 fail-closed re-enable를 SQLite/API/MariaDB에서 검증
+- authenticated mobile `manual_remote`, hands-free 분리, challenge/credential 보존, OTA metadata/health 독립성, access/manual_remote/Target OTA/rollback fixture validate·evaluate와 OTA contract를 통과
+- Actionlint, Python compile, Docker Compose, 6 YAML·22 JSON·9 JSONL parse, 39 Markdown link·23-page index, conflict marker, raw/protected/runtime/OTA immutability, append-only log와 `git diff --check` 통과
+- ignored build-only `include/secrets.h`를 제거한 뒤 ESP32-C6 PlatformIO build가 RAM 47,032/327,680 bytes, flash 1,594,368/7,340,032 bytes에서 성공했으며 `.review-tmp`와 disposable MariaDB container 잔여물이 없음을 확인
+- Android/ESP32-C6 실기기, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 생성하거나 완료로 주장하지 않음
+
+## [2026-08-02] fix | Windows managed-runner PlatformIO global lock 경계 기록
+
+- sandbox 내부 `pio run -e esp32c6`가 compile 전에 user-global `C:\Users\shcat\.platformio\platforms.lock`을 열지 못해 `PermissionError`로 실패하는 증상을 재현
+- 원인은 worktree-only sandbox write scope와 PlatformIO package manager의 user-global lock/cache 접근 경계이며 firmware source나 pioarduino package 오류가 아님을 확인
+- 동일한 `pio run`만 scoped PlatformIO 권한으로 재실행하고 ignored example-based `include/secrets.h`를 `finally`에서 정확히 제거하는 안전 절차를 `wiki/env_setup.md`에 기록
+- scoped 재실행은 RAM 47,032/327,680 bytes, flash 1,596,456/7,340,032 bytes에서 성공했고 종료 후 관련 process와 `include/secrets.h`가 남지 않음을 확인
+
+## [2026-08-02] lint | PR #36 exact author head 최종 독립 재검토 clean
+
+- Exact local·remote·PR author head `4481209cfd64864712c7164872c83408502fa483`와 current main `b9c39b629c3e162be68760acfa224dd1f43b4389`를 대조하고 issue #19, 전체 16-file diff, 이전 same-account `COMMENTED` reviews 3개와 correction replies를 독립 재검토
+- authenticated tenant-scoped idempotent disable, atomic `DISABLED` state·단일 audit·모든 영향 door durable job, disabled-tenant snapshot exclusion, monotonic empty replacement, signer/MQTT failure와 periodic pull recovery, exact retry version/audit idempotency를 SQLite/API/MariaDB에서 확인
+- wrong tenant·same-tenant wrong actor·no grant·multi-door·repeated call, enrollment/approve/grant fail-closed, legacy `tenants.is_active` one-way boundary, approved-device `manual_remote`와 hands-free RELAY 분리, ACL initialization failure와 mobile/Target OTA 독립성을 확인
+- `PYTHONUTF8`·`PYTHONIOENCODING` 없이 disposable MariaDB 10.11을 포함한 backend 32개, repository 81개, protocol 16개, observability 18개, canonical vector, OTA contract, live trusted-policy `current-main-baseline`, Actionlint와 Docker Compose를 통과
+- tracked 7 YAML·7 YML·22 JSON·9 JSONL·18 Python parse, 39 Markdown·193 relative link, wiki index, append-only 140,689-byte main log prefix, raw/protected/runtime/OTA immutability, conflict marker와 `git diff --check`를 통과
+- author head hosted OTA/trusted runs `30731646894`·`30731646303`가 성공했으며 Android/ESP32-C6 실기기, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 생성하거나 완료로 주장하지 않고 production enable·legacy retirement를 계속 차단
+
+## [2026-08-02] fix | Windows managed-worktree Git administrative lock 경계 기록
+
+- verified review 문서 2개를 explicit staging하려 할 때 parent repository의 external `.git\worktrees\issue19-backend-acl-hermes\index.lock` 생성이 worktree-only sandbox에서 `Permission denied`로 실패하는 증상을 확인
+- visible worktree가 아니라 Git common administrative directory에 index lock을 써야 하는 managed-worktree 경계가 원인이며 source 권한이나 repository corruption이 아님을 확인
+- `git status`·explicit diff·`git diff --check`로 범위를 먼저 고정하고 verified path의 add/commit만 scoped Git administrative access로 실행한 뒤 clean status와 remote head를 재검증하는 절차를 `wiki/env_setup.md`에 기록
