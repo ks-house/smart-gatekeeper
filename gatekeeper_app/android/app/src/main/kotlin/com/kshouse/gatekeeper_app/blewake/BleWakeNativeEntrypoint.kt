@@ -10,6 +10,8 @@ object BleWakeNativeEntrypoint {
   fun onWake(context: Context, event: BleWakeEvent) {
     val appContext = context.applicationContext
     BleWakeJournal.record(appContext, event)
-    if (event.success) BleGattWorkScheduler.onPresence(appContext, event.deviceAddress)
+    if (event.success) {
+      BleGattWorkScheduler.onPresence(appContext, event.deviceAddress, event.presenceEventId())
+    }
   }
 }

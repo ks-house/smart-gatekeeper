@@ -18,6 +18,7 @@ class AndroidKeystoreCredentialSigner : CredentialSigner {
   fun createCredentialKey(credentialId: ByteArray): ByteArray {
     require(credentialId.size == 16) { "credential id length" }
     val alias = alias(credentialId)
+    cleanupLegacyRawAlias(credentialId)
     ensureKey(alias)
     return publicKeySec1(credentialId)
   }
@@ -26,6 +27,7 @@ class AndroidKeystoreCredentialSigner : CredentialSigner {
     require(credentialId.size == 16) { "credential id length" }
     val alias = alias(credentialId)
     val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    cleanupLegacyRawAlias(credentialId, keyStore)
     val privateKey = keyStore.getKey(alias, null) as? java.security.PrivateKey
       ?: throw CredentialKeyUnavailableException()
     val der = Signature.getInstance("SHA256withECDSA").run {
@@ -40,6 +42,7 @@ class AndroidKeystoreCredentialSigner : CredentialSigner {
     require(credentialId.size == 16) { "credential id length" }
     val alias = alias(credentialId)
     val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    cleanupLegacyRawAlias(credentialId, keyStore)
     val publicKey = keyStore.getCertificate(alias)?.publicKey
       ?: throw CredentialKeyUnavailableException()
     val point = (publicKey as java.security.interfaces.ECPublicKey).w
@@ -61,7 +64,19 @@ class AndroidKeystoreCredentialSigner : CredentialSigner {
   }
 
   private fun alias(credentialId: ByteArray): String =
-    "sgk.device.p256.v1.${credentialId.toHex()}"
+    "sgk.device.p256.v2.${GattCanonicalCodec.sha256(credentialId).copyOfRange(0, 16).toHex()}"
+
+  private fun cleanupLegacyRawAlias(
+    credentialId: ByteArray,
+    keyStore: KeyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) },
+  ) {
+    val legacyAlias = "sgk.device.p256.v1.${credentialId.toHex()}"
+    if (keyStore.containsAlias(legacyAlias)) {
+      // A non-exportable key cannot be renamed safely. Remove the raw-locator alias and require
+      // authenticated re-enrollment rather than retaining plaintext metadata or silently changing identity.
+      keyStore.deleteEntry(legacyAlias)
+    }
+  }
 
   private fun fixed32(value: ByteArray): ByteArray {
     val unsigned = value.dropWhile { it == 0.toByte() }.toByteArray()

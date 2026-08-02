@@ -1,13 +1,12 @@
 package com.kshouse.gatekeeper_app.gattworker
 
 import android.Manifest
-import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
-import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
@@ -16,14 +15,67 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.atomic.AtomicInteger
 
+private sealed class GattCallbackEvent {
+  data class Message(val type: Int, val payload: ByteArray) : GattCallbackEvent()
+  data class Failure(val exception: GattTransportException) : GattCallbackEvent()
+}
+
+internal class GattCallbackMailbox(
+  private val reassembler: GattReassembler = GattReassembler(),
+) {
+  private val events = Channel<GattCallbackEvent>(Channel.BUFFERED)
+
+  suspend fun awaitMessage(expectedType: Int): ByteArray {
+    while (true) {
+      when (val event = events.receive()) {
+        is GattCallbackEvent.Message -> {
+          if (event.type == expectedType) return event.payload
+          throw GattTransportException(TransportFailureCode.UNEXPECTED_MESSAGE_TYPE, event.type)
+        }
+        is GattCallbackEvent.Failure -> throw event.exception
+      }
+    }
+  }
+
+  @Synchronized
+  fun onFrame(value: ByteArray) {
+    try {
+      reassembler.accept(value)?.let { (type, payload) ->
+        events.trySend(GattCallbackEvent.Message(type, payload))
+      }
+    } catch (error: IllegalArgumentException) {
+      events.trySend(
+        GattCallbackEvent.Failure(
+          GattTransportException(TransportFailureCode.MALFORMED_FRAME, cause = error),
+        ),
+      )
+    }
+  }
+
+  fun onDisconnected(status: Int) {
+    events.trySend(
+      GattCallbackEvent.Failure(
+        GattTransportException(TransportFailureCode.DISCONNECTED, status),
+      ),
+    )
+  }
+
+  fun onReadFailure(status: Int) {
+    events.trySend(
+      GattCallbackEvent.Failure(
+        GattTransportException(TransportFailureCode.READ_FAILED, status),
+      ),
+    )
+  }
+}
+
 class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
   private val messageId = AtomicInteger(1)
-  private val inbox = Channel<Pair<Int, ByteArray>>(Channel.BUFFERED)
   private val writeResult = Channel<Int>(Channel.BUFFERED)
   private val descriptorResult = Channel<Int>(Channel.BUFFERED)
   private val connected = CompletableDeferred<Unit>()
   private val servicesReady = CompletableDeferred<Unit>()
-  private val reassembler = GattReassembler()
+  private val mailbox = GattCallbackMailbox()
   private var gatt: BluetoothGatt? = null
   private var mtu = 23
 
@@ -49,21 +101,22 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
 
   override suspend fun negotiate(clientHello: ByteArray): ByteArray {
     writeMessage(GattProtocol.HELLO_UUID, GattProtocol.CLIENT_HELLO, clientHello)
-    return awaitMessage(GattProtocol.TARGET_HELLO)
+    return mailbox.awaitMessage(GattProtocol.TARGET_HELLO)
   }
 
   override suspend fun readChallenge(): ByteArray {
     val characteristic = characteristic(GattProtocol.CHALLENGE_UUID)
-    val started = gatt?.readCharacteristic(characteristic) == true
-    if (!started) throw IllegalStateException("challenge read rejected")
-    return awaitMessage(GattProtocol.CHALLENGE)
+    if (gatt?.readCharacteristic(characteristic) != true) {
+      throw GattTransportException(TransportFailureCode.READ_FAILED)
+    }
+    return mailbox.awaitMessage(GattProtocol.CHALLENGE)
   }
 
   override suspend fun writeProof(proof: ByteArray) {
     writeMessage(GattProtocol.PROOF_UUID, GattProtocol.PROOF, proof)
   }
 
-  override suspend fun awaitResult(): ByteArray = awaitMessage(GattProtocol.RESULT)
+  override suspend fun awaitResult(): ByteArray = mailbox.awaitMessage(GattProtocol.RESULT)
 
   override fun close() {
     try {
@@ -79,48 +132,34 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     val id = messageId.getAndUpdate { if (it == 0xffff) 1 else it + 1 }
     for (frame in GattFraming.fragment(type, id, payload, mtu)) {
       writeCharacteristic(characteristic(uuid), frame)
-      if (writeResult.receive() != BluetoothGatt.GATT_SUCCESS) {
-        throw IllegalStateException("GATT write failed")
+      val status = writeResult.receive()
+      if (status != BluetoothGatt.GATT_SUCCESS) {
+        throw GattTransportException(TransportFailureCode.WRITE_FAILED, status)
       }
-    }
-  }
-
-  private suspend fun awaitMessage(expectedType: Int): ByteArray {
-    while (true) {
-      val (type, payload) = inbox.receive()
-      if (type == expectedType) return payload
-      if (type == 0x7f) throw IllegalArgumentException("Target protocol error")
-    }
-  }
-
-  private fun acceptFrame(value: ByteArray) {
-    try {
-      reassembler.accept(value)?.let(inbox::trySend)
-    } catch (_: IllegalArgumentException) {
-      inbox.trySend(0x7f to byteArrayOf())
     }
   }
 
   private suspend fun enableIndication(uuid: java.util.UUID) {
     val characteristic = characteristic(uuid)
     if (gatt?.setCharacteristicNotification(characteristic, true) != true) {
-      throw IllegalStateException("indication enable rejected")
+      throw GattTransportException(TransportFailureCode.DESCRIPTOR_WRITE_FAILED)
     }
     val descriptor = characteristic.getDescriptor(GattProtocol.CCCD_UUID)
-      ?: throw IllegalStateException("CCCD missing")
+      ?: throw GattTransportException(TransportFailureCode.DESCRIPTOR_WRITE_FAILED)
     writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
-    if (descriptorResult.receive() != BluetoothGatt.GATT_SUCCESS) {
-      throw IllegalStateException("CCCD write failed")
+    val status = descriptorResult.receive()
+    if (status != BluetoothGatt.GATT_SUCCESS) {
+      throw GattTransportException(TransportFailureCode.DESCRIPTOR_WRITE_FAILED, status)
     }
   }
 
   private fun characteristic(uuid: java.util.UUID): BluetoothGattCharacteristic =
     gatt?.getService(GattProtocol.SERVICE_UUID)?.getCharacteristic(uuid)
-      ?: throw IllegalStateException("auth characteristic unavailable")
+      ?: throw GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED)
 
   @Suppress("DEPRECATION")
   private fun writeCharacteristic(characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-    val activeGatt = gatt ?: throw GattDisconnectedException()
+    val activeGatt = gatt ?: throw GattTransportException(TransportFailureCode.DISCONNECTED)
     val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       activeGatt.writeCharacteristic(
         characteristic,
@@ -132,19 +171,19 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
       characteristic.value = value
       activeGatt.writeCharacteristic(characteristic)
     }
-    if (!started) throw IllegalStateException("GATT write rejected")
+    if (!started) throw GattTransportException(TransportFailureCode.WRITE_FAILED)
   }
 
   @Suppress("DEPRECATION")
   private fun writeDescriptor(descriptor: BluetoothGattDescriptor, value: ByteArray) {
-    val activeGatt = gatt ?: throw GattDisconnectedException()
+    val activeGatt = gatt ?: throw GattTransportException(TransportFailureCode.DISCONNECTED)
     val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       activeGatt.writeDescriptor(descriptor, value) == BluetoothGatt.GATT_SUCCESS
     } else {
       descriptor.value = value
       activeGatt.writeDescriptor(descriptor)
     }
-    if (!started) throw IllegalStateException("descriptor write rejected")
+    if (!started) throw GattTransportException(TransportFailureCode.DESCRIPTOR_WRITE_FAILED)
   }
 
   private fun requireConnectPermission() {
@@ -160,12 +199,16 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
       if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
         connected.complete(Unit)
-        if (!gatt.discoverServices()) servicesReady.completeExceptionally(IllegalStateException("service discovery rejected"))
+        if (!gatt.discoverServices()) {
+          servicesReady.completeExceptionally(
+            GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED),
+          )
+        }
       } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-        val error = GattDisconnectedException()
+        val error = GattTransportException(TransportFailureCode.DISCONNECTED, status)
         if (!connected.isCompleted) connected.completeExceptionally(error)
         if (!servicesReady.isCompleted) servicesReady.completeExceptionally(error)
-        inbox.trySend(0x7f to byteArrayOf())
+        mailbox.onDisconnected(status)
       }
     }
 
@@ -173,7 +216,9 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
       if (status == BluetoothGatt.GATT_SUCCESS && gatt.getService(GattProtocol.SERVICE_UUID) != null) {
         servicesReady.complete(Unit)
       } else {
-        servicesReady.completeExceptionally(IllegalStateException("auth service discovery failed"))
+        servicesReady.completeExceptionally(
+          GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED, status),
+        )
       }
     }
 
@@ -187,8 +232,8 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
       characteristic: BluetoothGattCharacteristic,
       status: Int,
     ) {
-      if (status == BluetoothGatt.GATT_SUCCESS) acceptFrame(characteristic.value ?: byteArrayOf())
-      else inbox.trySend(0x7f to byteArrayOf())
+      if (status == BluetoothGatt.GATT_SUCCESS) mailbox.onFrame(characteristic.value ?: byteArrayOf())
+      else mailbox.onReadFailure(status)
     }
 
     override fun onCharacteristicRead(
@@ -197,13 +242,12 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
       value: ByteArray,
       status: Int,
     ) {
-      if (status == BluetoothGatt.GATT_SUCCESS) acceptFrame(value)
-      else inbox.trySend(0x7f to byteArrayOf())
+      if (status == BluetoothGatt.GATT_SUCCESS) mailbox.onFrame(value) else mailbox.onReadFailure(status)
     }
 
     @Deprecated("API 33 callback")
     override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-      acceptFrame(characteristic.value ?: byteArrayOf())
+      mailbox.onFrame(characteristic.value ?: byteArrayOf())
     }
 
     override fun onCharacteristicChanged(
@@ -211,7 +255,7 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
       characteristic: BluetoothGattCharacteristic,
       value: ByteArray,
     ) {
-      acceptFrame(value)
+      mailbox.onFrame(value)
     }
 
     override fun onCharacteristicWrite(

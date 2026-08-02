@@ -101,12 +101,16 @@ class GattProtocolVectorTest {
   }
 }
 
-internal fun successResult(sessionId: ByteArray, reason: Int = 0): ByteArray = java.nio.ByteBuffer
+internal fun successResult(
+  sessionId: ByteArray,
+  reason: Int = 0,
+  retryAfterMs: Long = if (reason == 9) 1000 else 0,
+): ByteArray = java.nio.ByteBuffer
   .allocate(32)
   .order(java.nio.ByteOrder.BIG_ENDIAN)
   .putShort(1.toShort())
   .put(sessionId)
   .putShort(reason.toShort())
-  .putInt(if (reason == 9) 1000 else 0)
+  .putInt(retryAfterMs.toInt())
   .putLong(42)
   .array()

@@ -24,6 +24,11 @@ void main() {
         'bleOwner': 'native_gatt',
         'healthy': false,
         'lastReasonCode': 'GATT_TIMEOUT',
+        'lastTargetReasonCode': 9,
+        'lastTargetReasonName': 'RATE_LIMITED',
+        'lastTransportReason': 'DISCONNECTED',
+        'lastRetryAfterMs': 9000,
+        'lastScheduledRetryDelayMs': 9000,
         'lastLatencyMs': 15000,
         'updateManagerIndependent': true,
         'networkRequired': false,
@@ -37,6 +42,11 @@ void main() {
     expect(health.featureEnabled, isTrue);
     expect(health.bleOwner, 'native_gatt');
     expect(health.lastReasonCode, 'GATT_TIMEOUT');
+    expect(health.lastTargetReasonCode, 9);
+    expect(health.lastTargetReasonName, 'RATE_LIMITED');
+    expect(health.lastTransportReason, 'DISCONNECTED');
+    expect(health.lastRetryAfterMs, 9000);
+    expect(health.lastScheduledRetryDelayMs, 9000);
     expect(health.lastLatencyMs, 15000);
     expect(health.updateManagerIndependent, isTrue);
     expect(health.networkRequired, isFalse);

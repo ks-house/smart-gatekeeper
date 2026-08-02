@@ -1422,3 +1422,26 @@
 - Re-ran Gradle with `--rerun-tasks` (208 executed tasks), inspected five JUnit XML suites with 18/18 passing including targeted GATT 12/12, ran Flutter 6/6 and clean targeted Dart analysis, and rebuilt the debug APK.
 - Passed repository 81, protocol 16, observability 18, canonical vector, authenticated `manual_remote` and OTA fixture validate/evaluate, OTA contract, actionlint, Python/JSON/YAML parse, relative-link, conflict, diff and raw immutability checks; green tests do not cover the blocking crash/ownership/reason/privacy boundaries.
 - The authenticated explicit-button `manual_remote` runtime chain, mobile updater files, Target firmware/OTA assets, release evidence and `raw/` remain unchanged. PR #35 stays draft/unmerged; Samsung/OEM, real ESP32-C6 radio/relay/sensor/bootloader, RELAY-G0 through G2 and OTA-G1 through G4 evidence remain pending and production/legacy retirement stay fail-closed.
+
+## [2026-08-02] fix | PR #35 four independent-review blockers corrected
+
+- Replaced caller-supplied flag validation with an APK-authority-signed P-256 envelope, bounded issue/expiry window, strict monotonic revision, exact credential/AndroidKeyStore-public-key binding, atomic no-backup state, and fail-closed cleanup of the old preference formats.
+- Added a no-backup owner marker and exclusive kernel file lease shared by the vendored legacy scanner and native worker, including live stop/reacquire guards, so two processes cannot concurrently own scanning or native proof/ARM work.
+- Added a durable `PROOF_UNCERTAIN` pre-write boundary and encrypted-locator deletion before the first proof byte; restart, post-write crash, post-result crash, and missing final commit cannot repeat proof/ARM for the same wake.
+- Preserved every frozen Target result code/name, distinct disconnect/read/write/descriptor/service/framing transport reason and Android status, plus raw and scheduled bounded `retry_after_ms` instead of replacing them with one generic reason.
+- Moved the credential ID and transient peer locator to AES-GCM `noBackupFilesDir` records backed by a non-exportable AndroidKeyStore key, changed duplicate identity to a non-exportable keyed HMAC, removed old plaintext preferences/raw-ID aliases, migrated the ledger without sensitive fields, and deleted locators at terminal or uncertain state without logging them.
+
+## [2026-08-02] test | PR #35 corrected Android GATT worker validation
+
+- Forced the final targeted GATT worker Gradle task with `--rerun-tasks`; all 208 tasks executed and the six targeted JUnit XML suites reported 23 tests, 0 failures, 0 errors, and 0 skips.
+- Forced the complete Android JVM task separately; all 208 tasks executed and eight XML suites reported 28 tests, 0 failures, 0 errors, and 0 skips.
+- Passed Flutter 6 tests, zero-change Dart formatting, clean targeted analyzer, and debug APK build at `gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk`.
+- Passed 81 repository tests, canonical-vector verification and 16 protocol tests, 18 observability tests, authenticated access/manual_remote/Target OTA/rollback fixture validation and evaluation, OTA contract gate, and actionlint.
+- Added adversarial flag signature/expiry/replay/key tests, cross-process ownership concurrency, post-proof/post-result process-death recovery, all Target reasons and exact callback failures, bounded retry, duplicate restart/terminal coalescing, and plaintext-ledger migration/redaction coverage.
+- Added a restart/clock-rollback retry test and durable remaining-delay enforcement so a redelivered WorkManager item cannot bypass a bounded Target `retry_after_ms` before the replacement request is scheduled.
+
+## [2026-08-02] lint | PR #35 correction diff and invariant verification
+
+- Restored generated Linux/macOS/Windows desktop registrants and removed temporary `.kotlin`/test artifacts outside the Android implementation; `git diff --check`, conflict-marker, relative-link, index, and changed-path consistency checks passed.
+- Confirmed `raw/`, authenticated explicit-button `manual_remote`, Backend/Target runtime, mobile update service/UI, OTA contract/evidence/recovery assets, protected workflows, and release gates remain byte-unchanged from main.
+- This is software/host evidence only: PR #35 remains draft and unmerged, issue #17 remains open, and no Samsung/OEM, real ESP32-C6/radio/relay/sensor/bootloader, RELAY-G0 through G2, or OTA-G1 through G4 evidence is claimed; production enablement and legacy retirement remain fail-closed pending fresh independent review and physical/operator gates.

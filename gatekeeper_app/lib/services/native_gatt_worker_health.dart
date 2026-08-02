@@ -7,6 +7,11 @@ class NativeGattWorkerHealth {
     required this.bleOwner,
     required this.healthy,
     required this.lastReasonCode,
+    required this.lastTargetReasonCode,
+    required this.lastTargetReasonName,
+    required this.lastTransportReason,
+    required this.lastRetryAfterMs,
+    required this.lastScheduledRetryDelayMs,
     required this.lastLatencyMs,
     required this.updateManagerIndependent,
     required this.networkRequired,
@@ -17,6 +22,11 @@ class NativeGattWorkerHealth {
   final String bleOwner;
   final bool healthy;
   final String? lastReasonCode;
+  final int? lastTargetReasonCode;
+  final String? lastTargetReasonName;
+  final String? lastTransportReason;
+  final int? lastRetryAfterMs;
+  final int? lastScheduledRetryDelayMs;
   final int? lastLatencyMs;
   final bool updateManagerIndependent;
   final bool networkRequired;
@@ -28,6 +38,12 @@ class NativeGattWorkerHealth {
       bleOwner: value['bleOwner']?.toString() ?? 'legacy',
       healthy: value['healthy'] != false,
       lastReasonCode: value['lastReasonCode']?.toString(),
+      lastTargetReasonCode: (value['lastTargetReasonCode'] as num?)?.toInt(),
+      lastTargetReasonName: value['lastTargetReasonName']?.toString(),
+      lastTransportReason: value['lastTransportReason']?.toString(),
+      lastRetryAfterMs: (value['lastRetryAfterMs'] as num?)?.toInt(),
+      lastScheduledRetryDelayMs:
+          (value['lastScheduledRetryDelayMs'] as num?)?.toInt(),
       lastLatencyMs: (value['lastLatencyMs'] as num?)?.toInt(),
       updateManagerIndependent: value['updateManagerIndependent'] == true,
       networkRequired: value['networkRequired'] == true,

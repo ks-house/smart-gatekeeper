@@ -83,7 +83,7 @@ class GattSessionEngineTest {
 
   @Test
   fun targetBusyUsesBoundedRetryPolicy() = runBlocking {
-    val resultBytes = successResult(challenge.copyOfRange(26, 42), reason = 9)
+    val resultBytes = successResult(challenge.copyOfRange(26, 42), reason = 9, retryAfterMs = 9000)
     val result = GattSessionEngine(
       FakeTransport(targetHello, challenge, resultBytes),
       DeterministicFakeCredentialSigner(fixtureSignature),
@@ -92,11 +92,100 @@ class GattSessionEngineTest {
       mobileBuild = 100,
     ).run("00:11:22:33:44:55", credential) as SessionOutcome.Failure
     assertEquals(AccessReasonCode.TARGET_BUSY, result.reason)
+    assertEquals(9, result.targetReason?.wireCode)
+    assertEquals("RATE_LIMITED", result.targetReason?.wireName)
+    assertEquals(9000, result.retryAfterMs)
     assertTrue(RetryPolicy.shouldRetry(1, result))
     assertFalse(RetryPolicy.shouldRetry(3, result))
-    assertTrue(RetryPolicy.boundedDelayMs(3, 9000) <= 4000)
+    assertEquals(9000, RetryPolicy.boundedDelayMs(3, result.retryAfterMs))
+    assertEquals(
+      RetryPolicy.MAX_TARGET_RETRY_AFTER_MS,
+      RetryPolicy.boundedDelayMs(1, RetryPolicy.MAX_TARGET_RETRY_AFTER_MS + 1),
+    )
+  }
+
+  @Test
+  fun everyFrozenTargetReasonRetainsExactWireCodeAndName() = runBlocking {
+    for (targetReason in TargetResultReason.entries) {
+      val result = GattSessionEngine(
+        FakeTransport(
+          targetHello,
+          challenge,
+          successResult(challenge.copyOfRange(26, 42), targetReason.wireCode, 1234),
+        ),
+        DeterministicFakeCredentialSigner(fixtureSignature),
+        timeoutMs = 1000,
+        clock = MonotonicClock { 100 },
+        mobileBuild = 100,
+      ).run("00:11:22:33:44:55", credential) as SessionOutcome.Failure
+      assertEquals(targetReason.wireCode, result.targetReason?.wireCode)
+      assertEquals(targetReason.wireName, result.targetReason?.wireName)
+      assertEquals(targetReason.observabilityReason, result.reason)
+      assertEquals(1234, result.retryAfterMs)
+    }
+  }
+
+  @Test
+  fun crashAfterProofWriteLeavesDurableUncertainStateAndRestartCannotRepeatProof() = runBlocking {
+    var durableState = DurableSessionState.RUNNING
+    val transport = FakeTransport(targetHello, challenge, successResult(challenge.copyOfRange(26, 42)))
+    val observer = object : ProofExecutionObserver {
+      override fun beforeProofWrite() {
+        durableState = DurableSessionState.PROOF_UNCERTAIN
+      }
+
+      override fun afterProofWrite() {
+        throw SimulatedProcessDeath()
+      }
+    }
+    try {
+      GattSessionEngine(
+        transport,
+        DeterministicFakeCredentialSigner(fixtureSignature),
+        timeoutMs = 1000,
+        clock = MonotonicClock { 100 },
+        mobileBuild = 100,
+        proofObserver = observer,
+      ).run("00:11:22:33:44:55", credential)
+    } catch (_: SimulatedProcessDeath) {
+      // Android process death bypasses normal worker completion.
+    }
+    assertEquals(DurableSessionState.PROOF_UNCERTAIN, durableState)
+    assertEquals(1, transport.proofWrites)
+    assertFalse(DurableAttemptPolicy.canExecute(durableState))
+  }
+
+  @Test
+  fun crashAfterResultAndBeforeFinalLedgerCommitCannotRepeatProof() = runBlocking {
+    var durableState = DurableSessionState.RUNNING
+    val transport = FakeTransport(targetHello, challenge, successResult(challenge.copyOfRange(26, 42)))
+    val observer = object : ProofExecutionObserver {
+      override fun beforeProofWrite() {
+        durableState = DurableSessionState.PROOF_UNCERTAIN
+      }
+
+      override fun afterResultReceived(result: TargetResult) {
+        throw SimulatedProcessDeath()
+      }
+    }
+    try {
+      GattSessionEngine(
+        transport,
+        DeterministicFakeCredentialSigner(fixtureSignature),
+        timeoutMs = 1000,
+        clock = MonotonicClock { 100 },
+        mobileBuild = 100,
+        proofObserver = observer,
+      ).run("00:11:22:33:44:55", credential)
+    } catch (_: SimulatedProcessDeath) {
+    }
+    assertEquals(DurableSessionState.PROOF_UNCERTAIN, durableState)
+    assertEquals(1, transport.proofWrites)
+    assertFalse(DurableAttemptPolicy.canExecute(durableState))
   }
 }
+
+private class SimulatedProcessDeath : Error()
 
 private class DeterministicFakeCredentialSigner(
   private val signature: ByteArray,
@@ -117,6 +206,7 @@ private class FakeTransport(
   private val result: ByteArray,
 ) : BleGattTransport {
   var proof: ByteArray? = null
+  var proofWrites = 0
   var closed = false
   var blockConnect = false
 
@@ -126,7 +216,10 @@ private class FakeTransport(
 
   override suspend fun negotiate(clientHello: ByteArray): ByteArray = targetHello.copyOf()
   override suspend fun readChallenge(): ByteArray = challenge.copyOf()
-  override suspend fun writeProof(proof: ByteArray) { this.proof = proof.copyOf() }
+  override suspend fun writeProof(proof: ByteArray) {
+    proofWrites += 1
+    this.proof = proof.copyOf()
+  }
   override suspend fun awaitResult(): ByteArray = result.copyOf()
   override fun close() { closed = true }
 }

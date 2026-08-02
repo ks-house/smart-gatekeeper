@@ -1,53 +1,76 @@
 package com.kshouse.gatekeeper_app.gattworker
 
-import android.content.Context
 import android.Manifest
 import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.flutterbeacon.CrossProcessBleOwnerCoordinator
 import java.util.concurrent.TimeUnit
 
 object BleGattWorkScheduler {
   const val HAS_NETWORK_CONSTRAINT = false
   const val UNIQUE_WORK_POLICY = "KEEP"
+  const val RETRY_WORK_POLICY = "APPEND_OR_REPLACE"
   private const val INPUT_SESSION_ID = "session_id"
 
-  fun onPresence(context: Context, deviceAddress: String?): String? {
-    if (deviceAddress.isNullOrBlank()) return null
+  fun onPresence(context: Context, deviceAddress: String?, presenceEventId: String): String? {
+    if (deviceAddress.isNullOrBlank() || presenceEventId.isBlank()) return null
     val appContext = context.applicationContext
     if (!BleGattFeatureFlagStore(appContext).decision().newWorkerEnabled) return null
     val credentialId = BleCredentialConfigStore(appContext).credentialId() ?: return null
-    val ledger = SharedPreferencesSessionLedger(appContext)
-    val (session, _) = PresenceCoalescer(
-      ledger,
-      BleGattWorkerSecrets.fingerprintKey(appContext),
-    ).enqueue(deviceAddress, credentialId.toHex(), System.currentTimeMillis())
-    val request = OneTimeWorkRequestBuilder<BleGattCredentialWorker>()
-      .setInputData(workDataOf(INPUT_SESSION_ID to session.id))
+    return try {
+      val ledger = SharedPreferencesSessionLedger(appContext)
+      val vault = AndroidEncryptedLocatorVault(appContext)
+      val (session, duplicate) = PresenceCoalescer(
+        ledger,
+        AndroidKeystorePresenceFingerprinter(appContext),
+      ).enqueue(deviceAddress, presenceEventId, System.currentTimeMillis())
+      if (!duplicate) vault.store(session.id, LocatorSecret(deviceAddress, credentialId))
+      WorkManager.getInstance(appContext).enqueueUniqueWork(
+        workName(session.id),
+        ExistingWorkPolicy.KEEP,
+        request(session.id, 0),
+      )
+      session.id
+    } catch (_: Exception) {
+      null
+    } finally {
+      credentialId.fill(0)
+    }
+  }
+
+  fun enqueueRetry(context: Context, sessionId: String, delayMs: Long) {
+    WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+      workName(sessionId),
+      ExistingWorkPolicy.APPEND_OR_REPLACE,
+      request(sessionId, delayMs),
+    )
+  }
+
+  private fun request(sessionId: String, initialDelayMs: Long): OneTimeWorkRequest =
+    OneTimeWorkRequestBuilder<BleGattCredentialWorker>()
+      .setInputData(workDataOf(INPUT_SESSION_ID to sessionId))
+      .setInitialDelay(initialDelayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
       .setBackoffCriteria(
         BackoffPolicy.EXPONENTIAL,
         RetryPolicy.WORK_BACKOFF_SECONDS,
         TimeUnit.SECONDS,
       )
       .build()
-    WorkManager.getInstance(appContext).enqueueUniqueWork(
-      "ble-gatt-session-${session.id}",
-      ExistingWorkPolicy.KEEP,
-      request,
-    )
-    return session.id
-  }
 
-  internal fun inputSessionId(worker: CoroutineWorker): String? =
-    worker.inputData.getString(INPUT_SESSION_ID)
+  private fun workName(sessionId: String) = "ble-gatt-session-$sessionId"
+
+  internal fun inputSessionId(worker: CoroutineWorker): String? = worker.inputData.getString(INPUT_SESSION_ID)
 }
 
 class BleGattCredentialWorker(
@@ -57,57 +80,235 @@ class BleGattCredentialWorker(
   override suspend fun doWork(): Result {
     val sessionId = BleGattWorkScheduler.inputSessionId(this) ?: return Result.failure()
     val ledger = SharedPreferencesSessionLedger(applicationContext)
-    val session = ledger.get(sessionId) ?: return Result.failure()
-    if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
-      ledger.update(
-        session.copy(
-          state = DurableSessionState.DISABLED,
-          updatedEpochMs = System.currentTimeMillis(),
-        ),
-      )
+    val vault = AndroidEncryptedLocatorVault(applicationContext)
+    val initial = ledger.get(sessionId) ?: return Result.failure()
+    if (!DurableAttemptPolicy.canExecute(initial.state)) {
+      vault.delete(sessionId)
       return Result.success()
     }
-    val attempt = runAttemptCount + 1
-    ledger.update(
-      session.copy(
+    if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
+      terminateDisabled(ledger, vault, initial)
+      return Result.success()
+    }
+    val remainingDelayMs = RetryPolicy.remainingDelayMs(initial, System.currentTimeMillis())
+    if (remainingDelayMs > 0) {
+      BleGattWorkScheduler.enqueueRetry(applicationContext, initial.id, remainingDelayMs)
+      return Result.success()
+    }
+    val ownerLease = CrossProcessBleOwnerCoordinator.forContext(applicationContext).tryAcquireNative()
+      ?: return scheduleOwnershipRetry(ledger, initial)
+    try {
+      val secret = vault.load(sessionId) ?: run {
+        terminateFailure(
+          ledger,
+          vault,
+          initial,
+          AccessReasonCode.CREDENTIAL_INACTIVE,
+          "ENCRYPTED_LOCATOR_UNAVAILABLE",
+        )
+        return Result.failure()
+      }
+      val configuredCredential = BleCredentialConfigStore(applicationContext).credentialId()
+      if (configuredCredential == null || !configuredCredential.contentEquals(secret.credentialId)) {
+        configuredCredential?.fill(0)
+        secret.credentialId.fill(0)
+        terminateFailure(
+          ledger,
+          vault,
+          initial,
+          AccessReasonCode.CREDENTIAL_INACTIVE,
+          "CREDENTIAL_BINDING_MISMATCH",
+        )
+        return Result.failure()
+      }
+      configuredCredential.fill(0)
+      val attempt = initial.attempt + 1
+      val running = initial.copy(
         attempt = attempt,
         state = DurableSessionState.RUNNING,
         updatedEpochMs = System.currentTimeMillis(),
         reasonCode = null,
+        targetReasonCode = null,
+        targetReasonName = null,
+        transportReason = null,
+        transportStatus = null,
+        retryAfterMs = null,
+        scheduledRetryDelayMs = null,
+      )
+      ledger.update(running)
+      var flagDisabledBeforeProof = false
+      val outcome = GattSessionEngine(
+        transport = AndroidBleGattTransport(applicationContext),
+        signer = AndroidKeystoreCredentialSigner(),
+        proofObserver = object : ProofExecutionObserver {
+          override fun beforeProofWrite() {
+            if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
+              flagDisabledBeforeProof = true
+              throw FeatureFlagDisabledBeforeProofException()
+            }
+            val current = ledger.get(sessionId) ?: throw IllegalStateException("session disappeared")
+            check(
+              current.state == DurableSessionState.RUNNING &&
+                ledgerUpdateUncertain(ledger, current),
+            ) { "failed durable pre-proof commit" }
+            // A crash after this boundary must not retain or reuse raw connection locators.
+            vault.delete(sessionId)
+          }
+        },
+      ).run(secret.deviceAddress, secret.credentialId)
+      if (flagDisabledBeforeProof) {
+        secret.credentialId.fill(0)
+        terminateDisabled(ledger, vault, ledger.get(sessionId) ?: running)
+        return Result.success()
+      }
+      val result = commitOutcome(ledger, vault, running, secret, outcome)
+      secret.credentialId.fill(0)
+      return result
+    } finally {
+      ownerLease.close()
+    }
+  }
+
+  private fun ledgerUpdateUncertain(ledger: DurableSessionLedger, current: DurableGattSession): Boolean = try {
+    ledger.update(
+      current.copy(
+        state = DurableSessionState.PROOF_UNCERTAIN,
+        updatedEpochMs = System.currentTimeMillis(),
+        reasonCode = "PROOF_OUTCOME_UNCERTAIN",
       ),
     )
-    val outcome = GattSessionEngine(
-      transport = AndroidBleGattTransport(applicationContext),
-      signer = AndroidKeystoreCredentialSigner(),
-    ).run(session.deviceAddress, session.credentialIdHex.hexToBytes())
-    return when (outcome) {
-      is SessionOutcome.Success -> {
-        ledger.update(
-          session.copy(
-            attempt = attempt,
-            state = DurableSessionState.SUCCEEDED,
-            updatedEpochMs = System.currentTimeMillis(),
-            reasonCode = null,
-            latencyMs = outcome.latencyMs,
-            activeAclVersion = outcome.activeAclVersion,
-          ),
-        )
+    true
+  } catch (_: Exception) {
+    false
+  }
+
+  private fun commitOutcome(
+    ledger: DurableSessionLedger,
+    vault: LocatorVault,
+    running: DurableGattSession,
+    secret: LocatorSecret,
+    outcome: SessionOutcome,
+  ): Result = when (outcome) {
+    is SessionOutcome.Success -> {
+      ledger.update(
+        running.copy(
+          state = DurableSessionState.SUCCEEDED,
+          updatedEpochMs = System.currentTimeMillis(),
+          reasonCode = null,
+          latencyMs = outcome.latencyMs,
+          activeAclVersion = outcome.activeAclVersion,
+        ),
+      )
+      vault.delete(running.id)
+      Result.success()
+    }
+    is SessionOutcome.Failure -> {
+      val retry = RetryPolicy.shouldRetry(running.attempt, outcome)
+      if (outcome.proofMayHaveExecuted && outcome.targetReason == null) {
+        // No authenticated Target result resolved whether proof/ARM executed. Never replay this wake.
+        ledger.update(failureCopy(running, outcome, DurableSessionState.PROOF_UNCERTAIN, null))
+        vault.delete(running.id)
         Result.success()
-      }
-      is SessionOutcome.Failure -> {
-        val retry = RetryPolicy.shouldRetry(attempt, outcome)
-        ledger.update(
-          session.copy(
-            attempt = attempt,
-            state = if (retry) DurableSessionState.RETRY_PENDING else DurableSessionState.FAILED,
-            updatedEpochMs = System.currentTimeMillis(),
-            reasonCode = outcome.reason.schemaReason,
-            latencyMs = outcome.latencyMs,
-          ),
-        )
-        if (retry) Result.retry() else Result.failure()
+      } else if (retry) {
+        val delayMs = RetryPolicy.boundedDelayMs(running.attempt, outcome.retryAfterMs)
+        val retrySession = failureCopy(running, outcome, DurableSessionState.RETRY_PENDING, delayMs)
+        ledger.update(retrySession)
+        vault.store(running.id, secret)
+        BleGattWorkScheduler.enqueueRetry(applicationContext, running.id, delayMs)
+        Result.success()
+      } else {
+        ledger.update(failureCopy(running, outcome, DurableSessionState.FAILED, null))
+        vault.delete(running.id)
+        Result.failure()
       }
     }
+  }
+
+  private fun failureCopy(
+    session: DurableGattSession,
+    failure: SessionOutcome.Failure,
+    state: DurableSessionState,
+    scheduledDelayMs: Long?,
+  ): DurableGattSession = session.copy(
+    state = state,
+    updatedEpochMs = System.currentTimeMillis(),
+    reasonCode = if (state == DurableSessionState.PROOF_UNCERTAIN) {
+      "PROOF_OUTCOME_UNCERTAIN"
+    } else {
+      failure.reason.schemaReason
+    },
+    targetReasonCode = failure.targetReason?.wireCode,
+    targetReasonName = failure.targetReason?.wireName,
+    transportReason = failure.transportFailure?.name,
+    transportStatus = failure.transportStatus,
+    retryAfterMs = failure.retryAfterMs,
+    scheduledRetryDelayMs = scheduledDelayMs,
+    latencyMs = failure.latencyMs,
+  )
+
+  private fun scheduleOwnershipRetry(
+    ledger: DurableSessionLedger,
+    session: DurableGattSession,
+  ): Result {
+    val attempt = session.attempt + 1
+    if (attempt >= RetryPolicy.MAX_ATTEMPTS) {
+      ledger.update(
+        session.copy(
+          attempt = attempt,
+          state = DurableSessionState.FAILED,
+          updatedEpochMs = System.currentTimeMillis(),
+          reasonCode = AccessReasonCode.GATT_CONNECT_FAILED.schemaReason,
+          transportReason = "BLE_OWNER_CONFLICT",
+        ),
+      )
+      AndroidEncryptedLocatorVault(applicationContext).delete(session.id)
+      return Result.failure()
+    }
+    val delayMs = RetryPolicy.boundedDelayMs(attempt)
+    ledger.update(
+      session.copy(
+        attempt = attempt,
+        state = DurableSessionState.RETRY_PENDING,
+        updatedEpochMs = System.currentTimeMillis(),
+        reasonCode = AccessReasonCode.GATT_CONNECT_FAILED.schemaReason,
+        transportReason = "BLE_OWNER_CONFLICT",
+        scheduledRetryDelayMs = delayMs,
+      ),
+    )
+    BleGattWorkScheduler.enqueueRetry(applicationContext, session.id, delayMs)
+    return Result.success()
+  }
+
+  private fun terminateDisabled(
+    ledger: DurableSessionLedger,
+    vault: LocatorVault,
+    session: DurableGattSession,
+  ) {
+    ledger.update(
+      session.copy(
+        state = DurableSessionState.DISABLED,
+        updatedEpochMs = System.currentTimeMillis(),
+      ),
+    )
+    vault.delete(session.id)
+  }
+
+  private fun terminateFailure(
+    ledger: DurableSessionLedger,
+    vault: LocatorVault,
+    session: DurableGattSession,
+    reason: AccessReasonCode,
+    transportReason: String,
+  ) {
+    ledger.update(
+      session.copy(
+        state = DurableSessionState.FAILED,
+        updatedEpochMs = System.currentTimeMillis(),
+        reasonCode = reason.schemaReason,
+        transportReason = transportReason,
+      ),
+    )
+    vault.delete(session.id)
   }
 }
 
@@ -118,10 +319,16 @@ object BleGattHealthBridge {
     return mapOf(
       "featureEnabled" to decision.newWorkerEnabled,
       "featureStatus" to decision.status,
+      "featureRevision" to decision.revision,
       "bleOwner" to decision.owner,
-      "healthy" to (last?.state !in setOf(DurableSessionState.FAILED)),
+      "healthy" to (last?.state !in setOf(DurableSessionState.FAILED, DurableSessionState.PROOF_UNCERTAIN)),
       "lastSession" to last?.redactedMap(),
       "lastReasonCode" to last?.reasonCode,
+      "lastTargetReasonCode" to last?.targetReasonCode,
+      "lastTargetReasonName" to last?.targetReasonName,
+      "lastTransportReason" to last?.transportReason,
+      "lastRetryAfterMs" to last?.retryAfterMs,
+      "lastScheduledRetryDelayMs" to last?.scheduledRetryDelayMs,
       "lastLatencyMs" to last?.latencyMs,
       "currentBlockingReasonCode" to BleGattRuntimeEnvironment.currentBlockingReason(context),
       "forceStopReasonCode" to AccessReasonCode.FORCE_STOPPED.schemaReason,
@@ -152,8 +359,7 @@ object BleGattRuntimeEnvironment {
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
       power != null && !power.isIgnoringBatteryOptimizations(appContext.packageName)
     ) return AccessReasonCode.BATTERY_RESTRICTED.schemaReason
-    return appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      .getString(KEY_LAST_BLOCKED, null)
+    return appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LAST_BLOCKED, null)
   }
 
   fun recordBlocked(context: Context, schemaReason: String) {

@@ -47,7 +47,7 @@
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
 | [android_ble_wake_adr.md](android_ble_wake_adr.md) | #14 PendingIntent filtered BLE wake 결정, exact filter contract, hardwareless PoC와 Samsung 20회 pending Gate |
-| [android_gatt_worker.md](android_gatt_worker.md) | #17 default-OFF native GATT credential worker, canonical Keystore proof, durable retry/diagnostics, hardwareless evidence and pending physical gates |
+| [android_gatt_worker.md](android_gatt_worker.md) | #17 signed default-OFF rollout, cross-process BLE lease, crash-idempotent proof boundary, encrypted locators, exact GATT reasons, and pending physical gates |
 | [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |

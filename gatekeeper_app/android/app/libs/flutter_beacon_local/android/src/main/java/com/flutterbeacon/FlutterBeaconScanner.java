@@ -64,6 +64,13 @@ class FlutterBeaconScanner {
 
   @SuppressWarnings("rawtypes")
   private void startRanging(Object o, EventChannel.EventSink eventSink) {
+    if (!plugin.tryAcquireLegacyOwnership()) {
+      eventSink.error(
+          "BLE_OWNER_EXCLUDED",
+          "Native GATT worker owns BLE or an ownership transition is in progress",
+          null);
+      return;
+    }
     if (o instanceof List) {
       List list = (List) o;
       if (regionRanging == null) {
@@ -103,6 +110,15 @@ class FlutterBeaconScanner {
   }
 
   void startRanging() {
+    if (!plugin.tryAcquireLegacyOwnership()) {
+      if (eventSinkRanging != null) {
+        eventSinkRanging.error(
+            "BLE_OWNER_EXCLUDED",
+            "Native GATT worker owns BLE or an ownership transition is in progress",
+            null);
+      }
+      return;
+    }
     if (regionRanging == null || regionRanging.isEmpty()) {
       Log.e("RANGING", "Region ranging is null or empty. Ranging not started.");
       return;
@@ -180,6 +196,13 @@ class FlutterBeaconScanner {
 
   @SuppressWarnings("rawtypes")
   private void startMonitoring(Object o, EventChannel.EventSink eventSink) {
+    if (!plugin.tryAcquireLegacyOwnership()) {
+      eventSink.error(
+          "BLE_OWNER_EXCLUDED",
+          "Native GATT worker owns BLE or an ownership transition is in progress",
+          null);
+      return;
+    }
     Log.d(TAG, "START MONITORING=" + o);
     if (o instanceof List) {
       List list = (List) o;
@@ -221,6 +244,15 @@ class FlutterBeaconScanner {
   }
 
   void startMonitoring() {
+    if (!plugin.tryAcquireLegacyOwnership()) {
+      if (eventSinkMonitoring != null) {
+        eventSinkMonitoring.error(
+            "BLE_OWNER_EXCLUDED",
+            "Native GATT worker owns BLE or an ownership transition is in progress",
+            null);
+      }
+      return;
+    }
     if (regionMonitoring == null || regionMonitoring.isEmpty()) {
       Log.e("MONITORING", "Region monitoring is null or empty. Monitoring not started.");
       return;

@@ -1,9 +1,12 @@
 package com.flutterbeacon;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.RemoteException;
 import android.os.PowerManager;
 import android.util.Log;
@@ -88,6 +91,20 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
   private EventChannel eventChannelBluetoothState;
   private EventChannel eventChannelAuthorizationStatus;
 
+  private CrossProcessBleOwnerCoordinator ownerCoordinator;
+  private CrossProcessBleOwnerCoordinator.Lease legacyOwnerLease;
+  private boolean ownerReceiverRegistered;
+
+  private final BroadcastReceiver ownerTransitionReceiver = new BroadcastReceiver() {
+    @Override
+    public void onReceive(Context context, Intent intent) {
+      if (CrossProcessBleOwnerCoordinator.ACTION_STOP_LEGACY_BLE.equals(intent.getAction())
+          && nativeGattOwnsScanner()) {
+        stopLegacyForNativeTransition();
+      }
+    }
+  };
+
   public FlutterBeaconPlugin() {
 
   }
@@ -96,12 +113,17 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
     this.applicationContext = binding.getApplicationContext();
+    this.ownerCoordinator = CrossProcessBleOwnerCoordinator.forContext(applicationContext);
+    registerOwnerTransitionReceiver();
     setupChannels(binding.getBinaryMessenger(), applicationContext);
   }
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
     teardownChannels();
+    unregisterOwnerTransitionReceiver();
+    releaseLegacyOwnership();
+    this.ownerCoordinator = null;
     this.applicationContext = null;
   }
   // endregion
@@ -230,10 +252,10 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     }
 
     if (call.method.equals("initialize")) {
-      if (nativeGattOwnsScanner()) {
+      if (!tryAcquireLegacyOwnership()) {
         result.error(
             "BLE_OWNER_EXCLUDED",
-            "Native GATT worker owns BLE while the validated feature flag is active",
+            "Native GATT worker owns BLE or an ownership transition is in progress",
             null);
         return;
       }
@@ -460,6 +482,7 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
           beaconManager.unbind(beaconScanner.beaconConsumer);
         }
       }
+      releaseLegacyOwnership();
       result.success(true);
       return;
     }
@@ -503,15 +526,50 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     result.notImplemented();
   }
 
-  /** Fail closed to legacy ownership unless a validated, enabled, unexpired remote flag exists. */
+  /** The marker is written only after native cryptographic flag verification succeeds. */
   private boolean nativeGattOwnsScanner() {
-    if (applicationContext == null) return false;
-    android.content.SharedPreferences prefs = applicationContext.getSharedPreferences(
-        "ble_gatt_worker_flags", Context.MODE_PRIVATE);
-    return prefs.getBoolean("remote_present", false)
-        && prefs.getBoolean("remote_validated", false)
-        && prefs.getBoolean("remote_enabled", false)
-        && prefs.getLong("remote_expires_epoch_ms", 0L) > System.currentTimeMillis();
+    return ownerCoordinator != null && ownerCoordinator.isNativeRequested();
+  }
+
+  boolean tryAcquireLegacyOwnership() {
+    if (ownerCoordinator == null || nativeGattOwnsScanner()) return false;
+    if (legacyOwnerLease != null) return true;
+    legacyOwnerLease = ownerCoordinator.tryAcquireLegacy();
+    return legacyOwnerLease != null;
+  }
+
+  private void releaseLegacyOwnership() {
+    if (legacyOwnerLease == null) return;
+    legacyOwnerLease.close();
+    legacyOwnerLease = null;
+  }
+
+  private void stopLegacyForNativeTransition() {
+    if (beaconManager != null && beaconScanner != null) {
+      beaconScanner.stopRanging();
+      beaconScanner.stopMonitoring();
+      if (beaconManager.isBound(beaconScanner.beaconConsumer)) {
+        beaconManager.unbind(beaconScanner.beaconConsumer);
+      }
+    }
+    releaseLegacyOwnership();
+  }
+
+  private void registerOwnerTransitionReceiver() {
+    if (applicationContext == null || ownerReceiverRegistered) return;
+    IntentFilter filter = new IntentFilter(CrossProcessBleOwnerCoordinator.ACTION_STOP_LEGACY_BLE);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      applicationContext.registerReceiver(ownerTransitionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+    } else {
+      applicationContext.registerReceiver(ownerTransitionReceiver, filter);
+    }
+    ownerReceiverRegistered = true;
+  }
+
+  private void unregisterOwnerTransitionReceiver() {
+    if (applicationContext == null || !ownerReceiverRegistered) return;
+    applicationContext.unregisterReceiver(ownerTransitionReceiver);
+    ownerReceiverRegistered = false;
   }
 
   // ─── MethodChannel 인자 파싱 헬퍼 (언박싱 NPE 방지) ──────────────────────
@@ -561,6 +619,16 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     if (platform == null) {
       if (result != null) {
         result.error("Beacon", "plugin not attached to an engine", null);
+      }
+      return;
+    }
+
+    if (!tryAcquireLegacyOwnership()) {
+      if (result != null) {
+        result.error(
+            "BLE_OWNER_EXCLUDED",
+            "Native GATT worker owns BLE or an ownership transition is in progress",
+            null);
       }
       return;
     }

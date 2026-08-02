@@ -17,26 +17,33 @@ This RC does not change either of these independent paths:
 BluetoothLeScanner PendingIntent
   -> BleWakeScanReceiver (strongest matching result, no Flutter engine)
   -> BleWakeNativeEntrypoint (existing redacted wake journal)
-  -> unique WorkManager request, ExistingWorkPolicy.KEEP
-  -> durable duplicate coalescer and session ledger
+  -> Keystore-HMAC wake identity + unique WorkManager request
+  -> durable duplicate coalescer, including terminal/redelivered wakes
+  -> cross-process exclusive native BLE lease
   -> AndroidBleGattTransport
-  -> challenge read -> canonical proof sign -> proof write -> result indication
+  -> challenge read -> canonical proof sign
+  -> durable PROOF_UNCERTAIN commit + encrypted-locator deletion
+  -> proof write -> result indication -> terminal commit
 ```
 
-The receiver never persists the peer address in its JSON diagnostic journal. The address is passed only in the private WorkManager input needed for the connection attempt. A `SecurityException` at scan delivery is converted to the fixed `PERMISSION_DENIED` reason instead of crashing the receiver.
+The receiver never persists the peer address in its JSON diagnostic journal or WorkManager input. The OS scan timestamp/callback identity and address are reduced to a Keystore-HMAC fingerprint; the raw address and credential ID are held only in an AES-GCM record under `noBackupFilesDir` with a non-exportable AndroidKeyStore key. A `SecurityException` at scan delivery is converted to the fixed `PERMISSION_DENIED` reason instead of crashing the receiver.
 
-WorkManager uses a unique work name with `KEEP`, three total attempts, exponential backoff beginning at 10 seconds, and a bounded 15-second GATT session timeout. The session ledger is app-private durable storage, so a process restart resumes or classifies an existing session rather than creating a second door attempt.
+Initial WorkManager dispatch uses a unique work name with `KEEP`; retry work uses `APPEND_OR_REPLACE` with the exact bounded delay selected from local exponential backoff and Target `retry_after_ms` (hard cap 30 seconds). The ledger stores both the selected delay and its durable scheduling epoch, so a process restart or redelivered WorkManager item re-enqueues the remaining delay instead of retrying early. Three total attempts and a bounded 15-second GATT session timeout remain fail-closed. Before the first proof byte can be written, the ledger durably enters `PROOF_UNCERTAIN` and deletes the locator ciphertext. A restart from that state never reconnects or signs again. Only an explicit Target failure result resolves uncertainty and may schedule a new Target session; a crash after proof write, after result receipt, or before the final ledger commit cannot repeat proof/ARM for that wake.
 
 ## 3. Feature flag and BLE ownership
 
 The native worker owns BLE only when all of the following are true:
 
-1. the remote flag is present;
-2. its payload has been authenticated and validated by the remote-config control plane;
-3. `enabled=true`;
-4. the flag has not expired.
+1. the remote envelope is signed by the APK-pinned P-256 rollout authority and matches its issuer/key ID;
+2. its revision is positive and strictly greater than the accepted revision;
+3. its issued/expiry window is current, bounded to seven days, and within the clock-skew contract;
+4. it is bound to both the enrolled 16-byte credential ID and the SHA-256 of the exact AndroidKeyStore public key;
+5. that non-exportable credential key is present;
+6. `enabled=true`.
 
-Missing, malformed, unauthenticated, disabled, or stale state always resolves to `legacy`. When native ownership is active, the vendored legacy beacon plugin rejects initialization with `BLE_OWNER_EXCLUDED`; when native ownership is not active, the worker exits without opening GATT. This makes legacy and native ownership mutually exclusive at both entry points.
+The authority is supplied only by signed APK manifest metadata (`GATT_FLAG_AUTHORITY_ISSUER`, `GATT_FLAG_AUTHORITY_KEY_ID`, and `GATT_FLAG_AUTHORITY_P256_SEC1_HEX`). Authenticated state and its accepted revision are committed atomically under a cross-process update lock in `noBackupFilesDir`; the old caller-validated SharedPreferences records are cleared and never imported. This draft intentionally configures no production authority, so production remains default-OFF. Missing, malformed, signature-invalid, replayed, disabled, stale, restored-without-key, or key-mismatched state resolves to `legacy`.
+
+Ownership is not inferred from cross-process SharedPreferences. A no-backup requested-owner marker plus an exclusive kernel file lease serializes the vendored legacy scanner and native worker across processes. OFF→ON first publishes the native request and sends a package-scoped stop signal; every legacy initialize/ranging/monitoring/bind entry point also reacquires the same legacy lease. Native GATT cannot start until legacy releases it. Expiry or authenticated rollback clears the marker, native work exits before proof, and legacy can reacquire only after the native lease closes. Process death releases the kernel lease automatically.
 
 The RC intentionally exposes no Flutter mutation method for the feature flag or credential. Remote configuration and enrollment are future authenticated native control-plane inputs. The only Flutter bridge added here is read-only health inspection.
 
@@ -48,9 +55,13 @@ The RC intentionally exposes no Flutter mutation method for the feature flag or 
 
 The JVM fake signer is deterministic and holds test-only material. It verifies canonical compatibility without invoking AndroidKeyStore.
 
-## 5. Durable coalescing and diagnostics
+## 5. Durable coalescing, migration, and diagnostics
 
-A duplicate fingerprint is an HMAC over the private wake inputs, so diagnostics never use the raw address as their correlation key. The app-private ledger retains the address only while it is needed to reconnect after a worker restart; it is excluded from the wake journal, health bridge, and logs. Repeated wake delivery for an active event coalesces into the original durable session. Terminal completion followed by a distinct event creates a new session. The health projection exposes only bounded, crash-safe fields: state, stable reason, attempt count, update time, and latency.
+A duplicate fingerprint is an HMAC over the private address plus stable OS wake identity. Its HMAC key is non-exportable AndroidKeyStore material, not a SharedPreferences byte string. Repeated delivery of the same wake coalesces into the original durable session even after terminal completion; a distinct advertisement timestamp creates a separate session.
+
+The redacted `sessions_v2` ledger never serializes raw address or credential ID. On first read, legacy `sessions_v1` is decoded, sensitive fields are discarded, the redacted record is durably written, and the old preference is removed; corrupt legacy data is removed rather than retained. The credential ID and temporary locator moved to AES-GCM/no-backup storage, the old plaintext credential and HMAC preferences are deleted, and the old raw-ID Keystore alias is deleted with authenticated re-enrollment required because a non-exportable key cannot be renamed safely. Terminal and uncertain states delete the locator record immediately. Logs, health, WorkManager data, wake JSON, and filenames contain no raw locator.
+
+The health projection exposes only bounded fields: state, stable observability reason, exact Target reason code/name, exact transport failure/status, raw and scheduled bounded retry delays, attempt count, update time, and latency.
 
 The Flutter MethodChannel `com.kshouse.gatekeeper_app/ble_gatt_worker_health` accepts only `getHealth` and returns:
 
@@ -82,22 +93,24 @@ Worker outcomes are mapped to the observability access reason vocabulary where a
 | `PROTOCOL_INCOMPATIBLE` | exact schema code `PROTOCOL_INCOMPATIBLE` |
 | `ACL_NOT_FOUND` | exact schema code `ACL_NOT_FOUND` |
 | `CREDENTIAL_INACTIVE` | exact schema code `CREDENTIAL_INACTIVE` |
-| `TARGET_BUSY` | exact schema code `TARGET_BUSY` |
+| `TARGET_BUSY` | observability mapping for exact Target `BUSY(8)` or `RATE_LIMITED(9)`; exact wire code/name remains separately durable and visible |
 | `INTERNAL_ERROR` | `INTERNAL_ERROR` |
+
+The frozen Target wire reasons are retained exactly as `UNSUPPORTED_VERSION(1)`, `MALFORMED(2)`, `SESSION_INVALID(3)`, `EXPIRED_OR_REPLAY(4)`, `ACL_UNAVAILABLE(5)`, `CREDENTIAL_DENIED(6)`, `PROOF_INVALID(7)`, `BUSY(8)`, `RATE_LIMITED(9)`, and `INTERNAL_FAIL_CLOSED(10)`. Their observability mapping never replaces the wire identity. Callback transport failures likewise remain distinct as `DISCONNECTED`, `READ_FAILED`, `WRITE_FAILED`, `DESCRIPTOR_WRITE_FAILED`, `SERVICE_DISCOVERY_FAILED`, `MALFORMED_FRAME`, or `UNEXPECTED_MESSAGE_TYPE`, with Android GATT status retained where present.
 
 Network-off is not a blocker: the worker has no WorkManager network constraint and its GATT session test succeeds with network unavailable. OTA/update ownership is reported separately as `updateManagerIndependent=true` and `updateManagerOwnedByWorker=false`; the worker does not emit a fabricated access reason for an updater it does not own.
 
 ## 7. Hardwareless evidence (2026-08-02)
 
 - Forced targeted Android run: `:app:testDebugUnitTest --tests 'com.kshouse.gatekeeper_app.gattworker.*' --rerun-tasks`; 208 tasks executed.
-- JUnit XML: 3 suites, 12 tests, 0 failures, 0 errors, 0 skipped.
-- Full Android JVM suite: 18 tests passed.
+- Final JUnit XML: 6 targeted suites, 23 tests, 0 failures, 0 errors, 0 skipped.
+- Full Android JVM suite: 8 suites and 28 tests passed with 0 failures, 0 errors, and 0 skips.
 - Flutter: 6 tests passed.
 - Targeted Dart analysis of the two changed files: no issues. Full analysis retains 17 pre-existing info-level findings in vendored `flutter_beacon_local`.
 - Debug APK: `gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk` built successfully.
 - Protocol, observability, repository gates, and diff/link/immutability checks are recorded in the append-only log.
 
-The JVM coverage includes canonical vector compatibility, ATT fragments, deterministic signing conversion, complete GATT exchange, network-off operation, target retry classification, timeout, malformed result, duplicate delivery, process restart, default-safe flag behavior and ownership exclusion, diagnostic redaction, and OTA independence.
+The JVM coverage includes signed flag tamper/expiry/replay/key-binding negatives, two-process ownership transitions, canonical vector compatibility, ATT fragments, deterministic signing conversion, complete GATT exchange, every frozen Target reason, exact disconnect/read/malformed callback failures, bounded Target retry delay, process death after proof write/result receipt, duplicate delivery across restart/terminal state, plaintext-ledger migration and redaction, network-off operation, OTA independence, and default-safe legacy fallback.
 
 ## 8. Pending physical gates
 

@@ -245,10 +245,15 @@ force-stop은 성공률 시험 대상이 아니라 미지원 계약 확인 대�
 
 The production-default-OFF GATT worker consumes this ADR's `BleWakeNativeEntrypoint` only after the
 existing wake event has been recorded. Work scheduling is native and does not start or require a
-Flutter engine. The original wake journal remains redacted, while the device address required for a
-GATT connection is confined to private WorkManager input and is not serialized by `BleWakeEvent`.
+Flutter engine. The original wake journal remains redacted. The device address required for GATT is
+never placed in WorkManager `Data`: it is encrypted under a non-exportable AndroidKeyStore AES-GCM
+key in `noBackupFilesDir` and deleted at the pre-proof uncertainty boundary. Duplicate delivery of
+one OS scan timestamp/callback identity maps to one Keystore-HMAC durable wake even after restart or
+terminal completion.
 
-Legacy beacon scanning and the new worker are mutually exclusive through the validated, unexpired
-remote flag contract described in [android_gatt_worker.md](android_gatt_worker.md). This integration
-does not satisfy the Samsung 20-run gates above and does not weaken the independent mobile OTA or
-authenticated `manual_remote` paths.
+Legacy beacon scanning and native GATT are mutually exclusive through the cryptographically signed,
+anti-replay, unexpired, exact-Keystore-key-bound remote flag plus a cross-process kernel lease
+described in [android_gatt_worker.md](android_gatt_worker.md). Live enable actively stops legacy
+ranging/monitoring; expiry or authenticated rollback disables native proof before legacy reacquires.
+This integration does not satisfy the Samsung 20-run gates above and does not weaken the independent
+mobile OTA or authenticated `manual_remote` paths.

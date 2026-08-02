@@ -20,6 +20,14 @@ data class BleWakeEvent(
   /** Internal transport locator. Intentionally omitted from journal/log JSON. */
   val deviceAddress: String? = null,
 ) {
+  /** Stable only for duplicate delivery of one OS wake; persisted only through a keyed HMAC. */
+  fun presenceEventId(): String = listOf(
+    source,
+    scanTimestampNanos ?: (receivedElapsedMs * 1_000_000L),
+    callbackType,
+    iteration ?: -1,
+  ).joinToString("|")
+
   fun toJson(): JSONObject = JSONObject()
     .put("source", source)
     .put("scenario", scenario)

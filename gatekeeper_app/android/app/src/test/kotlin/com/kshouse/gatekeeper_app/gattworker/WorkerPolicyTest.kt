@@ -10,14 +10,15 @@ import java.util.UUID
 
 class WorkerPolicyTest {
   @Test
-  fun featureFlagIsDefaultOffAndRejectsUnvalidatedStaleOrRemoteFalse() {
+  fun featureFlagIsDefaultOffAndRequiresAuthenticatedUnexpiredRemoteState() {
     val now = 1000L
-    assertEquals("default_off", BleGattFeatureFlagPolicy.evaluate(null, now).status)
-    assertFalse(BleGattFeatureFlagPolicy.evaluate(null, now).newWorkerEnabled)
-    assertFalse(BleGattFeatureFlagPolicy.evaluate(ValidatedRemoteFlag(true, false, "r1", 2000), now).newWorkerEnabled)
-    assertFalse(BleGattFeatureFlagPolicy.evaluate(ValidatedRemoteFlag(true, true, "r1", 1000), now).newWorkerEnabled)
-    assertFalse(BleGattFeatureFlagPolicy.evaluate(ValidatedRemoteFlag(false, true, "r1", 2000), now).newWorkerEnabled)
-    val enabled = BleGattFeatureFlagPolicy.evaluate(ValidatedRemoteFlag(true, true, "r1", 2000), now)
+    val authenticated = FeatureFlagVerification(FeatureFlagVerificationStatus.AUTHENTICATED)
+    val enabledState = flagState(enabled = true, expiresEpochMs = 2000)
+    assertEquals("default_off", BleGattFeatureFlagPolicy.evaluate(null, null, now).status)
+    assertFalse(BleGattFeatureFlagPolicy.evaluate(enabledState, null, now).newWorkerEnabled)
+    assertFalse(BleGattFeatureFlagPolicy.evaluate(enabledState, authenticated, 2000).newWorkerEnabled)
+    assertFalse(BleGattFeatureFlagPolicy.evaluate(flagState(false, 2000), authenticated, now).newWorkerEnabled)
+    val enabled = BleGattFeatureFlagPolicy.evaluate(enabledState, authenticated, now)
     assertTrue(enabled.newWorkerEnabled)
     assertEquals("native_gatt", enabled.owner)
   }
@@ -25,11 +26,14 @@ class WorkerPolicyTest {
   @Test
   fun duplicatesAndWorkerRestartReuseOneDurableSession() {
     val ledger = InMemoryLedger()
-    val firstCoordinator = PresenceCoalescer(ledger, ByteArray(32) { 7 })
-    val first = firstCoordinator.enqueue("00:11:22:33:44:55", "aa".repeat(16), 1000)
-    val duplicate = firstCoordinator.enqueue("00:11:22:33:44:55", "aa".repeat(16), 1200)
-    val restartedCoordinator = PresenceCoalescer(ledger, ByteArray(32) { 7 })
-    val afterRestart = restartedCoordinator.enqueue("00:11:22:33:44:55", "aa".repeat(16), 1500)
+    val firstCoordinator = PresenceCoalescer(ledger, DeterministicPresenceFingerprinter(ByteArray(32) { 7 }))
+    val first = firstCoordinator.enqueue("00:11:22:33:44:55", "wake-1", 1000)
+    val duplicate = firstCoordinator.enqueue("00:11:22:33:44:55", "wake-1", 1200)
+    val restartedCoordinator = PresenceCoalescer(
+      ledger,
+      DeterministicPresenceFingerprinter(ByteArray(32) { 7 }),
+    )
+    val afterRestart = restartedCoordinator.enqueue("00:11:22:33:44:55", "wake-1", 1500)
 
     assertFalse(first.second)
     assertTrue(duplicate.second)
@@ -40,12 +44,15 @@ class WorkerPolicyTest {
   }
 
   @Test
-  fun terminalSessionAllowsASeparateLaterPresence() {
+  fun terminalDuplicateWakeCoalescesButDistinctWakeCreatesNewSession() {
     val ledger = InMemoryLedger()
-    val coalescer = PresenceCoalescer(ledger, ByteArray(32) { 8 })
-    val first = coalescer.enqueue("00:11:22:33:44:55", "aa".repeat(16), 1000).first
+    val coalescer = PresenceCoalescer(ledger, DeterministicPresenceFingerprinter(ByteArray(32) { 8 }))
+    val first = coalescer.enqueue("00:11:22:33:44:55", "wake-1", 1000).first
     ledger.update(first.copy(state = DurableSessionState.SUCCEEDED, updatedEpochMs = 1100))
-    val next = coalescer.enqueue("00:11:22:33:44:55", "aa".repeat(16), 1200)
+    val terminalDuplicate = coalescer.enqueue("00:11:22:33:44:55", "wake-1", 1200)
+    val next = coalescer.enqueue("00:11:22:33:44:55", "wake-2", 1200)
+    assertTrue(terminalDuplicate.second)
+    assertEquals(first.id, terminalDuplicate.first.id)
     assertFalse(next.second)
     assertTrue(first.id != next.first.id)
   }
@@ -55,20 +62,43 @@ class WorkerPolicyTest {
     val session = sampleSession()
     val map = session.redactedMap()
     val serialized = map.toString()
-    assertFalse(serialized.contains(session.deviceAddress))
     assertFalse(serialized.contains(session.presenceFingerprint))
-    assertFalse(serialized.contains(session.credentialIdHex))
     assertFalse(serialized.contains("nonce", ignoreCase = true))
     assertFalse(serialized.contains("signature", ignoreCase = true))
     assertFalse(BleGattWorkScheduler.HAS_NETWORK_CONSTRAINT)
     assertEquals("KEEP", BleGattWorkScheduler.UNIQUE_WORK_POLICY)
+    assertEquals("APPEND_OR_REPLACE", BleGattWorkScheduler.RETRY_WORK_POLICY)
+  }
+
+  @Test
+  fun legacyLedgerMigrationDropsRawDeviceAndCredentialLocators() {
+    val raw = """[{"id":"00000000-0000-0000-0000-000000000001","presence_fingerprint":"fingerprint","device_address":"00:11:22:33:44:55","credential_id_hex":"${"aa".repeat(16)}","created_epoch_ms":1,"updated_epoch_ms":2,"attempt":1,"state":"RUNNING"}]"""
+    val decoded = SessionLedgerCodec.decode(raw)
+    val migrated = SessionLedgerCodec.encode(decoded.sessions)
+    assertTrue(decoded.containedLegacySensitiveFields)
+    assertFalse(migrated.contains("00:11:22:33:44:55"))
+    assertFalse(migrated.contains("credential_id_hex"))
+    assertFalse(migrated.contains("device_address"))
+    assertTrue(migrated.contains("fingerprint"))
+  }
+
+  @Test
+  fun retryDelaySurvivesWorkerProcessRestartAndClockRollback() {
+    val retry = sampleSession().copy(
+      state = DurableSessionState.RETRY_PENDING,
+      updatedEpochMs = 1_000,
+      scheduledRetryDelayMs = 9_000,
+    )
+    assertEquals(7_000, RetryPolicy.remainingDelayMs(retry, 3_000))
+    assertEquals(1, RetryPolicy.remainingDelayMs(retry, 9_999))
+    assertEquals(0, RetryPolicy.remainingDelayMs(retry, 10_000))
+    assertEquals(9_000, RetryPolicy.remainingDelayMs(retry, 500))
+    assertEquals(0, RetryPolicy.remainingDelayMs(retry.copy(state = DurableSessionState.QUEUED), 3_000))
   }
 
   private fun sampleSession() = DurableGattSession(
     id = UUID.randomUUID().toString(),
     presenceFingerprint = "secret-fingerprint",
-    deviceAddress = "00:11:22:33:44:55",
-    credentialIdHex = "aa".repeat(16),
     createdEpochMs = 1,
     updatedEpochMs = 2,
     attempt = 1,
@@ -76,28 +106,32 @@ class WorkerPolicyTest {
     reasonCode = "GATT_TIMEOUT",
     latencyMs = 15000,
   )
+
+  private fun flagState(enabled: Boolean, expiresEpochMs: Long) = AuthenticatedRemoteFlagState(
+    enabled = enabled,
+    issuer = "test",
+    authorityKeyId = "key-1",
+    revision = 1,
+    issuedEpochMs = 1,
+    expiresEpochMs = expiresEpochMs,
+    credentialIdSha256 = ByteArray(32),
+    credentialPublicKeySha256 = ByteArray(32),
+    signatureDer = byteArrayOf(1),
+  )
 }
 
 private class InMemoryLedger : DurableSessionLedger {
   val sessions = mutableListOf<DurableGattSession>()
 
-  override fun findCoalescible(fingerprint: String, nowEpochMs: Long, windowMs: Long): DurableGattSession? =
-    sessions.lastOrNull {
-      it.presenceFingerprint == fingerprint &&
-        it.state in setOf(DurableSessionState.QUEUED, DurableSessionState.RUNNING, DurableSessionState.RETRY_PENDING) &&
-        nowEpochMs - it.createdEpochMs in 0..windowMs
-    }
+  override fun findByPresenceFingerprint(fingerprint: String): DurableGattSession? =
+    sessions.lastOrNull { it.presenceFingerprint == fingerprint }
 
   override fun create(
     fingerprint: String,
-    deviceAddress: String,
-    credentialIdHex: String,
     nowEpochMs: Long,
   ): DurableGattSession = DurableGattSession(
     id = UUID.randomUUID().toString(),
     presenceFingerprint = fingerprint,
-    deviceAddress = deviceAddress,
-    credentialIdHex = credentialIdHex,
     createdEpochMs = nowEpochMs,
     updatedEpochMs = nowEpochMs,
     attempt = 0,

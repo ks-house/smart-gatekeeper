@@ -30,17 +30,77 @@ enum class AccessReasonCode(val schemaReason: String, val retryable: Boolean) {
   INTERNAL_ERROR("INTERNAL_ERROR", false),
 }
 
+enum class TargetResultReason(
+  val wireCode: Int,
+  val wireName: String,
+  val observabilityReason: AccessReasonCode,
+  val retryable: Boolean,
+) {
+  UNSUPPORTED_VERSION(1, "UNSUPPORTED_VERSION", AccessReasonCode.PROTOCOL_INCOMPATIBLE, false),
+  MALFORMED(2, "MALFORMED", AccessReasonCode.MALFORMED_PROOF, false),
+  SESSION_INVALID(3, "SESSION_INVALID", AccessReasonCode.NONCE_REPLAYED, false),
+  EXPIRED_OR_REPLAY(4, "EXPIRED_OR_REPLAY", AccessReasonCode.PROOF_EXPIRED, false),
+  ACL_UNAVAILABLE(5, "ACL_UNAVAILABLE", AccessReasonCode.ACL_NOT_FOUND, true),
+  CREDENTIAL_DENIED(6, "CREDENTIAL_DENIED", AccessReasonCode.CREDENTIAL_INACTIVE, false),
+  PROOF_INVALID(7, "PROOF_INVALID", AccessReasonCode.SIGNATURE_INVALID, false),
+  BUSY(8, "BUSY", AccessReasonCode.TARGET_BUSY, true),
+  RATE_LIMITED(9, "RATE_LIMITED", AccessReasonCode.TARGET_BUSY, true),
+  INTERNAL_FAIL_CLOSED(10, "INTERNAL_FAIL_CLOSED", AccessReasonCode.INTERNAL_ERROR, false),
+  ;
+
+  companion object {
+    fun fromWireCode(code: Int): TargetResultReason = entries.firstOrNull { it.wireCode == code }
+      ?: throw IllegalArgumentException("unknown target result reason")
+  }
+}
+
+enum class TransportFailureCode(val observabilityReason: AccessReasonCode) {
+  DISCONNECTED(AccessReasonCode.GATT_DISCONNECTED),
+  READ_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
+  WRITE_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
+  DESCRIPTOR_WRITE_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
+  SERVICE_DISCOVERY_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
+  MALFORMED_FRAME(AccessReasonCode.MALFORMED_PROOF),
+  UNEXPECTED_MESSAGE_TYPE(AccessReasonCode.PROTOCOL_INCOMPATIBLE),
+}
+
+open class GattTransportException(
+  val failureCode: TransportFailureCode,
+  val gattStatus: Int? = null,
+  cause: Throwable? = null,
+) : IllegalStateException(failureCode.name, cause)
+
 sealed class SessionOutcome {
   data class Success(val latencyMs: Long, val activeAclVersion: Long) : SessionOutcome()
   data class Failure(
     val reason: AccessReasonCode,
     val latencyMs: Long,
     val retryAfterMs: Long = 0,
-  ) : SessionOutcome()
+    val targetReason: TargetResultReason? = null,
+    val transportFailure: TransportFailureCode? = null,
+    val transportStatus: Int? = null,
+    val proofMayHaveExecuted: Boolean = false,
+  ) : SessionOutcome() {
+    val retryable: Boolean
+      get() = targetReason?.retryable ?: reason.retryable
+  }
 }
 
 fun interface MonotonicClock {
   fun nowMs(): Long
+}
+
+interface ProofExecutionObserver {
+  /** Must durably commit PROOF_UNCERTAIN before returning. */
+  fun beforeProofWrite()
+  fun afterProofWrite() {}
+  fun afterResultReceived(result: TargetResult) {}
+
+  companion object {
+    val NONE = object : ProofExecutionObserver {
+      override fun beforeProofWrite() = Unit
+    }
+  }
 }
 
 class GattSessionEngine(
@@ -49,9 +109,11 @@ class GattSessionEngine(
   private val timeoutMs: Long = 15_000,
   private val clock: MonotonicClock = MonotonicClock { android.os.SystemClock.elapsedRealtime() },
   private val mobileBuild: Long = 0,
+  private val proofObserver: ProofExecutionObserver = ProofExecutionObserver.NONE,
 ) {
   suspend fun run(deviceAddress: String, credentialId: ByteArray): SessionOutcome {
     val started = clock.nowMs()
+    var proofMayHaveExecuted = false
     return try {
       withTimeout(timeoutMs) {
         transport.connect(deviceAddress)
@@ -65,65 +127,112 @@ class GattSessionEngine(
         )
         val canonical = GattCanonicalCodec.proofSigningInput(challenge.canonical, credentialId)
         val signature = signer.signCanonical(credentialId, canonical)
+        proofObserver.beforeProofWrite()
+        proofMayHaveExecuted = true
         transport.writeProof(GattCanonicalCodec.proofWire(challenge, credentialId, signature))
+        proofObserver.afterProofWrite()
         val result = GattCanonicalCodec.parseResult(transport.awaitResult(), challenge.sessionId)
-        val elapsed = (clock.nowMs() - started).coerceAtLeast(0)
+        proofObserver.afterResultReceived(result)
+        val elapsed = elapsed(started)
         if (result.reason == 0) {
           SessionOutcome.Success(elapsed, result.activeAclVersion)
         } else {
-          SessionOutcome.Failure(mapTargetReason(result.reason), elapsed, result.retryAfterMs)
+          val targetReason = TargetResultReason.fromWireCode(result.reason)
+          SessionOutcome.Failure(
+            reason = targetReason.observabilityReason,
+            latencyMs = elapsed,
+            retryAfterMs = result.retryAfterMs,
+            targetReason = targetReason,
+            proofMayHaveExecuted = true,
+          )
         }
       }
     } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
-      SessionOutcome.Failure(AccessReasonCode.GATT_TIMEOUT, elapsed(started))
+      SessionOutcome.Failure(
+        AccessReasonCode.GATT_TIMEOUT,
+        elapsed(started),
+        proofMayHaveExecuted = proofMayHaveExecuted,
+      )
     } catch (_: SecurityException) {
-      SessionOutcome.Failure(AccessReasonCode.PERMISSION_DENIED, elapsed(started))
+      SessionOutcome.Failure(
+        AccessReasonCode.PERMISSION_DENIED,
+        elapsed(started),
+        proofMayHaveExecuted = proofMayHaveExecuted,
+      )
     } catch (_: BluetoothDisabledException) {
-      SessionOutcome.Failure(AccessReasonCode.BLUETOOTH_DISABLED, elapsed(started))
+      SessionOutcome.Failure(
+        AccessReasonCode.BLUETOOTH_DISABLED,
+        elapsed(started),
+        proofMayHaveExecuted = proofMayHaveExecuted,
+      )
     } catch (_: CredentialKeyUnavailableException) {
-      SessionOutcome.Failure(AccessReasonCode.CREDENTIAL_INACTIVE, elapsed(started))
+      SessionOutcome.Failure(
+        AccessReasonCode.CREDENTIAL_INACTIVE,
+        elapsed(started),
+        proofMayHaveExecuted = proofMayHaveExecuted,
+      )
+    } catch (error: GattTransportException) {
+      SessionOutcome.Failure(
+        reason = error.failureCode.observabilityReason,
+        latencyMs = elapsed(started),
+        transportFailure = error.failureCode,
+        transportStatus = error.gattStatus,
+        proofMayHaveExecuted = proofMayHaveExecuted,
+      )
     } catch (error: IllegalArgumentException) {
       val reason = if (error.message.orEmpty().contains("protocol")) {
         AccessReasonCode.PROTOCOL_INCOMPATIBLE
       } else {
         AccessReasonCode.MALFORMED_PROOF
       }
-      SessionOutcome.Failure(reason, elapsed(started))
-    } catch (_: GattDisconnectedException) {
-      SessionOutcome.Failure(AccessReasonCode.GATT_DISCONNECTED, elapsed(started))
-    } catch (_: Throwable) {
-      SessionOutcome.Failure(AccessReasonCode.GATT_CONNECT_FAILED, elapsed(started))
+      SessionOutcome.Failure(reason, elapsed(started), proofMayHaveExecuted = proofMayHaveExecuted)
+    } catch (_: FeatureFlagDisabledBeforeProofException) {
+      SessionOutcome.Failure(
+        AccessReasonCode.CREDENTIAL_INACTIVE,
+        elapsed(started),
+        proofMayHaveExecuted = false,
+      )
+    } catch (_: Exception) {
+      SessionOutcome.Failure(
+        AccessReasonCode.GATT_CONNECT_FAILED,
+        elapsed(started),
+        proofMayHaveExecuted = proofMayHaveExecuted,
+      )
     } finally {
       transport.close()
     }
   }
 
   private fun elapsed(started: Long): Long = (clock.nowMs() - started).coerceAtLeast(0)
-
-  private fun mapTargetReason(reason: Int): AccessReasonCode = when (reason) {
-    1 -> AccessReasonCode.PROTOCOL_INCOMPATIBLE
-    2 -> AccessReasonCode.MALFORMED_PROOF
-    3 -> AccessReasonCode.PROOF_EXPIRED
-    4 -> AccessReasonCode.NONCE_REPLAYED
-    5 -> AccessReasonCode.ACL_NOT_FOUND
-    6 -> AccessReasonCode.CREDENTIAL_INACTIVE
-    7 -> AccessReasonCode.SIGNATURE_INVALID
-    8, 9 -> AccessReasonCode.TARGET_BUSY
-    else -> AccessReasonCode.INTERNAL_ERROR
-  }
 }
 
-class GattDisconnectedException : IllegalStateException("GATT disconnected")
+class FeatureFlagDisabledBeforeProofException : IllegalStateException("feature flag disabled before proof")
+
+object DurableAttemptPolicy {
+  fun canExecute(state: DurableSessionState): Boolean = state in setOf(
+    DurableSessionState.QUEUED,
+    DurableSessionState.RUNNING,
+    DurableSessionState.RETRY_PENDING,
+  )
+}
 
 object RetryPolicy {
   const val MAX_ATTEMPTS = 3
   const val WORK_BACKOFF_SECONDS = 10L
+  const val MAX_TARGET_RETRY_AFTER_MS = 30_000L
 
   fun shouldRetry(attempt: Int, failure: SessionOutcome.Failure): Boolean =
-    attempt < MAX_ATTEMPTS && failure.reason.retryable
+    attempt < MAX_ATTEMPTS && failure.retryable
 
   fun boundedDelayMs(attempt: Int, targetRetryAfterMs: Long = 0): Long {
-    val exponential = (500L shl (attempt - 1).coerceIn(0, 3)).coerceAtMost(4_000L)
-    return maxOf(exponential, targetRetryAfterMs.coerceIn(0, 4_000L))
+    val exponential = (500L shl (attempt - 1).coerceIn(0, 5)).coerceAtMost(16_000L)
+    return maxOf(exponential, targetRetryAfterMs.coerceIn(0, MAX_TARGET_RETRY_AFTER_MS))
+  }
+
+  fun remainingDelayMs(session: DurableGattSession, nowEpochMs: Long): Long {
+    if (session.state != DurableSessionState.RETRY_PENDING) return 0
+    val scheduled = session.scheduledRetryDelayMs ?: return 0
+    val elapsed = (nowEpochMs - session.updatedEpochMs).coerceAtLeast(0)
+    return (scheduled - elapsed).coerceAtLeast(0)
   }
 }
