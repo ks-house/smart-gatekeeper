@@ -59,6 +59,36 @@ python -m unittest backend.tests.test_migrations -v
 Remove-Item Env:RUN_MARIADB_INTEGRATION
 ```
 
+### Windows managed-runner `.review-tmp` cleanup
+
+Disposable MariaDB validation can finish successfully while a later repository-gate run leaves
+`tempfile.TemporaryDirectory()` fixtures under `.review-tmp`. In the 2026-08-02 PR #36 review,
+the managed host sandbox could see those directories but could not reopen or remove them, so
+`git status` printed `Permission denied` warnings. This was a host access/ownership boundary on
+test scratch directories, not a MariaDB migration failure and not repository content.
+
+First resolve the path and require it to be exactly this worktree's `.review-tmp`. Then mount only
+that directory into the already present `mariadb:10.11` image, list its direct children, and remove
+only the individually verified failed-run directories. Never mount the repository root and never
+use a wildcard or broad recursive delete.
+
+```powershell
+$reviewTmp = (Resolve-Path -LiteralPath '.review-tmp').Path
+$expectedReviewTmp = Join-Path (Get-Location).Path '.review-tmp'
+if ($reviewTmp -cne $expectedReviewTmp) { throw "unexpected review temp path" }
+
+docker run --rm --mount "type=bind,source=$reviewTmp,target=/reviewtmp" `
+  mariadb:10.11 sh -c "find /reviewtmp -mindepth 1 -maxdepth 1 -print"
+
+# PR #36 incident: delete only the six names confirmed by the preceding listing.
+docker run --rm --mount "type=bind,source=$reviewTmp,target=/reviewtmp" `
+  mariadb:10.11 sh -c "rm -rf -- /reviewtmp/tmp8oyfvwq5 /reviewtmp/tmp9kyj8nwy /reviewtmp/tmpleix_s5l /reviewtmp/tmprqxfzj6q /reviewtmp/tmpycbfhu2k /reviewtmp/tmpzudhyejf"
+```
+
+After cleanup, rerun the direct-child listing (it must be empty), then run `git status --short`
+and `git diff --check`. Do not rerun a completed long test suite solely because cleanup was needed;
+rerun only validations whose assertions did not execute.
+
 ## 3. Android 앱
 
 앱은 Flutter/Dart 3, Java 17, Android SDK/NDK가 필요하며 로컬 fork `gatekeeper_app/android/app/libs/flutter_beacon_local`을 path dependency로 사용합니다. 재현 가능한 검증은 Docker builder를 권장합니다.
