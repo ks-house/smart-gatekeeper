@@ -28,6 +28,7 @@ public:
                                  bool is_armed, uint32_t armRemainingMs,
                                  bool relayCommandedOn, int relayPinLevel);
     static void publishEvent(const char* eventType, const char* detail);
+    static bool publishCanonicalEvent(const char* payload);
     static void publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs);
     static void publishSensorInfo(unsigned long duration_us, float distance_cm);
     static void publishBootDiagnostics();

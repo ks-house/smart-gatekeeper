@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-02 (Windows managed-runner PlatformIO lock 경계 반영)
+> Last updated: 2026-08-02 (Windows PlatformIO timeout/orphan recovery guidance and managed-runner PlatformIO lock 경계 반영)
 
 ## 1. 펌웨어
 
@@ -22,7 +22,81 @@ pio device monitor -b 115200
 `2.1.0-g<short_sha>` 형식입니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
 `platformio.ini`에 없습니다.
 
-### Windows managed-runner PlatformIO package lock
+### 1.1 Windows에서 긴 PlatformIO 빌드가 timeout된 경우
+
+#### 증상과 원인
+
+- 실행 도구가 exit 124/timeout을 반환했는데도 작업 관리자나
+  `Get-CimInstance Win32_Process`에는 `riscv32-esp-elf-g++`가 계속 남아 있을 수 있습니다.
+  이 상태에서 build를 재시도하면 compiler 수가 계속 증가하고 두 build가 모두 매우 느려집니다.
+- Windows에서 wrapper/shell timeout은 이미 생성된 SCons compiler 자식 프로세스까지 항상 종료하지
+  않습니다. default-OFF와 feature-ON을 동시에 실행하면 각각의 SCons `--jobs`가 합쳐져 CPU와 disk를
+  과도하게 점유할 수 있습니다. 서로 다른 build directory는 object 충돌을 막지만 동시 실행의
+  resource contention까지 해결하지는 않습니다.
+- repository는 실제 `include/secrets.h`를 의도적으로 추적하지 않습니다. 이 파일이 없는 checkout은
+  firmware compile 전에 실패할 수 있지만, 실제 secret이나 token을 임시 파일·로그·명령행에 넣어
+  해결해서는 안 됩니다.
+
+#### 안전한 절차
+
+1. 인증된 개발 환경에서는 실제 local `include/secrets.h`가 ignore되는지만 확인하고 내용을 출력하지
+   않습니다. 일회성 검증 환경에서는 필요한 macro 이름만 가진 non-secret compile placeholder를
+   사용하고 검증 직후 삭제하며 절대 stage하지 않습니다.
+
+   ```powershell
+   git check-ignore include/secrets.h
+   git status --short
+   ```
+
+2. 두 구성을 동시에 실행하지 말고 build directory와 jobs를 분리해 순차 실행합니다. feature build가
+   끝난 뒤 환경 변수도 제거합니다.
+
+   ```powershell
+   $env:PYTHONUTF8 = "1"
+   chcp 65001
+
+   $env:PLATFORMIO_BUILD_DIR = ".pio/build-default-final"
+   Remove-Item Env:PLATFORMIO_BUILD_FLAGS -ErrorAction SilentlyContinue
+   pio run -e esp32c6 -j 4
+
+   $env:PLATFORMIO_BUILD_DIR = ".pio/build-feature-final"
+   $env:PLATFORMIO_BUILD_FLAGS = "-DENABLE_HARDWARELESS_RC=1"
+   pio run -e esp32c6 -j 4
+   Remove-Item Env:PLATFORMIO_BUILD_FLAGS -ErrorAction SilentlyContinue
+   ```
+
+3. timeout 후에는 즉시 재실행하지 않습니다. 먼저 현재 worktree 경로가 command line의 response-file
+   경로에 들어 있는 compiler만 읽기 전용으로 확인합니다. 다른 worktree나 사용자의 build process를
+   함께 종료하지 않도록 이름만으로 broad kill하지 않습니다.
+
+   ```powershell
+   $sgkWorkspace = (Resolve-Path .).Path
+   $ownedCompilers = Get-CimInstance Win32_Process | Where-Object {
+     $_.Name -like "riscv32-esp-elf-*" -and
+     $_.CommandLine -like "*$sgkWorkspace*"
+   }
+   $ownedCompilers |
+     Select-Object ProcessId, ParentProcessId, Name, CommandLine
+   ```
+
+   출력에서 exact worktree와 PID/parent를 사람이 확인한 뒤에만 해당 PID를
+   `Stop-Process -Id <verified_pid> -Force`로 종료합니다. SCons Python command line은 project path를
+   인코딩할 수 있으므로 추측으로 Python 전체를 종료하지 말고, 확인한 compiler의 parent 관계와
+   생성 시각을 함께 대조합니다. 종료 후 위 조회 결과가 0인지 확인하고 순차 build를 재개합니다.
+
+#### 검증 기준과 증거 구분
+
+- 각 명령은 `[SUCCESS]`와 독립적인 `firmware.elf`/`firmware.bin` 생성, RAM/flash size 출력을 모두
+  확인해야 합니다. 2026-08-02 PR #34 software 검증에서는 순차 재실행 결과 default-OFF가
+  RAM 47,040/327,680, flash 1,598,136/7,340,032, feature-ON이 RAM 53,648/327,680,
+  flash 1,633,096/7,340,032로 성공했고 실제 NimBLE/Bluedroid adapter source가 compile/link되었습니다.
+- 검증 후 workspace-owned compiler가 0개이고, ephemeral `include/secrets.h`가 제거됐으며,
+  `git status --short`에 build/secret artifact가 없는지 확인합니다.
+- 위 결과는 local software/toolchain evidence입니다. 별도의 GitHub Actions 결과와 혼합하지 않으며,
+  ESP32-C6 radio, GPIO3 relay/sensor, Samsung/OEM, power-loss/bootloader, OTA-G1..G4 또는
+  RELAY-G0..G2 physical evidence를 대신하지 않습니다.
+
+### 1.2 Windows managed-runner PlatformIO package lock
 
 Managed sandbox 안에서 `pio run -e esp32c6`를 실행하면 compile 전에
 `PermissionError: [Errno 13] Permission denied: 'C:\Users\shcat\.platformio\platforms.lock'`로

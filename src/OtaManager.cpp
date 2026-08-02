@@ -5,6 +5,7 @@
 #include "OtaManager.h"
 #include "config.h"
 #include "DiagnosticsManager.h"
+#include "GattServer.h"
 #include "WifiManager.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
@@ -12,13 +13,47 @@
 OtaManager::OtaStatus OtaManager::status = OtaManager::OtaStatus::IDLE;
 String OtaManager::lastError = "";
 uint32_t OtaManager::lastCheckMs = 0;
+OtaManager::SafeStateProvider OtaManager::safeStateProvider = nullptr;
+
+namespace {
+constexpr uint32_t kOtaSafeStateTimeoutMs = 45000;
+}
 
 void OtaManager::init() {
     status = OtaStatus::IDLE;
 }
 
+void OtaManager::setSafeStateProvider(SafeStateProvider provider) {
+    safeStateProvider = provider;
+}
+
 void OtaManager::checkAndUpdate(bool force) {
+    // Reject new GATT proofs immediately. An active auth session receives a
+    // protocol/session-bound BUSY result before its secrets are cleared.
+    GattServer::setOtaBusy(true);
+    struct OtaBusyGuard {
+        ~OtaBusyGuard() { GattServer::setOtaBusy(false); }
+    } busyGuard;
+
+    GattServer::flushOtaBusy(3000);
+
+    status = OtaStatus::WAIT_SAFE_STATE;
+    const uint32_t waitStartedMs = millis();
+    while (safeStateProvider == nullptr ||
+           safeStateProvider() != OtaSafeState::SAFE) {
+        GattServer::update();
+        if (millis() - waitStartedMs >= kOtaSafeStateTimeoutMs) {
+            status = OtaStatus::FAILED;
+            lastError = "WAIT_SAFE_STATE timeout";
+            DiagnosticsManager::noteAction("ota_wait_safe_timeout");
+            LOGF("[OTA-ERROR] WAIT_SAFE_STATE timeout; network/flash not started");
+            return;
+        }
+        delay(10);
+    }
     if (!WifiManager::isConnected()) {
+        status = OtaStatus::FAILED;
+        lastError = "Wi-Fi unavailable after WAIT_SAFE_STATE";
         LOGF("[OTA] Wi-Fi 미연결로 OTA 확인 취소");
         return;
     }
@@ -116,6 +151,7 @@ void OtaManager::checkAndUpdate(bool force) {
             status = OtaStatus::SUCCESS;
             LOGF("\n[OTA-SUCCESS] 업데이트 성공! 디바이스를 재부팅합니다.");
             DiagnosticsManager::markPlannedRestart("ota_update");
+            GattServer::setOtaBusy(false);
             delay(1000);
             ESP.restart();
             break;

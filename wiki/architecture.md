@@ -13,7 +13,7 @@ flowchart LR
   B -->|QoS 1 + PUBACK\ngatekeeper/arm| M[MQTT broker]
   M --> T
   S[AJ-SR04T\nGPIO10/11] --> T
-  T -->|GPIO23, 1 s| R[Active-LOW relay]
+  T -->|GPIO3, 1 s| R[Active-LOW relay]
   B --> W[WebView tenant/admin UI]
 ```
 
@@ -162,4 +162,4 @@ FastAPI는 MariaDB의 tenant/device 승인을 확인하고 Paho MQTT를 통해 a
 
 ## 7. 현 단계
 
-기능 구현은 Target, backend, Android, CI/CD까지 통합되어 **프로덕션 검증 단계**입니다. 완료 조건은 최신 firmware/app 조합의 실기기 E2E, iBeacon raw payload, 24시간 RF soak, 릴레이 전기 안전, Android OEM별 백그라운드 검증입니다. PCB/하우징 양산과 관리자 인증은 미완료입니다.
+기능 구현은 Target, backend, Android, CI/CD까지 통합되어 **프로덕션 검증 단계**입니다. #18 GATT transport는 default-OFF이며 현재 signed ACL verifier/#20 FSM/relay를 호출하지 않습니다. 완료 조건은 최신 firmware/app 조합의 실기기 E2E, iBeacon raw payload, 24시간 RF soak, GPIO3 릴레이 전기 안전, Android OEM별 백그라운드 검증입니다. PCB/하우징 양산과 관리자 인증은 미완료입니다.

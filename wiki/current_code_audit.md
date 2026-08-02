@@ -4,7 +4,7 @@
 
 ## 1. 결론
 
-저장소는 초기 문서가 설명하던 “ESP32 BLE scanner + VL53L0X ToF + ESP32 HTTPS 인증”을 이미 벗어났습니다. 최신 구현의 기준선은 **ESP32 iBeacon advertiser + Android foreground scanner + FastAPI/MariaDB 인증 + MQTT QoS1 Pre-arm + AJ-SR04T + GPIO23 relay**입니다.
+저장소는 초기 문서가 설명하던 “ESP32 BLE scanner + VL53L0X ToF + ESP32 HTTPS 인증”을 이미 벗어났습니다. 최신 구현의 기준선은 **ESP32 iBeacon advertiser + Android foreground scanner + FastAPI/MariaDB 인증 + MQTT QoS1 Pre-arm + AJ-SR04T + GPIO3 relay**입니다.
 
 이번 감사에서 README, architecture, environment, pin map, test matrix, index를 현재 코드에 맞춰 다시 컴파일했습니다. `raw/`와 append-only log의 과거 항목은 역사적 근거이므로 변경하지 않았습니다.
 
@@ -14,7 +14,7 @@
 |---|---|---|
 | Target board/build | ESP32-C6, pioarduino, `esp32c6`, 16 MB OTA | `platformio.ini` |
 | Sensor | AJ-SR04T, GPIO10/11, 20 cm min, 50 cm default | `include/config.h`, `src/UltrasonicSensor.cpp` |
-| Relay | GPIO23 Active-LOW, ON push-pull LOW, OFF INPUT High-Z | `include/config.h`, `src/RelayController.cpp` |
+| Relay | GPIO3 Active-LOW, ON push-pull LOW, OFF INPUT High-Z; physical validation pending | `include/config.h`, `src/RelayController.cpp` |
 | Beacon | fixed UUID, 100 ms, +9 dBm default | `include/config.h`, `src/main.cpp` |
 | Target FSM | IDLE/ARMED/RELAY_HOLD/COOLDOWN | `src/main.cpp` |
 | Pre-arm | `gatekeeper/arm`, default 60 s | `include/config.h`, `src/MqttManager.cpp` |
@@ -27,7 +27,6 @@
 
 - ESP32가 스마트폰 BLE 광고를 스캔한다.
 - VL53L0X가 현재 출입 센서이며 GPIO6/7 I²C를 사용한다.
-- 릴레이가 GPIO3에 연결된다.
 - ESP32가 NAS `/auth/verify`를 직접 호출한다.
 - ToF 전용/relay 전용 PlatformIO 환경과 Pololu dependency가 현재 존재한다.
 - 과거 ToF E2E PASS가 현재 Android/초음파 흐름도 증명한다.
@@ -54,7 +53,7 @@
 2. source/header 주석에 Bluedroid/NimBLE, ToF/ultrasonic 용어가 혼재합니다.
 3. `ConfigManager.h` 스타일과 일부 로그 prefix가 프로젝트 컨벤션과 다릅니다.
 4. `url_launcher`가 앱 dependency에 남아 있으나 최근 다운로드 경로는 Dio/open_filex로 전환됐습니다.
-5. `AGENTS.md`의 “현재 Step 1”, ToF 초기화, GPIO3 relay 요약은 프로젝트 역사와 불일치하지만 협업 규칙 문서이므로 별도 거버넌스 결정을 권장합니다.
+5. 현재 릴레이 계약은 `AGENTS.md`, `schema.md`, `include/config.h`와 동일한 authoritative GPIO3입니다. 과거 GPIO23 현장 관측은 append-only 이력으로만 유지하며 현재 지침으로 사용하지 않습니다.
 
 ## 5. 다음 우선순위
 

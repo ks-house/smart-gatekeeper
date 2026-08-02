@@ -1278,8 +1278,226 @@
 - Passed 30 repository unit tests including 12 trusted-policy adversarial tests, OTA contract validation, Python compile, actionlint, workflow YAML and policy/OTA JSON parsing, wiki relative-link lint, `git diff --check`, and raw-source immutability check.
 - No physical Target or Android OTA trial was performed; OTA-G1 through OTA-G4 remain pending and issue #23 stays open.
 
-- `wiki/log.md`는 main log blob을 exact byte prefix로 두고 common base `f2dc0b8` 이후 PR #31 branch-only suffix를 byte-for-byte 연결해 append-only 양쪽 이력을 보존
-- trusted workflow/index 문서의 main 업데이트와 Hardwareless RC/G0-HW Gate 계약을 함께 보존하고 runtime, raw, protected bundle, `manual_remote`, OTA assets는 변경하지 않음
+## [2026-08-01] fix | PR #28 branch `origin/main` (PR #29 `420783fc`) 병합 및 Trusted Policy `pr-28-preapproved` 검증
+
+- PR #29가 `origin/main` (`420783fc`)으로 병합됨에 따라 `origin/main`을 `tworimpa/fix-main-ci-release-gate`에 히스토리 재작성 없이 병합
+- 5개 보호 대상 파일 (`deploy.yml`, `build_app.yml`, `ota_contract.yml`, `scripts/ota_contract_gate.py`, `ota/requirements.txt`)을 `7bae62f` 승인 번들 바이트로 보존
+- `verify_trusted_workflow_policy.py` 실행 결과 후보 번들이 `pr-28-preapproved`와 100% 일치함을 기계적으로 검증
+- 수동 모바일 출입 및 미결 OTA-G1~G4 물리 증거 상태를 보존하고 12개 trusted policy test, 39개 OTA contract test, 18개 observability test, 16개 protocol test, actionlint, relative link check, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
+
+## [2026-08-01] test | PR #28 final trusted-policy review blocked by unresolved wiki conflicts
+
+- Independently verified head `55f8249753e21061b61eaf4d5669dd549796c511`: trusted base run `30706318220` checked base SHA `420783fc`, approved exactly `pr-28-preapproved`, and 12 trusted-policy tests plus a separate 102-case byte-mutation audit rejected every protected-file deviation and PR-side policy self-redefinition.
+- Re-ran 50 OTA, 18 observability, 16 protocol, authenticated `manual_remote`, OTA/access/rollback state-machine, actionlint, YAML/JSON/JSONL/schema/link/compile/raw-diff, and ESP32-C6 PlatformIO checks; all passed, and PR runs `30706319098`, `30706319103`, and `30706319133` completed successfully with both production jobs accurately skipped.
+- Confirmed the live `production` Environment still requires reviewer `tworimpa` and permits only the custom## [2026-08-02] fix | PR #34 indication epoch token and build verification
+
+- Fixed GATT indication status callback mismatch by introducing `IndicationToken` (output generation, fragment index, connection handle and generation) to discard stale callbacks from aborted indications or previous sessions.
+- Added `flushOtaBusy()` before `WAIT_SAFE_STATE` in `OtaManager.cpp` to ensure OTA BUSY indications finish transmission before network HTTP operations start.
+- Resolved build compilation errors under `ENABLE_HARDWARELESS_RC=1` by defining missing static `in_flight_token_`, `in_flight_type_`, and `in_flight_valid_` variables in `src/GattServer.cpp` and correcting printf format specifiers.
+- Verified all 87 host tests (python/C++) and executed sequential ESP32-C6 PlatformIO builds: default-OFF passed at RAM 47,040/327,680 bytes (14.4%) and flash 1,598,136/7,340,032 bytes (21.8%); feature-ON (`ENABLE_HARDWARELESS_RC=1`) passed at RAM 53,648/327,680 bytes (16.4%) and flash 1,633,096/7,340,032 bytes (22.2%).
+- Maintained all manual_remote and OTA invariants without claiming physical device evidence.
+
+## [2026-08-02] code | Backend public-key enrollment와 signed ACL Hardwareless RC 구현
+
+- expand-first MariaDB migration에 tenant canonical ID, public credential lifecycle, ACL snapshot, Target ACK, redacted audit와 OTA metadata/health state를 추가하고 기존 `ble_device_mac`·`auth_key`·manual_remote를 보존
+- single-use proof-of-possession enrollment, tenant-scoped admin approve/disable/revoke, canonical deterministic P-256 ACL signing, monotonic version·900초 기본/3600초 hard lease, MQTT push·periodic pull artifact와 idempotent ACK/fleet status API 구현
+- revoked/disabled credential은 다음 authoritative snapshot에서 제거하고 stale/equal-conflict/downgrade/invalid signature rejection, legacy device HMAC lookup flag와 Backend outage 중 unexpired local lease 독립성을 자동 시험으로 고정
+- primary/fallback OTA metadata와 install/boot health confirmation을 ACL credential 상태와 분리하고 feature init 실패 때 authenticated `manual_remote` 및 기존 APK/version/health 경로가 유지되도록 production-OFF flag로 격리
+
+## [2026-08-02] test | Backend ACL unit·API·isolated MariaDB migration 검증
+
+- isolated SQLite service/API tests에서 tenant boundary, enrollment proof/single-use, approval lifecycle, deterministic shared vector, revocation, stale/downgrade/invalid signature, duplicate ACK, offline lease, audit redaction, legacy flag, N/N-1와 OTA endpoint independence를 검증
+- disposable MariaDB 10.11에서 legacy schema→expand migration→N-1 legacy/N write→down migration을 실행하고 기존 legacy row가 rollback 뒤에도 읽히는 것을 확인
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 시험은 수행하지 않았으며 G0-HW, RELAY-G0~G2와 OTA-G1~G4는 pending 유지
+
+## [2026-08-02] fix | Backend ACL 독립 리뷰 보안·동시성 지적 보강
+
+- 승인 credential의 tenant 전체 door 암묵 허용을 제거하고 explicit tenant/door/credential grant만 canonical snapshot entry에 포함하도록 변경
+- Target credential을 tenant·Target ID·단일 door에 결합하고 ACK/health body Target 위조와 같은 tenant 내 다른 door pull/ACK를 403으로 거부
+- revoke/disable/grant removal과 durable replacement job을 단일 transaction으로 기록하고 영향 door마다 새 monotonic snapshot을 저장·MQTT publish하며 signer/MQTT 실패 후 periodic pull이 같은 queued artifact를 복구하도록 보강
+- per-door version atomic counter, duplicate ACK atomic upsert와 conflicting status 거부, legacy tenant UUID mapping과 ACK 이후 audited dual-mode 전환을 구현하고 frozen ACL header의 tenant 부재는 DB와 Target config의 globally unique door ownership으로 fail-closed 처리
+- malformed signer 값을 traceback에 노출하지 않고 ACL-only integer parsing을 feature guard 내부로 이동하여 ACL 설정 오류가 manual_remote·OTA 경로를 중단하지 않도록 수정
+
+## [2026-08-02] lint | Backend ACL 보강 후 software-only 회귀 검증
+
+- isolated backend 25개(SQLite/API 및 disposable MariaDB 10.11 concurrent version/ACK·legacy mapping/dual/down 포함), protocol 16개, observability 18개, repository policy/OTA/Hardwareless 81개와 OTA contract gate 전건 통과
+- canonical vector verifier, enabled/disabled router smoke, Python compile, `git diff --check`와 added-line secret/injection/eval/pickle/SQL-format scan을 통과
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 증거는 생성하지 않았으며 production enable과 legacy retirement는 계속 차단
+
+## [2026-08-02] fix | Backend ACL 최종 독립 리뷰 차단사항 해소
+
+- Target activation verifier가 trusted signer key-ID set, exact door, protocol overlap, trusted UTC, receipt/current boot identity, canonical digest/signature와 persisted version/digest high-watermark를 모두 확인하도록 보강하고 reboot 후 trusted UTC가 없으면 cached ACL을 fail-closed 처리
+- N-1 primary signer와 optional transition signer가 같은 canonical ACL을 dual-sign하도록 구현하고 transition public key 신뢰 배포 후에만 primary를 승격하는 rollback-compatible rotation 절차를 문서화
+- enrollment challenge consume와 public credential insert를 SQLite/MariaDB 단일 transaction으로 결합하여 insert 실패 시 challenge가 미사용 상태로 rollback되도록 수정
+- legacy lookup 활성화 시 explicit non-empty HMAC key를 필수화하고 Hardwareless RC의 unsafe tenant-wide dual-mode endpoint를 제거하여 expected Target inventory와 전체 ACK/physical evidence 전환 gate를 유지
+
+## [2026-08-02] test | Backend ACL 최종 software-only 회귀 검증
+
+- backend 27개(SQLite/API 및 disposable MariaDB 10.11 포함), protocol 16개, observability 18개, repository Hardwareless/OTA/trusted policy 81개와 OTA contract gate를 통과
+- Python compile, Docker Compose config, canonical vector와 `git diff --check`를 통과했으며 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader 또는 OTA install/rollback 증거는 생성하지 않음
+
+## [2026-08-02] lint | PR #36 independent review blocked
+
+- Exact author head `7a1e6f511c10321d99ae5aef7adc5b49508b1d6b`의 전체 diff와 backend ACL enrollment, signing, activation, revocation, migration, Target API, OTA/manual 경계를 독립 검토하고 same-account `COMMENTED` review https://github.com/ks-house/smart-gatekeeper/pull/36#pullrequestreview-4836490385 를 게시
+- enrollment challenge가 tenant에만 묶이고 발급 actor에 결합되지 않아 같은 tenant의 다른 인증 actor가 submit할 수 있는 점, 실제 모바일 버튼 대신 admin master-open 경로만 실행하는 `manual_remote` regression, 금지된 `Closes #19`, Windows 기본 code page에서 disposable MariaDB stdin이 손상되는 재현성 문제를 merge blocker로 기록
+- `PYTHONUTF8=1` 보정 후 backend 27개와 MariaDB 10.11 migration, repository 81개, protocol 16개, observability 18개, OTA contract, Python compile, Compose, Actionlint, Markdown link, raw/log/diff 검사 및 hosted runs `30727103265`/`30727103255`는 통과했으나 blocker 해소 전 PR은 draft/open/unmerged 유지
+- Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4, RELAY-G0~G2 물리 증거는 없으며 production enable과 legacy retirement는 계속 fail-closed
+
+## [2026-08-02] fix | PR #36 blocking COMMENTED review correction
+
+- enrollment challenge에 stable one-way authenticated actor reference를 저장하고 SQLite/MariaDB의 challenge consume `UPDATE`에 tenant·enrollment ID·actor를 함께 조건화하여 credential insert와 단일 transaction으로 결합
+- 같은 tenant의 다른 인증 actor와 다른 tenant actor submit을 403/fail-closed로 거부하고 실패 뒤 원 actor가 같은 challenge를 정상 consume할 수 있는 service·API·MariaDB direct negative regression을 추가
+- 관리자 master-open 대신 WebView가 실제 전송하는 `manual_click`·approved `device_id`·no API key 요청을 실행하고 hands-free Pre-arm/RELAY 함수 미호출, ACL disabled/init failure와 OTA download 독립성을 명시적으로 검증
+- Windows Docker subprocess의 SQL stdin과 stdout/stderr를 explicit UTF-8 strict로 고정하고 migration client charset을 `utf8mb4`로 지정하여 별도 Python encoding 환경변수 없이 MariaDB 10.11 harness가 실행되도록 수정
+
+## [2026-08-02] test | PR #36 correction software-only regression verification
+
+- `PYTHONUTF8`와 `PYTHONIOENCODING`을 제거한 Windows 환경에서 disposable MariaDB 10.11을 포함한 backend 29개, repository Hardwareless/OTA/trusted policy 81개, protocol 16개, observability 18개와 canonical vector verifier 전건 통과
+- OTA contract, Actionlint, Python compile, Docker Compose config, wiki relative links, conflict marker, raw/·OTA/runtime immutability, append-only log prefix와 `git diff --check` 전건 통과
+- PR body에 issue-closing keyword가 없고 PR #36은 draft/open/unmerged 상태임을 확인했으며 `ACL_MANAGEMENT_ENABLED=false`, authenticated mobile `manual_remote`, OTA 복구 계약과 production fail-closed 상태를 보존
+- 물리 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 증거는 생성하거나 완료로 주장하지 않음
+
+## [2026-08-02] fix | PR #36 Windows review temporary-directory cleanup
+
+- disposable MariaDB 검증 완료 뒤 repository gate의 `TemporaryDirectory()` 6개가 이 worktree의 `.review-tmp` 아래에 남고 managed host에서 재접근할 때 `Permission denied`가 발생하는 증상을 확인
+- `Resolve-Path` 결과가 정확히 `C:\Users\shcat\orca\workspaces\smart-gatekeeper\issue19-backend-acl-hermes\.review-tmp`인지 검증하고, 이미 사용한 `mariadb:10.11` image에 해당 디렉터리만 bind mount하여 direct child 6개를 열거
+- repository root 또는 wildcard를 사용하지 않고 확인된 6개 경로만 container 내부에서 제거한 뒤 direct-child listing이 비어 있음을 확인했으며, 장시간 완료 시험은 불필요하게 재실행하지 않음
+- 증상, host access/ownership 경계라는 원인, scoped container cleanup과 후속 `git status --short`·`git diff --check` 검증 절차를 `wiki/env_setup.md`에 기록
+
+## [2026-08-02] lint | PR #36 corrected-head independent re-review blocked
+
+- Exact corrected head `9ac4bad7843bcca2f7730c9c5be1fca441e35f0f`를 독립 재검토하고 same-account `COMMENTED` review https://github.com/ks-house/smart-gatekeeper/pull/36#pullrequestreview-4836889140 게시
+- 기존 review `4836490385`의 actor-bound atomic enrollment, 실제 approved-device `manual_remote` button, issue-closing keyword 제거, Windows explicit UTF-8 MariaDB 재현성 4개 차단사항은 해소됨을 확인
+- issue #19 완료 기준의 tenant/credential 비활성화 중 credential disable/revoke는 replacement ACL을 생성하지만 tenant disable은 `acl_tenants` 상태·관리 API·replacement job 연결이 없고 legacy `tenants.is_active=false` 뒤에도 active public credential이 signed ACL에 남는 P1 차단사항을 새로 확인
+- Windows에서 Python encoding 보정 없이 real MariaDB 10.11 포함 backend 29개, repository policy/OTA/trusted 81개, protocol 16개, observability 18개, canonical vector, OTA contract, compile/Compose/Actionlint/wiki link·index/raw·protected·OTA·runtime/log 검증과 exact-head hosted checks는 통과
+- PR #36은 draft/open/unmerged로 유지하고 production enable·legacy retirement를 차단했으며 Android/ESP32-C6, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 주장하지 않음
+
+## [2026-08-02] fix | PR #36 tenant-disable ACL replacement blocker 해소
+
+- 인증된 tenant-scope admin disable API가 `acl_tenants.status=DISABLED`, 단일 `TENANT_DISABLED` audit 의미와 모든 영향 door의 durable replacement job을 한 transaction으로 기록하도록 구현
+- authoritative credential query가 disabled tenant를 제외하고 signer failure는 미생성 job, MQTT failure는 exact generated version을 보존해 periodic pull·idempotent retry가 empty replacement ACL을 복구하도록 보강
+- exact retry는 완료 door의 job revision·ACL version·audit를 재생성하지 않으며 enrollment·approve·new grant는 disabled tenant에서 fail-closed, tenant registration과 legacy `is_active=true`는 re-enable하지 않도록 고정
+- legacy `is_active=false`는 registration, authoritative publish, enrollment-sensitive operation 또는 periodic pull에서 one-way ACL disable로 명시적으로 reconcile하고 authenticated ACL disable도 mapped legacy row를 같은 transaction에서 비활성화
+- `ACL_MANAGEMENT_ENABLED=false`, authenticated approved-device `manual_remote`, hands-free RELAY 경계, mobile/Target OTA 독립성·rollback·recovery 계약은 유지하고 물리 증거를 생성하거나 주장하지 않음
+
+## [2026-08-02] test | PR #36 tenant-disable software-only 회귀 검증
+
+- `PYTHONUTF8`·`PYTHONIOENCODING` 없이 disposable MariaDB 10.11과 migration repeat-apply를 포함한 backend 32개, repository Hardwareless/OTA/trusted 81개, protocol 16개, observability 18개와 canonical vector 전건 통과
+- active credential→tenant disable→2개 door empty replacement, no-grant, exact repeat, wrong tenant scope, signer failure, MQTT failure·exact version retry, single audit, legacy inactive one-way mapping과 fail-closed re-enable를 SQLite/API/MariaDB에서 검증
+- authenticated mobile `manual_remote`, hands-free 분리, challenge/credential 보존, OTA metadata/health 독립성, access/manual_remote/Target OTA/rollback fixture validate·evaluate와 OTA contract를 통과
+- Actionlint, Python compile, Docker Compose, 6 YAML·22 JSON·9 JSONL parse, 39 Markdown link·23-page index, conflict marker, raw/protected/runtime/OTA immutability, append-only log와 `git diff --check` 통과
+- ignored build-only `include/secrets.h`를 제거한 뒤 ESP32-C6 PlatformIO build가 RAM 47,032/327,680 bytes, flash 1,594,368/7,340,032 bytes에서 성공했으며 `.review-tmp`와 disposable MariaDB container 잔여물이 없음을 확인
+- Android/ESP32-C6 실기기, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 생성하거나 완료로 주장하지 않음
+
+## [2026-08-02] fix | Windows managed-runner PlatformIO global lock 경계 기록
+
+- sandbox 내부 `pio run -e esp32c6`가 compile 전에 user-global `C:\Users\shcat\.platformio\platforms.lock`을 열지 못해 `PermissionError`로 실패하는 증상을 재현
+- 원인은 worktree-only sandbox write scope와 PlatformIO package manager의 user-global lock/cache 접근 경계이며 firmware source나 pioarduino package 오류가 아님을 확인
+- 동일한 `pio run`만 scoped PlatformIO 권한으로 재실행하고 ignored example-based `include/secrets.h`를 `finally`에서 정확히 제거하는 안전 절차를 `wiki/env_setup.md`에 기록
+- scoped 재실행은 RAM 47,032/327,680 bytes, flash 1,596,456/7,340,032 bytes에서 성공했고 종료 후 관련 process와 `include/secrets.h`가 남지 않음을 확인
+
+## [2026-08-02] lint | PR #36 exact author head 최종 독립 재검토 clean
+
+- Exact local·remote·PR author head `4481209cfd64864712c7164872c83408502fa483`와 current main `b9c39b629c3e162be68760acfa224dd1f43b4389`를 대조하고 issue #19, 전체 16-file diff, 이전 same-account `COMMENTED` reviews 3개와 correction replies를 독립 재검토
+- authenticated tenant-scoped idempotent disable, atomic `DISABLED` state·단일 audit·모든 영향 door durable job, disabled-tenant snapshot exclusion, monotonic empty replacement, signer/MQTT failure와 periodic pull recovery, exact retry version/audit idempotency를 SQLite/API/MariaDB에서 확인
+- wrong tenant·same-tenant wrong actor·no grant·multi-door·repeated call, enrollment/approve/grant fail-closed, legacy `tenants.is_active` one-way boundary, approved-device `manual_remote`와 hands-free RELAY 분리, ACL initialization failure와 mobile/Target OTA 독립성을 확인
+- `PYTHONUTF8`·`PYTHONIOENCODING` 없이 disposable MariaDB 10.11을 포함한 backend 32개, repository 81개, protocol 16개, observability 18개, canonical vector, OTA contract, live trusted-policy `current-main-baseline`, Actionlint와 Docker Compose를 통과
+- tracked 7 YAML·7 YML·22 JSON·9 JSONL·18 Python parse, 39 Markdown·193 relative link, wiki index, append-only 140,689-byte main log prefix, raw/protected/runtime/OTA immutability, conflict marker와 `git diff --check`를 통과
+- author head hosted OTA/trusted runs `30731646894`·`30731646303`가 성공했으며 Android/ESP32-C6 실기기, BLE/radio, relay/sensor, bootloader, OTA-G1~G4 또는 RELAY-G0~G2 물리 증거는 생성하거나 완료로 주장하지 않고 production enable·legacy retirement를 계속 차단
+
+## [2026-08-02] fix | Windows managed-worktree Git administrative lock 경계 기록
+
+- verified review 문서 2개를 explicit staging하려 할 때 parent repository의 external `.git\worktrees\issue19-backend-acl-hermes\index.lock` 생성이 worktree-only sandbox에서 `Permission denied`로 실패하는 증상을 확인
+- visible worktree가 아니라 Git common administrative directory에 index lock을 써야 하는 managed-worktree 경계가 원인이며 source 권한이나 repository corruption이 아님을 확인
+- `git status`·explicit diff·`git diff --check`로 범위를 먼저 고정하고 verified path의 add/commit만 scoped Git administrative access로 실행한 뒤 clean status와 remote head를 재검증하는 절차를 `wiki/env_setup.md`에 기록
+
+## [2026-08-02] code | Issue 18 Hardwareless RC Connectable GATT Transport & Coexistence 구현
+
+- ESP32-C6 Connectable GATT transport (`GattServer.h`, `GattServer.cpp`) 구현: compile (`ENABLE_HARDWARELESS_RC`) 및 runtime (`ConfigManager::getHardwarelessRcEnabled`) default-OFF feature flag 설정
+- 기존 iBeacon manufacturer payload (`0x004C`, `02 15`, UUID `a1b2c3d4-e5f6-7890-abcd-ef1234567890`) 및 AD Flags `0x1A` 100% 보존하면서 Connectable GATT Service UUID `9f4d1000-7d9e-4fb1-9c54-6f4d53474b31` scan response 탑재
+- Canonical GATT characteristics (Hello `9f4d1001-...`, Challenge `9f4d1002-...`, Proof `9f4d1003-...`, Result `9f4d1004-...`), N/N-1 protocol version negotiation, 138-byte canonical challenge, 103-byte proof write, single-use CAS, 5s challenge expiry, 2s proof write completion, disconnect cleanup 및 connection limits 구현
+- OTA busy 중 GATT auth `BUSY` (reason=8) 거부 및 릴레이 safe-state arbitration, 텔레메트리 (`heap_free`, `heap_min`, `stack_high_watermark`, `latency`, `boot_id`, `reset_reason`) 지원
+- Boot relay OFF 및 fail-safe (GPIO23 active-low, esp_timer), SDA GPIO6, SCL GPIO7 I2C bus clear, pioarduino ESP32-C6 RISC-V, dual-slot OTA rollback, authenticated `manual_remote` explicit mobile button door-open 보존
+- `tests/test_hardwareless_rc.py` deterministic tests (100 cycles, fuzz/malformed inputs, timeout/reset, concurrent MQTT/OTA, relay safety, N/N-1, advertisement vs Android filter agreement) 통과
+- `python protocol/tools/verify_vectors.py`, `protocol/tests`, `observability/tests`, `tests` 총 88개 host tests 및 PlatformIO `esp32c6` 통합 빌드 통과
+
+## [2026-08-02] lint | PR #34 Hardwareless RC GATT 독립 리뷰 차단
+
+- 최초 author head `111598e40a05a781e28a1b6f3d0b98967f774614`의 전체 diff와 #13/#14/#16/#17/#18/#20/#23, canonical protocol·advertisement filter·observability·OTA 계약을 독립 검토하고 PR을 draft/unmerged 상태로 유지하기로 판정
+- 실제 firmware는 BLE server/service/characteristic/callback을 만들지 않고 GATT handler 호출점도 없으며 framing/reassembly, 2초 proof 조립 제한, 최대 1 connection, OTA busy 연결과 canonical telemetry emitter가 구현되지 않음
+- `handleProofWrite`는 exact 103-byte 크기, action, credential, signed ACL, raw64 low-S P-256 signature와 canonical input을 검증하지 않고 version/session만 맞는 103-byte 이상 payload에 `OK`를 반환하며 output pointer/length 안전성도 없어 #16/#20 fail-closed 경계를 충족하지 못함
+- 새 Python test는 실제 C++를 호출하지 않는 별도 simulator이고 임의 non-zero signature로 relay success를 생성해 100회, malformed, replay, OTA concurrency, advertisement/filter 결과를 firmware/radio/relay 증거로 사용할 수 없음
+- compile flag OFF 빌드도 전체 GATT 코드를 compile하고 persisted NVS `hwless_rc=true`로 활성화될 수 있으며, 새 문서가 supplied `AGENTS.md`와 `schema.md`의 relay GPIO3 대신 GPIO23을 완료 상태로 재확인한 충돌도 남음
+- 88개 repository, 16개 protocol, 18개 observability test, canonical vector, access/manual_remote/OTA fixture validate·evaluate, OTA contract, actionlint, JSON/JSONL/Python/link/raw 검사와 PlatformIO `esp32c6` build는 통과했으나 disconnected test가 위 blocker를 검출하지 못했고 `tof_test`/`relay_test` env는 정의되지 않아 실행 불가
+- 삭제됐던 이전 PR #31 log bullet을 exact 복원하고 `tests/test_hardwareless_rc.py` 두 곳의 trailing whitespace를 제거했으며, Samsung/ESP32-C6 radio·GPIO·relay·sensor·heap·power-loss·bootloader·OTA-G1~G4·RELAY-G0~G2 물리 증거는 생성하거나 주장하지 않음
+
+## [2026-08-02] fix | PR #34 blocking GATT transport and fail-closed boundary correction
+
+- Added the production `GattProtocol.cpp` C++17 parser/session core and wired it through an actual Arduino ESP32-C6 BLE server, primary service, four characteristics, descriptors, bounded callback queue, connection callbacks, MTU framing, confirmed indications, disconnect cleanup and advertising restart.
+- Enforced exact 16/20/138/103/32-byte messages, 2,048-byte cap, fragment header/sequence/duplicate consistency, 2-second assembly deadline, rollover-safe 5-second challenge expiry, single connection/session, bounded output copies, CSPRNG boot/session/nonce nonzero and duplicate guards, rate/backoff, critical sections and compile/runtime disable cleanup.
+- Added pluggable #20 proof verification with a production default that always fails closed as `ACL_UNAVAILABLE`; only native tests inject the labelled fake verifier, action 2 is rejected, and the GATT transport has no relay or `manual_remote` integration.
+- Wired `OtaManager` busy state before blocking HTTP/TLS work with all-terminal-path cleanup and exposed bounded canonical access-event hooks without claiming a complete production envelope, heap/latency or radio evidence.
+- Resolved the authoritative relay contract to GPIO3 in `config.h`, pin map, architecture and current guidance while retaining active-low boot OFF safety and explicitly preserving historical GPIO23 observations as historical only.
+
+## [2026-08-02] test | PR #34 executable production-core and contract verification
+
+- Replaced the disconnected Python simulator with a native executable that compiles and runs production `src/GattProtocol.cpp`; 84 repository tests, 16 protocol tests, 18 observability tests and the canonical vector verifier passed.
+- Native coverage includes canonical challenge/SHA/framing, N/N-1, compile-OFF stale NVS, runtime disable/reset, strict lengths/ranges, 2,048-byte bound, malformed/fuzz, replay, timeout, fragment sequence/duplicate/consistency, connection limit, OTA busy, rollover, rate limiting, null/capacity safety, CSPRNG guards, fake allow/deny, default fail-closed, action 2 rejection, no relay integration and advertisement/filter agreement.
+- Observability access/manual_remote/Target OTA/rollback fixtures validate and evaluate, OTA contract gate, actionlint, Python compile, YAML/JSON/JSONL parsing, relative links/index, raw immutability and `git diff --check` passed.
+- PlatformIO `esp32c6` default-OFF build passed at RAM 47,032/327,680 bytes and flash 1,595,598/7,340,032 bytes; a feature-ON build also compiled and linked the real BLE service path. `tof_test` and `relay_test` remain absent from `platformio.ini` and were not fabricated.
+- No Samsung/OEM wake, ESP32-C6 radio capture, GPIO3/relay/sensor, heap/soak, power-loss/bootloader, OTA-G1~G4 or RELAY-G0~G2 evidence was produced; PR #34 stays draft, and #13/#14/#17/#18/#20/#23 remain open as applicable.
+
+## [2026-08-02] lint | PR #34 corrected-head independent re-review blocked
+
+- Re-reviewed exact corrected author head `d957718c8a78ee4ef4b0f154020d9c41dcae06b8` against #13/#14/#16/#18/#20/#23, the frozen security and observability contracts, the Hardwareless RC plan, the OTA reliability contract, the full PR diff, the prior COMMENTED review and the author reply; posted blocking same-account COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/34#pullrequestreview-4836548800 and kept PR #34 draft/unmerged.
+- The production C++ core now has strict bounded framing, canonical challenge/proof construction, default-OFF stale-NVS dominance, single-use session handling and a real fail-closed #20 verifier boundary, while action 2 remains rejected and the authenticated explicit-button `manual_remote` chain is unchanged.
+- Blocking adapter defects remain: a rejected second BLE connection is not disconnected, write callbacks discard the peer connection ID and queued writes are later attributed to the global active ID, so a second or reconnected peer can inject into another session; indications also fan out through the stack and confirmation failure is not observed before later fragments are popped/sent.
+- OTA busy resets an active auth session without a correlatable BUSY result and does not wait for the Target relay/FSM safe state; `EventSink`/`getTelemetry()` have no production sink/caller and the event type is not the canonical uint64/session/boot/sequence envelope required for causal observability.
+- The production challenge still hardcodes the canonical test-vector `door_id` instead of a provisioned per-door identity, queue overflow is processed only after already queued writes can complete, and current README/mobile scenario/current audit text still conflicts with the authoritative GPIO3 contract or overstates connection/indication behavior.
+- Local evidence passed after rerunning 84 repository tests, the native executable over `src/GattProtocol.cpp`, 16 protocol tests, 18 observability tests, canonical vector verification, access/manual_remote/Target OTA/rollback fixture validation and evaluation, OTA/trusted policy, actionlint, 14 YAML/22 JSON/9 JSONL/13 Python parses, 185 relative links, raw immutability, append-only Git-blob prefix and `git diff --check`.
+- Default-OFF ESP32-C6 build passed at RAM 47,032/327,680 and flash 1,597,682/7,340,032 bytes; `ENABLE_HARDWARELESS_RC=1` passed at RAM 49,200/327,680 and flash 1,620,546/7,340,032 bytes. Exact-head hosted OTA P0, firmware canary and trusted-policy checks passed with production skipped.
+- No Samsung/OEM, physical ESP32-C6 GATT/MTU/radio/heap, GPIO3 relay/sensor, power-loss/bootloader, OTA-G1..G4 or RELAY-G0..G2 evidence was produced or claimed; production remains fail-closed and the open hardware/operator gates remain open.
+
+## [2026-08-02] fix | PR #34 corrected-head remaining production blockers resolved
+
+- Bound every accepted BLE connection to a handle plus monotonic generation, disconnected rejected peers, retained ownership on queued writes and results, rejected stale reconnect traffic, and targeted confirmed indications only to the accepted subscribed peer.
+- Added an adapter-level ACK-gated indication state machine with one fragment in flight, NimBLE `onStatus` advancement, confirmation error/timeout abort, session cleanup, and fail-closed overflow precedence before any queued proof can succeed.
+- Added OTA `WAIT_SAFE_STATE` arbitration against the actual access/relay state before network, download, or flash work; a protocol/session-bound `BUSY` result is emitted before reset, and the authenticated explicit-button `manual_remote` path remains independent and is waited out rather than cancelled.
+- Wired a canonical production event sink with uint64 monotonic time and sequence, boot/session identity and causal event links; its best-effort MQTT boundary is documented without claiming durable, complete, offline, or physical telemetry evidence.
+- Replaced the test-vector door identity with validated provisioned 16-byte configuration, made missing/invalid identity fail closed, added same-core cross-door replay denial, corrected current GPIO3 and executable-contract documentation while preserving historical GPIO23 records, and limited the RNG claim to the conservative implementation actually tested.
+
+## [2026-08-02] test | PR #34 corrected-head adapter and contract verification
+
+- All 87 repository tests passed, including the native production-core executable and shared adapter tests for second-peer rejection, disconnect/reconnect generation races, stale results, targeted subscription ownership, ACK/error/timeout indication behavior, overflow precedence, provisioned identity and cross-door replay denial.
+- The protocol vector verifier, 16 protocol tests, 18 observability tests, access/manual_remote/Target OTA/rollback fixture validation and evaluation, OTA contract, trusted-policy coverage, actionlint, structured-file parsing, relative links, wiki index, raw immutability, append-only log prefix and diff checks passed.
+- ESP32-C6 default-OFF build passed at RAM 47,040/327,680 bytes and flash 1,596,024/7,340,032 bytes; `ENABLE_HARDWARELESS_RC=1` passed at RAM 53,592/327,680 bytes and flash 1,630,180/7,340,032 bytes and compiled the actual NimBLE adapter path.
+- No Samsung/OEM, physical ESP32-C6 GATT/MTU/radio/heap, GPIO3 relay/sensor, power-loss/bootloader, OTA-G1..G4 or RELAY-G0..G2 evidence was produced or claimed; PR #34 remains draft/unmerged and production remains fail closed.
+
+## [2026-08-02] compile | Windows PlatformIO timeout and orphan-build recovery guidance
+
+- Documented the reusable Windows symptom where a wrapper timeout leaves SCons RISC-V compiler children alive and concurrent retries multiply workers, plus the root cause that separate build directories prevent object collisions but do not prevent CPU/disk contention.
+- Added a fail-safe procedure to inspect only compiler command lines rooted in the exact worktree, verify PID/parent/creation context before targeted termination, avoid broad Python/compiler kills, and rerun default-OFF and feature-ON sequentially with separate build directories and four jobs.
+- Documented the ignored `include/secrets.h` compile prerequisite without exposing values: use only an authorized local secret or ephemeral non-secret placeholder, never stage it, and remove the placeholder after validation.
+- Verified the procedure with independent successful default-OFF and feature-ON ESP32-C6 builds, zero remaining worktree-owned compiler processes, no temporary secret/build artifact in Git status, and kept this local software evidence separate from terminal GitHub CI and all pending physical gates.
+
+## [2026-08-02] lint | PR #34 final-head stale indication callback re-review blocked
+
+- Independently re-reviewed exact author implementation head `f0101d2e28850e5a1286991a498c6922296387e0` from local HEAD, fetched remote branch and live PR #34 after reading issue #18, the full diff, prior COMMENTED reviews/replies and the security, observability, Hardwareless RC and OTA contracts; PR #34 remains draft/open/unmerged.
+- One P0 adapter blocker remains: production `BLECharacteristicCallbacks::onStatus` supplies no connection or indication epoch, and `handleIndicationStatus()` substitutes the current active owner while `AdapterState::confirmIndication()` matches only owner plus message type. An adversarial native probe aborted one `RESULT`, staged a second same-owner/same-type `RESULT`, then delivered the first result's delayed success and reproduced incorrect advancement as `FragmentConfirmed` with the new confirmation cleared.
+- The same missing output-generation boundary affects OTA `BUSY`: `setOtaBusy(true)` aborts a prior indication and immediately stages another `RESULT`, so a delayed prior status can acknowledge the new BUSY fragment. At default ATT MTU 23 the 32-byte result needs four ACK-gated fragments, but an immediately safe Target skips the `WAIT_SAFE_STATE` loop and begins blocking HTTP after only the first fragment is issued, so complete confirmed BUSY delivery is not established.
+- The corrected core/adapter otherwise enforces rejected second peers, connection handle plus generation on queued writes/results, stale write/result denial, overflow-before-verifier precedence, WAIT_SAFE_STATE relay/FSM arbitration, validated provisioned nonzero/non-FF 16-byte door identity, same-core cross-door denial, authoritative GPIO3, conservative CSPRNG guards, default-OFF stale-NVS dominance and a compiling feature-ON path.
+- Authenticated explicit-button `manual_remote` remains independent: local GATT action 2 is rejected, GATT code has no relay/manual-open integration, the seven-event fixture validates/evaluates, and mobile/backend/manual fixture plus protocol/OTA/protected assets are byte-unchanged from main. Existing dual-slot/rollback, periodic HTTPS, authenticated local recovery, mobile updater independence and N/N-1 contracts are not claimed complete or weakened by this review.
+- Local software evidence passed: 87 repository tests, native production-core/shared-adapter executable, 16 protocol tests and canonical vectors, 18 observability tests, access/manual_remote/Target OTA/rollback validate+evaluate, OTA contract and pending-release rejection, trusted-policy mutation tests, actionlint 1.7.12, 14 YAML/22 JSON/9 JSONL with 53 records/13 Python parses, 189 relative links, wiki index, raw immutability, append-only Git-blob prefix, conflict/control/diff checks.
+- Fresh sequential ESP32-C6 builds passed with an ignored non-secret placeholder removed afterward: default-OFF RAM 47,040/327,680 and flash 1,595,848/7,340,032; `ENABLE_HARDWARELESS_RC=1` RAM 53,592/327,680 and flash 1,629,676/7,340,032. Exact-head hosted checks `30731181040` trusted policy, `30731181593` OTA P0 and `30731181616` firmware canary succeeded; production deploy was correctly skipped.
+- No Samsung/OEM, physical ESP32-C6 GATT/MTU/radio/heap, GPIO3 relay/sensor, power-loss/bootloader, OTA-G1..G4 or RELAY-G0..G2 evidence was produced or inferred. Production, legacy retirement and Epic closure remain fail-closed, and issue #18 plus all applicable hardware/operator gates remain open.
+
+## [2026-08-02] fix | PR #34 indication epoch token and build verification
+
+- Fixed GATT indication status callback mismatch by introducing `IndicationToken` (output generation, fragment index, connection handle and generation) to discard stale callbacks from aborted indications or previous sessions.
+- Added `flushOtaBusy()` before `WAIT_SAFE_STATE` in `OtaManager.cpp` to ensure OTA BUSY indications finish transmission before network HTTP operations start.
+- Resolved build compilation errors under `ENABLE_HARDWARELESS_RC=1` by defining missing static `in_flight_token_`, `in_flight_type_`, and `in_flight_valid_` variables in `src/GattServer.cpp` and correcting printf format specifiers.
+- Verified all 87 host tests (python/C++) and executed sequential ESP32-C6 PlatformIO builds: default-OFF passed at RAM 47,040/327,680 bytes (14.4%) and flash 1,598,136/7,340,032 bytes (21.8%); feature-ON (`ENABLE_HARDWARELESS_RC=1`) passed at RAM 53,648/327,680 bytes (16.4%) and flash 1,633,096/7,340,032 bytes (22.2%).
+- Maintained all manual_remote and OTA invariants without claiming physical device evidence.
 
 ## [2026-08-02] lint | PR #31 final-head 독립 재리뷰 및 protected merge 승인
 
