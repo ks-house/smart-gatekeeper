@@ -545,6 +545,101 @@ void testTargetAccessFsmAndRelayInterlock() {
   CHECK(fsm.otaSafeState() == OtaSafeState::SAFE);
 }
 
+void testDedicatedManualRemoteRegression() {
+  static bool last_relay_on = false;
+  static std::string last_event_name;
+  static std::string last_event_msg;
+  last_relay_on = false;
+
+  sgk::TargetAccessFsm fsm(
+      [](bool on) { last_relay_on = on; },
+      [](const char* event, const char* message) {
+        last_event_name = event != nullptr ? event : "";
+        last_event_msg = message != nullptr ? message : "";
+      });
+
+  fsm.begin(1000);
+  CHECK(fsm.state() == GateState::IDLE);
+  CHECK(fsm.otaSafeState() == OtaSafeState::SAFE);
+
+  // 1. Manual remote open from IDLE succeeds
+  CHECK(fsm.handleManualRemoteOpen(1000, 1000, 2000));
+  CHECK(fsm.state() == GateState::RELAY_HOLD);
+  CHECK(fsm.isRelayOn());
+  CHECK(last_relay_on);
+  CHECK(last_event_name == "relay_on_manual");
+  CHECK(fsm.otaSafeState() == OtaSafeState::RELAY_ACTIVE);
+
+  // 2. Re-trigger while RELAY_HOLD fails closed
+  CHECK(!fsm.handleManualRemoteOpen(1500, 1000, 2000));
+  CHECK(last_event_name == "manual_open_rejected_not_idle");
+  CHECK(fsm.isRelayOn());
+
+  // 3. Tick to COOLDOWN
+  fsm.tick(2001);
+  CHECK(fsm.state() == GateState::COOLDOWN);
+  CHECK(!fsm.isRelayOn());
+  CHECK(!last_relay_on);
+
+  // 4. Re-trigger while COOLDOWN fails closed
+  CHECK(!fsm.handleManualRemoteOpen(2500, 1000, 2000));
+  CHECK(last_event_name == "manual_open_rejected_not_idle");
+
+  // 5. Return to IDLE
+  fsm.tick(4002);
+  CHECK(fsm.state() == GateState::IDLE);
+  CHECK(fsm.otaSafeState() == OtaSafeState::SAFE);
+}
+
+void testAdversarialSignaturesAndLowS() {
+  uint8_t zero_r[32] = {};
+  CHECK(!sgk::TargetAclManager::isValidR(zero_r));
+
+  uint8_t low_s[32] = {0x01};
+  CHECK(sgk::TargetAclManager::isLowS(low_s));
+
+  // High-S (> half n)
+  uint8_t high_s[32] = {
+      0x7F, 0xFF, 0xFF, 0xFF, 0x80, 0x00, 0x00, 0x00, 0x7F, 0xFF, 0xFF,
+      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xDE, 0x73, 0x7D, 0x56, 0xD3, 0x8B,
+      0xCE, 0x42, 0x79, 0xDC, 0x65, 0x61, 0x7E, 0x31, 0x92, 0xA9};
+  CHECK(!sgk::TargetAclManager::isLowS(high_s));
+}
+
+void testCrossDoorAndStaleLeaseReplay() {
+  MemoryStorage storage;
+  sgk::TargetAclManager acl_manager(&storage);
+  const auto door_A = canonicalDoor();
+
+  auto door_B = door_A;
+  door_B[0] ^= 0xFF;
+
+  CHECK(acl_manager.begin(door_A, 1000));
+
+  const auto signer_pubkey_bytes = hex(
+      "047cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc4766997807775510"
+      "db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1");
+  std::array<uint8_t, 65> signer_pubkey{};
+  std::copy(signer_pubkey_bytes.begin(), signer_pubkey_bytes.end(),
+            signer_pubkey.begin());
+  acl_manager.setSignerPublicKey(signer_pubkey);
+
+  const auto acl_payload = hex(
+      "53474b41434c3031000100112233445566778899aabbccddeeff000000000000002a000000"
+      "006a6d3700000000006a6d3700000000006a6d45100000038400010001000000070001aabb"
+      "ccddeeff00112233445566778899046b17d1f2e12c4247f8bce6e563a440f277037d812deb"
+      "33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb640"
+      "6837bf51f50100000001000000006a6d3700000000006a94c4000001000113cdf7246422ab"
+      "07576d0328bfe313db997c5d2689df26657b2ec338e690d4f11f2b0f9c7c6dfdc364cad779"
+      "162817496b68139c67e38cc51a02aa255870ef8b");
+
+  sgk::TargetAclManager acl_manager_B(&storage);
+  acl_manager_B.setSignerPublicKey(signer_pubkey);
+  acl_manager_B.begin(door_B, 1000);
+  CHECK(acl_manager_B.applySignedAcl(acl_payload.data(), acl_payload.size(),
+                                     1000, 1785542400) == sgk::ResultReason::kMalformed);
+}
+
 void testOfflineEventQueue() {
   sgk::OfflineEventQueue queue;
   CHECK(queue.isEmpty());
@@ -593,6 +688,9 @@ int main() {
   testTargetAclManagerAndStorage();
   testTargetProofVerifierIntegration();
   testTargetAccessFsmAndRelayInterlock();
+  testDedicatedManualRemoteRegression();
+  testAdversarialSignaturesAndLowS();
+  testCrossDoorAndStaleLeaseReplay();
   testOfflineEventQueue();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";
   return 0;

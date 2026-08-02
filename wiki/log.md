@@ -1725,3 +1725,12 @@
 - Implemented `TargetProofVerifier` for canonical proof verification against active signed ACL with strict low-S (`s <= half n`) constraints.
 - Implemented `TargetAccessFsm` and `OfflineEventQueue` for Target-owned access-session state machine (`IDLE -> ARMED -> RELAY_HOLD -> COOLDOWN`) with fail-closed interlocking, MQTT manual remote opening, and OTA safe state classification.
 - Integrated components into main firmware (`main.cpp`, `GattServer.cpp`, `MqttManager.cpp`) and passed host C++ unit tests, Python test suites, and PlatformIO ESP32-C6 firmware build.
+
+## [2026-08-02] test | Issue #20 Target local ACL and FSM executable evidence & manual_remote regression
+
+- Added `testDedicatedManualRemoteRegression`, `testAdversarialSignaturesAndLowS`, and `testCrossDoorAndStaleLeaseReplay` to `tests/gatt_protocol_test.cpp`.
+- Updated `TargetAccessFsm::handleAuthSuccess` to accept `IDLE` or `ARMED` (when relay is OFF) and fail-closed reject when in `RELAY_HOLD` or `COOLDOWN`.
+- Verified 87 repository unit tests, 16 protocol vector tests, 18 observability tests, and OTA contract gate (`python scripts/ota_contract_gate.py contract`).
+- Created `wiki/target_acl_fsm.md` and updated `wiki/index.md`.
+- Verified sequential PlatformIO builds for `esp32c6`: default-OFF passed (RAM 14.5%, Flash 21.9%), feature-ON passed (RAM 16.5%, Flash 22.4%).
+- Host software evidence only; physical device (ESP32-C6, relay, sensor, OTA-G1..G4, RELAY-G0..G2) gates remain open and fail-closed.

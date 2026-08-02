@@ -68,8 +68,8 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
 bool TargetAccessFsm::handleAuthSuccess(uint32_t now_ms,
                                         uint32_t hold_duration_ms,
                                         uint32_t cooldown_duration_ms) {
-  // Fail-closed interlock: Relay will ONLY activate if FSM is in IDLE state.
-  if (state_ != GateState::IDLE || relay_on_) {
+  // Fail-closed interlock: Relay will ONLY activate if FSM is in IDLE or ARMED state without active relay.
+  if ((state_ != GateState::IDLE && state_ != GateState::ARMED) || relay_on_) {
     if (event_emit_ != nullptr) {
       event_emit_("auth_open_rejected", "Target is not IDLE");
     }
