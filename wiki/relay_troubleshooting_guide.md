@@ -9,12 +9,12 @@
 
 `RelayController`의 Active-LOW 경로는 다음과 같습니다.
 
-| 논리 상태 | GPIO23 모드/레벨 | 이유와 한계 |
+| 논리 상태 | GPIO3 모드/레벨 | 이유와 한계 |
 |---|---|---|
 | ON | OUTPUT + LOW | 릴레이 입력 전류 sink |
 | OFF | INPUT High-Z | 이 모듈에서는 OUTPUT HIGH 3.3V로 5V 입력을 완전히 끄지 못해 채택 |
 
-과거 문서의 “INPUT 트릭 제거 후 push-pull HIGH가 해결책”은 실제 모듈에서 릴레이가 상시 ON이 되어 되돌려졌습니다. 반대로 High-Z가 보편적으로 안전하다는 뜻도 아닙니다. 모듈 내부 5V pull-up이 GPIO23으로 유입되면 ESP32-C6 절대정격을 위반할 수 있으므로 **보드 입력 전압과 역전류를 실측**해야 합니다.
+과거 문서의 “INPUT 트릭 제거 후 push-pull HIGH가 해결책”은 실제 모듈에서 릴레이가 상시 ON이 되어 되돌려졌습니다. 반대로 High-Z가 보편적으로 안전하다는 뜻도 아닙니다. 모듈 내부 5V pull-up이 GPIO3으로 유입되면 ESP32-C6 절대정격을 위반할 수 있으므로 **보드 입력 전압과 역전류를 실측**해야 합니다.
 
 ## 3. 권장 하드웨어 개선
 
@@ -27,7 +27,7 @@
 ## 4. 단계별 진단
 
 1. 릴레이 모듈을 분리한 채 Target이 24시간 Wi-Fi/BLE/MQTT를 유지하는지 확인합니다.
-2. GPIO23 OFF 상태 전압과 ESP32 3.3V rail로 흐르는 전류를 측정합니다.
+2. GPIO3 OFF 상태 전압과 ESP32 3.3V rail로 흐르는 전류를 측정합니다.
 3. oscilloscope로 릴레이 ON/OFF 순간 5V/3.3V rail dip과 GPIO overshoot를 기록합니다.
 4. 릴레이만 100회 이상 구동해 reset reason, 광고 지속, MQTT heartbeat를 확인합니다.
 5. 실제 자동문 접점을 연결한 상태에서 다시 반복하여 부하측 노이즈를 분리합니다.
@@ -39,7 +39,7 @@
 
 ## 6. 합격 기준
 
-- GPIO23에 3.3V 허용 범위를 넘는 전압/역전류가 없음
+- GPIO3에 3.3V 허용 범위를 넘는 전압/역전류가 없음
 - 100회 이상 반복에서 relay miss, MCU reset, BLE 광고 중단 없음
 - 전원 재인가 없이 fault recovery 가능
 - 24시간 RF/network soak 동안 MQTT heartbeat와 beacon interval 유지

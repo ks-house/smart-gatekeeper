@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-02 (trusted workflow-policy bootstrap 반영)
+> Last updated: 2026-08-02 (#18 real C++ GATT transport and GPIO3 contract)
 
 ---
 
@@ -26,9 +26,9 @@
 
 | Page | Summary |
 |------|---------|
-| [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, relay GPIO23 및 3.3V 전기 안전 기준 |
+| [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, authoritative relay GPIO3 및 3.3V 전기 안전 기준 |
 | [hardware_test.md](hardware_test.md) | 현재 아키텍처 검증표와 과거 ToF 테스트 증거 분리 |
-| [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO23 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
+| [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO3 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
 
 ---
 
@@ -51,7 +51,7 @@
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
-| [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 Hardwareless RC ESP32-C6 Connectable GATT Transport, N/N-1 협상, 공존 및 텔레메트리 구현 |
+| [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF real C++ GATT transport, fail-closed #20 boundary, host evidence and remaining physical gates |
 | [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest Gate, policy rotation, paths 필터 제거와 required check 해제 |
 
 ---

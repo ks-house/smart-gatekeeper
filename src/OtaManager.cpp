@@ -5,6 +5,7 @@
 #include "OtaManager.h"
 #include "config.h"
 #include "DiagnosticsManager.h"
+#include "GattServer.h"
 #include "WifiManager.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
@@ -22,6 +23,14 @@ void OtaManager::checkAndUpdate(bool force) {
         LOGF("[OTA] Wi-Fi 미연결로 OTA 확인 취소");
         return;
     }
+
+    // Assert coexistence arbitration before the first blocking HTTP/TLS call.
+    // The guard clears busy on every return path; the successful reboot path
+    // also clears explicitly before restart.
+    GattServer::setOtaBusy(true);
+    struct GattOtaBusyGuard {
+        ~GattOtaBusyGuard() { GattServer::setOtaBusy(false); }
+    } busyGuard;
 
     status = OtaStatus::CHECKING;
     DiagnosticsManager::noteAction("ota_check");
@@ -116,6 +125,7 @@ void OtaManager::checkAndUpdate(bool force) {
             status = OtaStatus::SUCCESS;
             LOGF("\n[OTA-SUCCESS] 업데이트 성공! 디바이스를 재부팅합니다.");
             DiagnosticsManager::markPlannedRestart("ota_update");
+            GattServer::setOtaBusy(false);
             delay(1000);
             ESP.restart();
             break;

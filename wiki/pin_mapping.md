@@ -7,7 +7,7 @@
 |---|---:|---|---|---|
 | 초음파 TRIG | 10 | OUTPUT | `PIN_TRIG` | 10 µs trigger pulse |
 | 초음파 ECHO | 11 | INPUT | `PIN_ECHO` | **센서가 5V ECHO를 내면 저항 분배/레벨 시프터 필수** |
-| 릴레이 IN | 23 | OUTPUT(ON) / INPUT(OFF) | `PIN_RELAY` | Active-LOW; OFF는 High-Z |
+| 릴레이 IN | 3 | OUTPUT(ON) / INPUT(OFF) | `PIN_RELAY` | Active-LOW; OFF는 High-Z; 실기기 검증 pending |
 | Native USB D+ / D- | 19 / 20 | 예약 | USB CDC | 사용 금지 |
 
 현재 런타임 거리 센서는 AJ-SR04T/JSN-SR04T 계열이며 VL53L0X는 제거되었습니다. GPIO6/7은 센서 핀이 아닙니다.

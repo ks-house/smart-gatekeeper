@@ -453,7 +453,9 @@ GPIO 손상, 입력 clamp/과전압 경로를 통한 역주입, latch-up/reset �
 
 - [Espressif ESP32-C6 Datasheet — DC Characteristics](https://documentation.espressif.com/esp32-c6_datasheet_en.html)
 
-### 10.2 relay GPIO23 High-Z와 전원/역기전력
+### 10.2 historical relay GPIO23 High-Z와 전원/역기전력
+
+이 절은 과거 GPIO23 배선에서 수집한 진단 가설을 보존한다. 2026-08-02 authoritative firmware/pin contract는 GPIO3이며, GPIO23 관찰을 GPIO3 실기기 증거로 전용하지 않는다.
 
 `src/RelayController.cpp:48-61`의 Active-LOW 동작은 다음과 같다.
 

@@ -4,7 +4,7 @@
 
 ## 1. 결론
 
-저장소는 초기 문서가 설명하던 “ESP32 BLE scanner + VL53L0X ToF + ESP32 HTTPS 인증”을 이미 벗어났습니다. 최신 구현의 기준선은 **ESP32 iBeacon advertiser + Android foreground scanner + FastAPI/MariaDB 인증 + MQTT QoS1 Pre-arm + AJ-SR04T + GPIO23 relay**입니다.
+저장소는 초기 문서가 설명하던 “ESP32 BLE scanner + VL53L0X ToF + ESP32 HTTPS 인증”을 이미 벗어났습니다. 최신 구현의 기준선은 **ESP32 iBeacon advertiser + Android foreground scanner + FastAPI/MariaDB 인증 + MQTT QoS1 Pre-arm + AJ-SR04T + GPIO3 relay**입니다.
 
 이번 감사에서 README, architecture, environment, pin map, test matrix, index를 현재 코드에 맞춰 다시 컴파일했습니다. `raw/`와 append-only log의 과거 항목은 역사적 근거이므로 변경하지 않았습니다.
 
@@ -14,7 +14,7 @@
 |---|---|---|
 | Target board/build | ESP32-C6, pioarduino, `esp32c6`, 16 MB OTA | `platformio.ini` |
 | Sensor | AJ-SR04T, GPIO10/11, 20 cm min, 50 cm default | `include/config.h`, `src/UltrasonicSensor.cpp` |
-| Relay | GPIO23 Active-LOW, ON push-pull LOW, OFF INPUT High-Z | `include/config.h`, `src/RelayController.cpp` |
+| Relay | GPIO3 Active-LOW, ON push-pull LOW, OFF INPUT High-Z; physical validation pending | `include/config.h`, `src/RelayController.cpp` |
 | Beacon | fixed UUID, 100 ms, +9 dBm default | `include/config.h`, `src/main.cpp` |
 | Target FSM | IDLE/ARMED/RELAY_HOLD/COOLDOWN | `src/main.cpp` |
 | Pre-arm | `gatekeeper/arm`, default 60 s | `include/config.h`, `src/MqttManager.cpp` |

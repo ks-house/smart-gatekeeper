@@ -1407,3 +1407,19 @@
 - compile flag OFF 빌드도 전체 GATT 코드를 compile하고 persisted NVS `hwless_rc=true`로 활성화될 수 있으며, 새 문서가 supplied `AGENTS.md`와 `schema.md`의 relay GPIO3 대신 GPIO23을 완료 상태로 재확인한 충돌도 남음
 - 88개 repository, 16개 protocol, 18개 observability test, canonical vector, access/manual_remote/OTA fixture validate·evaluate, OTA contract, actionlint, JSON/JSONL/Python/link/raw 검사와 PlatformIO `esp32c6` build는 통과했으나 disconnected test가 위 blocker를 검출하지 못했고 `tof_test`/`relay_test` env는 정의되지 않아 실행 불가
 - 삭제됐던 이전 PR #31 log bullet을 exact 복원하고 `tests/test_hardwareless_rc.py` 두 곳의 trailing whitespace를 제거했으며, Samsung/ESP32-C6 radio·GPIO·relay·sensor·heap·power-loss·bootloader·OTA-G1~G4·RELAY-G0~G2 물리 증거는 생성하거나 주장하지 않음
+
+## [2026-08-02] fix | PR #34 blocking GATT transport and fail-closed boundary correction
+
+- Added the production `GattProtocol.cpp` C++17 parser/session core and wired it through an actual Arduino ESP32-C6 BLE server, primary service, four characteristics, descriptors, bounded callback queue, connection callbacks, MTU framing, confirmed indications, disconnect cleanup and advertising restart.
+- Enforced exact 16/20/138/103/32-byte messages, 2,048-byte cap, fragment header/sequence/duplicate consistency, 2-second assembly deadline, rollover-safe 5-second challenge expiry, single connection/session, bounded output copies, CSPRNG boot/session/nonce nonzero and duplicate guards, rate/backoff, critical sections and compile/runtime disable cleanup.
+- Added pluggable #20 proof verification with a production default that always fails closed as `ACL_UNAVAILABLE`; only native tests inject the labelled fake verifier, action 2 is rejected, and the GATT transport has no relay or `manual_remote` integration.
+- Wired `OtaManager` busy state before blocking HTTP/TLS work with all-terminal-path cleanup and exposed bounded canonical access-event hooks without claiming a complete production envelope, heap/latency or radio evidence.
+- Resolved the authoritative relay contract to GPIO3 in `config.h`, pin map, architecture and current guidance while retaining active-low boot OFF safety and explicitly preserving historical GPIO23 observations as historical only.
+
+## [2026-08-02] test | PR #34 executable production-core and contract verification
+
+- Replaced the disconnected Python simulator with a native executable that compiles and runs production `src/GattProtocol.cpp`; 84 repository tests, 16 protocol tests, 18 observability tests and the canonical vector verifier passed.
+- Native coverage includes canonical challenge/SHA/framing, N/N-1, compile-OFF stale NVS, runtime disable/reset, strict lengths/ranges, 2,048-byte bound, malformed/fuzz, replay, timeout, fragment sequence/duplicate/consistency, connection limit, OTA busy, rollover, rate limiting, null/capacity safety, CSPRNG guards, fake allow/deny, default fail-closed, action 2 rejection, no relay integration and advertisement/filter agreement.
+- Observability access/manual_remote/Target OTA/rollback fixtures validate and evaluate, OTA contract gate, actionlint, Python compile, YAML/JSON/JSONL parsing, relative links/index, raw immutability and `git diff --check` passed.
+- PlatformIO `esp32c6` default-OFF build passed at RAM 47,032/327,680 bytes and flash 1,595,598/7,340,032 bytes; a feature-ON build also compiled and linked the real BLE service path. `tof_test` and `relay_test` remain absent from `platformio.ini` and were not fabricated.
+- No Samsung/OEM wake, ESP32-C6 radio capture, GPIO3/relay/sensor, heap/soak, power-loss/bootloader, OTA-G1~G4 or RELAY-G0~G2 evidence was produced; PR #34 stays draft, and #13/#14/#17/#18/#20/#23 remain open as applicable.

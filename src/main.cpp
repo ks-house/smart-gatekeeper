@@ -308,7 +308,10 @@ static void initBleAdvertiser() {
 
   BLEDevice::init("SmartGatekeeper");
 
-  bool hwlessEnable = ConfigManager::getHardwarelessRcEnabled(ENABLE_HARDWARELESS_RC != 0);
+  // Compile OFF dominates stale NVS. An OFF image cannot create or advertise
+  // the auth service even if a prior build persisted hwless_rc=true.
+  bool hwlessEnable = sgk::effectiveFeatureEnabled(
+      ConfigManager::getHardwarelessRcEnabled(false));
   GattServer::setEnabled(hwlessEnable);
   GattServer::init();
 

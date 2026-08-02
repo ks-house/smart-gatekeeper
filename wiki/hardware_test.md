@@ -28,6 +28,7 @@
 | OTA artifact/schema/semantic negative vectors | 2026-08-01 host unit test 18건 | 🟢 CONTRACT PASS | 실제 artifact size/SHA-256·APK certificate binding과 invariant/recovery fail-closed 검증; 물리 install/boot/rollback 증거 아님 |
 | OTA-G1~G4 physical matrix | 실측 없음 | 🔴 RELEASE BLOCKED | periodic HTTPS/local AP, Android fallback, N/N-1, power-loss/rollback 실기기 필요 |
 | Epic #13 implementation authorization | 2026-08-02 사용자 승인 + machine-readable contract | 🟢 G0-SW ONLY | #17~#22 software 구현/리뷰/merge 허용; production·물리 완료 증거 아님 |
+| #18 production-core host tests | 2026-08-02 native C++ build/run | 🟢 SOFTWARE PASS | production `GattProtocol.cpp` direct compile/run; canonical framing/session/parser/fail-closed tests; no radio/GPIO/relay evidence |
 | Epic #13 production authorization | 실측 없음 | 🔴 G0-HW BLOCKED | Samsung/OEM, ESP32-C6 real BLE, relay/sensor, bootloader, OTA-G1~G4, RELAY-G0~G2 필요 |
 
 ## 3. 현재 E2E 인수 절차
