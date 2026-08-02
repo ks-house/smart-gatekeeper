@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-02 (#18 correction and Windows PlatformIO safe recovery guidance)
+> Last updated: 2026-08-02 (#18 correction, Backend signed ACL Hardwareless RC, and Windows PlatformIO safe recovery guidance)
 
 ---
 
@@ -48,6 +48,7 @@
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
 | [android_ble_wake_adr.md](android_ble_wake_adr.md) | #14 PendingIntent filtered BLE wake 결정, exact filter contract, hardwareless PoC와 Samsung 20회 pending Gate |
 | [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
+| [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
@@ -84,6 +85,7 @@
 | 추가 하드웨어 없는 구현 로드맵 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) |
 | Android OS-managed BLE wake ADR/실기기 Gate | [android_ble_wake_adr.md](android_ble_wake_adr.md) |
 | 기기 키·BLE proof·signed ACL v1 | [security_protocol.md](security_protocol.md) |
+| Backend enrollment·ACL sync·revocation | [backend_acl_management.md](backend_acl_management.md) |
 | 모바일·Target OTA 최상위 계약 | [ota_reliability_contract.md](ota_reliability_contract.md) |
 | Cross-layer session/event code와 parser fixture | [observability_event_schema.md](observability_event_schema.md) |
 | OTA canary·rollback 운영 절차 | [ota_operations_runbook.md](ota_operations_runbook.md) |
