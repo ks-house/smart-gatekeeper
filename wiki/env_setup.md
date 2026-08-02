@@ -198,6 +198,54 @@ docker compose run --rm flutter-builder bash -lc \
 docker compose run --rm flutter-builder flutter build apk --debug
 ```
 
+For issue #17 native GATT tests, Compose mounts the repository `protocol/` directory read-only at
+`/repo-protocol` so JVM tests consume the same canonical vector as firmware and backend tests. The
+named Gradle cache avoids re-downloading the Android toolchain. A forced, bounded targeted run is:
+
+```bash
+cd gatekeeper_app
+docker compose up -d flutter-builder
+docker compose exec -T flutter-builder bash -lc \
+  "cd android && timeout --signal=TERM --kill-after=15s 300s \
+  ./gradlew --no-daemon :app:testDebugUnitTest \
+  --tests 'com.kshouse.gatekeeper_app.gattworker.*' --rerun-tasks"
+```
+
+Inspect `build/app/test-results/testDebugUnitTest/TEST-com.kshouse.gatekeeper_app.gattworker*.xml`
+afterward. `--rerun-tasks` and the XML counts distinguish executed tests from an `UP-TO-DATE` task.
+See [android_gatt_worker.md](android_gatt_worker.md) for scope and evidence boundaries.
+
+### Current Orca/Windows validation difficulties
+
+- **Symptom:** repository tests that use `tempfile.TemporaryDirectory()` can fail with
+  `PermissionError` under the user profile `%TEMP%` even though contract assertions are passing.
+  **Cause:** the managed Windows sandbox can create the temporary directory but deny later child
+  writes or cleanup outside the workspace. **Safe solution:** create a workspace-local disposable
+  `.review-tmp`, set both `TEMP` and `TMP` to its resolved path for the test process only, and remove
+  the directory after evidence inspection; do not weaken filesystem permissions or alter the tests.
+  **Verification:** the same repository suite then completes all 81 tests with zero failures/errors.
+- **Symptom:** a forced Gradle run through `docker compose exec -T` may show no incremental output
+  for one or more minutes. **Cause:** the single-use Gradle daemon and container/terminal buffering
+  delay output while the 208-task graph executes. **Safe solution:** keep the five-minute in-container
+  `timeout`, use `--rerun-tasks`, and wait for the bounded process rather than treating silence as a
+  hang. **Verification:** require `208 actionable tasks: 208 executed`, then inspect fresh JUnit XML
+  modification times and aggregate failures/errors/skips before recording evidence.
+- **Symptom:** `flutter pub get`, Flutter tests, or APK builds may modify generated desktop plugin
+  registrants and leave Gradle/JUnit output trees. **Cause:** Flutter regenerates platform glue and the
+  builder bind-mounts output into the worktree. **Safe solution:** inspect the evidence first, restore
+  only tracked generated registrants to the reviewed HEAD, and delete only known generated test/build
+  artifacts. **Verification:** final `git status --short` contains only intentional source, test, wiki,
+  and append-only log changes.
+- **Symptom:** an exact-file `git restore --source=HEAD` can transiently fail with `Unable to create
+  .../index.lock: Permission denied` even when no lock file or Git process remains. **Cause:** a short
+  Windows managed-sandbox `CreateProcess`/worktree-index lock race can outlive the command that held
+  the filesystem handle. **Safe solution:** do not delete a guessed lock and do not retry a broad
+  restore; first resolve `git rev-parse --git-dir`, confirm `index.lock` is absent, confirm no Git
+  process is running, then retry small explicit generated-file groups against exact `HEAD` with the
+  required worktree-index permission. **Verification:** each narrow restore exits zero, the resolved
+  worktree Git directory still has no `index.lock`, and `git diff --name-only` reports no generated
+  registrant path.
+
 Android Gradle wrapper script는 생성 파일로 취급되어 checkout 직후 없을 수 있으므로 native
 unit test 전에 `flutter pub get`을 같은 container에서 먼저 실행한다. #14 BLE wake의
 hardwareless installed-APK 재현은 `gatekeeper_app/tool/android_ble_wake_hardwareless.ps1`,

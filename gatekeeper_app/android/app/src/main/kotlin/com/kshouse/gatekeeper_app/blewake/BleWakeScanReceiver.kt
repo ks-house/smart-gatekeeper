@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
 import java.util.UUID
+import com.kshouse.gatekeeper_app.gattworker.BleGattRuntimeEnvironment
 
 class BleWakeScanReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
@@ -41,6 +42,12 @@ class BleWakeScanReceiver : BroadcastReceiver() {
         strongestRssi = matchingResults.maxOfOrNull { it.rssi },
         processId = PROCESS_ID,
         screenInteractive = context.getSystemService(PowerManager::class.java)?.isInteractive ?: true,
+        deviceAddress = try {
+          matchingResults.maxByOrNull { it.rssi }?.device?.address
+        } catch (_: SecurityException) {
+          BleGattRuntimeEnvironment.recordBlocked(context, "PERMISSION_DENIED")
+          null
+        },
       )
       BleWakeNativeEntrypoint.onWake(context, event)
     } finally {
