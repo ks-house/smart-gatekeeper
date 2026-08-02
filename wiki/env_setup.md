@@ -30,12 +30,23 @@ pio device monitor -b 115200
 cd backend
 cp .env.example .env
 # DB/MQTT/GATEKEEPER_API_KEY 값을 운영 환경에 맞게 설정
+# Issue #19 RC는 expand migration 후에도 ACL_MANAGEMENT_ENABLED=false로 시작
 docker compose config
 docker compose up -d --build
 docker compose ps
 ```
 
 `GATEKEEPER_API_KEY`를 활성화하면 앱도 같은 키로 빌드해야 합니다. MQTT TLS 여부와 broker 주소는 backend `.env`, Target TLS CA와 포트는 `include/secrets.h`에서 각각 설정하므로 서로 일치시켜야 합니다.
+
+Issue #19 Hardwareless RC는 `backend/db/migrations/002_acl_management_expand_up.sql`을
+먼저 적용하고 identity-bound `ACL_ENROLLMENT_AUTH_JSON`, `ACL_ADMIN_API_KEY`,
+tenant/door/identity-bound `ACL_TARGET_AUTH_JSON`, explicit `ACL_LEGACY_REF_HMAC_KEY`, 격리된
+primary ACL signer를 설정한 뒤에만 feature flag를 켠다. signer rotation 중에는
+`ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX`와 `ACL_TRANSITION_SIGNING_KEY_ID`를 함께 설정하고
+N-1 signer를 primary로 유지한다. 새 volume은 Compose init script가 expand
+migration을 실행하지만 기존 volume은 명시적으로 적용해야 한다. rollback 순서는
+[backend_acl_management.md](backend_acl_management.md)를 따르며 production은 G0-HW와 #23
+Gate 전까지 OFF다.
 
 ## 3. Android 앱
 
