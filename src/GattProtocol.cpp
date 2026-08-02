@@ -147,6 +147,7 @@ bool AdapterState::stageOutput(const OutputMessage& output) {
       !isSubscribed(owner, output.type)) {
     return false;
   }
+  output_generation_++;
   output_ = output;
   output_active_ = true;
   confirmation_pending_ = false;
@@ -160,11 +161,11 @@ bool AdapterState::stageOutput(const OutputMessage& output) {
 bool AdapterState::beginNextIndication(uint16_t mtu, uint32_t now_ms,
                                        uint8_t* frame, size_t capacity,
                                        size_t* written, MessageType* type,
-                                       ConnectionToken* owner) {
-  if (written == nullptr || type == nullptr || owner == nullptr) return false;
+                                       IndicationToken* token) {
+  if (written == nullptr || type == nullptr || token == nullptr) return false;
   *written = 0;
   *type = MessageType::kError;
-  *owner = {};
+  *token = {};
   if (!output_active_ || confirmation_pending_ ||
       active_owner_ != ConnectionToken{output_.connection_handle,
                                        output_.connection_generation} ||
@@ -191,16 +192,33 @@ bool AdapterState::beginNextIndication(uint16_t mtu, uint32_t now_ms,
   confirmation_deadline_ms_ = now_ms + kIndicationConfirmationTimeoutMs;
   *written = frame_length;
   *type = output_.type;
-  *owner = active_owner_;
+  *token = IndicationToken{active_owner_, output_generation_,
+                           static_cast<uint8_t>(fragment_index_)};
   return true;
 }
 
-IndicationResult AdapterState::confirmIndication(const ConnectionToken& owner,
+bool AdapterState::beginNextIndication(uint16_t mtu, uint32_t now_ms,
+                                       uint8_t* frame, size_t capacity,
+                                       size_t* written, MessageType* type,
+                                       ConnectionToken* owner) {
+  IndicationToken token{};
+  const bool res =
+      beginNextIndication(mtu, now_ms, frame, capacity, written, type, &token);
+  if (res && owner != nullptr) {
+    *owner = token.owner;
+  }
+  return res;
+}
+
+IndicationResult AdapterState::confirmIndication(const IndicationToken& token,
                                                   MessageType type,
                                                   bool success) {
-  if (!output_active_ || !confirmation_pending_ || owner != active_owner_ ||
-      owner != ConnectionToken{output_.connection_handle,
-                               output_.connection_generation} ||
+  if (!token.valid() || !output_active_ || !confirmation_pending_ ||
+      token.owner != active_owner_ ||
+      token.owner != ConnectionToken{output_.connection_handle,
+                                       output_.connection_generation} ||
+      token.output_generation != output_generation_ ||
+      token.fragment_index != fragment_index_ ||
       type != output_.type) {
     return IndicationResult::kIgnored;
   }
@@ -227,6 +245,7 @@ bool AdapterState::confirmationTimedOut(uint32_t now_ms) const {
 }
 
 void AdapterState::abortOutput() {
+  output_generation_++;
   output_ = OutputMessage{};
   output_active_ = false;
   confirmation_pending_ = false;

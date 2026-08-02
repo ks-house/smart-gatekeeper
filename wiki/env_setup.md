@@ -88,8 +88,8 @@ pio device monitor -b 115200
 
 - 각 명령은 `[SUCCESS]`와 독립적인 `firmware.elf`/`firmware.bin` 생성, RAM/flash size 출력을 모두
   확인해야 합니다. 2026-08-02 PR #34 software 검증에서는 순차 재실행 결과 default-OFF가
-  RAM 47,040/327,680, flash 1,596,024/7,340,032, feature-ON이 RAM 53,592/327,680,
-  flash 1,630,180/7,340,032로 성공했고 실제 NimBLE adapter source가 compile/link되었습니다.
+  RAM 47,040/327,680, flash 1,598,136/7,340,032, feature-ON이 RAM 53,648/327,680,
+  flash 1,633,096/7,340,032로 성공했고 실제 NimBLE/Bluedroid adapter source가 compile/link되었습니다.
 - 검증 후 workspace-owned compiler가 0개이고, ephemeral `include/secrets.h`가 제거됐으며,
   `git status --short`에 build/secret artifact가 없는지 확인합니다.
 - 위 결과는 local software/toolchain evidence입니다. 별도의 GitHub Actions 결과와 혼합하지 않으며,

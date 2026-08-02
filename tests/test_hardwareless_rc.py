@@ -69,6 +69,8 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("server->disconnect(connection_id);", adapter)
         self.assertIn("description->conn_handle, write_type_", adapter)
         self.assertIn("ConnectionToken owner", shared)
+        self.assertIn("IndicationToken", shared)
+        self.assertIn("output_generation", shared)
         self.assertIn("connection_generation", shared)
         self.assertLess(
             adapter.index("adapter_state.consumeOverflow"),
@@ -82,6 +84,11 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         ota = (ROOT / "src" / "OtaManager.cpp").read_text(encoding="utf-8")
         main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
         self.assertIn("safeStateProvider() != OtaSafeState::SAFE", ota)
+        self.assertIn("GattServer::flushOtaBusy", ota)
+        self.assertLess(
+            ota.index("GattServer::flushOtaBusy"),
+            ota.index("status = OtaStatus::WAIT_SAFE_STATE"),
+        )
         self.assertLess(
             ota.index("status = OtaStatus::WAIT_SAFE_STATE"),
             ota.index("if (!WifiManager::isConnected())"),

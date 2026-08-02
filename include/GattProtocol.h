@@ -164,6 +164,22 @@ struct ConnectionToken {
   }
 };
 
+struct IndicationToken {
+  ConnectionToken owner{};
+  uint64_t output_generation = 0;
+  uint8_t fragment_index = 0;
+
+  bool valid() const { return owner.valid() && output_generation != 0; }
+  bool operator==(const IndicationToken& other) const {
+    return owner == other.owner &&
+           output_generation == other.output_generation &&
+           fragment_index == other.fragment_index;
+  }
+  bool operator!=(const IndicationToken& other) const {
+    return !(*this == other);
+  }
+};
+
 struct PendingWrite {
   ConnectionToken owner{};
   MessageType type = MessageType::kError;
@@ -179,14 +195,14 @@ enum class IndicationResult : uint8_t {
 };
 
 // Shared by the ESP32 BLE callbacks and native host tests. It binds callback
-// work to an accepted connection generation, makes overflow take precedence,
-// and permits exactly one unconfirmed indication fragment at a time.
+// work to an accepted connection generation, output generation, and fragment index.
 class AdapterState {
  public:
   bool acceptConnection(const ConnectionToken& owner);
   void disconnect(uint16_t handle);
   void clear();
   ConnectionToken activeOwner() const { return active_owner_; }
+  uint64_t outputGeneration() const { return output_generation_; }
   bool ownerForHandle(uint16_t handle, ConnectionToken* owner) const;
 
   bool setSubscribed(uint16_t handle, MessageType type, bool subscribed);
@@ -203,8 +219,11 @@ class AdapterState {
   bool stageOutput(const OutputMessage& output);
   bool beginNextIndication(uint16_t mtu, uint32_t now_ms, uint8_t* frame,
                            size_t capacity, size_t* written,
+                           MessageType* type, IndicationToken* token);
+  bool beginNextIndication(uint16_t mtu, uint32_t now_ms, uint8_t* frame,
+                           size_t capacity, size_t* written,
                            MessageType* type, ConnectionToken* owner);
-  IndicationResult confirmIndication(const ConnectionToken& owner,
+  IndicationResult confirmIndication(const IndicationToken& token,
                                      MessageType type, bool success);
   bool confirmationTimedOut(uint32_t now_ms) const;
   void abortOutput();
@@ -224,6 +243,7 @@ class AdapterState {
   ConnectionToken overflow_owner_{};
 
   OutputMessage output_{};
+  uint64_t output_generation_ = 0;
   bool output_active_ = false;
   bool confirmation_pending_ = false;
   size_t fragment_payload_capacity_ = 0;
@@ -257,6 +277,7 @@ class ProtocolCore {
                     const uint8_t* frame, size_t frame_length,
                     uint32_t now_ms);
   bool popOutput(OutputMessage* output);
+  bool hasOutput() const { return output_count_ != 0; }
   void tick(uint32_t now_ms);
   void resetSession();
   void abortTransport(const ConnectionToken& owner, ResultReason reason,

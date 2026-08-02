@@ -35,6 +35,8 @@ void OtaManager::checkAndUpdate(bool force) {
         ~OtaBusyGuard() { GattServer::setOtaBusy(false); }
     } busyGuard;
 
+    GattServer::flushOtaBusy(3000);
+
     status = OtaStatus::WAIT_SAFE_STATE;
     const uint32_t waitStartedMs = millis();
     while (safeStateProvider == nullptr ||

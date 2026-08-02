@@ -565,37 +565,152 @@ void testAdapterOverflowAndAckGating() {
   uint8_t fragment[64] = {};
   size_t written = 0;
   sgk::MessageType type = sgk::MessageType::kError;
-  sgk::ConnectionToken owner;
+  sgk::IndicationToken token{};
   CHECK(adapter.beginNextIndication(23, 1200, fragment, sizeof(fragment),
-                                    &written, &type, &owner));
+                                    &written, &type, &token));
   CHECK(written != 0);
-  const sgk::ConnectionToken indication_owner = owner;
+  const sgk::IndicationToken indication_token = token;
   const sgk::MessageType indication_type = type;
   CHECK(!adapter.beginNextIndication(23, 1201, fragment, sizeof(fragment),
-                                     &written, &type, &owner));
-  CHECK(adapter.confirmIndication({8, indication_owner.generation},
+                                     &written, &type, &token));
+  CHECK(adapter.confirmIndication({{8, indication_token.owner.generation},
+                                   indication_token.output_generation,
+                                   indication_token.fragment_index},
                                   indication_type, true) ==
         sgk::IndicationResult::kIgnored);
-  CHECK(adapter.confirmIndication(indication_owner,
+  CHECK(adapter.confirmIndication(indication_token,
                                   sgk::MessageType::kChallenge, true) ==
         sgk::IndicationResult::kIgnored);
-  CHECK(adapter.confirmIndication(indication_owner, indication_type, true) ==
+  CHECK(adapter.confirmIndication(indication_token, indication_type, true) ==
         sgk::IndicationResult::kFragmentConfirmed);
+  sgk::IndicationToken token2{};
   CHECK(adapter.beginNextIndication(23, 1202, fragment, sizeof(fragment),
-                                    &written, &type, &owner));
-  CHECK(adapter.confirmIndication(owner, type, false) ==
+                                    &written, &type, &token2));
+  CHECK(adapter.confirmIndication(token2, type, false) ==
         sgk::IndicationResult::kAborted);
   CHECK(!adapter.outputActive());
 
   sgk::OutputMessage timeout_output = results[0];
   timeout_output.message_id++;
   CHECK(adapter.stageOutput(timeout_output));
+  sgk::IndicationToken token3{};
   CHECK(adapter.beginNextIndication(64, 0xfffffff0U, fragment,
                                     sizeof(fragment), &written, &type,
-                                    &owner));
+                                    &token3));
   CHECK(!adapter.confirmationTimedOut(0x0000049fU));
   CHECK(adapter.confirmationTimedOut(0x000004a0U));
   adapter.abortOutput();
+}
+
+void testAdversarialStaleIndicationAndEpochs() {
+  auto random = canonicalRandom();
+  FakeVerifier verifier(sgk::ResultReason::kOk);
+  const auto door = canonicalDoor();
+  sgk::ProtocolCore core(random, verifier, door);
+  sgk::AdapterState adapter;
+
+  CHECK(core.initialize());
+  core.setEnabled(true);
+  sgk::ConnectionToken owner_v1;
+  CHECK(core.connect(1, 1000, &owner_v1));
+  CHECK(adapter.acceptConnection(owner_v1));
+  CHECK(adapter.setSubscribed(1, sgk::MessageType::kResult, true));
+
+  sgk::OutputMessage msg1{};
+  msg1.connection_handle = owner_v1.handle;
+  msg1.connection_generation = owner_v1.generation;
+  msg1.type = sgk::MessageType::kResult;
+  msg1.message_id = 1;
+  msg1.length = 32;
+  std::memset(msg1.bytes.data(), 0xAA, 32);
+
+  // 1. Stage msg1 and obtain IndicationToken for fragment 0.
+  CHECK(adapter.stageOutput(msg1));
+  uint8_t frame[64] = {};
+  size_t written = 0;
+  sgk::MessageType type = sgk::MessageType::kError;
+  sgk::IndicationToken token1{};
+  CHECK(adapter.beginNextIndication(23, 1000, frame, sizeof(frame), &written, &type, &token1));
+  CHECK(token1.valid());
+  const uint64_t gen1 = token1.output_generation;
+  CHECK(gen1 != 0);
+  CHECK(token1.fragment_index == 0);
+
+  // 2. Abort msg1. Output generation increments to gen1 + 1.
+  adapter.abortOutput();
+  CHECK(!adapter.outputActive());
+
+  // 3. Stale callbacks (success or failure) using token1 must return kIgnored.
+  CHECK(adapter.confirmIndication(token1, sgk::MessageType::kResult, true) == sgk::IndicationResult::kIgnored);
+  CHECK(adapter.confirmIndication(token1, sgk::MessageType::kResult, false) == sgk::IndicationResult::kIgnored);
+
+  // 4. Same-owner same-type replacement: stage msg2 (type kResult) for same owner_v1.
+  sgk::OutputMessage msg2 = msg1;
+  msg2.message_id = 2;
+  std::memset(msg2.bytes.data(), 0xBB, 32);
+
+  CHECK(adapter.stageOutput(msg2));
+  sgk::IndicationToken token2{};
+  CHECK(adapter.beginNextIndication(23, 1005, frame, sizeof(frame), &written, &type, &token2));
+  CHECK(token2.valid());
+  CHECK(token2.output_generation > gen1);
+  CHECK(token2.fragment_index == 0);
+
+  // 5. Late callback from aborted msg1 (token1) arrives now for same owner and same type.
+  // It MUST NOT confirm msg2!
+  CHECK(adapter.confirmIndication(token1, sgk::MessageType::kResult, true) == sgk::IndicationResult::kIgnored);
+  CHECK(adapter.outputActive());
+  CHECK(adapter.confirmationPending());
+
+  // 6. Valid callback for msg2 (token2) confirms fragment 0.
+  CHECK(adapter.confirmIndication(token2, sgk::MessageType::kResult, true) == sgk::IndicationResult::kFragmentConfirmed);
+
+  // 7. Duplicate callback for fragment 0 (token2) arrives now. MUST return kIgnored because fragment_index is now 1.
+  CHECK(adapter.confirmIndication(token2, sgk::MessageType::kResult, true) == sgk::IndicationResult::kIgnored);
+
+  // 8. Fragment 1 confirmation for token2.
+  sgk::IndicationToken token2_frag1{};
+  CHECK(adapter.beginNextIndication(23, 1010, frame, sizeof(frame), &written, &type, &token2_frag1));
+  CHECK(token2_frag1.fragment_index == 1);
+  CHECK(token2_frag1.output_generation == token2.output_generation);
+
+  // Out-of-order callback for fragment 2 (invalid fragment_index) returns kIgnored.
+  sgk::IndicationToken token2_frag2_bogus = token2_frag1;
+  token2_frag2_bogus.fragment_index = 2;
+  CHECK(adapter.confirmIndication(token2_frag2_bogus, sgk::MessageType::kResult, true) == sgk::IndicationResult::kIgnored);
+
+  CHECK(adapter.confirmIndication(token2_frag1, sgk::MessageType::kResult, true) == sgk::IndicationResult::kFragmentConfirmed);
+}
+
+void testAdversarialDisconnectReconnectGeneration() {
+  sgk::AdapterState adapter;
+
+  sgk::ConnectionToken owner_v1{1, 100};
+  CHECK(adapter.acceptConnection(owner_v1));
+  CHECK(adapter.setSubscribed(1, sgk::MessageType::kResult, true));
+
+  sgk::OutputMessage msg{};
+  msg.connection_handle = owner_v1.handle;
+  msg.connection_generation = owner_v1.generation;
+  msg.type = sgk::MessageType::kResult;
+  msg.message_id = 1;
+  msg.length = 16;
+
+  CHECK(adapter.stageOutput(msg));
+  uint8_t frame[64] = {};
+  size_t written = 0;
+  sgk::MessageType type = sgk::MessageType::kError;
+  sgk::IndicationToken token_v1{};
+  CHECK(adapter.beginNextIndication(23, 1000, frame, sizeof(frame), &written, &type, &token_v1));
+
+  // Disconnect handle 1 and reconnect handle 1 (generation 101).
+  adapter.disconnect(1);
+  sgk::ConnectionToken owner_v2{1, 101};
+  CHECK(adapter.acceptConnection(owner_v2));
+  CHECK(adapter.setSubscribed(1, sgk::MessageType::kResult, true));
+
+  // Callback from owner_v1 (token_v1) MUST return kIgnored.
+  CHECK(adapter.confirmIndication(token_v1, sgk::MessageType::kResult, true) == sgk::IndicationResult::kIgnored);
 }
 
 void testProvisionedDoorBindingAndCanonicalEventFields() {
@@ -682,6 +797,8 @@ int main() {
   testDenyVerifierFuzzAndRngGuards();
   testAdapterConnectionOwnershipAndReconnectRace();
   testAdapterOverflowAndAckGating();
+  testAdversarialStaleIndicationAndEpochs();
+  testAdversarialDisconnectReconnectGeneration();
   testProvisionedDoorBindingAndCanonicalEventFields();
   testOtaSafeStateClassification();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";

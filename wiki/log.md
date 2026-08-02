@@ -1467,3 +1467,12 @@
 - Local software evidence passed: 87 repository tests, native production-core/shared-adapter executable, 16 protocol tests and canonical vectors, 18 observability tests, access/manual_remote/Target OTA/rollback validate+evaluate, OTA contract and pending-release rejection, trusted-policy mutation tests, actionlint 1.7.12, 14 YAML/22 JSON/9 JSONL with 53 records/13 Python parses, 189 relative links, wiki index, raw immutability, append-only Git-blob prefix, conflict/control/diff checks.
 - Fresh sequential ESP32-C6 builds passed with an ignored non-secret placeholder removed afterward: default-OFF RAM 47,040/327,680 and flash 1,595,848/7,340,032; `ENABLE_HARDWARELESS_RC=1` RAM 53,592/327,680 and flash 1,629,676/7,340,032. Exact-head hosted checks `30731181040` trusted policy, `30731181593` OTA P0 and `30731181616` firmware canary succeeded; production deploy was correctly skipped.
 - No Samsung/OEM, physical ESP32-C6 GATT/MTU/radio/heap, GPIO3 relay/sensor, power-loss/bootloader, OTA-G1..G4 or RELAY-G0..G2 evidence was produced or inferred. Production, legacy retirement and Epic closure remain fail-closed, and issue #18 plus all applicable hardware/operator gates remain open.
+
+## [2026-08-02] fix | PR #34 indication epoch token and build verification
+
+- Fixed GATT indication status callback mismatch by introducing `IndicationToken` (output generation, fragment index, connection handle and generation) to discard stale callbacks from aborted indications or previous sessions.
+- Added `flushOtaBusy()` before `WAIT_SAFE_STATE` in `OtaManager.cpp` to ensure OTA BUSY indications finish transmission before network HTTP operations start.
+- Resolved build compilation errors under `ENABLE_HARDWARELESS_RC=1` by defining missing static `in_flight_token_`, `in_flight_type_`, and `in_flight_valid_` variables in `src/GattServer.cpp` and correcting printf format specifiers.
+- Verified all 87 host tests (python/C++) and executed sequential ESP32-C6 PlatformIO builds: default-OFF passed at RAM 47,040/327,680 bytes (14.4%) and flash 1,598,136/7,340,032 bytes (21.8%); feature-ON (`ENABLE_HARDWARELESS_RC=1`) passed at RAM 53,648/327,680 bytes (16.4%) and flash 1,633,096/7,340,032 bytes (22.2%).
+- Maintained all manual_remote and OTA invariants without claiming physical device evidence.
+

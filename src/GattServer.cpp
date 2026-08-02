@@ -61,6 +61,9 @@ std::array<uint8_t, sgk::kMaxMessageSize + sgk::kFrameHeaderSize>
     challenge_read_value{};
 size_t challenge_read_length = 0;
 portMUX_TYPE core_mux = portMUX_INITIALIZER_UNLOCKED;
+sgk::IndicationToken in_flight_token_{};
+sgk::MessageType in_flight_type_{sgk::MessageType::kError};
+bool in_flight_valid_{false};
 
 class CanonicalMqttEventSink final : public sgk::EventSink {
  public:
@@ -520,6 +523,7 @@ void GattServer::setOtaBusy(bool busy) {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return;
   portENTER_CRITICAL(&core_mux);
+  in_flight_valid_ = false;
   if (busy) {
     adapter_state.abortOutput();
     adapter_state.clearWrites();
@@ -529,6 +533,37 @@ void GattServer::setOtaBusy(bool busy) {
   drainOutputs();
 #else
   (void)busy;
+#endif
+}
+
+void GattServer::flushOtaBusy(uint32_t timeout_ms) {
+#if ENABLE_HARDWARELESS_RC
+  const uint32_t start_ms = millis();
+  while (isOtaBusy() && isConnected() && hasActiveOutput()) {
+    update();
+    if (millis() - start_ms >= timeout_ms) {
+      LOGF("[WARN] GATT OTA BUSY indication flush timed out after %lu ms",
+           (unsigned long)timeout_ms);
+      break;
+    }
+    delay(10);
+  }
+#else
+  (void)timeout_ms;
+#endif
+}
+
+bool GattServer::hasActiveOutput() {
+#if ENABLE_HARDWARELESS_RC
+  if (core == nullptr) return false;
+  portENTER_CRITICAL(&core_mux);
+  const bool active = adapter_state.outputActive() ||
+                       adapter_state.confirmationPending() ||
+                       core->hasOutput();
+  portEXIT_CRITICAL(&core_mux);
+  return active;
+#else
+  return false;
 #endif
 }
 
@@ -587,6 +622,7 @@ void GattServer::handleDisconnect(uint16_t connection_id) {
   portENTER_CRITICAL(&core_mux);
   sgk::ConnectionToken owner;
   if (adapter_state.ownerForHandle(connection_id, &owner)) {
+    in_flight_valid_ = false;
     core->disconnect(owner, millis());
     adapter_state.disconnect(connection_id);
   }
@@ -626,12 +662,32 @@ void GattServer::handleSubscribe(uint16_t connection_id,
 
 void GattServer::handleIndicationStatus(sgk::MessageType type, bool success) {
 #if ENABLE_HARDWARELESS_RC
+  sgk::IndicationToken token{};
+  portENTER_CRITICAL(&core_mux);
+  if (in_flight_valid_ && type == in_flight_type_) {
+    token = in_flight_token_;
+    in_flight_valid_ = false;
+  }
+  portEXIT_CRITICAL(&core_mux);
+  handleIndicationStatus(token, type, success);
+#else
+  (void)type;
+  (void)success;
+#endif
+}
+
+void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
+                                       sgk::MessageType type, bool success) {
+#if ENABLE_HARDWARELESS_RC
   (void)type;
   sgk::ConnectionToken owner;
   sgk::IndicationResult result = sgk::IndicationResult::kIgnored;
   portENTER_CRITICAL(&core_mux);
+  if (in_flight_valid_ && token == in_flight_token_) {
+    in_flight_valid_ = false;
+  }
   owner = adapter_state.activeOwner();
-  result = adapter_state.confirmIndication(owner, type, success);
+  result = adapter_state.confirmIndication(token, type, success);
   if (result == sgk::IndicationResult::kAborted && core != nullptr) {
     adapter_state.clearWrites();
     core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
@@ -641,7 +697,12 @@ void GattServer::handleIndicationStatus(sgk::MessageType type, bool success) {
   if (result == sgk::IndicationResult::kAborted) {
     LOGF("[ERROR] GATT indication failed; session aborted");
   }
+  if (result == sgk::IndicationResult::kFragmentConfirmed ||
+      result == sgk::IndicationResult::kMessageConfirmed) {
+    drainOutputs();
+  }
 #else
+  (void)token;
   (void)type;
   (void)success;
 #endif
@@ -702,6 +763,7 @@ void GattServer::destroyService() {
   challenge_characteristic = nullptr;
   proof_characteristic = nullptr;
   result_characteristic = nullptr;
+  in_flight_valid_ = false;
   adapter_state.clear();
   // Keep the legacy iBeacon advertisement running, but remove the unavailable
   // GATT service UUID from the scan response.
@@ -723,6 +785,7 @@ void GattServer::drainOutputs() {
   bool stage_failed = false;
   bool begin_failed = false;
   sgk::ConnectionToken owner;
+  sgk::IndicationToken token{};
   uint8_t frame[sgk::kAdapterFrameCapacity] = {};
   size_t frame_length = 0;
   sgk::MessageType type = sgk::MessageType::kError;
@@ -750,13 +813,17 @@ void GattServer::drainOutputs() {
     const uint16_t mtu = ble_server->getPeerMTU(owner.handle);
     if (!adapter_state.beginNextIndication(
             mtu, millis(), frame, sizeof(frame), &frame_length, &type,
-            &owner)) {
+            &token)) {
       owner = adapter_state.activeOwner();
       adapter_state.abortOutput();
       adapter_state.clearWrites();
       core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                            millis());
       begin_failed = true;
+    } else {
+      in_flight_token_ = token;
+      in_flight_type_ = type;
+      in_flight_valid_ = true;
     }
   }
   portEXIT_CRITICAL(&core_mux);
@@ -774,7 +841,7 @@ void GattServer::drainOutputs() {
 
   BLECharacteristic* characteristic = characteristicFor(type);
   if (characteristic == nullptr) {
-    handleIndicationStatus(type, false);
+    handleIndicationStatus(token, type, false);
     return;
   }
   characteristic->setValue(frame, frame_length);
@@ -784,7 +851,7 @@ void GattServer::drainOutputs() {
       ble_gatts_indicate_custom(owner.handle, characteristic->getHandle(),
                                 packet) != 0) {
     if (packet != nullptr) os_mbuf_free_chain(packet);
-    handleIndicationStatus(type, false);
+    handleIndicationStatus(token, type, false);
   }
 #else
   // Bluedroid has no conn_handle overload. Rejected peers are disconnected in

@@ -25,6 +25,8 @@ class GattServer {
   static uint32_t getActiveConnections();
   static bool isOtaBusy();
   static void setOtaBusy(bool busy);
+  static void flushOtaBusy(uint32_t timeout_ms = 3000);
+  static bool hasActiveOutput();
   static void setProofVerifier(sgk::ProofVerifier* verifier);
   static void setEventSink(sgk::EventSink* sink);
   static void useProductionEventSink();
@@ -38,6 +40,8 @@ class GattServer {
                           const uint8_t* value, size_t length);
   static void handleSubscribe(uint16_t connection_id, sgk::MessageType type,
                               bool subscribed);
+  static void handleIndicationStatus(const sgk::IndicationToken& token,
+                                     sgk::MessageType type, bool success);
   static void handleIndicationStatus(sgk::MessageType type, bool success);
 
  private:
