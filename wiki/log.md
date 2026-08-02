@@ -1413,3 +1413,12 @@
 - Passed 81 repository gate tests, 16 protocol canonical-vector tests, 18 observability tests, and the standalone canonical-vector verifier.
 - Passed Dart format for the changed bridge/test, wiki relative-link validation, `git diff --check`, and raw-source immutability validation; unrelated generated Linux/macOS/Windows Flutter plugin registrants were restored and excluded.
 - Confirmed no changes to authenticated `manual_remote`, update manager, OTA evidence/contracts, Target firmware, or `raw/`; G0-HW, Samsung/OEM, ESP32-C6 radio, relay/sensor, bootloader, and OTA-G1 through OTA-G4 evidence remain pending.
+
+## [2026-08-02] test | PR #35 independent native GATT worker review blocked
+
+- Independently reviewed issues #13/#14/#17/#18/#23, the wake ADR, security, observability and OTA contracts, and the complete 23-file diff at exact author head `5f13584c99656de58b12f0e0f2f52bac82100088`.
+- Posted same-account COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/35#pullrequestreview-4836326399: the remote flag trusts a caller-supplied validation bit and cannot atomically stop an already-running legacy scanner, so live flag transitions or restored preferences can violate exclusive BLE ownership.
+- Also blocked on the post-proof/pre-ledger-commit crash boundary that can re-run a fresh Target proof/ARM, lossy Target/disconnect reason mapping with ignored `retry_after_ms`, and terminal session history that retains raw device address and credential ID beyond connection need.
+- Re-ran Gradle with `--rerun-tasks` (208 executed tasks), inspected five JUnit XML suites with 18/18 passing including targeted GATT 12/12, ran Flutter 6/6 and clean targeted Dart analysis, and rebuilt the debug APK.
+- Passed repository 81, protocol 16, observability 18, canonical vector, authenticated `manual_remote` and OTA fixture validate/evaluate, OTA contract, actionlint, Python/JSON/YAML parse, relative-link, conflict, diff and raw immutability checks; green tests do not cover the blocking crash/ownership/reason/privacy boundaries.
+- The authenticated explicit-button `manual_remote` runtime chain, mobile updater files, Target firmware/OTA assets, release evidence and `raw/` remain unchanged. PR #35 stays draft/unmerged; Samsung/OEM, real ESP32-C6 radio/relay/sensor/bootloader, RELAY-G0 through G2 and OTA-G1 through G4 evidence remain pending and production/legacy retirement stay fail-closed.
