@@ -1777,3 +1777,15 @@
 - Re-ran native GATT/ACL/FSM/queue host tests (359 checks) and the Python hardwareless suite (6 tests); both passed.
 - `git diff --check`, raw immutability, wiki index coverage, normalized append-only log prefix, and all relative Markdown links passed.
 - Removed only `.review-tmp*` test scratch directories and retained the ignored fresh OFF/ON build directories as evidence; no commit, push, review, ready, or merge action was performed.
+
+## [2026-08-02] fix | PR #37 Linux GCC UUID copy portability
+
+- GitHub Actions runs `30742120599` and `30742120609` confirmed that Linux GCC rejects four exact-length UUID `std::strncpy(..., size - 1)` calls under `-Werror=stringop-truncation`, while the Windows MinGW GCC 5.1 host compiler did not surface the warning.
+- Replaced only the four UUID field copies in `testOfflineCanonicalEventReplayAndPreservation` with explicit `constexpr char` arrays, compile-time destination-size validation, and `std::memcpy` including the NUL terminator; the shorter non-UUID `target_ref` copy remains unchanged.
+- Added direct trailing-NUL checks for all four UUID fields. The exact WSL Ubuntu GCC 11 `-Wall -Wextra -Werror` repro changed from four compile errors to a passing native binary with 363 checks.
+
+## [2026-08-02] test | PR #37 Linux GCC UUID portability verification
+
+- `python -m unittest discover -s tests -p test_*.py -v` passed all 87 tests using the Windows MinGW GCC 5.1 host toolchain.
+- The focused WSL Ubuntu GCC 11 build with `-std=c++17 -Wall -Wextra -Werror` passed and its GATT/ACL/FSM/queue binary passed 363 checks, confirming both the Linux CI warning fix and the Windows-host compatibility of explicit `static_assert` messages.
+- Long PlatformIO builds were intentionally not rerun because this remediation changes only host test code and documentation; physical gates remain unchanged and open.

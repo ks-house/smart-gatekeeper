@@ -1414,12 +1414,33 @@ void testOfflineCanonicalEventReplayAndPreservation() {
     std::strncpy(canonical_evt.outcome_text, "SUCCEEDED", sizeof(canonical_evt.outcome_text) - 1);
     std::strncpy(canonical_evt.detail, "PROOF_VALID", sizeof(canonical_evt.detail) - 1);
 
-    std::strncpy(canonical_evt.event_id, "12345678-1234-1234-1234-123456789abc", sizeof(canonical_evt.event_id) - 1);
-    std::strncpy(canonical_evt.session_id, "87654321-4321-4321-4321-cba987654321", sizeof(canonical_evt.session_id) - 1);
-    std::strncpy(canonical_evt.source_boot_id, "abcdef12-3456-7890-abcd-ef1234567890", sizeof(canonical_evt.source_boot_id) - 1);
+    constexpr char kEventId[] = "12345678-1234-1234-1234-123456789abc";
+    constexpr char kSessionId[] = "87654321-4321-4321-4321-cba987654321";
+    constexpr char kSourceBootId[] = "abcdef12-3456-7890-abcd-ef1234567890";
+    constexpr char kCausationEventId[] = "11223344-5566-7788-9900-aabbccddeeff";
+    static_assert(sizeof(kEventId) == sizeof(canonical_evt.event_id),
+                  "event ID literal must fill destination including NUL");
+    static_assert(sizeof(kSessionId) == sizeof(canonical_evt.session_id),
+                  "session ID literal must fill destination including NUL");
+    static_assert(sizeof(kSourceBootId) == sizeof(canonical_evt.source_boot_id),
+                  "boot ID literal must fill destination including NUL");
+    static_assert(sizeof(kCausationEventId) ==
+                      sizeof(canonical_evt.causation_event_id),
+                  "causation ID literal must fill destination including NUL");
+    std::memcpy(canonical_evt.event_id, kEventId, sizeof(kEventId));
+    std::memcpy(canonical_evt.session_id, kSessionId, sizeof(kSessionId));
+    std::memcpy(canonical_evt.source_boot_id, kSourceBootId,
+                sizeof(kSourceBootId));
     std::strncpy(canonical_evt.target_ref, "target_c6_01_ref_12345678", sizeof(canonical_evt.target_ref) - 1);
     canonical_evt.has_causation = 1;
-    std::strncpy(canonical_evt.causation_event_id, "11223344-5566-7788-9900-aabbccddeeff", sizeof(canonical_evt.causation_event_id) - 1);
+    std::memcpy(canonical_evt.causation_event_id, kCausationEventId,
+                sizeof(kCausationEventId));
+    CHECK(canonical_evt.event_id[sizeof(canonical_evt.event_id) - 1] == '\0');
+    CHECK(canonical_evt.session_id[sizeof(canonical_evt.session_id) - 1] == '\0');
+    CHECK(canonical_evt.source_boot_id[
+              sizeof(canonical_evt.source_boot_id) - 1] == '\0');
+    CHECK(canonical_evt.causation_event_id[
+              sizeof(canonical_evt.causation_event_id) - 1] == '\0');
 
     CHECK(queue1.push(canonical_evt));
     CHECK(queue1.size() == 1);
