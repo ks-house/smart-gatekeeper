@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-02 (trusted workflow-policy bootstrap 반영)
+> Last updated: 2026-08-02 (Windows managed-runner PlatformIO lock 경계 반영)
 
 ## 1. 펌웨어
 
@@ -21,6 +21,25 @@ pio device monitor -b 115200
 이 파일을 생성하고 `FIRMWARE_VERSION_OVERRIDE`를 주입합니다. v2.1부터 main firmware build ID는
 `2.1.0-g<short_sha>` 형식입니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
 `platformio.ini`에 없습니다.
+
+### Windows managed-runner PlatformIO package lock
+
+Managed sandbox 안에서 `pio run -e esp32c6`를 실행하면 compile 전에
+`PermissionError: [Errno 13] Permission denied: 'C:\Users\shcat\.platformio\platforms.lock'`로
+실패할 수 있습니다. PlatformIO가 project 외부의 user-global package manager lock/cache를
+획득해야 하지만 sandbox write scope가 worktree로 제한되는 것이 원인입니다. 이 실패는 firmware
+source, pioarduino package 또는 `include/secrets.h` 내용의 오류가 아닙니다.
+
+동일한 `pio run` 명령만 user-global PlatformIO cache 접근이 허용된 scoped execution으로 다시
+실행합니다. build 전에는 ignored `include/secrets.h`를 example에서 만들고, 성공·실패와 관계없이
+정확한 해당 파일만 `finally` cleanup합니다. 광범위한 shell/Python 권한이나 repository 외부 삭제는
+허용하지 않으며 실제 secret을 출력하거나 test placeholder에 넣지 않습니다.
+
+명령 wrapper가 종료된 child process 뒤에도 대기하는 것처럼 보이면 먼저 issue worktree와 관련된
+`pio` process가 실제로 없는지 read-only로 확인합니다. 살아 있는 build가 없고
+`include/secrets.h`도 없을 때만 중복 build를 재시작합니다. 2026-08-02 PR #36 review에서는 scoped
+재실행이 RAM 47,032/327,680 bytes, flash 1,596,456/7,340,032 bytes에서 성공했고, cleanup 뒤
+`include/secrets.h` 부재와 clean worktree를 다시 확인했습니다.
 
 ## 2. 백엔드
 
@@ -161,6 +180,21 @@ sandbox의 socket/network 차단으로 GitHub에 연결하지 못하면 토큰 �
 권한을 적용해 다시 확인합니다. 실제 GitHub 연결 후에도 401/invalid가 확인될 때만 만료·폐기·오입력
 가능성으로 판정하며, `gh auth login`이나 저장 계정으로 우회하지 않고 실행 환경의
 `GITHUB_TOKEN`을 갱신해야 합니다.
+
+### Windows managed-worktree Git administrative lock
+
+Orca worktree의 visible path가 write 가능해도 Git common directory가 parent repository 아래에
+있으면 `git add` 또는 `git commit`이
+`Permission denied: ...\.git\worktrees\<worktree>\index.lock`으로 실패할 수 있습니다. Git이
+worktree 내부가 아니라 external common `.git` administrative directory에 lock과 index를 써야
+하지만 managed sandbox가 visible worktree만 허용하는 것이 원인입니다. source file 권한이나
+repository corruption으로 판정하지 않습니다.
+
+먼저 `git status --short`, explicit path diff와 `git diff --check`로 변경 범위를 확인합니다. 그 뒤
+`git add -- <verified paths>`와 `git commit`만 Git administrative directory 접근이 허용된 scoped
+execution으로 실행하고, broad staging 또는 parent repository file mutation은 허용하지 않습니다.
+완료 후 commit SHA, `git status --short --branch`, staged/unstaged diff 부재와 remote branch head를
+다시 확인합니다. GitHub 게시에는 계속 process environment의 `GITHUB_TOKEN`만 사용합니다.
 
 ## 6. 릴리스 전 체크
 
