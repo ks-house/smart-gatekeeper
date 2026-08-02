@@ -1,0 +1,285 @@
+package com.kshouse.gatekeeper_app.gattworker
+
+import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.AtomicFile
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.Mac
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+
+data class LocatorSecret(
+  val deviceAddress: String,
+  val credentialId: ByteArray,
+) {
+  init {
+    require(deviceAddress.matches(Regex("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$"))) { "device address" }
+    require(credentialId.size == 16) { "credential id length" }
+  }
+}
+
+interface LocatorVault {
+  fun store(sessionId: String, secret: LocatorSecret)
+  fun load(sessionId: String): LocatorSecret?
+  fun delete(sessionId: String)
+  fun cleanupExcept(activeSessionIds: Set<String>)
+}
+
+class AndroidEncryptedLocatorVault(context: Context) : LocatorVault {
+  private val store = NoBackupAeadStore(context.applicationContext)
+
+  override fun store(sessionId: String, secret: LocatorSecret) {
+    requireSessionId(sessionId)
+    val plaintext = ByteArrayOutputStream().use { output ->
+      DataOutputStream(output).use { data ->
+        data.writeByte(1)
+        data.writeUTF(secret.deviceAddress.uppercase())
+        data.write(secret.credentialId)
+      }
+      output.toByteArray()
+    }
+    store.write(locatorName(sessionId), plaintext)
+    plaintext.fill(0)
+  }
+
+  override fun load(sessionId: String): LocatorSecret? {
+    requireSessionId(sessionId)
+    val plaintext = store.read(locatorName(sessionId)) ?: return null
+    return try {
+      DataInputStream(ByteArrayInputStream(plaintext)).use { data ->
+        require(data.readUnsignedByte() == 1) { "locator schema" }
+        val address = data.readUTF()
+        val credential = ByteArray(16).also(data::readFully)
+        require(data.read() == -1) { "locator trailing bytes" }
+        LocatorSecret(address, credential)
+      }
+    } catch (_: Exception) {
+      delete(sessionId)
+      null
+    } finally {
+      plaintext.fill(0)
+    }
+  }
+
+  override fun delete(sessionId: String) {
+    requireSessionId(sessionId)
+    store.delete(locatorName(sessionId))
+  }
+
+  override fun cleanupExcept(activeSessionIds: Set<String>) {
+    store.names("locator-").forEach { name ->
+      val sessionId = name.removePrefix("locator-")
+      if (sessionId !in activeSessionIds) store.delete(name)
+    }
+  }
+
+  private fun requireSessionId(sessionId: String) {
+    require(sessionId.matches(Regex("^[0-9a-fA-F-]{36}$"))) { "session id" }
+  }
+
+  private fun locatorName(sessionId: String) = "locator-$sessionId"
+}
+
+class BleCredentialConfigStore(private val context: Context) {
+  private val store = NoBackupAeadStore(context.applicationContext)
+
+  fun credentialId(): ByteArray? {
+    store.read(CREDENTIAL_NAME)?.let { value ->
+      if (value.size == 16) return value
+      value.fill(0)
+      store.delete(CREDENTIAL_NAME)
+    }
+    val legacyPrefs = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+    val legacy = legacyPrefs.getString(LEGACY_KEY, null)
+      ?.takeIf { it.matches(Regex("^[0-9a-f]{32}$")) }
+      ?.hexToBytes()
+      ?: return null
+    store.write(CREDENTIAL_NAME, legacy)
+    check(legacyPrefs.edit().remove(LEGACY_KEY).commit()) { "failed credential migration cleanup" }
+    return legacy
+  }
+
+  /** Native enrollment seam; private key material is never accepted by this API. */
+  fun applyCredentialId(credentialId: ByteArray): Boolean = try {
+    require(credentialId.size == 16) { "credential id length" }
+    store.write(CREDENTIAL_NAME, credentialId)
+    context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE).edit().remove(LEGACY_KEY).commit()
+  } catch (_: Exception) {
+    false
+  }
+
+  private companion object {
+    const val CREDENTIAL_NAME = "credential-v1"
+    const val LEGACY_PREFS = "ble_gatt_worker_credential"
+    const val LEGACY_KEY = "credential_id_hex"
+  }
+}
+
+fun interface PresenceFingerprinter {
+  fun fingerprint(deviceAddress: String, presenceEventId: String): String
+}
+
+class AndroidKeystorePresenceFingerprinter(private val context: Context) : PresenceFingerprinter {
+  override fun fingerprint(deviceAddress: String, presenceEventId: String): String {
+    cleanupLegacySecret()
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(getOrCreateHmacKey())
+    return mac.doFinal(
+      "i4-presence-v2|${deviceAddress.uppercase()}|$presenceEventId".toByteArray(Charsets.UTF_8),
+    ).toHex()
+  }
+
+  private fun getOrCreateHmacKey(): SecretKey {
+    val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    (keyStore.getKey(HMAC_ALIAS, null) as? SecretKey)?.let { return it }
+    return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, ANDROID_KEYSTORE).apply {
+      init(
+        KeyGenParameterSpec.Builder(
+          HMAC_ALIAS,
+          KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
+        ).setDigests(KeyProperties.DIGEST_SHA256).build(),
+      )
+    }.generateKey()
+  }
+
+  private fun cleanupLegacySecret() {
+    context.applicationContext.getSharedPreferences(LEGACY_INTERNAL_PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .remove(LEGACY_FINGERPRINT_KEY)
+      .commit()
+  }
+
+  companion object {
+    private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+    private const val HMAC_ALIAS = "sgk.presence.hmac.v1"
+    private const val LEGACY_INTERNAL_PREFS = "ble_gatt_worker_internal"
+    private const val LEGACY_FINGERPRINT_KEY = "fingerprint_key_hex"
+  }
+}
+
+class DeterministicPresenceFingerprinter(key: ByteArray) : PresenceFingerprinter {
+  private val keyCopy = key.copyOf()
+
+  override fun fingerprint(deviceAddress: String, presenceEventId: String): String {
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(SecretKeySpec(keyCopy, "HmacSHA256"))
+    return mac.doFinal(
+      "i4-presence-v2|${deviceAddress.uppercase()}|$presenceEventId".toByteArray(Charsets.UTF_8),
+    ).toHex()
+  }
+}
+
+private class NoBackupAeadStore(context: Context) {
+  private val directory = File(context.noBackupFilesDir, "ble-gatt-secure-v1")
+  private val aead = AndroidKeystoreAead()
+
+  fun write(name: String, plaintext: ByteArray) {
+    requireName(name)
+    if (!directory.exists()) check(directory.mkdirs() || directory.isDirectory) { "secure directory" }
+    val encoded = aead.encrypt(name.toByteArray(Charsets.UTF_8), plaintext)
+    val atomic = AtomicFile(File(directory, name))
+    val stream = atomic.startWrite()
+    try {
+      stream.write(encoded)
+      stream.fd.sync()
+      atomic.finishWrite(stream)
+    } catch (error: Throwable) {
+      atomic.failWrite(stream)
+      throw error
+    } finally {
+      encoded.fill(0)
+    }
+  }
+
+  fun read(name: String): ByteArray? {
+    requireName(name)
+    val file = File(directory, name)
+    if (!file.exists()) return null
+    return try {
+      aead.decrypt(name.toByteArray(Charsets.UTF_8), AtomicFile(file).readFully())
+    } catch (_: Exception) {
+      file.delete()
+      null
+    }
+  }
+
+  fun delete(name: String) {
+    requireName(name)
+    AtomicFile(File(directory, name)).delete()
+  }
+
+  fun names(prefix: String): List<String> = directory.list()?.filter { it.startsWith(prefix) }.orEmpty()
+
+  private fun requireName(name: String) {
+    require(name.matches(Regex("^[a-z0-9-]{1,64}$"))) { "secure record name" }
+  }
+}
+
+private class AndroidKeystoreAead {
+  fun encrypt(aad: ByteArray, plaintext: ByteArray): ByteArray {
+    val cipher = Cipher.getInstance(TRANSFORMATION).apply {
+      init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+      updateAAD(aad)
+    }
+    val ciphertext = cipher.doFinal(plaintext)
+    return ByteArrayOutputStream().use { output ->
+      DataOutputStream(output).use { data ->
+        data.writeByte(1)
+        data.writeByte(cipher.iv.size)
+        data.write(cipher.iv)
+        data.writeInt(ciphertext.size)
+        data.write(ciphertext)
+      }
+      output.toByteArray()
+    }.also { ciphertext.fill(0) }
+  }
+
+  fun decrypt(aad: ByteArray, encoded: ByteArray): ByteArray =
+    DataInputStream(ByteArrayInputStream(encoded)).use { data ->
+      require(data.readUnsignedByte() == 1) { "secure record schema" }
+      val ivSize = data.readUnsignedByte()
+      require(ivSize == 12) { "GCM IV length" }
+      val iv = ByteArray(ivSize).also(data::readFully)
+      val ciphertextSize = data.readInt()
+      require(ciphertextSize in 17..4096) { "ciphertext length" }
+      val ciphertext = ByteArray(ciphertextSize).also(data::readFully)
+      require(data.read() == -1) { "secure record trailing bytes" }
+      Cipher.getInstance(TRANSFORMATION).run {
+        init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
+        updateAAD(aad)
+        doFinal(ciphertext)
+      }.also { ciphertext.fill(0) }
+    }
+
+  private fun getOrCreateKey(): SecretKey {
+    val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    (keyStore.getKey(AES_ALIAS, null) as? SecretKey)?.let { return it }
+    return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE).apply {
+      init(
+        KeyGenParameterSpec.Builder(
+          AES_ALIAS,
+          KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+        )
+          .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+          .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+          .setRandomizedEncryptionRequired(true)
+          .build(),
+      )
+    }.generateKey()
+  }
+
+  private companion object {
+    const val ANDROID_KEYSTORE = "AndroidKeyStore"
+    const val AES_ALIAS = "sgk.locator.aesgcm.v1"
+    const val TRANSFORMATION = "AES/GCM/NoPadding"
+  }
+}

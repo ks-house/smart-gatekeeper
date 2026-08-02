@@ -1278,103 +1278,6 @@
 - Passed 30 repository unit tests including 12 trusted-policy adversarial tests, OTA contract validation, Python compile, actionlint, workflow YAML and policy/OTA JSON parsing, wiki relative-link lint, `git diff --check`, and raw-source immutability check.
 - No physical Target or Android OTA trial was performed; OTA-G1 through OTA-G4 remain pending and issue #23 stays open.
 
-## [2026-08-01] fix | PR #28 branch `origin/main` (PR #29 `420783fc`) 병합 및 Trusted Policy `pr-28-preapproved` 검증
-
-- PR #29가 `origin/main` (`420783fc`)으로 병합됨에 따라 `origin/main`을 `tworimpa/fix-main-ci-release-gate`에 히스토리 재작성 없이 병합
-- 5개 보호 대상 파일 (`deploy.yml`, `build_app.yml`, `ota_contract.yml`, `scripts/ota_contract_gate.py`, `ota/requirements.txt`)을 `7bae62f` 승인 번들 바이트로 보존
-- `verify_trusted_workflow_policy.py` 실행 결과 후보 번들이 `pr-28-preapproved`와 100% 일치함을 기계적으로 검증
-- 수동 모바일 출입 및 미결 OTA-G1~G4 물리 증거 상태를 보존하고 12개 trusted policy test, 39개 OTA contract test, 18개 observability test, 16개 protocol test, actionlint, relative link check, `git diff --check`, ESP32-C6 PlatformIO 빌드 전건 재검증 통과
-
-## [2026-08-01] test | PR #28 final trusted-policy review blocked by unresolved wiki conflicts
-
-- Independently verified head `55f8249753e21061b61eaf4d5669dd549796c511`: trusted base run `30706318220` checked base SHA `420783fc`, approved exactly `pr-28-preapproved`, and 12 trusted-policy tests plus a separate 102-case byte-mutation audit rejected every protected-file deviation and PR-side policy self-redefinition.
-- Re-ran 50 OTA, 18 observability, 16 protocol, authenticated `manual_remote`, OTA/access/rollback state-machine, actionlint, YAML/JSON/JSONL/schema/link/compile/raw-diff, and ESP32-C6 PlatformIO checks; all passed, and PR runs `30706319098`, `30706319103`, and `30706319133` completed successfully with both production jobs accurately skipped.
-- Confirmed the live `production` Environment still requires reviewer `tworimpa` and permits only the custom deployment branch `main`; branch protection requires the trusted policy status, while issue #23 remains open for OTA-G1 through OTA-G4 physical/operator evidence.
-- Blocked merge because `git diff --check origin/main...HEAD` exits 2 on unresolved conflict markers in `wiki/env_setup.md`, `wiki/log.md`, and `wiki/ota_reliability_contract.md`, leaving the documented trigger and release contracts ambiguous and corrupting the append-only log history.
-- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4834996277; PR #28 remains draft and unmerged pending a conflict-only correction and fresh independent review.
-
-## [2026-08-01] fix | PR #28 wiki 잔여 충돌 마커 전면 제거 및 conflict-only 정정 완료
-
-- `wiki/env_setup.md`, `wiki/log.md`, `wiki/ota_reliability_contract.md`에 남아 있던 `<<<<<<<`, `=======`, `>>>>>>>` 충돌 마커 라인을 전면 제거
-- 양쪽 변경 내용(PlatformIO/Flutter canary 보존, trusted workflow policy, 명시적 production dispatch)을 손실 없이 보존하고 중복된 마커 아티팩트만 정리
-- 런타임 코드, 테스트, raw/, 보호 workflow/policy/scripts 및 수동 모바일 출입 경로를 변경하지 않고 보존
-- 저장소 전체 conflict marker 0건, `git diff --check origin/main...HEAD` 0 error, wiki relative-link consistency 및 모든 unit test/actionlint 통과 확인
-
-## [2026-08-01] test | PR #28 final conflict-fix review approved for protected merge
-
-- Independently reviewed head `021105fa9e4227ad4e6961219d352c7c092dfc28`; confirmed `3befc28..021105f` changes only three wiki files, removes all seven conflict markers, preserves both the explicit production-dispatch and trusted-policy contracts, appends valid history, and leaves raw/runtime/tests/protected files plus `manual_remote` byte-identical.
-- The live base validator and hosted Trusted Workflow Policy run `30707292418` approved exactly `pr-28-preapproved` from trusted base SHA `420783fc`; 12 trusted-policy, 50 OTA, 18 observability, and 16 protocol tests, fixture validate/evaluate, actionlint, YAML/JSON/JSONL/link/compile/diff/raw checks, and ESP32-C6 PlatformIO build all passed.
-- PR runs `30707293747`, `30707293730`, and `30707293735` completed successfully with OTA, firmware, Android contract/test/build/canary coverage; firmware and Android production jobs were accurately skipped, while direct production validation remained fail-closed on pending OTA-G1 through OTA-G4.
-- Confirmed the live `production` Environment requires reviewer `tworimpa` with the sole custom deployment branch `main`, and strict main protection requires `Verify protected files against trusted base policy` with admins enforced and force pushes/deletions disabled.
-- Posted explicit COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/28#pullrequestreview-4835063820; issue #23 remains open for unavailable OTA-G1 through OTA-G4 physical/operator evidence.
-
-## [2026-08-01] compile | Trusted workflow policy를 merged main 단일 baseline으로 rotation
-
-- PR #28 merge commit `cc977e42770e6d88822459436a770295632c6e45`의 5개 보호 파일 normalized SHA-256을 `current-main-baseline` 단일 bundle로 고정
-- `origin-main-bootstrap@8c36ead`와 `pr-28-preapproved@7bae62f` 임시 entry를 제거하고 schema, protected path, exact whole-bundle matching 규칙은 변경 없이 보존
-- PR #28 보호 bytes는 merged main bytes와 동일하므로 digest는 새 main provenance로 재귀속하고, 과거 pre-PR #28 byte set은 더 이상 승인하지 않음
-
-## [2026-08-01] lint | Trusted policy rotation 범위와 보호 설정 확인
-
-- 변경 범위를 policy, trusted adversarial test, 기존 trusted-policy 문서와 append-only log로 제한하고 5개 보호 파일, runtime, raw, OTA evidence, `manual_remote`는 수정하지 않음
-- strict main required check, admins enforcement, force-push/delete 금지와 production Environment reviewer `tworimpa` 및 단일 `main` deployment branch policy를 live API로 확인
-- live GitHub API validator가 `cc977e4`를 `current-main-baseline`으로 승인하고 retired `8c36ead` byte bundle을 거부함을 확인
-- 63개 repository unit tests(OTA 50, trusted policy 13), observability 18개, protocol 16개, canonical vector와 access/manual_remote/OTA fixture validate/evaluate 전건 통과
-- actionlint, workflow YAML, 21개 JSON, 9개 JSONL, Python compile, wiki link, conflict marker, `git diff --check`와 raw/protected/runtime/OTA evidence immutability 검사 통과
-- issue #23은 open이고 OTA-G1 through OTA-G4 physical/operator evidence는 pending 상태를 유지
-
-## [2026-08-01] lint | PR #30 독립 리뷰 승인 및 최종 검증 기록
-
-- PR #30 head `2d23b52b3c41893fa1a1fbe87c13545be9002863`에 대해 독립 코드 및 정책 리뷰를 완료하고 COMMENTED 승인 기록 (https://github.com/ks-house/smart-gatekeeper/pull/30#pullrequestreview-4835169097)
-- merged main `cc977e42770e6d88822459436a770295632c6e45` baseline 단일 bundle 회귀 및 live GitHub API validator 승인 확인; 구 `8c36ead` fail-closed 거부 확인
-- 63개 unit tests, protocol 16개, observability 18개, OTA contract, actionlint, YAML/JSON/JSONL, PlatformIO ESP32-C6 빌드 및 immutability 검사 통과
-- strict main protection(enforce_admins: true), production Environment reviewer `tworimpa` 및 main-only policy 유지 확인
-- issue #23은 open 상태를 유지하고 OTA-G1~G4 physical evidence는 pending으로 관리
-
-## [2026-08-02] fix | Trusted workflow policy required-check deadlock 해제 및 parsed run 검증 강화
-
-- .github/workflows/trusted_workflow_policy.yml에서 paths 필터를 제거하여 docs-only PR을 포함한 모든 main 대상 PR에서 Verify protected files against trusted base policy 검사가 실행되도록 수정
-- pull_request_target 이벤트, base/default branch guards, trusted base-SHA checkout, inert candidate API bytes 처리 및 contents: read 권한을 모두 그대로 보존
-- tests/test_trusted_workflow_policy.py에 exact non-lossy parsed run validation (CR, LF, CRLF, tab, multiple spaces 거부) 및 structural regression tests (sparse-checkout dot, PR-title execution, extra steps, YAML boolean/string key collision, unsafe tags, unexpected jobs/steps/env/permissions, C0-control regression for wiki/log.md) 추가
-- wiki/trusted_workflow_policy.md 및 wiki/index.md에 paths 필터 제거와 required check 스케줄링 동작 업데이트
-- 77개 repository unit tests, protocol 16개, observability 18개, OTA contract, actionlint, relative link check, git diff --check, immutability 검사 통과
-
-## [2026-08-02] lint | PR #33 trusted required-check 독립 리뷰 및 병합 승인
-
-- exact author head `3c431c67509a2c4327677b4364d1ae195cf8d255`의 전체 diff와 이력을 독립 검토하고 same-account COMMENTED review https://github.com/ks-house/smart-gatekeeper/pull/33#pullrequestreview-4835921884 게시
-- LF, CRLF, bare CR, tab, multiple-space shell boundary와 sparse checkout broadening, expression injection, extra job/step/checkout/execution, permissions/env/ref/credentials/cone-mode, YAML key collision/alias/unsafe tag 변이를 독립 시험해 위험한 실행·권한 확장이 fail-closed로 거부됨을 확인
-- `origin/main:wiki/log.md` 131,280 bytes가 author head 132,413 bytes의 exact raw-byte prefix이고 invalid C0/DEL 0건임을 Python raw-byte 비교로 확인; raw/, 5-file protected bundle, runtime, `manual_remote`, OTA 계약·증거·복구 assets는 byte-unchanged
-- 77개 repository unit tests, protocol 16개, observability 18개, authenticated access/manual_remote/Target OTA/rollback validate·evaluate, OTA contract, actionlint, 5 YAML/21 JSON/9 JSONL/11 Python/31 Markdown link, conflict/diff 및 ESP32-C6 PlatformIO build 전건 통과
-- hosted trusted run `30720471619`가 trusted base `f2dc0b8d05a1f0868f751cbfcbefe32477abb795`에서 author head의 unchanged `current-main-baseline` 5-file bundle을 승인하고 OTA run `30720471625`가 77 tests를 통과함을 확인
-- strict main required check/admin/force-push·delete 보호와 production Environment reviewer `tworimpa`·single `main` policy 유지; Epic #13, issues #14/#17-#23 및 OTA-G1~G4 physical/operator gates는 open/pending으로 보존
-## [2026-08-02] compile | Epic #13 Hardwareless RC와 production Gate 분리
-
-- 사용자 구현 승인을 `G0-SW / Hardwareless RC`로 한정해 Wave 0 계약 이후 #17~#22의 feature-flagged 구현, 자동 unit/integration/virtual-E2E, 리뷰·merge를 허용
-- `G0-HW / Production`은 Samsung/OEM·ESP32-C6, relay/AJ-SR04T/real BLE/bootloader, RELAY-G0~G2와 OTA-G1~G4 물리 증거 전까지 fail-closed로 유지
-- `ota/hardwareless-implementation-gates.json`과 4개 regression test를 추가해 production enable, legacy retirement, Epic closure와 실기기 완료 주장을 차단
-- 인증된 모바일 `manual_remote`, legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성, N/N-1 불변조건을 보존
-- #14/#18/#22/#23/Epic #13은 해당 물리 Gate가 남아 있는 동안 open 상태를 유지하며 `ota/release-evidence.json`의 production block은 변경하지 않음
-
-## [2026-08-02] lint | PR #31 Hardwareless RC Gate split 독립 리뷰 승인
-
-- Head `aef3504cedc110fad56c6e9611e7d06f4164ca8c`의 전체 diff와 변경 파일을 독립 검토하고 G0-SW는 feature-flagged software 구현·review/merge·자동 검증만 허용하며 G0-HW production과 물리 완료를 대체하지 않음을 확인
-- 인증된 명시적 모바일 버튼 `manual_remote` chain과 legacy rollback, Target dual-slot health/rollback·periodic HTTPS·인증 local recovery, mobile updater 독립성·fallback, N/N-1 불변조건이 byte-unchanged임을 확인
-- 67개 repository unit test, protocol 16개, observability 18개와 access/manual_remote/OTA fixture validate/evaluate, OTA contract와 pending production release 거부, live trusted-policy validator, actionlint, YAML/JSON/JSONL/Python, schema/link/fence/index/conflict/diff/immutability 검사를 전건 통과
-- ESP32-C6 PlatformIO build를 ignored dummy `include/secrets.h`로 검증 후 해당 임시 파일을 제거했으며 PR Actions `30717761352`, `30717761353`, `30717761366`은 성공하고 firmware/Android production job은 정확히 skip됨
-- strict main protection과 `production` Environment의 reviewer `tworimpa`·단일 `main` branch policy를 live API로 확인하고 COMMENTED 독립 리뷰 https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835756374 게시
-- Epic #13과 #14/#18/#22/#23은 open, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 BLE/radio·relay/sensor·bootloader evidence는 pending이며 production enable, legacy retirement, Epic closure는 계속 fail-closed
-
-## [2026-08-02] lint | PR #31 protected merge required-check 부재로 차단
-
-- Review-log final head `da4922304c47688daf2241ee77f86cf0e23c8b95`에서 PR Actions `30718493148`, `30718493150`, `30718493153`은 모두 성공하고 Android/firmware production job은 정확히 skip됨
-- main protection이 GitHub Actions context `Verify protected files against trusted base policy`를 strict required check로 요구하지만 trusted workflow는 protected workflow/policy 경로에만 path-filter되어 일반 문서 PR #31에는 실행되지 않음을 live API로 확인
-- Final head의 check run은 성공 3건과 production skip 2건뿐이며 required trusted-policy context가 없어 `mergeStateStatus=BLOCKED`; bypass 없는 `gh pr merge --merge`는 base branch policy에 의해 거부됨
-- `--admin`, branch-protection 변경, synthetic status, protected-file 위장 변경을 사용하지 않고 COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/31#pullrequestreview-4835786121 게시 후 PR을 draft/unmerged 상태로 복귀
-- 별도 trusted-policy rotation에서 base-SHA-only inert candidate validation의 신뢰 경계를 유지하면서 ordinary PR에도 required context가 발행되도록 고친 뒤 재리뷰가 필요
-- Epic #13과 #14/#18/#22/#23은 open이고 G0-HW, OTA-G1~G4, RELAY-G0~G2 및 물리/OEM/bootloader evidence는 pending으로 production fail-closed 유지
-## [2026-08-02] compile | PR #31 최신 main trusted required-check 수정 동기화
-
-- `origin/main` exact `e68f9f401354cd890a50ef5bb3f03cf6b70cc29c`를 history rewrite 없이 normal merge하여 ordinary PR에도 trusted required-check가 발행되는 수정 반영
 - `wiki/log.md`는 main log blob을 exact byte prefix로 두고 common base `f2dc0b8` 이후 PR #31 branch-only suffix를 byte-for-byte 연결해 append-only 양쪽 이력을 보존
 - trusted workflow/index 문서의 main 업데이트와 Hardwareless RC/G0-HW Gate 계약을 함께 보존하고 runtime, raw, protected bundle, `manual_remote`, OTA assets는 변경하지 않음
 
@@ -1387,6 +1290,93 @@
 - ESP32-C6 PlatformIO build는 ignored non-secret placeholder `include/secrets.h`로 RAM 47,032/327,680 bytes, flash 1,594,400/7,340,032 bytes에서 통과했고 임시 header를 제거해 worktree를 복원
 - `wiki/log.md`는 main 134,068-byte exact prefix와 기존 PR-only 3,964-byte suffix를 보존하고 645-byte merge 기록 뒤 본 reviewer 기록만 append했으며 invalid C0/DEL은 0건
 - hosted runs `30721749667`, `30721750617`, `30721750633`, `30721750649`는 exact reviewed head에서 성공하고 firmware/Android production job은 정확히 skipped; Epic #13과 #14/#18/#22/#23, OTA-G1~G4·RELAY-G0~G2·Samsung/OEM·ESP32-C6 radio·relay/sensor·bootloader physical/operator gates는 open/pending 유지
+
+## [2026-08-02] code | Issue #17 hardwareless Android native GATT credential worker
+
+- Added a production-default-OFF WorkManager path from the existing PendingIntent BLE receiver to a Flutter-independent native GATT session with unique-work exclusion, durable HMAC duplicate coalescing, crash-safe session state, bounded retries, exponential backoff, and timeout.
+- Added a testable BLE/GATT transport, strict canonical challenge/proof/result and ATT framing codecs, AndroidKeyStore P-256 signing with exact low-S P1363 proof conversion, and a deterministic JVM signer; authentication never creates, logs, or exports a private key.
+- Added default-safe validated remote flag semantics and two-sided legacy/native BLE ownership exclusion, fixed Android blocker/outcome reasons mapped to the observability vocabulary, and a read-only Flutter health/reason/latency bridge.
+- Preserved the authenticated explicit-button `manual_remote` path and kept the mobile updater plus Target OTA/rollback/recovery contracts independent of every worker flag, failure, and crash state.
+
+## [2026-08-02] compile | Issue #17 native worker contract and operator guidance
+
+- Added `android_gatt_worker.md`, indexed it, linked the #14 wake ADR integration, and documented feature ownership, credential boundaries, durable diagnostics, stable reasons, hardwareless evidence, and pending G0-HW gates.
+- Documented the read-only canonical-vector Compose mount, named Gradle cache, bounded `--rerun-tasks` command, and JUnit XML inspection path.
+- Did not modify `raw/`; no Samsung/OEM screen-off, real BLE radio, ESP32-C6 interoperability, relay/sensor, bootloader, or physical OTA evidence is claimed.
+
+## [2026-08-02] test | Issue #17 forced JVM, Flutter, and debug APK validation
+
+- Forced `:app:testDebugUnitTest --tests 'com.kshouse.gatekeeper_app.gattworker.*' --rerun-tasks` under a five-minute bound; Gradle executed 208 tasks and completed successfully in 2m52s.
+- Inspected three targeted JUnit XML suites: 12 tests, 0 failures, 0 errors, and 0 skips; the full Android JVM run had 18 passing tests.
+- Flutter ran 6 passing tests and targeted analysis of the changed Dart bridge/test reported no issues; full analysis retained 17 pre-existing info-level findings under vendored `flutter_beacon_local`.
+- Built `gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk` successfully; hardwareless coverage includes duplicates, retries, timeout, malformed result, network off, worker restart, feature exclusion, canonical vectors, secret redaction, and OTA independence.
+
+## [2026-08-02] lint | Issue #17 Hardwareless RC repository contract verification
+
+- Passed 81 repository gate tests, 16 protocol canonical-vector tests, 18 observability tests, and the standalone canonical-vector verifier.
+- Passed Dart format for the changed bridge/test, wiki relative-link validation, `git diff --check`, and raw-source immutability validation; unrelated generated Linux/macOS/Windows Flutter plugin registrants were restored and excluded.
+- Confirmed no changes to authenticated `manual_remote`, update manager, OTA evidence/contracts, Target firmware, or `raw/`; G0-HW, Samsung/OEM, ESP32-C6 radio, relay/sensor, bootloader, and OTA-G1 through OTA-G4 evidence remain pending.
+
+## [2026-08-02] test | PR #35 independent native GATT worker review blocked
+
+- Independently reviewed issues #13/#14/#17/#18/#23, the wake ADR, security, observability and OTA contracts, and the complete 23-file diff at exact author head `5f13584c99656de58b12f0e0f2f52bac82100088`.
+- Posted same-account COMMENTED blocking review https://github.com/ks-house/smart-gatekeeper/pull/35#pullrequestreview-4836326399: the remote flag trusts a caller-supplied validation bit and cannot atomically stop an already-running legacy scanner, so live flag transitions or restored preferences can violate exclusive BLE ownership.
+- Also blocked on the post-proof/pre-ledger-commit crash boundary that can re-run a fresh Target proof/ARM, lossy Target/disconnect reason mapping with ignored `retry_after_ms`, and terminal session history that retains raw device address and credential ID beyond connection need.
+- Re-ran Gradle with `--rerun-tasks` (208 executed tasks), inspected five JUnit XML suites with 18/18 passing including targeted GATT 12/12, ran Flutter 6/6 and clean targeted Dart analysis, and rebuilt the debug APK.
+- Passed repository 81, protocol 16, observability 18, canonical vector, authenticated `manual_remote` and OTA fixture validate/evaluate, OTA contract, actionlint, Python/JSON/YAML parse, relative-link, conflict, diff and raw immutability checks; green tests do not cover the blocking crash/ownership/reason/privacy boundaries.
+- The authenticated explicit-button `manual_remote` runtime chain, mobile updater files, Target firmware/OTA assets, release evidence and `raw/` remain unchanged. PR #35 stays draft/unmerged; Samsung/OEM, real ESP32-C6 radio/relay/sensor/bootloader, RELAY-G0 through G2 and OTA-G1 through G4 evidence remain pending and production/legacy retirement stay fail-closed.
+
+## [2026-08-02] fix | PR #35 four independent-review blockers corrected
+
+- Replaced caller-supplied flag validation with an APK-authority-signed P-256 envelope, bounded issue/expiry window, strict monotonic revision, exact credential/AndroidKeyStore-public-key binding, atomic no-backup state, and fail-closed cleanup of the old preference formats.
+- Added a no-backup owner marker and exclusive kernel file lease shared by the vendored legacy scanner and native worker, including live stop/reacquire guards, so two processes cannot concurrently own scanning or native proof/ARM work.
+- Added a durable `PROOF_UNCERTAIN` pre-write boundary and encrypted-locator deletion before the first proof byte; restart, post-write crash, post-result crash, and missing final commit cannot repeat proof/ARM for the same wake.
+- Preserved every frozen Target result code/name, distinct disconnect/read/write/descriptor/service/framing transport reason and Android status, plus raw and scheduled bounded `retry_after_ms` instead of replacing them with one generic reason.
+- Moved the credential ID and transient peer locator to AES-GCM `noBackupFilesDir` records backed by a non-exportable AndroidKeyStore key, changed duplicate identity to a non-exportable keyed HMAC, removed old plaintext preferences/raw-ID aliases, migrated the ledger without sensitive fields, and deleted locators at terminal or uncertain state without logging them.
+
+## [2026-08-02] test | PR #35 corrected Android GATT worker validation
+
+- Forced the final targeted GATT worker Gradle task with `--rerun-tasks`; all 208 tasks executed and the six targeted JUnit XML suites reported 23 tests, 0 failures, 0 errors, and 0 skips.
+- Forced the complete Android JVM task separately; all 208 tasks executed and eight XML suites reported 28 tests, 0 failures, 0 errors, and 0 skips.
+- Passed Flutter 6 tests, zero-change Dart formatting, clean targeted analyzer, and debug APK build at `gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk`.
+- Passed 81 repository tests, canonical-vector verification and 16 protocol tests, 18 observability tests, authenticated access/manual_remote/Target OTA/rollback fixture validation and evaluation, OTA contract gate, and actionlint.
+- Added adversarial flag signature/expiry/replay/key tests, cross-process ownership concurrency, post-proof/post-result process-death recovery, all Target reasons and exact callback failures, bounded retry, duplicate restart/terminal coalescing, and plaintext-ledger migration/redaction coverage.
+- Added a restart/clock-rollback retry test and durable remaining-delay enforcement so a redelivered WorkManager item cannot bypass a bounded Target `retry_after_ms` before the replacement request is scheduled.
+
+## [2026-08-02] lint | PR #35 correction diff and invariant verification
+
+- Restored generated Linux/macOS/Windows desktop registrants and removed temporary `.kotlin`/test artifacts outside the Android implementation; `git diff --check`, conflict-marker, relative-link, index, and changed-path consistency checks passed.
+- Confirmed `raw/`, authenticated explicit-button `manual_remote`, Backend/Target runtime, mobile update service/UI, OTA contract/evidence/recovery assets, protected workflows, and release gates remain byte-unchanged from main.
+- This is software/host evidence only: PR #35 remains draft and unmerged, issue #17 remains open, and no Samsung/OEM, real ESP32-C6/radio/relay/sensor/bootloader, RELAY-G0 through G2, or OTA-G1 through G4 evidence is claimed; production enablement and legacy retirement remain fail-closed pending fresh independent review and physical/operator gates.
+
+## [2026-08-02] test | PR #35 corrected-head re-review remains blocked on in-flight disconnect classification
+
+- Independently reviewed the complete 30-file diff at exact corrected head `a65dcb7e5adaa361e22023550d29d1b3fb33b192` and the prior COMMENTED review `4836326399`; authenticated flag/key binding plus the cross-process lease, durable pre-proof `PROOF_UNCERTAIN` boundary, bounded durable Target retry timing, and encrypted/redacted locator storage correct the other reported blocker classes.
+- One lossless GATT classification blocker remains: `onConnectionStateChange()` sends a disconnect only to `GattCallbackMailbox`, while `writeMessage()` and `enableIndication()` wait on separate `writeResult` and `descriptorResult` channels. A disconnect during a proof/client-hello characteristic write or CCCD write therefore cannot wake the in-flight waiter and is reported by the outer timeout as `GATT_TIMEOUT`, losing exact `DISCONNECTED` plus Android status; the mailbox-only callback tests do not cover this production path.
+- Forced the complete Android JVM task with `--rerun-tasks`; all 208 tasks executed and eight inspected XML suites reported 29 tests, 0 failures, 0 errors, and 0 skips, including six GATT suites with 23 passing tests. Flutter passed 6 tests, zero-change targeted formatting, and clean targeted analysis; full analysis retained only 17 pre-existing info findings in unchanged vendored `flutter_beacon_local` Dart files.
+- Passed 81 repository tests, canonical-vector verification and 16 protocol tests, 18 observability tests, authenticated access/`manual_remote`/Target OTA/rollback fixture validation and evaluation, OTA contract gate, actionlint, relative-link/index, conflict, diff, raw immutability, append-only log, and protected-workflow checks. Hosted Android, OTA, and trusted-policy runs all succeeded on exact head `a65dcb7e5adaa361e22023550d29d1b3fb33b192`, with production deployment correctly skipped.
+- The authenticated explicit-button `manual_remote` chain is byte-unchanged and independently passes its seven-event contract outside hands-free RELAY gates. Mobile updater and Target dual-slot health/rollback, periodic HTTPS, authenticated local recovery, N/N-1, protected workflows, release evidence, and `raw/` are unchanged; PR #35 stays draft/unmerged and no Samsung/OEM, physical radio/relay/sensor/bootloader, RELAY-G0 through G2, or OTA-G1 through G4 evidence is claimed.
+
+## [2026-08-02] fix | PR #35 in-flight GATT disconnect propagation corrected
+
+- Replaced buffered characteristic-write and descriptor-write status channels with generation-scoped, single-consumer operation latches bound to the exact `BluetoothGatt` owner, operation kind, and characteristic UUID.
+- A disconnect now atomically terminates connection, service-discovery, message, characteristic-write, and CCCD-write waiters exactly once with structured `DISCONNECTED` and the original Android GATT status; every callback state other than successful `STATE_CONNECTED` fails closed.
+- Late callbacks after disconnect, callbacks captured by an older reconnect generation, wrong-target callbacks, and duplicate callbacks are ignored instead of becoming a later operation result; the outer session timeout no longer replaces a delivered disconnect with `GATT_TIMEOUT`.
+- Preserved exact Target reason/status/retry fields, durable proof uncertainty, authenticated rollout ownership, the independent authenticated explicit-button `manual_remote` path, and mobile/Target OTA recovery invariants.
+
+## [2026-08-02] test | PR #35 final disconnect regression and contract validation
+
+- Forced the complete Android `:app:testDebugUnitTest --rerun-tasks` run under the five-minute container bound; all 208 tasks executed, and fresh XML reported 8 suites, 36 tests, 0 failures, 0 errors, and 0 skips, including 6 GATT worker suites with 30 tests.
+- Added adversarial coverage for disconnect during client-hello and proof characteristic writes, disconnect during CCCD write, simultaneous waiter fan-out, exact status preservation, late and duplicate callbacks, reconnect generation isolation, and session-level rejection of timeout misclassification.
+- Flutter passed 6 tests, full `lib`/`test` analysis reported no issues, and the debug APK built successfully.
+- Passed 81 repository tests, standalone canonical-vector verification and 16 protocol tests, 18 observability tests, authenticated access/`manual_remote`/Target OTA/rollback fixture validation and evaluation, OTA contract validation, and actionlint.
+
+## [2026-08-02] lint | PR #35 final disconnect correction hygiene and evidence boundary
+
+- Documented reusable Windows sandbox temporary-directory, silent Gradle output, generated registrant, and transient worktree `index.lock` difficulties with symptom, cause, safe solution, and verification in `env_setup.md`.
+- Restored only tracked Linux/macOS/Windows Flutter registrants from exact HEAD after validation, verified no residual registrant diff or worktree lock, and removed the verified workspace-local `.review-tmp`, generated JUnit/report trees, and Android `.kotlin` test cache.
+- `git diff --check`, relative-link/index, conflict-marker, append-only log, raw immutability, protected workflow, manual runtime, OTA/recovery, and changed-path checks pass; no secret or private locator is recorded.
+- This remains software/host evidence only. PR #35 remains draft/open/unmerged; no Samsung/OEM, real ESP32-C6 radio/relay/sensor/bootloader, RELAY-G0 through G2, or OTA-G1 through G4 evidence is claimed, and production enablement plus legacy retirement remain fail-closed.
 
 ## [2026-08-02] code | Backend public-key enrollment와 signed ACL Hardwareless RC 구현
 
@@ -1501,3 +1491,12 @@
 - verified review 문서 2개를 explicit staging하려 할 때 parent repository의 external `.git\worktrees\issue19-backend-acl-hermes\index.lock` 생성이 worktree-only sandbox에서 `Permission denied`로 실패하는 증상을 확인
 - visible worktree가 아니라 Git common administrative directory에 index lock을 써야 하는 managed-worktree 경계가 원인이며 source 권한이나 repository corruption이 아님을 확인
 - `git status`·explicit diff·`git diff --check`로 범위를 먼저 고정하고 verified path의 add/commit만 scoped Git administrative access로 실행한 뒤 clean status와 remote head를 재검증하는 절차를 `wiki/env_setup.md`에 기록
+
+## [2026-08-02] lint | PR #35 final disconnect classification and contract validation clean
+
+- Merged current `origin/main` (`f732c3dc9c0b4eb5468e9190690368025fd4de0e`) normally into branch `tworimpa/issue17-android-gatt-worker` without history rewrite and resolved `wiki/log.md` merge conflict.
+- Independently reviewed exact author head `7dceb0aa0adf13630526f2be19e88eaff5f96015` disconnect waiter semantics: monotonic transport generation isolation, generation-scoped callback capture, operation-scoped single-consumer operation latches, and atomic disconnect propagation preventing in-flight disconnects from misclassifying as `GATT_TIMEOUT`.
+- Passed 81 repository unit tests, 16 protocol tests, 18 observability tests, 32 backend tests, and OTA contract gate (`python scripts/ota_contract_gate.py contract`).
+- Executed forced Android JVM unit tests with `--rerun-tasks` inside Docker (`gatekeeper-flutter-builder`): 8 test suites, 36 tests, 0 failures, 0 errors, 0 skips (including 30 GATT worker tests).
+- Passed Flutter 6 unit tests, zero-change `dart format`, and clean `dart analyze` with 0 issues. Built `app-debug.apk` and verified ESP32-C6 firmware build (`pio run -e esp32c6` with RAM 14.4%, Flash 21.7%).
+- Actionlint 0 errors, relative markdown links clean, `git diff --check origin/main...HEAD` 0 errors. Preserved authenticated `manual_remote` and mobile/Target OTA contracts byte-unchanged. Software/host evidence only; Samsung/OEM, physical radio, ESP32-C6 GATT, relay/sensor, bootloader, and OTA-G1~G4 evidence remain pending.

@@ -2,6 +2,7 @@ package com.kshouse.gatekeeper_app
 
 import android.app.NotificationManager
 import android.os.Build
+import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -9,6 +10,8 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
     private companion object {
         const val CHANNEL_DIAGNOSTICS = "com.kshouse.gatekeeper_app/notification_channel"
+        const val CHANNEL_GATT_WORKER_HEALTH =
+            "com.kshouse.gatekeeper_app/ble_gatt_worker_health"
         const val FOREGROUND_NOTIFICATION_CHANNEL = "smart_key_foreground_channel_v2"
     }
 
@@ -45,5 +48,18 @@ class MainActivity: FlutterActivity() {
                 ),
             )
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_GATT_WORKER_HEALTH,
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "getHealth") {
+                result.success(BleGattHealthBridge.snapshot(applicationContext))
+            } else {
+                // Read-only by contract: no feature flag, credential, or key mutation is exposed.
+                result.notImplemented()
+            }
+        }
     }
+
 }
