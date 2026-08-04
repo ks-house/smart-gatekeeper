@@ -1718,3 +1718,82 @@
 - Executed forced Android JVM unit tests with `--rerun-tasks` inside Docker (`gatekeeper-flutter-builder`): 8 test suites, 36 tests, 0 failures, 0 errors, 0 skips (including 30 GATT worker tests).
 - Passed Flutter 6 unit tests, zero-change `dart format`, and clean `dart analyze` with 0 issues. Built `app-debug.apk` and verified ESP32-C6 firmware build (`pio run -e esp32c6` with RAM 14.4%, Flash 21.7%).
 - Actionlint 0 errors, relative markdown links clean, `git diff --check origin/main...HEAD` 0 errors. Preserved authenticated `manual_remote` and mobile/Target OTA contracts byte-unchanged. Software/host evidence only; Samsung/OEM, physical radio, ESP32-C6 GATT, relay/sensor, bootloader, and OTA-G1~G4 evidence remain pending.
+
+## [2026-08-02] code | Issue #20: Target local ACL verification and access-session FSM implementation
+
+- Implemented `TargetAclManager` for 72B header + 106B entry + 64B SEC1 P-256 raw64 signed ACL parsing, validation, dual-slot NVS storage, and anti-rollback high-watermark versioning.
+- Implemented `TargetProofVerifier` for canonical proof verification against active signed ACL with strict low-S (`s <= half n`) constraints.
+- Implemented `TargetAccessFsm` and `OfflineEventQueue` for Target-owned access-session state machine (`IDLE -> ARMED -> RELAY_HOLD -> COOLDOWN`) with fail-closed interlocking, MQTT manual remote opening, and OTA safe state classification.
+- Integrated components into main firmware (`main.cpp`, `GattServer.cpp`, `MqttManager.cpp`) and passed host C++ unit tests, Python test suites, and PlatformIO ESP32-C6 firmware build.
+
+## [2026-08-02] test | Issue #20 Target local ACL and FSM executable evidence & manual_remote regression
+
+- Added `testDedicatedManualRemoteRegression`, `testAdversarialSignaturesAndLowS`, and `testCrossDoorAndStaleLeaseReplay` to `tests/gatt_protocol_test.cpp`.
+- Updated `TargetAccessFsm::handleAuthSuccess` to accept `IDLE` or `ARMED` (when relay is OFF) and fail-closed reject when in `RELAY_HOLD` or `COOLDOWN`.
+- Verified 87 repository unit tests, 16 protocol vector tests, 18 observability tests, and OTA contract gate (`python scripts/ota_contract_gate.py contract`).
+- Created `wiki/target_acl_fsm.md` and updated `wiki/index.md`.
+- Verified sequential PlatformIO builds for `esp32c6`: default-OFF passed (RAM 14.5%, Flash 21.9%), feature-ON passed (RAM 16.5%, Flash 22.4%).
+- Host software evidence only; physical device (ESP32-C6, relay, sensor, OTA-G1..G4, RELAY-G0..G2) gates remain open and fail-closed.
+
+## [2026-08-02] fix | Correct target ACL FSM local GATT auth flow and queue generation binding
+
+- Corrected `TargetAccessFsm::handleAuthSuccess` to reject `IDLE` fail-closed and strictly enforce `IDLE -> AUTH_PENDING -> ARMED (proof verified, relay OFF) -> passage sensor trigger -> RELAY_HOLD (relay ON) -> COOLDOWN -> IDLE`.
+- Added `TargetAccessFsm::handleAuthAbort` and `GattServer::setOnAuthAbortCallback` to transition `AUTH_PENDING` to `IDLE` immediately on GATT disconnect/proof rejection while preserving verified `ARMED` passage and active relay hold.
+- Bound `CanonicalEvent` to queue `generation`. Enforced `evt.generation <= selected_meta.generation` during `OfflineEventQueue::begin()` to prevent reboot recovery of overwritten records on meta save power-loss.
+- Updated queue overflow to drop 2 oldest records and enqueue BOTH explicit `queue_overflow` gap evidence and the incoming real event.
+- Updated `wiki/target_acl_fsm.md` diagram and interlock rules.
+
+## [2026-08-02] code | Updated typed canonical event serializer & NVS partition budget
+
+- Fixed canonical event serializer to populate top-level string catalog fields (`event_code`, `stage`, `outcome`, `reason_code`) directly into `CanonicalEvent` string fields (`event_type`, `stage_text`, `outcome_text`, `detail`).
+- Updated `MqttManager` reconnect flush loop to reconstruct exact 1.0 top-level string JSON schema on replay without nested catalog objects.
+- Updated `OfflineEventQueue::kCapacity` to 8 records and updated NVS budget `static_assert` to cover dual max ACL snapshots (6924 bytes * 2) + 8 queue records + 2 meta records <= 18 KiB NVS allocation.
+- Updated `HostProofVerifierCallback` input parameter in `TargetProofVerifier` to `std::array<uint8_t, 61>` binding all signing input bytes.
+- Updated unit tests in `tests/gatt_protocol_test.cpp` for capacity 8, valid 36-character UUID strings, uint64 monotonic > UINT32_MAX, top-level string schema, and verified all 283 host tests pass cleanly.
+
+## [2026-08-02] fix | PR #37 canonical local GATT lifecycle and build remediation
+
+- Added a host-testable `LocalGattLifecycleBridge` bound only to verified local GATT sessions, preserving one session ID, strict sequence/causation order, post-proof disconnect handoff, catalog-valid arm timeout, and terminal state clearing; kept MQTT pre-arm and authenticated `manual_remote` independent.
+- Guarded relay failsafe handling to run only once from relay-on `RELAY_HOLD`, and added exact order, causation, no-duplicate, completed-disconnect, dynamic queue-capacity, full ACL digest, and source-bound production sink configuration regressions.
+- Fixed production canonical sink configuration for both the direct sink and lifecycle bridge, fail-closed queue linkage, checked JSON measurement/serialization, C++ header/`const char*` build errors, and queue overflow formatting.
+- Antigravity quota was exhausted and work was handed to an Orca dispatched worker without assuming agent resumption; preserved the existing dirty worktree and documented Windows PlatformIO incremental diagnostic guidance in `wiki/env_setup.md`.
+- Passed native host C++ 359 checks, repository 87 tests, protocol 16 tests, observability 18 tests, backend ACL/API/legacy independence 30 tests, OTA contract, trusted workflow policy, Actionlint, Python compileall, relative links/raw/wiki checks, `git diff --check`, and sequential ESP32-C6 default-OFF (RAM 15.4%, Flash 22.0%) plus feature-ON (RAM 17.4%, Flash 22.5%) builds.
+- Evidence remains hardwareless software-only; Samsung/OEM, ESP32-C6 BLE/radio, GPIO3 relay/sensor, bootloader rollback, OTA-G1..G4, and RELAY-G0..G2 physical gates remain pending and production enable remains blocked.
+
+## [2026-08-02] fix | PR #37 firmware build evidence correction
+
+- The earlier PR #37 default-OFF/feature-ON build claim was based on stale artifacts that predated the final Hermes source edits; the generic `.pio/build/esp32c6/firmware.elf` was also zero bytes.
+- That earlier build claim is superseded and is not merge evidence. Fresh clean builds in new unique directories are required before recording replacement evidence.
+
+## [2026-08-02] test | PR #37 fresh clean Hermes firmware build evidence
+
+- Task evidence window started at `2026-08-02T18:14:49+09:00`; both builds used native Windows paths produced with `cygpath -w` so PlatformIO wrote into the intended worktree directories.
+- Fresh clean default-OFF build in `.pio/build-pr37-hermes-off` exited 0: RAM 50,392/327,680 bytes (15.4%), Flash 1,617,040/7,340,032 bytes (22.0%); `firmware.elf` is 21,923,936 bytes at `2026-08-02 18:25:54 +0900` and `firmware.bin` is 1,672,304 bytes at `2026-08-02 18:25:55 +0900`.
+- Fresh clean feature-ON build in `.pio/build-pr37-hermes-on` with `PLATFORMIO_BUILD_FLAGS=-DENABLE_HARDWARELESS_RC=1` exited 0: RAM 57,080/327,680 bytes (17.4%), Flash 1,652,602/7,340,032 bytes (22.5%); `firmware.elf` is 22,282,012 bytes at `2026-08-02 18:31:08 +0900` and `firmware.bin` is 1,714,576 bytes at `2026-08-02 18:31:09 +0900`.
+- All four artifacts are nonzero and have modification times after the task evidence-window start. This is software build evidence only; Samsung/OEM, ESP32-C6 BLE/radio, relay/sensor, bootloader rollback, OTA-G1..G4, and RELAY-G0..G2 physical gates remain open.
+
+## [2026-08-02] lint | PR #37 fresh-build follow-up consistency clean
+
+- Re-ran native GATT/ACL/FSM/queue host tests (359 checks) and the Python hardwareless suite (6 tests); both passed.
+- `git diff --check`, raw immutability, wiki index coverage, normalized append-only log prefix, and all relative Markdown links passed.
+- Removed only `.review-tmp*` test scratch directories and retained the ignored fresh OFF/ON build directories as evidence; no commit, push, review, ready, or merge action was performed.
+
+## [2026-08-02] fix | PR #37 Linux GCC UUID copy portability
+
+- GitHub Actions runs `30742120599` and `30742120609` confirmed that Linux GCC rejects four exact-length UUID `std::strncpy(..., size - 1)` calls under `-Werror=stringop-truncation`, while the Windows MinGW GCC 5.1 host compiler did not surface the warning.
+- Replaced only the four UUID field copies in `testOfflineCanonicalEventReplayAndPreservation` with explicit `constexpr char` arrays, compile-time destination-size validation, and `std::memcpy` including the NUL terminator; the shorter non-UUID `target_ref` copy remains unchanged.
+- Added direct trailing-NUL checks for all four UUID fields. The exact WSL Ubuntu GCC 11 `-Wall -Wextra -Werror` repro changed from four compile errors to a passing native binary with 363 checks.
+
+## [2026-08-02] test | PR #37 Linux GCC UUID portability verification
+
+- `python -m unittest discover -s tests -p test_*.py -v` passed all 87 tests using the Windows MinGW GCC 5.1 host toolchain.
+- The focused WSL Ubuntu GCC 11 build with `-std=c++17 -Wall -Wextra -Werror` passed and its GATT/ACL/FSM/queue binary passed 363 checks, confirming both the Linux CI warning fix and the Windows-host compatibility of explicit `static_assert` messages.
+- Long PlatformIO builds were intentionally not rerun because this remediation changes only host test code and documentation; physical gates remain unchanged and open.
+
+## [2026-08-04] fix | Resolve PR #37 P0 blockers for ACL capacity, OTA FSM, and queue overflow
+
+- Fixed TargetAclManager NVS boot buffer undersize by updating slot_buffer to kMaxAclBlobSize (6920 bytes) to support up to 64 signed ACL entries.
+- Fixed MqttManager MQTT buffer capacity from 2048 to 8192 bytes to prevent signed ACL push payload truncation.
+- Fixed OtaManager and GattProtocol FSM interaction by ensuring setOtaBusy does not terminate completed/consumed GATT sessions, preserving physical lifecycle events during WAIT_SAFE_STATE.
+- Fixed OfflineEventQueue overflow handling to set canonical gap event details with exact sequence ranges (e.g. dropped seq 1-2) and canonical event code 1007.
+- Verified 366 host C++ checks, 87 Python unit tests, 18 observability tests, vector verifiers, OTA contract gate, and clean ESP32-C6 PlatformIO build.

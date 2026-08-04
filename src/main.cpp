@@ -9,6 +9,8 @@
 #include <ArduinoJson.h>
 #include <Ticker.h>
 
+#include <cstring>
+
 // BLE Beacon Advertiser — Arduino-ESP32 내장 Bluedroid BLE
 #include <BLEDevice.h>
 #include <BLEAdvertising.h>
@@ -25,8 +27,183 @@
 #include "RelayController.h"
 #include "GattServer.h"
 #include "TargetState.h"
+#include "TargetAclManager.h"
+#include "TargetProofVerifier.h"
+#include "TargetAccessFsm.h"
+#include "OfflineEventQueue.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
+
+class NvsAclStorage final : public sgk::TargetAclStorage {
+ public:
+  bool saveSlot(uint8_t slot, const uint8_t* blob, size_t length) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", false)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "slot_%u", slot);
+    size_t written = prefs.putBytes(key, blob, length);
+    prefs.end();
+    return written == length;
+  }
+
+  bool readSlot(uint8_t slot, uint8_t* buffer, size_t capacity,
+                size_t* read_bytes) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", true)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "slot_%u", slot);
+    size_t len = prefs.getBytesLength(key);
+    if (len == 0 || len > capacity) {
+      prefs.end();
+      return false;
+    }
+    size_t read_len = prefs.getBytes(key, buffer, capacity);
+    prefs.end();
+    if (read_bytes != nullptr) *read_bytes = read_len;
+    return read_len == len;
+  }
+
+  bool saveGenerationRecord(uint8_t record_index,
+                             const sgk::GenerationRecord& record) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", false)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "gen_%u", record_index);
+    size_t written = prefs.putBytes(key, &record, sizeof(record));
+    prefs.end();
+    return written == sizeof(record);
+  }
+
+  bool readGenerationRecord(uint8_t record_index,
+                             sgk::GenerationRecord* record) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", true)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "gen_%u", record_index);
+    size_t len = prefs.getBytesLength(key);
+    if (len != sizeof(sgk::GenerationRecord)) {
+      prefs.end();
+      return false;
+    }
+    size_t read_len = prefs.getBytes(key, record, sizeof(sgk::GenerationRecord));
+    prefs.end();
+    return read_len == sizeof(sgk::GenerationRecord);
+  }
+
+  bool saveHighWatermark(uint64_t version) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", false)) return false;
+    size_t written = prefs.putBytes("hw_ver", &version, sizeof(version));
+    prefs.end();
+    return written == sizeof(version);
+  }
+
+  uint64_t readHighWatermark() override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_acl", true)) return 0;
+    uint64_t version = 0;
+    prefs.getBytes("hw_ver", &version, sizeof(version));
+    prefs.end();
+    return version;
+  }
+};
+
+static NvsAclStorage g_nvs_acl_storage;
+sgk::TargetAclManager g_acl_manager(&g_nvs_acl_storage);
+static sgk::TargetProofVerifier g_proof_verifier(
+    g_acl_manager, []() -> uint32_t { return millis(); }, nullptr);
+
+class NvsQueueStorage final : public sgk::OfflineQueueStorage {
+ public:
+  bool saveRecord(size_t slot, const sgk::CanonicalEvent& event) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_queue", false)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "rec_%u", static_cast<unsigned int>(slot));
+    size_t written = prefs.putBytes(key, &event, sizeof(event));
+    prefs.end();
+    return written == sizeof(event);
+  }
+
+  bool readRecord(size_t slot, sgk::CanonicalEvent* event) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_queue", true)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "rec_%u", static_cast<unsigned int>(slot));
+    size_t len = prefs.getBytesLength(key);
+    if (len != sizeof(sgk::CanonicalEvent) || event == nullptr) {
+      prefs.end();
+      return false;
+    }
+    size_t read_len = prefs.getBytes(key, event, sizeof(sgk::CanonicalEvent));
+    prefs.end();
+    return read_len == sizeof(sgk::CanonicalEvent);
+  }
+
+  bool saveMetaRecord(uint8_t meta_slot, const sgk::QueueMetaRecord& meta) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_queue", false)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "meta_%u", static_cast<unsigned int>(meta_slot));
+    size_t written = prefs.putBytes(key, &meta, sizeof(meta));
+    prefs.end();
+    return written == sizeof(meta);
+  }
+
+  bool readMetaRecord(uint8_t meta_slot, sgk::QueueMetaRecord* meta) override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_queue", true)) return false;
+    char key[16] = {};
+    std::snprintf(key, sizeof(key), "meta_%u", static_cast<unsigned int>(meta_slot));
+    size_t len = prefs.getBytesLength(key);
+    if (len != sizeof(sgk::QueueMetaRecord) || meta == nullptr) {
+      prefs.end();
+      return false;
+    }
+    size_t read_len = prefs.getBytes(key, meta, sizeof(sgk::QueueMetaRecord));
+    prefs.end();
+    return read_len == sizeof(sgk::QueueMetaRecord);
+  }
+
+  bool clearStorage() override {
+    Preferences prefs;
+    if (!prefs.begin("sgk_queue", false)) return false;
+    bool ok = prefs.clear();
+    prefs.end();
+    return ok;
+  }
+};
+
+static NvsQueueStorage g_nvs_queue_storage;
+
+static inline void relayOn();
+static inline void relayOff();
+
+static sgk::TargetAccessFsm g_access_fsm(
+    [](bool on) {
+      if (on) relayOn();
+      else relayOff();
+    },
+    [](const char* event, const char* message) {
+      MqttManager::publishEvent(event, message);
+      const uint64_t now_ms = millis();
+      if (std::strcmp(event, "auth_verified_armed") == 0) {
+        GattServer::notifyAccessArmed(now_ms);
+      } else if (std::strcmp(event, "sensor_detected") == 0) {
+        GattServer::notifySensorDetected(now_ms);
+      } else if (std::strcmp(event, "relay_on_sensor") == 0) {
+        GattServer::notifyRelayOn(now_ms);
+      } else if (std::strcmp(event, "door_close") == 0) {
+        GattServer::notifyRelayOff(now_ms, false);
+      } else if (std::strcmp(event, "door_close_failsafe") == 0) {
+        GattServer::notifyRelayOff(now_ms, true);
+      } else if (std::strcmp(event, "session_completed") == 0) {
+        GattServer::notifySessionCompleted(now_ms);
+      } else if (std::strcmp(event, "session_terminated") == 0) {
+        GattServer::notifySessionTerminated(now_ms,
+                                            sgk::EventReason::kArmTimeout);
+      }
+    });
 
 // ─────────────────────────────────────────────────────────────
 // 릴레이 컨트롤러 인스턴스
@@ -109,15 +286,9 @@ static void clearI2CBus(uint8_t sdaPin, uint8_t sclPin) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// FSM 상태 정의 (IDLE / ARMED / RELAY_HOLD / COOLDOWN)
+// FSM 상태 & Telemetry 보조 변수
 // ─────────────────────────────────────────────────────────────
-static GateState state       = GateState::IDLE;
-static uint32_t  stateMs     = 0;
-static uint32_t  lastMqttMs  = 0;
-
-// Pre-arm 상태 변수
-static bool     is_armed      = false;
-static uint32_t arm_timestamp = 0;  // millis() 기준 arm 활성화 시각
+static uint32_t lastMqttMs = 0;
 
 // ─────────────────────────────────────────────────────────────
 // 엔지니어 원격 튜닝용 동적 설정 변수 (기본값: config.h 설정치, NVS 복원)
@@ -205,7 +376,6 @@ void setTxPower(int powerDbm) {
   // 일부 OEM BLE 스택이 non-discoverable 광고를 걸러낼 수 있다.
   // 페이로드 여유: flags 3B + manufacturer 27B = 30B ≤ 31B.
   oAdvertisementData.setFlags(0x1A);
-
   oAdvertisementData.setManufacturerData(oBeacon.getData());
 
   oScanResponseData.setName("SmartGatekeeper");
@@ -213,8 +383,8 @@ void setTxPower(int powerDbm) {
     oScanResponseData.setCompleteServices(BLEUUID(HARDWARELESS_SERVICE_UUID));
   }
 
-  pAdv->setMinInterval(160); // 100ms (160 * 0.625ms) — Apple iBeacon 표준 추천 인터벌
-  pAdv->setMaxInterval(160); // 100ms
+  pAdv->setMinInterval(160);
+  pAdv->setMaxInterval(160);
 
   pAdv->setAdvertisementData(oAdvertisementData);
   pAdv->setScanResponseData(oScanResponseData);
@@ -223,7 +393,7 @@ void setTxPower(int powerDbm) {
 }
 
 void setDistanceThresholdCm(int distanceCm) {
-  if (distanceCm < 20) distanceCm = 20; // 초음파 맹점 하한선
+  if (distanceCm < 20) distanceCm = 20;
   if (distanceCm > 200) distanceCm = 200;
   g_distance_threshold_cm = (uint16_t)distanceCm;
   ConfigManager::setDistanceThresholdCm(distanceCm);
@@ -240,7 +410,7 @@ void setPreArmDurationMs(uint32_t durationMs) {
   g_pre_arm_duration_ms = durationMs;
   ConfigManager::setPreArmDurationMs(durationMs);
   MqttManager::publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, durationMs, g_relay_cooldown_ms);
-  LOGF("[CONFIG-TUNING] ⚙️ Pre-arm 유효 시간 동적 변경 & NVS 저장: %lu ms", (unsigned long)g_pre_arm_duration_ms);
+  LOGF("[CONFIG-TUNING] ⚙️ Pre-arm 유효 시간 동적 변경 & NVS 저장: %lu ms", (unsigned long)durationMs);
 }
 
 void setRelayCooldownMs(uint32_t cooldownMs) {
@@ -249,7 +419,7 @@ void setRelayCooldownMs(uint32_t cooldownMs) {
   g_relay_cooldown_ms = cooldownMs;
   ConfigManager::setRelayCooldownMs(cooldownMs);
   MqttManager::publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, cooldownMs);
-  LOGF("[CONFIG-TUNING] ⚙️ Target 릴레이 쿨다운 동적 변경 & NVS 저장: %lu ms", (unsigned long)g_relay_cooldown_ms);
+  LOGF("[CONFIG-TUNING] ⚙️ Target 릴레이 쿨다운 동적 변경 & NVS 저장: %lu ms", (unsigned long)cooldownMs);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -259,61 +429,35 @@ static OtaSafeState currentOtaSafeState() {
   // OtaManager is invoked from the MQTT callback and therefore temporarily
   // owns loopTask. Advance only already-authorized/physical session expiry so
   // manual_remote or legacy relay one-shots finish independently before OTA.
-  const uint32_t now = millis();
-  if (state == GateState::RELAY_HOLD && !relay.isOn()) {
-    relayFailsafeTriggered = false;
-    state = GateState::COOLDOWN;
-    stateMs = now;
-  }
-  if (state == GateState::ARMED &&
-      now - arm_timestamp >= g_pre_arm_duration_ms) {
-    is_armed = false;
-    state = GateState::IDLE;
-  }
-  if (state == GateState::COOLDOWN &&
-      now - stateMs >= g_relay_cooldown_ms) {
-    state = GateState::IDLE;
-  }
-  return classifyOtaSafeState(state, is_armed, relay.isOn());
+  g_access_fsm.tick(millis());
+  return g_access_fsm.otaSafeState();
 }
 
 bool triggerArm() {
-  // 한 출입 세션은 IDLE -> ARMED -> RELAY_HOLD -> COOLDOWN -> IDLE 순서로
-  // 완료한다. ARMED 갱신과 COOLDOWN 우회를 허용하면 반복 개방될 수 있다.
-  if (state != GateState::IDLE || relay.isOn()) {
-    DiagnosticsManager::noteAction("arm_rejected_not_idle");
-    LOGF("[GATE-WARN] Pre-arm rejected: Target is not IDLE (state=%d, relay=%s)",
-         static_cast<int>(state), relay.isOn() ? "ON" : "OFF");
-    return false;
+  if (g_access_fsm.handlePreArm(millis(), g_pre_arm_duration_ms)) {
+    UltrasonicSensor::resetHistory();
+    DiagnosticsManager::noteAction("pre_armed");
+    LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! AJ-SR04T 초음파 센서 활성화 (%lu ms 유효)",
+         (unsigned long)g_pre_arm_duration_ms);
+    return true;
   }
-
-  UltrasonicSensor::resetHistory();
-  is_armed      = true;
-  arm_timestamp = millis();
-  state         = GateState::ARMED;
-  stateMs       = arm_timestamp;
-  DiagnosticsManager::noteAction("pre_armed");
-  LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! AJ-SR04T 초음파 센서 활성화 (%lu ms 유효)", (unsigned long)g_pre_arm_duration_ms);
-  return true;
+  DiagnosticsManager::noteAction("arm_rejected_not_idle");
+  LOGF("[GATE-WARN] Pre-arm rejected: Target is not IDLE");
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────
 // triggerManualDoorOpen() — MQTT 원격 수동 개방 명령
 // ─────────────────────────────────────────────────────────────
 bool triggerManualDoorOpen() {
-  if (state != GateState::IDLE || relay.isOn()) {
-    DiagnosticsManager::noteAction("manual_open_rejected_not_idle");
-    LOGF("[GATE-MANUAL-WARN] manual open rejected: Target is not IDLE");
-    return false;
+  if (g_access_fsm.handleManualRemoteOpen(millis(), RELAY_HOLD_MS, g_relay_cooldown_ms)) {
+    DiagnosticsManager::noteAction("relay_on_manual");
+    LOGF("[GATE-MANUAL] *** 원격/MQTT 명령으로 출입문 개방 릴레이 ON *** (딸깍!)");
+    return true;
   }
-
-  LOGF("[GATE-MANUAL] *** 원격/MQTT 명령으로 출입문 개방 릴레이 ON *** (딸깍!)");
-  is_armed = false;
-  relayOn();
-  DiagnosticsManager::noteAction("relay_on_manual");
-  state   = GateState::RELAY_HOLD;
-  stateMs = millis();
-  return true;
+  DiagnosticsManager::noteAction("manual_open_rejected_not_idle");
+  LOGF("[GATE-MANUAL-WARN] manual open rejected: Target is not IDLE");
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -324,15 +468,22 @@ static void initBleAdvertiser() {
 
   BLEDevice::init("SmartGatekeeper");
 
-  // Compile OFF dominates stale NVS. An OFF image cannot create or advertise
-  // the auth service even if a prior build persisted hwless_rc=true.
   bool hwlessEnable = sgk::effectiveFeatureEnabled(
       ConfigManager::getHardwarelessRcEnabled(false));
   GattServer::setEnabled(hwlessEnable);
   GattServer::useProductionEventSink();
+  GattServer::setProofVerifier(&g_proof_verifier);
+  GattServer::setOnAuthPendingCallback([](uint32_t now_ms) {
+    g_access_fsm.handleAuthPending(now_ms, 5000);
+  });
+  GattServer::setOnAuthGrantCallback([](uint32_t now_ms) {
+    g_access_fsm.handleAuthSuccess(now_ms, g_pre_arm_duration_ms, g_relay_cooldown_ms);
+  });
+  GattServer::setOnAuthAbortCallback([](uint32_t now_ms) {
+    g_access_fsm.handleAuthAbort(now_ms, "gatt_auth_aborted");
+  });
   GattServer::init();
 
-  // NVS에서 불러온 송신 출력을 기준으로 초기화
   setTxPower(g_tx_power_dbm);
 
   LOGF("[BLE-ADV] ✅ iBeacon 발신 시작! UUID: %s (GATT Hardwareless RC: %s)",
@@ -351,22 +502,15 @@ void setup() {
   }
   delay(100);
 
-  // 전원 인가 직후 가장 먼저 릴레이를 안전한 OFF 상태로 둔다.
   relay.begin();
 
-  // reset reason/boot counter/이전 RTC breadcrumb를 다른 초기화 전에 보존한다.
   ConfigManager::begin();
   DiagnosticsManager::begin();
 
-  // 0. I2C Bus Hang 현상 대비 (소프트 리셋 시 I2C 슬레이브 먹통 방지)
-  // 현재 I2C 센서를 직접적으로 사용하고 있지 않지만, VL53L0X와 같은 센서 연결에 대비하여 복구 코드 삽입.
-  // C6 보드의 I2C 핀: SDA=6, SCL=7 (GPIO 21, 22 사용 금지)
   clearI2CBus(6, 7);
 
-  // 1. 릴레이 초기화 재확인 (안전 상태: OFF)
   relayOff();
 
-  // 2. 배너 출력
   LOGF("\n============================================");
   LOGF(" smart-gatekeeper v%s — BLE Beacon + MQTT Pre-arm + AJ-SR04T", FIRMWARE_VERSION);
   LOGF("============================================");
@@ -401,10 +545,43 @@ void setup() {
     WifiManager::startAP();
   }
 
-  // 5. AJ-SR04T 방수 초음파 센서 초기화
   UltrasonicSensor::init();
 
-  // 6. BLE Beacon Advertiser 시작
+  // 6. Target Access FSM & Offline Queue & ACL Manager 초기화
+  g_offline_queue.setStorage(&g_nvs_queue_storage);
+  g_offline_queue.begin();
+  g_access_fsm.begin(millis());
+
+  // Provision expected signing key ID
+  uint32_t expectedKeyId = ConfigManager::getAclSigningKeyId();
+  g_acl_manager.setExpectedSigningKeyId(expectedKeyId);
+
+  // Provision production signer public key from configuration / NVS
+  String signerHex = ConfigManager::getAclSignerPublicKeyHex();
+  if (signerHex.length() == 130 && signerHex.startsWith("04")) {
+    std::array<uint8_t, 65> signer_pubkey{};
+    bool parse_ok = true;
+    for (size_t i = 0; i < 65; ++i) {
+      char byteStr[3] = {signerHex[i * 2], signerHex[i * 2 + 1], 0};
+      char* endPtr = nullptr;
+      signer_pubkey[i] = static_cast<uint8_t>(std::strtoul(byteStr, &endPtr, 16));
+      if (endPtr != byteStr + 2) { parse_ok = false; break; }
+    }
+    if (parse_ok && g_acl_manager.setSignerPublicKey(signer_pubkey)) {
+      LOGF("[ACL] ✅ Provisioned production ACL signer public key");
+    } else {
+      LOGF("[ACL-WARN] ⚠️ Malformed ACL signer public key; failing closed");
+    }
+  } else {
+    LOGF("[ACL-INFO] ACL signer public key absent; ACL signature verification will fail closed");
+  }
+
+  std::array<uint8_t, 16> door_id{};
+  if (ConfigManager::getHardwarelessDoorId(&door_id)) {
+    g_acl_manager.begin(door_id, millis());
+  }
+
+  // 7. BLE Beacon Advertiser 시작
   initBleAdvertiser();
 
   LOGF("============================================");
@@ -418,27 +595,25 @@ void setup() {
 // ─────────────────────────────────────────────────────────────
 void loop() {
   uint32_t now = millis();
+  g_access_fsm.tick(now);
 
   if (relayFailsafeTriggered) {
     relayFailsafeTriggered = false;
     DiagnosticsManager::noteAction("relay_timer_off");
     LOGF("[GATE] 독립 esp_timer가 릴레이를 OFF 처리함");
     MqttManager::publishEvent("door_close", "Independent timer relay OFF");
-    state = GateState::COOLDOWN;
-    stateMs = now;
+    g_access_fsm.handleRelayFailsafeOff(now, g_relay_cooldown_ms);
   }
 
   // 네트워크/TLS/WebServer보다 먼저 실행되는 독립 fail-safe.
   // FSM state가 잘못 덮여도 물리 릴레이는 RELAY_HOLD_MS 이후 반드시 OFF.
-  if (relayDeadlineActive &&
-      (now - relayActivatedMs >= RELAY_HOLD_MS)) {
+  if (relayDeadlineActive && (now - relayActivatedMs >= RELAY_HOLD_MS)) {
     relayOff();
     DiagnosticsManager::noteAction("relay_failsafe_off");
     LOGF("[GATE] 릴레이 독립 fail-safe OFF (%lu ms 경과)",
          (unsigned long)RELAY_HOLD_MS);
     MqttManager::publishEvent("door_close", "Independent relay fail-safe OFF");
-    state = GateState::COOLDOWN;
-    stateMs = now;
+    g_access_fsm.handleRelayFailsafeOff(now, g_relay_cooldown_ms);
   }
 
   WifiManager::handleClient();
@@ -446,107 +621,35 @@ void loop() {
   GattServer::update();
 
   now = millis();
-  if (relayFailsafeTriggered) {
-    relayFailsafeTriggered = false;
-    DiagnosticsManager::noteAction("relay_timer_off");
-    LOGF("[GATE] 네트워크 처리 중 독립 esp_timer가 릴레이를 OFF 처리함");
-    MqttManager::publishEvent("door_close", "Independent timer relay OFF");
-    state = GateState::COOLDOWN;
-    stateMs = now;
-  }
 
-  // ─── 초음파 거리 측정 (Pre-arm 중에만 동작) ───
+  // ─── 초음파 거리 측정 (ARMED 상태에서만 동작) ───
   unsigned long durationUs = 0;
   float distCm = 999.0f;
-  bool validReading = false;
 
-  if (is_armed && state == GateState::ARMED) {
+  if (g_access_fsm.state() == GateState::ARMED) {
     distCm = UltrasonicSensor::readDistanceCm(&durationUs);
     // 20cm 미만 맹점은 -1.0f 반환되므로, 20cm ~ g_distance_threshold_cm 범위만 유효
-    validReading = (distCm >= ULTRASONIC_MIN_DISTANCE_CM && distCm <= (float)g_distance_threshold_cm);
-  }
-
-  // ─── Pre-arm 만료 체크 (ARMED 상태에서만 수행) ──────────────────────
-  if (is_armed && state == GateState::ARMED &&
-      (now - arm_timestamp >= g_pre_arm_duration_ms)) {
-    LOGF("[GATE] ⏱️ Pre-arm 유효 시간 만료 (%lu ms 경과). IDLE 복귀.", (unsigned long)g_pre_arm_duration_ms);
-    is_armed = false;
-    state    = GateState::IDLE;
-    MqttManager::publishEvent("arm_expired", "Pre-arm timeout, returning to IDLE");
-  }
-
-  // ─── Pre-arm 잔여 시간 계산 ─────────────────────────────────────
-  uint32_t armRemainingMs = 0;
-  if (is_armed && arm_timestamp > 0) {
-    uint32_t elapsed = now - arm_timestamp;
-    armRemainingMs = (elapsed < g_pre_arm_duration_ms) ? (g_pre_arm_duration_ms - elapsed) : 0;
+    bool validReading = (distCm >= ULTRASONIC_MIN_DISTANCE_CM &&
+                         distCm <= (float)g_distance_threshold_cm);
+    if (validReading) {
+      LOGF("[GATE] ✅ ARMED 상태에서 초음파 %.1f cm 감지!", distCm);
+      g_access_fsm.handleSensorTrigger(now, RELAY_HOLD_MS, g_relay_cooldown_ms);
+    }
   }
 
   // ─── 1초 주기 MQTT 텔레메트리 발행 (실시간 센서값 모니터링) ────────────────────────────────
   if (now - lastMqttMs >= 1000) {
     lastMqttMs = now;
-    const char* stateStr = (state == GateState::IDLE)      ? "IDLE" :
-                           (state == GateState::ARMED)      ? "ARMED" :
-                           (state == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
+    const char* stateStr =
+        (g_access_fsm.state() == GateState::IDLE) ? "IDLE" :
+        (g_access_fsm.state() == GateState::AUTH_PENDING) ? "AUTH_PENDING" :
+        (g_access_fsm.state() == GateState::ARMED) ? "ARMED" :
+        (g_access_fsm.state() == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
     uint16_t distance_mm = (distCm > 0.0f && distCm < 900.0f) ? (uint16_t)(distCm * 10.0f) : 9990;
-    DiagnosticsManager::heartbeat(stateStr, is_armed, relay.isOn(),
+    DiagnosticsManager::heartbeat(stateStr, g_access_fsm.isArmed(), relay.isOn(),
                                   relay.pinLevel());
-    MqttManager::publishTelemetry(distance_mm, stateStr, is_armed,
-                                  armRemainingMs, relay.isOn(),
-                                  relay.pinLevel());
-    if (is_armed && state == GateState::ARMED) {
-      MqttManager::publishSensorInfo(durationUs, distCm);
-    }
-
-    LOGF("[SENSOR] 초음파 raw duration: %lu us, calculated distance: %.1f cm", durationUs, distCm);
-
-    if (is_armed) {
-      LOGF("[GATE] PRE-ARMED 상태 유지 중. 잔여 유효 시간: %lu 초", (unsigned long)(armRemainingMs / 1000));
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // FSM (Finite State Machine)
-  // ─────────────────────────────────────────────────────────────
-  switch (state) {
-    case GateState::IDLE:
-      break;
-
-    case GateState::ARMED:
-      if (validReading) {
-        LOGF("[GATE] ✅ ARMED 상태에서 초음파 %.1f cm 감지! (PRE-ARM 유효 — arm 경과: %lu ms)",
-             distCm, (unsigned long)(now - arm_timestamp));
-        LOGF("[GATE] *** 출입 승인! 릴레이 %lu ms ON *** (딸깍!)", (unsigned long)RELAY_HOLD_MS);
-
-        relayOn();
-        DiagnosticsManager::noteAction("relay_on_sensor");
-
-        is_armed = false; // Pre-arm 소비 (단발 사용 & 즉시 무장 해제)
-        MqttManager::publishEvent("door_open", "Access Granted via MQTT Pre-arm + Ultrasonic");
-
-        state   = GateState::RELAY_HOLD;
-        stateMs = millis();
-      }
-      break;
-
-    case GateState::RELAY_HOLD:
-      if (millis() - stateMs >= RELAY_HOLD_MS) {
-        relayOff();
-        relayFailsafeTriggered = false;
-        LOGF("[GATE] 릴레이 OFF (%lu ms 경과). 쿨다운 진입.", (unsigned long)RELAY_HOLD_MS);
-        MqttManager::publishEvent("door_close", "Relay Timeout OFF");
-        state   = GateState::COOLDOWN;
-        stateMs = millis();
-      }
-      break;
-
-    case GateState::COOLDOWN:
-      if (millis() - stateMs >= g_relay_cooldown_ms) {
-        LOGF("[GATE] 🚪 릴레이 쿨다운 완료 (%lu ms) -> IDLE 대기 상태 복귀", (unsigned long)g_relay_cooldown_ms);
-        state = GateState::IDLE;
-        MqttManager::publishEvent("gate_idle", "Cooldown complete, ready for next Pre-arm");
-      }
-      break;
+    MqttManager::publishTelemetry(distance_mm, stateStr, g_access_fsm.isArmed(),
+                                  0, relay.isOn(), relay.pinLevel());
   }
 
   delay(ULTRASONIC_POLL_INTERVAL_MS);

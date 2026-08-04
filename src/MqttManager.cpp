@@ -8,6 +8,10 @@
 #include "DiagnosticsManager.h"
 #include "WifiManager.h"
 #include "OtaManager.h"
+#include "TargetAclManager.h"
+#include "OfflineEventQueue.h"
+
+#include <cstring>
 
 #include <esp_arduino_version.h>
 #include <esp_system.h>
@@ -39,14 +43,39 @@ bool MqttManager::connected = false;
 void MqttManager::init() {
     wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
-    client.setBufferSize(2048); // boot diagnostics와 HA discovery payload 수용
+    client.setBufferSize(8192); // boot diagnostics, HA discovery, and 64-entry Signed ACL payload 수용
     client.setKeepAlive(30);
     client.setSocketTimeout(15); // TLS Handshake 대기 타임아웃 15초로 확장 (rc=-4 방지)
     client.setCallback(callback);
 }
 
 void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
+    // ─── smart-gatekeeper/target/acl/push — Signed ACL push ───────────────
+    if (strcmp(topic, "smart-gatekeeper/target/acl/push") == 0 ||
+        strncmp(topic, "gatekeeper/acl/v1/", 18) == 0) {
+        LOGF("[MQTT-ACL] Signed ACL push 수신 (길이: %u)", length);
+        extern sgk::TargetAclManager g_acl_manager;
+        sgk::ResultReason res = g_acl_manager.applySignedAcl(
+            reinterpret_cast<const uint8_t*>(payload), length, millis(), 0);
+        if (res == sgk::ResultReason::kOk) {
+            LOGF("[MQTT-ACL] ✅ Signed ACL 적용 성공 (v%llu)",
+                 (unsigned long long)g_acl_manager.activeAclVersion());
+            StaticJsonDocument<256> ackDoc;
+            ackDoc["status"] = "applied";
+            ackDoc["acl_version"] = g_acl_manager.activeAclVersion();
+            ackDoc["high_watermark"] = g_acl_manager.highWatermark();
+            char ackBuf[256] = {};
+            serializeJson(ackDoc, ackBuf, sizeof(ackBuf));
+            client.publish("smart-gatekeeper/target/acl/ack", ackBuf);
+        } else {
+            LOGF("[MQTT-ACL] ⚠️ Signed ACL 적용 거부 (reason code: %u)",
+                 static_cast<unsigned int>(res));
+        }
+        return;
+    }
+
     char message[256];
+
     if (length >= sizeof(message)) length = sizeof(message) - 1;
     memcpy(message, payload, length);
     message[length] = '\0';
@@ -251,6 +280,8 @@ void MqttManager::update() {
                 client.subscribe(MQTT_TOPIC_ARM);
                 client.subscribe("gatekeeper/force_open");
                 client.subscribe("smart-gatekeeper/cmd");
+                client.subscribe("smart-gatekeeper/target/acl/push");
+                client.subscribe("gatekeeper/acl/v1/#");
                 client.subscribe(MQTT_TOPIC_CONFIG_TX_POWER);
                 client.subscribe(MQTT_TOPIC_CONFIG_DISTANCE_THRESH);
                 client.subscribe(MQTT_TOPIC_CONFIG_TOF_DIST);
@@ -280,6 +311,83 @@ void MqttManager::update() {
         }
     } else {
         client.loop();
+
+        extern sgk::OfflineEventQueue g_offline_queue;
+        sgk::CanonicalEvent evt{};
+        while (client.connected() && g_offline_queue.peekFront(&evt)) {
+            bool pub_ok = false;
+            if (evt.is_canonical == 1 || std::strcmp(evt.event_type, "canonical_event") == 0) {
+                if (evt.event_id[0] != '\0' && evt.stage_text[0] != '\0' && evt.outcome_text[0] != '\0') {
+                    StaticJsonDocument<1024> doc;
+                    doc["schema_version"] = "1.0";
+                    doc["event_id"] = evt.event_id;
+                    doc["session_id"] = evt.session_id;
+                    doc["session_kind"] = "access";
+                    doc["source_component"] = "target";
+                    doc["source_instance_id"] = evt.target_ref;
+                    doc["source_boot_id"] = evt.source_boot_id;
+                    doc["sequence"] = evt.sequence;
+                    doc["attempt"] = evt.attempt > 0 ? evt.attempt : 1;
+
+                    doc["event_code"] = evt.event_type;
+                    doc["stage"] = evt.stage_text;
+                    doc["outcome"] = evt.outcome_text;
+                    doc["reason_code"] = evt.detail;
+
+                    JsonObject clock = doc.createNestedObject("clock");
+                    clock["wall_time"] = nullptr;
+                    clock["monotonic_ms"] = evt.monotonic_ms;
+                    clock["quality"] = "UNSYNCED";
+
+                    JsonObject target = doc.createNestedObject("target");
+                    target["target_ref"] = evt.target_ref;
+                    target["boot_id"] = evt.source_boot_id;
+
+                    if (evt.has_causation && evt.causation_event_id[0] != '\0') {
+                        doc["causation_event_id"] = evt.causation_event_id;
+                    } else {
+                        doc["causation_event_id"] = nullptr;
+                    }
+
+                    JsonObject attributes = doc.createNestedObject("attributes");
+                    attributes["path"] = "local_gatt";
+                    attributes["transport"] = "ble_gatt";
+
+                    char payload_buf[1024] = {};
+                    size_t bytes_needed = measureJson(doc);
+                    if (bytes_needed > 0 && bytes_needed < sizeof(payload_buf)) {
+                        size_t written = serializeJson(doc, payload_buf, sizeof(payload_buf));
+                        if (written > 0) {
+                            pub_ok = MqttManager::publishCanonicalEvent(payload_buf);
+                        }
+                    }
+                } else {
+                    pub_ok = false;
+                }
+            } else {
+                StaticJsonDocument<384> doc;
+                doc["event"] = evt.event_type[0] ? evt.event_type : "event";
+                doc["detail"] = evt.detail;
+                doc["time"] = evt.monotonic_ms;
+                if (evt.sequence > 0) doc["sequence"] = evt.sequence;
+                doc["target_id"] = evt.target_ref[0] ? evt.target_ref : DiagnosticsManager::targetId();
+                doc["boot_id"] = evt.source_boot_id[0] ? evt.source_boot_id : DiagnosticsManager::bootId();
+                doc["boot_count"] = evt.boot_count > 0 ? evt.boot_count : DiagnosticsManager::bootCount();
+                char buf[384];
+                size_t bytes_needed = measureJson(doc);
+                if (bytes_needed > 0 && bytes_needed < sizeof(buf)) {
+                    size_t written = serializeJson(doc, buf, sizeof(buf));
+                    if (written > 0) {
+                        pub_ok = client.publish("smart-gatekeeper/event", buf);
+                    }
+                }
+            }
+            if (pub_ok) {
+                g_offline_queue.popFront(); // Dequeue confirmed publish success
+            } else {
+                break; // Pause flushing if publish failed or record invalid
+            }
+        }
     }
 }
 
@@ -693,8 +801,16 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
 }
 
 void MqttManager::publishEvent(const char* eventType, const char* detail) {
-    if (!isConnected()) return;
     if (!eventType) return;
+
+    if (!isConnected()) {
+        extern sgk::OfflineEventQueue g_offline_queue;
+        g_offline_queue.pushEvent(eventType, detail, millis(), 0,
+                                  DiagnosticsManager::targetId(),
+                                  DiagnosticsManager::bootId(),
+                                  DiagnosticsManager::bootCount());
+        return;
+    }
 
     StaticJsonDocument<384> doc;
     doc["event"]  = eventType;
@@ -704,11 +820,19 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
     doc["boot_id"] = DiagnosticsManager::bootId();
     doc["boot_count"] = DiagnosticsManager::bootCount();
 
-    char buf[384];
-    serializeJson(doc, buf, sizeof(buf));
+    char buf[384] = {};
+    const size_t bytes_needed = measureJson(doc);
+    if (bytes_needed == 0 || bytes_needed >= sizeof(buf) ||
+        serializeJson(doc, buf, sizeof(buf)) == 0) {
+        return;
+    }
 
-    if (isConnected()) {
-        client.publish("smart-gatekeeper/event", buf);
+    if (!client.publish("smart-gatekeeper/event", buf)) {
+        extern sgk::OfflineEventQueue g_offline_queue;
+        g_offline_queue.pushEvent(eventType, detail, millis(), 0,
+                                  DiagnosticsManager::targetId(),
+                                  DiagnosticsManager::bootId(),
+                                  DiagnosticsManager::bootCount());
     }
 }
 

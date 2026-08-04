@@ -28,6 +28,8 @@ public:
     static uint32_t getRelayCooldownMs(uint32_t defaultVal = 3000);
     static bool getHardwarelessRcEnabled(bool defaultVal = false);
     static bool getHardwarelessDoorId(std::array<uint8_t, 16>* doorId);
+    static String getAclSignerPublicKeyHex();
+    static uint32_t getAclSigningKeyId(uint32_t defaultVal = 0);
     static uint32_t incrementBootCount();
     static String consumePlannedRestartReason();
 

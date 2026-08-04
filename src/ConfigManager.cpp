@@ -110,6 +110,24 @@ bool ConfigManager::getHardwarelessDoorId(
     return parseDoorId(configured, doorId);
 }
 
+String ConfigManager::getAclSignerPublicKeyHex() {
+#ifdef SECRET_ACL_SIGNER_PUBLIC_KEY_HEX
+    const char* defaultKey = SECRET_ACL_SIGNER_PUBLIC_KEY_HEX;
+#else
+    const char* defaultKey = "";
+#endif
+    return preferences.getString("acl_signer_pub", defaultKey);
+}
+
+uint32_t ConfigManager::getAclSigningKeyId(uint32_t defaultVal) {
+#ifdef SECRET_ACL_SIGNING_KEY_ID
+    uint32_t defaultId = SECRET_ACL_SIGNING_KEY_ID;
+#else
+    uint32_t defaultId = defaultVal;
+#endif
+    return preferences.getUInt("acl_key_id", defaultId);
+}
+
 uint32_t ConfigManager::incrementBootCount() {
     uint32_t count = preferences.getUInt("boot_count", 0) + 1;
     preferences.putUInt("boot_count", count);

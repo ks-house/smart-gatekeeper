@@ -29,7 +29,17 @@ class GattServer {
   static bool hasActiveOutput();
   static void setProofVerifier(sgk::ProofVerifier* verifier);
   static void setEventSink(sgk::EventSink* sink);
+  static void setOnAuthPendingCallback(void (*callback)(uint32_t now_ms));
+  static void setOnAuthGrantCallback(void (*callback)(uint32_t now_ms));
+  static void setOnAuthAbortCallback(void (*callback)(uint32_t now_ms));
   static void useProductionEventSink();
+  static void notifyAccessArmed(uint64_t now_ms);
+  static void notifySensorDetected(uint64_t now_ms);
+  static void notifyRelayOn(uint64_t now_ms);
+  static void notifyRelayOff(uint64_t now_ms, bool failsafe);
+  static void notifySessionCompleted(uint64_t now_ms);
+  static void notifySessionTerminated(uint64_t now_ms,
+                                      sgk::EventReason reason);
   static Telemetry getTelemetry();
 
   // Callback entrypoints are public only so the BLE callback shims can remain

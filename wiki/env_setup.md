@@ -19,7 +19,9 @@ pio device monitor -b 115200
 
 `include/secrets.h`에는 Wi-Fi, API, MQTT, OTA 주소와 TLS Root CA가 필요합니다. CI는 GitHub Secrets로
 이 파일을 생성하고 `FIRMWARE_VERSION_OVERRIDE`를 주입합니다. v2.1부터 main firmware build ID는
-`2.1.0-g<short_sha>` 형식입니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
+`2.1.0-g<short_sha>` 형식입니다. Target local ACL 및 access session FSM (Issue #20) 검증을 위한
+`TargetAclManager`, `TargetProofVerifier`, `TargetAccessFsm`, `OfflineEventQueue` 모듈이 포함되며
+host unit test는 `python -m unittest tests/test_hardwareless_rc.py`로 실행할 수 있습니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
 `platformio.ini`에 없습니다.
 
 ### 1.1 Windows에서 긴 PlatformIO 빌드가 timeout된 경우
@@ -331,3 +333,32 @@ execution으로 실행하고, broad staging 또는 parent repository file mutati
 - [ ] 화면 OFF, task swipe-away, OEM 절전 정책별 접근 시험
 - [ ] MQTT PUBACK 실패 시 HTTP 503 및 앱 재시도 확인
 - [ ] ECHO 5V → 3.3V 레벨 시프터와 릴레이 절연 확인
+
+## 7. PR #37 Windows build 및 에이전트 handoff 주의사항
+
+- 2026-08-02 review remediation 중 Antigravity 사용량 한도가 소진되어 해당 agent의 재개를
+  전제로 두지 않고 Orca dispatched worker로 인계했다. 인계 시 dirty worktree를 그대로 보존하고,
+  새 worker가 전체 diff를 독립 재검토해야 한다.
+- Windows/MSYS PlatformIO 복합 실행에서 간헐적으로
+  `C:\WINDOWS\System32\cmd.exe: Permission denied` (`Error 126`)가 발생할 수 있다. 이를 source
+  compiler error로 추정하지 말고 동일한 `PLATFORMIO_BUILD_DIR`로 targeted incremental
+  `pio run -e esp32c6`를 다시 실행해 첫 실제 compiler/linker diagnostic을 확보한다.
+- PR #37에서는 첫 incremental default-OFF 진단으로 missing C++ headers, 잘못된 `const char*`
+  `.c_str()` 사용, 그리고 feature-ON anonymous-namespace queue symbol link 오류를 식별해 수정했다.
+  기본-OFF가 green이 된 뒤에만 `PLATFORMIO_BUILD_FLAGS=-DENABLE_HARDWARELESS_RC=1` feature-ON을
+  순차 실행한다.
+- 위 빌드는 hardwareless software evidence다. Samsung/OEM 화면 OFF·task swipe-away,
+  ESP32-C6 BLE radio/GATT, GPIO3 relay/sensor timing, bootloader rollback 및 OTA-G1..G4 물리 gate를
+  대체하지 않는다.
+
+## 8. Linux GCC `strncpy` literal 경고
+
+- Windows host 검증에 사용하는 MinGW GCC 5.1은 길이가 정확히 destination capacity - 1인
+  문자열 literal을 `std::strncpy(destination, literal, sizeof(destination) - 1)`로 복사해도
+  경고하지 않을 수 있다. Linux GCC 11 이상은 동일 패턴을 `-Wstringop-truncation`으로 진단하며,
+  CI의 `-Werror` 설정에서는 빌드 실패가 된다.
+- 고정 길이 UUID처럼 terminator를 포함한 literal 크기가 destination 배열 크기와 정확히 같아야
+  하는 경우 `constexpr char` 배열로 literal을 선언하고 `static_assert(sizeof(literal) ==
+  sizeof(destination))`로 길이를 검증한 뒤, `std::memcpy(destination, literal, sizeof(literal))`로
+  NUL terminator까지 함께 복사한다. 이 패턴은 UUID 36 bytes와 trailing NUL을 모두 보존하며
+  Windows/Linux compiler 차이에 의존하지 않는다.

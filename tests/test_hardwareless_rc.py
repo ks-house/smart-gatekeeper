@@ -1,5 +1,6 @@
 """Build and execute the same C++ protocol core used by the ESP32 BLE adapter."""
 
+import sys
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,39 +20,49 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
                 / ".platformio/packages/toolchain-gccmingw32/bin/g++.exe"
             )
         self.assertTrue(Path(compiler).is_file(), "native g++ compiler is required")
+        import uuid
         with tempfile.TemporaryDirectory() as directory:
-            executable = Path(directory) / "gatt_protocol_test.exe"
+            executable = Path(directory) / f"gatt_protocol_test_{uuid.uuid4().hex}.exe"
+            cmd = [
+                f'"{compiler}"',
+                "-std=c++17",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-static",
+                "-static-libgcc",
+                "-static-libstdc++",
+                "-Iinclude",
+                "src/GattProtocol.cpp",
+                "src/TargetAclManager.cpp",
+                "src/TargetProofVerifier.cpp",
+                "src/TargetAccessFsm.cpp",
+                "src/OfflineEventQueue.cpp",
+                "tests/gatt_protocol_test.cpp",
+                "-o",
+                f'"{executable}"',
+            ]
             compile_result = subprocess.run(
-                [
-                    compiler,
-                    "-std=c++17",
-                    "-Wall",
-                    "-Wextra",
-                    "-Werror",
-                    "-static",
-                    "-static-libgcc",
-                    "-static-libstdc++",
-                    "-Iinclude",
-                    "src/GattProtocol.cpp",
-                    "tests/gatt_protocol_test.cpp",
-                    "-o",
-                    str(executable),
-                ],
+                " ".join(cmd),
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
                 check=False,
+                shell=True,
             )
             self.assertEqual(compile_result.returncode, 0, compile_result.stderr)
             run_result = subprocess.run(
-                [str(executable)],
+                f'"{executable}"',
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
                 check=False,
+                shell=True,
             )
             self.assertEqual(run_result.returncode, 0, run_result.stderr)
             self.assertIn("GattProtocol host tests passed", run_result.stdout)
+
+
 
     def test_transport_has_no_relay_integration(self):
         core = (ROOT / "src" / "GattProtocol.cpp").read_text(encoding="utf-8")
@@ -97,8 +108,9 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
             ota.index("if (!WifiManager::isConnected())"),
             ota.index("WiFiClientSecure client"),
         )
-        self.assertIn(
-            "classifyOtaSafeState(state, is_armed, relay.isOn())", main
+        self.assertTrue(
+            "g_access_fsm.otaSafeState()" in main or
+            "classifyOtaSafeState(state, is_armed, relay.isOn())" in main
         )
         self.assertIn("OtaManager::setSafeStateProvider(currentOtaSafeState)", main)
 
@@ -116,6 +128,10 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("class CanonicalMqttEventSink", adapter)
         self.assertIn('document["sequence"] = event.sequence', adapter)
         self.assertIn('document["causation_event_id"]', adapter)
+        self.assertIn(
+            "selected_event_sink == &production_lifecycle_bridge", adapter
+        )
+        self.assertIn("production_event_sink.configure(door_id)", adapter)
         self.assertIn("GattServer::useProductionEventSink()", main)
 
     def test_android_filter_and_target_prefix_share_exact_bytes(self):
