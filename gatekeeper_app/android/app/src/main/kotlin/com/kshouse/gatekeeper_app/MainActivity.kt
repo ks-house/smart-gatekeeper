@@ -7,6 +7,8 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
+import com.kshouse.gatekeeper_app.gattworker.BleGattWorkScheduler
+
 class MainActivity: FlutterActivity() {
     private companion object {
         const val CHANNEL_DIAGNOSTICS = "com.kshouse.gatekeeper_app/notification_channel"
@@ -53,13 +55,24 @@ class MainActivity: FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL_GATT_WORKER_HEALTH,
         ).setMethodCallHandler { call, result ->
-            if (call.method == "getHealth") {
-                result.success(BleGattHealthBridge.snapshot(applicationContext))
-            } else {
-                // Read-only by contract: no feature flag, credential, or key mutation is exposed.
-                result.notImplemented()
+            when (call.method) {
+                "getHealth" -> {
+                    result.success(BleGattHealthBridge.snapshot(applicationContext))
+                }
+                "triggerLocalGattRetry" -> {
+                    val scheduled = BleGattWorkScheduler.onPresence(
+                        applicationContext,
+                        "TARGET_LOCAL",
+                        "manual_retry_" + System.currentTimeMillis(),
+                    )
+                    result.success(scheduled != null)
+                }
+                else -> {
+                    result.notImplemented()
+                }
             }
         }
     }
+
 
 }
