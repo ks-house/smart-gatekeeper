@@ -216,7 +216,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                 labelText: '사용자 이름',
                                 labelStyle: TextStyle(color: Colors.white70),
                                 border: OutlineInputBorder(),
-                                dense: true,
+                                isDense: true,
                               ),
                               style: const TextStyle(color: Colors.white),
                             ),
@@ -227,10 +227,11 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                 labelText: '호수 (Room)',
                                 labelStyle: TextStyle(color: Colors.white70),
                                 border: OutlineInputBorder(),
-                                dense: true,
+                                isDense: true,
                               ),
                               style: const TextStyle(color: Colors.white),
                             ),
+
                             const SizedBox(height: 12),
                             OutlinedButton.icon(
                               onPressed: () async {
