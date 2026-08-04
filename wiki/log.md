@@ -1806,3 +1806,12 @@
 - Extended MethodChannel in MainActivity.kt and NativeGattWorkerHealthBridge with triggerLocalGattRetry for 1-tap manual local GATT entry.
 - Built SmartKeyControlScreen dashboard with 1-Tap Manual Local GATT Retry button, Credential status, Native Worker Health, Feature Flag controls, OEM battery recovery guidance, and independent OTA Update Manager.
 - Passed 5 Flutter unit tests, clean flutter analyze, 369 host C++ checks, 87 Python unit tests, 18 observability tests, vector verifier, and OTA contract gate.
+
+## [2026-08-05] test | Issue #22: E2E fault injection, hardwareless release candidate gate verification, and rollout runbook completion
+
+- Verified two-tier authorization structure: software release candidate gate (G0-SW: passed) vs physical device gate (G0-HW: pending).
+- Executed E2E fault injection matrix (FI-01 through FI-10) and validated software failure handling across artifacts, signatures, network isolation, and protocol N/N-1 compatibility.
+- Verified hardwareless implementation gates contract (tests/test_hardwareless_implementation_gates.py: 4/4 PASS).
+- Verified OTA contract gate (ota_contract_gate.py contract: PASS).
+- Created wiki/hardwareless_implementation_gates.md and updated wiki/index.md.
+- Maintained fail-closed production release block while physical devices (Samsung phone & ESP32-C6 target board) are disconnected.
