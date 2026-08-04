@@ -56,7 +56,9 @@
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20 Target-owned local ACL verification, access session FSM, relay interlock, offline queue and evidence boundary |
 | [flutter_thin_ui.md](flutter_thin_ui.md) | #21 Flutter Thin UI, credential/approval status, 1-tap manual local GATT retry, interlocked feature flags, OEM recovery, and independent OTA |
+| [hardwareless_implementation_gates.md](hardwareless_implementation_gates.md) | #22 Two-tier authorization gate structure, software release candidate G0-SW validation, and physical G0-HW fail-closed boundaries |
 | [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest Gate, policy rotation, paths 필터 제거와 required check 해제 |
+
 
 
 ---
