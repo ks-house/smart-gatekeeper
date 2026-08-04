@@ -1797,3 +1797,12 @@
 - Fixed OtaManager and GattProtocol FSM interaction by ensuring setOtaBusy does not terminate completed/consumed GATT sessions, preserving physical lifecycle events during WAIT_SAFE_STATE.
 - Fixed OfflineEventQueue overflow handling to set canonical gap event details with exact sequence ranges (e.g. dropped seq 1-2) and canonical event code 1007.
 - Verified 366 host C++ checks, 87 Python unit tests, 18 observability tests, vector verifiers, OTA contract gate, and clean ESP32-C6 PlatformIO build.
+
+## [2026-08-05] code | Issue #21: Flutter Thin UI, User Fallback, and Legacy Feature Flag implementation
+
+- Implemented CredentialService for Device ID, tenant registration, approval status badges, and ACL lease snapshot management.
+- Implemented FeatureFlagService with strict interlocks preventing simultaneous ENABLE_HARDWARELESS_RC and ENABLE_LEGACY_PREARM activation (preventing duplicate ARM triggers).
+- Added in-app rollback capabilities to Legacy REST Pre-arm flow without requiring app reinstallation.
+- Extended MethodChannel in MainActivity.kt and NativeGattWorkerHealthBridge with triggerLocalGattRetry for 1-tap manual local GATT entry.
+- Built SmartKeyControlScreen dashboard with 1-Tap Manual Local GATT Retry button, Credential status, Native Worker Health, Feature Flag controls, OEM battery recovery guidance, and independent OTA Update Manager.
+- Passed 5 Flutter unit tests, clean flutter analyze, 369 host C++ checks, 87 Python unit tests, 18 observability tests, vector verifier, and OTA contract gate.

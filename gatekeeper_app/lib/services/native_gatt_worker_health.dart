@@ -61,4 +61,13 @@ class NativeGattWorkerHealthBridge {
     final raw = await _channel.invokeMethod<Map<Object?, Object?>>('getHealth');
     return NativeGattWorkerHealth.fromMap(raw ?? const <Object?, Object?>{});
   }
+
+  Future<bool> triggerLocalGattRetry() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('triggerLocalGattRetry');
+      return res == true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
