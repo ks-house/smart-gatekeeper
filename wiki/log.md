@@ -1789,3 +1789,11 @@
 - `python -m unittest discover -s tests -p test_*.py -v` passed all 87 tests using the Windows MinGW GCC 5.1 host toolchain.
 - The focused WSL Ubuntu GCC 11 build with `-std=c++17 -Wall -Wextra -Werror` passed and its GATT/ACL/FSM/queue binary passed 363 checks, confirming both the Linux CI warning fix and the Windows-host compatibility of explicit `static_assert` messages.
 - Long PlatformIO builds were intentionally not rerun because this remediation changes only host test code and documentation; physical gates remain unchanged and open.
+
+## [2026-08-04] fix | Resolve PR #37 P0 blockers for ACL capacity, OTA FSM, and queue overflow
+
+- Fixed TargetAclManager NVS boot buffer undersize by updating slot_buffer to kMaxAclBlobSize (6920 bytes) to support up to 64 signed ACL entries.
+- Fixed MqttManager MQTT buffer capacity from 2048 to 8192 bytes to prevent signed ACL push payload truncation.
+- Fixed OtaManager and GattProtocol FSM interaction by ensuring setOtaBusy does not terminate completed/consumed GATT sessions, preserving physical lifecycle events during WAIT_SAFE_STATE.
+- Fixed OfflineEventQueue overflow handling to set canonical gap event details with exact sequence ranges (e.g. dropped seq 1-2) and canonical event code 1007.
+- Verified 366 host C++ checks, 87 Python unit tests, 18 observability tests, vector verifiers, OTA contract gate, and clean ESP32-C6 PlatformIO build.

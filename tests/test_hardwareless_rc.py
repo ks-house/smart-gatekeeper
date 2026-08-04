@@ -1,5 +1,6 @@
 """Build and execute the same C++ protocol core used by the ESP32 BLE adapter."""
 
+import sys
 from pathlib import Path
 import shutil
 import subprocess
@@ -22,41 +23,46 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         import uuid
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / f"gatt_protocol_test_{uuid.uuid4().hex}.exe"
+            cmd = [
+                f'"{compiler}"',
+                "-std=c++17",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-static",
+                "-static-libgcc",
+                "-static-libstdc++",
+                "-Iinclude",
+                "src/GattProtocol.cpp",
+                "src/TargetAclManager.cpp",
+                "src/TargetProofVerifier.cpp",
+                "src/TargetAccessFsm.cpp",
+                "src/OfflineEventQueue.cpp",
+                "tests/gatt_protocol_test.cpp",
+                "-o",
+                f'"{executable}"',
+            ]
             compile_result = subprocess.run(
-                [
-                    compiler,
-                    "-std=c++17",
-                    "-Wall",
-                    "-Wextra",
-                    "-Werror",
-                    "-static",
-                    "-static-libgcc",
-                    "-static-libstdc++",
-                    "-Iinclude",
-                    "src/GattProtocol.cpp",
-                    "src/TargetAclManager.cpp",
-                    "src/TargetProofVerifier.cpp",
-                    "src/TargetAccessFsm.cpp",
-                    "src/OfflineEventQueue.cpp",
-                    "tests/gatt_protocol_test.cpp",
-                    "-o",
-                    str(executable),
-                ],
+                " ".join(cmd),
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
                 check=False,
+                shell=True,
             )
             self.assertEqual(compile_result.returncode, 0, compile_result.stderr)
             run_result = subprocess.run(
-                [str(executable)],
+                f'"{executable}"',
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
                 check=False,
+                shell=True,
             )
             self.assertEqual(run_result.returncode, 0, run_result.stderr)
             self.assertIn("GattProtocol host tests passed", run_result.stdout)
+
+
 
     def test_transport_has_no_relay_integration(self):
         core = (ROOT / "src" / "GattProtocol.cpp").read_text(encoding="utf-8")

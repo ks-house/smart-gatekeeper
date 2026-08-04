@@ -85,7 +85,7 @@ std::array<uint8_t, 16> canonicalDoor() {
 class MemoryStorage final : public sgk::TargetAclStorage {
  public:
   bool saveSlot(uint8_t slot, const uint8_t* blob, size_t length) override {
-    if (slot > 1 || blob == nullptr || length > 4096) return false;
+    if (slot > 1 || blob == nullptr || length > sgk::kMaxAclBlobSize) return false;
     slots[slot].assign(blob, blob + length);
     return true;
   }
@@ -899,11 +899,20 @@ void testOfflineEventQueueBoundedOverflowAndGap() {
   CHECK(queue.size() == 8);
   CHECK(queue.overflowCount() == 6); // 3 overflows x 2 dropped per overflow
 
-  sgk::CanonicalEvent front{};
-  CHECK(queue.peekFront(&front));
-  // Double capacity overflow drops 2 oldest events per overflow to fit BOTH gap evidence and incoming event!
-  CHECK(std::string(front.event_type) == "evt_7");
+  sgk::CanonicalEvent evt{};
+  CHECK(queue.peekFront(&evt));
+  CHECK(std::string(evt.event_type) == "evt_7");
+
+  // Pop evt_7 and evt_8 to reach first gap event
+  CHECK(queue.popFront(&evt)); // evt_7
+  CHECK(queue.popFront(&evt)); // evt_8
+  CHECK(queue.popFront(&evt)); // gap_evt1
+  CHECK(evt.is_canonical == 1);
+  CHECK(std::string(evt.event_type) == "queue_overflow");
+  CHECK(std::string(evt.detail).find("dropped seq 1-2") != std::string::npos);
 }
+
+
 
 void testOfflineEventQueueFullQueuePowerLossOverwriting() {
   TestQueueStorage storage;

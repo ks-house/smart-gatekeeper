@@ -357,7 +357,9 @@ void ProtocolCore::setEnabled(bool enabled) {
 
 void ProtocolCore::setOtaBusy(bool busy, uint32_t now_ms) {
   ota_busy_ = busy;
-  if (busy && state_ != SessionState::kIdle) {
+  if (busy && state_ != SessionState::kIdle &&
+      state_ != SessionState::kCompleted &&
+      state_ != SessionState::kConsumed) {
     // Bind BUSY to the still-live protocol/session before clearing secrets.
     // Supersede any unsent hello/challenge so the fixed-capacity output queue
     // cannot prevent the terminal BUSY result from being staged.
@@ -369,6 +371,7 @@ void ProtocolCore::setOtaBusy(bool busy, uint32_t now_ms) {
     resetSessionPreservingOutputs();
   }
 }
+
 
 bool ProtocolCore::connect(uint16_t connection_id, uint32_t now_ms,
                            ConnectionToken* accepted_owner) {

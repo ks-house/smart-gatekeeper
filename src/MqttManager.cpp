@@ -43,7 +43,7 @@ bool MqttManager::connected = false;
 void MqttManager::init() {
     wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
     client.setServer(MQTT_HOST, MQTT_PORT);
-    client.setBufferSize(2048); // boot diagnostics와 HA discovery payload 수용
+    client.setBufferSize(8192); // boot diagnostics, HA discovery, and 64-entry Signed ACL payload 수용
     client.setKeepAlive(30);
     client.setSocketTimeout(15); // TLS Handshake 대기 타임아웃 15초로 확장 (rc=-4 방지)
     client.setCallback(callback);

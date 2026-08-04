@@ -149,31 +149,48 @@ bool OfflineEventQueue::push(const CanonicalEvent& event) {
 
   bool overflow_occurred = false;
   CanonicalEvent gap_evt{};
-  CanonicalEvent dropped_evt{};
 
   if (new_count >= kCapacity) {
     overflow_occurred = true;
-    dropped_evt = buffer_[new_head];
+    CanonicalEvent dropped_evt1 = buffer_[new_head];
+    CanonicalEvent dropped_evt2 = buffer_[(new_head + 1) % kCapacity];
     new_head = (new_head + 2) % kCapacity;
     new_count -= 2;
     new_overflow += 2;
 
+    gap_evt.is_canonical = 1;
+    gap_evt.code = 1007; // canonical queue overflow code
+    gap_evt.transport_reason = static_cast<uint16_t>(ResultReason::kInternalFailClosed);
+
     std::strncpy(gap_evt.event_type, "queue_overflow", sizeof(gap_evt.event_type) - 1);
-    std::snprintf(gap_evt.detail, sizeof(gap_evt.detail),
-                  "Queue overflow: dropped seq %llu (overflow_count=%u)",
-                  static_cast<unsigned long long>(dropped_evt.sequence),
-                  static_cast<unsigned int>(new_overflow));
+    std::strncpy(gap_evt.stage_text, "OVERFLOW", sizeof(gap_evt.stage_text) - 1);
+    std::strncpy(gap_evt.outcome_text, "DROPPED", sizeof(gap_evt.outcome_text) - 1);
+
+    if (dropped_evt1.sequence == dropped_evt2.sequence) {
+      std::snprintf(gap_evt.detail, sizeof(gap_evt.detail),
+                    "Queue overflow: dropped seq %llu (overflow_count=%u)",
+                    static_cast<unsigned long long>(dropped_evt1.sequence),
+                    static_cast<unsigned int>(new_overflow));
+    } else {
+      std::snprintf(gap_evt.detail, sizeof(gap_evt.detail),
+                    "Queue overflow: dropped seq %llu-%llu (overflow_count=%u)",
+                    static_cast<unsigned long long>(dropped_evt1.sequence),
+                    static_cast<unsigned long long>(dropped_evt2.sequence),
+                    static_cast<unsigned int>(new_overflow));
+    }
     gap_evt.monotonic_ms = incoming.monotonic_ms;
-    gap_evt.sequence = dropped_evt.sequence;
+    gap_evt.sequence = dropped_evt1.sequence;
     gap_evt.boot_count = incoming.boot_count;
     std::strncpy(gap_evt.target_ref, incoming.target_ref, sizeof(gap_evt.target_ref) - 1);
     std::strncpy(gap_evt.source_boot_id, incoming.source_boot_id, sizeof(gap_evt.source_boot_id) - 1);
+    std::strncpy(gap_evt.session_id, dropped_evt1.session_id, sizeof(gap_evt.session_id) - 1);
     gap_evt.magic = 0x53475145;
     gap_evt.schema_version = 1;
     gap_evt.generation = next_gen;
     gap_evt.crc32 = computeCrc32(reinterpret_cast<const uint8_t*>(&gap_evt),
                                  offsetof(CanonicalEvent, crc32));
   }
+
 
   incoming.magic = 0x53475145;
   incoming.schema_version = 1;

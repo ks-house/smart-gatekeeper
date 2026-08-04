@@ -12,6 +12,7 @@ constexpr size_t kAclHeaderSize = 72;
 constexpr size_t kAclEntrySize = 106;
 constexpr size_t kAclSignatureSize = 64;
 constexpr size_t kMaxAclEntries = 64;
+constexpr size_t kMaxAclBlobSize = kAclHeaderSize + (kMaxAclEntries * kAclEntrySize) + kAclSignatureSize;  // 6920
 constexpr uint32_t kGenerationMagic = 0x53474B41;  // ASCII "SGKA"
 
 struct TargetAclEntry {

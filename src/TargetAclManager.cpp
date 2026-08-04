@@ -157,7 +157,7 @@ bool TargetAclManager::begin(const std::array<uint8_t, 16>& door_id,
   active_slot_ = selected_gen.active_slot;
 
   // Load snapshot from active_slot
-  uint8_t slot_buffer[4096] = {};
+  uint8_t slot_buffer[kMaxAclBlobSize] = {};
   size_t read_bytes = 0;
   if (!storage_->readSlot(selected_gen.active_slot, slot_buffer,
                           sizeof(slot_buffer), &read_bytes)) {

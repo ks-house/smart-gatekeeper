@@ -51,6 +51,8 @@ void OtaManager::checkAndUpdate(bool force) {
         }
         delay(10);
     }
+
+
     if (!WifiManager::isConnected()) {
         status = OtaStatus::FAILED;
         lastError = "Wi-Fi unavailable after WAIT_SAFE_STATE";
