@@ -1,0 +1,24 @@
+{
+  "schema_version": "issue54-physical-evidence/v1",
+  "plan_version": "issue54-physical-gate-plan/v1",
+  "candidate": {
+    "git_sha": null,
+    "firmware_artifact_sha256": null,
+    "mobile_artifact_sha256": null
+  },
+  "records": [
+    {"gate_id": "SAMSUNG-WAKE-100", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no Samsung/OEM measurement recorded."},
+    {"gate_id": "ESP32-C6-COEXISTENCE-100", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no ESP32-C6 coexistence measurement recorded."},
+    {"gate_id": "GPIO3-RELAY-100", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no GPIO3 relay measurement recorded."},
+    {"gate_id": "AJ-SR04T-BOUNDARY-100", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no AJ-SR04T measurement recorded."},
+    {"gate_id": "RELAY-G0", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no relay threat-model acceptance recorded."},
+    {"gate_id": "RELAY-G1", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no selected-path evidence recorded."},
+    {"gate_id": "RELAY-G2", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no 100-run relay evidence recorded."},
+    {"gate_id": "OTA-G1", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no OTA component evidence recorded."},
+    {"gate_id": "OTA-G2", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no OTA compatibility evidence recorded."},
+    {"gate_id": "OTA-G3", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no power-cut or recovery evidence recorded."},
+    {"gate_id": "OTA-G4", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no canary evidence recorded."},
+    {"gate_id": "OPERATOR-DRILLS", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no operator drill recorded."},
+    {"gate_id": "CANARY-STOP-ROLLBACK", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Template only; no production or canary action occurred."}
+  ]
+}

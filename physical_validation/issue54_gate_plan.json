@@ -1,0 +1,122 @@
+{
+  "plan_version": "issue54-physical-gate-plan/v1",
+  "issue": 54,
+  "purpose": "Deterministic preparation only. This plan is not physical, operator, canary, or production evidence.",
+  "gates": [
+    {
+      "id": "SAMSUNG-WAKE-100",
+      "evidence_level": "L2",
+      "minimum_trials": 100,
+      "matrix": [
+        {"scenario": "screen_off", "trials": 20},
+        {"scenario": "activity_swipe_away", "trials": 20},
+        {"scenario": "ordinary_process_kill", "trials": 20},
+        {"scenario": "reboot_registration_recovery", "trials": 20},
+        {"scenario": "oem_battery_policy_recovery", "trials": 20}
+      ],
+      "required_raw_evidence": ["run-ledger", "adb-logcat", "device-settings-snapshot"],
+      "pass_condition": "Every eligible trial records one matching OS wake; latency percentiles are recorded without substituting for delivery success."
+    },
+    {
+      "id": "ESP32-C6-COEXISTENCE-100",
+      "evidence_level": "L2",
+      "minimum_trials": 100,
+      "matrix": [{"scenario": "gatt_wifi_mqtt_ota_coexistence", "trials": 100}],
+      "required_raw_evidence": ["serial-log", "radio-capture", "reset-reason-ledger"],
+      "pass_condition": "No unclassified reset, radio loss, unsafe access transition, or OTA-safe-state violation occurs."
+    },
+    {
+      "id": "GPIO3-RELAY-100",
+      "evidence_level": "L2",
+      "minimum_trials": 100,
+      "matrix": [{"scenario": "active_low_high_z_off_repetition", "trials": 100}],
+      "required_raw_evidence": ["scope-capture", "rail-capture", "serial-log"],
+      "pass_condition": "Every ON/OFF cycle has the required one-shot cutoff, no unsafe rail/GPIO observation, and no reset."
+    },
+    {
+      "id": "AJ-SR04T-BOUNDARY-100",
+      "evidence_level": "L2",
+      "minimum_trials": 100,
+      "matrix": [{"scenario": "19_20_cm_boundary_and_ghost_filter", "trials": 100}],
+      "required_raw_evidence": ["distance-ledger", "serial-log", "wiring-photo"],
+      "pass_condition": "The configured boundary and ghost-filter decisions match the candidate firmware, with ECHO level protection verified."
+    },
+    {
+      "id": "RELAY-G0",
+      "evidence_level": "L2",
+      "minimum_trials": 1,
+      "matrix": [{"scenario": "two_proxy_threat_model_and_risk_owner_review", "trials": 1}],
+      "required_raw_evidence": ["byte-exact-proxy-transcript", "threat-model", "risk-owner-approval"],
+      "pass_condition": "Expected and observed wormhole results agree and the risk owner approves the selected path."
+    },
+    {
+      "id": "RELAY-G1",
+      "evidence_level": "L2",
+      "minimum_trials": 1,
+      "matrix": [{"scenario": "selected_path_active_control", "trials": 1}],
+      "required_raw_evidence": ["active-control-evidence", "selected-path-record"],
+      "pass_condition": "The selected relay-resistance, interactive-presence, or approved low-consequence path is active and evidence-bound."
+    },
+    {
+      "id": "RELAY-G2",
+      "evidence_level": "L2",
+      "minimum_trials": 100,
+      "matrix": [{"scenario": "same_path_operational_regression_and_ota_rollback", "trials": 100}],
+      "required_raw_evidence": ["run-ledger", "rollback-evidence", "selected-path-record"],
+      "pass_condition": "The same G1 path completes 100 consecutive physical runs and an OTA rollback regression."
+    },
+    {
+      "id": "OTA-G1",
+      "evidence_level": "L2",
+      "minimum_trials": 1,
+      "matrix": [{"scenario": "component_update_and_failure_preservation", "trials": 1}],
+      "required_raw_evidence": ["mobile-install-log", "target-serial-log", "slot-record"],
+      "pass_condition": "Mobile and Target update independently while a failed component update preserves the prior APK or bootable slot."
+    },
+    {
+      "id": "OTA-G2",
+      "evidence_level": "L2",
+      "minimum_trials": 1,
+      "matrix": [{"scenario": "n_and_n_minus_1_matrix", "trials": 1}],
+      "required_raw_evidence": ["compatibility-ledger", "protocol-transcript"],
+      "pass_condition": "Required N/N-1 combinations retain update reachability and the documented fail-closed security properties."
+    },
+    {
+      "id": "OTA-G3",
+      "evidence_level": "L2",
+      "minimum_trials": 1,
+      "matrix": [{"scenario": "power_cut_and_recovery_paths", "trials": 1}],
+      "required_raw_evidence": ["power-cut-ledger", "bootloader-log", "recovery-path-log"],
+      "pass_condition": "Every applicable fault boundary proves prior-slot or prior-APK preservation plus the documented local/fallback recovery path."
+    },
+    {
+      "id": "OTA-G4",
+      "evidence_level": "L3",
+      "minimum_trials": 1,
+      "matrix": [{"scenario": "approved_preproduction_canary", "trials": 1}],
+      "required_raw_evidence": ["canary-install-log", "boot-health-record", "operator-approval"],
+      "pass_condition": "An approved preproduction canary records install, reboot, health, and an exercised rollback decision."
+    },
+    {
+      "id": "OPERATOR-DRILLS",
+      "evidence_level": "L3",
+      "minimum_trials": 4,
+      "matrix": [
+        {"scenario": "install", "trials": 1},
+        {"scenario": "recovery", "trials": 1},
+        {"scenario": "incident_stop", "trials": 1},
+        {"scenario": "rollback", "trials": 1}
+      ],
+      "required_raw_evidence": ["operator-ledger", "runbook-version", "approval-record"],
+      "pass_condition": "Operators complete the documented drills without undocumented privileged workarounds."
+    },
+    {
+      "id": "CANARY-STOP-ROLLBACK",
+      "evidence_level": "L4",
+      "minimum_trials": 1,
+      "matrix": [{"scenario": "canary_stop_and_rollback_drill", "trials": 1}],
+      "required_raw_evidence": ["canary-ledger", "stop-decision", "rollback-health-record"],
+      "pass_condition": "A stop condition halts expansion and recovery returns the approved prior artifact to health."
+    }
+  ]
+}
