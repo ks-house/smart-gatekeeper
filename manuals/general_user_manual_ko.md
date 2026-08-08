@@ -1,6 +1,6 @@
 # 일반 사용자 매뉴얼 / General user manual
 
-문서 버전: **0.1.0-baseline** · 기준 커밋: `b246aff9698ccbcbcd864f99aab63654cce2cc78`<br>
+문서 버전: **0.1.1-remediation** · 통합 기준: `b2df34977fe866e129eae373e7056f0f9b3ddc6f`<br>
 대상: 입주자/일반 사용자 (resident/end user) · 상태: **제품·실기기 인수 대기**
 
 ## 먼저 읽기
@@ -51,12 +51,14 @@ Smart Gatekeeper는 앱(Flutter native shell/WebView), NAS backend, ESP32-C6 Tar
 
 ## 오프라인·성능 저하·OEM 복구
 
-| 상태 (State) | 사용자가 할 일 | 하지 말아야 할 것 | 출력/에스컬레이션 |
-|---|---|---|---|
-| Wi-Fi/모바일 네트워크 끊김 (offline) | 네트워크가 복구될 때까지 기다리고 앱의 `offline`/마지막 확인 시각을 캡처 | 임의로 AP, MQTT, 인증서를 바꾸지 않음 | 지원팀에 redacted bundle; offline local authorization 계약 **PENDING** |
-| Bluetooth 꺼짐/권한 거부 | 설정에서 Bluetooth/필수 권한을 확인하고 앱 재진입 | 앱 삭제·자격 재등록부터 하지 않음 | `Blocked`와 설정 링크가 보여야 함; #51 **PENDING** |
-| 화면 꺼짐·배터리 최적화·프로세스 종료 (OEM) | 앱의 OEM 백그라운드 허용, 알림 채널, 자동 실행을 확인 | 배터리 최적화를 무조건 해제했다고 성공 간주하지 않음 | Samsung/One UI walkthrough **PENDING** |
-| `unknown`/중복 결과 | 한 번만 현장 안전 확인 후 지원 요청 | 반복 force-open, 앱 재설치, 로그에 원본 MAC/토큰 첨부 | session/boot/event ID만 공유; physical confirmation **PENDING** |
+모든 아래 값은 **문서 계약 목표이며 구현·Samsung/OEM 실측은 PENDING**이다. `timeout`은 한 시도에 적용하고, `bounded retry`가 끝나면 같은 요청을 무한 반복하지 않고 `escalation`으로 전환한다.
+
+| Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout / bounded retry / escalation contract |
+|---|---|---|---|---|---|---|
+| 사용자 → 지원팀 | Wi-Fi/모바일 네트워크가 끊겼거나 backend health가 `offline` | 네트워크 복구 확인, 앱 상태 캡처, redacted bundle 제출 | 10초 내 health/pre-arm 결과 또는 `offline`과 마지막 확인 시각; 문 열림 성공 문구 금지 | Flutter network state, `POST /api/v1/door/prearm`, #51/#52 | offline fault test + event ID **PENDING** | 요청 timeout 10초; 5초·30초 backoff로 최대 2회 재시도; 이후 `offline` 고정, 출입이 필요하면 지원팀/현장 안전 담당으로 즉시 escalation; local authorization은 **미구현/미확인** |
+| 사용자 | Bluetooth가 꺼졌거나 필수 권한을 거부함 | 설정에서 Bluetooth/권한을 켠 뒤 앱에 복귀 | 권한별 `Blocked`와 설정 링크·다음 행동이 보임 | `BleWakeRegistrar.kt`, Flutter permission UI, #51 | permission transition test **PENDING** | 권한 요청은 OS 응답까지 30초; 설정 복귀 후 자동 재시도 1회만; 30초 내 상태가 바뀌지 않거나 두 번째 시도도 실패하면 지원팀 escalation; 앱 삭제·자격 재등록 금지 |
+| 사용자 | 화면 꺼짐·배터리 최적화·프로세스 종료 가능 OEM | OEM background/auto-start/notification 설정 확인 후 앱 재진입 | 30초 내 `Ready/Degraded/Blocked`와 reason; background 성공을 추정하지 않음 | `BleWakeRegistrar.kt`, `BleWakeBootReceiver.kt`, Flutter service, #51 | Samsung/One UI screen-off/reboot/kill matrix **PENDING** | foreground 복귀 health check 30초; 앱 재진입 1회와 OEM 설정 재확인 1회만; 두 번 후에도 state/event가 없으면 지원팀에 OEM/build 정보로 escalation; Samsung acceptance **PENDING** |
+| 사용자 → 지원팀 | 요청 결과가 `unknown`이거나 duplicate callback이 보임 | 현장 안전 확인, session/boot/event ID 캡처 | 15초 내 terminal state 또는 `unknown`; duplicate는 한 번만 기록되고 relay 성공으로 승격되지 않음 | `GattSessionEngine.kt`, `observability/`, #51/#52 | late/duplicate/timeout mutation + physical event **PENDING** | terminal event 대기 15초; 동일 idempotency/session으로 1회만 재시도; 이후 manual force-open 반복 금지, 지원팀/incident owner에 즉시 escalation; physical confirmation **PENDING** |
 
 ## 업데이트·rollback / Update and rollback
 

@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-09 (Issue #53 Korean-first manuals baseline and reverse-analysis gap register)
+> Last updated: 2026-08-09 (commercial release program, Issue #53 manuals baseline, and evidence-gated product completion)
 
 ---
 
@@ -38,6 +38,7 @@
 | Page | Summary |
 |------|---------|
 | [architecture.md](architecture.md) | iBeacon → Android → FastAPI → MQTT → 초음파 → relay, retained boot/reset 진단 구조 |
+| [commercial_release_program.md](commercial_release_program.md) | 상용 출시 목표, 작업 DAG, 보안·핵심·모바일·매뉴얼·실기기·production 완료 Gate |
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |
 | [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |

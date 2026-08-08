@@ -2008,9 +2008,43 @@
 - The reviewer could not deliver accepted `worker_done` after its sandboxed Orca runtime again became unreachable, so its Task was recorded as blocked and the coordinator closed its exact terminal. A fresh injected timeout mutation, real lifecycle probe, and exact-head review remain required; physical, operator, and production Gates remain pending and fail-closed.
 - The coordinator reran the exact injected-timeout mutation against the remediation: two created mock terminal handles each exhausted three bounded wait windows, both exact handles received one close call, and the launcher failed after the second cleanup with the original timeout preserved. Real lifecycle and fresh exact-head review evidence are still required.
 
+## [2026-08-08] compile | Establish evidence-gated commercial release program
+
+- Created `wiki/commercial_release_program.md` with the product objective, evidence levels, dependency DAG, work packages for security/admin, Target, mobile UX, operations, manuals, physical acceptance, and production canary deployment.
+- Recorded Orca Run `run_40f9831625bd` and the three independent read-only audits assigned to gpt-5.6-sol, gpt-5.6-terra, and gpt-5.6-luna; no audit worker was authorized to edit, merge, or deploy.
+- Kept production fail-closed: administrator authentication, Target TLS fallback, Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator walkthrough, and production install/reboot/health evidence remain required.
+- Added the release program to `wiki/index.md`. No `raw/` files or earlier log entries were modified.
+
+## [2026-08-08] test | Complete commercial audits and detect follow-up worker launch failure
+
+- Completed independent Sol architecture/security, Terra firmware/backend/admin/operations, and Luna mobile UX/manual audits at exact local HEAD `dd8996c110fae1b378e31c3b1f8be8db7b84307d`; all three were read-only and sent exact-Dispatch `worker_done` results.
+- The auditors passed protocol 16, observability 18, backend 32 with one opt-in MariaDB skip, OTA contract, hardwareless Gate 4, and WSL native C++ 369 checks as applicable. One native Windows root-suite compiler-launch path failed while its WSL equivalent passed; no result was promoted to physical evidence.
+- Reproduced a follow-up supervised worker-start failure three times across Terra and Luna: Orca returned `input_accepted`, Codex reported interrupted MCP startup, received the task preamble, then exited to PowerShell while the terminal could still look running. The coordinator stopped every failed Dispatch and did not count them as completion.
+- Opened commercial release Epic #48 and scoped issues #49 through #55 for security/admin, Target/OTA, mobile UX, operations, manuals, physical release, and the Orca worker-start blocker. PR #47 remains Draft and unmerged until an independent exact-head review succeeds.
+- Production remains fail-closed; no Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production evidence was produced.
+
+## [2026-08-09] test | Integrate Orca environment and dispatch commercial release work
+
+- Independently reviewed PR #47 without self-approval, merged it as `b246aff9698ccbcbcd864f99aab63654cce2cc78`, and verified GitHub Actions run `31268170523` reached terminal success. The production deployment job remained skipped and no physical or production acceptance was inferred.
+- Re-ran `.orca/scripts/validate.ps1 -Suite Quick` after merge: doctor reported 12 pass, one Docker-covered native Java warning, and zero failures; backend 32 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4 passed.
+- Dispatched isolated implementation work for issues #49, #50, #51, #53, #54, and #55 from exact integrated `origin/main`; issue #52 remains dependency-blocked until the three P0 product branches are accepted and integrated. The #54 scope is preparation-only and cannot close any hardware, operator, canary, or production Gate.
+- Retargeted draft PR #56 to current `main` and preserved both append-only log histories while resolving its only merge conflict. Independent exact-head review and terminal CI are still required before it may be merged.
+
+## [2026-08-09] fix | Correct PR 56 append-only and integration status blockers
+
+- Independent exact-head review of `4f6e8f1761b9393f348173312843454e61c4c5a7` found that the conflict resolution placed two commercial-program entries inside the current `main` history and that the release page and PR body still described merged PR #47 as Draft/unmerged.
+- Restored the exact `b246aff9698ccbcbcd864f99aab63654cce2cc78` `wiki/log.md` blob as the byte prefix, moved the two unchanged program entries after that prefix, and retained the later integration entry as an append. No historical entry was rewritten and `raw/` remains unchanged.
+- Updated the release baseline, R0 status, current task allocation, and evidence boundary to record PR #47 merge plus run `31268170523` while keeping #55, all physical/operator Gates, and production authorization pending and fail-closed. A fresh exact-head review is required before PR #56 can leave Draft.
+
 ## [2026-08-09] compile | Add issue #53 Korean-first manuals baseline and reverse-analysis gaps
 
 - Added versioned `manuals/` documents for general users, administrators, installers/service, privacy, and support/incident response, each using actor, precondition, input, observable output, code/API owner, and evidence artifact fields.
 - Added explicit degraded/offline, OEM/accessibility, update/rollback, lost-phone/revocation, force-open, backup/restore, commissioning, and redacted-support journeys; success language is gated on state/event/physical evidence.
 - Added `manuals/product_gap_register_v1.md` from source-to-manual reverse analysis. Open gaps include #49 authentication/RBAC/mock-success/force-open, #50 TLS/signed commands/OTA rollback, #51 OEM/GATT/updater, #52 privacy/observability/backup/SLO, and all ESP32-C6/Samsung/relay/boot/OTA physical walkthroughs.
 - Updated `wiki/index.md`; issue #53 remains a draft baseline and is not complete. The #49→#50→#51→#52 repeat loop is defined for product/test remediation followed by independent manual walkthrough.
+
+## [2026-08-09] fix | Remediate issue #53 manuals after independent documentation review
+
+- Integrated `origin/main` at `b2df34977fe866e129eae373e7056f0f9b3ddc6f` and preserved that exact `wiki/log.md` Git blob as the byte prefix; retained the issue #53 baseline entry after it.
+- Replaced the general-user offline/OEM summary and support incident error matrix with actor, precondition, input, observable output, code/API owner, evidence, and explicit timeout/bounded-retry/escalation contract fields.
+- Added `GAP-53-01` for implementation/SLO/state-event-audit regression evidence; timeout values are documentation targets only, and #49-#52, OEM, physical, OTA, and production gates remain pending.
