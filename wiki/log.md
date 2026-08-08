@@ -2070,3 +2070,8 @@
 ## [2026-08-09] test | Add exact-SHA hosted backend and MariaDB security lane
 
 - Added a pull-request CI lane for backend security tests, real MariaDB migration/immutable-audit validation, and private-by-default Compose configuration. Hosted success is still software/CI evidence only and does not close any physical or production gate.
+
+## [2026-08-09] fix | Bind force-open approval to durable row fields
+
+- Corrected the two-person approval path to authorize against the persisted `tenant_scope` and `proposer_subject` fields rather than nonexistent transient aliases, so a valid separately authenticated approver can reach the broker publication transition.
+- Added positive and negative security coverage for one successful publication and for self-approval, expiry, replay, cross-tenant approval, and duplicate-publish reservation rejection. This remains host/software evidence only; physical, operator, and production gates remain open and fail-closed.

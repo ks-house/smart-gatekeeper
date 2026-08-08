@@ -1008,10 +1008,10 @@ def approve_force_open(approval_id: str, request: Request):
             conn.rollback()
         raise HTTPException(status_code=503, detail="force-open approval unavailable") from exc
     principal = _admin_principal(
-        request, unsafe=True, roles=(ROLE_APPROVER,), tenant_scope=proposal["tenant_id"],
+        request, unsafe=True, roles=(ROLE_APPROVER,), tenant_scope=proposal["tenant_scope"],
         reauthenticate=True,
     )
-    if secrets.compare_digest(principal.subject, proposal["subject"]):
+    if secrets.compare_digest(principal.subject, proposal["proposer_subject"]):
         raise HTTPException(status_code=403, detail="force-open requires a distinct approver")
     idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
     if not idempotency_key or len(idempotency_key) > 128:

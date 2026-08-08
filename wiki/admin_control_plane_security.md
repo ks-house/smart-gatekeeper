@@ -79,6 +79,13 @@ crash or broker failure leaves a visible non-success state for an operator-run
 recovery workflow; it must never be silently retried as an unknown physical
 open. `mobile_control_nonces` makes replay persistence survive API restarts.
 
+The approval handler reads precisely the durable names `tenant_scope` and
+`proposer_subject`; it never falls back to transient aliases such as
+`tenant_id` or `subject`. Security coverage exercises a successful two-person
+transition with exactly one broker publication, and separately proves that
+self-approval, expiry, replay, cross-tenant approval, and a pre-reserved
+`PUBLISHING` operation cannot publish.
+
 Ingress is a concrete reverse proxy deployment requirement: it terminates
 mTLS, accepts public traffic, strips client-supplied identity headers, rebuilds
 them only after verification, and reaches the un-published API service over its
