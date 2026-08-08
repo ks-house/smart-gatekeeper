@@ -1835,3 +1835,9 @@
 
 - Created gpt5.6-antigravity profile for Senior Full-Stack Lead & Emergency Task Executor (Effort: high).
 - Updated .orca/ORCA.md, .orca/profiles/gpt5.6-sol.md, and .orca/scripts/launch_profiles.ps1 to incorporate gpt5.6-antigravity.
+
+## [2026-08-08] fix | Update antigravity profile to use agy CLI command without gpt5.6- prefix
+
+- Renamed .orca/profiles/gpt5.6-antigravity.md to .orca/profiles/antigravity.md.
+- Updated CLI command in launch_profiles.ps1 and sol profile to use agy for antigravity profile.
+- Updated .orca/ORCA.md to list agy CLI command for antigravity profile.

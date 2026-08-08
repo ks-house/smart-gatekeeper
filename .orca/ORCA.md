@@ -6,7 +6,7 @@
 
 ## 1. 개요 (Overview)
 
-이 지침서는 Orca Multi-Agent 오케스트레이션 엔진을 통해 `smart-gatekeeper` 프로젝트를 체계적이고 효율적으로 수행하기 위한 **4대 에이전트 프로파일 (`gpt5.6-sol`, `gpt5.6-terra`, `gpt5.6-luna`, `gpt5.6-antigravity`)** 의 역할 분담, 설정 및 실행 워크플로우를 정의합니다.
+이 지침서는 Orca Multi-Agent 오케스트레이션 엔진을 통해 `smart-gatekeeper` 프로젝트를 체계적이고 효율적으로 수행하기 위한 **4대 에이전트 프로파일 (`gpt5.6-sol`, `gpt5.6-terra`, `gpt5.6-luna`, `antigravity`)** 의 역할 분담, 설정 및 실행 워크플로우를 정의합니다.
 
 모든 에이전트는 추론 깊이와 정확도를 극대화하기 위해 **`effort: high`** 로 고정 설정됩니다.
 
@@ -14,12 +14,13 @@
 
 ## 2. 에이전트 프로파일 구조 (Profile Roles & Responsibilities)
 
-| 프로파일 | 에이전트 이름 | 주요 담당 영역 | 모델 & Effort | 설정 파일 |
-|---|---|---|---|---|
-| **`gpt5.6-sol`** | **Sol** | 총괄 코디네이터, 아키텍처 설계, 작업 분할(DAG), PR 검토 및 최종 Merge 승인 | GPT-5.6 / Pro (Effort: `high`) | [gpt5.6-sol.md](profiles/gpt5.6-sol.md) |
-| **`gpt5.6-terra`** | **Terra** | ESP32-C6 펌웨어 (C++/PlatformIO/GATT/ToF/Relay) & 백엔드 (FastAPI/DB/MQTT/ACL Push) | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-terra.md](profiles/gpt5.6-terra.md) |
-| **`gpt5.6-luna`** | **Luna** | Android Native (Kotlin/WorkManager/BLE Wake) & Flutter Thin UI & QA/E2E Fault Injection | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-luna.md](profiles/gpt5.6-luna.md) |
-| **`gpt5.6-antigravity`** | **Antigravity** | 시니어 풀스택 리드 & 크로스레이어 해결 / 비상 태스크 인수 직행 실행 | GPT-5.6 / Pro (Effort: `high`) | [gpt5.6-antigravity.md](profiles/gpt5.6-antigravity.md) |
+| 프로파일 | 에이전트 이름 | CLI 커맨드 | 주요 담당 영역 | 모델 & Effort | 설정 파일 |
+|---|---|---|---|---|---|
+| **`gpt5.6-sol`** | **Sol** | `codex` | 총괄 코디네이터, 아키텍처 설계, 작업 분할(DAG), PR 검토 및 최종 Merge 승인 | GPT-5.6 / Pro (Effort: `high`) | [gpt5.6-sol.md](profiles/gpt5.6-sol.md) |
+| **`gpt5.6-terra`** | **Terra** | `codex` | ESP32-C6 펌웨어 (C++/PlatformIO/GATT/ToF/Relay) & 백엔드 (FastAPI/DB/MQTT/ACL Push) | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-terra.md](profiles/gpt5.6-terra.md) |
+| **`gpt5.6-luna`** | **Luna** | `codex` | Android Native (Kotlin/WorkManager/BLE Wake) & Flutter Thin UI & QA/E2E Fault Injection | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-luna.md](profiles/gpt5.6-luna.md) |
+| **`antigravity`** | **Antigravity** | `agy` | 시니어 풀스택 리드 & 크로스레이어 해결 / 비상 태스크 인수 직행 실행 | GPT-5.6 / Pro (Effort: `high`) | [antigravity.md](profiles/antigravity.md) |
+
 
 
 ---
