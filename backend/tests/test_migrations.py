@@ -594,6 +594,70 @@ class MigrationContractTest(unittest.TestCase):
                     self.assertEqual(approval_id, cursor.fetchone()["approval_id"])
                 verification_connection.rollback()
 
+            failed_audit_id = "f" * 48
+            with connection() as control_connection:
+                with control_connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO force_open_approvals "
+                        "(approval_id,tenant_scope,proposer_subject,reason,idempotency_hash,expires_at,created_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (failed_audit_id, "legacy:1", "operator-a", "audit failure proof", "e" * 64, 4_102_444_800, 1),
+                    )
+                control_connection.commit()
+
+            real_audit = admin_main._audit_admin
+
+            def fail_only_post_publish(*args: object, **kwargs: object) -> None:
+                if args[3] == "FORCE_OPEN_PUBLISHED":
+                    raise RuntimeError("injected post-publish audit failure")
+                real_audit(*args, **kwargs)
+
+            with patch.object(admin_main, "get_db", side_effect=connection), patch.object(
+                admin_main, "_admin_principal", return_value=principal
+            ), patch.object(admin_main, "publish_force_open_to_mqtt", return_value=True), patch.object(
+                admin_main, "_audit_admin", side_effect=fail_only_post_publish
+            ):
+                with self.assertRaises(HTTPException) as failed_publish:
+                    admin_main.approve_force_open(
+                        failed_audit_id,
+                        SimpleNamespace(headers={"Idempotency-Key": "mariadb-post-publish-failure"}),
+                    )
+            self.assertEqual(503, failed_publish.exception.status_code)
+            with connection() as verification_connection:
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT status FROM force_open_approvals WHERE approval_id=%s",
+                        (failed_audit_id,),
+                    )
+                    self.assertEqual("RECONCILIATION_REQUIRED", cursor.fetchone()["status"])
+                    cursor.execute(
+                        "SELECT action FROM admin_audit WHERE object_ref=%s ORDER BY id",
+                        (failed_audit_id,),
+                    )
+                    self.assertEqual(
+                        ["FORCE_OPEN_RECONCILIATION_REQUIRED"],
+                        [row["action"] for row in cursor.fetchall()],
+                    )
+                verification_connection.begin()
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT approval_id FROM force_open_approvals WHERE approval_id=%s FOR UPDATE",
+                        (failed_audit_id,),
+                    )
+                    self.assertEqual(failed_audit_id, cursor.fetchone()["approval_id"])
+                verification_connection.rollback()
+
+            # The down migration intentionally rejects a live ambiguous state.
+            # Remove this disposable fixture only after its durable evidence was
+            # asserted so the legacy rollback compatibility proof can proceed.
+            with connection() as cleanup_connection:
+                with cleanup_connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM force_open_approvals WHERE approval_id=%s",
+                        (failed_audit_id,),
+                    )
+                cleanup_connection.commit()
+
             docker(
                 "exec",
                 "-i",

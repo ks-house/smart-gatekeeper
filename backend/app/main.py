@@ -428,54 +428,6 @@ def _audit_admin(
             ),
         )
 
-# A post-broker persistence failure must not be reported as a safe retry.  This
-# helper uses a fresh transaction because the original connection may be the
-# failure source.
-def _record_force_open_reconciliation(
-    approval_id: str,
-    principal: AdminPrincipal,
-    tenant_scope: str,
-    idempotency_key: str,
-) -> None:
-    """Persist post-broker uncertainty without treating it as a safe retry."""
-    recovery_conn = None
-    try:
-        recovery_conn = get_db()
-        recovery_conn.begin()
-        with recovery_conn.cursor() as cur:
-            cur.execute(
-                "SELECT status FROM force_open_approvals WHERE approval_id=%s FOR UPDATE",
-                (approval_id,),
-            )
-            row = cur.fetchone()
-            if not row or row["status"] != "PUBLISHING":
-                recovery_conn.rollback()
-                return
-            cur.execute(
-                "UPDATE force_open_approvals SET status='RECONCILIATION_REQUIRED' "
-                "WHERE approval_id=%s AND status='PUBLISHING'",
-                (approval_id,),
-            )
-            if cur.rowcount != 1:
-                raise RuntimeError("force-open reconciliation reservation lost")
-        _audit_admin(
-            recovery_conn,
-            principal,
-            tenant_scope,
-            "FORCE_OPEN_RECONCILIATION_REQUIRED",
-            approval_id,
-            idempotency_key,
-        )
-        recovery_conn.commit()
-    except Exception:
-        if recovery_conn:
-            recovery_conn.rollback()
-        log.critical("[FORCE-OPEN] unable to persist post-publish reconciliation state")
-    finally:
-        if recovery_conn:
-            recovery_conn.close()
-
-
 # Mount the new management plane only when the feature is explicitly enabled and all
 # authentication/signing prerequisites are present. A bad RC configuration must not take
 # down the distinct legacy manual_remote or independent OTA download paths.
@@ -1042,7 +994,6 @@ def approve_force_open(approval_id: str, request: Request):
     proposal = None
     principal = None
     idempotency_key = None
-    publish_attempted = False
     try:
         conn = get_db()
         conn.begin()
@@ -1061,17 +1012,19 @@ def approve_force_open(approval_id: str, request: Request):
         if not idempotency_key or len(idempotency_key) > 128:
             raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
         with conn.cursor() as cur:
-            cur.execute("UPDATE force_open_approvals SET status='PUBLISHING', approver_subject=%s WHERE approval_id=%s AND status='PENDING'", (principal.subject, approval_id))
+            # This durable disposition is intentionally committed before any
+            # physical-effect attempt.  A later DB outage therefore cannot
+            # turn a broker success into a retry-safe PUBLISHING ambiguity.
+            cur.execute("UPDATE force_open_approvals SET status='RECONCILIATION_REQUIRED', approver_subject=%s WHERE approval_id=%s AND status='PENDING'", (principal.subject, approval_id))
             if cur.rowcount != 1:
                 raise RuntimeError("force-open was already reserved")
-        _audit_admin(conn, principal, proposal["tenant_scope"], "FORCE_OPEN_PUBLISH_REQUESTED", approval_id, idempotency_key)
+        _audit_admin(conn, principal, proposal["tenant_scope"], "FORCE_OPEN_RECONCILIATION_REQUIRED", approval_id, idempotency_key)
         conn.commit()
-        publish_attempted = True
         if not publish_force_open_to_mqtt("authorized-control-plane"):
             raise RuntimeError("MQTT publish failed")
         conn.begin()
         with conn.cursor() as cur:
-            cur.execute("UPDATE force_open_approvals SET status='PUBLISHED', published_at=%s WHERE approval_id=%s AND status='PUBLISHING'", (int(time.time()), approval_id))
+            cur.execute("UPDATE force_open_approvals SET status='PUBLISHED', published_at=%s WHERE approval_id=%s AND status='RECONCILIATION_REQUIRED'", (int(time.time()), approval_id))
             if cur.rowcount != 1:
                 raise RuntimeError("force-open publication reconciliation required")
         _audit_admin(conn, principal, proposal["tenant_scope"], "FORCE_OPEN_PUBLISHED", approval_id, idempotency_key)
@@ -1088,11 +1041,7 @@ def approve_force_open(approval_id: str, request: Request):
     except Exception as exc:
         if conn:
             conn.rollback()
-        if publish_attempted and principal and proposal and idempotency_key:
-            _record_force_open_reconciliation(
-                approval_id, principal, proposal["tenant_scope"], idempotency_key
-            )
-        log.error("[FORCE-OPEN] durable recovery state retained")
+        log.error("[FORCE-OPEN] durable reconciliation state retained or publication blocked")
         raise HTTPException(status_code=503, detail="force-open publication unavailable or reconciliation required") from exc
     finally:
         if conn:

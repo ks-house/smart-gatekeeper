@@ -73,11 +73,13 @@ device locator, action, reason, nonce, expiry, and idempotency key to proof of
 possession; server storage consumes the nonce exactly once before MQTT.
 
 `force_open_approvals` is the durable cross-process state machine:
-`PENDING -> PUBLISHING -> PUBLISHED`, with a unique proposer/scope/idempotency
-key. The approver must be a different, freshly mTLS-authenticated subject. A
-crash or broker failure leaves a visible non-success state for an operator-run
-recovery workflow; it must never be silently retried as an unknown physical
-open. `mobile_control_nonces` makes replay persistence survive API restarts.
+`PENDING -> RECONCILIATION_REQUIRED -> PUBLISHED`, with a unique
+proposer/scope/idempotency key. The approver must be a different, freshly
+mTLS-authenticated subject. `RECONCILIATION_REQUIRED` and its immutable audit
+fact commit before any broker call, so a crash, broker failure, or final
+persistence outage is visible to an operator and never silently retried as an
+unknown physical open. `mobile_control_nonces` makes replay persistence survive
+API restarts.
 
 The approval handler reads precisely the durable names `tenant_scope` and
 `proposer_subject`; it never falls back to transient aliases such as
@@ -88,11 +90,11 @@ self-approval, expiry, replay, cross-tenant approval, and a pre-reserved
 
 The approval transaction owns its lock through identity, role, tenant,
 distinct-approver, and idempotency checks, and every exit rolls back and closes
-that exact connection. After the broker attempt, the final `PUBLISHED` state
-and immutable `FORCE_OPEN_PUBLISHED` audit record commit together. If that
-post-broker commit cannot complete, a fresh transaction records
-`RECONCILIATION_REQUIRED` plus an immutable reconciliation audit event; the API
-returns non-success and the operation is never silently retried as safe.
+that exact connection. The reconciliation disposition is precommitted before
+the broker call; if this write cannot commit, publication is blocked. After a
+broker attempt, the final `PUBLISHED` state and immutable
+`FORCE_OPEN_PUBLISHED` audit record commit together; a failure leaves the
+already durable reconciliation fact visible and returns non-success.
 
 Ingress is a concrete reverse proxy deployment requirement: it terminates
 mTLS, accepts public traffic, strips client-supplied identity headers, rebuilds
