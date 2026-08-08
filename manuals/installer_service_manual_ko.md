@@ -1,6 +1,6 @@
 # 설치·서비스 매뉴얼 / Installer and service manual
 
-문서 버전: **0.1.2-contract-loop** · 기준 커밋: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
+문서 버전: **0.1.2-contract-loop** · 기준 커밋: `fb827681e1b2f5a8b08aa2784ae419832efff6f7`<br>
 대상: 설치자·서비스 기술자 (installer/service technician) · 상태: **모든 현장 walkthrough pending**
 
 ## 안전과 책임 경계
@@ -12,11 +12,18 @@
 | 항목 | 기준 / Baseline | 확인 방법 |
 |---|---|---|
 | MCU | ESP32-C6-DevKitC-1, 3.3V logic, RISC-V | board label와 artifact board 확인 |
-| I²C | SDA GPIO6, SCL GPIO7, 400 kHz 명시 | `Wire.begin(6, 7, 400000UL)` source trace |
+| 거리 센서 | 현재 AJ-SR04T/JSN-SR04T 계열: TRIG GPIO10 (`PIN_TRIG`, OUTPUT), ECHO GPIO11 (`PIN_ECHO`, INPUT) | `include/config.h`, `src/UltrasonicSensor.cpp`, `wiki/pin_mapping.md` source trace |
 | Relay IN | authoritative GPIO3 | continuity/logic measurement **PENDING** |
 | 금지 핀 | GPIO4,5,8,9,15(strapping), 17–20(USB/UART) | wiring photo + review |
-| ToF/센서 | 실제 BOM·pin_mapping에 정의된 부품만 연결 | `wiki/pin_mapping.md`, physical test **PENDING** |
+| ECHO 전기 안전 | ESP32-C6 GPIO는 3.3 V logic이므로 센서 ECHO가 5 V이면 GPIO11에 직결하지 않고 검증된 저항 분배기/레벨 시프터를 사용 | 전원 차단 continuity, GND/극성, ECHO high 전압 측정과 레벨 보호 사진/계측 trace **PENDING** |
+| 과거 VL53L0X/I²C (비적용) | 과거 문서의 SDA GPIO6/SCL GPIO7/400 kHz 내용은 현재 센서 배선·commissioning 기준이 아님 | 이 행을 현재 배선 입력으로 사용하지 말고 GPIO6/7은 센서에 연결하지 않음; 현재 기준은 위 초음파 행과 `wiki/pin_mapping.md` **PENDING** |
 | Relay polarity | `RELAY_ACTIVE_LOW=true`는 점퍼 L 가정일 뿐 | 점퍼 위치·idle output을 현장에서 확인 |
+
+### 현재 센서 배선과 측정 안전
+
+- 현재 펌웨어의 거리 센서는 VL53L0X ToF가 아니라 AJ-SR04T/JSN-SR04T 계열 초음파 센서다. TRIG는 GPIO10, ECHO는 GPIO11이며 `include/config.h`의 `PIN_TRIG`/`PIN_ECHO`와 `src/UltrasonicSensor.cpp`의 `pinMode`/pulse 측정 코드가 이 계약의 source다.
+- ECHO 출력이 5 V인 센서는 ESP32-C6 GPIO11에 직결하지 않는다. 센서와 Target의 GND/전원 극성을 확인하고, 전원을 끈 상태에서 continuity를 확인한 뒤, 저항 분배기 또는 레벨 시프터의 3.3 V 보호를 계측·기록하고 연결한다. 보호 회로가 확인되지 않으면 commissioning과 반복 측정을 중지한다.
+- 측정은 relay가 안전한 OFF 상태이고 사람이 센서 앞에 없는 조건에서 수행한다. timeout/0 또는 20 cm 미만 blind zone/out-of-range 결과를 성공 거리로 취급하지 않으며, 반복 fault는 `SENSOR_TIMEOUT`, `SENSOR_OUT_OF_RANGE`, `SENSOR_REPEATED_FAULT` 계약에 따라 중지·escalation한다. 위 계측과 실기기 walkthrough는 아직 **PENDING**이며 문서/host evidence로 physical acceptance를 주장하지 않는다.
 
 ## 설치·시운전 단계
 

@@ -2090,3 +2090,9 @@
 - Replaced the stale `b246aff...` R1 evidence with the exact current main/base `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`, matching the baseline recorded across the manual bundle.
 - R1 now requires comparing `git cat-file blob cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f:wiki/log.md` byte-for-byte as the prefix of the candidate `wiki/log.md`, so the evidence procedure identifies the matching raw `wiki/log.md` Git-blob prefix check.
 - Preserved all previously passing installer/general-user/GAP contracts; `raw/` remains unchanged, PR #58 stays Draft/unmerged, and physical, OEM, OTA, operator, and production gates remain pending and fail-closed pending a fresh exact-head COMMENTED review.
+
+## [2026-08-09] fix | Remediate PR #58 current-main provenance and sensor baseline
+
+- Verified the pre-existing dirty `manuals/product_gap_register_v1.md` and `wiki/log.md` bytes exactly matched PR head `e5edfcbc0835fbd9b00ee3a1e682f821458df299`, then integrated exact `origin/main` `fb827681e1b2f5a8b08aa2784ae419832efff6f7` with two-parent merge provenance. The merged `wiki/log.md` preserves the exact current-main Git blob as its byte prefix and appends only the Issue #53 branch entries.
+- Replaced the stale installer VL53L0X/I²C wiring instruction with current AJ-SR04T/JSN-SR04T TRIG GPIO10 and ECHO GPIO11 source-aligned guidance, explicit 5 V ECHO protection and measurement-safety steps, and an explicitly historical/non-applicable GPIO6/7 row.
+- Hardened R1 to require exact PR `baseRefOid`/`headRefOid`, raw `git cat-file` blob comparison, and rejection of `b246aff` or any unexpected base/head mutation. Manual links, strict UTF-8, conflict markers, diff/raw/append-only/OTA/software checks remain required; no physical, operator, or production acceptance is claimed and PR #58 remains Draft/unmerged.
