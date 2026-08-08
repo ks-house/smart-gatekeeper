@@ -2067,6 +2067,86 @@
 - Replaced opaque raw-evidence strings with exact plan-category entries bound to capture identity/time/actor, SHA-256, and matching content-addressed locator; adversarial tests reject missing actors/times, generic or partial categories, incomplete captures, self-review, empty or wrong-role approval, pass-condition substitution, and the forged-pass fixture.
 - The committed template remains entirely `not_run`; no physical measurement, operator approval, canary, production contact, deployment, or Gate acceptance occurred, and `raw/` remains unchanged.
 
+## [2026-08-09] code | Harden admin control plane with deny-by-default identity and dual control
+
+- Added mTLS-fingerprint-backed server sessions, tenant-scoped roles, CSRF, reauthentication, rate limiting, session rotation, idempotency, and immutable audit migration support; missing identity/audit state fails closed rather than returning mock success.
+- Replaced device-ID bearer force-open with a reasoned two-person control operation, added negative bypass tests, and preserved target OTA/download recovery separation. This is host/software evidence only; no physical or production authorization is claimed.
+
+## [2026-08-09] compile | Define additive v2 manual control and proxy deployment contract
+
+- Added durable force-open approval and mobile nonce migration contracts, N/N-1 upgrade-required/no-side-effect behavior, plus the private reverse-proxy mTLS deployment boundary for the issue #51/#52 client rollout.
+
+## [2026-08-09] fix | Apply v2 manual proof and durable approval state
+
+- The legacy manual URI now rejects incomplete device-ID requests without an effect, while the v2 envelope verifies tenant-bound proof, nonce expiry, idempotency, and durable replay consumption before broker publication. This remains software evidence only; physical/operator/production gates are open.
+
+## [2026-08-09] test | Add exact-SHA hosted backend and MariaDB security lane
+
+- Added a pull-request CI lane for backend security tests, real MariaDB migration/immutable-audit validation, and private-by-default Compose configuration. Hosted success is still software/CI evidence only and does not close any physical or production gate.
+
+## [2026-08-09] fix | Bind force-open approval to durable row fields
+
+- Corrected the two-person approval path to authorize against the persisted `tenant_scope` and `proposer_subject` fields rather than nonexistent transient aliases, so a valid separately authenticated approver can reach the broker publication transition.
+- Added positive and negative security coverage for one successful publication and for self-approval, expiry, replay, cross-tenant approval, and duplicate-publish reservation rejection. This remains software evidence only; physical, operator, and production gates remain open and fail-closed.
+
+## [2026-08-09] fix | Close force-open locks and record broker reconciliation
+
+- Moved all force-open approval validation inside one rollback/close boundary after `SELECT ... FOR UPDATE`, so self, expiry, replay, tenant, duplicate-state, and idempotency rejections cannot leak a MariaDB transaction or lock.
+- Added `FORCE_OPEN_PUBLISHED` immutable audit evidence and a migration-backed `RECONCILIATION_REQUIRED` state with its own audit fact for post-broker persistence failures; real MariaDB concurrency verifies one publisher, one final audit, and an immediately reusable row lock. This is software/CI evidence only and leaves physical, operator, and production gates open and fail-closed.
+
+## [2026-08-09] fix | Precommit force-open ambiguity before broker publication
+
+- Changed the approval state transition to commit `RECONCILIATION_REQUIRED` and its immutable operator-visible audit fact before calling MQTT; reconciliation persistence failure now blocks publication, and post-publish final-audit failure retains the prior durable non-success disposition rather than relying on a best-effort recovery write.
+- Added mutation coverage for failed reconciliation precommit, post-publish audit failure, one rollback/close per rejected locked approval, and real MariaDB concurrent exactly-once publishing plus durable ambiguous-state inspection. This is software/CI evidence only; physical, operator, and production gates remain open and fail-closed.
+## [2026-08-09] compile | Add issue #53 Korean-first manuals baseline and reverse-analysis gaps
+
+- Added versioned `manuals/` documents for general users, administrators, installers/service, privacy, and support/incident response, each using actor, precondition, input, observable output, code/API owner, and evidence artifact fields.
+- Added explicit degraded/offline, OEM/accessibility, update/rollback, lost-phone/revocation, force-open, backup/restore, commissioning, and redacted-support journeys; success language is gated on state/event/physical evidence.
+- Added `manuals/product_gap_register_v1.md` from source-to-manual reverse analysis. Open gaps include #49 authentication/RBAC/mock-success/force-open, #50 TLS/signed commands/OTA rollback, #51 OEM/GATT/updater, #52 privacy/observability/backup/SLO, and all ESP32-C6/Samsung/relay/boot/OTA physical walkthroughs.
+- Updated `wiki/index.md`; issue #53 remains a draft baseline and is not complete. The #49→#50→#51→#52 repeat loop is defined for product/test remediation followed by independent manual walkthrough.
+
+## [2026-08-09] fix | Remediate issue #53 manuals after independent documentation review
+
+- Integrated `origin/main` at `b2df34977fe866e129eae373e7056f0f9b3ddc6f` and preserved that exact `wiki/log.md` Git blob as the byte prefix; retained the issue #53 baseline entry after it.
+- Replaced the general-user offline/OEM summary and support incident error matrix with actor, precondition, input, observable output, code/API owner, evidence, and explicit timeout/bounded-retry/escalation contract fields.
+- Added `GAP-53-01` for implementation/SLO/state-event-audit regression evidence; timeout values are documentation targets only, and #49-#52, OEM, physical, OTA, and production gates remain pending.
+
+## [2026-08-09] fix | Second issue #53 manual contract improvement loop
+
+- Integrated exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f` and retained its raw `wiki/log.md` Git blob as the byte-for-byte prefix; appended the issue #53 manual history without rewriting prior entries.
+- Expanded installer/service relay-idle, Target-offline, OTA boot-failure, and sensor-fault rows with actor, preconditions, input, observable output, code/API owner, evidence, reason, timeout, bounded retry, and escalation fields; values remain documentation targets with physical and product evidence pending.
+- Added an explicit update/health-timeout rollback contract and support escalation link to the general-user manual, and expanded `GAP-53-01` to trace installer and administrator contract/test gaps. Raw sources remain unchanged; PR #58 stays Draft pending fresh independent review.
+
+## [2026-08-09] fix | Correct PR #58 R1 baseline evidence traceability
+
+- Replaced the stale `b246aff...` R1 evidence with the exact current main/base `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`, matching the baseline recorded across the manual bundle.
+- R1 now requires comparing `git cat-file blob cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f:wiki/log.md` byte-for-byte as the prefix of the candidate `wiki/log.md`, so the evidence procedure identifies the matching raw `wiki/log.md` Git-blob prefix check.
+- Preserved all previously passing installer/general-user/GAP contracts; `raw/` remains unchanged, PR #58 stays Draft/unmerged, and physical, OEM, OTA, operator, and production gates remain pending and fail-closed pending a fresh exact-head COMMENTED review.
+
+## [2026-08-09] fix | Remediate PR #58 current-main provenance and sensor baseline
+
+- Verified the pre-existing dirty `manuals/product_gap_register_v1.md` and `wiki/log.md` bytes exactly matched PR head `e5edfcbc0835fbd9b00ee3a1e682f821458df299`, then integrated exact `origin/main` `fb827681e1b2f5a8b08aa2784ae419832efff6f7` with two-parent merge provenance. The merged `wiki/log.md` preserves the exact current-main Git blob as its byte prefix and appends only the Issue #53 branch entries.
+- Replaced the stale installer VL53L0X/I²C wiring instruction with current AJ-SR04T/JSN-SR04T TRIG GPIO10 and ECHO GPIO11 source-aligned guidance, explicit 5 V ECHO protection and measurement-safety steps, and an explicitly historical/non-applicable GPIO6/7 row.
+- Hardened R1 to require exact PR `baseRefOid`/`headRefOid`, raw `git cat-file` blob comparison, and rejection of `b246aff` or any unexpected base/head mutation. Manual links, strict UTF-8, conflict markers, diff/raw/append-only/OTA/software checks remain required; no physical, operator, or production acceptance is claimed and PR #58 remains Draft/unmerged.
+
+## [2026-08-09] fix | Integrate PR #57 current main into Issue #53 manuals
+
+- After PR #57 merged, integrated exact `origin/main` `c654a18f0fa278e4530229bb881fe88286d25c2e` once with a two-parent merge over the existing PR #58 head; the raw c654 `wiki/log.md` Git blob is preserved as the exact prefix and the existing Issue #53 entries are appended without rewriting history.
+- Preserved PR #57 backend files and the PR #62 physical-preparation artifacts byte-for-byte; resolved only the expected integration surfaces and rejected conflict markers, raw changes, and broad line-ending churn.
+- Refreshed R1's expected base to c654 and rechecked stale-base mutation rejection, current AJ-SR04T/JSN-SR04T GPIO10/11 plus 5 V ECHO protection guidance, strict UTF-8, links, Quick/proportional software checks, and hosted trusted policy. PR #58 remains Draft/unmerged; no physical, operator, or production acceptance is claimed.
+
+## [2026-08-09] fix | Align PR #58 0.1.2 manuals with PR #57 admin controls
+
+- Made every 0.1.2 manual header identify exact integrated base `c654a18f0fa278e4530229bb881fe88286d25c2e` and reran the reverse-analysis register against PR #57's deny-by-default mTLS sessions, role/tenant/CSRF/re-auth/idempotency checks, fail-closed DB responses, immutable audit migrations, and durable two-person force-open publication state.
+- Added Korean-first administrator reason/status, timeout, bounded retry, escalation owner and evidence semantics for authentication/RBAC, tenant approve/revoke, force-open proposal/approval/reconciliation/effect-unknown, outage/alert and backup/restore, with a direct support-handbook handoff. Corrected the support dual-control trace to `POST /api/v1/admin/control/force-open` plus `/{approval_id}/approve`; mobile `POST /api/v1/door/open` remains a separate proof-bearing broker-ack-only compatibility path.
+- Classified #49 only as host/software evidence. Deployed proxy/session operations, signed Target command, relay effect, Samsung/OEM, ESP32-C6 GPIO/radio, bootloader/OTA, operator walkthrough, backup/restore, production authorization and every physical Gate remain `PENDING`; `published` is not relay confirmation and Issue #53 remains open.
+
+## [2026-08-09] test | Validate PR #58 administrator manual remediation
+
+- Quick passed in 14.12 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 43 tests with one opt-in MariaDB skip, Compose, lifecycle mutations, protocol vectors and 16 tests, observability 18, OTA contract and hardwareless 4 all passed.
+- Standalone OTA contract, hardwareless 4/4 and focused backend admin-security 8/8 passed. Strict UTF-8 without BOM, local links, conflict markers, Markdown table arity, exact c654 header provenance, administrator/support reason-route contracts and AJ-SR04T GPIO10/11 with 5 V ECHO safety checks passed.
+- These are local/software results only. No Samsung/OEM, ESP32-C6 radio/GPIO, GPIO3 relay/AJ-SR04T, bootloader, OTA install/reboot/health/rollback, RELAY-G0..G2, operator, canary, deployment or production acceptance evidence was produced.
+
 ## [2026-08-09] fix | Harden staged Orca profile launch fallback
 
 - Reconciled exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f` with six post-PR-#60 packaged `worker-start` non-completion Dispatches and staged success `ctx_e1f6e94ad254`. The recurrence remains intermittent, issue #55 stays open, and no packaged-runtime root-cause fix is claimed.
@@ -2083,3 +2163,11 @@
 - Incorporated independent Antigravity audit `msg_8b71ec6196c7`, performed read-only with zero changes at exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`. Its lifecycle probe and Quick/static pass support the mitigation boundary but are not an independent review of this PR head and do not fix Orca 1.4.176 packaged named-pipe IPC.
 - Focused staged-launcher and lifecycle-probe suites, PowerShell AST parsing, relative-link checks, the current-main nine-test physical-gate preparation suite, whitespace checks, and raw equality passed. The current-worktree Quick suite stopped at environment doctor because the Orca runtime was not ready, `.venv` had no pip, and neither Flutter nor Docker was available; no physical, operator, production, or packaged-runtime acceptance is claimed.
 - PR #63 remains Draft and issue #55 remains open. Fresh exact-head independent review is required before ready/merge, while Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, production, and packaged initial/follow-up matrix Gates remain pending and fail-closed.
+
+## [2026-08-09] fix | Integrate latest main and record supervised launch reproductions
+
+- Integrated exact fetched `origin/main` `337fcca152d3de7db17a0d374d485f20726ec1b4` once into PR #63 with two-parent provenance. The exact main `wiki/log.md` Git blob `243f5a4127878ca3d58e15dc4c14c026701ea6d6` is the candidate log's byte prefix, the prior Issue #55 suffix follows it unchanged, and `raw/` retains main tree `013c00e7617365aa30c8bd0d38d9503d3885d264`.
+- Coordinator-provided incident evidence records three current supervised launches that each required exactly one Enter after a new exact `[Pasted Content N chars]` marker before processing began: PR #58 remediation Task `task_4b61ab9e15be` / Dispatch `ctx_ef4483264590` / terminal `term_63a45917-6d8c-48d2-b72b-21bd95a850fa`, PR #58 final review Task `task_82bdc70f33ba` / Dispatch `ctx_6ebd3d90ae37` / terminal `term_56ae7027-46af-4db1-8ef9-6ffae49a074a`, and PR #61 final review Task `task_13b39e7dfe88` / Dispatch `ctx_1b45c599e36d` / terminal `term_c9161161-3b25-4b8d-af0a-feb521ba84a4`.
+- Coordinator-provided incident evidence also records this PR #63 integration Task `task_a7dc527bac51` first failed packaged launch as Dispatch `ctx_0df91925e4ce` / terminal `term_72ab3858-b32e-436e-bf8c-639049a1e424`: it exited to PowerShell after MCP startup interruption while marked `input_accepted`. The separate retry/current receipt is Dispatch `ctx_c64fbc66f427` / terminal `term_410dd0da-920f-437d-b074-939efa53d62e`; its automatic Dispatch preamble was absent, so this work is an ordinary terminal handoff and is not the failed first launch. These four reproductions are input/start failure evidence, not Task execution or completion evidence, and no capability material is recorded.
+- Focused staged-launcher and lifecycle mutation suites passed, PowerShell AST parsing passed for all 9 tracked scripts, and Quick passed in 37.18 seconds after idempotent isolated setup: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 43 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4. Strict UTF-8/BOM, 242 local-link, whitespace/conflict, raw identity, and exact staged-log prefix checks passed.
+- Issue #55 remains open because this PR is repository-side mitigation and evidence only, not a packaged Orca 1.4.176 root-cause fix. PR #63 remains Draft and unmerged; no deploy or Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production closure is claimed.

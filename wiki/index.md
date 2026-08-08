@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-09 (issue #55 staged profile-launch mitigation and evidence boundary)
+> Last updated: 2026-08-09 (PR #63 integrates current main manuals/admin baseline while keeping Issue #55 launch mitigation open)
 
 ---
 
@@ -54,6 +54,7 @@
 | [android_gatt_worker.md](android_gatt_worker.md) | #17 signed default-OFF rollout, cross-process BLE lease, crash-idempotent proof boundary, encrypted locators, exact GATT reasons, and pending physical gates |
 | [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
 | [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
+| [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
@@ -62,6 +63,18 @@
 | [flutter_thin_ui.md](flutter_thin_ui.md) | #21 Flutter Thin UI, credential/approval status, 1-tap manual local GATT retry, interlocked feature flags, OEM recovery, and independent OTA |
 | [hardwareless_implementation_gates.md](hardwareless_implementation_gates.md) | #22 Two-tier authorization gate structure, software release candidate G0-SW validation, and physical G0-HW fail-closed boundaries |
 | [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest Gate, policy rotation, paths 필터 제거와 required check 해제 |
+
+## 🗂️ Category: Manuals & Operations
+
+| Document | Summary |
+|---|---|
+| [manuals/README.md](../manuals/README.md) | Issue #53 versioned manual set, evidence boundary, field contract, and repeat loop |
+| [general_user_manual_ko.md](../manuals/general_user_manual_ko.md) | Korean-first end-user installation, access, degraded/OEM, update/rollback, lost-phone and support journeys |
+| [administrator_manual_ko.md](../manuals/administrator_manual_ko.md) | Admin roles, tenant/device/door lifecycle, force-open, TLS rotation, monitoring, backup/restore, OTA and decommission |
+| [installer_service_manual_ko.md](../manuals/installer_service_manual_ko.md) | ESP32-C6 wiring, GPIO3/polarity, power safety, commissioning, and explicit relay/offline/OTA/sensor incident contracts (evidence pending) |
+| [privacy_notice_ko.md](../manuals/privacy_notice_ko.md) | Data inventory, minimization, consented/redacted support export, retention/deletion and incident privacy |
+| [support_incident_handbook_ko.md](../manuals/support_incident_handbook_ko.md) | Support triage, reason/state handling, force-open, offline/OEM, update, lost phone and incident loop |
+| [product_gap_register_v1.md](../manuals/product_gap_register_v1.md) | Manual-to-product reverse analysis with explicit #49–#52, test, P0/P1 and physical gaps |
 
 
 
