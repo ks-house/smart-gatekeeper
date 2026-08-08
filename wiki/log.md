@@ -2066,7 +2066,6 @@
 - Extended the pending-only schema and production validator so every later executed record requires an execution window, named executor, independent named reviewer or risk owner, plan-bound pass condition and approval role, and an after-execution review decision.
 - Replaced opaque raw-evidence strings with exact plan-category entries bound to capture identity/time/actor, SHA-256, and matching content-addressed locator; adversarial tests reject missing actors/times, generic or partial categories, incomplete captures, self-review, empty or wrong-role approval, pass-condition substitution, and the forged-pass fixture.
 - The committed template remains entirely `not_run`; no physical measurement, operator approval, canary, production contact, deployment, or Gate acceptance occurred, and `raw/` remains unchanged.
->>>>>>> origin/main
 
 ## [2026-08-09] code | Harden admin control plane with deny-by-default identity and dual control
 
