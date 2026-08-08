@@ -2147,6 +2147,71 @@
 - Standalone OTA contract, hardwareless 4/4 and focused backend admin-security 8/8 passed. Strict UTF-8 without BOM, local links, conflict markers, Markdown table arity, exact c654 header provenance, administrator/support reason-route contracts and AJ-SR04T GPIO10/11 with 5 V ECHO safety checks passed.
 - These are local/software results only. No Samsung/OEM, ESP32-C6 radio/GPIO, GPIO3 relay/AJ-SR04T, bootloader, OTA install/reboot/health/rollback, RELAY-G0..G2, operator, canary, deployment or production acceptance evidence was produced.
 
+## [2026-08-09] code | Harden Target commands and OTA for issue #50
+
+- Replaced shared unsigned MQTT effects and insecure TLS fallbacks with CA-verified MQTTS, exact per-Target QoS 1 topics, broker `%u` ACLs, retained-message rejection, and deterministic signed freshness/identity/boot-bound commands.
+- Added a two-slot CRC/generation NVS replay ledger that persists before effects and distinguishes completed from crash-uncertain duplicates, plus backend P-256 command signing and fail-closed provisioning.
+- Rebuilt Target OTA around signed Ed25519 manifests, periodic HTTPS, authenticated local recovery, one inactive-slot verifier/writer, exact size/hash/image checks, pending-image health marking, rollback, downgrade floor, and protocol 1..2 overlap.
+- Kept hardwareless RC compile-OFF by default, added stale enablement cleanup and a machine-readable production hardening policy. Production remains disabled; no merge, deployment, eFuse change, or device authorization was performed.
+
+## [2026-08-09] test | Validate issue #50 software paths and preserve physical Gates
+
+- Root host suite passed 92/92, including command mutation, durable replay, crash uncertainty, storage failure, OTA state/fault contracts, and insecure-path checks. Backend suite passed 32 tests with one opt-in MariaDB integration skip.
+- Scoped pioarduino ESP32-C6 build passed for `esp32c6`: RAM 53,728/327,680 (16.4%) and flash 1,600,194/7,340,032 (21.8%). `git diff --check`, JSON parsing, wiki links, and raw immutability are separate final lint requirements.
+- These are host/software results only. Deployed MQTTS/ACL behavior, ESP32-C6 radio and relay operation, inactive-slot boot, health-valid, power-loss and rollback, authenticated local recovery, eFuse/debug hardening, N/N-1 interop, OTA-G1..G4, RELAY-G0..G2, physical soak, operator acceptance, and production authorization remain pending and fail-closed.
+
+## [2026-08-09] fix | Close independent Target command and OTA review blockers
+
+- Kept command authorization clock-untrusted until time comes from an independently authenticated HTTPS `Date` response; signed `issued_at` is never used as its own verification time, including a delayed first command after boot.
+- Added an authenticated station-local transition to a bounded 10-minute WPA2 AP+STA recovery window without clearing STA association, so DNS, MQTT, Backend, or manifest-host outage does not make local recovery unreachable.
+- Required 30 seconds of continuously healthy pending-image predicates, resetting the healthy-since timer on every failed tick and rolling back when a new continuous window cannot complete within 120 seconds.
+- Replaced numeric-prefix version comparison with a two-slot CRC/generation SemVer floor that rejects stable-to-prerelease downgrade, rollback replay, equal-precedence alternate identity, and exact-current forced/local reflash.
+- Expanded the command binding boot identity to 128 bits from four ESP hardware-RNG words while retaining the durable boot counter for diagnostics.
+
+## [2026-08-09] test | Exercise issue #50 review-remediation faults
+
+- Native production-core tests passed delayed-first-command, transient/late health, prerelease/equal-precedence identity, rollback floor, reboot recovery, and failed-persist mutations; targeted security/OTA static tests also passed.
+- Scoped pioarduino `esp32c6` build passed after remediation: RAM 53,888/327,680 (16.4%) and flash 1,606,312/7,340,032 (21.9%). This is compile evidence only.
+- No deployed broker, ESP32-C6 boot/radio/relay, local operator recovery, power-loss, rollback, eFuse/debug lock, N/N-1 device interop, OTA-G1..G4, RELAY-G0..G2, physical soak, production authorization, merge, or deployment evidence was created; every physical/operator/production Gate remains open and fail-closed.
+
+## [2026-08-09] fix | Make OTA version-floor CRC compiler independent
+
+- Exact-head Linux CI exposed that the first version-floor readback included compiler-dependent C++ struct tail padding in its CRC, while the Windows host happened to keep those bytes stable.
+- Replaced raw-struct hashing with an explicit fixed 80-byte little-endian encoding of the defined magic, schema, reserved, generation, and version fields; corrupt-slot mutations now verify fail-closed recovery without relying on ABI padding.
+- Windows and WSL/Linux native production-core tests passed 455 checks; the scoped ESP32-C6 build passed at RAM 53,888/327,680 (16.4%) and flash 1,606,504/7,340,032 (21.9%).
+- This is a software portability correction only. Physical Target storage, power-loss, rollback, operator, OTA-G1..G4, production authorization, merge, and deployment evidence remain pending and fail-closed.
+
+## [2026-08-09] fix | Reconcile private-default Compose with fail-closed command provisioning
+
+- After integrating exact main `c654a18f0fa278e4530229bb881fe88286d25c2e`, the inherited backend-security lane correctly required `docker compose config` to succeed without production secrets, while issue #50 used interpolation-time required variables.
+- Changed only Compose interpolation to blank/default values so the private deployment topology is auditable without secrets; runtime Target identity, signing scalar/key, verified broker, non-1883 port, and CA checks still reject every effect before publication when provisioning is absent.
+- Added mutation assertions for renderable defaults and runtime fail-closed seams. No plaintext/insecure fallback, production secret, broker contact, physical/operator evidence, production enablement, merge, or deployment was introduced.
+
+## [2026-08-09] fix | Bind backend commands to authenticated current Target boot
+
+- Replaced the static backend boot-ID environment input with a CA-verified backend subscriber on the broker-ACL-bound per-Target `/boot` topic and a migration-backed atomic `target_boot_state` registry.
+- Boot refresh requires exact topic/payload Target identity, a 128-bit hexadecimal boot ID, and a strictly increasing durable boot count; forged cross-Target, lower-count rollback, and same-count replacement mutations reject, while an exact duplicate is idempotent and a new boot restores command signing without process restart.
+- Added one effect-boundary provisioning validator covering exact Target/tenant/door identity, non-1883 broker host, distinct nonempty broker username/password, existing CA file, positive signing key ID, and valid nonzero scalar. Every missing/invalid-field mutation proves no boot lookup or broker client creation.
+- Added migration up/down and Compose wiring, backend-read ACL for authenticated boot topics, and retained private-default rendering. Physical broker identity, Target reboot recovery, device/operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] test | Validate authenticated boot refresh and strict effect boundary
+
+- Root validation passed 102 tests; backend validation passed 49 tests with one opt-in MariaDB integration skip. Mutations reject cross-Target, non-string, counter-overflow, rollback, same-count replacement, missing broker credential/CA/identity/key, and zero, malformed, or out-of-range signing scalar inputs before boot lookup or broker-client creation; established `/boot` diagnostic fields remain compatible.
+- The authenticated subscriber seam used the dedicated backend username/password, `CERT_REQUIRED`, hostname-verified TLS, the per-Target boot topic, and the durable atomic registry. WSL/Linux production-core validation, private-default Compose rendering, and the OTA contract passed.
+- Scoped pioarduino `esp32c6` compile passed with the exact command schema parser: RAM 53,888/327,680 (16.4%) and flash 1,606,490/7,340,032 (21.9%). This is software evidence only; deployed broker ACL, physical Target reboot/recovery/rollback, operator, production, merge, and deployment Gates remain open and fail-closed.
+
+## [2026-08-09] fix | Integrate exact main 337fcca after manual baseline merge
+
+- After the Issue #50 candidate was pushed, GitHub main advanced to exact `337fcca152d3de7db17a0d374d485f20726ec1b4`; integrated that commit once with two-parent provenance so PR #61 can return to a clean merge state and run pull-request canaries.
+- Preserved the exact 265,705-byte `337fcca` `wiki/log.md` Git blob as the candidate prefix, then preserved the existing 7,859-byte Issue #50 append sequence unchanged. The Issue #53 manuals and combined wiki navigation are retained, and `raw/` remains byte-identical to main.
+- Post-integration validation passed 102 root tests, 49 backend tests with one opt-in MariaDB skip, WSL/Linux production-core, private-default Compose, OTA contract, wiki/link/parser/marker checks, and a clean-cache ESP32-C6 build at RAM 53,888/327,680 and flash 1,606,490/7,340,032. These are software results only; Draft, independent review, physical/operator, and production Gates remain open.
+
+## [2026-08-09] fix | Reject raw duplicate commands and late OTA health validity
+
+- Independent exact-head COMMENTED review `4889657823` found that ArduinoJson collapses duplicate member names before the 13-field DOM guard and that a stable health interval could win after the 120-second deadline; PR #61 remained Draft and unmerged.
+- Added a production-used raw flat-object policy that requires every canonical command field exactly once before DOM parsing. Mutations cover same-value and different-value duplicates for all 13 fields, escaped key aliases, unknown fields, nested values, truncation, and trailing content.
+- Made a strictly exceeded health deadline dominate mark-valid, defined equality as the final admissible instant only for an already complete interval, and reset continuity after a sampling gap above one second. Deadline-1/equality/+1, stalled sampling, transient predicate, and late recovery mutations pass; the ESP32-C6 build passes at RAM 53,888/327,680 and flash 1,606,546/7,340,032. Physical/operator/production Gates remain open and fail-closed.
+
 ## [2026-08-09] fix | Harden staged Orca profile launch fallback
 
 - Reconciled exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f` with six post-PR-#60 packaged `worker-start` non-completion Dispatches and staged success `ctx_e1f6e94ad254`. The recurrence remains intermittent, issue #55 stays open, and no packaged-runtime root-cause fix is claimed.
@@ -2171,3 +2236,11 @@
 - Coordinator-provided incident evidence also records this PR #63 integration Task `task_a7dc527bac51` first failed packaged launch as Dispatch `ctx_0df91925e4ce` / terminal `term_72ab3858-b32e-436e-bf8c-639049a1e424`: it exited to PowerShell after MCP startup interruption while marked `input_accepted`. The separate retry/current receipt is Dispatch `ctx_c64fbc66f427` / terminal `term_410dd0da-920f-437d-b074-939efa53d62e`; its automatic Dispatch preamble was absent, so this work is an ordinary terminal handoff and is not the failed first launch. These four reproductions are input/start failure evidence, not Task execution or completion evidence, and no capability material is recorded.
 - Focused staged-launcher and lifecycle mutation suites passed, PowerShell AST parsing passed for all 9 tracked scripts, and Quick passed in 37.18 seconds after idempotent isolated setup: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 43 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4. Strict UTF-8/BOM, 242 local-link, whitespace/conflict, raw identity, and exact staged-log prefix checks passed.
 - Issue #55 remains open because this PR is repository-side mitigation and evidence only, not a packaged Orca 1.4.176 root-cause fix. PR #63 remains Draft and unmerged; no deploy or Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production closure is claimed.
+
+## [2026-08-09] fix | Reintegrate concurrently advanced main after PR #61
+
+- Preserved the completed and pushed first integration checkpoint `e70813be455131d43a6e6423df0e26a441e4ee6d`, whose parents are PR #63 head `0703f682b9bbbe8b57a11719df5cb760f790ca8d` and then-main `337fcca152d3de7db17a0d374d485f20726ec1b4`. After PR #61 concurrently advanced main, fetched again as explicitly required and integrated exact `origin/main` `45901236c00bf0399997e665299d0d5479878e83` with a new two-parent merge over that checkpoint.
+- The final candidate `wiki/log.md` preserves exact main Git blob `ca0830010f9e108d134bc931e9f0811df3f50e5c` as its byte prefix and appends the exact `e70813be` PR #63 suffix before this entry. `raw/` remains byte-identical to main tree `013c00e7617365aa30c8bd0d38d9503d3885d264`; the PR #61 Target command/OTA implementation and its host/software-only evidence boundaries are retained.
+- Focused staged-launcher and lifecycle mutation suites passed again, and PowerShell AST parsing passed for all 9 tracked scripts. Quick passed in 36.37 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4.
+- Final strict UTF-8/BOM, local-link, whitespace/conflict-marker, exact main-prefix/checkpoint-suffix, raw identity, merge-parent, and clean-scope checks passed. These are repository and host/software checks only.
+- Issue #55 remains open as a repository mitigation/evidence issue, PR #63 remains Draft and unmerged, and no packaged-runtime root-cause fix, deploy, physical/operator/canary acceptance, or production authorization is claimed.

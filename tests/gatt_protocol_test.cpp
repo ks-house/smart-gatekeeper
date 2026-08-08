@@ -1,9 +1,13 @@
 #include "GattProtocol.h"
+#include "FlatJsonObjectPolicy.h"
 #include "OfflineEventQueue.h"
+#include "OtaHealthPolicy.h"
+#include "OtaVersionPolicy.h"
 #include "TargetAccessFsm.h"
 #include "TargetAclManager.h"
 #include "TargetProofVerifier.h"
 #include "TargetState.h"
+#include "TargetCommandSecurity.h"
 
 #include <algorithm>
 #include <array>
@@ -1495,6 +1499,328 @@ void testProductionMainAuthAbortWiring() {
   CHECK(content.find("g_access_fsm.handleAuthAbort(now_ms, \"gatt_auth_aborted\")") != std::string::npos);
 }
 
+class MemoryCommandStorage final : public sgk::CommandReplayStorage {
+ public:
+  std::array<sgk::CommandReplayLedger, 2> ledgers{};
+  std::array<bool, 2> present{};
+  bool fail_writes = false;
+
+  bool readLedger(uint8_t slot, sgk::CommandReplayLedger* ledger) override {
+    if (slot > 1 || ledger == nullptr || !present[slot]) return false;
+    *ledger = ledgers[slot];
+    return true;
+  }
+  bool writeLedger(uint8_t slot,
+                   const sgk::CommandReplayLedger& ledger) override {
+    if (slot > 1 || fail_writes) return false;
+    ledgers[slot] = ledger;
+    present[slot] = true;
+    return true;
+  }
+};
+
+class FixtureCommandVerifier final : public sgk::CommandSignatureVerifier {
+ public:
+  bool verify(uint32_t key_id, const std::array<uint8_t, 32>&,
+              const std::array<uint8_t, 64>& signature) override {
+    return key_id == 7 && signature[0] == 0xa5;
+  }
+};
+
+sgk::SignedCommandEnvelope fixtureCommand() {
+  sgk::SignedCommandEnvelope envelope{};
+  envelope.schema_version = 1;
+  std::snprintf(envelope.target_id, sizeof(envelope.target_id), "target-a");
+  std::snprintf(envelope.tenant_id, sizeof(envelope.tenant_id), "tenant-a");
+  std::snprintf(envelope.door_id, sizeof(envelope.door_id), "door-a");
+  std::snprintf(envelope.boot_id, sizeof(envelope.boot_id), "boot-a");
+  envelope.action = sgk::CommandAction::kManualRemote;
+  std::snprintf(envelope.session_id, sizeof(envelope.session_id), "session-a");
+  std::snprintf(envelope.nonce, sizeof(envelope.nonce), "nonce-a");
+  envelope.issued_at = 1800000000;
+  envelope.expires_at = 1800000060;
+  envelope.key_id = 7;
+  envelope.signature[0] = 0xa5;
+  return envelope;
+}
+
+void testSignedCommandDurableReplayAndMutations() {
+  MemoryCommandStorage storage;
+  FixtureCommandVerifier verifier;
+  sgk::TargetCommandSecurity security(&storage, &verifier);
+  CHECK(security.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  auto command = fixtureCommand();
+  CHECK(security.authorize(command, 1800000001, true) ==
+        sgk::CommandResult::kAccepted);
+  CHECK(security.markCompleted(command));
+  CHECK(security.authorize(command, 1800000002, true) ==
+        sgk::CommandResult::kDuplicateCompleted);
+
+  sgk::TargetCommandSecurity rebooted(&storage, &verifier);
+  CHECK(rebooted.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  CHECK(rebooted.authorize(command, 1800000002, true) ==
+        sgk::CommandResult::kDuplicateCompleted);
+
+  auto forged = command;
+  std::snprintf(forged.nonce, sizeof(forged.nonce), "nonce-forged");
+  forged.signature[0] = 0;
+  CHECK(rebooted.authorize(forged, 1800000002, true) ==
+        sgk::CommandResult::kBadSignature);
+  auto cross_target = command;
+  std::snprintf(cross_target.nonce, sizeof(cross_target.nonce), "nonce-cross");
+  std::snprintf(cross_target.target_id, sizeof(cross_target.target_id),
+                "target-b");
+  CHECK(rebooted.authorize(cross_target, 1800000002, true) ==
+        sgk::CommandResult::kIdentityMismatch);
+  auto wrong_boot = command;
+  std::snprintf(wrong_boot.nonce, sizeof(wrong_boot.nonce), "nonce-boot");
+  std::snprintf(wrong_boot.boot_id, sizeof(wrong_boot.boot_id), "boot-old");
+  CHECK(rebooted.authorize(wrong_boot, 1800000002, true) ==
+        sgk::CommandResult::kBootMismatch);
+  auto stale = command;
+  std::snprintf(stale.nonce, sizeof(stale.nonce), "nonce-stale");
+  stale.issued_at = 1799999800;
+  stale.expires_at = 1799999860;
+  CHECK(rebooted.authorize(stale, 1800000002, true) ==
+        sgk::CommandResult::kExpired);
+  auto long_ttl = command;
+  std::snprintf(long_ttl.nonce, sizeof(long_ttl.nonce), "nonce-long");
+  long_ttl.expires_at = long_ttl.issued_at + 121;
+  CHECK(rebooted.authorize(long_ttl, 1800000002, true) ==
+        sgk::CommandResult::kTtlTooLong);
+  auto untrusted_clock = command;
+  std::snprintf(untrusted_clock.nonce, sizeof(untrusted_clock.nonce),
+                "nonce-clock");
+  CHECK(rebooted.authorize(untrusted_clock, 0, false) ==
+        sgk::CommandResult::kClockUntrusted);
+
+  MemoryCommandStorage delayed_first_storage;
+  sgk::TargetCommandSecurity delayed_first(&delayed_first_storage, &verifier);
+  CHECK(delayed_first.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  auto never_seen_but_expired = fixtureCommand();
+  std::snprintf(never_seen_but_expired.nonce,
+                sizeof(never_seen_but_expired.nonce), "nonce-delayed-first");
+  CHECK(delayed_first.authorize(never_seen_but_expired, 0, false) ==
+        sgk::CommandResult::kClockUntrusted);
+
+  auto uncertain = fixtureCommand();
+  std::snprintf(uncertain.nonce, sizeof(uncertain.nonce), "nonce-uncertain");
+  CHECK(rebooted.authorize(uncertain, 1800000002, true) ==
+        sgk::CommandResult::kAccepted);
+  sgk::TargetCommandSecurity after_crash(&storage, &verifier);
+  CHECK(after_crash.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  CHECK(after_crash.authorize(uncertain, 1800000003, true) ==
+        sgk::CommandResult::kDuplicateUncertain);
+
+  MemoryCommandStorage failing_storage;
+  sgk::TargetCommandSecurity storage_failure(&failing_storage, &verifier);
+  CHECK(storage_failure.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  failing_storage.fail_writes = true;
+  auto cannot_commit = fixtureCommand();
+  std::snprintf(cannot_commit.nonce, sizeof(cannot_commit.nonce),
+                "nonce-storage");
+  CHECK(storage_failure.authorize(cannot_commit, 1800000002, true) ==
+        sgk::CommandResult::kReplayStorageFailure);
+  failing_storage.fail_writes = false;
+  CHECK(storage_failure.authorize(cannot_commit, 1800000002, true) ==
+        sgk::CommandResult::kAccepted);
+
+  MemoryCommandStorage eviction_storage;
+  sgk::TargetCommandSecurity eviction_security(&eviction_storage, &verifier);
+  CHECK(eviction_security.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  auto first_evicted = fixtureCommand();
+  for (size_t index = 0; index <= sgk::kCommandReplayEntries; ++index) {
+    auto rotating = fixtureCommand();
+    std::snprintf(rotating.nonce, sizeof(rotating.nonce), "nonce-%02u",
+                  static_cast<unsigned int>(index));
+    std::snprintf(rotating.session_id, sizeof(rotating.session_id),
+                  "session-%02u", static_cast<unsigned int>(index));
+    if (index == 0) first_evicted = rotating;
+    CHECK(eviction_security.authorize(rotating, 1800000002, true) ==
+          sgk::CommandResult::kAccepted);
+    CHECK(eviction_security.markCompleted(rotating));
+  }
+  CHECK(eviction_security.authorize(first_evicted, 1800000003, true) ==
+        sgk::CommandResult::kExpired);
+}
+
+class MemoryVersionStorage final : public sgk::OtaVersionFloorStorage {
+ public:
+  bool read(uint8_t slot, sgk::OtaVersionFloorRecord* record) override {
+    if (slot > 1 || record == nullptr || !present[slot]) return false;
+    *record = records[slot];
+    return true;
+  }
+
+  bool write(uint8_t slot,
+             const sgk::OtaVersionFloorRecord& record) override {
+    if (slot > 1 || fail_writes) return false;
+    records[slot] = record;
+    present[slot] = true;
+    return true;
+  }
+
+  std::array<sgk::OtaVersionFloorRecord, 2> records{};
+  std::array<bool, 2> present{};
+  bool fail_writes = false;
+};
+
+void testRawCommandSchemaRejectsEveryDuplicateField() {
+  static constexpr const char* kFields[] = {
+      "action", "boot_id", "door_id", "expires_at", "issued_at",
+      "key_id", "nonce", "schema_version", "session_id", "signature",
+      "target_id", "tenant_id", "value"};
+  static constexpr const char* kValues[] = {
+      "\"arm\"", "\"11111111111111111111111111111111\"", "\"door-a\"",
+      "1800000120", "1800000000", "7", "\"nonce-a\"", "1",
+      "\"session-a\"", "\"0000\"", "\"target-a\"", "\"tenant-a\"",
+      "0"};
+  static constexpr const char* kDifferentValues[] = {
+      "\"reboot\"", "\"22222222222222222222222222222222\"", "\"door-b\"",
+      "1800000121", "1800000001", "8", "\"nonce-b\"", "2",
+      "\"session-b\"", "\"1111\"", "\"target-b\"", "\"tenant-b\"",
+      "1"};
+  static constexpr size_t kFieldCount =
+      sizeof(kFields) / sizeof(kFields[0]);
+  const auto build = [&](int duplicate, const char* duplicate_value) {
+    std::string document = "{";
+    for (size_t index = 0; index < kFieldCount; ++index) {
+      if (index > 0) document += ',';
+      document += '"';
+      document += kFields[index];
+      document += "\":";
+      document += kValues[index];
+    }
+    if (duplicate >= 0) {
+      document += ",\"";
+      document += kFields[duplicate];
+      document += "\":";
+      document += duplicate_value;
+    }
+    document += '}';
+    return document;
+  };
+  const auto accepted = [&](const std::string& document) {
+    return sgk::hasExactUniqueFlatJsonFields(
+        reinterpret_cast<const uint8_t*>(document.data()), document.size(),
+        kFields, kFieldCount);
+  };
+
+  const std::string canonical = build(-1, nullptr);
+  CHECK(accepted(canonical));
+  for (size_t index = 0; index < kFieldCount; ++index) {
+    CHECK(!accepted(build(static_cast<int>(index), kValues[index])));
+    CHECK(!accepted(build(static_cast<int>(index), kDifferentValues[index])));
+  }
+  std::string escaped_alias = canonical;
+  escaped_alias.replace(escaped_alias.find("\"action\""), 8,
+                        "\"acti\\u006fn\"");
+  CHECK(!accepted(escaped_alias));
+  std::string additional = canonical;
+  additional.insert(additional.size() - 1, ",\"extra\":0");
+  CHECK(!accepted(additional));
+  std::string nested = canonical;
+  nested.replace(nested.find("\"arm\""), 5, "{\"alias\":\"arm\"}");
+  CHECK(!accepted(nested));
+  CHECK(!accepted(canonical.substr(0, canonical.size() - 1)));
+  CHECK(!accepted(canonical + "{}"));
+}
+
+void testOtaHealthRequiresContinuousPredicates() {
+  sgk::OtaHealthPolicy policy(30000, 120000, 1000);
+  policy.begin(1000);
+  CHECK(policy.update(1000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 2000; now <= 30000; now += 1000) {
+    CHECK(policy.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(policy.update(30001, false) == sgk::OtaHealthDecision::kWait);
+  CHECK(policy.update(40000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 41000; now <= 69000; now += 1000) {
+    CHECK(policy.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(policy.update(69999, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(policy.update(70000, true) == sgk::OtaHealthDecision::kMarkValid);
+
+  sgk::OtaHealthPolicy late_recovery(30000, 120000, 1000);
+  late_recovery.begin(0);
+  CHECK(late_recovery.update(100000, false) == sgk::OtaHealthDecision::kWait);
+  CHECK(late_recovery.update(110000, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(late_recovery.update(120000, true) == sgk::OtaHealthDecision::kRollback);
+
+  sgk::OtaHealthPolicy exact_deadline(30000, 120000, 1000);
+  exact_deadline.begin(0);
+  CHECK(exact_deadline.update(90000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 91000; now <= 119000; now += 1000) {
+    CHECK(exact_deadline.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(exact_deadline.update(119999, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(exact_deadline.update(120000, true) ==
+        sgk::OtaHealthDecision::kMarkValid);
+
+  sgk::OtaHealthPolicy after_deadline(30000, 120000, 1000);
+  after_deadline.begin(0);
+  CHECK(after_deadline.update(90000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 91000; now <= 119000; now += 1000) {
+    CHECK(after_deadline.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(after_deadline.update(119999, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(after_deadline.update(120001, true) ==
+        sgk::OtaHealthDecision::kRollback);
+
+  sgk::OtaHealthPolicy stalled_sampling(30000, 120000, 1000);
+  stalled_sampling.begin(0);
+  CHECK(stalled_sampling.update(90000, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(stalled_sampling.update(119999, true) ==
+        sgk::OtaHealthDecision::kWait);
+  CHECK(stalled_sampling.update(120000, true) ==
+        sgk::OtaHealthDecision::kRollback);
+}
+
+void testOtaVersionFloorAndReplayMutations() {
+  int comparison = 0;
+  CHECK(sgk::OtaVersionPolicy::compare("2.2.0-rc.1", "2.2.0", &comparison));
+  CHECK(comparison < 0);
+  CHECK(sgk::OtaVersionPolicy::compare("2.2.0", "2.2.0-rc.9", &comparison));
+  CHECK(comparison > 0);
+  CHECK(sgk::OtaVersionPolicy::compare("2.2.0+one", "2.2.0+two", &comparison));
+  CHECK(comparison == 0);
+  CHECK(!sgk::OtaVersionPolicy::compare("2.2", "2.2.0", &comparison));
+
+  MemoryVersionStorage storage;
+  sgk::OtaVersionPolicy policy(&storage);
+  CHECK(policy.begin("2.2.0"));
+  CHECK(policy.evaluate("2.2.0-rc.1", "2.2.0") ==
+        sgk::OtaVersionDecision::kDowngrade);
+  CHECK(policy.evaluate("2.2.0+different", "2.2.0") ==
+        sgk::OtaVersionDecision::kIdentityConflict);
+  CHECK(policy.evaluate("2.2.1", "2.2.0") ==
+        sgk::OtaVersionDecision::kUpgrade);
+  CHECK(policy.commit("2.2.1"));
+
+  sgk::OtaVersionPolicy after_rollback(&storage);
+  CHECK(after_rollback.begin("2.2.0"));
+  CHECK(after_rollback.evaluate("2.2.0", "2.2.0") ==
+        sgk::OtaVersionDecision::kDowngrade);
+  CHECK(after_rollback.evaluate("2.2.1", "2.2.0") ==
+        sgk::OtaVersionDecision::kUpgrade);
+
+  storage.fail_writes = true;
+  CHECK(!after_rollback.commit("2.2.2"));
+  storage.fail_writes = false;
+  CHECK(after_rollback.commit("2.2.2"));
+  sgk::OtaVersionPolicy after_crash(&storage);
+  CHECK(after_crash.begin("2.2.1"));
+  CHECK(after_crash.evaluate("2.2.1", "2.2.1") ==
+        sgk::OtaVersionDecision::kDowngrade);
+
+  MemoryVersionStorage corrupted = storage;
+  corrupted.records[0].version[0] ^= 1;
+  corrupted.records[1].version[0] ^= 1;
+  sgk::OtaVersionPolicy corrupt_policy(&corrupted);
+  CHECK(corrupt_policy.begin("2.2.1"));
+  CHECK(std::string(corrupt_policy.floor()) == "2.2.1");
+}
+
 }  // namespace
 
 int main() {
@@ -1577,6 +1903,10 @@ int main() {
   testOfflineCanonicalEventReplayAndPreservation();
   testProtocolDisconnectHandoff();
   testInvalidTypedCanonicalRecordQuarantine();
+  testSignedCommandDurableReplayAndMutations();
+  testRawCommandSchemaRejectsEveryDuplicateField();
+  testOtaHealthRequiresContinuousPredicates();
+  testOtaVersionFloorAndReplayMutations();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";
   return 0;
 }

@@ -189,6 +189,21 @@ void ConfigManager::setPlannedRestartReason(const char* reason) {
     preferences.putString("next_restart", reason ? reason : "unspecified");
 }
 
+bool ConfigManager::enforceCompileTimeSecurityPolicy() {
+#if ENABLE_HARDWARELESS_RC
+    return true;
+#else
+    bool ok = true;
+    if (preferences.isKey("hwless_rc")) {
+        ok = preferences.putBool("hwless_rc", false) == 1 && ok;
+    }
+    if (preferences.isKey("hwless_owner")) {
+        ok = preferences.remove("hwless_owner") && ok;
+    }
+    return ok;
+#endif
+}
+
 void ConfigManager::clearConfig() {
 
     preferences.clear();

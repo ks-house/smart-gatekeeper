@@ -41,6 +41,15 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
     )
 
+try:
+    from .acl_management import DeterministicP256Signer
+    from .command_security import build_signed_command
+    from .target_boot_registry import TargetBootRegistry
+except ImportError:  # Docker runs uvicorn with /app as the import root.
+    from acl_management import DeterministicP256Signer
+    from command_security import build_signed_command
+    from target_boot_registry import TargetBootRegistry
+
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -65,14 +74,21 @@ DB_NAME     = os.getenv("DB_NAME", "smart_gatekeeper")
 DB_USER     = os.getenv("DB_USER", "gatekeeper_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "gatekeeper_pass")
 
-MQTT_HOST           = os.getenv("MQTT_HOST", "tworimpa.synology.me")
-MQTT_PORT           = int(os.getenv("MQTT_PORT", "4883"))
-MQTT_USER           = os.getenv("MQTT_USER", "gatekeeper_mqtt")
-MQTT_PASSWORD       = os.getenv("MQTT_PASSWORD", "gatekeeper_mqtt_pass")
-
-MQTT_USE_TLS        = os.getenv("MQTT_USE_TLS", "true").lower() == "true"
-MQTT_TOPIC_ARM      = os.getenv("MQTT_TOPIC_ARM", "gatekeeper/arm")
-MQTT_TOPIC_FORCE    = os.getenv("MQTT_TOPIC_FORCE_OPEN", "gatekeeper/force_open")
+MQTT_HOST           = os.getenv("MQTT_HOST", "").strip()
+MQTT_PORT           = int(os.getenv("MQTT_PORT", "8883"))
+MQTT_USER           = os.getenv("MQTT_USER", "").strip()
+MQTT_PASSWORD       = os.getenv("MQTT_PASSWORD", "").strip()
+MQTT_CA_FILE        = os.getenv("MQTT_CA_FILE", "").strip()
+COMMAND_TARGET_ID   = os.getenv("COMMAND_TARGET_ID", "").strip()
+COMMAND_TENANT_ID   = os.getenv("COMMAND_TENANT_ID", "").strip()
+COMMAND_DOOR_ID     = os.getenv("COMMAND_DOOR_ID", "").strip()
+COMMAND_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
+    "COMMAND_SIGNING_PRIVATE_SCALAR_HEX", ""
+).strip()
+try:
+    COMMAND_SIGNING_KEY_ID = int(os.getenv("COMMAND_SIGNING_KEY_ID", "0"))
+except ValueError:
+    COMMAND_SIGNING_KEY_ID = 0
 
 BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
@@ -161,6 +177,39 @@ def get_db():
         connect_timeout=5,
     )
 
+
+_target_boot_registry = TargetBootRegistry(get_db)
+_P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+
+
+def _command_provisioning_error() -> Optional[str]:
+    tokens = (COMMAND_TARGET_ID, COMMAND_TENANT_ID, COMMAND_DOOR_ID)
+    if any(
+        not token or len(token) > 64 or any(ord(char) < 0x21 or ord(char) > 0x7e for char in token)
+        for token in tokens
+    ):
+        return "target identity"
+    if (
+        not MQTT_HOST
+        or not 1 <= MQTT_PORT <= 65535
+        or MQTT_PORT == 1883
+        or not MQTT_USER
+        or not MQTT_PASSWORD
+        or secrets.compare_digest(MQTT_USER, COMMAND_TARGET_ID)
+    ):
+        return "broker identity"
+    if not MQTT_CA_FILE or not os.path.isfile(MQTT_CA_FILE):
+        return "broker CA"
+    if COMMAND_SIGNING_KEY_ID <= 0:
+        return "signing key ID"
+    if (
+        len(COMMAND_SIGNING_PRIVATE_SCALAR_HEX) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in COMMAND_SIGNING_PRIVATE_SCALAR_HEX)
+        or not 0 < int(COMMAND_SIGNING_PRIVATE_SCALAR_HEX, 16) < _P256_ORDER
+    ):
+        return "signing scalar"
+    return None
+
 # ─── MQTT Helper Functions ────────────────────────────────────
 def _create_mqtt_client(client_id: str):
     """paho-mqtt 1.x 및 2.x 버전 호환 클라이언트 생성 헬퍼"""
@@ -172,7 +221,7 @@ def _create_mqtt_client(client_id: str):
         return mqtt.Client(client_id=client_id)
 
 def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
-    """MQTT 메시지 발행 헬퍼 (로컬 Docker 내부망 172.17.0.1 / host.docker.internal 초고속 우선 시도)"""
+    """Publish once through the configured hostname-verified MQTTS endpoint."""
     if not HAS_PAHO_MQTT:
         log.warning(f"[{label}] paho-mqtt 패키지 미설치 — {topic} 발행 건너뜀")
         return False
@@ -180,13 +229,13 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
     import socket
     socket.setdefaulttimeout(1.0) # 소켓 타임아웃 1초로 제한하여 지연 완전 방어
 
-    hosts_to_try = [
-        ("172.17.0.1", 1883, False),
-        ("172.22.0.1", 1883, False),
-        ("host.docker.internal", 1883, False),
-        (MQTT_HOST, MQTT_PORT, MQTT_USE_TLS),
-        ("127.0.0.1", 1883, False)
-    ]
+    if (
+        not MQTT_HOST or MQTT_PORT == 1883 or not MQTT_USER or
+        not MQTT_PASSWORD or not MQTT_CA_FILE or not os.path.isfile(MQTT_CA_FILE)
+    ):
+        log.error("[%s] verified MQTTS provisioning incomplete", label)
+        return False
+    hosts_to_try = [(MQTT_HOST, MQTT_PORT, True)]
 
     for host, port, use_tls in hosts_to_try:
         if not host:
@@ -194,18 +243,21 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
         client = None
         loop_started = False
         try:
-            client = _create_mqtt_client(f"gatekeeper-api-{int(datetime.now().timestamp())}")
+            client = _create_mqtt_client(f"gatekeeper-api-{time.time_ns()}")
             if MQTT_USER:
                 client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
-            if use_tls:
-                client.tls_set(cert_reqs=ssl.CERT_NONE)
-                client.tls_insecure_set(True)
+            client.tls_set(
+                ca_certs=MQTT_CA_FILE,
+                cert_reqs=ssl.CERT_REQUIRED,
+                tls_version=ssl.PROTOCOL_TLS_CLIENT,
+            )
+            client.tls_insecure_set(False)
 
             client.connect(host, port, keepalive=5)
             client.loop_start()
             loop_started = True
-            result = client.publish(topic, payload, qos=1)
+            result = client.publish(topic, payload, qos=1, retain=False)
             result.wait_for_publish(timeout=2.0)
 
             if result.rc == mqtt.MQTT_ERR_SUCCESS and result.is_published():
@@ -227,45 +279,90 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
     return False
 
 
+def _signed_target_command(action: str, value: int = 0) -> bool:
+    provisioning_error = _command_provisioning_error()
+    if provisioning_error is not None:
+        log.error("[MQTT-COMMAND] provisioning incomplete: %s", provisioning_error)
+        return False
+    try:
+        boot_id = _target_boot_registry.current_boot_id(COMMAND_TARGET_ID)
+        if boot_id is None:
+            return False
+        scalar = int(COMMAND_SIGNING_PRIVATE_SCALAR_HEX, 16)
+        signer = DeterministicP256Signer(scalar, COMMAND_SIGNING_KEY_ID)
+        envelope = build_signed_command(
+            signer=signer,
+            target_id=COMMAND_TARGET_ID,
+            tenant_id=COMMAND_TENANT_ID,
+            door_id=COMMAND_DOOR_ID,
+            boot_id=boot_id,
+            action=action,
+            value=value,
+        )
+    except (TypeError, ValueError):
+        return False
+    topic = f"gatekeeper/v1/targets/{COMMAND_TARGET_ID}/command"
+    return _publish_mqtt_msg(
+        topic,
+        json.dumps(envelope, separators=(",", ":"), sort_keys=True),
+        f"MQTT-COMMAND-{action}",
+    )
+
+
+def _start_target_boot_subscriber():
+    if _command_provisioning_error() is not None or not HAS_PAHO_MQTT:
+        return None
+    client = _create_mqtt_client(f"gatekeeper-boot-registry-{time.time_ns()}")
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+    client.tls_set(
+        ca_certs=MQTT_CA_FILE,
+        cert_reqs=ssl.CERT_REQUIRED,
+        tls_version=ssl.PROTOCOL_TLS_CLIENT,
+    )
+    client.tls_insecure_set(False)
+
+    def on_connect(connected_client, _userdata, _flags, reason_code, *args):
+        if int(reason_code) == 0:
+            connected_client.subscribe("gatekeeper/v1/targets/+/boot", qos=1)
+
+    def on_message(_client, _userdata, message):
+        if not _target_boot_registry.refresh_from_authenticated_topic(
+            message.topic, bytes(message.payload)
+        ):
+            log.warning("[MQTT-BOOT] rejected boot refresh on %s", message.topic)
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+    client.loop_start()
+    return client
+
+
 def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
-    """NAS → MQTT Broker → ESP32-C6 gatekeeper/arm 토픽 발행."""
-    payload = json.dumps({
-        "action": "arm",
-        "user": tenant_name,
-        "tenant_id": tenant_id,
-        "issued_at": datetime.now().isoformat()
-    }, ensure_ascii=False)
-    return _publish_mqtt_msg(MQTT_TOPIC_ARM, payload, "MQTT-ARM")
+    """Publish a signed, boot-bound pre-arm command."""
+    return _signed_target_command("arm")
 
 def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
-    """NAS → MQTT Broker → ESP32-C6 gatekeeper/force_open 강제 개방 토픽 발행."""
-    payload = json.dumps({
-        "action": "force_open",
-        "user": tenant_name,
-        "issued_at": datetime.now().isoformat()
-    }, ensure_ascii=False)
-    return _publish_mqtt_msg(MQTT_TOPIC_FORCE, payload, "MQTT-FORCE")
+    """Publish the authenticated explicit-button manual_remote command."""
+    return _signed_target_command("manual_remote")
 
 def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, distance_threshold: Optional[int] = None, duration: Optional[int] = None, relay_cooldown: Optional[int] = None) -> dict:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/config/... 엔지니어 튜닝 토픽 및 gatekeeper/config/set 일괄 발행."""
     results = {}
     dist_val = distance_threshold if distance_threshold is not None else tof_distance
     if tx_power is not None:
-        ok = _publish_mqtt_msg("gatekeeper/config/tx_power", str(tx_power), "MQTT-CONFIG-TX")
+        ok = _signed_target_command("set_tx_power", tx_power)
         results["tx_power"] = {"value": tx_power, "success": ok}
     if dist_val is not None:
-        ok1 = _publish_mqtt_msg("gatekeeper/config/distance_threshold", str(dist_val), "MQTT-CONFIG-DIST")
-        ok2 = _publish_mqtt_msg("gatekeeper/config/tof_distance", str(dist_val), "MQTT-CONFIG-TOF")
-        results["distance_threshold"] = {"value": dist_val, "success": ok1 and ok2}
+        ok = _signed_target_command("set_distance_threshold", dist_val)
+        results["distance_threshold"] = {"value": dist_val, "success": ok}
     if duration is not None:
-        ok = _publish_mqtt_msg("gatekeeper/config/duration", str(duration), "MQTT-CONFIG-DUR")
+        ok = _signed_target_command("set_duration", duration)
         results["duration"] = {"value": duration, "success": ok}
     if relay_cooldown is not None:
-        ok = _publish_mqtt_msg("gatekeeper/config/relay_cooldown", str(relay_cooldown), "MQTT-CONFIG-COOL")
+        ok = _signed_target_command("set_relay_cooldown", relay_cooldown)
         results["relay_cooldown"] = {"value": relay_cooldown, "success": ok}
     
-    set_payload = json.dumps(current_target_config, ensure_ascii=False)
-    _publish_mqtt_msg("gatekeeper/config/set", set_payload, "MQTT-CONFIG-SET")
     return results
 
 
@@ -333,7 +430,10 @@ class AccessLogItem(BaseModel):
 async def lifespan(app: FastAPI):
     log.info(f"[STARTUP] Smart Gatekeeper API v2.0 시작")
     log.info(f"[STARTUP] DB: {DB_HOST}:{DB_PORT}/{DB_NAME}")
-    log.info(f"[STARTUP] MQTT Broker: {MQTT_HOST}:{MQTT_PORT} | arm: {MQTT_TOPIC_ARM} | force: {MQTT_TOPIC_FORCE}")
+    log.info(
+        "[STARTUP] verified MQTTS broker configured; per-Target signed command plane=%s",
+        bool(COMMAND_TARGET_ID and COMMAND_SIGNING_KEY_ID),
+    )
     if GATEKEEPER_API_KEY:
         log.info("[STARTUP] 🔐 문 제어 API 키 인증 활성화 (X-API-KEY)")
     else:
@@ -342,8 +442,18 @@ async def lifespan(app: FastAPI):
             "Pre-arm 은 키 없이도 호출 가능하고, 관리자 마스터 개방은 사용할 수 없습니다. "
             "미등록/미승인 기기 거부와 DB 장애 시 fail-closed 는 계속 동작합니다."
         )
-    yield
-    log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
+    boot_subscriber = None
+    try:
+        boot_subscriber = _start_target_boot_subscriber()
+    except Exception as error:
+        log.error("[MQTT-BOOT] subscriber unavailable; commands stay disabled: %s", error)
+    try:
+        yield
+    finally:
+        if boot_subscriber is not None:
+            boot_subscriber.loop_stop()
+            boot_subscriber.disconnect()
+        log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
 
 app = FastAPI(
     title="Smart Gatekeeper API",
