@@ -2066,6 +2066,38 @@
 - Extended the pending-only schema and production validator so every later executed record requires an execution window, named executor, independent named reviewer or risk owner, plan-bound pass condition and approval role, and an after-execution review decision.
 - Replaced opaque raw-evidence strings with exact plan-category entries bound to capture identity/time/actor, SHA-256, and matching content-addressed locator; adversarial tests reject missing actors/times, generic or partial categories, incomplete captures, self-review, empty or wrong-role approval, pass-condition substitution, and the forged-pass fixture.
 - The committed template remains entirely `not_run`; no physical measurement, operator approval, canary, production contact, deployment, or Gate acceptance occurred, and `raw/` remains unchanged.
+
+## [2026-08-09] code | Harden admin control plane with deny-by-default identity and dual control
+
+- Added mTLS-fingerprint-backed server sessions, tenant-scoped roles, CSRF, reauthentication, rate limiting, session rotation, idempotency, and immutable audit migration support; missing identity/audit state fails closed rather than returning mock success.
+- Replaced device-ID bearer force-open with a reasoned two-person control operation, added negative bypass tests, and preserved target OTA/download recovery separation. This is host/software evidence only; no physical or production authorization is claimed.
+
+## [2026-08-09] compile | Define additive v2 manual control and proxy deployment contract
+
+- Added durable force-open approval and mobile nonce migration contracts, N/N-1 upgrade-required/no-side-effect behavior, plus the private reverse-proxy mTLS deployment boundary for the issue #51/#52 client rollout.
+
+## [2026-08-09] fix | Apply v2 manual proof and durable approval state
+
+- The legacy manual URI now rejects incomplete device-ID requests without an effect, while the v2 envelope verifies tenant-bound proof, nonce expiry, idempotency, and durable replay consumption before broker publication. This remains software evidence only; physical/operator/production gates are open.
+
+## [2026-08-09] test | Add exact-SHA hosted backend and MariaDB security lane
+
+- Added a pull-request CI lane for backend security tests, real MariaDB migration/immutable-audit validation, and private-by-default Compose configuration. Hosted success is still software/CI evidence only and does not close any physical or production gate.
+
+## [2026-08-09] fix | Bind force-open approval to durable row fields
+
+- Corrected the two-person approval path to authorize against the persisted `tenant_scope` and `proposer_subject` fields rather than nonexistent transient aliases, so a valid separately authenticated approver can reach the broker publication transition.
+- Added positive and negative security coverage for one successful publication and for self-approval, expiry, replay, cross-tenant approval, and duplicate-publish reservation rejection. This remains software evidence only; physical, operator, and production gates remain open and fail-closed.
+
+## [2026-08-09] fix | Close force-open locks and record broker reconciliation
+
+- Moved all force-open approval validation inside one rollback/close boundary after `SELECT ... FOR UPDATE`, so self, expiry, replay, tenant, duplicate-state, and idempotency rejections cannot leak a MariaDB transaction or lock.
+- Added `FORCE_OPEN_PUBLISHED` immutable audit evidence and a migration-backed `RECONCILIATION_REQUIRED` state with its own audit fact for post-broker persistence failures; real MariaDB concurrency verifies one publisher, one final audit, and an immediately reusable row lock. This is software/CI evidence only and leaves physical, operator, and production gates open and fail-closed.
+
+## [2026-08-09] fix | Precommit force-open ambiguity before broker publication
+
+- Changed the approval state transition to commit `RECONCILIATION_REQUIRED` and its immutable operator-visible audit fact before calling MQTT; reconciliation persistence failure now blocks publication, and post-publish final-audit failure retains the prior durable non-success disposition rather than relying on a best-effort recovery write.
+- Added mutation coverage for failed reconciliation precommit, post-publish audit failure, one rollback/close per rejected locked approval, and real MariaDB concurrent exactly-once publishing plus durable ambiguous-state inspection. This is software/CI evidence only; physical, operator, and production gates remain open and fail-closed.
 ## [2026-08-09] compile | Add issue #53 Korean-first manuals baseline and reverse-analysis gaps
 
 - Added versioned `manuals/` documents for general users, administrators, installers/service, privacy, and support/incident response, each using actor, precondition, input, observable output, code/API owner, and evidence artifact fields.
@@ -2096,3 +2128,9 @@
 - Verified the pre-existing dirty `manuals/product_gap_register_v1.md` and `wiki/log.md` bytes exactly matched PR head `e5edfcbc0835fbd9b00ee3a1e682f821458df299`, then integrated exact `origin/main` `fb827681e1b2f5a8b08aa2784ae419832efff6f7` with two-parent merge provenance. The merged `wiki/log.md` preserves the exact current-main Git blob as its byte prefix and appends only the Issue #53 branch entries.
 - Replaced the stale installer VL53L0X/I²C wiring instruction with current AJ-SR04T/JSN-SR04T TRIG GPIO10 and ECHO GPIO11 source-aligned guidance, explicit 5 V ECHO protection and measurement-safety steps, and an explicitly historical/non-applicable GPIO6/7 row.
 - Hardened R1 to require exact PR `baseRefOid`/`headRefOid`, raw `git cat-file` blob comparison, and rejection of `b246aff` or any unexpected base/head mutation. Manual links, strict UTF-8, conflict markers, diff/raw/append-only/OTA/software checks remain required; no physical, operator, or production acceptance is claimed and PR #58 remains Draft/unmerged.
+
+## [2026-08-09] fix | Integrate PR #57 current main into Issue #53 manuals
+
+- After PR #57 merged, integrated exact `origin/main` `c654a18f0fa278e4530229bb881fe88286d25c2e` once with a two-parent merge over the existing PR #58 head; the raw c654 `wiki/log.md` Git blob is preserved as the exact prefix and the existing Issue #53 entries are appended without rewriting history.
+- Preserved PR #57 backend files and the PR #62 physical-preparation artifacts byte-for-byte; resolved only the expected integration surfaces and rejected conflict markers, raw changes, and broad line-ending churn.
+- Refreshed R1's expected base to c654 and rechecked stale-base mutation rejection, current AJ-SR04T/JSN-SR04T GPIO10/11 plus 5 V ECHO protection guidance, strict UTF-8, links, Quick/proportional software checks, and hosted trusted policy. PR #58 remains Draft/unmerged; no physical, operator, or production acceptance is claimed.

@@ -1,7 +1,7 @@
 # 제품 역분석·갭 등록부 / Product reverse-analysis gap register
 
 문서 버전: **0.1.2-contract-loop**<br>
-통합 기준: `fb827681e1b2f5a8b08aa2784ae419832efff6f7`<br>
+통합 기준: `c654a18f0fa278e4530229bb881fe88286d25c2e`<br>
 분석일: 2026-08-09<br>
 상태: **열린 갭 있음; issue #53 완료 아님**
 
@@ -11,11 +11,11 @@
 
 | 단계 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact |
 |---|---|---|---|---|---|---|
-| R1 기준선 고정 | 문서 소유자 (docs owner) | PR #58 metadata의 `baseRefOid`가 exact current main/base `fb827681e1b2f5a8b08aa2784ae419832efff6f7`이고 `headRefOid`가 검증 대상 `git rev-parse HEAD`와 exact match인지 확인 | PR metadata의 `baseRefOid`/`headRefOid`를 exact 비교한 뒤, `git cat-file blob <baseRefOid>:wiki/log.md`와 `git cat-file blob <headRefOid>:wiki/log.md`를 raw bytes로 읽어 candidate가 base의 exact prefix인지 비교; worktree 텍스트/CRLF 비교는 사용하지 않음 | unexpected base/head 또는 prefix 불일치가 즉시 reject되고, 통과 시 metadata SHA와 raw Git-blob exact-prefix evidence가 매뉴얼에 표시됨 | Git/docs workflow | expected base `fb827681e1b2f5a8b08aa2784ae419832efff6f7`; expected head = exact PR `headRefOid` = candidate `HEAD`; raw `git cat-file` blob check; 독립 reviewer PENDING |
+| R1 기준선 고정 | 문서 소유자 (docs owner) | PR #58 metadata의 `baseRefOid`가 exact current main/base `c654a18f0fa278e4530229bb881fe88286d25c2e`이고 `headRefOid`가 검증 대상 `git rev-parse HEAD`와 exact match인지 확인 | PR metadata의 `baseRefOid`/`headRefOid`를 exact 비교한 뒤, `git cat-file blob <baseRefOid>:wiki/log.md`와 `git cat-file blob <headRefOid>:wiki/log.md`를 raw bytes로 읽어 candidate가 base의 exact prefix인지 비교; worktree 텍스트/CRLF 비교는 사용하지 않음 | unexpected base/head 또는 prefix 불일치가 즉시 reject되고, 통과 시 metadata SHA와 raw Git-blob exact-prefix evidence가 매뉴얼에 표시됨 | Git/docs workflow | expected base `c654a18f0fa278e4530229bb881fe88286d25c2e`; expected head = exact PR `headRefOid` = candidate `HEAD`; raw `git cat-file` blob check; 독립 reviewer PENDING |
 
 ### R1 fail-closed metadata/blob contract
 
-R1은 PR 웹페이지의 제목·branch 이름·worktree 파일을 기준선 증거로 취급하지 않는다. 검증자는 `gh pr view 58 --json baseRefOid,headRefOid`로 metadata를 읽고 `baseRefOid == fb827681e1b2f5a8b08aa2784ae419832efff6f7`, `headRefOid == git rev-parse HEAD`를 각각 exact string으로 확인한 뒤, 두 SHA의 `wiki/log.md` Git blob을 `git cat-file blob`으로 읽어 raw byte prefix를 비교한다. Windows checkout의 CRLF 변환은 비교 대상이 아니다.
+R1은 PR 웹페이지의 제목·branch 이름·worktree 파일을 기준선 증거로 취급하지 않는다. 검증자는 `gh pr view 58 --json baseRefOid,headRefOid`로 metadata를 읽고 `baseRefOid == c654a18f0fa278e4530229bb881fe88286d25c2e`, `headRefOid == git rev-parse HEAD`를 각각 exact string으로 확인한 뒤, 두 SHA의 `wiki/log.md` Git blob을 `git cat-file blob`으로 읽어 raw byte prefix를 비교한다. Windows checkout의 CRLF 변환은 비교 대상이 아니다.
 
 필수 mutation/negative case: `baseRefOid`를 `b246aff9698ccbcbcd864f99aab63654cce2cc78` 또는 어떤 unexpected SHA로 바꾼 synthetic PR metadata에 대해 validator가 prefix가 우연히 일치하더라도 **reject**해야 한다. `headRefOid`를 이전 PR head나 다른 candidate SHA로 바꾼 경우도 `git rev-parse HEAD` exact-match 단계에서 reject해야 하며, 이 mutation은 accepted evidence나 physical/production claim을 생성하지 않는다.
 | R2 manual walkthrough | 신규 사용자/관리자/설치자 | 각 역할의 계정·장치·안전 조건 | 문서만 사용 | 성공/막힘/추측 지점을 기록 | `manuals/*.md` | walkthrough worksheet NONE; 제품 테스트 필요 |

@@ -13,37 +13,16 @@ from backend.app import main
 
 
 class LegacyAndOtaIndependenceTest(unittest.TestCase):
-    def test_authenticated_mobile_button_manual_remote_is_independent_of_relay_gates(self) -> None:
+    def test_force_open_is_admin_dual_control_and_legacy_device_route_is_removed(self) -> None:
         paths = {route.path for route in main.app.routes}
+        self.assertIn("/api/v1/admin/control/force-open", paths)
+        self.assertIn("/api/v1/admin/control/force-open/{approval_id}/approve", paths)
         self.assertIn("/api/v1/door/open", paths)
         self.assertNotIn("/api/v1/acl/enrollment/challenge", paths)
-        connection = MagicMock()
-        cursor = connection.cursor.return_value.__enter__.return_value
-        cursor.fetchone.return_value = {
-            "name": "Mobile User",
-            "unit_number": "101",
-            "is_active": True,
-        }
-        with patch.object(main, "get_db", return_value=connection), patch.object(
-            main, "publish_force_open_to_mqtt", return_value=True
-        ) as publish, patch.object(
-            main, "publish_arm_to_mqtt", side_effect=AssertionError("hands-free path used")
-        ) as publish_arm, patch.object(
-            main, "_api_key_matches", side_effect=AssertionError("admin path used")
-        ):
-            response = TestClient(main.app).post(
-                "/api/v1/door/open",
-                json={"reason": "manual_click", "device_id": "mobile-device-01"},
-            )
-        body = response.json()
-        self.assertEqual(200, response.status_code)
-        self.assertEqual("force_opened", body["result"])
-        self.assertTrue(body["mqtt_published"])
-        publish.assert_called_once_with("Mobile User(101)")
-        publish_arm.assert_not_called()
-        cursor.execute.assert_called_once()
-        self.assertEqual(("MOBILE-DEVICE-01",), cursor.execute.call_args.args[1])
-        connection.close.assert_called_once()
+        response = TestClient(main.app).post(
+            "/api/v1/door/open", json={"reason": "manual_click", "device_id": "stolen-id"}
+        )
+        self.assertEqual(426, response.status_code)
 
     def test_ota_health_config_and_download_routes_do_not_depend_on_acl_feature(self) -> None:
         paths = {route.path for route in main.app.routes}
@@ -63,17 +42,8 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
             "sys.stdout.reconfigure(encoding='utf-8');"
             "sys.stderr.reconfigure(encoding='utf-8');"
             "from backend.app import main;"
-            "C=type('C',(),{'__enter__':lambda s:s,'__exit__':lambda s,*a:None,"
-            "'execute':lambda s,q,p:None,'fetchone':lambda s:{'name':'Mobile User','unit_number':'101','is_active':True}});"
-            "D=type('D',(),{'cursor':lambda s:C(),'close':lambda s:None});"
-            "main.get_db=lambda:D();"
-            "calls=[];"
-            "main.publish_force_open_to_mqtt=lambda label:calls.append(label) or True;"
-            "main.publish_arm_to_mqtt=lambda *a:(_ for _ in ()).throw(AssertionError('hands-free path used'));"
-            "response=main.door_force_open(main.ForceOpenRequestSchema(reason='manual_click',device_id='mobile-device-01'),x_api_key=None);"
-            "body=json.loads(response.body);"
-            "assert body['result']=='force_opened';"
-            "assert calls==['Mobile User(101)'];"
+            "assert '/api/v1/door/open' in {r.path for r in main.app.routes};"
+            "assert '/api/v1/admin/control/force-open' in {r.path for r in main.app.routes};"
             "assert any(r.path=='/api/v1/download/apk' for r in main.app.routes)"
         )
 
