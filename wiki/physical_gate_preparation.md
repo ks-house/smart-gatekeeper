@@ -18,7 +18,8 @@ evidence only and cannot close L2/L3/L4 gates.
 
 The canonical [Issue #54 plan](../physical_validation/issue54_gate_plan.json)
 fixes the gate IDs, scenario matrices, minimum trial counts, required capture
-categories, and pass conditions:
+categories, versioned pass-condition IDs, required approval roles, and pass
+conditions:
 
 | Group | Planned Gate |
 |---|---|
@@ -37,9 +38,12 @@ SHA-256 values before any trial is counted.
 [`issue54_evidence.schema.json`](../physical_validation/schemas/issue54_evidence.schema.json)
 defines the portable record structure. The standard-library
 [`validate_physical_gate_prep.py`](../scripts/validate_physical_gate_prep.py)
-adds cross-field rules that prevent a completion claim without all required
-trials, zero failed trials, raw-evidence references, and the required
-operator/risk-owner approval.
+adds cross-field rules that prevent an executed record without offset-bearing
+start/end timestamps, a named executor, a different named reviewer/risk owner,
+an after-execution role-bound decision, exact pass-condition binding, and
+complete structured evidence categories. Each raw entry requires a unique
+capture identity, capture time and actor, a SHA-256 digest, and its matching
+content-addressed `urn:sha256:` locator.
 
 ```powershell
 python scripts/validate_physical_gate_prep.py --require-pending
@@ -50,7 +54,10 @@ python -m unittest tests/test_physical_gate_prep.py
 `--require-pending` is required for this preparation branch and rejects any
 claimed completion. The self-test rejects the synthetic
 [`forged-pass-without-evidence.json`](../physical_validation/fixtures/forged-pass-without-evidence.json)
-fixture. These commands do not validate a physical measurement.
+fixture, while unit mutations reject missing times/actors, generic or partial
+categories, incomplete capture identity/digest, empty or wrong-role approvals,
+self-review, and pass-condition substitution. These commands do not validate a
+physical measurement.
 
 ## 4. Field execution and stop rules
 
@@ -62,8 +69,10 @@ capture raw ledgers/logs/waveforms/boot records in the later evidence bundle,
 stop on unsafe relay/rail/reset/radio observations, and leave the relevant gate
 incomplete when capture or prerequisite access is missing.
 
-`raw_evidence` means an external immutable-capture reference, not a file to add
-under this repository's immutable `raw/` source directory.
+`raw_evidence` means structured metadata for an externally retained immutable
+capture, not a file to add under this repository's immutable `raw/` source
+directory. An opaque string or a generic evidence category cannot satisfy a
+gate's plan-bound category list.
 
 No result may be promoted from this package to `hardware_test.md` as PASS until
 the raw L2 evidence is independently reviewed. L3 operator and L4 canary

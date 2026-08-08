@@ -7,11 +7,33 @@
 2. Confirm the test door is isolated, the relay is safe to exercise, a manual
    stop method is available, and the prior bootable Target slot and prior signed
    APK are available.
-3. Allocate immutable capture locations and a run ledger. A missing capture is
-   a failed/incomplete trial, not a verbal substitute.
-4. Keep L0/L1 results separate from the L2 device record, L3 operator record,
+3. Before execution, record an offset-bearing start timestamp and a named
+   executor identity. Allocate immutable content-addressed capture locations
+   and unique capture IDs; each required category must retain its capture time,
+   named capturing identity, SHA-256 digest, and matching `urn:sha256:` locator.
+   A missing or generic capture is a failed/incomplete trial, not a verbal
+   substitute.
+4. After execution, record the end timestamp and obtain review from a named
+   identity independent of the executor. Bind the record to the canonical pass
+   condition and exact gate role, and timestamp the decision after the end of
+   execution. Empty approvals, self-review, and substitute roles are invalid.
+5. Keep L0/L1 results separate from the L2 device record, L3 operator record,
    and L4 production record. Never change `not_run` to `passed` for a plan or
    a synthetic fixture.
+
+## Approval roles
+
+| Gate group | Required approval role |
+|---|---|
+| Samsung/OEM, ESP32-C6, GPIO3, AJ-SR04T, OTA-G1..G3 | `independent_reviewer` |
+| RELAY-G0..G2 | `risk_owner` |
+| OTA-G4 and operator drills | `operator_risk_owner` |
+| Canary stop/rollback | `release_risk_owner` |
+
+The plan's `pass_condition_id` and `required_approval_role` are authoritative.
+A `passed` record requires `approved`; a failed execution requires `rejected`;
+an aborted execution requires `incomplete`. All three executed states retain
+the same timestamps, actor separation, and complete raw-capture obligations.
 
 ## Samsung/OEM 100-run wake campaign
 

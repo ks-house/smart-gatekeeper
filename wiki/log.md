@@ -2060,3 +2060,9 @@
 - Added a pending-only `physical_validation/` plan, JSON Schema, field checklists, evidence template, and forged-pass negative fixture for the Samsung/OEM 100-run wake campaign, ESP32-C6 coexistence, GPIO3 relay, AJ-SR04T, RELAY-G0..G2, OTA-G1..G4 power-cut/recovery, operator drills, and canary stop/rollback.
 - Added `scripts/validate_physical_gate_prep.py` and two host-only tests. The validator accepts the all-`not_run` template and rejects a synthetic 100/100 pass claim without raw evidence; this is L0 consistency evidence, not a device/operator/canary result.
 - Linked `physical_gate_preparation.md` from the navigation map. No raw source changed, no measurement/physical acceptance/operator approval/production contact/deploy occurred, and every L2/L3/L4 Gate remains pending and fail-closed.
+
+## [2026-08-09] fix | Bind Issue #54 executed evidence to accountable review
+
+- Extended the pending-only schema and production validator so every later executed record requires an execution window, named executor, independent named reviewer or risk owner, plan-bound pass condition and approval role, and an after-execution review decision.
+- Replaced opaque raw-evidence strings with exact plan-category entries bound to capture identity/time/actor, SHA-256, and matching content-addressed locator; adversarial tests reject missing actors/times, generic or partial categories, incomplete captures, self-review, empty or wrong-role approval, pass-condition substitution, and the forged-pass fixture.
+- The committed template remains entirely `not_run`; no physical measurement, operator approval, canary, production contact, deployment, or Gate acceptance occurred, and `raw/` remains unchanged.

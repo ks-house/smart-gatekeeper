@@ -1,24 +1,24 @@
 {
-  "schema_version": "issue54-physical-evidence/v1",
-  "plan_version": "issue54-physical-gate-plan/v1",
+  "schema_version": "issue54-physical-evidence/v2",
+  "plan_version": "issue54-physical-gate-plan/v2",
   "candidate": {
     "git_sha": "cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f",
     "firmware_artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
     "mobile_artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
   },
   "records": [
-    {"gate_id": "SAMSUNG-WAKE-100", "status": "passed", "executed_trials": 100, "passed_trials": 100, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Synthetic negative fixture; not a real result."},
-    {"gate_id": "ESP32-C6-COEXISTENCE-100", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "GPIO3-RELAY-100", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "AJ-SR04T-BOUNDARY-100", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "RELAY-G0", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "RELAY-G1", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "RELAY-G2", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "OTA-G1", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "OTA-G2", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "OTA-G3", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "OTA-G4", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "OPERATOR-DRILLS", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."},
-    {"gate_id": "CANARY-STOP-ROLLBACK", "status": "not_run", "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "operator_approval": null, "notes": "Not run."}
+    {"gate_id": "SAMSUNG-WAKE-100", "status": "passed", "pass_condition_id": "PC-SAMSUNG-WAKE-100-V1", "execution": null, "executed_trials": 100, "passed_trials": 100, "failed_trials": 0, "raw_evidence": [{"category": "generic-evidence", "immutable_locator": "urn:sha256:1111111111111111111111111111111111111111111111111111111111111111", "capture_id": "opaque-reference", "captured_at": "2026-08-09T00:30:00Z", "captured_by": {"name": "Synthetic Forger", "identity_id": "fixture:forger"}, "sha256": "1111111111111111111111111111111111111111111111111111111111111111"}], "approval": {}, "notes": "Synthetic negative fixture; not a real result."},
+    {"gate_id": "ESP32-C6-COEXISTENCE-100", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "GPIO3-RELAY-100", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "AJ-SR04T-BOUNDARY-100", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "RELAY-G0", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "RELAY-G1", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "RELAY-G2", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "OTA-G1", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "OTA-G2", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "OTA-G3", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "OTA-G4", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "OPERATOR-DRILLS", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."},
+    {"gate_id": "CANARY-STOP-ROLLBACK", "status": "not_run", "pass_condition_id": null, "execution": null, "executed_trials": 0, "passed_trials": 0, "failed_trials": 0, "raw_evidence": [], "approval": null, "notes": "Not run."}
   ]
 }
