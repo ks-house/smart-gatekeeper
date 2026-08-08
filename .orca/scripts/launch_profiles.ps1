@@ -185,32 +185,39 @@ for ($startupAttempt = 1; $startupAttempt -le 2; $startupAttempt++) {
 
     $handle = $createJson.result.terminal.handle
     Write-Host "Terminal Created: $handle ($title), startup attempt $startupAttempt/2" -ForegroundColor Green
-    Write-Host "Waiting for terminal handle $handle to reach tui-idle..." -ForegroundColor Yellow
-    $waitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Agent startup'
+    $startupSucceeded = $false
+    $startupError = $null
+    try {
+        Write-Host "Waiting for terminal handle $handle to reach tui-idle..." -ForegroundColor Yellow
+        $waitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Agent startup'
 
-    $startupSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
-    if (-not $startupSnapshot.ok) {
-        throw "Agent startup inspection failed: $($startupSnapshot.error.message)"
+        $startupSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
+        if (-not $startupSnapshot.ok) {
+            throw "Agent startup inspection failed: $($startupSnapshot.error.message)"
+        }
+
+        $startupTail = $startupSnapshot.result.terminal.tail -join "`n"
+        if ($startupTail -match '(?s)(?:^|\n)PS [^\r\n]+>\s*$') {
+            throw "Agent CLI exited before profile bootstrap and returned to PowerShell."
+        }
+        $startupSucceeded = $true
+    } catch {
+        $startupError = $_
     }
 
-    $startupTail = $startupSnapshot.result.terminal.tail -join "`n"
-    if ($startupTail -notmatch '(?s)(?:^|\n)PS [^\r\n]+>\s*$') {
+    if ($startupSucceeded) {
         break
     }
 
-    if ($startupAttempt -eq 2) {
-        $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
-        if (-not $closeJson.ok) {
-            throw "Agent CLI exited twice and exact terminal cleanup failed for ${handle}: $($closeJson.error.message)"
-        }
-        throw "Agent CLI exited during both bounded startup attempts; exact terminal $handle was closed."
-    }
-
-    Write-Host "Agent CLI exited before profile bootstrap; closing exact terminal $handle and retrying once." -ForegroundColor Yellow
+    Write-Host "Agent startup failed; closing exact terminal $handle." -ForegroundColor Yellow
     $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
     if (-not $closeJson.ok) {
-        throw "Failed to close exact startup terminal ${handle}: $($closeJson.error.message)"
+        throw "Agent startup failed and exact terminal cleanup failed for ${handle}: $($closeJson.error.message). Original error: $startupError"
     }
+    if ($startupAttempt -eq 2) {
+        throw "Agent startup failed during both bounded attempts; exact terminal $handle was closed. Original error: $startupError"
+    }
+    Write-Host "Retrying profile startup once in a new terminal." -ForegroundColor Yellow
     $handle = $null
 }
 

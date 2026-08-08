@@ -27,7 +27,7 @@
 
 > 일부 TUI에서는 `dispatch --inject` 성공 뒤 입력란 끝에 정확히 `[Pasted Content N chars]`만 남고 제출되지 않을 수 있습니다. 런처는 Dispatch 직전 terminal cursor를 캡처하고 그 cursor 이후 출력만 5초 동안 확인합니다. 새 출력 끝에 미제출 표식이 있는 경우에만 Enter를 한 번 보내며, 과거 표식·표식 부재·이미 진행된 작업에는 입력을 보내지 않습니다.
 
-> Codex TUI가 최초 argv prompt를 처리하기 전에 오류 출력 없이 PowerShell로 종료되면 런처는 terminal tail의 마지막 비공백 줄이 현재 PowerShell prompt인지 확인하고, 그 정확한 터미널만 닫은 뒤 새 터미널에서 한 번 재시도합니다. 두 번째 시작도 종료되면 두 번째 정확한 터미널까지 닫고 실패 처리합니다.
+> 각 Codex startup attempt는 생성 직후부터 단일 cleanup 경계로 관리됩니다. `tui-idle` timeout/error, startup snapshot error, 또는 마지막 비공백 줄이 현재 PowerShell prompt인 조기 종료가 발생하면 그 정확한 터미널을 닫습니다. 첫 실패만 새 터미널에서 한 번 재시도하고, 두 번째 실패도 터미널을 닫은 뒤 차단합니다.
 
 > `PROFILE_READY` 판정은 bootstrap 지시문 속 예시를 승인하지 않으며, assistant 응답 뒤 Orca 렌더러가 공백 없이 붙이는 `•Running` 경계는 허용합니다. marker timeout 또는 final-idle 실패 시에는 Task를 Dispatch하지 않고 정확한 bootstrap 터미널을 닫습니다.
 
