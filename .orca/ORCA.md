@@ -1,6 +1,6 @@
 # .orca/ORCA.md — Orca Multi-Agent Orchestration Master Guide
 > **Smart Gatekeeper Orca Multi-Agent Architecture & Profile System**
-> **Last updated**: 2026-08-08
+> **Last updated**: 2026-08-09
 
 ---
 
@@ -24,6 +24,10 @@
 > 기본 런처는 Codex에 `workspace-write` sandbox와 `sandbox_workspace_write.network_access=true`를 적용합니다. 파일 쓰기는 작업공간으로 제한하면서 주입된 Orca lifecycle 명령이 로컬 런타임에 연결할 수 있게 합니다. 전용 repository worker는 시작 경쟁을 제거하기 위해 선택적 Apps 기능과 `node_repl` MCP를 비활성화하며 GitHub 작업은 `GITHUB_TOKEN` 기반 CLI를 사용합니다. Antigravity의 permission bypass는 사용하지 않으며, 격리된 워크트리에서 위험을 검토한 작업만 명시적 `-AllowUnsafe`로 무승인 모드를 켭니다. Codex의 `--dangerously-bypass-approvals-and-sandbox`와 `--ask-for-approval`은 함께 사용하지 않습니다.
 
 > `codex --profile`은 `$CODEX_HOME/<name>.config.toml` 계층만 로드하며 Markdown 역할 파일을 받지 않습니다. Codex의 추론 강도는 `--effort`가 아니라 `-c model_reasoning_effort="high"`로 지정합니다. `agy`는 `--effort high`를 지원하지만 Markdown용 `--profile` 옵션은 지원하지 않습니다. 따라서 런처는 역할 문서 bootstrap을 CLI의 최초 argv prompt로 전달하고, `PROFILE_READY`와 최종 `tui-idle`을 확인한 후 Task를 주입합니다.
+
+> 일부 TUI에서는 `dispatch --inject` 성공 뒤 입력란 끝에 정확히 `[Pasted Content N chars]`만 남고 제출되지 않을 수 있습니다. 런처는 Dispatch 직후 5초 동안 이 미제출 표식이 입력 끝에 있는 경우에만 Enter를 한 번 보내며, 표식이 없거나 작업이 이미 진행된 경우에는 입력을 보내지 않습니다.
+
+> Codex TUI가 최초 argv prompt를 처리하기 전에 오류 출력 없이 PowerShell로 종료되면 런처는 그 정확한 터미널만 닫고 새 터미널에서 한 번 재시도합니다. 두 번째 시작도 종료되면 자동 반복하지 않고 실패 처리합니다.
 
 
 

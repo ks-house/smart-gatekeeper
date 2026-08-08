@@ -49,7 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -
 
 ## 3. 프로파일 작업 시작
 
-작업은 필요한 역할만 on-demand로 시작한다. 모든 프로파일을 매 워크트리에서 자동 실행하지 않는다. 런처는 빈 TUI에 첫 prompt를 나중에 주입하지 않고 역할 bootstrap을 최초 CLI argv prompt로 전달하며, `PROFILE_READY`와 최종 `tui-idle`이 모두 확인된 뒤에만 Task를 Dispatch한다.
+작업은 필요한 역할만 on-demand로 시작한다. 모든 프로파일을 매 워크트리에서 자동 실행하지 않는다. 런처는 빈 TUI에 첫 prompt를 나중에 주입하지 않고 역할 bootstrap을 최초 CLI argv prompt로 전달하며, `PROFILE_READY`와 최종 `tui-idle`이 모두 확인된 뒤에만 Task를 Dispatch한다. Codex가 bootstrap 처리 전 오류 없이 PowerShell로 종료되면 그 정확한 터미널만 닫고 새 터미널에서 한 번 재시도하며, 두 번째 실패는 차단한다. Dispatch 뒤에는 5초 동안 정확한 `[Pasted Content N chars]` 미제출 표식만 감시하고, 입력 끝에 그 표식이 남은 경우에만 Enter를 한 번 보내 TUI 제출 경쟁을 복구한다.
 
 ```powershell
 .orca/scripts/start_task.ps1 `

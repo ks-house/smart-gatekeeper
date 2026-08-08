@@ -94,6 +94,40 @@ function Wait-ForProfileReady {
     throw "Profile bootstrap did not emit '$readyMarker' within $TimeoutSeconds seconds."
 }
 
+function Ensure-DispatchSubmitted {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$TerminalHandle,
+
+        [Parameter(Mandatory=$false)]
+        [int]$ObservationSeconds = 5
+    )
+
+    $deadline = (Get-Date).AddSeconds($ObservationSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $snapshot = & $script:orcaExecutable terminal read --terminal $TerminalHandle --json | ConvertFrom-Json
+        if (-not $snapshot.ok) {
+            throw "Dispatch submission inspection failed: $($snapshot.error.message)"
+        }
+
+        $tailText = $snapshot.result.terminal.tail -join "`n"
+        if ($tailText -match '(?s)\[Pasted Content \d+ chars\]\s*$') {
+            $submit = & $script:orcaExecutable terminal send --terminal $TerminalHandle --enter --json | ConvertFrom-Json
+            if (-not $submit.ok) {
+                throw "Dispatch was injected but Enter submission failed: $($submit.error.message)"
+            }
+            Write-Host "Dispatch injection required one bounded Enter submission." -ForegroundColor Yellow
+            return $submit
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+
+    # No exact unsubmitted paste marker was observed. The agent either accepted
+    # the injected prompt directly or progressed before the first inspection.
+    return $null
+}
+
 # Normalize the profile name and build a CLI command supported by the installed
 # agent binary. Markdown role profiles are loaded through a bootstrap prompt;
 # Codex --profile accepts only $CODEX_HOME/<name>.config.toml, not a Markdown path.
@@ -129,30 +163,41 @@ $escapedBootstrapPrompt = $bootstrapPrompt.Replace("'", "''")
 $agentCmd = "$agentCmd '$escapedBootstrapPrompt'"
 
 # The current Orca guide permits low-level terminal creation for custom model
-# argv. The profile document is loaded by the initial CLI prompt.
-$createJson = & $orcaExecutable terminal create --worktree $Worktree --title $title --command $agentCmd --json | ConvertFrom-Json
+# argv. The profile document is loaded by the initial CLI prompt. Codex can
+# occasionally exit before consuming that prompt without producing an error;
+# close only that exact terminal and retry once before failing closed.
+$handle = $null
+for ($startupAttempt = 1; $startupAttempt -le 2; $startupAttempt++) {
+    $createJson = & $orcaExecutable terminal create --worktree $Worktree --title $title --command $agentCmd --json | ConvertFrom-Json
+    if (-not $createJson.ok) {
+        throw "Failed to create Orca terminal for profile ${Profile}: $($createJson.error.message)"
+    }
 
+    $handle = $createJson.result.terminal.handle
+    Write-Host "Terminal Created: $handle ($title), startup attempt $startupAttempt/2" -ForegroundColor Green
+    Write-Host "Waiting for terminal handle $handle to reach tui-idle..." -ForegroundColor Yellow
+    $waitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Agent startup'
 
-if (-not $createJson.ok) {
-    Write-Error "Failed to create Orca terminal for profile ${Profile}: $($createJson.error.message)"
-    exit 1
-}
+    $startupSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
+    if (-not $startupSnapshot.ok) {
+        throw "Agent startup inspection failed: $($startupSnapshot.error.message)"
+    }
 
-$handle = $createJson.result.terminal.handle
-Write-Host "✅ Terminal Created: $handle ($title)" -ForegroundColor Green
+    $startupTail = $startupSnapshot.result.terminal.tail -join "`n"
+    if ($startupTail -notmatch '(?m)^PS .+>\s*$') {
+        break
+    }
 
-# Wait for tui-idle
-Write-Host "⏳ Waiting for terminal handle $handle to reach tui-idle..." -ForegroundColor Yellow
-$waitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Agent startup'
+    if ($startupAttempt -eq 2) {
+        throw "Agent CLI exited during both bounded startup attempts. Inspect terminal $handle for the exact CLI error."
+    }
 
-$startupSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
-if (-not $startupSnapshot.ok) {
-    throw "Agent startup inspection failed: $($startupSnapshot.error.message)"
-}
-
-$startupTail = $startupSnapshot.result.terminal.tail -join "`n"
-if ($startupTail -match '(?m)^PS .+>\s*$') {
-    throw "Agent CLI exited during startup and returned to PowerShell. Inspect terminal $handle for the exact CLI error."
+    Write-Host "Agent CLI exited before profile bootstrap; closing exact terminal $handle and retrying once." -ForegroundColor Yellow
+    $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
+    if (-not $closeJson.ok) {
+        throw "Failed to close exact startup terminal ${handle}: $($closeJson.error.message)"
+    }
+    $handle = $null
 }
 
 Write-Host "🟢 Terminal is idle and ready." -ForegroundColor Green
@@ -171,5 +216,6 @@ if ($TaskId -ne '') {
         Write-Error "Dispatch failed: $($dispatchJson.error.message)"
         exit 1
     }
+    $dispatchSubmitJson = Ensure-DispatchSubmitted -TerminalHandle $handle
     Write-Host "🎉 Task [$TaskId] successfully dispatched to [$handle]!" -ForegroundColor Green
 }
