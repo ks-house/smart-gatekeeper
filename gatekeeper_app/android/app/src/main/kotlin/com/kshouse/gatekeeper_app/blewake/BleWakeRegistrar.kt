@@ -13,6 +13,7 @@ import android.os.Build
 data class BleWakeRegistrationResult(
   val status: String,
   val errorCode: Int? = null,
+  val enabled: Boolean = status == "registered",
 ) {
   val succeeded: Boolean
     get() = status == "registered" || status == "stopped"
@@ -20,7 +21,13 @@ data class BleWakeRegistrationResult(
   fun toMap(): Map<String, Any?> = mapOf(
     "status" to status,
     "errorCode" to errorCode,
-    "registered" to (status == "registered"),
+    "registered" to enabled,
+    "nextAction" to when {
+      enabled -> "none"
+      status.startsWith("missing_permission") -> "grant_permission"
+      status == "bluetooth_off_or_scanner_unavailable" -> "enable_bluetooth"
+      else -> "retry"
+    },
   )
 }
 
@@ -91,6 +98,11 @@ object BleWakeRegistrar {
   fun isEnabled(context: Context): Boolean = context
     .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     .getBoolean(KEY_ENABLED, false)
+
+  fun status(context: Context): BleWakeRegistrationResult {
+    val enabled = isEnabled(context)
+    return BleWakeRegistrationResult(if (enabled) "registered" else "not_registered", enabled = enabled)
+  }
 
   internal fun callbackIntent(context: Context): PendingIntent {
     val intent = Intent(context, BleWakeScanReceiver::class.java).setAction(ACTION_SCAN_RESULT)

@@ -35,10 +35,10 @@ android {
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        create("release") {
-            val storeFilePath = keystoreProperties.getProperty("storeFile")
-            if (storeFilePath != null) {
+signingConfigs {
+    create("release") {
+        val storeFilePath = keystoreProperties.getProperty("storeFile")
+            if (storeFilePath != null && keystoreProperties.getProperty("storePassword") != null) {
                 val storeFileCandidate = file(storeFilePath)
                 val resolvedStoreFile = if (storeFileCandidate.exists()) storeFileCandidate else rootProject.file(storeFilePath)
                 if (resolvedStoreFile.exists()) {
@@ -46,23 +46,27 @@ android {
                     storePassword = keystoreProperties.getProperty("storePassword")
                     keyAlias = keystoreProperties.getProperty("keyAlias")
                     keyPassword = keystoreProperties.getProperty("keyPassword")
-                } else {
-                    storeFile = signingConfigs.getByName("debug").storeFile
-                    storePassword = signingConfigs.getByName("debug").storePassword
-                    keyAlias = signingConfigs.getByName("debug").keyAlias
-                    keyPassword = signingConfigs.getByName("debug").keyPassword
                 }
-            } else {
-                storeFile = signingConfigs.getByName("debug").storeFile
-                storePassword = signingConfigs.getByName("debug").storePassword
-                keyAlias = signingConfigs.getByName("debug").keyAlias
-                keyPassword = signingConfigs.getByName("debug").keyPassword
             }
         }
     }
 
     buildTypes {
         release {
+            val releaseRequested = gradle.startParameter.taskNames.any {
+                it.contains("release", ignoreCase = true)
+            }
+            val releaseKeyPath = keystoreProperties.getProperty("storeFile")
+            val releaseKey = releaseKeyPath?.let { path ->
+                val candidate = file(path)
+                if (candidate.exists()) candidate else rootProject.file(path)
+            }
+            if (releaseRequested && (releaseKey == null || !releaseKey.exists() ||
+                    keystoreProperties.getProperty("storePassword").isNullOrBlank() ||
+                    keystoreProperties.getProperty("keyAlias").isNullOrBlank() ||
+                    keystoreProperties.getProperty("keyPassword").isNullOrBlank())) {
+                throw GradleException("Release signing is fail-closed: configure key.properties with a real release keystore; debug signing is forbidden.")
+            }
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true

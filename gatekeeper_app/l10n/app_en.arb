@@ -1,0 +1,9 @@
+{
+  "@@locale": "en",
+  "appTitle": "Smart Key",
+  "setupReady": "Ready",
+  "setupDegraded": "Degraded",
+  "setupBlocked": "Blocked",
+  "manualRecovery": "Manual recovery",
+  "verifiedUpdate": "Verified update"
+}

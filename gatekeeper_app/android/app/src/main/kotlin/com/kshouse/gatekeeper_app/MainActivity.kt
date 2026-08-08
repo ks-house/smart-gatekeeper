@@ -8,12 +8,19 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 import com.kshouse.gatekeeper_app.gattworker.BleGattWorkScheduler
+import com.kshouse.gatekeeper_app.blewake.BleWakeRegistrar
+import java.io.File
+import java.security.MessageDigest
 
 class MainActivity: FlutterActivity() {
     private companion object {
         const val CHANNEL_DIAGNOSTICS = "com.kshouse.gatekeeper_app/notification_channel"
         const val CHANNEL_GATT_WORKER_HEALTH =
             "com.kshouse.gatekeeper_app/ble_gatt_worker_health"
+        const val CHANNEL_WAKE_REGISTRATION =
+            "com.kshouse.gatekeeper_app/ble_wake_registration"
+        const val CHANNEL_UPDATE_SECURITY =
+            "com.kshouse.gatekeeper_app/update_security"
         const val FOREGROUND_NOTIFICATION_CHANNEL = "smart_key_foreground_channel_v2"
     }
 
@@ -60,16 +67,71 @@ class MainActivity: FlutterActivity() {
                     result.success(BleGattHealthBridge.snapshot(applicationContext))
                 }
                 "triggerLocalGattRetry" -> {
-                    val scheduled = BleGattWorkScheduler.onPresence(
-                        applicationContext,
-                        "TARGET_LOCAL",
-                        "manual_retry_" + System.currentTimeMillis(),
-                    )
-                    result.success(scheduled != null)
+                    result.success(BleGattWorkScheduler.manualRetry(applicationContext).toMap())
                 }
                 else -> {
                     result.notImplemented()
                 }
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_WAKE_REGISTRATION,
+        ).setMethodCallHandler { call, result ->
+            val registration = when (call.method) {
+                "register" -> BleWakeRegistrar.register(applicationContext)
+                "stop" -> BleWakeRegistrar.stop(applicationContext)
+                "getStatus" -> BleWakeRegistrar.status(applicationContext)
+                else -> {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+            }
+            result.success(registration.toMap())
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_UPDATE_SECURITY,
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "apkCertificateSha256") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val path = call.argument<String>("path")
+            if (path.isNullOrBlank() || !File(path).isFile) {
+                result.error("APK_MISSING", "APK is not available", null)
+                return@setMethodCallHandler
+            }
+            try {
+                val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getPackageArchiveInfo(
+                        path,
+                        android.content.pm.PackageManager.PackageInfoFlags.of(
+                            android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES.toLong(),
+                        ),
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageArchiveInfo(
+                        path,
+                        android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES,
+                    )
+                }
+                val signer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    packageInfo?.signingInfo?.apkContentsSigners?.firstOrNull()
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageInfo?.signatures?.firstOrNull()
+                }
+                if (signer == null) {
+                    result.error("CERTIFICATE_MISSING", "APK certificate is missing", null)
+                } else {
+                    result.success(MessageDigest.getInstance("SHA-256").digest(signer.toByteArray()).joinToString("") { "%02x".format(it) })
+                }
+            } catch (error: Exception) {
+                result.error("CERTIFICATE_INVALID", "APK certificate could not be read", error.javaClass.simpleName)
             }
         }
     }
