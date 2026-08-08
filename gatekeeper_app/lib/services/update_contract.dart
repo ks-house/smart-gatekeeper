@@ -182,6 +182,10 @@ class SignedUpdateManifest {
         (mandatoryAfter != null && !_isDateTime(mandatoryAfter!))) {
       throw const FormatException('invalid manifest date-time');
     }
+    if (mandatoryAfter != null &&
+        DateTime.parse(mandatoryAfter!).isBefore(DateTime.parse(publishedAt))) {
+      throw const FormatException('mandatory_after cannot precede published_at');
+    }
   }
 
   static bool _isHttps(String value) {
@@ -193,7 +197,28 @@ class SignedUpdateManifest {
   }
 
   static bool _isDateTime(String value) =>
-      value.contains('T') && DateTime.tryParse(value) != null;
+      value.contains('T') &&
+      RegExp(r'(?:Z|[+-]\d{2}:\d{2})$').hasMatch(value) &&
+      DateTime.tryParse(value) != null;
+
+  String? validateTimePolicy({
+    DateTime? now,
+    Duration maximumFutureSkew = const Duration(minutes: 5),
+    Duration maximumManifestAge = const Duration(days: 30),
+  }) {
+    final trustedNow = (now ?? DateTime.now()).toUtc();
+    final publication = DateTime.parse(publishedAt).toUtc();
+    if (publication.isAfter(trustedNow.add(maximumFutureSkew))) {
+      return 'MANIFEST_FROM_FUTURE';
+    }
+    if (publication.isBefore(trustedNow.subtract(maximumManifestAge))) {
+      return 'MANIFEST_STALE';
+    }
+    return null;
+  }
+
+  bool isMandatoryAt(DateTime now) => mandatoryAfter != null &&
+      !DateTime.parse(mandatoryAfter!).toUtc().isAfter(now.toUtc());
 
   /// `sgk-json-v1`: remove only signature, sort keys, encode UTF-8 JSON with
   /// no insignificant whitespace and no ASCII-only escaping.

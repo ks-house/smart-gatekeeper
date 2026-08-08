@@ -11,18 +11,23 @@ import 'services/foreground_service.dart';
 
 import 'services/error_logger.dart';
 import 'services/native_wake_registration.dart';
+import 'services/update_checker.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // OTA first-run health is independent of permissions, BLE, WebView, scanner,
+  // and foreground-service initialization. Never hide it behind those gates.
+  await UpdateChecker().reconcilePendingFirstRunHealth();
+
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    AppErrorLogger().logError('UI Framework Error: ${details.exception}',
+    AppErrorLogger().logError('UI Framework Error',
         details.exception, details.stack);
   };
 
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    AppErrorLogger().logError('Uncaught App Exception: $error', error, stack);
+    AppErrorLogger().logError('Uncaught App Exception', error, stack);
     return true;
   };
 
@@ -168,14 +173,15 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
         });
       }
     } catch (e, stack) {
-      debugPrint('[SmartKeyApp] 초기화 예외: $e');
       AppErrorLogger().logError('앱 초기화 오류', e, stack);
       if (mounted) {
         setState(() {
           _initialized = true;
           _serviceReady = false;
-          _missingRequirements = <String>['초기화 오류: $e'];
-          _permissionStatus = '초기화 오류 발생 ($e)';
+          _missingRequirements = <String>[
+            '초기화 오류: APP_INITIALIZATION_FAILED'
+          ];
+          _permissionStatus = '초기화 오류 발생 (APP_INITIALIZATION_FAILED)';
         });
       }
     } finally {

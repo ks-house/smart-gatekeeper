@@ -33,6 +33,11 @@ docker compose exec flutter-builder bash
 ```bash
 flutter pub get
 flutter analyze
+flutter test
+cd android
+./gradlew --no-daemon --rerun-tasks :app:testDebugUnitTest \
+  --tests 'com.kshouse.gatekeeper_app.gattworker.*'
+cd ..
 ```
 
 ### Step 4: Android APK 빌드
@@ -58,6 +63,35 @@ certificate identity Gate를 통과해야 합니다.
 `ota/schemas/mobile-manifest.schema.json`의 정확한 필드와 `sgk-json-v1` 서명을
 사용해야 하며, legacy `artifact_sha256`, `fallback_apk_url`, manifest 내 공개키는
 허용되지 않습니다.
+
+빌드 후에는 legacy 5-field `version.json`을 직접 작성하지 않습니다. 실제 APK에서
+`apksigner verify --print-certs`로 단일 current signer SHA-256을 얻고, 별도 환경변수에
+주입된 Ed25519 private seed를 사용해 다음 생성기와 검증기를 모두 통과시킵니다.
+
+```bash
+python ../scripts/sign_mobile_manifest.py create \
+  --artifact build/app/outputs/flutter-apk/app-release.apk \
+  --output ../dist/version.json \
+  --version "$FULL_VERSION" --build-number "$BUILD_NUMBER" \
+  --commit "$COMMIT_SHA" \
+  --apk-url "$APK_DOWNLOAD_URL" \
+  --fallback-url "$APK_FALLBACK_DOWNLOAD_URL" \
+  --release-notes-url "$APK_RELEASE_NOTES_URL" \
+  --published-at "$PUBLISHED_AT" \
+  --certificate-sha256 "$APK_CERTIFICATE_SHA256" \
+  --signing-key-id "$UPDATE_SIGNING_KEY_ID" \
+  --private-key-env OTA_SIGNING_PRIVATE_KEY_HEX \
+  --expected-public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"
+python ../scripts/sign_mobile_manifest.py verify \
+  --manifest ../dist/version.json \
+  --artifact build/app/outputs/flutter-apk/app-release.apk \
+  --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" \
+  --certificate-sha256 "$APK_CERTIFICATE_SHA256"
+```
+
+private seed는 인자로 직접 전달하거나 출력하지 않습니다. PR debug canary는 공개된
+RFC 8032 test key와 `.invalid` endpoint만 사용하며, 설치 가능한 production release로
+취급하지 않습니다.
 
 ---
 

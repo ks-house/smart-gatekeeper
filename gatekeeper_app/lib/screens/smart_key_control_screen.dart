@@ -447,18 +447,32 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               style: TextStyle(color: Colors.white70, fontSize: 12),
                             ),
                             const SizedBox(height: 12),
-                            ValueListenableBuilder<bool>(
-                              valueListenable: _updateChecker.isUpdateAvailable,
-                              builder: (context, available, _) {
+                            ValueListenableBuilder<UpdateState>(
+                              valueListenable: _updateChecker.stateNotifier,
+                              builder: (context, updateState, _) {
+                                final available =
+                                    updateState == UpdateState.available;
+                                final failed = updateState == UpdateState.failed;
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      available
-                                          ? '🚀 새 버전 v${_updateChecker.remoteVersion} 다운로드 가능'
-                                          : '✅ 최신 버전 상태입니다.',
+                                      updateStatusMessage(
+                                        updateState,
+                                        version: _updateChecker.remoteVersion,
+                                        failureReason:
+                                            _updateChecker.lastFailureReason,
+                                        mandatory:
+                                            _updateChecker.updateMandatory,
+                                      ),
                                       style: TextStyle(
-                                        color: available ? Colors.amber : Colors.green,
+                                        color: failed
+                                            ? Colors.redAccent
+                                            : available
+                                                ? Colors.amber
+                                                : updateState == UpdateState.healthy
+                                                    ? Colors.green
+                                                    : Colors.white70,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),

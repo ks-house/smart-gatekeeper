@@ -133,6 +133,46 @@ void main() {
     );
   });
 
+  test('published and mandatory timestamps are bounded and ordered', () {
+    final baseline = SignedUpdateManifest.fromJson(validVector);
+    final now = DateTime.parse('2026-08-09T00:00:00Z');
+    expect(baseline.validateTimePolicy(now: now), isNull);
+
+    final future = SignedUpdateManifest.fromJson(<String, dynamic>{
+      ...validVector,
+      'published_at': '2026-08-09T00:05:01Z',
+    });
+    expect(future.validateTimePolicy(now: now), 'MANIFEST_FROM_FUTURE');
+
+    final stale = SignedUpdateManifest.fromJson(<String, dynamic>{
+      ...validVector,
+      'published_at': '2026-07-09T23:59:59Z',
+    });
+    expect(stale.validateTimePolicy(now: now), 'MANIFEST_STALE');
+
+    expect(
+      () => SignedUpdateManifest.fromJson(<String, dynamic>{
+        ...validVector,
+        'published_at': '2026-08-09T00:00:00',
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => SignedUpdateManifest.fromJson(<String, dynamic>{
+        ...validVector,
+        'mandatory_after': '2026-07-31T23:59:59Z',
+      }),
+      throwsFormatException,
+    );
+
+    final mandatory = SignedUpdateManifest.fromJson(<String, dynamic>{
+      ...validVector,
+      'mandatory_after': '2026-08-02T00:00:00+00:00',
+    });
+    expect(mandatory.isMandatoryAt(DateTime.parse('2026-08-01T23:59:59Z')), isFalse);
+    expect(mandatory.isMandatoryAt(DateTime.parse('2026-08-02T00:00:00Z')), isTrue);
+  });
+
   test('artifact validation fails closed across platform and N/N-1 bounds', () {
     final bytes = Uint8List.fromList(<int>[1, 2, 3]);
     const validator = UpdateArtifactValidator();

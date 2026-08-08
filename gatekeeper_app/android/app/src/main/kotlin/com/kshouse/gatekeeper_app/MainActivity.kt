@@ -1,6 +1,9 @@
 package com.kshouse.gatekeeper_app
 
 import android.app.NotificationManager
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.os.Build
 import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import io.flutter.embedding.android.FlutterActivity
@@ -10,6 +13,7 @@ import io.flutter.plugin.common.MethodChannel
 import com.kshouse.gatekeeper_app.gattworker.BleGattWorkScheduler
 import com.kshouse.gatekeeper_app.blewake.BleWakeRegistrar
 import java.io.File
+import java.io.FileInputStream
 import java.security.MessageDigest
 
 class MainActivity: FlutterActivity() {
@@ -95,55 +99,108 @@ class MainActivity: FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL_UPDATE_SECURITY,
         ).setMethodCallHandler { call, result ->
-            if (call.method != "apkCertificateSha256") {
-                result.notImplemented()
-                return@setMethodCallHandler
-            }
-            val path = call.argument<String>("path")
-            if (path.isNullOrBlank() || !File(path).isFile) {
-                result.error("APK_MISSING", "APK is not available", null)
-                return@setMethodCallHandler
-            }
             try {
-                val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    packageManager.getPackageArchiveInfo(
-                        path,
-                        android.content.pm.PackageManager.PackageInfoFlags.of(
-                            android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES.toLong(),
-                        ),
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    packageManager.getPackageArchiveInfo(
-                        path,
-                        android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES,
-                    )
-                }
-                if (packageInfo == null || packageInfo.packageName != packageName) {
-                    result.error("PACKAGE_MISMATCH", "APK package identity does not match", null)
-                    return@setMethodCallHandler
-                }
-                val signers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    packageInfo.signingInfo?.apkContentsSigners
-                } else {
-                    @Suppress("DEPRECATION")
-                    packageInfo.signatures
-                }
-                if (signers?.size != 1) {
-                    result.error("SIGNER_COUNT_INVALID", "APK must have exactly one current signer", null)
-                    return@setMethodCallHandler
-                }
-                val signer = signers.first()
-                if (signer.toByteArray().isEmpty()) {
-                    result.error("CERTIFICATE_MISSING", "APK certificate is missing", null)
-                } else {
-                    result.success(MessageDigest.getInstance("SHA-256").digest(signer.toByteArray()).joinToString("") { "%02x".format(it) })
+                when (call.method) {
+                    "apkCertificateSha256" -> {
+                        val path = call.argument<String>("path")
+                        if (path.isNullOrBlank() || !File(path).isFile) {
+                            result.error("APK_MISSING", "APK is not available", null)
+                            return@setMethodCallHandler
+                        }
+                        result.success(archiveCertificateSha256(path))
+                    }
+                    "installedPackageIdentity" -> {
+                        result.success(installedPackageIdentity())
+                    }
+                    else -> result.notImplemented()
                 }
             } catch (error: Exception) {
-                result.error("CERTIFICATE_INVALID", "APK certificate could not be read", error.javaClass.simpleName)
+                result.error(
+                    "PACKAGE_IDENTITY_INVALID",
+                    "APK package identity could not be verified",
+                    error.javaClass.simpleName,
+                )
             }
         }
     }
 
+    private fun archiveCertificateSha256(path: String): String {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(
+                path,
+                PackageManager.PackageInfoFlags.of(
+                    PackageManager.GET_SIGNING_CERTIFICATES.toLong(),
+                ),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageArchiveInfo(
+                path,
+                PackageManager.GET_SIGNING_CERTIFICATES,
+            )
+        }
+        return certificateSha256(requireNotNull(packageInfo))
+    }
+
+    private fun installedPackageIdentity(): Map<String, Any> {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(
+                packageName,
+                PackageManager.PackageInfoFlags.of(
+                    PackageManager.GET_SIGNING_CERTIFICATES.toLong(),
+                ),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(
+                packageName,
+                PackageManager.GET_SIGNING_CERTIFICATES,
+            )
+        }
+        val source = File(requireNotNull(packageInfo.applicationInfo?.sourceDir))
+        require(source.isFile) { "Installed APK source is unavailable" }
+        val buildNumber = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+        return mapOf(
+            "buildNumber" to buildNumber,
+            "versionName" to requireNotNull(packageInfo.versionName),
+            "sourceSha256" to sha256(source),
+            "certificateSha256" to certificateSha256(packageInfo),
+        )
+    }
+
+    private fun certificateSha256(packageInfo: PackageInfo): String {
+        val signers: Array<Signature>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.signingInfo?.apkContentsSigners
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.signatures
+        }
+        val bytes = UpdatePackageIdentityPolicy.requireSingleSigner(
+            actualPackageName = packageInfo.packageName,
+            expectedPackageName = packageName,
+            signerCertificates = signers?.map { it.toByteArray() }.orEmpty(),
+        )
+        return MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(1024 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count > 0) digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
 }

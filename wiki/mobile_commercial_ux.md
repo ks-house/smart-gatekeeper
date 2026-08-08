@@ -43,9 +43,24 @@ covered by the verified manifest can be downloaded; a WebView link, remote
 config value, or direct method call cannot install without that manifest. The
 app writes a temporary file, validates exact size, SHA-256, package identity,
 single signing certificate, and certificate SHA-256 before opening the Android
-installer. The old APK and credentials survive every failure, and first-run
-health remains durable. Release Gradle configuration fails closed when a real
-release keystore is unavailable; debug signing is never a release fallback.
+installer. Before permissions, BLE, WebView, scanner, or foreground service
+startup, the replacement app reconciles the pending signed build/version,
+installed `base.apk` SHA-256, and single current signer digest. Only an exact
+match records first-run health and clears the pending identity; rejection,
+storage failure, or an unchecked install remains explicit and never displays a
+"latest" state. The old APK and credentials survive every pre-install failure,
+and the verified candidate identity remains durable for recovery diagnosis.
+
+CI pins both metadata URLs, updater key ID, and updater public key into the APK.
+It runs Flutter and targeted native GATT tests before building, extracts the
+actual APK signer identity with `apksigner`, then
+`scripts/sign_mobile_manifest.py` creates and independently verifies the exact
+22-field schema over the produced APK byte length, SHA-256, certificate digest,
+and commit. Pull requests use the public RFC 8032 test key and `.invalid`
+endpoints, so their debug artifact is explicitly non-production and cannot find
+installable metadata. Non-PR canaries require all release keystore, primary and
+fallback URL, key-ID, public-key, and private signing inputs; none has a runtime
+fallback. Debug signing is never a release fallback.
 
 ## Manual control compatibility
 
@@ -60,9 +75,11 @@ N-1 client is an upgrade-required result with no control effect.
 
 ## Privacy and UI
 
-Support diagnostics redact URLs, tokens, API keys, passwords, Bluetooth
-addresses, credentials, raw proof material, and unbounded exception text at the
-logging boundary. Door state is truthful (`detecting`, `authorizing`, `armed`,
+Support diagnostics redact tenant/unit/device identifiers, URLs and query
+strings, tokens, API keys, passwords, Bluetooth addresses, credentials, raw
+proof material, and unbounded exception text at the `AppErrorLogger`
+plain/error/debug output and its UI/IPC sinks. Door state is truthful
+(`detecting`, `authorizing`, `armed`,
 `opening`, `confirmed`, `unknown`, `failed`) and enrollment distinguishes
 unregistered, pending, approved, revoked, and expired. The shell uses semantic
 labels/live regions, keyboard/focusable controls, large-text-safe responsive

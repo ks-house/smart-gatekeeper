@@ -560,5 +560,90 @@ class OtaContractGateTest(unittest.TestCase):
         with self.assertRaisesRegex(gate.GateError, "workflow contains unallowed triggers"):
           gate.validate_workflow_release_triggers(workflows)
 
+  def test_mobile_workflow_binds_tests_trust_root_and_signed_metadata(self):
+    gate.validate_mobile_build_workflow(self._workflow_sources())
+
+  def test_mobile_release_or_pr_trust_define_removal_is_rejected(self):
+    path = ".github/workflows/build_app.yml"
+    fragments = [
+        '--dart-define=APK_VERSION_URL="$APK_VERSION_URL"',
+        '--dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL"',
+        '--dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID"',
+        '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64"',
+        '--dart-define=APK_VERSION_URL="https://pr-canary.invalid/',
+        '--dart-define=APK_FALLBACK_VERSION_URL="https://pr-fallback.invalid/',
+        '--dart-define=UPDATE_SIGNING_KEY_ID="rfc8032-test-key-1"',
+        '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="',
+    ]
+    for fragment in fragments:
+      with self.subTest(fragment=fragment):
+        workflows = self._workflow_sources()
+        self.assertIn(fragment, workflows[path])
+        workflows[path] = workflows[path].replace(fragment, "REMOVED", 1)
+        with self.assertRaisesRegex(gate.GateError, "does not pin|PR canary"):
+          gate.validate_mobile_build_workflow(workflows)
+
+  def test_mobile_workflow_rejects_missing_signer_or_legacy_metadata(self):
+    path = ".github/workflows/build_app.yml"
+    for fragment in (
+        '"$APKSIGNER" verify --print-certs dist/ks-house-gatekeeper.apk',
+        "python scripts/sign_mobile_manifest.py create",
+        "python scripts/sign_mobile_manifest.py verify",
+    ):
+      with self.subTest(fragment=fragment):
+        workflows = self._workflow_sources()
+        workflows[path] = workflows[path].replace(fragment, "REMOVED", 1)
+        with self.assertRaisesRegex(gate.GateError, "metadata binding is missing"):
+          gate.validate_mobile_build_workflow(workflows)
+
+    workflows = self._workflow_sources()
+    workflows[path] = workflows[path].replace(
+        "          ls -la dist/",
+        '          cat <<EOF > dist/version.json\n          {"updated_at":"legacy"}\n          EOF\n          ls -la dist/',
+    )
+    with self.assertRaisesRegex(gate.GateError, "legacy unsigned"):
+      gate.validate_mobile_build_workflow(workflows)
+
+  def test_mobile_workflow_rejects_tests_after_apk_build(self):
+    path = ".github/workflows/build_app.yml"
+    workflows = self._workflow_sources()
+    parsed = gate.load_workflow_yaml(path, workflows[path])
+    steps = parsed["jobs"]["build_apk"]["steps"]
+    native_index = next(
+        index for index, step in enumerate(steps)
+        if step.get("name") == "Run targeted native GATT unit tests before APK build"
+    )
+    native_step = steps.pop(native_index)
+    prepare_index = next(
+        index for index, step in enumerate(steps)
+        if step.get("name") == "Prepare canary artifacts (ks-house-gatekeeper.apk & version.json)"
+    )
+    steps.insert(prepare_index, native_step)
+    workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
+    with self.assertRaisesRegex(gate.GateError, "must precede"):
+      gate.validate_mobile_build_workflow(workflows)
+
+  def test_mobile_release_signing_is_fail_closed_under_mutation(self):
+    source = (
+        gate.ROOT / "gatekeeper_app/android/app/build.gradle.kts"
+    ).read_text(encoding="utf-8")
+    gate.validate_mobile_release_signing_config(source)
+    for fragment in (
+        "releaseKey == null || !releaseKey.exists()",
+        'keystoreProperties.getProperty("storePassword").isNullOrBlank()',
+        'keystoreProperties.getProperty("keyAlias").isNullOrBlank()',
+        'keystoreProperties.getProperty("keyPassword").isNullOrBlank()',
+        'signingConfig = signingConfigs.getByName("release")',
+    ):
+      with self.subTest(fragment=fragment):
+        with self.assertRaisesRegex(gate.GateError, "fail-closed seam"):
+          gate.validate_mobile_release_signing_config(
+              source.replace(fragment, "REMOVED", 1)
+          )
+    with self.assertRaisesRegex(gate.GateError, "debug signing fallback"):
+      gate.validate_mobile_release_signing_config(
+          source + '\nsigningConfig = signingConfigs.getByName("debug")\n'
+      )
+
 if __name__ == "__main__":
   unittest.main()

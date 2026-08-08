@@ -12,6 +12,34 @@ import 'update_contract.dart';
 
 enum UpdateState { idle, checking, available, downloading, verifying, installing, healthy, failed }
 
+String updateStatusMessage(
+  UpdateState state, {
+  String? version,
+  String? failureReason,
+  bool mandatory = false,
+}) {
+  switch (state) {
+    case UpdateState.idle:
+      return '업데이트 확인 전입니다.';
+    case UpdateState.checking:
+      return '서명된 업데이트 정보를 확인 중입니다.';
+    case UpdateState.available:
+      return mandatory
+          ? '필수 보안 업데이트 v${version ?? ''} 설치가 필요합니다.'
+          : '새 버전 v${version ?? ''} 다운로드 가능';
+    case UpdateState.downloading:
+      return '검증 전 임시 파일을 다운로드 중입니다.';
+    case UpdateState.verifying:
+      return 'APK 크기, 해시, 패키지와 서명을 검증 중입니다.';
+    case UpdateState.installing:
+      return '설치 승인 또는 새 앱 첫 실행 확인을 기다리고 있습니다.';
+    case UpdateState.healthy:
+      return '서명된 metadata 기준 최신 버전입니다.';
+    case UpdateState.failed:
+      return '업데이트가 확인되지 않았습니다: ${failureReason ?? 'UNKNOWN'}';
+  }
+}
+
 /// Independent mobile updater. It never depends on the scanner, WebView, or
 /// foreground service and never replaces the installed APK before verification.
 class UpdateChecker {
@@ -34,11 +62,14 @@ class UpdateChecker {
   SignedUpdateManifest? manifest;
   UpdateState state = UpdateState.idle;
   String? lastFailureReason;
+  bool updateMandatory = false;
   final ValueNotifier<bool> isUpdateAvailable = ValueNotifier<bool>(false);
   final ValueNotifier<double?> downloadProgress = ValueNotifier<double?>(null);
+  final ValueNotifier<UpdateState> stateNotifier =
+      ValueNotifier<UpdateState>(UpdateState.idle);
 
   Future<bool> checkForUpdates({String? customVersionUrl, String? customDownloadUrl}) async {
-    state = UpdateState.checking;
+    _transition(UpdateState.checking);
     final metadataUrls = <String>{
       if (customVersionUrl?.trim().isNotEmpty == true) customVersionUrl!.trim(),
       if (versionUrlFromEnv.isNotEmpty)
@@ -64,11 +95,26 @@ class UpdateChecker {
           finalFailure = 'MANIFEST_SIGNATURE_INVALID';
           continue;
         }
+        final timeFailure = candidate.validateTimePolicy();
+        if (timeFailure != null) {
+          finalFailure = timeFailure;
+          continue;
+        }
         final packageInfo = await PackageInfo.fromPlatform();
         final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
-        if (candidate.buildNumber <= currentBuild) {
+        if (candidate.buildNumber < currentBuild) {
+          finalFailure = 'MANIFEST_BUILD_ROLLBACK';
+          continue;
+        }
+        if (candidate.buildNumber == currentBuild) {
+          if (candidate.versionName != packageInfo.version) {
+            finalFailure = 'INSTALLED_VERSION_IDENTITY_MISMATCH';
+            continue;
+          }
           manifest = candidate;
-          state = UpdateState.healthy;
+          updateMandatory = false;
+          lastFailureReason = null;
+          _transition(UpdateState.healthy);
           isUpdateAvailable.value = false;
           return false;
         }
@@ -78,13 +124,14 @@ class UpdateChecker {
         // A legacy remote-config download URL is never promoted over the two
         // URLs covered by the signed manifest.
         downloadUrl = candidate.primaryUrl;
+        updateMandatory = candidate.isMandatoryAt(DateTime.now());
         if (customDownloadUrl?.trim().isNotEmpty == true &&
             customDownloadUrl != candidate.primaryUrl &&
             customDownloadUrl != candidate.fallbackUrl) {
           debugPrint('[UpdateChecker] Ignored unsigned custom APK URL');
         }
         isUpdateAvailable.value = true;
-        state = UpdateState.available;
+        _transition(UpdateState.available);
         lastFailureReason = null;
         return true;
       } catch (error) {
@@ -98,6 +145,7 @@ class UpdateChecker {
 
   Future<bool> downloadUpdate({String? overrideUrl}) async {
     if (state == UpdateState.downloading || state == UpdateState.verifying) return false;
+    if (state != UpdateState.available) return _fail('NO_ACTIVE_VERIFIED_UPDATE');
     final currentManifest = manifest;
     if (currentManifest == null) return _fail('NO_VERIFIED_MANIFEST');
     if (overrideUrl?.trim().isNotEmpty == true &&
@@ -111,7 +159,7 @@ class UpdateChecker {
       currentManifest.fallbackUrl,
     ].toSet().toList();
     if (urls.isEmpty) return _fail('NO_UPDATE_URL');
-    state = UpdateState.downloading;
+    _transition(UpdateState.downloading);
     downloadProgress.value = 0;
     final tempDir = await getTemporaryDirectory();
     final candidatePath = '${tempDir.path}/smart-gatekeeper-update.apk.part';
@@ -127,7 +175,7 @@ class UpdateChecker {
         );
         final bytes = Uint8List.fromList(response.data ?? const <int>[]);
         await File(candidatePath).writeAsBytes(bytes, flush: true);
-        state = UpdateState.verifying;
+        _transition(UpdateState.verifying);
         final cert = await _certificateSha256(candidatePath);
         final installed = await PackageInfo.fromPlatform();
         final androidInfo = await DeviceInfoPlugin().androidInfo;
@@ -145,23 +193,36 @@ class UpdateChecker {
         final verifiedFile = File(verifiedPath);
         if (await verifiedFile.exists()) await verifiedFile.delete();
         await File(candidatePath).rename(verifiedPath);
-        state = UpdateState.installing;
+        _transition(UpdateState.installing);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('update_pending_health_path', verifiedPath);
+        await prefs.setInt('update_pending_build_number', currentManifest.buildNumber);
+        await prefs.setString('update_pending_version_name', currentManifest.versionName);
+        await prefs.setString('update_pending_artifact_sha256', currentManifest.artifactSha256);
+        await prefs.setString('update_pending_certificate_sha256', currentManifest.certificateSha256);
+        await prefs.setString('update_pending_commit', currentManifest.commit);
+        await prefs.setString(
+          'update_pending_requested_at',
+          DateTime.now().toUtc().toIso8601String(),
+        );
         final result = await OpenFilex.open(verifiedPath);
         if (result.type != ResultType.done) {
           lastFailureReason = 'INSTALLER_${result.type}';
+          await recordFirstRunHealth(
+            healthy: false,
+            reason: lastFailureReason,
+          );
           continue;
         }
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('update_pending_health_path', verifiedPath);
         downloadProgress.value = 1;
-        state = UpdateState.installing;
+        _transition(UpdateState.installing);
         return true;
       } catch (_) {
         lastFailureReason = 'DOWNLOAD_OR_INSTALL_FAILED';
       }
     }
     downloadProgress.value = null;
-    state = UpdateState.failed;
+    _transition(UpdateState.failed);
     try {
       final partial = File(candidatePath);
       if (await partial.exists()) await partial.delete();
@@ -174,10 +235,66 @@ class UpdateChecker {
     await prefs.setBool('update_first_run_healthy', healthy);
     if (reason != null) await prefs.setString('update_first_run_reason', reason);
     if (healthy) {
-      await prefs.remove('update_pending_health_path');
-      state = UpdateState.healthy;
+      for (final key in <String>[
+        'update_pending_health_path',
+        'update_pending_build_number',
+        'update_pending_version_name',
+        'update_pending_artifact_sha256',
+        'update_pending_certificate_sha256',
+        'update_pending_commit',
+        'update_pending_requested_at',
+      ]) {
+        await prefs.remove(key);
+      }
+      lastFailureReason = null;
+      _transition(UpdateState.healthy);
     } else {
-      state = UpdateState.failed;
+      lastFailureReason = reason ?? 'FIRST_RUN_HEALTH_FAILED';
+      _transition(UpdateState.failed);
+    }
+  }
+
+  /// Runs before permission, scanner, WebView, or foreground-service startup.
+  /// A pending install is healthy only when the installed APK identity matches
+  /// every field persisted from the previously verified signed manifest.
+  Future<void> reconcilePendingFirstRunHealth() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final expectedBuild = prefs.getInt('update_pending_build_number');
+      if (expectedBuild == null) return;
+      final identity = await _securityChannel
+          .invokeMapMethod<String, Object?>('installedPackageIdentity');
+      final expectedVersion = prefs.getString('update_pending_version_name');
+      final expectedArtifact =
+          prefs.getString('update_pending_artifact_sha256');
+      final expectedCertificate =
+          prefs.getString('update_pending_certificate_sha256');
+      String? failure;
+      if (identity == null) {
+        failure = 'INSTALLED_IDENTITY_UNAVAILABLE';
+      } else if (identity['buildNumber'] != expectedBuild ||
+          identity['versionName'] != expectedVersion) {
+        failure = 'INSTALLED_VERSION_IDENTITY_MISMATCH';
+      } else if (identity['sourceSha256'] != expectedArtifact) {
+        failure = 'INSTALLED_ARTIFACT_MISMATCH';
+      } else if (identity['certificateSha256'] != expectedCertificate) {
+        failure = 'INSTALLED_CERTIFICATE_MISMATCH';
+      }
+      await recordFirstRunHealth(
+        healthy: failure == null,
+        reason: failure ?? 'FIRST_RUN_IDENTITY_CONFIRMED',
+      );
+    } catch (_) {
+      try {
+        await recordFirstRunHealth(
+          healthy: false,
+          reason: 'INSTALLED_IDENTITY_UNAVAILABLE',
+        );
+      } catch (_) {
+        // Preference storage failure must not make the recovery UI unreachable.
+        lastFailureReason = 'FIRST_RUN_HEALTH_STORAGE_UNAVAILABLE';
+        _transition(UpdateState.failed);
+      }
     }
   }
 
@@ -192,9 +309,15 @@ class UpdateChecker {
 
   bool _fail(String reason) {
     lastFailureReason = reason;
-    state = UpdateState.failed;
+    updateMandatory = false;
+    _transition(UpdateState.failed);
     isUpdateAvailable.value = false;
     return false;
+  }
+
+  void _transition(UpdateState next) {
+    state = next;
+    stateNotifier.value = next;
   }
 
   static bool _isTrustedHttpsUrl(String value) {

@@ -7,13 +7,18 @@ on:
       - 'gatekeeper_app/**'
       - 'ota/**'
       - 'scripts/ota_contract_gate.py'
+      - 'scripts/sign_mobile_manifest.py'
       - 'tests/test_ota_contract_gate.py'
+      - 'tests/test_sign_mobile_manifest.py'
   push:
     branches:
       - main
     paths:
       - 'gatekeeper_app/**'
       - '.github/workflows/build_app.yml'
+      - 'ota/**'
+      - 'scripts/sign_mobile_manifest.py'
+      - 'tests/test_sign_mobile_manifest.py'
   workflow_dispatch:
     inputs:
       release_target:
@@ -82,17 +87,50 @@ jobs:
           cd gatekeeper_app
           flutter analyze --no-fatal-infos
 
+      - name: Run Flutter unit tests
+        run: |
+          cd gatekeeper_app
+          flutter test
+
+      - name: Run targeted native GATT unit tests before APK build
+        run: |
+          export FLUTTER_ROOT="$(dirname "$(dirname "$(readlink -f "$(command -v flutter)")")")"
+          WRAPPER_DIR="${RUNNER_TEMP}/sgk-gradle-wrapper"
+          mkdir -p "$WRAPPER_DIR"
+          touch "$WRAPPER_DIR/settings.gradle.kts" "$WRAPPER_DIR/build.gradle.kts"
+          gradle --version
+          gradle -p "$WRAPPER_DIR" wrapper --gradle-version 9.1.0 --distribution-type all
+          "$WRAPPER_DIR/gradlew" -p gatekeeper_app/android \
+            --no-daemon --rerun-tasks :app:testDebugUnitTest \
+            --tests 'com.kshouse.gatekeeper_app.gattworker.*' \
+            --tests 'com.kshouse.gatekeeper_app.UpdatePackageIdentityPolicyTest'
+          python - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+          paths = glob.glob(
+              'gatekeeper_app/build/app/test-results/testDebugUnitTest/'
+              'TEST-com.kshouse.gatekeeper_app*.xml'
+          )
+          assert paths, 'targeted GATT JUnit evidence is missing'
+          assert any('UpdatePackageIdentityPolicyTest' in path for path in paths), paths
+          totals = {'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0}
+          for path in paths:
+              suite = ET.parse(path).getroot()
+              for field in totals:
+                  totals[field] += int(suite.attrib.get(field, '0'))
+          assert totals['tests'] > 0, totals
+          assert totals['failures'] == totals['errors'] == totals['skipped'] == 0, totals
+          print(f"Targeted native GATT JUnit: {totals}")
+          PY
+
       - name: Restore Android Release Keystore from Secrets
         if: github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > gatekeeper_app/android/app/upload-keystore.jks
-            echo "✅ GitHub Secrets로부터 보안 릴리즈 키스토어 복원 완료!"
-          else
-            echo "⚠️ ANDROID_KEYSTORE_BASE64 Secret 미설정."
-          fi
+          test -n "$KEYSTORE_BASE64"
+          echo "$KEYSTORE_BASE64" | base64 --decode > gatekeeper_app/android/app/upload-keystore.jks
+          test -s gatekeeper_app/android/app/upload-keystore.jks
 
       - name: Create key.properties from Secrets
         if: github.event_name != 'pull_request'
@@ -100,30 +138,41 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
           cat <<EOF > gatekeeper_app/android/key.properties
           storePassword=${KEYSTORE_PASSWORD}
           keyPassword=${KEYSTORE_PASSWORD}
           keyAlias=${KEY_ALIAS}
           storeFile=upload-keystore.jks
           EOF
-          echo "✅ android/key.properties 동적 생성 완료!"
 
       - name: Build Android Release APK with Dart Defines
         if: github.event_name != 'pull_request'
         env:
           APK_VERSION_URL: ${{ secrets.SECRET_APK_VERSION_URL }}
-          APK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_DOWNLOAD_URL }}
+          APK_FALLBACK_VERSION_URL: ${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}
+          UPDATE_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+          OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
           # 서버의 GATEKEEPER_API_KEY 환경변수와 같은 값이어야 한다 (issue.md P3-22).
           # 미설정 시 앱은 X-API-KEY 헤더를 보내지 않으며, 서버가 키를 설정한
           # 상태라면 Pre-arm 이 401 로 거부된다.
           GATEKEEPER_API_KEY: ${{ secrets.GATEKEEPER_API_KEY }}
         run: |
+          test -n "$APK_VERSION_URL"
+          test -n "$APK_FALLBACK_VERSION_URL"
+          test "$APK_VERSION_URL" != "$APK_FALLBACK_VERSION_URL"
+          test -n "$UPDATE_SIGNING_KEY_ID"
+          test -n "$OTA_SIGNING_PUBLIC_KEY_HEX"
+          UPDATE_SIGNING_PUBLIC_KEY_B64="$(python -c 'import base64,os; print(base64.b64encode(bytes.fromhex(os.environ["OTA_SIGNING_PUBLIC_KEY_HEX"])).decode())')"
           cd gatekeeper_app
           flutter build apk --release \
             --build-name="${{ env.FULL_VERSION }}" \
             --build-number=${{ github.run_number }} \
-            --dart-define=APK_VERSION_URL="${APK_VERSION_URL:-https://tworimpa.synology.me:4442/api/v1/download/version.json}" \
-            --dart-define=APK_DOWNLOAD_URL="${APK_DOWNLOAD_URL:-https://tworimpa.synology.me:4442/api/v1/download/apk}" \
+            --dart-define=APK_VERSION_URL="$APK_VERSION_URL" \
+            --dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL" \
+            --dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID" \
+            --dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64" \
             --dart-define=GATEKEEPER_API_KEY="${GATEKEEPER_API_KEY:-}"
 
       - name: Build Android debug APK for pull-request canary
@@ -132,31 +181,74 @@ jobs:
           cd gatekeeper_app
           flutter build apk --debug \
             --build-name="${{ env.FULL_VERSION }}" \
-            --build-number=${{ github.run_number }}
+            --build-number=${{ github.run_number }} \
+            --dart-define=APK_VERSION_URL="https://pr-canary.invalid/smart-gatekeeper/version.json" \
+            --dart-define=APK_FALLBACK_VERSION_URL="https://pr-fallback.invalid/smart-gatekeeper/version.json" \
+            --dart-define=UPDATE_SIGNING_KEY_ID="rfc8032-test-key-1" \
+            --dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 
       - name: Prepare canary artifacts (ks-house-gatekeeper.apk & version.json)
+        env:
+          APK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_DOWNLOAD_URL }}
+          APK_FALLBACK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_FALLBACK_DOWNLOAD_URL }}
+          APK_RELEASE_NOTES_URL: ${{ secrets.SECRET_APK_RELEASE_NOTES_URL }}
+          MOBILE_PRIVATE_KEY_HEX: ${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}
+          MOBILE_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+          MOBILE_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
         run: |
           mkdir -p dist
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             cp gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk dist/ks-house-gatekeeper.apk
+            APK_DOWNLOAD_URL="https://pr-canary.invalid/smart-gatekeeper/${{ github.sha }}/app.apk"
+            APK_FALLBACK_DOWNLOAD_URL="https://pr-fallback.invalid/smart-gatekeeper/${{ github.sha }}/app.apk"
+            APK_RELEASE_NOTES_URL="https://pr-canary.invalid/smart-gatekeeper/${{ github.sha }}/notes"
+            # Public RFC 8032 test vector seed; never a production credential.
+            MOBILE_PRIVATE_KEY_HEX="9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+            MOBILE_PUBLIC_KEY_HEX="d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+            MOBILE_SIGNING_KEY_ID="rfc8032-test-key-1"
           else
             cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk dist/ks-house-gatekeeper.apk
+            test -n "$APK_DOWNLOAD_URL"
+            test -n "$APK_FALLBACK_DOWNLOAD_URL"
+            test "$APK_DOWNLOAD_URL" != "$APK_FALLBACK_DOWNLOAD_URL"
+            test -n "$APK_RELEASE_NOTES_URL"
+            test -n "$MOBILE_PRIVATE_KEY_HEX"
+            test -n "$MOBILE_PUBLIC_KEY_HEX"
+            test -n "$MOBILE_SIGNING_KEY_ID"
           fi
-
-          cat <<EOF > dist/version.json
-          {
-            "version": "${{ env.FULL_VERSION }}",
-            "build_number": ${{ github.run_number }},
-            "commit": "${{ github.sha }}",
-            "apk_url": "${{ secrets.SECRET_APK_DOWNLOAD_URL || 'https://tworimpa.synology.me:4442/api/v1/download/apk' }}",
-
-            "updated_at": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          }
-          EOF
-
+          export MOBILE_PRIVATE_KEY_HEX
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$ANDROID_SDK"
+          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          CERTIFICATE_OUTPUT="$("$APKSIGNER" verify --print-certs dist/ks-house-gatekeeper.apk)"
+          CERTIFICATE_COUNT="$(printf '%s\n' "$CERTIFICATE_OUTPUT" | grep -c '^Signer #[0-9][0-9]* certificate SHA-256 digest:')"
+          test "$CERTIFICATE_COUNT" -eq 1
+          CERTIFICATE_SHA256="$(printf '%s\n' "$CERTIFICATE_OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]')"
+          test "${#CERTIFICATE_SHA256}" -eq 64
+          PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          python scripts/sign_mobile_manifest.py create \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --output dist/version.json \
+            --version "${{ env.FULL_VERSION }}" \
+            --build-number "${{ github.run_number }}" \
+            --commit "${{ github.sha }}" \
+            --apk-url "$APK_DOWNLOAD_URL" \
+            --fallback-url "$APK_FALLBACK_DOWNLOAD_URL" \
+            --release-notes-url "$APK_RELEASE_NOTES_URL" \
+            --published-at "$PUBLISHED_AT" \
+            --certificate-sha256 "$CERTIFICATE_SHA256" \
+            --signing-key-id "$MOBILE_SIGNING_KEY_ID" \
+            --private-key-env MOBILE_PRIVATE_KEY_HEX \
+            --expected-public-key-hex "$MOBILE_PUBLIC_KEY_HEX"
+          python scripts/sign_mobile_manifest.py verify \
+            --manifest dist/version.json \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --public-key-hex "$MOBILE_PUBLIC_KEY_HEX" \
+            --certificate-sha256 "$CERTIFICATE_SHA256"
           ls -la dist/
 
-      - name: Upload unsigned canary APK for physical Gate validation
+      - name: Upload artifact-bound canary for separate Gate validation
         uses: actions/upload-artifact@v4
         with:
           name: smart-key-app-canary

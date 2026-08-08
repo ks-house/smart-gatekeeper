@@ -46,11 +46,16 @@ class _RecoveryShellScreenState extends State<RecoveryShellScreen> {
   }
 
   Future<void> _checkUpdates() async {
-    final available = await _updates.checkForUpdates();
+    await _updates.checkForUpdates();
     if (mounted) {
-      setState(() => _updateMessage = available
-          ? 'A verified update is ready.'
-          : 'No verified update is available (or metadata was rejected).');
+      setState(
+        () => _updateMessage = updateStatusMessage(
+          _updates.state,
+          version: _updates.remoteVersion,
+          failureReason: _updates.lastFailureReason,
+          mandatory: _updates.updateMandatory,
+        ),
+      );
     }
   }
 

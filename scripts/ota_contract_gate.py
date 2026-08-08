@@ -850,6 +850,142 @@ def validate_workflow_release_triggers(
             prev_continued = sline.endswith("\\")
 
 
+def validate_mobile_build_workflow(
+    workflows: dict[str, str] | None = None,
+) -> None:
+  """Bind the updater trust root, tests, APK, and exact signed metadata."""
+  path = ".github/workflows/build_app.yml"
+  content = (
+      workflows[path]
+      if workflows is not None
+      else (ROOT / path).read_text(encoding="utf-8")
+  )
+  parsed = load_workflow_yaml(path, content)
+  steps = parsed.get("jobs", {}).get("build_apk", {}).get("steps", [])
+  names = [step.get("name") for step in steps if isinstance(step, dict)]
+  required_names = [
+      "Run Flutter unit tests",
+      "Run targeted native GATT unit tests before APK build",
+      "Build Android Release APK with Dart Defines",
+      "Build Android debug APK for pull-request canary",
+      "Prepare canary artifacts (ks-house-gatekeeper.apk & version.json)",
+      "Upload artifact-bound canary for separate Gate validation",
+  ]
+  for name in required_names:
+    if names.count(name) != 1:
+      raise GateError(f"{path}: mobile build contract requires exactly one '{name}' step")
+  position = {name: names.index(name) for name in required_names}
+  first_build = min(
+      position["Build Android Release APK with Dart Defines"],
+      position["Build Android debug APK for pull-request canary"],
+  )
+  if not (
+      position["Run Flutter unit tests"] < first_build
+      and position["Run targeted native GATT unit tests before APK build"] < first_build
+      and position["Prepare canary artifacts (ks-house-gatekeeper.apk & version.json)"]
+      > max(
+          position["Build Android Release APK with Dart Defines"],
+          position["Build Android debug APK for pull-request canary"],
+      )
+  ):
+    raise GateError(f"{path}: Flutter/native tests must precede APK build and signing")
+
+  by_name = {step.get("name"): step for step in steps if isinstance(step, dict)}
+  native_run = str(
+      by_name["Run targeted native GATT unit tests before APK build"].get("run", "")
+  )
+  for fragment in (
+      "--no-daemon --rerun-tasks :app:testDebugUnitTest",
+      "wrapper --gradle-version 9.1.0 --distribution-type all",
+      "com.kshouse.gatekeeper_app.gattworker.*",
+      "com.kshouse.gatekeeper_app.UpdatePackageIdentityPolicyTest",
+      "Targeted native GATT JUnit",
+  ):
+    if fragment not in native_run:
+      raise GateError(f"{path}: targeted native test evidence is incomplete: {fragment}")
+
+  release_step = by_name["Build Android Release APK with Dart Defines"]
+  release_env = release_step.get("env", {})
+  expected_release_env = {
+      "APK_VERSION_URL": "${{ secrets.SECRET_APK_VERSION_URL }}",
+      "APK_FALLBACK_VERSION_URL": "${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}",
+      "UPDATE_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+      "OTA_SIGNING_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+  }
+  for key, value in expected_release_env.items():
+    if release_env.get(key) != value:
+      raise GateError(f"{path}: release updater input {key} must come from its exact secret")
+  release_run = str(release_step.get("run", ""))
+  for name in (
+      "APK_VERSION_URL",
+      "APK_FALLBACK_VERSION_URL",
+      "UPDATE_SIGNING_KEY_ID",
+      "UPDATE_SIGNING_PUBLIC_KEY_B64",
+  ):
+    if f'--dart-define={name}="${name}"' not in release_run:
+      raise GateError(f"{path}: release APK does not pin {name}")
+  for name in (
+      "APK_VERSION_URL",
+      "APK_FALLBACK_VERSION_URL",
+      "UPDATE_SIGNING_KEY_ID",
+      "OTA_SIGNING_PUBLIC_KEY_HEX",
+  ):
+    if f'test -n "${name}"' not in release_run:
+      raise GateError(f"{path}: release APK input {name} is not fail-closed")
+
+  debug_run = str(
+      by_name["Build Android debug APK for pull-request canary"].get("run", "")
+  )
+  for fragment in (
+      "--dart-define=APK_VERSION_URL=\"https://pr-canary.invalid/",
+      "--dart-define=APK_FALLBACK_VERSION_URL=\"https://pr-fallback.invalid/",
+      "--dart-define=UPDATE_SIGNING_KEY_ID=\"rfc8032-test-key-1\"",
+      "--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64=\"11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=\"",
+  ):
+    if fragment not in debug_run:
+      raise GateError(f"{path}: PR canary trust input is missing or installable: {fragment}")
+
+  prepare_step = by_name[
+      "Prepare canary artifacts (ks-house-gatekeeper.apk & version.json)"
+  ]
+  prepare_env = prepare_step.get("env", {})
+  if prepare_env.get("MOBILE_PRIVATE_KEY_HEX") != (
+      "${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}"
+  ):
+    raise GateError(f"{path}: non-PR manifest private key must come from its exact secret")
+  prepare_run = str(prepare_step.get("run", ""))
+  for fragment in (
+      '"$APKSIGNER" verify --print-certs dist/ks-house-gatekeeper.apk',
+      "python scripts/sign_mobile_manifest.py create",
+      "python scripts/sign_mobile_manifest.py verify",
+      "--artifact dist/ks-house-gatekeeper.apk",
+      "--output dist/version.json",
+      "--expected-public-key-hex \"$MOBILE_PUBLIC_KEY_HEX\"",
+  ):
+    if fragment not in prepare_run:
+      raise GateError(f"{path}: signed current-schema metadata binding is missing: {fragment}")
+  if "cat <<EOF > dist/version.json" in prepare_run or '"updated_at"' in prepare_run:
+    raise GateError(f"{path}: legacy unsigned version.json generation is forbidden")
+
+
+def validate_mobile_release_signing_config(content: str | None = None) -> None:
+  path = "gatekeeper_app/android/app/build.gradle.kts"
+  source = content if content is not None else (ROOT / path).read_text(encoding="utf-8")
+  for fragment in (
+      'it.contains("release", ignoreCase = true)',
+      "releaseKey == null || !releaseKey.exists()",
+      'keystoreProperties.getProperty("storePassword").isNullOrBlank()',
+      'keystoreProperties.getProperty("keyAlias").isNullOrBlank()',
+      'keystoreProperties.getProperty("keyPassword").isNullOrBlank()',
+      "Release signing is fail-closed",
+      'signingConfig = signingConfigs.getByName("release")',
+  ):
+    if fragment not in source:
+      raise GateError(f"{path}: release-signing fail-closed seam missing: {fragment}")
+  if 'signingConfigs.getByName("debug")' in source:
+    raise GateError(f"{path}: debug signing fallback is forbidden for release")
+
+
 
 
 
@@ -860,6 +996,8 @@ def validate_contract() -> None:
   validate_recovery_and_faults(state_machines=state_machines)
   validate_vectors()
   validate_workflow_artifact_bindings()
+  validate_mobile_build_workflow()
+  validate_mobile_release_signing_config()
   validate_workflow_release_triggers()
 
 
