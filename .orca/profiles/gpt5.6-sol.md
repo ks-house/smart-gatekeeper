@@ -52,7 +52,13 @@ orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 orca terminal create --worktree active --title "gpt5.6-luna-worker" --command "codex --profile .orca/profiles/gpt5.6-luna.md --effort high" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 orca orchestration dispatch --task <task_id> --to <handle> --inject --json
+
+# gpt5.6-antigravity 풀스택 비상 워커 생성 및 디스패치
+orca terminal create --worktree active --title "gpt5.6-antigravity-worker" --command "codex --profile .orca/profiles/gpt5.6-antigravity.md --effort high" --json
+orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 ```
+
 
 
 ### 3.3 체크 및 모니터링
