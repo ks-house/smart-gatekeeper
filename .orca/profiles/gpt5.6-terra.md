@@ -1,7 +1,7 @@
 # Profile: gpt5.6-terra (Terra — Target Firmware & Backend Specialist)
 
 > **Role**: Target Firmware (ESP32-C6) & Backend Infrastructure Specialist Worker
-> **Model**: GPT-5.6 Coding Model
+> **Model**: `gpt-5.6-terra`
 > **Effort Level**: `high`
 > **Primary Scope**: `src/`, `include/`, `backend/`, `protocol/`, `platformio.ini`
 
@@ -55,12 +55,12 @@ python -m unittest discover -s backend/tests -p "test_*.py"
 
 ## 4. `worker_done` 송신 양식
 
-작업 및 제반 테스트/빌드가 모두 성공하면 아래 명령으로 결과를 `gpt5.6-sol` 코디네이터에게 보고합니다:
+작업 및 제반 테스트/빌드가 모두 성공하면 현재 Dispatch가 주입한 정확한 `--from`, `--dispatch-capability`, Task/Dispatch ID를 사용해 `gpt5.6-sol` 코디네이터에게 한 번만 보고합니다. 아래는 형태 예시이며 capability를 문서에서 복사하거나 추측하지 않습니다:
 
 ```bash
-orca orchestration send --type worker_done \
+orca orchestration send --from <injected_worker_handle> --dispatch-capability <injected_capability> --type worker_done \
   --subject "feat(target/backend): <단축 설명>" \
-  --body "1. <구현 내용 1>\n2. <테스트 및 빌드 수치>\n3. <Wiki 반영 사항>" \
+  --body "<무엇을 변경했는지 한 문장>. <검증 결과와 발견 사항 한 문장>. <남은 작업과 열린 Gate 한 문장>." \
   --task-id <task_id> --dispatch-id <dispatch_id> \
   --outcome succeeded --files-modified "<수정 파일 목록>" --json
 ```
