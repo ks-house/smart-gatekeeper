@@ -49,7 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -
 
 ## 3. 프로파일 작업 시작
 
-작업은 필요한 역할만 on-demand로 시작한다. 모든 프로파일을 매 워크트리에서 자동 실행하지 않는다. 런처는 빈 TUI에 첫 prompt를 나중에 주입하지 않고 역할 bootstrap을 최초 CLI argv prompt로 전달하며, `PROFILE_READY`와 최종 `tui-idle`이 모두 확인된 뒤에만 Task를 Dispatch한다. Codex가 bootstrap 처리 전 오류 없이 PowerShell로 종료되면 그 정확한 터미널만 닫고 새 터미널에서 한 번 재시도하며, 두 번째 실패는 차단한다. Dispatch 뒤에는 5초 동안 정확한 `[Pasted Content N chars]` 미제출 표식만 감시하고, 입력 끝에 그 표식이 남은 경우에만 Enter를 한 번 보내 TUI 제출 경쟁을 복구한다.
+작업은 필요한 역할만 on-demand로 시작한다. 모든 프로파일을 매 워크트리에서 자동 실행하지 않는다. 런처는 빈 TUI에 첫 prompt를 나중에 주입하지 않고 역할 bootstrap을 최초 CLI argv prompt로 전달하며, assistant marker 뒤 렌더러의 `•Running` 경계까지 포함한 `PROFILE_READY`와 최종 `tui-idle`이 모두 확인된 뒤에만 Task를 Dispatch한다. 지시문 안의 marker 예시는 승인하지 않으며 bootstrap timeout/final-idle 실패는 정확한 터미널을 닫는다. Codex가 bootstrap 처리 전 오류 없이 PowerShell로 종료되면 tail의 마지막 비공백 줄이 현재 PowerShell prompt인지 확인하고, 그 정확한 터미널만 닫은 뒤 새 터미널에서 한 번 재시도하며, 두 번째 실패도 정확한 터미널을 닫고 차단한다. Dispatch 직전 cursor를 캡처하고 그 이후 출력만 5초 동안 읽어 정확한 `[Pasted Content N chars]` 미제출 표식이 끝에 남은 경우에만 Enter를 한 번 보내 TUI 제출 경쟁을 복구한다.
 
 ```powershell
 .orca/scripts/start_task.ps1 `
@@ -65,7 +65,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -
 | `gpt5.6-luna` | Android native, Flutter, QA |
 | `antigravity` | 명시적 cross-layer 비상 작업 |
 
-기본 런처는 Codex `workspace-write` sandbox와 공식 `sandbox_workspace_write.network_access=true` 설정을 함께 사용한다. 파일 쓰기 범위는 작업공간으로 유지하면서 주입된 Orca lifecycle 명령이 로컬 런타임에 연결할 수 있게 한다. 전용 repository worker는 시작 경쟁을 제거하기 위해 선택적 Apps 기능과 `node_repl` MCP를 비활성화하고 GitHub 작업은 `GITHUB_TOKEN` 기반 CLI를 사용한다. Antigravity permission bypass는 사용하지 않는다.
+기본 런처는 Codex `workspace-write` sandbox와 공식 `sandbox_workspace_write.network_access=true`, `windows.sandbox_private_desktop=false` 설정을 함께 사용한다. 파일 쓰기 범위는 작업공간으로 유지하면서 Windows worker command가 Orca desktop/runtime과 호환되는 기본 desktop 경계에서 lifecycle 명령을 전달하게 한다. 전용 repository worker는 시작 경쟁을 제거하기 위해 선택적 Apps 기능과 `node_repl` MCP를 비활성화하고 GitHub 작업은 `GITHUB_TOKEN` 기반 CLI를 사용한다. Antigravity permission bypass는 사용하지 않는다.
 격리된 워크트리에서 범위와 위험을 확인한 경우에만 `-AllowUnsafe`를 명시한다.
 
 ## 4. 완료 수명주기

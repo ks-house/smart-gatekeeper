@@ -21,13 +21,15 @@
 | **`gpt5.6-luna`** | **Luna** | `codex --model gpt-5.6-luna -c model_reasoning_effort="high" ...` | Android Native (Kotlin/WorkManager/BLE Wake) & Flutter Thin UI & QA/E2E Fault Injection | `gpt-5.6-luna` (Effort: `high`) | [gpt5.6-luna.md](profiles/gpt5.6-luna.md) |
 | **`antigravity`** | **Antigravity** | `agy --effort high` | 시니어 풀스택 리드 & 크로스레이어 해결 / 비상 태스크 인수 직행 실행 | 실행 시 `agy`가 선택한 지원 모델 (Effort: `high`) | [antigravity.md](profiles/antigravity.md) |
 
-> 기본 런처는 Codex에 `workspace-write` sandbox와 `sandbox_workspace_write.network_access=true`를 적용합니다. 파일 쓰기는 작업공간으로 제한하면서 주입된 Orca lifecycle 명령이 로컬 런타임에 연결할 수 있게 합니다. 전용 repository worker는 시작 경쟁을 제거하기 위해 선택적 Apps 기능과 `node_repl` MCP를 비활성화하며 GitHub 작업은 `GITHUB_TOKEN` 기반 CLI를 사용합니다. Antigravity의 permission bypass는 사용하지 않으며, 격리된 워크트리에서 위험을 검토한 작업만 명시적 `-AllowUnsafe`로 무승인 모드를 켭니다. Codex의 `--dangerously-bypass-approvals-and-sandbox`와 `--ask-for-approval`은 함께 사용하지 않습니다.
+> 기본 런처는 Codex에 `workspace-write` sandbox, `sandbox_workspace_write.network_access=true`, `windows.sandbox_private_desktop=false`를 적용합니다. 파일 쓰기는 작업공간으로 제한하면서 Windows worker command가 Orca desktop/runtime과 호환되는 기본 desktop 경계에서 lifecycle 명령을 전달하게 합니다. 전용 repository worker는 시작 경쟁을 제거하기 위해 선택적 Apps 기능과 `node_repl` MCP를 비활성화하며 GitHub 작업은 `GITHUB_TOKEN` 기반 CLI를 사용합니다. Antigravity의 permission bypass는 사용하지 않으며, 격리된 워크트리에서 위험을 검토한 작업만 명시적 `-AllowUnsafe`로 무승인 모드를 켭니다. Codex의 `--dangerously-bypass-approvals-and-sandbox`와 `--ask-for-approval`은 함께 사용하지 않습니다.
 
 > `codex --profile`은 `$CODEX_HOME/<name>.config.toml` 계층만 로드하며 Markdown 역할 파일을 받지 않습니다. Codex의 추론 강도는 `--effort`가 아니라 `-c model_reasoning_effort="high"`로 지정합니다. `agy`는 `--effort high`를 지원하지만 Markdown용 `--profile` 옵션은 지원하지 않습니다. 따라서 런처는 역할 문서 bootstrap을 CLI의 최초 argv prompt로 전달하고, `PROFILE_READY`와 최종 `tui-idle`을 확인한 후 Task를 주입합니다.
 
-> 일부 TUI에서는 `dispatch --inject` 성공 뒤 입력란 끝에 정확히 `[Pasted Content N chars]`만 남고 제출되지 않을 수 있습니다. 런처는 Dispatch 직후 5초 동안 이 미제출 표식이 입력 끝에 있는 경우에만 Enter를 한 번 보내며, 표식이 없거나 작업이 이미 진행된 경우에는 입력을 보내지 않습니다.
+> 일부 TUI에서는 `dispatch --inject` 성공 뒤 입력란 끝에 정확히 `[Pasted Content N chars]`만 남고 제출되지 않을 수 있습니다. 런처는 Dispatch 직전 terminal cursor를 캡처하고 그 cursor 이후 출력만 5초 동안 확인합니다. 새 출력 끝에 미제출 표식이 있는 경우에만 Enter를 한 번 보내며, 과거 표식·표식 부재·이미 진행된 작업에는 입력을 보내지 않습니다.
 
-> Codex TUI가 최초 argv prompt를 처리하기 전에 오류 출력 없이 PowerShell로 종료되면 런처는 그 정확한 터미널만 닫고 새 터미널에서 한 번 재시도합니다. 두 번째 시작도 종료되면 자동 반복하지 않고 실패 처리합니다.
+> Codex TUI가 최초 argv prompt를 처리하기 전에 오류 출력 없이 PowerShell로 종료되면 런처는 terminal tail의 마지막 비공백 줄이 현재 PowerShell prompt인지 확인하고, 그 정확한 터미널만 닫은 뒤 새 터미널에서 한 번 재시도합니다. 두 번째 시작도 종료되면 두 번째 정확한 터미널까지 닫고 실패 처리합니다.
+
+> `PROFILE_READY` 판정은 bootstrap 지시문 속 예시를 승인하지 않으며, assistant 응답 뒤 Orca 렌더러가 공백 없이 붙이는 `•Running` 경계는 허용합니다. marker timeout 또는 final-idle 실패 시에는 Task를 Dispatch하지 않고 정확한 bootstrap 터미널을 닫습니다.
 
 
 

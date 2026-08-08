@@ -74,7 +74,11 @@ function Wait-ForProfileReady {
     )
 
     $readyMarker = "PROFILE_READY $ProfileName"
-    $readyPattern = 'PROFILE_READY\s*:?\s*' + [regex]::Escape($ProfileName) + '(?=\s|$)'
+    # Orca terminal rendering can append its activity bullet directly after the
+    # assistant text (for example, "PROFILE_READY name•Running Stop hook").
+    # Accept that renderer boundary, but not punctuation from the bootstrap
+    # instruction itself ("PROFILE_READY name, then return to idle").
+    $readyPattern = 'PROFILE_READY\s*:?\s*' + [regex]::Escape($ProfileName) + '(?=\s|$|\u2022)'
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
     while ((Get-Date) -lt $deadline) {
@@ -99,13 +103,19 @@ function Ensure-DispatchSubmitted {
         [Parameter(Mandatory=$true)]
         [string]$TerminalHandle,
 
+        [Parameter(Mandatory=$true)]
+        [string]$SinceCursor,
+
         [Parameter(Mandatory=$false)]
         [int]$ObservationSeconds = 5
     )
 
     $deadline = (Get-Date).AddSeconds($ObservationSeconds)
     while ((Get-Date) -lt $deadline) {
-        $snapshot = & $script:orcaExecutable terminal read --terminal $TerminalHandle --json | ConvertFrom-Json
+        # Read only output produced after the cursor captured immediately before
+        # this Dispatch. A stale paste marker from any earlier prompt must never
+        # authorize an Enter keypress.
+        $snapshot = & $script:orcaExecutable terminal read --terminal $TerminalHandle --cursor $SinceCursor --limit 80 --json | ConvertFrom-Json
         if (-not $snapshot.ok) {
             throw "Dispatch submission inspection failed: $($snapshot.error.message)"
         }
@@ -144,7 +154,7 @@ if ($Profile -eq 'antigravity' -or $Profile -eq 'gpt5.6-antigravity') {
     $modelId = $Profile -replace '^gpt5\.6-', 'gpt-5.6-'
     # Orca lifecycle commands connect to the local runtime. Keep filesystem
     # access at workspace-write while permitting the required outbound IPC.
-    $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" -c sandbox_workspace_write.network_access=true -c features.apps=false -c mcp_servers.node_repl.enabled=false --ask-for-approval never --sandbox workspace-write"
+    $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" -c sandbox_workspace_write.network_access=true -c windows.sandbox_private_desktop=false -c features.apps=false -c mcp_servers.node_repl.enabled=false --ask-for-approval never --sandbox workspace-write"
     if ($AllowUnsafe) {
         $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" -c features.apps=false -c mcp_servers.node_repl.enabled=false --dangerously-bypass-approvals-and-sandbox"
     }
@@ -184,12 +194,16 @@ for ($startupAttempt = 1; $startupAttempt -le 2; $startupAttempt++) {
     }
 
     $startupTail = $startupSnapshot.result.terminal.tail -join "`n"
-    if ($startupTail -notmatch '(?m)^PS .+>\s*$') {
+    if ($startupTail -notmatch '(?s)(?:^|\n)PS [^\r\n]+>\s*$') {
         break
     }
 
     if ($startupAttempt -eq 2) {
-        throw "Agent CLI exited during both bounded startup attempts. Inspect terminal $handle for the exact CLI error."
+        $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
+        if (-not $closeJson.ok) {
+            throw "Agent CLI exited twice and exact terminal cleanup failed for ${handle}: $($closeJson.error.message)"
+        }
+        throw "Agent CLI exited during both bounded startup attempts; exact terminal $handle was closed."
     }
 
     Write-Host "Agent CLI exited before profile bootstrap; closing exact terminal $handle and retrying once." -ForegroundColor Yellow
@@ -203,19 +217,36 @@ for ($startupAttempt = 1; $startupAttempt -le 2; $startupAttempt++) {
 Write-Host "🟢 Terminal is idle and ready." -ForegroundColor Green
 
 Write-Host "📖 Waiting for profile bootstrap to complete..." -ForegroundColor Yellow
-$profileReadyJson = Wait-ForProfileReady -TerminalHandle $handle -ProfileName $Profile
-$profileWaitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Profile bootstrap final idle'
+try {
+    $profileReadyJson = Wait-ForProfileReady -TerminalHandle $handle -ProfileName $Profile
+    $profileWaitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Profile bootstrap final idle'
+} catch {
+    $bootstrapError = $_
+    $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
+    if (-not $closeJson.ok) {
+        throw "Profile bootstrap failed and exact terminal cleanup failed for ${handle}: $($closeJson.error.message). Original error: $bootstrapError"
+    }
+    throw "Profile bootstrap failed; exact terminal $handle was closed. Original error: $bootstrapError"
+}
 
 Write-Host "✅ Profile [$Profile] loaded and idle." -ForegroundColor Green
 
 # Dispatch task if TaskId provided
 if ($TaskId -ne '') {
     Write-Host "📡 Dispatching Task [$TaskId] to terminal [$handle]..." -ForegroundColor Cyan
+    $preDispatchSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
+    if (-not $preDispatchSnapshot.ok) {
+        throw "Pre-Dispatch terminal inspection failed: $($preDispatchSnapshot.error.message)"
+    }
+    $preDispatchCursor = [string]$preDispatchSnapshot.result.terminal.latestCursor
+    if ([string]::IsNullOrWhiteSpace($preDispatchCursor)) {
+        throw "Pre-Dispatch terminal inspection returned no latest cursor."
+    }
     $dispatchJson = & $orcaExecutable orchestration dispatch --task $TaskId --to $handle --inject --json | ConvertFrom-Json
     if (-not $dispatchJson.ok) {
         Write-Error "Dispatch failed: $($dispatchJson.error.message)"
         exit 1
     }
-    $dispatchSubmitJson = Ensure-DispatchSubmitted -TerminalHandle $handle
+    $dispatchSubmitJson = Ensure-DispatchSubmitted -TerminalHandle $handle -SinceCursor $preDispatchCursor
     Write-Host "🎉 Task [$TaskId] successfully dispatched to [$handle]!" -ForegroundColor Green
 }
