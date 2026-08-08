@@ -1934,3 +1934,18 @@
 - Created `orca-dev-env-smoke` from pushed commit `170b26823b4cf524fee803a5d47beab72fce6b52` through Orca with `--setup run`; the setup terminal created the ignored secret example and isolated `.venv`, installed pinned dependencies, resolved PlatformIO packages, and finished doctor with 12 pass, one native-Java warning covered by the Docker JDK 17 lane, and zero failures.
 - Re-ran setup to verify idempotence: existing secret state was preserved, Python requirements were current, and PlatformIO dependencies were already up to date. The fresh-worktree Quick suite passed backend 32 tests (one opt-in MariaDB skip), Compose, protocol 16, observability 18, OTA contract, and hardwareless Gate 4 in about 10 seconds without tracked changes.
 - Verified the exact smoke path was clean and removed only that temporary Orca worktree with the managed cleanup command. This host/software smoke produced no physical-device evidence; all Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, and production Gates remain pending and fail-closed.
+
+## [2026-08-08] compile | Establish evidence-gated commercial release program
+
+- Created `wiki/commercial_release_program.md` with the product objective, evidence levels, dependency DAG, work packages for security/admin, Target, mobile UX, operations, manuals, physical acceptance, and production canary deployment.
+- Recorded Orca Run `run_40f9831625bd` and the three independent read-only audits assigned to gpt-5.6-sol, gpt-5.6-terra, and gpt-5.6-luna; no audit worker was authorized to edit, merge, or deploy.
+- Kept production fail-closed: administrator authentication, Target TLS fallback, Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator walkthrough, and production install/reboot/health evidence remain required.
+- Added the release program to `wiki/index.md`. No `raw/` files or earlier log entries were modified.
+
+## [2026-08-08] test | Complete commercial audits and detect follow-up worker launch failure
+
+- Completed independent Sol architecture/security, Terra firmware/backend/admin/operations, and Luna mobile UX/manual audits at exact local HEAD `dd8996c110fae1b378e31c3b1f8be8db7b84307d`; all three were read-only and sent exact-Dispatch `worker_done` results.
+- The auditors passed protocol 16, observability 18, backend 32 with one opt-in MariaDB skip, OTA contract, hardwareless Gate 4, and WSL native C++ 369 checks as applicable. One native Windows root-suite compiler-launch path failed while its WSL equivalent passed; no result was promoted to physical evidence.
+- Reproduced a follow-up supervised worker-start failure three times across Terra and Luna: Orca returned `input_accepted`, Codex reported interrupted MCP startup, received the task preamble, then exited to PowerShell while the terminal could still look running. The coordinator stopped every failed Dispatch and did not count them as completion.
+- Opened commercial release Epic #48 and scoped issues #49 through #55 for security/admin, Target/OTA, mobile UX, operations, manuals, physical release, and the Orca worker-start blocker. PR #47 remains Draft and unmerged until an independent exact-head review succeeds.
+- Production remains fail-closed; no Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production evidence was produced.
