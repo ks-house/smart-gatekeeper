@@ -26,6 +26,8 @@ UP = ROOT / "backend" / "db" / "migrations" / "002_acl_management_expand_up.sql"
 DOWN = ROOT / "backend" / "db" / "migrations" / "002_acl_management_expand_down.sql"
 ADMIN_UP = ROOT / "backend" / "db" / "migrations" / "003_admin_security_up.sql"
 ADMIN_DOWN = ROOT / "backend" / "db" / "migrations" / "003_admin_security_down.sql"
+CONTROL_V2_UP = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_up.sql"
+CONTROL_V2_DOWN = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_down.sql"
 
 
 class MigrationContractTest(unittest.TestCase):
@@ -60,6 +62,15 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("admin_audit is immutable", up)
         self.assertIn("DROP TRIGGER IF EXISTS admin_audit_no_update", down)
         self.assertIn("DROP TABLE IF EXISTS admin_audit", down)
+
+    def test_v2_control_migration_has_durable_replay_and_approval_state(self) -> None:
+        up = CONTROL_V2_UP.read_text(encoding="utf-8")
+        down = CONTROL_V2_DOWN.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS force_open_approvals", up)
+        self.assertIn("UNIQUE KEY uq_force_open_request", up)
+        self.assertIn("CREATE TABLE IF NOT EXISTS mobile_control_nonces", up)
+        self.assertIn("PRIMARY KEY (tenant_id, nonce_hash, action)", up)
+        self.assertIn("DROP TABLE IF EXISTS mobile_control_nonces", down)
 
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
@@ -125,6 +136,7 @@ class MigrationContractTest(unittest.TestCase):
                     UP.read_text(encoding="utf-8"),
                     UP.read_text(encoding="utf-8"),
                     ADMIN_UP.read_text(encoding="utf-8"),
+                    CONTROL_V2_UP.read_text(encoding="utf-8"),
                     "INSERT INTO tenants (name, unit_number, ble_device_mac, auth_key, is_active) "
                     "VALUES ('N-1 client', '999', 'AA:BB:CC:DD:EE:99', 'legacy-only', TRUE);",
                     "INSERT INTO acl_tenants VALUES "
@@ -511,7 +523,7 @@ class MigrationContractTest(unittest.TestCase):
                 "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
-                input_text="\n".join((ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
+                input_text="\n".join((CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
             )
             after_down = docker(
                 "exec",

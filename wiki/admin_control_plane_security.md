@@ -59,3 +59,26 @@ roles, stale/revoked sessions, missing CSRF, cross-tenant mutation, stolen-ID
 legacy-route use, replayed idempotency, and mTLS authentication rate limiting.
 `backend/tests/test_migrations.py` verifies the append-only audit migration and,
 when `RUN_MARIADB_INTEGRATION=1`, validates the real MariaDB immutable trigger.
+
+## Additive v2 manual-control compatibility contract
+
+Issue #49 does not reinterpret an N-1 `device_id` as a credential. The legacy
+`POST /api/v1/door/open` URI remains reserved for compatibility, but a request
+without the v2 proof envelope receives an upgrade-required failure and causes no
+database or MQTT effect. The authenticated v2 manual envelope binds tenant,
+device locator, action, reason, nonce, expiry, and idempotency key to proof of
+possession; server storage consumes the nonce exactly once before MQTT.
+
+`force_open_approvals` is the durable cross-process state machine:
+`PENDING -> PUBLISHING -> PUBLISHED`, with a unique proposer/scope/idempotency
+key. The approver must be a different, freshly mTLS-authenticated subject. A
+crash or broker failure leaves a visible non-success state for an operator-run
+recovery workflow; it must never be silently retried as an unknown physical
+open. `mobile_control_nonces` makes replay persistence survive API restarts.
+
+Ingress is a concrete reverse proxy deployment requirement: it terminates
+mTLS, accepts public traffic, strips client-supplied identity headers, rebuilds
+them only after verification, and reaches the un-published API service over its
+private network. The backend trusts only `ADMIN_TRUSTED_PROXY_IPS`; an empty or
+invalid allow-list disables administrator login. Issue #51/#52 own the mobile
+v2 client envelope rollout and must retain N/N-1 update/rollback compatibility.

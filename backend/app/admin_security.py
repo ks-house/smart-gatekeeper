@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import ipaddress
 import secrets
 import threading
 import time
@@ -76,6 +77,7 @@ class AdminSecurity:
         reauth_seconds: int = 120,
         auth_attempts: int = 5,
         auth_window_seconds: int = 60,
+        trusted_proxy_ips: Optional[set[str]] = None,
     ) -> None:
         self.identities = identities or {}
         self.session_seconds = session_seconds
@@ -83,6 +85,7 @@ class AdminSecurity:
         self.auth_attempts = auth_attempts
         self.auth_window_seconds = auth_window_seconds
         self.key_epoch = 1
+        self.trusted_proxy_ips = trusted_proxy_ips or set()
         self._sessions: dict[str, _Session] = {}
         self._attempts: dict[str, list[int]] = {}
         self._lock = threading.Lock()
@@ -96,12 +99,23 @@ class AdminSecurity:
             identities = {}
         if not isinstance(identities, dict):
             identities = {}
+        trusted_proxies: set[str] = set()
+        for item in os.getenv("ADMIN_TRUSTED_PROXY_IPS", "").split(","):
+            item = item.strip()
+            if not item:
+                continue
+            try:
+                trusted_proxies.add(str(ipaddress.ip_address(item)))
+            except ValueError:
+                # Bad proxy configuration must make the mTLS boundary unusable.
+                return cls({})
         return cls(
             identities,
             session_seconds=_positive_env("ADMIN_SESSION_SECONDS", 900, 60, 3600),
             reauth_seconds=_positive_env("ADMIN_REAUTH_SECONDS", 120, 15, 600),
             auth_attempts=_positive_env("ADMIN_AUTH_RATE_LIMIT", 5, 1, 100),
             auth_window_seconds=_positive_env("ADMIN_AUTH_RATE_WINDOW_SECONDS", 60, 1, 3600),
+            trusted_proxy_ips=trusted_proxies,
         )
 
     @property
@@ -125,6 +139,12 @@ class AdminSecurity:
                 self._attempts[client_key] = attempts
                 raise HTTPException(status_code=429, detail="administrator authentication temporarily rate limited")
 
+        # Headers are accepted only from an explicit TLS proxy peer.  The API
+        # service is not host-published in Compose, so external clients cannot
+        # bypass that peer check and manufacture an mTLS success header.
+        if client_key not in self.trusted_proxy_ips:
+            self._failed_attempt(client_key, now)
+            raise HTTPException(status_code=401, detail="untrusted client-certificate proxy")
         # A proxy must set this only after a successful TLS client-certificate
         # verification.  A raw subject/fingerprint header alone is never enough.
         if request.headers.get("X-SSL-Client-Verify") != "SUCCESS":

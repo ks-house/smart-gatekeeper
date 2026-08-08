@@ -17,12 +17,14 @@ CREATE TABLE IF NOT EXISTS admin_audit (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DELIMITER //
+DROP TRIGGER IF EXISTS admin_audit_no_update//
 CREATE TRIGGER admin_audit_no_update
 BEFORE UPDATE ON admin_audit
 FOR EACH ROW
 BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'admin_audit is immutable';
 END//
+DROP TRIGGER IF EXISTS admin_audit_no_delete//
 CREATE TRIGGER admin_audit_no_delete
 BEFORE DELETE ON admin_audit
 FOR EACH ROW
@@ -30,3 +32,6 @@ BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'admin_audit is immutable';
 END//
 DELIMITER ;
+
+-- Deploy the runtime account with INSERT/SELECT only; migration ownership and
+-- trigger-management privileges are intentionally outside the API account.

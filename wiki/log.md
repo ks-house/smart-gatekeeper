@@ -2017,3 +2017,13 @@
 
 - The console now creates its mTLS-backed session, carries its CSRF, tenant-scope, reauthentication, and idempotency headers on admin writes, requests tenant-scoped access logs, and treats force-open as a 202 approval proposal rather than command success.
 - Removed the admin tenant-list mock-data response on database failure; it now returns 503. No physical/operator/production claim is implied by this UI or host-only change.
+
+## [2026-08-09] compile | Define additive v2 manual control and proxy deployment contract
+
+- Added durable force-open approval and mobile nonce migration contracts plus explicit N/N-1 upgrade-required behavior: legacy `device_id` requests have no effect, while authenticated v2 manual control remains the compatibility path for issue #51/#52 rollout.
+- Documented the private API/reverse-proxy mTLS boundary, durable approval state machine, and failure/recovery semantics. This is contract/software work only; physical and production gates remain open.
+
+## [2026-08-09] fix | Apply v2 manual proof and durable approval state
+
+- The legacy manual URI now rejects incomplete N-1 device-ID requests with upgrade-required/no side effect, while the v2 envelope verifies a tenant-bound HMAC proof, nonce expiry, idempotency, and durable replay consumption before broker publication.
+- Replaced process-local force-open proposals with transactional `force_open_approvals` persistence and a `PENDING` to `PUBLISHING` reservation before any broker call. Private Compose services and trusted-proxy allow-list enforcement prevent direct spoofing of mTLS identity headers; no physical command success is claimed.

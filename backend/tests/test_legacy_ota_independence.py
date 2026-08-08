@@ -17,12 +17,12 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
         paths = {route.path for route in main.app.routes}
         self.assertIn("/api/v1/admin/control/force-open", paths)
         self.assertIn("/api/v1/admin/control/force-open/{approval_id}/approve", paths)
-        self.assertNotIn("/api/v1/door/open", paths)
+        self.assertIn("/api/v1/door/open", paths)
         self.assertNotIn("/api/v1/acl/enrollment/challenge", paths)
         response = TestClient(main.app).post(
             "/api/v1/door/open", json={"reason": "manual_click", "device_id": "stolen-id"}
         )
-        self.assertEqual(404, response.status_code)
+        self.assertEqual(426, response.status_code)
 
     def test_ota_health_config_and_download_routes_do_not_depend_on_acl_feature(self) -> None:
         paths = {route.path for route in main.app.routes}
@@ -42,7 +42,7 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
             "sys.stdout.reconfigure(encoding='utf-8');"
             "sys.stderr.reconfigure(encoding='utf-8');"
             "from backend.app import main;"
-            "assert '/api/v1/door/open' not in {r.path for r in main.app.routes};"
+            "assert '/api/v1/door/open' in {r.path for r in main.app.routes};"
             "assert '/api/v1/admin/control/force-open' in {r.path for r in main.app.routes};"
             "assert any(r.path=='/api/v1/download/apk' for r in main.app.routes)"
         )
@@ -122,7 +122,7 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
                 sys.executable,
                 "-c",
                 "from backend.app import main; paths={r.path for r in main.app.routes}; "
-                "assert '/api/v1/door/open' not in paths; "
+                "assert '/api/v1/door/open' in paths; "
                 "assert '/api/v1/acl/enrollment/challenge' not in paths",
             ],
             text=True,

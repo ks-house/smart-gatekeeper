@@ -8,7 +8,10 @@ import ssl
 import json
 import secrets
 import hashlib
+import hmac
 import logging
+import threading
+import time
 from typing import Optional, List
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -298,6 +301,13 @@ class ForceOpenRequestSchema(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=64)
     reason: str = Field(min_length=8, max_length=256)
 
+
+class ManualOpenV2Request(BaseModel):
+    device_id: Optional[str] = Field(default=None, max_length=128)
+    reason: Optional[str] = Field(default=None, max_length=256)
+    nonce: Optional[str] = Field(default=None, min_length=32, max_length=128)
+    expires_at: Optional[int] = None
+
 class AdminConfigRequestSchema(BaseModel):
     tx_power: Optional[int] = Field(None, example=-6, description="BLE Tx Power dBm (-6, 0, 3, 9)")
     distance_threshold: Optional[int] = Field(None, example=50, description="초음파 감지 기준 거리 cm (20 ~ 200)")
@@ -348,6 +358,7 @@ app = FastAPI(
 # this is a deployment gate, not a development fallback.
 admin_security = AdminSecurity.from_environment()
 _control_proposals: dict[str, dict] = {}
+_control_proposals_lock = threading.Lock()
 
 
 @app.middleware("http")
@@ -361,10 +372,13 @@ async def deny_by_default_admin_routes(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api/v1/admin/") and path not in {"/api/v1/admin/sessions"}:
         try:
-            _admin_principal(
+            required_roles = (ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR, ROLE_APPROVER)
+            if request.method not in {"GET", "HEAD", "OPTIONS"}:
+                required_roles = (ROLE_OPERATOR, ROLE_APPROVER) if "/control/" in path else (ROLE_ADMIN,)
+            request.state.admin_principal = _admin_principal(
                 request,
                 unsafe=request.method not in {"GET", "HEAD", "OPTIONS"},
-                roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR, ROLE_APPROVER),
+                roles=required_roles,
                 tenant_scope=request.headers.get(TENANT_HEADER),
                 reauthenticate=request.method not in {"GET", "HEAD", "OPTIONS"},
             )
@@ -762,7 +776,7 @@ def get_remote_config():
 def get_user_me(device_id: str = Query(...)):
     """현재 기기(device_id)의 세입자 등록 상태 및 세입자 정보 조회"""
     mac_upper = device_id.strip().upper()
-    log.info(f"[USER-ME] 세입자 상태 조회: MAC/ID={mac_upper}")
+    log.info("[USER-ME] retired device-id lookup invoked")
     conn = None
     try:
         conn = get_db()
@@ -802,7 +816,7 @@ def get_user_me(device_id: str = Query(...)):
 def request_user_access(req: UserRequestSchema):
     """신규 세입자 가입 및 출입 권한 신청"""
     mac_upper = req.device_id.strip().upper()
-    log.info(f"[USER-REQ] 신규 가입 신청: {req.name} ({req.room_no}), MAC={mac_upper}")
+    log.info("[USER-REQ] retired anonymous enrollment invoked")
     conn = None
     try:
         conn = get_db()
@@ -844,7 +858,7 @@ def door_prearm(
       3. 인증이 전혀 없었다
     지금은 세 경로 모두 거부한다. 승인은 "등록되고 승인된 기기"에만 부여된다.
     """
-    log.info(f"[PREARM] 비콘 감지 Pre-arm 요청: UUID={req.beacon_uuid}, Device={req.device_id}, RSSI={req.rssi}")
+    log.info("[PREARM] beacon pre-arm request received")
 
     # ── 1. device_id 는 필수 ────────────────────────────────────────────
     device_id = (req.device_id or "").strip()
@@ -868,7 +882,7 @@ def door_prearm(
             row = cur.fetchone()
 
         if not row:
-            log.warning(f"[PREARM-REJECT] 미등록 기기의 Pre-arm 요청 거부: {device_id}")
+            log.warning("[PREARM-REJECT] unregistered device pre-arm rejected")
             return JSONResponse(
                 status_code=403,
                 content={"result": "denied", "message": "미등록 세입자 기기입니다."},
@@ -942,22 +956,28 @@ def request_force_open(req: ForceOpenRequestSchema, request: Request):
     idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
     if not idempotency_key or len(idempotency_key) > 128:
         raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
-    now = int(datetime.now().timestamp())
-    for proposal_id, proposal in _control_proposals.items():
-        if (proposal["subject"], proposal["tenant_id"], proposal["idempotency_hash"]) == (
-            principal.subject, req.tenant_id, hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest(),
-        ) and proposal["expires_at"] > now:
-            return JSONResponse(status_code=202, content={"status": "approval_required", "approval_id": proposal_id})
-    proposal_id = secrets.token_urlsafe(24)
+    now = int(time.time())
+    proposal_id = secrets.token_hex(24)
+    idempotency_hash = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
     conn = None
     try:
         conn = get_db()
-        _audit_admin(conn, principal, req.tenant_id, "FORCE_OPEN_PROPOSED", proposal_id, idempotency_key)
-        _control_proposals[proposal_id] = {
-            "subject": principal.subject, "tenant_id": req.tenant_id, "reason": req.reason,
-            "idempotency_hash": hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest(),
-            "expires_at": now + 300, "used": False,
-        }
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT approval_id FROM force_open_approvals WHERE proposer_subject=%s AND tenant_scope=%s AND idempotency_hash=%s FOR UPDATE",
+                (principal.subject, req.tenant_id, idempotency_hash),
+            )
+            existing = cur.fetchone()
+            if existing:
+                proposal_id = existing["approval_id"]
+            else:
+                cur.execute(
+                    "INSERT INTO force_open_approvals (approval_id,tenant_scope,proposer_subject,reason,idempotency_hash,expires_at,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (proposal_id, req.tenant_id, principal.subject, req.reason, idempotency_hash, now + 300, now),
+                )
+                _audit_admin(conn, principal, req.tenant_id, "FORCE_OPEN_PROPOSED", proposal_id, idempotency_key)
+        conn.commit()
         return JSONResponse(status_code=202, content={"status": "approval_required", "approval_id": proposal_id})
     except Exception as exc:
         log.error("[FORCE-OPEN] proposal audit unavailable")
@@ -969,9 +989,24 @@ def request_force_open(req: ForceOpenRequestSchema, request: Request):
 
 @app.post("/api/v1/admin/control/force-open/{approval_id}/approve")
 def approve_force_open(approval_id: str, request: Request):
-    proposal = _control_proposals.get(approval_id)
-    if not proposal or proposal["expires_at"] <= int(datetime.now().timestamp()) or proposal["used"]:
-        raise HTTPException(status_code=404, detail="force-open proposal is unavailable")
+    now = int(time.time())
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM force_open_approvals WHERE approval_id=%s FOR UPDATE", (approval_id,))
+            proposal = cur.fetchone()
+            if not proposal or proposal["status"] != "PENDING" or int(proposal["expires_at"]) <= now:
+                raise LookupError("force-open proposal is unavailable")
+    except LookupError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=503, detail="force-open approval unavailable") from exc
     principal = _admin_principal(
         request, unsafe=True, roles=(ROLE_APPROVER,), tenant_scope=proposal["tenant_id"],
         reauthenticate=True,
@@ -981,21 +1016,79 @@ def approve_force_open(approval_id: str, request: Request):
     idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
     if not idempotency_key or len(idempotency_key) > 128:
         raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
-    conn = None
     try:
-        conn = get_db()
-        _audit_admin(conn, principal, proposal["tenant_id"], "FORCE_OPEN_APPROVED", approval_id, idempotency_key)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE force_open_approvals SET status='PUBLISHING', approver_subject=%s WHERE approval_id=%s AND status='PENDING'", (principal.subject, approval_id))
+            if cur.rowcount != 1:
+                raise RuntimeError("force-open was already reserved")
+        _audit_admin(conn, principal, proposal["tenant_scope"], "FORCE_OPEN_PUBLISH_REQUESTED", approval_id, idempotency_key)
+        conn.commit()
         if not publish_force_open_to_mqtt("authorized-control-plane"):
             raise RuntimeError("MQTT publish failed")
-        proposal["used"] = True
-        _audit_admin(conn, principal, proposal["tenant_id"], "FORCE_OPEN_PUBLISHED", approval_id, idempotency_key)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE force_open_approvals SET status='PUBLISHED', published_at=%s WHERE approval_id=%s AND status='PUBLISHING'", (int(time.time()), approval_id))
+        conn.commit()
         return {"status": "published", "approval_id": approval_id}
     except Exception as exc:
-        log.error("[FORCE-OPEN] no successful control effect recorded")
-        raise HTTPException(status_code=503, detail="force-open was not published") from exc
+        if conn:
+            conn.rollback()
+        log.error("[FORCE-OPEN] durable recovery state retained")
+        raise HTTPException(status_code=503, detail="force-open publication unavailable or reconciliation required") from exc
     finally:
         if conn:
             conn.close()
+
+
+@app.post("/api/v1/door/open")
+def manual_open_v2(
+    req: ManualOpenV2Request,
+    request: Request,
+    x_device_proof: Optional[str] = Header(default=None, alias="X-Device-Proof"),
+    x_idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER),
+):
+    """N/N-1-safe URI: only a v2 proof envelope can request manual control."""
+    now = int(time.time())
+    if not all((req.device_id, req.reason, req.nonce, req.expires_at, x_device_proof, x_idempotency_key)):
+        raise HTTPException(status_code=426, detail="manual control requires the v2 proof envelope")
+    if not now < int(req.expires_at) <= now + 120 or len(x_idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="manual control proof expiry or idempotency is invalid")
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, auth_key, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1",
+                (req.device_id.strip().upper(),),
+            )
+            tenant = cur.fetchone()
+            if not tenant or not tenant["is_active"] or not tenant.get("auth_key"):
+                raise PermissionError("manual control credential is unavailable")
+            payload = "|".join((str(tenant["id"]), req.device_id, "manual_open_v2", req.reason, req.nonce, str(req.expires_at), x_idempotency_key))
+            expected = hmac.new(tenant["auth_key"].encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(x_device_proof.lower(), expected):
+                raise PermissionError("manual control proof rejected")
+            cur.execute(
+                "INSERT INTO mobile_control_nonces (tenant_id, nonce_hash, action, expires_at, consumed_at) VALUES (%s, %s, %s, %s, %s)",
+                (tenant["id"], hashlib.sha256(req.nonce.encode("utf-8")).hexdigest(), "manual_open_v2", req.expires_at, now),
+            )
+        conn.commit()
+    except PermissionError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=403, detail="manual control denied") from exc
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        # Duplicate nonce and database failures must both fail closed without
+        # emitting an MQTT request.
+        raise HTTPException(status_code=503, detail="manual control unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+    if not publish_force_open_to_mqtt("v2-manual-proof"):
+        raise HTTPException(status_code=503, detail="manual control was not delivered")
+    return {"result": "requested", "delivery": "broker-ack-only"}
 
 
 # Deliberately not registered: retained only as a migration reference until the
@@ -1023,7 +1116,7 @@ def door_force_open(
        세입자 경로의 실질적 인증은 device_id ↔ tenants 테이블 검증이다.
        세션 기반 인증 도입은 issue.md P3-25 로 남겨 둔다.
     """
-    log.info(f"[FORCE-OPEN] 수동 원격 문 열기 요청: Reason={req.reason}, Device={req.device_id}")
+    log.info("[FORCE-OPEN] retired device-id control invoked")
 
     device_id = (req.device_id or "").strip()
 
@@ -1058,7 +1151,7 @@ def door_force_open(
                 row = cur.fetchone()
 
             if not row:
-                log.warning(f"[FORCE-OPEN-REJECT] 미등록 기기의 개방 요청 거부: {device_id}")
+                log.warning("[FORCE-OPEN-REJECT] retired unregistered device control rejected")
                 return JSONResponse(
                     status_code=403,
                     content={"result": "denied", "message": "미등록 세입자 기기입니다."},
@@ -1206,7 +1299,7 @@ def update_admin_config(req: AdminConfigRequestSchema, request: Request):
 @app.post("/api/v1/auth/verify", response_model=AuthVerifyResponse)
 def verify_access(req: AuthVerifyRequest):
     mac_upper = req.ble_mac.strip().upper()
-    log.info(f"[AUTH] 자격 검증 요청: MAC={mac_upper}")
+    log.info("[AUTH] credential verification request received")
 
     conn = None
     tenant = None
@@ -1230,7 +1323,7 @@ def verify_access(req: AuthVerifyRequest):
             conn.close()
 
     if not tenant:
-        log.warning(f"[AUTH] ❌ 미등록 MAC: {mac_upper}")
+        log.warning("[AUTH] unregistered credential rejected")
         _log_access(mac_upper, False, req.distance_mm, "미등록 기기")
         return JSONResponse(
             content=AuthVerifyResponse(
@@ -1238,6 +1331,20 @@ def verify_access(req: AuthVerifyRequest):
                 message="인증 실패: 미등록 기기"
             ).model_dump(),
             headers={"Content-Type": "application/json; charset=utf-8"}
+        )
+
+    # BLE address is only a lookup locator.  A caller must prove possession of
+    # the separately provisioned credential; an omitted/forged device ID never
+    # authorizes an arm command.
+    if not req.auth_key or not tenant.get("auth_key") or not secrets.compare_digest(
+        req.auth_key, tenant["auth_key"]
+    ):
+        log.warning("[AUTH] credential proof rejected")
+        _log_access(mac_upper, False, req.distance_mm, "credential proof rejected", tenant["id"])
+        return JSONResponse(
+            status_code=403,
+            content=AuthVerifyResponse(granted=False, message="credential proof rejected").model_dump(),
+            headers={"Content-Type": "application/json; charset=utf-8"},
         )
 
     if not tenant["is_active"]:

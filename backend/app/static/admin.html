@@ -262,6 +262,11 @@
       }
       return headers;
     }
+    function escapeHtml(value) {
+      const node = document.createElement('span');
+      node.textContent = String(value ?? '');
+      return node.innerHTML;
+    }
     async function loadTenants() {
       try {
         const res = await fetch('/api/v1/admin/tenants');
@@ -287,8 +292,8 @@
 
           tr.innerHTML = `
             <td>${t.id}</td>
-            <td><strong>${t.name}</strong></td>
-            <td>${t.unit_number || '-'}</td>
+            <td><strong>${escapeHtml(t.name)}</strong></td>
+            <td>${escapeHtml(t.unit_number || '-')}</td>
             <td><code>${t.ble_device_mac || '-'}</code></td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
             <td>
@@ -337,7 +342,7 @@
 
           tr.innerHTML = `
             <td>${dateStr}</td>
-            <td>${l.auth_method}</td>
+            <td>${escapeHtml(l.auth_method)}</td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
             <td>${l.distance_mm ? l.distance_mm + ' mm' : '-'}</td>
             <td>${l.failure_reason || '정상 개방'}</td>
