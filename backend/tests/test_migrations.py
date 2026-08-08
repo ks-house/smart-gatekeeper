@@ -35,6 +35,8 @@ CONTROL_V2_UP = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_u
 CONTROL_V2_DOWN = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_down.sql"
 RECONCILIATION_UP = ROOT / "backend" / "db" / "migrations" / "005_force_open_reconciliation_up.sql"
 RECONCILIATION_DOWN = ROOT / "backend" / "db" / "migrations" / "005_force_open_reconciliation_down.sql"
+BOOT_STATE_UP = ROOT / "backend" / "db" / "migrations" / "006_target_boot_state_up.sql"
+BOOT_STATE_DOWN = ROOT / "backend" / "db" / "migrations" / "006_target_boot_state_down.sql"
 
 
 class MigrationContractTest(unittest.TestCase):
@@ -85,6 +87,14 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("RECONCILIATION_REQUIRED", up)
         self.assertIn("ALTER TABLE force_open_approvals", up)
         self.assertIn("ALTER TABLE force_open_approvals", down)
+
+    def test_target_boot_state_is_monotonic_and_has_explicit_rollback(self) -> None:
+        up = BOOT_STATE_UP.read_text(encoding="utf-8")
+        down = BOOT_STATE_DOWN.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS target_boot_state", up)
+        self.assertIn("boot_count BIGINT UNSIGNED NOT NULL", up)
+        self.assertIn("boot_id REGEXP", up)
+        self.assertIn("DROP TABLE IF EXISTS target_boot_state", down)
 
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
@@ -152,6 +162,7 @@ class MigrationContractTest(unittest.TestCase):
                     ADMIN_UP.read_text(encoding="utf-8"),
                     CONTROL_V2_UP.read_text(encoding="utf-8"),
                     RECONCILIATION_UP.read_text(encoding="utf-8"),
+                    BOOT_STATE_UP.read_text(encoding="utf-8"),
                     "INSERT INTO tenants (name, unit_number, ble_device_mac, auth_key, is_active) "
                     "VALUES ('N-1 client', '999', 'AA:BB:CC:DD:EE:99', 'legacy-only', TRUE);",
                     "INSERT INTO acl_tenants VALUES "
@@ -666,7 +677,7 @@ class MigrationContractTest(unittest.TestCase):
                 "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
-                input_text="\n".join((RECONCILIATION_DOWN.read_text(encoding="utf-8"), CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
+                input_text="\n".join((BOOT_STATE_DOWN.read_text(encoding="utf-8"), RECONCILIATION_DOWN.read_text(encoding="utf-8"), CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
             )
             after_down = docker(
                 "exec",

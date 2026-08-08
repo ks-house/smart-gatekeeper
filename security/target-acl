@@ -19,3 +19,4 @@ topic write gatekeeper/v1/targets/+/command
 topic write gatekeeper/v1/targets/+/acl
 topic read gatekeeper/v1/targets/+/command-ack
 topic read gatekeeper/v1/targets/+/acl/ack
+topic read gatekeeper/v1/targets/+/boot

@@ -252,6 +252,38 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         LOGF("[MQTT-SECURITY] Malformed signed command rejected");
         return;
     }
+    static constexpr const char* kCommandFields[] = {
+        "action", "boot_id", "door_id", "expires_at", "issued_at",
+        "key_id", "nonce", "schema_version", "session_id", "signature",
+        "target_id", "tenant_id", "value"};
+    if (secureDoc.size() !=
+        sizeof(kCommandFields) / sizeof(kCommandFields[0])) {
+        LOGF("[MQTT-SECURITY] Non-canonical command schema rejected");
+        return;
+    }
+    for (const char* field : kCommandFields) {
+        if (!secureDoc.containsKey(field)) {
+            LOGF("[MQTT-SECURITY] Missing command field rejected");
+            return;
+        }
+    }
+    static constexpr const char* kCommandStringFields[] = {
+        "action", "boot_id", "door_id", "nonce", "session_id",
+        "signature", "target_id", "tenant_id"};
+    for (const char* field : kCommandStringFields) {
+        if (!secureDoc[field].is<const char*>()) {
+            LOGF("[MQTT-SECURITY] Invalid command field type rejected");
+            return;
+        }
+    }
+    if (!secureDoc["schema_version"].is<uint8_t>() ||
+        !secureDoc["issued_at"].is<uint64_t>() ||
+        !secureDoc["expires_at"].is<uint64_t>() ||
+        !secureDoc["key_id"].is<uint32_t>() ||
+        !secureDoc["value"].is<int64_t>()) {
+        LOGF("[MQTT-SECURITY] Invalid numeric command type rejected");
+        return;
+    }
     sgk::SignedCommandEnvelope envelope{};
     envelope.schema_version = secureDoc["schema_version"] | 0;
     std::snprintf(envelope.target_id, sizeof(envelope.target_id), "%s",

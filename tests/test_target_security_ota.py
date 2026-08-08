@@ -63,8 +63,12 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("CommandResult::kEffectRejected", target)
         self.assertNotIn(":?", compose)
         self.assertIn("COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:-0}", compose)
-        self.assertIn("if not all((COMMAND_TARGET_ID", backend)
-        self.assertIn("MQTT_PORT == 1883 or not MQTT_CA_FILE", backend)
+        self.assertIn("_command_provisioning_error()", backend)
+        self.assertIn("_target_boot_registry.current_boot_id", backend)
+        self.assertIn("MQTT_PORT == 1883", backend)
+        self.assertIn("not MQTT_USER", backend)
+        self.assertIn("not MQTT_PASSWORD", backend)
+        self.assertIn("not os.path.isfile(MQTT_CA_FILE)", backend)
 
     def test_broker_rejects_retained_and_credential_crossover(self) -> None:
         config = (ROOT / "security/mosquitto.conf").read_text(encoding="utf-8")
@@ -111,6 +115,8 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("systemClockTrusted", mqtt)
+        self.assertIn("kCommandFields", mqtt)
+        self.assertIn("secureDoc.size()", mqtt)
         self.assertIn("envelope, verificationTime, systemClockTrusted", mqtt)
         self.assertNotIn(": envelope.issued_at", mqtt)
         operator_transition = wifi.split("bool WifiManager::startRecoveryAP", 1)[1]

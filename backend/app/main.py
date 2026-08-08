@@ -44,9 +44,11 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
 try:
     from .acl_management import DeterministicP256Signer
     from .command_security import build_signed_command
+    from .target_boot_registry import TargetBootRegistry
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_management import DeterministicP256Signer
     from command_security import build_signed_command
+    from target_boot_registry import TargetBootRegistry
 
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -80,7 +82,6 @@ MQTT_CA_FILE        = os.getenv("MQTT_CA_FILE", "").strip()
 COMMAND_TARGET_ID   = os.getenv("COMMAND_TARGET_ID", "").strip()
 COMMAND_TENANT_ID   = os.getenv("COMMAND_TENANT_ID", "").strip()
 COMMAND_DOOR_ID     = os.getenv("COMMAND_DOOR_ID", "").strip()
-COMMAND_BOOT_ID     = os.getenv("COMMAND_BOOT_ID", "").strip()
 COMMAND_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
     "COMMAND_SIGNING_PRIVATE_SCALAR_HEX", ""
 ).strip()
@@ -176,6 +177,39 @@ def get_db():
         connect_timeout=5,
     )
 
+
+_target_boot_registry = TargetBootRegistry(get_db)
+_P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+
+
+def _command_provisioning_error() -> Optional[str]:
+    tokens = (COMMAND_TARGET_ID, COMMAND_TENANT_ID, COMMAND_DOOR_ID)
+    if any(
+        not token or len(token) > 64 or any(ord(char) < 0x21 or ord(char) > 0x7e for char in token)
+        for token in tokens
+    ):
+        return "target identity"
+    if (
+        not MQTT_HOST
+        or not 1 <= MQTT_PORT <= 65535
+        or MQTT_PORT == 1883
+        or not MQTT_USER
+        or not MQTT_PASSWORD
+        or secrets.compare_digest(MQTT_USER, COMMAND_TARGET_ID)
+    ):
+        return "broker identity"
+    if not MQTT_CA_FILE or not os.path.isfile(MQTT_CA_FILE):
+        return "broker CA"
+    if COMMAND_SIGNING_KEY_ID <= 0:
+        return "signing key ID"
+    if (
+        len(COMMAND_SIGNING_PRIVATE_SCALAR_HEX) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in COMMAND_SIGNING_PRIVATE_SCALAR_HEX)
+        or not 0 < int(COMMAND_SIGNING_PRIVATE_SCALAR_HEX, 16) < _P256_ORDER
+    ):
+        return "signing scalar"
+    return None
+
 # ─── MQTT Helper Functions ────────────────────────────────────
 def _create_mqtt_client(client_id: str):
     """paho-mqtt 1.x 및 2.x 버전 호환 클라이언트 생성 헬퍼"""
@@ -195,7 +229,10 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
     import socket
     socket.setdefaulttimeout(1.0) # 소켓 타임아웃 1초로 제한하여 지연 완전 방어
 
-    if not MQTT_HOST or MQTT_PORT == 1883 or not MQTT_CA_FILE:
+    if (
+        not MQTT_HOST or MQTT_PORT == 1883 or not MQTT_USER or
+        not MQTT_PASSWORD or not MQTT_CA_FILE or not os.path.isfile(MQTT_CA_FILE)
+    ):
         log.error("[%s] verified MQTTS provisioning incomplete", label)
         return False
     hosts_to_try = [(MQTT_HOST, MQTT_PORT, True)]
@@ -243,8 +280,13 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
 
 
 def _signed_target_command(action: str, value: int = 0) -> bool:
+    provisioning_error = _command_provisioning_error()
+    if provisioning_error is not None:
+        log.error("[MQTT-COMMAND] provisioning incomplete: %s", provisioning_error)
+        return False
     try:
-        if not all((COMMAND_TARGET_ID, COMMAND_TENANT_ID, COMMAND_DOOR_ID, COMMAND_BOOT_ID)):
+        boot_id = _target_boot_registry.current_boot_id(COMMAND_TARGET_ID)
+        if boot_id is None:
             return False
         scalar = int(COMMAND_SIGNING_PRIVATE_SCALAR_HEX, 16)
         signer = DeterministicP256Signer(scalar, COMMAND_SIGNING_KEY_ID)
@@ -253,7 +295,7 @@ def _signed_target_command(action: str, value: int = 0) -> bool:
             target_id=COMMAND_TARGET_ID,
             tenant_id=COMMAND_TENANT_ID,
             door_id=COMMAND_DOOR_ID,
-            boot_id=COMMAND_BOOT_ID,
+            boot_id=boot_id,
             action=action,
             value=value,
         )
@@ -265,6 +307,35 @@ def _signed_target_command(action: str, value: int = 0) -> bool:
         json.dumps(envelope, separators=(",", ":"), sort_keys=True),
         f"MQTT-COMMAND-{action}",
     )
+
+
+def _start_target_boot_subscriber():
+    if _command_provisioning_error() is not None or not HAS_PAHO_MQTT:
+        return None
+    client = _create_mqtt_client(f"gatekeeper-boot-registry-{time.time_ns()}")
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+    client.tls_set(
+        ca_certs=MQTT_CA_FILE,
+        cert_reqs=ssl.CERT_REQUIRED,
+        tls_version=ssl.PROTOCOL_TLS_CLIENT,
+    )
+    client.tls_insecure_set(False)
+
+    def on_connect(connected_client, _userdata, _flags, reason_code, *args):
+        if int(reason_code) == 0:
+            connected_client.subscribe("gatekeeper/v1/targets/+/boot", qos=1)
+
+    def on_message(_client, _userdata, message):
+        if not _target_boot_registry.refresh_from_authenticated_topic(
+            message.topic, bytes(message.payload)
+        ):
+            log.warning("[MQTT-BOOT] rejected boot refresh on %s", message.topic)
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+    client.loop_start()
+    return client
 
 
 def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
@@ -371,8 +442,18 @@ async def lifespan(app: FastAPI):
             "Pre-arm 은 키 없이도 호출 가능하고, 관리자 마스터 개방은 사용할 수 없습니다. "
             "미등록/미승인 기기 거부와 DB 장애 시 fail-closed 는 계속 동작합니다."
         )
-    yield
-    log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
+    boot_subscriber = None
+    try:
+        boot_subscriber = _start_target_boot_subscriber()
+    except Exception as error:
+        log.error("[MQTT-BOOT] subscriber unavailable; commands stay disabled: %s", error)
+    try:
+        yield
+    finally:
+        if boot_subscriber is not None:
+            boot_subscriber.loop_stop()
+            boot_subscriber.disconnect()
+        log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
 
 app = FastAPI(
     title="Smart Gatekeeper API",

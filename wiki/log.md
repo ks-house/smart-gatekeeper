@@ -2138,3 +2138,16 @@
 - After integrating exact main `c654a18f0fa278e4530229bb881fe88286d25c2e`, the inherited backend-security lane correctly required `docker compose config` to succeed without production secrets, while issue #50 used interpolation-time required variables.
 - Changed only Compose interpolation to blank/default values so the private deployment topology is auditable without secrets; runtime Target identity, signing scalar/key, verified broker, non-1883 port, and CA checks still reject every effect before publication when provisioning is absent.
 - Added mutation assertions for renderable defaults and runtime fail-closed seams. No plaintext/insecure fallback, production secret, broker contact, physical/operator evidence, production enablement, merge, or deployment was introduced.
+
+## [2026-08-09] fix | Bind backend commands to authenticated current Target boot
+
+- Replaced the static backend boot-ID environment input with a CA-verified backend subscriber on the broker-ACL-bound per-Target `/boot` topic and a migration-backed atomic `target_boot_state` registry.
+- Boot refresh requires exact topic/payload Target identity, a 128-bit hexadecimal boot ID, and a strictly increasing durable boot count; forged cross-Target, lower-count rollback, and same-count replacement mutations reject, while an exact duplicate is idempotent and a new boot restores command signing without process restart.
+- Added one effect-boundary provisioning validator covering exact Target/tenant/door identity, non-1883 broker host, distinct nonempty broker username/password, existing CA file, positive signing key ID, and valid nonzero scalar. Every missing/invalid-field mutation proves no boot lookup or broker client creation.
+- Added migration up/down and Compose wiring, backend-read ACL for authenticated boot topics, and retained private-default rendering. Physical broker identity, Target reboot recovery, device/operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] test | Validate authenticated boot refresh and strict effect boundary
+
+- Root validation passed 102 tests; backend validation passed 49 tests with one opt-in MariaDB integration skip. Mutations reject cross-Target, non-string, counter-overflow, rollback, same-count replacement, missing broker credential/CA/identity/key, and zero, malformed, or out-of-range signing scalar inputs before boot lookup or broker-client creation; established `/boot` diagnostic fields remain compatible.
+- The authenticated subscriber seam used the dedicated backend username/password, `CERT_REQUIRED`, hostname-verified TLS, the per-Target boot topic, and the durable atomic registry. WSL/Linux production-core validation, private-default Compose rendering, and the OTA contract passed.
+- Scoped pioarduino `esp32c6` compile passed with the exact command schema parser: RAM 53,888/327,680 (16.4%) and flash 1,606,490/7,340,032 (21.9%). This is software evidence only; deployed broker ACL, physical Target reboot/recovery/rollback, operator, production, merge, and deployment Gates remain open and fail-closed.
