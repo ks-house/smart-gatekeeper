@@ -108,9 +108,11 @@ if ($Profile -eq 'antigravity' -or $Profile -eq 'gpt5.6-antigravity') {
         $Profile = "gpt5.6-$Profile"
     }
     $modelId = $Profile -replace '^gpt5\.6-', 'gpt-5.6-'
-    $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" --ask-for-approval never --sandbox workspace-write"
+    # Orca lifecycle commands connect to the local runtime. Keep filesystem
+    # access at workspace-write while permitting the required outbound IPC.
+    $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" -c sandbox_workspace_write.network_access=true -c features.apps=false -c mcp_servers.node_repl.enabled=false --ask-for-approval never --sandbox workspace-write"
     if ($AllowUnsafe) {
-        $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" --dangerously-bypass-approvals-and-sandbox"
+        $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" -c features.apps=false -c mcp_servers.node_repl.enabled=false --dangerously-bypass-approvals-and-sandbox"
     }
 }
 
@@ -120,8 +122,14 @@ Write-Host "🚀 Launching Orca Terminal Profile: [$Profile] (CLI: $agentCmd, Ef
 $profilePath = ".orca/profiles/$Profile.md"
 $title = "$Profile-worker"
 
+# Pass the bootstrap as the agent's initial argv prompt. Starting a blank TUI
+# and injecting the first prompt can race Codex startup hooks and exit the TUI.
+$bootstrapPrompt = "Read $profilePath completely and use it as the active role instructions for this session. Also read AGENTS.md, wiki/index.md, and the recent tail of wiki/log.md before any task. Do not modify files during this bootstrap. Reply exactly PROFILE_READY $Profile, then return to idle."
+$escapedBootstrapPrompt = $bootstrapPrompt.Replace("'", "''")
+$agentCmd = "$agentCmd '$escapedBootstrapPrompt'"
+
 # The current Orca guide permits low-level terminal creation for custom model
-# argv. The profile document is loaded after the TUI becomes idle.
+# argv. The profile document is loaded by the initial CLI prompt.
 $createJson = & $orcaExecutable terminal create --worktree $Worktree --title $title --command $agentCmd --json | ConvertFrom-Json
 
 
@@ -148,16 +156,6 @@ if ($startupTail -match '(?m)^PS .+>\s*$') {
 }
 
 Write-Host "🟢 Terminal is idle and ready." -ForegroundColor Green
-
-# Load the repository role profile as ordinary agent context. Neither Codex nor
-# agy accepts these Markdown files through a --profile flag.
-$bootstrapPrompt = "Read $profilePath completely and use it as the active role instructions for this session. Also read AGENTS.md, wiki/index.md, and the recent tail of wiki/log.md before any task. Do not modify files during this bootstrap. Reply PROFILE_READY with the profile name, then return to idle."
-$sendJson = & $orcaExecutable terminal send --terminal $handle --text $bootstrapPrompt --enter --json | ConvertFrom-Json
-
-if (-not $sendJson.ok) {
-    Write-Error "Profile bootstrap send failed: $($sendJson.error.message)"
-    exit 1
-}
 
 Write-Host "📖 Waiting for profile bootstrap to complete..." -ForegroundColor Yellow
 $profileReadyJson = Wait-ForProfileReady -TerminalHandle $handle -ProfileName $Profile

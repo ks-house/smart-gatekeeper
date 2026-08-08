@@ -1943,3 +1943,33 @@
 - Replaced fixed worker completion commands across the master guide, Terra/Luna/Antigravity profiles, template, and environment guide with report-only fields. Every worker must use the exact active Dispatch preamble; staged dispatches may require injected `--from` and `--dispatch-capability`, while supervised workers may omit them, so lifecycle flags must never be reconstructed.
 - Normal doctor passed with 12 pass, one Docker-covered native Java 11 warning, and zero failures. Quick validation passed backend 32 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4; PowerShell parsing, `git diff --check`, and `raw/` immutability also passed.
 - The staged independent reviewer identified the blockers but could not deliver formal `worker_done` because its terminal could not reach the Orca runtime; that dispatch is not counted as completed. No Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, or production evidence was produced, so all physical and production Gates remain pending and fail-closed.
+
+## [2026-08-08] fix | Permit sandboxed Orca lifecycle connectivity
+
+- A fresh exact-head reviewer found no source-level blocker in commit `769af413dd06092436e0f32c2f52ed5590e72567`, but its safe `workspace-write` Codex terminal could not reach the local Orca runtime to submit the required `worker_done`; the review Dispatch was recorded as blocked instead of fabricating completion.
+- Updated the safe Codex profile launcher with the official `sandbox_workspace_write.network_access=true` setting. This keeps filesystem access at `workspace-write` while enabling the outbound local-runtime connection required by the injected Orca lifecycle preamble; `-AllowUnsafe` remains an explicit separate mode.
+- Updated the master guide and environment guide to document the filesystem/network boundary. This change does not weaken OTA, secrets, independent review, or physical evidence Gates; Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, and production evidence remain pending and fail-closed.
+
+## [2026-08-09] fix | Remove optional MCP startup race from repository workers
+
+- The first sandbox-network lifecycle probe never reached `PROFILE_READY`: Codex reported `MCP startup interrupted` for optional `codex_apps` and `node_repl`, then exited to PowerShell. The coordinator recorded the Task as blocked and closed only its exact terminal; no completion was inferred.
+- Updated the dedicated Codex repository-worker argv to disable those two optional MCP servers using the official `mcp_servers.<id>.enabled=false` configuration keys. Workers retain shell, GitHub CLI, repository tools, `workspace-write`, and sandbox network access for Orca lifecycle delivery without waiting on unrelated MCP startup.
+- A new minimal lifecycle probe is required before this remedy can be accepted. No physical, operator, or production Gate changed; all Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, and RELAY-G0..G2 evidence remains pending and fail-closed.
+
+## [2026-08-09] fix | Correct optional Codex service disable keys
+
+- The first disable attempt used `mcp_servers.codex_apps.enabled=false`, but `codex_apps` is an Apps feature rather than a configured MCP transport; Codex rejected startup with `invalid transport` before Task dispatch. The exact probe was recorded as blocked and its terminal was closed.
+- Replaced that override with `features.apps=false` while retaining the valid `mcp_servers.node_repl.enabled=false`; `codex ... mcp list` accepted the effective configuration and reported `node_repl` disabled. This correction must still pass a real profile bootstrap and accepted `worker_done` probe before the launcher is considered healthy.
+- No repository product code or physical Gate changed. Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, and production evidence remain pending and fail-closed.
+
+## [2026-08-09] fix | Move profile bootstrap into initial agent prompt
+
+- Even with valid optional-service overrides, a blank Codex TUI exited before processing the later `terminal send` bootstrap. The exact lifecycle probe never reached Task dispatch and was recorded as blocked; repeating the same post-start injection path was stopped.
+- Changed the low-level profile launcher to pass the role bootstrap as the agent CLI's initial positional prompt. The launcher still requires the exact `PROFILE_READY <profile>` marker and a final `tui-idle` before injecting any Task, so startup liveness cannot be mistaken for readiness.
+- Updated the Orca master/environment guides. A bounded real probe must produce an accepted `worker_done` before this path is considered healthy; physical, operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] test | Verify sandboxed Orca lifecycle end to end
+
+- The initial-argv launcher started `gpt-5.6-luna high`, received exact `PROFILE_READY gpt5.6-luna`, reached final `tui-idle`, and then dispatched Task `task_daa86a1b0856` as Dispatch `ctx_c6ca50693310`.
+- The read-only probe sent accepted `worker_done` message `msg_9212c6a7419e` with outcome `succeeded` and no modified files. The coordinator verified the Task state as completed, closed the exact low-level terminal after `worker-release` correctly reported it was not a supervised-worker resource, processed the older heartbeat, and ACKed Delivery `delivery_5a11d0e96a45`; the Run mailbox is now empty.
+- This validates profile bootstrap and lifecycle transport only. It does not create Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, or production evidence; those Gates remain pending and fail-closed.

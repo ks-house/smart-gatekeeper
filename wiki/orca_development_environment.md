@@ -49,7 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -
 
 ## 3. 프로파일 작업 시작
 
-작업은 필요한 역할만 on-demand로 시작한다. 모든 프로파일을 매 워크트리에서 자동 실행하지 않는다.
+작업은 필요한 역할만 on-demand로 시작한다. 모든 프로파일을 매 워크트리에서 자동 실행하지 않는다. 런처는 빈 TUI에 첫 prompt를 나중에 주입하지 않고 역할 bootstrap을 최초 CLI argv prompt로 전달하며, `PROFILE_READY`와 최종 `tui-idle`이 모두 확인된 뒤에만 Task를 Dispatch한다.
 
 ```powershell
 .orca/scripts/start_task.ps1 `
@@ -65,7 +65,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -
 | `gpt5.6-luna` | Android native, Flutter, QA |
 | `antigravity` | 명시적 cross-layer 비상 작업 |
 
-기본 런처는 Codex `workspace-write` sandbox를 유지하고 Antigravity permission bypass를 사용하지 않는다.
+기본 런처는 Codex `workspace-write` sandbox와 공식 `sandbox_workspace_write.network_access=true` 설정을 함께 사용한다. 파일 쓰기 범위는 작업공간으로 유지하면서 주입된 Orca lifecycle 명령이 로컬 런타임에 연결할 수 있게 한다. 전용 repository worker는 시작 경쟁을 제거하기 위해 선택적 Apps 기능과 `node_repl` MCP를 비활성화하고 GitHub 작업은 `GITHUB_TOKEN` 기반 CLI를 사용한다. Antigravity permission bypass는 사용하지 않는다.
 격리된 워크트리에서 범위와 위험을 확인한 경우에만 `-AllowUnsafe`를 명시한다.
 
 ## 4. 완료 수명주기
