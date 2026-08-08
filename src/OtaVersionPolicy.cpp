@@ -255,12 +255,24 @@ bool OtaVersionPolicy::valid(const OtaVersionFloorRecord& record) {
 }
 
 uint32_t OtaVersionPolicy::crc(const OtaVersionFloorRecord& record) {
-  OtaVersionFloorRecord copy = record;
-  copy.crc32 = 0;
-  const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&copy);
+  std::array<uint8_t, 80> bytes{};
+  size_t offset = 0;
+  const auto appendLittleEndian = [&bytes, &offset](uint64_t value,
+                                                   size_t width) {
+    for (size_t index = 0; index < width; ++index) {
+      bytes[offset++] = static_cast<uint8_t>(value >> (index * 8));
+    }
+  };
+  appendLittleEndian(record.magic, sizeof(record.magic));
+  appendLittleEndian(record.schema_version, sizeof(record.schema_version));
+  appendLittleEndian(record.reserved, sizeof(record.reserved));
+  appendLittleEndian(record.generation, sizeof(record.generation));
+  std::memcpy(bytes.data() + offset, record.version, sizeof(record.version));
+  offset += sizeof(record.version);
+  if (offset != bytes.size()) return 0;
   uint32_t value = 0xffffffffU;
-  for (size_t index = 0; index < sizeof(copy); ++index) {
-    value ^= bytes[index];
+  for (const uint8_t byte : bytes) {
+    value ^= byte;
     for (uint8_t bit = 0; bit < 8; ++bit) {
       value = (value >> 1) ^ (0xedb88320U & (0U - (value & 1U)));
     }

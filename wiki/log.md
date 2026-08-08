@@ -2125,3 +2125,10 @@
 - Native production-core tests passed delayed-first-command, transient/late health, prerelease/equal-precedence identity, rollback floor, reboot recovery, and failed-persist mutations; targeted security/OTA static tests also passed.
 - Scoped pioarduino `esp32c6` build passed after remediation: RAM 53,888/327,680 (16.4%) and flash 1,606,312/7,340,032 (21.9%). This is compile evidence only.
 - No deployed broker, ESP32-C6 boot/radio/relay, local operator recovery, power-loss, rollback, eFuse/debug lock, N/N-1 device interop, OTA-G1..G4, RELAY-G0..G2, physical soak, production authorization, merge, or deployment evidence was created; every physical/operator/production Gate remains open and fail-closed.
+
+## [2026-08-09] fix | Make OTA version-floor CRC compiler independent
+
+- Exact-head Linux CI exposed that the first version-floor readback included compiler-dependent C++ struct tail padding in its CRC, while the Windows host happened to keep those bytes stable.
+- Replaced raw-struct hashing with an explicit fixed 80-byte little-endian encoding of the defined magic, schema, reserved, generation, and version fields; corrupt-slot mutations now verify fail-closed recovery without relying on ABI padding.
+- Windows and WSL/Linux native production-core tests passed 455 checks; the scoped ESP32-C6 build passed at RAM 53,888/327,680 (16.4%) and flash 1,606,504/7,340,032 (21.9%).
+- This is a software portability correction only. Physical Target storage, power-loss, rollback, operator, OTA-G1..G4, production authorization, merge, and deployment evidence remain pending and fail-closed.

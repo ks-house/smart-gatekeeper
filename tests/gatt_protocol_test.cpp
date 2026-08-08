@@ -1717,6 +1717,13 @@ void testOtaVersionFloorAndReplayMutations() {
   CHECK(after_crash.begin("2.2.1"));
   CHECK(after_crash.evaluate("2.2.1", "2.2.1") ==
         sgk::OtaVersionDecision::kDowngrade);
+
+  MemoryVersionStorage corrupted = storage;
+  corrupted.records[0].version[0] ^= 1;
+  corrupted.records[1].version[0] ^= 1;
+  sgk::OtaVersionPolicy corrupt_policy(&corrupted);
+  CHECK(corrupt_policy.begin("2.2.1"));
+  CHECK(std::string(corrupt_policy.floor()) == "2.2.1");
 }
 
 }  // namespace
