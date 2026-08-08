@@ -78,6 +78,34 @@ coordinator의 `worker-release`는 `released`, `processAction=closed_agent_termi
 이 성공은 exact-main에서 장기 경로가 동작할 수 있음을 증명하지만, 이전 동일 runtime ID의 실패를
 부정하거나 intermittent packaged-runtime 결함을 수정했다는 증거는 아니다.
 
+### 2.5 PR #60 병합 후 packaged worker-start 재발
+
+PR #60은 `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`로 병합됐지만, 그 probe와 가이드는
+packaged runtime 자체를 변경하지 않았다. 병합 뒤 packaged `worker-start`가
+`stage=input_accepted` / `state=ready`를 반환한 다음 실제 Codex task 처리 없이 PowerShell로 돌아간
+attempt가 Sol/Terra/Luna에서 다시 관측됐다.
+
+- failed/non-completion Dispatch: `ctx_9c12b0b408b6`, `ctx_ee7fcea88a85`,
+  `ctx_90e5dd8eb538`, `ctx_9fba6a4d79c8`, `ctx_1a9c7feb07ad`, `ctx_d9b78c72bb32`
+- staged launcher success: `ctx_e1f6e94ad254`
+
+각 failed attempt는 inspect/stop/terminal accounting 후 완료에서 제외됐다. 일부 bounded retry와
+staged launcher가 성공한 사실은 total outage가 아니라 intermittency임을 뒷받침하지만, root cause
+수정이나 acceptance matrix 완료를 증명하지 않는다. Issue #55는 open 상태를 유지한다.
+
+같은 follow-up에서 Antigravity의 별도 profile-launch contract도 확인됐다. installed `agy 1.1.11`은
+positional prompt를 interactive session으로 유지하지 않아 `agy --effort high '<bootstrap>'`가 종료했고,
+cleanup 중 이미 사라진 tab은 `tab_not_found`를 반환했다. 지원되는
+`agy --effort high --prompt-interactive '<bootstrap>'`은 시작했지만 최초 exact-worktree trust prompt를
+Orca가 `codex-trust-workspace`로 보고했다. exact isolated worktree trust 뒤에도 broad search 성향이
+있어 absolute root와 no-outside-search bootstrap이 필요했다. 이는 packaged `worker-start` root cause
+증거가 아니라 staged Antigravity launcher의 독립된 version/scope contract다.
+
+기존 5초 submission observation도 충분하지 않았다. Luna `task_12e31176e5b3` terminal
+`term_fe8c325a`와 Terra `-AllowUnsafe` `task_469ab65347a5` terminal `term_01eb874d`에서 launcher가
+성공을 반환한 뒤 exact unsubmitted marker가 terminal 끝에 늦게 나타났고 coordinator가 각각 Enter를
+한 번 보내야 했다. marker가 5초 안에 없다는 사실은 submission이나 실제 Task processing 증거가 아니다.
+
 ## 3. packaged Orca 1.4.176 경계 분석
 
 설치된 version-matched source를 읽은 결과:
@@ -133,10 +161,46 @@ probe의 최종 JSON은 `completionSent=false`다. 이후 worker가 결과를 �
    기록한다. prose, heartbeat, status, report file은 accepted `worker_done`이 아니다.
 5. exact terminal/resource를 accounting한 뒤 conflict-free fresh Dispatch로 남은 작업을 재검증한다.
 
+### 5.1 #55 staged-launcher workaround
+
+repository profile worker는 #55 acceptance가 끝날 때까지 packaged `worker-start` 대신
+`.orca/scripts/start_task.ps1` 또는 existing Task에 대한 `.orca/scripts/launch_profiles.ps1`을 쓴다.
+이 경로는 initial argv bootstrap, exact marker, final idle, cursor-bound injection을 검증하고 startup
+또는 Dispatch acceptance 전 실패의 exact terminal을 닫는다.
+
+Dispatch가 수락된 뒤 submission 검증에 실패하면 launcher는 exact Dispatch를 `worker-stop`하고 exact
+terminal handle을 닫는다. typed `tab_not_found`는 그 handle이 이미 사라진 것으로만 취급하고,
+stop/close 실패는 원래 submission 오류와 함께 보고한다. launcher 성공, first heartbeat, local report는
+final completion이 아니며 accepted `worker_done`이 계속 유일한 완료 증거다.
+
+post-Dispatch submission은 pre-Dispatch cursor 뒤에서 기본 30초 동안 bounded 관찰한다. exact
+`[Pasted Content N chars]` marker에는 Enter를 한 번만 보내고, marker가 없으면
+`UserPromptSubmit`/`Working` evidence를 요구한다. 둘 다 없으면 success를 출력하지 않고 exact
+Dispatch/terminal을 정리한 뒤 fail closed한다.
+
+renderer preview와 cursor stream도 서로 엇갈릴 수 있다. PR #58 remediation의
+`ctx_ef4483264590` / `term_63a45917-6d8c-48d2-b72b-21bd95a850fa`는 cursor 107 뒤 새 출력 0과
+`tui-idle=true`가 관측된 동안 `terminal show`에 `[Pasted Content 5717 chars]`가 늦게 나타났고,
+2026-08-09 03:57 KST exact Enter 1 byte 뒤에야 작업이 시작됐다. 회귀 harness는 pre/post renderer
+snapshot을 비교해 stale marker를 배제하고 Enter를 정확히 한 번만 보내며, 이후 cursor-bound
+`UserPromptSubmit`/`Working` 전에는 Dispatch 성공을 인정하지 않는다.
+
+Antigravity에서는 agy 1.1.11의 `--prompt-interactive`를 사용하고 exact worktree absolute path 밖의
+search를 금지한다. trust prompt는 launcher가 승인하지 않는다. `codex-trust-workspace` 진단 후 exact
+terminal을 닫고, operator가 isolated worktree만 명시적으로 trust한 다음 새 staged attempt를 만든다.
+home/sibling checkout 추가, broad trust 저장, `-AllowUnsafe`는 이 recovery에 사용하지 않는다.
+
+독립 Antigravity 감사 `msg_8b71ec6196c7`은 exact main
+`cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`에서 read-only/변경 0으로 lifecycle probe와
+Quick/static 검증을 통과했다. 이 감사는 `agy 1.1.11`의 `--prompt-interactive`, exact isolated-worktree
+trust, delayed marker, positive processing evidence 및 exact cleanup 경계를 뒷받침하지만, 이 PR의 새
+head에 대한 독립 리뷰는 아니며 Orca 1.4.176 packaged named-pipe IPC 원인을 해결했다는 증거도 아니다.
+
 ## 6. 남은 acceptance
 
 - packaged Orca가 장기 safe worker에서 final mutation을 반복 수락하거나 typed/idempotent recovery를 제공
-- initial/release-follow-up 각각 Sol/Terra/Luna 3회 matrix
+- packaged `worker-start` initial/release-follow-up 각각 Sol/Terra/Luna 3회 matrix
+- `input_accepted` 뒤 agent-session과 PowerShell shell을 구분하는 관측 및 exact resource accounting
 - 실패 주입에서 shell과 agent session 구분 및 resource cleanup 검증
 - fresh exact-head independent review와 terminal GitHub CI
 
