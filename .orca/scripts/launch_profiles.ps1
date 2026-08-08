@@ -1,7 +1,7 @@
 # .orca/scripts/launch_profiles.ps1 — Orca Profile Terminal Launcher Script
 param (
     [Parameter(Mandatory=$true)]
-    [ValidateSet('sol', 'terra', 'luna')]
+    [ValidateSet('gpt5.6-sol', 'gpt5.6-terra', 'gpt5.6-luna', 'sol', 'terra', 'luna')]
     [string]$Profile,
 
     [Parameter(Mandatory=$false)]
@@ -13,10 +13,16 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
+# Normalize profile name
+if (-not $Profile.StartsWith('gpt5.6-')) {
+    $Profile = "gpt5.6-$Profile"
+}
+
 Write-Host "🚀 Launching Orca Terminal Profile: [$Profile] (Effort: High, Worktree: $Worktree)..." -ForegroundColor Cyan
 
 $profilePath = ".orca/profiles/$Profile.md"
 $title = "$Profile-worker"
+
 
 # Create Terminal in Orca
 $createJson = orca terminal create --worktree $Worktree --title $title --command "codex --profile $profilePath --effort high" --json | ConvertFrom-Json

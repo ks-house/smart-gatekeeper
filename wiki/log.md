@@ -1824,3 +1824,9 @@
 - Defined luna profile (.orca/profiles/luna.md) for Android native, Flutter UI, and E2E QA fault injection (Effort: high).
 - Created PowerShell terminal launcher script (.orca/scripts/launch_profiles.ps1) and spec/done templates (.orca/templates/).
 - Updated wiki/index.md Meta section.
+
+## [2026-08-08] fix | Rename Orca multi-agent profiles to gpt5.6- prefixed convention
+
+- Renamed .orca/profiles/terra.md to .orca/profiles/gpt5.6-terra.md.
+- Renamed .orca/profiles/luna.md to .orca/profiles/gpt5.6-luna.md.
+- Updated .orca/ORCA.md, .orca/profiles/gpt5.6-sol.md, and .orca/scripts/launch_profiles.ps1 to adopt gpt5.6-sol, gpt5.6-terra, and gpt5.6-luna profile names.

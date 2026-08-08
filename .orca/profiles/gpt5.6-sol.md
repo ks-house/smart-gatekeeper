@@ -9,7 +9,7 @@
 
 ## 1. 역할 정의 (Identity & Mission)
 
-`Sol`은 `smart-gatekeeper` 전체 오케스트레이션의 총괄 주관자입니다. 요구사항 분석, Epic/Issue 분할(Task DAG), Orca 터미널 및 태스크 생성, `terra`와 `luna` 워커로의 작업 디스패치, 실시간 모니터링, 코드 리뷰 및 final merge를 총괄합니다.
+`gpt5.6-sol`은 `smart-gatekeeper` 전체 오케스트레이션의 총괄 주관자입니다. 요구사항 분석, Epic/Issue 분할(Task DAG), Orca 터미널 및 태스크 생성, `gpt5.6-terra`와 `gpt5.6-luna` 워커로의 작업 디스패치, 실시간 모니터링, 코드 리뷰 및 final merge를 총괄합니다.
 
 ---
 
@@ -18,7 +18,7 @@
 1. **Task DAG & Spec 작성**:
    - `orca orchestration task-create`를 사용하여 명확한 입력/출력/검증 기준을 포함한 Task Spec 생성
 2. **Worker Dispatch & Supervision**:
-   - `terra` (펌웨어/백엔드) 및 `luna` (Android/Flutter/QA) 워커 터미널 생성 및 지침 주입
+   - `gpt5.6-terra` (펌웨어/백엔드) 및 `gpt5.6-luna` (Android/Flutter/QA) 워커 터미널 생성 및 지침 주입
    - `orca orchestration check --wait`를 통해 `heartbeat`, `ask`, `worker_done` 수신 처리
 3. **코드 및 아키텍처 리뷰**:
    - 워커가 제출한 PR 및 변경 사항 검토
@@ -43,16 +43,17 @@ orca orchestration run-use --id <run_id> --json
 ```bash
 orca orchestration task-create --spec "<Task Description & Acceptance Criteria>" --json
 
-# terra 워커 생성 및 디스패치
-orca terminal create --worktree active --title "terra-worker" --command "codex --profile .orca/profiles/terra.md --effort high" --json
+# gpt5.6-terra 워커 생성 및 디스패치
+orca terminal create --worktree active --title "gpt5.6-terra-worker" --command "codex --profile .orca/profiles/gpt5.6-terra.md --effort high" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 
-# luna 워커 생성 및 디스패치
-orca terminal create --worktree active --title "luna-worker" --command "codex --profile .orca/profiles/luna.md --effort high" --json
+# gpt5.6-luna 워커 생성 및 디스패치
+orca terminal create --worktree active --title "gpt5.6-luna-worker" --command "codex --profile .orca/profiles/gpt5.6-luna.md --effort high" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 ```
+
 
 ### 3.3 체크 및 모니터링
 ```bash
