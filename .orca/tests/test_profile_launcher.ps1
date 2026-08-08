@@ -68,6 +68,10 @@ if ([string]::IsNullOrWhiteSpace($env:MOCK_EVENT_PATH)) {
     (($RemainingArgs -join [char]31) + [Environment]::NewLine),
     [System.Text.UTF8Encoding]::new($false)
 )
+$eventText = [System.IO.File]::ReadAllText($env:MOCK_EVENT_PATH)
+$separator = [regex]::Escape([string][char]31)
+$dispatchSeen = $eventText -match ("orchestration${separator}dispatch${separator}")
+$enterSeen = $eventText -match ("terminal${separator}send${separator}.*${separator}--enter(?:${separator}|\r?\n)")
 
 $action = if ($RemainingArgs.Count -gt 0) { $RemainingArgs[0] } else { '' }
 if ($action -eq 'terminal' -and $RemainingArgs.Count -gt 1 -and $RemainingArgs[1] -eq 'create') {
@@ -123,10 +127,15 @@ if ($action -eq 'terminal' -and $RemainingArgs.Count -gt 1 -and $RemainingArgs[1
     }
     $tail = if ($env:MOCK_MODE -eq 'startup_shell' -or $env:MOCK_MODE -eq 'startup_shell_tab_missing') {
         @('PS C:\mock>')
+    } elseif ($cursorRead -and $enterSeen -and
+        ($env:MOCK_MODE -eq 'delayed_marker' -or $env:MOCK_MODE -eq 'renderer_preview_marker')) {
+        @('Working')
     } elseif ($cursorRead -and $env:MOCK_MODE -eq 'delayed_marker' -and $cursorReadCount -le 12) {
         @('Rendering')
     } elseif ($cursorRead -and $env:MOCK_MODE -eq 'delayed_marker') {
         @('[Pasted Content 42 chars]')
+    } elseif ($cursorRead -and $env:MOCK_MODE -eq 'renderer_preview_marker') {
+        @()
     } elseif ($cursorRead -and $env:MOCK_MODE -eq 'no_submission_evidence') {
         @('Rendering')
     } elseif ($cursorRead) {
@@ -140,6 +149,19 @@ if ($action -eq 'terminal' -and $RemainingArgs.Count -gt 1 -and $RemainingArgs[1
             terminal = [pscustomobject]@{ tail = $tail; latestCursor = 'cursor_mock_1' }
         }
     } | ConvertTo-Json -Depth 5 -Compress
+    return
+}
+
+if ($action -eq 'terminal' -and $RemainingArgs.Count -gt 1 -and $RemainingArgs[1] -eq 'show') {
+    $preview = if ($env:MOCK_MODE -eq 'renderer_preview_marker' -and $dispatchSeen -and -not $enterSeen) {
+        '[Pasted Content 5717 chars]'
+    } else {
+        "PROFILE_READY $env:MOCK_PROFILE"
+    }
+    [pscustomobject]@{
+        ok = $true
+        result = [pscustomobject]@{ terminal = [pscustomobject]@{ preview = $preview } }
+    } | ConvertTo-Json -Depth 4 -Compress
     return
 }
 
@@ -170,6 +192,14 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
             result = [pscustomobject]@{ dispatch = [pscustomobject]@{ id = 'ctx_mock123' } }
         } | ConvertTo-Json -Depth 4 -Compress
     }
+    return
+}
+
+if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingArgs[1] -eq 'worker-stop') {
+    [pscustomobject]@{
+        ok = $true
+        result = [pscustomobject]@{ dispatchId = 'ctx_mock123'; status = 'stopped' }
+    } | ConvertTo-Json -Depth 3 -Compress
     return
 }
 
@@ -242,6 +272,17 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
     Assert-True (($delayedMarker.events | Where-Object { $_ -match '^terminal\x1fread\x1f' -and $_ -match '\x1f--cursor\x1f' }).Count -ge 13) 'The delayed-marker case must observe beyond the former five-second window.'
     Assert-True (($delayedMarker.events | Where-Object { $_ -match '^terminal\x1fsend\x1f' -and $_ -match '\x1f--enter(?:\x1f|$)' }).Count -eq 1) 'The delayed exact marker must authorize exactly one Enter.'
 
+    $rendererMarkerEventPath = Join-Path $resolvedTemporaryRoot 'renderer-marker-events.txt'
+    $env:MOCK_CREATE_COUNT = '0'
+    $env:MOCK_WAIT_COUNT = '0'
+    $env:MOCK_CURSOR_READ_COUNT = '0'
+    $rendererMarker = Invoke-LauncherCase -Mode 'renderer_preview_marker' -EventPath $rendererMarkerEventPath `
+        -LauncherPath $launcherPath -MockOrcaPath $mockOrcaPath
+    Assert-True ($rendererMarker.exitCode -eq 0) "A post-Dispatch renderer marker must be recovered and followed by processing evidence: $($rendererMarker.output)"
+    Assert-True (($rendererMarker.events | Where-Object { $_ -match '^terminal\x1fshow\x1f' }).Count -ge 2) 'The renderer-race case must compare pre- and post-Dispatch terminal show surfaces.'
+    Assert-True (($rendererMarker.events | Where-Object { $_ -match '^terminal\x1fread\x1f' -and $_ -match '\x1f--cursor\x1f' }).Count -ge 2) 'The renderer-race case must keep observing the dispatch cursor through actual processing.'
+    Assert-True (($rendererMarker.events | Where-Object { $_ -match '^terminal\x1fsend\x1f' -and $_ -match '\x1f--enter(?:\x1f|$)' }).Count -eq 1) 'A marker visible only in terminal show must authorize exactly one Enter.'
+
     $noEvidenceEventPath = Join-Path $resolvedTemporaryRoot 'no-evidence-events.txt'
     $env:MOCK_CREATE_COUNT = '0'
     $env:MOCK_WAIT_COUNT = '0'
@@ -249,8 +290,9 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
     $noEvidence = Invoke-LauncherCase -Mode 'no_submission_evidence' -EventPath $noEvidenceEventPath `
         -LauncherPath $launcherPath -MockOrcaPath $mockOrcaPath -DispatchObservationSeconds 6
     Assert-True ($noEvidence.exitCode -ne 0) 'Absence of a marker and positive submission evidence must fail closed.'
-    Assert-True ($noEvidence.output -match 'no positive UserPromptSubmit/Working evidence') 'The no-evidence failure must state the positive-evidence boundary.'
-    Assert-True (($noEvidence.events | Where-Object { $_ -match '^terminal\x1fclose\x1f' }).Count -eq 0) 'An already accepted Dispatch must be retained for coordinator inspection.'
+    Assert-True ($noEvidence.output -match 'cursor-bound' -and $noEvidence.output -match 'UserPromptSubmit/Working') 'The no-evidence failure must state the positive-evidence boundary.'
+    Assert-True (($noEvidence.events | Where-Object { $_ -match '^orchestration\x1fworker-stop\x1f' -and $_ -match '\x1f--dispatch\x1fctx_mock123(?:\x1f|$)' }).Count -eq 1) 'An accepted-but-unproven Dispatch must be stopped exactly once.'
+    Assert-True (($noEvidence.events | Where-Object { $_ -match '^terminal\x1fclose\x1f' }).Count -eq 1) 'An accepted-but-unproven Dispatch must close its exact terminal.'
 
     $antigravityEventPath = Join-Path $resolvedTemporaryRoot 'antigravity-events.txt'
     $env:MOCK_CREATE_COUNT = '0'

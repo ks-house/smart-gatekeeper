@@ -25,7 +25,7 @@
 
 > `codex --profile`은 `$CODEX_HOME/<name>.config.toml` 계층만 로드하며 Markdown 역할 파일을 받지 않습니다. Codex의 추론 강도는 `--effort`가 아니라 `-c model_reasoning_effort="high"`로 지정합니다. 현재 `agy 1.1.11`은 계속되는 TUI session의 initial prompt에 positional argument가 아니라 `--prompt-interactive`/`-i`를 요구합니다. 런처는 역할 문서 bootstrap을 CLI의 최초 interactive prompt로 전달하고, `PROFILE_READY`와 최종 `tui-idle`을 확인한 후 Task를 주입합니다.
 
-> 일부 TUI에서는 `dispatch --inject` 성공 뒤 입력란 끝에 정확히 `[Pasted Content N chars]`만 늦게 나타나고 제출되지 않을 수 있습니다. 런처는 Dispatch 직전 terminal cursor 이후 출력만 기본 30초 동안 bounded 관찰합니다. exact 미제출 표식에는 Enter를 한 번만 보내고, 그렇지 않으면 post-Dispatch `UserPromptSubmit`/`Working` 증거를 요구합니다. former 5초 동안 표식이 없었다는 이유만으로 성공을 보고하지 않으며 positive evidence가 끝내 없으면 accepted Dispatch와 terminal을 보존해 fail closed합니다.
+> 일부 TUI에서는 `dispatch --inject` 성공 뒤 입력란 끝에 정확히 `[Pasted Content N chars]`만 늦게 나타나고 제출되지 않을 수 있습니다. cursor read에는 새 출력이 없는데 `terminal show` renderer preview에만 marker가 먼저 보이는 경합도 있습니다. 런처는 Dispatch 직전 cursor와 renderer snapshot 뒤 출력/preview를 기본 30초 동안 bounded 교차 관찰합니다. pre-Dispatch에 없던 exact 미제출 표식에는 Enter를 한 번만 보내고, 그 뒤에도 post-cursor `UserPromptSubmit`/`Working` 증거를 요구합니다. former 5초 동안 표식이 없었다는 이유나 Enter 전송만으로 성공을 보고하지 않습니다. positive evidence가 끝내 없으면 exact Dispatch를 `worker-stop`하고 exact terminal handle을 닫은 뒤 fail closed하며, cleanup 자체가 실패하면 원래 submission 오류와 cleanup 오류를 함께 보고합니다.
 
 > 각 Codex startup attempt는 생성 직후부터 단일 cleanup 경계로 관리됩니다. `tui-idle` timeout/error, startup snapshot error, 또는 마지막 비공백 줄이 현재 PowerShell prompt인 조기 종료가 발생하면 그 정확한 터미널을 닫습니다. 첫 실패만 새 터미널에서 한 번 재시도하고, 두 번째 실패도 터미널을 닫은 뒤 차단합니다.
 
@@ -84,9 +84,9 @@ Dispatch를 blocked로 처리합니다. 상세 근거와 exact probe는
 `wiki/orca_lifecycle_incident.md`를 따릅니다.
 
 staged launcher가 Dispatch acceptance 전에 실패하면 새 contract는 그 exact terminal을 닫고 Task를
-실행되지 않은 상태로 남깁니다. Dispatch가 이미 수락된 뒤 submission 검증이 실패하면 terminal을
-자동으로 지우지 않고 exact Dispatch ID와 함께 fail closed하므로, coordinator가 transcript와 상태를
-검사한 뒤 exact Dispatch를 stop/account해야 합니다.
+실행되지 않은 상태로 남깁니다. Dispatch가 이미 수락된 뒤 submission 검증이 실패하면 그 exact
+Dispatch를 `worker-stop`하고 exact terminal handle을 닫습니다. typed `tab_not_found`는 해당 terminal이
+이미 사라진 것으로만 취급하며, cleanup 실패는 원래 submission 오류와 함께 fail closed합니다.
 
 ---
 

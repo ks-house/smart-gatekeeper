@@ -143,11 +143,16 @@ function Ensure-DispatchSubmitted {
         [Parameter(Mandatory=$true)]
         [string]$SinceCursor,
 
+        [Parameter(Mandatory=$true)]
+        [string]$PreDispatchRenderedText,
+
         [Parameter(Mandatory=$false)]
         [int]$ObservationSeconds = 30
     )
 
     $deadline = (Get-Date).AddSeconds($ObservationSeconds)
+    $enterSent = $false
+    $pasteMarkerPattern = '(?s)\[Pasted Content \d+ chars\]\s*$'
     while ((Get-Date) -lt $deadline) {
         # Read only output produced after the cursor captured immediately before
         # this Dispatch. A stale paste marker from any earlier prompt must never
@@ -158,13 +163,13 @@ function Ensure-DispatchSubmitted {
         }
 
         $tailText = $snapshot.result.terminal.tail -join "`n"
-        if ($tailText -match '(?s)\[Pasted Content \d+ chars\]\s*$') {
+        if (-not $enterSent -and $tailText -match $pasteMarkerPattern) {
             $submit = & $script:orcaExecutable terminal send --terminal $TerminalHandle --enter --json | ConvertFrom-Json
             if (-not $submit.ok) {
                 throw "Dispatch was injected but Enter submission failed: $($submit.error.message)"
             }
             Write-Host "Dispatch injection required one bounded Enter submission." -ForegroundColor Yellow
-            return $submit
+            $enterSent = $true
         }
 
         # Absence of the paste marker is not submission evidence. Require an
@@ -174,6 +179,32 @@ function Ensure-DispatchSubmitted {
             return $snapshot
         }
 
+        # Orca renderer preview and cursor reads can settle out of order. A
+        # post-Dispatch terminal show may expose a newly rendered paste marker
+        # while the cursor read still has zero new output. Never trust a marker
+        # that was already present before Dispatch, and still require positive
+        # cursor-bound processing evidence after the single Enter.
+        if (-not $enterSent) {
+            $renderedSnapshot = & $script:orcaExecutable terminal show --terminal $TerminalHandle --json | ConvertFrom-Json
+            if (-not $renderedSnapshot.ok) {
+                throw "Dispatch renderer inspection failed: $($renderedSnapshot.error.message)"
+            }
+            $renderedText = @(
+                [string]$renderedSnapshot.result.terminal.preview,
+                [string]$renderedSnapshot.result.preview,
+                [string]($renderedSnapshot.result.terminal.tail -join "`n")
+            ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+            if ($PreDispatchRenderedText -notmatch $pasteMarkerPattern -and
+                $renderedText -match $pasteMarkerPattern) {
+                $submit = & $script:orcaExecutable terminal send --terminal $TerminalHandle --enter --json | ConvertFrom-Json
+                if (-not $submit.ok) {
+                    throw "Dispatch renderer showed an exact paste marker but Enter submission failed: $($submit.error.message)"
+                }
+                Write-Host "Dispatch renderer preview required one bounded Enter submission; awaiting cursor-bound processing evidence." -ForegroundColor Yellow
+                $enterSent = $true
+            }
+        }
+
         if ($tailText -match '(?s)(?:^|\n)PS [^\r\n]+>\s*$') {
             throw 'Agent returned to PowerShell before Dispatch submission was proven.'
         }
@@ -181,7 +212,8 @@ function Ensure-DispatchSubmitted {
         Start-Sleep -Milliseconds 500
     }
 
-    throw "Dispatch acceptance produced no positive UserPromptSubmit/Working evidence and no exact paste-marker recovery within $ObservationSeconds seconds."
+    $markerDetail = if ($enterSent) { 'an exact paste marker was submitted once but processing was not proven' } else { 'no exact paste marker was recoverable' }
+    throw "Dispatch acceptance produced no positive cursor-bound UserPromptSubmit/Working evidence within $ObservationSeconds seconds; $markerDetail."
 }
 
 # Normalize the profile name and build a CLI command supported by the installed
@@ -305,6 +337,16 @@ if ($TaskId -ne '') {
         if ([string]::IsNullOrWhiteSpace($preDispatchCursor)) {
             throw "Pre-Dispatch terminal inspection returned no latest cursor."
         }
+        $preDispatchRenderedSnapshot = & $orcaExecutable terminal show --terminal $handle --json | ConvertFrom-Json
+        if (-not $preDispatchRenderedSnapshot.ok) {
+            throw "Pre-Dispatch renderer inspection failed: $($preDispatchRenderedSnapshot.error.message)"
+        }
+        $preDispatchRenderedText = @(
+            [string]$preDispatchRenderedSnapshot.result.terminal.preview,
+            [string]$preDispatchRenderedSnapshot.result.preview,
+            [string]($preDispatchRenderedSnapshot.result.terminal.tail -join "`n")
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+        $preDispatchRenderedText = [string]$preDispatchRenderedText
         $dispatchJson = & $orcaExecutable orchestration dispatch --task $TaskId --to $handle --inject --json | ConvertFrom-Json
         if (-not $dispatchJson.ok) {
             throw "Dispatch was rejected before acceptance: $($dispatchJson.error.message)"
@@ -319,10 +361,28 @@ if ($TaskId -ne '') {
     }
 
     try {
-        $dispatchSubmitJson = Ensure-DispatchSubmitted -TerminalHandle $handle -SinceCursor $preDispatchCursor -ObservationSeconds $DispatchObservationSeconds
+        $dispatchSubmitJson = Ensure-DispatchSubmitted -TerminalHandle $handle -SinceCursor $preDispatchCursor `
+            -PreDispatchRenderedText $preDispatchRenderedText -ObservationSeconds $DispatchObservationSeconds
     } catch {
+        $submissionError = $_
         $dispatchId = [string]$dispatchJson.result.dispatch.id
-        throw "Dispatch $dispatchId was accepted, but bounded submission verification failed. Preserve the terminal and let the coordinator inspect and stop the exact Dispatch. Original error: $_"
+        $stopError = ''
+        try {
+            $stopJson = & $orcaExecutable orchestration worker-stop --dispatch $dispatchId --json | ConvertFrom-Json
+            if (-not $stopJson.ok) {
+                $stopError = "$($stopJson.error.code): $($stopJson.error.message)"
+            }
+        } catch {
+            $stopError = [string]$_
+        }
+        $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
+        if (-not $closeJson.ok -and $closeJson.error.code -ne 'tab_not_found') {
+            throw "Dispatch $dispatchId submission verification failed and exact terminal cleanup failed for ${handle}: $($closeJson.error.message). worker-stop: $stopError. Original error: $submissionError"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($stopError)) {
+            throw "Dispatch $dispatchId submission verification failed; exact terminal $handle was closed or already absent, but worker-stop failed: $stopError. Original error: $submissionError"
+        }
+        throw "Dispatch $dispatchId submission verification failed; worker-stop was accepted and exact terminal $handle was closed or already absent. Original error: $submissionError"
     }
     Write-Host "🎉 Task [$TaskId] successfully dispatched to [$handle]!" -ForegroundColor Green
 }

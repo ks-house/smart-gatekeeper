@@ -168,20 +168,33 @@ repository profile worker는 #55 acceptance가 끝날 때까지 packaged `worker
 이 경로는 initial argv bootstrap, exact marker, final idle, cursor-bound injection을 검증하고 startup
 또는 Dispatch acceptance 전 실패의 exact terminal을 닫는다.
 
-Dispatch가 수락된 뒤 submission 검증에 실패하면 launcher는 active attempt를 숨기지 않도록 terminal을
-보존하고 exact Dispatch ID를 출력한다. coordinator가 `dispatch-show`/terminal transcript를 검사한 뒤
-그 exact attempt를 stop/account한다. launcher 성공, first heartbeat, local report는 final completion이
-아니며 accepted `worker_done`이 계속 유일한 완료 증거다.
+Dispatch가 수락된 뒤 submission 검증에 실패하면 launcher는 exact Dispatch를 `worker-stop`하고 exact
+terminal handle을 닫는다. typed `tab_not_found`는 그 handle이 이미 사라진 것으로만 취급하고,
+stop/close 실패는 원래 submission 오류와 함께 보고한다. launcher 성공, first heartbeat, local report는
+final completion이 아니며 accepted `worker_done`이 계속 유일한 완료 증거다.
 
 post-Dispatch submission은 pre-Dispatch cursor 뒤에서 기본 30초 동안 bounded 관찰한다. exact
 `[Pasted Content N chars]` marker에는 Enter를 한 번만 보내고, marker가 없으면
-`UserPromptSubmit`/`Working` evidence를 요구한다. 둘 다 없으면 success를 출력하지 않고 accepted
-Dispatch/terminal을 보존해 coordinator inspection으로 넘긴다.
+`UserPromptSubmit`/`Working` evidence를 요구한다. 둘 다 없으면 success를 출력하지 않고 exact
+Dispatch/terminal을 정리한 뒤 fail closed한다.
+
+renderer preview와 cursor stream도 서로 엇갈릴 수 있다. PR #58 remediation의
+`ctx_ef4483264590` / `term_63a45917-6d8c-48d2-b72b-21bd95a850fa`는 cursor 107 뒤 새 출력 0과
+`tui-idle=true`가 관측된 동안 `terminal show`에 `[Pasted Content 5717 chars]`가 늦게 나타났고,
+2026-08-09 03:57 KST exact Enter 1 byte 뒤에야 작업이 시작됐다. 회귀 harness는 pre/post renderer
+snapshot을 비교해 stale marker를 배제하고 Enter를 정확히 한 번만 보내며, 이후 cursor-bound
+`UserPromptSubmit`/`Working` 전에는 Dispatch 성공을 인정하지 않는다.
 
 Antigravity에서는 agy 1.1.11의 `--prompt-interactive`를 사용하고 exact worktree absolute path 밖의
 search를 금지한다. trust prompt는 launcher가 승인하지 않는다. `codex-trust-workspace` 진단 후 exact
 terminal을 닫고, operator가 isolated worktree만 명시적으로 trust한 다음 새 staged attempt를 만든다.
 home/sibling checkout 추가, broad trust 저장, `-AllowUnsafe`는 이 recovery에 사용하지 않는다.
+
+독립 Antigravity 감사 `msg_8b71ec6196c7`은 exact main
+`cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`에서 read-only/변경 0으로 lifecycle probe와
+Quick/static 검증을 통과했다. 이 감사는 `agy 1.1.11`의 `--prompt-interactive`, exact isolated-worktree
+trust, delayed marker, positive processing evidence 및 exact cleanup 경계를 뒷받침하지만, 이 PR의 새
+head에 대한 독립 리뷰는 아니며 Orca 1.4.176 packaged named-pipe IPC 원인을 해결했다는 증거도 아니다.
 
 ## 6. 남은 acceptance
 

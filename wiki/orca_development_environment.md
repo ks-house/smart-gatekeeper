@@ -94,15 +94,23 @@ intermittent packaged-runtime 결함이 수정됐다는 증거가 아니다.
 staged 경로의 contract는 initial argv profile bootstrap, 첫 `tui-idle`, exact `PROFILE_READY`, final
 `tui-idle`, pre-Dispatch cursor, `dispatch --inject`, exact post-cursor paste marker에만 허용되는 bounded
 Enter 순서다. startup 또는 Dispatch acceptance 전 실패는 exact terminal을 닫는다. Dispatch가 이미
-수락된 뒤 submission 검증이 실패하면 launcher는 terminal을 보존하고 exact Dispatch ID와 함께
-실패하므로 coordinator가 transcript/state를 검사하고 그 exact Dispatch를 stop/account한다.
+수락된 뒤 submission 검증이 실패하면 launcher는 exact Dispatch를 `worker-stop`하고 exact terminal
+handle을 닫은 뒤 실패한다. typed `tab_not_found`는 그 exact terminal이 이미 사라진 경우에만 cleanup
+완료로 취급하며, stop/close 실패는 원래 submission 오류와 함께 보고한다.
 
 실제 Luna `task_12e31176e5b3`의 `term_fe8c325a`와 Terra `-AllowUnsafe`
 `task_469ab65347a5`의 `term_01eb874d`에서는 former 5초 observation이 성공 반환한 뒤에도 terminal 끝에
 미제출 marker가 늦게 남아 coordinator가 각각 exact Enter를 한 번 보내야 했다. 따라서 새 contract는
 marker 부재를 성공으로 해석하지 않고 기본 30초 안에 post-cursor `UserPromptSubmit`/`Working` 또는
-exact marker+single Enter를 요구한다. positive evidence가 없으면 이미 accepted된 Dispatch와 terminal을
-보존한 채 fail closed하여 coordinator가 exact attempt를 inspect/stop/account하게 한다.
+exact marker+single Enter를 요구한다. positive evidence가 없으면 이미 accepted된 exact Dispatch를
+중지하고 exact terminal을 닫아, 처리되지 않은 Task를 성공 또는 실행 중으로 남기지 않는다.
+
+PR #58 remediation의 수동 Dispatch `ctx_ef4483264590` / terminal
+`term_63a45917-6d8c-48d2-b72b-21bd95a850fa`에서도 cursor 107 뒤 read는 한동안 새 출력 0이고
+`tui-idle=true`였지만 `terminal show`에는 늦게 `[Pasted Content 5717 chars]`가 나타났다. coordinator가
+2026-08-09 03:57 KST에 exact Enter 1 byte를 보낸 뒤에야 처리가 시작됐다. 따라서 launcher는
+pre-Dispatch renderer snapshot과 이후 `terminal show`도 비교해 새 exact marker만 한 번 복구하되,
+Enter 전송 자체가 아니라 이후 cursor-bound `UserPromptSubmit`/`Working`을 성공 기준으로 삼는다.
 
 Antigravity는 현재 `agy 1.1.11`을 사용한다. 이 버전은 positional initial prompt를 interactive TUI에
 유지하지 않으므로 launcher는 `agy --effort high --prompt-interactive '<bootstrap>'`을 사용한다.

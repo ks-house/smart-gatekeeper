@@ -2055,6 +2055,18 @@
 - The mock now requires exact `--type heartbeat`, and an adversarial test rewrites the probe source to `worker_done` and requires a typed non-zero rejection without echoing the Dispatch capability. This closes the no-completion-impersonation test gap while keeping the production probe's `completionSent=false` contract unchanged.
 - Focused lifecycle mutations and PowerShell parsing passed after remediation. Fresh Quick validation, a new commit/head, protected CI, and a new independent exact-head review remain required; all physical, operator, and production Gates remain pending and fail-closed.
 
+## [2026-08-09] compile | Prepare deterministic Issue #54 physical Gate evidence package
+
+- Added a pending-only `physical_validation/` plan, JSON Schema, field checklists, evidence template, and forged-pass negative fixture for the Samsung/OEM 100-run wake campaign, ESP32-C6 coexistence, GPIO3 relay, AJ-SR04T, RELAY-G0..G2, OTA-G1..G4 power-cut/recovery, operator drills, and canary stop/rollback.
+- Added `scripts/validate_physical_gate_prep.py` and two host-only tests. The validator accepts the all-`not_run` template and rejects a synthetic 100/100 pass claim without raw evidence; this is L0 consistency evidence, not a device/operator/canary result.
+- Linked `physical_gate_preparation.md` from the navigation map. No raw source changed, no measurement/physical acceptance/operator approval/production contact/deploy occurred, and every L2/L3/L4 Gate remains pending and fail-closed.
+
+## [2026-08-09] fix | Bind Issue #54 executed evidence to accountable review
+
+- Extended the pending-only schema and production validator so every later executed record requires an execution window, named executor, independent named reviewer or risk owner, plan-bound pass condition and approval role, and an after-execution review decision.
+- Replaced opaque raw-evidence strings with exact plan-category entries bound to capture identity/time/actor, SHA-256, and matching content-addressed locator; adversarial tests reject missing actors/times, generic or partial categories, incomplete captures, self-review, empty or wrong-role approval, pass-condition substitution, and the forged-pass fixture.
+- The committed template remains entirely `not_run`; no physical measurement, operator approval, canary, production contact, deployment, or Gate acceptance occurred, and `raw/` remains unchanged.
+
 ## [2026-08-09] fix | Harden staged Orca profile launch fallback
 
 - Reconciled exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f` with six post-PR-#60 packaged `worker-start` non-completion Dispatches and staged success `ctx_e1f6e94ad254`. The recurrence remains intermittent, issue #55 stays open, and no packaged-runtime root-cause fix is claimed.
@@ -2062,3 +2074,12 @@
 - Replaced the unsafe five-second no-marker success path after delayed unsubmitted prompts on `term_fe8c325a` and `term_01eb874d`. The launcher now observes post-cursor output for 30 seconds by default and reports success only after exact marker plus one Enter or positive `UserPromptSubmit`/`Working`; accepted-but-unproven Dispatches remain preserved for exact coordinator inspection and stop/accounting.
 - Added executable mock coverage for Codex and Antigravity launch, delayed marker beyond five seconds, positive working evidence, no-evidence failure, trust blocking, renderer idle, shell exit, Dispatch rejection, `tab_not_found`, exact cleanup, and no unsafe permission. Focused staged-launcher and lifecycle-probe suites passed; complete Quick could not start because this isolated sandbox lacked `.venv` and Python `ensurepip` was denied in the user AppData temp boundary.
 - This is a repository-side staged mitigation and diagnostic contract only. Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, production, packaged initial/follow-up matrix, independent exact-head review, and terminal CI evidence remain pending and fail-closed.
+
+## [2026-08-09] fix | Integrate current main and close unproven staged launches
+
+- Integrated exact `origin/main` `fb827681e1b2f5a8b08aa2784ae419832efff6f7` after PR #62 into draft PR #63 while preserving the new main `wiki/log.md` Git blob as an exact byte prefix and then appending the existing issue-#55 branch suffix. `raw/` remains byte-identical to current main.
+- Superseded the preceding entry's preserved-terminal operational statement without rewriting it: when an accepted Dispatch has no post-cursor `UserPromptSubmit`/`Working` evidence, the launcher stops that exact Dispatch and closes that exact terminal handle; typed `tab_not_found` means already absent, and cleanup errors remain fail-closed.
+- Added the PR #58 renderer/cursor race from `ctx_ef4483264590` / `term_63a45917-6d8c-48d2-b72b-21bd95a850fa`: cursor 107 had zero new output and `tui-idle=true` while `terminal show` later exposed `[Pasted Content 5717 chars]`, and processing began only after the coordinator sent exact Enter 1 byte at 2026-08-09 03:57 KST. The launcher now compares pre/post renderer snapshots, sends one Enter only for a new exact marker, and still waits for cursor-bound processing evidence.
+- Incorporated independent Antigravity audit `msg_8b71ec6196c7`, performed read-only with zero changes at exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`. Its lifecycle probe and Quick/static pass support the mitigation boundary but are not an independent review of this PR head and do not fix Orca 1.4.176 packaged named-pipe IPC.
+- Focused staged-launcher and lifecycle-probe suites, PowerShell AST parsing, relative-link checks, the current-main nine-test physical-gate preparation suite, whitespace checks, and raw equality passed. The current-worktree Quick suite stopped at environment doctor because the Orca runtime was not ready, `.venv` had no pip, and neither Flutter nor Docker was available; no physical, operator, production, or packaged-runtime acceptance is claimed.
+- PR #63 remains Draft and issue #55 remains open. Fresh exact-head independent review is required before ready/merge, while Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, production, and packaged initial/follow-up matrix Gates remain pending and fail-closed.
