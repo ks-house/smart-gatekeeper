@@ -30,6 +30,7 @@
 |------|---------|
 | [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, authoritative relay GPIO3 및 3.3V 전기 안전 기준 |
 | [hardware_test.md](hardware_test.md) | 현재 아키텍처 검증표와 과거 ToF 테스트 증거 분리 |
+| [physical_gate_preparation.md](physical_gate_preparation.md) | #54 Samsung/OEM, ESP32-C6, relay/sensor, OTA, operator/canary evidence preparation |
 | [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO3 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
 
 ---
@@ -101,6 +102,7 @@
 | AJ-SR04T/Relay 핀과 전기 안전 | [pin_mapping.md](pin_mapping.md) |
 | 현재 빌드·시크릿·CI/CD | [env_setup.md](env_setup.md) |
 | 현재 검증 상태와 E2E 절차 | [hardware_test.md](hardware_test.md) |
+| #54 physical Gate pending-only template | [physical_gate_preparation.md](physical_gate_preparation.md) |
 | 앱/서비스 상태별 동작 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#3-서비스-생애주기) |
 | 화면 OFF·앱 종료 감사 | [mobile_app_background_audit.md](mobile_app_background_audit.md) |
 | 화면 OFF 출입 실패 상세 분석 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) |
