@@ -61,6 +61,10 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("ssl.CERT_REQUIRED", backend)
         self.assertIn("targetId == MQTT_USER", target)
         self.assertIn("CommandResult::kEffectRejected", target)
+        self.assertNotIn(":?", compose)
+        self.assertIn("COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:-0}", compose)
+        self.assertIn("if not all((COMMAND_TARGET_ID", backend)
+        self.assertIn("MQTT_PORT == 1883 or not MQTT_CA_FILE", backend)
 
     def test_broker_rejects_retained_and_credential_crossover(self) -> None:
         config = (ROOT / "security/mosquitto.conf").read_text(encoding="utf-8")

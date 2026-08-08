@@ -7,7 +7,7 @@
 - The Target accepts MQTT only when the broker host, non-1883 port, unique password, root CA, and signer identity are provisioned.
 - The broker username must equal the Target ID derived from the ESP32-C6 MAC. The Target subscribes only to `gatekeeper/v1/targets/<target_id>/command` and `/acl` with QoS 1.
 - `security/mosquitto.conf` disables anonymous and retained publications. `security/target-acl` uses `%u` pattern rules so one Target credential cannot read or write another Target namespace.
-- The backend uses `ssl.CERT_REQUIRED`, a configured CA file, hostname verification, and non-retained QoS 1 publications. There is no plaintext, `CERT_NONE`, `tls_insecure_set(True)`, or Target `setInsecure` fallback.
+- The backend uses `ssl.CERT_REQUIRED`, a configured CA file, hostname verification, and non-retained QoS 1 publications. Compose can render without production secrets for private-default validation, but blank signer, Target identity, broker, or CA provisioning makes the runtime effect path return failure before publication. There is no plaintext, `CERT_NONE`, `tls_insecure_set(True)`, or Target `setInsecure` fallback.
 
 ## 2. Signed command envelope
 

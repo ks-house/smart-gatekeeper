@@ -2132,3 +2132,9 @@
 - Replaced raw-struct hashing with an explicit fixed 80-byte little-endian encoding of the defined magic, schema, reserved, generation, and version fields; corrupt-slot mutations now verify fail-closed recovery without relying on ABI padding.
 - Windows and WSL/Linux native production-core tests passed 455 checks; the scoped ESP32-C6 build passed at RAM 53,888/327,680 (16.4%) and flash 1,606,504/7,340,032 (21.9%).
 - This is a software portability correction only. Physical Target storage, power-loss, rollback, operator, OTA-G1..G4, production authorization, merge, and deployment evidence remain pending and fail-closed.
+
+## [2026-08-09] fix | Reconcile private-default Compose with fail-closed command provisioning
+
+- After integrating exact main `c654a18f0fa278e4530229bb881fe88286d25c2e`, the inherited backend-security lane correctly required `docker compose config` to succeed without production secrets, while issue #50 used interpolation-time required variables.
+- Changed only Compose interpolation to blank/default values so the private deployment topology is auditable without secrets; runtime Target identity, signing scalar/key, verified broker, non-1883 port, and CA checks still reject every effect before publication when provisioning is absent.
+- Added mutation assertions for renderable defaults and runtime fail-closed seams. No plaintext/insecure fallback, production secret, broker contact, physical/operator evidence, production enablement, merge, or deployment was introduced.
