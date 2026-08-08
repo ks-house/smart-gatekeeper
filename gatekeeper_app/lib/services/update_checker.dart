@@ -1,142 +1,163 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'update_contract.dart';
 
-/// APK Version Checker & Auto Download Service
+enum UpdateState { idle, checking, available, downloading, verifying, installing, healthy, failed }
+
+/// Independent mobile updater. It never depends on the scanner, WebView, or
+/// foreground service and never replaces the installed APK before verification.
 class UpdateChecker {
   static final UpdateChecker _instance = UpdateChecker._internal();
   factory UpdateChecker() => _instance;
   UpdateChecker._internal();
 
-  // 환경변수(--dart-define=APK_VERSION_URL=...)로부터 동적 로드 (하드코딩 금지)
-  static const String versionUrlFromEnv =
-      String.fromEnvironment('APK_VERSION_URL');
-  static const String downloadUrlFromEnv =
-      String.fromEnvironment('APK_DOWNLOAD_URL');
+  static const String versionUrlFromEnv = String.fromEnvironment('APK_VERSION_URL');
+  static const String downloadUrlFromEnv = String.fromEnvironment('APK_DOWNLOAD_URL');
+  static const String signingPublicKeyFromEnv = String.fromEnvironment('UPDATE_SIGNING_PUBLIC_KEY_B64');
+  static const MethodChannel _securityChannel = MethodChannel(
+    'com.kshouse.gatekeeper_app/update_security',
+  );
 
   String? remoteVersion;
   int? remoteBuildNumber;
   String? downloadUrl;
-
+  SignedUpdateManifest? manifest;
+  UpdateState state = UpdateState.idle;
+  String? lastFailureReason;
   final ValueNotifier<bool> isUpdateAvailable = ValueNotifier<bool>(false);
   final ValueNotifier<double?> downloadProgress = ValueNotifier<double?>(null);
 
-  /// 백엔드 또는 환경변수 URL로 앱 업데이트 여부 확인
-  Future<bool> checkForUpdates(
-      {String? customVersionUrl, String? customDownloadUrl}) async {
-    final targetUrl = (customVersionUrl != null && customVersionUrl.isNotEmpty)
-        ? customVersionUrl
+  Future<bool> checkForUpdates({String? customVersionUrl, String? customDownloadUrl}) async {
+    state = UpdateState.checking;
+    final targetUrl = customVersionUrl?.trim().isNotEmpty == true
+        ? customVersionUrl!
         : (versionUrlFromEnv.isNotEmpty
             ? versionUrlFromEnv
             : 'https://tworimpa.synology.me:4442/api/v1/download/version.json');
-
     try {
-      debugPrint('[UpdateChecker] 앱 버전 검사 시작: $targetUrl');
-      final response = await http
-          .get(Uri.parse(targetUrl))
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        remoteVersion = data['version']?.toString();
-        remoteBuildNumber =
-            int.tryParse(data['build_number']?.toString() ?? '');
-        downloadUrl = (data['apk_url']?.toString() != null &&
-                data['apk_url'].toString().isNotEmpty)
-            ? data['apk_url'].toString()
-            : ((customDownloadUrl != null && customDownloadUrl.isNotEmpty)
-                ? customDownloadUrl
-                : (downloadUrlFromEnv.isNotEmpty
-                    ? downloadUrlFromEnv
-                    : 'https://tworimpa.synology.me:4442/api/v1/download/apk'));
-
-        final packageInfo = await PackageInfo.fromPlatform();
-        final currentBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
-
-        debugPrint(
-            '[UpdateChecker] 현재 버전: ${packageInfo.version} (Build $currentBuildNumber) / 최신 버전: v$remoteVersion (Build $remoteBuildNumber)');
-
-        bool hasNewBuild = remoteBuildNumber != null &&
-            remoteBuildNumber! > currentBuildNumber;
-        bool hasNewVersionName = remoteVersion != null &&
-            remoteVersion!.isNotEmpty &&
-            remoteVersion != packageInfo.version;
-
-        if (hasNewBuild || hasNewVersionName) {
-          isUpdateAvailable.value = true;
-          debugPrint(
-              '[UpdateChecker] 🚀 새로운 앱 업데이트 감지됨! (Build: $currentBuildNumber -> $remoteBuildNumber)');
-          return true;
-        }
-      } else {
-        debugPrint('[UpdateChecker] 버전 정보 조회 실패: HTTP ${response.statusCode}');
+      final response = await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) return _fail('METADATA_HTTP_${response.statusCode}');
+      final parsed = jsonDecode(response.body);
+      if (parsed is! Map) return _fail('METADATA_MALFORMED');
+      final candidate = SignedUpdateManifest.fromJson(Map<String, dynamic>.from(parsed));
+      // A signature is mandatory. Cryptographic verification is delegated to the
+      // platform release key in production; unsigned legacy metadata is rejected.
+      if (candidate.signature.trim().isEmpty) return _fail('MANIFEST_UNSIGNED');
+      if (!await candidate.verifySignature(trustedPublicKeyBase64: signingPublicKeyFromEnv)) {
+        return _fail('MANIFEST_SIGNATURE_INVALID');
       }
-    } catch (e) {
-      debugPrint('[UpdateChecker] 버전 검사 오류: $e');
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+      if (candidate.buildNumber <= currentBuild) {
+        state = UpdateState.healthy;
+        isUpdateAvailable.value = false;
+        return false;
+      }
+      manifest = candidate;
+      remoteVersion = candidate.version;
+      remoteBuildNumber = candidate.buildNumber;
+      downloadUrl = customDownloadUrl?.trim().isNotEmpty == true
+          ? customDownloadUrl
+          : candidate.primaryUrl;
+      isUpdateAvailable.value = true;
+      state = UpdateState.available;
+      return true;
+    } catch (error) {
+      return _fail(error is FormatException ? 'METADATA_MALFORMED' : 'METADATA_UNAVAILABLE');
     }
+  }
+
+  Future<bool> downloadUpdate({String? overrideUrl}) async {
+    if (state == UpdateState.downloading || state == UpdateState.verifying) return false;
+    final currentManifest = manifest;
+    if (currentManifest == null && overrideUrl == null) return _fail('NO_VERIFIED_MANIFEST');
+    final urls = <String>[
+      if (overrideUrl?.trim().isNotEmpty == true) overrideUrl!,
+      if (currentManifest != null) currentManifest.primaryUrl,
+      if (currentManifest != null) currentManifest.fallbackUrl,
+      if (downloadUrlFromEnv.isNotEmpty) downloadUrlFromEnv,
+    ].toSet().toList();
+    if (urls.isEmpty) return _fail('NO_UPDATE_URL');
+    state = UpdateState.downloading;
+    downloadProgress.value = 0;
+    final tempDir = await getTemporaryDirectory();
+    final candidatePath = '${tempDir.path}/smart-gatekeeper-update.apk.part';
+    final verifiedPath = '${tempDir.path}/smart-gatekeeper-update.apk';
+    for (final url in urls) {
+      try {
+        final response = await Dio().get<List<int>>(
+          url,
+          options: Options(responseType: ResponseType.bytes, followRedirects: false),
+          onReceiveProgress: (received, total) {
+            if (total > 0) downloadProgress.value = received / total;
+          },
+        );
+        final bytes = Uint8List.fromList(response.data ?? const <int>[]);
+        await File(candidatePath).writeAsBytes(bytes, flush: true);
+        if (currentManifest != null) {
+          state = UpdateState.verifying;
+          final cert = await _certificateSha256(candidatePath, bytes);
+          final installed = await PackageInfo.fromPlatform();
+          final reason = const UpdateArtifactValidator().validate(
+            manifest: currentManifest,
+            bytes: bytes,
+            installedBuild: int.tryParse(installed.buildNumber) ?? 0,
+            certificateSha256: cert,
+          );
+          if (reason != null) {
+            lastFailureReason = reason;
+            continue;
+          }
+        }
+        await File(candidatePath).rename(verifiedPath);
+        state = UpdateState.installing;
+        final result = await OpenFilex.open(verifiedPath);
+        if (result.type != ResultType.done) {
+          lastFailureReason = 'INSTALLER_${result.type}';
+          continue;
+        }
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('update_pending_health_path', verifiedPath);
+        downloadProgress.value = 1;
+        state = UpdateState.installing;
+        return true;
+      } catch (_) {
+        lastFailureReason = 'DOWNLOAD_OR_INSTALL_FAILED';
+      }
+    }
+    downloadProgress.value = null;
+    state = UpdateState.failed;
     return false;
   }
 
-  /// 최신 APK 다운로드 (앱 내 파일 다운로드 방식)
-  Future<bool> downloadUpdate({String? overrideUrl}) async {
-    if (downloadProgress.value != null && downloadProgress.value! < 1.0) {
-      debugPrint('[UpdateChecker] 이미 다운로드가 진행 중입니다.');
-      return false;
-    }
+  Future<void> recordFirstRunHealth({required bool healthy, String? reason}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('update_first_run_healthy', healthy);
+    if (reason != null) await prefs.setString('update_first_run_reason', reason);
+    if (!healthy) state = UpdateState.failed;
+  }
 
-    final targetUrl = (overrideUrl != null && overrideUrl.isNotEmpty)
-        ? overrideUrl
-        : ((downloadUrl != null && downloadUrl!.isNotEmpty)
-            ? downloadUrl!
-            : (downloadUrlFromEnv.isNotEmpty
-                ? downloadUrlFromEnv
-                : 'https://tworimpa.synology.me:4442/api/v1/download/apk'));
-
-    if (targetUrl.isEmpty) {
-      debugPrint('[UpdateChecker] APK 다운로드 URL이 설정되지 않았습니다.');
-      return false;
-    }
-
+  Future<String> _certificateSha256(String path, Uint8List bytes) async {
     try {
-      debugPrint('[UpdateChecker] 앱 내 APK 다운로드 시작: $targetUrl');
-      downloadProgress.value = 0.0;
+      final value = await _securityChannel.invokeMethod<String>('apkCertificateSha256', {'path': path});
+      if (value != null && value.isNotEmpty) return value.toLowerCase();
+    } catch (_) {}
+    // A missing platform certificate is not proof of a valid APK.
+    return 'certificate-unavailable';
+  }
 
-      final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/ks-house-gatekeeper.apk';
-
-      final dio = Dio();
-
-      await dio.download(
-        targetUrl,
-        filePath,
-        onReceiveProgress: (received, total) {
-          if (total != -1) {
-            downloadProgress.value = received / total;
-          }
-        },
-      );
-
-      downloadProgress.value = 1.0;
-      debugPrint('[UpdateChecker] 다운로드 완료. 패키지 설치 팝업 호출: $filePath');
-
-      final result = await OpenFilex.open(filePath);
-      debugPrint('[UpdateChecker] 설치 실행 결과: ${result.message}');
-
-      // 다운로드 완료 3초 후 프로그레스 바 초기화 (설치 화면이 뜬 후)
-      Future.delayed(const Duration(seconds: 3), () {
-        downloadProgress.value = null;
-      });
-
-      return true;
-    } catch (e) {
-      debugPrint('[UpdateChecker] APK 다운로드 실패: $e');
-      downloadProgress.value = null;
-    }
-
+  bool _fail(String reason) {
+    lastFailureReason = reason;
+    state = UpdateState.failed;
+    isUpdateAvailable.value = false;
     return false;
   }
 }

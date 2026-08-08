@@ -69,14 +69,16 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
       _retryMessage = '⚡ Local GATT 수동 출입 요청 송신 중...';
     });
 
-    final success = await _healthBridge.triggerLocalGattRetry();
+    final result = await _healthBridge.triggerLocalGattRetry();
+    final success = result['accepted'] == true;
+    final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
 
     if (mounted) {
       setState(() {
         _isRetrying = false;
         _retryMessage = success
-            ? '✅ 수동 Local GATT 출입 요청 전송 완료!'
-            : '⚠️ 수동 출입 요청 전송 실패 (GATT Worker 미연동 또는 권한 부족)';
+            ? '✅ Target 인증 요청이 durable queue에 등록되었습니다.'
+            : '⚠️ 수동 출입 실패: $reason (기존 credential/legacy 경로는 보존됩니다)';
       });
     }
   }

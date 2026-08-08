@@ -2007,3 +2007,10 @@
 - Refactored each startup attempt so all post-create checks share one failure path. A `tui-idle` failure, startup snapshot failure, or current terminal-end PowerShell prompt now records the original error, closes the exact created terminal, retries only the first attempt, and closes the second exact terminal before failing closed.
 - The reviewer could not deliver accepted `worker_done` after its sandboxed Orca runtime again became unreachable, so its Task was recorded as blocked and the coordinator closed its exact terminal. A fresh injected timeout mutation, real lifecycle probe, and exact-head review remain required; physical, operator, and production Gates remain pending and fail-closed.
 - The coordinator reran the exact injected-timeout mutation against the remediation: two created mock terminal handles each exhausted three bounded wait windows, both exact handles received one close call, and the launcher failed after the second cleanup with the original timeout preserved. Real lifecycle and fresh exact-head review evidence are still required.
+
+## [2026-08-09] code | Implement mobile commercial recovery and updater contracts (#51)
+
+- Fresh-install native wake registration is now reached after the visible permission gate, persisted, re-registered after boot/package replacement, and exposed through a retryable status channel.
+- Manual local GATT retry resolves a recently observed encrypted, Keystore-bound Target locator and returns durable queue/session/reason data; the `TARGET_LOCAL` sentinel is removed while proof uncertainty and exact Target/transport reasons remain durable.
+- Added a scanner/WebView/foreground-service-independent recovery shell, truthful door/enrollment models, privacy redaction, accessibility-friendly responsive layout, Korean/English locale resources, signed metadata plus APK size/hash/certificate/fallback/install-health updater checks, and fail-closed release signing.
+- Host checks do not claim Samsung/One UI, radio/relay, bootloader, physical install-health, or production acceptance; legacy/manual_remote and independent OTA/rollback paths remain preserved.

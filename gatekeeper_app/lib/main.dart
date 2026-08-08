@@ -2,12 +2,15 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/web_view_screen.dart';
+import 'screens/recovery_shell_screen.dart';
 import 'services/foreground_service.dart';
 
 import 'services/error_logger.dart';
+import 'services/native_wake_registration.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -142,6 +145,14 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
       final ready = missing.isEmpty;
       if (ready) {
         await ForegroundServiceManager.startService();
+        // Registration is reached from the fresh-install path only after the
+        // user-visible permission gate has completed. It is independent of
+        // Flutter scanning and can be retried from the recovery shell.
+        if (Platform.isAndroid) {
+          try {
+            await NativeWakeRegistrationBridge().register();
+          } catch (_) {}
+        }
       } else {
         // 권한이 부족한데도 "감시 중" 알림만 남는 오해를 방지한다.
         await ForegroundServiceManager.stopService();
@@ -172,73 +183,6 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
     }
   }
 
-  Widget _buildSetupScreen() {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(Icons.phonelink_lock,
-                      size: 72, color: Colors.amber),
-                  const SizedBox(height: 20),
-                  const Text(
-                    '백그라운드 스마트키 설정 필요',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _permissionStatus,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 20),
-                  ..._missingRequirements.map(
-                    (item) => ListTile(
-                      dense: true,
-                      leading:
-                          const Icon(Icons.error_outline, color: Colors.amber),
-                      title: Text(item),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _initializing
-                        ? null
-                        : () {
-                            _backgroundRequirementsExplained = true;
-                            _initializeApp(requestPermissions: true);
-                          },
-                    icon: const Icon(Icons.security),
-                    label: const Text('필수 권한·배터리 예외 다시 요청'),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: openAppSettings,
-                    icon: const Icon(Icons.settings),
-                    label: const Text('앱 권한 설정 열기'),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '삼성: 설정 > 배터리 > 백그라운드 사용 제한에서 이 앱을 '
-                    '절전 앱에서 제외하세요.\n'
-                    '샤오미: 자동 시작 허용 및 배터리 절약을 “제한 없음”으로 설정하세요.',
-                    style: TextStyle(fontSize: 12, color: Colors.white54),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return WithForegroundTask(
@@ -252,8 +196,23 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
           ),
           useMaterial3: true,
         ),
+        supportedLocales: const [Locale('ko'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        localeResolutionCallback: (locale, supported) => supported.firstWhere(
+              (candidate) => candidate.languageCode == locale?.languageCode,
+              orElse: () => supported.last,
+            ),
         home: _initialized
-            ? (_serviceReady ? const WebViewScreen() : _buildSetupScreen())
+            ? (_serviceReady
+                ? const WebViewScreen()
+                : RecoveryShellScreen(
+                    status: _permissionStatus,
+                    missing: _missingRequirements,
+                  ))
             : Scaffold(
                 body: Center(
                   child: Column(
