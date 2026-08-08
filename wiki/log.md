@@ -1841,3 +1841,8 @@
 - Renamed .orca/profiles/gpt5.6-antigravity.md to .orca/profiles/antigravity.md.
 - Updated CLI command in launch_profiles.ps1 and sol profile to use agy for antigravity profile.
 - Updated .orca/ORCA.md to list agy CLI command for antigravity profile.
+
+## [2026-08-08] fix | Add YOLO auto-approval flags (--ask-for-approval never, --dangerously-skip-permissions) to Orca profiles
+
+- Updated .orca/scripts/launch_profiles.ps1 to pass --ask-for-approval never --dangerously-bypass-approvals-and-sandbox for codex and --dangerously-skip-permissions for agy.
+- Updated .orca/ORCA.md and .orca/profiles/gpt5.6-sol.md to document YOLO auto-approval flags.

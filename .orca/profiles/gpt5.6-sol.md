@@ -43,21 +43,22 @@ orca orchestration run-use --id <run_id> --json
 ```bash
 orca orchestration task-create --spec "<Task Description & Acceptance Criteria>" --json
 
-# gpt5.6-terra 워커 생성 및 디스패치
-orca terminal create --worktree active --title "gpt5.6-terra-worker" --command "codex --profile .orca/profiles/gpt5.6-terra.md --effort high" --json
+# gpt5.6-terra 워커 생성 및 디스패치 (YOLO Mode)
+orca terminal create --worktree active --title "gpt5.6-terra-worker" --command "codex --ask-for-approval never --dangerously-bypass-approvals-and-sandbox --profile .orca/profiles/gpt5.6-terra.md --effort high" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 
-# gpt5.6-luna 워커 생성 및 디스패치
-orca terminal create --worktree active --title "gpt5.6-luna-worker" --command "codex --profile .orca/profiles/gpt5.6-luna.md --effort high" --json
+# gpt5.6-luna 워커 생성 및 디스패치 (YOLO Mode)
+orca terminal create --worktree active --title "gpt5.6-luna-worker" --command "codex --ask-for-approval never --dangerously-bypass-approvals-and-sandbox --profile .orca/profiles/gpt5.6-luna.md --effort high" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 
-# antigravity 풀스택 비상 워커 생성 및 디스패치 (CLI: agy)
-orca terminal create --worktree active --title "antigravity-worker" --command "agy --profile .orca/profiles/antigravity.md --effort high" --json
+# antigravity 풀스택 비상 워커 생성 및 디스패치 (YOLO Mode)
+orca terminal create --worktree active --title "antigravity-worker" --command "agy --dangerously-skip-permissions --profile .orca/profiles/antigravity.md --effort high" --json
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 orca orchestration dispatch --task <task_id> --to <handle> --inject --json
 ```
+
 
 
 
