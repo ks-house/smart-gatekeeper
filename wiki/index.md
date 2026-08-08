@@ -71,6 +71,8 @@
 | [../schema.md](../schema.md) | 위키 거버넌스 규칙 & 컨벤션 |
 | [../AGENTS.md](../AGENTS.md) | 에이전트 협업 전체 지침 필독 |
 | [../.agents/AGENTS.md](../.agents/AGENTS.md) | IDE 자동 로드 핵심 규칙 (압축본) |
+| [../.orca/ORCA.md](../.orca/ORCA.md) | Orca Multi-Agent 오케스트레이션 프로파일 시스템 (gpt5.6-sol, terra, luna 지침) |
+
 
 ---
 

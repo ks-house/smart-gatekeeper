@@ -1815,3 +1815,12 @@
 - Verified OTA contract gate (ota_contract_gate.py contract: PASS).
 - Created wiki/hardwareless_implementation_gates.md and updated wiki/index.md.
 - Maintained fail-closed production release block while physical devices (Samsung phone & ESP32-C6 target board) are disconnected.
+
+## [2026-08-08] compile | Orca multi-agent orchestration profile system (.orca/)
+
+- Created master Orca multi-agent orchestration guide (.orca/ORCA.md).
+- Defined gpt5.6-sol profile (.orca/profiles/gpt5.6-sol.md) for Coordinator, System Architect, and Gatekeeper (Effort: high).
+- Defined terra profile (.orca/profiles/terra.md) for Target ESP32-C6 firmware and Backend infrastructure (Effort: high).
+- Defined luna profile (.orca/profiles/luna.md) for Android native, Flutter UI, and E2E QA fault injection (Effort: high).
+- Created PowerShell terminal launcher script (.orca/scripts/launch_profiles.ps1) and spec/done templates (.orca/templates/).
+- Updated wiki/index.md Meta section.
