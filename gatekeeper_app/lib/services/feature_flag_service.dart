@@ -10,7 +10,8 @@ class FeatureFlagService {
   FeatureFlagService._internal();
 
   bool enableHardwarelessRc = true;
-  bool enableLegacyPrearm = false; // Interlocked: OFF when Hardwareless is ON to prevent dual ARM
+  bool enableLegacyPrearm =
+      false; // Interlocked: OFF when Hardwareless is ON to prevent dual ARM
   bool remoteKillSwitch = false;
 
   Future<void> loadFlags() async {

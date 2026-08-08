@@ -6,7 +6,8 @@ void main() {
     AppErrorLogger().clearLogs();
   });
 
-  test('normal and error sinks redact PII, credentials, MACs, and URL queries', () {
+  test('normal and error sinks redact PII, credentials, MACs, and URL queries',
+      () {
     final logger = AppErrorLogger();
     logger.log(
       'tenant_name=Hong unit_no=101 device_id=GK-12345678-1234 '
@@ -21,7 +22,8 @@ void main() {
       ),
     );
 
-    final emitted = '${logger.logs.value.join('\n')}\n${logger.latestError.value}';
+    final emitted =
+        '${logger.logs.value.join('\n')}\n${logger.latestError.value}';
     for (final secret in <String>[
       'Hong',
       '101',
@@ -50,7 +52,8 @@ void main() {
       'latestError': 'device_id=DEV-IPCDEVICE99 token=ipc-token',
     });
 
-    final emitted = '${logger.logs.value.join('\n')}\n${logger.latestError.value}';
+    final emitted =
+        '${logger.logs.value.join('\n')}\n${logger.latestError.value}';
     expect(emitted, isNot(contains('303')));
     expect(emitted, isNot(contains('ipc-secret')));
     expect(emitted, isNot(contains('DEV-IPCDEVICE99')));

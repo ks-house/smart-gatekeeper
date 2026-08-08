@@ -64,12 +64,15 @@ certificate identity Gate를 통과해야 합니다.
 사용해야 하며, legacy `artifact_sha256`, `fallback_apk_url`, manifest 내 공개키는
 허용되지 않습니다.
 
-빌드 후에는 legacy 5-field `version.json`을 직접 작성하지 않습니다. 실제 APK에서
-`apksigner verify --print-certs`로 단일 current signer SHA-256을 얻고, 별도 환경변수에
-주입된 Ed25519 private seed를 사용해 다음 생성기와 검증기를 모두 통과시킵니다.
+빌드 전에 exact 40-hex source commit을 `assets/source_commit.txt`에 기록해 APK 내부
+Flutter asset으로 포함해야 합니다. 빌드 후에는 legacy 5-field `version.json`을 직접
+작성하지 않습니다. 보호된 OTA Gate가 실제 APK를 `apkanalyzer`와 `apksigner`로
+검사하여 package/versionCode/versionName/embedded commit/단일 signer를 직접 얻고,
+별도 환경변수에 주입된 Ed25519 private seed를 사용해 다음 생성기와 검증기를 모두
+통과시킵니다.
 
 ```bash
-python ../scripts/sign_mobile_manifest.py create \
+python ../scripts/ota_contract_gate.py mobile-manifest-create \
   --artifact build/app/outputs/flutter-apk/app-release.apk \
   --output ../dist/version.json \
   --version "$FULL_VERSION" --build-number "$BUILD_NUMBER" \
@@ -78,15 +81,19 @@ python ../scripts/sign_mobile_manifest.py create \
   --fallback-url "$APK_FALLBACK_DOWNLOAD_URL" \
   --release-notes-url "$APK_RELEASE_NOTES_URL" \
   --published-at "$PUBLISHED_AT" \
-  --certificate-sha256 "$APK_CERTIFICATE_SHA256" \
   --signing-key-id "$UPDATE_SIGNING_KEY_ID" \
   --private-key-env OTA_SIGNING_PRIVATE_KEY_HEX \
-  --expected-public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"
-python ../scripts/sign_mobile_manifest.py verify \
+  --expected-public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" \
+  --expected-package-name "com.kshouse.gatekeeper_app" \
+  --apkanalyzer "$APKANALYZER" \
+  --apksigner "$APKSIGNER"
+python ../scripts/ota_contract_gate.py mobile-manifest-verify \
   --manifest ../dist/version.json \
   --artifact build/app/outputs/flutter-apk/app-release.apk \
   --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" \
-  --certificate-sha256 "$APK_CERTIFICATE_SHA256"
+  --expected-package-name "com.kshouse.gatekeeper_app" \
+  --apkanalyzer "$APKANALYZER" \
+  --apksigner "$APKSIGNER"
 ```
 
 private seed는 인자로 직접 전달하거나 출력하지 않습니다. PR debug canary는 공개된

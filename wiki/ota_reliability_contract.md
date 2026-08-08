@@ -302,7 +302,7 @@ published_at
 | Target | `app0`/`app1`/`otadata`는 존재하나 `OtaManager`는 MQTT 호출 시 `HTTPUpdate`만 실행 | periodic HTTPS, safe-state 연동, signature, explicit valid mark, rollback 미구현 |
 | Mobile | app/WebView/scanner 경로에서 metadata를 읽고 임시 디렉터리에 APK 다운로드 후 installer 호출 | scanner/WebView 독립 UI, fallback, hash/certificate 검증, install health 미구현 |
 | Backend | APK와 mobile `version.json`을 동일 FastAPI/NAS 경로에서 제공 | 독립 secondary distribution과 signed metadata 보장 미구현 |
-| CI | 일반 main push는 firmware/APK canary와 legacy `version.json`을 빌드·검증·보존하고 production job은 skip | production signing과 physical release evidence가 없으며 명시적 승인 release 전까지 배포 차단 |
+| CI | 일반 main push는 firmware/APK canary만 빌드·검증·보존하고 production job은 skip; PR mobile metadata는 public RFC test key와 `.invalid` URL만 사용 | production manifest signing은 승인된 `production` environment job 안에서만 가능하며 physical release evidence와 명시적 승인 전까지 배포 차단 |
 
 dual partition의 존재나 과거 OTA 성공은 rollback 증거가 아니다. 따라서 현재 물리 Target과
 Android 완료 기준은 `pending`이며 issue #23을 자동 close하지 않는다.

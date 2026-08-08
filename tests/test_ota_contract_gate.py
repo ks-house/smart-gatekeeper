@@ -563,6 +563,17 @@ class OtaContractGateTest(unittest.TestCase):
   def test_mobile_workflow_binds_tests_trust_root_and_signed_metadata(self):
     gate.validate_mobile_build_workflow(self._workflow_sources())
 
+  def test_mobile_workflow_rejects_removed_or_weakened_format_check(self):
+    path = ".github/workflows/build_app.yml"
+    workflows = self._workflow_sources()
+    workflows[path] = workflows[path].replace(
+        "dart format --output=none --set-exit-if-changed lib test",
+        "dart format lib test",
+        1,
+    )
+    with self.assertRaisesRegex(gate.GateError, "formatting check"):
+      gate.validate_mobile_build_workflow(workflows)
+
   def test_mobile_release_or_pr_trust_define_removal_is_rejected(self):
     path = ".github/workflows/build_app.yml"
     fragments = [
@@ -583,17 +594,20 @@ class OtaContractGateTest(unittest.TestCase):
         with self.assertRaisesRegex(gate.GateError, "does not pin|PR canary"):
           gate.validate_mobile_build_workflow(workflows)
 
-  def test_mobile_workflow_rejects_missing_signer_or_legacy_metadata(self):
+  def test_mobile_workflow_rejects_missing_protected_producer_or_legacy_metadata(self):
     path = ".github/workflows/build_app.yml"
     for fragment in (
-        '"$APKSIGNER" verify --print-certs dist/ks-house-gatekeeper.apk',
-        "python scripts/sign_mobile_manifest.py create",
-        "python scripts/sign_mobile_manifest.py verify",
+        "python scripts/ota_contract_gate.py mobile-manifest-create",
+        "python scripts/ota_contract_gate.py mobile-manifest-verify",
+        '--expected-package-name "com.kshouse.gatekeeper_app"',
+        '--apkanalyzer "$APKANALYZER"',
+        '--apksigner "$APKSIGNER"',
+        '--commit "${{ github.sha }}"',
     ):
       with self.subTest(fragment=fragment):
         workflows = self._workflow_sources()
         workflows[path] = workflows[path].replace(fragment, "REMOVED", 1)
-        with self.assertRaisesRegex(gate.GateError, "metadata binding is missing"):
+        with self.assertRaisesRegex(gate.GateError, "metadata binding|PR metadata binding"):
           gate.validate_mobile_build_workflow(workflows)
 
     workflows = self._workflow_sources()
@@ -603,6 +617,93 @@ class OtaContractGateTest(unittest.TestCase):
     )
     with self.assertRaisesRegex(gate.GateError, "legacy unsigned"):
       gate.validate_mobile_build_workflow(workflows)
+
+  def test_mobile_pr_reachable_steps_reject_every_production_secret_reference(self):
+    path = ".github/workflows/build_app.yml"
+    secret_expressions = (
+        "${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}",
+        "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+        "${{ secrets.SECRET_APK_DOWNLOAD_URL }}",
+        "${{ secrets.GATEKEEPER_API_KEY }}",
+    )
+    for secret_expression in secret_expressions:
+      with self.subTest(secret=secret_expression):
+        workflows = self._workflow_sources()
+        parsed = gate.load_workflow_yaml(path, workflows[path])
+        step = next(
+            item for item in parsed["jobs"]["build_apk"]["steps"]
+            if item.get("name") == "Prepare public PR canary metadata (non-production)"
+        )
+        step["env"] = {"ATTACKER_READS_PROCESS_ENV": secret_expression}
+        workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
+        with self.assertRaisesRegex(gate.GateError, "PR-reachable step"):
+          gate.validate_mobile_build_workflow(workflows)
+
+    workflows = self._workflow_sources()
+    workflows[path] = workflows[path].replace(
+        "if: github.event_name != 'pull_request'\n        env:\n          APK_VERSION_URL:",
+        "if: github.event_name == 'pull_request'\n        env:\n          APK_VERSION_URL:",
+        1,
+    )
+    with self.assertRaisesRegex(gate.GateError, "PR-reachable step"):
+      gate.validate_mobile_build_workflow(workflows)
+
+  def test_mobile_manifest_execution_cannot_escape_protected_gate(self):
+    path = ".github/workflows/build_app.yml"
+    workflows = self._workflow_sources()
+    workflows[path] = workflows[path].replace(
+        "python scripts/ota_contract_gate.py mobile-manifest-create",
+        "python scripts/sign_mobile_manifest.py create",
+        1,
+    )
+    with self.assertRaisesRegex(gate.GateError, "protected ota_contract_gate"):
+      gate.validate_mobile_build_workflow(workflows)
+
+  def test_mobile_production_manifest_step_is_environment_protected_and_bound(self):
+    path = ".github/workflows/build_app.yml"
+    fragments = (
+        "${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}",
+        "python scripts/ota_contract_gate.py mobile-manifest-create",
+        "python scripts/ota_contract_gate.py mobile-manifest-verify",
+        '--expected-package-name "com.kshouse.gatekeeper_app"',
+        '--apkanalyzer "$APKANALYZER"',
+        '--apksigner "$APKSIGNER"',
+        '--commit "${{ github.sha }}"',
+    )
+    for fragment in fragments:
+      with self.subTest(fragment=fragment):
+        workflows = self._workflow_sources()
+        producer_offset = workflows[path].index(
+            "      - name: Create production signed mobile manifest"
+        )
+        before, producer = (
+            workflows[path][:producer_offset],
+            workflows[path][producer_offset:],
+        )
+        self.assertIn(fragment, producer)
+        workflows[path] = before + producer.replace(fragment, "REMOVED", 1)
+        with self.assertRaisesRegex(
+            gate.GateError,
+            "production mobile manifest|producer identity binding|create/verify",
+        ):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_mobile_source_commit_embedding_cannot_be_removed(self):
+    path = ".github/workflows/build_app.yml"
+    fragment = "printf '%s\\n' '${{ github.sha }}' > gatekeeper_app/assets/source_commit.txt"
+    for occurrence in (1, 2):
+      with self.subTest(occurrence=occurrence):
+        workflows = self._workflow_sources()
+        if occurrence == 1:
+          workflows[path] = workflows[path].replace(fragment, "REMOVED", 1)
+        else:
+          first = workflows[path].index(fragment)
+          second = workflows[path].index(fragment, first + len(fragment))
+          workflows[path] = workflows[path][:second] + workflows[path][second:].replace(
+              fragment, "REMOVED", 1
+          )
+        with self.assertRaisesRegex(gate.GateError, "embed exact source commit"):
+          gate.validate_mobile_build_workflow(workflows)
 
   def test_mobile_workflow_rejects_tests_after_apk_build(self):
     path = ".github/workflows/build_app.yml"
@@ -616,7 +717,7 @@ class OtaContractGateTest(unittest.TestCase):
     native_step = steps.pop(native_index)
     prepare_index = next(
         index for index, step in enumerate(steps)
-        if step.get("name") == "Prepare canary artifacts (ks-house-gatekeeper.apk & version.json)"
+        if step.get("name") == "Prepare public PR canary metadata (non-production)"
     )
     steps.insert(prepare_index, native_step)
     workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)

@@ -6,7 +6,8 @@ import 'package:gatekeeper_app/services/update_contract.dart';
 
 void main() {
   const testPublicKey = '11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=';
-  const hash = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const hash =
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
   final validVector = <String, dynamic>{
     'apk_size': 20971520,
     'apk_url': 'https://updates.example.test/mobile/1.1.0-test.apk',
@@ -19,8 +20,7 @@ void main() {
     'protocol_max': 2,
     'protocol_min': 1,
     'published_at': '2026-08-01T00:00:00Z',
-    'release_notes_url':
-        'https://updates.example.test/mobile/1.1.0-test-notes',
+    'release_notes_url': 'https://updates.example.test/mobile/1.1.0-test-notes',
     'schema_version': 1,
     'sha256':
         'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
@@ -55,8 +55,10 @@ void main() {
         'min_android_sdk': minAndroidSdk,
       };
 
-  test('repository mobile vector verifies with pinned key id and sgk-json-v1', () async {
-    final manifest = SignedUpdateManifest.fromJsonString(jsonEncode(validVector));
+  test('repository mobile vector verifies with pinned key id and sgk-json-v1',
+      () async {
+    final manifest =
+        SignedUpdateManifest.fromJsonString(jsonEncode(validVector));
     expect(
       await manifest.verifySignature(
         trustedPublicKeyBase64: testPublicKey,
@@ -83,7 +85,9 @@ void main() {
     );
   });
 
-  test('manifest rejects legacy fields, aliases, nested values, and insecure URLs', () {
+  test(
+      'manifest rejects legacy fields, aliases, nested values, and insecure URLs',
+      () {
     expect(
       () => SignedUpdateManifest.fromJson(
         <String, dynamic>{...validVector, 'artifact_sha256': hash},
@@ -107,13 +111,18 @@ void main() {
     );
     expect(
       () => SignedUpdateManifest.fromJson(
-        <String, dynamic>{...validVector, 'apk_url': 'http://example.test/app.apk'},
+        <String, dynamic>{
+          ...validVector,
+          'apk_url': 'http://example.test/app.apk'
+        },
       ),
       throwsFormatException,
     );
   });
 
-  test('raw parser rejects duplicate, escaped-alias duplicate, and trailing content', () {
+  test(
+      'raw parser rejects duplicate, escaped-alias duplicate, and trailing content',
+      () {
     final encoded = jsonEncode(validVector);
     expect(
       () => SignedUpdateManifest.fromJsonString(
@@ -169,8 +178,10 @@ void main() {
       ...validVector,
       'mandatory_after': '2026-08-02T00:00:00+00:00',
     });
-    expect(mandatory.isMandatoryAt(DateTime.parse('2026-08-01T23:59:59Z')), isFalse);
-    expect(mandatory.isMandatoryAt(DateTime.parse('2026-08-02T00:00:00Z')), isTrue);
+    expect(mandatory.isMandatoryAt(DateTime.parse('2026-08-01T23:59:59Z')),
+        isFalse);
+    expect(mandatory.isMandatoryAt(DateTime.parse('2026-08-02T00:00:00Z')),
+        isTrue);
   });
 
   test('artifact validation fails closed across platform and N/N-1 bounds', () {

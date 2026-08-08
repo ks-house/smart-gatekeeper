@@ -19,8 +19,7 @@ void main() {
         'update_pending_version_name': '1.2.3',
         'update_pending_artifact_sha256': artifact,
         'update_pending_certificate_sha256': certificate,
-        'update_pending_commit':
-            '1234567890abcdef1234567890abcdef12345678',
+        'update_pending_commit': '1234567890abcdef1234567890abcdef12345678',
         'update_pending_requested_at': '2026-08-09T00:00:00Z',
       };
 
@@ -58,13 +57,15 @@ void main() {
       () async {
     SharedPreferences.setMockInitialValues(pending());
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (_) async => <String, Object>{
-              'buildNumber': 42,
-              'versionName': '1.2.3',
-              'sourceSha256':
-                  'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-              'certificateSha256': certificate,
-            });
+        .setMockMethodCallHandler(
+            channel,
+            (_) async => <String, Object>{
+                  'buildNumber': 42,
+                  'versionName': '1.2.3',
+                  'sourceSha256':
+                      'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                  'certificateSha256': certificate,
+                });
 
     final checker = UpdateChecker();
     await checker.reconcilePendingFirstRunHealth();

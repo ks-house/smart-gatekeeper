@@ -1,4 +1,12 @@
-enum DoorState { detecting, authorizing, armed, opening, confirmed, unknown, failed }
+enum DoorState {
+  detecting,
+  authorizing,
+  armed,
+  opening,
+  confirmed,
+  unknown,
+  failed
+}
 
 extension DoorStateText on DoorState {
   String get wireName => name;
@@ -41,7 +49,8 @@ DoorState doorStateFromNative(Map<Object?, Object?>? session) {
 
 enum EnrollmentState { unregistered, pending, approved, revoked, expired }
 
-EnrollmentState enrollmentStateFromWire(String? value, {int? aclExpiresAtEpoch}) {
+EnrollmentState enrollmentStateFromWire(String? value,
+    {int? aclExpiresAtEpoch}) {
   if (value == 'approved' &&
       aclExpiresAtEpoch != null &&
       aclExpiresAtEpoch <= DateTime.now().millisecondsSinceEpoch ~/ 1000) {

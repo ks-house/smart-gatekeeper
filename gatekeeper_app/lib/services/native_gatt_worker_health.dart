@@ -67,10 +67,18 @@ class NativeGattWorkerHealthBridge {
 
   Future<Map<Object?, Object?>> triggerLocalGattRetry() async {
     try {
-      final res = await _channel.invokeMethod<Map<Object?, Object?>>('triggerLocalGattRetry');
-      return res ?? const <Object?, Object?>{'accepted': false, 'reason': 'NATIVE_UNAVAILABLE'};
+      final res = await _channel
+          .invokeMethod<Map<Object?, Object?>>('triggerLocalGattRetry');
+      return res ??
+          const <Object?, Object?>{
+            'accepted': false,
+            'reason': 'NATIVE_UNAVAILABLE'
+          };
     } catch (_) {
-      return const <Object?, Object?>{'accepted': false, 'reason': 'NATIVE_UNAVAILABLE'};
+      return const <Object?, Object?>{
+        'accepted': false,
+        'reason': 'NATIVE_UNAVAILABLE'
+      };
     }
   }
 }

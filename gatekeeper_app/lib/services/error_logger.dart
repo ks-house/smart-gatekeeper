@@ -33,7 +33,8 @@ class AppErrorLogger {
   void logError(String summary, [dynamic error, StackTrace? stackTrace]) {
     final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     final safeSummary = _redact(summary);
-    final errorStr = error != null ? ' | Details: ${_redact(error.toString())}' : '';
+    final errorStr =
+        error != null ? ' | Details: ${_redact(error.toString())}' : '';
     final formatted = '[$timestamp] ⚠️ $safeSummary$errorStr';
 
     debugPrint(formatted);
@@ -88,7 +89,8 @@ class AppErrorLogger {
       '[DEVICE_REDACTED]',
     );
     result = result.replaceAll(
-      RegExp(r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b', caseSensitive: false),
+      RegExp(r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b',
+          caseSensitive: false),
       '[EMAIL_REDACTED]',
     );
     return result.length > 300 ? result.substring(0, 300) : result;

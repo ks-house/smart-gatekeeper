@@ -10,7 +10,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'update_contract.dart';
 
-enum UpdateState { idle, checking, available, downloading, verifying, installing, healthy, failed }
+enum UpdateState {
+  idle,
+  checking,
+  available,
+  downloading,
+  verifying,
+  installing,
+  healthy,
+  failed
+}
 
 String updateStatusMessage(
   UpdateState state, {
@@ -47,11 +56,14 @@ class UpdateChecker {
   factory UpdateChecker() => _instance;
   UpdateChecker._internal();
 
-  static const String versionUrlFromEnv = String.fromEnvironment('APK_VERSION_URL');
+  static const String versionUrlFromEnv =
+      String.fromEnvironment('APK_VERSION_URL');
   static const String fallbackVersionUrlFromEnv =
       String.fromEnvironment('APK_FALLBACK_VERSION_URL');
-  static const String signingPublicKeyFromEnv = String.fromEnvironment('UPDATE_SIGNING_PUBLIC_KEY_B64');
-  static const String signingKeyIdFromEnv = String.fromEnvironment('UPDATE_SIGNING_KEY_ID');
+  static const String signingPublicKeyFromEnv =
+      String.fromEnvironment('UPDATE_SIGNING_PUBLIC_KEY_B64');
+  static const String signingKeyIdFromEnv =
+      String.fromEnvironment('UPDATE_SIGNING_KEY_ID');
   static const MethodChannel _securityChannel = MethodChannel(
     'com.kshouse.gatekeeper_app/update_security',
   );
@@ -68,7 +80,8 @@ class UpdateChecker {
   final ValueNotifier<UpdateState> stateNotifier =
       ValueNotifier<UpdateState>(UpdateState.idle);
 
-  Future<bool> checkForUpdates({String? customVersionUrl, String? customDownloadUrl}) async {
+  Future<bool> checkForUpdates(
+      {String? customVersionUrl, String? customDownloadUrl}) async {
     _transition(UpdateState.checking);
     final metadataUrls = <String>{
       if (customVersionUrl?.trim().isNotEmpty == true) customVersionUrl!.trim(),
@@ -81,8 +94,9 @@ class UpdateChecker {
     var finalFailure = 'METADATA_UNAVAILABLE';
     for (final targetUrl in metadataUrls) {
       try {
-        final response =
-            await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 5));
+        final response = await http
+            .get(Uri.parse(targetUrl))
+            .timeout(const Duration(seconds: 5));
         if (response.statusCode != 200) {
           finalFailure = 'METADATA_HTTP_${response.statusCode}';
           continue;
@@ -144,8 +158,12 @@ class UpdateChecker {
   }
 
   Future<bool> downloadUpdate({String? overrideUrl}) async {
-    if (state == UpdateState.downloading || state == UpdateState.verifying) return false;
-    if (state != UpdateState.available) return _fail('NO_ACTIVE_VERIFIED_UPDATE');
+    if (state == UpdateState.downloading || state == UpdateState.verifying) {
+      return false;
+    }
+    if (state != UpdateState.available) {
+      return _fail('NO_ACTIVE_VERIFIED_UPDATE');
+    }
     final currentManifest = manifest;
     if (currentManifest == null) return _fail('NO_VERIFIED_MANIFEST');
     if (overrideUrl?.trim().isNotEmpty == true &&
@@ -153,11 +171,11 @@ class UpdateChecker {
         overrideUrl != currentManifest.fallbackUrl) {
       return _fail('UNSIGNED_DOWNLOAD_URL');
     }
-    final urls = <String>[
+    final urls = <String>{
       if (overrideUrl?.trim().isNotEmpty == true) overrideUrl!,
       currentManifest.primaryUrl,
       currentManifest.fallbackUrl,
-    ].toSet().toList();
+    }.toList();
     if (urls.isEmpty) return _fail('NO_UPDATE_URL');
     _transition(UpdateState.downloading);
     downloadProgress.value = 0;
@@ -168,7 +186,8 @@ class UpdateChecker {
       try {
         final response = await Dio().get<List<int>>(
           url,
-          options: Options(responseType: ResponseType.bytes, followRedirects: false),
+          options:
+              Options(responseType: ResponseType.bytes, followRedirects: false),
           onReceiveProgress: (received, total) {
             if (total > 0) downloadProgress.value = received / total;
           },
@@ -196,10 +215,14 @@ class UpdateChecker {
         _transition(UpdateState.installing);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('update_pending_health_path', verifiedPath);
-        await prefs.setInt('update_pending_build_number', currentManifest.buildNumber);
-        await prefs.setString('update_pending_version_name', currentManifest.versionName);
-        await prefs.setString('update_pending_artifact_sha256', currentManifest.artifactSha256);
-        await prefs.setString('update_pending_certificate_sha256', currentManifest.certificateSha256);
+        await prefs.setInt(
+            'update_pending_build_number', currentManifest.buildNumber);
+        await prefs.setString(
+            'update_pending_version_name', currentManifest.versionName);
+        await prefs.setString(
+            'update_pending_artifact_sha256', currentManifest.artifactSha256);
+        await prefs.setString('update_pending_certificate_sha256',
+            currentManifest.certificateSha256);
         await prefs.setString('update_pending_commit', currentManifest.commit);
         await prefs.setString(
           'update_pending_requested_at',
@@ -230,10 +253,13 @@ class UpdateChecker {
     return false;
   }
 
-  Future<void> recordFirstRunHealth({required bool healthy, String? reason}) async {
+  Future<void> recordFirstRunHealth(
+      {required bool healthy, String? reason}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('update_first_run_healthy', healthy);
-    if (reason != null) await prefs.setString('update_first_run_reason', reason);
+    if (reason != null) {
+      await prefs.setString('update_first_run_reason', reason);
+    }
     if (healthy) {
       for (final key in <String>[
         'update_pending_health_path',
@@ -300,7 +326,8 @@ class UpdateChecker {
 
   Future<String> _certificateSha256(String path) async {
     try {
-      final value = await _securityChannel.invokeMethod<String>('apkCertificateSha256', {'path': path});
+      final value = await _securityChannel
+          .invokeMethod<String>('apkCertificateSha256', {'path': path});
       if (value != null && value.isNotEmpty) return value.toLowerCase();
     } catch (_) {}
     // A missing platform certificate is not proof of a valid APK.

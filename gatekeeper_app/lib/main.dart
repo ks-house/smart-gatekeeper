@@ -22,8 +22,8 @@ void main() async {
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    AppErrorLogger().logError('UI Framework Error',
-        details.exception, details.stack);
+    AppErrorLogger()
+        .logError('UI Framework Error', details.exception, details.stack);
   };
 
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
@@ -46,7 +46,7 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
   bool _initialized = false;
   bool _serviceReady = false;
   bool _initializing = false;
-  bool _backgroundRequirementsExplained = false;
+  final bool _backgroundRequirementsExplained = false;
   String _permissionStatus = '권한 및 포그라운드 서비스 준비 중...';
   List<String> _missingRequirements = const [];
 
@@ -178,9 +178,7 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
         setState(() {
           _initialized = true;
           _serviceReady = false;
-          _missingRequirements = <String>[
-            '초기화 오류: APP_INITIALIZATION_FAILED'
-          ];
+          _missingRequirements = <String>['초기화 오류: APP_INITIALIZATION_FAILED'];
           _permissionStatus = '초기화 오류 발생 (APP_INITIALIZATION_FAILED)';
         });
       }
@@ -209,9 +207,9 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
           GlobalCupertinoLocalizations.delegate,
         ],
         localeResolutionCallback: (locale, supported) => supported.firstWhere(
-              (candidate) => candidate.languageCode == locale?.languageCode,
-              orElse: () => supported.last,
-            ),
+          (candidate) => candidate.languageCode == locale?.languageCode,
+          orElse: () => supported.last,
+        ),
         home: _initialized
             ? (_serviceReady
                 ? const WebViewScreen()

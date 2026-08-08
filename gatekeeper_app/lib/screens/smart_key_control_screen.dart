@@ -14,7 +14,8 @@ class SmartKeyControlScreen extends StatefulWidget {
 class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
   final CredentialService _credentialService = CredentialService();
   final FeatureFlagService _flagService = FeatureFlagService();
-  final NativeGattWorkerHealthBridge _healthBridge = NativeGattWorkerHealthBridge();
+  final NativeGattWorkerHealthBridge _healthBridge =
+      NativeGattWorkerHealthBridge();
   final UpdateChecker _updateChecker = UpdateChecker();
 
   bool _loading = true;
@@ -129,7 +130,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                             const Text(
                               '자동 Wake 또는 BLE 스캔 차단 시 1-Tap으로 수동 Local GATT 인증을 시도합니다.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12),
                             ),
                             const SizedBox(height: 16),
                             SizedBox(
@@ -145,7 +147,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
-                                onPressed: _isRetrying ? null : _triggerManualRetry,
+                                onPressed:
+                                    _isRetrying ? null : _triggerManualRetry,
                                 icon: _isRetrying
                                     ? const SizedBox(
                                         width: 20,
@@ -202,15 +205,20 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                     color: Colors.white,
                                   ),
                                 ),
-                                _buildStatusBadge(_credentialService.approvalStatus),
+                                _buildStatusBadge(
+                                    _credentialService.approvalStatus),
                               ],
                             ),
                             const Divider(height: 24, color: Colors.white24),
-                            Text('Device ID: ${_credentialService.deviceId ?? "불러오는 중..."}',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                                'Device ID: ${_credentialService.deviceId ?? "불러오는 중..."}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 4),
-                            Text('ACL Lease Version: ${_credentialService.aclVersion}',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                                'ACL Lease Version: ${_credentialService.aclVersion}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 12),
                             TextField(
                               controller: _nameController,
@@ -233,18 +241,19 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               ),
                               style: const TextStyle(color: Colors.white),
                             ),
-
                             const SizedBox(height: 12),
                             OutlinedButton.icon(
                               onPressed: () async {
-                                await _credentialService.saveRegistrationRequest(
+                                await _credentialService
+                                    .saveRegistrationRequest(
                                   _nameController.text,
                                   _roomController.text,
                                 );
-                                if (!mounted) return;
+                                if (!context.mounted) return;
                                 setState(() {});
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('등록 요청이 저장되었습니다.')),
+                                  const SnackBar(
+                                      content: Text('등록 요청이 저장되었습니다.')),
                                 );
                               },
                               icon: const Icon(Icons.send),
@@ -285,7 +294,9 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
-                                    (_workerHealth?.healthy ?? true) ? 'HEALTHY' : 'UNHEALTHY',
+                                    (_workerHealth?.healthy ?? true)
+                                        ? 'HEALTHY'
+                                        : 'UNHEALTHY',
                                     style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 11,
@@ -295,17 +306,25 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               ],
                             ),
                             const Divider(height: 24, color: Colors.white24),
-                            Text('BLE Owner: ${_workerHealth?.bleOwner ?? "native_worker"}',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                                'BLE Owner: ${_workerHealth?.bleOwner ?? "native_worker"}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 4),
-                            Text('Last Reason: ${_workerHealth?.lastReasonCode ?? "N/A"}',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                                'Last Reason: ${_workerHealth?.lastReasonCode ?? "N/A"}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 4),
-                            Text('Target Result: ${_workerHealth?.lastTargetReasonName ?? "NONE"}',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                                'Target Result: ${_workerHealth?.lastTargetReasonName ?? "NONE"}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 4),
-                            Text('Last Latency: ${_workerHealth?.lastLatencyMs ?? 0} ms',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                            Text(
+                                'Last Latency: ${_workerHealth?.lastLatencyMs ?? 0} ms',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                           ],
                         ),
                       ),
@@ -337,7 +356,9 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               onChanged: (val) async {
                                 await _flagService.updateFlags(
                                   hardwarelessRc: val,
-                                  legacyPrearm: val ? false : _flagService.enableLegacyPrearm,
+                                  legacyPrearm: val
+                                      ? false
+                                      : _flagService.enableLegacyPrearm,
                                   killSwitch: _flagService.remoteKillSwitch,
                                 );
                                 setState(() {});
@@ -345,12 +366,15 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                             ),
                             SwitchListTile(
                               title: const Text('Legacy REST Pre-arm Flow'),
-                              subtitle: const Text('구형 서버 Pre-arm 경로 (중복 ARM 방지 인터락)'),
+                              subtitle: const Text(
+                                  '구형 서버 Pre-arm 경로 (중복 ARM 방지 인터락)'),
                               value: _flagService.enableLegacyPrearm,
                               activeThumbColor: Colors.amber,
                               onChanged: (val) async {
                                 await _flagService.updateFlags(
-                                  hardwarelessRc: val ? false : _flagService.enableHardwarelessRc,
+                                  hardwarelessRc: val
+                                      ? false
+                                      : _flagService.enableHardwarelessRc,
                                   legacyPrearm: val,
                                   killSwitch: _flagService.remoteKillSwitch,
                                 );
@@ -359,12 +383,14 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                             ),
                             SwitchListTile(
                               title: const Text('Remote Kill-Switch Active'),
-                              subtitle: const Text('원격 차단 스위치 (모든 자동/수동 개방 차단)'),
+                              subtitle:
+                                  const Text('원격 차단 스위치 (모든 자동/수동 개방 차단)'),
                               value: _flagService.remoteKillSwitch,
                               activeThumbColor: Colors.red,
                               onChanged: (val) async {
                                 await _flagService.updateFlags(
-                                  hardwarelessRc: _flagService.enableHardwarelessRc,
+                                  hardwarelessRc:
+                                      _flagService.enableHardwarelessRc,
                                   legacyPrearm: _flagService.enableLegacyPrearm,
                                   killSwitch: val,
                                 );
@@ -375,15 +401,17 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                             OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.orangeAccent,
-                                side: const BorderSide(color: Colors.orangeAccent),
+                                side: const BorderSide(
+                                    color: Colors.orangeAccent),
                               ),
                               onPressed: () async {
                                 await _flagService.rollbackToLegacy();
-                                if (!mounted) return;
+                                if (!context.mounted) return;
                                 setState(() {});
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('앱 재설치 없이 Legacy Pre-arm 경로로 롤백되었습니다.'),
+                                    content: Text(
+                                        '앱 재설치 없이 Legacy Pre-arm 경로로 롤백되었습니다.'),
                                   ),
                                 );
                               },
@@ -398,8 +426,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
 
                     // 5. OEM Background & Process Kill Recovery Guidance
                     const Card(
-                      color: const Color(0xFF1E1E1E),
-                      child: const Padding(
+                      color: Color(0xFF1E1E1E),
+                      child: Padding(
                         padding: EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -417,7 +445,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               '• 삼성 (One UI): 설정 > 배터리 > 백그라운드 사용 제한 > 절전 예외 앱에 추가\n'
                               '• 샤오미 (MIUI): 앱 정보 > 배터리 절약 > "제한 없음" 설정\n'
                               '• 백그라운드 스캔이 차단되면 상단의 "1-Tap 수동 로컬 개방" 버튼을 사용하세요.',
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12),
                             ),
                           ],
                         ),
@@ -444,7 +473,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                             const SizedBox(height: 8),
                             const Text(
                               'Target 온라인 상태, WebView, BLE 스캐너와 독립적으로 업데이트 검사 및 다운로드를 수행합니다.',
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12),
                             ),
                             const SizedBox(height: 12),
                             ValueListenableBuilder<UpdateState>(
@@ -452,7 +482,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               builder: (context, updateState, _) {
                                 final available =
                                     updateState == UpdateState.available;
-                                final failed = updateState == UpdateState.failed;
+                                final failed =
+                                    updateState == UpdateState.failed;
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -470,7 +501,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                             ? Colors.redAccent
                                             : available
                                                 ? Colors.amber
-                                                : updateState == UpdateState.healthy
+                                                : updateState ==
+                                                        UpdateState.healthy
                                                     ? Colors.green
                                                     : Colors.white70,
                                         fontWeight: FontWeight.bold,
@@ -481,7 +513,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                       children: [
                                         ElevatedButton.icon(
                                           onPressed: () async {
-                                            await _updateChecker.checkForUpdates();
+                                            await _updateChecker
+                                                .checkForUpdates();
                                             if (mounted) setState(() {});
                                           },
                                           icon: const Icon(Icons.refresh),
@@ -494,7 +527,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                               backgroundColor: Colors.amber,
                                               foregroundColor: Colors.black,
                                             ),
-                                            onPressed: () => _updateChecker.downloadUpdate(),
+                                            onPressed: () =>
+                                                _updateChecker.downloadUpdate(),
                                             icon: const Icon(Icons.download),
                                             label: const Text('APK 다운로드'),
                                           ),
@@ -545,7 +579,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+        style:
+            TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
       ),
     );
   }

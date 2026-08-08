@@ -20,8 +20,10 @@ class NativeWakeRegistration {
     final status = switch (raw) {
       'registered' => NativeWakeStatus.registered,
       'not_registered' => NativeWakeStatus.notRegistered,
-      _ when raw.startsWith('missing_permission') ||
-          raw.contains('bluetooth') => NativeWakeStatus.blocked,
+      _
+          when raw.startsWith('missing_permission') ||
+              raw.contains('bluetooth') =>
+        NativeWakeStatus.blocked,
       _ => NativeWakeStatus.unavailable,
     };
     return NativeWakeRegistration(

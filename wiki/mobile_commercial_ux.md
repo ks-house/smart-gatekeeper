@@ -52,15 +52,17 @@ storage failure, or an unchecked install remains explicit and never displays a
 and the verified candidate identity remains durable for recovery diagnosis.
 
 CI pins both metadata URLs, updater key ID, and updater public key into the APK.
-It runs Flutter and targeted native GATT tests before building, extracts the
-actual APK signer identity with `apksigner`, then
-`scripts/sign_mobile_manifest.py` creates and independently verifies the exact
-22-field schema over the produced APK byte length, SHA-256, certificate digest,
-and commit. Pull requests use the public RFC 8032 test key and `.invalid`
-endpoints, so their debug artifact is explicitly non-production and cannot find
-installable metadata. Non-PR canaries require all release keystore, primary and
-fallback URL, key-ID, public-key, and private signing inputs; none has a runtime
-fallback. Debug signing is never a release fallback.
+It runs Flutter and targeted native GATT tests before building and embeds the
+exact source commit as a packaged Flutter asset. The already-protected
+`scripts/ota_contract_gate.py` producer inspects the exact APK with
+`apkanalyzer` and `apksigner`, requires package ID, version name, positive
+version code, embedded commit, and exactly one certificate to match, then
+creates and independently verifies the exact 22-field schema over those same
+APK bytes. Pull requests use only the public RFC 8032 test seed/key and
+`.invalid` endpoints; no PR-reachable step references a production secret.
+The release APK is uploaded unsigned at the metadata layer, while the private
+manifest key and production URLs are available only to the explicit
+`production` environment job. Debug signing is never a release fallback.
 
 ## Manual control compatibility
 

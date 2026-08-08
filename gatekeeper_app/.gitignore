@@ -51,6 +51,7 @@ app.*.map.json
 *.jks
 *.keystore
 *.txt
+!assets/source_commit.txt
 key.properties
 
 

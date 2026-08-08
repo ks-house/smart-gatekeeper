@@ -95,7 +95,8 @@ class SignedUpdateManifest {
   factory SignedUpdateManifest.fromJson(Map<String, dynamic> json) {
     if (json.keys.toSet().length != _requiredFields.length ||
         !json.keys.toSet().containsAll(_requiredFields)) {
-      throw const FormatException('mobile manifest fields do not match schema v1');
+      throw const FormatException(
+          'mobile manifest fields do not match schema v1');
     }
 
     int exactInt(String key) {
@@ -114,7 +115,8 @@ class SignedUpdateManifest {
 
     final mandatoryValue = json['mandatory_after'];
     if (mandatoryValue != null && mandatoryValue is! String) {
-      throw const FormatException('mandatory_after must be a date-time or null');
+      throw const FormatException(
+          'mandatory_after must be a date-time or null');
     }
 
     final manifest = SignedUpdateManifest._(
@@ -168,7 +170,8 @@ class SignedUpdateManifest {
         !_isHttps(fallbackUrl) ||
         primaryUrl == fallbackUrl ||
         !_isHttps(releaseNotesUrl)) {
-      throw const FormatException('update endpoints must be distinct trusted HTTPS URLs');
+      throw const FormatException(
+          'update endpoints must be distinct trusted HTTPS URLs');
     }
     if (!digest.hasMatch(artifactSha256) ||
         !digest.hasMatch(certificateSha256) ||
@@ -184,7 +187,8 @@ class SignedUpdateManifest {
     }
     if (mandatoryAfter != null &&
         DateTime.parse(mandatoryAfter!).isBefore(DateTime.parse(publishedAt))) {
-      throw const FormatException('mandatory_after cannot precede published_at');
+      throw const FormatException(
+          'mandatory_after cannot precede published_at');
     }
   }
 
@@ -217,7 +221,8 @@ class SignedUpdateManifest {
     return null;
   }
 
-  bool isMandatoryAt(DateTime now) => mandatoryAfter != null &&
+  bool isMandatoryAt(DateTime now) =>
+      mandatoryAfter != null &&
       !DateTime.parse(mandatoryAfter!).toUtc().isAfter(now.toUtc());
 
   /// `sgk-json-v1`: remove only signature, sort keys, encode UTF-8 JSON with
@@ -300,7 +305,9 @@ class SignedUpdateManifest {
         }
         if (source[index] == '\\') {
           index++;
-          if (index >= source.length) throw const FormatException('invalid JSON escape');
+          if (index >= source.length) {
+            throw const FormatException('invalid JSON escape');
+          }
           if (source[index] == 'u') {
             if (index + 4 >= source.length ||
                 !RegExp(r'^[0-9a-fA-F]{4}$')
@@ -321,7 +328,9 @@ class SignedUpdateManifest {
     }
 
     void scalarValue() {
-      if (index >= source.length) throw const FormatException('missing JSON value');
+      if (index >= source.length) {
+        throw const FormatException('missing JSON value');
+      }
       if (source[index] == '"') {
         stringToken();
         return;
@@ -362,7 +371,9 @@ class SignedUpdateManifest {
         whitespace();
         scalarValue();
         whitespace();
-        if (index >= source.length) throw const FormatException('truncated JSON object');
+        if (index >= source.length) {
+          throw const FormatException('truncated JSON object');
+        }
         if (source[index] == '}') {
           index++;
           break;
