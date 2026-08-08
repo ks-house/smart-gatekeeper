@@ -64,6 +64,20 @@ graph TD
 3. **지식베이스 동기화**: `wiki/` 문서 업데이트 및 `wiki/log.md` Append-only 기록
 4. **`worker_done` 송신**: 활성 Dispatch가 주입한 lifecycle preamble의 명령 전체가 유일한 권위입니다. 저수준 staged Dispatch는 pane identity를 대신해 `--from`과 `--dispatch-capability`를 주입할 수 있고, supervised worker는 이를 생략할 수 있으므로 문서 예시나 과거 명령에서 플래그를 추가·삭제·재구성하지 않습니다. 주입된 명령의 placeholder만 실제 3문장 요약(무엇을 했는지, 무엇을 확인했는지, 무엇이 남았는지)과 정확한 결과 값으로 바꿔 exactly one `worker_done`을 보냅니다.
 
+### 3.3 장기 lifecycle probe와 fail-closed 경계
+
+6분을 넘는 safe worker 수명주기는 `.orca/scripts/probe_lifecycle.ps1`로 exact HEAD, 시작 대비
+worktree status, `raw/`, runtime ID와 accepted heartbeat receipt를 반복 검사할 수 있습니다. 이
+probe는 의도적으로 `worker_done`을 보내지 않으며 결과에 `completionSent=false`를 기록합니다.
+활성 worker만 주입된 exact completion command를 exactly once 사용합니다.
+
+worker의 `orca status`가 desktop PID 실행 중에도 `starting/reachable=false/runtimeId=null`이고
+coordinator가 같은 desktop runtime을 ready로 관측하면, 현재 Orca 1.4.176 증거상 실패는 Dispatch
+capability 검증 전 packaged CLI named-pipe transport 경계입니다. capability 만료나 repository
+launcher 원인으로 단정하지 않고, 완료를 반복·대리 전송하지 않으며 변경/transcript를 보존한 뒤
+Dispatch를 blocked로 처리합니다. 상세 근거와 exact probe는
+`wiki/orca_lifecycle_incident.md`를 따릅니다.
+
 ---
 
 ## 4. 핵심 안전 불변 조건 (Safety Invariants)

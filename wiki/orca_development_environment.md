@@ -84,6 +84,19 @@ orca orchestration check --ack <delivery_id> --json
 
 `worker_done`은 활성 Dispatch가 주입한 lifecycle preamble의 명령 전체를 그대로 사용한다. 저수준 staged Dispatch는 pane identity를 대신해 `--from`과 `--dispatch-capability`를 요구할 수 있고 supervised worker는 이를 생략할 수 있으므로, 문서 예시나 과거 명령을 기준으로 lifecycle 플래그를 추가·삭제·재구성하지 않는다. `ORCA_CLI_COMMAND`가 없을 때 프로젝트 스크립트는 준비된 public `orca`를 우선 사용하고, public CLI가 없을 때만 `ORCA_DEV_REPO_ROOT`의 `orca-dev`로 fallback한다.
 
+### 4.1 6분 초과 longevity probe
+
+GitHub #55의 intermittently unreachable packaged runtime을 검사할 때는
+`.orca/scripts/probe_lifecycle.ps1`을 사용한다. 기본 7회 × 65초 probe는 exact HEAD, 시작 대비
+worktree status, `raw/`, runtime ID와 heartbeat receipt를 확인하지만 `worker_done`을 보내지 않는다.
+probe 성공, heartbeat, ready 상태는 완료가 아니며 worker가 주입된 exact 명령으로 한 번 보낸
+`worker_done`이 수락돼야 한다.
+
+`runtime_unavailable`과 worker-side `starting/reachable=false/runtimeId=null`이 함께 나오면 변경과
+transcript를 보존하고 fail closed한다. coordinator-side ready 상태가 있더라도 worker completion을
+대리하거나 추측으로 반복하지 않는다. 설치된 Orca 1.4.176 분석과 recovery 절차는
+[Orca lifecycle longevity incident](orca_lifecycle_incident.md)에 기록한다.
+
 ## 5. 증거 경계
 
 doctor와 모든 validation suite는 host/software evidence다. 성공해도 Samsung/OEM 화면 OFF, ESP32-C6
