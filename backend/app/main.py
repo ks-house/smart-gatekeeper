@@ -7,6 +7,7 @@ import os
 import ssl
 import json
 import secrets
+import hashlib
 import logging
 from typing import Optional, List
 from datetime import datetime
@@ -21,10 +22,21 @@ except Exception:
     mqtt = None
     HAS_PAHO_MQTT = False
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+try:
+    from .admin_security import (
+        ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
+        ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
+    )
+except ImportError:  # Docker runs uvicorn with /app as the import root.
+    from admin_security import (
+        ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
+        ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
+    )
 
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -119,6 +131,8 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API
     · 설정됨 → X-API-KEY 헤더가 일치해야 한다.
     """
     if not GATEKEEPER_API_KEY:
+        raise HTTPException(status_code=503, detail="control API authentication is not configured")
+        # Legacy warning-only implementation is intentionally unreachable.
         log.warning(
             "[SECURITY] GATEKEEPER_API_KEY 미설정 — 문 제어 API가 키 인증 없이 열려 있습니다. "
             "앱을 배포한 뒤 반드시 환경변수를 설정하고 재시작하십시오."
@@ -281,8 +295,8 @@ class PrearmRequestSchema(BaseModel):
 
 
 class ForceOpenRequestSchema(BaseModel):
-    reason: Optional[str] = "manual_click"
-    device_id: Optional[str] = None
+    tenant_id: str = Field(min_length=1, max_length=64)
+    reason: str = Field(min_length=8, max_length=256)
 
 class AdminConfigRequestSchema(BaseModel):
     tx_power: Optional[int] = Field(None, example=-6, description="BLE Tx Power dBm (-6, 0, 3, 9)")
@@ -328,6 +342,77 @@ app = FastAPI(
     lifespan=lifespan,
     default_response_class=JSONResponse
 )
+
+# Admin access is deliberately independent of the mobile pre-arm credential.
+# Missing mTLS identity configuration leaves admin/control routes unavailable;
+# this is a deployment gate, not a development fallback.
+admin_security = AdminSecurity.from_environment()
+_control_proposals: dict[str, dict] = {}
+
+
+@app.middleware("http")
+async def deny_by_default_admin_routes(request: Request, call_next):
+    """Put a session/CSRF/re-auth boundary in front of every admin route.
+
+    Route handlers still perform their narrower role and tenant checks.  This
+    guard prevents a newly added /api/v1/admin endpoint from silently becoming
+    public while preserving target OTA/download and emergency hardware paths.
+    """
+    path = request.url.path
+    if path.startswith("/api/v1/admin/") and path not in {"/api/v1/admin/sessions"}:
+        try:
+            _admin_principal(
+                request,
+                unsafe=request.method not in {"GET", "HEAD", "OPTIONS"},
+                roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR, ROLE_APPROVER),
+                tenant_scope=request.headers.get(TENANT_HEADER),
+                reauthenticate=request.method not in {"GET", "HEAD", "OPTIONS"},
+            )
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return await call_next(request)
+
+
+def _legacy_tenant_scope(tenant_id: int) -> str:
+    return f"legacy:{tenant_id}"
+
+
+def _admin_principal(
+    request: Request,
+    *,
+    unsafe: bool = False,
+    roles: tuple[str, ...] = (ROLE_ADMIN,),
+    tenant_scope: Optional[str] = None,
+    reauthenticate: bool = False,
+) -> AdminPrincipal:
+    return admin_security.principal(
+        request,
+        unsafe=unsafe,
+        roles=roles,
+        tenant_id=tenant_scope,
+        reauthenticate=reauthenticate,
+    )
+
+
+def _audit_admin(
+    conn, principal: AdminPrincipal, tenant_scope: str, action: str,
+    object_ref: str, idempotency_key: Optional[str] = None,
+) -> None:
+    """Append an actor-attributed audit event before an irreversible action."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO admin_audit (actor_subject, tenant_scope, action, object_ref, "
+            "idempotency_hash, created_at) VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                principal.subject,
+                tenant_scope,
+                action,
+                object_ref,
+                hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+                if idempotency_key else None,
+                int(datetime.now().timestamp()),
+            ),
+        )
 
 # Mount the new management plane only when the feature is explicitly enabled and all
 # authentication/signing prerequisites are present. A bad RC configuration must not take
@@ -477,6 +562,26 @@ if ACL_MANAGEMENT_ENABLED:
             )
 
 # 정적 파일 디렉토리 마운트
+# Administrator sessions are mTLS-authenticated, server-side, short lived, and
+# fail closed when ADMIN_MTLS_IDENTITIES_JSON is not configured.
+@app.post("/api/v1/admin/sessions")
+def create_admin_session(request: Request, response: Response):
+    identity = admin_security.authenticate_mtls(request)
+    token, principal = admin_security.issue_session(identity)
+    response.set_cookie(
+        ADMIN_SESSION_COOKIE, token, max_age=admin_security.session_seconds,
+        httponly=True, secure=True, samesite="strict", path="/",
+    )
+    return {"expires_at": principal.expires_at, "csrf_token": principal.csrf_token}
+
+
+@app.post("/api/v1/admin/sessions/rotate")
+def rotate_admin_sessions(request: Request):
+    _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), reauthenticate=True)
+    admin_security.rotate_sessions()
+    return {"status": "rotated"}
+
+
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -491,7 +596,8 @@ def get_webview_app():
     return HTMLResponse("<h1>Smart Gatekeeper Web App</h1><p>static/index.html not found</p>")
 
 @app.get("/admin", response_class=HTMLResponse)
-def get_admin_console():
+def get_admin_console(request: Request):
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
     """관리자 콘솔 웹 화면 반환"""
     admin_path = os.path.join(static_dir, "admin.html")
     if os.path.exists(admin_path):
@@ -499,17 +605,19 @@ def get_admin_console():
     return HTMLResponse("<h1>Smart Gatekeeper Admin Console</h1><p>static/admin.html not found</p>")
 
 @app.get("/api/v1/admin/tenants")
-def get_all_tenants_admin():
+def get_all_tenants_admin(request: Request):
+    principal = _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR))
     """관리자용 전체 세입자 및 승인 대기 세입자 목록 조회"""
     conn = None
     try:
         conn = get_db()
         with conn.cursor() as cur:
-            cur.execute("SELECT id, name, unit_number, ble_device_mac, is_active FROM tenants ORDER BY id DESC")
-            rows = cur.fetchall()
+            cur.execute("SELECT id, name, unit_number, is_active FROM tenants ORDER BY id DESC")
+            rows = [row for row in cur.fetchall() if principal.can_access_tenant(_legacy_tenant_scope(row["id"]))]
             return JSONResponse(content=rows, headers={"Content-Type": "application/json; charset=utf-8"})
     except Exception as e:
         log.error(f"[ADMIN-DB] 세입자 목록 조회 실패: {e}")
+        raise HTTPException(status_code=503, detail="tenant data unavailable") from e
         # DB 조회 불가 시 기본 목데이터 제공
         return JSONResponse(content=[
             {"id": 1, "name": "홍길동", "unit_number": "101호", "ble_device_mac": "AA:BB:CC:DD:EE:01", "is_active": True},
@@ -520,35 +628,57 @@ def get_all_tenants_admin():
             conn.close()
 
 @app.post("/api/v1/admin/tenants/{tenant_id}/approve")
-def approve_tenant(tenant_id: int):
+def approve_tenant(tenant_id: int, request: Request):
+    principal = _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), tenant_scope=_legacy_tenant_scope(tenant_id), reauthenticate=True)
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """관리자 세입자 승인 처리 (is_active = true)"""
     log.info(f"[ADMIN] 세입자 승인: Tenant ID={tenant_id}")
     conn = None
     try:
         conn = get_db()
+        conn.begin()
         with conn.cursor() as cur:
+            _audit_admin(conn, principal, _legacy_tenant_scope(tenant_id), "TENANT_APPROVED", str(tenant_id), idempotency_key)
             cur.execute("UPDATE tenants SET is_active = true WHERE id = %s", (tenant_id,))
+            if cur.rowcount != 1:
+                raise LookupError("tenant not found")
+        conn.commit()
         return JSONResponse(content={"status": "approved", "tenant_id": tenant_id})
     except Exception as e:
         log.error(f"[ADMIN] 승인 실패: {e}")
-        return JSONResponse(content={"status": "approved_mock", "tenant_id": tenant_id})
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=503, detail="tenant approval unavailable")
     finally:
         if conn:
             conn.close()
 
 @app.post("/api/v1/admin/tenants/{tenant_id}/reject")
-def reject_tenant(tenant_id: int):
+def reject_tenant(tenant_id: int, request: Request):
+    principal = _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), tenant_scope=_legacy_tenant_scope(tenant_id), reauthenticate=True)
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """관리자 세입자 권한 회수/거절 처리 (is_active = false)"""
     log.info(f"[ADMIN] 세입자 권한 회수: Tenant ID={tenant_id}")
     conn = None
     try:
         conn = get_db()
+        conn.begin()
         with conn.cursor() as cur:
+            _audit_admin(conn, principal, _legacy_tenant_scope(tenant_id), "TENANT_REVOKED", str(tenant_id), idempotency_key)
             cur.execute("UPDATE tenants SET is_active = false WHERE id = %s", (tenant_id,))
+            if cur.rowcount != 1:
+                raise LookupError("tenant not found")
+        conn.commit()
         return JSONResponse(content={"status": "rejected", "tenant_id": tenant_id})
     except Exception as e:
         log.error(f"[ADMIN] 회수 실패: {e}")
-        return JSONResponse(content={"status": "rejected_mock", "tenant_id": tenant_id})
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=503, detail="tenant rejection unavailable")
     finally:
         if conn:
             conn.close()
@@ -627,7 +757,8 @@ def get_remote_config():
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
-@app.get("/api/v1/user/me")
+# Disabled after Issue #49: a device identifier in a URL is neither a session
+# nor safe for PII lookup.  Enrolment uses the proof-of-possession ACL flow.
 def get_user_me(device_id: str = Query(...)):
     """현재 기기(device_id)의 세입자 등록 상태 및 세입자 정보 조회"""
     mac_upper = device_id.strip().upper()
@@ -666,7 +797,8 @@ def get_user_me(device_id: str = Query(...)):
         if conn:
             conn.close()
 
-@app.post("/api/v1/user/request")
+# Disabled after Issue #49: anonymous device-id registration is a write-capable
+# control-plane path.  The authenticated ACL enrolment route replaces it.
 def request_user_access(req: UserRequestSchema):
     """신규 세입자 가입 및 출입 권한 신청"""
     mac_upper = req.device_id.strip().upper()
@@ -796,7 +928,78 @@ def door_prearm(
     )
 
 
-@app.post("/api/v1/door/open")
+@app.post("/api/v1/admin/control/force-open")
+def request_force_open(req: ForceOpenRequestSchema, request: Request):
+    """Create a two-person, re-authenticated force-open proposal.
+
+    This never accepts a device identifier as authority and deliberately does
+    not publish MQTT until a separate authorized approver completes it.
+    """
+    principal = _admin_principal(
+        request, unsafe=True, roles=(ROLE_OPERATOR,), tenant_scope=req.tenant_id,
+        reauthenticate=True,
+    )
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
+    now = int(datetime.now().timestamp())
+    for proposal_id, proposal in _control_proposals.items():
+        if (proposal["subject"], proposal["tenant_id"], proposal["idempotency_hash"]) == (
+            principal.subject, req.tenant_id, hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest(),
+        ) and proposal["expires_at"] > now:
+            return JSONResponse(status_code=202, content={"status": "approval_required", "approval_id": proposal_id})
+    proposal_id = secrets.token_urlsafe(24)
+    conn = None
+    try:
+        conn = get_db()
+        _audit_admin(conn, principal, req.tenant_id, "FORCE_OPEN_PROPOSED", proposal_id, idempotency_key)
+        _control_proposals[proposal_id] = {
+            "subject": principal.subject, "tenant_id": req.tenant_id, "reason": req.reason,
+            "idempotency_hash": hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest(),
+            "expires_at": now + 300, "used": False,
+        }
+        return JSONResponse(status_code=202, content={"status": "approval_required", "approval_id": proposal_id})
+    except Exception as exc:
+        log.error("[FORCE-OPEN] proposal audit unavailable")
+        raise HTTPException(status_code=503, detail="force-open proposal unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.post("/api/v1/admin/control/force-open/{approval_id}/approve")
+def approve_force_open(approval_id: str, request: Request):
+    proposal = _control_proposals.get(approval_id)
+    if not proposal or proposal["expires_at"] <= int(datetime.now().timestamp()) or proposal["used"]:
+        raise HTTPException(status_code=404, detail="force-open proposal is unavailable")
+    principal = _admin_principal(
+        request, unsafe=True, roles=(ROLE_APPROVER,), tenant_scope=proposal["tenant_id"],
+        reauthenticate=True,
+    )
+    if secrets.compare_digest(principal.subject, proposal["subject"]):
+        raise HTTPException(status_code=403, detail="force-open requires a distinct approver")
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
+    conn = None
+    try:
+        conn = get_db()
+        _audit_admin(conn, principal, proposal["tenant_id"], "FORCE_OPEN_APPROVED", approval_id, idempotency_key)
+        if not publish_force_open_to_mqtt("authorized-control-plane"):
+            raise RuntimeError("MQTT publish failed")
+        proposal["used"] = True
+        _audit_admin(conn, principal, proposal["tenant_id"], "FORCE_OPEN_PUBLISHED", approval_id, idempotency_key)
+        return {"status": "published", "approval_id": approval_id}
+    except Exception as exc:
+        log.error("[FORCE-OPEN] no successful control effect recorded")
+        raise HTTPException(status_code=503, detail="force-open was not published") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
+# Deliberately not registered: retained only as a migration reference until the
+# mobile client no longer imports its request model.  It cannot receive HTTP.
 def door_force_open(
     req: ForceOpenRequestSchema,
     x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
@@ -926,7 +1129,8 @@ current_target_config = load_target_config()
 
 @app.get("/admin/config")
 @app.get("/api/v1/admin/config")
-def get_admin_config():
+def get_admin_config(request: Request):
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope="*")
     """현재 적용되어 있는 Target (ESP32-C6) 원격 튜닝 파라미터 조회"""
     return JSONResponse(
         content={
@@ -943,7 +1147,11 @@ def get_admin_config():
 
 @app.post("/admin/config")
 @app.post("/api/v1/admin/config")
-def update_admin_config(req: AdminConfigRequestSchema):
+def update_admin_config(req: AdminConfigRequestSchema, request: Request):
+    principal = _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), tenant_scope="*", reauthenticate=True)
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """엔지니어 원격 튜닝 API — ESP32-C6 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간, 릴레이 쿨다운) 실시간 변경 및 영구 저장"""
     log.info(f"[ADMIN-CONFIG] 원격 파라미터 변경 요청: tx_power={req.tx_power}, tof_distance={req.tof_distance}, duration={req.duration}, relay_cooldown={req.relay_cooldown}")
     if req.tx_power is None and req.tof_distance is None and req.duration is None and req.relay_cooldown is None:
@@ -961,6 +1169,16 @@ def update_admin_config(req: AdminConfigRequestSchema):
     if req.relay_cooldown is not None:
         current_target_config["relay_cooldown"] = req.relay_cooldown
     current_target_config["updated_at"] = datetime.now().isoformat()
+    conn = None
+    try:
+        conn = get_db()
+        _audit_admin(conn, principal, "*", "TARGET_CONFIG_CHANGED", "target-config", idempotency_key)
+    except Exception as exc:
+        log.error("[ADMIN-CONFIG] audit unavailable")
+        raise HTTPException(status_code=503, detail="configuration change unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
     save_target_config(current_target_config)
 
     mqtt_results = publish_admin_config_to_mqtt(
@@ -1051,9 +1269,15 @@ def verify_access(req: AuthVerifyRequest):
 
 @app.get("/api/v1/logs", response_model=List[AccessLogItem])
 def get_access_logs(
+    request: Request,
+    x_tenant_id: str = Header(..., alias=TENANT_HEADER),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0)
 ):
+    if not x_tenant_id.startswith("legacy:") or not x_tenant_id[7:].isdigit():
+        raise HTTPException(status_code=400, detail="legacy tenant scope required")
+    tenant_id = int(x_tenant_id[7:])
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope=x_tenant_id)
     conn = None
     try:
         conn = get_db()
@@ -1061,8 +1285,8 @@ def get_access_logs(
             cur.execute(
                 "SELECT id, tenant_id, auth_method, is_success, distance_mm, "
                 "failure_reason, created_at "
-                "FROM access_logs ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                (limit, offset)
+                "FROM access_logs WHERE tenant_id = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                (tenant_id, limit, offset)
             )
             rows = cur.fetchall()
             for row in rows:

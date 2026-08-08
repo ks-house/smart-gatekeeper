@@ -2007,3 +2007,13 @@
 - Refactored each startup attempt so all post-create checks share one failure path. A `tui-idle` failure, startup snapshot failure, or current terminal-end PowerShell prompt now records the original error, closes the exact created terminal, retries only the first attempt, and closes the second exact terminal before failing closed.
 - The reviewer could not deliver accepted `worker_done` after its sandboxed Orca runtime again became unreachable, so its Task was recorded as blocked and the coordinator closed its exact terminal. A fresh injected timeout mutation, real lifecycle probe, and exact-head review remain required; physical, operator, and production Gates remain pending and fail-closed.
 - The coordinator reran the exact injected-timeout mutation against the remediation: two created mock terminal handles each exhausted three bounded wait windows, both exact handles received one close call, and the launcher failed after the second cleanup with the original timeout preserved. Real lifecycle and fresh exact-head review evidence are still required.
+## [2026-08-09] code | Harden admin control plane with deny-by-default identity and dual control
+
+- Added mTLS-fingerprint-backed server sessions, tenant-scoped roles, CSRF, reauthentication, rate limiting, session rotation, idempotency, and an immutable MariaDB `admin_audit` migration; missing identity/audit state now fails closed rather than returning mock success.
+- Removed the public `device_id` force-open route and anonymous device-ID user data/write routes. Force-open is now a reasoned, time-bounded, two-person proposal/approval flow; target OTA pull/health and APK/version recovery paths remain deliberately independent.
+- Added negative mutation tests for anonymous/forged/stale/CSRF/cross-tenant/stolen-ID/replay/rate-limit cases and migration assertions. This is host/software evidence only: no Samsung/OEM, ESP32-C6, relay, bootloader/rollback, OTA install-health, operator, or production authorization evidence was created.
+
+## [2026-08-09] fix | Bind the static admin console to the deny-by-default session boundary
+
+- The console now creates its mTLS-backed session, carries its CSRF, tenant-scope, reauthentication, and idempotency headers on admin writes, requests tenant-scoped access logs, and treats force-open as a 202 approval proposal rather than command success.
+- Removed the admin tenant-list mock-data response on database failure; it now returns 503. No physical/operator/production claim is implied by this UI or host-only change.

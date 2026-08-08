@@ -15,6 +15,7 @@ services:
       - mariadb_data:/var/lib/mysql
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./db/migrations/002_acl_management_expand_up.sql:/docker-entrypoint-initdb.d/02_acl_management_expand.sql:ro
+      - ./db/migrations/003_admin_security_up.sql:/docker-entrypoint-initdb.d/03_admin_security.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
@@ -67,6 +68,11 @@ services:
       ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX: ${ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX:-}
       ACL_TRANSITION_SIGNING_KEY_ID: ${ACL_TRANSITION_SIGNING_KEY_ID:-}
       ACL_LEASE_SECONDS: ${ACL_LEASE_SECONDS:-900}
+      # Issue #49.  Empty is intentionally fail-closed for every admin route.
+      # Map verified mTLS certificate SHA-256 fingerprints to subject/roles/scopes.
+      ADMIN_MTLS_IDENTITIES_JSON: ${ADMIN_MTLS_IDENTITIES_JSON:-}
+      ADMIN_SESSION_SECONDS: ${ADMIN_SESSION_SECONDS:-900}
+      ADMIN_REAUTH_SECONDS: ${ADMIN_REAUTH_SECONDS:-120}
     ports:
       - "8000:8000"
     volumes:

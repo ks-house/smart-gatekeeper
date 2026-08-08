@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = ROOT / "backend" / "db" / "schema.sql"
 UP = ROOT / "backend" / "db" / "migrations" / "002_acl_management_expand_up.sql"
 DOWN = ROOT / "backend" / "db" / "migrations" / "002_acl_management_expand_down.sql"
+ADMIN_UP = ROOT / "backend" / "db" / "migrations" / "003_admin_security_up.sql"
+ADMIN_DOWN = ROOT / "backend" / "db" / "migrations" / "003_admin_security_down.sql"
 
 
 class MigrationContractTest(unittest.TestCase):
@@ -48,6 +50,16 @@ class MigrationContractTest(unittest.TestCase):
         self.assertEqual(1, down.count("DROP TABLE IF EXISTS credentials;"))
         self.assertEqual(1, down.count("DROP TABLE IF EXISTS acl_snapshot_jobs;"))
         self.assertEqual(1, down.count("DROP TABLE IF EXISTS enrollment_challenges;"))
+
+    def test_admin_audit_migration_is_append_only_and_has_explicit_rollback(self) -> None:
+        up = ADMIN_UP.read_text(encoding="utf-8")
+        down = ADMIN_DOWN.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS admin_audit", up)
+        self.assertIn("CREATE TRIGGER admin_audit_no_update", up)
+        self.assertIn("CREATE TRIGGER admin_audit_no_delete", up)
+        self.assertIn("admin_audit is immutable", up)
+        self.assertIn("DROP TRIGGER IF EXISTS admin_audit_no_update", down)
+        self.assertIn("DROP TABLE IF EXISTS admin_audit", down)
 
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
@@ -112,6 +124,7 @@ class MigrationContractTest(unittest.TestCase):
                     SCHEMA.read_text(encoding="utf-8"),
                     UP.read_text(encoding="utf-8"),
                     UP.read_text(encoding="utf-8"),
+                    ADMIN_UP.read_text(encoding="utf-8"),
                     "INSERT INTO tenants (name, unit_number, ble_device_mac, auth_key, is_active) "
                     "VALUES ('N-1 client', '999', 'AA:BB:CC:DD:EE:99', 'legacy-only', TRUE);",
                     "INSERT INTO acl_tenants VALUES "
@@ -149,6 +162,16 @@ class MigrationContractTest(unittest.TestCase):
                 "SELECT auth_key FROM tenants WHERE ble_device_mac='AA:BB:CC:DD:EE:99';",
             )
             self.assertEqual("legacy-only", legacy.stdout.strip())
+
+            audit_immutable = docker(
+                "exec", name, "mariadb", "-N", "-uroot", f"-p{password}", "smart_gatekeeper", "-e",
+                "INSERT INTO admin_audit (actor_subject,tenant_scope,action,object_ref,created_at) "
+                "VALUES ('admin:a','legacy:1','TEST','object',1); "
+                "UPDATE admin_audit SET action='MUTATED' WHERE actor_subject='admin:a';",
+                check=False,
+            )
+            self.assertNotEqual(0, audit_immutable.returncode)
+            self.assertIn("admin_audit is immutable", audit_immutable.stderr)
 
             def connection() -> pymysql.Connection:
                 return pymysql.connect(
@@ -488,7 +511,7 @@ class MigrationContractTest(unittest.TestCase):
                 "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
-                input_text=DOWN.read_text(encoding="utf-8"),
+                input_text="\n".join((ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
             )
             after_down = docker(
                 "exec",

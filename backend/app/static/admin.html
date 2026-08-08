@@ -243,6 +243,25 @@
   </div>
 
   <script>
+    let adminCsrfToken = null;
+    let adminTenantScope = null;
+    async function bootstrapAdminSession() {
+      const res = await fetch('/api/v1/admin/sessions', { method: 'POST', credentials: 'same-origin' });
+      if (!res.ok) throw new Error('verified mTLS administrator session is required');
+      adminCsrfToken = (await res.json()).csrf_token;
+      adminTenantScope = sessionStorage.getItem('gatekeeperTenantScope') || prompt('Tenant scope (for example legacy:1)');
+      if (!adminTenantScope) throw new Error('tenant scope is required');
+      sessionStorage.setItem('gatekeeperTenantScope', adminTenantScope);
+    }
+    function adminHeaders(unsafe = false) {
+      const headers = { 'X-Tenant-ID': adminTenantScope };
+      if (unsafe) {
+        headers['X-CSRF-Token'] = adminCsrfToken;
+        headers['X-Admin-Reauthenticate'] = 'mtls';
+        headers['Idempotency-Key'] = crypto.randomUUID();
+      }
+      return headers;
+    }
     async function loadTenants() {
       try {
         const res = await fetch('/api/v1/admin/tenants');
@@ -289,7 +308,7 @@
     async function updateTenantStatus(tenantId, approve) {
       const endpoint = approve ? `/api/v1/admin/tenants/${tenantId}/approve` : `/api/v1/admin/tenants/${tenantId}/reject`;
       try {
-        const res = await fetch(endpoint, { method: 'POST' });
+        const res = await fetch(endpoint, { method: 'POST', headers: adminHeaders(true), credentials: 'same-origin' });
         if (res.ok) {
           loadTenants();
         } else {
@@ -302,7 +321,7 @@
 
     async function loadLogs() {
       try {
-        const res = await fetch('/api/v1/logs?limit=30');
+        const res = await fetch('/api/v1/logs?limit=30', { headers: adminHeaders(), credentials: 'same-origin' });
         if (!res.ok) return;
         const logs = await res.json();
         document.getElementById('statTodayLogs').innerText = logs.length + ' 건';
@@ -352,13 +371,16 @@
         return;
       }
       try {
-        const res = await fetch('/api/v1/door/open', {
+        const res = await fetch('/api/v1/admin/control/force-open', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-KEY': masterKey },
-          body: JSON.stringify({ reason: 'admin_master_open' })
+          headers: { ...adminHeaders(true), 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ tenant_id: adminTenantScope, reason: 'audited emergency force-open request' })
         });
         const data = await res.json().catch(() => ({}));
-        if (res.ok) {
+        if (res.status === 202) {
+          alert(`Second-person approval is required before any command is published. Approval ID: ${data.approval_id}`);
+          return;
           alert('⚡ 마스터 원격 문 열기 명령이 성공적으로 전송되었습니다.');
           loadLogs();
         } else {
@@ -372,8 +394,10 @@
     }
 
     window.onload = function() {
-      loadTenants();
-      loadLogs();
+      bootstrapAdminSession().then(() => {
+        loadTenants();
+        loadLogs();
+      }).catch((error) => alert(error.message));
     };
   </script>
 </body>
