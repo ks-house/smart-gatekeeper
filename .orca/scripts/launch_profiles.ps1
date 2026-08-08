@@ -9,10 +9,25 @@ param (
     [string]$TaskId = '',
 
     [Parameter(Mandatory=$false)]
-    [string]$Worktree = 'active'
+    [string]$Worktree = 'active',
+
+    [Parameter(Mandatory=$false)]
+    [switch]$AllowUnsafe
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Get-OrcaExecutable {
+    if (-not [string]::IsNullOrWhiteSpace($env:ORCA_CLI_COMMAND)) {
+        return $env:ORCA_CLI_COMMAND
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:ORCA_DEV_REPO_ROOT)) {
+        return 'orca-dev'
+    }
+    return 'orca'
+}
+
+$orcaExecutable = Get-OrcaExecutable
 
 function Wait-ForAgentIdle {
     param (
@@ -27,7 +42,7 @@ function Wait-ForAgentIdle {
     )
 
     for ($window = 1; $window -le $MaxWindows; $window++) {
-        $response = orca terminal wait --terminal $TerminalHandle --for tui-idle --timeout-ms 60000 --json | ConvertFrom-Json
+        $response = & $script:orcaExecutable terminal wait --terminal $TerminalHandle --for tui-idle --timeout-ms 60000 --json | ConvertFrom-Json
         if ($response.ok -and $response.result.wait.satisfied) {
             return $response
         }
@@ -59,7 +74,7 @@ function Wait-ForProfileReady {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
     while ((Get-Date) -lt $deadline) {
-        $snapshot = orca terminal read --terminal $TerminalHandle --json | ConvertFrom-Json
+        $snapshot = & $script:orcaExecutable terminal read --terminal $TerminalHandle --json | ConvertFrom-Json
         if (-not $snapshot.ok) {
             throw "Profile bootstrap inspection failed: $($snapshot.error.message)"
         }
@@ -80,13 +95,19 @@ function Wait-ForProfileReady {
 # Codex --profile accepts only $CODEX_HOME/<name>.config.toml, not a Markdown path.
 if ($Profile -eq 'antigravity' -or $Profile -eq 'gpt5.6-antigravity') {
     $Profile = "antigravity"
-    $agentCmd = "agy --dangerously-skip-permissions --effort high"
+    $agentCmd = "agy --effort high"
+    if ($AllowUnsafe) {
+        $agentCmd = "agy --dangerously-skip-permissions --effort high"
+    }
 } else {
     if (-not $Profile.StartsWith('gpt5.6-')) {
         $Profile = "gpt5.6-$Profile"
     }
     $modelId = $Profile -replace '^gpt5\.6-', 'gpt-5.6-'
-    $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" --dangerously-bypass-approvals-and-sandbox"
+    $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" --ask-for-approval never --sandbox workspace-write"
+    if ($AllowUnsafe) {
+        $agentCmd = "codex --model $modelId -c model_reasoning_effort=`"high`" --dangerously-bypass-approvals-and-sandbox"
+    }
 }
 
 
@@ -97,7 +118,7 @@ $title = "$Profile-worker"
 
 # The current Orca guide permits low-level terminal creation for custom model
 # argv. The profile document is loaded after the TUI becomes idle.
-$createJson = orca terminal create --worktree $Worktree --title $title --command $agentCmd --json | ConvertFrom-Json
+$createJson = & $orcaExecutable terminal create --worktree $Worktree --title $title --command $agentCmd --json | ConvertFrom-Json
 
 
 if (-not $createJson.ok) {
@@ -112,7 +133,7 @@ Write-Host "✅ Terminal Created: $handle ($title)" -ForegroundColor Green
 Write-Host "⏳ Waiting for terminal handle $handle to reach tui-idle..." -ForegroundColor Yellow
 $waitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Agent startup'
 
-$startupSnapshot = orca terminal read --terminal $handle --json | ConvertFrom-Json
+$startupSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
 if (-not $startupSnapshot.ok) {
     throw "Agent startup inspection failed: $($startupSnapshot.error.message)"
 }
@@ -127,7 +148,7 @@ Write-Host "🟢 Terminal is idle and ready." -ForegroundColor Green
 # Load the repository role profile as ordinary agent context. Neither Codex nor
 # agy accepts these Markdown files through a --profile flag.
 $bootstrapPrompt = "Read $profilePath completely and use it as the active role instructions for this session. Also read AGENTS.md, wiki/index.md, and the recent tail of wiki/log.md before any task. Do not modify files during this bootstrap. Reply PROFILE_READY with the profile name, then return to idle."
-$sendJson = orca terminal send --terminal $handle --text $bootstrapPrompt --enter --json | ConvertFrom-Json
+$sendJson = & $orcaExecutable terminal send --terminal $handle --text $bootstrapPrompt --enter --json | ConvertFrom-Json
 
 if (-not $sendJson.ok) {
     Write-Error "Profile bootstrap send failed: $($sendJson.error.message)"
@@ -143,7 +164,7 @@ Write-Host "✅ Profile [$Profile] loaded and idle." -ForegroundColor Green
 # Dispatch task if TaskId provided
 if ($TaskId -ne '') {
     Write-Host "📡 Dispatching Task [$TaskId] to terminal [$handle]..." -ForegroundColor Cyan
-    $dispatchJson = orca orchestration dispatch --task $TaskId --to $handle --inject --json | ConvertFrom-Json
+    $dispatchJson = & $orcaExecutable orchestration dispatch --task $TaskId --to $handle --inject --json | ConvertFrom-Json
     if (-not $dispatchJson.ok) {
         Write-Error "Dispatch failed: $($dispatchJson.error.message)"
         exit 1

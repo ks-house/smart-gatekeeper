@@ -51,10 +51,10 @@ python scripts/ota_contract_gate.py contract
 
 ## 4. `worker_done` 송신 양식
 
-작업 및 제반 테스트/빌드가 모두 성공하면 현재 Dispatch가 주입한 정확한 `--from`, `--dispatch-capability`, Task/Dispatch ID를 사용해 `gpt5.6-sol` 코디네이터에게 한 번만 보고합니다. 아래는 형태 예시이며 capability를 문서에서 복사하거나 추측하지 않습니다:
+작업 및 제반 테스트/빌드가 모두 성공하면 현재 Dispatch가 주입한 정확한 Task/Dispatch ID를 사용해 `gpt5.6-sol` 코디네이터에게 한 번만 보고합니다. 현재 CLI에서는 워커 identity와 capability를 인자로 다시 보내지 않습니다:
 
 ```bash
-orca orchestration send --from <injected_worker_handle> --dispatch-capability <injected_capability> --type worker_done \
+orca orchestration send --type worker_done \
   --subject "feat(fullstack): <단축 설명>" \
   --body "<무엇을 변경했는지 한 문장>. <검증 결과와 발견 사항 한 문장>. <남은 작업과 열린 Gate 한 문장>." \
   --task-id <task_id> --dispatch-id <dispatch_id> \

@@ -24,7 +24,7 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / f"gatt_protocol_test_{uuid.uuid4().hex}.exe"
             cmd = [
-                f'"{compiler}"',
+                compiler,
                 "-std=c++17",
                 "-Wall",
                 "-Wextra",
@@ -40,24 +40,24 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
                 "src/OfflineEventQueue.cpp",
                 "tests/gatt_protocol_test.cpp",
                 "-o",
-                f'"{executable}"',
+                str(executable),
             ]
             compile_result = subprocess.run(
-                " ".join(cmd),
+                cmd,
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
                 check=False,
-                shell=True,
+                shell=False,
             )
             self.assertEqual(compile_result.returncode, 0, compile_result.stderr)
             run_result = subprocess.run(
-                f'"{executable}"',
+                [str(executable)],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
                 check=False,
-                shell=True,
+                shell=False,
             )
             self.assertEqual(run_result.returncode, 0, run_result.stderr)
             self.assertIn("GattProtocol host tests passed", run_result.stdout)

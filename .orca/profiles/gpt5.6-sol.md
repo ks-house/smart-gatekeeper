@@ -43,11 +43,11 @@ orca orchestration run-use --id <run_id> --json
 ```bash
 orca orchestration task-create --spec "<Task Description & Acceptance Criteria>" --json
 
-# 지원되는 모델 argv로 TUI 생성 -> Markdown profile bootstrap -> tui-idle -> Dispatch
-# Codex의 --dangerously-bypass-approvals-and-sandbox와 --ask-for-approval은 함께 사용하지 않음
+# 안전한 기본 argv로 TUI 생성 -> Markdown profile bootstrap -> tui-idle -> Dispatch
 .orca/scripts/launch_profiles.ps1 -Profile gpt5.6-terra -TaskId <task_id>
 .orca/scripts/launch_profiles.ps1 -Profile gpt5.6-luna -TaskId <task_id>
 .orca/scripts/launch_profiles.ps1 -Profile antigravity -TaskId <task_id>
+# 격리된 워크트리에서 명시적으로 승인한 경우에만 -AllowUnsafe 추가
 ```
 
 
@@ -57,7 +57,7 @@ orca orchestration task-create --spec "<Task Description & Acceptance Criteria>"
 ### 3.3 체크 및 모니터링
 ```bash
 orca orchestration check --wait --types worker_done,escalation,question --timeout-ms 60000 --json
-# worker_done 처리 후 worker-release 또는 즉시 재사용을 결정하고 Delivery ACK
+# worker_done 처리 후 worker-release --dispatch 또는 즉시 재사용을 결정하고 check --ack
 ```
 
-`state: ready`, heartbeat, TUI activity, timeout은 완료 증거가 아닙니다. 현재 Dispatch가 주입한 lifecycle preamble과 정확한 capability를 권위 있는 명령으로 사용하고, `worker_done`을 수신할 때까지 rolling wait를 계속합니다.
+`state: ready`, heartbeat, TUI activity, timeout은 완료 증거가 아닙니다. 현재 Dispatch가 주입한 lifecycle preamble과 정확한 Task/Dispatch ID를 권위 있는 값으로 사용하고, `worker_done`을 수신할 때까지 rolling wait를 계속합니다.
