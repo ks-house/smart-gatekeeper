@@ -16,10 +16,15 @@
 
 | 프로파일 | 에이전트 이름 | CLI 커맨드 | 주요 담당 영역 | 모델 & Effort | 설정 파일 |
 |---|---|---|---|---|---|
-| **`gpt5.6-sol`** | **Sol** | `codex` | 총괄 코디네이터, 아키텍처 설계, 작업 분할(DAG), PR 검토 및 최종 Merge 승인 | GPT-5.6 / Pro (Effort: `high`) | [gpt5.6-sol.md](profiles/gpt5.6-sol.md) |
-| **`gpt5.6-terra`** | **Terra** | `codex` | ESP32-C6 펌웨어 (C++/PlatformIO/GATT/ToF/Relay) & 백엔드 (FastAPI/DB/MQTT/ACL Push) | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-terra.md](profiles/gpt5.6-terra.md) |
-| **`gpt5.6-luna`** | **Luna** | `codex` | Android Native (Kotlin/WorkManager/BLE Wake) & Flutter Thin UI & QA/E2E Fault Injection | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-luna.md](profiles/gpt5.6-luna.md) |
-| **`antigravity`** | **Antigravity** | `agy` | 시니어 풀스택 리드 & 크로스레이어 해결 / 비상 태스크 인수 직행 실행 | GPT-5.6 / Pro (Effort: `high`) | [antigravity.md](profiles/antigravity.md) |
+| **`gpt5.6-sol`** | **Sol** | `codex --ask-for-approval never --dangerously-bypass-approvals-and-sandbox` | 총괄 코디네이터, 아키텍처 설계, 작업 분할(DAG), PR 검토 및 최종 Merge 승인 | GPT-5.6 / Pro (Effort: `high`) | [gpt5.6-sol.md](profiles/gpt5.6-sol.md) |
+| **`gpt5.6-terra`** | **Terra** | `codex --ask-for-approval never --dangerously-bypass-approvals-and-sandbox` | ESP32-C6 펌웨어 (C++/PlatformIO/GATT/ToF/Relay) & 백엔드 (FastAPI/DB/MQTT/ACL Push) | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-terra.md](profiles/gpt5.6-terra.md) |
+| **`gpt5.6-luna`** | **Luna** | `codex --ask-for-approval never --dangerously-bypass-approvals-and-sandbox` | Android Native (Kotlin/WorkManager/BLE Wake) & Flutter Thin UI & QA/E2E Fault Injection | GPT-5.6 Coding Model (Effort: `high`) | [gpt5.6-luna.md](profiles/gpt5.6-luna.md) |
+| **`antigravity`** | **Antigravity** | `agy --dangerously-skip-permissions` | 시니어 풀스택 리드 & 크로스레이어 해결 / 비상 태스크 인수 직행 실행 | GPT-5.6 / Pro (Effort: `high`) | [antigravity.md](profiles/antigravity.md) |
+
+> ⚡ **무승인 자동 수행 (YOLO Mode) 설정**:
+> - **Codex 워커 (`codex`)**: `--ask-for-approval never --dangerously-bypass-approvals-and-sandbox` 옵션을 통해 모든 명령어 실행 시 사용자 대기 승인을 우회합니다.
+> - **Antigravity 워커 (`agy`)**: `--dangerously-skip-permissions` 옵션을 통해 모든 도구 호출 권한 요청을 프롬프트 없이 즉시 승인합니다.
+
 
 
 

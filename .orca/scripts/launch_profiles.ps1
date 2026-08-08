@@ -14,16 +14,17 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-# Normalize profile name & determine agent CLI binary
+# Normalize profile name & determine agent CLI binary with YOLO auto-approval flags
 if ($Profile -eq 'antigravity' -or $Profile -eq 'gpt5.6-antigravity') {
     $Profile = "antigravity"
-    $agentCmd = "agy"
+    $agentCmd = "agy --dangerously-skip-permissions"
 } else {
     if (-not $Profile.StartsWith('gpt5.6-')) {
         $Profile = "gpt5.6-$Profile"
     }
-    $agentCmd = "codex"
+    $agentCmd = "codex --ask-for-approval never --dangerously-bypass-approvals-and-sandbox"
 }
+
 
 Write-Host "🚀 Launching Orca Terminal Profile: [$Profile] (CLI: $agentCmd, Effort: High, Worktree: $Worktree)..." -ForegroundColor Cyan
 
