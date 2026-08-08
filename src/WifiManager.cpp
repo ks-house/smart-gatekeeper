@@ -4,6 +4,10 @@
 // =============================================================
 #include "WifiManager.h"
 #include "DiagnosticsManager.h"
+#include "OtaManager.h"
+#include "config.h"
+
+#include <cstring>
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -12,6 +16,7 @@ bool WifiManager::apModeActive = false;
 bool WifiManager::connected = false;
 String WifiManager::stationIp = "";
 static bool webServerStarted = false;
+static bool localUploadSucceeded = false;
 
 extern int g_tx_power_dbm;
 extern uint16_t g_distance_threshold_cm;
@@ -39,6 +44,9 @@ void WifiManager::startWebServer() {
     webServer.on("/scan", handleScan);
     webServer.on("/save", HTTP_POST, handleSave);
     webServer.on("/config", HTTP_POST, handleConfigSave);
+    webServer.on("/recovery/manifest", HTTP_POST, handleRecoveryManifest);
+    webServer.on("/recovery/firmware", HTTP_POST,
+                 handleRecoveryUploadComplete, handleRecoveryUpload);
     webServer.onNotFound(handleNotFound);
     webServer.begin();
 
@@ -86,7 +94,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
 }
 
 void WifiManager::startAP() {
-    apModeActive = true;
+    apModeActive = false;
     DiagnosticsManager::noteAction("provisioning_ap_start");
     
     // 이전 STA 접속 시도로 인한 채널 호핑/비콘 브로드캐스트 블로킹 완정 방지
@@ -98,14 +106,22 @@ void WifiManager::startAP() {
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
 
     // 채널 1, 비숨김(0), 최대 4대 접속 설정하여 브로드캐스트 비콘 프레임 고정
-    bool apSuccess = WiFi.softAP("SmartGatekeeper-Setup", NULL, 1, 0, 4);
+    const bool recoveryProvisioned =
+        std::strlen(LOCAL_RECOVERY_AP_PASSWORD) >= 16 &&
+        std::strlen(LOCAL_RECOVERY_USER) >= 8 &&
+        std::strlen(LOCAL_RECOVERY_PASSWORD) >= 16;
+    bool apSuccess = recoveryProvisioned &&
+        WiFi.softAP("SmartGatekeeper-Recovery",
+                    LOCAL_RECOVERY_AP_PASSWORD, 1, 0, 2);
 
-    startWebServer();
     if (apSuccess) {
+        apModeActive = true;
+        startWebServer();
         DiagnosticsManager::noteAction("provisioning_ap_ready");
         LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: 'SmartGatekeeper-Setup' (채널 1, 192.168.4.1)");
         LOGF("[WIFI-AP] Captive DNS disabled; open http://192.168.4.1 manually.");
     } else {
+        WiFi.softAPdisconnect(true);
         DiagnosticsManager::noteAction("provisioning_ap_failed");
         LOGF("[WIFI-AP] 🚨 설정 AP 가동 실패!");
     }
@@ -113,6 +129,7 @@ void WifiManager::startAP() {
 
 
 void WifiManager::handleRoot() {
+    if (!requireLocalAuthentication()) return;
     String currentSsid = ConfigManager::getWifiSsid();
     int distCm = (int)g_distance_threshold_cm;
 
@@ -204,6 +221,7 @@ void WifiManager::handleRoot() {
 }
 
 void WifiManager::handleScan() {
+    if (!requireLocalAuthentication()) return;
     WiFi.scanDelete();
     int n = WiFi.scanNetworks(false, false, false, 150);
     LOGF("[WIFI-SCAN] 주변 Wi-Fi 스캔 완료: %d개 발견", n);
@@ -221,6 +239,7 @@ void WifiManager::handleScan() {
 }
 
 void WifiManager::handleSave() {
+    if (!requireLocalAuthentication()) return;
     if (!apModeActive) {
         DiagnosticsManager::noteAction("wifi_save_rejected");
         webServer.send(
@@ -252,6 +271,7 @@ void WifiManager::handleSave() {
 }
 
 void WifiManager::handleConfigSave() {
+    if (!requireLocalAuthentication()) return;
     DiagnosticsManager::noteAction("web_config_save");
     if (webServer.hasArg("tx_power")) {
         setTxPower(webServer.arg("tx_power").toInt());
@@ -271,6 +291,66 @@ void WifiManager::handleConfigSave() {
     }
     webServer.sendHeader("Location", "/", true);
     webServer.send(302, "text/plain", "Updated");
+}
+
+bool WifiManager::requireLocalAuthentication() {
+    if (std::strlen(LOCAL_RECOVERY_USER) < 8 ||
+        std::strlen(LOCAL_RECOVERY_PASSWORD) < 16) {
+        webServer.send(503, "text/plain", "Local recovery is not provisioned.");
+        return false;
+    }
+    if (!webServer.authenticate(LOCAL_RECOVERY_USER,
+                                LOCAL_RECOVERY_PASSWORD)) {
+        webServer.requestAuthentication(BASIC_AUTH, "SmartGatekeeper-Recovery");
+        return false;
+    }
+    return true;
+}
+
+void WifiManager::handleRecoveryManifest() {
+    if (!apModeActive || !requireLocalAuthentication()) {
+        if (!apModeActive) webServer.send(403, "text/plain", "AP recovery only");
+        return;
+    }
+    const String manifest = webServer.arg("plain");
+    if (!OtaManager::stageLocalManifest(manifest)) {
+        webServer.send(400, "text/plain", "Signed manifest rejected");
+        return;
+    }
+    webServer.send(204, "text/plain", "");
+}
+
+void WifiManager::handleRecoveryUpload() {
+    if (!apModeActive || !requireLocalAuthentication()) return;
+    HTTPUpload& upload = webServer.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        localUploadSucceeded = false;
+        if (!OtaManager::localManifestReady() || !OtaManager::beginLocalUpload()) {
+            OtaManager::abortLocalUpload("local upload start rejected");
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (!OtaManager::writeLocalUploadChunk(upload.buf, upload.currentSize)) {
+            OtaManager::abortLocalUpload("local upload write rejected");
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        localUploadSucceeded = OtaManager::finishLocalUpload();
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        OtaManager::abortLocalUpload("local upload aborted");
+    }
+}
+
+void WifiManager::handleRecoveryUploadComplete() {
+    if (!apModeActive || !requireLocalAuthentication()) {
+        if (!apModeActive) webServer.send(403, "text/plain", "AP recovery only");
+        return;
+    }
+    if (!localUploadSucceeded) {
+        webServer.send(400, "text/plain", "Firmware rejected");
+        return;
+    }
+    webServer.send(202, "text/plain", "Verified; rebooting into pending slot");
+    delay(250);
+    ESP.restart();
 }
 
 

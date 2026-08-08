@@ -38,6 +38,7 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
                 "src/TargetProofVerifier.cpp",
                 "src/TargetAccessFsm.cpp",
                 "src/OfflineEventQueue.cpp",
+                "src/TargetCommandSecurity.cpp",
                 "tests/gatt_protocol_test.cpp",
                 "-o",
                 str(executable),
@@ -94,19 +95,20 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
     def test_ota_waits_on_real_target_state_before_network(self):
         ota = (ROOT / "src" / "OtaManager.cpp").read_text(encoding="utf-8")
         main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
-        self.assertIn("safeStateProvider() != OtaSafeState::SAFE", ota)
+        self.assertIn("!OtaManager::isSafeForOta()", ota)
+        self.assertIn("bool waitForSafeState()", ota)
         self.assertIn("GattServer::flushOtaBusy", ota)
         self.assertLess(
-            ota.index("GattServer::flushOtaBusy"),
             ota.index("status = OtaStatus::WAIT_SAFE_STATE"),
+            ota.index("if (!waitForSafeState())"),
         )
         self.assertLess(
-            ota.index("status = OtaStatus::WAIT_SAFE_STATE"),
+            ota.index("if (!waitForSafeState())"),
             ota.index("if (!WifiManager::isConnected())"),
         )
         self.assertLess(
             ota.index("if (!WifiManager::isConnected())"),
-            ota.index("WiFiClientSecure client"),
+            ota.index("WiFiClientSecure manifestClient"),
         )
         self.assertTrue(
             "g_access_fsm.otaSafeState()" in main or

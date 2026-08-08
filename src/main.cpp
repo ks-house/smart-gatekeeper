@@ -423,7 +423,7 @@ void setRelayCooldownMs(uint32_t cooldownMs) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// triggerArm() — MqttManager 콜백에서 호출 (MQTT gatekeeper/arm 수신)
+// triggerArm() is called only after signed command authorization.
 // ─────────────────────────────────────────────────────────────
 static OtaSafeState currentOtaSafeState() {
   // OtaManager is invoked from the MQTT callback and therefore temporarily
@@ -505,6 +505,10 @@ void setup() {
   relay.begin();
 
   ConfigManager::begin();
+  if (!ConfigManager::enforceCompileTimeSecurityPolicy()) {
+    LOGF("[SECURITY-FATAL] Failed to clear stale lab-only NVS flags");
+    while (true) delay(1000);
+  }
   DiagnosticsManager::begin();
 
   clearI2CBus(6, 7);
@@ -531,6 +535,8 @@ void setup() {
 
   // 4. Wi-Fi 초기화
   WifiManager::init();
+  OtaManager::setSafeStateProvider(currentOtaSafeState);
+  OtaManager::init();
 
   if (WifiManager::connectSTA(10000)) {
     // Wall-clock time is not used by the Target. Avoid initializing lwIP's raw
@@ -538,8 +544,6 @@ void setup() {
     // udp_new_ip_type core-lock assertion in this task.
     DiagnosticsManager::noteAction("network_services_start");
     MqttManager::init();
-    OtaManager::setSafeStateProvider(currentOtaSafeState);
-    OtaManager::init();
   } else {
     LOGF("[WIFI] 접속 실패 -> AP 설정 모드로 전환합니다.");
     WifiManager::startAP();
@@ -618,6 +622,7 @@ void loop() {
 
   WifiManager::handleClient();
   MqttManager::update();
+  OtaManager::update();
   GattServer::update();
 
   now = millis();

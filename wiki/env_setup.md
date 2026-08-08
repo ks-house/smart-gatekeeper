@@ -377,3 +377,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -
 setup은 ignored `.venv`, ignored `include/secrets.h`, PlatformIO package cache만 준비하며 기존 시크릿을
 읽거나 덮어쓰지 않는다. 상세 suite, Docker Flutter 격리, 프로파일 시작법은
 [orca_development_environment.md](orca_development_environment.md)를 따른다.
+## Target security build environments (2026-08-09)
+
+`esp32c6` is the default release-mode software build with `ENABLE_HARDWARELESS_RC=0` and `SGK_PRODUCTION_BUILD=0`. `esp32c6_hwless_rc` is an explicit lab-only environment and is never a production authorization path. Production packaging must set `SGK_PRODUCTION_BUILD=1`, keep hardwareless RC at zero, provision exact per-Target MQTT and recovery credentials plus command/OTA public keys, and separately satisfy `security/target-production-policy.json` physical/eFuse/operator Gates.
+
+Use a worktree-scoped PlatformIO directory on Windows, for example `$env:PLATFORMIO_BUILD_DIR='.pio/build-issue50'; pio run -e esp32c6 -j 4`. A successful build is software evidence only and does not validate secure boot, flash/NVS encryption, debug locks, broker deployment, radio, relay, or OTA rollback on hardware.

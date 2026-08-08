@@ -2098,3 +2098,16 @@
 
 - Changed the approval state transition to commit `RECONCILIATION_REQUIRED` and its immutable operator-visible audit fact before calling MQTT; reconciliation persistence failure now blocks publication, and post-publish final-audit failure retains the prior durable non-success disposition rather than relying on a best-effort recovery write.
 - Added mutation coverage for failed reconciliation precommit, post-publish audit failure, one rollback/close per rejected locked approval, and real MariaDB concurrent exactly-once publishing plus durable ambiguous-state inspection. This is software/CI evidence only; physical, operator, and production gates remain open and fail-closed.
+
+## [2026-08-09] code | Harden Target commands and OTA for issue #50
+
+- Replaced shared unsigned MQTT effects and insecure TLS fallbacks with CA-verified MQTTS, exact per-Target QoS 1 topics, broker `%u` ACLs, retained-message rejection, and deterministic signed freshness/identity/boot-bound commands.
+- Added a two-slot CRC/generation NVS replay ledger that persists before effects and distinguishes completed from crash-uncertain duplicates, plus backend P-256 command signing and fail-closed provisioning.
+- Rebuilt Target OTA around signed Ed25519 manifests, periodic HTTPS, authenticated local recovery, one inactive-slot verifier/writer, exact size/hash/image checks, pending-image health marking, rollback, downgrade floor, and protocol 1..2 overlap.
+- Kept hardwareless RC compile-OFF by default, added stale enablement cleanup and a machine-readable production hardening policy. Production remains disabled; no merge, deployment, eFuse change, or device authorization was performed.
+
+## [2026-08-09] test | Validate issue #50 software paths and preserve physical Gates
+
+- Root host suite passed 92/92, including command mutation, durable replay, crash uncertainty, storage failure, OTA state/fault contracts, and insecure-path checks. Backend suite passed 32 tests with one opt-in MariaDB integration skip.
+- Scoped pioarduino ESP32-C6 build passed for `esp32c6`: RAM 53,728/327,680 (16.4%) and flash 1,600,194/7,340,032 (21.8%). `git diff --check`, JSON parsing, wiki links, and raw immutability are separate final lint requirements.
+- These are host/software results only. Deployed MQTTS/ACL behavior, ESP32-C6 radio and relay operation, inactive-slot boot, health-valid, power-loss and rollback, authenticated local recovery, eFuse/debug hardening, N/N-1 interop, OTA-G1..G4, RELAY-G0..G2, physical soak, operator acceptance, and production authorization remain pending and fail-closed.

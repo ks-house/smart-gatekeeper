@@ -1,0 +1,21 @@
+# Per-Target broker usernames are the exact Target ID. Mosquitto substitutes %u
+# in pattern rules, preventing credential crossover between Target namespaces.
+pattern read gatekeeper/v1/targets/%u/command
+pattern read gatekeeper/v1/targets/%u/acl
+pattern write gatekeeper/v1/targets/%u/command-ack
+pattern write gatekeeper/v1/targets/%u/acl/ack
+pattern write gatekeeper/v1/targets/%u/availability
+pattern write gatekeeper/v1/targets/%u/status
+pattern write gatekeeper/v1/targets/%u/event
+pattern write gatekeeper/v1/targets/%u/canonical-event
+pattern write gatekeeper/v1/targets/%u/sensor
+pattern write gatekeeper/v1/targets/%u/boot
+pattern write gatekeeper/v1/targets/%u/config-state
+
+# Backend/release identities are provisioned explicitly, never by wildcard
+# Target credentials. Replace these sample principals in deployment overlays.
+user gatekeeper-backend
+topic write gatekeeper/v1/targets/+/command
+topic write gatekeeper/v1/targets/+/acl
+topic read gatekeeper/v1/targets/+/command-ack
+topic read gatekeeper/v1/targets/+/acl/ack

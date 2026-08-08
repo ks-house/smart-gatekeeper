@@ -20,7 +20,11 @@ private:
     static void handleScan();
     static void handleSave();
     static void handleConfigSave();
+    static void handleRecoveryManifest();
+    static void handleRecoveryUpload();
+    static void handleRecoveryUploadComplete();
     static void handleNotFound();
+    static bool requireLocalAuthentication();
 
 public:
     static void init();

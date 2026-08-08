@@ -38,17 +38,20 @@ services:
       DB_USER: ${DB_USER:-gatekeeper_user}
       DB_PASSWORD: ${DB_PASSWORD:-gatekeeper_pass}
       TZ: Asia/Seoul
-      # ── MQTT Broker (v2.0 — gatekeeper/arm Pre-arm 발행용) ──
+      # Verified MQTTS backend publisher; all Target effects are signed.
       # ESP32-C6가 구독 중인 MQTTS 브로커 접속 정보
       # 시놀로지 NAS의 MQTT 브로커 주소 및 포트를 .env 파일에 설정
-      MQTT_HOST: ${MQTT_HOST:-172.17.0.1}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_USER: ${MQTT_USER:-gatekeeper_mqtt}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:-gatekeeper_mqtt_pass}
-
-      MQTT_USE_TLS: ${MQTT_USE_TLS:-false}
-
-      MQTT_TOPIC_ARM: ${MQTT_TOPIC_ARM:-gatekeeper/arm}
+      MQTT_HOST: ${MQTT_HOST:?verified MQTTS hostname required}
+      MQTT_PORT: ${MQTT_PORT:-8883}
+      MQTT_USER: ${MQTT_USER:?backend MQTT principal required}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?backend MQTT password required}
+      MQTT_CA_FILE: ${MQTT_CA_FILE:-/run/secrets/mqtt_ca.pem}
+      COMMAND_TARGET_ID: ${COMMAND_TARGET_ID:?Target ID required}
+      COMMAND_TENANT_ID: ${COMMAND_TENANT_ID:?tenant ID required}
+      COMMAND_DOOR_ID: ${COMMAND_DOOR_ID:?door ID required}
+      COMMAND_BOOT_ID: ${COMMAND_BOOT_ID:?current Target boot ID required}
+      COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:?command signing key ID required}
+      COMMAND_SIGNING_PRIVATE_SCALAR_HEX: ${COMMAND_SIGNING_PRIVATE_SCALAR_HEX:?HSM adapter secret required}
       # ── 모바일 앱 Remote Config ──────────────────────────────
       GATEKEEPER_BEACON_UUID: ${GATEKEEPER_BEACON_UUID:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}
       APP_COOLDOWN_SEC: ${APP_COOLDOWN_SEC:-10}
@@ -79,6 +82,7 @@ services:
     volumes:
       - ./app:/app
       - /volume1/docker/smartbox_ota/gatekeeper_apk:/app/gatekeeper_apk:ro
+      - ${MQTT_CA_HOST_PATH:?MQTT CA host path required}:/run/secrets/mqtt_ca.pem:ro
 
 
     depends_on:

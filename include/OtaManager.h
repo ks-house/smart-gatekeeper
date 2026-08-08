@@ -9,8 +9,8 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <HTTPUpdate.h>
 #include <ArduinoJson.h>
+#include <esp_ota_ops.h>
 
 #include "TargetState.h"
 
@@ -22,6 +22,11 @@ public:
         IDLE,
         WAIT_SAFE_STATE,
         CHECKING,
+        VERIFYING,
+        DOWNLOADING,
+        PENDING_BOOT,
+        HEALTH_WINDOW,
+        ROLLING_BACK,
         UP_TO_DATE,
         UPDATING,
         SUCCESS,
@@ -31,13 +36,20 @@ public:
 private:
     static OtaStatus status;
     static String lastError;
-    static uint32_t lastCheckMs;
     static SafeStateProvider safeStateProvider;
 
 public:
     static void init();
+    static void update();
     static void setSafeStateProvider(SafeStateProvider provider);
     static void checkAndUpdate(bool force = false);
+    static bool stageLocalManifest(const String& manifestJson);
+    static bool beginLocalUpload();
+    static bool writeLocalUploadChunk(const uint8_t* data, size_t length);
+    static bool finishLocalUpload();
+    static void abortLocalUpload(const char* reason);
+    static bool localManifestReady();
+    static bool isSafeForOta();
     static OtaStatus getStatus() { return status; }
     static String getLastError() { return lastError; }
 };

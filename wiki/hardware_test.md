@@ -57,3 +57,11 @@
 | 2026-07-31 | OTA 후 retained coredump 회수 | FAIL/ROOT CAUSE | 이전 firmware의 loopTask lwIP UDP core-lock assertion 확인 |
 
 새 하드웨어 결과는 날짜, firmware commit, 앱 build, 환경, 반복 횟수, 원시 로그/캡처 위치와 함께 이 표에 추가합니다.
+## 2026-08-09 Target command/OTA security evidence
+
+| Date | Test | Result | Evidence boundary |
+|---|---|---|---|
+| 2026-08-09 | Signed command mutation, replay, crash, and storage-fault host tests | PASS (software) | Target/tenant/door/boot/freshness/signature mutations rejected; completed and uncertain duplicates do not repeat effects |
+| 2026-08-09 | OTA contract/state/fault and insecure-path host tests | PASS (software) | Verifier/state/static seams exercised without a physical ESP32-C6 or deployed NAS broker |
+| 2026-08-09 | `pio run -e esp32c6 -j 4` | PASS (software build) | RAM 53,728/327,680; flash 1,600,194/7,340,032; no upload or device execution |
+| Pending | Physical Target OTA and hardening | OPEN | ESP32-C6 inactive-slot boot, health-valid, power-loss, rollback, periodic HTTPS, local recovery, eFuses/debug locks, radio/relay, N/N-1, operator soak, and production authorization remain unproven |

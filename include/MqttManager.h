@@ -1,7 +1,7 @@
 // include/MqttManager.h
 // =============================================================
-// smart-gatekeeper — MQTT 통신 매니저 (HA Auto-Discovery 지원)
-// v2.0: gatekeeper/arm Pre-arm 토픽 구독 추가
+// smart-gatekeeper verified MQTTS manager
+// Verified per-Target MQTTS and signed command dispatch.
 // =============================================================
 #pragma once
 
@@ -10,6 +10,7 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include "TargetCommandSecurity.h"
 
 class MqttManager {
 private:
@@ -19,6 +20,8 @@ private:
     static bool connected;
 
     static void callback(char* topic, byte* payload, unsigned int length);
+    static void publishCommandAck(const sgk::SignedCommandEnvelope& envelope,
+                                  sgk::CommandResult result);
 
 public:
     static void init();
@@ -33,6 +36,5 @@ public:
     static void publishSensorInfo(unsigned long duration_us, float distance_cm);
     static void publishBootDiagnostics();
 
-    static void publishAutoDiscovery(); // Home Assistant MQTT Auto-Discovery
 };
 

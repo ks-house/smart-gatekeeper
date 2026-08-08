@@ -43,6 +43,7 @@ public:
     static void setHardwarelessRcEnabled(bool enabled);
     static bool setHardwarelessDoorIdHex(const String& doorIdHex);
     static void setPlannedRestartReason(const char* reason);
+    static bool enforceCompileTimeSecurityPolicy();
     static void clearConfig();
 
 

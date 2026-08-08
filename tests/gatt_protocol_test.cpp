@@ -4,6 +4,7 @@
 #include "TargetAclManager.h"
 #include "TargetProofVerifier.h"
 #include "TargetState.h"
+#include "TargetCommandSecurity.h"
 
 #include <algorithm>
 #include <array>
@@ -1495,6 +1496,142 @@ void testProductionMainAuthAbortWiring() {
   CHECK(content.find("g_access_fsm.handleAuthAbort(now_ms, \"gatt_auth_aborted\")") != std::string::npos);
 }
 
+class MemoryCommandStorage final : public sgk::CommandReplayStorage {
+ public:
+  std::array<sgk::CommandReplayLedger, 2> ledgers{};
+  std::array<bool, 2> present{};
+  bool fail_writes = false;
+
+  bool readLedger(uint8_t slot, sgk::CommandReplayLedger* ledger) override {
+    if (slot > 1 || ledger == nullptr || !present[slot]) return false;
+    *ledger = ledgers[slot];
+    return true;
+  }
+  bool writeLedger(uint8_t slot,
+                   const sgk::CommandReplayLedger& ledger) override {
+    if (slot > 1 || fail_writes) return false;
+    ledgers[slot] = ledger;
+    present[slot] = true;
+    return true;
+  }
+};
+
+class FixtureCommandVerifier final : public sgk::CommandSignatureVerifier {
+ public:
+  bool verify(uint32_t key_id, const std::array<uint8_t, 32>&,
+              const std::array<uint8_t, 64>& signature) override {
+    return key_id == 7 && signature[0] == 0xa5;
+  }
+};
+
+sgk::SignedCommandEnvelope fixtureCommand() {
+  sgk::SignedCommandEnvelope envelope{};
+  envelope.schema_version = 1;
+  std::snprintf(envelope.target_id, sizeof(envelope.target_id), "target-a");
+  std::snprintf(envelope.tenant_id, sizeof(envelope.tenant_id), "tenant-a");
+  std::snprintf(envelope.door_id, sizeof(envelope.door_id), "door-a");
+  std::snprintf(envelope.boot_id, sizeof(envelope.boot_id), "boot-a");
+  envelope.action = sgk::CommandAction::kManualRemote;
+  std::snprintf(envelope.session_id, sizeof(envelope.session_id), "session-a");
+  std::snprintf(envelope.nonce, sizeof(envelope.nonce), "nonce-a");
+  envelope.issued_at = 1800000000;
+  envelope.expires_at = 1800000060;
+  envelope.key_id = 7;
+  envelope.signature[0] = 0xa5;
+  return envelope;
+}
+
+void testSignedCommandDurableReplayAndMutations() {
+  MemoryCommandStorage storage;
+  FixtureCommandVerifier verifier;
+  sgk::TargetCommandSecurity security(&storage, &verifier);
+  CHECK(security.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  auto command = fixtureCommand();
+  CHECK(security.authorize(command, 1800000001, true) ==
+        sgk::CommandResult::kAccepted);
+  CHECK(security.markCompleted(command));
+  CHECK(security.authorize(command, 1800000002, true) ==
+        sgk::CommandResult::kDuplicateCompleted);
+
+  sgk::TargetCommandSecurity rebooted(&storage, &verifier);
+  CHECK(rebooted.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  CHECK(rebooted.authorize(command, 1800000002, true) ==
+        sgk::CommandResult::kDuplicateCompleted);
+
+  auto forged = command;
+  std::snprintf(forged.nonce, sizeof(forged.nonce), "nonce-forged");
+  forged.signature[0] = 0;
+  CHECK(rebooted.authorize(forged, 1800000002, true) ==
+        sgk::CommandResult::kBadSignature);
+  auto cross_target = command;
+  std::snprintf(cross_target.nonce, sizeof(cross_target.nonce), "nonce-cross");
+  std::snprintf(cross_target.target_id, sizeof(cross_target.target_id),
+                "target-b");
+  CHECK(rebooted.authorize(cross_target, 1800000002, true) ==
+        sgk::CommandResult::kIdentityMismatch);
+  auto wrong_boot = command;
+  std::snprintf(wrong_boot.nonce, sizeof(wrong_boot.nonce), "nonce-boot");
+  std::snprintf(wrong_boot.boot_id, sizeof(wrong_boot.boot_id), "boot-old");
+  CHECK(rebooted.authorize(wrong_boot, 1800000002, true) ==
+        sgk::CommandResult::kBootMismatch);
+  auto stale = command;
+  std::snprintf(stale.nonce, sizeof(stale.nonce), "nonce-stale");
+  stale.issued_at = 1799999800;
+  stale.expires_at = 1799999860;
+  CHECK(rebooted.authorize(stale, 1800000002, true) ==
+        sgk::CommandResult::kExpired);
+  auto long_ttl = command;
+  std::snprintf(long_ttl.nonce, sizeof(long_ttl.nonce), "nonce-long");
+  long_ttl.expires_at = long_ttl.issued_at + 121;
+  CHECK(rebooted.authorize(long_ttl, 1800000002, true) ==
+        sgk::CommandResult::kTtlTooLong);
+  auto untrusted_clock = command;
+  std::snprintf(untrusted_clock.nonce, sizeof(untrusted_clock.nonce),
+                "nonce-clock");
+  CHECK(rebooted.authorize(untrusted_clock, 0, false) ==
+        sgk::CommandResult::kClockUntrusted);
+
+  auto uncertain = fixtureCommand();
+  std::snprintf(uncertain.nonce, sizeof(uncertain.nonce), "nonce-uncertain");
+  CHECK(rebooted.authorize(uncertain, 1800000002, true) ==
+        sgk::CommandResult::kAccepted);
+  sgk::TargetCommandSecurity after_crash(&storage, &verifier);
+  CHECK(after_crash.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  CHECK(after_crash.authorize(uncertain, 1800000003, true) ==
+        sgk::CommandResult::kDuplicateUncertain);
+
+  MemoryCommandStorage failing_storage;
+  sgk::TargetCommandSecurity storage_failure(&failing_storage, &verifier);
+  CHECK(storage_failure.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  failing_storage.fail_writes = true;
+  auto cannot_commit = fixtureCommand();
+  std::snprintf(cannot_commit.nonce, sizeof(cannot_commit.nonce),
+                "nonce-storage");
+  CHECK(storage_failure.authorize(cannot_commit, 1800000002, true) ==
+        sgk::CommandResult::kReplayStorageFailure);
+  failing_storage.fail_writes = false;
+  CHECK(storage_failure.authorize(cannot_commit, 1800000002, true) ==
+        sgk::CommandResult::kAccepted);
+
+  MemoryCommandStorage eviction_storage;
+  sgk::TargetCommandSecurity eviction_security(&eviction_storage, &verifier);
+  CHECK(eviction_security.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  auto first_evicted = fixtureCommand();
+  for (size_t index = 0; index <= sgk::kCommandReplayEntries; ++index) {
+    auto rotating = fixtureCommand();
+    std::snprintf(rotating.nonce, sizeof(rotating.nonce), "nonce-%02u",
+                  static_cast<unsigned int>(index));
+    std::snprintf(rotating.session_id, sizeof(rotating.session_id),
+                  "session-%02u", static_cast<unsigned int>(index));
+    if (index == 0) first_evicted = rotating;
+    CHECK(eviction_security.authorize(rotating, 1800000002, true) ==
+          sgk::CommandResult::kAccepted);
+    CHECK(eviction_security.markCompleted(rotating));
+  }
+  CHECK(eviction_security.authorize(first_evicted, 1800000003, true) ==
+        sgk::CommandResult::kExpired);
+}
+
 }  // namespace
 
 int main() {
@@ -1577,6 +1714,7 @@ int main() {
   testOfflineCanonicalEventReplayAndPreservation();
   testProtocolDisconnectHandoff();
   testInvalidTypedCanonicalRecordQuarantine();
+  testSignedCommandDurableReplayAndMutations();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";
   return 0;
 }
