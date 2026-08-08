@@ -1,4 +1,5 @@
 #include "GattProtocol.h"
+#include "FlatJsonObjectPolicy.h"
 #include "OfflineEventQueue.h"
 #include "OtaHealthPolicy.h"
 #include "OtaVersionPolicy.h"
@@ -1664,21 +1665,115 @@ class MemoryVersionStorage final : public sgk::OtaVersionFloorStorage {
   bool fail_writes = false;
 };
 
+void testRawCommandSchemaRejectsEveryDuplicateField() {
+  static constexpr const char* kFields[] = {
+      "action", "boot_id", "door_id", "expires_at", "issued_at",
+      "key_id", "nonce", "schema_version", "session_id", "signature",
+      "target_id", "tenant_id", "value"};
+  static constexpr const char* kValues[] = {
+      "\"arm\"", "\"11111111111111111111111111111111\"", "\"door-a\"",
+      "1800000120", "1800000000", "7", "\"nonce-a\"", "1",
+      "\"session-a\"", "\"0000\"", "\"target-a\"", "\"tenant-a\"",
+      "0"};
+  static constexpr const char* kDifferentValues[] = {
+      "\"reboot\"", "\"22222222222222222222222222222222\"", "\"door-b\"",
+      "1800000121", "1800000001", "8", "\"nonce-b\"", "2",
+      "\"session-b\"", "\"1111\"", "\"target-b\"", "\"tenant-b\"",
+      "1"};
+  static constexpr size_t kFieldCount =
+      sizeof(kFields) / sizeof(kFields[0]);
+  const auto build = [&](int duplicate, const char* duplicate_value) {
+    std::string document = "{";
+    for (size_t index = 0; index < kFieldCount; ++index) {
+      if (index > 0) document += ',';
+      document += '"';
+      document += kFields[index];
+      document += "\":";
+      document += kValues[index];
+    }
+    if (duplicate >= 0) {
+      document += ",\"";
+      document += kFields[duplicate];
+      document += "\":";
+      document += duplicate_value;
+    }
+    document += '}';
+    return document;
+  };
+  const auto accepted = [&](const std::string& document) {
+    return sgk::hasExactUniqueFlatJsonFields(
+        reinterpret_cast<const uint8_t*>(document.data()), document.size(),
+        kFields, kFieldCount);
+  };
+
+  const std::string canonical = build(-1, nullptr);
+  CHECK(accepted(canonical));
+  for (size_t index = 0; index < kFieldCount; ++index) {
+    CHECK(!accepted(build(static_cast<int>(index), kValues[index])));
+    CHECK(!accepted(build(static_cast<int>(index), kDifferentValues[index])));
+  }
+  std::string escaped_alias = canonical;
+  escaped_alias.replace(escaped_alias.find("\"action\""), 8,
+                        "\"acti\\u006fn\"");
+  CHECK(!accepted(escaped_alias));
+  std::string additional = canonical;
+  additional.insert(additional.size() - 1, ",\"extra\":0");
+  CHECK(!accepted(additional));
+  std::string nested = canonical;
+  nested.replace(nested.find("\"arm\""), 5, "{\"alias\":\"arm\"}");
+  CHECK(!accepted(nested));
+  CHECK(!accepted(canonical.substr(0, canonical.size() - 1)));
+  CHECK(!accepted(canonical + "{}"));
+}
+
 void testOtaHealthRequiresContinuousPredicates() {
-  sgk::OtaHealthPolicy policy(30000, 120000);
+  sgk::OtaHealthPolicy policy(30000, 120000, 1000);
   policy.begin(1000);
   CHECK(policy.update(1000, true) == sgk::OtaHealthDecision::kWait);
-  CHECK(policy.update(30000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 2000; now <= 30000; now += 1000) {
+    CHECK(policy.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
   CHECK(policy.update(30001, false) == sgk::OtaHealthDecision::kWait);
   CHECK(policy.update(40000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 41000; now <= 69000; now += 1000) {
+    CHECK(policy.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
   CHECK(policy.update(69999, true) == sgk::OtaHealthDecision::kWait);
   CHECK(policy.update(70000, true) == sgk::OtaHealthDecision::kMarkValid);
 
-  sgk::OtaHealthPolicy late_recovery(30000, 120000);
+  sgk::OtaHealthPolicy late_recovery(30000, 120000, 1000);
   late_recovery.begin(0);
   CHECK(late_recovery.update(100000, false) == sgk::OtaHealthDecision::kWait);
   CHECK(late_recovery.update(110000, true) == sgk::OtaHealthDecision::kWait);
   CHECK(late_recovery.update(120000, true) == sgk::OtaHealthDecision::kRollback);
+
+  sgk::OtaHealthPolicy exact_deadline(30000, 120000, 1000);
+  exact_deadline.begin(0);
+  CHECK(exact_deadline.update(90000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 91000; now <= 119000; now += 1000) {
+    CHECK(exact_deadline.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(exact_deadline.update(119999, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(exact_deadline.update(120000, true) ==
+        sgk::OtaHealthDecision::kMarkValid);
+
+  sgk::OtaHealthPolicy after_deadline(30000, 120000, 1000);
+  after_deadline.begin(0);
+  CHECK(after_deadline.update(90000, true) == sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 91000; now <= 119000; now += 1000) {
+    CHECK(after_deadline.update(now, true) == sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(after_deadline.update(119999, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(after_deadline.update(120001, true) ==
+        sgk::OtaHealthDecision::kRollback);
+
+  sgk::OtaHealthPolicy stalled_sampling(30000, 120000, 1000);
+  stalled_sampling.begin(0);
+  CHECK(stalled_sampling.update(90000, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(stalled_sampling.update(119999, true) ==
+        sgk::OtaHealthDecision::kWait);
+  CHECK(stalled_sampling.update(120000, true) ==
+        sgk::OtaHealthDecision::kRollback);
 }
 
 void testOtaVersionFloorAndReplayMutations() {
@@ -1809,6 +1904,7 @@ int main() {
   testProtocolDisconnectHandoff();
   testInvalidTypedCanonicalRecordQuarantine();
   testSignedCommandDurableReplayAndMutations();
+  testRawCommandSchemaRejectsEveryDuplicateField();
   testOtaHealthRequiresContinuousPredicates();
   testOtaVersionFloorAndReplayMutations();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";

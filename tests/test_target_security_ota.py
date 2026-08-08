@@ -110,6 +110,12 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
 
     def test_clock_untrusted_and_outage_recovery_mutations_fail_closed(self) -> None:
         mqtt = (ROOT / "src/MqttManager.cpp").read_text(encoding="utf-8")
+        raw_command_policy = (ROOT / "include/FlatJsonObjectPolicy.h").read_text(
+            encoding="utf-8"
+        )
+        health_policy = (ROOT / "include/OtaHealthPolicy.h").read_text(
+            encoding="utf-8"
+        )
         wifi = (ROOT / "src/WifiManager.cpp").read_text(encoding="utf-8")
         diagnostics = (ROOT / "src/DiagnosticsManager.cpp").read_text(
             encoding="utf-8"
@@ -117,6 +123,10 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("systemClockTrusted", mqtt)
         self.assertIn("kCommandFields", mqtt)
         self.assertIn("secureDoc.size()", mqtt)
+        self.assertIn("hasExactUniqueFlatJsonFields", mqtt)
+        self.assertIn("seen & (1UL << field)", raw_command_policy)
+        self.assertIn("elapsed_ms > timeout_ms_", health_policy)
+        self.assertIn("max_sample_gap_ms_", health_policy)
         self.assertIn("envelope, verificationTime, systemClockTrusted", mqtt)
         self.assertNotIn(": envelope.issued_at", mqtt)
         operator_transition = wifi.split("bool WifiManager::startRecoveryAP", 1)[1]

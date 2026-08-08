@@ -11,6 +11,7 @@
 #include "TargetAclManager.h"
 #include "OfflineEventQueue.h"
 #include "TargetCommandSecurity.h"
+#include "FlatJsonObjectPolicy.h"
 
 #include <cstring>
 #include <ctime>
@@ -242,8 +243,17 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     }
 
     char message[1536];
-
-    if (length >= sizeof(message)) length = sizeof(message) - 1;
+    static constexpr const char* kCommandFields[] = {
+        "action", "boot_id", "door_id", "expires_at", "issued_at",
+        "key_id", "nonce", "schema_version", "session_id", "signature",
+        "target_id", "tenant_id", "value"};
+    if (length == 0 || length >= sizeof(message) ||
+        !sgk::hasExactUniqueFlatJsonFields(
+            payload, length, kCommandFields,
+            sizeof(kCommandFields) / sizeof(kCommandFields[0]))) {
+        LOGF("[MQTT-SECURITY] Non-canonical raw command schema rejected");
+        return;
+    }
     memcpy(message, payload, length);
     message[length] = '\0';
 
@@ -252,10 +262,6 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         LOGF("[MQTT-SECURITY] Malformed signed command rejected");
         return;
     }
-    static constexpr const char* kCommandFields[] = {
-        "action", "boot_id", "door_id", "expires_at", "issued_at",
-        "key_id", "nonce", "schema_version", "session_id", "signature",
-        "target_id", "tenant_id", "value"};
     if (secureDoc.size() !=
         sizeof(kCommandFields) / sizeof(kCommandFields[0])) {
         LOGF("[MQTT-SECURITY] Non-canonical command schema rejected");
