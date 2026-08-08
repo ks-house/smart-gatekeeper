@@ -8,6 +8,42 @@ function Assert-True {
     if (-not $Condition) { throw $Message }
 }
 
+function Get-RendererIndependentText {
+    param([Parameter(Mandatory=$true)][string]$Text)
+
+    # Windows PowerShell renders redirected ErrorRecord text to the current
+    # console width and can insert line breaks inside words. Renderer-added
+    # whitespace is not part of the launcher error contract.
+    return [regex]::Replace($Text, '\s', '')
+}
+
+function Test-RenderedTextContains {
+    param(
+        [Parameter(Mandatory=$true)][string]$RenderedText,
+        [Parameter(Mandatory=$true)][string]$ExpectedText
+    )
+
+    return (Get-RendererIndependentText -Text $RenderedText).Contains(
+        (Get-RendererIndependentText -Text $ExpectedText)
+    )
+}
+
+function Test-DispatchRejectionBoundary {
+    param(
+        [Parameter(Mandatory=$true)][string]$RenderedError,
+        [Parameter(Mandatory=$true)][string]$ExpectedReason
+    )
+
+    # Compare both the outer cleanup stage and the exact inner rejection after
+    # removing renderer-only whitespace.
+    $compactError = Get-RendererIndependentText -Text $RenderedError
+    $compactReason = Get-RendererIndependentText -Text $ExpectedReason
+    return (
+        $compactError.Contains('Dispatchfailedbeforeacceptance;') -and
+        $compactError.Contains("Dispatchwasrejectedbeforeacceptance:$compactReason")
+    )
+}
+
 function Invoke-LauncherCase {
     param(
         [Parameter(Mandatory=$true)][string]$Mode,
@@ -247,8 +283,8 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
     $tabMissing = Invoke-LauncherCase -Mode 'startup_shell_tab_missing' -EventPath $tabMissingEventPath `
         -LauncherPath $launcherPath -MockOrcaPath $mockOrcaPath
     Assert-True ($tabMissing.exitCode -ne 0) 'An exited agent with an already-absent tab must still fail closed.'
-    Assert-True ($tabMissing.output -match 'tab_not_found') 'The already-absent terminal receipt must remain explicit.'
-    Assert-True ($tabMissing.output -notmatch 'cleanup failed') 'Typed tab_not_found must not replace the original startup failure.'
+    Assert-True (Test-RenderedTextContains -RenderedText $tabMissing.output -ExpectedText 'tab_not_found') 'The already-absent terminal receipt must remain explicit.'
+    Assert-True (-not (Test-RenderedTextContains -RenderedText $tabMissing.output -ExpectedText 'cleanup failed')) 'Typed tab_not_found must not replace the original startup failure.'
     Assert-True (($tabMissing.events | Where-Object { $_ -match '^orchestration\x1fdispatch\x1f' }).Count -eq 0) 'An already-absent startup terminal must never Dispatch the Task.'
 
     $rejectionEventPath = Join-Path $resolvedTemporaryRoot 'dispatch-rejection-events.txt'
@@ -258,7 +294,11 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
     $dispatchRejected = Invoke-LauncherCase -Mode 'dispatch_rejected' -EventPath $rejectionEventPath `
         -LauncherPath $launcherPath -MockOrcaPath $mockOrcaPath
     Assert-True ($dispatchRejected.exitCode -ne 0) 'A rejected Dispatch must fail closed.'
-    Assert-True ($dispatchRejected.output -match 'rejected before acceptance') 'A rejected Dispatch must preserve its stage boundary.'
+    Assert-True (Test-DispatchRejectionBoundary -RenderedError $dispatchRejected.output -ExpectedReason 'mock Dispatch rejection') 'A rejected Dispatch must preserve its exact stage and reason boundary.'
+    $wrongStageMutation = ((Get-RendererIndependentText -Text $dispatchRejected.output) -replace 'Dispatchwasrejectedbeforeacceptance:', 'Dispatchwasacceptedbutunproven:')
+    Assert-True (-not (Test-DispatchRejectionBoundary -RenderedError $wrongStageMutation -ExpectedReason 'mock Dispatch rejection')) 'A wrong Dispatch stage mutation must fail the rejection boundary check.'
+    $wrongReasonMutation = ((Get-RendererIndependentText -Text $dispatchRejected.output) -replace 'mockDispatchrejection', 'mockDispatchtimeout')
+    Assert-True (-not (Test-DispatchRejectionBoundary -RenderedError $wrongReasonMutation -ExpectedReason 'mock Dispatch rejection')) 'A wrong Dispatch reason mutation must fail the rejection boundary check.'
     Assert-True (($dispatchRejected.events | Where-Object { $_ -match '^terminal\x1fclose\x1f' }).Count -eq 1) 'A rejected Dispatch must close its exact staged terminal.'
     Assert-True (($dispatchRejected.events | Where-Object { $_ -match '^terminal\x1fsend\x1f' }).Count -eq 0) 'A rejected Dispatch must not attempt paste recovery.'
 
@@ -290,7 +330,7 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
     $noEvidence = Invoke-LauncherCase -Mode 'no_submission_evidence' -EventPath $noEvidenceEventPath `
         -LauncherPath $launcherPath -MockOrcaPath $mockOrcaPath -DispatchObservationSeconds 6
     Assert-True ($noEvidence.exitCode -ne 0) 'Absence of a marker and positive submission evidence must fail closed.'
-    Assert-True ($noEvidence.output -match 'cursor-bound' -and $noEvidence.output -match 'UserPromptSubmit/Working') 'The no-evidence failure must state the positive-evidence boundary.'
+    Assert-True ((Test-RenderedTextContains -RenderedText $noEvidence.output -ExpectedText 'cursor-bound') -and (Test-RenderedTextContains -RenderedText $noEvidence.output -ExpectedText 'UserPromptSubmit/Working')) 'The no-evidence failure must state the positive-evidence boundary.'
     Assert-True (($noEvidence.events | Where-Object { $_ -match '^orchestration\x1fworker-stop\x1f' -and $_ -match '\x1f--dispatch\x1fctx_mock123(?:\x1f|$)' }).Count -eq 1) 'An accepted-but-unproven Dispatch must be stopped exactly once.'
     Assert-True (($noEvidence.events | Where-Object { $_ -match '^terminal\x1fclose\x1f' }).Count -eq 1) 'An accepted-but-unproven Dispatch must close its exact terminal.'
 
@@ -316,8 +356,8 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
     $trustBlocked = Invoke-LauncherCase -Mode 'trust_blocked' -EventPath $trustEventPath `
         -LauncherPath $launcherPath -MockOrcaPath $mockOrcaPath -Profile 'antigravity'
     Assert-True ($trustBlocked.exitCode -ne 0) 'An exact-worktree trust prompt must fail closed.'
-    Assert-True ($trustBlocked.output -match 'codex-trust-workspace') 'The trust failure must retain Orca blockedReason.'
-    Assert-True ($trustBlocked.output -match 'will not auto-trust or persist broad permission') 'The trust diagnostic must preserve the no-broad-trust boundary.'
+    Assert-True (Test-RenderedTextContains -RenderedText $trustBlocked.output -ExpectedText 'codex-trust-workspace') 'The trust failure must retain Orca blockedReason.'
+    Assert-True (Test-RenderedTextContains -RenderedText $trustBlocked.output -ExpectedText 'will not auto-trust or persist broad permission') 'The trust diagnostic must preserve the no-broad-trust boundary.'
     Assert-True (($trustBlocked.events | Where-Object { $_ -match '^terminal\x1fcreate\x1f' }).Count -eq 1) 'A trust prompt must not trigger an automatic second launch.'
     Assert-True (($trustBlocked.events | Where-Object { $_ -match '^terminal\x1fclose\x1f' }).Count -eq 1) 'A trust prompt must close only its exact terminal.'
     Assert-True (($trustBlocked.events | Where-Object { $_ -match '^orchestration\x1fdispatch\x1f' }).Count -eq 0) 'A trust prompt must never Dispatch the Task.'

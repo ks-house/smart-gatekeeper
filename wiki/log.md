@@ -2244,3 +2244,15 @@
 - Focused staged-launcher and lifecycle mutation suites passed again, and PowerShell AST parsing passed for all 9 tracked scripts. Quick passed in 36.37 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4.
 - Final strict UTF-8/BOM, local-link, whitespace/conflict-marker, exact main-prefix/checkpoint-suffix, raw identity, merge-parent, and clean-scope checks passed. These are repository and host/software checks only.
 - Issue #55 remains open as a repository mitigation/evidence issue, PR #63 remains Draft and unmerged, and no packaged-runtime root-cause fix, deploy, physical/operator/canary acceptance, or production authorization is claimed.
+
+## [2026-08-09] fix | Make staged-launcher error assertions renderer independent
+
+- Independent exact-head COMMENTED review `4889767197` reproduced `.orca/tests/test_profile_launcher.ps1` failing at prior head `d348132e02c7f5e92bffab05d044fcf38f44848b` because redirected Windows PowerShell `ErrorRecord` rendering inserted width-dependent whitespace inside the correct rejected-before-acceptance diagnostic.
+- Kept the production launcher unchanged and made only its regression harness remove renderer-only whitespace before comparing exact error contracts. Dispatch rejection must still contain both the outer failed-before-acceptance cleanup stage and exact inner rejected-before-acceptance reason; wrong-stage and wrong-reason mutations each prove the boundary check fails.
+- Applied the same renderer-independent comparison to existing `tab_not_found`, accepted-but-unproven positive-evidence, and no-broad-trust diagnostics after the narrow terminal renderer exposed the same in-word wrapping risk. Worker-stop, exact terminal cleanup, capability redaction, no false `worker_done`, absolute worktree scope, one-Enter, and fail-closed trust behavior were not weakened.
+
+## [2026-08-09] test | Revalidate staged launcher after renderer assertion fix
+
+- Focused staged-launcher and lifecycle-probe suites passed under the same redirected narrow renderer that reproduced the blocker, including the new wrong-stage and wrong-reason mutations.
+- Quick passed in 51.76 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose, staged launcher, lifecycle probe, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4.
+- These are repository and host/software checks only. PR #63 remains Draft and unmerged pending a fresh exact-head COMMENTED review; Issue #55 and packaged Orca 1.4.176 root-cause work remain open, and no deployment, Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator/canary, or production Gate is closed.
