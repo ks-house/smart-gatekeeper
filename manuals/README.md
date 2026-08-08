@@ -1,7 +1,7 @@
 # Smart Gatekeeper 매뉴얼 기준선 / Manuals baseline
 
 문서 버전: **0.1.2-contract-loop**<br>
-기준 커밋: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
+통합 기준 커밋: `c654a18f0fa278e4530229bb881fe88286d25c2e` (PR #57 관리자 control-plane 보안 포함)<br>
 작성일: 2026-08-09<br>
 상태: **문서 초안 / 제품·실기기 인수 대기 (draft; product and physical acceptance pending)**
 
@@ -35,8 +35,9 @@
 
 - 로컬 소프트웨어 테스트, hosted CI, 운영 인프라, Samsung/OEM·ESP32-C6 실기기, 생산 승인을 각각 별도 증거로 기록한다.
 - Synthetic ADB, host test, 문서 walkthrough는 Samsung/OEM 또는 relay/bootloader/OTA 물리 인수를 대체하지 않는다.
-- #49 관리자 인증/RBAC, #50 Target 명령·TLS·OTA/rollback, #51 모바일 wake/GATT/updater/OEM, #52 observability/privacy/backup·restore가 제공하지 않는 절차는 `PENDING`으로 남긴다.
-- force-open은 인증된 역할·사유·재인증·이중 승인·감사 이벤트가 확인되기 전까지 비상 절차일 뿐, 운영 성공 절차가 아니다.
+- 통합 기준 `c654a18f...`에는 #49의 deny-by-default mTLS 관리자 세션, role/tenant scope, CSRF·재인증·idempotency, DB fail-closed 응답, immutable audit, durable two-person force-open publication 상태가 host/software 범위로 포함된다. 실제 reverse proxy/mTLS 배포, operator walkthrough, Target signed-command·relay effect와 production authorization은 별도 `PENDING`이다.
+- #50 Target 명령·TLS·OTA/rollback, #51 모바일 wake/GATT/updater/OEM, #52 observability/privacy/backup·restore가 아직 제공하지 않는 절차는 `PENDING`으로 남긴다.
+- force-open의 `published`/MQTT broker ACK는 relay 확인이 아니다. Target event와 물리 effect가 없으면 `confirmed`로 승격하지 않는다.
 
 ## 버전 및 갱신 규칙
 

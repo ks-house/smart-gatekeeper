@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-09 (commercial release program, Issue #53 second manual contract loop at `cb8b2efe`, and evidence-gated product completion)
+> Last updated: 2026-08-09 (Issue #53 manual contract loop at integrated base `c654a18f`, including PR #57 host/software admin controls and pending physical/production gates)
 
 ---
 

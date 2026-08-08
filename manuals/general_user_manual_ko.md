@@ -1,6 +1,6 @@
 # 일반 사용자 매뉴얼 / General user manual
 
-문서 버전: **0.1.2-contract-loop** · 통합 기준: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
+문서 버전: **0.1.2-contract-loop** · 통합 기준: `c654a18f0fa278e4530229bb881fe88286d25c2e`<br>
 대상: 입주자/일반 사용자 (resident/end user) · 상태: **제품·실기기 인수 대기**
 
 ## 먼저 읽기
@@ -42,12 +42,12 @@ Smart Gatekeeper는 앱(Flutter native shell/WebView), NAS backend, ESP32-C6 Tar
 
 ## 수동 출입 / Manual local or remote
 
-수동 버튼은 자동 출입을 대신하는 안전한 우회가 아니다. 현재 기준선에서 backend `force_open` 경로가 실제 relay 효과를 인증·감사·확인된 상태로 묶는 계약은 열려 있으므로, 관리자가 승인한 비상 상황에서만 지원팀의 지시를 받는다.
+수동 버튼은 자동 출입을 대신하는 안전한 우회가 아니다. 현재 기준선에는 모바일 v2 proof 경로와 관리자 dual-control 경로가 각각 있지만, 어느 경로의 MQTT broker ACK도 실제 relay 효과 확인은 아니다. 관리자가 승인한 비상 상황에서만 지원팀의 지시를 받고 Target event와 물리 확인 전에는 `confirmed`로 표시하지 않는다.
 
 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact |
 |---|---|---|---|---|---|
-| 사용자 | 화면에 수동 버튼이 노출되고 권한·사유 입력이 허용됨 | 사유 입력 후 한 번 탭 | 요청 접수와 `pending/unknown/failed/confirmed`를 분리 표시해야 함 | WebView `POST /api/v1/door/open`, `main.py` | #49 force-open auth/audit **PENDING** |
-| 관리자/지원 | 이중 승인·재인증·Target ID 확인 | 승인된 비상 개방 실행 | 실제 Target event와 audit ID가 확인될 때만 `confirmed` | `publish_force_open_to_mqtt`, `TargetAccessFsm.cpp` | signed command/physical relay **PENDING** |
+| 사용자 | v2 tenant-bound proof, nonce/expiry/idempotency와 사유가 준비됨 | 사유 입력 후 한 번 탭 | `POST /api/v1/door/open`은 성공해도 `requested` + `broker-ack-only`; Target/relay 확인 전 `confirmed` 금지 | mobile compatibility `POST /api/v1/door/open`, `main.py` | proof/nonce host tests; mobile rollout·physical relay **PENDING** |
+| 관리자/지원 | 별도 `SECURITY_OPERATOR` 요청자와 `SECURITY_APPROVER` 승인자, 재인증, 안전 현장 | 관리자 dual-control 비상 개방 | `POST /api/v1/admin/control/force-open` + `/{approval_id}/approve`의 `published`와 audit ID를 확인하되 실제 Target event가 있을 때만 `confirmed` | admin control API, `publish_force_open_to_mqtt`, `TargetAccessFsm.cpp` | #49 host/software tests present; signed Target command/operator/physical relay **PENDING** |
 
 ## 오프라인·성능 저하·OEM 복구
 

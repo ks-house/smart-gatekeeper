@@ -1,6 +1,6 @@
 # 설치·서비스 매뉴얼 / Installer and service manual
 
-문서 버전: **0.1.2-contract-loop** · 기준 커밋: `fb827681e1b2f5a8b08aa2784ae419832efff6f7`<br>
+문서 버전: **0.1.2-contract-loop** · 통합 기준: `c654a18f0fa278e4530229bb881fe88286d25c2e`<br>
 대상: 설치자·서비스 기술자 (installer/service technician) · 상태: **모든 현장 walkthrough pending**
 
 ## 안전과 책임 경계

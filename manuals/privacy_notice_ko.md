@@ -1,6 +1,6 @@
 # 개인정보 안내 / Privacy notice
 
-문서 버전: **0.1.2-contract-loop** · 기준 커밋: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
+문서 버전: **0.1.2-contract-loop** · 통합 기준: `c654a18f0fa278e4530229bb881fe88286d25c2e`<br>
 대상: 사용자·관리자·지원팀 (users/operators/support) · 상태: **법무·운영 데이터 검증 pending**
 
 이 안내는 현재 저장소의 데이터 흐름을 기준으로 한 문서 초안이다. 실제 수집·보관·삭제 기간, 법적 근거, 처리자 목록은 운영 배포 전에 조직의 privacy owner와 관할 법률에 따라 확정해야 한다.

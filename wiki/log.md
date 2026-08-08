@@ -2134,3 +2134,15 @@
 - After PR #57 merged, integrated exact `origin/main` `c654a18f0fa278e4530229bb881fe88286d25c2e` once with a two-parent merge over the existing PR #58 head; the raw c654 `wiki/log.md` Git blob is preserved as the exact prefix and the existing Issue #53 entries are appended without rewriting history.
 - Preserved PR #57 backend files and the PR #62 physical-preparation artifacts byte-for-byte; resolved only the expected integration surfaces and rejected conflict markers, raw changes, and broad line-ending churn.
 - Refreshed R1's expected base to c654 and rechecked stale-base mutation rejection, current AJ-SR04T/JSN-SR04T GPIO10/11 plus 5 V ECHO protection guidance, strict UTF-8, links, Quick/proportional software checks, and hosted trusted policy. PR #58 remains Draft/unmerged; no physical, operator, or production acceptance is claimed.
+
+## [2026-08-09] fix | Align PR #58 0.1.2 manuals with PR #57 admin controls
+
+- Made every 0.1.2 manual header identify exact integrated base `c654a18f0fa278e4530229bb881fe88286d25c2e` and reran the reverse-analysis register against PR #57's deny-by-default mTLS sessions, role/tenant/CSRF/re-auth/idempotency checks, fail-closed DB responses, immutable audit migrations, and durable two-person force-open publication state.
+- Added Korean-first administrator reason/status, timeout, bounded retry, escalation owner and evidence semantics for authentication/RBAC, tenant approve/revoke, force-open proposal/approval/reconciliation/effect-unknown, outage/alert and backup/restore, with a direct support-handbook handoff. Corrected the support dual-control trace to `POST /api/v1/admin/control/force-open` plus `/{approval_id}/approve`; mobile `POST /api/v1/door/open` remains a separate proof-bearing broker-ack-only compatibility path.
+- Classified #49 only as host/software evidence. Deployed proxy/session operations, signed Target command, relay effect, Samsung/OEM, ESP32-C6 GPIO/radio, bootloader/OTA, operator walkthrough, backup/restore, production authorization and every physical Gate remain `PENDING`; `published` is not relay confirmation and Issue #53 remains open.
+
+## [2026-08-09] test | Validate PR #58 administrator manual remediation
+
+- Quick passed in 14.12 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 43 tests with one opt-in MariaDB skip, Compose, lifecycle mutations, protocol vectors and 16 tests, observability 18, OTA contract and hardwareless 4 all passed.
+- Standalone OTA contract, hardwareless 4/4 and focused backend admin-security 8/8 passed. Strict UTF-8 without BOM, local links, conflict markers, Markdown table arity, exact c654 header provenance, administrator/support reason-route contracts and AJ-SR04T GPIO10/11 with 5 V ECHO safety checks passed.
+- These are local/software results only. No Samsung/OEM, ESP32-C6 radio/GPIO, GPIO3 relay/AJ-SR04T, bootloader, OTA install/reboot/health/rollback, RELAY-G0..G2, operator, canary, deployment or production acceptance evidence was produced.
