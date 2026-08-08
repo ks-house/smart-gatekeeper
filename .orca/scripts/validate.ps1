@@ -57,6 +57,7 @@ if ($runBackend) {
 }
 
 if ($runContracts) {
+    Invoke-ValidationStep 'Orca lifecycle probe tests' { & powershell -NoProfile -ExecutionPolicy Bypass -File .orca/tests/test_lifecycle_probe.ps1 }
     Invoke-ValidationStep 'Protocol canonical vectors' { & $venvPython protocol/tools/verify_vectors.py }
     Invoke-ValidationStep 'Protocol Python tests' { & $venvPython -m unittest discover -s protocol/tests -p 'test_*.py' }
     Invoke-ValidationStep 'Observability tests' { & $venvPython -m unittest discover -s observability/tests -p 'test_*.py' }
