@@ -14,19 +14,25 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-# Normalize profile name
-if (-not $Profile.StartsWith('gpt5.6-')) {
-    $Profile = "gpt5.6-$Profile"
+# Normalize profile name & determine agent CLI binary
+if ($Profile -eq 'antigravity' -or $Profile -eq 'gpt5.6-antigravity') {
+    $Profile = "antigravity"
+    $agentCmd = "agy"
+} else {
+    if (-not $Profile.StartsWith('gpt5.6-')) {
+        $Profile = "gpt5.6-$Profile"
+    }
+    $agentCmd = "codex"
 }
 
-Write-Host "🚀 Launching Orca Terminal Profile: [$Profile] (Effort: High, Worktree: $Worktree)..." -ForegroundColor Cyan
+Write-Host "🚀 Launching Orca Terminal Profile: [$Profile] (CLI: $agentCmd, Effort: High, Worktree: $Worktree)..." -ForegroundColor Cyan
 
 $profilePath = ".orca/profiles/$Profile.md"
 $title = "$Profile-worker"
 
-
 # Create Terminal in Orca
-$createJson = orca terminal create --worktree $Worktree --title $title --command "codex --profile $profilePath --effort high" --json | ConvertFrom-Json
+$createJson = orca terminal create --worktree $Worktree --title $title --command "$agentCmd --profile $profilePath --effort high" --json | ConvertFrom-Json
+
 
 if (-not $createJson.ok) {
     Write-Error "Failed to create Orca terminal for profile $Profile: $($createJson.error.message)"
