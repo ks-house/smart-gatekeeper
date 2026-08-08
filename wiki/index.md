@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-09 (commercial release program, Issue #53 manuals baseline, and evidence-gated product completion)
+> Last updated: 2026-08-09 (commercial release program, Issue #53 second manual contract loop at `cb8b2efe`, and evidence-gated product completion)
 
 ---
 
@@ -20,6 +20,7 @@
 |------|---------|
 | [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, Windows PlatformIO timeout/orphan 안전 복구, 시크릿, CI/CD와 GITHUB_TOKEN 인증 가이드 |
 | [orca_development_environment.md](orca_development_environment.md) | Orca 워크트리 자동 setup, doctor/validation, 프로파일 작업 시작과 안전한 완료 수명주기 |
+| [orca_lifecycle_incident.md](orca_lifecycle_incident.md) | #55 장기 workspace-write lifecycle transport 증거, fail-closed probe와 복구 경계 |
 
 ---
 
@@ -68,7 +69,7 @@
 | [manuals/README.md](../manuals/README.md) | Issue #53 versioned manual set, evidence boundary, field contract, and repeat loop |
 | [general_user_manual_ko.md](../manuals/general_user_manual_ko.md) | Korean-first end-user installation, access, degraded/OEM, update/rollback, lost-phone and support journeys |
 | [administrator_manual_ko.md](../manuals/administrator_manual_ko.md) | Admin roles, tenant/device/door lifecycle, force-open, TLS rotation, monitoring, backup/restore, OTA and decommission |
-| [installer_service_manual_ko.md](../manuals/installer_service_manual_ko.md) | ESP32-C6 wiring, GPIO3/polarity, power safety, provisioning, commissioning, maintenance and RMA |
+| [installer_service_manual_ko.md](../manuals/installer_service_manual_ko.md) | ESP32-C6 wiring, GPIO3/polarity, power safety, commissioning, and explicit relay/offline/OTA/sensor incident contracts (evidence pending) |
 | [privacy_notice_ko.md](../manuals/privacy_notice_ko.md) | Data inventory, minimization, consented/redacted support export, retention/deletion and incident privacy |
 | [support_incident_handbook_ko.md](../manuals/support_incident_handbook_ko.md) | Support triage, reason/state handling, force-open, offline/OEM, update, lost phone and incident loop |
 | [product_gap_register_v1.md](../manuals/product_gap_register_v1.md) | Manual-to-product reverse analysis with explicit #49–#52, test, P0/P1 and physical gaps |

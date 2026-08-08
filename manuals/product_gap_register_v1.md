@@ -1,7 +1,7 @@
 # 제품 역분석·갭 등록부 / Product reverse-analysis gap register
 
-문서 버전: **0.1.1-remediation**<br>
-통합 기준: `b2df34977fe866e129eae373e7056f0f9b3ddc6f`<br>
+문서 버전: **0.1.2-contract-loop**<br>
+통합 기준: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
 분석일: 2026-08-09<br>
 상태: **열린 갭 있음; issue #53 완료 아님**
 
@@ -32,7 +32,7 @@
 | GAP-52-01 P1 | event/support export가 opaque identity, session/boot ID, digest, redaction, retention/deletion을 실제 운영 저장소와 연결한 증거가 없다. | data inventory, redaction test, retention/deletion and consented export | #52; `observability/`, `wiki/observability_event_schema.md` | **OPEN/PENDING** — schema+runtime+privacy review required |
 | GAP-52-02 P1 | backup/restore 절차에 독립 restore, integrity check, measured RPO/RTO, credential/ACL/audit validation 결과가 없다. | MariaDB backup/restore drill, isolated restore, integrity and RPO/RTO artifacts | #52; `backend/db`, `backend/docker-compose.yml` | **BLOCKED/OPS PENDING** — live/isolated restore evidence required |
 | GAP-52-03 P1 | broker/API/DB/DNS/certificate/storage 장애의 alert, backpressure, dedupe, SLO와 operator-visible state가 문서에서 확정되지 않았다. | fault matrix, bounded recovery, alert ownership, 24h soak/load evidence | #52; `wiki/observability_event_schema.md`, `wiki/ota_operations_runbook.md` | **OPEN/PENDING** — hosted and live infrastructure evidence separate |
-| GAP-53-01 P1 | offline/OEM/GATT/backend/update/lost-phone/privacy 오류가 기존 문서에서 한정시간·bounded retry·escalation 계약 없이 일반 안내로 남아 있었다. | 구현/API owner가 각 timeout/retry/escalation 값을 state/event/audit와 연결하고 timeout·duplicate·retry-exhaustion 회귀를 추가 | #51/#52; `manuals/general_user_manual_ko.md`, `manuals/support_incident_handbook_ko.md` | **OPEN/PENDING** — remediation documents target explicit contracts; implementation/SLO/evidence still required |
+| GAP-53-01 P1 | offline/OEM/GATT/backend/update/lost-phone/privacy 오류뿐 아니라 installer의 relay-idle, Target-offline, OTA boot-failure, sensor fault와 administrator의 auth/RBAC, force-open, backup/restore, audit 상태도 actor·timeout·bounded retry·escalation 계약 없이 일반 안내로 남아 있었다. 문서 계약만으로 구현/API 동작이나 현장 안전을 증명할 수 없다. | #49 admin/auth/RBAC/force-open owner, #50 Target/TLS/OTA owner, #51 OEM/GATT/updater owner, #52 privacy/observability/backup owner가 각 timeout/retry/escalation을 state/event/audit와 연결하고 timeout·duplicate·retry-exhaustion·rollback·fault-injection 회귀를 추가한다. installer/admin이 동일 입력으로 observable output과 evidence artifact를 재현하는 walkthrough도 별도로 수행한다. | #49/#50/#51/#52; `manuals/administrator_manual_ko.md`, `manuals/installer_service_manual_ko.md`, `manuals/general_user_manual_ko.md`, `manuals/support_incident_handbook_ko.md`; `src/MqttManager.cpp`, `src/OtaManager.cpp`, `src/main.cpp`, backend ACL/backup/observability owners | **OPEN/PENDING** — manuals now trace installer/admin owners and target contracts; implementation, SLO, state/event/audit regression, OEM, physical and operator evidence remain required |
 | GAP-PHY-01 P0 | GPIO3 relay polarity, High-Z OFF, flyback/power isolation, sensor range, relay operation and local safety sign-off는 소스만으로 판단할 수 없다. | wiring photo, meter trace, repeated physical runs, safety/regulatory sign-off | installer; `wiki/pin_mapping.md`, `wiki/hardware_test.md` | **PHYSICAL PENDING** — no physical acceptance in this PR |
 | GAP-PHY-02 P0 | Samsung/OEM screen-off, reboot, process kill, permission transition, Bluetooth/network degradation과 ESP32 boot/rollback/OTA는 host tests가 대체하지 못한다. | exact device/build matrix, 100-run and power-loss evidence | #50/#51; `wiki/android_ble_wake_adr.md`, `wiki/ota_reliability_contract.md` | **PHYSICAL PENDING** — walkthrough cannot close this gate |
 

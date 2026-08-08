@@ -1,6 +1,6 @@
 # 관리자 매뉴얼 / Administrator manual
 
-문서 버전: **0.1.0-baseline** · 기준 커밋: `b246aff9698ccbcbcd864f99aab63654cce2cc78`<br>
+문서 버전: **0.1.2-contract-loop** · 기준 커밋: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
 대상: 관리자/건물 운영자 (administrator/operator) · 상태: **#49–#52 및 운영 증거 대기**
 
 ## 운영 원칙

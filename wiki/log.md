@@ -2036,6 +2036,24 @@
 - Restored the exact `b246aff9698ccbcbcd864f99aab63654cce2cc78` `wiki/log.md` blob as the byte prefix, moved the two unchanged program entries after that prefix, and retained the later integration entry as an append. No historical entry was rewritten and `raw/` remains unchanged.
 - Updated the release baseline, R0 status, current task allocation, and evidence boundary to record PR #47 merge plus run `31268170523` while keeping #55, all physical/operator Gates, and production authorization pending and fail-closed. A fresh exact-head review is required before PR #56 can leave Draft.
 
+## [2026-08-09] fix | Add fail-closed Orca lifecycle longevity harness
+
+- Added `.orca/scripts/probe_lifecycle.ps1` to hold exact HEAD, initial worktree status, immutable `raw/`, ready/reachable runtime identity, and exact Task/Dispatch heartbeat receipts across a default seven-heartbeat, 65-second interval probe. The harness intentionally reports `completionSent=false`; it never sends or impersonates `worker_done`, never echoes a Dispatch capability, and keeps the default Codex `workspace-write` boundary unchanged.
+- Added mutation coverage for successful receipts, typed `runtime_unavailable`, runtime identity transition, capability redaction, and the no-completion contract, and included it in Quick/Contracts validation. Documented the packaged Orca 1.4.176 named-pipe transport boundary and fail-closed recovery in the master guide, development guide, navigation map, and `wiki/orca_lifecycle_incident.md`.
+- Version-matched packaged source shows named-pipe connect/close failure occurs before optional `orchestrationCapability` reaches the runtime request envelope; worker-side `starting/reachable=false/runtimeId=null` is the status projection of that transport failure while the desktop PID remains alive. This narrows the observed failure upstream of capability verification but does not establish the intermittent named-pipe root cause or a capability-expiry defect.
+
+## [2026-08-09] test | Recheck exact-main Orca lifecycle beyond six minutes
+
+- Coordinator confirmed exact integrated main `b246aff9698ccbcbcd864f99aab63654cce2cc78` post-merge Actions run `31268170523` terminal success and fresh Quick success before issue #55 work; production deploy remained skipped and all physical/operator/production Gates remained open.
+- Read-only Task `task_e043a7540909` / Dispatch `ctx_1c1a0ce01ab8` accepted seven heartbeats from `17:17:30Z` through `17:25:32Z`, then accepted final `worker_done` `msg_666e7110dc1e` with `outcome=succeeded` at `17:26:04Z`. Exact clean HEAD and runtime ID `e221a8da-b68b-4655-8f1b-d1bf51b68f36` remained stable; coordinator release closed the agent terminal, captured its transcript, and left only the intentional read-only probe worktree.
+- A separate 96-call parallel packaged-CLI status stress probe had zero failures, so simple low-concurrency saturation was not reproduced. PowerShell parsing, `git diff --check`, `raw/` immutability, lifecycle mutations, and Quick passed: doctor 12 pass/1 Docker-covered native Java warning/0 fail, backend 32 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4.
+- The fresh long probe is a successful non-reproduction, not proof that the earlier same-runtime `runtime_unavailable` is fixed. Packaged-runtime repair, repeated Sol/Terra/Luna initial/follow-up matrices, independent exact-head review, and terminal PR CI remain required; Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] fix | Reject lifecycle completion-type mutation
+
+- Independent exact-head review of PR #60 at `2a32fe6d3b824c6242ac837bc80243db93144ff0` found that the test mock accepted any `orchestration send` and could fabricate a heartbeat receipt after mutating the probe's outbound type to `worker_done`; the PR remained Draft and unmerged.
+- The mock now requires exact `--type heartbeat`, and an adversarial test rewrites the probe source to `worker_done` and requires a typed non-zero rejection without echoing the Dispatch capability. This closes the no-completion-impersonation test gap while keeping the production probe's `completionSent=false` contract unchanged.
+- Focused lifecycle mutations and PowerShell parsing passed after remediation. Fresh Quick validation, a new commit/head, protected CI, and a new independent exact-head review remain required; all physical, operator, and production Gates remain pending and fail-closed.
 ## [2026-08-09] compile | Add issue #53 Korean-first manuals baseline and reverse-analysis gaps
 
 - Added versioned `manuals/` documents for general users, administrators, installers/service, privacy, and support/incident response, each using actor, precondition, input, observable output, code/API owner, and evidence artifact fields.
@@ -2048,3 +2066,9 @@
 - Integrated `origin/main` at `b2df34977fe866e129eae373e7056f0f9b3ddc6f` and preserved that exact `wiki/log.md` Git blob as the byte prefix; retained the issue #53 baseline entry after it.
 - Replaced the general-user offline/OEM summary and support incident error matrix with actor, precondition, input, observable output, code/API owner, evidence, and explicit timeout/bounded-retry/escalation contract fields.
 - Added `GAP-53-01` for implementation/SLO/state-event-audit regression evidence; timeout values are documentation targets only, and #49-#52, OEM, physical, OTA, and production gates remain pending.
+
+## [2026-08-09] fix | Second issue #53 manual contract improvement loop
+
+- Integrated exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f` and retained its raw `wiki/log.md` Git blob as the byte-for-byte prefix; appended the issue #53 manual history without rewriting prior entries.
+- Expanded installer/service relay-idle, Target-offline, OTA boot-failure, and sensor-fault rows with actor, preconditions, input, observable output, code/API owner, evidence, reason, timeout, bounded retry, and escalation fields; values remain documentation targets with physical and product evidence pending.
+- Added an explicit update/health-timeout rollback contract and support escalation link to the general-user manual, and expanded `GAP-53-01` to trace installer and administrator contract/test gaps. Raw sources remain unchanged; PR #58 stays Draft pending fresh independent review.

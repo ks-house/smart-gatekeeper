@@ -1,6 +1,6 @@
 # 지원·사고 대응 핸드북 / Support and incident handbook
 
-문서 버전: **0.1.1-remediation** · 통합 기준: `b2df34977fe866e129eae373e7056f0f9b3ddc6f`<br>
+문서 버전: **0.1.2-contract-loop** · 통합 기준: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
 대상: 1차 지원, 운영자, 사고 지휘자 (support/operator/incident commander) · 상태: **운영 SLO·연락망·물리 인수 pending**
 
 ## 증거와 안전

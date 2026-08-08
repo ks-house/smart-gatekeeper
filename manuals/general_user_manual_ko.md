@@ -1,6 +1,6 @@
 # 일반 사용자 매뉴얼 / General user manual
 
-문서 버전: **0.1.1-remediation** · 통합 기준: `b2df34977fe866e129eae373e7056f0f9b3ddc6f`<br>
+문서 버전: **0.1.2-contract-loop** · 통합 기준: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
 대상: 입주자/일반 사용자 (resident/end user) · 상태: **제품·실기기 인수 대기**
 
 ## 먼저 읽기
@@ -68,7 +68,7 @@ Smart Gatekeeper는 앱(Flutter native shell/WebView), NAS backend, ESP32-C6 Tar
 |---|---|---|---|---|---|
 | 사용자 | 공식 signed artifact와 저장 공간 | 앱 업데이트 시작 | hash/certificate/installer result와 기존 APK 보존 여부가 보임 | `gatekeeper_app/android`, #51/#23 | signed APK install/fallback **PENDING** |
 | 사용자/Target | Target safe state, dual slot, signed manifest | Target OTA 승인 | install→reboot→health 확인 또는 자동 rollback과 reason | `src/OtaManager.cpp`, `ota/`, #50/#23 | power-loss/boot/rollback physical **PENDING** |
-| 사용자 | update 실패 또는 health timeout | 앱/Target이 제공하는 rollback 선택 | 이전 정상 버전과 자격이 보존되고 상태가 `rolled_back`로 기록 | OTA updater contract | exact artifact digest + event **PENDING** |
+| 사용자 | signed artifact와 기존 정상 버전/dual-slot 또는 앱 fallback이 확인됨 | update attempt, exact artifact digest, install→reboot→health 결과 | health window **60초** 내 health event가 없으면 `OTA_HEALTH_TIMEOUT`; 기존 정상 버전과 자격을 보존하고 rollback **1회** 후 `rolled_back`/reason/event ID를 표시하며, 그 전에는 성공으로 표시하지 않음 | `src/OtaManager.cpp`, [OTA 신뢰성 계약](../wiki/ota_reliability_contract.md), [지원·사고 핸드북](support_incident_handbook_ko.md) | exact artifact digest + boot/health/rollback event 및 지원 접수 ID **PENDING**; timeout 후 자동 재설치 금지, artifact/slot 확인 뒤 지원 escalation |
 
 ## 분실 전화·교체·권한 회수
 

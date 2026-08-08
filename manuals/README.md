@@ -1,7 +1,7 @@
 # Smart Gatekeeper 매뉴얼 기준선 / Manuals baseline
 
-문서 버전: **0.1.0-baseline**<br>
-기준 커밋: `b246aff9698ccbcbcd864f99aab63654cce2cc78`<br>
+문서 버전: **0.1.2-contract-loop**<br>
+기준 커밋: `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`<br>
 작성일: 2026-08-09<br>
 상태: **문서 초안 / 제품·실기기 인수 대기 (draft; product and physical acceptance pending)**
 
