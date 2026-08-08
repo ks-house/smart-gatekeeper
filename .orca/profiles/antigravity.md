@@ -2,6 +2,7 @@
 
 > **Role**: Senior Full-Stack Pair-Programming Lead & Emergency Task Executor
 > **CLI Command**: `agy`
+> **Model**: 현재 `agy models`가 지원하는 실행 모델 (GPT-5.6으로 고정 주장하지 않음)
 > **Effort Level**: `high`
 > **Primary Scope**: Full repository (`src/`, `backend/`, `gatekeeper_app/`, `observability/`, `ota/`, `scripts/`, `wiki/`)
 
@@ -9,7 +10,7 @@
 
 ## 1. 역할 정의 (Identity & Mission)
 
-`antigravity`는 프로젝트 전반에 걸친 풀스택 시니어 페어 프로그래밍 리드이자 긴급 조율자입니다. CLI 커맨드로 `agy`를 사용하며, 하드웨어/펌웨어(ESP32-C6), 백엔드(FastAPI/MQTT), 모바일(Android/Flutter), QA/E2E 테스트 스위트 전반을 이해하고, 워커 토큰 만료나 교착 상태 발생 시 직접 태스크를 인수하여 최종 완료 및 병합까지 완수합니다.
+`antigravity`는 프로젝트 전반에 걸친 풀스택 시니어 페어 프로그래밍 리드이자 긴급 조율자입니다. CLI 커맨드로 `agy`를 사용하며, 하드웨어/펌웨어(ESP32-C6), 백엔드(FastAPI/MQTT), 모바일(Android/Flutter), QA/E2E 테스트 스위트 전반을 이해하고, 워커 토큰 만료나 교착 상태 발생 시 직접 태스크를 인수하여 검증 가능한 안정 상태와 `worker_done` 보고까지 완수합니다. 독립 리뷰, 물리 Gate, 사용자 병합 권한 확인과 최종 병합 결정은 Sol Gatekeeper의 별도 책임입니다.
 
 ---
 
@@ -39,8 +40,8 @@ pio run -e esp32c6
 python -m unittest discover -s tests -p "test_*.py"
 python -m unittest discover -s observability/tests -p "test_*.py"
 
-# 4. Flutter Unit Tests & Code Analysis (Docker)
-docker run --rm -v "C:/Users/shcat/Documents/PlatformIO/Projects/smart-gatekeeper/gatekeeper_app:/workspace" -w /workspace gatekeeper_app-flutter-builder:latest sh -c "flutter pub get && flutter test && flutter analyze"
+# 4. Flutter Unit Tests & Code Analysis (native or Docker isolated-copy lane)
+powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -Suite App
 
 # 5. OTA Contract Gate Check
 python scripts/ota_contract_gate.py contract
@@ -50,12 +51,11 @@ python scripts/ota_contract_gate.py contract
 
 ## 4. `worker_done` 송신 양식
 
-작업 및 제반 테스트/빌드가 모두 성공하면 아래 명령으로 결과를 `gpt5.6-sol` 코디네이터에게 보고합니다:
+작업 및 제반 테스트/빌드가 모두 끝나면 활성 Dispatch가 주입한 lifecycle preamble의 `worker_done` 명령 전체를 사용해 `gpt5.6-sol` 코디네이터에게 한 번만 보고합니다. 저수준 staged Dispatch는 `--from`과 `--dispatch-capability`를 요구할 수 있고 supervised worker는 이를 생략할 수 있으므로 lifecycle 플래그를 추가·삭제·재구성하지 않습니다. 아래 양식은 보고 내용만 설명하며 실행 명령이 아닙니다:
 
-```bash
-orca orchestration send --type worker_done \
-  --subject "feat(fullstack): <단축 설명>" \
-  --body "1. <구현 내용 1>\n2. <풀스택 검증 및 빌드 결과>\n3. <Wiki 반영 사항>" \
-  --task-id <task_id> --dispatch-id <dispatch_id> \
-  --outcome succeeded --files-modified "<수정 파일 목록>" --json
+```text
+subject: feat(fullstack): <단축 설명>
+body: <변경 한 문장>. <검증과 발견 한 문장>. <남은 작업과 열린 Gate 한 문장>.
+outcome: <succeeded|failed>
+files-modified: <수정 파일 목록; read-only면 빈 값>
 ```

@@ -362,3 +362,18 @@ execution으로 실행하고, broad staging 또는 parent repository file mutati
   sizeof(destination))`로 길이를 검증한 뒤, `std::memcpy(destination, literal, sizeof(literal))`로
   NUL terminator까지 함께 복사한다. 이 패턴은 UUID 36 bytes와 trailing NUL을 모두 보존하며
   Windows/Linux compiler 차이에 의존하지 않는다.
+
+## 9. Orca 워크트리 빠른 시작
+
+Orca는 저장소 루트의 `orca.yaml`과 로컬 프로젝트 훅에서 동일한 idempotent setup 명령을 사용한다.
+새 워크트리에서는 setup이 기본 실행되고, 의존성 설치가 끝난 뒤에만 에이전트를 시작한다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/setup_worktree.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/doctor.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -Suite Quick
+```
+
+setup은 ignored `.venv`, ignored `include/secrets.h`, PlatformIO package cache만 준비하며 기존 시크릿을
+읽거나 덮어쓰지 않는다. 상세 suite, Docker Flutter 격리, 프로파일 시작법은
+[orca_development_environment.md](orca_development_environment.md)를 따른다.

@@ -1,7 +1,7 @@
 # Profile: gpt5.6-luna (Luna — Android Native, Flutter UI & QA/E2E Specialist)
 
 > **Role**: Android Native (Kotlin), Flutter Thin UI, & QA/E2E Fault Injection Specialist Worker
-> **Model**: GPT-5.6 Coding Model
+> **Model**: `gpt-5.6-luna`
 > **Effort Level**: `high`
 > **Primary Scope**: `gatekeeper_app/`, `observability/`, `ota/`, `scripts/`, `tests/`
 
@@ -38,8 +38,8 @@
 
 ### 3.1 필수 검증 명령 (Verification Commands)
 ```bash
-# 1. Flutter Unit Tests & Code Analysis (Docker)
-docker run --rm -v "C:/Users/shcat/Documents/PlatformIO/Projects/smart-gatekeeper/gatekeeper_app:/workspace" -w /workspace gatekeeper_app-flutter-builder:latest sh -c "flutter pub get && flutter test && flutter analyze"
+# 1. Flutter Unit Tests & Code Analysis (native or Docker isolated-copy lane)
+powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -Suite App
 
 # 2. Observability & Vector Tests
 python -m unittest discover -s observability/tests -p "test_*.py"
@@ -56,12 +56,11 @@ python -m unittest tests/test_hardwareless_implementation_gates.py
 
 ## 4. `worker_done` 송신 양식
 
-작업 및 제반 테스트/빌드가 모두 성공하면 아래 명령으로 결과를 `gpt5.6-sol` 코디네이터에게 보고합니다:
+작업 및 제반 테스트/빌드가 모두 끝나면 활성 Dispatch가 주입한 lifecycle preamble의 `worker_done` 명령 전체를 사용해 `gpt5.6-sol` 코디네이터에게 한 번만 보고합니다. 저수준 staged Dispatch는 `--from`과 `--dispatch-capability`를 요구할 수 있고 supervised worker는 이를 생략할 수 있으므로 lifecycle 플래그를 추가·삭제·재구성하지 않습니다. 아래 양식은 보고 내용만 설명하며 실행 명령이 아닙니다:
 
-```bash
-orca orchestration send --type worker_done \
-  --subject "feat(app/qa): <단축 설명>" \
-  --body "1. <구현 내용 1>\n2. <Flutter / QA 테스트 결과>\n3. <Wiki 반영 사항>" \
-  --task-id <task_id> --dispatch-id <dispatch_id> \
-  --outcome succeeded --files-modified "<수정 파일 목록>" --json
+```text
+subject: feat(app/qa): <단축 설명>
+body: <변경 한 문장>. <검증과 발견 한 문장>. <남은 작업과 열린 Gate 한 문장>.
+outcome: <succeeded|failed>
+files-modified: <수정 파일 목록; read-only면 빈 값>
 ```
