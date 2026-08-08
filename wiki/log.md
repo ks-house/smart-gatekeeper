@@ -2054,6 +2054,20 @@
 - Independent exact-head review of PR #60 at `2a32fe6d3b824c6242ac837bc80243db93144ff0` found that the test mock accepted any `orchestration send` and could fabricate a heartbeat receipt after mutating the probe's outbound type to `worker_done`; the PR remained Draft and unmerged.
 - The mock now requires exact `--type heartbeat`, and an adversarial test rewrites the probe source to `worker_done` and requires a typed non-zero rejection without echoing the Dispatch capability. This closes the no-completion-impersonation test gap while keeping the production probe's `completionSent=false` contract unchanged.
 - Focused lifecycle mutations and PowerShell parsing passed after remediation. Fresh Quick validation, a new commit/head, protected CI, and a new independent exact-head review remain required; all physical, operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] compile | Prepare deterministic Issue #54 physical Gate evidence package
+
+- Added a pending-only `physical_validation/` plan, JSON Schema, field checklists, evidence template, and forged-pass negative fixture for the Samsung/OEM 100-run wake campaign, ESP32-C6 coexistence, GPIO3 relay, AJ-SR04T, RELAY-G0..G2, OTA-G1..G4 power-cut/recovery, operator drills, and canary stop/rollback.
+- Added `scripts/validate_physical_gate_prep.py` and two host-only tests. The validator accepts the all-`not_run` template and rejects a synthetic 100/100 pass claim without raw evidence; this is L0 consistency evidence, not a device/operator/canary result.
+- Linked `physical_gate_preparation.md` from the navigation map. No raw source changed, no measurement/physical acceptance/operator approval/production contact/deploy occurred, and every L2/L3/L4 Gate remains pending and fail-closed.
+
+## [2026-08-09] fix | Bind Issue #54 executed evidence to accountable review
+
+- Extended the pending-only schema and production validator so every later executed record requires an execution window, named executor, independent named reviewer or risk owner, plan-bound pass condition and approval role, and an after-execution review decision.
+- Replaced opaque raw-evidence strings with exact plan-category entries bound to capture identity/time/actor, SHA-256, and matching content-addressed locator; adversarial tests reject missing actors/times, generic or partial categories, incomplete captures, self-review, empty or wrong-role approval, pass-condition substitution, and the forged-pass fixture.
+- The committed template remains entirely `not_run`; no physical measurement, operator approval, canary, production contact, deployment, or Gate acceptance occurred, and `raw/` remains unchanged.
+>>>>>>> origin/main
+
 ## [2026-08-09] code | Harden admin control plane with deny-by-default identity and dual control
 
 - Added mTLS-fingerprint-backed server sessions, tenant-scoped roles, CSRF, reauthentication, rate limiting, session rotation, idempotency, and immutable audit migration support; missing identity/audit state fails closed rather than returning mock success.
@@ -2074,7 +2088,7 @@
 ## [2026-08-09] fix | Bind force-open approval to durable row fields
 
 - Corrected the two-person approval path to authorize against the persisted `tenant_scope` and `proposer_subject` fields rather than nonexistent transient aliases, so a valid separately authenticated approver can reach the broker publication transition.
-- Added positive and negative security coverage for one successful publication and for self-approval, expiry, replay, cross-tenant approval, and duplicate-publish reservation rejection. This remains host/software evidence only; physical, operator, and production gates remain open and fail-closed.
+- Added positive and negative security coverage for one successful publication and for self-approval, expiry, replay, cross-tenant approval, and duplicate-publish reservation rejection. This remains software evidence only; physical, operator, and production gates remain open and fail-closed.
 
 ## [2026-08-09] fix | Close force-open locks and record broker reconciliation
 
