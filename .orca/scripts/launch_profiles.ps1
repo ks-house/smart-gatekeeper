@@ -1,8 +1,9 @@
 # .orca/scripts/launch_profiles.ps1 — Orca Profile Terminal Launcher Script
 param (
     [Parameter(Mandatory=$true)]
-    [ValidateSet('gpt5.6-sol', 'gpt5.6-terra', 'gpt5.6-luna', 'sol', 'terra', 'luna')]
+    [ValidateSet('gpt5.6-sol', 'gpt5.6-terra', 'gpt5.6-luna', 'gpt5.6-antigravity', 'sol', 'terra', 'luna', 'antigravity')]
     [string]$Profile,
+
 
     [Parameter(Mandatory=$false)]
     [string]$TaskId = '',
