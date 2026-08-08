@@ -241,12 +241,11 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                   _nameController.text,
                                   _roomController.text,
                                 );
-                                if (mounted) {
-                                  setState(() {});
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('등록 요청이 저장되었습니다.')),
-                                  );
-                                }
+                                if (!mounted) return;
+                                setState(() {});
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('등록 요청이 저장되었습니다.')),
+                                );
                               },
                               icon: const Icon(Icons.send),
                               label: const Text('Tenant 승인 요청 제출'),
@@ -334,7 +333,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               title: const Text('Hardwareless GATT Local Auth'),
                               subtitle: const Text('BLE GATT 직접 로컬 인증 활성화'),
                               value: _flagService.enableHardwarelessRc,
-                              activeColor: Colors.cyan,
+                              activeThumbColor: Colors.cyan,
                               onChanged: (val) async {
                                 await _flagService.updateFlags(
                                   hardwarelessRc: val,
@@ -348,7 +347,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               title: const Text('Legacy REST Pre-arm Flow'),
                               subtitle: const Text('구형 서버 Pre-arm 경로 (중복 ARM 방지 인터락)'),
                               value: _flagService.enableLegacyPrearm,
-                              activeColor: Colors.amber,
+                              activeThumbColor: Colors.amber,
                               onChanged: (val) async {
                                 await _flagService.updateFlags(
                                   hardwarelessRc: val ? false : _flagService.enableHardwarelessRc,
@@ -362,7 +361,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               title: const Text('Remote Kill-Switch Active'),
                               subtitle: const Text('원격 차단 스위치 (모든 자동/수동 개방 차단)'),
                               value: _flagService.remoteKillSwitch,
-                              activeColor: Colors.red,
+                              activeThumbColor: Colors.red,
                               onChanged: (val) async {
                                 await _flagService.updateFlags(
                                   hardwarelessRc: _flagService.enableHardwarelessRc,
@@ -380,14 +379,13 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               ),
                               onPressed: () async {
                                 await _flagService.rollbackToLegacy();
+                                if (!mounted) return;
                                 setState(() {});
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('앱 재설치 없이 Legacy Pre-arm 경로로 롤백되었습니다.'),
-                                    ),
-                                  );
-                                }
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('앱 재설치 없이 Legacy Pre-arm 경로로 롤백되었습니다.'),
+                                  ),
+                                );
                               },
                               icon: const Icon(Icons.undo),
                               label: const Text('앱 재설치 없는 Legacy 롤백'),
@@ -399,7 +397,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                     const SizedBox(height: 16),
 
                     // 5. OEM Background & Process Kill Recovery Guidance
-                    Card(
+                    const Card(
                       color: const Color(0xFF1E1E1E),
                       child: const Padding(
                         padding: EdgeInsets.all(16),
@@ -527,7 +525,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         border: Border.all(color: color),
         borderRadius: BorderRadius.circular(4),
       ),

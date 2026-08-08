@@ -2014,3 +2014,9 @@
 - Manual local GATT retry resolves a recently observed encrypted, Keystore-bound Target locator and returns durable queue/session/reason data; the `TARGET_LOCAL` sentinel is removed while proof uncertainty and exact Target/transport reasons remain durable.
 - Added a scanner/WebView/foreground-service-independent recovery shell, truthful door/enrollment models, privacy redaction, accessibility-friendly responsive layout, Korean/English locale resources, signed metadata plus APK size/hash/certificate/fallback/install-health updater checks, and fail-closed release signing.
 - Host checks do not claim Samsung/One UI, radio/relay, bootloader, physical install-health, or production acceptance; legacy/manual_remote and independent OTA/rollback paths remain preserved.
+
+## [2026-08-09] fix | Address hosted analyzer blockers for mobile UX (#51)
+
+- Removed the duplicate update-contract import, corrected app-owned async BuildContext safety, modernized Switch/Color APIs, and restored const construction in the commercial control screen.
+- Added a path-scoped analyzer exclusion for the pre-existing vendored `flutter_beacon_local` fork only; project-wide linting remains enabled and no vendored source was changed.
+- Hosted PR #59 initially failed at analyzer before this remediation; fresh exact-head CI canary and independent review are required for the new commit.
