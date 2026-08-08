@@ -2072,3 +2072,9 @@
 - Integrated exact main `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f` and retained its raw `wiki/log.md` Git blob as the byte-for-byte prefix; appended the issue #53 manual history without rewriting prior entries.
 - Expanded installer/service relay-idle, Target-offline, OTA boot-failure, and sensor-fault rows with actor, preconditions, input, observable output, code/API owner, evidence, reason, timeout, bounded retry, and escalation fields; values remain documentation targets with physical and product evidence pending.
 - Added an explicit update/health-timeout rollback contract and support escalation link to the general-user manual, and expanded `GAP-53-01` to trace installer and administrator contract/test gaps. Raw sources remain unchanged; PR #58 stays Draft pending fresh independent review.
+
+## [2026-08-09] fix | Correct PR #58 R1 baseline evidence traceability
+
+- Replaced the stale `b246aff...` R1 evidence with the exact current main/base `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`, matching the baseline recorded across the manual bundle.
+- R1 now requires comparing `git cat-file blob cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f:wiki/log.md` byte-for-byte as the prefix of the candidate `wiki/log.md`, so the evidence procedure identifies the matching raw `wiki/log.md` Git-blob prefix check.
+- Preserved all previously passing installer/general-user/GAP contracts; `raw/` remains unchanged, PR #58 stays Draft/unmerged, and physical, OEM, OTA, operator, and production gates remain pending and fail-closed pending a fresh exact-head COMMENTED review.

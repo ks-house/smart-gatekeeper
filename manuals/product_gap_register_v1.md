@@ -11,7 +11,7 @@
 
 | 단계 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact |
 |---|---|---|---|---|---|---|
-| R1 기준선 고정 | 문서 소유자 (docs owner) | exact HEAD 확인 | `git rev-parse HEAD`, tracked diff | 기준선 SHA가 매뉴얼에 표시됨 | Git/docs workflow | `b246aff...`; 독립 reviewer PENDING |
+| R1 기준선 고정 | 문서 소유자 (docs owner) | exact current main/base `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f` 확인 | `git rev-parse HEAD`, tracked diff, `git cat-file blob cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f:wiki/log.md`와 candidate `wiki/log.md`의 byte-for-byte prefix 비교 | 기준선 SHA와 matching raw `wiki/log.md` Git-blob prefix check가 매뉴얼에 표시됨 | Git/docs workflow | `cb8b2efe92c771e8c139fcc1ba749d9dcff29f5f`; matching raw `wiki/log.md` Git-blob exact-prefix check; 독립 reviewer PENDING |
 | R2 manual walkthrough | 신규 사용자/관리자/설치자 | 각 역할의 계정·장치·안전 조건 | 문서만 사용 | 성공/막힘/추측 지점을 기록 | `manuals/*.md` | walkthrough worksheet NONE; 제품 테스트 필요 |
 | R3 갭 triage | 제품·테스트 소유자 | R2 결과와 source trace | 갭 ID, severity, owner | P0/P1/physical과 소프트웨어 갭 분리 | #49–#52 owners | issue/PR/test evidence PENDING |
 | R4 재검증 | 독립 reviewer | 수정 PR exact SHA | 동일 입력과 mutation/negative cases | 이전 갭이 닫혔는지와 새 갭이 관찰됨 | 해당 code/test owner | reviewer report PENDING |
