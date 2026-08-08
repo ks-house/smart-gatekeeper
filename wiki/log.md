@@ -2111,3 +2111,17 @@
 - Root host suite passed 92/92, including command mutation, durable replay, crash uncertainty, storage failure, OTA state/fault contracts, and insecure-path checks. Backend suite passed 32 tests with one opt-in MariaDB integration skip.
 - Scoped pioarduino ESP32-C6 build passed for `esp32c6`: RAM 53,728/327,680 (16.4%) and flash 1,600,194/7,340,032 (21.8%). `git diff --check`, JSON parsing, wiki links, and raw immutability are separate final lint requirements.
 - These are host/software results only. Deployed MQTTS/ACL behavior, ESP32-C6 radio and relay operation, inactive-slot boot, health-valid, power-loss and rollback, authenticated local recovery, eFuse/debug hardening, N/N-1 interop, OTA-G1..G4, RELAY-G0..G2, physical soak, operator acceptance, and production authorization remain pending and fail-closed.
+
+## [2026-08-09] fix | Close independent Target command and OTA review blockers
+
+- Kept command authorization clock-untrusted until time comes from an independently authenticated HTTPS `Date` response; signed `issued_at` is never used as its own verification time, including a delayed first command after boot.
+- Added an authenticated station-local transition to a bounded 10-minute WPA2 AP+STA recovery window without clearing STA association, so DNS, MQTT, Backend, or manifest-host outage does not make local recovery unreachable.
+- Required 30 seconds of continuously healthy pending-image predicates, resetting the healthy-since timer on every failed tick and rolling back when a new continuous window cannot complete within 120 seconds.
+- Replaced numeric-prefix version comparison with a two-slot CRC/generation SemVer floor that rejects stable-to-prerelease downgrade, rollback replay, equal-precedence alternate identity, and exact-current forced/local reflash.
+- Expanded the command binding boot identity to 128 bits from four ESP hardware-RNG words while retaining the durable boot counter for diagnostics.
+
+## [2026-08-09] test | Exercise issue #50 review-remediation faults
+
+- Native production-core tests passed delayed-first-command, transient/late health, prerelease/equal-precedence identity, rollback floor, reboot recovery, and failed-persist mutations; targeted security/OTA static tests also passed.
+- Scoped pioarduino `esp32c6` build passed after remediation: RAM 53,888/327,680 (16.4%) and flash 1,606,312/7,340,032 (21.9%). This is compile evidence only.
+- No deployed broker, ESP32-C6 boot/radio/relay, local operator recovery, power-loss, rollback, eFuse/debug lock, N/N-1 device interop, OTA-G1..G4, RELAY-G0..G2, physical soak, production authorization, merge, or deployment evidence was created; every physical/operator/production Gate remains open and fail-closed.

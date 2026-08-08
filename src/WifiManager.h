@@ -15,6 +15,7 @@ private:
     static bool apModeActive;
     static bool connected;
     static String stationIp;
+    static uint32_t recoveryApDeadlineMs;
 
     static void handleRoot();
     static void handleScan();
@@ -23,8 +24,10 @@ private:
     static void handleRecoveryManifest();
     static void handleRecoveryUpload();
     static void handleRecoveryUploadComplete();
+    static void handleRecoveryApEnable();
     static void handleNotFound();
     static bool requireLocalAuthentication();
+    static bool startRecoveryAP(bool preserveStation, uint32_t durationMs);
 
 public:
     static void init();

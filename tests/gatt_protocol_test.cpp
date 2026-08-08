@@ -1,5 +1,7 @@
 #include "GattProtocol.h"
 #include "OfflineEventQueue.h"
+#include "OtaHealthPolicy.h"
+#include "OtaVersionPolicy.h"
 #include "TargetAccessFsm.h"
 #include "TargetAclManager.h"
 #include "TargetProofVerifier.h"
@@ -1591,6 +1593,15 @@ void testSignedCommandDurableReplayAndMutations() {
   CHECK(rebooted.authorize(untrusted_clock, 0, false) ==
         sgk::CommandResult::kClockUntrusted);
 
+  MemoryCommandStorage delayed_first_storage;
+  sgk::TargetCommandSecurity delayed_first(&delayed_first_storage, &verifier);
+  CHECK(delayed_first.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  auto never_seen_but_expired = fixtureCommand();
+  std::snprintf(never_seen_but_expired.nonce,
+                sizeof(never_seen_but_expired.nonce), "nonce-delayed-first");
+  CHECK(delayed_first.authorize(never_seen_but_expired, 0, false) ==
+        sgk::CommandResult::kClockUntrusted);
+
   auto uncertain = fixtureCommand();
   std::snprintf(uncertain.nonce, sizeof(uncertain.nonce), "nonce-uncertain");
   CHECK(rebooted.authorize(uncertain, 1800000002, true) ==
@@ -1630,6 +1641,82 @@ void testSignedCommandDurableReplayAndMutations() {
   }
   CHECK(eviction_security.authorize(first_evicted, 1800000003, true) ==
         sgk::CommandResult::kExpired);
+}
+
+class MemoryVersionStorage final : public sgk::OtaVersionFloorStorage {
+ public:
+  bool read(uint8_t slot, sgk::OtaVersionFloorRecord* record) override {
+    if (slot > 1 || record == nullptr || !present[slot]) return false;
+    *record = records[slot];
+    return true;
+  }
+
+  bool write(uint8_t slot,
+             const sgk::OtaVersionFloorRecord& record) override {
+    if (slot > 1 || fail_writes) return false;
+    records[slot] = record;
+    present[slot] = true;
+    return true;
+  }
+
+  std::array<sgk::OtaVersionFloorRecord, 2> records{};
+  std::array<bool, 2> present{};
+  bool fail_writes = false;
+};
+
+void testOtaHealthRequiresContinuousPredicates() {
+  sgk::OtaHealthPolicy policy(30000, 120000);
+  policy.begin(1000);
+  CHECK(policy.update(1000, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(policy.update(30000, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(policy.update(30001, false) == sgk::OtaHealthDecision::kWait);
+  CHECK(policy.update(40000, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(policy.update(69999, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(policy.update(70000, true) == sgk::OtaHealthDecision::kMarkValid);
+
+  sgk::OtaHealthPolicy late_recovery(30000, 120000);
+  late_recovery.begin(0);
+  CHECK(late_recovery.update(100000, false) == sgk::OtaHealthDecision::kWait);
+  CHECK(late_recovery.update(110000, true) == sgk::OtaHealthDecision::kWait);
+  CHECK(late_recovery.update(120000, true) == sgk::OtaHealthDecision::kRollback);
+}
+
+void testOtaVersionFloorAndReplayMutations() {
+  int comparison = 0;
+  CHECK(sgk::OtaVersionPolicy::compare("2.2.0-rc.1", "2.2.0", &comparison));
+  CHECK(comparison < 0);
+  CHECK(sgk::OtaVersionPolicy::compare("2.2.0", "2.2.0-rc.9", &comparison));
+  CHECK(comparison > 0);
+  CHECK(sgk::OtaVersionPolicy::compare("2.2.0+one", "2.2.0+two", &comparison));
+  CHECK(comparison == 0);
+  CHECK(!sgk::OtaVersionPolicy::compare("2.2", "2.2.0", &comparison));
+
+  MemoryVersionStorage storage;
+  sgk::OtaVersionPolicy policy(&storage);
+  CHECK(policy.begin("2.2.0"));
+  CHECK(policy.evaluate("2.2.0-rc.1", "2.2.0") ==
+        sgk::OtaVersionDecision::kDowngrade);
+  CHECK(policy.evaluate("2.2.0+different", "2.2.0") ==
+        sgk::OtaVersionDecision::kIdentityConflict);
+  CHECK(policy.evaluate("2.2.1", "2.2.0") ==
+        sgk::OtaVersionDecision::kUpgrade);
+  CHECK(policy.commit("2.2.1"));
+
+  sgk::OtaVersionPolicy after_rollback(&storage);
+  CHECK(after_rollback.begin("2.2.0"));
+  CHECK(after_rollback.evaluate("2.2.0", "2.2.0") ==
+        sgk::OtaVersionDecision::kDowngrade);
+  CHECK(after_rollback.evaluate("2.2.1", "2.2.0") ==
+        sgk::OtaVersionDecision::kUpgrade);
+
+  storage.fail_writes = true;
+  CHECK(!after_rollback.commit("2.2.2"));
+  storage.fail_writes = false;
+  CHECK(after_rollback.commit("2.2.2"));
+  sgk::OtaVersionPolicy after_crash(&storage);
+  CHECK(after_crash.begin("2.2.1"));
+  CHECK(after_crash.evaluate("2.2.1", "2.2.1") ==
+        sgk::OtaVersionDecision::kDowngrade);
 }
 
 }  // namespace
@@ -1715,6 +1802,8 @@ int main() {
   testProtocolDisconnectHandoff();
   testInvalidTypedCanonicalRecordQuarantine();
   testSignedCommandDurableReplayAndMutations();
+  testOtaHealthRequiresContinuousPredicates();
+  testOtaVersionFloorAndReplayMutations();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";
   return 0;
 }

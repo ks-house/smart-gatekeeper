@@ -39,6 +39,7 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
                 "src/TargetAccessFsm.cpp",
                 "src/OfflineEventQueue.cpp",
                 "src/TargetCommandSecurity.cpp",
+                "src/OtaVersionPolicy.cpp",
                 "tests/gatt_protocol_test.cpp",
                 "-o",
                 str(executable),

@@ -279,23 +279,15 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
     const time_t systemTime = std::time(nullptr);
     const bool systemClockTrusted = systemTime >= 1704067200;
-    // The first clock anchor is safe because it remains boot-bound and is not
-    // committed or acted on unless the envelope signature verifies.
     const uint64_t verificationTime = systemClockTrusted
         ? static_cast<uint64_t>(systemTime)
-        : envelope.issued_at;
+        : 0;
     const sgk::CommandResult authorization = commandSecurity.authorize(
-        envelope, verificationTime, true);
+        envelope, verificationTime, systemClockTrusted);
     if (authorization != sgk::CommandResult::kAccepted) {
         publishCommandAck(envelope, authorization);
         return;
     }
-    if (!systemClockTrusted) {
-        timeval signedTime{};
-        signedTime.tv_sec = static_cast<time_t>(envelope.issued_at);
-        settimeofday(&signedTime, nullptr);
-    }
-
     bool effectCompleted = true;
     switch (envelope.action) {
       case sgk::CommandAction::kArm:

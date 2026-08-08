@@ -63,5 +63,6 @@
 |---|---|---|---|
 | 2026-08-09 | Signed command mutation, replay, crash, and storage-fault host tests | PASS (software) | Target/tenant/door/boot/freshness/signature mutations rejected; completed and uncertain duplicates do not repeat effects |
 | 2026-08-09 | OTA contract/state/fault and insecure-path host tests | PASS (software) | Verifier/state/static seams exercised without a physical ESP32-C6 or deployed NAS broker |
+| 2026-08-09 | #50 independent-review remediation mutations | PASS (software) | Delayed first command stays clock-untrusted; STA-preserving bounded recovery AP seam covers DNS/Backend outage; transient health resets; late recovery rolls back; prerelease/equal-precedence/reboot storage replays reject |
 | 2026-08-09 | `pio run -e esp32c6 -j 4` | PASS (software build) | RAM 53,728/327,680; flash 1,600,194/7,340,032; no upload or device execution |
 | Pending | Physical Target OTA and hardening | OPEN | ESP32-C6 inactive-slot boot, health-valid, power-loss, rollback, periodic HTTPS, local recovery, eFuses/debug locks, radio/relay, N/N-1, operator soak, and production authorization remain unproven |

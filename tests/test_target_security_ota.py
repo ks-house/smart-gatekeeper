@@ -81,7 +81,8 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             "esp_ota_mark_app_valid_cancel_rollback",
             "esp_ota_mark_app_invalid_rollback_and_reboot",
             "kPeriodicCheckMs",
-            "compareVersion",
+            "versionPolicy.evaluate",
+            "healthPolicy.update",
         ):
             self.assertIn(required, ota)
         self.assertNotIn("HTTPUpdate", ota)
@@ -89,10 +90,33 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("/recovery/firmware", wifi)
         self.assertIn("requireLocalAuthentication()", wifi)
         self.assertIn("LOCAL_RECOVERY_AP_PASSWORD", wifi)
+        self.assertIn("/recovery/enable-ap", wifi)
+        self.assertIn("WiFi.mode(WIFI_AP_STA)", wifi)
+        self.assertIn("recoveryApDeadlineMs", wifi)
+        self.assertIn("setClockFromAuthenticatedHttpDate", ota)
+        self.assertIn("current version reflash denied", ota)
         self.assertLess(
             wifi.index("if (apSuccess)"),
             wifi.index("apModeActive = true", wifi.index("if (apSuccess)")),
         )
+
+    def test_clock_untrusted_and_outage_recovery_mutations_fail_closed(self) -> None:
+        mqtt = (ROOT / "src/MqttManager.cpp").read_text(encoding="utf-8")
+        wifi = (ROOT / "src/WifiManager.cpp").read_text(encoding="utf-8")
+        diagnostics = (ROOT / "src/DiagnosticsManager.cpp").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("systemClockTrusted", mqtt)
+        self.assertIn("envelope, verificationTime, systemClockTrusted", mqtt)
+        self.assertNotIn(": envelope.issued_at", mqtt)
+        operator_transition = wifi.split("bool WifiManager::startRecoveryAP", 1)[1]
+        preserve_branch = operator_transition.split("} else {", 1)[0]
+        self.assertIn("WIFI_AP_STA", preserve_branch)
+        self.assertNotIn("WiFi.disconnect", preserve_branch)
+        self.assertNotIn("MQTT", preserve_branch)
+        self.assertNotIn("DNS", preserve_branch)
+        self.assertIn("char bootIdValue[33]", diagnostics)
+        self.assertEqual(4, diagnostics.count("static_cast<unsigned long>(esp_random())"))
 
     def test_production_policy_remains_disabled_and_evidence_gated(self) -> None:
         with (ROOT / "security/target-production-policy.json").open(

@@ -15,6 +15,7 @@ WebServer WifiManager::webServer(80);
 bool WifiManager::apModeActive = false;
 bool WifiManager::connected = false;
 String WifiManager::stationIp = "";
+uint32_t WifiManager::recoveryApDeadlineMs = 0;
 static bool webServerStarted = false;
 static bool localUploadSucceeded = false;
 
@@ -47,6 +48,7 @@ void WifiManager::startWebServer() {
     webServer.on("/recovery/manifest", HTTP_POST, handleRecoveryManifest);
     webServer.on("/recovery/firmware", HTTP_POST,
                  handleRecoveryUploadComplete, handleRecoveryUpload);
+    webServer.on("/recovery/enable-ap", HTTP_POST, handleRecoveryApEnable);
     webServer.onNotFound(handleNotFound);
     webServer.begin();
 
@@ -94,13 +96,22 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
 }
 
 void WifiManager::startAP() {
+    startRecoveryAP(false, 0);
+}
+
+bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
     apModeActive = false;
     DiagnosticsManager::noteAction("provisioning_ap_start");
     
     // 이전 STA 접속 시도로 인한 채널 호핑/비콘 브로드캐스트 블로킹 완정 방지
-    WiFi.disconnect(true, true);
-    delay(100);
-    WiFi.mode(WIFI_AP);
+    if (preserveStation) {
+        if (!isConnected()) return false;
+        WiFi.mode(WIFI_AP_STA);
+    } else {
+        WiFi.disconnect(true, true);
+        delay(100);
+        WiFi.mode(WIFI_AP);
+    }
     
     IPAddress apIP(192, 168, 4, 1);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
@@ -116,17 +127,20 @@ void WifiManager::startAP() {
 
     if (apSuccess) {
         apModeActive = true;
+        recoveryApDeadlineMs = durationMs == 0 ? 0 : millis() + durationMs;
         startWebServer();
         DiagnosticsManager::noteAction("provisioning_ap_ready");
         LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: 'SmartGatekeeper-Setup' (채널 1, 192.168.4.1)");
         LOGF("[WIFI-AP] Captive DNS disabled; open http://192.168.4.1 manually.");
     } else {
         WiFi.softAPdisconnect(true);
+        recoveryApDeadlineMs = 0;
+        if (preserveStation) WiFi.mode(WIFI_STA);
         DiagnosticsManager::noteAction("provisioning_ap_failed");
         LOGF("[WIFI-AP] 🚨 설정 AP 가동 실패!");
     }
+    return apSuccess;
 }
-
 
 void WifiManager::handleRoot() {
     if (!requireLocalAuthentication()) return;
@@ -353,6 +367,21 @@ void WifiManager::handleRecoveryUploadComplete() {
     ESP.restart();
 }
 
+void WifiManager::handleRecoveryApEnable() {
+    if (!requireLocalAuthentication()) return;
+    if (!isConnected()) {
+        webServer.send(409, "text/plain", "Station link is not available");
+        return;
+    }
+    constexpr uint32_t kOperatorRecoveryWindowMs = 10UL * 60UL * 1000UL;
+    if (!startRecoveryAP(true, kOperatorRecoveryWindowMs)) {
+        webServer.send(503, "text/plain", "Recovery AP unavailable");
+        return;
+    }
+    webServer.send(202, "text/plain",
+                   "Authenticated recovery AP enabled for 10 minutes");
+}
+
 
 
 void WifiManager::handleNotFound() {
@@ -366,6 +395,21 @@ void WifiManager::handleNotFound() {
 }
 
 void WifiManager::handleClient() {
+    if (apModeActive && recoveryApDeadlineMs != 0 &&
+        static_cast<int32_t>(millis() - recoveryApDeadlineMs) >= 0) {
+        WiFi.softAPdisconnect(true);
+        recoveryApDeadlineMs = 0;
+        apModeActive = false;
+        if (WiFi.status() == WL_CONNECTED) {
+            connected = true;
+            stationIp = WiFi.localIP().toString();
+            WiFi.mode(WIFI_STA);
+        } else {
+            connected = false;
+            startAP();
+        }
+        DiagnosticsManager::noteAction("recovery_ap_window_closed");
+    }
     if (!apModeActive) {
         // STA 모드 - Wi-Fi 연결 워치독 (Auto-Reconnect)
         static uint32_t lastWifiCheckMs = 0;

@@ -1,8 +1,9 @@
 #include "OtaManager.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstring>
+#include <ctime>
+#include <sys/time.h>
 #include <Preferences.h>
 #include <esp_app_desc.h>
 #include <esp_partition.h>
@@ -12,6 +13,8 @@
 
 #include "DiagnosticsManager.h"
 #include "GattServer.h"
+#include "OtaHealthPolicy.h"
+#include "OtaVersionPolicy.h"
 #include "WifiManager.h"
 #include "config.h"
 
@@ -50,8 +53,38 @@ esp_ota_handle_t updateHandle = 0;
 mbedtls_sha256_context updateSha;
 size_t updateBytes = 0;
 bool updateOpen = false;
-uint32_t healthStartedMs = 0;
 uint32_t nextPeriodicCheckMs = kInitialPeriodicCheckMs;
+
+class NvsOtaVersionFloorStorage final : public sgk::OtaVersionFloorStorage {
+ public:
+  bool read(uint8_t slot, sgk::OtaVersionFloorRecord* record) override {
+    if (slot > 1 || record == nullptr) return false;
+    Preferences preferences;
+    if (!preferences.begin("sgk_ota_ver", true)) return false;
+    const char* key = slot == 0 ? "floor_a" : "floor_b";
+    const size_t length = preferences.getBytesLength(key);
+    const size_t read = length == sizeof(*record)
+                            ? preferences.getBytes(key, record, sizeof(*record))
+                            : 0;
+    preferences.end();
+    return read == sizeof(*record);
+  }
+
+  bool write(uint8_t slot,
+             const sgk::OtaVersionFloorRecord& record) override {
+    if (slot > 1) return false;
+    Preferences preferences;
+    if (!preferences.begin("sgk_ota_ver", false)) return false;
+    const char* key = slot == 0 ? "floor_a" : "floor_b";
+    const size_t written = preferences.putBytes(key, &record, sizeof(record));
+    preferences.end();
+    return written == sizeof(record);
+  }
+};
+
+NvsOtaVersionFloorStorage versionFloorStorage;
+sgk::OtaVersionPolicy versionPolicy(&versionFloorStorage);
+sgk::OtaHealthPolicy healthPolicy(kHealthStableMs, kHealthTimeoutMs);
 
 bool asciiToken(const char* value, size_t maximum) {
   if (value == nullptr) return false;
@@ -72,45 +105,58 @@ String quoted(const char* value) {
   return output;
 }
 
-int compareVersion(const String& left, const String& right) {
-  size_t leftStart = 0;
-  size_t rightStart = 0;
-  for (int component = 0; component < 3; ++component) {
-    const int leftDot = left.indexOf('.', leftStart);
-    const int rightDot = right.indexOf('.', rightStart);
-    String leftPart = left.substring(
-        leftStart, leftDot < 0 ? left.length() : static_cast<size_t>(leftDot));
-    String rightPart = right.substring(
-        rightStart, rightDot < 0 ? right.length() : static_cast<size_t>(rightDot));
-    if (component == 2) {
-      int suffix = leftPart.indexOf('-');
-      const int metadata = leftPart.indexOf('+');
-      if (suffix < 0 || (metadata >= 0 && metadata < suffix)) suffix = metadata;
-      if (suffix >= 0) leftPart = leftPart.substring(0, suffix);
-      suffix = rightPart.indexOf('-');
-      const int rightMetadata = rightPart.indexOf('+');
-      if (suffix < 0 || (rightMetadata >= 0 && rightMetadata < suffix)) {
-        suffix = rightMetadata;
-      }
-      if (suffix >= 0) rightPart = rightPart.substring(0, suffix);
-    }
-    if (leftPart.length() == 0 || rightPart.length() == 0) return -2;
-    for (size_t i = 0; i < leftPart.length(); ++i) {
-      if (!std::isdigit(static_cast<unsigned char>(leftPart[i]))) return -2;
-    }
-    for (size_t i = 0; i < rightPart.length(); ++i) {
-      if (!std::isdigit(static_cast<unsigned char>(rightPart[i]))) return -2;
-    }
-    const long leftValue = leftPart.toInt();
-    const long rightValue = rightPart.toInt();
-    if (leftValue != rightValue) return leftValue < rightValue ? -1 : 1;
-    if (leftDot < 0 || rightDot < 0) {
-      if (component != 2) return -2;
-    }
-    leftStart = static_cast<size_t>(leftDot + 1);
-    rightStart = static_cast<size_t>(rightDot + 1);
+int64_t daysFromCivil(int year, unsigned month, unsigned day) {
+  year -= month <= 2;
+  const int era = (year >= 0 ? year : year - 399) / 400;
+  const unsigned yearOfEra = static_cast<unsigned>(year - era * 400);
+  const unsigned dayOfYear =
+      static_cast<unsigned>(
+          (153 * (static_cast<int>(month) + (month > 2 ? -3 : 9)) + 2) /
+          5 +
+          static_cast<int>(day) - 1);
+  const unsigned dayOfEra =
+      yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+  return static_cast<int64_t>(era) * 146097 + dayOfEra - 719468;
+}
+
+bool setClockFromAuthenticatedHttpDate(const String& value) {
+  char weekday[4]{};
+  char monthName[4]{};
+  char zone[4]{};
+  int day = 0;
+  int year = 0;
+  int hour = 0;
+  int minute = 0;
+  int second = 0;
+  if (std::sscanf(value.c_str(), "%3s, %d %3s %d %d:%d:%d %3s", weekday,
+                  &day, monthName, &year, &hour, &minute, &second, zone) != 8 ||
+      std::strcmp(zone, "GMT") != 0 || year < 2024 || day < 1 || day > 31 ||
+      hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 ||
+      second > 60) {
+    return false;
   }
-  return 0;
+  static constexpr const char* kMonths[] = {
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  unsigned month = 0;
+  for (unsigned index = 0; index < 12; ++index) {
+    if (std::strcmp(monthName, kMonths[index]) == 0) {
+      month = index + 1;
+      break;
+    }
+  }
+  if (month == 0) return false;
+  const int64_t epoch = daysFromCivil(year, month, static_cast<unsigned>(day)) *
+                            86400 +
+                        hour * 3600 + minute * 60 + second;
+  if (epoch < 1704067200) return false;
+  const time_t current = std::time(nullptr);
+  if (current >= 1704067200 && epoch + 300 < current) return false;
+  timeval authenticatedTime{};
+  authenticatedTime.tv_sec = static_cast<time_t>(epoch);
+  if (settimeofday(&authenticatedTime, nullptr) != 0) return false;
+  DiagnosticsManager::noteAction("https_date_clock_trusted");
+  return true;
 }
 
 bool parseHex(const char* value, uint8_t* output, size_t outputLength) {
@@ -167,6 +213,42 @@ bool verifyManifestJson(const String& payload, VerifiedManifest* output,
     *reason = "manifest_json";
     return false;
   }
+  static constexpr const char* kRequiredFields[] = {
+      "artifact_size", "artifact_type", "artifact_url", "board",
+      "build_id", "commit", "firmware_version", "flash_layout",
+      "mandatory_after", "protocol_max", "protocol_min", "published_at",
+      "schema_version", "sha256", "signature", "signature_algorithm",
+      "signing_key_id", "version"};
+  if (document.size() !=
+      sizeof(kRequiredFields) / sizeof(kRequiredFields[0])) {
+    *reason = "manifest_schema";
+    return false;
+  }
+  for (const char* field : kRequiredFields) {
+    if (!document.containsKey(field)) {
+      *reason = "manifest_schema";
+      return false;
+    }
+  }
+  if (!document["artifact_size"].is<uint32_t>() ||
+      !document["protocol_max"].is<uint16_t>() ||
+      !document["protocol_min"].is<uint16_t>() ||
+      !document["schema_version"].is<uint8_t>() ||
+      (!document["mandatory_after"].isNull() &&
+       !document["mandatory_after"].is<const char*>())) {
+    *reason = "manifest_schema";
+    return false;
+  }
+  static constexpr const char* kStringFields[] = {
+      "artifact_type", "artifact_url", "board", "build_id", "commit",
+      "firmware_version", "flash_layout", "published_at", "sha256",
+      "signature", "signature_algorithm", "signing_key_id", "version"};
+  for (const char* field : kStringFields) {
+    if (!document[field].is<const char*>()) {
+      *reason = "manifest_schema";
+      return false;
+    }
+  }
   const char* artifactType = document["artifact_type"] | "";
   const char* artifactUrl = document["artifact_url"] | "";
   const char* board = document["board"] | "";
@@ -208,15 +290,19 @@ bool verifyManifestJson(const String& payload, VerifiedManifest* output,
     *reason = "artifact_size";
     return false;
   }
-  Preferences preferences;
-  String floor = FIRMWARE_VERSION;
-  if (preferences.begin("sgk_ota", true)) {
-    floor = preferences.getString("version_floor", FIRMWARE_VERSION);
-    preferences.end();
+  const sgk::OtaVersionDecision versionDecision =
+      versionPolicy.evaluate(version, FIRMWARE_VERSION);
+  if (versionDecision == sgk::OtaVersionDecision::kInvalid ||
+      versionDecision == sgk::OtaVersionDecision::kStorageFailure) {
+    *reason = "version_policy";
+    return false;
   }
-  if (compareVersion(version, FIRMWARE_VERSION) < 0 ||
-      compareVersion(version, floor) < 0) {
+  if (versionDecision == sgk::OtaVersionDecision::kDowngrade) {
     *reason = "downgrade";
+    return false;
+  }
+  if (versionDecision == sgk::OtaVersionDecision::kIdentityConflict) {
+    *reason = "version_identity_conflict";
     return false;
   }
 
@@ -337,12 +423,17 @@ bool waitForSafeState() {
 void OtaManager::init() {
   status = OtaStatus::IDLE;
   lastError = "";
+  if (!versionPolicy.begin(FIRMWARE_VERSION)) {
+    status = OtaStatus::FAILED;
+    lastError = "version floor storage";
+    return;
+  }
   const esp_partition_t* running = esp_ota_get_running_partition();
   esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
   if (running != nullptr && esp_ota_get_state_partition(running, &state) == ESP_OK &&
       state == ESP_OTA_IMG_PENDING_VERIFY) {
     status = OtaStatus::HEALTH_WINDOW;
-    healthStartedMs = millis();
+    healthPolicy.begin(millis());
     DiagnosticsManager::noteAction("ota_health_window");
   }
 }
@@ -362,18 +453,19 @@ void OtaManager::update() {
     const bool safe = safeStateProvider != nullptr &&
                       safeStateProvider() == OtaSafeState::SAFE;
     const bool networkHealthy = WifiManager::isConnected() || WifiManager::isAPMode();
-    if (safe && networkHealthy && ESP.getFreeHeap() >= 65536 &&
-        now - healthStartedMs >= kHealthStableMs) {
-      if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
-        Preferences preferences;
-        if (preferences.begin("sgk_ota", false)) {
-          preferences.putString("version_floor", FIRMWARE_VERSION);
-          preferences.end();
-        }
+    const sgk::OtaHealthDecision decision = healthPolicy.update(
+        now, safe && networkHealthy && ESP.getFreeHeap() >= 65536);
+    if (decision == sgk::OtaHealthDecision::kMarkValid) {
+      if (versionPolicy.commit(FIRMWARE_VERSION) &&
+          esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
         status = OtaStatus::SUCCESS;
         DiagnosticsManager::noteAction("ota_mark_valid");
+      } else {
+        status = OtaStatus::ROLLING_BACK;
+        DiagnosticsManager::markPlannedRestart("ota_valid_mark_failed");
+        esp_ota_mark_app_invalid_rollback_and_reboot();
       }
-    } else if (now - healthStartedMs >= kHealthTimeoutMs) {
+    } else if (decision == sgk::OtaHealthDecision::kRollback) {
       status = OtaStatus::ROLLING_BACK;
       DiagnosticsManager::markPlannedRestart("ota_health_rollback");
       esp_ota_mark_app_invalid_rollback_and_reboot();
@@ -388,6 +480,7 @@ void OtaManager::update() {
 }
 
 void OtaManager::checkAndUpdate(bool force) {
+  (void)force;
   status = OtaStatus::WAIT_SAFE_STATE;
   struct BusyGuard {
     ~BusyGuard() { GattServer::setOtaBusy(false); }
@@ -415,6 +508,8 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   manifestHttp.setTimeout(10000);
+  const char* responseHeaders[] = {"Date"};
+  manifestHttp.collectHeaders(responseHeaders, 1);
   const int manifestCode = manifestHttp.GET();
   if (manifestCode != HTTP_CODE_OK) {
     manifestHttp.end();
@@ -423,6 +518,7 @@ void OtaManager::checkAndUpdate(bool force) {
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
     return;
   }
+  setClockFromAuthenticatedHttpDate(manifestHttp.header("Date"));
   const String payload = manifestHttp.getString();
   manifestHttp.end();
   status = OtaStatus::VERIFYING;
@@ -433,7 +529,7 @@ void OtaManager::checkAndUpdate(bool force) {
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
     return;
   }
-  if (!force && stagedManifest.version == FIRMWARE_VERSION) {
+  if (stagedManifest.version == FIRMWARE_VERSION) {
     status = OtaStatus::UP_TO_DATE;
     nextPeriodicCheckMs = millis() + kPeriodicCheckMs;
     return;
@@ -495,7 +591,12 @@ void OtaManager::checkAndUpdate(bool force) {
 
 bool OtaManager::stageLocalManifest(const String& manifestJson) {
   String reason;
-  const bool valid = verifyManifestJson(manifestJson, &stagedManifest, &reason);
+  bool valid = verifyManifestJson(manifestJson, &stagedManifest, &reason);
+  if (valid && stagedManifest.version == FIRMWARE_VERSION) {
+    valid = false;
+    reason = "current version reflash denied";
+    stagedManifest = VerifiedManifest{};
+  }
   if (!valid) {
     lastError = reason;
     status = OtaStatus::FAILED;
