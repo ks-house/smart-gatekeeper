@@ -2007,23 +2007,43 @@
 - Refactored each startup attempt so all post-create checks share one failure path. A `tui-idle` failure, startup snapshot failure, or current terminal-end PowerShell prompt now records the original error, closes the exact created terminal, retries only the first attempt, and closes the second exact terminal before failing closed.
 - The reviewer could not deliver accepted `worker_done` after its sandboxed Orca runtime again became unreachable, so its Task was recorded as blocked and the coordinator closed its exact terminal. A fresh injected timeout mutation, real lifecycle probe, and exact-head review remain required; physical, operator, and production Gates remain pending and fail-closed.
 - The coordinator reran the exact injected-timeout mutation against the remediation: two created mock terminal handles each exhausted three bounded wait windows, both exact handles received one close call, and the launcher failed after the second cleanup with the original timeout preserved. Real lifecycle and fresh exact-head review evidence are still required.
+
+## [2026-08-08] compile | Establish evidence-gated commercial release program
+
+- Created `wiki/commercial_release_program.md` with the product objective, evidence levels, dependency DAG, work packages for security/admin, Target, mobile UX, operations, manuals, physical acceptance, and production canary deployment.
+- Recorded Orca Run `run_40f9831625bd` and the three independent read-only audits assigned to gpt-5.6-sol, gpt-5.6-terra, and gpt-5.6-luna; no audit worker was authorized to edit, merge, or deploy.
+- Kept production fail-closed: administrator authentication, Target TLS fallback, Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator walkthrough, and production install/reboot/health evidence remain required.
+- Added the release program to `wiki/index.md`. No `raw/` files or earlier log entries were modified.
+
+## [2026-08-08] test | Complete commercial audits and detect follow-up worker launch failure
+
+- Completed independent Sol architecture/security, Terra firmware/backend/admin/operations, and Luna mobile UX/manual audits at exact local HEAD `dd8996c110fae1b378e31c3b1f8be8db7b84307d`; all three were read-only and sent exact-Dispatch `worker_done` results.
+- The auditors passed protocol 16, observability 18, backend 32 with one opt-in MariaDB skip, OTA contract, hardwareless Gate 4, and WSL native C++ 369 checks as applicable. One native Windows root-suite compiler-launch path failed while its WSL equivalent passed; no result was promoted to physical evidence.
+- Reproduced a follow-up supervised worker-start failure three times across Terra and Luna: Orca returned `input_accepted`, Codex reported interrupted MCP startup, received the task preamble, then exited to PowerShell while the terminal could still look running. The coordinator stopped every failed Dispatch and did not count them as completion.
+- Opened commercial release Epic #48 and scoped issues #49 through #55 for security/admin, Target/OTA, mobile UX, operations, manuals, physical release, and the Orca worker-start blocker. PR #47 remains Draft and unmerged until an independent exact-head review succeeds.
+- Production remains fail-closed; no Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production evidence was produced.
+
+## [2026-08-09] test | Integrate Orca environment and dispatch commercial release work
+
+- Independently reviewed PR #47 without self-approval, merged it as `b246aff9698ccbcbcd864f99aab63654cce2cc78`, and verified GitHub Actions run `31268170523` reached terminal success. The production deployment job remained skipped and no physical or production acceptance was inferred.
+- Re-ran `.orca/scripts/validate.ps1 -Suite Quick` after merge: doctor reported 12 pass, one Docker-covered native Java warning, and zero failures; backend 32 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4 passed.
+- Dispatched isolated implementation work for issues #49, #50, #51, #53, #54, and #55 from exact integrated `origin/main`; issue #52 remains dependency-blocked until the three P0 product branches are accepted and integrated. The #54 scope is preparation-only and cannot close any hardware, operator, canary, or production Gate.
+- Retargeted draft PR #56 to current `main` and preserved both append-only log histories while resolving its only merge conflict. Independent exact-head review and terminal CI are still required before it may be merged.
+
+## [2026-08-09] fix | Correct PR 56 append-only and integration status blockers
+
+- Independent exact-head review of `4f6e8f1761b9393f348173312843454e61c4c5a7` found that the conflict resolution placed two commercial-program entries inside the current `main` history and that the release page and PR body still described merged PR #47 as Draft/unmerged.
+- Restored the exact `b246aff9698ccbcbcd864f99aab63654cce2cc78` `wiki/log.md` blob as the byte prefix, moved the two unchanged program entries after that prefix, and retained the later integration entry as an append. No historical entry was rewritten and `raw/` remains unchanged.
+- Updated the release baseline, R0 status, current task allocation, and evidence boundary to record PR #47 merge plus run `31268170523` while keeping #55, all physical/operator Gates, and production authorization pending and fail-closed. A fresh exact-head review is required before PR #56 can leave Draft.
 ## [2026-08-09] code | Harden admin control plane with deny-by-default identity and dual control
 
-- Added mTLS-fingerprint-backed server sessions, tenant-scoped roles, CSRF, reauthentication, rate limiting, session rotation, idempotency, and an immutable MariaDB `admin_audit` migration; missing identity/audit state now fails closed rather than returning mock success.
-- Removed the public `device_id` force-open route and anonymous device-ID user data/write routes. Force-open is now a reasoned, time-bounded, two-person proposal/approval flow; target OTA pull/health and APK/version recovery paths remain deliberately independent.
-- Added negative mutation tests for anonymous/forged/stale/CSRF/cross-tenant/stolen-ID/replay/rate-limit cases and migration assertions. This is host/software evidence only: no Samsung/OEM, ESP32-C6, relay, bootloader/rollback, OTA install-health, operator, or production authorization evidence was created.
-
-## [2026-08-09] fix | Bind the static admin console to the deny-by-default session boundary
-
-- The console now creates its mTLS-backed session, carries its CSRF, tenant-scope, reauthentication, and idempotency headers on admin writes, requests tenant-scoped access logs, and treats force-open as a 202 approval proposal rather than command success.
-- Removed the admin tenant-list mock-data response on database failure; it now returns 503. No physical/operator/production claim is implied by this UI or host-only change.
+- Added mTLS-fingerprint-backed server sessions, tenant-scoped roles, CSRF, reauthentication, rate limiting, session rotation, idempotency, and immutable audit migration support; missing identity/audit state fails closed rather than returning mock success.
+- Replaced device-ID bearer force-open with a reasoned two-person control operation, added negative bypass tests, and preserved target OTA/download recovery separation. This is host/software evidence only; no physical or production authorization is claimed.
 
 ## [2026-08-09] compile | Define additive v2 manual control and proxy deployment contract
 
-- Added durable force-open approval and mobile nonce migration contracts plus explicit N/N-1 upgrade-required behavior: legacy `device_id` requests have no effect, while authenticated v2 manual control remains the compatibility path for issue #51/#52 rollout.
-- Documented the private API/reverse-proxy mTLS boundary, durable approval state machine, and failure/recovery semantics. This is contract/software work only; physical and production gates remain open.
+- Added durable force-open approval and mobile nonce migration contracts, N/N-1 upgrade-required/no-side-effect behavior, plus the private reverse-proxy mTLS deployment boundary for the issue #51/#52 client rollout.
 
 ## [2026-08-09] fix | Apply v2 manual proof and durable approval state
 
-- The legacy manual URI now rejects incomplete N-1 device-ID requests with upgrade-required/no side effect, while the v2 envelope verifies a tenant-bound HMAC proof, nonce expiry, idempotency, and durable replay consumption before broker publication.
-- Replaced process-local force-open proposals with transactional `force_open_approvals` persistence and a `PENDING` to `PUBLISHING` reservation before any broker call. Private Compose services and trusted-proxy allow-list enforcement prevent direct spoofing of mTLS identity headers; no physical command success is claimed.
+- The legacy manual URI now rejects incomplete device-ID requests without an effect, while the v2 envelope verifies tenant-bound proof, nonce expiry, idempotency, and durable replay consumption before broker publication. This remains software evidence only; physical/operator/production gates are open.
