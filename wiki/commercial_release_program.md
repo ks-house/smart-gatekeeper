@@ -16,8 +16,8 @@ Android 모바일 앱, OTA/rollback, 관측성, 운영 절차, 일반 사용자�
 
 | 영역 | 현재 근거 | 판정 |
 |---|---|---|
-| 소프트웨어 후보 | root 87/87, backend/protocol/observability/OTA contract, ESP32-C6 build, Flutter 11/11 | `G0-SW PASSED` |
-| Orca 개발환경 | setup/doctor/Quick/Software/Firmware/App 및 fresh-worktree smoke | Draft PR #47, 통합 대기 |
+| 소프트웨어 기준선 | `b246aff`에서 root 87/87, backend/protocol/observability/OTA contract, ESP32-C6 build, Flutter 11/11 | host/software 검증 완료; 최종 후보 SHA에 재결합 필요 |
+| Orca 개발환경 | setup/doctor/Quick/Software/Firmware/App 및 fresh-worktree smoke | PR #47 병합 및 post-merge CI 성공 (`b246aff`) |
 | 관리자 시스템 | 레거시 admin 조회·승인·설정 경로에 일관된 인증/RBAC가 없음 | `P0 BLOCKED` |
 | Target 네트워크 보안 | MQTT TLS 실패 후 `setInsecure()` fallback 존재 | `P0 BLOCKED` |
 | 모바일 사용성 | native wake 등록 미도달, `TARGET_LOCAL` GATT 실패, updater/signing/복구 독립성 결함 | `P0 BLOCKED` |
@@ -60,7 +60,7 @@ flowchart LR
 
 ### R0 — 재현 가능한 개발·검증 환경
 
-- Draft PR #47을 독립 검토하고 exact-head 보호 workflow를 확인한다.
+- PR #47의 독립 검토, exact-head 보호 workflow, 병합과 post-merge CI를 `b246aff`에서 완료했다.
 - setup, doctor, Quick, Software, Firmware, App suite를 모든 새 작업트리의 공통 입구로 사용한다.
 - 완료 조건: PR 병합, post-merge main CI, fresh-worktree 재검증.
 
@@ -163,10 +163,18 @@ tenant/device/door 수명주기, 승인·회수, 강제 개방 통제, 로그 �
 | `task_7edd390041a9` | gpt-5.6-luna | 모바일 UX·접근성·매뉴얼 감사 | 완료 |
 | `task_a513d06b69d8` | gpt-5.6-terra | PR #47 exact-head review | MCP startup 중단 2회, blocked |
 | `task_c0d82ac39236` | gpt-5.6-luna | PR #47 review 재배정 | 동일 장애, blocked |
+| `task_6c49499b49d3` | coordinator | PR #47 통합·post-merge 검증 | 완료 (`b246aff`) |
+| `task_23fe4956824c` | gpt-5.6-terra | #49 관리자 보안 | 수행 중, Draft PR #57 리뷰 대기 |
+| `task_e5534f8933b7` | gpt-5.6-sol | #50 Target 신뢰·OTA | 수행 중 |
+| `task_fa76e808dd90` | gpt-5.6-luna | #51 모바일 상용 UX | 수행 중 |
+| `task_aab3267285d3` | gpt-5.6-terra | #52 production 운영 | #49~#51 통합 전 pending |
+| `task_524af7bf8a7c` | gpt-5.6-luna | #53 매뉴얼 기준선 | Draft PR #58 리뷰 대기 |
+| `task_485b86acea1e` | gpt-5.6-sol | #54 물리 Gate 준비 | 준비 범위 수행 중; 실측 pending |
+| `task_294d51f66668` | gpt-5.6-sol | #55 Orca 장기 수명주기 | 수행 중 |
 
-PR #47은 trusted workflow가 exact HEAD에서 통과했지만 독립 검토 task가 3개 Dispatch에서
-동일한 MCP startup 중단으로 agent를 잃었으므로 Draft/미병합을 유지한다. #55를 해결하거나
-독립 exact-head 검토를 정상 완료한 뒤에만 통합한다.
+PR #47은 독립 검토와 보완을 거쳐 `b246aff9698ccbcbcd864f99aab63654cce2cc78`로 병합됐고
+GitHub Actions run `31268170523` 및 fresh Quick 검증이 성공했다. 이 결과는 host/software 범위이며
+#55 장기 완료 신호, Samsung/OEM, ESP32-C6, relay/sensor, bootloader, OTA, 운영자와 production Gate를 닫지 않는다.
 
 구현 작업은 읽기 전용 감사와 분리하고, 각 worker의 `worker_done`, exact commit, 검증 결과,
 blocker를 확인해 다음 단계로 넘긴다.
