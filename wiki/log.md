@@ -1890,3 +1890,8 @@
 - Live Orca runtime status is ready; Run `run_5c7d64c77a53` still records all four profile smoke Tasks as completed, with no unread coordinator messages.
 - Reconfirmed the tracked remediation scope and clean `git diff --check`; `raw/` remains unchanged and the pre-existing untracked `.codex-remote-attachments/` directory remains untouched.
 - No tests or physical-device checks were rerun during this read-only status audit. The separate Windows compiler-invocation failure and all Samsung/OEM, ESP32-C6, relay/sensor, boot/rollback, OTA-G1..G4, and RELAY-G0..G2 physical gates remain pending and fail-closed.
+
+## [2026-08-08] lint | Reconfirm current GitHub issue inventory
+
+- Queried `ks-house/smart-gatekeeper` through GitHub and confirmed 12 repository issues in total: 1 open and 11 closed; pull requests were excluded from the count.
+- The only open issue is #13, `[EPIC] 추가 자격 하드웨어 없는 모바일 병목 축소 재설계`; this inventory check did not change any GitHub issue state.
