@@ -1949,3 +1949,83 @@
 - Reproduced a follow-up supervised worker-start failure three times across Terra and Luna: Orca returned `input_accepted`, Codex reported interrupted MCP startup, received the task preamble, then exited to PowerShell while the terminal could still look running. The coordinator stopped every failed Dispatch and did not count them as completion.
 - Opened commercial release Epic #48 and scoped issues #49 through #55 for security/admin, Target/OTA, mobile UX, operations, manuals, physical release, and the Orca worker-start blocker. PR #47 remains Draft and unmerged until an independent exact-head review succeeds.
 - Production remains fail-closed; no Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production evidence was produced.
+
+## [2026-08-08] fix | Close independent Orca environment review blockers
+
+- Hardened optional native probes in `.orca/scripts/doctor.ps1`: non-zero `pip check`, `docker info`, and `gh auth status` results are now captured as structured check data even when PowerShell promotes native failures under `ErrorActionPreference=Stop`. An unavailable-Docker mutation test completed all 14 checks, reported Docker as `warn`, kept the missing native/Docker Flutter lane fail-closed, and did not abort.
+- Changed Orca CLI resolution in setup helpers to prefer the ready public `orca` command unless `ORCA_CLI_COMMAND` explicitly selects another runtime; `orca-dev` is now only a public-CLI-absent fallback. The mutation test set a stale `ORCA_DEV_REPO_ROOT` and still reached the public Orca 1.4.176 runtime.
+- Made the native Flutter App validation lane copy tracked and non-ignored app sources to a validated randomized temporary directory before `pub get`, analyze, and tests, matching the existing Docker isolation boundary. A fake native Flutter mutation changed only the disposable copy, left `gatekeeper_app/pubspec.lock` unchanged, and left no temporary validation directory.
+- Replaced fixed worker completion commands across the master guide, Terra/Luna/Antigravity profiles, template, and environment guide with report-only fields. Every worker must use the exact active Dispatch preamble; staged dispatches may require injected `--from` and `--dispatch-capability`, while supervised workers may omit them, so lifecycle flags must never be reconstructed.
+- Normal doctor passed with 12 pass, one Docker-covered native Java 11 warning, and zero failures. Quick validation passed backend 32 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4; PowerShell parsing, `git diff --check`, and `raw/` immutability also passed.
+- The staged independent reviewer identified the blockers but could not deliver formal `worker_done` because its terminal could not reach the Orca runtime; that dispatch is not counted as completed. No Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, or production evidence was produced, so all physical and production Gates remain pending and fail-closed.
+
+## [2026-08-08] fix | Permit sandboxed Orca lifecycle connectivity
+
+- A fresh exact-head reviewer found no source-level blocker in commit `769af413dd06092436e0f32c2f52ed5590e72567`, but its safe `workspace-write` Codex terminal could not reach the local Orca runtime to submit the required `worker_done`; the review Dispatch was recorded as blocked instead of fabricating completion.
+- Updated the safe Codex profile launcher with the official `sandbox_workspace_write.network_access=true` setting. This keeps filesystem access at `workspace-write` while enabling the outbound local-runtime connection required by the injected Orca lifecycle preamble; `-AllowUnsafe` remains an explicit separate mode.
+- Updated the master guide and environment guide to document the filesystem/network boundary. This change does not weaken OTA, secrets, independent review, or physical evidence Gates; Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, and production evidence remain pending and fail-closed.
+
+## [2026-08-09] fix | Remove optional MCP startup race from repository workers
+
+- The first sandbox-network lifecycle probe never reached `PROFILE_READY`: Codex reported `MCP startup interrupted` for optional `codex_apps` and `node_repl`, then exited to PowerShell. The coordinator recorded the Task as blocked and closed only its exact terminal; no completion was inferred.
+- Updated the dedicated Codex repository-worker argv to disable those two optional MCP servers using the official `mcp_servers.<id>.enabled=false` configuration keys. Workers retain shell, GitHub CLI, repository tools, `workspace-write`, and sandbox network access for Orca lifecycle delivery without waiting on unrelated MCP startup.
+- A new minimal lifecycle probe is required before this remedy can be accepted. No physical, operator, or production Gate changed; all Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, and RELAY-G0..G2 evidence remains pending and fail-closed.
+
+## [2026-08-09] fix | Correct optional Codex service disable keys
+
+- The first disable attempt used `mcp_servers.codex_apps.enabled=false`, but `codex_apps` is an Apps feature rather than a configured MCP transport; Codex rejected startup with `invalid transport` before Task dispatch. The exact probe was recorded as blocked and its terminal was closed.
+- Replaced that override with `features.apps=false` while retaining the valid `mcp_servers.node_repl.enabled=false`; `codex ... mcp list` accepted the effective configuration and reported `node_repl` disabled. This correction must still pass a real profile bootstrap and accepted `worker_done` probe before the launcher is considered healthy.
+- No repository product code or physical Gate changed. Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, and production evidence remain pending and fail-closed.
+
+## [2026-08-09] fix | Move profile bootstrap into initial agent prompt
+
+- Even with valid optional-service overrides, a blank Codex TUI exited before processing the later `terminal send` bootstrap. The exact lifecycle probe never reached Task dispatch and was recorded as blocked; repeating the same post-start injection path was stopped.
+- Changed the low-level profile launcher to pass the role bootstrap as the agent CLI's initial positional prompt. The launcher still requires the exact `PROFILE_READY <profile>` marker and a final `tui-idle` before injecting any Task, so startup liveness cannot be mistaken for readiness.
+- Updated the Orca master/environment guides. A bounded real probe must produce an accepted `worker_done` before this path is considered healthy; physical, operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] test | Verify sandboxed Orca lifecycle end to end
+
+- The initial-argv launcher started `gpt-5.6-luna high`, received exact `PROFILE_READY gpt5.6-luna`, reached final `tui-idle`, and then dispatched Task `task_daa86a1b0856` as Dispatch `ctx_c6ca50693310`.
+- The read-only probe sent accepted `worker_done` message `msg_9212c6a7419e` with outcome `succeeded` and no modified files. The coordinator verified the Task state as completed, closed the exact low-level terminal after `worker-release` correctly reported it was not a supervised-worker resource, processed the older heartbeat, and ACKed Delivery `delivery_5a11d0e96a45`; the Run mailbox is now empty.
+- This validates profile bootstrap and lifecycle transport only. It does not create Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, or production evidence; those Gates remain pending and fail-closed.
+
+## [2026-08-09] fix | Bound recovery for unsubmitted Orca Dispatch injection
+
+- The exact-head Terra reviewer completed its source review with no source blocker, but the injected Task initially remained as an unsubmitted `[Pasted Content N chars]` prompt until the coordinator sent Enter. Its later `worker_done` was rejected when that worker's Orca runtime became unreachable, so the Task was recorded as blocked and its exact terminal was closed; review prose was not promoted to accepted lifecycle completion.
+- Added a bounded post-Dispatch check to `launch_profiles.ps1`: for five seconds it sends one Enter only when the terminal tail ends with the exact unsubmitted paste marker. It sends no input when the marker is absent or the agent has already progressed.
+- The first validation probe reproduced a separate intermittent startup exit before Task dispatch. The launcher now closes only that exact terminal and retries startup once in a new terminal; a second exit fails closed instead of looping or inferring readiness.
+- Updated the Orca master and development-environment guides. A new isolated lifecycle probe and fresh exact-head review are still required before PR #47 integration; no Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, or production Gate changed.
+
+## [2026-08-09] test | Verify bounded profile startup and Dispatch lifecycle
+
+- The first Luna probe terminal exited to PowerShell before Task dispatch and was closed exactly; the Task had no Dispatch context and remained ready. After the bounded-startup retry change, the next launch reached `PROFILE_READY gpt5.6-luna`, final `tui-idle`, and dispatched Task `task_da730e2c9761` without coordinator input.
+- Dispatch `ctx_7f8be9e06621` completed with accepted `worker_done` message `msg_d6d6f8912325`, outcome `succeeded`, and no probe file modifications. The exact low-level terminal was closed after `worker-release` correctly reported it was not a supervised-worker resource, Delivery `delivery_104d4f2e1616` was ACKed, and the coordinator inbox is empty.
+- PowerShell parsing, `git diff --check`, and Quick validation passed: doctor 12 pass/1 Docker-covered native Java warning/0 fail, backend 32 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4. This is lifecycle and host/software evidence only; all physical, operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] fix | Bind Orca recovery actions to current terminal state
+
+- Independent exact-head review of `d1e15b958f4014b551d428912403de0b99f65603` found three lifecycle blockers: a historical PowerShell prompt could trigger a false startup-exit match, an old paste marker could authorize Enter without current-Dispatch provenance, and the second failed startup terminal was not closed before the launcher threw.
+- Startup exit detection now requires the current terminal tail to end at a PowerShell prompt, and both failed attempts close only their exact terminal. Dispatch recovery captures `latestCursor` immediately before `dispatch --inject` and reads only output after that cursor before deciding whether the exact terminal-end paste marker permits one Enter.
+- The reviewer preserved tracked state and found the exact-SHA trusted workflow successful, but its required `worker_done` could not be accepted after its sandboxed Orca runtime became unreachable; the Task was recorded as blocked and the exact terminal was closed. Fresh mutation tests, lifecycle proof, and exact-head review remain required; physical, operator, and production Gates remain pending and fail-closed.
+- A subsequent Luna probe emitted the exact marker followed immediately by Orca's `•Running Stop hook` renderer decoration; the previous whitespace-only boundary missed it and timed out despite a valid response. Marker matching now accepts only whitespace, end-of-text, or that renderer bullet after the exact profile name, so the comma-delimited marker inside the bootstrap instruction remains non-authoritative; bootstrap timeout/final-idle failure closes the exact terminal before failing.
+- After bootstrap and cursor-bound Dispatch succeeded, multiple workspace-write workers still reported Orca `runtime_unavailable` while the coordinator runtime remained ready. The official Codex configuration documents `windows.sandbox_private_desktop=false` as the compatibility path for the older default Windows desktop; the safe launcher now applies it alongside workspace-write and sandbox network access so local Orca lifecycle commands can reach the desktop/runtime without granting full filesystem access.
+
+## [2026-08-09] test | Verify Windows sandbox Orca lifecycle compatibility
+
+- Early probe attempts exercised fail-closed cleanup: two consecutive pre-bootstrap Codex exits closed both exact terminals, and a valid marker decorated as `PROFILE_READY gpt5.6-luna•Running` was recognized only after replacing the non-ASCII source literal with the Windows PowerShell-safe regex escape `\u2022`. No Task was dispatched by failed bootstrap attempts.
+- With `windows.sandbox_private_desktop=false`, the successful bounded launch reached profile readiness and dispatched Task `task_ce74716d0c3a` as `ctx_dc6f5bf896bb` without coordinator input. The worker delivered accepted `worker_done` message `msg_7f07390548be`, outcome `succeeded`, and no probe file modifications.
+- The coordinator processed one older blocked-review heartbeat, verified the exact Dispatch completed, closed the low-level terminal after expected `worker-release` `dispatch_not_found`, ACKed Delivery `delivery_6780cc81a750`, and confirmed an empty inbox. This validates safe Windows lifecycle connectivity only; all physical, operator, and production Gates remain pending and fail-closed.
+
+## [2026-08-09] fix | Close every failed Orca startup terminal
+
+- Independent exact-head review of `030b83509ca716d28dc0cf34e76b9f4e9963301f` mutation-tested three bounded `tui-idle` timeouts and observed zero terminal-close calls: startup wait and snapshot failures occurred before the existing cleanup handler. The other focused marker, cursor, current-tail, exact-SHA policy, and tracked-state checks passed.
+- Refactored each startup attempt so all post-create checks share one failure path. A `tui-idle` failure, startup snapshot failure, or current terminal-end PowerShell prompt now records the original error, closes the exact created terminal, retries only the first attempt, and closes the second exact terminal before failing closed.
+- The reviewer could not deliver accepted `worker_done` after its sandboxed Orca runtime again became unreachable, so its Task was recorded as blocked and the coordinator closed its exact terminal. A fresh injected timeout mutation, real lifecycle probe, and exact-head review remain required; physical, operator, and production Gates remain pending and fail-closed.
+- The coordinator reran the exact injected-timeout mutation against the remediation: two created mock terminal handles each exhausted three bounded wait windows, both exact handles received one close call, and the launcher failed after the second cleanup with the original timeout preserved. Real lifecycle and fresh exact-head review evidence are still required.
+
+## [2026-08-09] test | Integrate Orca environment and dispatch commercial release work
+
+- Independently reviewed PR #47 without self-approval, merged it as `b246aff9698ccbcbcd864f99aab63654cce2cc78`, and verified GitHub Actions run `31268170523` reached terminal success. The production deployment job remained skipped and no physical or production acceptance was inferred.
+- Re-ran `.orca/scripts/validate.ps1 -Suite Quick` after merge: doctor reported 12 pass, one Docker-covered native Java warning, and zero failures; backend 32 tests with one opt-in MariaDB skip, Compose, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4 passed.
+- Dispatched isolated implementation work for issues #49, #50, #51, #53, #54, and #55 from exact integrated `origin/main`; issue #52 remains dependency-blocked until the three P0 product branches are accepted and integrated. The #54 scope is preparation-only and cannot close any hardware, operator, canary, or production Gate.
+- Retargeted draft PR #56 to current `main` and preserved both append-only log histories while resolving its only merge conflict. Independent exact-head review and terminal CI are still required before it may be merged.

@@ -17,10 +17,31 @@ function Get-OrcaExecutable {
     if (-not [string]::IsNullOrWhiteSpace($env:ORCA_CLI_COMMAND)) {
         return $env:ORCA_CLI_COMMAND
     }
-    if (-not [string]::IsNullOrWhiteSpace($env:ORCA_DEV_REPO_ROOT)) {
+    if ($null -ne (Get-Command orca -ErrorAction SilentlyContinue)) {
+        return 'orca'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:ORCA_DEV_REPO_ROOT) -and
+        $null -ne (Get-Command orca-dev -ErrorAction SilentlyContinue)) {
         return 'orca-dev'
     }
     return 'orca'
+}
+
+function Test-NativeCommand {
+    param([Parameter(Mandatory=$true)][scriptblock]$Action)
+
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+        # PowerShell 7 can promote a native non-zero exit to NativeCommandError
+        # when ErrorActionPreference is Stop. Optional probes must remain data.
+        $ErrorActionPreference = 'Continue'
+        & $Action *> $null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $previousErrorPreference
+    }
 }
 
 $checks = @()
@@ -71,8 +92,7 @@ if ($null -eq $orcaCommand) {
 
 $venvPython = Join-Path $projectRoot '.venv\Scripts\python.exe'
 if (Test-Path -LiteralPath $venvPython) {
-    & $venvPython -m pip check *> $null
-    if ($LASTEXITCODE -eq 0) {
+    if (Test-NativeCommand { & $venvPython -m pip check }) {
         Add-Check -Name 'python-venv' -Status pass -Detail '.venv exists and pip check passed.' -Required $true
     } else {
         Add-Check -Name 'python-venv' -Status fail -Detail '.venv exists but pip check failed.' -Required $true
@@ -91,8 +111,7 @@ if (Test-Path -LiteralPath $secretsPath) {
 $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
 $dockerReady = $false
 if ($null -ne $dockerCommand) {
-    & docker info --format '{{.ServerVersion}}' *> $null
-    $dockerReady = ($LASTEXITCODE -eq 0)
+    $dockerReady = Test-NativeCommand { & docker info --format '{{.ServerVersion}}' }
 }
 if ($dockerReady) {
     Add-Check -Name 'docker' -Status pass -Detail 'Docker daemon is available for backend and Flutter fallback.'
@@ -145,8 +164,7 @@ foreach ($optionalCommand in @('adb', 'gh', 'wsl')) {
 if ([string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
     Add-Check -Name 'github-token' -Status warn -Detail 'GITHUB_TOKEN is not present; publishing is unavailable.'
 } else {
-    & gh auth status *> $null
-    if ($LASTEXITCODE -eq 0) {
+    if (Test-NativeCommand { & gh auth status }) {
         Add-Check -Name 'github-token' -Status pass -Detail 'GITHUB_TOKEN is present and gh authentication succeeded.'
     } else {
         Add-Check -Name 'github-token' -Status warn -Detail 'GITHUB_TOKEN is present but gh authentication failed.'

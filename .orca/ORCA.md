@@ -1,6 +1,6 @@
 # .orca/ORCA.md — Orca Multi-Agent Orchestration Master Guide
 > **Smart Gatekeeper Orca Multi-Agent Architecture & Profile System**
-> **Last updated**: 2026-08-08
+> **Last updated**: 2026-08-09
 
 ---
 
@@ -21,9 +21,15 @@
 | **`gpt5.6-luna`** | **Luna** | `codex --model gpt-5.6-luna -c model_reasoning_effort="high" ...` | Android Native (Kotlin/WorkManager/BLE Wake) & Flutter Thin UI & QA/E2E Fault Injection | `gpt-5.6-luna` (Effort: `high`) | [gpt5.6-luna.md](profiles/gpt5.6-luna.md) |
 | **`antigravity`** | **Antigravity** | `agy --effort high` | 시니어 풀스택 리드 & 크로스레이어 해결 / 비상 태스크 인수 직행 실행 | 실행 시 `agy`가 선택한 지원 모델 (Effort: `high`) | [antigravity.md](profiles/antigravity.md) |
 
-> 기본 런처는 Codex에 `workspace-write` sandbox를 적용하고 Antigravity의 permission bypass를 사용하지 않습니다. 격리된 워크트리에서 위험을 검토한 작업만 명시적 `-AllowUnsafe`로 무승인 모드를 켭니다. Codex의 `--dangerously-bypass-approvals-and-sandbox`와 `--ask-for-approval`은 함께 사용하지 않습니다.
+> 기본 런처는 Codex에 `workspace-write` sandbox, `sandbox_workspace_write.network_access=true`, `windows.sandbox_private_desktop=false`를 적용합니다. 파일 쓰기는 작업공간으로 제한하면서 Windows worker command가 Orca desktop/runtime과 호환되는 기본 desktop 경계에서 lifecycle 명령을 전달하게 합니다. 전용 repository worker는 시작 경쟁을 제거하기 위해 선택적 Apps 기능과 `node_repl` MCP를 비활성화하며 GitHub 작업은 `GITHUB_TOKEN` 기반 CLI를 사용합니다. Antigravity의 permission bypass는 사용하지 않으며, 격리된 워크트리에서 위험을 검토한 작업만 명시적 `-AllowUnsafe`로 무승인 모드를 켭니다. Codex의 `--dangerously-bypass-approvals-and-sandbox`와 `--ask-for-approval`은 함께 사용하지 않습니다.
 
-> `codex --profile`은 `$CODEX_HOME/<name>.config.toml` 계층만 로드하며 Markdown 역할 파일을 받지 않습니다. Codex의 추론 강도는 `--effort`가 아니라 `-c model_reasoning_effort="high"`로 지정합니다. `agy`는 `--effort high`를 지원하지만 Markdown용 `--profile` 옵션은 지원하지 않습니다. 따라서 런처는 지원되는 CLI argv로 TUI를 만든 뒤 `terminal send`로 역할 문서를 읽게 하고, `tui-idle`을 다시 확인한 후 Task를 주입합니다.
+> `codex --profile`은 `$CODEX_HOME/<name>.config.toml` 계층만 로드하며 Markdown 역할 파일을 받지 않습니다. Codex의 추론 강도는 `--effort`가 아니라 `-c model_reasoning_effort="high"`로 지정합니다. `agy`는 `--effort high`를 지원하지만 Markdown용 `--profile` 옵션은 지원하지 않습니다. 따라서 런처는 역할 문서 bootstrap을 CLI의 최초 argv prompt로 전달하고, `PROFILE_READY`와 최종 `tui-idle`을 확인한 후 Task를 주입합니다.
+
+> 일부 TUI에서는 `dispatch --inject` 성공 뒤 입력란 끝에 정확히 `[Pasted Content N chars]`만 남고 제출되지 않을 수 있습니다. 런처는 Dispatch 직전 terminal cursor를 캡처하고 그 cursor 이후 출력만 5초 동안 확인합니다. 새 출력 끝에 미제출 표식이 있는 경우에만 Enter를 한 번 보내며, 과거 표식·표식 부재·이미 진행된 작업에는 입력을 보내지 않습니다.
+
+> 각 Codex startup attempt는 생성 직후부터 단일 cleanup 경계로 관리됩니다. `tui-idle` timeout/error, startup snapshot error, 또는 마지막 비공백 줄이 현재 PowerShell prompt인 조기 종료가 발생하면 그 정확한 터미널을 닫습니다. 첫 실패만 새 터미널에서 한 번 재시도하고, 두 번째 실패도 터미널을 닫은 뒤 차단합니다.
+
+> `PROFILE_READY` 판정은 bootstrap 지시문 속 예시를 승인하지 않으며, assistant 응답 뒤 Orca 렌더러가 공백 없이 붙이는 `•Running` 경계는 허용합니다. marker timeout 또는 final-idle 실패 시에는 Task를 Dispatch하지 않고 정확한 bootstrap 터미널을 닫습니다.
 
 
 
@@ -56,13 +62,7 @@ graph TD
 1. **작업 전 지침 이수**: `AGENTS.md`, `wiki/index.md`, 최신 `wiki/log.md`, 관련 wiki 문서 필독
 2. **코드 변경 및 검증**: 담당 파트 수정 후 관련 unit test / build 실행 (Host C++, Python, Flutter, PlatformIO)
 3. **지식베이스 동기화**: `wiki/` 문서 업데이트 및 `wiki/log.md` Append-only 기록
-4. **`worker_done` 송신**: 문서의 고정 명령을 복사하지 말고 현재 Dispatch가 주입한 정확한 Task/Dispatch ID를 사용합니다. 현재 CLI는 워커 identity와 capability를 자동으로 결합하므로 `--from`이나 `--dispatch-capability`를 추가하지 않습니다.
-   ```bash
-   orca orchestration send \
-     --type worker_done --subject "<작업 완료 제목>" \
-     --body "<무엇을 했는지, 무엇을 확인했는지, 무엇이 남았는지 3문장>" --task-id <task_id> --dispatch-id <dispatch_id> \
-     --outcome succeeded --files-modified "<수정 파일 목록>" --json
-   ```
+4. **`worker_done` 송신**: 활성 Dispatch가 주입한 lifecycle preamble의 명령 전체가 유일한 권위입니다. 저수준 staged Dispatch는 pane identity를 대신해 `--from`과 `--dispatch-capability`를 주입할 수 있고, supervised worker는 이를 생략할 수 있으므로 문서 예시나 과거 명령에서 플래그를 추가·삭제·재구성하지 않습니다. 주입된 명령의 placeholder만 실제 3문장 요약(무엇을 했는지, 무엇을 확인했는지, 무엇이 남았는지)과 정확한 결과 값으로 바꿔 exactly one `worker_done`을 보냅니다.
 
 ---
 

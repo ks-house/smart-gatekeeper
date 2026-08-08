@@ -76,19 +76,49 @@ if ($runApp) {
     $flutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
     if ($null -ne $flutterCommand) {
         Invoke-ValidationStep 'Flutter analyze and tests (native)' {
-            Push-Location -LiteralPath (Join-Path $projectRoot 'gatekeeper_app')
+            $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("sgk-app-validation-{0}" -f [guid]::NewGuid().ToString('N'))
+            $resolvedTempParent = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+            $resolvedTemporaryRoot = [System.IO.Path]::GetFullPath($temporaryRoot)
+            if (-not $resolvedTemporaryRoot.StartsWith($resolvedTempParent, [System.StringComparison]::OrdinalIgnoreCase) -or
+                -not ([System.IO.Path]::GetFileName($resolvedTemporaryRoot)).StartsWith('sgk-app-validation-', [System.StringComparison]::Ordinal)) {
+                throw "Refusing unsafe temporary validation path: $resolvedTemporaryRoot"
+            }
+
+            New-Item -ItemType Directory -Path $resolvedTemporaryRoot | Out-Null
             try {
+                # Copy tracked and non-ignored app sources only. Native pub get,
+                # Gradle, analyze, and tests must never mutate the worktree.
+                $appFiles = @(& git -C $projectRoot ls-files --cached --others --exclude-standard -- gatekeeper_app)
+                if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate app source files.' }
+                foreach ($appFile in $appFiles) {
+                    $relativePath = $appFile.Substring('gatekeeper_app/'.Length).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+                    $sourcePath = Join-Path $projectRoot $appFile
+                    $destinationPath = Join-Path $resolvedTemporaryRoot $relativePath
+                    $destinationParent = Split-Path -Parent $destinationPath
+                    if (-not (Test-Path -LiteralPath $destinationParent)) {
+                        New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+                    }
+                    Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
+                }
+
+                Push-Location -LiteralPath $resolvedTemporaryRoot
                 & flutter pub get
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                if ($LASTEXITCODE -ne 0) { throw "flutter pub get exited with code $LASTEXITCODE." }
                 if ($EnforceFormat) {
                     & dart format --output=none --set-exit-if-changed lib test
-                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                    if ($LASTEXITCODE -ne 0) { throw "dart format exited with code $LASTEXITCODE." }
                 }
                 & dart analyze lib test
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                if ($LASTEXITCODE -ne 0) { throw "dart analyze exited with code $LASTEXITCODE." }
                 & flutter test
+                if ($LASTEXITCODE -ne 0) { throw "flutter test exited with code $LASTEXITCODE." }
             } finally {
-                Pop-Location
+                if ((Get-Location).Path -eq $resolvedTemporaryRoot) {
+                    Pop-Location
+                }
+                if (Test-Path -LiteralPath $resolvedTemporaryRoot) {
+                    Remove-Item -LiteralPath $resolvedTemporaryRoot -Recurse -Force
+                }
             }
         }
     } else {
