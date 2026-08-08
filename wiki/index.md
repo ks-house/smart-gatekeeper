@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-09 (Issue #53 manual contract loop at integrated base `c654a18f`, including PR #57 host/software admin controls and pending physical/production gates)
+> Last updated: 2026-08-09 (Issue #53 manuals and Issue #50 Target command/OTA security at integrated main `337fcca`; physical/production gates pending)
 
 ---
 
@@ -56,6 +56,7 @@
 | [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
 | [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
+| [target_command_ota_security.md](target_command_ota_security.md) | #50 verified per-Target MQTTS, signed durable commands, signed inactive-slot OTA, local recovery, and production hardening evidence boundary |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |

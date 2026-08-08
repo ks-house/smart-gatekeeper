@@ -36,7 +36,7 @@ RtcBreadcrumb previousBreadcrumb = {};
 bool previousBreadcrumbIsValid = false;
 
 char targetIdValue[16] = "unknown";
-char bootIdValue[20] = "unknown";
+char bootIdValue[33] = "unknown";
 uint32_t bootCountValue = 0;
 esp_reset_reason_t resetReasonValue = ESP_RST_UNKNOWN;
 char plannedRestartValue[32] = "";
@@ -161,11 +161,12 @@ void DiagnosticsManager::begin() {
   uint64_t mac = ESP.getEfuseMac();
   snprintf(targetIdValue, sizeof(targetIdValue), "%012llx",
            static_cast<unsigned long long>(mac & 0xFFFFFFFFFFFFULL));
-  snprintf(bootIdValue, sizeof(bootIdValue), "%08lx%08lx",
-           static_cast<unsigned long>(esp_random()),
-           static_cast<unsigned long>(mac & 0xFFFFFFFFUL));
-
   bootCountValue = ConfigManager::incrementBootCount();
+  snprintf(bootIdValue, sizeof(bootIdValue), "%08lx%08lx%08lx%08lx",
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()),
+           static_cast<unsigned long>(esp_random()));
   String planned = ConfigManager::consumePlannedRestartReason();
   strlcpy(plannedRestartValue, planned.c_str(),
           sizeof(plannedRestartValue));

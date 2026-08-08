@@ -1,7 +1,7 @@
 // src/MqttManager.cpp
 // =============================================================
-// smart-gatekeeper — MqttManager 구현 (Home Assistant Auto-Discovery 포함)
-// v2.0: gatekeeper/arm Pre-arm 토픽 구독 및 콜백 추가
+// smart-gatekeeper verified MQTTS manager
+// Verified per-Target MQTTS and signed command dispatch.
 // =============================================================
 #include "MqttManager.h"
 #include "config.h"
@@ -10,8 +10,16 @@
 #include "OtaManager.h"
 #include "TargetAclManager.h"
 #include "OfflineEventQueue.h"
+#include "TargetCommandSecurity.h"
+#include "FlatJsonObjectPolicy.h"
 
 #include <cstring>
+#include <ctime>
+#include <sys/time.h>
+
+#include <Preferences.h>
+#include <mbedtls/ecdsa.h>
+#include <mbedtls/ecp.h>
 
 #include <esp_arduino_version.h>
 #include <esp_system.h>
@@ -22,16 +30,129 @@
 
 // main.cpp에서 정의된 외부 함수 참조
 extern bool triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
-extern bool triggerArm();            // MQTT gatekeeper/arm 수신 시 Pre-arm 활성화
+extern bool triggerArm();
 extern void setTxPower(int powerDbm);
 extern void setDistanceThresholdCm(int distanceCm);
 extern void setPreArmDurationMs(uint32_t durationMs);
 
 namespace {
-constexpr const char* kAvailabilityTopic = "smart-gatekeeper/availability";
 uint32_t mqttConnectAttempts = 0;
 uint32_t mqttConnectFailures = 0;
 int mqttLastError = 0;
+bool mqttSecurityReady = false;
+String commandTopic;
+String aclTopic;
+String commandAckTopic;
+String availabilityTopic;
+String statusTopic;
+String eventTopic;
+String canonicalEventTopic;
+String sensorTopic;
+String bootTopic;
+String configStateTopic;
+
+class NvsCommandReplayStorage final : public sgk::CommandReplayStorage {
+ public:
+  bool readLedger(uint8_t slot, sgk::CommandReplayLedger* ledger) override {
+    if (ledger == nullptr || slot > 1) return false;
+    Preferences preferences;
+    if (!preferences.begin("sgk_cmd", true)) return false;
+    const char* key = slot == 0 ? "ledger_a" : "ledger_b";
+    const size_t length = preferences.getBytesLength(key);
+    const size_t read = length == sizeof(*ledger)
+                            ? preferences.getBytes(key, ledger, sizeof(*ledger))
+                            : 0;
+    preferences.end();
+    return read == sizeof(*ledger);
+  }
+
+  bool writeLedger(uint8_t slot,
+                   const sgk::CommandReplayLedger& ledger) override {
+    if (slot > 1) return false;
+    Preferences preferences;
+    if (!preferences.begin("sgk_cmd", false)) return false;
+    const char* key = slot == 0 ? "ledger_a" : "ledger_b";
+    const size_t written = preferences.putBytes(key, &ledger, sizeof(ledger));
+    preferences.end();
+    return written == sizeof(ledger);
+  }
+};
+
+class P256CommandVerifier final : public sgk::CommandSignatureVerifier {
+ public:
+  bool configure(const char* public_key_hex, uint32_t key_id) {
+    configured_ = false;
+    key_id_ = key_id;
+    if (public_key_hex == nullptr || std::strlen(public_key_hex) != 130 ||
+        public_key_hex[0] != '0' || public_key_hex[1] != '4' || key_id == 0) {
+      return false;
+    }
+    for (size_t index = 0; index < key_.size(); ++index) {
+      char pair[3] = {public_key_hex[index * 2],
+                      public_key_hex[index * 2 + 1], '\0'};
+      char* end = nullptr;
+      const unsigned long value = std::strtoul(pair, &end, 16);
+      if (end != pair + 2 || value > 0xff) return false;
+      key_[index] = static_cast<uint8_t>(value);
+    }
+    configured_ = true;
+    return true;
+  }
+
+  bool verify(uint32_t key_id, const std::array<uint8_t, 32>& digest,
+              const std::array<uint8_t, 64>& signature) override {
+    if (!configured_ || key_id != key_id_ ||
+        !sgk::TargetAclManager::isValidR(signature.data()) ||
+        !sgk::TargetAclManager::isLowS(signature.data() + 32)) {
+      return false;
+    }
+    mbedtls_ecp_group group;
+    mbedtls_ecp_point point;
+    mbedtls_mpi r;
+    mbedtls_mpi s;
+    mbedtls_ecp_group_init(&group);
+    mbedtls_ecp_point_init(&point);
+    mbedtls_mpi_init(&r);
+    mbedtls_mpi_init(&s);
+    const bool ok =
+        mbedtls_ecp_group_load(&group, MBEDTLS_ECP_DP_SECP256R1) == 0 &&
+        mbedtls_ecp_point_read_binary(&group, &point, key_.data(), key_.size()) == 0 &&
+        mbedtls_mpi_read_binary(&r, signature.data(), 32) == 0 &&
+        mbedtls_mpi_read_binary(&s, signature.data() + 32, 32) == 0 &&
+        mbedtls_ecdsa_verify(&group, digest.data(), digest.size(), &point, &r,
+                             &s) == 0;
+    mbedtls_ecp_group_free(&group);
+    mbedtls_ecp_point_free(&point);
+    mbedtls_mpi_free(&r);
+    mbedtls_mpi_free(&s);
+    return ok;
+  }
+
+ private:
+  std::array<uint8_t, 65> key_{};
+  uint32_t key_id_ = 0;
+  bool configured_ = false;
+};
+
+NvsCommandReplayStorage commandReplayStorage;
+P256CommandVerifier commandSignatureVerifier;
+sgk::TargetCommandSecurity commandSecurity(&commandReplayStorage,
+                                           &commandSignatureVerifier);
+
+bool parseSignatureHex(const char* value, std::array<uint8_t, 64>* output) {
+  if (value == nullptr || output == nullptr || std::strlen(value) != 128) {
+    return false;
+  }
+  for (size_t index = 0; index < output->size(); ++index) {
+    char pair[3] = {value[index * 2], value[index * 2 + 1], '\0'};
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(pair, &end, 16);
+    if (end != pair + 2 || parsed > 0xff) return false;
+    (*output)[index] = static_cast<uint8_t>(parsed);
+  }
+  return true;
+}
+
 }  // namespace
 
 
@@ -40,19 +161,60 @@ PubSubClient MqttManager::client(wifiClient);
 uint32_t MqttManager::lastPublishMs = 0;
 bool MqttManager::connected = false;
 
+void MqttManager::publishCommandAck(
+    const sgk::SignedCommandEnvelope& envelope, sgk::CommandResult result) {
+    if (!isConnected() || commandAckTopic.isEmpty()) return;
+    StaticJsonDocument<384> document;
+    document["schema_version"] = 1;
+    document["target_id"] = DiagnosticsManager::targetId();
+    document["session_id"] = envelope.session_id;
+    document["nonce"] = envelope.nonce;
+    document["result"] = static_cast<uint8_t>(result);
+    char buffer[384]{};
+    if (serializeJson(document, buffer, sizeof(buffer)) > 0) {
+        client.publish(commandAckTopic.c_str(), buffer, false);
+    }
+}
+
 void MqttManager::init() {
-    wifiClient.setCACert(SECRET_ROOT_CA_CERT); // TLS Root CA 검증 (4883 MQTTS)
+    mqttSecurityReady = false;
+    const String targetId = DiagnosticsManager::targetId();
+    const bool transportProvisioned =
+        std::strlen(MQTT_HOST) > 0 && MQTT_PORT != 1883 &&
+        std::strlen(MQTT_USER) > 0 && std::strlen(MQTT_PASSWORD) > 0 &&
+        std::strlen(SECRET_ROOT_CA_CERT) > 0 && targetId == MQTT_USER;
+    const bool verifierProvisioned = commandSignatureVerifier.configure(
+        COMMAND_SIGNER_PUBLIC_KEY_HEX, COMMAND_SIGNING_KEY_ID);
+    const bool commandProvisioned = commandSecurity.begin(
+        targetId.c_str(), TARGET_TENANT_ID, TARGET_DOOR_ID,
+        DiagnosticsManager::bootId(), COMMAND_SIGNING_KEY_ID);
+    if (!transportProvisioned || !verifierProvisioned || !commandProvisioned) {
+        LOGF("[MQTT-SECURITY] Per-Target TLS/identity/signing provisioning invalid; command plane disabled");
+        return;
+    }
+    const String prefix = "gatekeeper/v1/targets/" + targetId;
+    commandTopic = prefix + "/command";
+    aclTopic = prefix + "/acl";
+    commandAckTopic = prefix + "/command-ack";
+    availabilityTopic = prefix + "/availability";
+    statusTopic = prefix + "/status";
+    eventTopic = prefix + "/event";
+    canonicalEventTopic = prefix + "/canonical-event";
+    sensorTopic = prefix + "/sensor";
+    bootTopic = prefix + "/boot";
+    configStateTopic = prefix + "/config-state";
+    wifiClient.setCACert(SECRET_ROOT_CA_CERT);
     client.setServer(MQTT_HOST, MQTT_PORT);
     client.setBufferSize(8192); // boot diagnostics, HA discovery, and 64-entry Signed ACL payload 수용
     client.setKeepAlive(30);
     client.setSocketTimeout(15); // TLS Handshake 대기 타임아웃 15초로 확장 (rc=-4 방지)
     client.setCallback(callback);
+    mqttSecurityReady = true;
 }
 
 void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     // ─── smart-gatekeeper/target/acl/push — Signed ACL push ───────────────
-    if (strcmp(topic, "smart-gatekeeper/target/acl/push") == 0 ||
-        strncmp(topic, "gatekeeper/acl/v1/", 18) == 0) {
+    if (mqttSecurityReady && strcmp(topic, aclTopic.c_str()) == 0) {
         LOGF("[MQTT-ACL] Signed ACL push 수신 (길이: %u)", length);
         extern sgk::TargetAclManager g_acl_manager;
         sgk::ResultReason res = g_acl_manager.applySignedAcl(
@@ -66,7 +228,8 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
             ackDoc["high_watermark"] = g_acl_manager.highWatermark();
             char ackBuf[256] = {};
             serializeJson(ackDoc, ackBuf, sizeof(ackBuf));
-            client.publish("smart-gatekeeper/target/acl/ack", ackBuf);
+            String ackTopic = aclTopic + "/ack";
+            client.publish(ackTopic.c_str(), ackBuf, false);
         } else {
             LOGF("[MQTT-ACL] ⚠️ Signed ACL 적용 거부 (reason code: %u)",
                  static_cast<unsigned int>(res));
@@ -74,167 +237,156 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         return;
     }
 
-    char message[256];
+    if (!mqttSecurityReady || strcmp(topic, commandTopic.c_str()) != 0) {
+        LOGF("[MQTT-SECURITY] Rejected message outside exact Target namespace");
+        return;
+    }
 
-    if (length >= sizeof(message)) length = sizeof(message) - 1;
+    char message[1536];
+    static constexpr const char* kCommandFields[] = {
+        "action", "boot_id", "door_id", "expires_at", "issued_at",
+        "key_id", "nonce", "schema_version", "session_id", "signature",
+        "target_id", "tenant_id", "value"};
+    if (length == 0 || length >= sizeof(message) ||
+        !sgk::hasExactUniqueFlatJsonFields(
+            payload, length, kCommandFields,
+            sizeof(kCommandFields) / sizeof(kCommandFields[0]))) {
+        LOGF("[MQTT-SECURITY] Non-canonical raw command schema rejected");
+        return;
+    }
     memcpy(message, payload, length);
     message[length] = '\0';
 
-    LOGF("[MQTT] 수신 주제: %s | 메시지: %s", topic, message);
+    StaticJsonDocument<1536> secureDoc;
+    if (deserializeJson(secureDoc, message)) {
+        LOGF("[MQTT-SECURITY] Malformed signed command rejected");
+        return;
+    }
+    if (secureDoc.size() !=
+        sizeof(kCommandFields) / sizeof(kCommandFields[0])) {
+        LOGF("[MQTT-SECURITY] Non-canonical command schema rejected");
+        return;
+    }
+    for (const char* field : kCommandFields) {
+        if (!secureDoc.containsKey(field)) {
+            LOGF("[MQTT-SECURITY] Missing command field rejected");
+            return;
+        }
+    }
+    static constexpr const char* kCommandStringFields[] = {
+        "action", "boot_id", "door_id", "nonce", "session_id",
+        "signature", "target_id", "tenant_id"};
+    for (const char* field : kCommandStringFields) {
+        if (!secureDoc[field].is<const char*>()) {
+            LOGF("[MQTT-SECURITY] Invalid command field type rejected");
+            return;
+        }
+    }
+    if (!secureDoc["schema_version"].is<uint8_t>() ||
+        !secureDoc["issued_at"].is<uint64_t>() ||
+        !secureDoc["expires_at"].is<uint64_t>() ||
+        !secureDoc["key_id"].is<uint32_t>() ||
+        !secureDoc["value"].is<int64_t>()) {
+        LOGF("[MQTT-SECURITY] Invalid numeric command type rejected");
+        return;
+    }
+    sgk::SignedCommandEnvelope envelope{};
+    envelope.schema_version = secureDoc["schema_version"] | 0;
+    std::snprintf(envelope.target_id, sizeof(envelope.target_id), "%s",
+                  secureDoc["target_id"] | "");
+    std::snprintf(envelope.tenant_id, sizeof(envelope.tenant_id), "%s",
+                  secureDoc["tenant_id"] | "");
+    std::snprintf(envelope.door_id, sizeof(envelope.door_id), "%s",
+                  secureDoc["door_id"] | "");
+    std::snprintf(envelope.boot_id, sizeof(envelope.boot_id), "%s",
+                  secureDoc["boot_id"] | "");
+    envelope.action = sgk::TargetCommandSecurity::parseAction(
+        secureDoc["action"] | "");
+    std::snprintf(envelope.session_id, sizeof(envelope.session_id), "%s",
+                  secureDoc["session_id"] | "");
+    std::snprintf(envelope.nonce, sizeof(envelope.nonce), "%s",
+                  secureDoc["nonce"] | "");
+    envelope.issued_at = secureDoc["issued_at"] | 0ULL;
+    envelope.expires_at = secureDoc["expires_at"] | 0ULL;
+    envelope.key_id = secureDoc["key_id"] | 0U;
+    envelope.value = secureDoc["value"] | 0LL;
+    if (!parseSignatureHex(secureDoc["signature"] | "", &envelope.signature)) {
+        publishCommandAck(envelope, sgk::CommandResult::kMalformed);
+        return;
+    }
 
-    // ─── gatekeeper/arm — Pre-arm 사전 승인 처리 (v2.0 핵심 신규) ───────
-    if (strcmp(topic, MQTT_TOPIC_ARM) == 0) {
-        // JSON 페이로드 파싱 시도 ({"action":"arm","user":"홍길동"})
-        StaticJsonDocument<256> armDoc;
-        bool isArmCommand = false;
-
-        if (!deserializeJson(armDoc, message)) {
-            const char* action = armDoc["action"] | "";
-            if (strcmp(action, "arm") == 0) {
-                const char* user = armDoc["user"] | "unknown";
-                LOGF("[MQTT-ARM] ✅ NAS Pre-arm 승인 수신! 사용자: %s → 초음파 활성화 (%lu ms)", user, (unsigned long)PRE_ARM_DURATION_MS);
-                isArmCommand = true;
-            }
+    const time_t systemTime = std::time(nullptr);
+    const bool systemClockTrusted = systemTime >= 1704067200;
+    const uint64_t verificationTime = systemClockTrusted
+        ? static_cast<uint64_t>(systemTime)
+        : 0;
+    const sgk::CommandResult authorization = commandSecurity.authorize(
+        envelope, verificationTime, systemClockTrusted);
+    if (authorization != sgk::CommandResult::kAccepted) {
+        publishCommandAck(envelope, authorization);
+        return;
+    }
+    bool effectCompleted = true;
+    switch (envelope.action) {
+      case sgk::CommandAction::kArm:
+        effectCompleted = triggerArm();
+        break;
+      case sgk::CommandAction::kManualRemote:
+        effectCompleted = triggerManualDoorOpen();
+        break;
+      case sgk::CommandAction::kSetTxPower:
+        if (envelope.value < -6 || envelope.value > 9) effectCompleted = false;
+        else setTxPower(static_cast<int>(envelope.value));
+        break;
+      case sgk::CommandAction::kSetDistanceThreshold:
+        if (envelope.value < 20 || envelope.value > 200) effectCompleted = false;
+        else setDistanceThresholdCm(static_cast<int>(envelope.value));
+        break;
+      case sgk::CommandAction::kSetDuration:
+        if (envelope.value < 1000 || envelope.value > 60000) effectCompleted = false;
+        else setPreArmDurationMs(static_cast<uint32_t>(envelope.value));
+        break;
+      case sgk::CommandAction::kSetRelayCooldown: {
+        if (envelope.value < 1000 || envelope.value > 10000) {
+          effectCompleted = false;
         } else {
-            // JSON 파싱 실패 시 단순 문자열 "arm" fallback 처리
-            if (strcasecmp(message, "arm") == 0) {
-                LOGF("[MQTT-ARM] ✅ Pre-arm 수신 (단순 문자열 'arm') → 초음파 활성화");
-                isArmCommand = true;
-            }
+          extern void setRelayCooldownMs(uint32_t cooldownMs);
+          setRelayCooldownMs(static_cast<uint32_t>(envelope.value));
         }
-
-        if (isArmCommand) {
-            DiagnosticsManager::noteAction("mqtt_arm");
-            if (triggerArm()) {
-                publishEvent("pre_armed", "Ultrasonic sensor activated via MQTT Pre-arm");
-            } else {
-                publishEvent("arm_rejected", "Target is not IDLE");
-            }
-        } else {
-            LOGF("[MQTT-ARM] ⚠️ arm 토픽 수신되었으나 페이로드 형식 불일치: %s", message);
-        }
+        break;
+      }
+      case sgk::CommandAction::kOtaCheck:
+        OtaManager::checkAndUpdate(true);
+        break;
+      case sgk::CommandAction::kReboot:
+        DiagnosticsManager::markPlannedRestart("signed_mqtt_reboot");
+        break;
+      default:
+        effectCompleted = false;
+        break;
+    }
+    if (!commandSecurity.markCompleted(envelope)) {
+        publishCommandAck(envelope,
+                          sgk::CommandResult::kReplayStorageFailure);
         return;
     }
-
-    // ─── gatekeeper/force_open — 수동 원격 강제 개방 처리 (v2.0) ─────────
-    if (strcmp(topic, "gatekeeper/force_open") == 0) {
-        LOGF("[MQTT-FORCE] ✅ 수동 원격 문 열기 수신 → 릴레이 개방 (딸깍!)");
-        DiagnosticsManager::noteAction("mqtt_force_open");
-        if (triggerManualDoorOpen()) {
-            publishEvent("force_opened", "Gate opened via MQTT force_open");
-        } else {
-            publishEvent("force_open_rejected", "Target is not IDLE");
-        }
-        return;
+    publishCommandAck(
+        envelope, effectCompleted ? sgk::CommandResult::kAccepted
+                                  : sgk::CommandResult::kEffectRejected);
+    if (envelope.action == sgk::CommandAction::kReboot) {
+        delay(100);
+        ESP.restart();
     }
-
-    // ─── gatekeeper/config/tx_power — BLE 발신 출력 동적 튜닝 ───────────────
-    if (strcmp(topic, MQTT_TOPIC_CONFIG_TX_POWER) == 0) {
-        DiagnosticsManager::noteAction("config_tx_power");
-        int val = atoi(message);
-        LOGF("[MQTT-CONFIG] ⚙️ Tx Power 설정 수신: %d dBm", val);
-        setTxPower(val);
-        publishEvent("config_tx_power", String(val).c_str());
-        return;
+    if (!effectCompleted) {
+        publishEvent("signed_command_effect_rejected",
+                     sgk::TargetCommandSecurity::actionName(envelope.action));
     }
-
-    // ─── gatekeeper/config/distance_threshold — 초음파 감지 기준 거리 동적 튜닝 ───
-    if (strcmp(topic, MQTT_TOPIC_CONFIG_DISTANCE_THRESH) == 0 || strcmp(topic, MQTT_TOPIC_CONFIG_TOF_DIST) == 0) {
-        DiagnosticsManager::noteAction("config_distance");
-        int val = atoi(message);
-        LOGF("[MQTT-CONFIG] ⚙️ 초음파 감지 기준 거리 설정 수신: %d cm", val);
-        setDistanceThresholdCm(val);
-        publishEvent("config_distance_threshold", String(val).c_str());
-        return;
-    }
-
-    // ─── gatekeeper/config/duration — Pre-arm 유효 시간 동적 튜닝 ─────────────
-    if (strcmp(topic, MQTT_TOPIC_CONFIG_DURATION) == 0) {
-        DiagnosticsManager::noteAction("config_duration");
-        int val = atoi(message);
-        LOGF("[MQTT-CONFIG] ⚙️ Pre-arm 유효 시간 설정 수신: %d", val);
-        uint32_t ms = (val < 1000) ? (uint32_t)(val * 1000) : (uint32_t)val;
-        setPreArmDurationMs(ms);
-        publishEvent("config_duration", String(ms).c_str());
-        return;
-    }
-
-    // ─── gatekeeper/config/relay_cooldown — Target 릴레이 쿨다운 동적 튜닝 ─────────
-    if (strcmp(topic, "gatekeeper/config/relay_cooldown") == 0) {
-        DiagnosticsManager::noteAction("config_relay_cool");
-        int val = atoi(message);
-        LOGF("[MQTT-CONFIG] ⚙️ Target 릴레이 쿨다운 설정 수신: %d", val);
-        uint32_t ms = (val < 100) ? (uint32_t)(val * 1000) : (uint32_t)val;
-        extern void setRelayCooldownMs(uint32_t cooldownMs);
-        setRelayCooldownMs(ms);
-        publishEvent("config_relay_cooldown", String(ms).c_str());
-        return;
-    }
-
-    // ─── gatekeeper/config/set — 일괄 JSON 설정 수신 ───────────────────────
-    if (strcmp(topic, "gatekeeper/config/set") == 0) {
-        DiagnosticsManager::noteAction("config_set");
-        StaticJsonDocument<256> setDoc;
-        if (!deserializeJson(setDoc, message)) {
-            LOGF("[MQTT-CONFIG] ⚙️ 일괄 JSON 튜닝 설정 수신: %s", message);
-            extern void setRelayCooldownMs(uint32_t cooldownMs);
-            if (setDoc.containsKey("tx_power")) setTxPower(setDoc["tx_power"].as<int>());
-            if (setDoc.containsKey("distance_threshold")) setDistanceThresholdCm(setDoc["distance_threshold"].as<int>());
-            else if (setDoc.containsKey("target_distance")) setDistanceThresholdCm(setDoc["target_distance"].as<int>());
-            else if (setDoc.containsKey("tof_distance")) setDistanceThresholdCm(setDoc["tof_distance"].as<int>());
-            if (setDoc.containsKey("duration")) setPreArmDurationMs(setDoc["duration"].as<uint32_t>());
-            if (setDoc.containsKey("relay_cooldown")) setRelayCooldownMs(setDoc["relay_cooldown"].as<uint32_t>());
-        }
-        return;
-    }
-
-    // ─── gatekeeper/config/get — 설정 상태 요청 수신 ───────────────────────
-    if (strcmp(topic, "gatekeeper/config/get") == 0) {
-        DiagnosticsManager::noteAction("config_get");
-        LOGF("[MQTT-CONFIG] ⚙️ 설정 상태 요청(get) 수신 → 쿼리 응답 전송");
-        extern int g_tx_power_dbm;
-        extern uint16_t g_distance_threshold_cm;
-        extern uint32_t g_pre_arm_duration_ms;
-        extern uint32_t g_relay_cooldown_ms;
-        publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, g_relay_cooldown_ms);
-        return;
-    }
-
-
-    // ─── smart-gatekeeper/cmd — 원격 명령 처리 ──────────────────────────
-    StaticJsonDocument<256> doc;
-    if (deserializeJson(doc, message)) {
-        LOGF("[MQTT-ERROR] JSON 파싱 에러");
-        return;
-    }
-
-    if (String(topic).endsWith("/cmd")) {
-        const char* cmd = doc["command"] | "";
-        if (strcmp(cmd, "open_gate") == 0 || strcmp(cmd, "force_open") == 0) {
-            LOGF("[MQTT-CMD] 원격 출입문 개방 명령 수신!");
-            DiagnosticsManager::noteAction("mqtt_cmd_open");
-            if (triggerManualDoorOpen()) {
-                publishEvent("force_opened", "Gate opened via command topic");
-            } else {
-                publishEvent("force_open_rejected", "Target is not IDLE");
-            }
-        } else if (strcmp(cmd, "ota_update") == 0 || strcmp(cmd, "trigger_ota") == 0) {
-            LOGF("[MQTT-CMD] 원격 OTA 업데이트 명령 수신!");
-            DiagnosticsManager::noteAction("mqtt_cmd_ota");
-            OtaManager::checkAndUpdate(true);
-        } else if (strcmp(cmd, "reboot") == 0) {
-            LOGF("[MQTT-CMD] 원격 재부팅 명령 수신!");
-            DiagnosticsManager::markPlannedRestart("mqtt_reboot");
-            publishEvent("planned_restart", "mqtt_reboot");
-            delay(100);
-            ESP.restart();
-        }
-    }
+    return;
 
 }
 
 void MqttManager::update() {
-    if (!WifiManager::isConnected()) return;
+    if (!mqttSecurityReady || !WifiManager::isConnected()) return;
 
     if (!client.connected()) {
         uint32_t now = millis();
@@ -244,10 +396,6 @@ void MqttManager::update() {
                 "smart-gatekeeper-" + String(DiagnosticsManager::targetId());
             
             static int failCount = 0;
-            if (failCount >= 3) {
-                LOGF("[MQTT-WARN] ⚠️ TLS 인증서 검증 3회 연속 실패! 보안 무시 모드(setInsecure)로 Fallback 합니다.");
-                wifiClient.setInsecure(); // 인증서 만료 및 NTP 오류 무시하고 무조건 암호화 채널 강제 성립
-            }
 
             LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
 
@@ -260,7 +408,8 @@ void MqttManager::update() {
             mqttConnectAttempts++;
 
             if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD,
-                               kAvailabilityTopic, 1, true, willPayload)) {
+                               availabilityTopic.c_str(), 1, false,
+                               willPayload)) {
                 LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 failCount = 0; // 성공 시 카운트 초기화
                 mqttLastError = 0;
@@ -274,26 +423,21 @@ void MqttManager::update() {
                          DiagnosticsManager::bootId(),
                          static_cast<unsigned long>(
                              DiagnosticsManager::bootCount()));
-                client.publish(kAvailabilityTopic, onlinePayload, true);
+                client.publish(availabilityTopic.c_str(), onlinePayload, false);
 
-                // v2.0 핵심: gatekeeper/arm, gatekeeper/force_open 및 설정 튜닝 토픽 구독
-                client.subscribe(MQTT_TOPIC_ARM);
-                client.subscribe("gatekeeper/force_open");
-                client.subscribe("smart-gatekeeper/cmd");
-                client.subscribe("smart-gatekeeper/target/acl/push");
-                client.subscribe("gatekeeper/acl/v1/#");
-                client.subscribe(MQTT_TOPIC_CONFIG_TX_POWER);
-                client.subscribe(MQTT_TOPIC_CONFIG_DISTANCE_THRESH);
-                client.subscribe(MQTT_TOPIC_CONFIG_TOF_DIST);
-                client.subscribe(MQTT_TOPIC_CONFIG_DURATION);
-                client.subscribe("gatekeeper/config/relay_cooldown");
-                client.subscribe("gatekeeper/config/set");
-                client.subscribe("gatekeeper/config/get");
-                LOGF("[MQTT] 토픽 구독 완료: %s, gatekeeper/force_open, gatekeeper/config/#", MQTT_TOPIC_ARM);
+                const bool commandSubscribed =
+                    client.subscribe(commandTopic.c_str(), 1);
+                const bool aclSubscribed = client.subscribe(aclTopic.c_str(), 1);
+                if (!commandSubscribed || !aclSubscribed) {
+                    LOGF("[MQTT-SECURITY] Exact Target subscriptions failed");
+                    client.disconnect();
+                    wifiClient.stop();
+                    return;
+                }
+                LOGF("[MQTT-SECURITY] Exact per-Target topics subscribed");
 
                 publishBootDiagnostics();
                 publishEvent("connected", "ESP32-C6 v2.1 Online (SSL) — AJ-SR04T Ultrasonic Sensor");
-                publishAutoDiscovery();
 
                 extern int g_tx_power_dbm;
                 extern uint16_t g_distance_threshold_cm;
@@ -378,7 +522,7 @@ void MqttManager::update() {
                 if (bytes_needed > 0 && bytes_needed < sizeof(buf)) {
                     size_t written = serializeJson(doc, buf, sizeof(buf));
                     if (written > 0) {
-                        pub_ok = client.publish("smart-gatekeeper/event", buf);
+                        pub_ok = client.publish(eventTopic.c_str(), buf, false);
                     }
                 }
             }
@@ -449,7 +593,7 @@ void MqttManager::publishBootDiagnostics() {
     char buffer[1536];
     size_t length = serializeJson(doc, buffer, sizeof(buffer));
     bool ok = length > 0 &&
-              client.publish("smart-gatekeeper/boot", buffer, true);
+              client.publish(bootTopic.c_str(), buffer, false);
     LOGF("[MQTT-DIAG] retained boot diagnostics publish: %s (%u bytes)",
          ok ? "OK" : "FAIL", static_cast<unsigned int>(length));
 }
@@ -467,295 +611,12 @@ void MqttManager::publishConfigState(int txPower, int distanceThresholdCm, uint3
 
     char buffer[256];
     serializeJson(doc, buffer);
-    client.publish("gatekeeper/config/state", buffer, true); // Retained = true
+    client.publish(configStateTopic.c_str(), buffer, false);
     LOGF("[MQTT-CONFIG] 📡 Retained Config State 발행 완료: %s", buffer);
 }
 
 
 
-
-void MqttManager::publishAutoDiscovery() {
-    if (!isConnected()) return;
-
-    LOGF("[MQTT-HA] Home Assistant MQTT Auto-Discovery 엔티티 설정 발행 중...");
-
-    String deviceId = "smart_gatekeeper_01";
-
-    auto createDiscoveryDoc = [&](const char* name, const char* objectId) -> StaticJsonDocument<512> {
-        StaticJsonDocument<512> doc;
-        doc["name"] = name;
-        doc["unique_id"] = deviceId + "_" + objectId;
-
-        JsonObject device = doc.createNestedObject("device");
-        JsonArray ids = device.createNestedArray("identifiers");
-        ids.add(deviceId);
-        device["name"] = "Smart Gatekeeper";
-        device["model"] = "ESP32-C6 Door Controller v2.1";
-        device["manufacturer"] = "KS-House";
-        device["sw_version"] = FIRMWARE_VERSION;
-
-        return doc;
-    };
-
-    auto pubConfig = [&](const char* component, const char* objectId, StaticJsonDocument<512>& doc) {
-        if (!isConnected()) return;
-        char topic[128];
-        snprintf(topic, sizeof(topic), "homeassistant/%s/%s/%s/config", component, deviceId.c_str(), objectId);
-        
-        char payload[512];
-        serializeJson(doc, payload, sizeof(payload));
-        
-        bool ok = client.publish(topic, payload, true); // Retain flag true
-        LOGF("[MQTT-HA] Auto-Discovery [%s] %s -> %s", component, objectId, ok ? "성공(OK)" : "실패(FAIL)");
-
-        // ESP32-C6 TLS 소켓 버퍼 폭발 방지를 위한 딜레이
-        vTaskDelay(pdMS_TO_TICKS(50)); 
-    };
-
-    // ─── 1. Buttons (원격 개방, OTA, 재부팅) ───────────────────────
-    struct ButtonDef { const char* id; const char* name; const char* cmd; const char* icon; };
-    ButtonDef buttons[] = {
-        {"open_gate", "[Gatekeeper] 출입문 원격 개방", "{\"command\": \"open_gate\"}", "mdi:door-open"},
-        {"trigger_ota", "[Gatekeeper] 펌웨어 무선 업데이트 (OTA)", "{\"command\": \"ota_update\"}", "mdi:cloud-download"},
-        {"reboot", "[Gatekeeper] 장치 재부팅", "{\"command\": \"reboot\"}", "mdi:restart"}
-    };
-
-    for (const auto& b : buttons) {
-        StaticJsonDocument<512> doc = createDiscoveryDoc(b.name, b.id);
-        doc["command_topic"] = "smart-gatekeeper/cmd";
-        doc["payload_press"] = b.cmd;
-        doc["icon"]          = b.icon;
-        pubConfig("button", b.id, doc);
-    }
-
-    // ─── 2. Sensors: 실시간 측정 및 진단 센서 ────────────────────────
-    // 2-1. Sensor: ToF/초음파 감지 거리 (mm)
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 초음파 감지 거리 (mm)", "distance");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.distance_mm }}";
-        doc["unit_of_meas"]    = "mm";
-        doc["icon"]            = "mdi:ruler";
-        pubConfig("sensor", "distance", doc);
-    }
-
-    // 2-2. Sensor: ToF/초음파 감지 거리 (cm)
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 초음파 감지 거리 (cm)", "distance_cm");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.distance_cm }}";
-        doc["unit_of_meas"]    = "cm";
-        doc["icon"]            = "mdi:ruler-square";
-        pubConfig("sensor", "distance_cm", doc);
-    }
-
-    // 2-3. Sensor: 동작 상태
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 게이트키퍼 동작 상태", "state");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.state }}";
-        doc["icon"]            = "mdi:state-machine";
-        pubConfig("sensor", "state", doc);
-    }
-
-    // 2-4. Sensor: IP 주소
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] IP 주소", "ip");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.ip }}";
-        doc["icon"]            = "mdi:ip-network";
-        pubConfig("sensor", "ip", doc);
-    }
-
-    // 2-5. Sensor: Pre-arm 잔여 유효 시간
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 잔여 시간", "arm_remaining_s");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.arm_remaining_s }}";
-        doc["unit_of_meas"]    = "s";
-        doc["icon"]            = "mdi:timer-outline";
-        pubConfig("sensor", "arm_remaining_s", doc);
-    }
-
-    // 2-6. Sensor [진단]: Wi-Fi RSSI
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Wi-Fi 신호 강도 (RSSI)", "wifi_rssi");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.wifi_rssi }}";
-        doc["unit_of_meas"]    = "dBm";
-        doc["device_class"]    = "signal_strength";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:wifi";
-        pubConfig("sensor", "wifi_rssi", doc);
-    }
-
-    // 2-7. Sensor [진단]: Free Heap 메모리
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Free Heap 메모리", "free_heap");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.free_heap }}";
-        doc["unit_of_meas"]    = "B";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:memory";
-        pubConfig("sensor", "free_heap", doc);
-    }
-
-    // 2-8. Sensor [진단]: 시스템 업타임
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 시스템 가동 시간", "uptime_s");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.uptime_s }}";
-        doc["unit_of_meas"]    = "s";
-        doc["device_class"]    = "duration";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:clock-outline";
-        pubConfig("sensor", "uptime_s", doc);
-    }
-
-    // 2-9. Sensor [진단]: 펌웨어 버전
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 펌웨어 버전", "firmware");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{{ value_json.firmware }}";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:information-outline";
-        pubConfig("sensor", "firmware", doc);
-    }
-
-    // ─── 3. Binary Sensors ─────────────────────────────────────────
-    // 3-1. Binary Sensor: 도어 개방 상태
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 도어 개방 여부", "door_binary");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{% if value_json.state == 'RELAY_HOLD' %}ON{% else %}OFF{% endif %}";
-        doc["payload_on"]      = "ON";
-        doc["payload_off"]     = "OFF";
-        doc["device_class"]    = "door";
-        pubConfig("binary_sensor", "door_binary", doc);
-    }
-
-    // 3-2. Binary Sensor: Pre-arm 활성화 여부
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 활성화 상태", "pre_armed");
-        doc["state_topic"]     = "smart-gatekeeper/status";
-        doc["value_template"]  = "{% if value_json.is_armed %}ON{% else %}OFF{% endif %}";
-        doc["payload_on"]      = "ON";
-        doc["payload_off"]     = "OFF";
-        doc["device_class"]    = "lock";
-        doc["icon"]            = "mdi:shield-check";
-        pubConfig("binary_sensor", "pre_armed", doc);
-    }
-
-    // ─── 4. Numbers: 동적 설정값 제어 엔티티 (HA 대시보드 조작) ─────────────
-    // 4-1. Number: BLE Tx Power (-6 ~ 9 dBm)
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] BLE Tx Power 설정", "config_tx_power_num");
-        doc["command_topic"]   = MQTT_TOPIC_CONFIG_TX_POWER;
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ value_json.tx_power }}";
-        doc["min"]             = -6;
-        doc["max"]             = 9;
-        doc["step"]            = 3;
-        doc["unit_of_meas"]    = "dBm";
-        doc["icon"]            = "mdi:bluetooth";
-        pubConfig("number", "config_tx_power_num", doc);
-    }
-
-    // 4-2. Number: 초음파 감지 기준 거리 (20 ~ 200 cm)
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 초음파 감지 기준 거리", "config_dist_thresh_num");
-        doc["command_topic"]   = MQTT_TOPIC_CONFIG_DISTANCE_THRESH;
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ value_json.distance_threshold_cm }}";
-        doc["min"]             = 20;
-        doc["max"]             = 200;
-        doc["step"]            = 1;
-        doc["unit_of_meas"]    = "cm";
-        doc["icon"]            = "mdi:ruler-square";
-        pubConfig("number", "config_dist_thresh_num", doc);
-    }
-
-    // 4-3. Number: Pre-arm 유효 시간 (5 ~ 300 초)
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] Pre-arm 유효 시간", "config_duration_num");
-        doc["command_topic"]   = MQTT_TOPIC_CONFIG_DURATION;
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ (value_json.duration_ms / 1000) | int }}";
-        doc["min"]             = 5;
-        doc["max"]             = 300;
-        doc["step"]            = 5;
-        doc["unit_of_meas"]    = "s";
-        doc["icon"]            = "mdi:timer-sand";
-        pubConfig("number", "config_duration_num", doc);
-    }
-
-    // 4-4. Number: Target 릴레이 쿨다운 시간 (1 ~ 30 초)
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] 릴레이 쿨다운 시간", "config_relay_cooldown_num");
-        doc["command_topic"]   = "gatekeeper/config/relay_cooldown";
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ (value_json.relay_cooldown_ms / 1000) | int }}";
-        doc["min"]             = 1;
-        doc["max"]             = 30;
-        doc["step"]            = 1;
-        doc["unit_of_meas"]    = "s";
-        doc["icon"]            = "mdi:snowflake-alert";
-        pubConfig("number", "config_relay_cooldown_num", doc);
-    }
-
-    // ─── 5. Configuration State Sensors: 저장된 설정값 조회 ─────────────
-    // 5-1. Config Sensor: BLE Tx Power
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] BLE Tx Power", "cfg_tx_power");
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ value_json.tx_power }}";
-        doc["unit_of_meas"]    = "dBm";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:bluetooth-settings";
-        pubConfig("sensor", "cfg_tx_power", doc);
-    }
-
-    // 5-2. Config Sensor: 초음파 감지 기준 거리
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] 초음파 감지 기준 거리", "cfg_distance_thresh");
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ value_json.distance_threshold_cm }}";
-        doc["unit_of_meas"]    = "cm";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:tune-vertical";
-        pubConfig("sensor", "cfg_distance_thresh", doc);
-    }
-
-    // 5-3. Config Sensor: Pre-arm 유효 시간
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] Pre-arm 유효 시간", "cfg_prearm_duration");
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ (value_json.duration_ms / 1000) | int }}";
-        doc["unit_of_meas"]    = "s";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:clock-edit-outline";
-        pubConfig("sensor", "cfg_prearm_duration", doc);
-    }
-
-    // 5-4. Config Sensor: 릴레이 쿨다운 시간
-    {
-        StaticJsonDocument<512> doc = createDiscoveryDoc("[Gatekeeper] [설정] 릴레이 쿨다운 시간", "cfg_relay_cooldown");
-        doc["state_topic"]     = "gatekeeper/config/state";
-        doc["value_template"]  = "{{ (value_json.relay_cooldown_ms / 1000) | int }}";
-        doc["unit_of_meas"]    = "s";
-        doc["entity_category"] = "diagnostic";
-        doc["icon"]            = "mdi:timer-cog-outline";
-        pubConfig("sensor", "cfg_relay_cooldown", doc);
-    }
-
-    LOGF("[MQTT-HA] Auto-Discovery 엔티티 22개 자동 등록 완료!");
-    
-    // Auto-Discovery 발행 직후 TLS SSL 송신 버퍼 안정화를 위한 소켓 플러시
-    for (int i = 0; i < 3; i++) {
-        if (isConnected()) client.loop();
-        delay(10);
-    }
-}
 
 void MqttManager::publishTelemetry(uint16_t distance_mm,
                                    const char* stateStr,
@@ -796,7 +657,7 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {
-        client.publish("smart-gatekeeper/status", buf);
+        client.publish(statusTopic.c_str(), buf, false);
     }
 }
 
@@ -827,7 +688,7 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
         return;
     }
 
-    if (!client.publish("smart-gatekeeper/event", buf)) {
+    if (!client.publish(eventTopic.c_str(), buf, false)) {
         extern sgk::OfflineEventQueue g_offline_queue;
         g_offline_queue.pushEvent(eventType, detail, millis(), 0,
                                   DiagnosticsManager::targetId(),
@@ -838,7 +699,7 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {
     if (payload == nullptr || !client.connected()) return false;
-    return client.publish("smart-gatekeeper/canonical-event", payload, false);
+    return client.publish(canonicalEventTopic.c_str(), payload, false);
 }
 
 void MqttManager::publishSensorInfo(unsigned long duration_us, float distance_cm) {
@@ -852,6 +713,6 @@ void MqttManager::publishSensorInfo(unsigned long duration_us, float distance_cm
     serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {
-        client.publish("smart-gatekeeper/sensor/ultrasonic", buf);
+        client.publish(sensorTopic.c_str(), buf, false);
     }
 }

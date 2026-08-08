@@ -374,3 +374,8 @@ legacy retirement, Epic closure를 금지하고 #14/#18/#22/#23/Epic #13을 open
 `pending`을 유지한다. 인증된 모바일 `manual_remote` 명시적 문 열기와 legacy rollback,
 Target dual-slot/rollback·periodic HTTPS·인증 local recovery, mobile manual updater 독립성,
 N/N-1 불변조건은 G0-SW 작업으로 약화할 수 없다.
+## 15. 2026-08-09 issue #50 Target implementation status
+
+The Target implementation now verifies Ed25519 manifests, downloads only over CA-verified HTTPS, writes the inactive OTA partition, checks exact size/SHA-256/image validity, selects the candidate only after verification, and uses pending-verify continuous-health marking or automatic rollback. Every failed health predicate resets the healthy-since window. Periodic HTTPS and authenticated local WPA2/Basic recovery are independent of MQTT; an authenticated station-local request can open a bounded AP+STA recovery window even while DNS, Backend, MQTT, or the manifest host is unavailable, while signed `ota_check` remains an optional trigger. Protocol overlap 1..2, a crash-safe strictly ordered SemVer floor, rejection of equal-precedence alternate and exact-current reflash identities, the previously bootable slot, and manual local recovery preserve N/N-1 and rollback paths.
+
+This is host/software evidence only. Real ESP32-C6 bootloader, partition, power-loss, health-valid, rollback, radio, broker certificate, local recovery, N/N-1, operator, and production evidence remains pending; OTA-G1..G4 and production authorization stay fail-closed. See [target_command_ota_security.md](target_command_ota_security.md).
