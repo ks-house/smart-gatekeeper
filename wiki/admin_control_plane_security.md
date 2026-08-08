@@ -86,6 +86,14 @@ transition with exactly one broker publication, and separately proves that
 self-approval, expiry, replay, cross-tenant approval, and a pre-reserved
 `PUBLISHING` operation cannot publish.
 
+The approval transaction owns its lock through identity, role, tenant,
+distinct-approver, and idempotency checks, and every exit rolls back and closes
+that exact connection. After the broker attempt, the final `PUBLISHED` state
+and immutable `FORCE_OPEN_PUBLISHED` audit record commit together. If that
+post-broker commit cannot complete, a fresh transaction records
+`RECONCILIATION_REQUIRED` plus an immutable reconciliation audit event; the API
+returns non-success and the operation is never silently retried as safe.
+
 Ingress is a concrete reverse proxy deployment requirement: it terminates
 mTLS, accepts public traffic, strips client-supplied identity headers, rebuilds
 them only after verification, and reaches the un-published API service over its

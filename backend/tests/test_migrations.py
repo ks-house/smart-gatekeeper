@@ -8,9 +8,13 @@ import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pymysql
+from fastapi import HTTPException
 
+from backend.app import main as admin_main
 from backend.app.acl_management import (
     AclManagementService,
     AclStore,
@@ -18,6 +22,7 @@ from backend.app.acl_management import (
     RecordingPublisher,
     build_enrollment_input,
 )
+from backend.app.admin_security import AdminPrincipal
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,6 +33,8 @@ ADMIN_UP = ROOT / "backend" / "db" / "migrations" / "003_admin_security_up.sql"
 ADMIN_DOWN = ROOT / "backend" / "db" / "migrations" / "003_admin_security_down.sql"
 CONTROL_V2_UP = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_up.sql"
 CONTROL_V2_DOWN = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_down.sql"
+RECONCILIATION_UP = ROOT / "backend" / "db" / "migrations" / "005_force_open_reconciliation_up.sql"
+RECONCILIATION_DOWN = ROOT / "backend" / "db" / "migrations" / "005_force_open_reconciliation_down.sql"
 
 
 class MigrationContractTest(unittest.TestCase):
@@ -71,6 +78,13 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS mobile_control_nonces", up)
         self.assertIn("PRIMARY KEY (tenant_id, nonce_hash, action)", up)
         self.assertIn("DROP TABLE IF EXISTS mobile_control_nonces", down)
+
+    def test_reconciliation_migration_preserves_ambiguous_publish_state(self) -> None:
+        up = RECONCILIATION_UP.read_text(encoding="utf-8")
+        down = RECONCILIATION_DOWN.read_text(encoding="utf-8")
+        self.assertIn("RECONCILIATION_REQUIRED", up)
+        self.assertIn("ALTER TABLE force_open_approvals", up)
+        self.assertIn("ALTER TABLE force_open_approvals", down)
 
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
@@ -137,6 +151,7 @@ class MigrationContractTest(unittest.TestCase):
                     UP.read_text(encoding="utf-8"),
                     ADMIN_UP.read_text(encoding="utf-8"),
                     CONTROL_V2_UP.read_text(encoding="utf-8"),
+                    RECONCILIATION_UP.read_text(encoding="utf-8"),
                     "INSERT INTO tenants (name, unit_number, ble_device_mac, auth_key, is_active) "
                     "VALUES ('N-1 client', '999', 'AA:BB:CC:DD:EE:99', 'legacy-only', TRUE);",
                     "INSERT INTO acl_tenants VALUES "
@@ -515,6 +530,70 @@ class MigrationContractTest(unittest.TestCase):
             )
             self.assertEqual("DISABLED", store.tenant_status(no_grant_tenant_id))
 
+            approval_id = "c" * 48
+            with connection() as control_connection:
+                with control_connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO force_open_approvals "
+                        "(approval_id,tenant_scope,proposer_subject,reason,idempotency_hash,expires_at,created_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (approval_id, "legacy:1", "operator-a", "integration approval", "d" * 64, 4_102_444_800, 1),
+                    )
+                control_connection.commit()
+
+            principal = AdminPrincipal(
+                subject="approver-b",
+                roles=frozenset({"SECURITY_APPROVER"}),
+                tenants=frozenset({"legacy:1"}),
+                session_id="integration",
+                csrf_token="integration",
+                expires_at=4_102_444_800,
+            )
+            publish_calls: list[str] = []
+
+            def publish_once(label: str) -> bool:
+                publish_calls.append(label)
+                return True
+
+            def approve_once() -> int:
+                try:
+                    admin_main.approve_force_open(
+                        approval_id,
+                        SimpleNamespace(headers={"Idempotency-Key": "mariadb-concurrent"}),
+                    )
+                    return 200
+                except HTTPException as exc:
+                    return exc.status_code
+
+            with patch.object(admin_main, "get_db", side_effect=connection), patch.object(
+                admin_main, "_admin_principal", return_value=principal
+            ), patch.object(admin_main, "publish_force_open_to_mqtt", side_effect=publish_once):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    results = list(pool.map(lambda _: approve_once(), range(2)))
+            self.assertEqual([200, 404], sorted(results))
+            self.assertEqual(["authorized-control-plane"], publish_calls)
+            with connection() as verification_connection:
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT status FROM force_open_approvals WHERE approval_id=%s",
+                        (approval_id,),
+                    )
+                    self.assertEqual("PUBLISHED", cursor.fetchone()["status"])
+                    cursor.execute(
+                        "SELECT COUNT(*) AS count FROM admin_audit "
+                        "WHERE object_ref=%s AND action='FORCE_OPEN_PUBLISHED'",
+                        (approval_id,),
+                    )
+                    self.assertEqual(1, cursor.fetchone()["count"])
+                verification_connection.begin()
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT approval_id FROM force_open_approvals WHERE approval_id=%s FOR UPDATE",
+                        (approval_id,),
+                    )
+                    self.assertEqual(approval_id, cursor.fetchone()["approval_id"])
+                verification_connection.rollback()
+
             docker(
                 "exec",
                 "-i",
@@ -523,7 +602,7 @@ class MigrationContractTest(unittest.TestCase):
                 "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
-                input_text="\n".join((CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
+                input_text="\n".join((RECONCILIATION_DOWN.read_text(encoding="utf-8"), CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
             )
             after_down = docker(
                 "exec",

@@ -157,18 +157,25 @@ class AdminSecurityBypassTest(unittest.TestCase):
         self.assertEqual(200, approved.status_code, approved.text)
         self.assertEqual({"status": "published", "approval_id": proposal_row["approval_id"]}, approved.json())
         publish.assert_called_once_with("authorized-control-plane")
+        audit_actions = [
+            call.args[1][2]
+            for call in cursor.execute.call_args_list
+            if len(call.args) > 1 and isinstance(call.args[1], tuple) and len(call.args[1]) > 2
+        ]
+        self.assertIn("FORCE_OPEN_PUBLISH_REQUESTED", audit_actions)
+        self.assertIn("FORCE_OPEN_PUBLISHED", audit_actions)
 
     def test_force_open_self_expired_replay_tenant_and_duplicate_publish_are_denied(self) -> None:
         now = 4_102_444_800
         cases = (
-            ("self", FINGERPRINT_A, "PENDING", now + 60, "operator-a", 403),
-            ("expired", FINGERPRINT_B, "PENDING", now - 1, "operator-a", 404),
-            ("replay", FINGERPRINT_B, "PUBLISHED", now + 60, "operator-a", 404),
-            ("tenant", FINGERPRINT_C, "PENDING", now + 60, "operator-a", 403),
-            ("duplicate-publish", FINGERPRINT_B, "PUBLISHING", now + 60, "operator-a", 404),
+            ("self", FINGERPRINT_A, "PENDING", now + 60, "operator-a", 403, True),
+            ("expired", FINGERPRINT_B, "PENDING", now - 1, "operator-a", 404, True),
+            ("replay", FINGERPRINT_B, "PUBLISHED", now + 60, "operator-a", 404, True),
+            ("tenant", FINGERPRINT_C, "PENDING", now + 60, "operator-a", 403, True),
+            ("duplicate-publish", FINGERPRINT_B, "PUBLISHING", now + 60, "operator-a", 404, True),
         )
         with patch.object(main.time, "time", return_value=now):
-            for name, fingerprint, status, expires_at, proposer, expected in cases:
+            for name, fingerprint, status, expires_at, proposer, expected, locked in cases:
                 with self.subTest(name=name):
                     csrf, _ = self._session(fingerprint)
                     connection = MagicMock()
@@ -194,6 +201,75 @@ class AdminSecurityBypassTest(unittest.TestCase):
                         )
                     self.assertEqual(expected, response.status_code, response.text)
                     publish.assert_not_called()
+                    if locked:
+                        connection.rollback.assert_called_once()
+                        connection.close.assert_called_once()
+
+    def test_force_open_missing_idempotency_releases_locked_connection(self) -> None:
+        csrf, _ = self._session(FINGERPRINT_B)
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {
+            "approval_id": "m" * 48,
+            "tenant_scope": "legacy:1",
+            "proposer_subject": "operator-a",
+            "status": "PENDING",
+            "expires_at": 4_102_444_800,
+        }
+        with patch.object(main, "get_db", return_value=connection), patch.object(
+            main, "publish_force_open_to_mqtt", return_value=True
+        ) as publish:
+            response = self.client.post(
+                "/api/v1/admin/control/force-open/" + ("m" * 48) + "/approve",
+                headers={
+                    **csrf,
+                    **self._mtls_headers(FINGERPRINT_B),
+                    "X-Admin-Reauthenticate": "mtls",
+                },
+            )
+        self.assertEqual(400, response.status_code, response.text)
+        publish.assert_not_called()
+        connection.rollback.assert_called_once()
+        connection.close.assert_called_once()
+
+    def test_post_publish_audit_failure_persists_reconciliation_required(self) -> None:
+        csrf, _ = self._session(FINGERPRINT_B)
+        proposal = {
+            "approval_id": "r" * 48,
+            "tenant_scope": "legacy:1",
+            "proposer_subject": "operator-a",
+            "status": "PENDING",
+            "expires_at": 4_102_444_800,
+        }
+        primary = MagicMock()
+        primary_cursor = primary.cursor.return_value.__enter__.return_value
+        primary_cursor.fetchone.return_value = proposal
+        primary_cursor.rowcount = 1
+        recovery = MagicMock()
+        recovery_cursor = recovery.cursor.return_value.__enter__.return_value
+        recovery_cursor.fetchone.return_value = {"status": "PUBLISHING"}
+        recovery_cursor.rowcount = 1
+        with patch.object(main, "get_db", side_effect=[primary, recovery]), patch.object(
+            main, "publish_force_open_to_mqtt", return_value=True
+        ) as publish, patch.object(
+            main, "_audit_admin", side_effect=[None, RuntimeError("post-publish audit unavailable"), None]
+        ) as audit:
+            response = self.client.post(
+                "/api/v1/admin/control/force-open/" + proposal["approval_id"] + "/approve",
+                headers={
+                    **csrf,
+                    **self._mtls_headers(FINGERPRINT_B),
+                    "X-Admin-Reauthenticate": "mtls",
+                    "Idempotency-Key": "reconcile-after-broker",
+                },
+            )
+        self.assertEqual(503, response.status_code, response.text)
+        publish.assert_called_once_with("authorized-control-plane")
+        primary.rollback.assert_called_once()
+        primary.close.assert_called_once()
+        recovery.commit.assert_called_once()
+        recovery.close.assert_called_once()
+        self.assertEqual("FORCE_OPEN_RECONCILIATION_REQUIRED", audit.call_args_list[2].args[3])
 
 
 if __name__ == "__main__":
