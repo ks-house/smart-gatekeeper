@@ -43,6 +43,22 @@ if ($action -eq 'status') {
 }
 
 if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingArgs[1] -eq 'send') {
+    function Get-ArgValue([string]$Name) {
+        $index = [array]::IndexOf($RemainingArgs, $Name)
+        if ($index -lt 0 -or $index + 1 -ge $RemainingArgs.Count) { return '' }
+        return $RemainingArgs[$index + 1]
+    }
+    $messageType = Get-ArgValue '--type'
+    if ($messageType -ne 'heartbeat') {
+        [pscustomobject]@{
+            id = 'wrong-message-type'
+            ok = $false
+            error = [pscustomobject]@{ code = 'invalid_argument'; message = 'mock requires exact heartbeat lifecycle type' }
+            _meta = [pscustomobject]@{ runtimeId = 'runtime-a' }
+        } | ConvertTo-Json -Depth 4 -Compress
+        return
+    }
+
     if ($env:MOCK_MODE -eq 'heartbeat_failure') {
         [pscustomobject]@{
             id = 'failure'
@@ -53,11 +69,6 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
         return
     }
 
-    function Get-ArgValue([string]$Name) {
-        $index = [array]::IndexOf($RemainingArgs, $Name)
-        if ($index -lt 0 -or $index + 1 -ge $RemainingArgs.Count) { return '' }
-        return $RemainingArgs[$index + 1]
-    }
     $taskId = Get-ArgValue '--task-id'
     $dispatchId = Get-ArgValue '--dispatch-id'
     $phase = Get-ArgValue '--phase'
@@ -140,7 +151,36 @@ if ($action -eq 'orchestration' -and $RemainingArgs.Count -gt 1 -and $RemainingA
     Assert-True ($changeText -match 'runtime identity changed') 'The runtime transition failure must be explicit.'
     Assert-True ($changeText -notmatch 'dcap_SECRET_SENTINEL') 'A transition failure must not echo its Dispatch capability.'
 
-    Write-Host '[pass] Orca lifecycle probe success, transport-failure, runtime-transition, and capability-redaction mutations.' -ForegroundColor Green
+    # Adversarial mutation: if the production probe ever changes its outbound
+    # lifecycle type to worker_done, the mock must reject it instead of
+    # fabricating a heartbeat receipt while completionSent remains false.
+    $mutatedProbePath = Join-Path $resolvedTemporaryRoot 'probe-worker-done-mutation.ps1'
+    $probeSource = [System.IO.File]::ReadAllText($probePath)
+    $mutatedProbeSource = $probeSource.Replace("'--type', 'heartbeat',", "'--type', 'worker_done',")
+    Assert-True ($mutatedProbeSource -ne $probeSource) 'The worker_done mutation target must exist exactly in the probe source.'
+    [System.IO.File]::WriteAllText($mutatedProbePath, $mutatedProbeSource, [System.Text.UTF8Encoding]::new($false))
+    $mutatedCommon = @($common)
+    $fileIndex = [array]::IndexOf($mutatedCommon, '-File')
+    Assert-True ($fileIndex -ge 0) 'The test command must include -File.'
+    $mutatedCommon[$fileIndex + 1] = $mutatedProbePath
+
+    $env:MOCK_MODE = 'success'
+    $env:MOCK_STATUS_COUNT = '0'
+    $env:MOCK_HEARTBEAT_COUNT = '0'
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $mutationOutput = @(& powershell @mutatedCommon 2>&1)
+        $mutationExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorPreference
+    }
+    $mutationText = ($mutationOutput | ForEach-Object { [string]$_ }) -join "`n"
+    Assert-True ($mutationExit -ne 0) 'A worker_done outbound mutation must fail closed.'
+    Assert-True ($mutationText -match 'exact heartbeat lifecycle type') 'The mock must report the wrong lifecycle message type.'
+    Assert-True ($mutationText -notmatch 'dcap_SECRET_SENTINEL') 'The worker_done mutation failure must not echo its Dispatch capability.'
+
+    Write-Host '[pass] Orca lifecycle probe success, transport-failure, runtime-transition, worker_done-type, and capability-redaction mutations.' -ForegroundColor Green
 } finally {
     Remove-Item Env:MOCK_MODE -ErrorAction SilentlyContinue
     Remove-Item Env:MOCK_STATUS_COUNT -ErrorAction SilentlyContinue
