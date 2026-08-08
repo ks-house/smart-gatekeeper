@@ -59,6 +59,9 @@ roles, stale/revoked sessions, missing CSRF, cross-tenant mutation, stolen-ID
 legacy-route use, replayed idempotency, and mTLS authentication rate limiting.
 `backend/tests/test_migrations.py` verifies the append-only audit migration and,
 when `RUN_MARIADB_INTEGRATION=1`, validates the real MariaDB immutable trigger.
+`.github/workflows/backend_security.yml` runs those backend and real-MariaDB
+migration checks against the exact pull-request SHA; a green local container
+run is useful evidence but never substitutes for this hosted result.
 
 ## Additive v2 manual-control compatibility contract
 

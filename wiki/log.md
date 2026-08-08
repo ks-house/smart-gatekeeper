@@ -2047,3 +2047,7 @@
 ## [2026-08-09] fix | Apply v2 manual proof and durable approval state
 
 - The legacy manual URI now rejects incomplete device-ID requests without an effect, while the v2 envelope verifies tenant-bound proof, nonce expiry, idempotency, and durable replay consumption before broker publication. This remains software evidence only; physical/operator/production gates are open.
+
+## [2026-08-09] test | Add exact-SHA hosted backend and MariaDB security lane
+
+- Added a pull-request CI lane for backend security tests, real MariaDB migration/immutable-audit validation, and private-by-default Compose configuration. Hosted success is still software/CI evidence only and does not close any physical or production gate.
