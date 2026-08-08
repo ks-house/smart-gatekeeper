@@ -31,12 +31,32 @@ is never replayed automatically.
 
 ## Updater and release signing
 
-The updater accepts only signed metadata containing artifact size, SHA-256,
-certificate SHA-256, primary and fallback URLs, and an N/N-1 protocol range. It
-downloads to a temporary file, validates bytes and certificate before opening the
-installer, retains the existing APK and credential on every failure, and records
-first-run install health. Release Gradle configuration fails closed when a real
+The updater consumes the exact `ota/schemas/mobile-manifest.schema.json` field
+set and verifies its `sgk-json-v1` Ed25519 signature against an APK-pinned key ID
+and public key. Raw duplicate keys, escaped aliases, unknown/nested fields,
+legacy field aliases, trailing data, insecure or identical endpoints, version
+alias drift, unsupported Android SDK, and non-overlapping protocol ranges fail
+closed. A manifest cannot carry or select its own trust root.
+
+Primary and secondary metadata discovery are independent. Only the two APK URLs
+covered by the verified manifest can be downloaded; a WebView link, remote
+config value, or direct method call cannot install without that manifest. The
+app writes a temporary file, validates exact size, SHA-256, package identity,
+single signing certificate, and certificate SHA-256 before opening the Android
+installer. The old APK and credentials survive every failure, and first-run
+health remains durable. Release Gradle configuration fails closed when a real
 release keystore is unavailable; debug signing is never a release fallback.
+
+## Manual control compatibility
+
+The explicit local GATT retry remains available through the encrypted recent
+Target capability. It does not claim that an MQTT `manual_remote` command moved
+the relay. Main's `/api/v1/door/open` now requires the additive v2 proof envelope;
+the app does not possess or expose the legacy Backend HMAC secret. Until issue
+#52 provisions a scoped possession credential and completes the client rollout,
+the legacy Web shell keeps anonymous enrolment, device-ID status, and remote-open
+actions visibly disabled and sends no mock-success request. An HTTP `426` from an
+N-1 client is an upgrade-required result with no control effect.
 
 ## Privacy and UI
 

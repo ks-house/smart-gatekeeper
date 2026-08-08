@@ -30,9 +30,55 @@ constexpr uint16_t    MQTT_PORT     = SECRET_MQTT_PORT;
 constexpr const char* MQTT_USER     = SECRET_MQTT_USER;
 constexpr const char* MQTT_PASSWORD = SECRET_MQTT_PASSWORD;
 
+// A production Target uses one broker principal and one exact topic namespace.
+// The broker ACL maps that principal to gatekeeper/v1/targets/<target-id>/#.
+#ifndef SECRET_TARGET_TENANT_ID
+#define SECRET_TARGET_TENANT_ID ""
+#endif
+#ifndef SECRET_TARGET_DOOR_ID
+#define SECRET_TARGET_DOOR_ID ""
+#endif
+#ifndef SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX
+#define SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX ""
+#endif
+#ifndef SECRET_COMMAND_SIGNING_KEY_ID
+#define SECRET_COMMAND_SIGNING_KEY_ID 0
+#endif
+constexpr const char* TARGET_TENANT_ID = SECRET_TARGET_TENANT_ID;
+constexpr const char* TARGET_DOOR_ID = SECRET_TARGET_DOOR_ID;
+constexpr const char* COMMAND_SIGNER_PUBLIC_KEY_HEX =
+    SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX;
+constexpr uint32_t COMMAND_SIGNING_KEY_ID = SECRET_COMMAND_SIGNING_KEY_ID;
+
 // ─── OTA (Over-The-Air) 배포 주소 ──────────────────────────────
 constexpr const char* OTA_VERSION_URL  = SECRET_OTA_VERSION_URL;
 constexpr const char* OTA_FIRMWARE_URL = SECRET_OTA_FIRMWARE_URL;
+#ifndef SECRET_OTA_SIGNER_PUBLIC_KEY_HEX
+#define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX ""
+#endif
+#ifndef SECRET_OTA_SIGNING_KEY_ID
+#define SECRET_OTA_SIGNING_KEY_ID ""
+#endif
+#ifndef SECRET_LOCAL_RECOVERY_USER
+#define SECRET_LOCAL_RECOVERY_USER ""
+#endif
+#ifndef SECRET_LOCAL_RECOVERY_PASSWORD
+#define SECRET_LOCAL_RECOVERY_PASSWORD ""
+#endif
+#ifndef SECRET_LOCAL_RECOVERY_AP_PASSWORD
+#define SECRET_LOCAL_RECOVERY_AP_PASSWORD ""
+#endif
+constexpr const char* OTA_SIGNER_PUBLIC_KEY_HEX =
+    SECRET_OTA_SIGNER_PUBLIC_KEY_HEX;
+constexpr const char* OTA_SIGNING_KEY_ID = SECRET_OTA_SIGNING_KEY_ID;
+constexpr const char* LOCAL_RECOVERY_USER = SECRET_LOCAL_RECOVERY_USER;
+constexpr const char* LOCAL_RECOVERY_PASSWORD = SECRET_LOCAL_RECOVERY_PASSWORD;
+constexpr const char* LOCAL_RECOVERY_AP_PASSWORD =
+    SECRET_LOCAL_RECOVERY_AP_PASSWORD;
+
+#ifndef SGK_PRODUCTION_BUILD
+#define SGK_PRODUCTION_BUILD 0
+#endif
 
 // ─── BLE 5.3 Beacon Advertiser 설정 (v2.0 신규) ───────────────
 // ESP32-C6가 상시 발신할 비콘 고유 식별자 (128-bit UUID)
@@ -42,6 +88,10 @@ constexpr const char* GATEKEEPER_BEACON_UUID = "a1b2c3d4-e5f6-7890-abcd-ef123456
 // Hardwareless RC compile flag (기본값 OFF)
 #ifndef ENABLE_HARDWARELESS_RC
 #define ENABLE_HARDWARELESS_RC 0
+#endif
+
+#if SGK_PRODUCTION_BUILD && ENABLE_HARDWARELESS_RC
+#error "Production firmware must compile hardwareless RC out"
 #endif
 
 // Provision per Target through secrets.h or NVS key "hwless_door". Empty is
@@ -62,14 +112,7 @@ constexpr const char* HARDWARELESS_CHAR_RESULT_UUID = "9f4d1004-7d9e-4fb1-9c54-6
 // 비콘 광고 인터벌 (ms) — 100ms: 반응성과 전력 균형
 constexpr uint32_t BLE_ADV_INTERVAL_MS = 100;
 
-// ─── MQTT Pre-arm 사전 승인 설정 (v2.0 신규) ──────────────────
-// NAS로부터 승인 명령(arm)을 수신할 MQTT 구독 토픽
-constexpr const char* MQTT_TOPIC_ARM = "gatekeeper/arm";
-constexpr const char* MQTT_TOPIC_CONFIG_TX_POWER = "gatekeeper/config/tx_power";
-constexpr const char* MQTT_TOPIC_CONFIG_DISTANCE_THRESH = "gatekeeper/config/distance_threshold";
-constexpr const char* MQTT_TOPIC_CONFIG_TOF_DIST = "gatekeeper/config/tof_distance"; // 호환용 하위 별칭
-constexpr const char* MQTT_TOPIC_CONFIG_DURATION = "gatekeeper/config/duration";
-
+// Signed arm command behavior after per-Target authorization.
 // MQTT arm 메시지 수신 후 초음파 센서를 활성화해 둘 유효 시간 (60초)
 // 이 시간 내에 초음파 접근 감지가 없으면 자동으로 IDLE 복귀
 constexpr uint32_t PRE_ARM_DURATION_MS = 60000;

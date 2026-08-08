@@ -7,7 +7,11 @@ import os
 import ssl
 import json
 import secrets
+import hashlib
+import hmac
 import logging
+import threading
+import time
 from typing import Optional, List
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -21,10 +25,30 @@ except Exception:
     mqtt = None
     HAS_PAHO_MQTT = False
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+try:
+    from .admin_security import (
+        ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
+        ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
+    )
+except ImportError:  # Docker runs uvicorn with /app as the import root.
+    from admin_security import (
+        ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
+        ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
+    )
+
+try:
+    from .acl_management import DeterministicP256Signer
+    from .command_security import build_signed_command
+    from .target_boot_registry import TargetBootRegistry
+except ImportError:  # Docker runs uvicorn with /app as the import root.
+    from acl_management import DeterministicP256Signer
+    from command_security import build_signed_command
+    from target_boot_registry import TargetBootRegistry
 
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -50,14 +74,21 @@ DB_NAME     = os.getenv("DB_NAME", "smart_gatekeeper")
 DB_USER     = os.getenv("DB_USER", "gatekeeper_user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "gatekeeper_pass")
 
-MQTT_HOST           = os.getenv("MQTT_HOST", "tworimpa.synology.me")
-MQTT_PORT           = int(os.getenv("MQTT_PORT", "4883"))
-MQTT_USER           = os.getenv("MQTT_USER", "gatekeeper_mqtt")
-MQTT_PASSWORD       = os.getenv("MQTT_PASSWORD", "gatekeeper_mqtt_pass")
-
-MQTT_USE_TLS        = os.getenv("MQTT_USE_TLS", "true").lower() == "true"
-MQTT_TOPIC_ARM      = os.getenv("MQTT_TOPIC_ARM", "gatekeeper/arm")
-MQTT_TOPIC_FORCE    = os.getenv("MQTT_TOPIC_FORCE_OPEN", "gatekeeper/force_open")
+MQTT_HOST           = os.getenv("MQTT_HOST", "").strip()
+MQTT_PORT           = int(os.getenv("MQTT_PORT", "8883"))
+MQTT_USER           = os.getenv("MQTT_USER", "").strip()
+MQTT_PASSWORD       = os.getenv("MQTT_PASSWORD", "").strip()
+MQTT_CA_FILE        = os.getenv("MQTT_CA_FILE", "").strip()
+COMMAND_TARGET_ID   = os.getenv("COMMAND_TARGET_ID", "").strip()
+COMMAND_TENANT_ID   = os.getenv("COMMAND_TENANT_ID", "").strip()
+COMMAND_DOOR_ID     = os.getenv("COMMAND_DOOR_ID", "").strip()
+COMMAND_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
+    "COMMAND_SIGNING_PRIVATE_SCALAR_HEX", ""
+).strip()
+try:
+    COMMAND_SIGNING_KEY_ID = int(os.getenv("COMMAND_SIGNING_KEY_ID", "0"))
+except ValueError:
+    COMMAND_SIGNING_KEY_ID = 0
 
 BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
@@ -119,6 +150,8 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API
     · 설정됨 → X-API-KEY 헤더가 일치해야 한다.
     """
     if not GATEKEEPER_API_KEY:
+        raise HTTPException(status_code=503, detail="control API authentication is not configured")
+        # Legacy warning-only implementation is intentionally unreachable.
         log.warning(
             "[SECURITY] GATEKEEPER_API_KEY 미설정 — 문 제어 API가 키 인증 없이 열려 있습니다. "
             "앱을 배포한 뒤 반드시 환경변수를 설정하고 재시작하십시오."
@@ -144,6 +177,39 @@ def get_db():
         connect_timeout=5,
     )
 
+
+_target_boot_registry = TargetBootRegistry(get_db)
+_P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+
+
+def _command_provisioning_error() -> Optional[str]:
+    tokens = (COMMAND_TARGET_ID, COMMAND_TENANT_ID, COMMAND_DOOR_ID)
+    if any(
+        not token or len(token) > 64 or any(ord(char) < 0x21 or ord(char) > 0x7e for char in token)
+        for token in tokens
+    ):
+        return "target identity"
+    if (
+        not MQTT_HOST
+        or not 1 <= MQTT_PORT <= 65535
+        or MQTT_PORT == 1883
+        or not MQTT_USER
+        or not MQTT_PASSWORD
+        or secrets.compare_digest(MQTT_USER, COMMAND_TARGET_ID)
+    ):
+        return "broker identity"
+    if not MQTT_CA_FILE or not os.path.isfile(MQTT_CA_FILE):
+        return "broker CA"
+    if COMMAND_SIGNING_KEY_ID <= 0:
+        return "signing key ID"
+    if (
+        len(COMMAND_SIGNING_PRIVATE_SCALAR_HEX) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in COMMAND_SIGNING_PRIVATE_SCALAR_HEX)
+        or not 0 < int(COMMAND_SIGNING_PRIVATE_SCALAR_HEX, 16) < _P256_ORDER
+    ):
+        return "signing scalar"
+    return None
+
 # ─── MQTT Helper Functions ────────────────────────────────────
 def _create_mqtt_client(client_id: str):
     """paho-mqtt 1.x 및 2.x 버전 호환 클라이언트 생성 헬퍼"""
@@ -155,7 +221,7 @@ def _create_mqtt_client(client_id: str):
         return mqtt.Client(client_id=client_id)
 
 def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
-    """MQTT 메시지 발행 헬퍼 (로컬 Docker 내부망 172.17.0.1 / host.docker.internal 초고속 우선 시도)"""
+    """Publish once through the configured hostname-verified MQTTS endpoint."""
     if not HAS_PAHO_MQTT:
         log.warning(f"[{label}] paho-mqtt 패키지 미설치 — {topic} 발행 건너뜀")
         return False
@@ -163,13 +229,13 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
     import socket
     socket.setdefaulttimeout(1.0) # 소켓 타임아웃 1초로 제한하여 지연 완전 방어
 
-    hosts_to_try = [
-        ("172.17.0.1", 1883, False),
-        ("172.22.0.1", 1883, False),
-        ("host.docker.internal", 1883, False),
-        (MQTT_HOST, MQTT_PORT, MQTT_USE_TLS),
-        ("127.0.0.1", 1883, False)
-    ]
+    if (
+        not MQTT_HOST or MQTT_PORT == 1883 or not MQTT_USER or
+        not MQTT_PASSWORD or not MQTT_CA_FILE or not os.path.isfile(MQTT_CA_FILE)
+    ):
+        log.error("[%s] verified MQTTS provisioning incomplete", label)
+        return False
+    hosts_to_try = [(MQTT_HOST, MQTT_PORT, True)]
 
     for host, port, use_tls in hosts_to_try:
         if not host:
@@ -177,18 +243,21 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
         client = None
         loop_started = False
         try:
-            client = _create_mqtt_client(f"gatekeeper-api-{int(datetime.now().timestamp())}")
+            client = _create_mqtt_client(f"gatekeeper-api-{time.time_ns()}")
             if MQTT_USER:
                 client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
 
-            if use_tls:
-                client.tls_set(cert_reqs=ssl.CERT_NONE)
-                client.tls_insecure_set(True)
+            client.tls_set(
+                ca_certs=MQTT_CA_FILE,
+                cert_reqs=ssl.CERT_REQUIRED,
+                tls_version=ssl.PROTOCOL_TLS_CLIENT,
+            )
+            client.tls_insecure_set(False)
 
             client.connect(host, port, keepalive=5)
             client.loop_start()
             loop_started = True
-            result = client.publish(topic, payload, qos=1)
+            result = client.publish(topic, payload, qos=1, retain=False)
             result.wait_for_publish(timeout=2.0)
 
             if result.rc == mqtt.MQTT_ERR_SUCCESS and result.is_published():
@@ -210,45 +279,90 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
     return False
 
 
+def _signed_target_command(action: str, value: int = 0) -> bool:
+    provisioning_error = _command_provisioning_error()
+    if provisioning_error is not None:
+        log.error("[MQTT-COMMAND] provisioning incomplete: %s", provisioning_error)
+        return False
+    try:
+        boot_id = _target_boot_registry.current_boot_id(COMMAND_TARGET_ID)
+        if boot_id is None:
+            return False
+        scalar = int(COMMAND_SIGNING_PRIVATE_SCALAR_HEX, 16)
+        signer = DeterministicP256Signer(scalar, COMMAND_SIGNING_KEY_ID)
+        envelope = build_signed_command(
+            signer=signer,
+            target_id=COMMAND_TARGET_ID,
+            tenant_id=COMMAND_TENANT_ID,
+            door_id=COMMAND_DOOR_ID,
+            boot_id=boot_id,
+            action=action,
+            value=value,
+        )
+    except (TypeError, ValueError):
+        return False
+    topic = f"gatekeeper/v1/targets/{COMMAND_TARGET_ID}/command"
+    return _publish_mqtt_msg(
+        topic,
+        json.dumps(envelope, separators=(",", ":"), sort_keys=True),
+        f"MQTT-COMMAND-{action}",
+    )
+
+
+def _start_target_boot_subscriber():
+    if _command_provisioning_error() is not None or not HAS_PAHO_MQTT:
+        return None
+    client = _create_mqtt_client(f"gatekeeper-boot-registry-{time.time_ns()}")
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+    client.tls_set(
+        ca_certs=MQTT_CA_FILE,
+        cert_reqs=ssl.CERT_REQUIRED,
+        tls_version=ssl.PROTOCOL_TLS_CLIENT,
+    )
+    client.tls_insecure_set(False)
+
+    def on_connect(connected_client, _userdata, _flags, reason_code, *args):
+        if int(reason_code) == 0:
+            connected_client.subscribe("gatekeeper/v1/targets/+/boot", qos=1)
+
+    def on_message(_client, _userdata, message):
+        if not _target_boot_registry.refresh_from_authenticated_topic(
+            message.topic, bytes(message.payload)
+        ):
+            log.warning("[MQTT-BOOT] rejected boot refresh on %s", message.topic)
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+    client.loop_start()
+    return client
+
+
 def publish_arm_to_mqtt(tenant_name: str, tenant_id: int) -> bool:
-    """NAS → MQTT Broker → ESP32-C6 gatekeeper/arm 토픽 발행."""
-    payload = json.dumps({
-        "action": "arm",
-        "user": tenant_name,
-        "tenant_id": tenant_id,
-        "issued_at": datetime.now().isoformat()
-    }, ensure_ascii=False)
-    return _publish_mqtt_msg(MQTT_TOPIC_ARM, payload, "MQTT-ARM")
+    """Publish a signed, boot-bound pre-arm command."""
+    return _signed_target_command("arm")
 
 def publish_force_open_to_mqtt(tenant_name: str = "수동원격") -> bool:
-    """NAS → MQTT Broker → ESP32-C6 gatekeeper/force_open 강제 개방 토픽 발행."""
-    payload = json.dumps({
-        "action": "force_open",
-        "user": tenant_name,
-        "issued_at": datetime.now().isoformat()
-    }, ensure_ascii=False)
-    return _publish_mqtt_msg(MQTT_TOPIC_FORCE, payload, "MQTT-FORCE")
+    """Publish the authenticated explicit-button manual_remote command."""
+    return _signed_target_command("manual_remote")
 
 def publish_admin_config_to_mqtt(tx_power: Optional[int] = None, tof_distance: Optional[int] = None, distance_threshold: Optional[int] = None, duration: Optional[int] = None, relay_cooldown: Optional[int] = None) -> dict:
     """NAS → MQTT Broker → ESP32-C6 gatekeeper/config/... 엔지니어 튜닝 토픽 및 gatekeeper/config/set 일괄 발행."""
     results = {}
     dist_val = distance_threshold if distance_threshold is not None else tof_distance
     if tx_power is not None:
-        ok = _publish_mqtt_msg("gatekeeper/config/tx_power", str(tx_power), "MQTT-CONFIG-TX")
+        ok = _signed_target_command("set_tx_power", tx_power)
         results["tx_power"] = {"value": tx_power, "success": ok}
     if dist_val is not None:
-        ok1 = _publish_mqtt_msg("gatekeeper/config/distance_threshold", str(dist_val), "MQTT-CONFIG-DIST")
-        ok2 = _publish_mqtt_msg("gatekeeper/config/tof_distance", str(dist_val), "MQTT-CONFIG-TOF")
-        results["distance_threshold"] = {"value": dist_val, "success": ok1 and ok2}
+        ok = _signed_target_command("set_distance_threshold", dist_val)
+        results["distance_threshold"] = {"value": dist_val, "success": ok}
     if duration is not None:
-        ok = _publish_mqtt_msg("gatekeeper/config/duration", str(duration), "MQTT-CONFIG-DUR")
+        ok = _signed_target_command("set_duration", duration)
         results["duration"] = {"value": duration, "success": ok}
     if relay_cooldown is not None:
-        ok = _publish_mqtt_msg("gatekeeper/config/relay_cooldown", str(relay_cooldown), "MQTT-CONFIG-COOL")
+        ok = _signed_target_command("set_relay_cooldown", relay_cooldown)
         results["relay_cooldown"] = {"value": relay_cooldown, "success": ok}
     
-    set_payload = json.dumps(current_target_config, ensure_ascii=False)
-    _publish_mqtt_msg("gatekeeper/config/set", set_payload, "MQTT-CONFIG-SET")
     return results
 
 
@@ -281,8 +395,15 @@ class PrearmRequestSchema(BaseModel):
 
 
 class ForceOpenRequestSchema(BaseModel):
-    reason: Optional[str] = "manual_click"
-    device_id: Optional[str] = None
+    tenant_id: str = Field(min_length=1, max_length=64)
+    reason: str = Field(min_length=8, max_length=256)
+
+
+class ManualOpenV2Request(BaseModel):
+    device_id: Optional[str] = Field(default=None, max_length=128)
+    reason: Optional[str] = Field(default=None, max_length=256)
+    nonce: Optional[str] = Field(default=None, min_length=32, max_length=128)
+    expires_at: Optional[int] = None
 
 class AdminConfigRequestSchema(BaseModel):
     tx_power: Optional[int] = Field(None, example=-6, description="BLE Tx Power dBm (-6, 0, 3, 9)")
@@ -309,7 +430,10 @@ class AccessLogItem(BaseModel):
 async def lifespan(app: FastAPI):
     log.info(f"[STARTUP] Smart Gatekeeper API v2.0 시작")
     log.info(f"[STARTUP] DB: {DB_HOST}:{DB_PORT}/{DB_NAME}")
-    log.info(f"[STARTUP] MQTT Broker: {MQTT_HOST}:{MQTT_PORT} | arm: {MQTT_TOPIC_ARM} | force: {MQTT_TOPIC_FORCE}")
+    log.info(
+        "[STARTUP] verified MQTTS broker configured; per-Target signed command plane=%s",
+        bool(COMMAND_TARGET_ID and COMMAND_SIGNING_KEY_ID),
+    )
     if GATEKEEPER_API_KEY:
         log.info("[STARTUP] 🔐 문 제어 API 키 인증 활성화 (X-API-KEY)")
     else:
@@ -318,8 +442,18 @@ async def lifespan(app: FastAPI):
             "Pre-arm 은 키 없이도 호출 가능하고, 관리자 마스터 개방은 사용할 수 없습니다. "
             "미등록/미승인 기기 거부와 DB 장애 시 fail-closed 는 계속 동작합니다."
         )
-    yield
-    log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
+    boot_subscriber = None
+    try:
+        boot_subscriber = _start_target_boot_subscriber()
+    except Exception as error:
+        log.error("[MQTT-BOOT] subscriber unavailable; commands stay disabled: %s", error)
+    try:
+        yield
+    finally:
+        if boot_subscriber is not None:
+            boot_subscriber.loop_stop()
+            boot_subscriber.disconnect()
+        log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
 
 app = FastAPI(
     title="Smart Gatekeeper API",
@@ -328,6 +462,81 @@ app = FastAPI(
     lifespan=lifespan,
     default_response_class=JSONResponse
 )
+
+# Admin access is deliberately independent of the mobile pre-arm credential.
+# Missing mTLS identity configuration leaves admin/control routes unavailable;
+# this is a deployment gate, not a development fallback.
+admin_security = AdminSecurity.from_environment()
+_control_proposals: dict[str, dict] = {}
+_control_proposals_lock = threading.Lock()
+
+
+@app.middleware("http")
+async def deny_by_default_admin_routes(request: Request, call_next):
+    """Put a session/CSRF/re-auth boundary in front of every admin route.
+
+    Route handlers still perform their narrower role and tenant checks.  This
+    guard prevents a newly added /api/v1/admin endpoint from silently becoming
+    public while preserving target OTA/download and emergency hardware paths.
+    """
+    path = request.url.path
+    if path.startswith("/api/v1/admin/") and path not in {"/api/v1/admin/sessions"}:
+        try:
+            required_roles = (ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR, ROLE_APPROVER)
+            if request.method not in {"GET", "HEAD", "OPTIONS"}:
+                required_roles = (ROLE_OPERATOR, ROLE_APPROVER) if "/control/" in path else (ROLE_ADMIN,)
+            request.state.admin_principal = _admin_principal(
+                request,
+                unsafe=request.method not in {"GET", "HEAD", "OPTIONS"},
+                roles=required_roles,
+                tenant_scope=request.headers.get(TENANT_HEADER),
+                reauthenticate=request.method not in {"GET", "HEAD", "OPTIONS"},
+            )
+        except HTTPException as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return await call_next(request)
+
+
+def _legacy_tenant_scope(tenant_id: int) -> str:
+    return f"legacy:{tenant_id}"
+
+
+def _admin_principal(
+    request: Request,
+    *,
+    unsafe: bool = False,
+    roles: tuple[str, ...] = (ROLE_ADMIN,),
+    tenant_scope: Optional[str] = None,
+    reauthenticate: bool = False,
+) -> AdminPrincipal:
+    return admin_security.principal(
+        request,
+        unsafe=unsafe,
+        roles=roles,
+        tenant_id=tenant_scope,
+        reauthenticate=reauthenticate,
+    )
+
+
+def _audit_admin(
+    conn, principal: AdminPrincipal, tenant_scope: str, action: str,
+    object_ref: str, idempotency_key: Optional[str] = None,
+) -> None:
+    """Append an actor-attributed audit event before an irreversible action."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO admin_audit (actor_subject, tenant_scope, action, object_ref, "
+            "idempotency_hash, created_at) VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                principal.subject,
+                tenant_scope,
+                action,
+                object_ref,
+                hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+                if idempotency_key else None,
+                int(datetime.now().timestamp()),
+            ),
+        )
 
 # Mount the new management plane only when the feature is explicitly enabled and all
 # authentication/signing prerequisites are present. A bad RC configuration must not take
@@ -477,6 +686,26 @@ if ACL_MANAGEMENT_ENABLED:
             )
 
 # 정적 파일 디렉토리 마운트
+# Administrator sessions are mTLS-authenticated, server-side, short lived, and
+# fail closed when ADMIN_MTLS_IDENTITIES_JSON is not configured.
+@app.post("/api/v1/admin/sessions")
+def create_admin_session(request: Request, response: Response):
+    identity = admin_security.authenticate_mtls(request)
+    token, principal = admin_security.issue_session(identity)
+    response.set_cookie(
+        ADMIN_SESSION_COOKIE, token, max_age=admin_security.session_seconds,
+        httponly=True, secure=True, samesite="strict", path="/",
+    )
+    return {"expires_at": principal.expires_at, "csrf_token": principal.csrf_token}
+
+
+@app.post("/api/v1/admin/sessions/rotate")
+def rotate_admin_sessions(request: Request):
+    _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), reauthenticate=True)
+    admin_security.rotate_sessions()
+    return {"status": "rotated"}
+
+
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -491,7 +720,8 @@ def get_webview_app():
     return HTMLResponse("<h1>Smart Gatekeeper Web App</h1><p>static/index.html not found</p>")
 
 @app.get("/admin", response_class=HTMLResponse)
-def get_admin_console():
+def get_admin_console(request: Request):
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
     """관리자 콘솔 웹 화면 반환"""
     admin_path = os.path.join(static_dir, "admin.html")
     if os.path.exists(admin_path):
@@ -499,17 +729,19 @@ def get_admin_console():
     return HTMLResponse("<h1>Smart Gatekeeper Admin Console</h1><p>static/admin.html not found</p>")
 
 @app.get("/api/v1/admin/tenants")
-def get_all_tenants_admin():
+def get_all_tenants_admin(request: Request):
+    principal = _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR))
     """관리자용 전체 세입자 및 승인 대기 세입자 목록 조회"""
     conn = None
     try:
         conn = get_db()
         with conn.cursor() as cur:
-            cur.execute("SELECT id, name, unit_number, ble_device_mac, is_active FROM tenants ORDER BY id DESC")
-            rows = cur.fetchall()
+            cur.execute("SELECT id, name, unit_number, is_active FROM tenants ORDER BY id DESC")
+            rows = [row for row in cur.fetchall() if principal.can_access_tenant(_legacy_tenant_scope(row["id"]))]
             return JSONResponse(content=rows, headers={"Content-Type": "application/json; charset=utf-8"})
     except Exception as e:
         log.error(f"[ADMIN-DB] 세입자 목록 조회 실패: {e}")
+        raise HTTPException(status_code=503, detail="tenant data unavailable") from e
         # DB 조회 불가 시 기본 목데이터 제공
         return JSONResponse(content=[
             {"id": 1, "name": "홍길동", "unit_number": "101호", "ble_device_mac": "AA:BB:CC:DD:EE:01", "is_active": True},
@@ -520,35 +752,57 @@ def get_all_tenants_admin():
             conn.close()
 
 @app.post("/api/v1/admin/tenants/{tenant_id}/approve")
-def approve_tenant(tenant_id: int):
+def approve_tenant(tenant_id: int, request: Request):
+    principal = _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), tenant_scope=_legacy_tenant_scope(tenant_id), reauthenticate=True)
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """관리자 세입자 승인 처리 (is_active = true)"""
     log.info(f"[ADMIN] 세입자 승인: Tenant ID={tenant_id}")
     conn = None
     try:
         conn = get_db()
+        conn.begin()
         with conn.cursor() as cur:
+            _audit_admin(conn, principal, _legacy_tenant_scope(tenant_id), "TENANT_APPROVED", str(tenant_id), idempotency_key)
             cur.execute("UPDATE tenants SET is_active = true WHERE id = %s", (tenant_id,))
+            if cur.rowcount != 1:
+                raise LookupError("tenant not found")
+        conn.commit()
         return JSONResponse(content={"status": "approved", "tenant_id": tenant_id})
     except Exception as e:
         log.error(f"[ADMIN] 승인 실패: {e}")
-        return JSONResponse(content={"status": "approved_mock", "tenant_id": tenant_id})
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=503, detail="tenant approval unavailable")
     finally:
         if conn:
             conn.close()
 
 @app.post("/api/v1/admin/tenants/{tenant_id}/reject")
-def reject_tenant(tenant_id: int):
+def reject_tenant(tenant_id: int, request: Request):
+    principal = _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), tenant_scope=_legacy_tenant_scope(tenant_id), reauthenticate=True)
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """관리자 세입자 권한 회수/거절 처리 (is_active = false)"""
     log.info(f"[ADMIN] 세입자 권한 회수: Tenant ID={tenant_id}")
     conn = None
     try:
         conn = get_db()
+        conn.begin()
         with conn.cursor() as cur:
+            _audit_admin(conn, principal, _legacy_tenant_scope(tenant_id), "TENANT_REVOKED", str(tenant_id), idempotency_key)
             cur.execute("UPDATE tenants SET is_active = false WHERE id = %s", (tenant_id,))
+            if cur.rowcount != 1:
+                raise LookupError("tenant not found")
+        conn.commit()
         return JSONResponse(content={"status": "rejected", "tenant_id": tenant_id})
     except Exception as e:
         log.error(f"[ADMIN] 회수 실패: {e}")
-        return JSONResponse(content={"status": "rejected_mock", "tenant_id": tenant_id})
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=503, detail="tenant rejection unavailable")
     finally:
         if conn:
             conn.close()
@@ -627,11 +881,12 @@ def get_remote_config():
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
-@app.get("/api/v1/user/me")
+# Disabled after Issue #49: a device identifier in a URL is neither a session
+# nor safe for PII lookup.  Enrolment uses the proof-of-possession ACL flow.
 def get_user_me(device_id: str = Query(...)):
     """현재 기기(device_id)의 세입자 등록 상태 및 세입자 정보 조회"""
     mac_upper = device_id.strip().upper()
-    log.info(f"[USER-ME] 세입자 상태 조회: MAC/ID={mac_upper}")
+    log.info("[USER-ME] retired device-id lookup invoked")
     conn = None
     try:
         conn = get_db()
@@ -666,11 +921,12 @@ def get_user_me(device_id: str = Query(...)):
         if conn:
             conn.close()
 
-@app.post("/api/v1/user/request")
+# Disabled after Issue #49: anonymous device-id registration is a write-capable
+# control-plane path.  The authenticated ACL enrolment route replaces it.
 def request_user_access(req: UserRequestSchema):
     """신규 세입자 가입 및 출입 권한 신청"""
     mac_upper = req.device_id.strip().upper()
-    log.info(f"[USER-REQ] 신규 가입 신청: {req.name} ({req.room_no}), MAC={mac_upper}")
+    log.info("[USER-REQ] retired anonymous enrollment invoked")
     conn = None
     try:
         conn = get_db()
@@ -712,7 +968,7 @@ def door_prearm(
       3. 인증이 전혀 없었다
     지금은 세 경로 모두 거부한다. 승인은 "등록되고 승인된 기기"에만 부여된다.
     """
-    log.info(f"[PREARM] 비콘 감지 Pre-arm 요청: UUID={req.beacon_uuid}, Device={req.device_id}, RSSI={req.rssi}")
+    log.info("[PREARM] beacon pre-arm request received")
 
     # ── 1. device_id 는 필수 ────────────────────────────────────────────
     device_id = (req.device_id or "").strip()
@@ -736,7 +992,7 @@ def door_prearm(
             row = cur.fetchone()
 
         if not row:
-            log.warning(f"[PREARM-REJECT] 미등록 기기의 Pre-arm 요청 거부: {device_id}")
+            log.warning("[PREARM-REJECT] unregistered device pre-arm rejected")
             return JSONResponse(
                 status_code=403,
                 content={"result": "denied", "message": "미등록 세입자 기기입니다."},
@@ -796,7 +1052,166 @@ def door_prearm(
     )
 
 
+@app.post("/api/v1/admin/control/force-open")
+def request_force_open(req: ForceOpenRequestSchema, request: Request):
+    """Create a two-person, re-authenticated force-open proposal.
+
+    This never accepts a device identifier as authority and deliberately does
+    not publish MQTT until a separate authorized approver completes it.
+    """
+    principal = _admin_principal(
+        request, unsafe=True, roles=(ROLE_OPERATOR,), tenant_scope=req.tenant_id,
+        reauthenticate=True,
+    )
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
+    now = int(time.time())
+    proposal_id = secrets.token_hex(24)
+    idempotency_hash = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT approval_id FROM force_open_approvals WHERE proposer_subject=%s AND tenant_scope=%s AND idempotency_hash=%s FOR UPDATE",
+                (principal.subject, req.tenant_id, idempotency_hash),
+            )
+            existing = cur.fetchone()
+            if existing:
+                proposal_id = existing["approval_id"]
+            else:
+                cur.execute(
+                    "INSERT INTO force_open_approvals (approval_id,tenant_scope,proposer_subject,reason,idempotency_hash,expires_at,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (proposal_id, req.tenant_id, principal.subject, req.reason, idempotency_hash, now + 300, now),
+                )
+                _audit_admin(conn, principal, req.tenant_id, "FORCE_OPEN_PROPOSED", proposal_id, idempotency_key)
+        conn.commit()
+        return JSONResponse(status_code=202, content={"status": "approval_required", "approval_id": proposal_id})
+    except Exception as exc:
+        log.error("[FORCE-OPEN] proposal audit unavailable")
+        raise HTTPException(status_code=503, detail="force-open proposal unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.post("/api/v1/admin/control/force-open/{approval_id}/approve")
+def approve_force_open(approval_id: str, request: Request):
+    now = int(time.time())
+    conn = None
+    proposal = None
+    principal = None
+    idempotency_key = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM force_open_approvals WHERE approval_id=%s FOR UPDATE", (approval_id,))
+            proposal = cur.fetchone()
+            if not proposal or proposal["status"] != "PENDING" or int(proposal["expires_at"]) <= now:
+                raise LookupError("force-open proposal is unavailable")
+        principal = _admin_principal(
+            request, unsafe=True, roles=(ROLE_APPROVER,), tenant_scope=proposal["tenant_scope"],
+            reauthenticate=True,
+        )
+        if secrets.compare_digest(principal.subject, proposal["proposer_subject"]):
+            raise HTTPException(status_code=403, detail="force-open requires a distinct approver")
+        idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+        if not idempotency_key or len(idempotency_key) > 128:
+            raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
+        with conn.cursor() as cur:
+            # This durable disposition is intentionally committed before any
+            # physical-effect attempt.  A later DB outage therefore cannot
+            # turn a broker success into a retry-safe PUBLISHING ambiguity.
+            cur.execute("UPDATE force_open_approvals SET status='RECONCILIATION_REQUIRED', approver_subject=%s WHERE approval_id=%s AND status='PENDING'", (principal.subject, approval_id))
+            if cur.rowcount != 1:
+                raise RuntimeError("force-open was already reserved")
+        _audit_admin(conn, principal, proposal["tenant_scope"], "FORCE_OPEN_RECONCILIATION_REQUIRED", approval_id, idempotency_key)
+        conn.commit()
+        if not publish_force_open_to_mqtt("authorized-control-plane"):
+            raise RuntimeError("MQTT publish failed")
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE force_open_approvals SET status='PUBLISHED', published_at=%s WHERE approval_id=%s AND status='RECONCILIATION_REQUIRED'", (int(time.time()), approval_id))
+            if cur.rowcount != 1:
+                raise RuntimeError("force-open publication reconciliation required")
+        _audit_admin(conn, principal, proposal["tenant_scope"], "FORCE_OPEN_PUBLISHED", approval_id, idempotency_key)
+        conn.commit()
+        return {"status": "published", "approval_id": approval_id}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except LookupError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        log.error("[FORCE-OPEN] durable reconciliation state retained or publication blocked")
+        raise HTTPException(status_code=503, detail="force-open publication unavailable or reconciliation required") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.post("/api/v1/door/open")
+def manual_open_v2(
+    req: ManualOpenV2Request,
+    request: Request,
+    x_device_proof: Optional[str] = Header(default=None, alias="X-Device-Proof"),
+    x_idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER),
+):
+    """N/N-1-safe URI: only a v2 proof envelope can request manual control."""
+    now = int(time.time())
+    if not all((req.device_id, req.reason, req.nonce, req.expires_at, x_device_proof, x_idempotency_key)):
+        raise HTTPException(status_code=426, detail="manual control requires the v2 proof envelope")
+    if not now < int(req.expires_at) <= now + 120 or len(x_idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="manual control proof expiry or idempotency is invalid")
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, auth_key, is_active FROM tenants WHERE ble_device_mac = %s LIMIT 1",
+                (req.device_id.strip().upper(),),
+            )
+            tenant = cur.fetchone()
+            if not tenant or not tenant["is_active"] or not tenant.get("auth_key"):
+                raise PermissionError("manual control credential is unavailable")
+            payload = "|".join((str(tenant["id"]), req.device_id, "manual_open_v2", req.reason, req.nonce, str(req.expires_at), x_idempotency_key))
+            expected = hmac.new(tenant["auth_key"].encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(x_device_proof.lower(), expected):
+                raise PermissionError("manual control proof rejected")
+            cur.execute(
+                "INSERT INTO mobile_control_nonces (tenant_id, nonce_hash, action, expires_at, consumed_at) VALUES (%s, %s, %s, %s, %s)",
+                (tenant["id"], hashlib.sha256(req.nonce.encode("utf-8")).hexdigest(), "manual_open_v2", req.expires_at, now),
+            )
+        conn.commit()
+    except PermissionError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=403, detail="manual control denied") from exc
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        # Duplicate nonce and database failures must both fail closed without
+        # emitting an MQTT request.
+        raise HTTPException(status_code=503, detail="manual control unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+    if not publish_force_open_to_mqtt("v2-manual-proof"):
+        raise HTTPException(status_code=503, detail="manual control was not delivered")
+    return {"result": "requested", "delivery": "broker-ack-only"}
+
+
+# Deliberately not registered: retained only as a migration reference until the
+# mobile client no longer imports its request model.  It cannot receive HTTP.
 def door_force_open(
     req: ForceOpenRequestSchema,
     x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
@@ -820,7 +1235,7 @@ def door_force_open(
        세입자 경로의 실질적 인증은 device_id ↔ tenants 테이블 검증이다.
        세션 기반 인증 도입은 issue.md P3-25 로 남겨 둔다.
     """
-    log.info(f"[FORCE-OPEN] 수동 원격 문 열기 요청: Reason={req.reason}, Device={req.device_id}")
+    log.info("[FORCE-OPEN] retired device-id control invoked")
 
     device_id = (req.device_id or "").strip()
 
@@ -855,7 +1270,7 @@ def door_force_open(
                 row = cur.fetchone()
 
             if not row:
-                log.warning(f"[FORCE-OPEN-REJECT] 미등록 기기의 개방 요청 거부: {device_id}")
+                log.warning("[FORCE-OPEN-REJECT] retired unregistered device control rejected")
                 return JSONResponse(
                     status_code=403,
                     content={"result": "denied", "message": "미등록 세입자 기기입니다."},
@@ -926,7 +1341,8 @@ current_target_config = load_target_config()
 
 @app.get("/admin/config")
 @app.get("/api/v1/admin/config")
-def get_admin_config():
+def get_admin_config(request: Request):
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope="*")
     """현재 적용되어 있는 Target (ESP32-C6) 원격 튜닝 파라미터 조회"""
     return JSONResponse(
         content={
@@ -943,7 +1359,11 @@ def get_admin_config():
 
 @app.post("/admin/config")
 @app.post("/api/v1/admin/config")
-def update_admin_config(req: AdminConfigRequestSchema):
+def update_admin_config(req: AdminConfigRequestSchema, request: Request):
+    principal = _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), tenant_scope="*", reauthenticate=True)
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """엔지니어 원격 튜닝 API — ESP32-C6 파라미터(Tx Power, ToF 거리, Pre-arm 유효시간, 릴레이 쿨다운) 실시간 변경 및 영구 저장"""
     log.info(f"[ADMIN-CONFIG] 원격 파라미터 변경 요청: tx_power={req.tx_power}, tof_distance={req.tof_distance}, duration={req.duration}, relay_cooldown={req.relay_cooldown}")
     if req.tx_power is None and req.tof_distance is None and req.duration is None and req.relay_cooldown is None:
@@ -961,6 +1381,16 @@ def update_admin_config(req: AdminConfigRequestSchema):
     if req.relay_cooldown is not None:
         current_target_config["relay_cooldown"] = req.relay_cooldown
     current_target_config["updated_at"] = datetime.now().isoformat()
+    conn = None
+    try:
+        conn = get_db()
+        _audit_admin(conn, principal, "*", "TARGET_CONFIG_CHANGED", "target-config", idempotency_key)
+    except Exception as exc:
+        log.error("[ADMIN-CONFIG] audit unavailable")
+        raise HTTPException(status_code=503, detail="configuration change unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
     save_target_config(current_target_config)
 
     mqtt_results = publish_admin_config_to_mqtt(
@@ -988,7 +1418,7 @@ def update_admin_config(req: AdminConfigRequestSchema):
 @app.post("/api/v1/auth/verify", response_model=AuthVerifyResponse)
 def verify_access(req: AuthVerifyRequest):
     mac_upper = req.ble_mac.strip().upper()
-    log.info(f"[AUTH] 자격 검증 요청: MAC={mac_upper}")
+    log.info("[AUTH] credential verification request received")
 
     conn = None
     tenant = None
@@ -1012,7 +1442,7 @@ def verify_access(req: AuthVerifyRequest):
             conn.close()
 
     if not tenant:
-        log.warning(f"[AUTH] ❌ 미등록 MAC: {mac_upper}")
+        log.warning("[AUTH] unregistered credential rejected")
         _log_access(mac_upper, False, req.distance_mm, "미등록 기기")
         return JSONResponse(
             content=AuthVerifyResponse(
@@ -1020,6 +1450,21 @@ def verify_access(req: AuthVerifyRequest):
                 message="인증 실패: 미등록 기기"
             ).model_dump(),
             headers={"Content-Type": "application/json; charset=utf-8"}
+        )
+
+
+    # BLE address is only a lookup locator.  A caller must prove possession of
+    # the separately provisioned credential; an omitted/forged device ID never
+    # authorizes an arm command.
+    if not req.auth_key or not tenant.get("auth_key") or not secrets.compare_digest(
+        req.auth_key, tenant["auth_key"]
+    ):
+        log.warning("[AUTH] credential proof rejected")
+        _log_access(mac_upper, False, req.distance_mm, "credential proof rejected", tenant["id"])
+        return JSONResponse(
+            status_code=403,
+            content=AuthVerifyResponse(granted=False, message="credential proof rejected").model_dump(),
+            headers={"Content-Type": "application/json; charset=utf-8"},
         )
 
     if not tenant["is_active"]:
@@ -1051,9 +1496,15 @@ def verify_access(req: AuthVerifyRequest):
 
 @app.get("/api/v1/logs", response_model=List[AccessLogItem])
 def get_access_logs(
+    request: Request,
+    x_tenant_id: str = Header(..., alias=TENANT_HEADER),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0)
 ):
+    if not x_tenant_id.startswith("legacy:") or not x_tenant_id[7:].isdigit():
+        raise HTTPException(status_code=400, detail="legacy tenant scope required")
+    tenant_id = int(x_tenant_id[7:])
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope=x_tenant_id)
     conn = None
     try:
         conn = get_db()
@@ -1061,8 +1512,8 @@ def get_access_logs(
             cur.execute(
                 "SELECT id, tenant_id, auth_method, is_success, distance_mm, "
                 "failure_reason, created_at "
-                "FROM access_logs ORDER BY created_at DESC LIMIT %s OFFSET %s",
-                (limit, offset)
+                "FROM access_logs WHERE tenant_id = %s ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                (tenant_id, limit, offset)
             )
             rows = cur.fetchall()
             for row in rows:

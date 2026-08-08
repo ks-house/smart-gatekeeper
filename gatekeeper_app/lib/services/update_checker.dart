@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -20,8 +20,10 @@ class UpdateChecker {
   UpdateChecker._internal();
 
   static const String versionUrlFromEnv = String.fromEnvironment('APK_VERSION_URL');
-  static const String downloadUrlFromEnv = String.fromEnvironment('APK_DOWNLOAD_URL');
+  static const String fallbackVersionUrlFromEnv =
+      String.fromEnvironment('APK_FALLBACK_VERSION_URL');
   static const String signingPublicKeyFromEnv = String.fromEnvironment('UPDATE_SIGNING_PUBLIC_KEY_B64');
+  static const String signingKeyIdFromEnv = String.fromEnvironment('UPDATE_SIGNING_KEY_ID');
   static const MethodChannel _securityChannel = MethodChannel(
     'com.kshouse.gatekeeper_app/update_security',
   );
@@ -37,53 +39,76 @@ class UpdateChecker {
 
   Future<bool> checkForUpdates({String? customVersionUrl, String? customDownloadUrl}) async {
     state = UpdateState.checking;
-    final targetUrl = customVersionUrl?.trim().isNotEmpty == true
-        ? customVersionUrl!
-        : (versionUrlFromEnv.isNotEmpty
-            ? versionUrlFromEnv
-            : 'https://tworimpa.synology.me:4442/api/v1/download/version.json');
-    try {
-      final response = await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 5));
-      if (response.statusCode != 200) return _fail('METADATA_HTTP_${response.statusCode}');
-      final parsed = jsonDecode(response.body);
-      if (parsed is! Map) return _fail('METADATA_MALFORMED');
-      final candidate = SignedUpdateManifest.fromJson(Map<String, dynamic>.from(parsed));
-      // A signature is mandatory. Cryptographic verification is delegated to the
-      // platform release key in production; unsigned legacy metadata is rejected.
-      if (candidate.signature.trim().isEmpty) return _fail('MANIFEST_UNSIGNED');
-      if (!await candidate.verifySignature(trustedPublicKeyBase64: signingPublicKeyFromEnv)) {
-        return _fail('MANIFEST_SIGNATURE_INVALID');
+    final metadataUrls = <String>{
+      if (customVersionUrl?.trim().isNotEmpty == true) customVersionUrl!.trim(),
+      if (versionUrlFromEnv.isNotEmpty)
+        versionUrlFromEnv
+      else
+        'https://tworimpa.synology.me:4442/api/v1/download/version.json',
+      if (fallbackVersionUrlFromEnv.isNotEmpty) fallbackVersionUrlFromEnv,
+    }.where(_isTrustedHttpsUrl).toList();
+    var finalFailure = 'METADATA_UNAVAILABLE';
+    for (final targetUrl in metadataUrls) {
+      try {
+        final response =
+            await http.get(Uri.parse(targetUrl)).timeout(const Duration(seconds: 5));
+        if (response.statusCode != 200) {
+          finalFailure = 'METADATA_HTTP_${response.statusCode}';
+          continue;
+        }
+        final candidate = SignedUpdateManifest.fromJsonString(response.body);
+        if (!await candidate.verifySignature(
+          trustedPublicKeyBase64: signingPublicKeyFromEnv,
+          trustedSigningKeyId: signingKeyIdFromEnv,
+        )) {
+          finalFailure = 'MANIFEST_SIGNATURE_INVALID';
+          continue;
+        }
+        final packageInfo = await PackageInfo.fromPlatform();
+        final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+        if (candidate.buildNumber <= currentBuild) {
+          manifest = candidate;
+          state = UpdateState.healthy;
+          isUpdateAvailable.value = false;
+          return false;
+        }
+        manifest = candidate;
+        remoteVersion = candidate.version;
+        remoteBuildNumber = candidate.buildNumber;
+        // A legacy remote-config download URL is never promoted over the two
+        // URLs covered by the signed manifest.
+        downloadUrl = candidate.primaryUrl;
+        if (customDownloadUrl?.trim().isNotEmpty == true &&
+            customDownloadUrl != candidate.primaryUrl &&
+            customDownloadUrl != candidate.fallbackUrl) {
+          debugPrint('[UpdateChecker] Ignored unsigned custom APK URL');
+        }
+        isUpdateAvailable.value = true;
+        state = UpdateState.available;
+        lastFailureReason = null;
+        return true;
+      } catch (error) {
+        finalFailure = error is FormatException
+            ? 'METADATA_MALFORMED'
+            : 'METADATA_UNAVAILABLE';
       }
-      final packageInfo = await PackageInfo.fromPlatform();
-      final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
-      if (candidate.buildNumber <= currentBuild) {
-        state = UpdateState.healthy;
-        isUpdateAvailable.value = false;
-        return false;
-      }
-      manifest = candidate;
-      remoteVersion = candidate.version;
-      remoteBuildNumber = candidate.buildNumber;
-      downloadUrl = customDownloadUrl?.trim().isNotEmpty == true
-          ? customDownloadUrl
-          : candidate.primaryUrl;
-      isUpdateAvailable.value = true;
-      state = UpdateState.available;
-      return true;
-    } catch (error) {
-      return _fail(error is FormatException ? 'METADATA_MALFORMED' : 'METADATA_UNAVAILABLE');
     }
+    return _fail(finalFailure);
   }
 
   Future<bool> downloadUpdate({String? overrideUrl}) async {
     if (state == UpdateState.downloading || state == UpdateState.verifying) return false;
     final currentManifest = manifest;
-    if (currentManifest == null && overrideUrl == null) return _fail('NO_VERIFIED_MANIFEST');
+    if (currentManifest == null) return _fail('NO_VERIFIED_MANIFEST');
+    if (overrideUrl?.trim().isNotEmpty == true &&
+        overrideUrl != currentManifest.primaryUrl &&
+        overrideUrl != currentManifest.fallbackUrl) {
+      return _fail('UNSIGNED_DOWNLOAD_URL');
+    }
     final urls = <String>[
       if (overrideUrl?.trim().isNotEmpty == true) overrideUrl!,
-      if (currentManifest != null) currentManifest.primaryUrl,
-      if (currentManifest != null) currentManifest.fallbackUrl,
-      if (downloadUrlFromEnv.isNotEmpty) downloadUrlFromEnv,
+      currentManifest.primaryUrl,
+      currentManifest.fallbackUrl,
     ].toSet().toList();
     if (urls.isEmpty) return _fail('NO_UPDATE_URL');
     state = UpdateState.downloading;
@@ -102,21 +127,23 @@ class UpdateChecker {
         );
         final bytes = Uint8List.fromList(response.data ?? const <int>[]);
         await File(candidatePath).writeAsBytes(bytes, flush: true);
-        if (currentManifest != null) {
-          state = UpdateState.verifying;
-          final cert = await _certificateSha256(candidatePath, bytes);
-          final installed = await PackageInfo.fromPlatform();
-          final reason = const UpdateArtifactValidator().validate(
-            manifest: currentManifest,
-            bytes: bytes,
-            installedBuild: int.tryParse(installed.buildNumber) ?? 0,
-            certificateSha256: cert,
-          );
-          if (reason != null) {
-            lastFailureReason = reason;
-            continue;
-          }
+        state = UpdateState.verifying;
+        final cert = await _certificateSha256(candidatePath);
+        final installed = await PackageInfo.fromPlatform();
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        final reason = const UpdateArtifactValidator().validate(
+          manifest: currentManifest,
+          bytes: bytes,
+          installedBuild: int.tryParse(installed.buildNumber) ?? 0,
+          androidSdk: androidInfo.version.sdkInt,
+          certificateSha256: cert,
+        );
+        if (reason != null) {
+          lastFailureReason = reason;
+          continue;
         }
+        final verifiedFile = File(verifiedPath);
+        if (await verifiedFile.exists()) await verifiedFile.delete();
         await File(candidatePath).rename(verifiedPath);
         state = UpdateState.installing;
         final result = await OpenFilex.open(verifiedPath);
@@ -135,6 +162,10 @@ class UpdateChecker {
     }
     downloadProgress.value = null;
     state = UpdateState.failed;
+    try {
+      final partial = File(candidatePath);
+      if (await partial.exists()) await partial.delete();
+    } catch (_) {}
     return false;
   }
 
@@ -142,10 +173,15 @@ class UpdateChecker {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('update_first_run_healthy', healthy);
     if (reason != null) await prefs.setString('update_first_run_reason', reason);
-    if (!healthy) state = UpdateState.failed;
+    if (healthy) {
+      await prefs.remove('update_pending_health_path');
+      state = UpdateState.healthy;
+    } else {
+      state = UpdateState.failed;
+    }
   }
 
-  Future<String> _certificateSha256(String path, Uint8List bytes) async {
+  Future<String> _certificateSha256(String path) async {
     try {
       final value = await _securityChannel.invokeMethod<String>('apkCertificateSha256', {'path': path});
       if (value != null && value.isNotEmpty) return value.toLowerCase();
@@ -159,5 +195,13 @@ class UpdateChecker {
     state = UpdateState.failed;
     isUpdateAvailable.value = false;
     return false;
+  }
+
+  static bool _isTrustedHttpsUrl(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null &&
+        uri.scheme == 'https' &&
+        uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty;
   }
 }

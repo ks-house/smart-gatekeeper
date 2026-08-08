@@ -9,12 +9,14 @@ services:
       MYSQL_USER: ${DB_USER:-gatekeeper_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-gatekeeper_pass}
       TZ: Asia/Seoul
-    ports:
-      - "3306:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./db/migrations/002_acl_management_expand_up.sql:/docker-entrypoint-initdb.d/02_acl_management_expand.sql:ro
+      - ./db/migrations/003_admin_security_up.sql:/docker-entrypoint-initdb.d/03_admin_security.sql:ro
+      - ./db/migrations/004_admin_control_v2_up.sql:/docker-entrypoint-initdb.d/04_admin_control_v2.sql:ro
+      - ./db/migrations/005_force_open_reconciliation_up.sql:/docker-entrypoint-initdb.d/05_force_open_reconciliation.sql:ro
+      - ./db/migrations/006_target_boot_state_up.sql:/docker-entrypoint-initdb.d/06_target_boot_state.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
@@ -37,17 +39,19 @@ services:
       DB_USER: ${DB_USER:-gatekeeper_user}
       DB_PASSWORD: ${DB_PASSWORD:-gatekeeper_pass}
       TZ: Asia/Seoul
-      # ── MQTT Broker (v2.0 — gatekeeper/arm Pre-arm 발행용) ──
+      # Verified MQTTS backend publisher; all Target effects are signed.
       # ESP32-C6가 구독 중인 MQTTS 브로커 접속 정보
       # 시놀로지 NAS의 MQTT 브로커 주소 및 포트를 .env 파일에 설정
-      MQTT_HOST: ${MQTT_HOST:-172.17.0.1}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_USER: ${MQTT_USER:-gatekeeper_mqtt}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:-gatekeeper_mqtt_pass}
-
-      MQTT_USE_TLS: ${MQTT_USE_TLS:-false}
-
-      MQTT_TOPIC_ARM: ${MQTT_TOPIC_ARM:-gatekeeper/arm}
+      MQTT_HOST: ${MQTT_HOST:-}
+      MQTT_PORT: ${MQTT_PORT:-8883}
+      MQTT_USER: ${MQTT_USER:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_CA_FILE: ${MQTT_CA_FILE:-/run/secrets/mqtt_ca.pem}
+      COMMAND_TARGET_ID: ${COMMAND_TARGET_ID:-}
+      COMMAND_TENANT_ID: ${COMMAND_TENANT_ID:-}
+      COMMAND_DOOR_ID: ${COMMAND_DOOR_ID:-}
+      COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:-0}
+      COMMAND_SIGNING_PRIVATE_SCALAR_HEX: ${COMMAND_SIGNING_PRIVATE_SCALAR_HEX:-}
       # ── 모바일 앱 Remote Config ──────────────────────────────
       GATEKEEPER_BEACON_UUID: ${GATEKEEPER_BEACON_UUID:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}
       APP_COOLDOWN_SEC: ${APP_COOLDOWN_SEC:-10}
@@ -67,11 +71,18 @@ services:
       ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX: ${ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX:-}
       ACL_TRANSITION_SIGNING_KEY_ID: ${ACL_TRANSITION_SIGNING_KEY_ID:-}
       ACL_LEASE_SECONDS: ${ACL_LEASE_SECONDS:-900}
-    ports:
-      - "8000:8000"
+      # Issue #49.  Empty is intentionally fail-closed for every admin route.
+      # Map verified mTLS certificate SHA-256 fingerprints to subject/roles/scopes.
+      ADMIN_MTLS_IDENTITIES_JSON: ${ADMIN_MTLS_IDENTITIES_JSON:-}
+      ADMIN_SESSION_SECONDS: ${ADMIN_SESSION_SECONDS:-900}
+      ADMIN_REAUTH_SECONDS: ${ADMIN_REAUTH_SECONDS:-120}
+      ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:-}
+    # Intentionally no host port: a TLS reverse proxy is the only ingress and
+    # must forward verified mTLS identity from an allow-listed proxy address.
     volumes:
       - ./app:/app
       - /volume1/docker/smartbox_ota/gatekeeper_apk:/app/gatekeeper_apk:ro
+      - ${MQTT_CA_HOST_PATH:-./secrets/mqtt_ca.pem}:/run/secrets/mqtt_ca.pem:ro
 
 
     depends_on:

@@ -119,13 +119,22 @@ class MainActivity: FlutterActivity() {
                         android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES,
                     )
                 }
-                val signer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    packageInfo?.signingInfo?.apkContentsSigners?.firstOrNull()
+                if (packageInfo == null || packageInfo.packageName != packageName) {
+                    result.error("PACKAGE_MISMATCH", "APK package identity does not match", null)
+                    return@setMethodCallHandler
+                }
+                val signers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    packageInfo.signingInfo?.apkContentsSigners
                 } else {
                     @Suppress("DEPRECATION")
-                    packageInfo?.signatures?.firstOrNull()
+                    packageInfo.signatures
                 }
-                if (signer == null) {
+                if (signers?.size != 1) {
+                    result.error("SIGNER_COUNT_INVALID", "APK must have exactly one current signer", null)
+                    return@setMethodCallHandler
+                }
+                val signer = signers.first()
+                if (signer.toByteArray().isEmpty()) {
                     result.error("CERTIFICATE_MISSING", "APK certificate is missing", null)
                 } else {
                     result.success(MessageDigest.getInstance("SHA-256").digest(signer.toByteArray()).joinToString("") { "%02x".format(it) })

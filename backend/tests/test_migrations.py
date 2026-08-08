@@ -8,9 +8,13 @@ import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pymysql
+from fastapi import HTTPException
 
+from backend.app import main as admin_main
 from backend.app.acl_management import (
     AclManagementService,
     AclStore,
@@ -18,12 +22,21 @@ from backend.app.acl_management import (
     RecordingPublisher,
     build_enrollment_input,
 )
+from backend.app.admin_security import AdminPrincipal
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = ROOT / "backend" / "db" / "schema.sql"
 UP = ROOT / "backend" / "db" / "migrations" / "002_acl_management_expand_up.sql"
 DOWN = ROOT / "backend" / "db" / "migrations" / "002_acl_management_expand_down.sql"
+ADMIN_UP = ROOT / "backend" / "db" / "migrations" / "003_admin_security_up.sql"
+ADMIN_DOWN = ROOT / "backend" / "db" / "migrations" / "003_admin_security_down.sql"
+CONTROL_V2_UP = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_up.sql"
+CONTROL_V2_DOWN = ROOT / "backend" / "db" / "migrations" / "004_admin_control_v2_down.sql"
+RECONCILIATION_UP = ROOT / "backend" / "db" / "migrations" / "005_force_open_reconciliation_up.sql"
+RECONCILIATION_DOWN = ROOT / "backend" / "db" / "migrations" / "005_force_open_reconciliation_down.sql"
+BOOT_STATE_UP = ROOT / "backend" / "db" / "migrations" / "006_target_boot_state_up.sql"
+BOOT_STATE_DOWN = ROOT / "backend" / "db" / "migrations" / "006_target_boot_state_down.sql"
 
 
 class MigrationContractTest(unittest.TestCase):
@@ -48,6 +61,40 @@ class MigrationContractTest(unittest.TestCase):
         self.assertEqual(1, down.count("DROP TABLE IF EXISTS credentials;"))
         self.assertEqual(1, down.count("DROP TABLE IF EXISTS acl_snapshot_jobs;"))
         self.assertEqual(1, down.count("DROP TABLE IF EXISTS enrollment_challenges;"))
+
+    def test_admin_audit_migration_is_append_only_and_has_explicit_rollback(self) -> None:
+        up = ADMIN_UP.read_text(encoding="utf-8")
+        down = ADMIN_DOWN.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS admin_audit", up)
+        self.assertIn("CREATE TRIGGER admin_audit_no_update", up)
+        self.assertIn("CREATE TRIGGER admin_audit_no_delete", up)
+        self.assertIn("admin_audit is immutable", up)
+        self.assertIn("DROP TRIGGER IF EXISTS admin_audit_no_update", down)
+        self.assertIn("DROP TABLE IF EXISTS admin_audit", down)
+
+    def test_v2_control_migration_has_durable_replay_and_approval_state(self) -> None:
+        up = CONTROL_V2_UP.read_text(encoding="utf-8")
+        down = CONTROL_V2_DOWN.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS force_open_approvals", up)
+        self.assertIn("UNIQUE KEY uq_force_open_request", up)
+        self.assertIn("CREATE TABLE IF NOT EXISTS mobile_control_nonces", up)
+        self.assertIn("PRIMARY KEY (tenant_id, nonce_hash, action)", up)
+        self.assertIn("DROP TABLE IF EXISTS mobile_control_nonces", down)
+
+    def test_reconciliation_migration_preserves_ambiguous_publish_state(self) -> None:
+        up = RECONCILIATION_UP.read_text(encoding="utf-8")
+        down = RECONCILIATION_DOWN.read_text(encoding="utf-8")
+        self.assertIn("RECONCILIATION_REQUIRED", up)
+        self.assertIn("ALTER TABLE force_open_approvals", up)
+        self.assertIn("ALTER TABLE force_open_approvals", down)
+
+    def test_target_boot_state_is_monotonic_and_has_explicit_rollback(self) -> None:
+        up = BOOT_STATE_UP.read_text(encoding="utf-8")
+        down = BOOT_STATE_DOWN.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS target_boot_state", up)
+        self.assertIn("boot_count BIGINT UNSIGNED NOT NULL", up)
+        self.assertIn("boot_id REGEXP", up)
+        self.assertIn("DROP TABLE IF EXISTS target_boot_state", down)
 
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
@@ -112,6 +159,10 @@ class MigrationContractTest(unittest.TestCase):
                     SCHEMA.read_text(encoding="utf-8"),
                     UP.read_text(encoding="utf-8"),
                     UP.read_text(encoding="utf-8"),
+                    ADMIN_UP.read_text(encoding="utf-8"),
+                    CONTROL_V2_UP.read_text(encoding="utf-8"),
+                    RECONCILIATION_UP.read_text(encoding="utf-8"),
+                    BOOT_STATE_UP.read_text(encoding="utf-8"),
                     "INSERT INTO tenants (name, unit_number, ble_device_mac, auth_key, is_active) "
                     "VALUES ('N-1 client', '999', 'AA:BB:CC:DD:EE:99', 'legacy-only', TRUE);",
                     "INSERT INTO acl_tenants VALUES "
@@ -149,6 +200,16 @@ class MigrationContractTest(unittest.TestCase):
                 "SELECT auth_key FROM tenants WHERE ble_device_mac='AA:BB:CC:DD:EE:99';",
             )
             self.assertEqual("legacy-only", legacy.stdout.strip())
+
+            audit_immutable = docker(
+                "exec", name, "mariadb", "-N", "-uroot", f"-p{password}", "smart_gatekeeper", "-e",
+                "INSERT INTO admin_audit (actor_subject,tenant_scope,action,object_ref,created_at) "
+                "VALUES ('admin:a','legacy:1','TEST','object',1); "
+                "UPDATE admin_audit SET action='MUTATED' WHERE actor_subject='admin:a';",
+                check=False,
+            )
+            self.assertNotEqual(0, audit_immutable.returncode)
+            self.assertIn("admin_audit is immutable", audit_immutable.stderr)
 
             def connection() -> pymysql.Connection:
                 return pymysql.connect(
@@ -480,6 +541,134 @@ class MigrationContractTest(unittest.TestCase):
             )
             self.assertEqual("DISABLED", store.tenant_status(no_grant_tenant_id))
 
+            approval_id = "c" * 48
+            with connection() as control_connection:
+                with control_connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO force_open_approvals "
+                        "(approval_id,tenant_scope,proposer_subject,reason,idempotency_hash,expires_at,created_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (approval_id, "legacy:1", "operator-a", "integration approval", "d" * 64, 4_102_444_800, 1),
+                    )
+                control_connection.commit()
+
+            principal = AdminPrincipal(
+                subject="approver-b",
+                roles=frozenset({"SECURITY_APPROVER"}),
+                tenants=frozenset({"legacy:1"}),
+                session_id="integration",
+                csrf_token="integration",
+                expires_at=4_102_444_800,
+            )
+            publish_calls: list[str] = []
+
+            def publish_once(label: str) -> bool:
+                publish_calls.append(label)
+                return True
+
+            def approve_once() -> int:
+                try:
+                    admin_main.approve_force_open(
+                        approval_id,
+                        SimpleNamespace(headers={"Idempotency-Key": "mariadb-concurrent"}),
+                    )
+                    return 200
+                except HTTPException as exc:
+                    return exc.status_code
+
+            with patch.object(admin_main, "get_db", side_effect=connection), patch.object(
+                admin_main, "_admin_principal", return_value=principal
+            ), patch.object(admin_main, "publish_force_open_to_mqtt", side_effect=publish_once):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    results = list(pool.map(lambda _: approve_once(), range(2)))
+            self.assertEqual([200, 404], sorted(results))
+            self.assertEqual(["authorized-control-plane"], publish_calls)
+            with connection() as verification_connection:
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT status FROM force_open_approvals WHERE approval_id=%s",
+                        (approval_id,),
+                    )
+                    self.assertEqual("PUBLISHED", cursor.fetchone()["status"])
+                    cursor.execute(
+                        "SELECT COUNT(*) AS count FROM admin_audit "
+                        "WHERE object_ref=%s AND action='FORCE_OPEN_PUBLISHED'",
+                        (approval_id,),
+                    )
+                    self.assertEqual(1, cursor.fetchone()["count"])
+                verification_connection.begin()
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT approval_id FROM force_open_approvals WHERE approval_id=%s FOR UPDATE",
+                        (approval_id,),
+                    )
+                    self.assertEqual(approval_id, cursor.fetchone()["approval_id"])
+                verification_connection.rollback()
+
+            failed_audit_id = "f" * 48
+            with connection() as control_connection:
+                with control_connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO force_open_approvals "
+                        "(approval_id,tenant_scope,proposer_subject,reason,idempotency_hash,expires_at,created_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (failed_audit_id, "legacy:1", "operator-a", "audit failure proof", "e" * 64, 4_102_444_800, 1),
+                    )
+                control_connection.commit()
+
+            real_audit = admin_main._audit_admin
+
+            def fail_only_post_publish(*args: object, **kwargs: object) -> None:
+                if args[3] == "FORCE_OPEN_PUBLISHED":
+                    raise RuntimeError("injected post-publish audit failure")
+                real_audit(*args, **kwargs)
+
+            with patch.object(admin_main, "get_db", side_effect=connection), patch.object(
+                admin_main, "_admin_principal", return_value=principal
+            ), patch.object(admin_main, "publish_force_open_to_mqtt", return_value=True), patch.object(
+                admin_main, "_audit_admin", side_effect=fail_only_post_publish
+            ):
+                with self.assertRaises(HTTPException) as failed_publish:
+                    admin_main.approve_force_open(
+                        failed_audit_id,
+                        SimpleNamespace(headers={"Idempotency-Key": "mariadb-post-publish-failure"}),
+                    )
+            self.assertEqual(503, failed_publish.exception.status_code)
+            with connection() as verification_connection:
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT status FROM force_open_approvals WHERE approval_id=%s",
+                        (failed_audit_id,),
+                    )
+                    self.assertEqual("RECONCILIATION_REQUIRED", cursor.fetchone()["status"])
+                    cursor.execute(
+                        "SELECT action FROM admin_audit WHERE object_ref=%s ORDER BY id",
+                        (failed_audit_id,),
+                    )
+                    self.assertEqual(
+                        ["FORCE_OPEN_RECONCILIATION_REQUIRED"],
+                        [row["action"] for row in cursor.fetchall()],
+                    )
+                verification_connection.begin()
+                with verification_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT approval_id FROM force_open_approvals WHERE approval_id=%s FOR UPDATE",
+                        (failed_audit_id,),
+                    )
+                    self.assertEqual(failed_audit_id, cursor.fetchone()["approval_id"])
+                verification_connection.rollback()
+
+            # The down migration intentionally rejects a live ambiguous state.
+            # Remove this disposable fixture only after its durable evidence was
+            # asserted so the legacy rollback compatibility proof can proceed.
+            with connection() as cleanup_connection:
+                with cleanup_connection.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM force_open_approvals WHERE approval_id=%s",
+                        (failed_audit_id,),
+                    )
+                cleanup_connection.commit()
+
             docker(
                 "exec",
                 "-i",
@@ -488,7 +677,7 @@ class MigrationContractTest(unittest.TestCase):
                 "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
-                input_text=DOWN.read_text(encoding="utf-8"),
+                input_text="\n".join((BOOT_STATE_DOWN.read_text(encoding="utf-8"), RECONCILIATION_DOWN.read_text(encoding="utf-8"), CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
             )
             after_down = docker(
                 "exec",

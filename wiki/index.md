@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-08 (Orca worktree setup, doctor, validation suites, and profile lifecycle)
+> Last updated: 2026-08-09 (PR #63 integrates current manuals/admin and Target command/OTA security while keeping Issue #55 mitigation open)
 
 ---
 
@@ -20,6 +20,7 @@
 |------|---------|
 | [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, Windows PlatformIO timeout/orphan 안전 복구, 시크릿, CI/CD와 GITHUB_TOKEN 인증 가이드 |
 | [orca_development_environment.md](orca_development_environment.md) | Orca 워크트리 자동 setup, doctor/validation, 프로파일 작업 시작과 안전한 완료 수명주기 |
+| [orca_lifecycle_incident.md](orca_lifecycle_incident.md) | #55 post-merge packaged worker-start 재발, staged-launcher workaround, 장기 lifecycle transport 증거와 fail-closed 복구 경계 |
 
 ---
 
@@ -29,6 +30,7 @@
 |------|---------|
 | [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, authoritative relay GPIO3 및 3.3V 전기 안전 기준 |
 | [hardware_test.md](hardware_test.md) | 현재 아키텍처 검증표와 과거 ToF 테스트 증거 분리 |
+| [physical_gate_preparation.md](physical_gate_preparation.md) | #54 Samsung/OEM, ESP32-C6, relay/sensor, OTA, operator/canary evidence preparation |
 | [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO3 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
 
 ---
@@ -38,6 +40,7 @@
 | Page | Summary |
 |------|---------|
 | [architecture.md](architecture.md) | iBeacon → Android → FastAPI → MQTT → 초음파 → relay, retained boot/reset 진단 구조 |
+| [commercial_release_program.md](commercial_release_program.md) | 상용 출시 목표, 작업 DAG, 보안·핵심·모바일·매뉴얼·실기기·production 완료 Gate |
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |
 | [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |
@@ -51,7 +54,9 @@
 | [android_gatt_worker.md](android_gatt_worker.md) | #17 signed default-OFF rollout, cross-process BLE lease, crash-idempotent proof boundary, encrypted locators, exact GATT reasons, and pending physical gates |
 | [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
 | [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
+| [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
+| [target_command_ota_security.md](target_command_ota_security.md) | #50 verified per-Target MQTTS, signed durable commands, signed inactive-slot OTA, local recovery, and production hardening evidence boundary |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |
@@ -60,6 +65,18 @@
 | [mobile_commercial_ux.md](mobile_commercial_ux.md) | #51 capability-based recovery shell, fresh-install native wake, authenticated Target resolution, signed updater, truthful states, privacy/accessibility/localization |
 | [hardwareless_implementation_gates.md](hardwareless_implementation_gates.md) | #22 Two-tier authorization gate structure, software release candidate G0-SW validation, and physical G0-HW fail-closed boundaries |
 | [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest Gate, policy rotation, paths 필터 제거와 required check 해제 |
+
+## 🗂️ Category: Manuals & Operations
+
+| Document | Summary |
+|---|---|
+| [manuals/README.md](../manuals/README.md) | Issue #53 versioned manual set, evidence boundary, field contract, and repeat loop |
+| [general_user_manual_ko.md](../manuals/general_user_manual_ko.md) | Korean-first end-user installation, access, degraded/OEM, update/rollback, lost-phone and support journeys |
+| [administrator_manual_ko.md](../manuals/administrator_manual_ko.md) | Admin roles, tenant/device/door lifecycle, force-open, TLS rotation, monitoring, backup/restore, OTA and decommission |
+| [installer_service_manual_ko.md](../manuals/installer_service_manual_ko.md) | ESP32-C6 wiring, GPIO3/polarity, power safety, commissioning, and explicit relay/offline/OTA/sensor incident contracts (evidence pending) |
+| [privacy_notice_ko.md](../manuals/privacy_notice_ko.md) | Data inventory, minimization, consented/redacted support export, retention/deletion and incident privacy |
+| [support_incident_handbook_ko.md](../manuals/support_incident_handbook_ko.md) | Support triage, reason/state handling, force-open, offline/OEM, update, lost phone and incident loop |
+| [product_gap_register_v1.md](../manuals/product_gap_register_v1.md) | Manual-to-product reverse analysis with explicit #49–#52, test, P0/P1 and physical gaps |
 
 
 
@@ -88,6 +105,7 @@
 | AJ-SR04T/Relay 핀과 전기 안전 | [pin_mapping.md](pin_mapping.md) |
 | 현재 빌드·시크릿·CI/CD | [env_setup.md](env_setup.md) |
 | 현재 검증 상태와 E2E 절차 | [hardware_test.md](hardware_test.md) |
+| #54 physical Gate pending-only template | [physical_gate_preparation.md](physical_gate_preparation.md) |
 | 앱/서비스 상태별 동작 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#3-서비스-생애주기) |
 | 화면 OFF·앱 종료 감사 | [mobile_app_background_audit.md](mobile_app_background_audit.md) |
 | 화면 OFF 출입 실패 상세 분석 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) |

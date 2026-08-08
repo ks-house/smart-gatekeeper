@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "production_enabled": false,
+  "compile_time": {
+    "hardwareless_rc": "must_be_0",
+    "jtag": "disabled_after_manufacturing",
+    "uart_download": "secure_or_disabled",
+    "secure_boot_v2": "required",
+    "flash_encryption_release_mode": "required",
+    "encrypted_nvs_keys": "required",
+    "signed_app_anti_rollback": "required"
+  },
+  "identity": {
+    "unique_per_target_mqtt_principal": true,
+    "unique_local_recovery_credentials": true,
+    "manufacturing_record_and_rotation_runbook": "required",
+    "debug_access_owner_approval": "required"
+  },
+  "release_gates": {
+    "software_contract": "implemented",
+    "secure_boot_efuse_evidence": "pending",
+    "flash_and_nvs_encryption_evidence": "pending",
+    "anti_rollback_efuse_evidence": "pending",
+    "debug_port_lock_evidence": "pending",
+    "ota_g1_to_g4": "pending",
+    "relay_g0_to_g2": "pending",
+    "physical_24h_soak": "pending"
+  }
+}

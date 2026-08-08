@@ -36,16 +36,28 @@ flutter analyze
 ```
 
 ### Step 4: Android APK 빌드
-릴리즈 모드로 Android APK 바이너리를 빌드합니다.
+릴리즈 모드로 Android APK 바이너리를 빌드합니다. 업데이트 공개키와 key ID는
+manifest가 아니라 APK 빌드 입력으로 고정해야 하며, primary/fallback metadata URL은
+서로 독립된 HTTPS 배포 지점을 사용합니다.
 
 ```bash
-flutter build apk --release
+flutter build apk --release \
+  --dart-define=APK_VERSION_URL="$APK_VERSION_URL" \
+  --dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL" \
+  --dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID" \
+  --dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64"
 ```
 
 정식 `key.properties`와 release keystore가 없으면 release 빌드는 의도적으로
 실패합니다. debug 서명 APK를 release 산출물로 대체하지 않으며, 실제 배포 APK는
 GitHub Actions가 `ANDROID_KEYSTORE_*` Secrets의 정식 키로 서명하고 `apksigner`
 certificate identity Gate를 통과해야 합니다.
+
+서명 key ID 또는 32-byte Ed25519 공개키가 비어 있거나 manifest의 key ID와 다르면
+앱은 update를 발견하더라도 설치 경로를 열지 않습니다. metadata는
+`ota/schemas/mobile-manifest.schema.json`의 정확한 필드와 `sgk-json-v1` 서명을
+사용해야 하며, legacy `artifact_sha256`, `fallback_apk_url`, manifest 내 공개키는
+허용되지 않습니다.
 
 ---
 
