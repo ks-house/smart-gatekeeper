@@ -42,8 +42,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -
 powershell -NoProfile -ExecutionPolicy Bypass -File .orca/scripts/validate.ps1 -Suite Full
 ```
 
-`-Suite App`은 네이티브 Flutter가 없으면 project Docker builder를 사용한다. 호스트 작업트리를
-오염시키지 않도록 필요한 app 파일만 컨테이너 임시 디렉터리에 복사한 뒤 `pub get`, 범위형
+`-Suite App`은 네이티브 Flutter가 없으면 project Docker builder를 사용한다. 두 lane 모두 호스트 작업트리를
+오염시키지 않도록 추적 파일과 ignore되지 않은 app 소스만 임시 디렉터리에 복사한 뒤 `pub get`, 범위형
 `dart analyze lib test`, `flutter test`를 수행한다. 포맷까지 release-blocking으로 검사할 때만
 `-EnforceFormat`을 추가한다.
 
@@ -82,7 +82,7 @@ orca orchestration worker-release --dispatch <dispatch_id> --json
 orca orchestration check --ack <delivery_id> --json
 ```
 
-`worker_done` 명령에는 현재 CLI가 자동 결합하는 `--from` 또는 `--dispatch-capability`를 추가하지 않는다.
+`worker_done`은 활성 Dispatch가 주입한 lifecycle preamble의 명령 전체를 그대로 사용한다. 저수준 staged Dispatch는 pane identity를 대신해 `--from`과 `--dispatch-capability`를 요구할 수 있고 supervised worker는 이를 생략할 수 있으므로, 문서 예시나 과거 명령을 기준으로 lifecycle 플래그를 추가·삭제·재구성하지 않는다. `ORCA_CLI_COMMAND`가 없을 때 프로젝트 스크립트는 준비된 public `orca`를 우선 사용하고, public CLI가 없을 때만 `ORCA_DEV_REPO_ROOT`의 `orca-dev`로 fallback한다.
 
 ## 5. 증거 경계
 

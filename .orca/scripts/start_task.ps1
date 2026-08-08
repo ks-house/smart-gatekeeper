@@ -16,7 +16,9 @@ $ErrorActionPreference = 'Stop'
 
 function Get-OrcaExecutable {
     if (-not [string]::IsNullOrWhiteSpace($env:ORCA_CLI_COMMAND)) { return $env:ORCA_CLI_COMMAND }
-    if (-not [string]::IsNullOrWhiteSpace($env:ORCA_DEV_REPO_ROOT)) { return 'orca-dev' }
+    if ($null -ne (Get-Command orca -ErrorAction SilentlyContinue)) { return 'orca' }
+    if (-not [string]::IsNullOrWhiteSpace($env:ORCA_DEV_REPO_ROOT) -and
+        $null -ne (Get-Command orca-dev -ErrorAction SilentlyContinue)) { return 'orca-dev' }
     return 'orca'
 }
 

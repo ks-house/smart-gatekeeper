@@ -56,13 +56,7 @@ graph TD
 1. **작업 전 지침 이수**: `AGENTS.md`, `wiki/index.md`, 최신 `wiki/log.md`, 관련 wiki 문서 필독
 2. **코드 변경 및 검증**: 담당 파트 수정 후 관련 unit test / build 실행 (Host C++, Python, Flutter, PlatformIO)
 3. **지식베이스 동기화**: `wiki/` 문서 업데이트 및 `wiki/log.md` Append-only 기록
-4. **`worker_done` 송신**: 문서의 고정 명령을 복사하지 말고 현재 Dispatch가 주입한 정확한 Task/Dispatch ID를 사용합니다. 현재 CLI는 워커 identity와 capability를 자동으로 결합하므로 `--from`이나 `--dispatch-capability`를 추가하지 않습니다.
-   ```bash
-   orca orchestration send \
-     --type worker_done --subject "<작업 완료 제목>" \
-     --body "<무엇을 했는지, 무엇을 확인했는지, 무엇이 남았는지 3문장>" --task-id <task_id> --dispatch-id <dispatch_id> \
-     --outcome succeeded --files-modified "<수정 파일 목록>" --json
-   ```
+4. **`worker_done` 송신**: 활성 Dispatch가 주입한 lifecycle preamble의 명령 전체가 유일한 권위입니다. 저수준 staged Dispatch는 pane identity를 대신해 `--from`과 `--dispatch-capability`를 주입할 수 있고, supervised worker는 이를 생략할 수 있으므로 문서 예시나 과거 명령에서 플래그를 추가·삭제·재구성하지 않습니다. 주입된 명령의 placeholder만 실제 3문장 요약(무엇을 했는지, 무엇을 확인했는지, 무엇이 남았는지)과 정확한 결과 값으로 바꿔 exactly one `worker_done`을 보냅니다.
 
 ---
 
