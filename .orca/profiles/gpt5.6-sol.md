@@ -50,9 +50,7 @@ orca orchestration task-create --spec "<Task Description & Acceptance Criteria>"
 # 격리된 워크트리에서 명시적으로 승인한 경우에만 -AllowUnsafe 추가
 ```
 
-
-
-
+Issue #55가 open인 동안 repository profile worker에는 packaged `worker-start` 대신 위 staged launcher를 사용합니다. `input_accepted`, `state: ready`, injected prompt 또는 PowerShell shell의 `running`은 Task 처리 증거가 아닙니다. launcher는 pre-Dispatch cursor 뒤에서 exact paste marker+single Enter 또는 `UserPromptSubmit`/`Working`을 bounded 확인해야 하며 marker가 잠시 없었다는 이유만으로 성공을 보고하지 않습니다. launcher가 반환한 exact Dispatch와 terminal tail을 확인하고 accepted heartbeat/작업 출력을 시작 증거로만 취급하며, exactly one accepted `worker_done` 전에는 완료로 판정하지 않습니다. staged launcher도 packaged runtime이나 장기 final lifecycle transport를 수정하지 않습니다.
 
 ### 3.3 체크 및 모니터링
 ```bash
@@ -61,3 +59,5 @@ orca orchestration check --wait --types worker_done,escalation,question --timeou
 ```
 
 `state: ready`, heartbeat, TUI activity, timeout은 완료 증거가 아닙니다. 현재 Dispatch가 주입한 lifecycle preamble과 정확한 Task/Dispatch ID를 권위 있는 값으로 사용하고, `worker_done`을 수신할 때까지 rolling wait를 계속합니다.
+
+packaged worker가 Task 처리 없이 현재 PowerShell prompt로 돌아가면 그 attempt를 완료로 세지 않고 exact Dispatch/terminal을 검사하여 stop/account합니다. 자동 반복 launch 또는 다른 terminal identity의 대리 completion은 금지하며, conflict-free staged retry에는 새 attempt provenance를 사용합니다.

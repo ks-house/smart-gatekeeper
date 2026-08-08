@@ -12,10 +12,15 @@ param (
     [string]$Worktree = 'active',
 
     [Parameter(Mandatory=$false)]
-    [switch]$AllowUnsafe
+    [switch]$AllowUnsafe,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateRange(6, 120)]
+    [int]$DispatchObservationSeconds = 30
 )
 
 $ErrorActionPreference = 'Stop'
+$projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 
 function Get-OrcaExecutable {
     if (-not [string]::IsNullOrWhiteSpace($env:ORCA_CLI_COMMAND)) {
@@ -42,13 +47,45 @@ function Wait-ForAgentIdle {
         [string]$Phase,
 
         [Parameter(Mandatory=$false)]
-        [int]$MaxWindows = 3
+        [int]$MaxWindows = 3,
+
+        [Parameter(Mandatory=$false)]
+        [string]$ReadyProfileFallback = ''
     )
 
     for ($window = 1; $window -le $MaxWindows; $window++) {
         $response = & $script:orcaExecutable terminal wait --terminal $TerminalHandle --for tui-idle --timeout-ms 60000 --json | ConvertFrom-Json
+        $blockedReason = @(
+            [string]$response.result.wait.blockedReason,
+            [string]$response.result.blockedReason,
+            [string]$response.error.details.blockedReason,
+            [string]$response.error.blockedReason
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+        if (-not [string]::IsNullOrWhiteSpace($blockedReason)) {
+            if ($blockedReason -eq 'codex-trust-workspace') {
+                throw "$Phase blocked by exact-worktree trust ($blockedReason). The launcher will not auto-trust or persist broad permission; trust only '$script:projectRoot' in an isolated interactive session, then rerun."
+            }
+            throw "$Phase blocked by Orca: $blockedReason"
+        }
         if ($response.ok -and $response.result.wait.satisfied) {
             return $response
+        }
+
+        # agy 1.1.11 can render the exact assistant marker before Orca's first
+        # tui-idle observation settles. The marker may satisfy only this initial
+        # startup observation; final tui-idle remains mandatory before Dispatch.
+        if (-not [string]::IsNullOrWhiteSpace($ReadyProfileFallback) -and
+            -not $response.ok -and $response.error.code -eq 'timeout') {
+            $snapshot = & $script:orcaExecutable terminal read --terminal $TerminalHandle --json | ConvertFrom-Json
+            if (-not $snapshot.ok) {
+                throw "$Phase fallback inspection failed: $($snapshot.error.message)"
+            }
+            $tailText = $snapshot.result.terminal.tail -join "`n"
+            $readyPattern = 'PROFILE_READY\s*:?\s*' + [regex]::Escape($ReadyProfileFallback) + '(?=\s|$|\u2022)'
+            if ($tailText -match $readyPattern) {
+                Write-Host "$Phase emitted the exact profile marker before the initial tui-idle observation; requiring final tui-idle." -ForegroundColor Yellow
+                return $snapshot
+            }
         }
 
         if (-not $response.ok -and $response.error.code -eq 'timeout' -and $window -lt $MaxWindows) {
@@ -107,7 +144,7 @@ function Ensure-DispatchSubmitted {
         [string]$SinceCursor,
 
         [Parameter(Mandatory=$false)]
-        [int]$ObservationSeconds = 5
+        [int]$ObservationSeconds = 30
     )
 
     $deadline = (Get-Date).AddSeconds($ObservationSeconds)
@@ -130,12 +167,21 @@ function Ensure-DispatchSubmitted {
             return $submit
         }
 
+        # Absence of the paste marker is not submission evidence. Require an
+        # exact post-Dispatch renderer/hook signal before reporting success.
+        if ($tailText -match '(?m)(?:^|\n)\s*(?:\u2022\s*)?(?:UserPromptSubmit|Working)(?=\s|$)') {
+            Write-Host "Dispatch submission/working evidence observed after the pre-Dispatch cursor." -ForegroundColor Green
+            return $snapshot
+        }
+
+        if ($tailText -match '(?s)(?:^|\n)PS [^\r\n]+>\s*$') {
+            throw 'Agent returned to PowerShell before Dispatch submission was proven.'
+        }
+
         Start-Sleep -Milliseconds 500
     }
 
-    # No exact unsubmitted paste marker was observed. The agent either accepted
-    # the injected prompt directly or progressed before the first inspection.
-    return $null
+    throw "Dispatch acceptance produced no positive UserPromptSubmit/Working evidence and no exact paste-marker recovery within $ObservationSeconds seconds."
 }
 
 # Normalize the profile name and build a CLI command supported by the installed
@@ -143,9 +189,11 @@ function Ensure-DispatchSubmitted {
 # Codex --profile accepts only $CODEX_HOME/<name>.config.toml, not a Markdown path.
 if ($Profile -eq 'antigravity' -or $Profile -eq 'gpt5.6-antigravity') {
     $Profile = "antigravity"
-    $agentCmd = "agy --effort high"
+    # agy 1.1.11 requires -i/--prompt-interactive for an initial prompt that
+    # continues as an interactive session; a positional prompt exits instead.
+    $agentCmd = "agy --effort high --prompt-interactive"
     if ($AllowUnsafe) {
-        $agentCmd = "agy --dangerously-skip-permissions --effort high"
+        $agentCmd = "agy --dangerously-skip-permissions --effort high --prompt-interactive"
     }
 } else {
     if (-not $Profile.StartsWith('gpt5.6-')) {
@@ -163,12 +211,12 @@ if ($Profile -eq 'antigravity' -or $Profile -eq 'gpt5.6-antigravity') {
 
 Write-Host "🚀 Launching Orca Terminal Profile: [$Profile] (CLI: $agentCmd, Effort: High, Worktree: $Worktree)..." -ForegroundColor Cyan
 
-$profilePath = ".orca/profiles/$Profile.md"
+$profilePath = Join-Path $projectRoot ".orca\profiles\$Profile.md"
 $title = "$Profile-worker"
 
 # Pass the bootstrap as the agent's initial argv prompt. Starting a blank TUI
 # and injecting the first prompt can race Codex startup hooks and exit the TUI.
-$bootstrapPrompt = "Read $profilePath completely and use it as the active role instructions for this session. Also read AGENTS.md, wiki/index.md, and the recent tail of wiki/log.md before any task. Do not modify files during this bootstrap. Reply exactly PROFILE_READY $Profile, then return to idle."
+$bootstrapPrompt = "Your repository scope is the exact worktree '$projectRoot'. Do not inspect, enumerate, or search outside this path. Read '$profilePath' completely and use it as the active role instructions for this session. Also read '$projectRoot\AGENTS.md', '$projectRoot\wiki\index.md', and the recent tail of '$projectRoot\wiki\log.md' before any task. Do not modify files during this bootstrap. Reply exactly PROFILE_READY $Profile, then return to idle."
 $escapedBootstrapPrompt = $bootstrapPrompt.Replace("'", "''")
 $agentCmd = "$agentCmd '$escapedBootstrapPrompt'"
 
@@ -189,7 +237,8 @@ for ($startupAttempt = 1; $startupAttempt -le 2; $startupAttempt++) {
     $startupError = $null
     try {
         Write-Host "Waiting for terminal handle $handle to reach tui-idle..." -ForegroundColor Yellow
-        $waitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Agent startup'
+        $readyFallback = if ($Profile -eq 'antigravity') { $Profile } else { '' }
+        $waitJson = Wait-ForAgentIdle -TerminalHandle $handle -Phase 'Agent startup' -ReadyProfileFallback $readyFallback
 
         $startupSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
         if (-not $startupSnapshot.ok) {
@@ -211,11 +260,17 @@ for ($startupAttempt = 1; $startupAttempt -le 2; $startupAttempt++) {
 
     Write-Host "Agent startup failed; closing exact terminal $handle." -ForegroundColor Yellow
     $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
-    if (-not $closeJson.ok) {
+    if (-not $closeJson.ok -and $closeJson.error.code -ne 'tab_not_found') {
         throw "Agent startup failed and exact terminal cleanup failed for ${handle}: $($closeJson.error.message). Original error: $startupError"
+    }
+    if (-not $closeJson.ok -and $closeJson.error.code -eq 'tab_not_found') {
+        Write-Host "Exact terminal $handle was already absent during cleanup (tab_not_found)." -ForegroundColor Yellow
     }
     if ($startupAttempt -eq 2) {
         throw "Agent startup failed during both bounded attempts; exact terminal $handle was closed. Original error: $startupError"
+    }
+    if ([string]$startupError -match 'codex-trust-workspace') {
+        throw "Agent startup requires exact-worktree trust; exact terminal $handle was closed without changing trust. Original error: $startupError"
     }
     Write-Host "Retrying profile startup once in a new terminal." -ForegroundColor Yellow
     $handle = $null
@@ -230,10 +285,10 @@ try {
 } catch {
     $bootstrapError = $_
     $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
-    if (-not $closeJson.ok) {
+    if (-not $closeJson.ok -and $closeJson.error.code -ne 'tab_not_found') {
         throw "Profile bootstrap failed and exact terminal cleanup failed for ${handle}: $($closeJson.error.message). Original error: $bootstrapError"
     }
-    throw "Profile bootstrap failed; exact terminal $handle was closed. Original error: $bootstrapError"
+    throw "Profile bootstrap failed; exact terminal $handle was closed or already absent. Original error: $bootstrapError"
 }
 
 Write-Host "✅ Profile [$Profile] loaded and idle." -ForegroundColor Green
@@ -241,19 +296,33 @@ Write-Host "✅ Profile [$Profile] loaded and idle." -ForegroundColor Green
 # Dispatch task if TaskId provided
 if ($TaskId -ne '') {
     Write-Host "📡 Dispatching Task [$TaskId] to terminal [$handle]..." -ForegroundColor Cyan
-    $preDispatchSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
-    if (-not $preDispatchSnapshot.ok) {
-        throw "Pre-Dispatch terminal inspection failed: $($preDispatchSnapshot.error.message)"
+    try {
+        $preDispatchSnapshot = & $orcaExecutable terminal read --terminal $handle --json | ConvertFrom-Json
+        if (-not $preDispatchSnapshot.ok) {
+            throw "Pre-Dispatch terminal inspection failed: $($preDispatchSnapshot.error.message)"
+        }
+        $preDispatchCursor = [string]$preDispatchSnapshot.result.terminal.latestCursor
+        if ([string]::IsNullOrWhiteSpace($preDispatchCursor)) {
+            throw "Pre-Dispatch terminal inspection returned no latest cursor."
+        }
+        $dispatchJson = & $orcaExecutable orchestration dispatch --task $TaskId --to $handle --inject --json | ConvertFrom-Json
+        if (-not $dispatchJson.ok) {
+            throw "Dispatch was rejected before acceptance: $($dispatchJson.error.message)"
+        }
+    } catch {
+        $dispatchError = $_
+        $closeJson = & $orcaExecutable terminal close --terminal $handle --json | ConvertFrom-Json
+        if (-not $closeJson.ok -and $closeJson.error.code -ne 'tab_not_found') {
+            throw "Dispatch failed before acceptance and exact terminal cleanup failed for ${handle}: $($closeJson.error.message). Original error: $dispatchError"
+        }
+        throw "Dispatch failed before acceptance; exact terminal $handle was closed or already absent. Original error: $dispatchError"
     }
-    $preDispatchCursor = [string]$preDispatchSnapshot.result.terminal.latestCursor
-    if ([string]::IsNullOrWhiteSpace($preDispatchCursor)) {
-        throw "Pre-Dispatch terminal inspection returned no latest cursor."
+
+    try {
+        $dispatchSubmitJson = Ensure-DispatchSubmitted -TerminalHandle $handle -SinceCursor $preDispatchCursor -ObservationSeconds $DispatchObservationSeconds
+    } catch {
+        $dispatchId = [string]$dispatchJson.result.dispatch.id
+        throw "Dispatch $dispatchId was accepted, but bounded submission verification failed. Preserve the terminal and let the coordinator inspect and stop the exact Dispatch. Original error: $_"
     }
-    $dispatchJson = & $orcaExecutable orchestration dispatch --task $TaskId --to $handle --inject --json | ConvertFrom-Json
-    if (-not $dispatchJson.ok) {
-        Write-Error "Dispatch failed: $($dispatchJson.error.message)"
-        exit 1
-    }
-    $dispatchSubmitJson = Ensure-DispatchSubmitted -TerminalHandle $handle -SinceCursor $preDispatchCursor
     Write-Host "🎉 Task [$TaskId] successfully dispatched to [$handle]!" -ForegroundColor Green
 }
