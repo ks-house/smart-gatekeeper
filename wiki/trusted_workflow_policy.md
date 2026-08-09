@@ -22,20 +22,17 @@ keys, steps, action versions, commands, or trailing newlines are otherwise ignor
 SHA-256. A candidate passes only when every protected path exactly matches one complete approved bundle;
 mixing individually approved files from different bundles is rejected.
 
-The repository regression test follows the same rule: the checked-out protected bytes may match any one
-complete approved bundle. It does not require the matching bundle to be named `current-main-baseline`, which
-would make a narrowly approved transition bundle unusable. Separate assertions still require the
-`current-main-baseline` entry to retain its exact trusted repository, commit, protected-path order, and five
-digests; temporary approval does not weaken or replace that baseline provenance.
+The repository regression test follows the same rule and requires the checked-out protected bytes to match
+the sole `current-main-baseline` bundle. Separate assertions bind that entry to the exact trusted repository,
+merged-main commit, protected-path order, and five normalized digests.
 
-The policy normally contains one `current-main-baseline` bundle sourced from merged `main` at
-`cc977e42770e6d88822459436a770295632c6e45`. During the PR #59 transition it also contains exactly one
-temporary complete bundle, `temporary-pr59-e468e0f`, for exact candidate
-`e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad`. Independent exact-head COMMENTED review `4890233068`
-authorized those five normalized digests as one indivisible set; it did not authorize a branch, wildcard,
-partial set, mixed set, or later PR head. The earlier `origin-main-bootstrap@8c36ead` and
-`pr-28-preapproved@7bae62f` entries remain retired. The current-main byte set remains approved in parallel
-so this temporary transition cannot revoke or replace the trusted baseline.
+The policy contains exactly one `current-main-baseline` bundle sourced from merged `main` at
+`ed19f3256ac8857367f1f490eb1f5f717e20ca03`. Its protected bytes are the exact PR #59 bundle authorized by
+independent exact-head COMMENTED review `4890233068` and then merged normally. The transition-only
+`temporary-pr59-e468e0f@e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad` entry has been removed. The earlier
+`current-main-baseline@4e628baf043721d0e0ae86290915886cee7e3d5c`,
+`origin-main-bootstrap@8c36ead`, and `pr-28-preapproved@7bae62f` identities remain retired. No branch,
+wildcard, partial set, mixed set, or candidate-derived digest is approved.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -56,9 +53,10 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For PR #59, this policy-only change is the temporary-approval step. After PR #59 merges, a second
-policy-only rotation must remove `temporary-pr59-e468e0f` and pin the single baseline to the exact resulting
-`main` commit. Until that rotation merges, the temporary bundle is deliberately narrow but still active.
+For PR #59, the temporary approval and protected-file merge are complete. This separate policy-only
+rotation removes `temporary-pr59-e468e0f` and pins the sole baseline to exact merged-main commit
+`ed19f3256ac8857367f1f490eb1f5f717e20ca03`. Future rotations must repeat the same independent full-bundle
+review, temporary trusted-base authorization, protected merge, and final policy-only retirement sequence.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.

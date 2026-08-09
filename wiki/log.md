@@ -2367,3 +2367,13 @@
 - Focused trusted-policy tests passed 29/29, full root discovery passed 132/132, Quick passed in 34.87 seconds, and actionlint plus the OTA contract passed.
 - Flutter/native sources and protected producers are byte-identical to the previously validated `e468e0f` product tree, so its disposable Flutter 29/29, native 35/35, debug APK, and signed-manifest evidence remains bound to the same product bytes; hosted exact-head reruns remain required for the final merge head.
 - PR #59 remains Draft and unmerged. Samsung/OEM, physical install and first-run health, BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, operator, production signing, deployment, and production authorization remain open and fail-closed.
+
+## [2026-08-09] compile | Rotate PR #59 trust policy to exact merged main
+
+- Replaced the transition policy with one indivisible `current-main-baseline` sourced from exact merged `main` `ed19f3256ac8857367f1f490eb1f5f717e20ca03`. The protected-path order remains exactly deploy, mobile build, OTA contract, protected OTA gate, and pinned OTA requirements; their independently recomputed normalized SHA-256 digests are `4bf77e4c...`, `f3f66873...`, `8e2c1479...`, `751e18ce...`, and `d2dc1631...`.
+- Removed `temporary-pr59-e468e0f` entirely and retired the earlier `4e628baf...`/`cc977e42...` main provenance. Tests require the sole exact merged-main bundle and reject retired bytes or identities, partial bundles, path swaps, mixed digests, source mismatches, and per-path mutations. No protected workflow, protected producer, product, firmware, mobile, backend, `raw/`, runtime, signing, or deployment byte changed.
+
+## [2026-08-09] test | Validate final PR #59 policy-only rotation
+
+- The focused trusted-policy suite passed 30/30, full root discovery passed 133/133, actionlint and JSON parsing passed, and Quick passed in 35.65 seconds with doctor 12 pass, one Docker-covered native Java 17 warning, and zero failures.
+- This final trust-anchor rotation is repository authorization only. Samsung/OEM, physical APK install and first-run health, BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, operator acceptance, production signing, deployment, and production authorization remain open and fail-closed.
