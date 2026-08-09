@@ -2651,6 +2651,18 @@
 - Orca `Quick` passed all ten sections in 41.37 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed.
 - The final policy PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge. No dispatch, NAS write, deployment, physical validation, release evidence or production authorization occurred.
 
+## [2026-08-09] compile | Authorize the complete reviewed PR #75 protected bundle
+
+- From exact trusted main `5f68de9523e6c2ee263452a7c593ad50069a657b`, replaced the sole baseline with exactly two complete 57-file authorizations for `ks-house/smart-gatekeeper@f0f8666ab9aa2b68d042207ddb89d47f97ea7146`: exact temporary identity `temporary-pr75-f0f8666` and same-source descendant identity `future-pr75-persistent-baseline`. Both maps are byte-identical and use strict `utf8-lf-v1`; no partial, branch, wildcard, fork or third persistent identity is admitted.
+- Recomputed all 57 digests from immutable GitHub Contents API bytes. The three changed protected digests are deploy `8dfb5f6becc4a9cd8eef1835552800d9cd9e1254992f017a6d341420bd930e08`, mobile `673202a2d835c57ae16702e5f1bc9bf9465654c4a262fb29024ec182b7ba8d14` and OTA gate `3730a2599e7dc995575a26ba8c2d9c66069b804d849b31730605cfab7251a687`; the other 54 remain equal to the current complete baseline.
+- GitHub API evidence binds open Draft PR #75 and COMMENTED nonblocking product review `4891511958` to the exact candidate commit. Compare proves that candidate is two commits ahead of exact base `5f68de9523e6c2ee263452a7c593ad50069a657b` with that exact merge base. Hosted mobile, OTA and firmware checks succeeded; Trusted remains expected-red until this separate policy sequence lands. This authorization is not NAS deployment, physical evidence, release evidence or production authorization.
+
+## [2026-08-09] test | Validate the PR #75 whole-bundle transition policy
+
+- Focused trusted-policy regression tests passed 37/37. Full root discovery passed 173/173 from the exact staged Git tree archived with checkout conversion disabled, and `actionlint` passed every workflow.
+- Orca `Quick` passed all ten sections in 41.81 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed; the exact PR #75 head selects the temporary identity without ancestry fallback.
+- No workflow dispatch, NAS connection/write, merge, deployment, physical validation, signing, release evidence or production authorization occurred. The policy-only Draft PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge.
+
 ## [2026-08-09] fix | Allow audited NAS upload without a pinned known-host secret
 
 - Kept `NAS_KNOWN_HOSTS` as the preferred physical-test transport mode, but made it optional for the explicitly requested public-canary lane. When absent, both firmware and mobile jobs perform a three-attempt bounded `ssh-keyscan`, validate the returned record, pin it to a run-local file, retain `StrictHostKeyChecking=yes`, and label sanitized evidence `runtime-keyscan-unpinned`.
@@ -2668,3 +2680,15 @@
 - Addressed COMMENTED review `4891484367` by making the fallback loop structurally exact: one `for attempt in 1 2 3` block, one 10-second/5-second-connect-timeout `ssh-keyscan`, no `while true`, and mutation tests rejecting 100 retries or removal of the bounded loop.
 - Added default-false boolean workflow input `allow_unpinned_host_key` to both workflows. When the independently pinned secret is absent, the exact-main public-canary job refuses network contact unless the repository owner explicitly sets it true for that dispatch; evidence still records `runtime-keyscan-unpinned` and documentation states that this does not authenticate the first key discovery or prevent password interception.
 - No policy authorization, merge, workflow dispatch, NAS connection/write, physical validation or production authorization occurred in this remediation.
+
+## [2026-08-09] fix | Integrate the merged PR #75 transition policy exactly once
+
+- Integrated exact `origin/main` `bbe842a13541386c9e101284cf49ab4df6bca042` into the reviewed product head `f0f8666ab9aa2b68d042207ddb89d47f97ea7146` with a normal two-parent merge and no rebase, force-push or history rewrite.
+- Preserved the exact new-main `wiki/log.md` Git blob as a byte prefix, retained the complete prior PR #75 log suffix exactly once, kept all 57 protected product blobs identical to `f0f8666ab9aa2b68d042207ddb89d47f97ea7146`, retained the merged policy files exactly, and preserved `raw/` tree identity.
+- No workflow dispatch, NAS connection/write, deployment, physical validation, release evidence or production authorization occurred. Fresh exact-head local/Hosted validation and an independent COMMENTED whole-bundle review remain required before normal product merge.
+
+## [2026-08-09] test | Validate the post-policy PR #75 integration tree
+
+- Focused trusted-policy tests passed 37/37 and OTA/NAS tests passed 76/76. All-workflow `actionlint`, the OTA contract command and `git diff --check` passed.
+- Full root discovery passed 173/173 from the exact staged Git index materialized with checkout conversion disabled. An earlier ZIP extraction converted unchanged manual LF blobs to CRLF and caused one byte-format false red, so that host materialization was discarded and is not represented as source evidence.
+- Orca `Quick` passed all ten sections in 44.34 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. `raw/` identity, the exact main log byte prefix, one complete prior PR suffix, all 57 reviewed product blobs and exact merged policy blobs were independently rechecked. Hosted exact-head checks and a fresh independent COMMENTED review remain required; no NAS or production action occurred.
