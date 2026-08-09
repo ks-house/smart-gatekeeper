@@ -1,10 +1,13 @@
 package com.kshouse.gatekeeper_app
 
 import android.app.NotificationManager
+import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.Signature
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -25,6 +28,8 @@ class MainActivity: FlutterActivity() {
             "com.kshouse.gatekeeper_app/ble_wake_registration"
         const val CHANNEL_UPDATE_SECURITY =
             "com.kshouse.gatekeeper_app/update_security"
+        const val CHANNEL_BACKGROUND_REQUIREMENTS =
+            "com.kshouse.gatekeeper_app/background_requirements"
         const val FOREGROUND_NOTIFICATION_CHANNEL = "smart_key_foreground_channel_v2"
     }
 
@@ -120,6 +125,33 @@ class MainActivity: FlutterActivity() {
                     "APK package identity could not be verified",
                     error.javaClass.simpleName,
                 )
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_BACKGROUND_REQUIREMENTS,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isIgnoringBatteryOptimizations" -> {
+                    val power = getSystemService(PowerManager::class.java)
+                    result.success(power.isIgnoringBatteryOptimizations(packageName))
+                }
+                "requestIgnoreBatteryOptimizations" -> {
+                    val power = getSystemService(PowerManager::class.java)
+                    if (!power.isIgnoringBatteryOptimizations(packageName)) {
+                        val intent = Intent(
+                            BatteryOptimizationRequestPolicy
+                                .ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse(
+                                BatteryOptimizationRequestPolicy.packageUri(packageName),
+                            ),
+                        )
+                        startActivity(intent)
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
             }
         }
     }

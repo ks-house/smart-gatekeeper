@@ -1,7 +1,9 @@
+import argparse
 import base64
 import copy
 import hashlib
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -100,6 +102,91 @@ class OtaContractGateTest(unittest.TestCase):
       )
       with self.assertRaisesRegex(gate.GateError, "signature"):
         gate.validate_release_manifests([manifest], [artifact], "00" * 32)
+
+  def test_target_manifest_producer_binds_exact_bytes_and_workflow_identity(self):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+      directory = Path(temporary_directory)
+      artifact = directory / "firmware.bin"
+      artifact.write_bytes(b"exact target firmware bytes")
+      manifest = directory / "version.json"
+      create_args = argparse.Namespace(
+          artifact=artifact,
+          output=manifest,
+          version="2.1.0-g1234567",
+          commit="1" * 40,
+          build_id="public-canary-" + "1" * 40,
+          artifact_url="https://target-canary.invalid/firmware.bin",
+          published_at="2026-08-01T00:00:00Z",
+          mandatory_after=None,
+          signing_key_id="rfc8032-test-key-1",
+          private_key_env="TARGET_TEST_PRIVATE_KEY_HEX",
+          expected_public_key_hex=gate.TEST_PUBLIC_KEY_HEX,
+          protocol_min=1,
+          protocol_max=2,
+      )
+      with mock.patch.dict(
+          os.environ,
+          {"TARGET_TEST_PRIVATE_KEY_HEX": TEST_PRIVATE_KEY_HEX},
+          clear=False,
+      ):
+        gate.create_target_manifest(create_args)
+      verify_args = argparse.Namespace(
+          manifest=manifest,
+          artifact=artifact,
+          public_key_hex=gate.TEST_PUBLIC_KEY_HEX,
+          expected_version=create_args.version,
+          expected_commit=create_args.commit,
+          expected_build_id=create_args.build_id,
+      )
+      gate.verify_target_manifest(verify_args)
+      artifact.write_bytes(b"substituted target firmware bytes")
+      with self.assertRaisesRegex(gate.GateError, "exact firmware bytes"):
+        gate.verify_target_manifest(verify_args)
+
+  def test_target_manifest_verifier_rejects_version_commit_and_build_mutations(self):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+      directory = Path(temporary_directory)
+      artifact = directory / "firmware.bin"
+      artifact.write_bytes(b"target identity bytes")
+      manifest = directory / "version.json"
+      create_args = argparse.Namespace(
+          artifact=artifact,
+          output=manifest,
+          version="2.1.0-gabcdef0",
+          commit="a" * 40,
+          build_id="run-100",
+          artifact_url="https://target-canary.invalid/firmware.bin",
+          published_at="2026-08-01T00:00:00Z",
+          mandatory_after=None,
+          signing_key_id="rfc8032-test-key-1",
+          private_key_env="TARGET_TEST_PRIVATE_KEY_HEX",
+          expected_public_key_hex=gate.TEST_PUBLIC_KEY_HEX,
+          protocol_min=1,
+          protocol_max=2,
+      )
+      with mock.patch.dict(
+          os.environ,
+          {"TARGET_TEST_PRIVATE_KEY_HEX": TEST_PRIVATE_KEY_HEX},
+          clear=False,
+      ):
+        gate.create_target_manifest(create_args)
+      for field, value, message in (
+          ("expected_version", "wrong", "version"),
+          ("expected_commit", "b" * 40, "commit"),
+          ("expected_build_id", "wrong-run", "build ID"),
+      ):
+        verify_args = argparse.Namespace(
+            manifest=manifest,
+            artifact=artifact,
+            public_key_hex=gate.TEST_PUBLIC_KEY_HEX,
+            expected_version=create_args.version,
+            expected_commit=create_args.commit,
+            expected_build_id=create_args.build_id,
+        )
+        setattr(verify_args, field, value)
+        with self.subTest(field=field):
+          with self.assertRaisesRegex(gate.GateError, message):
+            gate.verify_target_manifest(verify_args)
 
   def test_release_missing_artifact_is_rejected(self):
     with tempfile.TemporaryDirectory() as temporary_directory:
@@ -314,6 +401,116 @@ class OtaContractGateTest(unittest.TestCase):
         workflow = gate.load_workflow_yaml(path, content)
         self.assertIn("pull_request", workflow["on"])
 
+  def test_firmware_public_canary_is_secret_free_and_artifact_bound(self):
+    workflows = self._workflow_sources()
+    gate.validate_firmware_build_workflow(workflows)
+    gate.validate_workflow_release_triggers(workflows)
+    path = ".github/workflows/deploy.yml"
+    parsed = gate.load_workflow_yaml(path, workflows[path])
+    build_job = parsed["jobs"]["test_and_build"]
+    serialized = json.dumps(build_job, sort_keys=True)
+    self.assertNotIn("${{ secrets.", serialized)
+    self.assertIn("https://target-canary.invalid/", serialized)
+
+  def test_every_public_build_job_rejects_secret_in_run_env_or_artifact_producer(self):
+    for path, job_name, producer_name in (
+        (
+            ".github/workflows/deploy.yml",
+            "test_and_build",
+            "Prepare signed public firmware canary",
+        ),
+        (
+            ".github/workflows/build_app.yml",
+            "build_apk",
+            "Prepare public mobile canary metadata",
+        ),
+    ):
+      for location in ("env", "run"):
+        with self.subTest(path=path, location=location):
+          workflows = self._workflow_sources()
+          parsed = gate.load_workflow_yaml(path, workflows[path])
+          producer = next(
+              step
+              for step in parsed["jobs"][job_name]["steps"]
+              if step.get("name") == producer_name
+          )
+          if location == "env":
+            producer["env"] = {
+                "EXFILTRATED": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}"
+            }
+          else:
+            producer["run"] += (
+                '\nprintf "%s" "${{ secrets.SECRET_OTA_FIRMWARE_URL }}" '
+                ">> dist/version.json\n"
+            )
+          workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
+          with self.assertRaisesRegex(
+              gate.GateError, "zero production secret|production secret"
+          ):
+            gate.validate_workflow_release_triggers(workflows)
+
+  def test_branch_dispatch_cannot_reach_keystore_or_runtime_secrets_after_gradle_mutation(self):
+    workflows = self._workflow_sources()
+    # This represents an unprotected candidate-only Gradle mutation. It does not
+    # alter the protected workflow bundle and therefore must have no secret-bearing
+    # branch-dispatch job available to execute it.
+    malicious_gradle = (
+        'println(System.getenv("KEYSTORE_PASSWORD")); '
+        'println(System.getenv("GATEKEEPER_API_KEY"))'
+    )
+    self.assertIn("KEYSTORE_PASSWORD", malicious_gradle)
+    gate.validate_workflow_release_triggers(workflows)
+    parsed = gate.load_workflow_yaml(
+        ".github/workflows/build_app.yml",
+        workflows[".github/workflows/build_app.yml"],
+    )
+    build_serialized = json.dumps(parsed["jobs"]["build_apk"], sort_keys=True)
+    self.assertNotIn("${{ secrets.", build_serialized)
+    self.assertNotIn("upload-keystore.jks", build_serialized)
+    release_condition = " ".join(
+        str(parsed["jobs"]["release_to_production"]["if"]).split()
+    )
+    self.assertEqual(
+        release_condition,
+        "github.event_name == 'workflow_dispatch' && "
+        "inputs.release_target == 'production' && "
+        "github.ref == 'refs/heads/main'",
+    )
+
+  def test_release_main_ref_and_secret_after_verification_order_are_immutable(self):
+    for path in self._workflow_sources():
+      with self.subTest(path=path, mutation="main-ref"):
+        workflows = self._workflow_sources()
+        workflows[path] = workflows[path].replace(
+            "      github.ref == 'refs/heads/main'\n",
+            "      github.ref != 'refs/heads/main'\n",
+            1,
+        )
+        with self.assertRaisesRegex(gate.GateError, "authorized production trigger"):
+          gate.validate_workflow_release_triggers(workflows)
+
+      with self.subTest(path=path, mutation="secret-before-verification"):
+        workflows = self._workflow_sources()
+        parsed = gate.load_workflow_yaml(path, workflows[path])
+        steps = parsed["jobs"]["release_to_production"]["steps"]
+        verify_index = next(
+            index
+            for index, step in enumerate(steps)
+            if step.get("name") == "Verify exact protected main release source"
+        )
+        secret_index = next(
+            index
+            for index, step in enumerate(steps)
+            if "${{ secrets." in json.dumps(step, sort_keys=True)
+        )
+        secret_step = steps.pop(secret_index)
+        steps.insert(verify_index, secret_step)
+        workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
+        with self.assertRaisesRegex(
+            gate.GateError, "step.*name mismatch|only after exact protected main"
+        ):
+          gate.validate_workflow_release_triggers(workflows)
+
   def test_build_job_cannot_use_production_environment(self):
     workflows = self._workflow_sources()
     target_workflow = ".github/workflows/deploy.yml"
@@ -375,8 +572,9 @@ class OtaContractGateTest(unittest.TestCase):
     workflows = self._workflow_sources()
     target_workflow = ".github/workflows/deploy.yml"
     workflows[target_workflow] = workflows[target_workflow].replace(
-        "        run: |\n",
-        "        run: |\n          OTA_SIGNING_PUBLIC_KEY_HEX=attacker_key\n",
+        "        run: |\n          python scripts/ota_contract_gate.py release \\",
+        "        run: |\n          OTA_SIGNING_PUBLIC_KEY_HEX=attacker_key\n          python scripts/ota_contract_gate.py release \\",
+        1,
     )
     with self.assertRaisesRegex(gate.GateError, "redefined in run script"):
       gate.validate_workflow_release_triggers(workflows)
@@ -512,8 +710,9 @@ class OtaContractGateTest(unittest.TestCase):
         )
         # Add an extra step inside release_to_production steps
         workflows[target_workflow] = workflows[target_workflow].replace(
-            "      - name: Checkout repository\n",
-            "      - name: Extra unauthorized step\n        run: echo compromised\n      - name: Checkout repository\n",
+            "      - name: Checkout exact main source\n",
+            "      - name: Extra unauthorized step\n        run: echo compromised\n      - name: Checkout exact main source\n",
+            1,
         )
         with self.assertRaisesRegex(gate.GateError, "step count must be|order violated|name mismatch"):
           gate.validate_workflow_release_triggers(workflows)
@@ -576,23 +775,23 @@ class OtaContractGateTest(unittest.TestCase):
 
   def test_mobile_release_or_pr_trust_define_removal_is_rejected(self):
     path = ".github/workflows/build_app.yml"
-    fragments = [
-        '--dart-define=APK_VERSION_URL="$APK_VERSION_URL"',
-        '--dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL"',
-        '--dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID"',
-        '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64"',
-        '--dart-define=APK_VERSION_URL="https://pr-canary.invalid/',
-        '--dart-define=APK_FALLBACK_VERSION_URL="https://pr-fallback.invalid/',
-        '--dart-define=UPDATE_SIGNING_KEY_ID="rfc8032-test-key-1"',
-        '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="',
-    ]
-    for fragment in fragments:
+    fragments = {
+        '--dart-define=APK_VERSION_URL="$APK_VERSION_URL"': gate.validate_workflow_release_triggers,
+        '--dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL"': gate.validate_workflow_release_triggers,
+        '--dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID"': gate.validate_workflow_release_triggers,
+        '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64"': gate.validate_workflow_release_triggers,
+        '--dart-define=APK_VERSION_URL="https://pr-canary.invalid/': gate.validate_mobile_build_workflow,
+        '--dart-define=APK_FALLBACK_VERSION_URL="https://pr-fallback.invalid/': gate.validate_mobile_build_workflow,
+        '--dart-define=UPDATE_SIGNING_KEY_ID="rfc8032-test-key-1"': gate.validate_mobile_build_workflow,
+        '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="': gate.validate_mobile_build_workflow,
+    }
+    for fragment, validator in fragments.items():
       with self.subTest(fragment=fragment):
         workflows = self._workflow_sources()
         self.assertIn(fragment, workflows[path])
         workflows[path] = workflows[path].replace(fragment, "REMOVED", 1)
-        with self.assertRaisesRegex(gate.GateError, "does not pin|PR canary"):
-          gate.validate_mobile_build_workflow(workflows)
+        with self.assertRaisesRegex(gate.GateError, "production Android build|PR canary"):
+          validator(workflows)
 
   def test_mobile_workflow_rejects_missing_protected_producer_or_legacy_metadata(self):
     path = ".github/workflows/build_app.yml"
@@ -632,21 +831,21 @@ class OtaContractGateTest(unittest.TestCase):
         parsed = gate.load_workflow_yaml(path, workflows[path])
         step = next(
             item for item in parsed["jobs"]["build_apk"]["steps"]
-            if item.get("name") == "Prepare public PR canary metadata (non-production)"
+            if item.get("name") == "Prepare public mobile canary metadata"
         )
         step["env"] = {"ATTACKER_READS_PROCESS_ENV": secret_expression}
         workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
-        with self.assertRaisesRegex(gate.GateError, "PR-reachable step"):
-          gate.validate_mobile_build_workflow(workflows)
+        with self.assertRaisesRegex(gate.GateError, "PR-reachable step|zero production secret"):
+          gate.validate_workflow_release_triggers(workflows)
 
     workflows = self._workflow_sources()
     workflows[path] = workflows[path].replace(
-        "if: github.event_name != 'pull_request'\n        env:\n          APK_VERSION_URL:",
-        "if: github.event_name == 'pull_request'\n        env:\n          APK_VERSION_URL:",
+        "      github.ref == 'refs/heads/main'",
+        "      github.ref != 'refs/heads/main'",
         1,
     )
-    with self.assertRaisesRegex(gate.GateError, "PR-reachable step"):
-      gate.validate_mobile_build_workflow(workflows)
+    with self.assertRaisesRegex(gate.GateError, "authorized production trigger"):
+      gate.validate_workflow_release_triggers(workflows)
 
   def test_mobile_manifest_execution_cannot_escape_protected_gate(self):
     path = ".github/workflows/build_app.yml"
@@ -696,14 +895,16 @@ class OtaContractGateTest(unittest.TestCase):
         workflows = self._workflow_sources()
         if occurrence == 1:
           workflows[path] = workflows[path].replace(fragment, "REMOVED", 1)
+          validator = gate.validate_mobile_build_workflow
         else:
           first = workflows[path].index(fragment)
           second = workflows[path].index(fragment, first + len(fragment))
           workflows[path] = workflows[path][:second] + workflows[path][second:].replace(
               fragment, "REMOVED", 1
           )
-        with self.assertRaisesRegex(gate.GateError, "embed exact source commit"):
-          gate.validate_mobile_build_workflow(workflows)
+          validator = gate.validate_workflow_release_triggers
+        with self.assertRaisesRegex(gate.GateError, "embed exact source commit|production Android build"):
+          validator(workflows)
 
   def test_mobile_workflow_rejects_tests_after_apk_build(self):
     path = ".github/workflows/build_app.yml"
@@ -717,7 +918,7 @@ class OtaContractGateTest(unittest.TestCase):
     native_step = steps.pop(native_index)
     prepare_index = next(
         index for index, step in enumerate(steps)
-        if step.get("name") == "Prepare public PR canary metadata (non-production)"
+        if step.get("name") == "Prepare public mobile canary metadata"
     )
     steps.insert(prepare_index, native_step)
     workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)

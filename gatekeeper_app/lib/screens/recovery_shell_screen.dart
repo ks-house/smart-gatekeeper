@@ -10,9 +10,13 @@ import 'smart_key_control_screen.dart';
 /// are unavailable, so recovery cannot be hidden by the failing capability.
 class RecoveryShellScreen extends StatefulWidget {
   const RecoveryShellScreen(
-      {super.key, required this.status, required this.missing});
+      {super.key,
+      required this.status,
+      required this.missing,
+      this.onRetrySetup});
   final String status;
   final List<String> missing;
+  final Future<void> Function()? onRetrySetup;
 
   @override
   State<RecoveryShellScreen> createState() => _RecoveryShellScreenState();
@@ -134,6 +138,15 @@ class _RecoveryShellScreenState extends State<RecoveryShellScreen> {
                               Text('Recovery capabilities',
                                   style: theme.textTheme.titleMedium),
                               const SizedBox(height: 10),
+                              if (widget.onRetrySetup != null)
+                                FilledButton.icon(
+                                  key: const Key('retry-background-setup'),
+                                  onPressed: widget.onRetrySetup,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('권한 및 배터리 설정 다시 시도'),
+                                ),
+                              if (widget.onRetrySetup != null)
+                                const SizedBox(height: 8),
                               OutlinedButton.icon(
                                 onPressed: () => Navigator.push(
                                     context,

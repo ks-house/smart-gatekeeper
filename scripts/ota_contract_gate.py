@@ -491,8 +491,12 @@ ALLOWED_BUILD_ACTIONS = {
 CANONICAL_RELEASE_STEPS = {
     ".github/workflows/deploy.yml": [
         {
-            "name": "Checkout repository",
+            "name": "Checkout exact main source",
             "uses": "actions/checkout@v4",
+            "with": {
+                "ref": "${{ github.sha }}",
+                "persist-credentials": False,
+            },
         },
         {
             "name": "Set up Python",
@@ -500,13 +504,57 @@ CANONICAL_RELEASE_STEPS = {
             "with": {"python-version": "3.10"},
         },
         {
-            "name": "Install OTA release gate dependencies",
-            "run": "python -m pip install -r ota/requirements.txt",
+            "name": "Install PlatformIO and OTA release gate dependencies",
+            "run": (
+                "python -m pip install --upgrade pip\n"
+                "pip install platformio -r ota/requirements.txt\n"
+            ),
         },
         {
-            "name": "Download the exact canary selected for production",
-            "uses": "actions/download-artifact@v4",
-            "with": {"name": "target-canary", "path": "dist"},
+            "name": "Verify exact protected main release source",
+            "main_source_verification": True,
+        },
+        {
+            "name": "Create production firmware build secrets",
+            "target_build_secrets": True,
+            "env": {
+                "SECRET_ROOT_CA_CERT": "${{ secrets.SECRET_ROOT_CA_CERT }}",
+                "SECRET_WIFI_SSID": "${{ secrets.SECRET_WIFI_SSID }}",
+                "SECRET_WIFI_PASSWORD": "${{ secrets.SECRET_WIFI_PASSWORD }}",
+                "SECRET_API_URL": "${{ secrets.SECRET_API_URL }}",
+                "SECRET_API_KEY": "${{ secrets.SECRET_API_KEY }}",
+                "SECRET_MQTT_HOST": "${{ secrets.SECRET_MQTT_HOST }}",
+                "SECRET_MQTT_PORT": "${{ secrets.SECRET_MQTT_PORT }}",
+                "SECRET_MQTT_USER": "${{ secrets.SECRET_MQTT_USER }}",
+                "SECRET_MQTT_PASSWORD": "${{ secrets.SECRET_MQTT_PASSWORD }}",
+                "SECRET_TARGET_TENANT_ID": "${{ secrets.SECRET_TARGET_TENANT_ID }}",
+                "SECRET_TARGET_DOOR_ID": "${{ secrets.SECRET_TARGET_DOOR_ID }}",
+                "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}",
+                "SECRET_COMMAND_SIGNING_KEY_ID": "${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}",
+                "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}",
+                "SECRET_ACL_SIGNING_KEY_ID": "${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}",
+                "SECRET_OTA_VERSION_URL": "${{ secrets.SECRET_OTA_VERSION_URL }}",
+                "SECRET_OTA_FIRMWARE_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
+                "SECRET_OTA_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+                "SECRET_OTA_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+                "SECRET_LOCAL_RECOVERY_AP_PASSWORD": "${{ secrets.SECRET_LOCAL_RECOVERY_AP_PASSWORD }}",
+                "SECRET_LOCAL_RECOVERY_USER": "${{ secrets.SECRET_LOCAL_RECOVERY_USER }}",
+                "SECRET_LOCAL_RECOVERY_PASSWORD": "${{ secrets.SECRET_LOCAL_RECOVERY_PASSWORD }}",
+            },
+        },
+        {
+            "name": "Build exact production firmware",
+            "target_production_build": True,
+        },
+        {
+            "name": "Create production signed Target manifest",
+            "target_manifest_producer": True,
+            "env": {
+                "TARGET_ARTIFACT_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
+                "TARGET_PRIVATE_KEY_HEX": "${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}",
+                "TARGET_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+                "TARGET_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+            },
         },
         {
             "name": "Enforce OTA production release evidence",
@@ -530,8 +578,12 @@ CANONICAL_RELEASE_STEPS = {
     ],
     ".github/workflows/build_app.yml": [
         {
-            "name": "Checkout repository",
+            "name": "Checkout exact main source",
             "uses": "actions/checkout@v4",
+            "with": {
+                "ref": "${{ github.sha }}",
+                "persist-credentials": False,
+            },
         },
         {
             "name": "Set up Java JDK 17 for trusted APK inspection",
@@ -548,13 +600,47 @@ CANONICAL_RELEASE_STEPS = {
             },
         },
         {
-            "name": "Install OTA release gate dependencies",
-            "run": "python -m pip install -r ota/requirements.txt",
+            "name": "Set up Flutter SDK for exact main release",
+            "uses": "subosito/flutter-action@v2",
+            "with": {"channel": "stable", "cache": True},
         },
         {
-            "name": "Download the exact canary selected for production",
-            "uses": "actions/download-artifact@v4",
-            "with": {"name": "smart-key-app-canary", "path": "dist"},
+            "name": "Install exact main release dependencies",
+            "run": (
+                "python -m pip install -r ota/requirements.txt\n"
+                "cd gatekeeper_app\n"
+                "flutter pub get\n"
+            ),
+        },
+        {
+            "name": "Verify exact protected main release source",
+            "main_source_verification": True,
+        },
+        {
+            "name": "Restore production Android keystore",
+            "android_keystore": True,
+            "env": {
+                "KEYSTORE_BASE64": "${{ secrets.ANDROID_KEYSTORE_BASE64 }}",
+            },
+        },
+        {
+            "name": "Create production Android signing properties",
+            "android_signing_properties": True,
+            "env": {
+                "KEYSTORE_PASSWORD": "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}",
+                "KEY_ALIAS": "${{ secrets.ANDROID_KEY_ALIAS }}",
+            },
+        },
+        {
+            "name": "Build exact production Android APK",
+            "android_production_build": True,
+            "env": {
+                "APK_VERSION_URL": "${{ secrets.SECRET_APK_VERSION_URL }}",
+                "APK_FALLBACK_VERSION_URL": "${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}",
+                "UPDATE_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+                "OTA_SIGNING_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+                "GATEKEEPER_API_KEY": "${{ secrets.GATEKEEPER_API_KEY }}",
+            },
         },
         {
             "name": "Create production signed mobile manifest",
@@ -659,7 +745,8 @@ def validate_workflow_release_triggers(
 
   expected_authorized_condition = (
       "github.event_name == 'workflow_dispatch' && "
-      "inputs.release_target == 'production'"
+      "inputs.release_target == 'production' && "
+      "github.ref == 'refs/heads/main'"
   )
 
   for path, binding in WORKFLOW_ARTIFACT_BINDINGS.items():
@@ -734,6 +821,11 @@ def validate_workflow_release_triggers(
     has_contract_step = False
     has_test_step = False
     has_canary_upload_step = False
+
+    if "${{ secrets." in json.dumps(build_job, sort_keys=True):
+      raise GateError(
+          f"{path}: PR/branch-dispatch-reachable build job must contain zero production secret references"
+      )
 
     for idx, step in enumerate(build_steps):
       if not isinstance(step, dict):
@@ -813,7 +905,11 @@ def validate_workflow_release_triggers(
           f"(exactly one SFTP deploy step allowed, no steps allowed after SFTP deploy step)"
       )
 
-
+    verification_index = next(
+        index
+        for index, item in enumerate(canonical_steps)
+        if item["name"] == "Verify exact protected main release source"
+    )
     for idx, (step, canonical) in enumerate(zip(release_steps, canonical_steps)):
       if not isinstance(step, dict):
         raise GateError(f"{path}: release step {idx} must be a mapping")
@@ -826,6 +922,40 @@ def validate_workflow_release_triggers(
       if "if" in step:
         raise GateError(f"{path}: evidence step cannot be conditionally disabled or bypassed")
 
+      if idx < verification_index and "${{ secrets." in json.dumps(step, sort_keys=True):
+        raise GateError(
+            f"{path}: production secrets must be injected only after exact protected main verification"
+        )
+
+      expected_step_keys = {"name"}
+      if "uses" in canonical:
+        expected_step_keys.add("uses")
+        if "with" in canonical:
+          expected_step_keys.add("with")
+      if "run" in canonical:
+        expected_step_keys.add("run")
+      if any(
+          canonical.get(marker)
+          for marker in (
+              "main_source_verification",
+              "target_build_secrets",
+              "target_production_build",
+              "target_manifest_producer",
+              "android_keystore",
+              "android_signing_properties",
+              "android_production_build",
+              "mobile_manifest_producer",
+              "run_prefix",
+          )
+      ):
+        expected_step_keys.add("run")
+      if "env" in canonical:
+        expected_step_keys.add("env")
+      if set(step) != expected_step_keys:
+        raise GateError(
+            f"{path}: release step {idx} keys must be exact {sorted(expected_step_keys)}"
+        )
+
       if "uses" in canonical:
         if step.get("uses") != canonical["uses"]:
           raise GateError(f"{path}: release step {idx} uses mismatch: expected '{canonical['uses']}'")
@@ -836,6 +966,138 @@ def validate_workflow_release_triggers(
       if "run" in canonical:
         if step.get("run") != canonical["run"]:
           raise GateError(f"{path}: release step {idx} run command mismatch")
+
+      if canonical.get("main_source_verification"):
+        run_cmd = str(step.get("run", ""))
+        for fragment in (
+            'test "$GITHUB_REF" = "refs/heads/main"',
+            'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+            "python scripts/ota_contract_gate.py contract",
+            "python -m unittest discover -s tests -p 'test_*.py' -v",
+        ):
+          if run_cmd.count(fragment) != 1:
+            raise GateError(
+                f"{path}: exact protected main verification is incomplete: {fragment}"
+            )
+        if "${{ secrets." in run_cmd or "||" in run_cmd or "set +e" in run_cmd:
+          raise GateError(
+              f"{path}: exact protected main verification must be secret-free and fail closed"
+          )
+
+      if canonical.get("target_build_secrets"):
+        if step.get("env") != canonical["env"]:
+          raise GateError(
+              f"{path}: production firmware inputs must come from exact production environment secrets"
+          )
+        run_cmd = str(step.get("run", ""))
+        for fragment in (
+            "test -n \"${!name}\"",
+            "cat <<EOF > include/secrets.h",
+            '#define SECRET_OTA_VERSION_URL "${SECRET_OTA_VERSION_URL}"',
+            '#define SECRET_OTA_FIRMWARE_URL "${SECRET_OTA_FIRMWARE_URL}"',
+            '#define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"',
+            '#define SECRET_OTA_SIGNING_KEY_ID "${SECRET_OTA_SIGNING_KEY_ID}"',
+        ):
+          if fragment not in run_cmd:
+            raise GateError(
+                f"{path}: production firmware secret materialization is incomplete: {fragment}"
+            )
+        if re.search(r"\b(pio|python|curl|wget|sftp|scp|ssh)\b", run_cmd):
+          raise GateError(
+              f"{path}: production firmware secret step must not execute candidate-controlled tooling"
+          )
+
+      if canonical.get("target_production_build"):
+        run_cmd = str(step.get("run", ""))
+        for fragment in (
+            "pio run -e esp32c6",
+            "cp .pio/build/esp32c6/firmware.bin dist/gatekeeper-firmware.bin",
+            "test -s dist/gatekeeper-firmware.bin",
+        ):
+          if fragment not in run_cmd:
+            raise GateError(f"{path}: exact production firmware build is incomplete")
+        if "${{ secrets." in run_cmd:
+          raise GateError(f"{path}: production firmware build must consume only materialized inputs")
+
+      if canonical.get("target_manifest_producer"):
+        if step.get("env") != canonical["env"]:
+          raise GateError(
+              f"{path}: production Target manifest secrets must come from exact production environment inputs"
+          )
+        run_cmd = str(step.get("run", ""))
+        required_fragments = (
+            "python scripts/ota_contract_gate.py target-manifest-create",
+            "python scripts/ota_contract_gate.py target-manifest-verify",
+            "--artifact dist/gatekeeper-firmware.bin",
+            "--output dist/version.json",
+            '--commit "${{ github.sha }}"',
+            '--build-id "${{ github.run_id }}"',
+            '--private-key-env TARGET_PRIVATE_KEY_HEX',
+            '--expected-public-key-hex "$TARGET_PUBLIC_KEY_HEX"',
+        )
+        for fragment in required_fragments:
+          if fragment not in run_cmd:
+            raise GateError(
+                f"{path}: production Target manifest binding missing: {fragment}"
+            )
+        if run_cmd.count("target-manifest-create") != 1 or run_cmd.count(
+            "target-manifest-verify"
+        ) != 1:
+          raise GateError(
+              f"{path}: production Target manifest create/verify must each run exactly once"
+          )
+        if "secrets." in run_cmd or "||" in run_cmd or "set +e" in run_cmd:
+          raise GateError(
+              f"{path}: production Target manifest producer must use protected gate and fail closed"
+          )
+
+      if canonical.get("android_keystore"):
+        if step.get("env") != canonical["env"]:
+          raise GateError(f"{path}: Android keystore provenance must be exact")
+        run_cmd = str(step.get("run", ""))
+        for fragment in (
+            'test -n "$KEYSTORE_BASE64"',
+            "base64 --decode > gatekeeper_app/android/app/upload-keystore.jks",
+            "test -s gatekeeper_app/android/app/upload-keystore.jks",
+        ):
+          if fragment not in run_cmd:
+            raise GateError(f"{path}: Android keystore materialization is incomplete")
+        if re.search(r"\b(gradle|flutter|python|curl|wget|sftp|scp|ssh)\b", run_cmd):
+          raise GateError(
+              f"{path}: keystore materialization step must not execute candidate-controlled tooling"
+          )
+
+      if canonical.get("android_signing_properties"):
+        if step.get("env") != canonical["env"]:
+          raise GateError(f"{path}: Android signing property provenance must be exact")
+        run_cmd = str(step.get("run", ""))
+        for fragment in (
+            'test -n "$KEYSTORE_PASSWORD"',
+            'test -n "$KEY_ALIAS"',
+            "cat <<EOF > gatekeeper_app/android/key.properties",
+        ):
+          if fragment not in run_cmd:
+            raise GateError(f"{path}: Android signing properties are incomplete")
+        if re.search(r"\b(gradle|flutter|python|curl|wget|sftp|scp|ssh)\b", run_cmd):
+          raise GateError(
+              f"{path}: signing property step must not execute candidate-controlled tooling"
+          )
+
+      if canonical.get("android_production_build"):
+        if step.get("env") != canonical["env"]:
+          raise GateError(f"{path}: production Android runtime inputs must be exact")
+        run_cmd = str(step.get("run", ""))
+        for fragment in (
+            "flutter build apk --release",
+            "printf '%s\\n' '${{ github.sha }}' > gatekeeper_app/assets/source_commit.txt",
+            '--dart-define=APK_VERSION_URL="$APK_VERSION_URL"',
+            '--dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL"',
+            '--dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID"',
+            '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64"',
+            "cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk dist/ks-house-gatekeeper.apk",
+        ):
+          if fragment not in run_cmd:
+            raise GateError(f"{path}: exact production Android build is incomplete: {fragment}")
 
       if canonical.get("mobile_manifest_producer"):
         if set(step) != {"name", "env", "run"}:
@@ -924,6 +1186,63 @@ def validate_workflow_release_triggers(
             prev_continued = sline.endswith("\\")
 
 
+def validate_firmware_build_workflow(
+    workflows: dict[str, str] | None = None,
+) -> None:
+  """Keep every PR/branch-dispatch firmware canary public and non-production."""
+  path = ".github/workflows/deploy.yml"
+  content = (
+      workflows[path]
+      if workflows is not None
+      else (ROOT / path).read_text(encoding="utf-8")
+  )
+  parsed = load_workflow_yaml(path, content)
+  build_job = parsed.get("jobs", {}).get("test_and_build", {})
+  steps = build_job.get("steps", [])
+  if "${{ secrets." in json.dumps(build_job, sort_keys=True):
+    raise GateError(
+        f"{path}: PR/branch-dispatch firmware job must contain zero production secret references"
+    )
+  by_name = {step.get("name"): step for step in steps if isinstance(step, dict)}
+  for name in (
+      "Create compile-only public canary secrets",
+      "Build ESP32-C6 firmware public canary",
+      "Prepare signed public firmware canary",
+      "Upload unsigned canary artifacts for physical Gate validation",
+  ):
+    if sum(
+        1 for step in steps if isinstance(step, dict) and step.get("name") == name
+    ) != 1:
+      raise GateError(f"{path}: firmware build contract requires exactly one '{name}' step")
+  prepare = by_name["Prepare signed public firmware canary"]
+  if prepare.get("if") is not None or prepare.get("env"):
+    raise GateError(f"{path}: public firmware metadata producer must be unconditional and secret-free")
+  run_cmd = str(prepare.get("run", ""))
+  for fragment in (
+      "python scripts/ota_contract_gate.py target-manifest-create",
+      "python scripts/ota_contract_gate.py target-manifest-verify",
+      "--artifact dist/gatekeeper-firmware.bin",
+      "--output dist/version.json",
+      '--commit "${{ github.sha }}"',
+      "https://target-canary.invalid/",
+      '"2026-08-01T00:00:00Z"',
+      "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "rfc8032-test-key-1",
+  ):
+    if fragment not in run_cmd:
+      raise GateError(f"{path}: public firmware manifest binding is missing: {fragment}")
+  if run_cmd.count("target-manifest-create") != 1 or run_cmd.count(
+      "target-manifest-verify"
+  ) != 1:
+    raise GateError(f"{path}: public Target manifest create/verify must each run exactly once")
+  if "secrets." in run_cmd or "SECRET_OTA_FIRMWARE_URL" in run_cmd:
+    raise GateError(f"{path}: public firmware artifact producer exposes a production secret")
+  upload = by_name["Upload unsigned canary artifacts for physical Gate validation"]
+  if upload.get("with", {}).get("path") != "dist/":
+    raise GateError(f"{path}: firmware canary upload must preserve exact dist artifact binding")
+
+
 def validate_mobile_build_workflow(
     workflows: dict[str, str] | None = None,
 ) -> None:
@@ -942,33 +1261,22 @@ def validate_mobile_build_workflow(
       "Analyze Flutter code",
       "Run Flutter unit tests",
       "Run targeted native GATT unit tests before APK build",
-      "Build Android Release APK with Dart Defines",
-      "Build Android debug APK for pull-request canary",
-      "Prepare public PR canary metadata (non-production)",
-      "Prepare unsigned production candidate APK",
+      "Build Android debug APK for public canary",
+      "Prepare public mobile canary metadata",
       "Upload artifact-bound canary for separate Gate validation",
   ]
   for name in required_names:
     if names.count(name) != 1:
       raise GateError(f"{path}: mobile build contract requires exactly one '{name}' step")
   position = {name: names.index(name) for name in required_names}
-  first_build = min(
-      position["Build Android Release APK with Dart Defines"],
-      position["Build Android debug APK for pull-request canary"],
-  )
+  first_build = position["Build Android debug APK for public canary"]
   if not (
       position["Check Dart formatting"]
       < position["Analyze Flutter code"]
       < position["Run Flutter unit tests"]
       < first_build
       and position["Run targeted native GATT unit tests before APK build"] < first_build
-      and position["Prepare public PR canary metadata (non-production)"]
-      > max(
-          position["Build Android Release APK with Dart Defines"],
-          position["Build Android debug APK for pull-request canary"],
-      )
-      and position["Prepare unsigned production candidate APK"]
-      > position["Build Android Release APK with Dart Defines"]
+      and position["Prepare public mobile canary metadata"] > first_build
   ):
     raise GateError(f"{path}: Flutter/native tests must precede APK build and signing")
 
@@ -998,47 +1306,15 @@ def validate_mobile_build_workflow(
       "wrapper --gradle-version 9.1.0 --distribution-type all",
       "com.kshouse.gatekeeper_app.gattworker.*",
       "com.kshouse.gatekeeper_app.UpdatePackageIdentityPolicyTest",
+      "com.kshouse.gatekeeper_app.BatteryOptimizationRequestPolicyTest",
       "Targeted native GATT JUnit",
   ):
     if fragment not in native_run:
       raise GateError(f"{path}: targeted native test evidence is incomplete: {fragment}")
 
-  release_step = by_name["Build Android Release APK with Dart Defines"]
-  if release_step.get("if") != "github.event_name != 'pull_request'":
-    raise GateError(f"{path}: release APK step must be structurally unreachable from PRs")
-  release_env = release_step.get("env", {})
-  expected_release_env = {
-      "APK_VERSION_URL": "${{ secrets.SECRET_APK_VERSION_URL }}",
-      "APK_FALLBACK_VERSION_URL": "${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}",
-      "UPDATE_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
-      "OTA_SIGNING_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
-  }
-  for key, value in expected_release_env.items():
-    if release_env.get(key) != value:
-      raise GateError(f"{path}: release updater input {key} must come from its exact secret")
-  release_run = str(release_step.get("run", ""))
-  for name in (
-      "APK_VERSION_URL",
-      "APK_FALLBACK_VERSION_URL",
-      "UPDATE_SIGNING_KEY_ID",
-      "UPDATE_SIGNING_PUBLIC_KEY_B64",
-  ):
-    if f'--dart-define={name}="${name}"' not in release_run:
-      raise GateError(f"{path}: release APK does not pin {name}")
-  for name in (
-      "APK_VERSION_URL",
-      "APK_FALLBACK_VERSION_URL",
-      "UPDATE_SIGNING_KEY_ID",
-      "OTA_SIGNING_PUBLIC_KEY_HEX",
-  ):
-    if f'test -n "${name}"' not in release_run:
-      raise GateError(f"{path}: release APK input {name} is not fail-closed")
-  if "printf '%s\\n' '${{ github.sha }}' > gatekeeper_app/assets/source_commit.txt" not in release_run:
-    raise GateError(f"{path}: release APK does not embed exact source commit identity")
-
-  debug_step = by_name["Build Android debug APK for pull-request canary"]
-  if debug_step.get("if") != "github.event_name == 'pull_request'":
-    raise GateError(f"{path}: PR debug APK step must have exact PR-only condition")
+  debug_step = by_name["Build Android debug APK for public canary"]
+  if debug_step.get("if") is not None or debug_step.get("env"):
+    raise GateError(f"{path}: public debug APK step must be unconditional and secret-free")
   debug_run = str(debug_step.get("run", ""))
   for fragment in (
       "--dart-define=APK_VERSION_URL=\"https://pr-canary.invalid/",
@@ -1051,9 +1327,9 @@ def validate_mobile_build_workflow(
   if "printf '%s\\n' '${{ github.sha }}' > gatekeeper_app/assets/source_commit.txt" not in debug_run:
     raise GateError(f"{path}: PR APK does not embed exact source commit identity")
 
-  prepare_step = by_name["Prepare public PR canary metadata (non-production)"]
-  if prepare_step.get("if") != "github.event_name == 'pull_request'":
-    raise GateError(f"{path}: public PR metadata step must have exact PR-only condition")
+  prepare_step = by_name["Prepare public mobile canary metadata"]
+  if prepare_step.get("if") is not None:
+    raise GateError(f"{path}: public canary metadata step must be unconditional")
   if prepare_step.get("env"):
     raise GateError(f"{path}: public PR metadata step must not define an env mapping")
   prepare_run = str(prepare_step.get("run", ""))
@@ -1090,20 +1366,9 @@ def validate_mobile_build_workflow(
   if "cat <<EOF > dist/version.json" in prepare_run or '"updated_at"' in prepare_run:
     raise GateError(f"{path}: legacy unsigned version.json generation is forbidden")
 
-  production_prepare = by_name["Prepare unsigned production candidate APK"]
-  if production_prepare.get("if") != "github.event_name != 'pull_request'":
+  if "app-release.apk" in json.dumps(steps, sort_keys=True):
     raise GateError(
-        f"{path}: production candidate preparation must be structurally unreachable from PRs"
-    )
-  production_prepare_run = str(production_prepare.get("run", ""))
-  if (
-      "app-release.apk" not in production_prepare_run
-      or "dist/ks-house-gatekeeper.apk" not in production_prepare_run
-  ):
-    raise GateError(f"{path}: production candidate must copy the exact release APK")
-  if "version.json" in production_prepare_run or "manifest-create" in production_prepare_run:
-    raise GateError(
-        f"{path}: production manifest signing is forbidden outside production environment"
+        f"{path}: PR/branch-dispatch build job must never materialize a production APK"
     )
 
 
@@ -1135,6 +1400,7 @@ def validate_contract() -> None:
   validate_recovery_and_faults(state_machines=state_machines)
   validate_vectors()
   validate_workflow_artifact_bindings()
+  validate_firmware_build_workflow()
   validate_mobile_build_workflow()
   validate_mobile_release_signing_config()
   validate_workflow_release_triggers()
@@ -1304,6 +1570,71 @@ def _mobile_timestamp(value: str, label: str) -> datetime:
     raise GateError(f"{label} must be a valid RFC3339 timestamp") from exc
 
 
+def create_target_manifest(args: argparse.Namespace) -> None:
+  if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
+    raise GateError("commit must be the exact lowercase 40-hex source identity")
+  private_key = _mobile_private_key_from_env(args.private_key_env)
+  public_hex = _mobile_public_hex(private_key)
+  if public_hex != args.expected_public_key_hex:
+    raise GateError("signing private key does not match the pinned Target OTA public key")
+  size, sha256 = _artifact_size_and_sha256(args.artifact)
+  if size < 1:
+    raise GateError("Target firmware artifact must not be empty")
+  publication = _mobile_timestamp(args.published_at, "published_at")
+  if args.mandatory_after is not None and _mobile_timestamp(
+      args.mandatory_after, "mandatory_after"
+  ) < publication:
+    raise GateError("mandatory_after cannot precede published_at")
+  manifest: dict[str, object] = {
+      "schema_version": 1,
+      "artifact_type": "target-firmware",
+      "version": args.version,
+      "firmware_version": args.version,
+      "protocol_min": args.protocol_min,
+      "protocol_max": args.protocol_max,
+      "board": "esp32-c6-devkitc-1",
+      "flash_layout": "dual-ota-16mb-v1",
+      "artifact_url": args.artifact_url,
+      "artifact_size": size,
+      "sha256": sha256,
+      "signature_algorithm": "Ed25519",
+      "signing_key_id": args.signing_key_id,
+      "signature": "",
+      "mandatory_after": args.mandatory_after,
+      "published_at": args.published_at,
+      "build_id": args.build_id,
+      "commit": args.commit,
+  }
+  manifest["signature"] = base64.b64encode(
+      private_key.sign(canonical_signed_bytes(manifest))
+  ).decode("ascii")
+  validate_manifest(manifest, "target-manifest.schema.json", public_hex)
+  args.output.parent.mkdir(parents=True, exist_ok=True)
+  args.output.write_text(
+      json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+      encoding="utf-8",
+  )
+  print(f"[TARGET-MANIFEST] created and verified: {args.output}")
+
+
+def verify_target_manifest(args: argparse.Namespace) -> None:
+  manifest = load_json(args.manifest)
+  validate_manifest(manifest, "target-manifest.schema.json", args.public_key_hex)
+  if manifest["version"] != args.expected_version:
+    raise GateError("Target manifest version does not match the expected build")
+  if manifest["commit"] != args.expected_commit:
+    raise GateError("Target manifest commit does not match the expected source identity")
+  if manifest["build_id"] != args.expected_build_id:
+    raise GateError("Target manifest build ID does not match the expected workflow run")
+  actual_size, actual_sha256 = _artifact_size_and_sha256(args.artifact)
+  if (
+      manifest["artifact_size"] != actual_size
+      or manifest["sha256"] != actual_sha256
+  ):
+    raise GateError("Target manifest is not bound to the exact firmware bytes")
+  print(f"[TARGET-MANIFEST] artifact binding verified: {args.manifest}")
+
+
 def create_mobile_manifest(args: argparse.Namespace) -> None:
   if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
     raise GateError("commit must be the exact lowercase 40-hex source identity")
@@ -1439,6 +1770,33 @@ def parse_args() -> argparse.Namespace:
   release.add_argument("--artifact", action="append", type=Path, required=True)
   release.add_argument("--apksigner", type=Path)
   release.add_argument("--public-key-hex", required=True)
+  target_create = subparsers.add_parser(
+      "target-manifest-create",
+      help="create exact signed Target metadata inside the protected OTA gate",
+  )
+  target_create.add_argument("--artifact", type=Path, required=True)
+  target_create.add_argument("--output", type=Path, required=True)
+  target_create.add_argument("--version", required=True)
+  target_create.add_argument("--commit", required=True)
+  target_create.add_argument("--build-id", required=True)
+  target_create.add_argument("--artifact-url", required=True)
+  target_create.add_argument("--published-at", required=True)
+  target_create.add_argument("--mandatory-after")
+  target_create.add_argument("--signing-key-id", required=True)
+  target_create.add_argument("--private-key-env", required=True)
+  target_create.add_argument("--expected-public-key-hex", required=True)
+  target_create.add_argument("--protocol-min", type=int, default=1)
+  target_create.add_argument("--protocol-max", type=int, default=2)
+  target_verify = subparsers.add_parser(
+      "target-manifest-verify",
+      help="verify Target metadata and exact firmware bytes inside the protected gate",
+  )
+  target_verify.add_argument("--manifest", type=Path, required=True)
+  target_verify.add_argument("--artifact", type=Path, required=True)
+  target_verify.add_argument("--public-key-hex", required=True)
+  target_verify.add_argument("--expected-version", required=True)
+  target_verify.add_argument("--expected-commit", required=True)
+  target_verify.add_argument("--expected-build-id", required=True)
   mobile_create = subparsers.add_parser(
       "mobile-manifest-create",
       help="create exact signed mobile metadata inside the protected OTA gate",
@@ -1484,6 +1842,10 @@ def main() -> int:
       validate_release_manifests(
           args.manifest, args.artifact, args.public_key_hex, args.apksigner
       )
+    elif args.command == "target-manifest-create":
+      create_target_manifest(args)
+    elif args.command == "target-manifest-verify":
+      verify_target_manifest(args)
     elif args.command == "mobile-manifest-create":
       create_mobile_manifest(args)
     elif args.command == "mobile-manifest-verify":

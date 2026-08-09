@@ -4,6 +4,18 @@ Last updated: 2026-08-09
 
 ## Capability shell
 
+On first launch, the app presents a plain-language disclosure before making any
+location, Bluetooth, notification, background-location, or battery-exemption
+request. Consent is stored as a versioned local preference. After consent, the
+app requests only missing foreground permissions, then Android's
+`locationAlways` permission when applicable, and finally opens the dedicated
+`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` package intent. It never substitutes
+generic application settings for that battery Gate. Deferring consent makes no
+system request and enters the recovery shell; an OS denial remains visible there
+with a retry action. Already-granted requirements are checked, never re-requested.
+Manual recovery and verified update access remain available while automatic
+background wake is degraded.
+
 The first-run screen reports `Ready`, `Degraded`, or `Blocked` and keeps manual
 local GATT, authenticated `manual_remote`, updater, settings, and redacted
 diagnostics reachable without the scanner, WebView, or foreground service. A
@@ -58,11 +70,15 @@ exact source commit as a packaged Flutter asset. The already-protected
 `apkanalyzer` and `apksigner`, requires package ID, version name, positive
 version code, embedded commit, and exactly one certificate to match, then
 creates and independently verifies the exact 22-field schema over those same
-APK bytes. Pull requests use only the public RFC 8032 test seed/key and
-`.invalid` endpoints; no PR-reachable step references a production secret.
-The release APK is uploaded unsigned at the metadata layer, while the private
-manifest key and production URLs are available only to the explicit
-`production` environment job. Debug signing is never a release fallback.
+APK bytes. Pull requests, main-push canaries, and branch-dispatch canaries use
+only the public RFC 8032 test seed/key and `.invalid` endpoints; every build job
+reachable from those events contains zero production-secret expressions.
+Production APK signing, updater runtime inputs, the manifest private key, and
+production URLs are injected only after an exact-main source check and protected
+contract/tests in the explicit `production` environment job. The production job
+rebuilds and verifies the exact main APK; candidate Gradle/Dart code never
+receives the keystore or production runtime inputs. Debug signing is never a
+release fallback.
 
 ## Manual control compatibility
 

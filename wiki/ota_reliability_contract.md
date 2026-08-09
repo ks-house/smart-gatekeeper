@@ -350,6 +350,14 @@ Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올�
 dispatch 조건, Environment, evidence validator, 동일 canary artifact 결합이 제거되면 contract
 검증 자체를 실패시킨다.
 
+firmware와 mobile의 pull request, main-push, branch-dispatch canary job은 production secret
+표현식이나 상속된 secret 환경을 전혀 받지 않는다. 이 공개 canary는 고정 RFC 8032 시험 키와
+`.invalid` artifact URL만 사용하며 installable production release가 아니다. Production secret과
+배포 URL은 exact `refs/heads/main` 및 commit 확인, 보호된 contract/root test 통과, `production`
+Environment 승인 뒤의 별도 main-only job에서만 주입한다. Candidate가 제어하는 실행 파일은
+그 검증 전에 secret을 받을 수 없고, job DAG/step 순서/artifact propagation 회귀는 보호된
+`ota_contract_gate.py`의 음성 mutation test가 fail-closed로 차단한다.
+
 ## 13. 운영 책임과 runbook
 
 canary, 중단 기준, Target rollback, mobile stable fallback, 장애별 복구, telemetry와 사후 기록은
