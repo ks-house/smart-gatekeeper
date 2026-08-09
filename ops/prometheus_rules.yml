@@ -1,0 +1,44 @@
+groups:
+  - name: smart-gatekeeper-availability
+    interval: 30s
+    rules:
+      - alert: SmartGatekeeperMqttCircuitOpen
+        expr: sgk_mqtt_circuit_open == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Backend MQTTS command circuit is open
+          runbook_ref: wiki/commercial_operations.md#7-remaining-fail-closed-gates
+      - alert: SmartGatekeeperDependencyFailure
+        expr: increase(sgk_operations_total{component="readiness",outcome=~".*_failed"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: A readiness dependency is failing
+          runbook_ref: wiki/commercial_operations.md#2-health-readiness-and-metrics
+      - alert: SmartGatekeeperControlServerErrors
+        expr: rate(sgk_operations_total{component="control",outcome="5xx"}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Control API server-error rate exceeds the candidate SLO
+          runbook_ref: wiki/commercial_operations.md#2-health-readiness-and-metrics
+      - alert: SmartGatekeeperSustainedRateLimit
+        expr: increase(sgk_operations_total{component="rate_limit"}[10m]) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Authentication or control requests are being rate-limited
+          runbook_ref: wiki/commercial_operations.md#2-health-readiness-and-metrics
+      - alert: SmartGatekeeperMetricsAbsent
+        expr: absent(sgk_build_info)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Backend metrics scrape is absent
+          runbook_ref: wiki/commercial_operations.md#2-health-readiness-and-metrics

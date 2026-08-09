@@ -71,7 +71,7 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 }
 
 $requirementFiles = @(
-    (Join-Path $projectRoot 'backend\app\requirements.txt'),
+    (Join-Path $projectRoot 'backend\app\requirements.lock'),
     (Join-Path $projectRoot 'ota\requirements.txt')
 )
 $requirementsMarker = Join-Path $venvRoot '.sgk-requirements.sha256'
@@ -84,11 +84,11 @@ $installedFingerprint = if (Test-Path -LiteralPath $requirementsMarker) {
 
 if (-not $SkipPythonDependencies -and $requirementsFingerprint -ne $installedFingerprint) {
     Write-Host '[setup] Installing pinned project Python dependencies...' -ForegroundColor Cyan
-    $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check')
-    foreach ($requirementsFile in $requirementFiles) {
-        $pipArgs += @('-r', $requirementsFile)
+    & $venvPython -m pip install --disable-pip-version-check --require-hashes -r $requirementFiles[0]
+    if ($LASTEXITCODE -ne 0) {
+        throw "Hash-locked backend dependency installation failed with exit code $LASTEXITCODE."
     }
-    & $venvPython @pipArgs
+    & $venvPython -m pip install --disable-pip-version-check -r $requirementFiles[1]
     if ($LASTEXITCODE -ne 0) {
         throw "Project dependency installation failed with exit code $LASTEXITCODE."
     }

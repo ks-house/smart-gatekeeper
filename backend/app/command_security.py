@@ -6,7 +6,10 @@ import time
 import uuid
 from typing import Any
 
-from .acl_management import DeterministicP256Signer
+try:
+    from .acl_management import DeterministicP256Signer
+except ImportError:  # Docker runs uvicorn with /app as the import root.
+    from acl_management import DeterministicP256Signer
 
 
 ALLOWED_ACTIONS = {

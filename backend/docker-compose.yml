@@ -17,6 +17,7 @@ services:
       - ./db/migrations/004_admin_control_v2_up.sql:/docker-entrypoint-initdb.d/04_admin_control_v2.sql:ro
       - ./db/migrations/005_force_open_reconciliation_up.sql:/docker-entrypoint-initdb.d/05_force_open_reconciliation.sql:ro
       - ./db/migrations/006_target_boot_state_up.sql:/docker-entrypoint-initdb.d/06_target_boot_state.sql:ro
+      - ./db/migrations/007_ops_privacy_up.sql:/docker-entrypoint-initdb.d/07_ops_privacy.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s

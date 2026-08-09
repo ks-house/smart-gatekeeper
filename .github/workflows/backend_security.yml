@@ -4,11 +4,19 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - 'ops/**'
+      - 'scripts/ops_commercial_gate.py'
+      - '.orca/scripts/setup_worktree.ps1'
+      - 'protocol/test_vectors/v1.json'
       - '.github/workflows/backend_security.yml'
   push:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'ops/**'
+      - 'scripts/ops_commercial_gate.py'
+      - '.orca/scripts/setup_worktree.ps1'
+      - 'protocol/test_vectors/v1.json'
       - '.github/workflows/backend_security.yml'
 
 permissions:
@@ -19,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       mariadb:
-        image: mariadb:10.11
+        image: mariadb@sha256:be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350
         env:
           MARIADB_ROOT_PASSWORD: migration-test-only
         ports:
@@ -28,17 +36,131 @@ jobs:
           --health-cmd "mariadb-admin ping -h 127.0.0.1 -pmigration-test-only"
           --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.13'
       - name: Install backend dependencies
-        run: python -m pip install -r backend/app/requirements.txt
+        run: python -m pip install --require-hashes -r backend/app/requirements.lock
       - name: Validate all backend security tests
         run: python -m unittest discover -s backend/tests -p 'test_*.py' -v
+      - name: Validate operations, privacy, production, and supply-chain contract
+        env:
+          API_IMAGE: ghcr.io/ks-house/smart-gatekeeper-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          DB_IMAGE: ghcr.io/ks-house/smart-gatekeeper-db@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        run: |
+          python scripts/ops_commercial_gate.py contract
+          python scripts/ops_commercial_gate.py production-compose --api-image "$API_IMAGE" --db-image "$DB_IMAGE"
+          python scripts/ops_commercial_gate.py sbom --output build/backend-sbom.cdx.json
+          python scripts/ops_commercial_gate.py ops-contract-evidence --result-output build/ops-contract-result.json --claim-output build/evidence/ops-contract.json --commit "${{ github.sha }}"
+          python scripts/ops_commercial_gate.py evidence-claim --id hosted-sbom-attestation --payload build/backend-sbom.cdx.json --output build/evidence/hosted-sbom-attestation.json --commit "${{ github.sha }}"
+          python scripts/ops_commercial_gate.py slo --samples ops/fixtures/load_nominal.jsonl --policy ops/slo_policy.json
+      - name: Audit locked backend dependencies
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          inputs: backend/app/requirements.lock
+      - name: Upload deterministic backend SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-sbom-${{ github.sha }}
+          path: build/backend-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload operations contract evidence claim
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ops-contract-${{ github.sha }}
+          path: build/evidence/ops-contract.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload hosted SBOM evidence claim
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hosted-sbom-attestation-${{ github.sha }}
+          path: build/evidence/hosted-sbom-attestation.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Validate real MariaDB migration and immutable audit
         env:
           RUN_MARIADB_INTEGRATION: '1'
-        run: python -m unittest backend.tests.test_migrations.MigrationContractTest.test_real_mariadb_up_legacy_write_down_legacy_read -v
+        run: >-
+          python -m unittest
+          backend.tests.test_migrations.MigrationContractTest.test_real_mariadb_up_legacy_write_down_legacy_read
+          backend.tests.test_migrations.MigrationContractTest.test_production_db_image_is_seed_free_and_upgrades_existing_volume
+          -v
       - name: Validate Compose is private by default
-        run: docker compose -f backend/docker-compose.yml config --quiet
+        env:
+          API_IMAGE_REPOSITORY: ghcr.io/ks-house/smart-gatekeeper-backend
+          API_IMAGE_DIGEST: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          DB_IMAGE_REPOSITORY: ghcr.io/ks-house/smart-gatekeeper-db
+          DB_IMAGE_DIGEST: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          MQTT_HOST: broker.invalid
+          MQTT_USER: ci-only
+          COMMAND_TARGET_ID: ci-target
+          COMMAND_TENANT_ID: ci-tenant
+          COMMAND_DOOR_ID: ci-door
+          COMMAND_SIGNING_KEY_ID: '1'
+          ADMIN_TRUSTED_PROXY_IPS: '127.0.0.1'
+          ACL_SIGNING_KEY_ID: '1'
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          docker compose -f backend/docker-compose.yml config --quiet
+          docker compose -f backend/compose.production.yml config --quiet
+          docker build -f backend/app/Dockerfile backend/app
+          docker build -f backend/db/Dockerfile backend/db
+
+  attest-backend-evidence:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12.13'
+      - name: Generate exact-main operations and SBOM claims
+        run: |
+          python scripts/ops_commercial_gate.py sbom --output build/backend-sbom.cdx.json
+          python scripts/ops_commercial_gate.py ops-contract-evidence --result-output build/ops-contract-result.json --claim-output build/evidence/ops-contract.json --commit "${{ github.sha }}"
+          python scripts/ops_commercial_gate.py evidence-claim --id hosted-sbom-attestation --payload build/backend-sbom.cdx.json --output build/evidence/hosted-sbom-attestation.json --commit "${{ github.sha }}"
+      - name: Attest operations contract claim
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: build/evidence/ops-contract.json
+      - name: Attest hosted SBOM claim
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: build/evidence/hosted-sbom-attestation.json
+
+  verify-operations-evidence:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend-security, attest-backend-evidence]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12.13'
+      - name: Verify evidence through GitHub APIs and generate exact-main register
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/ops_commercial_gate.py evidence
+          --source ops/evidence_sources.json
+          --output build/ops-evidence-register.json
+          --commit "${{ github.sha }}"
+      - name: Upload verified operations evidence register
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: operations-evidence-${{ github.sha }}
+          path: build/ops-evidence-register.json
+          if-no-files-found: error
+          retention-days: 30
