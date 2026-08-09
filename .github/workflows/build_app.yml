@@ -300,14 +300,17 @@ jobs:
           export SSHPASS="$NAS_PASSWORD"
           SSH_TARGET="${NAS_USER}@${NAS_HOST}"
           SSH_OPTIONS=(-o BatchMode=no -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${KNOWN_HOSTS_FILE}")
-          sshpass -e ssh "${SSH_OPTIONS[@]}" -p "$NAS_PORT" "$SSH_TARGET" \
-            "umask 077; mkdir -p '$REMOTE_PARENT'; test ! -e '$REMOTE_STAGE'; test ! -e '$REMOTE_FINAL'; mkdir '$REMOTE_STAGE'"
-          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          timeout 300s sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          -mkdir /docker
+          -mkdir /docker/smart-gatekeeper-physical-test
+          -mkdir $REMOTE_ROOT
+          -mkdir $REMOTE_PARENT
+          mkdir $REMOTE_STAGE
           put dist/ks-house-gatekeeper.apk $REMOTE_STAGE/ks-house-gatekeeper.apk
           put dist/version.json $REMOTE_STAGE/version.json
           EOF
           mkdir -p readback evidence
-          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          timeout 300s sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
           get $REMOTE_STAGE/ks-house-gatekeeper.apk readback/ks-house-gatekeeper.apk
           get $REMOTE_STAGE/version.json readback/version.json
           EOF
@@ -326,13 +329,14 @@ jobs:
             --output evidence/mobile-physical-test-evidence.json \
             --apkanalyzer "$APKANALYZER" \
             --apksigner "$APKSIGNER"
-          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          timeout 120s sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
           put evidence/mobile-physical-test-evidence.json $REMOTE_STAGE/evidence.json
           get $REMOTE_STAGE/evidence.json readback/evidence.json
           EOF
           cmp evidence/mobile-physical-test-evidence.json readback/evidence.json
-          sshpass -e ssh "${SSH_OPTIONS[@]}" -p "$NAS_PORT" "$SSH_TARGET" \
-            "test -d '$REMOTE_STAGE'; test ! -e '$REMOTE_FINAL'; mv '$REMOTE_STAGE' '$REMOTE_FINAL'"
+          timeout 30s sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          rename $REMOTE_STAGE $REMOTE_FINAL
+          EOF
           unset SSHPASS NAS_PASSWORD NAS_KNOWN_HOSTS
 
       - name: Upload sanitized mobile physical-test evidence

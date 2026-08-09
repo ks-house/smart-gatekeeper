@@ -2704,3 +2704,16 @@
 - Focused trusted-policy regression tests passed 37/37. Full root discovery passed 173/173 from the exact staged Git tree archived with checkout conversion disabled, and `actionlint` passed every workflow.
 - Orca `Quick` passed all ten sections in 40.94 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed.
 - The final policy PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge. No dispatch, NAS write, deployment, physical validation, release evidence or production authorization occurred.
+
+## [2026-08-10] fix | Use SFTP-only transport for restricted NAS physical-test accounts
+
+- Diagnosed firmware run `31319094568` job `93259497202` and mobile run `31319095918`: bounded runtime host-key discovery completed, then the first SSH remote-shell command failed with `Permission denied` before either job reached SFTP. This matches the established NAS account's SFTP-only permission model.
+- Removed every remote-shell invocation from both public physical-test NAS jobs. Four bounded OpenSSH SFTP batches now create the hierarchy one component at a time, upload and read back the same-run artifact/manifest, upload and compare sanitized evidence, then publish with a strict direct SFTP directory `rename`.
+- Existing parent-directory errors are tolerated only for `/docker`, `/docker/smart-gatekeeper-physical-test`, the fixed canary root and exact-SHA parent. Unique staging creation, every transfer, evidence comparison and final rename fail closed; no automatic remote delete or overwrite path was added.
+- Preserved password SFTP compatibility with `BatchMode=no`, both host-key modes, run-local strict known-host verification, credential/path grammar, isolated physical-test roots and exact-run evidence binding. Connected and production job suffixes remain byte-identical to the exact base, and `raw/` remains unchanged. No workflow dispatch, NAS connection/write, merge, deployment, physical evidence, release evidence or production authorization occurred.
+
+## [2026-08-10] test | Validate bounded SFTP-only NAS compatibility
+
+- Focused OTA/NAS contract tests passed 78/78. Adversarial coverage rejects any remote-shell command, an unbounded SFTP batch, omission of any hierarchy component, ignored staging or rename errors, duplicate rename and publication before readback/evidence comparison.
+- Full root discovery passed 175/175 from the exact staged Git tree materialized with checkout conversion disabled. The OTA contract command, all-workflow `actionlint`, `git diff --check`, append-only log prefix, exact `raw/` tree and byte-identical connected/production suffix checks passed.
+- Orca `Quick` passed all ten sections in 41.11 seconds after the standard setup hook created the intentionally skipped worktree-local `.venv`; doctor reported 12 pass, one Docker-covered native Java warning and zero failures. No NAS endpoint was contacted and no workflow was dispatched.

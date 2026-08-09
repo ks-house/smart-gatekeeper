@@ -276,7 +276,7 @@ flutter build apk --release \
 일반 `main` push와 기본 `workflow_dispatch`의 `release_target=canary`는 build/test/contract job만
 실행하고 production job을 skip하므로, physical Gate가 정직하게 pending이어도 CI 자체는 성공합니다.
 `release_target=physical-test-canary`는 [`nas_physical_test_delivery.md`](nas_physical_test_delivery.md)의
-별도 NAS 디렉터리로 test-signed public canary를 전달하고 읽어 검증하지만 physical Gate를 통과시키지
+별도 NAS 디렉터리로 bounded SFTP-only batch를 사용해 test-signed public canary를 전달하고 읽어 검증하지만 physical Gate를 통과시키지
 않습니다. `NAS_KNOWN_HOSTS`가 없으면 public canary는 dispatch의 default-false `allow_unpinned_host_key=true` 승인을 요구하고, bounded runtime `ssh-keyscan` 결과를 run-local 파일에 고정해 `runtime-keyscan-unpinned`를 기록하며, `physical-test-connected`는
 별도 `PHYSICAL_TEST_*` 자격증명과 후속 보호 번들이 없으므로 의도적으로 fail-closed입니다.
 운영 NAS 배포는 저장소 쓰기 권한자가 `release_target=production`을 명시한 dispatch에서만 요청할 수
