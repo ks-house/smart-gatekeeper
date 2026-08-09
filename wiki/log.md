@@ -2589,3 +2589,15 @@
 
 - Full root discovery passed 163/163 in 15.86 seconds. Quick passed all ten sections in 40.22 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
 - Exact-head Hosted Trusted, Mobile and OTA checks plus a fresh independent COMMENTED review remain required after push. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.
+
+## [2026-08-09] compile | Authorize the complete reviewed PR #72 protected bundle
+
+- From exact trusted main `038bc8508fca71e1d4074a3eedca5517d3c2ecfe`, replaced the prior sole baseline with exactly two complete 57-file authorizations for `ks-house/smart-gatekeeper@03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b`: exact temporary identity `temporary-pr72-03ffba4` and same-source descendant identity `future-pr72-persistent-baseline`. Both maps are byte-identical and use strict `utf8-lf-v1`; no partial, branch, wildcard, fork or third persistent identity is admitted.
+- Recomputed all 57 digests from immutable GitHub Contents API bytes. The three changed protected digests are deploy `133d31ebb91922ab9e2370e91d8a3ad4215accde1c7adbad28cb2c653aa42251`, mobile `1d17741591fde129200c6aa6403644b0d9b590de1831936d65db0e9ea9f17af2` and OTA gate `ba3bc9de1eeecc306d1b23b1a2c6ddb124a0d3d4396c54ef137e6cc3a071e1bc`; the other 54 remain equal to the prior complete baseline.
+- GitHub API evidence binds open Draft PR #72 and COMMENTED nonblocking product review `4891310679` to the exact candidate commit. Compare proves that candidate is two commits ahead of exact base `e42d1f417a555b17d7476522aa48f7e4d72306b7` with that exact merge base. This policy authorization is not NAS deployment, physical evidence, release evidence or production authorization.
+
+## [2026-08-09] test | Validate the PR #72 whole-bundle transition policy
+
+- Focused trusted-policy tests passed 37/37. Full root discovery passed 163/163 against staged tree `0c1e0ed206e9b06da3d9eea5374038ae228bdcb3` archived with checkout conversion disabled; the first direct Windows working-tree run exposed only CRLF materialization of unchanged LF manual blobs, so it was not represented as a source failure or used as final evidence.
+- Orca Quick passed all ten sections in 42.04 seconds with doctor 12 pass/one Docker-covered native Java warning/zero failures, backend 84 tests/two explicit Docker-lane skips, Compose, staged profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4. Actionlint across every workflow, JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API 57-file verification passed.
+- No workflow dispatch, NAS write, merge, deployment, physical validation, signing or production authorization occurred. The policy-only Draft PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge.
