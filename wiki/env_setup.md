@@ -269,15 +269,15 @@ flutter build apk --release \
 | Workflow | Trigger | 결과 |
 |---|---|---|
 | `.github/workflows/ota_contract.yml` | OTA 영향 PR/main | schema, signature tamper vector, dual-slot/recovery/release blocker 자동 검사 |
-| `.github/workflows/deploy.yml` | `main` push 또는 `workflow_dispatch` | PlatformIO 시험·빌드·contract 검증과 canary 보존; `physical-test-canary`는 exact-main 공개 테스트 서명 artifact만 pinned-host 격리 NAS 경로에 staging/readback하며 production은 별도 |
-| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter 분석·빌드·contract 검증과 canary 보존; `physical-test-canary`는 exact-main debug APK만 pinned-host 격리 NAS 경로에 staging/readback하며 production은 별도 |
+| `.github/workflows/deploy.yml` | `main` push 또는 `workflow_dispatch` | PlatformIO 시험·빌드·contract 검증과 canary 보존; `physical-test-canary`는 exact-main 공개 테스트 서명 artifact만 host-key-mode-labelled 격리 NAS 경로에 staging/readback하며 production은 별도 |
+| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter 분석·빌드·contract 검증과 canary 보존; `physical-test-canary`는 exact-main debug APK만 host-key-mode-labelled 격리 NAS 경로에 staging/readback하며 production은 별도 |
 | `.github/workflows/trusted_workflow_policy.yml` | 보호 파일 변경 PR (`pull_request_target`) | default-branch validator/policy로 candidate bytes의 exact approved bundle 검증 |
 
 일반 `main` push와 기본 `workflow_dispatch`의 `release_target=canary`는 build/test/contract job만
 실행하고 production job을 skip하므로, physical Gate가 정직하게 pending이어도 CI 자체는 성공합니다.
 `release_target=physical-test-canary`는 [`nas_physical_test_delivery.md`](nas_physical_test_delivery.md)의
 별도 NAS 디렉터리로 test-signed public canary를 전달하고 읽어 검증하지만 physical Gate를 통과시키지
-않습니다. 검증된 `NAS_KNOWN_HOSTS`가 없으면 자격증명 사용 전에 실패하며, `physical-test-connected`는
+않습니다. `NAS_KNOWN_HOSTS`가 없으면 public canary는 dispatch의 default-false `allow_unpinned_host_key=true` 승인을 요구하고, bounded runtime `ssh-keyscan` 결과를 run-local 파일에 고정해 `runtime-keyscan-unpinned`를 기록하며, `physical-test-connected`는
 별도 `PHYSICAL_TEST_*` 자격증명과 후속 보호 번들이 없으므로 의도적으로 fail-closed입니다.
 운영 NAS 배포는 저장소 쓰기 권한자가 `release_target=production`을 명시한 dispatch에서만 요청할 수
 있고 `production` GitHub Environment 정책을 통과해야 합니다. `ota_contract_gate.py`는 release job이

@@ -573,7 +573,7 @@ def _validate_physical_test_jobs(
           "Set up Python for physical-test verification",
           "Install physical-test verification dependencies",
           "Verify exact public firmware canary before NAS contact",
-          "Install pinned-host SFTP client",
+          "Install SFTP client",
           "Stage, read back, verify and publish isolated firmware canary",
           "Upload sanitized firmware physical-test evidence",
       ]
@@ -585,7 +585,7 @@ def _validate_physical_test_jobs(
           "Set up Python for physical-test verification",
           "Install physical-test verification dependencies",
           "Verify exact public mobile canary before NAS contact",
-          "Install pinned-host SFTP client",
+          "Install SFTP client",
           "Stage, read back, verify and publish isolated mobile canary",
           "Upload sanitized mobile physical-test evidence",
       ]
@@ -641,7 +641,11 @@ def _validate_physical_test_jobs(
       f'REMOTE_ROOT="{expected_root}"',
       "StrictHostKeyChecking=yes",
       "repository-secret-pinned",
-      "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
+      "runtime-keyscan-unpinned",
+      "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT",
+      'if [[ -n "${NAS_KNOWN_HOSTS:-}" ]]; then',
+      'test "${{ inputs.allow_unpinned_host_key }}" = "true"',
+      "for attempt in 1 2 3; do",
       '[[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]',
       '[[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]',
       '[[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]',
@@ -650,6 +654,8 @@ def _validate_physical_test_jobs(
       '[[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
       '[[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]',
       'ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null',
+      'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
+      "::warning::NAS_KNOWN_HOSTS is not configured; using runtime ssh-keyscan",
       "test ! -e '$REMOTE_STAGE'",
       "test ! -e '$REMOTE_FINAL'",
       "physical-test-evidence-create",
@@ -660,6 +666,12 @@ def _validate_physical_test_jobs(
   for fragment in required_fragments:
     if fragment not in network_run:
       raise GateError(f"{path}: physical-test stage/readback contract missing: {fragment}")
+  for exact_once in (
+      "for attempt in 1 2 3; do",
+      'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
+  ):
+    if network_run.count(exact_once) != 1:
+      raise GateError(f"{path}: physical-test fallback must contain exactly one bounded keyscan loop")
   forbidden_fragments = (
       "${{ secrets.NAS_TARGET_DIR",
       "${{ secrets.NAS_APK_TARGET_DIR",
@@ -668,7 +680,9 @@ def _validate_physical_test_jobs(
       "ota_contract_gate.py release",
       "|| true",
       "set +e",
-      "ssh-keyscan",
+      "while true",
+      "while :",
+      "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
       "StrictHostKeyChecking=no",
       "StrictHostKeyChecking=accept-new",
   )
@@ -1016,11 +1030,10 @@ def validate_workflow_release_triggers(
             f"{path}: push paths must include the NAS physical-test contract"
         )
 
-    dispatch_input = (
-        triggers.get("workflow_dispatch", {})
-        .get("inputs", {})
-        .get("release_target", {})
-    )
+    dispatch_inputs = triggers.get("workflow_dispatch", {}).get("inputs", {})
+    if set(dispatch_inputs) != {"release_target", "allow_unpinned_host_key"}:
+      raise GateError(f"{path}: workflow dispatch inputs must be exact")
+    dispatch_input = dispatch_inputs.get("release_target", {})
     if not isinstance(dispatch_input, dict) or dispatch_input.get("type") != "choice":
       raise GateError(f"{path}: explicit production release trigger missing release_target choice input")
     options = dispatch_input.get("options", [])
@@ -1031,6 +1044,17 @@ def validate_workflow_release_triggers(
           f"{path}: release_target options must exactly separate canary, "
           "physical-test-canary, physical-test-connected and production"
       )
+    unpinned_input = dispatch_inputs.get("allow_unpinned_host_key")
+    if unpinned_input != {
+        "description": (
+            "Acknowledge MITM risk when NAS_KNOWN_HOSTS is absent for "
+            "physical-test-canary"
+        ),
+        "required": True,
+        "type": "boolean",
+        "default": False,
+    }:
+      raise GateError(f"{path}: unpinned host-key acknowledgement input is not exact")
 
     # 4. Jobs allowlist
     all_jobs = parsed.get("jobs")
@@ -2066,7 +2090,10 @@ def create_physical_test_evidence(args: argparse.Namespace) -> None:
   if args.artifact.read_bytes() != args.readback_artifact.read_bytes():
     raise GateError("physical-test NAS artifact readback differs from staged bytes")
 
-  if args.host_key_mode != "repository-secret-pinned":
+  if args.host_key_mode not in {
+      "repository-secret-pinned",
+      "runtime-keyscan-unpinned",
+  }:
     raise GateError("physical-test host-key mode is invalid")
   remote_component = (
       "firmware-public-canary" if args.kind == "target" else "mobile-public-canary"

@@ -31,7 +31,7 @@
 | [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, authoritative relay GPIO3 및 3.3V 전기 안전 기준 |
 | [hardware_test.md](hardware_test.md) | 현재 아키텍처 검증표와 과거 ToF 테스트 증거 분리 |
 | [physical_gate_preparation.md](physical_gate_preparation.md) | #54 Samsung/OEM, ESP32-C6, relay/sensor, OTA, operator/canary evidence preparation |
-| [nas_physical_test_delivery.md](nas_physical_test_delivery.md) | exact-main public canary NAS staging/readback, pinned-host requirement, connected-tier prerequisites and operator handoff |
+| [nas_physical_test_delivery.md](nas_physical_test_delivery.md) | exact-main public canary NAS staging/readback, optional pin with audited runtime-keyscan fallback, connected-tier prerequisites and operator handoff |
 | [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO3 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
 
 ---

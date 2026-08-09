@@ -37,7 +37,8 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
         "/docker/smart-gatekeeper-physical-test/firmware-public-canary",
         "/docker/smart-gatekeeper-physical-test/mobile-public-canary",
         "repository-secret-pinned",
-        "Runtime `ssh-keyscan`, TOFU, `accept-new`",
+        "runtime-keyscan-unpinned",
+        "bounded runtime `ssh-keyscan`",
     ):
       self.assertIn(fragment, guide)
 
@@ -66,7 +67,10 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
         self.assertIn("environment: production", source)
         self.assertIn(production_root, source)
         self.assertNotIn("StrictHostKeyChecking=no", source)
-        self.assertNotIn("ssh-keyscan", source)
+        self.assertIn("StrictHostKeyChecking=yes", source)
+        self.assertIn("timeout 10s ssh-keyscan -T 5", source)
+        self.assertIn('2>/dev/null', source)
+        self.assertIn('test "${{ inputs.allow_unpinned_host_key }}" = "true"', source)
 
 
 if __name__ == "__main__":

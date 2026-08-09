@@ -260,6 +260,23 @@ class OtaContractGateTest(unittest.TestCase):
       self.assertNotIn("host", evidence)
       self.assertNotIn("username", evidence)
 
+      unpinned_path = directory / "evidence-unpinned.json"
+      gate.create_physical_test_evidence(
+          argparse.Namespace(
+              **vars(verify_args),
+              readback_manifest=readback_manifest,
+              readback_artifact=readback_artifact,
+              host_key_mode="runtime-keyscan-unpinned",
+              remote_path=(
+                  "/docker/smart-gatekeeper-physical-test/"
+                  f"firmware-public-canary/{commit}/run-11-1"
+              ),
+              output=unpinned_path,
+          )
+      )
+      unpinned = json.loads(unpinned_path.read_text(encoding="utf-8"))
+      self.assertEqual(unpinned["host_key_mode"], "runtime-keyscan-unpinned")
+
   def test_physical_test_evidence_rejects_readback_or_remote_root_mutation(self):
     with tempfile.TemporaryDirectory() as temporary_directory:
       directory = Path(temporary_directory)
@@ -442,6 +459,20 @@ class OtaContractGateTest(unittest.TestCase):
                 "production",
             ],
         )
+        self.assertEqual(
+            workflow["on"]["workflow_dispatch"]["inputs"][
+                "allow_unpinned_host_key"
+            ],
+            {
+                "description": (
+                    "Acknowledge MITM risk when NAS_KNOWN_HOSTS is absent for "
+                    "physical-test-canary"
+                ),
+                "required": True,
+                "type": "boolean",
+                "default": False,
+            },
+        )
         public_if = " ".join(
             str(workflow["jobs"]["deploy_physical_test_canary"]["if"]).split()
         )
@@ -477,10 +508,28 @@ class OtaContractGateTest(unittest.TestCase):
             "exact transport secret set|only NAS transport secrets",
         ),
         (
-            "runtime-keyscan-tofu",
-            "printf '%s\\n' \"$NAS_KNOWN_HOSTS\" > \"$KNOWN_HOSTS_FILE\"",
-            "ssh-keyscan -p \"$NAS_PORT\" \"$NAS_HOST\" > \"$KNOWN_HOSTS_FILE\"",
-            "stage/readback contract|production or bypass surface",
+            "unbounded-runtime-keyscan",
+            'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
+            'ssh-keyscan -p "$NAS_PORT" "$NAS_HOST"',
+            "stage/readback contract",
+        ),
+        (
+            "known-host-secret-required-again",
+            "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT; do",
+            "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS; do",
+            "production or bypass surface",
+        ),
+        (
+            "unbounded-keyscan-retries",
+            "for attempt in 1 2 3; do",
+            "for attempt in $(seq 1 100); do",
+            "stage/readback contract|bounded keyscan",
+        ),
+        (
+            "missing-unpinned-risk-acknowledgement",
+            'test "${{ inputs.allow_unpinned_host_key }}" = "true"',
+            "true # skipped explicit unpinned risk acknowledgement",
+            "stage/readback contract",
         ),
         (
             "disable-strict-host-checking",

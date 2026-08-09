@@ -2662,3 +2662,33 @@
 - Focused trusted-policy regression tests passed 37/37. Full root discovery passed 173/173 from the exact staged Git tree archived with checkout conversion disabled, and `actionlint` passed every workflow.
 - Orca `Quick` passed all ten sections in 41.81 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed; the exact PR #75 head selects the temporary identity without ancestry fallback.
 - No workflow dispatch, NAS connection/write, merge, deployment, physical validation, signing, release evidence or production authorization occurred. The policy-only Draft PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge.
+
+## [2026-08-09] fix | Allow audited NAS upload without a pinned known-host secret
+
+- Kept `NAS_KNOWN_HOSTS` as the preferred physical-test transport mode, but made it optional for the explicitly requested public-canary lane. When absent, both firmware and mobile jobs perform a three-attempt bounded `ssh-keyscan`, validate the returned record, pin it to a run-local file, retain `StrictHostKeyChecking=yes`, and label sanitized evidence `runtime-keyscan-unpinned`.
+- The fallback is restricted to exact-main `physical-test-canary`, isolated non-production roots and same-run public test-signed artifacts. Production jobs, connected-tier prerequisites, signing keys, directories and release-evidence gates remain unchanged; the first key exchange is not independently authenticated and is documented as weaker against an active network interceptor.
+- Updated workflow contracts, adversarial mutations, evidence validation and operator documentation. Merge, dispatch, NAS write, real-device validation and production authorization remain pending until protected-bundle review and hosted CI complete.
+
+## [2026-08-09] test | Validate the optional NAS host-key fallback
+
+- Focused OTA/NAS tests passed 76/76, including both evidence modes and mutations for unbounded keyscan, disabled strict checking, unsafe transport grammar, path escape, production secret/directory substitution, readback removal and connected-tier enablement. `actionlint`, the OTA contract command and `git diff --check` passed.
+- Full root discovery passed 173/173 after normalizing only unchanged manual checkout material to its committed LF bytes; the direct Windows checkout initially exposed the known CRLF materialization boundary rather than a source failure. Orca `Quick` then passed all ten sections in 41.39 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, profile/lifecycle, protocol 16, observability 18, OTA and hardwareless gates.
+- `raw/` remains byte-identical. Hosted exact-head checks, independent protected-bundle review, trusted policy authorization, normal merge and exact-main physical-test dispatch remain required before any NAS connection or write.
+
+## [2026-08-09] fix | Bind keyscan retries and require per-dispatch risk acknowledgement
+
+- Addressed COMMENTED review `4891484367` by making the fallback loop structurally exact: one `for attempt in 1 2 3` block, one 10-second/5-second-connect-timeout `ssh-keyscan`, no `while true`, and mutation tests rejecting 100 retries or removal of the bounded loop.
+- Added default-false boolean workflow input `allow_unpinned_host_key` to both workflows. When the independently pinned secret is absent, the exact-main public-canary job refuses network contact unless the repository owner explicitly sets it true for that dispatch; evidence still records `runtime-keyscan-unpinned` and documentation states that this does not authenticate the first key discovery or prevent password interception.
+- No policy authorization, merge, workflow dispatch, NAS connection/write, physical validation or production authorization occurred in this remediation.
+
+## [2026-08-09] fix | Integrate the merged PR #75 transition policy exactly once
+
+- Integrated exact `origin/main` `bbe842a13541386c9e101284cf49ab4df6bca042` into the reviewed product head `f0f8666ab9aa2b68d042207ddb89d47f97ea7146` with a normal two-parent merge and no rebase, force-push or history rewrite.
+- Preserved the exact new-main `wiki/log.md` Git blob as a byte prefix, retained the complete prior PR #75 log suffix exactly once, kept all 57 protected product blobs identical to `f0f8666ab9aa2b68d042207ddb89d47f97ea7146`, retained the merged policy files exactly, and preserved `raw/` tree identity.
+- No workflow dispatch, NAS connection/write, deployment, physical validation, release evidence or production authorization occurred. Fresh exact-head local/Hosted validation and an independent COMMENTED whole-bundle review remain required before normal product merge.
+
+## [2026-08-09] test | Validate the post-policy PR #75 integration tree
+
+- Focused trusted-policy tests passed 37/37 and OTA/NAS tests passed 76/76. All-workflow `actionlint`, the OTA contract command and `git diff --check` passed.
+- Full root discovery passed 173/173 from the exact staged Git index materialized with checkout conversion disabled. An earlier ZIP extraction converted unchanged manual LF blobs to CRLF and caused one byte-format false red, so that host materialization was discarded and is not represented as source evidence.
+- Orca `Quick` passed all ten sections in 44.34 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. `raw/` identity, the exact main log byte prefix, one complete prior PR suffix, all 57 reviewed product blobs and exact merged policy blobs were independently rechecked. Hosted exact-head checks and a fresh independent COMMENTED review remain required; no NAS or production action occurred.
