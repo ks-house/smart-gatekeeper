@@ -28,6 +28,8 @@ on:
         default: canary
         options:
           - canary
+          - physical-test-canary
+          - physical-test-connected
           - production
 
 permissions:
@@ -186,6 +188,175 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
+  deploy_physical_test_canary:
+    name: Publish mobile debug canary to isolated NAS physical-test storage
+    needs: build_apk
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.release_target == 'physical-test-canary' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact main physical-test verifier
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download exact-run mobile canary
+        uses: actions/download-artifact@v4
+        with:
+          name: smart-key-app-canary
+          path: dist
+
+      - name: Set up Java JDK 17 for APK inspection
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Python for physical-test verification
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ota/requirements.txt
+
+      - name: Install physical-test verification dependencies
+        run: python -m pip install -r ota/requirements.txt
+
+      - name: Verify exact public mobile canary before NAS contact
+        run: |
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$ANDROID_SDK"
+          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          APKANALYZER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name apkanalyzer -print | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          test -n "$APKANALYZER"
+          python scripts/ota_contract_gate.py physical-test-canary-verify \
+            --kind mobile \
+            --manifest dist/version.json \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --expected-commit "${{ github.sha }}" \
+            --apkanalyzer "$APKANALYZER" \
+            --apksigner "$APKSIGNER"
+
+      - name: Install pinned-host SFTP client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends openssh-client sshpass
+
+      - name: Stage, read back, verify and publish isolated mobile canary
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
+          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS; do
+            test -n "${!name}"
+          done
+          REMOTE_ROOT="/docker/smart-gatekeeper-physical-test/mobile-public-canary"
+          REMOTE_PARENT="${REMOTE_ROOT}/${GITHUB_SHA}"
+          REMOTE_STAGE="${REMOTE_PARENT}/.staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REMOTE_FINAL="${REMOTE_PARENT}/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test "$REMOTE_ROOT" = "/docker/smart-gatekeeper-physical-test/mobile-public-canary"
+          KNOWN_HOSTS_FILE="${RUNNER_TEMP}/nas_known_hosts"
+          printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+          test -s "$KNOWN_HOSTS_FILE"
+          chmod 600 "$KNOWN_HOSTS_FILE"
+          ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null
+          HOST_KEY_MODE="repository-secret-pinned"
+          export SSHPASS="$NAS_PASSWORD"
+          SSH_TARGET="${NAS_USER}@${NAS_HOST}"
+          SSH_OPTIONS=(-o BatchMode=no -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${KNOWN_HOSTS_FILE}")
+          sshpass -e ssh "${SSH_OPTIONS[@]}" -p "$NAS_PORT" "$SSH_TARGET" \
+            "umask 077; mkdir -p '$REMOTE_PARENT'; test ! -e '$REMOTE_STAGE'; test ! -e '$REMOTE_FINAL'; mkdir '$REMOTE_STAGE'"
+          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          put dist/ks-house-gatekeeper.apk $REMOTE_STAGE/ks-house-gatekeeper.apk
+          put dist/version.json $REMOTE_STAGE/version.json
+          EOF
+          mkdir -p readback evidence
+          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          get $REMOTE_STAGE/ks-house-gatekeeper.apk readback/ks-house-gatekeeper.apk
+          get $REMOTE_STAGE/version.json readback/version.json
+          EOF
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          APKANALYZER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name apkanalyzer -print | sort -V | tail -n 1)"
+          python scripts/ota_contract_gate.py physical-test-evidence-create \
+            --kind mobile \
+            --manifest dist/version.json \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --readback-manifest readback/version.json \
+            --readback-artifact readback/ks-house-gatekeeper.apk \
+            --expected-commit "$GITHUB_SHA" \
+            --host-key-mode "$HOST_KEY_MODE" \
+            --remote-path "$REMOTE_FINAL" \
+            --output evidence/mobile-physical-test-evidence.json \
+            --apkanalyzer "$APKANALYZER" \
+            --apksigner "$APKSIGNER"
+          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          put evidence/mobile-physical-test-evidence.json $REMOTE_STAGE/evidence.json
+          get $REMOTE_STAGE/evidence.json readback/evidence.json
+          EOF
+          cmp evidence/mobile-physical-test-evidence.json readback/evidence.json
+          sshpass -e ssh "${SSH_OPTIONS[@]}" -p "$NAS_PORT" "$SSH_TARGET" \
+            "test -d '$REMOTE_STAGE'; test ! -e '$REMOTE_FINAL'; mv '$REMOTE_STAGE' '$REMOTE_FINAL'"
+          unset SSHPASS NAS_PASSWORD NAS_KNOWN_HOSTS
+
+      - name: Upload sanitized mobile physical-test evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-physical-test-evidence-${{ github.sha }}
+          path: evidence/mobile-physical-test-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+  validate_connected_physical_test_prerequisites:
+    name: Fail closed until connected mobile physical-test secrets are provisioned
+    needs: build_apk
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.release_target == 'physical-test-connected' &&
+      github.ref == 'refs/heads/main'
+    environment: physical-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate connected mobile physical-test secret contract
+        env:
+          PHYSICAL_TEST_ANDROID_KEYSTORE_BASE64: ${{ secrets.PHYSICAL_TEST_ANDROID_KEYSTORE_BASE64 }}
+          PHYSICAL_TEST_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.PHYSICAL_TEST_ANDROID_KEYSTORE_PASSWORD }}
+          PHYSICAL_TEST_ANDROID_KEY_ALIAS: ${{ secrets.PHYSICAL_TEST_ANDROID_KEY_ALIAS }}
+          PHYSICAL_TEST_UPDATE_SIGNING_PRIVATE_KEY_HEX: ${{ secrets.PHYSICAL_TEST_UPDATE_SIGNING_PRIVATE_KEY_HEX }}
+          PHYSICAL_TEST_UPDATE_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.PHYSICAL_TEST_UPDATE_SIGNING_PUBLIC_KEY_HEX }}
+          PHYSICAL_TEST_UPDATE_SIGNING_KEY_ID: ${{ secrets.PHYSICAL_TEST_UPDATE_SIGNING_KEY_ID }}
+          PHYSICAL_TEST_APK_VERSION_URL: ${{ secrets.PHYSICAL_TEST_APK_VERSION_URL }}
+          PHYSICAL_TEST_APK_DOWNLOAD_URL: ${{ secrets.PHYSICAL_TEST_APK_DOWNLOAD_URL }}
+          PHYSICAL_TEST_APK_FALLBACK_DOWNLOAD_URL: ${{ secrets.PHYSICAL_TEST_APK_FALLBACK_DOWNLOAD_URL }}
+          PHYSICAL_TEST_APK_RELEASE_NOTES_URL: ${{ secrets.PHYSICAL_TEST_APK_RELEASE_NOTES_URL }}
+          PHYSICAL_TEST_API_KEY: ${{ secrets.PHYSICAL_TEST_API_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in PHYSICAL_TEST_ANDROID_KEYSTORE_BASE64 \
+            PHYSICAL_TEST_ANDROID_KEYSTORE_PASSWORD PHYSICAL_TEST_ANDROID_KEY_ALIAS \
+            PHYSICAL_TEST_UPDATE_SIGNING_PRIVATE_KEY_HEX \
+            PHYSICAL_TEST_UPDATE_SIGNING_PUBLIC_KEY_HEX PHYSICAL_TEST_UPDATE_SIGNING_KEY_ID \
+            PHYSICAL_TEST_APK_VERSION_URL PHYSICAL_TEST_APK_DOWNLOAD_URL \
+            PHYSICAL_TEST_APK_FALLBACK_DOWNLOAD_URL PHYSICAL_TEST_APK_RELEASE_NOTES_URL \
+            PHYSICAL_TEST_API_KEY; do
+            test -n "${!name}" || missing+=("$name")
+          done
+          if ((${#missing[@]})); then
+            printf 'Missing connected physical-test secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          printf '%s\n' 'Connected signed mobile lane remains disabled until a separately reviewed implementation is authorized.' >&2
+          exit 1
 
   release_to_production:
     name: Validate and deploy Android APK to production

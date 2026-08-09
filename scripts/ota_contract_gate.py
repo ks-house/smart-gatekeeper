@@ -488,6 +488,219 @@ ALLOWED_BUILD_ACTIONS = {
     "actions/upload-artifact@v4",
 }
 
+PHYSICAL_TEST_PUBLIC_CONDITION = (
+    "github.event_name == 'workflow_dispatch' && "
+    "inputs.release_target == 'physical-test-canary' && "
+    "github.ref == 'refs/heads/main'"
+)
+PHYSICAL_TEST_CONNECTED_CONDITION = (
+    "github.event_name == 'workflow_dispatch' && "
+    "inputs.release_target == 'physical-test-connected' && "
+    "github.ref == 'refs/heads/main'"
+)
+PHYSICAL_TEST_NAS_ENV = {
+    "NAS_HOST": "${{ secrets.NAS_HOST }}",
+    "NAS_USER": "${{ secrets.NAS_USER }}",
+    "NAS_PASSWORD": "${{ secrets.NAS_PASSWORD }}",
+    "NAS_PORT": "${{ secrets.NAS_PORT || 22 }}",
+    "NAS_KNOWN_HOSTS": "${{ secrets.NAS_KNOWN_HOSTS }}",
+}
+PHYSICAL_TEST_CONNECTED_SECRET_NAMES = {
+    ".github/workflows/deploy.yml": (
+        "PHYSICAL_TEST_ROOT_CA_CERT",
+        "PHYSICAL_TEST_WIFI_SSID",
+        "PHYSICAL_TEST_WIFI_PASSWORD",
+        "PHYSICAL_TEST_API_URL",
+        "PHYSICAL_TEST_API_KEY",
+        "PHYSICAL_TEST_MQTT_HOST",
+        "PHYSICAL_TEST_MQTT_PORT",
+        "PHYSICAL_TEST_MQTT_USER",
+        "PHYSICAL_TEST_MQTT_PASSWORD",
+        "PHYSICAL_TEST_TARGET_TENANT_ID",
+        "PHYSICAL_TEST_TARGET_DOOR_ID",
+        "PHYSICAL_TEST_COMMAND_SIGNER_PUBLIC_KEY_HEX",
+        "PHYSICAL_TEST_COMMAND_SIGNING_KEY_ID",
+        "PHYSICAL_TEST_ACL_SIGNER_PUBLIC_KEY_HEX",
+        "PHYSICAL_TEST_ACL_SIGNING_KEY_ID",
+        "PHYSICAL_TEST_OTA_VERSION_URL",
+        "PHYSICAL_TEST_OTA_FIRMWARE_URL",
+        "PHYSICAL_TEST_OTA_SIGNING_PRIVATE_KEY_HEX",
+        "PHYSICAL_TEST_OTA_SIGNING_PUBLIC_KEY_HEX",
+        "PHYSICAL_TEST_OTA_SIGNING_KEY_ID",
+        "PHYSICAL_TEST_LOCAL_RECOVERY_AP_PASSWORD",
+        "PHYSICAL_TEST_LOCAL_RECOVERY_USER",
+        "PHYSICAL_TEST_LOCAL_RECOVERY_PASSWORD",
+    ),
+    ".github/workflows/build_app.yml": (
+        "PHYSICAL_TEST_ANDROID_KEYSTORE_BASE64",
+        "PHYSICAL_TEST_ANDROID_KEYSTORE_PASSWORD",
+        "PHYSICAL_TEST_ANDROID_KEY_ALIAS",
+        "PHYSICAL_TEST_UPDATE_SIGNING_PRIVATE_KEY_HEX",
+        "PHYSICAL_TEST_UPDATE_SIGNING_PUBLIC_KEY_HEX",
+        "PHYSICAL_TEST_UPDATE_SIGNING_KEY_ID",
+        "PHYSICAL_TEST_APK_VERSION_URL",
+        "PHYSICAL_TEST_APK_DOWNLOAD_URL",
+        "PHYSICAL_TEST_APK_FALLBACK_DOWNLOAD_URL",
+        "PHYSICAL_TEST_APK_RELEASE_NOTES_URL",
+        "PHYSICAL_TEST_API_KEY",
+    ),
+}
+
+
+def _validate_physical_test_jobs(
+    path: str, binding: dict[str, Any], all_jobs: dict[str, Any]
+) -> None:
+  public_job = all_jobs.get("deploy_physical_test_canary")
+  connected_job = all_jobs.get("validate_connected_physical_test_prerequisites")
+  if not isinstance(public_job, dict) or not isinstance(connected_job, dict):
+    raise GateError(f"{path}: both physical-test jobs are required")
+
+  if set(public_job) != {"name", "needs", "if", "runs-on", "steps"}:
+    raise GateError(f"{path}: physical-test canary job keys are not exact")
+  if public_job.get("needs") != binding["build_job"]:
+    raise GateError(f"{path}: physical-test canary must consume the exact build job")
+  if " ".join(str(public_job.get("if", "")).split()) != PHYSICAL_TEST_PUBLIC_CONDITION:
+    raise GateError(f"{path}: physical-test canary trigger must be exact main dispatch")
+  if public_job.get("runs-on") != "ubuntu-latest":
+    raise GateError(f"{path}: physical-test canary runner must be ubuntu-latest")
+  public_steps = public_job.get("steps")
+  if not isinstance(public_steps, list):
+    raise GateError(f"{path}: physical-test canary steps must be a list")
+  expected_names = (
+      [
+          "Checkout exact main physical-test verifier",
+          "Download exact-run firmware canary",
+          "Set up Python for physical-test verification",
+          "Install physical-test verification dependencies",
+          "Verify exact public firmware canary before NAS contact",
+          "Install pinned-host SFTP client",
+          "Stage, read back, verify and publish isolated firmware canary",
+          "Upload sanitized firmware physical-test evidence",
+      ]
+      if path.endswith("deploy.yml")
+      else [
+          "Checkout exact main physical-test verifier",
+          "Download exact-run mobile canary",
+          "Set up Java JDK 17 for APK inspection",
+          "Set up Python for physical-test verification",
+          "Install physical-test verification dependencies",
+          "Verify exact public mobile canary before NAS contact",
+          "Install pinned-host SFTP client",
+          "Stage, read back, verify and publish isolated mobile canary",
+          "Upload sanitized mobile physical-test evidence",
+      ]
+  )
+  if [step.get("name") for step in public_steps] != expected_names:
+    raise GateError(f"{path}: physical-test canary step order is not exact")
+  if any(not isinstance(step, dict) for step in public_steps):
+    raise GateError(f"{path}: physical-test canary step must be a mapping")
+  for step in public_steps:
+    if set(step) - {"name", "uses", "with", "run", "env"}:
+      raise GateError(f"{path}: physical-test canary step contains an unsafe key")
+    if "continue-on-error" in step or "if" in step:
+      raise GateError(f"{path}: physical-test canary step cannot bypass failure")
+
+  checkout_step = public_steps[0]
+  if checkout_step != {
+      "name": "Checkout exact main physical-test verifier",
+      "uses": "actions/checkout@v4",
+      "with": {"ref": "${{ github.sha }}", "persist-credentials": False},
+  }:
+    raise GateError(f"{path}: physical-test verifier checkout must be exact main SHA")
+  download_step = public_steps[1]
+  if download_step.get("uses") != "actions/download-artifact@v4":
+    raise GateError(f"{path}: physical-test must download an exact-run Actions artifact")
+  if download_step.get("with") != {"name": binding["canary_name"], "path": "dist"}:
+    raise GateError(f"{path}: physical-test download artifact identity is not exact")
+  upload_step = public_steps[-1]
+  if upload_step.get("uses") != "actions/upload-artifact@v4":
+    raise GateError(f"{path}: physical-test sanitized evidence upload is required")
+  upload_with = upload_step.get("with", {})
+  if (
+      not isinstance(upload_with, dict)
+      or upload_with.get("if-no-files-found") != "error"
+      or upload_with.get("retention-days") != 30
+      or upload_with.get("path") not in {
+          "evidence/firmware-physical-test-evidence.json",
+          "evidence/mobile-physical-test-evidence.json",
+      }
+  ):
+    raise GateError(f"{path}: physical-test evidence upload contract is incomplete")
+
+  network_step = public_steps[-2]
+  if network_step.get("env") != PHYSICAL_TEST_NAS_ENV:
+    raise GateError(f"{path}: physical-test NAS credentials must use the exact transport secret set")
+  network_run = str(network_step.get("run", ""))
+  expected_root = (
+      "/docker/smart-gatekeeper-physical-test/firmware-public-canary"
+      if path.endswith("deploy.yml")
+      else "/docker/smart-gatekeeper-physical-test/mobile-public-canary"
+  )
+  required_fragments = (
+      "set -euo pipefail",
+      f'REMOTE_ROOT="{expected_root}"',
+      "StrictHostKeyChecking=yes",
+      "repository-secret-pinned",
+      "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
+      'ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null',
+      "test ! -e '$REMOTE_STAGE'",
+      "test ! -e '$REMOTE_FINAL'",
+      "physical-test-evidence-create",
+      "--readback-manifest readback/version.json",
+      "cmp evidence/",
+      "mv '$REMOTE_STAGE' '$REMOTE_FINAL'",
+  )
+  for fragment in required_fragments:
+    if fragment not in network_run:
+      raise GateError(f"{path}: physical-test stage/readback contract missing: {fragment}")
+  forbidden_fragments = (
+      "${{ secrets.NAS_TARGET_DIR",
+      "${{ secrets.NAS_APK_TARGET_DIR",
+      "/docker/smart-gatekeeper-ota/",
+      "/docker/smartbox_ota/gatekeeper_apk/",
+      "ota_contract_gate.py release",
+      "|| true",
+      "set +e",
+      "ssh-keyscan",
+      "StrictHostKeyChecking=no",
+      "StrictHostKeyChecking=accept-new",
+  )
+  if any(fragment in network_run for fragment in forbidden_fragments):
+    raise GateError(f"{path}: physical-test lane reaches a production or bypass surface")
+  serialized_public = json.dumps(public_job, sort_keys=True)
+  secret_refs = set(re.findall(r"\$\{\{ secrets\.([A-Z0-9_]+)", serialized_public))
+  if secret_refs != set(PHYSICAL_TEST_NAS_ENV):
+    raise GateError(f"{path}: public physical-test lane may use only NAS transport secrets")
+
+  if set(connected_job) != {"name", "needs", "if", "environment", "runs-on", "steps"}:
+    raise GateError(f"{path}: connected physical-test prerequisite job keys are not exact")
+  if connected_job.get("needs") != binding["build_job"]:
+    raise GateError(f"{path}: connected physical-test prerequisites require exact build")
+  if " ".join(str(connected_job.get("if", "")).split()) != PHYSICAL_TEST_CONNECTED_CONDITION:
+    raise GateError(f"{path}: connected physical-test trigger must be exact main dispatch")
+  if connected_job.get("environment") != "physical-test":
+    raise GateError(f"{path}: connected physical-test requires the physical-test environment")
+  if connected_job.get("runs-on") != "ubuntu-latest":
+    raise GateError(f"{path}: connected physical-test runner must be ubuntu-latest")
+  connected_steps = connected_job.get("steps")
+  if not isinstance(connected_steps, list) or len(connected_steps) != 1:
+    raise GateError(f"{path}: connected physical-test must remain one fail-closed prerequisite step")
+  connected_step = connected_steps[0]
+  if set(connected_step) != {"name", "env", "run"}:
+    raise GateError(f"{path}: connected physical-test prerequisite step keys are not exact")
+  expected_names_set = set(PHYSICAL_TEST_CONNECTED_SECRET_NAMES[path])
+  expected_env = {name: f"${{{{ secrets.{name} }}}}" for name in expected_names_set}
+  if connected_step.get("env") != expected_env:
+    raise GateError(f"{path}: connected physical-test secret contract is not exact")
+  connected_run = str(connected_step.get("run", ""))
+  for name in expected_names_set:
+    if connected_run.count(name) != 1:
+      raise GateError(f"{path}: connected physical-test missing secret precondition {name}")
+  if connected_run.count("exit 1") != 2 or "separately reviewed implementation" not in connected_run:
+    raise GateError(f"{path}: connected physical-test must remain fail closed")
+  if re.search(r"\b(sftp|scp|rsync|ssh|curl|wget|pio|flutter|gradle)\b", connected_run):
+    raise GateError(f"{path}: connected prerequisite job must not build, sign or contact a network")
+
 CANONICAL_RELEASE_STEPS = {
     ".github/workflows/deploy.yml": [
         {
@@ -785,8 +998,13 @@ def validate_workflow_release_triggers(
     if not isinstance(dispatch_input, dict) or dispatch_input.get("type") != "choice":
       raise GateError(f"{path}: explicit production release trigger missing release_target choice input")
     options = dispatch_input.get("options", [])
-    if options != ["canary", "production"]:
-      raise GateError(f"{path}: release_target options must include canary and production")
+    if options != [
+        "canary", "physical-test-canary", "physical-test-connected", "production"
+    ]:
+      raise GateError(
+          f"{path}: release_target options must exactly separate canary, "
+          "physical-test-canary, physical-test-connected and production"
+      )
 
     # 4. Jobs allowlist
     all_jobs = parsed.get("jobs")
@@ -795,7 +1013,12 @@ def validate_workflow_release_triggers(
 
     build_job_name = binding["build_job"]
     release_job_name = binding["release_job"]
-    allowed_jobs = {build_job_name, release_job_name}
+    allowed_jobs = {
+        build_job_name,
+        release_job_name,
+        "deploy_physical_test_canary",
+        "validate_connected_physical_test_prerequisites",
+    }
     extra_jobs = set(all_jobs.keys()) - allowed_jobs
     if extra_jobs:
       raise GateError(f"{path}: unexpected job in workflow: {sorted(extra_jobs)}")
@@ -1184,6 +1407,8 @@ def validate_workflow_release_triggers(
             if not prev_continued and not sline.startswith("-"):
               raise GateError(f"{path}: immutable artifact identity violated: evidence step run script cannot alter artifacts after validation")
             prev_continued = sline.endswith("\\")
+
+    _validate_physical_test_jobs(path, binding, all_jobs)
 
 
 def validate_firmware_build_workflow(
@@ -1719,6 +1944,141 @@ def verify_mobile_manifest(args: argparse.Namespace) -> None:
   print(f"[MOBILE-MANIFEST] artifact binding verified: {args.manifest}")
 
 
+def verify_physical_test_canary(args: argparse.Namespace) -> dict[str, Any]:
+  """Verify an exact public/test-signed canary without granting release status."""
+  if not re.fullmatch(r"[0-9a-f]{40}", args.expected_commit):
+    raise GateError("physical-test expected commit must be a lowercase 40-byte SHA")
+  manifest = load_json(args.manifest)
+  if manifest.get("commit") != args.expected_commit:
+    raise GateError("physical-test manifest is not bound to the dispatched main SHA")
+  if manifest.get("signing_key_id") != "rfc8032-test-key-1":
+    raise GateError("physical-test public canary must use the fixed RFC8032 test key")
+
+  version_prefix = "2.1.0-g" if args.kind == "target" else "1.0.0-g"
+  expected_version = manifest.get("version")
+  short_commit = (
+      expected_version[len(version_prefix):]
+      if isinstance(expected_version, str) and expected_version.startswith(version_prefix)
+      else ""
+  )
+  if (
+      not re.fullmatch(r"[0-9a-f]{7,40}", short_commit)
+      or not args.expected_commit.startswith(short_commit)
+  ):
+    raise GateError("physical-test canary version is not derived from the exact commit")
+
+  if args.kind == "target":
+    if manifest.get("artifact_type") != "target-firmware":
+      raise GateError("physical-test target lane requires a Target manifest")
+    if manifest.get("build_id") != f"public-canary-{args.expected_commit}":
+      raise GateError("physical-test Target build ID is not exact-run public canary")
+    if manifest.get("artifact_url") != (
+        f"https://target-canary.invalid/smart-gatekeeper/"
+        f"{args.expected_commit}/firmware.bin"
+    ):
+      raise GateError("physical-test Target public manifest must remain non-connected")
+    verify_target_manifest(
+        argparse.Namespace(
+            manifest=args.manifest,
+            artifact=args.artifact,
+            public_key_hex=TEST_PUBLIC_KEY_HEX,
+            expected_version=expected_version,
+            expected_commit=args.expected_commit,
+            expected_build_id=f"public-canary-{args.expected_commit}",
+        )
+    )
+  elif args.kind == "mobile":
+    if manifest.get("artifact_type") != "android-apk":
+      raise GateError("physical-test mobile lane requires an Android manifest")
+    expected_urls = {
+        "apk_url": (
+            f"https://pr-canary.invalid/smart-gatekeeper/"
+            f"{args.expected_commit}/app.apk"
+        ),
+        "fallback_url": (
+            f"https://pr-fallback.invalid/smart-gatekeeper/"
+            f"{args.expected_commit}/app.apk"
+        ),
+        "release_notes_url": (
+            f"https://pr-canary.invalid/smart-gatekeeper/"
+            f"{args.expected_commit}/notes"
+        ),
+    }
+    if any(manifest.get(field) != value for field, value in expected_urls.items()):
+      raise GateError("physical-test mobile public manifest must remain non-connected")
+    if args.apkanalyzer is None or args.apksigner is None:
+      raise GateError("physical-test mobile verification requires APK tools")
+    verify_mobile_manifest(
+        argparse.Namespace(
+            manifest=args.manifest,
+            artifact=args.artifact,
+            public_key_hex=TEST_PUBLIC_KEY_HEX,
+            expected_package_name="com.kshouse.gatekeeper_app",
+            apkanalyzer=args.apkanalyzer,
+            apksigner=args.apksigner,
+        )
+    )
+  else:
+    raise GateError("physical-test kind must be target or mobile")
+  return manifest
+
+
+def create_physical_test_evidence(args: argparse.Namespace) -> None:
+  """Bind local and NAS-readback bytes to a sanitized, non-release claim."""
+  manifest = verify_physical_test_canary(args)
+  readback_args = argparse.Namespace(
+      kind=args.kind,
+      manifest=args.readback_manifest,
+      artifact=args.readback_artifact,
+      expected_commit=args.expected_commit,
+      apkanalyzer=args.apkanalyzer,
+      apksigner=args.apksigner,
+  )
+  verify_physical_test_canary(readback_args)
+  if args.manifest.read_bytes() != args.readback_manifest.read_bytes():
+    raise GateError("physical-test NAS manifest readback differs from staged bytes")
+  if args.artifact.read_bytes() != args.readback_artifact.read_bytes():
+    raise GateError("physical-test NAS artifact readback differs from staged bytes")
+
+  if args.host_key_mode != "repository-secret-pinned":
+    raise GateError("physical-test host-key mode is invalid")
+  remote_component = (
+      "firmware-public-canary" if args.kind == "target" else "mobile-public-canary"
+  )
+  remote_pattern = re.compile(
+      rf"^/docker/smart-gatekeeper-physical-test/{remote_component}/"
+      rf"{args.expected_commit}/run-[1-9][0-9]*-[1-9][0-9]*$"
+  )
+  if not remote_pattern.fullmatch(args.remote_path):
+    raise GateError("physical-test remote path is outside the isolated canary root")
+
+  _, artifact_sha256 = _artifact_size_and_sha256(args.artifact)
+  _, manifest_sha256 = _artifact_size_and_sha256(args.manifest)
+  evidence = {
+      "schema_version": 1,
+      "claim": "nas-physical-test-canary-staged-readback-verified",
+      "tier": "public-test-signed-non-connected",
+      "kind": args.kind,
+      "source_commit": args.expected_commit,
+      "artifact_name": args.artifact.name,
+      "artifact_sha256": artifact_sha256,
+      "manifest_sha256": manifest_sha256,
+      "manifest_signing_key_id": manifest["signing_key_id"],
+      "host_key_mode": args.host_key_mode,
+      "remote_path": args.remote_path,
+      "nas_upload_verified": True,
+      "physical_validation_status": "pending",
+      "production_authorized": False,
+      "release_evidence": False,
+  }
+  args.output.parent.mkdir(parents=True, exist_ok=True)
+  args.output.write_text(
+      json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+      encoding="utf-8",
+  )
+  print(f"[PHYSICAL-TEST] sanitized evidence created: {args.output}")
+
+
 def validate_release_manifests(
     manifest_paths: list[Path],
     artifact_paths: list[Path],
@@ -1830,6 +2190,31 @@ def parse_args() -> argparse.Namespace:
   mobile_verify.add_argument("--expected-package-name", required=True)
   mobile_verify.add_argument("--apkanalyzer", type=Path, required=True)
   mobile_verify.add_argument("--apksigner", type=Path, required=True)
+  physical_verify = subparsers.add_parser(
+      "physical-test-canary-verify",
+      help="verify an exact public/test-signed non-release physical-test canary",
+  )
+  physical_verify.add_argument("--kind", choices=("target", "mobile"), required=True)
+  physical_verify.add_argument("--manifest", type=Path, required=True)
+  physical_verify.add_argument("--artifact", type=Path, required=True)
+  physical_verify.add_argument("--expected-commit", required=True)
+  physical_verify.add_argument("--apkanalyzer", type=Path)
+  physical_verify.add_argument("--apksigner", type=Path)
+  physical_evidence = subparsers.add_parser(
+      "physical-test-evidence-create",
+      help="verify NAS readback and create a sanitized non-release evidence record",
+  )
+  physical_evidence.add_argument("--kind", choices=("target", "mobile"), required=True)
+  physical_evidence.add_argument("--manifest", type=Path, required=True)
+  physical_evidence.add_argument("--artifact", type=Path, required=True)
+  physical_evidence.add_argument("--readback-manifest", type=Path, required=True)
+  physical_evidence.add_argument("--readback-artifact", type=Path, required=True)
+  physical_evidence.add_argument("--expected-commit", required=True)
+  physical_evidence.add_argument("--host-key-mode", required=True)
+  physical_evidence.add_argument("--remote-path", required=True)
+  physical_evidence.add_argument("--output", type=Path, required=True)
+  physical_evidence.add_argument("--apkanalyzer", type=Path)
+  physical_evidence.add_argument("--apksigner", type=Path)
   return parser.parse_args()
 
 
@@ -1850,6 +2235,10 @@ def main() -> int:
       create_mobile_manifest(args)
     elif args.command == "mobile-manifest-verify":
       verify_mobile_manifest(args)
+    elif args.command == "physical-test-canary-verify":
+      verify_physical_test_canary(args)
+    elif args.command == "physical-test-evidence-create":
+      create_physical_test_evidence(args)
   except (GateError, OSError, json.JSONDecodeError) as exc:
     print(f"[OTA-GATE] FAIL: {exc}", file=sys.stderr)
     return 1

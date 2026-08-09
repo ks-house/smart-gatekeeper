@@ -2544,3 +2544,16 @@
 
 - Focused trusted-policy tests passed 37/37 and full root discovery passed 140/140 after the documentation-only remediation. The final guide contains no expected-red or two-bundle-current-state claim and requires Hosted Trusted success plus fresh exact-head review before a normal protected merge.
 - The prior Quick 10-section pass remains bound to identical policy, test, validator, protected product/workflow and `raw/` bytes. A new exact-head Hosted Trusted run and fresh COMMENTED review remain required after push; no merge, deployment or physical Gate completion is claimed.
+
+## [2026-08-09] code | Add fail-closed NAS physical-test canary delivery lanes
+
+- Added exact-`main` manual `physical-test-canary` jobs for the same-run firmware public canary and Android debug APK. Each job verifies its fixed RFC 8032 test signature and source SHA before network contact, stages only below a hard-coded non-production NAS root, reads artifact and manifest bytes back, verifies them again, uploads sanitized non-release evidence, and atomically publishes a unique run directory.
+- Required `NAS_KNOWN_HOSTS` plus `StrictHostKeyChecking=yes` and validated known-host syntax before credentialed contact; runtime keyscan, TOFU, `accept-new`, disabled strict checking, production directory secrets and production paths are rejected. The currently absent host-key secret therefore blocks dispatch safely until an operator provisions an independently verified value.
+- Added a separate `physical-test-connected` prerequisite contract using only `PHYSICAL_TEST_*` names in the protected `physical-test` Environment. It always exits non-zero even after prerequisites pass, so missing test-scoped signing/runtime inputs cannot fall back to production values or imply a connected release.
+- Production jobs, conditions, Environment, release evidence, signing inputs and NAS paths are unchanged. No workflow was dispatched and no NAS data was written; manual install/flash, Samsung/OEM, ESP32-C6, BLE/radio, relay/sensor and OTA/rollback evidence remain pending.
+
+## [2026-08-09] test | Validate NAS staging, readback and production isolation contracts
+
+- `actionlint` passed both modified workflows. Focused OTA/NAS tests passed 74/74 and full root discovery passed 148/148, including adversarial production-directory, production-secret, missing readback, runtime keyscan, disabled strict-host checking, connected-tier enablement, byte substitution and remote-root mutations.
+- The protected candidate modifies `.github/workflows/deploy.yml`, `.github/workflows/build_app.yml` and `scripts/ota_contract_gate.py`; current trusted main has not authorized these bytes. A product Draft PR, independent COMMENTED whole-bundle review, and a separate trusted-main policy authorization remain required before merge or dispatch.
+- Antigravity was invoked once for bounded read-only lint but returned unrelated CLI sandbox documentation rather than repository findings. Its output is not counted as validation; the exact local `actionlint`, Python contract tests and diff checks remain the recorded software evidence.

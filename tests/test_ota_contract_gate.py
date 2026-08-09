@@ -68,6 +68,37 @@ class OtaContractGateTest(unittest.TestCase):
       artifact_path.write_bytes(artifact_bytes)
     return manifest_path, artifact_path, manifest
 
+  def _write_target_public_canary(
+      self, directory: Path, commit: str = "1" * 40
+  ) -> tuple[Path, Path]:
+    artifact = directory / "gatekeeper-firmware.bin"
+    artifact.write_bytes(b"exact public physical-test firmware")
+    manifest = directory / "version.json"
+    args = argparse.Namespace(
+        artifact=artifact,
+        output=manifest,
+        version=f"2.1.0-g{commit[:7]}",
+        commit=commit,
+        build_id=f"public-canary-{commit}",
+        artifact_url=(
+            f"https://target-canary.invalid/smart-gatekeeper/{commit}/firmware.bin"
+        ),
+        published_at="2026-08-01T00:00:00Z",
+        mandatory_after=None,
+        signing_key_id="rfc8032-test-key-1",
+        private_key_env="TARGET_TEST_PRIVATE_KEY_HEX",
+        expected_public_key_hex=gate.TEST_PUBLIC_KEY_HEX,
+        protocol_min=1,
+        protocol_max=2,
+    )
+    with mock.patch.dict(
+        os.environ,
+        {"TARGET_TEST_PRIVATE_KEY_HEX": TEST_PRIVATE_KEY_HEX},
+        clear=False,
+    ):
+      gate.create_target_manifest(args)
+    return manifest, artifact
+
   def test_contract_assets_and_dual_slot_pass(self):
     gate.validate_contract()
 
@@ -187,6 +218,79 @@ class OtaContractGateTest(unittest.TestCase):
         with self.subTest(field=field):
           with self.assertRaisesRegex(gate.GateError, message):
             gate.verify_target_manifest(verify_args)
+
+  def test_physical_test_target_canary_and_sanitized_readback_evidence(self):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+      directory = Path(temporary_directory)
+      commit = "1" * 40
+      manifest, artifact = self._write_target_public_canary(directory, commit)
+      verify_args = argparse.Namespace(
+          kind="target",
+          manifest=manifest,
+          artifact=artifact,
+          expected_commit=commit,
+          apkanalyzer=None,
+          apksigner=None,
+      )
+      gate.verify_physical_test_canary(verify_args)
+
+      readback_manifest = directory / "readback-version.json"
+      readback_artifact = directory / "readback-firmware.bin"
+      readback_manifest.write_bytes(manifest.read_bytes())
+      readback_artifact.write_bytes(artifact.read_bytes())
+      evidence_path = directory / "evidence.json"
+      gate.create_physical_test_evidence(
+          argparse.Namespace(
+              **vars(verify_args),
+              readback_manifest=readback_manifest,
+              readback_artifact=readback_artifact,
+              host_key_mode="repository-secret-pinned",
+              remote_path=(
+                  "/docker/smart-gatekeeper-physical-test/"
+                  f"firmware-public-canary/{commit}/run-10-1"
+              ),
+              output=evidence_path,
+          )
+      )
+      evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+      self.assertTrue(evidence["nas_upload_verified"])
+      self.assertEqual(evidence["physical_validation_status"], "pending")
+      self.assertFalse(evidence["production_authorized"])
+      self.assertFalse(evidence["release_evidence"])
+      self.assertNotIn("host", evidence)
+      self.assertNotIn("username", evidence)
+
+  def test_physical_test_evidence_rejects_readback_or_remote_root_mutation(self):
+    with tempfile.TemporaryDirectory() as temporary_directory:
+      directory = Path(temporary_directory)
+      commit = "2" * 40
+      manifest, artifact = self._write_target_public_canary(directory, commit)
+      readback_manifest = directory / "readback-version.json"
+      readback_artifact = directory / "readback-firmware.bin"
+      readback_manifest.write_bytes(manifest.read_bytes())
+      readback_artifact.write_bytes(b"substituted bytes")
+      common = dict(
+          kind="target",
+          manifest=manifest,
+          artifact=artifact,
+          readback_manifest=readback_manifest,
+          readback_artifact=readback_artifact,
+          expected_commit=commit,
+          host_key_mode="repository-secret-pinned",
+          remote_path=(
+              "/docker/smart-gatekeeper-physical-test/"
+              f"firmware-public-canary/{commit}/run-20-1"
+          ),
+          output=directory / "evidence.json",
+          apkanalyzer=None,
+          apksigner=None,
+      )
+      with self.assertRaisesRegex(gate.GateError, "exact firmware bytes"):
+        gate.create_physical_test_evidence(argparse.Namespace(**common))
+      readback_artifact.write_bytes(artifact.read_bytes())
+      common["remote_path"] = f"/docker/smart-gatekeeper-ota/{commit}/run-20-1"
+      with self.assertRaisesRegex(gate.GateError, "outside the isolated canary root"):
+        gate.create_physical_test_evidence(argparse.Namespace(**common))
 
   def test_release_missing_artifact_is_rejected(self):
     with tempfile.TemporaryDirectory() as temporary_directory:
@@ -321,6 +425,110 @@ class OtaContractGateTest(unittest.TestCase):
 
   def test_push_builds_canary_without_entering_production_release_job(self):
     gate.validate_workflow_release_triggers(self._workflow_sources())
+
+  def test_physical_test_dispatch_is_main_only_and_production_is_unchanged(self):
+    for path, content in self._workflow_sources().items():
+      with self.subTest(path=path):
+        workflow = gate.load_workflow_yaml(path, content)
+        options = workflow["on"]["workflow_dispatch"]["inputs"][
+            "release_target"
+        ]["options"]
+        self.assertEqual(
+            options,
+            [
+                "canary",
+                "physical-test-canary",
+                "physical-test-connected",
+                "production",
+            ],
+        )
+        public_if = " ".join(
+            str(workflow["jobs"]["deploy_physical_test_canary"]["if"]).split()
+        )
+        self.assertEqual(public_if, gate.PHYSICAL_TEST_PUBLIC_CONDITION)
+        connected = workflow["jobs"][
+            "validate_connected_physical_test_prerequisites"
+        ]
+        self.assertEqual(connected["environment"], "physical-test")
+        self.assertIn("exit 1", connected["steps"][0]["run"])
+        self.assertEqual(
+            " ".join(str(connected["if"]).split()),
+            gate.PHYSICAL_TEST_CONNECTED_CONDITION,
+        )
+
+  def test_physical_test_workflow_rejects_path_readback_and_secret_bypasses(self):
+    mutations = (
+        (
+            "production-dir",
+            'REMOTE_ROOT="/docker/smart-gatekeeper-physical-test/firmware-public-canary"',
+            'REMOTE_ROOT="/docker/smart-gatekeeper-ota"',
+            "production or bypass surface|stage/readback contract",
+        ),
+        (
+            "missing-readback-compare",
+            "cmp evidence/firmware-physical-test-evidence.json readback/evidence.json",
+            "echo skipped-readback-compare",
+            "stage/readback contract",
+        ),
+        (
+            "production-directory-secret",
+            "NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}",
+            "NAS_KNOWN_HOSTS: ${{ secrets.NAS_TARGET_DIR }}",
+            "exact transport secret set|only NAS transport secrets",
+        ),
+        (
+            "runtime-keyscan-tofu",
+            "printf '%s\\n' \"$NAS_KNOWN_HOSTS\" > \"$KNOWN_HOSTS_FILE\"",
+            "ssh-keyscan -p \"$NAS_PORT\" \"$NAS_HOST\" > \"$KNOWN_HOSTS_FILE\"",
+            "stage/readback contract|production or bypass surface",
+        ),
+        (
+            "disable-strict-host-checking",
+            "StrictHostKeyChecking=yes",
+            "StrictHostKeyChecking=no",
+            "stage/readback contract|production or bypass surface",
+        ),
+        (
+            "connected-enables-deploy",
+            "          exit 1\n\n  release_to_production:",
+            "          exit 0\n\n  release_to_production:",
+            "remain fail closed",
+        ),
+    )
+    for label, before, after, message in mutations:
+      with self.subTest(mutation=label):
+        workflows = self._workflow_sources()
+        path = ".github/workflows/deploy.yml"
+        self.assertIn(before, workflows[path])
+        workflows[path] = workflows[path].replace(before, after, 1)
+        with self.assertRaisesRegex(gate.GateError, message):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_physical_test_connected_secret_contract_is_exact(self):
+    for path, content in self._workflow_sources().items():
+      with self.subTest(path=path):
+        workflow = gate.load_workflow_yaml(path, content)
+        step = workflow["jobs"][
+            "validate_connected_physical_test_prerequisites"
+        ]["steps"][0]
+        expected_names = set(gate.PHYSICAL_TEST_CONNECTED_SECRET_NAMES[path])
+        self.assertEqual(set(step["env"]), expected_names)
+        self.assertTrue(
+            all(
+                step["env"][name] == f"${{{{ secrets.{name} }}}}"
+                for name in expected_names
+            )
+        )
+        mutated = self._workflow_sources()
+        parsed = gate.load_workflow_yaml(path, mutated[path])
+        parsed_step = parsed["jobs"][
+            "validate_connected_physical_test_prerequisites"
+        ]["steps"][0]
+        first_name = sorted(expected_names)[0]
+        parsed_step["env"][first_name] = "${{ secrets.SECRET_API_KEY }}"
+        mutated[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
+        with self.assertRaisesRegex(gate.GateError, "secret contract is not exact"):
+          gate.validate_workflow_release_triggers(mutated)
 
   def test_push_condition_cannot_authorize_production_release(self):
     workflows = self._workflow_sources()
@@ -481,11 +689,14 @@ class OtaContractGateTest(unittest.TestCase):
     for path in self._workflow_sources():
       with self.subTest(path=path, mutation="main-ref"):
         workflows = self._workflow_sources()
-        workflows[path] = workflows[path].replace(
-            "      github.ref == 'refs/heads/main'\n",
-            "      github.ref != 'refs/heads/main'\n",
-            1,
+        parsed = gate.load_workflow_yaml(path, workflows[path])
+        parsed["jobs"]["release_to_production"]["if"] = str(
+            parsed["jobs"]["release_to_production"]["if"]
+        ).replace(
+            "github.ref == 'refs/heads/main'",
+            "github.ref != 'refs/heads/main'",
         )
+        workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
         with self.assertRaisesRegex(gate.GateError, "authorized production trigger"):
           gate.validate_workflow_release_triggers(workflows)
 
@@ -839,11 +1050,14 @@ class OtaContractGateTest(unittest.TestCase):
           gate.validate_workflow_release_triggers(workflows)
 
     workflows = self._workflow_sources()
-    workflows[path] = workflows[path].replace(
-        "      github.ref == 'refs/heads/main'",
-        "      github.ref != 'refs/heads/main'",
-        1,
+    parsed = gate.load_workflow_yaml(path, workflows[path])
+    parsed["jobs"]["release_to_production"]["if"] = str(
+        parsed["jobs"]["release_to_production"]["if"]
+    ).replace(
+        "github.ref == 'refs/heads/main'",
+        "github.ref != 'refs/heads/main'",
     )
+    workflows[path] = gate.yaml.safe_dump(parsed, sort_keys=False)
     with self.assertRaisesRegex(gate.GateError, "authorized production trigger"):
       gate.validate_workflow_release_triggers(workflows)
 

@@ -22,6 +22,8 @@ on:
         default: canary
         options:
           - canary
+          - physical-test-canary
+          - physical-test-connected
           - production
 
 permissions:
@@ -104,6 +106,170 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
+  deploy_physical_test_canary:
+    name: Publish firmware public canary to isolated NAS physical-test storage
+    needs: test_and_build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.release_target == 'physical-test-canary' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact main physical-test verifier
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download exact-run firmware canary
+        uses: actions/download-artifact@v4
+        with:
+          name: target-canary
+          path: dist
+
+      - name: Set up Python for physical-test verification
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install physical-test verification dependencies
+        run: python -m pip install -r ota/requirements.txt
+
+      - name: Verify exact public firmware canary before NAS contact
+        run: |
+          python scripts/ota_contract_gate.py physical-test-canary-verify \
+            --kind target \
+            --manifest dist/version.json \
+            --artifact dist/gatekeeper-firmware.bin \
+            --expected-commit "${{ github.sha }}"
+
+      - name: Install pinned-host SFTP client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends openssh-client sshpass
+
+      - name: Stage, read back, verify and publish isolated firmware canary
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
+          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS; do
+            test -n "${!name}"
+          done
+          REMOTE_ROOT="/docker/smart-gatekeeper-physical-test/firmware-public-canary"
+          REMOTE_PARENT="${REMOTE_ROOT}/${GITHUB_SHA}"
+          REMOTE_STAGE="${REMOTE_PARENT}/.staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          REMOTE_FINAL="${REMOTE_PARENT}/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test "$REMOTE_ROOT" = "/docker/smart-gatekeeper-physical-test/firmware-public-canary"
+          KNOWN_HOSTS_FILE="${RUNNER_TEMP}/nas_known_hosts"
+          printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+          test -s "$KNOWN_HOSTS_FILE"
+          chmod 600 "$KNOWN_HOSTS_FILE"
+          ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null
+          HOST_KEY_MODE="repository-secret-pinned"
+          export SSHPASS="$NAS_PASSWORD"
+          SSH_TARGET="${NAS_USER}@${NAS_HOST}"
+          SSH_OPTIONS=(-o BatchMode=no -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${KNOWN_HOSTS_FILE}")
+          sshpass -e ssh "${SSH_OPTIONS[@]}" -p "$NAS_PORT" "$SSH_TARGET" \
+            "umask 077; mkdir -p '$REMOTE_PARENT'; test ! -e '$REMOTE_STAGE'; test ! -e '$REMOTE_FINAL'; mkdir '$REMOTE_STAGE'"
+          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          put dist/gatekeeper-firmware.bin $REMOTE_STAGE/gatekeeper-firmware.bin
+          put dist/version.json $REMOTE_STAGE/version.json
+          EOF
+          mkdir -p readback evidence
+          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          get $REMOTE_STAGE/gatekeeper-firmware.bin readback/gatekeeper-firmware.bin
+          get $REMOTE_STAGE/version.json readback/version.json
+          EOF
+          python scripts/ota_contract_gate.py physical-test-evidence-create \
+            --kind target \
+            --manifest dist/version.json \
+            --artifact dist/gatekeeper-firmware.bin \
+            --readback-manifest readback/version.json \
+            --readback-artifact readback/gatekeeper-firmware.bin \
+            --expected-commit "$GITHUB_SHA" \
+            --host-key-mode "$HOST_KEY_MODE" \
+            --remote-path "$REMOTE_FINAL" \
+            --output evidence/firmware-physical-test-evidence.json
+          sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" -b - "$SSH_TARGET" <<EOF
+          put evidence/firmware-physical-test-evidence.json $REMOTE_STAGE/evidence.json
+          get $REMOTE_STAGE/evidence.json readback/evidence.json
+          EOF
+          cmp evidence/firmware-physical-test-evidence.json readback/evidence.json
+          sshpass -e ssh "${SSH_OPTIONS[@]}" -p "$NAS_PORT" "$SSH_TARGET" \
+            "test -d '$REMOTE_STAGE'; test ! -e '$REMOTE_FINAL'; mv '$REMOTE_STAGE' '$REMOTE_FINAL'"
+          unset SSHPASS NAS_PASSWORD NAS_KNOWN_HOSTS
+
+      - name: Upload sanitized firmware physical-test evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-physical-test-evidence-${{ github.sha }}
+          path: evidence/firmware-physical-test-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+  validate_connected_physical_test_prerequisites:
+    name: Fail closed until connected firmware physical-test secrets are provisioned
+    needs: test_and_build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.release_target == 'physical-test-connected' &&
+      github.ref == 'refs/heads/main'
+    environment: physical-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate connected firmware physical-test secret contract
+        env:
+          PHYSICAL_TEST_ROOT_CA_CERT: ${{ secrets.PHYSICAL_TEST_ROOT_CA_CERT }}
+          PHYSICAL_TEST_WIFI_SSID: ${{ secrets.PHYSICAL_TEST_WIFI_SSID }}
+          PHYSICAL_TEST_WIFI_PASSWORD: ${{ secrets.PHYSICAL_TEST_WIFI_PASSWORD }}
+          PHYSICAL_TEST_API_URL: ${{ secrets.PHYSICAL_TEST_API_URL }}
+          PHYSICAL_TEST_API_KEY: ${{ secrets.PHYSICAL_TEST_API_KEY }}
+          PHYSICAL_TEST_MQTT_HOST: ${{ secrets.PHYSICAL_TEST_MQTT_HOST }}
+          PHYSICAL_TEST_MQTT_PORT: ${{ secrets.PHYSICAL_TEST_MQTT_PORT }}
+          PHYSICAL_TEST_MQTT_USER: ${{ secrets.PHYSICAL_TEST_MQTT_USER }}
+          PHYSICAL_TEST_MQTT_PASSWORD: ${{ secrets.PHYSICAL_TEST_MQTT_PASSWORD }}
+          PHYSICAL_TEST_TARGET_TENANT_ID: ${{ secrets.PHYSICAL_TEST_TARGET_TENANT_ID }}
+          PHYSICAL_TEST_TARGET_DOOR_ID: ${{ secrets.PHYSICAL_TEST_TARGET_DOOR_ID }}
+          PHYSICAL_TEST_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.PHYSICAL_TEST_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
+          PHYSICAL_TEST_COMMAND_SIGNING_KEY_ID: ${{ secrets.PHYSICAL_TEST_COMMAND_SIGNING_KEY_ID }}
+          PHYSICAL_TEST_ACL_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.PHYSICAL_TEST_ACL_SIGNER_PUBLIC_KEY_HEX }}
+          PHYSICAL_TEST_ACL_SIGNING_KEY_ID: ${{ secrets.PHYSICAL_TEST_ACL_SIGNING_KEY_ID }}
+          PHYSICAL_TEST_OTA_VERSION_URL: ${{ secrets.PHYSICAL_TEST_OTA_VERSION_URL }}
+          PHYSICAL_TEST_OTA_FIRMWARE_URL: ${{ secrets.PHYSICAL_TEST_OTA_FIRMWARE_URL }}
+          PHYSICAL_TEST_OTA_SIGNING_PRIVATE_KEY_HEX: ${{ secrets.PHYSICAL_TEST_OTA_SIGNING_PRIVATE_KEY_HEX }}
+          PHYSICAL_TEST_OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.PHYSICAL_TEST_OTA_SIGNING_PUBLIC_KEY_HEX }}
+          PHYSICAL_TEST_OTA_SIGNING_KEY_ID: ${{ secrets.PHYSICAL_TEST_OTA_SIGNING_KEY_ID }}
+          PHYSICAL_TEST_LOCAL_RECOVERY_AP_PASSWORD: ${{ secrets.PHYSICAL_TEST_LOCAL_RECOVERY_AP_PASSWORD }}
+          PHYSICAL_TEST_LOCAL_RECOVERY_USER: ${{ secrets.PHYSICAL_TEST_LOCAL_RECOVERY_USER }}
+          PHYSICAL_TEST_LOCAL_RECOVERY_PASSWORD: ${{ secrets.PHYSICAL_TEST_LOCAL_RECOVERY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in PHYSICAL_TEST_ROOT_CA_CERT PHYSICAL_TEST_WIFI_SSID \
+            PHYSICAL_TEST_WIFI_PASSWORD PHYSICAL_TEST_API_URL PHYSICAL_TEST_API_KEY \
+            PHYSICAL_TEST_MQTT_HOST PHYSICAL_TEST_MQTT_PORT PHYSICAL_TEST_MQTT_USER \
+            PHYSICAL_TEST_MQTT_PASSWORD PHYSICAL_TEST_TARGET_TENANT_ID \
+            PHYSICAL_TEST_TARGET_DOOR_ID PHYSICAL_TEST_COMMAND_SIGNER_PUBLIC_KEY_HEX \
+            PHYSICAL_TEST_COMMAND_SIGNING_KEY_ID PHYSICAL_TEST_ACL_SIGNER_PUBLIC_KEY_HEX \
+            PHYSICAL_TEST_ACL_SIGNING_KEY_ID PHYSICAL_TEST_OTA_VERSION_URL \
+            PHYSICAL_TEST_OTA_FIRMWARE_URL PHYSICAL_TEST_OTA_SIGNING_PRIVATE_KEY_HEX \
+            PHYSICAL_TEST_OTA_SIGNING_PUBLIC_KEY_HEX PHYSICAL_TEST_OTA_SIGNING_KEY_ID \
+            PHYSICAL_TEST_LOCAL_RECOVERY_AP_PASSWORD PHYSICAL_TEST_LOCAL_RECOVERY_USER \
+            PHYSICAL_TEST_LOCAL_RECOVERY_PASSWORD; do
+            test -n "${!name}" || missing+=("$name")
+          done
+          if ((${#missing[@]})); then
+            printf 'Missing connected physical-test secret: %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          printf '%s\n' 'Connected signed firmware lane remains disabled until a separately reviewed implementation is authorized.' >&2
+          exit 1
 
   release_to_production:
     name: Validate and deploy firmware to production
