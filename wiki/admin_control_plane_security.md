@@ -100,5 +100,9 @@ Ingress is a concrete reverse proxy deployment requirement: it terminates
 mTLS, accepts public traffic, strips client-supplied identity headers, rebuilds
 them only after verification, and reaches the un-published API service over its
 private network. The backend trusts only `ADMIN_TRUSTED_PROXY_IPS`; an empty or
-invalid allow-list disables administrator login. Issue #51/#52 own the mobile
-v2 client envelope rollout and must retain N/N-1 update/rollback compatibility.
+invalid allow-list disables administrator login. Issue #51 keeps device-ID-only
+Web enrolment/control disabled and truthful; issue #52 owns scoped mobile
+possession-credential provisioning and the v2 client envelope rollout. Until
+that rollout exists, Flutter must not import or expose the legacy Backend HMAC
+secret, and N/N-1 clients receive upgrade-required with no effect. Both issues
+must retain N/N-1 update/rollback compatibility.

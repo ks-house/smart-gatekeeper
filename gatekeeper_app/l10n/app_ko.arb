@@ -1,0 +1,9 @@
+{
+  "@@locale": "ko",
+  "appTitle": "스마트키",
+  "setupReady": "준비됨",
+  "setupDegraded": "제한됨",
+  "setupBlocked": "차단됨",
+  "manualRecovery": "수동 복구",
+  "verifiedUpdate": "검증된 업데이트"
+}

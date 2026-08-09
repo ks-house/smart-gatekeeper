@@ -1,19 +1,35 @@
 package com.kshouse.gatekeeper_app
 
 import android.app.NotificationManager
+import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 import com.kshouse.gatekeeper_app.gattworker.BleGattWorkScheduler
+import com.kshouse.gatekeeper_app.blewake.BleWakeRegistrar
+import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
 
 class MainActivity: FlutterActivity() {
     private companion object {
         const val CHANNEL_DIAGNOSTICS = "com.kshouse.gatekeeper_app/notification_channel"
         const val CHANNEL_GATT_WORKER_HEALTH =
             "com.kshouse.gatekeeper_app/ble_gatt_worker_health"
+        const val CHANNEL_WAKE_REGISTRATION =
+            "com.kshouse.gatekeeper_app/ble_wake_registration"
+        const val CHANNEL_UPDATE_SECURITY =
+            "com.kshouse.gatekeeper_app/update_security"
+        const val CHANNEL_BACKGROUND_REQUIREMENTS =
+            "com.kshouse.gatekeeper_app/background_requirements"
         const val FOREGROUND_NOTIFICATION_CHANNEL = "smart_key_foreground_channel_v2"
     }
 
@@ -60,19 +76,163 @@ class MainActivity: FlutterActivity() {
                     result.success(BleGattHealthBridge.snapshot(applicationContext))
                 }
                 "triggerLocalGattRetry" -> {
-                    val scheduled = BleGattWorkScheduler.onPresence(
-                        applicationContext,
-                        "TARGET_LOCAL",
-                        "manual_retry_" + System.currentTimeMillis(),
-                    )
-                    result.success(scheduled != null)
+                    result.success(BleGattWorkScheduler.manualRetry(applicationContext).toMap())
                 }
                 else -> {
                     result.notImplemented()
                 }
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_WAKE_REGISTRATION,
+        ).setMethodCallHandler { call, result ->
+            val registration = when (call.method) {
+                "register" -> BleWakeRegistrar.register(applicationContext)
+                "stop" -> BleWakeRegistrar.stop(applicationContext)
+                "getStatus" -> BleWakeRegistrar.status(applicationContext)
+                else -> {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+            }
+            result.success(registration.toMap())
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_UPDATE_SECURITY,
+        ).setMethodCallHandler { call, result ->
+            try {
+                when (call.method) {
+                    "apkCertificateSha256" -> {
+                        val path = call.argument<String>("path")
+                        if (path.isNullOrBlank() || !File(path).isFile) {
+                            result.error("APK_MISSING", "APK is not available", null)
+                            return@setMethodCallHandler
+                        }
+                        result.success(archiveCertificateSha256(path))
+                    }
+                    "installedPackageIdentity" -> {
+                        result.success(installedPackageIdentity())
+                    }
+                    else -> result.notImplemented()
+                }
+            } catch (error: Exception) {
+                result.error(
+                    "PACKAGE_IDENTITY_INVALID",
+                    "APK package identity could not be verified",
+                    error.javaClass.simpleName,
+                )
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_BACKGROUND_REQUIREMENTS,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isIgnoringBatteryOptimizations" -> {
+                    val power = getSystemService(PowerManager::class.java)
+                    result.success(power.isIgnoringBatteryOptimizations(packageName))
+                }
+                "requestIgnoreBatteryOptimizations" -> {
+                    val power = getSystemService(PowerManager::class.java)
+                    if (!power.isIgnoringBatteryOptimizations(packageName)) {
+                        val intent = Intent(
+                            BatteryOptimizationRequestPolicy
+                                .ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse(
+                                BatteryOptimizationRequestPolicy.packageUri(packageName),
+                            ),
+                        )
+                        startActivity(intent)
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
+    private fun archiveCertificateSha256(path: String): String {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageArchiveInfo(
+                path,
+                PackageManager.PackageInfoFlags.of(
+                    PackageManager.GET_SIGNING_CERTIFICATES.toLong(),
+                ),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageArchiveInfo(
+                path,
+                PackageManager.GET_SIGNING_CERTIFICATES,
+            )
+        }
+        return certificateSha256(requireNotNull(packageInfo))
+    }
+
+    private fun installedPackageIdentity(): Map<String, Any> {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(
+                packageName,
+                PackageManager.PackageInfoFlags.of(
+                    PackageManager.GET_SIGNING_CERTIFICATES.toLong(),
+                ),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(
+                packageName,
+                PackageManager.GET_SIGNING_CERTIFICATES,
+            )
+        }
+        val source = File(requireNotNull(packageInfo.applicationInfo?.sourceDir))
+        require(source.isFile) { "Installed APK source is unavailable" }
+        val buildNumber = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+        return mapOf(
+            "buildNumber" to buildNumber,
+            "versionName" to requireNotNull(packageInfo.versionName),
+            "sourceSha256" to sha256(source),
+            "certificateSha256" to certificateSha256(packageInfo),
+        )
+    }
+
+    private fun certificateSha256(packageInfo: PackageInfo): String {
+        val signers: Array<Signature>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.signingInfo?.apkContentsSigners
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.signatures
+        }
+        val bytes = UpdatePackageIdentityPolicy.requireSingleSigner(
+            actualPackageName = packageInfo.packageName,
+            expectedPackageName = packageName,
+            signerCertificates = signers?.map { it.toByteArray() }.orEmpty(),
+        )
+        return MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(1024 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count > 0) digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
 }

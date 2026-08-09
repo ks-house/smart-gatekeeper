@@ -33,18 +33,89 @@ docker compose exec flutter-builder bash
 ```bash
 flutter pub get
 flutter analyze
+flutter test
+cd android
+./gradlew --no-daemon --rerun-tasks :app:testDebugUnitTest \
+  --tests 'com.kshouse.gatekeeper_app.gattworker.*' \
+  --tests 'com.kshouse.gatekeeper_app.UpdatePackageIdentityPolicyTest' \
+  --tests 'com.kshouse.gatekeeper_app.BatteryOptimizationRequestPolicyTest'
+cd ..
 ```
 
 ### Step 4: Android APK 빌드
-릴리즈 모드로 Android APK 바이너리를 빌드합니다.
+릴리즈 모드로 Android APK 바이너리를 빌드합니다. 업데이트 공개키와 key ID는
+manifest가 아니라 APK 빌드 입력으로 고정해야 하며, primary/fallback metadata URL은
+서로 독립된 HTTPS 배포 지점을 사용합니다.
 
 ```bash
-flutter build apk --release
+flutter build apk --release \
+  --dart-define=APK_VERSION_URL="$APK_VERSION_URL" \
+  --dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL" \
+  --dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID" \
+  --dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64"
 ```
 
-로컬 빌더는 정식 배포 키가 없을 때 컨테이너 내부의 디버그 키로 release
-컴파일을 검증합니다. 이 APK는 개발 검증용입니다. 실제 배포 APK는 GitHub Actions가
-`ANDROID_KEYSTORE_*` Secrets의 정식 키로 서명합니다.
+정식 `key.properties`와 release keystore가 없으면 release 빌드는 의도적으로
+실패합니다. debug 서명 APK를 release 산출물로 대체하지 않습니다. PR, main push,
+branch dispatch의 일반 build job은 공개 RFC 8032 시험키와 `.invalid` URL만 사용하는
+debug canary를 만들며 production secret을 받지 않습니다. 실제 배포 APK는 exact
+`refs/heads/main` 확인과 보호 계약 테스트가 끝난 뒤 `production` Environment 안에서만
+`ANDROID_KEYSTORE_*` 및 OTA runtime inputs를 주입받아 다시 빌드되고, `apksigner`
+certificate identity Gate를 통과해야 합니다. feature branch의 Gradle/Dart 코드는
+keystore나 production runtime input이 존재하는 환경에서 실행할 수 없습니다.
+
+서명 key ID 또는 32-byte Ed25519 공개키가 비어 있거나 manifest의 key ID와 다르면
+앱은 update를 발견하더라도 설치 경로를 열지 않습니다. metadata는
+`ota/schemas/mobile-manifest.schema.json`의 정확한 필드와 `sgk-json-v1` 서명을
+사용해야 하며, legacy `artifact_sha256`, `fallback_apk_url`, manifest 내 공개키는
+허용되지 않습니다.
+
+빌드 전에 exact 40-hex source commit을 `assets/source_commit.txt`에 기록해 APK 내부
+Flutter asset으로 포함해야 합니다. 빌드 후에는 legacy 5-field `version.json`을 직접
+작성하지 않습니다. 보호된 OTA Gate가 실제 APK를 `apkanalyzer`와 `apksigner`로
+검사하여 package/versionCode/versionName/embedded commit/단일 signer를 직접 얻고,
+별도 환경변수에 주입된 Ed25519 private seed를 사용해 다음 생성기와 검증기를 모두
+통과시킵니다.
+
+```bash
+python ../scripts/ota_contract_gate.py mobile-manifest-create \
+  --artifact build/app/outputs/flutter-apk/app-release.apk \
+  --output ../dist/version.json \
+  --version "$FULL_VERSION" --build-number "$BUILD_NUMBER" \
+  --commit "$COMMIT_SHA" \
+  --apk-url "$APK_DOWNLOAD_URL" \
+  --fallback-url "$APK_FALLBACK_DOWNLOAD_URL" \
+  --release-notes-url "$APK_RELEASE_NOTES_URL" \
+  --published-at "$PUBLISHED_AT" \
+  --signing-key-id "$UPDATE_SIGNING_KEY_ID" \
+  --private-key-env OTA_SIGNING_PRIVATE_KEY_HEX \
+  --expected-public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" \
+  --expected-package-name "com.kshouse.gatekeeper_app" \
+  --apkanalyzer "$APKANALYZER" \
+  --apksigner "$APKSIGNER"
+python ../scripts/ota_contract_gate.py mobile-manifest-verify \
+  --manifest ../dist/version.json \
+  --artifact build/app/outputs/flutter-apk/app-release.apk \
+  --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX" \
+  --expected-package-name "com.kshouse.gatekeeper_app" \
+  --apkanalyzer "$APKANALYZER" \
+  --apksigner "$APKSIGNER"
+```
+
+private seed는 인자로 직접 전달하거나 출력하지 않습니다. PR debug canary는 공개된
+RFC 8032 test key와 `.invalid` endpoint만 사용하며, 설치 가능한 production release로
+취급하지 않습니다.
+
+### Step 5: 첫 실행 권한 및 배터리 Gate 확인
+
+첫 실행 시 앱은 권한 요청보다 먼저 백그라운드 BLE 감지 목적, 백그라운드 위치,
+배터리 최적화 예외의 영향을 설명합니다. 사용자가 `동의하고 계속`을 선택하기 전에는
+위치/Bluetooth/알림/백그라운드 위치와 배터리 예외 요청을 한 번도 호출하지 않습니다.
+동의 후에는 누락된 항목만 순서대로 요청합니다. 배터리 단계는 일반 앱 설정이 아니라
+Android 전용 `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`와 현재 package URI를
+사용합니다. 거부하면 recovery 화면에서 `권한 및 배터리 설정 다시 시도`를 선택할 수
+있으며, 이미 허용된 항목은 재요청하지 않습니다. `나중에 설정`을 선택해도 수동 복구와
+검증된 앱 업데이트 경로는 유지됩니다.
 
 ---
 

@@ -302,7 +302,7 @@ published_at
 | Target | `app0`/`app1`/`otadata`는 존재하나 `OtaManager`는 MQTT 호출 시 `HTTPUpdate`만 실행 | periodic HTTPS, safe-state 연동, signature, explicit valid mark, rollback 미구현 |
 | Mobile | app/WebView/scanner 경로에서 metadata를 읽고 임시 디렉터리에 APK 다운로드 후 installer 호출 | scanner/WebView 독립 UI, fallback, hash/certificate 검증, install health 미구현 |
 | Backend | APK와 mobile `version.json`을 동일 FastAPI/NAS 경로에서 제공 | 독립 secondary distribution과 signed metadata 보장 미구현 |
-| CI | 일반 main push는 firmware/APK canary와 legacy `version.json`을 빌드·검증·보존하고 production job은 skip | production signing과 physical release evidence가 없으며 명시적 승인 release 전까지 배포 차단 |
+| CI | 일반 main push는 firmware/APK canary만 빌드·검증·보존하고 production job은 skip; PR mobile metadata는 public RFC test key와 `.invalid` URL만 사용 | production manifest signing은 승인된 `production` environment job 안에서만 가능하며 physical release evidence와 명시적 승인 전까지 배포 차단 |
 
 dual partition의 존재나 과거 OTA 성공은 rollback 증거가 아니다. 따라서 현재 물리 Target과
 Android 완료 기준은 `pending`이며 issue #23을 자동 close하지 않는다.
@@ -349,6 +349,14 @@ Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올�
 정적 workflow 회귀 검사는 push job에 release/SFTP가 다시 들어가거나 production job의 명시적
 dispatch 조건, Environment, evidence validator, 동일 canary artifact 결합이 제거되면 contract
 검증 자체를 실패시킨다.
+
+firmware와 mobile의 pull request, main-push, branch-dispatch canary job은 production secret
+표현식이나 상속된 secret 환경을 전혀 받지 않는다. 이 공개 canary는 고정 RFC 8032 시험 키와
+`.invalid` artifact URL만 사용하며 installable production release가 아니다. Production secret과
+배포 URL은 exact `refs/heads/main` 및 commit 확인, 보호된 contract/root test 통과, `production`
+Environment 승인 뒤의 별도 main-only job에서만 주입한다. Candidate가 제어하는 실행 파일은
+그 검증 전에 secret을 받을 수 없고, job DAG/step 순서/artifact propagation 회귀는 보호된
+`ota_contract_gate.py`의 음성 mutation test가 fail-closed로 차단한다.
 
 ## 13. 운영 책임과 runbook
 

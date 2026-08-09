@@ -11,7 +11,8 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('interlock prevents simultaneous hardwareless and legacy prearm', () async {
+    test('interlock prevents simultaneous hardwareless and legacy prearm',
+        () async {
       final flagService = FeatureFlagService();
       await flagService.updateFlags(
         hardwarelessRc: true,
@@ -24,7 +25,9 @@ void main() {
       expect(flagService.remoteKillSwitch, isFalse);
     });
 
-    test('rollback to legacy sets legacyPrearm to true and hardwareless to false', () async {
+    test(
+        'rollback to legacy sets legacyPrearm to true and hardwareless to false',
+        () async {
       final flagService = FeatureFlagService();
       await flagService.rollbackToLegacy();
 
@@ -33,7 +36,8 @@ void main() {
       expect(flagService.remoteKillSwitch, isFalse);
     });
 
-    test('trigger kill switch disables hardwareless and legacy prearm', () async {
+    test('trigger kill switch disables hardwareless and legacy prearm',
+        () async {
       final flagService = FeatureFlagService();
       await flagService.triggerKillSwitch();
 

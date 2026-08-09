@@ -1,5 +1,12 @@
 include: package:flutter_lints/flutter.yaml
 
+# This path is a vendored flutter_beacon fork retained for Android screen-off
+# wake compatibility. Its pre-existing style infos are outside this issue's
+# ownership; exclude only that path rather than weakening project-wide lints.
+analyzer:
+  exclude:
+    - android/app/libs/flutter_beacon_local/**
+
 linter:
   rules:
     prefer_const_constructors: true

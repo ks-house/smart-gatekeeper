@@ -15,6 +15,7 @@ class NativeGattWorkerHealth {
     required this.lastLatencyMs,
     required this.updateManagerIndependent,
     required this.networkRequired,
+    this.lastSession,
   });
 
   final bool featureEnabled;
@@ -30,6 +31,7 @@ class NativeGattWorkerHealth {
   final int? lastLatencyMs;
   final bool updateManagerIndependent;
   final bool networkRequired;
+  final Map<Object?, Object?>? lastSession;
 
   factory NativeGattWorkerHealth.fromMap(Map<Object?, Object?> value) {
     return NativeGattWorkerHealth(
@@ -47,6 +49,7 @@ class NativeGattWorkerHealth {
       lastLatencyMs: (value['lastLatencyMs'] as num?)?.toInt(),
       updateManagerIndependent: value['updateManagerIndependent'] == true,
       networkRequired: value['networkRequired'] == true,
+      lastSession: (value['lastSession'] as Map?)?.cast<Object?, Object?>(),
     );
   }
 }
@@ -62,12 +65,20 @@ class NativeGattWorkerHealthBridge {
     return NativeGattWorkerHealth.fromMap(raw ?? const <Object?, Object?>{});
   }
 
-  Future<bool> triggerLocalGattRetry() async {
+  Future<Map<Object?, Object?>> triggerLocalGattRetry() async {
     try {
-      final res = await _channel.invokeMethod<bool>('triggerLocalGattRetry');
-      return res == true;
+      final res = await _channel
+          .invokeMethod<Map<Object?, Object?>>('triggerLocalGattRetry');
+      return res ??
+          const <Object?, Object?>{
+            'accepted': false,
+            'reason': 'NATIVE_UNAVAILABLE'
+          };
     } catch (_) {
-      return false;
+      return const <Object?, Object?>{
+        'accepted': false,
+        'reason': 'NATIVE_UNAVAILABLE'
+      };
     }
   }
 }

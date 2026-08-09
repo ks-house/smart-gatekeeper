@@ -372,11 +372,11 @@
       </div>
     </div>
 
-    <!-- APK 최신 버전 수동 다운로드 -->
+    <!-- Signed updater 안내. Direct APK links are intentionally not exposed. -->
     <div class="glass-card" style="text-align: center; padding: 16px;">
-      <a href="/api/v1/download/apk" target="_blank" download="ks-house-gatekeeper.apk" style="color: var(--primary); font-size: 14px; font-weight: 600; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px;">
-        <span>📲 Smart Key APK 최신버전 수동 다운로드</span>
-      </a>
+      <p style="color: var(--text-muted); font-size: 14px; font-weight: 600;">
+        📲 Smart Key 앱의 설정에서 서명 검증 업데이트를 사용하세요.
+      </p>
     </div>
 
   </div>
@@ -407,114 +407,33 @@
       return devId;
     }
 
-    // 서버로부터 사용자 승인 상태 조회
+    // Issue #49 retired device-ID-only status/enrolment. Issue #52 must
+    // provision a scoped possession credential before remote control is shown.
     async function checkUserStatus() {
-      const devId = getOrCreateDeviceId();
-      try {
-        const res = await fetch(`/api/v1/user/me?device_id=${encodeURIComponent(devId)}`);
-        const data = await res.json();
-
-        const nameEl = document.getElementById('userName');
-        const unitEl = document.getElementById('unitNo');
-        const badgeEl = document.getElementById('statusBadge');
-        const statusTextEl = document.getElementById('statusText');
-        const btnOpen = document.getElementById('btnOpen');
-        const pulseRing = document.getElementById('pulseRing');
-        const actionStatus = document.getElementById('actionStatus');
-
-        const signupSection = document.getElementById('signupSection');
-        const pendingSection = document.getElementById('pendingSection');
-
-        if (data.status === 'approved') {
-          nameEl.innerText = `${data.tenant_name} 님`;
-          unitEl.innerText = `${data.unit_number} 세입자`;
-          badgeEl.className = 'status-badge status-active';
-          statusTextEl.innerText = '출입 승인 (Active)';
-
-          signupSection.style.display = 'none';
-          pendingSection.style.display = 'none';
-
-          btnOpen.disabled = false;
-          pulseRing.style.display = 'block';
-          actionStatus.innerText = '버튼을 누르면 출입문 릴레이가 즉시 작동합니다.';
-          loadLogs();
-        } else if (data.status === 'pending') {
-          nameEl.innerText = `${data.tenant_name || '신청자'} 님`;
-          unitEl.innerText = `${data.unit_number || '-'} (승인 대기)`;
-          badgeEl.className = 'status-badge status-pending';
-          statusTextEl.innerText = '승인 대기 (Pending)';
-
-          signupSection.style.display = 'none';
-          pendingSection.style.display = 'block';
-
-          btnOpen.disabled = true;
-          pulseRing.style.display = 'none';
-          actionStatus.innerText = '관리자 승인 완료 후 문 열기 기능이 활성화됩니다.';
-        } else {
-          nameEl.innerText = '미등록 기기';
-          unitEl.innerText = '출입 권한 신청 필요';
-          badgeEl.className = 'status-badge status-unregistered';
-          statusTextEl.innerText = '미등록 (Unregistered)';
-
-          signupSection.style.display = 'block';
-          pendingSection.style.display = 'none';
-
-          btnOpen.disabled = true;
-          pulseRing.style.display = 'none';
-          actionStatus.innerText = '최초 출입 신청을 작성해 주세요.';
-        }
-      } catch (e) {
-        console.error('Status check failed:', e);
-      }
+      getOrCreateDeviceId();
+      document.getElementById('userName').innerText = '보안 등록 필요';
+      document.getElementById('unitNo').innerText = '관리자에게 앱 자격증명 등록을 요청하세요';
+      document.getElementById('statusBadge').className =
+        'status-badge status-pending';
+      document.getElementById('statusText').innerText = '원격 제어 비활성';
+      document.getElementById('signupSection').style.display = 'none';
+      document.getElementById('pendingSection').style.display = 'none';
+      document.getElementById('btnOpen').disabled = true;
+      document.getElementById('pulseRing').style.display = 'none';
+      document.getElementById('actionStatus').innerText =
+        '보유 증명 자격증명이 배포되기 전에는 원격 문 열기를 사용할 수 없습니다. 앱의 수동 로컬 GATT 복구를 사용하세요.';
     }
 
     async function triggerDoorOpen() {
       const statusEl = document.getElementById('actionStatus');
-      statusEl.style.color = "var(--primary)";
-      statusEl.innerText = "제어 명령 전송 중...";
-      try {
-        const res = await fetch('/api/v1/door/open', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: 'manual_click', device_id: currentDeviceId })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          statusEl.style.color = "#10b981";
-          statusEl.innerText = "✅ " + (data.message || "문이 성공적으로 열렸습니다!");
-          setTimeout(() => {
-            statusEl.style.color = "var(--text-muted)";
-            statusEl.innerText = "버튼을 누르면 출입문 릴레이가 즉시 작동합니다.";
-          }, 3000);
-          loadLogs();
-        } else {
-          statusEl.style.color = "#ef4444";
-          statusEl.innerText = "❌ " + (data.message || "문 열기 권한이 없습니다.");
-        }
-      } catch (e) {
-        statusEl.style.color = "#ef4444";
-        statusEl.innerText = "❌ 서버 통신 에러가 발생했습니다.";
-      }
+      statusEl.style.color = "#ef4444";
+      statusEl.innerText =
+        "원격 제어가 안전하게 비활성화되어 있습니다. 보유 증명 자격증명 등록이 필요합니다.";
     }
 
     async function handleSignup(e) {
       e.preventDefault();
-      const name = document.getElementById('inputName').value;
-      const room = document.getElementById('inputRoom').value;
-
-      try {
-        const res = await fetch('/api/v1/user/request', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, room_no: room, device_id: currentDeviceId })
-        });
-        if (res.ok) {
-          alert("출입 권한 신청이 성공적으로 접수되었습니다.\n관리자 승인을 기다려주세요.");
-          checkUserStatus();
-        }
-      } catch (err) {
-        alert("신청 실패: " + err);
-      }
+      alert("익명 기기 ID 등록은 중단되었습니다. 관리자에게 보안 등록을 요청하세요.");
     }
 
     async function loadLogs() {

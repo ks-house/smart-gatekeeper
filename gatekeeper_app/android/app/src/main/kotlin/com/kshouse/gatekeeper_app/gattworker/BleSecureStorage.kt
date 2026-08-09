@@ -27,6 +27,69 @@ data class LocatorSecret(
   }
 }
 
+/**
+ * The latest Target locator is a recovery capability, not a user supplied address.
+ * It is written only after the OS accepted the immutable Target advertisement filter,
+ * encrypted in no-backup storage, and revalidated against the current credential and
+ * Bluetooth state before a manual retry is scheduled.
+ */
+data class CurrentTargetLocator(
+  val deviceAddress: String,
+  val identityTag: String,
+  val lastSeenEpochMs: Long,
+)
+
+class AuthenticatedTargetLocatorStore(private val context: Context) {
+  private val store = NoBackupAeadStore(context.applicationContext)
+
+  fun record(deviceAddress: String, lastSeenEpochMs: Long = System.currentTimeMillis()) {
+    require(deviceAddress.matches(Regex("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$"))) { "device address" }
+    val normalized = deviceAddress.uppercase()
+    val identityTag = AndroidKeystorePresenceFingerprinter(context).fingerprint(normalized, "target-locator-v1")
+    val plaintext = ByteArrayOutputStream().use { output ->
+      DataOutputStream(output).use { data ->
+        data.writeByte(1)
+        data.writeUTF(normalized)
+        data.writeUTF(identityTag)
+        data.writeLong(lastSeenEpochMs)
+      }
+      output.toByteArray()
+    }
+    store.write(NAME, plaintext)
+    plaintext.fill(0)
+  }
+
+  fun resolve(maxAgeMs: Long = MAX_AGE_MS): CurrentTargetLocator? {
+    val plaintext = store.read(NAME) ?: return null
+    return try {
+      DataInputStream(ByteArrayInputStream(plaintext)).use { data ->
+        require(data.readUnsignedByte() == 1) { "target locator schema" }
+        val address = data.readUTF()
+        val identity = data.readUTF()
+        val seen = data.readLong()
+        require(data.read() == -1) { "target locator trailing bytes" }
+        val expected = AndroidKeystorePresenceFingerprinter(context).fingerprint(address, "target-locator-v1")
+        require(identity == expected) { "target locator identity" }
+        require(System.currentTimeMillis() - seen <= maxAgeMs) { "target locator stale" }
+        require(BleCredentialConfigStore(context).credentialId() != null) { "credential unavailable" }
+        val manager = context.getSystemService(android.bluetooth.BluetoothManager::class.java)
+        require(manager?.adapter?.isEnabled == true) { "bluetooth disabled" }
+        CurrentTargetLocator(address, identity, seen)
+      }
+    } catch (_: Exception) {
+      store.delete(NAME)
+      null
+    } finally {
+      plaintext.fill(0)
+    }
+  }
+
+  companion object {
+    private const val NAME = "current-target-locator-v1"
+    private const val MAX_AGE_MS = 24L * 60L * 60L * 1000L
+  }
+}
+
 interface LocatorVault {
   fun store(sessionId: String, secret: LocatorSecret)
   fun load(sessionId: String): LocatorSecret?

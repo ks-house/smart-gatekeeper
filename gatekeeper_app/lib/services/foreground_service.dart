@@ -100,6 +100,8 @@ class ForegroundServiceManager {
       'smart_key_foreground_channel_v2';
   static const MethodChannel _notificationChannel =
       MethodChannel('com.kshouse.gatekeeper_app/notification_channel');
+  static const MethodChannel _backgroundRequirementsChannel =
+      MethodChannel('com.kshouse.gatekeeper_app/background_requirements');
 
   static ReceivePort? _receivePort;
   static StreamSubscription<dynamic>? _receiveSubscription;
@@ -260,17 +262,33 @@ class ForegroundServiceManager {
   }) async {
     if (!Platform.isAndroid) return true;
     try {
-      if (await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+      if (await _isIgnoringBatteryOptimizations()) {
         return true;
       }
       if (requestIfMissing) {
-        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+        await requestBatteryOptimizationExemption();
       }
-      return await FlutterForegroundTask.isIgnoringBatteryOptimizations;
+      return await _isIgnoringBatteryOptimizations();
     } catch (e) {
       debugPrint('[ForegroundServiceManager] 배터리 최적화 예외 확인 실패: $e');
       return false;
     }
+  }
+
+  static Future<void> requestBatteryOptimizationExemption() async {
+    if (!Platform.isAndroid) return;
+    // This invokes Android's dedicated REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+    // flow. A generic application-settings screen is not an equivalent gate.
+    await _backgroundRequirementsChannel.invokeMethod<void>(
+      'requestIgnoreBatteryOptimizations',
+    );
+  }
+
+  static Future<bool> _isIgnoringBatteryOptimizations() async {
+    return await _backgroundRequirementsChannel.invokeMethod<bool>(
+          'isIgnoringBatteryOptimizations',
+        ) ==
+        true;
   }
 
   static Future<void> stopService() async {

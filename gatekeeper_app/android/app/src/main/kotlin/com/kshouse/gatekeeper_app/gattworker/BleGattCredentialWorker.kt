@@ -23,6 +23,20 @@ object BleGattWorkScheduler {
   const val RETRY_WORK_POLICY = "APPEND_OR_REPLACE"
   private const val INPUT_SESSION_ID = "session_id"
 
+  data class ManualRetryResult(
+    val accepted: Boolean,
+    val reason: String,
+    val sessionId: String? = null,
+    val targetSeenEpochMs: Long? = null,
+  ) {
+    fun toMap(): Map<String, Any?> = mapOf(
+      "accepted" to accepted,
+      "reason" to reason,
+      "sessionId" to sessionId,
+      "targetSeenEpochMs" to targetSeenEpochMs,
+    )
+  }
+
   fun onPresence(context: Context, deviceAddress: String?, presenceEventId: String): String? {
     if (deviceAddress.isNullOrBlank() || presenceEventId.isBlank()) return null
     val appContext = context.applicationContext
@@ -47,6 +61,18 @@ object BleGattWorkScheduler {
     } finally {
       credentialId.fill(0)
     }
+  }
+
+  fun manualRetry(context: Context): ManualRetryResult {
+    val appContext = context.applicationContext
+    if (!BleGattFeatureFlagStore(appContext).decision().newWorkerEnabled) {
+      return ManualRetryResult(false, "NATIVE_GATT_DISABLED")
+    }
+    val target = AuthenticatedTargetLocatorStore(appContext).resolve()
+      ?: return ManualRetryResult(false, "TARGET_UNAVAILABLE")
+    val sessionId = onPresence(appContext, target.deviceAddress, "manual-retry-${System.currentTimeMillis()}")
+      ?: return ManualRetryResult(false, "CREDENTIAL_OR_SCHEDULER_UNAVAILABLE")
+    return ManualRetryResult(true, "QUEUED", sessionId, target.lastSeenEpochMs)
   }
 
   fun enqueueRetry(context: Context, sessionId: String, delayMs: Long) {

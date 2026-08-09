@@ -23,7 +23,8 @@ class CredentialService {
   Future<void> loadCredentialInfo() async {
     deviceId = await DeviceIdService.getDeviceId();
     final prefs = await SharedPreferences.getInstance();
-    final statusStr = prefs.getString('tenant_approval_status') ?? 'unregistered';
+    final statusStr =
+        prefs.getString('tenant_approval_status') ?? 'unregistered';
     switch (statusStr) {
       case 'approved':
         approvalStatus = TenantApprovalStatus.approved;

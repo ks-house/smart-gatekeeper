@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   webview_flutter: ^4.7.0
   permission_handler: ^11.3.1
   http: ^1.2.1
@@ -20,6 +22,8 @@ dependencies:
   dio: ^5.4.3
   path_provider: ^2.1.2
   open_filex: ^4.4.0
+  crypto: ^3.0.3
+  cryptography: ^2.7.0
   flutter_beacon:
     path: ./android/app/libs/flutter_beacon_local
 
@@ -30,3 +34,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/source_commit.txt
