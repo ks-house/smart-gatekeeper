@@ -2544,3 +2544,48 @@
 
 - Focused trusted-policy tests passed 37/37 and full root discovery passed 140/140 after the documentation-only remediation. The final guide contains no expected-red or two-bundle-current-state claim and requires Hosted Trusted success plus fresh exact-head review before a normal protected merge.
 - The prior Quick 10-section pass remains bound to identical policy, test, validator, protected product/workflow and `raw/` bytes. A new exact-head Hosted Trusted run and fresh COMMENTED review remain required after push; no merge, deployment or physical Gate completion is claimed.
+
+## [2026-08-09] compile | Retrace final manuals against merged commercial operations
+
+- Integrated exact `origin/main` `e42d1f417a555b17d7476522aa48f7e4d72306b7` once with a normal two-parent merge while preserving the pre-existing Issue #53 manual and test working bytes. Updated the Korean general-user, administrator, installer, privacy and support manuals plus the reverse-analysis register to v0.3.0-rc.1.
+- Replaced stale Issue #52 placeholders with exact process-only `/live`, dependency `/ready`, authenticated metrics, tenant/purpose/expiry/revocation-bound support export, payload-bound retention deletion, HMAC inventory backup/restore and immutable production Compose contracts. Expanded the hardwareless fixture from 12 to 16 actor journeys and added source-bound regressions.
+- Defined NAS deployment as a staging step for user physical validation, not production authorization. Samsung/OEM, APK install/fallback, ESP32-C6/BLE/radio/sensor/GPIO3 relay, Target OTA reboot/health/rollback, independent restore, live alert/soak, legal/privacy, operator and production evidence remain pending and fail-closed; `raw/` and workflow files are unchanged.
+
+## [2026-08-09] test | Validate manuals, reverse analysis and cross-layer boundaries
+
+- Manual contract tests passed 10/10 with exact source/API trace, 16 complete actor fixtures, relative links, UTF-8 without BOM, LF-only bytes, stale-baseline rejection, secret exclusion and NAS/physical/production evidence separation. JSON parsing and `git diff --check` passed.
+- Full root discovery passed 150/150. The first Quick invocation stopped before tests because this worktree had no `.venv`; the standard isolated setup completed with 12 doctor passes, one Docker-covered native Java warning and zero failures, then Quick passed all ten sections in 40.77 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- These are repository/host results only. Draft PR exact-head hosted checks, independent COMMENTED review, NAS staging evidence and every live, legal, operator, physical, OTA/relay and production Gate remain required.
+
+## [2026-08-09] fix | Make every manual walkthrough independently executable
+
+- Remediated blocking COMMENTED review `4891259615`: all 16 hardwareless scenarios now include a bounded read-only `python -m unittest` command, expected output token and exact exit code instead of documenting execution fields that the fixture omitted.
+- The contract schema requires those fields, permits only a strict unittest command grammar, rejects shell metacharacters and executes each scenario in the repository root with a 90-second bound. No product, workflow, secret, `raw/`, NAS, physical or production state changed.
+
+## [2026-08-09] test | Revalidate executable walkthrough review remediation
+
+- Manual contracts passed 11/11 and all 16 declared commands independently returned exit code 0 with the expected `OK` token. JSON parsing and `git diff --check` passed.
+- Full root discovery passed 151/151 in 25.76 seconds. Quick passed all ten sections in 40.48 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Fresh exact-head Hosted Trusted and independent COMMENTED re-review remain required. NAS deployment and every live, legal, operator, physical, OTA/relay and production Gate remain pending.
+
+## [2026-08-09] fix | Bind walkthrough commands to exact scenario evidence
+
+- Remediated the remaining semantic blocker from COMMENTED review `4891273910`: every scenario ID is now mapped to one exact command and a unique expected test token, so an unrelated generic `OK` test cannot be substituted. Mobile manifest coverage runs the full artifact mutation module rather than a nominal workflow validator.
+- Added the missing Flutter widget regression proving the recovery shell keeps manual local recovery, privacy-redacted diagnostics, verified update, Android settings and bounded setup retry reachable. Source-bound regressions tie consent/disclosure, recovery and `AppErrorLogger` UI/IPC claims to their exact Flutter test and production owners.
+
+## [2026-08-09] test | Validate scenario semantics and recovery widget
+
+- Manual contracts passed 14/14; all 16 exact ID-bound commands returned exit code 0 and their scenario-specific test token. A tracked-files-only disposable Flutter copy passed focused consent/recovery, AppErrorLogger and update-contract tests, 14 total, then the container exited; the temporary copy is retained only because local command policy rejected recursive cleanup.
+- Full root discovery passed 154/154 in 26.98 seconds. Quick passed all ten sections in 39.60 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Fresh exact-head hosted mobile/Trusted checks and an independent COMMENTED re-review remain required. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.
+
+## [2026-08-09] fix | Make manual walkthrough commands dependency-portable
+
+- Remediated the exact-head Hosted Mobile/OTA blocker from COMMENTED review `4891296417`: all 16 fixture commands now use Python `-S`, so site-packages cannot satisfy undeclared imports. Replaced eight FastAPI-dependent backend commands and the mobile-manifest dependency command with standard-library-only source contracts bound to the exact dependency-backed test definition and production owner.
+- The fixture labels these as source bindings rather than claiming that a dependency-free lane executed FastAPI, database, MQTT or signing integrations. Dependency-provisioned hosted suites remain the executable integration evidence; physical, operator and production evidence remains separate and pending.
+- Added a regression requiring every declared command to start with the strict `python -S -m unittest tests.` grammar. The portable source-contract suite passed 9/9 and the manual suite passed 14/14, including execution of all 16 commands without site-packages. No product, workflow, secret, `raw/`, physical or production state changed.
+
+## [2026-08-09] test | Revalidate dependency-portable walkthrough remediation
+
+- Full root discovery passed 163/163 in 15.86 seconds. Quick passed all ten sections in 40.22 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Exact-head Hosted Trusted, Mobile and OTA checks plus a fresh independent COMMENTED review remain required after push. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.
