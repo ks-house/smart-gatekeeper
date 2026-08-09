@@ -2256,3 +2256,14 @@
 - Focused staged-launcher and lifecycle-probe suites passed under the same redirected narrow renderer that reproduced the blocker, including the new wrong-stage and wrong-reason mutations.
 - Quick passed in 51.76 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose, staged launcher, lifecycle probe, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4.
 - These are repository and host/software checks only. PR #63 remains Draft and unmerged pending a fresh exact-head COMMENTED review; Issue #55 and packaged Orca 1.4.176 root-cause work remain open, and no deployment, Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator/canary, or production Gate is closed.
+
+## [2026-08-09] compile | Temporarily authorize the independently reviewed PR #59 bundle
+
+- Added exactly one temporary, complete five-file `utf8-lf-v1` bundle for PR #59 exact head `e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad`, authorized by independent exact-head COMMENTED review `4890233068`. The existing `current-main-baseline` remains approved; no wildcard, branch, partial path set, mixed digest set, protected-path change, production secret, or protected-file edit was introduced.
+- Recomputed every normalized digest directly from the fetched candidate commit and matched the reviewed values. Focused trusted-policy tests passed 28/28, including exact temporary acceptance, current-main acceptance, and missing, reordered, mixed, single-byte, candidate-policy, candidate-validator, YAML, and command-shape rejection. The full root suite passed 103/103; JSON parsing and `git diff --check` also passed.
+- This is only the temporary policy-authorization step. PR #59 still requires its own trusted check, review/merge decision, and post-merge policy-only rotation that removes the temporary bundle and pins the exact merged `main`; no app install, Target install/reboot/health, physical, operator, canary, or production Gate is closed.
+
+## [2026-08-09] test | Validate the temporary PR #59 policy bundle with Quick
+
+- After isolated worktree setup, Quick passed in 36.11 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose rendering, staged Orca launcher and lifecycle probes, protocol vectors and 16 tests, observability 18 tests, OTA contract, and hardwareless release Gates.
+- This remains repository and host/software evidence only. It does not authorize production deployment or substitute for Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production evidence.
