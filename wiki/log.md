@@ -2544,3 +2544,15 @@
 
 - Focused trusted-policy tests passed 37/37 and full root discovery passed 140/140 after the documentation-only remediation. The final guide contains no expected-red or two-bundle-current-state claim and requires Hosted Trusted success plus fresh exact-head review before a normal protected merge.
 - The prior Quick 10-section pass remains bound to identical policy, test, validator, protected product/workflow and `raw/` bytes. A new exact-head Hosted Trusted run and fresh COMMENTED review remain required after push; no merge, deployment or physical Gate completion is claimed.
+
+## [2026-08-09] compile | Retrace final manuals against merged commercial operations
+
+- Integrated exact `origin/main` `e42d1f417a555b17d7476522aa48f7e4d72306b7` once with a normal two-parent merge while preserving the pre-existing Issue #53 manual and test working bytes. Updated the Korean general-user, administrator, installer, privacy and support manuals plus the reverse-analysis register to v0.3.0-rc.1.
+- Replaced stale Issue #52 placeholders with exact process-only `/live`, dependency `/ready`, authenticated metrics, tenant/purpose/expiry/revocation-bound support export, payload-bound retention deletion, HMAC inventory backup/restore and immutable production Compose contracts. Expanded the hardwareless fixture from 12 to 16 actor journeys and added source-bound regressions.
+- Defined NAS deployment as a staging step for user physical validation, not production authorization. Samsung/OEM, APK install/fallback, ESP32-C6/BLE/radio/sensor/GPIO3 relay, Target OTA reboot/health/rollback, independent restore, live alert/soak, legal/privacy, operator and production evidence remain pending and fail-closed; `raw/` and workflow files are unchanged.
+
+## [2026-08-09] test | Validate manuals, reverse analysis and cross-layer boundaries
+
+- Manual contract tests passed 10/10 with exact source/API trace, 16 complete actor fixtures, relative links, UTF-8 without BOM, LF-only bytes, stale-baseline rejection, secret exclusion and NAS/physical/production evidence separation. JSON parsing and `git diff --check` passed.
+- Full root discovery passed 150/150. The first Quick invocation stopped before tests because this worktree had no `.venv`; the standard isolated setup completed with 12 doctor passes, one Docker-covered native Java warning and zero failures, then Quick passed all ten sections in 40.77 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- These are repository/host results only. Draft PR exact-head hosted checks, independent COMMENTED review, NAS staging evidence and every live, legal, operator, physical, OTA/relay and production Gate remain required.
