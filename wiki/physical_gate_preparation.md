@@ -14,6 +14,12 @@ all `not_run` with no candidate or artifact identity. A green validator, unit
 test, CI result, uploaded artifact, or worker lifecycle message is L0/L1
 evidence only and cannot close L2/L3/L4 gates.
 
+The exact-main NAS handoff in
+[`nas_physical_test_delivery.md`](nas_physical_test_delivery.md) may populate a
+candidate SHA and artifact digests after a successful manual dispatch. Its
+pinned-host staging/readback result remains L1 transport evidence: every device
+observation in this plan must still be executed and recorded by the operator.
+
 ## 2. Deterministic gate matrix
 
 The canonical [Issue #54 plan](../physical_validation/issue54_gate_plan.json)

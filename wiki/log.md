@@ -2601,3 +2601,40 @@
 - Focused trusted-policy tests passed 37/37. Full root discovery passed 163/163 against staged tree `0c1e0ed206e9b06da3d9eea5374038ae228bdcb3` archived with checkout conversion disabled; the first direct Windows working-tree run exposed only CRLF materialization of unchanged LF manual blobs, so it was not represented as a source failure or used as final evidence.
 - Orca Quick passed all ten sections in 42.04 seconds with doctor 12 pass/one Docker-covered native Java warning/zero failures, backend 84 tests/two explicit Docker-lane skips, Compose, staged profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4. Actionlint across every workflow, JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API 57-file verification passed.
 - No workflow dispatch, NAS write, merge, deployment, physical validation, signing or production authorization occurred. The policy-only Draft PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge.
+
+## [2026-08-09] code | Add fail-closed NAS physical-test canary delivery lanes
+
+- Added exact-`main` manual `physical-test-canary` jobs for the same-run firmware public canary and Android debug APK. Each job verifies its fixed RFC 8032 test signature and source SHA before network contact, stages only below a hard-coded non-production NAS root, reads artifact and manifest bytes back, verifies them again, uploads sanitized non-release evidence, and atomically publishes a unique run directory.
+- Required `NAS_KNOWN_HOSTS` plus `StrictHostKeyChecking=yes` and validated known-host syntax before credentialed contact; runtime keyscan, TOFU, `accept-new`, disabled strict checking, production directory secrets and production paths are rejected. The currently absent host-key secret therefore blocks dispatch safely until an operator provisions an independently verified value.
+- Added a separate `physical-test-connected` prerequisite contract using only `PHYSICAL_TEST_*` names in the protected `physical-test` Environment. It always exits non-zero even after prerequisites pass, so missing test-scoped signing/runtime inputs cannot fall back to production values or imply a connected release.
+- Production jobs, conditions, Environment, release evidence, signing inputs and NAS paths are unchanged. No workflow was dispatched and no NAS data was written; manual install/flash, Samsung/OEM, ESP32-C6, BLE/radio, relay/sensor and OTA/rollback evidence remain pending.
+
+## [2026-08-09] test | Validate NAS staging, readback and production isolation contracts
+
+- `actionlint` passed both modified workflows. Focused OTA/NAS tests passed 74/74 and full root discovery passed 148/148, including adversarial production-directory, production-secret, missing readback, runtime keyscan, disabled strict-host checking, connected-tier enablement, byte substitution and remote-root mutations.
+- The protected candidate modifies `.github/workflows/deploy.yml`, `.github/workflows/build_app.yml` and `scripts/ota_contract_gate.py`; current trusted main has not authorized these bytes. A product Draft PR, independent COMMENTED whole-bundle review, and a separate trusted-main policy authorization remain required before merge or dispatch.
+- Antigravity was invoked once for bounded read-only lint but returned unrelated CLI sandbox documentation rather than repository findings. Its output is not counted as validation; the exact local `actionlint`, Python contract tests and diff checks remain the recorded software evidence.
+
+## [2026-08-09] fix | Reject NAS transport grammar injection and cover contract-only changes
+
+- Remediated both blockers from independent COMMENTED review `4891287192`. Before invoking OpenSSH, both public physical-test jobs now require a portable non-option NAS username, hostname/IPv4-compatible host, port 1 through 65535, exact lowercase 40-hex commit and positive numeric run identifiers; IPv6 literals are intentionally unsupported.
+- Bound every transport/path validation to the workflow contract and adversarial mutations, so removing a username, host, port-range, commit or run-component check fails closed. Mandatory repository-pinned known hosts, exact-run artifact verification, isolated staging/readback and atomic publish remain unchanged.
+- Added the NAS physical-test contract test to both producer pull-request filters and the mobile main-push filter. No workflow was dispatched, no NAS connection was attempted, and no NAS byte was written.
+
+## [2026-08-09] test | Revalidate PR #72 independent-review remediation
+
+- Focused OTA/NAS/mobile-signing tests passed 84/84, including new trigger-removal and OpenSSH/path-component validation mutations. `actionlint` passed both workflows and `git diff --check` is clean.
+- Full root discovery passed 150/150. Orca `Quick` passed all ten sections in 40.75 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
+- The protected candidate still requires a fresh exact-head independent COMMENTED review and a separate trusted-main whole-bundle policy authorization. `NAS_KNOWN_HOSTS` remains absent, so an authorized future dispatch stays blocked before network contact; physical/operator and production release evidence remain pending.
+
+## [2026-08-09] fix | Integrate the merged PR #72 transition policy exactly once
+
+- Integrated exact `origin/main` `5389f6a3ab2f28698d423567481ecdc29a260ace` with a normal two-parent merge and no history rewrite after policy PR #73 merged through green Hosted Trusted and nonblocking COMMENTED review `4891371819`.
+- Preserved the exact new-main log as a byte prefix, appended the complete prior PR #72 suffix exactly once, retained `raw/` identity, and kept all 57 reviewed protected product bytes identical to product commit `03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b`. The transition persistent bundle requires live Compare ancestry for this new exact head.
+- No workflow dispatch, NAS connection/write, deployment, physical validation, release evidence or production authorization occurred. Fresh exact-head hosted checks and an independent COMMENTED product review remain required before normal product merge.
+
+## [2026-08-09] test | Validate the post-policy PR #72 integration tree
+
+- Focused OTA/NAS/mobile-signing tests passed 84/84. Full root discovery passed 173/173 from the staged Git index materialized with checkout conversion disabled; an earlier generic archive extraction converted unchanged manual LF blobs to CRLF and caused the manual byte-format test to fail, so that host materialization was not counted as source evidence.
+- Actionlint passed every workflow, `git diff --check` passed, and Orca `Quick` passed all ten sections in 40.06 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
+- Staged proof preserves exact main `5389f6a3ab2f28698d423567481ecdc29a260ace` log bytes as a prefix, the prior product suffix exactly once, `raw/` tree `013c00e7617365aa30c8bd0d38d9503d3885d264`, and the complete reviewed 57-file product bundle. Hosted exact-head policy/product CI and fresh independent review remain required.
