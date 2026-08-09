@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import time
 from unittest.mock import MagicMock, patch
 import unittest
 
@@ -88,6 +90,13 @@ class OperationsApiTest(unittest.TestCase):
     def test_readiness_fails_closed_and_can_report_all_dependencies(self):
         failed = self.client.get("/ready")
         self.assertEqual(503, failed.status_code)
+        for required in (
+            "control_api_auth", "acl_management",
+            "legacy_lookup_disabled",
+        ):
+            self.assertFalse(failed.json()["checks"][required], required)
+        with patch.object(main, "admin_security", AdminSecurity()):
+            self.assertFalse(self.client.get("/ready").json()["checks"]["admin_auth"])
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = {"ready": 1}
@@ -99,6 +108,10 @@ class OperationsApiTest(unittest.TestCase):
             main, "BUILD_SHA", "a" * 40
         ), patch.object(main, "OPS_HMAC_KEY", b"k" * 32), patch.object(
             main, "DB_PASSWORD", "isolated-test-password"
+        ), patch.object(main, "GATEKEEPER_API_KEY", "g" * 32), patch.object(
+            main, "ACL_MANAGEMENT_ENABLED", True
+        ), patch.object(main, "_acl_runtime_ready", True), patch.object(
+            main, "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", False
         ):
             ready = self.client.get("/ready")
         self.assertEqual(200, ready.status_code, ready.text)
@@ -115,6 +128,12 @@ class OperationsApiTest(unittest.TestCase):
         self.session(FINGERPRINT_AUDITOR)
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {
+            "tenant_scope": "legacy:1",
+            "purpose": "support-diagnostics",
+            "expires_at": int(time.time()) + 300,
+            "revoked_at": None,
+        }
         cursor.fetchall.return_value = [{
             "auth_method": "BLE_BEACON",
             "is_success": False,
@@ -131,8 +150,34 @@ class OperationsApiTest(unittest.TestCase):
         rendered = response.text
         self.assertNotIn("secret123", rendered)
         self.assertNotIn("AA:BB", rendered)
+        self.assertRegex(response.json()["consent_ref"], r"^consent_[a-f0-9]{24}$")
+        self.assertNotIn("consent_" + "a" * 32, rendered)
         self.assertRegex(response.json()["sha256"], r"^[a-f0-9]{64}$")
         connection.commit.assert_called_once()
+
+    def test_support_export_rejects_invalid_consent_lifecycle(self):
+        self.session(FINGERPRINT_AUDITOR)
+        invalid_rows = (
+            None,
+            {"tenant_scope": "legacy:1", "purpose": "support-diagnostics", "expires_at": 1, "revoked_at": None},
+            {"tenant_scope": "legacy:1", "purpose": "support-diagnostics", "expires_at": int(time.time()) + 300, "revoked_at": 2},
+            {"tenant_scope": "legacy:2", "purpose": "support-diagnostics", "expires_at": int(time.time()) + 300, "revoked_at": None},
+        )
+        for consent in invalid_rows:
+            with self.subTest(consent=consent):
+                connection = MagicMock()
+                cursor = connection.cursor.return_value.__enter__.return_value
+                cursor.fetchone.return_value = consent
+                with patch.object(main, "get_db", return_value=connection):
+                    response = self.client.get(
+                        "/api/v1/admin/privacy/support-export",
+                        headers={
+                            "X-Tenant-ID": "legacy:1",
+                            "X-Support-Consent": "consent_" + "f" * 32,
+                        },
+                    )
+                self.assertEqual(403, response.status_code, response.text)
+                connection.rollback.assert_called_once()
 
     def test_retention_delete_requires_admin_csrf_reauth_and_is_idempotent(self):
         csrf = self.session(FINGERPRINT_ADMIN)
@@ -150,8 +195,23 @@ class OperationsApiTest(unittest.TestCase):
         self.assertEqual(403, denied.status_code)
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
-        cursor.fetchone.return_value = None
-        cursor.rowcount = 3
+        request_hash = hashlib.sha256(
+            b'{"actor_subject":"privacy-admin","before_days":365,"policy_version":"sgk-retention-v1","tenant_scope":"legacy:1"}'
+        ).hexdigest()
+        cursor.fetchone.return_value = {
+            "actor_subject": "privacy-admin",
+            "request_hash": request_hash,
+            "state": "PENDING",
+            "deleted_count": None,
+        }
+
+        def execute(query, _params=None):
+            if query.startswith("DELETE FROM access_logs"):
+                cursor.rowcount = 3
+            elif query.startswith("UPDATE privacy_deletion_jobs"):
+                cursor.rowcount = 1
+
+        cursor.execute.side_effect = execute
         with patch.object(main, "get_db", return_value=connection):
             deleted = self.client.post(
                 "/api/v1/admin/privacy/delete",
@@ -161,6 +221,52 @@ class OperationsApiTest(unittest.TestCase):
         self.assertEqual(200, deleted.status_code, deleted.text)
         self.assertEqual({"status": "completed", "deleted_count": 3}, deleted.json())
         connection.commit.assert_called_once()
+
+    def test_retention_delete_rejects_idempotency_payload_or_actor_mismatch(self):
+        csrf = self.session(FINGERPRINT_ADMIN)
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {
+            "actor_subject": "different-admin",
+            "request_hash": "f" * 64,
+            "state": "COMPLETED",
+            "deleted_count": 9,
+        }
+        with patch.object(main, "get_db", return_value=connection):
+            response = self.client.post(
+                "/api/v1/admin/privacy/delete",
+                headers={
+                    **self.mtls(FINGERPRINT_ADMIN),
+                    "X-Tenant-ID": "legacy:1",
+                    "X-Admin-Reauthenticate": "mtls",
+                    "Idempotency-Key": "privacy-delete-conflict",
+                    "X-CSRF-Token": csrf,
+                },
+                json={"policy_version": "sgk-retention-v1", "before_days": 730},
+            )
+        self.assertEqual(409, response.status_code, response.text)
+        connection.rollback.assert_called_once()
+
+    def test_mqtt_failure_log_never_contains_tenant_name_or_unit(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {
+            "id": 1,
+            "name": "Private Resident",
+            "unit_number": "Secret-101",
+            "is_active": True,
+        }
+        request = main.PrearmRequestSchema(
+            beacon_uuid="beacon", device_id="AA:BB:CC:DD:EE:FF"
+        )
+        with patch.object(main, "get_db", return_value=connection), patch.object(
+            main, "publish_arm_to_mqtt", return_value=False
+        ), self.assertLogs(main.log, level="ERROR") as captured:
+            response = main.door_prearm(request, _auth=None)
+        self.assertEqual(503, response.status_code)
+        rendered = "\n".join(captured.output)
+        self.assertNotIn("Private Resident", rendered)
+        self.assertNotIn("Secret-101", rendered)
 
 
 if __name__ == "__main__":

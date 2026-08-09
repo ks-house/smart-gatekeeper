@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -159,10 +160,41 @@ class OperationsRuntimeTest(unittest.TestCase):
         worker.join(1)
         self.assertEqual([True], result)
 
+    def test_dns_tcp_tls_connect_is_deadline_bounded_and_cancelled(self):
+        release = threading.Event()
+        cancelled = threading.Event()
+        factory_calls = []
+
+        def factory():
+            client = _Client()
+            factory_calls.append(client)
+            return client
+
+        def blocked_connect(_client):
+            release.wait(5)
+
+        publisher = PersistentMqttPublisher(
+            factory,
+            blocked_connect,
+            publish_timeout=0.1,
+            connect_timeout=0.05,
+            cancel_connect=lambda _client: cancelled.set(),
+        )
+        started = time.monotonic()
+        self.assertFalse(publisher.publish("topic", "payload"))
+        self.assertLess(time.monotonic() - started, 0.25)
+        self.assertTrue(cancelled.is_set())
+        started = time.monotonic()
+        self.assertFalse(publisher.probe(timeout=0.05))
+        self.assertLess(time.monotonic() - started, 0.2)
+        self.assertEqual(1, len(factory_calls), "a blocked resolver must not fan out threads")
+        release.set()
+        publisher.close()
+
     def test_support_export_requires_consent_is_bounded_and_redacted(self):
         result = support_export(
             [{"event_code": "ACCESS_GRANTED", "tenant_id": "raw", "detail": "token=secret123"}],
-            "consent_" + "a" * 32,
+            "consent_" + "a" * 24,
             "tenant_" + "c" * 24,
         )
         self.assertNotIn("tenant_id", result["records"][0])
@@ -172,9 +204,9 @@ class OperationsRuntimeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             support_export([], "ticket-123", "tenant_" + "c" * 24)
         with self.assertRaises(ValueError):
-            support_export([{}] * 501, "consent_" + "b" * 32, "tenant_" + "c" * 24)
+            support_export([{}] * 501, "consent_" + "b" * 24, "tenant_" + "c" * 24)
         with self.assertRaises(ValueError):
-            support_export([], "consent_" + "b" * 32, "legacy:1")
+            support_export([], "consent_" + "b" * 24, "legacy:1")
 
     def test_metrics_have_only_fixed_labels(self):
         metrics = OperationalMetrics()

@@ -2,7 +2,7 @@ name: smart-gatekeeper-production
 
 services:
   db:
-    image: mariadb@sha256:be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350
+    image: ${DB_IMAGE_REPOSITORY:?DB image repository is required}@sha256:${DB_IMAGE_DIGEST:?DB image digest is required}
     restart: unless-stopped
     environment:
       MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
@@ -15,13 +15,6 @@ services:
       - db_password
     volumes:
       - mariadb_data:/var/lib/mysql
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./db/migrations/002_acl_management_expand_up.sql:/docker-entrypoint-initdb.d/02_acl.sql:ro
-      - ./db/migrations/003_admin_security_up.sql:/docker-entrypoint-initdb.d/03_admin.sql:ro
-      - ./db/migrations/004_admin_control_v2_up.sql:/docker-entrypoint-initdb.d/04_admin_v2.sql:ro
-      - ./db/migrations/005_force_open_reconciliation_up.sql:/docker-entrypoint-initdb.d/05_reconciliation.sql:ro
-      - ./db/migrations/006_target_boot_state_up.sql:/docker-entrypoint-initdb.d/06_boot.sql:ro
-      - ./db/migrations/007_ops_privacy_up.sql:/docker-entrypoint-initdb.d/07_privacy.sql:ro
     networks: [data]
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
@@ -34,7 +27,7 @@ services:
     cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
 
   api:
-    image: ${API_IMAGE:?API_IMAGE must be an immutable repository@sha256 digest}
+    image: ${API_IMAGE_REPOSITORY:?API image repository is required}@sha256:${API_IMAGE_DIGEST:?API image digest is required}
     restart: unless-stopped
     read_only: true
     user: "10001:10001"
@@ -58,6 +51,13 @@ services:
       OPS_HMAC_KEY_FILE: /run/secrets/ops_hmac_key
       ADMIN_MTLS_IDENTITIES_JSON_FILE: /run/secrets/admin_identities
       ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:?trusted TLS proxy IPs are required}
+      ACL_MANAGEMENT_ENABLED: "true"
+      ACL_LEGACY_DEVICE_LOOKUP_ENABLED: "false"
+      ACL_ENROLLMENT_AUTH_JSON_FILE: /run/secrets/acl_enrollment_auth
+      ACL_ADMIN_API_KEY_FILE: /run/secrets/acl_admin_api_key
+      ACL_TARGET_AUTH_JSON_FILE: /run/secrets/acl_target_auth
+      ACL_SIGNING_PRIVATE_SCALAR_HEX_FILE: /run/secrets/acl_signing_scalar
+      ACL_SIGNING_KEY_ID: ${ACL_SIGNING_KEY_ID:?ACL signing key ID is required}
       BUILD_SHA: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}
       TARGET_CONFIG_FILE: /var/lib/smart-gatekeeper/target_config.json
       TZ: UTC
@@ -69,6 +69,10 @@ services:
       - ops_hmac_key
       - command_signing_scalar
       - admin_identities
+      - acl_enrollment_auth
+      - acl_admin_api_key
+      - acl_target_auth
+      - acl_signing_scalar
     volumes:
       - api_state:/var/lib/smart-gatekeeper
       - apk_artifacts:/app/gatekeeper_apk:ro
@@ -79,7 +83,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/live', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
       interval: 15s
       timeout: 3s
       retries: 4
@@ -110,3 +114,7 @@ secrets:
   ops_hmac_key: {external: true}
   command_signing_scalar: {external: true}
   admin_identities: {external: true}
+  acl_enrollment_auth: {external: true}
+  acl_admin_api_key: {external: true}
+  acl_target_auth: {external: true}
+  acl_signing_scalar: {external: true}

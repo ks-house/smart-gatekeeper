@@ -251,7 +251,7 @@ class OperationalMetrics:
 
 
 class PersistentMqttPublisher:
-    """Single persistent MQTTS session with bounded inflight and breaker."""
+    """Single persistent MQTTS session with end-to-end bounded operations."""
 
     def __init__(
         self,
@@ -260,24 +260,91 @@ class PersistentMqttPublisher:
         *,
         max_inflight: int = 16,
         publish_timeout: float = 2.0,
+        connect_timeout: float = 1.0,
+        cancel_connect: Optional[Callable[[Any], None]] = None,
         breaker: Optional[CircuitBreaker] = None,
     ):
         self._client_factory = client_factory
         self._connect = connect
         self._capacity = threading.BoundedSemaphore(max_inflight)
         self._publish_timeout = publish_timeout
+        self._connect_timeout = connect_timeout
+        self._cancel_connect = cancel_connect or self._default_cancel_connect
         self.breaker = breaker or CircuitBreaker()
         self._client: Any = None
         self._lock = threading.Lock()
+        self._connect_gate = threading.Lock()
+        self._connect_attempt: Optional[dict[str, Any]] = None
 
-    def _connected_client(self) -> Any:
-        with self._lock:
-            if self._client is None:
-                client = self._client_factory()
+    @staticmethod
+    def _default_cancel_connect(client: Any) -> None:
+        """Best-effort close for a DNS/TCP/TLS attempt whose caller timed out."""
+        try:
+            close_socket = getattr(client, "_sock_close", None)
+            if callable(close_socket):
+                close_socket()
+            else:
+                client.disconnect()
+        except Exception:
+            pass
+
+    def _new_connect_attempt(self) -> dict[str, Any]:
+        client = self._client_factory()
+        attempt: dict[str, Any] = {
+            "client": client,
+            "done": threading.Event(),
+            "cancelled": threading.Event(),
+            "error": None,
+        }
+
+        def connect_worker() -> None:
+            try:
                 self._connect(client)
-                client.loop_start()
-                self._client = client
-            return self._client
+            except Exception as exc:
+                attempt["error"] = exc
+            finally:
+                attempt["done"].set()
+
+        threading.Thread(
+            target=connect_worker,
+            name="sgk-mqtt-connect",
+            daemon=True,
+        ).start()
+        return attempt
+
+    def _connected_client(self, timeout: float) -> Any:
+        deadline = time.monotonic() + min(timeout, self._connect_timeout)
+        with self._lock:
+            if self._client is not None:
+                return self._client
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self._connect_gate.acquire(timeout=remaining):
+            raise TimeoutError("MQTT connection gate deadline exceeded")
+        try:
+            with self._lock:
+                if self._client is not None:
+                    return self._client
+            attempt = self._connect_attempt
+            if attempt is None:
+                attempt = self._new_connect_attempt()
+                self._connect_attempt = attempt
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not attempt["done"].wait(remaining):
+                attempt["cancelled"].set()
+                self._cancel_connect(attempt["client"])
+                raise TimeoutError("MQTT DNS/TCP/TLS connection deadline exceeded")
+            self._connect_attempt = None
+            if attempt["cancelled"].is_set() or attempt["error"] is not None:
+                self._cancel_connect(attempt["client"])
+                if attempt["error"] is not None:
+                    raise attempt["error"]
+                raise TimeoutError("MQTT connection was cancelled")
+            attempt["client"].loop_start()
+            with self._lock:
+                self._client = attempt["client"]
+                return self._client
+        finally:
+            self._connect_gate.release()
 
     def _discard(self) -> None:
         with self._lock:
@@ -293,9 +360,13 @@ class PersistentMqttPublisher:
         if not self.breaker.permit() or not self._capacity.acquire(blocking=False):
             return False
         try:
-            client = self._connected_client()
+            deadline = time.monotonic() + self._publish_timeout
+            client = self._connected_client(self._publish_timeout)
             result = client.publish(topic, payload, qos=1, retain=False)
-            result.wait_for_publish(timeout=self._publish_timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("MQTT publish deadline exhausted during connect")
+            result.wait_for_publish(timeout=remaining)
             if not result.is_published():
                 raise TimeoutError("MQTT publish confirmation unavailable")
             self.breaker.success()
@@ -312,7 +383,7 @@ class PersistentMqttPublisher:
         if not self.breaker.permit():
             return False
         try:
-            client = self._connected_client()
+            client = self._connected_client(timeout)
             is_connected = getattr(client, "is_connected", None)
             if not callable(is_connected):
                 return True
@@ -329,6 +400,10 @@ class PersistentMqttPublisher:
             return False
 
     def close(self) -> None:
+        attempt = self._connect_attempt
+        if attempt is not None:
+            attempt["cancelled"].set()
+            self._cancel_connect(attempt["client"])
         self._discard()
 
 
@@ -339,8 +414,8 @@ def support_export(
     max_records: int = 500,
 ) -> dict:
     """Build a bounded redacted export and bind its canonical SHA-256."""
-    if not re.fullmatch(r"consent_[a-f0-9]{32}", consent_id):
-        raise ValueError("a current opaque consent reference is required")
+    if not re.fullmatch(r"consent_[a-f0-9]{24}", consent_id):
+        raise ValueError("a verified opaque consent reference is required")
     if not re.fullmatch(r"tenant_[a-f0-9]{24}", scope_ref):
         raise ValueError("an opaque tenant scope reference is required")
     if len(records) > max_records:

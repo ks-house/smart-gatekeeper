@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -106,9 +107,16 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS privacy_deletion_jobs", up)
         self.assertIn("UNIQUE KEY uq_privacy_delete_idempotency", up)
         self.assertIn("before_days BETWEEN 30 AND 3650", up)
+        self.assertIn("request_hash CHAR(64) NOT NULL", up)
+        self.assertIn("state ENUM('PENDING', 'COMPLETED')", up)
+        self.assertIn("CREATE TABLE IF NOT EXISTS support_export_consents", up)
+        self.assertIn("purpose = 'support-diagnostics'", up)
+        self.assertIn("CREATE TRIGGER support_export_consents_revoke_only", up)
+        self.assertIn("CREATE TRIGGER support_export_consents_no_delete", up)
         self.assertIn("CREATE TRIGGER privacy_deletion_jobs_no_update", up)
         self.assertIn("CREATE TRIGGER privacy_deletion_jobs_no_delete", up)
         self.assertIn("DROP TABLE IF EXISTS privacy_deletion_jobs", down)
+        self.assertIn("DROP TABLE IF EXISTS support_export_consents", down)
 
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
@@ -673,6 +681,81 @@ class MigrationContractTest(unittest.TestCase):
                     self.assertEqual(failed_audit_id, cursor.fetchone()["approval_id"])
                 verification_connection.rollback()
 
+            privacy_principal = AdminPrincipal(
+                subject="privacy-admin",
+                roles=frozenset({"TENANT_ADMIN"}),
+                tenants=frozenset({"legacy:1"}),
+                session_id="privacy-integration",
+                csrf_token="privacy-integration",
+                expires_at=4_102_444_800,
+            )
+
+            def delete_once() -> dict:
+                return admin_main.delete_expired_privacy_data(
+                    admin_main.PrivacyDeletionRequest(
+                        policy_version="sgk-retention-v1", before_days=365,
+                    ),
+                    SimpleNamespace(headers={}),
+                    x_tenant_id="legacy:1",
+                    idempotency_key="mariadb-privacy-concurrent",
+                )
+
+            with patch.object(
+                admin_main, "get_db", side_effect=connection
+            ), patch.object(
+                admin_main, "_admin_principal", return_value=privacy_principal
+            ):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    privacy_results = list(pool.map(lambda _: delete_once(), range(2)))
+            self.assertEqual(
+                ["already_completed", "completed"],
+                sorted(item["status"] for item in privacy_results),
+            )
+            with connection() as privacy_connection:
+                with privacy_connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT state,request_hash,actor_subject,COUNT(*) AS count "
+                        "FROM privacy_deletion_jobs WHERE tenant_scope='legacy:1' "
+                        "GROUP BY state,request_hash,actor_subject"
+                    )
+                    privacy_row = cursor.fetchone()
+            self.assertEqual("COMPLETED", privacy_row["state"])
+            self.assertRegex(privacy_row["request_hash"], r"^[a-f0-9]{64}$")
+            self.assertEqual("privacy-admin", privacy_row["actor_subject"])
+            self.assertEqual(1, privacy_row["count"])
+
+            with connection() as consent_connection:
+                with consent_connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO support_export_consents "
+                        "(consent_ref_hash,tenant_scope,purpose,granted_by,expires_at,created_at) "
+                        "VALUES (%s,'legacy:1','support-diagnostics','subject-flow',%s,%s)",
+                        ("c" * 64, 4_102_444_800, 1_700_000_000),
+                    )
+                consent_connection.commit()
+                with consent_connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE support_export_consents SET revoked_at=%s "
+                        "WHERE consent_ref_hash=%s",
+                        (1_700_000_001, "c" * 64),
+                    )
+                consent_connection.commit()
+                with self.assertRaises(pymysql.err.OperationalError):
+                    with consent_connection.cursor() as cursor:
+                        cursor.execute(
+                            "UPDATE support_export_consents SET expires_at=%s "
+                            "WHERE consent_ref_hash=%s",
+                            (4_102_444_801, "c" * 64),
+                        )
+                consent_connection.rollback()
+                with self.assertRaises(pymysql.err.OperationalError):
+                    with consent_connection.cursor() as cursor:
+                        cursor.execute(
+                            "DELETE FROM support_export_consents WHERE consent_ref_hash=%s",
+                            ("c" * 64,),
+                        )
+                consent_connection.rollback()
+
             # Create an actual logical backup, bind it to the exact software
             # source, restore it into a separate schema, and verify integrity
             # without writing to the restored data.
@@ -685,13 +768,19 @@ class MigrationContractTest(unittest.TestCase):
                 dump_path = Path(backup_directory) / "smart_gatekeeper.sql"
                 manifest_path = Path(backup_directory) / "manifest.json"
                 dump_path.write_text(dumped.stdout, encoding="utf-8")
+                with connection() as source_connection:
+                    source_inventory = ops_commercial_gate.capture_database_inventory(
+                        source_connection
+                    )
                 ops_commercial_gate.create_backup_manifest(
-                    dump_path, manifest_path, "a" * 40, "2026-08-09T00:00:00Z"
+                    dump_path, manifest_path, "a" * 40, "2026-08-09T00:00:00Z",
+                    source_inventory, b"mariadb-backup-manifest-test-key",
                 )
                 self.assertEqual(
                     "PASS",
                     ops_commercial_gate.verify_backup(
                         dump_path, manifest_path, 900, "2026-08-09T00:10:00Z"
+                        , b"mariadb-backup-manifest-test-key"
                     )["status"],
                 )
                 docker(
@@ -699,6 +788,7 @@ class MigrationContractTest(unittest.TestCase):
                     "-e", "DROP DATABASE IF EXISTS smart_gatekeeper_restore; "
                     "CREATE DATABASE smart_gatekeeper_restore CHARACTER SET utf8mb4;",
                 )
+                restore_started = time.monotonic()
                 restored = docker(
                     "exec", "-i", name, "mariadb", "--default-character-set=utf8mb4",
                     "-uroot", f"-p{password}", "smart_gatekeeper_restore",
@@ -706,15 +796,17 @@ class MigrationContractTest(unittest.TestCase):
                 )
                 if restored.returncode != 0:
                     self.fail(f"isolated logical restore failed: {restored.stderr}")
+                measured_rto = time.monotonic() - restore_started
                 restore_connection = pymysql.connect(
                     host="127.0.0.1", port=host_port, user="root", password=password,
                     database="smart_gatekeeper_restore",
                     cursorclass=pymysql.cursors.DictCursor, autocommit=False,
                 )
                 try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                     restored_result = ops_commercial_gate.verify_restored_database(
-                        restore_connection,
-                        "2026-08-09T00:10:00Z", "2026-08-09T00:14:00Z", 300,
+                        restore_connection, manifest,
+                        b"mariadb-backup-manifest-test-key", measured_rto, 300,
                     )
                     self.assertEqual("PASS", restored_result["status"])
                 finally:

@@ -4,11 +4,17 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - 'ops/**'
+      - 'scripts/ops_commercial_gate.py'
+      - '.orca/scripts/setup_worktree.ps1'
       - '.github/workflows/backend_security.yml'
   push:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'ops/**'
+      - 'scripts/ops_commercial_gate.py'
+      - '.orca/scripts/setup_worktree.ps1'
       - '.github/workflows/backend_security.yml'
 
 permissions:
@@ -19,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       mariadb:
-        image: mariadb:10.11
+        image: mariadb@sha256:be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350
         env:
           MARIADB_ROOT_PASSWORD: migration-test-only
         ports:
@@ -31,14 +37,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.13'
       - name: Install backend dependencies
         run: python -m pip install --require-hashes -r backend/app/requirements.lock
       - name: Validate all backend security tests
         run: python -m unittest discover -s backend/tests -p 'test_*.py' -v
       - name: Validate operations, privacy, production, and supply-chain contract
+        env:
+          API_IMAGE: ghcr.io/ks-house/smart-gatekeeper-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          DB_IMAGE: ghcr.io/ks-house/smart-gatekeeper-db@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         run: |
           python scripts/ops_commercial_gate.py contract
+          python scripts/ops_commercial_gate.py production-compose --api-image "$API_IMAGE" --db-image "$DB_IMAGE"
           python scripts/ops_commercial_gate.py sbom --output build/backend-sbom.cdx.json
           python scripts/ops_commercial_gate.py slo --samples ops/fixtures/load_nominal.jsonl --policy ops/slo_policy.json
       - name: Audit locked backend dependencies
@@ -57,7 +67,24 @@ jobs:
           RUN_MARIADB_INTEGRATION: '1'
         run: python -m unittest backend.tests.test_migrations.MigrationContractTest.test_real_mariadb_up_legacy_write_down_legacy_read -v
       - name: Validate Compose is private by default
-        run: docker compose -f backend/docker-compose.yml config --quiet
+        env:
+          API_IMAGE_REPOSITORY: ghcr.io/ks-house/smart-gatekeeper-backend
+          API_IMAGE_DIGEST: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          DB_IMAGE_REPOSITORY: ghcr.io/ks-house/smart-gatekeeper-db
+          DB_IMAGE_DIGEST: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          MQTT_HOST: broker.invalid
+          MQTT_USER: ci-only
+          COMMAND_TARGET_ID: ci-target
+          COMMAND_TENANT_ID: ci-tenant
+          COMMAND_DOOR_ID: ci-door
+          COMMAND_SIGNING_KEY_ID: '1'
+          ADMIN_TRUSTED_PROXY_IPS: '127.0.0.1'
+          ACL_SIGNING_KEY_ID: '1'
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          docker compose -f backend/docker-compose.yml config --quiet
+          docker compose -f backend/compose.production.yml config --quiet
+          docker build -f backend/db/Dockerfile backend/db
 
   attest-backend-sbom:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -70,7 +97,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.13'
       - name: Generate deterministic SBOM
         run: python scripts/ops_commercial_gate.py sbom --output build/backend-sbom.cdx.json
       - name: Attest SBOM to exact merged commit

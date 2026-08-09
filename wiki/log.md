@@ -2411,3 +2411,22 @@
 
 - The focused operations gate passed 6/6 including the new LF/CRLF mutation, and the full Orca `Software` suite passed in 45.04 seconds with backend discovery 72 tests (one explicit MariaDB opt-in skip), protocol 16, observability 18, hardwareless 4 and root 133 tests.
 - The previously passed real MariaDB restore evidence remains bound to unchanged migration/restore code. Hosted exact-head rerun, review and provenance remain required; production remains OFF.
+
+## [2026-08-09] fix | Remediate PR #67 commercial operations security review
+
+- Closed the eight repository-side blockers from COMMENTED review `4890422659`: expanded backend workflow trigger coverage and immutable toolchain/service inputs; defined a complete backend trusted-input bundle without candidate self-authorization; required digest-only API/DB production artifacts with baked migrations and dependency readiness; and bound readiness to control/admin authentication, active ACL runtime and disabled legacy lookup.
+- Bound support export to a current tenant/purpose/expiry/revocation database consent while keeping raw consent, tenant names and unit data out of response, audit and MQTT failure logs. Bound retention deletion idempotency to the canonical tenant/actor/policy/window payload with one durable `PENDING` to `COMPLETED` transition and conflict rejection.
+- Added authenticated source/target schema, primary-key, row-count and content inventories to backup/restore verification; strict fixed-ID commit/digest/reviewer/expiry/hosted-provenance evidence validation; and an end-to-end bounded MQTT DNS/TCP/TLS plus PUBACK deadline with cancellation and connection-fanout prevention.
+- PR #67 remains Draft, unmerged and production OFF. A separate trusted-base policy-only rotation from trusted `main`, independently reviewed and merged without candidate self-approval, is still required before the backend executable/input bundle may be admitted.
+
+## [2026-08-09] test | Validate PR #67 security remediation locally
+
+- Backend discovery passed 76 tests with one explicit isolated-MariaDB opt-in skip. The separate real MariaDB lane passed actual migrations, one-way consent revocation, concurrent payload-bound deletion, authenticated logical backup, measured isolated restore, complete source/target inventory equality, rollback and legacy read in 28.60 seconds.
+- The operations contract passed 23 checks; adversarial tests reject mutable images, missing workflow paths, forged/expired/self-reviewed/unhosted evidence, fabricated/expired/revoked/cross-tenant consent, idempotency payload mismatch, dump/inventory/HMAC mutation, incomplete restore and blocked MQTT connect fanout. Python compilation, workflow YAML/actionlint, dev/production Compose rendering and mutable `API_IMAGE` rejection passed.
+- Digest-pinned API and migration-database images built successfully; the API image imported as UID `10001`. These are local repository/host results only. Hosted exact-head CI/attestation, independent trusted-base review, legal/privacy approval, live alerts, production-like independent restore, 24-hour soak, Samsung/OEM, BLE/ESP32-C6/radio/sensor/relay, OTA-G1 through G4, RELAY-G0 through G2, operator acceptance, signing, deployment and production authorization remain open and fail-closed.
+
+## [2026-08-09] test | Run final cross-layer validation for PR #67 remediation
+
+- Orca `Software` validation passed in 47.39 seconds: doctor 12 pass/one Docker-covered Java warning/zero fail, backend 76 tests with the isolated MariaDB lane intentionally skipped in discovery, dev Compose, staged profile/lifecycle, protocol 16, observability 18, OTA contract, hardwareless Gate 4 and root 133 tests all passed.
+- The 23-check operations contract, immutable-image validator and deterministic 24-component SBOM matched the tracked artifact. Local `pip-audit` was unavailable in this isolated environment, so vulnerability acceptance remains bound to the exact-head hosted pinned audit action; no local absence is represented as a product pass.
+- Production remains OFF. The separate trusted-base policy rotation, hosted exact-head CI and SBOM attestation, independent review, live/physical/operator/legal gates and explicit production authorization remain blocking.

@@ -249,7 +249,20 @@ def _connect_mqtt_client(client) -> None:
         tls_version=ssl.PROTOCOL_TLS_CLIENT,
     )
     client.tls_insecure_set(False)
+    # Paho applies this to TCP/TLS. PersistentMqttPublisher additionally wraps
+    # the entire DNS+TCP+TLS call in a caller-visible deadline.
+    client._connect_timeout = 1.0
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+
+
+def _cancel_mqtt_connect(client) -> None:
+    try:
+        client._sock_close()
+    except Exception:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
 
 
 def _persistent_publisher() -> PersistentMqttPublisher:
@@ -262,6 +275,8 @@ def _persistent_publisher() -> PersistentMqttPublisher:
                 _connect_mqtt_client,
                 max_inflight=16,
                 publish_timeout=2.0,
+                connect_timeout=1.0,
+                cancel_connect=_cancel_mqtt_connect,
             )
         return _mqtt_publisher
 
@@ -597,6 +612,7 @@ def _audit_admin(
 # Mount the new management plane only when the feature is explicitly enabled and all
 # authentication/signing prerequisites are present. A bad RC configuration must not take
 # down the distinct legacy manual_remote or independent OTA download paths.
+_acl_runtime_ready = False
 if ACL_MANAGEMENT_ENABLED:
     _acl_missing = [
         name
@@ -729,6 +745,7 @@ if ACL_MANAGEMENT_ENABLED:
                     ),
                 )
             )
+            _acl_runtime_ready = True
             log.info(
                 "[ACL-MANAGEMENT] Hardwareless RC enabled (signing_key_id=%s, lease=%ss, legacy_lookup=%s)",
                 _acl_signing_key_id,
@@ -881,7 +898,11 @@ def _readiness_snapshot() -> tuple[bool, dict]:
     checks = {
         "database": False,
         "mqtt": False,
-        "secrets": bool(DB_PASSWORD and len(OPS_HMAC_KEY) >= 32),
+        "runtime_secrets": bool(DB_PASSWORD and len(OPS_HMAC_KEY) >= 32),
+        "control_api_auth": len(GATEKEEPER_API_KEY) >= 32,
+        "admin_auth": bool(admin_security.enabled and admin_security.trusted_proxy_ips),
+        "acl_management": bool(ACL_MANAGEMENT_ENABLED and _acl_runtime_ready),
+        "legacy_lookup_disabled": not ACL_LEGACY_DEVICE_LOOKUP_ENABLED,
         "build_identity": bool(re.fullmatch(r"[a-f0-9]{40}", BUILD_SHA)),
     }
     conn = None
@@ -1135,10 +1156,7 @@ def door_prearm(
     # ── 3. 검증 통과 — arm 발행 ─────────────────────────────────────────
     arm_ok = publish_arm_to_mqtt(user_label, tenant_id)
     if not arm_ok:
-        log.error(
-            f"[PREARM-ERROR] 사용자 검증은 통과했지만 MQTT arm 발행 실패: "
-            f"{user_label}"
-        )
+        log.error("[PREARM-ERROR] verified credential command publication failed")
         return JSONResponse(
             status_code=503,
             content={
@@ -1653,15 +1671,37 @@ def create_support_export(
     """Create one consent-bound, redacted and audited diagnostic export."""
     if not x_tenant_id.startswith("legacy:") or not x_tenant_id[7:].isdigit():
         raise HTTPException(status_code=400, detail="legacy tenant scope required")
+    if not re.fullmatch(r"consent_[a-f0-9]{32}", x_support_consent):
+        raise HTTPException(status_code=400, detail="opaque support consent reference required")
     principal = _admin_principal(
         request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope=x_tenant_id,
     )
     tenant_id = int(x_tenant_id[7:])
+    consent_hash = hashlib.sha256(x_support_consent.encode("utf-8")).hexdigest()
+    consent_ref = opaque_ref(x_support_consent, _ops_hmac_key, "consent")
     conn = None
     try:
         conn = get_db()
         conn.begin()
         with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tenant_scope,purpose,expires_at,revoked_at "
+                "FROM support_export_consents WHERE consent_ref_hash=%s FOR UPDATE",
+                (consent_hash,),
+            )
+            consent = cur.fetchone()
+            now = int(time.time())
+            if (
+                not consent
+                or consent["tenant_scope"] != x_tenant_id
+                or consent["purpose"] != "support-diagnostics"
+                or int(consent["expires_at"]) <= now
+                or consent["revoked_at"] is not None
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="current tenant-scoped support consent is required",
+                )
             cur.execute(
                 "SELECT auth_method,is_success,distance_mm,failure_reason,created_at "
                 "FROM access_logs WHERE tenant_id=%s AND created_at >= "
@@ -1675,13 +1715,13 @@ def create_support_export(
                 record["created_at"] = record["created_at"].isoformat()
         exported = support_export(
             records,
-            x_support_consent,
+            consent_ref,
             opaque_ref(x_tenant_id, _ops_hmac_key, "tenant"),
             max_records=500,
         )
         _audit_admin(
             conn, principal, x_tenant_id, "SUPPORT_EXPORT_CREATED",
-            exported["sha256"], x_support_consent,
+            exported["sha256"], consent_ref,
         )
         conn.commit()
         return exported
@@ -1689,6 +1729,10 @@ def create_support_export(
         if conn:
             conn.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
     except Exception as exc:
         if conn:
             conn.rollback()
@@ -1717,18 +1761,53 @@ def delete_expired_privacy_data(
     )
     tenant_id = int(x_tenant_id[7:])
     idempotency_hash = hashlib.sha256(idempotency_key.encode()).hexdigest()
+    canonical_request = json.dumps(
+        {
+            "actor_subject": principal.subject,
+            "before_days": req.before_days,
+            "policy_version": req.policy_version,
+            "tenant_scope": x_tenant_id,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    request_hash = hashlib.sha256(canonical_request).hexdigest()
     conn = None
     try:
         conn = get_db()
         conn.begin()
         with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    "INSERT INTO privacy_deletion_jobs "
+                    "(tenant_scope,actor_subject,policy_version,before_days,idempotency_hash,"
+                    "request_hash,state,created_at) VALUES (%s,%s,%s,%s,%s,%s,'PENDING',%s)",
+                    (
+                        x_tenant_id, principal.subject, req.policy_version,
+                        req.before_days, idempotency_hash, request_hash, int(time.time()),
+                    ),
+                )
+            except pymysql.err.IntegrityError as exc:
+                if not exc.args or exc.args[0] != 1062:
+                    raise
             cur.execute(
-                "SELECT deleted_count FROM privacy_deletion_jobs "
-                "WHERE tenant_scope=%s AND idempotency_hash=%s FOR UPDATE",
+                "SELECT actor_subject,request_hash,state,deleted_count "
+                "FROM privacy_deletion_jobs WHERE tenant_scope=%s "
+                "AND idempotency_hash=%s FOR UPDATE",
                 (x_tenant_id, idempotency_hash),
             )
             existing = cur.fetchone()
-            if existing:
+            if not existing:
+                raise RuntimeError("privacy deletion reservation unavailable")
+            if (
+                not secrets.compare_digest(existing["request_hash"], request_hash)
+                or not secrets.compare_digest(existing["actor_subject"], principal.subject)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency-Key is already bound to a different request",
+                )
+            if existing["state"] == "COMPLETED":
                 conn.commit()
                 return {"status": "already_completed", "deleted_count": existing["deleted_count"]}
             cur.execute(
@@ -1738,20 +1817,26 @@ def delete_expired_privacy_data(
             )
             deleted_count = cur.rowcount
             cur.execute(
-                "INSERT INTO privacy_deletion_jobs "
-                "(tenant_scope,actor_subject,policy_version,before_days,idempotency_hash,deleted_count,created_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                "UPDATE privacy_deletion_jobs SET state='COMPLETED',deleted_count=%s,"
+                "completed_at=%s WHERE tenant_scope=%s AND idempotency_hash=%s "
+                "AND state='PENDING' AND request_hash=%s",
                 (
-                    x_tenant_id, principal.subject, req.policy_version,
-                    req.before_days, idempotency_hash, deleted_count, int(time.time()),
+                    deleted_count, int(time.time()), x_tenant_id,
+                    idempotency_hash, request_hash,
                 ),
             )
+            if cur.rowcount != 1:
+                raise RuntimeError("privacy deletion completion transition failed")
         _audit_admin(
             conn, principal, x_tenant_id, "PRIVACY_RETENTION_APPLIED",
             req.policy_version, idempotency_key,
         )
         conn.commit()
         return {"status": "completed", "deleted_count": deleted_count}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
     except Exception as exc:
         if conn:
             conn.rollback()

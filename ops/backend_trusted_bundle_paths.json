@@ -1,0 +1,22 @@
+{
+  "schema": "sgk-backend-trusted-inputs-v1",
+  "paths": [
+    ".github/workflows/backend_security.yml",
+    ".orca/scripts/setup_worktree.ps1",
+    "scripts/ops_commercial_gate.py",
+    "ops/backend_trusted_bundle_paths.json",
+    "ops/evidence_sources.json",
+    "ops/fixtures/load_nominal.jsonl",
+    "ops/prometheus_rules.yml",
+    "ops/slo_policy.json",
+    "backend/app/requirements.lock",
+    "backend/compose.production.yml",
+    "backend/db/Dockerfile",
+    "backend/sbom.cdx.json",
+    "backend/supply_chain_policy.json",
+    "backend/tests/test_migrations.py",
+    "backend/tests/test_ops_api.py",
+    "backend/tests/test_ops_commercial_gate.py",
+    "backend/tests/test_ops_runtime.py"
+  ]
+}

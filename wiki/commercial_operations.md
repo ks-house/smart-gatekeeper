@@ -11,15 +11,15 @@
 | Area | Implemented contract | Evidence boundary |
 |---|---|---|
 | privacy-safe logging | root logging filter removes MAC, bearer/secret assignments and URL queries; sensitive producer logs no longer emit tenant name, unit, device, broker topic, path, reason, or exception text | deterministic unit/adversarial tests; DLP is defense-in-depth, so producers must still use fixed codes and opaque references |
-| support export | mTLS admin/auditor, tenant scope, opaque `consent_<32hex>`, 1–168-hour window, at most 500 records, recursive redaction, canonical SHA-256, immutable admin audit | local API tests only; consent UX, ticket closure deletion, and privacy-owner approval pending |
-| retention deletion | mTLS tenant admin, CSRF, fresh mTLS, idempotency key, exact `sgk-retention-v1`, 30–3650 days, tenant-only `access_logs` deletion, immutable deletion/audit evidence | software and migration tests only; the actual number of days requires legal/privacy-owner approval |
-| resilience | one persistent MQTTS publisher, QoS 1 confirmation, maximum 16 in-flight effects, non-blocking backpressure, three-failure circuit breaker, 15-second half-open probe, session discard/reconnect after failure | fake-client fault tests; real broker/DNS/certificate/storage recovery and Target receipt remain pending |
+| support export | mTLS admin/auditor, tenant scope, SHA-256 lookup of a current DB consent bound to `support-diagnostics`, tenant, expiry and one-way revocation; 1–168-hour window, at most 500 records, recursive redaction, opaque response/audit reference and canonical SHA-256 | fabricated, expired, revoked and cross-tenant mutations fail; lawful consent capture UX, ticket closure deletion and privacy-owner approval remain pending |
+| retention deletion | mTLS tenant admin, CSRF, fresh mTLS, idempotency key bound to canonical tenant/actor/policy/window request, exact `sgk-retention-v1`, 30–3650 days, tenant-only deletion and immutable completed evidence | mismatch returns `409`; concurrent MariaDB callers produce one completed row; the actual retention period requires legal/privacy-owner approval |
+| resilience | one persistent MQTTS publisher, end-to-end DNS/TCP/TLS plus PUBACK deadline, maximum 16 in-flight effects, non-blocking backpressure, three-failure circuit breaker, one half-open probe and cancellation/socket-close on deadline | blocked-connect mutation is bounded and cannot fan out connection threads; real broker/DNS/certificate/storage recovery and Target receipt remain pending |
 | API protection | bounded opaque-peer rate limits for authentication/control/privacy; unsafe admin routes retain session, role, tenant, CSRF and re-authentication checks | host API bypass tests; reverse-proxy and live network policy pending |
-| health and metrics | process-only `/live` (legacy `/health` alias), dependency `/ready`, fixed-label Prometheus metrics behind admin mTLS | local tests; production scrape, alert delivery and on-call acknowledgement pending |
-| production Compose | digest-pinned MariaDB, immutable digest-supplied API, external secrets, internal data network, no host port, no source bind mount, read-only API root, non-root UID, capability drop and resource limits | Compose rendering and image build; NAS/proxy/volume/secrets deployment pending |
-| supply chain | fully resolved hash lock, digest-pinned Python/MariaDB, exact action commits, deterministic CycloneDX SBOM, license allow-list, high/critical vulnerability Gate, main-only GitHub provenance attestation | repository and hosted-CI contract; attestation exists only after a successful exact-main run |
-| backup/recovery | dump manifest binds exact source commit, bytes, SHA-256, completion time and required tables; verify enforces RPO age; isolated restore check measures RTO and tenant/ACL/audit integrity | disposable MariaDB logical dump/separate-schema restore passes locally; independent operator restore from a production-like encrypted backup remains pending |
-| SLO/evidence | fixed synthetic load evaluator plus generated fail-closed evidence register requiring commit, artifact digest, reviewer and expiry for any `passed` entry | nominal fixture is not a load/soak result; 24-hour device/broker/API/DB run remains pending |
+| health and metrics | process-only `/live`; `/ready` requires DB, bounded broker probe, runtime secrets, 32-byte control API key, enabled admin mTLS/proxy, successfully initialized ACL management, disabled legacy lookup and exact build SHA | production Compose admits on `/ready`, not `/live`; production scrape, alert delivery and on-call acknowledgement pending |
+| production Compose | repository and 64-hex digest are structurally separate required variables for both API and DB; migrations are baked into a pinned DB artifact; external secrets, internal data network, no host port/live SQL bind, read-only non-root API and resource limits | `API_IMAGE=nginx:latest` cannot satisfy Compose; immutable API/DB images still require independent build provenance before deployment |
+| supply chain | hash lock, digest-pinned image bases/service, Python `3.12.13`, exact action commits, full workflow path triggers, deterministic SBOM and vulnerability/license Gates | `ops/backend_trusted_bundle_paths.json` defines the whole executable/input set; a separate trusted-base policy rotation must approve the exact candidate without reading candidate policy before merge |
+| backup/recovery | HMAC-authenticated manifest binds dump bytes, release migration identity and per-table schema hash, primary key, PK-ordered row count/content hash; isolated restore compares the entire source/target inventory | actual disposable MariaDB logical dump/separate-schema restore and monotonic RTO pass locally; independent operator restore from production-like encrypted storage remains pending |
+| SLO/evidence | strict fixed-ID evidence v2 binds checked-out commit, exact digest, future zoned expiry, independent reviewer and matching GitHub run/artifact provenance | unknown/duplicate/self-reviewed/expired/unhosted mutations fail; nominal fixture is not a 24-hour load/soak result |
 
 The mobile and Target OTA paths remain independent. These changes do not alter
 the signed mobile manifest, Target dual-slot state machine, periodic HTTPS,
@@ -33,7 +33,7 @@ authenticated local recovery, N/N-1 protocol window, or rollback semantics.
 |---|---|---|
 | `GET /live` | reverse-proxy network boundary | Python process is responsive; never means DB, MQTT, Target or production healthy |
 | `GET /health` | same | compatibility alias; response explicitly says `scope=process_liveness_only` |
-| `GET /ready` | deployment network boundary | `200` only when DB `SELECT 1`, broker TLS/MQTT session, secret prerequisites and exact 40-hex `BUILD_SHA` all pass; otherwise `503` with per-component booleans |
+| `GET /ready` | deployment network boundary | `200` only when DB, bounded broker session, runtime/control secrets, admin mTLS/proxy, ACL runtime, legacy-lookup-off and exact build identity all pass; otherwise `503` |
 | `GET /api/v1/admin/metrics` | current mTLS admin/auditor session and tenant `*` | low-cardinality request, MQTT and breaker metrics; no tenant/device/MAC labels |
 
 The reverse proxy must remove inbound certificate headers, establish mTLS,
@@ -68,8 +68,13 @@ X-Tenant-ID: legacy:<tenant-number>
 X-Support-Consent: consent_<32 lowercase hex>
 ```
 
-The operator first records informed consent in the support system and uses only
-its opaque reference. The response contains fixed operational fields, redacted
+The operator first records informed consent in `support_export_consents` through
+the approved subject-consent workflow. The stored row is keyed by the SHA-256
+of the presented reference and binds `legacy:<tenant>`, purpose
+`support-diagnostics`, `expires_at`, `created_at`, `granted_by` and nullable
+`revoked_at`. Revocation is one-way; fabricated, expired, revoked or
+cross-tenant references fail with `403`. The response contains only an HMAC
+opaque consent reference, fixed operational fields, redacted
 records and a canonical digest. It must be transferred only to the approved
 ticket, access must be audited, and the export must be deleted at ticket close.
 Never attach raw logs, database dumps, MQTT payloads or screenshots containing
@@ -90,9 +95,10 @@ Content-Type: application/json
 
 `before_days` is a mechanism bound (30–3650), not a legal default. A privacy
 owner must approve the jurisdictional retention schedule before execution.
-Deletion affects only the tenant's legacy access records; immutable admin audit
-and deletion evidence are preserved. A duplicate idempotency key returns the
-existing result and never repeats the deletion.
+Deletion affects only the tenant's legacy access records. The reservation binds
+the key to a canonical SHA-256 of tenant, actor, policy and days. A different
+payload or actor returns `409`; concurrent identical requests serialize on the
+unique DB row and return the single completed result.
 
 ## 4. Backup and isolated restore procedure
 
@@ -101,18 +107,28 @@ existing result and never repeats the deletion.
 2. Use the database platform's secret-file authentication and consistent
    transaction snapshot to create a dump in encrypted, access-controlled
    storage. Never place a password on a command line or in the manifest.
-3. Bind the dump to source and required tables:
+3. Capture the source inventory with a read-only account. Store the manifest
+   authentication key only in the approved secret store; it must be at least
+   32 bytes and must never be placed in the dump or manifest:
 
 ```powershell
+python scripts/ops_commercial_gate.py inventory `
+  --host <source-host> --port 3306 --database smart_gatekeeper `
+  --user <backup-auditor> --password-file <source-password-file> `
+  --output <source-inventory.json>
+
 python scripts/ops_commercial_gate.py backup-manifest `
   --dump <encrypted-staging-dump.sql> `
   --output <backup-manifest.json> `
+  --inventory <source-inventory.json> `
+  --manifest-key-file <manifest-auth-key-file> `
   --source-commit <40-hex-commit> `
   --completed-at <UTC-RFC3339>
 
 python scripts/ops_commercial_gate.py verify-backup `
   --dump <encrypted-staging-dump.sql> `
   --manifest <backup-manifest.json> `
+  --manifest-key-file <manifest-auth-key-file> `
   --max-age-seconds 900 `
   --now <UTC-RFC3339>
 ```
@@ -127,13 +143,17 @@ python scripts/ops_commercial_gate.py restore-check `
   --host 127.0.0.1 --port <isolated-port> `
   --database smart_gatekeeper --user <restore-auditor> `
   --password-file <temporary-secret-file> `
-  --restore-started-at <UTC-RFC3339> --now <UTC-RFC3339> `
+  --manifest <backup-manifest.json> `
+  --manifest-key-file <manifest-auth-key-file> `
+  --measured-rto-seconds <monotonic-harness-result> `
   --max-rto-seconds 1800
 ```
 
-6. Require all tenant/access, ACL credential/snapshot, immutable admin audit and
-   privacy deletion invariants to pass. Compare expected aggregate counts from
-   the approved backup record. Destroy the isolated restore and temporary
+6. The restore harness must start its monotonic clock before importing the dump;
+   a manually typed success timestamp is not evidence. Require every fixed table
+   to match the authenticated source schema hash, primary key, row count and
+   PK-ordered content hash, in addition to tenant/access/ACL orphan invariants.
+   Destroy the isolated restore and temporary
    secret using the approved recoverable lifecycle procedure.
 
 The candidate objectives are RPO ≤15 minutes and RTO ≤30 minutes. They remain
@@ -146,17 +166,34 @@ Run locally from the repository root:
 
 ```powershell
 python scripts/ops_commercial_gate.py contract
+python scripts/ops_commercial_gate.py production-compose `
+  --api-image <repository@sha256:64hex> `
+  --db-image <repository@sha256:64hex>
 python scripts/ops_commercial_gate.py sbom --output build/backend-sbom.cdx.json
 python scripts/ops_commercial_gate.py slo --samples ops/fixtures/load_nominal.jsonl --policy ops/slo_policy.json
 python -m unittest discover -s backend/tests -p "test_*.py" -v
 docker compose -f backend/docker-compose.yml config --quiet
 ```
 
+For production Compose, set `API_IMAGE_REPOSITORY`, `API_IMAGE_DIGEST`,
+`DB_IMAGE_REPOSITORY` and `DB_IMAGE_DIGEST` separately. Direct `API_IMAGE`
+input is intentionally ignored, so `API_IMAGE=nginx:latest` fails interpolation.
+Only values already accepted by `production-compose` may be split into those
+four variables. The database image is built from `backend/db/Dockerfile`; the
+production file contains no repository SQL bind mount.
+
 The hosted backend workflow installs `requirements.lock` with
 `--require-hashes`, runs the full security suite, policy/SBOM/SLO Gates,
 high/critical vulnerability audit and MariaDB migration test. On exact main it
 attests the generated SBOM with GitHub's identity. An SBOM upload without a
 successful attestation does not satisfy provenance.
+
+The backend workflow is not allowed to authorize itself. Before this candidate
+can merge, an independent policy-only change based on trusted `main` must add
+the exact paths from `ops/backend_trusted_bundle_paths.json` and the final
+candidate digests to the base policy. PR #67 must not modify that trusted policy
+or validator. Until the policy-only change is reviewed and merged, the backend
+bundle Gate remains explicitly blocking even when its ordinary PR job is green.
 
 Before any production deployment, require all of the following:
 
@@ -183,10 +220,13 @@ python scripts/ops_commercial_gate.py evidence `
   --commit <40-hex-candidate>
 ```
 
-The generator rejects any `passed` record without artifact SHA-256, reviewer
-and expiry. Local, hosted, independent restore, physical/live-like soak and
-production scopes stay separate. Regeneration after an expired artifact does
-not renew evidence; a new test and review are required.
+The generator requires `--commit` to equal the checked-out HEAD. A `passed`
+record must use one fixed unique ID/scope, exact 64-hex digest, a future
+timezone-aware ISO expiry, reviewer different from `candidate_author`, and a
+GitHub Actions provenance object whose repository/commit/run/artifact digest
+matches `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_RUN_ID` and the protected
+`EVIDENCE_REVIEWER` context. Unknown, duplicate, self-reviewed, expired,
+unhosted or malformed records fail. Regeneration never renews evidence.
 
 ## 7. Remaining fail-closed Gates
 
