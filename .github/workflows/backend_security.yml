@@ -7,6 +7,7 @@ on:
       - 'ops/**'
       - 'scripts/ops_commercial_gate.py'
       - '.orca/scripts/setup_worktree.ps1'
+      - 'protocol/test_vectors/v1.json'
       - '.github/workflows/backend_security.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'ops/**'
       - 'scripts/ops_commercial_gate.py'
       - '.orca/scripts/setup_worktree.ps1'
+      - 'protocol/test_vectors/v1.json'
       - '.github/workflows/backend_security.yml'
 
 permissions:
@@ -65,7 +67,11 @@ jobs:
       - name: Validate real MariaDB migration and immutable audit
         env:
           RUN_MARIADB_INTEGRATION: '1'
-        run: python -m unittest backend.tests.test_migrations.MigrationContractTest.test_real_mariadb_up_legacy_write_down_legacy_read -v
+        run: >-
+          python -m unittest
+          backend.tests.test_migrations.MigrationContractTest.test_real_mariadb_up_legacy_write_down_legacy_read
+          backend.tests.test_migrations.MigrationContractTest.test_production_db_image_is_seed_free_and_upgrades_existing_volume
+          -v
       - name: Validate Compose is private by default
         env:
           API_IMAGE_REPOSITORY: ghcr.io/ks-house/smart-gatekeeper-backend
@@ -84,6 +90,7 @@ jobs:
         run: |
           docker compose -f backend/docker-compose.yml config --quiet
           docker compose -f backend/compose.production.yml config --quiet
+          docker build -f backend/app/Dockerfile backend/app
           docker build -f backend/db/Dockerfile backend/db
 
   attest-backend-sbom:
@@ -104,3 +111,33 @@ jobs:
         uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-path: build/backend-sbom.cdx.json
+
+  verify-operations-evidence:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend-security, attest-backend-sbom]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      attestations: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12.13'
+      - name: Verify evidence through GitHub APIs and generate exact-main register
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/ops_commercial_gate.py evidence
+          --source ops/evidence_sources.json
+          --output build/ops-evidence-register.json
+          --commit "${{ github.sha }}"
+      - name: Upload verified operations evidence register
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: operations-evidence-${{ github.sha }}
+          path: build/ops-evidence-register.json
+          if-no-files-found: error
+          retention-days: 30

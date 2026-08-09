@@ -8,16 +8,24 @@ infrastructure and never convert software evidence into physical acceptance.
 from __future__ import annotations
 
 import argparse
+import base64
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import io
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +49,208 @@ EVIDENCE_STATES = {"pending", "blocked", "passed"}
 
 class GateError(RuntimeError):
     pass
+
+
+class GitHubEvidenceVerifier:
+    """Verify evidence against GitHub API state, never caller-asserted env."""
+
+    API_URL = "https://api.github.com"
+    TRUSTED_WORKFLOW_PATH = ".github/workflows/backend_security.yml"
+
+    def __init__(self, token: str):
+        if not token:
+            raise GateError("GitHub API token is required for passed evidence")
+        self._token = token
+
+    def _get(self, path: str):
+        request = urllib.request.Request(
+            f"{self.API_URL}{path}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self._token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "smart-gatekeeper-evidence-verifier",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, urllib.error.URLError) as exc:
+            raise GateError("GitHub evidence API verification failed") from exc
+        if not isinstance(payload, (dict, list)):
+            raise GateError("GitHub evidence API returned an invalid document")
+        return payload
+
+    def _download(self, url: str) -> bytes:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise GateError("GitHub artifact download URL must be HTTPS")
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self._token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "smart-gatekeeper-evidence-verifier",
+            },
+        )
+        class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+                if (
+                    redirected is not None
+                    and urllib.parse.urlparse(req.full_url).netloc
+                    != urllib.parse.urlparse(newurl).netloc
+                ):
+                    redirected.remove_header("Authorization")
+                return redirected
+
+        try:
+            opener = urllib.request.build_opener(SafeRedirectHandler())
+            with opener.open(request, timeout=30) as response:
+                data = response.read(100 * 1024 * 1024 + 1)
+        except (OSError, urllib.error.URLError) as exc:
+            raise GateError("GitHub artifact download failed") from exc
+        if len(data) > 100 * 1024 * 1024:
+            raise GateError("GitHub artifact archive exceeds verification limit")
+        return data
+
+    @staticmethod
+    def _attestation_statement(attestation: dict) -> dict:
+        try:
+            encoded = attestation["bundle"]["dsseEnvelope"]["payload"]
+            statement = json.loads(base64.b64decode(encoded, validate=True).decode("utf-8"))
+        except (KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+            raise GateError("GitHub attestation bundle is malformed") from exc
+        if not isinstance(statement, dict):
+            raise GateError("GitHub attestation statement is malformed")
+        return statement
+
+    def verify(
+        self,
+        *,
+        repository: str,
+        commit: str,
+        candidate_author: str,
+        reviewer: str,
+        digest: str,
+        provenance: dict,
+    ) -> None:
+        quoted_repository = "/".join(
+            urllib.parse.quote(part, safe="") for part in repository.split("/")
+        )
+        run_id = provenance["run_id"]
+        commit_record = self._get(
+            f"/repos/{quoted_repository}/commits/{urllib.parse.quote(commit, safe='')}"
+        )
+        if (
+            commit_record.get("sha") != commit
+            or commit_record.get("author", {}).get("login", "").casefold()
+            != candidate_author.casefold()
+        ):
+            raise GateError("GitHub commit does not bind the candidate author")
+        run = self._get(f"/repos/{quoted_repository}/actions/runs/{run_id}")
+        if (
+            run.get("id") != run_id
+            or run.get("head_sha") != commit
+            or run.get("status") != "completed"
+            or run.get("conclusion") != "success"
+            or run.get("run_attempt") != provenance["run_attempt"]
+            or run.get("repository", {}).get("full_name") != repository
+            or run.get("event") != "push"
+            or run.get("head_branch") != "main"
+            or run.get("path") != self.TRUSTED_WORKFLOW_PATH
+        ):
+            raise GateError("GitHub run is not the trusted exact-main workflow execution")
+
+        artifacts = self._get(
+            f"/repos/{quoted_repository}/actions/runs/{run_id}/artifacts?per_page=100"
+        ).get("artifacts")
+        matching = [
+            artifact for artifact in artifacts or []
+            if artifact.get("name") == provenance["artifact_name"]
+            and artifact.get("digest")
+            == f"sha256:{provenance['artifact_archive_sha256']}"
+            and artifact.get("expired") is False
+        ]
+        if len(matching) != 1:
+            raise GateError("GitHub artifact name/digest is absent, ambiguous, or expired")
+        archive = self._download(matching[0].get("archive_download_url", ""))
+        if hashlib.sha256(archive).hexdigest() != provenance["artifact_archive_sha256"]:
+            raise GateError("downloaded GitHub artifact archive digest mismatch")
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+                subject_path = provenance["subject_path"]
+                entries = [item for item in bundle.infolist() if item.filename == subject_path]
+                if (
+                    len(entries) != 1
+                    or entries[0].is_dir()
+                    or entries[0].file_size > 50 * 1024 * 1024
+                    or ".." in Path(subject_path).parts
+                    or subject_path.startswith(("/", "\\"))
+                    or "\\" in subject_path
+                ):
+                    raise GateError("GitHub artifact subject path is unsafe or ambiguous")
+                subject_bytes = bundle.read(entries[0])
+        except (OSError, KeyError, zipfile.BadZipFile, RuntimeError) as exc:
+            raise GateError("GitHub artifact archive is invalid") from exc
+        if hashlib.sha256(subject_bytes).hexdigest() != digest:
+            raise GateError("GitHub artifact subject digest mismatch")
+
+        pull_number = provenance["pull_request"]
+        review = self._get(
+            f"/repos/{quoted_repository}/pulls/{pull_number}/reviews/{provenance['review_id']}"
+        )
+        if not isinstance(review, dict) or not (
+            review.get("id") == provenance["review_id"]
+            and review.get("user", {}).get("login", "").casefold() == reviewer.casefold()
+            and review.get("state") == "APPROVED"
+            and review.get("commit_id") == commit
+        ):
+            raise GateError("GitHub review is not an independent exact-commit approval")
+
+        subject = urllib.parse.quote(f"sha256:{digest}", safe="")
+        attestations = self._get(
+            f"/repos/{quoted_repository}/attestations/{subject}?per_page=100"
+        ).get("attestations")
+        verified = False
+        for attestation in attestations or []:
+            statement = self._attestation_statement(attestation)
+            subjects = statement.get("subject")
+            predicate = statement.get("predicate", {})
+            build = predicate.get("buildDefinition", {})
+            workflow = build.get("externalParameters", {}).get("workflow", {})
+            dependencies = build.get("resolvedDependencies", [])
+            builder = predicate.get("runDetails", {}).get("builder", {})
+            metadata = predicate.get("runDetails", {}).get("metadata", {})
+            if (
+                statement.get("_type") == "https://in-toto.io/Statement/v1"
+                and statement.get("predicateType")
+                == "https://slsa.dev/provenance/v1"
+                and any(
+                    item.get("name") == provenance["subject_path"]
+                    and item.get("digest", {}).get("sha256") == digest
+                    for item in subjects or []
+                )
+                and workflow.get("repository") == f"https://github.com/{repository}"
+                and workflow.get("ref") == "refs/heads/main"
+                and workflow.get("path") == f"/{self.TRUSTED_WORKFLOW_PATH}"
+                and any(
+                    dependency.get("digest", {}).get("gitCommit") == commit
+                    for dependency in dependencies
+                )
+                and builder.get("id")
+                == "https://github.com/actions/runner/github-hosted"
+                and metadata.get("invocationId")
+                == (
+                    f"https://github.com/{repository}/actions/runs/{run_id}/attempts/"
+                    f"{provenance['run_attempt']}"
+                )
+            ):
+                verified = True
+                break
+        if not verified:
+            raise GateError("GitHub attestation does not bind artifact, repository, and run")
 
 
 def _sha256(path: Path) -> str:
@@ -102,6 +312,8 @@ def contract() -> dict:
     alert_rules = (ROOT / "ops/prometheus_rules.yml").read_text(encoding="utf-8")
     setup_script = (ROOT / ".orca/scripts/setup_worktree.ps1").read_text(encoding="utf-8")
     db_dockerfile = (ROOT / "backend/db/Dockerfile").read_text(encoding="utf-8")
+    production_schema = (ROOT / "backend/db/production_schema.sql").read_text(encoding="utf-8")
+    migration_runner = (ROOT / "backend/db/run_migrations.sh").read_text(encoding="utf-8")
     trusted_inputs = json.loads(
         (ROOT / "ops/backend_trusted_bundle_paths.json").read_text(encoding="utf-8")
     )
@@ -130,7 +342,8 @@ def contract() -> dict:
         "read_only: true", "no-new-privileges:true", "cap_drop:",
         "DB_PASSWORD_FILE:", "OPS_HMAC_KEY_FILE:", "internal: true",
         "ACL_MANAGEMENT_ENABLED: \"true\"", "ACL_LEGACY_DEVICE_LOOKUP_ENABLED: \"false\"",
-        "127.0.0.1:8000/ready",
+        "127.0.0.1:8000/ready", "service_completed_successfully",
+        "EXPECTED_DB_SCHEMA_VERSION: \"007\"", "migration_backups:",
     ):
         if required not in compose:
             errors.append(f"production Compose missing {required}")
@@ -144,35 +357,50 @@ def contract() -> dict:
     for required_path in (
         "'ops/**'", "'scripts/ops_commercial_gate.py'",
         "'.orca/scripts/setup_worktree.ps1'",
+        "'protocol/test_vectors/v1.json'",
     ):
         if workflow.count(required_path) != 2:
             errors.append(f"backend workflow trigger coverage missing {required_path}")
     if not re.search(r"^FROM mariadb@sha256:[a-f0-9]{64}$", db_dockerfile, re.MULTILINE):
         errors.append("migration database image base is not digest-pinned")
-    if "COPY migrations/007_ops_privacy_up.sql" not in db_dockerfile:
+    if "COPY migrations/007_ops_privacy_up.sql /opt/smart-gatekeeper/migrations/007_up.sql" not in db_dockerfile:
         errors.append("migration database artifact omits the current privacy migration")
+    if "production_schema.sql" not in db_dockerfile or re.search(
+        r"(?m)^COPY\s+schema\.sql\s+/docker-entrypoint", db_dockerfile
+    ):
+        errors.append("migration database artifact does not isolate the seed-free schema")
+    if re.search(r"(?im)^\s*(INSERT|REPLACE)\s+INTO\s+tenants", production_schema):
+        errors.append("production schema contains tenant seed data")
+    for forbidden_seed in ("secret_key_101", "010-1234", "AA:BB:CC:DD:EE:01"):
+        if forbidden_seed in production_schema or forbidden_seed in db_dockerfile:
+            errors.append("production database artifact contains demo credentials or PII")
+    for required in (
+        "mariadb-dump", "pre-migration-", "schema_migrations", "canonical_sha",
+        "up:007|down:001", ".schema-migration-lock",
+    ):
+        if required not in migration_runner:
+            errors.append(f"migration runner missing {required}")
     expected_trusted = {
         ".github/workflows/backend_security.yml",
         ".orca/scripts/setup_worktree.ps1",
         "scripts/ops_commercial_gate.py",
-        "ops/backend_trusted_bundle_paths.json",
-        "ops/evidence_sources.json",
-        "ops/fixtures/load_nominal.jsonl",
-        "ops/prometheus_rules.yml",
-        "ops/slo_policy.json",
-        "backend/app/requirements.lock",
-        "backend/compose.production.yml",
-        "backend/db/Dockerfile",
-        "backend/sbom.cdx.json",
-        "backend/supply_chain_policy.json",
-        "backend/tests/test_migrations.py",
-        "backend/tests/test_ops_api.py",
-        "backend/tests/test_ops_commercial_gate.py",
-        "backend/tests/test_ops_runtime.py",
+        "protocol/test_vectors/v1.json",
+        *(
+            path.relative_to(ROOT).as_posix()
+            for root in (ROOT / "backend", ROOT / "ops")
+            for path in root.rglob("*")
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix not in {".pyc", ".pyo"}
+        ),
     }
-    if trusted_inputs.get("schema") != "sgk-backend-trusted-inputs-v1" or set(
-        trusted_inputs.get("paths", [])
-    ) != expected_trusted:
+    declared_paths = trusted_inputs.get("paths", [])
+    if (
+        trusted_inputs.get("schema") != "sgk-backend-trusted-inputs-v1"
+        or not isinstance(declared_paths, list)
+        or len(declared_paths) != len(set(declared_paths))
+        or set(declared_paths) != expected_trusted
+    ):
         errors.append("trusted backend executable/input bundle is incomplete")
     locked_dependencies(ROOT / "backend/app/requirements.lock")
     if "backend\\app\\requirements.lock" not in setup_script or "--require-hashes" not in setup_script:
@@ -187,7 +415,7 @@ def contract() -> dict:
     if errors:
         raise GateError("; ".join(errors))
     return {
-        "status": "PASS", "checks": 23, "scope": "repository-software-only",
+        "status": "PASS", "checks": 29, "scope": "repository-software-only",
         "trusted_base_rotation": "required-before-merge",
     }
 
@@ -230,9 +458,11 @@ def generate_sbom(output: Path) -> dict:
 
 
 def migration_set_sha256() -> str:
-    paths = [ROOT / "backend/db/schema.sql", *sorted(
-        (ROOT / "backend/db/migrations").glob("*_up.sql")
-    )]
+    paths = [
+        ROOT / "backend/db/production_schema.sql",
+        ROOT / "backend/db/run_migrations.sh",
+        *sorted((ROOT / "backend/db/migrations").glob("*.sql")),
+    ]
     digest = hashlib.sha256()
     for path in paths:
         digest.update(path.relative_to(ROOT).as_posix().encode("utf-8") + b"\0")
@@ -407,12 +637,8 @@ def verify_restored_database(
     connection,
     manifest: dict,
     manifest_key: bytes,
-    measured_rto_seconds: float,
-    max_rto_seconds: int,
 ) -> dict:
-    """Read-only integrity and measured-RTO check against an isolated restore."""
-    if measured_rto_seconds < 0 or measured_rto_seconds > max_rto_seconds:
-        raise GateError("isolated restore violates the configured RTO")
+    """Read-only integrity check against an isolated restored database."""
     _verify_manifest_auth(manifest, manifest_key)
     if manifest.get("schema") != "sgk-backup-manifest-v2":
         raise GateError("isolated restore requires a verified v2 backup manifest")
@@ -451,12 +677,94 @@ def verify_restored_database(
         raise GateError(f"isolated restore source/target inventory mismatch: {mismatches}")
     return {
         "status": "PASS",
-        "rto_seconds": measured_rto_seconds,
         "integrity_counts": {
             table: actual[table]["row_count"] for table in sorted(actual)
         },
         "migration_set_sha256": manifest["migration_set_sha256"],
     }
+
+
+def restore_and_verify_database(
+    restore_action,
+    connection_factory,
+    manifest: dict,
+    manifest_key: bytes,
+    max_rto_seconds: int,
+    *,
+    monotonic=time.monotonic,
+) -> dict:
+    """Measure the actual import through verified integrity inside one harness."""
+    if max_rto_seconds <= 0:
+        raise GateError("maximum RTO must be positive")
+    before = connection_factory()
+    try:
+        with before.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) AS count FROM information_schema.tables "
+                "WHERE table_schema=DATABASE()"
+            )
+            if int(cursor.fetchone()["count"]) != 0:
+                raise GateError("isolated restore target must be an empty database")
+    finally:
+        before.close()
+
+    started = monotonic()
+    restore_action(max_rto_seconds)
+    restored = connection_factory()
+    try:
+        result = verify_restored_database(restored, manifest, manifest_key)
+    finally:
+        restored.close()
+    measured = monotonic() - started
+    if measured < 0 or measured > max_rto_seconds:
+        raise GateError("isolated import plus integrity verification violates RTO")
+    return {**result, "rto_seconds": measured}
+
+
+def restore_with_mariadb_client(
+    dump: Path,
+    *,
+    host: str,
+    port: int,
+    database: str,
+    user: str,
+    password_file: Path,
+    timeout_seconds: int,
+) -> None:
+    """Run the real import with a secret option file and a hard timeout."""
+    password = password_file.read_text(encoding="utf-8").rstrip("\r\n")
+    if not password or any(char in password for char in ("\r", "\n", "\0")):
+        raise GateError("restore password file is empty or contains control characters")
+    escaped = password.replace("\\", "\\\\").replace('"', '\\"')
+    option_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="\n", delete=False,
+            prefix="sgk-mariadb-", suffix=".cnf",
+        ) as option_file:
+            option_file.write(f'[client]\npassword="{escaped}"\n')
+            option_path = Path(option_file.name)
+        os.chmod(option_path, 0o600)
+        command = [
+            "mariadb", f"--defaults-extra-file={option_path}",
+            f"--host={host}", f"--port={port}", f"--user={user}",
+            "--default-character-set=utf8mb4", database,
+        ]
+        with dump.open("rb") as source:
+            completed = subprocess.run(
+                command, stdin=source, stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE, timeout=timeout_seconds, check=False,
+            )
+        if completed.returncode != 0:
+            raise GateError("isolated MariaDB restore client failed")
+    except subprocess.TimeoutExpired as exc:
+        raise GateError("isolated MariaDB restore client exceeded RTO deadline") from exc
+    finally:
+        if option_path is not None:
+            try:
+                option_path.unlink()
+            except OSError:
+                pass
 
 
 def evaluate_slo(samples_path: Path, policy_path: Path) -> dict:
@@ -493,14 +801,13 @@ def evidence_register(
     commit: str,
     *,
     now: datetime | None = None,
-    environment: dict[str, str] | None = None,
+    verifier: GitHubEvidenceVerifier | None = None,
 ) -> dict:
     if commit != checked_out_commit():
         raise GateError("evidence commit must equal the checked-out Git commit")
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         raise GateError("evidence validation time must be timezone-aware")
-    env = os.environ if environment is None else environment
     source_doc = json.loads(source.read_text(encoding="utf-8"))
     if set(source_doc) != {"schema", "repository", "candidate_author", "evidence"}:
         raise GateError("evidence source has unknown or missing top-level fields")
@@ -558,8 +865,9 @@ def evidence_register(
             raise GateError(f"passed evidence is expired or unzoned: {evidence_id}")
         provenance = item["provenance"]
         provenance_keys = {
-            "provider", "repository", "commit", "run_id", "artifact_name",
-            "artifact_sha256",
+            "provider", "repository", "commit", "run_id", "run_attempt",
+            "artifact_name", "artifact_archive_sha256", "subject_path",
+            "artifact_sha256", "pull_request", "review_id",
         }
         if not isinstance(provenance, dict) or set(provenance) != provenance_keys:
             raise GateError(f"passed evidence provenance is incomplete: {evidence_id}")
@@ -570,18 +878,26 @@ def evidence_register(
             or provenance["artifact_sha256"] != digest
             or not isinstance(provenance["run_id"], int)
             or provenance["run_id"] <= 0
+            or not isinstance(provenance["run_attempt"], int)
+            or provenance["run_attempt"] <= 0
             or not isinstance(provenance["artifact_name"], str)
             or not provenance["artifact_name"]
+            or not isinstance(provenance["subject_path"], str)
+            or not provenance["subject_path"]
+            or not re.fullmatch(r"[a-f0-9]{64}", provenance["artifact_archive_sha256"])
+            or not isinstance(provenance["pull_request"], int)
+            or provenance["pull_request"] <= 0
+            or not isinstance(provenance["review_id"], int)
+            or provenance["review_id"] <= 0
         ):
             raise GateError(f"passed evidence provenance does not bind the artifact: {evidence_id}")
-        if (
-            env.get("GITHUB_ACTIONS") != "true"
-            or env.get("GITHUB_SHA") != commit
-            or env.get("GITHUB_REPOSITORY") != source_doc["repository"]
-            or env.get("GITHUB_RUN_ID") != str(provenance["run_id"])
-            or env.get("EVIDENCE_REVIEWER", "").casefold() != reviewer.casefold()
-        ):
-            raise GateError(f"passed evidence lacks authoritative hosted context: {evidence_id}")
+        if verifier is None:
+            raise GateError(f"passed evidence requires live GitHub API verification: {evidence_id}")
+        verifier.verify(
+            repository=source_doc["repository"], commit=commit,
+            candidate_author=candidate_author, reviewer=reviewer,
+            digest=digest, provenance=provenance,
+        )
     register = {
         "schema": "sgk-evidence-register-v2",
         "source_commit": commit,
@@ -623,9 +939,9 @@ def main(argv: list[str] | None = None) -> int:
     restore.add_argument("--database", required=True)
     restore.add_argument("--user", required=True)
     restore.add_argument("--password-file", type=Path, required=True)
+    restore.add_argument("--dump", type=Path, required=True)
     restore.add_argument("--manifest", type=Path, required=True)
     restore.add_argument("--manifest-key-file", type=Path, required=True)
-    restore.add_argument("--measured-rto-seconds", type=float, required=True)
     restore.add_argument("--max-rto-seconds", type=int, required=True)
     inventory = sub.add_parser("inventory")
     inventory.add_argument("--host", required=True)
@@ -664,33 +980,54 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command in {"restore-check", "inventory"}:
             import pymysql
             password = args.password_file.read_text(encoding="utf-8").strip()
-            connection = pymysql.connect(
-                host=args.host, port=args.port, user=args.user, password=password,
-                database=args.database, cursorclass=pymysql.cursors.DictCursor,
-                connect_timeout=5, read_timeout=5, write_timeout=5,
-            )
-            try:
-                if args.command == "inventory":
+            def connection_factory():
+                return pymysql.connect(
+                    host=args.host, port=args.port, user=args.user, password=password,
+                    database=args.database, cursorclass=pymysql.cursors.DictCursor,
+                    connect_timeout=5, read_timeout=5, write_timeout=5,
+                )
+
+            if args.command == "inventory":
+                connection = connection_factory()
+                try:
                     result = capture_database_inventory(connection)
                     args.output.parent.mkdir(parents=True, exist_ok=True)
                     args.output.write_text(
                         json.dumps(result, indent=2, sort_keys=True) + "\n",
                         encoding="utf-8",
                     )
-                else:
-                    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-                    result = verify_restored_database(
-                        connection, manifest,
-                        args.manifest_key_file.read_bytes().strip(),
-                        args.measured_rto_seconds,
-                        args.max_rto_seconds,
-                    )
-            finally:
-                connection.close()
+                finally:
+                    connection.close()
+            else:
+                manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+                result = restore_and_verify_database(
+                    lambda timeout: restore_with_mariadb_client(
+                        args.dump, host=args.host, port=args.port,
+                        database=args.database, user=args.user,
+                        password_file=args.password_file, timeout_seconds=timeout,
+                    ),
+                    connection_factory,
+                    manifest,
+                    args.manifest_key_file.read_bytes().strip(),
+                    args.max_rto_seconds,
+                )
         elif args.command == "slo":
             result = evaluate_slo(args.samples, args.policy)
         else:
-            result = evidence_register(args.source, args.output, args.commit)
+            source_doc = json.loads(args.source.read_text(encoding="utf-8"))
+            has_passed = any(
+                item.get("state") == "passed"
+                for item in source_doc.get("evidence", [])
+                if isinstance(item, dict)
+            )
+            verifier = (
+                GitHubEvidenceVerifier(
+                    os.getenv("GITHUB_TOKEN", ""),
+                ) if has_passed else None
+            )
+            result = evidence_register(
+                args.source, args.output, args.commit, verifier=verifier,
+            )
     except (GateError, OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
         print(f"OPS-GATE FAIL: {exc}", file=sys.stderr)
         return 1

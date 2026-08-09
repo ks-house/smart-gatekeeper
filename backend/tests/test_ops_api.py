@@ -92,14 +92,17 @@ class OperationsApiTest(unittest.TestCase):
         self.assertEqual(503, failed.status_code)
         for required in (
             "control_api_auth", "acl_management",
-            "legacy_lookup_disabled",
+            "legacy_prearm_retired",
         ):
             self.assertFalse(failed.json()["checks"][required], required)
         with patch.object(main, "admin_security", AdminSecurity()):
             self.assertFalse(self.client.get("/ready").json()["checks"]["admin_auth"])
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
-        cursor.fetchone.return_value = {"ready": 1}
+        cursor.fetchone.side_effect = [
+            {"ready": 1},
+            {"script_sha256": "f" * 64},
+        ]
         publisher = MagicMock()
         publisher.probe.return_value = True
         with patch.object(main, "get_db", return_value=connection), patch.object(
@@ -112,10 +115,26 @@ class OperationsApiTest(unittest.TestCase):
             main, "ACL_MANAGEMENT_ENABLED", True
         ), patch.object(main, "_acl_runtime_ready", True), patch.object(
             main, "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", False
+        ), patch.object(main, "EXPECTED_DB_SCHEMA_VERSION", "007"), patch.object(
+            main, "EXPECTED_DB_SCHEMA_SHA256", "f" * 64
         ):
             ready = self.client.get("/ready")
         self.assertEqual(200, ready.status_code, ready.text)
         self.assertTrue(all(ready.json()["checks"].values()))
+
+    def test_readiness_rejects_missing_or_wrong_schema_ledger(self):
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [
+            {"ready": 1}, {"script_sha256": "0" * 64},
+        ]
+        with patch.object(main, "get_db", return_value=connection), patch.object(
+            main, "EXPECTED_DB_SCHEMA_VERSION", "007"
+        ), patch.object(main, "EXPECTED_DB_SCHEMA_SHA256", "f" * 64):
+            ready, checks = main._readiness_snapshot()
+        self.assertFalse(ready)
+        self.assertTrue(checks["database"])
+        self.assertFalse(checks["database_schema"])
 
     def test_support_export_is_mtls_scoped_consent_bound_and_redacted(self):
         self.assertEqual(
@@ -259,7 +278,9 @@ class OperationsApiTest(unittest.TestCase):
         request = main.PrearmRequestSchema(
             beacon_uuid="beacon", device_id="AA:BB:CC:DD:EE:FF"
         )
-        with patch.object(main, "get_db", return_value=connection), patch.object(
+        with patch.object(main, "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", True), patch.object(
+            main, "get_db", return_value=connection
+        ), patch.object(
             main, "publish_arm_to_mqtt", return_value=False
         ), self.assertLogs(main.log, level="ERROR") as captured:
             response = main.door_prearm(request, _auth=None)
@@ -267,6 +288,20 @@ class OperationsApiTest(unittest.TestCase):
         rendered = "\n".join(captured.output)
         self.assertNotIn("Private Resident", rendered)
         self.assertNotIn("Secret-101", rendered)
+
+    def test_production_legacy_prearm_is_retired_before_raw_device_lookup(self):
+        request = main.PrearmRequestSchema(
+            beacon_uuid="beacon", device_id="AA:BB:CC:DD:EE:FF"
+        )
+        with patch.object(
+            main, "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", False
+        ), patch.object(main, "get_db") as database, patch.object(
+            main, "publish_arm_to_mqtt"
+        ) as publish:
+            response = main.door_prearm(request, _auth=None)
+        self.assertEqual(410, response.status_code)
+        database.assert_not_called()
+        publish.assert_not_called()
 
 
 if __name__ == "__main__":

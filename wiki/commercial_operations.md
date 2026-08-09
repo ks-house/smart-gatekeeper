@@ -15,11 +15,11 @@
 | retention deletion | mTLS tenant admin, CSRF, fresh mTLS, idempotency key bound to canonical tenant/actor/policy/window request, exact `sgk-retention-v1`, 30–3650 days, tenant-only deletion and immutable completed evidence | mismatch returns `409`; concurrent MariaDB callers produce one completed row; the actual retention period requires legal/privacy-owner approval |
 | resilience | one persistent MQTTS publisher, end-to-end DNS/TCP/TLS plus PUBACK deadline, maximum 16 in-flight effects, non-blocking backpressure, three-failure circuit breaker, one half-open probe and cancellation/socket-close on deadline | blocked-connect mutation is bounded and cannot fan out connection threads; real broker/DNS/certificate/storage recovery and Target receipt remain pending |
 | API protection | bounded opaque-peer rate limits for authentication/control/privacy; unsafe admin routes retain session, role, tenant, CSRF and re-authentication checks | host API bypass tests; reverse-proxy and live network policy pending |
-| health and metrics | process-only `/live`; `/ready` requires DB, bounded broker probe, runtime secrets, 32-byte control API key, enabled admin mTLS/proxy, successfully initialized ACL management, disabled legacy lookup and exact build SHA | production Compose admits on `/ready`, not `/live`; production scrape, alert delivery and on-call acknowledgement pending |
-| production Compose | repository and 64-hex digest are structurally separate required variables for both API and DB; migrations are baked into a pinned DB artifact; external secrets, internal data network, no host port/live SQL bind, read-only non-root API and resource limits | `API_IMAGE=nginx:latest` cannot satisfy Compose; immutable API/DB images still require independent build provenance before deployment |
+| health and metrics | process-only `/live`; `/ready` requires DB plus exact migration ledger, bounded broker probe, runtime secrets, 32-byte control API key, enabled admin mTLS/proxy, initialized ACL management, retired legacy pre-arm authority and exact build SHA | production Compose admits on `/ready`, not `/live`; production scrape, alert delivery and on-call acknowledgement pending |
+| production Compose | repository and 64-hex digest are structurally separate required variables for both API and DB; seed-free baseline and every up/down migration are baked into the pinned DB artifact; a backup-first one-shot migration must finish before API admission; external secrets, internal data network, no host port/live SQL bind, read-only non-root API and resource limits | `API_IMAGE=nginx:latest` cannot satisfy Compose; immutable API/DB images still require independent build provenance before deployment |
 | supply chain | hash lock, digest-pinned image bases/service, Python `3.12.13`, exact action commits, full workflow path triggers, deterministic SBOM and vulnerability/license Gates | `ops/backend_trusted_bundle_paths.json` defines the whole executable/input set; a separate trusted-base policy rotation must approve the exact candidate without reading candidate policy before merge |
 | backup/recovery | HMAC-authenticated manifest binds dump bytes, release migration identity and per-table schema hash, primary key, PK-ordered row count/content hash; isolated restore compares the entire source/target inventory | actual disposable MariaDB logical dump/separate-schema restore and monotonic RTO pass locally; independent operator restore from production-like encrypted storage remains pending |
-| SLO/evidence | strict fixed-ID evidence v2 binds checked-out commit, exact digest, future zoned expiry, independent reviewer and matching GitHub run/artifact provenance | unknown/duplicate/self-reviewed/expired/unhosted mutations fail; nominal fixture is not a 24-hour load/soak result |
+| SLO/evidence | strict fixed-ID evidence v2 binds checked-out commit, exact digest, future zoned expiry, authoritative commit author, independent exact-commit approval, exact main-push trusted workflow, GitHub artifact archive/subject digests and SLSA attestation | all claims are verified through fixed `api.github.com` endpoints; unknown/duplicate/self-reviewed/expired/unhosted or caller-environment mutations fail; nominal fixture is not a 24-hour load/soak result |
 
 The mobile and Target OTA paths remain independent. These changes do not alter
 the signed mobile manifest, Target dual-slot state machine, periodic HTTPS,
@@ -33,8 +33,14 @@ authenticated local recovery, N/N-1 protocol window, or rollback semantics.
 |---|---|---|
 | `GET /live` | reverse-proxy network boundary | Python process is responsive; never means DB, MQTT, Target or production healthy |
 | `GET /health` | same | compatibility alias; response explicitly says `scope=process_liveness_only` |
-| `GET /ready` | deployment network boundary | `200` only when DB, bounded broker session, runtime/control secrets, admin mTLS/proxy, ACL runtime, legacy-lookup-off and exact build identity all pass; otherwise `503` |
+| `GET /ready` | deployment network boundary | `200` only when DB, exact `007` script ledger, bounded broker session, runtime/control secrets, admin mTLS/proxy, ACL runtime, legacy pre-arm retirement and exact build identity all pass; otherwise `503` |
 | `GET /api/v1/admin/metrics` | current mTLS admin/auditor session and tenant `*` | low-cardinality request, MQTT and breaker metrics; no tenant/device/MAC labels |
+
+Production sets `ACL_LEGACY_DEVICE_LOOKUP_ENABLED=false`. Under that same
+authority boundary, legacy `POST /api/v1/door/prearm` returns fixed `410` before
+reading a raw `device_id`, database row or MQTT state. Control admission must use
+the signed per-device credential plane. Mobile update and Target OTA/manual
+recovery remain separate paths and are not weakened by this retirement.
 
 The reverse proxy must remove inbound certificate headers, establish mTLS,
 then set verified headers only for an allow-listed proxy IP. The API service has
@@ -143,14 +149,16 @@ python scripts/ops_commercial_gate.py restore-check `
   --host 127.0.0.1 --port <isolated-port> `
   --database smart_gatekeeper --user <restore-auditor> `
   --password-file <temporary-secret-file> `
+  --dump <verified-staging-dump.sql> `
   --manifest <backup-manifest.json> `
   --manifest-key-file <manifest-auth-key-file> `
-  --measured-rto-seconds <monotonic-harness-result> `
   --max-rto-seconds 1800
 ```
 
-6. The restore harness must start its monotonic clock before importing the dump;
-   a manually typed success timestamp is not evidence. Require every fixed table
+6. The restore command rejects a non-empty target, starts its own monotonic clock
+   before invoking the real MariaDB client, and stops only after authenticated
+   inventory verification; it exposes no caller-supplied measured-RTO field.
+   Require every fixed table
    to match the authenticated source schema hash, primary key, row count and
    PK-ordered content hash, in addition to tenant/access/ACL orphan invariants.
    Destroy the isolated restore and temporary
@@ -180,13 +188,24 @@ For production Compose, set `API_IMAGE_REPOSITORY`, `API_IMAGE_DIGEST`,
 input is intentionally ignored, so `API_IMAGE=nginx:latest` fails interpolation.
 Only values already accepted by `production-compose` may be split into those
 four variables. The database image is built from `backend/db/Dockerfile`; the
-production file contains no repository SQL bind mount.
+production file contains no repository SQL bind mount or demo tenant/phone/MAC/
+credential seed. On a fresh volume only `production_schema.sql` creates the
+empty baseline. On every deployment the `migrate` service runs
+`sgk-migrate up 007`, takes a logical backup and SHA-256 sidecar before changing
+the ledger/schema, admits only exact 40-hex source identity, verifies canonical
+migration digests on repeat runs, and exposes `down 001` as the explicit
+backup-first rollback. The API starts only after this service succeeds and then
+requires the exact `007` ledger digest in `/ready`. Backup files belong in the
+external `migration_backups` volume and must be copied to approved encrypted
+storage before operator rollback or volume replacement.
 
 The hosted backend workflow installs `requirements.lock` with
 `--require-hashes`, runs the full security suite, policy/SBOM/SLO Gates,
-high/critical vulnerability audit and MariaDB migration test. On exact main it
-attests the generated SBOM with GitHub's identity. An SBOM upload without a
-successful attestation does not satisfy provenance.
+high/critical vulnerability audit, both actual MariaDB lanes, and both image
+builds. On exact main it attests the generated SBOM with GitHub's identity, then
+generates the operations register only after the security and attestation jobs
+succeed. An SBOM upload without a successful attestation does not satisfy
+provenance.
 
 The backend workflow is not allowed to authorize itself. Before this candidate
 can merge, an independent policy-only change based on trusted `main` must add
@@ -221,12 +240,17 @@ python scripts/ops_commercial_gate.py evidence `
 ```
 
 The generator requires `--commit` to equal the checked-out HEAD. A `passed`
-record must use one fixed unique ID/scope, exact 64-hex digest, a future
-timezone-aware ISO expiry, reviewer different from `candidate_author`, and a
-GitHub Actions provenance object whose repository/commit/run/artifact digest
-matches `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_RUN_ID` and the protected
-`EVIDENCE_REVIEWER` context. Unknown, duplicate, self-reviewed, expired,
-unhosted or malformed records fail. Regeneration never renews evidence.
+record must use one fixed unique ID/scope, exact 64-hex subject and archive
+digests, a future timezone-aware ISO expiry, and a reviewer different from the
+candidate author. The verifier ignores caller provenance environment strings
+and queries only fixed `https://api.github.com`: it binds the authoritative
+commit author, completed successful `main` push of the trusted backend workflow,
+exact run attempt, non-expired uniquely named artifact and downloaded ZIP bytes,
+safe subject path/digest, exact-commit `APPROVED` review, and GitHub-hosted SLSA
+attestation repository/ref/workflow/commit/invocation. Unknown, duplicate,
+self-reviewed, expired, unhosted, dismissed-review, cross-workflow, mismatched or
+malformed records fail. Regeneration never renews evidence; a same-account
+`COMMENTED` review is intentionally insufficient.
 
 ## 7. Remaining fail-closed Gates
 

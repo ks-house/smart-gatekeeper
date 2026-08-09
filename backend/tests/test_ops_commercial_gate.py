@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 import copy
+import hashlib
+import hmac
+import io
+import inspect
 import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+import zipfile
 
 from scripts import ops_commercial_gate as gate
 
@@ -38,6 +44,30 @@ class OpsCommercialGateTest(unittest.TestCase):
 
     def test_repository_contract_and_license_complete_sbom(self):
         self.assertEqual("PASS", gate.contract()["status"])
+        declared = set(json.loads(
+            (gate.ROOT / "ops/backend_trusted_bundle_paths.json").read_text(encoding="utf-8")
+        )["paths"])
+        actual_inputs = {
+            path.relative_to(gate.ROOT).as_posix()
+            for root in (gate.ROOT / "backend", gate.ROOT / "ops")
+            for path in root.rglob("*")
+            if path.is_file() and "__pycache__" not in path.parts
+            and path.suffix not in {".pyc", ".pyo"}
+        } | {
+            ".github/workflows/backend_security.yml",
+            ".orca/scripts/setup_worktree.ps1",
+            "scripts/ops_commercial_gate.py",
+            "protocol/test_vectors/v1.json",
+        }
+        self.assertEqual(actual_inputs, declared)
+        for review_omission in (
+            "backend/app/Dockerfile", "backend/app/main.py",
+            "backend/docker-compose.yml", "backend/db/schema.sql",
+            "backend/db/migrations/007_ops_privacy_up.sql",
+            "backend/tests/test_target_boot_registry.py",
+            "protocol/test_vectors/v1.json",
+        ):
+            self.assertIn(review_omission, declared)
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "sbom.json"
             sbom = gate.generate_sbom(output)
@@ -146,21 +176,47 @@ class OpsCommercialGateTest(unittest.TestCase):
             "migration_set_sha256": gate.migration_set_sha256(),
         }
         unsigned = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
-        import hashlib, hmac
         manifest["auth_hmac_sha256"] = hmac.new(b"k" * 32, unsigned, hashlib.sha256).hexdigest()
         with patch.object(
             gate, "capture_database_inventory", return_value=self.inventory()
         ):
-            result = gate.verify_restored_database(connection, manifest, b"k" * 32, 240, 300)
+            empty = MagicMock()
+            empty.cursor.return_value.__enter__.return_value.fetchone.return_value = {"count": 0}
+            restore = MagicMock()
+            result = gate.restore_and_verify_database(
+                restore, MagicMock(side_effect=[empty, connection]),
+                manifest, b"k" * 32, 300,
+                monotonic=MagicMock(side_effect=[100.0, 340.0]),
+            )
         self.assertEqual("PASS", result["status"])
         self.assertEqual(240, result["rto_seconds"])
-        with self.assertRaises(gate.GateError):
-            gate.verify_restored_database(connection, manifest, b"k" * 32, 360, 300)
+        restore.assert_called_once_with(300)
+        with patch.object(
+            gate, "capture_database_inventory", return_value=self.inventory()
+        ), self.assertRaises(gate.GateError):
+            empty = MagicMock()
+            empty.cursor.return_value.__enter__.return_value.fetchone.return_value = {"count": 0}
+            cursor.fetchone.side_effect = [{"count": 0}, {"count": 0}, {"count": 0}]
+            gate.restore_and_verify_database(
+                MagicMock(), MagicMock(side_effect=[empty, connection]),
+                manifest, b"k" * 32, 300,
+                monotonic=MagicMock(side_effect=[100.0, 460.0]),
+            )
         with patch.object(
             gate, "capture_database_inventory", return_value=self.inventory(row_count=0)
         ), self.assertRaises(gate.GateError):
             cursor.fetchone.side_effect = [{"count": 0}, {"count": 0}, {"count": 0}]
-            gate.verify_restored_database(connection, manifest, b"k" * 32, 10, 300)
+            gate.verify_restored_database(connection, manifest, b"k" * 32)
+
+    def test_restore_target_must_be_empty_and_cli_has_no_caller_rto_argument(self):
+        occupied = MagicMock()
+        occupied.cursor.return_value.__enter__.return_value.fetchone.return_value = {"count": 1}
+        with self.assertRaises(gate.GateError):
+            gate.restore_and_verify_database(
+                MagicMock(), MagicMock(return_value=occupied), {}, b"k" * 32, 300
+            )
+        source = (gate.ROOT / "scripts/ops_commercial_gate.py").read_text(encoding="utf-8")
+        self.assertNotIn("--measured-rto-seconds", source)
 
     def test_evidence_register_is_commit_hosted_reviewer_and_expiry_bound(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -184,25 +240,25 @@ class OpsCommercialGateTest(unittest.TestCase):
                     "repository": "ks-house/smart-gatekeeper",
                     "commit": commit,
                     "run_id": 123,
+                    "run_attempt": 2,
                     "artifact_name": "ops-evidence",
+                    "artifact_archive_sha256": "e" * 64,
+                    "subject_path": "ops-evidence.json",
                     "artifact_sha256": "d" * 64,
+                    "pull_request": 67,
+                    "review_id": 456,
                 },
             })
-            env = {
-                "GITHUB_ACTIONS": "true",
-                "GITHUB_SHA": commit,
-                "GITHUB_REPOSITORY": "ks-house/smart-gatekeeper",
-                "GITHUB_RUN_ID": "123",
-                "EVIDENCE_REVIEWER": "independent-reviewer",
-            }
+            verifier = MagicMock()
             source.write_text(json.dumps(passed), encoding="utf-8")
             with patch.object(gate, "checked_out_commit", return_value=commit):
                 result = gate.evidence_register(
                     source, output, commit,
                     now=datetime(2026, 8, 9, tzinfo=timezone.utc),
-                    environment=env,
+                    verifier=verifier,
                 )
                 self.assertEqual(commit, result["source_commit"])
+                verifier.verify.assert_called_once()
                 mutations = []
                 for field, value in (
                     ("source_commit", "0" * 40),
@@ -224,15 +280,138 @@ class OpsCommercialGateTest(unittest.TestCase):
                             gate.evidence_register(
                                 source, output, commit,
                                 now=datetime(2026, 8, 9, tzinfo=timezone.utc),
-                                environment=env,
+                                verifier=verifier,
                             )
                 source.write_text(json.dumps(passed), encoding="utf-8")
                 with self.assertRaises(gate.GateError):
                     gate.evidence_register(
                         source, output, commit,
                         now=datetime(2026, 8, 9, tzinfo=timezone.utc),
-                        environment={},
                     )
+
+    def test_github_evidence_verifier_rejects_forged_run_artifact_review_attestation(self):
+        commit = "a" * 40
+        subject_bytes = b'{"status":"verified"}\n'
+        digest = hashlib.sha256(subject_bytes).hexdigest()
+        archive_buffer = io.BytesIO()
+        with zipfile.ZipFile(archive_buffer, "w") as bundle:
+            bundle.writestr("ops-evidence.json", subject_bytes)
+        archive = archive_buffer.getvalue()
+        archive_digest = hashlib.sha256(archive).hexdigest()
+        provenance = {
+            "provider": "github-actions",
+            "repository": "ks-house/smart-gatekeeper",
+            "commit": commit,
+            "run_id": 123,
+            "run_attempt": 2,
+            "artifact_name": "ops-evidence",
+            "artifact_archive_sha256": archive_digest,
+            "subject_path": "ops-evidence.json",
+            "artifact_sha256": digest,
+            "pull_request": 67,
+            "review_id": 456,
+        }
+        statement = {
+            "_type": "https://in-toto.io/Statement/v1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [{"name": "ops-evidence.json", "digest": {"sha256": digest}}],
+            "predicate": {
+                "buildDefinition": {
+                    "externalParameters": {
+                        "workflow": {
+                            "repository": "https://github.com/ks-house/smart-gatekeeper",
+                            "ref": "refs/heads/main",
+                            "path": "/.github/workflows/backend_security.yml",
+                        }
+                    },
+                    "resolvedDependencies": [{"digest": {"gitCommit": commit}}],
+                },
+                "runDetails": {
+                    "builder": {"id": "https://github.com/actions/runner/github-hosted"},
+                    "metadata": {
+                        "invocationId": (
+                            "https://github.com/ks-house/smart-gatekeeper/"
+                            "actions/runs/123/attempts/2"
+                        )
+                    }
+                },
+            },
+        }
+        documents = {
+            "commit": {"sha": commit, "author": {"login": "tworimpa"}},
+            "run": {
+                "id": 123, "head_sha": commit, "status": "completed",
+                "conclusion": "success", "event": "push", "head_branch": "main",
+                "path": ".github/workflows/backend_security.yml",
+                "run_attempt": 2,
+                "repository": {"full_name": "ks-house/smart-gatekeeper"},
+            },
+            "artifacts": {
+                "artifacts": [{
+                    "name": "ops-evidence", "digest": f"sha256:{digest}",
+                    "expired": False, "archive_download_url": "https://api.github.com/archive.zip",
+                }]
+            },
+            "review": {
+                "id": 456, "user": {"login": "independent-reviewer"},
+                "state": "APPROVED", "commit_id": commit,
+            },
+            "attestations": {
+                "attestations": [{
+                    "bundle": {"dsseEnvelope": {"payload": base64.b64encode(
+                        json.dumps(statement).encode()
+                    ).decode()}}
+                }]
+            },
+        }
+
+        def api_document(path):
+            if "/commits/" in path:
+                return documents["commit"]
+            if "/actions/runs/123/artifacts" in path:
+                return documents["artifacts"]
+            if "/actions/runs/123" in path:
+                return documents["run"]
+            if "/reviews/456" in path:
+                return documents["review"]
+            if "/attestations/" in path:
+                return documents["attestations"]
+            raise AssertionError(path)
+
+        verifier = gate.GitHubEvidenceVerifier("test-token")
+        self.assertEqual(verifier.API_URL, "https://api.github.com")
+        self.assertNotIn("GITHUB_API_URL", inspect.getsource(gate.main))
+        documents["artifacts"]["artifacts"][0]["digest"] = f"sha256:{archive_digest}"
+        with patch.object(verifier, "_get", side_effect=api_document), patch.object(
+            verifier, "_download", return_value=archive
+        ):
+            verifier.verify(
+                repository="ks-house/smart-gatekeeper", commit=commit,
+                candidate_author="tworimpa", reviewer="independent-reviewer", digest=digest,
+                provenance=provenance,
+            )
+            mutations = (
+                ("commit", "author", {"login": "forged-author"}),
+                ("run", "conclusion", "failure"),
+                ("run", "path", ".github/workflows/untrusted.yml"),
+                ("artifacts", "artifacts", []),
+                ("review", "state", "COMMENTED"),
+                ("attestations", "attestations", []),
+            )
+            for document, field, value in mutations:
+                with self.subTest(document=document):
+                    original = documents[document][field]
+                    documents[document][field] = value
+                    try:
+                        with self.assertRaises(gate.GateError):
+                            verifier.verify(
+                                repository="ks-house/smart-gatekeeper", commit=commit,
+                                candidate_author="tworimpa",
+                                reviewer="independent-reviewer", digest=digest,
+                                provenance=provenance,
+                            )
+                    finally:
+                        documents[document][field] = original
 
 
 if __name__ == "__main__":

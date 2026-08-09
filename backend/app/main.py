@@ -115,6 +115,8 @@ BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-ab
 GATEKEEPER_API_KEY  = _secret("GATEKEEPER_API_KEY")
 OPS_HMAC_KEY        = _secret("OPS_HMAC_KEY").encode("utf-8")
 BUILD_SHA           = os.getenv("BUILD_SHA", "unknown").strip()
+EXPECTED_DB_SCHEMA_VERSION = os.getenv("EXPECTED_DB_SCHEMA_VERSION", "").strip()
+EXPECTED_DB_SCHEMA_SHA256 = os.getenv("EXPECTED_DB_SCHEMA_SHA256", "").strip()
 # 앱이 사용할 Pre-arm 쿨다운 기본값(초). 앱은 이 값을 "기본값"으로만 쓰고,
 # 사용자가 디버그 화면에서 직접 조정한 적이 있으면 로컬 값을 우선한다.
 # (issue.md P1-12 — 기존에는 30 이 하드코딩되어 매 부팅마다 로컬 설정을 덮어썼다)
@@ -897,12 +899,13 @@ def health_check():
 def _readiness_snapshot() -> tuple[bool, dict]:
     checks = {
         "database": False,
+        "database_schema": False,
         "mqtt": False,
         "runtime_secrets": bool(DB_PASSWORD and len(OPS_HMAC_KEY) >= 32),
         "control_api_auth": len(GATEKEEPER_API_KEY) >= 32,
         "admin_auth": bool(admin_security.enabled and admin_security.trusted_proxy_ips),
         "acl_management": bool(ACL_MANAGEMENT_ENABLED and _acl_runtime_ready),
-        "legacy_lookup_disabled": not ACL_LEGACY_DEVICE_LOOKUP_ENABLED,
+        "legacy_prearm_retired": not _legacy_prearm_authority_enabled(),
         "build_identity": bool(re.fullmatch(r"[a-f0-9]{40}", BUILD_SHA)),
     }
     conn = None
@@ -911,6 +914,21 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 AS ready")
             checks["database"] = bool(cur.fetchone())
+            if (
+                re.fullmatch(r"[0-9]{3}", EXPECTED_DB_SCHEMA_VERSION)
+                and re.fullmatch(r"[a-f0-9]{64}", EXPECTED_DB_SCHEMA_SHA256)
+            ):
+                cur.execute(
+                    "SELECT script_sha256 FROM schema_migrations WHERE version=%s",
+                    (EXPECTED_DB_SCHEMA_VERSION,),
+                )
+                schema = cur.fetchone()
+                checks["database_schema"] = bool(
+                    schema
+                    and secrets.compare_digest(
+                        schema["script_sha256"], EXPECTED_DB_SCHEMA_SHA256
+                    )
+                )
     except Exception:
         _ops_metrics.event("readiness", "database_failed")
     finally:
@@ -921,6 +939,11 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         if not checks["mqtt"]:
             _ops_metrics.event("readiness", "mqtt_failed")
     return all(checks.values()), checks
+
+
+def _legacy_prearm_authority_enabled() -> bool:
+    """One source of truth for the raw device-id legacy authority boundary."""
+    return ACL_LEGACY_DEVICE_LOOKUP_ENABLED
 
 
 @app.get("/ready")
@@ -1097,6 +1120,15 @@ def door_prearm(
       3. 인증이 전혀 없었다
     지금은 세 경로 모두 거부한다. 승인은 "등록되고 승인된 기기"에만 부여된다.
     """
+    if not _legacy_prearm_authority_enabled():
+        log.warning("[PREARM-REJECT] legacy device identifier authority retired")
+        return JSONResponse(
+            status_code=410,
+            content={
+                "result": "retired",
+                "message": "Signed per-device credential flow is required.",
+            },
+        )
     log.info("[PREARM] beacon pre-arm request received")
 
     # ── 1. device_id 는 필수 ────────────────────────────────────────────
