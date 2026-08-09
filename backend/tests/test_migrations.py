@@ -134,6 +134,7 @@ class MigrationContractTest(unittest.TestCase):
         for required in (
             "mariadb-dump", "pre-migration-", "schema_migrations",
             "canonical_sha", "up:007|down:001", ".schema-migration-lock",
+            "%Y%m%dT%H%M%S%NZ", "pre-migration backup identity collision",
         ):
             self.assertIn(required, runner)
         self.assertLess(runner.index("mariadb-dump"), runner.index("apply_up"))
@@ -174,7 +175,8 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(60):
                     ready = docker(
                         "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
-                        "-e", "SELECT 1;", check=False,
+                        "smart_gatekeeper", "-e", "SELECT COUNT(*) FROM tenants;",
+                        check=False,
                     )
                     if ready.returncode == 0:
                         break

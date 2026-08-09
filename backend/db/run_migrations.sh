@@ -59,8 +59,11 @@ client() {
     --host="$DB_HOST" --port="$DB_PORT" --user="$DB_MIGRATION_USER" "$@" "$DB_NAME"
 }
 
-timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-backup_base="$MIGRATION_BACKUP_DIR/pre-migration-${MIGRATION_SOURCE_COMMIT}-${timestamp}.sql"
+timestamp=$(date -u +%Y%m%dT%H%M%S%NZ)
+backup_base="$MIGRATION_BACKUP_DIR/pre-migration-${MIGRATION_SOURCE_COMMIT}-${timestamp}-${mode}-${target}-$$.sql"
+[ ! -e "$backup_base" ] && [ ! -e "${backup_base}.sha256" ] || {
+  echo "[ERROR] pre-migration backup identity collision" >&2; exit 4;
+}
 backup_tmp="${backup_base}.tmp"
 mariadb-dump --defaults-extra-file="$option_file" \
   --host="$DB_HOST" --port="$DB_PORT" --user="$DB_MIGRATION_USER" \

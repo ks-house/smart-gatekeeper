@@ -193,7 +193,8 @@ credential seed. On a fresh volume only `production_schema.sql` creates the
 empty baseline. On every deployment the `migrate` service runs
 `sgk-migrate up 007`, takes a logical backup and SHA-256 sidecar before changing
 the ledger/schema, admits only exact 40-hex source identity, verifies canonical
-migration digests on repeat runs, and exposes `down 001` as the explicit
+migration digests on repeat runs, uses a nanosecond/mode/process backup identity
+and fails rather than overwriting any collision, and exposes `down 001` as the explicit
 backup-first rollback. The API starts only after this service succeeds and then
 requires the exact `007` ledger digest in `/ready`. Backup files belong in the
 external `migration_backups` volume and must be copied to approved encrypted
