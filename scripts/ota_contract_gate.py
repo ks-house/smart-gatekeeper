@@ -636,6 +636,20 @@ def _validate_physical_test_jobs(
       if path.endswith("deploy.yml")
       else "/docker/smart-gatekeeper-physical-test/mobile-public-canary"
   )
+  expected_artifact = (
+      "gatekeeper-firmware.bin"
+      if path.endswith("deploy.yml")
+      else "ks-house-gatekeeper.apk"
+  )
+  expected_evidence = (
+      "firmware-physical-test-evidence.json"
+      if path.endswith("deploy.yml")
+      else "mobile-physical-test-evidence.json"
+  )
+  exact_sftp = (
+      'sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" '
+      '-b - "$SSH_TARGET" <<EOF'
+  )
   required_fragments = (
       "set -euo pipefail",
       f'REMOTE_ROOT="{expected_root}"',
@@ -656,12 +670,19 @@ def _validate_physical_test_jobs(
       'ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null',
       'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
       "::warning::NAS_KNOWN_HOSTS is not configured; using runtime ssh-keyscan",
-      "test ! -e '$REMOTE_STAGE'",
-      "test ! -e '$REMOTE_FINAL'",
+      "-mkdir /docker",
+      "-mkdir /docker/smart-gatekeeper-physical-test",
+      "-mkdir $REMOTE_ROOT",
+      "-mkdir $REMOTE_PARENT",
+      "mkdir $REMOTE_STAGE",
+      f"put dist/{expected_artifact} $REMOTE_STAGE/{expected_artifact}",
+      f"get $REMOTE_STAGE/{expected_artifact} readback/{expected_artifact}",
       "physical-test-evidence-create",
       "--readback-manifest readback/version.json",
+      f"put evidence/{expected_evidence} $REMOTE_STAGE/evidence.json",
+      "get $REMOTE_STAGE/evidence.json readback/evidence.json",
       "cmp evidence/",
-      "mv '$REMOTE_STAGE' '$REMOTE_FINAL'",
+      "rename $REMOTE_STAGE $REMOTE_FINAL",
   )
   for fragment in required_fragments:
     if fragment not in network_run:
@@ -671,7 +692,57 @@ def _validate_physical_test_jobs(
       'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
   ):
     if network_run.count(exact_once) != 1:
-      raise GateError(f"{path}: physical-test fallback must contain exactly one bounded keyscan loop")
+      raise GateError(
+          f"{path}: physical-test fallback and SFTP publish sequence must be exact"
+      )
+  stripped_lines = [line.strip() for line in network_run.splitlines()]
+  for exact_sftp_command in (
+      "-mkdir /docker",
+      "-mkdir /docker/smart-gatekeeper-physical-test",
+      "-mkdir $REMOTE_ROOT",
+      "-mkdir $REMOTE_PARENT",
+      "mkdir $REMOTE_STAGE",
+      "rename $REMOTE_STAGE $REMOTE_FINAL",
+  ):
+    if stripped_lines.count(exact_sftp_command) != 1:
+      raise GateError(
+          f"{path}: physical-test fallback and SFTP publish sequence must be exact"
+      )
+  expected_sftp_lines = [
+      f"timeout 300s {exact_sftp}",
+      f"timeout 300s {exact_sftp}",
+      f"timeout 120s {exact_sftp}",
+      f"timeout 30s {exact_sftp}",
+  ]
+  sshpass_lines = [
+      line.strip() for line in network_run.splitlines() if "sshpass" in line
+  ]
+  if sshpass_lines != expected_sftp_lines:
+    raise GateError(
+        f"{path}: physical-test transport must use exactly four bounded SFTP-only batches"
+    )
+  if re.search(
+      r"(?m)^\s*(?:(?:timeout\s+\d+s|command)\s+)?(?:sshpass\s+-e\s+)?ssh(?:\s|$)",
+      network_run,
+  ):
+    raise GateError(f"{path}: physical-test SFTP-only lane forbids remote shell invocation")
+  ordered_fragments = (
+      "-mkdir /docker",
+      "-mkdir /docker/smart-gatekeeper-physical-test",
+      "-mkdir $REMOTE_ROOT",
+      "-mkdir $REMOTE_PARENT",
+      "mkdir $REMOTE_STAGE",
+      f"put dist/{expected_artifact} $REMOTE_STAGE/{expected_artifact}",
+      f"get $REMOTE_STAGE/{expected_artifact} readback/{expected_artifact}",
+      "physical-test-evidence-create",
+      f"put evidence/{expected_evidence} $REMOTE_STAGE/evidence.json",
+      "get $REMOTE_STAGE/evidence.json readback/evidence.json",
+      "cmp evidence/",
+      "rename $REMOTE_STAGE $REMOTE_FINAL",
+  )
+  positions = [network_run.index(fragment) for fragment in ordered_fragments]
+  if positions != sorted(positions):
+    raise GateError(f"{path}: physical-test SFTP stage/readback/rename order is not exact")
   forbidden_fragments = (
       "${{ secrets.NAS_TARGET_DIR",
       "${{ secrets.NAS_APK_TARGET_DIR",
@@ -685,6 +756,11 @@ def _validate_physical_test_jobs(
       "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
       "StrictHostKeyChecking=no",
       "StrictHostKeyChecking=accept-new",
+      "sshpass -e ssh",
+      "mv '$REMOTE_STAGE' '$REMOTE_FINAL'",
+      "-mkdir $REMOTE_STAGE",
+      "-rename $REMOTE_STAGE $REMOTE_FINAL",
+      "\n!",
   )
   if any(fragment in network_run for fragment in forbidden_fragments):
     raise GateError(f"{path}: physical-test lane reaches a production or bypass surface")

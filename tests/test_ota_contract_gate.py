@@ -583,6 +583,111 @@ class OtaContractGateTest(unittest.TestCase):
         with self.assertRaisesRegex(gate.GateError, message):
           gate.validate_workflow_release_triggers(workflows)
 
+  def test_physical_test_transport_is_bounded_sftp_only_in_both_workflows(self):
+    exact_sftp = (
+        'sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" '
+        '-b - "$SSH_TARGET" <<EOF'
+    )
+    expected_lines = [
+        f"timeout 300s {exact_sftp}",
+        f"timeout 300s {exact_sftp}",
+        f"timeout 120s {exact_sftp}",
+        f"timeout 30s {exact_sftp}",
+    ]
+    for path, source in self._workflow_sources().items():
+      with self.subTest(path=path):
+        workflow = gate.load_workflow_yaml(path, source)
+        run = workflow["jobs"]["deploy_physical_test_canary"]["steps"][-2]["run"]
+        self.assertNotIn("sshpass -e ssh", run)
+        self.assertEqual(
+            [line.strip() for line in run.splitlines() if "sshpass" in line],
+            expected_lines,
+        )
+        stripped_lines = [line.strip() for line in run.splitlines()]
+        for command in (
+            "-mkdir /docker",
+            "-mkdir /docker/smart-gatekeeper-physical-test",
+            "-mkdir $REMOTE_ROOT",
+            "-mkdir $REMOTE_PARENT",
+            "mkdir $REMOTE_STAGE",
+            "rename $REMOTE_STAGE $REMOTE_FINAL",
+        ):
+          self.assertEqual(stripped_lines.count(command), 1, command)
+
+  def test_physical_test_sftp_only_mutations_fail_closed_both_workflows(self):
+    exact_sftp = (
+        'sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" '
+        '-b - "$SSH_TARGET" <<EOF'
+    )
+    for path, source in self._workflow_sources().items():
+      mutations = []
+      mutations.append((
+          "remote-shell",
+          source.replace(
+              'export SSHPASS="$NAS_PASSWORD"',
+              'export SSHPASS="$NAS_PASSWORD"\n'
+              '          timeout 30s sshpass -e ssh "${SSH_OPTIONS[@]}" '
+              '-p "$NAS_PORT" "$SSH_TARGET" true',
+              1,
+          ),
+      ))
+      mutations.append((
+          "unbounded-first-batch",
+          source.replace(f"timeout 300s {exact_sftp}", exact_sftp, 1),
+      ))
+      for label, command in (
+          ("missing-docker-create", "-mkdir /docker"),
+          (
+              "missing-physical-test-root-create",
+              "-mkdir /docker/smart-gatekeeper-physical-test",
+          ),
+          ("missing-canary-root-create", "-mkdir $REMOTE_ROOT"),
+          ("missing-sha-parent-create", "-mkdir $REMOTE_PARENT"),
+      ):
+        mutations.append((
+            label,
+            source.replace(command, f"# {label}", 1),
+        ))
+      mutations.append((
+          "ignored-stage-create-error",
+          source.replace("mkdir $REMOTE_STAGE", "-mkdir $REMOTE_STAGE", 1),
+      ))
+      mutations.append((
+          "ignored-final-rename-error",
+          source.replace(
+              "rename $REMOTE_STAGE $REMOTE_FINAL",
+              "-rename $REMOTE_STAGE $REMOTE_FINAL",
+              1,
+          ),
+      ))
+      mutations.append((
+          "duplicate-final-rename",
+          source.replace(
+              "rename $REMOTE_STAGE $REMOTE_FINAL",
+              "rename $REMOTE_STAGE $REMOTE_FINAL\n"
+              "          rename $REMOTE_STAGE $REMOTE_FINAL",
+              1,
+          ),
+      ))
+      reordered = source.replace("rename $REMOTE_STAGE $REMOTE_FINAL\n", "", 1)
+      reordered = reordered.replace(
+          "mkdir $REMOTE_STAGE\n",
+          "mkdir $REMOTE_STAGE\n"
+          "          rename $REMOTE_STAGE $REMOTE_FINAL\n",
+          1,
+      )
+      mutations.append(("rename-before-readback", reordered))
+      for label, mutated in mutations:
+        with self.subTest(path=path, mutation=label):
+          self.assertNotEqual(source, mutated)
+          workflows = self._workflow_sources()
+          workflows[path] = mutated
+          with self.assertRaisesRegex(
+              gate.GateError,
+              "SFTP-only|bounded SFTP-only|publish sequence|stage/readback",
+          ):
+            gate.validate_workflow_release_triggers(workflows)
+
   def test_physical_test_contract_path_cannot_be_removed_from_triggers(self):
     contract_path = "      - 'tests/test_nas_physical_test_delivery.py'\n"
     for path, occurrence in (

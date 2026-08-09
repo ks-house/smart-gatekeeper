@@ -40,6 +40,23 @@ the staging directory to its final run directory. Existing production roots
 `/docker/smart-gatekeeper-ota/` and
 `/docker/smartbox_ota/gatekeeper_apk/` are never selected by this lane.
 
+The physical-test transport is SFTP-only because the restricted NAS account does
+not provide an SSH remote shell. It uses four bounded OpenSSH `sftp -b` batches:
+artifact upload, artifact readback, evidence upload/readback, and final publish.
+The upload batch creates the hierarchy one component at a time. Existing parent
+errors are tolerated only for `/docker`, `/docker/smart-gatekeeper-physical-test`,
+the fixed canary root and the exact-SHA parent; creation of the unique staging
+directory, every `put`/`get`, evidence comparison, and the final atomic SFTP `rename`
+remain strict. No `ssh` remote-shell command is issued.
+
+OpenSSH batch mode aborts on a failed strict command, but SFTP servers do not
+provide a portable cross-server no-clobber preflight for directory rename. A
+pre-existing final run directory is therefore an operator conflict: the direct
+rename is expected to fail closed on the supported NAS, and this lane never
+deletes or intentionally overwrites it. The SHA/run/attempt path makes such a
+collision exceptional; investigate it instead of retrying with destructive
+cleanup.
+
 Required repository secrets are `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`, and
 `NAS_PORT` (port defaults to 22). `NAS_KNOWN_HOSTS` is optional. When supplied,
 the job parses the independently verified OpenSSH record with `ssh-keygen` and
@@ -111,8 +128,10 @@ protected workflow bundle.
    the intended merged `main` SHA.
 2. Download the Actions evidence artifact. Confirm its `remote_path`,
    `source_commit`, artifact/manifest SHA-256 values and host-key mode.
-3. On NAS, select only the exact `remote_path` from that evidence. Recalculate
-   both SHA-256 values before copying to the test device.
+3. Confirm that the exact final run directory did not exist before this run. On
+   NAS, select only the exact `remote_path` from that evidence. Recalculate both
+   SHA-256 values before copying to the test device. Treat an existing final run
+   directory as a conflict; do not delete or overwrite it automatically.
 4. Install the debug APK manually and flash the public firmware using the
    documented lab procedure. Do not point an enrolled production device at these
    `.invalid` manifests.

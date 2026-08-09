@@ -39,6 +39,9 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
         "repository-secret-pinned",
         "runtime-keyscan-unpinned",
         "bounded runtime `ssh-keyscan`",
+        "SFTP-only",
+        "atomic SFTP `rename`",
+        "existing final run directory",
     ):
       self.assertIn(fragment, guide)
 
@@ -71,6 +74,24 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
         self.assertIn("timeout 10s ssh-keyscan -T 5", source)
         self.assertIn('2>/dev/null', source)
         self.assertIn('test "${{ inputs.allow_unpinned_host_key }}" = "true"', source)
+        self.assertNotIn("sshpass -e ssh", source)
+        exact_sftp = (
+            'sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" '
+            '-b - "$SSH_TARGET" <<EOF'
+        )
+        self.assertEqual(source.count(f"timeout 300s {exact_sftp}"), 2)
+        self.assertEqual(source.count(f"timeout 120s {exact_sftp}"), 1)
+        self.assertEqual(source.count(f"timeout 30s {exact_sftp}"), 1)
+        stripped_lines = [line.strip() for line in source.splitlines()]
+        for command in (
+            "-mkdir /docker",
+            "-mkdir /docker/smart-gatekeeper-physical-test",
+            "-mkdir $REMOTE_ROOT",
+            "-mkdir $REMOTE_PARENT",
+            "mkdir $REMOTE_STAGE",
+            "rename $REMOTE_STAGE $REMOTE_FINAL",
+        ):
+          self.assertEqual(stripped_lines.count(command), 1, command)
 
 
 if __name__ == "__main__":
