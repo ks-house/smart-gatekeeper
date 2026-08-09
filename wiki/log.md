@@ -2556,3 +2556,14 @@
 - Manual contract tests passed 10/10 with exact source/API trace, 16 complete actor fixtures, relative links, UTF-8 without BOM, LF-only bytes, stale-baseline rejection, secret exclusion and NAS/physical/production evidence separation. JSON parsing and `git diff --check` passed.
 - Full root discovery passed 150/150. The first Quick invocation stopped before tests because this worktree had no `.venv`; the standard isolated setup completed with 12 doctor passes, one Docker-covered native Java warning and zero failures, then Quick passed all ten sections in 40.77 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
 - These are repository/host results only. Draft PR exact-head hosted checks, independent COMMENTED review, NAS staging evidence and every live, legal, operator, physical, OTA/relay and production Gate remain required.
+
+## [2026-08-09] fix | Make every manual walkthrough independently executable
+
+- Remediated blocking COMMENTED review `4891259615`: all 16 hardwareless scenarios now include a bounded read-only `python -m unittest` command, expected output token and exact exit code instead of documenting execution fields that the fixture omitted.
+- The contract schema requires those fields, permits only a strict unittest command grammar, rejects shell metacharacters and executes each scenario in the repository root with a 90-second bound. No product, workflow, secret, `raw/`, NAS, physical or production state changed.
+
+## [2026-08-09] test | Revalidate executable walkthrough review remediation
+
+- Manual contracts passed 11/11 and all 16 declared commands independently returned exit code 0 with the expected `OK` token. JSON parsing and `git diff --check` passed.
+- Full root discovery passed 151/151 in 25.76 seconds. Quick passed all ten sections in 40.48 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Fresh exact-head Hosted Trusted and independent COMMENTED re-review remain required. NAS deployment and every live, legal, operator, physical, OTA/relay and production Gate remain pending.

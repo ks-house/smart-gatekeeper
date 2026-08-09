@@ -1,5 +1,8 @@
 import json
+import os
 import re
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -28,6 +31,9 @@ REQUIRED_FIELDS = {
     "observable_output",
     "code_api_owner",
     "evidence",
+    "command",
+    "expected",
+    "expected_exit_code",
     "timeout",
     "bounded_retry",
     "escalation",
@@ -53,8 +59,12 @@ class ManualContractTests(unittest.TestCase):
         for item in scenarios:
             self.assertEqual(REQUIRED_FIELDS, set(item))
             for key, value in item.items():
-                self.assertIsInstance(value, str)
-                self.assertTrue(value.strip(), f"{item['id']} has empty {key}")
+                if key == "expected_exit_code":
+                    self.assertIsInstance(value, int)
+                    self.assertEqual(0, value)
+                else:
+                    self.assertIsInstance(value, str)
+                    self.assertTrue(value.strip(), f"{item['id']} has empty {key}")
             self.assertIn(item["manual"], CORE_MANUALS)
         prefixes = {item["id"].split("-")[1] for item in scenarios}
         self.assertEqual({"USER", "ADMIN", "INSTALL", "SUPPORT"}, prefixes)
@@ -174,6 +184,38 @@ class ManualContractTests(unittest.TestCase):
             '"physical_completion_allowed": true',
         ):
             self.assertNotIn(forbidden, raw)
+
+    def test_walkthrough_commands_are_bounded_read_only_and_reproducible(self) -> None:
+        command_pattern = re.compile(
+            r"^python -m unittest [A-Za-z0-9_.]+(?: [A-Za-z0-9_.]+)* -v$"
+        )
+        environment = os.environ.copy()
+        environment["PYTHONUTF8"] = "1"
+        for item in self.fixture["scenarios"]:
+            command = item["command"]
+            self.assertRegex(command, command_pattern, item["id"])
+            for forbidden in (";", "&&", "||", "|", ">", "<", "--failfast"):
+                self.assertNotIn(forbidden, command, item["id"])
+            argv = command.split()
+            argv[0] = sys.executable
+            completed = subprocess.run(
+                argv,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=90,
+                env=environment,
+                check=False,
+            )
+            combined = completed.stdout + completed.stderr
+            self.assertEqual(
+                item["expected_exit_code"],
+                completed.returncode,
+                f"{item['id']} failed:\n{combined}",
+            )
+            self.assertIn(item["expected"], combined, item["id"])
 
     def test_issue52_operations_contract_is_exactly_traced(self) -> None:
         main_source = (ROOT / "backend" / "app" / "main.py").read_text(
