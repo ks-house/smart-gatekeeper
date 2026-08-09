@@ -15,26 +15,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-CURRENT_MAIN_COMMIT = "cc977e42770e6d88822459436a770295632c6e45"
+CURRENT_MAIN_COMMIT = "ed19f3256ac8857367f1f490eb1f5f717e20ca03"
 CURRENT_MAIN_DIGESTS = {
-    ".github/workflows/deploy.yml": (
-        "9bdf5a593907fa8225ebec54b9d305177836b9ace8376bced3914800c3ad5820"
-    ),
-    ".github/workflows/build_app.yml": (
-        "7816856a7ec1f465d016d54e8d50773f9f9e8b9f9b14a81a353852b6f5ab6494"
-    ),
-    ".github/workflows/ota_contract.yml": (
-        "8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001"
-    ),
-    "scripts/ota_contract_gate.py": (
-        "064c8848d914949383981376ab7ad4f23699b4b118a394793ad66cac9954a66f"
-    ),
-    "ota/requirements.txt": (
-        "d2dc1631f87992338c4779d89db7ac6c049abd79ce14de9e6e8e1b113f7f2ca4"
-    ),
-}
-TEMPORARY_PR59_COMMIT = "e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad"
-TEMPORARY_PR59_DIGESTS = {
     ".github/workflows/deploy.yml": (
         "4bf77e4c48b0033aedb0c0b4a45565d9a090538b3a8b2c8eacfc73de349903f7"
     ),
@@ -51,26 +33,31 @@ TEMPORARY_PR59_DIGESTS = {
         "d2dc1631f87992338c4779d89db7ac6c049abd79ce14de9e6e8e1b113f7f2ca4"
     ),
 }
-RETIRED_BUNDLES = {
-    "origin-main-bootstrap": "8c36ead9f40e46959af721bbfffaeb00fcb2b2c1",
-    "pr-28-preapproved": "7bae62f6921ece5aabb08e994f7527391b7db746",
-}
-RETIRED_ORIGIN_MAIN_DIGESTS = {
+RETIRED_PRE_PR59_DIGESTS = {
     ".github/workflows/deploy.yml": (
-        "d899c4c48412477d5496ac120fe2a9025662fe33763e5b4ab302e8374ffa64ad"
+        "9bdf5a593907fa8225ebec54b9d305177836b9ace8376bced3914800c3ad5820"
     ),
     ".github/workflows/build_app.yml": (
-        "0e3876199ef47652e4d8e9931cd29f5f5ab19bc8aa26249180ef96adb0c12ca4"
+        "7816856a7ec1f465d016d54e8d50773f9f9e8b9f9b14a81a353852b6f5ab6494"
     ),
     ".github/workflows/ota_contract.yml": (
         "8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001"
     ),
     "scripts/ota_contract_gate.py": (
-        "82edf10415a653b6ad64c7dd1be29e7eefe2e3df406fdbf73455fb5bbd245f66"
+        "064c8848d914949383981376ab7ad4f23699b4b118a394793ad66cac9954a66f"
     ),
     "ota/requirements.txt": (
-        "ec9f21f0bffe9f3e4d6682cf164f15ae21d2cd5e2994beaaa53281da5f04a6d2"
+        "d2dc1631f87992338c4779d89db7ac6c049abd79ce14de9e6e8e1b113f7f2ca4"
     ),
+}
+RETIRED_BUNDLES = {
+    "origin-main-bootstrap": "8c36ead9f40e46959af721bbfffaeb00fcb2b2c1",
+    "pr-28-preapproved": "7bae62f6921ece5aabb08e994f7527391b7db746",
+    "temporary-pr59-e468e0f": "e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad",
+}
+RETIRED_MAIN_COMMITS = {
+    "4e628baf043721d0e0ae86290915886cee7e3d5c",
+    "cc977e42770e6d88822459436a770295632c6e45",
 }
 
 
@@ -455,23 +442,20 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         path: (ROOT / path).read_bytes() for path in policy["protected_paths"]
     }
     bundle = trusted.verify_candidate(policy, current.__getitem__)
-    self.assertIn(
-        bundle["id"],
-        {approved["id"] for approved in policy["approved_bundles"]},
-    )
+    self.assertEqual(bundle["id"], "current-main-baseline")
     self.assertEqual(list(bundle["files"]), policy["protected_paths"])
     self.assertEqual(
         bundle["files"],
         {path: _digest(current[path]) for path in policy["protected_paths"]},
     )
 
-  def test_temporary_policy_has_current_main_and_exact_pr59_bundle(self):
+  def test_final_policy_has_only_exact_merged_main_bundle(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
     self.assertEqual(policy["protected_paths"], list(CURRENT_MAIN_DIGESTS))
-    self.assertEqual(len(policy["approved_bundles"]), 2)
-    main_bundle, temporary_bundle = policy["approved_bundles"]
+    self.assertEqual(len(policy["approved_bundles"]), 1)
+    main_bundle = policy["approved_bundles"][0]
     self.assert_current_main_baseline_is_exact(policy)
     self.assertEqual(main_bundle["id"], "current-main-baseline")
     self.assertEqual(
@@ -482,26 +466,16 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         },
     )
     self.assertEqual(main_bundle["files"], CURRENT_MAIN_DIGESTS)
-    self.assertNotEqual(main_bundle["files"], RETIRED_ORIGIN_MAIN_DIGESTS)
-    self.assertEqual(temporary_bundle["id"], "temporary-pr59-e468e0f")
-    self.assertEqual(
-        temporary_bundle["source"],
-        {
-            "repository": "ks-house/smart-gatekeeper",
-            "commit": TEMPORARY_PR59_COMMIT,
-        },
-    )
-    self.assertEqual(temporary_bundle["files"], TEMPORARY_PR59_DIGESTS)
+    self.assertNotEqual(main_bundle["files"], RETIRED_PRE_PR59_DIGESTS)
     self.assertTrue(
-        RETIRED_BUNDLES.keys().isdisjoint(
-            {main_bundle["id"], temporary_bundle["id"]}
-        )
+        RETIRED_BUNDLES.keys().isdisjoint({main_bundle["id"]})
     )
     self.assertTrue(
         set(RETIRED_BUNDLES.values()).isdisjoint(
-            {main_bundle["source"]["commit"], temporary_bundle["source"]["commit"]}
+            {main_bundle["source"]["commit"]}
         )
     )
+    self.assertNotIn(main_bundle["source"]["commit"], RETIRED_MAIN_COMMITS)
 
   def test_current_main_baseline_source_mismatches_are_rejected(self):
     policy = trusted.load_policy(
@@ -520,7 +494,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
           self.assert_current_main_baseline_is_exact(mutated)
 
-  def test_temporary_pr59_bundle_is_exact_and_adversarial_variants_fail(self):
+  def test_merged_main_bundle_is_exact_and_adversarial_variants_fail(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -535,10 +509,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             policy, lambda path: digests[path].encode("ascii")
         )
 
-    bundle = verify_digest_map(TEMPORARY_PR59_DIGESTS)
-    self.assertEqual(bundle["id"], "temporary-pr59-e468e0f")
+    bundle = verify_digest_map(CURRENT_MAIN_DIGESTS)
+    self.assertEqual(bundle["id"], "current-main-baseline")
 
-    reordered = dict(TEMPORARY_PR59_DIGESTS)
+    reordered = dict(CURRENT_MAIN_DIGESTS)
     deploy_path = ".github/workflows/deploy.yml"
     build_path = ".github/workflows/build_app.yml"
     reordered[deploy_path], reordered[build_path] = (
@@ -549,17 +523,49 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
       verify_digest_map(reordered)
 
     mixed = dict(CURRENT_MAIN_DIGESTS)
-    mixed[build_path] = TEMPORARY_PR59_DIGESTS[build_path]
-    mixed["scripts/ota_contract_gate.py"] = TEMPORARY_PR59_DIGESTS[
+    mixed[build_path] = RETIRED_PRE_PR59_DIGESTS[build_path]
+    mixed["scripts/ota_contract_gate.py"] = RETIRED_PRE_PR59_DIGESTS[
         "scripts/ota_contract_gate.py"
     ]
-    with self.assertRaisesRegex(trusted.PolicyError, "mix approved bundles"):
+    with self.assertRaises(trusted.PolicyError):
       verify_digest_map(mixed)
 
+    with self.assertRaises(KeyError):
+      verify_digest_map({
+          path: digest
+          for path, digest in CURRENT_MAIN_DIGESTS.items()
+          if path != deploy_path
+      })
+
     missing = copy.deepcopy(policy)
-    del missing["approved_bundles"][1]["files"][deploy_path]
+    del missing["approved_bundles"][0]["files"][deploy_path]
     with self.assertRaisesRegex(trusted.PolicyError, "protected_paths exactly"):
       trusted.validate_policy(missing)
+
+  def test_retired_sources_and_pre_pr59_bytes_are_not_approved(self):
+    policy = trusted.load_policy(
+        ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
+    )
+    bundle = policy["approved_bundles"][0]
+    self.assertEqual(bundle["id"], "current-main-baseline")
+    self.assertNotIn("temporary-pr59-e468e0f", {
+        approved["id"] for approved in policy["approved_bundles"]
+    })
+    self.assertNotIn(
+        bundle["source"]["commit"],
+        RETIRED_MAIN_COMMITS | set(RETIRED_BUNDLES.values()),
+    )
+
+    with mock.patch.object(
+        trusted,
+        "normalized_sha256",
+        side_effect=lambda content: content.decode("ascii"),
+    ):
+      with self.assertRaises(trusted.PolicyError):
+        trusted.verify_candidate(
+            policy,
+            lambda path: RETIRED_PRE_PR59_DIGESTS[path].encode("ascii"),
+        )
 
   def test_every_real_protected_path_rejects_single_byte_mutation(self):
     policy = trusted.load_policy(
