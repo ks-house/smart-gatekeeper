@@ -1,6 +1,6 @@
 # NAS physical-test delivery
 
-> Status: **repository implementation only**. No workflow was dispatched and no NAS byte was written by this change.
+> Status: **public-canary NAS delivery verified** at exact main `85568c18c136ef3c1d104026e033da789867b73e`. Real-device installation and physical validation remain pending.
 
 ## Purpose and evidence boundary
 
@@ -17,6 +17,25 @@ its manifest. The emitted evidence always records
 `release_evidence: false`. It does not prove installation, boot, BLE/radio,
 relay/ToF behavior, update health, rollback, Samsung/OEM behavior or operator
 acceptance.
+
+## Latest verified NAS delivery (2026-08-10)
+
+The repository owner dispatched both exact-main `physical-test-canary` workflows
+with `allow_unpinned_host_key=true`. Both SFTP-only jobs completed staging,
+readback verification, sanitized evidence comparison, and final directory rename.
+
+| Kind | Actions run | Verified NAS path | Artifact SHA-256 | Manifest SHA-256 |
+|---|---|---|---|---|
+| Firmware public canary | `31323665004` | `/docker/smart-gatekeeper-physical-test/firmware-public-canary/85568c18c136ef3c1d104026e033da789867b73e/run-31323665004-1` | `b76c8e98e569b40b7647db9141fbb84afcfb8bf2d09253893170549b8f7e154a` | `0ee4e933e1d687a1baedbcb3a398698eaaaa0f6e12ae3d5db0593310b5f63314` |
+| Mobile debug canary | `31323666311` | `/docker/smart-gatekeeper-physical-test/mobile-public-canary/85568c18c136ef3c1d104026e033da789867b73e/run-31323666311-1` | `8147d4f552df6420aac7d811d2a7d2accd21ce93ee83e3be4ef2efc2b972d3ef` | `4b6d4949fa482a7c8aac27e6212d799837c9284aec076390942bb74d0e123311` |
+
+The downloaded Actions evidence records `nas_upload_verified: true`,
+`host_key_mode: runtime-keyscan-unpinned`, `physical_validation_status: pending`,
+`production_authorized: false`, and `release_evidence: false` for both artifacts.
+This proves NAS transport and readback only. The operator must still recompute the
+listed hashes before flashing/installing and then execute the physical checklists.
+Because the first host key was discovered at runtime, rotate the NAS password if
+the network path was not trusted during these runs.
 
 ## Public canary tier available after merge
 
