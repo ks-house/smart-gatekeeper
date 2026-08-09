@@ -22,11 +22,14 @@ keys, steps, action versions, commands, or trailing newlines are otherwise ignor
 SHA-256. A candidate passes only when every protected path exactly matches one complete approved bundle;
 mixing individually approved files from different bundles is rejected.
 
-The transition is complete. The policy contains exactly one `current-main-baseline` bundle sourced from
-merged `main` at `cc977e42770e6d88822459436a770295632c6e45`. The temporary
-`origin-main-bootstrap@8c36ead` and `pr-28-preapproved@7bae62f` entries are retired. PR #28's protected
-bytes became the merged-main bytes, so their digest values are retained under the new main provenance;
-the old bundle identities and old pre-PR #28 byte set are no longer approved.
+The policy normally contains one `current-main-baseline` bundle sourced from merged `main` at
+`cc977e42770e6d88822459436a770295632c6e45`. During the PR #59 transition it also contains exactly one
+temporary complete bundle, `temporary-pr59-e468e0f`, for exact candidate
+`e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad`. Independent exact-head COMMENTED review `4890233068`
+authorized those five normalized digests as one indivisible set; it did not authorize a branch, wildcard,
+partial set, mixed set, or later PR head. The earlier `origin-main-bootstrap@8c36ead` and
+`pr-28-preapproved@7bae62f` entries remain retired. The current-main byte set remains approved in parallel
+so this temporary transition cannot revoke or replace the trusted baseline.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -46,6 +49,10 @@ commit. Future protected-file changes must follow the same separation: independe
 bundle, merge only through trusted-base authorization, then use a separate policy-only PR to remove any
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
+
+For PR #59, this policy-only change is the temporary-approval step. After PR #59 merges, a second
+policy-only rotation must remove `temporary-pr59-e468e0f` and pin the single baseline to the exact resulting
+`main` commit. Until that rotation merges, the temporary bundle is deliberately narrow but still active.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.

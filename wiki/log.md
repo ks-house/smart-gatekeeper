@@ -2257,6 +2257,17 @@
 - Quick passed in 51.76 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose, staged launcher, lifecycle probe, protocol vectors and 16 tests, observability 18, OTA contract, and hardwareless Gate 4.
 - These are repository and host/software checks only. PR #63 remains Draft and unmerged pending a fresh exact-head COMMENTED review; Issue #55 and packaged Orca 1.4.176 root-cause work remain open, and no deployment, Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator/canary, or production Gate is closed.
 
+## [2026-08-09] compile | Temporarily authorize the independently reviewed PR #59 bundle
+
+- Added exactly one temporary, complete five-file `utf8-lf-v1` bundle for PR #59 exact head `e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad`, authorized by independent exact-head COMMENTED review `4890233068`. The existing `current-main-baseline` remains approved; no wildcard, branch, partial path set, mixed digest set, protected-path change, production secret, or protected-file edit was introduced.
+- Recomputed every normalized digest directly from the fetched candidate commit and matched the reviewed values. Focused trusted-policy tests passed 28/28, including exact temporary acceptance, current-main acceptance, and missing, reordered, mixed, single-byte, candidate-policy, candidate-validator, YAML, and command-shape rejection. The full root suite passed 103/103; JSON parsing and `git diff --check` also passed.
+- This is only the temporary policy-authorization step. PR #59 still requires its own trusted check, review/merge decision, and post-merge policy-only rotation that removes the temporary bundle and pins the exact merged `main`; no app install, Target install/reboot/health, physical, operator, canary, or production Gate is closed.
+
+## [2026-08-09] test | Validate the temporary PR #59 policy bundle with Quick
+
+- After isolated worktree setup, Quick passed in 36.11 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose rendering, staged Orca launcher and lifecycle probes, protocol vectors and 16 tests, observability 18 tests, OTA contract, and hardwareless release Gates.
+- This remains repository and host/software evidence only. It does not authorize production deployment or substitute for Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production evidence.
+
 ## [2026-08-09] code | Implement mobile commercial recovery and updater contracts (#51)
 
 - Fresh-install native wake registration is now reached after the visible permission gate, persisted, re-registered after boot/package replacement, and exposed through a retryable status channel.
@@ -2322,3 +2333,14 @@
 - A tracked/non-ignored disposable Flutter copy passed strict format for 27 app-owned files with zero changes, analysis with no issues, and 29/29 tests. A separate disposable Gradle 9.1.0 lane passed 35/35 targeted native tests across eight fresh JUnit suites, including GATT, installed-package identity, and the dedicated battery-intent policy, then built the debug APK successfully.
 - The protected producer inspected that exact APK with actual `apkanalyzer` and `apksigner`, matched package/versionCode/versionName/embedded commit and one signer, created the current signed schema, and independently verified the same artifact binding. Interim disposable subset/tool prerequisites were corrected without mounting the shared worktree for `pub get`; exact task containers, temporary copies, and the task-owned temporary image were removed after validation.
 - These are host/software and public-test-key canary checks only. PR #59 remains Draft and unmerged; trusted-policy authorization, hosted exact-head checks and independent review, Samsung/OEM permission and battery UX, physical APK install/first-run health, real BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, issue #52 credential provisioning, operator acceptance, production signing, deployment, and production authorization remain open and fail-closed.
+
+## [2026-08-09] fix | Integrate exact post-PR64 main into PR #59
+
+- Integrated exact `origin/main` `17cc961f0c751c27fae813d1c8c24692369f215c` once with a normal two-parent merge. The exact new-main log is the prefix, the prior PR #59 suffix remains byte-identical, and only main's temporary policy JSON, policy test, trusted-workflow guide, and append-only log enter the branch.
+- Preserved the five protected PR #59 blobs and normalized digests unchanged, and preserved the `raw/` tree at `013c00e7617365aa30c8bd0d38d9503d3885d264`. PR #59 remains Draft/unmerged and production remains off.
+
+## [2026-08-09] test | Revalidate PR #59 after temporary policy integration
+
+- Quick passed in 34.99 seconds, protected OTA/manifest tests passed 74/74, the OTA contract and actionlint passed, and the temporary policy recognized the exact PR #59 bundle while all byte-mutation and mixed-bundle rejection tests passed.
+- Root discovery passed 130/131 and the focused policy suite passed 27/28. The sole failure is main's unchanged checkout-ID assertion expecting `current-main-baseline` even when the verifier correctly selects the approved `temporary-pr59-e468e0f` branch bundle; no policy, test, protected workflow, or product byte was altered to mask it.
+- These are local software checks only. Hosted exact-head CI, independent review, Samsung/OEM, physical install and first-run health, BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA, operator, signing, deployment, and production authorization remain open and fail-closed.
