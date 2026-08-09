@@ -2267,3 +2267,15 @@
 
 - After isolated worktree setup, Quick passed in 36.11 seconds: doctor 12 pass/1 Docker-covered native-Java warning/0 fail, backend 49 tests with one opt-in MariaDB skip, Compose rendering, staged Orca launcher and lifecycle probes, protocol vectors and 16 tests, observability 18 tests, OTA contract, and hardwareless release Gates.
 - This remains repository and host/software evidence only. It does not authorize production deployment or substitute for Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, operator, canary, or production evidence.
+
+## [2026-08-09] fix | Allow any exact approved trusted-workflow bundle in checkout regression
+
+- Corrected the checkout regression to accept whichever one complete approved five-file bundle exactly matches the protected bytes instead of hard-coding `current-main-baseline`, so the independently authorized `temporary-pr59-e468e0f` transition can exercise the same whole-bundle decision as the trusted validator.
+- Kept separate exact assertions for the `current-main-baseline` repository, commit, protected-path order, and digests, and added source-mismatch mutations while preserving rejection of unapproved, mixed, partial, reordered, and single-byte variants. The policy JSON and all five protected files remain unchanged.
+- This is a policy-test semantics correction only; it does not authorize a later PR #59 head, production deployment, or any Samsung/OEM, ESP32-C6 radio/GPIO, relay/sensor, bootloader, OTA-G1..G4, RELAY-G0..G2, operator, or canary evidence.
+
+## [2026-08-09] test | Validate approved-bundle checkout semantics on main and PR #59 bytes
+
+- Focused trusted-workflow tests passed 29/29 and the full root suite passed 104/104 on exact main base `17cc961f0c751c27fae813d1c8c24692369f215c`; the checkout regression selected `current-main-baseline` without requiring that ID in the acceptance rule.
+- Fetched all five protected files directly from PR #59 exact commit `e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad` with Git and passed them as inert bytes to the trusted-base validator; it selected exactly `temporary-pr59-e468e0f`. Quick passed in 35.23 seconds with doctor 12 pass/1 Docker-covered native-Java warning/0 fail and all software lanes green.
+- UTF-8, relative links, append-only byte prefix, raw/protected/policy immutability, exact three-file scope, and `git diff --check` passed. These results are software-only and leave every physical, operator, canary, and production Gate pending and fail-closed.

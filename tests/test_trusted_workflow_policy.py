@@ -310,6 +310,22 @@ def validate_trusted_workflow_structure(
 
 
 class TrustedWorkflowPolicyTest(unittest.TestCase):
+  def assert_current_main_baseline_is_exact(self, policy):
+    bundles_by_id = {
+        bundle["id"]: bundle for bundle in policy["approved_bundles"]
+    }
+    self.assertIn("current-main-baseline", bundles_by_id)
+    baseline = bundles_by_id["current-main-baseline"]
+    self.assertEqual(
+        baseline["source"],
+        {
+            "repository": "ks-house/smart-gatekeeper",
+            "commit": CURRENT_MAIN_COMMIT,
+        },
+    )
+    self.assertEqual(baseline["files"], CURRENT_MAIN_DIGESTS)
+    self.assertEqual(list(baseline["files"]), policy["protected_paths"])
+
   def setUp(self):
     self.main_files = {
         "workflow.yml": b"name: main\r\n",
@@ -439,7 +455,15 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         path: (ROOT / path).read_bytes() for path in policy["protected_paths"]
     }
     bundle = trusted.verify_candidate(policy, current.__getitem__)
-    self.assertEqual(bundle["id"], "current-main-baseline")
+    self.assertIn(
+        bundle["id"],
+        {approved["id"] for approved in policy["approved_bundles"]},
+    )
+    self.assertEqual(list(bundle["files"]), policy["protected_paths"])
+    self.assertEqual(
+        bundle["files"],
+        {path: _digest(current[path]) for path in policy["protected_paths"]},
+    )
 
   def test_temporary_policy_has_current_main_and_exact_pr59_bundle(self):
     policy = trusted.load_policy(
@@ -448,6 +472,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     self.assertEqual(policy["protected_paths"], list(CURRENT_MAIN_DIGESTS))
     self.assertEqual(len(policy["approved_bundles"]), 2)
     main_bundle, temporary_bundle = policy["approved_bundles"]
+    self.assert_current_main_baseline_is_exact(policy)
     self.assertEqual(main_bundle["id"], "current-main-baseline")
     self.assertEqual(
         main_bundle["source"],
@@ -477,6 +502,23 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             {main_bundle["source"]["commit"], temporary_bundle["source"]["commit"]}
         )
     )
+
+  def test_current_main_baseline_source_mismatches_are_rejected(self):
+    policy = trusted.load_policy(
+        ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
+    )
+    self.assert_current_main_baseline_is_exact(policy)
+
+    for field, value in (
+        ("repository", "attacker/fork"),
+        ("commit", "f" * 40),
+    ):
+      with self.subTest(field=field):
+        mutated = copy.deepcopy(policy)
+        mutated["approved_bundles"][0]["source"][field] = value
+        trusted.validate_policy(mutated)
+        with self.assertRaises(AssertionError):
+          self.assert_current_main_baseline_is_exact(mutated)
 
   def test_temporary_pr59_bundle_is_exact_and_adversarial_variants_fail(self):
     policy = trusted.load_policy(
