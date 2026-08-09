@@ -1,0 +1,45 @@
+{
+  "schema": "sgk-evidence-adversarial-fixtures-v1",
+  "same_sbom_for_all": {
+    "subject_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "payload_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  "cross_id_swaps": [
+    ["ops-contract", "hosted-sbom-attestation"],
+    ["hosted-sbom-attestation", "ops-contract"],
+    ["hosted-sbom-attestation", "24h-load-soak"],
+    ["hosted-sbom-attestation", "production-deployment"]
+  ],
+  "redirects": [
+    {
+      "from": "https://api.github.com/artifact",
+      "to": "https://api.github.com:443/download",
+      "admitted": true,
+      "authorization_forwarded": true
+    },
+    {
+      "from": "https://api.github.com/artifact",
+      "to": "https://api.github.com:444/download",
+      "admitted": true,
+      "authorization_forwarded": false
+    },
+    {
+      "from": "https://api.github.com/artifact",
+      "to": "https://objects.githubusercontent.com/download",
+      "admitted": true,
+      "authorization_forwarded": false
+    },
+    {
+      "from": "https://api.github.com/artifact",
+      "to": "http://api.github.com/download",
+      "admitted": false,
+      "authorization_forwarded": false
+    },
+    {
+      "from": "https://api.github.com/artifact",
+      "to": "http://objects.githubusercontent.com/download",
+      "admitted": false,
+      "authorization_forwarded": false
+    }
+  ]
+}

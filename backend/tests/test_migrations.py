@@ -175,10 +175,11 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(60):
                     ready = docker(
                         "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
-                        "smart_gatekeeper", "-e", "SELECT COUNT(*) FROM tenants;",
+                        "smart_gatekeeper", "-e",
+                        "SELECT COUNT(*),@@port FROM tenants;",
                         check=False,
                     )
-                    if ready.returncode == 0:
+                    if ready.returncode == 0 and ready.stdout.strip() == "0\t3306":
                         break
                     time.sleep(1)
                 else:

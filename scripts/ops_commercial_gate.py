@@ -45,18 +45,146 @@ EVIDENCE_SCOPES = {
     "production-deployment": "production",
 }
 EVIDENCE_STATES = {"pending", "blocked", "passed"}
+EVIDENCE_POLICIES = {
+    "ops-contract": {
+        "pass_allowed": True,
+        "workflow_path": ".github/workflows/backend_security.yml",
+        "workflow_ref": "refs/heads/main",
+        "event": "push",
+        "head_branch": "main",
+        "producer_job": "backend-security",
+        "producer_step": "Upload operations contract evidence claim",
+        "attestor_job": "attest-backend-evidence",
+        "attestor_step": "Attest operations contract claim",
+        "environment": "github-hosted-main",
+        "artifact_name": "ops-contract-{commit}",
+        "artifact_path": "ops-contract.json",
+        "subject_path": "build/evidence/ops-contract.json",
+        "claim_type": "repository-operations-contract",
+        "payload_path": "build/ops-contract-result.json",
+        "payload_schema": "sgk-ops-contract-result-v1",
+        "predicate_type": "https://slsa.dev/provenance/v1",
+        "allow_digest_reuse": False,
+    },
+    "hosted-sbom-attestation": {
+        "pass_allowed": True,
+        "workflow_path": ".github/workflows/backend_security.yml",
+        "workflow_ref": "refs/heads/main",
+        "event": "push",
+        "head_branch": "main",
+        "producer_job": "backend-security",
+        "producer_step": "Upload hosted SBOM evidence claim",
+        "attestor_job": "attest-backend-evidence",
+        "attestor_step": "Attest hosted SBOM claim",
+        "environment": "github-hosted-main",
+        "artifact_name": "hosted-sbom-attestation-{commit}",
+        "artifact_path": "hosted-sbom-attestation.json",
+        "subject_path": "build/evidence/hosted-sbom-attestation.json",
+        "claim_type": "cyclonedx-sbom-attestation",
+        "payload_path": "build/backend-sbom.cdx.json",
+        "payload_schema": "cyclonedx-1.5",
+        "predicate_type": "https://slsa.dev/provenance/v1",
+        "allow_digest_reuse": False,
+    },
+    "isolated-mariadb-restore": {
+        "pass_allowed": False,
+        "workflow_path": ".github/workflows/operations_restore_evidence.yml",
+        "workflow_ref": "refs/heads/main",
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "producer_job": "isolated-mariadb-restore",
+        "producer_step": "Upload isolated restore evidence claim",
+        "attestor_job": "attest-restore-evidence",
+        "attestor_step": "Attest isolated restore claim",
+        "environment": "operator-restore-evidence",
+        "artifact_name": "isolated-mariadb-restore-{commit}",
+        "artifact_path": "isolated-mariadb-restore.json",
+        "subject_path": "build/evidence/isolated-mariadb-restore.json",
+        "claim_type": "isolated-mariadb-restore",
+        "payload_path": "build/restore-result.json",
+        "payload_schema": "sgk-restore-result-v1",
+        "predicate_type": "https://slsa.dev/provenance/v1",
+        "allow_digest_reuse": False,
+    },
+    "24h-load-soak": {
+        "pass_allowed": False,
+        "workflow_path": ".github/workflows/operations_physical_evidence.yml",
+        "workflow_ref": "refs/heads/main",
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "producer_job": "physical-24h-load-soak",
+        "producer_step": "Upload physical soak evidence claim",
+        "attestor_job": "attest-physical-evidence",
+        "attestor_step": "Attest physical soak claim",
+        "environment": "physical-live-like-evidence",
+        "artifact_name": "24h-load-soak-{commit}",
+        "artifact_path": "24h-load-soak.json",
+        "subject_path": "build/evidence/24h-load-soak.json",
+        "claim_type": "physical-24h-load-soak",
+        "payload_path": "build/24h-load-soak-result.json",
+        "payload_schema": "sgk-physical-soak-result-v1",
+        "predicate_type": "https://slsa.dev/provenance/v1",
+        "allow_digest_reuse": False,
+    },
+    "production-deployment": {
+        "pass_allowed": False,
+        "workflow_path": ".github/workflows/deploy.yml",
+        "workflow_ref": "refs/heads/main",
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "producer_job": "production-deployment-evidence",
+        "producer_step": "Upload production deployment evidence claim",
+        "attestor_job": "attest-production-evidence",
+        "attestor_step": "Attest production deployment claim",
+        "environment": "production",
+        "artifact_name": "production-deployment-{commit}",
+        "artifact_path": "production-deployment.json",
+        "subject_path": "build/evidence/production-deployment.json",
+        "claim_type": "production-deployment",
+        "payload_path": "build/production-deployment-result.json",
+        "payload_schema": "sgk-production-deployment-result-v1",
+        "predicate_type": "https://slsa.dev/provenance/v1",
+        "allow_digest_reuse": False,
+    },
+}
 
 
 class GateError(RuntimeError):
     pass
 
 
+class HTTPSOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject downgrade redirects and remove credentials on full-origin change."""
+
+    @staticmethod
+    def origin(url: str) -> tuple[str, str, int]:
+        try:
+            parsed = urllib.parse.urlsplit(url)
+            port = parsed.port if parsed.port is not None else 443
+        except ValueError as exc:
+            raise GateError("GitHub artifact URL has an invalid HTTPS origin") from exc
+        if (
+            parsed.scheme.casefold() != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise GateError("GitHub artifact URL must use an authenticated-free HTTPS origin")
+        return ("https", parsed.hostname.rstrip(".").casefold(), port)
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old_origin = self.origin(req.full_url)
+        new_origin = self.origin(newurl)
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None and old_origin != new_origin:
+            redirected.remove_header("Authorization")
+        return redirected
+
+
 class GitHubEvidenceVerifier:
     """Verify evidence against GitHub API state, never caller-asserted env."""
 
     API_URL = "https://api.github.com"
-    TRUSTED_WORKFLOW_PATH = ".github/workflows/backend_security.yml"
-
     def __init__(self, token: str):
         if not token:
             raise GateError("GitHub API token is required for passed evidence")
@@ -82,9 +210,7 @@ class GitHubEvidenceVerifier:
         return payload
 
     def _download(self, url: str) -> bytes:
-        parsed = urllib.parse.urlparse(url)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise GateError("GitHub artifact download URL must be HTTPS")
+        HTTPSOriginRedirectHandler.origin(url)
         request = urllib.request.Request(
             url,
             headers={
@@ -94,19 +220,8 @@ class GitHubEvidenceVerifier:
                 "User-Agent": "smart-gatekeeper-evidence-verifier",
             },
         )
-        class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
-                if (
-                    redirected is not None
-                    and urllib.parse.urlparse(req.full_url).netloc
-                    != urllib.parse.urlparse(newurl).netloc
-                ):
-                    redirected.remove_header("Authorization")
-                return redirected
-
         try:
-            opener = urllib.request.build_opener(SafeRedirectHandler())
+            opener = urllib.request.build_opener(HTTPSOriginRedirectHandler())
             with opener.open(request, timeout=30) as response:
                 data = response.read(100 * 1024 * 1024 + 1)
         except (OSError, urllib.error.URLError) as exc:
@@ -129,13 +244,18 @@ class GitHubEvidenceVerifier:
     def verify(
         self,
         *,
+        evidence_id: str,
+        scope: str,
         repository: str,
         commit: str,
         candidate_author: str,
         reviewer: str,
         digest: str,
         provenance: dict,
-    ) -> None:
+    ) -> dict:
+        policy = EVIDENCE_POLICIES[evidence_id]
+        if scope != EVIDENCE_SCOPES[evidence_id] or not policy["pass_allowed"]:
+            raise GateError(f"evidence producer is not admitted: {evidence_id}")
         quoted_repository = "/".join(
             urllib.parse.quote(part, safe="") for part in repository.split("/")
         )
@@ -157,21 +277,54 @@ class GitHubEvidenceVerifier:
             or run.get("conclusion") != "success"
             or run.get("run_attempt") != provenance["run_attempt"]
             or run.get("repository", {}).get("full_name") != repository
-            or run.get("event") != "push"
-            or run.get("head_branch") != "main"
-            or run.get("path") != self.TRUSTED_WORKFLOW_PATH
+            or run.get("event") != policy["event"]
+            or run.get("head_branch") != policy["head_branch"]
+            or run.get("path") != policy["workflow_path"]
         ):
             raise GateError("GitHub run is not the trusted exact-main workflow execution")
+
+        jobs_document = self._get(
+            f"/repos/{quoted_repository}/actions/runs/{run_id}/attempts/"
+            f"{provenance['run_attempt']}/jobs?per_page=100"
+        )
+        jobs = jobs_document.get("jobs") if isinstance(jobs_document, dict) else None
+        for job_name, step_name in (
+            (policy["producer_job"], policy["producer_step"]),
+            (policy["attestor_job"], policy["attestor_step"]),
+        ):
+            matching_jobs = [job for job in jobs or [] if job.get("name") == job_name]
+            if len(matching_jobs) != 1:
+                raise GateError("GitHub evidence producer job is absent or ambiguous")
+            job = matching_jobs[0]
+            matching_steps = [
+                step for step in job.get("steps", []) if step.get("name") == step_name
+            ]
+            if not (
+                job.get("status") == "completed"
+                and job.get("conclusion") == "success"
+                and job.get("head_sha") == commit
+                and job.get("run_attempt") == provenance["run_attempt"]
+                and job.get("labels") == ["ubuntu-latest"]
+                and len(matching_steps) == 1
+                and matching_steps[0].get("conclusion") == "success"
+            ):
+                raise GateError("GitHub evidence producer job/step is not authoritative")
 
         artifacts = self._get(
             f"/repos/{quoted_repository}/actions/runs/{run_id}/artifacts?per_page=100"
         ).get("artifacts")
         matching = [
             artifact for artifact in artifacts or []
-            if artifact.get("name") == provenance["artifact_name"]
+            if artifact.get("name") == policy["artifact_name"].format(commit=commit)
+            and provenance["artifact_name"]
+            == policy["artifact_name"].format(commit=commit)
             and artifact.get("digest")
             == f"sha256:{provenance['artifact_archive_sha256']}"
             and artifact.get("expired") is False
+            and artifact.get("workflow_run", {}).get("id") == run_id
+            and artifact.get("workflow_run", {}).get("head_sha") == commit
+            and artifact.get("workflow_run", {}).get("head_branch")
+            == policy["head_branch"]
         ]
         if len(matching) != 1:
             raise GateError("GitHub artifact name/digest is absent, ambiguous, or expired")
@@ -180,15 +333,17 @@ class GitHubEvidenceVerifier:
             raise GateError("downloaded GitHub artifact archive digest mismatch")
         try:
             with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
-                subject_path = provenance["subject_path"]
-                entries = [item for item in bundle.infolist() if item.filename == subject_path]
+                artifact_path = policy["artifact_path"]
+                if provenance["artifact_path"] != artifact_path:
+                    raise GateError("GitHub artifact subject path is not admitted for evidence ID")
+                entries = [item for item in bundle.infolist() if item.filename == artifact_path]
                 if (
                     len(entries) != 1
                     or entries[0].is_dir()
                     or entries[0].file_size > 50 * 1024 * 1024
-                    or ".." in Path(subject_path).parts
-                    or subject_path.startswith(("/", "\\"))
-                    or "\\" in subject_path
+                    or ".." in Path(artifact_path).parts
+                    or artifact_path.startswith(("/", "\\"))
+                    or "\\" in artifact_path
                 ):
                     raise GateError("GitHub artifact subject path is unsafe or ambiguous")
                 subject_bytes = bundle.read(entries[0])
@@ -197,17 +352,72 @@ class GitHubEvidenceVerifier:
         if hashlib.sha256(subject_bytes).hexdigest() != digest:
             raise GateError("GitHub artifact subject digest mismatch")
 
+        try:
+            claim = json.loads(subject_bytes.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise GateError("GitHub evidence claim is not canonical JSON") from exc
+        expected_producer = {
+            "workflow_path": policy["workflow_path"],
+            "workflow_ref": policy["workflow_ref"],
+            "event": policy["event"],
+            "job": policy["producer_job"],
+            "environment": policy["environment"],
+        }
+        if not isinstance(claim, dict) or set(claim) != {
+            "schema", "evidence_id", "scope", "claim_type", "result",
+            "source_commit", "producer", "payload",
+        }:
+            raise GateError("GitHub evidence claim schema is invalid")
+        payload = claim.get("payload")
+        if not (
+            claim.get("schema") == "sgk-evidence-claim-v1"
+            and claim.get("evidence_id") == evidence_id
+            and claim.get("scope") == scope
+            and claim.get("claim_type") == policy["claim_type"]
+            and claim.get("result") == "PASS"
+            and claim.get("source_commit") == commit
+            and claim.get("producer") == expected_producer
+            and isinstance(payload, dict)
+            and set(payload) == {"path", "schema", "sha256"}
+            and payload.get("path") == policy["payload_path"]
+            and payload.get("schema") == policy["payload_schema"]
+            and re.fullmatch(r"[a-f0-9]{64}", payload.get("sha256", ""))
+        ):
+            raise GateError("GitHub evidence claim does not match its fixed ID policy")
+
         pull_number = provenance["pull_request"]
+        pull = self._get(f"/repos/{quoted_repository}/pulls/{pull_number}")
+        if not isinstance(pull, dict) or not (
+            pull.get("number") == pull_number
+            and pull.get("state") == "closed"
+            and pull.get("merged") is True
+            and pull.get("merged_at")
+            and pull.get("merge_commit_sha") == commit
+            and pull.get("base", {}).get("ref") == "main"
+            and pull.get("base", {}).get("repo", {}).get("full_name") == repository
+            and pull.get("head", {}).get("sha") == provenance["reviewed_head_sha"]
+            and pull.get("head", {}).get("repo", {}).get("full_name") == repository
+        ):
+            raise GateError("GitHub pull request does not bind exact main merge and reviewed head")
         review = self._get(
             f"/repos/{quoted_repository}/pulls/{pull_number}/reviews/{provenance['review_id']}"
         )
+        reviewer_identity = self._get(
+            f"/users/{urllib.parse.quote(reviewer, safe='')}"
+        )
         if not isinstance(review, dict) or not (
             review.get("id") == provenance["review_id"]
+            and review.get("user", {}).get("id") == provenance["reviewer_id"]
             and review.get("user", {}).get("login", "").casefold() == reviewer.casefold()
+            and review.get("user", {}).get("type") == "User"
             and review.get("state") == "APPROVED"
-            and review.get("commit_id") == commit
+            and review.get("commit_id") == provenance["reviewed_head_sha"]
+            and isinstance(reviewer_identity, dict)
+            and reviewer_identity.get("id") == provenance["reviewer_id"]
+            and reviewer_identity.get("login", "").casefold() == reviewer.casefold()
+            and reviewer_identity.get("type") == "User"
         ):
-            raise GateError("GitHub review is not an independent exact-commit approval")
+            raise GateError("GitHub review is not an authoritative exact-PR approval")
 
         subject = urllib.parse.quote(f"sha256:{digest}", safe="")
         attestations = self._get(
@@ -225,16 +435,15 @@ class GitHubEvidenceVerifier:
             metadata = predicate.get("runDetails", {}).get("metadata", {})
             if (
                 statement.get("_type") == "https://in-toto.io/Statement/v1"
-                and statement.get("predicateType")
-                == "https://slsa.dev/provenance/v1"
+                and statement.get("predicateType") == policy["predicate_type"]
                 and any(
                     item.get("name") == provenance["subject_path"]
                     and item.get("digest", {}).get("sha256") == digest
                     for item in subjects or []
                 )
                 and workflow.get("repository") == f"https://github.com/{repository}"
-                and workflow.get("ref") == "refs/heads/main"
-                and workflow.get("path") == f"/{self.TRUSTED_WORKFLOW_PATH}"
+                and workflow.get("ref") == policy["workflow_ref"]
+                and workflow.get("path") == f"/{policy['workflow_path']}"
                 and any(
                     dependency.get("digest", {}).get("gitCommit") == commit
                     for dependency in dependencies
@@ -251,6 +460,11 @@ class GitHubEvidenceVerifier:
                 break
         if not verified:
             raise GateError("GitHub attestation does not bind artifact, repository, and run")
+        return {
+            "evidence_id": evidence_id,
+            "subject_sha256": digest,
+            "payload_sha256": payload["sha256"],
+        }
 
 
 def _sha256(path: Path) -> str:
@@ -361,6 +575,27 @@ def contract() -> dict:
     ):
         if workflow.count(required_path) != 2:
             errors.append(f"backend workflow trigger coverage missing {required_path}")
+    admitted_evidence = {
+        evidence_id for evidence_id, policy in EVIDENCE_POLICIES.items()
+        if policy["pass_allowed"]
+    }
+    if admitted_evidence != {"ops-contract", "hosted-sbom-attestation"}:
+        errors.append("only repository software evidence producers may currently pass")
+    for blocked_id in (
+        "isolated-mariadb-restore", "24h-load-soak", "production-deployment",
+    ):
+        if EVIDENCE_POLICIES[blocked_id]["pass_allowed"]:
+            errors.append(f"live/operator producer is not trusted yet: {blocked_id}")
+    for required in (
+        "Upload operations contract evidence claim",
+        "Upload hosted SBOM evidence claim",
+        "Attest operations contract claim",
+        "Attest hosted SBOM claim",
+        "build/evidence/ops-contract.json",
+        "build/evidence/hosted-sbom-attestation.json",
+    ):
+        if required not in workflow:
+            errors.append(f"backend workflow omits fixed evidence producer token: {required}")
     if not re.search(r"^FROM mariadb@sha256:[a-f0-9]{64}$", db_dockerfile, re.MULTILINE):
         errors.append("migration database image base is not digest-pinned")
     if "COPY migrations/007_ops_privacy_up.sql /opt/smart-gatekeeper/migrations/007_up.sql" not in db_dockerfile:
@@ -415,7 +650,7 @@ def contract() -> dict:
     if errors:
         raise GateError("; ".join(errors))
     return {
-        "status": "PASS", "checks": 29, "scope": "repository-software-only",
+        "status": "PASS", "checks": 34, "scope": "repository-software-only",
         "trusted_base_rotation": "required-before-merge",
     }
 
@@ -455,6 +690,82 @@ def generate_sbom(output: Path) -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return sbom
+
+
+def generate_ops_contract_result(output: Path, commit: str) -> dict:
+    if commit != checked_out_commit():
+        raise GateError("operations contract claim must equal checked-out Git commit")
+    result = {
+        "schema": "sgk-ops-contract-result-v1",
+        "source_commit": commit,
+        **contract(),
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return result
+
+
+def generate_evidence_claim(
+    evidence_id: str,
+    payload_path: Path,
+    output: Path,
+    commit: str,
+) -> dict:
+    if commit != checked_out_commit():
+        raise GateError("evidence claim must equal checked-out Git commit")
+    if evidence_id not in EVIDENCE_POLICIES:
+        raise GateError("evidence claim ID is unknown")
+    policy = EVIDENCE_POLICIES[evidence_id]
+    if not policy["pass_allowed"]:
+        raise GateError(f"evidence producer is not admitted: {evidence_id}")
+    payload_bytes = payload_path.read_bytes()
+    try:
+        payload_document = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise GateError("evidence payload is not valid JSON") from exc
+    if evidence_id == "ops-contract":
+        if not isinstance(payload_document, dict) or not (
+            payload_document.get("schema") == policy["payload_schema"]
+            and payload_document.get("source_commit") == commit
+            and payload_document.get("status") == "PASS"
+            and payload_document.get("scope") == "repository-software-only"
+            and payload_document.get("trusted_base_rotation") == "required-before-merge"
+        ):
+            raise GateError("operations contract payload is not authoritative")
+    elif evidence_id == "hosted-sbom-attestation":
+        if not isinstance(payload_document, dict) or not (
+            payload_document.get("bomFormat") == "CycloneDX"
+            and payload_document.get("specVersion") == "1.5"
+            and payload_document.get("version") == 1
+            and payload_document.get("metadata", {}).get("component", {}).get("name")
+            == "smart-gatekeeper-backend"
+            and isinstance(payload_document.get("components"), list)
+            and payload_document["components"]
+        ):
+            raise GateError("hosted SBOM payload is not authoritative CycloneDX")
+    claim = {
+        "schema": "sgk-evidence-claim-v1",
+        "evidence_id": evidence_id,
+        "scope": EVIDENCE_SCOPES[evidence_id],
+        "claim_type": policy["claim_type"],
+        "result": "PASS",
+        "source_commit": commit,
+        "producer": {
+            "workflow_path": policy["workflow_path"],
+            "workflow_ref": policy["workflow_ref"],
+            "event": policy["event"],
+            "job": policy["producer_job"],
+            "environment": policy["environment"],
+        },
+        "payload": {
+            "path": policy["payload_path"],
+            "schema": policy["payload_schema"],
+            "sha256": hashlib.sha256(payload_bytes).hexdigest(),
+        },
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(claim, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return claim
 
 
 def migration_set_sha256() -> str:
@@ -822,6 +1133,8 @@ def evidence_register(
     if not isinstance(evidence, list) or len(evidence) != len(EVIDENCE_SCOPES):
         raise GateError("evidence source must contain every fixed evidence ID exactly once")
     seen = set()
+    seen_subject_digests = {}
+    seen_payload_digests = {}
     expected_keys = {
         "id", "scope", "state", "source_commit", "artifact_sha256",
         "reviewer", "expires_at", "provenance",
@@ -845,11 +1158,19 @@ def evidence_register(
             if any(value is not None for value in proof_fields):
                 raise GateError(f"non-passed evidence cannot assert proof: {evidence_id}")
             continue
+        policy = EVIDENCE_POLICIES[evidence_id]
+        if not policy["pass_allowed"]:
+            raise GateError(f"evidence producer is not admitted: {evidence_id}")
         if item["source_commit"] != commit:
             raise GateError(f"passed evidence commit mismatch: {evidence_id}")
         digest = item["artifact_sha256"]
         if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
             raise GateError(f"passed evidence digest is invalid: {evidence_id}")
+        if digest in seen_subject_digests and not policy["allow_digest_reuse"]:
+            raise GateError(
+                f"evidence subject digest reused across IDs: {seen_subject_digests[digest]}"
+            )
+        seen_subject_digests[digest] = evidence_id
         reviewer = item["reviewer"]
         if (
             not isinstance(reviewer, str)
@@ -867,7 +1188,8 @@ def evidence_register(
         provenance_keys = {
             "provider", "repository", "commit", "run_id", "run_attempt",
             "artifact_name", "artifact_archive_sha256", "subject_path",
-            "artifact_sha256", "pull_request", "review_id",
+            "artifact_path", "artifact_sha256", "pull_request", "review_id", "reviewer_id",
+            "reviewed_head_sha",
         }
         if not isinstance(provenance, dict) or set(provenance) != provenance_keys:
             raise GateError(f"passed evidence provenance is incomplete: {evidence_id}")
@@ -881,23 +1203,45 @@ def evidence_register(
             or not isinstance(provenance["run_attempt"], int)
             or provenance["run_attempt"] <= 0
             or not isinstance(provenance["artifact_name"], str)
-            or not provenance["artifact_name"]
+            or provenance["artifact_name"]
+            != policy["artifact_name"].format(commit=commit)
             or not isinstance(provenance["subject_path"], str)
-            or not provenance["subject_path"]
+            or provenance["subject_path"] != policy["subject_path"]
+            or not isinstance(provenance["artifact_path"], str)
+            or provenance["artifact_path"] != policy["artifact_path"]
             or not re.fullmatch(r"[a-f0-9]{64}", provenance["artifact_archive_sha256"])
             or not isinstance(provenance["pull_request"], int)
             or provenance["pull_request"] <= 0
             or not isinstance(provenance["review_id"], int)
             or provenance["review_id"] <= 0
+            or not isinstance(provenance["reviewer_id"], int)
+            or provenance["reviewer_id"] <= 0
+            or not re.fullmatch(r"[a-f0-9]{40}", provenance["reviewed_head_sha"])
         ):
             raise GateError(f"passed evidence provenance does not bind the artifact: {evidence_id}")
         if verifier is None:
             raise GateError(f"passed evidence requires live GitHub API verification: {evidence_id}")
-        verifier.verify(
+        verified_claim = verifier.verify(
+            evidence_id=evidence_id, scope=item["scope"],
             repository=source_doc["repository"], commit=commit,
             candidate_author=candidate_author, reviewer=reviewer,
             digest=digest, provenance=provenance,
         )
+        if not isinstance(verified_claim, dict) or not (
+            verified_claim.get("evidence_id") == evidence_id
+            and verified_claim.get("subject_sha256") == digest
+            and re.fullmatch(
+                r"[a-f0-9]{64}", verified_claim.get("payload_sha256", "")
+            )
+        ):
+            raise GateError(f"trusted verifier returned an invalid claim: {evidence_id}")
+        payload_digest = verified_claim["payload_sha256"]
+        if payload_digest in seen_payload_digests and not policy["allow_digest_reuse"]:
+            raise GateError(
+                f"evidence payload digest reused across IDs: "
+                f"{seen_payload_digests[payload_digest]}"
+            )
+        seen_payload_digests[payload_digest] = evidence_id
     register = {
         "schema": "sgk-evidence-register-v2",
         "source_commit": commit,
@@ -920,6 +1264,15 @@ def main(argv: list[str] | None = None) -> int:
     production.add_argument("--db-image", required=True)
     sbom = sub.add_parser("sbom")
     sbom.add_argument("--output", type=Path, required=True)
+    contract_evidence = sub.add_parser("ops-contract-evidence")
+    contract_evidence.add_argument("--result-output", type=Path, required=True)
+    contract_evidence.add_argument("--claim-output", type=Path, required=True)
+    contract_evidence.add_argument("--commit", required=True)
+    claim = sub.add_parser("evidence-claim")
+    claim.add_argument("--id", choices=sorted(EVIDENCE_POLICIES), required=True)
+    claim.add_argument("--payload", type=Path, required=True)
+    claim.add_argument("--output", type=Path, required=True)
+    claim.add_argument("--commit", required=True)
     backup = sub.add_parser("backup-manifest")
     backup.add_argument("--dump", type=Path, required=True)
     backup.add_argument("--output", type=Path, required=True)
@@ -965,6 +1318,15 @@ def main(argv: list[str] | None = None) -> int:
             result = validate_production_images(args.api_image, args.db_image)
         elif args.command == "sbom":
             result = {"status": "PASS", "components": len(generate_sbom(args.output)["components"])}
+        elif args.command == "ops-contract-evidence":
+            generate_ops_contract_result(args.result_output, args.commit)
+            result = generate_evidence_claim(
+                "ops-contract", args.result_output, args.claim_output, args.commit,
+            )
+        elif args.command == "evidence-claim":
+            result = generate_evidence_claim(
+                args.id, args.payload, args.output, args.commit,
+            )
         elif args.command == "backup-manifest":
             source_inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
             result = create_backup_manifest(

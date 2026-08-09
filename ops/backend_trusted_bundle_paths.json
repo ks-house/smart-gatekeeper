@@ -6,6 +6,7 @@
     "scripts/ops_commercial_gate.py",
     "ops/backend_trusted_bundle_paths.json",
     "ops/evidence_sources.json",
+    "ops/fixtures/evidence_adversarial_v1.json",
     "ops/fixtures/load_nominal.jsonl",
     "ops/prometheus_rules.yml",
     "ops/slo_policy.json",

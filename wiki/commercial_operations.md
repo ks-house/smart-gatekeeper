@@ -19,7 +19,7 @@
 | production Compose | repository and 64-hex digest are structurally separate required variables for both API and DB; seed-free baseline and every up/down migration are baked into the pinned DB artifact; a backup-first one-shot migration must finish before API admission; external secrets, internal data network, no host port/live SQL bind, read-only non-root API and resource limits | `API_IMAGE=nginx:latest` cannot satisfy Compose; immutable API/DB images still require independent build provenance before deployment |
 | supply chain | hash lock, digest-pinned image bases/service, Python `3.12.13`, exact action commits, full workflow path triggers, deterministic SBOM and vulnerability/license Gates | `ops/backend_trusted_bundle_paths.json` defines the whole executable/input set; a separate trusted-base policy rotation must approve the exact candidate without reading candidate policy before merge |
 | backup/recovery | HMAC-authenticated manifest binds dump bytes, release migration identity and per-table schema hash, primary key, PK-ordered row count/content hash; isolated restore compares the entire source/target inventory | actual disposable MariaDB logical dump/separate-schema restore and monotonic RTO pass locally; independent operator restore from production-like encrypted storage remains pending |
-| SLO/evidence | strict fixed-ID evidence v2 binds checked-out commit, exact digest, future zoned expiry, authoritative commit author, independent exact-commit approval, exact main-push trusted workflow, GitHub artifact archive/subject digests and SLSA attestation | all claims are verified through fixed `api.github.com` endpoints; unknown/duplicate/self-reviewed/expired/unhosted or caller-environment mutations fail; nominal fixture is not a 24-hour load/soak result |
+| SLO/evidence | strict fixed-ID evidence v2 binds checked-out commit, future zoned expiry, authoritative merged PR/reviewer, and an ID-specific producer/job/environment/artifact/claim/predicate contract | only `ops-contract` and `hosted-sbom-attestation` currently have admitted producers; restore, physical soak and production remain fail-closed; cross-ID, same-SBOM, duplicate subject/payload and caller-environment mutations fail |
 
 The mobile and Target OTA paths remain independent. These changes do not alter
 the signed mobile manifest, Target dual-slot state machine, periodic HTTPS,
@@ -203,7 +203,9 @@ storage before operator rollback or volume replacement.
 The hosted backend workflow installs `requirements.lock` with
 `--require-hashes`, runs the full security suite, policy/SBOM/SLO Gates,
 high/critical vulnerability audit, both actual MariaDB lanes, and both image
-builds. On exact main it attests the generated SBOM with GitHub's identity, then
+builds. On exact main it creates separate typed operations-contract and hosted-
+SBOM claim envelopes, uploads them under disjoint names/paths, attests each with
+GitHub's identity, then
 generates the operations register only after the security and attestation jobs
 succeed. An SBOM upload without a successful attestation does not satisfy
 provenance.
@@ -241,17 +243,30 @@ python scripts/ops_commercial_gate.py evidence `
 ```
 
 The generator requires `--commit` to equal the checked-out HEAD. A `passed`
-record must use one fixed unique ID/scope, exact 64-hex subject and archive
+record must use one fixed unique ID/scope, exact 64-hex claim/archive/payload
 digests, a future timezone-aware ISO expiry, and a reviewer different from the
-candidate author. The verifier ignores caller provenance environment strings
-and queries only fixed `https://api.github.com`: it binds the authoritative
-commit author, completed successful `main` push of the trusted backend workflow,
-exact run attempt, non-expired uniquely named artifact and downloaded ZIP bytes,
-safe subject path/digest, exact-commit `APPROVED` review, and GitHub-hosted SLSA
-attestation repository/ref/workflow/commit/invocation. Unknown, duplicate,
-self-reviewed, expired, unhosted, dismissed-review, cross-workflow, mismatched or
-malformed records fail. Regeneration never renews evidence; a same-account
-`COMMENTED` review is intentionally insufficient.
+candidate author. Every ID has a code-owned policy for workflow/ref/event,
+producer and attestor jobs/steps, execution environment, artifact name/archive
+path, attestation subject path, claim type, payload schema and SLSA predicate.
+Only repository `ops-contract` and `hosted-sbom-attestation` producers are
+admitted today. `isolated-mariadb-restore`, `24h-load-soak` and
+`production-deployment` reject `passed` before network access until separate
+trusted producers and environment approval contracts are implemented.
+
+The verifier ignores caller provenance environment strings and queries only
+fixed `https://api.github.com`. It binds the authoritative commit author,
+completed successful exact-main run and exact producer/attestor job steps,
+non-expired uniquely named artifact, downloaded archive path and bytes, typed
+claim contents, and GitHub-hosted SLSA repository/ref/workflow/commit/invocation.
+It also requires a closed merged PR whose base is this repository's `main`,
+whose merge SHA equals the evidence commit, whose head equals the reviewed head,
+and whose exact `APPROVED` review and numeric reviewer identity match the
+authoritative user API. Same-account `COMMENTED`, unrelated PR, wrong base/head/
+merge, cross-ID artifact, same SBOM/payload reuse and duplicate claim digest all
+fail. Every redirect hop must remain HTTPS; authorization is removed on any
+normalized scheme/host/effective-port origin change, and downgrade redirects are
+rejected. The adversarial corpus is
+`ops/fixtures/evidence_adversarial_v1.json`. Regeneration never renews evidence.
 
 ## 7. Remaining fail-closed Gates
 
