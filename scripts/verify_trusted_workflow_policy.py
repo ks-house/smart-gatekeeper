@@ -93,6 +93,7 @@ def validate_policy(policy: Any) -> None:
     raise PolicyError("policy: approved_bundles must be a non-empty array")
   bundle_ids: set[str] = set()
   bundle_identities: set[tuple[str, str, str]] = set()
+  persistent_repositories: set[str] = set()
   expected_paths = set(paths)
   for index, bundle in enumerate(bundles):
     label = f"policy.approved_bundles[{index}]"
@@ -127,6 +128,12 @@ def validate_policy(policy: Any) -> None:
     if identity in bundle_identities:
       raise PolicyError(f"{label}.source: duplicate authorization identity")
     bundle_identities.add(identity)
+    if mode == "persistent-baseline":
+      if source["repository"] in persistent_repositories:
+        raise PolicyError(
+            f"{label}.source: only one persistent baseline is allowed per repository"
+        )
+      persistent_repositories.add(source["repository"])
 
     files = bundle["files"]
     if not isinstance(files, dict) or set(files) != expected_paths:
@@ -153,6 +160,7 @@ def verify_candidate(
     candidate_repository: str,
     candidate_ref: str,
     fetch_candidate: Callable[[str], bytes],
+    is_descendant: Callable[[str, str], bool] | None = None,
 ) -> dict[str, Any]:
   """Return the byte- and source-authorized trusted bundle."""
   validate_policy(policy)
@@ -163,15 +171,30 @@ def verify_candidate(
       or not COMMIT_PATTERN.fullmatch(candidate_ref)
   ):
     raise PolicyError("candidate ref must be an immutable 40-character lowercase SHA")
-  eligible_bundles = [
+  exact_bundles = [
       bundle
       for bundle in policy["approved_bundles"]
       if candidate_repository == bundle["source"]["repository"]
-      and (
-          bundle["mode"] == "persistent-baseline"
-          or candidate_ref == bundle["source"]["commit"]
-      )
+      and bundle["mode"] == "temporary-exact"
+      and candidate_ref == bundle["source"]["commit"]
   ]
+  if exact_bundles:
+    eligible_bundles = exact_bundles
+  else:
+    persistent_bundles = [
+        bundle
+        for bundle in policy["approved_bundles"]
+        if candidate_repository == bundle["source"]["repository"]
+        and bundle["mode"] == "persistent-baseline"
+    ]
+    if persistent_bundles and is_descendant is None:
+      raise PolicyError("persistent baseline ancestry verification is required")
+    eligible_bundles = [
+        bundle
+        for bundle in persistent_bundles
+        if is_descendant is not None
+        and is_descendant(bundle["source"]["commit"], candidate_ref)
+    ]
   if not eligible_bundles:
     raise PolicyError("candidate source repository/ref is not authorized")
   actual = {
@@ -248,6 +271,57 @@ class GitHubContentsFetcher:
     except ValueError as error:
       raise PolicyError(f"GitHub API returned invalid base64 for {path}") from error
 
+  def is_descendant(self, ancestor: str, descendant: str) -> bool:
+    if not COMMIT_PATTERN.fullmatch(ancestor):
+      raise PolicyError("persistent baseline source must be a lowercase commit SHA")
+    if not COMMIT_PATTERN.fullmatch(descendant):
+      raise PolicyError("candidate ref must be a lowercase commit SHA")
+    if ancestor == descendant:
+      return True
+
+    quoted_ancestor = urllib.parse.quote(ancestor, safe="")
+    quoted_descendant = urllib.parse.quote(descendant, safe="")
+    url = (
+        f"{self._api_url}/repos/{self._repository}/compare/"
+        f"{quoted_ancestor}...{quoted_descendant}"
+    )
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {self._token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "smart-gatekeeper-trusted-workflow-policy",
+        },
+    )
+    try:
+      with urllib.request.urlopen(request, timeout=30) as response:
+        payload_bytes = response.read()
+    except urllib.error.HTTPError as error:
+      raise PolicyError(
+          f"GitHub API rejected ancestry comparison: HTTP {error.code}"
+      ) from error
+    except urllib.error.URLError as error:
+      raise PolicyError(
+          f"GitHub API ancestry comparison failed: {error.reason}"
+      ) from error
+
+    try:
+      payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+      raise PolicyError("GitHub API returned invalid ancestry JSON") from error
+    if not isinstance(payload, dict):
+      raise PolicyError("GitHub API returned invalid ancestry data")
+    merge_base = payload.get("merge_base_commit")
+    base_commit = payload.get("base_commit")
+    return (
+        payload.get("status") == "ahead"
+        and isinstance(merge_base, dict)
+        and merge_base.get("sha") == ancestor
+        and isinstance(base_commit, dict)
+        and base_commit.get("sha") == ancestor
+    )
+
 
 def parse_args() -> argparse.Namespace:
   parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -280,6 +354,7 @@ def main() -> int:
         args.candidate_repository,
         args.candidate_ref,
         fetcher,
+        fetcher.is_descendant,
     )
   except PolicyError as error:
     print(f"[ERROR] trusted workflow policy: {error}", file=sys.stderr)

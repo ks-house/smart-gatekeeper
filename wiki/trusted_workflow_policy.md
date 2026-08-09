@@ -23,7 +23,7 @@ workflow, Orca setup input, commercial-operations gate, evidence/SLO fixtures an
 locked dependencies, static admin surfaces, production Compose and database migration inputs, SBOM/supply
 chain policy, backend tests, and canonical protocol vectors. The JSON policy contains the authoritative
 complete ordered path set; it is identical to the existing five followed by
-`ops/backend_trusted_bundle_paths.json@2bb223629c848f298177fc16ec3cac1fa40b8e0f`.
+`ops/backend_trusted_bundle_paths.json@4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`.
 
 `utf8-lf-v1` means strict UTF-8 decoding followed only by CRLF/CR-to-LF conversion. No whitespace, comments,
 keys, steps, action versions, commands, or trailing newlines are otherwise ignored. The normalized bytes use
@@ -37,17 +37,30 @@ Policy format version 2 defines two authorization modes and no implicit fallback
 - `temporary-exact` requires actual candidate repository and immutable SHA to equal the bundle's exact
   `source.repository` and `source.commit`. Equivalent bytes from a fork, old commit, case variant, branch,
   tag, or another ref are rejected.
-- `persistent-baseline` requires actual candidate repository to equal the trusted source repository, but
-  permits a later immutable 40-hex SHA when every protected byte remains identical. `source.commit` records
-  reviewed baseline provenance; it is not a branch or wildcard.
+- `persistent-baseline` requires actual candidate repository to equal the trusted source repository and the
+  candidate SHA to equal or descend from the reviewed `source.commit`. The trusted validator proves ancestry
+  with GitHub's compare API: a distinct candidate must report `ahead` with both the exact source as the base
+  commit and merge base. Only then may identical protected bytes pass. Old ancestors, diverged commits, forks,
+  branches, tags, and unproven ancestry fail closed.
 
 Missing or duplicated CLI identity options, malformed repository paths, mutable refs, uppercase or short
-SHAs, duplicate authorization identities, and unknown modes fail closed.
+SHAs, duplicate authorization identities, more than one persistent baseline per repository, and unknown modes
+fail closed. When an exact temporary identity and a persistent baseline both cover the same reviewed bytes,
+the exact temporary match takes precedence without invoking ancestry; later descendants use only the one
+persistent baseline.
 
-The transition policy contains exactly one `temporary-exact` bundle, `temporary-pr67-2bb2236`, whose review provenance is
-repository `ks-house/smart-gatekeeper` at exact commit
-`2bb223629c848f298177fc16ec3cac1fa40b8e0f`. Independent exact-head COMMENTED review `4890584574`
-authorized only those 57 normalized digests as one complete set. Regression tests separately pin the exact
+The transition policy contains exactly two non-ambiguous authorizations for one byte-identical 57-file set.
+`temporary-pr67-4f14ec6` is a `temporary-exact` candidate identity for repository `ks-house/smart-gatekeeper`
+at exact commit
+`4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`. All 57 normalized digests were independently recomputed from
+that immutable Git ref and match the previously reviewed `2bb223629c848f298177fc16ec3cac1fa40b8e0f`
+complete bundle byte-for-byte. The earlier temporary identity is retired because integrating trusted main
+changed the PR head even though none of the protected bytes changed; this new identity requires fresh
+independent exact-head review before merge. `future-pr67-persistent-baseline` uses the same repository, source
+commit, ordered paths, and 57 digests, but accepts only that source or a GitHub-proven descendant. Exact-match
+precedence selects the temporary bundle at `4f14ec6`; the persistent bundle exists only to authorize the
+future PR #67 merge commit and the immediate final rotation without re-admitting ancestor `2bb2236`.
+Regression tests separately pin the exact
 repository, commit, mode, ordered path set, and every digest. The real decision path is exercised with exact
 approved bytes against wrong repositories/forks, retired or altered SHAs, case/path variants, missing or
 duplicate identity, and mutable refs. Tests also reject the old five-path set, missing/reordered paths,
@@ -70,11 +83,12 @@ validator are never imported, parsed, or executed, so changing them cannot chang
 Changes to these trust-control files still require an explicit security review before merge because their
 effect begins only after they become default-branch code.
 
-This PR changes the validator and schema together to close review `4890625756`. Its own hosted check must
-still run the unchanged validator and policy from base `1ce7f16a52380a6ff1dcd84a4cdca70569cbff75`.
-A green result proves non-self-use, not candidate-validator self-approval. Version 2 behavior is established
-separately by mutation tests and GitHub API verification and then requires fresh independent exact-head review.
-Only after this policy PR is reviewed and merged may trusted-base version 2 authorize exact PR #67.
+PR #68 established the identity-bound validator and schema version 2 on trusted main. This follow-up strengthens
+the validator so persistent authorization requires proven source ancestry, enforces one persistent baseline per
+repository, and gives an exact temporary candidate deterministic precedence. Its own hosted check still executes
+the old trusted-base policy and validator, so this PR cannot authorize itself and is expected to fail the current
+source-identity Gate. The validator, two-bundle transition, tests, guide, and append-only log therefore require
+fresh independent exact-head review and one explicitly authorized governance exception before becoming trusted.
 
 ## 4. Rotation procedure
 
@@ -85,14 +99,30 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For PR #67, merge this policy-only temporary authorization first through normal protection. Then re-run the
-trusted check on exact PR #67 head `2bb223629c848f298177fc16ec3cac1fa40b8e0f` and merge that reviewed
-candidate without rewriting it. Immediately follow with a separate policy-only rotation that removes
-`temporary-pr67-2bb2236` and pins one 57-file `persistent-baseline` named `current-main-baseline` to the actual
-PR #67 merged-main repository and commit. That mode permits later commits in the same trusted repository only
-while every protected byte stays unchanged; it does not authorize forks or mutable refs.
+For PR #67, the current sole-exact policy creates a PR-only transition deadlock: any corrective policy commit
+has a new SHA and is rejected before byte fetch. After fresh exact-head security review and explicit repository
+owner authorization, apply exactly one narrow branch-protection/admin exception to merge this policy-only PR.
+Do not disable unrelated controls, do not merge PR #67 in the same exception, and immediately restore and verify
+the required Trusted check.
+
+After the exception merges, fetch its exact new main and integrate that main into PR #67 exactly once. This
+bounded integration is required because both branches append `wiki/log.md` from base `8f925f9`; an exact
+`git merge-tree` audit reports a real log conflict. Resolve only that append-only history using raw Git bytes:
+the new-main log must be the prefix, the complete prior PR #67 branch suffix must remain byte-identical once,
+and one integration entry may be appended. Preserve all 57 protected digests exactly as reviewed at
+`4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`, preserve `raw/`, and accept the trusted policy/validator from
+new main. Do not add product remediation or a second main integration.
+
+The resulting PR #67 head is a descendant of `4f14ec6`, so the new trusted-base validator selects
+`future-pr67-persistent-baseline` after GitHub ancestry proof and exact 57-file byte comparison. Merge PR #67
+normally only after all hosted checks and a fresh review of that exact integrated head pass. Immediately open a
+separate final policy-only rotation from the merged main. It removes both transition bundles and pins one 57-file
+`persistent-baseline` named `current-main-baseline` to the actual PR #67 merged-main repository and commit. The
+base transition policy admits that final rotation normally because its head remains a proven descendant of
+`4f14ec6` and preserves all 57 bytes. After the final rotation merges normally, verify branch protection,
+current-main policy selection, and main CI.
 Any path, digest, repository, or reviewed source-commit change requires a fresh independent whole-bundle
-review; do not prolong the temporary single-candidate window or merge unrelated PRs through a bypass.
+review; do not prolong the two-bundle transition window or merge unrelated PRs through an exception.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
