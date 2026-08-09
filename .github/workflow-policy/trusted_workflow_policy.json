@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "normalization": "utf8-lf-v1",
   "protected_paths": [
     ".github/workflows/deploy.yml",
@@ -63,6 +63,7 @@
   "approved_bundles": [
     {
       "id": "temporary-pr67-2bb2236",
+      "mode": "temporary-exact",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
         "commit": "2bb223629c848f298177fc16ec3cac1fa40b8e0f"

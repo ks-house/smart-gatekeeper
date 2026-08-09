@@ -1,5 +1,7 @@
 import copy
+import contextlib
 import hashlib
+import io
 import json
 import sys
 import unittest
@@ -333,11 +335,13 @@ def validate_trusted_workflow_structure(
 
 class TrustedWorkflowPolicyTest(unittest.TestCase):
   def assert_temporary_pr67_is_exact(self, policy):
+    self.assertEqual(policy["format_version"], 2)
     self.assertEqual(policy["protected_paths"], list(TEMPORARY_PR67_DIGESTS))
     self.assertEqual(len(policy["protected_paths"]), 57)
     self.assertEqual(len(policy["approved_bundles"]), 1)
     bundle = policy["approved_bundles"][0]
     self.assertEqual(bundle["id"], "temporary-pr67-2bb2236")
+    self.assertEqual(bundle["mode"], "temporary-exact")
     self.assertEqual(
         bundle["source"],
         {
@@ -358,12 +362,13 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         "gate.py": b"print('alternate')\n",
     }
     self.policy = {
-        "format_version": 1,
+        "format_version": 2,
         "normalization": trusted.NORMALIZATION,
         "protected_paths": list(self.main_files),
         "approved_bundles": [
             {
                 "id": "main",
+                "mode": "persistent-baseline",
                 "source": {
                     "repository": "owner/repository",
                     "commit": "1" * 40,
@@ -375,6 +380,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             },
             {
                 "id": "alternate",
+                "mode": "temporary-exact",
                 "source": {
                     "repository": "owner/repository",
                     "commit": "2" * 40,
@@ -387,13 +393,33 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         ],
     }
 
+  def verify(
+      self,
+      files,
+      repository="owner/repository",
+      ref="3" * 40,
+  ):
+    return trusted.verify_candidate(
+        self.policy,
+        repository,
+        ref,
+        files.__getitem__,
+    )
+
   def test_exact_main_bundle_is_approved(self):
-    bundle = trusted.verify_candidate(self.policy, self.main_files.__getitem__)
+    bundle = self.verify(self.main_files)
     self.assertEqual(bundle["id"], "main")
 
   def test_exact_alternate_bundle_is_approved(self):
-    bundle = trusted.verify_candidate(self.policy, self.alternate_files.__getitem__)
+    bundle = self.verify(self.alternate_files, ref="2" * 40)
     self.assertEqual(bundle["id"], "alternate")
+
+  def test_persistent_baseline_accepts_later_same_repository_commit_only(self):
+    for ref in ("1" * 40, "3" * 40, "f" * 40):
+      with self.subTest(ref=ref):
+        self.assertEqual(self.verify(self.main_files, ref=ref)["id"], "main")
+    with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):
+      self.verify(self.main_files, repository="attacker/fork")
 
   def test_line_endings_are_normalized_but_other_bytes_are_exact(self):
     self.assertEqual(_digest(b"a\r\nb\r"), _digest(b"a\nb\n"))
@@ -403,19 +429,19 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     changed = dict(self.main_files)
     changed["gate.py"] += b"# attacker\n"
     with self.assertRaisesRegex(trusted.PolicyError, "gate.py"):
-      trusted.verify_candidate(self.policy, changed.__getitem__)
+      self.verify(changed)
 
   def test_mixed_approved_bundles_are_rejected(self):
     mixed = {
         "workflow.yml": self.main_files["workflow.yml"],
         "gate.py": self.alternate_files["gate.py"],
     }
-    with self.assertRaisesRegex(trusted.PolicyError, "mix approved bundles"):
-      trusted.verify_candidate(self.policy, mixed.__getitem__)
+    with self.assertRaisesRegex(trusted.PolicyError, "not an approved bundle"):
+      self.verify(mixed)
 
   def test_missing_protected_file_is_rejected(self):
     with self.assertRaises(KeyError):
-      trusted.verify_candidate(self.policy, {"workflow.yml": b"x"}.__getitem__)
+      self.verify({"workflow.yml": b"x"})
 
   def test_pr_side_policy_and_validator_changes_cannot_change_decision(self):
     candidate_tree = dict(self.main_files)
@@ -433,7 +459,9 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
       requested_paths.append(path)
       return candidate_tree[path]
 
-    bundle = trusted.verify_candidate(copy.deepcopy(self.policy), fetch)
+    bundle = trusted.verify_candidate(
+        copy.deepcopy(self.policy), "owner/repository", "3" * 40, fetch
+    )
     self.assertEqual(bundle["id"], "main")
     self.assertEqual(requested_paths, self.policy["protected_paths"])
     self.assertNotIn(policy_path, requested_paths)
@@ -455,7 +483,12 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         b"def verify_candidate(*_): return 'candidate-approved'\n"
     )
     with self.assertRaisesRegex(trusted.PolicyError, "gate.py"):
-      trusted.verify_candidate(copy.deepcopy(self.policy), candidate_tree.__getitem__)
+      trusted.verify_candidate(
+          copy.deepcopy(self.policy),
+          "owner/repository",
+          "3" * 40,
+          candidate_tree.__getitem__,
+      )
 
   def test_policy_requires_exact_file_set_for_every_bundle(self):
     policy = copy.deepcopy(self.policy)
@@ -469,14 +502,108 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     with self.assertRaisesRegex(trusted.PolicyError, "keys must be exactly"):
       trusted.validate_policy(policy)
 
-  def verify_pr67_digest_map(self, policy, digests):
+  def test_policy_rejects_mode_identity_and_path_schema_mutations(self):
+    mutations = []
+
+    missing_mode = copy.deepcopy(self.policy)
+    del missing_mode["approved_bundles"][0]["mode"]
+    mutations.append(missing_mode)
+
+    invalid_mode = copy.deepcopy(self.policy)
+    invalid_mode["approved_bundles"][0]["mode"] = "branch-or-wildcard"
+    mutations.append(invalid_mode)
+
+    duplicate_identity = copy.deepcopy(self.policy)
+    duplicate_identity["approved_bundles"][1]["mode"] = "persistent-baseline"
+    duplicate_identity["approved_bundles"][1]["source"] = copy.deepcopy(
+        duplicate_identity["approved_bundles"][0]["source"]
+    )
+    mutations.append(duplicate_identity)
+
+    for path_variant in (
+        "Workflow.yml",
+        "workflow.yml/../gate.py",
+        "workflow.yml\\gate.py",
+        "workflow.yml//gate.py",
+        "/workflow.yml",
+    ):
+      mutated = copy.deepcopy(self.policy)
+      if path_variant == "Workflow.yml":
+        mutated["protected_paths"].append(path_variant)
+        mutated["approved_bundles"][0]["files"][path_variant] = "0" * 64
+        mutated["approved_bundles"][1]["files"][path_variant] = "0" * 64
+      else:
+        old_path = mutated["protected_paths"][0]
+        mutated["protected_paths"][0] = path_variant
+        for bundle in mutated["approved_bundles"]:
+          bundle["files"][path_variant] = bundle["files"].pop(old_path)
+      mutations.append(mutated)
+
+    for index, mutated in enumerate(mutations):
+      with self.subTest(index=index):
+        with self.assertRaises(trusted.PolicyError):
+          trusted.validate_policy(mutated)
+
+  def test_runtime_rejects_missing_malformed_case_and_wrong_identity(self):
+    fetch = mock.Mock(side_effect=self.main_files.__getitem__)
+    invalid = (
+        (None, "3" * 40),
+        ("owner/repository", None),
+        ("Owner/repository", "3" * 40),
+        ("owner/repository/extra", "3" * 40),
+        ("owner//repository", "3" * 40),
+        ("../repository", "3" * 40),
+        ("owner/..", "3" * 40),
+        ("owner/repository", "3" * 39),
+        ("owner/repository", "A" * 40),
+        ("owner/repository", "refs/heads/main"),
+    )
+    for repository, ref in invalid:
+      with self.subTest(repository=repository, ref=ref):
+        fetch.reset_mock()
+        with self.assertRaises(trusted.PolicyError):
+          trusted.verify_candidate(self.policy, repository, ref, fetch)
+        fetch.assert_not_called()
+
+  def test_cli_rejects_missing_and_duplicate_candidate_identity(self):
+    common = ["verify", "--policy", "policy.json"]
+    cases = (
+        common + ["--candidate-ref", "1" * 40],
+        common + ["--candidate-repository", "owner/repository"],
+        common + [
+            "--candidate-repository", "owner/repository",
+            "--candidate-repository", "attacker/fork",
+            "--candidate-ref", "1" * 40,
+        ],
+        common + [
+            "--candidate-repository", "owner/repository",
+            "--candidate-ref", "1" * 40,
+            "--candidate-ref", "2" * 40,
+        ],
+    )
+    for argv in cases:
+      with self.subTest(argv=argv), mock.patch.object(sys, "argv", argv):
+        with contextlib.redirect_stderr(io.StringIO()):
+          with self.assertRaises(SystemExit):
+            trusted.parse_args()
+
+  def verify_pr67_digest_map(
+      self,
+      policy,
+      digests,
+      repository="ks-house/smart-gatekeeper",
+      ref=TEMPORARY_PR67_COMMIT,
+  ):
     with mock.patch.object(
         trusted,
         "normalized_sha256",
         side_effect=lambda content: content.decode("ascii"),
     ):
       return trusted.verify_candidate(
-          policy, lambda path: digests[path].encode("ascii")
+          policy,
+          repository,
+          ref,
+          lambda path: digests[path].encode("ascii"),
       )
 
   def test_temporary_policy_has_only_exact_pr67_bundle(self):
@@ -505,6 +632,28 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         trusted.validate_policy(mutated)
         with self.assertRaises(AssertionError):
           self.assert_temporary_pr67_is_exact(mutated)
+
+    runtime_identities = [
+        ("attacker/fork", TEMPORARY_PR67_COMMIT),
+        ("KS-HOUSE/smart-gatekeeper", TEMPORARY_PR67_COMMIT),
+        ("ks-house/SMART-GATEKEEPER", TEMPORARY_PR67_COMMIT),
+        ("ks-house/smart-gatekeeper", "f" * 40),
+    ]
+    runtime_identities.extend(
+        ("ks-house/smart-gatekeeper", commit)
+        for commit in RETIRED_SOURCE_COMMITS
+    )
+    for repository, ref in runtime_identities:
+      with self.subTest(repository=repository, ref=ref):
+        with self.assertRaisesRegex(
+            trusted.PolicyError, "source repository/ref"
+        ):
+          self.verify_pr67_digest_map(
+              policy,
+              TEMPORARY_PR67_DIGESTS,
+              repository=repository,
+              ref=ref,
+          )
 
   def test_pr67_missing_partial_old_and_reordered_path_sets_are_rejected(self):
     policy = trusted.load_policy(
@@ -582,6 +731,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     extra = copy.deepcopy(policy)
     extra["approved_bundles"].append({
         "id": "unauthorized-second-bundle",
+        "mode": "temporary-exact",
         "source": {
             "repository": "ks-house/smart-gatekeeper",
             "commit": "f" * 40,

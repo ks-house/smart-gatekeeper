@@ -4,7 +4,7 @@
 
 `.github/workflows/trusted_workflow_policy.yml` uses `pull_request_target` without `paths` or `paths-ignore` filters to prevent required-check deadlocks, ensuring `Verify protected files against trusted base policy` runs on all pull requests targeting `main` (including docs-only PRs). It never checks out or executes pull-request code. The workflow checks out only the trusted `base.sha` with credentials disabled and sparse paths limited to the base validator and policy. Candidate protected files are downloaded from the candidate repository and commit through the GitHub Contents API, decoded as inert bytes, normalized, and hashed.
 
-The job has only `contents: read`. Pull-request titles, branches, file contents, and other attacker-controlled values are never interpolated into an executable command. The candidate repository and 40-hex commit are passed as quoted environment variables and validated again by the base script.
+The job has only `contents: read`. Pull-request titles, branches, file contents, and other attacker-controlled values are never interpolated into an executable command. The actual head repository and immutable lowercase 40-hex head SHA are passed as separate quoted environment variables. The production decision validates both values, selects only bundles whose explicit source mode authorizes that identity, and only then downloads candidate bytes.
 
 ## 2. Protected bundle decision
 
@@ -27,15 +27,31 @@ complete ordered path set; it is identical to the existing five followed by
 
 `utf8-lf-v1` means strict UTF-8 decoding followed only by CRLF/CR-to-LF conversion. No whitespace, comments,
 keys, steps, action versions, commands, or trailing newlines are otherwise ignored. The normalized bytes use
-SHA-256. A candidate passes only when every protected path exactly matches one complete approved bundle;
-mixing individually approved files from different bundles is rejected.
+SHA-256. A candidate passes only when every protected path exactly matches one complete approved bundle and
+the actual repository/SHA satisfies that bundle's source mode. Mixing individually approved files is rejected.
+Protected paths use canonical case-sensitive repository-relative POSIX syntax; dot segments, backslashes,
+empty segments, absolute paths, and case-folding duplicates are rejected.
 
-The transition policy contains exactly one bundle, `temporary-pr67-2bb2236`, whose review provenance is
+Policy format version 2 defines two authorization modes and no implicit fallback:
+
+- `temporary-exact` requires actual candidate repository and immutable SHA to equal the bundle's exact
+  `source.repository` and `source.commit`. Equivalent bytes from a fork, old commit, case variant, branch,
+  tag, or another ref are rejected.
+- `persistent-baseline` requires actual candidate repository to equal the trusted source repository, but
+  permits a later immutable 40-hex SHA when every protected byte remains identical. `source.commit` records
+  reviewed baseline provenance; it is not a branch or wildcard.
+
+Missing or duplicated CLI identity options, malformed repository paths, mutable refs, uppercase or short
+SHAs, duplicate authorization identities, and unknown modes fail closed.
+
+The transition policy contains exactly one `temporary-exact` bundle, `temporary-pr67-2bb2236`, whose review provenance is
 repository `ks-house/smart-gatekeeper` at exact commit
 `2bb223629c848f298177fc16ec3cac1fa40b8e0f`. Independent exact-head COMMENTED review `4890584574`
 authorized only those 57 normalized digests as one complete set. Regression tests separately pin the exact
-repository, commit, ordered path set, and every digest; they reject the old five-path set, missing/reordered
-paths, swapped or mixed digests, retired commits, extra bundles, and candidate policy/validator self-use.
+repository, commit, mode, ordered path set, and every digest. The real decision path is exercised with exact
+approved bytes against wrong repositories/forks, retired or altered SHAs, case/path variants, missing or
+duplicate identity, and mutable refs. Tests also reject the old five-path set, missing/reordered paths,
+swapped or mixed digests, extra bundles, and candidate policy/validator self-use.
 
 The previous five-file `current-main-baseline@ed19f3256ac8857367f1f490eb1f5f717e20ca03` cannot coexist in
 this transition policy because the expanded path set includes files not present on pre-PR67 `main`. Keeping
@@ -54,6 +70,12 @@ validator are never imported, parsed, or executed, so changing them cannot chang
 Changes to these trust-control files still require an explicit security review before merge because their
 effect begins only after they become default-branch code.
 
+This PR changes the validator and schema together to close review `4890625756`. Its own hosted check must
+still run the unchanged validator and policy from base `1ce7f16a52380a6ff1dcd84a4cdca70569cbff75`.
+A green result proves non-self-use, not candidate-validator self-approval. Version 2 behavior is established
+separately by mutation tests and GitHub API verification and then requires fresh independent exact-head review.
+Only after this policy PR is reviewed and merged may trusted-base version 2 authorize exact PR #67.
+
 ## 4. Rotation procedure
 
 The PR #28 transition used two steps: first merge the independently reviewed protected bytes through the
@@ -66,7 +88,9 @@ exception, mixed bundle, or candidate-derived digest.
 For PR #67, merge this policy-only temporary authorization first through normal protection. Then re-run the
 trusted check on exact PR #67 head `2bb223629c848f298177fc16ec3cac1fa40b8e0f` and merge that reviewed
 candidate without rewriting it. Immediately follow with a separate policy-only rotation that removes
-`temporary-pr67-2bb2236` and pins one 57-file `current-main-baseline` to the actual PR #67 merged-main commit.
+`temporary-pr67-2bb2236` and pins one 57-file `persistent-baseline` named `current-main-baseline` to the actual
+PR #67 merged-main repository and commit. That mode permits later commits in the same trusted repository only
+while every protected byte stays unchanged; it does not authorize forks or mutable refs.
 Any path, digest, repository, or reviewed source-commit change requires a fresh independent whole-bundle
 review; do not prolong the temporary single-candidate window or merge unrelated PRs through a bypass.
 
