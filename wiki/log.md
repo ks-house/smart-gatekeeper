@@ -2524,3 +2524,13 @@
 - Integrated exact `origin/main` `f5c90bef2c2d4500ff68c014d1385ac37b440f0c` once with a normal two-parent merge and no history rewrite. The exact new-main log is the byte prefix, the complete prior PR #67 suffix is preserved byte-identically exactly once, and this integration entry is the only new append.
 - Accepted the trusted policy, validator, tests and guide exactly from main. All 57 reviewed protected product files and the `raw/` tree remain unchanged from PR #67 head `4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`; the persistent descendant authorization requires live GitHub Compare proof for this new exact head.
 - Focused policy tests passed 37/37, root discovery passed 140/140, Quick passed all ten sections with backend 84 tests/two explicit Docker-lane skips, the 34-check operations contract and nominal SLO fixture passed, and `git diff --check` is clean. PR #67 remains Draft and unmerged with production OFF; hosted exact-head checks plus an independent COMMENTED review remain required, while NAS deployment, live/legal/operator, physical mobile/ESP32-C6/radio/relay/sensor, OTA/rollback and production authorization Gates remain open.
+
+## [2026-08-09] compile | Rotate merged PR #67 policy to sole current-main baseline
+
+- Removed both transition identities, `temporary-pr67-4f14ec6` and `future-pr67-persistent-baseline`, and installed exactly one 57-file `persistent-baseline` named `current-main-baseline` sourced from `ks-house/smart-gatekeeper@22ddc7237f15758a0c77c72902b51ff25d31e483`, the exact PR #67 merged-main commit.
+- Recomputed all 57 `utf8-lf-v1` digests from GitHub Contents API bytes at that immutable commit and matched them against the local Git tree and reviewed transition map. Only the policy, its adversarial tests, the trusted-policy guide, and this append-only log are changed; the validator, protected product/workflow files and `raw/` remain unchanged.
+
+## [2026-08-09] test | Validate final PR #67 merged-main policy rotation
+
+- Focused trusted-policy tests passed 37/37, full root discovery passed 140/140, JSON parsing, actionlint and `git diff --check` passed, and Orca Quick passed all ten sections in 40.6 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
+- The production verifier fetched the exact GitHub API bytes for `ks-house/smart-gatekeeper@22ddc7237f15758a0c77c72902b51ff25d31e483` and selected `current-main-baseline` with `protected_file_count: 57`. Hosted exact-head Trusted CI and independent COMMENTED review remain required before normal merge; NAS deployment, live/legal/operator, physical mobile/ESP32-C6/radio/relay/sensor and OTA/rollback Gates remain open.
