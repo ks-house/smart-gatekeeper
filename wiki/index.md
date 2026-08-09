@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-09 (isolated NAS physical-test canary delivery contract added; physical/live and production Gates remain open)
+> Last updated: 2026-08-09 (Issue #53 manuals retraced against merged #52 operations and NAS staging; legal, live/operator, physical and production Gates remain open)
 
 ---
 
@@ -72,13 +72,14 @@
 
 | Document | Summary |
 |---|---|
-| [manuals/README.md](../manuals/README.md) | Issue #53 versioned manual set, evidence boundary, field contract, and repeat loop |
+| [manuals/README.md](../manuals/README.md) | Issue #53 v0.3 manual set, NAS staging/evidence boundary, field contract, and repeat loop |
 | [general_user_manual_ko.md](../manuals/general_user_manual_ko.md) | Korean-first end-user installation, access, degraded/OEM, update/rollback, lost-phone and support journeys |
-| [administrator_manual_ko.md](../manuals/administrator_manual_ko.md) | Admin roles, tenant/device/door lifecycle, force-open, TLS rotation, monitoring, backup/restore, OTA and decommission |
+| [administrator_manual_ko.md](../manuals/administrator_manual_ko.md) | Admin roles, tenant/device/door lifecycle, force-open, NAS readiness/metrics, privacy, backup/restore, OTA and decommission |
 | [installer_service_manual_ko.md](../manuals/installer_service_manual_ko.md) | ESP32-C6 wiring, GPIO3/polarity, power safety, commissioning, and explicit relay/offline/OTA/sensor incident contracts (evidence pending) |
 | [privacy_notice_ko.md](../manuals/privacy_notice_ko.md) | Data inventory, minimization, consented/redacted support export, retention/deletion and incident privacy |
 | [support_incident_handbook_ko.md](../manuals/support_incident_handbook_ko.md) | Support triage, reason/state handling, force-open, offline/OEM, update, lost phone and incident loop |
-| [product_gap_register_v1.md](../manuals/product_gap_register_v1.md) | Manual-to-product reverse analysis with explicit #49–#52, test, P0/P1 and physical gaps |
+| [product_gap_register_v1.md](../manuals/product_gap_register_v1.md) | Manual-to-product reverse analysis with explicit #49–#52, NAS, test, P0/P1 and physical gaps |
+| [hardwareless_walkthrough_ko.md](../manuals/hardwareless_walkthrough_ko.md) | 16 actor journeys, #52 operations regressions, NAS staging and user physical-test checklists |
 
 
 

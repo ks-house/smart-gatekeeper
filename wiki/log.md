@@ -2545,6 +2545,63 @@
 - Focused trusted-policy tests passed 37/37 and full root discovery passed 140/140 after the documentation-only remediation. The final guide contains no expected-red or two-bundle-current-state claim and requires Hosted Trusted success plus fresh exact-head review before a normal protected merge.
 - The prior Quick 10-section pass remains bound to identical policy, test, validator, protected product/workflow and `raw/` bytes. A new exact-head Hosted Trusted run and fresh COMMENTED review remain required after push; no merge, deployment or physical Gate completion is claimed.
 
+## [2026-08-09] compile | Retrace final manuals against merged commercial operations
+
+- Integrated exact `origin/main` `e42d1f417a555b17d7476522aa48f7e4d72306b7` once with a normal two-parent merge while preserving the pre-existing Issue #53 manual and test working bytes. Updated the Korean general-user, administrator, installer, privacy and support manuals plus the reverse-analysis register to v0.3.0-rc.1.
+- Replaced stale Issue #52 placeholders with exact process-only `/live`, dependency `/ready`, authenticated metrics, tenant/purpose/expiry/revocation-bound support export, payload-bound retention deletion, HMAC inventory backup/restore and immutable production Compose contracts. Expanded the hardwareless fixture from 12 to 16 actor journeys and added source-bound regressions.
+- Defined NAS deployment as a staging step for user physical validation, not production authorization. Samsung/OEM, APK install/fallback, ESP32-C6/BLE/radio/sensor/GPIO3 relay, Target OTA reboot/health/rollback, independent restore, live alert/soak, legal/privacy, operator and production evidence remain pending and fail-closed; `raw/` and workflow files are unchanged.
+
+## [2026-08-09] test | Validate manuals, reverse analysis and cross-layer boundaries
+
+- Manual contract tests passed 10/10 with exact source/API trace, 16 complete actor fixtures, relative links, UTF-8 without BOM, LF-only bytes, stale-baseline rejection, secret exclusion and NAS/physical/production evidence separation. JSON parsing and `git diff --check` passed.
+- Full root discovery passed 150/150. The first Quick invocation stopped before tests because this worktree had no `.venv`; the standard isolated setup completed with 12 doctor passes, one Docker-covered native Java warning and zero failures, then Quick passed all ten sections in 40.77 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- These are repository/host results only. Draft PR exact-head hosted checks, independent COMMENTED review, NAS staging evidence and every live, legal, operator, physical, OTA/relay and production Gate remain required.
+
+## [2026-08-09] fix | Make every manual walkthrough independently executable
+
+- Remediated blocking COMMENTED review `4891259615`: all 16 hardwareless scenarios now include a bounded read-only `python -m unittest` command, expected output token and exact exit code instead of documenting execution fields that the fixture omitted.
+- The contract schema requires those fields, permits only a strict unittest command grammar, rejects shell metacharacters and executes each scenario in the repository root with a 90-second bound. No product, workflow, secret, `raw/`, NAS, physical or production state changed.
+
+## [2026-08-09] test | Revalidate executable walkthrough review remediation
+
+- Manual contracts passed 11/11 and all 16 declared commands independently returned exit code 0 with the expected `OK` token. JSON parsing and `git diff --check` passed.
+- Full root discovery passed 151/151 in 25.76 seconds. Quick passed all ten sections in 40.48 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Fresh exact-head Hosted Trusted and independent COMMENTED re-review remain required. NAS deployment and every live, legal, operator, physical, OTA/relay and production Gate remain pending.
+
+## [2026-08-09] fix | Bind walkthrough commands to exact scenario evidence
+
+- Remediated the remaining semantic blocker from COMMENTED review `4891273910`: every scenario ID is now mapped to one exact command and a unique expected test token, so an unrelated generic `OK` test cannot be substituted. Mobile manifest coverage runs the full artifact mutation module rather than a nominal workflow validator.
+- Added the missing Flutter widget regression proving the recovery shell keeps manual local recovery, privacy-redacted diagnostics, verified update, Android settings and bounded setup retry reachable. Source-bound regressions tie consent/disclosure, recovery and `AppErrorLogger` UI/IPC claims to their exact Flutter test and production owners.
+
+## [2026-08-09] test | Validate scenario semantics and recovery widget
+
+- Manual contracts passed 14/14; all 16 exact ID-bound commands returned exit code 0 and their scenario-specific test token. A tracked-files-only disposable Flutter copy passed focused consent/recovery, AppErrorLogger and update-contract tests, 14 total, then the container exited; the temporary copy is retained only because local command policy rejected recursive cleanup.
+- Full root discovery passed 154/154 in 26.98 seconds. Quick passed all ten sections in 39.60 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Fresh exact-head hosted mobile/Trusted checks and an independent COMMENTED re-review remain required. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.
+
+## [2026-08-09] fix | Make manual walkthrough commands dependency-portable
+
+- Remediated the exact-head Hosted Mobile/OTA blocker from COMMENTED review `4891296417`: all 16 fixture commands now use Python `-S`, so site-packages cannot satisfy undeclared imports. Replaced eight FastAPI-dependent backend commands and the mobile-manifest dependency command with standard-library-only source contracts bound to the exact dependency-backed test definition and production owner.
+- The fixture labels these as source bindings rather than claiming that a dependency-free lane executed FastAPI, database, MQTT or signing integrations. Dependency-provisioned hosted suites remain the executable integration evidence; physical, operator and production evidence remains separate and pending.
+- Added a regression requiring every declared command to start with the strict `python -S -m unittest tests.` grammar. The portable source-contract suite passed 9/9 and the manual suite passed 14/14, including execution of all 16 commands without site-packages. No product, workflow, secret, `raw/`, physical or production state changed.
+
+## [2026-08-09] test | Revalidate dependency-portable walkthrough remediation
+
+- Full root discovery passed 163/163 in 15.86 seconds. Quick passed all ten sections in 40.22 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Exact-head Hosted Trusted, Mobile and OTA checks plus a fresh independent COMMENTED review remain required after push. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.
+
+## [2026-08-09] compile | Authorize the complete reviewed PR #72 protected bundle
+
+- From exact trusted main `038bc8508fca71e1d4074a3eedca5517d3c2ecfe`, replaced the prior sole baseline with exactly two complete 57-file authorizations for `ks-house/smart-gatekeeper@03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b`: exact temporary identity `temporary-pr72-03ffba4` and same-source descendant identity `future-pr72-persistent-baseline`. Both maps are byte-identical and use strict `utf8-lf-v1`; no partial, branch, wildcard, fork or third persistent identity is admitted.
+- Recomputed all 57 digests from immutable GitHub Contents API bytes. The three changed protected digests are deploy `133d31ebb91922ab9e2370e91d8a3ad4215accde1c7adbad28cb2c653aa42251`, mobile `1d17741591fde129200c6aa6403644b0d9b590de1831936d65db0e9ea9f17af2` and OTA gate `ba3bc9de1eeecc306d1b23b1a2c6ddb124a0d3d4396c54ef137e6cc3a071e1bc`; the other 54 remain equal to the prior complete baseline.
+- GitHub API evidence binds open Draft PR #72 and COMMENTED nonblocking product review `4891310679` to the exact candidate commit. Compare proves that candidate is two commits ahead of exact base `e42d1f417a555b17d7476522aa48f7e4d72306b7` with that exact merge base. This policy authorization is not NAS deployment, physical evidence, release evidence or production authorization.
+
+## [2026-08-09] test | Validate the PR #72 whole-bundle transition policy
+
+- Focused trusted-policy tests passed 37/37. Full root discovery passed 163/163 against staged tree `0c1e0ed206e9b06da3d9eea5374038ae228bdcb3` archived with checkout conversion disabled; the first direct Windows working-tree run exposed only CRLF materialization of unchanged LF manual blobs, so it was not represented as a source failure or used as final evidence.
+- Orca Quick passed all ten sections in 42.04 seconds with doctor 12 pass/one Docker-covered native Java warning/zero failures, backend 84 tests/two explicit Docker-lane skips, Compose, staged profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4. Actionlint across every workflow, JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API 57-file verification passed.
+- No workflow dispatch, NAS write, merge, deployment, physical validation, signing or production authorization occurred. The policy-only Draft PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge.
+
 ## [2026-08-09] code | Add fail-closed NAS physical-test canary delivery lanes
 
 - Added exact-`main` manual `physical-test-canary` jobs for the same-run firmware public canary and Android debug APK. Each job verifies its fixed RFC 8032 test signature and source SHA before network contact, stages only below a hard-coded non-production NAS root, reads artifact and manifest bytes back, verifies them again, uploads sanitized non-release evidence, and atomically publishes a unique run directory.
@@ -2569,3 +2626,15 @@
 - Focused OTA/NAS/mobile-signing tests passed 84/84, including new trigger-removal and OpenSSH/path-component validation mutations. `actionlint` passed both workflows and `git diff --check` is clean.
 - Full root discovery passed 150/150. Orca `Quick` passed all ten sections in 40.75 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
 - The protected candidate still requires a fresh exact-head independent COMMENTED review and a separate trusted-main whole-bundle policy authorization. `NAS_KNOWN_HOSTS` remains absent, so an authorized future dispatch stays blocked before network contact; physical/operator and production release evidence remain pending.
+
+## [2026-08-09] fix | Integrate the merged PR #72 transition policy exactly once
+
+- Integrated exact `origin/main` `5389f6a3ab2f28698d423567481ecdc29a260ace` with a normal two-parent merge and no history rewrite after policy PR #73 merged through green Hosted Trusted and nonblocking COMMENTED review `4891371819`.
+- Preserved the exact new-main log as a byte prefix, appended the complete prior PR #72 suffix exactly once, retained `raw/` identity, and kept all 57 reviewed protected product bytes identical to product commit `03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b`. The transition persistent bundle requires live Compare ancestry for this new exact head.
+- No workflow dispatch, NAS connection/write, deployment, physical validation, release evidence or production authorization occurred. Fresh exact-head hosted checks and an independent COMMENTED product review remain required before normal product merge.
+
+## [2026-08-09] test | Validate the post-policy PR #72 integration tree
+
+- Focused OTA/NAS/mobile-signing tests passed 84/84. Full root discovery passed 173/173 from the staged Git index materialized with checkout conversion disabled; an earlier generic archive extraction converted unchanged manual LF blobs to CRLF and caused the manual byte-format test to fail, so that host materialization was not counted as source evidence.
+- Actionlint passed every workflow, `git diff --check` passed, and Orca `Quick` passed all ten sections in 40.06 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
+- Staged proof preserves exact main `5389f6a3ab2f28698d423567481ecdc29a260ace` log bytes as a prefix, the prior product suffix exactly once, `raw/` tree `013c00e7617365aa30c8bd0d38d9503d3885d264`, and the complete reviewed 57-file product bundle. Hosted exact-head policy/product CI and fresh independent review remain required.

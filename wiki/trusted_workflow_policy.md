@@ -49,18 +49,32 @@ fail closed. When an exact temporary identity and a persistent baseline both cov
 the exact temporary match takes precedence without invoking ancestry; later descendants use only the one
 persistent baseline.
 
-The final policy contains exactly one authorization: `current-main-baseline`, a `persistent-baseline` sourced
-from repository `ks-house/smart-gatekeeper` at the exact PR #67 merged-main commit
-`22ddc7237f15758a0c77c72902b51ff25d31e483`. All 57 `utf8-lf-v1` digests were recomputed from GitHub Contents
-API bytes at that immutable commit, independently matched against the local Git tree, and remain byte-identical
-to the previously reviewed PR #67 bundle. Both transition identities, `temporary-pr67-4f14ec6` and
-`future-pr67-persistent-baseline`, are removed.
+The PR #72 transition policy contains exactly two non-ambiguous authorizations for one byte-identical complete
+57-file set. `temporary-pr72-03ffba4` is a `temporary-exact` identity for repository
+`ks-house/smart-gatekeeper` at exact candidate commit
+`03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b`. `future-pr72-persistent-baseline` uses the same repository,
+source commit, ordered paths, and 57 digests, but admits only that source or a GitHub Compare-proven descendant.
+Exact-match precedence selects the temporary identity at the reviewed head without invoking ancestry; after the
+policy lands and PR #72 integrates the new main once, only the persistent identity can admit the resulting
+descendant while all protected bytes remain unchanged.
 
-Regression tests pin the exact repository, merged-main commit, mode, sole-bundle count, ordered path set, and
-every digest, and fail if an extra bundle is added to this final policy. The runtime decision separately rejects
-forks, retired or altered commits, unproven/diverged histories, case/path variants, the old five-path partial set,
-missing or reordered paths, swapped/mixed/per-file digest mutations, and candidate policy/validator self-use.
-No branch, wildcard, partial set, mixed set, or candidate-derived digest is approved.
+All 57 `utf8-lf-v1` digests were recomputed from immutable GitHub Contents API bytes at the exact PR head. The
+three changed values are `.github/workflows/deploy.yml`
+`133d31ebb91922ab9e2370e91d8a3ad4215accde1c7adbad28cb2c653aa42251`,
+`.github/workflows/build_app.yml`
+`1d17741591fde129200c6aa6403644b0d9b590de1831936d65db0e9ea9f17af2`, and
+`scripts/ota_contract_gate.py`
+`ba3bc9de1eeecc306d1b23b1a2c6ddb124a0d3d4396c54ef137e6cc3a071e1bc`; the other 54 match the prior reviewed
+complete baseline. Independent product COMMENTED review `4891310679` is bound by the GitHub API to PR #72 and
+that exact commit and reports a nonblocking product-bundle verdict. It is review evidence, not production,
+physical, release, or deployment authorization.
+
+Regression tests pin the exact repository, source commit, modes, two-bundle count, ordered path set, and every
+digest. They reject an extra bundle, fork, retired or altered commit, unproven/diverged history, case/path
+variant, old five-path partial set, missing or reordered path, swapped/mixed/per-file digest mutation, and
+candidate policy/validator self-use. The former `current-main-baseline` is intentionally replaced; retaining it
+would create a second persistent authorization for the repository and violate the schema. No branch, wildcard,
+partial set, mixed set, candidate-derived digest, or third baseline is approved.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -73,11 +87,12 @@ Changes to these trust-control files still require an explicit security review b
 effect begins only after they become default-branch code.
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
-main; PR #67 then completed that transition. This final rotation does not modify the validator or trusted
-workflow. Its hosted check still executes the trusted base policy and validator, which authorize this PR only
-after GitHub ancestry proof and exact comparison of all 57 protected files. A successful Hosted Trusted check
-and fresh independent exact-head review permit a normal branch-protected merge; no governance exception or
-branch-protection change is required or allowed for this rotation.
+main; PR #67 then completed that transition. This PR #72 authorization changes only policy data, regression
+tests, this guide, and the append-only log. It does not modify the validator or trusted workflow. Its own hosted
+check executes the old trusted-base policy and validator, which admit the policy PR normally because its head is
+a GitHub-proven descendant of the current baseline source and all 57 protected bytes remain unchanged. A green
+Hosted Trusted check and fresh independent exact-head review are required before a normal protected merge; no
+governance exception or branch-protection change is authorized.
 
 ## 4. Rotation procedure
 
@@ -88,24 +103,29 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-PR #67 completed the transition and merged normally as exact main
-`22ddc7237f15758a0c77c72902b51ff25d31e483` after hosted checks and independent exact-head review. This separate
-policy-only rotation must contain only the policy, its adversarial tests, this guide, and one append-only log
-entry. It removes both transition bundles and pins the sole 57-file `current-main-baseline` to that merged-main
-repository and commit. The trusted base admits the rotation normally because its head is a proven descendant of
-the prior reviewed source and every protected byte is unchanged.
+For PR #72, first merge this independently reviewed policy-only PR normally from exact trusted main
+`038bc8508fca71e1d4074a3eedca5517d3c2ecfe`. Do not merge or dispatch PR #72 in the same operation. The transition
+policy intentionally no longer admits the old protected bytes after it becomes main. PR #72 must then integrate
+that exact new main once without rewriting history, preserve the new-main `wiki/log.md` blob as a byte prefix,
+retain its prior suffix exactly once, keep all 57 reviewed protected digests and `raw/` unchanged, and receive a
+fresh exact-descendant review and hosted checks. GitHub Compare must prove
+`03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b` is the exact merge base/ancestor of the new PR head before the
+persistent identity may admit it.
 
-After the final rotation merges normally, verify branch protection, current-main policy selection, and main CI.
-Any later path, digest, repository, or source-commit change requires a fresh independent whole-bundle review and
-the same temporary-then-persistent separation; never reuse a retired transition identity or governance exception.
+After PR #72 merges normally, immediately create a separate final policy-only rotation. It removes both PR #72
+transition identities and pins one `persistent-baseline` named `current-main-baseline` to the actual merged-main
+57-file bundle. The transition baseline admits that final rotation only when GitHub Compare proves ancestry and
+every protected byte is unchanged. Then verify branch protection, current-main policy selection, and main CI.
+Any path, digest, repository, or reviewed source-commit change requires a fresh independent whole-bundle review;
+never prolong the transition window or reuse a retired transition identity.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
 ## 5. Scope and OTA status
 
-This policy expands a repository authorization boundary only. It does not modify any protected workflow,
-backend/product/runtime file, or the authenticated mobile
+This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,
+backend/product/runtime file, dispatch a workflow, or write to a NAS. It does not change the authenticated mobile
 `manual_remote` door-open path, firmware/app runtime code, dual OTA partitions, health/rollback, periodic
 HTTPS, authenticated local recovery, mobile updater independence, N/N-1 compatibility, signing trust, or
 artifact verification. No physical OTA evidence is claimed.

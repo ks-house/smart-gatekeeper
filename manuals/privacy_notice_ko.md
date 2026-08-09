@@ -1,39 +1,76 @@
 # 개인정보 안내 / Privacy notice
 
-문서 버전: **0.1.2-contract-loop** · 통합 기준: `c654a18f0fa278e4530229bb881fe88286d25c2e`<br>
-대상: 사용자·관리자·지원팀 (users/operators/support) · 상태: **법무·운영 데이터 검증 pending**
+문서 버전: **0.3.0-rc.1** · 제품 기준: `e42d1f417a555b17d7476522aa48f7e4d72306b7`<br>
+대상: 사용자·관리자·지원팀 · 상태: **기술적 최소화 반영; 법무 고지·운영 보관/삭제·처리자 검증 pending**
 
-이 안내는 현재 저장소의 데이터 흐름을 기준으로 한 문서 초안이다. 실제 수집·보관·삭제 기간, 법적 근거, 처리자 목록은 운영 배포 전에 조직의 privacy owner와 관할 법률에 따라 확정해야 한다.
+이 문서는 현재 제품의 기술 경계를 설명한다. 개인정보처리자 이름, 연락처, 관할 법적 근거, 보관 기간, 처리자/국외 이전 목록과 권리 처리 기한은 production 배포 전에 privacy/legal owner가 채워 승인해야 한다. 빈 placeholder 상태로 사용자 동의를 받거나 production을 시작하지 않는다.
 
-## 데이터 최소화 / Data minimization
+## 1. 첫 실행 동의와 선택
 
-| 데이터 분류 | 목적 | 기본 표시/전송 원칙 | 보관·삭제 | Owner / evidence |
+첫 실행 화면은 background BLE 출입 감지를 위해 위치·근처 기기, background location과 배터리 최적화 예외가 필요한 이유를 권한 요청 전에 알린다. `나중에 설정`을 선택하면 OS 권한 요청은 발생하지 않고 manual recovery, verified update와 redacted diagnostics로 이동한다. 이 동의는 제품 privacy notice 전체에 대한 법적 동의를 대신하지 않는다.
+
+| Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
+|---|---|---|---|---|---|---|---|---|
+| 사용자 | notice를 읽을 수 있음 | 동의 또는 나중에 설정 | versioned consent 또는 defer; 동의 전 system request 0회 | `BackgroundConsentStore`, disclosure screen | consent/order widget tests | 선택 제한 없음 | 저장 실패 1회 | `BACKGROUND_CONSENT_UNAVAILABLE`이면 support; 앱 data 삭제 금지 |
+| 사용자 | consent 후 Android prompt | 필요한 권한만 allow/deny | 누락 항목, `Ready/Degraded/Blocked`, recovery path | background setup | permission host tests; OEM **PENDING** | OS prompt 30초 목표 | 설정 복귀 1회 | mobile/privacy owner에 OS/build/reason 전달 |
+| 사용자 | production privacy contact와 identity verification | 열람·정정·삭제·철회 요청 | ticket ID, scope, legal hold/거절 reason, 완료 시각 | #52 privacy workflow | fulfillment audit **OPS PENDING** | 법정/내부 SLA 미정 | 동일 ticket 1회 | privacy/legal owner |
+
+## 2. 데이터 분류와 최소화
+
+| 데이터 | 목적 | 앱·지원 표시 | 보관·삭제 | Owner / evidence |
 |---|---|---|---|---|
-| 계정·tenant·unit 정보 | 승인·출입 권한 | operator UI와 support bundle에서 최소화·opaque화 | retention owner가 기간 확정 후 삭제 | #52 privacy inventory **PENDING** |
-| device/target reference | 올바른 door binding | raw MAC 대신 opaque reference; URL/log에 원본 금지 | revoke/decommission policy | #49/#52 **PENDING** |
-| access/update/reset event | 보안·장애 분석 | session/boot/event ID와 artifact digest만 지원 내보내기에 포함 | immutable audit와 retention policy 필요 | `observability/`, #52 **PENDING** |
-| credential/proof/secret | 인증 | 화면·일반 로그·지원 export에 절대 노출하지 않음 | rotation/revoke 후 secure deletion policy | #49/#50 security review **PENDING** |
-| support export | 사용자 동의 기반 지원 | redacted, time-bounded, access audited | ticket 종료 후 삭제 시각 기록 | support owner **PENDING** |
+| tenant/user/unit 참조 | 승인·권한 scope | 일반 log/export에서 HMAC opaque ID; 이름·unit 원문 금지 | 기술적 삭제 범위 30–3650일, 실제 기간은 법무 승인 전 미정 | privacy/data owner **OPS PENDING** |
+| Target/device/door 참조 | 올바른 binding | raw MAC 대신 opaque target/session/boot/event ID | revoke/decommission 후 검증 삭제 | #49/#50 host controls; ops pending |
+| access/command/update/reset event | 안전·보안·장애 분석 | state/reason, causal IDs, artifact digest | audit/incident 보존 기간 미정 | event schema + #52 storage |
+| credential, proof, nonce, token, private key | 인증·replay 방지 | UI, 일반 log, support export에 포함 금지 | rotate/revoke 후 secure deletion | Keystore/NVS/backend security; physical/ops pending |
+| app diagnostic | 사용자가 동의한 지원 | bounded exception, query 제거, identifier redaction | ticket expiry 후 삭제 | `AppErrorLogger` sink tests present |
+| 관리자 audit | 책임 추적 | stable actor, scope, action, object ref, hashed idempotency만 | 법적/보안 보존 기간 미정 | migration 003 immutable host test |
 
-## 사용자 여정과 증거 필드
+모바일 logger는 tenant/unit/device, Bluetooth address, credential, token/API key/password, URL/query, proof와 unbounded exception을 plain/error/debug/UI/IPC sink에서 redaction한다. Backend root logging filter와 support export도 MAC, secret assignment, URL query와 중첩 필드를 제거하고 생산자는 fixed code와 opaque reference를 사용한다. 이는 NAS reverse proxy·broker·ticket system의 실제 설정과 법적 적합성까지 증명하지 않는다.
 
-| Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact |
-|---|---|---|---|---|---|
-| 사용자 | privacy notice를 읽을 수 있음 | 동의/거부 또는 철회 선택 | 선택 상태·적용 범위·다음 행동을 명확히 표시 | app/WebView **GAP-52-01** | consent test **PENDING** |
-| 사용자 | 본인 확인 절차 | access/correction/deletion 요청 | 접수 ID, 보존 예외, 완료/거절 사유 표시 | backend privacy API **GAP** | request/fulfillment audit **PENDING** |
-| 관리자 | 최소 권한과 목적 제한 | retention/deletion job 실행 | 삭제 대상·보존 예외·결과 건수만 표시 | #52 data lifecycle | deletion verification **PENDING** |
-| 지원팀 | 사용자 동의와 ticket scope | redacted bundle 생성 | token/secret/raw identity가 제거된 파일과 expiry 표시 | support tooling **GAP-52-01** | redaction mutation test **PENDING** |
-| 사고 대응자 | incident authority, legal/privacy owner | breach/overexposure 신고 | containment, affected scope, notice decision과 audit | #52 incident process | incident record **PENDING** |
+## 3. Redacted support bundle
 
-## 지원 export redaction checklist
+### 포함
 
-포함: 시간대, app/firmware/backend version, opaque target/session/boot/event ID, reason code, state transition, artifact digest, 재현 단계.<br>
-삭제: 비밀번호, API/MQTT token, private key, proof/signature/nonce, 원본 tenant/unit/name, raw MAC, 주소, 원본 URL query, 주민 식별 정보.
+- ticket ID, offset이 있는 시각과 timezone
+- app/firmware/backend version, exact artifact SHA-256
+- opaque target/session/boot/event/approval ID
+- 화면 state, reason, 마지막 observable output, 재현 1회
+- network class(`online/offline` 정도), Android/OEM/build
 
-## 오프라인·OEM·업데이트와 개인정보
+### 제거
 
-offline 상태의 local queue나 OEM retry가 발생해도 secret을 평문 파일·로그에 저장하지 않는다. update/rollback 시 기존 credential과 user data를 보존해야 하며, 실패 진단을 위해 무제한 데이터를 수집하지 않는다. 실제 retention, encrypted storage, rollback preservation은 #49–#52와 실기기/운영 증거가 생기기 전까지 **PENDING**이다.
+- password, API/MQTT token, cookie, CSRF, private/signing key
+- credential, proof, signature, nonce, raw BLE/MAC
+- tenant/unit/name/address/전화번호와 직접 식별자
+- 원본 URL과 query, Wi-Fi SSID/password, certificate 원문
+- 무제한 stack/exception 또는 다른 사용자의 event
 
-## 문의
+| Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
+|---|---|---|---|---|---|---|---|---|
+| 사용자 | ticket과 명시적 export 동의 | diagnostics 화면에서 필요한 항목 검토 | redacted preview와 범위; 자동 upload 없음 | Flutter diagnostics/logger | redaction tests present; export UX **PENDING** | 30초 목표 | 생성 1회 | 의심 값이 보이면 전송 중지, privacy owner |
+| support agent/auditor | current mTLS session, tenant scope, DB에 저장된 `support-diagnostics` consent가 현재·미철회 | `GET /api/v1/admin/privacy/support-export?hours=1..168&limit=1..500`, `X-Support-Consent` | 위조·만료·철회·타 tenant consent는 403; 성공은 opaque consent/tenant ref, redacted records, canonical SHA-256와 audit | `create_support_export`, `support_export_consents` | response digest + `SUPPORT_EXPORT_CREATED` audit **OPS PENDING** | HTTP 15초 목표 | 동일 범위 read 1회 | 403/503이면 privacy/DB owner; raw DB/log로 우회 금지 |
+| privacy owner/tenant admin | 승인된 법적 보관표, current mTLS/CSRF/reauth, 새 idempotency key | `POST /api/v1/admin/privacy/delete` with `sgk-retention-v1`, `before_days=30..3650` | tenant access records만 삭제; 동일 요청은 `already_completed`, actor/payload가 다른 key 재사용은 409 | `delete_expired_privacy_data`, migration 007 | job request hash, deleted count, immutable audit **OPS PENDING** | HTTP 15초 목표 | 같은 request/key 1회 | 409/503이면 자동 새 key 발급 금지; privacy/data owner가 state 확인 |
+| privacy owner | ticket 종료/expiry | ticket export deletion verification | deleted count, exception/legal hold, reviewer | 승인된 ticket lifecycle | deletion report **OPS PENDING** | 법무 승인 기한 | 0회 자동 | data owner/legal owner |
 
-사용자는 support ticket에 문서의 redaction 규칙을 지켜 접수한다. privacy request와 access incident를 같은 공개 채널에 원문으로 올리지 않는다. 조직의 privacy contact, 처리 기간, 법적 고지는 운영 배포본에서 채워야 한다.
+`before_days` 범위는 software의 안전 경계이지 법적 기본 보관 기간이 아니다. 개인정보처리자와 privacy/legal owner가 관할별 일정을 승인하기 전 deletion API를 정기 job으로 연결하지 않는다. Support consent 원문은 응답·audit에 기록하지 않고 SHA-256 lookup과 HMAC opaque reference로만 연결하며, ticket 종료 시 export 복사본을 승인된 절차로 삭제한다.
+
+## 4. Offline·update·rollback·분실
+
+- Offline queue나 OEM retry 중 secret을 평문 파일·log에 저장하지 않는다.
+- 앱 update는 기존 credential과 app data를 pre-install 실패 동안 보존하고 replacement identity가 일치하기 전 pending health를 지우지 않는다.
+- Target OTA는 credential/ACL/NVS 보존과 rollback을 host contract로 요구하지만 power-loss·실기기 증거는 pending이다.
+- 휴대폰 분실 시 공개 채널에 개인정보를 게시하지 않고 credential revoke ticket을 만든다. Backend revoke와 Target physical denial을 분리 확인한다.
+- RMA/폐기는 legal hold와 credential revoke 뒤 secure erase 또는 quarantine 증거를 남긴다.
+
+## 5. 보안·개인정보 사고
+
+| Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
+|---|---|---|---|---|---|---|---|---|
+| 신고자/support | 노출 의심, public channel 미사용 | ticket과 최소 증거 | severity, privacy/security owner, containment 대기 | support process #52 | redacted ticket **OPS PENDING** | 15분 acknowledge 목표 | 동일 ticket 1회 | privacy/security on-call |
+| incident commander | authority, legal/privacy contact | access revoke·export hold·scope preservation | `CONTAINED` 또는 `RECOVERY_UNVERIFIED`, decision log | #52 incident workflow | immutable incident record **OPS PENDING** | 15분 containment 목표 | 승인 containment 1회 | 법무·security·data owner |
+| privacy/legal owner | affected scope와 관할 확인 | notice/권리 대응 결정 | 근거, 대상, 기한, reviewer | organization policy | signed decision **PRODUCTION PENDING** | 법정 기한 미정 | 0회 자동 | production authorization owner |
+
+## 6. Production 전 필수 기입 항목
+
+개인정보처리자/담당자, 연락처, 목적별 법적 근거, 분류별 보관 기간, backup 보관과 삭제, 위탁 처리자, 위치/국외 이전, 사용자 권리와 이의제기 기한, 미성년자/공동주택 정책, breach notice 기한을 privacy/legal owner가 승인해야 한다. `GAP-52-05`가 닫히기 전 이 문서는 법적 개인정보처리방침이 아니며 production 배포를 승인하지 않는다.
