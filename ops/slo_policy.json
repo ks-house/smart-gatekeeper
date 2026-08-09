@@ -1,0 +1,8 @@
+{
+  "minimum_samples": 20,
+  "p95_latency_ms": 250.0,
+  "error_rate": 0.01,
+  "max_queue_depth": 12,
+  "max_reconnect_seconds": 5.0,
+  "min_heap_bytes": 131072
+}

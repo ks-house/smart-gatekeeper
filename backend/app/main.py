@@ -9,7 +9,9 @@ import json
 import secrets
 import hashlib
 import hmac
+import ipaddress
 import logging
+import re
 import threading
 import time
 from typing import Optional, List
@@ -26,7 +28,7 @@ except Exception:
     HAS_PAHO_MQTT = False
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -45,26 +47,43 @@ try:
     from .acl_management import DeterministicP256Signer
     from .command_security import build_signed_command
     from .target_boot_registry import TargetBootRegistry
+    from .ops_runtime import (
+        OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
+        SlidingWindowRateLimiter, opaque_ref, support_export,
+    )
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_management import DeterministicP256Signer
     from command_security import build_signed_command
     from target_boot_registry import TargetBootRegistry
+    from ops_runtime import (
+        OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
+        SlidingWindowRateLimiter, opaque_ref, support_export,
+    )
 
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(PrivacyLogFilter())
 
-# paho-mqtt 미설치 시 자동 동적 설치 시도 (도커 이미지 캐시 문제 완전 방어)
+# Dependencies are installed only while building the immutable image. Runtime
+# package installation is a supply-chain and availability failure mode.
 if not HAS_PAHO_MQTT:
-    try:
-        import subprocess, sys
-        log.info("[STARTUP] paho-mqtt 라이브러리 자동 동기화 설치 진행 중...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "paho-mqtt==1.6.1"])
-        import paho.mqtt.client as mqtt
-        HAS_PAHO_MQTT = True
-        log.info("[STARTUP] ✅ paho-mqtt 라이브러리 동적 설치 및 로드 성공!")
-    except Exception as _install_err:
-        log.error(f"[STARTUP] ❌ paho-mqtt 라이브러리 동적 설치 실패: {_install_err}")
+    log.error("[STARTUP] required MQTT dependency unavailable; control effects remain disabled")
+
+
+def _secret(name: str, default: str = "") -> str:
+    """Read one environment value or its Docker/Kubernetes secret file."""
+    direct = os.getenv(name)
+    secret_file = os.getenv(f"{name}_FILE", "").strip()
+    if direct is not None and secret_file:
+        raise RuntimeError(f"{name} and {name}_FILE are mutually exclusive")
+    if direct is not None:
+        return direct.strip()
+    if secret_file:
+        with open(secret_file, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    return default
 
 
 # ─── 환경변수 (docker-compose에서 주입) ──────────────────────
@@ -72,19 +91,17 @@ DB_HOST     = os.getenv("DB_HOST", "db")
 DB_PORT     = int(os.getenv("DB_PORT", "3306"))
 DB_NAME     = os.getenv("DB_NAME", "smart_gatekeeper")
 DB_USER     = os.getenv("DB_USER", "gatekeeper_user")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "gatekeeper_pass")
+DB_PASSWORD = _secret("DB_PASSWORD")
 
 MQTT_HOST           = os.getenv("MQTT_HOST", "").strip()
 MQTT_PORT           = int(os.getenv("MQTT_PORT", "8883"))
 MQTT_USER           = os.getenv("MQTT_USER", "").strip()
-MQTT_PASSWORD       = os.getenv("MQTT_PASSWORD", "").strip()
+MQTT_PASSWORD       = _secret("MQTT_PASSWORD")
 MQTT_CA_FILE        = os.getenv("MQTT_CA_FILE", "").strip()
 COMMAND_TARGET_ID   = os.getenv("COMMAND_TARGET_ID", "").strip()
 COMMAND_TENANT_ID   = os.getenv("COMMAND_TENANT_ID", "").strip()
 COMMAND_DOOR_ID     = os.getenv("COMMAND_DOOR_ID", "").strip()
-COMMAND_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
-    "COMMAND_SIGNING_PRIVATE_SCALAR_HEX", ""
-).strip()
+COMMAND_SIGNING_PRIVATE_SCALAR_HEX = _secret("COMMAND_SIGNING_PRIVATE_SCALAR_HEX")
 try:
     COMMAND_SIGNING_KEY_ID = int(os.getenv("COMMAND_SIGNING_KEY_ID", "0"))
 except ValueError:
@@ -95,7 +112,11 @@ BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-ab
 # ── 문 제어 API 인증 키 (issue.md P3-22) ──────────────────────────────
 # 모바일 앱은 빌드 시 --dart-define=GATEKEEPER_API_KEY=... 로 같은 값을 받는다.
 # 관리자 콘솔의 마스터 개방도 이 키를 사용한다.
-GATEKEEPER_API_KEY  = os.getenv("GATEKEEPER_API_KEY", "").strip()
+GATEKEEPER_API_KEY  = _secret("GATEKEEPER_API_KEY")
+OPS_HMAC_KEY        = _secret("OPS_HMAC_KEY").encode("utf-8")
+BUILD_SHA           = os.getenv("BUILD_SHA", "unknown").strip()
+EXPECTED_DB_SCHEMA_VERSION = os.getenv("EXPECTED_DB_SCHEMA_VERSION", "").strip()
+EXPECTED_DB_SCHEMA_SHA256 = os.getenv("EXPECTED_DB_SCHEMA_SHA256", "").strip()
 # 앱이 사용할 Pre-arm 쿨다운 기본값(초). 앱은 이 값을 "기본값"으로만 쓰고,
 # 사용자가 디버그 화면에서 직접 조정한 적이 있으면 로컬 값을 우선한다.
 # (issue.md P1-12 — 기존에는 30 이 하드코딩되어 매 부팅마다 로컬 설정을 덮어썼다)
@@ -111,17 +132,15 @@ ACL_MANAGEMENT_ENABLED = os.getenv("ACL_MANAGEMENT_ENABLED", "false").lower() ==
 ACL_LEGACY_DEVICE_LOOKUP_ENABLED = os.getenv(
     "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", "true"
 ).lower() == "true"
-ACL_LEGACY_REF_HMAC_KEY = os.getenv("ACL_LEGACY_REF_HMAC_KEY", "").strip()
-ACL_ENROLLMENT_AUTH_JSON = os.getenv("ACL_ENROLLMENT_AUTH_JSON", "").strip()
-ACL_ADMIN_API_KEY = os.getenv("ACL_ADMIN_API_KEY", "").strip()
-ACL_TARGET_AUTH_JSON = os.getenv("ACL_TARGET_AUTH_JSON", "").strip()
-ACL_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
-    "ACL_SIGNING_PRIVATE_SCALAR_HEX", ""
-).strip()
+ACL_LEGACY_REF_HMAC_KEY = _secret("ACL_LEGACY_REF_HMAC_KEY")
+ACL_ENROLLMENT_AUTH_JSON = _secret("ACL_ENROLLMENT_AUTH_JSON")
+ACL_ADMIN_API_KEY = _secret("ACL_ADMIN_API_KEY")
+ACL_TARGET_AUTH_JSON = _secret("ACL_TARGET_AUTH_JSON")
+ACL_SIGNING_PRIVATE_SCALAR_HEX = _secret("ACL_SIGNING_PRIVATE_SCALAR_HEX")
 ACL_SIGNING_KEY_ID_RAW = os.getenv("ACL_SIGNING_KEY_ID", "1").strip()
-ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX = os.getenv(
-    "ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX", ""
-).strip()
+ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX = _secret(
+    "ACL_TRANSITION_SIGNING_PRIVATE_SCALAR_HEX"
+)
 ACL_TRANSITION_SIGNING_KEY_ID_RAW = os.getenv(
     "ACL_TRANSITION_SIGNING_KEY_ID", ""
 ).strip()
@@ -220,63 +239,66 @@ def _create_mqtt_client(client_id: str):
     except Exception:
         return mqtt.Client(client_id=client_id)
 
+_mqtt_publisher = None
+_mqtt_publisher_lock = threading.Lock()
+
+
+def _connect_mqtt_client(client) -> None:
+    client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+    client.tls_set(
+        ca_certs=MQTT_CA_FILE,
+        cert_reqs=ssl.CERT_REQUIRED,
+        tls_version=ssl.PROTOCOL_TLS_CLIENT,
+    )
+    client.tls_insecure_set(False)
+    # Paho applies this to TCP/TLS. PersistentMqttPublisher additionally wraps
+    # the entire DNS+TCP+TLS call in a caller-visible deadline.
+    client._connect_timeout = 1.0
+    client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
+
+
+def _cancel_mqtt_connect(client) -> None:
+    try:
+        client._sock_close()
+    except Exception:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+
+
+def _persistent_publisher() -> PersistentMqttPublisher:
+    global _mqtt_publisher
+    with _mqtt_publisher_lock:
+        if _mqtt_publisher is None:
+            process_ref = secrets.token_hex(12)
+            _mqtt_publisher = PersistentMqttPublisher(
+                lambda: _create_mqtt_client(f"gatekeeper-api-{process_ref}"),
+                _connect_mqtt_client,
+                max_inflight=16,
+                publish_timeout=2.0,
+                connect_timeout=1.0,
+                cancel_connect=_cancel_mqtt_connect,
+            )
+        return _mqtt_publisher
+
+
 def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
-    """Publish once through the configured hostname-verified MQTTS endpoint."""
+    """Publish through one bounded persistent hostname-verified MQTTS session."""
     if not HAS_PAHO_MQTT:
-        log.warning(f"[{label}] paho-mqtt 패키지 미설치 — {topic} 발행 건너뜀")
+        log.warning("[%s] MQTT dependency unavailable", label)
         return False
-
-    import socket
-    socket.setdefaulttimeout(1.0) # 소켓 타임아웃 1초로 제한하여 지연 완전 방어
-
     if (
         not MQTT_HOST or MQTT_PORT == 1883 or not MQTT_USER or
         not MQTT_PASSWORD or not MQTT_CA_FILE or not os.path.isfile(MQTT_CA_FILE)
     ):
         log.error("[%s] verified MQTTS provisioning incomplete", label)
+        _ops_metrics.event("mqtt", "provisioning_failed")
         return False
-    hosts_to_try = [(MQTT_HOST, MQTT_PORT, True)]
-
-    for host, port, use_tls in hosts_to_try:
-        if not host:
-            continue
-        client = None
-        loop_started = False
-        try:
-            client = _create_mqtt_client(f"gatekeeper-api-{time.time_ns()}")
-            if MQTT_USER:
-                client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
-
-            client.tls_set(
-                ca_certs=MQTT_CA_FILE,
-                cert_reqs=ssl.CERT_REQUIRED,
-                tls_version=ssl.PROTOCOL_TLS_CLIENT,
-            )
-            client.tls_insecure_set(False)
-
-            client.connect(host, port, keepalive=5)
-            client.loop_start()
-            loop_started = True
-            result = client.publish(topic, payload, qos=1, retain=False)
-            result.wait_for_publish(timeout=2.0)
-
-            if result.rc == mqtt.MQTT_ERR_SUCCESS and result.is_published():
-                log.info(f"[{label}] ✅ {topic} 발행 성공 → (Host: {host}:{port})")
-                return True
-        except Exception as e:
-            log.debug(f"[{label}] {host}:{port} 접속 시도 시 예외: {e}")
-            continue
-        finally:
-            if client is not None:
-                if loop_started:
-                    client.loop_stop()
-                try:
-                    client.disconnect()
-                except Exception:
-                    pass
-
-    log.error(f"[{label}] ❌ 모든 MQTT 브로커 접속 시도 실패 → {topic}")
-    return False
+    published = _persistent_publisher().publish(topic, payload)
+    _ops_metrics.event("mqtt", "published" if published else "bounded_failure")
+    log.info("[%s] MQTT publish outcome=%s", label, "published" if published else "bounded_failure")
+    return published
 
 
 def _signed_target_command(action: str, value: int = 0) -> bool:
@@ -329,7 +351,7 @@ def _start_target_boot_subscriber():
         if not _target_boot_registry.refresh_from_authenticated_topic(
             message.topic, bytes(message.payload)
         ):
-            log.warning("[MQTT-BOOT] rejected boot refresh on %s", message.topic)
+            log.warning("[MQTT-BOOT] rejected boot refresh")
 
     client.on_connect = on_connect
     client.on_message = on_message
@@ -405,6 +427,11 @@ class ManualOpenV2Request(BaseModel):
     nonce: Optional[str] = Field(default=None, min_length=32, max_length=128)
     expires_at: Optional[int] = None
 
+
+class PrivacyDeletionRequest(BaseModel):
+    policy_version: str = Field(pattern=r"^sgk-retention-v1$")
+    before_days: int = Field(ge=30, le=3650)
+
 class AdminConfigRequestSchema(BaseModel):
     tx_power: Optional[int] = Field(None, example=-6, description="BLE Tx Power dBm (-6, 0, 3, 9)")
     distance_threshold: Optional[int] = Field(None, example=50, description="초음파 감지 기준 거리 cm (20 ~ 200)")
@@ -428,8 +455,8 @@ class AccessLogItem(BaseModel):
 # ─── FastAPI 앱 ───────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info(f"[STARTUP] Smart Gatekeeper API v2.0 시작")
-    log.info(f"[STARTUP] DB: {DB_HOST}:{DB_PORT}/{DB_NAME}")
+    log.info("[STARTUP] Smart Gatekeeper API v2.1 starting")
+    log.info("[STARTUP] database endpoint configured=%s", bool(DB_HOST and DB_NAME))
     log.info(
         "[STARTUP] verified MQTTS broker configured; per-Target signed command plane=%s",
         bool(COMMAND_TARGET_ID and COMMAND_SIGNING_KEY_ID),
@@ -446,13 +473,15 @@ async def lifespan(app: FastAPI):
     try:
         boot_subscriber = _start_target_boot_subscriber()
     except Exception as error:
-        log.error("[MQTT-BOOT] subscriber unavailable; commands stay disabled: %s", error)
+        log.error("[MQTT-BOOT] subscriber unavailable; commands stay disabled")
     try:
         yield
     finally:
         if boot_subscriber is not None:
             boot_subscriber.loop_stop()
             boot_subscriber.disconnect()
+        if _mqtt_publisher is not None:
+            _mqtt_publisher.close()
         log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
 
 app = FastAPI(
@@ -469,6 +498,33 @@ app = FastAPI(
 admin_security = AdminSecurity.from_environment()
 _control_proposals: dict[str, dict] = {}
 _control_proposals_lock = threading.Lock()
+_ops_metrics = OperationalMetrics()
+_ops_rate_limiter = SlidingWindowRateLimiter(limit=30, window_seconds=60, max_keys=4096)
+_ops_hmac_key = OPS_HMAC_KEY if len(OPS_HMAC_KEY) >= 32 else secrets.token_bytes(32)
+
+
+def _route_group(path: str) -> str:
+    if path.startswith("/api/v1/admin/control") or path == "/api/v1/door/open":
+        return "control"
+    if path in {"/api/v1/door/prearm", "/api/v1/auth/verify"}:
+        return "authentication"
+    if path.startswith("/api/v1/admin/privacy"):
+        return "privacy"
+    if path in {"/live", "/ready", "/health", "/api/v1/admin/metrics"}:
+        return "health"
+    return "other"
+
+
+def _rate_limit_identity(request: Request) -> str:
+    peer = request.client.host if request.client else "unknown"
+    if peer in admin_security.trusted_proxy_ips:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded and "," not in forwarded:
+            try:
+                peer = str(ipaddress.ip_address(forwarded.strip()))
+            except ValueError:
+                pass
+    return opaque_ref(peer, _ops_hmac_key, "peer")
 
 
 @app.middleware("http")
@@ -479,7 +535,19 @@ async def deny_by_default_admin_routes(request: Request, call_next):
     guard prevents a newly added /api/v1/admin endpoint from silently becoming
     public while preserving target OTA/download and emergency hardware paths.
     """
+    started = time.monotonic()
     path = request.url.path
+    route_group = _route_group(path)
+    if route_group in {"control", "authentication", "privacy"}:
+        peer_ref = _rate_limit_identity(request)
+        allowed, retry_after = _ops_rate_limiter.allow(f"{route_group}:{peer_ref}")
+        if not allowed:
+            _ops_metrics.event("rate_limit", route_group)
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "request rate exceeded"},
+                headers={"Retry-After": str(retry_after)},
+            )
     if path.startswith("/api/v1/admin/") and path not in {"/api/v1/admin/sessions"}:
         try:
             required_roles = (ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR, ROLE_APPROVER)
@@ -494,7 +562,12 @@ async def deny_by_default_admin_routes(request: Request, call_next):
             )
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-    return await call_next(request)
+    response = await call_next(request)
+    status_class = f"{response.status_code // 100}xx"
+    _ops_metrics.request(route_group, status_class, time.monotonic() - started)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-store" if route_group in {"control", "authentication", "privacy"} else "no-cache"
+    return response
 
 
 def _legacy_tenant_scope(tenant_id: int) -> str:
@@ -541,6 +614,7 @@ def _audit_admin(
 # Mount the new management plane only when the feature is explicitly enabled and all
 # authentication/signing prerequisites are present. A bad RC configuration must not take
 # down the distinct legacy manual_remote or independent OTA download paths.
+_acl_runtime_ready = False
 if ACL_MANAGEMENT_ENABLED:
     _acl_missing = [
         name
@@ -673,6 +747,7 @@ if ACL_MANAGEMENT_ENABLED:
                     ),
                 )
             )
+            _acl_runtime_ready = True
             log.info(
                 "[ACL-MANAGEMENT] Hardwareless RC enabled (signing_key_id=%s, lease=%ss, legacy_lookup=%s)",
                 _acl_signing_key_id,
@@ -740,7 +815,7 @@ def get_all_tenants_admin(request: Request):
             rows = [row for row in cur.fetchall() if principal.can_access_tenant(_legacy_tenant_scope(row["id"]))]
             return JSONResponse(content=rows, headers={"Content-Type": "application/json; charset=utf-8"})
     except Exception as e:
-        log.error(f"[ADMIN-DB] 세입자 목록 조회 실패: {e}")
+        log.error("[ADMIN-DB] tenant list unavailable")
         raise HTTPException(status_code=503, detail="tenant data unavailable") from e
         # DB 조회 불가 시 기본 목데이터 제공
         return JSONResponse(content=[
@@ -758,7 +833,7 @@ def approve_tenant(tenant_id: int, request: Request):
     if not idempotency_key or len(idempotency_key) > 128:
         raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """관리자 세입자 승인 처리 (is_active = true)"""
-    log.info(f"[ADMIN] 세입자 승인: Tenant ID={tenant_id}")
+    log.info("[ADMIN] tenant approval requested")
     conn = None
     try:
         conn = get_db()
@@ -771,7 +846,7 @@ def approve_tenant(tenant_id: int, request: Request):
         conn.commit()
         return JSONResponse(content={"status": "approved", "tenant_id": tenant_id})
     except Exception as e:
-        log.error(f"[ADMIN] 승인 실패: {e}")
+        log.error("[ADMIN] tenant approval unavailable")
         if conn:
             conn.rollback()
         raise HTTPException(status_code=503, detail="tenant approval unavailable")
@@ -786,7 +861,7 @@ def reject_tenant(tenant_id: int, request: Request):
     if not idempotency_key or len(idempotency_key) > 128:
         raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
     """관리자 세입자 권한 회수/거절 처리 (is_active = false)"""
-    log.info(f"[ADMIN] 세입자 권한 회수: Tenant ID={tenant_id}")
+    log.info("[ADMIN] tenant revocation requested")
     conn = None
     try:
         conn = get_db()
@@ -799,7 +874,7 @@ def reject_tenant(tenant_id: int, request: Request):
         conn.commit()
         return JSONResponse(content={"status": "rejected", "tenant_id": tenant_id})
     except Exception as e:
-        log.error(f"[ADMIN] 회수 실패: {e}")
+        log.error("[ADMIN] tenant revocation unavailable")
         if conn:
             conn.rollback()
         raise HTTPException(status_code=503, detail="tenant rejection unavailable")
@@ -808,19 +883,90 @@ def reject_tenant(tenant_id: int, request: Request):
             conn.close()
 
 
+@app.get("/live", status_code=status.HTTP_200_OK)
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
-    """서버 헬스 체크"""
+    """Process-only liveness. Use /ready for dependency admission."""
+    return JSONResponse(content={
+        "status": "healthy",
+        "scope": "process_liveness_only",
+        "service": "smart-gatekeeper-api",
+        "version": "2.1.0",
+        "build_sha": BUILD_SHA,
+    })
+
+
+def _readiness_snapshot() -> tuple[bool, dict]:
+    checks = {
+        "database": False,
+        "database_schema": False,
+        "mqtt": False,
+        "runtime_secrets": bool(DB_PASSWORD and len(OPS_HMAC_KEY) >= 32),
+        "control_api_auth": len(GATEKEEPER_API_KEY) >= 32,
+        "admin_auth": bool(admin_security.enabled and admin_security.trusted_proxy_ips),
+        "acl_management": bool(ACL_MANAGEMENT_ENABLED and _acl_runtime_ready),
+        "legacy_prearm_retired": not _legacy_prearm_authority_enabled(),
+        "build_identity": bool(re.fullmatch(r"[a-f0-9]{40}", BUILD_SHA)),
+    }
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 AS ready")
+            checks["database"] = bool(cur.fetchone())
+            if (
+                re.fullmatch(r"[0-9]{3}", EXPECTED_DB_SCHEMA_VERSION)
+                and re.fullmatch(r"[a-f0-9]{64}", EXPECTED_DB_SCHEMA_SHA256)
+            ):
+                cur.execute(
+                    "SELECT script_sha256 FROM schema_migrations WHERE version=%s",
+                    (EXPECTED_DB_SCHEMA_VERSION,),
+                )
+                schema = cur.fetchone()
+                checks["database_schema"] = bool(
+                    schema
+                    and secrets.compare_digest(
+                        schema["script_sha256"], EXPECTED_DB_SCHEMA_SHA256
+                    )
+                )
+    except Exception:
+        _ops_metrics.event("readiness", "database_failed")
+    finally:
+        if conn:
+            conn.close()
+    if _command_provisioning_error() is None and HAS_PAHO_MQTT:
+        checks["mqtt"] = _persistent_publisher().probe(timeout=1.0)
+        if not checks["mqtt"]:
+            _ops_metrics.event("readiness", "mqtt_failed")
+    return all(checks.values()), checks
+
+
+def _legacy_prearm_authority_enabled() -> bool:
+    """One source of truth for the raw device-id legacy authority boundary."""
+    return ACL_LEGACY_DEVICE_LOOKUP_ENABLED
+
+
+@app.get("/ready")
+def readiness_check():
+    ready, checks = _readiness_snapshot()
     return JSONResponse(
+        status_code=200 if ready else 503,
         content={
-            "status": "healthy",
+            "status": "ready" if ready else "not_ready",
             "service": "smart-gatekeeper-api",
-            "version": "2.0.0",
-            # 운영자가 키 인증 활성 여부를 확인할 수 있게 노출한다 (키 값은 노출하지 않는다)
-            "api_key_auth": bool(GATEKEEPER_API_KEY),
-            "timestamp": datetime.now().isoformat()
+            "build_sha": BUILD_SHA,
+            "checks": checks,
         },
-        headers={"Content-Type": "application/json; charset=utf-8"}
+    )
+
+
+@app.get("/api/v1/admin/metrics", response_class=PlainTextResponse)
+def operational_metrics(request: Request):
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope="*")
+    breaker_state = _mqtt_publisher.breaker.state if _mqtt_publisher else "closed"
+    return PlainTextResponse(
+        _ops_metrics.prometheus(BUILD_SHA, breaker_state),
+        media_type="text/plain; version=0.0.4",
     )
 
 @app.get("/api/v1/download/apk")
@@ -839,7 +985,7 @@ def download_latest_apk(filename: str = "ks-house-gatekeeper.apk"):
     ]
     for path in apk_paths:
         if os.path.exists(path):
-            log.info(f"[APK-DOWNLOAD] APK 파일 직접 전송: {path}")
+            log.info("[APK-DOWNLOAD] verified local artifact selected")
             return FileResponse(
                 path=path,
                 filename="ks-house-gatekeeper.apk",
@@ -914,9 +1060,15 @@ def get_user_me(device_id: str = Query(...)):
                 "unit_number": tenant["unit_number"],
                 "message": "출입 승인 완료"
             })
-    except Exception as e:
-        log.error(f"[USER-ME] 조회 실패: {e}")
-        return JSONResponse(content={"status": "unregistered", "message": f"DB 조회 예외 ({e})"})
+    except Exception:
+        log.error("[USER-ME] lookup unavailable")
+        return JSONResponse(
+            content={
+                "status": "unregistered",
+                "message": "사용자 정보를 조회할 수 없습니다.",
+            },
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
     finally:
         if conn:
             conn.close()
@@ -943,7 +1095,7 @@ def request_user_access(req: UserRequestSchema):
             headers={"Content-Type": "application/json; charset=utf-8"}
         )
     except Exception as e:
-        log.error(f"[USER-REQ] 신청 실패: {e}")
+        log.error("[USER-REQ] request persistence unavailable")
         return JSONResponse(
             content={"status": "pending", "message": f"신청 완료 (대기 중)"},
             headers={"Content-Type": "application/json; charset=utf-8"}
@@ -968,6 +1120,15 @@ def door_prearm(
       3. 인증이 전혀 없었다
     지금은 세 경로 모두 거부한다. 승인은 "등록되고 승인된 기기"에만 부여된다.
     """
+    if not _legacy_prearm_authority_enabled():
+        log.warning("[PREARM-REJECT] legacy device identifier authority retired")
+        return JSONResponse(
+            status_code=410,
+            content={
+                "result": "retired",
+                "message": "Signed per-device credential flow is required.",
+            },
+        )
     log.info("[PREARM] beacon pre-arm request received")
 
     # ── 1. device_id 는 필수 ────────────────────────────────────────────
@@ -999,7 +1160,7 @@ def door_prearm(
                 headers={"Content-Type": "application/json; charset=utf-8"}
             )
         if not row["is_active"]:
-            log.warning(f"[PREARM-REJECT] 승인 대기 중 세입자의 Pre-arm 요청 거부: {row['name']}({row['unit_number']})")
+            log.warning("[PREARM-REJECT] inactive credential rejected")
             return JSONResponse(
                 status_code=403,
                 content={"result": "denied", "message": "관리자 승인 대기 중인 세입자입니다."},
@@ -1011,7 +1172,7 @@ def door_prearm(
 
     except Exception as e:
         # fail-closed: 검증할 수 없으면 승인하지 않는다.
-        log.error(f"[PREARM-REJECT] 세입자 검증 중 DB 예외 → fail-closed 로 거부: {e}")
+        log.error("[PREARM-REJECT] database verification unavailable; fail closed")
         return JSONResponse(
             status_code=503,
             content={
@@ -1027,10 +1188,7 @@ def door_prearm(
     # ── 3. 검증 통과 — arm 발행 ─────────────────────────────────────────
     arm_ok = publish_arm_to_mqtt(user_label, tenant_id)
     if not arm_ok:
-        log.error(
-            f"[PREARM-ERROR] 사용자 검증은 통과했지만 MQTT arm 발행 실패: "
-            f"{user_label}"
-        )
+        log.error("[PREARM-ERROR] verified credential command publication failed")
         return JSONResponse(
             status_code=503,
             content={
@@ -1248,7 +1406,7 @@ def door_force_open(
                 log.error("[FORCE-OPEN-REJECT] 마스터 개방 요청 거부 — GATEKEEPER_API_KEY 미설정")
             else:
                 message = "마스터 개방 권한이 없습니다. 관리자 키를 확인해주세요."
-                log.warning(f"[FORCE-OPEN-REJECT] 인증되지 않은 마스터 개방 요청 거부 (reason={req.reason})")
+                log.warning("[FORCE-OPEN-REJECT] unauthenticated request rejected")
             return JSONResponse(
                 status_code=403,
                 content={"result": "denied", "message": message},
@@ -1277,7 +1435,7 @@ def door_force_open(
                     headers={"Content-Type": "application/json; charset=utf-8"}
                 )
             if not row["is_active"]:
-                log.warning(f"[FORCE-OPEN-REJECT] 미승인 세입자의 개방 요청 거부: {row['name']}({row['unit_number']})")
+                log.warning("[FORCE-OPEN-REJECT] inactive credential rejected")
                 return JSONResponse(
                     status_code=403,
                     content={"result": "denied", "message": "출입 권한이 승인되지 않은 세입자입니다."},
@@ -1288,7 +1446,7 @@ def door_force_open(
 
         except Exception as e:
             # fail-closed: 검증할 수 없으면 열지 않는다.
-            log.error(f"[FORCE-OPEN-REJECT] 세입자 검증 중 DB 예외 → fail-closed 로 거부: {e}")
+            log.error("[FORCE-OPEN-REJECT] database verification unavailable; fail closed")
             return JSONResponse(
                 status_code=503,
                 content={
@@ -1308,7 +1466,10 @@ def door_force_open(
     )
 
 
-TARGET_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "target_config.json")
+TARGET_CONFIG_FILE = os.getenv(
+    "TARGET_CONFIG_FILE",
+    os.path.join(os.path.dirname(__file__), "target_config.json"),
+)
 
 def load_target_config() -> dict:
     default_config = {
@@ -1325,7 +1486,7 @@ def load_target_config() -> dict:
                 default_config.update(saved)
                 log.info(f"[CONFIG-STORE] ✅ target_config.json 영구 설정 로드 완료: {default_config}")
         except Exception as e:
-            log.error(f"[CONFIG-STORE] 로드 예외: {e}")
+            log.error("[CONFIG-STORE] load unavailable")
     return default_config
 
 def save_target_config(config: dict):
@@ -1334,7 +1495,7 @@ def save_target_config(config: dict):
             json.dump(config, f, indent=2, ensure_ascii=False)
             log.info(f"[CONFIG-STORE] 💾 target_config.json 영구 저장 완료")
     except Exception as e:
-        log.error(f"[CONFIG-STORE] 저장 예외: {e}")
+        log.error("[CONFIG-STORE] save unavailable")
 
 current_target_config = load_target_config()
 
@@ -1431,11 +1592,11 @@ def verify_access(req: AuthVerifyRequest):
                 (mac_upper,)
             )
             tenant = cur.fetchone()
-    except Exception as e:
-        log.error(f"[DB] 조회 실패: {e}")
+    except Exception:
+        log.error("[DB] credential lookup unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"데이터베이스 연결 오류: {e}"
+            detail="인증 서비스를 일시적으로 사용할 수 없습니다.",
         )
     finally:
         if conn:
@@ -1468,7 +1629,7 @@ def verify_access(req: AuthVerifyRequest):
         )
 
     if not tenant["is_active"]:
-        log.warning(f"[AUTH] ❌ 비활성화 세입자: {tenant['name']}")
+        log.warning("[AUTH] inactive credential rejected")
         _log_access(mac_upper, False, req.distance_mm, "비활성화 계정", tenant["id"])
         return JSONResponse(
             content=AuthVerifyResponse(
@@ -1479,7 +1640,7 @@ def verify_access(req: AuthVerifyRequest):
             headers={"Content-Type": "application/json; charset=utf-8"}
         )
 
-    log.info(f"[AUTH] ✅ 인증 성공: {tenant['name']} ({tenant['unit_number']})")
+    log.info("[AUTH] credential verification succeeded")
     _log_access(mac_upper, True, req.distance_mm, None, tenant["id"])
     arm_ok = publish_arm_to_mqtt(tenant["name"], tenant["id"])
 
@@ -1524,8 +1685,195 @@ def get_access_logs(
             headers={"Content-Type": "application/json; charset=utf-8"}
         )
     except Exception as e:
-        log.error(f"[DB] 로그 조회 실패: {e}")
-        raise HTTPException(status_code=503, detail=str(e))
+        log.error("[DB] access-event query unavailable")
+        raise HTTPException(status_code=503, detail="access-event query unavailable")
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/v1/admin/privacy/support-export")
+def create_support_export(
+    request: Request,
+    x_tenant_id: str = Header(..., alias=TENANT_HEADER),
+    x_support_consent: str = Header(..., alias="X-Support-Consent"),
+    hours: int = Query(24, ge=1, le=168),
+    limit: int = Query(200, ge=1, le=500),
+):
+    """Create one consent-bound, redacted and audited diagnostic export."""
+    if not x_tenant_id.startswith("legacy:") or not x_tenant_id[7:].isdigit():
+        raise HTTPException(status_code=400, detail="legacy tenant scope required")
+    if not re.fullmatch(r"consent_[a-f0-9]{32}", x_support_consent):
+        raise HTTPException(status_code=400, detail="opaque support consent reference required")
+    principal = _admin_principal(
+        request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope=x_tenant_id,
+    )
+    tenant_id = int(x_tenant_id[7:])
+    consent_hash = hashlib.sha256(x_support_consent.encode("utf-8")).hexdigest()
+    consent_ref = opaque_ref(x_support_consent, _ops_hmac_key, "consent")
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tenant_scope,purpose,expires_at,revoked_at "
+                "FROM support_export_consents WHERE consent_ref_hash=%s FOR UPDATE",
+                (consent_hash,),
+            )
+            consent = cur.fetchone()
+            now = int(time.time())
+            if (
+                not consent
+                or consent["tenant_scope"] != x_tenant_id
+                or consent["purpose"] != "support-diagnostics"
+                or int(consent["expires_at"]) <= now
+                or consent["revoked_at"] is not None
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="current tenant-scoped support consent is required",
+                )
+            cur.execute(
+                "SELECT auth_method,is_success,distance_mm,failure_reason,created_at "
+                "FROM access_logs WHERE tenant_id=%s AND created_at >= "
+                "DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR) "
+                "ORDER BY created_at DESC LIMIT %s",
+                (tenant_id, hours, limit),
+            )
+            records = cur.fetchall()
+        for record in records:
+            if isinstance(record.get("created_at"), datetime):
+                record["created_at"] = record["created_at"].isoformat()
+        exported = support_export(
+            records,
+            consent_ref,
+            opaque_ref(x_tenant_id, _ops_hmac_key, "tenant"),
+            max_records=500,
+        )
+        _audit_admin(
+            conn, principal, x_tenant_id, "SUPPORT_EXPORT_CREATED",
+            exported["sha256"], consent_ref,
+        )
+        conn.commit()
+        return exported
+    except ValueError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        log.error("[PRIVACY] support export unavailable")
+        raise HTTPException(status_code=503, detail="support export unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.post("/api/v1/admin/privacy/delete")
+def delete_expired_privacy_data(
+    req: PrivacyDeletionRequest,
+    request: Request,
+    x_tenant_id: str = Header(..., alias=TENANT_HEADER),
+    idempotency_key: str = Header(..., alias=IDEMPOTENCY_HEADER),
+):
+    """Delete only tenant-scoped access records under the versioned policy."""
+    if not x_tenant_id.startswith("legacy:") or not x_tenant_id[7:].isdigit():
+        raise HTTPException(status_code=400, detail="legacy tenant scope required")
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
+    principal = _admin_principal(
+        request, unsafe=True, roles=(ROLE_ADMIN,), tenant_scope=x_tenant_id,
+        reauthenticate=True,
+    )
+    tenant_id = int(x_tenant_id[7:])
+    idempotency_hash = hashlib.sha256(idempotency_key.encode()).hexdigest()
+    canonical_request = json.dumps(
+        {
+            "actor_subject": principal.subject,
+            "before_days": req.before_days,
+            "policy_version": req.policy_version,
+            "tenant_scope": x_tenant_id,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    request_hash = hashlib.sha256(canonical_request).hexdigest()
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    "INSERT INTO privacy_deletion_jobs "
+                    "(tenant_scope,actor_subject,policy_version,before_days,idempotency_hash,"
+                    "request_hash,state,created_at) VALUES (%s,%s,%s,%s,%s,%s,'PENDING',%s)",
+                    (
+                        x_tenant_id, principal.subject, req.policy_version,
+                        req.before_days, idempotency_hash, request_hash, int(time.time()),
+                    ),
+                )
+            except pymysql.err.IntegrityError as exc:
+                if not exc.args or exc.args[0] != 1062:
+                    raise
+            cur.execute(
+                "SELECT actor_subject,request_hash,state,deleted_count "
+                "FROM privacy_deletion_jobs WHERE tenant_scope=%s "
+                "AND idempotency_hash=%s FOR UPDATE",
+                (x_tenant_id, idempotency_hash),
+            )
+            existing = cur.fetchone()
+            if not existing:
+                raise RuntimeError("privacy deletion reservation unavailable")
+            if (
+                not secrets.compare_digest(existing["request_hash"], request_hash)
+                or not secrets.compare_digest(existing["actor_subject"], principal.subject)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency-Key is already bound to a different request",
+                )
+            if existing["state"] == "COMPLETED":
+                conn.commit()
+                return {"status": "already_completed", "deleted_count": existing["deleted_count"]}
+            cur.execute(
+                "DELETE FROM access_logs WHERE tenant_id=%s AND created_at < "
+                "DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)",
+                (tenant_id, req.before_days),
+            )
+            deleted_count = cur.rowcount
+            cur.execute(
+                "UPDATE privacy_deletion_jobs SET state='COMPLETED',deleted_count=%s,"
+                "completed_at=%s WHERE tenant_scope=%s AND idempotency_hash=%s "
+                "AND state='PENDING' AND request_hash=%s",
+                (
+                    deleted_count, int(time.time()), x_tenant_id,
+                    idempotency_hash, request_hash,
+                ),
+            )
+            if cur.rowcount != 1:
+                raise RuntimeError("privacy deletion completion transition failed")
+        _audit_admin(
+            conn, principal, x_tenant_id, "PRIVACY_RETENTION_APPLIED",
+            req.policy_version, idempotency_key,
+        )
+        conn.commit()
+        return {"status": "completed", "deleted_count": deleted_count}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        log.error("[PRIVACY] retention deletion unavailable")
+        raise HTTPException(status_code=503, detail="retention deletion unavailable") from exc
     finally:
         if conn:
             conn.close()
@@ -1548,7 +1896,7 @@ def _log_access(
                 (tenant_id, "BLE_BEACON", success, distance_mm, failure_reason)
             )
     except Exception as e:
-        log.error(f"[DB] 출입 기록 저장 실패: {e}")
+        log.error("[DB] access-event persistence unavailable")
     finally:
         if conn:
             conn.close()

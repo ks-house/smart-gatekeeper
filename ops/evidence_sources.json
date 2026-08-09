@@ -1,0 +1,12 @@
+{
+  "schema": "sgk-evidence-source-v2",
+  "repository": "ks-house/smart-gatekeeper",
+  "candidate_author": "tworimpa",
+  "evidence": [
+    {"id": "ops-contract", "scope": "local-software", "state": "pending", "source_commit": null, "artifact_sha256": null, "reviewer": null, "expires_at": null, "provenance": null},
+    {"id": "hosted-sbom-attestation", "scope": "hosted-ci", "state": "pending", "source_commit": null, "artifact_sha256": null, "reviewer": null, "expires_at": null, "provenance": null},
+    {"id": "isolated-mariadb-restore", "scope": "operator-software", "state": "pending", "source_commit": null, "artifact_sha256": null, "reviewer": null, "expires_at": null, "provenance": null},
+    {"id": "24h-load-soak", "scope": "physical-live-like", "state": "pending", "source_commit": null, "artifact_sha256": null, "reviewer": null, "expires_at": null, "provenance": null},
+    {"id": "production-deployment", "scope": "production", "state": "blocked", "source_commit": null, "artifact_sha256": null, "reviewer": null, "expires_at": null, "provenance": null}
+  ]
+}

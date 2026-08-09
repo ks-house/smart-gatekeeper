@@ -2377,3 +2377,170 @@
 
 - The focused trusted-policy suite passed 30/30, full root discovery passed 133/133, actionlint and JSON parsing passed, and Quick passed in 35.65 seconds with doctor 12 pass, one Docker-covered native Java 17 warning, and zero failures.
 - This final trust-anchor rotation is repository authorization only. Samsung/OEM, physical APK install and first-run health, BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, operator acceptance, production signing, deployment, and production authorization remain open and fail-closed.
+
+## [2026-08-09] compile | Temporarily authorize exact PR #67 backend bundle
+
+- Expanded the trusted protected-path set from the existing five release controls to one ordered 57-file set by appending the exact 52 backend and operations inputs from `ops/backend_trusted_bundle_paths.json` at reviewed PR #67 commit `2bb223629c848f298177fc16ec3cac1fa40b8e0f`.
+- Added only `temporary-pr67-2bb2236`, sourced from `ks-house/smart-gatekeeper@2bb223629c848f298177fc16ec3cac1fa40b8e0f`, with all 57 independently recomputed `utf8-lf-v1` digests authorized by COMMENTED review `4890584574`. The prior five-path baseline is intentionally absent because it cannot be a complete bundle after adding paths not present on pre-PR67 main; PR #67 must be followed immediately by a separate merged-main baseline rotation.
+- No protected workflow, validator, product, backend, firmware, mobile, runtime, signing, deployment, or `raw/` byte changed.
+
+## [2026-08-09] test | Validate exact PR #67 temporary whole-bundle policy
+
+- The validator fetched exact PR #67 GitHub Contents API bytes and selected `temporary-pr67-2bb2236` with `protected_file_count: 57`; an independent fetched Git ref calculation also matched all 57 review-authorized digests and the exact 52-path backend manifest.
+- Focused trusted-policy tests passed 29/29, full root discovery passed 132/132, actionlint and JSON parsing passed, and Quick passed all ten software sections in 35.53 seconds with doctor 12 pass, one Docker-covered native Java warning, and zero failures. Missing, old-five partial, reordered, swapped, mixed, retired-source, digest, extra-bundle, and candidate self-use mutations remain fail-closed.
+- This policy-only software authorization does not approve or merge PR #67 and does not close production, physical soak/restore, Samsung/OEM, ESP32-C6/relay/radio, OTA/rollback, operator, or deployment Gates.
+
+## [2026-08-09] fix | Bind temporary trust authorization to actual candidate identity
+
+- Remediated blocking COMMENTED review `4890625756` by making the production validator receive the actual candidate repository and immutable lowercase 40-hex SHA as authorization inputs. Identity-ineligible candidates now fail before protected bytes are fetched, so equivalent bytes from a fork, wrong repository, retired commit, case variant, branch, tag, or malformed ref cannot select `temporary-pr67-2bb2236`.
+- Upgraded the strict policy schema to format version 2 with explicit `temporary-exact` and `persistent-baseline` modes. Temporary authorization requires exact repository plus SHA; a future persistent baseline permits unchanged protected bytes only on later immutable SHAs in the same trusted repository. Canonical path syntax, case-folding uniqueness, authorization-identity uniqueness, and single CLI identity occurrence are fail-closed.
+- The PR's hosted check continues to execute only the exact `1ce7f16a...` base policy and validator, so this validator change cannot authorize itself. It requires fresh independent exact-head review before merge and becomes authoritative only from trusted `main` for the subsequent exact PR #67 rerun.
+
+## [2026-08-09] test | Validate runtime source binding and policy schema v2
+
+- Focused trusted-policy tests passed 33/33 and full root discovery passed 136/136. Adversarial coverage rejects wrong repositories/forks, old or altered SHAs, repository/SHA case variants, mutable refs, missing or duplicated identity options, dot/backslash/empty/case-colliding paths, duplicate authorization identities, partial/mixed bundles, and candidate policy/validator self-use.
+- The production CLI fetched exact GitHub API bytes for `ks-house/smart-gatekeeper@2bb223629c848f298177fc16ec3cac1fa40b8e0f` and approved all 57 protected paths as `temporary-pr67-2bb2236`. Quick passed all ten software sections in 34.18 seconds with doctor 12 pass, one Docker-covered Java warning, and zero failures.
+- These are repository authorization and software checks only. PR #67 remains Draft/unmerged, and physical, Samsung/OEM, ESP32-C6/radio/relay, OTA/rollback, operator, production signing, deployment, and production authorization Gates remain pending and fail-closed.
+
+## [2026-08-09] compile | Rebind PR #67 temporary authorization to exact merge head
+
+- Replaced the retired `temporary-pr67-2bb2236` identity with exactly one `temporary-exact` bundle, `temporary-pr67-4f14ec6`, bound to `ks-house/smart-gatekeeper@4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`. The protected path order and all 57 `utf8-lf-v1` digests are unchanged.
+- Independently fetched both immutable Git refs and recomputed every protected digest: exact `4f14ec6` matches exact `2bb2236` for all 57 paths, and its 52-path backend manifest still exactly matches the protected-path suffix. The old commit is now an explicitly rejected runtime/source identity.
+- No trusted workflow, validator, protected product, backend, firmware, mobile, runtime, signing, deployment, or `raw/` byte changed. The existing five-path main baseline cannot be retained as a complete 57-path bundle; one persistent merged-main baseline must be restored immediately after unchanged-head PR #67 is normally merged.
+
+## [2026-08-09] test | Validate exact PR #67 merge-head policy rotation
+
+- The focused trusted-policy suite passed 33/33, full root discovery passed 136/136, JSON parsing and actionlint passed, and the production GitHub Contents API verifier approved exact `ks-house/smart-gatekeeper@4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22` as `temporary-pr67-4f14ec6` with `protected_file_count: 57`.
+- Runtime negative checks rejected the retired `2bb223629c848f298177fc16ec3cac1fa40b8e0f` identity and a wrong repository before candidate bytes could authorize. Existing tests continue to reject missing, partial, reordered, swapped, mixed, per-path digest, extra-bundle, mutable-ref, case/path, duplicate-identity, and candidate self-use mutations.
+- Quick passed all ten software sections in 35.86 seconds with doctor 12 pass, one Docker-covered native Java warning, and zero failures. These checks do not merge or deploy PR #67 and do not close physical, Samsung/OEM, ESP32-C6/radio/relay, OTA/rollback, operator, production signing, or production authorization Gates.
+
+## [2026-08-09] fix | Add fail-closed descendant transition for PR #67
+
+- Hosted Trusted run `31304004723` rejected policy-only PR #69 at source identity before fetching candidate bytes. This proves base-policy non-self-use and also exposes the expected PR-only transition deadlock: trusted main authorizes only exact `2bb2236`, so neither corrected policy head `e0cf439` nor exact product head `4f14ec6` can pass without one explicitly governed exception.
+- Superseded the one-bundle draft with two non-ambiguous authorizations over the same complete 57-digest map: exact `temporary-pr67-4f14ec6` and `future-pr67-persistent-baseline`. Exact identity takes precedence; persistent use now requires the candidate to equal or be a GitHub Compare-proven descendant of `4f14ec6`, with exact base and merge-base SHAs. Old ancestor `2bb2236`, diverged history, forks, mutable refs, unproven ancestry, and a second persistent baseline per repository fail closed.
+- The recovery contract permits exactly one separately authorized admin/branch-protection exception for reviewed PR #69 only, followed by immediate protection restoration. PR #67 must then remain at unchanged `4f14ec6`, pass normal Trusted/review checks, and merge normally; its immediate final policy rotation removes both transition bundles and pins the actual merged-main 57-file baseline through the descendant authorization. No merge, protection change, product deployment, or physical completion is performed by this change.
+
+## [2026-08-09] test | Validate descendant-bound PR #67 transition
+
+- Focused trusted-policy tests passed 37/37 and full root discovery passed 140/140. Coverage pins exact-temporary precedence, one persistent baseline per repository, mandatory ancestry proof, exact compare base/merge-base/status, two identical complete maps, old/fork/diverged/malformed identities, all path/digest/mix mutations, and candidate policy/validator non-self-use.
+- The production GitHub Contents verifier approved exact `ks-house/smart-gatekeeper@4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22` as `temporary-pr67-4f14ec6` with 57 files and rejected ancestor `2bb223629c848f298177fc16ec3cac1fa40b8e0f`. Live GitHub Compare evidence returned true for `2bb2236` as an ancestor of `4f14ec6` and false for the reverse, demonstrating that the future baseline cannot re-admit the retired ancestor.
+- JSON parsing and actionlint passed. Quick passed all ten software sections in 33.33 seconds with doctor 12 pass, one Docker-covered native Java warning, and zero failures. Hosted PR #69 remains expected-red under the old trusted base until explicit governance authorization; no merge, branch-rule change, deployment, production, or physical Gate is claimed.
+
+## [2026-08-09] fix | Bound post-exception PR #67 log integration
+
+- A read-only `git merge-tree --write-tree ba6ba7f 4f14ec6` simulation found a real `wiki/log.md` conflict because the policy recovery and PR #67 both append from main `8f925f9`. Therefore the earlier unchanged-head sequence is not normally mergeable after PR #69 and is superseded by one bounded post-exception main integration.
+- After the single reviewed PR #69 exception and immediate branch-protection restoration, PR #67 must integrate that exact new main once, preserve the new-main log as prefix plus the prior PR #67 suffix byte-identically once and one new append, retain all 57 reviewed protected digests and `raw/`, and accept the trusted policy/validator from main. The resulting exact head must receive fresh review and hosted checks; the descendant baseline authorizes it only after GitHub ancestry and complete byte verification.
+- No conflict was resolved and no PR #67, main, branch protection, deployment, production, or physical state changed in this audit. A second integration, product remediation, partial bundle, or manual merge bypass remains prohibited.
+
+## [2026-08-09] code | Implement repository-side commercial operations and privacy controls (#52)
+
+- Added default-redacted logging and consent-bound support exports, versioned tenant retention deletion with immutable evidence, opaque-peer rate limits, persistent bounded MQTTS publication with backpressure/circuit recovery, dependency readiness, fixed-label metrics and fail-closed evidence generation. Existing administrator session/RBAC/CSRF/re-auth, manual control, mobile update and Target OTA/rollback boundaries remain independent.
+- Added a digest-pinned non-root backend image, hash-locked dependencies, hardened production-only Compose with external secrets/no host ports/no live source mount, deterministic CycloneDX SBOM and license/vulnerability policy, fixed Prometheus alert rules, SLO evaluator, and backup-manifest/isolated-restore integrity and RPO/RTO harness. The five protected OTA/deployment workflow files and trusted policy were not changed.
+- Documented exact operator commands and evidence boundaries in `wiki/commercial_operations.md`; production stays OFF and legal retention approval, live alert delivery, production-like independent restore, 24-hour soak, physical gates, operator acceptance and explicit authorization remain pending.
+
+## [2026-08-09] test | Validate Issue #52 software operations without closing live or physical Gates
+
+- Backend discovery passed 70 tests with the real MariaDB lane opt-in skipped; the separate opt-in MariaDB test then passed actual expand migrations, logical dump, manifest/RPO verification, isolated separate-schema restore, tenant/access/ACL/audit/privacy integrity checks, measured synthetic RTO, rollback and N/N-1 legacy read. Repository operations contract, nominal SLO fixture, hash-lock dry-run, dependency vulnerability audit and dev/production Compose rendering passed.
+- The digest-pinned backend image built successfully, ran as UID/GID `10001:10001` on a read-only root with temporary storage, and returned process liveness; Docker import fallback was corrected and revalidated. These checks do not prove a NAS deployment, production secrets/proxy/network, real broker/DNS/certificate/storage faults, alert receipt, independent operator restore or 24-hour soak.
+- `raw/` and the five protected workflow/producer files are unchanged. Samsung/OEM, Android physical install, BLE/ESP32-C6/radio/sensor/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, legal/privacy approval, production signing/deployment and user physical acceptance remain open and fail-closed.
+
+## [2026-08-09] test | Run final cross-layer software validation for Issue #52
+
+- Orca `Software` validation passed in 45.88 seconds: doctor 12 pass/one Docker-covered native Java warning/zero fail, backend 70 tests with the isolated MariaDB lane intentionally skipped in discovery, dev Compose, staged profile/lifecycle tests, protocol vectors plus 16 tests, observability 18 tests, OTA contract, hardwareless Gate 4 tests and root 133 tests all passed.
+- The separate real MariaDB opt-in lane passed in 23.53 seconds with actual logical backup and isolated restore. The hash-locked setup rerun, deterministic 24-component SBOM generation, actionlint, dependency audit with no known vulnerability, production Compose rendering, non-root read-only image smoke and append-only/protected-scope checks are repository/host evidence only.
+- Exact-head hosted workflow, SBOM provenance attestation and independent review remain required before merge. Live alert delivery, separate-host operator restore, 24-hour load/soak, legal/privacy approval, every physical/OTA/relay Gate and production authorization remain pending.
+
+## [2026-08-09] fix | Harden final operations error and proxy boundaries
+
+- Replaced two database failure responses that could reflect internal exception text with fixed Korean service-unavailable messages, required tenant-scoped opaque support-export digests, serialized the circuit-breaker half-open probe, and accepted a single forwarded client address only from an explicitly trusted proxy.
+- Added adversarial trusted/untrusted/chained forwarding coverage. The final Orca `Software` suite passed in 43.13 seconds with backend discovery at 71 tests (one isolated MariaDB opt-in skip) and root discovery at 133 tests; the separate real MariaDB logical backup and isolated-restore lane remains passed at 23.53 seconds.
+- These are repository/host controls only. Hosted exact-head review and attestation, legal approval, live soak/alerts, independent-host restore, physical hardware/OTA/relay acceptance, production secrets/signing/deployment and explicit production authorization remain pending and fail-closed.
+
+## [2026-08-09] fix | Canonicalize SBOM identity across Git line endings
+
+- Hosted backend run `31291937131` passed every runtime/security test but exposed one supply-chain portability defect: the deterministic SBOM serial used raw lockfile bytes, so Windows CRLF and Linux LF checkouts produced different UUIDs.
+- Canonicalized only the SBOM identity input to UTF-8 LF text while retaining byte-exact hashes for backup integrity, and added an LF/CRLF adversarial equality test. A new exact-head hosted run is required; no protected workflow/producer, OTA, mobile, firmware, `raw/`, secret, deployment or production state changed.
+
+## [2026-08-09] test | Revalidate portable SBOM correction locally
+
+- The focused operations gate passed 6/6 including the new LF/CRLF mutation, and the full Orca `Software` suite passed in 45.04 seconds with backend discovery 72 tests (one explicit MariaDB opt-in skip), protocol 16, observability 18, hardwareless 4 and root 133 tests.
+- The previously passed real MariaDB restore evidence remains bound to unchanged migration/restore code. Hosted exact-head rerun, review and provenance remain required; production remains OFF.
+
+## [2026-08-09] fix | Remediate PR #67 commercial operations security review
+
+- Closed the eight repository-side blockers from COMMENTED review `4890422659`: expanded backend workflow trigger coverage and immutable toolchain/service inputs; defined a complete backend trusted-input bundle without candidate self-authorization; required digest-only API/DB production artifacts with baked migrations and dependency readiness; and bound readiness to control/admin authentication, active ACL runtime and disabled legacy lookup.
+- Bound support export to a current tenant/purpose/expiry/revocation database consent while keeping raw consent, tenant names and unit data out of response, audit and MQTT failure logs. Bound retention deletion idempotency to the canonical tenant/actor/policy/window payload with one durable `PENDING` to `COMPLETED` transition and conflict rejection.
+- Added authenticated source/target schema, primary-key, row-count and content inventories to backup/restore verification; strict fixed-ID commit/digest/reviewer/expiry/hosted-provenance evidence validation; and an end-to-end bounded MQTT DNS/TCP/TLS plus PUBACK deadline with cancellation and connection-fanout prevention.
+- PR #67 remains Draft, unmerged and production OFF. A separate trusted-base policy-only rotation from trusted `main`, independently reviewed and merged without candidate self-approval, is still required before the backend executable/input bundle may be admitted.
+
+## [2026-08-09] test | Validate PR #67 security remediation locally
+
+- Backend discovery passed 76 tests with one explicit isolated-MariaDB opt-in skip. The separate real MariaDB lane passed actual migrations, one-way consent revocation, concurrent payload-bound deletion, authenticated logical backup, measured isolated restore, complete source/target inventory equality, rollback and legacy read in 28.60 seconds.
+- The operations contract passed 23 checks; adversarial tests reject mutable images, missing workflow paths, forged/expired/self-reviewed/unhosted evidence, fabricated/expired/revoked/cross-tenant consent, idempotency payload mismatch, dump/inventory/HMAC mutation, incomplete restore and blocked MQTT connect fanout. Python compilation, workflow YAML/actionlint, dev/production Compose rendering and mutable `API_IMAGE` rejection passed.
+- Digest-pinned API and migration-database images built successfully; the API image imported as UID `10001`. These are local repository/host results only. Hosted exact-head CI/attestation, independent trusted-base review, legal/privacy approval, live alerts, production-like independent restore, 24-hour soak, Samsung/OEM, BLE/ESP32-C6/radio/sensor/relay, OTA-G1 through G4, RELAY-G0 through G2, operator acceptance, signing, deployment and production authorization remain open and fail-closed.
+
+## [2026-08-09] test | Run final cross-layer validation for PR #67 remediation
+
+- Orca `Software` validation passed in 47.39 seconds: doctor 12 pass/one Docker-covered Java warning/zero fail, backend 76 tests with the isolated MariaDB lane intentionally skipped in discovery, dev Compose, staged profile/lifecycle, protocol 16, observability 18, OTA contract, hardwareless Gate 4 and root 133 tests all passed.
+- The 23-check operations contract, immutable-image validator and deterministic 24-component SBOM matched the tracked artifact. Local `pip-audit` was unavailable in this isolated environment, so vulnerability acceptance remains bound to the exact-head hosted pinned audit action; no local absence is represented as a product pass.
+- Production remains OFF. The separate trusted-base policy rotation, hosted exact-head CI and SBOM attestation, independent review, live/physical/operator/legal gates and explicit production authorization remain blocking.
+
+## [2026-08-09] fix | Close residual PR #67 operations provenance and database blockers
+
+- Remediated exact-head COMMENTED review `4890481590` without preparing or self-authorizing a policy change. Passed evidence now queries fixed GitHub APIs and binds the authoritative commit author, successful exact-main trusted workflow/run attempt, non-expired artifact archive plus subject digests, exact-commit independent approval, and GitHub-hosted SLSA repository/ref/workflow/commit/invocation; caller environment provenance is not trusted.
+- Retired legacy raw-device `POST /api/v1/door/prearm` with fixed `410` before database or MQTT access whenever the production legacy flag is off, and bound readiness to that actual authority plus the exact `007` migration digest. Mobile update, Target OTA/rollback and manual recovery paths remain unchanged.
+- Replaced caller-declared RTO with a single empty-target harness that times the actual MariaDB import through authenticated full-inventory verification. Added a seed-free production baseline, backup-first digest-ledger migration runner with repeat-run verification and explicit rollback, existing-volume migration service/API admission, and a complete 51-path backend/operations/vector trusted input declaration. Production remains OFF and the separate trusted-base whole-bundle policy dependency remains blocking.
+
+## [2026-08-09] test | Validate residual PR #67 remediation across real MariaDB and software suites
+
+- Focused operations/API/runtime/migration tests passed 39/39 with two explicit MariaDB opt-in skips. Both opt-in lanes then passed in 46.63 seconds: actual legacy up/dump/restore/down compatibility and the seed-free production DB image fresh-volume plus existing-record upgrade, identical repeat, backup sidecars and rollback.
+- The Orca `Software` suite passed in 47.49 seconds: doctor 12 pass/one Docker-covered native Java warning/zero fail, backend discovery 82 tests with the two opt-in lanes intentionally skipped, dev Compose, staged profile/lifecycle, protocol 16, observability 18, OTA contract, hardwareless Gate 4 and root 133 tests. Python compilation, actionlint, the 29-check operations contract, deterministic 24-component SBOM, digest-pinned API/DB image builds and production Compose rendering also passed.
+- These are local repository/host results only. New exact-head hosted CI, SBOM/operations attestation, fresh independent review and trusted-base bundle authorization remain required; legal/privacy approval, production-like independent restore, live alerts/24-hour soak, Samsung/OEM, BLE/ESP32-C6/radio/sensor/relay, OTA-G1 through G4, RELAY-G0 through G2, operator acceptance, signing, deployment and explicit production authorization remain open and fail-closed.
+
+## [2026-08-09] fix | Preserve every rapid backup and wait for the initialized production schema
+
+- Exact-head hosted backend run `31295046466` exposed that two idempotency checks within one UTC second selected the same pre-migration backup filename and left only one file. Backup identity now includes UTC nanoseconds, direction, target and process identity, and any residual collision fails closed instead of overwriting evidence.
+- A local rerun then exposed an independent test race: the temporary MariaDB initialization server accepted `SELECT 1` before the seed-free baseline completed. The product-image lane now waits for an actual `smart_gatekeeper.tenants` query before asserting emptiness or migrating. The focused production image lane passed with two distinct up backups, matching checksum sidecars, preserved existing data and explicit rollback; a new exact-head hosted run is required.
+
+## [2026-08-09] fix | Bind every operations claim to its authoritative producer and merged review
+
+- Remediated blocking COMMENTED review `4890544652` with a fixed policy per evidence ID covering scope, workflow/ref/event, producer and attestor job/step, execution environment, artifact name/archive path, attestation subject path, typed claim/result/payload schema and SLSA predicate. Only repository `ops-contract` and `hosted-sbom-attestation` claims are admitted; isolated restore, 24-hour physical soak and production deployment reject `passed` before network access until their own trusted producer/environment contracts exist.
+- Added deterministic disjoint claim envelopes and exact-main attestations for the admitted software claims. The register and live verifier reject duplicate subject or payload digests, SAME_SBOM_FOR_ALL, cross-ID artifact swaps and claim relabeling, and bind an approval to the authoritative reviewer numeric identity plus the exact closed/merged PR, `main` base, reviewed head and merge commit.
+- Hardened artifact download redirects to require HTTPS on every hop and compare normalized scheme, host and effective port. Authorization is removed on any full-origin change and all HTTPS-to-HTTP downgrades are rejected. Added the executable adversarial corpus `ops/fixtures/evidence_adversarial_v1.json`; production remains OFF and no trusted-policy candidate was prepared.
+
+## [2026-08-09] test | Validate ID-scoped evidence, redirects and full Issue #52 regression
+
+- Focused operations/API/runtime/migration tests passed 41/41 with the two explicit Docker lanes skipped; the 10 evidence-gate tests include SAME_SBOM_FOR_ALL, reused payload, cross-ID workflow/artifact/claim, unrelated merge/reviewer/job/attestation and same-host downgrade/different-host/different-port redirect mutations. Both generated claim envelopes, actionlint and the expanded 34-check operations contract passed.
+- The actual legacy MariaDB up/dump/restore/down lane passed. The production-image lane exposed that the init temporary socket can already contain the baseline before its final server restart; readiness now requires both the real `tenants` query and `@@port=3306`, after which the seed-free existing-volume/repeat-backup/rollback lane passed in 13.35 seconds.
+- Orca `Software` passed in 46.85 seconds: doctor 12 pass/one Docker-covered Java warning/zero fail, backend 84 tests with two opt-in skips, dev Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract, hardwareless 4 and root 133 tests. Fresh exact-head hosted CI and clean independent re-review remain required; policy authorization, live/legal/operator/physical/OTA/relay evidence and production authorization stay fail-closed.
+
+## [2026-08-09] fix | Integrate exact post-PR68 trusted policy into PR #67
+
+- Integrated exact `origin/main` `8f925f91b3495f51012c1cf48e80dcfd39abc614` once with a normal two-parent merge and no history rewrite. The exact new-main log is the byte prefix, the complete prior PR #67 suffix is preserved exactly once, and this integration entry is the only new append.
+- Accepted the policy schema v2 validator, tests, guide and 57-path `temporary-pr67-2bb2236` authorization exactly from trusted main. All backend, operations, vector and workflow candidate product bytes remain identical to reviewed PR #67 commit `2bb223629c848f298177fc16ec3cac1fa40b8e0f`; `raw/` is unchanged.
+- The exact policy verifier selected `temporary-pr67-2bb2236` with all 57 paths; focused policy tests passed 33/33, root discovery passed 136/136, actionlint passed, and Orca `Software` passed all eleven sections in 50.21 seconds with backend 84 tests/two explicit Docker-lane skips. PR #67 remains Draft and production remains OFF; hosted exact-head checks and a fresh independent review remain required, while legal, live-soak, independent-host restore, physical, OTA, relay, operator, signing, deployment and production authorization Gates stay open and fail-closed.
+## [2026-08-09] fix | Integrate exact post-exception main into PR #67
+
+- Integrated exact `origin/main` `f5c90bef2c2d4500ff68c014d1385ac37b440f0c` once with a normal two-parent merge and no history rewrite. The exact new-main log is the byte prefix, the complete prior PR #67 suffix is preserved byte-identically exactly once, and this integration entry is the only new append.
+- Accepted the trusted policy, validator, tests and guide exactly from main. All 57 reviewed protected product files and the `raw/` tree remain unchanged from PR #67 head `4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`; the persistent descendant authorization requires live GitHub Compare proof for this new exact head.
+- Focused policy tests passed 37/37, root discovery passed 140/140, Quick passed all ten sections with backend 84 tests/two explicit Docker-lane skips, the 34-check operations contract and nominal SLO fixture passed, and `git diff --check` is clean. PR #67 remains Draft and unmerged with production OFF; hosted exact-head checks plus an independent COMMENTED review remain required, while NAS deployment, live/legal/operator, physical mobile/ESP32-C6/radio/relay/sensor, OTA/rollback and production authorization Gates remain open.
+
+## [2026-08-09] compile | Rotate merged PR #67 policy to sole current-main baseline
+
+- Removed both transition identities, `temporary-pr67-4f14ec6` and `future-pr67-persistent-baseline`, and installed exactly one 57-file `persistent-baseline` named `current-main-baseline` sourced from `ks-house/smart-gatekeeper@22ddc7237f15758a0c77c72902b51ff25d31e483`, the exact PR #67 merged-main commit.
+- Recomputed all 57 `utf8-lf-v1` digests from GitHub Contents API bytes at that immutable commit and matched them against the local Git tree and reviewed transition map. Only the policy, its adversarial tests, the trusted-policy guide, and this append-only log are changed; the validator, protected product/workflow files and `raw/` remain unchanged.
+
+## [2026-08-09] test | Validate final PR #67 merged-main policy rotation
+
+- Focused trusted-policy tests passed 37/37, full root discovery passed 140/140, JSON parsing, actionlint and `git diff --check` passed, and Orca Quick passed all ten sections in 40.6 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
+- The production verifier fetched the exact GitHub API bytes for `ks-house/smart-gatekeeper@22ddc7237f15758a0c77c72902b51ff25d31e483` and selected `current-main-baseline` with `protected_file_count: 57`. Hosted exact-head Trusted CI and independent COMMENTED review remain required before normal merge; NAS deployment, live/legal/operator, physical mobile/ESP32-C6/radio/relay/sensor and OTA/rollback Gates remain open.
+
+## [2026-08-09] fix | Remove stale governance-exception guidance from final rotation
+
+- Corrected the trusted-policy guide so the final rotation is described as validator/workflow unchanged, authorized by the trusted base only after ancestry and complete 57-file byte proof, and eligible solely for a normal protected merge after Hosted Trusted success and fresh review. Removed stale transition text that incorrectly described this PR as expected-red and requiring a governance exception.
+- Clarified that the regression assertion pins a sole final bundle while the generic runtime schema may represent a future reviewed transition; runtime fork, retired/diverged source, path and digest checks remain fail-closed. No policy, test, validator, protected product/workflow or `raw/` byte changed in this documentation remediation.
+
+## [2026-08-09] test | Revalidate final-rotation guidance after independent review
+
+- Focused trusted-policy tests passed 37/37 and full root discovery passed 140/140 after the documentation-only remediation. The final guide contains no expected-red or two-bundle-current-state claim and requires Hosted Trusted success plus fresh exact-head review before a normal protected merge.
+- The prior Quick 10-section pass remains bound to identical policy, test, validator, protected product/workflow and `raw/` bytes. A new exact-head Hosted Trusted run and fresh COMMENTED review remain required after push; no merge, deployment or physical Gate completion is claimed.
