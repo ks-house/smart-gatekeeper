@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+import tempfile
 import time
 import unittest
 import uuid
@@ -23,6 +24,7 @@ from backend.app.acl_management import (
     build_enrollment_input,
 )
 from backend.app.admin_security import AdminPrincipal
+from scripts import ops_commercial_gate
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +39,8 @@ RECONCILIATION_UP = ROOT / "backend" / "db" / "migrations" / "005_force_open_rec
 RECONCILIATION_DOWN = ROOT / "backend" / "db" / "migrations" / "005_force_open_reconciliation_down.sql"
 BOOT_STATE_UP = ROOT / "backend" / "db" / "migrations" / "006_target_boot_state_up.sql"
 BOOT_STATE_DOWN = ROOT / "backend" / "db" / "migrations" / "006_target_boot_state_down.sql"
+OPS_PRIVACY_UP = ROOT / "backend" / "db" / "migrations" / "007_ops_privacy_up.sql"
+OPS_PRIVACY_DOWN = ROOT / "backend" / "db" / "migrations" / "007_ops_privacy_down.sql"
 
 
 class MigrationContractTest(unittest.TestCase):
@@ -96,6 +100,16 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("boot_id REGEXP", up)
         self.assertIn("DROP TABLE IF EXISTS target_boot_state", down)
 
+    def test_privacy_deletion_evidence_is_bounded_immutable_and_reversible(self) -> None:
+        up = OPS_PRIVACY_UP.read_text(encoding="utf-8")
+        down = OPS_PRIVACY_DOWN.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS privacy_deletion_jobs", up)
+        self.assertIn("UNIQUE KEY uq_privacy_delete_idempotency", up)
+        self.assertIn("before_days BETWEEN 30 AND 3650", up)
+        self.assertIn("CREATE TRIGGER privacy_deletion_jobs_no_update", up)
+        self.assertIn("CREATE TRIGGER privacy_deletion_jobs_no_delete", up)
+        self.assertIn("DROP TABLE IF EXISTS privacy_deletion_jobs", down)
+
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
         "set RUN_MARIADB_INTEGRATION=1 for isolated MariaDB migration test",
@@ -128,7 +142,7 @@ class MigrationContractTest(unittest.TestCase):
             f"MARIADB_ROOT_PASSWORD={password}",
             "-p",
             f"127.0.0.1:{host_port}:3306",
-            "mariadb:10.11",
+            "mariadb@sha256:be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350",
         )
         try:
             consecutive_ready = 0
@@ -163,6 +177,7 @@ class MigrationContractTest(unittest.TestCase):
                     CONTROL_V2_UP.read_text(encoding="utf-8"),
                     RECONCILIATION_UP.read_text(encoding="utf-8"),
                     BOOT_STATE_UP.read_text(encoding="utf-8"),
+                    OPS_PRIVACY_UP.read_text(encoding="utf-8"),
                     "INSERT INTO tenants (name, unit_number, ble_device_mac, auth_key, is_active) "
                     "VALUES ('N-1 client', '999', 'AA:BB:CC:DD:EE:99', 'legacy-only', TRUE);",
                     "INSERT INTO acl_tenants VALUES "
@@ -658,6 +673,57 @@ class MigrationContractTest(unittest.TestCase):
                     self.assertEqual(failed_audit_id, cursor.fetchone()["approval_id"])
                 verification_connection.rollback()
 
+            # Create an actual logical backup, bind it to the exact software
+            # source, restore it into a separate schema, and verify integrity
+            # without writing to the restored data.
+            dumped = docker(
+                "exec", name, "mariadb-dump", "--single-transaction",
+                "--routines", "--triggers", "-uroot", f"-p{password}",
+                "smart_gatekeeper",
+            )
+            with tempfile.TemporaryDirectory() as backup_directory:
+                dump_path = Path(backup_directory) / "smart_gatekeeper.sql"
+                manifest_path = Path(backup_directory) / "manifest.json"
+                dump_path.write_text(dumped.stdout, encoding="utf-8")
+                ops_commercial_gate.create_backup_manifest(
+                    dump_path, manifest_path, "a" * 40, "2026-08-09T00:00:00Z"
+                )
+                self.assertEqual(
+                    "PASS",
+                    ops_commercial_gate.verify_backup(
+                        dump_path, manifest_path, 900, "2026-08-09T00:10:00Z"
+                    )["status"],
+                )
+                docker(
+                    "exec", name, "mariadb", "-uroot", f"-p{password}",
+                    "-e", "DROP DATABASE IF EXISTS smart_gatekeeper_restore; "
+                    "CREATE DATABASE smart_gatekeeper_restore CHARACTER SET utf8mb4;",
+                )
+                restored = docker(
+                    "exec", "-i", name, "mariadb", "--default-character-set=utf8mb4",
+                    "-uroot", f"-p{password}", "smart_gatekeeper_restore",
+                    input_text=dumped.stdout, check=False,
+                )
+                if restored.returncode != 0:
+                    self.fail(f"isolated logical restore failed: {restored.stderr}")
+                restore_connection = pymysql.connect(
+                    host="127.0.0.1", port=host_port, user="root", password=password,
+                    database="smart_gatekeeper_restore",
+                    cursorclass=pymysql.cursors.DictCursor, autocommit=False,
+                )
+                try:
+                    restored_result = ops_commercial_gate.verify_restored_database(
+                        restore_connection,
+                        "2026-08-09T00:10:00Z", "2026-08-09T00:14:00Z", 300,
+                    )
+                    self.assertEqual("PASS", restored_result["status"])
+                finally:
+                    restore_connection.close()
+                docker(
+                    "exec", name, "mariadb", "-uroot", f"-p{password}",
+                    "-e", "DROP DATABASE smart_gatekeeper_restore;",
+                )
+
             # The down migration intentionally rejects a live ambiguous state.
             # Remove this disposable fixture only after its durable evidence was
             # asserted so the legacy rollback compatibility proof can proceed.
@@ -669,7 +735,7 @@ class MigrationContractTest(unittest.TestCase):
                     )
                 cleanup_connection.commit()
 
-            docker(
+            rolled_back = docker(
                 "exec",
                 "-i",
                 name,
@@ -677,8 +743,11 @@ class MigrationContractTest(unittest.TestCase):
                 "--default-character-set=utf8mb4",
                 "-uroot",
                 f"-p{password}",
-                input_text="\n".join((BOOT_STATE_DOWN.read_text(encoding="utf-8"), RECONCILIATION_DOWN.read_text(encoding="utf-8"), CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
+                input_text="\n".join((OPS_PRIVACY_DOWN.read_text(encoding="utf-8"), BOOT_STATE_DOWN.read_text(encoding="utf-8"), RECONCILIATION_DOWN.read_text(encoding="utf-8"), CONTROL_V2_DOWN.read_text(encoding="utf-8"), ADMIN_DOWN.read_text(encoding="utf-8"), DOWN.read_text(encoding="utf-8"))),
+                check=False,
             )
+            if rolled_back.returncode != 0:
+                self.fail(f"migration rollback failed: {rolled_back.stderr}")
             after_down = docker(
                 "exec",
                 name,

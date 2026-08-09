@@ -1,0 +1,9 @@
+{
+  "evidence": [
+    {"id": "ops-contract", "state": "pending", "scope": "local-software", "artifact_sha256": null, "reviewer": null, "expires_at": null},
+    {"id": "hosted-sbom-attestation", "state": "pending", "scope": "hosted-ci", "artifact_sha256": null, "reviewer": null, "expires_at": null},
+    {"id": "isolated-mariadb-restore", "state": "pending", "scope": "operator-software", "artifact_sha256": null, "reviewer": null, "expires_at": null},
+    {"id": "24h-load-soak", "state": "pending", "scope": "physical-live-like", "artifact_sha256": null, "reviewer": null, "expires_at": null},
+    {"id": "production-deployment", "state": "blocked", "scope": "production", "artifact_sha256": null, "reviewer": null, "expires_at": null}
+  ]
+}

@@ -2377,3 +2377,27 @@
 
 - The focused trusted-policy suite passed 30/30, full root discovery passed 133/133, actionlint and JSON parsing passed, and Quick passed in 35.65 seconds with doctor 12 pass, one Docker-covered native Java 17 warning, and zero failures.
 - This final trust-anchor rotation is repository authorization only. Samsung/OEM, physical APK install and first-run health, BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, operator acceptance, production signing, deployment, and production authorization remain open and fail-closed.
+
+## [2026-08-09] code | Implement repository-side commercial operations and privacy controls (#52)
+
+- Added default-redacted logging and consent-bound support exports, versioned tenant retention deletion with immutable evidence, opaque-peer rate limits, persistent bounded MQTTS publication with backpressure/circuit recovery, dependency readiness, fixed-label metrics and fail-closed evidence generation. Existing administrator session/RBAC/CSRF/re-auth, manual control, mobile update and Target OTA/rollback boundaries remain independent.
+- Added a digest-pinned non-root backend image, hash-locked dependencies, hardened production-only Compose with external secrets/no host ports/no live source mount, deterministic CycloneDX SBOM and license/vulnerability policy, fixed Prometheus alert rules, SLO evaluator, and backup-manifest/isolated-restore integrity and RPO/RTO harness. The five protected OTA/deployment workflow files and trusted policy were not changed.
+- Documented exact operator commands and evidence boundaries in `wiki/commercial_operations.md`; production stays OFF and legal retention approval, live alert delivery, production-like independent restore, 24-hour soak, physical gates, operator acceptance and explicit authorization remain pending.
+
+## [2026-08-09] test | Validate Issue #52 software operations without closing live or physical Gates
+
+- Backend discovery passed 70 tests with the real MariaDB lane opt-in skipped; the separate opt-in MariaDB test then passed actual expand migrations, logical dump, manifest/RPO verification, isolated separate-schema restore, tenant/access/ACL/audit/privacy integrity checks, measured synthetic RTO, rollback and N/N-1 legacy read. Repository operations contract, nominal SLO fixture, hash-lock dry-run, dependency vulnerability audit and dev/production Compose rendering passed.
+- The digest-pinned backend image built successfully, ran as UID/GID `10001:10001` on a read-only root with temporary storage, and returned process liveness; Docker import fallback was corrected and revalidated. These checks do not prove a NAS deployment, production secrets/proxy/network, real broker/DNS/certificate/storage faults, alert receipt, independent operator restore or 24-hour soak.
+- `raw/` and the five protected workflow/producer files are unchanged. Samsung/OEM, Android physical install, BLE/ESP32-C6/radio/sensor/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, legal/privacy approval, production signing/deployment and user physical acceptance remain open and fail-closed.
+
+## [2026-08-09] test | Run final cross-layer software validation for Issue #52
+
+- Orca `Software` validation passed in 45.88 seconds: doctor 12 pass/one Docker-covered native Java warning/zero fail, backend 70 tests with the isolated MariaDB lane intentionally skipped in discovery, dev Compose, staged profile/lifecycle tests, protocol vectors plus 16 tests, observability 18 tests, OTA contract, hardwareless Gate 4 tests and root 133 tests all passed.
+- The separate real MariaDB opt-in lane passed in 23.53 seconds with actual logical backup and isolated restore. The hash-locked setup rerun, deterministic 24-component SBOM generation, actionlint, dependency audit with no known vulnerability, production Compose rendering, non-root read-only image smoke and append-only/protected-scope checks are repository/host evidence only.
+- Exact-head hosted workflow, SBOM provenance attestation and independent review remain required before merge. Live alert delivery, separate-host operator restore, 24-hour load/soak, legal/privacy approval, every physical/OTA/relay Gate and production authorization remain pending.
+
+## [2026-08-09] fix | Harden final operations error and proxy boundaries
+
+- Replaced two database failure responses that could reflect internal exception text with fixed Korean service-unavailable messages, required tenant-scoped opaque support-export digests, serialized the circuit-breaker half-open probe, and accepted a single forwarded client address only from an explicitly trusted proxy.
+- Added adversarial trusted/untrusted/chained forwarding coverage. The final Orca `Software` suite passed in 43.13 seconds with backend discovery at 71 tests (one isolated MariaDB opt-in skip) and root discovery at 133 tests; the separate real MariaDB logical backup and isolated-restore lane remains passed at 23.53 seconds.
+- These are repository/host controls only. Hosted exact-head review and attestation, legal approval, live soak/alerts, independent-host restore, physical hardware/OTA/relay acceptance, production secrets/signing/deployment and explicit production authorization remain pending and fail-closed.

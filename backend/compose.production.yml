@@ -1,0 +1,112 @@
+name: smart-gatekeeper-production
+
+services:
+  db:
+    image: mariadb@sha256:be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MARIADB_DATABASE: smart_gatekeeper
+      MARIADB_USER: gatekeeper_runtime
+      MARIADB_PASSWORD_FILE: /run/secrets/db_password
+      TZ: UTC
+    secrets:
+      - db_root_password
+      - db_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./db/migrations/002_acl_management_expand_up.sql:/docker-entrypoint-initdb.d/02_acl.sql:ro
+      - ./db/migrations/003_admin_security_up.sql:/docker-entrypoint-initdb.d/03_admin.sql:ro
+      - ./db/migrations/004_admin_control_v2_up.sql:/docker-entrypoint-initdb.d/04_admin_v2.sql:ro
+      - ./db/migrations/005_force_open_reconciliation_up.sql:/docker-entrypoint-initdb.d/05_reconciliation.sql:ro
+      - ./db/migrations/006_target_boot_state_up.sql:/docker-entrypoint-initdb.d/06_boot.sql:ro
+      - ./db/migrations/007_ops_privacy_up.sql:/docker-entrypoint-initdb.d/07_privacy.sql:ro
+    networks: [data]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+
+  api:
+    image: ${API_IMAGE:?API_IMAGE must be an immutable repository@sha256 digest}
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: smart_gatekeeper
+      DB_USER: gatekeeper_runtime
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      MQTT_HOST: ${MQTT_HOST:?MQTT_HOST is required}
+      MQTT_PORT: "8883"
+      MQTT_USER: ${MQTT_USER:?MQTT_USER is required}
+      MQTT_PASSWORD_FILE: /run/secrets/mqtt_password
+      MQTT_CA_FILE: /run/secrets/mqtt_ca
+      COMMAND_TARGET_ID: ${COMMAND_TARGET_ID:?COMMAND_TARGET_ID is required}
+      COMMAND_TENANT_ID: ${COMMAND_TENANT_ID:?COMMAND_TENANT_ID is required}
+      COMMAND_DOOR_ID: ${COMMAND_DOOR_ID:?COMMAND_DOOR_ID is required}
+      COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:?COMMAND_SIGNING_KEY_ID is required}
+      COMMAND_SIGNING_PRIVATE_SCALAR_HEX_FILE: /run/secrets/command_signing_scalar
+      GATEKEEPER_API_KEY_FILE: /run/secrets/api_key
+      OPS_HMAC_KEY_FILE: /run/secrets/ops_hmac_key
+      ADMIN_MTLS_IDENTITIES_JSON_FILE: /run/secrets/admin_identities
+      ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:?trusted TLS proxy IPs are required}
+      BUILD_SHA: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}
+      TARGET_CONFIG_FILE: /var/lib/smart-gatekeeper/target_config.json
+      TZ: UTC
+    secrets:
+      - db_password
+      - mqtt_password
+      - mqtt_ca
+      - api_key
+      - ops_hmac_key
+      - command_signing_scalar
+      - admin_identities
+    volumes:
+      - api_state:/var/lib/smart-gatekeeper
+      - apk_artifacts:/app/gatekeeper_apk:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001
+    networks: [edge, data]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/live', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 20s
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.0
+
+networks:
+  edge: {}
+  data:
+    internal: true
+
+volumes:
+  mariadb_data: {}
+  api_state: {}
+  apk_artifacts:
+    external: true
+
+secrets:
+  db_root_password: {external: true}
+  db_password: {external: true}
+  mqtt_password: {external: true}
+  mqtt_ca: {external: true}
+  api_key: {external: true}
+  ops_hmac_key: {external: true}
+  command_signing_scalar: {external: true}
+  admin_identities: {external: true}

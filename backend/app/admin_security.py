@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import ipaddress
+from pathlib import Path
 import secrets
 import threading
 import time
@@ -93,6 +94,14 @@ class AdminSecurity:
     @classmethod
     def from_environment(cls) -> "AdminSecurity":
         raw = os.getenv("ADMIN_MTLS_IDENTITIES_JSON", "").strip()
+        identity_file = os.getenv("ADMIN_MTLS_IDENTITIES_JSON_FILE", "").strip()
+        if raw and identity_file:
+            return cls({})
+        if identity_file:
+            try:
+                raw = Path(identity_file).read_text(encoding="utf-8").strip()
+            except OSError:
+                return cls({})
         try:
             identities = json.loads(raw) if raw else {}
         except json.JSONDecodeError:
