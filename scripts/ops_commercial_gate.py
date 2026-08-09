@@ -36,6 +36,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_text_sha256(path: Path) -> str:
+    """Hash semantic text identically across LF/CRLF Git checkouts."""
+    text = path.read_text(encoding="utf-8")
+    canonical = ("\n".join(text.splitlines()) + "\n").encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def locked_dependencies(lock_path: Path) -> list[tuple[str, str]]:
     dependencies = []
     for line in lock_path.read_text(encoding="utf-8").splitlines():
@@ -123,7 +130,9 @@ def generate_sbom(output: Path) -> dict:
     sbom = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
-        "serialNumber": f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, _sha256(lock_path))}",
+        "serialNumber": (
+            f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, _canonical_text_sha256(lock_path))}"
+        ),
         "version": 1,
         "metadata": {"component": {"type": "application", "name": "smart-gatekeeper-backend"}},
         "components": components,

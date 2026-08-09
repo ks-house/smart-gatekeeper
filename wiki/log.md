@@ -2401,3 +2401,13 @@
 - Replaced two database failure responses that could reflect internal exception text with fixed Korean service-unavailable messages, required tenant-scoped opaque support-export digests, serialized the circuit-breaker half-open probe, and accepted a single forwarded client address only from an explicitly trusted proxy.
 - Added adversarial trusted/untrusted/chained forwarding coverage. The final Orca `Software` suite passed in 43.13 seconds with backend discovery at 71 tests (one isolated MariaDB opt-in skip) and root discovery at 133 tests; the separate real MariaDB logical backup and isolated-restore lane remains passed at 23.53 seconds.
 - These are repository/host controls only. Hosted exact-head review and attestation, legal approval, live soak/alerts, independent-host restore, physical hardware/OTA/relay acceptance, production secrets/signing/deployment and explicit production authorization remain pending and fail-closed.
+
+## [2026-08-09] fix | Canonicalize SBOM identity across Git line endings
+
+- Hosted backend run `31291937131` passed every runtime/security test but exposed one supply-chain portability defect: the deterministic SBOM serial used raw lockfile bytes, so Windows CRLF and Linux LF checkouts produced different UUIDs.
+- Canonicalized only the SBOM identity input to UTF-8 LF text while retaining byte-exact hashes for backup integrity, and added an LF/CRLF adversarial equality test. A new exact-head hosted run is required; no protected workflow/producer, OTA, mobile, firmware, `raw/`, secret, deployment or production state changed.
+
+## [2026-08-09] test | Revalidate portable SBOM correction locally
+
+- The focused operations gate passed 6/6 including the new LF/CRLF mutation, and the full Orca `Software` suite passed in 45.04 seconds with backend discovery 72 tests (one explicit MariaDB opt-in skip), protocol 16, observability 18, hardwareless 4 and root 133 tests.
+- The previously passed real MariaDB restore evidence remains bound to unchanged migration/restore code. Hosted exact-head rerun, review and provenance remain required; production remains OFF.

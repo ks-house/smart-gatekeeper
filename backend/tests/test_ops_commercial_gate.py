@@ -11,6 +11,18 @@ from scripts import ops_commercial_gate as gate
 
 
 class OpsCommercialGateTest(unittest.TestCase):
+    def test_sbom_identity_is_stable_across_git_line_endings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lf = root / "lf.lock"
+            crlf = root / "crlf.lock"
+            lf.write_bytes(b"alpha==1.0 \\\n    --hash=sha256:" + b"a" * 64 + b"\n")
+            crlf.write_bytes(lf.read_bytes().replace(b"\n", b"\r\n"))
+            self.assertEqual(
+                gate._canonical_text_sha256(lf),
+                gate._canonical_text_sha256(crlf),
+            )
+
     def test_repository_contract_and_license_complete_sbom(self):
         self.assertEqual("PASS", gate.contract()["status"])
         with tempfile.TemporaryDirectory() as directory:
