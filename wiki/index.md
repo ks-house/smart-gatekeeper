@@ -1,6 +1,6 @@
 # wiki/index.md — Navigation Map
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-09 (Issue #53 manuals retraced against merged #52 operations and NAS staging; legal, live/operator, physical and production Gates remain open)
+> Last updated: 2026-08-10 (exact-main firmware/mobile public canaries staged and read back from isolated NAS paths; real-device, operator and production Gates remain open)
 
 ---
 
