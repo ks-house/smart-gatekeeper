@@ -23,7 +23,7 @@ workflow, Orca setup input, commercial-operations gate, evidence/SLO fixtures an
 locked dependencies, static admin surfaces, production Compose and database migration inputs, SBOM/supply
 chain policy, backend tests, and canonical protocol vectors. The JSON policy contains the authoritative
 complete ordered path set; it is identical to the existing five followed by
-`ops/backend_trusted_bundle_paths.json@2bb223629c848f298177fc16ec3cac1fa40b8e0f`.
+`ops/backend_trusted_bundle_paths.json@4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`.
 
 `utf8-lf-v1` means strict UTF-8 decoding followed only by CRLF/CR-to-LF conversion. No whitespace, comments,
 keys, steps, action versions, commands, or trailing newlines are otherwise ignored. The normalized bytes use
@@ -44,10 +44,13 @@ Policy format version 2 defines two authorization modes and no implicit fallback
 Missing or duplicated CLI identity options, malformed repository paths, mutable refs, uppercase or short
 SHAs, duplicate authorization identities, and unknown modes fail closed.
 
-The transition policy contains exactly one `temporary-exact` bundle, `temporary-pr67-2bb2236`, whose review provenance is
+The transition policy contains exactly one `temporary-exact` bundle, `temporary-pr67-4f14ec6`, whose candidate identity is
 repository `ks-house/smart-gatekeeper` at exact commit
-`2bb223629c848f298177fc16ec3cac1fa40b8e0f`. Independent exact-head COMMENTED review `4890584574`
-authorized only those 57 normalized digests as one complete set. Regression tests separately pin the exact
+`4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`. All 57 normalized digests were independently recomputed from
+that immutable Git ref and match the previously reviewed `2bb223629c848f298177fc16ec3cac1fa40b8e0f`
+complete bundle byte-for-byte. The earlier temporary identity is retired because integrating trusted main
+changed the PR head even though none of the protected bytes changed; this new identity requires fresh
+independent exact-head review before merge. Regression tests separately pin the exact
 repository, commit, mode, ordered path set, and every digest. The real decision path is exercised with exact
 approved bytes against wrong repositories/forks, retired or altered SHAs, case/path variants, missing or
 duplicate identity, and mutable refs. Tests also reject the old five-path set, missing/reordered paths,
@@ -70,11 +73,11 @@ validator are never imported, parsed, or executed, so changing them cannot chang
 Changes to these trust-control files still require an explicit security review before merge because their
 effect begins only after they become default-branch code.
 
-This PR changes the validator and schema together to close review `4890625756`. Its own hosted check must
-still run the unchanged validator and policy from base `1ce7f16a52380a6ff1dcd84a4cdca70569cbff75`.
-A green result proves non-self-use, not candidate-validator self-approval. Version 2 behavior is established
-separately by mutation tests and GitHub API verification and then requires fresh independent exact-head review.
-Only after this policy PR is reviewed and merged may trusted-base version 2 authorize exact PR #67.
+PR #68 established the identity-bound validator and schema version 2 on trusted main. This follow-up changes
+only the policy data, its regression assertions, this guide, and the append-only log; the validator and trusted
+workflow remain byte-identical to main. Its own hosted check still executes the trusted base policy and
+validator, so a green result proves non-self-use rather than candidate-policy self-approval. Only after this
+policy PR receives fresh independent exact-head review and merges may trusted main authorize exact PR #67.
 
 ## 4. Rotation procedure
 
@@ -86,9 +89,9 @@ temporary approval and pin one current-main baseline. Never add a wildcard, bran
 exception, mixed bundle, or candidate-derived digest.
 
 For PR #67, merge this policy-only temporary authorization first through normal protection. Then re-run the
-trusted check on exact PR #67 head `2bb223629c848f298177fc16ec3cac1fa40b8e0f` and merge that reviewed
+trusted check on exact PR #67 head `4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22` and merge that reviewed
 candidate without rewriting it. Immediately follow with a separate policy-only rotation that removes
-`temporary-pr67-2bb2236` and pins one 57-file `persistent-baseline` named `current-main-baseline` to the actual
+`temporary-pr67-4f14ec6` and pins one 57-file `persistent-baseline` named `current-main-baseline` to the actual
 PR #67 merged-main repository and commit. That mode permits later commits in the same trusted repository only
 while every protected byte stays unchanged; it does not authorize forks or mutable refs.
 Any path, digest, repository, or reviewed source-commit change requires a fresh independent whole-bundle

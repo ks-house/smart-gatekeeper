@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-TEMPORARY_PR67_COMMIT = "2bb223629c848f298177fc16ec3cac1fa40b8e0f"
+TEMPORARY_PR67_COMMIT = "4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22"
 TEMPORARY_PR67_DIGEST_LINES = """\
 .github/workflows/deploy.yml 4bf77e4c48b0033aedb0c0b4a45565d9a090538b3a8b2c8eacfc73de349903f7
 .github/workflows/build_app.yml f3f66873ba5e207ae2c966e7928ce521af009e9d110f2d2e7967037b4541b077
@@ -90,6 +90,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "2bb223629c848f298177fc16ec3cac1fa40b8e0f",
     "1ce7f16a52380a6ff1dcd84a4cdca70569cbff75",
     "ed19f3256ac8857367f1f490eb1f5f717e20ca03",
     "e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad",
@@ -340,7 +341,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     self.assertEqual(len(policy["protected_paths"]), 57)
     self.assertEqual(len(policy["approved_bundles"]), 1)
     bundle = policy["approved_bundles"][0]
-    self.assertEqual(bundle["id"], "temporary-pr67-2bb2236")
+    self.assertEqual(bundle["id"], "temporary-pr67-4f14ec6")
     self.assertEqual(bundle["mode"], "temporary-exact")
     self.assertEqual(
         bundle["source"],
@@ -612,7 +613,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     self.assert_temporary_pr67_is_exact(policy)
     bundle = self.verify_pr67_digest_map(policy, TEMPORARY_PR67_DIGESTS)
-    self.assertEqual(bundle["id"], "temporary-pr67-2bb2236")
+    self.assertEqual(bundle["id"], "temporary-pr67-4f14ec6")
     self.assertNotIn(
         "current-main-baseline",
         {approved["id"] for approved in policy["approved_bundles"]},

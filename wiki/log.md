@@ -2401,3 +2401,15 @@
 - Focused trusted-policy tests passed 33/33 and full root discovery passed 136/136. Adversarial coverage rejects wrong repositories/forks, old or altered SHAs, repository/SHA case variants, mutable refs, missing or duplicated identity options, dot/backslash/empty/case-colliding paths, duplicate authorization identities, partial/mixed bundles, and candidate policy/validator self-use.
 - The production CLI fetched exact GitHub API bytes for `ks-house/smart-gatekeeper@2bb223629c848f298177fc16ec3cac1fa40b8e0f` and approved all 57 protected paths as `temporary-pr67-2bb2236`. Quick passed all ten software sections in 34.18 seconds with doctor 12 pass, one Docker-covered Java warning, and zero failures.
 - These are repository authorization and software checks only. PR #67 remains Draft/unmerged, and physical, Samsung/OEM, ESP32-C6/radio/relay, OTA/rollback, operator, production signing, deployment, and production authorization Gates remain pending and fail-closed.
+
+## [2026-08-09] compile | Rebind PR #67 temporary authorization to exact merge head
+
+- Replaced the retired `temporary-pr67-2bb2236` identity with exactly one `temporary-exact` bundle, `temporary-pr67-4f14ec6`, bound to `ks-house/smart-gatekeeper@4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`. The protected path order and all 57 `utf8-lf-v1` digests are unchanged.
+- Independently fetched both immutable Git refs and recomputed every protected digest: exact `4f14ec6` matches exact `2bb2236` for all 57 paths, and its 52-path backend manifest still exactly matches the protected-path suffix. The old commit is now an explicitly rejected runtime/source identity.
+- No trusted workflow, validator, protected product, backend, firmware, mobile, runtime, signing, deployment, or `raw/` byte changed. The existing five-path main baseline cannot be retained as a complete 57-path bundle; one persistent merged-main baseline must be restored immediately after unchanged-head PR #67 is normally merged.
+
+## [2026-08-09] test | Validate exact PR #67 merge-head policy rotation
+
+- The focused trusted-policy suite passed 33/33, full root discovery passed 136/136, JSON parsing and actionlint passed, and the production GitHub Contents API verifier approved exact `ks-house/smart-gatekeeper@4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22` as `temporary-pr67-4f14ec6` with `protected_file_count: 57`.
+- Runtime negative checks rejected the retired `2bb223629c848f298177fc16ec3cac1fa40b8e0f` identity and a wrong repository before candidate bytes could authorize. Existing tests continue to reject missing, partial, reordered, swapped, mixed, per-path digest, extra-bundle, mutable-ref, case/path, duplicate-identity, and candidate self-use mutations.
+- Quick passed all ten software sections in 35.86 seconds with doctor 12 pass, one Docker-covered native Java warning, and zero failures. These checks do not merge or deploy PR #67 and do not close physical, Samsung/OEM, ESP32-C6/radio/relay, OTA/rollback, operator, production signing, or production authorization Gates.

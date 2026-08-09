@@ -62,11 +62,11 @@
   ],
   "approved_bundles": [
     {
-      "id": "temporary-pr67-2bb2236",
+      "id": "temporary-pr67-4f14ec6",
       "mode": "temporary-exact",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "2bb223629c848f298177fc16ec3cac1fa40b8e0f"
+        "commit": "4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22"
       },
       "files": {
         ".github/workflows/deploy.yml": "4bf77e4c48b0033aedb0c0b4a45565d9a090538b3a8b2c8eacfc73de349903f7",
