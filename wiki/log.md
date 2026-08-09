@@ -2578,3 +2578,14 @@
 - Manual contracts passed 14/14; all 16 exact ID-bound commands returned exit code 0 and their scenario-specific test token. A tracked-files-only disposable Flutter copy passed focused consent/recovery, AppErrorLogger and update-contract tests, 14 total, then the container exited; the temporary copy is retained only because local command policy rejected recursive cleanup.
 - Full root discovery passed 154/154 in 26.98 seconds. Quick passed all ten sections in 39.60 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
 - Fresh exact-head hosted mobile/Trusted checks and an independent COMMENTED re-review remain required. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.
+
+## [2026-08-09] fix | Make manual walkthrough commands dependency-portable
+
+- Remediated the exact-head Hosted Mobile/OTA blocker from COMMENTED review `4891296417`: all 16 fixture commands now use Python `-S`, so site-packages cannot satisfy undeclared imports. Replaced eight FastAPI-dependent backend commands and the mobile-manifest dependency command with standard-library-only source contracts bound to the exact dependency-backed test definition and production owner.
+- The fixture labels these as source bindings rather than claiming that a dependency-free lane executed FastAPI, database, MQTT or signing integrations. Dependency-provisioned hosted suites remain the executable integration evidence; physical, operator and production evidence remains separate and pending.
+- Added a regression requiring every declared command to start with the strict `python -S -m unittest tests.` grammar. The portable source-contract suite passed 9/9 and the manual suite passed 14/14, including execution of all 16 commands without site-packages. No product, workflow, secret, `raw/`, physical or production state changed.
+
+## [2026-08-09] test | Revalidate dependency-portable walkthrough remediation
+
+- Full root discovery passed 163/163 in 15.86 seconds. Quick passed all ten sections in 40.22 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Exact-head Hosted Trusted, Mobile and OTA checks plus a fresh independent COMMENTED review remain required after push. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.

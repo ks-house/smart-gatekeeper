@@ -42,85 +42,83 @@ REQUIRED_FIELDS = {
 
 EXPECTED_SCENARIO_EXECUTION = {
     "HWL-USER-01": (
-        "python -m unittest tests.test_manual_contract.ManualContractTests."
+        "python -S -m unittest tests.test_manual_contract.ManualContractTests."
         "test_user01_consent_disclosure_flutter_contract_source -v",
         "test_user01_consent_disclosure_flutter_contract_source",
     ),
     "HWL-USER-02": (
-        "python -m unittest tests.test_manual_contract.ManualContractTests."
+        "python -S -m unittest tests.test_manual_contract.ManualContractTests."
         "test_user02_recovery_shell_flutter_contract_source -v",
         "test_user02_recovery_shell_flutter_contract_source",
     ),
     "HWL-USER-03": (
-        "python -m unittest tests.test_hardwareless_rc."
+        "python -S -m unittest tests.test_hardwareless_rc."
         "HardwarelessRcProductionCoreTest.test_production_cpp_core -v",
         "test_production_cpp_core",
     ),
     "HWL-USER-04": (
-        "python -m unittest tests.test_sign_mobile_manifest -v",
-        "test_create_emits_exact_signed_schema_and_artifact_binding",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_user04_mobile_manifest_mutation_suite_binding -v",
+        "test_user04_mobile_manifest_mutation_suite_binding",
     ),
     "HWL-ADMIN-01": (
-        "python -m unittest backend.tests.test_admin_security."
-        "AdminSecurityBypassTest."
-        "test_anonymous_forged_role_stale_session_and_cross_tenant_are_denied -v",
-        "test_anonymous_forged_role_stale_session_and_cross_tenant_are_denied",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_admin01_auth_denial_suite_binding -v",
+        "test_admin01_auth_denial_suite_binding",
     ),
     "HWL-ADMIN-02": (
-        "python -m unittest backend.tests.test_admin_security."
-        "AdminSecurityBypassTest.test_two_person_approval_publishes_exactly_once -v",
-        "test_two_person_approval_publishes_exactly_once",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_admin02_two_person_publish_suite_binding -v",
+        "test_admin02_two_person_publish_suite_binding",
     ),
     "HWL-ADMIN-03": (
-        "python -m unittest tests.test_target_security_ota -v",
+        "python -S -m unittest tests.test_target_security_ota -v",
         "test_signed_command_is_target_boot_and_freshness_bound",
     ),
     "HWL-ADMIN-04": (
-        "python -m unittest backend.tests.test_ops_commercial_gate."
-        "OpsCommercialGateTest."
-        "test_isolated_restore_checks_tables_integrity_and_measured_rto -v",
-        "test_isolated_restore_checks_tables_integrity_and_measured_rto",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_admin04_restore_integrity_suite_binding -v",
+        "test_admin04_restore_integrity_suite_binding",
     ),
     "HWL-ADMIN-05": (
-        "python -m unittest backend.tests.test_ops_api.OperationsApiTest."
-        "test_readiness_fails_closed_and_can_report_all_dependencies -v",
-        "test_readiness_fails_closed_and_can_report_all_dependencies",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_admin05_readiness_fail_closed_suite_binding -v",
+        "test_admin05_readiness_fail_closed_suite_binding",
     ),
     "HWL-ADMIN-06": (
-        "python -m unittest backend.tests.test_ops_api.OperationsApiTest."
-        "test_support_export_rejects_invalid_consent_lifecycle -v",
-        "test_support_export_rejects_invalid_consent_lifecycle",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_admin06_support_consent_suite_binding -v",
+        "test_admin06_support_consent_suite_binding",
     ),
     "HWL-ADMIN-07": (
-        "python -m unittest backend.tests.test_ops_api.OperationsApiTest."
-        "test_retention_delete_rejects_idempotency_payload_or_actor_mismatch -v",
-        "test_retention_delete_rejects_idempotency_payload_or_actor_mismatch",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_admin07_retention_idempotency_suite_binding -v",
+        "test_admin07_retention_idempotency_suite_binding",
     ),
     "HWL-INSTALL-01": (
-        "python -m unittest tests.test_manual_contract.ManualContractTests."
+        "python -S -m unittest tests.test_manual_contract.ManualContractTests."
         "test_installation_tokens_match_current_config -v",
         "test_installation_tokens_match_current_config",
     ),
     "HWL-INSTALL-02": (
-        "python -m unittest tests.test_target_security_ota.TargetSecurityAndOtaTest."
+        "python -S -m unittest tests.test_target_security_ota.TargetSecurityAndOtaTest."
         "test_ota_runtime_uses_one_verified_inactive_slot_engine -v",
         "test_ota_runtime_uses_one_verified_inactive_slot_engine",
     ),
     "HWL-SUPPORT-01": (
-        "python -m unittest tests.test_manual_contract.ManualContractTests."
+        "python -S -m unittest tests.test_manual_contract.ManualContractTests."
         "test_support01_app_error_logger_flutter_contract_source -v",
         "test_support01_app_error_logger_flutter_contract_source",
     ),
     "HWL-SUPPORT-02": (
-        "python -m unittest backend.tests.test_admin_security."
-        "AdminSecurityBypassTest."
-        "test_post_publish_audit_failure_keeps_precommitted_reconciliation_state -v",
-        "test_post_publish_audit_failure_keeps_precommitted_reconciliation_state",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_support02_reconciliation_suite_binding -v",
+        "test_support02_reconciliation_suite_binding",
     ),
     "HWL-SUPPORT-03": (
-        "python -m unittest backend.tests.test_ops_runtime.OperationsRuntimeTest."
-        "test_dns_tcp_tls_connect_is_deadline_bounded_and_cancelled -v",
-        "test_dns_tcp_tls_connect_is_deadline_bounded_and_cancelled",
+        "python -S -m unittest tests.test_manual_source_contract."
+        "ManualSourceContractTests.test_support03_bounded_connect_suite_binding -v",
+        "test_support03_bounded_connect_suite_binding",
     ),
 }
 
@@ -345,13 +343,16 @@ class ManualContractTests(unittest.TestCase):
 
     def test_walkthrough_commands_are_bounded_read_only_and_reproducible(self) -> None:
         command_pattern = re.compile(
-            r"^python -m unittest [A-Za-z0-9_.]+(?: [A-Za-z0-9_.]+)* -v$"
+            r"^python -S -m unittest [A-Za-z0-9_.]+(?: [A-Za-z0-9_.]+)* -v$"
         )
         environment = os.environ.copy()
         environment["PYTHONUTF8"] = "1"
         for item in self.fixture["scenarios"]:
             command = item["command"]
             self.assertRegex(command, command_pattern, item["id"])
+            self.assertTrue(
+                command.startswith("python -S -m unittest tests."), item["id"]
+            )
             for forbidden in (";", "&&", "||", "|", ">", "<", "--failfast"):
                 self.assertNotIn(forbidden, command, item["id"])
             argv = command.split()
