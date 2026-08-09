@@ -22,6 +22,12 @@ keys, steps, action versions, commands, or trailing newlines are otherwise ignor
 SHA-256. A candidate passes only when every protected path exactly matches one complete approved bundle;
 mixing individually approved files from different bundles is rejected.
 
+The repository regression test follows the same rule: the checked-out protected bytes may match any one
+complete approved bundle. It does not require the matching bundle to be named `current-main-baseline`, which
+would make a narrowly approved transition bundle unusable. Separate assertions still require the
+`current-main-baseline` entry to retain its exact trusted repository, commit, protected-path order, and five
+digests; temporary approval does not weaken or replace that baseline provenance.
+
 The policy normally contains one `current-main-baseline` bundle sourced from merged `main` at
 `cc977e42770e6d88822459436a770295632c6e45`. During the PR #59 transition it also contains exactly one
 temporary complete bundle, `temporary-pr59-e468e0f`, for exact candidate
