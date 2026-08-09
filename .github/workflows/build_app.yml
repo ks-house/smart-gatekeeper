@@ -33,6 +33,11 @@ on:
           - physical-test-canary
           - physical-test-connected
           - production
+      allow_unpinned_host_key:
+        description: Acknowledge MITM risk when NAS_KNOWN_HOSTS is absent for physical-test-canary
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -278,6 +283,7 @@ jobs:
             printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
             HOST_KEY_MODE="repository-secret-pinned"
           else
+            test "${{ inputs.allow_unpinned_host_key }}" = "true"
             for attempt in 1 2 3; do
               if timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null; then
                 mv "${KNOWN_HOSTS_FILE}.scan" "$KNOWN_HOSTS_FILE"

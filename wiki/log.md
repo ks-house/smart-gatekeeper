@@ -2662,3 +2662,9 @@
 - Focused OTA/NAS tests passed 76/76, including both evidence modes and mutations for unbounded keyscan, disabled strict checking, unsafe transport grammar, path escape, production secret/directory substitution, readback removal and connected-tier enablement. `actionlint`, the OTA contract command and `git diff --check` passed.
 - Full root discovery passed 173/173 after normalizing only unchanged manual checkout material to its committed LF bytes; the direct Windows checkout initially exposed the known CRLF materialization boundary rather than a source failure. Orca `Quick` then passed all ten sections in 41.39 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, profile/lifecycle, protocol 16, observability 18, OTA and hardwareless gates.
 - `raw/` remains byte-identical. Hosted exact-head checks, independent protected-bundle review, trusted policy authorization, normal merge and exact-main physical-test dispatch remain required before any NAS connection or write.
+
+## [2026-08-09] fix | Bind keyscan retries and require per-dispatch risk acknowledgement
+
+- Addressed COMMENTED review `4891484367` by making the fallback loop structurally exact: one `for attempt in 1 2 3` block, one 10-second/5-second-connect-timeout `ssh-keyscan`, no `while true`, and mutation tests rejecting 100 retries or removal of the bounded loop.
+- Added default-false boolean workflow input `allow_unpinned_host_key` to both workflows. When the independently pinned secret is absent, the exact-main public-canary job refuses network contact unless the repository owner explicitly sets it true for that dispatch; evidence still records `runtime-keyscan-unpinned` and documentation states that this does not authenticate the first key discovery or prevent password interception.
+- No policy authorization, merge, workflow dispatch, NAS connection/write, physical validation or production authorization occurred in this remediation.

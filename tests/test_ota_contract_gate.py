@@ -459,6 +459,20 @@ class OtaContractGateTest(unittest.TestCase):
                 "production",
             ],
         )
+        self.assertEqual(
+            workflow["on"]["workflow_dispatch"]["inputs"][
+                "allow_unpinned_host_key"
+            ],
+            {
+                "description": (
+                    "Acknowledge MITM risk when NAS_KNOWN_HOSTS is absent for "
+                    "physical-test-canary"
+                ),
+                "required": True,
+                "type": "boolean",
+                "default": False,
+            },
+        )
         public_if = " ".join(
             str(workflow["jobs"]["deploy_physical_test_canary"]["if"]).split()
         )
@@ -504,6 +518,18 @@ class OtaContractGateTest(unittest.TestCase):
             "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT; do",
             "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS; do",
             "production or bypass surface",
+        ),
+        (
+            "unbounded-keyscan-retries",
+            "for attempt in 1 2 3; do",
+            "for attempt in $(seq 1 100); do",
+            "stage/readback contract|bounded keyscan",
+        ),
+        (
+            "missing-unpinned-risk-acknowledgement",
+            'test "${{ inputs.allow_unpinned_host_key }}" = "true"',
+            "true # skipped explicit unpinned risk acknowledgement",
+            "stage/readback contract",
         ),
         (
             "disable-strict-host-checking",

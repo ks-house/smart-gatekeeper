@@ -21,7 +21,8 @@ acceptance.
 ## Public canary tier available after merge
 
 The repository owner must explicitly dispatch each workflow from `main` with
-`release_target=physical-test-canary`. A branch dispatch can build a public
+`release_target=physical-test-canary`. If `NAS_KNOWN_HOSTS` is absent, the owner
+must also set `allow_unpinned_host_key=true` on that individual dispatch. A branch dispatch can build a public
 canary but cannot contact NAS secrets because the NAS job also requires
 `github.ref == 'refs/heads/main'`.
 
@@ -50,6 +51,11 @@ NAS setup to upload without a known-hosts secret, but it does not authenticate
 the first key exchange and therefore is weaker against an active network
 interceptor. `accept-new` and disabled strict checking remain forbidden. The
 sanitized evidence records only the mode, never the host-key value.
+
+The boolean acknowledgement is default-false and does not make the transport
+cryptographically authenticated. It only records an explicit owner decision for
+this public physical-test upload; use the pinned secret whenever possible and
+rotate the NAS password after an unpinned run if the network path was not trusted.
 
 Before constructing any OpenSSH destination or remote path, the job also
 restricts `NAS_USER` to a non-option portable account name, `NAS_HOST` to a

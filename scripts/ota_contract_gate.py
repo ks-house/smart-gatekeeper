@@ -644,6 +644,8 @@ def _validate_physical_test_jobs(
       "runtime-keyscan-unpinned",
       "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT",
       'if [[ -n "${NAS_KNOWN_HOSTS:-}" ]]; then',
+      'test "${{ inputs.allow_unpinned_host_key }}" = "true"',
+      "for attempt in 1 2 3; do",
       '[[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]',
       '[[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]',
       '[[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]',
@@ -664,6 +666,12 @@ def _validate_physical_test_jobs(
   for fragment in required_fragments:
     if fragment not in network_run:
       raise GateError(f"{path}: physical-test stage/readback contract missing: {fragment}")
+  for exact_once in (
+      "for attempt in 1 2 3; do",
+      'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
+  ):
+    if network_run.count(exact_once) != 1:
+      raise GateError(f"{path}: physical-test fallback must contain exactly one bounded keyscan loop")
   forbidden_fragments = (
       "${{ secrets.NAS_TARGET_DIR",
       "${{ secrets.NAS_APK_TARGET_DIR",
@@ -672,6 +680,8 @@ def _validate_physical_test_jobs(
       "ota_contract_gate.py release",
       "|| true",
       "set +e",
+      "while true",
+      "while :",
       "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
       "StrictHostKeyChecking=no",
       "StrictHostKeyChecking=accept-new",
@@ -1020,11 +1030,10 @@ def validate_workflow_release_triggers(
             f"{path}: push paths must include the NAS physical-test contract"
         )
 
-    dispatch_input = (
-        triggers.get("workflow_dispatch", {})
-        .get("inputs", {})
-        .get("release_target", {})
-    )
+    dispatch_inputs = triggers.get("workflow_dispatch", {}).get("inputs", {})
+    if set(dispatch_inputs) != {"release_target", "allow_unpinned_host_key"}:
+      raise GateError(f"{path}: workflow dispatch inputs must be exact")
+    dispatch_input = dispatch_inputs.get("release_target", {})
     if not isinstance(dispatch_input, dict) or dispatch_input.get("type") != "choice":
       raise GateError(f"{path}: explicit production release trigger missing release_target choice input")
     options = dispatch_input.get("options", [])
@@ -1035,6 +1044,17 @@ def validate_workflow_release_triggers(
           f"{path}: release_target options must exactly separate canary, "
           "physical-test-canary, physical-test-connected and production"
       )
+    unpinned_input = dispatch_inputs.get("allow_unpinned_host_key")
+    if unpinned_input != {
+        "description": (
+            "Acknowledge MITM risk when NAS_KNOWN_HOSTS is absent for "
+            "physical-test-canary"
+        ),
+        "required": True,
+        "type": "boolean",
+        "default": False,
+    }:
+      raise GateError(f"{path}: unpinned host-key acknowledgement input is not exact")
 
     # 4. Jobs allowlist
     all_jobs = parsed.get("jobs")

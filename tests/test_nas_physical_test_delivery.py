@@ -70,6 +70,7 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
         self.assertIn("StrictHostKeyChecking=yes", source)
         self.assertIn("timeout 10s ssh-keyscan -T 5", source)
         self.assertIn('2>/dev/null', source)
+        self.assertIn('test "${{ inputs.allow_unpinned_host_key }}" = "true"', source)
 
 
 if __name__ == "__main__":
