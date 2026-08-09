@@ -17,9 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-PR72_COMMIT = "03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b"
-PR72_REVIEW_ID = 4891310679
-PR72_DIGEST_LINES = """\
+MERGED_MAIN_COMMIT = "2e540d13f1ea31d800a9a6f2f3bca668a23c4013"
+MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 133d31ebb91922ab9e2370e91d8a3ad4215accde1c7adbad28cb2c653aa42251
 .github/workflows/build_app.yml 1d17741591fde129200c6aa6403644b0d9b590de1831936d65db0e9ea9f17af2
 .github/workflows/ota_contract.yml 8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001
@@ -78,10 +77,10 @@ backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2
 backend/tests/test_target_boot_registry.py d02627f6ef826f5e57c8086c1251d46bbab1fa5346bb87e03015b759791649d5
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
-PR72_DIGESTS = dict(
-    line.split() for line in PR72_DIGEST_LINES.splitlines()
+MERGED_MAIN_DIGESTS = dict(
+    line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
-OLD_FIVE_PATHS = list(PR72_DIGESTS)[:5]
+OLD_FIVE_PATHS = list(MERGED_MAIN_DIGESTS)[:5]
 RETIRED_MAIN_SAMPLE_DIGESTS = {
     ".github/workflows/backend_security.yml": (
         "5ea77cd7444c7a284485acf65a24e265746bcde4fbb18fa30b1f6220b45053b0"
@@ -91,6 +90,9 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "03ffba4f5020bb304a4a22cdfd4ff9c4c46a035b",
+    "4db7a975d7af45b96d6f6aaf6beb6f2ca6aa2a34",
+    "5389f6a3ab2f28698d423567481ecdc29a260ace",
     "22ddc7237f15758a0c77c72902b51ff25d31e483",
     "e42d1f417a555b17d7476522aa48f7e4d72306b7",
     "4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22",
@@ -341,29 +343,20 @@ def validate_trusted_workflow_structure(
 
 
 class TrustedWorkflowPolicyTest(unittest.TestCase):
-  def assert_pr72_transition_is_exact(self, policy):
+  def assert_current_main_baseline_is_exact(self, policy):
     self.assertEqual(policy["format_version"], 2)
-    self.assertEqual(policy["protected_paths"], list(PR72_DIGESTS))
+    self.assertEqual(policy["protected_paths"], list(MERGED_MAIN_DIGESTS))
     self.assertEqual(len(policy["protected_paths"]), 57)
-    self.assertEqual(len(policy["approved_bundles"]), 2)
-    temporary, persistent = policy["approved_bundles"]
-    self.assertEqual(temporary["id"], "temporary-pr72-03ffba4")
-    self.assertEqual(temporary["mode"], "temporary-exact")
-    self.assertEqual(persistent["id"], "future-pr72-persistent-baseline")
+    self.assertEqual(len(policy["approved_bundles"]), 1)
+    persistent = policy["approved_bundles"][0]
+    self.assertEqual(persistent["id"], "current-main-baseline")
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": PR72_COMMIT,
+        "commit": MERGED_MAIN_COMMIT,
     }
-    self.assertEqual(temporary["source"], expected_source)
-    self.assertEqual(
-        persistent["source"],
-        expected_source,
-    )
-    self.assertEqual(temporary["files"], PR72_DIGESTS)
-    self.assertEqual(persistent["files"], PR72_DIGESTS)
-    self.assertEqual(temporary["files"], persistent["files"])
-    self.assertEqual(list(temporary["files"]), policy["protected_paths"])
+    self.assertEqual(persistent["source"], expected_source)
+    self.assertEqual(persistent["files"], MERGED_MAIN_DIGESTS)
     self.assertEqual(list(persistent["files"]), policy["protected_paths"])
 
   def setUp(self):
@@ -689,17 +682,17 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           with self.assertRaises(SystemExit):
             trusted.parse_args()
 
-  def verify_pr72_digest_map(
+  def verify_merged_main_digest_map(
       self,
       policy,
       digests,
       repository="ks-house/smart-gatekeeper",
-      ref=PR72_COMMIT,
+      ref=MERGED_MAIN_COMMIT,
       is_descendant=None,
   ):
     if is_descendant is None:
       is_descendant = lambda ancestor, descendant: (
-          ancestor == descendant and descendant == PR72_COMMIT
+          ancestor == descendant and descendant == MERGED_MAIN_COMMIT
       )
     with mock.patch.object(
         trusted,
@@ -714,55 +707,54 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           is_descendant,
       )
 
-  def test_transition_policy_has_exact_and_future_pr72_bundles(self):
+  def test_final_policy_has_sole_current_main_baseline(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
-    self.assert_pr72_transition_is_exact(policy)
-    ancestry = mock.Mock(return_value=True)
-    bundle = self.verify_pr72_digest_map(
-        policy, PR72_DIGESTS, is_descendant=ancestry
+    self.assert_current_main_baseline_is_exact(policy)
+    ancestry = mock.Mock()
+    bundle = self.verify_merged_main_digest_map(
+        policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(bundle["id"], "temporary-pr72-03ffba4")
-    ancestry.assert_not_called()
+    self.assertEqual(bundle["id"], "current-main-baseline")
+    ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, MERGED_MAIN_COMMIT)
     self.assertNotIn(
-        "current-main-baseline",
-        {approved["id"] for approved in policy["approved_bundles"]},
+        "temporary-exact",
+        {approved["mode"] for approved in policy["approved_bundles"]},
     )
-    self.assertEqual(PR72_REVIEW_ID, 4891310679)
 
-  def test_future_pr72_baseline_accepts_only_proven_descendant(self):
+  def test_current_main_baseline_accepts_only_proven_descendant(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
     future_ref = "a" * 40
     ancestry = mock.Mock(
         side_effect=lambda ancestor, descendant: (
-            ancestor == PR72_COMMIT and descendant == future_ref
+            ancestor == MERGED_MAIN_COMMIT and descendant == future_ref
         )
     )
-    bundle = self.verify_pr72_digest_map(
+    bundle = self.verify_merged_main_digest_map(
         policy,
-        PR72_DIGESTS,
+        MERGED_MAIN_DIGESTS,
         ref=future_ref,
         is_descendant=ancestry,
     )
-    self.assertEqual(bundle["id"], "future-pr72-persistent-baseline")
-    ancestry.assert_called_once_with(PR72_COMMIT, future_ref)
+    self.assertEqual(bundle["id"], "current-main-baseline")
+    ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 
     with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):
-      self.verify_pr72_digest_map(
+      self.verify_merged_main_digest_map(
           policy,
-          PR72_DIGESTS,
-          ref="e42d1f417a555b17d7476522aa48f7e4d72306b7",
+          MERGED_MAIN_DIGESTS,
+          ref="5389f6a3ab2f28698d423567481ecdc29a260ace",
           is_descendant=lambda _ancestor, _descendant: False,
       )
 
-  def test_pr72_source_forks_divergence_and_old_commits_are_rejected(self):
+  def test_merged_main_source_forks_divergence_and_old_commits_are_rejected(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
-    self.assert_pr72_transition_is_exact(policy)
+    self.assert_current_main_baseline_is_exact(policy)
     mutations = [("repository", "attacker/fork"), ("commit", "f" * 40)]
     mutations.extend(("commit", commit) for commit in RETIRED_SOURCE_COMMITS)
     for field, value in mutations:
@@ -771,12 +763,12 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         mutated["approved_bundles"][0]["source"][field] = value
         trusted.validate_policy(mutated)
         with self.assertRaises(AssertionError):
-          self.assert_pr72_transition_is_exact(mutated)
+          self.assert_current_main_baseline_is_exact(mutated)
 
     runtime_identities = [
-        ("attacker/fork", PR72_COMMIT),
-        ("KS-HOUSE/smart-gatekeeper", PR72_COMMIT),
-        ("ks-house/SMART-GATEKEEPER", PR72_COMMIT),
+        ("attacker/fork", MERGED_MAIN_COMMIT),
+        ("KS-HOUSE/smart-gatekeeper", MERGED_MAIN_COMMIT),
+        ("ks-house/SMART-GATEKEEPER", MERGED_MAIN_COMMIT),
         ("ks-house/smart-gatekeeper", "f" * 40),
     ]
     runtime_identities.extend(
@@ -788,23 +780,23 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(
             trusted.PolicyError, "source repository/ref"
         ):
-          self.verify_pr72_digest_map(
+          self.verify_merged_main_digest_map(
               policy,
-              PR72_DIGESTS,
+              MERGED_MAIN_DIGESTS,
               repository=repository,
               ref=ref,
               is_descendant=lambda _ancestor, _descendant: False,
           )
 
     with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):
-      self.verify_pr72_digest_map(
+      self.verify_merged_main_digest_map(
           policy,
-          PR72_DIGESTS,
+          MERGED_MAIN_DIGESTS,
           ref="a" * 40,
           is_descendant=lambda _ancestor, _descendant: False,
       )
 
-  def test_pr72_missing_partial_old_and_reordered_paths_are_rejected(self):
+  def test_merged_main_missing_partial_old_and_reordered_paths_are_rejected(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -819,11 +811,11 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     partial["protected_paths"] = OLD_FIVE_PATHS
     for bundle in partial["approved_bundles"]:
       bundle["files"] = {
-          path: PR72_DIGESTS[path] for path in OLD_FIVE_PATHS
+          path: MERGED_MAIN_DIGESTS[path] for path in OLD_FIVE_PATHS
       }
     trusted.validate_policy(partial)
     with self.assertRaises(AssertionError):
-      self.assert_pr72_transition_is_exact(partial)
+      self.assert_current_main_baseline_is_exact(partial)
 
     reordered = copy.deepcopy(policy)
     reordered["protected_paths"][5], reordered["protected_paths"][6] = (
@@ -832,41 +824,41 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     trusted.validate_policy(reordered)
     with self.assertRaises(AssertionError):
-      self.assert_pr72_transition_is_exact(reordered)
+      self.assert_current_main_baseline_is_exact(reordered)
 
-  def test_pr72_swapped_mixed_partial_and_digest_mutations_are_rejected(self):
+  def test_merged_main_swapped_mixed_partial_and_digest_mutations_are_rejected(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
     deploy_path = ".github/workflows/deploy.yml"
     build_path = ".github/workflows/build_app.yml"
 
-    swapped = dict(PR72_DIGESTS)
+    swapped = dict(MERGED_MAIN_DIGESTS)
     swapped[deploy_path], swapped[build_path] = (
         swapped[build_path],
         swapped[deploy_path],
     )
     with self.assertRaises(trusted.PolicyError):
-      self.verify_pr72_digest_map(policy, swapped)
+      self.verify_merged_main_digest_map(policy, swapped)
 
-    mixed = dict(PR72_DIGESTS)
+    mixed = dict(MERGED_MAIN_DIGESTS)
     mixed.update(RETIRED_MAIN_SAMPLE_DIGESTS)
     with self.assertRaises(trusted.PolicyError):
-      self.verify_pr72_digest_map(policy, mixed)
+      self.verify_merged_main_digest_map(policy, mixed)
 
-    partial = dict(PR72_DIGESTS)
+    partial = dict(MERGED_MAIN_DIGESTS)
     del partial["backend/app/main.py"]
     with self.assertRaises(KeyError):
-      self.verify_pr72_digest_map(policy, partial)
+      self.verify_merged_main_digest_map(policy, partial)
 
     for path in policy["protected_paths"]:
       with self.subTest(path=path):
-        changed = dict(PR72_DIGESTS)
+        changed = dict(MERGED_MAIN_DIGESTS)
         changed[path] = "0" * 64
         with self.assertRaises(trusted.PolicyError):
-          self.verify_pr72_digest_map(policy, changed)
+          self.verify_merged_main_digest_map(policy, changed)
 
-  def test_pr72_policy_digest_or_extra_bundle_cannot_expand_authorization(self):
+  def test_merged_main_policy_digest_or_extra_bundle_cannot_expand_authorization(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -874,9 +866,9 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     mutated["approved_bundles"][0]["files"]["backend/app/main.py"] = "0" * 64
     trusted.validate_policy(mutated)
     with self.assertRaises(AssertionError):
-      self.assert_pr72_transition_is_exact(mutated)
+      self.assert_current_main_baseline_is_exact(mutated)
     with self.assertRaises(trusted.PolicyError):
-      self.verify_pr72_digest_map(mutated, PR72_DIGESTS)
+      self.verify_merged_main_digest_map(mutated, MERGED_MAIN_DIGESTS)
 
     extra = copy.deepcopy(policy)
     extra["approved_bundles"].append({
@@ -886,11 +878,11 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             "repository": "ks-house/smart-gatekeeper",
             "commit": "f" * 40,
         },
-        "files": dict(PR72_DIGESTS),
+        "files": dict(MERGED_MAIN_DIGESTS),
     })
     trusted.validate_policy(extra)
     with self.assertRaises(AssertionError):
-      self.assert_pr72_transition_is_exact(extra)
+      self.assert_current_main_baseline_is_exact(extra)
 
 
 class TrustedWorkflowStructureTest(unittest.TestCase):
