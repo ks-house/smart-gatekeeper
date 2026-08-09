@@ -105,13 +105,22 @@ owner authorization, apply exactly one narrow branch-protection/admin exception 
 Do not disable unrelated controls, do not merge PR #67 in the same exception, and immediately restore and verify
 the required Trusted check.
 
-Then re-run Trusted on unchanged exact PR #67 head `4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22` without integrating
-main again. The new trusted-base validator selects `temporary-pr67-4f14ec6`; merge PR #67 normally only after all
-required checks and fresh exact-head review pass. Immediately open a separate final policy-only rotation from
-that merged main. It removes both transition bundles and pins one 57-file `persistent-baseline` named
-`current-main-baseline` to the actual PR #67 merged-main repository and commit. The base transition policy admits
-that final rotation normally because its head is a proven descendant of `4f14ec6` and preserves all 57 bytes.
-After the final rotation merges normally, verify branch protection, current-main policy selection, and main CI.
+After the exception merges, fetch its exact new main and integrate that main into PR #67 exactly once. This
+bounded integration is required because both branches append `wiki/log.md` from base `8f925f9`; an exact
+`git merge-tree` audit reports a real log conflict. Resolve only that append-only history using raw Git bytes:
+the new-main log must be the prefix, the complete prior PR #67 branch suffix must remain byte-identical once,
+and one integration entry may be appended. Preserve all 57 protected digests exactly as reviewed at
+`4f14ec660bc69fa9afc23ab4f257f52fcc4a7a22`, preserve `raw/`, and accept the trusted policy/validator from
+new main. Do not add product remediation or a second main integration.
+
+The resulting PR #67 head is a descendant of `4f14ec6`, so the new trusted-base validator selects
+`future-pr67-persistent-baseline` after GitHub ancestry proof and exact 57-file byte comparison. Merge PR #67
+normally only after all hosted checks and a fresh review of that exact integrated head pass. Immediately open a
+separate final policy-only rotation from the merged main. It removes both transition bundles and pins one 57-file
+`persistent-baseline` named `current-main-baseline` to the actual PR #67 merged-main repository and commit. The
+base transition policy admits that final rotation normally because its head remains a proven descendant of
+`4f14ec6` and preserves all 57 bytes. After the final rotation merges normally, verify branch protection,
+current-main policy selection, and main CI.
 Any path, digest, repository, or reviewed source-commit change requires a fresh independent whole-bundle
 review; do not prolong the two-bundle transition window or merge unrelated PRs through an exception.
 
