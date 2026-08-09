@@ -2705,6 +2705,18 @@
 - Orca `Quick` passed all ten sections in 40.94 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed.
 - The final policy PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge. No dispatch, NAS write, deployment, physical validation, release evidence or production authorization occurred.
 
+## [2026-08-10] compile | Authorize the complete reviewed PR #78 protected bundle
+
+- From exact trusted main `0a34796213d5677d9dc77a8b73564004e8e3a2cf`, replaced the sole baseline with exactly two complete ordered 57-file authorizations for `ks-house/smart-gatekeeper@44b43411d5156d9a3a08ec0f94b8336c90f6bcb5`: exact temporary identity `temporary-pr78-44b4341` and same-source descendant identity `future-pr78-persistent-baseline`. Both maps are byte-identical and use strict `utf8-lf-v1`; no partial, branch, wildcard, fork or third persistent identity is admitted.
+- Recomputed all 57 digests from immutable GitHub Contents API bytes. The three changed protected digests are deploy `b73646d4e4196c48763f9e3ab5f21606df145d897c767ec1a90f25e739b7a209`, mobile `a38a63f5d31516593d91cd182614198fc538ee325a7e11364e7246e29fc11a9f` and OTA gate `d41630cb61441c135aec6756d1726d96b18e944eb96ab93f1780306b5ae780fe`; the other 54 remain equal to the current complete baseline.
+- GitHub API evidence binds open Draft PR #78 and COMMENTED nonblocking product review `4891720552` to the exact candidate commit. Compare proves that candidate is one commit ahead of exact base `0a34796213d5677d9dc77a8b73564004e8e3a2cf` with that exact merge base. Hosted mobile, OTA and firmware checks succeeded; Trusted remains expected-red until this separate policy sequence lands. This authorization is not NAS deployment, physical evidence, release evidence or production authorization.
+
+## [2026-08-10] test | Validate the PR #78 whole-bundle transition policy
+
+- Focused trusted-policy regression tests passed 37/37. Full root discovery passed 173/173 from the exact staged Git tree archived with checkout conversion disabled, and `actionlint` passed all six workflows.
+- Orca `Quick` passed all ten sections in 40.7 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed; the exact PR #78 head selects the temporary identity without ancestry fallback.
+- No workflow dispatch, NAS connection/write, merge, deployment, physical validation, signing, release evidence or production authorization occurred. The policy-only Draft PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge.
+
 ## [2026-08-10] fix | Use SFTP-only transport for restricted NAS physical-test accounts
 
 - Diagnosed firmware run `31319094568` job `93259497202` and mobile run `31319095918`: bounded runtime host-key discovery completed, then the first SSH remote-shell command failed with `Permission denied` before either job reached SFTP. This matches the established NAS account's SFTP-only permission model.
@@ -2717,3 +2729,15 @@
 - Focused OTA/NAS contract tests passed 78/78. Adversarial coverage rejects any remote-shell command, an unbounded SFTP batch, omission of any hierarchy component, ignored staging or rename errors, duplicate rename and publication before readback/evidence comparison.
 - Full root discovery passed 175/175 from the exact staged Git tree materialized with checkout conversion disabled. The OTA contract command, all-workflow `actionlint`, `git diff --check`, append-only log prefix, exact `raw/` tree and byte-identical connected/production suffix checks passed.
 - Orca `Quick` passed all ten sections in 41.11 seconds after the standard setup hook created the intentionally skipped worktree-local `.venv`; doctor reported 12 pass, one Docker-covered native Java warning and zero failures. No NAS endpoint was contacted and no workflow was dispatched.
+
+## [2026-08-10] fix | Integrate merged PR #78 transition policy exactly once
+
+- Integrated exact `origin/main` `0ec8221e275e36a5917c08a55cde10c36dd0e972` into reviewed product head `44b43411d5156d9a3a08ec0f94b8336c90f6bcb5` with a normal two-parent merge and no rebase, force-push or history rewrite.
+- Preserved the exact new-main `wiki/log.md` Git blob as a byte prefix, retained the complete prior PR #78 suffix exactly once, kept all 57 protected product bytes identical to reviewed head `44b43411d5156d9a3a08ec0f94b8336c90f6bcb5`, retained the merged policy files exactly, and preserved `raw/` tree identity.
+- No workflow dispatch, NAS connection/write, deployment, physical validation, release evidence or production authorization occurred. Fresh exact-head local/Hosted validation and an independent COMMENTED whole-bundle review remain required before normal product merge.
+
+## [2026-08-10] test | Validate post-policy PR #78 integration tree
+
+- Focused trusted-policy and OTA/NAS tests passed 115/115. Exact staged-LF full root discovery passed 175/175; all six workflows passed `actionlint`, and the OTA contract command plus `git diff --check` passed.
+- Orca `Quick` passed all ten sections in 42.57 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. Independent index checks confirmed 57/57 product blobs exact to reviewed `44b43411d5156d9a3a08ec0f94b8336c90f6bcb5`, policy files exact to new main, new-main log prefix plus one complete PR suffix, and unchanged `raw/` identity.
+- Fresh exact-head Hosted Trusted/OTA/firmware/mobile checks and an independent COMMENTED whole-bundle review remain required. No merge of PR #78, workflow dispatch, NAS connection/write, physical validation, release evidence or production authorization occurred.
