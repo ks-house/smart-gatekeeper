@@ -2692,3 +2692,15 @@
 - Focused trusted-policy tests passed 37/37 and OTA/NAS tests passed 76/76. All-workflow `actionlint`, the OTA contract command and `git diff --check` passed.
 - Full root discovery passed 173/173 from the exact staged Git index materialized with checkout conversion disabled. An earlier ZIP extraction converted unchanged manual LF blobs to CRLF and caused one byte-format false red, so that host materialization was discarded and is not represented as source evidence.
 - Orca `Quick` passed all ten sections in 44.34 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. `raw/` identity, the exact main log byte prefix, one complete prior PR suffix, all 57 reviewed product blobs and exact merged policy blobs were independently rechecked. Hosted exact-head checks and a fresh independent COMMENTED review remain required; no NAS or production action occurred.
+
+## [2026-08-09] compile | Rotate merged PR #75 policy to sole current-main baseline
+
+- Removed both PR #75 transition identities and installed exactly one `persistent-baseline` named `current-main-baseline`, sourced from exact merged main `72fa8610e509de4bff3b20d60d9da19ab312bd3b` with the complete ordered 57-file bundle.
+- Recomputed all 57 `utf8-lf-v1` digests from immutable GitHub Contents API bytes at that exact commit. Both prior transition maps match byte for byte; the three product digests remain deploy `8dfb5f6becc4a9cd8eef1835552800d9cd9e1254992f017a6d341420bd930e08`, mobile `673202a2d835c57ae16702e5f1bc9bf9465654c4a262fb29024ec182b7ba8d14` and OTA gate `3730a2599e7dc995575a26ba8c2d9c66069b804d849b31730605cfab7251a687`.
+- This is a policy-only final rotation: the validator, trusted workflow, product/runtime files and `raw/` remain unchanged. No merge, workflow dispatch, NAS connection/write, deployment, physical evidence, release evidence or production authorization occurred.
+
+## [2026-08-09] test | Validate the sole PR #75 merged-main trusted baseline
+
+- Focused trusted-policy regression tests passed 37/37. Full root discovery passed 173/173 from the exact staged Git tree archived with checkout conversion disabled, and `actionlint` passed every workflow.
+- Orca `Quick` passed all ten sections in 40.94 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed.
+- The final policy PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge. No dispatch, NAS write, deployment, physical validation, release evidence or production authorization occurred.
