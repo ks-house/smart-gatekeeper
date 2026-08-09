@@ -2557,3 +2557,15 @@
 - `actionlint` passed both modified workflows. Focused OTA/NAS tests passed 74/74 and full root discovery passed 148/148, including adversarial production-directory, production-secret, missing readback, runtime keyscan, disabled strict-host checking, connected-tier enablement, byte substitution and remote-root mutations.
 - The protected candidate modifies `.github/workflows/deploy.yml`, `.github/workflows/build_app.yml` and `scripts/ota_contract_gate.py`; current trusted main has not authorized these bytes. A product Draft PR, independent COMMENTED whole-bundle review, and a separate trusted-main policy authorization remain required before merge or dispatch.
 - Antigravity was invoked once for bounded read-only lint but returned unrelated CLI sandbox documentation rather than repository findings. Its output is not counted as validation; the exact local `actionlint`, Python contract tests and diff checks remain the recorded software evidence.
+
+## [2026-08-09] fix | Reject NAS transport grammar injection and cover contract-only changes
+
+- Remediated both blockers from independent COMMENTED review `4891287192`. Before invoking OpenSSH, both public physical-test jobs now require a portable non-option NAS username, hostname/IPv4-compatible host, port 1 through 65535, exact lowercase 40-hex commit and positive numeric run identifiers; IPv6 literals are intentionally unsupported.
+- Bound every transport/path validation to the workflow contract and adversarial mutations, so removing a username, host, port-range, commit or run-component check fails closed. Mandatory repository-pinned known hosts, exact-run artifact verification, isolated staging/readback and atomic publish remain unchanged.
+- Added the NAS physical-test contract test to both producer pull-request filters and the mobile main-push filter. No workflow was dispatched, no NAS connection was attempted, and no NAS byte was written.
+
+## [2026-08-09] test | Revalidate PR #72 independent-review remediation
+
+- Focused OTA/NAS/mobile-signing tests passed 84/84, including new trigger-removal and OpenSSH/path-component validation mutations. `actionlint` passed both workflows and `git diff --check` is clean.
+- Full root discovery passed 150/150. Orca `Quick` passed all ten sections in 40.75 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
+- The protected candidate still requires a fresh exact-head independent COMMENTED review and a separate trusted-main whole-bundle policy authorization. `NAS_KNOWN_HOSTS` remains absent, so an authorized future dispatch stays blocked before network contact; physical/operator and production release evidence remain pending.

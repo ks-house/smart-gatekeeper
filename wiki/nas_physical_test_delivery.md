@@ -48,6 +48,13 @@ network contact. Runtime `ssh-keyscan`, TOFU, `accept-new`, and disabled strict
 checking are forbidden. Sanitized evidence records only
 `repository-secret-pinned`, never the host-key value.
 
+Before constructing any OpenSSH destination or remote path, the job also
+restricts `NAS_USER` to a non-option portable account name, `NAS_HOST` to a
+hostname/IPv4-compatible value that cannot begin with an option marker, and
+`NAS_PORT` to the numeric range 1 through 65535. The exact 40-character commit
+SHA and positive numeric run ID/attempt are validated before they are used as
+path components. IPv6 literals are intentionally unsupported by this lane.
+
 The public artifacts intentionally contain the fixed RFC 8032 test signing key
 and `.invalid` updater URLs. The firmware uses compile-only example runtime
 secrets and the APK is debug-signed. They are suitable for installation/UI,

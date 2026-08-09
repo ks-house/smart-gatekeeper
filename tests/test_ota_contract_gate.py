@@ -489,6 +489,36 @@ class OtaContractGateTest(unittest.TestCase):
             "stage/readback contract|production or bypass surface",
         ),
         (
+            "unsafe-nas-user",
+            '[[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]',
+            "true # skipped NAS_USER validation",
+            "stage/readback contract",
+        ),
+        (
+            "unsafe-nas-host",
+            '[[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]',
+            "true # skipped NAS_HOST validation",
+            "stage/readback contract",
+        ),
+        (
+            "unsafe-nas-port",
+            "((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))",
+            "true # skipped NAS_PORT range validation",
+            "stage/readback contract",
+        ),
+        (
+            "unsafe-sha-path-component",
+            '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+            "true # skipped SHA validation",
+            "stage/readback contract",
+        ),
+        (
+            "unsafe-run-path-component",
+            '[[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+            "true # skipped run ID validation",
+            "stage/readback contract",
+        ),
+        (
             "connected-enables-deploy",
             "          exit 1\n\n  release_to_production:",
             "          exit 0\n\n  release_to_production:",
@@ -502,6 +532,25 @@ class OtaContractGateTest(unittest.TestCase):
         self.assertIn(before, workflows[path])
         workflows[path] = workflows[path].replace(before, after, 1)
         with self.assertRaisesRegex(gate.GateError, message):
+          gate.validate_workflow_release_triggers(workflows)
+
+  def test_physical_test_contract_path_cannot_be_removed_from_triggers(self):
+    contract_path = "      - 'tests/test_nas_physical_test_delivery.py'\n"
+    for path, occurrence in (
+        (".github/workflows/deploy.yml", 1),
+        (".github/workflows/build_app.yml", 1),
+        (".github/workflows/build_app.yml", 2),
+    ):
+      with self.subTest(path=path, occurrence=occurrence):
+        workflows = self._workflow_sources()
+        source = workflows[path]
+        offset = -1
+        for _ in range(occurrence):
+          offset = source.index(contract_path, offset + 1)
+        workflows[path] = source[:offset] + source[offset + len(contract_path):]
+        with self.assertRaisesRegex(
+            gate.GateError, "paths must include the NAS physical-test contract"
+        ):
           gate.validate_workflow_release_triggers(workflows)
 
   def test_physical_test_connected_secret_contract_is_exact(self):

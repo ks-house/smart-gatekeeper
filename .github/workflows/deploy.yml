@@ -11,6 +11,7 @@ on:
       - 'ota/**'
       - 'scripts/ota_contract_gate.py'
       - 'tests/test_ota_contract_gate.py'
+      - 'tests/test_nas_physical_test_delivery.py'
   push:
     branches: [ main ]
   workflow_dispatch:
@@ -161,6 +162,13 @@ jobs:
           for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS; do
             test -n "${!name}"
           done
+          [[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]
+          [[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]
+          [[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           REMOTE_ROOT="/docker/smart-gatekeeper-physical-test/firmware-public-canary"
           REMOTE_PARENT="${REMOTE_ROOT}/${GITHUB_SHA}"
           REMOTE_STAGE="${REMOTE_PARENT}/.staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"

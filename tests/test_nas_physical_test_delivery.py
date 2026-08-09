@@ -6,6 +6,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
+  def test_contract_test_path_triggers_both_producer_workflows(self):
+    from scripts import ota_contract_gate as gate
+
+    contract_path = "tests/test_nas_physical_test_delivery.py"
+    for relative in (
+        ".github/workflows/deploy.yml",
+        ".github/workflows/build_app.yml",
+    ):
+      with self.subTest(workflow=relative, trigger="pull_request"):
+        workflow = gate.load_workflow_yaml(
+            relative, (ROOT / relative).read_text(encoding="utf-8")
+        )
+        self.assertIn(contract_path, workflow["on"]["pull_request"]["paths"])
+      if relative.endswith("build_app.yml"):
+        with self.subTest(workflow=relative, trigger="push"):
+          self.assertIn(contract_path, workflow["on"]["push"]["paths"])
+
   def test_delivery_guide_is_indexed_and_preserves_evidence_boundary(self):
     index = (ROOT / "wiki/index.md").read_text(encoding="utf-8")
     guide = (ROOT / "wiki/nas_physical_test_delivery.md").read_text(

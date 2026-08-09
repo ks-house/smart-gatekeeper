@@ -642,6 +642,13 @@ def _validate_physical_test_jobs(
       "StrictHostKeyChecking=yes",
       "repository-secret-pinned",
       "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
+      '[[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]',
+      '[[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]',
+      '[[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]',
+      "((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))",
+      '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+      '[[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+      '[[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]',
       'ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null',
       "test ! -e '$REMOTE_STAGE'",
       "test ! -e '$REMOTE_FINAL'",
@@ -989,6 +996,25 @@ def validate_workflow_release_triggers(
 
     if "pull_request" not in triggers or "push" not in triggers or "workflow_dispatch" not in triggers:
       raise GateError(f"{path}: workflow missing required triggers (pull_request, push, workflow_dispatch)")
+
+    physical_test_contract_path = "tests/test_nas_physical_test_delivery.py"
+    pull_request = triggers.get("pull_request")
+    if (
+        not isinstance(pull_request, dict)
+        or physical_test_contract_path not in pull_request.get("paths", [])
+    ):
+      raise GateError(
+          f"{path}: pull_request paths must include the NAS physical-test contract"
+      )
+    if path.endswith("build_app.yml"):
+      push = triggers.get("push")
+      if (
+          not isinstance(push, dict)
+          or physical_test_contract_path not in push.get("paths", [])
+      ):
+        raise GateError(
+            f"{path}: push paths must include the NAS physical-test contract"
+        )
 
     dispatch_input = (
         triggers.get("workflow_dispatch", {})
