@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gatekeeper_app/screens/background_disclosure_screen.dart';
+import 'package:gatekeeper_app/screens/recovery_shell_screen.dart';
 import 'package:gatekeeper_app/services/background_setup.dart';
 
 class FakeBackgroundRequirementGateway implements BackgroundRequirementGateway {
@@ -167,6 +168,32 @@ void main() {
     await tester.tap(acceptButton);
     await tester.pump();
     expect(consentCalls, 1);
+  });
+
+  testWidgets(
+      'recovery shell keeps manual update diagnostics settings and retry reachable',
+      (tester) async {
+    var retries = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: RecoveryShellScreen(
+        status: 'Blocked',
+        missing: const <String>['Bluetooth permission'],
+        onRetrySetup: () async {
+          retries++;
+        },
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.text('Manual local / remote recovery'), findsOneWidget);
+    expect(find.text('Privacy-redacted diagnostics'), findsOneWidget);
+    expect(find.text('Check verified app update'), findsOneWidget);
+    expect(find.text('Open Android settings'), findsOneWidget);
+    final retry = find.byKey(const Key('retry-background-setup'));
+    expect(retry, findsOneWidget);
+    await tester.tap(retry);
+    await tester.pump();
+    expect(retries, 1);
   });
 
   test('battery request seam uses the dedicated exemption intent API', () {

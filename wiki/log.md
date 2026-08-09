@@ -2567,3 +2567,14 @@
 - Manual contracts passed 11/11 and all 16 declared commands independently returned exit code 0 with the expected `OK` token. JSON parsing and `git diff --check` passed.
 - Full root discovery passed 151/151 in 25.76 seconds. Quick passed all ten sections in 40.48 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
 - Fresh exact-head Hosted Trusted and independent COMMENTED re-review remain required. NAS deployment and every live, legal, operator, physical, OTA/relay and production Gate remain pending.
+
+## [2026-08-09] fix | Bind walkthrough commands to exact scenario evidence
+
+- Remediated the remaining semantic blocker from COMMENTED review `4891273910`: every scenario ID is now mapped to one exact command and a unique expected test token, so an unrelated generic `OK` test cannot be substituted. Mobile manifest coverage runs the full artifact mutation module rather than a nominal workflow validator.
+- Added the missing Flutter widget regression proving the recovery shell keeps manual local recovery, privacy-redacted diagnostics, verified update, Android settings and bounded setup retry reachable. Source-bound regressions tie consent/disclosure, recovery and `AppErrorLogger` UI/IPC claims to their exact Flutter test and production owners.
+
+## [2026-08-09] test | Validate scenario semantics and recovery widget
+
+- Manual contracts passed 14/14; all 16 exact ID-bound commands returned exit code 0 and their scenario-specific test token. A tracked-files-only disposable Flutter copy passed focused consent/recovery, AppErrorLogger and update-contract tests, 14 total, then the container exited; the temporary copy is retained only because local command policy rejected recursive cleanup.
+- Full root discovery passed 154/154 in 26.98 seconds. Quick passed all ten sections in 39.60 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract and hardwareless 4.
+- Fresh exact-head hosted mobile/Trusted checks and an independent COMMENTED re-review remain required. Samsung/OEM, physical APK/ESP32-C6/radio/sensor/relay, Target OTA/rollback, NAS live/operator/legal and production Gates remain pending.
