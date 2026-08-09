@@ -573,7 +573,7 @@ def _validate_physical_test_jobs(
           "Set up Python for physical-test verification",
           "Install physical-test verification dependencies",
           "Verify exact public firmware canary before NAS contact",
-          "Install pinned-host SFTP client",
+          "Install SFTP client",
           "Stage, read back, verify and publish isolated firmware canary",
           "Upload sanitized firmware physical-test evidence",
       ]
@@ -585,7 +585,7 @@ def _validate_physical_test_jobs(
           "Set up Python for physical-test verification",
           "Install physical-test verification dependencies",
           "Verify exact public mobile canary before NAS contact",
-          "Install pinned-host SFTP client",
+          "Install SFTP client",
           "Stage, read back, verify and publish isolated mobile canary",
           "Upload sanitized mobile physical-test evidence",
       ]
@@ -641,7 +641,9 @@ def _validate_physical_test_jobs(
       f'REMOTE_ROOT="{expected_root}"',
       "StrictHostKeyChecking=yes",
       "repository-secret-pinned",
-      "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
+      "runtime-keyscan-unpinned",
+      "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT",
+      'if [[ -n "${NAS_KNOWN_HOSTS:-}" ]]; then',
       '[[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]',
       '[[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]',
       '[[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]',
@@ -650,6 +652,8 @@ def _validate_physical_test_jobs(
       '[[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
       '[[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]',
       'ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null',
+      'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
+      "::warning::NAS_KNOWN_HOSTS is not configured; using runtime ssh-keyscan",
       "test ! -e '$REMOTE_STAGE'",
       "test ! -e '$REMOTE_FINAL'",
       "physical-test-evidence-create",
@@ -668,7 +672,7 @@ def _validate_physical_test_jobs(
       "ota_contract_gate.py release",
       "|| true",
       "set +e",
-      "ssh-keyscan",
+      "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS",
       "StrictHostKeyChecking=no",
       "StrictHostKeyChecking=accept-new",
   )
@@ -2066,7 +2070,10 @@ def create_physical_test_evidence(args: argparse.Namespace) -> None:
   if args.artifact.read_bytes() != args.readback_artifact.read_bytes():
     raise GateError("physical-test NAS artifact readback differs from staged bytes")
 
-  if args.host_key_mode != "repository-secret-pinned":
+  if args.host_key_mode not in {
+      "repository-secret-pinned",
+      "runtime-keyscan-unpinned",
+  }:
     raise GateError("physical-test host-key mode is invalid")
   remote_component = (
       "firmware-public-canary" if args.kind == "target" else "mobile-public-canary"

@@ -145,7 +145,7 @@ jobs:
             --artifact dist/gatekeeper-firmware.bin \
             --expected-commit "${{ github.sha }}"
 
-      - name: Install pinned-host SFTP client
+      - name: Install SFTP client
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends openssh-client sshpass
@@ -159,7 +159,7 @@ jobs:
           NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS; do
+          for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT; do
             test -n "${!name}"
           done
           [[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]
@@ -175,11 +175,23 @@ jobs:
           REMOTE_FINAL="${REMOTE_PARENT}/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           test "$REMOTE_ROOT" = "/docker/smart-gatekeeper-physical-test/firmware-public-canary"
           KNOWN_HOSTS_FILE="${RUNNER_TEMP}/nas_known_hosts"
-          printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+          if [[ -n "${NAS_KNOWN_HOSTS:-}" ]]; then
+            printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+            HOST_KEY_MODE="repository-secret-pinned"
+          else
+            for attempt in 1 2 3; do
+              if timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null; then
+                mv "${KNOWN_HOSTS_FILE}.scan" "$KNOWN_HOSTS_FILE"
+                break
+              fi
+            done
+            rm -f "${KNOWN_HOSTS_FILE}.scan"
+            HOST_KEY_MODE="runtime-keyscan-unpinned"
+            echo "::warning::NAS_KNOWN_HOSTS is not configured; using runtime ssh-keyscan for this physical-test upload"
+          fi
           test -s "$KNOWN_HOSTS_FILE"
           chmod 600 "$KNOWN_HOSTS_FILE"
           ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null
-          HOST_KEY_MODE="repository-secret-pinned"
           export SSHPASS="$NAS_PASSWORD"
           SSH_TARGET="${NAS_USER}@${NAS_HOST}"
           SSH_OPTIONS=(-o BatchMode=no -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${KNOWN_HOSTS_FILE}")

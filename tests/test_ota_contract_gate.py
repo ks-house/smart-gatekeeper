@@ -260,6 +260,23 @@ class OtaContractGateTest(unittest.TestCase):
       self.assertNotIn("host", evidence)
       self.assertNotIn("username", evidence)
 
+      unpinned_path = directory / "evidence-unpinned.json"
+      gate.create_physical_test_evidence(
+          argparse.Namespace(
+              **vars(verify_args),
+              readback_manifest=readback_manifest,
+              readback_artifact=readback_artifact,
+              host_key_mode="runtime-keyscan-unpinned",
+              remote_path=(
+                  "/docker/smart-gatekeeper-physical-test/"
+                  f"firmware-public-canary/{commit}/run-11-1"
+              ),
+              output=unpinned_path,
+          )
+      )
+      unpinned = json.loads(unpinned_path.read_text(encoding="utf-8"))
+      self.assertEqual(unpinned["host_key_mode"], "runtime-keyscan-unpinned")
+
   def test_physical_test_evidence_rejects_readback_or_remote_root_mutation(self):
     with tempfile.TemporaryDirectory() as temporary_directory:
       directory = Path(temporary_directory)
@@ -477,10 +494,16 @@ class OtaContractGateTest(unittest.TestCase):
             "exact transport secret set|only NAS transport secrets",
         ),
         (
-            "runtime-keyscan-tofu",
-            "printf '%s\\n' \"$NAS_KNOWN_HOSTS\" > \"$KNOWN_HOSTS_FILE\"",
-            "ssh-keyscan -p \"$NAS_PORT\" \"$NAS_HOST\" > \"$KNOWN_HOSTS_FILE\"",
-            "stage/readback contract|production or bypass surface",
+            "unbounded-runtime-keyscan",
+            'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null',
+            'ssh-keyscan -p "$NAS_PORT" "$NAS_HOST"',
+            "stage/readback contract",
+        ),
+        (
+            "known-host-secret-required-again",
+            "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT; do",
+            "for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_KNOWN_HOSTS; do",
+            "production or bypass surface",
         ),
         (
             "disable-strict-host-checking",

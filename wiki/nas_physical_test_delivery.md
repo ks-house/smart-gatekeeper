@@ -39,14 +39,17 @@ the staging directory to its final run directory. Existing production roots
 `/docker/smart-gatekeeper-ota/` and
 `/docker/smartbox_ota/gatekeeper_apk/` are never selected by this lane.
 
-Required repository secrets are `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`,
-`NAS_PORT` (port defaults to 22), and `NAS_KNOWN_HOSTS`. The latter must contain
-the independently verified OpenSSH known-hosts record for the configured NAS;
-the job parses it with `ssh-keygen` before any credentialed connection and uses
-`StrictHostKeyChecking=yes`. Missing or malformed host-key material fails before
-network contact. Runtime `ssh-keyscan`, TOFU, `accept-new`, and disabled strict
-checking are forbidden. Sanitized evidence records only
-`repository-secret-pinned`, never the host-key value.
+Required repository secrets are `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`, and
+`NAS_PORT` (port defaults to 22). `NAS_KNOWN_HOSTS` is optional. When supplied,
+the job parses the independently verified OpenSSH record with `ssh-keygen` and
+records `repository-secret-pinned`. When absent, the physical-test lane performs
+a bounded runtime `ssh-keyscan`, validates the resulting record, records
+`runtime-keyscan-unpinned`, and still connects with `StrictHostKeyChecking=yes`
+against that run-local file. This compatibility fallback permits the established
+NAS setup to upload without a known-hosts secret, but it does not authenticate
+the first key exchange and therefore is weaker against an active network
+interceptor. `accept-new` and disabled strict checking remain forbidden. The
+sanitized evidence records only the mode, never the host-key value.
 
 Before constructing any OpenSSH destination or remote path, the job also
 restricts `NAS_USER` to a non-option portable account name, `NAS_HOST` to a
@@ -89,12 +92,12 @@ Mobile contract:
 - `PHYSICAL_TEST_APK_VERSION_URL`, `PHYSICAL_TEST_APK_DOWNLOAD_URL`, `PHYSICAL_TEST_APK_FALLBACK_DOWNLOAD_URL`, `PHYSICAL_TEST_APK_RELEASE_NOTES_URL`
 - `PHYSICAL_TEST_API_KEY`
 
-At the 2026-08-09 audit, none of the `PHYSICAL_TEST_*` names or
-`NAS_KNOWN_HOSTS` existed in repository secrets. Consequently even the public
-canary dispatch remains blocked until the operator registers an independently
-verified NAS host record. Do not copy a production value
-into these names. Provision test-scoped endpoints, identities and signing keys,
-then implement/review the connected jobs as another protected workflow bundle.
+At the 2026-08-09 audit, none of the `PHYSICAL_TEST_*` names existed in repository
+secrets. The public canary can use the explicitly authorized unpinned keyscan
+fallback, while the connected tier remains blocked. Do not copy a production
+value into the `PHYSICAL_TEST_*` names. Provision test-scoped endpoints,
+identities and signing keys, then implement/review the connected jobs as another
+protected workflow bundle.
 
 ## Operator handoff after a successful public dispatch
 

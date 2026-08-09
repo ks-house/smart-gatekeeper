@@ -2650,3 +2650,15 @@
 - Focused trusted-policy regression tests passed 37/37. Full root discovery passed 173/173 from the exact staged Git tree archived with checkout conversion disabled, and `actionlint` passed every workflow.
 - Orca `Quick` passed all ten sections in 41.37 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures. JSON parsing, `git diff --check`, staged log byte-prefix, `raw/` tree identity and live immutable GitHub API verification of all 57 protected files passed.
 - The final policy PR still requires green exact-head Hosted Trusted and a separate independent COMMENTED whole-bundle review before normal merge. No dispatch, NAS write, deployment, physical validation, release evidence or production authorization occurred.
+
+## [2026-08-09] fix | Allow audited NAS upload without a pinned known-host secret
+
+- Kept `NAS_KNOWN_HOSTS` as the preferred physical-test transport mode, but made it optional for the explicitly requested public-canary lane. When absent, both firmware and mobile jobs perform a three-attempt bounded `ssh-keyscan`, validate the returned record, pin it to a run-local file, retain `StrictHostKeyChecking=yes`, and label sanitized evidence `runtime-keyscan-unpinned`.
+- The fallback is restricted to exact-main `physical-test-canary`, isolated non-production roots and same-run public test-signed artifacts. Production jobs, connected-tier prerequisites, signing keys, directories and release-evidence gates remain unchanged; the first key exchange is not independently authenticated and is documented as weaker against an active network interceptor.
+- Updated workflow contracts, adversarial mutations, evidence validation and operator documentation. Merge, dispatch, NAS write, real-device validation and production authorization remain pending until protected-bundle review and hosted CI complete.
+
+## [2026-08-09] test | Validate the optional NAS host-key fallback
+
+- Focused OTA/NAS tests passed 76/76, including both evidence modes and mutations for unbounded keyscan, disabled strict checking, unsafe transport grammar, path escape, production secret/directory substitution, readback removal and connected-tier enablement. `actionlint`, the OTA contract command and `git diff --check` passed.
+- Full root discovery passed 173/173 after normalizing only unchanged manual checkout material to its committed LF bytes; the direct Windows checkout initially exposed the known CRLF materialization boundary rather than a source failure. Orca `Quick` then passed all ten sections in 41.39 seconds with backend 84 tests/two explicit Docker-lane skips, Compose, profile/lifecycle, protocol 16, observability 18, OTA and hardwareless gates.
+- `raw/` remains byte-identical. Hosted exact-head checks, independent protected-bundle review, trusted policy authorization, normal merge and exact-main physical-test dispatch remain required before any NAS connection or write.
