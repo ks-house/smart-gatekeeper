@@ -2534,3 +2534,13 @@
 
 - Focused trusted-policy tests passed 37/37, full root discovery passed 140/140, JSON parsing, actionlint and `git diff --check` passed, and Orca Quick passed all ten sections in 40.6 seconds with doctor 12 pass, one Docker-covered native Java warning and zero failures.
 - The production verifier fetched the exact GitHub API bytes for `ks-house/smart-gatekeeper@22ddc7237f15758a0c77c72902b51ff25d31e483` and selected `current-main-baseline` with `protected_file_count: 57`. Hosted exact-head Trusted CI and independent COMMENTED review remain required before normal merge; NAS deployment, live/legal/operator, physical mobile/ESP32-C6/radio/relay/sensor and OTA/rollback Gates remain open.
+
+## [2026-08-09] fix | Remove stale governance-exception guidance from final rotation
+
+- Corrected the trusted-policy guide so the final rotation is described as validator/workflow unchanged, authorized by the trusted base only after ancestry and complete 57-file byte proof, and eligible solely for a normal protected merge after Hosted Trusted success and fresh review. Removed stale transition text that incorrectly described this PR as expected-red and requiring a governance exception.
+- Clarified that the regression assertion pins a sole final bundle while the generic runtime schema may represent a future reviewed transition; runtime fork, retired/diverged source, path and digest checks remain fail-closed. No policy, test, validator, protected product/workflow or `raw/` byte changed in this documentation remediation.
+
+## [2026-08-09] test | Revalidate final-rotation guidance after independent review
+
+- Focused trusted-policy tests passed 37/37 and full root discovery passed 140/140 after the documentation-only remediation. The final guide contains no expected-red or two-bundle-current-state claim and requires Hosted Trusted success plus fresh exact-head review before a normal protected merge.
+- The prior Quick 10-section pass remains bound to identical policy, test, validator, protected product/workflow and `raw/` bytes. A new exact-head Hosted Trusted run and fresh COMMENTED review remain required after push; no merge, deployment or physical Gate completion is claimed.

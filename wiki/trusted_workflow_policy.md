@@ -57,10 +57,10 @@ to the previously reviewed PR #67 bundle. Both transition identities, `temporary
 `future-pr67-persistent-baseline`, are removed.
 
 Regression tests pin the exact repository, merged-main commit, mode, sole-bundle count, ordered path set, and
-every digest. The real decision path rejects forks, retired or altered commits, unproven/diverged histories,
-case/path variants, the old five-path partial set, missing or reordered paths, swapped/mixed/per-file digest
-mutations, extra bundles, and candidate policy/validator self-use. No branch, wildcard, partial set, mixed set,
-or candidate-derived digest is approved.
+every digest, and fail if an extra bundle is added to this final policy. The runtime decision separately rejects
+forks, retired or altered commits, unproven/diverged histories, case/path variants, the old five-path partial set,
+missing or reordered paths, swapped/mixed/per-file digest mutations, and candidate policy/validator self-use.
+No branch, wildcard, partial set, mixed set, or candidate-derived digest is approved.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -72,12 +72,12 @@ validator are never imported, parsed, or executed, so changing them cannot chang
 Changes to these trust-control files still require an explicit security review before merge because their
 effect begins only after they become default-branch code.
 
-PR #68 established the identity-bound validator and schema version 2 on trusted main. This follow-up strengthens
-the validator so persistent authorization requires proven source ancestry, enforces one persistent baseline per
-repository, and gives an exact temporary candidate deterministic precedence. Its own hosted check still executes
-the old trusted-base policy and validator, so this PR cannot authorize itself and is expected to fail the current
-source-identity Gate. The validator, two-bundle transition, tests, guide, and append-only log therefore require
-fresh independent exact-head review and one explicitly authorized governance exception before becoming trusted.
+PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
+main; PR #67 then completed that transition. This final rotation does not modify the validator or trusted
+workflow. Its hosted check still executes the trusted base policy and validator, which authorize this PR only
+after GitHub ancestry proof and exact comparison of all 57 protected files. A successful Hosted Trusted check
+and fresh independent exact-head review permit a normal branch-protected merge; no governance exception or
+branch-protection change is required or allowed for this rotation.
 
 ## 4. Rotation procedure
 
