@@ -2378,6 +2378,30 @@
 - The focused trusted-policy suite passed 30/30, full root discovery passed 133/133, actionlint and JSON parsing passed, and Quick passed in 35.65 seconds with doctor 12 pass, one Docker-covered native Java 17 warning, and zero failures.
 - This final trust-anchor rotation is repository authorization only. Samsung/OEM, physical APK install and first-run health, BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, operator acceptance, production signing, deployment, and production authorization remain open and fail-closed.
 
+## [2026-08-09] compile | Temporarily authorize exact PR #67 backend bundle
+
+- Expanded the trusted protected-path set from the existing five release controls to one ordered 57-file set by appending the exact 52 backend and operations inputs from `ops/backend_trusted_bundle_paths.json` at reviewed PR #67 commit `2bb223629c848f298177fc16ec3cac1fa40b8e0f`.
+- Added only `temporary-pr67-2bb2236`, sourced from `ks-house/smart-gatekeeper@2bb223629c848f298177fc16ec3cac1fa40b8e0f`, with all 57 independently recomputed `utf8-lf-v1` digests authorized by COMMENTED review `4890584574`. The prior five-path baseline is intentionally absent because it cannot be a complete bundle after adding paths not present on pre-PR67 main; PR #67 must be followed immediately by a separate merged-main baseline rotation.
+- No protected workflow, validator, product, backend, firmware, mobile, runtime, signing, deployment, or `raw/` byte changed.
+
+## [2026-08-09] test | Validate exact PR #67 temporary whole-bundle policy
+
+- The validator fetched exact PR #67 GitHub Contents API bytes and selected `temporary-pr67-2bb2236` with `protected_file_count: 57`; an independent fetched Git ref calculation also matched all 57 review-authorized digests and the exact 52-path backend manifest.
+- Focused trusted-policy tests passed 29/29, full root discovery passed 132/132, actionlint and JSON parsing passed, and Quick passed all ten software sections in 35.53 seconds with doctor 12 pass, one Docker-covered native Java warning, and zero failures. Missing, old-five partial, reordered, swapped, mixed, retired-source, digest, extra-bundle, and candidate self-use mutations remain fail-closed.
+- This policy-only software authorization does not approve or merge PR #67 and does not close production, physical soak/restore, Samsung/OEM, ESP32-C6/relay/radio, OTA/rollback, operator, or deployment Gates.
+
+## [2026-08-09] fix | Bind temporary trust authorization to actual candidate identity
+
+- Remediated blocking COMMENTED review `4890625756` by making the production validator receive the actual candidate repository and immutable lowercase 40-hex SHA as authorization inputs. Identity-ineligible candidates now fail before protected bytes are fetched, so equivalent bytes from a fork, wrong repository, retired commit, case variant, branch, tag, or malformed ref cannot select `temporary-pr67-2bb2236`.
+- Upgraded the strict policy schema to format version 2 with explicit `temporary-exact` and `persistent-baseline` modes. Temporary authorization requires exact repository plus SHA; a future persistent baseline permits unchanged protected bytes only on later immutable SHAs in the same trusted repository. Canonical path syntax, case-folding uniqueness, authorization-identity uniqueness, and single CLI identity occurrence are fail-closed.
+- The PR's hosted check continues to execute only the exact `1ce7f16a...` base policy and validator, so this validator change cannot authorize itself. It requires fresh independent exact-head review before merge and becomes authoritative only from trusted `main` for the subsequent exact PR #67 rerun.
+
+## [2026-08-09] test | Validate runtime source binding and policy schema v2
+
+- Focused trusted-policy tests passed 33/33 and full root discovery passed 136/136. Adversarial coverage rejects wrong repositories/forks, old or altered SHAs, repository/SHA case variants, mutable refs, missing or duplicated identity options, dot/backslash/empty/case-colliding paths, duplicate authorization identities, partial/mixed bundles, and candidate policy/validator self-use.
+- The production CLI fetched exact GitHub API bytes for `ks-house/smart-gatekeeper@2bb223629c848f298177fc16ec3cac1fa40b8e0f` and approved all 57 protected paths as `temporary-pr67-2bb2236`. Quick passed all ten software sections in 34.18 seconds with doctor 12 pass, one Docker-covered Java warning, and zero failures.
+- These are repository authorization and software checks only. PR #67 remains Draft/unmerged, and physical, Samsung/OEM, ESP32-C6/radio/relay, OTA/rollback, operator, production signing, deployment, and production authorization Gates remain pending and fail-closed.
+
 ## [2026-08-09] code | Implement repository-side commercial operations and privacy controls (#52)
 
 - Added default-redacted logging and consent-bound support exports, versioned tenant retention deletion with immutable evidence, opaque-peer rate limits, persistent bounded MQTTS publication with backpressure/circuit recovery, dependency readiness, fixed-label metrics and fail-closed evidence generation. Existing administrator session/RBAC/CSRF/re-auth, manual control, mobile update and Target OTA/rollback boundaries remain independent.
@@ -2459,3 +2483,9 @@
 - Focused operations/API/runtime/migration tests passed 41/41 with the two explicit Docker lanes skipped; the 10 evidence-gate tests include SAME_SBOM_FOR_ALL, reused payload, cross-ID workflow/artifact/claim, unrelated merge/reviewer/job/attestation and same-host downgrade/different-host/different-port redirect mutations. Both generated claim envelopes, actionlint and the expanded 34-check operations contract passed.
 - The actual legacy MariaDB up/dump/restore/down lane passed. The production-image lane exposed that the init temporary socket can already contain the baseline before its final server restart; readiness now requires both the real `tenants` query and `@@port=3306`, after which the seed-free existing-volume/repeat-backup/rollback lane passed in 13.35 seconds.
 - Orca `Software` passed in 46.85 seconds: doctor 12 pass/one Docker-covered Java warning/zero fail, backend 84 tests with two opt-in skips, dev Compose, Orca profile/lifecycle, protocol 16, observability 18, OTA contract, hardwareless 4 and root 133 tests. Fresh exact-head hosted CI and clean independent re-review remain required; policy authorization, live/legal/operator/physical/OTA/relay evidence and production authorization stay fail-closed.
+
+## [2026-08-09] fix | Integrate exact post-PR68 trusted policy into PR #67
+
+- Integrated exact `origin/main` `8f925f91b3495f51012c1cf48e80dcfd39abc614` once with a normal two-parent merge and no history rewrite. The exact new-main log is the byte prefix, the complete prior PR #67 suffix is preserved exactly once, and this integration entry is the only new append.
+- Accepted the policy schema v2 validator, tests, guide and 57-path `temporary-pr67-2bb2236` authorization exactly from trusted main. All backend, operations, vector and workflow candidate product bytes remain identical to reviewed PR #67 commit `2bb223629c848f298177fc16ec3cac1fa40b8e0f`; `raw/` is unchanged.
+- The exact policy verifier selected `temporary-pr67-2bb2236` with all 57 paths; focused policy tests passed 33/33, root discovery passed 136/136, actionlint passed, and Orca `Software` passed all eleven sections in 50.21 seconds with backend 84 tests/two explicit Docker-lane skips. PR #67 remains Draft and production remains OFF; hosted exact-head checks and a fresh independent review remain required, while legal, live-soak, independent-host restore, physical, OTA, relay, operator, signing, deployment and production authorization Gates stay open and fail-closed.
