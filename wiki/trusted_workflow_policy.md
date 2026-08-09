@@ -9,7 +9,8 @@ The job has only `contents: read`. Pull-request titles, branches, file contents,
 ## 2. Protected bundle decision
 
 The machine-readable policy is `.github/workflow-policy/trusted_workflow_policy.json`; the base validator is
-`scripts/verify_trusted_workflow_policy.py`. The policy protects these files as one indivisible bundle:
+`scripts/verify_trusted_workflow_policy.py`. The policy protects 57 files as one indivisible bundle. The
+ordered set starts with the existing release-control five:
 
 - `.github/workflows/deploy.yml`
 - `.github/workflows/build_app.yml`
@@ -17,22 +18,31 @@ The machine-readable policy is `.github/workflow-policy/trusted_workflow_policy.
 - `scripts/ota_contract_gate.py`
 - `ota/requirements.txt`
 
+It then includes the exact 52 backend and operations inputs authorized for PR #67: the backend-security
+workflow, Orca setup input, commercial-operations gate, evidence/SLO fixtures and policies, backend runtime,
+locked dependencies, static admin surfaces, production Compose and database migration inputs, SBOM/supply
+chain policy, backend tests, and canonical protocol vectors. The JSON policy contains the authoritative
+complete ordered path set; it is identical to the existing five followed by
+`ops/backend_trusted_bundle_paths.json@2bb223629c848f298177fc16ec3cac1fa40b8e0f`.
+
 `utf8-lf-v1` means strict UTF-8 decoding followed only by CRLF/CR-to-LF conversion. No whitespace, comments,
 keys, steps, action versions, commands, or trailing newlines are otherwise ignored. The normalized bytes use
 SHA-256. A candidate passes only when every protected path exactly matches one complete approved bundle;
 mixing individually approved files from different bundles is rejected.
 
-The repository regression test follows the same rule and requires the checked-out protected bytes to match
-the sole `current-main-baseline` bundle. Separate assertions bind that entry to the exact trusted repository,
-merged-main commit, protected-path order, and five normalized digests.
+The transition policy contains exactly one bundle, `temporary-pr67-2bb2236`, whose review provenance is
+repository `ks-house/smart-gatekeeper` at exact commit
+`2bb223629c848f298177fc16ec3cac1fa40b8e0f`. Independent exact-head COMMENTED review `4890584574`
+authorized only those 57 normalized digests as one complete set. Regression tests separately pin the exact
+repository, commit, ordered path set, and every digest; they reject the old five-path set, missing/reordered
+paths, swapped or mixed digests, retired commits, extra bundles, and candidate policy/validator self-use.
 
-The policy contains exactly one `current-main-baseline` bundle sourced from merged `main` at
-`ed19f3256ac8857367f1f490eb1f5f717e20ca03`. Its protected bytes are the exact PR #59 bundle authorized by
-independent exact-head COMMENTED review `4890233068` and then merged normally. The transition-only
-`temporary-pr59-e468e0f@e468e0f0a77e5e9b5e1a5ac7c4cdf22c4de951ad` entry has been removed. The earlier
-`current-main-baseline@4e628baf043721d0e0ae86290915886cee7e3d5c`,
-`origin-main-bootstrap@8c36ead`, and `pr-28-preapproved@7bae62f` identities remain retired. No branch,
-wildcard, partial set, mixed set, or candidate-derived digest is approved.
+The previous five-file `current-main-baseline@ed19f3256ac8857367f1f490eb1f5f717e20ca03` cannot coexist in
+this transition policy because the expanded path set includes files not present on pre-PR67 `main`. Keeping
+it as a partial bundle would weaken the whole-bundle invariant, so it is intentionally removed. This makes
+the transition narrow: after this policy merges, only the complete reviewed PR #67 bytes pass until PR #67
+is merged and a separate final policy-only rotation pins the resulting merged-main 57-file baseline. No
+branch, wildcard, partial set, mixed set, or candidate-derived digest is approved.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -53,17 +63,20 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For PR #59, the temporary approval and protected-file merge are complete. This separate policy-only
-rotation removes `temporary-pr59-e468e0f` and pins the sole baseline to exact merged-main commit
-`ed19f3256ac8857367f1f490eb1f5f717e20ca03`. Future rotations must repeat the same independent full-bundle
-review, temporary trusted-base authorization, protected merge, and final policy-only retirement sequence.
+For PR #67, merge this policy-only temporary authorization first through normal protection. Then re-run the
+trusted check on exact PR #67 head `2bb223629c848f298177fc16ec3cac1fa40b8e0f` and merge that reviewed
+candidate without rewriting it. Immediately follow with a separate policy-only rotation that removes
+`temporary-pr67-2bb2236` and pins one 57-file `current-main-baseline` to the actual PR #67 merged-main commit.
+Any path, digest, repository, or reviewed source-commit change requires a fresh independent whole-bundle
+review; do not prolong the temporary single-candidate window or merge unrelated PRs through a bypass.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
 ## 5. Scope and OTA status
 
-This policy adds a repository authorization boundary only. It does not change the authenticated mobile
+This policy expands a repository authorization boundary only. It does not modify any protected workflow,
+backend/product/runtime file, or the authenticated mobile
 `manual_remote` door-open path, firmware/app runtime code, dual OTA partitions, health/rollback, periodic
 HTTPS, authenticated local recovery, mobile updater independence, N/N-1 compatibility, signing trust, or
 artifact verification. No physical OTA evidence is claimed.

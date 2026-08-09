@@ -2377,3 +2377,15 @@
 
 - The focused trusted-policy suite passed 30/30, full root discovery passed 133/133, actionlint and JSON parsing passed, and Quick passed in 35.65 seconds with doctor 12 pass, one Docker-covered native Java 17 warning, and zero failures.
 - This final trust-anchor rotation is repository authorization only. Samsung/OEM, physical APK install and first-run health, BLE/ESP32-C6/radio/relay, Target bootloader/rollback, OTA-G1..G4, RELAY-G0..G2, operator acceptance, production signing, deployment, and production authorization remain open and fail-closed.
+
+## [2026-08-09] compile | Temporarily authorize exact PR #67 backend bundle
+
+- Expanded the trusted protected-path set from the existing five release controls to one ordered 57-file set by appending the exact 52 backend and operations inputs from `ops/backend_trusted_bundle_paths.json` at reviewed PR #67 commit `2bb223629c848f298177fc16ec3cac1fa40b8e0f`.
+- Added only `temporary-pr67-2bb2236`, sourced from `ks-house/smart-gatekeeper@2bb223629c848f298177fc16ec3cac1fa40b8e0f`, with all 57 independently recomputed `utf8-lf-v1` digests authorized by COMMENTED review `4890584574`. The prior five-path baseline is intentionally absent because it cannot be a complete bundle after adding paths not present on pre-PR67 main; PR #67 must be followed immediately by a separate merged-main baseline rotation.
+- No protected workflow, validator, product, backend, firmware, mobile, runtime, signing, deployment, or `raw/` byte changed.
+
+## [2026-08-09] test | Validate exact PR #67 temporary whole-bundle policy
+
+- The validator fetched exact PR #67 GitHub Contents API bytes and selected `temporary-pr67-2bb2236` with `protected_file_count: 57`; an independent fetched Git ref calculation also matched all 57 review-authorized digests and the exact 52-path backend manifest.
+- Focused trusted-policy tests passed 29/29, full root discovery passed 132/132, actionlint and JSON parsing passed, and Quick passed all ten software sections in 35.53 seconds with doctor 12 pass, one Docker-covered native Java warning, and zero failures. Missing, old-five partial, reordered, swapped, mixed, retired-source, digest, extra-bundle, and candidate self-use mutations remain fail-closed.
+- This policy-only software authorization does not approve or merge PR #67 and does not close production, physical soak/restore, Samsung/OEM, ESP32-C6/relay/radio, OTA/rollback, operator, or deployment Gates.
