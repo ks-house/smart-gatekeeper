@@ -2785,3 +2785,10 @@
 - PowerShell AST parsing, the parser-enhanced no-write `-ValidateOnly` path and the focused bootstrap contract passed 5/5 on Windows PowerShell 5.
 - Reused the operator's exact key ID and external backup path with `-WhatIf`: current-process GitHub authentication, external path validation and the live empty `production` Environment Secret list all passed before `ShouldProcess` declined mutation.
 - Post-run verification confirmed the requested DPAPI backup path still does not exist and the `production` Environment still reports zero Secret names. No key, backup, Secret, workflow dispatch, NAS write or release authorization was created.
+
+## [2026-08-10] compile | Merge OTA bootstrap and audit remaining production Secrets
+
+- Merged PR #82 normally as merge commit `40aa3a05ab88464dc0aec7827a7a26ccc4b27d5d` after exact-head Trusted Workflow run `31389611196` passed. The merged bootstrap remains a registration tool only; no workflow dispatch, NAS write or physical/release authorization was performed by the merge.
+- Live name-only GitHub inspection found 25 Repository Secrets and the three expected OTA signing names in the `production` Environment. Comparison against exact merged-main production jobs found nine missing Target firmware names and three missing mobile names; existing Secret values, URL targets and NAS directory contents remain unreadable by design and require operator verification.
+- Documented the complete static firmware/mobile production Secret contract, formats, optional defaults and the required Smartbox NAS directory overrides. `NAS_TARGET_DIR` and `NAS_APK_TARGET_DIR` names already exist, but their hidden values cannot be claimed to match `/docker/smartbox_ota/firmware/` and `/docker/smartbox_ota/gatekeeper_apk/` from a name-only audit.
+- The live name-set comparison reproduced the final nine/three missing counts. Four focused bootstrap tests passed directly; the sole failure was the known Windows checkout CRLF view of the unchanged merged script, whose exact Git blob separately passed UTF-8/LF/no-BOM validation. Documentation `git diff --check`, append-only log prefix and unchanged `raw/` scope passed.
