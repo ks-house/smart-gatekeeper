@@ -2761,3 +2761,15 @@
 - Evidence remains deliberately non-release: `physical_validation_status: pending`, `production_authorized: false`, and `release_evidence: false`. No APK installation, ESP32-C6 flash/boot, BLE/radio, relay/ToF, OTA health/rollback, Samsung/OEM, operator acceptance or production deployment was claimed. The runtime-discovered host key leaves the documented MITM/password-interception risk.
 - Updated the NAS delivery documentation regression to require the exact successful run IDs and live `nas_upload_verified: true` boundary instead of the obsolete pre-dispatch statement; the test still requires the pending physical and false production/release fields.
 - Exact staged-LF root discovery passed 175/175, including the updated delivery evidence contract and all relative-link checks; `git diff --cached --check`, append-only log prefix and unchanged `raw/` identity also passed.
+
+## [2026-08-10] code | Add fail-closed OTA signing secret bootstrap
+
+- Added `scripts/setup_ota_signing_secrets.ps1` to generate an Ed25519 32-byte private seed and raw public key, validate the repository key formats, and register the exact three shared firmware/mobile signing values as GitHub `production` Environment Secrets through stdin without exposing the private seed in command arguments or output.
+- Required the current-process `GITHUB_TOKEN`, successful `gh auth status`, a repository-external non-existing backup target, no pre-existing signing Secret names, and explicit PowerShell confirmation before mutation. The recovery record stores only a Windows DPAPI current-user encrypted private seed plus public metadata in UTF-8 without BOM; automated overwrite and key rotation fail closed.
+- Added a no-write `-ValidateOnly` path, a source/runtime contract test, and operator documentation covering invocation, exact formats, DPAPI recovery limits, separate reviewed rotation, and the boundary between key registration and OTA physical/operator/release authorization.
+
+## [2026-08-10] test | Validate OTA signing secret bootstrap
+
+- PowerShell AST parsing and the no-write `-ValidateOnly` execution passed. The focused bootstrap contract passed 5/5, covering raw Ed25519 key shape, stdin-only secret transport, absence of persistent Windows environment writes, DPAPI backup constraints, GitHub authentication/overwrite refusal, UTF-8/LF and suppression of private seed output.
+- Root discovery executed 180 tests: 179 passed directly and the sole working-copy failure was the known Windows CRLF conversion of unchanged `manuals/README.md`. Direct Git-index blob validation then passed the exact UTF-8/LF/manual baseline contract for all eight manuals; no product or bootstrap assertion failed.
+- `git diff --cached --check` passed. Only the five intentional script/test/wiki paths are staged; pre-existing untracked `.codex-remote-attachments/` and `.venn/` remain untouched, and no GitHub Secret, backup file, production dispatch, NAS write or physical/release authorization was created.

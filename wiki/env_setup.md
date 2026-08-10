@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-02 (Windows PlatformIO timeout/orphan recovery guidance and managed-runner PlatformIO lock 경계 반영)
+> Last updated: 2026-08-10 (fail-closed production OTA signing secret bootstrap and encrypted recovery boundary added)
 
 ## 1. 펌웨어
 
@@ -293,6 +293,45 @@ fail-closed로 종료합니다. Actions canary artifact를 받아 USB/emulator/�
 주소 해석용 `firmware.map`도 보존합니다.
 
 운영 자격 증명 문자열이 포함될 수 있는 `firmware.elf`는 public artifact/NAS에 게시하지 않습니다.
+
+### 4.1 운영 OTA 서명 키 최초 등록
+
+운영 firmware와 mobile manifest는 같은 Ed25519 신뢰 루트를 사용합니다. Windows의 신뢰할 수 있는
+관리자 단말에서 다음 스크립트로 32-byte private seed와 raw public key를 생성하고 GitHub
+`production` Environment Secrets에 등록합니다. 개인키는 화면이나 프로세스 인자, Windows 사용자
+환경변수에 기록하지 않고 `gh secret set`의 표준입력으로만 전달합니다.
+
+먼저 GitHub 접근이나 파일 쓰기 없이 로컬 키 생성 의존성과 형식만 확인합니다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/setup_ota_signing_secrets.ps1 `
+  -KeyId ota-prod-2026-08-v1 `
+  -ValidateOnly
+```
+
+실제 최초 등록은 저장소 밖에 이미 생성한 보호 디렉터리를 백업 대상으로 지정합니다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/setup_ota_signing_secrets.ps1 `
+  -KeyId ota-prod-2026-08-v1 `
+  -EncryptedBackupPath 'D:\secure-backups\smart-gatekeeper\ota-prod-2026-08-v1.dpapi.json'
+```
+
+스크립트는 현재 프로세스의 `GITHUB_TOKEN`과 `gh auth status`를 확인하고 아래 세 이름을 정확히
+`production` Environment에 등록합니다.
+
+- `OTA_SIGNING_PRIVATE_KEY_HEX`: Ed25519 32-byte private seed의 lowercase 64-hex
+- `OTA_SIGNING_PUBLIC_KEY_HEX`: 대응하는 raw Ed25519 public key의 lowercase 64-hex
+- `OTA_SIGNING_KEY_ID`: `[A-Za-z0-9._-]{1,64}` 형식의 운영자 지정 식별자
+
+복구 파일의 private seed는 Windows DPAPI current-user로 암호화되며 UTF-8/no-BOM JSON으로
+저장됩니다. 일반적으로 같은 Windows 계정과 단말이 필요하므로, 운영 전 별도의 승인된 비밀관리
+시스템에도 독립 복구본을 보관해야 합니다. 저장소 내부 경로, 기존 파일 덮어쓰기, 세 Secret 중
+하나라도 이미 존재하는 상태의 자동 회전은 모두 거부합니다. 키 회전은 새 key ID, 앱/Target의
+public-key pin 전환, N/N-1과 rollback 검증을 포함한 별도 검토 절차로 수행합니다. 이 스크립트의
+성공은 키 등록 증거일 뿐 OTA-G0~G4, physical, operator 또는 production release 승인이 아닙니다.
 
 Trusted workflow Gate는 PR code를 checkout하거나 실행하지 않습니다. `base.sha`의 sparse checkout에서
 validator와 policy만 읽고, candidate의 5개 보호 파일은 GitHub Contents API를 통해 inert bytes로
