@@ -140,6 +140,34 @@ print(json.dumps({
   return $material
 }
 
+function ConvertFrom-GitHubSecretListJson {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Json
+  )
+
+  try {
+    # Windows PowerShell 5 emits an empty JSON array as one non-enumerated
+    # System.Object[] pipeline value. Parse first, then enumerate explicitly.
+    $parsed = ConvertFrom-Json -InputObject $Json
+  }
+  catch {
+    throw "GitHub secret list returned invalid JSON. $($_.Exception.Message)"
+  }
+
+  foreach ($item in @($parsed)) {
+    if ($null -eq $item) {
+      continue
+    }
+    $nameProperty = $item.PSObject.Properties["name"]
+    if ($null -eq $nameProperty -or -not ($nameProperty.Value -is [string]) -or
+        [string]::IsNullOrWhiteSpace([string]$nameProperty.Value)) {
+      throw "GitHub secret list contains an invalid name record."
+    }
+    Write-Output ([string]$nameProperty.Value)
+  }
+}
+
 function Resolve-BackupTarget {
   param(
     [Parameter(Mandatory = $true)]
@@ -190,6 +218,14 @@ $privateSeed = $null
 $securePrivate = $null
 try {
   if ($ValidateOnly) {
+    $emptyParserProbe = @(ConvertFrom-GitHubSecretListJson -Json "[]")
+    $singleParserProbe = @(
+      ConvertFrom-GitHubSecretListJson -Json '[{"name":"OTA_SIGNING_KEY_ID"}]'
+    )
+    if ($emptyParserProbe.Count -ne 0 -or $singleParserProbe.Count -ne 1 -or
+        $singleParserProbe[0] -ne "OTA_SIGNING_KEY_ID") {
+      throw "GitHub secret-list parser compatibility validation failed."
+    }
     $keyMaterial = New-OtaSigningKeyMaterial -PythonCommand $PythonExecutable
     Write-Output "OTA signing key generation validation passed."
     Write-Output "Key ID: $KeyId"
@@ -218,7 +254,9 @@ try {
     -FilePath "gh" `
     -Arguments "secret list --env $Environment --repo $Repository --json name" `
     -StandardInput $null
-  $existingNames = @($listResult.Stdout | ConvertFrom-Json | ForEach-Object { $_.name })
+  $existingNames = @(
+    ConvertFrom-GitHubSecretListJson -Json $listResult.Stdout
+  )
   $conflicts = @($SecretNames | Where-Object { $existingNames -contains $_ })
   if ($conflicts.Count -gt 0) {
     throw "Refusing to overwrite existing Environment Secrets: $($conflicts -join ', '). Use a separately reviewed rotation procedure."
@@ -260,7 +298,9 @@ try {
     -FilePath "gh" `
     -Arguments "secret list --env $Environment --repo $Repository --json name" `
     -StandardInput $null
-  $verifiedNames = @($verifyResult.Stdout | ConvertFrom-Json | ForEach-Object { $_.name })
+  $verifiedNames = @(
+    ConvertFrom-GitHubSecretListJson -Json $verifyResult.Stdout
+  )
   $missing = @($SecretNames | Where-Object { $verifiedNames -notcontains $_ })
   if ($missing.Count -gt 0) {
     throw "GitHub did not report all expected Environment Secret names: $($missing -join ', ')"

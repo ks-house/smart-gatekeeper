@@ -2773,3 +2773,15 @@
 - PowerShell AST parsing and the no-write `-ValidateOnly` execution passed. The focused bootstrap contract passed 5/5, covering raw Ed25519 key shape, stdin-only secret transport, absence of persistent Windows environment writes, DPAPI backup constraints, GitHub authentication/overwrite refusal, UTF-8/LF and suppression of private seed output.
 - Root discovery executed 180 tests: 179 passed directly and the sole working-copy failure was the known Windows CRLF conversion of unchanged `manuals/README.md`. Direct Git-index blob validation then passed the exact UTF-8/LF/manual baseline contract for all eight manuals; no product or bootstrap assertion failed.
 - `git diff --cached --check` passed. Only the five intentional script/test/wiki paths are staged; pre-existing untracked `.codex-remote-attachments/` and `.venn/` remain untouched, and no GitHub Secret, backup file, production dispatch, NAS write or physical/release authorization was created.
+
+## [2026-08-10] fix | Handle empty GitHub Environment secret lists on Windows PowerShell
+
+- Reproduced the first-run failure with an exact `[]` response from `gh secret list --env production --json name`: Windows PowerShell 5 emitted the empty `System.Object[]` as a non-enumerated pipeline value, so StrictMode rejected the prior `ForEach-Object { $_.name }` access.
+- Added an explicit JSON-array enumerator that accepts an empty list, validates every non-empty record has a string `name`, and is reused for both pre-registration conflict detection and post-registration name verification. `-ValidateOnly` now mutation-checks empty and single-record parser behavior before generating ephemeral key material.
+- The reported failure occurred before `ShouldProcess`, key generation, encrypted backup creation or any `gh secret set` call; no partial OTA signing Secret state was created by that attempt.
+
+## [2026-08-10] test | Verify empty-list compatibility against the live production Environment
+
+- PowerShell AST parsing, the parser-enhanced no-write `-ValidateOnly` path and the focused bootstrap contract passed 5/5 on Windows PowerShell 5.
+- Reused the operator's exact key ID and external backup path with `-WhatIf`: current-process GitHub authentication, external path validation and the live empty `production` Environment Secret list all passed before `ShouldProcess` declined mutation.
+- Post-run verification confirmed the requested DPAPI backup path still does not exist and the `production` Environment still reports zero Secret names. No key, backup, Secret, workflow dispatch, NAS write or release authorization was created.

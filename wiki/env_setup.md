@@ -326,6 +326,9 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 - `OTA_SIGNING_PUBLIC_KEY_HEX`: 대응하는 raw Ed25519 public key의 lowercase 64-hex
 - `OTA_SIGNING_KEY_ID`: `[A-Za-z0-9._-]{1,64}` 형식의 운영자 지정 식별자
 
+GitHub Environment에 아직 Secret이 하나도 없어 CLI가 빈 JSON 배열 `[]`을 반환하는 최초 등록도
+Windows PowerShell 5와 PowerShell 7에서 동일하게 처리합니다.
+
 복구 파일의 private seed는 Windows DPAPI current-user로 암호화되며 UTF-8/no-BOM JSON으로
 저장됩니다. 일반적으로 같은 Windows 계정과 단말이 필요하므로, 운영 전 별도의 승인된 비밀관리
 시스템에도 독립 복구본을 보관해야 합니다. 저장소 내부 경로, 기존 파일 덮어쓰기, 세 Secret 중

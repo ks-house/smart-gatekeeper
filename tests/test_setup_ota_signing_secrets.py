@@ -61,6 +61,10 @@ class SetupOtaSigningSecretsContractTest(unittest.TestCase):
         'protection = "windows-dpapi-current-user"',
         "UTF8Encoding]::new($false)",
         "$PSCmdlet.ShouldProcess",
+        "ConvertFrom-GitHubSecretListJson",
+        'ConvertFrom-GitHubSecretListJson -Json "[]"',
+        "foreach ($item in @($parsed))",
+        'Properties["name"]',
     ):
       self.assertIn(fragment, source)
 
@@ -93,6 +97,7 @@ class SetupOtaSigningSecretsContractTest(unittest.TestCase):
     )
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertIn("OTA signing key generation validation passed.", result.stdout)
+    self.assertNotIn("parser compatibility validation failed", result.stdout)
     self.assertIn("No GitHub secret or backup file was created.", result.stdout)
     self.assertRegex(result.stdout, r"Public key: [0-9a-f]{64}\n")
     self.assertRegex(result.stdout, r"Public key SHA-256: [0-9a-f]{64}\n")
