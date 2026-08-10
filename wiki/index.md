@@ -18,7 +18,7 @@
 
 | Page | Summary |
 |------|---------|
-| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, Windows PlatformIO timeout/orphan 안전 복구, 시크릿, CI/CD와 GITHUB_TOKEN 인증 가이드 |
+| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, Windows PlatformIO timeout/orphan 안전 복구, OTA 서명 키 최초 등록, CI/CD와 GITHUB_TOKEN 인증 가이드 |
 | [orca_development_environment.md](orca_development_environment.md) | Orca 워크트리 자동 setup, doctor/validation, 프로파일 작업 시작과 안전한 완료 수명주기 |
 | [orca_lifecycle_incident.md](orca_lifecycle_incident.md) | #55 post-merge packaged worker-start 재발, staged-launcher workaround, 장기 lifecycle transport 증거와 fail-closed 복구 경계 |
 
