@@ -2798,3 +2798,14 @@
 - Confirmed from exact merged main `40aa3a05ab88464dc0aec7827a7a26ccc4b27d5d` that `.github/workflows/backend_security.yml` performs tests, real MariaDB migration checks, image builds, SBOM/claim attestation and evidence verification only; it does not push backend images, connect to the NAS or run production Compose.
 - The production path now requires separately provenance-approved digest-pinned API and DB images, external Docker secrets, a backup-first one-shot `migrate` service to schema `007`, then API admission through `/ready`. The API is read-only/non-root with no host port, the data network is internal, and a trusted mTLS reverse proxy is the only intended ingress.
 - `backend/docker-compose.yml` remains the local/development path with local builds, source/SQL bind mounts and convenience defaults; it must not be used as the production NAS deployment definition. Live NAS deployment, image publication, reverse-proxy wiring, independent restore and operator evidence remain pending.
+
+## [2026-08-12] compile | Add fail-closed personal production evidence profile
+
+- Added a reduced single-owner profile for the owner's primary phone and already-installed entrance Target: three screen-off trials, three Activity-terminated trials, and one each for Target reboot, network reconnect, relay boot fail-safe, and previous-version recovery.
+- Kept exact-main, signed artifact, post-deploy boot health, legacy access ownership, `ENABLE_HARDWARELESS_RC=0`, and all commercial production gates intact. The committed evidence file is an intentionally blocked template; no unobserved physical result or production authorization is asserted.
+- Added a standalone validator and regression tests rejecting incomplete trials, commercial scope, hardwareless enablement, missing safeguards, and undated owner approval.
+
+## [2026-08-12] test | Record owner-attested reduced physical checks
+
+- The repository owner explicitly confirmed the six personal-profile checks passed on the primary phone and installed entrance Target: screen-off 3/3, Activity-terminated 3/3, Target reboot 1/1, network reconnect 1/1, relay boot fail-safe 1/1, and previous-version recovery 1/1.
+- Recorded the attestation against current branch commit `17c54a906bfe4f2777b542763431ee29eae3ceb0`. Release remains blocked because this is not exact `main`, signed release artifact/manifest verification has not run, and post-deploy version/boot/health cannot precede deployment.
