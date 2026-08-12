@@ -407,22 +407,48 @@
       return devId;
     }
 
-    // Issue #49 retired device-ID-only status/enrolment. Issue #52 must
-    // provision a scoped possession credential before remote control is shown.
     async function checkUserStatus() {
       getOrCreateDeviceId();
-      document.getElementById('userName').innerText = '보안 등록 필요';
-      document.getElementById('unitNo').innerText = '관리자에게 앱 자격증명 등록을 요청하세요';
-      document.getElementById('statusBadge').className =
-        'status-badge status-pending';
-      document.getElementById('statusText').innerText = '원격 제어 비활성';
-      document.getElementById('signupSection').style.display = 'none';
+      if (window.GatekeeperNative && window.GatekeeperNative.postMessage) {
+        window.GatekeeperNative.postMessage(JSON.stringify({action: 'get_access_status'}));
+        return;
+      }
+      showUnregistered();
+    }
+
+    function showUnregistered() {
+      document.getElementById('userName').innerText = '미등록 기기';
+      document.getElementById('unitNo').innerText = '아래에서 출입 권한을 신청하세요';
+      document.getElementById('statusBadge').className = 'status-badge status-pending';
+      document.getElementById('statusText').innerText = '등록 필요';
+      document.getElementById('signupSection').style.display = 'block';
       document.getElementById('pendingSection').style.display = 'none';
       document.getElementById('btnOpen').disabled = true;
       document.getElementById('pulseRing').style.display = 'none';
       document.getElementById('actionStatus').innerText =
         '보유 증명 자격증명이 배포되기 전에는 원격 문 열기를 사용할 수 없습니다. 앱의 수동 로컬 GATT 복구를 사용하세요.';
     }
+
+    window.completeStatusCheck = function(data) {
+      if (!data || data.status === 'unregistered') {
+        showUnregistered();
+        return;
+      }
+      document.getElementById('userName').innerText = data.tenant_name || '등록 사용자';
+      document.getElementById('unitNo').innerText = data.unit_number || '-';
+      document.getElementById('signupSection').style.display = 'none';
+      document.getElementById('pendingSection').style.display =
+        data.status === 'pending' ? 'block' : 'none';
+      document.getElementById('statusBadge').className =
+        'status-badge ' + (data.status === 'approved' ? 'status-active' : 'status-pending');
+      document.getElementById('statusText').innerText =
+        data.status === 'approved' ? '승인됨' : '승인 대기';
+      document.getElementById('btnOpen').disabled = true;
+    };
+
+    window.nativeRequestFailed = function() {
+      completeAccessRequest(false, '요청 처리에 실패했습니다. 네트워크 연결을 확인해 주세요.');
+    };
 
     async function triggerDoorOpen() {
       const statusEl = document.getElementById('actionStatus');
@@ -433,8 +459,35 @@
 
     async function handleSignup(e) {
       e.preventDefault();
-      alert("익명 기기 ID 등록은 중단되었습니다. 관리자에게 보안 등록을 요청하세요.");
+      const button = e.target.querySelector('button[type="submit"]');
+      button.disabled = true;
+      button.innerText = '신청 중...';
+      if (!window.GatekeeperNative || !window.GatekeeperNative.postMessage) {
+        completeAccessRequest(false, '모바일 Smart Key 앱에서 신청해 주세요.');
+        return;
+      }
+      window.GatekeeperNative.postMessage(JSON.stringify({
+        action: 'request_access',
+        name: document.getElementById('inputName').value.trim(),
+        room_no: document.getElementById('inputRoom').value.trim()
+      }));
     }
+
+    window.completeAccessRequest = function(ok, message) {
+      const button = document.querySelector('#signupSection button[type="submit"]');
+      if (button) {
+        button.disabled = false;
+        button.innerText = '출입 권한 신청하기';
+      }
+      if (!ok) {
+        alert(message);
+        return;
+      }
+      document.getElementById('signupSection').style.display = 'none';
+      document.getElementById('pendingSection').style.display = 'block';
+      document.getElementById('statusText').innerText = '승인 대기';
+      alert(message);
+    };
 
     async function loadLogs() {
       try {

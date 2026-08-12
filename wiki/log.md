@@ -2817,3 +2817,9 @@
 
 - 개인 PROD 모바일 배포를 위해 격리 배포 브랜치에서만 보호된 Android 서명키로 APK를 생성하고, 모바일 manifest 서명·검증 후 기존 NAS 앱 업데이트 경로에 게시하는 수동 dispatch workflow를 사용한다. `main`의 OTA production release evidence gate와 trusted workflow 정책은 변경하지 않는다.
 - 개인 단일 관리자 PROD에서 브라우저로 `/admin`을 사용할 수 있도록 `/admin/login` 비밀번호 bootstrap, rate limit, Secure/HttpOnly/SameSite 세션, CSRF와 fresh personal-session 재인증을 추가했다. 기존 proxy-verified mTLS 경로와 상용 역할 분리는 유지하며 모바일 제어 API 키와 관리자 비밀번호를 분리한다.
+
+## [2026-08-12] fix | Restore personal enrollment visibility and diagnose legacy OTA
+
+- 관리자 tenant 조회에 실제 기기 식별 열을 포함해 빈 기기 ID 표시를 수정했다.
+- WebView 신청을 Flutter native API-key bridge로 연결하고 성공·실패·승인 대기 상태를 사용자에게 표시하도록 복구했다. 기존 active 기기의 재신청은 권한을 회수하지 않는다.
+- 설치 Target은 `2.1.0-g75b946a`, 마지막 reset `BROWNOUT`, MQTT offline으로 확인됐다. 해당 구형 버전에는 부팅/주기 HTTPS OTA pull이 없으므로 전원 재인가만으로 업데이트되지 않으며, 최초 업데이트는 Target이 MQTT에 온라인으로 복귀한 동안 legacy OTA 명령이 필요하다.

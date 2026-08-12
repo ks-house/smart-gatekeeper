@@ -27,6 +27,11 @@
 * **Native Shell (Flutter Engine)**: 화면에 보이지 않는 백그라운드 코어로, BLE 비콘 스캐닝, OS 권한 관리, FCM 푸시 알림 수신, 백엔드 Pre-arm API 호출 및 동적 설정(`/config`) 동기화 담당.
 * **WebView UI (Hosted on Synology NAS)**: 눈에 보이는 UI 전체. 시놀로지 NAS 웹 서버에서 렌더링되며, UI 변경 시 앱 업데이트 없이 백엔드 웹 소스 변경만으로 즉시 전 세입자 앱에 반영 (Zero-Update 전략).
 
+개인 PROD의 출입 권한 신청은 WebView가 API 키를 직접 보유하지 않는다. WebView는
+`GatekeeperNative` JavaScript channel로 이름/호수만 전달하고, Flutter native shell이
+설치별 `DEV-*` ID와 빌드 시 주입된 API 키를 붙여 백엔드에 신청한다. 성공/실패는
+반드시 WebView에 반환되어 버튼과 승인 대기 화면에 표시된다.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                              System Interaction Overview                                │

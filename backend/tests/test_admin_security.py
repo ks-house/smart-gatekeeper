@@ -347,6 +347,68 @@ class PersonalAdminLoginTest(unittest.TestCase):
         principal = self.security.principal(request, unsafe=True, reauthenticate=True)
         self.assertEqual("personal-admin", principal.subject)
 
+    def test_admin_tenant_list_includes_device_identifier(self) -> None:
+        login = self.client.post(
+            "/api/v1/admin/personal-sessions",
+            json={"password": "personal-admin-password-123456"},
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [{
+            "id": 401,
+            "name": "owner",
+            "unit_number": "personal",
+            "ble_device_mac": "DEV-BP4A25120500",
+            "is_active": True,
+        }]
+        with patch.object(main, "get_db", return_value=connection):
+            response = self.client.get(
+                "/api/v1/admin/tenants",
+                cookies={"sgk_admin_session": login.cookies["sgk_admin_session"]},
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("DEV-BP4A25120500", response.json()[0]["ble_device_mac"])
+        query = cursor.execute.call_args.args[0]
+        self.assertIn("ble_device_mac", query)
+
+
+class PersonalEnrollmentTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = TestClient(main.app, base_url="https://testserver")
+
+    def test_request_requires_app_key_and_persists_pending_device(self) -> None:
+        payload = {
+            "name": "owner",
+            "room_no": "personal",
+            "device_id": "DEV-BP4A25120500",
+        }
+        with patch.object(main, "GATEKEEPER_API_KEY", "app-secret"):
+            self.assertEqual(
+                401,
+                self.client.post("/api/v1/user/request", json=payload).status_code,
+            )
+            connection = MagicMock()
+            cursor = connection.cursor.return_value.__enter__.return_value
+            with patch.object(main, "get_db", return_value=connection):
+                response = self.client.post(
+                    "/api/v1/user/request",
+                    headers={"X-API-KEY": "app-secret"},
+                    json=payload,
+                )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("pending", response.json()["status"])
+        parameters = cursor.execute.call_args.args[1]
+        self.assertEqual("DEV-BP4A25120500", parameters[2])
+
+    def test_request_rejects_browser_generated_or_malformed_identifier(self) -> None:
+        with patch.object(main, "GATEKEEPER_API_KEY", "app-secret"):
+            response = self.client.post(
+                "/api/v1/user/request",
+                headers={"X-API-KEY": "app-secret"},
+                json={"name": "owner", "room_no": "personal", "device_id": "bad"},
+            )
+        self.assertEqual(422, response.status_code)
+
 
 if __name__ == "__main__":
     unittest.main()

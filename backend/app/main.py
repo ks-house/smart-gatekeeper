@@ -405,9 +405,9 @@ class AuthVerifyResponse(BaseModel):
     arm_published: Optional[bool] = Field(None, description="MQTT arm 발행 성공 여부")
 
 class UserRequestSchema(BaseModel):
-    name: str
-    room_no: str
-    device_id: str
+    name: str = Field(min_length=1, max_length=80)
+    room_no: str = Field(min_length=1, max_length=40)
+    device_id: str = Field(min_length=8, max_length=128, pattern=r"^DEV-[A-Z0-9]+$")
 
 
 class PersonalAdminLoginSchema(BaseModel):
@@ -852,7 +852,10 @@ def get_all_tenants_admin(request: Request):
     try:
         conn = get_db()
         with conn.cursor() as cur:
-            cur.execute("SELECT id, name, unit_number, is_active FROM tenants ORDER BY id DESC")
+            cur.execute(
+                "SELECT id, name, unit_number, ble_device_mac, is_active "
+                "FROM tenants ORDER BY id DESC"
+            )
             rows = [row for row in cur.fetchall() if principal.can_access_tenant(_legacy_tenant_scope(row["id"]))]
             return JSONResponse(content=rows, headers={"Content-Type": "application/json; charset=utf-8"})
     except Exception as e:
@@ -1068,9 +1071,11 @@ def get_remote_config():
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
-# Disabled after Issue #49: a device identifier in a URL is neither a session
-# nor safe for PII lookup.  Enrolment uses the proof-of-possession ACL flow.
-def get_user_me(device_id: str = Query(...)):
+@app.get("/api/v1/user/me")
+def get_user_me(
+    device_id: str = Query(...),
+    _auth=Depends(require_api_key),
+):
     """현재 기기(device_id)의 세입자 등록 상태 및 세입자 정보 조회"""
     mac_upper = device_id.strip().upper()
     log.info("[USER-ME] retired device-id lookup invoked")
@@ -1114,12 +1119,14 @@ def get_user_me(device_id: str = Query(...)):
         if conn:
             conn.close()
 
-# Disabled after Issue #49: anonymous device-id registration is a write-capable
-# control-plane path.  The authenticated ACL enrolment route replaces it.
-def request_user_access(req: UserRequestSchema):
+@app.post("/api/v1/user/request")
+def request_user_access(
+    req: UserRequestSchema,
+    _auth=Depends(require_api_key),
+):
     """신규 세입자 가입 및 출입 권한 신청"""
     mac_upper = req.device_id.strip().upper()
-    log.info("[USER-REQ] retired anonymous enrollment invoked")
+    log.info("[USER-REQ] authenticated personal enrollment requested")
     conn = None
     try:
         conn = get_db()
@@ -1128,7 +1135,7 @@ def request_user_access(req: UserRequestSchema):
             cur.execute(
                 "INSERT INTO tenants (name, unit_number, ble_device_mac, is_active) "
                 "VALUES (%s, %s, %s, false) "
-                "ON DUPLICATE KEY UPDATE name = VALUES(name), unit_number = VALUES(unit_number), is_active = false",
+                "ON DUPLICATE KEY UPDATE name = VALUES(name), unit_number = VALUES(unit_number)",
                 (req.name, req.room_no, mac_upper)
             )
         return JSONResponse(
@@ -1137,10 +1144,7 @@ def request_user_access(req: UserRequestSchema):
         )
     except Exception as e:
         log.error("[USER-REQ] request persistence unavailable")
-        return JSONResponse(
-            content={"status": "pending", "message": f"신청 완료 (대기 중)"},
-            headers={"Content-Type": "application/json; charset=utf-8"}
-        )
+        raise HTTPException(status_code=503, detail="request persistence unavailable") from e
     finally:
         if conn:
             conn.close()

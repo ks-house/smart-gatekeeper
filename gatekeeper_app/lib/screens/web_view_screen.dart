@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/device_id_service.dart';
 import '../services/update_checker.dart';
@@ -24,6 +26,9 @@ class WebViewScreen extends StatefulWidget {
 
 class _WebViewScreenState extends State<WebViewScreen>
     with WidgetsBindingObserver {
+  static const String _backendBaseUrl = String.fromEnvironment('BACKEND_URL',
+      defaultValue: 'https://tworimpa.synology.me:4442/api/v1');
+  static const String _apiKey = String.fromEnvironment('GATEKEEPER_API_KEY');
   late final WebViewController _controller;
   bool _isLoading = true;
   Timer? _updateCheckTimer;
@@ -59,6 +64,10 @@ class _WebViewScreenState extends State<WebViewScreen>
   void _setupController() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'GatekeeperNative',
+        onMessageReceived: (message) => _handleNativeMessage(message.message),
+      )
       ..setBackgroundColor(const Color(0xFF121212))
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -97,6 +106,54 @@ class _WebViewScreenState extends State<WebViewScreen>
           },
         ),
       );
+  }
+
+  Future<void> _handleNativeMessage(String rawMessage) async {
+    try {
+      final message = jsonDecode(rawMessage) as Map<String, dynamic>;
+      if (_apiKey.isEmpty) {
+        throw const FormatException('app authentication unavailable');
+      }
+      final deviceId = await DeviceIdService.getDeviceId();
+      if (message['action'] == 'get_access_status') {
+        final response = await http.get(
+          Uri.parse('$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
+          headers: {'X-API-KEY': _apiKey},
+        ).timeout(const Duration(seconds: 10));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw FormatException('status HTTP ${response.statusCode}');
+        }
+        await _controller.runJavaScript(
+          'window.completeStatusCheck(${jsonEncode(jsonDecode(response.body))});',
+        );
+        return;
+      }
+      if (message['action'] != 'request_access') {
+        throw const FormatException('unsupported action');
+      }
+      final response = await http
+          .post(
+            Uri.parse('$_backendBaseUrl/user/request'),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-KEY': _apiKey,
+            },
+            body: jsonEncode({
+              'name': message['name'],
+              'room_no': message['room_no'],
+              'device_id': deviceId,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      final ok = response.statusCode >= 200 && response.statusCode < 300;
+      await _controller.runJavaScript(
+        'window.completeAccessRequest(${ok ? 'true' : 'false'}, '
+        '${jsonEncode(ok ? '신청이 접수되었습니다.' : '신청 접수에 실패했습니다 (${response.statusCode}).')});',
+      );
+    } catch (error, stack) {
+      AppErrorLogger().logError('Access Request Error', error, stack);
+      await _controller.runJavaScript('window.nativeRequestFailed();');
+    }
   }
 
   Future<void> _loadUrlWithDeviceId() async {

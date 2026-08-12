@@ -23,6 +23,15 @@ The retired `/api/v1/door/open` device-ID bearer route and anonymous device-ID
 data/write routes are not registered. A supplied device ID is not proof of
 identity or permission.
 
+The single-owner personal app uses a narrower compatibility exception for
+enrollment only: Flutter native code, not WebView JavaScript, calls
+`POST /api/v1/user/request` with the build-injected mobile API key and the
+install-scoped device ID. New rows are pending; repeating the request for an
+already active device never revokes it. `GET /api/v1/user/me` uses the same
+native-held key. These endpoints do not open a door or publish MQTT. The admin
+tenant list includes `ble_device_mac` so the owner can match the pending row to
+the device code shown by the app.
+
 ## Deployment contract
 
 For a single-owner personal deployment, `PERSONAL_ADMIN_PASSWORD` enables the
