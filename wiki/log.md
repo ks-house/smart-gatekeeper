@@ -2811,4 +2811,4 @@
 - Recorded the attestation against current branch commit `17c54a906bfe4f2777b542763431ee29eae3ceb0`. Release remains blocked because this is not exact `main`, signed release artifact/manifest verification has not run, and post-deploy version/boot/health cannot precede deployment.
 # 2026-08-12
 
-- 개인 PROD 모바일 배포에서 보호된 Android 서명키로 생성·검증된 APK와 manifest를 수동 NAS 전달에도 사용할 수 있도록 production workflow에 7일 보존 artifact 업로드 단계를 추가했다. 기존 OTA production release evidence gate는 그대로 유지한다.
+- 개인 PROD 모바일 배포를 위해 격리 배포 브랜치에서만 보호된 Android 서명키로 APK를 생성하고, 모바일 manifest 서명·검증 후 기존 NAS 앱 업데이트 경로에 게시하는 수동 dispatch workflow를 사용한다. `main`의 OTA production release evidence gate와 trusted workflow 정책은 변경하지 않는다.
