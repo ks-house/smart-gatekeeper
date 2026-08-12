@@ -1,18 +1,19 @@
 # AGENTS.md — smart-gatekeeper Agent Collaboration Guide
 > **이 파일을 읽는 모든 AI 에이전트(Gemini, Claude, Antigravity 등)에게:**
 > 작업 시작 전 반드시 이 문서 전체를 읽고, 지침을 엄수하라.
-> Last updated: 2026-08-01
+> Last updated: 2026-08-12
 
 ---
 
 ## 0. TL;DR (30초 요약)
 
 ```
-프로젝트  : ESP32-C6 기반 BLE + ToF 스마트 출입 통제 시스템
-현재 단계 : Step 1 — 로컬 PoC (하드웨어 단독 테스트)
+프로젝트  : ESP32-C6 + Android + NAS 기반 스마트 출입 통제 시스템
+현재 단계 : 프로덕션 증거 수집 — 최신 코드와 현장 구형 Target 상태를 분리
 MCU       : ESP32-C6-DevKitC-1 (RISC-V, NOT Xtensa)
 플랫폼    : pioarduino (공식 espressif32 사용 금지)
-I2C 핀    : SDA=GPIO6, SCL=GPIO7 (GPIO21/22 절대 사용 금지)
+센서      : AJ-SR04T TRIG=GPIO10, ECHO=GPIO11 (5V ECHO 보호 필수)
+릴레이    : GPIO3 Active-LOW, OFF=INPUT High-Z (현장 전기 검증 필수)
 금지 핀   : GPIO 4,5,8,9,15 (스트래핑), 17,18,19,20 (USB/UART)
 지식베이스: wiki/index.md 를 먼저 읽어라
 로그      : wiki/log.md 에 반드시 기록하라
@@ -25,17 +26,17 @@ OTA       : 모바일 앱·Target OTA/rollback 경로는 최상위 불변조건 
 ## 1. 프로젝트 개요
 
 ### 목표
-시놀로지 NAS 백엔드 연동형 스마트폰 BLE + ToF 레이저 출입 통제 시스템.
+시놀로지 NAS 백엔드, Android 스마트키, ESP32-C6 BLE/MQTTS Target과 초음파·릴레이를 결합한 출입 통제 시스템.
 
 ### 5단계 로드맵
 
 | 단계 | 이름 | 상태 |
 |------|------|------|
-| **Step 1** | Local PoC — ToF + Relay 하드웨어 단독 검증 | 🟡 **현재 진행 중** |
-| Step 2 | BLE 연동 — 스마트폰 ↔ ESP32 잠금/해제 | 🔲 |
-| Step 3 | WiFi + MQTT — 시놀로지 NAS 연동 | 🔲 |
-| Step 4 | 방향 감지 — ToF 2채널 IN/OUT 판별 | 🔲 |
-| Step 5 | 프로덕션 — PCB, OTA, 케이스 가공 | 🔲 |
+| Step 1 | 초기 Local PoC — VL53L0X + relay | ✅ 역사적 완료 |
+| Step 2 | iBeacon/Android background access | ✅ 구현, OEM별 실기기 Gate 유지 |
+| Step 3 | Backend + per-Target MQTTS signed command | ✅ 저장소 구현, 현장 배포 확인 필요 |
+| Step 4 | Local GATT/ACL Hardwareless RC | 🟡 software core, default-OFF, physical Gate pending |
+| **Step 5** | signed OTA·운영·현장 production evidence | 🟡 **현재 진행 중** |
 
 ---
 
@@ -53,6 +54,8 @@ smart-gatekeeper/
 │   └── BOM_SmartGatekeeper_Step1.md
 ├── wiki/             ← 에이전트가 작성·유지하는 컴파일 지식
 │   ├── index.md      ← 🗺️ 탐색 지도 — 항상 여기부터 읽어라
+│   ├── project_status.md ← 구현·검증·배포 상태 분리
+│   ├── knowledge_management.md ← Obsidian·승격 규칙
 │   ├── log.md        ← 📋 시간순 변경 이력 (항상 append)
 │   ├── env_setup.md
 │   ├── pin_mapping.md
@@ -98,18 +101,18 @@ smart-gatekeeper/
 
 **허용 type:**
 
-| type | 용도 |
-|------|------|
-| `ingest` | raw/ 에 새 소스 추가 |
+| type      | 용도             |
+| --------- | -------------- |
+| `ingest`  | raw/ 에 새 소스 추가 |
 | `compile` | wiki 페이지 신규/수정 |
-| `code` | 펌웨어 소스 추가/수정 |
-| `test` | 하드웨어 테스트 결과 기록 |
-| `fix` | 오류 수정 |
-| `lint` | 링크·일관성 검사 |
+| `code`    | 펌웨어 소스 추가/수정   |
+| `test`    | 하드웨어 테스트 결과 기록 |
+| `fix`     | 오류 수정          |
+| `lint`    | 링크·일관성 검사      |
 
 ---
 
-## 5. 하드웨어 제약 (반드시 암기)
+## 5. 하드웨어 제약 (현재 코드 기준)
 
 ### MCU: ESP32-C6-DevKitC-1
 
@@ -120,10 +123,9 @@ smart-gatekeeper/
 | 아키텍처 | **RISC-V** (Xtensa 아님) |
 | Bluetooth | **BLE 5.3 전용** (Classic BT 없음) |
 | Logic level | **3.3V** |
-| I2C SDA | **GPIO 6** |
-| I2C SCL | **GPIO 7** |
+| Ultrasonic TRIG | **GPIO 10** |
+| Ultrasonic ECHO | **GPIO 11** (sensor 5 V output 보호 필요) |
 | Relay IN | **GPIO 3** |
-| ToF XSHUT | GPIO 10 (선택) |
 
 ### 절대 사용 금지 핀
 
@@ -133,21 +135,12 @@ smart-gatekeeper/
 🔴 내장 LED:                GPIO 8
 ```
 
-### VL53L0X 함정 (데이터시트 기반)
+### 현재 센서와 과거 I2C 이력
 
-```cpp
-// ✅ 올바른 초기화
-Wire.begin(6, 7, 400000UL);  // 400kHz 반드시 명시
-sensor.setTimeout(500);       // init() 전에 설정 필수
-
-// ✅ 올바른 읽기 (65535 sentinel 반드시 체크)
-uint16_t mm = sensor.readRangeContinuousMillimeters();
-if (mm == 65535 || sensor.timeoutOccurred()) { /* 에러 처리 */ }
-
-// ❌ 잘못된 초기화 (절대 금지)
-Wire.begin(21, 22);   // 구 ESP32 핀, C6에서 동작 불보장
-Wire.begin(6, 7);     // 100kHz 기본값 → 지연 발생
-```
+- 현재 거리 센서는 AJ-SR04T/JSN-SR04T 계열이며 `PIN_TRIG=10`, `PIN_ECHO=11`이다.
+- VL53L0X와 GPIO6/7 I2C는 초기 PoC 이력이며 현재 배선 지시가 아니다.
+- `src/main.cpp`의 GPIO6/7 bus-clear는 잔존 정리 대상이므로 두 핀은 충돌 방지를 위해 비워 둔다.
+- ECHO가 5 V이면 ESP32-C6 GPIO에 직결하지 말고 검증된 level shifting/divider를 사용한다.
 
 ### 릴레이 극성
 
@@ -169,12 +162,11 @@ framework = arduino
 build_flags =
     -DARDUINO_USB_CDC_ON_BOOT=1  ; 없으면 시리얼 모니터 안 열림
     -DARDUINO_USB_MODE=1
-lib_deps  = pololu/VL53L0X @ ^1.3.1
+lib_deps  = ArduinoJson, PubSubClient
 
-; 빌드 환경 3개
-[env:esp32c6]    ; 통합 빌드 (기본)
-[env:tof_test]   ; -DTEST_TOF_ONLY
-[env:relay_test] ; -DTEST_RELAY_ONLY
+; 현재 빌드 환경
+[env:esp32c6]            ; 기본, ENABLE_HARDWARELESS_RC=0
+[env:esp32c6_hwless_rc]  ; 명시적 lab-only, production 승인 아님
 ```
 
 ---
@@ -200,17 +192,18 @@ lib_deps  = pololu/VL53L0X @ ^1.3.1
 |--------|------|------|
 | `raw/` | `VENDOR_PART_TYPE.md` | `ST_VL53L0X_Specs.md` |
 | `wiki/` | `snake_case.md` | `pin_mapping.md` |
-| `src/`, `include/` | `PascalCase` | `ToFSensor.cpp` |
+| `src/`, `include/` | `PascalCase` | `UltrasonicSensor.cpp` |
 
 ---
 
-## 8. 현재 Open Questions (작업 시 참고)
+## 8. 현재 Open Questions / Release Gates
 
 | # | 질문 | 상태 |
 |---|------|------|
-| Q2 | 릴레이 점퍼 실제 위치 확인 | 🟡 하드웨어 도착 후 확인 필요 |
-| Q3 | ToF 센서 1개 vs 2개 (방향 감지 필요?) | 🔴 미결 |
-| Q4 | BLE 스택 선택 (NimBLE 권장) | 🔴 Step 2 진입 시 결정 |
+| Q1 | 매립 Target을 exact-main signed firmware로 복구·갱신하고 boot health를 확인했는가 | 🔴 Pending |
+| Q2 | GPIO3 relay High-Z OFF, ECHO 5 V 보호와 반복 구동을 현장에서 확인했는가 | 🔴 Pending |
+| Q3 | Wi-Fi/broker/WAN 장애 자동 복구와 wall-install SLO를 증명했는가 | 🔴 Pending |
+| Q4 | Android OEM background와 Hardwareless RC physical Gate를 닫았는가 | 🔴 Pending |
 
 ---
 

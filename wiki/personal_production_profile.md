@@ -1,6 +1,6 @@
 # Personal production profile
 
-> Status: configured but fail-closed until the owner records the reduced physical checks.
+> Status: reduced physical checks owner-attested on 2026-08-12; release remains fail-closed pending exact-main signed artifact deployment and post-deploy version/boot/health evidence.
 
 This profile is for one repository owner, one primary phone, and the ESP32-C6 Target already installed at the owner's entrance. It does not authorize a commercial deployment and does not weaken the commercial `production` workflow.
 
@@ -30,5 +30,7 @@ This profile is for one repository owner, one primary phone, and the ESP32-C6 Ta
 4. Add the owner identity and timezone-qualified approval timestamp.
 5. Set `release_blocked` to `false` only when every entry is complete.
 6. Run `python scripts/personal_production_gate.py --evidence <private-evidence.json>`.
+
+The reduced screen-off, Activity-terminated, Target reboot, network reconnect, relay boot fail-safe and previous-version recovery checks were owner-attested on 2026-08-12. They do not satisfy the remaining exact-main artifact identity and post-deploy health requirements.
 
 The validator passing is readiness evidence for the reduced personal profile. It is not commercial release evidence and does not alter `ota/release-evidence.json`.

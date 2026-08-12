@@ -1,78 +1,122 @@
-# current_code_audit.md — 최신 코드 기준 문서·구현 재분석
-> Audit date: 2026-07-30
-> Baseline: branch `work`, HEAD `8da8818`
+---
+title: smart-gatekeeper current code audit
+type: reference
+project: smart-gatekeeper
+status: active
+updated: 2026-08-12
+source_of_truth: true
+applies_to:
+  - firmware
+  - android
+  - backend
+  - ci
+---
+
+# 최신 코드 기준 구현 감사
+
+> Audit baseline: branch `main`, commit `406707c`
+>
+> 범위: repository implementation과 저장소 내 검증 계약. 현장 배포 상태는 [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md)를 별도로 따른다.
 
 ## 1. 결론
 
-저장소는 초기 문서가 설명하던 “ESP32 BLE scanner + VL53L0X ToF + ESP32 HTTPS 인증”을 이미 벗어났습니다. 최신 구현의 기준선은 **ESP32 iBeacon advertiser + Android foreground scanner + FastAPI/MariaDB 인증 + MQTT QoS1 Pre-arm + AJ-SR04T + GPIO3 relay**입니다.
+현재 저장소는 초기 “ESP32 scanner + VL53L0X + 직접 HTTPS 인증” PoC가 아니다. 기준 아키텍처는 **ESP32-C6 iBeacon/secure Target + Android foreground/native worker + FastAPI/MariaDB 관리면 + per-Target MQTTS signed command/ACL + AJ-SR04T + GPIO3 relay + signed recoverable OTA**다.
 
-이번 감사에서 README, architecture, environment, pin map, test matrix, index를 현재 코드에 맞춰 다시 컴파일했습니다. `raw/`와 append-only log의 과거 항목은 역사적 근거이므로 변경하지 않았습니다.
+Hardwareless RC의 Android worker, connectable GATT transport, signed ACL verifier와 Target FSM 연동은 소프트웨어에 존재하지만 기본·production 빌드는 `ENABLE_HARDWARELESS_RC=0`이다. 구현 존재를 production 활성화나 실기기 합격으로 확대 해석하지 않는다.
 
-## 2. 코드에서 확인한 현재 계약
+## 2. 현재 코드 계약
 
-| 계약 | 현재 값/동작 | 근거 코드 |
+| 계층 | 현재 값/동작 | 주요 근거 |
 |---|---|---|
-| Target board/build | ESP32-C6, pioarduino, `esp32c6`, 16 MB OTA | `platformio.ini` |
-| Sensor | AJ-SR04T, GPIO10/11, 20 cm min, 50 cm default | `include/config.h`, `src/UltrasonicSensor.cpp` |
-| Relay | GPIO3 Active-LOW, ON push-pull LOW, OFF INPUT High-Z; physical validation pending | `include/config.h`, `src/RelayController.cpp` |
-| Beacon | fixed UUID, 100 ms, +9 dBm default | `include/config.h`, `src/main.cpp` |
-| Target FSM | IDLE/ARMED/RELAY_HOLD/COOLDOWN | `src/main.cpp` |
-| Pre-arm | `gatekeeper/arm`, default 60 s | `include/config.h`, `src/MqttManager.cpp` |
-| App scan | service-isolate owner, monitor→range, EMA/hysteresis | `gatekeeper_app/lib/services/ble_scanner.dart` |
-| App request | `/door/prearm`, optional API key, 4 s timeout | same |
-| Backend delivery | approved device + QoS1 PUBACK; failure 503 | `backend/app/main.py` |
-| Deployment | firmware on every main push; APK main app changes/manual | `.github/workflows/*.yml` |
+| Target build | ESP32-C6, pioarduino, `esp32c6`, 16 MB dual OTA; lab-only `esp32c6_hwless_rc` | `platformio.ini`, `partitions_16MB_ota.csv` |
+| Sensor/relay | AJ-SR04T GPIO10/11, 20 cm min, 50 cm default; GPIO3 Active-LOW relay | `include/config.h`, `src/UltrasonicSensor.cpp`, `src/RelayController.cpp` |
+| Access FSM | `IDLE → ARMED → RELAY_HOLD → COOLDOWN → IDLE`; IDLE만 새 arm/manual open 허용 | `src/TargetAccessFsm.cpp`, `src/main.cpp` |
+| MQTT transport | Root CA, non-1883, Target ID principal, exact `gatekeeper/v1/targets/<id>/...` namespace; invalid provisioning closes command plane | `src/MqttManager.cpp` |
+| Command security | signed canonical envelope, target/tenant/door/boot binding, expiry, nonce/replay storage, command ACK | `src/TargetCommandSecurity.cpp`, `src/MqttManager.cpp`, `backend/app/command_security.py` |
+| Local ACL/GATT | signed ACL anti-rollback, P-256 proof, connection-owned GATT, offline event queue; compile/runtime default-OFF | `src/TargetAclManager.cpp`, `src/TargetProofVerifier.cpp`, `src/GattServer.cpp` |
+| Target OTA | periodic HTTPS, CA validation, Ed25519 manifest, SHA-256/size, inactive partition, safe-state wait, health mark/rollback, version floor | `src/OtaManager.cpp`, `include/OtaHealthPolicy.h`, `src/OtaVersionPolicy.cpp` |
+| Local recovery | provisioned authenticated recovery endpoints/AP with bounded AP window | `src/WifiManager.cpp`, `include/secrets.h.example` |
+| Android scanning | foreground-service isolate, monitoring/ranging, RSSI filtering, IPC/diagnostics | `gatekeeper_app/lib/services/foreground_service.dart`, `ble_scanner.dart` |
+| Android native path | PendingIntent BLE wake, secure storage/signing, durable GATT worker, manual retry | `gatekeeper_app/android/app/src/main/.../blewake`, `.../gattworker` |
+| Mobile update | signed manifest/artifact identity, recovery shell and first-run health contract | `gatekeeper_app/lib/services/update_checker.dart`, `update_contract.dart`, native identity policy |
+| Backend access | approved device lookup, signed boot-bound arm/manual/config commands, PUBACK wait | `backend/app/main.py`, `backend/app/command_security.py` |
+| Admin plane | mTLS trusted-proxy or personal session, server-side session, CSRF, RBAC/tenant scope, re-auth, rate limit | `backend/app/admin_security.py`, `backend/app/main.py` |
+| Operations | `/live` process liveness, `/ready` dependency/schema admission, metrics/privacy/retention, migration and production Compose contracts | `backend/app/ops_runtime.py`, `backend/compose.production.yml`, migrations 002–007 |
 
-## 3. 기존 문서에서 제거한 잘못된 현재형 설명
+## 3. 2026-07-30 감사에서 해결된 오래된 위험
 
-- ESP32가 스마트폰 BLE 광고를 스캔한다.
-- VL53L0X가 현재 출입 센서이며 GPIO6/7 I²C를 사용한다.
-- ESP32가 NAS `/auth/verify`를 직접 호출한다.
-- ToF 전용/relay 전용 PlatformIO 환경과 Pololu dependency가 현재 존재한다.
-- 과거 ToF E2E PASS가 현재 Android/초음파 흐름도 증명한다.
-- Target cooldown이 고정 10초다. 현재 기본은 3초이며 NVS/MQTT로 조정됩니다.
+| 과거 감사 내용 | 현재 판정 |
+|---|---|
+| MQTT가 TLS 실패 뒤 `setInsecure()` | **해결됨**: 현재 코드에 fallback이 없고 CA/identity/signing provisioning 실패 시 command plane이 비활성화된다. |
+| `/admin`과 admin API에 앱 인증 없음 | **해결됨(소프트웨어)**: session, CSRF, RBAC, tenant scope, fresh re-auth와 rate limit이 구현됐다. live proxy·operator 증거는 별도다. |
+| GATT transport가 ACL verifier/FSM/relay를 호출하지 않음 | **해결됨(소프트웨어, default-OFF)**: production event sink와 proof verifier, Target FSM lifecycle bridge가 연결됐다. physical Gate는 열리지 않았다. |
+| Target OTA가 MQTT 수동 `HTTPUpdate`뿐 | **해결됨(저장소 구현)**: periodic pull, signed manifest, inactive-slot install, health/rollback과 local recovery가 구현됐다. 구형 현장 Target에는 아직 설치되지 않았다. |
+| 관리자 force-open 단일 호출 | **상용 경로 강화됨**: dual-control, distinct approver, re-auth, idempotency/reconciliation 계약이 존재한다. 개인 profile은 별도 범위를 따른다. |
 
-## 4. 코드상 주요 잔존 위험
+## 4. 여전히 현재인 경계와 위험
 
-### P0 — 실기기 합격을 막는 미검증
+### P0 — 현장/배포 증거
 
-1. **iBeacon UUID byte order/stack 불일치**: `BLEDevice`/Bluedroid 설명과 NimBLE 형태 native field가 혼재합니다. raw advertisement 캡처 전에는 앱 filter 매칭을 보장할 수 없습니다.
-2. **릴레이/5V 전기 경계**: High-Z OFF는 현재 모듈 호환을 위한 우회이며, ECHO 5V 직결과 릴레이 역전류는 ESP32 latch-up 위험입니다.
-3. **Android 종료 정책**: 화면 OFF 경로는 강화됐지만 force-stop/OEM kill은 복구할 수 없습니다. 실제 Samsung/Xiaomi 등에서 확인해야 합니다.
+1. 매립 Target은 감사 시점에 구형 `2.1.0-g75b946a`였으며 최신 secure MQTT/periodic OTA 구현이 배포됐다는 증거가 없다.
+2. 최신 signed artifact의 install → reboot → expected version/boot ID → health confirmation이 필요하다.
+3. GPIO3 Active-LOW relay의 High-Z OFF, ECHO 5 V 보호, 전원 강하·노이즈·반복 구동은 물리 Gate다.
+4. Wi-Fi/AP/broker/WAN 장애 자동 복구와 벽 매립 연결 SLO는 실기기 증거가 필요하다.
+5. Android 화면 OFF/Activity 종료 증거와 force-stop/OEM kill 한계는 구분해야 한다.
 
-### P1 — 보안·운영 부채
+### P1 — production 운영
 
-1. **MQTT TLS fail-open**: Target은 TLS 실패 3회 후 `setInsecure()`를 사용해 broker 신원 검증을 포기합니다.
-2. **관리자 무인증**: `/admin` 및 admin API는 앱 레벨 인증이 없으며 승인 우회와 개인정보 노출 위험이 있습니다.
-3. **고정 beacon UUID**: 근접 신호는 복제 가능하고 보안 자격 증명이 아닙니다. 실제 권한은 device approval/API/MQTT ACL에 의존합니다.
-4. **문서 push의 운영 펌웨어 배포**: firmware workflow가 main의 path filter 없이 실행됩니다.
+1. production Compose, reverse proxy mTLS, migration, backup/restore는 코드 계약과 live NAS 실행 증거를 구분한다.
+2. signed command의 PUBACK/HTTP 성공은 Target authorization, command ACK, FSM과 relay 실행을 증명하지 않는다.
+3. Hardwareless RC는 software-complete라는 표현만 허용하며 compile/runtime default-OFF와 physical Gate를 유지한다.
+4. iBeacon은 presence hint이지 자격 증명이 아니다. 권한은 approved identity, signed command 또는 local proof가 결정한다.
 
-### P2 — 정리 대상
+### P2 — 정리 부채
 
-1. 현재 I²C 센서가 없는데 `clearI2CBus(6, 7)`가 부팅마다 실행됩니다.
-2. source/header 주석에 Bluedroid/NimBLE, ToF/ultrasonic 용어가 혼재합니다.
-3. `ConfigManager.h` 스타일과 일부 로그 prefix가 프로젝트 컨벤션과 다릅니다.
-4. `url_launcher`가 앱 dependency에 남아 있으나 최근 다운로드 경로는 Dio/open_filex로 전환됐습니다.
-5. 현재 릴레이 계약은 `AGENTS.md`, `schema.md`, `include/config.h`와 동일한 authoritative GPIO3입니다. 과거 GPIO23 현장 관측은 append-only 이력으로만 유지하며 현재 지침으로 사용하지 않습니다.
+1. `src/main.cpp`의 GPIO6/7 I²C bus-clear는 현재 AJ-SR04T 배선과 무관한 잔존 코드다.
+2. 일부 source 주석과 초기 governance 문서에는 Bluedroid/NimBLE, VL53L0X/ultrasonic 이력이 혼재했다. 현행 지침은 AJ-SR04T와 실제 source를 따른다.
+3. 문서별 frontmatter와 status는 새 문서부터 적용하며 기존 전체를 한 번에 재작성하지 않는다.
 
-## 5. 다음 우선순위
+## 5. 현재 출입 증거 사슬
 
-1. current HEAD PlatformIO build 및 Android/backend 정적 검증을 다시 실행합니다.
-2. nRF Connect raw payload와 interval을 캡처해 BLE stack/UUID 처리를 확정합니다.
-3. ECHO 레벨 시프터, optocoupler/flyback, 반복 relay 시험으로 전기적 안전을 먼저 닫습니다.
-4. 화면 OFF/task swipe-away/OEM battery policy별 실제 접근 시험을 수행합니다.
-5. MQTT broker 차단·잘못된 CA·PUBACK timeout 시험 후 insecure fallback 제거 정책을 결정합니다.
-6. admin authentication과 workflow path filter를 별도 보안 변경으로 처리합니다.
+```text
+iBeacon observed
+→ Android threshold/session decision
+→ HTTPS request accepted
+→ approved device/tenant
+→ broker PUBACK
+→ Target signed command authorization and ACK
+→ Target FSM ARMED
+→ ultrasonic valid sample
+→ relay ON/OFF event
+→ physical door outcome
+```
 
-## 6. 문서 신뢰도 규칙
+각 화살표는 별도 실패 경계다. `mqtt_published=true`는 broker PUBACK까지만 증명한다.
 
-- 현재 동작: 이 문서, `architecture.md`, 실제 코드가 기준입니다.
-- 테스트 합격: `hardware_test.md`에서 current architecture로 명시된 행만 인정합니다.
-- 과거 사실: `wiki/log.md`는 append-only 이력이므로 당시 사실과 현재 사실을 구분합니다.
-- 부품 원본: `raw/`는 초기 BOM/사양 보존용이며 현재 장착 부품 목록으로 해석하지 않습니다.
+## 6. 현재 OTA 증거 사슬
 
-## 7. 테스트 실행 위치 구분
+```text
+signed manifest/artifact published
+→ Target/mobile identity verification
+→ inactive/recoverable staging
+→ install/flash
+→ reboot/restart
+→ expected version and boot identity
+→ health window
+→ valid mark/application health
+```
 
-이 문서 현행화 작업에서 직접 실행한 Markdown 링크 검사, `py_compile`, `git diff --check`, PlatformIO 빌드 시도는 **GitHub Actions가 아니라 에이전트 작업 컨테이너**의 `/workspace/smart-gatekeeper`에서 수행했습니다. 이 컨테이너에는 Docker CLI가 없었고, PlatformIO는 pioarduino 의존성 다운로드 중 로컬 실행 환경의 TLS 인증서 체인 오류로 중단됐습니다.
+artifact upload, download 완료, workflow green 또는 MQTT PUBACK만으로 OTA 성공을 선언하지 않는다.
 
-`wiki/log.md`의 2026-07-30 Flutter format/analyze/test/APK PASS는 `gatekeeper_app-flutter-builder` Docker 컨테이너에서 얻은 별도 선행 증거입니다. 저장소 기록만으로는 그 Docker daemon의 물리 호스트가 개발자 PC인지 클라우드 VM인지 확정할 수 없으므로 “GitHub Actions에서 통과”로 확대 해석하지 않습니다. GitHub Actions 실행은 workflow/run 번호가 명시된 기록만 CI 증거로 취급합니다.
+## 7. 문서 신뢰도 규칙
+
+- 현재 요약: [project_status.md](project_status.md)와 이 문서
+- 세부 현재 계약: 실제 source/tests와 각 component 문서
+- 현장 배포: 사건·release evidence 문서
+- 검증 결과: [hardware_test.md](hardware_test.md) 및 run/artifact 식별자가 있는 기록
+- 과거 사실: append-only [log.md](log.md); 당시 사실을 현행으로 사용하지 않는다.
+- 초기 원본: `raw/`; 현재 BOM이나 현재 배선 지시가 아니다.
+
+## 8. 이번 감사의 한계
+
+이 갱신은 commit `406707c`의 source/config/test 계약을 정적으로 추적한다. 새 physical test, NAS 배포, firmware flash, APK install 또는 production authorization을 수행했다는 뜻이 아니다. 테스트 실행 결과는 이번 문서 정리의 최종 검증 기록과 `wiki/log.md`에 별도로 남긴다.

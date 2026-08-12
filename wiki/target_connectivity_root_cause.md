@@ -5,6 +5,8 @@
 > 범위: ESP32-C6 Target firmware, MQTT 전달, FastAPI backend, OTA 배포, 릴레이·초음파 전기 경계
 >
 > 01:34~02:19 원격 관측 뒤 v2.1 진단·안전 firmware 수정이 이어졌다. 배포 전/후 사실을 구분한다.
+>
+> Current-code note (2026-08-12): 이 문서의 “현재 코드”는 감사 기준 commit `707ca23`을 뜻한다. 최신 `406707c`에는 independent relay fail-safe, Target FSM interlock, per-Target MQTTS without `setInsecure`, signed command/OTA와 local recovery가 구현되어 있다. 최신 저장소 계약은 [current_code_audit.md](current_code_audit.md), 매립 구형 Target 상태는 [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md)를 따른다.
 
 ## 1. 결론
 
@@ -238,7 +240,7 @@ pure `WIFI_STA`로 전환해야 한다.
 - [ESP-IDF 5.5 ESP32-C6 Wi-Fi Driver — disconnect 시 socket 상태와 재생성](https://docs.espressif.com/projects/esp-idf/en/release-v5.5/esp32c6/api-guides/wifi.html)
 - [Arduino-ESP32 Wi-Fi API — `onEvent`](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/wifi.html#onevent-and-removeevent)
 
-## 6. 확정 결함 3 — 동기 TLS reconnect가 전체 제어 loop를 정지
+## 6. 확정 결함 3 — 당시 동기 TLS reconnect가 전체 제어 loop를 정지
 
 `src/MqttManager.cpp:188`의 `client.connect()`는 `src/main.cpp:350`에서 동기 실행된다.
 호출 순서는 다음과 같다.
@@ -266,7 +268,7 @@ delay(100)
 TCP connect 30초 + TLS handshake 120초 + MQTT CONNACK read 15초가 순차로 걸릴 수 있어
 DNS 시간을 빼도 단일 `client.connect()`가 약 165초에 접근할 가능성이 있다.
 재시도 gate는 5초지만 timestamp를 connect 전에 기록하므로 handshake가 5초를 넘으면 반환 직후
-다음 loop에서 거의 즉시 다시 시도할 수 있다. 3회 실패 뒤 `setInsecure()`로 바뀌기까지
+다음 loop에서 거의 즉시 다시 시도할 수 있었다. 당시 3회 실패 뒤 `setInsecure()`로 바뀌기까지
 반복 정지는 수분 단위가 될 수 있다.
 
 단, `platformio.ini`가 versioned package URL이 아니라 가변 `stable` URL을 사용하고 build metadata에
@@ -283,7 +285,7 @@ DNS 시간을 빼도 단일 `client.connect()`가 약 165초에 접근할 가능
 - MQTT callback의 `ota_update`는 `OtaManager::checkAndUpdate(true)`를 동기 실행한다.
   relay hold 중 OTA command가 함께 처리되면 HTTP 확인·다운로드·flash update 동안 cutoff가 지연될 수 있다.
 
-## 7. 확정 결함 4 — relay가 영구 ON으로 남을 수 있는 FSM
+## 7. 확정 결함 4 — 당시 relay가 영구 ON으로 남을 수 있던 FSM
 
 relay OFF는 `src/main.cpp:419-425`의 `GateState::RELAY_HOLD` case에만 있다.
 별도의 relay deadline이나 independent timer가 없다.

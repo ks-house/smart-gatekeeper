@@ -1,5 +1,7 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-07-31 (v2.1 remote reset diagnostics, UDP panic mitigation, relay fail-safe)
+> Last updated: 2026-08-12 (per-Target MQTTS signed command/ACL, secure OTA, admin control plane 반영)
+>
+> 저장소 구현과 현장 배포 상태의 차이는 [project_status.md](project_status.md)를 먼저 확인한다.
 
 ## 1. 범위
 
@@ -10,7 +12,7 @@ flowchart LR
   T[ESP32-C6 Target\niBeacon advertiser] -->|BLE UUID/RSSI| A[Android Smart Key\nforeground service]
   A -->|HTTPS POST /api/v1/door/prearm| B[FastAPI]
   B -->|approved device 조회| D[(MariaDB)]
-  B -->|QoS 1 + PUBACK\ngatekeeper/arm| M[MQTT broker]
+  B -->|QoS 1 + PUBACK\nsigned per-Target command| M[MQTT broker]
   M --> T
   S[AJ-SR04T\nGPIO10/11] --> T
   T -->|GPIO3, 1 s| R[Active-LOW relay]
@@ -33,10 +35,11 @@ sequenceDiagram
   A->>A: monitoring → ranging, EMA + 8 dB hysteresis
   A->>B: POST /api/v1/door/prearm (device_id, UUID, RSSI)
   B->>B: API key(설정 시) 및 승인 tenant 검증
-  B->>M: gatekeeper/arm, QoS 1
+  B->>M: boot-bound signed arm command, QoS 1
   M-->>B: PUBACK
   B-->>A: 200 result=armed, mqtt_published=true
-  M-->>E: {action: arm, user: ...}
+  M-->>E: canonical signed command envelope
+  E->>E: target/tenant/door/boot/time/nonce/signature 검증
   E->>E: IDLE → ARMED (기본 60 s)
   U->>S: 20–50 cm 접근
   S-->>E: filtered distance
@@ -57,24 +60,26 @@ IDLE --MQTT arm--> ARMED --valid ultrasonic--> RELAY_HOLD --1 s--> COOLDOWN --co
 
 - ARMED: 기본 60초, NVS/MQTT/Web 설정 가능
 - 거리: 5개 중앙값 필터, 20 cm 미만 무시, 기본 50 cm 임계값
-- manual open: `gatekeeper/force_open` 또는 `smart-gatekeeper/cmd`가 거리/arm을 우회
+- manual remote: 같은 signed per-Target command plane의 `manual_remote`; IDLE interlock과 관리자 승인 계약을 유지
 - AJ-SR04T는 IDLE에서 상시 trigger하지 않고 ARMED 동안만 측정
 - relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
   생겨도 timer task가 물리 출력을 OFF
 - relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소
-- telemetry: `smart-gatekeeper/status`, event/config/sensor-info 토픽
-- retained diagnostics: `smart-gatekeeper/boot`와 `smart-gatekeeper/availability`
+- telemetry: `gatekeeper/v1/targets/<target_id>/status`, `/event`, `/canonical-event`, `/sensor`, `/config-state`
+- diagnostics: 같은 Target namespace의 `/boot`와 `/availability`
   - target/boot ID, boot count, reset reason, planned restart, 이전 RTC breadcrumb
   - relay command/GPIO, heap/stack, BSSID/channel, MQTT reconnect
   - flash coredump panic reason/task/PC/RISC-V cause/ELF SHA
-- HA discovery: 부팅 후 MQTT 연결 때 22개 entity retained config 발행
-- OTA: NAS의 `version.json`과 firmware binary 사용, 16 MB dual-OTA partition
+- Home Assistant legacy discovery: 2026-07-31 배포 세대에는 존재했으나 현재 secure namespace 코드에는 자동 discovery publish가 없음
+- OTA: periodic HTTPS와 signed MQTT trigger, Ed25519 manifest, SHA-256/size 검증, inactive slot, safe-state, boot health/rollback, authenticated local recovery
 - 모바일 앱·Target OTA는 출입 기능보다 우선하는 P0 불변조건이다. 새 local BLE 인증
   구조도 update control plane을 scanner/FSM/MQTT 단일 경로와 독립시키고, dual-slot
   health/rollback과 mobile/Target N/N-1 호환을 유지해야 한다. 상세 계약은
   [ota_reliability_contract.md](ota_reliability_contract.md)를 따른다.
 
-#### MQTT 토픽 자동 등록 범위 감사 (2026-07-31)
+#### MQTT 토픽 자동 등록 범위 감사 (2026-07-31 historical snapshot)
+
+> 아래 10개 legacy subscribe/22개 HA discovery 설명은 2026-07-31 배포 세대의 이력이다. 현재 secure command plane은 `gatekeeper/v1/targets/<target_id>/command`와 `/acl`만 exact namespace로 구독하고, provisioning이 불완전하면 연결 기능을 닫는다. 현재 코드는 legacy Home Assistant discovery publish를 호출하지 않으므로 아래 수량을 최신 구현의 자동 등록 보장으로 사용하지 않는다.
 
 MQTT 브로커에는 토픽을 사전 "등록"하는 절차가 없습니다. 이 펌웨어에서 자동화되는 것은
 브로커 연결/재연결 직후의 **명령 토픽 subscribe**와 Home Assistant discovery config의
@@ -121,17 +126,20 @@ Wi-Fi 연결 실패 시 `SmartGatekeeper-Setup` AP/WebServer로 자격 증명과
 과거 coredump에서 `udp_new_ip_type` core-lock assertion이 확인돼 captive DNS와 기능상 불필요한
 SNTP 초기화를 제거했습니다. AP 설정 화면은 `http://192.168.4.1`로 직접 엽니다.
 정상 연결은 pure `WIFI_STA`로 전환하고 SoftAP를 종료하며, credential `/save`는 provisioning AP mode에서만
-허용합니다. 연결 상태에서는 15초 간격 watchdog이 `WiFi.reconnect()`를 호출합니다. MQTT는 Root CA로
-TLS 연결을 시작하지만 3회 실패 후 `setInsecure()`로 전환하는 현재 동작은 보안 부채입니다.
+허용합니다. 연결 상태에서는 watchdog이 재연결을 시도합니다. 현재 MQTT command plane은 Root CA,
+non-1883 port, Target ID와 일치하는 principal, signer와 tenant/door identity가 모두 provisioned되어야
+활성화됩니다. TLS 검증 실패를 `setInsecure()`로 우회하지 않습니다. 벽 매립형 연결 SLO와 재복구
+Gate는 [embedded_target_connectivity_policy.md](embedded_target_connectivity_policy.md)를 따릅니다.
 
 ### 3.3 BLE
 
 코드는 Arduino-ESP32 `BLEDevice` API를 사용하지만 UUID native field는 NimBLE 계열 형태를 참조하고 주석은 Bluedroid라고 명시하여 스택 정체가 불일치합니다. iBeacon manufacturer payload의 UUID byte order는 코드만으로 합격 판정하지 않으며 실측이 필요합니다.
 
-향후 connectable GATT local auth의 Android Keystore P-256 자격, MTU 독립 framing,
-canonical challenge/proof, signed ACL lease와 N/N-1 보안 계약은
-[security_protocol.md](security_protocol.md)를 따른다. 현재 iBeacon/MQTT 경로가 해당 계약을
-이미 구현했다는 뜻은 아니며 Wave 1 구현 전제 규격이다.
+Connectable GATT local auth의 Android Keystore P-256 자격, MTU 독립 framing,
+canonical challenge/proof, signed ACL과 N/N-1 보안 계약은
+[security_protocol.md](security_protocol.md)를 따릅니다. Android worker, Target GATT transport,
+proof verifier, signed ACL과 Target FSM 연결은 소프트웨어에 구현됐지만 기본·production 빌드는
+`ENABLE_HARDWARELESS_RC=0`입니다. physical/operator/OTA Gate 없이 활성화하지 않습니다.
 
 ## 4. Android 앱
 
@@ -146,7 +154,12 @@ canonical challenge/proof, signed ACL lease와 N/N-1 보안 계약은
 
 ## 5. Backend
 
-FastAPI는 MariaDB의 tenant/device 승인을 확인하고 Paho MQTT를 통해 arm/force-open/config 명령을 보냅니다. MQTT Pre-arm은 loop 시작, QoS 1 publish, PUBACK 대기 후에만 성공입니다. 앱 remote config로 beacon UUID, cooldown, RSSI threshold를 제공합니다. 관리자 API와 `/admin` UI 자체 인증은 아직 코드에 없으므로 reverse proxy 접근 제한 또는 애플리케이션 인증이 필요합니다.
+FastAPI는 MariaDB의 tenant/device 승인을 확인하고 boot registry에 묶인 signed arm/manual/config 명령을
+per-Target MQTTS topic으로 보냅니다. Pre-arm은 QoS 1 PUBACK 대기 후에만 HTTP 성공이지만, PUBACK은
+Target 실행 증거가 아닙니다. 관리자 경로는 configured trusted-proxy mTLS 또는 개인 관리자 session,
+server-side session, CSRF, RBAC/tenant scope, fresh re-auth와 rate limit을 적용합니다. 상용 force-open은
+서로 다른 제안자/승인자와 reconciliation 상태를 요구합니다. live reverse proxy와 production NAS
+운영 증거는 소프트웨어 구현과 별도로 검증합니다.
 
 ## 6. 실패 안전 경계
 
@@ -157,9 +170,14 @@ FastAPI는 MariaDB의 tenant/device 승인을 확인하고 Paho MQTT를 통해 a
 | MQTT publish/PUBACK 실패 | 503, 앱 짧은 재시도, 문 닫힘 |
 | arm 뒤 접근 없음 | 유효시간 만료 후 IDLE |
 | 센서 invalid/timeout/<20 cm | 릴레이 동작 없음 |
-| force-open MQTT 권한 탈취 | 센서/tenant 검증 우회 가능 — broker ACL 필수 |
-| Target TLS 검증 3회 실패 | 현재 insecure fallback — 암호화는 남지만 서버 인증 상실 |
+| invalid/expired/replayed signed command | Target 거부와 command ACK reason; relay 동작 없음 |
+| MQTT provisioning/TLS 검증 실패 | command plane 비활성 또는 재연결; insecure fallback 없음 |
+| force-open 승인·publish 불확실 | fail closed 또는 reconciliation required; 상태 확인 전 중복 발행 금지 |
 
 ## 7. 현 단계
 
-기능 구현은 Target, backend, Android, CI/CD까지 통합되어 **프로덕션 검증 단계**입니다. #18 GATT transport는 default-OFF이며 현재 signed ACL verifier/#20 FSM/relay를 호출하지 않습니다. 완료 조건은 최신 firmware/app 조합의 실기기 E2E, iBeacon raw payload, 24시간 RF soak, GPIO3 릴레이 전기 안전, Android OEM별 백그라운드 검증입니다. PCB/하우징 양산과 관리자 인증은 미완료입니다.
+저장소 기능은 Target, backend, Android, 보안·OTA·운영 계약까지 통합되어 **프로덕션 증거 수집 단계**입니다.
+GATT/ACL/FSM core는 연결됐지만 default-OFF이며 physical Gate가 남았습니다. 매립 Target은 최신 저장소
+firmware보다 오래된 배포본이므로 exact-main signed firmware의 install→reboot→version/boot/health 확인,
+연결 자동 복구, GPIO3 relay 전기 안전, Android OEM background, production NAS/proxy/backup/operator
+증거가 완료 조건입니다. 현재 요약은 [project_status.md](project_status.md)를 따릅니다.

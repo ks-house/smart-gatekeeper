@@ -2857,3 +2857,18 @@
 - Added a mandatory Wi-Fi STA, per-Target MQTTS and independent HTTPS OTA operating contract for Targets that cannot be physically accessed after wall installation.
 - Defined 15-second warning, 90-second critical and 10-minute field-escalation boundaries, plus power, AP, broker and WAN recovery commissioning tests.
 - Recorded current P0 gaps: boot-time recovery-AP STA retry proof, lost-IP TLS lifecycle proof, backend availability/status last-seen alerts and physical reconnect evidence. BLE visibility and MQTT PUBACK are explicitly insufficient evidence.
+
+## [2026-08-12] lint | Review Obsidian multi-project wiki governance
+
+- Reviewed the repository-native Markdown wiki, immutable `raw/` sources, navigation index and append-only log conventions as the basis for an Obsidian workspace.
+- Recommended keeping each project's Git repository as its knowledge source of truth, using Obsidian as an editing and navigation layer, and separating cross-project evergreen knowledge from project-specific decisions and evidence.
+- No product source, raw source, wiki page structure or index entry was changed; this entry records the governance review only.
+
+## [2026-08-12] compile | Align project wiki with current code and promote reusable knowledge
+
+- Added `project_status.md` to separate repository implementation, verified evidence and deployed state, including the current `406707c` source baseline and the older embedded Target deployment boundary.
+- Recompiled the current code audit, architecture, OTA snapshot, README, root/IDE agent guidance and schema for AJ-SR04T GPIO10/11, GPIO3 relay, per-Target MQTTS signed commands, admin sessions, default-OFF local GATT/ACL, signed recoverable OTA and remaining physical/production Gates.
+- Marked the 2026-08-08 commercial program and 2026-07-31 connectivity audit claims as historical snapshots where their admin, insecure-MQTT, OTA, GATT/FSM and relay findings have been superseded in current source, while retaining their still-pending physical and production evidence.
+- Added Obsidian/LLM governance with gradual metadata adoption, standard Markdown links, personal workspace exclusions and provenance-based promotion rules; updated the personal profile status after the owner's reduced physical attestation without claiming release completion.
+- Promoted only reusable wiki governance, evidence-layer, MQTT acknowledgement, OTA completion and mobile lifecycle patterns plus templates into `E:\knowledge-hub\knwlege-hub`; project-specific state remains authoritative in this repository.
+- Preserved `raw/`, historical append-only log entries, unrelated untracked directories and existing user edits.
