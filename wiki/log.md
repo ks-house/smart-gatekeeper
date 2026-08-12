@@ -2845,3 +2845,9 @@
 - Recomputed the complete ordered 57-file `utf8-lf-v1` map from exact product commit `d754f23a1028500248edb6a7025885c256e97c8c`; eight backend/admin contract files differ from the current baseline.
 - Added byte-identical `temporary-pr85-d754f23` and `future-pr85-persistent-baseline` identities so the exact product head can be admitted first and its later policy-main descendant can be admitted without widening the protected file set.
 - Kept this policy-only change separate from PR #85. Product merge remains conditional on the policy merge and fresh green hosted checks; final baseline rotation remains required immediately after product merge.
+
+## [2026-08-12] compile | Rotate PR #85 to the final trusted main baseline
+
+- After policy PR #86 and product PR #85 passed their hosted checks and were admin-merged, removed both bounded PR #85 transition identities.
+- Pinned the sole `current-main-baseline` to merged main `2d6b046b62d53381181d5c4bd8c25a9e781e42d1` with the same complete ordered 57-file digest map.
+- This final policy-only rotation changes no protected product or workflow file and closes the temporary authorization window after its hosted check and merge.
