@@ -2829,3 +2829,8 @@
 - Documented the restored authenticated mobile enrollment, approved-device door-button native bridge, signed build 141 deployment and external APK hash read-back.
 - Recorded that the embedded legacy Target still runs `2.1.0-g75b946a`: BLE beacon was observed, the last real broker session authenticated and later timed out, but no new boot/online evidence followed the power cycle and no OTA command was issued.
 - Distinguished the temporary duplicate `sgk-personal-prod-audit` client-ID takeover from the real Target session, confirmed zero remaining diagnostic processes, and preserved the exact next recovery and post-OTA verification boundary without secrets.
+
+## [2026-08-12] fix | Restore trusted mobile workflow before main review
+
+- Restored `.github/workflows/build_app.yml` byte-for-byte from current `origin/main` after the isolated personal PROD deployment completed; the temporary personal-only workflow is not proposed for main.
+- Kept the reviewed admin, authenticated enrollment, approved-device Local GATT bridge and incident documentation changes in the merge candidate. Standard Trusted Workflow, OTA contract and Android canary checks must pass on the new PR head before merge.
