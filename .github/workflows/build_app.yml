@@ -542,6 +542,16 @@ jobs:
             --apkanalyzer "$APKANALYZER" \
             --apksigner "$APKSIGNER"
 
+      - name: Preserve verified production APK for authorized manual delivery
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-mobile-${{ github.sha }}
+          path: |
+            dist/ks-house-gatekeeper.apk
+            dist/version.json
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Enforce OTA production release evidence
         env:
           OTA_SIGNING_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
