@@ -25,6 +25,19 @@ identity or permission.
 
 ## Deployment contract
 
+For a single-owner personal deployment, `PERSONAL_ADMIN_PASSWORD` enables the
+bounded `/admin/login` bootstrap without weakening or replacing the mTLS path.
+It creates a server-side `personal-session` principal scoped to `*`, uses the
+same Secure/HttpOnly/SameSite cookie and CSRF controls, rate-limits failed
+password attempts, and requires a fresh personal session marker for unsafe
+actions. Keep this secret separate from the mobile control API key. Commercial
+or multi-operator deployments must continue to use proxy-verified mTLS and
+separate operator/approver identities.
+
+The personal NAS compose binds API port `8000` on the NAS/LAN solely for the
+DSM reverse proxy, which terminates public HTTPS on `4442`. Do not forward port
+`8000` on the router.
+
 `ADMIN_MTLS_IDENTITIES_JSON` maps a proxy-verified certificate SHA-256
 fingerprint to a stable subject, roles, and allowed tenant scopes. The API only
 accepts the identity when `X-SSL-Client-Verify: SUCCESS` is supplied by the

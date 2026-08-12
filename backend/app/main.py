@@ -28,7 +28,7 @@ except Exception:
     HAS_PAHO_MQTT = False
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -409,6 +409,10 @@ class UserRequestSchema(BaseModel):
     room_no: str
     device_id: str
 
+
+class PersonalAdminLoginSchema(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
 class PrearmRequestSchema(BaseModel):
     beacon_uuid: str
     device_id: Optional[str] = None
@@ -548,7 +552,9 @@ async def deny_by_default_admin_routes(request: Request, call_next):
                 content={"detail": "request rate exceeded"},
                 headers={"Retry-After": str(retry_after)},
             )
-    if path.startswith("/api/v1/admin/") and path not in {"/api/v1/admin/sessions"}:
+    if path.startswith("/api/v1/admin/") and path not in {
+        "/api/v1/admin/sessions", "/api/v1/admin/personal-sessions"
+    }:
         try:
             required_roles = (ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR, ROLE_APPROVER)
             if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -774,6 +780,31 @@ def create_admin_session(request: Request, response: Response):
     return {"expires_at": principal.expires_at, "csrf_token": principal.csrf_token}
 
 
+@app.post("/api/v1/admin/personal-sessions")
+def create_personal_admin_session(payload: PersonalAdminLoginSchema, request: Request, response: Response):
+    identity = admin_security.authenticate_personal_password(request, payload.password)
+    token, principal = admin_security.issue_session(identity)
+    response.set_cookie(
+        ADMIN_SESSION_COOKIE, token, max_age=admin_security.session_seconds,
+        httponly=True, secure=True, samesite="strict", path="/",
+    )
+    return {
+        "expires_at": principal.expires_at,
+        "csrf_token": principal.csrf_token,
+        "auth_method": principal.auth_method,
+    }
+
+
+@app.get("/api/v1/admin/session")
+def get_admin_session(request: Request):
+    principal = _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
+    return {
+        "expires_at": principal.expires_at,
+        "csrf_token": principal.csrf_token,
+        "auth_method": principal.auth_method,
+    }
+
+
 @app.post("/api/v1/admin/sessions/rotate")
 def rotate_admin_sessions(request: Request):
     _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), reauthenticate=True)
@@ -784,6 +815,11 @@ def rotate_admin_sessions(request: Request):
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def get_admin_login():
+    return FileResponse(os.path.join(static_dir, "admin_login.html"), media_type="text/html")
 
 # ─── Web & Endpoints ──────────────────────────────────────────
 @app.get("/app", response_class=HTMLResponse)
@@ -796,7 +832,12 @@ def get_webview_app():
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin_console(request: Request):
-    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
+    try:
+        _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
+        raise
     """관리자 콘솔 웹 화면 반환"""
     admin_path = os.path.join(static_dir, "admin.html")
     if os.path.exists(admin_path):
@@ -903,7 +944,7 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         "mqtt": False,
         "runtime_secrets": bool(DB_PASSWORD and len(OPS_HMAC_KEY) >= 32),
         "control_api_auth": len(GATEKEEPER_API_KEY) >= 32,
-        "admin_auth": bool(admin_security.enabled and admin_security.trusted_proxy_ips),
+        "admin_auth": admin_security.browser_login_ready,
         "acl_management": bool(ACL_MANAGEMENT_ENABLED and _acl_runtime_ready),
         "legacy_prearm_retired": not _legacy_prearm_authority_enabled(),
         "build_identity": bool(re.fullmatch(r"[a-f0-9]{40}", BUILD_SHA)),

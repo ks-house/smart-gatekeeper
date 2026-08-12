@@ -245,19 +245,25 @@
   <script>
     let adminCsrfToken = null;
     let adminTenantScope = null;
+    let adminAuthMethod = 'mtls';
     async function bootstrapAdminSession() {
-      const res = await fetch('/api/v1/admin/sessions', { method: 'POST', credentials: 'same-origin' });
-      if (!res.ok) throw new Error('verified mTLS administrator session is required');
-      adminCsrfToken = (await res.json()).csrf_token;
-      adminTenantScope = sessionStorage.getItem('gatekeeperTenantScope') || prompt('Tenant scope (for example legacy:1)');
-      if (!adminTenantScope) throw new Error('tenant scope is required');
+      const res = await fetch('/api/v1/admin/session', { credentials: 'same-origin' });
+      if (res.status === 401) {
+        location.replace('/admin/login');
+        return new Promise(() => {});
+      }
+      if (!res.ok) throw new Error('관리자 세션을 확인할 수 없습니다.');
+      const session = await res.json();
+      adminCsrfToken = session.csrf_token;
+      adminAuthMethod = session.auth_method || 'mtls';
+      adminTenantScope = sessionStorage.getItem('gatekeeperTenantScope') || '*';
       sessionStorage.setItem('gatekeeperTenantScope', adminTenantScope);
     }
     function adminHeaders(unsafe = false) {
       const headers = { 'X-Tenant-ID': adminTenantScope };
       if (unsafe) {
         headers['X-CSRF-Token'] = adminCsrfToken;
-        headers['X-Admin-Reauthenticate'] = 'mtls';
+        headers['X-Admin-Reauthenticate'] = adminAuthMethod;
         headers['Idempotency-Key'] = crypto.randomUUID();
       }
       return headers;

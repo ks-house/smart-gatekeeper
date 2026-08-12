@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Smart Gatekeeper 관리자 로그인</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f172a;color:#f8fafc;font-family:system-ui,"Noto Sans KR",sans-serif;padding:20px}
+    main{width:min(100%,390px);background:#1e293b;border:1px solid #334155;border-radius:20px;padding:28px;box-shadow:0 18px 55px #02061780}
+    h1{font-size:23px;margin:0 0 8px}p{color:#94a3b8;margin:0 0 22px;line-height:1.55}label{display:block;font-weight:700;margin-bottom:8px}
+    input{width:100%;padding:14px;border-radius:11px;border:1px solid #475569;background:#0f172a;color:#fff;font-size:16px}
+    button{width:100%;margin-top:14px;padding:14px;border:0;border-radius:11px;background:#0284c7;color:#fff;font-size:16px;font-weight:800;cursor:pointer}
+    #message{min-height:22px;margin-top:14px;color:#fca5a5;font-size:14px}
+  </style>
+</head>
+<body>
+<main>
+  <h1>관리자 로그인</h1>
+  <p>개인 Smart Gatekeeper의 기기 권한을 관리합니다.</p>
+  <form id="loginForm">
+    <label for="password">관리자 비밀번호</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit">로그인</button>
+  </form>
+  <div id="message" role="alert"></div>
+</main>
+<script>
+  document.getElementById('loginForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = event.submitter;
+    const message = document.getElementById('message');
+    button.disabled = true;
+    message.textContent = '';
+    try {
+      const response = await fetch('/api/v1/admin/personal-sessions', {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({password: document.getElementById('password').value})
+      });
+      if (!response.ok) {
+        message.textContent = response.status === 429 ? '잠시 후 다시 시도하세요.' : '비밀번호가 올바르지 않습니다.';
+        return;
+      }
+      location.replace('/admin');
+    } catch (_) {
+      message.textContent = '서버에 연결할 수 없습니다.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

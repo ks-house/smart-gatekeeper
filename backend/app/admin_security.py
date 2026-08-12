@@ -47,6 +47,7 @@ class AdminPrincipal:
     session_id: str
     csrf_token: str
     expires_at: int
+    auth_method: str = "mtls"
 
     def can_access_tenant(self, tenant_id: str) -> bool:
         return "*" in self.tenants or tenant_id in self.tenants
@@ -60,6 +61,8 @@ class _Session:
     csrf_token: str
     expires_at: int
     key_epoch: int
+    issued_at: int
+    auth_method: str
 
 
 class AdminSecurity:
@@ -79,6 +82,7 @@ class AdminSecurity:
         auth_attempts: int = 5,
         auth_window_seconds: int = 60,
         trusted_proxy_ips: Optional[set[str]] = None,
+        personal_password: str = "",
     ) -> None:
         self.identities = identities or {}
         self.session_seconds = session_seconds
@@ -87,6 +91,7 @@ class AdminSecurity:
         self.auth_window_seconds = auth_window_seconds
         self.key_epoch = 1
         self.trusted_proxy_ips = trusted_proxy_ips or set()
+        self.personal_password = personal_password if len(personal_password) >= 20 else ""
         self._sessions: dict[str, _Session] = {}
         self._attempts: dict[str, list[int]] = {}
         self._lock = threading.Lock()
@@ -125,11 +130,16 @@ class AdminSecurity:
             auth_attempts=_positive_env("ADMIN_AUTH_RATE_LIMIT", 5, 1, 100),
             auth_window_seconds=_positive_env("ADMIN_AUTH_RATE_WINDOW_SECONDS", 60, 1, 3600),
             trusted_proxy_ips=trusted_proxies,
+            personal_password=os.getenv("PERSONAL_ADMIN_PASSWORD", "").strip(),
         )
 
     @property
     def enabled(self) -> bool:
-        return bool(self.identities)
+        return bool(self.identities) or bool(self.personal_password)
+
+    @property
+    def browser_login_ready(self) -> bool:
+        return bool(self.personal_password) or bool(self.identities and self.trusted_proxy_ips)
 
     def rotate_sessions(self) -> None:
         """Invalidate every existing session after identity/key rotation."""
@@ -137,8 +147,30 @@ class AdminSecurity:
             self.key_epoch += 1
             self._sessions.clear()
 
+    def authenticate_personal_password(self, request: Request, candidate: str) -> dict[str, Any]:
+        if not self.personal_password:
+            raise HTTPException(status_code=503, detail="personal administrator login is not configured")
+        client_key = request.client.host if request.client else "unknown"
+        now = int(time.time())
+        with self._lock:
+            attempts = [stamp for stamp in self._attempts.get(client_key, []) if stamp > now - self.auth_window_seconds]
+            if len(attempts) >= self.auth_attempts:
+                self._attempts[client_key] = attempts
+                raise HTTPException(status_code=429, detail="administrator authentication temporarily rate limited")
+        if not candidate or not secrets.compare_digest(candidate, self.personal_password):
+            self._failed_attempt(client_key, now)
+            raise HTTPException(status_code=401, detail="invalid administrator password")
+        with self._lock:
+            self._attempts.pop(client_key, None)
+        return {
+            "subject": "personal-admin",
+            "roles": frozenset((ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR)),
+            "tenants": frozenset(("*",)),
+            "auth_method": "personal-session",
+        }
+
     def authenticate_mtls(self, request: Request) -> dict[str, Any]:
-        if not self.enabled:
+        if not self.identities:
             raise HTTPException(status_code=503, detail="admin authentication is not configured")
         client_key = request.client.host if request.client else "unknown"
         now = int(time.time())
@@ -186,6 +218,7 @@ class AdminSecurity:
             session_id=session_id,
             csrf_token=secrets.token_urlsafe(32),
             expires_at=now + self.session_seconds,
+            auth_method=str(identity.get("auth_method", "mtls")),
         )
         with self._lock:
             self._sessions[session_id] = _Session(
@@ -195,6 +228,8 @@ class AdminSecurity:
                 csrf_token=principal.csrf_token,
                 expires_at=principal.expires_at,
                 key_epoch=self.key_epoch,
+                issued_at=now,
+                auth_method=principal.auth_method,
             )
         return token, principal
 
@@ -208,7 +243,7 @@ class AdminSecurity:
             session = self._sessions.get(session_id)
         if session is None or session.expires_at <= now or session.key_epoch != self.key_epoch:
             raise HTTPException(status_code=401, detail="administrator session expired or revoked")
-        principal = AdminPrincipal(session.subject, session.roles, session.tenants, session_id, session.csrf_token, session.expires_at)
+        principal = AdminPrincipal(session.subject, session.roles, session.tenants, session_id, session.csrf_token, session.expires_at, session.auth_method)
         if unsafe:
             supplied = request.headers.get(CSRF_HEADER, "")
             if not supplied or not secrets.compare_digest(supplied, session.csrf_token):
@@ -219,11 +254,15 @@ class AdminSecurity:
         if tenant_id and not principal.can_access_tenant(tenant_id):
             raise HTTPException(status_code=403, detail="tenant scope violation")
         if reauthenticate:
+            marker = request.headers.get(REAUTH_HEADER, "")
+            if session.auth_method == "personal-session":
+                if marker != "personal-session" or now - session.issued_at > self.reauth_seconds:
+                    raise HTTPException(status_code=403, detail="personal administrator re-login required")
+                return principal
             # Fresh mTLS proof binds the risky action to a current certificate.
             identity = self.authenticate_mtls(request)
             if identity["subject"] != principal.subject:
                 raise HTTPException(status_code=403, detail="re-authentication actor mismatch")
-            marker = request.headers.get(REAUTH_HEADER, "")
             if marker != "mtls":
                 raise HTTPException(status_code=403, detail="explicit re-authentication acknowledgement required")
         return principal

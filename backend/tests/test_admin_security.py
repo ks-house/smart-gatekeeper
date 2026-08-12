@@ -114,6 +114,7 @@ class AdminSecurityBypassTest(unittest.TestCase):
             self.assertEqual(401, self.client.post("/api/v1/admin/sessions").status_code)
         self.assertEqual(429, self.client.post("/api/v1/admin/sessions").status_code)
 
+
     def test_two_person_approval_publishes_exactly_once(self) -> None:
         """Persisted names, not obsolete aliases, authorize the approver path."""
         operator_csrf, _ = self._session(FINGERPRINT_A)
@@ -296,6 +297,55 @@ class AdminSecurityBypassTest(unittest.TestCase):
         publish.assert_not_called()
         connection.rollback.assert_called_once()
         connection.close.assert_called_once()
+
+
+class PersonalAdminLoginTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.security = AdminSecurity(
+            personal_password="personal-admin-password-123456",
+            session_seconds=900,
+            reauth_seconds=900,
+            auth_attempts=3,
+        )
+        self.patch = patch.object(main, "admin_security", self.security)
+        self.patch.start()
+        self.client = TestClient(main.app, base_url="https://testserver")
+
+    def tearDown(self) -> None:
+        self.patch.stop()
+
+    def test_browser_login_and_session(self) -> None:
+        self.assertEqual(200, self.client.get("/admin/login").status_code)
+        anonymous_admin = self.client.get("/admin", follow_redirects=False)
+        self.assertEqual(303, anonymous_admin.status_code)
+        self.assertEqual("/admin/login", anonymous_admin.headers["location"])
+        self.assertEqual(401, self.client.post(
+            "/api/v1/admin/personal-sessions", json={"password": "wrong"}
+        ).status_code)
+        response = self.client.post(
+            "/api/v1/admin/personal-sessions",
+            json={"password": "personal-admin-password-123456"},
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("personal-session", response.json()["auth_method"])
+        session = self.client.get("/api/v1/admin/session")
+        self.assertEqual(200, session.status_code, session.text)
+        self.assertEqual("personal-session", session.json()["auth_method"])
+        self.assertEqual(200, self.client.get("/admin").status_code)
+
+    def test_personal_reauthentication_marker_is_required(self) -> None:
+        login = self.client.post(
+            "/api/v1/admin/personal-sessions",
+            json={"password": "personal-admin-password-123456"},
+        )
+        request = MagicMock()
+        request.cookies = {"sgk_admin_session": login.cookies["sgk_admin_session"]}
+        request.headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+        with self.assertRaisesRegex(Exception, "re-login required"):
+            self.security.principal(request, unsafe=True, reauthenticate=True)
+        request.headers["X-Admin-Reauthenticate"] = "personal-session"
+        principal = self.security.principal(request, unsafe=True, reauthenticate=True)
+        self.assertEqual("personal-admin", principal.subject)
 
 
 if __name__ == "__main__":
