@@ -130,7 +130,8 @@ class _WebViewScreenState extends State<WebViewScreen>
       final deviceId = await DeviceIdService.getDeviceId();
       if (action == 'get_access_status') {
         final response = await http.get(
-          Uri.parse('$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
+          Uri.parse(
+              '$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
           headers: {'X-API-KEY': _apiKey},
         ).timeout(const Duration(seconds: 10));
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -149,7 +150,8 @@ class _WebViewScreenState extends State<WebViewScreen>
         ).timeout(const Duration(seconds: 10));
         if (statusResponse.statusCode < 200 ||
             statusResponse.statusCode >= 300 ||
-            (jsonDecode(statusResponse.body) as Map<String, dynamic>)['status'] !=
+            (jsonDecode(statusResponse.body)
+                    as Map<String, dynamic>)['status'] !=
                 'approved') {
           throw const FormatException('device is not approved');
         }

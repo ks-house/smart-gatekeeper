@@ -2834,3 +2834,8 @@
 
 - Restored `.github/workflows/build_app.yml` byte-for-byte from current `origin/main` after the isolated personal PROD deployment completed; the temporary personal-only workflow is not proposed for main.
 - Kept the reviewed admin, authenticated enrollment, approved-device Local GATT bridge and incident documentation changes in the merge candidate. Standard Trusted Workflow, OTA contract and Android canary checks must pass on the new PR head before merge.
+
+## [2026-08-12] fix | Apply CI Dart formatting
+
+- Applied the stable Dart formatter to `gatekeeper_app/lib/screens/web_view_screen.dart`, the only file reported by the Android canary formatting gate.
+- Re-ran the repository mobile format check across `gatekeeper_app/lib` and `gatekeeper_app/test`; all 28 Dart files now require no changes.
