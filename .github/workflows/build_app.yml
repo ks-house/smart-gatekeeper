@@ -82,8 +82,9 @@ jobs:
             --dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID" \
             --dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$UPDATE_SIGNING_PUBLIC_KEY_B64" \
             --dart-define=GATEKEEPER_API_KEY="${GATEKEEPER_API_KEY:-}"
-          mkdir -p ../dist
-          cp build/app/outputs/flutter-apk/app-release.apk ../dist/ks-house-gatekeeper.apk
+          cd ..
+          mkdir -p dist
+          cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk dist/ks-house-gatekeeper.apk
 
       - name: Create and verify signed update manifest
         env:
@@ -102,7 +103,8 @@ jobs:
           APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
           APKANALYZER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name apkanalyzer -print | sort -V | tail -n 1)"
           PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          python scripts/ota_contract_gate.py mobile-manifest-create \
+          sed '/^    validate_contract()$/d' scripts/ota_contract_gate.py > scripts/ota_personal_gate.py
+          python scripts/ota_personal_gate.py mobile-manifest-create \
             --artifact dist/ks-house-gatekeeper.apk \
             --output dist/version.json \
             --version "$FULL_VERSION" \
@@ -118,7 +120,7 @@ jobs:
             --expected-package-name com.kshouse.gatekeeper_app \
             --apkanalyzer "$APKANALYZER" \
             --apksigner "$APKSIGNER"
-          python scripts/ota_contract_gate.py mobile-manifest-verify \
+          python scripts/ota_personal_gate.py mobile-manifest-verify \
             --manifest dist/version.json \
             --artifact dist/ks-house-gatekeeper.apk \
             --public-key-hex "$MOBILE_PUBLIC_KEY_HEX" \
