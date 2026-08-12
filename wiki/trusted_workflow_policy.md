@@ -49,29 +49,25 @@ fail closed. When an exact temporary identity and a persistent baseline both cov
 the exact temporary match takes precedence without invoking ancestry; later descendants use only the one
 persistent baseline.
 
-The PR #85 transition contains exactly two non-ambiguous authorizations for one byte-identical complete
-57-file set. `temporary-pr85-d754f23` is a `temporary-exact` identity for repository
-`ks-house/smart-gatekeeper` at exact product commit
-`d754f23a1028500248edb6a7025885c256e97c8c`. `future-pr85-persistent-baseline` uses the same repository,
-source commit, ordered paths, and 57 digests, but admits only that source or a GitHub Compare-proven descendant.
-Exact-match precedence selects the temporary identity at the reviewed head without invoking ancestry; after the
-policy lands and PR #85 integrates the new main once, only the persistent identity can admit the resulting
-descendant while all protected bytes remain unchanged.
+The completed PR #85 rotation contains exactly one authorization for the complete 57-file set.
+`current-main-baseline` is a `persistent-baseline` for repository `ks-house/smart-gatekeeper` at exact merged
+main commit `2d6b046b62d53381181d5c4bd8c25a9e781e42d1`. The temporary `temporary-pr85-d754f23` and transition
+`future-pr85-persistent-baseline` identities are removed. The source commit itself passes by exact identity;
+later candidates must retain every protected byte and prove that they descend from this exact source through
+GitHub Compare.
 
 All 57 `utf8-lf-v1` digests were recomputed from the exact PR #85 Git object bytes. Eight protected files differ
 from the current baseline: `ops/backend_trusted_bundle_paths.json`, `backend/.env.example`,
 `backend/app/admin_security.py`, `backend/app/main.py`, `backend/app/static/admin.html`,
 `backend/app/static/index.html`, `backend/docker-compose.yml`, and
-`backend/tests/test_admin_security.py`. The complete ordered digest maps in both transition identities are
-byte-identical; this is authorization of that exact reviewed bundle, not production, physical, release, NAS,
-or deployment evidence.
+`backend/tests/test_admin_security.py`. The final baseline map is byte-identical to both transition identities;
+this authorization boundary is not production, physical, release, NAS, or deployment evidence.
 
-Regression tests pin the exact repository, source commit, modes, two-bundle count, ordered path set, and every
+Regression tests pin the exact repository, merged-main source commit, sole-bundle count and mode, ordered path set, and every
 digest. They reject an extra bundle, fork, retired or altered commit, unproven/diverged history, case/path
 variant, old five-path partial set, missing or reordered path, swapped/mixed/per-file digest mutation, and
-candidate policy/validator self-use. The former `current-main-baseline` is intentionally replaced; retaining it
-would create a second persistent authorization for the repository and violate the schema. No branch, wildcard,
-partial set, mixed set, candidate-derived digest, or third baseline is approved.
+candidate policy/validator self-use. No temporary identity, branch, wildcard, partial set, mixed set,
+candidate-derived digest, transition identity, or second baseline is approved.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -84,11 +80,12 @@ Changes to these trust-control files still require an explicit security review b
 effect begins only after they become default-branch code.
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
-main; later protected bundles completed the same bounded sequence. This PR #85 authorization changes only policy
-data, regression tests, this guide, and the append-only log. It does not modify the validator or trusted workflow.
-Its own hosted check executes the old trusted-base policy and validator, which admit the policy PR normally
-because its head retains all 57 current protected bytes. A green Hosted Trusted check is required before admin
-merge; no branch-protection change is authorized.
+main; later protected bundles completed the same bounded sequence. PR #86 authorized PR #85's whole protected
+bundle, and PR #85 integrated that policy once before merging as exact main
+`2d6b046b62d53381181d5c4bd8c25a9e781e42d1`. This final rotation changes only policy data, regression tests,
+this guide, and the append-only log. It does not modify the validator or trusted workflow. Its hosted check
+executes the trusted-base transition policy, which admits this descendant because all 57 protected bytes remain
+unchanged. A green Hosted Trusted check is required before admin merge; no branch-protection change is authorized.
 
 ## 4. Rotation procedure
 
@@ -99,19 +96,17 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For PR #85, first merge this policy-only PR from exact trusted main. Do not merge PR #85 in the same operation.
-PR #85 must then integrate that exact new main once without rewriting history, preserve the new-main
-`wiki/log.md` prefix and its existing suffix exactly once, retain all 57 authorized protected digests, and
-receive fresh hosted checks. GitHub Compare must prove
-`d754f23a1028500248edb6a7025885c256e97c8c` is an ancestor of the new PR head before the persistent identity
-may admit it.
+For PR #85, the transition policy was merged separately as PR #86, PR #85 integrated that exact main once
+without rewriting history, retained the complete authorized 57-file map, received fresh hosted checks, and then
+merged as exact main `2d6b046b62d53381181d5c4bd8c25a9e781e42d1`. GitHub Compare proved the required
+candidate ancestry throughout that sequence.
 
-After PR #85 merges, immediately create a separate final policy-only rotation. It removes both PR #85
-transition identities and pins one `persistent-baseline` named `current-main-baseline` to the actual merged-main
-57-file bundle. The transition baseline admits that final rotation only when GitHub Compare proves ancestry and
-every protected byte is unchanged. Then verify current-main policy selection and main CI. Any path, digest,
-repository, or reviewed source-commit change requires a fresh whole-bundle review; never prolong the transition
-window or reuse a retired transition identity.
+This separate final policy-only rotation removes both PR #85 transition identities and pins the sole
+`persistent-baseline` named `current-main-baseline` to that actual merged-main 57-file bundle. The trusted-main
+transition baseline admits this final rotation only when GitHub Compare proves ancestry and every protected byte
+is unchanged. After merge, verify current-main policy selection and main CI. Any path, digest, repository, or
+reviewed source-commit change requires a fresh whole-bundle review; never prolong the transition window or reuse
+a retired transition identity.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
