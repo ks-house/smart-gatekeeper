@@ -9,7 +9,6 @@ permissions:
 jobs:
   build_sign_deploy:
     name: Build, sign, and deploy personal PROD APK
-    environment: production
     runs-on: ubuntu-latest
     steps:
       - name: Checkout deployment branch
