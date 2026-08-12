@@ -4,6 +4,10 @@
 
 ---
 
+## [2026-08-12] deploy | Restore personal NAS reverse-proxy binding
+
+- Restored `8000:8000` for the DSM HTTPS reverse proxy; router port 8000 remains unforwarded.
+
 ## [2026-06-26] compile | wiki 초기 뼈대 생성 (schema.md, index.md, log.md)
 
 - `schema.md` 생성: 디렉토리 레이아웃, 네이밍 컨벤션, 코드 스타일, 워크플로우 정의
@@ -2809,6 +2813,32 @@
 
 - The repository owner explicitly confirmed the six personal-profile checks passed on the primary phone and installed entrance Target: screen-off 3/3, Activity-terminated 3/3, Target reboot 1/1, network reconnect 1/1, relay boot fail-safe 1/1, and previous-version recovery 1/1.
 - Recorded the attestation against current branch commit `17c54a906bfe4f2777b542763431ee29eae3ceb0`. Release remains blocked because this is not exact `main`, signed release artifact/manifest verification has not run, and post-deploy version/boot/health cannot precede deployment.
+# 2026-08-12
+
+- 개인 PROD 모바일 배포를 위해 격리 배포 브랜치에서만 보호된 Android 서명키로 APK를 생성하고, 모바일 manifest 서명·검증 후 기존 NAS 앱 업데이트 경로에 게시하는 수동 dispatch workflow를 사용한다. `main`의 OTA production release evidence gate와 trusted workflow 정책은 변경하지 않는다.
+- 개인 단일 관리자 PROD에서 브라우저로 `/admin`을 사용할 수 있도록 `/admin/login` 비밀번호 bootstrap, rate limit, Secure/HttpOnly/SameSite 세션, CSRF와 fresh personal-session 재인증을 추가했다. 기존 proxy-verified mTLS 경로와 상용 역할 분리는 유지하며 모바일 제어 API 키와 관리자 비밀번호를 분리한다.
+
+## [2026-08-12] fix | Restore personal enrollment visibility and diagnose legacy OTA
+
+- 관리자 tenant 조회에 실제 기기 식별 열을 포함해 빈 기기 ID 표시를 수정했다.
+- WebView 신청을 Flutter native API-key bridge로 연결하고 성공·실패·승인 대기 상태를 사용자에게 표시하도록 복구했다. 기존 active 기기의 재신청은 권한을 회수하지 않는다.
+- 설치 Target은 `2.1.0-g75b946a`, 마지막 reset `BROWNOUT`, MQTT offline으로 확인됐다. 해당 구형 버전에는 부팅/주기 HTTPS OTA pull이 없으므로 전원 재인가만으로 업데이트되지 않으며, 최초 업데이트는 Target이 MQTT에 온라인으로 복귀한 동안 legacy OTA 명령이 필요하다.
+
+## [2026-08-12] compile | Record personal PROD mobile and embedded Target incident
+
+- Documented the restored authenticated mobile enrollment, approved-device door-button native bridge, signed build 141 deployment and external APK hash read-back.
+- Recorded that the embedded legacy Target still runs `2.1.0-g75b946a`: BLE beacon was observed, the last real broker session authenticated and later timed out, but no new boot/online evidence followed the power cycle and no OTA command was issued.
+- Distinguished the temporary duplicate `sgk-personal-prod-audit` client-ID takeover from the real Target session, confirmed zero remaining diagnostic processes, and preserved the exact next recovery and post-OTA verification boundary without secrets.
+
+## [2026-08-12] fix | Restore trusted mobile workflow before main review
+
+- Restored `.github/workflows/build_app.yml` byte-for-byte from current `origin/main` after the isolated personal PROD deployment completed; the temporary personal-only workflow is not proposed for main.
+- Kept the reviewed admin, authenticated enrollment, approved-device Local GATT bridge and incident documentation changes in the merge candidate. Standard Trusted Workflow, OTA contract and Android canary checks must pass on the new PR head before merge.
+
+## [2026-08-12] fix | Apply CI Dart formatting
+
+- Applied the stable Dart formatter to `gatekeeper_app/lib/screens/web_view_screen.dart`, the only file reported by the Android canary formatting gate.
+- Re-ran the repository mobile format check across `gatekeeper_app/lib` and `gatekeeper_app/test`; all 28 Dart files now require no changes.
 
 ## [2026-08-12] compile | Authorize the exact PR #85 protected bundle
 

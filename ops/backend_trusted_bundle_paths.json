@@ -21,6 +21,7 @@
     "backend/app/requirements.lock",
     "backend/app/requirements.txt",
     "backend/app/static/admin.html",
+    "backend/app/static/admin_login.html",
     "backend/app/static/index.html",
     "backend/app/target_boot_registry.py",
     "backend/compose.production.yml",

@@ -114,6 +114,7 @@ class AdminSecurityBypassTest(unittest.TestCase):
             self.assertEqual(401, self.client.post("/api/v1/admin/sessions").status_code)
         self.assertEqual(429, self.client.post("/api/v1/admin/sessions").status_code)
 
+
     def test_two_person_approval_publishes_exactly_once(self) -> None:
         """Persisted names, not obsolete aliases, authorize the approver path."""
         operator_csrf, _ = self._session(FINGERPRINT_A)
@@ -296,6 +297,117 @@ class AdminSecurityBypassTest(unittest.TestCase):
         publish.assert_not_called()
         connection.rollback.assert_called_once()
         connection.close.assert_called_once()
+
+
+class PersonalAdminLoginTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.security = AdminSecurity(
+            personal_password="personal-admin-password-123456",
+            session_seconds=900,
+            reauth_seconds=900,
+            auth_attempts=3,
+        )
+        self.patch = patch.object(main, "admin_security", self.security)
+        self.patch.start()
+        self.client = TestClient(main.app, base_url="https://testserver")
+
+    def tearDown(self) -> None:
+        self.patch.stop()
+
+    def test_browser_login_and_session(self) -> None:
+        self.assertEqual(200, self.client.get("/admin/login").status_code)
+        anonymous_admin = self.client.get("/admin", follow_redirects=False)
+        self.assertEqual(303, anonymous_admin.status_code)
+        self.assertEqual("/admin/login", anonymous_admin.headers["location"])
+        self.assertEqual(401, self.client.post(
+            "/api/v1/admin/personal-sessions", json={"password": "wrong"}
+        ).status_code)
+        response = self.client.post(
+            "/api/v1/admin/personal-sessions",
+            json={"password": "personal-admin-password-123456"},
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("personal-session", response.json()["auth_method"])
+        session = self.client.get("/api/v1/admin/session")
+        self.assertEqual(200, session.status_code, session.text)
+        self.assertEqual("personal-session", session.json()["auth_method"])
+        self.assertEqual(200, self.client.get("/admin").status_code)
+
+    def test_personal_reauthentication_marker_is_required(self) -> None:
+        login = self.client.post(
+            "/api/v1/admin/personal-sessions",
+            json={"password": "personal-admin-password-123456"},
+        )
+        request = MagicMock()
+        request.cookies = {"sgk_admin_session": login.cookies["sgk_admin_session"]}
+        request.headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+        with self.assertRaisesRegex(Exception, "re-login required"):
+            self.security.principal(request, unsafe=True, reauthenticate=True)
+        request.headers["X-Admin-Reauthenticate"] = "personal-session"
+        principal = self.security.principal(request, unsafe=True, reauthenticate=True)
+        self.assertEqual("personal-admin", principal.subject)
+
+    def test_admin_tenant_list_includes_device_identifier(self) -> None:
+        login = self.client.post(
+            "/api/v1/admin/personal-sessions",
+            json={"password": "personal-admin-password-123456"},
+        )
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [{
+            "id": 401,
+            "name": "owner",
+            "unit_number": "personal",
+            "ble_device_mac": "DEV-BP4A25120500",
+            "is_active": True,
+        }]
+        with patch.object(main, "get_db", return_value=connection):
+            response = self.client.get(
+                "/api/v1/admin/tenants",
+                cookies={"sgk_admin_session": login.cookies["sgk_admin_session"]},
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("DEV-BP4A25120500", response.json()[0]["ble_device_mac"])
+        query = cursor.execute.call_args.args[0]
+        self.assertIn("ble_device_mac", query)
+
+
+class PersonalEnrollmentTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = TestClient(main.app, base_url="https://testserver")
+
+    def test_request_requires_app_key_and_persists_pending_device(self) -> None:
+        payload = {
+            "name": "owner",
+            "room_no": "personal",
+            "device_id": "DEV-BP4A25120500",
+        }
+        with patch.object(main, "GATEKEEPER_API_KEY", "app-secret"):
+            self.assertEqual(
+                401,
+                self.client.post("/api/v1/user/request", json=payload).status_code,
+            )
+            connection = MagicMock()
+            cursor = connection.cursor.return_value.__enter__.return_value
+            with patch.object(main, "get_db", return_value=connection):
+                response = self.client.post(
+                    "/api/v1/user/request",
+                    headers={"X-API-KEY": "app-secret"},
+                    json=payload,
+                )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("pending", response.json()["status"])
+        parameters = cursor.execute.call_args.args[1]
+        self.assertEqual("DEV-BP4A25120500", parameters[2])
+
+    def test_request_rejects_browser_generated_or_malformed_identifier(self) -> None:
+        with patch.object(main, "GATEKEEPER_API_KEY", "app-secret"):
+            response = self.client.post(
+                "/api/v1/user/request",
+                headers={"X-API-KEY": "app-secret"},
+                json={"name": "owner", "room_no": "personal", "device_id": "bad"},
+            )
+        self.assertEqual(422, response.status_code)
 
 
 if __name__ == "__main__":

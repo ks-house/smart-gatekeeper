@@ -78,8 +78,11 @@ services:
       ADMIN_SESSION_SECONDS: ${ADMIN_SESSION_SECONDS:-900}
       ADMIN_REAUTH_SECONDS: ${ADMIN_REAUTH_SECONDS:-120}
       ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:-}
-    # Intentionally no host port: a TLS reverse proxy is the only ingress and
-    # must forward verified mTLS identity from an allow-listed proxy address.
+      PERSONAL_ADMIN_PASSWORD: ${PERSONAL_ADMIN_PASSWORD:-}
+    # Personal NAS PROD: expose only on the NAS/LAN so DSM reverse proxy can
+    # terminate public TLS on 4442. Router port forwarding must not expose 8000.
+    ports:
+      - "8000:8000"
     volumes:
       - ./app:/app
       - /volume1/docker/smartbox_ota/gatekeeper_apk:/app/gatekeeper_apk:ro

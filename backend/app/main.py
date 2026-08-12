@@ -28,7 +28,7 @@ except Exception:
     HAS_PAHO_MQTT = False
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -405,9 +405,13 @@ class AuthVerifyResponse(BaseModel):
     arm_published: Optional[bool] = Field(None, description="MQTT arm 발행 성공 여부")
 
 class UserRequestSchema(BaseModel):
-    name: str
-    room_no: str
-    device_id: str
+    name: str = Field(min_length=1, max_length=80)
+    room_no: str = Field(min_length=1, max_length=40)
+    device_id: str = Field(min_length=8, max_length=128, pattern=r"^DEV-[A-Z0-9]+$")
+
+
+class PersonalAdminLoginSchema(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
 
 class PrearmRequestSchema(BaseModel):
     beacon_uuid: str
@@ -548,7 +552,9 @@ async def deny_by_default_admin_routes(request: Request, call_next):
                 content={"detail": "request rate exceeded"},
                 headers={"Retry-After": str(retry_after)},
             )
-    if path.startswith("/api/v1/admin/") and path not in {"/api/v1/admin/sessions"}:
+    if path.startswith("/api/v1/admin/") and path not in {
+        "/api/v1/admin/sessions", "/api/v1/admin/personal-sessions"
+    }:
         try:
             required_roles = (ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR, ROLE_APPROVER)
             if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -774,6 +780,31 @@ def create_admin_session(request: Request, response: Response):
     return {"expires_at": principal.expires_at, "csrf_token": principal.csrf_token}
 
 
+@app.post("/api/v1/admin/personal-sessions")
+def create_personal_admin_session(payload: PersonalAdminLoginSchema, request: Request, response: Response):
+    identity = admin_security.authenticate_personal_password(request, payload.password)
+    token, principal = admin_security.issue_session(identity)
+    response.set_cookie(
+        ADMIN_SESSION_COOKIE, token, max_age=admin_security.session_seconds,
+        httponly=True, secure=True, samesite="strict", path="/",
+    )
+    return {
+        "expires_at": principal.expires_at,
+        "csrf_token": principal.csrf_token,
+        "auth_method": principal.auth_method,
+    }
+
+
+@app.get("/api/v1/admin/session")
+def get_admin_session(request: Request):
+    principal = _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
+    return {
+        "expires_at": principal.expires_at,
+        "csrf_token": principal.csrf_token,
+        "auth_method": principal.auth_method,
+    }
+
+
 @app.post("/api/v1/admin/sessions/rotate")
 def rotate_admin_sessions(request: Request):
     _admin_principal(request, unsafe=True, roles=(ROLE_ADMIN,), reauthenticate=True)
@@ -784,6 +815,11 @@ def rotate_admin_sessions(request: Request):
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def get_admin_login():
+    return FileResponse(os.path.join(static_dir, "admin_login.html"), media_type="text/html")
 
 # ─── Web & Endpoints ──────────────────────────────────────────
 @app.get("/app", response_class=HTMLResponse)
@@ -796,7 +832,12 @@ def get_webview_app():
 
 @app.get("/admin", response_class=HTMLResponse)
 def get_admin_console(request: Request):
-    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
+    try:
+        _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR, ROLE_OPERATOR))
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            return RedirectResponse(url="/admin/login", status_code=status.HTTP_303_SEE_OTHER)
+        raise
     """관리자 콘솔 웹 화면 반환"""
     admin_path = os.path.join(static_dir, "admin.html")
     if os.path.exists(admin_path):
@@ -811,7 +852,10 @@ def get_all_tenants_admin(request: Request):
     try:
         conn = get_db()
         with conn.cursor() as cur:
-            cur.execute("SELECT id, name, unit_number, is_active FROM tenants ORDER BY id DESC")
+            cur.execute(
+                "SELECT id, name, unit_number, ble_device_mac, is_active "
+                "FROM tenants ORDER BY id DESC"
+            )
             rows = [row for row in cur.fetchall() if principal.can_access_tenant(_legacy_tenant_scope(row["id"]))]
             return JSONResponse(content=rows, headers={"Content-Type": "application/json; charset=utf-8"})
     except Exception as e:
@@ -903,7 +947,7 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         "mqtt": False,
         "runtime_secrets": bool(DB_PASSWORD and len(OPS_HMAC_KEY) >= 32),
         "control_api_auth": len(GATEKEEPER_API_KEY) >= 32,
-        "admin_auth": bool(admin_security.enabled and admin_security.trusted_proxy_ips),
+        "admin_auth": admin_security.browser_login_ready,
         "acl_management": bool(ACL_MANAGEMENT_ENABLED and _acl_runtime_ready),
         "legacy_prearm_retired": not _legacy_prearm_authority_enabled(),
         "build_identity": bool(re.fullmatch(r"[a-f0-9]{40}", BUILD_SHA)),
@@ -1027,9 +1071,11 @@ def get_remote_config():
         headers={"Content-Type": "application/json; charset=utf-8"}
     )
 
-# Disabled after Issue #49: a device identifier in a URL is neither a session
-# nor safe for PII lookup.  Enrolment uses the proof-of-possession ACL flow.
-def get_user_me(device_id: str = Query(...)):
+@app.get("/api/v1/user/me")
+def get_user_me(
+    device_id: str = Query(...),
+    _auth=Depends(require_api_key),
+):
     """현재 기기(device_id)의 세입자 등록 상태 및 세입자 정보 조회"""
     mac_upper = device_id.strip().upper()
     log.info("[USER-ME] retired device-id lookup invoked")
@@ -1073,12 +1119,14 @@ def get_user_me(device_id: str = Query(...)):
         if conn:
             conn.close()
 
-# Disabled after Issue #49: anonymous device-id registration is a write-capable
-# control-plane path.  The authenticated ACL enrolment route replaces it.
-def request_user_access(req: UserRequestSchema):
+@app.post("/api/v1/user/request")
+def request_user_access(
+    req: UserRequestSchema,
+    _auth=Depends(require_api_key),
+):
     """신규 세입자 가입 및 출입 권한 신청"""
     mac_upper = req.device_id.strip().upper()
-    log.info("[USER-REQ] retired anonymous enrollment invoked")
+    log.info("[USER-REQ] authenticated personal enrollment requested")
     conn = None
     try:
         conn = get_db()
@@ -1087,7 +1135,7 @@ def request_user_access(req: UserRequestSchema):
             cur.execute(
                 "INSERT INTO tenants (name, unit_number, ble_device_mac, is_active) "
                 "VALUES (%s, %s, %s, false) "
-                "ON DUPLICATE KEY UPDATE name = VALUES(name), unit_number = VALUES(unit_number), is_active = false",
+                "ON DUPLICATE KEY UPDATE name = VALUES(name), unit_number = VALUES(unit_number)",
                 (req.name, req.room_no, mac_upper)
             )
         return JSONResponse(
@@ -1096,10 +1144,7 @@ def request_user_access(req: UserRequestSchema):
         )
     except Exception as e:
         log.error("[USER-REQ] request persistence unavailable")
-        return JSONResponse(
-            content={"status": "pending", "message": f"신청 완료 (대기 중)"},
-            headers={"Content-Type": "application/json; charset=utf-8"}
-        )
+        raise HTTPException(status_code=503, detail="request persistence unavailable") from e
     finally:
         if conn:
             conn.close()

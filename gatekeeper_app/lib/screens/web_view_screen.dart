@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/device_id_service.dart';
+import '../services/native_gatt_worker_health.dart';
 import '../services/update_checker.dart';
 import '../services/error_logger.dart';
 import 'debug_screen.dart';
@@ -24,6 +27,11 @@ class WebViewScreen extends StatefulWidget {
 
 class _WebViewScreenState extends State<WebViewScreen>
     with WidgetsBindingObserver {
+  static const String _backendBaseUrl = String.fromEnvironment('BACKEND_URL',
+      defaultValue: 'https://tworimpa.synology.me:4442/api/v1');
+  static const String _apiKey = String.fromEnvironment('GATEKEEPER_API_KEY');
+  final NativeGattWorkerHealthBridge _gattBridge =
+      NativeGattWorkerHealthBridge();
   late final WebViewController _controller;
   bool _isLoading = true;
   Timer? _updateCheckTimer;
@@ -59,6 +67,10 @@ class _WebViewScreenState extends State<WebViewScreen>
   void _setupController() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'GatekeeperNative',
+        onMessageReceived: (message) => _handleNativeMessage(message.message),
+      )
       ..setBackgroundColor(const Color(0xFF121212))
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -97,6 +109,89 @@ class _WebViewScreenState extends State<WebViewScreen>
           },
         ),
       );
+  }
+
+  Future<void> _handleNativeMessage(String rawMessage) async {
+    String? action;
+    try {
+      final currentUrl = Uri.tryParse(await _controller.currentUrl() ?? '');
+      if (currentUrl == null ||
+          currentUrl.scheme != 'https' ||
+          currentUrl.host != 'tworimpa.synology.me' ||
+          currentUrl.port != 4442 ||
+          currentUrl.path != '/app') {
+        throw const FormatException('untrusted web origin');
+      }
+      final message = jsonDecode(rawMessage) as Map<String, dynamic>;
+      action = message['action']?.toString();
+      if (_apiKey.isEmpty) {
+        throw const FormatException('app authentication unavailable');
+      }
+      final deviceId = await DeviceIdService.getDeviceId();
+      if (action == 'get_access_status') {
+        final response = await http.get(
+          Uri.parse(
+              '$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
+          headers: {'X-API-KEY': _apiKey},
+        ).timeout(const Duration(seconds: 10));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw FormatException('status HTTP ${response.statusCode}');
+        }
+        await _controller.runJavaScript(
+          'window.completeStatusCheck(${jsonEncode(jsonDecode(response.body))});',
+        );
+        return;
+      }
+      if (action == 'open_door') {
+        final statusResponse = await http.get(
+          Uri.parse(
+              '$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
+          headers: {'X-API-KEY': _apiKey},
+        ).timeout(const Duration(seconds: 10));
+        if (statusResponse.statusCode < 200 ||
+            statusResponse.statusCode >= 300 ||
+            (jsonDecode(statusResponse.body)
+                    as Map<String, dynamic>)['status'] !=
+                'approved') {
+          throw const FormatException('device is not approved');
+        }
+        final result = await _gattBridge.triggerLocalGattRetry();
+        final accepted = result['accepted'] == true;
+        final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
+        await _controller.runJavaScript(
+          'window.completeDoorOpen(${accepted ? 'true' : 'false'}, '
+          '${jsonEncode(accepted ? 'Target 인증 요청을 시작했습니다.' : '출입 요청 실패: $reason')});',
+        );
+        return;
+      }
+      if (action != 'request_access') {
+        throw const FormatException('unsupported action');
+      }
+      final response = await http
+          .post(
+            Uri.parse('$_backendBaseUrl/user/request'),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-KEY': _apiKey,
+            },
+            body: jsonEncode({
+              'name': message['name'],
+              'room_no': message['room_no'],
+              'device_id': deviceId,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      final ok = response.statusCode >= 200 && response.statusCode < 300;
+      await _controller.runJavaScript(
+        'window.completeAccessRequest(${ok ? 'true' : 'false'}, '
+        '${jsonEncode(ok ? '신청이 접수되었습니다.' : '신청 접수에 실패했습니다 (${response.statusCode}).')});',
+      );
+    } catch (error, stack) {
+      AppErrorLogger().logError('Access Request Error', error, stack);
+      await _controller.runJavaScript(action == 'open_door'
+          ? "window.completeDoorOpen(false, '출입 요청을 처리하지 못했습니다.');"
+          : 'window.nativeRequestFailed();');
+    }
   }
 
   Future<void> _loadUrlWithDeviceId() async {
