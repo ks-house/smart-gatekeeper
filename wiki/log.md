@@ -2809,3 +2809,9 @@
 
 - The repository owner explicitly confirmed the six personal-profile checks passed on the primary phone and installed entrance Target: screen-off 3/3, Activity-terminated 3/3, Target reboot 1/1, network reconnect 1/1, relay boot fail-safe 1/1, and previous-version recovery 1/1.
 - Recorded the attestation against current branch commit `17c54a906bfe4f2777b542763431ee29eae3ceb0`. Release remains blocked because this is not exact `main`, signed release artifact/manifest verification has not run, and post-deploy version/boot/health cannot precede deployment.
+
+## [2026-08-12] compile | Authorize the exact PR #85 protected bundle
+
+- Recomputed the complete ordered 57-file `utf8-lf-v1` map from exact product commit `d754f23a1028500248edb6a7025885c256e97c8c`; eight backend/admin contract files differ from the current baseline.
+- Added byte-identical `temporary-pr85-d754f23` and `future-pr85-persistent-baseline` identities so the exact product head can be admitted first and its later policy-main descendant can be admitted without widening the protected file set.
+- Kept this policy-only change separate from PR #85. Product merge remains conditional on the policy merge and fresh green hosted checks; final baseline rotation remains required immediately after product merge.
