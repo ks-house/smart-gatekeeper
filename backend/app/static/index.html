@@ -443,7 +443,13 @@
         'status-badge ' + (data.status === 'approved' ? 'status-active' : 'status-pending');
       document.getElementById('statusText').innerText =
         data.status === 'approved' ? '승인됨' : '승인 대기';
-      document.getElementById('btnOpen').disabled = true;
+      document.getElementById('btnOpen').disabled = data.status !== 'approved';
+      document.getElementById('pulseRing').style.display =
+        data.status === 'approved' ? 'block' : 'none';
+      document.getElementById('actionStatus').innerText =
+        data.status === 'approved'
+          ? '승인된 기기입니다. 버튼을 누르면 로컬 GATT 인증을 시작합니다.'
+          : '관리자 승인 후 문 열기 기능이 활성화됩니다.';
     };
 
     window.nativeRequestFailed = function() {
@@ -452,10 +458,25 @@
 
     async function triggerDoorOpen() {
       const statusEl = document.getElementById('actionStatus');
-      statusEl.style.color = "#ef4444";
-      statusEl.innerText =
-        "원격 제어가 안전하게 비활성화되어 있습니다. 보유 증명 자격증명 등록이 필요합니다.";
+      const button = document.getElementById('btnOpen');
+      if (button.disabled || !window.GatekeeperNative || !window.GatekeeperNative.postMessage) {
+        statusEl.style.color = "#ef4444";
+        statusEl.innerText = '승인된 Smart Key 모바일 앱에서 사용해 주세요.';
+        return;
+      }
+      button.disabled = true;
+      statusEl.style.color = "#f59e0b";
+      statusEl.innerText = 'Target 로컬 인증 요청 중...';
+      window.GatekeeperNative.postMessage(JSON.stringify({action: 'open_door'}));
     }
+
+    window.completeDoorOpen = function(ok, message) {
+      const button = document.getElementById('btnOpen');
+      button.disabled = false;
+      const statusEl = document.getElementById('actionStatus');
+      statusEl.style.color = ok ? '#22c55e' : '#ef4444';
+      statusEl.innerText = message;
+    };
 
     async function handleSignup(e) {
       e.preventDefault();
