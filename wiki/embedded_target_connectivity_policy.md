@@ -1,0 +1,104 @@
+# 벽 매립형 Target 상시 연결·원격 복구 지침
+
+> 적용 범위: 사용자가 도구 없이 꺼내거나 USB/serial로 복구하기 어려운 현관 ESP32-C6 Target
+>
+> 목적: 출입 기능과 별개로 Wi-Fi, MQTTS, HTTPS OTA의 원격 복구 가능성을 계속 보장한다.
+
+## 1. 최상위 원칙
+
+1. 매립형 Target은 전원이 켜진 동안 **Wi-Fi STA와 per-Target MQTTS 세션을 항상 유지하려고 시도**해야 한다.
+2. 공유기 재부팅, WAN 단절, DHCP 갱신, broker 재시작 뒤에는 사람의 물리 조작 없이 자동 복구해야 한다.
+3. MQTT는 즉시 명령 경로이고 HTTPS periodic pull은 독립 OTA 복구 경로다. 둘 중 하나만 존재하는 firmware를 새로 매립하지 않는다.
+4. BLE beacon이 보인다는 사실은 Wi-Fi 또는 MQTT online 증거가 아니다.
+5. MQTT QoS 1 PUBACK은 broker 수신 증거일 뿐 Target 실행 또는 OTA 성공 증거가 아니다.
+6. 100% 무중단 네트워크를 가정하지 않는다. 단절을 빠르게 탐지하고 자동 재접속하며 원격 복구 불가 상태를 경보한다.
+7. 네트워크 복구 로직은 `IDLE -> ARMED -> RELAY_HOLD -> COOLDOWN -> IDLE` Target FSM과 독립이어야 하며 relay fail-safe를 지연시키면 안 된다.
+
+## 2. 필수 연결 계약
+
+### 2.1 Target firmware
+
+- 저장된 Wi-Fi 자격 증명이 있으면 STA 연결을 무기한 재시도한다.
+- 부팅 시 첫 STA 연결이 실패해 recovery AP가 열리더라도 STA 재시도를 중단하지 않는다. recovery AP는 시간 제한과 인증을 가져야 하며 영구 AP trap이 되어서는 안 된다.
+- Wi-Fi disconnect/lost-IP/got-IP를 수명주기 사건으로 처리한다. lost-IP 때 기존 TLS socket을 닫고 got-IP 뒤 새 MQTTS session을 만든다.
+- Wi-Fi 상태 확인과 재접속은 비차단 방식으로 수행한다. 현재 구현 기준 확인 주기는 15초다.
+- MQTTS가 끊긴 동안에도 재접속을 계속한다. 현재 구현 기준 재시도 gate는 약 5초, keepalive는 30초다.
+- TLS/CONNACK 시도는 제한된 timeout과 backoff를 사용하며 relay/FSM loop를 장시간 막지 않는다.
+- 고유 Target client ID, hostname 검증 TLS, per-Target credential, signed command namespace를 유지한다.
+- availability LWT와 online, boot, status heartbeat를 발행한다. status는 현재 구현 기준 1초 주기다.
+- MQTT와 무관하게 signed manifest 기반 HTTPS OTA를 부팅 후와 주기적으로 확인하고, 실패 시 bounded retry를 계속한다.
+- OTA는 inactive slot, health window, valid mark, 자동 rollback 계약을 유지한다.
+
+### 2.2 NAS, broker, backend
+
+- Mosquitto MQTTS listener, 인증 DB, CA chain, per-Target ACL과 시스템 시간을 상시 유지한다.
+- backend는 boot 토픽뿐 아니라 per-Target `availability`와 `status`를 구독해 마지막 수신 시각, boot ID, firmware version, RSSI와 reconnect 상태를 저장해야 한다.
+- 동일 client ID를 진단 도구가 사용하지 못하게 한다. 진단 client ID에는 별도 접두사와 read-only ACL을 사용한다.
+- offline command를 retained로 남기지 않는다. OTA/door command는 online 확인 후 1회 발행하고 command ACK와 후속 boot/health로 완료를 판정한다.
+- `/health` 성공을 Target online으로 표시하지 않는다. API, broker, Target 연결 상태를 별도 상태로 노출한다.
+
+## 3. 운영 SLO와 경보 기준
+
+다음 기준은 개인 PROD의 최소값이다. 더 엄격하게 운영할 수 있지만 완화하려면 근거와 현장 시험을 기록한다.
+
+| 상태 | 판정 | 운영 동작 |
+|---|---|---|
+| 정상 | 최근 status가 15초 이내이고 boot ID가 현재값과 일치 | 정상 표시 |
+| 경고 | status가 15초 초과 90초 이내 없음 | 자동 재접속 관찰, NAS/broker/WAN 상태 확인 |
+| 위험 | status가 90초 초과 없음 또는 LWT offline 수신 | 즉시 알림, OTA/원격 개방 명령 중지, 원인 분리 진단 |
+| 복구 | 위험 뒤 같은 Target의 새 online/status 수신 | boot ID/reset reason/IP/RSSI/firmware 비교 후 해제 |
+| 원격 복구 불가 | BLE만 보이고 10분 동안 Wi-Fi/MQTT가 복구되지 않음 | 현장 조치 incident로 승격; 정상으로 표시 금지 |
+
+월간 연결 가용성 목표는 99.5% 이상으로 두되 계획된 공유기/NAS 유지보수는 별도 기록한다. 단일 10분 초과 원격 복구 불가 사건은 월간 수치와 무관하게 개선 항목으로 남긴다.
+
+## 4. 설치 전 네트워크 기준
+
+- 전용 또는 신뢰 가능한 2.4 GHz SSID를 사용하고 Target 위치에서 반복 RSSI를 측정한다.
+- 권장 RSSI는 `-67 dBm` 이상이다. `-75 dBm` 이하는 매립 전 AP 위치, 채널 또는 안테나를 개선한다.
+- Target MAC에 DHCP reservation을 설정하고 lease 변경 이력을 확인할 수 있게 한다.
+- client isolation, captive portal, 주기적인 강제 재인증, MQTTS/HTTPS 차단 정책이 없는지 확인한다.
+- NAS 도메인의 MQTTS와 HTTPS 인증서 만료를 감시한다.
+- 공유기, AP, NAS와 broker 재부팅 뒤 자동 복구 시험을 각각 수행한다.
+- 전원 공급의 brownout 여유와 relay 노이즈 대책을 확인한다. 네트워크 장애처럼 보이는 reset을 분리할 수 있도록 reset reason과 boot count를 보존한다.
+
+## 5. 매립 승인 Gate
+
+아래 증거가 없으면 Target을 벽에 최종 매립하거나 “원격 유지보수 가능”으로 판정하지 않는다.
+
+1. 전원 재인가 3회 모두 2분 안에 Wi-Fi, MQTTS online, status heartbeat가 확인된다.
+2. 공유기/AP 5분 단절 후 물리 조작 없이 2분 안에 online/status가 복구된다.
+3. NAS broker 5분 중단 후 물리 조작 없이 2분 안에 재구독과 status가 복구된다.
+4. WAN 5분 단절 뒤 MQTTS와 HTTPS OTA check가 모두 자동 복구된다.
+5. 잘못된 retained command가 없고 진단 client ID 충돌이 없다.
+6. signed OTA 명령 또는 periodic HTTPS pull로 N+1 설치가 완료되고 새 version, boot ID, health valid가 확인된다.
+7. 실패 image가 자동 rollback되어 N 버전의 online/status가 다시 확인된다.
+8. admin 화면이나 운영 dashboard에서 정상·경고·위험·마지막 수신 시각을 확인할 수 있다.
+
+## 6. 현재 구현 감사와 release blocker
+
+2026-08-12 `main` 기준으로 다음은 구현되어 있다.
+
+- STA 상태 15초 확인과 `WiFi.reconnect()`
+- MQTTS 약 5초 재시도, 30초 keepalive, TLS socket reset
+- per-Target availability LWT/online, retained boot 진단, 1초 status
+- signed per-Target command와 periodic HTTPS OTA
+- inactive-slot health/rollback
+
+다음 공백은 **다음 현장 매립 또는 “언제든 원격 OTA 가능” 선언 전 P0 release blocker**다.
+
+- 부팅 STA 실패 후 recovery AP 상태에서도 STA 재시도를 계속한다는 구현·시험 증거
+- Wi-Fi lost-IP/got-IP에 맞춘 명시적 TLS socket 폐기·재생성 시험
+- backend의 availability/status 구독, last-seen 저장, 15초/90초 경보와 admin 표시
+- 공유기, broker, WAN 단절 후 자동 복구 physical evidence
+
+현재 벽에 매립된 legacy `2.1.0-g75b946a`는 periodic HTTPS pull이 없으므로 이 지침을 충족하지 않는다. 최초 갱신은 실제 MQTTS online 창에서 legacy OTA 명령으로 수행해야 하며, 그 전까지 BLE 감지만으로 원격 복구 가능하다고 판단하지 않는다.
+
+## 7. 장애 대응 순서
+
+1. command를 재발행하기 전에 last-seen, availability, status, boot ID와 firmware version을 read-only로 조회한다.
+2. API health, broker listener, Target MQTTS를 서로 분리해 확인한다.
+3. 공유기 DHCP lease에서 Target MAC과 IP를 확인하고 2.4 GHz association/RSSI를 확인한다.
+4. BLE만 감지되고 Wi-Fi lease가 없으면 STA/AP trap 또는 credential/RF 문제로 분류한다.
+5. Wi-Fi lease는 있으나 status가 없으면 TLS, ACL, client-ID 충돌, broker log를 확인한다.
+6. online이 복구되면 OTA 명령을 retain=false로 한 번만 발행하고 command ACK 뒤 새 boot/health를 기다린다.
+7. 10분 안에 원격 복구되지 않으면 반복 명령을 중단하고 현장 incident로 승격한다.

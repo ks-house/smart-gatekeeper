@@ -2851,3 +2851,9 @@
 - After policy PR #86 and product PR #85 passed their hosted checks and were admin-merged, removed both bounded PR #85 transition identities.
 - Pinned the sole `current-main-baseline` to merged main `2d6b046b62d53381181d5c4bd8c25a9e781e42d1` with the same complete ordered 57-file digest map.
 - This final policy-only rotation changes no protected product or workflow file and closes the temporary authorization window after its hosted check and merge.
+
+## [2026-08-12] compile | Define embedded Target connectivity and remote-recovery policy
+
+- Added a mandatory Wi-Fi STA, per-Target MQTTS and independent HTTPS OTA operating contract for Targets that cannot be physically accessed after wall installation.
+- Defined 15-second warning, 90-second critical and 10-minute field-escalation boundaries, plus power, AP, broker and WAN recovery commissioning tests.
+- Recorded current P0 gaps: boot-time recovery-AP STA retry proof, lost-IP TLS lifecycle proof, backend availability/status last-seen alerts and physical reconnect evidence. BLE visibility and MQTT PUBACK are explicitly insufficient evidence.

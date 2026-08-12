@@ -6,6 +6,15 @@
 
 ## 1. 배포 전 판정
 
+벽 매립형 Target에는 다음 연결 preflight를 먼저 적용한다.
+
+- 최근 status 수신이 15초 이내인지 확인한다.
+- 현재 boot ID, firmware version, Wi-Fi RSSI와 MQTTS availability가 서로 일치하는지 확인한다.
+- 90초 이상 status가 없으면 OTA 명령을 발행하지 않고 Target offline incident로 전환한다.
+- BLE beacon만 보이는 상태를 online으로 취급하지 않는다.
+- 자세한 SLO, 자동 복구와 매립 승인 기준은
+  [`embedded_target_connectivity_policy.md`](embedded_target_connectivity_policy.md)를 따른다.
+
 1. `python scripts/ota_contract_gate.py contract`와 OTA 단위 테스트를 실행한다.
 2. release commit에서 mobile/Target N/N-1 조합과 `ota/fault-injection-plan.json`의
    모든 physical Gate 증거를 수집한다.
