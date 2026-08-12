@@ -2,6 +2,8 @@
 > Program baseline: 2026-08-08
 > Orca Run: `run_40f9831625bd`
 > Production status: **BLOCKED / fail-closed**
+>
+> Status note (2026-08-12): 이 문서는 2026-08-08 출시 프로그램 snapshot이다. #49~#52의 관리자 인증, per-Target MQTTS/signed command/OTA, mobile recovery/update와 operations software gap은 이후 구현됐다. 아래 당시 P0 목록과 작업 배정은 역사적 계획으로 보존하며 현재 상태는 [project_status.md](project_status.md)와 [current_code_audit.md](current_code_audit.md)를 따른다. 상용 physical/operator/production Gate는 여전히 닫혀 있다.
 
 ## 1. 최종 목표
 
@@ -18,9 +20,9 @@ Android 모바일 앱, OTA/rollback, 관측성, 운영 절차, 일반 사용자�
 |---|---|---|
 | 소프트웨어 기준선 | `b246aff`에서 root 87/87, backend/protocol/observability/OTA contract, ESP32-C6 build, Flutter 11/11 | host/software 검증 완료; 최종 후보 SHA에 재결합 필요 |
 | Orca 개발환경 | setup/doctor/Quick/Software/Firmware/App 및 fresh-worktree smoke | PR #47 병합 및 post-merge CI 성공 (`b246aff`) |
-| 관리자 시스템 | 레거시 admin 조회·승인·설정 경로에 일관된 인증/RBAC가 없음 | `P0 BLOCKED` |
-| Target 네트워크 보안 | MQTT TLS 실패 후 `setInsecure()` fallback 존재 | `P0 BLOCKED` |
-| 모바일 사용성 | native wake 등록 미도달, `TARGET_LOCAL` GATT 실패, updater/signing/복구 독립성 결함 | `P0 BLOCKED` |
+| 관리자 시스템 | 2026-08-08 당시 인증/RBAC gap; 이후 session/CSRF/RBAC/re-auth software 구현 | software gap resolved; live ops evidence pending |
+| Target 네트워크 보안 | 2026-08-08 당시 insecure fallback; 이후 per-Target MQTTS/signed command fail-closed 구현 | software gap resolved; deployed handshake pending |
+| 모바일 사용성 | 2026-08-08 당시 native wake/GATT/updater gap; 이후 default-OFF worker와 recovery/update 구현 | software gap resolved; OEM/physical Gate pending |
 | 물리 장비 | Samsung/OEM, ESP32-C6 BLE/Wi-Fi, GPIO3 relay, AJ-SR04T, bootloader/OTA 증거 없음 | `G0-HW PENDING` |
 | Production | `release-evidence.json`이 release blocked를 유지 | `BLOCKED` |
 
@@ -64,7 +66,7 @@ flowchart LR
 - setup, doctor, Quick, Software, Firmware, App suite를 모든 새 작업트리의 공통 입구로 사용한다.
 - 완료 조건: PR 병합, post-merge main CI, fresh-worktree 재검증.
 
-### R1 — 보안과 관리자 시스템
+### R1 — 보안과 관리자 시스템 (software implemented; 운영 증거 pending)
 
 - 모든 admin UI/API, 출입 로그, 원격 설정, 승인·회수·강제 개방을 인증 경계 안으로 이동한다.
 - tenant 범위 RBAC, 짧은 세션, CSRF 방어, 재인증이 필요한 위험 동작, 감사 trail을 구현한다.
@@ -73,7 +75,7 @@ flowchart LR
 - 승인, 회수, tenant disable, ACL snapshot/ACK, OTA metadata의 원자성·복구성을 검증한다.
 - 완료 조건: 우회 mutation test, 권한 매트릭스, 감사 불변성, backup/restore drill, 위협모델 검토.
 
-### R2 — 핵심 Target 기능과 물리 안전
+### R2 — 핵심 Target 기능과 물리 안전 (software implemented; physical Gate pending)
 
 - signed local GATT proof → ACL → access-session FSM → relay 인터록을 production 경로로 통합한다.
 - stale/duplicate callback, disconnect, reset, queue overflow, Wi-Fi/BLE 공존을 fail-closed 시험한다.
@@ -81,7 +83,7 @@ flowchart LR
 - OTA dual-slot, periodic HTTPS, 인증 local recovery, install→reboot→health→rollback을 구현·검증한다.
 - 완료 조건: RELAY-G0~G2, OTA-G1~G4, 24시간 RF/네트워크 soak, power-loss matrix.
 
-### R3 — 최상급 모바일 UX
+### R3 — 최상급 모바일 UX (software implemented; OEM/사용성 증거 pending)
 
 - 첫 실행 onboarding을 권한·Bluetooth·위치·알림·배터리 예외의 단계별 진단으로 구성한다.
 - 자동 출입, 수동 개방, 오프라인, 승인 대기, 차단, update/rollback 상태를 일반 용어로 표시한다.
@@ -130,7 +132,7 @@ tenant/device/door 수명주기, 승인·회수, 강제 개방 통제, 로그 �
 - production canary의 install/reboot/health와 rollback drill이 승인된다.
 - 미완료 Gate, 가정, 알려진 제한이 없다. 남아 있다면 출시 완료가 아니라 release blocked다.
 
-## 7. 감사 결과와 GitHub 출시 백로그
+## 7. 감사 결과와 GitHub 출시 백로그 (2026-08-08 historical snapshot)
 
 세 독립 감사가 exact local HEAD `dd8996c110fae1b378e31c3b1f8be8db7b84307d`에서
 읽기 전용으로 완료됐다. 공통 P0는 다음과 같다.
@@ -154,7 +156,7 @@ tenant/device/door 수명주기, 승인·회수, 강제 개방 통제, 로그 �
 | #54 | 실기기 acceptance, operator drill, production canary | G0-HW/Release |
 | #55 | Orca 후속 supervised worker-start 초기화 장애 | 개발환경 P0 |
 
-## 8. 현재 작업 배정
+## 8. 당시 작업 배정
 
 | Orca task | 담당 profile | 범위 | 상태 |
 |---|---|---|---|

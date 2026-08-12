@@ -301,7 +301,23 @@ published_at
 새 모바일 병목 축소 아키텍처는 OTA-G0~G3을 통과하지 않으면 production rollout할 수
 없고, legacy path도 제거할 수 없다.
 
-## 10. 2026-08-01 구현 감사 결과
+## 10. 구현 상태 snapshot
+
+### 10.1 2026-08-12 저장소 최신 구현
+
+| 컴포넌트 | 저장소에 구현된 계약 | 계속 pending인 증거 |
+|---|---|---|
+| Target | periodic HTTPS pull, CA 검증, Ed25519 manifest, SHA-256/size, inactive-slot write, safe-state wait, boot health valid mark/rollback, version floor, signed MQTT trigger, authenticated local recovery | exact-main signed image를 매립 Target에 설치한 뒤 version/boot/health/rollback과 power/network fault를 확인해야 함 |
+| Mobile | signed update identity, recovery shell, 기존 APK 보존·first-run health 계약, scanner/WebView와 분리된 recovery 접근 | release artifact의 실제 install/fallback, OEM별 updater 및 N/N-1 실기기 증거 |
+| Backend/operations | signed OTA metadata API와 signing bootstrap, production secret contract, canary staging/evidence validator | live NAS production publish, reverse proxy/secondary recovery source와 operator acceptance |
+
+이 표는 **repository implementation**을 설명한다. 개인 현관 Target은 2026-08-12 관측 시 구형
+`2.1.0-g75b946a`였으므로 최신 Target OTA 구현이 현장에 배포됐다는 뜻이 아니다. 현재 현장 경계는
+[personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md)를 따른다.
+
+### 10.2 2026-08-01 역사적 감사 결과
+
+> 아래 표는 계약 수립 당시의 gap snapshot이며 현재 구현 상태가 아니다. 당시 gap이 어떻게 닫혔는지는 위 10.1과 [current_code_audit.md](current_code_audit.md)를 따른다.
 
 | 구성요소 | 코드상 기준선 | P0 판정 |
 |---|---|---|

@@ -1,0 +1,8 @@
+{
+  "newLinkFormat": "relative",
+  "useMarkdownLinks": true,
+  "userIgnoreFilters": [
+    "/(^|\\/)(\\.git|\\.pio|build|dist|node_modules|\\.venv|\\.dart_tool)(\\/|$)/"
+  ],
+  "promptDelete": false
+}

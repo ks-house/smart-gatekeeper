@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-12 (embedded Target connectivity SLO, automatic recovery and wall-installation release blockers documented)
+> Last updated: 2026-08-12 (Obsidian/LLM governance, current implementation snapshot, deployment-state separation and Knowledge Hub promotion)
 
 ---
 
@@ -41,6 +41,7 @@
 
 | Page | Summary |
 |------|---------|
+| [project_status.md](project_status.md) | 저장소 구현·검증 증거·현장 배포를 분리한 현재 프로젝트 대시보드와 열린 Gate |
 | [architecture.md](architecture.md) | iBeacon → Android → FastAPI → MQTT → 초음파 → relay, retained boot/reset 진단 구조 |
 | [commercial_release_program.md](commercial_release_program.md) | 상용 출시 목표, 작업 DAG, 보안·핵심·모바일·매뉴얼·실기기·production 완료 Gate |
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
@@ -92,6 +93,7 @@
 
 | Page | Summary |
 |------|---------|
+| [knowledge_management.md](knowledge_management.md) | Obsidian Vault, 문서 type/status, 세 가지 사실 축, cross-project Knowledge Hub 승격 규칙 |
 | [log.md](log.md) | 시간순 변경 이력 |
 | [../schema.md](../schema.md) | 위키 거버넌스 규칙 & 컨벤션 |
 | [../AGENTS.md](../AGENTS.md) | 에이전트 협업 전체 지침 필독 |
@@ -105,6 +107,7 @@
 
 | Topic | Location |
 |-------|----------|
+| 현재 구현·검증·현장 배포 상태 | [project_status.md](project_status.md) |
 | 최신 코드 재분석 결론/위험 | [current_code_audit.md](current_code_audit.md) |
 | Target 통신 단절 근본 원인/현장 판별 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) |
 | 벽 매립형 Target 상시 연결·원격 복구 지침 | [embedded_target_connectivity_policy.md](embedded_target_connectivity_policy.md) |

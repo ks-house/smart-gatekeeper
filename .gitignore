@@ -41,4 +41,10 @@ android/key.properties
 .idea/
 .clion/
 
+# --- Obsidian personal UI state ---
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+.trash/
+
 upload-keystore.jks
