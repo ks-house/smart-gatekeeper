@@ -2823,3 +2823,9 @@
 - 관리자 tenant 조회에 실제 기기 식별 열을 포함해 빈 기기 ID 표시를 수정했다.
 - WebView 신청을 Flutter native API-key bridge로 연결하고 성공·실패·승인 대기 상태를 사용자에게 표시하도록 복구했다. 기존 active 기기의 재신청은 권한을 회수하지 않는다.
 - 설치 Target은 `2.1.0-g75b946a`, 마지막 reset `BROWNOUT`, MQTT offline으로 확인됐다. 해당 구형 버전에는 부팅/주기 HTTPS OTA pull이 없으므로 전원 재인가만으로 업데이트되지 않으며, 최초 업데이트는 Target이 MQTT에 온라인으로 복귀한 동안 legacy OTA 명령이 필요하다.
+
+## [2026-08-12] compile | Record personal PROD mobile and embedded Target incident
+
+- Documented the restored authenticated mobile enrollment, approved-device door-button native bridge, signed build 141 deployment and external APK hash read-back.
+- Recorded that the embedded legacy Target still runs `2.1.0-g75b946a`: BLE beacon was observed, the last real broker session authenticated and later timed out, but no new boot/online evidence followed the power cycle and no OTA command was issued.
+- Distinguished the temporary duplicate `sgk-personal-prod-audit` client-ID takeover from the real Target session, confirmed zero remaining diagnostic processes, and preserved the exact next recovery and post-OTA verification boundary without secrets.
