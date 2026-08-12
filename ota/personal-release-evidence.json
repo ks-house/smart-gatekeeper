@@ -1,0 +1,30 @@
+{
+  "profile": "personal-single-installation-v1",
+  "release_blocked": true,
+  "commercial_scope": false,
+  "approved_by": "repository-owner",
+  "approved_at": "2026-08-12T08:50:26+09:00",
+  "source_commit_observed": "17c54a906bfe4f2777b542763431ee29eae3ceb0",
+  "installation": {
+    "mobile_scope": "owner-primary-phone",
+    "target_scope": "installed-entrance-target",
+    "current_installation_is_canary": true,
+    "legacy_access_path_retained": true,
+    "hardwareless_rc_enabled": false
+  },
+  "checks": {
+    "screen_off_access": {"required_trials": 3, "passed_trials": 3},
+    "activity_terminated_access": {"required_trials": 3, "passed_trials": 3},
+    "target_reboot_recovery": {"required_trials": 1, "passed_trials": 1},
+    "network_reconnect": {"required_trials": 1, "passed_trials": 1},
+    "relay_boot_fail_safe": {"required_trials": 1, "passed_trials": 1},
+    "ota_previous_version_recovery": {"required_trials": 1, "passed_trials": 1}
+  },
+  "required_safeguards": {
+    "exact_main_commit": false,
+    "signed_manifest_and_artifact": false,
+    "post_deploy_version_boot_health_check": false
+  },
+  "attestation": "The repository owner confirmed all six reduced physical checks passed on the personal phone and installed entrance Target.",
+  "notes": "Physical checks are owner-attested. Release remains blocked until exact-main, signing, and post-deploy health safeguards are verified."
+}

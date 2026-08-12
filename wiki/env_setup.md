@@ -336,6 +336,51 @@ Windows PowerShell 5와 PowerShell 7에서 동일하게 처리합니다.
 public-key pin 전환, N/N-1과 rollback 검증을 포함한 별도 검토 절차로 수행합니다. 이 스크립트의
 성공은 키 등록 증거일 뿐 OTA-G0~G4, physical, operator 또는 production release 승인이 아닙니다.
 
+### 4.2 전체 production Secret 계약
+
+두 production job은 `production` Environment를 사용하지만 GitHub Repository Secret도 함께 참조할
+수 있습니다. 운영 격리를 위해 신규 production 전용 값은 Environment Secret에 두는 것을 권장합니다.
+GitHub API는 Secret 이름과 갱신 시각만 반환하므로 값·URL·경로의 정합성은 운영자가 별도로 확인해야
+합니다.
+
+공통 서명·NAS 전송 계약은 다음과 같습니다.
+
+- 필수: `OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, `OTA_SIGNING_KEY_ID`
+- 필수: `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`
+- 선택: `NAS_PORT`(미등록 시 `22`)
+- 선택: `NAS_TARGET_DIR`(firmware), `NAS_APK_TARGET_DIR`(mobile). Smartbox 운영 경로를 사용할 때는
+  각각 `/docker/smartbox_ota/firmware/`, `/docker/smartbox_ota/gatekeeper_apk/`로 명시합니다.
+
+Target production firmware build의 추가 필수 Secret은 다음과 같습니다.
+
+- 네트워크/API: `SECRET_ROOT_CA_CERT`, `SECRET_WIFI_SSID`, `SECRET_WIFI_PASSWORD`,
+  `SECRET_API_URL`, `SECRET_API_KEY`
+- MQTT: `SECRET_MQTT_HOST`, `SECRET_MQTT_PORT`, `SECRET_MQTT_USER`,
+  `SECRET_MQTT_PASSWORD`
+- Target identity: `SECRET_TARGET_TENANT_ID`, `SECRET_TARGET_DOOR_ID`
+- command verifier: `SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX`, `SECRET_COMMAND_SIGNING_KEY_ID`
+- ACL verifier: `SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`, `SECRET_ACL_SIGNING_KEY_ID`
+- OTA URL: `SECRET_OTA_VERSION_URL`, `SECRET_OTA_FIRMWARE_URL`
+- local recovery: `SECRET_LOCAL_RECOVERY_AP_PASSWORD`, `SECRET_LOCAL_RECOVERY_USER`,
+  `SECRET_LOCAL_RECOVERY_PASSWORD`
+
+command/ACL 공개키는 uncompressed SEC1 P-256 `04` prefix를 포함한 lowercase 130-hex이며 key ID는
+서로 충돌하지 않는 양의 정수입니다. local recovery username은 최소 8자, AP/password는 각각 최소
+16자의 별도 고엔트로피 값이어야 합니다.
+
+Mobile production APK build의 추가 필수 Secret은 다음과 같습니다.
+
+- Android release signing: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+  `ANDROID_KEY_ALIAS`
+- metadata discovery: `SECRET_APK_VERSION_URL`, `SECRET_APK_FALLBACK_VERSION_URL`
+- artifact/release metadata: `SECRET_APK_DOWNLOAD_URL`, `SECRET_APK_FALLBACK_DOWNLOAD_URL`,
+  `SECRET_APK_RELEASE_NOTES_URL`
+
+primary/fallback URL은 서로 달라야 하고 HTTPS로 실제 `version.json`과 APK를 제공해야 합니다.
+`GATEKEEPER_API_KEY`는 workflow가 빈 값을 허용하지만, 인증된 backend 기능을 사용하는 상용 앱에는
+사실상 필요합니다. Secret 이름이 존재한다는 사실은 keystore 유효성, URL 접근성, NAS 경로 일치,
+firmware/app install 또는 rollback 증거를 대신하지 않습니다.
+
 Trusted workflow Gate는 PR code를 checkout하거나 실행하지 않습니다. `base.sha`의 sparse checkout에서
 validator와 policy만 읽고, candidate의 5개 보호 파일은 GitHub Contents API를 통해 inert bytes로
 가져와 `utf8-lf-v1` normalized SHA-256 bundle을 비교합니다. bootstrap/rotation 절차는
