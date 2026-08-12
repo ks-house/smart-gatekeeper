@@ -2839,3 +2839,9 @@
 
 - Applied the stable Dart formatter to `gatekeeper_app/lib/screens/web_view_screen.dart`, the only file reported by the Android canary formatting gate.
 - Re-ran the repository mobile format check across `gatekeeper_app/lib` and `gatekeeper_app/test`; all 28 Dart files now require no changes.
+
+## [2026-08-12] compile | Authorize the exact PR #85 protected bundle
+
+- Recomputed the complete ordered 57-file `utf8-lf-v1` map from exact product commit `d754f23a1028500248edb6a7025885c256e97c8c`; eight backend/admin contract files differ from the current baseline.
+- Added byte-identical `temporary-pr85-d754f23` and `future-pr85-persistent-baseline` identities so the exact product head can be admitted first and its later policy-main descendant can be admitted without widening the protected file set.
+- Kept this policy-only change separate from PR #85. Product merge remains conditional on the policy merge and fresh green hosted checks; final baseline rotation remains required immediately after product merge.
