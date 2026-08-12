@@ -24,6 +24,12 @@
 
 ## 2. “어떤 경우에도 OTA 가능”의 운영 정의
 
+벽에 매립되어 USB/serial 접근이 어려운 Target은
+[`embedded_target_connectivity_policy.md`](embedded_target_connectivity_policy.md)를 추가 최상위 운영 계약으로 적용한다.
+Wi-Fi STA와 MQTTS 자동 복구, availability/status last-seen 경보, periodic HTTPS pull, 공유기·broker·WAN 단절
+복구 시험이 없으면 “언제든 원격 OTA 가능”으로 판정하지 않는다. BLE beacon 감지와 broker PUBACK만으로는 이
+조건을 충족하지 않는다.
+
 소프트웨어가 통제할 수 없는 다음 상태에서는 즉시 OTA를 실행할 수 없다.
 
 - 전원 없음
