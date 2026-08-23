@@ -3126,3 +3126,9 @@
 - The hosted PR canary reached APK creation but failed before metadata because the runner did not expose cmdline-tools 12.0 at the exact path required by the verifier.
 - Added a secret-free preflight that installs exact `build-tools;36.0.0` and `cmdline-tools;12.0` packages and confirms both inspection executables before tests/build; the personal signing publisher still uses independently size/SHA-256-pinned official archives.
 - Extended the protected OTA contract and mutation suite so replacing the canary package version with a mutable alias fails closed. This source fix requires a fresh complete-bundle authorization before merge.
+
+## [2026-08-24] fix | Re-authorize the exact Android canary tool preflight
+
+- A hosted run proved analyzer, Flutter tests, native GATT tests and APK build passed but metadata could not find cmdline-tools 12.0 at the exact expected runner path.
+- Replaced both transition identities with revised feature commit `a643a7ec42a07de78103872c17cf15be2d5f75cd`; its complete 62-file maps are identical to each other and differ from the first authorization only for `build_app.yml` and `scripts/ota_contract_gate.py`.
+- Remote GitHub content/tree verification selected the revised temporary identity with all 62 regular blobs, seven workflow files and zero local Action files. No Secret, NAS, install, Target reboot, Home Assistant, physical or commercial action was performed by this policy-only change.
