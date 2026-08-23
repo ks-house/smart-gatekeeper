@@ -3027,3 +3027,10 @@
 ## [2026-08-23] test | Bind automatic main versions to Target SemVer ordering
 
 - Added native policy fixtures proving that `2.1.<first-parent-count>+main.g<sha>` advances numerically with the commit count and remains below a future stable `2.2.0` release.
+
+## [2026-08-23] test | Prove pinned production build reproducibility and full LF regression
+
+- Initialized the exact pioarduino commit as platform `55.3.39+sha.cbc3349` with Arduino 3.3.9, ESP32-C6 N16, ArduinoJson 6.21.5 and PubSubClient 2.8.0, then completed two clean `esp32c6_production` builds with example-only Secrets and one commit-derived epoch.
+- Both `firmware.bin` files were byte-identical at 1,662,032 bytes with SHA-256 `7beee4d68da602bd161e3c009e81610c69d8af6aa2621a376e411564f749a42b`; the exact test version was embedded. The 7 MiB OTA slot used 22.64 percent with 5,678,000 bytes headroom.
+- The LF checkout full suite passed 232/232. The ordinary Windows checkout again passed 230/232 with only the two known `core.autocrlf=true` strict-LF failures in unchanged `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`.
+- These are local example-secret build and source regression results, not production signing, NAS publication, Target installation, reboot health, rollback, physical acceptance or commercial release evidence.
