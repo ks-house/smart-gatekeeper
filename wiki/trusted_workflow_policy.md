@@ -64,33 +64,26 @@ the exact temporary match takes precedence without invoking ancestry; later desc
 persistent baseline.
 
 PR #95 introduced the complete version-3 inventory on main commit
-`954736380c3b82c09e7abdda09376f2c6f0f0620`. This bounded authorization replaces its historical
-`current-main-baseline` with exactly two identities for revised reviewed feature commit
-`a643a7ec42a07de78103872c17cf15be2d5f75cd`:
+`954736380c3b82c09e7abdda09376f2c6f0f0620`. PR #99 then merge-commit merged the encrypted automatic OTA base
+as main `81985553ed4f4118e060801ca07e1288f4078a8f`. The revised Android canary-tools candidate
+`a643a7ec42a07de78103872c17cf15be2d5f75cd` changed only `build_app.yml` and
+`scripts/ota_contract_gate.py` within that protected map: the secret-free canary installs exact SDK packages
+before metadata and the gate binds that step.
 
-- `temporary-auto-ota-a643a7e` is a `temporary-exact` identity for only that immutable repository commit.
-- `future-auto-ota-a643a7e-persistent-baseline` is the sole `persistent-baseline`; it permits only that commit
-  or a GitHub Compare-proven descendant with the same complete protected bytes.
+PR #100 separately authorized that exact candidate plus later same-byte descendants and was merge-commit
+merged as main `6a895c818dcfe94ee8fe81f5de5b4129dcb6295f`. PR #101 merged the trusted main into the candidate without
+rewriting history, retained the complete ordered 62-file map and seven-workflow/zero-local-action inventories,
+and received fresh Trusted, OTA contract, ESP32-C6 firmware and Android canary checks. It was merge-commit
+merged as main `7be74b4261dded2c8a9a2e9bb9f6438f61adac6d`.
 
-Both identities carry the same ordered 62-file digest map and the same seven-workflow/zero-local-action
-inventories. Remote GitHub tree and content reads confirmed that the candidate descends from PR #95 main and
-the first authorization merge `97995135216d4ec4289b42e11a13fb2bcf40b62f`, and
-that every protected path is a regular `100644 blob`. Compared with the PR #95 baseline, exactly eight
-protected files change: `deploy.yml`, `build_app.yml`, `ota_contract.yml`,
-`personal_installation_firmware.yml`, `protocol.yml`, `scripts/ota_contract_gate.py`,
-`ota/requirements.txt`, and `backend_security.yml`. The JSON policy contains their authoritative normalized
-digests. The prior persistent baseline is intentionally removed because the schema permits only one persistent
-baseline per repository.
+This final rotation removes both `a643a7e` transition identities and pins the sole
+`current-main-baseline` persistent identity to that actual merged-main commit. Every protected path remains a
+regular `100644 blob`; the ordered 62-file digest map and both protected inventories are unchanged from the
+reviewed candidate.
 
-The first hosted Android canary for the earlier reviewed head completed analyzer, Flutter, native GATT and APK
-build steps but proved that the runner did not install cmdline-tools 12.0 at the exact verifier path. The revised
-candidate changes only `build_app.yml` and `scripts/ota_contract_gate.py` within the protected map: the
-secret-free canary installs exact SDK packages before metadata and the gate binds that step. This is a new
-whole-bundle authorization, not reuse of the earlier candidate identity.
-
-Regression tests pin the exact repository, candidate SHA, two IDs and modes, identical complete maps, ordered
-62-path set, exact workflow/action inventories, and every digest. They prove exact-match precedence without an
-ancestry call and require explicit ancestry for later descendants. They also reject an extra bundle, fork,
+Regression tests pin the exact repository, final merged-main SHA, sole baseline ID and mode, ordered 62-path
+set, exact workflow/action inventories, and every digest. They require explicit ancestry for later descendants
+and reject the retired transition sources. They also reject an extra bundle, fork,
 retired or altered commit, unproven/diverged history, case/path variant, old five-path partial set, missing or
 reordered path, swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action
 additions, removals, renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed
@@ -114,12 +107,14 @@ of the same required-check context. Closing that residual circularity requires a
 separately app-pinned status identity and repository policy outside the mutable workflow namespace.
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
-main; later protected bundles completed the same sequence, including PR #86 and PR #85. The current
-authorization changes only policy data, regression tests, this guide, and the append-only log. It does not
-modify the validator, trusted workflow, or any other protected byte. Its own hosted check therefore executes
-the PR #95 main policy and can admit this policy-only descendant normally. A green Hosted Trusted check is
-required before merge; no branch-protection change is authorized. That green check does not close the
-version-3 self-policy or same-status-context producer residual.
+main; later protected bundles completed the same sequence, including PR #86 and PR #85. PR #100 was the
+bounded policy-only authorization for this rollout, and PR #101 integrated that trusted main without rewriting
+history. The final rotation changes only policy data, regression tests, this guide, and the append-only log. It
+does not modify the validator, trusted workflow, or any other protected byte. Its hosted check executes the
+PR #100 transition policy from H2's trusted base and can admit this policy-only descendant only because
+`a643a7e` remains an ancestor and all 62 protected bytes are unchanged. A green Hosted Trusted check is required
+before merge; no branch-protection change is authorized. That green check does not close the version-3
+self-policy or same-status-context producer residual.
 
 ## 4. Rotation procedure
 
@@ -130,18 +125,17 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For the encrypted automatic OTA feature, first merge this policy-only authorization from exact PR #95 main.
-Then merge that new main into feature commit `a643a7ec42a07de78103872c17cf15be2d5f75cd` without rebasing or
-squashing, verify that all 62 protected digests and both inventories remain unchanged, and obtain fresh hosted
-checks. Merge the feature through a merge commit so the reviewed source remains an ancestor of the resulting
-main commit.
+The encrypted automatic OTA sequence was: PR #99 base merge at `81985553`, PR #100 authorization merge at
+`6a895c8`, PR #101 policy-connected candidate `01ef2264`, and PR #101 merge commit `7be74b4`. Every protected
+digest and both inventories were rechecked after each ancestry connection, and the feature was never rebased or
+squashed.
 
-Immediately create a separate final policy-only rotation from that actual merged main. Remove both transition
-identities and pin one `persistent-baseline` named `current-main-baseline` to the actual merge commit with the
-same 62-file map. The transition persistent baseline admits that final rotation only when GitHub Compare proves
-ancestry and every protected byte is unchanged. After merge, verify current-main policy selection and both OTA
-publishers. Any path, digest, repository, or reviewed source-commit change requires a fresh whole-bundle review;
-never prolong the transition window or reuse a retired transition identity.
+This separate final policy-only rotation starts from that actual merged main, removes both transition
+identities, and pins one `persistent-baseline` named `current-main-baseline` to `7be74b4` with the same 62-file
+map. The transition persistent baseline admits this rotation only when GitHub Compare proves ancestry and every
+protected byte is unchanged. After merge, verify current-main policy selection and both OTA publishers. Any
+path, digest, repository, or reviewed source-commit change requires a fresh whole-bundle review; never prolong
+the transition window or reuse a retired transition identity.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.

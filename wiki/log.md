@@ -3132,3 +3132,10 @@
 - A hosted run proved analyzer, Flutter tests, native GATT tests and APK build passed but metadata could not find cmdline-tools 12.0 at the exact expected runner path.
 - Replaced both transition identities with revised feature commit `a643a7ec42a07de78103872c17cf15be2d5f75cd`; its complete 62-file maps are identical to each other and differ from the first authorization only for `build_app.yml` and `scripts/ota_contract_gate.py`.
 - Remote GitHub content/tree verification selected the revised temporary identity with all 62 regular blobs, seven workflow files and zero local Action files. No Secret, NAS, install, Target reboot, Home Assistant, physical or commercial action was performed by this policy-only change.
+
+## [2026-08-24] compile | Rotate automatic OTA policy to final merged-main baseline
+
+- PR #99 merged the encrypted OTA base as `81985553ed4f4118e060801ca07e1288f4078a8f`; PR #100 merged the exact `a643a7e` authorization as `6a895c818dcfe94ee8fe81f5de5b4129dcb6295f`; PR #101 retained that ancestry and merged as `7be74b4261dded2c8a9a2e9bb9f6438f61adac6d` after fresh Trusted, OTA, firmware and complete Android canary checks passed.
+- Removed both transition identities and pinned the sole `current-main-baseline` persistent identity to the actual PR #101 merge commit with the unchanged ordered 62-file map, seven-workflow inventory and empty local-Action inventory.
+- Verified that the reviewed `a643a7e` source and policy-connected `01ef2264` candidate are ancestors of the merge and that all 62 protected bytes are unchanged. This policy rotation is not Target installation, reboot-health, rollback, Home Assistant, physical, or commercial-release evidence.
+- The focused final-policy suite passed 42/42; JSON parsing, `actionlint`, whitespace checks and the live GitHub 62-file verifier passed with `current-main-baseline` selected for exact H2.
