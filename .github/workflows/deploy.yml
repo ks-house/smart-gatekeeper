@@ -531,6 +531,7 @@ jobs:
               "commands": [],
               "containers": [],
               "sftp_certificate_files": [],
+              "sftp_mosquitto_layout": [],
           }
 
           def run(command, sudo=False):
@@ -628,19 +629,16 @@ jobs:
                       if not stat.S_ISDIR(entry.st_mode):
                           continue
                       if re.search(
-                          r"mqtt|mosquitto|smartbox|gatekeeper",
+                          r"mqtt|mosquitto|smartbox|gatekeeper|nginx|proxy|cert|ssl|tls|homeassistant|traefik|caddy",
                           entry.filename,
                           re.IGNORECASE,
                       ):
                           candidate_roots.append("/docker/" + entry.filename)
                   report["sftp_candidate_roots"] = sorted(candidate_roots)
 
-                  visited = [0]
-                  certificate_names = {
-                      "cert.pem", "broker.pem", "fullchain.pem", "ca.pem"
-                  }
+                  visited_total = 0
 
-                  def walk(directory, depth):
+                  def walk(directory, depth, visited):
                       if depth < 0 or visited[0] >= 500:
                           return
                       try:
@@ -653,11 +651,14 @@ jobs:
                           visited[0] += 1
                           path = directory.rstrip("/") + "/" + entry.filename
                           if stat.S_ISDIR(entry.st_mode):
-                              walk(path, depth - 1)
+                              walk(path, depth - 1, visited)
                               continue
                           if (
                               not stat.S_ISREG(entry.st_mode)
-                              or entry.filename.lower() not in certificate_names
+                              or not entry.filename.lower().endswith(
+                                  (".pem", ".crt", ".cer"))
+                              or "key" in entry.filename.lower()
+                              or "private" in entry.filename.lower()
                               or entry.st_size <= 0
                               or entry.st_size > 65536
                           ):
@@ -680,8 +681,33 @@ jobs:
                           report["sftp_certificate_files"].append(item)
 
                   for root in candidate_roots:
-                      walk(root, 4)
-                  report["sftp_entries_visited"] = visited[0]
+                      visited = [0]
+                      walk(root, 6, visited)
+                      visited_total += visited[0]
+                  report["sftp_entries_visited"] = visited_total
+
+                  for directory in (
+                      "/docker/mosquitto",
+                      "/docker/mosquitto/config",
+                      "/docker/mosquitto/certs",
+                  ):
+                      try:
+                          entries = sftp.listdir_attr(directory)
+                      except OSError:
+                          continue
+                      for entry in entries:
+                          lower = entry.filename.lower()
+                          if not (
+                              stat.S_ISDIR(entry.st_mode)
+                              or lower == "mosquitto.conf"
+                              or lower.endswith((".pem", ".crt", ".cer", ".key"))
+                          ):
+                              continue
+                          report["sftp_mosquitto_layout"].append({
+                              "path": directory.rstrip("/") + "/" + entry.filename,
+                              "directory": stat.S_ISDIR(entry.st_mode),
+                              "size": entry.st_size,
+                          })
           finally:
               client.close()
               report_path = Path("evidence/nas-mqtt-certificate-audit.json")

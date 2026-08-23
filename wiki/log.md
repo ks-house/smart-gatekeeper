@@ -2951,3 +2951,9 @@
 ## [2026-08-23] fix | Correct bounded SFTP audit counter scope
 
 - Replaced an invalid module-scope `nonlocal` counter with a bounded mutable counter and compiled the embedded workflow Python from stdin before redispatch; the failed syntax attempt never connected to or changed the NAS.
+
+## [2026-08-23] test | Locate a possible renewed public certificate copy
+
+- The successful bounded SFTP audit found the expired public leaf at `/docker/mosquitto/config/cert.pem`; its validity and SHA-256 exactly matched the expired live 4883 certificate.
+- Expanded the read-only metadata scan to separately cap each relevant proxy/TLS project root, accept parseable public PEM/CRT/CER names while explicitly excluding key/private names, and report only the Mosquitto certificate/config filenames and sizes.
+- This does not read or export any private key. The goal is to determine whether an already renewed certificate/key pair is safely available to the container account before requiring DSM administrator UI work.
