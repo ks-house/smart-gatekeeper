@@ -3166,6 +3166,35 @@
 - Home Assistant live entities converged to H4, IDLE/closed and current diagnostics/config. Its device-card metadata header and seven legacy controls remained stale; RSSI was about -84 dBm.
 - This H4 operation is the required rotated-key USB bootstrap, not inactive-slot OTA. The strictly newer main produced by this documentation change is reserved for encrypted periodic HTTPS app1 install, reboot and health-valid verification.
 
+## [2026-08-24] test | Diagnose H5 encrypted OTA manifest rejection on the physical Target
+
+- Target run `32658670039` published exact main `6517caa957dcf1c42ece49d15e38a428c81262e5` as `2.1.235+main.g6517caa`; NAS/public exact-byte readback and independent local Ed25519, AES-256-GCM, ciphertext/plaintext SHA-256 and ESP32-C6 N16 image checks passed.
+- H4 did not reboot during the periodic check window. Posting the same exact signed H5 manifest through authenticated same-LAN recovery returned HTTP 400 before artifact transfer, upload or inactive `app1` write.
+- H4 remained online with Wi-Fi/MQTTS/status service and its existing slots/NVS were preserved. This is a fail-closed manifest rejection and failed H5 install, not OTA completion or health-valid evidence.
+- The failure boundary was H4's PSA PureEdDSA provider: the identifier was present in headers, but the actual ESP32-C6 Arduino/ESP-IDF Mbed TLS configuration did not provide that algorithm at runtime.
+
+## [2026-08-24] fix | Move Target manifest verification to bundled libsodium
+
+- Replaced the unavailable PSA PureEdDSA runtime path with bundled Espressif libsodium initialization and detached Ed25519 verification, retaining exact 32-byte public-key and 64-byte signature contracts and fail-closed behavior.
+- Added safe stage-specific OTA diagnostics so periodic and authenticated local manifest rejection can be distinguished without logging Secret material or signature contents.
+- The H6 candidate currently has source, host-test and ESP32-C6 build/capacity evidence only. An exact merged-main physical run must still prove manifest acceptance, inactive-slot write, reboot, expected version/new boot ID, health-valid marking, rollback and power-loss recovery.
+
+## [2026-08-24] lint | Validate H5 failure and H6 correction documentation
+
+- Resolved all relative Markdown links across `wiki/`, confirmed `wiki/log.md` contains end-of-file additions only and passed scoped `git diff --check` for the five updated pages.
+- No new wiki page was added, so `wiki/index.md` required no navigation change. No physical H6 result, production approval or closed OTA Gate is asserted.
+
+## [2026-08-24] compile | Clarify the one-time H6 USB bootstrap boundary
+
+- H4 cannot authenticate even a corrective signed successor because the unavailable PSA provider is itself inside H4, so exact merged-main H6 must be installed app-only over USB while preserving NVS, OTA data and the fallback slot.
+- Physical OTA completion then requires a strictly newer H7 to be accepted by H6, written to the inactive slot, rebooted, observed under a new boot ID and marked valid after the continuous health window.
+
+## [2026-08-24] test | Validate the H6 runtime verifier candidate and protected build inputs
+
+- The default ESP32-C6 production profile compiled with bundled libsodium linked into the ELF. The 1,795,312-byte image identifies as ESP32-C6 with 16 MB flash, DIO at 80 MHz, valid checksum/hash and 5,544,720 bytes of headroom in either 7,340,032-byte OTA slot.
+- All 277 repository tests passed before updating the protected compiler input digest. Focused Target security/autopublish tests, `actionlint`, the OTA contract and `git diff --check` passed after the update; the trusted-policy working-tree digest test is expected to remain red only until the separate exact-feature authorization is merged and connected.
+- Updated the privileged `EXPECTED_BUILD_TREE` pins for `OtaManager.cpp` and `WifiManager.cpp`; the ignored local production `include/secrets.h` remains untracked and no Secret value was printed or staged.
+
 ## [2026-08-24] compile | Authorize exact OTA Ed25519 runtime fix
 
 - Replaced the historical persistent authorization with one temporary-exact and one future persistent identity for reviewed feature commit `d4a3da40b4b6772bb1edcd4583eeb59951d6e7f6`; both identities bind the same complete 62-file normalized digest map.

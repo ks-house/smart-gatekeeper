@@ -160,6 +160,12 @@ published_at
 TLS 성공만으로 artifact를 신뢰하지 않는다. manifest signature와 firmware digest를
 검증하고 board/partition/protocol 범위가 맞지 않으면 flash하지 않는다.
 
+서명 알고리즘의 header 상수나 compile 성공만으로 Target runtime 지원을 주장하지 않는다.
+실제 production toolchain/configuration이 제공하는 crypto provider로 exact positive manifest와
+tampered negative vector를 검증해야 한다. Provider 초기화·알고리즘 지원·서명 검증 중 하나라도
+실패하면 artifact 요청과 inactive-slot write 전에 중단하고, Secret이나 서명 원문 없이 운영자가
+단계를 구분할 수 있는 failure reason을 남긴다.
+
 ### 4.5 완료 판정
 
 다음 전체가 확인돼야 Target OTA 성공이다.
@@ -505,3 +511,34 @@ marking.
 The content key is embedded in firmware; without ESP32 flash encryption this is
 NAS-at-rest/distribution confidentiality, not resistance to an attacker with
 physical flash read access.
+
+## 18. 2026-08-24 H5 manifest rejection and Ed25519 provider correction
+
+Exact H5 main `6517caa957dcf1c42ece49d15e38a428c81262e5`, version
+`2.1.235+main.g6517caa`, passed CI publication, NAS/public exact-byte readback and
+independent local Ed25519, AES-256-GCM, ciphertext/plaintext SHA-256 and ESP32-C6
+N16 image checks. Those checks prove the published bytes and offline key binding,
+not that H4's embedded verifier can consume them.
+
+The running H4 did not reboot during the periodic check window. An authenticated
+same-LAN recovery request then posted the exact H5 manifest and received HTTP 400
+before any artifact upload or inactive-slot write. H4 remained online on Wi-Fi
+and MQTTS, and the existing `app1` was not displaced. This is a fail-closed
+preservation result and a failed OTA attempt, not OTA-G1/G3/G4 completion.
+
+The failure was a crypto-provider mismatch: the H4 binary selected PSA
+PureEdDSA, while its actual ESP32-C6 Arduino/ESP-IDF Mbed TLS configuration did
+not provide that algorithm at runtime despite exposing the PSA identifier in
+headers. Manifest verification has therefore moved to the bundled Espressif
+libsodium provider, with `sodium_init()` and
+`crypto_sign_verify_detached()` plus compile-time 32-byte public-key and 64-byte
+signature contracts. Initialization or signature failure remains fail-closed.
+
+The libsodium change currently has source, host-test and ESP32-C6 build/capacity
+evidence only. H4 cannot authenticate its corrective successor, so exact
+merged-main H6 must first be installed app-only over USB while preserving NVS,
+OTA data and the fallback slot. It becomes physical OTA evidence only after a
+strictly newer H7 is accepted by H6, writes the inactive slot, reboots with the
+expected version/new boot ID, completes the continuous health window and is
+marked valid. Automatic rollback, power-loss and N/N-1 recovery remain separate
+pending Gates.

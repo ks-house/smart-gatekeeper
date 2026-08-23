@@ -442,7 +442,9 @@ void WifiManager::handleRecoveryManifest() {
     }
     const String manifest = webServer.arg("plain");
     if (!OtaManager::stageLocalManifest(manifest)) {
-        webServer.send(400, "text/plain", "Signed manifest rejected");
+        webServer.send(400, "text/plain",
+                       "Signed manifest rejected: " +
+                           OtaManager::getLastError());
         return;
     }
     webServer.send(204, "text/plain", "");
