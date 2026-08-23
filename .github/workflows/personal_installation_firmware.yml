@@ -11,23 +11,22 @@ jobs:
     name: Build encrypted production-secret firmware
     if: github.ref == 'refs/heads/main'
     environment: production
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.10'
+          python-version: '3.10.20'
 
       - name: Install build and OTA dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install platformio -r ota/requirements.txt
+          python -m pip install --require-hashes -r ota/requirements.lock
 
       - name: Verify connectivity and OTA contracts before secrets
         run: |
@@ -57,6 +56,8 @@ jobs:
           SECRET_OTA_FIRMWARE_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
           SECRET_OTA_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
           SECRET_OTA_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+          SECRET_OTA_CONTENT_KEY_HEX: ${{ secrets.SECRET_OTA_CONTENT_KEY_HEX }}
+          SECRET_OTA_CONTENT_KEY_ID: ${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}
           SECRET_LOCAL_RECOVERY_AP_PASSWORD: ${{ secrets.SECRET_LOCAL_RECOVERY_AP_PASSWORD }}
           SECRET_LOCAL_RECOVERY_USER: ${{ secrets.SECRET_LOCAL_RECOVERY_USER }}
           SECRET_LOCAL_RECOVERY_PASSWORD: ${{ secrets.SECRET_LOCAL_RECOVERY_PASSWORD }}
@@ -72,7 +73,8 @@ jobs:
             SECRET_TARGET_DOOR_ID SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX \
             SECRET_COMMAND_SIGNING_KEY_ID SECRET_OTA_VERSION_URL \
             SECRET_OTA_FIRMWARE_URL SECRET_OTA_SIGNER_PUBLIC_KEY_HEX \
-            SECRET_OTA_SIGNING_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
+            SECRET_OTA_SIGNING_KEY_ID SECRET_OTA_CONTENT_KEY_HEX \
+            SECRET_OTA_CONTENT_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
             SECRET_LOCAL_RECOVERY_USER SECRET_LOCAL_RECOVERY_PASSWORD; do
             test -n "${!name}" || fail_secret_contract "$name is empty"
           done
@@ -80,6 +82,8 @@ jobs:
           test "$SECRET_WIFI_PASSWORD" != "YOUR_WIFI_PASSWORD" || fail_secret_contract "SECRET_WIFI_PASSWORD is placeholder"
           [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX format"
           [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX format"
+          [[ "$SECRET_OTA_CONTENT_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "SECRET_OTA_CONTENT_KEY_HEX format"
+          test "$SECRET_OTA_CONTENT_KEY_ID" = "personal-target-content-20260824-1" || fail_secret_contract "SECRET_OTA_CONTENT_KEY_ID identity"
           test "${#SECRET_LOCAL_RECOVERY_AP_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_AP_PASSWORD length"
           test "${#SECRET_LOCAL_RECOVERY_USER}" -ge 8 || fail_secret_contract "SECRET_LOCAL_RECOVERY_USER length"
           test "${#SECRET_LOCAL_RECOVERY_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_PASSWORD length"
@@ -107,6 +111,8 @@ jobs:
           #define SECRET_APK_DOWNLOAD_URL "https://mobile-release.invalid/app.apk"
           #define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"
           #define SECRET_OTA_SIGNING_KEY_ID "${SECRET_OTA_SIGNING_KEY_ID}"
+          #define SECRET_OTA_CONTENT_KEY_HEX "${SECRET_OTA_CONTENT_KEY_HEX}"
+          #define SECRET_OTA_CONTENT_KEY_ID "${SECRET_OTA_CONTENT_KEY_ID}"
           #define SECRET_LOCAL_RECOVERY_AP_PASSWORD "${SECRET_LOCAL_RECOVERY_AP_PASSWORD}"
           #define SECRET_LOCAL_RECOVERY_USER "${SECRET_LOCAL_RECOVERY_USER}"
           #define SECRET_LOCAL_RECOVERY_PASSWORD "${SECRET_LOCAL_RECOVERY_PASSWORD}"
@@ -155,32 +161,59 @@ jobs:
           TARGET_PRIVATE_KEY_HEX: ${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}
           TARGET_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
           TARGET_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+          TARGET_CONTENT_KEY_HEX: ${{ secrets.SECRET_OTA_CONTENT_KEY_HEX }}
+          TARGET_CONTENT_KEY_ID: ${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}
         run: |
           set -euo pipefail
           test -n "$TARGET_ARTIFACT_URL"
           test -n "$TARGET_PRIVATE_KEY_HEX"
           test -n "$TARGET_PUBLIC_KEY_HEX"
           test -n "$TARGET_SIGNING_KEY_ID"
+          [[ "$TARGET_CONTENT_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          test "$TARGET_CONTENT_KEY_ID" = "personal-target-content-20260824-1"
+          IMMUTABLE_ARTIFACT_URL="${TARGET_ARTIFACT_URL%/*}/gatekeeper-firmware-${GITHUB_SHA}.sgkenc"
+          ROUNDTRIP="${RUNNER_TEMP}/gatekeeper-firmware-roundtrip.bin"
           export TARGET_PRIVATE_KEY_HEX
-          PUBLISHED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-          python scripts/ota_contract_gate.py target-manifest-create \
+          export TARGET_CONTENT_KEY_HEX
+          trap 'rm -f "$ROUNDTRIP"' EXIT
+          python -I scripts/ota_contract_gate.py target-content-encrypt \
             --artifact dist/gatekeeper-firmware.bin \
+            --output dist/gatekeeper-firmware.sgkenc \
+            --key-env TARGET_CONTENT_KEY_HEX \
+            --key-id "$TARGET_CONTENT_KEY_ID" \
+            --commit "$GITHUB_SHA"
+          python -I scripts/ota_contract_gate.py target-content-decrypt \
+            --input dist/gatekeeper-firmware.sgkenc \
+            --output "$ROUNDTRIP" \
+            --key-env TARGET_CONTENT_KEY_HEX \
+            --key-id "$TARGET_CONTENT_KEY_ID" \
+            --commit "$GITHUB_SHA"
+          cmp dist/gatekeeper-firmware.bin "$ROUNDTRIP"
+          rm -f "$ROUNDTRIP"
+          trap - EXIT
+          PUBLISHED_AT=$(git show -s --format=%cI "$GITHUB_SHA")
+          python scripts/ota_contract_gate.py target-manifest-create \
+            --artifact dist/gatekeeper-firmware.sgkenc \
+            --plaintext-artifact dist/gatekeeper-firmware.bin \
+            --encryption-key-id "$TARGET_CONTENT_KEY_ID" \
             --output dist/version.json \
             --version "$FULL_VERSION" \
             --commit "$GITHUB_SHA" \
             --build-id "$GITHUB_RUN_ID" \
-            --artifact-url "$TARGET_ARTIFACT_URL" \
+            --artifact-url "$IMMUTABLE_ARTIFACT_URL" \
             --published-at "$PUBLISHED_AT" \
             --signing-key-id "$TARGET_SIGNING_KEY_ID" \
             --private-key-env TARGET_PRIVATE_KEY_HEX \
             --expected-public-key-hex "$TARGET_PUBLIC_KEY_HEX"
           python scripts/ota_contract_gate.py target-manifest-verify \
             --manifest dist/version.json \
-            --artifact dist/gatekeeper-firmware.bin \
+            --artifact dist/gatekeeper-firmware.sgkenc \
             --public-key-hex "$TARGET_PUBLIC_KEY_HEX" \
             --expected-version "$FULL_VERSION" \
             --expected-commit "$GITHUB_SHA" \
-            --expected-build-id "$GITHUB_RUN_ID"
+            --expected-build-id "$GITHUB_RUN_ID" \
+            --expected-encryption-key-id "$TARGET_CONTENT_KEY_ID"
+          (cd dist && sha256sum gatekeeper-firmware.sgkenc version.json >> SHA256SUMS)
 
       - name: Encrypt installation bundle
         env:
@@ -195,7 +228,7 @@ jobs:
           test -s "delivery/target-personal-installation-${GITHUB_SHA}.7z"
 
       - name: Upload encrypted one-day bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: target-personal-installation-${{ github.sha }}
           path: delivery/*.7z

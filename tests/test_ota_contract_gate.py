@@ -81,7 +81,8 @@ class OtaContractGateTest(unittest.TestCase):
         commit=commit,
         build_id=f"public-canary-{commit}",
         artifact_url=(
-            f"https://target-canary.invalid/smart-gatekeeper/{commit}/firmware.bin"
+            "https://target-canary.invalid/smart-gatekeeper/"
+            f"gatekeeper-firmware-{commit}.bin"
         ),
         published_at="2026-08-01T00:00:00Z",
         mandatory_after=None,
@@ -146,7 +147,10 @@ class OtaContractGateTest(unittest.TestCase):
           version="2.1.0-g1234567",
           commit="1" * 40,
           build_id="public-canary-" + "1" * 40,
-          artifact_url="https://target-canary.invalid/firmware.bin",
+          artifact_url=(
+              "https://target-canary.invalid/"
+              f"gatekeeper-firmware-{'1' * 40}.bin"
+          ),
           published_at="2026-08-01T00:00:00Z",
           mandatory_after=None,
           signing_key_id="rfc8032-test-key-1",
@@ -186,7 +190,10 @@ class OtaContractGateTest(unittest.TestCase):
           version="2.1.0-gabcdef0",
           commit="a" * 40,
           build_id="run-100",
-          artifact_url="https://target-canary.invalid/firmware.bin",
+          artifact_url=(
+              "https://target-canary.invalid/"
+              f"gatekeeper-firmware-{'a' * 40}.bin"
+          ),
           published_at="2026-08-01T00:00:00Z",
           mandatory_after=None,
           signing_key_id="rfc8032-test-key-1",
@@ -569,8 +576,8 @@ class OtaContractGateTest(unittest.TestCase):
         ),
         (
             "connected-enables-deploy",
-            "          exit 1\n\n  release_to_production:",
-            "          exit 0\n\n  release_to_production:",
+            "          exit 1\n\n  build_personal_target_ota_firmware:",
+            "          exit 0\n\n  build_personal_target_ota_firmware:",
             "remain fail closed",
         ),
     )
@@ -693,7 +700,6 @@ class OtaContractGateTest(unittest.TestCase):
     for path, occurrence in (
         (".github/workflows/deploy.yml", 1),
         (".github/workflows/build_app.yml", 1),
-        (".github/workflows/build_app.yml", 2),
     ):
       with self.subTest(path=path, occurrence=occurrence):
         workflows = self._workflow_sources()
@@ -1086,7 +1092,7 @@ class OtaContractGateTest(unittest.TestCase):
       with self.subTest(workflow=target_workflow):
         workflows = self._workflow_sources()
         workflows[target_workflow] = workflows[target_workflow].replace(
-            "wlixcc/SFTP-Deploy-Action@v1.2.4",
+            gate.SFTP_DEPLOY_ACTION,
             "appleboy/scp-action@master",
         )
         with self.assertRaisesRegex(gate.GateError, "uses mismatch"):
@@ -1175,6 +1181,47 @@ class OtaContractGateTest(unittest.TestCase):
 
   def test_mobile_workflow_binds_tests_trust_root_and_signed_metadata(self):
     gate.validate_mobile_build_workflow(self._workflow_sources())
+
+  def test_mobile_workflow_rejects_mutable_android_tool_discovery(self):
+    path = ".github/workflows/build_app.yml"
+    workflows = self._workflow_sources()
+    workflows[path] = workflows[path].replace(
+        'APKSIGNER="$ANDROID_SDK/build-tools/36.0.0/apksigner"',
+        'APKSIGNER="$(find "$ANDROID_SDK/build-tools" -name apksigner | tail -1)"',
+        1,
+    )
+    with self.assertRaisesRegex(gate.GateError, "mutable discovery"):
+      gate.validate_mobile_build_workflow(workflows)
+
+  def test_mobile_gradle_wrappers_bind_official_distribution_checksums(self):
+    gate.validate_mobile_gradle_wrapper_pins()
+    path = "gatekeeper_app/android/gradle/wrapper/gradle-wrapper.properties"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    with self.assertRaisesRegex(gate.GateError, "SHA-256"):
+      gate.validate_mobile_gradle_wrapper_pins({
+          path: source.replace(
+              "b84e04fa845fecba48551f425957641074fcc00a88a84d2aae5808743b35fc85",
+              "0" * 64,
+          ),
+          (
+              "gatekeeper_app/android/app/libs/flutter_beacon_local/android/"
+              "gradle/wrapper/gradle-wrapper.properties"
+          ): (
+              ROOT
+              / "gatekeeper_app/android/app/libs/flutter_beacon_local/android/"
+              "gradle/wrapper/gradle-wrapper.properties"
+          ).read_text(encoding="utf-8"),
+      })
+
+  def test_ota_python_lock_is_bound_to_reviewed_exact_bytes(self):
+    contents = {
+        path: (ROOT / path).read_bytes()
+        for path in gate.PINNED_OTA_PYTHON_INPUTS
+    }
+    gate.validate_ota_python_dependency_inputs(contents)
+    contents["ota/requirements.lock"] += b"\n# unreviewed\n"
+    with self.assertRaisesRegex(gate.GateError, "reviewed hash lock"):
+      gate.validate_ota_python_dependency_inputs(contents)
 
   def test_mobile_workflow_rejects_removed_or_weakened_format_check(self):
     path = ".github/workflows/build_app.yml"

@@ -51,13 +51,51 @@ The repository test suite also validates that G0-SW permits only feature-flagged
 implementation/review/merge while G0-HW, legacy retirement, and Epic closure
 remain blocked by physical evidence.
 
-Ordinary `main` pushes and the default `release_target=canary` manual run execute
-only build, test, contract validation, and canary artifact upload. Production NAS
-SFTP exists in a separate `production` Environment job and is eligible only when
-an authorized manual dispatch explicitly selects `release_target=production`;
-that job still runs the release command above before deployment. Static tests
-reject workflows that move release/SFTP back into a push job or remove the
-explicit trigger, evidence check, or exact downloaded-canary binding.
+An ordinary `main` push still produces a public canary, then the exact
+`publish_personal_target_ota` job may use the `production` Environment to build
+the single-owner Target profile, create a production-signed manifest and publish
+it to the configured NAS OTA directory. This personal-installation publication
+is deliberately not `release` authorization: its sanitized evidence keeps
+`production_authorized: false` and `release_evidence: false`, and it never edits
+`ota/release-evidence.json`.
+
+The automatic Target version and build identity are deterministic along
+protected main: `2.1.<first-parent-count>+main.g<short-sha>` and
+`main-<first-parent-count>-<full-sha>`. Firmware and manifest are
+created with pinned PlatformIO/pioarduino inputs and a commit-derived
+`SOURCE_DATE_EPOCH`; two clean builds must be byte-identical before signing.
+The exact generated version must also be present in the firmware bytes before
+the manifest can be signed.
+The protected OTA contract binds the normalized full `platformio.ini` bytes, so
+a pull request cannot silently swap the platform, library, flags or production
+environment while retaining a green auto-publication job.
+All Actions artifacts include `github.run_attempt`, so rerunning the original
+workflow can safely retry publication without colliding with immutable
+`upload-artifact@v4` names. An exact-main manual dispatch with the default
+`release_target=canary` also enters the personal publisher; physical-test and
+commercial dispatch choices remain separate and cannot enter it.
+They are uploaded under immutable commit filenames, read back byte-for-byte, and only
+then is `version.json` replaced with the SFTP server's OpenSSH `posix-rename`
+extension. A server without atomic replacement support fails while the previous
+pointer and immutable artifacts remain available. `NAS_KNOWN_HOSTS` is required
+for both automatic password-authenticated publishers; an absent or changed NAS
+trust anchor fails before credentials are sent. After SFTP promotion, the Target
+lane requires the configured HTTPS `version.json` and immutable firmware URL to
+return the exact signed bytes through the same provisioned Target root CA, so a
+wrong TLS chain, HTTPS downgrade, reverse-proxy/path error or 404 cannot pass CI.
+If a commercial `2.2.0` or newer line is deployed, the automatic major/minor
+base must be explicitly advanced before the next personal publish. Until then,
+the publisher treats the signed newer NAS pointer as stale-run protection and
+fails closed instead of silently overwriting it.
+Only a genuinely missing `version.json` may bootstrap automatically. If metadata
+exists but its schema or signature cannot be verified with the current Target
+key, publication fails closed and requires an explicit migration decision.
+
+The commercial `release_to_production` job remains a separate authorized manual
+dispatch and still runs the release command above before its deployment. Static
+tests reject either lane if exact-main/secret provenance, signed byte binding,
+staged readback, atomic metadata swap, release evidence, or explicit commercial
+trigger boundaries are weakened.
 
 ## Signature serialization
 

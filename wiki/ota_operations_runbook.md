@@ -1,10 +1,107 @@
 # OTA 운영 runbook
 
-> Last updated: 2026-08-01
+> Last updated: 2026-08-24
 > Scope: Android mobile, ESP32-C6 Target, Backend/NAS distribution, CI
 > Status: 절차 확정; OTA-G1~G4 실기기 증거 pending
 
 ## 1. 배포 전 판정
+
+### 1.1 Exact-main 개인 Target 자동 게시
+
+`main` push가 public build/test를 통과하면 privileged compiler job이 exact SHA를 full-history
+checkout하고 mode/SHA-256으로 고정된 build input inventory에서 `esp32c6_production` N16 image를
+빌드한다. 평문 image는 X25519/HKDF/AES-GCM 단기 handoff로만 isolated publisher job에 전달되며,
+public Actions artifact에는 노출되지 않는다. Version은
+`2.1.<first-parent-count>+main.g<short-sha>`여야 하며, commit count를 patch precedence로 사용해
+임의 SHA lexicographic order와 stable `2.1.1` prerelease 충돌을 피한다. build ID는 `main.<count>`가 아니라
+`main-<first-parent-count>-<full-sha>`로 결정하고 commit timestamp를 publication/build epoch로
+사용한다. Publisher는 handoff를 인증 복호화한 뒤 별도 Target content key로 `SGKOTA2` AES-256-GCM
+envelope를 만들고 평문을 삭제한다. Production Ed25519 key로 schema-v2 manifest를 생성·재검증한 뒤
+다음 순서를 모두 통과해야 한다.
+
+실패한 main-push workflow의 GitHub rerun은 같은 push event를 유지하므로 더 큰
+`github.run_attempt`와 충돌 없는 Actions artifact 이름으로 이 자동 게시를 재시도한다. exact
+`refs/heads/main`에서 `release_target=canary`로 수동 dispatch해도 checkout SHA 일치를 확인한 뒤
+personal publisher를 실행한다. physical-test와 commercial dispatch choice는 이 경로에 들어오지 않는다.
+
+1. `.sgkenc` firmware envelope와 manifest를 commit별 immutable staging path에 upload한다. 평문
+   `firmware.bin`은 NAS에 전송하지 않는다.
+2. 두 파일을 다시 내려받아 local bytes와 비교한다.
+3. 기존 signed `version.json`이 더 최신이면 stale run을 중단한다.
+4. 기존 정상 artifact/manifest와 새 immutable pair를 보존한다.
+5. OpenSSH `posix-rename` 한 번으로 `version.json` pointer를 교체하고 다시 읽어 비교한다.
+6. `SECRET_OTA_VERSION_URL`과 manifest의 commit별 immutable artifact URL을 HTTPS로 다시 받아
+   provisioned `SECRET_ROOT_CA_CERT`로 TLS chain을 검증한 뒤 local signed manifest/firmware와
+   byte-for-byte 비교하고 재검증한다. HTTPS 외 protocol redirect는 거부한다.
+
+`version.json`이 실제로 없을 때만 최초 bootstrap을 자동 허용한다. 파일이 존재하지만 current
+schema/signature로 검증되지 않으면 구형 queued workflow나 잘못된 key rotation이 새 pointer를 덮지
+못하도록 fail-closed하며, 운영자가 별도 migration을 결정해야 한다.
+
+기존 현장 `2.1.0-gd06519e`는 plaintext schema-v1 consumer이므로 encrypted schema-v2 pointer를 읽을 수
+없다. 최초 1회는 NVS를 지우지 않는 USB app-slot bootstrap으로 v2 consumer를 설치해야 하며, 그 뒤
+두 번째 exact-main release를 periodic HTTPS OTA로 install→reboot→health 확인한다. Content key rotation도
+동일하게 old/new reader overlap이나 USB bootstrap 계획 없이는 수행하지 않는다.
+
+자동 password-authenticated publisher에는 independently verified `NAS_KNOWN_HOSTS`가 필수다. 값이
+없거나 live key와 다르면 credential 전송/게시 전에 실패하며 runtime keyscan으로 우회하지 않는다.
+NAS가 `posix-rename`을 지원하지 않아도 이전 pointer를 유지한 채 fail-closed한다.
+
+이 job은 exact `main`만 허용하고 required reviewer가 없는 `personal-auto-ota` Environment를 사용한다.
+따라서 검사를 통과한 main push와 exact-main `release_target=canary` dispatch는 승인 대기 없이
+진행한다. Commercial mobile job은 별도 `production` Environment의 main-only policy와 required
+reviewer(`tworimpa`)를 계속 적용하고 Target commercial job은 encrypted-v2 migration 전까지 disabled이며,
+개인 자동 게시가 그 승인을 우회하거나 대체하지 않는다.
+
+Secret materialize와 NAS contact 전에 실행하는 공급망 preflight에서 모든 `uses:` action은 full commit SHA, runner는
+`ubuntu-24.04` label로 고정되어야 한다. Firmware lane은 Python `3.10.20`, mobile lane은 Python
+`3.12.13`, Temurin `17.0.16+8`, Flutter `3.44.8`, Android build-tools `36.0.0`의
+`apksigner.jar`와 cmdline-tools `12.0`의 `apkanalyzer`를 사용한다. Mobile signing publisher는 세 공식
+archive의 URL·byte size·SHA-256을 검증하고 path traversal을 거부한 뒤에만 압축을 해제하며 runner의
+mutable Android SDK를 탐색하지 않는다. Python dependency는
+`ota/requirements.lock`을 `pip --require-hashes`로 설치하며, main Gradle `9.1.0`과 vendored
+Gradle `5.4.1` distribution은 각각 wrapper의 검토된 `distributionSha256Sum`과 일치해야 한다.
+누락되거나 다른 tool을 runner에서 임의 탐색해 대체하지 않는다.
+
+commercial `2.2.0` 이상을 배포하면 다음 personal main publish 전에 이 lane의 major/minor base와
+contract를 `2.2` 이상으로 명시적으로 올린다. 그렇지 않으면 signed NAS current core가 더 높으므로
+publisher가 stale downgrade로 실패하는 것이 정상이며, 기존 pointer를 강제로 덮지 않는다.
+
+이 단계의 성공은 개인 Target이 새 manifest를 조회할 수 있는 NAS transport 증거일 뿐이다.
+실제 install→reboot→Wi-Fi/MQTTS health→valid mark/rollback은 아래 Target canary 절차로 별도 확인한다.
+또한 자동 게시 evidence는 commercial `release` 승인이나 `ota/release-evidence.json` 갱신이 아니다.
+
+### 1.2 Exact-main 개인 Mobile 자동 게시 preflight
+
+`publish_personal_mobile_ota`는 public mobile build/test 뒤의 exact `main` push 또는 exact-main
+`release_target=canary` dispatch에서만 실행하며 main-only, no-review `personal-auto-ota` Environment를
+사용한다. Signing 전에 unsigned artifact가 정확히 한 개의 regular file이고 symlink가 아니며 허용
+size/SHA-256이 유지되는지 확인한다. 설치 앱이 신뢰하는 mobile identity는 전용
+`MOBILE_OTA_SIGNING_*` 이름을 사용해 같은 Environment의 Target `OTA_SIGNING_*` 값과 shadowing되지
+않는다. Secret 이름과 범위는
+[`env_setup.md`](env_setup.md)에 기록하며 값은 문서나 로그에 남기지 않는다.
+
+NAS 변경 전 publisher는 primary와 fallback root를 **모두** 읽어 다음 preflight를 적용한다.
+
+1. metadata가 없고 APK도 없는 root만 bootstrap 대상으로 본다.
+2. APK만 있거나, metadata가 존재하지만 schema/Ed25519 signature를 검증할 수 없으면 전체 publish를
+   중단한다.
+3. 유효하게 서명된 metadata의 version code는 paired APK가 누락·손상되어도 floor로 유지한다.
+4. 두 root 중 가장 높은 floor보다 낮은 candidate는 거부한다. 손상된 equal-floor pair의 repair도
+   strictly higher version code가 필요하며 equal identity의 다른 bytes는 거부한다.
+5. 양쪽 preflight가 모두 통과한 뒤에만 staged upload/readback, immutable retention,
+   APK→manifest `posix_rename`, public primary/fallback HTTPS exact-byte readback을 수행한다.
+
+이 순서는 fallback에 새 APK를 올린 뒤 primary의 더 높은 floor를 발견하는 partial stale publish를
+막는다. 성공해도 NAS publication evidence일 뿐 Android installer 승인·완료, first-run health,
+credential 보존 또는 fallback/rollback의 실기기 증거는 아니다.
+
+### 1.3 Commercial release 판정
+
+Target의 기존 `release_to_production` job은 plaintext schema-v1을 게시할 수 있으므로 encrypted-v2
+migration이 별도로 완료될 때까지 조건에 `false &&`를 포함해 실행 불가다. Mobile commercial job은
+아래 evidence와 `production` Environment 승인을 계속 요구한다. Personal automatic publisher는 어느
+commercial Gate도 대체하지 않는다.
 
 벽 매립형 Target에는 다음 연결 preflight를 먼저 적용한다.
 
@@ -44,6 +141,13 @@
    이전 slot rollback을 기대한다.
 7. MQTT 차단 상태의 periodic HTTPS와 Backend/DNS 차단 상태의 authenticated local AP를
    별도로 시험한다.
+
+The automatic Target path aborts an artifact transfer after 30 seconds without
+progress or five minutes total. After a pending image fails health and the
+bootloader returns to the prior slot, the exact failed version is quarantined;
+leaving the same manifest published must not trigger another installation.
+Recovery publication must therefore use a strictly higher SemVer version, not
+the failed version with only different build metadata.
 
 ## 3. Mobile canary 절차
 

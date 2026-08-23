@@ -12,6 +12,7 @@ on:
       - 'scripts/ota_contract_gate.py'
       - 'tests/test_ota_contract_gate.py'
       - 'tests/test_nas_physical_test_delivery.py'
+      - 'tests/test_target_ota_autopublish.py'
   push:
     branches: [ main ]
   workflow_dispatch:
@@ -38,20 +39,18 @@ permissions:
 jobs:
   test_and_build:
     name: Test and build firmware canary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.10'
+          python-version: '3.10.20'
 
       - name: Install PlatformIO
-        run: |
-          python -m pip install --upgrade pip
-          pip install platformio -r ota/requirements.txt
+        run: python -m pip install --require-hashes -r ota/requirements.lock
 
       - name: Validate OTA P0 contract
         run: |
@@ -83,7 +82,7 @@ jobs:
             --version "${{ env.FULL_VERSION }}" \
             --commit "${{ github.sha }}" \
             --build-id "public-canary-${{ github.sha }}" \
-            --artifact-url "https://target-canary.invalid/smart-gatekeeper/${{ github.sha }}/firmware.bin" \
+            --artifact-url "https://target-canary.invalid/smart-gatekeeper/gatekeeper-firmware-${{ github.sha }}.bin" \
             --published-at "2026-08-01T00:00:00Z" \
             --signing-key-id "rfc8032-test-key-1" \
             --private-key-env RFC8032_TEST_SEED_HEX \
@@ -98,17 +97,17 @@ jobs:
           ls -la dist/
 
       - name: Upload non-secret symbol map for remote crash analysis
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: target-symbol-map-${{ env.FULL_VERSION }}
+          name: target-symbol-map-${{ env.FULL_VERSION }}-attempt-${{ github.run_attempt }}
           path: .pio/build/esp32c6/firmware.map
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload unsigned canary artifacts for physical Gate validation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: target-canary
+          name: target-canary-attempt-${{ github.run_attempt }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -120,27 +119,27 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.release_target == 'physical-test-canary' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact main physical-test verifier
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Download exact-run firmware canary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: target-canary
+          name: target-canary-attempt-${{ github.run_attempt }}
           path: dist
 
       - name: Set up Python for physical-test verification
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.10'
+          python-version: '3.10.20'
 
       - name: Install physical-test verification dependencies
-        run: python -m pip install -r ota/requirements.txt
+        run: python -m pip install --require-hashes -r ota/requirements.lock
 
       - name: Verify exact public firmware canary before NAS contact
         run: |
@@ -236,9 +235,9 @@ jobs:
           unset SSHPASS NAS_PASSWORD NAS_KNOWN_HOSTS
 
       - name: Upload sanitized firmware physical-test evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: firmware-physical-test-evidence-${{ github.sha }}
+          name: firmware-physical-test-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: evidence/firmware-physical-test-evidence.json
           if-no-files-found: error
           retention-days: 30
@@ -251,7 +250,7 @@ jobs:
       inputs.release_target == 'physical-test-connected' &&
       github.ref == 'refs/heads/main'
     environment: physical-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Validate connected firmware physical-test secret contract
         env:
@@ -301,31 +300,564 @@ jobs:
           printf '%s\n' 'Connected signed firmware lane remains disabled until a separately reviewed implementation is authorized.' >&2
           exit 1
 
-  release_to_production:
-    name: Validate and deploy firmware to production
+  build_personal_target_ota_firmware:
+    name: Build exact-main personal Target firmware with runtime inputs
     needs: test_and_build
     if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))
+    environment: personal-auto-ota
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact main OTA source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python for exact-main OTA
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.10.20'
+
+      - name: Install exact-main OTA dependencies
+        run: python -I -m pip install --require-hashes -r ota/requirements.lock
+
+      - name: Verify exact protected main before production secrets
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            test "${{ inputs.release_target }}" = "canary"
+          else
+            test "$GITHUB_EVENT_NAME" = "push"
+          fi
+          # This privileged runner never executes candidate tests. The
+          # secretless test_and_build job already validated the exact SHA.
+          # Keep the auto-compiled Target tree closed so a newly added source,
+          # local library or interpreter startup hook cannot reach later secrets.
+          EXPECTED_BUILD_TREE="$(cat <<'EOF'
+          100644 9979085720f5b860d8135737b64269cedc6ec42515c352e6a65ac7a6b1c9466f include/ConfigManager.h
+          100644 9ebeac418fe2cd0c858889206bda9c4f0a45250eafe4c9276ba848ea0f09f29b include/DiagnosticsManager.h
+          100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
+          100644 78457d0bfb5746f53c636ef9854846102f17530e7de8c3bfde081af001baf1ee include/GattProtocol.h
+          100644 891733f6ee1267efb157950539efd6192983afa7762a5cca5e0db5f3b292f708 include/GattServer.h
+          100644 95cac78789291570be6c0a58fe17020e98a856139d46236e4bbb816323814de3 include/MqttManager.h
+          100644 c002d43122a1f1be3b9509f784aba872ca84d666a24d0738dea7a59adcb15592 include/OfflineEventQueue.h
+          100644 a42780d48211f0306f8278298ee7b598d349c52b0ba2e4913223a60bf30426c1 include/OtaHealthPolicy.h
+          100644 333dbe7e825443210fad253d11722b70b6df2067a2f888f2810f7adfa83d7d6f include/OtaManager.h
+          100644 ade406347069742dec9139e011e6a45a897a9f0a75f2e30a24debb9f7074d8aa include/OtaVersionPolicy.h
+          100644 199bd44240f7df0082ee065ac715f47c03ef893e7d86d9a129df820969e35164 include/RelayController.h
+          100644 cf7169403dd333e5e8c09fbff58d6934ea17d1a144e06fd08603eb51d51d8845 include/TargetAccessFsm.h
+          100644 72ae43ed6754c63d1b7fa2113504be8ea7f5b2865cfc9daf0c95917ae9894f81 include/TargetAclManager.h
+          100644 656941b67a9eef62964d8578d3959ded1a041b558d7caebe6ee14c1e4389108a include/TargetCommandSecurity.h
+          100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
+          100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
+          100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
+          100644 10fa529a243a60250fa93f58dfe65f3b1026407984978c392b7d606a30ba6ed1 include/config.h
+          100644 242fb0b65c43823d34f0295a11798cf61902043047083245a6dbe57931daf760 include/secrets.h.example
+          100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock
+          100644 6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv
+          100644 cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1 platformio.ini
+          100644 0b4443e045c58ad4e8dc1052044b5f003522fd6f5004e44aa51c24e39f362191 src/ConfigManager.cpp
+          100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
+          100644 fe67e1d6bac745f7654f6c41e94ef184fea407901bbf581ef5fc6955f3447048 src/GattProtocol.cpp
+          100644 0b0ca29f775b988da6ccb9d5867aa1a4ef0863d7256d69cf0bdc5e77b31afead src/GattServer.cpp
+          100644 b6c4fb43f1ec1bf8e379b103dab3cebcfe75ba495356bfa813891970225735fd src/MqttManager.cpp
+          100644 99e45cfec3094c95efbef4a7802ba12a881c4e2c93dcce81eaae92ab083ab346 src/OfflineEventQueue.cpp
+          100644 ba3c1d6c5d6482be1d0e90bc119658a594121fcae4b2bb9a3c5f9b6f4ebfc5e9 src/OtaManager.cpp
+          100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
+          100644 447ef319af59cc3316ec6e2e1bb2a62a5a8d2b33efecb399653234e321aa1fea src/RelayController.cpp
+          100644 4963b6be2e45cc2178255b4376a1f7ba6b901fba38093046ea82ae65856b71a0 src/TargetAccessFsm.cpp
+          100644 7ce6135340065ef6f03afc2fa41a9ac79a04ac5a277d7edb946c388bd6eead61 src/TargetAclManager.cpp
+          100644 b280393bfc93b0a3d09e6869621c3d8b8a27937f1d85f8afb6a24df204279596 src/TargetCommandSecurity.cpp
+          100644 8a0c16058f87b87e4e7d61ce18e8eccb091c2109b945a4984a87540234823fe5 src/TargetProofVerifier.cpp
+          100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
+          100644 ce9e1a442cd4800bd60622f0a42f8b21c978d68732aeb80e6becf14756912843 src/WifiManager.cpp
+          100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
+          100644 f0af0ab28ca10ece0558b91c6ef175baeb6032b75c062a76b1038ffd59732de2 src/main.cpp
+          EOF
+          )"
+          test ! -e .pio
+          UNEXPECTED_BUILD_INPUTS="$(git ls-files --others --exclude-standard -- \
+            src include lib boards variants sitecustomize.py usercustomize.py \
+            platformio_override.ini platformio.ini partitions_16MB_ota.csv \
+            ota/requirements.lock)"
+          test -z "$UNEXPECTED_BUILD_INPUTS"
+          ACTUAL_BUILD_TREE="$(git ls-files --stage -- src include lib boards variants \
+            sitecustomize.py usercustomize.py platformio_override.ini platformio.ini \
+            partitions_16MB_ota.csv ota/requirements.lock | \
+            while read -r mode object stage path; do
+              test "$stage" = "0"
+              test "$mode" = "100644"
+              test -f "$path"
+              test ! -L "$path"
+              test "$(stat -c '%a' -- "$path")" = "644"
+              digest="$(sha256sum -- "$path" | cut -d' ' -f1)"
+              printf '%s %s %s\n' "$mode" "$digest" "$path"
+            done)"
+          test "$ACTUAL_BUILD_TREE" = "$EXPECTED_BUILD_TREE"
+
+      - name: Materialize personal Target production inputs
+        env:
+          SECRET_ROOT_CA_CERT: ${{ secrets.SECRET_ROOT_CA_CERT }}
+          SECRET_WIFI_SSID: ${{ secrets.SECRET_WIFI_SSID }}
+          SECRET_WIFI_PASSWORD: ${{ secrets.SECRET_WIFI_PASSWORD }}
+          SECRET_API_URL: ${{ secrets.SECRET_API_URL }}
+          SECRET_API_KEY: ${{ secrets.SECRET_API_KEY }}
+          SECRET_MQTT_HOST: ${{ secrets.SECRET_MQTT_HOST }}
+          SECRET_MQTT_PORT: ${{ secrets.SECRET_MQTT_PORT }}
+          SECRET_MQTT_USER: ${{ secrets.SECRET_MQTT_USER }}
+          SECRET_MQTT_PASSWORD: ${{ secrets.SECRET_MQTT_PASSWORD }}
+          SECRET_TARGET_TENANT_ID: ${{ secrets.SECRET_TARGET_TENANT_ID }}
+          SECRET_TARGET_DOOR_ID: ${{ secrets.SECRET_TARGET_DOOR_ID }}
+          SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
+          SECRET_COMMAND_SIGNING_KEY_ID: ${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}
+          SECRET_OTA_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
+          SECRET_OTA_FIRMWARE_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
+          SECRET_OTA_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+          SECRET_OTA_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+          SECRET_OTA_CONTENT_KEY_HEX: ${{ secrets.SECRET_OTA_CONTENT_KEY_HEX }}
+          SECRET_OTA_CONTENT_KEY_ID: ${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}
+          SECRET_LOCAL_RECOVERY_AP_PASSWORD: ${{ secrets.SECRET_LOCAL_RECOVERY_AP_PASSWORD }}
+          SECRET_LOCAL_RECOVERY_USER: ${{ secrets.SECRET_LOCAL_RECOVERY_USER }}
+          SECRET_LOCAL_RECOVERY_PASSWORD: ${{ secrets.SECRET_LOCAL_RECOVERY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          fail_secret_contract() {
+            printf '::error::Personal Target secret contract failed: %s\n' "$1" >&2
+            exit 1
+          }
+          require_cpp_string() {
+            local name="$1"
+            local value="${!name}"
+            test -n "$value" || fail_secret_contract "$name is empty"
+            [[ "$value" != *'"'* && "$value" != *'\'* && \
+               "$value" != *$'\n'* && "$value" != *$'\r'* ]] || \
+              fail_secret_contract "$name contains an unsupported C-string character"
+          }
+          for name in SECRET_WIFI_SSID SECRET_WIFI_PASSWORD SECRET_API_URL \
+            SECRET_API_KEY SECRET_MQTT_HOST SECRET_MQTT_USER \
+            SECRET_MQTT_PASSWORD SECRET_TARGET_TENANT_ID SECRET_TARGET_DOOR_ID \
+            SECRET_OTA_VERSION_URL SECRET_OTA_FIRMWARE_URL \
+            SECRET_OTA_SIGNING_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
+            SECRET_LOCAL_RECOVERY_USER SECRET_LOCAL_RECOVERY_PASSWORD; do
+            require_cpp_string "$name"
+          done
+          test -n "$SECRET_ROOT_CA_CERT" || fail_secret_contract "SECRET_ROOT_CA_CERT is empty"
+          [[ "$SECRET_MQTT_PORT" =~ ^[0-9]{1,5}$ ]] || fail_secret_contract "SECRET_MQTT_PORT format"
+          ((10#$SECRET_MQTT_PORT >= 1 && 10#$SECRET_MQTT_PORT <= 65535)) || fail_secret_contract "SECRET_MQTT_PORT range"
+          [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX format"
+          [[ "$SECRET_COMMAND_SIGNING_KEY_ID" =~ ^[1-9][0-9]*$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNING_KEY_ID format"
+          [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX format"
+          test "$SECRET_OTA_SIGNING_KEY_ID" = "personal-target-auto-20260823-1" || fail_secret_contract "OTA_SIGNING_KEY_ID identity"
+          OTA_PUBLIC_KEY_SHA256="$(printf '%s' "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" | xxd -r -p | sha256sum | cut -d' ' -f1)"
+          test "$OTA_PUBLIC_KEY_SHA256" = "65154566393ecfb249c8aceb637e3258e349eb36e4dbca0dd52d61a6e55cb61b" || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX identity"
+          [[ "$SECRET_OTA_CONTENT_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "SECRET_OTA_CONTENT_KEY_HEX format"
+          test "$SECRET_OTA_CONTENT_KEY_ID" = "personal-target-content-20260824-1" || fail_secret_contract "SECRET_OTA_CONTENT_KEY_ID identity"
+          test "${#SECRET_LOCAL_RECOVERY_AP_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_AP_PASSWORD length"
+          test "${#SECRET_LOCAL_RECOVERY_USER}" -ge 8 || fail_secret_contract "SECRET_LOCAL_RECOVERY_USER length"
+          test "${#SECRET_LOCAL_RECOVERY_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_PASSWORD length"
+          cat <<EOF > include/secrets.h
+          #pragma once
+          #define SECRET_WIFI_SSID "${SECRET_WIFI_SSID}"
+          #define SECRET_WIFI_PASSWORD "${SECRET_WIFI_PASSWORD}"
+          #define SECRET_API_URL "${SECRET_API_URL}"
+          #define SECRET_API_KEY "${SECRET_API_KEY}"
+          #define SECRET_TEST_BLE_MAC "AA:BB:CC:DD:EE:01"
+          #define SECRET_HARDWARELESS_DOOR_ID_HEX ""
+          #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX ""
+          #define SECRET_ACL_SIGNING_KEY_ID 0
+          #define SECRET_MQTT_HOST "${SECRET_MQTT_HOST}"
+          #define SECRET_MQTT_PORT ${SECRET_MQTT_PORT}
+          #define SECRET_MQTT_USER "${SECRET_MQTT_USER}"
+          #define SECRET_MQTT_PASSWORD "${SECRET_MQTT_PASSWORD}"
+          #define SECRET_TARGET_TENANT_ID "${SECRET_TARGET_TENANT_ID}"
+          #define SECRET_TARGET_DOOR_ID "${SECRET_TARGET_DOOR_ID}"
+          #define SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX "${SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX}"
+          #define SECRET_COMMAND_SIGNING_KEY_ID ${SECRET_COMMAND_SIGNING_KEY_ID}
+          #define SECRET_OTA_VERSION_URL "${SECRET_OTA_VERSION_URL}"
+          #define SECRET_OTA_FIRMWARE_URL "${SECRET_OTA_FIRMWARE_URL}"
+          #define SECRET_APK_VERSION_URL "https://mobile-release.invalid/version.json"
+          #define SECRET_APK_DOWNLOAD_URL "https://mobile-release.invalid/app.apk"
+          #define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"
+          #define SECRET_OTA_SIGNING_KEY_ID "${SECRET_OTA_SIGNING_KEY_ID}"
+          #define SECRET_OTA_CONTENT_KEY_HEX "${SECRET_OTA_CONTENT_KEY_HEX}"
+          #define SECRET_OTA_CONTENT_KEY_ID "${SECRET_OTA_CONTENT_KEY_ID}"
+          #define SECRET_LOCAL_RECOVERY_AP_PASSWORD "${SECRET_LOCAL_RECOVERY_AP_PASSWORD}"
+          #define SECRET_LOCAL_RECOVERY_USER "${SECRET_LOCAL_RECOVERY_USER}"
+          #define SECRET_LOCAL_RECOVERY_PASSWORD "${SECRET_LOCAL_RECOVERY_PASSWORD}"
+          EOF
+          printf '#define SECRET_ROOT_CA_CERT R"(\n%s\n)"\n' "$SECRET_ROOT_CA_CERT" >> include/secrets.h
+
+      - name: Build exact monotonic N16 production firmware
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          COMMIT_SEQUENCE=$(git rev-list --count --first-parent HEAD)
+          [[ "$COMMIT_SEQUENCE" =~ ^[1-9][0-9]*$ ]]
+          FULL_VERSION="2.1.${COMMIT_SEQUENCE}+main.g${SHORT_SHA}"
+          TARGET_BUILD_ID="main-${COMMIT_SEQUENCE}-${GITHUB_SHA}"
+          export FULL_VERSION TARGET_BUILD_ID
+          echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"
+          echo "TARGET_BUILD_ID=${TARGET_BUILD_ID}" >> "$GITHUB_ENV"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          [[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]]
+          export SOURCE_DATE_EPOCH
+          export PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\\\"${FULL_VERSION}\\\""
+          python -I -m platformio run -e esp32c6_production
+          mkdir -p dist
+          cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware-first.bin
+          python -I -m platformio run -e esp32c6_production -t clean
+          python -I -m platformio run -e esp32c6_production
+          cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_production/firmware.bin
+          python -I - <<'PY'
+          import os
+          from pathlib import Path
+
+          firmware = Path(".pio/build/esp32c6_production/firmware.bin").read_bytes()
+          version = os.environ["FULL_VERSION"].encode("ascii")
+          if version not in firmware:
+              raise SystemExit("exact Target version is absent from firmware bytes")
+          PY
+          python -I scripts/verify_target_flash_layout.py \
+            --partitions partitions_16MB_ota.csv \
+            --firmware .pio/build/esp32c6_production/firmware.bin \
+            --flash-size 0x1000000 \
+            --max-slot-usage-percent 80
+          cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware.bin
+          test -s dist/gatekeeper-firmware.bin
+
+      - name: Encrypt sensitive Target firmware handoff
+        env:
+          TARGET_HANDOFF_PUBLIC_KEY_HEX: ${{ secrets.TARGET_HANDOFF_PUBLIC_KEY_HEX }}
+          TARGET_HANDOFF_KEY_ID: ${{ secrets.TARGET_HANDOFF_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test "$TARGET_HANDOFF_KEY_ID" = "personal-target-handoff-20260824-1"
+          [[ "$TARGET_HANDOFF_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          HANDOFF_PUBLIC_SHA256="$(printf '%s' "$TARGET_HANDOFF_PUBLIC_KEY_HEX" | xxd -r -p | sha256sum | cut -d' ' -f1)"
+          test "$HANDOFF_PUBLIC_SHA256" = "b46f35bed26b7542c9103c1006ff90816e2e8758ebfc1fd9c53cab4561ec829f"
+          python -I scripts/ota_contract_gate.py target-handoff-encrypt \
+            --artifact dist/gatekeeper-firmware.bin \
+            --output dist/gatekeeper-firmware.sgkenc \
+            --recipient-public-key-hex "$TARGET_HANDOFF_PUBLIC_KEY_HEX" \
+            --commit "$GITHUB_SHA" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+          test -s dist/gatekeeper-firmware.sgkenc
+          rm -f dist/gatekeeper-firmware.bin dist/gatekeeper-firmware-first.bin
+          test ! -e dist/gatekeeper-firmware.bin
+
+      - name: Upload short-lived encrypted Target firmware handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-target-firmware-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: dist/gatekeeper-firmware.sgkenc
+          if-no-files-found: error
+          retention-days: 1
+
+  publish_personal_target_ota:
+    name: Sign and atomically publish exact-main personal Target OTA
+    needs: build_personal_target_ota_firmware
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))
+    environment: personal-auto-ota
+    concurrency:
+      group: smart-gatekeeper-personal-target-ota-main
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact protected Target publisher inputs
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ota_contract_gate.py
+            scripts/verify_target_flash_layout.py
+            ota/requirements.lock
+            ota/schemas/target-manifest.schema.json
+            partitions_16MB_ota.csv
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python for isolated Target publisher
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.10.20'
+
+      - name: Verify exact main and install isolated Target publisher dependencies
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            test "${{ inputs.release_target }}" = "canary"
+          else
+            test "$GITHUB_EVENT_NAME" = "push"
+          fi
+          python -I -m pip install --no-cache-dir --require-hashes -r ota/requirements.lock
+
+      - name: Download exact sensitive Target firmware handoff
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: personal-target-firmware-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: sensitive-handoff
+
+      - name: Validate encrypted Target handoff inventory
+        run: |
+          set -euo pipefail
+          mapfile -t HANDOFF_ENTRIES < <(find sensitive-handoff -mindepth 1 -maxdepth 1 -printf '%y %p\n')
+          test "${#HANDOFF_ENTRIES[@]}" -eq 1
+          test "${HANDOFF_ENTRIES[0]}" = "f sensitive-handoff/gatekeeper-firmware.sgkenc"
+          test ! -L sensitive-handoff/gatekeeper-firmware.sgkenc
+          test -s sensitive-handoff/gatekeeper-firmware.sgkenc
+
+      - name: Decrypt authenticated Target firmware handoff
+        env:
+          TARGET_HANDOFF_PRIVATE_KEY_HEX: ${{ secrets.TARGET_HANDOFF_PRIVATE_KEY_HEX }}
+          TARGET_HANDOFF_PUBLIC_KEY_HEX: ${{ secrets.TARGET_HANDOFF_PUBLIC_KEY_HEX }}
+          TARGET_HANDOFF_KEY_ID: ${{ secrets.TARGET_HANDOFF_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test "$TARGET_HANDOFF_KEY_ID" = "personal-target-handoff-20260824-1"
+          [[ "$TARGET_HANDOFF_PRIVATE_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$TARGET_HANDOFF_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          HANDOFF_PUBLIC_SHA256="$(printf '%s' "$TARGET_HANDOFF_PUBLIC_KEY_HEX" | xxd -r -p | sha256sum | cut -d' ' -f1)"
+          test "$HANDOFF_PUBLIC_SHA256" = "b46f35bed26b7542c9103c1006ff90816e2e8758ebfc1fd9c53cab4561ec829f"
+          mkdir -p dist
+          export TARGET_HANDOFF_PRIVATE_KEY_HEX
+          python -I scripts/ota_contract_gate.py target-handoff-decrypt \
+            --input sensitive-handoff/gatekeeper-firmware.sgkenc \
+            --output dist/gatekeeper-firmware.bin \
+            --private-key-env TARGET_HANDOFF_PRIVATE_KEY_HEX \
+            --recipient-public-key-hex "$TARGET_HANDOFF_PUBLIC_KEY_HEX" \
+            --commit "$GITHUB_SHA" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+          test -s dist/gatekeeper-firmware.bin
+          rm -f sensitive-handoff/gatekeeper-firmware.sgkenc
+          rmdir sensitive-handoff
+
+      - name: Validate Target firmware before signing secrets
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          COMMIT_SEQUENCE="$(git rev-list --count --first-parent HEAD)"
+          [[ "$COMMIT_SEQUENCE" =~ ^[1-9][0-9]*$ ]]
+          FULL_VERSION="2.1.${COMMIT_SEQUENCE}+main.g${SHORT_SHA}"
+          TARGET_BUILD_ID="main-${COMMIT_SEQUENCE}-${GITHUB_SHA}"
+          export FULL_VERSION TARGET_BUILD_ID
+          echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"
+          echo "TARGET_BUILD_ID=${TARGET_BUILD_ID}" >> "$GITHUB_ENV"
+          python -I - <<'PY'
+          import os
+          from pathlib import Path
+
+          firmware = Path("dist/gatekeeper-firmware.bin").read_bytes()
+          if len(firmware) > 0x700000:
+              raise SystemExit("Target firmware exceeds the N16 OTA slot")
+          version = os.environ["FULL_VERSION"].encode("ascii")
+          if firmware.count(version) < 1:
+              raise SystemExit("exact Target version is absent from firmware bytes")
+          PY
+          python -I scripts/verify_target_flash_layout.py \
+            --partitions partitions_16MB_ota.csv \
+            --firmware dist/gatekeeper-firmware.bin \
+            --flash-size 0x1000000 \
+            --max-slot-usage-percent 80
+
+      - name: Encrypt Target OTA content for public NAS delivery
+        env:
+          TARGET_CONTENT_KEY_HEX: ${{ secrets.SECRET_OTA_CONTENT_KEY_HEX }}
+          TARGET_CONTENT_KEY_ID: ${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_CONTENT_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          test "$TARGET_CONTENT_KEY_ID" = "personal-target-content-20260824-1"
+          export TARGET_CONTENT_KEY_HEX
+          ROUNDTRIP="${RUNNER_TEMP}/gatekeeper-firmware-roundtrip.bin"
+          trap 'rm -f "$ROUNDTRIP"' EXIT
+          python -I scripts/ota_contract_gate.py target-content-encrypt \
+            --artifact dist/gatekeeper-firmware.bin \
+            --output dist/gatekeeper-firmware.sgkenc \
+            --key-env TARGET_CONTENT_KEY_HEX \
+            --key-id "$TARGET_CONTENT_KEY_ID" \
+            --commit "$GITHUB_SHA"
+          python -I scripts/ota_contract_gate.py target-content-decrypt \
+            --input dist/gatekeeper-firmware.sgkenc \
+            --output "$ROUNDTRIP" \
+            --key-env TARGET_CONTENT_KEY_HEX \
+            --key-id "$TARGET_CONTENT_KEY_ID" \
+            --commit "$GITHUB_SHA"
+          cmp dist/gatekeeper-firmware.bin "$ROUNDTRIP"
+          rm -f "$ROUNDTRIP"
+          trap - EXIT
+          test -s dist/gatekeeper-firmware.sgkenc
+          test -s dist/gatekeeper-firmware.bin
+
+      - name: Create exact production-signed immutable Target manifest
+        env:
+          TARGET_ARTIFACT_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
+          TARGET_PRIVATE_KEY_HEX: ${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}
+          TARGET_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+          TARGET_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+          TARGET_CONTENT_KEY_ID: ${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$TARGET_ARTIFACT_URL"
+          test -n "$TARGET_PRIVATE_KEY_HEX"
+          test -n "$TARGET_PUBLIC_KEY_HEX"
+          test -n "$TARGET_SIGNING_KEY_ID"
+          test "$TARGET_CONTENT_KEY_ID" = "personal-target-content-20260824-1"
+          [[ "$TARGET_ARTIFACT_URL" =~ ^https://[^[:space:]?#]+/[^/?#]+$ ]]
+          IMMUTABLE_ARTIFACT_URL="${TARGET_ARTIFACT_URL%/*}/gatekeeper-firmware-${GITHUB_SHA}.sgkenc"
+          export TARGET_PRIVATE_KEY_HEX
+          PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"
+          python -I scripts/ota_contract_gate.py target-manifest-create \
+            --artifact dist/gatekeeper-firmware.sgkenc \
+            --output dist/version.json \
+            --version "$FULL_VERSION" \
+            --commit "$GITHUB_SHA" \
+            --build-id "$TARGET_BUILD_ID" \
+            --artifact-url "$IMMUTABLE_ARTIFACT_URL" \
+            --plaintext-artifact dist/gatekeeper-firmware.bin \
+            --encryption-key-id "$TARGET_CONTENT_KEY_ID" \
+            --published-at "$PUBLISHED_AT" \
+            --signing-key-id "$TARGET_SIGNING_KEY_ID" \
+            --private-key-env TARGET_PRIVATE_KEY_HEX \
+            --expected-public-key-hex "$TARGET_PUBLIC_KEY_HEX"
+          python -I scripts/ota_contract_gate.py target-manifest-verify \
+            --manifest dist/version.json \
+            --artifact dist/gatekeeper-firmware.sgkenc \
+            --public-key-hex "$TARGET_PUBLIC_KEY_HEX" \
+            --expected-version "$FULL_VERSION" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-build-id "$TARGET_BUILD_ID" \
+            --expected-encryption-key-id "$TARGET_CONTENT_KEY_ID"
+          rm -f dist/gatekeeper-firmware.bin
+          test ! -e dist/gatekeeper-firmware.bin
+
+      - name: Stage read back and atomically publish Target OTA
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
+          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_TARGET_DIR: ${{ secrets.NAS_TARGET_DIR || '/docker/smartbox_ota/firmware/' }}
+          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+          TARGET_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+        run: |
+          set -euo pipefail
+          for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_TARGET_DIR TARGET_PUBLIC_KEY_HEX; do
+            test -n "${!name}"
+          done
+          [[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]
+          [[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))
+          KNOWN_HOSTS_FILE="${RUNNER_TEMP}/nas_target_ota_known_hosts"
+          test -n "$NAS_KNOWN_HOSTS"
+          HOST_KEY_MODE="repository-secret-pinned"
+          printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+          test -s "$KNOWN_HOSTS_FILE"
+          chmod 600 "$KNOWN_HOSTS_FILE"
+          ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null
+          export OTA_NAS_KNOWN_HOSTS_FILE="$KNOWN_HOSTS_FILE"
+          export OTA_NAS_HOST_KEY_MODE="$HOST_KEY_MODE"
+          python -I scripts/ota_contract_gate.py target-sftp-publish \
+            --artifact dist/gatekeeper-firmware.sgkenc \
+            --manifest dist/version.json \
+            --expected-version "$FULL_VERSION" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-build-id "$TARGET_BUILD_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --evidence-output dist/target-ota-publish-evidence.json
+          unset NAS_PASSWORD NAS_KNOWN_HOSTS OTA_NAS_KNOWN_HOSTS_FILE
+
+      - name: Verify exact Target OTA pointer and immutable artifact over HTTPS
+        env:
+          TARGET_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
+          TARGET_FIRMWARE_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
+          TARGET_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+          TARGET_ROOT_CA_CERT: ${{ secrets.SECRET_ROOT_CA_CERT }}
+          TARGET_CONTENT_KEY_ID: ${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_VERSION_URL" =~ ^https://[^[:space:]]+$ ]]
+          [[ "$TARGET_FIRMWARE_URL" =~ ^https://[^[:space:]?#]+/[^/?#]+$ ]]
+          test -n "$TARGET_ROOT_CA_CERT"
+          test "$TARGET_CONTENT_KEY_ID" = "personal-target-content-20260824-1"
+          CA_FILE="${RUNNER_TEMP}/target-ota-root-ca.pem"
+          printf '%s\n' "$TARGET_ROOT_CA_CERT" > "$CA_FILE"
+          chmod 600 "$CA_FILE"
+          trap 'rm -f "$CA_FILE"' EXIT
+          IMMUTABLE_ARTIFACT_URL="${TARGET_FIRMWARE_URL%/*}/gatekeeper-firmware-${GITHUB_SHA}.sgkenc"
+          mkdir -p https-readback
+          fetch_exact() {
+            local url="$1"
+            local destination="$2"
+            local expected="$3"
+            for attempt in 1 2 3 4 5 6; do
+              if curl --fail --silent --show-error --location \
+                  --proto '=https' --proto-redir '=https' --cacert "$CA_FILE" \
+                  --connect-timeout 10 --max-time 180 \
+                  -H 'Cache-Control: no-cache' \
+                  --output "$destination" "$url" && cmp "$expected" "$destination"; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+          fetch_exact "$TARGET_VERSION_URL" https-readback/version.json dist/version.json
+          fetch_exact "$IMMUTABLE_ARTIFACT_URL" https-readback/gatekeeper-firmware.sgkenc dist/gatekeeper-firmware.sgkenc
+          python -I scripts/ota_contract_gate.py target-manifest-verify \
+            --manifest https-readback/version.json \
+            --artifact https-readback/gatekeeper-firmware.sgkenc \
+            --public-key-hex "$TARGET_PUBLIC_KEY_HEX" \
+            --expected-version "$FULL_VERSION" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-build-id "$TARGET_BUILD_ID" \
+            --expected-encryption-key-id "$TARGET_CONTENT_KEY_ID"
+
+      - name: Upload sanitized Target OTA publication evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: target-ota-publish-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: dist/target-ota-publish-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+  release_to_production:
+    name: Block commercial firmware release pending encrypted-v2 migration
+    needs: test_and_build
+    if: >-
+      false &&
       github.event_name == 'workflow_dispatch' &&
       inputs.release_target == 'production' &&
       github.ref == 'refs/heads/main'
     environment: production
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.10'
+          python-version: '3.10.20'
 
       - name: Install PlatformIO and OTA release gate dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install platformio -r ota/requirements.txt
+        run: python -m pip install --require-hashes -r ota/requirements.lock
 
       - name: Verify exact protected main release source
         run: |
@@ -454,7 +986,7 @@ jobs:
             --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"
 
       - name: Deploy to Synology NAS via SFTP
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        uses: wlixcc/SFTP-Deploy-Action@da88a4dbe95286266bbac3c0b2b8284048d20c8f # v1.2.4
         with:
           server: ${{ secrets.NAS_HOST }}
           username: ${{ secrets.NAS_USER }}

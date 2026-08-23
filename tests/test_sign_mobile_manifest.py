@@ -213,6 +213,53 @@ class MobileManifestSignerTest(unittest.TestCase):
                   args.artifact, args.apksigner
               )
 
+  def test_direct_apksigner_jar_uses_only_explicit_java_binary(self) -> None:
+    with tempfile.TemporaryDirectory() as temp:
+      args = self._create_args(Path(temp))
+      apksigner_jar = Path(temp) / "apksigner.jar"
+      java_binary = Path(temp) / "jdk-17.0.16+8" / "bin" / "java"
+      apksigner_jar.write_bytes(b"pinned apksigner jar")
+      java_binary.parent.mkdir(parents=True)
+      java_binary.write_bytes(b"pinned java binary")
+      completed = subprocess.CompletedProcess(
+          [],
+          0,
+          stdout=(
+              f"Signer #1 certificate SHA-256 digest: {TEST_CERTIFICATE}\n"
+          ),
+          stderr="",
+      )
+      with mock.patch.dict(
+          os.environ,
+          {"SGK_APKSIGNER_JAVA": str(java_binary.resolve())},
+          clear=False,
+      ), mock.patch.object(
+          gate.subprocess, "run", return_value=completed
+      ) as run:
+        self.assertEqual(
+            gate.read_apk_signing_certificate_digests(
+                args.artifact, apksigner_jar
+            ),
+            {TEST_CERTIFICATE},
+        )
+      self.assertEqual(
+          run.call_args.args[0],
+          [
+              str(java_binary.resolve()),
+              "-jar",
+              str(apksigner_jar),
+              "verify",
+              "--print-certs",
+              str(args.artifact),
+          ],
+      )
+
+      with mock.patch.dict(os.environ, {}, clear=True):
+        with self.assertRaisesRegex(gate.GateError, "SGK_APKSIGNER_JAVA"):
+          gate.read_apk_signing_certificate_digests(
+              args.artifact, apksigner_jar
+          )
+
   def test_android_tools_are_invoked_for_exact_archive_identity(self) -> None:
     with tempfile.TemporaryDirectory() as temp:
       args = self._create_args(Path(temp))

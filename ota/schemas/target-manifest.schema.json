@@ -12,7 +12,7 @@
     "build_id", "commit"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"enum": [1, 2]},
     "artifact_type": {"const": "target-firmware"},
     "version": {"type": "string", "minLength": 1, "maxLength": 64},
     "firmware_version": {"type": "string", "minLength": 1, "maxLength": 64},
@@ -21,8 +21,12 @@
     "board": {"const": "esp32-c6-devkitc-1"},
     "flash_layout": {"const": "dual-ota-16mb-v1"},
     "artifact_url": {"type": "string", "format": "uri", "pattern": "^https://"},
-    "artifact_size": {"type": "integer", "minimum": 1, "maximum": 7340032},
+    "artifact_size": {"type": "integer", "minimum": 1, "maximum": 7340068},
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "encryption_algorithm": {"const": "AES-256-GCM"},
+    "encryption_key_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "plaintext_size": {"type": "integer", "minimum": 1, "maximum": 7340032},
+    "plaintext_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "signature_algorithm": {"const": "Ed25519"},
     "signing_key_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
     "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"},
@@ -30,5 +34,27 @@
     "published_at": {"type": "string", "format": "date-time"},
     "build_id": {"type": "string", "minLength": 1, "maxLength": 128},
     "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": 1}}},
+      "then": {
+        "properties": {"artifact_size": {"maximum": 7340032}},
+        "not": {
+          "anyOf": [
+            {"required": ["encryption_algorithm"]},
+            {"required": ["encryption_key_id"]},
+            {"required": ["plaintext_size"]},
+            {"required": ["plaintext_sha256"]}
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "encryption_algorithm", "encryption_key_id",
+          "plaintext_size", "plaintext_sha256"
+        ]
+      }
+    }
+  ]
 }

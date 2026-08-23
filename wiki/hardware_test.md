@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-23 (N16 flash/install and first-boot connectivity attempt)
+> Last updated: 2026-08-23 (N16 connectivity, renewed public MQTTS TLS and authenticated Target status)
 
 ## 1. 판정 원칙
 
@@ -19,6 +19,36 @@
 | OTA | 런타임 크기/SHA/image/slot 검사와 CI 80% size gate 확인; 실제 download→install→reboot→health 미수행 | PENDING |
 
 이 표는 연결된 개발대의 USB 관찰이다. Wi-Fi/MQTTS/OTA의 PASS나 최종 벽 매립 승인을 의미하지 않는다.
+
+## 2026-08-23 Home Assistant secure discovery migration 검증
+
+| 항목 | 관찰 결과 | 판정 |
+|---|---|---|
+| 기존 entity identity | historical discovery의 device identifier와 read-only unique ID 15개를 고정하고, runtime Target ID는 인자로만 주입 | PASS (software) |
+| secure state namespace | read-only 15개 모두 per-Target 10초 `/status`와 30초 만료를 사용; boot-only non-retained `/availability`와 `/config-state`는 discovery에서 참조하지 않음 | PASS (software) |
+| legacy write control 제거 | button 3개와 number 4개는 read-only 갱신보다 먼저 빈 retained payload로 삭제하며 새 config에 `command_topic`/`payload_press` 없음 | PASS (software) |
+| publish semantics | fake broker client 경계에서 총 22건 모두 QoS 1, retain=true와 ACK 대기 경로 확인 | PASS (host test) |
+| credential 경계 | 기본 dry-run은 network-free; username/password 직접 CLI 옵션 없음, env/file 값 출력 없음, credentialed apply는 TLS 필수 | PASS (host test) |
+| live broker/HA registry | 실제 broker retained read-back 및 Home Assistant entity registry 확인은 수행하지 않음 | PENDING |
+
+이 검증은 discovery payload 생성과 publish 경계의 host 증거다. live broker의 retained 수락,
+Home Assistant registry의 in-place migration 및 stale control 제거를 증명하지 않으며, Target Wi-Fi/MQTTS,
+문 열기, signed command bridge 또는 OTA 동작 증거로 승격하지 않는다.
+
+### 같은 날 live Home Assistant 관찰
+
+| 항목 | 관찰 결과 | 판정 |
+|---|---|---|
+| secure discovery live publish | 운영 internal broker에 15개 read-only retained config를 적용하고 기존 device identity에서 UI 갱신 확인 | PASS (live) |
+| 주기 status | Target `c0feffe6ebac`의 `/status`로 firmware `2.1.0-gd06519e`, IDLE, IP `192.168.35.19`, distance 9990 mm, RSSI를 HA에서 확인 | PASS (live) |
+| config-state | 현 Target가 boot 시 발행한 값을 관찰한 뒤 동일 값을 1회 non-retained로 seed하여 4개 설정 sensor 표시 확인 | PASS (live, seeded) |
+| legacy controls | retained tombstone 7개를 live broker에 적용하고 retained read-back에서 button/number 0개 확인; current signed command bridge는 별도 미구현 | PASS removal / PENDING bridge |
+| public MQTTS TLS | Mosquitto restart 뒤 `tworimpa.synology.me:4883`이 RSA SHA-256 `f2c90a2b4a8b3181bb0ae6863618a0101139593ff55105518726a10c78a94e23`, SAN hostname, public chain, TLS 1.3과 2026-10-19 만료를 검증 client에 제공 | PASS (live renewal; expiry monitoring still required) |
+
+이 live 관찰은 read-only 상태 가시성 복구 증거다. 문 열기, reboot, OTA, 설정 변경은 backend signed
+command bridge 없이 동작한다고 간주하지 않으며, live migration에서는 legacy control tombstone을 아직
+적용했으며 retained read-back에서 legacy control config가 남지 않은 것을 확인했다. 새 write control은
+만들지 않았고 실제 문 열기나 설정 변경도 수행하지 않았다.
 
 ## 2. 현재 코드 기준 검증표
 
@@ -99,3 +129,28 @@
 This evidence supersedes the earlier same-day `NO_AP_FOUND` first-boot attempt only
 for recovery scan, Wi-Fi association, DHCP and MQTTS. It does not promote the
 candidate to production release approval or close the physical OTA/relay/soak gates.
+
+## 2026-08-23 Target OTA rollback and download safety host evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Failed-floor quarantine | Native C++ version-policy tests reject the exact persisted failed floor after a lower slot boots, retain equal-precedence identity-conflict rejection, and accept a strictly newer recovery version | PASS (host software) |
+| Bounded remote download | Static Target contract confirms 30-second no-progress and five-minute total deadlines, inactive-write abort, explicit timeout reason and 15-minute retry scheduling | PASS (host/static software) |
+| WAIT_SAFE_STATE failure | Static Target contract confirms failure status, reason, retry scheduling and immediate return before any network request | PASS (existing behavior, regression guarded) |
+| ESP32-C6 build/capacity | Default N16 build succeeded; app image 1,662,160 bytes in a 7,340,032-byte slot, 22.65% usage and 5,677,872-byte headroom | PASS (compile/capacity only) |
+| Physical install/rollback | No firmware was uploaded by this change; inactive-slot install, timeout injection, bootloader rollback and failed-version quarantine remain unobserved on ESP32-C6 | PENDING physical evidence |
+
+## 2026-08-23 Public MQTTS certificate recovery evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Export validation | The selected RSA leaf covered `tworimpa.synology.me` and `*.tworimpa.synology.me`, matched its private key, verified against the exported two-certificate chain, and expires 2026-10-19 | PASS (offline material validation) |
+| NAS replacement | The audited Mosquitto `certfile`, `cafile`, and `keyfile` were backed up and replaced; replacement readback matched the approved certificate/key/chain before restart | PASS (on-disk recovery) |
+| Live TLS after restart | A default-trust client completed hostname and public-chain validation on port 4883, observed TLS 1.3 and the approved replacement certificate fingerprint | PASS (live endpoint) |
+| Authenticated MQTT | The provisioned broker principal received CONNACK success and SUBACK for the exact Target status topic over verified TLS | PASS (live transport/authentication) |
+| Target reconnection | A fresh periodic status from Target `c0feffe6ebac` reported boot ID `c2f1ce127f0d5a3a296bb781319dc904`, state IDLE and IP `192.168.35.19` after the broker restart | PASS for current reconnect; outage soak remains pending |
+
+This recovery proves the current public TLS endpoint and one authenticated Target
+reconnection. It does not prove automatic certificate renewal, expiry alerting,
+long broker/WAN outage recovery, Target OTA installation, reboot health, rollback,
+relay safety or final wall-install acceptance.

@@ -10,17 +10,10 @@ on:
       - 'tests/test_ota_contract_gate.py'
       - 'tests/test_sign_mobile_manifest.py'
       - 'tests/test_nas_physical_test_delivery.py'
+      - 'tests/test_personal_mobile_auto_deploy.py'
   push:
     branches:
       - main
-    paths:
-      - 'gatekeeper_app/**'
-      - '.github/workflows/build_app.yml'
-      - 'ota/**'
-      - 'scripts/ota_contract_gate.py'
-      - 'tests/test_ota_contract_gate.py'
-      - 'tests/test_sign_mobile_manifest.py'
-      - 'tests/test_nas_physical_test_delivery.py'
   workflow_dispatch:
     inputs:
       release_target:
@@ -45,10 +38,10 @@ permissions:
 jobs:
   build_apk:
     name: Test and build Android APK canary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Calculate App FULL_VERSION
         run: |
@@ -58,21 +51,22 @@ jobs:
           echo "App public canary version: ${FULL_VERSION}"
 
       - name: Set up Java JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '17.0.16+8'
 
       - name: Set up Python for OTA contract gate
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.13'
           cache: pip
-          cache-dependency-path: ota/requirements.txt
+          cache-dependency-path: ota/requirements.lock
 
       - name: Set up Flutter SDK
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
+          flutter-version: '3.44.8'
           channel: 'stable'
           cache: true
 
@@ -86,7 +80,7 @@ jobs:
 
       - name: Install and validate OTA P0 contract
         run: |
-          python -m pip install -r ota/requirements.txt
+          python -m pip install --require-hashes -r ota/requirements.lock
           python scripts/ota_contract_gate.py contract
           python -m unittest discover -s tests -p 'test_*.py' -v
 
@@ -159,10 +153,10 @@ jobs:
           export RFC8032_TEST_SEED_HEX
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           test -n "$ANDROID_SDK"
-          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
-          APKANALYZER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name apkanalyzer -print | sort -V | tail -n 1)"
-          test -n "$APKSIGNER"
-          test -n "$APKANALYZER"
+          APKSIGNER="$ANDROID_SDK/build-tools/36.0.0/apksigner"
+          APKANALYZER="$ANDROID_SDK/cmdline-tools/12.0/bin/apkanalyzer"
+          test -x "$APKSIGNER"
+          test -x "$APKANALYZER"
           python scripts/ota_contract_gate.py mobile-manifest-create \
             --artifact dist/ks-house-gatekeeper.apk \
             --output dist/version.json \
@@ -189,9 +183,9 @@ jobs:
           ls -la dist/
 
       - name: Upload artifact-bound canary for separate Gate validation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: smart-key-app-canary
+          name: smart-key-app-canary-attempt-${{ github.run_attempt }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -203,44 +197,44 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.release_target == 'physical-test-canary' &&
       github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact main physical-test verifier
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Download exact-run mobile canary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: smart-key-app-canary
+          name: smart-key-app-canary-attempt-${{ github.run_attempt }}
           path: dist
 
       - name: Set up Java JDK 17 for APK inspection
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '17.0.16+8'
 
       - name: Set up Python for physical-test verification
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.13'
           cache: pip
-          cache-dependency-path: ota/requirements.txt
+          cache-dependency-path: ota/requirements.lock
 
       - name: Install physical-test verification dependencies
-        run: python -m pip install -r ota/requirements.txt
+        run: python -m pip install --require-hashes -r ota/requirements.lock
 
       - name: Verify exact public mobile canary before NAS contact
         run: |
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           test -n "$ANDROID_SDK"
-          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
-          APKANALYZER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name apkanalyzer -print | sort -V | tail -n 1)"
-          test -n "$APKSIGNER"
-          test -n "$APKANALYZER"
+          APKSIGNER="$ANDROID_SDK/build-tools/36.0.0/apksigner"
+          APKANALYZER="$ANDROID_SDK/cmdline-tools/12.0/bin/apkanalyzer"
+          test -x "$APKSIGNER"
+          test -x "$APKANALYZER"
           python scripts/ota_contract_gate.py physical-test-canary-verify \
             --kind mobile \
             --manifest dist/version.json \
@@ -315,8 +309,8 @@ jobs:
           get $REMOTE_STAGE/version.json readback/version.json
           EOF
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
-          APKANALYZER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name apkanalyzer -print | sort -V | tail -n 1)"
+          APKSIGNER="$ANDROID_SDK/build-tools/36.0.0/apksigner"
+          APKANALYZER="$ANDROID_SDK/cmdline-tools/12.0/bin/apkanalyzer"
           python scripts/ota_contract_gate.py physical-test-evidence-create \
             --kind mobile \
             --manifest dist/version.json \
@@ -340,9 +334,9 @@ jobs:
           unset SSHPASS NAS_PASSWORD NAS_KNOWN_HOSTS
 
       - name: Upload sanitized mobile physical-test evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: mobile-physical-test-evidence-${{ github.sha }}
+          name: mobile-physical-test-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: evidence/mobile-physical-test-evidence.json
           if-no-files-found: error
           retention-days: 30
@@ -355,7 +349,7 @@ jobs:
       inputs.release_target == 'physical-test-connected' &&
       github.ref == 'refs/heads/main'
     environment: physical-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Validate connected mobile physical-test secret contract
         env:
@@ -397,36 +391,37 @@ jobs:
       inputs.release_target == 'production' &&
       github.ref == 'refs/heads/main'
     environment: production
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Java JDK 17 for trusted APK inspection
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '17.0.16+8'
 
       - name: Set up Python for OTA release gate
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.13'
           cache: pip
-          cache-dependency-path: ota/requirements.txt
+          cache-dependency-path: ota/requirements.lock
 
       - name: Set up Flutter SDK for exact main release
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
+          flutter-version: '3.44.8'
           channel: 'stable'
           cache: true
 
       - name: Install exact main release dependencies
         run: |
-          python -m pip install -r ota/requirements.txt
+          python -m pip install --require-hashes -r ota/requirements.lock
           cd gatekeeper_app
           flutter pub get
 
@@ -478,12 +473,20 @@ jobs:
           test -n "$OTA_SIGNING_PUBLIC_KEY_HEX"
           UPDATE_SIGNING_PUBLIC_KEY_B64="$(python -c 'import base64,os; print(base64.b64encode(bytes.fromhex(os.environ["OTA_SIGNING_PUBLIC_KEY_HEX"])).decode())')"
           FULL_VERSION="1.0.0-g$(git rev-parse --short HEAD)"
+          [[ "$GITHUB_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          RUN_NUMBER_DEC=$((10#$GITHUB_RUN_NUMBER))
+          RUN_ATTEMPT_DEC=$((10#$GITHUB_RUN_ATTEMPT))
+          ((RUN_ATTEMPT_DEC <= 99))
+          MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))
+          ((MOBILE_BUILD_NUMBER <= 2100000000))
           echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"
+          echo "MOBILE_BUILD_NUMBER=${MOBILE_BUILD_NUMBER}" >> "$GITHUB_ENV"
           printf '%s\n' '${{ github.sha }}' > gatekeeper_app/assets/source_commit.txt
           cd gatekeeper_app
           flutter build apk --release \
             --build-name="$FULL_VERSION" \
-            --build-number=${{ github.run_number }} \
+            --build-number="$MOBILE_BUILD_NUMBER" \
             --dart-define=APK_VERSION_URL="$APK_VERSION_URL" \
             --dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL" \
             --dart-define=UPDATE_SIGNING_KEY_ID="$UPDATE_SIGNING_KEY_ID" \
@@ -513,16 +516,16 @@ jobs:
           export MOBILE_PRIVATE_KEY_HEX
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           test -n "$ANDROID_SDK"
-          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
-          APKANALYZER="$(find "$ANDROID_SDK/cmdline-tools" -type f -name apkanalyzer -print | sort -V | tail -n 1)"
-          test -n "$APKSIGNER"
-          test -n "$APKANALYZER"
-          PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          APKSIGNER="$ANDROID_SDK/build-tools/36.0.0/apksigner"
+          APKANALYZER="$ANDROID_SDK/cmdline-tools/12.0/bin/apkanalyzer"
+          test -x "$APKSIGNER"
+          test -x "$APKANALYZER"
+          PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"
           python scripts/ota_contract_gate.py mobile-manifest-create \
             --artifact dist/ks-house-gatekeeper.apk \
             --output dist/version.json \
             --version "$FULL_VERSION" \
-            --build-number "${{ github.run_number }}" \
+            --build-number "$MOBILE_BUILD_NUMBER" \
             --commit "${{ github.sha }}" \
             --apk-url "$APK_DOWNLOAD_URL" \
             --fallback-url "$APK_FALLBACK_DOWNLOAD_URL" \
@@ -548,8 +551,8 @@ jobs:
         run: |
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           test -n "$ANDROID_SDK"
-          APKSIGNER="$(find "$ANDROID_SDK/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
-          test -n "$APKSIGNER"
+          APKSIGNER="$ANDROID_SDK/build-tools/36.0.0/apksigner"
+          test -x "$APKSIGNER"
           python scripts/ota_contract_gate.py release \
             --evidence ota/release-evidence.json \
             --manifest dist/version.json \
@@ -558,7 +561,7 @@ jobs:
             --public-key-hex "$OTA_SIGNING_PUBLIC_KEY_HEX"
 
       - name: Deploy APK to Synology NAS via SFTP
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        uses: wlixcc/SFTP-Deploy-Action@da88a4dbe95286266bbac3c0b2b8284048d20c8f # v1.2.4
         with:
           server: ${{ secrets.NAS_HOST }}
           username: ${{ secrets.NAS_USER }}
@@ -567,3 +570,516 @@ jobs:
           local_path: './dist/*'
           remote_path: ${{ secrets.NAS_APK_TARGET_DIR || '/docker/smartbox_ota/gatekeeper_apk/' }}
           sftp_only: true
+
+  build_personal_mobile_ota_unsigned:
+    name: Build exact-main unsigned personal mobile OTA with APK-embedded inputs
+    needs: build_apk
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact main mobile source without credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Java JDK 17 for unsigned mobile build
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: 'temurin'
+          java-version: '17.0.16+8'
+
+      - name: Set up Flutter SDK for unsigned mobile build
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.44.8'
+          channel: 'stable'
+          cache: true
+
+      - name: Verify exact main and resolve unsigned mobile dependencies
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            test "${{ inputs.release_target }}" = "canary"
+          else
+            test "$GITHUB_EVENT_NAME" = "push"
+          fi
+          cd gatekeeper_app
+          flutter pub get
+
+      - name: Build unsigned exact personal mobile release
+        env:
+          # These five values are compiled into and extractable from the APK.
+          # GATEKEEPER_API_KEY is a legacy shared credential and is not a durable
+          # confidentiality or authorization boundary. Keep this personal-only,
+          # and never add signing, NAS, SSH, or higher-authority server credentials.
+          APK_VERSION_URL: ${{ secrets.SECRET_APK_VERSION_URL }}
+          APK_FALLBACK_VERSION_URL: ${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}
+          MOBILE_UPDATE_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+          MOBILE_UPDATE_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+          GATEKEEPER_API_KEY: ${{ secrets.GATEKEEPER_API_KEY }}
+        run: |
+          set -euo pipefail
+          for name in APK_VERSION_URL APK_FALLBACK_VERSION_URL MOBILE_UPDATE_KEY_ID \
+            MOBILE_UPDATE_PUBLIC_KEY_HEX GATEKEEPER_API_KEY; do
+            test -n "${!name}"
+          done
+          test "$MOBILE_UPDATE_KEY_ID" = "personal-legacy-target-20260812-1"
+          MOBILE_PUBLIC_KEY_SHA256="$(printf '%s' "$MOBILE_UPDATE_PUBLIC_KEY_HEX" | xxd -r -p | sha256sum | cut -d' ' -f1)"
+          test "$MOBILE_PUBLIC_KEY_SHA256" = "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5"
+          [[ "$GITHUB_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          RUN_NUMBER_DEC=$((10#$GITHUB_RUN_NUMBER))
+          RUN_ATTEMPT_DEC=$((10#$GITHUB_RUN_ATTEMPT))
+          ((RUN_ATTEMPT_DEC <= 99))
+          MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))
+          ((MOBILE_BUILD_NUMBER > 141 && MOBILE_BUILD_NUMBER <= 2100000000))
+          FULL_VERSION="1.0.0-g$(git rev-parse --short HEAD)"
+          MOBILE_UPDATE_PUBLIC_KEY_B64="$(printf '%s' "$MOBILE_UPDATE_PUBLIC_KEY_HEX" | xxd -r -p | base64 -w0)"
+          printf '%s\n' "$GITHUB_SHA" > gatekeeper_app/assets/source_commit.txt
+          export SGK_UNSIGNED_CI_RELEASE=1
+          cd gatekeeper_app
+          flutter build apk --release \
+            --build-name="$FULL_VERSION" \
+            --build-number="$MOBILE_BUILD_NUMBER" \
+            --dart-define=APK_VERSION_URL="$APK_VERSION_URL" \
+            --dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL" \
+            --dart-define=UPDATE_SIGNING_KEY_ID="$MOBILE_UPDATE_KEY_ID" \
+            --dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$MOBILE_UPDATE_PUBLIC_KEY_B64" \
+            --dart-define=GATEKEEPER_API_KEY="$GATEKEEPER_API_KEY"
+          cd ..
+          mkdir -p unsigned-dist
+          mapfile -t APK_CANDIDATES < <(find gatekeeper_app/build/app/outputs/flutter-apk \
+            -maxdepth 1 -type f \( -name 'app-release.apk' -o -name 'app-release-unsigned.apk' \) -print)
+          test "${#APK_CANDIDATES[@]}" -eq 1
+          cp "${APK_CANDIDATES[0]}" unsigned-dist/ks-house-gatekeeper-unsigned.apk
+          test -s unsigned-dist/ks-house-gatekeeper-unsigned.apk
+
+      - name: Upload exact unsigned personal mobile artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-mobile-unsigned-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: unsigned-dist/ks-house-gatekeeper-unsigned.apk
+          if-no-files-found: error
+          retention-days: 1
+
+  publish_personal_mobile_ota:
+    name: Sign and atomically publish personal mobile OTA
+    needs: build_personal_mobile_ota_unsigned
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))
+    environment: personal-auto-ota
+    concurrency:
+      group: smart-gatekeeper-personal-mobile-ota-main
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact main source for personal mobile OTA
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ota_contract_gate.py
+            ota/requirements.lock
+            ota/schemas/mobile-manifest.schema.json
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python for personal mobile OTA
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12.13'
+
+      - name: Verify exact main and install isolated publisher dependencies
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            test "${{ inputs.release_target }}" = "canary"
+          else
+            test "$GITHUB_EVENT_NAME" = "push"
+          fi
+          python -I -m pip install --no-cache-dir --require-hashes -r ota/requirements.lock
+
+      - name: Download exact unsigned personal mobile artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: personal-mobile-unsigned-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: unsigned-dist
+
+      - name: Verify exact unsigned artifact inventory
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t DOWNLOADED_ENTRIES < <(
+            find unsigned-dist -mindepth 1 -maxdepth 1 -print0
+          )
+          test "${#DOWNLOADED_ENTRIES[@]}" -eq 1
+          UNSIGNED_APK="unsigned-dist/ks-house-gatekeeper-unsigned.apk"
+          test "${DOWNLOADED_ENTRIES[0]}" = "$UNSIGNED_APK"
+          test -f "$UNSIGNED_APK"
+          test ! -L "$UNSIGNED_APK"
+          UNSIGNED_APK_SIZE="$(stat -c%s "$UNSIGNED_APK")"
+          [[ "$UNSIGNED_APK_SIZE" =~ ^[0-9]+$ ]]
+          ((UNSIGNED_APK_SIZE >= 1048576 && UNSIGNED_APK_SIZE <= 209715200))
+          UNSIGNED_APK_SHA256="$(sha256sum "$UNSIGNED_APK" | cut -d' ' -f1)"
+          [[ "$UNSIGNED_APK_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          echo "UNSIGNED_APK_SIZE=${UNSIGNED_APK_SIZE}" >> "$GITHUB_ENV"
+          echo "UNSIGNED_APK_SHA256=${UNSIGNED_APK_SHA256}" >> "$GITHUB_ENV"
+
+      - name: Install verified personal mobile signing toolchain
+        run: |
+          set -euo pipefail
+          JDK_URL="https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.16%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.16_8.tar.gz"
+          JDK_SIZE="192062472"
+          JDK_SHA256="166774efcf0f722f2ee18eba0039de2d685b350ee14d7b69e6f83437dafd2af1"
+          BUILD_TOOLS_URL="https://dl.google.com/android/repository/build-tools_r36_linux.zip"
+          BUILD_TOOLS_SIZE="63737259"
+          BUILD_TOOLS_SHA256="5d9ac77fb6ff43d9da518a337b4fcf8f9097113df531d99ccefe80ef7ce8250b"
+          CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+          CMDLINE_TOOLS_SIZE="153607504"
+          CMDLINE_TOOLS_SHA256="2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258"
+          APKSIGNER_JAR_SIZE="1100545"
+          APKSIGNER_JAR_SHA256="3716d9311e55d2b0918a2fd9d54ba9e406c5f6abeea700b287f11259bc163dec"
+          TOOLCHAIN_ROOT="${RUNNER_TEMP}/personal-mobile-toolchain"
+          ARCHIVE_ROOT="${RUNNER_TEMP}/personal-mobile-toolchain-archives"
+          test ! -e "$TOOLCHAIN_ROOT"
+          test ! -e "$ARCHIVE_ROOT"
+          mkdir -p "$TOOLCHAIN_ROOT" "$ARCHIVE_ROOT"
+
+          fetch_verified() {
+            local url="$1"
+            local output="$2"
+            local expected_size="$3"
+            local expected_sha256="$4"
+            curl --fail --silent --show-error --location \
+              --proto '=https' --proto-redir '=https' \
+              --connect-timeout 15 --max-time 600 \
+              --output "$output" "$url"
+            test "$(stat -c%s "$output")" = "$expected_size"
+            printf '%s  %s\n' "$expected_sha256" "$output" | sha256sum --check --strict
+          }
+          reject_unsafe_entry() {
+            local entry="$1"
+            case "$entry" in
+              /*|../*|*/../*|*/..) return 1 ;;
+            esac
+          }
+
+          JDK_ARCHIVE="${ARCHIVE_ROOT}/temurin-17.0.16+8.tar.gz"
+          BUILD_TOOLS_ARCHIVE="${ARCHIVE_ROOT}/build-tools-36.0.0.zip"
+          CMDLINE_TOOLS_ARCHIVE="${ARCHIVE_ROOT}/cmdline-tools-12.0.zip"
+          fetch_verified "$JDK_URL" "$JDK_ARCHIVE" "$JDK_SIZE" "$JDK_SHA256"
+          fetch_verified "$BUILD_TOOLS_URL" "$BUILD_TOOLS_ARCHIVE" \
+            "$BUILD_TOOLS_SIZE" "$BUILD_TOOLS_SHA256"
+          fetch_verified "$CMDLINE_TOOLS_URL" "$CMDLINE_TOOLS_ARCHIVE" \
+            "$CMDLINE_TOOLS_SIZE" "$CMDLINE_TOOLS_SHA256"
+
+          while IFS= read -r entry; do
+            reject_unsafe_entry "$entry"
+          done < <(tar -tzf "$JDK_ARCHIVE")
+          while IFS= read -r entry; do
+            reject_unsafe_entry "$entry"
+          done < <(unzip -Z1 "$BUILD_TOOLS_ARCHIVE")
+          while IFS= read -r entry; do
+            reject_unsafe_entry "$entry"
+          done < <(unzip -Z1 "$CMDLINE_TOOLS_ARCHIVE")
+
+          tar -xzf "$JDK_ARCHIVE" -C "$TOOLCHAIN_ROOT"
+          mkdir -p "$TOOLCHAIN_ROOT/build-tools" "$TOOLCHAIN_ROOT/cmdline-tools"
+          unzip -q "$BUILD_TOOLS_ARCHIVE" -d "$TOOLCHAIN_ROOT/build-tools"
+          unzip -q "$CMDLINE_TOOLS_ARCHIVE" -d "$TOOLCHAIN_ROOT/cmdline-tools"
+          mv "$TOOLCHAIN_ROOT/build-tools/android-16" \
+            "$TOOLCHAIN_ROOT/build-tools/36.0.0"
+          mv "$TOOLCHAIN_ROOT/cmdline-tools/cmdline-tools" \
+            "$TOOLCHAIN_ROOT/cmdline-tools/12.0"
+
+          JAVA_HOME="${TOOLCHAIN_ROOT}/jdk-17.0.16+8"
+          JAVA_BIN="${JAVA_HOME}/bin/java"
+          ZIPALIGN="${TOOLCHAIN_ROOT}/build-tools/36.0.0/zipalign"
+          APKSIGNER_JAR="${TOOLCHAIN_ROOT}/build-tools/36.0.0/lib/apksigner.jar"
+          APKANALYZER="${TOOLCHAIN_ROOT}/cmdline-tools/12.0/bin/apkanalyzer"
+          test -x "$JAVA_BIN"
+          test -x "$ZIPALIGN"
+          test -f "$APKSIGNER_JAR"
+          test -x "$APKANALYZER"
+          grep -Fx 'Pkg.Revision=36.0.0' \
+            "$TOOLCHAIN_ROOT/build-tools/36.0.0/source.properties"
+          grep -Fx 'Pkg.Revision=12.0' \
+            "$TOOLCHAIN_ROOT/cmdline-tools/12.0/source.properties"
+          test "$(stat -c%s "$APKSIGNER_JAR")" = "$APKSIGNER_JAR_SIZE"
+          printf '%s  %s\n' "$APKSIGNER_JAR_SHA256" "$APKSIGNER_JAR" | \
+            sha256sum --check --strict
+          "$JAVA_BIN" -version 2>&1 | grep -F 'openjdk version "17.0.16"'
+          "$JAVA_BIN" -version 2>&1 | grep -F 'Temurin-17.0.16+8'
+          test "$("$JAVA_BIN" -jar "$APKSIGNER_JAR" version)" = "0.9"
+
+          echo "JAVA_HOME=${JAVA_HOME}" >> "$GITHUB_ENV"
+          echo "JAVA_BIN=${JAVA_BIN}" >> "$GITHUB_ENV"
+          echo "ZIPALIGN=${ZIPALIGN}" >> "$GITHUB_ENV"
+          echo "APKSIGNER_JAR=${APKSIGNER_JAR}" >> "$GITHUB_ENV"
+          echo "APKANALYZER=${APKANALYZER}" >> "$GITHUB_ENV"
+          echo "SGK_APKSIGNER_JAVA=${JAVA_BIN}" >> "$GITHUB_ENV"
+
+      - name: Calculate exact personal mobile identity
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          [[ "$GITHUB_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          RUN_NUMBER_DEC=$((10#$GITHUB_RUN_NUMBER))
+          RUN_ATTEMPT_DEC=$((10#$GITHUB_RUN_ATTEMPT))
+          ((RUN_ATTEMPT_DEC <= 99))
+          MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))
+          ((MOBILE_BUILD_NUMBER > 141 && MOBILE_BUILD_NUMBER <= 2100000000))
+          FULL_VERSION="1.0.0-g$(git rev-parse --short HEAD)"
+          echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"
+          echo "MOBILE_BUILD_NUMBER=${MOBILE_BUILD_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Align and sign exact personal mobile APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS; do
+            test -n "${!name}"
+          done
+          [[ "$ANDROID_KEY_ALIAS" =~ ^[A-Za-z0-9._-]{1,128}$ ]]
+          test -x "$JAVA_BIN"
+          test -x "$ZIPALIGN"
+          test -f "$APKSIGNER_JAR"
+          test -x "$APKANALYZER"
+          UNSIGNED_APK="unsigned-dist/ks-house-gatekeeper-unsigned.apk"
+          test "$(stat -c%s "$UNSIGNED_APK")" = "$UNSIGNED_APK_SIZE"
+          printf '%s  %s\n' "$UNSIGNED_APK_SHA256" "$UNSIGNED_APK" | \
+            sha256sum --check --strict
+          if "$JAVA_BIN" -jar "$APKSIGNER_JAR" verify "$UNSIGNED_APK" \
+              >/dev/null 2>&1; then
+            echo "Unsigned producer unexpectedly supplied a signed APK" >&2
+            exit 1
+          fi
+          mkdir -p dist
+          KEYSTORE_PATH="${RUNNER_TEMP}/personal-mobile-release.jks"
+          ALIGNED_APK="${RUNNER_TEMP}/ks-house-gatekeeper-aligned.apk"
+          trap 'rm -f "$KEYSTORE_PATH" "$ALIGNED_APK"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          "$ZIPALIGN" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$ZIPALIGN" -c -p 4 "$ALIGNED_APK"
+          "$JAVA_BIN" -jar "$APKSIGNER_JAR" sign \
+            --ks "$KEYSTORE_PATH" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --out dist/ks-house-gatekeeper.apk \
+            "$ALIGNED_APK"
+          "$JAVA_BIN" -jar "$APKSIGNER_JAR" verify --verbose \
+            dist/ks-house-gatekeeper.apk
+
+      - name: Verify pinned Android signer and package identity
+        run: |
+          set -euo pipefail
+          test -x "$JAVA_BIN"
+          test -f "$APKSIGNER_JAR"
+          test -x "$APKANALYZER"
+          SIGNER_OUTPUT="$("$JAVA_BIN" -jar "$APKSIGNER_JAR" verify \
+            --print-certs dist/ks-house-gatekeeper.apk)"
+          CERTIFICATE_SHA256="$(printf '%s\n' "$SIGNER_OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          test "$CERTIFICATE_SHA256" = "8bdbcf86c2530d424758a37b5a678de02b8f35587143d820c730b83cfe1d7ba0"
+          PACKAGE_NAME="$("$APKANALYZER" manifest application-id dist/ks-house-gatekeeper.apk)"
+          test "$PACKAGE_NAME" = "com.kshouse.gatekeeper_app"
+          VERSION_CODE="$("$APKANALYZER" manifest version-code dist/ks-house-gatekeeper.apk)"
+          VERSION_NAME="$("$APKANALYZER" manifest version-name dist/ks-house-gatekeeper.apk)"
+          test "$VERSION_CODE" = "$MOBILE_BUILD_NUMBER"
+          test "$VERSION_NAME" = "$FULL_VERSION"
+          SOURCE_ENTRY="assets/flutter_assets/assets/source_commit.txt"
+          SOURCE_ENTRY_COUNT="$(unzip -Z1 dist/ks-house-gatekeeper.apk | grep -Fxc "$SOURCE_ENTRY")"
+          test "$SOURCE_ENTRY_COUNT" -eq 1
+          SOURCE_COMMIT="$(unzip -p dist/ks-house-gatekeeper.apk "$SOURCE_ENTRY" | tr -d '\r\n')"
+          test "$SOURCE_COMMIT" = "$GITHUB_SHA"
+          echo "Pinned Android signer, package, version and source identity verified."
+
+      - name: Create and verify personal signed mobile manifest
+        env:
+          APK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_DOWNLOAD_URL }}
+          APK_FALLBACK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_FALLBACK_DOWNLOAD_URL }}
+          APK_RELEASE_NOTES_URL: ${{ secrets.SECRET_APK_RELEASE_NOTES_URL }}
+          MOBILE_UPDATE_PRIVATE_KEY_HEX: ${{ secrets.MOBILE_OTA_SIGNING_PRIVATE_KEY_HEX }}
+          MOBILE_UPDATE_PUBLIC_KEY_HEX: ${{ secrets.MOBILE_OTA_SIGNING_PUBLIC_KEY_HEX }}
+          MOBILE_UPDATE_KEY_ID: ${{ secrets.MOBILE_OTA_SIGNING_KEY_ID }}
+        run: |
+          set -euo pipefail
+          for name in APK_DOWNLOAD_URL APK_FALLBACK_DOWNLOAD_URL \
+            APK_RELEASE_NOTES_URL MOBILE_UPDATE_PRIVATE_KEY_HEX \
+            MOBILE_UPDATE_PUBLIC_KEY_HEX MOBILE_UPDATE_KEY_ID; do
+            test -n "${!name}"
+          done
+          test "$MOBILE_UPDATE_KEY_ID" = "personal-legacy-target-20260812-1"
+          [[ "$MOBILE_UPDATE_PRIVATE_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$MOBILE_UPDATE_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          MOBILE_PUBLIC_KEY_SHA256="$(printf '%s' "$MOBILE_UPDATE_PUBLIC_KEY_HEX" | \
+            xxd -r -p | sha256sum | cut -d' ' -f1)"
+          test "$MOBILE_PUBLIC_KEY_SHA256" = "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5"
+          python -I - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          urls = [os.environ[name] for name in (
+              "APK_DOWNLOAD_URL",
+              "APK_FALLBACK_DOWNLOAD_URL",
+              "APK_RELEASE_NOTES_URL",
+          )]
+          for value in urls:
+              parsed = urlparse(value)
+              if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                  raise SystemExit("personal mobile manifest URL contract is invalid")
+          if urls[0] == urls[1]:
+              raise SystemExit("personal mobile primary and fallback APK URLs must be distinct")
+          PY
+          export MOBILE_UPDATE_PRIVATE_KEY_HEX
+          PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"
+          python -I scripts/ota_contract_gate.py mobile-manifest-create \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --output dist/version.json \
+            --version "$FULL_VERSION" \
+            --build-number "$MOBILE_BUILD_NUMBER" \
+            --commit "$GITHUB_SHA" \
+            --apk-url "$APK_DOWNLOAD_URL" \
+            --fallback-url "$APK_FALLBACK_DOWNLOAD_URL" \
+            --release-notes-url "$APK_RELEASE_NOTES_URL" \
+            --published-at "$PUBLISHED_AT" \
+            --signing-key-id "$MOBILE_UPDATE_KEY_ID" \
+            --private-key-env MOBILE_UPDATE_PRIVATE_KEY_HEX \
+            --expected-public-key-hex "$MOBILE_UPDATE_PUBLIC_KEY_HEX" \
+            --expected-package-name "com.kshouse.gatekeeper_app" \
+            --apkanalyzer "$APKANALYZER" \
+            --apksigner "$APKSIGNER_JAR"
+          python -I scripts/ota_contract_gate.py mobile-manifest-verify \
+            --manifest dist/version.json \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --public-key-hex "$MOBILE_UPDATE_PUBLIC_KEY_HEX" \
+            --expected-package-name "com.kshouse.gatekeeper_app" \
+            --apkanalyzer "$APKANALYZER" \
+            --apksigner "$APKSIGNER_JAR"
+
+      - name: Preserve exact personal mobile OTA artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-mobile-ota-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            dist/ks-house-gatekeeper.apk
+            dist/version.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Prepare strict NAS host identity for personal mobile OTA
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]
+          [[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))
+          KNOWN_HOSTS_FILE="${RUNNER_TEMP}/nas_known_hosts"
+          test -n "$NAS_KNOWN_HOSTS"
+          printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+          HOST_KEY_MODE="repository-secret-pinned"
+          test -s "$KNOWN_HOSTS_FILE"
+          chmod 600 "$KNOWN_HOSTS_FILE"
+          ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null
+          echo "OTA_NAS_KNOWN_HOSTS_FILE=${KNOWN_HOSTS_FILE}" >> "$GITHUB_ENV"
+          echo "OTA_NAS_HOST_KEY_MODE=${HOST_KEY_MODE}" >> "$GITHUB_ENV"
+
+      - name: Atomically publish and read back primary and fallback mobile OTA
+        env:
+          MOBILE_PUBLIC_KEY_HEX: ${{ secrets.MOBILE_OTA_SIGNING_PUBLIC_KEY_HEX }}
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
+          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_APK_TARGET_DIR: ${{ secrets.NAS_APK_TARGET_DIR }}
+          NAS_APK_FALLBACK_TARGET_DIR: ${{ secrets.NAS_APK_FALLBACK_TARGET_DIR || '/docker/smartbox_ota/gatekeeper_apk_fallback' }}
+        run: |
+          set -euo pipefail
+          for name in MOBILE_PUBLIC_KEY_HEX NAS_HOST NAS_USER NAS_PASSWORD \
+            NAS_PORT NAS_APK_TARGET_DIR NAS_APK_FALLBACK_TARGET_DIR; do
+            test -n "${!name}"
+          done
+          [[ "$MOBILE_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          MOBILE_PUBLIC_KEY_SHA256="$(printf '%s' "$MOBILE_PUBLIC_KEY_HEX" | \
+            xxd -r -p | sha256sum | cut -d' ' -f1)"
+          test "$MOBILE_PUBLIC_KEY_SHA256" = "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5"
+          [[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]
+          [[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]
+          [[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))
+          mkdir -p evidence
+          python -I scripts/ota_contract_gate.py mobile-sftp-publish \
+            --artifact dist/ks-house-gatekeeper.apk \
+            --manifest dist/version.json \
+            --expected-version "$FULL_VERSION" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-build-number "$MOBILE_BUILD_NUMBER" \
+            --expected-package-name "com.kshouse.gatekeeper_app" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --evidence-output evidence/personal-mobile-ota-publication.json \
+            --apkanalyzer "$APKANALYZER" \
+            --apksigner "$APKSIGNER_JAR"
+
+      - name: Preserve sanitized personal mobile publication evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: personal-mobile-ota-evidence-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: evidence/personal-mobile-ota-publication.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify primary and fallback OTA over HTTPS
+        env:
+          APK_VERSION_URL: ${{ secrets.SECRET_APK_VERSION_URL }}
+          APK_FALLBACK_VERSION_URL: ${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}
+          APK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_DOWNLOAD_URL }}
+          APK_FALLBACK_DOWNLOAD_URL: ${{ secrets.SECRET_APK_FALLBACK_DOWNLOAD_URL }}
+        run: |
+          set -euo pipefail
+          for name in APK_VERSION_URL APK_FALLBACK_VERSION_URL \
+            APK_DOWNLOAD_URL APK_FALLBACK_DOWNLOAD_URL; do
+            test -n "${!name}"
+            [[ "${!name}" == https://* ]]
+          done
+          test "$APK_VERSION_URL" != "$APK_FALLBACK_VERSION_URL"
+          test "$APK_DOWNLOAD_URL" != "$APK_FALLBACK_DOWNLOAD_URL"
+          mkdir -p http-readback
+          fetch_exact() {
+            local url="$1"
+            local destination="$2"
+            local expected="$3"
+            for attempt in 1 2 3 4 5 6; do
+              if curl --fail --silent --show-error --location \
+                  --proto '=https' --proto-redir '=https' \
+                  --connect-timeout 10 --max-time 180 \
+                  -H 'Cache-Control: no-cache' \
+                  --output "$destination" "$url" && cmp "$expected" "$destination"; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+          fetch_exact "$APK_VERSION_URL" http-readback/primary-version.json dist/version.json
+          fetch_exact "$APK_FALLBACK_VERSION_URL" http-readback/fallback-version.json dist/version.json
+          fetch_exact "$APK_DOWNLOAD_URL" http-readback/primary.apk dist/ks-house-gatekeeper.apk
+          fetch_exact "$APK_FALLBACK_DOWNLOAD_URL" http-readback/fallback.apk dist/ks-house-gatekeeper.apk
+          echo "Primary and fallback mobile OTA endpoints serve the exact signed main artifact."

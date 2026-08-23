@@ -29,6 +29,7 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
         "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX", "SECRET_OTA_VERSION_URL",
         "SECRET_OTA_FIRMWARE_URL", "SECRET_LOCAL_RECOVERY_AP_PASSWORD",
         "SECRET_LOCAL_RECOVERY_USER", "SECRET_LOCAL_RECOVERY_PASSWORD",
+        "SECRET_OTA_CONTENT_KEY_HEX", "SECRET_OTA_CONTENT_KEY_ID",
     ):
       self.assertIn(name, job_text)
     self.assertIn('test "$SECRET_WIFI_SSID" != "YOUR_WIFI_SSID"', self.raw)
@@ -53,6 +54,10 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
     self.assertNotIn("release-evidence.json", self.raw)
     self.assertNotIn("Deploy to Synology NAS", self.raw)
     self.assertIn("production-signed OTA manifest", self.raw)
+    self.assertIn("target-content-encrypt", self.raw)
+    self.assertIn("gatekeeper-firmware.sgkenc", self.raw)
+    self.assertIn("--plaintext-artifact dist/gatekeeper-firmware.bin", self.raw)
+    self.assertIn("--expected-encryption-key-id", self.raw)
 
 
 if __name__ == "__main__":

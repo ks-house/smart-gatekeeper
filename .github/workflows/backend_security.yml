@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   backend-security:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       mariadb:
         image: mariadb@sha256:be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350
@@ -111,7 +111,7 @@ jobs:
 
   attest-backend-evidence:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
@@ -138,7 +138,7 @@ jobs:
   verify-operations-evidence:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [backend-security, attest-backend-evidence]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: read
       attestations: read

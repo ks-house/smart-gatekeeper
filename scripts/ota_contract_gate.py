@@ -7,18 +7,25 @@ import argparse
 import base64
 import csv
 import hashlib
+import hmac
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, InvalidTag
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
@@ -30,6 +37,46 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 OTA = ROOT / "ota"
+UBUNTU_RUNNER = "ubuntu-24.04"
+CHECKOUT_ACTION = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+SETUP_PYTHON_ACTION = (
+    "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+)
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
+SETUP_JAVA_ACTION = (
+    "actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3"
+)
+FLUTTER_ACTION = (
+    "subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2"
+)
+UPLOAD_ARTIFACT_ACTION = (
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+)
+DOWNLOAD_ARTIFACT_ACTION = (
+    "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+)
+SFTP_DEPLOY_ACTION = (
+    "wlixcc/SFTP-Deploy-Action@da88a4dbe95286266bbac3c0b2b8284048d20c8f"
+)
+TARGET_PYTHON_VERSION = "3.10.20"
+MOBILE_PYTHON_VERSION = "3.12.13"
+JAVA_VERSION = "17.0.16+8"
+FLUTTER_VERSION = "3.44.8"
+TARGET_AUTO_SIGNING_KEY_ID = "personal-target-auto-20260823-1"
+TARGET_AUTO_PUBLIC_KEY_SHA256 = (
+    "65154566393ecfb249c8aceb637e3258e349eb36e4dbca0dd52d61a6e55cb61b"
+)
+TARGET_HANDOFF_KEY_ID = "personal-target-handoff-20260824-1"
+TARGET_HANDOFF_PUBLIC_KEY_HEX = (
+    "c29829f8f801e887bcb56f1349c02ca0bd8403d2a11b16703121ae3418b6976a"
+)
+TARGET_HANDOFF_PUBLIC_KEY_SHA256 = (
+    "b46f35bed26b7542c9103c1006ff90816e2e8758ebfc1fd9c53cab4561ec829f"
+)
+TARGET_CONTENT_KEY_ID = "personal-target-content-20260824-1"
 TEST_PUBLIC_KEY_HEX = (
     "d75a980182b10ab7d54bfed3c964073a"
     "0ee172f3daa62325af021a68f707511a"
@@ -227,7 +274,7 @@ WORKFLOW_ARTIFACT_BINDINGS = {
     ".github/workflows/deploy.yml": {
         "build_job": "test_and_build",
         "release_job": "release_to_production",
-        "canary_name": "target-canary",
+        "canary_name": "target-canary-attempt-${{ github.run_attempt }}",
         "artifact": "dist/gatekeeper-firmware.bin",
         "build_copy": (
             "cp .pio/build/esp32c6/firmware.bin "
@@ -237,7 +284,7 @@ WORKFLOW_ARTIFACT_BINDINGS = {
     ".github/workflows/build_app.yml": {
         "build_job": "build_apk",
         "release_job": "release_to_production",
-        "canary_name": "smart-key-app-canary",
+        "canary_name": "smart-key-app-canary-attempt-${{ github.run_attempt }}",
         "artifact": "dist/ks-house-gatekeeper.apk",
         "build_copy": (
             "cp gatekeeper_app/build/app/outputs/flutter-apk/app-release.apk "
@@ -299,6 +346,20 @@ def validate_manifest(
   if manifest["artifact_type"] == "target-firmware":
     if manifest["version"] != manifest["firmware_version"]:
       raise GateError("target version legacy alias must equal firmware_version")
+    artifact_url = urlparse(str(manifest["artifact_url"]))
+    if artifact_url.username is not None or artifact_url.password is not None:
+      raise GateError("Target artifact URL must not contain credentials")
+    schema_version = manifest["schema_version"]
+    if schema_version == 2:
+      if Path(artifact_url.path).suffix != ".sgkenc":
+        raise GateError("encrypted Target manifest must reference a .sgkenc artifact")
+      if manifest["artifact_size"] != (
+          manifest["plaintext_size"] + len(TARGET_CONTENT_MAGIC)
+          + TARGET_CONTENT_NONCE_SIZE + TARGET_CONTENT_TAG_SIZE
+      ):
+        raise GateError("encrypted Target envelope size is inconsistent")
+    elif Path(artifact_url.path).suffix != ".bin":
+      raise GateError("legacy Target manifest must reference a .bin artifact")
   elif manifest["artifact_type"] == "android-apk":
     if manifest["version"] != manifest["version_name"]:
       raise GateError("mobile version legacy alias must equal version_name")
@@ -481,11 +542,11 @@ def load_workflow_yaml(path: str | Path, content: str | None = None) -> dict[str
 
 
 ALLOWED_BUILD_ACTIONS = {
-    "actions/checkout@v4",
-    "actions/setup-python@v5",
-    "actions/setup-java@v4",
-    "subosito/flutter-action@v2",
-    "actions/upload-artifact@v4",
+    CHECKOUT_ACTION,
+    SETUP_PYTHON_ACTION,
+    SETUP_JAVA_ACTION,
+    FLUTTER_ACTION,
+    UPLOAD_ARTIFACT_ACTION,
 }
 
 PHYSICAL_TEST_PUBLIC_CONDITION = (
@@ -561,8 +622,8 @@ def _validate_physical_test_jobs(
     raise GateError(f"{path}: physical-test canary must consume the exact build job")
   if " ".join(str(public_job.get("if", "")).split()) != PHYSICAL_TEST_PUBLIC_CONDITION:
     raise GateError(f"{path}: physical-test canary trigger must be exact main dispatch")
-  if public_job.get("runs-on") != "ubuntu-latest":
-    raise GateError(f"{path}: physical-test canary runner must be ubuntu-latest")
+  if public_job.get("runs-on") != UBUNTU_RUNNER:
+    raise GateError(f"{path}: physical-test canary runner must be {UBUNTU_RUNNER}")
   public_steps = public_job.get("steps")
   if not isinstance(public_steps, list):
     raise GateError(f"{path}: physical-test canary steps must be a list")
@@ -603,17 +664,17 @@ def _validate_physical_test_jobs(
   checkout_step = public_steps[0]
   if checkout_step != {
       "name": "Checkout exact main physical-test verifier",
-      "uses": "actions/checkout@v4",
+      "uses": CHECKOUT_ACTION,
       "with": {"ref": "${{ github.sha }}", "persist-credentials": False},
   }:
     raise GateError(f"{path}: physical-test verifier checkout must be exact main SHA")
   download_step = public_steps[1]
-  if download_step.get("uses") != "actions/download-artifact@v4":
+  if download_step.get("uses") != DOWNLOAD_ARTIFACT_ACTION:
     raise GateError(f"{path}: physical-test must download an exact-run Actions artifact")
   if download_step.get("with") != {"name": binding["canary_name"], "path": "dist"}:
     raise GateError(f"{path}: physical-test download artifact identity is not exact")
   upload_step = public_steps[-1]
-  if upload_step.get("uses") != "actions/upload-artifact@v4":
+  if upload_step.get("uses") != UPLOAD_ARTIFACT_ACTION:
     raise GateError(f"{path}: physical-test sanitized evidence upload is required")
   upload_with = upload_step.get("with", {})
   if (
@@ -777,8 +838,8 @@ def _validate_physical_test_jobs(
     raise GateError(f"{path}: connected physical-test trigger must be exact main dispatch")
   if connected_job.get("environment") != "physical-test":
     raise GateError(f"{path}: connected physical-test requires the physical-test environment")
-  if connected_job.get("runs-on") != "ubuntu-latest":
-    raise GateError(f"{path}: connected physical-test runner must be ubuntu-latest")
+  if connected_job.get("runs-on") != UBUNTU_RUNNER:
+    raise GateError(f"{path}: connected physical-test runner must be {UBUNTU_RUNNER}")
   connected_steps = connected_job.get("steps")
   if not isinstance(connected_steps, list) or len(connected_steps) != 1:
     raise GateError(f"{path}: connected physical-test must remain one fail-closed prerequisite step")
@@ -798,11 +859,1267 @@ def _validate_physical_test_jobs(
   if re.search(r"\b(sftp|scp|rsync|ssh|curl|wget|pio|flutter|gradle)\b", connected_run):
     raise GateError(f"{path}: connected prerequisite job must not build, sign or contact a network")
 
+PERSONAL_TARGET_SECRET_ENV = {
+    "SECRET_ROOT_CA_CERT": "${{ secrets.SECRET_ROOT_CA_CERT }}",
+    "SECRET_WIFI_SSID": "${{ secrets.SECRET_WIFI_SSID }}",
+    "SECRET_WIFI_PASSWORD": "${{ secrets.SECRET_WIFI_PASSWORD }}",
+    "SECRET_API_URL": "${{ secrets.SECRET_API_URL }}",
+    "SECRET_API_KEY": "${{ secrets.SECRET_API_KEY }}",
+    "SECRET_MQTT_HOST": "${{ secrets.SECRET_MQTT_HOST }}",
+    "SECRET_MQTT_PORT": "${{ secrets.SECRET_MQTT_PORT }}",
+    "SECRET_MQTT_USER": "${{ secrets.SECRET_MQTT_USER }}",
+    "SECRET_MQTT_PASSWORD": "${{ secrets.SECRET_MQTT_PASSWORD }}",
+    "SECRET_TARGET_TENANT_ID": "${{ secrets.SECRET_TARGET_TENANT_ID }}",
+    "SECRET_TARGET_DOOR_ID": "${{ secrets.SECRET_TARGET_DOOR_ID }}",
+    "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}",
+    "SECRET_COMMAND_SIGNING_KEY_ID": "${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}",
+    "SECRET_OTA_VERSION_URL": "${{ secrets.SECRET_OTA_VERSION_URL }}",
+    "SECRET_OTA_FIRMWARE_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
+    "SECRET_OTA_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+    "SECRET_OTA_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+    "SECRET_OTA_CONTENT_KEY_HEX": "${{ secrets.SECRET_OTA_CONTENT_KEY_HEX }}",
+    "SECRET_OTA_CONTENT_KEY_ID": "${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}",
+    "SECRET_LOCAL_RECOVERY_AP_PASSWORD": "${{ secrets.SECRET_LOCAL_RECOVERY_AP_PASSWORD }}",
+    "SECRET_LOCAL_RECOVERY_USER": "${{ secrets.SECRET_LOCAL_RECOVERY_USER }}",
+    "SECRET_LOCAL_RECOVERY_PASSWORD": "${{ secrets.SECRET_LOCAL_RECOVERY_PASSWORD }}",
+}
+
+PINNED_TARGET_BUILD_INPUTS = {
+    "platformio.ini": "cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1",
+}
+PINNED_OTA_PYTHON_INPUTS = {
+    "ota/requirements.txt": (
+        "21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7"
+    ),
+    "ota/requirements.lock": (
+        "5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12"
+    ),
+}
+
+PERSONAL_TARGET_MANIFEST_ENV = {
+    "TARGET_ARTIFACT_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
+    "TARGET_PRIVATE_KEY_HEX": "${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}",
+    "TARGET_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+    "TARGET_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+    "TARGET_CONTENT_KEY_ID": "${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}",
+}
+
+PERSONAL_TARGET_PUBLISH_ENV = {
+    "NAS_HOST": "${{ secrets.NAS_HOST }}",
+    "NAS_USER": "${{ secrets.NAS_USER }}",
+    "NAS_PASSWORD": "${{ secrets.NAS_PASSWORD }}",
+    "NAS_PORT": "${{ secrets.NAS_PORT || 22 }}",
+    "NAS_TARGET_DIR": "${{ secrets.NAS_TARGET_DIR || '/docker/smartbox_ota/firmware/' }}",
+    "NAS_KNOWN_HOSTS": "${{ secrets.NAS_KNOWN_HOSTS }}",
+    "TARGET_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+}
+
+PERSONAL_TARGET_HTTPS_ENV = {
+    "TARGET_VERSION_URL": "${{ secrets.SECRET_OTA_VERSION_URL }}",
+    "TARGET_FIRMWARE_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
+    "TARGET_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+    "TARGET_ROOT_CA_CERT": "${{ secrets.SECRET_ROOT_CA_CERT }}",
+    "TARGET_CONTENT_KEY_ID": "${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}",
+}
+
+
+def _validate_personal_target_ota_job(
+    path: str,
+    build_job_name: str,
+    jobs: dict[str, Any],
+) -> None:
+  if path != ".github/workflows/deploy.yml":
+    if any(name in jobs for name in (
+        PERSONAL_TARGET_BUILD_JOB, PERSONAL_TARGET_PUBLISH_JOB
+    )):
+      raise GateError(f"{path}: Target OTA auto-publish job belongs only in deploy.yml")
+    return
+  compile_job = jobs.get(PERSONAL_TARGET_BUILD_JOB)
+  if not isinstance(compile_job, dict):
+    raise GateError(f"{path}: exact-main personal Target compile job is required")
+  job = jobs.get(PERSONAL_TARGET_PUBLISH_JOB)
+  if not isinstance(job, dict):
+    raise GateError(f"{path}: exact-main personal Target OTA job is required")
+  if set(compile_job) != {"name", "needs", "if", "environment", "runs-on", "steps"}:
+    raise GateError(f"{path}: personal Target compile job keys must be exact")
+  if compile_job.get("name") != "Build exact-main personal Target firmware with runtime inputs":
+    raise GateError(f"{path}: personal Target compile job name is not exact")
+  if compile_job.get("needs") not in (build_job_name, [build_job_name]):
+    raise GateError(f"{path}: personal Target compile must need public test/build")
+  if " ".join(str(compile_job.get("if", "")).split()) != PERSONAL_TARGET_AUTO_CONDITION:
+    raise GateError(f"{path}: personal Target compile trigger must be exact")
+  if compile_job.get("environment") != "personal-auto-ota":
+    raise GateError(f"{path}: personal Target compile must use the main-only environment")
+  if compile_job.get("runs-on") != UBUNTU_RUNNER:
+    raise GateError(f"{path}: personal Target compile runner must be {UBUNTU_RUNNER}")
+  if set(job) != {
+      "name", "needs", "if", "environment", "concurrency", "runs-on", "steps"
+  }:
+    raise GateError(f"{path}: personal Target OTA job keys must be exact")
+  if job.get("name") != "Sign and atomically publish exact-main personal Target OTA":
+    raise GateError(f"{path}: personal Target OTA job name is not exact")
+  if job.get("needs") not in (PERSONAL_TARGET_BUILD_JOB, [PERSONAL_TARGET_BUILD_JOB]):
+    raise GateError(f"{path}: personal Target publisher must need only the compile job")
+  if " ".join(str(job.get("if", "")).split()) != PERSONAL_TARGET_AUTO_CONDITION:
+    raise GateError(f"{path}: personal Target OTA trigger must be exact main push/canary dispatch")
+  if job.get("environment") != "personal-auto-ota":
+    raise GateError(
+        f"{path}: personal Target OTA must use the main-only automatic environment"
+    )
+  if job.get("concurrency") != {
+      "group": "smart-gatekeeper-personal-target-ota-main",
+      "cancel-in-progress": False,
+  }:
+    raise GateError(f"{path}: personal Target OTA concurrency contract is not exact")
+  if job.get("runs-on") != UBUNTU_RUNNER:
+    raise GateError(f"{path}: personal Target OTA runner must be {UBUNTU_RUNNER}")
+  steps = compile_job.get("steps")
+  expected_names = [
+      "Checkout exact main OTA source",
+      "Set up Python for exact-main OTA",
+      "Install exact-main OTA dependencies",
+      "Verify exact protected main before production secrets",
+      "Materialize personal Target production inputs",
+      "Build exact monotonic N16 production firmware",
+      "Encrypt sensitive Target firmware handoff",
+      "Upload short-lived encrypted Target firmware handoff",
+  ]
+  if not isinstance(steps, list) or [step.get("name") for step in steps] != expected_names:
+    raise GateError(f"{path}: personal Target OTA step order must be exact")
+  expected_keys = [
+      {"name", "uses", "with"},
+      {"name", "uses", "with"},
+      {"name", "run"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "uses", "with"},
+  ]
+  for index, (step, keys) in enumerate(zip(steps, expected_keys)):
+    if not isinstance(step, dict) or set(step) != keys:
+      raise GateError(f"{path}: personal Target OTA step {index} keys are not exact")
+    if "continue-on-error" in step or "if" in step:
+      raise GateError(f"{path}: personal Target OTA steps cannot suppress or skip failures")
+
+  (
+      checkout, setup, install, verify, materialize, build, handoff_encrypt,
+      handoff_upload,
+  ) = steps
+  if checkout.get("uses") != CHECKOUT_ACTION or checkout.get("with") != {
+      "ref": "${{ github.sha }}",
+      "fetch-depth": 0,
+      "persist-credentials": False,
+  }:
+    raise GateError(f"{path}: personal Target OTA checkout identity/history is not exact")
+  if setup.get("uses") != SETUP_PYTHON_ACTION or setup.get("with") != {
+      "python-version": TARGET_PYTHON_VERSION
+  }:
+    raise GateError(f"{path}: personal Target OTA Python setup is not exact")
+  if install.get("run") != (
+      "python -I -m pip install --require-hashes -r ota/requirements.lock"
+  ):
+    raise GateError(f"{path}: personal Target OTA dependency install is not exact")
+  verify_run = str(verify.get("run", ""))
+  for fragment in (
+      'test "$GITHUB_EVENT_NAME" = "push"',
+      'test "$GITHUB_REF" = "refs/heads/main"',
+      'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+      'test "$(git rev-parse --is-shallow-repository)" = "false"',
+      'if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then',
+      'test "${{ inputs.release_target }}" = "canary"',
+      'EXPECTED_BUILD_TREE="$(cat <<\'EOF\'',
+      'test ! -e .pio',
+      "git ls-files --others --exclude-standard --",
+      "src include lib boards variants sitecustomize.py usercustomize.py",
+      'test -z "$UNEXPECTED_BUILD_INPUTS"',
+      "git ls-files --stage -- src include lib boards variants",
+      "sitecustomize.py usercustomize.py platformio_override.ini platformio.ini",
+      "partitions_16MB_ota.csv ota/requirements.lock |",
+      "100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock",
+      "100644 6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv",
+      "100644 cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1 platformio.ini",
+      'while read -r mode object stage path; do',
+      'test "$mode" = "100644"',
+      'test -f "$path"',
+      'test ! -L "$path"',
+      'test "$(stat -c \'%a\' -- "$path")" = "644"',
+      'digest="$(sha256sum -- "$path" | cut -d\' \' -f1)"',
+      'printf \'%s %s %s\\n\' "$mode" "$digest" "$path"',
+      'test "$ACTUAL_BUILD_TREE" = "$EXPECTED_BUILD_TREE"',
+  ):
+    if verify_run.count(fragment) != 1:
+      raise GateError(f"{path}: personal Target exact-main verification is incomplete")
+  if re.search(r"(?m)^\s*(?:python|pio|pytest)\b|python\s+-m\s+unittest", verify_run):
+    raise GateError(f"{path}: privileged Target verification must not execute candidate code")
+  if "${{ secrets." in json.dumps(steps[:4], sort_keys=True):
+    raise GateError(f"{path}: personal Target secrets appear before exact-main verification")
+
+  if materialize.get("env") != PERSONAL_TARGET_SECRET_ENV:
+    raise GateError(f"{path}: personal Target input provenance is not exact")
+  materialize_run = str(materialize.get("run", ""))
+  for fragment in (
+      "require_cpp_string",
+      "cat <<EOF > include/secrets.h",
+      '#define SECRET_HARDWARELESS_DOOR_ID_HEX ""',
+      '#define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX ""',
+      '#define SECRET_OTA_VERSION_URL "${SECRET_OTA_VERSION_URL}"',
+      '#define SECRET_OTA_FIRMWARE_URL "${SECRET_OTA_FIRMWARE_URL}"',
+      '#define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"',
+      '#define SECRET_OTA_CONTENT_KEY_HEX "${SECRET_OTA_CONTENT_KEY_HEX}"',
+      '#define SECRET_OTA_CONTENT_KEY_ID "${SECRET_OTA_CONTENT_KEY_ID}"',
+      '#define SECRET_LOCAL_RECOVERY_AP_PASSWORD "${SECRET_LOCAL_RECOVERY_AP_PASSWORD}"',
+      f'test "$SECRET_OTA_SIGNING_KEY_ID" = "{TARGET_AUTO_SIGNING_KEY_ID}"',
+      f'test "$OTA_PUBLIC_KEY_SHA256" = "{TARGET_AUTO_PUBLIC_KEY_SHA256}"',
+      '[[ "$SECRET_OTA_CONTENT_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]',
+      f'test "$SECRET_OTA_CONTENT_KEY_ID" = "{TARGET_CONTENT_KEY_ID}"',
+      "xxd -r -p | sha256sum",
+  ):
+    if fragment not in materialize_run:
+      raise GateError(f"{path}: personal Target secret materialization is incomplete")
+  if re.search(r"\b(pio|python|curl|wget|sftp|scp|ssh)\b", materialize_run):
+    raise GateError(f"{path}: Target secret step must not execute candidate tooling")
+
+  build_run = str(build.get("run", ""))
+  for fragment in (
+      "git rev-list --count --first-parent HEAD",
+      'FULL_VERSION="2.1.${COMMIT_SEQUENCE}+main.g${SHORT_SHA}"',
+      'TARGET_BUILD_ID="main-${COMMIT_SEQUENCE}-${GITHUB_SHA}"',
+      'echo "TARGET_BUILD_ID=${TARGET_BUILD_ID}" >> "$GITHUB_ENV"',
+      'SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"',
+      "export SOURCE_DATE_EPOCH",
+      "python -I -m platformio run -e esp32c6_production",
+      "cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware-first.bin",
+      "python -I -m platformio run -e esp32c6_production -t clean",
+      "cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_production/firmware.bin",
+      'version = os.environ["FULL_VERSION"].encode("ascii")',
+      "if version not in firmware:",
+      'raise SystemExit("exact Target version is absent from firmware bytes")',
+      "python -I scripts/verify_target_flash_layout.py",
+      "--partitions partitions_16MB_ota.csv",
+      "--flash-size 0x1000000",
+      "--max-slot-usage-percent 80",
+      "cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware.bin",
+  ):
+    if fragment not in build_run:
+      raise GateError(f"{path}: monotonic N16 Target production build is incomplete")
+  if "${{ secrets." in build_run:
+    raise GateError(f"{path}: Target build must consume only materialized inputs")
+
+  if handoff_encrypt.get("env") != {
+      "TARGET_HANDOFF_PUBLIC_KEY_HEX": "${{ secrets.TARGET_HANDOFF_PUBLIC_KEY_HEX }}",
+      "TARGET_HANDOFF_KEY_ID": "${{ secrets.TARGET_HANDOFF_KEY_ID }}",
+  }:
+    raise GateError(f"{path}: Target handoff encryption public-key provenance is not exact")
+  handoff_encrypt_run = str(handoff_encrypt.get("run", ""))
+  for fragment in (
+      f'test "$TARGET_HANDOFF_KEY_ID" = "{TARGET_HANDOFF_KEY_ID}"',
+      f'test "$HANDOFF_PUBLIC_SHA256" = "{TARGET_HANDOFF_PUBLIC_KEY_SHA256}"',
+      "python -I scripts/ota_contract_gate.py target-handoff-encrypt",
+      "--artifact dist/gatekeeper-firmware.bin",
+      "--output dist/gatekeeper-firmware.sgkenc",
+      '--recipient-public-key-hex "$TARGET_HANDOFF_PUBLIC_KEY_HEX"',
+      '--commit "$GITHUB_SHA"',
+      '--run-attempt "$GITHUB_RUN_ATTEMPT"',
+      "rm -f dist/gatekeeper-firmware.bin dist/gatekeeper-firmware-first.bin",
+      "test ! -e dist/gatekeeper-firmware.bin",
+  ):
+    if fragment not in handoff_encrypt_run:
+      raise GateError(f"{path}: sensitive Target firmware handoff encryption is incomplete")
+  if handoff_upload.get("uses") != UPLOAD_ARTIFACT_ACTION or handoff_upload.get(
+      "with"
+  ) != {
+      "name": (
+          "personal-target-firmware-${{ github.sha }}-attempt-"
+          "${{ github.run_attempt }}"
+      ),
+      "path": "dist/gatekeeper-firmware.sgkenc",
+      "if-no-files-found": "error",
+      "retention-days": 1,
+  }:
+    raise GateError(f"{path}: encrypted Target firmware handoff upload is not exact")
+  compile_serialized = json.dumps(compile_job, sort_keys=True)
+  for forbidden in (
+      "OTA_SIGNING_PRIVATE_KEY_HEX", "TARGET_PRIVATE_KEY_HEX", "NAS_HOST",
+      "NAS_USER", "NAS_PASSWORD", "NAS_KNOWN_HOSTS", "NAS_TARGET_DIR",
+      "TARGET_HANDOFF_PRIVATE_KEY_HEX", "target-sftp-publish",
+      "target-manifest-create",
+  ):
+    if forbidden in compile_serialized:
+      raise GateError(f"{path}: Target compiler gained signing or NAS authority")
+  expected_compile_secret_refs = set(PERSONAL_TARGET_SECRET_ENV.values()) | {
+      "${{ secrets.TARGET_HANDOFF_PUBLIC_KEY_HEX }}",
+      "${{ secrets.TARGET_HANDOFF_KEY_ID }}",
+  }
+  actual_compile_secret_refs = set(re.findall(
+      r"\$\{\{ secrets\.[^}]+\}\}", compile_serialized
+  ))
+  if actual_compile_secret_refs != expected_compile_secret_refs:
+    raise GateError(f"{path}: Target compiler secret allowlist is not exact")
+
+  publisher_steps = job.get("steps")
+  publisher_expected_names = [
+      "Checkout exact protected Target publisher inputs",
+      "Set up Python for isolated Target publisher",
+      "Verify exact main and install isolated Target publisher dependencies",
+      "Download exact sensitive Target firmware handoff",
+      "Validate encrypted Target handoff inventory",
+      "Decrypt authenticated Target firmware handoff",
+      "Validate Target firmware before signing secrets",
+      "Encrypt Target OTA content for public NAS delivery",
+      "Create exact production-signed immutable Target manifest",
+      "Stage read back and atomically publish Target OTA",
+      "Verify exact Target OTA pointer and immutable artifact over HTTPS",
+      "Upload sanitized Target OTA publication evidence",
+  ]
+  if (
+      not isinstance(publisher_steps, list)
+      or [step.get("name") for step in publisher_steps] != publisher_expected_names
+  ):
+    raise GateError(f"{path}: personal Target publisher step order must be exact")
+  publisher_expected_keys = [
+      {"name", "uses", "with"},
+      {"name", "uses", "with"},
+      {"name", "run"},
+      {"name", "uses", "with"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "env", "run"},
+      {"name", "env", "run"},
+      {"name", "env", "run"},
+      {"name", "uses", "with"},
+  ]
+  for index, (step, keys) in enumerate(zip(
+      publisher_steps, publisher_expected_keys
+  )):
+    if not isinstance(step, dict) or set(step) != keys:
+      raise GateError(f"{path}: Target publisher step {index} keys are not exact")
+    if "continue-on-error" in step or "if" in step:
+      raise GateError(f"{path}: Target publisher steps cannot suppress failures")
+  (
+      publisher_checkout, publisher_setup, publisher_verify, handoff_download,
+      handoff_inventory, handoff_decrypt, firmware_validate, content_encrypt,
+      manifest, publish, https_readback, evidence,
+  ) = publisher_steps
+  if publisher_checkout.get("uses") != CHECKOUT_ACTION or publisher_checkout.get(
+      "with"
+  ) != {
+      "ref": "${{ github.sha }}",
+      "fetch-depth": 0,
+      "persist-credentials": False,
+      "sparse-checkout": (
+          "scripts/ota_contract_gate.py\n"
+          "scripts/verify_target_flash_layout.py\n"
+          "ota/requirements.lock\n"
+          "ota/schemas/target-manifest.schema.json\n"
+          "partitions_16MB_ota.csv\n"
+      ),
+      "sparse-checkout-cone-mode": False,
+  }:
+    raise GateError(f"{path}: isolated Target publisher sparse checkout is not exact")
+  if publisher_setup.get("uses") != SETUP_PYTHON_ACTION or publisher_setup.get(
+      "with"
+  ) != {"python-version": TARGET_PYTHON_VERSION}:
+    raise GateError(f"{path}: isolated Target publisher Python setup is not exact")
+  publisher_verify_run = str(publisher_verify.get("run", ""))
+  for fragment in (
+      'test "$GITHUB_REF" = "refs/heads/main"',
+      'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+      'test "$(git rev-parse --is-shallow-repository)" = "false"',
+      'if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then',
+      'test "${{ inputs.release_target }}" = "canary"',
+      'test "$GITHUB_EVENT_NAME" = "push"',
+      "python -I -m pip install --no-cache-dir --require-hashes -r ota/requirements.lock",
+  ):
+    if publisher_verify_run.count(fragment) != 1:
+      raise GateError(f"{path}: isolated Target publisher verification is incomplete")
+  if "${{ secrets." in json.dumps(publisher_steps[:5], sort_keys=True):
+    raise GateError(f"{path}: Target publisher secrets appear before handoff inventory")
+  if handoff_download.get("uses") != DOWNLOAD_ARTIFACT_ACTION or handoff_download.get(
+      "with"
+  ) != {
+      "name": (
+          "personal-target-firmware-${{ github.sha }}-attempt-"
+          "${{ github.run_attempt }}"
+      ),
+      "path": "sensitive-handoff",
+  }:
+    raise GateError(f"{path}: exact encrypted Target handoff download is not exact")
+  inventory_run = str(handoff_inventory.get("run", ""))
+  for fragment in (
+      "find sensitive-handoff -mindepth 1 -maxdepth 1 -printf '%y %p\\n'",
+      'test "${#HANDOFF_ENTRIES[@]}" -eq 1',
+      'test "${HANDOFF_ENTRIES[0]}" = "f sensitive-handoff/gatekeeper-firmware.sgkenc"',
+      "test ! -L sensitive-handoff/gatekeeper-firmware.sgkenc",
+      "test -s sensitive-handoff/gatekeeper-firmware.sgkenc",
+  ):
+    if fragment not in inventory_run:
+      raise GateError(f"{path}: encrypted Target handoff inventory is incomplete")
+  if handoff_decrypt.get("env") != {
+      "TARGET_HANDOFF_PRIVATE_KEY_HEX": "${{ secrets.TARGET_HANDOFF_PRIVATE_KEY_HEX }}",
+      "TARGET_HANDOFF_PUBLIC_KEY_HEX": "${{ secrets.TARGET_HANDOFF_PUBLIC_KEY_HEX }}",
+      "TARGET_HANDOFF_KEY_ID": "${{ secrets.TARGET_HANDOFF_KEY_ID }}",
+  }:
+    raise GateError(f"{path}: Target handoff decryption secret provenance is not exact")
+  decrypt_run = str(handoff_decrypt.get("run", ""))
+  for fragment in (
+      f'test "$TARGET_HANDOFF_KEY_ID" = "{TARGET_HANDOFF_KEY_ID}"',
+      f'test "$HANDOFF_PUBLIC_SHA256" = "{TARGET_HANDOFF_PUBLIC_KEY_SHA256}"',
+      "python -I scripts/ota_contract_gate.py target-handoff-decrypt",
+      "--input sensitive-handoff/gatekeeper-firmware.sgkenc",
+      "--output dist/gatekeeper-firmware.bin",
+      "--private-key-env TARGET_HANDOFF_PRIVATE_KEY_HEX",
+      '--recipient-public-key-hex "$TARGET_HANDOFF_PUBLIC_KEY_HEX"',
+      '--commit "$GITHUB_SHA"',
+      '--run-attempt "$GITHUB_RUN_ATTEMPT"',
+      "rm -f sensitive-handoff/gatekeeper-firmware.sgkenc",
+  ):
+    if fragment not in decrypt_run:
+      raise GateError(f"{path}: authenticated Target handoff decryption is incomplete")
+  if any(fragment in decrypt_run for fragment in (
+      "OTA_SIGNING_PRIVATE_KEY_HEX", "NAS_PASSWORD", "target-manifest-create",
+      "target-sftp-publish",
+  )):
+    raise GateError(f"{path}: Target handoff decryption gained signing or NAS authority")
+  firmware_validate_run = str(firmware_validate.get("run", ""))
+  for fragment in (
+      'FULL_VERSION="2.1.${COMMIT_SEQUENCE}+main.g${SHORT_SHA}"',
+      'TARGET_BUILD_ID="main-${COMMIT_SEQUENCE}-${GITHUB_SHA}"',
+      "export FULL_VERSION TARGET_BUILD_ID",
+      'version = os.environ["FULL_VERSION"].encode("ascii")',
+      'if len(firmware) > 0x700000:',
+      "python -I scripts/verify_target_flash_layout.py",
+      "--partitions partitions_16MB_ota.csv",
+      "--max-slot-usage-percent 80",
+  ):
+    if fragment not in firmware_validate_run:
+      raise GateError(f"{path}: Target firmware pre-sign verification is incomplete")
+  if content_encrypt.get("env") != PERSONAL_TARGET_CONTENT_ENV:
+    raise GateError(f"{path}: Target NAS content encryption provenance is not exact")
+  content_encrypt_run = str(content_encrypt.get("run", ""))
+  for fragment in (
+      '[[ "$TARGET_CONTENT_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]',
+      f'test "$TARGET_CONTENT_KEY_ID" = "{TARGET_CONTENT_KEY_ID}"',
+      "python -I scripts/ota_contract_gate.py target-content-encrypt",
+      "--artifact dist/gatekeeper-firmware.bin",
+      "--output dist/gatekeeper-firmware.sgkenc",
+      "--key-env TARGET_CONTENT_KEY_HEX",
+      '--key-id "$TARGET_CONTENT_KEY_ID"',
+      "python -I scripts/ota_contract_gate.py target-content-decrypt",
+      '--output "$ROUNDTRIP"',
+      'cmp dist/gatekeeper-firmware.bin "$ROUNDTRIP"',
+      'rm -f "$ROUNDTRIP"',
+      "test -s dist/gatekeeper-firmware.sgkenc",
+      "test -s dist/gatekeeper-firmware.bin",
+      '--commit "$GITHUB_SHA"',
+  ):
+    if fragment not in content_encrypt_run:
+      raise GateError(f"{path}: Target NAS content encryption is incomplete")
+  if any(fragment in content_encrypt_run for fragment in (
+      "OTA_SIGNING_PRIVATE_KEY_HEX", "NAS_PASSWORD", "target-manifest-create",
+      "target-sftp-publish",
+  )):
+    raise GateError(
+        f"{path}: Target content encryption gained signing or NAS authority"
+    )
+  publisher_serialized = json.dumps(job, sort_keys=True)
+  for forbidden in (
+      "platformio", "flutter", "gradle", "unittest", "pytest", "src/", "include/",
+      "gatekeeper-firmware-first.bin", "secrets.h",
+  ):
+    if forbidden in publisher_serialized:
+      raise GateError(f"{path}: isolated Target publisher executes candidate build code")
+
+  if manifest.get("env") != PERSONAL_TARGET_MANIFEST_ENV:
+    raise GateError(f"{path}: personal Target signing provenance is not exact")
+  manifest_run = str(manifest.get("run", ""))
+  for fragment in (
+      'IMMUTABLE_ARTIFACT_URL="${TARGET_ARTIFACT_URL%/*}/gatekeeper-firmware-${GITHUB_SHA}.sgkenc"',
+      'PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"',
+      "python -I scripts/ota_contract_gate.py target-manifest-create",
+      "python -I scripts/ota_contract_gate.py target-manifest-verify",
+      '--version "$FULL_VERSION"',
+      '--commit "$GITHUB_SHA"',
+      '--build-id "$TARGET_BUILD_ID"',
+      '--artifact-url "$IMMUTABLE_ARTIFACT_URL"',
+      "--plaintext-artifact dist/gatekeeper-firmware.bin",
+      '--encryption-key-id "$TARGET_CONTENT_KEY_ID"',
+      '--private-key-env TARGET_PRIVATE_KEY_HEX',
+      "--artifact dist/gatekeeper-firmware.sgkenc",
+      '--expected-encryption-key-id "$TARGET_CONTENT_KEY_ID"',
+      "rm -f dist/gatekeeper-firmware.bin",
+      "test ! -e dist/gatekeeper-firmware.bin",
+  ):
+    if fragment not in manifest_run:
+      raise GateError(f"{path}: personal Target signed immutable manifest is incomplete")
+  if manifest_run.count("target-manifest-create") != 1 or manifest_run.count(
+      "target-manifest-verify"
+  ) != 1:
+    raise GateError(f"{path}: personal Target manifest create/verify count is not exact")
+
+  if publish.get("env") != PERSONAL_TARGET_PUBLISH_ENV:
+    raise GateError(f"{path}: personal Target NAS/signing input provenance is not exact")
+  publish_run = str(publish.get("run", ""))
+  for fragment in (
+      'test -n "$NAS_KNOWN_HOSTS"',
+      'printf \'%s\\n\' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"',
+      "repository-secret-pinned",
+      "ssh-keygen -l -E sha256",
+      "python -I scripts/ota_contract_gate.py target-sftp-publish",
+      "--artifact dist/gatekeeper-firmware.sgkenc",
+      '--expected-version "$FULL_VERSION"',
+      '--expected-commit "$GITHUB_SHA"',
+      '--expected-build-id "$TARGET_BUILD_ID"',
+      '--run-attempt "$GITHUB_RUN_ATTEMPT"',
+      "dist/target-ota-publish-evidence.json",
+  ):
+    if fragment not in publish_run:
+      raise GateError(f"{path}: staged/readback/atomic Target NAS publish is incomplete")
+  if any(fragment in publish_run for fragment in (
+      "StrictHostKeyChecking=no", "set +e", "continue-on-error",
+      "ssh-keyscan", "runtime-keyscan-unpinned",
+      "ota_contract_gate.py release", "production_authorized: true",
+  )):
+    raise GateError(f"{path}: personal Target OTA publication adds a release bypass")
+
+  if https_readback.get("env") != PERSONAL_TARGET_HTTPS_ENV:
+    raise GateError(f"{path}: personal Target HTTPS readback provenance is not exact")
+  https_run = str(https_readback.get("run", ""))
+  for fragment in (
+      'IMMUTABLE_ARTIFACT_URL="${TARGET_FIRMWARE_URL%/*}/gatekeeper-firmware-${GITHUB_SHA}.sgkenc"',
+      'test -n "$TARGET_ROOT_CA_CERT"',
+      f'test "$TARGET_CONTENT_KEY_ID" = "{TARGET_CONTENT_KEY_ID}"',
+      'printf \'%s\\n\' "$TARGET_ROOT_CA_CERT" > "$CA_FILE"',
+      'chmod 600 "$CA_FILE"',
+      'trap \'rm -f "$CA_FILE"\' EXIT',
+      'fetch_exact "$TARGET_VERSION_URL" https-readback/version.json dist/version.json',
+      'fetch_exact "$IMMUTABLE_ARTIFACT_URL" https-readback/gatekeeper-firmware.sgkenc dist/gatekeeper-firmware.sgkenc',
+      'cmp "$expected" "$destination"',
+      "curl --fail --silent --show-error --location",
+      "--proto '=https' --proto-redir '=https' --cacert \"$CA_FILE\"",
+      "python -I scripts/ota_contract_gate.py target-manifest-verify",
+      "--manifest https-readback/version.json",
+      "--artifact https-readback/gatekeeper-firmware.sgkenc",
+      '--expected-version "$FULL_VERSION"',
+      '--expected-commit "$GITHUB_SHA"',
+      '--expected-build-id "$TARGET_BUILD_ID"',
+      '--expected-encryption-key-id "$TARGET_CONTENT_KEY_ID"',
+  ):
+    if fragment not in https_run:
+      raise GateError(f"{path}: exact Target OTA HTTPS readback is incomplete")
+
+  if evidence.get("uses") != UPLOAD_ARTIFACT_ACTION or evidence.get("with") != {
+      "name": (
+          "target-ota-publish-evidence-${{ github.sha }}-attempt-"
+          "${{ github.run_attempt }}"
+      ),
+      "path": "dist/target-ota-publish-evidence.json",
+      "if-no-files-found": "error",
+      "retention-days": 30,
+  }:
+    raise GateError(f"{path}: sanitized Target OTA evidence upload is not exact")
+
+
+PERSONAL_MOBILE_EMBEDDED_BUILD_ENV = {
+    "APK_VERSION_URL": "${{ secrets.SECRET_APK_VERSION_URL }}",
+    "APK_FALLBACK_VERSION_URL": "${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}",
+    "MOBILE_UPDATE_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+    "MOBILE_UPDATE_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+    "GATEKEEPER_API_KEY": "${{ secrets.GATEKEEPER_API_KEY }}",
+}
+
+PERSONAL_TARGET_CONTENT_ENV = {
+    "TARGET_CONTENT_KEY_HEX": "${{ secrets.SECRET_OTA_CONTENT_KEY_HEX }}",
+    "TARGET_CONTENT_KEY_ID": "${{ secrets.SECRET_OTA_CONTENT_KEY_ID }}",
+}
+
+PERSONAL_TARGET_BUILD_JOB = "build_personal_target_ota_firmware"
+PERSONAL_TARGET_PUBLISH_JOB = "publish_personal_target_ota"
+PERSONAL_TARGET_AUTO_CONDITION = (
+    "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
+    "(github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))"
+)
+
+PERSONAL_MOBILE_UNSIGNED_JOB = "build_personal_mobile_ota_unsigned"
+PERSONAL_MOBILE_PUBLISH_JOB = "publish_personal_mobile_ota"
+PERSONAL_MOBILE_AUTO_CONDITION = (
+    "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
+    "(github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))"
+)
+
+PERSONAL_MOBILE_ENVIRONMENT = "personal-auto-ota"
+PERSONAL_MOBILE_UNSIGNED_MIN_BYTES = 1048576
+PERSONAL_MOBILE_UNSIGNED_MAX_BYTES = 209715200
+PERSONAL_MOBILE_TOOLCHAIN = {
+    "jdk_url": (
+        "https://github.com/adoptium/temurin17-binaries/releases/download/"
+        "jdk-17.0.16%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.16_8.tar.gz"
+    ),
+    "jdk_size": "192062472",
+    "jdk_sha256": (
+        "166774efcf0f722f2ee18eba0039de2d685b350ee14d7b69e6f83437dafd2af1"
+    ),
+    "build_tools_url": (
+        "https://dl.google.com/android/repository/build-tools_r36_linux.zip"
+    ),
+    "build_tools_size": "63737259",
+    "build_tools_sha256": (
+        "5d9ac77fb6ff43d9da518a337b4fcf8f9097113df531d99ccefe80ef7ce8250b"
+    ),
+    "cmdline_tools_url": (
+        "https://dl.google.com/android/repository/"
+        "commandlinetools-linux-11076708_latest.zip"
+    ),
+    "cmdline_tools_size": "153607504",
+    "cmdline_tools_sha256": (
+        "2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258"
+    ),
+    "apksigner_jar_size": "1100545",
+    "apksigner_jar_sha256": (
+        "3716d9311e55d2b0918a2fd9d54ba9e406c5f6abeea700b287f11259bc163dec"
+    ),
+}
+
+PERSONAL_MOBILE_MANIFEST_ENV = {
+    "APK_DOWNLOAD_URL": "${{ secrets.SECRET_APK_DOWNLOAD_URL }}",
+    "APK_FALLBACK_DOWNLOAD_URL": "${{ secrets.SECRET_APK_FALLBACK_DOWNLOAD_URL }}",
+    "APK_RELEASE_NOTES_URL": "${{ secrets.SECRET_APK_RELEASE_NOTES_URL }}",
+    "MOBILE_UPDATE_PRIVATE_KEY_HEX": (
+        "${{ secrets.MOBILE_OTA_SIGNING_PRIVATE_KEY_HEX }}"
+    ),
+    "MOBILE_UPDATE_PUBLIC_KEY_HEX": (
+        "${{ secrets.MOBILE_OTA_SIGNING_PUBLIC_KEY_HEX }}"
+    ),
+    "MOBILE_UPDATE_KEY_ID": "${{ secrets.MOBILE_OTA_SIGNING_KEY_ID }}",
+}
+
+PERSONAL_MOBILE_PUBLISH_ENV = {
+    "MOBILE_PUBLIC_KEY_HEX": (
+        "${{ secrets.MOBILE_OTA_SIGNING_PUBLIC_KEY_HEX }}"
+    ),
+    "NAS_HOST": "${{ secrets.NAS_HOST }}",
+    "NAS_USER": "${{ secrets.NAS_USER }}",
+    "NAS_PASSWORD": "${{ secrets.NAS_PASSWORD }}",
+    "NAS_PORT": "${{ secrets.NAS_PORT || 22 }}",
+    "NAS_APK_TARGET_DIR": "${{ secrets.NAS_APK_TARGET_DIR }}",
+    "NAS_APK_FALLBACK_TARGET_DIR": (
+        "${{ secrets.NAS_APK_FALLBACK_TARGET_DIR || "
+        "'/docker/smartbox_ota/gatekeeper_apk_fallback' }}"
+    ),
+}
+
+PERSONAL_MOBILE_HTTPS_ENV = {
+    "APK_VERSION_URL": "${{ secrets.SECRET_APK_VERSION_URL }}",
+    "APK_FALLBACK_VERSION_URL": "${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}",
+    "APK_DOWNLOAD_URL": "${{ secrets.SECRET_APK_DOWNLOAD_URL }}",
+    "APK_FALLBACK_DOWNLOAD_URL": "${{ secrets.SECRET_APK_FALLBACK_DOWNLOAD_URL }}",
+}
+
+
+def _validate_personal_mobile_ota_job(
+    path: str,
+    build_job_name: str,
+    jobs: dict[str, Any],
+) -> None:
+  if path != ".github/workflows/build_app.yml":
+    if any(name in jobs for name in (
+        PERSONAL_MOBILE_UNSIGNED_JOB, PERSONAL_MOBILE_PUBLISH_JOB
+    )):
+      raise GateError(f"{path}: mobile OTA auto-publish belongs only in build_app.yml")
+    return
+  unsigned_job = jobs.get(PERSONAL_MOBILE_UNSIGNED_JOB)
+  if not isinstance(unsigned_job, dict):
+    raise GateError(f"{path}: exact-main unsigned personal mobile OTA job is required")
+  job = jobs.get(PERSONAL_MOBILE_PUBLISH_JOB)
+  if not isinstance(job, dict):
+    raise GateError(f"{path}: exact-main personal mobile OTA job is required")
+  if set(unsigned_job) != {"name", "needs", "if", "runs-on", "steps"}:
+    raise GateError(f"{path}: unsigned personal mobile OTA job keys must be exact")
+  if unsigned_job.get("name") != (
+      "Build exact-main unsigned personal mobile OTA with APK-embedded inputs"
+  ):
+    raise GateError(f"{path}: unsigned personal mobile OTA job name is not exact")
+  if unsigned_job.get("needs") not in (build_job_name, [build_job_name]):
+    raise GateError(f"{path}: unsigned personal mobile OTA must need public build/test")
+  if " ".join(str(unsigned_job.get("if", "")).split()) != PERSONAL_MOBILE_AUTO_CONDITION:
+    raise GateError(f"{path}: unsigned personal mobile trigger must be exact")
+  if unsigned_job.get("runs-on") != UBUNTU_RUNNER:
+    raise GateError(f"{path}: unsigned personal mobile runner must be {UBUNTU_RUNNER}")
+  if "environment" in unsigned_job or "concurrency" in unsigned_job:
+    raise GateError(f"{path}: unsigned mobile build cannot gain an environment or deployment lock")
+  if set(job) != {
+      "name", "needs", "if", "environment", "concurrency", "runs-on", "steps"
+  }:
+    raise GateError(f"{path}: personal mobile OTA job keys must be exact")
+  if job.get("name") != "Sign and atomically publish personal mobile OTA":
+    raise GateError(f"{path}: personal mobile OTA job name is not exact")
+  if job.get("needs") not in (
+      PERSONAL_MOBILE_UNSIGNED_JOB, [PERSONAL_MOBILE_UNSIGNED_JOB]
+  ):
+    raise GateError(f"{path}: mobile publisher must need only the unsigned producer")
+  if " ".join(str(job.get("if", "")).split()) != PERSONAL_MOBILE_AUTO_CONDITION:
+    raise GateError(f"{path}: personal mobile OTA trigger must be exact main push/canary dispatch")
+  if job.get("environment") != PERSONAL_MOBILE_ENVIRONMENT:
+    raise GateError(f"{path}: personal mobile OTA requires the main-only environment")
+  if job.get("concurrency") != {
+      "group": "smart-gatekeeper-personal-mobile-ota-main",
+      "cancel-in-progress": False,
+  }:
+    raise GateError(f"{path}: personal mobile OTA concurrency contract is not exact")
+  if job.get("runs-on") != UBUNTU_RUNNER:
+    raise GateError(f"{path}: personal mobile OTA runner must be {UBUNTU_RUNNER}")
+
+  unsigned_steps = unsigned_job.get("steps")
+  unsigned_expected_names = [
+      "Checkout exact main mobile source without credentials",
+      "Set up Java JDK 17 for unsigned mobile build",
+      "Set up Flutter SDK for unsigned mobile build",
+      "Verify exact main and resolve unsigned mobile dependencies",
+      "Build unsigned exact personal mobile release",
+      "Upload exact unsigned personal mobile artifact",
+  ]
+  if (
+      not isinstance(unsigned_steps, list)
+      or [step.get("name") for step in unsigned_steps] != unsigned_expected_names
+  ):
+    raise GateError(f"{path}: unsigned personal mobile step order must be exact")
+  unsigned_expected_keys = [
+      {"name", "uses", "with"},
+      {"name", "uses", "with"},
+      {"name", "uses", "with"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "uses", "with"},
+  ]
+  for index, (step, keys) in enumerate(zip(unsigned_steps, unsigned_expected_keys)):
+    if not isinstance(step, dict) or set(step) != keys:
+      raise GateError(f"{path}: unsigned personal mobile step {index} keys are not exact")
+    if "continue-on-error" in step or "if" in step:
+      raise GateError(f"{path}: unsigned personal mobile steps cannot suppress failures")
+  (
+      unsigned_checkout, unsigned_java, unsigned_flutter, unsigned_verify,
+      unsigned_build, unsigned_upload,
+  ) = unsigned_steps
+  if unsigned_checkout.get("uses") != CHECKOUT_ACTION or unsigned_checkout.get(
+      "with"
+  ) != {"ref": "${{ github.sha }}", "persist-credentials": False}:
+    raise GateError(f"{path}: unsigned mobile checkout identity is not exact")
+  if unsigned_java.get("uses") != SETUP_JAVA_ACTION or unsigned_java.get("with") != {
+      "distribution": "temurin", "java-version": JAVA_VERSION
+  }:
+    raise GateError(f"{path}: unsigned mobile Java setup is not exact")
+  if unsigned_flutter.get("uses") != FLUTTER_ACTION or unsigned_flutter.get(
+      "with"
+  ) != {"flutter-version": FLUTTER_VERSION, "channel": "stable", "cache": True}:
+    raise GateError(f"{path}: unsigned mobile Flutter setup is not exact")
+  unsigned_verify_run = str(unsigned_verify.get("run", ""))
+  for fragment in (
+      'test "$GITHUB_REF" = "refs/heads/main"',
+      'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+      'if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then',
+      'test "${{ inputs.release_target }}" = "canary"',
+      'test "$GITHUB_EVENT_NAME" = "push"',
+      "cd gatekeeper_app",
+      "flutter pub get",
+  ):
+    if unsigned_verify_run.count(fragment) != 1:
+      raise GateError(f"{path}: unsigned mobile exact-main verification is incomplete")
+  if "${{ secrets." in json.dumps(unsigned_steps[:4], sort_keys=True):
+    raise GateError(f"{path}: APK-embedded inputs appear before exact-main verification")
+  if unsigned_build.get("env") != PERSONAL_MOBILE_EMBEDDED_BUILD_ENV:
+    raise GateError(f"{path}: unsigned mobile APK-embedded input provenance is not exact")
+  unsigned_build_run = str(unsigned_build.get("run", ""))
+  for fragment in (
+      'test "$MOBILE_UPDATE_KEY_ID" = "personal-legacy-target-20260812-1"',
+      'test "$MOBILE_PUBLIC_KEY_SHA256" = "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5"',
+      '[[ "$GITHUB_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]',
+      '[[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]',
+      "MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))",
+      "((MOBILE_BUILD_NUMBER > 141 && MOBILE_BUILD_NUMBER <= 2100000000))",
+      'FULL_VERSION="1.0.0-g$(git rev-parse --short HEAD)"',
+      "printf '%s\\n' \"$GITHUB_SHA\" > gatekeeper_app/assets/source_commit.txt",
+      "export SGK_UNSIGNED_CI_RELEASE=1",
+      "flutter build apk --release",
+      '--build-name="$FULL_VERSION"',
+      '--build-number="$MOBILE_BUILD_NUMBER"',
+      '--dart-define=UPDATE_SIGNING_KEY_ID="$MOBILE_UPDATE_KEY_ID"',
+      '--dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="$MOBILE_UPDATE_PUBLIC_KEY_B64"',
+      "find gatekeeper_app/build/app/outputs/flutter-apk",
+      "test \"${#APK_CANDIDATES[@]}\" -eq 1",
+      "unsigned-dist/ks-house-gatekeeper-unsigned.apk",
+  ):
+    if fragment not in unsigned_build_run:
+      raise GateError(f"{path}: exact unsigned personal mobile build is incomplete")
+  if unsigned_build_run.count("SGK_UNSIGNED_CI_RELEASE") != 1:
+    raise GateError(f"{path}: unsigned release escape hatch must occur once in its exact job")
+  unsigned_serialized = json.dumps(unsigned_job, sort_keys=True)
+  forbidden_unsigned = (
+      "ANDROID_KEYSTORE", "OTA_SIGNING_PRIVATE_KEY_HEX", "MOBILE_UPDATE_PRIVATE_KEY_HEX",
+      "NAS_PASSWORD", "NAS_KNOWN_HOSTS", "mobile-manifest-create",
+      "mobile-sftp-publish", "apksigner", "key.properties", "upload-keystore.jks",
+      "environment:", "production_authorized: true",
+  )
+  if any(fragment in unsigned_serialized for fragment in forbidden_unsigned):
+    raise GateError(f"{path}: unsigned mobile build gained a private signing or deployment surface")
+  expected_public_secret_refs = {
+      "${{ secrets.SECRET_APK_VERSION_URL }}",
+      "${{ secrets.SECRET_APK_FALLBACK_VERSION_URL }}",
+      "${{ secrets.OTA_SIGNING_KEY_ID }}",
+      "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+      "${{ secrets.GATEKEEPER_API_KEY }}",
+  }
+  actual_public_secret_refs = set(re.findall(r"\$\{\{ secrets\.[^}]+\}\}", unsigned_serialized))
+  if actual_public_secret_refs != expected_public_secret_refs:
+    raise GateError(f"{path}: unsigned mobile job may receive only exact APK-embedded inputs")
+  if unsigned_upload.get("uses") != UPLOAD_ARTIFACT_ACTION or unsigned_upload.get(
+      "with"
+  ) != {
+      "name": (
+          "personal-mobile-unsigned-${{ github.sha }}-attempt-"
+          "${{ github.run_attempt }}"
+      ),
+      "path": "unsigned-dist/ks-house-gatekeeper-unsigned.apk",
+      "if-no-files-found": "error",
+      "retention-days": 1,
+  }:
+    raise GateError(f"{path}: exact unsigned mobile artifact handoff is not exact")
+
+  steps = job.get("steps")
+  expected_names = [
+      "Checkout exact main source for personal mobile OTA",
+      "Set up Python for personal mobile OTA",
+      "Verify exact main and install isolated publisher dependencies",
+      "Download exact unsigned personal mobile artifact",
+      "Verify exact unsigned artifact inventory",
+      "Install verified personal mobile signing toolchain",
+      "Calculate exact personal mobile identity",
+      "Align and sign exact personal mobile APK",
+      "Verify pinned Android signer and package identity",
+      "Create and verify personal signed mobile manifest",
+      "Preserve exact personal mobile OTA artifact",
+      "Prepare strict NAS host identity for personal mobile OTA",
+      "Atomically publish and read back primary and fallback mobile OTA",
+      "Preserve sanitized personal mobile publication evidence",
+      "Verify primary and fallback OTA over HTTPS",
+  ]
+  if not isinstance(steps, list) or [step.get("name") for step in steps] != expected_names:
+    raise GateError(f"{path}: personal mobile OTA step order must be exact")
+  expected_keys = [
+      {"name", "uses", "with"},
+      {"name", "uses", "with"},
+      {"name", "run"},
+      {"name", "uses", "with"},
+      {"name", "run"},
+      {"name", "run"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "uses", "with"},
+      {"name", "env", "run"},
+      {"name", "env", "run"},
+      {"name", "uses", "with"},
+      {"name", "env", "run"},
+  ]
+  for index, (step, keys) in enumerate(zip(steps, expected_keys)):
+    if not isinstance(step, dict) or set(step) != keys:
+      raise GateError(f"{path}: personal mobile OTA step {index} keys are not exact")
+    if "continue-on-error" in step or "if" in step:
+      raise GateError(f"{path}: personal mobile OTA steps cannot suppress failures")
+    non_env_step = {key: value for key, value in step.items() if key != "env"}
+    if "${{ secrets." in json.dumps(non_env_step, sort_keys=True):
+      raise GateError(
+          f"{path}: personal mobile secrets are allowed only through exact step env"
+      )
+
+  (
+      checkout, python, verify, unsigned_download, unsigned_inventory,
+      toolchain, calculate_identity, sign, identity, manifest,
+      artifact_upload, host_identity, publish, evidence_upload, https_readback,
+  ) = steps
+  if checkout.get("uses") != CHECKOUT_ACTION or checkout.get("with") != {
+      "ref": "${{ github.sha }}",
+      "persist-credentials": False,
+      "sparse-checkout": (
+          "scripts/ota_contract_gate.py\nota/requirements.lock\n"
+          "ota/schemas/mobile-manifest.schema.json\n"
+      ),
+      "sparse-checkout-cone-mode": False,
+  }:
+    raise GateError(f"{path}: personal mobile OTA checkout identity is not exact")
+  if python.get("uses") != SETUP_PYTHON_ACTION or python.get("with") != {
+      "python-version": MOBILE_PYTHON_VERSION,
+  }:
+    raise GateError(f"{path}: personal mobile OTA Python setup is not exact")
+  verify_run = str(verify.get("run", ""))
+  for fragment in (
+      'test "$GITHUB_REF" = "refs/heads/main"',
+      'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+      'if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then',
+      'test "${{ inputs.release_target }}" = "canary"',
+      'test "$GITHUB_EVENT_NAME" = "push"',
+      "python -I -m pip install --no-cache-dir --require-hashes -r ota/requirements.lock",
+  ):
+    if verify_run.count(fragment) != 1:
+      raise GateError(f"{path}: personal mobile exact-main verification is incomplete")
+  if any(fragment in verify_run for fragment in ("set +e", "|| true")):
+    raise GateError(f"{path}: personal mobile exact-main verification must fail closed")
+
+  if unsigned_download.get("uses") != DOWNLOAD_ARTIFACT_ACTION or unsigned_download.get(
+      "with"
+  ) != {
+      "name": (
+          "personal-mobile-unsigned-${{ github.sha }}-attempt-"
+          "${{ github.run_attempt }}"
+      ),
+      "path": "unsigned-dist",
+  }:
+    raise GateError(f"{path}: exact unsigned mobile artifact download is not exact")
+  unsigned_inventory_run = str(unsigned_inventory.get("run", ""))
+  for fragment in (
+      "find unsigned-dist -mindepth 1 -maxdepth 1 -print0",
+      'test "${#DOWNLOADED_ENTRIES[@]}" -eq 1',
+      'UNSIGNED_APK="unsigned-dist/ks-house-gatekeeper-unsigned.apk"',
+      'test "${DOWNLOADED_ENTRIES[0]}" = "$UNSIGNED_APK"',
+      'test -f "$UNSIGNED_APK"',
+      'test ! -L "$UNSIGNED_APK"',
+      'UNSIGNED_APK_SIZE="$(stat -c%s "$UNSIGNED_APK")"',
+      (
+          f"((UNSIGNED_APK_SIZE >= {PERSONAL_MOBILE_UNSIGNED_MIN_BYTES} && "
+          f"UNSIGNED_APK_SIZE <= {PERSONAL_MOBILE_UNSIGNED_MAX_BYTES}))"
+      ),
+      'UNSIGNED_APK_SHA256="$(sha256sum "$UNSIGNED_APK" | cut -d\' \' -f1)"',
+      'echo "UNSIGNED_APK_SIZE=${UNSIGNED_APK_SIZE}" >> "$GITHUB_ENV"',
+      'echo "UNSIGNED_APK_SHA256=${UNSIGNED_APK_SHA256}" >> "$GITHUB_ENV"',
+  ):
+    if fragment not in unsigned_inventory_run:
+      raise GateError(f"{path}: unsigned mobile artifact inventory is incomplete")
+  if "-type f" in unsigned_inventory_run:
+    raise GateError(f"{path}: unsigned mobile inventory must reject non-file extras")
+
+  toolchain_run = str(toolchain.get("run", ""))
+  for value in PERSONAL_MOBILE_TOOLCHAIN.values():
+    if toolchain_run.count(value) != 1:
+      raise GateError(f"{path}: personal mobile toolchain bytes are not exactly pinned")
+  for fragment in (
+      'curl --fail --silent --show-error --location',
+      "--proto '=https' --proto-redir '=https'",
+      'test "$(stat -c%s "$output")" = "$expected_size"',
+      'sha256sum --check --strict',
+      'reject_unsafe_entry "$entry"',
+      'tar -tzf "$JDK_ARCHIVE"',
+      'unzip -Z1 "$BUILD_TOOLS_ARCHIVE"',
+      'unzip -Z1 "$CMDLINE_TOOLS_ARCHIVE"',
+      'JAVA_HOME="${TOOLCHAIN_ROOT}/jdk-17.0.16+8"',
+      'JAVA_BIN="${JAVA_HOME}/bin/java"',
+      'ZIPALIGN="${TOOLCHAIN_ROOT}/build-tools/36.0.0/zipalign"',
+      'APKSIGNER_JAR="${TOOLCHAIN_ROOT}/build-tools/36.0.0/lib/apksigner.jar"',
+      'APKANALYZER="${TOOLCHAIN_ROOT}/cmdline-tools/12.0/bin/apkanalyzer"',
+      "grep -Fx 'Pkg.Revision=36.0.0'",
+      "grep -Fx 'Pkg.Revision=12.0'",
+      'test "$(stat -c%s "$APKSIGNER_JAR")" = "$APKSIGNER_JAR_SIZE"',
+      '"$JAVA_BIN" -version 2>&1 | grep -F \'openjdk version "17.0.16"\'',
+      '"$JAVA_BIN" -version 2>&1 | grep -F \'Temurin-17.0.16+8\'',
+      '"$JAVA_BIN" -jar "$APKSIGNER_JAR" version',
+      'echo "JAVA_HOME=${JAVA_HOME}" >> "$GITHUB_ENV"',
+      'echo "SGK_APKSIGNER_JAVA=${JAVA_BIN}" >> "$GITHUB_ENV"',
+  ):
+    if fragment not in toolchain_run:
+      raise GateError(f"{path}: verified personal mobile toolchain setup is incomplete")
+  if any(fragment in toolchain_run for fragment in (
+      "setup-java", "sdkmanager", "ANDROID_SDK_ROOT", "ANDROID_HOME", "|| true",
+      "set +e", "/usr/bin/java", "command -v java", "which java",
+  )):
+    raise GateError(f"{path}: personal mobile toolchain uses a mutable source")
+  exact_fetches = (
+      'fetch_verified "$JDK_URL" "$JDK_ARCHIVE" "$JDK_SIZE" "$JDK_SHA256"',
+      'fetch_verified "$BUILD_TOOLS_URL" "$BUILD_TOOLS_ARCHIVE"',
+      'fetch_verified "$CMDLINE_TOOLS_URL" "$CMDLINE_TOOLS_ARCHIVE"',
+  )
+  if any(toolchain_run.count(fragment) != 1 for fragment in exact_fetches):
+    raise GateError(f"{path}: personal mobile toolchain fetch set is not exact")
+  ordered_fragments = (
+      'curl --fail --silent --show-error --location',
+      'test "$(stat -c%s "$output")" = "$expected_size"',
+      'printf \'%s  %s\\n\' "$expected_sha256" "$output"',
+      exact_fetches[0],
+      exact_fetches[1],
+      exact_fetches[2],
+      'tar -tzf "$JDK_ARCHIVE"',
+      'unzip -Z1 "$BUILD_TOOLS_ARCHIVE"',
+      'unzip -Z1 "$CMDLINE_TOOLS_ARCHIVE"',
+      'tar -xzf "$JDK_ARCHIVE" -C "$TOOLCHAIN_ROOT"',
+      'unzip -q "$BUILD_TOOLS_ARCHIVE" -d "$TOOLCHAIN_ROOT/build-tools"',
+      'unzip -q "$CMDLINE_TOOLS_ARCHIVE" -d "$TOOLCHAIN_ROOT/cmdline-tools"',
+  )
+  ordered_positions = [toolchain_run.find(fragment) for fragment in ordered_fragments]
+  if any(position < 0 for position in ordered_positions) or ordered_positions != sorted(
+      ordered_positions
+  ):
+    raise GateError(
+        f"{path}: personal mobile toolchain download/verify/extract order is not exact"
+    )
+  expected_tool_exports = {
+      'echo "JAVA_HOME=${JAVA_HOME}" >> "$GITHUB_ENV"',
+      'echo "JAVA_BIN=${JAVA_BIN}" >> "$GITHUB_ENV"',
+      'echo "ZIPALIGN=${ZIPALIGN}" >> "$GITHUB_ENV"',
+      'echo "APKSIGNER_JAR=${APKSIGNER_JAR}" >> "$GITHUB_ENV"',
+      'echo "APKANALYZER=${APKANALYZER}" >> "$GITHUB_ENV"',
+      'echo "SGK_APKSIGNER_JAVA=${JAVA_BIN}" >> "$GITHUB_ENV"',
+  }
+  actual_tool_exports = {
+      line.strip() for line in toolchain_run.splitlines()
+      if '>> "$GITHUB_ENV"' in line
+  }
+  if actual_tool_exports != expected_tool_exports:
+    raise GateError(f"{path}: personal mobile toolchain environment export is not exact")
+  for variable in (
+      "JAVA_HOME", "JAVA_BIN", "ZIPALIGN", "APKSIGNER_JAR", "APKANALYZER"
+  ):
+    if len(re.findall(rf"(?m)^\s*{variable}=", toolchain_run)) != 1:
+      raise GateError(f"{path}: personal mobile toolchain variable binding is not exact")
+
+  secret_free_prefix = json.dumps(steps[:7], sort_keys=True)
+  if "${{ secrets." in secret_free_prefix:
+    raise GateError(
+        f"{path}: personal mobile secrets appear before artifact and toolchain verification"
+    )
+  if any(fragment in secret_free_prefix for fragment in (
+      "flutter", "gradle", "unittest", "pytest", "ota_contract_gate.py contract",
+      "gatekeeper_app", "src/", "include/",
+  )):
+    raise GateError(f"{path}: privileged mobile publisher executes candidate build/test code")
+  protected_tool_variables = (
+      "JAVA_HOME", "JAVA_BIN", "ZIPALIGN", "APKSIGNER_JAR", "APKANALYZER",
+      "SGK_APKSIGNER_JAVA",
+  )
+  for protected_step in steps[6:]:
+    protected_run = str(protected_step.get("run", ""))
+    if any(re.search(
+        rf"(?m)^\s*(?:export\s+)?{variable}=", protected_run
+    ) for variable in protected_tool_variables):
+      raise GateError(f"{path}: verified personal mobile tool binding was replaced")
+    if any(
+        f'echo "{variable}=' in protected_run
+        for variable in protected_tool_variables
+    ):
+      raise GateError(f"{path}: verified personal mobile tool environment was replaced")
+
+  calculate_run = str(calculate_identity.get("run", ""))
+  for fragment in (
+      'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+      '[[ "$GITHUB_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]',
+      '[[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]',
+      "MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))",
+      "((MOBILE_BUILD_NUMBER > 141 && MOBILE_BUILD_NUMBER <= 2100000000))",
+      'FULL_VERSION="1.0.0-g$(git rev-parse --short HEAD)"',
+      'echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"',
+      'echo "MOBILE_BUILD_NUMBER=${MOBILE_BUILD_NUMBER}" >> "$GITHUB_ENV"',
+  ):
+    if fragment not in calculate_run:
+      raise GateError(f"{path}: exact personal mobile identity calculation is incomplete")
+
+  if sign.get("env") != {
+      "KEYSTORE_BASE64": "${{ secrets.ANDROID_KEYSTORE_BASE64 }}",
+      "ANDROID_KEYSTORE_PASSWORD": "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}",
+      "ANDROID_KEY_ALIAS": "${{ secrets.ANDROID_KEY_ALIAS }}",
+  }:
+    raise GateError(f"{path}: personal Android signing secret provenance is not exact")
+  sign_run = str(sign.get("run", ""))
+  for fragment in (
+      '[[ "$ANDROID_KEY_ALIAS" =~ ^[A-Za-z0-9._-]{1,128}$ ]]',
+      'test -x "$JAVA_BIN"',
+      'test -x "$ZIPALIGN"',
+      'test -f "$APKSIGNER_JAR"',
+      'test -x "$APKANALYZER"',
+      'UNSIGNED_APK="unsigned-dist/ks-house-gatekeeper-unsigned.apk"',
+      'test "$(stat -c%s "$UNSIGNED_APK")" = "$UNSIGNED_APK_SIZE"',
+      'printf \'%s  %s\\n\' "$UNSIGNED_APK_SHA256" "$UNSIGNED_APK"',
+      '"$JAVA_BIN" -jar "$APKSIGNER_JAR" verify "$UNSIGNED_APK"',
+      'KEYSTORE_PATH="${RUNNER_TEMP}/personal-mobile-release.jks"',
+      'ALIGNED_APK="${RUNNER_TEMP}/ks-house-gatekeeper-aligned.apk"',
+      "trap 'rm -f \"$KEYSTORE_PATH\" \"$ALIGNED_APK\"' EXIT",
+      'printf \'%s\' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"',
+      'chmod 600 "$KEYSTORE_PATH"',
+      '"$ZIPALIGN" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"',
+      '"$ZIPALIGN" -c -p 4 "$ALIGNED_APK"',
+      '"$JAVA_BIN" -jar "$APKSIGNER_JAR" sign',
+      '--ks-pass env:ANDROID_KEYSTORE_PASSWORD',
+      '--key-pass env:ANDROID_KEYSTORE_PASSWORD',
+      '--out dist/ks-house-gatekeeper.apk',
+      '"$JAVA_BIN" -jar "$APKSIGNER_JAR" verify --verbose',
+  ):
+    if fragment not in sign_run:
+      raise GateError(f"{path}: isolated personal Android signing is incomplete")
+  if any(fragment in sign_run for fragment in (
+      "flutter", "gradle", "key.properties", "ota_contract_gate.py", "python ",
+  )):
+    raise GateError(f"{path}: private Android signing step executes candidate code")
+
+  identity_run = str(identity.get("run", ""))
+  for fragment in (
+      'test -x "$JAVA_BIN"',
+      'test -f "$APKSIGNER_JAR"',
+      'test -x "$APKANALYZER"',
+      '"$JAVA_BIN" -jar "$APKSIGNER_JAR" verify',
+      '--print-certs dist/ks-house-gatekeeper.apk',
+      'test "$CERTIFICATE_SHA256" = "8bdbcf86c2530d424758a37b5a678de02b8f35587143d820c730b83cfe1d7ba0"',
+      'test "$PACKAGE_NAME" = "com.kshouse.gatekeeper_app"',
+      'VERSION_CODE="$("$APKANALYZER" manifest version-code dist/ks-house-gatekeeper.apk)"',
+      'VERSION_NAME="$("$APKANALYZER" manifest version-name dist/ks-house-gatekeeper.apk)"',
+      'test "$VERSION_CODE" = "$MOBILE_BUILD_NUMBER"',
+      'test "$VERSION_NAME" = "$FULL_VERSION"',
+      'SOURCE_ENTRY="assets/flutter_assets/assets/source_commit.txt"',
+      'test "$SOURCE_ENTRY_COUNT" -eq 1',
+      'test "$SOURCE_COMMIT" = "$GITHUB_SHA"',
+  ):
+    if fragment not in identity_run:
+      raise GateError(f"{path}: personal Android signer/package verification is incomplete")
+
+  if manifest.get("env") != PERSONAL_MOBILE_MANIFEST_ENV:
+    raise GateError(f"{path}: personal mobile manifest signing provenance is not exact")
+  manifest_run = str(manifest.get("run", ""))
+  for fragment in (
+      'for name in APK_DOWNLOAD_URL APK_FALLBACK_DOWNLOAD_URL',
+      'test "$MOBILE_UPDATE_KEY_ID" = "personal-legacy-target-20260812-1"',
+      '[[ "$MOBILE_UPDATE_PRIVATE_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]',
+      '[[ "$MOBILE_UPDATE_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]',
+      'test "$MOBILE_PUBLIC_KEY_SHA256" = "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5"',
+      'parsed.scheme != "https"',
+      "personal mobile primary and fallback APK URLs must be distinct",
+      'PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"',
+      "python -I scripts/ota_contract_gate.py mobile-manifest-create",
+      "python -I scripts/ota_contract_gate.py mobile-manifest-verify",
+      "--artifact dist/ks-house-gatekeeper.apk",
+      "--output dist/version.json",
+      '--version "$FULL_VERSION"',
+      '--build-number "$MOBILE_BUILD_NUMBER"',
+      '--commit "$GITHUB_SHA"',
+      "--private-key-env MOBILE_UPDATE_PRIVATE_KEY_HEX",
+      '--expected-package-name "com.kshouse.gatekeeper_app"',
+      '--apkanalyzer "$APKANALYZER"',
+      '--apksigner "$APKSIGNER_JAR"',
+  ):
+    if fragment not in manifest_run:
+      raise GateError(f"{path}: exact personal signed mobile manifest is incomplete")
+  if manifest_run.count("mobile-manifest-create") != 1 or manifest_run.count(
+      "mobile-manifest-verify"
+  ) != 1:
+    raise GateError(f"{path}: personal mobile manifest create/verify count is not exact")
+  if manifest_run.count('--apkanalyzer "$APKANALYZER"') != 2 or manifest_run.count(
+      '--apksigner "$APKSIGNER_JAR"'
+  ) != 2:
+    raise GateError(f"{path}: personal mobile manifest tool binding count is not exact")
+
+  if artifact_upload.get("uses") != UPLOAD_ARTIFACT_ACTION or artifact_upload.get(
+      "with"
+  ) != {
+      "name": (
+          "personal-mobile-ota-${{ github.sha }}-attempt-"
+          "${{ github.run_attempt }}"
+      ),
+      "path": "dist/ks-house-gatekeeper.apk\ndist/version.json\n",
+      "if-no-files-found": "error",
+      "retention-days": 14,
+  }:
+    raise GateError(f"{path}: exact personal mobile artifact retention is not exact")
+
+  if host_identity.get("env") != {
+      "NAS_HOST": "${{ secrets.NAS_HOST }}",
+      "NAS_PORT": "${{ secrets.NAS_PORT || 22 }}",
+      "NAS_KNOWN_HOSTS": "${{ secrets.NAS_KNOWN_HOSTS }}",
+  }:
+    raise GateError(f"{path}: personal mobile NAS host input provenance is not exact")
+  host_run = str(host_identity.get("run", ""))
+  for fragment in (
+      'test -n "$NAS_KNOWN_HOSTS"',
+      'printf \'%s\\n\' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"',
+      "repository-secret-pinned",
+      'ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null',
+      'echo "OTA_NAS_KNOWN_HOSTS_FILE=${KNOWN_HOSTS_FILE}" >> "$GITHUB_ENV"',
+      'echo "OTA_NAS_HOST_KEY_MODE=${HOST_KEY_MODE}" >> "$GITHUB_ENV"',
+  ):
+    if fragment not in host_run:
+      raise GateError(f"{path}: strict personal mobile NAS host identity is incomplete")
+  if any(fragment in host_run for fragment in (
+      "StrictHostKeyChecking=no", "set +e", "ssh-keyscan",
+      "runtime-keyscan-unpinned",
+  )):
+    raise GateError(f"{path}: personal mobile NAS host identity is fail-open")
+
+  if publish.get("env") != PERSONAL_MOBILE_PUBLISH_ENV:
+    raise GateError(f"{path}: personal mobile NAS publish provenance is not exact")
+  publish_run = str(publish.get("run", ""))
+  for fragment in (
+      'for name in MOBILE_PUBLIC_KEY_HEX NAS_HOST NAS_USER NAS_PASSWORD',
+      '[[ "$MOBILE_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]',
+      'test "$MOBILE_PUBLIC_KEY_SHA256" = "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5"',
+      '[[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]',
+      "python -I scripts/ota_contract_gate.py mobile-sftp-publish",
+      "--artifact dist/ks-house-gatekeeper.apk",
+      "--manifest dist/version.json",
+      '--expected-version "$FULL_VERSION"',
+      '--expected-commit "$GITHUB_SHA"',
+      '--expected-build-number "$MOBILE_BUILD_NUMBER"',
+      '--expected-package-name "com.kshouse.gatekeeper_app"',
+      '--run-attempt "$GITHUB_RUN_ATTEMPT"',
+      "--evidence-output evidence/personal-mobile-ota-publication.json",
+      '--apkanalyzer "$APKANALYZER"',
+      '--apksigner "$APKSIGNER_JAR"',
+  ):
+    if fragment not in publish_run:
+      raise GateError(f"{path}: staged/readback/atomic mobile NAS publish is incomplete")
+  if any(fragment in publish_run for fragment in (
+      "sshpass", "StrictHostKeyChecking=no", "set +e", "ota_contract_gate.py release",
+      "production_authorized: true",
+  )):
+    raise GateError(f"{path}: personal mobile OTA publication adds a release bypass")
+
+  if evidence_upload.get("uses") != UPLOAD_ARTIFACT_ACTION or evidence_upload.get(
+      "with"
+  ) != {
+      "name": (
+          "personal-mobile-ota-evidence-${{ github.sha }}-attempt-"
+          "${{ github.run_attempt }}"
+      ),
+      "path": "evidence/personal-mobile-ota-publication.json",
+      "if-no-files-found": "error",
+      "retention-days": 30,
+  }:
+    raise GateError(f"{path}: sanitized personal mobile evidence upload is not exact")
+
+  if https_readback.get("env") != PERSONAL_MOBILE_HTTPS_ENV:
+    raise GateError(f"{path}: personal mobile HTTPS readback provenance is not exact")
+  https_run = str(https_readback.get("run", ""))
+  for fragment in (
+      "for name in APK_VERSION_URL APK_FALLBACK_VERSION_URL",
+      '[[ "${!name}" == https://* ]]',
+      'test "$APK_VERSION_URL" != "$APK_FALLBACK_VERSION_URL"',
+      'test "$APK_DOWNLOAD_URL" != "$APK_FALLBACK_DOWNLOAD_URL"',
+      'fetch_exact "$APK_VERSION_URL" http-readback/primary-version.json dist/version.json',
+      'fetch_exact "$APK_FALLBACK_VERSION_URL" http-readback/fallback-version.json dist/version.json',
+      'fetch_exact "$APK_DOWNLOAD_URL" http-readback/primary.apk dist/ks-house-gatekeeper.apk',
+      'fetch_exact "$APK_FALLBACK_DOWNLOAD_URL" http-readback/fallback.apk dist/ks-house-gatekeeper.apk',
+      'cmp "$expected" "$destination"',
+      "curl --fail --silent --show-error --location",
+      "--proto '=https' --proto-redir '=https'",
+  ):
+    if fragment not in https_run:
+      raise GateError(f"{path}: primary/fallback HTTPS exact-byte readback is incomplete")
+  serialized_job = json.dumps(job, sort_keys=True)
+  if "ota_contract_gate.py release" in serialized_job or "production_authorized: true" in serialized_job:
+    raise GateError(f"{path}: personal mobile OTA cannot self-attest release evidence")
+  if "${{ secrets.OTA_SIGNING_" in serialized_job:
+    raise GateError(f"{path}: Target OTA environment secrets must not shadow mobile trust")
+
+
 CANONICAL_RELEASE_STEPS = {
     ".github/workflows/deploy.yml": [
         {
             "name": "Checkout exact main source",
-            "uses": "actions/checkout@v4",
+            "uses": CHECKOUT_ACTION,
             "with": {
                 "ref": "${{ github.sha }}",
                 "persist-credentials": False,
@@ -810,14 +2127,14 @@ CANONICAL_RELEASE_STEPS = {
         },
         {
             "name": "Set up Python",
-            "uses": "actions/setup-python@v5",
-            "with": {"python-version": "3.10"},
+            "uses": SETUP_PYTHON_ACTION,
+            "with": {"python-version": TARGET_PYTHON_VERSION},
         },
         {
             "name": "Install PlatformIO and OTA release gate dependencies",
             "run": (
-                "python -m pip install --upgrade pip\n"
-                "pip install platformio -r ota/requirements.txt\n"
+                "python -m pip install --require-hashes -r "
+                "ota/requirements.lock"
             ),
         },
         {
@@ -874,7 +2191,7 @@ CANONICAL_RELEASE_STEPS = {
         },
         {
             "name": "Deploy to Synology NAS via SFTP",
-            "uses": "wlixcc/SFTP-Deploy-Action@v1.2.4",
+            "uses": SFTP_DEPLOY_ACTION,
             "with": {
                 "server": "${{ secrets.NAS_HOST }}",
                 "username": "${{ secrets.NAS_USER }}",
@@ -889,7 +2206,7 @@ CANONICAL_RELEASE_STEPS = {
     ".github/workflows/build_app.yml": [
         {
             "name": "Checkout exact main source",
-            "uses": "actions/checkout@v4",
+            "uses": CHECKOUT_ACTION,
             "with": {
                 "ref": "${{ github.sha }}",
                 "persist-credentials": False,
@@ -897,27 +2214,31 @@ CANONICAL_RELEASE_STEPS = {
         },
         {
             "name": "Set up Java JDK 17 for trusted APK inspection",
-            "uses": "actions/setup-java@v4",
-            "with": {"distribution": "temurin", "java-version": "17"},
+            "uses": SETUP_JAVA_ACTION,
+            "with": {"distribution": "temurin", "java-version": JAVA_VERSION},
         },
         {
             "name": "Set up Python for OTA release gate",
-            "uses": "actions/setup-python@v5",
+            "uses": SETUP_PYTHON_ACTION,
             "with": {
-                "python-version": "3.12",
+                "python-version": MOBILE_PYTHON_VERSION,
                 "cache": "pip",
-                "cache-dependency-path": "ota/requirements.txt",
+                "cache-dependency-path": "ota/requirements.lock",
             },
         },
         {
             "name": "Set up Flutter SDK for exact main release",
-            "uses": "subosito/flutter-action@v2",
-            "with": {"channel": "stable", "cache": True},
+            "uses": FLUTTER_ACTION,
+            "with": {
+                "flutter-version": FLUTTER_VERSION,
+                "channel": "stable",
+                "cache": True,
+            },
         },
         {
             "name": "Install exact main release dependencies",
             "run": (
-                "python -m pip install -r ota/requirements.txt\n"
+                "python -m pip install --require-hashes -r ota/requirements.lock\n"
                 "cd gatekeeper_app\n"
                 "flutter pub get\n"
             ),
@@ -973,7 +2294,7 @@ CANONICAL_RELEASE_STEPS = {
         },
         {
             "name": "Deploy APK to Synology NAS via SFTP",
-            "uses": "wlixcc/SFTP-Deploy-Action@v1.2.4",
+            "uses": SFTP_DEPLOY_ACTION,
             "with": {
                 "server": "${{ secrets.NAS_HOST }}",
                 "username": "${{ secrets.NAS_USER }}",
@@ -1098,12 +2419,9 @@ def validate_workflow_release_triggers(
       )
     if path.endswith("build_app.yml"):
       push = triggers.get("push")
-      if (
-          not isinstance(push, dict)
-          or physical_test_contract_path not in push.get("paths", [])
-      ):
+      if push != {"branches": ["main"]}:
         raise GateError(
-            f"{path}: push paths must include the NAS physical-test contract"
+            f"{path}: every main push must run the personal mobile OTA workflow"
         )
 
     dispatch_inputs = triggers.get("workflow_dispatch", {}).get("inputs", {})
@@ -1145,9 +2463,32 @@ def validate_workflow_release_triggers(
         "deploy_physical_test_canary",
         "validate_connected_physical_test_prerequisites",
     }
+    if path == ".github/workflows/deploy.yml":
+      allowed_jobs.update({
+          PERSONAL_TARGET_BUILD_JOB,
+          PERSONAL_TARGET_PUBLISH_JOB,
+      })
+    if path == ".github/workflows/build_app.yml":
+      allowed_jobs.update({
+          PERSONAL_MOBILE_UNSIGNED_JOB,
+          PERSONAL_MOBILE_PUBLISH_JOB,
+      })
     extra_jobs = set(all_jobs.keys()) - allowed_jobs
     if extra_jobs:
       raise GateError(f"{path}: unexpected job in workflow: {sorted(extra_jobs)}")
+
+    for job_name, workflow_job in all_jobs.items():
+      if not isinstance(workflow_job, dict):
+        raise GateError(f"{path}: job {job_name} must be a mapping")
+      for step in workflow_job.get("steps", []):
+        if not isinstance(step, dict):
+          continue
+        if step.get("uses") == UPLOAD_ARTIFACT_ACTION:
+          artifact_name = str(step.get("with", {}).get("name", ""))
+          if "${{ github.run_attempt }}" not in artifact_name:
+            raise GateError(
+                f"{path}: upload-artifact v4 names must include github.run_attempt"
+            )
 
     build_job = all_jobs.get(build_job_name)
     release_job = all_jobs.get(release_job_name)
@@ -1160,8 +2501,8 @@ def validate_workflow_release_triggers(
         raise GateError(f"{path}: build job must not use production environment or specify environment (string or object)")
       raise GateError(f"{path}: build job contains unallowed keys: {sorted(extra_build_job_keys)}")
 
-    if build_job.get("runs-on") != "ubuntu-latest":
-      raise GateError(f"{path}: build job runs-on must be ubuntu-latest")
+    if build_job.get("runs-on") != UBUNTU_RUNNER:
+      raise GateError(f"{path}: build job runs-on must be {UBUNTU_RUNNER}")
 
     build_steps = build_job.get("steps")
     if not isinstance(build_steps, list):
@@ -1234,14 +2575,21 @@ def validate_workflow_release_triggers(
       raise GateError(f"{path}: production job lacks authorized production trigger")
 
     normalized_release_if = " ".join(str(release_if).split())
-    if normalized_release_if != expected_authorized_condition:
+    path_release_condition = expected_authorized_condition
+    if path == ".github/workflows/deploy.yml":
+      # The legacy commercial Target lane still emits a plaintext schema-v1
+      # artifact. It must remain impossible to execute until it is migrated to
+      # the encrypted-v2 atomic publisher. The personal exact-main lane below
+      # is the only currently authorized Target deployment path.
+      path_release_condition = f"false && {expected_authorized_condition}"
+    if normalized_release_if != path_release_condition:
       raise GateError(
           f"{path}: production job lacks authorized production trigger: "
           f"release job condition is extended or modified; must be exact production condition (got: '{normalized_release_if}')"
       )
 
-    if release_job.get("runs-on") != "ubuntu-latest":
-      raise GateError(f"{path}: release job runs-on must be ubuntu-latest")
+    if release_job.get("runs-on") != UBUNTU_RUNNER:
+      raise GateError(f"{path}: release job runs-on must be {UBUNTU_RUNNER}")
 
     release_steps = release_job.get("steps")
     if not isinstance(release_steps, list):
@@ -1437,7 +2785,13 @@ def validate_workflow_release_triggers(
           raise GateError(f"{path}: production Android runtime inputs must be exact")
         run_cmd = str(step.get("run", ""))
         for fragment in (
+            '[[ "$GITHUB_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]',
+            '[[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]',
+            "MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))",
+            "((MOBILE_BUILD_NUMBER <= 2100000000))",
+            'echo "MOBILE_BUILD_NUMBER=${MOBILE_BUILD_NUMBER}" >> "$GITHUB_ENV"',
             "flutter build apk --release",
+            '--build-number="$MOBILE_BUILD_NUMBER"',
             "printf '%s\\n' '${{ github.sha }}' > gatekeeper_app/assets/source_commit.txt",
             '--dart-define=APK_VERSION_URL="$APK_VERSION_URL"',
             '--dart-define=APK_FALLBACK_VERSION_URL="$APK_FALLBACK_VERSION_URL"',
@@ -1464,6 +2818,8 @@ def validate_workflow_release_triggers(
             "--artifact dist/ks-house-gatekeeper.apk",
             "--output dist/version.json",
             '--commit "${{ github.sha }}"',
+            '--build-number "$MOBILE_BUILD_NUMBER"',
+            'PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"',
             '--expected-package-name "com.kshouse.gatekeeper_app"',
             '--apkanalyzer "$APKANALYZER"',
             '--apksigner "$APKSIGNER"',
@@ -1535,6 +2891,8 @@ def validate_workflow_release_triggers(
             prev_continued = sline.endswith("\\")
 
     _validate_physical_test_jobs(path, binding, all_jobs)
+    _validate_personal_target_ota_job(path, build_job_name, all_jobs)
+    _validate_personal_mobile_ota_job(path, build_job_name, all_jobs)
 
 
 def validate_firmware_build_workflow(
@@ -1630,6 +2988,19 @@ def validate_mobile_build_workflow(
       and position["Prepare public mobile canary metadata"] > first_build
   ):
     raise GateError(f"{path}: Flutter/native tests must precede APK build and signing")
+  if (
+      'find "$ANDROID_SDK/build-tools"' in content
+      or 'find "$ANDROID_SDK/cmdline-tools"' in content
+  ):
+    raise GateError(f"{path}: Android inspection tools must not use mutable discovery")
+  if content.count(
+      'APKSIGNER="$ANDROID_SDK/build-tools/36.0.0/apksigner"'
+  ) != 5 or content.count(
+      'APKANALYZER="$ANDROID_SDK/cmdline-tools/12.0/bin/apkanalyzer"'
+  ) != 4 or content.count(
+      'ZIPALIGN="$ANDROID_SDK/build-tools/36.0.0/zipalign"'
+  ) != 0:
+    raise GateError(f"{path}: exact Android inspection tool versions are incomplete")
 
   by_name = {step.get("name"): step for step in steps if isinstance(step, dict)}
   for step in steps:
@@ -1727,18 +3098,94 @@ def validate_mobile_release_signing_config(content: str | None = None) -> None:
   path = "gatekeeper_app/android/app/build.gradle.kts"
   source = content if content is not None else (ROOT / path).read_text(encoding="utf-8")
   for fragment in (
+      'val unsignedCiRelease = System.getenv("SGK_UNSIGNED_CI_RELEASE") == "1"',
       'it.contains("release", ignoreCase = true)',
+      "releaseRequested && !unsignedCiRelease",
       "releaseKey == null || !releaseKey.exists()",
       'keystoreProperties.getProperty("storePassword").isNullOrBlank()',
       'keystoreProperties.getProperty("keyAlias").isNullOrBlank()',
       'keystoreProperties.getProperty("keyPassword").isNullOrBlank()',
       "Release signing is fail-closed",
+      "if (!unsignedCiRelease)",
       'signingConfig = signingConfigs.getByName("release")',
   ):
     if fragment not in source:
       raise GateError(f"{path}: release-signing fail-closed seam missing: {fragment}")
   if 'signingConfigs.getByName("debug")' in source:
     raise GateError(f"{path}: debug signing fallback is forbidden for release")
+  if source.count("SGK_UNSIGNED_CI_RELEASE") != 1:
+    raise GateError(f"{path}: unsigned CI release escape hatch must have one exact declaration")
+  if not (
+      source.index("plugins {")
+      < source.index('val unsignedCiRelease = System.getenv("SGK_UNSIGNED_CI_RELEASE") == "1"')
+      < source.index("android {")
+  ):
+    raise GateError(f"{path}: Kotlin plugins block must precede the unsigned CI declaration")
+
+
+def validate_mobile_gradle_wrapper_pins(
+    contents: dict[str, str] | None = None,
+) -> None:
+  expected = {
+      "gatekeeper_app/android/gradle/wrapper/gradle-wrapper.properties": (
+          "https\\://services.gradle.org/distributions/gradle-9.1.0-all.zip",
+          "b84e04fa845fecba48551f425957641074fcc00a88a84d2aae5808743b35fc85",
+      ),
+      (
+          "gatekeeper_app/android/app/libs/flutter_beacon_local/android/"
+          "gradle/wrapper/gradle-wrapper.properties"
+      ): (
+          "https\\://services.gradle.org/distributions/gradle-5.4.1-all.zip",
+          "14cd15fc8cc8705bd69dcfa3c8fefb27eb7027f5de4b47a8b279218f76895a91",
+      ),
+  }
+  for path, (distribution_url, distribution_sha256) in expected.items():
+    source = (
+        contents[path]
+        if contents is not None
+        else (ROOT / path).read_text(encoding="utf-8")
+    )
+    properties = {}
+    for line in source.splitlines():
+      if not line or line.lstrip().startswith("#") or "=" not in line:
+        continue
+      key, value = line.split("=", 1)
+      properties[key] = value
+    if properties.get("distributionUrl") != distribution_url:
+      raise GateError(f"{path}: Gradle distribution URL is not the reviewed exact pin")
+    if properties.get("distributionSha256Sum") != distribution_sha256:
+      raise GateError(f"{path}: Gradle distribution SHA-256 is missing or changed")
+
+
+def validate_target_build_inputs(content: bytes | None = None) -> None:
+  """Bind automatic production firmware to reviewed, immutable build inputs."""
+  path = "platformio.ini"
+  value = content if content is not None else (ROOT / path).read_bytes()
+  try:
+    value.decode("utf-8")
+  except UnicodeDecodeError as exc:
+    raise GateError(f"{path}: target build input must be strict UTF-8") from exc
+  normalized = value.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+  actual = hashlib.sha256(normalized).hexdigest()
+  expected = PINNED_TARGET_BUILD_INPUTS[path]
+  if actual != expected:
+    raise GateError(
+        f"{path}: production Target build inputs differ from the reviewed exact pin"
+    )
+
+
+def validate_ota_python_dependency_inputs(
+    contents: dict[str, bytes] | None = None,
+) -> None:
+  for path, expected in PINNED_OTA_PYTHON_INPUTS.items():
+    value = contents[path] if contents is not None else (ROOT / path).read_bytes()
+    try:
+      value.decode("utf-8")
+    except UnicodeDecodeError as exc:
+      raise GateError(f"{path}: dependency input must be strict UTF-8") from exc
+    normalized = value.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    if hashlib.sha256(normalized).hexdigest() != expected:
+      raise GateError(f"{path}: dependency input differs from the reviewed hash lock")
 
 
 
@@ -1754,6 +3201,9 @@ def validate_contract() -> None:
   validate_firmware_build_workflow()
   validate_mobile_build_workflow()
   validate_mobile_release_signing_config()
+  validate_mobile_gradle_wrapper_pins()
+  validate_target_build_inputs()
+  validate_ota_python_dependency_inputs()
   validate_workflow_release_triggers()
 
 
@@ -1806,12 +3256,25 @@ def _resolve_apksigner(explicit_path: Path | None) -> Path:
   raise GateError("Android release validation requires apksigner")
 
 
+def _apksigner_command(apksigner_path: Path | None) -> list[str]:
+  executable = _resolve_apksigner(apksigner_path)
+  if executable.suffix.lower() != ".jar":
+    return [str(executable)]
+  java_value = os.environ.get("SGK_APKSIGNER_JAVA", "")
+  java_path = Path(java_value)
+  if not java_value or not java_path.is_absolute() or not java_path.is_file():
+    raise GateError(
+        "direct apksigner.jar validation requires absolute SGK_APKSIGNER_JAVA"
+    )
+  return [str(java_path), "-jar", str(executable)]
+
+
 def read_apk_signing_certificate_digests(
     artifact_path: Path, apksigner_path: Path | None = None
 ) -> set[str]:
-  executable = _resolve_apksigner(apksigner_path)
   result = subprocess.run(
-      [str(executable), "verify", "--print-certs", str(artifact_path)],
+      _apksigner_command(apksigner_path)
+      + ["verify", "--print-certs", str(artifact_path)],
       check=False,
       capture_output=True,
       text=True,
@@ -1921,9 +3384,192 @@ def _mobile_timestamp(value: str, label: str) -> datetime:
     raise GateError(f"{label} must be a valid RFC3339 timestamp") from exc
 
 
+def _validated_target_artifact_url(value: str, commit: str) -> str:
+  expected_names = {
+      f"gatekeeper-firmware-{commit}.bin",
+      f"gatekeeper-firmware-{commit}.sgkenc",
+  }
+  parsed = urlparse(value)
+  if parsed.username is not None or parsed.password is not None:
+    raise GateError("signed Target artifact URL must not contain credentials")
+  if (
+      parsed.scheme != "https"
+      or not parsed.hostname
+      or parsed.query
+      or parsed.fragment
+      or Path(parsed.path).name not in expected_names
+      or "//" in parsed.path
+  ):
+    raise GateError("signed Target artifact URL is not bound to the immutable SHA filename")
+  return value
+
+
+TARGET_HANDOFF_MAGIC = b"SGKTHO1\x00"
+TARGET_HANDOFF_INFO = b"smart-gatekeeper-target-handoff-v1"
+TARGET_HANDOFF_MAX_PLAINTEXT = 0x700000
+TARGET_CONTENT_MAGIC = b"SGKOTA2\x00"
+TARGET_CONTENT_AAD_PREFIX = b"smart-gatekeeper-target-content-v1\n"
+TARGET_CONTENT_NONCE_INFO = b"smart-gatekeeper-target-content-nonce-v1"
+TARGET_CONTENT_NONCE_SIZE = 12
+TARGET_CONTENT_TAG_SIZE = 16
+
+
+def _target_handoff_aad(commit: str, run_attempt: str) -> bytes:
+  if not re.fullmatch(r"[0-9a-f]{40}", commit):
+    raise GateError("Target handoff commit must be exact lowercase 40-hex")
+  if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
+    raise GateError("Target handoff run attempt must be a positive integer")
+  return f"{commit}\n{run_attempt}\n".encode("ascii")
+
+
+def _target_handoff_key(shared_secret: bytes, aad: bytes) -> bytes:
+  return HKDF(
+      algorithm=hashes.SHA256(),
+      length=32,
+      salt=hashlib.sha256(aad).digest(),
+      info=TARGET_HANDOFF_INFO,
+  ).derive(shared_secret)
+
+
+def encrypt_target_handoff(args: argparse.Namespace) -> None:
+  aad = _target_handoff_aad(args.commit, args.run_attempt)
+  if not re.fullmatch(r"[0-9a-f]{64}", args.recipient_public_key_hex):
+    raise GateError("Target handoff recipient public key must be lowercase 32-byte hex")
+  plaintext = args.artifact.read_bytes()
+  if not 1 <= len(plaintext) <= TARGET_HANDOFF_MAX_PLAINTEXT:
+    raise GateError("Target handoff plaintext size is outside the N16 OTA slot")
+  recipient = X25519PublicKey.from_public_bytes(
+      bytes.fromhex(args.recipient_public_key_hex)
+  )
+  ephemeral = X25519PrivateKey.generate()
+  ephemeral_public = ephemeral.public_key().public_bytes(
+      encoding=serialization.Encoding.Raw,
+      format=serialization.PublicFormat.Raw,
+  )
+  nonce = os.urandom(12)
+  key = _target_handoff_key(ephemeral.exchange(recipient), aad)
+  ciphertext = AESGCM(key).encrypt(nonce, plaintext, aad)
+  args.output.parent.mkdir(parents=True, exist_ok=True)
+  args.output.write_bytes(TARGET_HANDOFF_MAGIC + ephemeral_public + nonce + ciphertext)
+  print(f"[TARGET-HANDOFF] encrypted sensitive firmware: {args.output}")
+
+
+def decrypt_target_handoff(args: argparse.Namespace) -> None:
+  aad = _target_handoff_aad(args.commit, args.run_attempt)
+  private_hex = os.environ.get(args.private_key_env, "")
+  if not re.fullmatch(r"[0-9a-f]{64}", private_hex):
+    raise GateError(f"{args.private_key_env} must be lowercase 32-byte hex")
+  private_key = X25519PrivateKey.from_private_bytes(bytes.fromhex(private_hex))
+  actual_public_hex = private_key.public_key().public_bytes(
+      encoding=serialization.Encoding.Raw,
+      format=serialization.PublicFormat.Raw,
+  ).hex()
+  if actual_public_hex != args.recipient_public_key_hex:
+    raise GateError("Target handoff private key does not match pinned recipient public key")
+  payload = args.input.read_bytes()
+  minimum_size = len(TARGET_HANDOFF_MAGIC) + 32 + 12 + 16 + 1
+  maximum_size = len(TARGET_HANDOFF_MAGIC) + 32 + 12 + 16 + TARGET_HANDOFF_MAX_PLAINTEXT
+  if not minimum_size <= len(payload) <= maximum_size:
+    raise GateError("Target handoff ciphertext size is invalid")
+  if not payload.startswith(TARGET_HANDOFF_MAGIC):
+    raise GateError("Target handoff envelope magic is invalid")
+  offset = len(TARGET_HANDOFF_MAGIC)
+  ephemeral_public = X25519PublicKey.from_public_bytes(payload[offset:offset + 32])
+  nonce = payload[offset + 32:offset + 44]
+  ciphertext = payload[offset + 44:]
+  key = _target_handoff_key(private_key.exchange(ephemeral_public), aad)
+  try:
+    plaintext = AESGCM(key).decrypt(nonce, ciphertext, aad)
+  except InvalidTag as exc:
+    raise GateError("Target handoff authentication failed") from exc
+  if not 1 <= len(plaintext) <= TARGET_HANDOFF_MAX_PLAINTEXT:
+    raise GateError("Target handoff decrypted size is outside the N16 OTA slot")
+  args.output.parent.mkdir(parents=True, exist_ok=True)
+  args.output.write_bytes(plaintext)
+  print(f"[TARGET-HANDOFF] authenticated firmware recovered: {args.output}")
+
+
+def _target_content_key_from_env(variable: str) -> bytes:
+  value = os.environ.get(variable, "")
+  if not re.fullmatch(r"[0-9a-f]{64}", value):
+    raise GateError(f"{variable} must contain exact lowercase 32-byte hex")
+  return bytes.fromhex(value)
+
+
+def _target_content_aad(commit: str, key_id: str) -> bytes:
+  if not re.fullmatch(r"[0-9a-f]{40}", commit):
+    raise GateError("Target content commit must be exact lowercase 40-hex")
+  if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", key_id):
+    raise GateError("Target content key ID is invalid")
+  return (
+      TARGET_CONTENT_AAD_PREFIX + commit.encode("ascii") + b"\n"
+      + key_id.encode("ascii") + b"\n"
+  )
+
+
+def _target_content_nonce(key: bytes, aad: bytes, plaintext: bytes) -> bytes:
+  # The immutable NAS object is keyed by source commit. A random nonce would
+  # make an otherwise identical workflow rerun produce different bytes and
+  # collide with that immutable path. Derive a separate nonce key, then bind
+  # the nonce to both release identity and plaintext identity. Identical input
+  # intentionally reproduces identical ciphertext; any plaintext/commit/key-id
+  # change gets an independently derived 96-bit nonce.
+  nonce_key = HKDF(
+      algorithm=hashes.SHA256(),
+      length=32,
+      salt=hashlib.sha256(aad).digest(),
+      info=TARGET_CONTENT_NONCE_INFO,
+  ).derive(key)
+  plaintext_sha256 = hashlib.sha256(plaintext).digest()
+  return hmac.new(nonce_key, aad + plaintext_sha256, hashlib.sha256).digest()[
+      :TARGET_CONTENT_NONCE_SIZE
+  ]
+
+
+def encrypt_target_content(args: argparse.Namespace) -> None:
+  plaintext = args.artifact.read_bytes()
+  if not 1 <= len(plaintext) <= TARGET_HANDOFF_MAX_PLAINTEXT:
+    raise GateError("Target content plaintext size is outside the N16 OTA slot")
+  key = _target_content_key_from_env(args.key_env)
+  aad = _target_content_aad(args.commit, args.key_id)
+  nonce = _target_content_nonce(key, aad, plaintext)
+  ciphertext = AESGCM(key).encrypt(nonce, plaintext, aad)
+  args.output.parent.mkdir(parents=True, exist_ok=True)
+  args.output.write_bytes(TARGET_CONTENT_MAGIC + nonce + ciphertext)
+  print(f"[TARGET-CONTENT] encrypted NAS firmware artifact: {args.output}")
+
+
+def decrypt_target_content(args: argparse.Namespace) -> None:
+  payload = args.input.read_bytes()
+  minimum_size = (
+      len(TARGET_CONTENT_MAGIC) + TARGET_CONTENT_NONCE_SIZE
+      + TARGET_CONTENT_TAG_SIZE + 1
+  )
+  maximum_size = minimum_size - 1 + TARGET_HANDOFF_MAX_PLAINTEXT
+  if not minimum_size <= len(payload) <= maximum_size:
+    raise GateError("Target content envelope size is invalid")
+  if not payload.startswith(TARGET_CONTENT_MAGIC):
+    raise GateError("Target content envelope magic is invalid")
+  offset = len(TARGET_CONTENT_MAGIC)
+  nonce = payload[offset:offset + TARGET_CONTENT_NONCE_SIZE]
+  ciphertext = payload[offset + TARGET_CONTENT_NONCE_SIZE:]
+  key = _target_content_key_from_env(args.key_env)
+  aad = _target_content_aad(args.commit, args.key_id)
+  try:
+    plaintext = AESGCM(key).decrypt(nonce, ciphertext, aad)
+  except InvalidTag as exc:
+    raise GateError("Target content authentication failed") from exc
+  if not 1 <= len(plaintext) <= TARGET_HANDOFF_MAX_PLAINTEXT:
+    raise GateError("Target content decrypted size is outside the N16 OTA slot")
+  args.output.parent.mkdir(parents=True, exist_ok=True)
+  args.output.write_bytes(plaintext)
+  print(f"[TARGET-CONTENT] authenticated firmware recovered: {args.output}")
+
+
 def create_target_manifest(args: argparse.Namespace) -> None:
   if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
     raise GateError("commit must be the exact lowercase 40-hex source identity")
+  _validated_target_artifact_url(args.artifact_url, args.commit)
   private_key = _mobile_private_key_from_env(args.private_key_env)
   public_hex = _mobile_public_hex(private_key)
   if public_hex != args.expected_public_key_hex:
@@ -1931,13 +3577,41 @@ def create_target_manifest(args: argparse.Namespace) -> None:
   size, sha256 = _artifact_size_and_sha256(args.artifact)
   if size < 1:
     raise GateError("Target firmware artifact must not be empty")
+  plaintext_artifact = getattr(args, "plaintext_artifact", None)
+  encryption_key_id = getattr(args, "encryption_key_id", None)
+  encrypted = plaintext_artifact is not None or encryption_key_id is not None
+  if encrypted and (plaintext_artifact is None or encryption_key_id is None):
+    raise GateError(
+        "encrypted Target manifest requires plaintext artifact and encryption key ID"
+    )
+  if encrypted:
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", encryption_key_id):
+      raise GateError("Target encryption key ID is invalid")
+    plaintext_size, plaintext_sha256 = _artifact_size_and_sha256(
+        plaintext_artifact
+    )
+    envelope_overhead = (
+        len(TARGET_CONTENT_MAGIC) + TARGET_CONTENT_NONCE_SIZE
+        + TARGET_CONTENT_TAG_SIZE
+    )
+    if not 1 <= plaintext_size <= TARGET_HANDOFF_MAX_PLAINTEXT:
+      raise GateError("Target plaintext size is outside the N16 OTA slot")
+    if size != plaintext_size + envelope_overhead:
+      raise GateError("Target encrypted envelope length is not exact")
+    if not args.artifact.read_bytes().startswith(TARGET_CONTENT_MAGIC):
+      raise GateError("Target encrypted artifact magic is invalid")
+    if Path(urlparse(args.artifact_url).path).suffix != ".sgkenc":
+      raise GateError("encrypted Target artifact URL must end in .sgkenc")
+  else:
+    plaintext_size = 0
+    plaintext_sha256 = ""
   publication = _mobile_timestamp(args.published_at, "published_at")
   if args.mandatory_after is not None and _mobile_timestamp(
       args.mandatory_after, "mandatory_after"
   ) < publication:
     raise GateError("mandatory_after cannot precede published_at")
   manifest: dict[str, object] = {
-      "schema_version": 1,
+      "schema_version": 2 if encrypted else 1,
       "artifact_type": "target-firmware",
       "version": args.version,
       "firmware_version": args.version,
@@ -1956,6 +3630,13 @@ def create_target_manifest(args: argparse.Namespace) -> None:
       "build_id": args.build_id,
       "commit": args.commit,
   }
+  if encrypted:
+    manifest.update({
+        "encryption_algorithm": "AES-256-GCM",
+        "encryption_key_id": encryption_key_id,
+        "plaintext_size": plaintext_size,
+        "plaintext_sha256": plaintext_sha256,
+    })
   manifest["signature"] = base64.b64encode(
       private_key.sign(canonical_signed_bytes(manifest))
   ).decode("ascii")
@@ -1977,6 +3658,18 @@ def verify_target_manifest(args: argparse.Namespace) -> None:
     raise GateError("Target manifest commit does not match the expected source identity")
   if manifest["build_id"] != args.expected_build_id:
     raise GateError("Target manifest build ID does not match the expected workflow run")
+  expected_encryption_key_id = getattr(
+      args, "expected_encryption_key_id", None
+  )
+  if expected_encryption_key_id is not None and (
+      manifest.get("schema_version") != 2
+      or manifest.get("encryption_algorithm") != "AES-256-GCM"
+      or manifest.get("encryption_key_id") != expected_encryption_key_id
+  ):
+    raise GateError("Target manifest encryption identity does not match")
+  _validated_target_artifact_url(
+      str(manifest["artifact_url"]), args.expected_commit
+  )
   actual_size, actual_sha256 = _artifact_size_and_sha256(args.artifact)
   if (
       manifest["artifact_size"] != actual_size
@@ -1984,6 +3677,379 @@ def verify_target_manifest(args: argparse.Namespace) -> None:
   ):
     raise GateError("Target manifest is not bound to the exact firmware bytes")
   print(f"[TARGET-MANIFEST] artifact binding verified: {args.manifest}")
+
+
+AUTO_TARGET_VERSION = re.compile(
+    r"^2\.1\.([1-9][0-9]*)\+main\.g([0-9a-f]{7,40})$"
+)
+AUTO_TARGET_BUILD_ID = re.compile(r"^main-([1-9][0-9]*)-([0-9a-f]{40})$")
+REMOTE_TARGET_ROOT = re.compile(r"^/docker/[A-Za-z0-9._/-]+$")
+
+
+def _validated_target_remote_root(value: str) -> str:
+  root = value.rstrip("/")
+  if (
+      not REMOTE_TARGET_ROOT.fullmatch(root)
+      or "//" in root
+      or any(segment in ("", ".", "..") for segment in root.split("/")[1:])
+  ):
+    raise GateError("NAS_TARGET_DIR must be a canonical /docker path")
+  return root
+
+
+def _read_sftp_bytes(sftp: Any, path: str) -> bytes:
+  with sftp.open(path, "rb") as stream:
+    value = stream.read()
+  if not isinstance(value, bytes):
+    raise GateError("SFTP readback did not return bytes")
+  return value
+
+
+def _read_optional_sftp_bytes(sftp: Any, path: str) -> bytes | None:
+  try:
+    return _read_sftp_bytes(sftp, path)
+  except OSError as exc:
+    if getattr(exc, "errno", None) == 2 or "no such file" in str(exc).lower():
+      return None
+    raise
+
+
+def _write_sftp_bytes(sftp: Any, path: str, value: bytes) -> None:
+  with sftp.open(path, "wb") as stream:
+    written = stream.write(value)
+    if written is not None and written != len(value):
+      raise GateError("SFTP staged write was incomplete")
+    stream.flush()
+
+
+def _manifest_from_bytes(value: bytes) -> dict[str, Any]:
+  try:
+    parsed = json.loads(value.decode("utf-8"))
+  except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    raise GateError("NAS current Target manifest is not valid UTF-8 JSON") from exc
+  if not isinstance(parsed, dict):
+    raise GateError("NAS current Target manifest must be an object")
+  return parsed
+
+
+def _target_pointer_decision(
+    existing_bytes: bytes | None,
+    candidate: dict[str, Any],
+    public_key_hex: str,
+) -> tuple[str, dict[str, Any] | None]:
+  if existing_bytes is None:
+    return "publish-new", None
+  try:
+    existing = _manifest_from_bytes(existing_bytes)
+    validate_manifest(existing, "target-manifest.schema.json", public_key_hex)
+  except GateError as exc:
+    raise GateError(
+        "NAS current Target manifest is present but unverifiable; "
+        "automatic replacement is refused"
+    ) from exc
+
+  if (
+      existing["commit"] == candidate["commit"]
+      and existing["version"] == candidate["version"]
+      and existing["sha256"] == candidate["sha256"]
+      and existing["artifact_url"] == candidate["artifact_url"]
+  ):
+    return "idempotent", existing
+
+  candidate_match = AUTO_TARGET_VERSION.fullmatch(str(candidate["version"]))
+  if candidate_match is None:
+    raise GateError("automatic Target OTA version is not the monotonic main format")
+  candidate_sequence = int(candidate_match.group(1))
+  candidate_core = (2, 1, candidate_sequence)
+  existing_version = str(existing["version"])
+  existing_core_match = re.match(r"^([0-9]+)\.([0-9]+)\.([0-9]+)(?:[-+]|$)", existing_version)
+  if existing_core_match is None:
+    raise GateError("NAS current signed Target version cannot be ordered safely")
+  existing_core = tuple(int(value) for value in existing_core_match.groups())
+  if existing_core > candidate_core:
+    raise GateError("stale Target OTA publish refused: NAS version core is newer")
+  if existing_core < candidate_core:
+    return "publish-upgrade", existing
+  existing_match = AUTO_TARGET_VERSION.fullmatch(existing_version)
+  if existing_match is None:
+    raise GateError("stale Target OTA publish refused: equal-core NAS version is not ordered")
+  existing_sequence = int(existing_match.group(1))
+  if existing_sequence >= candidate_sequence:
+    raise GateError("stale or conflicting Target OTA publish refused")
+  return "publish-upgrade", existing
+
+
+def _place_immutable_sftp_bytes(
+    sftp: Any,
+    staged_path: str,
+    final_path: str,
+    expected: bytes,
+) -> None:
+  current = _read_optional_sftp_bytes(sftp, final_path)
+  if current is None:
+    sftp.rename(staged_path, final_path)
+  elif current == expected:
+    sftp.remove(staged_path)
+  else:
+    raise GateError("immutable NAS OTA history path already contains different bytes")
+  if _read_sftp_bytes(sftp, final_path) != expected:
+    raise GateError("immutable NAS OTA readback differs after publish")
+
+
+def _publish_target_sftp_bytes(
+    sftp: Any,
+    remote_root: str,
+    artifact_path: Path,
+    manifest_path: Path,
+    candidate: dict[str, Any],
+    public_key_hex: str,
+    run_attempt: str,
+) -> dict[str, Any]:
+  commit = str(candidate["commit"])
+  if not re.fullmatch(r"[0-9a-f]{40}", commit):
+    raise GateError("automatic Target OTA commit identity is invalid")
+  version_match = AUTO_TARGET_VERSION.fullmatch(str(candidate["version"]))
+  build_id = str(candidate["build_id"])
+  build_match = AUTO_TARGET_BUILD_ID.fullmatch(build_id)
+  if (
+      version_match is None
+      or build_match is None
+      or build_match.group(1) != version_match.group(1)
+      or build_match.group(2) != commit
+  ):
+    raise GateError("automatic Target OTA deterministic build identity is invalid")
+  if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
+    raise GateError("automatic Target OTA run attempt is invalid")
+  validated_artifact_url = _validated_target_artifact_url(
+      str(candidate["artifact_url"]), commit
+  )
+  immutable_artifact_name = Path(urlparse(validated_artifact_url).path).name
+  immutable_manifest_name = f"version-{commit}.json"
+
+  artifact_bytes = artifact_path.read_bytes()
+  manifest_bytes = manifest_path.read_bytes()
+  if not artifact_bytes or not manifest_bytes:
+    raise GateError("automatic Target OTA local artifact or manifest is empty")
+  remote_stat = sftp.stat(remote_root)
+  if not stat.S_ISDIR(remote_stat.st_mode):
+    raise GateError("NAS_TARGET_DIR does not identify an existing directory")
+
+  pointer_path = f"{remote_root}/version.json"
+  initial_pointer = _read_optional_sftp_bytes(sftp, pointer_path)
+  initial_decision, initial_valid_manifest = _target_pointer_decision(
+      initial_pointer, candidate, public_key_hex
+  )
+  if initial_decision == "idempotent" and initial_pointer != manifest_bytes:
+    raise GateError("equal Target OTA identity has conflicting signed manifest bytes")
+  previous_valid_artifact = False
+  if initial_valid_manifest is not None:
+    previous_name = Path(
+        urlparse(str(initial_valid_manifest["artifact_url"])).path
+    ).name
+    previous_bytes = _read_optional_sftp_bytes(
+        sftp, f"{remote_root}/{previous_name}"
+    )
+    previous_valid_artifact = bool(
+        previous_bytes is not None
+        and len(previous_bytes) == int(initial_valid_manifest["artifact_size"])
+        and hashlib.sha256(previous_bytes).hexdigest()
+        == str(initial_valid_manifest["sha256"])
+    )
+  stage = (
+      f"{remote_root}/.staging-{commit}-"
+      f"{build_id}-{run_attempt}"
+  )
+  sftp.mkdir(stage)
+  staged_artifact = f"{stage}/{immutable_artifact_name}"
+  staged_manifest = f"{stage}/{immutable_manifest_name}"
+  staged_pointer = f"{stage}/version.json"
+  sftp.put(str(artifact_path), staged_artifact, confirm=True)
+  sftp.put(str(manifest_path), staged_manifest, confirm=True)
+  sftp.put(str(manifest_path), staged_pointer, confirm=True)
+  if _read_sftp_bytes(sftp, staged_artifact) != artifact_bytes:
+    raise GateError("NAS staged Target artifact readback differs")
+  if (
+      _read_sftp_bytes(sftp, staged_manifest) != manifest_bytes
+      or _read_sftp_bytes(sftp, staged_pointer) != manifest_bytes
+  ):
+    raise GateError("NAS staged Target manifest readback differs")
+
+  final_artifact = f"{remote_root}/{immutable_artifact_name}"
+  _place_immutable_sftp_bytes(
+      sftp, staged_artifact, final_artifact, artifact_bytes
+  )
+
+  if initial_decision == "idempotent":
+    sftp.remove(staged_manifest)
+    sftp.remove(staged_pointer)
+    sftp.rmdir(stage)
+    return {
+        "result": "idempotent",
+        "previous_valid_manifest": True,
+        "previous_valid_artifact": True,
+        "immutable_artifact": immutable_artifact_name,
+        "immutable_manifest": immutable_manifest_name,
+    }
+
+  final_manifest = f"{remote_root}/{immutable_manifest_name}"
+  _place_immutable_sftp_bytes(
+      sftp, staged_manifest, final_manifest, manifest_bytes
+  )
+
+  if initial_valid_manifest is not None and initial_pointer is not None:
+    previous_commit = str(initial_valid_manifest["commit"])
+    previous_history = f"{remote_root}/version-{previous_commit}.json"
+    previous_staged = f"{stage}/previous-{previous_commit}.json"
+    _write_sftp_bytes(sftp, previous_staged, initial_pointer)
+    if _read_sftp_bytes(sftp, previous_staged) != initial_pointer:
+      raise GateError("previous valid Target manifest staging readback differs")
+    _place_immutable_sftp_bytes(
+        sftp, previous_staged, previous_history, initial_pointer
+    )
+
+  # Re-read immediately before the pointer swap. A changed/newer pointer is a
+  # stale-run conflict and must not be overwritten by this run.
+  current_pointer = _read_optional_sftp_bytes(sftp, pointer_path)
+  if current_pointer != initial_pointer:
+    current_decision, _ = _target_pointer_decision(
+        current_pointer, candidate, public_key_hex
+    )
+    if current_decision == "idempotent":
+      if current_pointer != manifest_bytes:
+        raise GateError(
+            "equal Target OTA race identity has conflicting signed manifest bytes"
+        )
+      sftp.remove(staged_pointer)
+      sftp.rmdir(stage)
+      return {
+          "result": "idempotent-race-winner",
+          "previous_valid_manifest": True,
+          "previous_valid_artifact": True,
+          "immutable_artifact": immutable_artifact_name,
+          "immutable_manifest": immutable_manifest_name,
+      }
+    raise GateError("NAS Target pointer changed during staged publication")
+
+  # OpenSSH posix-rename is the commit point: replacing version.json is one
+  # atomic filesystem operation. Unsupported servers fail while the old pointer
+  # and every previously valid immutable artifact remain untouched.
+  sftp.posix_rename(staged_pointer, pointer_path)
+  if _read_sftp_bytes(sftp, pointer_path) != manifest_bytes:
+    raise GateError("atomic NAS Target manifest pointer readback differs")
+  sftp.rmdir(stage)
+  return {
+      "result": initial_decision,
+      "previous_valid_manifest": initial_valid_manifest is not None,
+      "previous_valid_artifact": previous_valid_artifact,
+      "immutable_artifact": immutable_artifact_name,
+      "immutable_manifest": immutable_manifest_name,
+  }
+
+
+def publish_target_sftp(args: argparse.Namespace) -> None:
+  public_key_hex = os.environ.get("TARGET_PUBLIC_KEY_HEX", "")
+  if not re.fullmatch(r"[0-9a-f]{64}", public_key_hex):
+    raise GateError("TARGET_PUBLIC_KEY_HEX must be exact lowercase 32-byte hex")
+  verify_target_manifest(argparse.Namespace(
+      manifest=args.manifest,
+      artifact=args.artifact,
+      public_key_hex=public_key_hex,
+      expected_version=args.expected_version,
+      expected_commit=args.expected_commit,
+      expected_build_id=args.expected_build_id,
+  ))
+  candidate = load_json(args.manifest)
+  _validated_target_artifact_url(
+      str(candidate.get("artifact_url", "")), args.expected_commit
+  )
+  if AUTO_TARGET_VERSION.fullmatch(args.expected_version) is None:
+    raise GateError("automatic Target OTA version is not monotonic main format")
+  host = os.environ.get("NAS_HOST", "")
+  user = os.environ.get("NAS_USER", "")
+  password = os.environ.get("NAS_PASSWORD", "")
+  port_text = os.environ.get("NAS_PORT", "")
+  known_hosts_path = Path(os.environ.get("OTA_NAS_KNOWN_HOSTS_FILE", ""))
+  host_key_mode = os.environ.get("OTA_NAS_HOST_KEY_MODE", "")
+  if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+    raise GateError("NAS_HOST format is invalid")
+  if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,63}", user):
+    raise GateError("NAS_USER format is invalid")
+  if not password:
+    raise GateError("NAS_PASSWORD is empty")
+  if not re.fullmatch(r"[0-9]{1,5}", port_text) or not 1 <= int(port_text) <= 65535:
+    raise GateError("NAS_PORT format or range is invalid")
+  if not known_hosts_path.is_file() or known_hosts_path.stat().st_size < 1:
+    raise GateError("strict NAS known-hosts file is missing")
+  if host_key_mode != "repository-secret-pinned":
+    raise GateError("automatic Target OTA requires repository-pinned NAS host keys")
+  remote_root = _validated_target_remote_root(
+      os.environ.get("NAS_TARGET_DIR", "")
+  )
+
+  try:
+    import paramiko
+  except ImportError as exc:
+    raise GateError("Paramiko is required for atomic Target OTA publication") from exc
+  client = paramiko.SSHClient()
+  try:
+    client.load_host_keys(str(known_hosts_path))
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client.connect(
+        hostname=host,
+        port=int(port_text),
+        username=user,
+        password=password,
+        allow_agent=False,
+        look_for_keys=False,
+        timeout=20,
+        banner_timeout=20,
+        auth_timeout=20,
+    )
+    with client.open_sftp() as sftp:
+      result = _publish_target_sftp_bytes(
+          sftp,
+          remote_root,
+          args.artifact,
+          args.manifest,
+          candidate,
+          public_key_hex,
+          args.run_attempt,
+      )
+  except GateError:
+    raise
+  except Exception as exc:
+    raise GateError(
+        "Target OTA SFTP publication failed before atomic readback confirmation"
+    ) from exc
+  finally:
+    client.close()
+
+  artifact_size, artifact_sha256 = _artifact_size_and_sha256(args.artifact)
+  _, manifest_sha256 = _artifact_size_and_sha256(args.manifest)
+  evidence = {
+      "schema_version": 1,
+      "kind": "personal-target-ota-publication",
+      "production_authorized": False,
+      "release_evidence": False,
+      "commit": args.expected_commit,
+      "version": args.expected_version,
+      "build_id": args.expected_build_id,
+      "artifact_size": artifact_size,
+      "artifact_sha256": artifact_sha256,
+      "manifest_sha256": manifest_sha256,
+      "immutable_artifact": result["immutable_artifact"],
+      "immutable_manifest": result["immutable_manifest"],
+      "atomic_metadata_swap": True,
+      "previous_valid_artifact_retained": result["previous_valid_artifact"],
+      "previous_valid_manifest": result["previous_valid_manifest"],
+      "host_key_mode": host_key_mode,
+      "result": result["result"],
+  }
+  args.evidence_output.parent.mkdir(parents=True, exist_ok=True)
+  args.evidence_output.write_text(
+      json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+      encoding="utf-8",
+  )
 
 
 def create_mobile_manifest(args: argparse.Namespace) -> None:
@@ -2070,6 +4136,526 @@ def verify_mobile_manifest(args: argparse.Namespace) -> None:
   print(f"[MOBILE-MANIFEST] artifact binding verified: {args.manifest}")
 
 
+MOBILE_REMOTE_ROOT = re.compile(
+    r"^/docker/smartbox_ota/[A-Za-z0-9._/-]+$"
+)
+
+
+def _validated_mobile_remote_root(value: str) -> str:
+  root = value.rstrip("/")
+  if (
+      not MOBILE_REMOTE_ROOT.fullmatch(root)
+      or "//" in root
+      or any(segment in ("", ".", "..") for segment in root.split("/")[1:])
+  ):
+    raise GateError("mobile NAS directory must be a canonical /docker/smartbox_ota path")
+  return root
+
+
+def _ensure_sftp_directory(sftp: Any, root: str) -> None:
+  current = ""
+  for segment in root.split("/")[1:]:
+    current += f"/{segment}"
+    try:
+      remote_stat = sftp.stat(current)
+    except OSError as exc:
+      if getattr(exc, "errno", None) != 2 and "no such file" not in str(exc).lower():
+        raise
+      sftp.mkdir(current)
+      remote_stat = sftp.stat(current)
+    if not stat.S_ISDIR(remote_stat.st_mode):
+      raise GateError("mobile NAS path component is not a directory")
+
+
+def _validate_remote_mobile_pair(
+    manifest_bytes: bytes | None,
+    apk_bytes: bytes | None,
+    public_key_hex: str,
+    apkanalyzer: Path,
+    apksigner: Path,
+) -> dict[str, Any] | None:
+  if manifest_bytes is None or apk_bytes is None:
+    return None
+  try:
+    manifest = _manifest_from_bytes(manifest_bytes)
+    validate_manifest(manifest, "mobile-manifest.schema.json", public_key_hex)
+    if (
+        manifest.get("apk_size") != len(apk_bytes)
+        or manifest.get("sha256") != hashlib.sha256(apk_bytes).hexdigest()
+    ):
+      return None
+    with tempfile.TemporaryDirectory() as directory_name:
+      previous_apk = Path(directory_name) / "previous.apk"
+      previous_apk.write_bytes(apk_bytes)
+      _validate_mobile_apk_identity(
+          previous_apk,
+          apkanalyzer,
+          "com.kshouse.gatekeeper_app",
+          str(manifest["version_name"]),
+          int(manifest["version_code"]),
+          str(manifest["commit"]),
+      )
+      if read_apk_signing_certificate_digests(previous_apk, apksigner) != {
+          manifest["signing_certificate_digest"]
+      }:
+        return None
+    return manifest
+  except (GateError, OSError):
+    return None
+
+
+def _validate_remote_mobile_manifest(
+    manifest_bytes: bytes | None,
+    public_key_hex: str,
+) -> dict[str, Any] | None:
+  if manifest_bytes is None:
+    return None
+  try:
+    manifest = _manifest_from_bytes(manifest_bytes)
+    validate_manifest(manifest, "mobile-manifest.schema.json", public_key_hex)
+    return manifest
+  except GateError as exc:
+    raise GateError(
+        "existing mobile OTA manifest is present but unverifiable"
+    ) from exc
+
+
+def _mobile_pair_decision(
+    existing_manifest: dict[str, Any] | None,
+    existing_pair_valid: bool,
+    candidate: dict[str, Any],
+) -> str:
+  if existing_manifest is None:
+    return "publish-bootstrap"
+  if (
+      existing_manifest["commit"] == candidate["commit"]
+      and existing_manifest["build_number"] == candidate["build_number"]
+      and existing_manifest["sha256"] == candidate["sha256"]
+      and existing_manifest["apk_url"] == candidate["apk_url"]
+      and existing_manifest["fallback_url"] == candidate["fallback_url"]
+  ):
+    if not existing_pair_valid:
+      raise GateError(
+          "current signed mobile OTA floor requires a strictly newer candidate"
+      )
+    return "idempotent"
+  if int(existing_manifest["build_number"]) >= int(candidate["build_number"]):
+    raise GateError("stale or conflicting mobile OTA publish refused")
+  if existing_pair_valid:
+    return "publish-upgrade"
+  return "publish-upgrade-replacing-invalid-pair"
+
+
+def _read_mobile_sftp_root_state(
+    sftp: Any,
+    remote_root: str,
+    public_key_hex: str,
+    apkanalyzer: Path,
+    apksigner: Path,
+) -> dict[str, Any]:
+  fixed_apk = f"{remote_root}/ks-house-gatekeeper.apk"
+  fixed_manifest = f"{remote_root}/version.json"
+  apk_bytes = _read_optional_sftp_bytes(sftp, fixed_apk)
+  manifest_bytes = _read_optional_sftp_bytes(sftp, fixed_manifest)
+  if manifest_bytes is None and apk_bytes is not None:
+    raise GateError("mobile OTA APK exists without a signed manifest")
+  manifest = _validate_remote_mobile_manifest(manifest_bytes, public_key_hex)
+  valid_pair = _validate_remote_mobile_pair(
+      manifest_bytes,
+      apk_bytes,
+      public_key_hex,
+      apkanalyzer,
+      apksigner,
+  )
+  return {
+      "apk_bytes": apk_bytes,
+      "manifest_bytes": manifest_bytes,
+      "manifest": manifest,
+      "valid_pair": valid_pair,
+  }
+
+
+def _preflight_mobile_sftp_roots(
+    sftp: Any,
+    remote_roots: tuple[str, ...],
+    candidate: dict[str, Any],
+    public_key_hex: str,
+    apkanalyzer: Path,
+    apksigner: Path,
+) -> None:
+  if len(remote_roots) < 2 or len(set(remote_roots)) != len(remote_roots):
+    raise GateError("mobile OTA preflight requires distinct primary and fallback roots")
+  for remote_root in remote_roots:
+    state = _read_mobile_sftp_root_state(
+        sftp,
+        remote_root,
+        public_key_hex,
+        apkanalyzer,
+        apksigner,
+    )
+    _mobile_pair_decision(
+        state["manifest"],
+        state["valid_pair"] is not None,
+        candidate,
+    )
+
+
+def _publish_mobile_sftp_root(
+    sftp: Any,
+    remote_root: str,
+    artifact_path: Path,
+    manifest_path: Path,
+    candidate: dict[str, Any],
+    public_key_hex: str,
+    apkanalyzer: Path,
+    apksigner: Path,
+    run_attempt: str,
+) -> dict[str, Any]:
+  _ensure_sftp_directory(sftp, remote_root)
+  commit = str(candidate["commit"])
+  build_number = int(candidate["build_number"])
+  if not re.fullmatch(r"[0-9a-f]{40}", commit) or build_number < 1:
+    raise GateError("mobile OTA identity is invalid")
+  if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
+    raise GateError("mobile OTA run attempt is invalid")
+  artifact_bytes = artifact_path.read_bytes()
+  manifest_bytes = manifest_path.read_bytes()
+  fixed_apk = f"{remote_root}/ks-house-gatekeeper.apk"
+  fixed_manifest = f"{remote_root}/version.json"
+  initial_state = _read_mobile_sftp_root_state(
+      sftp,
+      remote_root,
+      public_key_hex,
+      apkanalyzer,
+      apksigner,
+  )
+  initial_apk = initial_state["apk_bytes"]
+  initial_manifest_bytes = initial_state["manifest_bytes"]
+  initial_manifest = initial_state["manifest"]
+  initial_valid = initial_state["valid_pair"]
+  decision = _mobile_pair_decision(
+      initial_manifest,
+      initial_valid is not None,
+      candidate,
+  )
+  if decision == "idempotent" and (
+      initial_apk != artifact_bytes or initial_manifest_bytes != manifest_bytes
+  ):
+    raise GateError("equal mobile OTA identity has conflicting signed bytes")
+  immutable_apk_name = (
+      f"ks-house-gatekeeper-{commit}-{build_number}.apk"
+  )
+  immutable_manifest_name = f"version-{commit}-{build_number}.json"
+  stage = (
+      f"{remote_root}/.staging-{commit}-{build_number}-{run_attempt}"
+  )
+  sftp.mkdir(stage)
+  staged_fixed_apk = f"{stage}/ks-house-gatekeeper.apk"
+  staged_fixed_manifest = f"{stage}/version.json"
+  staged_immutable_apk = f"{stage}/{immutable_apk_name}"
+  staged_immutable_manifest = f"{stage}/{immutable_manifest_name}"
+  for local_path, remote_path in (
+      (artifact_path, staged_fixed_apk),
+      (manifest_path, staged_fixed_manifest),
+      (artifact_path, staged_immutable_apk),
+      (manifest_path, staged_immutable_manifest),
+  ):
+    sftp.put(str(local_path), remote_path, confirm=True)
+  if (
+      _read_sftp_bytes(sftp, staged_fixed_apk) != artifact_bytes
+      or _read_sftp_bytes(sftp, staged_immutable_apk) != artifact_bytes
+      or _read_sftp_bytes(sftp, staged_fixed_manifest) != manifest_bytes
+      or _read_sftp_bytes(sftp, staged_immutable_manifest) != manifest_bytes
+  ):
+    raise GateError("mobile NAS staged readback differs")
+
+  _place_immutable_sftp_bytes(
+      sftp,
+      staged_immutable_apk,
+      f"{remote_root}/{immutable_apk_name}",
+      artifact_bytes,
+  )
+  _place_immutable_sftp_bytes(
+      sftp,
+      staged_immutable_manifest,
+      f"{remote_root}/{immutable_manifest_name}",
+      manifest_bytes,
+  )
+
+  if (
+      initial_valid is not None
+      and initial_apk is not None
+      and initial_manifest_bytes is not None
+  ):
+    previous_commit = str(initial_valid["commit"])
+    previous_build = int(initial_valid["build_number"])
+    previous_apk_stage = (
+        f"{stage}/previous-{previous_commit}-{previous_build}.apk"
+    )
+    previous_manifest_stage = (
+        f"{stage}/previous-{previous_commit}-{previous_build}.json"
+    )
+    _write_sftp_bytes(sftp, previous_apk_stage, initial_apk)
+    _write_sftp_bytes(sftp, previous_manifest_stage, initial_manifest_bytes)
+    if (
+        _read_sftp_bytes(sftp, previous_apk_stage) != initial_apk
+        or _read_sftp_bytes(sftp, previous_manifest_stage)
+        != initial_manifest_bytes
+    ):
+      raise GateError("previous valid mobile OTA history readback differs")
+    _place_immutable_sftp_bytes(
+        sftp,
+        previous_apk_stage,
+        (
+            f"{remote_root}/ks-house-gatekeeper-"
+            f"{previous_commit}-{previous_build}.apk"
+        ),
+        initial_apk,
+    )
+    _place_immutable_sftp_bytes(
+        sftp,
+        previous_manifest_stage,
+        f"{remote_root}/version-{previous_commit}-{previous_build}.json",
+        initial_manifest_bytes,
+    )
+
+  if decision == "idempotent":
+    sftp.remove(staged_fixed_apk)
+    sftp.remove(staged_fixed_manifest)
+    sftp.rmdir(stage)
+    return {
+        "result": "idempotent",
+        "previous_valid_pair": True,
+        "immutable_artifact": immutable_apk_name,
+        "immutable_manifest": immutable_manifest_name,
+    }
+
+  current_apk = _read_optional_sftp_bytes(sftp, fixed_apk)
+  current_manifest_bytes = _read_optional_sftp_bytes(sftp, fixed_manifest)
+  if current_apk != initial_apk or current_manifest_bytes != initial_manifest_bytes:
+    if current_manifest_bytes is None and current_apk is not None:
+      raise GateError("mobile NAS current APK lost its signed manifest")
+    current_manifest = _validate_remote_mobile_manifest(
+        current_manifest_bytes,
+        public_key_hex,
+    )
+    current_valid = _validate_remote_mobile_pair(
+        current_manifest_bytes,
+        current_apk,
+        public_key_hex,
+        apkanalyzer,
+        apksigner,
+    )
+    current_decision = _mobile_pair_decision(
+        current_manifest,
+        current_valid is not None,
+        candidate,
+    )
+    if current_decision == "idempotent":
+      if current_apk != artifact_bytes or current_manifest_bytes != manifest_bytes:
+        raise GateError("equal mobile OTA race identity has conflicting signed bytes")
+      sftp.remove(staged_fixed_apk)
+      sftp.remove(staged_fixed_manifest)
+      sftp.rmdir(stage)
+      return {
+          "result": "idempotent-race-winner",
+          "previous_valid_pair": True,
+          "immutable_artifact": immutable_apk_name,
+          "immutable_manifest": immutable_manifest_name,
+      }
+    raise GateError("mobile NAS current pair changed during staged publication")
+
+  # The fixed APK changes first. During the short interval before the signed
+  # metadata swap, an old manifest can only reject the new bytes by exact hash.
+  # Both promotions and both readbacks remain inside the rollback boundary.
+  try:
+    sftp.posix_rename(staged_fixed_apk, fixed_apk)
+    if _read_sftp_bytes(sftp, fixed_apk) != artifact_bytes:
+      raise GateError("atomic mobile APK readback differs")
+    sftp.posix_rename(staged_fixed_manifest, fixed_manifest)
+    if _read_sftp_bytes(sftp, fixed_manifest) != manifest_bytes:
+      raise GateError("atomic mobile manifest readback differs")
+  except Exception as promotion_error:
+    if (
+        initial_valid is None
+        or initial_apk is None
+        or initial_manifest_bytes is None
+    ):
+      raise
+    rollback_apk = f"{stage}/rollback-previous.apk"
+    rollback_manifest = f"{stage}/rollback-previous-version.json"
+    try:
+      _write_sftp_bytes(sftp, rollback_apk, initial_apk)
+      _write_sftp_bytes(sftp, rollback_manifest, initial_manifest_bytes)
+      if (
+          _read_sftp_bytes(sftp, rollback_apk) != initial_apk
+          or _read_sftp_bytes(sftp, rollback_manifest)
+          != initial_manifest_bytes
+      ):
+        raise GateError("mobile OTA rollback staging readback differs")
+      sftp.posix_rename(rollback_apk, fixed_apk)
+      sftp.posix_rename(rollback_manifest, fixed_manifest)
+      if (
+          _read_sftp_bytes(sftp, fixed_apk) != initial_apk
+          or _read_sftp_bytes(sftp, fixed_manifest)
+          != initial_manifest_bytes
+      ):
+        raise GateError("mobile OTA previous-pair rollback readback differs")
+    except Exception as rollback_error:
+      raise GateError(
+          "mobile manifest promotion and previous-pair rollback both failed"
+      ) from rollback_error
+    raise GateError(
+        "mobile manifest promotion failed; previous valid pair was restored"
+    ) from promotion_error
+  sftp.rmdir(stage)
+  return {
+      "result": decision,
+      "previous_valid_pair": initial_valid is not None,
+      "immutable_artifact": immutable_apk_name,
+      "immutable_manifest": immutable_manifest_name,
+  }
+
+
+def publish_mobile_sftp(args: argparse.Namespace) -> None:
+  public_key_hex = os.environ.get("MOBILE_PUBLIC_KEY_HEX", "")
+  if not re.fullmatch(r"[0-9a-f]{64}", public_key_hex):
+    raise GateError("MOBILE_PUBLIC_KEY_HEX must be exact lowercase 32-byte hex")
+  verify_mobile_manifest(argparse.Namespace(
+      manifest=args.manifest,
+      artifact=args.artifact,
+      public_key_hex=public_key_hex,
+      expected_package_name=args.expected_package_name,
+      apkanalyzer=args.apkanalyzer,
+      apksigner=args.apksigner,
+  ))
+  candidate = load_json(args.manifest)
+  if (
+      candidate.get("version") != args.expected_version
+      or candidate.get("commit") != args.expected_commit
+      or candidate.get("build_number") != args.expected_build_number
+  ):
+    raise GateError("mobile manifest does not match the expected exact-main identity")
+  host = os.environ.get("NAS_HOST", "")
+  user = os.environ.get("NAS_USER", "")
+  password = os.environ.get("NAS_PASSWORD", "")
+  port_text = os.environ.get("NAS_PORT", "")
+  known_hosts_path = Path(os.environ.get("OTA_NAS_KNOWN_HOSTS_FILE", ""))
+  host_key_mode = os.environ.get("OTA_NAS_HOST_KEY_MODE", "")
+  if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+    raise GateError("NAS_HOST format is invalid")
+  if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,63}", user):
+    raise GateError("NAS_USER format is invalid")
+  if not password:
+    raise GateError("NAS_PASSWORD is empty")
+  if not re.fullmatch(r"[0-9]{1,5}", port_text) or not 1 <= int(port_text) <= 65535:
+    raise GateError("NAS_PORT format or range is invalid")
+  if not known_hosts_path.is_file() or known_hosts_path.stat().st_size < 1:
+    raise GateError("strict NAS known-hosts file is missing")
+  if host_key_mode != "repository-secret-pinned":
+    raise GateError("automatic mobile OTA requires repository-pinned NAS host keys")
+  primary_root = _validated_mobile_remote_root(
+      os.environ.get("NAS_APK_TARGET_DIR", "")
+      or "/docker/smartbox_ota/gatekeeper_apk"
+  )
+  fallback_root = _validated_mobile_remote_root(
+      os.environ.get("NAS_APK_FALLBACK_TARGET_DIR", "")
+      or "/docker/smartbox_ota/gatekeeper_apk_fallback"
+  )
+  if primary_root == fallback_root:
+    raise GateError("mobile primary and fallback NAS directories must differ")
+  try:
+    import paramiko
+  except ImportError as exc:
+    raise GateError("Paramiko is required for atomic mobile OTA publication") from exc
+  client = paramiko.SSHClient()
+  try:
+    client.load_host_keys(str(known_hosts_path))
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client.connect(
+        hostname=host,
+        port=int(port_text),
+        username=user,
+        password=password,
+        allow_agent=False,
+        look_for_keys=False,
+        timeout=20,
+        banner_timeout=20,
+        auth_timeout=20,
+    )
+    with client.open_sftp() as sftp:
+      _preflight_mobile_sftp_roots(
+          sftp,
+          (primary_root, fallback_root),
+          candidate,
+          public_key_hex,
+          args.apkanalyzer,
+          args.apksigner,
+      )
+      # Fallback first: if primary promotion later fails, both endpoints still
+      # serve independently signed and hash-bound old/new pairs.
+      fallback_result = _publish_mobile_sftp_root(
+          sftp,
+          fallback_root,
+          args.artifact,
+          args.manifest,
+          candidate,
+          public_key_hex,
+          args.apkanalyzer,
+          args.apksigner,
+          args.run_attempt,
+      )
+      primary_result = _publish_mobile_sftp_root(
+          sftp,
+          primary_root,
+          args.artifact,
+          args.manifest,
+          candidate,
+          public_key_hex,
+          args.apkanalyzer,
+          args.apksigner,
+          args.run_attempt,
+      )
+  except GateError:
+    raise
+  except Exception as exc:
+    raise GateError(
+        "mobile OTA SFTP publication failed before all atomic readbacks"
+    ) from exc
+  finally:
+    client.close()
+
+  artifact_size, artifact_sha256 = _artifact_size_and_sha256(args.artifact)
+  _, manifest_sha256 = _artifact_size_and_sha256(args.manifest)
+  previous_valid_artifact_retained = bool(
+      primary_result["previous_valid_pair"]
+      and fallback_result["previous_valid_pair"]
+  )
+  evidence = {
+      "schema_version": 1,
+      "kind": "personal-mobile-ota-publication",
+      "production_authorized": False,
+      "release_evidence": False,
+      "commit": args.expected_commit,
+      "version": args.expected_version,
+      "build_number": args.expected_build_number,
+      "artifact_size": artifact_size,
+      "artifact_sha256": artifact_sha256,
+      "manifest_sha256": manifest_sha256,
+      "primary": primary_result,
+      "fallback": fallback_result,
+      "atomic_fixed_apk_swap": True,
+      "atomic_metadata_swap": True,
+      "previous_valid_artifact_retained": previous_valid_artifact_retained,
+      "host_key_mode": host_key_mode,
+  }
+  args.evidence_output.parent.mkdir(parents=True, exist_ok=True)
+  args.evidence_output.write_text(
+      json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+      encoding="utf-8",
+  )
+
+
 def verify_physical_test_canary(args: argparse.Namespace) -> dict[str, Any]:
   """Verify an exact public/test-signed canary without granting release status."""
   if not re.fullmatch(r"[0-9a-f]{40}", args.expected_commit):
@@ -2100,7 +4686,7 @@ def verify_physical_test_canary(args: argparse.Namespace) -> dict[str, Any]:
       raise GateError("physical-test Target build ID is not exact-run public canary")
     if manifest.get("artifact_url") != (
         f"https://target-canary.invalid/smart-gatekeeper/"
-        f"{args.expected_commit}/firmware.bin"
+        f"gatekeeper-firmware-{args.expected_commit}.bin"
     ):
       raise GateError("physical-test Target public manifest must remain non-connected")
     verify_target_manifest(
@@ -2259,6 +4845,43 @@ def parse_args() -> argparse.Namespace:
   release.add_argument("--artifact", action="append", type=Path, required=True)
   release.add_argument("--apksigner", type=Path)
   release.add_argument("--public-key-hex", required=True)
+  target_encrypt = subparsers.add_parser(
+      "target-handoff-encrypt",
+      help="encrypt a sensitive production firmware handoff for the publisher",
+  )
+  target_encrypt.add_argument("--artifact", type=Path, required=True)
+  target_encrypt.add_argument("--output", type=Path, required=True)
+  target_encrypt.add_argument("--recipient-public-key-hex", required=True)
+  target_encrypt.add_argument("--commit", required=True)
+  target_encrypt.add_argument("--run-attempt", required=True)
+  target_decrypt = subparsers.add_parser(
+      "target-handoff-decrypt",
+      help="authenticate and decrypt a sensitive production firmware handoff",
+  )
+  target_decrypt.add_argument("--input", type=Path, required=True)
+  target_decrypt.add_argument("--output", type=Path, required=True)
+  target_decrypt.add_argument("--private-key-env", required=True)
+  target_decrypt.add_argument("--recipient-public-key-hex", required=True)
+  target_decrypt.add_argument("--commit", required=True)
+  target_decrypt.add_argument("--run-attempt", required=True)
+  target_content_encrypt = subparsers.add_parser(
+      "target-content-encrypt",
+      help="encrypt exact Target firmware bytes for public NAS delivery",
+  )
+  target_content_encrypt.add_argument("--artifact", type=Path, required=True)
+  target_content_encrypt.add_argument("--output", type=Path, required=True)
+  target_content_encrypt.add_argument("--key-env", required=True)
+  target_content_encrypt.add_argument("--key-id", required=True)
+  target_content_encrypt.add_argument("--commit", required=True)
+  target_content_decrypt = subparsers.add_parser(
+      "target-content-decrypt",
+      help="authenticate and decrypt a Target NAS delivery envelope",
+  )
+  target_content_decrypt.add_argument("--input", type=Path, required=True)
+  target_content_decrypt.add_argument("--output", type=Path, required=True)
+  target_content_decrypt.add_argument("--key-env", required=True)
+  target_content_decrypt.add_argument("--key-id", required=True)
+  target_content_decrypt.add_argument("--commit", required=True)
   target_create = subparsers.add_parser(
       "target-manifest-create",
       help="create exact signed Target metadata inside the protected OTA gate",
@@ -2269,6 +4892,8 @@ def parse_args() -> argparse.Namespace:
   target_create.add_argument("--commit", required=True)
   target_create.add_argument("--build-id", required=True)
   target_create.add_argument("--artifact-url", required=True)
+  target_create.add_argument("--plaintext-artifact", type=Path)
+  target_create.add_argument("--encryption-key-id")
   target_create.add_argument("--published-at", required=True)
   target_create.add_argument("--mandatory-after")
   target_create.add_argument("--signing-key-id", required=True)
@@ -2286,6 +4911,21 @@ def parse_args() -> argparse.Namespace:
   target_verify.add_argument("--expected-version", required=True)
   target_verify.add_argument("--expected-commit", required=True)
   target_verify.add_argument("--expected-build-id", required=True)
+  target_verify.add_argument("--expected-encryption-key-id")
+  target_publish = subparsers.add_parser(
+      "target-sftp-publish",
+      help=(
+          "stage/read back immutable Target OTA bytes and atomically replace "
+          "the NAS version pointer"
+      ),
+  )
+  target_publish.add_argument("--artifact", type=Path, required=True)
+  target_publish.add_argument("--manifest", type=Path, required=True)
+  target_publish.add_argument("--expected-version", required=True)
+  target_publish.add_argument("--expected-commit", required=True)
+  target_publish.add_argument("--expected-build-id", required=True)
+  target_publish.add_argument("--run-attempt", required=True)
+  target_publish.add_argument("--evidence-output", type=Path, required=True)
   mobile_create = subparsers.add_parser(
       "mobile-manifest-create",
       help="create exact signed mobile metadata inside the protected OTA gate",
@@ -2319,6 +4959,23 @@ def parse_args() -> argparse.Namespace:
   mobile_verify.add_argument("--expected-package-name", required=True)
   mobile_verify.add_argument("--apkanalyzer", type=Path, required=True)
   mobile_verify.add_argument("--apksigner", type=Path, required=True)
+  mobile_publish = subparsers.add_parser(
+      "mobile-sftp-publish",
+      help=(
+          "stage/read back immutable mobile OTA bytes and atomically replace "
+          "the NAS fixed APK and signed metadata pair"
+      ),
+  )
+  mobile_publish.add_argument("--artifact", type=Path, required=True)
+  mobile_publish.add_argument("--manifest", type=Path, required=True)
+  mobile_publish.add_argument("--expected-version", required=True)
+  mobile_publish.add_argument("--expected-commit", required=True)
+  mobile_publish.add_argument("--expected-build-number", type=int, required=True)
+  mobile_publish.add_argument("--expected-package-name", required=True)
+  mobile_publish.add_argument("--run-attempt", required=True)
+  mobile_publish.add_argument("--evidence-output", type=Path, required=True)
+  mobile_publish.add_argument("--apkanalyzer", type=Path, required=True)
+  mobile_publish.add_argument("--apksigner", type=Path, required=True)
   physical_verify = subparsers.add_parser(
       "physical-test-canary-verify",
       help="verify an exact public/test-signed non-release physical-test canary",
@@ -2350,20 +5007,36 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
   args = parse_args()
   try:
-    validate_contract()
+    if args.command in {
+        "contract", "release", "physical-test-canary-verify",
+        "physical-test-evidence-create",
+    }:
+      validate_contract()
     if args.command == "release":
       validate_release_evidence(args.evidence)
       validate_release_manifests(
           args.manifest, args.artifact, args.public_key_hex, args.apksigner
       )
+    elif args.command == "target-handoff-encrypt":
+      encrypt_target_handoff(args)
+    elif args.command == "target-handoff-decrypt":
+      decrypt_target_handoff(args)
+    elif args.command == "target-content-encrypt":
+      encrypt_target_content(args)
+    elif args.command == "target-content-decrypt":
+      decrypt_target_content(args)
     elif args.command == "target-manifest-create":
       create_target_manifest(args)
     elif args.command == "target-manifest-verify":
       verify_target_manifest(args)
+    elif args.command == "target-sftp-publish":
+      publish_target_sftp(args)
     elif args.command == "mobile-manifest-create":
       create_mobile_manifest(args)
     elif args.command == "mobile-manifest-verify":
       verify_mobile_manifest(args)
+    elif args.command == "mobile-sftp-publish":
+      publish_mobile_sftp(args)
     elif args.command == "physical-test-canary-verify":
       verify_physical_test_canary(args)
     elif args.command == "physical-test-evidence-create":

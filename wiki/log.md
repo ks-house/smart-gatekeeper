@@ -2931,6 +2931,171 @@
 - A later beacon timeout (`reason 200`) exercised runtime recovery: the Target regained the same DHCP address, recreated the MQTTS connection, resubscribed and republished diagnostics without rebooting.
 - Periodic HTTPS OTA install, reboot health, rollback, power-loss and long Wi-Fi/MQTT soak evidence remain pending and are not implied by this connectivity pass.
 
+## [2026-08-23] code | Add secure Home Assistant discovery migration
+
+- Added a default-dry-run migration tool that preserves the existing Home Assistant device identity and updates 15 read-only sensor/binary/config sensor discovery records to secure per-Target status, config-state and availability topics.
+- The explicit apply path publishes with QoS 1 and retain enabled; seven retained tombstones remove legacy plaintext button and number discovery records before any read-only update instead of recreating those controls.
+- MQTT username/password and the optional TLS CA are accepted only through environment or file sources; credentialed apply requires verified TLS and values are never printed. Runtime Target IDs and broker addresses remain operator inputs and are not stored in documentation.
+- Direct Home Assistant write controls remain prohibited until a separately reviewed backend bridge can authorize and sign current-boot Target command envelopes.
+
+## [2026-08-23] test | Validate secure discovery payload and publish boundaries
+
+- Nine focused host tests passed for the exact 15 read-only identities, secure per-Target topic mapping, seven legacy-control removals, topic-injection rejection, network-free dry-run, credential-source handling, mandatory TLS for credentialed apply and secret-free output.
+- A fake MQTT client verified all 22 update/tombstone operations request QoS 1 retained publish and wait for acknowledgement without contacting a live broker.
+- Root discovery ran 214 tests: 212 passed; the two failures were Windows checkout CRLF views of unchanged `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`, while both exact Git blobs separately remained UTF-8/LF.
+- No production broker mutation, retained read-back, Home Assistant registry observation, Target command, Wi-Fi/MQTTS change, OTA action or physical acceptance was performed.
+
+## [2026-08-23] fix | Keep migrated Home Assistant status available across restarts
+
+- Removed the discovery dependency on the Target `/availability` topic because current firmware publishes it only once per MQTT connect without retention; a migration or Home Assistant restart after that event would otherwise leave all entities unavailable.
+- Added `expire_after=30` to the 11 entities backed by the 10-second periodic Target status while leaving four boot-only config-state diagnostics independent of availability.
+- Live internal-broker migration of 15 read-only configs was observed in Home Assistant with firmware `2.1.0-gd06519e`, IDLE state, `192.168.35.19`, distance, RSSI and four explicitly seeded current config-state values.
+- Seven legacy controls were not removed during the live observation and remain nonfunctional with the signed-command firmware; no control was invoked. The public MQTTS certificate was independently observed expired on 2026-08-14 and still requires renewal.
+
+## [2026-08-23] test | Apply and read back secure Home Assistant discovery
+
+- Applied the reviewed migration to the live internal broker with QoS 1 retained publication: 15 read-only discovery records were updated and seven incompatible legacy control records were tombstoned.
+- A clean retained subscription read back exactly 15 Smart Gatekeeper records: 11 periodic-status entities with `expire_after=30`, four config-state diagnostics, zero availability references and zero legacy button/number configs.
+- The broker accepted an anonymous LAN connection, so this migration did not transmit credentials; that permissive internal-broker policy is operational evidence, not a security approval.
+- No door, relay, reboot, OTA or configuration control was invoked. Reintroducing controls remains blocked on an authenticated backend bridge that emits current-boot signed command envelopes.
+
+## [2026-08-23] fix | Re-converge all Home Assistant values from periodic status
+
+- Added the four current configuration values to the Target's existing 10-second per-Target status payload without changing command, ACL or signing behavior.
+- Mapped all 15 read-only Home Assistant entities to that periodic status with a 30-second expiry, removing the restart dependency on both non-retained boot-only availability and config-state publications.
+- Added a host contract test for the four firmware status fields and the exact all-entity status/expiry mapping. Live config convergence with this payload remains pending until the new exact-main Target OTA boots and publishes it.
+
+## [2026-08-23] fix | Quarantine failed OTA floors and bound artifact downloads
+
+- Rejected the exact persisted version floor when a lower stable slot is running after bootloader rollback, while preserving equal-precedence identity conflict handling and allowing only a strictly newer recovery image.
+- Added a 30-second no-progress deadline and five-minute total deadline to remote artifact streaming. Timeout aborts the inactive write, records an explicit failure and returns to the existing 15-minute retry schedule.
+- Preserved the existing WAIT_SAFE_STATE fail-closed return before any network request.
+
+## [2026-08-23] test | Validate Target OTA rollback and timeout safety on the host
+
+- Extended the native C++ version-policy suite with exact failed-floor quarantine, alternate-identity rejection and strictly newer recovery cases.
+- Added static Target runtime assertions for safe-state failure handling, both download deadlines, progress tracking, inactive-write abort and retry scheduling.
+- Built the default ESP32-C6 N16 profile successfully; the 1,662,160-byte app uses 22.65 percent of either 7,340,032-byte OTA slot and leaves 5,677,872 bytes headroom.
+- No Target flash, OTA install, reboot health, rollback, power-loss or network-stall injection was performed; those physical evidence gates remain pending.
+
+## [2026-08-23] code | Add exact-main personal Target OTA auto-publication
+
+- Added a main-push-only `publish_personal_target_ota` lane after the public firmware test/build job. It uses the protected `production` Environment, exact full-history main checkout and the N16 `esp32c6_production` profile without changing or self-attesting the commercial release-evidence job.
+- Replaced arbitrary Git-hash prerelease ordering with deterministic `2.1.1-main.<first-parent-count>+g<SHA>` precedence, created a production-signed manifest whose artifact URL names immutable commit bytes, and retained previous valid firmware/manifest history.
+- Added bounded pinned/runtime-keyscan transport, staged byte readback, stale-run rejection and OpenSSH `posix-rename` as the single `version.json` commit point. Unsupported atomic replacement or post-scan host-key change fails with the previous pointer intact; runtime keyscan still cannot authenticate its first observation.
+- Sanitized publication evidence explicitly keeps `production_authorized: false` and `release_evidence: false`. NAS publication does not prove Target download, install, reboot health, valid mark, rollback or commercial production acceptance.
+
+## [2026-08-23] code | Add exact-main personal mobile OTA publication
+
+- Added a separate main-push mobile job that preserves the installed app's repository-scoped Ed25519 update identity instead of allowing the Target values in the `production` Environment to shadow it.
+- Pinned the existing Android package signer and package name, retained the unchanged commercial release-evidence job, and required an exact-main signed APK manifest before any NAS contact.
+- Added primary and fallback SFTP staging, staged/final readback, APK-before-manifest rename and public HTTPS byte-for-byte checks, plus focused workflow contracts. No Secret value is written to source or logs.
+
+## [2026-08-23] fix | Harden personal mobile NAS publication against interrupted pointer swaps
+
+- Replaced workflow-owned raw SFTP renames with the shared validated mobile publisher, using immutable candidates, previous-valid-pair retention, staged and final readback, stale-pointer rejection and SFTP `posix_rename` on both primary and fallback paths.
+- Serialized main-push mobile publishers with `cancel-in-progress: false` so a newer run cannot cancel an active APK-before-manifest promotion; the publisher restores the previous valid pair if manifest promotion fails.
+- Kept the final primary and fallback HTTPS exact-byte fetch as the deployment completion gate and preserved sanitized publication evidence without Secret material.
+
+## [2026-08-23] test | Validate the personal mobile publisher workflow contract
+
+- Focused personal-mobile and NAS physical-test workflow tests passed 12/12, including exact-main triggering, repository mobile-key isolation, signer pinning, serialized publication, shared publisher arguments, sanitized evidence and all four primary/fallback HTTPS exact-byte checks.
+- `actionlint`, `git diff --check` and the unchanged `raw/` tree check passed. No GitHub workflow was dispatched, no NAS bytes were changed and no APK was installed by this source-only validation.
+
+## [2026-08-23] fix | Make automatic Target and mobile OTA publication retry-safe and host-pinned
+
+- Superseded the earlier automatic-publisher runtime-keyscan fallback: both password-authenticated Target and mobile jobs now require the independently pinned `NAS_KNOWN_HOSTS` repository Secret and fail before credential transmission when it is absent or changed.
+- Made Target identity deterministic as `2.1.<first-parent-count>+main.g<short-sha>` with a full-SHA build ID, commit timestamp and `SOURCE_DATE_EPOCH`; pinned PlatformIO, pioarduino and firmware libraries, and required two clean firmware builds to be byte-identical before signing.
+- Serialized Target publication without cancellation, rejected equal identity with different signed bytes, retained immutable previous-valid history, and required the public version URL plus signed immutable artifact URL to return exact bytes after the atomic NAS pointer swap.
+- Gave every mobile rerun a strictly increasing bounded Android version code derived from run number and run attempt, made retained CI artifact names attempt-specific, and protected APK promotion, both promotion readbacks and manifest promotion with previous-valid-pair rollback.
+- Derived publication evidence from actual previous-pair validity instead of a constant. The commercial release-evidence command remains separate and fail-closed; a future commercial `2.2.0` or newer Target line requires an explicit personal-lane base bump rather than a silent downgrade.
+
+## [2026-08-23] test | Revalidate integrated exact-main OTA publishers without deployment
+
+- The protected OTA contract, `actionlint`, Python compilation, `git diff --check`, unchanged `raw/` tree check and 30 focused Target/mobile/NAS tests passed, including stale/equal-byte conflicts, Android retry identity, APK-readback rollback and the explicit post-`2.2.0` base-bump requirement.
+- The full Windows checkout suite ran 231 tests: 229 passed and only the two pre-existing strict-LF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed because this clone has `core.autocrlf=true`; neither file nor its Git blob was changed by this work.
+- This was source-only validation. No production Secret value was read or printed, no workflow was dispatched, no NAS path was contacted or changed, no firmware/APK was installed and no commercial, physical or release evidence is claimed. The three protected workflow/gate files still require the existing exact whole-bundle trusted-policy review and rotation before merge.
+
+## [2026-08-23] fix | Close automatic OTA bootstrap, toolchain and rerun review gaps
+
+- Replaced an invalid mutable-tag object pin with the immutable pioarduino `55.03.39` platform commit `cbc3349061987c28bc1b48d43d473e70c5ae04ed`; PlatformIO 6.1.19 initialized it as Arduino 3.3.9 for ESP32-C6 N16 with the exact library pins. The protected contract now binds the normalized full `platformio.ini` bytes.
+- Allowed the exact-main `release_target=canary` manual dispatch as well as every main push to enter both personal publishers after exact checkout SHA verification. Physical-test and commercial dispatch choices remain separate.
+- Added `github.run_attempt` to every immutable Actions v4 artifact name and its paired canary download, so a workflow rerun cannot collide with a previous attempt.
+- Restricted automatic Target bootstrap to a missing `version.json`; present metadata with an unverifiable schema/signature now fails before staging. The signed Target version must be embedded in firmware bytes before publication.
+- Bound post-publish Target HTTPS readback to the provisioned `SECRET_ROOT_CA_CERT`, HTTPS-only redirect policy and exact manifest/artifact bytes. The commercial release-evidence gate remains unchanged and fail-closed.
+
+## [2026-08-23] test | Bind automatic main versions to Target SemVer ordering
+
+- Added native policy fixtures proving that `2.1.<first-parent-count>+main.g<sha>` advances numerically with the commit count and remains below a future stable `2.2.0` release.
+
+## [2026-08-23] test | Prove pinned production build reproducibility and full LF regression
+
+- Initialized the exact pioarduino commit as platform `55.3.39+sha.cbc3349` with Arduino 3.3.9, ESP32-C6 N16, ArduinoJson 6.21.5 and PubSubClient 2.8.0, then completed two clean `esp32c6_production` builds with example-only Secrets and one commit-derived epoch.
+- Both `firmware.bin` files were byte-identical at 1,662,032 bytes with SHA-256 `7beee4d68da602bd161e3c009e81610c69d8af6aa2621a376e411564f749a42b`; the exact test version was embedded. The 7 MiB OTA slot used 22.64 percent with 5,678,000 bytes headroom.
+- The LF checkout full suite passed 232/232. The ordinary Windows checkout again passed 230/232 with only the two known `core.autocrlf=true` strict-LF failures in unchanged `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`.
+- These are local example-secret build and source regression results, not production signing, NAS publication, Target installation, reboot health, rollback, physical acceptance or commercial release evidence.
+
+## [2026-08-23] fix | Renew the live public Mosquitto certificate
+
+- Validated the DSM-exported RSA certificate, matching private key, two-certificate chain, SAN coverage and 2026-10-19 expiry without printing private material.
+- Audited the exact Mosquitto certificate paths over pinned-host-key SFTP, retained recoverable copies of the expired pair, replaced the three configured TLS files, verified remote readback and removed all three temporary GitHub certificate Secrets immediately after the one-off run.
+- After the operator restarted Mosquitto, a public-trust client verified hostname, chain, TLS 1.3 and certificate SHA-256 `f2c90a2b4a8b3181bb0ae6863618a0101139593ff55105518726a10c78a94e23` on port 4883.
+
+## [2026-08-23] test | Verify authenticated MQTTS and Target recovery after renewal
+
+- An authenticated MQTT 3.1.1 client received successful CONNACK and SUBACK for the exact per-Target status topic over the renewed verified TLS endpoint.
+- Target `c0feffe6ebac` published a current periodic status with boot ID `c2f1ce127f0d5a3a296bb781319dc904`, IDLE state and IP `192.168.35.19`, proving one broker-restart reconnect path.
+- Automatic certificate renewal/alerting, long outage soak, OTA install/reboot health/rollback, relay safety and final wall-install acceptance remain separate pending gates.
+
+## [2026-08-23] compile | Document automatic OTA authorization and supply-chain locks
+
+- Documented the exact-main, no-review `personal-auto-ota` Environment for the personal Target publisher while retaining the main-only, required-reviewer `production` Environment for commercial Target/mobile releases.
+- Recorded only Environment and repository Secret names and their scopes, never values; the personal mobile publisher remains Environment-free so Target signing values cannot shadow the installed app's trust identity.
+- Recorded full-SHA Actions, the versioned runner label, exact Python/Flutter/Java/Android tool versions, both Gradle distribution checksums and hash-complete transitive `ota/requirements.lock` installation with `pip --require-hashes`.
+- Documented the all-roots mobile preflight and signed version-code floor: unverifiable metadata, orphan APKs, stale candidates and equal-floor damaged pairs fail closed before NAS mutation.
+- Reaffirmed that CI SFTP/HTTPS publication is transport evidence, not Android installation or Target install, reboot-health, valid-mark, rollback or physical acceptance evidence.
+
+## [2026-08-23] lint | Verify automatic OTA documentation against the integrated contract
+
+- Passed the OTA supply-chain lock suite (3), mobile publication engine suite (11), Target auto-publication suite (12) and `ota_contract_gate.py contract` without contacting GitHub or NAS.
+- Passed scoped whitespace checks and relative Markdown link resolution for the three updated reference pages; the `wiki/log.md` diff contains additions at end-of-file only.
+
+## [2026-08-24] code | Encrypt personal Target artifacts across CI and public NAS
+
+- Split the exact-main Target lane into a mode/SHA-256-pinned privileged compiler and an isolated publisher connected only by a one-day X25519/HKDF/AES-GCM authenticated handoff.
+- Added schema-v2 `SGKOTA2` AES-256-GCM content envelopes with a dedicated key ID, signed ciphertext/plaintext metadata, deterministic rerun-safe nonce derivation and one streaming Target decrypt/write path for HTTPS and local recovery.
+- Removed plaintext firmware before public Actions/NAS publication, retained inactive-slot/NVS failure preservation and explicitly disabled the legacy commercial Target plaintext publisher pending encrypted-v2 migration.
+- Added `scripts/setup_ota_content_key.ps1` for no-overwrite Windows DPAPI backup, GitHub stdin registration and ignored local `include/secrets.h` provisioning.
+
+## [2026-08-24] fix | Isolate and pin personal Android OTA signing
+
+- Moved the signing publisher behind the main-only `personal-auto-ota` Environment and separated its installed-app identity into `MOBILE_OTA_SIGNING_*` names so Target keys cannot shadow it.
+- Required one regular bounded unsigned APK and stable pre-sign SHA-256, downloaded official Temurin/Android archives by fixed URL, byte size and SHA-256, rejected unsafe archive paths and invoked the pinned `apksigner.jar` with the pinned Java runtime.
+- Scoped keystore, manifest-signing, NAS-host, NAS-publish and HTTPS-readback Secrets to only the steps that require them.
+- Recovered the existing mobile Ed25519 seed from its Windows DPAPI backup, recomputed and matched the pinned public identity, then registered the three mobile-specific Environment Secret names through `gh` stdin without printing their values.
+
+## [2026-08-24] fix | Close privileged compiler dependency and worktree trust gaps
+
+- Added `ota/requirements.lock` directly to trusted-policy v3 and bound the Target compiler inventory to exact lock, `platformio.ini`, N16 partition and all tracked `src/`/`include/` bytes.
+- Replaced Git-blob-only verification with actual post-install worktree SHA-256, regular-file, non-symlink and mode checks immediately before Secret materialization; untracked build inputs and a pre-existing project `.pio` directory fail closed.
+- Independent review confirmed the two pre-merge P0 findings were closed, conditional on merging the trusted-policy transition before the feature authorization.
+
+## [2026-08-24] test | Revalidate encrypted Target and isolated mobile OTA contracts
+
+- `ota_contract_gate.py contract`, all workflow `actionlint` checks, `git diff --check` and the focused Target/mobile publisher suites passed after the trust-gap fixes.
+- Target runtime/envelope, manual encrypted bundle and content-key setup tests passed; the current production build artifact is 1,703,472 bytes, uses 23.21 percent of either 7 MiB OTA slot and leaves 5,636,560 bytes headroom.
+- These results are source/build evidence only. Main CI NAS readback, Target USB bootstrap, second-release OTA install/reboot/health, Android install and final Home Assistant convergence remain pending at this point.
+
+## [2026-08-24] compile | Synchronize encrypted OTA and mobile deployment operations
+
+- Documented the compiler-to-publisher handoff, public content envelope, schema-v1 USB migration, content-key rotation boundary, mobile-specific Environment Secret names and official Android tool archive pins.
+- Corrected the commercial boundary: mobile remains reviewer/evidence gated while the legacy Target commercial publisher is disabled until it is migrated to encrypted schema v2.
+
+## [2026-08-24] fix | Clear the Android release analyzer gate
+
+- Awaited the asynchronous Ed25519 verification result inside the signed-update manifest verifier so the release source passes Dart's `return_of_invalid_type_from_catch_error` analyzer rule without changing signature semantics.
+- Re-ran all 271 repository unit and contract tests, the OTA contract gate, every workflow through `actionlint` and whitespace validation successfully; local Flutter was unavailable after the container restart, so the exact Flutter analyzer/build remains a CI gate.
+- Merged trusted-policy PR #95 only after its required policy gate, OTA contract and real ESP32-C6 firmware canary passed; the unrelated pre-existing Android analyzer failure is fixed in this feature branch.
 ## [2026-08-24] fix | Protect the complete workflow and local-action inventories
 
 - Upgraded the trusted-base policy engine to format version 3 with exact inventories for all seven current `.github/workflows/` files and the currently empty `.github/actions/` namespace; every inventoried workflow and the base validator are protected normalized-digest inputs.

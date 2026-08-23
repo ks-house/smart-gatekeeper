@@ -1,7 +1,7 @@
 # AGENTS.md — smart-gatekeeper Agent Collaboration Guide
 > **이 파일을 읽는 모든 AI 에이전트(Gemini, Claude, Antigravity 등)에게:**
 > 작업 시작 전 반드시 이 문서 전체를 읽고, 지침을 엄수하라.
-> Last updated: 2026-08-12
+> Last updated: 2026-08-23
 
 ---
 
@@ -156,7 +156,7 @@ smart-gatekeeper/
 
 ```ini
 ; 올바른 platformio.ini (ESP32-C6)
-platform  = https://github.com/pioarduino/platform-espressif32/releases/download/stable/platform-espressif32.zip
+platform  = https://github.com/pioarduino/platform-espressif32.git#cbc3349061987c28bc1b48d43d473e70c5ae04ed
 board     = esp32-c6-devkitc-1
 framework = arduino
 build_flags =
