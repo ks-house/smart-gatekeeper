@@ -1,12 +1,17 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "normalization": "utf8-lf-v1",
   "protected_paths": [
     ".github/workflows/deploy.yml",
     ".github/workflows/build_app.yml",
     ".github/workflows/ota_contract.yml",
+    ".github/workflows/personal_installation_firmware.yml",
+    ".github/workflows/protocol.yml",
+    ".github/workflows/trusted_workflow_policy.yml",
+    "scripts/verify_trusted_workflow_policy.py",
     "scripts/ota_contract_gate.py",
     "ota/requirements.txt",
+    "ota/requirements.lock",
     ".github/workflows/backend_security.yml",
     ".orca/scripts/setup_worktree.ps1",
     "scripts/ops_commercial_gate.py",
@@ -60,6 +65,18 @@
     "backend/tests/test_target_boot_registry.py",
     "protocol/test_vectors/v1.json"
   ],
+  "protected_inventories": {
+    ".github/actions/": [],
+    ".github/workflows/": [
+      ".github/workflows/backend_security.yml",
+      ".github/workflows/build_app.yml",
+      ".github/workflows/deploy.yml",
+      ".github/workflows/ota_contract.yml",
+      ".github/workflows/personal_installation_firmware.yml",
+      ".github/workflows/protocol.yml",
+      ".github/workflows/trusted_workflow_policy.yml"
+    ]
+  },
   "approved_bundles": [
     {
       "id": "current-main-baseline",
@@ -72,8 +89,13 @@
         ".github/workflows/deploy.yml": "b73646d4e4196c48763f9e3ab5f21606df145d897c767ec1a90f25e739b7a209",
         ".github/workflows/build_app.yml": "a38a63f5d31516593d91cd182614198fc538ee325a7e11364e7246e29fc11a9f",
         ".github/workflows/ota_contract.yml": "8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001",
+        ".github/workflows/personal_installation_firmware.yml": "52e15c8fa6f3a1dae149cc2bd648eca63bd716008ce2dde0bd54f875ecbe0d8b",
+        ".github/workflows/protocol.yml": "b57d2d7c117496c61cabfef2a291095d029b2ce51e75ab729c89215a38ac946f",
+        ".github/workflows/trusted_workflow_policy.yml": "79aaf7a773592ecf9156191f589a9ae3e3649b4de06a1b08034507c83184a658",
+        "scripts/verify_trusted_workflow_policy.py": "78a96058cd12cfadde01ac0c7aa733bfa96a43789a0a5173d02ffaea582e2641",
         "scripts/ota_contract_gate.py": "d41630cb61441c135aec6756d1726d96b18e944eb96ab93f1780306b5ae780fe",
         "ota/requirements.txt": "d2dc1631f87992338c4779d89db7ac6c049abd79ce14de9e6e8e1b113f7f2ca4",
+        "ota/requirements.lock": "5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12",
         ".github/workflows/backend_security.yml": "d53d6b63c9340c2dfb3ba372f7547598ca5e0bdde6ad757a8df0a169edbe4f6d",
         ".orca/scripts/setup_worktree.ps1": "07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab",
         "scripts/ops_commercial_gate.py": "af48700570b2ba68c910da9850a96995bb96a1647cc0ac9ff72d9261583f1e88",

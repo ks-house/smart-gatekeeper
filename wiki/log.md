@@ -3096,3 +3096,20 @@
 - Awaited the asynchronous Ed25519 verification result inside the signed-update manifest verifier so the release source passes Dart's `return_of_invalid_type_from_catch_error` analyzer rule without changing signature semantics.
 - Re-ran all 271 repository unit and contract tests, the OTA contract gate, every workflow through `actionlint` and whitespace validation successfully; local Flutter was unavailable after the container restart, so the exact Flutter analyzer/build remains a CI gate.
 - Merged trusted-policy PR #95 only after its required policy gate, OTA contract and real ESP32-C6 firmware canary passed; the unrelated pre-existing Android analyzer failure is fixed in this feature branch.
+## [2026-08-24] fix | Protect the complete workflow and local-action inventories
+
+- Upgraded the trusted-base policy engine to format version 3 with exact inventories for all seven current `.github/workflows/` files and the currently empty `.github/actions/` namespace; every inventoried workflow and the base validator are protected normalized-digest inputs.
+- Bound a recursive Git Trees API read to the immutable candidate SHA and reject truncated or malformed trees, namespace case variants, added/removed/renamed files, executable or symlink blobs, gitlinks, and every protected file that is not an exact `100644 blob`.
+- Preserved the existing exact-source and persistent-baseline ancestry modes. The candidate policy still governs later PRs only after merge, and a repository-local required-check context does not independently close self-policy or same-context producer circularity.
+
+## [2026-08-24] test | Verify trusted namespace inventory fail-closed behavior
+
+- The focused trusted-policy suite passed 41/41, including exact current filesystem inventory/digests, Git tree SHA binding, truncated/malformed response rejection, workflow/action additions, removals, renames, case escape, executable blobs, symlinks, gitlinks, source identity, ancestry and complete-bundle checks.
+- A live read-only GitHub Trees API request against main commit `d06519e2ff9bc372e1df9a57a272953d0fc2f916` returned `truncated=false` and `100644/blob` for the protected deploy workflow; no candidate code was checked out or executed.
+- Python syntax/JSON parsing and `git diff --check` passed. No commit, push, policy merge, branch-protection mutation or deployment was performed.
+
+## [2026-08-24] fix | Directly protect the publisher dependency lock
+
+- Added the publisher-installed `ota/requirements.lock` as the 62nd version-3 protected path with normalized SHA-256 `5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12`; its complete hashed content is now an explicit bundle input rather than relying only on an indirect gate assertion.
+- Added a dedicated regression that rejects both dropping the lock from the current baseline and changing its digest. The focused trusted-policy suite passed 42/42, all 62 protected working-tree digests matched the policy, Python syntax passed and `git diff --check` remained clean.
+- The lock was reproduced byte-for-byte from the integration candidate without modifying that clone. No dependencies were installed, no publisher or secret-bearing job ran, and no commit, push, merge or deployment was performed.

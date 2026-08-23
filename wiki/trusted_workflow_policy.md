@@ -2,15 +2,22 @@
 
 ## 1. Trust boundary
 
-`.github/workflows/trusted_workflow_policy.yml` uses `pull_request_target` without `paths` or `paths-ignore` filters to prevent required-check deadlocks, ensuring `Verify protected files against trusted base policy` runs on all pull requests targeting `main` (including docs-only PRs). It never checks out or executes pull-request code. The workflow checks out only the trusted `base.sha` with credentials disabled and sparse paths limited to the base validator and policy. Candidate protected files are downloaded from the candidate repository and commit through the GitHub Contents API, decoded as inert bytes, normalized, and hashed.
+`.github/workflows/trusted_workflow_policy.yml` uses `pull_request_target` without `paths` or `paths-ignore` filters to prevent required-check deadlocks, ensuring `Verify protected files against trusted base policy` runs on all pull requests targeting `main` (including docs-only PRs). It never checks out or executes pull-request code. The workflow checks out only the trusted `base.sha` with credentials disabled and sparse paths limited to the base validator and policy. Candidate protected files are downloaded from the candidate repository and commit through the GitHub Contents API, decoded as inert bytes, normalized, and hashed. The same immutable candidate SHA is also read through GitHub's recursive Git Trees API so path inventory, Git object type, and mode are checked without checking out candidate code; a missing or truncated tree fails closed.
 
 The job has only `contents: read`. Pull-request titles, branches, file contents, and other attacker-controlled values are never interpolated into an executable command. The actual head repository and immutable lowercase 40-hex head SHA are passed as separate quoted environment variables. The production decision validates both values, selects only bundles whose explicit source mode authorizes that identity, and only then downloads candidate bytes.
 
 ## 2. Protected bundle decision
 
 The machine-readable policy is `.github/workflow-policy/trusted_workflow_policy.json`; the base validator is
-`scripts/verify_trusted_workflow_policy.py`. The policy protects 57 files as one indivisible bundle. The
-ordered set starts with the existing release-control five:
+`scripts/verify_trusted_workflow_policy.py`. Policy format version 3 protects 62 files as one indivisible
+bundle. It includes every current workflow plus the validator itself. Its exact namespace inventories are:
+
+- `.github/workflows/`: the seven current workflow files; additions, removals, renames, case variants,
+  symlinks, executable blobs, gitlinks, or any other non-`100644 blob` entry fail closed.
+- `.github/actions/`: empty; adding any repository-local Action file fails closed until a separately reviewed
+  whole-policy rotation explicitly inventories and protects it.
+
+The ordered protected set retains the existing release-control five:
 
 - `.github/workflows/deploy.yml`
 - `.github/workflows/build_app.yml`
@@ -18,7 +25,13 @@ ordered set starts with the existing release-control five:
 - `scripts/ota_contract_gate.py`
 - `ota/requirements.txt`
 
-It then includes the exact 52 backend and operations inputs authorized for PR #67: the backend-security
+The publisher-installed, fully hashed `ota/requirements.lock` is also a direct protected input. The policy does
+not rely only on a workflow/gate assertion about that lock file: removal or any normalized byte change fails the
+same complete-bundle digest decision before a secret-bearing publisher can run.
+
+It also includes `personal_installation_firmware.yml`, `protocol.yml`,
+`trusted_workflow_policy.yml`, and `scripts/verify_trusted_workflow_policy.py`, followed by the exact 52
+backend and operations inputs authorized for PR #67: the backend-security
 workflow, Orca setup input, commercial-operations gate, evidence/SLO fixtures and policies, backend runtime,
 locked dependencies, static admin surfaces, production Compose and database migration inputs, SBOM/supply
 chain policy, backend tests, and canonical protocol vectors. The JSON policy contains the authoritative
@@ -32,7 +45,8 @@ the actual repository/SHA satisfies that bundle's source mode. Mixing individual
 Protected paths use canonical case-sensitive repository-relative POSIX syntax; dot segments, backslashes,
 empty segments, absolute paths, and case-folding duplicates are rejected.
 
-Policy format version 2 defines two authorization modes and no implicit fallback:
+Policy format version 3 retains the two version-2 authorization modes and adds exact protected namespace
+inventories; there is no implicit fallback:
 
 - `temporary-exact` requires actual candidate repository and immutable SHA to equal the bundle's exact
   `source.repository` and `source.commit`. Equivalent bytes from a fork, old commit, case variant, branch,
@@ -49,35 +63,48 @@ fail closed. When an exact temporary identity and a persistent baseline both cov
 the exact temporary match takes precedence without invoking ancestry; later descendants use only the one
 persistent baseline.
 
-The completed PR #85 rotation contains exactly one authorization for the complete 57-file set.
+The completed PR #85 rotation historically contained exactly one authorization for the then-current 57-file
+set. The version-3 migration expands that same persistent authorization model to the current 62-file set and
+keeps the existing source commit as the ancestry anchor.
 `current-main-baseline` is a `persistent-baseline` for repository `ks-house/smart-gatekeeper` at exact merged
 main commit `2d6b046b62d53381181d5c4bd8c25a9e781e42d1`. The temporary `temporary-pr85-d754f23` and transition
-`future-pr85-persistent-baseline` identities are removed. The source commit itself passes by exact identity;
-later candidates must retain every protected byte and prove that they descend from this exact source through
-GitHub Compare.
+`future-pr85-persistent-baseline` identities are removed. A current candidate must retain every protected byte,
+match both exact namespace inventories, and prove that it descends from this exact source through GitHub
+Compare. Because some newly protected paths were introduced after that historical source, the source remains
+an ancestry anchor rather than a claim that its old tree itself satisfies the expanded version-3 inventory.
 
-All 57 `utf8-lf-v1` digests were recomputed from the exact PR #85 Git object bytes. Eight protected files differ
+The original 57 `utf8-lf-v1` digests were recomputed from the exact PR #85 Git object bytes. The five newly
+protected existing files, including `ota/requirements.lock`, were independently normalized and hashed from the
+current migration tree. Eight
+historical protected files differed
 from the current baseline: `ops/backend_trusted_bundle_paths.json`, `backend/.env.example`,
 `backend/app/admin_security.py`, `backend/app/main.py`, `backend/app/static/admin.html`,
 `backend/app/static/index.html`, `backend/docker-compose.yml`, and
 `backend/tests/test_admin_security.py`. The final baseline map is byte-identical to both transition identities;
 this authorization boundary is not production, physical, release, NAS, or deployment evidence.
 
-Regression tests pin the exact repository, merged-main source commit, sole-bundle count and mode, ordered path set, and every
-digest. They reject an extra bundle, fork, retired or altered commit, unproven/diverged history, case/path
-variant, old five-path partial set, missing or reordered path, swapped/mixed/per-file digest mutation, and
-candidate policy/validator self-use. No temporary identity, branch, wildcard, partial set, mixed set,
+Regression tests pin the exact repository, source ancestry anchor, sole-bundle count and mode, ordered 62-path
+set, exact workflow/action inventories, and every digest. They reject an extra bundle, fork, retired or altered
+commit, unproven/diverged history, case/path variant, old five-path partial set, missing or reordered path,
+swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action additions, removals,
+renames, executable blobs, symlinks and gitlinks. No temporary identity, branch, wildcard, partial set, mixed set,
 candidate-derived digest, transition identity, or second baseline is approved.
 
 ## 3. Why PR self-modification does not authorize itself
 
 A PR may show edits to the policy, validator, or workflow, but the running `pull_request_target` job comes
 from the default branch and explicitly loads the policy and validator from the trusted base SHA. The base
-validator fetches only the protected path list from that base policy. Candidate copies of the policy or
-validator are never imported, parsed, or executed, so changing them cannot change the decision for that PR.
+validator fetches only paths and inventories declared by that base policy. Candidate copies of the policy or
+validator are never imported, parsed, or executed. The candidate validator is additionally a protected byte
+input, so modifying it requires an explicitly approved complete bundle rather than silently changing future
+verification behavior.
 
-Changes to these trust-control files still require an explicit security review before merge because their
-effect begins only after they become default-branch code.
+The policy JSON remains a self-policy boundary: its candidate copy is not used for the current decision, but a
+merged change governs later PRs. It therefore still requires an independently reviewed, bounded transition and
+an immediate final baseline rotation. There is also a status-context boundary: this repository-local policy
+cannot by itself prove that branch protection accepted this exact workflow/event rather than another producer
+of the same required-check context. Closing that residual circularity requires an externally controlled or
+separately app-pinned status identity and repository policy outside the mutable workflow namespace.
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
 main; later protected bundles completed the same bounded sequence. PR #86 authorized PR #85's whole protected
@@ -86,6 +113,7 @@ bundle, and PR #85 integrated that policy once before merging as exact main
 this guide, and the append-only log. It does not modify the validator or trusted workflow. Its hosted check
 executes the trusted-base transition policy, which admits this descendant because all 57 protected bytes remain
 unchanged. A green Hosted Trusted check is required before admin merge; no branch-protection change is authorized.
+That historical green check is not evidence that the version-3 self-policy/status-context residual is closed.
 
 ## 4. Rotation procedure
 
