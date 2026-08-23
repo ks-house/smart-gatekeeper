@@ -40,6 +40,7 @@ uint32_t mqttConnectAttempts = 0;
 uint32_t mqttConnectFailures = 0;
 int mqttLastError = 0;
 bool mqttSecurityReady = false;
+bool wifiAvailableLastUpdate = false;
 String commandTopic;
 String aclTopic;
 String commandAckTopic;
@@ -178,6 +179,7 @@ void MqttManager::publishCommandAck(
 
 void MqttManager::init() {
     mqttSecurityReady = false;
+    wifiAvailableLastUpdate = false;
     const String targetId = DiagnosticsManager::targetId();
     const bool transportProvisioned =
         std::strlen(MQTT_HOST) > 0 && MQTT_PORT != 1883 &&
@@ -386,7 +388,26 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void MqttManager::update() {
-    if (!mqttSecurityReady || !WifiManager::isConnected()) return;
+    if (!mqttSecurityReady) return;
+    const bool wifiAvailable = WifiManager::isConnected();
+    if (!wifiAvailable) {
+        if (wifiAvailableLastUpdate || client.connected()) {
+            client.disconnect();
+            wifiClient.stop();
+            connected = false;
+            DiagnosticsManager::noteAction("mqtt_wifi_lost");
+        }
+        wifiAvailableLastUpdate = false;
+        return;
+    }
+    if (!wifiAvailableLastUpdate) {
+        client.disconnect();
+        wifiClient.stop();
+        connected = false;
+        lastPublishMs = millis() - 5001;
+        wifiAvailableLastUpdate = true;
+        DiagnosticsManager::noteAction("mqtt_wifi_recovered");
+    }
 
     if (!client.connected()) {
         uint32_t now = millis();
@@ -413,6 +434,7 @@ void MqttManager::update() {
                 LOGF("[MQTT-SSL] 브로커 연결 성공!");
                 failCount = 0; // 성공 시 카운트 초기화
                 mqttLastError = 0;
+                connected = true;
                 DiagnosticsManager::noteMqttConnected();
 
                 char onlinePayload[192];
@@ -449,6 +471,7 @@ void MqttManager::update() {
                 failCount++;
                 mqttConnectFailures++;
                 mqttLastError = client.state();
+                connected = false;
                 LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋, 누적 실패: %d회)", client.state(), failCount);
                 wifiClient.stop(); // 이전 소켓 핸들 및 SSL 핸드셰이크 찌꺼기 강제 정돈
             }

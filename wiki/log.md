@@ -2872,3 +2872,15 @@
 - Added Obsidian/LLM governance with gradual metadata adoption, standard Markdown links, personal workspace exclusions and provenance-based promotion rules; updated the personal profile status after the owner's reduced physical attestation without claiming release completion.
 - Promoted only reusable wiki governance, evidence-layer, MQTT acknowledgement, OTA completion and mobile lifecycle patterns plus templates into `E:\knowledge-hub\knwlege-hub`; project-specific state remains authoritative in this repository.
 - Preserved `raw/`, historical append-only log entries, unrelated untracked directories and existing user edits.
+
+## [2026-08-23] fix | Keep Wi-Fi, MQTTS and OTA recoverable after a late boot connection
+
+- Changed initial Wi-Fi failure handling to preserve credentials, keep the authenticated recovery AP in AP+STA mode and retry STA association every 15 seconds until connected.
+- Initialized MQTTS independently of boot-time Wi-Fi success, closed stale TLS state on Wi-Fi loss and forced an immediate clean MQTTS retry when Wi-Fi returns; periodic signed HTTPS OTA continues independently after STA recovery.
+- Tightened OTA pending-image health so only stable Wi-Fi STA plus MQTTS can mark the new slot valid; recovery AP alone now leads to timeout rollback.
+- Added a main-only, production-environment personal-installation workflow that injects actual provisioned connectivity/recovery/signing secrets and uploads only a one-day AES-encrypted USB/OTA bundle. Commercial release evidence and NAS deployment remain unchanged.
+
+## [2026-08-23] test | Validate connectivity recovery and personal installation packaging
+
+- Focused Wi-Fi/MQTTS recovery and installation-workflow contracts passed 8/8; the existing OTA contract gate passed without modifying the protected commercial release workflow.
+- ESP32-C6 `esp32c6` compilation succeeded in 279.79 seconds at 16.4% RAM and 21.9% flash; no physical Wi-Fi, MQTT, OTA, relay or wall-install evidence is claimed by static/build validation. The dispatched production-secret CI result is recorded after completion.

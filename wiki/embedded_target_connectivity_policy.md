@@ -102,3 +102,28 @@
 5. Wi-Fi lease는 있으나 status가 없으면 TLS, ACL, client-ID 충돌, broker log를 확인한다.
 6. online이 복구되면 OTA 명령을 retain=false로 한 번만 발행하고 command ACK 뒤 새 boot/health를 기다린다.
 7. 10분 안에 원격 복구되지 않으면 반복 명령을 중단하고 현장 incident로 승격한다.
+
+## 8. 2026-08-23 software recovery closure
+
+The current firmware no longer stops STA attempts after the initial ten-second
+boot window. A failed boot association opens the authenticated recovery AP in
+`WIFI_AP_STA` mode while retrying the stored/compiled STA credentials every 15
+seconds. Successful association closes the indefinite provisioning AP and
+returns to pure STA mode. Failed attempts do not erase the NVS credentials.
+
+MQTTS provisioning is initialized regardless of whether Wi-Fi is available at
+boot. On Wi-Fi loss the stale TLS socket is closed; on Wi-Fi recovery a fresh
+TLS/MQTT session is attempted immediately and the normal five-second retry loop
+continues after failures. Periodic signed HTTPS OTA remains independently gated
+on `WifiManager::isConnected()` and therefore resumes after the same STA
+recovery.
+
+These changes close the two identified software gaps: AP-mode STA retry and
+late-Wi-Fi MQTT initialization/socket recreation. They are build/static-test
+evidence only until the installed Target demonstrates association, DHCP,
+MQTTS online/status, periodic HTTPS OTA check, reboot health and outage recovery.
+
+An OTA pending image is marked valid only after both Wi-Fi STA and MQTTS remain
+healthy during the stability window. A recovery AP by itself no longer counts
+as network health, so a firmware that cannot restore required communications
+rolls back instead of becoming the accepted slot.
