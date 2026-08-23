@@ -91,7 +91,7 @@
 - backend의 availability/status 구독, last-seen 저장, 15초/90초 경보와 admin 표시
 - 공유기, broker, WAN 단절 후 자동 복구 physical evidence
 
-현재 벽에 매립된 legacy `2.1.0-g75b946a`는 periodic HTTPS pull이 없으므로 이 지침을 충족하지 않는다. 최초 갱신은 실제 MQTTS online 창에서 legacy OTA 명령으로 수행해야 하며, 그 전까지 BLE 감지만으로 원격 복구 가능하다고 판단하지 않는다.
+과거 벽 매립본 `2.1.0-g75b946a`는 더 이상 현재 Target 상태가 아니다. 2026-08-24 연결된 Target은 exact-main `2.1.233+main.g9e9114b`로 NVS 보존 USB bootstrap 되었고, 저장 Wi-Fi association/DHCP, exact per-Target MQTTS subscribe, current status와 authenticated STA-local recovery scan을 실기기에서 확인했다. 이는 한 번의 정상 부팅/세션 증거이며 periodic HTTPS inactive-slot install, health-valid, rollback, 세 번의 power cycle과 장기 outage soak는 아직 닫지 않는다. 같은 날 content key를 회전했으므로 회전 키가 포함된 첫 이미지는 USB로 한 번 더 bootstrap한 뒤 그 다음 main을 OTA로 검증한다.
 
 ## 7. 장애 대응 순서
 
@@ -161,3 +161,21 @@ It did not contain a DHCP success or MQTTS online event, so the wall
 installation Gate remains open. The next evidence must be collected with the
 configured 2.4 GHz AP available: association/IP, MQTTS online/subscriptions,
 periodic HTTPS OTA check, and the three power-cycle/recovery trials in section 5.
+
+## 10. 2026-08-24 exact-main connectivity closure
+
+The exact-main encrypted build `2.1.233+main.g9e9114b` was written only to the
+selected `app0` partition with NVS, OTA data and the valid `app1` fallback left
+untouched. On its first observed boot it restored the saved SSID, received
+`192.168.35.19`, completed MQTTS authentication, subscribed to the exact
+per-Target command and ACL topics and published current diagnostics/config.
+An authenticated request from an Android device on the same Wi-Fi loaded the
+controller UI and returned 13 visible networks from `/scan`, including the
+active SSID. Home Assistant converged to the same version, IP, IDLE/closed state
+and current diagnostic/config values.
+
+This closes the previously missing association, DHCP and one-session MQTTS
+observations. It does not close the three-cycle, broker/WAN outage, RSSI/antenna,
+relay, sensor or OTA install/health/rollback gates. The observed RSSI was about
+`-84 dBm`, below the preferred `-67 dBm` installation target, so AP placement or
+antenna conditions require attention before final wall installation.

@@ -3139,3 +3139,16 @@
 - Removed both transition identities and pinned the sole `current-main-baseline` persistent identity to the actual PR #101 merge commit with the unchanged ordered 62-file map, seven-workflow inventory and empty local-Action inventory.
 - Verified that the reviewed `a643a7e` source and policy-connected `01ef2264` candidate are ancestors of the merge and that all 62 protected bytes are unchanged. This policy rotation is not Target installation, reboot-health, rollback, Home Assistant, physical, or commercial-release evidence.
 - The focused final-policy suite passed 42/42; JSON parsing, `actionlint`, whitespace checks and the live GitHub 62-file verifier passed with `current-main-baseline` selected for exact H2.
+
+## [2026-08-24] test | Bootstrap exact-main Target and verify live connectivity
+
+- Verified Target Actions run `32655789147` and its public NAS readback for exact main `9e9114b7ddc93e54adab1230341a3bc520b1aa68`, version `2.1.233+main.g9e9114b`; authenticated decryption produced a valid 1,703,392-byte ESP32-C6 N16 application with 5,636,640 bytes of slot headroom.
+- Backed up the partition table, NVS, OTA data and both app headers, then wrote only app0 at `0x10000` without erasing or modifying NVS, OTA data or the valid app1 fallback; esptool verified the written-data hash.
+- The first boot restored the saved Wi-Fi, received `192.168.35.19`, connected MQTTS, subscribed to exact per-Target topics and published diagnostics/config. Authenticated same-LAN recovery UI and `/scan` returned 13 visible networks with a rendered selectable list.
+- Home Assistant refreshed to the exact firmware, IP, IDLE/closed state and current sensor/config values. Seven historical control registry entries remain visible and were not invoked; signed backend bridge and registry cleanup remain pending.
+- This is USB bootstrap and live connectivity evidence, not periodic inactive-slot OTA, health-valid, rollback, relay/sensor, outage soak or final wall-install acceptance.
+
+## [2026-08-24] fix | Rotate Target content-encryption key after bootstrap
+
+- Rotated `SECRET_OTA_CONTENT_KEY_HEX` and its key ID through stdin in both GitHub `personal-auto-ota` and `production` Environments and synchronized the ignored local headers without printing or committing the value.
+- The new identity is `personal-target-content-20260824-2`. Because the running image contains the prior key, the first release with this identity requires an NVS-preserving USB bootstrap; the next main release will be the encrypted periodic HTTPS install/reboot/health proof.

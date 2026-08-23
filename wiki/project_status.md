@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-08-12
+updated: 2026-08-24
 source_of_truth: true
 applies_to:
   - firmware
@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 저장소 기준: `main` commit `406707c` (`Merge pull request #88 from ks-house/docs/embedded-target-connectivity`)
+> 저장소 기준: `main` commit `9e9114b` (automatic encrypted Target/mobile OTA final policy baseline)
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -22,7 +22,7 @@ applies_to:
 
 | 축 | 저장소 최신 구현 | 검증/운영 경계 |
 |---|---|---|
-| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA | host/build 증거는 있으나 최신 firmware의 매립 Target 설치·부팅·OTA health 증거는 별도 필요 |
+| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA | exact-main `2.1.233+main.g9e9114b` USB bootstrap과 Wi-Fi/MQTTS 실기기 부팅은 확인; inactive-slot OTA health/rollback은 별도 필요 |
 | Android | foreground scan, OS-managed BLE wake PoC, native GATT credential worker, recovery/update UI | Hardwareless RC는 default-OFF; Samsung/OEM 및 force-stop 경계는 실기기 Gate |
 | Backend | FastAPI/MariaDB, enrollment/ACL, admin session/RBAC/CSRF/re-auth, signed commands, operations APIs | production Compose와 migration 계약은 존재하지만 live NAS 운영 증거는 별도 관리 |
 | Access | legacy iBeacon → pre-arm과 default-OFF local GATT 경로가 공존 | Target FSM `IDLE → ARMED → RELAY_HOLD → COOLDOWN → IDLE`이 relay 권한의 최종 경계 |
@@ -30,7 +30,7 @@ applies_to:
 
 ## 2. 저장소 구현과 현장 배포를 혼동하지 않는다
 
-현재 저장소의 펌웨어는 최신 보안·복구 경로를 포함하지만, 2026-08-12에 관측한 현관 매립 Target은 `2.1.0-g75b946a`였다. 해당 구형 배포본에는 최신 periodic HTTPS pull과 보안 강화가 모두 존재한다고 간주할 수 없다.
+2026-08-12에 관측한 현관 매립 Target `2.1.0-g75b946a`는 이제 현재 상태가 아니다. 2026-08-24 연결된 Target에 exact-main `2.1.233+main.g9e9114b`를 NVS와 기존 `app1`을 보존하는 app-only USB 방식으로 설치했고, 저장 Wi-Fi association/DHCP, per-Target MQTTS와 Home Assistant read-only telemetry를 실기기에서 확인했다. 다만 USB bootstrap은 inactive-slot periodic HTTPS OTA, pending-verify health mark 또는 rollback 증거가 아니다. 같은 날 content key를 회전했으므로 새 키가 포함된 첫 이미지는 한 번 더 USB로 설치하고 그 다음 main 버전을 OTA로 검증해야 한다.
 
 - 저장소 최신 구현: 이 문서와 [최신 코드 감사](current_code_audit.md)
 - 개인 현장 배포: [개인 PROD 사건 기록](personal_prod_incident_2026_08_12.md)
@@ -66,7 +66,7 @@ Hardwareless RC는 Android Keystore 자격과 connectable GATT proof를 사용�
 
 ## 5. 열려 있는 주요 Gate
 
-1. 최신 exact-main signed firmware를 현장 Target에 설치하고 reboot 후 version/boot ID/health mark를 확인한다.
+1. 회전된 content key를 포함한 첫 exact-main을 NVS 보존 USB로 설치한 뒤, 다음 exact-main을 periodic HTTPS로 inactive slot에 설치하여 reboot/version/boot ID/health-valid를 확인한다.
 2. Wi-Fi 부팅 실패, DHCP/IP 상실, broker/WAN 장애에서 자동 복구와 15초/90초/10분 관측 경계를 실측한다.
 3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.
