@@ -1193,6 +1193,17 @@ class OtaContractGateTest(unittest.TestCase):
     with self.assertRaisesRegex(gate.GateError, "mutable discovery"):
       gate.validate_mobile_build_workflow(workflows)
 
+  def test_mobile_canary_requires_exact_installed_android_tools(self):
+    path = ".github/workflows/build_app.yml"
+    workflows = self._workflow_sources()
+    workflows[path] = workflows[path].replace(
+        '"$SDKMANAGER" --install "build-tools;36.0.0" "cmdline-tools;12.0"',
+        '"$SDKMANAGER" --install "build-tools;36.0.0" "cmdline-tools;latest"',
+        1,
+    )
+    with self.assertRaisesRegex(gate.GateError, "exact public canary Android tools"):
+      gate.validate_mobile_build_workflow(workflows)
+
   def test_mobile_gradle_wrappers_bind_official_distribution_checksums(self):
     gate.validate_mobile_gradle_wrapper_pins()
     path = "gatekeeper_app/android/gradle/wrapper/gradle-wrapper.properties"
