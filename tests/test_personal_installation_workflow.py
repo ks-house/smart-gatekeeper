@@ -42,6 +42,12 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
     self.assertEqual(upload["with"]["retention-days"], 1)
     self.assertIn('-mhe=on -p"$INSTALL_BUNDLE_PASSWORD"', self.raw)
 
+  def test_encrypted_bundle_contains_recoverable_provisioned_header(self):
+    self.assertIn("cp include/secrets.h dist/provisioned-secrets.h", self.raw)
+    self.assertIn(
+        "firmware.factory.bin provisioned-secrets.h > SHA256SUMS", self.raw
+    )
+
   def test_commercial_release_evidence_is_not_modified_or_claimed(self):
     self.assertNotIn("release-evidence.json", self.raw)
     self.assertNotIn("Deploy to Synology NAS", self.raw)

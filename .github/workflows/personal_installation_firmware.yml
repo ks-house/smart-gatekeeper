@@ -62,6 +62,10 @@ jobs:
           SECRET_LOCAL_RECOVERY_PASSWORD: ${{ secrets.SECRET_LOCAL_RECOVERY_PASSWORD }}
         run: |
           set -euo pipefail
+          fail_secret_contract() {
+            printf '::error::Production secret contract failed: %s\n' "$1" >&2
+            exit 1
+          }
           for name in SECRET_ROOT_CA_CERT SECRET_WIFI_SSID SECRET_WIFI_PASSWORD \
             SECRET_API_URL SECRET_API_KEY SECRET_MQTT_HOST SECRET_MQTT_PORT \
             SECRET_MQTT_USER SECRET_MQTT_PASSWORD SECRET_TARGET_TENANT_ID \
@@ -70,16 +74,16 @@ jobs:
             SECRET_OTA_FIRMWARE_URL SECRET_OTA_SIGNER_PUBLIC_KEY_HEX \
             SECRET_OTA_SIGNING_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
             SECRET_LOCAL_RECOVERY_USER SECRET_LOCAL_RECOVERY_PASSWORD; do
-            test -n "${!name}"
+            test -n "${!name}" || fail_secret_contract "$name is empty"
           done
-          test "$SECRET_WIFI_SSID" != "YOUR_WIFI_SSID"
-          test "$SECRET_WIFI_PASSWORD" != "YOUR_WIFI_PASSWORD"
-          [[ "$SECRET_MQTT_USER" =~ ^[0-9a-f]{12}$ ]]
-          [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]]
-          [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
-          test "${#SECRET_LOCAL_RECOVERY_AP_PASSWORD}" -ge 16
-          test "${#SECRET_LOCAL_RECOVERY_USER}" -ge 8
-          test "${#SECRET_LOCAL_RECOVERY_PASSWORD}" -ge 16
+          test "$SECRET_WIFI_SSID" != "YOUR_WIFI_SSID" || fail_secret_contract "SECRET_WIFI_SSID is placeholder"
+          test "$SECRET_WIFI_PASSWORD" != "YOUR_WIFI_PASSWORD" || fail_secret_contract "SECRET_WIFI_PASSWORD is placeholder"
+          [[ "$SECRET_MQTT_USER" =~ ^[0-9a-f]{12}$ ]] || fail_secret_contract "SECRET_MQTT_USER format"
+          [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX format"
+          [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX format"
+          test "${#SECRET_LOCAL_RECOVERY_AP_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_AP_PASSWORD length"
+          test "${#SECRET_LOCAL_RECOVERY_USER}" -ge 8 || fail_secret_contract "SECRET_LOCAL_RECOVERY_USER length"
+          test "${#SECRET_LOCAL_RECOVERY_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_PASSWORD length"
           cat <<EOF > include/secrets.h
           #pragma once
           #define SECRET_WIFI_SSID "${SECRET_WIFI_SSID}"
@@ -123,6 +127,7 @@ jobs:
           cp .pio/build/esp32c6/firmware.factory.bin dist/firmware.factory.bin
           cp .pio/build/esp32c6/bootloader.bin dist/bootloader.bin
           cp .pio/build/esp32c6/partitions.bin dist/partitions.bin
+          cp include/secrets.h dist/provisioned-secrets.h
           BOOT_APP0=$(find "$HOME/.platformio/packages" -path '*/tools/partitions/boot_app0.bin' -type f -print -quit)
           test -n "$BOOT_APP0"
           cp "$BOOT_APP0" dist/boot_app0.bin
@@ -137,7 +142,7 @@ jobs:
           erase NVS/Wi-Fi credentials because it contains padded gaps.
           EOF
           (cd dist && sha256sum bootloader.bin partitions.bin boot_app0.bin \
-            gatekeeper-firmware.bin firmware.factory.bin > SHA256SUMS)
+            gatekeeper-firmware.bin firmware.factory.bin provisioned-secrets.h > SHA256SUMS)
 
       - name: Create and verify production-signed OTA manifest
         env:

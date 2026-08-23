@@ -2884,3 +2884,9 @@
 
 - Focused Wi-Fi/MQTTS recovery and installation-workflow contracts passed 8/8; the existing OTA contract gate passed without modifying the protected commercial release workflow.
 - ESP32-C6 `esp32c6` compilation succeeded in 279.79 seconds at 16.4% RAM and 21.9% flash; no physical Wi-Fi, MQTT, OTA, relay or wall-install evidence is claimed by static/build validation. The dispatched production-secret CI result is recorded after completion.
+
+## [2026-08-23] fix | Add encrypted production secret header recovery
+
+- GitHub secret values cannot be read back through its API, so the production job now places its generated header in the AES-encrypted one-day installation bundle as `provisioned-secrets.h`.
+- Secret values remain absent from Actions logs and unencrypted artifacts; only the owner holding the local recovery password can decrypt the header.
+- Secret contract diagnostics now identify only the failing field and never print its value.
