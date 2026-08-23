@@ -1802,6 +1802,10 @@ void testOtaVersionFloorAndReplayMutations() {
   CHECK(after_rollback.evaluate("2.2.0", "2.2.0") ==
         sgk::OtaVersionDecision::kDowngrade);
   CHECK(after_rollback.evaluate("2.2.1", "2.2.0") ==
+        sgk::OtaVersionDecision::kDowngrade);
+  CHECK(after_rollback.evaluate("2.2.1+alternate", "2.2.0") ==
+        sgk::OtaVersionDecision::kIdentityConflict);
+  CHECK(after_rollback.evaluate("2.2.2", "2.2.0") ==
         sgk::OtaVersionDecision::kUpgrade);
 
   storage.fail_writes = true;

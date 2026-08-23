@@ -2964,3 +2964,15 @@
 - Added the four current configuration values to the Target's existing 10-second per-Target status payload without changing command, ACL or signing behavior.
 - Mapped all 15 read-only Home Assistant entities to that periodic status with a 30-second expiry, removing the restart dependency on both non-retained boot-only availability and config-state publications.
 - Added a host contract test for the four firmware status fields and the exact all-entity status/expiry mapping. Live config convergence with this payload remains pending until the new exact-main Target OTA boots and publishes it.
+## [2026-08-23] fix | Quarantine failed OTA floors and bound artifact downloads
+
+- Rejected the exact persisted version floor when a lower stable slot is running after bootloader rollback, while preserving equal-precedence identity conflict handling and allowing only a strictly newer recovery image.
+- Added a 30-second no-progress deadline and five-minute total deadline to remote artifact streaming. Timeout aborts the inactive write, records an explicit failure and returns to the existing 15-minute retry schedule.
+- Preserved the existing WAIT_SAFE_STATE fail-closed return before any network request.
+
+## [2026-08-23] test | Validate Target OTA rollback and timeout safety on the host
+
+- Extended the native C++ version-policy suite with exact failed-floor quarantine, alternate-identity rejection and strictly newer recovery cases.
+- Added static Target runtime assertions for safe-state failure handling, both download deadlines, progress tracking, inactive-write abort and retry scheduling.
+- Built the default ESP32-C6 N16 profile successfully; the 1,662,160-byte app uses 22.65 percent of either 7,340,032-byte OTA slot and leaves 5,677,872 bytes headroom.
+- No Target flash, OTA install, reboot health, rollback, power-loss or network-stall injection was performed; those physical evidence gates remain pending.

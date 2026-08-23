@@ -175,8 +175,10 @@ OtaVersionDecision OtaVersionPolicy::evaluate(
   if (!ready_) return OtaVersionDecision::kStorageFailure;
   int currentComparison = 0;
   int floorComparison = 0;
+  int installedVsFloor = 0;
   if (!compare(candidate_version, current_version, &currentComparison) ||
-      !compare(candidate_version, record_.version, &floorComparison)) {
+      !compare(candidate_version, record_.version, &floorComparison) ||
+      !compare(current_version, record_.version, &installedVsFloor)) {
     return OtaVersionDecision::kInvalid;
   }
   if (currentComparison < 0 || floorComparison < 0) {
@@ -187,6 +189,13 @@ OtaVersionDecision OtaVersionPolicy::evaluate(
       (floorComparison == 0 &&
        std::strcmp(candidate_version, record_.version) != 0)) {
     return OtaVersionDecision::kIdentityConflict;
+  }
+  // A lower running image with a higher persisted floor means the bootloader
+  // rolled back an unconfirmed candidate. Quarantine that exact candidate so
+  // the unchanged NAS pointer cannot reinstall it after every stable boot.
+  // A strictly newer candidate remains eligible to recover the installation.
+  if (installedVsFloor < 0 && floorComparison == 0) {
+    return OtaVersionDecision::kDowngrade;
   }
   return currentComparison == 0 ? OtaVersionDecision::kCurrent
                                 : OtaVersionDecision::kUpgrade;

@@ -1,6 +1,6 @@
 # OTA 운영 runbook
 
-> Last updated: 2026-08-01
+> Last updated: 2026-08-23
 > Scope: Android mobile, ESP32-C6 Target, Backend/NAS distribution, CI
 > Status: 절차 확정; OTA-G1~G4 실기기 증거 pending
 
@@ -44,6 +44,13 @@
    이전 slot rollback을 기대한다.
 7. MQTT 차단 상태의 periodic HTTPS와 Backend/DNS 차단 상태의 authenticated local AP를
    별도로 시험한다.
+
+The automatic Target path aborts an artifact transfer after 30 seconds without
+progress or five minutes total. After a pending image fails health and the
+bootloader returns to the prior slot, the exact failed version is quarantined;
+leaving the same manifest published must not trigger another installation.
+Recovery publication must therefore use a strictly higher SemVer version, not
+the failed version with only different build metadata.
 
 ## 3. Mobile canary 절차
 

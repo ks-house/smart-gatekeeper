@@ -129,3 +129,13 @@ command bridge 없이 동작한다고 간주하지 않으며, live migration에�
 This evidence supersedes the earlier same-day `NO_AP_FOUND` first-boot attempt only
 for recovery scan, Wi-Fi association, DHCP and MQTTS. It does not promote the
 candidate to production release approval or close the physical OTA/relay/soak gates.
+
+## 2026-08-23 Target OTA rollback and download safety host evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Failed-floor quarantine | Native C++ version-policy tests reject the exact persisted failed floor after a lower slot boots, retain equal-precedence identity-conflict rejection, and accept a strictly newer recovery version | PASS (host software) |
+| Bounded remote download | Static Target contract confirms 30-second no-progress and five-minute total deadlines, inactive-write abort, explicit timeout reason and 15-minute retry scheduling | PASS (host/static software) |
+| WAIT_SAFE_STATE failure | Static Target contract confirms failure status, reason, retry scheduling and immediate return before any network request | PASS (existing behavior, regression guarded) |
+| ESP32-C6 build/capacity | Default N16 build succeeded; app image 1,662,160 bytes in a 7,340,032-byte slot, 22.65% usage and 5,677,872-byte headroom | PASS (compile/capacity only) |
+| Physical install/rollback | No firmware was uploaded by this change; inactive-slot install, timeout injection, bootloader rollback and failed-version quarantine remain unobserved on ESP32-C6 | PENDING physical evidence |

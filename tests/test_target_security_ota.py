@@ -107,6 +107,34 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("recoveryApDeadlineMs", wifi)
         self.assertIn("setClockFromAuthenticatedHttpDate", ota)
         self.assertIn("current version reflash denied", ota)
+        safe_state_failure = ota.split("if (!waitForSafeState())", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertIn("status = OtaStatus::FAILED", safe_state_failure)
+        self.assertIn('lastError = "WAIT_SAFE_STATE timeout"', safe_state_failure)
+        self.assertIn(
+            "nextPeriodicCheckMs = millis() + kFailureRetryMs",
+            safe_state_failure,
+        )
+        self.assertIn("return;", safe_state_failure)
+
+        download_loop = ota.split(
+            "while (updateBytes < stagedManifest.artifact_size)", 1
+        )[1].split("artifactHttp.end()", 1)[0]
+        self.assertIn("kArtifactIdleTimeoutMs", download_loop)
+        self.assertIn("kArtifactDownloadTimeoutMs", download_loop)
+        self.assertIn("observedMs - downloadStartedMs", download_loop)
+        self.assertIn("observedMs - lastProgressMs", download_loop)
+        self.assertIn("lastProgressMs = millis()", download_loop)
+        download_failure = ota.split("if (!downloadOk || !finishImageWrite())", 1)[
+            1
+        ].split("}", 1)[0]
+        self.assertIn("abortImageWrite()", download_failure)
+        self.assertIn('"artifact download timeout"', download_failure)
+        self.assertIn(
+            "nextPeriodicCheckMs = millis() + kFailureRetryMs",
+            download_failure,
+        )
         self.assertLess(
             wifi.index("if (apSuccess)"),
             wifi.index("apModeActive = true", wifi.index("if (apSuccess)")),

@@ -31,6 +31,8 @@ constexpr uint32_t kOtaSafeStateTimeoutMs = 45000;
 constexpr uint32_t kInitialPeriodicCheckMs = 60000;
 constexpr uint32_t kPeriodicCheckMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t kFailureRetryMs = 15UL * 60UL * 1000UL;
+constexpr uint32_t kArtifactIdleTimeoutMs = 30UL * 1000UL;
+constexpr uint32_t kArtifactDownloadTimeoutMs = 5UL * 60UL * 1000UL;
 constexpr uint32_t kHealthStableMs = 30000;
 constexpr uint32_t kHealthTimeoutMs = 120000;
 constexpr uint16_t kProtocolMin = 1;
@@ -561,7 +563,17 @@ void OtaManager::checkAndUpdate(bool force) {
   WiFiClient* stream = artifactHttp.getStreamPtr();
   uint8_t buffer[4096]{};
   bool downloadOk = true;
+  bool downloadTimedOut = false;
+  const uint32_t downloadStartedMs = millis();
+  uint32_t lastProgressMs = downloadStartedMs;
   while (updateBytes < stagedManifest.artifact_size) {
+    const uint32_t observedMs = millis();
+    if (observedMs - downloadStartedMs >= kArtifactDownloadTimeoutMs ||
+        observedMs - lastProgressMs >= kArtifactIdleTimeoutMs) {
+      downloadTimedOut = true;
+      downloadOk = false;
+      break;
+    }
     const size_t remaining = stagedManifest.artifact_size - updateBytes;
     const size_t available = stream->available();
     if (available == 0) {
@@ -576,12 +588,14 @@ void OtaManager::checkAndUpdate(bool force) {
       downloadOk = false;
       break;
     }
+    lastProgressMs = millis();
   }
   artifactHttp.end();
   if (!downloadOk || !finishImageWrite()) {
     abortImageWrite();
     status = OtaStatus::FAILED;
-    lastError = "image write/hash";
+    lastError = downloadTimedOut ? "artifact download timeout"
+                                 : "image write/hash";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
     return;
   }
