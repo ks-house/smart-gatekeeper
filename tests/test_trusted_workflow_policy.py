@@ -22,8 +22,13 @@ MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml b73646d4e4196c48763f9e3ab5f21606df145d897c767ec1a90f25e739b7a209
 .github/workflows/build_app.yml a38a63f5d31516593d91cd182614198fc538ee325a7e11364e7246e29fc11a9f
 .github/workflows/ota_contract.yml 8e2c1479a64336d172a0f13b50a52fcef122e955a56d8866e58a73281ee0c001
+.github/workflows/personal_installation_firmware.yml 52e15c8fa6f3a1dae149cc2bd648eca63bd716008ce2dde0bd54f875ecbe0d8b
+.github/workflows/protocol.yml b57d2d7c117496c61cabfef2a291095d029b2ce51e75ab729c89215a38ac946f
+.github/workflows/trusted_workflow_policy.yml 79aaf7a773592ecf9156191f589a9ae3e3649b4de06a1b08034507c83184a658
+scripts/verify_trusted_workflow_policy.py 78a96058cd12cfadde01ac0c7aa733bfa96a43789a0a5173d02ffaea582e2641
 scripts/ota_contract_gate.py d41630cb61441c135aec6756d1726d96b18e944eb96ab93f1780306b5ae780fe
 ota/requirements.txt d2dc1631f87992338c4779d89db7ac6c049abd79ce14de9e6e8e1b113f7f2ca4
+ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
 .github/workflows/backend_security.yml d53d6b63c9340c2dfb3ba372f7547598ca5e0bdde6ad757a8df0a169edbe4f6d
 .orca/scripts/setup_worktree.ps1 07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab
 scripts/ops_commercial_gate.py af48700570b2ba68c910da9850a96995bb96a1647cc0ac9ff72d9261583f1e88
@@ -80,7 +85,16 @@ protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6a
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
-OLD_FIVE_PATHS = list(MERGED_MAIN_DIGESTS)[:5]
+CURRENT_WORKFLOW_PATHS = sorted(
+    path for path in MERGED_MAIN_DIGESTS if path.startswith(".github/workflows/")
+)
+OLD_FIVE_PATHS = [
+    ".github/workflows/deploy.yml",
+    ".github/workflows/build_app.yml",
+    ".github/workflows/ota_contract.yml",
+    "scripts/ota_contract_gate.py",
+    "ota/requirements.txt",
+]
 RETIRED_MAIN_SAMPLE_DIGESTS = {
     ".github/workflows/backend_security.yml": (
         "5ea77cd7444c7a284485acf65a24e265746bcde4fbb18fa30b1f6220b45053b0"
@@ -120,6 +134,16 @@ RETIRED_SOURCE_COMMITS = {
 
 def _digest(content: bytes) -> str:
   return trusted.normalized_sha256(content)
+
+
+def _tree_for_policy(policy: dict[str, Any]) -> dict[str, dict[str, str]]:
+  tree: dict[str, dict[str, str]] = {}
+  for prefix, paths in policy["protected_inventories"].items():
+    if paths:
+      tree[prefix[:-1]] = {"mode": "040000", "type": "tree"}
+    for path in paths:
+      tree[path] = {"mode": "100644", "type": "blob"}
+  return tree
 
 
 def validate_trusted_workflow_structure(
@@ -355,9 +379,16 @@ def validate_trusted_workflow_structure(
 
 class TrustedWorkflowPolicyTest(unittest.TestCase):
   def assert_current_main_baseline_is_exact(self, policy):
-    self.assertEqual(policy["format_version"], 2)
+    self.assertEqual(policy["format_version"], 3)
     self.assertEqual(policy["protected_paths"], list(MERGED_MAIN_DIGESTS))
-    self.assertEqual(len(policy["protected_paths"]), 57)
+    self.assertEqual(len(policy["protected_paths"]), 62)
+    self.assertEqual(
+        policy["protected_inventories"],
+        {
+            ".github/actions/": [],
+            ".github/workflows/": CURRENT_WORKFLOW_PATHS,
+        },
+    )
     self.assertEqual(len(policy["approved_bundles"]), 1)
     persistent = policy["approved_bundles"][0]
     self.assertEqual(persistent["id"], "current-main-baseline")
@@ -380,9 +411,13 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         "gate.py": b"print('alternate')\n",
     }
     self.policy = {
-        "format_version": 2,
+        "format_version": 3,
         "normalization": trusted.NORMALIZATION,
         "protected_paths": list(self.main_files),
+        "protected_inventories": {
+            ".github/actions/": [],
+            ".github/workflows/": [],
+        },
         "approved_bundles": [
             {
                 "id": "main",
@@ -422,6 +457,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         repository,
         ref,
         files.__getitem__,
+        lambda: {},
         lambda ancestor, descendant: (
             ancestor == descendant or descendant in {"3" * 40, "f" * 40}
         ),
@@ -446,6 +482,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         "owner/repository",
         "2" * 40,
         self.main_files.__getitem__,
+        lambda: {},
         ancestry,
     )
     self.assertEqual(bundle["id"], "alternate")
@@ -465,6 +502,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           "owner/repository",
           "3" * 40,
           self.main_files.__getitem__,
+          lambda: {},
       )
     ancestry = mock.Mock(return_value=False)
     with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):
@@ -473,6 +511,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           "owner/repository",
           "3" * 40,
           self.main_files.__getitem__,
+          lambda: {},
           ancestry,
       )
     ancestry.assert_called_once_with("1" * 40, "3" * 40)
@@ -512,6 +551,188 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
       self.assertTrue(fetcher.is_descendant(ancestor, ancestor))
       urlopen.assert_not_called()
 
+  def test_github_recursive_tree_is_bound_to_candidate_sha_and_fail_closed(self):
+    candidate_ref = "3" * 40
+    fetcher = trusted.GitHubContentsFetcher(
+        "https://api.github.com", "owner/repository", candidate_ref, "token"
+    )
+    payload = {
+        "sha": "4" * 40,
+        "truncated": False,
+        "tree": [
+            {
+                "path": ".github/workflows",
+                "mode": "040000",
+                "type": "tree",
+                "sha": "5" * 40,
+            },
+            {
+                "path": ".github/workflows/current.yml",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "6" * 40,
+            },
+        ],
+    }
+    response = mock.MagicMock()
+    response.__enter__.return_value.read.return_value = json.dumps(payload).encode(
+        "utf-8"
+    )
+    with mock.patch.object(
+        trusted.urllib.request, "urlopen", return_value=response
+    ) as urlopen:
+      self.assertEqual(
+          fetcher.fetch_tree(),
+          {
+              ".github/workflows": {"mode": "040000", "type": "tree"},
+              ".github/workflows/current.yml": {
+                  "mode": "100644",
+                  "type": "blob",
+              },
+          },
+      )
+      request = urlopen.call_args.args[0]
+      self.assertIn(
+          f"/repos/owner/repository/git/trees/{candidate_ref}?recursive=1",
+          request.full_url,
+      )
+
+    for mutation in (
+        {**payload, "truncated": True},
+        {**payload, "truncated": None},
+        {**payload, "tree": "not-a-list"},
+        {
+            **payload,
+            "tree": [
+                {
+                    "path": ".github/workflows/current.yml",
+                    "mode": "100644",
+                    "type": "blob",
+                    "sha": "BAD",
+                }
+            ],
+        },
+    ):
+      bad_response = mock.MagicMock()
+      bad_response.__enter__.return_value.read.return_value = json.dumps(
+          mutation
+      ).encode("utf-8")
+      with self.subTest(mutation=mutation), mock.patch.object(
+          trusted.urllib.request, "urlopen", return_value=bad_response
+      ):
+        with self.assertRaises(trusted.PolicyError):
+          fetcher.fetch_tree()
+
+  def test_inventory_rejects_added_removed_renamed_and_non_regular_files(self):
+    workflow_path = ".github/workflows/current.yml"
+    workflow_content = b"name: current\n"
+    policy = copy.deepcopy(self.policy)
+    policy["protected_paths"].append(workflow_path)
+    policy["protected_inventories"][".github/workflows/"] = [workflow_path]
+    for bundle in policy["approved_bundles"]:
+      bundle["files"][workflow_path] = _digest(workflow_content)
+    trusted.validate_policy(policy)
+    files = {**self.main_files, workflow_path: workflow_content}
+    valid_tree = {
+        ".github/workflows": {"mode": "040000", "type": "tree"},
+        workflow_path: {"mode": "100644", "type": "blob"},
+    }
+
+    def verify_tree(tree):
+      return trusted.verify_candidate(
+          policy,
+          "owner/repository",
+          "3" * 40,
+          files.__getitem__,
+          lambda: tree,
+          lambda _ancestor, _descendant: True,
+      )
+
+    self.assertEqual(verify_tree(valid_tree)["id"], "main")
+    mutations = {
+        "added": {
+            **valid_tree,
+            ".github/workflows/evil.yml": {
+                "mode": "100644",
+                "type": "blob",
+            },
+        },
+        "removed": {
+            ".github/workflows": {"mode": "040000", "type": "tree"},
+        },
+        "renamed": {
+            ".github/workflows": {"mode": "040000", "type": "tree"},
+            ".github/workflows/renamed.yml": {
+                "mode": "100644",
+                "type": "blob",
+            },
+        },
+        "executable": {
+            **valid_tree,
+            workflow_path: {"mode": "100755", "type": "blob"},
+        },
+        "symlink": {
+            **valid_tree,
+            workflow_path: {"mode": "120000", "type": "blob"},
+        },
+        "submodule": {
+            **valid_tree,
+            workflow_path: {"mode": "160000", "type": "commit"},
+        },
+        "namespace-root-blob": {
+            ".github/workflows": {"mode": "100644", "type": "blob"},
+            workflow_path: {"mode": "100644", "type": "blob"},
+        },
+        "case-escape": {
+            ".github/workflows": {"mode": "040000", "type": "tree"},
+            ".github/Workflows/current.yml": {
+                "mode": "100644",
+                "type": "blob",
+            },
+        },
+        "dot-segment": {
+            **valid_tree,
+            ".github/workflows/../evil.yml": {
+                "mode": "100644",
+                "type": "blob",
+            },
+        },
+        "new-action": {
+            **valid_tree,
+            ".github/actions/evil/action.yml": {
+                "mode": "100644",
+                "type": "blob",
+            },
+        },
+    }
+    for label, tree in mutations.items():
+      with self.subTest(label=label), self.assertRaises(trusted.PolicyError):
+        verify_tree(tree)
+
+  def test_policy_requires_exact_inventory_namespaces_and_protection(self):
+    mutations = []
+    old_format = copy.deepcopy(self.policy)
+    old_format["format_version"] = 2
+    mutations.append(old_format)
+
+    missing_namespace = copy.deepcopy(self.policy)
+    del missing_namespace["protected_inventories"][".github/actions/"]
+    mutations.append(missing_namespace)
+
+    extra_namespace = copy.deepcopy(self.policy)
+    extra_namespace["protected_inventories"][".github/dependabot/"] = []
+    mutations.append(extra_namespace)
+
+    unprotected_inventory_file = copy.deepcopy(self.policy)
+    unprotected_inventory_file["protected_inventories"][
+        ".github/workflows/"
+    ] = [".github/workflows/unprotected.yml"]
+    mutations.append(unprotected_inventory_file)
+
+    for index, mutation in enumerate(mutations):
+      with self.subTest(index=index), self.assertRaises(trusted.PolicyError):
+        trusted.validate_policy(mutation)
+
   def test_line_endings_are_normalized_but_other_bytes_are_exact(self):
     self.assertEqual(_digest(b"a\r\nb\r"), _digest(b"a\nb\n"))
     self.assertNotEqual(_digest(b"a\nb\n"), _digest(b"a\nb\n "))
@@ -534,16 +755,12 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     with self.assertRaises(KeyError):
       self.verify({"workflow.yml": b"x"})
 
-  def test_pr_side_policy_and_validator_changes_cannot_change_decision(self):
+  def test_pr_side_policy_change_cannot_change_current_decision(self):
     candidate_tree = dict(self.main_files)
     policy_path = ".github/workflow-policy/trusted_workflow_policy.json"
-    validator_path = "scripts/verify_trusted_workflow_policy.py"
     candidate_tree[policy_path] = json.dumps(
         {"approved_bundles": [{"files": {"gate.py": "0" * 64}}]}
     ).encode()
-    candidate_tree[validator_path] = (
-        b"def verify_candidate(*_): return 'candidate-approved'\n"
-    )
     requested_paths = []
 
     def fetch(path):
@@ -555,12 +772,12 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         "owner/repository",
         "3" * 40,
         fetch,
+        lambda: {},
         lambda _ancestor, _descendant: True,
     )
     self.assertEqual(bundle["id"], "main")
     self.assertEqual(requested_paths, self.policy["protected_paths"])
     self.assertNotIn(policy_path, requested_paths)
-    self.assertNotIn(validator_path, requested_paths)
 
   def test_pr_side_policy_cannot_bless_a_modified_protected_file(self):
     candidate_tree = dict(self.main_files)
@@ -574,15 +791,13 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             }
         ).encode()
     )
-    candidate_tree["scripts/verify_trusted_workflow_policy.py"] = (
-        b"def verify_candidate(*_): return 'candidate-approved'\n"
-    )
     with self.assertRaisesRegex(trusted.PolicyError, "gate.py"):
       trusted.verify_candidate(
           copy.deepcopy(self.policy),
           "owner/repository",
           "3" * 40,
           candidate_tree.__getitem__,
+          lambda: {},
           lambda _ancestor, _descendant: True,
       )
 
@@ -668,7 +883,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
       with self.subTest(repository=repository, ref=ref):
         fetch.reset_mock()
         with self.assertRaises(trusted.PolicyError):
-          trusted.verify_candidate(self.policy, repository, ref, fetch)
+          trusted.verify_candidate(self.policy, repository, ref, fetch, lambda: {})
         fetch.assert_not_called()
 
   def test_cli_rejects_missing_and_duplicate_candidate_identity(self):
@@ -715,6 +930,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           repository,
           ref,
           lambda path: digests[path].encode("ascii"),
+          lambda: _tree_for_policy(policy),
           is_descendant,
       )
 
@@ -733,6 +949,64 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         "temporary-exact",
         {approved["mode"] for approved in policy["approved_bundles"]},
     )
+
+  def test_current_workflow_inventory_and_new_protected_digests_are_exact(self):
+    policy = trusted.load_policy(
+        ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
+    )
+    actual_workflows = sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / ".github/workflows").rglob("*")
+        if path.is_file()
+    )
+    self.assertEqual(actual_workflows, CURRENT_WORKFLOW_PATHS)
+    actions_root = ROOT / ".github/actions"
+    actual_actions = (
+        sorted(
+            path.relative_to(ROOT).as_posix()
+            for path in actions_root.rglob("*")
+            if path.is_file()
+        )
+        if actions_root.exists()
+        else []
+    )
+    self.assertEqual(
+        policy["protected_inventories"][".github/actions/"],
+        actual_actions,
+    )
+    protected = policy["approved_bundles"][0]["files"]
+    newly_protected = [
+        ".github/workflows/personal_installation_firmware.yml",
+        ".github/workflows/protocol.yml",
+        ".github/workflows/trusted_workflow_policy.yml",
+        "scripts/verify_trusted_workflow_policy.py",
+        "ota/requirements.lock",
+    ]
+    for path in newly_protected:
+      with self.subTest(path=path):
+        self.assertIn(path, policy["protected_paths"])
+        self.assertEqual(
+            protected[path],
+            trusted.normalized_sha256((ROOT / path).read_bytes()),
+        )
+
+  def test_publisher_requirements_lock_cannot_be_removed_or_modified(self):
+    policy = trusted.load_policy(
+        ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
+    )
+    lock_path = "ota/requirements.lock"
+
+    removed = copy.deepcopy(policy)
+    removed["protected_paths"].remove(lock_path)
+    del removed["approved_bundles"][0]["files"][lock_path]
+    trusted.validate_policy(removed)
+    with self.assertRaises(AssertionError):
+      self.assert_current_main_baseline_is_exact(removed)
+
+    modified = dict(MERGED_MAIN_DIGESTS)
+    modified[lock_path] = "0" * 64
+    with self.assertRaisesRegex(trusted.PolicyError, lock_path):
+      self.verify_merged_main_digest_map(policy, modified)
 
   def test_current_main_baseline_accepts_only_proven_descendant(self):
     policy = trusted.load_policy(
@@ -820,6 +1094,9 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
 
     partial = copy.deepcopy(policy)
     partial["protected_paths"] = OLD_FIVE_PATHS
+    partial["protected_inventories"][".github/workflows/"] = sorted(
+        path for path in OLD_FIVE_PATHS if path.startswith(".github/workflows/")
+    )
     for bundle in partial["approved_bundles"]:
       bundle["files"] = {
           path: MERGED_MAIN_DIGESTS[path] for path in OLD_FIVE_PATHS

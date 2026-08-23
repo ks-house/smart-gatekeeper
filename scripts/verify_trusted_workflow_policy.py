@@ -25,11 +25,19 @@ PROTECTED_PATH_PATTERN = re.compile(
     r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"
 )
 POLICY_KEYS = {
-    "format_version", "normalization", "protected_paths", "approved_bundles"
+    "format_version",
+    "normalization",
+    "protected_paths",
+    "protected_inventories",
+    "approved_bundles",
 }
 BUNDLE_KEYS = {"id", "mode", "source", "files"}
 SOURCE_KEYS = {"repository", "commit"}
 BUNDLE_MODES = {"temporary-exact", "persistent-baseline"}
+PROTECTED_INVENTORY_PREFIXES = (
+    ".github/actions/",
+    ".github/workflows/",
+)
 
 
 class PolicyError(RuntimeError):
@@ -63,8 +71,8 @@ def validate_policy(policy: Any) -> None:
   if not isinstance(policy, dict):
     raise PolicyError("policy: top-level value must be an object")
   _require_exact_keys(policy, POLICY_KEYS, "policy")
-  if policy["format_version"] != 2:
-    raise PolicyError("policy: format_version must be 2")
+  if policy["format_version"] != 3:
+    raise PolicyError("policy: format_version must be 3")
   if policy["normalization"] != NORMALIZATION:
     raise PolicyError(f"policy: normalization must be {NORMALIZATION}")
 
@@ -87,6 +95,43 @@ def validate_policy(policy: Any) -> None:
     raise PolicyError("policy: protected paths cannot contain dot segments")
   if len(paths) != len({path.casefold() for path in paths}):
     raise PolicyError("policy: protected_paths must be unique ignoring case")
+
+  inventories = policy["protected_inventories"]
+  if not isinstance(inventories, dict):
+    raise PolicyError("policy: protected_inventories must be an object")
+  _require_exact_keys(
+      inventories,
+      set(PROTECTED_INVENTORY_PREFIXES),
+      "policy.protected_inventories",
+  )
+  protected_path_set = set(paths)
+  for prefix in PROTECTED_INVENTORY_PREFIXES:
+    inventory = inventories[prefix]
+    label = f"policy.protected_inventories[{prefix!r}]"
+    if not isinstance(inventory, list):
+      raise PolicyError(f"{label}: must be an array")
+    if any(not isinstance(path, str) or not path for path in inventory):
+      raise PolicyError(f"{label}: every path must be a non-empty string")
+    if inventory != sorted(inventory):
+      raise PolicyError(f"{label}: paths must be sorted")
+    if len(inventory) != len(set(inventory)):
+      raise PolicyError(f"{label}: paths must be unique")
+    if len(inventory) != len({path.casefold() for path in inventory}):
+      raise PolicyError(f"{label}: paths must be unique ignoring case")
+    if any(
+        not PROTECTED_PATH_PATTERN.fullmatch(path) or not path.startswith(prefix)
+        for path in inventory
+    ):
+      raise PolicyError(
+          f"{label}: paths must be canonical files below the exact prefix"
+      )
+    expected_inventory = {
+        path for path in protected_path_set if path.startswith(prefix)
+    }
+    if set(inventory) != expected_inventory:
+      raise PolicyError(
+          f"{label}: paths must exactly match protected_paths below the prefix"
+      )
 
   bundles = policy["approved_bundles"]
   if not isinstance(bundles, list) or not bundles:
@@ -155,11 +200,83 @@ def normalized_sha256(content: bytes) -> str:
   return hashlib.sha256(normalize_content(content)).hexdigest()
 
 
+def _verify_protected_inventories(
+    policy: dict[str, Any], candidate_tree: Any
+) -> None:
+  if not isinstance(candidate_tree, dict):
+    raise PolicyError("candidate tree must be a path-to-entry object")
+
+  relevant_entries: dict[str, dict[str, str]] = {}
+  relevant_casefold: set[str] = set()
+  for path, entry in candidate_tree.items():
+    if not isinstance(path, str) or not path or "\x00" in path:
+      raise PolicyError("candidate tree contains an invalid path")
+    matching_prefixes = [
+        prefix
+        for prefix in PROTECTED_INVENTORY_PREFIXES
+        if path.casefold() == prefix[:-1].casefold()
+        or path.casefold().startswith(prefix.casefold())
+    ]
+    if not matching_prefixes:
+      continue
+    prefix = matching_prefixes[0]
+    if not (path == prefix[:-1] or path.startswith(prefix)):
+      raise PolicyError(
+          f"candidate tree contains non-canonical namespace casing: {path}"
+      )
+    if (
+        not PROTECTED_PATH_PATTERN.fullmatch(path)
+        or any(segment in (".", "..") for segment in path.split("/"))
+    ):
+      raise PolicyError(f"candidate tree contains non-canonical protected path: {path}")
+    folded = path.casefold()
+    if folded in relevant_casefold:
+      raise PolicyError(
+          f"candidate tree contains duplicate protected path ignoring case: {path}"
+      )
+    relevant_casefold.add(folded)
+    if not isinstance(entry, dict) or set(entry) != {"mode", "type"}:
+      raise PolicyError(f"candidate tree entry is malformed: {path}")
+    mode = entry["mode"]
+    entry_type = entry["type"]
+    if not isinstance(mode, str) or not isinstance(entry_type, str):
+      raise PolicyError(f"candidate tree entry metadata is malformed: {path}")
+    if path == prefix[:-1]:
+      if entry_type != "tree" or mode != "040000":
+        raise PolicyError(
+            f"candidate protected namespace root must be a 040000 tree: {path}"
+        )
+    elif entry_type == "tree":
+      if mode != "040000":
+        raise PolicyError(f"candidate tree directory has invalid mode: {path}")
+    elif entry_type != "blob" or mode != "100644":
+      raise PolicyError(
+          f"candidate protected entry must be a 100644 blob: {path}"
+      )
+    relevant_entries[path] = entry
+
+  for prefix in PROTECTED_INVENTORY_PREFIXES:
+    actual_files = sorted(
+        path
+        for path, entry in relevant_entries.items()
+        if path.startswith(prefix) and entry["type"] == "blob"
+    )
+    expected_files = policy["protected_inventories"][prefix]
+    if actual_files != expected_files:
+      added = sorted(set(actual_files) - set(expected_files))
+      removed = sorted(set(expected_files) - set(actual_files))
+      raise PolicyError(
+          f"candidate protected inventory mismatch for {prefix}: "
+          f"added={added}; removed={removed}"
+      )
+
+
 def verify_candidate(
     policy: dict[str, Any],
     candidate_repository: str,
     candidate_ref: str,
     fetch_candidate: Callable[[str], bytes],
+    fetch_candidate_tree: Callable[[], dict[str, dict[str, str]]],
     is_descendant: Callable[[str, str], bool] | None = None,
 ) -> dict[str, Any]:
   """Return the byte- and source-authorized trusted bundle."""
@@ -197,6 +314,7 @@ def verify_candidate(
     ]
   if not eligible_bundles:
     raise PolicyError("candidate source repository/ref is not authorized")
+  _verify_protected_inventories(policy, fetch_candidate_tree())
   actual = {
       path: normalized_sha256(fetch_candidate(path))
       for path in policy["protected_paths"]
@@ -270,6 +388,66 @@ class GitHubContentsFetcher:
       return base64.b64decode("".join(encoded.split()), validate=True)
     except ValueError as error:
       raise PolicyError(f"GitHub API returned invalid base64 for {path}") from error
+
+  def fetch_tree(self) -> dict[str, dict[str, str]]:
+    quoted_ref = urllib.parse.quote(self._ref, safe="")
+    url = (
+        f"{self._api_url}/repos/{self._repository}/git/trees/{quoted_ref}"
+        "?recursive=1"
+    )
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {self._token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "smart-gatekeeper-trusted-workflow-policy",
+        },
+    )
+    try:
+      with urllib.request.urlopen(request, timeout=30) as response:
+        payload_bytes = response.read()
+    except urllib.error.HTTPError as error:
+      raise PolicyError(
+          f"GitHub API rejected recursive tree: HTTP {error.code}"
+      ) from error
+    except urllib.error.URLError as error:
+      raise PolicyError(
+          f"GitHub API recursive tree failed: {error.reason}"
+      ) from error
+
+    try:
+      payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+      raise PolicyError("GitHub API returned invalid recursive tree JSON") from error
+    if not isinstance(payload, dict) or payload.get("truncated") is not False:
+      raise PolicyError("GitHub API recursive tree is invalid or truncated")
+    raw_tree = payload.get("tree")
+    if not isinstance(raw_tree, list):
+      raise PolicyError("GitHub API recursive tree omitted entries")
+
+    tree: dict[str, dict[str, str]] = {}
+    for index, raw_entry in enumerate(raw_tree):
+      if not isinstance(raw_entry, dict):
+        raise PolicyError(f"GitHub API tree entry {index} is not an object")
+      path = raw_entry.get("path")
+      mode = raw_entry.get("mode")
+      entry_type = raw_entry.get("type")
+      sha = raw_entry.get("sha")
+      if (
+          not isinstance(path, str)
+          or not path
+          or "\x00" in path
+          or not isinstance(mode, str)
+          or not isinstance(entry_type, str)
+          or not isinstance(sha, str)
+          or not COMMIT_PATTERN.fullmatch(sha)
+      ):
+        raise PolicyError(f"GitHub API tree entry {index} is malformed")
+      if path in tree:
+        raise PolicyError(f"GitHub API tree contains duplicate path: {path}")
+      tree[path] = {"mode": mode, "type": entry_type}
+    return tree
 
   def is_descendant(self, ancestor: str, descendant: str) -> bool:
     if not COMMIT_PATTERN.fullmatch(ancestor):
@@ -354,6 +532,7 @@ def main() -> int:
         args.candidate_repository,
         args.candidate_ref,
         fetcher,
+        fetcher.fetch_tree,
         fetcher.is_descendant,
     )
   except PolicyError as error:
