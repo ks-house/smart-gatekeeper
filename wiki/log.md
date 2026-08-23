@@ -2941,3 +2941,9 @@
 
 - The first live audit authenticated to SSH but the SFTP account could not use `sudo` with its login password. Updated the read-only helper to inspect user-readable certificate metadata and Docker mounts without privilege while recording sudo capability only as a boolean.
 - The first attempt changed no NAS file, container or certificate; it returned no certificate metadata because every fixed audit command had been wrapped in unavailable sudo.
+
+## [2026-08-23] fix | Audit user-readable NAS certificates through SFTP
+
+- The second live attempt confirmed the deployment account is SFTP-only and cannot execute even unprivileged SSH commands, so shell, Docker and DSM certificate paths remain inaccessible through that account.
+- Added a bounded SFTP-only fallback that lists only matching Docker project roots, visits at most 500 entries to depth four, skips every private-key filename and parses only four fixed public-certificate filenames up to 64 KiB into non-secret metadata.
+- The fallback remains read-only and reports only path, size, subject, issuer, validity and SHA-256; it never uploads, renames, removes or reloads any NAS file.

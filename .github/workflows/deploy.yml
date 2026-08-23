@@ -497,9 +497,12 @@ jobs:
           import os
           import re
           import shlex
+          import stat
           from pathlib import Path
 
           import paramiko
+          from cryptography import x509
+          from cryptography.hazmat.primitives import hashes
 
           required = ("NAS_HOST", "NAS_USER", "NAS_PASSWORD", "NAS_PORT", "NAS_KNOWN_HOSTS")
           missing = [name for name in required if not os.environ.get(name)]
@@ -522,7 +525,13 @@ jobs:
           client = paramiko.SSHClient()
           client.load_host_keys(str(known_hosts))
           client.set_missing_host_key_policy(paramiko.RejectPolicy())
-          report = {"schema_version": 1, "read_only": True, "commands": [], "containers": []}
+          report = {
+              "schema_version": 1,
+              "read_only": True,
+              "commands": [],
+              "containers": [],
+              "sftp_certificate_files": [],
+          }
 
           def run(command, sudo=False):
               remote_command = command
@@ -606,6 +615,74 @@ jobs:
                           if mounted_error.strip():
                               entry["mounted_certificate_error"] = mounted_error.strip()
                   report["containers"].append(entry)
+
+              with client.open_sftp() as sftp:
+                  try:
+                      docker_entries = sftp.listdir_attr("/docker")
+                  except OSError as exc:
+                      report["sftp_docker_error"] = str(exc).replace(
+                          password, "[REDACTED]")
+                      docker_entries = []
+                  candidate_roots = []
+                  for entry in docker_entries:
+                      if not stat.S_ISDIR(entry.st_mode):
+                          continue
+                      if re.search(
+                          r"mqtt|mosquitto|smartbox|gatekeeper",
+                          entry.filename,
+                          re.IGNORECASE,
+                      ):
+                          candidate_roots.append("/docker/" + entry.filename)
+                  report["sftp_candidate_roots"] = sorted(candidate_roots)
+
+                  visited = 0
+                  certificate_names = {
+                      "cert.pem", "broker.pem", "fullchain.pem", "ca.pem"
+                  }
+
+                  def walk(directory, depth):
+                      nonlocal visited
+                      if depth < 0 or visited >= 500:
+                          return
+                      try:
+                          entries = sftp.listdir_attr(directory)
+                      except OSError:
+                          return
+                      for entry in entries:
+                          if visited >= 500:
+                              return
+                          visited += 1
+                          path = directory.rstrip("/") + "/" + entry.filename
+                          if stat.S_ISDIR(entry.st_mode):
+                              walk(path, depth - 1)
+                              continue
+                          if (
+                              not stat.S_ISREG(entry.st_mode)
+                              or entry.filename.lower() not in certificate_names
+                              or entry.st_size <= 0
+                              or entry.st_size > 65536
+                          ):
+                              continue
+                          item = {"path": path, "size": entry.st_size}
+                          try:
+                              with sftp.open(path, "rb") as stream:
+                                  data = stream.read(65537)
+                              certificate = x509.load_pem_x509_certificate(data)
+                              item.update({
+                                  "subject": certificate.subject.rfc4514_string(),
+                                  "issuer": certificate.issuer.rfc4514_string(),
+                                  "not_before": certificate.not_valid_before_utc.isoformat(),
+                                  "not_after": certificate.not_valid_after_utc.isoformat(),
+                                  "sha256": certificate.fingerprint(
+                                      hashes.SHA256()).hex(),
+                              })
+                          except Exception as exc:
+                              item["parse_error"] = exc.__class__.__name__
+                          report["sftp_certificate_files"].append(item)
+
+                  for root in candidate_roots:
+                      walk(root, 4)
+                  report["sftp_entries_visited"] = visited
           finally:
               client.close()
               report_path = Path("evidence/nas-mqtt-certificate-audit.json")
