@@ -17,9 +17,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "b3ebcc8329c327731286f70f54ef05fb432120cf"
+MERGED_MAIN_COMMIT = "40929cda90c40afbb70d49760a7ec06ab657dc25"
 MERGED_MAIN_DIGEST_LINES = """\
-.github/workflows/deploy.yml f6245ce4f8b4c78ebd0e312d216233ee5cd8bbd188f0deb6a0fbedeee18b85ac
+.github/workflows/deploy.yml 91d8152784e12e86c9f3ecad75e3e6c646d3a42511526c66081d1f74be50068d
 .github/workflows/build_app.yml b581543a03e32e6a641a7b7cefd7050ec2467d110b608f34fb31f54aad5dafec
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
 .github/workflows/personal_installation_firmware.yml 391b1c2db8c1dc2bb23a243ada314cc878f4edcf8be235a1dc31536b8818a4ed
@@ -134,6 +134,7 @@ RETIRED_SOURCE_COMMITS = {
     "d4a3da40b4b6772bb1edcd4583eeb59951d6e7f6",
     "02090c31b6813d6d1691262809dfc86330283a9d",
     "e6b1b323955d81b1b2741cf021247729574ce6af",
+    "b3ebcc8329c327731286f70f54ef05fb432120cf",
 }
 
 
@@ -396,10 +397,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     self.assertEqual(len(policy["approved_bundles"]), 2)
     temporary, persistent = policy["approved_bundles"]
-    self.assertEqual(temporary["id"], "temporary-mobile-nas-b3ebcc83")
+    self.assertEqual(temporary["id"], "temporary-wifi-weak-link-40929cda")
     self.assertEqual(temporary["mode"], "temporary-exact")
     self.assertEqual(
-        persistent["id"], "future-mobile-nas-b3ebcc83-persistent-baseline"
+        persistent["id"], "future-wifi-weak-link-40929cda-persistent-baseline"
     )
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
@@ -957,7 +958,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     bundle = self.verify_merged_main_digest_map(
         policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(bundle["id"], "temporary-mobile-nas-b3ebcc83")
+    self.assertEqual(bundle["id"], "temporary-wifi-weak-link-40929cda")
     ancestry.assert_not_called()
     self.assertEqual(
         {"temporary-exact", "persistent-baseline"},
@@ -990,7 +991,6 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     protected = policy["approved_bundles"][0]["files"]
     locally_unchanged_protected = [
-        ".github/workflows/deploy.yml",
         ".github/workflows/trusted_workflow_policy.yml",
         "scripts/verify_trusted_workflow_policy.py",
         "ota/requirements.lock",
@@ -1039,7 +1039,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         is_descendant=ancestry,
     )
     self.assertEqual(
-        bundle["id"], "future-mobile-nas-b3ebcc83-persistent-baseline"
+        bundle["id"], "future-wifi-weak-link-40929cda-persistent-baseline"
     )
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 

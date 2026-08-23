@@ -3254,6 +3254,14 @@
 - The remote recursive tree is untruncated with 62 regular protected blobs, seven workflows and zero local Actions; the live verifier selected `temporary-mobile-nas-b3ebcc83`. The focused transition suite passed 42/42, full discovery passed 278/278, and JSON/Python parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed in the LF clean clone.
 - This policy-only authorization reads no production Secret, publishes no APK, writes no NAS state, installs no app, and claims no Target OTA, Android install, reboot-health, Home Assistant, relay, physical, or commercial evidence.
 
+## [2026-08-24] compile | Authorize ESP32-C6 weak-link Wi-Fi recovery
+
+- Replaced the completed mobile transition identities with one temporary-exact and one future persistent identity for reviewed PR #112 commit `40929cda90c40afbb70d49760a7ec06ab657dc25`; both identities bind the same complete ordered 62-file normalized digest map.
+- Verified that `deploy.yml` is the only protected change from current main, with normalized SHA-256 `91d8152784e12e86c9f3ecad75e3e6c646d3a42511526c66081d1f74be50068d`; it pins the reviewed LF `WifiManager.cpp` input at SHA-256 `e5c32190a302b8e934e18dfdf1eb21771044cea2ce6ec82571b4fc77b5e18571`.
+- The pre-authorization PR #112 Hosted Trusted, OTA and firmware checks correctly fail closed on that new protected digest; connectivity regression tests pass, but no earlier canary is treated as production publication evidence.
+- The focused transition suite passed 42/42; JSON parsing, exact two-map equality, the OTA contract, all seven workflow `actionlint` checks, live GitHub exact-candidate verification and whitespace validation passed. Full Windows discovery passed 280/282; only the unchanged checkout-CRLF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
+
 ## [2026-08-24] test | Verify exact H10-H11 Target OTA and isolate weak home RF
 
 - Verified exact H10 and H11 Target CI/NAS artifacts, signatures, authenticated decryption, ESP32-C6 N16 image structure and 5,543,952-byte per-slot headroom; H11 is the observed running image.
@@ -3268,3 +3276,9 @@
 - This code can improve marginal association compatibility but cannot replace the installation policy's -75 dBm minimum and -67 dBm preferred RF targets; exact merged-main physical A/B remains required.
 - The local production profile built a valid 1,799,008-byte ESP32-C6 16 MB/DIO/80 MHz image with 5,541,024 bytes remaining in either 7,340,032-byte OTA slot; the OTA contract and 283 relevant repository tests passed, while two unchanged Windows checkout CRLF tests remained the known materialization-only failures.
 - Updated the privileged Target compiler inventory and its regression to the exact LF Git-blob SHA-256 of the revised `WifiManager.cpp`; production Secret materialization and NAS publication remain blocked until the separately reviewed trusted-policy authorization accepts this protected workflow byte.
+
+## [2026-08-24] compile | Connect weak-link feature to trusted policy main
+
+- Merged policy main `d7ec44a99a9380d8e9a1b05cf8040af6f750f999` into the weak-link feature without rebasing or squashing; resolved only the append-only log by retaining both histories.
+- Recomputed all 62 normalized protected-file digests against the two identical policy maps and retained exactly seven workflows with zero local Actions. The OTA contract and all workflow `actionlint` checks passed.
+- Full merged-tree Windows discovery passed 283/285; only the unchanged checkout-CRLF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed. Production publication remains gated on fresh hosted checks after push.
