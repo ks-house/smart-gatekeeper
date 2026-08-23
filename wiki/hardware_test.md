@@ -172,8 +172,20 @@ relay safety or final wall-install acceptance.
 
 Immediately after this observation the Target content-encryption key was rotated
 without recording its value. GitHub `personal-auto-ota`, GitHub `production` and
-the ignored local headers now share key ID `personal-target-content-20260824-2`.
-The first image containing that new key must be installed by another
-NVS-preserving USB bootstrap. A subsequent strictly newer main release is then
-required to prove encrypted periodic HTTPS download, inactive-slot install,
-reboot and health-valid marking.
+the ignored local headers share the policy-pinned key ID
+`personal-target-content-20260824-1`. The key material changed while this label
+remained fixed because the exact workflow contract rejected a different ID; the
+label alone therefore does not identify the material epoch. Exact firmware
+commit and manifest binding are required when auditing this emergency rotation.
+
+## 2026-08-24 rotated-key H4 Target USB bootstrap and recovery
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact release identity | GitHub Actions Target run `32657300554`, attempt 2, published exact main `3927a978a8727eac086e88d20bfaa2d414908dbc` as `2.1.234+main.g3927a97`; signed manifest, encrypted artifact and public HTTPS exact-byte readback passed | PASS for CI/NAS artifact identity |
+| Artifact binding and capacity | The encrypted artifact was 1,703,428 bytes with SHA-256 `45ff37d858d5fb38a4f2aa397e5809e66be7b42be9cc1b10d97fe32acd18da7f`; authenticated local decryption produced a 1,703,392-byte ESP32-C6 N16 image with SHA-256 `8910bc7cfeef47713c5be57fbc4ab72d379b7435f84949ec49181a4e769dfbcb`, using 23.21% of one 7,340,032-byte OTA slot | PASS |
+| Rotated-key bootstrap | Wrote only the exact H4 application to selected `app0` at `0x10000`; NVS, OTA data, partition table, bootloader and `app1` were not erased or overwritten | PASS for the one required NVS-preserving USB bootstrap |
+| AP+STA automatic recovery | The initial saved-credential STA attempt timed out and opened `SmartGatekeeper-Recovery`. Without credential entry or physical intervention, AP+STA retry obtained `192.168.35.19` about 54 seconds after the first attempt, then closed the recovery condition | PASS for one boot-failure recovery path; repeated power/AP outage soak remains pending |
+| MQTTS after late Wi-Fi | About five seconds after DHCP recovery, the Target completed verified MQTTS authentication, subscribed to both exact per-Target topics and published boot diagnostics/config | PASS for late-Wi-Fi MQTT initialization and one recovered session |
+| Home Assistant convergence | Live read-only entities reported `2.1.234+main.g3927a97`, `192.168.35.19`, IDLE/closed, RSSI about -84 dBm and current diagnostics/config. The HA device-card metadata header still showed an older static discovery version | PASS for live sensor convergence; discovery metadata and seven stale legacy controls remain cleanup work |
+| Inactive-slot OTA and health | H4 was intentionally the USB bootstrap carrying the rotated key material. The strictly newer main release created by this documentation change is the first eligible encrypted periodic HTTPS update to inactive `app1` | PENDING physical H5 install/reboot/health-valid proof |

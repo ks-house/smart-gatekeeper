@@ -494,10 +494,14 @@ does not erase NVS or the active slot.
 Schema-v1 firmware cannot consume this envelope. The Target received its first
 NVS-preserving USB bootstrap to schema-v2 consumer `2.1.233+main.g9e9114b` on
 2026-08-24, but a subsequent content-key rotation intentionally invalidated its
-ability to decrypt future envelopes. The first exact-main image containing key
-ID `personal-target-content-20260824-2` therefore requires one additional
-NVS-preserving USB bootstrap. A strictly newer exact-main periodic HTTPS OTA
-must then prove inactive-slot install, reboot and health-valid marking.
+ability to decrypt future envelopes. Exact main `2.1.234+main.g3927a97` contains
+the rotated material and was therefore installed by one additional
+NVS-preserving USB bootstrap. The workflow's exact contract kept the
+policy-pinned ID `personal-target-content-20260824-1`; this emergency rotation
+must be audited by exact firmware commit and manifest because the unchanged ID
+does not distinguish the two material epochs. A strictly newer exact-main
+periodic HTTPS OTA must now prove inactive-slot install, reboot and health-valid
+marking.
 The content key is embedded in firmware; without ESP32 flash encryption this is
 NAS-at-rest/distribution confidentiality, not resistance to an attacker with
 physical flash read access.
