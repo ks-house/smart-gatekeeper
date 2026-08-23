@@ -487,6 +487,9 @@ OTA 관련 workflow는 third-party/action 호출을 모두 40자리 commit SHA�
   공식 archive의 URL·byte size·SHA-256을 모두 고정하고 path traversal 검사 후 압축 해제
 - Android verification: 고정 Java로 `build-tools/36.0.0/lib/apksigner.jar`를 직접 실행하고
   `cmdline-tools/12.0/bin/apkanalyzer`를 사용; runner SDK나 대체 버전을 탐색하지 않음
+- Secret-free PR canary도 metadata 생성 전에 SDK Manager로 exact `build-tools;36.0.0`과
+  `cmdline-tools;12.0` 패키지를 설치하고 두 실행 파일을 확인합니다. Production personal publisher는
+  이 runner 설치를 신뢰하지 않고 위의 size/SHA-256 고정 공식 archive를 별도로 사용합니다.
 - main Android wrapper: Gradle `9.1.0`,
   `distributionSha256Sum=b84e04fa845fecba48551f425957641074fcc00a88a84d2aae5808743b35fc85`
 - vendored `flutter_beacon_local` wrapper: Gradle `5.4.1`,

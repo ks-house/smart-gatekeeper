@@ -2966,6 +2966,7 @@ def validate_mobile_build_workflow(
   steps = parsed.get("jobs", {}).get("build_apk", {}).get("steps", [])
   names = [step.get("name") for step in steps if isinstance(step, dict)]
   required_names = [
+      "Install exact Android canary inspection tools",
       "Check Dart formatting",
       "Analyze Flutter code",
       "Run Flutter unit tests",
@@ -2980,7 +2981,8 @@ def validate_mobile_build_workflow(
   position = {name: names.index(name) for name in required_names}
   first_build = position["Build Android debug APK for public canary"]
   if not (
-      position["Check Dart formatting"]
+      position["Install exact Android canary inspection tools"]
+      < position["Check Dart formatting"]
       < position["Analyze Flutter code"]
       < position["Run Flutter unit tests"]
       < first_build
@@ -3013,6 +3015,20 @@ def validate_mobile_build_workflow(
       raise GateError(
           f"{path}: PR-reachable step '{step.get('name')}' references a production secret"
       )
+  canary_tools = by_name["Install exact Android canary inspection tools"]
+  if canary_tools.get("if") is not None or canary_tools.get("env"):
+    raise GateError(f"{path}: public canary Android tool setup must be unconditional")
+  canary_tools_run = str(canary_tools.get("run", ""))
+  for fragment in (
+      'SDKMANAGER="$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager"',
+      '"$SDKMANAGER" --install "build-tools;36.0.0" "cmdline-tools;12.0"',
+      'test -x "$ANDROID_SDK/build-tools/36.0.0/apksigner"',
+      'test -x "$ANDROID_SDK/cmdline-tools/12.0/bin/apkanalyzer"',
+  ):
+    if fragment not in canary_tools_run:
+      raise GateError(f"{path}: exact public canary Android tools are incomplete")
+  if "secrets." in canary_tools_run:
+    raise GateError(f"{path}: public canary Android tool setup must remain secret-free")
   if "scripts/sign_mobile_manifest.py" in content:
     raise GateError(
         f"{path}: mobile manifest execution must remain inside protected ota_contract_gate.py"

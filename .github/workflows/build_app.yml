@@ -73,6 +73,17 @@ jobs:
       - name: Accept Android Licenses
         run: yes | flutter doctor --android-licenses || true
 
+      - name: Install exact Android canary inspection tools
+        run: |
+          ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$ANDROID_SDK"
+          SDKMANAGER="$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "build-tools;36.0.0" "cmdline-tools;12.0"
+          test -x "$ANDROID_SDK/build-tools/36.0.0/apksigner"
+          test -x "$ANDROID_SDK/cmdline-tools/12.0/bin/apkanalyzer"
+
       - name: Install dependencies
         run: |
           cd gatekeeper_app

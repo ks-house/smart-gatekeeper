@@ -3121,6 +3121,12 @@
 - Compared with PR #95, exactly eight protected files change: six workflows, `scripts/ota_contract_gate.py`, and `ota/requirements.txt`. The focused version-3 transition suite passed 42/42.
 - This policy-only authorization neither reads production Secrets nor publishes firmware/APKs, writes NAS state, installs software, reboots a Target, or claims health, rollback, Home Assistant, physical, or commercial evidence.
 
+## [2026-08-24] fix | Install exact Android tools before public canary metadata
+
+- The hosted PR canary reached APK creation but failed before metadata because the runner did not expose cmdline-tools 12.0 at the exact path required by the verifier.
+- Added a secret-free preflight that installs exact `build-tools;36.0.0` and `cmdline-tools;12.0` packages and confirms both inspection executables before tests/build; the personal signing publisher still uses independently size/SHA-256-pinned official archives.
+- Extended the protected OTA contract and mutation suite so replacing the canary package version with a mutable alias fails closed. This source fix requires a fresh complete-bundle authorization before merge.
+
 ## [2026-08-24] fix | Re-authorize the exact Android canary tool preflight
 
 - A hosted run proved analyzer, Flutter tests, native GATT tests and APK build passed but metadata could not find cmdline-tools 12.0 at the exact expected runner path.
