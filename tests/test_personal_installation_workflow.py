@@ -32,6 +32,7 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
     ):
       self.assertIn(name, job_text)
     self.assertIn('test "$SECRET_WIFI_SSID" != "YOUR_WIFI_SSID"', self.raw)
+    self.assertNotIn('SECRET_MQTT_USER" =~', self.raw)
 
   def test_only_encrypted_one_day_bundle_is_uploaded(self):
     upload = next(

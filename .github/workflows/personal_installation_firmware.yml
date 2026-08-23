@@ -78,7 +78,6 @@ jobs:
           done
           test "$SECRET_WIFI_SSID" != "YOUR_WIFI_SSID" || fail_secret_contract "SECRET_WIFI_SSID is placeholder"
           test "$SECRET_WIFI_PASSWORD" != "YOUR_WIFI_PASSWORD" || fail_secret_contract "SECRET_WIFI_PASSWORD is placeholder"
-          [[ "$SECRET_MQTT_USER" =~ ^[0-9a-f]{12}$ ]] || fail_secret_contract "SECRET_MQTT_USER format"
           [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX format"
           [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX format"
           test "${#SECRET_LOCAL_RECOVERY_AP_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_AP_PASSWORD length"
