@@ -79,14 +79,14 @@
   },
   "approved_bundles": [
     {
-      "id": "temporary-mobile-nas-b3ebcc83",
+      "id": "temporary-wifi-weak-link-40929cda",
       "mode": "temporary-exact",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "b3ebcc8329c327731286f70f54ef05fb432120cf"
+        "commit": "40929cda90c40afbb70d49760a7ec06ab657dc25"
       },
       "files": {
-        ".github/workflows/deploy.yml": "f6245ce4f8b4c78ebd0e312d216233ee5cd8bbd188f0deb6a0fbedeee18b85ac",
+        ".github/workflows/deploy.yml": "91d8152784e12e86c9f3ecad75e3e6c646d3a42511526c66081d1f74be50068d",
         ".github/workflows/build_app.yml": "b581543a03e32e6a641a7b7cefd7050ec2467d110b608f34fb31f54aad5dafec",
         ".github/workflows/ota_contract.yml": "ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d",
         ".github/workflows/personal_installation_firmware.yml": "391b1c2db8c1dc2bb23a243ada314cc878f4edcf8be235a1dc31536b8818a4ed",
@@ -151,14 +151,14 @@
       }
     },
     {
-      "id": "future-mobile-nas-b3ebcc83-persistent-baseline",
+      "id": "future-wifi-weak-link-40929cda-persistent-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "b3ebcc8329c327731286f70f54ef05fb432120cf"
+        "commit": "40929cda90c40afbb70d49760a7ec06ab657dc25"
       },
       "files": {
-        ".github/workflows/deploy.yml": "f6245ce4f8b4c78ebd0e312d216233ee5cd8bbd188f0deb6a0fbedeee18b85ac",
+        ".github/workflows/deploy.yml": "91d8152784e12e86c9f3ecad75e3e6c646d3a42511526c66081d1f74be50068d",
         ".github/workflows/build_app.yml": "b581543a03e32e6a641a7b7cefd7050ec2467d110b608f34fb31f54aad5dafec",
         ".github/workflows/ota_contract.yml": "ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d",
         ".github/workflows/personal_installation_firmware.yml": "391b1c2db8c1dc2bb23a243ada314cc878f4edcf8be235a1dc31536b8818a4ed",
