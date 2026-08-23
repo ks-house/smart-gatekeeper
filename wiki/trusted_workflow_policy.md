@@ -63,30 +63,40 @@ fail closed. When an exact temporary identity and a persistent baseline both cov
 the exact temporary match takes precedence without invoking ancestry; later descendants use only the one
 persistent baseline.
 
-PR #105 completed the preceding runtime-fix merge as main
-`02090c31b6813d6d1691262809dfc86330283a9d`. Later documentation and evidence descendants retained that
-complete protected bundle through H7 main `e00ebe84dbd7a4c9323b21e393429c9d44f4cdb3`. The exact GCM-alignment
-candidate `e6b1b323955d81b1b2741cf021247729574ce6af` is a direct child of H7. It carries partial ciphertext
-between ESP32-C6 GCM ALT updates so every non-final call is block-aligned, and the protected `deploy.yml` pins
-the corrected `OtaManager.cpp` production input. Its normalized workflow digest is
-`f6245ce4f8b4c78ebd0e312d216233ee5cd8bbd188f0deb6a0fbedeee18b85ac`.
+The exact GCM-alignment feature `e6b1b323955d81b1b2741cf021247729574ce6af` and its bounded transition were
+connected into current main `9556981704226051e07918ac4b83bb9b50273ee1`. That main retains normalized
+`deploy.yml` digest `f6245ce4f8b4c78ebd0e312d216233ee5cd8bbd188f0deb6a0fbedeee18b85ac`, which pins the corrected ESP32-C6
+`OtaManager.cpp` production input.
 
-This bounded authorization replaces the historical `current-main-baseline` with exactly two identities for
-that immutable reviewed feature commit:
+The initial mobile NAS publisher commit `597cc13201b16af6f78a7206bd750476c16a5886` still descended directly
+from H7 and would therefore have dropped that GCM workflow pin. Independent protected-tree comparison rejected
+that stale combination. Exact combined candidate `b3ebcc8329c327731286f70f54ef05fb432120cf` instead merge-parents
+the reviewed mobile commit and current main, preserving the GCM deploy digest. Relative to current main, only
+two protected paths change:
 
-- `temporary-ota-gcm-e6b1b323` is a `temporary-exact` identity for only that repository commit.
-- `future-ota-gcm-e6b1b323-persistent-baseline` is the sole `persistent-baseline`; it permits only that commit
-  or a GitHub Compare-proven descendant with the same complete protected bytes.
+- `.github/workflows/build_app.yml` becomes
+  `b581543a03e32e6a641a7b7cefd7050ec2467d110b608f34fb31f54aad5dafec` and adds an exact 30-minute publisher
+  job ceiling.
+- `scripts/ota_contract_gate.py` becomes
+  `634d8542da17838ded1a3e6e75f5e7f94113f2e3bc0a2d47aaa05bd28b780437` and binds regular-file/220 MiB
+  readback limits, bounded prefetch, SFTP idle timeout, preflight-state reuse and immutable-history behavior.
+
+This bounded authorization replaces both GCM transition identities with exactly two identities for that
+immutable combined mobile candidate:
+
+- `temporary-mobile-nas-b3ebcc83` is a `temporary-exact` identity for only that repository commit.
+- `future-mobile-nas-b3ebcc83-persistent-baseline` is the sole `persistent-baseline`; it permits only that
+  commit or a GitHub Compare-proven descendant with the same complete protected bytes.
 
 Both identities carry the same ordered 62-file digest map and unchanged seven-workflow/zero-local-action
 inventories. Remote GitHub tree verification found `truncated=false`, all protected entries as regular
-`100644 blob` objects, exactly seven workflow files, and no local Action entries. Compared with H7 main,
-`deploy.yml` is the only protected file that changes. The previous persistent identity is intentionally
-removed because the schema permits only one persistent baseline per repository.
+`100644 blob` objects, exactly seven workflow files, and no local Action entries. The former GCM identities are
+removed because the schema permits only one persistent baseline per repository; their corrected deploy bytes
+remain inside the new complete map.
 
-Regression tests pin the exact repository, candidate SHA, two IDs and modes, identical complete maps, ordered
-62-path set, exact workflow/action inventories, and every digest. They prove exact-match precedence without an
-ancestry call and require explicit ancestry for later descendants. They also reject an extra bundle, fork,
+Regression tests pin the exact repository, combined candidate SHA, two IDs and modes, identical complete maps,
+ordered 62-path set, exact workflow/action inventories, and every digest. They prove exact-match precedence
+without an ancestry call and require explicit ancestry for later descendants. They also reject an extra bundle, fork,
 retired or altered commit, unproven/diverged history, case/path variant, old five-path partial set, missing or
 reordered path, swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action
 additions, removals, renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed
@@ -111,12 +121,13 @@ separately app-pinned status identity and repository policy outside the mutable 
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
 main; later protected bundles completed the same sequence, including PR #86/#85, PR #100/#101 and
-PR #106/#105. This authorization starts from exact H7 main and changes only policy data, regression tests, this
-guide, and the append-only log. It does not modify the validator, trusted workflow, or any other protected
-byte. Its hosted check therefore executes H7's trusted-base policy and can admit this policy-only descendant
-through the unchanged current protected bundle rooted at `02090c3`. A green Hosted Trusted check is required
-before merge; no branch-protection change is authorized. That green check does not close the version-3
-self-policy or same-status-context producer residual.
+PR #106/#105. This authorization starts from exact current main `95569817` and changes only policy data,
+regression tests, this guide, and the append-only log. It does not modify the validator, trusted workflow, or
+any other protected byte. Its hosted check therefore executes current main's GCM transition policy and can
+admit this policy-only descendant through `future-ota-gcm-e6b1b323-persistent-baseline`: the candidate descends
+from `e6b1b323` and retains the same complete protected bytes. A green Hosted Trusted check is required before
+merge; no branch-protection change is authorized. That green check does not close the version-3 self-policy or
+same-status-context producer residual.
 
 ## 4. Rotation procedure
 
@@ -127,18 +138,20 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For this GCM correction, first merge this policy-only authorization from H7 main. Then merge that new trusted
-main into exact feature commit `e6b1b323955d81b1b2741cf021247729574ce6af` without rebasing or squashing.
-Verify that all 62 protected Git objects and both namespace inventories remain unchanged, push the connected
-merge commit, and obtain fresh Hosted Trusted, OTA contract, ESP32-C6 firmware and Android canary checks. Merge
-the feature PR through a merge commit so the reviewed feature SHA remains an ancestor of resulting main.
+For this mobile NAS publisher correction, first merge this policy-only authorization from current main. Exact
+combined feature `b3ebcc8329c327731286f70f54ef05fb432120cf` already retains both the reviewed mobile parent and
+current GCM main parent. Merge the newly trusted main into that exact commit once more without rebasing or
+squashing, verify that all 62 protected Git objects and both namespace inventories remain unchanged, push the
+policy-connected head, and obtain fresh Hosted Trusted, OTA contract, ESP32-C6 firmware and Android canary
+checks. Merge the feature PR through a merge commit so the reviewed combined SHA remains an ancestor of
+resulting main.
 
 Immediately create a separate final policy-only rotation from that actual feature merge on main. Remove both
-transition identities and pin one `persistent-baseline` named `current-main-baseline` to the actual feature
-merge commit with the same 62-file map. The transition persistent baseline admits that rotation only when
-GitHub Compare proves ancestry and every protected byte is unchanged. After merge, verify final-main policy
-selection and both OTA publishers. Any path, digest, repository, or reviewed source-commit change requires a
-fresh whole-bundle review; never prolong the transition window or reuse a retired transition identity.
+mobile transition identities and pin one `persistent-baseline` named `current-main-baseline` to the actual
+feature merge commit with the same 62-file map. The transition persistent baseline admits that rotation only
+when GitHub Compare proves ancestry and every protected byte is unchanged. After merge, verify final-main
+policy selection and both OTA publishers. Any path, digest, repository, or reviewed source-commit change
+requires a fresh whole-bundle review; never prolong the transition window or reuse a retired identity.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
