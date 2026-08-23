@@ -2902,6 +2902,7 @@
 - Raised the Arduino loop-task stack to 16 KiB after the physical Target exposed a stack-protection panic during MQTTS security initialization.
 - Removed STA retry races by starting AP+STA recovery once and leaving reconnectable failures to the Arduino core auto-reconnect; accepted the provisioned broker principal independently from the MAC-derived Target topic ID.
 - Added credential-free station disconnect reason diagnostics for installed-network triage.
+- Updated the security regression contract to preserve non-empty TLS broker credentials and the exact MAC-derived Target namespace without requiring the broker username string itself to equal that namespace.
 
 ## [2026-08-23] test | Verify N16 firmware size, flash and first boot boundary
 

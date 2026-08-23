@@ -59,7 +59,11 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertNotIn("setInsecure", combined)
         self.assertNotIn("host.docker.internal", combined)
         self.assertIn("ssl.CERT_REQUIRED", backend)
-        self.assertIn("targetId == MQTT_USER", target)
+        self.assertIn("std::strlen(MQTT_USER) > 0", target)
+        self.assertIn(
+            'const String prefix = "gatekeeper/v1/targets/" + targetId;', target
+        )
+        self.assertNotIn("targetId == MQTT_USER", target)
         self.assertIn("CommandResult::kEffectRejected", target)
         self.assertNotIn(":?", compose)
         self.assertIn("COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:-0}", compose)
