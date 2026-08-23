@@ -124,15 +124,15 @@ Migration은 기존 Home Assistant device identifier와 15개 read-only entity u
 registry identity를 유지하면서 다음 state source만 secure per-Target namespace로 교체합니다.
 
 - status sensor 9개와 binary sensor 2개: `gatekeeper/v1/targets/<target_id>/status`
-- config diagnostic sensor 4개: `gatekeeper/v1/targets/<target_id>/config-state`
-- status sensor 9개와 binary sensor 2개는 10초 주기 status에 `expire_after=30`을 적용
+- status sensor 9개, binary sensor 2개, config diagnostic sensor 4개:
+  `gatekeeper/v1/targets/<target_id>/status`
+- 15개 모두 10초 주기 status에 `expire_after=30`을 적용
 
-Target의 `/availability`와 `/config-state`는 현재 MQTT connect 시 1회만 publish되고 retained가
-아니다. 따라서 migration 이후나 Home Assistant 재시작 뒤 availability를 못 받아 15개 entity가
-영구 unavailable이 되는 것을 피하려고 discovery는 `/availability`를 참조하지 않는다. 주기 status
-11개는 세 주기를 놓치면 unavailable이 되고, boot-only config sensor 4개는 마지막 관찰값을 유지한다.
-config sensor를 자동 재수렴시키려면 Target이 `/config-state`를 주기 또는 retained로 publish하는 별도
-프로토콜 변경과 회귀 검증이 필요하다.
+Target의 `/availability`와 별도 `/config-state`는 MQTT connect 시 1회만 publish되고 retained가
+아니다. 따라서 migration 이후나 Home Assistant 재시작 뒤 이 메시지를 못 받아 entity가 영구
+unavailable/unknown이 되는 것을 피하려고 discovery는 두 토픽을 참조하지 않는다. 최신 Target의
+주기 `/status`에는 현재 Tx power, 거리 기준, pre-arm duration, relay cooldown도 포함된다. 세 주기를
+놓친 모든 15개 entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
 
 동시에 legacy plaintext command를 가리키던 button 3개와 number 4개의 retained discovery config에는
 빈 payload를 먼저 발행해 제거한 다음 read-only config를 갱신합니다. 따라서 중간 실패에서도 write

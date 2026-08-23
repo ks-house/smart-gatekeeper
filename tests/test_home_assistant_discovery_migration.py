@@ -56,23 +56,25 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
 
   def test_state_topics_use_only_secure_target_namespace(self):
     updates = [json.loads(item.payload) for item in self.plan if item.payload]
-    config_ids = {
-        "smart_gatekeeper_01_cfg_tx_power",
-        "smart_gatekeeper_01_cfg_distance_thresh",
-        "smart_gatekeeper_01_cfg_prearm_duration",
-        "smart_gatekeeper_01_cfg_relay_cooldown",
-    }
     for config in updates:
-      expected = (f"{self.prefix}/config-state"
-                  if config["unique_id"] in config_ids
-                  else f"{self.prefix}/status")
-      self.assertEqual(config["state_topic"], expected)
-      if config["unique_id"] in config_ids:
-        self.assertNotIn("expire_after", config)
-      else:
-        self.assertEqual(config["expire_after"], 30)
+      self.assertEqual(config["state_topic"], f"{self.prefix}/status")
+      self.assertEqual(config["expire_after"], 30)
       self.assertNotIn("smart-gatekeeper/", config["state_topic"])
       self.assertNotIn("gatekeeper/config/", config["state_topic"])
+
+  def test_periodic_target_status_contains_all_config_values(self):
+    source = (ROOT / "src" / "MqttManager.cpp").read_text(encoding="utf-8")
+    start = source.index("void MqttManager::publishTelemetry(")
+    end = source.index("void MqttManager::publishEvent(", start)
+    body = source[start:end]
+    for assignment in (
+        'doc["tx_power"] = g_tx_power_dbm;',
+        'doc["distance_threshold_cm"] = g_distance_threshold_cm;',
+        'doc["duration_ms"] = g_pre_arm_duration_ms;',
+        'doc["relay_cooldown_ms"] = g_relay_cooldown_ms;',
+    ):
+      self.assertIn(assignment, body)
+    self.assertIn("client.publish(statusTopic.c_str(), buf, false)", body)
 
   def test_plan_removes_all_seven_legacy_plaintext_controls(self):
     removals = [item for item in self.plan if not item.payload]

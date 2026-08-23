@@ -63,7 +63,6 @@ def build_plan(target_id):
 
   prefix = f"gatekeeper/v1/targets/{target_id}"
   status_topic = f"{prefix}/status"
-  config_topic = f"{prefix}/config-state"
   publications = []
 
   status_sensors = (
@@ -149,8 +148,9 @@ def build_plan(target_id):
     config = _base_config(name, object_id)
     config.update({
         "entity_category": "diagnostic",
+        "expire_after": 30,
         "icon": icon,
-        "state_topic": config_topic,
+        "state_topic": status_topic,
         "unit_of_measurement": unit,
         "value_template": value_template,
     })

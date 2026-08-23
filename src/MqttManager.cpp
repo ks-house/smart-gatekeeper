@@ -653,6 +653,11 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
                                    int relayPinLevel) {
     if (!isConnected()) return;
 
+    extern int g_tx_power_dbm;
+    extern uint16_t g_distance_threshold_cm;
+    extern uint32_t g_pre_arm_duration_ms;
+    extern uint32_t g_relay_cooldown_ms;
+
     StaticJsonDocument<1536> doc;
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
@@ -675,6 +680,10 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["loop_stack_hwm"]  = uxTaskGetStackHighWaterMark(nullptr);
     doc["wifi_bssid"]      = WiFi.BSSIDstr();
     doc["wifi_channel"]    = WiFi.channel();
+    doc["tx_power"] = g_tx_power_dbm;
+    doc["distance_threshold_cm"] = g_distance_threshold_cm;
+    doc["duration_ms"] = g_pre_arm_duration_ms;
+    doc["relay_cooldown_ms"] = g_relay_cooldown_ms;
     doc["mqtt_connect_count"] =
         DiagnosticsManager::mqttConnectCount();
     doc["mqtt_connect_attempts"] = mqttConnectAttempts;

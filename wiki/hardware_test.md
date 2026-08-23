@@ -25,7 +25,7 @@
 | 항목 | 관찰 결과 | 판정 |
 |---|---|---|
 | 기존 entity identity | historical discovery의 device identifier와 read-only unique ID 15개를 고정하고, runtime Target ID는 인자로만 주입 | PASS (software) |
-| secure state namespace | status/binary 11개는 per-Target `/status`와 30초 만료, config sensor 4개는 `/config-state`; boot-only non-retained `/availability`는 discovery에서 참조하지 않음 | PASS (software) |
+| secure state namespace | read-only 15개 모두 per-Target 10초 `/status`와 30초 만료를 사용; boot-only non-retained `/availability`와 `/config-state`는 discovery에서 참조하지 않음 | PASS (software) |
 | legacy write control 제거 | button 3개와 number 4개는 read-only 갱신보다 먼저 빈 retained payload로 삭제하며 새 config에 `command_topic`/`payload_press` 없음 | PASS (software) |
 | publish semantics | fake broker client 경계에서 총 22건 모두 QoS 1, retain=true와 ACK 대기 경로 확인 | PASS (host test) |
 | credential 경계 | 기본 dry-run은 network-free; username/password 직접 CLI 옵션 없음, env/file 값 출력 없음, credentialed apply는 TLS 필수 | PASS (host test) |

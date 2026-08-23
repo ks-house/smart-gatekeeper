@@ -2958,3 +2958,9 @@
 - A clean retained subscription read back exactly 15 Smart Gatekeeper records: 11 periodic-status entities with `expire_after=30`, four config-state diagnostics, zero availability references and zero legacy button/number configs.
 - The broker accepted an anonymous LAN connection, so this migration did not transmit credentials; that permissive internal-broker policy is operational evidence, not a security approval.
 - No door, relay, reboot, OTA or configuration control was invoked. Reintroducing controls remains blocked on an authenticated backend bridge that emits current-boot signed command envelopes.
+
+## [2026-08-23] fix | Re-converge all Home Assistant values from periodic status
+
+- Added the four current configuration values to the Target's existing 10-second per-Target status payload without changing command, ACL or signing behavior.
+- Mapped all 15 read-only Home Assistant entities to that periodic status with a 30-second expiry, removing the restart dependency on both non-retained boot-only availability and config-state publications.
+- Added a host contract test for the four firmware status fields and the exact all-entity status/expiry mapping. Live config convergence with this payload remains pending until the new exact-main Target OTA boots and publishes it.
