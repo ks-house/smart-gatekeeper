@@ -3023,3 +3023,7 @@
 - Added `github.run_attempt` to every immutable Actions v4 artifact name and its paired canary download, so a workflow rerun cannot collide with a previous attempt.
 - Restricted automatic Target bootstrap to a missing `version.json`; present metadata with an unverifiable schema/signature now fails before staging. The signed Target version must be embedded in firmware bytes before publication.
 - Bound post-publish Target HTTPS readback to the provisioned `SECRET_ROOT_CA_CERT`, HTTPS-only redirect policy and exact manifest/artifact bytes. The commercial release-evidence gate remains unchanged and fail-closed.
+
+## [2026-08-23] test | Bind automatic main versions to Target SemVer ordering
+
+- Added native policy fixtures proving that `2.1.<first-parent-count>+main.g<sha>` advances numerically with the commit count and remains below a future stable `2.2.0` release.

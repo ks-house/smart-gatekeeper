@@ -1784,6 +1784,12 @@ void testOtaVersionFloorAndReplayMutations() {
   CHECK(comparison > 0);
   CHECK(sgk::OtaVersionPolicy::compare("2.2.0+one", "2.2.0+two", &comparison));
   CHECK(comparison == 0);
+  CHECK(sgk::OtaVersionPolicy::compare(
+      "2.1.204+main.g2222222", "2.1.203+main.g1111111", &comparison));
+  CHECK(comparison > 0);
+  CHECK(sgk::OtaVersionPolicy::compare(
+      "2.2.0", "2.1.204+main.g2222222", &comparison));
+  CHECK(comparison > 0);
   CHECK(!sgk::OtaVersionPolicy::compare("2.2", "2.2.0", &comparison));
 
   MemoryVersionStorage storage;
