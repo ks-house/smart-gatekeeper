@@ -17,16 +17,16 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "3bf205aeeb87efccddcd7d0db0ffd421d225f8da"
+MERGED_MAIN_COMMIT = "829c98da21ddcb90c891fa03cbb51282a4fcf0eb"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 41c9d1517a0323d9a7ac83b9a442fdf5580874c23006cc4e6cc550d8d4d1e982
-.github/workflows/build_app.yml e4422705d8d0b19dd676a386f4cc8720137c376ccc521642c44a5fe039110033
+.github/workflows/build_app.yml 92fdb63457f8d518b3ee97e80551c25e4f3fc36417ab348c487392ee5bcbc083
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
 .github/workflows/personal_installation_firmware.yml 391b1c2db8c1dc2bb23a243ada314cc878f4edcf8be235a1dc31536b8818a4ed
 .github/workflows/protocol.yml b60ce78c630c30f6ab5b5b3d23a042f08d125c6507ebd347e3fc4d0dc66b5740
 .github/workflows/trusted_workflow_policy.yml 79aaf7a773592ecf9156191f589a9ae3e3649b4de06a1b08034507c83184a658
 scripts/verify_trusted_workflow_policy.py 78a96058cd12cfadde01ac0c7aa733bfa96a43789a0a5173d02ffaea582e2641
-scripts/ota_contract_gate.py 5268b26e70842c47ea734f59d516bf21349b4b914a2dcb1009e75855b88e3c54
+scripts/ota_contract_gate.py 52388348de2dc6891f78cf9512778bfcb798ac111abc7836d3a6b43a0d9cb034
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
 .github/workflows/backend_security.yml 405e42978f88a1256bcae57c7caa96741adf9b766ee4fbfee31b0409e1350342
@@ -391,10 +391,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     self.assertEqual(len(policy["approved_bundles"]), 2)
     temporary, persistent = policy["approved_bundles"]
-    self.assertEqual(temporary["id"], "temporary-auto-ota-3bf205a")
+    self.assertEqual(temporary["id"], "temporary-auto-ota-829c98d")
     self.assertEqual(temporary["mode"], "temporary-exact")
     self.assertEqual(
-        persistent["id"], "future-auto-ota-3bf205a-persistent-baseline"
+        persistent["id"], "future-auto-ota-829c98d-persistent-baseline"
     )
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
@@ -952,7 +952,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     bundle = self.verify_merged_main_digest_map(
         policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(bundle["id"], "temporary-auto-ota-3bf205a")
+    self.assertEqual(bundle["id"], "temporary-auto-ota-829c98d")
     ancestry.assert_not_called()
     self.assertEqual(
         {"temporary-exact", "persistent-baseline"},
@@ -1033,7 +1033,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         is_descendant=ancestry,
     )
     self.assertEqual(
-        bundle["id"], "future-auto-ota-3bf205a-persistent-baseline"
+        bundle["id"], "future-auto-ota-829c98d-persistent-baseline"
     )
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 
