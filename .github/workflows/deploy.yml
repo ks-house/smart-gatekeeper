@@ -369,7 +369,7 @@ jobs:
           100644 0b0ca29f775b988da6ccb9d5867aa1a4ef0863d7256d69cf0bdc5e77b31afead src/GattServer.cpp
           100644 b6c4fb43f1ec1bf8e379b103dab3cebcfe75ba495356bfa813891970225735fd src/MqttManager.cpp
           100644 99e45cfec3094c95efbef4a7802ba12a881c4e2c93dcce81eaae92ab083ab346 src/OfflineEventQueue.cpp
-          100644 09a9e9f1a11d9be44767e8e20d59518a8d4ac83a53bda58bb3d008b3d518b3f5 src/OtaManager.cpp
+          100644 94e2dd421d8787c6204b599414e4e9e78d0a3a4af6f9991c7b5efa85a86f34c5 src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
           100644 447ef319af59cc3316ec6e2e1bb2a62a5a8d2b33efecb399653234e321aa1fea src/RelayController.cpp
           100644 4963b6be2e45cc2178255b4376a1f7ba6b901fba38093046ea82ae65856b71a0 src/TargetAccessFsm.cpp

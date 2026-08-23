@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: H5 `main` commit `6517caa`와 H4 현장 실행본, plus H6 Ed25519 provider correction candidate
+> 관측 기준: H7 `main` commit `e00ebe8`, 현장 실행본 H6 `02090c3`, plus ESP32-C6 GCM block-alignment correction candidate
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -22,17 +22,17 @@ applies_to:
 
 | 축 | 저장소 최신 구현 | 검증/운영 경계 |
 |---|---|---|
-| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA; H6 후보는 manifest Ed25519 verifier를 bundled libsodium으로 교체 | 현장 실행본은 exact-main `2.1.234+main.g3927a97` H4. H5 `2.1.235+main.g6517caa`는 manifest 단계에서 fail-closed 거부되어 설치되지 않았으며 H6 실기기 검증 필요 |
+| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA; manifest Ed25519는 bundled libsodium, encrypted content stream은 16-byte GCM block carry를 사용 | 현장 active는 exact-main `2.1.237+main.g02090c3` H6. H7 manifest는 수락됐지만 pinned ESP-IDF GCM ALT의 비정렬 multipart 결함으로 inactive `app1` 검증이 fail-closed 중단됐으며 corrected merged-main USB bootstrap과 다음 OTA가 필요 |
 | Android | foreground scan, OS-managed BLE wake PoC, native GATT credential worker, recovery/update UI | Hardwareless RC는 default-OFF; Samsung/OEM 및 force-stop 경계는 실기기 Gate |
 | Backend | FastAPI/MariaDB, enrollment/ACL, admin session/RBAC/CSRF/re-auth, signed commands, operations APIs | production Compose와 migration 계약은 존재하지만 live NAS 운영 증거는 별도 관리 |
 | Access | legacy iBeacon → pre-arm과 default-OFF local GATT 경로가 공존 | Target FSM `IDLE → ARMED → RELAY_HOLD → COOLDOWN → IDLE`이 relay 권한의 최종 경계 |
-| OTA | Target periodic HTTPS pull, signed manifest/artifact, inactive slot, health mark/rollback, authenticated local recovery; mobile signed update/recovery 계약 | H5 CI/NAS/readback와 offline signature/AES/hash/image 검증은 PASS지만 Target manifest HTTP 400으로 artifact 전송·slot write가 시작되지 않음. install/flash → reboot → version/boot/health 확인이 여전히 완료 조건 |
+| OTA | Target periodic HTTPS pull, signed manifest/artifact, inactive slot, health mark/rollback, authenticated local recovery; mobile signed update/recovery 계약 | H7 CI/NAS/서명/복호화와 Target manifest 수락은 PASS. 세 번의 physical download는 모두 동일 GCM chunk boundary에서 inactive slot hash/tag 검증으로 중단됐고 active H6/NVS는 보존됨. corrected image의 USB bootstrap → strictly newer OTA → reboot/health-valid가 완료 조건 |
 
 ## 2. 저장소 구현과 현장 배포를 혼동하지 않는다
 
-2026-08-12에 관측한 현관 매립 Target `2.1.0-g75b946a`는 이제 현재 상태가 아니다. 2026-08-24 연결된 Target에 exact-main `2.1.234+main.g3927a97`를 NVS와 기존 `app1`을 보존하는 app-only USB 방식으로 설치했다. 이 H4에는 회전된 content-key material이 포함되어 있다. 첫 STA 시도가 실패한 뒤 recovery AP+STA가 사람의 재입력 없이 `192.168.35.19`를 획득하고 per-Target MQTTS와 Home Assistant read-only telemetry까지 복구하는 것을 실기기에서 확인했다.
+2026-08-12에 관측한 현관 매립 Target `2.1.0-g75b946a`는 이제 현재 상태가 아니다. 2026-08-24 연결된 Target에는 bundled-libsodium verifier를 포함한 exact-main H6 `2.1.237+main.g02090c3`를 app-only USB 방식으로 설치했다. NVS를 지우지 않았고 저장된 Wi-Fi로 `192.168.35.19`를 받은 뒤 verified MQTTS와 Home Assistant read-only telemetry를 복구했다.
 
-Strictly newer H5 `2.1.235+main.g6517caa`는 CI/NAS exact-byte readback과 로컬 Ed25519/AES-GCM/SHA-256/ESP32-C6 image 검증을 모두 통과했다. 그러나 H4의 periodic check는 H5로 재부팅하지 않았고, 인증된 local recovery에 같은 manifest를 POST한 요청도 artifact 전송 전에 HTTP 400으로 거부됐다. H4는 계속 online이었고 `app1` write는 없었다. 원인은 H4가 사용한 PSA PureEdDSA가 실제 ESP32-C6 Mbed TLS 구성에서 runtime 제공되지 않은 것이다. verifier를 bundled libsodium으로 교체한 H6 후보는 build/host-test 증거만 있으며, exact merged-main 실기기 install/reboot/health-valid는 아직 수행하지 않았다.
+Strictly newer H7 `2.1.238+main.ge00ebe8`은 run `32662983244`에서 production build, Ed25519, AES-256-GCM, NAS atomic publish/readback과 16 MB N16 image 검증을 통과했다. H6는 그 manifest를 수락하고 1,795,284-byte encrypted artifact를 세 번 모두 끝까지 처리했지만 `image write/hash`로 중단했다. 실패한 `app1`을 read-only 회수한 결과 두 번 모두 plaintext offset `0..3804`는 정확하고 `3805 (mod 16 = 13)`부터 결정적으로 달랐다. pinned ESP-IDF 5.5.4 GCM ALT가 비정렬 multipart update의 CTR/GHASH 상태를 보존하지 않는 결함과 정확히 일치하며, active H6와 NVS는 fail-closed 보존됐다. 현재 후보는 0..15-byte ciphertext carry로 모든 non-final GCM update를 16-byte aligned로 제한한다. 이 수정은 build/host contract와 다음 physical USB→OTA 연속 검증 전까지 완료로 간주하지 않는다.
 
 - 저장소 최신 구현: 이 문서와 [최신 코드 감사](current_code_audit.md)
 - 개인 현장 배포: [개인 PROD 사건 기록](personal_prod_incident_2026_08_12.md)
@@ -68,7 +68,7 @@ Hardwareless RC는 Android Keystore 자격과 connectable GATT proof를 사용�
 
 ## 5. 열려 있는 주요 Gate
 
-1. H4는 corrective signed image도 인증할 수 없으므로 bundled libsodium verifier가 포함된 exact merged-main H6를 NVS/OTA data/fallback 보존 app-only USB로 먼저 설치한다. 그 뒤 strictly newer H7을 periodic HTTPS로 inactive slot에 설치하여 reboot/version/boot ID/health-valid를 확인한다. H5의 CI/NAS/offline PASS는 이 Gate를 닫지 않는다.
+1. GCM block-alignment correction이 포함된 exact merged-main을 NVS 보존 app-only USB로 설치한 뒤, strictly newer exact-main을 periodic HTTPS로 inactive slot에 설치하여 reboot/version/boot ID/health-valid를 확인한다. H7의 manifest 수락과 fail-closed active-slot 보존만으로 이 Gate는 닫히지 않는다.
 2. Wi-Fi 부팅 실패, DHCP/IP 상실, broker/WAN 장애에서 자동 복구와 15초/90초/10분 관측 경계를 실측한다.
 3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.

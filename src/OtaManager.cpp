@@ -54,6 +54,9 @@ constexpr char kContentAadLabel[] =
     "smart-gatekeeper-target-content-v1\n";
 constexpr const char* kContentEncryptionAlgorithm = "AES-256-GCM";
 constexpr size_t kDecryptInputChunkSize = 4096;
+constexpr size_t kGcmBlockSize = 16;
+static_assert(kDecryptInputChunkSize % kGcmBlockSize == 0,
+              "GCM streaming chunk must contain complete AES blocks");
 
 struct VerifiedManifest {
   String version;
@@ -81,6 +84,8 @@ uint8_t updateHeader[kEnvelopeHeaderSize]{};
 size_t updateHeaderBytes = 0;
 uint8_t updateTag[kEnvelopeTagSize]{};
 size_t updateTagBytes = 0;
+uint8_t updateCiphertextCarry[kGcmBlockSize]{};
+size_t updateCiphertextCarryBytes = 0;
 uint8_t updatePlaintextBuffer[kDecryptInputChunkSize + 15]{};
 bool updateShaInitialized = false;
 bool updatePlaintextShaInitialized = false;
@@ -438,8 +443,11 @@ void resetUpdateState() {
   updateCiphertextBytes = 0;
   updateHeaderBytes = 0;
   updateTagBytes = 0;
+  updateCiphertextCarryBytes = 0;
   mbedtls_platform_zeroize(updateHeader, sizeof(updateHeader));
   mbedtls_platform_zeroize(updateTag, sizeof(updateTag));
+  mbedtls_platform_zeroize(updateCiphertextCarry,
+                           sizeof(updateCiphertextCarry));
   mbedtls_platform_zeroize(updatePlaintextBuffer,
                            sizeof(updatePlaintextBuffer));
 }
@@ -482,39 +490,101 @@ bool initializeEnvelopeCipher() {
   return started;
 }
 
+bool decryptAndWriteCiphertext(const uint8_t* data, size_t length) {
+  if (!updateOpen || !updateGcmStarted || data == nullptr || length == 0 ||
+      length > kDecryptInputChunkSize) {
+    return false;
+  }
+  size_t outputLength = 0;
+  const int gcmResult =
+      mbedtls_gcm_update(&updateGcm, data, length, updatePlaintextBuffer,
+                         sizeof(updatePlaintextBuffer), &outputLength);
+  if (gcmResult != 0 ||
+      updatePlaintextBytes > stagedManifest.plaintext_size ||
+      outputLength > stagedManifest.plaintext_size - updatePlaintextBytes) {
+    LOGF("[OTA-ERROR] GCM update failed rc=%d input=%lu output=%lu",
+         gcmResult, static_cast<unsigned long>(length),
+         static_cast<unsigned long>(outputLength));
+    mbedtls_platform_zeroize(updatePlaintextBuffer,
+                             sizeof(updatePlaintextBuffer));
+    return false;
+  }
+  if (outputLength > 0 &&
+      mbedtls_sha256_update(&updatePlaintextSha, updatePlaintextBuffer,
+                            outputLength) != 0) {
+    LOGF("[OTA-ERROR] plaintext SHA update failed at %lu bytes",
+         static_cast<unsigned long>(updatePlaintextBytes));
+    mbedtls_platform_zeroize(updatePlaintextBuffer,
+                             sizeof(updatePlaintextBuffer));
+    return false;
+  }
+  if (outputLength > 0) {
+    const esp_err_t writeResult =
+        esp_ota_write(updateHandle, updatePlaintextBuffer, outputLength);
+    if (writeResult != ESP_OK) {
+      LOGF("[OTA-ERROR] inactive-slot write failed rc=%d at %lu bytes",
+           static_cast<int>(writeResult),
+           static_cast<unsigned long>(updatePlaintextBytes));
+      mbedtls_platform_zeroize(updatePlaintextBuffer,
+                               sizeof(updatePlaintextBuffer));
+      return false;
+    }
+  }
+  updatePlaintextBytes += outputLength;
+  mbedtls_platform_zeroize(updatePlaintextBuffer,
+                           sizeof(updatePlaintextBuffer));
+  return true;
+}
+
 bool writeDecryptedCiphertext(const uint8_t* data, size_t length) {
   if (!updateOpen || !updateGcmStarted || data == nullptr || length == 0 ||
       updateCiphertextBytes > stagedManifest.plaintext_size ||
       length > stagedManifest.plaintext_size - updateCiphertextBytes) {
     return false;
   }
+
+  // ESP32-C6 uses MBEDTLS_GCM_ALT. Physical readback proved that continuing
+  // after a non-block-aligned intermediate update corrupts the stream even
+  // though the generic Mbed TLS API permits it. Keep 0..15 bytes between HTTP
+  // chunks so every non-final hardware update is exactly block-aligned.
+  updateCiphertextBytes += length;
   size_t offset = 0;
-  while (offset < length) {
-    const size_t inputLength =
-        std::min(length - offset, kDecryptInputChunkSize);
-    size_t outputLength = 0;
-    if (mbedtls_gcm_update(&updateGcm, data + offset, inputLength,
-                           updatePlaintextBuffer,
-                           sizeof(updatePlaintextBuffer), &outputLength) != 0 ||
-        updatePlaintextBytes > stagedManifest.plaintext_size ||
-        outputLength >
-            stagedManifest.plaintext_size - updatePlaintextBytes ||
-        (outputLength > 0 &&
-         mbedtls_sha256_update(&updatePlaintextSha, updatePlaintextBuffer,
-                               outputLength) != 0) ||
-        (outputLength > 0 &&
-         esp_ota_write(updateHandle, updatePlaintextBuffer, outputLength) !=
-             ESP_OK)) {
-      mbedtls_platform_zeroize(updatePlaintextBuffer,
-                               sizeof(updatePlaintextBuffer));
+  if (updateCiphertextCarryBytes > 0) {
+    const size_t copied =
+        std::min(length, kGcmBlockSize - updateCiphertextCarryBytes);
+    std::memcpy(updateCiphertextCarry + updateCiphertextCarryBytes, data,
+                copied);
+    updateCiphertextCarryBytes += copied;
+    offset += copied;
+    if (updateCiphertextCarryBytes == kGcmBlockSize) {
+      if (!decryptAndWriteCiphertext(updateCiphertextCarry,
+                                     kGcmBlockSize)) {
+        return false;
+      }
+      updateCiphertextCarryBytes = 0;
+      mbedtls_platform_zeroize(updateCiphertextCarry,
+                               sizeof(updateCiphertextCarry));
+    }
+  }
+
+  const size_t alignedLength =
+      ((length - offset) / kGcmBlockSize) * kGcmBlockSize;
+  size_t alignedOffset = 0;
+  while (alignedOffset < alignedLength) {
+    const size_t alignedChunkLength =
+        std::min(alignedLength - alignedOffset, kDecryptInputChunkSize);
+    if (!decryptAndWriteCiphertext(data + offset + alignedOffset,
+                                   alignedChunkLength)) {
       return false;
     }
-    updatePlaintextBytes += outputLength;
-    updateCiphertextBytes += inputLength;
-    offset += inputLength;
+    alignedOffset += alignedChunkLength;
   }
-  mbedtls_platform_zeroize(updatePlaintextBuffer,
-                           sizeof(updatePlaintextBuffer));
+  offset += alignedLength;
+  const size_t remaining = length - offset;
+  if (remaining > 0) {
+    std::memcpy(updateCiphertextCarry, data + offset, remaining);
+    updateCiphertextCarryBytes = remaining;
+  }
   return true;
 }
 
@@ -579,8 +649,11 @@ bool beginImageWrite() {
   updateCiphertextBytes = 0;
   updateHeaderBytes = 0;
   updateTagBytes = 0;
+  updateCiphertextCarryBytes = 0;
   mbedtls_platform_zeroize(updateHeader, sizeof(updateHeader));
   mbedtls_platform_zeroize(updateTag, sizeof(updateTag));
+  mbedtls_platform_zeroize(updateCiphertextCarry,
+                           sizeof(updateCiphertextCarry));
   mbedtls_platform_zeroize(updatePlaintextBuffer,
                            sizeof(updatePlaintextBuffer));
   return true;
@@ -614,9 +687,25 @@ bool finishImageWrite() {
       updateBytes != stagedManifest.artifact_size ||
       updateHeaderBytes != kEnvelopeHeaderSize ||
       updateTagBytes != kEnvelopeTagSize ||
-      updateCiphertextBytes != stagedManifest.plaintext_size) {
+      updateCiphertextBytes != stagedManifest.plaintext_size ||
+      updateCiphertextCarryBytes !=
+          stagedManifest.plaintext_size % kGcmBlockSize) {
     abortImageWrite();
     return false;
+  }
+
+  // A final partial block is legal only once, immediately before finish.
+  // All preceding updates were block-aligned by writeDecryptedCiphertext().
+  if (updateCiphertextCarryBytes > 0) {
+    const size_t finalCiphertextLength = updateCiphertextCarryBytes;
+    if (!decryptAndWriteCiphertext(updateCiphertextCarry,
+                                   finalCiphertextLength)) {
+      abortImageWrite();
+      return false;
+    }
+    updateCiphertextCarryBytes = 0;
+    mbedtls_platform_zeroize(updateCiphertextCarry,
+                             sizeof(updateCiphertextCarry));
   }
 
   uint8_t actualDigest[32]{};
@@ -662,7 +751,15 @@ bool finishImageWrite() {
   if (!authenticated ||
       (finalPlaintextLength > 0 &&
        esp_ota_write(updateHandle, finalPlaintext, finalPlaintextLength) !=
-           ESP_OK)) {
+            ESP_OK)) {
+    LOGF("[OTA-ERROR] envelope final verification failed auth=%d "
+         "cipher=%lu/%lu plain=%lu/%lu final=%lu",
+         authenticated ? 1 : 0,
+         static_cast<unsigned long>(updateCiphertextBytes),
+         static_cast<unsigned long>(stagedManifest.plaintext_size),
+         static_cast<unsigned long>(updatePlaintextBytes),
+         static_cast<unsigned long>(stagedManifest.plaintext_size),
+         static_cast<unsigned long>(finalPlaintextLength));
     mbedtls_platform_zeroize(actualDigest, sizeof(actualDigest));
     mbedtls_platform_zeroize(expectedDigest, sizeof(expectedDigest));
     mbedtls_platform_zeroize(actualPlaintextDigest,
@@ -692,9 +789,15 @@ bool finishImageWrite() {
   updateOpen = false;
   updateHandle = 0;
   updatePartition = nullptr;
-  const bool imageValid = esp_ota_end(completedHandle) == ESP_OK;
-  if (!imageValid || completedPartition == nullptr ||
-      esp_ota_set_boot_partition(completedPartition) != ESP_OK) {
+  const esp_err_t endResult = esp_ota_end(completedHandle);
+  const esp_err_t bootResult =
+      endResult == ESP_OK && completedPartition != nullptr
+          ? esp_ota_set_boot_partition(completedPartition)
+          : ESP_FAIL;
+  if (endResult != ESP_OK || completedPartition == nullptr ||
+      bootResult != ESP_OK) {
+    LOGF("[OTA-ERROR] inactive image finalize failed end=%d boot=%d",
+         static_cast<int>(endResult), static_cast<int>(bootResult));
     resetUpdateState();
     return false;
   }
