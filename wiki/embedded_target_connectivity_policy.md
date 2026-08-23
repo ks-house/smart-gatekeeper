@@ -28,6 +28,7 @@
 - availability LWT와 online, boot, status heartbeat를 발행한다. status는 현재 구현 기준 1초 주기다.
 - MQTT와 무관하게 signed manifest 기반 HTTPS OTA를 부팅 후와 주기적으로 확인하고, 실패 시 bounded retry를 계속한다.
 - OTA는 inactive slot, health window, valid mark, 자동 rollback 계약을 유지한다.
+- Periodic HTTPS와 authenticated local recovery는 production Target에서 실제 제공되는 동일한 서명 provider를 사용한다. Provider 초기화나 manifest 검증 실패는 artifact 전송과 slot write 전에 중단하고 단계별 원인을 기록한다.
 
 ### 2.2 NAS, broker, backend
 
@@ -202,3 +203,25 @@ not close repeated power/AP/broker/WAN outage soak, relay/sensor safety,
 inactive-slot OTA, health-valid or rollback. The strictly newer main produced by
 this evidence-only change is the first image eligible for H4's encrypted
 periodic HTTPS install to inactive `app1`.
+
+## 12. 2026-08-24 H5 OTA rejection and H6 recovery candidate
+
+Exact H5 `2.1.235+main.g6517caa` was present on the public NAS and its signed,
+encrypted bytes passed independent local signature, authenticated decryption,
+digest and ESP32-C6 N16 image validation. The running H4 nevertheless did not
+reboot during its periodic check. An authenticated same-LAN recovery attempt
+made the failure observable: posting the exact H5 manifest returned HTTP 400
+before artifact transfer or inactive `app1` write. H4 stayed online and
+continued Wi-Fi/MQTTS/status service.
+
+The network paths were therefore reachable; the failure boundary was H4's
+manifest verifier. Its PSA PureEdDSA selection was not provided by the actual
+ESP32-C6 Mbed TLS runtime configuration. The H6 candidate uses the bundled
+libsodium Ed25519 verifier and keeps initialization/signature errors fail-closed.
+This correction currently has source, host-test and build evidence only. Because
+H4 cannot authenticate any signed successor with its unavailable provider, the
+recovery sequence requires an app-only, NVS-preserving USB bootstrap of exact
+merged-main H6 followed by a strictly newer H7 delivered through HTTPS to the
+inactive slot. Wall installation still requires that H7 run to show manifest
+acceptance, inactive-slot install, reboot, expected version and boot ID,
+health-valid marking, plus the repeated outage and rollback trials in section 5.

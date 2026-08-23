@@ -369,7 +369,7 @@ jobs:
           100644 0b0ca29f775b988da6ccb9d5867aa1a4ef0863d7256d69cf0bdc5e77b31afead src/GattServer.cpp
           100644 b6c4fb43f1ec1bf8e379b103dab3cebcfe75ba495356bfa813891970225735fd src/MqttManager.cpp
           100644 99e45cfec3094c95efbef4a7802ba12a881c4e2c93dcce81eaae92ab083ab346 src/OfflineEventQueue.cpp
-          100644 ba3c1d6c5d6482be1d0e90bc119658a594121fcae4b2bb9a3c5f9b6f4ebfc5e9 src/OtaManager.cpp
+          100644 09a9e9f1a11d9be44767e8e20d59518a8d4ac83a53bda58bb3d008b3d518b3f5 src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
           100644 447ef319af59cc3316ec6e2e1bb2a62a5a8d2b33efecb399653234e321aa1fea src/RelayController.cpp
           100644 4963b6be2e45cc2178255b4376a1f7ba6b901fba38093046ea82ae65856b71a0 src/TargetAccessFsm.cpp
@@ -377,7 +377,7 @@ jobs:
           100644 b280393bfc93b0a3d09e6869621c3d8b8a27937f1d85f8afb6a24df204279596 src/TargetCommandSecurity.cpp
           100644 8a0c16058f87b87e4e7d61ce18e8eccb091c2109b945a4984a87540234823fe5 src/TargetProofVerifier.cpp
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
-          100644 ce9e1a442cd4800bd60622f0a42f8b21c978d68732aeb80e6becf14756912843 src/WifiManager.cpp
+          100644 f3b82c818a503e9ea7853e4e5a43bc6348b34a66f22fef9530c0ad1b9817a5c7 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
           100644 f0af0ab28ca10ece0558b91c6ef175baeb6032b75c062a76b1038ffd59732de2 src/main.cpp
           EOF

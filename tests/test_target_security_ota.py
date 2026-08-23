@@ -86,7 +86,11 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         ota = (ROOT / "src/OtaManager.cpp").read_text(encoding="utf-8")
         wifi = (ROOT / "src/WifiManager.cpp").read_text(encoding="utf-8")
         for required in (
-            "PSA_ALG_PURE_EDDSA",
+            "#include <sodium.h>",
+            "sodium_init()",
+            "crypto_sign_verify_detached",
+            "crypto_sign_PUBLICKEYBYTES == 32U",
+            "crypto_sign_BYTES == 64U",
             "esp_ota_get_next_update_partition",
             "esp_ota_write",
             "esp_ota_set_boot_partition",
@@ -97,6 +101,9 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             "healthPolicy.update",
         ):
             self.assertIn(required, ota)
+        self.assertNotIn("PSA_ALG_PURE_EDDSA", ota)
+        self.assertNotIn("psa_verify_message", ota)
+        self.assertNotIn("#include <psa/crypto.h>", ota)
         self.assertNotIn("HTTPUpdate", ota)
         self.assertIn("/recovery/manifest", wifi)
         self.assertIn("/recovery/firmware", wifi)
@@ -107,6 +114,9 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("recoveryApDeadlineMs", wifi)
         self.assertIn("setClockFromAuthenticatedHttpDate", ota)
         self.assertIn("current version reflash denied", ota)
+        self.assertIn("[OTA-ERROR] manifest rejected: %s", ota)
+        self.assertIn("[OTA] running image marked VALID", ota)
+        self.assertIn("OtaManager::getLastError()", wifi)
         safe_state_failure = ota.split("if (!waitForSafeState())", 1)[1].split(
             "}", 1
         )[0]

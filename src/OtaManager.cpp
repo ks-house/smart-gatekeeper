@@ -11,7 +11,7 @@
 #include <mbedtls/gcm.h>
 #include <mbedtls/platform_util.h>
 #include <mbedtls/sha256.h>
-#include <psa/crypto.h>
+#include <sodium.h>
 
 #include "DiagnosticsManager.h"
 #include "GattServer.h"
@@ -28,6 +28,9 @@ String OtaManager::lastError = "";
 OtaManager::SafeStateProvider OtaManager::safeStateProvider = nullptr;
 
 namespace {
+
+static_assert(crypto_sign_PUBLICKEYBYTES == 32U && crypto_sign_BYTES == 64U,
+              "libsodium Ed25519 size contract changed");
 
 constexpr uint32_t kOtaSafeStateTimeoutMs = 45000;
 constexpr uint32_t kInitialPeriodicCheckMs = 60000;
@@ -221,27 +224,13 @@ bool verifyEd25519(const String& message, const char* signatureBase64) {
       mbedtls_base64_decode(signature, sizeof(signature), &signatureLength,
                             reinterpret_cast<const uint8_t*>(signatureBase64),
                             std::strlen(signatureBase64)) != 0 ||
-      signatureLength != sizeof(signature) || psa_crypto_init() != PSA_SUCCESS) {
+      signatureLength != sizeof(signature) || sodium_init() < 0) {
     return false;
   }
-  psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
-  psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_VERIFY_MESSAGE);
-  psa_set_key_algorithm(&attributes, PSA_ALG_PURE_EDDSA);
-  psa_set_key_type(
-      &attributes,
-      PSA_KEY_TYPE_ECC_PUBLIC_KEY(PSA_ECC_FAMILY_TWISTED_EDWARDS));
-  psa_set_key_bits(&attributes, 255);
-  psa_key_id_t key = 0;
-  const psa_status_t imported = psa_import_key(
-      &attributes, publicKey, sizeof(publicKey), &key);
-  psa_reset_key_attributes(&attributes);
-  if (imported != PSA_SUCCESS) return false;
-  const psa_status_t verified = psa_verify_message(
-      key, PSA_ALG_PURE_EDDSA,
-      reinterpret_cast<const uint8_t*>(message.c_str()), message.length(),
-      signature, sizeof(signature));
-  psa_destroy_key(key);
-  return verified == PSA_SUCCESS;
+  return crypto_sign_verify_detached(
+             signature,
+             reinterpret_cast<const unsigned char*>(message.c_str()),
+             static_cast<unsigned long long>(message.length()), publicKey) == 0;
 }
 
 bool verifyManifestJson(const String& payload, VerifiedManifest* output,
@@ -743,6 +732,7 @@ void OtaManager::init() {
     status = OtaStatus::HEALTH_WINDOW;
     healthPolicy.begin(millis());
     DiagnosticsManager::noteAction("ota_health_window");
+    LOGF("[OTA] pending image health window started");
   }
 }
 
@@ -769,14 +759,17 @@ void OtaManager::update() {
           esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
         status = OtaStatus::SUCCESS;
         DiagnosticsManager::noteAction("ota_mark_valid");
+        LOGF("[OTA] running image marked VALID after health window");
       } else {
         status = OtaStatus::ROLLING_BACK;
         DiagnosticsManager::markPlannedRestart("ota_valid_mark_failed");
+        LOGF("[OTA-ERROR] valid mark failed; rolling back");
         esp_ota_mark_app_invalid_rollback_and_reboot();
       }
     } else if (decision == sgk::OtaHealthDecision::kRollback) {
       status = OtaStatus::ROLLING_BACK;
       DiagnosticsManager::markPlannedRestart("ota_health_rollback");
+      LOGF("[OTA-ERROR] health window timed out; rolling back");
       esp_ota_mark_app_invalid_rollback_and_reboot();
     }
     return;
@@ -789,7 +782,7 @@ void OtaManager::update() {
 }
 
 void OtaManager::checkAndUpdate(bool force) {
-  (void)force;
+  LOGF("[OTA] %s update check started", force ? "forced" : "periodic");
   status = OtaStatus::WAIT_SAFE_STATE;
   struct BusyGuard {
     ~BusyGuard() { GattServer::setOtaBusy(false); }
@@ -798,12 +791,14 @@ void OtaManager::checkAndUpdate(bool force) {
     status = OtaStatus::FAILED;
     lastError = "WAIT_SAFE_STATE timeout";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
   if (!WifiManager::isConnected()) {
     status = OtaStatus::FAILED;
     lastError = "Wi-Fi unavailable";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
   status = OtaStatus::CHECKING;
@@ -814,6 +809,7 @@ void OtaManager::checkAndUpdate(bool force) {
     status = OtaStatus::FAILED;
     lastError = "manifest begin";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
   manifestHttp.setTimeout(10000);
@@ -825,6 +821,7 @@ void OtaManager::checkAndUpdate(bool force) {
     status = OtaStatus::FAILED;
     lastError = "manifest HTTP";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s code=%d", lastError.c_str(), manifestCode);
     return;
   }
   setClockFromAuthenticatedHttpDate(manifestHttp.header("Date"));
@@ -836,13 +833,17 @@ void OtaManager::checkAndUpdate(bool force) {
     status = OtaStatus::FAILED;
     lastError = reason;
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] manifest rejected: %s", lastError.c_str());
     return;
   }
   if (stagedManifest.version == FIRMWARE_VERSION) {
     status = OtaStatus::UP_TO_DATE;
     nextPeriodicCheckMs = millis() + kPeriodicCheckMs;
+    LOGF("[OTA] already current: %s", FIRMWARE_VERSION);
     return;
   }
+
+  LOGF("[OTA] signed manifest accepted: %s", stagedManifest.version.c_str());
 
   WiFiClientSecure artifactClient;
   artifactClient.setCACert(SECRET_ROOT_CA_CERT);
@@ -851,20 +852,27 @@ void OtaManager::checkAndUpdate(bool force) {
     status = OtaStatus::FAILED;
     lastError = "artifact begin";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
   artifactHttp.setTimeout(15000);
   const int artifactCode = artifactHttp.GET();
+  const int receivedArtifactSize = artifactHttp.getSize();
   if (artifactCode != HTTP_CODE_OK ||
-      artifactHttp.getSize() != static_cast<int>(stagedManifest.artifact_size) ||
+      receivedArtifactSize != static_cast<int>(stagedManifest.artifact_size) ||
       !beginImageWrite()) {
     artifactHttp.end();
     status = OtaStatus::FAILED;
     lastError = "artifact HTTP/size";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s code=%d received=%d expected=%lu",
+         lastError.c_str(), artifactCode, receivedArtifactSize,
+         static_cast<unsigned long>(stagedManifest.artifact_size));
     return;
   }
   status = OtaStatus::DOWNLOADING;
+  LOGF("[OTA] encrypted artifact download started: %lu bytes",
+       static_cast<unsigned long>(stagedManifest.artifact_size));
   WiFiClient* stream = artifactHttp.getStreamPtr();
   uint8_t buffer[4096]{};
   bool downloadOk = true;
@@ -902,10 +910,12 @@ void OtaManager::checkAndUpdate(bool force) {
     lastError = downloadTimedOut ? "artifact download timeout"
                                  : "image write/hash";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
   status = OtaStatus::PENDING_BOOT;
   DiagnosticsManager::markPlannedRestart("ota_pending_verify");
+  LOGF("[OTA] verified inactive image; rebooting into pending slot");
   delay(250);
   ESP.restart();
 }
@@ -921,8 +931,11 @@ bool OtaManager::stageLocalManifest(const String& manifestJson) {
   if (!valid) {
     lastError = reason;
     status = OtaStatus::FAILED;
+    LOGF("[OTA-ERROR] local manifest rejected: %s", lastError.c_str());
   } else {
     status = OtaStatus::VERIFYING;
+    LOGF("[OTA] local signed manifest accepted: %s",
+         stagedManifest.version.c_str());
   }
   return valid;
 }
@@ -965,6 +978,7 @@ void OtaManager::abortLocalUpload(const char* reason) {
   stagedManifest.ready = false;
   lastError = reason == nullptr ? "local upload aborted" : reason;
   status = OtaStatus::FAILED;
+  LOGF("[OTA-ERROR] %s", lastError.c_str());
   GattServer::setOtaBusy(false);
 }
 

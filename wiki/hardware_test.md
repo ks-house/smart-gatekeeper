@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-24 (exact-main N16 USB bootstrap, Wi-Fi/MQTTS/recovery portal and Home Assistant convergence)
+> Last updated: 2026-08-24 (H5 encrypted OTA manifest rejection and fail-closed Ed25519 provider correction)
 
 ## 1. 판정 원칙
 
@@ -189,3 +189,23 @@ commit and manifest binding are required when auditing this emergency rotation.
 | MQTTS after late Wi-Fi | About five seconds after DHCP recovery, the Target completed verified MQTTS authentication, subscribed to both exact per-Target topics and published boot diagnostics/config | PASS for late-Wi-Fi MQTT initialization and one recovered session |
 | Home Assistant convergence | Live read-only entities reported `2.1.234+main.g3927a97`, `192.168.35.19`, IDLE/closed, RSSI about -84 dBm and current diagnostics/config. The HA device-card metadata header still showed an older static discovery version | PASS for live sensor convergence; discovery metadata and seven stale legacy controls remain cleanup work |
 | Inactive-slot OTA and health | H4 was intentionally the USB bootstrap carrying the rotated key material. The strictly newer main release created by this documentation change is the first eligible encrypted periodic HTTPS update to inactive `app1` | PENDING physical H5 install/reboot/health-valid proof |
+
+## 2026-08-24 H5 encrypted OTA manifest rejection
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact H5 publication | Target run `32658670039` published exact main `6517caa957dcf1c42ece49d15e38a428c81262e5` as `2.1.235+main.g6517caa`. NAS immutable artifact/pointer publication and exact HTTPS readback completed | PASS for CI/NAS transport only |
+| Offline cryptographic binding | The 1,703,428-byte envelope SHA-256 `5e09d67e1c0798a87e2fc319f7f249d64346702504d1f9d2602bfa27cf2d9a16` passed Ed25519 manifest verification and AES-256-GCM authentication locally. The decrypted 1,703,392-byte image SHA-256 `67d037c0b824b628e52f16e8b41a559f86a46e4a5b3b4298ff2e319a8a9388e8` matched the manifest and passed ESP32-C6 N16 image/checksum/hash inspection | PASS for exact offline bytes; not Target runtime evidence |
+| Periodic HTTPS attempt | H4 remained online with Wi-Fi, MQTTS and Home Assistant status continuing, but did not reboot to H5 after the periodic check window | FAIL for H5 install |
+| Authenticated local recovery attempt | An authenticated same-LAN recovery request enabled the bounded recovery window, but posting the exact H5 manifest returned HTTP 400 before artifact upload/download | FAIL at Target manifest validation |
+| Slot preservation | No firmware payload was uploaded and no write to inactive `app1` occurred. H4 remained the running image, so the active slot, NVS and existing fallback were not displaced | PASS for fail-closed preservation |
+| Root cause | H4 called PSA PureEdDSA, but the actual ESP32-C6 Arduino/ESP-IDF Mbed TLS configuration did not provide that Ed25519 algorithm at runtime even though the PSA constant was present in headers. The exact manifest was therefore rejected before artifact processing | ROOT CAUSE CONFIRMED |
+| H6 candidate correction | Manifest verification now uses the bundled Espressif libsodium `sodium_init()` and `crypto_sign_verify_detached()` path, retains exact 32-byte public-key/64-byte signature contracts and fails closed on provider or signature failure | PASS for source/build/host tests only; physical H6 pending |
+
+H5 publication, readback and offline cryptographic verification are not OTA
+completion evidence. H4 cannot authenticate a corrective signed image with its
+unavailable provider, so exact merged-main H6 must first be installed app-only
+over USB while preserving NVS, OTA data and the fallback slot. A strictly newer
+H7 must then prove signed manifest acceptance, inactive-slot write, planned
+reboot, new version and boot ID, continuous health-window completion and valid
+mark. Rollback and power-loss injection remain separate pending tests.
