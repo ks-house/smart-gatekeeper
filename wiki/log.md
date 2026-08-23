@@ -3282,3 +3282,11 @@
 - Merged policy main `d7ec44a99a9380d8e9a1b05cf8040af6f750f999` into the weak-link feature without rebasing or squashing; resolved only the append-only log by retaining both histories.
 - Recomputed all 62 normalized protected-file digests against the two identical policy maps and retained exactly seven workflows with zero local Actions. The OTA contract and all workflow `actionlint` checks passed.
 - Full merged-tree Windows discovery passed 283/285; only the unchanged checkout-CRLF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed. Production publication remains gated on fresh hosted checks after push.
+
+## [2026-08-24] compile | Rotate weak-link policy to merged-main baseline
+
+- PR #113 merged the exact `40929cda90c40afbb70d49760a7ec06ab657dc25` authorization as `d7ec44a99a9380d8e9a1b05cf8040af6f750f999`; policy-connected feature head `31bd065ee4e8c1ae2b6abb580e66d2a1d906a656` retained both histories, and PR #112 merge-commit merged it as `78bc231a4b2b429483332ed0bf124289de5276b1`.
+- Removed both weak-link transition identities and pinned the sole `current-main-baseline` persistent identity to the actual PR #112 merge commit with the unchanged ordered 62-file map, seven-workflow inventory and empty local-Action inventory. The reviewed feature source is now explicitly retired.
+- Verified 186 protected-object comparisons across the reviewed feature, policy-connected head and merged main: all 62 Git objects are identical at all three commits and remain regular `100644 blob` entries. The final policy also matches every locally materialized normalized protected digest, including `deploy.yml`.
+- The focused final-policy suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed. Full Windows discovery ran 285 tests with 283 passing and only the two unchanged checkout-CRLF checks failing for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`.
+- This policy-only rotation reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
