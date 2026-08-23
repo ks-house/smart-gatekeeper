@@ -63,32 +63,32 @@ fail closed. When an exact temporary identity and a persistent baseline both cov
 the exact temporary match takes precedence without invoking ancestry; later descendants use only the one
 persistent baseline.
 
-The completed PR #85 rotation historically contained exactly one authorization for the then-current 57-file
-set. The version-3 migration expands that same persistent authorization model to the current 62-file set and
-keeps the existing source commit as the ancestry anchor.
-`current-main-baseline` is a `persistent-baseline` for repository `ks-house/smart-gatekeeper` at exact merged
-main commit `2d6b046b62d53381181d5c4bd8c25a9e781e42d1`. The temporary `temporary-pr85-d754f23` and transition
-`future-pr85-persistent-baseline` identities are removed. A current candidate must retain every protected byte,
-match both exact namespace inventories, and prove that it descends from this exact source through GitHub
-Compare. Because some newly protected paths were introduced after that historical source, the source remains
-an ancestry anchor rather than a claim that its old tree itself satisfies the expanded version-3 inventory.
+PR #95 introduced the complete version-3 inventory on main commit
+`954736380c3b82c09e7abdda09376f2c6f0f0620`. This bounded authorization replaces its historical
+`current-main-baseline` with exactly two identities for reviewed feature commit
+`3bf205aeeb87efccddcd7d0db0ffd421d225f8da`:
 
-The original 57 `utf8-lf-v1` digests were recomputed from the exact PR #85 Git object bytes. The five newly
-protected existing files, including `ota/requirements.lock`, were independently normalized and hashed from the
-current migration tree. Eight
-historical protected files differed
-from the current baseline: `ops/backend_trusted_bundle_paths.json`, `backend/.env.example`,
-`backend/app/admin_security.py`, `backend/app/main.py`, `backend/app/static/admin.html`,
-`backend/app/static/index.html`, `backend/docker-compose.yml`, and
-`backend/tests/test_admin_security.py`. The final baseline map is byte-identical to both transition identities;
-this authorization boundary is not production, physical, release, NAS, or deployment evidence.
+- `temporary-auto-ota-3bf205a` is a `temporary-exact` identity for only that immutable repository commit.
+- `future-auto-ota-3bf205a-persistent-baseline` is the sole `persistent-baseline`; it permits only that commit
+  or a GitHub Compare-proven descendant with the same complete protected bytes.
 
-Regression tests pin the exact repository, source ancestry anchor, sole-bundle count and mode, ordered 62-path
-set, exact workflow/action inventories, and every digest. They reject an extra bundle, fork, retired or altered
-commit, unproven/diverged history, case/path variant, old five-path partial set, missing or reordered path,
-swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action additions, removals,
-renames, executable blobs, symlinks and gitlinks. No temporary identity, branch, wildcard, partial set, mixed set,
-candidate-derived digest, transition identity, or second baseline is approved.
+Both identities carry the same ordered 62-file digest map and the same seven-workflow/zero-local-action
+inventories. Remote GitHub tree and content reads confirmed that the candidate descends from PR #95 main and
+that every protected path is a regular `100644 blob`. Compared with the PR #95 baseline, exactly eight
+protected files change: `deploy.yml`, `build_app.yml`, `ota_contract.yml`,
+`personal_installation_firmware.yml`, `protocol.yml`, `scripts/ota_contract_gate.py`,
+`ota/requirements.txt`, and `backend_security.yml`. The JSON policy contains their authoritative normalized
+digests. The prior persistent baseline is intentionally removed because the schema permits only one persistent
+baseline per repository.
+
+Regression tests pin the exact repository, candidate SHA, two IDs and modes, identical complete maps, ordered
+62-path set, exact workflow/action inventories, and every digest. They prove exact-match precedence without an
+ancestry call and require explicit ancestry for later descendants. They also reject an extra bundle, fork,
+retired or altered commit, unproven/diverged history, case/path variant, old five-path partial set, missing or
+reordered path, swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action
+additions, removals, renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed
+set, candidate-derived digest, or third identity is approved. This authorization boundary is not production,
+physical, release, NAS, deployment, install, reboot-health, or rollback evidence.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -107,13 +107,12 @@ of the same required-check context. Closing that residual circularity requires a
 separately app-pinned status identity and repository policy outside the mutable workflow namespace.
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
-main; later protected bundles completed the same bounded sequence. PR #86 authorized PR #85's whole protected
-bundle, and PR #85 integrated that policy once before merging as exact main
-`2d6b046b62d53381181d5c4bd8c25a9e781e42d1`. This final rotation changes only policy data, regression tests,
-this guide, and the append-only log. It does not modify the validator or trusted workflow. Its hosted check
-executes the trusted-base transition policy, which admits this descendant because all 57 protected bytes remain
-unchanged. A green Hosted Trusted check is required before admin merge; no branch-protection change is authorized.
-That historical green check is not evidence that the version-3 self-policy/status-context residual is closed.
+main; later protected bundles completed the same sequence, including PR #86 and PR #85. The current
+authorization changes only policy data, regression tests, this guide, and the append-only log. It does not
+modify the validator, trusted workflow, or any other protected byte. Its own hosted check therefore executes
+the PR #95 main policy and can admit this policy-only descendant normally. A green Hosted Trusted check is
+required before merge; no branch-protection change is authorized. That green check does not close the
+version-3 self-policy or same-status-context producer residual.
 
 ## 4. Rotation procedure
 
@@ -124,17 +123,18 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For PR #85, the transition policy was merged separately as PR #86, PR #85 integrated that exact main once
-without rewriting history, retained the complete authorized 57-file map, received fresh hosted checks, and then
-merged as exact main `2d6b046b62d53381181d5c4bd8c25a9e781e42d1`. GitHub Compare proved the required
-candidate ancestry throughout that sequence.
+For the encrypted automatic OTA feature, first merge this policy-only authorization from exact PR #95 main.
+Then merge that new main into feature commit `3bf205aeeb87efccddcd7d0db0ffd421d225f8da` without rebasing or
+squashing, verify that all 62 protected digests and both inventories remain unchanged, and obtain fresh hosted
+checks. Merge the feature through a merge commit so the reviewed source remains an ancestor of the resulting
+main commit.
 
-This separate final policy-only rotation removes both PR #85 transition identities and pins the sole
-`persistent-baseline` named `current-main-baseline` to that actual merged-main 57-file bundle. The trusted-main
-transition baseline admits this final rotation only when GitHub Compare proves ancestry and every protected byte
-is unchanged. After merge, verify current-main policy selection and main CI. Any path, digest, repository, or
-reviewed source-commit change requires a fresh whole-bundle review; never prolong the transition window or reuse
-a retired transition identity.
+Immediately create a separate final policy-only rotation from that actual merged main. Remove both transition
+identities and pin one `persistent-baseline` named `current-main-baseline` to the actual merge commit with the
+same 62-file map. The transition persistent baseline admits that final rotation only when GitHub Compare proves
+ancestry and every protected byte is unchanged. After merge, verify current-main policy selection and both OTA
+publishers. Any path, digest, repository, or reviewed source-commit change requires a fresh whole-bundle review;
+never prolong the transition window or reuse a retired transition identity.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.

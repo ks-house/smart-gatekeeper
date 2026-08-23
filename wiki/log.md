@@ -2948,3 +2948,10 @@
 - Added the publisher-installed `ota/requirements.lock` as the 62nd version-3 protected path with normalized SHA-256 `5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12`; its complete hashed content is now an explicit bundle input rather than relying only on an indirect gate assertion.
 - Added a dedicated regression that rejects both dropping the lock from the current baseline and changing its digest. The focused trusted-policy suite passed 42/42, all 62 protected working-tree digests matched the policy, Python syntax passed and `git diff --check` remained clean.
 - The lock was reproduced byte-for-byte from the integration candidate without modifying that clone. No dependencies were installed, no publisher or secret-bearing job ran, and no commit, push, merge or deployment was performed.
+
+## [2026-08-24] compile | Authorize the exact encrypted automatic OTA bundle
+
+- Replaced the historical persistent authorization with one temporary-exact and one future persistent identity for reviewed feature commit `3bf205aeeb87efccddcd7d0db0ffd421d225f8da`; both identities bind the same complete 62-file normalized digest map.
+- Verified through the GitHub API that the pushed candidate descends from PR #95 main, contains exactly seven workflow files and no local Action files, and exposes every protected path as a regular `100644 blob`; the remote trusted-policy verifier selected only the exact temporary identity.
+- Compared with PR #95, exactly eight protected files change: six workflows, `scripts/ota_contract_gate.py`, and `ota/requirements.txt`. The focused version-3 transition suite passed 42/42.
+- This policy-only authorization neither reads production Secrets nor publishes firmware/APKs, writes NAS state, installs software, reboots a Target, or claims health, rollback, Home Assistant, physical, or commercial evidence.
