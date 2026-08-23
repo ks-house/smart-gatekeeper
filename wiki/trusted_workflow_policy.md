@@ -65,21 +65,28 @@ persistent baseline.
 
 PR #95 introduced the complete version-3 inventory on main commit
 `954736380c3b82c09e7abdda09376f2c6f0f0620`. This bounded authorization replaces its historical
-`current-main-baseline` with exactly two identities for reviewed feature commit
-`3bf205aeeb87efccddcd7d0db0ffd421d225f8da`:
+`current-main-baseline` with exactly two identities for revised reviewed feature commit
+`a643a7ec42a07de78103872c17cf15be2d5f75cd`:
 
-- `temporary-auto-ota-3bf205a` is a `temporary-exact` identity for only that immutable repository commit.
-- `future-auto-ota-3bf205a-persistent-baseline` is the sole `persistent-baseline`; it permits only that commit
+- `temporary-auto-ota-a643a7e` is a `temporary-exact` identity for only that immutable repository commit.
+- `future-auto-ota-a643a7e-persistent-baseline` is the sole `persistent-baseline`; it permits only that commit
   or a GitHub Compare-proven descendant with the same complete protected bytes.
 
 Both identities carry the same ordered 62-file digest map and the same seven-workflow/zero-local-action
 inventories. Remote GitHub tree and content reads confirmed that the candidate descends from PR #95 main and
+the first authorization merge `97995135216d4ec4289b42e11a13fb2bcf40b62f`, and
 that every protected path is a regular `100644 blob`. Compared with the PR #95 baseline, exactly eight
 protected files change: `deploy.yml`, `build_app.yml`, `ota_contract.yml`,
 `personal_installation_firmware.yml`, `protocol.yml`, `scripts/ota_contract_gate.py`,
 `ota/requirements.txt`, and `backend_security.yml`. The JSON policy contains their authoritative normalized
 digests. The prior persistent baseline is intentionally removed because the schema permits only one persistent
 baseline per repository.
+
+The first hosted Android canary for the earlier reviewed head completed analyzer, Flutter, native GATT and APK
+build steps but proved that the runner did not install cmdline-tools 12.0 at the exact verifier path. The revised
+candidate changes only `build_app.yml` and `scripts/ota_contract_gate.py` within the protected map: the
+secret-free canary installs exact SDK packages before metadata and the gate binds that step. This is a new
+whole-bundle authorization, not reuse of the earlier candidate identity.
 
 Regression tests pin the exact repository, candidate SHA, two IDs and modes, identical complete maps, ordered
 62-path set, exact workflow/action inventories, and every digest. They prove exact-match precedence without an
@@ -124,7 +131,7 @@ temporary approval and pin one current-main baseline. Never add a wildcard, bran
 exception, mixed bundle, or candidate-derived digest.
 
 For the encrypted automatic OTA feature, first merge this policy-only authorization from exact PR #95 main.
-Then merge that new main into feature commit `3bf205aeeb87efccddcd7d0db0ffd421d225f8da` without rebasing or
+Then merge that new main into feature commit `a643a7ec42a07de78103872c17cf15be2d5f75cd` without rebasing or
 squashing, verify that all 62 protected digests and both inventories remain unchanged, and obtain fresh hosted
 checks. Merge the feature through a merge commit so the reviewed source remains an ancestor of the resulting
 main commit.
