@@ -1,18 +1,19 @@
 import java.io.FileInputStream
 import java.util.Properties
 
-val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+val unsignedCiRelease = System.getenv("SGK_UNSIGNED_CI_RELEASE") == "1"
 
 android {
     namespace = "com.kshouse.gatekeeper_app"
@@ -61,13 +62,16 @@ signingConfigs {
                 val candidate = file(path)
                 if (candidate.exists()) candidate else rootProject.file(path)
             }
-            if (releaseRequested && (releaseKey == null || !releaseKey.exists() ||
+            if (releaseRequested && !unsignedCiRelease &&
+                (releaseKey == null || !releaseKey.exists() ||
                     keystoreProperties.getProperty("storePassword").isNullOrBlank() ||
                     keystoreProperties.getProperty("keyAlias").isNullOrBlank() ||
                     keystoreProperties.getProperty("keyPassword").isNullOrBlank())) {
                 throw GradleException("Release signing is fail-closed: configure key.properties with a real release keystore; debug signing is forbidden.")
             }
-            signingConfig = signingConfigs.getByName("release")
+            if (!unsignedCiRelease) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

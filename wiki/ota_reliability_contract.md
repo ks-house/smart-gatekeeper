@@ -356,11 +356,11 @@ N-1 소비자를 위해 Target `version == firmware_version`, Mobile
 
 ## 12. CI release gate 판정
 
-`.github/workflows/ota_contract.yml`은 PR/main에서 schema, signature tamper vector, dual-slot layout, state/recovery/fault 계약을 검사한다. Firmware workflow의 모든 main push는 secret-free canary가 통과한 뒤 exact-main 개인 설치 Target용 production profile을 별도 job에서 빌드·서명하고 configured NAS OTA path에 게시하도록 시도한다. 자동 version은 protected main first-parent count를 수치 precedence로 쓰며, commit별 immutable artifact/manifest를 stage/readback한 뒤 `version.json`만 OpenSSH `posix-rename`으로 원자 교체한다. NAS의 더 최신 signed pointer는 stale run이 덮지 못하며 이전 정상 artifact는 보존한다.
+`.github/workflows/ota_contract.yml`은 PR/main에서 schema, signature tamper vector, dual-slot layout, state/recovery/fault 계약을 검사한다. Firmware workflow의 모든 main push는 secret-free canary가 통과한 뒤 exact-main 개인 설치 Target용 production profile을 privileged compiler job에서 빌드한다. 이 job은 mode/SHA-256으로 고정한 build input tree만 실행하고 평문 image를 X25519/HKDF/AES-GCM 단기 handoff로 바꾼다. Isolated publisher는 handoff를 인증 복호화해 dedicated content key의 `SGKOTA2` AES-256-GCM envelope와 schema-v2 signed manifest만 NAS에 게시한다. 두 job은 exact `main` deployment branch policy만 있고 required reviewer가 없는 `personal-auto-ota` Environment를 사용한다. 자동 version은 protected main first-parent count를 수치 precedence로 쓰며, commit별 immutable encrypted artifact/manifest를 stage/readback한 뒤 `version.json`만 OpenSSH `posix-rename`으로 원자 교체한다. NAS의 더 최신 signed pointer는 stale run이 덮지 못하며 이전 정상 artifact는 보존한다.
 
-이 자동 개인 설치 게시 결과는 `production_authorized: false`, `release_evidence: false`인 transport evidence다. NAS 게시 성공은 Target download, inactive-slot install, reboot, health valid mark 또는 rollback 성공을 뜻하지 않는다. Commercial 운영 배포 승인은 계속 쓰기 권한자가 `workflow_dispatch`의 `release_target=production`을 명시하고 `production` GitHub Environment 승인을 통과한 경우에만 기존 별도 job으로 진입한다. 이 commercial job은 `ota/release-evidence.json`의 OTA-G0~G4, physical test, 승인자가 모두 통과하지 않으면 production NAS SFTP 전에 실패하며 자동 개인 게시가 그 gate를 대체하지 않는다.
+이 자동 개인 설치 게시 결과는 `production_authorized: false`, `release_evidence: false`인 transport evidence다. NAS 게시 성공은 Target download, inactive-slot install, reboot, health valid mark 또는 rollback 성공을 뜻하지 않는다. 기존 commercial Target job은 plaintext schema-v1 migration이 남아 있어 encrypted-v2 전환이 별도로 승인될 때까지 명시적으로 비활성이다. Commercial mobile job은 main-only `production` GitHub Environment의 required reviewer와 `ota/release-evidence.json` Gate를 계속 요구하며 자동 개인 게시가 그 gate를 대체하지 않는다.
 
-보호 workflow와 OTA gate 자체의 PR 변경은 `.github/workflows/trusted_workflow_policy.yml`이 default-branch `base.sha`의 validator/policy만 실행해 별도로 승인한다. Candidate의 workflow, gate, dependency 파일은 GitHub API에서 inert bytes로만 읽고 normalized SHA-256이 하나의 approved bundle과 전체 일치해야 한다. Candidate가 policy/validator를 함께 수정해도 현재 판정에는 사용되지 않으며, bootstrap과 2단계 rotation은 [trusted_workflow_policy.md](trusted_workflow_policy.md)를 따른다.
+보호 workflow와 OTA gate 자체의 PR 변경은 `.github/workflows/trusted_workflow_policy.yml`이 default-branch `base.sha`의 validator/policy만 실행해 별도로 승인한다. Candidate의 workflow, gate, dependency 파일은 GitHub API에서 inert bytes로만 읽고 normalized SHA-256이 하나의 approved bundle과 전체 일치해야 한다. Format v3는 candidate SHA의 recursive tree에서 `.github/workflows/`와 `.github/actions/` exact inventory, regular-file mode와 namespace casing도 검사한다. Candidate가 policy를 함께 수정해도 현재 판정에는 사용되지 않으며, bootstrap과 2단계 rotation은 [trusted_workflow_policy.md](trusted_workflow_policy.md)를 따른다.
 release mode는 해당 build의 manifest와 production pinned public key도 입력받아 schema와 실제
 Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올릴 바로 그 firmware/APK
 경로를 필수 입력받아 실제 byte length와 SHA-256을 signed manifest와 비교한다. Android는
@@ -371,17 +371,26 @@ Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올�
 `contract` PASS는 문서/벡터/정적 불변조건만 증명한다. `release` PASS만 production 배포 허가를
 뜻하며, evidence 파일을 형식적으로 수정하는 것은 시험을 대체하지 않는다.
 정적 workflow 회귀 검사는 허용되지 않은 push job에 release/SFTP가 들어가거나, exact-main 개인
-Target job의 production Environment·secret provenance·monotonic version·signed immutable bytes·readback·
+Target job의 `personal-auto-ota` Environment·main-only policy·secret provenance·monotonic version·signed immutable bytes·readback·
 atomic pointer contract가 약화되거나, commercial production job의 명시적 dispatch 조건,
 Environment, evidence validator, 동일 artifact 결합이 제거되면 contract 검증 자체를 실패시킨다.
 
 firmware와 mobile의 pull request/branch-dispatch canary job 및 main-push의 public build job은 production secret
 표현식이나 상속된 secret 환경을 전혀 받지 않는다. 이 공개 canary는 고정 RFC 8032 시험 키와
-`.invalid` artifact URL만 사용하며 installable production release가 아니다. Production secret과
-Target 배포 URL은 exact `refs/heads/main` 및 commit 확인, 보호된 contract/root test 통과,
-`production` Environment 경계 뒤의 별도 main-only 개인 게시 또는 commercial release job에서만 주입한다. Candidate가 제어하는 실행 파일은
-그 검증 전에 secret을 받을 수 없고, job DAG/step 순서/artifact propagation 회귀는 보호된
+`.invalid` artifact URL만 사용하며 installable production release가 아니다. 개인 Target secret과
+배포 URL은 exact `refs/heads/main` 및 commit 확인, 보호된 contract/root test 통과,
+`personal-auto-ota` 경계 뒤에서만 주입한다. 개인 mobile publisher도 main-only, no-review
+`personal-auto-ota` Environment를 사용하되 설치 앱의 기존 trust identity는 전용
+`MOBILE_OTA_SIGNING_*` 이름으로 Target `OTA_SIGNING_*`와 분리한다. Commercial release만 required
+reviewer가 있는 `production` Environment를 사용한다. Candidate가 제어하는
+실행 파일은 그 검증 전에 secret을 받을 수 없고, job DAG/step 순서/artifact propagation 회귀는 보호된
 `ota_contract_gate.py`의 음성 mutation test가 fail-closed로 차단한다.
+
+공급망 회귀 검사도 모든 `uses:` action의 full commit SHA, versioned `ubuntu-24.04` runner label,
+firmware Python `3.10.20`, mobile Python `3.12.13`·Temurin `17.0.16+8`·Flutter `3.44.8`, exact
+Android archive URL/size/SHA-256, pinned Java로 실행하는 `apksigner.jar`/`apkanalyzer` 경로, 두 Gradle wrapper distribution checksum과
+hash-complete transitive `ota/requirements.lock`의 `pip --require-hashes` 설치를 묶어 검증한다.
+이 pin/lock 검사는 source와 CI dependency provenance를 제한할 뿐 실기기 설치 증거로 승격하지 않는다.
 
 ## 13. 운영 책임과 runbook
 
@@ -415,17 +424,34 @@ This is host/software evidence only. Real ESP32-C6 bootloader, partition, power-
 
 ## 16. 2026-08-23 personal main-push OTA publishers
 
-The single-owner installation has two narrowly scoped automatic delivery lanes
-in addition to the unchanged commercial release jobs. The mobile lane runs only
-after an exact `main` push and after its public build/test dependency succeeds.
-It intentionally consumes repository-scoped mobile signing values without a
-GitHub Environment, because the embedded Target and the already-installed APK
-currently have different OTA trust identities under otherwise identical Secret
-names. Workflow validation pins the installed mobile key identity and Android
-package signer so Environment shadowing or keystore rotation fails before NAS
-contact.
+The single-owner installation has two narrowly scoped automatic delivery lanes.
+The commercial mobile definition remains evidence/reviewer-gated, while the
+legacy plaintext Target commercial definition is disabled pending encrypted-v2
+migration. Both personal lanes run after an
+exact `main` push and their public build/test dependency succeeds; an exact-main
+manual dispatch enters them only when `release_target=canary`. The Target lane
+uses the no-review, main-only `personal-auto-ota` Environment for Target runtime
+configuration and repository-scoped signing/NAS names. The commercial
+`production` Environment remains main-only and reviewer-protected.
 
-The mobile lane produces a release APK and signed manifest, stages both in the
+The mobile signing lane uses the same main-only, no-review `personal-auto-ota`
+Environment, but consumes dedicated `MOBILE_OTA_SIGNING_*` names because the
+embedded Target and the already-installed APK have different OTA trust
+identities. The unsigned producer remains separate. Before signing, the
+publisher accepts exactly one regular non-symlink APK within the bounded size
+range and rechecks its SHA-256. Workflow validation pins the installed mobile
+key identity and Android package signer so Environment shadowing or keystore
+rotation fails before NAS contact.
+
+Before either NAS root is changed, the mobile publisher preflights both roots.
+An APK without metadata, unverifiable existing metadata, or a candidate below
+the highest signed version-code floor fails closed. A valid signed floor remains
+binding even if its paired APK is absent or corrupt; such a pair requires a
+strictly higher candidate to repair and cannot be overwritten by equal/stale
+bytes. This all-roots-first rule prevents a fallback mutation followed by a
+primary-floor rejection.
+
+The mobile lane then produces a release APK and signed manifest, stages both in the
 primary and fallback NAS directories, performs SFTP readback, preserves
 immutable candidates plus the previous valid artifact/manifest pair, and uses
 SFTP `posix_rename` to promote APK bytes before metadata. Job concurrency
@@ -442,7 +468,32 @@ Both automatic password-authenticated publishers require a repository-pinned
 NAS host key and reject runtime keyscan. Those observations belong in
 `hardware_test.md`.
 
-The existing `release_to_production` job remains manual, protected by the
-`production` Environment, and blocked by `ota/release-evidence.json`. Personal
-automatic publication does not set commercial evidence, enable Hardwareless RC,
-retire the legacy path, or close OTA-G1..G4.
+The mobile `release_to_production` job remains manual, protected by the
+`production` Environment, and blocked by `ota/release-evidence.json`. The Target
+job with that name is explicitly disabled pending encrypted-v2 migration so it
+cannot publish plaintext schema-v1 firmware. Personal automatic publication
+does not set commercial evidence, enable Hardwareless RC, retire the legacy
+path, or close OTA-G1..G4.
+
+## 17. 2026-08-24 Target content confidentiality and bootstrap
+
+Public Target distribution uses `SGKOTA2\0 || nonce(12) || ciphertext || tag(16)`.
+The content key is a dedicated 32-byte Secret and is never derived from MQTT or
+recovery credentials. A separate HKDF nonce key computes a deterministic nonce
+from the exact AAD and plaintext SHA-256, so an exact commit rerun produces the
+same envelope while different commit/content identity produces a different
+nonce. AAD is `smart-gatekeeper-target-content-v1\n<commit>\n<key-id>\n`.
+
+Manifest schema v2 binds envelope size/SHA-256, plaintext size/SHA-256,
+`AES-256-GCM` and content key ID under the existing Ed25519 signature. HTTPS and
+authenticated local recovery feed one streaming decrypt/write engine. It does
+not select the inactive partition until envelope digest, plaintext digest, ESP
+image validation and GCM tag all succeed; failure aborts the inactive write and
+does not erase NVS or the active slot.
+
+Schema-v1 firmware cannot consume this envelope. The installed legacy Target
+therefore requires one NVS-preserving USB bootstrap to a v2 consumer, followed
+by a second exact-main periodic HTTPS OTA that proves install, reboot and health.
+The content key is embedded in firmware; without ESP32 flash encryption this is
+NAS-at-rest/distribution confidentiality, not resistance to an attacker with
+physical flash read access.

@@ -140,6 +140,52 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             wifi.index("apModeActive = true", wifi.index("if (apSuccess)")),
         )
 
+    def test_ota_runtime_decrypts_only_authenticated_envelopes(self) -> None:
+        ota = (ROOT / "src/OtaManager.cpp").read_text(encoding="utf-8")
+        for required in (
+            "kEnvelopeMagic",
+            "kEnvelopeHeaderSize",
+            "kEnvelopeTagSize",
+            '"smart-gatekeeper-target-content-v1\\n"',
+            '"AES-256-GCM"',
+            "SECRET_OTA_CONTENT_KEY_HEX",
+            "SECRET_OTA_CONTENT_KEY_ID",
+            "stagedManifest.commit",
+            'endsWith(".sgkenc")',
+            "schemaVersion != 2",
+            "plaintext_sha256",
+            "mbedtls_gcm_update",
+            "mbedtls_gcm_finish",
+            "constantTimeEqual(actualTag, updateTag",
+            "constantTimeEqual(actualPlaintextDigest",
+            "updateCiphertextBytes != stagedManifest.plaintext_size",
+            "stagedManifest.plaintext_size > updatePartition->size",
+        ):
+            self.assertIn(required, ota)
+        self.assertNotIn("MQTT_PASSWORD", ota)
+
+        write_chunk = ota.split("bool writeImageChunk", 1)[1].split(
+            "bool finishImageWrite", 1
+        )[0]
+        self.assertLess(
+            write_chunk.index("mbedtls_sha256_update"),
+            write_chunk.index("consumeEnvelopePayload"),
+        )
+        self.assertNotIn("esp_ota_write(updateHandle, data", write_chunk)
+
+        finish = ota.split("bool finishImageWrite", 1)[1].split(
+            "bool waitForSafeState", 1
+        )[0]
+        self.assertLess(finish.index("constantTimeEqual(actualTag"),
+                        finish.index("esp_ota_end"))
+        self.assertLess(finish.index("constantTimeEqual(actualDigest"),
+                        finish.index("esp_ota_end"))
+        self.assertLess(finish.index("constantTimeEqual(actualPlaintextDigest"),
+                        finish.index("esp_ota_end"))
+        self.assertLess(finish.index("mbedtls_gcm_finish"),
+                        finish.index("esp_ota_end"))
+        self.assertIn("abortImageWrite()", finish)
+
     def test_clock_untrusted_and_outage_recovery_mutations_fail_closed(self) -> None:
         mqtt = (ROOT / "src/MqttManager.cpp").read_text(encoding="utf-8")
         raw_command_policy = (ROOT / "include/FlatJsonObjectPolicy.h").read_text(

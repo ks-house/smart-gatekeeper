@@ -84,6 +84,16 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
       candidate: dict,
       valid_by_manifest: dict[bytes, dict],
   ) -> dict:
+    def validate_manifest(manifest_bytes, *_args):
+      if manifest_bytes is None:
+        return None
+      expected = valid_by_manifest.get(manifest_bytes)
+      if expected is None:
+        raise gate.GateError(
+            "existing mobile OTA manifest is present but unverifiable"
+        )
+      return expected
+
     def validate(manifest_bytes, apk_bytes, *_args):
       if manifest_bytes is None or apk_bytes is None:
         return None
@@ -93,6 +103,8 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
       return expected if expected["sha256"] == gate.hashlib.sha256(apk_bytes).hexdigest() else None
 
     with mock.patch.object(
+        gate, "_validate_remote_mobile_manifest", side_effect=validate_manifest
+    ), mock.patch.object(
         gate, "_validate_remote_mobile_pair", side_effect=validate
     ):
       return gate._publish_mobile_sftp_root(
@@ -105,6 +117,48 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
           Path("apkanalyzer"),
           Path("apksigner"),
           "1",
+      )
+
+  def _preflight(
+      self,
+      sftp: FakeSftp,
+      candidate: dict,
+      valid_by_manifest: dict[bytes, dict],
+  ) -> None:
+    def validate_manifest(manifest_bytes, *_args):
+      if manifest_bytes is None:
+        return None
+      expected = valid_by_manifest.get(manifest_bytes)
+      if expected is None:
+        raise gate.GateError(
+            "existing mobile OTA manifest is present but unverifiable"
+        )
+      return expected
+
+    def validate_pair(manifest_bytes, apk_bytes, *_args):
+      if manifest_bytes is None or apk_bytes is None:
+        return None
+      expected = valid_by_manifest.get(manifest_bytes)
+      if expected is None:
+        return None
+      return (
+          expected
+          if expected["sha256"] == gate.hashlib.sha256(apk_bytes).hexdigest()
+          else None
+      )
+
+    with mock.patch.object(
+        gate, "_validate_remote_mobile_manifest", side_effect=validate_manifest
+    ), mock.patch.object(
+        gate, "_validate_remote_mobile_pair", side_effect=validate_pair
+    ):
+      gate._preflight_mobile_sftp_roots(
+          sftp,
+          (REMOTE_ROOT, REMOTE_ROOT + "_fallback"),
+          candidate,
+          "0" * 64,
+          Path("apkanalyzer"),
+          Path("apksigner"),
       )
 
   def test_previous_pair_and_candidate_are_immutable_before_fixed_pair_swap(self):
@@ -195,6 +249,145 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
               for operation in sftp.operations
           )
       )
+
+  def test_signed_floor_survives_missing_or_corrupt_apk(self):
+    for current_apk in (None, b"corrupt-apk"):
+      with self.subTest(current_apk=current_apk):
+        with tempfile.TemporaryDirectory() as directory_name:
+          directory = Path(directory_name)
+          signed_apk = b"signed-current-apk"
+          candidate_bytes = b"stale-candidate"
+          current = _candidate("b" * 40, 300, signed_apk)
+          candidate = _candidate("c" * 40, 299, candidate_bytes)
+          _, current_manifest = _write_pair(
+              directory, "current", current, signed_apk
+          )
+          candidate_apk, candidate_manifest = _write_pair(
+              directory, "candidate", candidate, candidate_bytes
+          )
+          sftp = FakeSftp()
+          if current_apk is not None:
+            sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"] = current_apk
+          sftp.files[f"{REMOTE_ROOT}/version.json"] = current_manifest.read_bytes()
+
+          with self.assertRaisesRegex(gate.GateError, "stale or conflicting"):
+            self._publish(
+                sftp,
+                candidate_apk,
+                candidate_manifest,
+                candidate,
+                {current_manifest.read_bytes(): current},
+            )
+          self.assertFalse(
+              any(
+                  operation[0] == "mkdir" and "/.staging-" in operation[1]
+                  for operation in sftp.operations
+              )
+          )
+
+  def test_signed_invalid_pair_accepts_only_strictly_newer_candidate(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      old_apk = b"old-apk"
+      current = _candidate("d" * 40, 301, old_apk)
+      same = _candidate("d" * 40, 301, old_apk)
+      newer_bytes = b"strictly-newer"
+      newer = _candidate("e" * 40, 302, newer_bytes)
+      _, current_manifest = _write_pair(directory, "current", current, old_apk)
+      same_apk, same_manifest = _write_pair(directory, "same", same, old_apk)
+      newer_apk, newer_manifest = _write_pair(
+          directory, "newer", newer, newer_bytes
+      )
+
+      stale_sftp = FakeSftp()
+      stale_sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"] = b"corrupt"
+      stale_sftp.files[f"{REMOTE_ROOT}/version.json"] = current_manifest.read_bytes()
+      with self.assertRaisesRegex(gate.GateError, "strictly newer"):
+        self._publish(
+            stale_sftp,
+            same_apk,
+            same_manifest,
+            same,
+            {current_manifest.read_bytes(): current},
+        )
+
+      upgrade_sftp = FakeSftp()
+      upgrade_sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"] = b"corrupt"
+      upgrade_sftp.files[f"{REMOTE_ROOT}/version.json"] = current_manifest.read_bytes()
+      result = self._publish(
+          upgrade_sftp,
+          newer_apk,
+          newer_manifest,
+          newer,
+          {current_manifest.read_bytes(): current},
+      )
+      self.assertEqual(result["result"], "publish-upgrade-replacing-invalid-pair")
+      self.assertEqual(
+          upgrade_sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"],
+          newer_bytes,
+      )
+
+  def test_invalid_or_orphaned_existing_metadata_fails_closed(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      candidate_bytes = b"candidate"
+      candidate = _candidate("f" * 40, 303, candidate_bytes)
+      candidate_apk, candidate_manifest = _write_pair(
+          directory, "candidate", candidate, candidate_bytes
+      )
+      for existing_apk, existing_manifest, error in (
+          (b"orphan", None, "without a signed manifest"),
+          (None, b"not-a-signed-manifest", "present but unverifiable"),
+      ):
+        with self.subTest(error=error):
+          sftp = FakeSftp()
+          if existing_apk is not None:
+            sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"] = existing_apk
+          if existing_manifest is not None:
+            sftp.files[f"{REMOTE_ROOT}/version.json"] = existing_manifest
+          with self.assertRaisesRegex(gate.GateError, error):
+            self._publish(
+                sftp,
+                candidate_apk,
+                candidate_manifest,
+                candidate,
+                {},
+            )
+
+  def test_two_root_preflight_preserves_the_highest_signed_floor(self):
+    primary_root = REMOTE_ROOT
+    fallback_root = REMOTE_ROOT + "_fallback"
+    primary_bytes = b"primary-newer"
+    fallback_bytes = b"fallback-older"
+    candidate_bytes = b"candidate-middle"
+    primary = _candidate("1" * 40, 401, primary_bytes)
+    fallback = _candidate("2" * 40, 399, fallback_bytes)
+    candidate = _candidate("3" * 40, 400, candidate_bytes)
+    primary_manifest = json.dumps(primary).encode("utf-8")
+    fallback_manifest = json.dumps(fallback).encode("utf-8")
+    sftp = FakeSftp()
+    sftp.files[f"{primary_root}/ks-house-gatekeeper.apk"] = primary_bytes
+    sftp.files[f"{primary_root}/version.json"] = primary_manifest
+    sftp.files[f"{fallback_root}/ks-house-gatekeeper.apk"] = fallback_bytes
+    sftp.files[f"{fallback_root}/version.json"] = fallback_manifest
+    before = dict(sftp.files)
+
+    with self.assertRaisesRegex(gate.GateError, "stale or conflicting"):
+      self._preflight(
+          sftp,
+          candidate,
+          {
+              primary_manifest: primary,
+              fallback_manifest: fallback,
+          },
+      )
+    self.assertEqual(sftp.files, before)
+    self.assertFalse(
+        any(
+            operation[0] in {"mkdir", "put", "posix_rename", "remove"}
+            for operation in sftp.operations
+        )
+    )
 
   def test_equal_valid_pair_is_idempotent_without_fixed_pair_swap(self):
     with tempfile.TemporaryDirectory() as directory_name:

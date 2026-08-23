@@ -3046,3 +3046,53 @@
 - An authenticated MQTT 3.1.1 client received successful CONNACK and SUBACK for the exact per-Target status topic over the renewed verified TLS endpoint.
 - Target `c0feffe6ebac` published a current periodic status with boot ID `c2f1ce127f0d5a3a296bb781319dc904`, IDLE state and IP `192.168.35.19`, proving one broker-restart reconnect path.
 - Automatic certificate renewal/alerting, long outage soak, OTA install/reboot health/rollback, relay safety and final wall-install acceptance remain separate pending gates.
+
+## [2026-08-23] compile | Document automatic OTA authorization and supply-chain locks
+
+- Documented the exact-main, no-review `personal-auto-ota` Environment for the personal Target publisher while retaining the main-only, required-reviewer `production` Environment for commercial Target/mobile releases.
+- Recorded only Environment and repository Secret names and their scopes, never values; the personal mobile publisher remains Environment-free so Target signing values cannot shadow the installed app's trust identity.
+- Recorded full-SHA Actions, the versioned runner label, exact Python/Flutter/Java/Android tool versions, both Gradle distribution checksums and hash-complete transitive `ota/requirements.lock` installation with `pip --require-hashes`.
+- Documented the all-roots mobile preflight and signed version-code floor: unverifiable metadata, orphan APKs, stale candidates and equal-floor damaged pairs fail closed before NAS mutation.
+- Reaffirmed that CI SFTP/HTTPS publication is transport evidence, not Android installation or Target install, reboot-health, valid-mark, rollback or physical acceptance evidence.
+
+## [2026-08-23] lint | Verify automatic OTA documentation against the integrated contract
+
+- Passed the OTA supply-chain lock suite (3), mobile publication engine suite (11), Target auto-publication suite (12) and `ota_contract_gate.py contract` without contacting GitHub or NAS.
+- Passed scoped whitespace checks and relative Markdown link resolution for the three updated reference pages; the `wiki/log.md` diff contains additions at end-of-file only.
+
+## [2026-08-24] code | Encrypt personal Target artifacts across CI and public NAS
+
+- Split the exact-main Target lane into a mode/SHA-256-pinned privileged compiler and an isolated publisher connected only by a one-day X25519/HKDF/AES-GCM authenticated handoff.
+- Added schema-v2 `SGKOTA2` AES-256-GCM content envelopes with a dedicated key ID, signed ciphertext/plaintext metadata, deterministic rerun-safe nonce derivation and one streaming Target decrypt/write path for HTTPS and local recovery.
+- Removed plaintext firmware before public Actions/NAS publication, retained inactive-slot/NVS failure preservation and explicitly disabled the legacy commercial Target plaintext publisher pending encrypted-v2 migration.
+- Added `scripts/setup_ota_content_key.ps1` for no-overwrite Windows DPAPI backup, GitHub stdin registration and ignored local `include/secrets.h` provisioning.
+
+## [2026-08-24] fix | Isolate and pin personal Android OTA signing
+
+- Moved the signing publisher behind the main-only `personal-auto-ota` Environment and separated its installed-app identity into `MOBILE_OTA_SIGNING_*` names so Target keys cannot shadow it.
+- Required one regular bounded unsigned APK and stable pre-sign SHA-256, downloaded official Temurin/Android archives by fixed URL, byte size and SHA-256, rejected unsafe archive paths and invoked the pinned `apksigner.jar` with the pinned Java runtime.
+- Scoped keystore, manifest-signing, NAS-host, NAS-publish and HTTPS-readback Secrets to only the steps that require them.
+- Recovered the existing mobile Ed25519 seed from its Windows DPAPI backup, recomputed and matched the pinned public identity, then registered the three mobile-specific Environment Secret names through `gh` stdin without printing their values.
+
+## [2026-08-24] fix | Close privileged compiler dependency and worktree trust gaps
+
+- Added `ota/requirements.lock` directly to trusted-policy v3 and bound the Target compiler inventory to exact lock, `platformio.ini`, N16 partition and all tracked `src/`/`include/` bytes.
+- Replaced Git-blob-only verification with actual post-install worktree SHA-256, regular-file, non-symlink and mode checks immediately before Secret materialization; untracked build inputs and a pre-existing project `.pio` directory fail closed.
+- Independent review confirmed the two pre-merge P0 findings were closed, conditional on merging the trusted-policy transition before the feature authorization.
+
+## [2026-08-24] test | Revalidate encrypted Target and isolated mobile OTA contracts
+
+- `ota_contract_gate.py contract`, all workflow `actionlint` checks, `git diff --check` and the focused Target/mobile publisher suites passed after the trust-gap fixes.
+- Target runtime/envelope, manual encrypted bundle and content-key setup tests passed; the current production build artifact is 1,703,472 bytes, uses 23.21 percent of either 7 MiB OTA slot and leaves 5,636,560 bytes headroom.
+- These results are source/build evidence only. Main CI NAS readback, Target USB bootstrap, second-release OTA install/reboot/health, Android install and final Home Assistant convergence remain pending at this point.
+
+## [2026-08-24] compile | Synchronize encrypted OTA and mobile deployment operations
+
+- Documented the compiler-to-publisher handoff, public content envelope, schema-v1 USB migration, content-key rotation boundary, mobile-specific Environment Secret names and official Android tool archive pins.
+- Corrected the commercial boundary: mobile remains reviewer/evidence gated while the legacy Target commercial publisher is disabled until it is migrated to encrypted schema v2.
+
+## [2026-08-24] fix | Clear the Android release analyzer gate
+
+- Awaited the asynchronous Ed25519 verification result inside the signed-update manifest verifier so the release source passes Dart's `return_of_invalid_type_from_catch_error` analyzer rule without changing signature semantics.
+- Re-ran all 271 repository unit and contract tests, the OTA contract gate, every workflow through `actionlint` and whitespace validation successfully; local Flutter was unavailable after the container restart, so the exact Flutter analyzer/build remains a CI gate.
+- Merged trusted-policy PR #95 only after its required policy gate, OTA contract and real ESP32-C6 firmware canary passed; the unrelated pre-existing Android analyzer failure is fixed in this feature branch.

@@ -1,10 +1,15 @@
 import argparse
+import hashlib
 import io
 import os
 import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from scripts import ota_contract_gate as gate
 
@@ -94,6 +99,7 @@ def _create_manifest(
     build_id: str,
     artifact_bytes: bytes,
     published_at: str = "2026-08-23T12:00:00Z",
+    artifact_url: str | None = None,
 ) -> tuple[Path, Path, dict]:
   artifact = directory / f"{name}.bin"
   manifest = directory / f"{name}.json"
@@ -107,7 +113,7 @@ def _create_manifest(
         version=version,
         commit=commit,
         build_id=build_id,
-        artifact_url=(
+        artifact_url=artifact_url or (
             "https://updates.example.test/firmware/"
             f"gatekeeper-firmware-{commit}.bin"
         ),
@@ -128,9 +134,315 @@ def _create_manifest(
 
 
 class TargetOtaAutoPublishContractTests(unittest.TestCase):
+  def test_sensitive_handoff_is_bound_to_recipient_commit_and_attempt(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      artifact = directory / "firmware.bin"
+      envelope = directory / "firmware.sgkenc"
+      recovered = directory / "recovered.bin"
+      artifact.write_bytes(b"exact secret-bearing firmware")
+      recipient = X25519PrivateKey.generate()
+      recipient_private_hex = recipient.private_bytes(
+          serialization.Encoding.Raw,
+          serialization.PrivateFormat.Raw,
+          serialization.NoEncryption(),
+      ).hex()
+      recipient_public_hex = recipient.public_key().public_bytes(
+          serialization.Encoding.Raw,
+          serialization.PublicFormat.Raw,
+      ).hex()
+      commit = "a" * 40
+      gate.encrypt_target_handoff(argparse.Namespace(
+          artifact=artifact,
+          output=envelope,
+          recipient_public_key_hex=recipient_public_hex,
+          commit=commit,
+          run_attempt="2",
+      ))
+      with mock.patch.dict(
+          os.environ, {"TEST_HANDOFF_PRIVATE": recipient_private_hex}, clear=False
+      ):
+        gate.decrypt_target_handoff(argparse.Namespace(
+            input=envelope,
+            output=recovered,
+            private_key_env="TEST_HANDOFF_PRIVATE",
+            recipient_public_key_hex=recipient_public_hex,
+            commit=commit,
+            run_attempt="2",
+        ))
+        self.assertEqual(recovered.read_bytes(), artifact.read_bytes())
+        for wrong_commit, wrong_attempt in (("b" * 40, "2"), (commit, "3")):
+          with self.subTest(commit=wrong_commit, attempt=wrong_attempt):
+            with self.assertRaisesRegex(gate.GateError, "authentication failed"):
+              gate.decrypt_target_handoff(argparse.Namespace(
+                  input=envelope,
+                  output=recovered,
+                  private_key_env="TEST_HANDOFF_PRIVATE",
+                  recipient_public_key_hex=recipient_public_hex,
+                  commit=wrong_commit,
+                  run_attempt=wrong_attempt,
+              ))
+        tampered = bytearray(envelope.read_bytes())
+        tampered[-1] ^= 0x01
+        envelope.write_bytes(tampered)
+        with self.assertRaisesRegex(gate.GateError, "authentication failed"):
+          gate.decrypt_target_handoff(argparse.Namespace(
+              input=envelope,
+              output=recovered,
+              private_key_env="TEST_HANDOFF_PRIVATE",
+              recipient_public_key_hex=recipient_public_hex,
+              commit=commit,
+              run_attempt="2",
+          ))
+
+  def test_sensitive_handoff_rejects_wrong_key_and_oversize_plaintext(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      artifact = directory / "firmware.bin"
+      envelope = directory / "firmware.sgkenc"
+      recipient = X25519PrivateKey.generate()
+      other = X25519PrivateKey.generate()
+      recipient_public_hex = recipient.public_key().public_bytes(
+          serialization.Encoding.Raw,
+          serialization.PublicFormat.Raw,
+      ).hex()
+      other_private_hex = other.private_bytes(
+          serialization.Encoding.Raw,
+          serialization.PrivateFormat.Raw,
+          serialization.NoEncryption(),
+      ).hex()
+      artifact.write_bytes(b"firmware")
+      gate.encrypt_target_handoff(argparse.Namespace(
+          artifact=artifact,
+          output=envelope,
+          recipient_public_key_hex=recipient_public_hex,
+          commit="c" * 40,
+          run_attempt="1",
+      ))
+      with mock.patch.dict(
+          os.environ, {"TEST_HANDOFF_PRIVATE": other_private_hex}, clear=False
+      ):
+        with self.assertRaisesRegex(gate.GateError, "does not match"):
+          gate.decrypt_target_handoff(argparse.Namespace(
+              input=envelope,
+              output=directory / "recovered.bin",
+              private_key_env="TEST_HANDOFF_PRIVATE",
+              recipient_public_key_hex=recipient_public_hex,
+              commit="c" * 40,
+              run_attempt="1",
+          ))
+      artifact.write_bytes(b"x" * (gate.TARGET_HANDOFF_MAX_PLAINTEXT + 1))
+      with self.assertRaisesRegex(gate.GateError, "outside the N16 OTA slot"):
+        gate.encrypt_target_handoff(argparse.Namespace(
+            artifact=artifact,
+            output=envelope,
+            recipient_public_key_hex=recipient_public_hex,
+            commit="c" * 40,
+            run_attempt="1",
+        ))
+
+  def test_public_nas_content_envelope_roundtrip_and_tamper_rejection(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      artifact = directory / "firmware.bin"
+      envelope = directory / "firmware.sgkenc"
+      recovered = directory / "recovered.bin"
+      artifact.write_bytes(b"credential-bearing-target-firmware")
+      common = {
+          "key_env": "TEST_TARGET_CONTENT_KEY",
+          "key_id": "test-target-content-1",
+          "commit": "d" * 40,
+      }
+      with mock.patch.dict(
+          os.environ,
+          {"TEST_TARGET_CONTENT_KEY": "12" * 32},
+          clear=False,
+      ):
+        gate.encrypt_target_content(argparse.Namespace(
+            artifact=artifact, output=envelope, **common
+        ))
+        self.assertTrue(envelope.read_bytes().startswith(gate.TARGET_CONTENT_MAGIC))
+        self.assertNotIn(artifact.read_bytes(), envelope.read_bytes())
+        gate.decrypt_target_content(argparse.Namespace(
+            input=envelope, output=recovered, **common
+        ))
+        self.assertEqual(recovered.read_bytes(), artifact.read_bytes())
+        with self.assertRaisesRegex(gate.GateError, "authentication failed"):
+          gate.decrypt_target_content(argparse.Namespace(
+              input=envelope,
+              output=recovered,
+              key_env=common["key_env"],
+              key_id=common["key_id"],
+              commit="e" * 40,
+          ))
+        tampered = bytearray(envelope.read_bytes())
+        tampered[-1] ^= 0x80
+        envelope.write_bytes(tampered)
+        with self.assertRaisesRegex(gate.GateError, "authentication failed"):
+          gate.decrypt_target_content(argparse.Namespace(
+              input=envelope, output=recovered, **common
+          ))
+
+  def test_public_nas_content_envelope_is_safe_and_deterministic_for_reruns(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      artifact = directory / "firmware.bin"
+      first = directory / "first.sgkenc"
+      rerun = directory / "rerun.sgkenc"
+      changed = directory / "changed.sgkenc"
+      artifact.write_bytes(b"deterministic exact-main firmware")
+      common = {
+          "artifact": artifact,
+          "key_env": "TEST_TARGET_CONTENT_KEY",
+          "key_id": "test-target-content-1",
+          "commit": "a" * 40,
+      }
+      with mock.patch.dict(
+          os.environ,
+          {"TEST_TARGET_CONTENT_KEY": "ab" * 32},
+          clear=False,
+      ):
+        gate.encrypt_target_content(argparse.Namespace(output=first, **common))
+        gate.encrypt_target_content(argparse.Namespace(output=rerun, **common))
+        self.assertEqual(first.read_bytes(), rerun.read_bytes())
+
+        artifact.write_bytes(b"different deterministic exact-main firmware")
+        gate.encrypt_target_content(argparse.Namespace(output=changed, **common))
+
+      nonce_start = len(gate.TARGET_CONTENT_MAGIC)
+      nonce_end = nonce_start + gate.TARGET_CONTENT_NONCE_SIZE
+      self.assertNotEqual(
+          first.read_bytes()[nonce_start:nonce_end],
+          changed.read_bytes()[nonce_start:nonce_end],
+      )
+      self.assertNotEqual(first.read_bytes(), changed.read_bytes())
+
+  def test_public_nas_content_envelope_rejects_wrong_key_and_oversize(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      artifact = directory / "firmware.bin"
+      envelope = directory / "firmware.sgkenc"
+      commit = "f" * 40
+      artifact.write_bytes(b"firmware")
+      with mock.patch.dict(
+          os.environ, {"CONTENT_KEY": "34" * 32}, clear=False
+      ):
+        gate.encrypt_target_content(argparse.Namespace(
+            artifact=artifact,
+            output=envelope,
+            key_env="CONTENT_KEY",
+            key_id="test-target-content-1",
+            commit=commit,
+        ))
+      with mock.patch.dict(
+          os.environ, {"CONTENT_KEY": "56" * 32}, clear=False
+      ):
+        with self.assertRaisesRegex(gate.GateError, "authentication failed"):
+          gate.decrypt_target_content(argparse.Namespace(
+              input=envelope,
+              output=directory / "recovered.bin",
+              key_env="CONTENT_KEY",
+              key_id="test-target-content-1",
+              commit=commit,
+          ))
+      artifact.write_bytes(b"x" * (gate.TARGET_HANDOFF_MAX_PLAINTEXT + 1))
+      with mock.patch.dict(
+          os.environ, {"CONTENT_KEY": "34" * 32}, clear=False
+      ):
+        with self.assertRaisesRegex(gate.GateError, "outside the N16 OTA slot"):
+          gate.encrypt_target_content(argparse.Namespace(
+              artifact=artifact,
+              output=envelope,
+              key_env="CONTENT_KEY",
+              key_id="test-target-content-1",
+              commit=commit,
+          ))
+
+  def test_encrypted_target_manifest_binds_ciphertext_and_plaintext_identity(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      plaintext = directory / "firmware.bin"
+      encrypted = directory / "firmware.sgkenc"
+      manifest = directory / "version.json"
+      plaintext.write_bytes(b"exact firmware plaintext")
+      commit = "7" * 40
+      key_id = "test-target-content-1"
+      with mock.patch.dict(
+          os.environ,
+          {
+              "CONTENT_KEY": "78" * 32,
+              "TEST_TARGET_SIGNING_SEED": TEST_SEED,
+          },
+          clear=False,
+      ):
+        gate.encrypt_target_content(argparse.Namespace(
+            artifact=plaintext,
+            output=encrypted,
+            key_env="CONTENT_KEY",
+            key_id=key_id,
+            commit=commit,
+        ))
+        gate.create_target_manifest(argparse.Namespace(
+            artifact=encrypted,
+            plaintext_artifact=plaintext,
+            encryption_key_id=key_id,
+            output=manifest,
+            version="2.1.207+main.g7777777",
+            commit=commit,
+            build_id=f"main-207-{commit}",
+            artifact_url=(
+                "https://updates.example.test/firmware/"
+                f"gatekeeper-firmware-{commit}.sgkenc"
+            ),
+            published_at="2026-08-24T00:00:00Z",
+            mandatory_after=None,
+            signing_key_id="rfc8032-test-key-1",
+            private_key_env="TEST_TARGET_SIGNING_SEED",
+            expected_public_key_hex=TEST_PUBLIC,
+            protocol_min=1,
+            protocol_max=2,
+        ))
+      document = gate.load_json(manifest)
+      self.assertEqual(document["schema_version"], 2)
+      self.assertEqual(document["encryption_algorithm"], "AES-256-GCM")
+      self.assertEqual(document["encryption_key_id"], key_id)
+      self.assertEqual(document["plaintext_size"], len(plaintext.read_bytes()))
+      self.assertEqual(
+          document["plaintext_sha256"],
+          hashlib.sha256(plaintext.read_bytes()).hexdigest(),
+      )
+      gate.verify_target_manifest(argparse.Namespace(
+          manifest=manifest,
+          artifact=encrypted,
+          public_key_hex=TEST_PUBLIC,
+          expected_version="2.1.207+main.g7777777",
+          expected_commit=commit,
+          expected_build_id=f"main-207-{commit}",
+          expected_encryption_key_id=key_id,
+      ))
+
+  def test_target_artifact_url_rejects_embedded_credentials(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      commit = "a" * 40
+      with self.assertRaisesRegex(gate.GateError, "must not contain credentials"):
+        _create_manifest(
+            directory,
+            "credentialed",
+            "2.1.210+main.gaaaaaaa",
+            commit,
+            f"main-210-{commit}",
+            b"firmware",
+            artifact_url=(
+                "https://user:password@updates.example.test/firmware/"
+                f"gatekeeper-firmware-{commit}.bin"
+            ),
+        )
+
   def test_main_job_is_exact_and_commercial_gate_remains_separate(self):
     source = (ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
     workflow = gate.load_workflow_yaml(".github/workflows/deploy.yml", source)
+    compiler = workflow["jobs"]["build_personal_target_ota_firmware"]
     auto = workflow["jobs"]["publish_personal_target_ota"]
     commercial = workflow["jobs"]["release_to_production"]
     self.assertEqual(
@@ -138,13 +450,18 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
         "(github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))",
     )
-    self.assertEqual(auto["environment"], "production")
+    self.assertEqual(auto["environment"], "personal-auto-ota")
+    self.assertEqual(compiler["environment"], "personal-auto-ota")
+    self.assertEqual(auto["needs"], "build_personal_target_ota_firmware")
     self.assertIn("git rev-list --count --first-parent HEAD", source)
     self.assertIn("2.1.${COMMIT_SEQUENCE}+main.g${SHORT_SHA}", source)
     self.assertIn('TARGET_BUILD_ID="main-${COMMIT_SEQUENCE}-${GITHUB_SHA}"', source)
     self.assertIn('SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"', source)
-    self.assertIn("pip install platformio==6.1.19", source)
-    self.assertIn("pio run -e esp32c6_production -t clean", source)
+    self.assertIn(
+        "python -I -m pip install --require-hashes -r ota/requirements.lock",
+        source,
+    )
+    self.assertIn("python -I -m platformio run -e esp32c6_production -t clean", source)
     self.assertIn(
         "cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_production/firmware.bin",
         source,
@@ -152,7 +469,56 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     self.assertIn('version = os.environ["FULL_VERSION"].encode("ascii")', source)
     self.assertIn("if version not in firmware:", source)
     self.assertIn('PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"', source)
-    self.assertIn("pio run -e esp32c6_production", source)
+    self.assertIn("python -I -m platformio run -e esp32c6_production", source)
+    privileged_verify = next(
+        step["run"] for step in compiler["steps"]
+        if step["name"] == "Verify exact protected main before production secrets"
+    )
+    self.assertNotIn("unittest", privileged_verify)
+    self.assertNotIn("ota_contract_gate.py contract", privileged_verify)
+    self.assertIn(
+        "git ls-files --stage -- src include lib boards variants",
+        privileged_verify,
+    )
+    self.assertIn(
+        "sitecustomize.py usercustomize.py platformio_override.ini platformio.ini",
+        privileged_verify,
+    )
+    self.assertIn(
+        "partitions_16MB_ota.csv ota/requirements.lock |",
+        privileged_verify,
+    )
+    self.assertIn("ota/requirements.lock |", privileged_verify)
+    self.assertIn("git ls-files --others --exclude-standard", privileged_verify)
+    self.assertIn('test -z "$UNEXPECTED_BUILD_INPUTS"', privileged_verify)
+    self.assertIn("test ! -e .pio", privileged_verify)
+    self.assertIn('test ! -L "$path"', privileged_verify)
+    self.assertIn('stat -c \'%a\' -- "$path"', privileged_verify)
+    self.assertIn('sha256sum -- "$path"', privileged_verify)
+    self.assertNotIn('git show "$GITHUB_SHA:$path"', privileged_verify)
+    self.assertIn(
+        "5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock",
+        privileged_verify,
+    )
+    self.assertIn(
+        "6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv",
+        privileged_verify,
+    )
+    self.assertIn(
+        "cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1 platformio.ini",
+        privileged_verify,
+    )
+    self.assertIn("src/OtaManager.cpp", privileged_verify)
+    self.assertIn(
+        "ba3c1d6c5d6482be1d0e90bc119658a594121fcae4b2bb9a3c5f9b6f4ebfc5e9",
+        privileged_verify,
+    )
+    self.assertIn("sitecustomize.py usercustomize.py", privileged_verify)
+    self.assertIn("personal-target-auto-20260823-1", str(compiler))
+    self.assertIn(
+        "65154566393ecfb249c8aceb637e3258e349eb36e4dbca0dd52d61a6e55cb61b",
+        str(compiler),
+    )
     self.assertEqual(auto["concurrency"]["cancel-in-progress"], False)
     self.assertNotIn("runtime-keyscan-unpinned", str(auto))
     self.assertIn("Verify exact Target OTA pointer and immutable artifact over HTTPS", source)
@@ -161,6 +527,12 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     self.assertIn("--proto '=https' --proto-redir '=https'", source)
     self.assertNotIn("ota_contract_gate.py release", str(auto))
     self.assertIn("ota_contract_gate.py release", str(commercial))
+    self.assertEqual(
+        " ".join(str(commercial["if"]).split()),
+        "false && github.event_name == 'workflow_dispatch' && "
+        "inputs.release_target == 'production' && "
+        "github.ref == 'refs/heads/main'",
+    )
     gate.validate_workflow_release_triggers()
 
   def test_auto_job_condition_step_and_host_key_bypasses_are_rejected(self):
@@ -173,7 +545,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
             "inputs.release_target == 'production'",
         ),
         (
-            "python scripts/ota_contract_gate.py target-sftp-publish",
+            "python -I scripts/ota_contract_gate.py target-sftp-publish",
             "python attacker.py",
         ),
         (
@@ -189,6 +561,18 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         (
             "target-symbol-map-${{ env.FULL_VERSION }}-attempt-${{ github.run_attempt }}",
             "target-symbol-map-${{ env.FULL_VERSION }}",
+        ),
+        (
+            'test "$ACTUAL_BUILD_TREE" = "$EXPECTED_BUILD_TREE"',
+            "python -m unittest discover -s tests -p 'test_*.py' -v",
+        ),
+        (
+            "personal-target-auto-20260823-1",
+            "personal-legacy-target-20260812-1",
+        ),
+        (
+            "65154566393ecfb249c8aceb637e3258e349eb36e4dbca0dd52d61a6e55cb61b",
+            "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5",
         ),
     )
     for before, after in mutations:

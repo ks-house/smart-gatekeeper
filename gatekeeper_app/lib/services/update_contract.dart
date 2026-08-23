@@ -266,7 +266,7 @@ class SignedUpdateManifest {
       if (publicKeyBytes.length != 32 || signatureBytes.length != 64) {
         return false;
       }
-      return Ed25519().verify(
+      return await Ed25519().verify(
         utf8.encode(canonicalBytes()),
         signature: Signature(
           signatureBytes,

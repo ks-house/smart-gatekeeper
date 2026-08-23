@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-23 (N16 production build, loop stack and OTA size gate verified)
+> Last updated: 2026-08-24 (encrypted Target OTA and isolated Android publisher verified)
 
 ## 1. 펌웨어
 
@@ -281,10 +281,15 @@ flutter build apk --release \
 | `.github/workflows/trusted_workflow_policy.yml` | 보호 파일 변경 PR (`pull_request_target`) | default-branch validator/policy로 candidate bytes의 exact approved bundle 검증 |
 
 일반 `main` push는 secret-free public canary를 먼저 통과한 뒤
-`publish_personal_target_ota`를 실행합니다. 이 job은 exact main 전체 history를 checkout하고
-first-parent commit count를 patch precedence로 올리는 `2.1.<count>+main.g<SHA>`를 사용하므로 임의 Git SHA 문자열 순서나 stable `2.1.1` 때문에
-Target version floor에 downgrade로 막히지 않습니다. `esp32c6_production` N16 image와 production-signed
-manifest를 만든 후 commit별 immutable firmware/manifest를 NAS에 staging하고 byte readback합니다.
+`build_personal_target_ota_firmware`와 `publish_personal_target_ota`를 순서대로 실행합니다. Privileged
+compiler job은 exact main 전체 history와 mode/SHA-256으로 고정된 build input 목록만 사용하고,
+평문 firmware를 X25519/HKDF/AES-GCM 단기 handoff로 바꾼 뒤 삭제합니다. Isolated publisher job만
+handoff를 인증 복호화하고 signing/NAS 값을 단계별로 받습니다. 두 job은 first-parent commit count를
+patch precedence로 올리는 `2.1.<count>+main.g<SHA>`를 사용하므로 임의 Git SHA 문자열 순서나 stable
+`2.1.1` 때문에 Target version floor에 downgrade로 막히지 않습니다. `esp32c6_production` N16 image와
+production-signed schema-v2 manifest를 만든 후 AES-256-GCM `SGKOTA2` envelope와 manifest만 commit별
+immutable NAS 경로에 staging하고 byte readback합니다. Public NAS/Actions artifact에는 평문 firmware를
+남기지 않습니다.
 마지막 `version.json`만 OpenSSH `posix-rename`으로 원자 교체하며, 오래된 동시 run은 더 최신의 signed
 pointer를 덮을 수 없습니다. 이전 정상 artifact와 manifest는 삭제하지 않습니다.
 
@@ -292,19 +297,25 @@ commercial `2.2.0` 이상을 NAS/Target에 배포한 뒤에는 personal lane의 
 `2.2` 이상으로 올리고 contract를 갱신해야 합니다. 그 전까지 signed NAS pointer가 더 높은 core이면
 자동 publisher는 stale downgrade로 fail-closed하며 이를 성공으로 숨기지 않습니다.
 
-이 자동 경로의 `production` Environment 사용은 실제 secret 접근 경계이지 commercial release 승인
-주장이 아닙니다. 생성되는 sanitized evidence는 `production_authorized: false`,
-`release_evidence: false`를 유지하고 `ota/release-evidence.json`을 수정하지 않습니다. Environment에
-required reviewer가 설정되어 있으면 main push job은 승인 대기하며, 완전 무인 자동화를 원하면 owner가
-main-only deployment branch policy를 유지한 채 reviewer 정책을 별도로 결정해야 합니다.
+개인 Target 자동 경로는 `production`이 아니라 `personal-auto-ota` GitHub Environment를 사용합니다.
+이 Environment는 exact `main` deployment branch policy만 허용하고 required reviewer는 두지 않으므로,
+`main` push 또는 exact-main `release_target=canary` dispatch가 앞선 검사를 통과하면 승인 대기 없이
+진행합니다. 생성되는 sanitized evidence는 `production_authorized: false`, `release_evidence: false`를
+유지하고 `ota/release-evidence.json`을 수정하지 않습니다. Commercial mobile job은 계속
+`production` Environment의 exact-main 정책과 required reviewer(`tworimpa`)를 통과해야 합니다.
+기존 commercial Target job은 plaintext schema-v1 경로가 남아 있어 encrypted-v2 migration이 별도로
+검토될 때까지 workflow 조건에 `false &&`를 포함해 명시적으로 비활성화했습니다.
 
-기본 `workflow_dispatch`의 `release_target=canary`는 build/test/contract와 public canary까지만 수행합니다.
+exact `refs/heads/main`에서 실행한 `workflow_dispatch`의 `release_target=canary`는
+build/test/contract와 public canary를 통과한 뒤 두 personal publisher까지 수행합니다. PR·비-main
+ref와 다른 dispatch target에는 personal Secret을 주입하지 않습니다.
 `release_target=physical-test-canary`는 [`nas_physical_test_delivery.md`](nas_physical_test_delivery.md)의
 별도 NAS 디렉터리로 bounded SFTP-only batch를 사용해 test-signed public canary를 전달하고 읽어 검증하지만 physical Gate를 통과시키지
 않습니다. `NAS_KNOWN_HOSTS`가 없으면 public canary는 dispatch의 default-false `allow_unpinned_host_key=true` 승인을 요구하고, bounded runtime `ssh-keyscan` 결과를 run-local 파일에 고정해 `runtime-keyscan-unpinned`를 기록하며, `physical-test-connected`는
 별도 `PHYSICAL_TEST_*` 자격증명과 후속 보호 번들이 없으므로 의도적으로 fail-closed입니다.
-Commercial 운영 NAS 배포 승인은 저장소 쓰기 권한자가 `release_target=production`을 명시한 dispatch에서만 요청할 수
-있고 `production` GitHub Environment 정책을 통과해야 합니다. `ota_contract_gate.py`는 release job이
+Commercial mobile 운영 NAS 배포 승인은 저장소 쓰기 권한자가 `release_target=production`을 명시한 dispatch에서만 요청할 수
+있고 `production` GitHub Environment 정책을 통과해야 합니다. Target commercial dispatch는 encrypted-v2
+migration 전까지 disabled입니다. `ota_contract_gate.py`는 retained release job이
 `environment: production`을 기재했는지 기계적으로 검증하며(deployment precondition), 실제 저장소 외부
 Environment 구성(`PUT /repos/{owner}/{repo}/environments/production`)은 Coordinator가 인증된 GitHub API를
 통해 필수 승인자(`tworimpa`) 및 `main` 전용 브랜치 보호 정책을 지정하여 완성했습니다. 이 별도 job은
@@ -318,10 +329,11 @@ fail-closed로 종료합니다. Actions canary artifact를 받아 USB/emulator/�
 
 운영 자격 증명 문자열이 포함될 수 있는 `firmware.elf`는 public artifact/NAS에 게시하지 않습니다.
 
-### 4.1 운영 OTA 서명 키 최초 등록
+### 4.1 Commercial Target OTA 서명 키 최초 등록
 
-운영 firmware와 mobile manifest는 같은 Ed25519 신뢰 루트를 사용합니다. Windows의 신뢰할 수 있는
-관리자 단말에서 다음 스크립트로 32-byte private seed와 raw public key를 생성하고 GitHub
+이 절차는 commercial Target firmware용 Ed25519 신뢰 루트를 등록합니다. 이미 설치된 모바일 앱의
+repository-scoped OTA identity와 같다고 가정하거나 함께 회전하지 않습니다. Windows의 신뢰할 수
+있는 관리자 단말에서 다음 스크립트로 32-byte private seed와 raw public key를 생성하고 GitHub
 `production` Environment Secrets에 등록합니다. 개인키는 화면이나 프로세스 인자, Windows 사용자
 환경변수에 기록하지 않고 `gh secret set`의 표준입력으로만 전달합니다.
 
@@ -360,14 +372,59 @@ Windows PowerShell 5와 PowerShell 7에서 동일하게 처리합니다.
 public-key pin 전환, N/N-1과 rollback 검증을 포함한 별도 검토 절차로 수행합니다. 이 스크립트의
 성공은 키 등록 증거일 뿐 OTA-G0~G4, physical, operator 또는 production release 승인이 아닙니다.
 
-### 4.2 전체 production Secret 계약
+### 4.2 GitHub Environment와 Secret 범위 계약
 
-두 production job은 `production` Environment를 사용하지만 GitHub Repository Secret도 함께 참조할
-수 있습니다. 운영 격리를 위해 신규 production 전용 값은 Environment Secret에 두는 것을 권장합니다.
-GitHub API는 Secret 이름과 갱신 시각만 반환하므로 값·URL·경로의 정합성은 운영자가 별도로 확인해야
-합니다.
+문서에는 Secret **이름만** 기록하고 값은 기록하지 않습니다. GitHub API도 이름과 갱신 시각만
+반환하므로 이름의 존재는 인증서·키·URL·경로 내용의 유효성을 증명하지 않습니다.
 
-공통 서명·NAS 전송 계약은 다음과 같습니다.
+`publish_personal_target_ota`의 `personal-auto-ota` Environment에는 다음 Target runtime 설정 이름만
+둡니다.
+
+- network/API: `SECRET_ROOT_CA_CERT`, `SECRET_WIFI_SSID`, `SECRET_WIFI_PASSWORD`,
+  `SECRET_API_URL`, `SECRET_API_KEY`
+- MQTT: `SECRET_MQTT_HOST`, `SECRET_MQTT_PORT`, `SECRET_MQTT_USER`,
+  `SECRET_MQTT_PASSWORD`
+- identity/command: `SECRET_TARGET_TENANT_ID`, `SECRET_TARGET_DOOR_ID`,
+  `SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX`, `SECRET_COMMAND_SIGNING_KEY_ID`
+- OTA/recovery: `SECRET_OTA_VERSION_URL`, `SECRET_OTA_FIRMWARE_URL`,
+  `SECRET_OTA_CONTENT_KEY_HEX`, `SECRET_OTA_CONTENT_KEY_ID`,
+  `SECRET_LOCAL_RECOVERY_AP_PASSWORD`, `SECRET_LOCAL_RECOVERY_USER`,
+  `SECRET_LOCAL_RECOVERY_PASSWORD`
+- encrypted handoff: `TARGET_HANDOFF_PRIVATE_KEY_HEX`, `TARGET_HANDOFF_PUBLIC_KEY_HEX`,
+  `TARGET_HANDOFF_KEY_ID`
+
+개인 Target publisher가 함께 참조하는 repository Secret 이름은
+`OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, `OTA_SIGNING_KEY_ID`,
+`NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`, `NAS_PORT`, `NAS_KNOWN_HOSTS`, `NAS_TARGET_DIR`입니다.
+`NAS_PORT`와 `NAS_TARGET_DIR`은 workflow 기본값을 가질 수 있지만, 나머지 값은 게시 전에 fail-closed로
+검사합니다. 개인 Target profile은 Hardwareless ACL을 비활성화하므로
+`SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`와 `SECRET_ACL_SIGNING_KEY_ID`를 이 Environment에 임의 값으로
+추가하지 않습니다.
+
+`SECRET_OTA_CONTENT_KEY_HEX`는 MQTT password에서 파생하지 않는 별도 32-byte key이며 Target firmware와
+publisher가 동일 key ID를 사용합니다. 최초 등록은 Windows DPAPI backup을 저장소 밖에 만드는
+`scripts/setup_ota_content_key.ps1`을 사용하고, 기존 GitHub Secret이나 backup 파일을 덮어쓰지 않습니다.
+Key rotation은 old/new firmware가 동시에 읽을 수 있는 2단계 배포 또는 USB bootstrap 없이 바로
+수행할 수 없습니다.
+
+최초 등록 예시는 다음과 같습니다. Backup parent와 local `include/secrets.h`는 미리 존재해야 하며,
+이미 등록한 key에는 이 명령을 다시 실행하지 않습니다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/setup_ota_content_key.ps1 `
+  -KeyId personal-target-content-20260824-1 `
+  -Environments @('personal-auto-ota', 'production') `
+  -EncryptedBackupPath 'D:\secure-backups\smart-gatekeeper\target-content.dpapi.json' `
+  -LocalSecretsPaths include\secrets.h
+```
+
+Commercial Target/mobile job은 `production` Environment를 사용하고 GitHub Repository Secret도 함께
+참조할 수 있습니다. 다만 현재 commercial Target job은 encrypted-v2 migration 전까지 비활성입니다.
+운영 격리를 위해 신규 commercial production 전용 값은 Environment Secret에 두는 것을 권장합니다.
+
+Commercial과 personal publisher가 참조하는 공통 **Secret 이름** 계약은 다음과 같습니다. 같은 이름을
+사용해도 Environment shadowing에 따라 key identity가 다를 수 있으므로 값이 같다는 뜻은 아닙니다.
 
 - 필수: `OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, `OTA_SIGNING_KEY_ID`
 - 필수: `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`
@@ -389,6 +446,7 @@ Target production firmware build의 추가 필수 Secret은 다음과 같습니�
 - command verifier: `SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX`, `SECRET_COMMAND_SIGNING_KEY_ID`
 - ACL verifier: `SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`, `SECRET_ACL_SIGNING_KEY_ID`
 - OTA URL: `SECRET_OTA_VERSION_URL`, `SECRET_OTA_FIRMWARE_URL`
+- OTA content encryption: `SECRET_OTA_CONTENT_KEY_HEX`, `SECRET_OTA_CONTENT_KEY_ID`
 - local recovery: `SECRET_LOCAL_RECOVERY_AP_PASSWORD`, `SECRET_LOCAL_RECOVERY_USER`,
   `SECRET_LOCAL_RECOVERY_PASSWORD`
 
@@ -410,9 +468,38 @@ primary/fallback URL은 서로 달라야 하고 HTTPS로 실제 `version.json`�
 firmware/app install 또는 rollback 증거를 대신하지 않습니다.
 
 Trusted workflow Gate는 PR code를 checkout하거나 실행하지 않습니다. `base.sha`의 sparse checkout에서
-validator와 policy만 읽고, candidate의 5개 보호 파일은 GitHub Contents API를 통해 inert bytes로
-가져와 `utf8-lf-v1` normalized SHA-256 bundle을 비교합니다. bootstrap/rotation 절차는
+validator와 policy만 읽고, candidate의 보호 파일은 GitHub Contents API를 통해 inert bytes로 가져와
+`utf8-lf-v1` normalized SHA-256 bundle을 비교합니다. Format v3는 recursive Git Trees API를 candidate
+SHA에 묶어 `.github/workflows/`의 정확한 7개 파일과 빈 `.github/actions/` inventory까지 비교하므로,
+새 workflow/action 추가·삭제·rename·실행 비트·symlink·submodule도 fail-closed입니다. bootstrap/rotation 절차는
 [trusted_workflow_policy.md](trusted_workflow_policy.md)를 따릅니다.
+
+### 4.3 CI 공급망과 toolchain 잠금
+
+OTA 관련 workflow는 third-party/action 호출을 모두 40자리 commit SHA로 지정하고, mutable
+`ubuntu-latest` 대신 versioned runner label `ubuntu-24.04`를 사용합니다. 이 label은 OS 계열을
+고정하지만 GitHub-hosted runner image 자체의 immutable digest는 아니므로 실행 로그의 image revision도
+보존합니다.
+
+- firmware/Target lane: Python `3.10.20`
+- Android/mobile lane: Python `3.12.13`, Temurin Java `17.0.16+8`, Flutter `3.44.8` stable
+- Android signing publisher: Temurin `17.0.16+8`, build-tools `36.0.0`, cmdline-tools `12.0`
+  공식 archive의 URL·byte size·SHA-256을 모두 고정하고 path traversal 검사 후 압축 해제
+- Android verification: 고정 Java로 `build-tools/36.0.0/lib/apksigner.jar`를 직접 실행하고
+  `cmdline-tools/12.0/bin/apkanalyzer`를 사용; runner SDK나 대체 버전을 탐색하지 않음
+- main Android wrapper: Gradle `9.1.0`,
+  `distributionSha256Sum=b84e04fa845fecba48551f425957641074fcc00a88a84d2aae5808743b35fc85`
+- vendored `flutter_beacon_local` wrapper: Gradle `5.4.1`,
+  `distributionSha256Sum=14cd15fc8cc8705bd69dcfa3c8fefb27eb7027f5de4b47a8b279218f76895a91`
+
+`ota/requirements.txt`는 사람이 검토하는 direct pin 목록이고, CI 설치 입력은 Python `>=3.10`에서
+3.10/3.12 양쪽을 지원하도록 만든 hash-complete transitive `ota/requirements.lock`입니다. 모든 CI
+설치는 `python -m pip install --require-hashes -r ota/requirements.lock`을 사용합니다. Direct pin이나
+Python 범위를 바꿀 때는 lock을 다시 생성하고 두 Python 버전에서 clean install과 lock contract test를
+통과시켜야 하며, `requirements.txt`만 바꾼 상태는 배포 불가입니다.
+
+이 잠금은 같은 입력의 공급망 범위를 좁히는 source/CI 증거일 뿐, NAS에 게시된 artifact의 실제 Android
+설치나 Target install→reboot→health→valid/rollback을 증명하지 않습니다.
 
 ## 5. 로컬 GitHub 인증
 
@@ -511,9 +598,10 @@ Wi-Fi, per-Target MQTTS, command verification, OTA signing and authenticated
 recovery values, then builds the default `ENABLE_HARDWARELESS_RC=0` firmware.
 
 The workflow produces separate NVS-preserving USB images, a full-recovery
-factory image, checksums and a production-signed OTA manifest. Only an
-AES-encrypted 7z bundle is uploaded, for one day, using the Target recovery
-password. Download and delete that Actions artifact immediately after the CI
+factory image, checksums, an encrypted OTA envelope and a production-signed
+schema-v2 manifest. Plaintext USB images exist only inside an AES-encrypted 7z
+bundle uploaded for one day using the Target recovery password; no plaintext
+firmware is uploaded as a separate Actions artifact. Download and delete that Actions artifact immediately after the CI
 run. Do not write `firmware.factory.bin` at address `0x0` for the normal update;
 use the four documented offsets without `erase_flash` so NVS Wi-Fi credentials
 remain intact.
@@ -546,17 +634,17 @@ physical ESP32-C6. `SGK_PRODUCTION_BUILD=1` is defined only by
 
 ## Personal mobile exact-main OTA (2026-08-23)
 
-`build_app.yml` now runs for every `main` push. Its
-`publish_personal_mobile_ota` job is a separate single-owner delivery lane and
-does not use a GitHub Environment. This is deliberate: the repository-level
-`OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, and
-`OTA_SIGNING_KEY_ID` are the mobile update identity already trusted by the
-installed APK, while the same generic names in the `production` Environment
-currently belong to the embedded Target. Adding `environment: production` to
-the personal mobile job would silently select the Target values and break
-updates from the installed app.
+`build_app.yml` now runs for every `main` push; an exact `refs/heads/main`
+`workflow_dispatch` with `release_target=canary` enters the same publisher after exact-SHA checks. Its
+`publish_personal_mobile_ota` job is a separate single-owner delivery lane under the main-only,
+no-review `personal-auto-ota` Environment. The unsigned build remains a separate job; before any signing
+Secret is referenced, the publisher requires exactly one regular non-symlink APK, a 1 MiB..200 MiB size,
+and an unchanged SHA-256. Mobile manifest signing uses the dedicated
+`MOBILE_OTA_SIGNING_PRIVATE_KEY_HEX`, `MOBILE_OTA_SIGNING_PUBLIC_KEY_HEX`, and
+`MOBILE_OTA_SIGNING_KEY_ID` names so the Target's generic `OTA_SIGNING_*` values in the same Environment
+cannot shadow the update identity already trusted by the installed APK.
 
-The required repository Secret names are the three mobile OTA signing names,
+The required mobile signing Secret names are the three `MOBILE_OTA_SIGNING_*` names,
 `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
 `GATEKEEPER_API_KEY`, the five `SECRET_APK_*` discovery/download/notes names,
 and `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`, `NAS_PORT`, and
@@ -565,8 +653,11 @@ the bounded Smartbox fallback directory. `NAS_KNOWN_HOSTS` is required and must
 contain the independently verified NAS host key; automatic password-authenticated
 publication has no runtime-keyscan fallback.
 
-The job pins the public mobile key identity and the public Android certificate
-digest, builds an exact-main release with a monotonically increasing Android
+The signing publisher downloads the exact official Temurin and Android tool archives, validates their byte
+sizes and SHA-256 values before extraction, and invokes the pinned `apksigner.jar` through that Java runtime.
+Secret expressions are limited to the keystore, manifest-signing, NAS-host, NAS-publish and HTTPS-readback
+steps that need them. The job pins the public mobile key identity and the public Android certificate digest,
+builds an exact-main release with a monotonically increasing Android
 version code derived from `run_number * 100 + run_attempt`, creates and verifies
 the signed manifest, then uses SFTP temporary
 names plus staged/final readback before rename. The primary and fallback HTTPS
@@ -574,3 +665,15 @@ metadata and APK URLs must each return the exact published bytes. The existing
 manual commercial `release_to_production` job uses the same version-code sequence
 so a later authorized release cannot become an Android downgrade; its fail-closed
 release-evidence decision remains separate.
+
+Before changing either NAS directory, the publisher preflights both primary and fallback roots. An APK
+without metadata, metadata that exists but fails schema/signature verification, or a candidate below the
+highest signed version-code floor fails closed before either root is mutated. A signed floor remains binding
+even when its paired APK is missing or corrupt; repair then requires a strictly higher version code rather than
+overwriting the floor with an equal/stale build. An exact-byte already-published pair may be treated as
+idempotent, but an equal identity with different bytes is rejected. A higher floor in either root blocks the
+whole two-root publish, preventing a partial stale rollback.
+
+Successful SFTP/HTTPS readback is publication evidence only. It is not evidence that Android displayed or
+completed the package installer, preserved credentials through first run, passed device health, or exercised
+fallback/rollback.

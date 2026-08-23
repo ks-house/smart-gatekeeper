@@ -1,7 +1,7 @@
 // include/OtaManager.h
 // =============================================================
 // smart-gatekeeper — OTA (Over-The-Air) 업데이트 매니저
-// 시놀로지 NAS에 GitHub CI로 배포된 version.json 및 firmware.bin 수신/업데이트
+// 시놀로지 NAS에 GitHub CI로 배포된 서명 manifest 및 암호화 SGKOTA2 수신/업데이트
 // =============================================================
 #pragma once
 
