@@ -516,7 +516,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     )
     self.assertIn("src/WifiManager.cpp", privileged_verify)
     self.assertIn(
-        "f3b82c818a503e9ea7853e4e5a43bc6348b34a66f22fef9530c0ad1b9817a5c7",
+        "e5c32190a302b8e934e18dfdf1eb21771044cea2ce6ec82571b4fc77b5e18571",
         privileged_verify,
     )
     self.assertIn("sitecustomize.py usercustomize.py", privileged_verify)
