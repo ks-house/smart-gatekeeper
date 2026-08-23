@@ -156,6 +156,7 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             "kEnvelopeMagic",
             "kEnvelopeHeaderSize",
             "kEnvelopeTagSize",
+            "kGcmBlockSize",
             '"smart-gatekeeper-target-content-v1\\n"',
             '"AES-256-GCM"',
             "SECRET_OTA_CONTENT_KEY_HEX",
@@ -169,6 +170,7 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             "constantTimeEqual(actualTag, updateTag",
             "constantTimeEqual(actualPlaintextDigest",
             "updateCiphertextBytes != stagedManifest.plaintext_size",
+            "updateCiphertextCarryBytes",
             "stagedManifest.plaintext_size > updatePartition->size",
         ):
             self.assertIn(required, ota)
@@ -183,6 +185,32 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         )
         self.assertNotIn("esp_ota_write(updateHandle, data", write_chunk)
 
+        aligned_stream = ota.split(
+            "bool writeDecryptedCiphertext", 1
+        )[1].split("bool consumeEnvelopePayload", 1)[0]
+        self.assertIn(
+            "((length - offset) / kGcmBlockSize) * kGcmBlockSize",
+            aligned_stream,
+        )
+        self.assertIn(
+            "decryptAndWriteCiphertext(updateCiphertextCarry,\n"
+            "                                     kGcmBlockSize)",
+            aligned_stream,
+        )
+        self.assertIn(
+            "std::min(alignedLength - alignedOffset, kDecryptInputChunkSize)",
+            aligned_stream,
+        )
+        self.assertIn(
+            "decryptAndWriteCiphertext(data + offset + alignedOffset,\n"
+            "                                   alignedChunkLength)",
+            aligned_stream,
+        )
+        self.assertLess(
+            aligned_stream.index("updateCiphertextCarryBytes == kGcmBlockSize"),
+            aligned_stream.index("const size_t alignedLength"),
+        )
+
         finish = ota.split("bool finishImageWrite", 1)[1].split(
             "bool waitForSafeState", 1
         )[0]
@@ -194,7 +222,65 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
                         finish.index("esp_ota_end"))
         self.assertLess(finish.index("mbedtls_gcm_finish"),
                         finish.index("esp_ota_end"))
+        self.assertLess(
+            finish.index("const size_t finalCiphertextLength"),
+            finish.index("mbedtls_gcm_finish"),
+        )
         self.assertIn("abortImageWrite()", finish)
+
+    def test_ota_gcm_alt_transport_chunks_are_block_aligned(self) -> None:
+        header_size = 20
+        tag_size = 16
+        block_size = 16
+        plaintext_size = 1_795_248
+        artifact_size = header_size + plaintext_size + tag_size
+        transport_chunks = [3_841] + [4_096] * 437 + [1_491]
+        self.assertEqual(sum(transport_chunks), artifact_size)
+
+        envelope = bytes(index % 251 for index in range(artifact_size))
+        held_tag = bytearray()
+        block_carry = bytearray()
+        gcm_calls: list[bytes] = []
+
+        def feed_ciphertext(value: bytes) -> None:
+            nonlocal block_carry
+            combined = bytes(block_carry) + value
+            aligned = len(combined) // block_size * block_size
+            if aligned:
+                for offset in range(0, aligned, 4_096):
+                    gcm_calls.append(combined[offset:min(offset + 4_096, aligned)])
+            block_carry = bytearray(combined[aligned:])
+
+        cursor = 0
+        header_remaining = header_size
+        for chunk_size in transport_chunks:
+            chunk = envelope[cursor:cursor + chunk_size]
+            cursor += chunk_size
+            if header_remaining:
+                consumed = min(header_remaining, len(chunk))
+                header_remaining -= consumed
+                chunk = chunk[consumed:]
+            if not chunk:
+                continue
+            combined = bytes(held_tag) + chunk
+            if len(combined) <= tag_size:
+                held_tag = bytearray(combined)
+                continue
+            feed_ciphertext(combined[:-tag_size])
+            held_tag = bytearray(combined[-tag_size:])
+
+        if block_carry:
+            gcm_calls.append(bytes(block_carry))
+            block_carry.clear()
+
+        self.assertEqual(cursor, artifact_size)
+        self.assertEqual(bytes(held_tag), envelope[-tag_size:])
+        self.assertEqual(b"".join(gcm_calls), envelope[header_size:-tag_size])
+        self.assertEqual(sum(map(len, gcm_calls)), plaintext_size)
+        self.assertTrue(all(len(call) <= 4_096 for call in gcm_calls))
+        self.assertTrue(all(len(call) % block_size == 0 for call in gcm_calls[:-1]))
+        self.assertEqual(len(gcm_calls[-1]) % block_size,
+                         plaintext_size % block_size)
 
     def test_clock_untrusted_and_outage_recovery_mutations_fail_closed(self) -> None:
         mqtt = (ROOT / "src/MqttManager.cpp").read_text(encoding="utf-8")

@@ -209,3 +209,39 @@ over USB while preserving NVS, OTA data and the fallback slot. A strictly newer
 H7 must then prove signed manifest acceptance, inactive-slot write, planned
 reboot, new version and boot ID, continuous health-window completion and valid
 mark. Rollback and power-loss injection remain separate pending tests.
+
+## 2026-08-24 H6 bootstrap and H7 encrypted-stream failure evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact H6 USB bootstrap | Exact main `02090c31b6813d6d1691262809dfc86330283a9d`, version `2.1.237+main.g02090c3`, was written app-only to selected `app0`; no full-chip erase or NVS erase was used | PASS for corrective USB bootstrap; not OTA |
+| H6 Wi-Fi/MQTTS | After reboot H6 restored the saved SSID, acquired `192.168.35.19`, authenticated MQTTS, subscribed to exact per-Target topics and published diagnostics/config | PASS for one current boot/session; soak remains pending |
+| Exact H7 CI/NAS | Run `32662983244` published exact main `e00ebe84dbd7a4c9323b21e393429c9d44f4cdb3` as `2.1.238+main.ge00ebe8`; latest and immutable manifests were byte-identical and Ed25519/AES-256-GCM/ciphertext/plaintext/image verification passed | PASS for CI/NAS bytes |
+| H7 capacity | Plaintext was 1,795,248 bytes, SHA-256 `fc939b690f0418a917172393abb35ba769910b8e5b540c93884053df5e9b9b4e`; encrypted artifact was 1,795,284 bytes. Each 7,340,032-byte slot retained 5,544,784 bytes headroom | PASS; 24.46% slot usage |
+| Target manifest/download | H6 accepted the exact H7 signed manifest and began the full encrypted download on three fresh boots | PASS for embedded Ed25519 verifier and HTTPS reachability |
+| Inactive-slot completion | All three attempts ended with `[OTA-ERROR] image write/hash`; boot partition was never changed and active H6 plus NVS remained usable | FAIL for H7 install; fail-closed active-slot preservation PASS |
+| Failed `app1` readback | First full readback SHA-256 was `ffa311011453f871bca9e85468416c890b337e7acc5f37a1f1a4416f842ccfeb`. Two attempts matched expected plaintext through offset 3804 and first differed at offset 3805 (`0xEDD`, `mod 16 = 13`) | ROOT CAUSE BOUNDARY CONFIRMED |
+| GCM implementation root cause | Pinned Arduino 3.3.9 / ESP-IDF libs 5.5.4 GCM ALT resets multipart CTR residual and zero-pads partial GHASH per call. The exact `3841 + 437×4096 + 1491` transport sequence reproduced every failed-slot byte | ROOT CAUSE CONFIRMED; not RF/HTTPS corruption |
+| Correction candidate | Runtime now carries 0..15 ciphertext bytes across calls, feeds only 16-byte multiples to non-final GCM updates, validates final carry modulo, and emits stage-specific safe error counters | PASS for source/host contract; production build and USB→next-OTA physical proof required |
+
+The H7 failure deliberately invalidated only inactive `app1`; H6 remained the
+active bootable slot and MQTTS recovered after each abort. Repeating H7 would
+only rewrite the same inactive slot, so the Target was left in the USB stub
+bootloader without flash mutation while the corrected image is built. The
+current authenticated local upload path shares the same pre-fix GCM engine and
+is not a valid workaround.
+
+## 2026-08-24 exact H7 Android installation and Home Assistant observation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Signed APK identity | GitHub run `32662983256` produced package `com.kshouse.gatekeeper_app`, version `1.0.0-ge00ebe8`, build `16001`; manifest Ed25519, APK v2/v3 signatures and expected certificate SHA-256 passed | PASS |
+| Connected-device install | `adb install -r` on SM-F966N/Android 16 succeeded, the cold-started `MainActivity` became `topResumedActivity`, process remained alive and filtered fatal logs were empty | PASS for install/launch; OEM background access remains separate |
+| Installed-byte identity | Pulling installed `base.apk` returned 55,770,265 bytes and SHA-256 `1e60e0cb878aab7f176807de2fb7284b653fd704cbef8c49e9dbcf71a281beae`, exactly matching the signed Actions artifact | PASS for exact installed APK |
+| HA telemetry vs legacy controls | Live HA state showed 15 current read-only Target entities and six restored/unavailable historical control entities. Target firmware no longer publishes those unsigned command/config discovery records | PARTIAL: telemetry usable; stale registry cleanup pending |
+
+The Android result proves exact H7 installation and one foreground launch, not
+the NAS updater's end-user install flow, background scan reliability or mobile
+rollback. The six HA controls must be removed from retained discovery/registry;
+they must not be re-enabled without the separately reviewed signed backend
+command bridge.

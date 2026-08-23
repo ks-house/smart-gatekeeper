@@ -542,3 +542,39 @@ strictly newer H7 is accepted by H6, writes the inactive slot, reboots with the
 expected version/new boot ID, completes the continuous health window and is
 marked valid. Automatic rollback, power-loss and N/N-1 recovery remain separate
 pending Gates.
+
+## 19. 2026-08-24 ESP32-C6 multipart GCM alignment incident
+
+Exact H6 `2.1.237+main.g02090c3` accepted the signed H7 manifest and downloaded
+the public `SGKOTA2` envelope, but three physical attempts failed before
+`esp_ota_set_boot_partition()`. The first failed inactive-slot readback matched
+the expected H7 plaintext only through byte 3804 and first differed at byte
+3805. A second attempt reproduced the same boundary. This is the first
+transport chunk's 3,805 ciphertext bytes after the 20-byte envelope header and
+16-byte trailing-tag lookbehind; its length leaves 13 bytes after complete AES
+blocks.
+
+The pinned ESP32-C6 GCM ALT implementation does not preserve CTR residual or
+partial GHASH state across a non-16-byte multipart update. Modeling that exact
+implementation with observed transport chunks `3841 + 437×4096 + 1491`
+reproduced the full 1,795,248-byte failed `app1` readback. Public NAS bytes,
+offline authentication and HTTPS reachability were therefore not the failure
+boundary.
+
+The Target runtime now maintains a separate 0..15-byte ciphertext carry in
+addition to the existing final-tag lookbehind. Every non-final
+`mbedtls_gcm_update()` receives only complete 16-byte blocks in bounded
+4,096-byte slices. The sole final partial block, if present, is submitted once
+immediately before `mbedtls_gcm_finish()`. Compile-time chunk alignment and
+finish-time `carry == plaintext_size mod 16` invariants fail closed, while safe
+stage/counter diagnostics distinguish GCM, SHA, inactive-write, image-end and
+boot-selection failures without logging key, digest or tag material.
+
+H6 remained active because tag/plaintext validation failed before boot
+selection; NVS was not erased. Inactive `app1` is no longer a valid fallback
+after the failed writes. Both periodic HTTPS and authenticated local upload
+share the affected engine, so the corrected merged-main requires one
+NVS-preserving app-only USB bootstrap. OTA completion remains open until a
+strictly newer signed release is written to the inactive slot, boots under a
+new identity, keeps Wi-Fi plus MQTTS healthy for the continuous window and is
+marked valid. Rollback and power-loss injection remain separate Gates.

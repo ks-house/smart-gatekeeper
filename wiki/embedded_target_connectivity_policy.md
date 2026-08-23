@@ -225,3 +225,28 @@ merged-main H6 followed by a strictly newer H7 delivered through HTTPS to the
 inactive slot. Wall installation still requires that H7 run to show manifest
 acceptance, inactive-slot install, reboot, expected version and boot ID,
 health-valid marking, plus the repeated outage and rollback trials in section 5.
+
+## 13. 2026-08-24 H6 connectivity and H7 GCM stream boundary
+
+Exact H6 `2.1.237+main.g02090c3` was installed app-only over USB without erasing
+NVS. A subsequent reboot restored the saved SSID, acquired `192.168.35.19` in
+about three seconds, established verified MQTTS, subscribed to both exact
+per-Target topics and published diagnostics/config. This proves the bundled
+libsodium manifest verifier image retained the required Wi-Fi and MQTT paths.
+
+H6 then accepted exact H7 `2.1.238+main.ge00ebe8` and began the encrypted HTTPS
+download on three fresh boots. Each attempt reached the shared image write/hash
+boundary and failed closed. Two physical `app1` readbacks first differed from
+the authenticated H7 plaintext at the identical offset 3805, the first
+non-block-aligned ESP32-C6 GCM ALT continuation. Active H6 and saved Wi-Fi
+credentials remained intact and MQTTS reconnected after each abort; the
+inactive slot is intentionally not bootable after those failed writes.
+
+The correction carries partial ciphertext between transport callbacks and
+feeds complete 16-byte blocks to every non-final GCM update. Current H6 cannot
+consume that corrective envelope through either periodic HTTPS or local upload
+because both use the affected pre-fix engine. One NVS-preserving app-only USB
+bootstrap is therefore required, followed by a strictly newer periodic HTTPS
+release and continuous Wi-Fi+MQTTS health-valid observation. Until that
+sequence completes, the Target must not be returned to the wall even though
+Wi-Fi and MQTT recovery themselves passed.

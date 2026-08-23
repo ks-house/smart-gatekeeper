@@ -3209,3 +3209,23 @@
 - Verified that the reviewed feature and policy-connected head are ancestors of merged main and that all 62 protected Git blobs are identical across all three commits. The live GitHub verifier selected `current-main-baseline` for exact merged main.
 - The focused final-policy suite passed 42/42; the OTA contract, all seven workflow actionlint checks, JSON/Python parsing and whitespace validation passed. Full Windows discovery ran 277 tests with 275 passing and only the two unchanged checkout-CRLF checks failing; fresh `core.autocrlf=false` M2 checkout suites passed 14/14 manual-contract and 5/5 signing-script tests.
 - This policy-only rotation reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
+
+## [2026-08-24] test | Bootstrap H6 and isolate the H7 inactive-slot failure
+
+- Installed exact main H6 `02090c31b6813d6d1691262809dfc86330283a9d`, version `2.1.237+main.g02090c3`, app-only over USB without erasing NVS; saved Wi-Fi recovered `192.168.35.19`, verified MQTTS authenticated and exact per-Target subscriptions/diagnostics returned.
+- Verified Target run `32662983244` exact H7 `e00ebe84dbd7a4c9323b21e393429c9d44f4cdb3`, version `2.1.238+main.ge00ebe8`, through NAS latest/immutable equality, Ed25519, AES-256-GCM, ciphertext/plaintext hash, ESP32-C6 N16 image and 5,544,784-byte slot headroom.
+- H6 accepted the H7 manifest and downloaded the encrypted artifact on three boots, but every attempt failed closed at image write/hash before boot selection. Active H6 and NVS remained usable; MQTTS reconnected after each abort.
+- Full and prefix `app1` readbacks from two attempts matched expected H7 plaintext through offset 3804 and first differed at offset 3805 (`mod 16 = 13`). The failed full-slot SHA-256 was `ffa311011453f871bca9e85468416c890b337e7acc5f37a1f1a4416f842ccfeb` versus expected `fc939b690f0418a917172393abb35ba769910b8e5b540c93884053df5e9b9b4e`.
+
+## [2026-08-24] fix | Align ESP32-C6 encrypted OTA GCM updates
+
+- Confirmed the pinned ESP-IDF 5.5.4 GCM ALT loses CTR residual and partial GHASH state across a non-16-byte multipart update; modeling its exact `3841 + 437×4096 + 1491` transport sequence reproduced every byte of the failed physical `app1` readback.
+- Added a 0..15-byte ciphertext carry so every non-final GCM update uses complete 16-byte blocks in bounded 4,096-byte slices, with a single optional final partial update immediately before authenticated finish.
+- Added compile-time block alignment, finish-time carry modulo, safe GCM/SHA/inactive-write/finalize diagnostics and a regression for the exact physical chunk sequence. Periodic HTTPS and authenticated local upload continue to share one fail-closed engine.
+- Current H6 cannot consume the correction through either affected encrypted path, so one NVS-preserving app-only USB bootstrap followed by a strictly newer periodic HTTPS install/reboot/health-valid observation remains required.
+
+## [2026-08-24] test | Install exact H7 Android artifact and audit Home Assistant state
+
+- Independently verified H7 Android package `com.kshouse.gatekeeper_app`, version `1.0.0-ge00ebe8`, build `16001`, manifest Ed25519, APK v2/v3 signatures and expected certificate, then installed it on the connected SM-F966N/Android 16 device.
+- Cold launch completed with `MainActivity` top-resumed, a live process and no filtered fatal exception. Pulled installed `base.apk` was byte-identical to the 55,770,265-byte Actions artifact, SHA-256 `1e60e0cb878aab7f176807de2fb7284b653fd704cbef8c49e9dbcf71a281beae`.
+- Home Assistant currently exposes 15 live read-only entities plus six restored/unavailable legacy plaintext controls; broker retained discovery is empty. A default-dry-run migration reports 15 secure discovery updates and seven legacy tombstones, but no retained mutation was made before Target OTA health evidence.
