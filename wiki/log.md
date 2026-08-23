@@ -3209,3 +3209,10 @@
 - Verified that the reviewed feature and policy-connected head are ancestors of merged main and that all 62 protected Git blobs are identical across all three commits. The live GitHub verifier selected `current-main-baseline` for exact merged main.
 - The focused final-policy suite passed 42/42; the OTA contract, all seven workflow actionlint checks, JSON/Python parsing and whitespace validation passed. Full Windows discovery ran 277 tests with 275 passing and only the two unchanged checkout-CRLF checks failing; fresh `core.autocrlf=false` M2 checkout suites passed 14/14 manual-contract and 5/5 signing-script tests.
 - This policy-only rotation reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
+
+## [2026-08-24] compile | Authorize exact ESP32-C6 GCM alignment fix
+
+- Replaced the historical persistent authorization with one temporary-exact and one future persistent identity for reviewed feature commit `e6b1b323955d81b1b2741cf021247729574ce6af`; both identities bind the same complete ordered 62-file normalized digest map.
+- Verified that `deploy.yml` is the only protected change from H7 main, with normalized SHA-256 `f6245ce4f8b4c78ebd0e312d216233ee5cd8bbd188f0deb6a0fbedeee18b85ac`; the remote recursive tree is untruncated, all protected entries are regular `100644 blob` objects, exactly seven workflows are present and the local-Action inventory remains empty.
+- The live GitHub verifier selected `temporary-ota-gcm-e6b1b323` for the exact feature SHA. The focused transition suite passed 42/42, full discovery passed 277/277, and JSON/Python parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed in the LF clean clone.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
