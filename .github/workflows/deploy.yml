@@ -463,3 +463,155 @@ jobs:
           local_path: './dist/*'
           remote_path: ${{ secrets.NAS_TARGET_DIR || '/docker/smart-gatekeeper-ota/' }}
           sftp_only: true
+
+  nas_mqtt_certificate_readonly_audit:
+    name: Read-only NAS Mosquitto certificate audit
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/nas-mqtt-cert-audit-20260823'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact audit source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned SSH transport
+        run: python -m pip install paramiko==5.0.0
+
+      - name: Inspect certificate paths and metadata without reading keys
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
+          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import shlex
+          from pathlib import Path
+
+          import paramiko
+
+          required = ("NAS_HOST", "NAS_USER", "NAS_PASSWORD", "NAS_PORT", "NAS_KNOWN_HOSTS")
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("missing required NAS audit secret name(s): " + ", ".join(missing))
+          host = os.environ["NAS_HOST"]
+          user = os.environ["NAS_USER"]
+          password = os.environ["NAS_PASSWORD"]
+          port_text = os.environ["NAS_PORT"]
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+              raise SystemExit("NAS_HOST format is invalid")
+          if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,63}", user):
+              raise SystemExit("NAS_USER format is invalid")
+          if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+              raise SystemExit("NAS_PORT format is invalid")
+
+          known_hosts = Path(os.environ["RUNNER_TEMP"]) / "nas_known_hosts"
+          known_hosts.write_text(os.environ["NAS_KNOWN_HOSTS"].rstrip("\r\n") + "\n", encoding="utf-8")
+          known_hosts.chmod(0o600)
+          client = paramiko.SSHClient()
+          client.load_host_keys(str(known_hosts))
+          client.set_missing_host_key_policy(paramiko.RejectPolicy())
+          report = {"schema_version": 1, "read_only": True, "commands": [], "containers": []}
+
+          def run(command):
+              stdin, stdout, stderr = client.exec_command(
+                  "sudo -S -p '' sh -c " + shlex.quote(command), timeout=30)
+              stdin.write(password + "\n")
+              stdin.flush()
+              stdin.channel.shutdown_write()
+              out = stdout.read().decode("utf-8", "replace")
+              err = stderr.read().decode("utf-8", "replace")
+              rc = stdout.channel.recv_exit_status()
+              for secret in (password,):
+                  out = out.replace(secret, "[REDACTED]")
+                  err = err.replace(secret, "[REDACTED]")
+              report["commands"].append({"label": command.split(" ", 1)[0], "rc": rc})
+              return rc, out, err
+
+          try:
+              client.connect(
+                  hostname=host,
+                  port=int(port_text),
+                  username=user,
+                  password=password,
+                  allow_agent=False,
+                  look_for_keys=False,
+                  timeout=20,
+                  banner_timeout=20,
+                  auth_timeout=20,
+              )
+              rc, identity, _ = run("id -u")
+              report["sudo_root_access"] = rc == 0 and identity.strip() == "0"
+              _, default_link, _ = run("readlink -f /usr/syno/etc/certificate/system/default")
+              report["dsm_default_certificate_path"] = default_link.strip()
+              cert_command = (
+                  "for f in /usr/syno/etc/certificate/system/default/cert.pem "
+                  "/usr/syno/etc/certificate/system/default/fullchain.pem; do "
+                  "if test -f \"$f\"; then printf 'FILE=%s\\n' \"$f\"; "
+                  "openssl x509 -in \"$f\" -noout -subject -issuer -dates -fingerprint -sha256; fi; done"
+              )
+              _, cert_meta, cert_error = run(cert_command)
+              report["dsm_default_certificate_metadata"] = cert_meta.strip()
+              if cert_error.strip():
+                  report["dsm_default_certificate_error"] = cert_error.strip()
+
+              _, listing, listing_error = run("docker ps --format '{{.ID}}\\t{{.Names}}\\t{{.Ports}}'")
+              if listing_error.strip():
+                  report["docker_error"] = listing_error.strip()
+              for line in listing.splitlines():
+                  parts = line.split("\t", 2)
+                  if len(parts) != 3 or not re.fullmatch(r"[0-9a-f]{12,64}", parts[0]):
+                      continue
+                  container_id, name, ports = parts
+                  if "8883" not in ports and "mosquitto" not in name.lower():
+                      continue
+                  _, mounts_json, mounts_error = run(
+                      "docker inspect --format '{{json .Mounts}}' " + container_id)
+                  entry = {"id": container_id[:12], "name": name, "ports": ports, "mounts": []}
+                  try:
+                      mounts = json.loads(mounts_json)
+                  except json.JSONDecodeError:
+                      mounts = []
+                      entry["mount_error"] = mounts_error.strip() or "invalid mount JSON"
+                  for mount in mounts:
+                      source = str(mount.get("Source", ""))
+                      destination = str(mount.get("Destination", ""))
+                      entry["mounts"].append({"source": source, "destination": destination, "rw": mount.get("RW")})
+                      if destination == "/mosquitto/certs" and source.startswith("/volume"):
+                          inspect = (
+                              "for f in " + shlex.quote(source) + "/cert.pem "
+                              + shlex.quote(source) + "/fullchain.pem "
+                              + shlex.quote(source) + "/broker.pem; do "
+                              "if test -f \"$f\"; then printf 'FILE=%s\\n' \"$f\"; "
+                              "openssl x509 -in \"$f\" -noout -subject -issuer -dates -fingerprint -sha256; fi; done"
+                          )
+                          _, mounted_meta, mounted_error = run(inspect)
+                          entry["mounted_certificate_metadata"] = mounted_meta.strip()
+                          if mounted_error.strip():
+                              entry["mounted_certificate_error"] = mounted_error.strip()
+                  report["containers"].append(entry)
+          finally:
+              client.close()
+              report_path = Path("evidence/nas-mqtt-certificate-audit.json")
+              report_path.parent.mkdir(parents=True, exist_ok=True)
+              report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Preserve sanitized read-only audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: nas-mqtt-certificate-audit-${{ github.sha }}-${{ github.run_attempt }}
+          path: evidence/nas-mqtt-certificate-audit.json
+          if-no-files-found: error
+          retention-days: 1

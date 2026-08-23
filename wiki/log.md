@@ -2930,3 +2930,9 @@
 - The rebooted Target obtained `192.168.35.19`, connected to the provisioned MQTTS broker, subscribed to exact per-Target topics and published retained boot diagnostics/config state.
 - A later beacon timeout (`reason 200`) exercised runtime recovery: the Target regained the same DHCP address, recreated the MQTTS connection, resubscribed and republished diagnostics without rebooting.
 - Periodic HTTPS OTA install, reboot health, rollback, power-loss and long Wi-Fi/MQTT soak evidence remain pending and are not implied by this connectivity pass.
+
+## [2026-08-23] test | Add bounded read-only NAS MQTT certificate audit
+
+- Added a branch-scoped manual audit job that uses the repository-pinned NAS host key and password only through process environment/stdin, then inspects fixed DSM certificate metadata and Mosquitto container mount paths through read-only remote commands.
+- The job never reads private-key bytes, accepts no remote command input and uploads only certificate subjects, validity, fingerprints, container names and mount metadata for one day.
+- This audit helper does not renew, copy or reload a certificate and is not part of the production deployment workflow; its only purpose is to identify the exact stale-certificate source before a separately reviewed repair.
