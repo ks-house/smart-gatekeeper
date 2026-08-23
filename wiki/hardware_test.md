@@ -25,7 +25,7 @@
 | 항목 | 관찰 결과 | 판정 |
 |---|---|---|
 | 기존 entity identity | historical discovery의 device identifier와 read-only unique ID 15개를 고정하고, runtime Target ID는 인자로만 주입 | PASS (software) |
-| secure state namespace | status/binary 11개는 per-Target `/status`, config sensor 4개는 `/config-state`, availability는 `/availability`로 생성 | PASS (software) |
+| secure state namespace | status/binary 11개는 per-Target `/status`와 30초 만료, config sensor 4개는 `/config-state`; boot-only non-retained `/availability`는 discovery에서 참조하지 않음 | PASS (software) |
 | legacy write control 제거 | button 3개와 number 4개는 read-only 갱신보다 먼저 빈 retained payload로 삭제하며 새 config에 `command_topic`/`payload_press` 없음 | PASS (software) |
 | publish semantics | fake broker client 경계에서 총 22건 모두 QoS 1, retain=true와 ACK 대기 경로 확인 | PASS (host test) |
 | credential 경계 | 기본 dry-run은 network-free; username/password 직접 CLI 옵션 없음, env/file 값 출력 없음, credentialed apply는 TLS 필수 | PASS (host test) |
@@ -34,6 +34,20 @@
 이 검증은 discovery payload 생성과 publish 경계의 host 증거다. live broker의 retained 수락,
 Home Assistant registry의 in-place migration 및 stale control 제거를 증명하지 않으며, Target Wi-Fi/MQTTS,
 문 열기, signed command bridge 또는 OTA 동작 증거로 승격하지 않는다.
+
+### 같은 날 live Home Assistant 관찰
+
+| 항목 | 관찰 결과 | 판정 |
+|---|---|---|
+| secure discovery live publish | 운영 internal broker에 15개 read-only retained config를 적용하고 기존 device identity에서 UI 갱신 확인 | PASS (live) |
+| 주기 status | Target `c0feffe6ebac`의 `/status`로 firmware `2.1.0-gd06519e`, IDLE, IP `192.168.35.19`, distance 9990 mm, RSSI를 HA에서 확인 | PASS (live) |
+| config-state | 현 Target가 boot 시 발행한 값을 관찰한 뒤 동일 값을 1회 non-retained로 seed하여 4개 설정 sensor 표시 확인 | PASS (live, seeded) |
+| legacy controls | 기존 button 3개와 number 4개는 UI에 남아 있고 current signed command protocol과 호환되지 않음; 조작하지 않음 | PENDING removal/bridge |
+| public MQTTS TLS | `tworimpa.synology.me:4883` server certificate가 2026-08-14 만료된 것을 검증 client에서 확인 | FAIL (renewal required) |
+
+이 live 관찰은 read-only 상태 가시성 복구 증거다. 문 열기, reboot, OTA, 설정 변경은 backend signed
+command bridge 없이 동작한다고 간주하지 않으며, live migration에서는 legacy control tombstone을 아직
+적용하지 않았다.
 
 ## 2. 현재 코드 기준 검증표
 

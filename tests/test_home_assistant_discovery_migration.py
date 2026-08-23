@@ -47,8 +47,8 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
           config["device"]["identifiers"], ["smart_gatekeeper_01"])
       self.assertTrue(
           config["unique_id"].startswith("smart_gatekeeper_01_"))
-      self.assertEqual(
-          config["availability_topic"], f"{self.prefix}/availability")
+      self.assertNotIn("availability_topic", config)
+      self.assertNotIn("availability_template", config)
       self.assertNotIn("command_topic", config)
       self.assertNotIn("payload_press", config)
       self.assertTrue(publication.retain)
@@ -67,6 +67,10 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
                   if config["unique_id"] in config_ids
                   else f"{self.prefix}/status")
       self.assertEqual(config["state_topic"], expected)
+      if config["unique_id"] in config_ids:
+        self.assertNotIn("expire_after", config)
+      else:
+        self.assertEqual(config["expire_after"], 30)
       self.assertNotIn("smart-gatekeeper/", config["state_topic"])
       self.assertNotIn("gatekeeper/config/", config["state_topic"])
 

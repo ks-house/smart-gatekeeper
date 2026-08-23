@@ -41,14 +41,10 @@ def _device():
   }
 
 
-def _base_config(name, object_id, availability_topic):
+def _base_config(name, object_id):
   return {
-      "availability_template": "{{ value_json.status }}",
-      "availability_topic": availability_topic,
       "device": _device(),
       "name": name,
-      "payload_available": "online",
-      "payload_not_available": "offline",
       "unique_id": f"{DEVICE_ID}_{object_id}",
   }
 
@@ -68,7 +64,6 @@ def build_plan(target_id):
   prefix = f"gatekeeper/v1/targets/{target_id}"
   status_topic = f"{prefix}/status"
   config_topic = f"{prefix}/config-state"
-  availability_topic = f"{prefix}/availability"
   publications = []
 
   status_sensors = (
@@ -99,8 +94,9 @@ def build_plan(target_id):
   )
   for (object_id, name, value_template, unit, icon, device_class,
        entity_category) in status_sensors:
-    config = _base_config(name, object_id, availability_topic)
+    config = _base_config(name, object_id)
     config.update({
+        "expire_after": 30,
         "icon": icon,
         "state_topic": status_topic,
         "value_template": value_template,
@@ -122,9 +118,10 @@ def build_plan(target_id):
        "mdi:shield-check"),
   )
   for object_id, name, value_template, device_class, icon in binary_sensors:
-    config = _base_config(name, object_id, availability_topic)
+    config = _base_config(name, object_id)
     config.update({
         "device_class": device_class,
+        "expire_after": 30,
         "payload_off": "OFF",
         "payload_on": "ON",
         "state_topic": status_topic,
@@ -149,7 +146,7 @@ def build_plan(target_id):
        "mdi:timer-cog-outline"),
   )
   for object_id, name, value_template, unit, icon in config_sensors:
-    config = _base_config(name, object_id, availability_topic)
+    config = _base_config(name, object_id)
     config.update({
         "entity_category": "diagnostic",
         "icon": icon,

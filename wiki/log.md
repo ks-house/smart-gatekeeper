@@ -2944,3 +2944,10 @@
 - A fake MQTT client verified all 22 update/tombstone operations request QoS 1 retained publish and wait for acknowledgement without contacting a live broker.
 - Root discovery ran 214 tests: 212 passed; the two failures were Windows checkout CRLF views of unchanged `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`, while both exact Git blobs separately remained UTF-8/LF.
 - No production broker mutation, retained read-back, Home Assistant registry observation, Target command, Wi-Fi/MQTTS change, OTA action or physical acceptance was performed.
+
+## [2026-08-23] fix | Keep migrated Home Assistant status available across restarts
+
+- Removed the discovery dependency on the Target `/availability` topic because current firmware publishes it only once per MQTT connect without retention; a migration or Home Assistant restart after that event would otherwise leave all entities unavailable.
+- Added `expire_after=30` to the 11 entities backed by the 10-second periodic Target status while leaving four boot-only config-state diagnostics independent of availability.
+- Live internal-broker migration of 15 read-only configs was observed in Home Assistant with firmware `2.1.0-gd06519e`, IDLE state, `192.168.35.19`, distance, RSSI and four explicitly seeded current config-state values.
+- Seven legacy controls were not removed during the live observation and remain nonfunctional with the signed-command firmware; no control was invoked. The public MQTTS certificate was independently observed expired on 2026-08-14 and still requires renewal.
