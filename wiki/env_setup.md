@@ -271,17 +271,30 @@ flutter build apk --release \
 | Workflow | Trigger | 결과 |
 |---|---|---|
 | `.github/workflows/ota_contract.yml` | OTA 영향 PR/main | schema, signature tamper vector, dual-slot/recovery/release blocker 자동 검사 |
-| `.github/workflows/deploy.yml` | `main` push 또는 `workflow_dispatch` | PlatformIO 시험·빌드·contract 검증과 canary 보존; `physical-test-canary`는 exact-main 공개 테스트 서명 artifact만 host-key-mode-labelled 격리 NAS 경로에 staging/readback하며 production은 별도 |
+| `.github/workflows/deploy.yml` | 모든 `main` push 또는 `workflow_dispatch` | public canary 뒤 exact-main 개인 Target production profile을 서명해 NAS OTA 경로에 stage/readback/atomic pointer swap; commercial release와 physical-test canary는 별도 |
 | `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter 분석·빌드·contract 검증과 canary 보존; `physical-test-canary`는 exact-main debug APK만 host-key-mode-labelled 격리 NAS 경로에 staging/readback하며 production은 별도 |
 | `.github/workflows/trusted_workflow_policy.yml` | 보호 파일 변경 PR (`pull_request_target`) | default-branch validator/policy로 candidate bytes의 exact approved bundle 검증 |
 
-일반 `main` push와 기본 `workflow_dispatch`의 `release_target=canary`는 build/test/contract job만
-실행하고 production job을 skip하므로, physical Gate가 정직하게 pending이어도 CI 자체는 성공합니다.
+일반 `main` push는 secret-free public canary를 먼저 통과한 뒤
+`publish_personal_target_ota`를 실행합니다. 이 job은 exact main 전체 history를 checkout하고
+first-parent commit count 기반 `2.1.1-main.<count>+g<SHA>`를 사용하므로 임의 Git SHA 문자열 순서 때문에
+Target version floor에 downgrade로 막히지 않습니다. `esp32c6_production` N16 image와 production-signed
+manifest를 만든 후 commit별 immutable firmware/manifest를 NAS에 staging하고 byte readback합니다.
+마지막 `version.json`만 OpenSSH `posix-rename`으로 원자 교체하며, 오래된 동시 run은 더 최신의 signed
+pointer를 덮을 수 없습니다. 이전 정상 artifact와 manifest는 삭제하지 않습니다.
+
+이 자동 경로의 `production` Environment 사용은 실제 secret 접근 경계이지 commercial release 승인
+주장이 아닙니다. 생성되는 sanitized evidence는 `production_authorized: false`,
+`release_evidence: false`를 유지하고 `ota/release-evidence.json`을 수정하지 않습니다. Environment에
+required reviewer가 설정되어 있으면 main push job은 승인 대기하며, 완전 무인 자동화를 원하면 owner가
+main-only deployment branch policy를 유지한 채 reviewer 정책을 별도로 결정해야 합니다.
+
+기본 `workflow_dispatch`의 `release_target=canary`는 build/test/contract와 public canary까지만 수행합니다.
 `release_target=physical-test-canary`는 [`nas_physical_test_delivery.md`](nas_physical_test_delivery.md)의
 별도 NAS 디렉터리로 bounded SFTP-only batch를 사용해 test-signed public canary를 전달하고 읽어 검증하지만 physical Gate를 통과시키지
 않습니다. `NAS_KNOWN_HOSTS`가 없으면 public canary는 dispatch의 default-false `allow_unpinned_host_key=true` 승인을 요구하고, bounded runtime `ssh-keyscan` 결과를 run-local 파일에 고정해 `runtime-keyscan-unpinned`를 기록하며, `physical-test-connected`는
 별도 `PHYSICAL_TEST_*` 자격증명과 후속 보호 번들이 없으므로 의도적으로 fail-closed입니다.
-운영 NAS 배포는 저장소 쓰기 권한자가 `release_target=production`을 명시한 dispatch에서만 요청할 수
+Commercial 운영 NAS 배포 승인은 저장소 쓰기 권한자가 `release_target=production`을 명시한 dispatch에서만 요청할 수
 있고 `production` GitHub Environment 정책을 통과해야 합니다. `ota_contract_gate.py`는 release job이
 `environment: production`을 기재했는지 기계적으로 검증하며(deployment precondition), 실제 저장소 외부
 Environment 구성(`PUT /repos/{owner}/{repo}/environments/production`)은 Coordinator가 인증된 GitHub API를
@@ -350,6 +363,8 @@ GitHub API는 Secret 이름과 갱신 시각만 반환하므로 값·URL·경로
 - 필수: `OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, `OTA_SIGNING_KEY_ID`
 - 필수: `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`
 - 선택: `NAS_PORT`(미등록 시 `22`)
+- 권장: `NAS_KNOWN_HOSTS`. 없으면 자동 Target lane은 bounded runtime `ssh-keyscan`을 해당 run 연결에만
+  고정하며 최초 스캔의 진위를 증명하지 못합니다. 스캔 뒤 host key가 달라지면 strict 연결이 실패합니다.
 - 선택: `NAS_TARGET_DIR`(firmware), `NAS_APK_TARGET_DIR`(mobile). Smartbox 운영 경로를 사용할 때는
   각각 `/docker/smartbox_ota/firmware/`, `/docker/smartbox_ota/gatekeeper_apk/`로 명시합니다.
 

@@ -2964,6 +2964,7 @@
 - Added the four current configuration values to the Target's existing 10-second per-Target status payload without changing command, ACL or signing behavior.
 - Mapped all 15 read-only Home Assistant entities to that periodic status with a 30-second expiry, removing the restart dependency on both non-retained boot-only availability and config-state publications.
 - Added a host contract test for the four firmware status fields and the exact all-entity status/expiry mapping. Live config convergence with this payload remains pending until the new exact-main Target OTA boots and publishes it.
+
 ## [2026-08-23] fix | Quarantine failed OTA floors and bound artifact downloads
 
 - Rejected the exact persisted version floor when a lower stable slot is running after bootloader rollback, while preserving equal-precedence identity conflict handling and allowing only a strictly newer recovery image.
@@ -2976,3 +2977,10 @@
 - Added static Target runtime assertions for safe-state failure handling, both download deadlines, progress tracking, inactive-write abort and retry scheduling.
 - Built the default ESP32-C6 N16 profile successfully; the 1,662,160-byte app uses 22.65 percent of either 7,340,032-byte OTA slot and leaves 5,677,872 bytes headroom.
 - No Target flash, OTA install, reboot health, rollback, power-loss or network-stall injection was performed; those physical evidence gates remain pending.
+
+## [2026-08-23] code | Add exact-main personal Target OTA auto-publication
+
+- Added a main-push-only `publish_personal_target_ota` lane after the public firmware test/build job. It uses the protected `production` Environment, exact full-history main checkout and the N16 `esp32c6_production` profile without changing or self-attesting the commercial release-evidence job.
+- Replaced arbitrary Git-hash prerelease ordering with deterministic `2.1.1-main.<first-parent-count>+g<SHA>` precedence, created a production-signed manifest whose artifact URL names immutable commit bytes, and retained previous valid firmware/manifest history.
+- Added bounded pinned/runtime-keyscan transport, staged byte readback, stale-run rejection and OpenSSH `posix-rename` as the single `version.json` commit point. Unsupported atomic replacement or post-scan host-key change fails with the previous pointer intact; runtime keyscan still cannot authenticate its first observation.
+- Sanitized publication evidence explicitly keeps `production_authorized: false` and `release_evidence: false`. NAS publication does not prove Target download, install, reboot health, valid mark, rollback or commercial production acceptance.

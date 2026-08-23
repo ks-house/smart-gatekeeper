@@ -12,6 +12,7 @@ on:
       - 'scripts/ota_contract_gate.py'
       - 'tests/test_ota_contract_gate.py'
       - 'tests/test_nas_physical_test_delivery.py'
+      - 'tests/test_target_ota_autopublish.py'
   push:
     branches: [ main ]
   workflow_dispatch:
@@ -300,6 +301,235 @@ jobs:
           fi
           printf '%s\n' 'Connected signed firmware lane remains disabled until a separately reviewed implementation is authorized.' >&2
           exit 1
+
+  publish_personal_target_ota:
+    name: Publish exact-main personal Target OTA to NAS
+    needs: test_and_build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    concurrency:
+      group: smart-gatekeeper-personal-target-ota-main
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact main OTA source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python for exact-main OTA
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install exact-main OTA dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio -r ota/requirements.txt
+
+      - name: Verify exact protected main before production secrets
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          python scripts/ota_contract_gate.py contract
+          python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Materialize personal Target production inputs
+        env:
+          SECRET_ROOT_CA_CERT: ${{ secrets.SECRET_ROOT_CA_CERT }}
+          SECRET_WIFI_SSID: ${{ secrets.SECRET_WIFI_SSID }}
+          SECRET_WIFI_PASSWORD: ${{ secrets.SECRET_WIFI_PASSWORD }}
+          SECRET_API_URL: ${{ secrets.SECRET_API_URL }}
+          SECRET_API_KEY: ${{ secrets.SECRET_API_KEY }}
+          SECRET_MQTT_HOST: ${{ secrets.SECRET_MQTT_HOST }}
+          SECRET_MQTT_PORT: ${{ secrets.SECRET_MQTT_PORT }}
+          SECRET_MQTT_USER: ${{ secrets.SECRET_MQTT_USER }}
+          SECRET_MQTT_PASSWORD: ${{ secrets.SECRET_MQTT_PASSWORD }}
+          SECRET_TARGET_TENANT_ID: ${{ secrets.SECRET_TARGET_TENANT_ID }}
+          SECRET_TARGET_DOOR_ID: ${{ secrets.SECRET_TARGET_DOOR_ID }}
+          SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
+          SECRET_COMMAND_SIGNING_KEY_ID: ${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}
+          SECRET_OTA_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
+          SECRET_OTA_FIRMWARE_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
+          SECRET_OTA_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+          SECRET_OTA_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+          SECRET_LOCAL_RECOVERY_AP_PASSWORD: ${{ secrets.SECRET_LOCAL_RECOVERY_AP_PASSWORD }}
+          SECRET_LOCAL_RECOVERY_USER: ${{ secrets.SECRET_LOCAL_RECOVERY_USER }}
+          SECRET_LOCAL_RECOVERY_PASSWORD: ${{ secrets.SECRET_LOCAL_RECOVERY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          fail_secret_contract() {
+            printf '::error::Personal Target secret contract failed: %s\n' "$1" >&2
+            exit 1
+          }
+          require_cpp_string() {
+            local name="$1"
+            local value="${!name}"
+            test -n "$value" || fail_secret_contract "$name is empty"
+            [[ "$value" != *'"'* && "$value" != *'\'* && \
+               "$value" != *$'\n'* && "$value" != *$'\r'* ]] || \
+              fail_secret_contract "$name contains an unsupported C-string character"
+          }
+          for name in SECRET_WIFI_SSID SECRET_WIFI_PASSWORD SECRET_API_URL \
+            SECRET_API_KEY SECRET_MQTT_HOST SECRET_MQTT_USER \
+            SECRET_MQTT_PASSWORD SECRET_TARGET_TENANT_ID SECRET_TARGET_DOOR_ID \
+            SECRET_OTA_VERSION_URL SECRET_OTA_FIRMWARE_URL \
+            SECRET_OTA_SIGNING_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
+            SECRET_LOCAL_RECOVERY_USER SECRET_LOCAL_RECOVERY_PASSWORD; do
+            require_cpp_string "$name"
+          done
+          test -n "$SECRET_ROOT_CA_CERT" || fail_secret_contract "SECRET_ROOT_CA_CERT is empty"
+          [[ "$SECRET_MQTT_PORT" =~ ^[0-9]{1,5}$ ]] || fail_secret_contract "SECRET_MQTT_PORT format"
+          ((10#$SECRET_MQTT_PORT >= 1 && 10#$SECRET_MQTT_PORT <= 65535)) || fail_secret_contract "SECRET_MQTT_PORT range"
+          [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX format"
+          [[ "$SECRET_COMMAND_SIGNING_KEY_ID" =~ ^[1-9][0-9]*$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNING_KEY_ID format"
+          [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX format"
+          test "${#SECRET_LOCAL_RECOVERY_AP_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_AP_PASSWORD length"
+          test "${#SECRET_LOCAL_RECOVERY_USER}" -ge 8 || fail_secret_contract "SECRET_LOCAL_RECOVERY_USER length"
+          test "${#SECRET_LOCAL_RECOVERY_PASSWORD}" -ge 16 || fail_secret_contract "SECRET_LOCAL_RECOVERY_PASSWORD length"
+          cat <<EOF > include/secrets.h
+          #pragma once
+          #define SECRET_WIFI_SSID "${SECRET_WIFI_SSID}"
+          #define SECRET_WIFI_PASSWORD "${SECRET_WIFI_PASSWORD}"
+          #define SECRET_API_URL "${SECRET_API_URL}"
+          #define SECRET_API_KEY "${SECRET_API_KEY}"
+          #define SECRET_TEST_BLE_MAC "AA:BB:CC:DD:EE:01"
+          #define SECRET_HARDWARELESS_DOOR_ID_HEX ""
+          #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX ""
+          #define SECRET_ACL_SIGNING_KEY_ID 0
+          #define SECRET_MQTT_HOST "${SECRET_MQTT_HOST}"
+          #define SECRET_MQTT_PORT ${SECRET_MQTT_PORT}
+          #define SECRET_MQTT_USER "${SECRET_MQTT_USER}"
+          #define SECRET_MQTT_PASSWORD "${SECRET_MQTT_PASSWORD}"
+          #define SECRET_TARGET_TENANT_ID "${SECRET_TARGET_TENANT_ID}"
+          #define SECRET_TARGET_DOOR_ID "${SECRET_TARGET_DOOR_ID}"
+          #define SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX "${SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX}"
+          #define SECRET_COMMAND_SIGNING_KEY_ID ${SECRET_COMMAND_SIGNING_KEY_ID}
+          #define SECRET_OTA_VERSION_URL "${SECRET_OTA_VERSION_URL}"
+          #define SECRET_OTA_FIRMWARE_URL "${SECRET_OTA_FIRMWARE_URL}"
+          #define SECRET_APK_VERSION_URL "https://mobile-release.invalid/version.json"
+          #define SECRET_APK_DOWNLOAD_URL "https://mobile-release.invalid/app.apk"
+          #define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"
+          #define SECRET_OTA_SIGNING_KEY_ID "${SECRET_OTA_SIGNING_KEY_ID}"
+          #define SECRET_LOCAL_RECOVERY_AP_PASSWORD "${SECRET_LOCAL_RECOVERY_AP_PASSWORD}"
+          #define SECRET_LOCAL_RECOVERY_USER "${SECRET_LOCAL_RECOVERY_USER}"
+          #define SECRET_LOCAL_RECOVERY_PASSWORD "${SECRET_LOCAL_RECOVERY_PASSWORD}"
+          EOF
+          printf '#define SECRET_ROOT_CA_CERT R"(\n%s\n)"\n' "$SECRET_ROOT_CA_CERT" >> include/secrets.h
+
+      - name: Build exact monotonic N16 production firmware
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          COMMIT_SEQUENCE=$(git rev-list --count --first-parent HEAD)
+          [[ "$COMMIT_SEQUENCE" =~ ^[1-9][0-9]*$ ]]
+          FULL_VERSION="2.1.1-main.${COMMIT_SEQUENCE}+g${SHORT_SHA}"
+          echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"
+          export PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\\\"${FULL_VERSION}\\\""
+          pio run -e esp32c6_production
+          python scripts/verify_target_flash_layout.py \
+            --partitions partitions_16MB_ota.csv \
+            --firmware .pio/build/esp32c6_production/firmware.bin \
+            --flash-size 0x1000000 \
+            --max-slot-usage-percent 80
+          mkdir -p dist
+          cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware.bin
+          test -s dist/gatekeeper-firmware.bin
+
+      - name: Create exact production-signed immutable Target manifest
+        env:
+          TARGET_ARTIFACT_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
+          TARGET_PRIVATE_KEY_HEX: ${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}
+          TARGET_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+          TARGET_SIGNING_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$TARGET_ARTIFACT_URL"
+          test -n "$TARGET_PRIVATE_KEY_HEX"
+          test -n "$TARGET_PUBLIC_KEY_HEX"
+          test -n "$TARGET_SIGNING_KEY_ID"
+          [[ "$TARGET_ARTIFACT_URL" =~ ^https://[^[:space:]?#]+/[^/?#]+$ ]]
+          IMMUTABLE_ARTIFACT_URL="${TARGET_ARTIFACT_URL%/*}/gatekeeper-firmware-${GITHUB_SHA}.bin"
+          export TARGET_PRIVATE_KEY_HEX
+          PUBLISHED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          python scripts/ota_contract_gate.py target-manifest-create \
+            --artifact dist/gatekeeper-firmware.bin \
+            --output dist/version.json \
+            --version "$FULL_VERSION" \
+            --commit "$GITHUB_SHA" \
+            --build-id "$GITHUB_RUN_ID" \
+            --artifact-url "$IMMUTABLE_ARTIFACT_URL" \
+            --published-at "$PUBLISHED_AT" \
+            --signing-key-id "$TARGET_SIGNING_KEY_ID" \
+            --private-key-env TARGET_PRIVATE_KEY_HEX \
+            --expected-public-key-hex "$TARGET_PUBLIC_KEY_HEX"
+          python scripts/ota_contract_gate.py target-manifest-verify \
+            --manifest dist/version.json \
+            --artifact dist/gatekeeper-firmware.bin \
+            --public-key-hex "$TARGET_PUBLIC_KEY_HEX" \
+            --expected-version "$FULL_VERSION" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-build-id "$GITHUB_RUN_ID"
+
+      - name: Stage read back and atomically publish Target OTA
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
+          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_TARGET_DIR: ${{ secrets.NAS_TARGET_DIR || '/docker/smartbox_ota/firmware/' }}
+          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+          TARGET_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
+        run: |
+          set -euo pipefail
+          for name in NAS_HOST NAS_USER NAS_PASSWORD NAS_PORT NAS_TARGET_DIR TARGET_PUBLIC_KEY_HEX; do
+            test -n "${!name}"
+          done
+          [[ "$NAS_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ ]]
+          [[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))
+          KNOWN_HOSTS_FILE="${RUNNER_TEMP}/nas_target_ota_known_hosts"
+          HOST_KEY_MODE="repository-secret-pinned"
+          if [[ -n "${NAS_KNOWN_HOSTS:-}" ]]; then
+            printf '%s\n' "$NAS_KNOWN_HOSTS" > "$KNOWN_HOSTS_FILE"
+          else
+            HOST_KEY_MODE="runtime-keyscan-unpinned"
+            for attempt in 1 2 3; do
+              if timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST" > "${KNOWN_HOSTS_FILE}.scan" 2>/dev/null; then
+                mv "${KNOWN_HOSTS_FILE}.scan" "$KNOWN_HOSTS_FILE"
+                break
+              fi
+            done
+            rm -f "${KNOWN_HOSTS_FILE}.scan"
+            echo "::warning::NAS_KNOWN_HOSTS is absent; this run pins a bounded runtime keyscan, which detects changes after the scan but cannot authenticate the first scan"
+          fi
+          test -s "$KNOWN_HOSTS_FILE"
+          chmod 600 "$KNOWN_HOSTS_FILE"
+          ssh-keygen -l -E sha256 -f "$KNOWN_HOSTS_FILE" >/dev/null
+          export OTA_NAS_KNOWN_HOSTS_FILE="$KNOWN_HOSTS_FILE"
+          export OTA_NAS_HOST_KEY_MODE="$HOST_KEY_MODE"
+          python scripts/ota_contract_gate.py target-sftp-publish \
+            --artifact dist/gatekeeper-firmware.bin \
+            --manifest dist/version.json \
+            --expected-version "$FULL_VERSION" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-build-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --evidence-output dist/target-ota-publish-evidence.json
+          unset NAS_PASSWORD NAS_KNOWN_HOSTS OTA_NAS_KNOWN_HOSTS_FILE
+
+      - name: Upload sanitized Target OTA publication evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-ota-publish-evidence-${{ github.sha }}
+          path: dist/target-ota-publish-evidence.json
+          if-no-files-found: error
+          retention-days: 30
 
   release_to_production:
     name: Validate and deploy firmware to production

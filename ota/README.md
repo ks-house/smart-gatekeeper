@@ -51,13 +51,28 @@ The repository test suite also validates that G0-SW permits only feature-flagged
 implementation/review/merge while G0-HW, legacy retirement, and Epic closure
 remain blocked by physical evidence.
 
-Ordinary `main` pushes and the default `release_target=canary` manual run execute
-only build, test, contract validation, and canary artifact upload. Production NAS
-SFTP exists in a separate `production` Environment job and is eligible only when
-an authorized manual dispatch explicitly selects `release_target=production`;
-that job still runs the release command above before deployment. Static tests
-reject workflows that move release/SFTP back into a push job or remove the
-explicit trigger, evidence check, or exact downloaded-canary binding.
+An ordinary `main` push still produces a public canary, then the exact
+`publish_personal_target_ota` job may use the `production` Environment to build
+the single-owner Target profile, create a production-signed manifest and publish
+it to the configured NAS OTA directory. This personal-installation publication
+is deliberately not `release` authorization: its sanitized evidence keeps
+`production_authorized: false` and `release_evidence: false`, and it never edits
+`ota/release-evidence.json`.
+
+The automatic Target version is deterministic and increasing along protected
+main, `2.1.1-main.<first-parent-count>+g<short-sha>`. Firmware and manifest are
+uploaded under immutable commit filenames, read back byte-for-byte, and only
+then is `version.json` replaced with the SFTP server's OpenSSH `posix-rename`
+extension. A server without atomic replacement support fails while the previous
+pointer and immutable artifacts remain available. `NAS_KNOWN_HOSTS` is preferred;
+the bounded runtime-keyscan fallback pins only the connection following that
+scan and cannot authenticate the first scan.
+
+The commercial `release_to_production` job remains a separate authorized manual
+dispatch and still runs the release command above before its deployment. Static
+tests reject either lane if exact-main/secret provenance, signed byte binding,
+staged readback, atomic metadata swap, release evidence, or explicit commercial
+trigger boundaries are weakened.
 
 ## Signature serialization
 

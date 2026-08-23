@@ -324,7 +324,7 @@ published_at
 | Target | `app0`/`app1`/`otadata`는 존재하나 `OtaManager`는 MQTT 호출 시 `HTTPUpdate`만 실행 | periodic HTTPS, safe-state 연동, signature, explicit valid mark, rollback 미구현 |
 | Mobile | app/WebView/scanner 경로에서 metadata를 읽고 임시 디렉터리에 APK 다운로드 후 installer 호출 | scanner/WebView 독립 UI, fallback, hash/certificate 검증, install health 미구현 |
 | Backend | APK와 mobile `version.json`을 동일 FastAPI/NAS 경로에서 제공 | 독립 secondary distribution과 signed metadata 보장 미구현 |
-| CI | 일반 main push는 firmware/APK canary만 빌드·검증·보존하고 production job은 skip; PR mobile metadata는 public RFC test key와 `.invalid` URL만 사용 | production manifest signing은 승인된 `production` environment job 안에서만 가능하며 physical release evidence와 명시적 승인 전까지 배포 차단 |
+| CI | 이 표 작성 당시 일반 main push는 firmware/APK canary만 빌드·검증·보존하고 production job을 skip했음 | 현재 exact-main 개인 Target OTA 자동 게시와 commercial release 승인은 별도 경로이며 아래 12절을 따름 |
 
 dual partition의 존재나 과거 OTA 성공은 rollback 증거가 아니다. 따라서 현재 물리 Target과
 Android 완료 기준은 `pending`이며 issue #23을 자동 close하지 않는다.
@@ -356,7 +356,9 @@ N-1 소비자를 위해 Target `version == firmware_version`, Mobile
 
 ## 12. CI release gate 판정
 
-`.github/workflows/ota_contract.yml`은 PR/main에서 schema, signature tamper vector, dual-slot layout, state/recovery/fault 계약을 검사한다. firmware/mobile build workflow의 일반 main push와 기본 canary dispatch는 build/test/contract 검증과 Actions canary 보존까지만 수행하고 production release job을 실행하지 않는다. 운영 배포는 쓰기 권한자가 `workflow_dispatch`의 `release_target=production`을 명시하고 `production` GitHub Environment 승인을 통과한 경우에만 별도 job으로 진입한다. 이 job은 `ota/release-evidence.json`의 OTA-G0~G4, physical test, 승인자가 모두 통과하지 않으면 production NAS SFTP 전에 실패한다.
+`.github/workflows/ota_contract.yml`은 PR/main에서 schema, signature tamper vector, dual-slot layout, state/recovery/fault 계약을 검사한다. Firmware workflow의 모든 main push는 secret-free canary가 통과한 뒤 exact-main 개인 설치 Target용 production profile을 별도 job에서 빌드·서명하고 configured NAS OTA path에 게시하도록 시도한다. 자동 version은 protected main first-parent count를 수치 precedence로 쓰며, commit별 immutable artifact/manifest를 stage/readback한 뒤 `version.json`만 OpenSSH `posix-rename`으로 원자 교체한다. NAS의 더 최신 signed pointer는 stale run이 덮지 못하며 이전 정상 artifact는 보존한다.
+
+이 자동 개인 설치 게시 결과는 `production_authorized: false`, `release_evidence: false`인 transport evidence다. NAS 게시 성공은 Target download, inactive-slot install, reboot, health valid mark 또는 rollback 성공을 뜻하지 않는다. Commercial 운영 배포 승인은 계속 쓰기 권한자가 `workflow_dispatch`의 `release_target=production`을 명시하고 `production` GitHub Environment 승인을 통과한 경우에만 기존 별도 job으로 진입한다. 이 commercial job은 `ota/release-evidence.json`의 OTA-G0~G4, physical test, 승인자가 모두 통과하지 않으면 production NAS SFTP 전에 실패하며 자동 개인 게시가 그 gate를 대체하지 않는다.
 
 보호 workflow와 OTA gate 자체의 PR 변경은 `.github/workflows/trusted_workflow_policy.yml`이 default-branch `base.sha`의 validator/policy만 실행해 별도로 승인한다. Candidate의 workflow, gate, dependency 파일은 GitHub API에서 inert bytes로만 읽고 normalized SHA-256이 하나의 approved bundle과 전체 일치해야 한다. Candidate가 policy/validator를 함께 수정해도 현재 판정에는 사용되지 않으며, bootstrap과 2단계 rotation은 [trusted_workflow_policy.md](trusted_workflow_policy.md)를 따른다.
 release mode는 해당 build의 manifest와 production pinned public key도 입력받아 schema와 실제
@@ -368,15 +370,16 @@ Ed25519 signature를 재검증한다. 동시에 workflow가 SFTP/Actions에 올�
 
 `contract` PASS는 문서/벡터/정적 불변조건만 증명한다. `release` PASS만 production 배포 허가를
 뜻하며, evidence 파일을 형식적으로 수정하는 것은 시험을 대체하지 않는다.
-정적 workflow 회귀 검사는 push job에 release/SFTP가 다시 들어가거나 production job의 명시적
-dispatch 조건, Environment, evidence validator, 동일 canary artifact 결합이 제거되면 contract
-검증 자체를 실패시킨다.
+정적 workflow 회귀 검사는 허용되지 않은 push job에 release/SFTP가 들어가거나, exact-main 개인
+Target job의 production Environment·secret provenance·monotonic version·signed immutable bytes·readback·
+atomic pointer contract가 약화되거나, commercial production job의 명시적 dispatch 조건,
+Environment, evidence validator, 동일 artifact 결합이 제거되면 contract 검증 자체를 실패시킨다.
 
-firmware와 mobile의 pull request, main-push, branch-dispatch canary job은 production secret
+firmware와 mobile의 pull request/branch-dispatch canary job 및 main-push의 public build job은 production secret
 표현식이나 상속된 secret 환경을 전혀 받지 않는다. 이 공개 canary는 고정 RFC 8032 시험 키와
 `.invalid` artifact URL만 사용하며 installable production release가 아니다. Production secret과
-배포 URL은 exact `refs/heads/main` 및 commit 확인, 보호된 contract/root test 통과, `production`
-Environment 승인 뒤의 별도 main-only job에서만 주입한다. Candidate가 제어하는 실행 파일은
+Target 배포 URL은 exact `refs/heads/main` 및 commit 확인, 보호된 contract/root test 통과,
+`production` Environment 경계 뒤의 별도 main-only 개인 게시 또는 commercial release job에서만 주입한다. Candidate가 제어하는 실행 파일은
 그 검증 전에 secret을 받을 수 없고, job DAG/step 순서/artifact propagation 회귀는 보호된
 `ota_contract_gate.py`의 음성 mutation test가 fail-closed로 차단한다.
 

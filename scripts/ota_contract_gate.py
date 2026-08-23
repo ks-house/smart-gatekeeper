@@ -11,12 +11,15 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -798,6 +801,226 @@ def _validate_physical_test_jobs(
   if re.search(r"\b(sftp|scp|rsync|ssh|curl|wget|pio|flutter|gradle)\b", connected_run):
     raise GateError(f"{path}: connected prerequisite job must not build, sign or contact a network")
 
+PERSONAL_TARGET_SECRET_ENV = {
+    "SECRET_ROOT_CA_CERT": "${{ secrets.SECRET_ROOT_CA_CERT }}",
+    "SECRET_WIFI_SSID": "${{ secrets.SECRET_WIFI_SSID }}",
+    "SECRET_WIFI_PASSWORD": "${{ secrets.SECRET_WIFI_PASSWORD }}",
+    "SECRET_API_URL": "${{ secrets.SECRET_API_URL }}",
+    "SECRET_API_KEY": "${{ secrets.SECRET_API_KEY }}",
+    "SECRET_MQTT_HOST": "${{ secrets.SECRET_MQTT_HOST }}",
+    "SECRET_MQTT_PORT": "${{ secrets.SECRET_MQTT_PORT }}",
+    "SECRET_MQTT_USER": "${{ secrets.SECRET_MQTT_USER }}",
+    "SECRET_MQTT_PASSWORD": "${{ secrets.SECRET_MQTT_PASSWORD }}",
+    "SECRET_TARGET_TENANT_ID": "${{ secrets.SECRET_TARGET_TENANT_ID }}",
+    "SECRET_TARGET_DOOR_ID": "${{ secrets.SECRET_TARGET_DOOR_ID }}",
+    "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}",
+    "SECRET_COMMAND_SIGNING_KEY_ID": "${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}",
+    "SECRET_OTA_VERSION_URL": "${{ secrets.SECRET_OTA_VERSION_URL }}",
+    "SECRET_OTA_FIRMWARE_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
+    "SECRET_OTA_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+    "SECRET_OTA_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+    "SECRET_LOCAL_RECOVERY_AP_PASSWORD": "${{ secrets.SECRET_LOCAL_RECOVERY_AP_PASSWORD }}",
+    "SECRET_LOCAL_RECOVERY_USER": "${{ secrets.SECRET_LOCAL_RECOVERY_USER }}",
+    "SECRET_LOCAL_RECOVERY_PASSWORD": "${{ secrets.SECRET_LOCAL_RECOVERY_PASSWORD }}",
+}
+
+PERSONAL_TARGET_MANIFEST_ENV = {
+    "TARGET_ARTIFACT_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
+    "TARGET_PRIVATE_KEY_HEX": "${{ secrets.OTA_SIGNING_PRIVATE_KEY_HEX }}",
+    "TARGET_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+    "TARGET_SIGNING_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
+}
+
+PERSONAL_TARGET_PUBLISH_ENV = {
+    "NAS_HOST": "${{ secrets.NAS_HOST }}",
+    "NAS_USER": "${{ secrets.NAS_USER }}",
+    "NAS_PASSWORD": "${{ secrets.NAS_PASSWORD }}",
+    "NAS_PORT": "${{ secrets.NAS_PORT || 22 }}",
+    "NAS_TARGET_DIR": "${{ secrets.NAS_TARGET_DIR || '/docker/smartbox_ota/firmware/' }}",
+    "NAS_KNOWN_HOSTS": "${{ secrets.NAS_KNOWN_HOSTS }}",
+    "TARGET_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
+}
+
+
+def _validate_personal_target_ota_job(
+    path: str,
+    build_job_name: str,
+    jobs: dict[str, Any],
+) -> None:
+  if path != ".github/workflows/deploy.yml":
+    if "publish_personal_target_ota" in jobs:
+      raise GateError(f"{path}: Target OTA auto-publish job belongs only in deploy.yml")
+    return
+  job = jobs.get("publish_personal_target_ota")
+  if not isinstance(job, dict):
+    raise GateError(f"{path}: exact-main personal Target OTA job is required")
+  if set(job) != {
+      "name", "needs", "if", "environment", "concurrency", "runs-on", "steps"
+  }:
+    raise GateError(f"{path}: personal Target OTA job keys must be exact")
+  if job.get("name") != "Publish exact-main personal Target OTA to NAS":
+    raise GateError(f"{path}: personal Target OTA job name is not exact")
+  if job.get("needs") not in (build_job_name, [build_job_name]):
+    raise GateError(f"{path}: personal Target OTA must need the public test/build job")
+  if " ".join(str(job.get("if", "")).split()) != (
+      "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+  ):
+    raise GateError(f"{path}: personal Target OTA must be exact main-push only")
+  if job.get("environment") != "production":
+    raise GateError(f"{path}: personal Target OTA must use production environment inputs")
+  if job.get("concurrency") != {
+      "group": "smart-gatekeeper-personal-target-ota-main",
+      "cancel-in-progress": True,
+  }:
+    raise GateError(f"{path}: personal Target OTA concurrency contract is not exact")
+  if job.get("runs-on") != "ubuntu-latest":
+    raise GateError(f"{path}: personal Target OTA runner must be ubuntu-latest")
+  steps = job.get("steps")
+  expected_names = [
+      "Checkout exact main OTA source",
+      "Set up Python for exact-main OTA",
+      "Install exact-main OTA dependencies",
+      "Verify exact protected main before production secrets",
+      "Materialize personal Target production inputs",
+      "Build exact monotonic N16 production firmware",
+      "Create exact production-signed immutable Target manifest",
+      "Stage read back and atomically publish Target OTA",
+      "Upload sanitized Target OTA publication evidence",
+  ]
+  if not isinstance(steps, list) or [step.get("name") for step in steps] != expected_names:
+    raise GateError(f"{path}: personal Target OTA step order must be exact")
+  expected_keys = [
+      {"name", "uses", "with"},
+      {"name", "uses", "with"},
+      {"name", "run"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "run"},
+      {"name", "env", "run"},
+      {"name", "env", "run"},
+      {"name", "uses", "with"},
+  ]
+  for index, (step, keys) in enumerate(zip(steps, expected_keys)):
+    if not isinstance(step, dict) or set(step) != keys:
+      raise GateError(f"{path}: personal Target OTA step {index} keys are not exact")
+    if "continue-on-error" in step or "if" in step:
+      raise GateError(f"{path}: personal Target OTA steps cannot suppress or skip failures")
+
+  checkout, setup, install, verify, materialize, build, manifest, publish, evidence = steps
+  if checkout.get("uses") != "actions/checkout@v4" or checkout.get("with") != {
+      "ref": "${{ github.sha }}",
+      "fetch-depth": 0,
+      "persist-credentials": False,
+  }:
+    raise GateError(f"{path}: personal Target OTA checkout identity/history is not exact")
+  if setup.get("uses") != "actions/setup-python@v5" or setup.get("with") != {
+      "python-version": "3.10"
+  }:
+    raise GateError(f"{path}: personal Target OTA Python setup is not exact")
+  if install.get("run") != (
+      "python -m pip install --upgrade pip\n"
+      "pip install platformio -r ota/requirements.txt\n"
+  ):
+    raise GateError(f"{path}: personal Target OTA dependency install is not exact")
+  verify_run = str(verify.get("run", ""))
+  for fragment in (
+      'test "$GITHUB_EVENT_NAME" = "push"',
+      'test "$GITHUB_REF" = "refs/heads/main"',
+      'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+      'test "$(git rev-parse --is-shallow-repository)" = "false"',
+      "python scripts/ota_contract_gate.py contract",
+      "python -m unittest discover -s tests -p 'test_*.py' -v",
+  ):
+    if verify_run.count(fragment) != 1:
+      raise GateError(f"{path}: personal Target exact-main verification is incomplete")
+  if "${{ secrets." in json.dumps(steps[:4], sort_keys=True):
+    raise GateError(f"{path}: personal Target secrets appear before exact-main verification")
+
+  if materialize.get("env") != PERSONAL_TARGET_SECRET_ENV:
+    raise GateError(f"{path}: personal Target input provenance is not exact")
+  materialize_run = str(materialize.get("run", ""))
+  for fragment in (
+      "require_cpp_string",
+      "cat <<EOF > include/secrets.h",
+      '#define SECRET_HARDWARELESS_DOOR_ID_HEX ""',
+      '#define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX ""',
+      '#define SECRET_OTA_VERSION_URL "${SECRET_OTA_VERSION_URL}"',
+      '#define SECRET_OTA_FIRMWARE_URL "${SECRET_OTA_FIRMWARE_URL}"',
+      '#define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"',
+      '#define SECRET_LOCAL_RECOVERY_AP_PASSWORD "${SECRET_LOCAL_RECOVERY_AP_PASSWORD}"',
+  ):
+    if fragment not in materialize_run:
+      raise GateError(f"{path}: personal Target secret materialization is incomplete")
+  if re.search(r"\b(pio|python|curl|wget|sftp|scp|ssh)\b", materialize_run):
+    raise GateError(f"{path}: Target secret step must not execute candidate tooling")
+
+  build_run = str(build.get("run", ""))
+  for fragment in (
+      "git rev-list --count --first-parent HEAD",
+      'FULL_VERSION="2.1.1-main.${COMMIT_SEQUENCE}+g${SHORT_SHA}"',
+      "pio run -e esp32c6_production",
+      "python scripts/verify_target_flash_layout.py",
+      "--partitions partitions_16MB_ota.csv",
+      "--flash-size 0x1000000",
+      "--max-slot-usage-percent 80",
+      "cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware.bin",
+  ):
+    if fragment not in build_run:
+      raise GateError(f"{path}: monotonic N16 Target production build is incomplete")
+  if "${{ secrets." in build_run:
+    raise GateError(f"{path}: Target build must consume only materialized inputs")
+
+  if manifest.get("env") != PERSONAL_TARGET_MANIFEST_ENV:
+    raise GateError(f"{path}: personal Target signing provenance is not exact")
+  manifest_run = str(manifest.get("run", ""))
+  for fragment in (
+      'IMMUTABLE_ARTIFACT_URL="${TARGET_ARTIFACT_URL%/*}/gatekeeper-firmware-${GITHUB_SHA}.bin"',
+      "python scripts/ota_contract_gate.py target-manifest-create",
+      "python scripts/ota_contract_gate.py target-manifest-verify",
+      '--version "$FULL_VERSION"',
+      '--commit "$GITHUB_SHA"',
+      '--build-id "$GITHUB_RUN_ID"',
+      '--artifact-url "$IMMUTABLE_ARTIFACT_URL"',
+      '--private-key-env TARGET_PRIVATE_KEY_HEX',
+  ):
+    if fragment not in manifest_run:
+      raise GateError(f"{path}: personal Target signed immutable manifest is incomplete")
+  if manifest_run.count("target-manifest-create") != 1 or manifest_run.count(
+      "target-manifest-verify"
+  ) != 1:
+    raise GateError(f"{path}: personal Target manifest create/verify count is not exact")
+
+  if publish.get("env") != PERSONAL_TARGET_PUBLISH_ENV:
+    raise GateError(f"{path}: personal Target NAS/signing input provenance is not exact")
+  publish_run = str(publish.get("run", ""))
+  for fragment in (
+      'timeout 10s ssh-keyscan -T 5 -p "$NAS_PORT" -- "$NAS_HOST"',
+      "runtime-keyscan-unpinned",
+      "ssh-keygen -l -E sha256",
+      "python scripts/ota_contract_gate.py target-sftp-publish",
+      '--expected-version "$FULL_VERSION"',
+      '--expected-commit "$GITHUB_SHA"',
+      '--expected-build-id "$GITHUB_RUN_ID"',
+      '--run-attempt "$GITHUB_RUN_ATTEMPT"',
+      "dist/target-ota-publish-evidence.json",
+  ):
+    if fragment not in publish_run:
+      raise GateError(f"{path}: staged/readback/atomic Target NAS publish is incomplete")
+  if any(fragment in publish_run for fragment in (
+      "StrictHostKeyChecking=no", "set +e", "continue-on-error",
+      "ota_contract_gate.py release", "production_authorized: true",
+  )):
+    raise GateError(f"{path}: personal Target OTA publication adds a release bypass")
+
+  if evidence.get("uses") != "actions/upload-artifact@v4" or evidence.get("with") != {
+      "name": "target-ota-publish-evidence-${{ github.sha }}",
+      "path": "dist/target-ota-publish-evidence.json",
+      "if-no-files-found": "error",
+      "retention-days": 30,
+  }:
+    raise GateError(f"{path}: sanitized Target OTA evidence upload is not exact")
+
+
 CANONICAL_RELEASE_STEPS = {
     ".github/workflows/deploy.yml": [
         {
@@ -1145,6 +1368,10 @@ def validate_workflow_release_triggers(
         "deploy_physical_test_canary",
         "validate_connected_physical_test_prerequisites",
     }
+    if path == ".github/workflows/deploy.yml":
+      allowed_jobs.add("publish_personal_target_ota")
+    if path == ".github/workflows/build_app.yml":
+      allowed_jobs.add("publish_personal_mobile_ota")
     extra_jobs = set(all_jobs.keys()) - allowed_jobs
     if extra_jobs:
       raise GateError(f"{path}: unexpected job in workflow: {sorted(extra_jobs)}")
@@ -1535,6 +1762,7 @@ def validate_workflow_release_triggers(
             prev_continued = sline.endswith("\\")
 
     _validate_physical_test_jobs(path, binding, all_jobs)
+    _validate_personal_target_ota_job(path, build_job_name, all_jobs)
 
 
 def validate_firmware_build_workflow(
@@ -1986,6 +2214,347 @@ def verify_target_manifest(args: argparse.Namespace) -> None:
   print(f"[TARGET-MANIFEST] artifact binding verified: {args.manifest}")
 
 
+AUTO_TARGET_VERSION = re.compile(
+    r"^2\.1\.1-main\.([1-9][0-9]*)\+g([0-9a-f]{7,40})$"
+)
+REMOTE_TARGET_ROOT = re.compile(r"^/docker/[A-Za-z0-9._/-]+$")
+
+
+def _validated_target_remote_root(value: str) -> str:
+  root = value.rstrip("/")
+  if (
+      not REMOTE_TARGET_ROOT.fullmatch(root)
+      or "//" in root
+      or any(segment in ("", ".", "..") for segment in root.split("/")[1:])
+  ):
+    raise GateError("NAS_TARGET_DIR must be a canonical /docker path")
+  return root
+
+
+def _read_sftp_bytes(sftp: Any, path: str) -> bytes:
+  with sftp.open(path, "rb") as stream:
+    value = stream.read()
+  if not isinstance(value, bytes):
+    raise GateError("SFTP readback did not return bytes")
+  return value
+
+
+def _read_optional_sftp_bytes(sftp: Any, path: str) -> bytes | None:
+  try:
+    return _read_sftp_bytes(sftp, path)
+  except OSError as exc:
+    if getattr(exc, "errno", None) == 2 or "no such file" in str(exc).lower():
+      return None
+    raise
+
+
+def _write_sftp_bytes(sftp: Any, path: str, value: bytes) -> None:
+  with sftp.open(path, "wb") as stream:
+    written = stream.write(value)
+    if written is not None and written != len(value):
+      raise GateError("SFTP staged write was incomplete")
+    stream.flush()
+
+
+def _manifest_from_bytes(value: bytes) -> dict[str, Any]:
+  try:
+    parsed = json.loads(value.decode("utf-8"))
+  except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    raise GateError("NAS current Target manifest is not valid UTF-8 JSON") from exc
+  if not isinstance(parsed, dict):
+    raise GateError("NAS current Target manifest must be an object")
+  return parsed
+
+
+def _target_pointer_decision(
+    existing_bytes: bytes | None,
+    candidate: dict[str, Any],
+    public_key_hex: str,
+) -> tuple[str, dict[str, Any] | None]:
+  if existing_bytes is None:
+    return "publish-new", None
+  try:
+    existing = _manifest_from_bytes(existing_bytes)
+    validate_manifest(existing, "target-manifest.schema.json", public_key_hex)
+  except GateError:
+    # A trusted exact-main producer may replace unsigned/corrupt legacy metadata.
+    # The invalid pointer is never treated as retained valid release evidence.
+    return "publish-replacing-invalid", None
+
+  if (
+      existing["commit"] == candidate["commit"]
+      and existing["version"] == candidate["version"]
+      and existing["sha256"] == candidate["sha256"]
+      and existing["artifact_url"] == candidate["artifact_url"]
+  ):
+    return "idempotent", existing
+
+  candidate_match = AUTO_TARGET_VERSION.fullmatch(str(candidate["version"]))
+  if candidate_match is None:
+    raise GateError("automatic Target OTA version is not the monotonic main format")
+  candidate_core = (2, 1, 1)
+  candidate_sequence = int(candidate_match.group(1))
+  existing_version = str(existing["version"])
+  existing_core_match = re.match(r"^([0-9]+)\.([0-9]+)\.([0-9]+)(?:[-+]|$)", existing_version)
+  if existing_core_match is None:
+    raise GateError("NAS current signed Target version cannot be ordered safely")
+  existing_core = tuple(int(value) for value in existing_core_match.groups())
+  if existing_core > candidate_core:
+    raise GateError("stale Target OTA publish refused: NAS version core is newer")
+  if existing_core < candidate_core:
+    return "publish-upgrade", existing
+  existing_match = AUTO_TARGET_VERSION.fullmatch(existing_version)
+  if existing_match is None:
+    raise GateError("stale Target OTA publish refused: equal-core NAS version is not ordered")
+  existing_sequence = int(existing_match.group(1))
+  if existing_sequence >= candidate_sequence:
+    raise GateError("stale or conflicting Target OTA publish refused")
+  return "publish-upgrade", existing
+
+
+def _place_immutable_sftp_bytes(
+    sftp: Any,
+    staged_path: str,
+    final_path: str,
+    expected: bytes,
+) -> None:
+  current = _read_optional_sftp_bytes(sftp, final_path)
+  if current is None:
+    sftp.rename(staged_path, final_path)
+  elif current == expected:
+    sftp.remove(staged_path)
+  else:
+    raise GateError("immutable NAS OTA history path already contains different bytes")
+  if _read_sftp_bytes(sftp, final_path) != expected:
+    raise GateError("immutable NAS OTA readback differs after publish")
+
+
+def _publish_target_sftp_bytes(
+    sftp: Any,
+    remote_root: str,
+    artifact_path: Path,
+    manifest_path: Path,
+    candidate: dict[str, Any],
+    public_key_hex: str,
+    run_attempt: str,
+) -> dict[str, Any]:
+  commit = str(candidate["commit"])
+  if not re.fullmatch(r"[0-9a-f]{40}", commit):
+    raise GateError("automatic Target OTA commit identity is invalid")
+  if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
+    raise GateError("automatic Target OTA run attempt is invalid")
+  immutable_artifact_name = f"gatekeeper-firmware-{commit}.bin"
+  immutable_manifest_name = f"version-{commit}.json"
+  parsed_url = urlparse(str(candidate["artifact_url"]))
+  if (
+      parsed_url.scheme != "https"
+      or not parsed_url.netloc
+      or parsed_url.query
+      or parsed_url.fragment
+      or Path(parsed_url.path).name != immutable_artifact_name
+  ):
+    raise GateError("signed Target artifact URL is not bound to the immutable SHA filename")
+
+  artifact_bytes = artifact_path.read_bytes()
+  manifest_bytes = manifest_path.read_bytes()
+  if not artifact_bytes or not manifest_bytes:
+    raise GateError("automatic Target OTA local artifact or manifest is empty")
+  remote_stat = sftp.stat(remote_root)
+  if not stat.S_ISDIR(remote_stat.st_mode):
+    raise GateError("NAS_TARGET_DIR does not identify an existing directory")
+
+  pointer_path = f"{remote_root}/version.json"
+  initial_pointer = _read_optional_sftp_bytes(sftp, pointer_path)
+  initial_decision, initial_valid_manifest = _target_pointer_decision(
+      initial_pointer, candidate, public_key_hex
+  )
+  stage = (
+      f"{remote_root}/.staging-{commit}-"
+      f"{candidate['build_id']}-{run_attempt}"
+  )
+  sftp.mkdir(stage)
+  staged_artifact = f"{stage}/{immutable_artifact_name}"
+  staged_manifest = f"{stage}/{immutable_manifest_name}"
+  staged_pointer = f"{stage}/version.json"
+  sftp.put(str(artifact_path), staged_artifact, confirm=True)
+  sftp.put(str(manifest_path), staged_manifest, confirm=True)
+  sftp.put(str(manifest_path), staged_pointer, confirm=True)
+  if _read_sftp_bytes(sftp, staged_artifact) != artifact_bytes:
+    raise GateError("NAS staged Target artifact readback differs")
+  if (
+      _read_sftp_bytes(sftp, staged_manifest) != manifest_bytes
+      or _read_sftp_bytes(sftp, staged_pointer) != manifest_bytes
+  ):
+    raise GateError("NAS staged Target manifest readback differs")
+
+  final_artifact = f"{remote_root}/{immutable_artifact_name}"
+  _place_immutable_sftp_bytes(
+      sftp, staged_artifact, final_artifact, artifact_bytes
+  )
+
+  if initial_decision == "idempotent":
+    sftp.remove(staged_manifest)
+    sftp.remove(staged_pointer)
+    sftp.rmdir(stage)
+    return {
+        "result": "idempotent",
+        "previous_valid_manifest": True,
+        "immutable_artifact": immutable_artifact_name,
+        "immutable_manifest": immutable_manifest_name,
+    }
+
+  final_manifest = f"{remote_root}/{immutable_manifest_name}"
+  _place_immutable_sftp_bytes(
+      sftp, staged_manifest, final_manifest, manifest_bytes
+  )
+
+  if initial_valid_manifest is not None and initial_pointer is not None:
+    previous_commit = str(initial_valid_manifest["commit"])
+    previous_history = f"{remote_root}/version-{previous_commit}.json"
+    previous_staged = f"{stage}/previous-{previous_commit}.json"
+    _write_sftp_bytes(sftp, previous_staged, initial_pointer)
+    if _read_sftp_bytes(sftp, previous_staged) != initial_pointer:
+      raise GateError("previous valid Target manifest staging readback differs")
+    _place_immutable_sftp_bytes(
+        sftp, previous_staged, previous_history, initial_pointer
+    )
+
+  # Re-read immediately before the pointer swap. A changed/newer pointer is a
+  # stale-run conflict and must not be overwritten by this run.
+  current_pointer = _read_optional_sftp_bytes(sftp, pointer_path)
+  if current_pointer != initial_pointer:
+    current_decision, _ = _target_pointer_decision(
+        current_pointer, candidate, public_key_hex
+    )
+    if current_decision == "idempotent":
+      sftp.remove(staged_pointer)
+      sftp.rmdir(stage)
+      return {
+          "result": "idempotent-race-winner",
+          "previous_valid_manifest": True,
+          "immutable_artifact": immutable_artifact_name,
+          "immutable_manifest": immutable_manifest_name,
+      }
+    raise GateError("NAS Target pointer changed during staged publication")
+
+  # OpenSSH posix-rename is the commit point: replacing version.json is one
+  # atomic filesystem operation. Unsupported servers fail while the old pointer
+  # and every previously valid immutable artifact remain untouched.
+  sftp.posix_rename(staged_pointer, pointer_path)
+  if _read_sftp_bytes(sftp, pointer_path) != manifest_bytes:
+    raise GateError("atomic NAS Target manifest pointer readback differs")
+  sftp.rmdir(stage)
+  return {
+      "result": initial_decision,
+      "previous_valid_manifest": initial_valid_manifest is not None,
+      "immutable_artifact": immutable_artifact_name,
+      "immutable_manifest": immutable_manifest_name,
+  }
+
+
+def publish_target_sftp(args: argparse.Namespace) -> None:
+  public_key_hex = os.environ.get("TARGET_PUBLIC_KEY_HEX", "")
+  if not re.fullmatch(r"[0-9a-f]{64}", public_key_hex):
+    raise GateError("TARGET_PUBLIC_KEY_HEX must be exact lowercase 32-byte hex")
+  verify_target_manifest(argparse.Namespace(
+      manifest=args.manifest,
+      artifact=args.artifact,
+      public_key_hex=public_key_hex,
+      expected_version=args.expected_version,
+      expected_commit=args.expected_commit,
+      expected_build_id=args.expected_build_id,
+  ))
+  candidate = load_json(args.manifest)
+  if AUTO_TARGET_VERSION.fullmatch(args.expected_version) is None:
+    raise GateError("automatic Target OTA version is not monotonic main format")
+  host = os.environ.get("NAS_HOST", "")
+  user = os.environ.get("NAS_USER", "")
+  password = os.environ.get("NAS_PASSWORD", "")
+  port_text = os.environ.get("NAS_PORT", "")
+  known_hosts_path = Path(os.environ.get("OTA_NAS_KNOWN_HOSTS_FILE", ""))
+  host_key_mode = os.environ.get("OTA_NAS_HOST_KEY_MODE", "")
+  if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+    raise GateError("NAS_HOST format is invalid")
+  if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,63}", user):
+    raise GateError("NAS_USER format is invalid")
+  if not password:
+    raise GateError("NAS_PASSWORD is empty")
+  if not re.fullmatch(r"[0-9]{1,5}", port_text) or not 1 <= int(port_text) <= 65535:
+    raise GateError("NAS_PORT format or range is invalid")
+  if not known_hosts_path.is_file() or known_hosts_path.stat().st_size < 1:
+    raise GateError("strict NAS known-hosts file is missing")
+  if host_key_mode not in {"repository-secret-pinned", "runtime-keyscan-unpinned"}:
+    raise GateError("NAS host-key mode is invalid")
+  remote_root = _validated_target_remote_root(
+      os.environ.get("NAS_TARGET_DIR", "")
+  )
+
+  try:
+    import paramiko
+  except ImportError as exc:
+    raise GateError("Paramiko is required for atomic Target OTA publication") from exc
+  client = paramiko.SSHClient()
+  try:
+    client.load_host_keys(str(known_hosts_path))
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client.connect(
+        hostname=host,
+        port=int(port_text),
+        username=user,
+        password=password,
+        allow_agent=False,
+        look_for_keys=False,
+        timeout=20,
+        banner_timeout=20,
+        auth_timeout=20,
+    )
+    with client.open_sftp() as sftp:
+      result = _publish_target_sftp_bytes(
+          sftp,
+          remote_root,
+          args.artifact,
+          args.manifest,
+          candidate,
+          public_key_hex,
+          args.run_attempt,
+      )
+  except GateError:
+    raise
+  except Exception as exc:
+    raise GateError(
+        "Target OTA SFTP publication failed before atomic readback confirmation"
+    ) from exc
+  finally:
+    client.close()
+
+  artifact_size, artifact_sha256 = _artifact_size_and_sha256(args.artifact)
+  _, manifest_sha256 = _artifact_size_and_sha256(args.manifest)
+  evidence = {
+      "schema_version": 1,
+      "kind": "personal-target-ota-publication",
+      "production_authorized": False,
+      "release_evidence": False,
+      "commit": args.expected_commit,
+      "version": args.expected_version,
+      "build_id": args.expected_build_id,
+      "artifact_size": artifact_size,
+      "artifact_sha256": artifact_sha256,
+      "manifest_sha256": manifest_sha256,
+      "immutable_artifact": result["immutable_artifact"],
+      "immutable_manifest": result["immutable_manifest"],
+      "atomic_metadata_swap": True,
+      "previous_valid_artifact_retained": True,
+      "previous_valid_manifest": result["previous_valid_manifest"],
+      "host_key_mode": host_key_mode,
+      "result": result["result"],
+  }
+  args.evidence_output.parent.mkdir(parents=True, exist_ok=True)
+  args.evidence_output.write_text(
+      json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+      encoding="utf-8",
+  )
+
+
 def create_mobile_manifest(args: argparse.Namespace) -> None:
   if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
     raise GateError("commit must be the exact lowercase 40-hex source identity")
@@ -2068,6 +2637,414 @@ def verify_mobile_manifest(args: argparse.Namespace) -> None:
   if certificates != {manifest["signing_certificate_digest"]}:
     raise GateError("mobile manifest certificate digest does not match apksigner")
   print(f"[MOBILE-MANIFEST] artifact binding verified: {args.manifest}")
+
+
+MOBILE_REMOTE_ROOT = re.compile(
+    r"^/docker/smartbox_ota/[A-Za-z0-9._/-]+$"
+)
+
+
+def _validated_mobile_remote_root(value: str) -> str:
+  root = value.rstrip("/")
+  if (
+      not MOBILE_REMOTE_ROOT.fullmatch(root)
+      or "//" in root
+      or any(segment in ("", ".", "..") for segment in root.split("/")[1:])
+  ):
+    raise GateError("mobile NAS directory must be a canonical /docker/smartbox_ota path")
+  return root
+
+
+def _ensure_sftp_directory(sftp: Any, root: str) -> None:
+  current = ""
+  for segment in root.split("/")[1:]:
+    current += f"/{segment}"
+    try:
+      remote_stat = sftp.stat(current)
+    except OSError as exc:
+      if getattr(exc, "errno", None) != 2 and "no such file" not in str(exc).lower():
+        raise
+      sftp.mkdir(current)
+      remote_stat = sftp.stat(current)
+    if not stat.S_ISDIR(remote_stat.st_mode):
+      raise GateError("mobile NAS path component is not a directory")
+
+
+def _validate_remote_mobile_pair(
+    manifest_bytes: bytes | None,
+    apk_bytes: bytes | None,
+    public_key_hex: str,
+    apkanalyzer: Path,
+    apksigner: Path,
+) -> dict[str, Any] | None:
+  if manifest_bytes is None or apk_bytes is None:
+    return None
+  try:
+    manifest = _manifest_from_bytes(manifest_bytes)
+    validate_manifest(manifest, "mobile-manifest.schema.json", public_key_hex)
+    if (
+        manifest.get("apk_size") != len(apk_bytes)
+        or manifest.get("sha256") != hashlib.sha256(apk_bytes).hexdigest()
+    ):
+      return None
+    with tempfile.TemporaryDirectory() as directory_name:
+      previous_apk = Path(directory_name) / "previous.apk"
+      previous_apk.write_bytes(apk_bytes)
+      _validate_mobile_apk_identity(
+          previous_apk,
+          apkanalyzer,
+          "com.kshouse.gatekeeper_app",
+          str(manifest["version_name"]),
+          int(manifest["version_code"]),
+          str(manifest["commit"]),
+      )
+      if read_apk_signing_certificate_digests(previous_apk, apksigner) != {
+          manifest["signing_certificate_digest"]
+      }:
+        return None
+    return manifest
+  except (GateError, OSError):
+    return None
+
+
+def _mobile_pair_decision(
+    existing_manifest: dict[str, Any] | None,
+    candidate: dict[str, Any],
+) -> str:
+  if existing_manifest is None:
+    return "publish-replacing-invalid-or-missing"
+  if (
+      existing_manifest["commit"] == candidate["commit"]
+      and existing_manifest["build_number"] == candidate["build_number"]
+      and existing_manifest["sha256"] == candidate["sha256"]
+      and existing_manifest["apk_url"] == candidate["apk_url"]
+      and existing_manifest["fallback_url"] == candidate["fallback_url"]
+  ):
+    return "idempotent"
+  if int(existing_manifest["build_number"]) >= int(candidate["build_number"]):
+    raise GateError("stale or conflicting mobile OTA publish refused")
+  return "publish-upgrade"
+
+
+def _publish_mobile_sftp_root(
+    sftp: Any,
+    remote_root: str,
+    artifact_path: Path,
+    manifest_path: Path,
+    candidate: dict[str, Any],
+    public_key_hex: str,
+    apkanalyzer: Path,
+    apksigner: Path,
+    run_attempt: str,
+) -> dict[str, Any]:
+  _ensure_sftp_directory(sftp, remote_root)
+  commit = str(candidate["commit"])
+  build_number = int(candidate["build_number"])
+  if not re.fullmatch(r"[0-9a-f]{40}", commit) or build_number < 1:
+    raise GateError("mobile OTA identity is invalid")
+  if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
+    raise GateError("mobile OTA run attempt is invalid")
+  artifact_bytes = artifact_path.read_bytes()
+  manifest_bytes = manifest_path.read_bytes()
+  fixed_apk = f"{remote_root}/ks-house-gatekeeper.apk"
+  fixed_manifest = f"{remote_root}/version.json"
+  initial_apk = _read_optional_sftp_bytes(sftp, fixed_apk)
+  initial_manifest_bytes = _read_optional_sftp_bytes(sftp, fixed_manifest)
+  initial_valid = _validate_remote_mobile_pair(
+      initial_manifest_bytes,
+      initial_apk,
+      public_key_hex,
+      apkanalyzer,
+      apksigner,
+  )
+  decision = _mobile_pair_decision(initial_valid, candidate)
+  immutable_apk_name = (
+      f"ks-house-gatekeeper-{commit}-{build_number}.apk"
+  )
+  immutable_manifest_name = f"version-{commit}-{build_number}.json"
+  stage = (
+      f"{remote_root}/.staging-{commit}-{build_number}-{run_attempt}"
+  )
+  sftp.mkdir(stage)
+  staged_fixed_apk = f"{stage}/ks-house-gatekeeper.apk"
+  staged_fixed_manifest = f"{stage}/version.json"
+  staged_immutable_apk = f"{stage}/{immutable_apk_name}"
+  staged_immutable_manifest = f"{stage}/{immutable_manifest_name}"
+  for local_path, remote_path in (
+      (artifact_path, staged_fixed_apk),
+      (manifest_path, staged_fixed_manifest),
+      (artifact_path, staged_immutable_apk),
+      (manifest_path, staged_immutable_manifest),
+  ):
+    sftp.put(str(local_path), remote_path, confirm=True)
+  if (
+      _read_sftp_bytes(sftp, staged_fixed_apk) != artifact_bytes
+      or _read_sftp_bytes(sftp, staged_immutable_apk) != artifact_bytes
+      or _read_sftp_bytes(sftp, staged_fixed_manifest) != manifest_bytes
+      or _read_sftp_bytes(sftp, staged_immutable_manifest) != manifest_bytes
+  ):
+    raise GateError("mobile NAS staged readback differs")
+
+  _place_immutable_sftp_bytes(
+      sftp,
+      staged_immutable_apk,
+      f"{remote_root}/{immutable_apk_name}",
+      artifact_bytes,
+  )
+  _place_immutable_sftp_bytes(
+      sftp,
+      staged_immutable_manifest,
+      f"{remote_root}/{immutable_manifest_name}",
+      manifest_bytes,
+  )
+
+  if (
+      initial_valid is not None
+      and initial_apk is not None
+      and initial_manifest_bytes is not None
+  ):
+    previous_commit = str(initial_valid["commit"])
+    previous_build = int(initial_valid["build_number"])
+    previous_apk_stage = (
+        f"{stage}/previous-{previous_commit}-{previous_build}.apk"
+    )
+    previous_manifest_stage = (
+        f"{stage}/previous-{previous_commit}-{previous_build}.json"
+    )
+    _write_sftp_bytes(sftp, previous_apk_stage, initial_apk)
+    _write_sftp_bytes(sftp, previous_manifest_stage, initial_manifest_bytes)
+    if (
+        _read_sftp_bytes(sftp, previous_apk_stage) != initial_apk
+        or _read_sftp_bytes(sftp, previous_manifest_stage)
+        != initial_manifest_bytes
+    ):
+      raise GateError("previous valid mobile OTA history readback differs")
+    _place_immutable_sftp_bytes(
+        sftp,
+        previous_apk_stage,
+        (
+            f"{remote_root}/ks-house-gatekeeper-"
+            f"{previous_commit}-{previous_build}.apk"
+        ),
+        initial_apk,
+    )
+    _place_immutable_sftp_bytes(
+        sftp,
+        previous_manifest_stage,
+        f"{remote_root}/version-{previous_commit}-{previous_build}.json",
+        initial_manifest_bytes,
+    )
+
+  if decision == "idempotent":
+    sftp.remove(staged_fixed_apk)
+    sftp.remove(staged_fixed_manifest)
+    sftp.rmdir(stage)
+    return {
+        "result": "idempotent",
+        "previous_valid_pair": True,
+        "immutable_artifact": immutable_apk_name,
+        "immutable_manifest": immutable_manifest_name,
+    }
+
+  current_apk = _read_optional_sftp_bytes(sftp, fixed_apk)
+  current_manifest_bytes = _read_optional_sftp_bytes(sftp, fixed_manifest)
+  if current_apk != initial_apk or current_manifest_bytes != initial_manifest_bytes:
+    current_valid = _validate_remote_mobile_pair(
+        current_manifest_bytes,
+        current_apk,
+        public_key_hex,
+        apkanalyzer,
+        apksigner,
+    )
+    current_decision = _mobile_pair_decision(current_valid, candidate)
+    if current_decision == "idempotent":
+      sftp.remove(staged_fixed_apk)
+      sftp.remove(staged_fixed_manifest)
+      sftp.rmdir(stage)
+      return {
+          "result": "idempotent-race-winner",
+          "previous_valid_pair": True,
+          "immutable_artifact": immutable_apk_name,
+          "immutable_manifest": immutable_manifest_name,
+      }
+    raise GateError("mobile NAS current pair changed during staged publication")
+
+  # The fixed APK changes first. During the short interval before the signed
+  # metadata swap, an old manifest can only reject the new bytes by exact hash.
+  sftp.posix_rename(staged_fixed_apk, fixed_apk)
+  if _read_sftp_bytes(sftp, fixed_apk) != artifact_bytes:
+    raise GateError("atomic mobile APK readback differs")
+  try:
+    sftp.posix_rename(staged_fixed_manifest, fixed_manifest)
+    if _read_sftp_bytes(sftp, fixed_manifest) != manifest_bytes:
+      raise GateError("atomic mobile manifest readback differs")
+  except Exception as promotion_error:
+    if (
+        initial_valid is None
+        or initial_apk is None
+        or initial_manifest_bytes is None
+    ):
+      raise
+    rollback_apk = f"{stage}/rollback-previous.apk"
+    rollback_manifest = f"{stage}/rollback-previous-version.json"
+    try:
+      _write_sftp_bytes(sftp, rollback_apk, initial_apk)
+      _write_sftp_bytes(sftp, rollback_manifest, initial_manifest_bytes)
+      if (
+          _read_sftp_bytes(sftp, rollback_apk) != initial_apk
+          or _read_sftp_bytes(sftp, rollback_manifest)
+          != initial_manifest_bytes
+      ):
+        raise GateError("mobile OTA rollback staging readback differs")
+      sftp.posix_rename(rollback_apk, fixed_apk)
+      sftp.posix_rename(rollback_manifest, fixed_manifest)
+      if (
+          _read_sftp_bytes(sftp, fixed_apk) != initial_apk
+          or _read_sftp_bytes(sftp, fixed_manifest)
+          != initial_manifest_bytes
+      ):
+        raise GateError("mobile OTA previous-pair rollback readback differs")
+    except Exception as rollback_error:
+      raise GateError(
+          "mobile manifest promotion and previous-pair rollback both failed"
+      ) from rollback_error
+    raise GateError(
+        "mobile manifest promotion failed; previous valid pair was restored"
+    ) from promotion_error
+  sftp.rmdir(stage)
+  return {
+      "result": decision,
+      "previous_valid_pair": initial_valid is not None,
+      "immutable_artifact": immutable_apk_name,
+      "immutable_manifest": immutable_manifest_name,
+  }
+
+
+def publish_mobile_sftp(args: argparse.Namespace) -> None:
+  public_key_hex = os.environ.get("MOBILE_PUBLIC_KEY_HEX", "")
+  if not re.fullmatch(r"[0-9a-f]{64}", public_key_hex):
+    raise GateError("MOBILE_PUBLIC_KEY_HEX must be exact lowercase 32-byte hex")
+  verify_mobile_manifest(argparse.Namespace(
+      manifest=args.manifest,
+      artifact=args.artifact,
+      public_key_hex=public_key_hex,
+      expected_package_name=args.expected_package_name,
+      apkanalyzer=args.apkanalyzer,
+      apksigner=args.apksigner,
+  ))
+  candidate = load_json(args.manifest)
+  if (
+      candidate.get("version") != args.expected_version
+      or candidate.get("commit") != args.expected_commit
+      or candidate.get("build_number") != args.expected_build_number
+  ):
+    raise GateError("mobile manifest does not match the expected exact-main identity")
+  host = os.environ.get("NAS_HOST", "")
+  user = os.environ.get("NAS_USER", "")
+  password = os.environ.get("NAS_PASSWORD", "")
+  port_text = os.environ.get("NAS_PORT", "")
+  known_hosts_path = Path(os.environ.get("OTA_NAS_KNOWN_HOSTS_FILE", ""))
+  host_key_mode = os.environ.get("OTA_NAS_HOST_KEY_MODE", "")
+  if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+    raise GateError("NAS_HOST format is invalid")
+  if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,63}", user):
+    raise GateError("NAS_USER format is invalid")
+  if not password:
+    raise GateError("NAS_PASSWORD is empty")
+  if not re.fullmatch(r"[0-9]{1,5}", port_text) or not 1 <= int(port_text) <= 65535:
+    raise GateError("NAS_PORT format or range is invalid")
+  if not known_hosts_path.is_file() or known_hosts_path.stat().st_size < 1:
+    raise GateError("strict NAS known-hosts file is missing")
+  if host_key_mode not in {"repository-secret-pinned", "runtime-keyscan-unpinned"}:
+    raise GateError("NAS host-key mode is invalid")
+  primary_root = _validated_mobile_remote_root(
+      os.environ.get("NAS_APK_TARGET_DIR", "")
+      or "/docker/smartbox_ota/gatekeeper_apk"
+  )
+  fallback_root = _validated_mobile_remote_root(
+      os.environ.get("NAS_APK_FALLBACK_TARGET_DIR", "")
+      or "/docker/smartbox_ota/gatekeeper_apk_fallback"
+  )
+  if primary_root == fallback_root:
+    raise GateError("mobile primary and fallback NAS directories must differ")
+  try:
+    import paramiko
+  except ImportError as exc:
+    raise GateError("Paramiko is required for atomic mobile OTA publication") from exc
+  client = paramiko.SSHClient()
+  try:
+    client.load_host_keys(str(known_hosts_path))
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
+    client.connect(
+        hostname=host,
+        port=int(port_text),
+        username=user,
+        password=password,
+        allow_agent=False,
+        look_for_keys=False,
+        timeout=20,
+        banner_timeout=20,
+        auth_timeout=20,
+    )
+    with client.open_sftp() as sftp:
+      # Fallback first: if primary promotion later fails, both endpoints still
+      # serve independently signed and hash-bound old/new pairs.
+      fallback_result = _publish_mobile_sftp_root(
+          sftp,
+          fallback_root,
+          args.artifact,
+          args.manifest,
+          candidate,
+          public_key_hex,
+          args.apkanalyzer,
+          args.apksigner,
+          args.run_attempt,
+      )
+      primary_result = _publish_mobile_sftp_root(
+          sftp,
+          primary_root,
+          args.artifact,
+          args.manifest,
+          candidate,
+          public_key_hex,
+          args.apkanalyzer,
+          args.apksigner,
+          args.run_attempt,
+      )
+  except GateError:
+    raise
+  except Exception as exc:
+    raise GateError(
+        "mobile OTA SFTP publication failed before all atomic readbacks"
+    ) from exc
+  finally:
+    client.close()
+
+  artifact_size, artifact_sha256 = _artifact_size_and_sha256(args.artifact)
+  _, manifest_sha256 = _artifact_size_and_sha256(args.manifest)
+  evidence = {
+      "schema_version": 1,
+      "kind": "personal-mobile-ota-publication",
+      "production_authorized": False,
+      "release_evidence": False,
+      "commit": args.expected_commit,
+      "version": args.expected_version,
+      "build_number": args.expected_build_number,
+      "artifact_size": artifact_size,
+      "artifact_sha256": artifact_sha256,
+      "manifest_sha256": manifest_sha256,
+      "primary": primary_result,
+      "fallback": fallback_result,
+      "atomic_fixed_apk_swap": True,
+      "atomic_metadata_swap": True,
+      "previous_valid_artifact_retained": True,
+      "host_key_mode": host_key_mode,
+  }
+  args.evidence_output.parent.mkdir(parents=True, exist_ok=True)
+  args.evidence_output.write_text(
+      json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+      encoding="utf-8",
+  )
 
 
 def verify_physical_test_canary(args: argparse.Namespace) -> dict[str, Any]:
@@ -2286,6 +3263,20 @@ def parse_args() -> argparse.Namespace:
   target_verify.add_argument("--expected-version", required=True)
   target_verify.add_argument("--expected-commit", required=True)
   target_verify.add_argument("--expected-build-id", required=True)
+  target_publish = subparsers.add_parser(
+      "target-sftp-publish",
+      help=(
+          "stage/read back immutable Target OTA bytes and atomically replace "
+          "the NAS version pointer"
+      ),
+  )
+  target_publish.add_argument("--artifact", type=Path, required=True)
+  target_publish.add_argument("--manifest", type=Path, required=True)
+  target_publish.add_argument("--expected-version", required=True)
+  target_publish.add_argument("--expected-commit", required=True)
+  target_publish.add_argument("--expected-build-id", required=True)
+  target_publish.add_argument("--run-attempt", required=True)
+  target_publish.add_argument("--evidence-output", type=Path, required=True)
   mobile_create = subparsers.add_parser(
       "mobile-manifest-create",
       help="create exact signed mobile metadata inside the protected OTA gate",
@@ -2319,6 +3310,23 @@ def parse_args() -> argparse.Namespace:
   mobile_verify.add_argument("--expected-package-name", required=True)
   mobile_verify.add_argument("--apkanalyzer", type=Path, required=True)
   mobile_verify.add_argument("--apksigner", type=Path, required=True)
+  mobile_publish = subparsers.add_parser(
+      "mobile-sftp-publish",
+      help=(
+          "stage/read back immutable mobile OTA bytes and atomically replace "
+          "the NAS fixed APK and signed metadata pair"
+      ),
+  )
+  mobile_publish.add_argument("--artifact", type=Path, required=True)
+  mobile_publish.add_argument("--manifest", type=Path, required=True)
+  mobile_publish.add_argument("--expected-version", required=True)
+  mobile_publish.add_argument("--expected-commit", required=True)
+  mobile_publish.add_argument("--expected-build-number", type=int, required=True)
+  mobile_publish.add_argument("--expected-package-name", required=True)
+  mobile_publish.add_argument("--run-attempt", required=True)
+  mobile_publish.add_argument("--evidence-output", type=Path, required=True)
+  mobile_publish.add_argument("--apkanalyzer", type=Path, required=True)
+  mobile_publish.add_argument("--apksigner", type=Path, required=True)
   physical_verify = subparsers.add_parser(
       "physical-test-canary-verify",
       help="verify an exact public/test-signed non-release physical-test canary",
@@ -2360,10 +3368,14 @@ def main() -> int:
       create_target_manifest(args)
     elif args.command == "target-manifest-verify":
       verify_target_manifest(args)
+    elif args.command == "target-sftp-publish":
+      publish_target_sftp(args)
     elif args.command == "mobile-manifest-create":
       create_mobile_manifest(args)
     elif args.command == "mobile-manifest-verify":
       verify_mobile_manifest(args)
+    elif args.command == "mobile-sftp-publish":
+      publish_mobile_sftp(args)
     elif args.command == "physical-test-canary-verify":
       verify_physical_test_canary(args)
     elif args.command == "physical-test-evidence-create":

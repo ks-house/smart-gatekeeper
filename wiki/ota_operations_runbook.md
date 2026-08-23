@@ -6,6 +6,31 @@
 
 ## 1. 배포 전 판정
 
+### 1.1 Exact-main 개인 Target 자동 게시
+
+`main` push가 public build/test를 통과하면 `publish_personal_target_ota`가 exact SHA를 full-history
+checkout하고 `esp32c6_production` N16 image를 빌드한다. Version은
+`2.1.1-main.<first-parent-count>+g<short-sha>`여야 하며, 임의 SHA lexicographic order를 version
+precedence로 사용하지 않는다. Production Ed25519 key로 manifest를 생성·재검증한 뒤 다음 순서를
+모두 통과해야 한다.
+
+1. firmware와 manifest를 commit별 immutable staging path에 upload한다.
+2. 두 파일을 다시 내려받아 local bytes와 비교한다.
+3. 기존 signed `version.json`이 더 최신이면 stale run을 중단한다.
+4. 기존 정상 artifact/manifest와 새 immutable pair를 보존한다.
+5. OpenSSH `posix-rename` 한 번으로 `version.json` pointer를 교체하고 다시 읽어 비교한다.
+
+`NAS_KNOWN_HOSTS`가 있으면 pinned host key를 사용한다. 없으면 bounded runtime keyscan을 run-local로
+고정하지만 최초 scan의 진위는 증명하지 못한다. scan 이후 host key mismatch 또는 NAS가
+`posix-rename`을 지원하지 않으면 이전 pointer를 유지한 채 fail-closed한다. GitHub `production`
+Environment의 required reviewer가 유지되는 동안은 자동 job이 승인 대기할 수 있다.
+
+이 단계의 성공은 개인 Target이 새 manifest를 조회할 수 있는 NAS transport 증거일 뿐이다.
+실제 install→reboot→Wi-Fi/MQTTS health→valid mark/rollback은 아래 Target canary 절차로 별도 확인한다.
+또한 자동 게시 evidence는 commercial `release` 승인이나 `ota/release-evidence.json` 갱신이 아니다.
+
+### 1.2 Commercial release 판정
+
 벽 매립형 Target에는 다음 연결 preflight를 먼저 적용한다.
 
 - 최근 status 수신이 15초 이내인지 확인한다.

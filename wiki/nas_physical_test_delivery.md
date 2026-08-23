@@ -161,6 +161,11 @@ protected workflow bundle.
    transport result but keeps the physical gate failed/pending. Preserve the
    previous bootable firmware slot and installed APK for rollback.
 
-Production jobs, their conditions, Environment, signing inputs, release evidence
-gate and target directories are unchanged. A NAS physical-test upload is not a
-production deployment and never closes production authorization.
+The public physical-test jobs, their isolated directories and non-release
+evidence semantics remain unchanged. A separate later exact-main personal Target
+job may publish production-signed immutable bytes to the configured live OTA
+directory after staged readback and an atomic metadata-pointer swap; that path is
+documented in [ota_operations_runbook.md](ota_operations_runbook.md). It does not
+retroactively promote this public-canary evidence, edit commercial release
+evidence or close production authorization. The manual commercial release job
+and its fail-closed release-evidence gate remain separate.

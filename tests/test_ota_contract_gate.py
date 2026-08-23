@@ -569,8 +569,8 @@ class OtaContractGateTest(unittest.TestCase):
         ),
         (
             "connected-enables-deploy",
-            "          exit 1\n\n  release_to_production:",
-            "          exit 0\n\n  release_to_production:",
+            "          exit 1\n\n  publish_personal_target_ota:",
+            "          exit 0\n\n  publish_personal_target_ota:",
             "remain fail closed",
         ),
     )
