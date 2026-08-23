@@ -2947,3 +2947,7 @@
 - The second live attempt confirmed the deployment account is SFTP-only and cannot execute even unprivileged SSH commands, so shell, Docker and DSM certificate paths remain inaccessible through that account.
 - Added a bounded SFTP-only fallback that lists only matching Docker project roots, visits at most 500 entries to depth four, skips every private-key filename and parses only four fixed public-certificate filenames up to 64 KiB into non-secret metadata.
 - The fallback remains read-only and reports only path, size, subject, issuer, validity and SHA-256; it never uploads, renames, removes or reloads any NAS file.
+
+## [2026-08-23] fix | Correct bounded SFTP audit counter scope
+
+- Replaced an invalid module-scope `nonlocal` counter with a bounded mutable counter and compiled the embedded workflow Python from stdin before redispatch; the failed syntax attempt never connected to or changed the NAS.

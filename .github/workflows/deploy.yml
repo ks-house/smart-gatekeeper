@@ -635,23 +635,22 @@ jobs:
                           candidate_roots.append("/docker/" + entry.filename)
                   report["sftp_candidate_roots"] = sorted(candidate_roots)
 
-                  visited = 0
+                  visited = [0]
                   certificate_names = {
                       "cert.pem", "broker.pem", "fullchain.pem", "ca.pem"
                   }
 
                   def walk(directory, depth):
-                      nonlocal visited
-                      if depth < 0 or visited >= 500:
+                      if depth < 0 or visited[0] >= 500:
                           return
                       try:
                           entries = sftp.listdir_attr(directory)
                       except OSError:
                           return
                       for entry in entries:
-                          if visited >= 500:
+                          if visited[0] >= 500:
                               return
-                          visited += 1
+                          visited[0] += 1
                           path = directory.rstrip("/") + "/" + entry.filename
                           if stat.S_ISDIR(entry.st_mode):
                               walk(path, depth - 1)
@@ -682,7 +681,7 @@ jobs:
 
                   for root in candidate_roots:
                       walk(root, 4)
-                  report["sftp_entries_visited"] = visited
+                  report["sftp_entries_visited"] = visited[0]
           finally:
               client.close()
               report_path = Path("evidence/nas-mqtt-certificate-audit.json")
