@@ -491,9 +491,13 @@ not select the inactive partition until envelope digest, plaintext digest, ESP
 image validation and GCM tag all succeed; failure aborts the inactive write and
 does not erase NVS or the active slot.
 
-Schema-v1 firmware cannot consume this envelope. The installed legacy Target
-therefore requires one NVS-preserving USB bootstrap to a v2 consumer, followed
-by a second exact-main periodic HTTPS OTA that proves install, reboot and health.
+Schema-v1 firmware cannot consume this envelope. The Target received its first
+NVS-preserving USB bootstrap to schema-v2 consumer `2.1.233+main.g9e9114b` on
+2026-08-24, but a subsequent content-key rotation intentionally invalidated its
+ability to decrypt future envelopes. The first exact-main image containing key
+ID `personal-target-content-20260824-2` therefore requires one additional
+NVS-preserving USB bootstrap. A strictly newer exact-main periodic HTTPS OTA
+must then prove inactive-slot install, reboot and health-valid marking.
 The content key is embedded in firmware; without ESP32 flash encryption this is
 NAS-at-rest/distribution confidentiality, not resistance to an attacker with
 physical flash read access.

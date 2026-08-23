@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-23 (N16 connectivity, renewed public MQTTS TLS and authenticated Target status)
+> Last updated: 2026-08-24 (exact-main N16 USB bootstrap, Wi-Fi/MQTTS/recovery portal and Home Assistant convergence)
 
 ## 1. 판정 원칙
 
@@ -154,3 +154,26 @@ This recovery proves the current public TLS endpoint and one authenticated Targe
 reconnection. It does not prove automatic certificate renewal, expiry alerting,
 long broker/WAN outage recovery, Target OTA installation, reboot health, rollback,
 relay safety or final wall-install acceptance.
+
+## 2026-08-24 exact-main encrypted Target USB bootstrap
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact release identity | GitHub Actions Target run `32655789147` published exact main `9e9114b7ddc93e54adab1230341a3bc520b1aa68` as `2.1.233+main.g9e9114b`; signed manifest, encrypted artifact, public HTTPS exact-byte readback and local authenticated decryption all passed | PASS for CI/NAS artifact identity |
+| N16 capacity | Plaintext application was 1,703,392 bytes in a 7,340,032-byte slot (23.21%); headroom 5,636,640 bytes. ESP32-C6 image checksum and appended hash were valid and the image declared 16 MB, 80 MHz, DIO | PASS |
+| Pre-write preservation | Read-only backup captured the 16 MB partition table, 20 KiB NVS, 8 KiB OTA data and both valid application headers. `app0` was selected and `app1` remained a bootable fallback | PASS |
+| USB write | Wrote only the exact application to `app0` at `0x10000`; no erase, bootloader, partition-table, NVS, OTA-data, SPIFFS or `app1` write occurred. esptool verified the written-data hash and hard-reset the Target | PASS for NVS-preserving bootstrap |
+| First boot Wi-Fi | Serial identified `2.1.233+main.g9e9114b`, restored the saved SSID from NVS, associated and received `192.168.35.19` | PASS for one boot; three-cycle and outage soak remain pending |
+| MQTTS | The Target completed verified TLS broker authentication, subscribed to both exact per-Target command/ACL topics and published boot diagnostics plus current config state | PASS for one boot/session; broker/WAN soak remains pending |
+| Authenticated recovery UI and scan | A connected Android device on the same Wi-Fi received HTTP 200 for the authenticated controller page. The page included the explicit list renderer and automatic `/scan`; `/scan` returned a JSON array with 13 visible networks including the active SSID, and serial logged the same count | PASS for STA-local portal/scan; AP-only upload recovery remains pending |
+| Home Assistant convergence | After refresh, the existing Smart Gatekeeper device showed `2.1.233+main.g9e9114b`, `192.168.35.19`, `IDLE`, closed door and current distance, RSSI, heap, uptime and four config values | PASS for read-only live telemetry |
+| Legacy Home Assistant controls | Seven historical button/number registry entries were still visible even though their retained discovery configs had been tombstoned. They were not invoked; the authenticated backend signed-command bridge remains absent | PENDING registry cleanup / signed bridge |
+| Inactive-slot OTA and health | This installation was a direct app-only USB bootstrap into the already selected slot, not a periodic HTTPS write to inactive `app1`; bootloader pending-verify, 30-second health-valid mark and rollback were not exercised | PENDING second exact-main physical OTA |
+
+Immediately after this observation the Target content-encryption key was rotated
+without recording its value. GitHub `personal-auto-ota`, GitHub `production` and
+the ignored local headers now share key ID `personal-target-content-20260824-2`.
+The first image containing that new key must be installed by another
+NVS-preserving USB bootstrap. A subsequent strictly newer main release is then
+required to prove encrypted periodic HTTPS download, inactive-slot install,
+reboot and health-valid marking.
