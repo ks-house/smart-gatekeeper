@@ -13,6 +13,7 @@
 
 #include "DiagnosticsManager.h"
 #include "GattServer.h"
+#include "MqttManager.h"
 #include "OtaHealthPolicy.h"
 #include "OtaVersionPolicy.h"
 #include "WifiManager.h"
@@ -452,7 +453,8 @@ void OtaManager::update() {
   if (status == OtaStatus::HEALTH_WINDOW) {
     const bool safe = safeStateProvider != nullptr &&
                       safeStateProvider() == OtaSafeState::SAFE;
-    const bool networkHealthy = WifiManager::isConnected() || WifiManager::isAPMode();
+    const bool networkHealthy =
+        WifiManager::isConnected() && MqttManager::isConnected();
     const sgk::OtaHealthDecision decision = healthPolicy.update(
         now, safe && networkHealthy && ESP.getFreeHeap() >= 65536);
     if (decision == sgk::OtaHealthDecision::kMarkValid) {

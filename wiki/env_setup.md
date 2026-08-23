@@ -473,3 +473,23 @@ setupÏùÄ ignored `.venv`, ignored `include/secrets.h`, PlatformIO package cacheÎ
 `esp32c6` is the default release-mode software build with `ENABLE_HARDWARELESS_RC=0` and `SGK_PRODUCTION_BUILD=0`. `esp32c6_hwless_rc` is an explicit lab-only environment and is never a production authorization path. Production packaging must set `SGK_PRODUCTION_BUILD=1`, keep hardwareless RC at zero, provision exact per-Target MQTT and recovery credentials plus command/OTA public keys, and separately satisfy `security/target-production-policy.json` physical/eFuse/operator Gates.
 
 Use a worktree-scoped PlatformIO directory on Windows, for example `$env:PLATFORMIO_BUILD_DIR='.pio/build-issue50'; pio run -e esp32c6 -j 4`. A successful build is software evidence only and does not validate secure boot, flash/NVS encryption, debug locks, broker deployment, radio, relay, or OTA rollback on hardware.
+
+## Personal installation CI firmware (2026-08-23)
+
+`.github/workflows/personal_installation_firmware.yml` is a manual, `main`-only
+workflow protected by the GitHub `production` environment. It validates the
+Wi-Fi/MQTTS/OTA contracts before accessing secrets, injects the provisioned
+Wi-Fi, per-Target MQTTS, command verification, OTA signing and authenticated
+recovery values, then builds the default `ENABLE_HARDWARELESS_RC=0` firmware.
+
+The workflow produces separate NVS-preserving USB images, a full-recovery
+factory image, checksums and a production-signed OTA manifest. Only an
+AES-encrypted 7z bundle is uploaded, for one day, using the Target recovery
+password. Download and delete that Actions artifact immediately after the CI
+run. Do not write `firmware.factory.bin` at address `0x0` for the normal update;
+use the four documented offsets without `erase_flash` so NVS Wi-Fi credentials
+remain intact.
+
+This lane prepares a personal physical installation artifact. It does not edit
+`ota/release-evidence.json`, deploy to NAS, authorize commercial production or
+replace install/reboot/Wi-Fi/MQTT/OTA health evidence.

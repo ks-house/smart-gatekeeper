@@ -537,13 +537,13 @@ void setup() {
   WifiManager::init();
   OtaManager::setSafeStateProvider(currentOtaSafeState);
   OtaManager::init();
+  MqttManager::init();
 
   if (WifiManager::connectSTA(10000)) {
     // Wall-clock time is not used by the Target. Avoid initializing lwIP's raw
     // UDP SNTP client from loopTask; reset diagnostics previously captured a
     // udp_new_ip_type core-lock assertion in this task.
     DiagnosticsManager::noteAction("network_services_start");
-    MqttManager::init();
   } else {
     LOGF("[WIFI] 접속 실패 -> AP 설정 모드로 전환합니다.");
     WifiManager::startAP();

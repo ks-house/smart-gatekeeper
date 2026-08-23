@@ -18,6 +18,26 @@ String WifiManager::stationIp = "";
 uint32_t WifiManager::recoveryApDeadlineMs = 0;
 static bool webServerStarted = false;
 static bool localUploadSucceeded = false;
+static uint32_t lastStationRetryMs = 0;
+
+namespace {
+constexpr uint32_t kStationRetryIntervalMs = 15000;
+
+bool stationCredentialsProvisioned() {
+    const String ssid = ConfigManager::getWifiSsid();
+    return ssid.length() > 0 && ssid != "YOUR_WIFI_SSID";
+}
+
+void startNonBlockingStationAttempt() {
+    if (!stationCredentialsProvisioned()) return;
+    const String ssid = ConfigManager::getWifiSsid();
+    const String pass = ConfigManager::getWifiPassword();
+    WiFi.setAutoReconnect(true);
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    lastStationRetryMs = millis();
+    DiagnosticsManager::noteAction("wifi_sta_retry");
+}
+}  // namespace
 
 extern int g_tx_power_dbm;
 extern uint16_t g_distance_threshold_cm;
@@ -66,6 +86,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
 
     LOGF("[WIFI] NVS 저장 Wi-Fi '%s' 접속 시도 중...", ssid.c_str());
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
     WiFi.begin(ssid.c_str(), pass.c_str());
 
     uint32_t startMs = millis();
@@ -89,7 +110,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
     } else {
         connected = false;
         LOGF("[WIFI] 접속 실패! (타임아웃) -> STA 연결 시도 중단");
-        WiFi.disconnect(true, true);
+        WiFi.disconnect(false, false);
         delay(100);
         return false;
     }
@@ -108,9 +129,9 @@ bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
         if (!isConnected()) return false;
         WiFi.mode(WIFI_AP_STA);
     } else {
-        WiFi.disconnect(true, true);
+        WiFi.disconnect(false, false);
         delay(100);
-        WiFi.mode(WIFI_AP);
+        WiFi.mode(WIFI_AP_STA);
     }
     
     IPAddress apIP(192, 168, 4, 1);
@@ -132,10 +153,12 @@ bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
         DiagnosticsManager::noteAction("provisioning_ap_ready");
         LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: 'SmartGatekeeper-Setup' (채널 1, 192.168.4.1)");
         LOGF("[WIFI-AP] Captive DNS disabled; open http://192.168.4.1 manually.");
+        if (!preserveStation) startNonBlockingStationAttempt();
     } else {
         WiFi.softAPdisconnect(true);
         recoveryApDeadlineMs = 0;
-        if (preserveStation) WiFi.mode(WIFI_STA);
+        WiFi.mode(WIFI_STA);
+        if (!preserveStation) startNonBlockingStationAttempt();
         DiagnosticsManager::noteAction("provisioning_ap_failed");
         LOGF("[WIFI-AP] 🚨 설정 AP 가동 실패!");
     }
@@ -395,6 +418,20 @@ void WifiManager::handleNotFound() {
 }
 
 void WifiManager::handleClient() {
+    if (apModeActive && recoveryApDeadlineMs == 0 &&
+        WiFi.status() == WL_CONNECTED) {
+        WiFi.softAPdisconnect(true);
+        apModeActive = false;
+        connected = true;
+        stationIp = WiFi.localIP().toString();
+        WiFi.mode(WIFI_STA);
+        DiagnosticsManager::noteAction("wifi_recovered_from_ap");
+        LOGF("[WIFI-INFO] provisioning AP station recovery succeeded! IP: %s",
+             stationIp.c_str());
+    } else if (apModeActive && WiFi.status() != WL_CONNECTED &&
+               millis() - lastStationRetryMs >= kStationRetryIntervalMs) {
+        startNonBlockingStationAttempt();
+    }
     if (apModeActive && recoveryApDeadlineMs != 0 &&
         static_cast<int32_t>(millis() - recoveryApDeadlineMs) >= 0) {
         WiFi.softAPdisconnect(true);
