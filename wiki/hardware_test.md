@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-23 (N16 flash/install and first-boot connectivity attempt)
+> Last updated: 2026-08-23 (N16 connectivity, renewed public MQTTS TLS and authenticated Target status)
 
 ## 1. 판정 원칙
 
@@ -43,7 +43,7 @@ Home Assistant registry의 in-place migration 및 stale control 제거를 증명
 | 주기 status | Target `c0feffe6ebac`의 `/status`로 firmware `2.1.0-gd06519e`, IDLE, IP `192.168.35.19`, distance 9990 mm, RSSI를 HA에서 확인 | PASS (live) |
 | config-state | 현 Target가 boot 시 발행한 값을 관찰한 뒤 동일 값을 1회 non-retained로 seed하여 4개 설정 sensor 표시 확인 | PASS (live, seeded) |
 | legacy controls | retained tombstone 7개를 live broker에 적용하고 retained read-back에서 button/number 0개 확인; current signed command bridge는 별도 미구현 | PASS removal / PENDING bridge |
-| public MQTTS TLS | `tworimpa.synology.me:4883` server certificate가 2026-08-14 만료된 것을 검증 client에서 확인 | FAIL (renewal required) |
+| public MQTTS TLS | Mosquitto restart 뒤 `tworimpa.synology.me:4883`이 RSA SHA-256 `f2c90a2b4a8b3181bb0ae6863618a0101139593ff55105518726a10c78a94e23`, SAN hostname, public chain, TLS 1.3과 2026-10-19 만료를 검증 client에 제공 | PASS (live renewal; expiry monitoring still required) |
 
 이 live 관찰은 read-only 상태 가시성 복구 증거다. 문 열기, reboot, OTA, 설정 변경은 backend signed
 command bridge 없이 동작한다고 간주하지 않으며, live migration에서는 legacy control tombstone을 아직
@@ -139,3 +139,18 @@ candidate to production release approval or close the physical OTA/relay/soak ga
 | WAIT_SAFE_STATE failure | Static Target contract confirms failure status, reason, retry scheduling and immediate return before any network request | PASS (existing behavior, regression guarded) |
 | ESP32-C6 build/capacity | Default N16 build succeeded; app image 1,662,160 bytes in a 7,340,032-byte slot, 22.65% usage and 5,677,872-byte headroom | PASS (compile/capacity only) |
 | Physical install/rollback | No firmware was uploaded by this change; inactive-slot install, timeout injection, bootloader rollback and failed-version quarantine remain unobserved on ESP32-C6 | PENDING physical evidence |
+
+## 2026-08-23 Public MQTTS certificate recovery evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Export validation | The selected RSA leaf covered `tworimpa.synology.me` and `*.tworimpa.synology.me`, matched its private key, verified against the exported two-certificate chain, and expires 2026-10-19 | PASS (offline material validation) |
+| NAS replacement | The audited Mosquitto `certfile`, `cafile`, and `keyfile` were backed up and replaced; replacement readback matched the approved certificate/key/chain before restart | PASS (on-disk recovery) |
+| Live TLS after restart | A default-trust client completed hostname and public-chain validation on port 4883, observed TLS 1.3 and the approved replacement certificate fingerprint | PASS (live endpoint) |
+| Authenticated MQTT | The provisioned broker principal received CONNACK success and SUBACK for the exact Target status topic over verified TLS | PASS (live transport/authentication) |
+| Target reconnection | A fresh periodic status from Target `c0feffe6ebac` reported boot ID `c2f1ce127f0d5a3a296bb781319dc904`, state IDLE and IP `192.168.35.19` after the broker restart | PASS for current reconnect; outage soak remains pending |
+
+This recovery proves the current public TLS endpoint and one authenticated Target
+reconnection. It does not prove automatic certificate renewal, expiry alerting,
+long broker/WAN outage recovery, Target OTA installation, reboot health, rollback,
+relay safety or final wall-install acceptance.

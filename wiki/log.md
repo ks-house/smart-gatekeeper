@@ -3034,3 +3034,15 @@
 - Both `firmware.bin` files were byte-identical at 1,662,032 bytes with SHA-256 `7beee4d68da602bd161e3c009e81610c69d8af6aa2621a376e411564f749a42b`; the exact test version was embedded. The 7 MiB OTA slot used 22.64 percent with 5,678,000 bytes headroom.
 - The LF checkout full suite passed 232/232. The ordinary Windows checkout again passed 230/232 with only the two known `core.autocrlf=true` strict-LF failures in unchanged `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`.
 - These are local example-secret build and source regression results, not production signing, NAS publication, Target installation, reboot health, rollback, physical acceptance or commercial release evidence.
+
+## [2026-08-23] fix | Renew the live public Mosquitto certificate
+
+- Validated the DSM-exported RSA certificate, matching private key, two-certificate chain, SAN coverage and 2026-10-19 expiry without printing private material.
+- Audited the exact Mosquitto certificate paths over pinned-host-key SFTP, retained recoverable copies of the expired pair, replaced the three configured TLS files, verified remote readback and removed all three temporary GitHub certificate Secrets immediately after the one-off run.
+- After the operator restarted Mosquitto, a public-trust client verified hostname, chain, TLS 1.3 and certificate SHA-256 `f2c90a2b4a8b3181bb0ae6863618a0101139593ff55105518726a10c78a94e23` on port 4883.
+
+## [2026-08-23] test | Verify authenticated MQTTS and Target recovery after renewal
+
+- An authenticated MQTT 3.1.1 client received successful CONNACK and SUBACK for the exact per-Target status topic over the renewed verified TLS endpoint.
+- Target `c0feffe6ebac` published a current periodic status with boot ID `c2f1ce127f0d5a3a296bb781319dc904`, IDLE state and IP `192.168.35.19`, proving one broker-restart reconnect path.
+- Automatic certificate renewal/alerting, long outage soak, OTA install/reboot health/rollback, relay safety and final wall-install acceptance remain separate pending gates.
