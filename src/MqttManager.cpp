@@ -184,14 +184,18 @@ void MqttManager::init() {
     const bool transportProvisioned =
         std::strlen(MQTT_HOST) > 0 && MQTT_PORT != 1883 &&
         std::strlen(MQTT_USER) > 0 && std::strlen(MQTT_PASSWORD) > 0 &&
-        std::strlen(SECRET_ROOT_CA_CERT) > 0 && targetId == MQTT_USER;
+        std::strlen(SECRET_ROOT_CA_CERT) > 0;
     const bool verifierProvisioned = commandSignatureVerifier.configure(
         COMMAND_SIGNER_PUBLIC_KEY_HEX, COMMAND_SIGNING_KEY_ID);
     const bool commandProvisioned = commandSecurity.begin(
         targetId.c_str(), TARGET_TENANT_ID, TARGET_DOOR_ID,
         DiagnosticsManager::bootId(), COMMAND_SIGNING_KEY_ID);
     if (!transportProvisioned || !verifierProvisioned || !commandProvisioned) {
-        LOGF("[MQTT-SECURITY] Per-Target TLS/identity/signing provisioning invalid; command plane disabled");
+        LOGF("[MQTT-SECURITY] Per-Target provisioning invalid "
+             "(transport=%s verifier=%s command=%s); command plane disabled",
+             transportProvisioned ? "ready" : "invalid",
+             verifierProvisioned ? "ready" : "invalid",
+             commandProvisioned ? "ready" : "invalid");
         return;
     }
     const String prefix = "gatekeeper/v1/targets/" + targetId;

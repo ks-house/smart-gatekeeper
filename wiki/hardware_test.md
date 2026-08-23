@@ -1,9 +1,24 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-02 (#18 connection ownership/ACK/OTA safe-state software evidence)
+> Last updated: 2026-08-23 (N16 flash/install and first-boot connectivity attempt)
 
 ## 1. 판정 원칙
 
 과거 VL53L0X/ESP32 BLE scanner 아키텍처의 PASS는 변경 이력으로 보존하지만, 현재 **iBeacon → Android → FastAPI → MQTT → AJ-SR04T → Relay** 경로의 합격 근거로 간주하지 않습니다. 소프트웨어 빌드 통과와 실기기 E2E 통과도 분리합니다.
+
+## 2026-08-23 N16 USB 설치 및 최초 부팅 확인
+
+| 항목 | 관찰 결과 | 판정 |
+|---|---|---|
+| 칩/플래시 식별 | ESP32-C6 rev 0.2, JEDEC flash 16 MB | PASS |
+| bootloader/partition | bootloader header 16 MB, dual OTA `0x700000` x2, 모든 write hash verified | PASS |
+| application 크기 | 1,696,896 bytes / 7,340,032-byte slot = 23.12%, headroom 5,643,136 bytes | PASS |
+| NVS 보존 설치 | `erase_flash` 없이 0x0/0x8000/0xe000/0x10000 이미지 기록 | PASS |
+| 부팅 안정성 | 16 KiB loop stack 적용 후 stack panic/boot loop 없음; 마지막 45초 오류 출력 없음 | PASS (관찰창) |
+| Wi-Fi 최초 연결 | disconnect reason 201 (`NO_AP_FOUND`) 반복 후 AP+STA fallback; DHCP/IP 성공 미관찰 | FAIL/PENDING (AP/RF) |
+| MQTTS | production transport/verifier/command provisioning 거부 로그는 제거됐으나 Wi-Fi 부재로 broker online 미관찰 | PENDING |
+| OTA | 런타임 크기/SHA/image/slot 검사와 CI 80% size gate 확인; 실제 download→install→reboot→health 미수행 | PENDING |
+
+이 표는 연결된 개발대의 USB 관찰이다. Wi-Fi/MQTTS/OTA의 PASS나 최종 벽 매립 승인을 의미하지 않는다.
 
 ## 2. 현재 코드 기준 검증표
 

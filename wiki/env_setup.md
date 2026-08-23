@@ -1,18 +1,20 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-10 (fail-closed production OTA signing secret bootstrap and encrypted recovery boundary added)
+> Last updated: 2026-08-23 (N16 production build, loop stack and OTA size gate verified)
 
 ## 1. 펌웨어
 
 - MCU: ESP32-C6-DevKitC-1 N16 (RISC-V, 16 MB flash)
 - PlatformIO platform: pioarduino stable ZIP
 - Framework: Arduino
-- 환경: `esp32c6` 하나
+- 환경: `esp32c6` (기본 개발), `esp32c6_production` (실제 production secret 설치),
+  `esp32c6_hwless_rc` (명시적 lab-only)
 - 파티션: `partitions_16MB_ota.csv` (dual OTA)
 - 라이브러리: ArduinoJson 6.21.x, PubSubClient 2.8; BLE 헤더는 Arduino-ESP32 코어 제공
 
 ```bash
 cp include/secrets.h.example include/secrets.h  # 실제 값 입력, 커밋 금지
 pio run -e esp32c6
+pio run -e esp32c6_production  # production secret이 준비된 설치/CI 전용
 pio run -e esp32c6 -t upload
 pio device monitor -b 115200
 ```
@@ -493,3 +495,25 @@ remain intact.
 This lane prepares a personal physical installation artifact. It does not edit
 `ota/release-evidence.json`, deploy to NAS, authorize commercial production or
 replace install/reboot/Wi-Fi/MQTT/OTA health evidence.
+
+### N16 flash and downloaded OTA size gate (2026-08-23)
+
+The physical module is `ESP32-C6-WROOM-1-N16`. The generic PlatformIO
+`esp32-c6-devkitc-1` board manifest defaults to 8 MB, so every project
+environment explicitly inherits `board_upload.flash_size = 16MB` and
+`board_upload.maximum_size = 16777216`. A valid build must report `16MB Flash`,
+and `esptool image-info bootloader.bin` must also report `Flash size: 16MB`.
+
+`partitions_16MB_ota.csv` provides equal `0x700000` (7 MiB) `app0` and `app1`
+slots. `scripts/verify_target_flash_layout.py` rejects partitions outside the
+16 MB device, overlaps, missing/asymmetric OTA slots, firmware larger than a
+slot, or release images using more than 80% of a slot. The personal installation
+workflow runs this gate before packaging and manifest signing. The Target then
+independently checks signed-manifest `artifact_size`, HTTP Content-Length,
+inactive-partition capacity, actual downloaded byte count, SHA-256 and ESP image
+validity before selecting the new boot slot.
+
+The production environment also fixes `ARDUINO_LOOP_STACK_SIZE=16384`; the
+default 8 KiB loop task overflowed during MQTTS verifier initialization on the
+physical ESP32-C6. `SGK_PRODUCTION_BUILD=1` is defined only by
+`esp32c6_production`, using `build_unflags` to remove the developer default.
