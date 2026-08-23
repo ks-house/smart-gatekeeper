@@ -6,7 +6,12 @@
 >
 > 01:34~02:19 원격 관측 뒤 v2.1 진단·안전 firmware 수정이 이어졌다. 배포 전/후 사실을 구분한다.
 >
-> Current-code note (2026-08-12): 이 문서의 “현재 코드”는 감사 기준 commit `707ca23`을 뜻한다. 최신 `406707c`에는 independent relay fail-safe, Target FSM interlock, per-Target MQTTS without `setInsecure`, signed command/OTA와 local recovery가 구현되어 있다. 최신 저장소 계약은 [current_code_audit.md](current_code_audit.md), 매립 구형 Target 상태는 [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md)를 따른다.
+> Current-code note (2026-08-23): 이 문서의 “현재 코드”와 본문의
+> `SmartGatekeeper-Setup` 표기는 감사 기준 commit `707ca23`/구형 firmware의 역사적
+> 정확값이다. 최신 `main`은 단일 `kRecoveryApSsid` 상수의
+> `SmartGatekeeper-Recovery` 인증 AP를 방송한다. 최신 저장소 계약은
+> [current_code_audit.md](current_code_audit.md), 매립 Target 현장 상태는
+> [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md)를 따른다.
 
 ## 1. 결론
 

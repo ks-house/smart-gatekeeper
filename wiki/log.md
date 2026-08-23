@@ -2910,3 +2910,23 @@
 - Added a reusable flash-layout gate requiring non-overlapping 16 MB partitions, equal 7 MiB OTA slots, firmware fit and at least 20 percent release headroom; the final observed image used 1,696,896 bytes (23.12 percent) with 5,643,136 bytes free in either inactive slot.
 - Wrote the NVS-preserving four-image layout to the ESP32-C6 rev 0.2 Target with write-hash verification. The 16 KiB build no longer panicked or reboot-looped, and the final 45-second observation had no Wi-Fi state-race output.
 - Initial Wi-Fi association repeatedly reported reason 201 (`NO_AP_FOUND`), so authentication was never reached; no DHCP, MQTTS online or OTA install-health evidence was observed. The Target remains in authenticated recovery AP plus STA auto-retry mode and is not yet approved for final wall installation.
+
+## [2026-08-23] fix | Single-source the authenticated recovery AP identity
+
+- Defined `SmartGatekeeper-Recovery` once as `kRecoveryApSsid` and reused it for the SoftAP broadcast, serial ready log and HTTP Basic authentication realm; removed the misleading `SmartGatekeeper-Setup` runtime log.
+- Updated current architecture/connectivity documentation with the broadcast SSID while explicitly preserving `SmartGatekeeper-Setup` as the exact historical identity of the audited legacy firmware.
+- Added a regression contract that rejects duplicate recovery SSID literals or a reintroduced legacy runtime label; physical association, DHCP, MQTTS and OTA evidence remain separate pending gates.
+
+## [2026-08-23] fix | Restore recovery Wi-Fi scan and render its results visibly
+
+- Reproduced authenticated `/scan` returning `-2` while the disconnected STA continuously retried stale credentials, then paused only that STA retry during a bounded scan and restored auto-reconnect afterward without clearing NVS or stopping the SoftAP.
+- Replaced the mobile-inconsistent SSID datalist with an explicit scrollable button list showing SSID and RSSI; selecting a row fills the validated manual SSID field.
+- Added credential validation/readback and focused recovery contracts; the production build and 16 MB dual-OTA capacity gate passed with a 1,699,616-byte app, 23.16 percent slot usage and 5,640,416 bytes headroom.
+
+## [2026-08-23] test | Prove recovery scan, DHCP and MQTTS on the physical N16 Target
+
+- App-only flashed the `21107958` plus scan-fix candidate to the ESP32-C6 rev 0.2 Target with write-hash verification while preserving NVS and the dual-OTA layout.
+- Repeated authenticated scans returned 11, 13, 12, 13 and 9 AP records instead of `-2`; the phone displayed the list and saved the selected 2.4 GHz SSID.
+- The rebooted Target obtained `192.168.35.19`, connected to the provisioned MQTTS broker, subscribed to exact per-Target topics and published retained boot diagnostics/config state.
+- A later beacon timeout (`reason 200`) exercised runtime recovery: the Target regained the same DHCP address, recreated the MQTTS connection, resubscribed and republished diagnostics without rebooting.
+- Periodic HTTPS OTA install, reboot health, rollback, power-loss and long Wi-Fi/MQTT soak evidence remain pending and are not implied by this connectivity pass.

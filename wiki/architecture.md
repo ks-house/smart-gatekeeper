@@ -1,5 +1,5 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-08-12 (per-Target MQTTS signed command/ACL, secure OTA, admin control plane 반영)
+> Last updated: 2026-08-23 (authenticated recovery AP SSID, per-Target MQTTS signed command/ACL, secure OTA, admin control plane 반영)
 >
 > 저장소 구현과 현장 배포 상태의 차이는 [project_status.md](project_status.md)를 먼저 확인한다.
 
@@ -122,7 +122,11 @@ entity로 오분류하고 기본 UI를 혼잡하게 하므로 적용하지 않�
 
 ### 3.2 네트워크와 설정
 
-Wi-Fi 연결 실패 시 `SmartGatekeeper-Setup` AP/WebServer로 자격 증명과 Target tuning 값을 NVS에 저장합니다.
+Wi-Fi 연결 실패 시 코드의 단일 `kRecoveryApSsid` 상수가 정의한
+`SmartGatekeeper-Recovery` 인증 AP/WebServer로 자격 증명과 Target tuning 값을 NVS에 저장합니다.
+연결되지 않은 STA가 저장 자격 증명으로 인증을 재시도하는 동안 `/scan`이 호출되면 STA
+재시도를 잠시 멈추고 bounded scan을 실행한 뒤 재접속을 복원합니다. 설정 화면은 검색된
+SSID와 RSSI를 스크롤 가능한 버튼 목록으로 표시하며, 선택 항목을 SSID 입력란에 채웁니다.
 과거 coredump에서 `udp_new_ip_type` core-lock assertion이 확인돼 captive DNS와 기능상 불필요한
 SNTP 초기화를 제거했습니다. AP 설정 화면은 `http://192.168.4.1`로 직접 엽니다.
 정상 연결은 pure `WIFI_STA`로 전환하고 SoftAP를 종료하며, credential `/save`는 provisioning AP mode에서만
