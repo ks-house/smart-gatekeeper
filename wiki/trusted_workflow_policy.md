@@ -65,32 +65,30 @@ persistent baseline.
 
 PR #102 completed the previous rotation, and later documentation-only descendants retained its protected
 bytes through H5 main `6517caa957dcf1c42ece49d15e38a428c81262e5`. The exact OTA runtime-fix candidate
-`d4a3da40b4b6772bb1edcd4583eeb59951d6e7f6` replaces the ESP32-C6 manifest verifier's unavailable PSA
-Ed25519 provider with the linked runtime provider, exposes bounded OTA rejection diagnostics, and updates the
-authenticated recovery response. Those runtime and test files are not direct policy paths, but the protected
-`deploy.yml` pins their production-build SHA-256 values; therefore its normalized digest changes to
-`f8bb1ce2bd89ef8a81d7062aeda843dee2376c19546db0b2e9cb80f0df172bb1`.
+`d4a3da40b4b6772bb1edcd4583eeb59951d6e7f6` replaced the ESP32-C6 manifest verifier's unavailable PSA
+Ed25519 provider with the linked runtime provider, exposed bounded OTA rejection diagnostics, and updated the
+authenticated recovery response. The protected `deploy.yml` pins those production-build inputs and has
+normalized digest `f8bb1ce2bd89ef8a81d7062aeda843dee2376c19546db0b2e9cb80f0df172bb1`.
 
-This bounded authorization replaces the historical `current-main-baseline` with exactly two identities for
-that immutable reviewed feature commit:
+PR #106 separately authorized that exact feature commit plus later same-byte descendants and was merge-commit
+merged as main `1088dcfb9afcc13d6a8408b5c1a5e6ff373072ff`. The feature branch then merged trusted
+main into the reviewed commit without rebasing or squashing, producing policy-connected head
+`81a42cf0b57e1830f27a5e88b5d2d15c8d33f451`. PR #105 retained both parents, received fresh green
+checks, and was merge-commit merged as main `02090c31b6813d6d1691262809dfc86330283a9d`.
 
-- `temporary-ota-ed25519-d4a3da4` is a `temporary-exact` identity for only that repository commit.
-- `future-ota-ed25519-d4a3da4-persistent-baseline` is the sole `persistent-baseline`; it permits only that
-  commit or a GitHub Compare-proven descendant with the same complete protected bytes.
+This final rotation removes both `d4a3da4` transition identities and pins the sole
+`current-main-baseline` persistent identity to that actual merged-main commit. The reviewed feature and
+policy-connected head are both ancestors of the merge. All 62 protected Git objects are unchanged from the
+reviewed feature through merged main; the ordered digest map, seven-workflow inventory, and empty local-Action
+inventory therefore remain exact.
 
-Both identities carry the same ordered 62-file digest map and unchanged seven-workflow/zero-local-action
-inventories. Remote GitHub tree and content verification confirms that all protected paths are regular
-`100644 blob` objects, the workflow inventory is exact, and the temporary identity selects the feature commit.
-Compared with H5 main, `deploy.yml` is the only protected file that changes. The prior persistent baseline is
-intentionally removed because the schema permits only one persistent baseline per repository.
-
-Regression tests pin the exact repository, candidate SHA, two IDs and modes, identical complete maps, ordered
-62-path set, exact workflow/action inventories, and every digest. They prove exact-match precedence without an
-ancestry call and require explicit ancestry for later descendants. They also reject an extra bundle, fork,
+Regression tests pin the exact repository, final merged-main SHA, sole baseline ID and mode, ordered 62-path
+set, exact workflow/action inventories, and every digest. They require explicit ancestry for later descendants
+and reject the retired feature source. They also reject an extra bundle, fork,
 retired or altered commit, unproven/diverged history, case/path variant, old five-path partial set, missing or
 reordered path, swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action
 additions, removals, renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed
-set, candidate-derived digest, or third identity is approved. This authorization boundary is not production,
+set, candidate-derived digest, or transition identity is approved. This authorization boundary is not production,
 physical, release, NAS, deployment, install, reboot-health, or rollback evidence.
 
 ## 3. Why PR self-modification does not authorize itself
@@ -110,12 +108,14 @@ of the same required-check context. Closing that residual circularity requires a
 separately app-pinned status identity and repository policy outside the mutable workflow namespace.
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
-main; later protected bundles completed the same sequence, including PR #86/#85 and PR #100/#101. This
-authorization changes only policy data, regression tests, this guide, and the append-only log. It does not
-modify the validator, trusted workflow, or any other protected byte. Its hosted check therefore executes H5's
-trusted-base policy and can admit this policy-only descendant through the unchanged current protected bundle.
-A green Hosted Trusted check is required before merge; no branch-protection change is authorized. That green
-check does not close the version-3 self-policy or same-status-context producer residual.
+main; later protected bundles completed the same sequence, including PR #86/#85 and PR #100/#101. PR #106 was
+the bounded policy-only authorization for this rollout, and PR #105 integrated that trusted main without
+rewriting history. The final rotation changes only policy data, regression tests, this guide, and the
+append-only log. It does not modify the validator, trusted workflow, or any other protected byte. Its hosted
+check executes M2's transition policy from the trusted base and can admit this policy-only descendant only
+because `d4a3da4` remains an ancestor and all 62 protected bytes are unchanged. A green Hosted Trusted check is
+required before merge; no branch-protection change is authorized. That green check does not close the
+version-3 self-policy or same-status-context producer residual.
 
 ## 4. Rotation procedure
 
@@ -126,18 +126,17 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For this runtime fix, first merge this policy-only authorization from H5 main. Then merge that new trusted main
-into exact feature commit `d4a3da40b4b6772bb1edcd4583eeb59951d6e7f6` without rebasing or squashing. Verify
-that all 62 protected Git objects and both namespace inventories remain unchanged, push the connected merge
-commit, and obtain fresh Hosted Trusted, OTA contract, ESP32-C6 firmware and Android canary checks. Merge the
-feature PR through a merge commit so the reviewed feature SHA remains an ancestor of the resulting main.
+The OTA Ed25519 runtime-fix sequence was: H5 base `6517caa`, reviewed feature `d4a3da4`, PR #106 authorization
+merge `1088dcf`, policy-connected feature head `81a42cf`, and PR #105 merge commit `02090c3`. The protected
+objects and both inventories were rechecked after the ancestry connection, and the feature was never rebased
+or squashed.
 
-Immediately create a separate final policy-only rotation from that actual feature merge on main. Remove both
-transition identities and pin one `persistent-baseline` named `current-main-baseline` to the actual feature
-merge commit with the same 62-file map. The transition persistent baseline admits that rotation only when
-GitHub Compare proves ancestry and every protected byte is unchanged. After merge, verify final-main policy
-selection and both OTA publishers. Any path, digest, repository, or reviewed source-commit change requires a
-fresh whole-bundle review; never prolong the transition window or reuse a retired transition identity.
+This separate final policy-only rotation starts from that actual merged main, removes both transition
+identities, and pins one `persistent-baseline` named `current-main-baseline` to `02090c3` with the same 62-file
+map. The transition persistent baseline admits this rotation only when GitHub Compare proves ancestry and every
+protected byte is unchanged. After merge, verify final-main policy selection and both OTA publishers. Any path,
+digest, repository, or reviewed source-commit change requires a fresh whole-bundle review; never prolong the
+transition window or reuse a retired transition identity.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
