@@ -206,3 +206,21 @@ Recovery 자동 판정은 `ota/recovery-matrix.json`의 allowlist outcome/action
 허용한다. 운영자가 임의 자유 텍스트나 partition/APK erase 같은 파괴적 동작으로 바꾸지 않으며,
 새 recovery 동작이 필요하면 schema, semantic mapping, 장애 주입 negative test를 같은 PR에서
 먼저 갱신하고 재검토한다.
+
+## 7. 2026-08-24 personal automatic publication evidence
+
+- Target main run `32668550147` published exact H11
+  `2.1.242+main.g7a55a66` to both immutable and latest NAS paths. Independent
+  Ed25519, AES-256-GCM, plaintext/image and 16 MB N16 capacity checks passed;
+  each 7,340,032-byte slot retained 5,543,952 bytes.
+- The physical Target proved the corrected encrypted pipeline through complete
+  signed H10 download, inactive-image verification and reboot, and currently
+  runs exact H11 with MQTTS and an `already current` periodic check.
+- The retained boot path did not expose `PENDING_VERIFY` health-window/valid
+  logs. Operators must therefore record this as install/reboot evidence only;
+  health-valid and rollback remain separate mandatory trials.
+- A stalled pre-fix Android publisher can hold the per-main concurrency group
+  and keep a corrected run pending. After confirming its exact old SHA/job and
+  that a newer main run exists, cancel only that obsolete mobile workflow run;
+  never cancel a Target publisher or an unidentified run. The bounded publisher
+  must then finish both NAS roots and public HTTPS equality before APK install.

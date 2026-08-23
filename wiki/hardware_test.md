@@ -245,3 +245,23 @@ the NAS updater's end-user install flow, background scan reliability or mobile
 rollback. The six HA controls must be removed from retained discovery/registry;
 they must not be re-enabled without the separately reviewed signed backend
 command bridge.
+
+## 2026-08-24 H9-H11 Target OTA, RF isolation and HA migration
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| H9 NVS-preserving bootstrap | Exact-main H9 was written only to app0; pre/post readback verified bootloader, partition table, NVS, OTA data and app1 prefix were unchanged before first application boot | PASS for app-only bootstrap |
+| H10 CI/NAS identity | Run `32667129968` published `2.1.241+main.g3311ad6`; the 1,796,080-byte plaintext and 1,796,116-byte encrypted artifact passed signature, GCM, digest and ESP32-C6 N16 checks with 5,543,952 bytes slot headroom | PASS for exact bytes/capacity |
+| H9 → H10 periodic HTTPS | On a nearby 2.4 GHz AP the Target accepted the signed H10 manifest, downloaded the full encrypted artifact, verified the inactive image and rebooted to the exact H10 banner | PASS for signed encrypted install/reboot |
+| H11 CI/NAS identity | Run `32668550147` published exact main `7a55a667b9d30f7929176997010d7ab71abaf833` as `2.1.242+main.g7a55a66`; manifest SHA-256 `280db36e2fe1b4a42e92a3a06c591887f95436d28cca114539d3263f5922647f`, encrypted SHA-256 `bd6274253224720e9c655bcf9e25609255516a5da8d7786973f6825789a155ef`, plaintext SHA-256 `ec5e24684f806c25f547be0f768932e419d6d5e4c4a0815f4a2b7b1d8faf0a6`; N16 headroom remained 5,543,952 bytes | PASS for exact CI/NAS bytes/capacity |
+| H11 runtime | H11 booted, obtained `10.71.25.196` from the nearby AP, completed verified MQTTS, subscribed to exact Target topics, published diagnostics/config and reported `already current` for H11 | PASS for one live Wi-Fi/MQTT/current session |
+| Intended home AP | Target scan observed the relevant 2.4 GHz signals around `-80~-82 dBm`; repeated reason 2/4/201 prevented stable association. Android freshly authenticated to the same SSID, while the Target connected immediately to the nearby AP around `-42 dBm` | FAIL for wall RF margin; credential/firmware path independently PASS |
+| Recovery portal save | Android joined the authenticated recovery AP over USB-controlled Wi-Fi, sent `/save` with local auth and received HTTP 200; Target rebooted with the new NVS credential and later recovered station/MQTT service | PASS; no credential value logged |
+| Home Assistant discovery | Applied 15 retained read-only discovery configs and seven legacy tombstones; an independent subscriber saw exactly 15 valid retained configs. With H11 online, HA showed firmware, IP, RSSI, IDLE/door state and config values live | PASS for read-only telemetry migration |
+| Legacy HA controls | Historical button/number entities remain `restored/unavailable` in the HA registry after retained tombstones. They were not invoked or revived because no signed-command bridge exists | PENDING registry cleanup; fail-closed |
+| OTA health/rollback | No `pending image health window started` or `running image marked VALID` log was observed on the retained bootloader/OTA-data path | PENDING; install/reboot/current does not prove health-valid or rollback |
+
+The weak-link STA profile added after this observation must be tested on the
+same hardware and position. Passing at `-81 dBm` would still not authorize wall
+installation; section 5 of the connectivity policy requires RF improvement and
+repeated outage/boot evidence.

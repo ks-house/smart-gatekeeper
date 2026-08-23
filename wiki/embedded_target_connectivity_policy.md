@@ -250,3 +250,39 @@ bootstrap is therefore required, followed by a strictly newer periodic HTTPS
 release and continuous Wi-Fi+MQTTS health-valid observation. Until that
 sequence completes, the Target must not be returned to the wall even though
 Wi-Fi and MQTT recovery themselves passed.
+
+## 14. 2026-08-24 H9-H11 OTA closure and weak-home-AP boundary
+
+The exact H9 production image was installed app-only over USB while preserving
+the 16 MB N16 bootloader, partition table, NVS, OTA data and fallback slot. On a
+nearby 2.4 GHz AP, H9 obtained an address, established verified per-Target
+MQTTS, accepted exact H10's signed manifest, downloaded the complete encrypted
+artifact, verified the inactive image and rebooted into H10. Exact H11
+`7a55a667b9d30f7929176997010d7ab71abaf833`, version
+`2.1.242+main.g7a55a66`, is now the observed running image. It obtained
+`10.71.25.196`, subscribed to the exact command/ACL topics, published current
+diagnostics/config and reported the H11 OTA pointer as already current.
+
+The same Target could not associate reliably with the intended home AP. Its
+scan saw the relevant 2.4 GHz signals at approximately `-80` to `-82 dBm`, and
+the serial history was dominated by `AUTH_EXPIRE`, inactivity and intermittent
+`NO_AP_FOUND`. A connected Android device separately authenticated to the same
+SSID with the saved credential, while the Target connected immediately to the
+nearby AP at approximately `-42 dBm`. This isolates the operational boundary to
+RF margin/installation conditions rather than a missing credential, MQTTS
+principal or OTA implementation.
+
+The STA compatibility profile now performs an all-channel scan and selects the
+strongest matching BSSID dynamically, disables modem sleep for the wall-powered
+control path, and limits only the STA interface to 802.11b/g/n. It does not pin
+a BSSID or channel, add another `WiFi.begin()`, change the authenticated
+recovery AP, or weaken MQTT/HTTPS OTA. A configuration failure logs a degraded
+profile and continues to the existing AP+STA recovery path.
+
+This profile is a compatibility improvement, not a substitute for link budget.
+The Target must not be re-embedded until the intended location measures at least
+`-75 dBm` (preferably `-67 dBm` or better) and repeated cold boots, AP outage,
+MQTT reconnect and signed OTA health/rollback trials pass. The observed H10/H11
+reboots did not emit the expected `PENDING_VERIFY` health-window/valid-mark
+sequence, so rollback remains an open Gate even though install and current-image
+execution succeeded.

@@ -3253,3 +3253,17 @@
 - Rejected the initial H7-based mobile commit because it would have reverted the protected GCM build pin, then verified the combined commit's two parents are reviewed mobile `597cc13201b16af6f78a7206bd750476c16a5886` and current main `9556981704226051e07918ac4b83bb9b50273ee1`. Only `build_app.yml` (`b581543a03e32e6a641a7b7cefd7050ec2467d110b608f34fb31f54aad5dafec`) and `scripts/ota_contract_gate.py` (`634d8542da17838ded1a3e6e75f5e7f94113f2e3bc0a2d47aaa05bd28b780437`) change in the protected map.
 - The remote recursive tree is untruncated with 62 regular protected blobs, seven workflows and zero local Actions; the live verifier selected `temporary-mobile-nas-b3ebcc83`. The focused transition suite passed 42/42, full discovery passed 278/278, and JSON/Python parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed in the LF clean clone.
 - This policy-only authorization reads no production Secret, publishes no APK, writes no NAS state, installs no app, and claims no Target OTA, Android install, reboot-health, Home Assistant, relay, physical, or commercial evidence.
+
+## [2026-08-24] test | Verify exact H10-H11 Target OTA and isolate weak home RF
+
+- Verified exact H10 and H11 Target CI/NAS artifacts, signatures, authenticated decryption, ESP32-C6 N16 image structure and 5,543,952-byte per-slot headroom; H11 is the observed running image.
+- On a nearby 2.4 GHz AP, the Target completed Wi-Fi, per-Target MQTTS, encrypted signed H10 install/reboot and H11 current-version checks. The intended home AP remained around -80 to -82 dBm and failed association despite independently verified credentials, isolating the wall blocker to RF margin.
+- Applied and independently read back 15 retained read-only Home Assistant discovery configs plus seven legacy tombstones. Live H11 telemetry recovered; restored/unavailable historical controls remain fail-closed pending registry cleanup and a signed-command bridge.
+- No pending-health/valid-mark log was observed, so install/reboot evidence does not close Target health-valid or rollback Gates.
+
+## [2026-08-24] fix | Add dynamic weak-link STA compatibility profile
+
+- Added all-channel scan with strongest-signal selection, no modem sleep and STA-only 802.11b/g/n compatibility before the sole `WiFi.begin()` call. BSSID/channel pinning, repeat `begin()`, credential erase and recovery-AP changes remain prohibited.
+- Added named disconnect diagnostics and contract tests for call order, STA-only scope, dynamic AP selection, one-begin recovery and degraded-profile fallback.
+- This code can improve marginal association compatibility but cannot replace the installation policy's -75 dBm minimum and -67 dBm preferred RF targets; exact merged-main physical A/B remains required.
+- The local production profile built a valid 1,799,008-byte ESP32-C6 16 MB/DIO/80 MHz image with 5,541,024 bytes remaining in either 7,340,032-byte OTA slot; the OTA contract and 283 relevant repository tests passed, while two unchanged Windows checkout CRLF tests remained the known materialization-only failures.

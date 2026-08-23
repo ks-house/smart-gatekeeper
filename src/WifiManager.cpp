@@ -8,6 +8,7 @@
 #include "config.h"
 
 #include <cstring>
+#include <esp_wifi.h>
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -30,11 +31,43 @@ void registerWifiDiagnostics() {
     wifiEventsRegistered = true;
     WiFi.onEvent(
         [](WiFiEvent_t, WiFiEventInfo_t info) {
-            LOGF("[WIFI-DIAG] station disconnect reason=%u",
-                 static_cast<unsigned int>(
-                     info.wifi_sta_disconnected.reason));
+            const auto reason = static_cast<wifi_err_reason_t>(
+                info.wifi_sta_disconnected.reason);
+            LOGF("[WIFI-DIAG] station disconnect reason=%u (%s)",
+                 static_cast<unsigned int>(reason),
+                 WiFi.disconnectReasonName(reason));
         },
         WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+}
+
+void configureStationCompatibilityProfile() {
+    // Complete the scan before choosing an AP so a shared SSID selects the
+    // strongest BSSID instead of the first response. Keep the choice dynamic:
+    // hard-pinning a BSSID or channel would break mesh/AP replacement recovery.
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+
+    // A wall-powered access controller values a stable association, MQTT and
+    // OTA path over modem-sleep savings. Limit only the STA interface to
+    // b/g/n for compatibility with marginal 2.4 GHz infrastructure; the
+    // recovery AP interface and its authenticated OTA path stay untouched.
+    const bool sleepConfigured = WiFi.setSleep(WIFI_PS_NONE);
+    constexpr uint8_t kLegacyStaProtocols =
+        WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
+    const esp_err_t protocolResult =
+        esp_wifi_set_protocol(WIFI_IF_STA, kLegacyStaProtocols);
+
+    if (!sleepConfigured || protocolResult != ESP_OK) {
+        LOGF("[WIFI-WARN] STA compatibility profile partially unavailable "
+             "(sleep=%s protocol_rc=%d); continuing with driver defaults",
+             sleepConfigured ? "ok" : "failed",
+             static_cast<int>(protocolResult));
+        DiagnosticsManager::noteAction("wifi_sta_profile_degraded");
+        return;
+    }
+    LOGF("[WIFI-INFO] STA compatibility profile enabled "
+         "(all-channel/signal-sort, no-sleep, 11b/g/n)");
+    DiagnosticsManager::noteAction("wifi_sta_profile_enabled");
 }
 
 bool stationCredentialsProvisioned() {
@@ -103,6 +136,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
     registerWifiDiagnostics();
     LOGF("[WIFI] NVS 저장 Wi-Fi '%s' 접속 시도 중...", ssid.c_str());
     WiFi.mode(WIFI_STA);
+    configureStationCompatibilityProfile();
     WiFi.setAutoReconnect(true);
     WiFi.begin(ssid.c_str(), pass.c_str());
 

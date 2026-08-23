@@ -24,6 +24,42 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     self.assertIn("[WIFI-DIAG] station disconnect reason=%u", self.wifi)
     self.assertIn('noteAction("wifi_recovered_from_ap")', self.wifi)
 
+  def test_sta_compatibility_profile_precedes_the_only_begin(self):
+    connect = self.wifi.split("bool WifiManager::connectSTA", 1)[1]
+    connect = connect.split("void WifiManager::startAP", 1)[0]
+    station_mode = connect.index("WiFi.mode(WIFI_STA);")
+    profile = connect.index("configureStationCompatibilityProfile();")
+    auto_reconnect = connect.index("WiFi.setAutoReconnect(true);")
+    begin = connect.index("WiFi.begin(ssid.c_str(), pass.c_str());")
+    self.assertLess(station_mode, profile)
+    self.assertLess(profile, auto_reconnect)
+    self.assertLess(auto_reconnect, begin)
+    self.assertEqual(self.wifi.count("WiFi.begin(ssid.c_str(), pass.c_str());"), 1)
+
+  def test_sta_profile_preserves_dynamic_ap_and_recovery_interfaces(self):
+    profile = self.wifi.split(
+        "void configureStationCompatibilityProfile()", 1
+    )[1]
+    profile = profile.split("bool stationCredentialsProvisioned()", 1)[0]
+    self.assertIn("WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);", profile)
+    self.assertIn(
+        "WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);", profile
+    )
+    self.assertIn("WiFi.setSleep(WIFI_PS_NONE);", profile)
+    self.assertIn("esp_wifi_set_protocol(WIFI_IF_STA", profile)
+    self.assertNotIn("WIFI_IF_AP", profile)
+    self.assertNotIn("BSSID", connect := self.wifi.split(
+        "bool WifiManager::connectSTA", 1
+    )[1].split("void WifiManager::startAP", 1)[0])
+    self.assertNotIn("WiFi.begin(ssid.c_str(), pass.c_str(),", connect)
+    self.assertIn('noteAction("wifi_sta_profile_degraded")', profile)
+
+  def test_disconnect_diagnostics_include_reason_name(self):
+    self.assertIn("WiFi.disconnectReasonName(reason)", self.wifi)
+    self.assertIn(
+        "[WIFI-DIAG] station disconnect reason=%u (%s)", self.wifi
+    )
+
   def test_recovery_ap_identity_is_single_sourced(self):
     self.assertIn(
         'constexpr char kRecoveryApSsid[] = "SmartGatekeeper-Recovery";',
