@@ -2936,3 +2936,8 @@
 - Added a branch-scoped manual audit job that uses the repository-pinned NAS host key and password only through process environment/stdin, then inspects fixed DSM certificate metadata and Mosquitto container mount paths through read-only remote commands.
 - The job never reads private-key bytes, accepts no remote command input and uploads only certificate subjects, validity, fingerprints, container names and mount metadata for one day.
 - This audit helper does not renew, copy or reload a certificate and is not part of the production deployment workflow; its only purpose is to identify the exact stale-certificate source before a separately reviewed repair.
+
+## [2026-08-23] fix | Fall back to unprivileged NAS certificate audit
+
+- The first live audit authenticated to SSH but the SFTP account could not use `sudo` with its login password. Updated the read-only helper to inspect user-readable certificate metadata and Docker mounts without privilege while recording sudo capability only as a boolean.
+- The first attempt changed no NAS file, container or certificate; it returned no certificate metadata because every fixed audit command had been wrapped in unavailable sudo.

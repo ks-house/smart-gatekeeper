@@ -524,12 +524,15 @@ jobs:
           client.set_missing_host_key_policy(paramiko.RejectPolicy())
           report = {"schema_version": 1, "read_only": True, "commands": [], "containers": []}
 
-          def run(command):
-              stdin, stdout, stderr = client.exec_command(
-                  "sudo -S -p '' sh -c " + shlex.quote(command), timeout=30)
-              stdin.write(password + "\n")
-              stdin.flush()
-              stdin.channel.shutdown_write()
+          def run(command, sudo=False):
+              remote_command = command
+              if sudo:
+                  remote_command = "sudo -S -p '' sh -c " + shlex.quote(command)
+              stdin, stdout, stderr = client.exec_command(remote_command, timeout=30)
+              if sudo:
+                  stdin.write(password + "\n")
+                  stdin.flush()
+                  stdin.channel.shutdown_write()
               out = stdout.read().decode("utf-8", "replace")
               err = stderr.read().decode("utf-8", "replace")
               rc = stdout.channel.recv_exit_status()
@@ -552,7 +555,9 @@ jobs:
                   auth_timeout=20,
               )
               rc, identity, _ = run("id -u")
-              report["sudo_root_access"] = rc == 0 and identity.strip() == "0"
+              report["ssh_command_access"] = rc == 0 and identity.strip().isdigit()
+              sudo_rc, sudo_identity, _ = run("id -u", sudo=True)
+              report["sudo_root_access"] = sudo_rc == 0 and sudo_identity.strip() == "0"
               _, default_link, _ = run("readlink -f /usr/syno/etc/certificate/system/default")
               report["dsm_default_certificate_path"] = default_link.strip()
               cert_command = (
