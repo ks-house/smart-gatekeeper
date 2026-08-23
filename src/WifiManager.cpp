@@ -22,6 +22,7 @@ static uint32_t lastStationRetryMs = 0;
 static bool wifiEventsRegistered = false;
 
 namespace {
+constexpr char kRecoveryApSsid[] = "SmartGatekeeper-Recovery";
 constexpr uint32_t kStationRetryIntervalMs = 15000;
 
 void registerWifiDiagnostics() {
@@ -159,7 +160,7 @@ bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
         std::strlen(LOCAL_RECOVERY_USER) >= 8 &&
         std::strlen(LOCAL_RECOVERY_PASSWORD) >= 16;
     bool apSuccess = recoveryProvisioned &&
-        WiFi.softAP("SmartGatekeeper-Recovery",
+        WiFi.softAP(kRecoveryApSsid,
                     LOCAL_RECOVERY_AP_PASSWORD, 1, 0, 2);
 
     if (apSuccess) {
@@ -167,7 +168,8 @@ bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
         recoveryApDeadlineMs = durationMs == 0 ? 0 : millis() + durationMs;
         startWebServer();
         DiagnosticsManager::noteAction("provisioning_ap_ready");
-        LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: 'SmartGatekeeper-Setup' (채널 1, 192.168.4.1)");
+        LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: '%s' (채널 1, 192.168.4.1)",
+             kRecoveryApSsid);
         LOGF("[WIFI-AP] Captive DNS disabled; open http://192.168.4.1 manually.");
         if (!preserveStation) startNonBlockingStationAttempt();
     } else {
@@ -203,6 +205,11 @@ void WifiManager::handleRoot() {
                     "button:hover{background:#2ea043;}"
                     ".btn-scan{background:#1f6feb;margin-bottom:12px;}"
                     ".btn-scan:hover{background:#388bfd;}"
+                    ".network-list{max-height:220px;overflow-y:auto;border:1px solid #30363d;border-radius:6px;background:#0d1117;padding:4px;margin-bottom:8px;}"
+                    ".network-item{display:block;width:100%;padding:10px;margin:0 0 4px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;text-align:left;font-weight:normal;}"
+                    ".network-item:last-child{margin-bottom:0;}"
+                    ".network-item:hover,.network-item.selected{background:#1f6feb;border-color:#58a6ff;}"
+                    ".network-empty{padding:12px;color:#8b949e;text-align:center;font-size:13px;}"
                     ".param-row{display:flex;justify-content:space-between;align-items:center;background:#0d1117;padding:10px;border-radius:6px;margin-bottom:8px;border:1px solid #21262d;font-size:13px;}"
                     "</style></head><body><div class='card'>"
                     "<h2>🛡️ SmartGatekeeper Target</h2>");
@@ -215,9 +222,12 @@ void WifiManager::handleRoot() {
 
     html += F("<div class='section-title'>📡 주변 Wi-Fi 스캔 및 설정 변경</div>"
               "<button class='btn-scan' onclick='scanWifi()'>🔍 주변 Wi-Fi 다시 검색</button>"
+              "<label style='font-size:12px;color:#8b949e;'>검색된 Wi-Fi 목록</label>"
+              "<div id='ssid-options' class='network-list'><div class='network-empty'>Scanning...</div></div>"
+              "<div id='scan-status' style='font-size:12px;color:#8b949e;margin:0 0 12px;'>Scanning...</div>"
               "<form action='/save' method='POST'>"
-              "<label style='font-size:12px;color:#8b949e;'>Wi-Fi SSID 선택</label>"
-              "<select id='ssid' name='ssid'><option value=''>검색 중...</option></select>"
+              "<label style='font-size:12px;color:#8b949e;'>선택된 Wi-Fi SSID (직접 입력 가능)</label>"
+              "<input id='ssid' name='ssid' maxlength='32' required placeholder='Tap a network above or enter SSID manually'>"
               "<label style='font-size:12px;color:#8b949e;'>Wi-Fi 비밀번호</label>"
               "<input type='password' name='password' placeholder='비밀번호 입력'>"
               "<button type='submit'>💾 Wi-Fi 저장 및 재접속</button>"
@@ -252,19 +262,34 @@ void WifiManager::handleRoot() {
               "</div>"
               "<script>"
               "function scanWifi(){"
-              "  let s = document.getElementById('ssid');"
-              "  s.innerHTML = '<option>스캔 중...</option>';"
-              "  fetch('/scan').then(r=>r.json()).then(data=>{"
-              "    s.innerHTML = '';"
-              "    if(!data || data.length===0){ s.innerHTML='<option>Wi-Fi 검색 실패</option>'; return; }"
-              "    data.forEach(item=>{"
-              "      let opt = document.createElement('option');"
-              "      opt.value = item.ssid;"
-              "      opt.innerHTML = item.ssid + ' (' + item.rssi + ' dBm)'; "
-              "      s.appendChild(opt);"
+              "  let list = document.getElementById('ssid-options');"
+              "  let status = document.getElementById('scan-status');"
+              "  list.innerHTML = '<div class=\"network-empty\">Scanning...</div>'; status.textContent = 'Scanning...';"
+              "  fetch('/scan').then(r=>{ if(!r.ok) throw new Error('scan failed'); return r.json(); }).then(data=>{"
+              "    if(!Array.isArray(data)){ throw new Error('invalid scan response'); }"
+              "    let seen = new Set();"
+              "    let networks = data.filter(item=>{"
+              "      if(!item || typeof item.ssid !== 'string' || !item.ssid.length || seen.has(item.ssid)) return false;"
+              "      seen.add(item.ssid); return true;"
+              "    });"
+              "    list.innerHTML = '';"
+              "    status.textContent = networks.length ? networks.length + ' network(s) found - tap one to select' : 'No network found; retry or enter SSID manually';"
+              "    if(!networks.length){ list.innerHTML = '<div class=\"network-empty\">No visible network found</div>'; return; }"
+              "    networks.forEach(item=>{"
+              "      let button = document.createElement('button');"
+              "      button.type = 'button'; button.className = 'network-item';"
+              "      button.textContent = item.ssid + '  (' + item.rssi + ' dBm)';"
+              "      button.addEventListener('click', ()=>{"
+              "        document.getElementById('ssid').value = item.ssid;"
+              "        document.querySelectorAll('.network-item').forEach(node=>node.classList.remove('selected'));"
+              "        button.classList.add('selected');"
+              "        status.textContent = 'Selected: ' + item.ssid;"
+              "      });"
+              "      list.appendChild(button);"
               "    });"
               "  }).catch(e=>{"
-              "    s.innerHTML = '<option>스캔 에러 발생</option>';"
+              "    list.innerHTML = '<div class=\"network-empty\">Scan failed</div>';"
+              "    status.textContent = 'Scan failed; wait a moment and retry';"
               "  });"
               "}"
               "window.onload = scanWifi;"
@@ -275,12 +300,33 @@ void WifiManager::handleRoot() {
 
 void WifiManager::handleScan() {
     if (!requireLocalAuthentication()) return;
+
+    // The Arduino core may be continuously authenticating stale STA
+    // credentials while the recovery AP is serving this request. The ESP32
+    // radio rejects a synchronous scan with WIFI_SCAN_FAILED (-2) in that
+    // state. Pause only the disconnected STA side; the AP and its client stay
+    // up. A connected station recovery window is never disrupted.
+    const bool pauseDisconnectedStation =
+        apModeActive && WiFi.status() != WL_CONNECTED &&
+        stationCredentialsProvisioned();
+    if (pauseDisconnectedStation) {
+        WiFi.setAutoReconnect(false);
+        WiFi.disconnect(false, false);
+        delay(200);
+        DiagnosticsManager::noteAction("wifi_scan_sta_paused");
+    }
+
     WiFi.scanDelete();
     int n = WiFi.scanNetworks(false, false, false, 150);
-    LOGF("[WIFI-SCAN] 주변 Wi-Fi 스캔 완료: %d개 발견", n);
+    if (n < 0 && pauseDisconnectedStation) {
+        LOGF("[WIFI-SCAN] first scan failed code=%d; retrying once", n);
+        WiFi.scanDelete();
+        delay(200);
+        n = WiFi.scanNetworks(false, false, false, 250);
+    }
 
     String json = "[";
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < n && n > 0; ++i) {
         if (i > 0) json += ",";
         String ssid = WiFi.SSID(i);
         ssid.replace("\"", "\\\"");
@@ -288,7 +334,23 @@ void WifiManager::handleScan() {
     }
     json += "]";
     WiFi.scanDelete();
-    webServer.send(200, "application/json", json);
+    if (n < 0) {
+        LOGF("[WIFI-SCAN] scan failed code=%d", n);
+        DiagnosticsManager::noteAction("wifi_scan_failed");
+        webServer.send(503, "application/json",
+                       "{\"error\":\"scan_failed\"}");
+    } else {
+        LOGF("[WIFI-SCAN] nearby Wi-Fi scan complete: %d found", n);
+        DiagnosticsManager::noteAction("wifi_scan_complete");
+        webServer.send(200, "application/json", json);
+    }
+
+    if (pauseDisconnectedStation) {
+        WiFi.setAutoReconnect(true);
+        WiFi.reconnect();
+        lastStationRetryMs = millis();
+        DiagnosticsManager::noteAction("wifi_sta_retry_after_scan");
+    }
 }
 
 void WifiManager::handleSave() {
@@ -304,9 +366,22 @@ void WifiManager::handleSave() {
     String ssid = webServer.arg("ssid");
     String pass = webServer.arg("password");
 
+    if (ssid.length() == 0 || ssid.length() > 32 || pass.length() > 63 ||
+        (pass.length() > 0 && pass.length() < 8)) {
+        DiagnosticsManager::noteAction("wifi_credentials_invalid");
+        webServer.send(400, "text/plain", "Invalid Wi-Fi credentials");
+        return;
+    }
+
     DiagnosticsManager::noteAction("wifi_credentials_save");
     LOGF("[WIFI-AP] 신규 Wi-Fi 설정 수신: SSID='%s'", ssid.c_str());
     ConfigManager::setWifiCredentials(ssid, pass);
+    if (ConfigManager::getWifiSsid() != ssid ||
+        ConfigManager::getWifiPassword() != pass) {
+        DiagnosticsManager::noteAction("wifi_credentials_write_failed");
+        webServer.send(500, "text/plain", "Wi-Fi credential storage failed");
+        return;
+    }
 
     String html = F("<!DOCTYPE html><html><head><meta charset='utf-8'>"
                     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -354,7 +429,7 @@ bool WifiManager::requireLocalAuthentication() {
     }
     if (!webServer.authenticate(LOCAL_RECOVERY_USER,
                                 LOCAL_RECOVERY_PASSWORD)) {
-        webServer.requestAuthentication(BASIC_AUTH, "SmartGatekeeper-Recovery");
+        webServer.requestAuthentication(BASIC_AUTH, kRecoveryApSsid);
         return false;
     }
     return true;

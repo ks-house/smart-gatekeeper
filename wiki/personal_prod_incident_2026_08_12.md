@@ -8,6 +8,8 @@
 - Target은 BLE iBeacon을 송신하므로 MCU와 BLE 루프는 살아 있다.
 - Target OTA는 완료되지 않았다. 최종 확인 펌웨어는 `2.1.0-g75b946a`이고 새로운 OTA 명령은 Target 온라인 증거가 없어 발행하지 않았다.
 - 관측 증거는 Wi-Fi/MQTT 유지 또는 재접속 문제를 가리킨다. Target을 최신 펌웨어로 갱신했다는 주장은 금지한다.
+- 본문의 `SmartGatekeeper-Setup`은 조사 당시 구형 firmware의 역사적 SSID다.
+  최신 `main`의 인증 recovery AP는 `SmartGatekeeper-Recovery`를 사용한다.
 
 ## 2. 모바일·backend 문제와 수정
 

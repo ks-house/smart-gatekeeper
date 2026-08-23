@@ -83,3 +83,19 @@
 | 2026-08-09 | Authenticated current-boot registry and strict command parser | PASS (software) | Root 102 tests and backend 49 tests (one opt-in MariaDB skip); WSL/Linux production-core seam passed; final ESP32-C6 build used 53,888/327,680 RAM and 1,606,490/7,340,032 flash; no broker or device execution |
 | 2026-08-09 | Exact-head duplicate/deadline review mutations | PASS (software) | Every signed-command field rejects same/different duplicate raw JSON members before DOM parsing; health tests cover deadline-1, exact equality, deadline+1, and stalled samples; ESP32-C6 build used 53,888/327,680 RAM and 1,606,546/7,340,032 flash |
 | Pending | Physical Target OTA and hardening | OPEN | ESP32-C6 inactive-slot boot, health-valid, power-loss, rollback, periodic HTTPS, local recovery, eFuses/debug locks, radio/relay, N/N-1, operator soak, and production authorization remain unproven |
+
+## 2026-08-23 Recovery portal scan and production connectivity evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Candidate identity | `main` `21107958` plus the unmerged recovery-scan fix, version `2.1.0-g2110795-scanfix`; app-only write at `0x10000`, NVS preserved, flash write hash verified | PASS for field candidate; exact merged-main reinstall still required |
+| Recovery scan driver | The previous field image returned `-2` while stale STA authentication retried. The candidate returned 11, 13, 12, 13 and 9 visible AP records in repeated authenticated scans | PASS |
+| Recovery portal UI | The phone rendered the explicit network list, selected `SK_WiFiGIGAA947`, and Target logged the matching credential-save request without logging the password | PASS |
+| Wi-Fi association | After reboot the AP+STA recovery path obtained DHCP address `192.168.35.19` and logged `provisioning AP station recovery succeeded` | PASS for association and DHCP; long soak pending |
+| MQTTS | Target connected to the provisioned TLS broker, subscribed to exact per-Target topics, and published retained boot diagnostics/config state | PASS for current boot; WAN/broker failure soak pending |
+| Runtime reconnect | One later beacon timeout (`reason 200`) closed the stale TLS socket; Target regained `192.168.35.19`, reconnected MQTTS, resubscribed and republished boot/config diagnostics without a reboot | PASS for one automatic recovery; repeated/long soak pending |
+| OTA capacity | Candidate app 1,699,616 bytes in each 7,340,032-byte slot, 23.16% usage and 5,640,416-byte headroom | PASS for capacity only; periodic HTTPS install, reboot health, rollback and power-loss tests remain pending |
+
+This evidence supersedes the earlier same-day `NO_AP_FOUND` first-boot attempt only
+for recovery scan, Wi-Fi association, DHCP and MQTTS. It does not promote the
+candidate to production release approval or close the physical OTA/relay/soak gates.

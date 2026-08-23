@@ -110,6 +110,14 @@ boot window. A failed boot association opens the authenticated recovery AP in
 `WIFI_AP_STA` mode while retrying the stored/compiled STA credentials every 15
 seconds. Successful association closes the indefinite provisioning AP and
 returns to pure STA mode. Failed attempts do not erase the NVS credentials.
+The AP identity is single-sourced by `kRecoveryApSsid` as
+`SmartGatekeeper-Recovery`; the same constant is used for the broadcast SSID,
+serial ready log and HTTP Basic authentication realm.
+An authenticated `/scan` request temporarily pauses a disconnected STA's
+credential retry, performs one bounded synchronous scan with one bounded retry,
+then restores STA auto-reconnect without stopping the SoftAP or clearing NVS.
+The portal renders the returned SSIDs and RSSI values as an explicit scrollable
+list while retaining a manual SSID field as a fallback.
 
 MQTTS provisioning is initialized regardless of whether Wi-Fi is available at
 boot. On Wi-Fi loss the stale TLS socket is closed; on Wi-Fi recovery a fresh
