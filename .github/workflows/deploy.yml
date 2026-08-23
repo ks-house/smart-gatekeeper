@@ -377,7 +377,7 @@ jobs:
           100644 b280393bfc93b0a3d09e6869621c3d8b8a27937f1d85f8afb6a24df204279596 src/TargetCommandSecurity.cpp
           100644 8a0c16058f87b87e4e7d61ce18e8eccb091c2109b945a4984a87540234823fe5 src/TargetProofVerifier.cpp
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
-          100644 f3b82c818a503e9ea7853e4e5a43bc6348b34a66f22fef9530c0ad1b9817a5c7 src/WifiManager.cpp
+          100644 e5c32190a302b8e934e18dfdf1eb21771044cea2ce6ec82571b4fc77b5e18571 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
           100644 f0af0ab28ca10ece0558b91c6ef175baeb6032b75c062a76b1038ffd59732de2 src/main.cpp
           EOF

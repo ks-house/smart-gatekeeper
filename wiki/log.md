@@ -3261,3 +3261,24 @@
 - The pre-authorization PR #112 Hosted Trusted, OTA and firmware checks correctly fail closed on that new protected digest; connectivity regression tests pass, but no earlier canary is treated as production publication evidence.
 - The focused transition suite passed 42/42; JSON parsing, exact two-map equality, the OTA contract, all seven workflow `actionlint` checks, live GitHub exact-candidate verification and whitespace validation passed. Full Windows discovery passed 280/282; only the unchanged checkout-CRLF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed.
 - This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
+
+## [2026-08-24] test | Verify exact H10-H11 Target OTA and isolate weak home RF
+
+- Verified exact H10 and H11 Target CI/NAS artifacts, signatures, authenticated decryption, ESP32-C6 N16 image structure and 5,543,952-byte per-slot headroom; H11 is the observed running image.
+- On a nearby 2.4 GHz AP, the Target completed Wi-Fi, per-Target MQTTS, encrypted signed H10 install/reboot and H11 current-version checks. The intended home AP remained around -80 to -82 dBm and failed association despite independently verified credentials, isolating the wall blocker to RF margin.
+- Applied and independently read back 15 retained read-only Home Assistant discovery configs plus seven legacy tombstones. Live H11 telemetry recovered; restored/unavailable historical controls remain fail-closed pending registry cleanup and a signed-command bridge.
+- No pending-health/valid-mark log was observed, so install/reboot evidence does not close Target health-valid or rollback Gates.
+
+## [2026-08-24] fix | Add dynamic weak-link STA compatibility profile
+
+- Added all-channel scan with strongest-signal selection, no modem sleep and STA-only 802.11b/g/n compatibility before the sole `WiFi.begin()` call. BSSID/channel pinning, repeat `begin()`, credential erase and recovery-AP changes remain prohibited.
+- Added named disconnect diagnostics and contract tests for call order, STA-only scope, dynamic AP selection, one-begin recovery and degraded-profile fallback.
+- This code can improve marginal association compatibility but cannot replace the installation policy's -75 dBm minimum and -67 dBm preferred RF targets; exact merged-main physical A/B remains required.
+- The local production profile built a valid 1,799,008-byte ESP32-C6 16 MB/DIO/80 MHz image with 5,541,024 bytes remaining in either 7,340,032-byte OTA slot; the OTA contract and 283 relevant repository tests passed, while two unchanged Windows checkout CRLF tests remained the known materialization-only failures.
+- Updated the privileged Target compiler inventory and its regression to the exact LF Git-blob SHA-256 of the revised `WifiManager.cpp`; production Secret materialization and NAS publication remain blocked until the separately reviewed trusted-policy authorization accepts this protected workflow byte.
+
+## [2026-08-24] compile | Connect weak-link feature to trusted policy main
+
+- Merged policy main `d7ec44a99a9380d8e9a1b05cf8040af6f750f999` into the weak-link feature without rebasing or squashing; resolved only the append-only log by retaining both histories.
+- Recomputed all 62 normalized protected-file digests against the two identical policy maps and retained exactly seven workflows with zero local Actions. The OTA contract and all workflow `actionlint` checks passed.
+- Full merged-tree Windows discovery passed 283/285; only the unchanged checkout-CRLF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed. Production publication remains gated on fresh hosted checks after push.

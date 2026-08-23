@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: H7 `main` commit `e00ebe8`, 현장 실행본 H6 `02090c3`, plus ESP32-C6 GCM block-alignment correction candidate
+> 관측 기준: H11 `main` commit `7a55a66`, 현장 실행본 H11 `2.1.242+main.g7a55a66`, plus weak-link STA compatibility candidate
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -22,17 +22,18 @@ applies_to:
 
 | 축 | 저장소 최신 구현 | 검증/운영 경계 |
 |---|---|---|
-| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA; manifest Ed25519는 bundled libsodium, encrypted content stream은 16-byte GCM block carry를 사용 | 현장 active는 exact-main `2.1.237+main.g02090c3` H6. H7 manifest는 수락됐지만 pinned ESP-IDF GCM ALT의 비정렬 multipart 결함으로 inactive `app1` 검증이 fail-closed 중단됐으며 corrected merged-main USB bootstrap과 다음 OTA가 필요 |
-| Android | foreground scan, OS-managed BLE wake PoC, native GATT credential worker, recovery/update UI | Hardwareless RC는 default-OFF; Samsung/OEM 및 force-stop 경계는 실기기 Gate |
+| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA; manifest Ed25519는 bundled libsodium, encrypted content stream은 16-byte GCM block carry를 사용 | 현장 active는 exact-main H11 `2.1.242+main.g7a55a66`. 가까운 2.4 GHz AP에서는 Wi-Fi, MQTTS, signed OTA가 동작하지만 현관 AP는 Target scan 기준 약 `-80~-82 dBm`으로 association이 불안정하다. 본 변경은 all-channel/signal sort, no-sleep, STA-only 11b/g/n compatibility profile을 추가하지만 RF 매립 Gate는 실측 전까지 열려 있다 |
+| Android | foreground scan, OS-managed BLE wake PoC, native GATT credential worker, recovery/update UI, bounded NAS APK publisher | H7 APK는 연결된 Samsung Android 16 기기에 exact-byte 설치/실행 확인. H11부터 NAS publisher의 object bound, prefetch, idle/job timeout이 적용되며 최신 NAS/설치 증거는 별도 기록 |
 | Backend | FastAPI/MariaDB, enrollment/ACL, admin session/RBAC/CSRF/re-auth, signed commands, operations APIs | production Compose와 migration 계약은 존재하지만 live NAS 운영 증거는 별도 관리 |
 | Access | legacy iBeacon → pre-arm과 default-OFF local GATT 경로가 공존 | Target FSM `IDLE → ARMED → RELAY_HOLD → COOLDOWN → IDLE`이 relay 권한의 최종 경계 |
-| OTA | Target periodic HTTPS pull, signed manifest/artifact, inactive slot, health mark/rollback, authenticated local recovery; mobile signed update/recovery 계약 | H7 CI/NAS/서명/복호화와 Target manifest 수락은 PASS. 세 번의 physical download는 모두 동일 GCM chunk boundary에서 inactive slot hash/tag 검증으로 중단됐고 active H6/NVS는 보존됨. corrected image의 USB bootstrap → strictly newer OTA → reboot/health-valid가 완료 조건 |
+| OTA | Target periodic HTTPS pull, signed manifest/artifact, inactive slot, health mark/rollback, authenticated local recovery; mobile signed update/recovery 계약 | H10 encrypted artifact는 H9에서 signed manifest 수락, 전체 download, inactive image 검증과 H10 reboot까지 PASS했고 H11 exact-main도 현재 실행 중이다. 다만 retained bootloader/OTA data에서 `PENDING_VERIFY` health-window/valid-mark 로그가 관측되지 않아 rollback Gate는 닫지 않는다 |
+| Home Assistant | 15개 read-only MQTT discovery entity와 fail-closed legacy command tombstone migration | broker retained config 15개를 검증했고 H11 hotspot online 때 firmware/IP/RSSI/state/config가 live로 갱신됐다. 과거 control registry 항목은 `restored/unavailable`로 남으며 signed command bridge 없이 재활성화하지 않는다 |
 
 ## 2. 저장소 구현과 현장 배포를 혼동하지 않는다
 
-2026-08-12에 관측한 현관 매립 Target `2.1.0-g75b946a`는 이제 현재 상태가 아니다. 2026-08-24 연결된 Target에는 bundled-libsodium verifier를 포함한 exact-main H6 `2.1.237+main.g02090c3`를 app-only USB 방식으로 설치했다. NVS를 지우지 않았고 저장된 Wi-Fi로 `192.168.35.19`를 받은 뒤 verified MQTTS와 Home Assistant read-only telemetry를 복구했다.
+2026-08-12의 구형 매립본은 더 이상 현재 상태가 아니다. 2026-08-24에 GCM block carry를 포함한 exact-main H9를 app-only USB로 설치하면서 bootloader, partition table, NVS, OTA data와 fallback slot을 보존했다. H9는 가까운 2.4 GHz AP에서 verified MQTTS를 복구한 뒤 exact H10 signed manifest를 수락하고 1,796,116-byte encrypted artifact를 inactive slot에 기록·검증하여 H10으로 재부팅했다. 이후 exact H11 `7a55a667b9d30f7929176997010d7ab71abaf833`, version `2.1.242+main.g7a55a66`가 현장 active로 확인됐고 같은 AP에서 IP `10.71.25.196`, exact per-Target MQTTS subscriptions와 OTA `already current`를 기록했다.
 
-Strictly newer H7 `2.1.238+main.ge00ebe8`은 run `32662983244`에서 production build, Ed25519, AES-256-GCM, NAS atomic publish/readback과 16 MB N16 image 검증을 통과했다. H6는 그 manifest를 수락하고 1,795,284-byte encrypted artifact를 세 번 모두 끝까지 처리했지만 `image write/hash`로 중단했다. 실패한 `app1`을 read-only 회수한 결과 두 번 모두 plaintext offset `0..3804`는 정확하고 `3805 (mod 16 = 13)`부터 결정적으로 달랐다. pinned ESP-IDF 5.5.4 GCM ALT가 비정렬 multipart update의 CTR/GHASH 상태를 보존하지 않는 결함과 정확히 일치하며, active H6와 NVS는 fail-closed 보존됐다. 현재 후보는 0..15-byte ciphertext carry로 모든 non-final GCM update를 16-byte aligned로 제한한다. 이 수정은 build/host contract와 다음 physical USB→OTA 연속 검증 전까지 완료로 간주하지 않는다.
+Wi-Fi 자격 증명 자체는 Android가 동일 2.4 GHz SSID에 새로 인증해 검증했다. 그러나 Target이 본 현관 AP 신호는 약 `-80~-82 dBm`이었고 reason 2/4/201이 반복됐다. 같은 H11과 같은 저장 경로가 가까운 hotspot `-42 dBm`에서는 즉시 성공했으므로 현재 지배적 원인은 RF margin이다. 코드 호환 프로파일은 AP 선택과 association 안정성을 개선할 수 있지만 `-81 dBm` link budget을 만들 수는 없다. 최종 매립은 최소 `-75 dBm`, 가능하면 `-67 dBm` 이상을 확보하고 반복 부팅/장애 복구를 통과한 뒤 승인한다.
 
 - 저장소 최신 구현: 이 문서와 [최신 코드 감사](current_code_audit.md)
 - 개인 현장 배포: [개인 PROD 사건 기록](personal_prod_incident_2026_08_12.md)
@@ -68,8 +69,8 @@ Hardwareless RC는 Android Keystore 자격과 connectable GATT proof를 사용�
 
 ## 5. 열려 있는 주요 Gate
 
-1. GCM block-alignment correction이 포함된 exact merged-main을 NVS 보존 app-only USB로 설치한 뒤, strictly newer exact-main을 periodic HTTPS로 inactive slot에 설치하여 reboot/version/boot ID/health-valid를 확인한다. H7의 manifest 수락과 fail-closed active-slot 보존만으로 이 Gate는 닫히지 않는다.
-2. Wi-Fi 부팅 실패, DHCP/IP 상실, broker/WAN 장애에서 자동 복구와 15초/90초/10분 관측 경계를 실측한다.
+1. 현장 bootloader/OTA data가 새 OTA image를 `PENDING_VERIFY`로 표시하고 firmware가 30초 health window 뒤 valid mark하는지, 실패 시 이전 slot으로 rollback하는지 별도 확인한다. install/reboot/current-version만으로 이 Gate를 닫지 않는다.
+2. 약신호 compatibility release를 동일 위치에서 홈 AP와 가까운 AP로 A/B하고, 홈 위치 RSSI를 최소 `-75 dBm` 이상으로 개선한 뒤 Wi-Fi/DHCP/MQTTS와 broker/WAN 장애 자동 복구를 실측한다.
 3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.
 5. Hardwareless RC를 유지하려면 default-OFF를 보존하고 G0-HW/RELAY/OTA physical Gate를 별도로 닫는다.
