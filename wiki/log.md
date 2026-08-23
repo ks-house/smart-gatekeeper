@@ -2890,3 +2890,8 @@
 - GitHub secret values cannot be read back through its API, so the production job now places its generated header in the AES-encrypted one-day installation bundle as `provisioned-secrets.h`.
 - Secret values remain absent from Actions logs and unencrypted artifacts; only the owner holding the local recovery password can decrypt the header.
 - Secret contract diagnostics now identify only the failing field and never print its value.
+
+## [2026-08-23] fix | Accept provisioned MQTT username as an opaque value
+
+- Removed the personal-installation workflow's unsupported 12-character hexadecimal restriction on `SECRET_MQTT_USER`; the firmware and MQTT protocol treat the non-empty username as an opaque string.
+- Retained the non-empty MQTT username/password checks and all Wi-Fi, command-signing, OTA-signing and local-recovery validation.
