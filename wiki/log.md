@@ -2951,3 +2951,10 @@
 - Added `expire_after=30` to the 11 entities backed by the 10-second periodic Target status while leaving four boot-only config-state diagnostics independent of availability.
 - Live internal-broker migration of 15 read-only configs was observed in Home Assistant with firmware `2.1.0-gd06519e`, IDLE state, `192.168.35.19`, distance, RSSI and four explicitly seeded current config-state values.
 - Seven legacy controls were not removed during the live observation and remain nonfunctional with the signed-command firmware; no control was invoked. The public MQTTS certificate was independently observed expired on 2026-08-14 and still requires renewal.
+
+## [2026-08-23] test | Apply and read back secure Home Assistant discovery
+
+- Applied the reviewed migration to the live internal broker with QoS 1 retained publication: 15 read-only discovery records were updated and seven incompatible legacy control records were tombstoned.
+- A clean retained subscription read back exactly 15 Smart Gatekeeper records: 11 periodic-status entities with `expire_after=30`, four config-state diagnostics, zero availability references and zero legacy button/number configs.
+- The broker accepted an anonymous LAN connection, so this migration did not transmit credentials; that permissive internal-broker policy is operational evidence, not a security approval.
+- No door, relay, reboot, OTA or configuration control was invoked. Reintroducing controls remains blocked on an authenticated backend bridge that emits current-boot signed command envelopes.

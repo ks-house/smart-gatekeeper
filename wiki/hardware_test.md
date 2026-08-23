@@ -42,12 +42,13 @@ Home Assistant registry의 in-place migration 및 stale control 제거를 증명
 | secure discovery live publish | 운영 internal broker에 15개 read-only retained config를 적용하고 기존 device identity에서 UI 갱신 확인 | PASS (live) |
 | 주기 status | Target `c0feffe6ebac`의 `/status`로 firmware `2.1.0-gd06519e`, IDLE, IP `192.168.35.19`, distance 9990 mm, RSSI를 HA에서 확인 | PASS (live) |
 | config-state | 현 Target가 boot 시 발행한 값을 관찰한 뒤 동일 값을 1회 non-retained로 seed하여 4개 설정 sensor 표시 확인 | PASS (live, seeded) |
-| legacy controls | 기존 button 3개와 number 4개는 UI에 남아 있고 current signed command protocol과 호환되지 않음; 조작하지 않음 | PENDING removal/bridge |
+| legacy controls | retained tombstone 7개를 live broker에 적용하고 retained read-back에서 button/number 0개 확인; current signed command bridge는 별도 미구현 | PASS removal / PENDING bridge |
 | public MQTTS TLS | `tworimpa.synology.me:4883` server certificate가 2026-08-14 만료된 것을 검증 client에서 확인 | FAIL (renewal required) |
 
 이 live 관찰은 read-only 상태 가시성 복구 증거다. 문 열기, reboot, OTA, 설정 변경은 backend signed
 command bridge 없이 동작한다고 간주하지 않으며, live migration에서는 legacy control tombstone을 아직
-적용하지 않았다.
+적용했으며 retained read-back에서 legacy control config가 남지 않은 것을 확인했다. 새 write control은
+만들지 않았고 실제 문 열기나 설정 변경도 수행하지 않았다.
 
 ## 2. 현재 코드 기준 검증표
 
