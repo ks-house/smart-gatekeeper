@@ -462,8 +462,8 @@ primary and fallback NAS directories, performs SFTP readback, preserves
 immutable candidates plus the previous valid artifact/manifest pair, and uses
 SFTP `posix_rename` to promote APK bytes before metadata. Job concurrency
 serializes publishers without cancelling an active two-file promotion. The
-publisher rejects stale pointers, double-reads each final pair, restores the
-previous pair if APK/manifest promotion or either promotion readback fails, and
+publisher rejects stale pointers, restores the previous pair if APK/manifest
+promotion or either promotion readback fails, and
 requires both public HTTPS
 origins to serve the exact artifact and manifest. This supplies the owner's
 updater; it does not assert that an Android package installer completed, that
@@ -473,6 +473,18 @@ workflow run and attempt, and artifact/evidence names preserve each attempt.
 Both automatic password-authenticated publishers require a repository-pinned
 NAS host key and reject runtime keyscan. Those observations belong in
 `hardware_test.md`.
+
+The SFTP transport is also bounded against high-latency or stalled NAS links.
+Every remote object is `stat`-checked as a regular file no larger than 220 MiB,
+whole-file reads use at most 64 concurrent Paramiko prefetch requests, and the
+SFTP channel fails after 120 seconds without progress. The privileged publisher
+job has a 30-minute hard ceiling. Both-root preflight states are bound to their
+exact root and reused by the publisher, unchanged signed metadata is re-read
+immediately before promotion, and an already verified immutable previous pair
+is not uploaded and read back redundantly. Staged candidate copies and the
+promoted fixed pair still receive exact byte readback, so these performance
+bounds do not relax the signed version-code floor, immutable-history conflict,
+promotion rollback, or primary/fallback HTTPS verification.
 
 The mobile `release_to_production` job remains manual, protected by the
 `production` Environment, and blocked by `ota/release-evidence.json`. The Target

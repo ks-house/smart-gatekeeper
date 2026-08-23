@@ -3210,6 +3210,17 @@
 - The focused final-policy suite passed 42/42; the OTA contract, all seven workflow actionlint checks, JSON/Python parsing and whitespace validation passed. Full Windows discovery ran 277 tests with 275 passing and only the two unchanged checkout-CRLF checks failing; fresh `core.autocrlf=false` M2 checkout suites passed 14/14 manual-contract and 5/5 signing-script tests.
 - This policy-only rotation reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
 
+## [2026-08-24] fix | Bound and accelerate automatic mobile NAS publication
+
+- Exact-main H7 Actions run `32662983256`, job `97253774613` entered `Atomically publish and read back primary and fallback mobile OTA` at `20:14:03Z` and was manually cancelled at `20:45:01Z` after 30 minutes 58 seconds; publication evidence and public HTTPS verification were skipped, so this run is not successful NAS delivery evidence.
+- The publisher repeatedly transferred the 55,770,265-byte APK across both roots through preflight, staging, immutable history, race and promotion readbacks while whole-file Paramiko reads had no prefetch and the SFTP channel/job had no bounded wait. This confirmed transfer-amplification path is sufficient to explain the observed silent stall; cancellation logs do not identify the exact final SFTP call.
+- Added a 220 MiB remote-object bound, 64-request SFTP prefetch, 120-second channel idle timeout, flushed phase progress and a 30-minute publisher-job ceiling. Reused exact-root-bound preflight state, skipped unchanged fixed-APK race rereads and avoided re-uploading an already verified previous immutable pair.
+- Preserved both-root signed version-code preflight, immutable conflict rejection, staged and promoted exact-byte readbacks, APK-before-manifest atomic promotion, previous-pair rollback, independent primary/fallback publication and final HTTPS comparison. No signing, NAS or application secret value was read or recorded.
+
+## [2026-08-24] test | Regress bounded mobile SFTP behavior
+
+- Added regression coverage for exact-size 64-request prefetch, oversized-object refusal before open, preflight-state reuse and the reduced fixed-APK read count. Existing stale/equal-floor rejection, invalid-pair repair, immutable history, promotion/readback rollback and protected workflow mutation tests remain required.
+- Focused mobile publisher tests passed 29/29, the OTA contract and all seven workflow `actionlint` checks passed, relative wiki links resolved, and `git diff --check` found no whitespace error. Full Windows discovery ran 281 tests with 277 passing; the two modified protected-path digest checks remain intentionally red pending separate exact policy authorization, while the other two failures are the unchanged checkout-CRLF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`.
 ## [2026-08-24] test | Bootstrap H6 and isolate the H7 inactive-slot failure
 
 - Installed exact main H6 `02090c31b6813d6d1691262809dfc86330283a9d`, version `2.1.237+main.g02090c3`, app-only over USB without erasing NVS; saved Wi-Fi recovered `192.168.35.19`, verified MQTTS authenticated and exact per-Target subscriptions/diagnostics returned.

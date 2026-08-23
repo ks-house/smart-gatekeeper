@@ -1,8 +1,10 @@
 import io
 import json
+import stat
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from scripts import ota_contract_gate as gate
@@ -75,6 +77,51 @@ class _CorruptFirstPromotedApkReadbackSftp(FakeSftp):
     return super().open(path, mode)
 
 
+class _PrefetchReader(io.BytesIO):
+  def __init__(self, value: bytes):
+    super().__init__(value)
+    self.prefetch_calls: list[tuple[int, int]] = []
+    self.read_sizes: list[int] = []
+
+  def prefetch(self, file_size: int, max_concurrent_requests: int) -> None:
+    self.prefetch_calls.append((file_size, max_concurrent_requests))
+
+  def read(self, size: int = -1) -> bytes:
+    self.read_sizes.append(size)
+    return super().read(size)
+
+
+class _PrefetchSftp:
+  def __init__(self, value: bytes):
+    self.value = value
+    self.reader: _PrefetchReader | None = None
+    self.open_calls = 0
+
+  def stat(self, _path: str):
+    return SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_size=len(self.value))
+
+  def open(self, _path: str, mode: str):
+    if mode != "rb":
+      raise AssertionError(mode)
+    self.open_calls += 1
+    self.reader = _PrefetchReader(self.value)
+    return self.reader
+
+
+class _ReadCountingSftp(FakeSftp):
+  def __init__(self):
+    super().__init__()
+    self.reads: dict[str, int] = {}
+    self.writes: dict[str, int] = {}
+
+  def open(self, path: str, mode: str):
+    if mode == "rb":
+      self.reads[path] = self.reads.get(path, 0) + 1
+    elif mode == "wb":
+      self.writes[path] = self.writes.get(path, 0) + 1
+    return super().open(path, mode)
+
+
 class MobileOtaAutoPublishEngineTests(unittest.TestCase):
   def _publish(
       self,
@@ -83,6 +130,7 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
       manifest: Path,
       candidate: dict,
       valid_by_manifest: dict[bytes, dict],
+      initial_state: dict | None = None,
   ) -> dict:
     def validate_manifest(manifest_bytes, *_args):
       if manifest_bytes is None:
@@ -117,6 +165,7 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
           Path("apkanalyzer"),
           Path("apksigner"),
           "1",
+          initial_state,
       )
 
   def _preflight(
@@ -124,7 +173,7 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
       sftp: FakeSftp,
       candidate: dict,
       valid_by_manifest: dict[bytes, dict],
-  ) -> None:
+  ) -> dict[str, dict]:
     def validate_manifest(manifest_bytes, *_args):
       if manifest_bytes is None:
         return None
@@ -152,13 +201,99 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
     ), mock.patch.object(
         gate, "_validate_remote_mobile_pair", side_effect=validate_pair
     ):
-      gate._preflight_mobile_sftp_roots(
+      return gate._preflight_mobile_sftp_roots(
           sftp,
           (REMOTE_ROOT, REMOTE_ROOT + "_fallback"),
           candidate,
           "0" * 64,
           Path("apkanalyzer"),
           Path("apksigner"),
+      )
+
+  def test_sftp_readback_uses_bounded_prefetch_and_exact_size(self):
+    value = b"apk-readback" * 1024
+    sftp = _PrefetchSftp(value)
+
+    self.assertEqual(gate._read_sftp_bytes(sftp, "/bounded.apk"), value)
+    self.assertIsNotNone(sftp.reader)
+    assert sftp.reader is not None
+    self.assertEqual(
+        sftp.reader.prefetch_calls,
+        [(len(value), gate.SFTP_PREFETCH_REQUESTS)],
+    )
+    self.assertEqual(sftp.reader.read_sizes, [len(value) + 1])
+    self.assertEqual(gate.SFTP_PREFETCH_REQUESTS, 64)
+
+  def test_sftp_readback_refuses_oversized_object_before_open(self):
+    sftp = _PrefetchSftp(b"")
+    with mock.patch.object(
+        sftp,
+        "stat",
+        return_value=SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o644,
+            st_size=gate.SFTP_MAX_READBACK_BYTES + 1,
+        ),
+    ), self.assertRaisesRegex(gate.GateError, "bounded contract"):
+      gate._read_sftp_bytes(sftp, "/oversized.apk")
+    self.assertEqual(sftp.open_calls, 0)
+
+  def test_preflight_state_is_reused_and_fixed_apk_is_read_only_for_validation_and_promotion(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      old_bytes = b"old-apk-reuse"
+      new_bytes = b"new-apk-reuse"
+      old = _candidate("1" * 40, 501, old_bytes)
+      new = _candidate("2" * 40, 502, new_bytes)
+      old_apk, old_manifest = _write_pair(directory, "old", old, old_bytes)
+      new_apk, new_manifest = _write_pair(directory, "new", new, new_bytes)
+      sftp = _ReadCountingSftp()
+      fixed_apk = f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"
+      fixed_manifest = f"{REMOTE_ROOT}/version.json"
+      sftp.files[fixed_apk] = old_apk.read_bytes()
+      sftp.files[fixed_manifest] = old_manifest.read_bytes()
+      states = self._preflight(
+          sftp,
+          new,
+          {old_manifest.read_bytes(): old},
+      )
+
+      result = self._publish(
+          sftp,
+          new_apk,
+          new_manifest,
+          new,
+          {old_manifest.read_bytes(): old},
+          states[REMOTE_ROOT],
+      )
+
+      self.assertEqual(result["result"], "publish-upgrade")
+      self.assertEqual(sftp.reads[fixed_apk], 2)
+      self.assertEqual(sftp.files[fixed_apk], new_bytes)
+
+  def test_preflight_state_cannot_be_reused_for_a_different_root(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      candidate_bytes = b"root-bound-candidate"
+      candidate = _candidate("3" * 40, 503, candidate_bytes)
+      apk, manifest = _write_pair(
+          directory, "root-bound", candidate, candidate_bytes
+      )
+      sftp = FakeSftp()
+      wrong_state = {
+          "remote_root": REMOTE_ROOT + "_fallback",
+          "apk_bytes": None,
+          "manifest_bytes": None,
+          "manifest": None,
+          "valid_pair": None,
+      }
+
+      with self.assertRaisesRegex(gate.GateError, "not bound"):
+        self._publish(sftp, apk, manifest, candidate, {}, wrong_state)
+      self.assertFalse(
+          any(
+              operation[0] in {"mkdir", "put", "rename", "posix_rename", "remove"}
+              for operation in sftp.operations
+          )
       )
 
   def test_previous_pair_and_candidate_are_immutable_before_fixed_pair_swap(self):

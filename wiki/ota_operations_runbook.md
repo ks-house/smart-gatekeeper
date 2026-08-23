@@ -91,6 +91,12 @@ NAS 변경 전 publisher는 primary와 fallback root를 **모두** 읽어 다음
    strictly higher version code가 필요하며 equal identity의 다른 bytes는 거부한다.
 5. 양쪽 preflight가 모두 통과한 뒤에만 staged upload/readback, immutable retention,
    APK→manifest `posix_rename`, public primary/fallback HTTPS exact-byte readback을 수행한다.
+6. SFTP readback은 220 MiB regular-file 상한, 64-request prefetch, 120초 channel idle timeout을
+   적용하고 publisher job 전체는 30분 안에 종료되어야 한다. 같은 root의 preflight state를 publish에
+   재사용하되 exact root binding과 promotion 직전 signed metadata 재확인은 유지한다. 30분 초과,
+   channel timeout 또는 수동 취소는 배포 성공이 아니며 evidence/HTTPS 단계가 skipped이면 NAS의
+   fixed APK와 manifest를 다시 확인한 뒤 strictly newer exact-main build로 복구한다. 남은 staging
+   directory를 자동 삭제하거나 stale/equal version code로 강제 덮어쓰지 않는다.
 
 이 순서는 fallback에 새 APK를 올린 뒤 primary의 더 높은 floor를 발견하는 partial stale publish를
 막는다. 성공해도 NAS publication evidence일 뿐 Android installer 승인·완료, first-run health,
