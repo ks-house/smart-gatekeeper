@@ -227,6 +227,7 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
     self.assertNotIn("PUBLISHED_AT=\"$(date", self.auto_source)
 
   def test_primary_and_fallback_use_the_shared_atomic_publisher(self) -> None:
+    self.assertEqual(self.auto_job["timeout-minutes"], "30")
     for fragment in (
         "Prepare strict NAS host identity for personal mobile OTA",
         "OTA_NAS_KNOWN_HOSTS_FILE",
@@ -253,6 +254,18 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
     self.assertNotIn("sftp ", self.auto_source)
     self.assertNotIn("ssh-keyscan", self.auto_source)
     self.assertNotIn("runtime-keyscan-unpinned", self.auto_source)
+    gate_source = (ROOT / "scripts" / "ota_contract_gate.py").read_text(
+        encoding="utf-8"
+    )
+    for fragment in (
+        "SFTP_MAX_READBACK_BYTES = 220 * 1024 * 1024",
+        "SFTP_PREFETCH_REQUESTS = 64",
+        "SFTP_CHANNEL_IDLE_TIMEOUT_SECONDS = 120",
+        "max_concurrent_requests=SFTP_PREFETCH_REQUESTS",
+        "channel_timeout=20",
+        "sftp.get_channel().settimeout(SFTP_CHANNEL_IDLE_TIMEOUT_SECONDS)",
+    ):
+      self.assertIn(fragment, gate_source)
 
   def test_publication_evidence_is_preserved_without_secret_material(self) -> None:
     self.assertIn(
@@ -309,6 +322,7 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
             "inputs.release_target == 'production'",
         ),
         ("cancel-in-progress: false", "cancel-in-progress: true"),
+        ("timeout-minutes: 30", "timeout-minutes: 31"),
         (
             'PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"',
             'PUBLISHED_AT="$(date -u +%FT%TZ)"',

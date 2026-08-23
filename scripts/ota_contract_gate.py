@@ -77,6 +77,9 @@ TARGET_HANDOFF_PUBLIC_KEY_SHA256 = (
     "b46f35bed26b7542c9103c1006ff90816e2e8758ebfc1fd9c53cab4561ec829f"
 )
 TARGET_CONTENT_KEY_ID = "personal-target-content-20260824-1"
+SFTP_MAX_READBACK_BYTES = 220 * 1024 * 1024
+SFTP_PREFETCH_REQUESTS = 64
+SFTP_CHANNEL_IDLE_TIMEOUT_SECONDS = 120
 TEST_PUBLIC_KEY_HEX = (
     "d75a980182b10ab7d54bfed3c964073a"
     "0ee172f3daa62325af021a68f707511a"
@@ -1550,7 +1553,8 @@ def _validate_personal_mobile_ota_job(
   if "environment" in unsigned_job or "concurrency" in unsigned_job:
     raise GateError(f"{path}: unsigned mobile build cannot gain an environment or deployment lock")
   if set(job) != {
-      "name", "needs", "if", "environment", "concurrency", "runs-on", "steps"
+      "name", "needs", "if", "environment", "concurrency", "runs-on",
+      "timeout-minutes", "steps",
   }:
     raise GateError(f"{path}: personal mobile OTA job keys must be exact")
   if job.get("name") != "Sign and atomically publish personal mobile OTA":
@@ -1570,6 +1574,8 @@ def _validate_personal_mobile_ota_job(
     raise GateError(f"{path}: personal mobile OTA concurrency contract is not exact")
   if job.get("runs-on") != UBUNTU_RUNNER:
     raise GateError(f"{path}: personal mobile OTA runner must be {UBUNTU_RUNNER}")
+  if job.get("timeout-minutes") != 30:
+    raise GateError(f"{path}: personal mobile OTA job timeout must be exactly 30 minutes")
 
   unsigned_steps = unsigned_job.get("steps")
   unsigned_expected_names = [
@@ -3714,10 +3720,27 @@ def _validated_target_remote_root(value: str) -> str:
 
 
 def _read_sftp_bytes(sftp: Any, path: str) -> bytes:
+  remote_stat = sftp.stat(path)
+  remote_size = getattr(remote_stat, "st_size", None)
+  if (
+      not stat.S_ISREG(remote_stat.st_mode)
+      or not isinstance(remote_size, int)
+      or remote_size < 0
+      or remote_size > SFTP_MAX_READBACK_BYTES
+  ):
+    raise GateError("SFTP readback object type or size is outside the bounded contract")
   with sftp.open(path, "rb") as stream:
-    value = stream.read()
+    prefetch = getattr(stream, "prefetch", None)
+    if callable(prefetch):
+      prefetch(
+          file_size=remote_size,
+          max_concurrent_requests=SFTP_PREFETCH_REQUESTS,
+      )
+    value = stream.read(remote_size + 1)
   if not isinstance(value, bytes):
     raise GateError("SFTP readback did not return bytes")
+  if len(value) != remote_size:
+    raise GateError("SFTP readback size differs from the remote stat")
   return value
 
 
@@ -3804,12 +3827,30 @@ def _place_immutable_sftp_bytes(
   current = _read_optional_sftp_bytes(sftp, final_path)
   if current is None:
     sftp.rename(staged_path, final_path)
+    current = _read_sftp_bytes(sftp, final_path)
   elif current == expected:
     sftp.remove(staged_path)
   else:
     raise GateError("immutable NAS OTA history path already contains different bytes")
-  if _read_sftp_bytes(sftp, final_path) != expected:
+  if current != expected:
     raise GateError("immutable NAS OTA readback differs after publish")
+
+
+def _preserve_immutable_sftp_bytes(
+    sftp: Any,
+    staged_path: str,
+    final_path: str,
+    expected: bytes,
+) -> None:
+  current = _read_optional_sftp_bytes(sftp, final_path)
+  if current is not None:
+    if current != expected:
+      raise GateError("immutable NAS OTA history path already contains different bytes")
+    return
+  _write_sftp_bytes(sftp, staged_path, expected)
+  if _read_sftp_bytes(sftp, staged_path) != expected:
+    raise GateError("immutable NAS OTA history staging readback differs")
+  _place_immutable_sftp_bytes(sftp, staged_path, final_path, expected)
 
 
 def _publish_target_sftp_bytes(
@@ -4284,6 +4325,7 @@ def _read_mobile_sftp_root_state(
       apksigner,
   )
   return {
+      "remote_root": remote_root,
       "apk_bytes": apk_bytes,
       "manifest_bytes": manifest_bytes,
       "manifest": manifest,
@@ -4298,9 +4340,10 @@ def _preflight_mobile_sftp_roots(
     public_key_hex: str,
     apkanalyzer: Path,
     apksigner: Path,
-) -> None:
+) -> dict[str, dict[str, Any]]:
   if len(remote_roots) < 2 or len(set(remote_roots)) != len(remote_roots):
     raise GateError("mobile OTA preflight requires distinct primary and fallback roots")
+  states: dict[str, dict[str, Any]] = {}
   for remote_root in remote_roots:
     state = _read_mobile_sftp_root_state(
         sftp,
@@ -4314,6 +4357,8 @@ def _preflight_mobile_sftp_roots(
         state["valid_pair"] is not None,
         candidate,
     )
+    states[remote_root] = state
+  return states
 
 
 def _publish_mobile_sftp_root(
@@ -4326,8 +4371,10 @@ def _publish_mobile_sftp_root(
     apkanalyzer: Path,
     apksigner: Path,
     run_attempt: str,
+    initial_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-  _ensure_sftp_directory(sftp, remote_root)
+  if initial_state is not None and initial_state.get("remote_root") != remote_root:
+    raise GateError("mobile OTA preflight state is not bound to this NAS root")
   commit = str(candidate["commit"])
   build_number = int(candidate["build_number"])
   if not re.fullmatch(r"[0-9a-f]{40}", commit) or build_number < 1:
@@ -4338,13 +4385,15 @@ def _publish_mobile_sftp_root(
   manifest_bytes = manifest_path.read_bytes()
   fixed_apk = f"{remote_root}/ks-house-gatekeeper.apk"
   fixed_manifest = f"{remote_root}/version.json"
-  initial_state = _read_mobile_sftp_root_state(
-      sftp,
-      remote_root,
-      public_key_hex,
-      apkanalyzer,
-      apksigner,
-  )
+  _ensure_sftp_directory(sftp, remote_root)
+  if initial_state is None:
+    initial_state = _read_mobile_sftp_root_state(
+        sftp,
+        remote_root,
+        public_key_hex,
+        apkanalyzer,
+        apksigner,
+    )
   initial_apk = initial_state["apk_bytes"]
   initial_manifest_bytes = initial_state["manifest_bytes"]
   initial_manifest = initial_state["manifest"]
@@ -4384,6 +4433,7 @@ def _publish_mobile_sftp_root(
       or _read_sftp_bytes(sftp, staged_immutable_manifest) != manifest_bytes
   ):
     raise GateError("mobile NAS staged readback differs")
+  print(f"[MOBILE-SFTP] staged candidate readback passed: {decision}", flush=True)
 
   _place_immutable_sftp_bytes(
       sftp,
@@ -4397,6 +4447,7 @@ def _publish_mobile_sftp_root(
       f"{remote_root}/{immutable_manifest_name}",
       manifest_bytes,
   )
+  print("[MOBILE-SFTP] candidate immutable history confirmed", flush=True)
 
   if (
       initial_valid is not None
@@ -4411,15 +4462,7 @@ def _publish_mobile_sftp_root(
     previous_manifest_stage = (
         f"{stage}/previous-{previous_commit}-{previous_build}.json"
     )
-    _write_sftp_bytes(sftp, previous_apk_stage, initial_apk)
-    _write_sftp_bytes(sftp, previous_manifest_stage, initial_manifest_bytes)
-    if (
-        _read_sftp_bytes(sftp, previous_apk_stage) != initial_apk
-        or _read_sftp_bytes(sftp, previous_manifest_stage)
-        != initial_manifest_bytes
-    ):
-      raise GateError("previous valid mobile OTA history readback differs")
-    _place_immutable_sftp_bytes(
+    _preserve_immutable_sftp_bytes(
         sftp,
         previous_apk_stage,
         (
@@ -4428,12 +4471,13 @@ def _publish_mobile_sftp_root(
         ),
         initial_apk,
     )
-    _place_immutable_sftp_bytes(
+    _preserve_immutable_sftp_bytes(
         sftp,
         previous_manifest_stage,
         f"{remote_root}/version-{previous_commit}-{previous_build}.json",
         initial_manifest_bytes,
     )
+    print("[MOBILE-SFTP] previous valid immutable history confirmed", flush=True)
 
   if decision == "idempotent":
     sftp.remove(staged_fixed_apk)
@@ -4446,9 +4490,9 @@ def _publish_mobile_sftp_root(
         "immutable_manifest": immutable_manifest_name,
     }
 
-  current_apk = _read_optional_sftp_bytes(sftp, fixed_apk)
   current_manifest_bytes = _read_optional_sftp_bytes(sftp, fixed_manifest)
-  if current_apk != initial_apk or current_manifest_bytes != initial_manifest_bytes:
+  if current_manifest_bytes != initial_manifest_bytes:
+    current_apk = _read_optional_sftp_bytes(sftp, fixed_apk)
     if current_manifest_bytes is None and current_apk is not None:
       raise GateError("mobile NAS current APK lost its signed manifest")
     current_manifest = _validate_remote_mobile_manifest(
@@ -4491,6 +4535,7 @@ def _publish_mobile_sftp_root(
     sftp.posix_rename(staged_fixed_manifest, fixed_manifest)
     if _read_sftp_bytes(sftp, fixed_manifest) != manifest_bytes:
       raise GateError("atomic mobile manifest readback differs")
+    print("[MOBILE-SFTP] fixed APK and manifest promotion readback passed", flush=True)
   except Exception as promotion_error:
     if (
         initial_valid is None
@@ -4598,9 +4643,12 @@ def publish_mobile_sftp(args: argparse.Namespace) -> None:
         timeout=20,
         banner_timeout=20,
         auth_timeout=20,
+        channel_timeout=20,
     )
     with client.open_sftp() as sftp:
-      _preflight_mobile_sftp_roots(
+      sftp.get_channel().settimeout(SFTP_CHANNEL_IDLE_TIMEOUT_SECONDS)
+      print("[MOBILE-SFTP] validating both signed version-code floors", flush=True)
+      preflight_states = _preflight_mobile_sftp_roots(
           sftp,
           (primary_root, fallback_root),
           candidate,
@@ -4610,6 +4658,7 @@ def publish_mobile_sftp(args: argparse.Namespace) -> None:
       )
       # Fallback first: if primary promotion later fails, both endpoints still
       # serve independently signed and hash-bound old/new pairs.
+      print("[MOBILE-SFTP] publishing fallback pair", flush=True)
       fallback_result = _publish_mobile_sftp_root(
           sftp,
           fallback_root,
@@ -4620,7 +4669,9 @@ def publish_mobile_sftp(args: argparse.Namespace) -> None:
           args.apkanalyzer,
           args.apksigner,
           args.run_attempt,
+          preflight_states[fallback_root],
       )
+      print("[MOBILE-SFTP] publishing primary pair", flush=True)
       primary_result = _publish_mobile_sftp_root(
           sftp,
           primary_root,
@@ -4631,7 +4682,9 @@ def publish_mobile_sftp(args: argparse.Namespace) -> None:
           args.apkanalyzer,
           args.apksigner,
           args.run_attempt,
+          preflight_states[primary_root],
       )
+      print("[MOBILE-SFTP] both atomic pairs passed readback", flush=True)
   except GateError:
     raise
   except Exception as exc:

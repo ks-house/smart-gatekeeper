@@ -21,8 +21,9 @@ REMOTE_ROOT = "/docker/smartbox_ota/firmware"
 
 
 class _FakeAttr:
-  def __init__(self, mode: int):
+  def __init__(self, mode: int, size: int = 0):
     self.st_mode = mode
+    self.st_size = size
 
 
 class _FakeWriter(io.BytesIO):
@@ -47,7 +48,7 @@ class FakeSftp:
     if path in self.directories:
       return _FakeAttr(stat.S_IFDIR | 0o755)
     if path in self.files:
-      return _FakeAttr(stat.S_IFREG | 0o644)
+      return _FakeAttr(stat.S_IFREG | 0o644, len(self.files[path]))
     raise FileNotFoundError(2, "No such file", path)
 
   def open(self, path: str, mode: str):
