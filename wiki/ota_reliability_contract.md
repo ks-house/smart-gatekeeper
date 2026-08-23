@@ -412,3 +412,32 @@ N/N-1 불변조건은 G0-SW 작업으로 약화할 수 없다.
 The Target implementation now verifies Ed25519 manifests, downloads only over CA-verified HTTPS, writes the inactive OTA partition, checks exact size/SHA-256/image validity, selects the candidate only after verification, and uses pending-verify continuous-health marking or automatic rollback. Every failed health predicate resets the healthy-since window. A remote download that makes no progress for 30 seconds or exceeds five minutes aborts the inactive write and returns to the 15-minute retry schedule. Periodic HTTPS and authenticated local WPA2/Basic recovery are independent of MQTT; an authenticated station-local request can open a bounded AP+STA recovery window even while DNS, Backend, MQTT, or the manifest host is unavailable, while signed `ota_check` remains an optional trigger. Protocol overlap 1..2, a crash-safe strictly ordered SemVer floor, rejection of equal-precedence alternate and exact-current reflash identities, quarantine of the exact failed floor after bootloader rollback, the previously bootable slot, and manual local recovery preserve N/N-1 and rollback paths. A strictly newer version remains eligible after rollback so a corrected image can recover the installation.
 
 This is host/software evidence only. Real ESP32-C6 bootloader, partition, power-loss, health-valid, rollback, radio, broker certificate, local recovery, N/N-1, operator, and production evidence remains pending; OTA-G1..G4 and production authorization stay fail-closed. See [target_command_ota_security.md](target_command_ota_security.md).
+
+## 16. 2026-08-23 personal main-push OTA publishers
+
+The single-owner installation has two narrowly scoped automatic delivery lanes
+in addition to the unchanged commercial release jobs. The mobile lane runs only
+after an exact `main` push and after its public build/test dependency succeeds.
+It intentionally consumes repository-scoped mobile signing values without a
+GitHub Environment, because the embedded Target and the already-installed APK
+currently have different OTA trust identities under otherwise identical Secret
+names. Workflow validation pins the installed mobile key identity and Android
+package signer so Environment shadowing or keystore rotation fails before NAS
+contact.
+
+The mobile lane produces a release APK and signed manifest, stages both in the
+primary and fallback NAS directories, performs SFTP readback, preserves
+immutable candidates plus the previous valid artifact/manifest pair, and uses
+SFTP `posix_rename` to promote APK bytes before metadata. Job concurrency
+serializes publishers without cancelling an active two-file promotion. The
+publisher rejects stale pointers, double-reads each final pair, restores the
+previous pair if manifest promotion fails, and requires both public HTTPS
+origins to serve the exact artifact and manifest. This supplies the owner's
+updater; it does not assert that an Android package installer completed, that
+first-run health passed, or that fallback/rollback has been exercised on a
+device. Those observations belong in `hardware_test.md`.
+
+The existing `release_to_production` job remains manual, protected by the
+`production` Environment, and blocked by `ota/release-evidence.json`. Personal
+automatic publication does not set commercial evidence, enable Hardwareless RC,
+retire the legacy path, or close OTA-G1..G4.

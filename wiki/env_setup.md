@@ -532,3 +532,32 @@ The production environment also fixes `ARDUINO_LOOP_STACK_SIZE=16384`; the
 default 8 KiB loop task overflowed during MQTTS verifier initialization on the
 physical ESP32-C6. `SGK_PRODUCTION_BUILD=1` is defined only by
 `esp32c6_production`, using `build_unflags` to remove the developer default.
+
+## Personal mobile main-push OTA (2026-08-23)
+
+`build_app.yml` now runs for every `main` push. Its
+`publish_personal_mobile_ota` job is a separate single-owner delivery lane and
+does not use a GitHub Environment. This is deliberate: the repository-level
+`OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, and
+`OTA_SIGNING_KEY_ID` are the mobile update identity already trusted by the
+installed APK, while the same generic names in the `production` Environment
+currently belong to the embedded Target. Adding `environment: production` to
+the personal mobile job would silently select the Target values and break
+updates from the installed app.
+
+The required repository Secret names are the three mobile OTA signing names,
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+`GATEKEEPER_API_KEY`, the five `SECRET_APK_*` discovery/download/notes names,
+and `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`, `NAS_PORT`, and
+`NAS_APK_TARGET_DIR`. `NAS_APK_FALLBACK_TARGET_DIR` is optional and defaults to
+the bounded Smartbox fallback directory. `NAS_KNOWN_HOSTS` is also optional for
+the first migration run, but its absence uses runtime `ssh-keyscan` with a CI
+warning; pin this Secret after confirming the NAS host key.
+
+The job pins the public mobile key identity and the public Android certificate
+digest, builds an exact-main release with a monotonically increasing Android
+build number, creates and verifies the signed manifest, then uses SFTP temporary
+names plus staged/final readback before rename. The primary and fallback HTTPS
+metadata and APK URLs must each return the exact published bytes. The existing
+manual commercial `release_to_production` job and its fail-closed release
+evidence check are not changed by this lane.

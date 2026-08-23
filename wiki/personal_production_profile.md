@@ -34,3 +34,29 @@ This profile is for one repository owner, one primary phone, and the ESP32-C6 Ta
 The reduced screen-off, Activity-terminated, Target reboot, network reconnect, relay boot fail-safe and previous-version recovery checks were owner-attested on 2026-08-12. They do not satisfy the remaining exact-main artifact identity and post-deploy health requirements.
 
 The validator passing is readiness evidence for the reduced personal profile. It is not commercial release evidence and does not alter `ota/release-evidence.json`.
+
+## Automatic main-push mobile OTA lane
+
+For this owner's single installed Android device, `build_app.yml` contains a
+separate `publish_personal_mobile_ota` job. Every push to exact `main` first
+passes the public APK build/test job, then builds a release APK with the
+repository-scoped mobile signing values. The job intentionally has no GitHub
+Environment so the Target OTA values in the `production` Environment cannot
+shadow the mobile trust root already embedded in the installed app.
+
+The personal publisher fails before upload unless the mobile Ed25519 key ID and
+public-key digest match the installed-app trust anchor, the APK package is
+`com.kshouse.gatekeeper_app`, and the Android signing certificate matches the
+currently installed package. It signs and verifies `version.json`, stages the
+APK and manifest to both primary and fallback NAS directories, reads every
+staged object back, preserves immutable candidates and the previous valid pair,
+and uses SFTP `posix_rename` to replace APKs before manifests. Runs are
+serialized without cancelling an active two-file promotion. The publisher
+double-reads each final pair, restores the previous valid pair if manifest
+promotion fails, and finally requires both HTTPS update origins to return the
+exact bytes.
+
+This automatic lane only keeps the owner's existing mobile updater supplied
+with exact-main artifacts. The explicit `release_to_production` job,
+`production` Environment approval, `ota/release-evidence.json`, commercial
+OTA-G1..G4 decisions, and default-OFF Hardwareless RC policy remain unchanged.

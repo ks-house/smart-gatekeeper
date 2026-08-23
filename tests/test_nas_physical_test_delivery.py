@@ -21,7 +21,10 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
         self.assertIn(contract_path, workflow["on"]["pull_request"]["paths"])
       if relative.endswith("build_app.yml"):
         with self.subTest(workflow=relative, trigger="push"):
-          self.assertIn(contract_path, workflow["on"]["push"]["paths"])
+          push = workflow["on"]["push"]
+          self.assertEqual(push["branches"], ["main"])
+          if "paths" in push:
+            self.assertIn(contract_path, push["paths"])
 
   def test_delivery_guide_is_indexed_and_preserves_evidence_boundary(self):
     index = (ROOT / "wiki/index.md").read_text(encoding="utf-8")
@@ -69,23 +72,33 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
     ):
       with self.subTest(workflow=relative):
         source = (ROOT / relative).read_text(encoding="utf-8")
+        from scripts import ota_contract_gate as gate
+
+        workflow = gate.load_workflow_yaml(relative, source)
+        public_steps = workflow["jobs"]["deploy_physical_test_canary"]["steps"]
+        physical_source = "\n".join(
+            str(step.get("run", "")) for step in public_steps
+        )
         self.assertIn("inputs.release_target == 'production'", source)
         self.assertIn("environment: production", source)
         self.assertIn(production_root, source)
         self.assertNotIn("StrictHostKeyChecking=no", source)
-        self.assertIn("StrictHostKeyChecking=yes", source)
-        self.assertIn("timeout 10s ssh-keyscan -T 5", source)
-        self.assertIn('2>/dev/null', source)
-        self.assertIn('test "${{ inputs.allow_unpinned_host_key }}" = "true"', source)
+        self.assertIn("StrictHostKeyChecking=yes", physical_source)
+        self.assertIn("timeout 10s ssh-keyscan -T 5", physical_source)
+        self.assertIn('2>/dev/null', physical_source)
+        self.assertIn(
+            'test "${{ inputs.allow_unpinned_host_key }}" = "true"',
+            physical_source,
+        )
         self.assertNotIn("sshpass -e ssh", source)
         exact_sftp = (
             'sshpass -e sftp "${SSH_OPTIONS[@]}" -P "$NAS_PORT" '
             '-b - "$SSH_TARGET" <<EOF'
         )
-        self.assertEqual(source.count(f"timeout 300s {exact_sftp}"), 2)
-        self.assertEqual(source.count(f"timeout 120s {exact_sftp}"), 1)
-        self.assertEqual(source.count(f"timeout 30s {exact_sftp}"), 1)
-        stripped_lines = [line.strip() for line in source.splitlines()]
+        self.assertEqual(physical_source.count(f"timeout 300s {exact_sftp}"), 2)
+        self.assertEqual(physical_source.count(f"timeout 120s {exact_sftp}"), 1)
+        self.assertEqual(physical_source.count(f"timeout 30s {exact_sftp}"), 1)
+        stripped_lines = [line.strip() for line in physical_source.splitlines()]
         for command in (
             "-mkdir /docker",
             "-mkdir /docker/smart-gatekeeper-physical-test",

@@ -2984,3 +2984,20 @@
 - Replaced arbitrary Git-hash prerelease ordering with deterministic `2.1.1-main.<first-parent-count>+g<SHA>` precedence, created a production-signed manifest whose artifact URL names immutable commit bytes, and retained previous valid firmware/manifest history.
 - Added bounded pinned/runtime-keyscan transport, staged byte readback, stale-run rejection and OpenSSH `posix-rename` as the single `version.json` commit point. Unsupported atomic replacement or post-scan host-key change fails with the previous pointer intact; runtime keyscan still cannot authenticate its first observation.
 - Sanitized publication evidence explicitly keeps `production_authorized: false` and `release_evidence: false`. NAS publication does not prove Target download, install, reboot health, valid mark, rollback or commercial production acceptance.
+
+## [2026-08-23] code | Add exact-main personal mobile OTA publication
+
+- Added a separate main-push mobile job that preserves the installed app's repository-scoped Ed25519 update identity instead of allowing the Target values in the `production` Environment to shadow it.
+- Pinned the existing Android package signer and package name, retained the unchanged commercial release-evidence job, and required an exact-main signed APK manifest before any NAS contact.
+- Added primary and fallback SFTP staging, staged/final readback, APK-before-manifest rename and public HTTPS byte-for-byte checks, plus focused workflow contracts. No Secret value is written to source or logs.
+
+## [2026-08-23] fix | Harden personal mobile NAS publication against interrupted pointer swaps
+
+- Replaced workflow-owned raw SFTP renames with the shared validated mobile publisher, using immutable candidates, previous-valid-pair retention, staged and final readback, stale-pointer rejection and SFTP `posix_rename` on both primary and fallback paths.
+- Serialized main-push mobile publishers with `cancel-in-progress: false` so a newer run cannot cancel an active APK-before-manifest promotion; the publisher restores the previous valid pair if manifest promotion fails.
+- Kept the final primary and fallback HTTPS exact-byte fetch as the deployment completion gate and preserved sanitized publication evidence without Secret material.
+
+## [2026-08-23] test | Validate the personal mobile publisher workflow contract
+
+- Focused personal-mobile and NAS physical-test workflow tests passed 12/12, including exact-main triggering, repository mobile-key isolation, signer pinning, serialized publication, shared publisher arguments, sanitized evidence and all four primary/fallback HTTPS exact-byte checks.
+- `actionlint`, `git diff --check` and the unchanged `raw/` tree check passed. No GitHub workflow was dispatched, no NAS bytes were changed and no APK was installed by this source-only validation.
