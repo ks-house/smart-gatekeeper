@@ -3165,3 +3165,10 @@
 - Wrote only H4 app0 at `0x10000`, preserving NVS, OTA data, bootloader, partition table and app1. The first STA attempt timed out; recovery AP+STA then obtained `192.168.35.19` without credential entry or physical intervention and MQTTS recovered about five seconds later with exact per-Target subscriptions and diagnostics/config publication.
 - Home Assistant live entities converged to H4, IDLE/closed and current diagnostics/config. Its device-card metadata header and seven legacy controls remained stale; RSSI was about -84 dBm.
 - This H4 operation is the required rotated-key USB bootstrap, not inactive-slot OTA. The strictly newer main produced by this documentation change is reserved for encrypted periodic HTTPS app1 install, reboot and health-valid verification.
+
+## [2026-08-24] compile | Authorize exact OTA Ed25519 runtime fix
+
+- Replaced the historical persistent authorization with one temporary-exact and one future persistent identity for reviewed feature commit `d4a3da40b4b6772bb1edcd4583eeb59951d6e7f6`; both identities bind the same complete 62-file normalized digest map.
+- Verified that `deploy.yml` is the only protected change from H5 main, with normalized SHA-256 `f8bb1ce2bd89ef8a81d7062aeda843dee2376c19546db0b2e9cb80f0df172bb1`; all seven workflow entries are regular `100644 blob` objects and the local-Action inventory remains empty.
+- The live GitHub content/tree verifier selected `temporary-ota-ed25519-d4a3da4` for the exact feature SHA. The focused transition suite passed 42/42; full discovery ran 277 tests with 275 passing and only the two pre-existing Windows materialization CRLF checks failing for unchanged `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`, whose staged Git entries remain LF and whose strict-LF tests both passed in a `core.autocrlf=false` clone. The OTA contract, all seven workflow actionlint checks and whitespace validation passed.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
