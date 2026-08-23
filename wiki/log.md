@@ -2895,3 +2895,18 @@
 
 - Removed the personal-installation workflow's unsupported 12-character hexadecimal restriction on `SECRET_MQTT_USER`; the firmware and MQTT protocol treat the non-empty username as an opaque string.
 - Retained the non-empty MQTT username/password checks and all Wi-Fi, command-signing, OTA-signing and local-recovery validation.
+
+## [2026-08-23] fix | Correct the physical N16 build and connectivity recovery
+
+- Explicitly propagated the 16 MB upload profile to every ESP32-C6 environment and added a dedicated production environment with one unambiguous production macro definition.
+- Raised the Arduino loop-task stack to 16 KiB after the physical Target exposed a stack-protection panic during MQTTS security initialization.
+- Removed STA retry races by starting AP+STA recovery once and leaving reconnectable failures to the Arduino core auto-reconnect; accepted the provisioned broker principal independently from the MAC-derived Target topic ID.
+- Added credential-free station disconnect reason diagnostics for installed-network triage.
+- Updated the security regression contract to preserve non-empty TLS broker credentials and the exact MAC-derived Target namespace without requiring the broker username string itself to equal that namespace.
+
+## [2026-08-23] test | Verify N16 firmware size, flash and first boot boundary
+
+- Built the production profile as 16 MB, verified the bootloader image header, and passed 16 focused Wi-Fi/MQTT/install tests.
+- Added a reusable flash-layout gate requiring non-overlapping 16 MB partitions, equal 7 MiB OTA slots, firmware fit and at least 20 percent release headroom; the final observed image used 1,696,896 bytes (23.12 percent) with 5,643,136 bytes free in either inactive slot.
+- Wrote the NVS-preserving four-image layout to the ESP32-C6 rev 0.2 Target with write-hash verification. The 16 KiB build no longer panicked or reboot-looped, and the final 45-second observation had no Wi-Fi state-race output.
+- Initial Wi-Fi association repeatedly reported reason 201 (`NO_AP_FOUND`), so authentication was never reached; no DHCP, MQTTS online or OTA install-health evidence was observed. The Target remains in authenticated recovery AP plus STA auto-retry mode and is not yet approved for final wall installation.

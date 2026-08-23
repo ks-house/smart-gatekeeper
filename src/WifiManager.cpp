@@ -19,9 +19,22 @@ uint32_t WifiManager::recoveryApDeadlineMs = 0;
 static bool webServerStarted = false;
 static bool localUploadSucceeded = false;
 static uint32_t lastStationRetryMs = 0;
+static bool wifiEventsRegistered = false;
 
 namespace {
 constexpr uint32_t kStationRetryIntervalMs = 15000;
+
+void registerWifiDiagnostics() {
+    if (wifiEventsRegistered) return;
+    wifiEventsRegistered = true;
+    WiFi.onEvent(
+        [](WiFiEvent_t, WiFiEventInfo_t info) {
+            LOGF("[WIFI-DIAG] station disconnect reason=%u",
+                 static_cast<unsigned int>(
+                     info.wifi_sta_disconnected.reason));
+        },
+        WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+}
 
 bool stationCredentialsProvisioned() {
     const String ssid = ConfigManager::getWifiSsid();
@@ -30,10 +43,12 @@ bool stationCredentialsProvisioned() {
 
 void startNonBlockingStationAttempt() {
     if (!stationCredentialsProvisioned()) return;
-    const String ssid = ConfigManager::getWifiSsid();
-    const String pass = ConfigManager::getWifiPassword();
     WiFi.setAutoReconnect(true);
-    WiFi.begin(ssid.c_str(), pass.c_str());
+    // connectSTA() has already provisioned the driver. It deliberately
+    // disconnects before AP+STA fallback, so start recovery exactly once here.
+    // The Arduino core then retries reconnectable failures (including
+    // NO_AP_FOUND) itself; periodic begin()/reconnect() calls race that state.
+    WiFi.reconnect();
     lastStationRetryMs = millis();
     DiagnosticsManager::noteAction("wifi_sta_retry");
 }
@@ -84,6 +99,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
         return false;
     }
 
+    registerWifiDiagnostics();
     LOGF("[WIFI] NVS 저장 Wi-Fi '%s' 접속 시도 중...", ssid.c_str());
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
@@ -430,7 +446,9 @@ void WifiManager::handleClient() {
              stationIp.c_str());
     } else if (apModeActive && WiFi.status() != WL_CONNECTED &&
                millis() - lastStationRetryMs >= kStationRetryIntervalMs) {
-        startNonBlockingStationAttempt();
+        lastStationRetryMs = millis();
+        WiFi.setAutoReconnect(true);
+        DiagnosticsManager::noteAction("wifi_sta_autoreconnect_watch");
     }
     if (apModeActive && recoveryApDeadlineMs != 0 &&
         static_cast<int32_t>(millis() - recoveryApDeadlineMs) >= 0) {
@@ -457,9 +475,10 @@ void WifiManager::handleClient() {
                     LOGF("[WIFI-WARN] ⚠️ 와이파이 연결 단절 감지! Auto-Reconnect 작동 시작...");
                     connected = false;
                 }
-                // 비동기 재접속 시도 (Non-blocking)
-                DiagnosticsManager::noteAction("wifi_reconnect");
-                WiFi.reconnect();
+                // The Arduino core owns reconnect timing. Calling reconnect()
+                // here can race an in-flight attempt and return WIFI_STATE.
+                WiFi.setAutoReconnect(true);
+                DiagnosticsManager::noteAction("wifi_autoreconnect_watch");
             } else {
                 if (!connected) {
                     connected = true;

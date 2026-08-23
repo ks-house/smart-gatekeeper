@@ -78,7 +78,7 @@
 
 2026-08-12 `main` 기준으로 다음은 구현되어 있다.
 
-- STA 상태 15초 확인과 `WiFi.reconnect()`
+- STA 상태 15초 확인과 Arduino core auto-reconnect 감시
 - MQTTS 약 5초 재시도, 30초 keepalive, TLS socket reset
 - per-Target availability LWT/online, retained boot 진단, 1초 status
 - signed per-Target command와 periodic HTTPS OTA
@@ -127,3 +127,29 @@ An OTA pending image is marked valid only after both Wi-Fi STA and MQTTS remain
 healthy during the stability window. A recovery AP by itself no longer counts
 as network health, so a firmware that cannot restore required communications
 rolls back instead of becoming the accepted slot.
+
+## 9. 2026-08-23 physical Target recovery attempt
+
+The connected Target was positively identified as ESP32-C6 revision 0.2 with
+16 MB flash. The generic 8 MB board default had produced an invalid bootloader
+header for the existing 16 MB partition table; the explicit N16 profile fixed
+that mismatch. A production build then booted without the earlier loop-task
+stack-protection panic after raising the stack to 16 KiB.
+
+Initial STA association still timed out with disconnect reason 201
+(`NO_AP_FOUND`); authentication was not reached. Two software
+races were removed: repeated `WiFi.begin()` rewrote STA configuration while a
+connection was active, and periodic `WiFi.reconnect()` raced the Arduino core's
+own auto-reconnect. AP+STA fallback now initiates recovery once and lets the core
+retry reconnectable reasons while the 15-second watchdog records state only.
+Disconnect reason codes are logged without credential values so an unavailable
+AP can be distinguished from authentication and handshake failures.
+The broker principal is also accepted as an opaque non-empty credential instead
+of being required to equal the MAC-derived Target ID; exact per-Target topics,
+TLS and signed-command verification remain required.
+
+The stable observation window had no panic, reboot or Wi-Fi state-race output.
+It did not contain a DHCP success or MQTTS online event, so the wall
+installation Gate remains open. The next evidence must be collected with the
+configured 2.4 GHz AP available: association/IP, MQTTS online/subscriptions,
+periodic HTTPS OTA check, and the three power-cycle/recovery trials in section 5.
