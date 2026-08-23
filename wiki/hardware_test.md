@@ -20,6 +20,21 @@
 
 이 표는 연결된 개발대의 USB 관찰이다. Wi-Fi/MQTTS/OTA의 PASS나 최종 벽 매립 승인을 의미하지 않는다.
 
+## 2026-08-23 Home Assistant secure discovery migration 검증
+
+| 항목 | 관찰 결과 | 판정 |
+|---|---|---|
+| 기존 entity identity | historical discovery의 device identifier와 read-only unique ID 15개를 고정하고, runtime Target ID는 인자로만 주입 | PASS (software) |
+| secure state namespace | status/binary 11개는 per-Target `/status`, config sensor 4개는 `/config-state`, availability는 `/availability`로 생성 | PASS (software) |
+| legacy write control 제거 | button 3개와 number 4개는 read-only 갱신보다 먼저 빈 retained payload로 삭제하며 새 config에 `command_topic`/`payload_press` 없음 | PASS (software) |
+| publish semantics | fake broker client 경계에서 총 22건 모두 QoS 1, retain=true와 ACK 대기 경로 확인 | PASS (host test) |
+| credential 경계 | 기본 dry-run은 network-free; username/password 직접 CLI 옵션 없음, env/file 값 출력 없음, credentialed apply는 TLS 필수 | PASS (host test) |
+| live broker/HA registry | 실제 broker retained read-back 및 Home Assistant entity registry 확인은 수행하지 않음 | PENDING |
+
+이 검증은 discovery payload 생성과 publish 경계의 host 증거다. live broker의 retained 수락,
+Home Assistant registry의 in-place migration 및 stale control 제거를 증명하지 않으며, Target Wi-Fi/MQTTS,
+문 열기, signed command bridge 또는 OTA 동작 증거로 승격하지 않는다.
+
 ## 2. 현재 코드 기준 검증표
 
 | 영역 | 마지막 증거 | 판정 | 비고 |

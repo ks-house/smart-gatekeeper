@@ -2930,3 +2930,17 @@
 - The rebooted Target obtained `192.168.35.19`, connected to the provisioned MQTTS broker, subscribed to exact per-Target topics and published retained boot diagnostics/config state.
 - A later beacon timeout (`reason 200`) exercised runtime recovery: the Target regained the same DHCP address, recreated the MQTTS connection, resubscribed and republished diagnostics without rebooting.
 - Periodic HTTPS OTA install, reboot health, rollback, power-loss and long Wi-Fi/MQTT soak evidence remain pending and are not implied by this connectivity pass.
+
+## [2026-08-23] code | Add secure Home Assistant discovery migration
+
+- Added a default-dry-run migration tool that preserves the existing Home Assistant device identity and updates 15 read-only sensor/binary/config sensor discovery records to secure per-Target status, config-state and availability topics.
+- The explicit apply path publishes with QoS 1 and retain enabled; seven retained tombstones remove legacy plaintext button and number discovery records before any read-only update instead of recreating those controls.
+- MQTT username/password and the optional TLS CA are accepted only through environment or file sources; credentialed apply requires verified TLS and values are never printed. Runtime Target IDs and broker addresses remain operator inputs and are not stored in documentation.
+- Direct Home Assistant write controls remain prohibited until a separately reviewed backend bridge can authorize and sign current-boot Target command envelopes.
+
+## [2026-08-23] test | Validate secure discovery payload and publish boundaries
+
+- Nine focused host tests passed for the exact 15 read-only identities, secure per-Target topic mapping, seven legacy-control removals, topic-injection rejection, network-free dry-run, credential-source handling, mandatory TLS for credentialed apply and secret-free output.
+- A fake MQTT client verified all 22 update/tombstone operations request QoS 1 retained publish and wait for acknowledgement without contacting a live broker.
+- Root discovery ran 214 tests: 212 passed; the two failures were Windows checkout CRLF views of unchanged `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`, while both exact Git blobs separately remained UTF-8/LF.
+- No production broker mutation, retained read-back, Home Assistant registry observation, Target command, Wi-Fi/MQTTS change, OTA action or physical acceptance was performed.

@@ -93,11 +93,46 @@ MQTT 브로커에는 토픽을 사전 "등록"하는 절차가 없습니다. 이
 | discovery 범위 밖 | boot/coredump 상세, availability 자체, event, ultrasonic `duration_us`, v2.1 추가 status 진단 필드 | 이들은 22개 entity와 별개의 원시 토픽/필드이며, HA entity로 만들기로 정의한 항목이 아님 |
 | 전달 보장 | subscribe/publish 반환값은 일부 로그만 남기며 실패 항목 재시도·전체 성공 집계가 없음 | 연결 성공만으로 10개 구독/22개 discovery의 broker 수락을 보장하지 못함 |
 
-따라서 펌웨어가 정의한 **22개 HA entity의 자동 discovery는 구현되어 있습니다.** 다만
-"펌웨어가 사용하는 모든 원시 토픽/필드까지 HA entity로 변환"하거나 "22건의 broker 수락을 보장"하는
-구현은 아닙니다.
+따라서 2026-07-31 배포 세대 펌웨어에는 **22개 HA entity의 자동 discovery가 구현되어
+있었습니다.** 현재 secure Target 펌웨어의 자동 등록 계약은 아니며, "펌웨어가 사용하는 모든 원시
+토픽/필드까지 HA entity로 변환"하거나 "22건의 broker 수락을 보장"하는 구현도 아니었습니다.
 완전 보장이 필요하면 각 subscribe/publish 결과를 검사하고 실패 목록만 재시도하며, boot/event/raw
 ultrasonic 및 추가 진단 필드 중 HA에 노출할 항목을 명시적으로 discovery entity로 추가해야 합니다.
+
+#### Secure namespace discovery migration
+
+현재 retained registry를 안전하게 옮길 때는
+`scripts/migrate_home_assistant_discovery.py`를 사용합니다. 기본 실행은 broker에 연결하지 않는
+dry-run이며, 명시적 `--apply`에서만 QoS 1 retained publish를 수행합니다. 운영 Target ID와 broker
+주소는 실행 인자로만 제공하고 저장소 문서나 예제에 실제 값을 기록하지 않습니다. TLS는 system
+trust 또는 선택적 CA file로 검증하며, MQTT username/password는 파일 또는 정해진 프로세스 환경
+변수로만 전달합니다. Credential을 사용한 apply는 TLS 없이 실행되지 않으며 도구는 credential 값을
+출력하지 않습니다.
+
+```text
+# network-free plan validation
+python scripts/migrate_home_assistant_discovery.py --broker-host <host> --broker-port <port> --target-id <target_id>
+
+# reviewed TLS apply with credential files
+python scripts/migrate_home_assistant_discovery.py --broker-host <host> --broker-port <port> --target-id <target_id> --tls --tls-ca-file <ca.pem> --username-file <username-file> --password-file <password-file> --apply
+```
+
+파일 대신 `SGK_MQTT_USERNAME`, `SGK_MQTT_PASSWORD`, `SGK_MQTT_CA_FILE` 프로세스 환경 변수를
+사용할 수 있습니다. 동일 credential을 환경 변수와 파일 양쪽에 동시에 주면 모호성을 거부합니다.
+
+Migration은 기존 Home Assistant device identifier와 15개 read-only entity unique ID를 보존해
+registry identity를 유지하면서 다음 state source만 secure per-Target namespace로 교체합니다.
+
+- status sensor 9개와 binary sensor 2개: `gatekeeper/v1/targets/<target_id>/status`
+- config diagnostic sensor 4개: `gatekeeper/v1/targets/<target_id>/config-state`
+- 공통 availability: `gatekeeper/v1/targets/<target_id>/availability`
+
+동시에 legacy plaintext command를 가리키던 button 3개와 number 4개의 retained discovery config에는
+빈 payload를 먼저 발행해 제거한 다음 read-only config를 갱신합니다. 따라서 중간 실패에서도 write
+control을 복구하는 방향으로 진행하지 않습니다. 이 도구는 button/number 또는 `command_topic`을 새
+namespace에 재생성하지 않습니다. 문 열기, OTA, reboot, 설정 변경 UI를 다시 제공하려면 Home Assistant가 Target
+topic에 평문을 직접 발행하는 방식이 아니라 backend가 사용자 권한·fresh authorization을 검증하고
+current boot에 묶인 signed command envelope를 생성하는 별도 bridge가 먼저 구현·검증되어야 합니다.
 
 ##### 기기 정보의 entity 수와 영역 화면 표시 수가 다른 이유
 
