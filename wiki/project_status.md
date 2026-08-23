@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 저장소 기준: `main` commit `9e9114b` (automatic encrypted Target/mobile OTA final policy baseline)
+> 저장소 기준: `main` commit `3927a97` (rotated-key Target bootstrap evidence baseline)
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -22,7 +22,7 @@ applies_to:
 
 | 축 | 저장소 최신 구현 | 검증/운영 경계 |
 |---|---|---|
-| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA | exact-main `2.1.233+main.g9e9114b` USB bootstrap과 Wi-Fi/MQTTS 실기기 부팅은 확인; inactive-slot OTA health/rollback은 별도 필요 |
+| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA | exact-main `2.1.234+main.g3927a97` rotated-key USB bootstrap과 AP+STA 자동 Wi-Fi/MQTTS 복구는 확인; 다음 main의 inactive-slot OTA health 확인은 별도 필요 |
 | Android | foreground scan, OS-managed BLE wake PoC, native GATT credential worker, recovery/update UI | Hardwareless RC는 default-OFF; Samsung/OEM 및 force-stop 경계는 실기기 Gate |
 | Backend | FastAPI/MariaDB, enrollment/ACL, admin session/RBAC/CSRF/re-auth, signed commands, operations APIs | production Compose와 migration 계약은 존재하지만 live NAS 운영 증거는 별도 관리 |
 | Access | legacy iBeacon → pre-arm과 default-OFF local GATT 경로가 공존 | Target FSM `IDLE → ARMED → RELAY_HOLD → COOLDOWN → IDLE`이 relay 권한의 최종 경계 |
@@ -30,7 +30,7 @@ applies_to:
 
 ## 2. 저장소 구현과 현장 배포를 혼동하지 않는다
 
-2026-08-12에 관측한 현관 매립 Target `2.1.0-g75b946a`는 이제 현재 상태가 아니다. 2026-08-24 연결된 Target에 exact-main `2.1.233+main.g9e9114b`를 NVS와 기존 `app1`을 보존하는 app-only USB 방식으로 설치했고, 저장 Wi-Fi association/DHCP, per-Target MQTTS와 Home Assistant read-only telemetry를 실기기에서 확인했다. 다만 USB bootstrap은 inactive-slot periodic HTTPS OTA, pending-verify health mark 또는 rollback 증거가 아니다. 같은 날 content key를 회전했으므로 새 키가 포함된 첫 이미지는 한 번 더 USB로 설치하고 그 다음 main 버전을 OTA로 검증해야 한다.
+2026-08-12에 관측한 현관 매립 Target `2.1.0-g75b946a`는 이제 현재 상태가 아니다. 2026-08-24 연결된 Target에 exact-main `2.1.234+main.g3927a97`를 NVS와 기존 `app1`을 보존하는 app-only USB 방식으로 설치했다. 이 H4에는 회전된 content-key material이 포함되어 있다. 첫 STA 시도가 실패한 뒤 recovery AP+STA가 사람의 재입력 없이 `192.168.35.19`를 획득하고 per-Target MQTTS와 Home Assistant read-only telemetry까지 복구하는 것을 실기기에서 확인했다. 다만 H4 USB bootstrap은 inactive-slot periodic HTTPS OTA, pending-verify health mark 또는 rollback 증거가 아니다. 이 문서 변경을 포함하는 strictly newer main을 첫 encrypted periodic HTTPS `app1` 설치 대상으로 사용한다.
 
 - 저장소 최신 구현: 이 문서와 [최신 코드 감사](current_code_audit.md)
 - 개인 현장 배포: [개인 PROD 사건 기록](personal_prod_incident_2026_08_12.md)

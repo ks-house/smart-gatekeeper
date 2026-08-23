@@ -3152,3 +3152,16 @@
 
 - Rotated `SECRET_OTA_CONTENT_KEY_HEX` and its key ID through stdin in both GitHub `personal-auto-ota` and `production` Environments and synchronized the ignored local headers without printing or committing the value.
 - The new identity is `personal-target-content-20260824-2`. Because the running image contains the prior key, the first release with this identity requires an NVS-preserving USB bootstrap; the next main release will be the encrypted periodic HTTPS install/reboot/health proof.
+
+## [2026-08-24] fix | Correct rotated Target key identity without rewriting history
+
+- Corrected the operational record: the content-key material was rotated, but the exact workflow contract required the policy-pinned ID `personal-target-content-20260824-1`; the preceding append-only entry's `-2` label is superseded by this correction.
+- GitHub `personal-auto-ota`, GitHub `production` and the ignored local headers were synchronized to that ID without printing or committing key material. Exact firmware commit and signed manifest binding are required to distinguish the material epochs because the ID remained unchanged.
+
+## [2026-08-24] test | Bootstrap rotated-key H4 and verify automatic network recovery
+
+- Target run `32657300554`, attempt 2, published exact main `3927a978a8727eac086e88d20bfaa2d414908dbc` as `2.1.234+main.g3927a97`; signed encrypted NAS publication and public HTTPS exact-byte readback passed.
+- Authenticated local verification bound the 1,703,428-byte encrypted SHA-256 `45ff37d858d5fb38a4f2aa397e5809e66be7b42be9cc1b10d97fe32acd18da7f` to a valid 1,703,392-byte ESP32-C6 N16 plaintext SHA-256 `8910bc7cfeef47713c5be57fbc4ab72d379b7435f84949ec49181a4e769dfbcb`, with 5,636,640 bytes of slot headroom.
+- Wrote only H4 app0 at `0x10000`, preserving NVS, OTA data, bootloader, partition table and app1. The first STA attempt timed out; recovery AP+STA then obtained `192.168.35.19` without credential entry or physical intervention and MQTTS recovered about five seconds later with exact per-Target subscriptions and diagnostics/config publication.
+- Home Assistant live entities converged to H4, IDLE/closed and current diagnostics/config. Its device-card metadata header and seven legacy controls remained stale; RSSI was about -84 dBm.
+- This H4 operation is the required rotated-key USB bootstrap, not inactive-slot OTA. The strictly newer main produced by this documentation change is reserved for encrypted periodic HTTPS app1 install, reboot and health-valid verification.

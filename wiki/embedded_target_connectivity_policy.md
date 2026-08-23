@@ -91,7 +91,7 @@
 - backend의 availability/status 구독, last-seen 저장, 15초/90초 경보와 admin 표시
 - 공유기, broker, WAN 단절 후 자동 복구 physical evidence
 
-과거 벽 매립본 `2.1.0-g75b946a`는 더 이상 현재 Target 상태가 아니다. 2026-08-24 연결된 Target은 exact-main `2.1.233+main.g9e9114b`로 NVS 보존 USB bootstrap 되었고, 저장 Wi-Fi association/DHCP, exact per-Target MQTTS subscribe, current status와 authenticated STA-local recovery scan을 실기기에서 확인했다. 이는 한 번의 정상 부팅/세션 증거이며 periodic HTTPS inactive-slot install, health-valid, rollback, 세 번의 power cycle과 장기 outage soak는 아직 닫지 않는다. 같은 날 content key를 회전했으므로 회전 키가 포함된 첫 이미지는 USB로 한 번 더 bootstrap한 뒤 그 다음 main을 OTA로 검증한다.
+과거 벽 매립본 `2.1.0-g75b946a`는 더 이상 현재 Target 상태가 아니다. 2026-08-24 연결된 Target은 exact-main `2.1.234+main.g3927a97`로 NVS 보존 USB bootstrap 되었고, 첫 STA timeout 뒤 recovery AP+STA가 저장 credential로 DHCP와 exact per-Target MQTTS를 자동 복구하는 것을 실기기에서 확인했다. 이는 회전된 content-key material을 포함한 첫 이미지와 한 번의 복구 세션 증거이며 periodic HTTPS inactive-slot install, health-valid, rollback, 세 번의 power cycle과 장기 outage soak는 아직 닫지 않는다. 이 문서 변경을 포함하는 다음 main을 OTA로 검증한다.
 
 ## 7. 장애 대응 순서
 
@@ -179,3 +179,26 @@ observations. It does not close the three-cycle, broker/WAN outage, RSSI/antenna
 relay, sensor or OTA install/health/rollback gates. The observed RSSI was about
 `-84 dBm`, below the preferred `-67 dBm` installation target, so AP placement or
 antenna conditions require attention before final wall installation.
+
+## 11. 2026-08-24 rotated-key bootstrap and late-Wi-Fi recovery
+
+Exact main `3927a978a8727eac086e88d20bfaa2d414908dbc` was published by
+Target run `32657300554`, attempt 2, as `2.1.234+main.g3927a97` and installed
+app-only to `app0`. This was the intentional NVS-preserving bootstrap for the
+rotated content-key material. The policy-pinned key ID remained
+`personal-target-content-20260824-1`; exact commit and manifest binding, not the
+unchanged label alone, distinguish the material epoch.
+
+The first saved-credential STA attempt timed out and entered the authenticated
+recovery AP. AP+STA retry then acquired `192.168.35.19` without credential entry
+or physical intervention, and MQTTS authenticated about five seconds later,
+subscribed to both exact Target topics and published current diagnostics/config.
+Home Assistant live sensors converged to H4, while the device-card metadata
+header and seven historical controls remained stale registry/discovery state.
+The observed RSSI remained about `-84 dBm`, below the installation target.
+
+This closes one physical AP+STA late-Wi-Fi and late-MQTT recovery path. It does
+not close repeated power/AP/broker/WAN outage soak, relay/sensor safety,
+inactive-slot OTA, health-valid or rollback. The strictly newer main produced by
+this evidence-only change is the first image eligible for H4's encrypted
+periodic HTTPS install to inactive `app1`.
