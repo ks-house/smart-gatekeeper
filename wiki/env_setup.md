@@ -4,12 +4,14 @@
 ## 1. 펌웨어
 
 - MCU: ESP32-C6-DevKitC-1 N16 (RISC-V, 16 MB flash)
-- PlatformIO platform: pioarduino stable ZIP
+- PlatformIO Core: `6.1.19`; platform: immutable pioarduino commit
+  `cbc3349061987c28bc1b48d43d473e70c5ae04ed` for release `55.03.39`
+  (Arduino 3.3.9)
 - Framework: Arduino
 - 환경: `esp32c6` (기본 개발), `esp32c6_production` (실제 production secret 설치),
   `esp32c6_hwless_rc` (명시적 lab-only)
 - 파티션: `partitions_16MB_ota.csv` (dual OTA)
-- 라이브러리: ArduinoJson 6.21.x, PubSubClient 2.8; BLE 헤더는 Arduino-ESP32 코어 제공
+- 라이브러리: ArduinoJson 6.21.5, PubSubClient 2.8 exact pin; BLE 헤더는 Arduino-ESP32 코어 제공
 
 ```bash
 cp include/secrets.h.example include/secrets.h  # 실제 값 입력, 커밋 금지
@@ -20,8 +22,11 @@ pio device monitor -b 115200
 ```
 
 `include/secrets.h`에는 Wi-Fi, API, MQTT, OTA 주소와 TLS Root CA가 필요합니다. CI는 GitHub Secrets로
-이 파일을 생성하고 `FIRMWARE_VERSION_OVERRIDE`를 주입합니다. v2.1부터 main firmware build ID는
-`2.1.0-g<short_sha>` 형식입니다. Target local ACL 및 access session FSM (Issue #20) 검증을 위한
+이 파일을 생성하고 `FIRMWARE_VERSION_OVERRIDE`를 주입합니다. public canary는
+`2.1.0-g<short_sha>`, 자동 personal Target OTA는
+`2.1.<first-parent-count>+main.g<short_sha>`와 deterministic build ID를 사용합니다. 자동 lane은
+commit 기반 `SOURCE_DATE_EPOCH`로 두 번 clean-build하고 firmware bytes가 같아야 게시를 시작합니다.
+Target local ACL 및 access session FSM (Issue #20) 검증을 위한
 `TargetAclManager`, `TargetProofVerifier`, `TargetAccessFsm`, `OfflineEventQueue` 모듈이 포함되며
 host unit test는 `python -m unittest tests/test_hardwareless_rc.py`로 실행할 수 있습니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
 `platformio.ini`에 없습니다.
@@ -272,16 +277,20 @@ flutter build apk --release \
 |---|---|---|
 | `.github/workflows/ota_contract.yml` | OTA 영향 PR/main | schema, signature tamper vector, dual-slot/recovery/release blocker 자동 검사 |
 | `.github/workflows/deploy.yml` | 모든 `main` push 또는 `workflow_dispatch` | public canary 뒤 exact-main 개인 Target production profile을 서명해 NAS OTA 경로에 stage/readback/atomic pointer swap; commercial release와 physical-test canary는 별도 |
-| `.github/workflows/build_app.yml` | 앱 경로의 `main` push 또는 `workflow_dispatch` | Flutter 분석·빌드·contract 검증과 canary 보존; `physical-test-canary`는 exact-main debug APK만 host-key-mode-labelled 격리 NAS 경로에 staging/readback하며 production은 별도 |
+| `.github/workflows/build_app.yml` | 모든 `main` push 또는 `workflow_dispatch` | Flutter 분석·빌드·contract 검증과 canary 보존, exact-main personal mobile OTA 자동 게시; `physical-test-canary`와 commercial production은 별도 |
 | `.github/workflows/trusted_workflow_policy.yml` | 보호 파일 변경 PR (`pull_request_target`) | default-branch validator/policy로 candidate bytes의 exact approved bundle 검증 |
 
 일반 `main` push는 secret-free public canary를 먼저 통과한 뒤
 `publish_personal_target_ota`를 실행합니다. 이 job은 exact main 전체 history를 checkout하고
-first-parent commit count 기반 `2.1.1-main.<count>+g<SHA>`를 사용하므로 임의 Git SHA 문자열 순서 때문에
+first-parent commit count를 patch precedence로 올리는 `2.1.<count>+main.g<SHA>`를 사용하므로 임의 Git SHA 문자열 순서나 stable `2.1.1` 때문에
 Target version floor에 downgrade로 막히지 않습니다. `esp32c6_production` N16 image와 production-signed
 manifest를 만든 후 commit별 immutable firmware/manifest를 NAS에 staging하고 byte readback합니다.
 마지막 `version.json`만 OpenSSH `posix-rename`으로 원자 교체하며, 오래된 동시 run은 더 최신의 signed
 pointer를 덮을 수 없습니다. 이전 정상 artifact와 manifest는 삭제하지 않습니다.
+
+commercial `2.2.0` 이상을 NAS/Target에 배포한 뒤에는 personal lane의 major/minor base도 명시적으로
+`2.2` 이상으로 올리고 contract를 갱신해야 합니다. 그 전까지 signed NAS pointer가 더 높은 core이면
+자동 publisher는 stale downgrade로 fail-closed하며 이를 성공으로 숨기지 않습니다.
 
 이 자동 경로의 `production` Environment 사용은 실제 secret 접근 경계이지 commercial release 승인
 주장이 아닙니다. 생성되는 sanitized evidence는 `production_authorized: false`,
@@ -363,8 +372,10 @@ GitHub API는 Secret 이름과 갱신 시각만 반환하므로 값·URL·경로
 - 필수: `OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, `OTA_SIGNING_KEY_ID`
 - 필수: `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`
 - 선택: `NAS_PORT`(미등록 시 `22`)
-- 권장: `NAS_KNOWN_HOSTS`. 없으면 자동 Target lane은 bounded runtime `ssh-keyscan`을 해당 run 연결에만
-  고정하며 최초 스캔의 진위를 증명하지 못합니다. 스캔 뒤 host key가 달라지면 strict 연결이 실패합니다.
+- 필수: `NAS_KNOWN_HOSTS`. password 인증을 사용하는 자동 Target/mobile lane은 값이 없으면 NAS
+  credential을 보내기 전에 실패하며 runtime `ssh-keyscan`으로 우회하지 않습니다. 등록한 host key와
+  live NAS key가 달라져도 strict 연결이 실패합니다. runtime keyscan은 별도 승인된 public physical-test
+  canary에만 남아 있습니다.
 - 선택: `NAS_TARGET_DIR`(firmware), `NAS_APK_TARGET_DIR`(mobile). Smartbox 운영 경로를 사용할 때는
   각각 `/docker/smartbox_ota/firmware/`, `/docker/smartbox_ota/gatekeeper_apk/`로 명시합니다.
 
@@ -533,7 +544,7 @@ default 8 KiB loop task overflowed during MQTTS verifier initialization on the
 physical ESP32-C6. `SGK_PRODUCTION_BUILD=1` is defined only by
 `esp32c6_production`, using `build_unflags` to remove the developer default.
 
-## Personal mobile main-push OTA (2026-08-23)
+## Personal mobile exact-main OTA (2026-08-23)
 
 `build_app.yml` now runs for every `main` push. Its
 `publish_personal_mobile_ota` job is a separate single-owner delivery lane and
@@ -550,14 +561,16 @@ The required repository Secret names are the three mobile OTA signing names,
 `GATEKEEPER_API_KEY`, the five `SECRET_APK_*` discovery/download/notes names,
 and `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`, `NAS_PORT`, and
 `NAS_APK_TARGET_DIR`. `NAS_APK_FALLBACK_TARGET_DIR` is optional and defaults to
-the bounded Smartbox fallback directory. `NAS_KNOWN_HOSTS` is also optional for
-the first migration run, but its absence uses runtime `ssh-keyscan` with a CI
-warning; pin this Secret after confirming the NAS host key.
+the bounded Smartbox fallback directory. `NAS_KNOWN_HOSTS` is required and must
+contain the independently verified NAS host key; automatic password-authenticated
+publication has no runtime-keyscan fallback.
 
 The job pins the public mobile key identity and the public Android certificate
 digest, builds an exact-main release with a monotonically increasing Android
-build number, creates and verifies the signed manifest, then uses SFTP temporary
+version code derived from `run_number * 100 + run_attempt`, creates and verifies
+the signed manifest, then uses SFTP temporary
 names plus staged/final readback before rename. The primary and fallback HTTPS
 metadata and APK URLs must each return the exact published bytes. The existing
-manual commercial `release_to_production` job and its fail-closed release
-evidence check are not changed by this lane.
+manual commercial `release_to_production` job uses the same version-code sequence
+so a later authorized release cannot become an Android downgrade; its fail-closed
+release-evidence decision remains separate.

@@ -1,9 +1,11 @@
-"""Contract tests for the single-owner main-push mobile OTA publisher."""
+"""Contract tests for the single-owner exact-main mobile OTA publisher."""
 
 from pathlib import Path
 import unittest
 
 import yaml
+
+from scripts import ota_contract_gate as gate
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,15 +22,17 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
     cls.auto_job = cls.jobs[AUTO_JOB]
     cls.auto_source = cls.source.split(f"  {AUTO_JOB}:\n", 1)[1]
 
-  def test_every_main_push_runs_the_personal_publisher(self) -> None:
+  def test_every_main_push_and_canary_dispatch_run_the_personal_publisher(self) -> None:
     push = self.workflow["on"]["push"]
     self.assertEqual(push["branches"], ["main"])
     self.assertNotIn("paths", push)
     self.assertEqual(self.auto_job["needs"], "build_apk")
     self.assertEqual(
-        self.auto_job["if"],
-        "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+        " ".join(self.auto_job["if"].split()),
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))",
     )
+    self.assertIn('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', self.auto_source)
     self.assertEqual(
         self.auto_job["concurrency"],
         {
@@ -61,9 +65,16 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
         self.auto_source,
     )
     self.assertIn('PACKAGE_NAME" = "com.kshouse.gatekeeper_app', self.auto_source)
-    self.assertIn("((10#$GITHUB_RUN_NUMBER > 141))", self.auto_source)
+    self.assertIn(
+        "MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))",
+        self.auto_source,
+    )
+    self.assertIn(
+        "((MOBILE_BUILD_NUMBER > 141 && MOBILE_BUILD_NUMBER <= 2100000000))",
+        self.auto_source,
+    )
     self.assertIn("flutter build apk --release", self.auto_source)
-    self.assertIn("--build-number=\"$GITHUB_RUN_NUMBER\"", self.auto_source)
+    self.assertIn("--build-number=\"$MOBILE_BUILD_NUMBER\"", self.auto_source)
 
   def test_signed_manifest_is_bound_to_exact_main_artifact(self) -> None:
     for fragment in (
@@ -79,6 +90,11 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
       self.assertIn(fragment, self.auto_source)
     self.assertNotIn('echo "$MOBILE_UPDATE_PRIVATE_KEY_HEX"', self.auto_source)
     self.assertNotIn('echo "$KEYSTORE_BASE64"', self.auto_source)
+    self.assertIn(
+        'PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"',
+        self.auto_source,
+    )
+    self.assertNotIn("PUBLISHED_AT=\"$(date", self.auto_source)
 
   def test_primary_and_fallback_use_the_shared_atomic_publisher(self) -> None:
     for fragment in (
@@ -86,7 +102,7 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
         "OTA_NAS_KNOWN_HOSTS_FILE",
         "OTA_NAS_HOST_KEY_MODE",
         "repository-secret-pinned",
-        "runtime-keyscan-unpinned",
+        'test -n "$NAS_KNOWN_HOSTS"',
         "mobile-sftp-publish",
         "MOBILE_PUBLIC_KEY_HEX",
         "NAS_APK_TARGET_DIR",
@@ -95,7 +111,7 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
         '--manifest dist/version.json',
         '--expected-version "$FULL_VERSION"',
         '--expected-commit "$GITHUB_SHA"',
-        '--expected-build-number "$GITHUB_RUN_NUMBER"',
+        '--expected-build-number "$MOBILE_BUILD_NUMBER"',
         '--expected-package-name "com.kshouse.gatekeeper_app"',
         '--run-attempt "$GITHUB_RUN_ATTEMPT"',
         "evidence/personal-mobile-ota-publication.json",
@@ -105,12 +121,15 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
       self.assertIn(fragment, self.auto_source)
     self.assertNotIn("sshpass", self.auto_source)
     self.assertNotIn("sftp ", self.auto_source)
+    self.assertNotIn("ssh-keyscan", self.auto_source)
+    self.assertNotIn("runtime-keyscan-unpinned", self.auto_source)
 
   def test_publication_evidence_is_preserved_without_secret_material(self) -> None:
     self.assertIn(
         "personal-mobile-ota-evidence-${{ github.sha }}",
         self.auto_source,
     )
+    self.assertIn("attempt-${{ github.run_attempt }}", self.auto_source)
     self.assertIn("retention-days: 30", self.auto_source)
     self.assertNotIn('echo "$NAS_PASSWORD"', self.auto_source)
     self.assertNotIn('echo "$MOBILE_PUBLIC_KEY_HEX"', self.auto_source)
@@ -141,6 +160,43 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
     )
     self.assertIn("Enforce OTA production release evidence", commercial_steps)
     self.assertIn("ota/release-evidence.json", self.source)
+    self.assertIn(
+        "MOBILE_BUILD_NUMBER=$((RUN_NUMBER_DEC * 100 + RUN_ATTEMPT_DEC))",
+        str(commercial),
+    )
+
+  def test_protected_contract_rejects_personal_mobile_publish_bypasses(self) -> None:
+    deploy_path = ".github/workflows/deploy.yml"
+    mobile_path = ".github/workflows/build_app.yml"
+    deploy = (ROOT / deploy_path).read_text(encoding="utf-8")
+    mutations = (
+        (
+            "inputs.release_target == 'canary'",
+            "inputs.release_target == 'production'",
+        ),
+        ("cancel-in-progress: false", "cancel-in-progress: true"),
+        (
+            'PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"',
+            'PUBLISHED_AT="$(date -u +%FT%TZ)"',
+        ),
+        (
+            "python scripts/ota_contract_gate.py mobile-sftp-publish",
+            "python attacker.py",
+        ),
+        (
+            'fetch_exact "$APK_FALLBACK_DOWNLOAD_URL" http-readback/fallback.apk dist/ks-house-gatekeeper.apk',
+            "echo skipped-fallback-apk",
+        ),
+    )
+    for before, after in mutations:
+      with self.subTest(before=before):
+        self.assertIn(before, self.source)
+        workflows = {
+            deploy_path: deploy,
+            mobile_path: self.source.replace(before, after, 1),
+        }
+        with self.assertRaises(gate.GateError):
+          gate.validate_workflow_release_triggers(workflows)
 
 
 if __name__ == "__main__":

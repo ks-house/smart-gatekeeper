@@ -693,7 +693,6 @@ class OtaContractGateTest(unittest.TestCase):
     for path, occurrence in (
         (".github/workflows/deploy.yml", 1),
         (".github/workflows/build_app.yml", 1),
-        (".github/workflows/build_app.yml", 2),
     ):
       with self.subTest(path=path, occurrence=occurrence):
         workflows = self._workflow_sources()

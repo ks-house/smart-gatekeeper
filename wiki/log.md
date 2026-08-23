@@ -3001,3 +3001,25 @@
 
 - Focused personal-mobile and NAS physical-test workflow tests passed 12/12, including exact-main triggering, repository mobile-key isolation, signer pinning, serialized publication, shared publisher arguments, sanitized evidence and all four primary/fallback HTTPS exact-byte checks.
 - `actionlint`, `git diff --check` and the unchanged `raw/` tree check passed. No GitHub workflow was dispatched, no NAS bytes were changed and no APK was installed by this source-only validation.
+
+## [2026-08-23] fix | Make automatic Target and mobile OTA publication retry-safe and host-pinned
+
+- Superseded the earlier automatic-publisher runtime-keyscan fallback: both password-authenticated Target and mobile jobs now require the independently pinned `NAS_KNOWN_HOSTS` repository Secret and fail before credential transmission when it is absent or changed.
+- Made Target identity deterministic as `2.1.<first-parent-count>+main.g<short-sha>` with a full-SHA build ID, commit timestamp and `SOURCE_DATE_EPOCH`; pinned PlatformIO, pioarduino and firmware libraries, and required two clean firmware builds to be byte-identical before signing.
+- Serialized Target publication without cancellation, rejected equal identity with different signed bytes, retained immutable previous-valid history, and required the public version URL plus signed immutable artifact URL to return exact bytes after the atomic NAS pointer swap.
+- Gave every mobile rerun a strictly increasing bounded Android version code derived from run number and run attempt, made retained CI artifact names attempt-specific, and protected APK promotion, both promotion readbacks and manifest promotion with previous-valid-pair rollback.
+- Derived publication evidence from actual previous-pair validity instead of a constant. The commercial release-evidence command remains separate and fail-closed; a future commercial `2.2.0` or newer Target line requires an explicit personal-lane base bump rather than a silent downgrade.
+
+## [2026-08-23] test | Revalidate integrated exact-main OTA publishers without deployment
+
+- The protected OTA contract, `actionlint`, Python compilation, `git diff --check`, unchanged `raw/` tree check and 30 focused Target/mobile/NAS tests passed, including stale/equal-byte conflicts, Android retry identity, APK-readback rollback and the explicit post-`2.2.0` base-bump requirement.
+- The full Windows checkout suite ran 231 tests: 229 passed and only the two pre-existing strict-LF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed because this clone has `core.autocrlf=true`; neither file nor its Git blob was changed by this work.
+- This was source-only validation. No production Secret value was read or printed, no workflow was dispatched, no NAS path was contacted or changed, no firmware/APK was installed and no commercial, physical or release evidence is claimed. The three protected workflow/gate files still require the existing exact whole-bundle trusted-policy review and rotation before merge.
+
+## [2026-08-23] fix | Close automatic OTA bootstrap, toolchain and rerun review gaps
+
+- Replaced an invalid mutable-tag object pin with the immutable pioarduino `55.03.39` platform commit `cbc3349061987c28bc1b48d43d473e70c5ae04ed`; PlatformIO 6.1.19 initialized it as Arduino 3.3.9 for ESP32-C6 N16 with the exact library pins. The protected contract now binds the normalized full `platformio.ini` bytes.
+- Allowed the exact-main `release_target=canary` manual dispatch as well as every main push to enter both personal publishers after exact checkout SHA verification. Physical-test and commercial dispatch choices remain separate.
+- Added `github.run_attempt` to every immutable Actions v4 artifact name and its paired canary download, so a workflow rerun cannot collide with a previous attempt.
+- Restricted automatic Target bootstrap to a missing `version.json`; present metadata with an unverifiable schema/signature now fails before staging. The signed Target version must be embedded in firmware bytes before publication.
+- Bound post-publish Target HTTPS readback to the provisioned `SECRET_ROOT_CA_CERT`, HTTPS-only redirect policy and exact manifest/artifact bytes. The commercial release-evidence gate remains unchanged and fail-closed.

@@ -10,20 +10,37 @@
 
 `main` push가 public build/test를 통과하면 `publish_personal_target_ota`가 exact SHA를 full-history
 checkout하고 `esp32c6_production` N16 image를 빌드한다. Version은
-`2.1.1-main.<first-parent-count>+g<short-sha>`여야 하며, 임의 SHA lexicographic order를 version
-precedence로 사용하지 않는다. Production Ed25519 key로 manifest를 생성·재검증한 뒤 다음 순서를
-모두 통과해야 한다.
+`2.1.<first-parent-count>+main.g<short-sha>`여야 하며, commit count를 patch precedence로 사용해
+임의 SHA lexicographic order와 stable `2.1.1` prerelease 충돌을 피한다. build ID는 `main.<count>`가 아니라
+`main-<first-parent-count>-<full-sha>`로 결정하고 commit timestamp를 publication/build epoch로
+사용한다. Production Ed25519 key로 manifest를 생성·재검증한 뒤 다음 순서를 모두 통과해야 한다.
+
+실패한 main-push workflow의 GitHub rerun은 같은 push event를 유지하므로 더 큰
+`github.run_attempt`와 충돌 없는 Actions artifact 이름으로 이 자동 게시를 재시도한다. exact
+`refs/heads/main`에서 `release_target=canary`로 수동 dispatch해도 checkout SHA 일치를 확인한 뒤
+personal publisher를 실행한다. physical-test와 commercial dispatch choice는 이 경로에 들어오지 않는다.
 
 1. firmware와 manifest를 commit별 immutable staging path에 upload한다.
 2. 두 파일을 다시 내려받아 local bytes와 비교한다.
 3. 기존 signed `version.json`이 더 최신이면 stale run을 중단한다.
 4. 기존 정상 artifact/manifest와 새 immutable pair를 보존한다.
 5. OpenSSH `posix-rename` 한 번으로 `version.json` pointer를 교체하고 다시 읽어 비교한다.
+6. `SECRET_OTA_VERSION_URL`과 manifest의 commit별 immutable artifact URL을 HTTPS로 다시 받아
+   provisioned `SECRET_ROOT_CA_CERT`로 TLS chain을 검증한 뒤 local signed manifest/firmware와
+   byte-for-byte 비교하고 재검증한다. HTTPS 외 protocol redirect는 거부한다.
 
-`NAS_KNOWN_HOSTS`가 있으면 pinned host key를 사용한다. 없으면 bounded runtime keyscan을 run-local로
-고정하지만 최초 scan의 진위는 증명하지 못한다. scan 이후 host key mismatch 또는 NAS가
-`posix-rename`을 지원하지 않으면 이전 pointer를 유지한 채 fail-closed한다. GitHub `production`
+`version.json`이 실제로 없을 때만 최초 bootstrap을 자동 허용한다. 파일이 존재하지만 current
+schema/signature로 검증되지 않으면 구형 queued workflow나 잘못된 key rotation이 새 pointer를 덮지
+못하도록 fail-closed하며, 운영자가 별도 migration을 결정해야 한다.
+
+자동 password-authenticated publisher에는 independently verified `NAS_KNOWN_HOSTS`가 필수다. 값이
+없거나 live key와 다르면 credential 전송/게시 전에 실패하며 runtime keyscan으로 우회하지 않는다.
+NAS가 `posix-rename`을 지원하지 않아도 이전 pointer를 유지한 채 fail-closed한다. GitHub `production`
 Environment의 required reviewer가 유지되는 동안은 자동 job이 승인 대기할 수 있다.
+
+commercial `2.2.0` 이상을 배포하면 다음 personal main publish 전에 이 lane의 major/minor base와
+contract를 `2.2` 이상으로 명시적으로 올린다. 그렇지 않으면 signed NAS current core가 더 높으므로
+publisher가 stale downgrade로 실패하는 것이 정상이며, 기존 pointer를 강제로 덮지 않는다.
 
 이 단계의 성공은 개인 Target이 새 manifest를 조회할 수 있는 NAS transport 증거일 뿐이다.
 실제 install→reboot→Wi-Fi/MQTTS health→valid mark/rollback은 아래 Target canary 절차로 별도 확인한다.

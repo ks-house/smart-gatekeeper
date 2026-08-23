@@ -35,10 +35,11 @@ The reduced screen-off, Activity-terminated, Target reboot, network reconnect, r
 
 The validator passing is readiness evidence for the reduced personal profile. It is not commercial release evidence and does not alter `ota/release-evidence.json`.
 
-## Automatic main-push mobile OTA lane
+## Automatic exact-main mobile OTA lane
 
 For this owner's single installed Android device, `build_app.yml` contains a
-separate `publish_personal_mobile_ota` job. Every push to exact `main` first
+separate `publish_personal_mobile_ota` job. Every push to exact `main`, plus an
+exact-main manual dispatch whose `release_target` is `canary`, first
 passes the public APK build/test job, then builds a release APK with the
 repository-scoped mobile signing values. The job intentionally has no GitHub
 Environment so the Target OTA values in the `production` Environment cannot
@@ -52,9 +53,12 @@ APK and manifest to both primary and fallback NAS directories, reads every
 staged object back, preserves immutable candidates and the previous valid pair,
 and uses SFTP `posix_rename` to replace APKs before manifests. Runs are
 serialized without cancelling an active two-file promotion. The publisher
-double-reads each final pair, restores the previous valid pair if manifest
-promotion fails, and finally requires both HTTPS update origins to return the
-exact bytes.
+double-reads each final pair, restores the previous valid pair if APK or manifest
+promotion/readback fails, and finally requires both HTTPS update origins to
+return the exact bytes. Every rerun receives a bounded higher version code and
+attempt-specific retained CI artifact name. A repository-pinned
+`NAS_KNOWN_HOSTS` value is mandatory; password-authenticated automatic delivery
+never trusts an unauthenticated runtime keyscan.
 
 This automatic lane only keeps the owner's existing mobile updater supplied
 with exact-main artifacts. The explicit `release_to_production` job,

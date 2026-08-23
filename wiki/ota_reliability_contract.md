@@ -431,11 +431,16 @@ immutable candidates plus the previous valid artifact/manifest pair, and uses
 SFTP `posix_rename` to promote APK bytes before metadata. Job concurrency
 serializes publishers without cancelling an active two-file promotion. The
 publisher rejects stale pointers, double-reads each final pair, restores the
-previous pair if manifest promotion fails, and requires both public HTTPS
+previous pair if APK/manifest promotion or either promotion readback fails, and
+requires both public HTTPS
 origins to serve the exact artifact and manifest. This supplies the owner's
 updater; it does not assert that an Android package installer completed, that
 first-run health passed, or that fallback/rollback has been exercised on a
-device. Those observations belong in `hardware_test.md`.
+device. Each retry uses a bounded higher Android version code derived from the
+workflow run and attempt, and artifact/evidence names preserve each attempt.
+Both automatic password-authenticated publishers require a repository-pinned
+NAS host key and reject runtime keyscan. Those observations belong in
+`hardware_test.md`.
 
 The existing `release_to_production` job remains manual, protected by the
 `production` Environment, and blocked by `ota/release-evidence.json`. Personal

@@ -1,3 +1,4 @@
+import io
 import json
 import tempfile
 import unittest
@@ -49,6 +50,29 @@ class _FailFirstManifestPromotionSftp(FakeSftp):
       self._failed = True
       raise OSError("injected manifest promotion failure")
     super().posix_rename(source, target)
+
+
+class _CorruptFirstPromotedApkReadbackSftp(FakeSftp):
+  def __init__(self):
+    super().__init__()
+    self._inject_corrupt_readback = False
+    self._injected = False
+
+  def posix_rename(self, source: str, target: str):
+    super().posix_rename(source, target)
+    if target.endswith("/ks-house-gatekeeper.apk") and not self._injected:
+      self._inject_corrupt_readback = True
+      self._injected = True
+
+  def open(self, path: str, mode: str):
+    if (
+        mode == "rb"
+        and path.endswith("/ks-house-gatekeeper.apk")
+        and self._inject_corrupt_readback
+    ):
+      self._inject_corrupt_readback = False
+      return io.BytesIO(b"injected-corrupt-readback")
+    return super().open(path, mode)
 
 
 class MobileOtaAutoPublishEngineTests(unittest.TestCase):
@@ -191,6 +215,37 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
       self.assertEqual(result["result"], "idempotent")
       self.assertFalse(any(operation[0] == "posix_rename" for operation in sftp.operations))
 
+  def test_equal_identity_with_different_signed_manifest_bytes_is_rejected(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      apk_bytes = b"same-apk"
+      candidate = _candidate("8" * 40, 204, apk_bytes)
+      current = {**candidate, "published_at": "2026-08-23T01:00:00Z"}
+      rerun = {**candidate, "published_at": "2026-08-23T02:00:00Z"}
+      current_apk, current_manifest = _write_pair(
+          directory, "current", current, apk_bytes
+      )
+      rerun_apk, rerun_manifest = _write_pair(
+          directory, "rerun", rerun, apk_bytes
+      )
+      sftp = FakeSftp()
+      sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"] = current_apk.read_bytes()
+      sftp.files[f"{REMOTE_ROOT}/version.json"] = current_manifest.read_bytes()
+      with self.assertRaisesRegex(gate.GateError, "conflicting signed bytes"):
+        self._publish(
+            sftp,
+            rerun_apk,
+            rerun_manifest,
+            rerun,
+            {current_manifest.read_bytes(): current},
+        )
+      self.assertFalse(
+          any(
+              operation[0] == "mkdir" and "/.staging-" in operation[1]
+              for operation in sftp.operations
+          )
+      )
+
   def test_manifest_promotion_failure_restores_previous_valid_pair(self):
     with tempfile.TemporaryDirectory() as directory_name:
       directory = Path(directory_name)
@@ -201,6 +256,33 @@ class MobileOtaAutoPublishEngineTests(unittest.TestCase):
       old_apk, old_manifest = _write_pair(directory, "old", old, old_bytes)
       new_apk, new_manifest = _write_pair(directory, "new", new, new_bytes)
       sftp = _FailFirstManifestPromotionSftp()
+      sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"] = old_apk.read_bytes()
+      sftp.files[f"{REMOTE_ROOT}/version.json"] = old_manifest.read_bytes()
+      with self.assertRaisesRegex(gate.GateError, "previous valid pair was restored"):
+        self._publish(
+            sftp,
+            new_apk,
+            new_manifest,
+            new,
+            {old_manifest.read_bytes(): old},
+        )
+      self.assertEqual(
+          sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"], old_bytes
+      )
+      self.assertEqual(
+          sftp.files[f"{REMOTE_ROOT}/version.json"], old_manifest.read_bytes()
+      )
+
+  def test_apk_promotion_readback_failure_restores_previous_valid_pair(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      old_bytes = b"old-before-apk-readback"
+      new_bytes = b"new-before-apk-readback"
+      old = _candidate("9" * 40, 205, old_bytes)
+      new = _candidate("a" * 40, 206, new_bytes)
+      old_apk, old_manifest = _write_pair(directory, "old", old, old_bytes)
+      new_apk, new_manifest = _write_pair(directory, "new", new, new_bytes)
+      sftp = _CorruptFirstPromotedApkReadbackSftp()
       sftp.files[f"{REMOTE_ROOT}/ks-house-gatekeeper.apk"] = old_apk.read_bytes()
       sftp.files[f"{REMOTE_ROOT}/version.json"] = old_manifest.read_bytes()
       with self.assertRaisesRegex(gate.GateError, "previous valid pair was restored"):

@@ -93,6 +93,7 @@ def _create_manifest(
     commit: str,
     build_id: str,
     artifact_bytes: bytes,
+    published_at: str = "2026-08-23T12:00:00Z",
 ) -> tuple[Path, Path, dict]:
   artifact = directory / f"{name}.bin"
   manifest = directory / f"{name}.json"
@@ -110,7 +111,7 @@ def _create_manifest(
             "https://updates.example.test/firmware/"
             f"gatekeeper-firmware-{commit}.bin"
         ),
-        published_at="2026-08-23T12:00:00Z",
+        published_at=published_at,
         mandatory_after=None,
         signing_key_id="rfc8032-test-key-1",
         private_key_env="TEST_TARGET_SIGNING_SEED",
@@ -127,19 +128,37 @@ def _create_manifest(
 
 
 class TargetOtaAutoPublishContractTests(unittest.TestCase):
-  def test_main_push_job_is_exact_and_commercial_gate_remains_separate(self):
+  def test_main_job_is_exact_and_commercial_gate_remains_separate(self):
     source = (ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
     workflow = gate.load_workflow_yaml(".github/workflows/deploy.yml", source)
     auto = workflow["jobs"]["publish_personal_target_ota"]
     commercial = workflow["jobs"]["release_to_production"]
     self.assertEqual(
         " ".join(str(auto["if"]).split()),
-        "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))",
     )
     self.assertEqual(auto["environment"], "production")
     self.assertIn("git rev-list --count --first-parent HEAD", source)
-    self.assertIn("2.1.1-main.${COMMIT_SEQUENCE}+g${SHORT_SHA}", source)
+    self.assertIn("2.1.${COMMIT_SEQUENCE}+main.g${SHORT_SHA}", source)
+    self.assertIn('TARGET_BUILD_ID="main-${COMMIT_SEQUENCE}-${GITHUB_SHA}"', source)
+    self.assertIn('SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"', source)
+    self.assertIn("pip install platformio==6.1.19", source)
+    self.assertIn("pio run -e esp32c6_production -t clean", source)
+    self.assertIn(
+        "cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_production/firmware.bin",
+        source,
+    )
+    self.assertIn('version = os.environ["FULL_VERSION"].encode("ascii")', source)
+    self.assertIn("if version not in firmware:", source)
+    self.assertIn('PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"', source)
     self.assertIn("pio run -e esp32c6_production", source)
+    self.assertEqual(auto["concurrency"]["cancel-in-progress"], False)
+    self.assertNotIn("runtime-keyscan-unpinned", str(auto))
+    self.assertIn("Verify exact Target OTA pointer and immutable artifact over HTTPS", source)
+    self.assertIn("TARGET_ROOT_CA_CERT", source)
+    self.assertIn("--cacert \"$CA_FILE\"", source)
+    self.assertIn("--proto '=https' --proto-redir '=https'", source)
     self.assertNotIn("ota_contract_gate.py release", str(auto))
     self.assertIn("ota_contract_gate.py release", str(commercial))
     gate.validate_workflow_release_triggers()
@@ -150,8 +169,8 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     app = (ROOT / ".github/workflows/build_app.yml").read_text(encoding="utf-8")
     mutations = (
         (
-            "github.event_name == 'push' && github.ref == 'refs/heads/main'",
-            "github.event_name == 'pull_request'",
+            "inputs.release_target == 'canary'",
+            "inputs.release_target == 'production'",
         ),
         (
             "python scripts/ota_contract_gate.py target-sftp-publish",
@@ -160,6 +179,16 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         (
             "ssh-keygen -l -E sha256 -f \"$KNOWN_HOSTS_FILE\" >/dev/null",
             "true # host key ignored",
+        ),
+        ("cancel-in-progress: false", "cancel-in-progress: true"),
+        ('test -n "$NAS_KNOWN_HOSTS"', "true # missing trust anchor allowed"),
+        (
+            'fetch_exact "$TARGET_VERSION_URL" https-readback/version.json dist/version.json',
+            "echo skipped-target-version-readback",
+        ),
+        (
+            "target-symbol-map-${{ env.FULL_VERSION }}-attempt-${{ github.run_attempt }}",
+            "target-symbol-map-${{ env.FULL_VERSION }}",
         ),
     )
     for before, after in mutations:
@@ -183,9 +212,9 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
       new_artifact, new_manifest, candidate = _create_manifest(
           directory,
           "new",
-          "2.1.1-main.200+g2222222",
+          "2.1.200+main.g2222222",
           new_commit,
-          "2000",
+          f"main-200-{new_commit}",
           b"new-fw",
       )
       sftp = FakeSftp()
@@ -204,6 +233,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
       )
 
       self.assertEqual(result["result"], "publish-upgrade")
+      self.assertTrue(result["previous_valid_artifact"])
       self.assertEqual(
           sftp.files[f"{REMOTE_ROOT}/version.json"], new_manifest.read_bytes()
       )
@@ -219,7 +249,8 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
           b"new-fw",
       )
       self.assertNotIn(
-          f"{REMOTE_ROOT}/.staging-{new_commit}-2000-1", sftp.directories
+          f"{REMOTE_ROOT}/.staging-{new_commit}-main-200-{new_commit}-1",
+          sftp.directories,
       )
       pointer_swaps = [op for op in sftp.operations if op[0] == "posix_rename"]
       self.assertEqual(len(pointer_swaps), 1)
@@ -231,22 +262,22 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
       old_artifact, old_manifest, old_candidate = _create_manifest(
           directory,
           "candidate",
-          "2.1.1-main.200+g3333333",
+          "2.1.200+main.g3333333",
           "3" * 40,
-          "2000",
+          f"main-200-{'3' * 40}",
           b"candidate",
       )
       _, newer_manifest, _ = _create_manifest(
           directory,
           "newer",
-          "2.1.1-main.201+g4444444",
+          "2.1.201+main.g4444444",
           "4" * 40,
-          "2001",
+          f"main-201-{'4' * 40}",
           b"newer",
       )
       sftp = FakeSftp()
       sftp.files[f"{REMOTE_ROOT}/version.json"] = newer_manifest.read_bytes()
-      with self.assertRaisesRegex(gate.GateError, "stale or conflicting"):
+      with self.assertRaisesRegex(gate.GateError, "stale"):
         gate._publish_target_sftp_bytes(
             sftp,
             REMOTE_ROOT,
@@ -261,6 +292,79 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
           sftp.files[f"{REMOTE_ROOT}/version.json"], newer_manifest.read_bytes()
       )
 
+  def test_present_but_unverifiable_pointer_fails_closed_before_staging(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      commit = "d" * 40
+      artifact, manifest, candidate = _create_manifest(
+          directory,
+          "candidate",
+          "2.1.205+main.gddddddd",
+          commit,
+          f"main-205-{commit}",
+          b"candidate-after-corrupt-pointer",
+      )
+      sftp = FakeSftp()
+      sftp.files[f"{REMOTE_ROOT}/version.json"] = b'{"unsigned":"legacy"}\n'
+      with self.assertRaisesRegex(gate.GateError, "present but unverifiable"):
+        gate._publish_target_sftp_bytes(
+            sftp,
+            REMOTE_ROOT,
+            artifact,
+            manifest,
+            candidate,
+            TEST_PUBLIC,
+            "1",
+        )
+      self.assertFalse(
+          any(
+              op[0] == "mkdir" and "/.staging-" in op[1]
+              for op in sftp.operations
+          )
+      )
+      self.assertEqual(
+          sftp.files[f"{REMOTE_ROOT}/version.json"], b'{"unsigned":"legacy"}\n'
+      )
+
+  def test_newer_commercial_core_requires_explicit_auto_base_bump(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      commit = "b" * 40
+      candidate_artifact, candidate_manifest, candidate = _create_manifest(
+          directory,
+          "candidate",
+          "2.1.204+main.gbbbbbbb",
+          commit,
+          f"main-204-{commit}",
+          b"personal-candidate",
+      )
+      _, commercial_manifest, _ = _create_manifest(
+          directory,
+          "commercial",
+          "2.2.0",
+          "c" * 40,
+          "commercial-2.2.0",
+          b"commercial-current",
+      )
+      sftp = FakeSftp()
+      sftp.files[f"{REMOTE_ROOT}/version.json"] = commercial_manifest.read_bytes()
+      with self.assertRaisesRegex(gate.GateError, "version core is newer"):
+        gate._publish_target_sftp_bytes(
+            sftp,
+            REMOTE_ROOT,
+            candidate_artifact,
+            candidate_manifest,
+            candidate,
+            TEST_PUBLIC,
+            "1",
+        )
+      self.assertFalse(
+          any(
+              op[0] == "mkdir" and "/.staging-" in op[1]
+              for op in sftp.operations
+          )
+      )
+
   def test_equal_signed_pointer_is_idempotent_without_pointer_swap(self):
     with tempfile.TemporaryDirectory() as directory_name:
       directory = Path(directory_name)
@@ -268,9 +372,9 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
       artifact, manifest, candidate = _create_manifest(
           directory,
           "same",
-          "2.1.1-main.202+g5555555",
+          "2.1.202+main.g5555555",
           commit,
-          "2002",
+          f"main-202-{commit}",
           b"same",
       )
       sftp = FakeSftp()
@@ -281,6 +385,48 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
       )
       self.assertEqual(result["result"], "idempotent")
       self.assertFalse(any(op[0] == "posix_rename" for op in sftp.operations))
+
+  def test_equal_identity_with_different_signed_manifest_bytes_is_rejected(self):
+    with tempfile.TemporaryDirectory() as directory_name:
+      directory = Path(directory_name)
+      commit = "6" * 40
+      build_id = f"main-203-{commit}"
+      artifact, current_manifest, _ = _create_manifest(
+          directory,
+          "current",
+          "2.1.203+main.g6666666",
+          commit,
+          build_id,
+          b"same-target",
+          "2026-08-23T01:00:00Z",
+      )
+      _, rerun_manifest, rerun = _create_manifest(
+          directory,
+          "rerun",
+          "2.1.203+main.g6666666",
+          commit,
+          build_id,
+          b"same-target",
+          "2026-08-23T02:00:00Z",
+      )
+      sftp = FakeSftp()
+      sftp.files[f"{REMOTE_ROOT}/version.json"] = current_manifest.read_bytes()
+      with self.assertRaisesRegex(gate.GateError, "conflicting signed manifest bytes"):
+        gate._publish_target_sftp_bytes(
+            sftp,
+            REMOTE_ROOT,
+            artifact,
+            rerun_manifest,
+            rerun,
+            TEST_PUBLIC,
+            "2",
+        )
+      self.assertFalse(
+          any(
+              op[0] == "mkdir" and "/.staging-" in op[1]
+              for op in sftp.operations
+          )
+      )
 
   def test_remote_root_rejects_traversal(self):
     for invalid in (
@@ -295,6 +441,24 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
   def test_paramiko_is_pinned_for_posix_rename_transport(self):
     requirements = (ROOT / "ota/requirements.txt").read_text(encoding="utf-8")
     self.assertIn("paramiko==5.0.0", requirements.splitlines())
+
+  def test_pioarduino_platform_is_pinned_to_exact_release_commit(self):
+    platformio_path = ROOT / "platformio.ini"
+    platformio = platformio_path.read_text(encoding="utf-8")
+    self.assertIn(
+        "platform-espressif32.git#"
+        "cbc3349061987c28bc1b48d43d473e70c5ae04ed",
+        platformio,
+    )
+    self.assertNotIn("releases/download/stable", platformio)
+    self.assertNotIn("#b5ecd92324adf48003a470aeddfeb1f181d6e047", platformio)
+    self.assertIn("bblanchon/ArduinoJson @ 6.21.5", platformio)
+    self.assertIn("knolleary/PubSubClient @ 2.8", platformio)
+    gate.validate_target_build_inputs(platformio_path.read_bytes())
+    with self.assertRaisesRegex(gate.GateError, "reviewed exact pin"):
+      gate.validate_target_build_inputs(
+          platformio.replace("55.03.39", "stable").encode("utf-8")
+      )
 
 
 if __name__ == "__main__":
