@@ -180,6 +180,12 @@ Target은 연결당 한 reassembly buffer와 동시에 한 `message_id`만 허�
 넘으면 즉시 buffer/session을 지운다. proof write는 2초 안에 완성되어야 한다. indication은 ACK 뒤
 다음 fragment를 보내며 무제한 notify queue를 만들지 않는다.
 
+Challenge characteristic의 `read + indicate` 속성은 서로 다른 client 호환 경로다. 한 인증 session의
+client는 둘 중 하나만 선택해야 하며, production Android는 Client Hello 전에 CCCD를 설정한 뒤
+Target Hello와 Challenge를 동일한 순서 보장 indication mailbox로 받는다. fragmented indication을
+받는 동안 같은 Challenge를 read하면 single-frame read 값이 같은 message ID의 fragment 사이에
+끼어들 수 있으므로 금지한다. 이 혼합 stream은 위 strict reassembly 규칙에 따라 fail-closed다.
+
 ### 4.3 Hello canonical payload
 
 `CLIENT_HELLO`는 다음 16 bytes다.

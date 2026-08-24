@@ -176,10 +176,14 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
     def test_nimble_callbacks_defer_large_event_and_fragment_work(self):
         adapter = (ROOT / "src" / "GattServer.cpp").read_text(encoding="utf-8")
         self.assertIn("class DeferredCanonicalEventSink", adapter)
+        self.assertIn("class ProductionLifecycleEventSink", adapter)
         self.assertIn(
-            "production_lifecycle_bridge(\n    &deferred_event_sink)", adapter
+            "production_lifecycle_bridge(\n    &production_lifecycle_sink)", adapter
         )
         self.assertGreaterEqual(adapter.count("deferred_event_sink.drain();"), 2)
+        self.assertGreaterEqual(
+            adapter.count("production_lifecycle_sink.drainControls();"), 2
+        )
         update_handler = adapter.split("void GattServer::update()", 1)[1].split(
             "bool GattServer::isEnabled()", 1
         )[0]
@@ -194,6 +198,25 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         )[1].split("void GattServer::createService()", 1)[0]
         self.assertNotIn("drainOutputs();", indication_handler)
         self.assertIn("update() drains the next", indication_handler)
+
+        callback_section = adapter.split(
+            "class ServerCallbacks final", 1
+        )[1].split("class WriteCallbacks final", 1)[0]
+        self.assertNotIn("BLEDevice::startAdvertising();", callback_section)
+        self.assertGreaterEqual(callback_section.count("requestAdvertisingRestart();"), 2)
+
+        canonical_sink = adapter.split(
+            "class CanonicalMqttEventSink final", 1
+        )[1].split("CanonicalMqttEventSink production_event_sink", 1)[0]
+        self.assertNotIn("s_auth_pending_callback", canonical_sink)
+        self.assertNotIn("s_auth_grant_callback", canonical_sink)
+        self.assertNotIn("s_auth_abort_callback", canonical_sink)
+        lifecycle_sink = adapter.split(
+            "class ProductionLifecycleEventSink final", 1
+        )[1].split("ProductionLifecycleEventSink production_lifecycle_sink", 1)[0]
+        self.assertIn("s_auth_pending_callback", lifecycle_sink)
+        self.assertIn("s_auth_grant_callback", lifecycle_sink)
+        self.assertIn("abort_pending_ = true", lifecycle_sink)
 
     def test_android_challenge_uses_only_the_subscribed_indication_stream(self):
         transport = (

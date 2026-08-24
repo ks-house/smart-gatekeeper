@@ -332,3 +332,26 @@ The two feature planes are enabled, but this baseline does not yet claim local
 door authorization: the corrected Target must advertise on air, Android must
 record a locator, and the exact challenge/proof/result must reach the Target
 FSM. Physical relay actuation and electrical safety remain separate Gates.
+
+## 2026-08-25 exact wake, HA OTA and GATT callback-stack investigation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact-main Target publication/install | GitHub Actions run `32768108034` published `2.1.259+main.gbc9bb5d`; the live HA OTA button delivered the signed command, after which Target downloaded, verified, installed and rebooted into that exact version | PASS for HA control → signed Target OTA → install/reboot/current-version; rollback and power-loss remain pending |
+| Exact-main Android replacement | Run `32768108110` published production-signed `1.0.0-gbc9bb5d` / `versionCode=18501`; its manifest/artifact identity and APK signature verified, and `adb install -r` preserved package data and the enrolled credential | PASS for exact APK identity, same-signature replacement and state preservation |
+| Android exact iBeacon delivery | Corrected company bytes produced ten OS PendingIntent exact-filter results with callback latency 6–20 ms and observed RSSI about -46 to -50 dBm | PASS for this connected, screen-on observation; background/OEM repetition remains pending |
+| Exact-main GATT connection | Android connected, Target emitted Target Hello and ACK-gated multi-fragment Challenge, then exact-main `2.1.259` repeatedly reset with a stack-protection fault in task `nimble_host` | FAIL for exact-main local authentication; no proof/result/FSM/relay success |
+| Root cause | ELF frames were about 2,736 bytes for output draining and 3,216 bytes for canonical JSON/MQTTS emission while the prebuilt NimBLE host task stack is 5,120 bytes. Both could execute from BLE callbacks | ROOT CAUSE CONFIRMED for the observed reset path |
+| Stack-safe Target candidate | App-only USB flash of `2.1.260-test.g163610d` preserved bootloader, partitions, NVS, OTA data and fallback slot. It booted with Wi-Fi `192.168.35.19`, MQTTS, current ACL and GATT enabled; the same phone reached Target Hello/Challenge without a reset | PASS for the observed connection and reset non-recurrence; candidate is not exact-main signed OTA evidence |
+| Candidate capacity | The candidate binary was 1,845,616 bytes and PlatformIO reported 1,780,006 bytes used in a 7,340,032-byte OTA slot (24.3%) | PASS with 5,560,026 bytes slot headroom |
+| Android challenge stream | The installed bc9 APK subscribed to Challenge indications and also read the same characteristic. A single-frame read could interleave with indicated fragments sharing a message ID; the strict reassembler returned `MALFORMED_PROOF` | FAIL at Android transport framing, before proof/FSM/relay |
+| Android correction candidate | Source now consumes Target Hello and Challenge only from the already-subscribed ordered indication mailbox and forbids a simultaneous Challenge read; focused source regression passed 11/11 and the focused JDK17 Android build/JUnit run completed 209 Gradle tasks successfully | PASS for local source/JVM coverage; hosted exact-toolchain CI, signed APK installation and physical proof/result remain pending |
+| Hardened Target source build | Authentication control was separated from best-effort telemetry, callback-originated abort/advertising restart was moved to loopTask, and `esp32c6_personal_production` compiled with 1,780,268/7,340,032 bytes flash and 67,088/327,680 bytes RAM; `firmware.bin` was 1,845,984 bytes | PASS for local build/capacity only; these additional bytes were not yet installed |
+| Home Assistant controls | Bridge availability remained online and reboot/open/OTA/config controls rendered enabled. OTA was exercised successfully; remote open was not invoked | PASS for availability and one OTA command; relay/open remains untested |
+
+The physical target is currently running the USB stack-safe candidate so that
+the deterministic reset can be tested without erasing Wi-Fi, ACL or OTA state.
+The release Gate remains open until the same Target bytes and the corrected
+Android transport are merged, CI-built, NAS-published, installed from exact
+main, and one authenticated proof/result completes without a reboot. No relay
+actuation or wall-install acceptance is claimed by this section.
