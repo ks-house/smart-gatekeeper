@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-25 (live HA OTA, exact Android wake, GATT callback-stack and challenge-stream corrections)
+> Last updated: 2026-08-25 (exact-main Target/Android deployment, successful personal GATT proof/result, and live signed HA controls)
 
 ---
 

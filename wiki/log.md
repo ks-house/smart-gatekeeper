@@ -3532,3 +3532,15 @@
 - Recomputed the complete ordered 69-file map from exact merged-main Git blobs and verified it matches reviewed feature `df2ac4869`, policy-connected head `4baa3fa8` and the sole final bundle; both the reviewed feature and authorization main are ancestors of actual main.
 - The focused trusted-policy suite, OTA contract, all workflow syntax checks, JSON parsing, relative wiki links and whitespace validation pass locally. Hosted base-policy verification remains required before this final rotation merges.
 - This closes only the repository authorization transition. Exact-main production build/NAS publication, Target OTA/reboot and Android GATT challenge/proof/result remain the next connected evidence steps.
+
+## [2026-08-25] test | Complete exact-main personal GATT and Home Assistant enablement
+
+- GitHub Actions runs `32777471683` and `32777471718` reproduced, signed and atomically published exact main `db37bc2390efbf94bf1a9fca261834c3728606b5` for Target and Android. The 1,845,920-byte Target image used 25.15% of either 7,340,032-byte N16 OTA slot, leaving 5,494,112 bytes; the Android artifact was production-signed `1.0.0-gdb37bc2` / 19001.
+- Exercised the live enabled Home Assistant OTA control. Target verified and installed the NAS artifact, rebooted into `2.1.262+main.gdb37bc2`, restored Wi-Fi `192.168.35.19`, MQTTS, current ACL and connectable GATT. The HA device then showed that exact firmware with reboot/open/OTA and four configuration controls enabled; remote open was not invoked.
+- Installed the matching APK on SM-F966N with data-preserving `adb install -r`. A foreground manual local request completed connect, service discovery, Hello/Challenge/Result indications, framed writes, clean disconnect and WorkManager success. Fresh health was `HEALTHY`, with no failure or Target denial and 4,599 ms latency; HA independently recorded `AUTH_PENDING` at 06:27:33, `ARMED` at 06:27:36 and `IDLE` at 06:28:35, and the Target did not reset. No sensor, GPIO3 relay, electrical, Samsung screen-off, rollback or power-loss result is claimed.
+
+## [2026-08-25] lint | Validate final physical-evidence documentation
+
+- Updated the project status, Android worker, Target GATT transport, hardware test and navigation pages from exact merged-main/runtime evidence without changing firmware, Android, Backend, workflow or production Secret bytes.
+- Passed the relative Markdown link regression, all 42 trusted-workflow policy tests and `git diff --check`; exact `origin/main` remains an ancestor of the evidence branch. `raw/` was untouched and prior append-only log entries were not rewritten.
+- Kept this evidence-only branch separate from main so merging documentation cannot create a newer firmware/APK identity before the installed `db37bc2` release is handed off. Source review additionally identified that GATT lifecycle callbacks discard FSM bool returns; positive Result→FSM acceptance fail-closed coupling, relay/sensor, Samsung/OEM background and rollback Gates remain explicitly open.

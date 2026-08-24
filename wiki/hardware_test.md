@@ -355,3 +355,21 @@ The release Gate remains open until the same Target bytes and the corrected
 Android transport are merged, CI-built, NAS-published, installed from exact
 main, and one authenticated proof/result completes without a reboot. No relay
 actuation or wall-install acceptance is claimed by this section.
+
+## 2026-08-25 final exact-main personal GATT and Home Assistant enablement
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Final source identity | PRs #129, #130 and #131 produced exact main `db37bc2390efbf94bf1a9fca261834c3728606b5`, containing the Target callback-stack/control ordering fix and Android single indication-mailbox Challenge path | PASS for merged source identity |
+| Target CI/NAS capacity | Run `32777471683` reproduced and signed `2.1.262+main.gdb37bc2`; plaintext size was 1,845,920 bytes in a 7,340,032-byte slot (25.15%, 5,494,112 bytes headroom), and the 1,845,956-byte encrypted artifact was atomically published/read back from NAS | PASS for exact CI/NAS bytes and N16 dual-slot capacity |
+| Target install/reboot | The live HA OTA button delivered the signed exact-Target command. Target verified the signed manifest/encrypted image, installed the inactive image, rebooted into `2.1.262+main.gdb37bc2`, obtained `192.168.35.19`, reconnected MQTTS, applied current ACL and started GATT enabled | PASS for command→install→reboot→exact runtime; rollback/power-loss remains pending |
+| Android CI/install | Run `32777471718` produced production-signed `1.0.0-gdb37bc2` / `versionCode=19001`. Package/version/source/signature verified and `adb install -r` on SM-F966N preserved package data and the original first-install time | PASS for exact same-signature replacement and launch |
+| Personal local GATT | Hardwareless remained `local_keystore_authenticated` with BLE owner `native_gatt`. One foreground manual request connected, discovered the service, enabled Hello/Challenge/Result indications, exchanged multi-frame writes, disconnected cleanly and completed WorkManager successfully. Fresh health was `HEALTHY`, no failure/Target denial, latency 4,599 ms. HA independently recorded `AUTH_PENDING` at 06:27:33, `ARMED` at 06:27:36 and `IDLE` at 06:28:35 | PASS for this exact-main foreground authenticated proof/result and FSM ARM; no Target reset recurred |
+| Home Assistant controls | Current HA device state showed firmware `2.1.262+main.gdb37bc2`; reboot, remote open, OTA and four config controls were enabled. OTA was exercised end-to-end; remote open was intentionally not invoked | PASS for live availability and signed OTA command; remote relay action untested |
+| Relay/sensor boundary | HA supplied independent ARMED state evidence, but no AJ-SR04T threshold observation, GPIO3 relay actuation or electrical measurement was made. Source review also found that lifecycle callbacks currently discard FSM bool returns, so positive Result→FSM acceptance still needs explicit fail-closed coupling for non-IDLE rejection cases | PASS for this ARMED observation; PENDING source hardening plus physical RELAY-G0..G2 and sensor acceptance |
+
+This closes the two user-visible enablement blockers for the observed foreground
+configuration: local Android GATT no longer returns `NATIVE_GATT_DISABLED` or
+`MALFORMED_PROOF`, and Home Assistant controls are no longer disabled. It does
+not close Samsung/OEM background repetition, relay/electrical safety,
+health-valid/rollback, power-loss or wall-install acceptance.
