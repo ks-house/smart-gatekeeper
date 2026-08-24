@@ -225,6 +225,15 @@ rebasing or squashing. A separate final rotation must then replace both
 transition identities with the sole baseline pinned to the actual feature
 merge commit.
 
+PR #130 merged the bounded authorization as policy main `813a849f`. That
+policy main was merge-connected to the reviewed feature as `4baa3fa8`, retaining
+both parents and the reviewed 69-file map. Fresh Hosted Trusted, OTA, protocol,
+Android and ESP32-C6 checks then passed before PR #129 was merge-commit merged
+as actual main `a9d4bd0de7cf5393cba47b8be1fa6c17c0b6759e`. This immediate
+final rotation removes both `df2ac48` transition identities and pins that actual
+merge as the sole `current-main-baseline`; all 69 protected normalized objects,
+the seven-workflow inventory and the empty local-Action inventory remain exact.
+
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
