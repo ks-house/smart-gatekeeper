@@ -3508,3 +3508,15 @@
 - Passed the Hardwareless source/native-host suite 11/11 and 124 Target security, OTA contract, exact inventory, personal-production and personal-mobile publisher tests. The exact `src/GattServer.cpp` normalized SHA matches its privileged `deploy.yml` inventory row.
 - Passed the focused Android JDK17 build/JUnit run with 209 executed Gradle tasks, all workflow files with `actionlint`, the relative wiki link check and whitespace validation. Docker-generated desktop registrants, lockfile and analysis-option changes were discarded because they were test side effects rather than reviewed source changes.
 - The trusted policy still correctly rejects the newly changed `deploy.yml` digest until a separate exact feature authorization is merged. No production Secret was read, no NAS pointer changed, and the hardened source/APK was not installed by these checks.
+
+## [2026-08-25] compile | Authorize exact GATT stack release candidate
+
+- Replaced the completed `current-main-baseline` with temporary-exact `temporary-gatt-stack-df2ac48` and future persistent `future-gatt-stack-df2ac48-persistent-baseline`, both bound to reviewed feature commit `df2ac4869f4ee15c567f4a5ce1e0a99fab08e269` and the same complete ordered 69-file normalized digest map.
+- Relative to exact main `bc9bb5dae2d1ca49ef38c8c2d89122084d4b6909`, only `.github/workflows/deploy.yml` changes in the protected set, to `26d9fc567b7465fc3fcb42c84a85db531b3fb9a227d4fa5432799aba0d86b478`; the other 68 protected objects, seven-workflow inventory and empty repository-local Action inventory remain exact.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, changes no NAS or device state and claims no signed exact-main installation, GATT proof/result, relay, health-valid or rollback evidence.
+
+## [2026-08-25] test | Verify exact GATT stack transition policy
+
+- Passed all 42 focused trusted-policy tests. Both bounded identities contain the same complete ordered 69-file map; direct `utf8-lf-v1` recomputation from immutable feature commit `df2ac4869f4ee15c567f4a5ce1e0a99fab08e269` matched all 69 entries, while the policy branch verified the 68 locally unchanged protected files and intentionally excluded only its predecessor `deploy.yml` byte.
+- Passed the OTA contract gate, JSON parsing, all seven workflow files with `actionlint` and whitespace validation. Exact workflow/action inventories remain seven and zero, and predecessor baseline source `900f22179db54b50aba03fba519ac80266519c2d` is retired from future authorization identities.
+- Hosted base-policy verification remains required before merge. Passing this policy authorization does not publish or install firmware/APK and does not prove GATT challenge/proof/result, physical relay actuation, health-valid or rollback behavior.

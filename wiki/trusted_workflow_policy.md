@@ -210,6 +210,21 @@ main `900f22179db54b50aba03fba519ac80266519c2d`. The immediate final rotation
 removes both `4538fcb` transition identities and pins that actual merge as the
 sole `current-main-baseline`; all 69 protected normalized objects remain exact.
 
+Reviewed GATT stack candidate `df2ac4869f4ee15c567f4a5ce1e0a99fab08e269`
+moves authentication control and heavy telemetry work out of the constrained
+NimBLE callback context and serializes Android Challenge delivery. Relative to
+exact main `bc9bb5dae2d1ca49ef38c8c2d89122084d4b6909`, only the protected
+`.github/workflows/deploy.yml` blob changes, to normalized digest
+`26d9fc567b7465fc3fcb42c84a85db531b3fb9a227d4fa5432799aba0d86b478`;
+the other 68 protected objects and both exact inventories remain unchanged.
+The bounded transition uses `temporary-gatt-stack-df2ac48` and
+`future-gatt-stack-df2ac48-persistent-baseline`, with the same complete ordered
+69-file map and exact source commit. After this policy-only authorization
+merges, policy main must be merge-connected into that reviewed feature without
+rebasing or squashing. A separate final rotation must then replace both
+transition identities with the sole baseline pinned to the actual feature
+merge commit.
+
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
