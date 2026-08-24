@@ -3388,3 +3388,8 @@
 - Added the recovered Home Assistant 502 incident page to the compiled wiki and navigation map while retaining its historical evidence in an append-only backfill record.
 - Ignored local Codex attachment cache, the `.venn` environment, generated `dist` output, secret-bearing local `delivery` artifacts and Obsidian appearance/plugin/graph UI state. Existing tracked `.obsidian/app.json` and ignored `include/secrets.h` remain unchanged.
 - Kept the obsolete 8 MB PlatformIO override only in the pre-pull stash and repository-external backup; current main retains the physically verified N16 16 MB dual-OTA configuration.
+
+## [2026-08-24] compile | Prepare HA incident and workspace-hygiene pull request
+
+- Branched from local commit `6018b2a4922bec025f89fe8e2aa81165757c840d`, whose parent is exact remote main `afb1360a578d0dc6161fb8a53c655270edae845e`, as `codex/ha-incident-workspace-hygiene-20260824` without rebasing or force-updating any ref.
+- Revalidated the four-file scope: root-local ignore rules, the privacy-minimized historical Home Assistant incident page, its navigation entry and append-only evidence. No production firmware, workflow, Secret, ignored delivery artifact or physical Target state changes in this pull request.
