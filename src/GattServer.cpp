@@ -374,8 +374,75 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
 };
 
 CanonicalMqttEventSink production_event_sink;
+// NimBLE invokes server/characteristic callbacks on its 5 KB host task.  The
+// canonical sink builds JSON and publishes over MQTTS, so running it from a BLE
+// callback can exhaust that stack (and did on the physical ESP32-C6 while a
+// multi-fragment challenge was being acknowledged).  Keep callback work to a
+// bounded event copy and publish from the 16 KB Arduino loop task instead.
+class DeferredCanonicalEventSink final : public sgk::EventSink {
+ public:
+  explicit DeferredCanonicalEventSink(sgk::EventSink* downstream)
+      : downstream_(downstream) {}
+
+  void emit(const sgk::Event& event) override {
+    portENTER_CRITICAL(&mux_);
+    if (count_ == events_.size()) {
+      overflowed_ = true;
+    } else {
+      const size_t tail = (head_ + count_) % events_.size();
+      events_[tail] = event;
+      ++count_;
+    }
+    portEXIT_CRITICAL(&mux_);
+  }
+
+  void drain() {
+    bool reported_overflow = false;
+    while (true) {
+      sgk::Event event{};
+      bool available = false;
+      portENTER_CRITICAL(&mux_);
+      if (overflowed_ && !reported_overflow) {
+        overflowed_ = false;
+        reported_overflow = true;
+      }
+      if (count_ != 0) {
+        event = events_[head_];
+        head_ = (head_ + 1) % events_.size();
+        --count_;
+        available = true;
+      }
+      portEXIT_CRITICAL(&mux_);
+      if (reported_overflow) {
+        LOGF("[ERROR] GATT canonical event queue overflow; audit event dropped");
+        reported_overflow = false;
+      }
+      if (!available) return;
+      if (downstream_ != nullptr) downstream_->emit(event);
+    }
+  }
+
+  void clear() {
+    portENTER_CRITICAL(&mux_);
+    head_ = 0;
+    count_ = 0;
+    overflowed_ = false;
+    portEXIT_CRITICAL(&mux_);
+  }
+
+ private:
+  static constexpr size_t kCapacity = 16;
+  sgk::EventSink* downstream_ = nullptr;
+  std::array<sgk::Event, kCapacity> events_{};
+  size_t head_ = 0;
+  size_t count_ = 0;
+  bool overflowed_ = false;
+  portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
+};
+
+DeferredCanonicalEventSink deferred_event_sink(&production_event_sink);
 sgk::LocalGattLifecycleBridge production_lifecycle_bridge(
-    &production_event_sink);
+    &deferred_event_sink);
 
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
@@ -489,6 +556,7 @@ BLECharacteristic* characteristicFor(sgk::MessageType type) {
 
 void GattServer::init() {
 #if ENABLE_HARDWARELESS_RC
+  deferred_event_sink.clear();
   if (core != nullptr) {
     delete core;
     core = nullptr;
@@ -526,6 +594,9 @@ void GattServer::init() {
 
 void GattServer::update() {
 #if ENABLE_HARDWARELESS_RC
+  // Flush events produced by NimBLE callbacks before doing protocol work, then
+  // flush again below for events produced during this update pass.
+  deferred_event_sink.drain();
   if (core == nullptr || !core->enabled()) return;
 
   const uint32_t now_ms = millis();
@@ -569,6 +640,9 @@ void GattServer::update() {
   if (indication_timeout) {
     LOGF("[ERROR] GATT indication confirmation timed out; session aborted");
   }
+  deferred_event_sink.drain();
+  // Preserve the synchronous contract: authentication lifecycle callbacks
+  // (including ARMED transition) run before the corresponding RESULT is sent.
   drainOutputs();
 #endif
 }
@@ -870,10 +944,8 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
   if (result == sgk::IndicationResult::kAborted) {
     LOGF("[ERROR] GATT indication failed; session aborted");
   }
-  if (result == sgk::IndicationResult::kFragmentConfirmed ||
-      result == sgk::IndicationResult::kMessageConfirmed) {
-    drainOutputs();
-  }
+  // onStatus() runs on NimBLE's small host stack.  update() drains the next
+  // fragment from the Arduino loop task, avoiding a 2.7 KB adapter frame there.
 #else
   (void)token;
   (void)type;

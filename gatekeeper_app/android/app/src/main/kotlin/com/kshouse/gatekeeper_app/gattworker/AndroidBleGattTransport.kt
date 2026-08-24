@@ -325,10 +325,12 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
   }
 
   override suspend fun readChallenge(): ByteArray {
-    val characteristic = characteristic(GattProtocol.CHALLENGE_UUID)
-    if (gatt?.readCharacteristic(characteristic) != true) {
-      throw GattTransportException(TransportFailureCode.READ_FAILED)
-    }
+    // The Target emits the challenge as an ACK-gated indication stream after
+    // TARGET_HELLO.  Issuing a characteristic read at the same time creates a
+    // second, single-frame representation with the same message ID; Android can
+    // deliver it between indicated fragments and the strict reassembler must
+    // reject that mixed stream.  The CCCD is enabled before CLIENT_HELLO, so a
+    // single mailbox path is both lossless and deterministic here.
     return activeConnection().mailbox.awaitMessage(GattProtocol.CHALLENGE)
   }
 

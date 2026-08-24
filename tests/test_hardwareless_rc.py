@@ -173,6 +173,39 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("void onStatus(", adapter)
         self.assertIn("confirmationTimedOut", adapter)
 
+    def test_nimble_callbacks_defer_large_event_and_fragment_work(self):
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(encoding="utf-8")
+        self.assertIn("class DeferredCanonicalEventSink", adapter)
+        self.assertIn(
+            "production_lifecycle_bridge(\n    &deferred_event_sink)", adapter
+        )
+        self.assertGreaterEqual(adapter.count("deferred_event_sink.drain();"), 2)
+        update_handler = adapter.split("void GattServer::update()", 1)[1].split(
+            "bool GattServer::isEnabled()", 1
+        )[0]
+        self.assertLess(
+            update_handler.rindex("deferred_event_sink.drain();"),
+            update_handler.rindex("drainOutputs();"),
+        )
+
+        indication_handler = adapter.split(
+            "void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,",
+            1,
+        )[1].split("void GattServer::createService()", 1)[0]
+        self.assertNotIn("drainOutputs();", indication_handler)
+        self.assertIn("update() drains the next", indication_handler)
+
+    def test_android_challenge_uses_only_the_subscribed_indication_stream(self):
+        transport = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/gattworker/AndroidBleGattTransport.kt"
+        ).read_text(encoding="utf-8")
+        challenge = transport.split(
+            "override suspend fun readChallenge(): ByteArray {", 1
+        )[1].split("override suspend fun writeProof", 1)[0]
+        self.assertIn("awaitMessage(GattProtocol.CHALLENGE)", challenge)
+        self.assertNotIn("readCharacteristic", challenge)
+
     def test_ota_waits_on_real_target_state_before_network(self):
         ota = (ROOT / "src" / "OtaManager.cpp").read_text(encoding="utf-8")
         main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
