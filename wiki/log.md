@@ -3472,3 +3472,15 @@
 - Pinned both bounded identities, the complete 69-path map, the seven-workflow inventory and empty repository-local Action inventory in regression tests; predecessor merged main `37404342` is retired from future source identities.
 - Local validation covers policy parsing, exact/future selection, mutation rejection, OTA contract, workflow syntax, relative wiki links and whitespace. Hosted base-policy verification remains required before the policy PR merges.
 - Passing authorization proves only reviewed Git object identity. Production signing, NAS publication/readback, Target OTA/reboot and Android GATT proof remain subsequent steps.
+
+## [2026-08-25] compile | Finalize GATT wake and HA runtime trusted baseline
+
+- PR #127 merge `a1f8e4dc` separately authorized reviewed feature `4538fcb`; policy-connected head `b590c410` retained both parents and the exact 69-file map, and PR #126 merge-commit produced actual main `900f22179db54b50aba03fba519ac80266519c2d` after fresh Hosted Trusted, OTA, Backend and ESP32-C6 checks passed.
+- Removed both bounded `4538fcb` transition identities and pinned the sole `current-main-baseline` persistent identity to actual PR #126 merged main `900f2217`. All 69 protected normalized objects, seven workflow entries and the empty local-Action inventory remain unchanged from the reviewed feature.
+- This policy-only rotation changes no runtime or protected workflow byte and claims no production Secret materialization, NAS publication, Target OTA, Android GATT, Home Assistant command, relay, health-valid or rollback evidence.
+
+## [2026-08-25] test | Verify final GATT wake and HA runtime baseline
+
+- Recomputed the complete ordered 69-file map from exact merged-main Git blobs and verified it matches reviewed feature `4538fcb`, policy-connected head `b590c410` and the sole final bundle; both feature and authorization commits are ancestors of actual main.
+- The focused trusted-policy suite, OTA contract, all workflow syntax checks, JSON parsing, relative wiki links and whitespace validation pass locally. Hosted base-policy verification remains required before this final rotation merges.
+- This closes only the repository authorization transition. Exact-main production build/NAS publication, Target OTA/reboot and Android GATT challenge/proof/result remain the next connected evidence steps.
