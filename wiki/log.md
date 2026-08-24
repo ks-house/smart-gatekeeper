@@ -3412,3 +3412,15 @@
 - Distinguished `advanced`, `unchanged` and `rejected` authenticated boot observations while preserving the existing boolean registry API for compatibility. The first authenticated non-retained boot or fresh status observation of an increased boot count queues `TARGET_BOOT_REFRESH` exactly once; the other observation and ordinary MQTT reconnect repeats are unchanged. The Backend-start worker retains its immediate lease recovery pass.
 - Added regressions for status-first, boot-first, unchanged reconnect and retained-status ordering, then passed the focused boot-registry, ACL refresh and ACL management suite. This removes routine ACL version growth and avoidable Target NVS writes without weakening missed-boot recovery.
 - Recorded the personal enrollment endpoint as a supervised commissioning exception: keep it enabled only through the connected phone's exact Target ACL ACK, then disable it. Source/build checks remain distinct from the pending NAS, broker, HA, phone, Target, relay and OTA installation evidence.
+
+## [2026-08-25] compile | Authorize personal GATT and signed HA controls
+
+- Replaced the completed `current-main-baseline` with one temporary-exact and one future persistent identity for reviewed PR #123 feature commit `47f7e111ed3c8f625dad09597af3426f8204930d`; both identities bind the same complete ordered 68-file normalized digest map.
+- Added the ACL refresh, Home Assistant bridge and Target ACL-delivery modules plus their three direct tests to the protected set. The seven-workflow inventory remains exact and the repository-local Action inventory remains empty; 23 protected files are changed or newly protected relative to the predecessor baseline.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no ACL application, GATT session, Home Assistant command, relay, health-valid, rollback or physical evidence.
+
+## [2026-08-25] test | Verify PR 123 exact-commit policy authorization
+
+- Verified 42 focused policy tests with 201 subtests, the OTA contract gate, all workflow files with `actionlint`, JSON parsing and whitespace validation on the policy-only branch.
+- The live GitHub verifier selected `temporary-personal-gatt-ha-47f7e111` for exact feature commit `47f7e111ed3c8f625dad09597af3426f8204930d` and approved the complete ordered 68-file protected set.
+- This validation authorizes only the reviewed Git objects. It does not prove CI publication, NAS deployment, Target installation, Android installation, ACL acknowledgement, GATT control, Home Assistant command delivery or physical relay operation.
