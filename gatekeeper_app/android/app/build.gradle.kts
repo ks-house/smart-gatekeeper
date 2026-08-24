@@ -14,6 +14,7 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 val unsignedCiRelease = System.getenv("SGK_UNSIGNED_CI_RELEASE") == "1"
+val personalGattBootstrap = System.getenv("SGK_PERSONAL_GATT_BOOTSTRAP") == "1"
 
 android {
     namespace = "com.kshouse.gatekeeper_app"
@@ -34,6 +35,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["sgkPersonalGattBootstrap"] =
+            personalGattBootstrap.toString()
     }
 
 signingConfigs {

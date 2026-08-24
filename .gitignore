@@ -29,6 +29,8 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+backend/secrets/
+backend/migration_backups/
 
 # --- Secrets & Configurations (CRITICAL) ---
 include/secrets.h

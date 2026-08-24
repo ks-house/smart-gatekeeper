@@ -13,7 +13,7 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  test('bridge is read-only and exposes redacted health fields', () async {
+  test('bridge exposes redacted authoritative native health fields', () async {
     MethodCall? observed;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -22,6 +22,9 @@ void main() {
         'featureEnabled': true,
         'featureStatus': 'remote_enabled',
         'bleOwner': 'native_gatt',
+        'localBootstrapAllowed': true,
+        'credentialProvisioned': true,
+        'localConsentValid': true,
         'healthy': false,
         'lastReasonCode': 'GATT_TIMEOUT',
         'lastTargetReasonCode': 9,
@@ -41,6 +44,9 @@ void main() {
     expect(observed?.arguments, isNull);
     expect(health.featureEnabled, isTrue);
     expect(health.bleOwner, 'native_gatt');
+    expect(health.localBootstrapAllowed, isTrue);
+    expect(health.credentialProvisioned, isTrue);
+    expect(health.localConsentValid, isTrue);
     expect(health.lastReasonCode, 'GATT_TIMEOUT');
     expect(health.lastTargetReasonCode, 9);
     expect(health.lastTargetReasonName, 'RATE_LIMITED');
@@ -50,5 +56,26 @@ void main() {
     expect(health.lastLatencyMs, 15000);
     expect(health.updateManagerIndependent, isTrue);
     expect(health.networkRequired, isFalse);
+  });
+
+  test('local GATT toggle delegates to native authoritative control', () async {
+    MethodCall? observed;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      observed = call;
+      return <String, Object?>{
+        'accepted': true,
+        'reason': 'local_keystore_authenticated',
+        'featureEnabled': true,
+      };
+    });
+
+    final result =
+        await NativeGattWorkerHealthBridge().setLocalGattEnabled(true);
+
+    expect(observed?.method, 'setLocalGattEnabled');
+    expect(observed?.arguments, <String, Object?>{'enabled': true});
+    expect(result['accepted'], isTrue);
+    expect(result['featureEnabled'], isTrue);
   });
 }

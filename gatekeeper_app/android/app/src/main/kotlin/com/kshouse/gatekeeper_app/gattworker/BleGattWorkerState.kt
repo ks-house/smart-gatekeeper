@@ -28,13 +28,20 @@ data class FeatureFlagDecision(
   val revision: Long? = null,
 )
 
+data class LocalGattControlResult(
+  val accepted: Boolean,
+  val reason: String,
+  val decision: FeatureFlagDecision,
+)
+
 object BleGattFeatureFlagPolicy {
   fun evaluate(
     snapshot: AuthenticatedRemoteFlagState?,
     verification: FeatureFlagVerification?,
     nowEpochMs: Long,
+    localBootstrap: FeatureFlagDecision? = null,
   ): FeatureFlagDecision = when {
-    snapshot == null -> FeatureFlagDecision(false, "legacy", "default_off")
+    snapshot == null -> localBootstrap ?: FeatureFlagDecision(false, "legacy", "default_off")
     snapshot.expiresEpochMs <= nowEpochMs -> FeatureFlagDecision(false, "legacy", "remote_stale", snapshot.revision)
     verification == null || !verification.authenticated -> FeatureFlagDecision(
       false,
@@ -73,7 +80,12 @@ class BleGattFeatureFlagStore(private val context: Context) {
           nowEpochMs = nowEpochMs,
         )
       }
-      val decision = BleGattFeatureFlagPolicy.evaluate(snapshot, verification, nowEpochMs)
+      val decision = BleGattFeatureFlagPolicy.evaluate(
+        snapshot,
+        verification,
+        nowEpochMs,
+        localBootstrapDecision(),
+      )
       val coordinator = CrossProcessBleOwnerCoordinator.forContext(context)
       if (!coordinator.setNativeRequested(decision.newWorkerEnabled)) {
         coordinator.setNativeRequested(false)
@@ -87,8 +99,47 @@ class BleGattFeatureFlagStore(private val context: Context) {
   }
 
   /**
-   * Authenticated native management-plane seam. Flutter intentionally has no mutation bridge.
-   * A revision must be signed, unexpired, strictly monotonic, and bound to the exact Keystore key.
+   * Explicit personal-production control. The APK manifest must authorize the
+   * path, and the resulting consent remains bound to a non-exportable
+   * AndroidKeyStore credential. A remote signed snapshot, when present, keeps
+   * precedence and cannot be bypassed here.
+   */
+  fun setLocalManualEnabled(enabled: Boolean): LocalGattControlResult {
+    if (!AndroidLocalGattBootstrapConfig.isAllowed(context)) {
+      return LocalGattControlResult(false, "apk_policy_disabled", decision())
+    }
+    val mutation = try {
+      withFlagUpdateLock { LocalGattConsentStore(context).setEnabled(enabled) }
+    } catch (_: Exception) {
+      LocalGattConsentMutation(false, "local_consent_store_unavailable")
+    }
+    val current = decision()
+    val reachedRequestedState = if (enabled) current.newWorkerEnabled else !current.newWorkerEnabled
+    return LocalGattControlResult(
+      accepted = mutation.accepted && reachedRequestedState,
+      reason = if (!mutation.accepted) mutation.reason else current.status,
+      decision = current,
+    )
+  }
+
+  fun localConsentStatus(): LocalGattConsentStatus = LocalGattConsentStore(context).status()
+
+  fun localBootstrapAllowed(): Boolean = AndroidLocalGattBootstrapConfig.isAllowed(context)
+
+  fun prepareLocalEnrollmentMaterial(): LocalGattEnrollmentMaterial {
+    if (!AndroidLocalGattBootstrapConfig.isAllowed(context)) {
+      return LocalGattEnrollmentMaterial(false, "apk_policy_disabled")
+    }
+    return try {
+      withFlagUpdateLock { LocalGattConsentStore(context).prepareEnrollmentMaterial() }
+    } catch (_: Exception) {
+      LocalGattEnrollmentMaterial(false, "enrollment_material_unavailable")
+    }
+  }
+
+  /**
+   * Authenticated remote management-plane seam. A revision must be signed,
+   * unexpired, strictly monotonic, and bound to the exact Keystore key.
    */
   fun applyAuthenticatedRemoteEnvelope(
     envelope: RemoteFeatureFlagEnvelope,
@@ -143,6 +194,21 @@ class BleGattFeatureFlagStore(private val context: Context) {
     null
   } catch (_: Exception) {
     null
+  }
+
+  private fun localBootstrapDecision(): FeatureFlagDecision? {
+    if (!AndroidLocalGattBootstrapConfig.isAllowed(context)) return null
+    val local = LocalGattConsentStore(context).status()
+    return when {
+      local.valid && local.enabled -> FeatureFlagDecision(
+        true,
+        "native_gatt",
+        "local_keystore_authenticated",
+      )
+      local.valid -> FeatureFlagDecision(false, "legacy", "local_user_disabled")
+      !local.present -> FeatureFlagDecision(false, "legacy", "local_bootstrap_pending")
+      else -> FeatureFlagDecision(false, "legacy", "local_${local.reason}")
+    }
   }
 
   private fun AuthenticatedRemoteFlagState.toEnvelope(credentialId: ByteArray) = RemoteFeatureFlagEnvelope(

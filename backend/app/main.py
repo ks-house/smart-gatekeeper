@@ -33,11 +33,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 try:
+    from .acl_refresh import AclRefreshWorker
     from .admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
     )
 except ImportError:  # Docker runs uvicorn with /app as the import root.
+    from acl_refresh import AclRefreshWorker
     from admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -46,7 +48,23 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
 try:
     from .acl_management import DeterministicP256Signer
     from .command_security import build_signed_command
-    from .target_boot_registry import TargetBootRegistry
+    from .home_assistant_bridge import (
+        HomeAssistantCommandBridge,
+        bridge_availability_topic,
+        bridge_request_topic,
+        bridge_result_topic,
+        build_discovery_plan,
+        target_ack_topic,
+        target_availability_topic,
+        target_status_topic,
+    )
+    from .target_acl_delivery import (
+        TargetAclDeliveryTracker,
+        build_target_acl_wire_payload,
+        parse_target_acl_ack,
+        target_acl_ack_topic,
+    )
+    from .target_boot_registry import BootRefreshOutcome, TargetBootRegistry
     from .ops_runtime import (
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
@@ -54,7 +72,23 @@ try:
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_management import DeterministicP256Signer
     from command_security import build_signed_command
-    from target_boot_registry import TargetBootRegistry
+    from home_assistant_bridge import (
+        HomeAssistantCommandBridge,
+        bridge_availability_topic,
+        bridge_request_topic,
+        bridge_result_topic,
+        build_discovery_plan,
+        target_ack_topic,
+        target_availability_topic,
+        target_status_topic,
+    )
+    from target_acl_delivery import (
+        TargetAclDeliveryTracker,
+        build_target_acl_wire_payload,
+        parse_target_acl_ack,
+        target_acl_ack_topic,
+    )
+    from target_boot_registry import BootRefreshOutcome, TargetBootRegistry
     from ops_runtime import (
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
@@ -107,6 +141,21 @@ try:
 except ValueError:
     COMMAND_SIGNING_KEY_ID = 0
 
+# Home Assistant is never allowed to publish Target command envelopes.  When
+# explicitly enabled, it writes to a backend-only ingress namespace and this
+# process creates a fresh boot-bound signed command after validating live
+# Target telemetry.  Manual door opening has an independent opt-in.
+HA_BRIDGE_ENABLED = os.getenv("HA_BRIDGE_ENABLED", "false").strip().lower() == "true"
+HA_BRIDGE_ALLOW_MANUAL_REMOTE = (
+    os.getenv("HA_BRIDGE_ALLOW_MANUAL_REMOTE", "false").strip().lower() == "true"
+)
+try:
+    HA_BRIDGE_STATUS_MAX_AGE_SECONDS = float(
+        os.getenv("HA_BRIDGE_STATUS_MAX_AGE_SECONDS", "15")
+    )
+except ValueError:
+    HA_BRIDGE_STATUS_MAX_AGE_SECONDS = 15.0
+
 BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 # ── 문 제어 API 인증 키 (issue.md P3-22) ──────────────────────────────
@@ -145,6 +194,16 @@ ACL_TRANSITION_SIGNING_KEY_ID_RAW = os.getenv(
     "ACL_TRANSITION_SIGNING_KEY_ID", ""
 ).strip()
 ACL_LEASE_SECONDS_RAW = os.getenv("ACL_LEASE_SECONDS", "900").strip()
+ACL_PERSONAL_ENROLLMENT_ENABLED = (
+    os.getenv("ACL_PERSONAL_ENROLLMENT_ENABLED", "false").strip().lower()
+    == "true"
+)
+ACL_PERSONAL_TENANT_ID = (
+    os.getenv("ACL_PERSONAL_TENANT_ID", "").strip() or COMMAND_TENANT_ID
+)
+ACL_PERSONAL_DOOR_ID = (
+    os.getenv("ACL_PERSONAL_DOOR_ID", "").strip() or COMMAND_DOOR_ID
+)
 
 
 # ─── 문 제어 API 인증 (issue.md P3-22) ────────────────────────
@@ -198,6 +257,8 @@ def get_db():
 
 
 _target_boot_registry = TargetBootRegistry(get_db)
+_target_acl_delivery_tracker = TargetAclDeliveryTracker()
+_acl_refresh_worker: AclRefreshWorker | None = None
 _P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 
 
@@ -283,7 +344,7 @@ def _persistent_publisher() -> PersistentMqttPublisher:
         return _mqtt_publisher
 
 
-def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
+def _publish_mqtt_msg(topic: str, payload: str | bytes, label: str) -> bool:
     """Publish through one bounded persistent hostname-verified MQTTS session."""
     if not HAS_PAHO_MQTT:
         log.warning("[%s] MQTT dependency unavailable", label)
@@ -301,7 +362,84 @@ def _publish_mqtt_msg(topic: str, payload: str, label: str) -> bool:
     return published
 
 
-def _signed_target_command(action: str, value: int = 0) -> bool:
+def _acl_target_topics(
+    logical_topic: str,
+    envelope: dict,
+    target_credentials: dict[str, dict[str, str]],
+) -> list[str]:
+    """Resolve one signed tenant/door ACL to exact authorized Target topics."""
+    parts = logical_topic.split("/")
+    fields = envelope.get("fields")
+    if (
+        len(parts) != 5
+        or parts[:3] != ["gatekeeper", "acl", "v1"]
+        or not isinstance(fields, dict)
+    ):
+        return []
+    tenant_id, door_id = parts[3], parts[4]
+    envelope_door = fields.get("door_id")
+    if not isinstance(envelope_door, str) or not hmac.compare_digest(
+        door_id, envelope_door
+    ):
+        return []
+    return sorted(
+        f"gatekeeper/v1/targets/{target_id}/acl"
+        for target_id, authorization in target_credentials.items()
+        if hmac.compare_digest(authorization["tenant_id"], tenant_id)
+        and hmac.compare_digest(authorization["door_id"], door_id)
+    )
+
+
+def _publish_acl_to_targets(
+    logical_topic: str,
+    envelope: dict,
+    target_credentials: dict[str, dict[str, str]],
+    *,
+    publish_message,
+    delivery_tracker: TargetAclDeliveryTracker,
+    ack_timeout_seconds: float = 5.0,
+) -> bool:
+    target_topics = _acl_target_topics(
+        logical_topic, envelope, target_credentials
+    )
+    fields = envelope.get("fields")
+    if not target_topics or not isinstance(fields, dict):
+        return False
+    acl_version = fields.get("acl_version")
+    if (
+        isinstance(acl_version, bool)
+        or not isinstance(acl_version, int)
+        or acl_version < 1
+    ):
+        return False
+    try:
+        payload = build_target_acl_wire_payload(envelope)
+    except (TypeError, ValueError):
+        return False
+    target_ids = [target_topic.split("/")[3] for target_topic in target_topics]
+    if not delivery_tracker.begin_delivery(target_ids, acl_version):
+        return False
+    if not all(
+        publish_message(target_topic, payload, "MQTT-ACL")
+        for target_topic in target_topics
+    ):
+        return False
+    return delivery_tracker.wait_for(
+        target_ids,
+        acl_version,
+        timeout_seconds=ack_timeout_seconds,
+    )
+
+
+def _signed_target_command(
+    action: str,
+    value: int = 0,
+    *,
+    expected_boot_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    nonce: Optional[str] = None,
+    ttl_seconds: int = 60,
+) -> bool:
     provisioning_error = _command_provisioning_error()
     if provisioning_error is not None:
         log.error("[MQTT-COMMAND] provisioning incomplete: %s", provisioning_error)
@@ -309,6 +447,10 @@ def _signed_target_command(action: str, value: int = 0) -> bool:
     try:
         boot_id = _target_boot_registry.current_boot_id(COMMAND_TARGET_ID)
         if boot_id is None:
+            return False
+        if expected_boot_id is not None and not secrets.compare_digest(
+            boot_id, expected_boot_id
+        ):
             return False
         scalar = int(COMMAND_SIGNING_PRIVATE_SCALAR_HEX, 16)
         signer = DeterministicP256Signer(scalar, COMMAND_SIGNING_KEY_ID)
@@ -320,6 +462,9 @@ def _signed_target_command(action: str, value: int = 0) -> bool:
             boot_id=boot_id,
             action=action,
             value=value,
+            ttl_seconds=ttl_seconds,
+            session_id=session_id,
+            nonce=nonce,
         )
     except (TypeError, ValueError):
         return False
@@ -331,9 +476,76 @@ def _signed_target_command(action: str, value: int = 0) -> bool:
     )
 
 
+def _refresh_target_acl(
+    target_id: str, tenant_id: str, door_id: str, reason: str
+) -> bool:
+    authorization = globals().get("_acl_target_credentials", {}).get(target_id)
+    service = globals().get("_acl_service")
+    if authorization is None or service is None:
+        return False
+    if not (
+        secrets.compare_digest(authorization["tenant_id"], tenant_id)
+        and secrets.compare_digest(authorization["door_id"], door_id)
+    ):
+        return False
+    refresh_reason = (
+        "TARGET_BOOT_REFRESH" if reason == "target_boot" else "ACL_LEASE_REFRESH"
+    )
+    try:
+        envelope = service.refresh_snapshot(
+            tenant_id,
+            door_id,
+            actor_ref=f"system:{reason}",
+            reason=refresh_reason,
+        )
+    except Exception:
+        log.warning("[MQTT-ACL] bounded asynchronous refresh failed")
+        return False
+    fields = envelope.get("fields") if isinstance(envelope, dict) else None
+    return bool(
+        isinstance(fields, dict)
+        and isinstance(fields.get("acl_version"), int)
+        and fields["acl_version"] > 0
+    )
+
+
+def _start_acl_refresh_worker() -> AclRefreshWorker | None:
+    global _acl_refresh_worker
+    if not globals().get("_acl_runtime_ready", False):
+        return None
+    try:
+        worker = AclRefreshWorker(
+            globals().get("_acl_target_credentials", {}),
+            _refresh_target_acl,
+            lease_seconds=int(globals().get("_acl_lease_seconds", 0)),
+        )
+    except (TypeError, ValueError):
+        log.error("[MQTT-ACL] refresh worker configuration invalid")
+        return None
+    _acl_refresh_worker = worker
+    worker.start()
+    return worker
+
+
+def _request_target_acl_refresh(target_id: str, reason: str) -> bool:
+    worker = _acl_refresh_worker
+    return worker.request(target_id, reason) if worker is not None else False
+
+
 def _start_target_boot_subscriber():
     if _command_provisioning_error() is not None or not HAS_PAHO_MQTT:
         return None
+    bridge = None
+    if HA_BRIDGE_ENABLED:
+        try:
+            bridge = HomeAssistantCommandBridge(
+                COMMAND_TARGET_ID,
+                allow_manual_remote=HA_BRIDGE_ALLOW_MANUAL_REMOTE,
+                status_max_age_seconds=HA_BRIDGE_STATUS_MAX_AGE_SECONDS,
+            )
+        except ValueError:
+            log.error("[MQTT-HA] bridge configuration invalid; bridge remains disabled")
+
     client = _create_mqtt_client(f"gatekeeper-boot-registry-{time.time_ns()}")
     client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
     client.tls_set(
@@ -342,21 +554,280 @@ def _start_target_boot_subscriber():
         tls_version=ssl.PROTOCOL_TLS_CLIENT,
     )
     client.tls_insecure_set(False)
+    if bridge is not None:
+        client.will_set(
+            bridge_availability_topic(COMMAND_TARGET_ID),
+            payload="offline",
+            qos=1,
+            retain=True,
+        )
+
+    def publish_bridge_result(connected_client, result: dict) -> None:
+        connected_client.publish(
+            bridge_result_topic(COMMAND_TARGET_ID),
+            json.dumps(result, separators=(",", ":"), sort_keys=True),
+            qos=1,
+            retain=False,
+        )
+
+    def bridge_boot_is_aligned() -> bool:
+        if bridge is None:
+            return False
+        live_boot_id = bridge.live_boot_id()
+        registered_boot_id = _target_boot_registry.current_boot_id(
+            COMMAND_TARGET_ID
+        )
+        return bool(
+            live_boot_id
+            and registered_boot_id
+            and secrets.compare_digest(live_boot_id, registered_boot_id)
+        )
 
     def on_connect(connected_client, _userdata, _flags, reason_code, *args):
         if int(reason_code) == 0:
-            connected_client.subscribe("gatekeeper/v1/targets/+/boot", qos=1)
+            _target_acl_delivery_tracker.reset_transport()
+            status_target_ids = {COMMAND_TARGET_ID}
+            status_target_ids.update(
+                globals().get("_acl_target_credentials", {}).keys()
+            )
+            status_target_ids.discard("")
+            for target_id in sorted(status_target_ids):
+                connected_client.subscribe(
+                    f"gatekeeper/v1/targets/{target_id}/boot", qos=1
+                )
+            if globals().get("_acl_runtime_ready", False):
+                for target_id in globals().get("_acl_target_credentials", {}):
+                    connected_client.subscribe(
+                        target_acl_ack_topic(target_id), qos=1
+                    )
 
-    def on_message(_client, _userdata, message):
-        if not _target_boot_registry.refresh_from_authenticated_topic(
-            message.topic, bytes(message.payload)
-        ):
-            log.warning("[MQTT-BOOT] rejected boot refresh")
+            for target_id in sorted(status_target_ids):
+                connected_client.subscribe(target_status_topic(target_id), qos=1)
+
+            if bridge is None:
+                return
+            bridge.reset_transport()
+            connected_client.subscribe(
+                target_availability_topic(COMMAND_TARGET_ID), qos=1
+            )
+            connected_client.subscribe(target_ack_topic(COMMAND_TARGET_ID), qos=1)
+            connected_client.subscribe(
+                bridge_request_topic(COMMAND_TARGET_ID, "+"), qos=1
+            )
+            connected_client.publish(
+                bridge_availability_topic(COMMAND_TARGET_ID),
+                "offline",
+                qos=1,
+                retain=True,
+            )
+            for publication in build_discovery_plan(
+                COMMAND_TARGET_ID,
+                allow_manual_remote=HA_BRIDGE_ALLOW_MANUAL_REMOTE,
+            ):
+                connected_client.publish(
+                    publication.topic,
+                    publication.payload,
+                    qos=publication.qos,
+                    retain=publication.retain,
+                )
+
+    def on_message(connected_client, _userdata, message):
+        payload = bytes(message.payload)
+        if message.topic.endswith("/boot"):
+            boot_target_id = next(
+                (
+                    target_id
+                    for target_id in {
+                        COMMAND_TARGET_ID,
+                        *globals().get("_acl_target_credentials", {}).keys(),
+                    }
+                    if target_id
+                    and secrets.compare_digest(
+                        message.topic,
+                        f"gatekeeper/v1/targets/{target_id}/boot",
+                    )
+                ),
+                None,
+            )
+            if boot_target_id is None or bool(getattr(message, "retain", False)):
+                log.warning("[MQTT-BOOT] rejected boot refresh")
+                return
+            refresh_outcome = (
+                _target_boot_registry.refresh_outcome_from_authenticated_topic(
+                    message.topic, payload
+                )
+            )
+            if refresh_outcome is BootRefreshOutcome.REJECTED:
+                log.warning("[MQTT-BOOT] rejected boot refresh")
+            elif refresh_outcome is BootRefreshOutcome.ADVANCED:
+                _request_target_acl_refresh(boot_target_id, "target_boot")
+            return
+        if message.topic.endswith("/acl/ack"):
+            ack = parse_target_acl_ack(
+                message.topic,
+                payload,
+                retained=bool(getattr(message, "retain", False)),
+            )
+            authorization = globals().get("_acl_target_credentials", {}).get(
+                ack.target_id if ack is not None else ""
+            )
+            acl_service = globals().get("_acl_service")
+            if ack is None or authorization is None or acl_service is None:
+                log.warning("[MQTT-ACL] rejected unauthenticated or malformed Target ACK")
+                return
+            snapshot = acl_service.store.snapshot_by_version(
+                authorization["tenant_id"],
+                authorization["door_id"],
+                ack.acl_version,
+            )
+            if snapshot is None:
+                log.warning("[MQTT-ACL] rejected ACK for unknown snapshot")
+                return
+            try:
+                acl_service.ack_snapshot(
+                    authorization["tenant_id"],
+                    ack.target_id,
+                    authorization["door_id"],
+                    ack.acl_version,
+                    snapshot["sha256"],
+                    "APPLIED",
+                )
+            except Exception:
+                log.warning("[MQTT-ACL] failed to persist Target application ACK")
+                return
+            _target_acl_delivery_tracker.mark_applied(
+                ack.target_id, ack.acl_version
+            )
+            return
+
+
+        status_target_id = next(
+            (
+                target_id
+                for target_id in {
+                    COMMAND_TARGET_ID,
+                    *globals().get("_acl_target_credentials", {}).keys(),
+                }
+                if target_id
+                and secrets.compare_digest(
+                    message.topic, target_status_topic(target_id)
+                )
+            ),
+            None,
+        )
+        if status_target_id is not None:
+            retained = bool(getattr(message, "retain", False))
+            refresh_outcome = (
+                _target_boot_registry.refresh_outcome_from_authenticated_status_topic(
+                    message.topic, payload, retained=retained
+                )
+            )
+            if refresh_outcome is BootRefreshOutcome.REJECTED:
+                log.warning("[MQTT-BOOT] rejected status boot refresh")
+                return
+            if refresh_outcome is BootRefreshOutcome.ADVANCED:
+                _request_target_acl_refresh(status_target_id, "target_boot")
+            if bridge is None or not secrets.compare_digest(
+                status_target_id, COMMAND_TARGET_ID
+            ):
+                return
+            if not bridge.note_status(message.topic, payload):
+                log.warning("[MQTT-HA] rejected malformed Target status")
+                return
+            online = bridge_boot_is_aligned()
+            connected_client.publish(
+                bridge_availability_topic(COMMAND_TARGET_ID),
+                "online" if online else "offline",
+                qos=1,
+                retain=True,
+            )
+            return
+        if bridge is None:
+            return
+
+        if message.topic == target_availability_topic(COMMAND_TARGET_ID):
+            if bool(getattr(message, "retain", False)):
+                return
+            state = bridge.note_target_availability(message.topic, payload)
+            if state is not None:
+                connected_client.publish(
+                    bridge_availability_topic(COMMAND_TARGET_ID),
+                    (
+                        "online"
+                        if state == "online" and bridge_boot_is_aligned()
+                        else "offline"
+                    ),
+                    qos=1,
+                    retain=True,
+                )
+            return
+
+        if message.topic == target_ack_topic(COMMAND_TARGET_ID):
+            if bool(getattr(message, "retain", False)):
+                return
+            ack = bridge.accept_ack(message.topic, payload)
+            if ack.accepted:
+                publish_bridge_result(
+                    connected_client,
+                    {
+                        "action": ack.action,
+                        "reason": ack.reason,
+                        "result_code": ack.result_code,
+                        "session_id": ack.session_id,
+                        "stage": "target_ack",
+                    },
+                )
+            return
+
+        request_prefix = bridge_request_topic(COMMAND_TARGET_ID, "+")[:-1]
+        if message.topic.startswith(request_prefix):
+            decision = bridge.accept_request(
+                message.topic,
+                payload,
+                retained=bool(getattr(message, "retain", False)),
+                duplicate=bool(getattr(message, "dup", False)),
+            )
+            if not decision.accepted or decision.command is None:
+                publish_bridge_result(
+                    connected_client,
+                    {"reason": decision.reason, "stage": "rejected"},
+                )
+                if decision.reason == "target_status_stale":
+                    connected_client.publish(
+                        bridge_availability_topic(COMMAND_TARGET_ID),
+                        "offline",
+                        qos=1,
+                        retain=True,
+                    )
+                return
+            command = decision.command
+            published = _signed_target_command(
+                command.action,
+                command.value,
+                expected_boot_id=command.expected_boot_id,
+                session_id=command.session_id,
+                nonce=command.nonce,
+                ttl_seconds=15,
+            )
+            if published:
+                bridge.note_published(command)
+            else:
+                bridge.note_publish_failed(command)
+            publish_bridge_result(
+                connected_client,
+                {
+                    "action": command.action,
+                    "reason": "broker_accepted" if published else "publish_failed",
+                    "session_id": command.session_id,
+                    "stage": "backend_publish",
+                },
+            )
 
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
     client.loop_start()
+    client._sgk_ha_bridge = bridge
     return client
 
 
@@ -465,6 +936,11 @@ async def lifespan(app: FastAPI):
         "[STARTUP] verified MQTTS broker configured; per-Target signed command plane=%s",
         bool(COMMAND_TARGET_ID and COMMAND_SIGNING_KEY_ID),
     )
+    log.info(
+        "[STARTUP] Home Assistant signed-command bridge=%s manual_remote=%s",
+        HA_BRIDGE_ENABLED,
+        HA_BRIDGE_ENABLED and HA_BRIDGE_ALLOW_MANUAL_REMOTE,
+    )
     if GATEKEEPER_API_KEY:
         log.info("[STARTUP] 🔐 문 제어 API 키 인증 활성화 (X-API-KEY)")
     else:
@@ -474,14 +950,31 @@ async def lifespan(app: FastAPI):
             "미등록/미승인 기기 거부와 DB 장애 시 fail-closed 는 계속 동작합니다."
         )
     boot_subscriber = None
+    acl_refresh_worker = None
     try:
         boot_subscriber = _start_target_boot_subscriber()
     except Exception as error:
         log.error("[MQTT-BOOT] subscriber unavailable; commands stay disabled")
     try:
+        acl_refresh_worker = _start_acl_refresh_worker()
+    except Exception:
+        log.error("[MQTT-ACL] refresh worker unavailable; local GATT stays fail-closed")
+    try:
         yield
     finally:
+        if acl_refresh_worker is not None:
+            acl_refresh_worker.stop()
         if boot_subscriber is not None:
+            if getattr(boot_subscriber, "_sgk_ha_bridge", None) is not None:
+                try:
+                    boot_subscriber.publish(
+                        bridge_availability_topic(COMMAND_TARGET_ID),
+                        "offline",
+                        qos=1,
+                        retain=True,
+                    ).wait_for_publish(timeout=2.0)
+                except Exception:
+                    pass
             boot_subscriber.loop_stop()
             boot_subscriber.disconnect()
         if _mqtt_publisher is not None:
@@ -634,6 +1127,15 @@ if ACL_MANAGEMENT_ENABLED:
     ]
     if ACL_LEGACY_DEVICE_LOOKUP_ENABLED and not ACL_LEGACY_REF_HMAC_KEY:
         _acl_missing.append("ACL_LEGACY_REF_HMAC_KEY")
+    if ACL_PERSONAL_ENROLLMENT_ENABLED:
+        for _name, _value in (
+            ("GATEKEEPER_API_KEY", GATEKEEPER_API_KEY),
+            ("ACL_LEGACY_REF_HMAC_KEY", ACL_LEGACY_REF_HMAC_KEY),
+            ("ACL_PERSONAL_TENANT_ID", ACL_PERSONAL_TENANT_ID),
+            ("ACL_PERSONAL_DOOR_ID", ACL_PERSONAL_DOOR_ID),
+        ):
+            if not _value:
+                _acl_missing.append(_name)
     if _acl_missing:
         log.error(
             "[ACL-MANAGEMENT] feature remains unavailable; missing required settings: %s",
@@ -706,13 +1208,40 @@ if ACL_MANAGEMENT_ENABLED:
                     raise ValueError(
                         "ACL_TARGET_AUTH_JSON cannot assign one door to multiple tenants"
                     )
+            if ACL_PERSONAL_ENROLLMENT_ENABLED:
+                if (
+                    len(ACL_PERSONAL_TENANT_ID) != 32
+                    or any(
+                        char not in "0123456789abcdef"
+                        for char in ACL_PERSONAL_TENANT_ID
+                    )
+                    or len(ACL_PERSONAL_DOOR_ID) != 32
+                    or any(
+                        char not in "0123456789abcdef"
+                        for char in ACL_PERSONAL_DOOR_ID
+                    )
+                    or not any(
+                        secrets.compare_digest(
+                            authorization["tenant_id"], ACL_PERSONAL_TENANT_ID
+                        )
+                        and secrets.compare_digest(
+                            authorization["door_id"], ACL_PERSONAL_DOOR_ID
+                        )
+                        for authorization in _acl_target_credentials.values()
+                    )
+                ):
+                    raise ValueError(
+                        "personal enrollment scope must match one configured Target"
+                    )
 
             class _AclMqttPublisher:
                 def publish(self, topic: str, envelope: dict) -> bool:
-                    return _publish_mqtt_msg(
+                    return _publish_acl_to_targets(
                         topic,
-                        json.dumps(envelope, sort_keys=True, separators=(",", ":")),
-                        "MQTT-ACL",
+                        envelope,
+                        _acl_target_credentials,
+                        publish_message=_publish_mqtt_msg,
+                        delivery_tracker=_target_acl_delivery_tracker,
                     )
 
             _acl_signer = DeterministicP256Signer(
@@ -750,6 +1279,10 @@ if ACL_MANAGEMENT_ENABLED:
                         enrollment_credentials=_acl_enrollment_credentials,
                         admin_key=ACL_ADMIN_API_KEY,
                         target_credentials=_acl_target_credentials,
+                        personal_enabled=ACL_PERSONAL_ENROLLMENT_ENABLED,
+                        personal_api_key=GATEKEEPER_API_KEY,
+                        personal_tenant_id=ACL_PERSONAL_TENANT_ID,
+                        personal_door_id=ACL_PERSONAL_DOOR_ID,
                     ),
                 )
             )

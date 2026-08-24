@@ -3393,3 +3393,22 @@
 
 - Branched from local commit `6018b2a4922bec025f89fe8e2aa81165757c840d`, whose parent is exact remote main `afb1360a578d0dc6161fb8a53c655270edae845e`, as `codex/ha-incident-workspace-hygiene-20260824` without rebasing or force-updating any ref.
 - Revalidated the four-file scope: root-local ignore rules, the privacy-minimized historical Home Assistant incident page, its navigation entry and append-only evidence. No production firmware, workflow, Secret, ignored delivery artifact or physical Target state changes in this pull request.
+
+## [2026-08-24] compile | Reconcile personal GATT and signed Home Assistant control contracts
+
+- Documented `esp32c6_personal_production` as the single-installation exception that compiles Hardwareless ON only with valid door and ACL trust, performs one provisioning-gated NVS enable migration and thereafter preserves persisted false as the local kill switch. Default developer and commercial production profiles remain compile-OFF.
+- Documented the AndroidKeyStore public-only bootstrap through authenticated personal enrollment, exact Target ACL application before native ON, native-authoritative consent and BLE ownership, and the separation between local GATT, legacy pre-arm and signed Backend/MQTT `manual_remote`.
+- Documented Home Assistant controls as Backend ingress only: fresh Target boot/status, bounded replay/rate/payload checks, a newly signed short-lived exact-Target command, correlated command ACK, and an independent default-OFF manual-open opt-in. Direct plaintext Target control is not restored.
+- Preserved the 16 MB dual-slot OTA, previous-version recovery and commercial/physical release Gates. The new Backend, retained discovery, same-signature APK and personal Target image are recorded as source/build candidates, not as live NAS, phone, Target, GATT, relay, health-valid or rollback evidence.
+
+## [2026-08-24] lint | Verify personal GATT and HA documentation boundaries
+
+- Rechecked all relative links in the ten changed wiki pages and passed `git diff --check` for their exact scope. No new page was added, so `wiki/index.md` did not require a navigation change; `raw/` remained untouched and this entry was appended without rewriting prior log history.
+- Reconciled the recorded fresh software evidence: clean Flutter analysis, Flutter 35/35 and native GATT Gradle success; personal/commercial Target builds, Hardwareless 9/9, personal workflow 6/6, physical profile 5/5, Target auto-publish 18/18 and OTA gate 78/78. The personal image is 1,844,880 bytes in a 7,340,032-byte slot with 5,495,152 bytes headroom.
+- A local focused Backend run passed 40 HA bridge, ACL API and ACL-management tests; the separate Target ACL delivery module was not collected in that shell because optional `pymysql` was absent, so no full Backend-suite claim is made here. Live deployment and end-to-end device evidence remain pending.
+
+## [2026-08-25] fix | Bound ACL refresh to real Target boot advances
+
+- Distinguished `advanced`, `unchanged` and `rejected` authenticated boot observations while preserving the existing boolean registry API for compatibility. The first authenticated non-retained boot or fresh status observation of an increased boot count queues `TARGET_BOOT_REFRESH` exactly once; the other observation and ordinary MQTT reconnect repeats are unchanged. The Backend-start worker retains its immediate lease recovery pass.
+- Added regressions for status-first, boot-first, unchanged reconnect and retained-status ordering, then passed the focused boot-registry, ACL refresh and ACL management suite. This removes routine ACL version growth and avoidable Target NVS writes without weakening missed-boot recovery.
+- Recorded the personal enrollment endpoint as a supervised commissioning exception: keep it enabled only through the connected phone's exact Target ACL ACK, then disable it. Source/build checks remain distinct from the pending NAS, broker, HA, phone, Target, relay and OTA installation evidence.

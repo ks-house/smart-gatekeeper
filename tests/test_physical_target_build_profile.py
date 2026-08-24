@@ -32,6 +32,7 @@ class PhysicalTargetBuildProfileTests(unittest.TestCase):
     self.assertIn("[env:esp32c6_production]", config)
     self.assertIn("build_unflags          = -DSGK_PRODUCTION_BUILD=0", config)
     self.assertIn("-DSGK_PRODUCTION_BUILD=1", config)
+    self.assertIn("[env:esp32c6_personal_production]", config)
 
   def test_n16_dual_ota_layout_and_release_headroom(self):
     slot_size, usage = FLASH_LAYOUT.verify_layout(
@@ -55,7 +56,7 @@ class PhysicalTargetBuildProfileTests(unittest.TestCase):
   def test_personal_installation_builds_physical_target_profile(self):
     workflow = (ROOT / ".github" / "workflows" /
                 "personal_installation_firmware.yml").read_text(encoding="utf-8")
-    self.assertIn("pio run -e esp32c6_production", workflow)
+    self.assertIn("pio run -e esp32c6_personal_production", workflow)
     self.assertIn("ESP32-C6-WROOM-1-N16 16MB dual OTA", workflow)
     self.assertIn("verify_target_flash_layout.py", workflow)
     self.assertIn("--max-slot-usage-percent 80", workflow)

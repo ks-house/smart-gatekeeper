@@ -27,7 +27,9 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.plan = MIGRATION.build_plan(self.target_id)
 
   def test_plan_updates_exactly_15_read_only_entities(self):
-    updates = [item for item in self.plan if item.payload]
+    updates = [
+        item for item in self.plan if item.payload and
+        "command_topic" not in json.loads(item.payload)]
     self.assertEqual(len(updates), 15)
     self.assertEqual(
         sum("/binary_sensor/" in item.topic for item in updates), 2)
@@ -55,12 +57,32 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
       self.assertEqual(publication.qos, 1)
 
   def test_state_topics_use_only_secure_target_namespace(self):
-    updates = [json.loads(item.payload) for item in self.plan if item.payload]
+    updates = [
+        json.loads(item.payload) for item in self.plan if item.payload and
+        "command_topic" not in json.loads(item.payload)]
     for config in updates:
       self.assertEqual(config["state_topic"], f"{self.prefix}/status")
       self.assertEqual(config["expire_after"], 30)
       self.assertNotIn("smart-gatekeeper/", config["state_topic"])
       self.assertNotIn("gatekeeper/config/", config["state_topic"])
+
+  def test_secure_controls_write_only_to_backend_bridge(self):
+    plan = MIGRATION.build_plan(
+        self.target_id, allow_manual_remote=True)
+    controls = [
+        json.loads(item.payload) for item in plan if item.payload and
+        "command_topic" in json.loads(item.payload)]
+    self.assertEqual(7, len(controls))
+    for config in controls:
+      self.assertTrue(config["command_topic"].startswith(
+          f"gatekeeper/v1/ha-bridge/{self.target_id}/request/"))
+      self.assertNotEqual(
+          f"{self.prefix}/command", config["command_topic"])
+      self.assertEqual(
+          f"gatekeeper/v1/ha-bridge/{self.target_id}/availability",
+          config["availability_topic"])
+      self.assertFalse(config["retain"])
+      self.assertEqual(config["qos"], 1)
 
   def test_periodic_target_status_contains_all_config_values(self):
     source = (ROOT / "src" / "MqttManager.cpp").read_text(encoding="utf-8")
@@ -109,7 +131,8 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
       ])
     output = stdout.getvalue()
     self.assertEqual(result, 0)
-    self.assertIn("DRY_RUN discovery_updates=15", output)
+    self.assertIn("DRY_RUN discovery_updates=21", output)
+    self.assertIn("secure_controls=6 read_only=15", output)
     self.assertIn("No network connection", output)
     self.assertNotIn(secret_user, output)
     self.assertNotIn(secret_password, output)
@@ -209,7 +232,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
           "example.invalid", 8883, self.plan,
           username="hidden-user", password="hidden-password")
 
-    self.assertEqual(len(calls), 22)
+    self.assertEqual(len(calls), 28)
     self.assertTrue(all(qos == 1 and retain for _, _, qos, retain in calls))
 
 

@@ -11,37 +11,32 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('interlock prevents simultaneous hardwareless and legacy prearm',
-        () async {
+    test('obsolete Flutter hardwareless flag is removed on load', () async {
+      SharedPreferences.setMockInitialValues({
+        'ENABLE_HARDWARELESS_RC': true,
+        FeatureFlagService.keyEnableLegacyPrearm: true,
+      });
       final flagService = FeatureFlagService();
-      await flagService.updateFlags(
-        hardwarelessRc: true,
-        legacyPrearm: true, // Should be forced false by interlock
-        killSwitch: false,
-      );
+      await flagService.loadFlags();
+      final prefs = await SharedPreferences.getInstance();
 
-      expect(flagService.enableHardwarelessRc, isTrue);
-      expect(flagService.enableLegacyPrearm, isFalse);
-      expect(flagService.remoteKillSwitch, isFalse);
-    });
-
-    test(
-        'rollback to legacy sets legacyPrearm to true and hardwareless to false',
-        () async {
-      final flagService = FeatureFlagService();
-      await flagService.rollbackToLegacy();
-
-      expect(flagService.enableHardwarelessRc, isFalse);
+      expect(prefs.containsKey('ENABLE_HARDWARELESS_RC'), isFalse);
       expect(flagService.enableLegacyPrearm, isTrue);
       expect(flagService.remoteKillSwitch, isFalse);
     });
 
-    test('trigger kill switch disables hardwareless and legacy prearm',
-        () async {
+    test('rollback to legacy sets legacyPrearm to true', () async {
+      final flagService = FeatureFlagService();
+      await flagService.rollbackToLegacy();
+
+      expect(flagService.enableLegacyPrearm, isTrue);
+      expect(flagService.remoteKillSwitch, isFalse);
+    });
+
+    test('trigger kill switch disables legacy prearm', () async {
       final flagService = FeatureFlagService();
       await flagService.triggerKillSwitch();
 
-      expect(flagService.enableHardwarelessRc, isFalse);
       expect(flagService.enableLegacyPrearm, isFalse);
       expect(flagService.remoteKillSwitch, isTrue);
     });

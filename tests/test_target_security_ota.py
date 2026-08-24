@@ -65,7 +65,11 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         )
         self.assertNotIn("targetId == MQTT_USER", target)
         self.assertIn("CommandResult::kEffectRejected", target)
-        self.assertNotIn(":?", compose)
+        self.assertEqual(compose.count(":?"), 1)
+        self.assertIn(
+            "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
+            compose,
+        )
         self.assertIn("COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:-0}", compose)
         self.assertIn("_command_provisioning_error()", backend)
         self.assertIn("_target_boot_registry.current_boot_id", backend)
@@ -74,12 +78,17 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("not MQTT_PASSWORD", backend)
         self.assertIn("not os.path.isfile(MQTT_CA_FILE)", backend)
 
-    def test_broker_rejects_retained_and_credential_crossover(self) -> None:
+    def test_broker_separates_retained_discovery_from_effect_writers(self) -> None:
         config = (ROOT / "security/mosquitto.conf").read_text(encoding="utf-8")
         acl = (ROOT / "security/target-acl").read_text(encoding="utf-8")
-        self.assertIn("retain_available false", config)
+        self.assertIn("retain_available true", config)
         self.assertIn("allow_anonymous false", config)
         self.assertIn("pattern read gatekeeper/v1/targets/%u/command", acl)
+        self.assertIn("user homeassistant", acl)
+        self.assertIn("topic write gatekeeper/v1/ha-bridge/+/request/+", acl)
+        home_assistant_acl = acl.split("user homeassistant", 1)[1]
+        self.assertNotIn("/command", home_assistant_acl)
+        self.assertNotIn("/acl", home_assistant_acl)
         self.assertNotIn("pattern readwrite gatekeeper/#", acl)
 
     def test_ota_runtime_uses_one_verified_inactive_slot_engine(self) -> None:

@@ -356,7 +356,7 @@ class PersistentMqttPublisher:
             except Exception:
                 pass
 
-    def publish(self, topic: str, payload: str) -> bool:
+    def publish(self, topic: str, payload: str | bytes) -> bool:
         if not self.breaker.permit() or not self._capacity.acquire(blocking=False):
             return False
         try:

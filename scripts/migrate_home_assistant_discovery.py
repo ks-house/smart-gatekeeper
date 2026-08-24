@@ -1,179 +1,38 @@
 #!/usr/bin/env python3
-"""Migrate legacy Home Assistant discovery to the secure Target namespace.
+"""Migrate HA discovery to read-only state and backend-signed controls.
 
-The default mode is a network-free dry run. ``--apply`` publishes 15 retained,
-read-only discovery documents and removes seven retained legacy controls.
+The default mode is a network-free dry run. ``--apply`` first removes seven
+legacy direct-Target controls, then publishes backend-ingress controls and 15
+read-only discovery documents.
 Credentials are accepted only through fixed environment variables or files.
 """
 
 import argparse
-import json
 import os
-import re
 import ssl
 import sys
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
 
 
-DEVICE_ID = "smart_gatekeeper_01"
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+  sys.path.insert(0, str(ROOT))
+
+from backend.app.home_assistant_bridge import (  # noqa: E402
+    Publication,
+    build_discovery_plan,
+)
+
+
 USERNAME_ENV = "SGK_MQTT_USERNAME"
 PASSWORD_ENV = "SGK_MQTT_PASSWORD"
 CA_FILE_ENV = "SGK_MQTT_CA_FILE"
-TARGET_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
-@dataclass(frozen=True)
-class Publication:
-  topic: str
-  payload: str
-  qos: int = 1
-  retain: bool = True
-
-
-def _device():
-  return {
-      "identifiers": [DEVICE_ID],
-      "manufacturer": "KS-House",
-      "model": "ESP32-C6 Door Controller",
-      "name": "Smart Gatekeeper",
-  }
-
-
-def _base_config(name, object_id):
-  return {
-      "device": _device(),
-      "name": name,
-      "unique_id": f"{DEVICE_ID}_{object_id}",
-  }
-
-
-def _discovery_publication(component, object_id, config):
-  topic = f"homeassistant/{component}/{DEVICE_ID}/{object_id}/config"
-  payload = json.dumps(
-      config, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-  return Publication(topic=topic, payload=payload)
-
-
-def build_plan(target_id):
-  """Return seven fail-closed control tombstones, then 15 read-only updates."""
-  if TARGET_ID_PATTERN.fullmatch(target_id) is None:
-    raise ValueError("target ID must match [A-Za-z0-9_-]{1,64}")
-
-  prefix = f"gatekeeper/v1/targets/{target_id}"
-  status_topic = f"{prefix}/status"
-  publications = []
-
-  status_sensors = (
-      ("distance", "[Gatekeeper] 초음파 감지 거리 (mm)",
-       "{{ value_json.distance_mm }}", "mm", "mdi:ruler", None, None),
-      ("distance_cm", "[Gatekeeper] 초음파 감지 거리 (cm)",
-       "{{ value_json.distance_cm }}", "cm", "mdi:ruler-square", None,
-       None),
-      ("state", "[Gatekeeper] 게이트키퍼 동작 상태",
-       "{{ value_json.state }}", None, "mdi:state-machine", None, None),
-      ("ip", "[Gatekeeper] IP 주소", "{{ value_json.ip }}", None,
-       "mdi:ip-network", None, None),
-      ("arm_remaining_s", "[Gatekeeper] Pre-arm 잔여 시간",
-       "{{ value_json.arm_remaining_s }}", "s", "mdi:timer-outline", None,
-       None),
-      ("wifi_rssi", "[Gatekeeper] Wi-Fi 신호 강도 (RSSI)",
-       "{{ value_json.wifi_rssi }}", "dBm", "mdi:wifi",
-       "signal_strength", "diagnostic"),
-      ("free_heap", "[Gatekeeper] Free Heap 메모리",
-       "{{ value_json.free_heap }}", "B", "mdi:memory", None,
-       "diagnostic"),
-      ("uptime_s", "[Gatekeeper] 시스템 가동 시간",
-       "{{ value_json.uptime_s }}", "s", "mdi:clock-outline", "duration",
-       "diagnostic"),
-      ("firmware", "[Gatekeeper] 펌웨어 버전",
-       "{{ value_json.firmware }}", None, "mdi:information-outline", None,
-       "diagnostic"),
-  )
-  for (object_id, name, value_template, unit, icon, device_class,
-       entity_category) in status_sensors:
-    config = _base_config(name, object_id)
-    config.update({
-        "expire_after": 30,
-        "icon": icon,
-        "state_topic": status_topic,
-        "value_template": value_template,
-    })
-    if unit is not None:
-      config["unit_of_measurement"] = unit
-    if device_class is not None:
-      config["device_class"] = device_class
-    if entity_category is not None:
-      config["entity_category"] = entity_category
-    publications.append(_discovery_publication("sensor", object_id, config))
-
-  binary_sensors = (
-      ("door_binary", "[Gatekeeper] 도어 개방 여부",
-       "{% if value_json.state == 'RELAY_HOLD' %}ON{% else %}OFF{% endif %}",
-       "door", None),
-      ("pre_armed", "[Gatekeeper] Pre-arm 활성화 상태",
-       "{% if value_json.is_armed %}ON{% else %}OFF{% endif %}", "lock",
-       "mdi:shield-check"),
-  )
-  for object_id, name, value_template, device_class, icon in binary_sensors:
-    config = _base_config(name, object_id)
-    config.update({
-        "device_class": device_class,
-        "expire_after": 30,
-        "payload_off": "OFF",
-        "payload_on": "ON",
-        "state_topic": status_topic,
-        "value_template": value_template,
-    })
-    if icon is not None:
-      config["icon"] = icon
-    publications.append(
-        _discovery_publication("binary_sensor", object_id, config))
-
-  config_sensors = (
-      ("cfg_tx_power", "[Gatekeeper] [설정] BLE Tx Power",
-       "{{ value_json.tx_power }}", "dBm", "mdi:bluetooth-settings"),
-      ("cfg_distance_thresh", "[Gatekeeper] [설정] 초음파 감지 기준 거리",
-       "{{ value_json.distance_threshold_cm }}", "cm",
-       "mdi:tune-vertical"),
-      ("cfg_prearm_duration", "[Gatekeeper] [설정] Pre-arm 유효 시간",
-       "{{ (value_json.duration_ms / 1000) | int }}", "s",
-       "mdi:clock-edit-outline"),
-      ("cfg_relay_cooldown", "[Gatekeeper] [설정] 릴레이 쿨다운 시간",
-       "{{ (value_json.relay_cooldown_ms / 1000) | int }}", "s",
-       "mdi:timer-cog-outline"),
-  )
-  for object_id, name, value_template, unit, icon in config_sensors:
-    config = _base_config(name, object_id)
-    config.update({
-        "entity_category": "diagnostic",
-        "expire_after": 30,
-        "icon": icon,
-        "state_topic": status_topic,
-        "unit_of_measurement": unit,
-        "value_template": value_template,
-    })
-    publications.append(_discovery_publication("sensor", object_id, config))
-
-  legacy_controls = {
-      "button": ("open_gate", "trigger_ota", "reboot"),
-      "number": (
-          "config_tx_power_num",
-          "config_dist_thresh_num",
-          "config_duration_num",
-          "config_relay_cooldown_num",
-      ),
-  }
-  control_removals = []
-  for component, object_ids in legacy_controls.items():
-    for object_id in object_ids:
-      control_removals.append(Publication(
-          topic=(f"homeassistant/{component}/{DEVICE_ID}/"
-                 f"{object_id}/config"),
-          payload="",
-      ))
-  return control_removals + publications
+def build_plan(target_id, *, allow_manual_remote=False):
+  return build_discovery_plan(
+      target_id, allow_manual_remote=allow_manual_remote)
 
 
 def _read_secret(file_path, env_name, label):
@@ -265,7 +124,7 @@ def publish_plan(host, port, plan, username=None, password=None,
 def build_parser():
   parser = argparse.ArgumentParser(
       description=(
-          "Migrate 15 read-only HA entities to secure per-Target topics; "
+          "Migrate HA state and controls to a backend-signed bridge; "
           "default is network-free dry-run."),
       epilog=(
           f"Credential environment variables: {USERNAME_ENV}, "
@@ -275,6 +134,11 @@ def build_parser():
   parser.add_argument("--broker-port", required=True, type=int)
   parser.add_argument("--target-id", required=True)
   parser.add_argument("--apply", action="store_true")
+  parser.add_argument(
+      "--allow-manual-remote", action="store_true",
+      help=(
+          "publish the direct-open UI only after a dedicated HA broker ACL "
+          "has been reviewed; other controls do not require this flag"))
   parser.add_argument(
       "--tls", action="store_true",
       help="enable TLS with system trust; a CA file also enables TLS")
@@ -288,13 +152,19 @@ def main(argv=None):
   args = build_parser().parse_args(argv)
   if not 1 <= args.broker_port <= 65535:
     raise ValueError("broker port must be between 1 and 65535")
-  plan = build_plan(args.target_id)
+  plan = build_plan(
+      args.target_id, allow_manual_remote=args.allow_manual_remote)
   updates = sum(1 for item in plan if item.payload)
   removals = len(plan) - updates
+  controls = sum(
+      1 for item in plan if item.payload and
+      ("/button/" in item.topic or "/number/" in item.topic))
+  read_only = updates - controls
 
   if not args.apply:
     print(
-        f"DRY_RUN discovery_updates={updates} "
+      f"DRY_RUN discovery_updates={updates} "
+        f"secure_controls={controls} read_only={read_only} "
         f"legacy_control_removals={removals} total={len(plan)}")
     print("No network connection or MQTT publish was attempted.")
     print("Use --apply only after reviewing the target and broker inputs.")
@@ -327,6 +197,7 @@ def main(argv=None):
     return 1
   print(
       f"APPLIED discovery_updates={updates} "
+      f"secure_controls={controls} read_only={read_only} "
       f"legacy_control_removals={removals} total={len(plan)}")
   print("All MQTT publishes used QoS 1 and retained=true.")
   return 0

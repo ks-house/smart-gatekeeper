@@ -5,8 +5,8 @@
 ## 1. Verified per-Target command transport
 
 - The Target accepts MQTT only when the broker host, non-1883 port, unique password, root CA, and signer identity are provisioned.
-- The broker username must equal the Target ID derived from the ESP32-C6 MAC. The Target subscribes only to `gatekeeper/v1/targets/<target_id>/command` and `/acl` with QoS 1.
-- `security/mosquitto.conf` disables anonymous and retained publications. `security/target-acl` uses `%u` pattern rules so one Target credential cannot read or write another Target namespace.
+- The Target subscribes only to `gatekeeper/v1/targets/<target_id>/command` and `/acl` with QoS 1. The generic `security/target-acl` template uses a broker username equal to that Target ID; a personal deployment whose provisioned username differs must use an explicit, exact Target namespace overlay instead of `%u`.
+- `security/mosquitto.conf` disables anonymous access but permits retained Home Assistant discovery and bridge availability. `security/target-acl` keeps Target effect topics isolated: Backend alone can publish non-retained `/command` and `/acl`, while Home Assistant can publish only to the Backend bridge ingress.
 - The backend uses `ssl.CERT_REQUIRED`, a configured CA file, hostname verification, and non-retained QoS 1 publications. Compose can render without production secrets for private-default validation, but blank signer, Target identity, broker, or CA provisioning makes the runtime effect path return failure before publication. There is no plaintext, `CERT_NONE`, `tls_insecure_set(True)`, or Target `setInsecure` fallback.
 
 ## 2. Signed command envelope
@@ -36,7 +36,7 @@ Local recovery is independent of DNS, MQTT, Backend, and manifest-host availabil
 
 ## 6. Production hardening policy
 
-`ENABLE_HARDWARELESS_RC=0` and `SGK_PRODUCTION_BUILD=0` are the default build flags. The lab hardwareless environment is explicit and non-default; a production build with hardwareless RC enabled fails compilation, and compile-OFF firmware clears stale hardwareless NVS enablement. `security/target-production-policy.json` keeps production disabled and requires Secure Boot v2, release-mode flash encryption, encrypted NVS, signed application anti-rollback, locked debug/download paths, unique credentials, and controlled manufacturing rotation evidence.
+`ENABLE_HARDWARELESS_RC=0` and `SGK_PRODUCTION_BUILD=0` are the default build flags. The lab hardwareless environment is explicit and non-default. Commercial `esp32c6_production` rejects Hardwareless enablement at compile time; the separate `esp32c6_personal_production` profile is the reviewed single-installation exception and still fails closed without valid door/ACL trust. Compile-OFF firmware clears stale runtime enablement and starts a new personal migration epoch; after the personal marker exists, persisted false remains the local kill switch. `security/target-production-policy.json` still requires Secure Boot v2, release-mode flash encryption, encrypted NVS, signed application anti-rollback, locked debug/download paths, unique credentials, and controlled manufacturing rotation evidence.
 
 ## 7. Evidence boundary
 

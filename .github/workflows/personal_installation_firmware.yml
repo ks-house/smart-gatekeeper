@@ -52,6 +52,9 @@ jobs:
           SECRET_TARGET_DOOR_ID: ${{ secrets.SECRET_TARGET_DOOR_ID }}
           SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_COMMAND_SIGNING_KEY_ID: ${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}
+          SECRET_HARDWARELESS_DOOR_ID_HEX: ${{ secrets.SECRET_HARDWARELESS_DOOR_ID_HEX }}
+          SECRET_ACL_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}
+          SECRET_ACL_SIGNING_KEY_ID: ${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}
           SECRET_OTA_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
           SECRET_OTA_FIRMWARE_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
           SECRET_OTA_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
@@ -71,7 +74,9 @@ jobs:
             SECRET_API_URL SECRET_API_KEY SECRET_MQTT_HOST SECRET_MQTT_PORT \
             SECRET_MQTT_USER SECRET_MQTT_PASSWORD SECRET_TARGET_TENANT_ID \
             SECRET_TARGET_DOOR_ID SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX \
-            SECRET_COMMAND_SIGNING_KEY_ID SECRET_OTA_VERSION_URL \
+            SECRET_COMMAND_SIGNING_KEY_ID SECRET_HARDWARELESS_DOOR_ID_HEX \
+            SECRET_ACL_SIGNER_PUBLIC_KEY_HEX SECRET_ACL_SIGNING_KEY_ID \
+            SECRET_OTA_VERSION_URL \
             SECRET_OTA_FIRMWARE_URL SECRET_OTA_SIGNER_PUBLIC_KEY_HEX \
             SECRET_OTA_SIGNING_KEY_ID SECRET_OTA_CONTENT_KEY_HEX \
             SECRET_OTA_CONTENT_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
@@ -81,6 +86,12 @@ jobs:
           test "$SECRET_WIFI_SSID" != "YOUR_WIFI_SSID" || fail_secret_contract "SECRET_WIFI_SSID is placeholder"
           test "$SECRET_WIFI_PASSWORD" != "YOUR_WIFI_PASSWORD" || fail_secret_contract "SECRET_WIFI_PASSWORD is placeholder"
           [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX format"
+          [[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]] || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX format"
+          test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "00000000000000000000000000000000" || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX all-zero"
+          test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "ffffffffffffffffffffffffffffffff" || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX all-FF"
+          [[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX format"
+          [[ "$SECRET_ACL_SIGNING_KEY_ID" =~ ^[1-9][0-9]{0,9}$ ]] || fail_secret_contract "SECRET_ACL_SIGNING_KEY_ID format"
+          ((10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295)) || fail_secret_contract "SECRET_ACL_SIGNING_KEY_ID range"
           [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX format"
           [[ "$SECRET_OTA_CONTENT_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "SECRET_OTA_CONTENT_KEY_HEX format"
           test "$SECRET_OTA_CONTENT_KEY_ID" = "personal-target-content-20260824-1" || fail_secret_contract "SECRET_OTA_CONTENT_KEY_ID identity"
@@ -94,9 +105,9 @@ jobs:
           #define SECRET_API_URL "${SECRET_API_URL}"
           #define SECRET_API_KEY "${SECRET_API_KEY}"
           #define SECRET_TEST_BLE_MAC "AA:BB:CC:DD:EE:01"
-          #define SECRET_HARDWARELESS_DOOR_ID_HEX ""
-          #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX ""
-          #define SECRET_ACL_SIGNING_KEY_ID 0
+          #define SECRET_HARDWARELESS_DOOR_ID_HEX "${SECRET_HARDWARELESS_DOOR_ID_HEX}"
+          #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX "${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"
+          #define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}
           #define SECRET_MQTT_HOST "${SECRET_MQTT_HOST}"
           #define SECRET_MQTT_PORT ${SECRET_MQTT_PORT}
           #define SECRET_MQTT_USER "${SECRET_MQTT_USER}"
@@ -126,17 +137,17 @@ jobs:
           FULL_VERSION="2.1.0-g${SHORT_SHA}"
           echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"
           export PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\\\"${FULL_VERSION}\\\""
-          pio run -e esp32c6_production
+          pio run -e esp32c6_personal_production
           python scripts/verify_target_flash_layout.py \
             --partitions partitions_16MB_ota.csv \
-            --firmware .pio/build/esp32c6_production/firmware.bin \
+            --firmware .pio/build/esp32c6_personal_production/firmware.bin \
             --flash-size 0x1000000 \
             --max-slot-usage-percent 80
           mkdir -p dist
-          cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware.bin
-          cp .pio/build/esp32c6_production/firmware.factory.bin dist/firmware.factory.bin
-          cp .pio/build/esp32c6_production/bootloader.bin dist/bootloader.bin
-          cp .pio/build/esp32c6_production/partitions.bin dist/partitions.bin
+          cp .pio/build/esp32c6_personal_production/firmware.bin dist/gatekeeper-firmware.bin
+          cp .pio/build/esp32c6_personal_production/firmware.factory.bin dist/firmware.factory.bin
+          cp .pio/build/esp32c6_personal_production/bootloader.bin dist/bootloader.bin
+          cp .pio/build/esp32c6_personal_production/partitions.bin dist/partitions.bin
           cp include/secrets.h dist/provisioned-secrets.h
           BOOT_APP0=$(find "$HOME/.platformio/packages" -path '*/tools/partitions/boot_app0.bin' -type f -print -quit)
           test -n "$BOOT_APP0"

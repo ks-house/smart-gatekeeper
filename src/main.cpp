@@ -468,9 +468,10 @@ static void initBleAdvertiser() {
 
   BLEDevice::init("SmartGatekeeper");
 
-  bool hwlessEnable = sgk::effectiveFeatureEnabled(
-      ConfigManager::getHardwarelessRcEnabled(false));
-  GattServer::setEnabled(hwlessEnable);
+  const bool hwlessRequested = sgk::effectiveFeatureEnabled(
+      ConfigManager::getHardwarelessRcEnabled(
+          sgk::hardwarelessRuntimeDefaultEnabled()));
+  GattServer::setEnabled(hwlessRequested);
   GattServer::useProductionEventSink();
   GattServer::setProofVerifier(&g_proof_verifier);
   GattServer::setOnAuthPendingCallback([](uint32_t now_ms) {
@@ -484,10 +485,16 @@ static void initBleAdvertiser() {
   });
   GattServer::init();
 
+  const bool hwlessActive = GattServer::isEnabled();
+  if (hwlessRequested && !hwlessActive) {
+    LOGF("[GATT-SECURITY] Hardwareless GATT request failed closed; "
+         "verify per-Target door/signer/ACL provisioning");
+  }
+
   setTxPower(g_tx_power_dbm);
 
   LOGF("[BLE-ADV] ✅ iBeacon 발신 시작! UUID: %s (GATT Hardwareless RC: %s)",
-       GATEKEEPER_BEACON_UUID, hwlessEnable ? "ENABLED" : "DISABLED");
+       GATEKEEPER_BEACON_UUID, hwlessActive ? "ENABLED" : "DISABLED");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -506,7 +513,7 @@ void setup() {
 
   ConfigManager::begin();
   if (!ConfigManager::enforceCompileTimeSecurityPolicy()) {
-    LOGF("[SECURITY-FATAL] Failed to clear stale lab-only NVS flags");
+    LOGF("[SECURITY-FATAL] Failed to enforce Hardwareless NVS policy");
     while (true) delay(1000);
   }
   DiagnosticsManager::begin();

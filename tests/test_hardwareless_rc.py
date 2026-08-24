@@ -12,6 +12,86 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class HardwarelessRcProductionCoreTest(unittest.TestCase):
+    def test_personal_production_enables_transport_with_fail_closed_default(self):
+        platformio = (ROOT / "platformio.ini").read_text(encoding="utf-8")
+        commercial = platformio.split("[env:esp32c6_production]", 1)[1].split(
+            "[env:esp32c6_personal_production]", 1
+        )[0]
+        production = platformio.split(
+            "[env:esp32c6_personal_production]", 1
+        )[1].split(
+            "[env:esp32c6_hwless_rc]", 1
+        )[0]
+        config = (ROOT / "include" / "config.h").read_text(encoding="utf-8")
+        protocol = (ROOT / "include" / "GattProtocol.h").read_text(
+            encoding="utf-8"
+        )
+        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+
+        self.assertNotIn("-DENABLE_HARDWARELESS_RC=1", commercial)
+        self.assertIn("-DSGK_PRODUCTION_BUILD=1", production)
+        self.assertIn("-DENABLE_HARDWARELESS_RC=0", production)
+        self.assertIn("-DENABLE_HARDWARELESS_RC=1", production)
+        self.assertIn("-DSGK_PERSONAL_INSTALLATION_BUILD=1", production)
+        self.assertIn("Commercial production firmware must compile", config)
+        self.assertIn("hardwarelessRuntimeDefaultEnabled", protocol)
+        self.assertIn(
+            "shouldInitializePersonalHardwarelessState", protocol
+        )
+        self.assertIn("(SGK_PRODUCTION_BUILD != 0)", protocol)
+        self.assertIn("(SGK_PERSONAL_INSTALLATION_BUILD != 0)", protocol)
+        self.assertIn("sgk::hardwarelessRuntimeDefaultEnabled()", main)
+        self.assertIn("const bool hwlessActive = GattServer::isEnabled()", main)
+        self.assertIn("hwlessActive ? \"ENABLED\" : \"DISABLED\"", main)
+
+    def test_personal_profile_migrates_stale_compile_off_false_once(self):
+        config = (ROOT / "src" / "ConfigManager.cpp").read_text(
+            encoding="utf-8"
+        )
+        protocol = (ROOT / "include" / "GattProtocol.h").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "personal_runtime_default && !migration_complete &&",
+            protocol,
+        )
+        self.assertIn('preferences.getBool("hwless_p1", false)', config)
+        self.assertIn("getHardwarelessDoorId(&doorId)", config)
+        self.assertIn("isValidAclSignerPublicKeyHex", config)
+        self.assertIn("getAclSigningKeyId() != 0", config)
+        enable_write = config.index('preferences.putBool("hwless_rc", true)')
+        marker_write = config.index('preferences.putBool("hwless_p1", true)')
+        self.assertLess(enable_write, marker_write)
+        self.assertIn('preferences.remove("hwless_p1")', config)
+        self.assertIn('preferences.putBool("hwless_rc", false)', config)
+
+    def test_production_enablement_preserves_fail_closed_authorization(self):
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(encoding="utf-8")
+        verifier = (ROOT / "src" / "TargetProofVerifier.cpp").read_text(
+            encoding="utf-8"
+        )
+        acl = (ROOT / "src" / "TargetAclManager.cpp").read_text(
+            encoding="utf-8"
+        )
+        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "sgk::FailClosedProofVerifier fail_closed_verifier", adapter
+        )
+        self.assertIn(
+            "if (!ConfigManager::getHardwarelessDoorId(&door_id))", adapter
+        )
+        self.assertIn("requested_enabled = false", adapter)
+        self.assertIn("if (!acl_manager_.hasActiveAcl())", verifier)
+        self.assertIn("ResultReason::kAclUnavailable", verifier)
+        self.assertIn("!signer_set_", acl)
+        self.assertIn("expected_signing_key_id_ == 0", acl)
+        self.assertIn(
+            "g_acl_manager.setExpectedSigningKeyId(expectedKeyId)", main
+        )
+        self.assertIn("g_acl_manager.setSignerPublicKey(signer_pubkey)", main)
+
     def test_production_cpp_core(self):
         compiler = shutil.which("g++")
         if compiler is None:

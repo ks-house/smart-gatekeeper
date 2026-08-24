@@ -10,6 +10,8 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.Mac
@@ -184,6 +186,203 @@ class BleCredentialConfigStore(private val context: Context) {
     const val CREDENTIAL_NAME = "credential-v1"
     const val LEGACY_PREFS = "ble_gatt_worker_credential"
     const val LEGACY_KEY = "credential_id_hex"
+  }
+}
+
+data class LocalGattConsentStatus(
+  val present: Boolean,
+  val valid: Boolean,
+  val enabled: Boolean,
+  val credentialProvisioned: Boolean,
+  val reason: String,
+)
+
+data class LocalGattConsentMutation(
+  val accepted: Boolean,
+  val reason: String,
+)
+
+data class LocalGattEnrollmentMaterial(
+  val accepted: Boolean,
+  val reason: String,
+  val credentialIdHex: String? = null,
+  val publicKeySec1Hex: String? = null,
+)
+
+/**
+ * APK-authorized manual-local consent stored under AndroidKeyStore AES-GCM.
+ *
+ * The record contains only hashes of the device credential and public key. The
+ * private P-256 key remains non-exportable, and an existing credential whose
+ * key disappeared is never silently replaced. A future authenticated remote
+ * rollout snapshot still has precedence over this local bootstrap.
+ */
+class LocalGattConsentStore(private val context: Context) {
+  private val store = NoBackupAeadStore(context.applicationContext)
+  private val credentialStore = BleCredentialConfigStore(context.applicationContext)
+  private val signer = AndroidKeystoreCredentialSigner()
+
+  fun status(): LocalGattConsentStatus {
+    val credentialId = credentialStore.credentialId()
+      ?: return LocalGattConsentStatus(false, false, false, false, "credential_absent")
+    var publicKey: ByteArray? = null
+    var plaintext: ByteArray? = null
+    return try {
+      publicKey = signer.publicKeySec1(credentialId)
+      val currentPublicKey = publicKey
+        ?: throw CredentialKeyUnavailableException()
+      plaintext = store.read(CONSENT_NAME)
+        ?: return LocalGattConsentStatus(false, false, false, true, "consent_absent")
+      DataInputStream(ByteArrayInputStream(plaintext)).use { data ->
+        require(data.readUnsignedByte() == SCHEMA_VERSION) { "local consent schema" }
+        val enabledByte = data.readUnsignedByte()
+        require(enabledByte in 0..1) { "local consent enabled" }
+        val credentialHash = ByteArray(32).also(data::readFully)
+        val publicKeyHash = ByteArray(32).also(data::readFully)
+        data.readLong() // Durable diagnostic timestamp; not an authorization clock.
+        require(data.read() == -1) { "local consent trailing bytes" }
+        val credentialMatches = MessageDigest.isEqual(
+          credentialHash,
+          GattCanonicalCodec.sha256(credentialId),
+        )
+        val publicKeyMatches = MessageDigest.isEqual(
+          publicKeyHash,
+          GattCanonicalCodec.sha256(currentPublicKey),
+        )
+        credentialHash.fill(0)
+        publicKeyHash.fill(0)
+        if (!credentialMatches || !publicKeyMatches) {
+          LocalGattConsentStatus(true, false, false, true, "credential_binding_invalid")
+        } else {
+          LocalGattConsentStatus(
+            present = true,
+            valid = true,
+            enabled = enabledByte == 1,
+            credentialProvisioned = true,
+            reason = if (enabledByte == 1) "local_keystore_authenticated" else "local_user_disabled",
+          )
+        }
+      }
+    } catch (_: CredentialKeyUnavailableException) {
+      LocalGattConsentStatus(true, false, false, true, "credential_key_missing")
+    } catch (_: Exception) {
+      LocalGattConsentStatus(true, false, false, true, "local_consent_invalid")
+    } finally {
+      credentialId.fill(0)
+      publicKey?.fill(0)
+      plaintext?.fill(0)
+    }
+  }
+
+  fun setEnabled(enabled: Boolean): LocalGattConsentMutation {
+    var credentialId = credentialStore.credentialId()
+    var generatedCredential = false
+    var publicKey: ByteArray? = null
+    return try {
+      if (credentialId == null) {
+        if (!enabled) {
+          store.delete(CONSENT_NAME)
+          return LocalGattConsentMutation(true, "local_user_disabled")
+        }
+        credentialId = generateCredentialId()
+        generatedCredential = true
+        publicKey = signer.createCredentialKey(credentialId)
+        if (!credentialStore.applyCredentialId(credentialId)) {
+          return LocalGattConsentMutation(false, "credential_store_unavailable")
+        }
+      } else {
+        // Never recreate a missing key for an existing credential identity.
+        publicKey = signer.publicKeySec1(credentialId)
+      }
+      val currentCredentialId = credentialId
+        ?: throw CredentialKeyUnavailableException()
+      val currentPublicKey = publicKey
+        ?: throw CredentialKeyUnavailableException()
+
+      val encoded = ByteArrayOutputStream().use { output ->
+        DataOutputStream(output).use { data ->
+          data.writeByte(SCHEMA_VERSION)
+          data.writeByte(if (enabled) 1 else 0)
+          data.write(GattCanonicalCodec.sha256(currentCredentialId))
+          data.write(GattCanonicalCodec.sha256(currentPublicKey))
+          data.writeLong(System.currentTimeMillis())
+        }
+        output.toByteArray()
+      }
+      try {
+        store.write(CONSENT_NAME, encoded)
+      } finally {
+        encoded.fill(0)
+      }
+      LocalGattConsentMutation(
+        true,
+        if (enabled) {
+          if (generatedCredential) "local_bootstrap_created" else "local_keystore_authenticated"
+        } else {
+          "local_user_disabled"
+        },
+      )
+    } catch (_: CredentialKeyUnavailableException) {
+      LocalGattConsentMutation(false, "credential_key_missing")
+    } catch (_: Exception) {
+      LocalGattConsentMutation(false, "local_consent_store_unavailable")
+    } finally {
+      credentialId?.fill(0)
+      publicKey?.fill(0)
+    }
+  }
+
+  /**
+   * Creates or loads the one public enrollment identity for this app install.
+   * Only public SEC1 material leaves this native boundary; the private key
+   * remains non-exportable in AndroidKeyStore.
+   */
+  fun prepareEnrollmentMaterial(): LocalGattEnrollmentMaterial {
+    var credentialId = credentialStore.credentialId()
+    var publicKey: ByteArray? = null
+    return try {
+      if (credentialId == null) {
+        credentialId = generateCredentialId()
+        publicKey = signer.createCredentialKey(credentialId)
+        if (!credentialStore.applyCredentialId(credentialId)) {
+          return LocalGattEnrollmentMaterial(false, "credential_store_unavailable")
+        }
+      } else {
+        publicKey = signer.publicKeySec1(credentialId)
+      }
+      val currentCredentialId = credentialId
+        ?: throw CredentialKeyUnavailableException()
+      val currentPublicKey = publicKey
+        ?: throw CredentialKeyUnavailableException()
+      LocalGattEnrollmentMaterial(
+        accepted = true,
+        reason = "enrollment_material_ready",
+        credentialIdHex = currentCredentialId.toHex(),
+        publicKeySec1Hex = currentPublicKey.toHex(),
+      )
+    } catch (_: CredentialKeyUnavailableException) {
+      LocalGattEnrollmentMaterial(false, "credential_key_missing")
+    } catch (_: Exception) {
+      LocalGattEnrollmentMaterial(false, "enrollment_material_unavailable")
+    } finally {
+      credentialId?.fill(0)
+      publicKey?.fill(0)
+    }
+  }
+
+  private fun generateCredentialId(): ByteArray {
+    val random = SecureRandom()
+    repeat(4) {
+      val candidate = ByteArray(16).also(random::nextBytes)
+      if (candidate.any { value -> value.toInt() != 0 }) return candidate
+      candidate.fill(0)
+    }
+    throw IllegalStateException("credential CSPRNG unavailable")
+  }
+
+  private companion object {
+    const val CONSENT_NAME = "local-gatt-consent-v1"
+    const val SCHEMA_VERSION = 1
   }
 }
 

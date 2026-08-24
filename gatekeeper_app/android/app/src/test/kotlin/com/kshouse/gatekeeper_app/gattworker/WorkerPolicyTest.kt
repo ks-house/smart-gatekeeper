@@ -10,14 +10,21 @@ import java.util.UUID
 
 class WorkerPolicyTest {
   @Test
-  fun featureFlagIsDefaultOffAndRequiresAuthenticatedUnexpiredRemoteState() {
+  fun featureFlagUsesKeystoreLocalBootstrapOnlyWhenRemoteSnapshotIsAbsent() {
     val now = 1000L
     val authenticated = FeatureFlagVerification(FeatureFlagVerificationStatus.AUTHENTICATED)
     val enabledState = flagState(enabled = true, expiresEpochMs = 2000)
     assertEquals("default_off", BleGattFeatureFlagPolicy.evaluate(null, null, now).status)
+    val local = FeatureFlagDecision(true, "native_gatt", "local_keystore_authenticated")
+    val localEnabled = BleGattFeatureFlagPolicy.evaluate(null, null, now, local)
+    assertTrue(localEnabled.newWorkerEnabled)
+    assertEquals("local_keystore_authenticated", localEnabled.status)
     assertFalse(BleGattFeatureFlagPolicy.evaluate(enabledState, null, now).newWorkerEnabled)
+    assertFalse(BleGattFeatureFlagPolicy.evaluate(enabledState, null, now, local).newWorkerEnabled)
     assertFalse(BleGattFeatureFlagPolicy.evaluate(enabledState, authenticated, 2000).newWorkerEnabled)
-    assertFalse(BleGattFeatureFlagPolicy.evaluate(flagState(false, 2000), authenticated, now).newWorkerEnabled)
+    assertFalse(
+      BleGattFeatureFlagPolicy.evaluate(flagState(false, 2000), authenticated, now, local).newWorkerEnabled,
+    )
     val enabled = BleGattFeatureFlagPolicy.evaluate(enabledState, authenticated, now)
     assertTrue(enabled.newWorkerEnabled)
     assertEquals("native_gatt", enabled.owner)

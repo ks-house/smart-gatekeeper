@@ -1,7 +1,7 @@
 # ESP32-C6 connectable GATT transport (Issue #18)
 
-> Updated: 2026-08-02
-> Status: **software transport implemented and host-tested; production remains OFF and physical gates remain pending**
+> Updated: 2026-08-24
+> Status: **software transport implemented and host-tested; the personal-production profile compiles it ON, while commercial/default profiles and all physical gates remain fail-closed**
 > Tracking: GitHub [#18](https://github.com/ks-house/smart-gatekeeper/issues/18), Epic [#13](https://github.com/ks-house/smart-gatekeeper/issues/13)
 
 ## 1. Scope boundary
@@ -12,10 +12,13 @@ Local GATT accepts only protocol action `1` (hands-free/local open intent). Acti
 
 ## 2. Feature gate
 
-- `ENABLE_HARDWARELESS_RC` defaults to `0`.
-- `sgk::effectiveFeatureEnabled()` makes compile OFF dominate any stale NVS `hwless_rc=true` value.
-- An OFF build does not create the service. Runtime disable disconnects peers, removes/stops the service, clears queued writes, and resets session state. A feature-ON image also requires an exact, nonzero/non-`ff` 16-byte `door_id` provisioned through `secrets.h` or NVS; absent/invalid identity disables auth fail-closed, and no sample door ID ships.
-- Production enable, legacy retirement, and Epic closure remain prohibited by the G0-HW, RELAY-G0..G2, OTA-G1..G4, and OEM/physical gates.
+- `ENABLE_HARDWARELESS_RC` still defaults to `0` in the common developer profile. `esp32c6_production` also remains compile-OFF and has a compile-time guard against accidentally enabling Hardwareless in the commercial image.
+- The explicit `esp32c6_personal_production` profile is the only production image that sets `SGK_PERSONAL_INSTALLATION_BUILD=1` and `ENABLE_HARDWARELESS_RC=1`. It is used by both personal Target CI lanes and does not authorize a commercial deployment.
+- `sgk::effectiveFeatureEnabled()` makes compile OFF dominate any stale NVS `hwless_rc=true` value. An OFF build does not create the service, clears the one-time personal migration epoch and forces runtime OFF.
+- A personal image requests runtime ON exactly once, and only after the Hardwareless door ID, ACL signer public key and signer key ID all validate. The migration marker is written after the ON value; after that marker exists, an operator-persisted `hwless_rc=false` remains an authoritative kill switch across reboot and rebuild.
+- Runtime disable disconnects peers, removes/stops the service, clears queued writes, and resets session state. A feature-ON image still requires an exact, nonzero/non-`ff` 16-byte `door_id` provisioned through `secrets.h` or NVS; it also requires a valid P-256 ACL signer and nonzero signing key ID. Absent/invalid identity or trust material disables auth fail-closed, and no sample door ID or signer ships.
+- `SECRET_HARDWARELESS_DOOR_ID_HEX`, `SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`, and `SECRET_ACL_SIGNING_KEY_ID` are required personal CI inputs. They are real identity/trust values, not fields that accept arbitrary placeholders.
+- Personal source enablement does not retire legacy recovery or close G0-HW, RELAY-G0..G2, OTA-G1..G4, OEM or operator gates.
 
 ## 3. Stable BLE contract
 
@@ -59,7 +62,9 @@ Production now installs a canonical MQTT event sink for the GATT segment. It emi
 
 Native host tests compile `src/GattProtocol.cpp` directly and cover canonical SHA/framing/challenge vectors, N/N-1, strict lengths/ranges, malformed and deterministic fuzz inputs, maximum-size bounds, fragment sequence/duplicates/consistency, 2-second timeout, replay, second-peer rejection, disconnect/reconnect generation races, overflow-before-proof, ACK/error/timeout indication transitions, provisioned door fail-closed, same-core cross-door replay, canonical uint64/session/boot/sequence/causation fields, disable/reset, stale NVS under compile OFF, OTA busy, rollover, rate limiting, null/capacity outputs, fail-closed verifier, test-only allow/deny verifier, action 2 rejection, no relay integration, and advertisement/filter constants.
 
-The feature-ON `esp32c6` PlatformIO build compiles the real BLE server and adapter. These are software checks only. No Samsung/OEM wake run, ESP32-C6 radio capture, GPIO/relay/sensor trial, heap/soak test, power-loss/bootloader test, OTA-G1..G4, or RELAY-G0..G2 evidence is claimed. Issue #18 and Epic #13 remain open.
+The feature-ON `esp32c6_personal_production` PlatformIO build compiles the real BLE server, signed ACL verifier and adapter. On 2026-08-24, both personal and commercial profiles built successfully; the personal `firmware.bin` was 1,844,880 bytes in a 7,340,032-byte OTA slot (25.13%, 5,495,152 bytes headroom). Hardwareless tests passed 9/9, personal workflow tests 6/6, physical profile tests 5/5, Target auto-publish tests 18/18 and the OTA gate passed 78/78. These are software/build checks only.
+
+No firmware from this change is claimed installed by this page. No Android-to-ESP32-C6 GATT exchange, signed ACL apply/lease renewal after reboot, Samsung/OEM wake run, ESP32-C6 radio capture, GPIO/relay/sensor trial, heap/soak test, power-loss/bootloader test, OTA-G1..G4, or RELAY-G0..G2 evidence is claimed. Issue #18 and Epic #13 remain open.
 
 ## 7. Hardware contract
 

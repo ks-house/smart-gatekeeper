@@ -8,10 +8,38 @@
 #define ENABLE_HARDWARELESS_RC 0
 #endif
 
+#ifndef SGK_PRODUCTION_BUILD
+#define SGK_PRODUCTION_BUILD 0
+#endif
+
+#ifndef SGK_PERSONAL_INSTALLATION_BUILD
+#define SGK_PERSONAL_INSTALLATION_BUILD 0
+#endif
+
 namespace sgk {
 
 constexpr bool effectiveFeatureEnabled(bool persisted_runtime_value) {
   return (ENABLE_HARDWARELESS_RC != 0) && persisted_runtime_value;
+}
+
+// A personal-production image requests the GATT transport on by default. The
+// request is still fail-closed in GattServer when the per-Target door identity,
+// canonical event identity, CSPRNG, signed ACL, or client proof is unavailable
+// or invalid. A persisted false remains an explicit local kill switch.
+constexpr bool hardwarelessRuntimeDefaultEnabled() {
+  return (ENABLE_HARDWARELESS_RC != 0) && (SGK_PRODUCTION_BUILD != 0) &&
+         (SGK_PERSONAL_INSTALLATION_BUILD != 0);
+}
+
+// A persisted false written by an older compile-OFF image is ambiguous when a
+// Target first moves to the reviewed personal-production profile. Initialize
+// the runtime request exactly once, and only after provisioning is valid. Once
+// migrated, a later persisted false remains the local kill switch.
+constexpr bool shouldInitializePersonalHardwarelessState(
+    bool personal_runtime_default, bool migration_complete,
+    bool provisioning_valid) {
+  return personal_runtime_default && !migration_complete &&
+         provisioning_valid;
 }
 
 constexpr size_t kFrameHeaderSize = 10;

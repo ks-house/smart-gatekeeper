@@ -13,6 +13,7 @@ import json
 import math
 import secrets
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Optional
@@ -33,6 +34,10 @@ KNOWN_CREDENTIAL_STATUSES = {"PENDING", "ACTIVE", "DISABLED", "REVOKED", "EXPIRE
 
 class MqttPublishError(RuntimeError):
     """Snapshot is durable for pull, but MQTT delivery did not complete."""
+
+
+class CredentialConflictError(ValueError):
+    """A client-selected credential identity conflicts with durable ACL state."""
 
 
 def _u8(value: int) -> bytes:
@@ -401,6 +406,15 @@ def initialize_sqlite_test_schema(connection: sqlite3.Connection) -> None:
     """Create the expanded management schema in an isolated test database."""
     connection.executescript(
         """
+        CREATE TABLE tenants (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          unit_number TEXT NOT NULL,
+          ble_device_mac TEXT UNIQUE,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          tenant_uuid TEXT UNIQUE,
+          credential_mode TEXT NOT NULL DEFAULT 'legacy'
+        );
         CREATE TABLE acl_tenants (
           tenant_id TEXT PRIMARY KEY,
           display_name TEXT NOT NULL,
@@ -792,6 +806,298 @@ class AclStore:
             )
         self._write(statement, (tenant_id, door_id, credential_id, permissions, now))
 
+    def bootstrap_personal_credential_and_queue(
+        self,
+        tenant_id: str,
+        door_id: str,
+        legacy_device_id: str,
+        credential: dict[str, Any],
+        *,
+        actor_ref: str,
+        now: int,
+    ) -> dict[str, Any]:
+        """Atomically authorize one approved legacy device and queue its ACL.
+
+        The raw legacy device identifier is used only for the locked legacy-row
+        lookup and is never copied into the public credential or audit tables.
+        Existing revoked/disabled bindings are deliberately not resurrected.
+        """
+        connection = self._connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                "BEGIN IMMEDIATE" if self.dialect == "sqlite" else "START TRANSACTION"
+            )
+            placeholder = "?" if self.dialect == "sqlite" else "%s"
+            lock_suffix = "" if self.dialect == "sqlite" else " FOR UPDATE"
+
+            def row_value(row: Any, name: str, index: int) -> Any:
+                return row[name] if isinstance(row, dict) else row[index]
+
+            cursor.execute(
+                "SELECT id, name, unit_number, tenant_uuid, is_active, credential_mode "
+                "FROM tenants "
+                f"WHERE UPPER(ble_device_mac)={placeholder}{lock_suffix}",
+                (legacy_device_id.upper(),),
+            )
+            legacy_rows = cursor.fetchall()
+            if len(legacy_rows) != 1:
+                raise PermissionError("legacy device is not approved")
+            legacy = legacy_rows[0]
+            legacy_id = int(row_value(legacy, "id", 0))
+            legacy_tenant_id = row_value(legacy, "tenant_uuid", 3)
+            legacy_active = bool(row_value(legacy, "is_active", 4))
+            if not legacy_active:
+                raise PermissionError("legacy device is not approved")
+            if legacy_tenant_id is not None and (
+                not isinstance(legacy_tenant_id, str)
+                or not hmac.compare_digest(legacy_tenant_id, tenant_id)
+            ):
+                raise CredentialConflictError(
+                    "legacy device is already mapped to another tenant"
+                )
+
+            cursor.execute(
+                f"SELECT id FROM tenants WHERE tenant_uuid={placeholder}{lock_suffix}",
+                (tenant_id,),
+            )
+            mapped_owner = cursor.fetchone()
+            if mapped_owner is not None and int(
+                row_value(mapped_owner, "id", 0)
+            ) != legacy_id:
+                raise CredentialConflictError(
+                    "personal tenant is already mapped to another legacy device"
+                )
+
+            cursor.execute(
+                f"SELECT status FROM acl_tenants WHERE tenant_id={placeholder}{lock_suffix}",
+                (tenant_id,),
+            )
+            tenant_row = cursor.fetchone()
+            if tenant_row is None:
+                display_name = (
+                    f"{row_value(legacy, 'name', 1)} "
+                    f"{row_value(legacy, 'unit_number', 2)}"
+                ).strip()[:100]
+                cursor.execute(
+                    self._sql(
+                        "INSERT INTO acl_tenants "
+                        "(tenant_id, display_name, status, updated_at, created_at) "
+                        "VALUES (?, ?, 'ACTIVE', ?, ?)"
+                    ),
+                    (tenant_id, display_name or "personal", now, now),
+                )
+            else:
+                tenant_status = str(row_value(tenant_row, "status", 0))
+                if tenant_status != "ACTIVE":
+                    raise PermissionError("personal ACL tenant is disabled")
+
+            if legacy_tenant_id is None:
+                cursor.execute(
+                    f"UPDATE tenants SET tenant_uuid={placeholder}, "
+                    "credential_mode='dual' "
+                    f"WHERE id={placeholder} AND tenant_uuid IS NULL",
+                    (tenant_id, legacy_id),
+                )
+                if cursor.rowcount != 1:
+                    raise CredentialConflictError(
+                        "legacy tenant bootstrap lost its state lock"
+                    )
+            else:
+                cursor.execute(
+                    f"UPDATE tenants SET credential_mode='dual' "
+                    f"WHERE id={placeholder} AND credential_mode='legacy'",
+                    (legacy_id,),
+                )
+
+            cursor.execute(
+                f"SELECT tenant_id FROM acl_door_state WHERE door_id={placeholder}{lock_suffix}",
+                (door_id,),
+            )
+            owner_row = cursor.fetchone()
+            if owner_row is not None:
+                owner = str(
+                    owner_row["tenant_id"]
+                    if isinstance(owner_row, dict)
+                    else owner_row[0]
+                )
+                if not hmac.compare_digest(owner, tenant_id):
+                    raise PermissionError("personal door is owned by another tenant")
+
+            credential_id = credential["credential_id"]
+            public_key = credential["public_key_sec1"]
+            legacy_ref = credential["legacy_device_ref"]
+            cursor.execute(
+                f"SELECT * FROM credentials WHERE credential_id={placeholder}{lock_suffix}",
+                (credential_id,),
+            )
+            existing = cursor.fetchone()
+            cursor.execute(
+                f"SELECT credential_id, tenant_id FROM credentials "
+                f"WHERE public_key_sec1={placeholder}{lock_suffix}",
+                (public_key,),
+            )
+            key_row = cursor.fetchone()
+            cursor.execute(
+                f"SELECT * FROM credentials WHERE tenant_id={placeholder} "
+                f"AND legacy_device_ref={placeholder}{lock_suffix}",
+                (tenant_id, legacy_ref),
+            )
+            legacy_credentials = cursor.fetchall()
+
+            if key_row is not None and not hmac.compare_digest(
+                str(row_value(key_row, "credential_id", 0)), credential_id
+            ):
+                raise CredentialConflictError("public key is already registered")
+            for legacy_credential in legacy_credentials:
+                if not hmac.compare_digest(
+                    str(row_value(legacy_credential, "credential_id", 0)), credential_id
+                ):
+                    raise CredentialConflictError(
+                        "legacy device already has another public credential"
+                    )
+
+            created = existing is None
+            if existing is None:
+                cursor.execute(
+                    self._sql(
+                        "INSERT INTO credentials "
+                        "(credential_id, tenant_id, public_key_sec1, status, expires_at, "
+                        "legacy_device_ref, min_protocol, max_protocol, created_at, updated_at) "
+                        "VALUES (?, ?, ?, 'ACTIVE', NULL, ?, ?, ?, ?, ?)"
+                    ),
+                    (
+                        credential_id,
+                        tenant_id,
+                        public_key,
+                        legacy_ref,
+                        credential["min_protocol"],
+                        credential["max_protocol"],
+                        now,
+                        now,
+                    ),
+                )
+            else:
+                exact = (
+                    hmac.compare_digest(str(row_value(existing, "tenant_id", 1)), tenant_id)
+                    and hmac.compare_digest(
+                        str(row_value(existing, "public_key_sec1", 2)), public_key
+                    )
+                    and str(row_value(existing, "status", 3)) == "ACTIVE"
+                    and row_value(existing, "expires_at", 4) is None
+                    and hmac.compare_digest(
+                        str(row_value(existing, "legacy_device_ref", 5)), legacy_ref
+                    )
+                    and int(row_value(existing, "min_protocol", 6))
+                    == int(credential["min_protocol"])
+                    and int(row_value(existing, "max_protocol", 7))
+                    == int(credential["max_protocol"])
+                )
+                if not exact:
+                    raise CredentialConflictError(
+                        "credential ID conflicts with existing registration"
+                    )
+
+            cursor.execute(
+                f"SELECT permissions, revoked_at FROM credential_door_grants "
+                f"WHERE tenant_id={placeholder} AND door_id={placeholder} "
+                f"AND credential_id={placeholder}{lock_suffix}",
+                (tenant_id, door_id, credential_id),
+            )
+            grant = cursor.fetchone()
+            if grant is None:
+                cursor.execute(
+                    self._sql(
+                        "INSERT INTO credential_door_grants "
+                        "(tenant_id, door_id, credential_id, permissions, granted_at, revoked_at) "
+                        "VALUES (?, ?, ?, 1, ?, NULL)"
+                    ),
+                    (tenant_id, door_id, credential_id, now),
+                )
+            elif (
+                int(row_value(grant, "permissions", 0)) != 1
+                or row_value(grant, "revoked_at", 1) is not None
+            ):
+                raise CredentialConflictError("personal door grant was revoked or changed")
+
+            cursor.execute(
+                f"SELECT generated_version, revision FROM acl_snapshot_jobs "
+                f"WHERE tenant_id={placeholder} AND door_id={placeholder}{lock_suffix}",
+                (tenant_id, door_id),
+            )
+            pending_job = cursor.fetchone()
+            current_version: Optional[int] = None
+            if pending_job is None and not created:
+                cursor.execute(
+                    f"SELECT acl_version, envelope_json FROM acl_snapshots "
+                    f"WHERE tenant_id={placeholder} AND door_id={placeholder} "
+                    "ORDER BY acl_version DESC LIMIT 1"
+                    + lock_suffix,
+                    (tenant_id, door_id),
+                )
+                latest = cursor.fetchone()
+                if latest is not None:
+                    envelope = json.loads(
+                        str(row_value(latest, "envelope_json", 1))
+                    )
+                    fields = envelope.get("fields", {})
+                    entry = next(
+                        (
+                            item
+                            for item in fields.get("entries", [])
+                            if item.get("credential_id") == credential_id
+                            and item.get("public_key_sec1") == public_key
+                            and item.get("status") == 1
+                            and item.get("permissions") == 1
+                        ),
+                        None,
+                    )
+                    if (
+                        entry is not None
+                        and int(fields.get("expires_at_epoch_s", 0)) > now
+                    ):
+                        current_version = int(
+                            row_value(latest, "acl_version", 0)
+                        )
+            if pending_job is None and current_version is None:
+                self._queue_snapshot_job_cursor(
+                    cursor,
+                    tenant_id,
+                    door_id,
+                    "PERSONAL_CREDENTIAL_BOOTSTRAP",
+                    now,
+                )
+
+            if created:
+                cursor.execute(
+                    self._sql(
+                        "INSERT INTO management_audit "
+                        "(tenant_id, actor_ref, action, credential_id, metadata_json, created_at) "
+                        "VALUES (?, ?, 'PERSONAL_CREDENTIAL_BOOTSTRAPPED', ?, ?, ?)"
+                    ),
+                    (
+                        tenant_id,
+                        actor_ref,
+                        credential_id,
+                        json.dumps(
+                            {"door_id": door_id, "status": "ACTIVE"},
+                            sort_keys=True,
+                        ),
+                        now,
+                    ),
+                )
+            connection.commit()
+            return {
+                "created": created,
+                "acl_version": current_version,
+                "snapshot_required": current_version is None,
+            }
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            self._close(connection)
+
     def revoke_grant(
         self, tenant_id: str, door_id: str, credential_id: str, now: int
     ) -> bool:
@@ -986,6 +1292,56 @@ class AclStore:
             "SELECT * FROM acl_snapshot_jobs WHERE tenant_id=? AND door_id=?",
             (tenant_id, door_id),
         )
+
+    def queue_snapshot_job_if_absent(
+        self, tenant_id: str, door_id: str, reason: str, now: int
+    ) -> None:
+        """Coalesce a refresh with any stronger durable replacement job."""
+
+        if self.dialect == "sqlite":
+            statement = (
+                "INSERT INTO acl_snapshot_jobs "
+                "(tenant_id, door_id, reason, requested_at, generated_version, revision) "
+                "VALUES (?, ?, ?, ?, NULL, 1) "
+                "ON CONFLICT(tenant_id, door_id) DO NOTHING"
+            )
+        else:
+            statement = (
+                "INSERT INTO acl_snapshot_jobs "
+                "(tenant_id, door_id, reason, requested_at, generated_version, revision) "
+                "VALUES (?, ?, ?, ?, NULL, 1) "
+                "ON DUPLICATE KEY UPDATE tenant_id=tenant_id"
+            )
+        self._write(statement, (tenant_id, door_id, reason, now))
+
+    def supersede_snapshot_job(
+        self, tenant_id: str, door_id: str, reason: str, now: int
+    ) -> None:
+        """Force the next publish to allocate a version above Target high-watermark.
+
+        A Target reboot loses ``active_ready`` while retaining its anti-rollback
+        high-watermark. Replaying an ACK-lost generated version would therefore
+        be rejected forever; a boot refresh must invalidate that queued artifact.
+        """
+
+        if self.dialect == "sqlite":
+            statement = (
+                "INSERT INTO acl_snapshot_jobs "
+                "(tenant_id, door_id, reason, requested_at, generated_version, revision) "
+                "VALUES (?, ?, ?, ?, NULL, 1) "
+                "ON CONFLICT(tenant_id, door_id) DO UPDATE SET "
+                "reason=excluded.reason, requested_at=excluded.requested_at, "
+                "generated_version=NULL, revision=acl_snapshot_jobs.revision + 1"
+            )
+        else:
+            statement = (
+                "INSERT INTO acl_snapshot_jobs "
+                "(tenant_id, door_id, reason, requested_at, generated_version, revision) "
+                "VALUES (?, ?, ?, ?, NULL, 1) ON DUPLICATE KEY UPDATE "
+                "reason=VALUES(reason), requested_at=VALUES(requested_at), "
+                "generated_version=NULL, revision=revision + 1"
+            )
+        self._write(statement, (tenant_id, door_id, reason, now))
 
     def mark_snapshot_job_generated(
         self, tenant_id: str, door_id: str, version: int, revision: int
@@ -1297,6 +1653,7 @@ class AclManagementService:
         self.legacy_lookup_enabled = legacy_lookup_enabled
         self.legacy_hmac_key = legacy_hmac_key
         self.transition_signers = transition_signers
+        self._publish_lock = threading.RLock()
 
     def _tenant(self, tenant_id: str) -> None:
         _hex_bytes(tenant_id, 16, "tenant_id")
@@ -1458,6 +1815,72 @@ class AclManagementService:
         )
         return {"credential_id": credential_id, "status": "PENDING"}
 
+    def bootstrap_personal_credential(
+        self,
+        tenant_id: str,
+        door_id: str,
+        legacy_device_id: str,
+        credential_id: str,
+        public_key_hex: str,
+        *,
+        actor_ref: str,
+        min_protocol: int = 1,
+        max_protocol: int = 1,
+    ) -> dict[str, Any]:
+        """Activate the app-selected public credential for one personal door.
+
+        This narrow migration seam relies on both the existing API key at the
+        HTTP boundary and an approved legacy-device row locked by the store.
+        It accepts public material only; no private-key field exists.
+        """
+        _hex_bytes(tenant_id, 16, "tenant_id")
+        _hex_bytes(door_id, 16, "door_id")
+        _hex_bytes(credential_id, 16, "credential_id")
+        public_key = _hex_bytes(public_key_hex, 65, "public_key_sec1")
+        _parse_public_key(public_key)
+        if not 1 <= min_protocol <= max_protocol <= 0xFFFF:
+            raise ValueError("invalid credential protocol range")
+        normalized_device_id = legacy_device_id.strip().upper()
+        if (
+            not 8 <= len(normalized_device_id) <= 128
+            or not normalized_device_id.startswith(("DEV-", "GK-"))
+            or any(
+                character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+                for character in normalized_device_id
+            )
+        ):
+            raise ValueError("invalid legacy device ID")
+        legacy_ref = self._legacy_ref(normalized_device_id)
+        transition = self.store.bootstrap_personal_credential_and_queue(
+            tenant_id,
+            door_id,
+            normalized_device_id,
+            {
+                "credential_id": credential_id,
+                "public_key_sec1": public_key_hex,
+                "legacy_device_ref": legacy_ref,
+                "min_protocol": min_protocol,
+                "max_protocol": max_protocol,
+            },
+            actor_ref=actor_ref,
+            now=self.clock(),
+        )
+        acl_version = transition["acl_version"]
+        if transition["snapshot_required"]:
+            envelope = self._publish_replacement_snapshots(
+                tenant_id,
+                [door_id],
+                actor_ref=actor_ref,
+            )[0]
+            acl_version = int(envelope["fields"]["acl_version"])
+        if not isinstance(acl_version, int) or acl_version < 1:
+            raise RuntimeError("signed ACL snapshot is unavailable")
+        return {
+            "accepted": True,
+            "credential_id": credential_id,
+            "acl_version": acl_version,
+        }
+
     def _set_status(
         self, tenant_id: str, credential_id: str, status: str, actor_ref: str, action: str
     ) -> dict[str, Any]:
@@ -1549,6 +1972,22 @@ class AclManagementService:
         actor_ref: str,
         raise_mqtt_failure: bool = True,
     ) -> list[dict[str, Any]]:
+        with self._publish_lock:
+            return self._publish_replacement_snapshots_locked(
+                tenant_id,
+                door_ids,
+                actor_ref=actor_ref,
+                raise_mqtt_failure=raise_mqtt_failure,
+            )
+
+    def _publish_replacement_snapshots_locked(
+        self,
+        tenant_id: str,
+        door_ids: list[str],
+        *,
+        actor_ref: str,
+        raise_mqtt_failure: bool = True,
+    ) -> list[dict[str, Any]]:
         envelopes: list[dict[str, Any]] = []
         mqtt_failures = 0
         for door_id in door_ids:
@@ -1601,6 +2040,28 @@ class AclManagementService:
                 f"ACL MQTT push failed for {mqtt_failures} replacement snapshot(s); pull is current"
             )
         return envelopes
+
+    def refresh_snapshot(
+        self, tenant_id: str, door_id: str, *, actor_ref: str, reason: str
+    ) -> dict[str, Any]:
+        """Create a fresh version for reboot recovery or pre-expiry renewal."""
+
+        if reason not in {"TARGET_BOOT_REFRESH", "ACL_LEASE_REFRESH"}:
+            raise ValueError("unknown ACL refresh reason")
+        with self._publish_lock:
+            self._active_tenant(tenant_id)
+            _hex_bytes(door_id, 16, "door_id")
+            if reason == "TARGET_BOOT_REFRESH":
+                self.store.supersede_snapshot_job(
+                    tenant_id, door_id, reason, self.clock()
+                )
+            else:
+                self.store.queue_snapshot_job_if_absent(
+                    tenant_id, door_id, reason, self.clock()
+                )
+            return self._publish_replacement_snapshots_locked(
+                tenant_id, [door_id], actor_ref=actor_ref
+            )[0]
 
     def disable_tenant(
         self,
@@ -1690,6 +2151,24 @@ class AclManagementService:
         }
 
     def publish_snapshot(
+        self,
+        tenant_id: str,
+        door_id: str,
+        *,
+        actor_ref: str,
+        min_protocol: int = 1,
+        max_protocol: int = 1,
+    ) -> dict[str, Any]:
+        with self._publish_lock:
+            return self._publish_snapshot_locked(
+                tenant_id,
+                door_id,
+                actor_ref=actor_ref,
+                min_protocol=min_protocol,
+                max_protocol=max_protocol,
+            )
+
+    def _publish_snapshot_locked(
         self,
         tenant_id: str,
         door_id: str,

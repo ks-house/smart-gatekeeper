@@ -344,7 +344,7 @@ jobs:
           100644 9979085720f5b860d8135737b64269cedc6ec42515c352e6a65ac7a6b1c9466f include/ConfigManager.h
           100644 9ebeac418fe2cd0c858889206bda9c4f0a45250eafe4c9276ba848ea0f09f29b include/DiagnosticsManager.h
           100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
-          100644 78457d0bfb5746f53c636ef9854846102f17530e7de8c3bfde081af001baf1ee include/GattProtocol.h
+          100644 a50d39f09d4d3c1b6b08ba37d200382082599f838ce031798ee71570a5ed4836 include/GattProtocol.h
           100644 891733f6ee1267efb157950539efd6192983afa7762a5cca5e0db5f3b292f708 include/GattServer.h
           100644 95cac78789291570be6c0a58fe17020e98a856139d46236e4bbb816323814de3 include/MqttManager.h
           100644 c002d43122a1f1be3b9509f784aba872ca84d666a24d0738dea7a59adcb15592 include/OfflineEventQueue.h
@@ -359,12 +359,12 @@ jobs:
           100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
           100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
           100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
-          100644 10fa529a243a60250fa93f58dfe65f3b1026407984978c392b7d606a30ba6ed1 include/config.h
-          100644 242fb0b65c43823d34f0295a11798cf61902043047083245a6dbe57931daf760 include/secrets.h.example
+          100644 1f7b88daf8bebfa0a3e35f8a475a764ebefde3c09fa46d55506104e7a0ff6008 include/config.h
+          100644 7fb16bde7025386547d2e3b6e90f2236ad00e2695eb04c7f4f3947e503450fd8 include/secrets.h.example
           100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock
           100644 6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv
-          100644 cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1 platformio.ini
-          100644 0b4443e045c58ad4e8dc1052044b5f003522fd6f5004e44aa51c24e39f362191 src/ConfigManager.cpp
+          100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini
+          100644 54dad6206a9a9bd9bbe245313b34c690fc3f4ce066ad01eb3e8b3b3223696f07 src/ConfigManager.cpp
           100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
           100644 fe67e1d6bac745f7654f6c41e94ef184fea407901bbf581ef5fc6955f3447048 src/GattProtocol.cpp
           100644 0b0ca29f775b988da6ccb9d5867aa1a4ef0863d7256d69cf0bdc5e77b31afead src/GattServer.cpp
@@ -380,7 +380,7 @@ jobs:
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
-          100644 f0af0ab28ca10ece0558b91c6ef175baeb6032b75c062a76b1038ffd59732de2 src/main.cpp
+          100644 befd17a9320c40783470deb9ccedfe31eacccf834559a8a831797393135fd9dc src/main.cpp
           EOF
           )"
           test ! -e .pio
@@ -418,6 +418,9 @@ jobs:
           SECRET_TARGET_DOOR_ID: ${{ secrets.SECRET_TARGET_DOOR_ID }}
           SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_COMMAND_SIGNING_KEY_ID: ${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}
+          SECRET_HARDWARELESS_DOOR_ID_HEX: ${{ secrets.SECRET_HARDWARELESS_DOOR_ID_HEX }}
+          SECRET_ACL_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}
+          SECRET_ACL_SIGNING_KEY_ID: ${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}
           SECRET_OTA_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
           SECRET_OTA_FIRMWARE_URL: ${{ secrets.SECRET_OTA_FIRMWARE_URL }}
           SECRET_OTA_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
@@ -454,6 +457,12 @@ jobs:
           ((10#$SECRET_MQTT_PORT >= 1 && 10#$SECRET_MQTT_PORT <= 65535)) || fail_secret_contract "SECRET_MQTT_PORT range"
           [[ "$SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX format"
           [[ "$SECRET_COMMAND_SIGNING_KEY_ID" =~ ^[1-9][0-9]*$ ]] || fail_secret_contract "SECRET_COMMAND_SIGNING_KEY_ID format"
+          [[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]] || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX format"
+          test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "00000000000000000000000000000000" || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX all-zero"
+          test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "ffffffffffffffffffffffffffffffff" || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX all-FF"
+          [[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX format"
+          [[ "$SECRET_ACL_SIGNING_KEY_ID" =~ ^[1-9][0-9]{0,9}$ ]] || fail_secret_contract "SECRET_ACL_SIGNING_KEY_ID format"
+          ((10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295)) || fail_secret_contract "SECRET_ACL_SIGNING_KEY_ID range"
           [[ "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "OTA_SIGNING_PUBLIC_KEY_HEX format"
           test "$SECRET_OTA_SIGNING_KEY_ID" = "personal-target-auto-20260823-1" || fail_secret_contract "OTA_SIGNING_KEY_ID identity"
           OTA_PUBLIC_KEY_SHA256="$(printf '%s' "$SECRET_OTA_SIGNER_PUBLIC_KEY_HEX" | xxd -r -p | sha256sum | cut -d' ' -f1)"
@@ -470,9 +479,9 @@ jobs:
           #define SECRET_API_URL "${SECRET_API_URL}"
           #define SECRET_API_KEY "${SECRET_API_KEY}"
           #define SECRET_TEST_BLE_MAC "AA:BB:CC:DD:EE:01"
-          #define SECRET_HARDWARELESS_DOOR_ID_HEX ""
-          #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX ""
-          #define SECRET_ACL_SIGNING_KEY_ID 0
+          #define SECRET_HARDWARELESS_DOOR_ID_HEX "${SECRET_HARDWARELESS_DOOR_ID_HEX}"
+          #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX "${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"
+          #define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}
           #define SECRET_MQTT_HOST "${SECRET_MQTT_HOST}"
           #define SECRET_MQTT_PORT ${SECRET_MQTT_PORT}
           #define SECRET_MQTT_USER "${SECRET_MQTT_USER}"
@@ -510,27 +519,27 @@ jobs:
           [[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]]
           export SOURCE_DATE_EPOCH
           export PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\\\"${FULL_VERSION}\\\""
-          python -I -m platformio run -e esp32c6_production
+          python -I -m platformio run -e esp32c6_personal_production
           mkdir -p dist
-          cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware-first.bin
-          python -I -m platformio run -e esp32c6_production -t clean
-          python -I -m platformio run -e esp32c6_production
-          cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_production/firmware.bin
+          cp .pio/build/esp32c6_personal_production/firmware.bin dist/gatekeeper-firmware-first.bin
+          python -I -m platformio run -e esp32c6_personal_production -t clean
+          python -I -m platformio run -e esp32c6_personal_production
+          cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_personal_production/firmware.bin
           python -I - <<'PY'
           import os
           from pathlib import Path
 
-          firmware = Path(".pio/build/esp32c6_production/firmware.bin").read_bytes()
+          firmware = Path(".pio/build/esp32c6_personal_production/firmware.bin").read_bytes()
           version = os.environ["FULL_VERSION"].encode("ascii")
           if version not in firmware:
               raise SystemExit("exact Target version is absent from firmware bytes")
           PY
           python -I scripts/verify_target_flash_layout.py \
             --partitions partitions_16MB_ota.csv \
-            --firmware .pio/build/esp32c6_production/firmware.bin \
+            --firmware .pio/build/esp32c6_personal_production/firmware.bin \
             --flash-size 0x1000000 \
             --max-slot-usage-percent 80
-          cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware.bin
+          cp .pio/build/esp32c6_personal_production/firmware.bin dist/gatekeeper-firmware.bin
           test -s dist/gatekeeper-firmware.bin
 
       - name: Encrypt sensitive Target firmware handoff
@@ -882,6 +891,7 @@ jobs:
           SECRET_TARGET_DOOR_ID: ${{ secrets.SECRET_TARGET_DOOR_ID }}
           SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_COMMAND_SIGNING_KEY_ID: ${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}
+          SECRET_HARDWARELESS_DOOR_ID_HEX: ${{ secrets.SECRET_HARDWARELESS_DOOR_ID_HEX }}
           SECRET_ACL_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_ACL_SIGNING_KEY_ID: ${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}
           SECRET_OTA_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
@@ -896,13 +906,20 @@ jobs:
             SECRET_API_URL SECRET_API_KEY SECRET_MQTT_HOST SECRET_MQTT_PORT \
             SECRET_MQTT_USER SECRET_MQTT_PASSWORD SECRET_TARGET_TENANT_ID \
             SECRET_TARGET_DOOR_ID SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX \
-            SECRET_COMMAND_SIGNING_KEY_ID SECRET_ACL_SIGNER_PUBLIC_KEY_HEX \
+            SECRET_COMMAND_SIGNING_KEY_ID SECRET_HARDWARELESS_DOOR_ID_HEX \
+            SECRET_ACL_SIGNER_PUBLIC_KEY_HEX \
             SECRET_ACL_SIGNING_KEY_ID SECRET_OTA_VERSION_URL \
             SECRET_OTA_FIRMWARE_URL SECRET_OTA_SIGNER_PUBLIC_KEY_HEX \
             SECRET_OTA_SIGNING_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
             SECRET_LOCAL_RECOVERY_USER SECRET_LOCAL_RECOVERY_PASSWORD; do
             test -n "${!name}"
           done
+          [[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]]
+          test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "00000000000000000000000000000000"
+          test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "ffffffffffffffffffffffffffffffff"
+          [[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]]
+          [[ "$SECRET_ACL_SIGNING_KEY_ID" =~ ^[1-9][0-9]{0,9}$ ]]
+          ((10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295))
           cat <<EOF > include/secrets.h
           #pragma once
           #define SECRET_WIFI_SSID "${SECRET_WIFI_SSID}"
@@ -910,7 +927,7 @@ jobs:
           #define SECRET_API_URL "${SECRET_API_URL}"
           #define SECRET_API_KEY "${SECRET_API_KEY}"
           #define SECRET_TEST_BLE_MAC "AA:BB:CC:DD:EE:01"
-          #define SECRET_HARDWARELESS_DOOR_ID_HEX ""
+          #define SECRET_HARDWARELESS_DOOR_ID_HEX "${SECRET_HARDWARELESS_DOOR_ID_HEX}"
           #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX "${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"
           #define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}
           #define SECRET_MQTT_HOST "${SECRET_MQTT_HOST}"
@@ -939,9 +956,9 @@ jobs:
           FULL_VERSION="2.1.0-g${SHORT_SHA}"
           echo "FULL_VERSION=${FULL_VERSION}" >> "$GITHUB_ENV"
           export PLATFORMIO_BUILD_FLAGS="-DFIRMWARE_VERSION_OVERRIDE=\\\"${FULL_VERSION}\\\""
-          pio run -e esp32c6
+          pio run -e esp32c6_personal_production
           mkdir -p dist
-          cp .pio/build/esp32c6/firmware.bin dist/gatekeeper-firmware.bin
+          cp .pio/build/esp32c6_personal_production/firmware.bin dist/gatekeeper-firmware.bin
           test -s dist/gatekeeper-firmware.bin
 
       - name: Create production signed Target manifest

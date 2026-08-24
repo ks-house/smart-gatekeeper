@@ -4,6 +4,7 @@
 // v2.0: BLE RSSI 임계값 관련 함수 제거 (BLE Advertiser 모드로 전환)
 // =============================================================
 #include "ConfigManager.h"
+#include "GattProtocol.h"
 #include "config.h"
 
 Preferences ConfigManager::preferences;
@@ -101,6 +102,18 @@ bool parseDoorId(const String& value, std::array<uint8_t, 16>* doorId) {
     }
     return true;
 }
+
+#if ENABLE_HARDWARELESS_RC
+bool isValidAclSignerPublicKeyHex(const String& value) {
+    if (value.length() != 130 || value[0] != '0' || value[1] != '4') {
+        return false;
+    }
+    for (size_t index = 2; index < value.length(); ++index) {
+        if (hexNibble(value[index]) < 0) return false;
+    }
+    return true;
+}
+#endif
 }  // namespace
 
 bool ConfigManager::getHardwarelessDoorId(
@@ -191,9 +204,28 @@ void ConfigManager::setPlannedRestartReason(const char* reason) {
 
 bool ConfigManager::enforceCompileTimeSecurityPolicy() {
 #if ENABLE_HARDWARELESS_RC
-    return true;
+    const bool migrationComplete = preferences.getBool("hwless_p1", false);
+    std::array<uint8_t, 16> doorId{};
+    const bool provisioningValid = getHardwarelessDoorId(&doorId) &&
+        isValidAclSignerPublicKeyHex(getAclSignerPublicKeyHex()) &&
+        getAclSigningKeyId() != 0;
+    if (!sgk::shouldInitializePersonalHardwarelessState(
+            sgk::hardwarelessRuntimeDefaultEnabled(), migrationComplete,
+            provisioningValid)) {
+        return true;
+    }
+
+    // Write enable first and the migration marker last. A reset between writes
+    // safely retries; after the marker exists, a later false is authoritative.
+    if (preferences.putBool("hwless_rc", true) != 1) return false;
+    return preferences.putBool("hwless_p1", true) == 1;
 #else
+    // Compile-OFF is authoritative and starts a new migration epoch. This
+    // distinguishes its forced false from a later personal-profile kill switch.
     bool ok = true;
+    if (preferences.isKey("hwless_p1")) {
+        ok = preferences.remove("hwless_p1") && ok;
+    }
     if (preferences.isKey("hwless_rc")) {
         ok = preferences.putBool("hwless_rc", false) == 1 && ok;
     }

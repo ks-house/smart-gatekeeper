@@ -77,17 +77,24 @@ services:
       COMMAND_DOOR_ID: ${COMMAND_DOOR_ID:?COMMAND_DOOR_ID is required}
       COMMAND_SIGNING_KEY_ID: ${COMMAND_SIGNING_KEY_ID:?COMMAND_SIGNING_KEY_ID is required}
       COMMAND_SIGNING_PRIVATE_SCALAR_HEX_FILE: /run/secrets/command_signing_scalar
+      HA_BRIDGE_ENABLED: ${HA_BRIDGE_ENABLED:-false}
+      HA_BRIDGE_ALLOW_MANUAL_REMOTE: ${HA_BRIDGE_ALLOW_MANUAL_REMOTE:-false}
+      HA_BRIDGE_STATUS_MAX_AGE_SECONDS: ${HA_BRIDGE_STATUS_MAX_AGE_SECONDS:-15}
       GATEKEEPER_API_KEY_FILE: /run/secrets/api_key
       OPS_HMAC_KEY_FILE: /run/secrets/ops_hmac_key
       ADMIN_MTLS_IDENTITIES_JSON_FILE: /run/secrets/admin_identities
       ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:?trusted TLS proxy IPs are required}
       ACL_MANAGEMENT_ENABLED: "true"
       ACL_LEGACY_DEVICE_LOOKUP_ENABLED: "false"
+      ACL_LEGACY_REF_HMAC_KEY_FILE: /run/secrets/acl_legacy_ref_hmac_key
       ACL_ENROLLMENT_AUTH_JSON_FILE: /run/secrets/acl_enrollment_auth
       ACL_ADMIN_API_KEY_FILE: /run/secrets/acl_admin_api_key
       ACL_TARGET_AUTH_JSON_FILE: /run/secrets/acl_target_auth
       ACL_SIGNING_PRIVATE_SCALAR_HEX_FILE: /run/secrets/acl_signing_scalar
       ACL_SIGNING_KEY_ID: ${ACL_SIGNING_KEY_ID:?ACL signing key ID is required}
+      ACL_PERSONAL_ENROLLMENT_ENABLED: ${ACL_PERSONAL_ENROLLMENT_ENABLED:-false}
+      ACL_PERSONAL_TENANT_ID: ${ACL_PERSONAL_TENANT_ID:-}
+      ACL_PERSONAL_DOOR_ID: ${ACL_PERSONAL_DOOR_ID:-}
       EXPECTED_DB_SCHEMA_VERSION: "007"
       EXPECTED_DB_SCHEMA_SHA256: "edde5662c42e65dda82b2e0a9145d64dc4ebfc9fe7a5e5bd44b0b3aae0fe1d79"
       BUILD_SHA: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}
@@ -102,6 +109,7 @@ services:
       - command_signing_scalar
       - admin_identities
       - acl_enrollment_auth
+      - acl_legacy_ref_hmac_key
       - acl_admin_api_key
       - acl_target_auth
       - acl_signing_scalar
@@ -151,6 +159,7 @@ secrets:
   command_signing_scalar: {external: true}
   admin_identities: {external: true}
   acl_enrollment_auth: {external: true}
+  acl_legacy_ref_hmac_key: {external: true}
   acl_admin_api_key: {external: true}
   acl_target_auth: {external: true}
   acl_signing_scalar: {external: true}

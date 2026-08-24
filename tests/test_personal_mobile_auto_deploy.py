@@ -92,6 +92,30 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
       self.assertNotIn(forbidden, self.unsigned_source)
     self.assertIn("SGK_UNSIGNED_CI_RELEASE=1", self.unsigned_source)
 
+  def test_personal_gatt_bootstrap_is_scoped_to_personal_build(self) -> None:
+    gradle = (ROOT / "gatekeeper_app/android/app/build.gradle.kts").read_text(
+        encoding="utf-8"
+    )
+    manifest = (
+        ROOT / "gatekeeper_app/android/app/src/main/AndroidManifest.xml"
+    ).read_text(encoding="utf-8")
+    self.assertIn('System.getenv("SGK_PERSONAL_GATT_BOOTSTRAP") == "1"', gradle)
+    self.assertIn('manifestPlaceholders["sgkPersonalGattBootstrap"]', gradle)
+    self.assertIn('android:value="${sgkPersonalGattBootstrap}"', manifest)
+
+    personal_build = next(
+        step
+        for step in self.unsigned_job["steps"]
+        if step.get("name") == "Build unsigned exact personal mobile release"
+    )
+    self.assertEqual("1", personal_build["env"]["SGK_PERSONAL_GATT_BOOTSTRAP"])
+    production_build = next(
+        step
+        for step in self.jobs["release_to_production"]["steps"]
+        if step.get("name") == "Build exact production Android APK"
+    )
+    self.assertNotIn("SGK_PERSONAL_GATT_BOOTSTRAP", production_build.get("env", {}))
+
   def test_privileged_publisher_is_sparse_and_never_executes_candidate_build_code(self) -> None:
     self.assertIn("sparse-checkout:", self.auto_source)
     for path in (
