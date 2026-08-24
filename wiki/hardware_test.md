@@ -300,3 +300,35 @@ normal pure-STA auto-reconnect, MQTTS, and signed OTA resume after AP exit.
 This run does not prove a real inactive-slot OTA installation, the continuous
 health-valid mark, bootloader rollback, power-loss recovery, physical relay
 operation/electrical safety, AJ-SR04T behavior or final wall-install acceptance.
+
+## 2026-08-25 exact-main Android artifact pre-install verification
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| CI artifact identity | GitHub Actions run `32747024524`, artifact `personal-mobile-ota-7c2764a1a16492ec1620079c8211b47287b1b3fd-attempt-1`, supplied a 55,786,649-byte APK with SHA-256 `afb0cdc5eb95d8c0dd8c34597b180ddb803b6d8b35b9b1e130da7db13f054f42` | PASS for downloaded CI bytes |
+| APK manifest | `aapt` reported package `com.kshouse.gatekeeper_app`, `versionCode=18201`, `versionName=1.0.0-g7c2764a` | PASS |
+| APK signing continuity | `apksigner verify --verbose --print-certs` passed and reported signing-certificate SHA-256 `8bdbcf86c2530d424758a37b5a678de02b8f35587143d820c730b83cfe1d7ba0` | PASS for APK signature and expected production signer |
+| Embedded source identity | `assets/flutter_assets/assets/source_commit.txt` contained exact source commit `7c2764a1a16492ec1620079c8211b47287b1b3fd` | PASS |
+| Connected-device installation | The APK was intentionally not installed during this verification-only step | PENDING: preserve the installed app and use same-signature `adb install -r` in the controlled device step |
+
+This proves that the downloaded CI APK is internally consistent and eligible
+for the same-signature replacement check. It does not prove Android package
+installation, first launch, credential preservation, enrollment, native GATT,
+background behavior or rollback.
+
+## 2026-08-25 personal GATT and signed Home Assistant live baseline
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Android replacement install | The run `32747024524` production-signed APK was installed with `adb install -r`; package data remained present and the app reported `1.0.0-g7c2764a` / build 18201 | PASS for same-signature install and launch; uninstall/data clear was not used |
+| Android native state | Bluetooth/location permissions, background location, Bluetooth ON, battery allowlist, local consent, Keystore credential and native GATT ownership were all present; the prior `NATIVE_GATT_DISABLED` reason disappeared | PASS for enablement prerequisites |
+| Target exact-main OTA | Run `32749448224` published `2.1.256+main.g7c2764a`; the 1,844,800-byte image fit either 7,340,032-byte N16 OTA slot with 5,495,232 bytes headroom. Target installed/rebooted, obtained `192.168.35.19`, connected MQTTS, provisioned the production ACL signer, applied ACL v3 and started connectable GATT | PASS for this install, boot and transport state; rollback/power-loss remains pending |
+| NAS Backend and HA bridge | Recreated the live Backend after correcting the paho MQTTv5 callback. Readiness passed, bridge retained availability became online, and Home Assistant rendered reboot/open/OTA/config controls enabled | PASS for discovery/availability; no HA command or relay was invoked |
+| Android exact wake | The OS PendingIntent exact iBeacon scan was registered but reported zero filtered results; unfiltered Bluetooth state still saw `SmartGatekeeper`, and manual local retry returned `TARGET_UNAVAILABLE` because no locator existed | FAIL at advertisement matching, before GATT connection |
+| Root cause | Pinned pioarduino swaps the `BLEBeacon` manufacturer setter argument. Target `0x004C` emitted company bytes `00 4C`, while Android correctly filters Apple `0x004C` as standard on-air `4C 00` | ROOT CAUSE CONFIRMED |
+| Correction candidate | Target now passes `0x4C00`; source regression passed 9/9 and personal-production compile produced 1,779,430 bytes with 5,560,602 bytes slot headroom | PASS for source/build only; CI/NAS OTA and physical Android/GATT result pending |
+
+The two feature planes are enabled, but this baseline does not yet claim local
+door authorization: the corrected Target must advertise on air, Android must
+record a locator, and the exact challenge/proof/result must reach the Target
+FSM. Physical relay actuation and electrical safety remain separate Gates.

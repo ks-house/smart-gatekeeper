@@ -380,7 +380,7 @@ jobs:
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
-          100644 befd17a9320c40783470deb9ccedfe31eacccf834559a8a831797393135fd9dc src/main.cpp
+          100644 bd5e39068c96456a6ac812a450fc4a09a47f809ef560669a54a18d0d44db8112 src/main.cpp
           EOF
           )"
           test ! -e .pio

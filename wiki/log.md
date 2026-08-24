@@ -3436,3 +3436,27 @@
 - Passed 42 focused policy tests with 270 subtests, JSON parsing, the OTA contract gate, all workflow files with `actionlint` and whitespace validation.
 - The live GitHub verifier selected the sole `current-main-baseline` for exact PR #123 merge commit `374043426b560108b30cb954fc15d658a56631a2` and approved all 69 protected Git objects, including the administrator-login surface.
 - Confirmed the ordered 59-path backend/operations suffix exactly equals `ops/backend_trusted_bundle_paths.json`; this remains authorization evidence only, not deployment or physical evidence.
+
+## [2026-08-25] test | Verify exact-main Android artifact before installation
+
+- Downloaded the immutable Android artifact from GitHub Actions run `32747024524` without installing it. Its 55,786,649-byte APK matched SHA-256 `afb0cdc5eb95d8c0dd8c34597b180ddb803b6d8b35b9b1e130da7db13f054f42`.
+- Verified package `com.kshouse.gatekeeper_app`, `versionCode=18201`, `versionName=1.0.0-g7c2764a`, APK signature validity, production signing-certificate SHA-256 `8bdbcf86c2530d424758a37b5a678de02b8f35587143d820c730b83cfe1d7ba0` and embedded exact source commit `7c2764a1a16492ec1620079c8211b47287b1b3fd`.
+- This is pre-install artifact evidence only. Device replacement install, launch, credential preservation, enrollment, native GATT, background behavior and rollback remain separate observations.
+
+## [2026-08-25] fix | Restore live signed Home Assistant bridge discovery
+
+- Traced the disabled Home Assistant controls to paho-mqtt 1.6.1 MQTTv5 supplying a comparable `ReasonCodes` object that does not implement `int()`. The resulting callback `TypeError` stopped Target subscriptions, bridge availability and secure-control discovery before publication.
+- Replaced coercion with the supported success comparison and added a non-integer callback regression. The focused Backend suite passed 11/11, the NAS Backend was recreated, readiness passed, retained bridge availability became online and the Home Assistant control card rendered reboot/open/OTA/config controls enabled.
+- No Home Assistant command, Target reboot, OTA command, gate-open command or relay actuation was invoked by this recovery observation.
+
+## [2026-08-25] test | Install personal GATT exact-main baseline
+
+- Installed the production-signed `1.0.0-g7c2764a` APK from run `32747024524` with data-preserving `adb install -r`; native ownership, local consent and the AndroidKeyStore credential remained enabled and `NATIVE_GATT_DISABLED` was eliminated.
+- Observed Target `2.1.256+main.g7c2764a` from run `32749448224` after signed OTA and reboot with Wi-Fi `192.168.35.19`, exact MQTTS, production ACL signer, ACL v3 and connectable GATT enabled.
+- Android registered the exact OS PendingIntent scan but produced no `source=ble_scan` event or locator, so manual local retry returned `TARGET_UNAVAILABLE` before GATT. This is a truthful partial result, not a local-open or relay success claim.
+
+## [2026-08-25] fix | Correct Target iBeacon company bytes for Android exact wake
+
+- Confirmed that pinned pioarduino byte-swaps `BLEBeacon::setManufacturerId()` and that the prior `0x004C` argument emitted non-standard `00 4C`, while Android's Apple manufacturer ID `0x004C` filter requires standard on-air `4C 00`. Changed the Target setter argument to the pinned framework example's `0x4C00` and kept the exact Android filter fail-closed.
+- Added a source regression that rejects the old argument and updated the privileged Target inventory hash. Hardwareless tests passed 9/9 and the 16 MB personal-production compile produced a 1,779,430-byte image, leaving 5,560,602 bytes in either 7,340,032-byte OTA slot.
+- CI production signing, NAS publication/readback, inactive-slot Target install/reboot, non-zero Android exact-filter delivery and GATT challenge/proof/result remain pending until the separately authorized exact change reaches main.

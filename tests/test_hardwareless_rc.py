@@ -223,7 +223,14 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
             / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/blewake/BleWakeContract.kt"
         ).read_text(encoding="utf-8")
         header = (ROOT / "include" / "GattProtocol.h").read_text(encoding="utf-8")
+        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
         self.assertIn('TARGET_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"', android)
+        # The pinned pioarduino BLEBeacon setter swaps this argument before
+        # serializing its packed struct.  0x4C00 therefore emits the standard
+        # little-endian Apple company bytes 4C 00 consumed by Android's
+        # manufacturer ID 0x004C filter.  Passing 0x004C emits 00 4C instead.
+        self.assertIn("setManufacturerId(0x4C00)", main)
+        self.assertNotIn("setManufacturerId(0x004C)", main)
         for token in ("0x02", "0x15", "0xA1", "0xB2", "0x90"):
             self.assertIn(token, header)
 
