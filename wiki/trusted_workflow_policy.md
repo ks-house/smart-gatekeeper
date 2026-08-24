@@ -191,6 +191,17 @@ PR #123 merge-commit produced main `37404342`. This rotation replaces both trans
 the 69th protected path. Production Secret materialization, NAS publication and device installation remain
 separately observed deployment steps after this policy rotation.
 
+PR #126 reviewed feature commit `4538fcb184d77f92991063f93dc4d875ba1e870f`
+corrects the Target's iBeacon company-byte serialization and the Backend's paho
+MQTTv5 connect callback. Relative to exact main `7c2764a1`, exactly three of the
+69 protected normalized blobs change: `deploy.yml`, `backend/app/main.py` and
+`backend/tests/test_target_boot_registry.py`. This bounded authorization uses
+one temporary-exact identity and one future persistent identity with identical
+complete 69-file maps. After its separate policy PR merges, policy main must be
+merge-connected into the exact feature without rebasing or squashing. A final
+policy-only rotation must then remove both transition identities and pin the
+actual PR #126 merged-main commit as the sole baseline.
+
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 

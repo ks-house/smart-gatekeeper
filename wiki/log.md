@@ -3460,3 +3460,15 @@
 - Confirmed that pinned pioarduino byte-swaps `BLEBeacon::setManufacturerId()` and that the prior `0x004C` argument emitted non-standard `00 4C`, while Android's Apple manufacturer ID `0x004C` filter requires standard on-air `4C 00`. Changed the Target setter argument to the pinned framework example's `0x4C00` and kept the exact Android filter fail-closed.
 - Added a source regression that rejects the old argument and updated the privileged Target inventory hash. Hardwareless tests passed 9/9 and the 16 MB personal-production compile produced a 1,779,430-byte image, leaving 5,560,602 bytes in either 7,340,032-byte OTA slot.
 - CI production signing, NAS publication/readback, inactive-slot Target install/reboot, non-zero Android exact-filter delivery and GATT challenge/proof/result remain pending until the separately authorized exact change reaches main.
+
+## [2026-08-25] compile | Authorize exact GATT wake and HA runtime corrections
+
+- Replaced the completed `current-main-baseline` with temporary-exact `temporary-gatt-ha-runtime-4538fcb` and future persistent `future-gatt-ha-runtime-4538fcb-persistent-baseline`, both bound to reviewed PR #126 feature commit `4538fcb184d77f92991063f93dc4d875ba1e870f` and the same complete ordered 69-file digest map.
+- Exactly three protected normalized blobs differ from exact main `7c2764a1`: `.github/workflows/deploy.yml` `2508247403ca8ff45bcc31467e8611e5000a10f4dde2dd9483c6e4074d4997e1`, `backend/app/main.py` `5466791df1b404a8b116227c0ceae219b090612cd29fb5429224d5d5bba4b044` and `backend/tests/test_target_boot_registry.py` `4f29b72539e9c4c190e83f702e92ec71fb9bc6d2e44f260f2094c4388ced430f`; the other 66 remain exact.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, changes no NAS or device state and claims no Android GATT, Home Assistant command, relay, health-valid or rollback result.
+
+## [2026-08-25] test | Verify PR 126 exact-commit transition policy
+
+- Pinned both bounded identities, the complete 69-path map, the seven-workflow inventory and empty repository-local Action inventory in regression tests; predecessor merged main `37404342` is retired from future source identities.
+- Local validation covers policy parsing, exact/future selection, mutation rejection, OTA contract, workflow syntax, relative wiki links and whitespace. Hosted base-policy verification remains required before the policy PR merges.
+- Passing authorization proves only reviewed Git object identity. Production signing, NAS publication/readback, Target OTA/reboot and Android GATT proof remain subsequent steps.
