@@ -9,7 +9,7 @@ The job has only `contents: read`. Pull-request titles, branches, file contents,
 ## 2. Protected bundle decision
 
 The machine-readable policy is `.github/workflow-policy/trusted_workflow_policy.json`; the base validator is
-`scripts/verify_trusted_workflow_policy.py`. Policy format version 3 protects 68 files as one indivisible
+`scripts/verify_trusted_workflow_policy.py`. Policy format version 3 protects 69 files as one indivisible
 bundle. It includes every current workflow plus the validator itself. Its exact namespace inventories are:
 
 - `.github/workflows/`: the seven current workflow files; additions, removals, renames, case variants,
@@ -30,15 +30,16 @@ not rely only on a workflow/gate assertion about that lock file: removal or any 
 same complete-bundle digest decision before a secret-bearing publisher can run.
 
 It also includes `personal_installation_firmware.yml`, `protocol.yml`,
-`trusted_workflow_policy.yml`, and `scripts/verify_trusted_workflow_policy.py`, followed by the exact 58
+`trusted_workflow_policy.yml`, and `scripts/verify_trusted_workflow_policy.py`, followed by the exact 59
 backend and operations inputs authorized for PR #67: the backend-security
 workflow, Orca setup input, commercial-operations gate, evidence/SLO fixtures and policies, backend runtime,
 locked dependencies, static admin surfaces, production Compose and database migration inputs, SBOM/supply
 chain policy, backend tests, and canonical protocol vectors. The JSON policy contains the authoritative
-complete ordered path set. The six new protected inputs are the ACL refresh, Home Assistant bridge and Target
-ACL-delivery modules plus their three direct tests; their order follows exact reviewed feature commit
-`47f7e111ed3c8f625dad09597af3426f8204930d`'s backend trusted-input inventory, while retaining the predecessor
-policy's explicit exclusion of `backend/app/static/admin_login.html`.
+complete ordered path set. The six feature inputs are the ACL refresh, Home Assistant bridge and Target
+ACL-delivery modules plus their three direct tests. The final rotation also protects
+`backend/app/static/admin_login.html`, which handles the personal administrator credential and had been the
+only path missing from the policy's backend/operations suffix. Regression tests now require that suffix to
+equal `ops/backend_trusted_bundle_paths.json` exactly, including order.
 
 `utf8-lf-v1` means strict UTF-8 decoding followed only by CRLF/CR-to-LF conversion. No whitespace, comments,
 keys, steps, action versions, commands, or trailing newlines are otherwise ignored. The normalized bytes use
@@ -112,17 +113,19 @@ main; the ordered digest map, seven-workflow inventory and empty local-Action in
 
 Reviewed feature PR #123 commit `47f7e111ed3c8f625dad09597af3426f8204930d` enables the personal-production
 Hardwareless GATT and signed Backend-owned Home Assistant control paths. Relative to the predecessor baseline,
-23 protected files are changed or newly protected, including the six new module/test paths above. This bounded
-authorization replaces `current-main-baseline` with two identities carrying the same complete ordered 68-file
-map, seven-workflow inventory and empty local-Action inventory:
+23 protected files were changed or newly protected, including the six new module/test paths above. PR #124
+authorized that exact commit plus later same-byte descendants and was merge-commit merged as policy main
+`fdf9d695c1c3462b044063a083aa70f4a662b085`. The feature then merged trusted main without rebasing or
+squashing as policy-connected head `5eb8b2154671d50e5f03dfcb723e0c13c48376c2`; all required checks passed,
+and PR #123 was merge-commit merged as main `374043426b560108b30cb954fc15d658a56631a2`.
 
-- `temporary-personal-gatt-ha-47f7e111` accepts only the exact reviewed feature commit.
-- `future-personal-gatt-ha-47f7e111-persistent-baseline` accepts that commit or a GitHub Compare-proven
-  descendant with identical protected bytes.
-
-Regression tests pin the exact repository, reviewed feature SHA, both bounded IDs and modes, ordered 68-path
-set, identical complete maps and exact workflow/action inventories. They require explicit ancestry for later
-descendants and reject every retired source commit. They also reject an extra bundle, fork, altered commit,
+This final rotation removes both `47f7e111` transition identities and pins the sole
+`current-main-baseline` persistent identity to actual merged main `37404342`. It expands the indivisible set
+from 68 to 69 by protecting the previously omitted administrator-login surface; the other 68 protected Git
+objects are unchanged from the reviewed feature through merged main. Regression tests pin the exact repository,
+merged-main SHA, sole baseline ID and mode, ordered 69-path set, complete map, exact backend/operations suffix
+and exact workflow/action inventories. They require explicit ancestry for later descendants and reject every
+retired source commit. They also reject an extra bundle, fork, altered commit,
 unproven/diverged history, case/path variant, old five-path partial set, missing or reordered path,
 swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action additions, removals,
 renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed set, or
@@ -147,14 +150,16 @@ separately app-pinned status identity and repository policy outside the mutable 
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
 main; later protected bundles completed the same sequence, including PR #86/#85, PR #100/#101,
-PR #106/#105 and PR #113/#112. PR #116/#115/#117 completed the recovery-AP rollout, and PR #119/#118
-completed the Target build-order correction. This bounded authorization starts from exact current main
-`b30880d098a5609b4d80027084569fb3b06fe9fe` and changes only policy data, regression tests, this guide and the
-append-only log. It does not modify the validator, trusted workflow or any protected candidate byte. Its hosted
-check executes current main's sole `6ca977f7` baseline and can admit this policy-only descendant because that
-source remains an ancestor and all 62 predecessor protected bytes are unchanged. A green Hosted Trusted check
-is required before merge; no branch-protection change is authorized. That green check does not close the
-version-3 self-policy or same-status-context producer residual.
+PR #106/#105 and PR #113/#112. PR #116/#115/#117 completed the recovery-AP rollout, PR #119/#118 completed the
+Target build-order correction, and PR #124/#123 completed the personal GATT and signed HA feature merge. This
+final rotation starts from exact merged main `374043426b560108b30cb954fc15d658a56631a2` and changes only policy
+data, regression tests, this guide and the append-only log. It does not modify the validator, trusted workflow
+or any of the 68 paths protected by the base policy. Its hosted check executes merged main's `47f7e111`
+transition policy and can admit this policy-only descendant because all 68 predecessor-protected bytes are
+unchanged. The new 69th path is independently pinned to the exact merged-main Git object and cross-checked
+against the trusted backend inventory. A green Hosted Trusted check is required before merge; no
+branch-protection change is authorized. That green check does not close the version-3 self-policy or
+same-status-context producer residual.
 
 ## 4. Rotation procedure
 
@@ -179,12 +184,12 @@ publisher must still pass its privileged inventory check, production build, sign
 and public readback. Any path, digest, repository or reviewed source-commit change requires a fresh whole-bundle
 review; never prolong the transition window or reuse a retired transition identity.
 
-For PR #123, first merge this separate exact-feature authorization. Merge the newly trusted main into exact
-feature `47f7e111ed3c8f625dad09597af3426f8204930d` without rebasing or squashing, verify all 68 protected Git
-objects and both inventories, and require fresh Hosted Trusted, OTA, Backend and ESP32-C6 checks before the
-feature merge commit. Immediately replace both `47f7e111` transition identities with one
-`current-main-baseline` pinned to the actual PR #123 merge commit. Production Secret materialization, NAS
-publication and device install remain separately observed deployment steps after that exact-main rotation.
+For PR #123, PR #124 first authorized exact feature `47f7e111`; trusted policy main `fdf9d695` was then merged
+into the feature as `5eb8b215`, and fresh Hosted Trusted, OTA, Backend, Android and ESP32-C6 checks passed before
+PR #123 merge-commit produced main `37404342`. This rotation replaces both transition identities with one
+`current-main-baseline` pinned to that actual merge and closes the administrator-login inventory mismatch as
+the 69th protected path. Production Secret materialization, NAS publication and device installation remain
+separately observed deployment steps after this policy rotation.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.

@@ -3424,3 +3424,15 @@
 - Verified 42 focused policy tests with 201 subtests, the OTA contract gate, all workflow files with `actionlint`, JSON parsing and whitespace validation on the policy-only branch.
 - The live GitHub verifier selected `temporary-personal-gatt-ha-47f7e111` for exact feature commit `47f7e111ed3c8f625dad09597af3426f8204930d` and approved the complete ordered 68-file protected set.
 - This validation authorizes only the reviewed Git objects. It does not prove CI publication, NAS deployment, Target installation, Android installation, ACL acknowledgement, GATT control, Home Assistant command delivery or physical relay operation.
+
+## [2026-08-25] compile | Finalize personal GATT and HA trusted baseline
+
+- Replaced both bounded `47f7e111` transition identities with the sole `current-main-baseline` pinned to actual PR #123 merge commit `374043426b560108b30cb954fc15d658a56631a2`.
+- Expanded the indivisible protected set from 68 to 69 by adding `backend/app/static/admin_login.html`, the only path present in the trusted backend/operations inventory but missing from the policy. Added a regression requiring the ordered policy suffix to equal that inventory exactly.
+- This policy-only rotation changes no runtime, workflow or validator byte and claims no production Secret materialization, NAS publication, Backend restart, Target or Android installation, GATT/HA command, relay, health-valid or rollback evidence.
+
+## [2026-08-25] test | Verify final 69-file trusted baseline
+
+- Passed 42 focused policy tests with 270 subtests, JSON parsing, the OTA contract gate, all workflow files with `actionlint` and whitespace validation.
+- The live GitHub verifier selected the sole `current-main-baseline` for exact PR #123 merge commit `374043426b560108b30cb954fc15d658a56631a2` and approved all 69 protected Git objects, including the administrator-login surface.
+- Confirmed the ordered 59-path backend/operations suffix exactly equals `ops/backend_trusted_bundle_paths.json`; this remains authorization evidence only, not deployment or physical evidence.
