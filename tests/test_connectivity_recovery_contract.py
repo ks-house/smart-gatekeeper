@@ -9,20 +9,107 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
   @classmethod
   def setUpClass(cls):
     cls.wifi = (ROOT / "src" / "WifiManager.cpp").read_text(encoding="utf-8")
+    cls.policy = (ROOT / "include" / "RecoveryRadioPolicy.h").read_text(
+        encoding="utf-8"
+    )
     cls.mqtt = (ROOT / "src" / "MqttManager.cpp").read_text(encoding="utf-8")
     cls.main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
     cls.ota = (ROOT / "src" / "OtaManager.cpp").read_text(encoding="utf-8")
 
-  def test_provisioning_ap_keeps_retrying_station(self):
+  def test_provisioning_ap_uses_bounded_radio_policy(self):
     self.assertIn("WiFi.mode(WIFI_AP_STA)", self.wifi)
-    self.assertIn("kStationRetryIntervalMs = 15000", self.wifi)
-    self.assertIn("startNonBlockingStationAttempt();", self.wifi)
-    self.assertIn("WiFi.reconnect();", self.wifi)
-    self.assertEqual(self.wifi.count("WiFi.reconnect();"), 2)
+    self.assertIn("kRecoveryApQuietMs = 30000", self.wifi)
+    self.assertIn("kRecoveryStationAttemptMs = 10000", self.wifi)
+    self.assertIn("recoveryRadioPolicy.begin(millis());", self.wifi)
+    self.assertIn("RecoveryRadioAction::kStartStationAttempt", self.wifi)
+    self.assertIn("RecoveryRadioAction::kStopStationAttempt", self.wifi)
+    self.assertNotIn("kStationRetryIntervalMs", self.wifi)
+    self.assertNotIn("startNonBlockingStationAttempt", self.wifi)
     self.assertEqual(self.wifi.count("WiFi.begin(ssid.c_str(), pass.c_str());"), 1)
-    self.assertIn('noteAction("wifi_sta_autoreconnect_watch")', self.wifi)
     self.assertIn("[WIFI-DIAG] station disconnect reason=%u", self.wifi)
     self.assertIn('noteAction("wifi_recovered_from_ap")', self.wifi)
+
+  def test_idle_ap_client_hold_is_bounded_without_interrupting_active_work(self):
+    self.assertIn(
+        "kRecoveryApClientHoldMs = kOperatorRecoveryWindowMs", self.wifi
+    )
+    self.assertIn("RecoveryRadioAction::kReleaseStaleApClients", self.wifi)
+    self.assertIn(
+        "RecoveryRadioAction::\n"
+        "                              kReleaseStaleClientsAndStartStationAttempt",
+        self.wifi,
+    )
+    self.assertIn("esp_wifi_deauth_sta(0)", self.wifi)
+    self.assertIn(
+        "ap_client_connected && !local_operation_active &&\n"
+        "        !authenticated_hold_active",
+        self.policy,
+    )
+    self.assertIn("client_release_interval_ms_", self.policy)
+    combined = self.wifi.split(
+        "kReleaseStaleClientsAndStartStationAttempt", 1
+    )[1]
+    self.assertLess(
+        combined.index("esp_wifi_deauth_sta(0)"),
+        combined.index("startBoundedRecoveryStationAttempt(nowMs);"),
+    )
+
+  def test_web_server_is_serviced_once_before_radio_transition(self):
+    handle = self.wifi.split("void WifiManager::handleClient()", 1)[1]
+    handle = handle.split("bool WifiManager::isConnected()", 1)[0]
+    self.assertEqual(self.wifi.count("webServer.handleClient();"), 1)
+    self.assertEqual(handle.count("webServer.handleClient();"), 1)
+    self.assertLess(
+        handle.index("webServer.handleClient();"),
+        handle.index("recoveryRadioPolicy.update("),
+    )
+
+  def test_ap_exit_paths_restore_continuous_station_mode(self):
+    helper = self.wifi.split("void restoreContinuousStationMode()", 1)[1]
+    helper = helper.split("}  // namespace", 1)[0]
+    self.assertIn("WiFi.mode(WIFI_STA);", helper)
+    self.assertIn("WiFi.setAutoReconnect(true);", helper)
+
+    start = self.wifi.split("bool WifiManager::startRecoveryAP", 1)[1]
+    start = start.split("void WifiManager::handleRoot()", 1)[0]
+    self.assertIn("restoreContinuousStationMode();", start)
+
+    handle = self.wifi.split("void WifiManager::handleClient()", 1)[1]
+    handle = handle.split("bool WifiManager::isConnected()", 1)[0]
+    self.assertEqual(handle.count("restoreContinuousStationMode();"), 2)
+    deadline = handle.split("RecoveryDeadlineReached(nowMs", 1)[1]
+    deadline = deadline.split("if (apModeActive && recoveryApDeadlineMs == 0", 1)[0]
+    self.assertLess(
+        deadline.index("stationWasConnected"),
+        deadline.index("WiFi.softAPdisconnect(true);"),
+    )
+
+  def test_timed_operator_window_cannot_collide_with_zero_sentinel(self):
+    self.assertIn("MakeRecoveryDeadline(millis(), durationMs)", self.wifi)
+    self.assertIn(
+        "RecoveryDeadlineReached(nowMs, recoveryApDeadlineMs)", self.wifi
+    )
+    self.assertIn("return deadline_ms == 0 ? 1 : deadline_ms;", self.policy)
+
+  def test_operator_deadline_defers_only_for_active_local_operation(self):
+    handle = self.wifi.split("void WifiManager::handleClient()", 1)[1]
+    handle = handle.split("bool WifiManager::isConnected()", 1)[0]
+    reached = handle.index("const bool operatorDeadlineReached")
+    lease = handle.index(
+        "operatorDeadlineReached && isRecoveryOperationActive(nowMs)"
+    )
+    extend = handle.index(
+        "nowMs, kRecoveryOperationLeaseMs", lease
+    )
+    close = handle.index("WiFi.softAPdisconnect(true);", extend)
+    self.assertLess(reached, lease)
+    self.assertLess(lease, extend)
+    self.assertLess(extend, close)
+    deferred = handle[lease:close]
+    self.assertIn(
+        "recovery_ap_deadline_deferred_for_local_operation", deferred
+    )
+    self.assertIn("return;", deferred)
 
   def test_sta_compatibility_profile_precedes_the_only_begin(self):
     connect = self.wifi.split("bool WifiManager::connectSTA", 1)[1]
@@ -85,17 +172,17 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     disconnect = scan.index("WiFi.disconnect(false, false);")
     first_scan = scan.index("WiFi.scanNetworks(false, false, false, 150)")
     retry_scan = scan.index("WiFi.scanNetworks(false, false, false, 250)")
-    resume = scan.index("WiFi.setAutoReconnect(true);")
-    reconnect = scan.index("WiFi.reconnect();")
     self.assertLess(pause, disconnect)
     self.assertLess(disconnect, first_scan)
     self.assertLess(first_scan, retry_scan)
-    self.assertLess(retry_scan, resume)
-    self.assertLess(resume, reconnect)
     self.assertEqual(scan.count("WiFi.scanNetworks("), 2)
+    self.assertNotIn("WiFi.setAutoReconnect(true);", scan)
+    self.assertNotIn("WiFi.reconnect();", scan)
+    self.assertIn("recoveryRadioPolicy.pauseForLocalWork(millis());", scan)
+    self.assertIn("beginRecoveryOperation();", scan)
+    self.assertIn("endRecoveryOperation();", scan)
     self.assertIn('noteAction("wifi_scan_sta_paused")', scan)
     self.assertIn('noteAction("wifi_scan_complete")', scan)
-    self.assertIn('noteAction("wifi_sta_retry_after_scan")', scan)
     self.assertIn('webServer.send(503, "application/json"', scan)
 
   def test_recovery_ui_keeps_scan_and_manual_ssid_fallback(self):
@@ -104,7 +191,8 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     self.assertIn("button.className = 'network-item'", self.wifi)
     self.assertIn("button.addEventListener('click'", self.wifi)
     self.assertIn("document.getElementById('ssid').value = item.ssid", self.wifi)
-    self.assertIn("fetch('/scan')", self.wifi)
+    self.assertIn("fetch('/scan', {cache:'no-store'", self.wifi)
+    self.assertIn('webServer.sendHeader("Cache-Control", "no-store")', self.wifi)
     self.assertIn("Tap a network above or enter SSID manually", self.wifi)
 
   def test_recovery_save_validates_and_reads_back_credentials(self):
@@ -116,6 +204,30 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     self.assertIn("pass.length() > 0 && pass.length() < 8", save)
     self.assertIn("ConfigManager::getWifiSsid() != ssid", save)
     self.assertIn("ConfigManager::getWifiPassword() != pass", save)
+    self.assertIn("beginRecoveryOperation();", save)
+    self.assertGreaterEqual(save.count("endRecoveryOperation();"), 2)
+
+  def test_authenticated_requests_pause_attempt_and_local_ota_renews_lease(self):
+    auth = self.wifi.split("bool WifiManager::requireLocalAuthentication()", 1)[1]
+    auth = auth.split("void WifiManager::handleRecoveryManifest()", 1)[0]
+    note = auth.index("recoveryRadioPolicy.noteAuthenticatedActivity(nowMs);")
+    pause = auth.index("stopRecoveryStationAttemptForLocalWork(nowMs);")
+    self.assertLess(note, pause)
+
+    manifest = self.wifi.split("void WifiManager::handleRecoveryManifest()", 1)[1]
+    manifest = manifest.split("void WifiManager::handleRecoveryUpload()", 1)[0]
+    self.assertIn("beginRecoveryOperation();", manifest)
+    self.assertEqual(manifest.count("endRecoveryOperation();"), 2)
+
+    upload = self.wifi.split("void WifiManager::handleRecoveryUpload()", 1)[1]
+    upload = upload.split(
+        "void WifiManager::handleRecoveryUploadComplete()", 1
+    )[0]
+    self.assertIn("UPLOAD_FILE_START", upload)
+    self.assertIn("beginRecoveryOperation();", upload)
+    self.assertGreaterEqual(upload.count("touchRecoveryOperation();"), 2)
+    self.assertGreaterEqual(upload.count("endRecoveryOperation();"), 2)
+    self.assertIn("UPLOAD_FILE_ABORTED", upload)
 
   def test_mqtt_is_initialized_even_when_boot_wifi_is_late(self):
     mqtt_init = self.main.index("MqttManager::init();")

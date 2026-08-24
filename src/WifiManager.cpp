@@ -5,6 +5,7 @@
 #include "WifiManager.h"
 #include "DiagnosticsManager.h"
 #include "OtaManager.h"
+#include "RecoveryRadioPolicy.h"
 #include "config.h"
 
 #include <cstring>
@@ -19,12 +20,24 @@ String WifiManager::stationIp = "";
 uint32_t WifiManager::recoveryApDeadlineMs = 0;
 static bool webServerStarted = false;
 static bool localUploadSucceeded = false;
-static uint32_t lastStationRetryMs = 0;
 static bool wifiEventsRegistered = false;
+static bool recoveryOperationLeaseActive = false;
+static uint32_t recoveryOperationLastActivityMs = 0;
 
 namespace {
 constexpr char kRecoveryApSsid[] = "SmartGatekeeper-Recovery";
-constexpr uint32_t kStationRetryIntervalMs = 15000;
+constexpr uint32_t kRecoveryApQuietMs = 30000;
+constexpr uint32_t kRecoveryStationAttemptMs = 10000;
+constexpr uint32_t kRecoveryAuthenticatedHoldMs = 30000;
+constexpr uint32_t kRecoveryOperationLeaseMs = 30000;
+constexpr uint32_t kOperatorRecoveryWindowMs = 10UL * 60UL * 1000UL;
+constexpr uint32_t kRecoveryApClientHoldMs = kOperatorRecoveryWindowMs;
+constexpr uint32_t kRecoveryClientReleaseIntervalMs = 1000;
+
+sgk::RecoveryRadioPolicy recoveryRadioPolicy(
+    kRecoveryApQuietMs, kRecoveryStationAttemptMs,
+    kRecoveryAuthenticatedHoldMs, kRecoveryApClientHoldMs,
+    kRecoveryClientReleaseIntervalMs);
 
 void registerWifiDiagnostics() {
     if (wifiEventsRegistered) return;
@@ -75,16 +88,67 @@ bool stationCredentialsProvisioned() {
     return ssid.length() > 0 && ssid != "YOUR_WIFI_SSID";
 }
 
-void startNonBlockingStationAttempt() {
+void startContinuousStationRecovery() {
     if (!stationCredentialsProvisioned()) return;
     WiFi.setAutoReconnect(true);
-    // connectSTA() has already provisioned the driver. It deliberately
-    // disconnects before AP+STA fallback, so start recovery exactly once here.
-    // The Arduino core then retries reconnectable failures (including
-    // NO_AP_FOUND) itself; periodic begin()/reconnect() calls race that state.
     WiFi.reconnect();
-    lastStationRetryMs = millis();
-    DiagnosticsManager::noteAction("wifi_sta_retry");
+    DiagnosticsManager::noteAction("wifi_sta_continuous_recovery");
+}
+
+void beginRecoveryOperation() {
+    recoveryOperationLeaseActive = true;
+    recoveryOperationLastActivityMs = millis();
+}
+
+void touchRecoveryOperation() {
+    recoveryOperationLeaseActive = true;
+    recoveryOperationLastActivityMs = millis();
+}
+
+void endRecoveryOperation() {
+    recoveryOperationLeaseActive = false;
+    recoveryOperationLastActivityMs = 0;
+}
+
+bool isRecoveryOperationActive(uint32_t nowMs) {
+    if (!recoveryOperationLeaseActive) return false;
+    if (nowMs - recoveryOperationLastActivityMs < kRecoveryOperationLeaseMs) {
+        return true;
+    }
+    endRecoveryOperation();
+    DiagnosticsManager::noteAction("recovery_operation_lease_expired");
+    return false;
+}
+
+void stopRecoveryStationAttemptForLocalWork(uint32_t nowMs) {
+    if (recoveryRadioPolicy.phase() !=
+        sgk::RecoveryRadioPhase::kStationAttempt) {
+        return;
+    }
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false, false);
+    recoveryRadioPolicy.pauseForLocalWork(nowMs);
+    DiagnosticsManager::noteAction("wifi_sta_attempt_paused_for_local_work");
+}
+
+void restoreContinuousStationMode() {
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+}
+
+void startBoundedRecoveryStationAttempt(uint32_t nowMs) {
+    WiFi.setAutoReconnect(false);
+    if (WiFi.reconnect()) {
+        DiagnosticsManager::noteAction("wifi_recovery_sta_attempt_started");
+        LOGF("[WIFI-AP] bounded STA recovery attempt started (%lu ms max)",
+             static_cast<unsigned long>(kRecoveryStationAttemptMs));
+        return;
+    }
+    WiFi.disconnect(false, false);
+    recoveryRadioPolicy.stationAttemptFailed(nowMs);
+    DiagnosticsManager::noteAction("wifi_recovery_sta_attempt_start_failed");
+    LOGF("[WIFI-WARN] bounded STA recovery attempt did not start; "
+         "returning to quiet AP");
 }
 }  // namespace
 
@@ -151,9 +215,9 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
     if (WiFi.status() == WL_CONNECTED) {
         connected = true;
         apModeActive = false;
-        WiFi.softAPdisconnect(true);
-        WiFi.mode(WIFI_STA);
         stationIp = WiFi.localIP().toString();
+        WiFi.softAPdisconnect(true);
+        restoreContinuousStationMode();
         DiagnosticsManager::noteAction("wifi_connected");
         LOGF("[WIFI] 접속 성공! IP 주소: %s", stationIp.c_str());
         startWebServer(); // STA 접속 성공 시에도 로컬 IP 웹 접속을 위해 웹서버 구동!
@@ -173,13 +237,19 @@ void WifiManager::startAP() {
 
 bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
     apModeActive = false;
+    recoveryRadioPolicy.stop();
+    endRecoveryOperation();
     DiagnosticsManager::noteAction("provisioning_ap_start");
     
-    // 이전 STA 접속 시도로 인한 채널 호핑/비콘 브로드캐스트 블로킹 완정 방지
+    // AP+STA shares one ESP32-C6 radio/channel. Disable the Arduino core's
+    // unbounded reconnect loop before starting the AP; the recovery timing
+    // policy below grants only one bounded attempt after a stable AP window.
     if (preserveStation) {
         if (!isConnected()) return false;
+        WiFi.setAutoReconnect(false);
         WiFi.mode(WIFI_AP_STA);
     } else {
+        WiFi.setAutoReconnect(false);
         WiFi.disconnect(false, false);
         delay(100);
         WiFi.mode(WIFI_AP_STA);
@@ -188,7 +258,8 @@ bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
     IPAddress apIP(192, 168, 4, 1);
     WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
 
-    // 채널 1, 비숨김(0), 최대 4대 접속 설정하여 브로드캐스트 비콘 프레임 고정
+    // Request channel 1 for AP-only recovery. In AP+STA mode the ESP32-C6 has
+    // one radio, so the driver follows the associated station's channel.
     const bool recoveryProvisioned =
         std::strlen(LOCAL_RECOVERY_AP_PASSWORD) >= 16 &&
         std::strlen(LOCAL_RECOVERY_USER) >= 8 &&
@@ -199,18 +270,26 @@ bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
 
     if (apSuccess) {
         apModeActive = true;
-        recoveryApDeadlineMs = durationMs == 0 ? 0 : millis() + durationMs;
+        recoveryApDeadlineMs =
+            sgk::MakeRecoveryDeadline(millis(), durationMs);
         startWebServer();
         DiagnosticsManager::noteAction("provisioning_ap_ready");
-        LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: '%s' (채널 1, 192.168.4.1)",
+        LOGF("[WIFI-AP] ✅ 설정 AP 가동 완료: '%s' "
+             "(requested channel 1, 192.168.4.1)",
              kRecoveryApSsid);
         LOGF("[WIFI-AP] Captive DNS disabled; open http://192.168.4.1 manually.");
-        if (!preserveStation) startNonBlockingStationAttempt();
+        if (!preserveStation) {
+            recoveryRadioPolicy.begin(millis());
+            DiagnosticsManager::noteAction("wifi_recovery_ap_quiet");
+            LOGF("[WIFI-AP] discovery quiet window started (%lu ms)",
+                 static_cast<unsigned long>(kRecoveryApQuietMs));
+        }
     } else {
         WiFi.softAPdisconnect(true);
         recoveryApDeadlineMs = 0;
-        WiFi.mode(WIFI_STA);
-        if (!preserveStation) startNonBlockingStationAttempt();
+        recoveryRadioPolicy.stop();
+        restoreContinuousStationMode();
+        if (!preserveStation) startContinuousStationRecovery();
         DiagnosticsManager::noteAction("provisioning_ap_failed");
         LOGF("[WIFI-AP] 🚨 설정 AP 가동 실패!");
     }
@@ -248,7 +327,7 @@ void WifiManager::handleRoot() {
                     "</style></head><body><div class='card'>"
                     "<h2>🛡️ SmartGatekeeper Target</h2>");
 
-    if (connected) {
+    if (isConnected()) {
         html += "<div class='status-badge status-connected'>🟢 Wi-Fi 연결됨: " + currentSsid + " (IP: " + stationIp + ")</div>";
     } else {
         html += "<div class='status-badge status-ap'>🟡 와이파이 설정 모드 (AP: 192.168.4.1)</div>";
@@ -299,7 +378,7 @@ void WifiManager::handleRoot() {
               "  let list = document.getElementById('ssid-options');"
               "  let status = document.getElementById('scan-status');"
               "  list.innerHTML = '<div class=\"network-empty\">Scanning...</div>'; status.textContent = 'Scanning...';"
-              "  fetch('/scan').then(r=>{ if(!r.ok) throw new Error('scan failed'); return r.json(); }).then(data=>{"
+              "  fetch('/scan', {cache:'no-store', credentials:'same-origin'}).then(r=>{ if(!r.ok) throw new Error('scan failed'); return r.json(); }).then(data=>{"
               "    if(!Array.isArray(data)){ throw new Error('invalid scan response'); }"
               "    let seen = new Set();"
               "    let networks = data.filter(item=>{"
@@ -329,23 +408,25 @@ void WifiManager::handleRoot() {
               "window.onload = scanWifi;"
               "</script></body></html>");
 
+    webServer.sendHeader("Cache-Control", "no-store");
     webServer.send(200, "text/html", html);
 }
 
 void WifiManager::handleScan() {
     if (!requireLocalAuthentication()) return;
+    beginRecoveryOperation();
 
-    // The Arduino core may be continuously authenticating stale STA
-    // credentials while the recovery AP is serving this request. The ESP32
-    // radio rejects a synchronous scan with WIFI_SCAN_FAILED (-2) in that
-    // state. Pause only the disconnected STA side; the AP and its client stay
-    // up. A connected station recovery window is never disrupted.
+    // A recovery STA attempt and a scan cannot own the single radio together.
+    // Pause only the disconnected STA side and leave credentials/NVS intact.
+    // The recovery policy grants a new attempt only after another quiet window;
+    // it is deliberately not resumed at the end of this HTTP response.
     const bool pauseDisconnectedStation =
         apModeActive && WiFi.status() != WL_CONNECTED &&
         stationCredentialsProvisioned();
     if (pauseDisconnectedStation) {
         WiFi.setAutoReconnect(false);
         WiFi.disconnect(false, false);
+        recoveryRadioPolicy.pauseForLocalWork(millis());
         delay(200);
         DiagnosticsManager::noteAction("wifi_scan_sta_paused");
     }
@@ -371,20 +452,16 @@ void WifiManager::handleScan() {
     if (n < 0) {
         LOGF("[WIFI-SCAN] scan failed code=%d", n);
         DiagnosticsManager::noteAction("wifi_scan_failed");
+        webServer.sendHeader("Cache-Control", "no-store");
         webServer.send(503, "application/json",
                        "{\"error\":\"scan_failed\"}");
     } else {
         LOGF("[WIFI-SCAN] nearby Wi-Fi scan complete: %d found", n);
         DiagnosticsManager::noteAction("wifi_scan_complete");
+        webServer.sendHeader("Cache-Control", "no-store");
         webServer.send(200, "application/json", json);
     }
-
-    if (pauseDisconnectedStation) {
-        WiFi.setAutoReconnect(true);
-        WiFi.reconnect();
-        lastStationRetryMs = millis();
-        DiagnosticsManager::noteAction("wifi_sta_retry_after_scan");
-    }
+    endRecoveryOperation();
 }
 
 void WifiManager::handleSave() {
@@ -396,6 +473,7 @@ void WifiManager::handleSave() {
             "Wi-Fi credential changes are allowed only in provisioning AP mode.");
         return;
     }
+    beginRecoveryOperation();
 
     String ssid = webServer.arg("ssid");
     String pass = webServer.arg("password");
@@ -404,6 +482,7 @@ void WifiManager::handleSave() {
         (pass.length() > 0 && pass.length() < 8)) {
         DiagnosticsManager::noteAction("wifi_credentials_invalid");
         webServer.send(400, "text/plain", "Invalid Wi-Fi credentials");
+        endRecoveryOperation();
         return;
     }
 
@@ -414,6 +493,7 @@ void WifiManager::handleSave() {
         ConfigManager::getWifiPassword() != pass) {
         DiagnosticsManager::noteAction("wifi_credentials_write_failed");
         webServer.send(500, "text/plain", "Wi-Fi credential storage failed");
+        endRecoveryOperation();
         return;
     }
 
@@ -466,6 +546,11 @@ bool WifiManager::requireLocalAuthentication() {
         webServer.requestAuthentication(BASIC_AUTH, kRecoveryApSsid);
         return false;
     }
+    if (apModeActive) {
+        const uint32_t nowMs = millis();
+        recoveryRadioPolicy.noteAuthenticatedActivity(nowMs);
+        stopRecoveryStationAttemptForLocalWork(nowMs);
+    }
     return true;
 }
 
@@ -474,32 +559,40 @@ void WifiManager::handleRecoveryManifest() {
         if (!apModeActive) webServer.send(403, "text/plain", "AP recovery only");
         return;
     }
+    beginRecoveryOperation();
     const String manifest = webServer.arg("plain");
     if (!OtaManager::stageLocalManifest(manifest)) {
         webServer.send(400, "text/plain",
                        "Signed manifest rejected: " +
                            OtaManager::getLastError());
+        endRecoveryOperation();
         return;
     }
     webServer.send(204, "text/plain", "");
+    endRecoveryOperation();
 }
 
 void WifiManager::handleRecoveryUpload() {
     if (!apModeActive || !requireLocalAuthentication()) return;
     HTTPUpload& upload = webServer.upload();
     if (upload.status == UPLOAD_FILE_START) {
+        beginRecoveryOperation();
         localUploadSucceeded = false;
         if (!OtaManager::localManifestReady() || !OtaManager::beginLocalUpload()) {
             OtaManager::abortLocalUpload("local upload start rejected");
         }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
+        touchRecoveryOperation();
         if (!OtaManager::writeLocalUploadChunk(upload.buf, upload.currentSize)) {
             OtaManager::abortLocalUpload("local upload write rejected");
         }
     } else if (upload.status == UPLOAD_FILE_END) {
+        touchRecoveryOperation();
         localUploadSucceeded = OtaManager::finishLocalUpload();
+        endRecoveryOperation();
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
         OtaManager::abortLocalUpload("local upload aborted");
+        endRecoveryOperation();
     }
 }
 
@@ -508,8 +601,10 @@ void WifiManager::handleRecoveryUploadComplete() {
         if (!apModeActive) webServer.send(403, "text/plain", "AP recovery only");
         return;
     }
+    beginRecoveryOperation();
     if (!localUploadSucceeded) {
         webServer.send(400, "text/plain", "Firmware rejected");
+        endRecoveryOperation();
         return;
     }
     webServer.send(202, "text/plain", "Verified; rebooting into pending slot");
@@ -523,7 +618,6 @@ void WifiManager::handleRecoveryApEnable() {
         webServer.send(409, "text/plain", "Station link is not available");
         return;
     }
-    constexpr uint32_t kOperatorRecoveryWindowMs = 10UL * 60UL * 1000UL;
     if (!startRecoveryAP(true, kOperatorRecoveryWindowMs)) {
         webServer.send(503, "text/plain", "Recovery AP unavailable");
         return;
@@ -545,42 +639,135 @@ void WifiManager::handleNotFound() {
 }
 
 void WifiManager::handleClient() {
-    if (apModeActive && recoveryApDeadlineMs == 0 &&
-        WiFi.status() == WL_CONNECTED) {
-        WiFi.softAPdisconnect(true);
-        apModeActive = false;
-        connected = true;
-        stationIp = WiFi.localIP().toString();
-        WiFi.mode(WIFI_STA);
-        DiagnosticsManager::noteAction("wifi_recovered_from_ap");
-        LOGF("[WIFI-INFO] provisioning AP station recovery succeeded! IP: %s",
-             stationIp.c_str());
-    } else if (apModeActive && WiFi.status() != WL_CONNECTED &&
-               millis() - lastStationRetryMs >= kStationRetryIntervalMs) {
-        lastStationRetryMs = millis();
-        WiFi.setAutoReconnect(true);
-        DiagnosticsManager::noteAction("wifi_sta_autoreconnect_watch");
+    // Process an already-arrived authenticated request before granting a STA
+    // attempt. Authentication and operation handlers extend/pause the policy,
+    // so a queued save, scan or signed local OTA request wins radio ownership.
+    webServer.handleClient();
+    const uint32_t nowMs = millis();
+
+    const bool operatorDeadlineReached =
+        apModeActive &&
+        sgk::RecoveryDeadlineReached(nowMs, recoveryApDeadlineMs);
+    if (operatorDeadlineReached && isRecoveryOperationActive(nowMs)) {
+        // Do not cut an authenticated scan/save/signed local OTA operation at
+        // the ten-minute boundary. Each active lease receives only another
+        // bounded lease interval; a stalled or idle client cannot renew it.
+        recoveryApDeadlineMs = sgk::MakeRecoveryDeadline(
+            nowMs, kRecoveryOperationLeaseMs);
+        DiagnosticsManager::noteAction(
+            "recovery_ap_deadline_deferred_for_local_operation");
+        return;
     }
-    if (apModeActive && recoveryApDeadlineMs != 0 &&
-        static_cast<int32_t>(millis() - recoveryApDeadlineMs) >= 0) {
+
+    if (operatorDeadlineReached) {
+        const bool stationWasConnected = WiFi.status() == WL_CONNECTED;
+        const String stationIpBeforeApClose =
+            stationWasConnected ? WiFi.localIP().toString() : String();
         WiFi.softAPdisconnect(true);
         recoveryApDeadlineMs = 0;
         apModeActive = false;
-        if (WiFi.status() == WL_CONNECTED) {
+        recoveryRadioPolicy.stop();
+        endRecoveryOperation();
+        if (stationWasConnected) {
             connected = true;
-            stationIp = WiFi.localIP().toString();
-            WiFi.mode(WIFI_STA);
+            stationIp = stationIpBeforeApClose;
+            restoreContinuousStationMode();
         } else {
             connected = false;
             startAP();
+            DiagnosticsManager::noteAction("recovery_ap_window_closed");
+            return;
         }
         DiagnosticsManager::noteAction("recovery_ap_window_closed");
     }
+
+    if (apModeActive && recoveryApDeadlineMs == 0 &&
+        WiFi.status() == WL_CONNECTED) {
+        const String recoveredStationIp = WiFi.localIP().toString();
+        WiFi.softAPdisconnect(true);
+        apModeActive = false;
+        connected = true;
+        stationIp = recoveredStationIp;
+        recoveryRadioPolicy.stop();
+        endRecoveryOperation();
+        restoreContinuousStationMode();
+        DiagnosticsManager::noteAction("wifi_recovered_from_ap");
+        LOGF("[WIFI-INFO] provisioning AP station recovery succeeded! IP: %s",
+             stationIp.c_str());
+    } else if (apModeActive && WiFi.status() == WL_CONNECTED) {
+        // The authenticated ten-minute operator window intentionally keeps the
+        // AP up while the healthy STA continues MQTT and periodic HTTPS OTA.
+        connected = true;
+        stationIp = WiFi.localIP().toString();
+        recoveryRadioPolicy.stop();
+    } else if (apModeActive) {
+        connected = false;
+        if (recoveryRadioPolicy.phase() ==
+            sgk::RecoveryRadioPhase::kInactive) {
+            WiFi.setAutoReconnect(false);
+            WiFi.disconnect(false, false);
+            recoveryRadioPolicy.begin(nowMs);
+            DiagnosticsManager::noteAction("wifi_recovery_ap_quiet");
+            LOGF("[WIFI-AP] station lost; discovery quiet window restarted");
+        }
+
+        if (stationCredentialsProvisioned()) {
+            const sgk::RecoveryRadioAction action = recoveryRadioPolicy.update(
+                nowMs, false, WiFi.softAPgetStationNum() > 0,
+                isRecoveryOperationActive(nowMs));
+            if (action ==
+                sgk::RecoveryRadioAction::kStartStationAttempt) {
+                startBoundedRecoveryStationAttempt(nowMs);
+            } else if (action ==
+                       sgk::RecoveryRadioAction::kStopStationAttempt) {
+                WiFi.setAutoReconnect(false);
+                WiFi.disconnect(false, false);
+                DiagnosticsManager::noteAction(
+                    "wifi_recovery_sta_attempt_stopped");
+                LOGF("[WIFI-AP] bounded STA recovery attempt stopped; "
+                     "returning to quiet AP");
+            } else if (action ==
+                       sgk::RecoveryRadioAction::kReleaseStaleApClients) {
+                const esp_err_t deauthResult = esp_wifi_deauth_sta(0);
+                if (deauthResult == ESP_OK) {
+                    DiagnosticsManager::noteAction(
+                        "wifi_recovery_idle_client_released");
+                    LOGF("[WIFI-AP] idle AP client hold expired; "
+                         "client released before a fresh quiet window");
+                } else {
+                    DiagnosticsManager::noteAction(
+                        "wifi_recovery_idle_client_release_failed");
+                    LOGF("[WIFI-WARN] unable to release idle AP clients "
+                         "(rc=%d); STA attempt remains blocked",
+                         static_cast<int>(deauthResult));
+                }
+            } else if (
+                action == sgk::RecoveryRadioAction::
+                              kReleaseStaleClientsAndStartStationAttempt) {
+                const esp_err_t deauthResult = esp_wifi_deauth_sta(0);
+                if (deauthResult == ESP_OK) {
+                    DiagnosticsManager::noteAction(
+                        "wifi_recovery_stale_client_attempt_forced");
+                    LOGF("[WIFI-AP] stale AP clients released; starting "
+                         "bounded STA availability attempt");
+                    startBoundedRecoveryStationAttempt(nowMs);
+                } else {
+                    recoveryRadioPolicy.stationAttemptFailed(nowMs);
+                    DiagnosticsManager::noteAction(
+                        "wifi_recovery_idle_client_release_failed");
+                    LOGF("[WIFI-WARN] unable to release stale AP clients "
+                         "(rc=%d); returning to quiet AP",
+                         static_cast<int>(deauthResult));
+                }
+            }
+        }
+    }
+
     if (!apModeActive) {
         // STA 모드 - Wi-Fi 연결 워치독 (Auto-Reconnect)
         static uint32_t lastWifiCheckMs = 0;
-        if (millis() - lastWifiCheckMs > 15000) {
-            lastWifiCheckMs = millis();
+        if (nowMs - lastWifiCheckMs > 15000) {
+            lastWifiCheckMs = nowMs;
             if (WiFi.status() != WL_CONNECTED) {
                 if (connected) {
                     LOGF("[WIFI-WARN] ⚠️ 와이파이 연결 단절 감지! Auto-Reconnect 작동 시작...");
@@ -600,7 +787,6 @@ void WifiManager::handleClient() {
             }
         }
     }
-    webServer.handleClient();
 }
 
 bool WifiManager::isConnected() {

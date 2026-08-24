@@ -106,17 +106,20 @@
 
 ## 8. 2026-08-23 software recovery closure
 
-The current firmware no longer stops STA attempts after the initial ten-second
-boot window. A failed boot association opens the authenticated recovery AP in
-`WIFI_AP_STA` mode while retrying the stored/compiled STA credentials every 15
-seconds. Successful association closes the indefinite provisioning AP and
-returns to pure STA mode. Failed attempts do not erase the NVS credentials.
+The current firmware no longer stops STA recovery after the initial boot
+window, but it also does not run an unbounded reconnect loop beside the
+recovery AP. A failed boot association opens the authenticated recovery AP in
+`WIFI_AP_STA`, disables STA auto-reconnect, and provides at least 30 seconds of
+quiet AP discovery before a policy-controlled attempt. A successful
+association closes the indefinite provisioning AP and returns to pure STA
+mode. Failed attempts do not erase the NVS credentials.
 The AP identity is single-sourced by `kRecoveryApSsid` as
 `SmartGatekeeper-Recovery`; the same constant is used for the broadcast SSID,
 serial ready log and HTTP Basic authentication realm.
-An authenticated `/scan` request temporarily pauses a disconnected STA's
-credential retry, performs one bounded synchronous scan with one bounded retry,
-then restores STA auto-reconnect without stopping the SoftAP or clearing NVS.
+An authenticated `/scan` request temporarily pauses a disconnected STA
+attempt, performs one bounded synchronous scan with one bounded retry, and
+returns to a fresh quiet-AP interval without stopping the SoftAP, immediately
+restarting STA, or clearing NVS.
 The portal renders the returned SSIDs and RSSI values as an explicit scrollable
 list while retaining a manual SSID field as a fallback.
 
@@ -286,3 +289,49 @@ MQTT reconnect and signed OTA health/rollback trials pass. The observed H10/H11
 reboots did not emit the expected `PENDING_VERIFY` health-window/valid-mark
 sequence, so rollback remains an open Gate even though install and current-image
 execution succeeded.
+
+## 15. 2026-08-24 quiet recovery-AP arbitration candidate
+
+The ESP32-C6 has one 2.4 GHz radio, and an associated STA determines the AP+STA
+channel. The recovery adapter now applies the following explicit state policy:
+
+1. A boot STA failure opens `SmartGatekeeper-Recovery` with STA auto-reconnect
+   disabled and starts a 30-second AP-discovery quiet interval. There is no STA
+   reconnect call during that interval.
+2. After the interval, one `WiFi.reconnect()` may start only when there is no
+   associated AP client, no authenticated activity in the preceding 30
+   seconds, and no active scan, credential-save, or signed local OTA lease.
+3. The STA attempt lasts at most 10 seconds. Failure or interruption explicitly
+   disconnects the STA side, keeps credentials/NVS, and begins another full
+   quiet interval. A queued authenticated HTTP request is handled before the
+   policy update and immediately interrupts an attempt.
+4. A merely associated, idle AP client has a bounded 10-minute hold. On expiry,
+   provided no authenticated/local operation is active, the Target
+   deauthenticates AP clients and starts another 30-second quiet interval.
+   Reassociating stale clients are released at a one-second bounded rate. After
+   the quiet interval, deauthentication and one bounded STA attempt are paired
+   even if the idle phone continues to reassociate; raw idle association alone
+   does not interrupt that attempt. Authenticated activity or local work still
+   interrupts it immediately. If driver deauthentication fails, the Target
+   returns to quiet AP instead of starting an attempt against an associated
+   operator.
+5. `/scan` leaves STA auto-reconnect disabled after its bounded scan so the JSON
+   response and list rendering are not raced by immediate channel hopping.
+   Root and scan responses use `Cache-Control: no-store`; the manual SSID field
+   remains available. `/save` and local manifest/upload operations hold the
+   radio, and each upload chunk renews the bounded lease.
+6. Station success closes an indefinite boot provisioning AP and restores pure
+   STA plus continuous auto-reconnect. A healthy operator-opened AP+STA window
+   has a 10-minute base deadline, then also restores normal STA auto-reconnect.
+   If signed local OTA is active at that boundary, each active operation lease
+   may defer closure by only 30 seconds; upload chunks renew it, but an idle or
+   unauthenticated association cannot. A stalled lease expires and permits AP
+   closure. The wrap-safe deadline reserves zero only for an indefinite AP.
+
+This policy does not change MQTTS identity/TLS, periodic HTTPS OTA, signed local
+manifest verification, inactive-slot writes, health/rollback, NVS format, or
+the authenticated 10-minute operator endpoint. Time/transition host tests and
+an ESP32-C6 compile/capacity check pass. Physical evidence is still required
+for 30-second continuous AP visibility, Android scan-list rendering, save and
+reboot, late STA+MQTTS recovery, local signed OTA, and repeated outage cycles at
+the intended installation RF level.

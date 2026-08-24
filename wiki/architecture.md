@@ -177,6 +177,35 @@ non-1883 port, Target ID와 일치하는 principal, signer와 tenant/door identi
 활성화됩니다. TLS 검증 실패를 `setInsecure()`로 우회하지 않습니다. 벽 매립형 연결 SLO와 재복구
 Gate는 [embedded_target_connectivity_policy.md](embedded_target_connectivity_policy.md)를 따릅니다.
 
+#### Recovery AP radio arbitration (2026-08-24)
+
+ESP32-C6 AP+STA shares one radio and channel. After a boot STA failure,
+`SmartGatekeeper-Recovery` therefore disables Arduino's unbounded STA
+auto-reconnect and guarantees at least 30 seconds of quiet AP discovery. A
+single stored-credential STA attempt is then allowed only when no AP client,
+recent authenticated request, active scan/save, or signed local OTA operation
+owns the radio. The sole exception is the bounded stale-client availability
+transition described below. Every attempt is limited to 10 seconds; failure
+disconnects only the STA interface, preserves NVS, and starts a new quiet
+window.
+
+An associated but idle phone cannot block MQTT recovery forever. Its hold is
+bounded to the same 10-minute operator interval; after that interval, and only
+when authenticated/local work is inactive, the Target deauthenticates the idle
+AP client and starts a fresh 30-second quiet window. If Android automatically
+reassociates throughout that interval, the Target pairs one more deauth with a
+forced, bounded STA attempt so an unauthenticated idle association cannot pin
+MQTT offline forever. An authenticated request immediately stops even that
+in-flight attempt, while local
+OTA upload chunks renew a bounded operation lease. A successful station
+recovery closes an indefinite provisioning AP, returns to pure STA mode, and
+restores continuous auto-reconnect so MQTTS and periodic signed HTTPS OTA use
+their unchanged normal paths. The explicit operator-opened AP+STA window still
+has a 10-minute base deadline and restores normal STA auto-reconnect when it
+closes. If that deadline intersects an authenticated local operation, only the
+active 30-second operation lease can defer closure; upload chunks renew the
+lease, while a stalled upload or merely associated client cannot.
+
 ### 3.3 BLE
 
 코드는 Arduino-ESP32 `BLEDevice` API를 사용하지만 UUID native field는 NimBLE 계열 형태를 참조하고 주석은 Bluedroid라고 명시하여 스택 정체가 불일치합니다. iBeacon manufacturer payload의 UUID byte order는 코드만으로 합격 판정하지 않으며 실측이 필요합니다.
