@@ -3326,3 +3326,10 @@
 - Verified that reviewed feature `23a3f3ed`, policy-connected head `aa9fe818` and merged main `539844ec` have 186 matching protected-object comparisons across the complete ordered 62-file set, with both earlier commits proven ancestors of merged main.
 - The live GitHub verifier selected `current-main-baseline` for exact merged main with 62 protected files. The focused final-policy suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
 - Full Windows discovery ran 292 tests with 290 passing. Only the two unchanged checkout-materialization CRLF checks failed for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`; their staged Git entries remain LF.
+
+## [2026-08-24] compile | Authorize exact Target build inventory order fix
+
+- Replaced the completed `current-main-baseline` with one temporary-exact and one future persistent identity for reviewed PR #118 commit `7021150d57aa6ceffec6a69e12cdf12cc88c548f`; both identities bind the same complete ordered 62-file normalized digest map.
+- Verified that `deploy.yml` is the only protected change from exact current main `5444ced107cdacbaf47bad1aca683f0e4694285c`, with normalized SHA-256 `7f26fe2b5250927304cf2f4be5a6c5fa3e110429602f870c05ae991410fa4b1e`; all seven workflow entries remain regular files and the local-Action inventory remains empty.
+- The live GitHub content/tree verifier selected `temporary-build-tree-order-7021150d` for the exact candidate with 62 protected files. The focused transition suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical or commercial evidence.
