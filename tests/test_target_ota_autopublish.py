@@ -516,7 +516,12 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     )
     self.assertIn("src/WifiManager.cpp", privileged_verify)
     self.assertIn(
-        "e5c32190a302b8e934e18dfdf1eb21771044cea2ce6ec82571b4fc77b5e18571",
+        "9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3",
+        privileged_verify,
+    )
+    self.assertIn("include/RecoveryRadioPolicy.h", privileged_verify)
+    self.assertIn(
+        "3e25df300a313b8081e0c1bbba8b43e04aa5d8d439226c303d560d24e801ff79",
         privileged_verify,
     )
     self.assertIn("sitecustomize.py usercustomize.py", privileged_verify)

@@ -265,3 +265,20 @@ The weak-link STA profile added after this observation must be tested on the
 same hardware and position. Passing at `-81 dBm` would still not authorize wall
 installation; section 5 of the connectivity policy requires RF improvement and
 repeated outage/boot evidence.
+
+## 2026-08-24 quiet recovery-AP arbitration candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Host timing/transitions | Native C++ policy tests cover the initial 30-second quiet interval, client/auth/operation blockers, one 10-second attempt, failure-to-quiet, request interruption, idle-client 10-minute expiry/deauth action, persistent reassociation before and throughout a forced bounded attempt, authenticated interruption, station success, `millis()` wrap and the timed-window zero-sentinel edge | PASS for deterministic policy logic |
+| Firmware integration contracts | Focused connectivity/security tests verify one WebServer service call per loop, authenticated attempt pause, scan/save/local-OTA leases, no immediate post-scan reconnect, idle-client release, active-operation deadline deferral before AP close, AP-exit auto-reconnect restoration and unchanged MQTTS/OTA health gates | PASS for source integration; not radio runtime |
+| ESP32-C6 compile/capacity | Default `esp32c6` compile with non-secret compile-only placeholders succeeded on Arduino 3.3.9 / ESP-IDF libs 5.5.4. `firmware.bin` is 1,786,336 bytes, leaving 5,553,696 bytes in either 7,340,032-byte OTA slot; the temporary ignored header was removed after the build | PASS for build and capacity; not a production-secret artifact |
+| Boot recovery AP visibility | No physical Target was flashed from this candidate in this task | PENDING: verify at least 30 seconds of uninterrupted SSID discovery and association |
+| Portal scan/list/save | No Android AP-only request/response or NVS-preserving reboot was exercised from this candidate | PENDING: authenticate, render list, select/manual fallback, save, reboot and read back without logging credentials |
+| STA/MQTTS/OTA recovery | No physical late-STA association, MQTTS reconnect, periodic HTTPS OTA, signed local OTA, health-valid or rollback sequence was exercised | PENDING; wall installation Gate remains open |
+
+The build proves that `esp_wifi_deauth_sta(0)` and the policy adapter compile for
+ESP32-C6. It does not prove beacon continuity or coexistence behavior. Physical
+testing must also leave a phone associated but idle through the bounded hold,
+confirm that active authenticated upload is not interrupted, and verify that
+normal pure-STA auto-reconnect, MQTTS, and signed OTA resume after AP exit.
