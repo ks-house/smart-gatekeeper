@@ -202,6 +202,14 @@ merge-connected into the exact feature without rebasing or squashing. A final
 policy-only rotation must then remove both transition identities and pin the
 actual PR #126 merged-main commit as the sole baseline.
 
+PR #127 merged the bounded authorization as policy main `a1f8e4dc`. That policy
+main was merge-connected to the reviewed feature as `b590c410`, preserving both
+parents and the exact reviewed 69-file map. After all fresh Hosted Trusted, OTA,
+Backend and ESP32-C6 checks passed, PR #126 was merge-commit merged as actual
+main `900f22179db54b50aba03fba519ac80266519c2d`. The immediate final rotation
+removes both `4538fcb` transition identities and pins that actual merge as the
+sole `current-main-baseline`; all 69 protected normalized objects remain exact.
+
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
