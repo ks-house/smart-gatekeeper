@@ -3326,3 +3326,15 @@
 - Verified that reviewed feature `23a3f3ed`, policy-connected head `aa9fe818` and merged main `539844ec` have 186 matching protected-object comparisons across the complete ordered 62-file set, with both earlier commits proven ancestors of merged main.
 - The live GitHub verifier selected `current-main-baseline` for exact merged main with 62 protected files. The focused final-policy suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
 - Full Windows discovery ran 292 tests with 290 passing. Only the two unchanged checkout-materialization CRLF checks failed for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`; their staged Git entries remain LF.
+
+## [2026-08-24] fix | Align privileged Target build inventory with Git order
+
+- Exact-main runs `32679358174` and `32679992103` passed the secret-free ESP32-C6 canary but failed closed at `Verify exact protected main before production secrets`; Secret materialization, production compilation, handoff and NAS publication were skipped.
+- Isolated the mismatch to the new `include/RecoveryRadioPolicy.h` row being declared after `include/RelayController.h` while `git ls-files` emits `RecoveryRadioPolicy.h` first in byte order. Moved only those two existing mode/digest rows into exact Git order without changing any build input, Secret, runtime or artifact byte.
+- Added a regression that extracts all 40 privileged inventory rows and requires their declared path order and membership to equal the tracked build-input list returned by `git ls-files`, preventing a future file insertion from silently blocking exact-main production publication.
+
+## [2026-08-24] test | Verify Target build inventory order correction
+
+- The focused Target autopublish suite passed 18/18, including exact 40-row order/membership comparison. The OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
+- The corrected `deploy.yml` has normalized SHA-256 `7f26fe2b5250927304cf2f4be5a6c5fa3e110429602f870c05ae991410fa4b1e`; it is the only protected byte change and therefore remains intentionally rejected by the predecessor trusted policy until a separate exact-feature authorization is merged and connected.
+- No Secret was materialized, no production firmware was built, no NAS pointer was changed and no Target install, reboot, health-valid or rollback evidence is claimed by this source-level correction.
