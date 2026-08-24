@@ -97,21 +97,25 @@ unprotected order/membership regression. Relative to current main, the only prot
 - `.github/workflows/deploy.yml` becomes normalized SHA-256
   `7f26fe2b5250927304cf2f4be5a6c5fa3e110429602f870c05ae991410fa4b1e`.
 
-This bounded authorization replaces `current-main-baseline` with exactly two identities carrying the same
-complete ordered 62-file map, seven-workflow inventory and empty local-Action inventory:
+PR #119 separately authorized that exact feature commit plus later same-byte descendants and was merge-commit
+merged as main `b23a13a1e17d6c4c7028fc6995999fcc54e5e464`. The feature branch then merged trusted main into the
+reviewed commit without rebasing or squashing, producing policy-connected head
+`cd625503ce1382704cecd0a715334c98ed18d85e`. PR #118 retained both parents and was merge-commit merged as
+main `6ca977f71f19a9b2017bc51922b5fc808a8e5d2c`.
 
-- `temporary-build-tree-order-7021150d` accepts only the exact reviewed feature commit.
-- `future-build-tree-order-7021150d-persistent-baseline` accepts that commit or a GitHub Compare-proven
-  descendant with identical protected bytes.
+This final rotation removes both `7021150d` transition identities and pins the sole `current-main-baseline`
+persistent identity to that actual merged-main commit. The reviewed feature and policy-connected head are both
+ancestors of the merge. All 62 protected Git objects are unchanged from the reviewed feature through merged
+main; the ordered digest map, seven-workflow inventory and empty local-Action inventory therefore remain exact.
 
-Regression tests pin the exact repository, reviewed SHA, both bounded IDs and modes, ordered 62-path set,
-identical complete maps and exact workflow/action inventories. They require explicit ancestry for later
-descendants and reject the retired merged-main baseline source. They also reject an extra bundle, fork,
-retired or altered commit, unproven/diverged history, case/path variant, old five-path partial set, missing or
-reordered path, swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action
-additions, removals, renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed
-set, or candidate-derived digest is approved. This authorization boundary is not production,
-physical, release, NAS, deployment, install, reboot-health, or rollback evidence.
+Regression tests pin the exact repository, actual merged-main SHA, sole baseline ID and mode, ordered 62-path
+set, complete map and exact workflow/action inventories. They require explicit ancestry for later descendants
+and reject every retired source commit. They also reject an extra bundle, fork, altered commit,
+unproven/diverged history, case/path variant, old five-path partial set, missing or reordered path,
+swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action additions, removals,
+renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed set, or
+candidate-derived digest is approved. This authorization boundary is not production, physical, release, NAS,
+deployment, install, reboot-health, or rollback evidence.
 
 ## 3. Why PR self-modification does not authorize itself
 
@@ -131,13 +135,14 @@ separately app-pinned status identity and repository policy outside the mutable 
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
 main; later protected bundles completed the same sequence, including PR #86/#85, PR #100/#101,
-PR #106/#105 and PR #113/#112. PR #116/#115/#117 completed the recovery-AP rollout. This new bounded
-authorization starts from exact current main `5444ced107cdacbaf47bad1aca683f0e4694285c` and changes only policy
-data, regression tests, this guide and the append-only log. It does not modify the validator, trusted workflow
-or any other protected byte. Its hosted check executes current main's sole baseline and can admit this
-policy-only descendant because that baseline source remains an ancestor and all 62 predecessor protected bytes
-are unchanged. A green Hosted Trusted check is required before merge; no branch-protection change is
-authorized. That green check does not close the version-3 self-policy or same-status-context producer residual.
+PR #106/#105 and PR #113/#112. PR #116/#115/#117 completed the recovery-AP rollout, and PR #119/#118
+completed the Target build-order correction. This final rotation starts from exact current main
+`6ca977f71f19a9b2017bc51922b5fc808a8e5d2c` and changes only policy data, regression tests, this guide and the
+append-only log. It does not modify the validator, trusted workflow or any other protected byte. Its hosted
+check executes current main's transition policy and can admit this policy-only descendant because the
+persistent transition source remains an ancestor and all 62 protected bytes are unchanged. A green Hosted
+Trusted check is required before merge; no branch-protection change is authorized. That green check does not
+close the version-3 self-policy or same-status-context producer residual.
 
 ## 4. Rotation procedure
 
@@ -154,12 +159,11 @@ objects and both inventories were rechecked after the ancestry connection, and t
 or squashed.
 
 The recovery-AP final rotation pinned `current-main-baseline` to `539844ec` and was merged as `5444ced1`.
-For the build-order correction, first merge this separate exact-feature authorization. Merge that newly trusted
-main into exact feature `7021150d57aa6ceffec6a69e12cdf12cc88c548f` without rebasing or squashing,
-recheck all 62 protected objects and both inventories, and obtain fresh Hosted Trusted, OTA contract and
-ESP32-C6 canary checks before merge-committing PR #118. Immediately rotate both order-fix transition identities
-to one `current-main-baseline` pinned to the actual PR #118 merge commit, then require the exact final-main
-Target publisher to pass its privileged inventory check, production build, signed encrypted NAS publication
+For the build-order correction, PR #119 authorized exact feature `7021150d`; trusted policy main `b23a13a1` was
+then merged into that feature as `cd625503`, and fresh Hosted Trusted, OTA contract and ESP32-C6 canary checks
+passed before PR #118 merge-commit produced main `6ca977f7`. This rotation immediately replaces both order-fix
+transition identities with one `current-main-baseline` pinned to that actual merge. The exact final-main Target
+publisher must still pass its privileged inventory check, production build, signed encrypted NAS publication
 and public readback. Any path, digest, repository or reviewed source-commit change requires a fresh whole-bundle
 review; never prolong the transition window or reuse a retired transition identity.
 

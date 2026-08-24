@@ -3351,3 +3351,15 @@
 - Merged policy main `b23a13a1e17d6c4c7028fc6995999fcc54e5e464` into exact reviewed feature `7021150d57aa6ceffec6a69e12cdf12cc88c548f` without rebasing or squashing; resolved only the append-only log by retaining both histories.
 - Retained the exact corrected `deploy.yml` bytes and complete authorized 62-file map, seven-workflow inventory and empty local-Action inventory. The focused Target autopublish plus trusted-policy suites passed 60/60; the OTA contract, all workflow `actionlint` checks and whitespace validation passed.
 - Production publication remains gated on fresh hosted checks and merge to exact main; no Secret, NAS, Target install, reboot, health-valid or rollback result is claimed.
+
+## [2026-08-24] compile | Rotate Target build-order policy to merged-main baseline
+
+- PR #119 merge-commit merged the exact `7021150d57aa6ceffec6a69e12cdf12cc88c548f` authorization as policy main `b23a13a1e17d6c4c7028fc6995999fcc54e5e464`; policy-connected feature head `cd625503ce1382704cecd0a715334c98ed18d85e` retained both histories, and PR #118 merge-commit merged it as actual main `6ca977f71f19a9b2017bc51922b5fc808a8e5d2c` after Hosted Trusted, OTA contract and ESP32-C6 canary checks passed.
+- Removed both Target build-order transition identities and pinned the sole `current-main-baseline` persistent identity to actual PR #118 merged main with the unchanged ordered 62-file map, seven-workflow inventory and empty local-Action inventory. Reviewed feature `7021150d` is now explicitly retired.
+- This policy-only rotation changes no protected workflow, production build input or runtime byte. It reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical or commercial evidence.
+
+## [2026-08-24] test | Verify final Target build-order policy rotation
+
+- Verified that reviewed feature `7021150d`, policy-connected head `cd625503` and merged main `6ca977f7` have 186 matching protected-object comparisons across the complete ordered 62-file set, with both earlier commits proven ancestors of merged main.
+- The live GitHub verifier selected `current-main-baseline` for exact merged main with 62 protected files. The focused final-policy suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
+- Full Windows discovery ran 292 tests with 290 passing. Only the two unchanged checkout-materialization CRLF checks failed for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`; their staged Git entries remain LF.
