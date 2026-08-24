@@ -257,3 +257,29 @@ described in [android_gatt_worker.md](android_gatt_worker.md). Live enable activ
 ranging/monitoring; expiry or authenticated rollback disables native proof before legacy reacquires.
 This integration does not satisfy the Samsung 20-run gates above and does not weaken the independent
 mobile OTA or authenticated `manual_remote` paths.
+
+## 11. 2026-08-25 physical exact-filter diagnosis
+
+The production-signed Android `1.0.0-g7c2764a` replacement install preserved
+its local Keystore credential and registered the OS `PendingIntent` scan with
+the exact Apple company ID `0x004C`, iBeacon type `02 15` and Gatekeeper UUID.
+All required Bluetooth/location permissions were granted, Bluetooth was ON,
+and the package was battery-whitelisted. Android nevertheless reported zero
+results for that exact filter while an unfiltered Bluetooth cache saw the
+named Target. No `source=ble_scan` event was delivered, so no encrypted locator
+could be recorded and manual retry truthfully returned `TARGET_UNAVAILABLE`.
+
+Source tracing found an on-air contract violation in the Target rather than an
+Android registration or permission failure. The pinned pioarduino
+`BLEBeacon::setManufacturerId()` swaps its argument before the packed structure
+is returned as raw advertising data. Passing `0x004C` therefore emits `00 4C`;
+the pinned framework example passes `0x4C00`, which emits the standard iBeacon
+company bytes `4C 00` consumed by Android's manufacturer ID `0x004C` filter.
+The Target now passes `0x4C00`, and a source regression rejects the old setter
+argument. The exact Android filter remains unchanged and fail-closed.
+
+The corrected personal-production image compiles against Arduino 3.3.9 for the
+physical 16 MB N16 layout at 1,779,430 bytes, leaving 5,560,602 bytes in either
+7,340,032-byte OTA slot. This is source/build evidence only. CI production
+signing, NAS readback, Target inactive-slot install/reboot, non-zero exact scan,
+locator creation and GATT challenge/proof/result remain the connected Gate.

@@ -229,7 +229,13 @@ class TargetBootRegistryTest(unittest.TestCase):
             client.connect.assert_called_once_with("mqtt.example.test", 8883, keepalive=30)
             client.loop_start.assert_called_once()
 
-            client.on_connect(client, None, None, 0)
+            class MqttV5SuccessReason:
+                value = 0
+
+                def __eq__(self, other):
+                    return self.value == other
+
+            client.on_connect(client, None, None, MqttV5SuccessReason())
             self.assertIn(
                 f"gatekeeper/v1/targets/{TARGET}/boot",
                 {call.args[0] for call in client.subscribe.call_args_list},

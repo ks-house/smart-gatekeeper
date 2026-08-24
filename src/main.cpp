@@ -317,7 +317,11 @@ void setTxPower(int powerDbm) {
   pAdv->stop();
 
   BLEBeacon oBeacon = BLEBeacon();
-  oBeacon.setManufacturerId(0x004C);
+  // BLEBeacon::setManufacturerId() byte-swaps its argument before getData()
+  // returns the packed raw advertisement bytes.  Pass the wire-order value
+  // used by the pinned pioarduino example so Apple company ID 0x004C is
+  // emitted as the standard iBeacon prefix 4C 00 (not 00 4C).
+  oBeacon.setManufacturerId(0x4C00);
   BLEUUID bleUUID(GATEKEEPER_BEACON_UUID);
 
   // ─────────────────────────────────────────────────────────────

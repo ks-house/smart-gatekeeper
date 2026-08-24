@@ -584,7 +584,11 @@ def _start_target_boot_subscriber():
         )
 
     def on_connect(connected_client, _userdata, _flags, reason_code, *args):
-        if int(reason_code) == 0:
+        # MQTT v5 in paho-mqtt 1.6.1 passes a ReasonCodes object here.  It
+        # deliberately supports comparison with integer reason codes but does
+        # not implement int(), so coercion raises TypeError inside the network
+        # thread before subscriptions or HA discovery can be published.
+        if reason_code == 0:
             _target_acl_delivery_tracker.reset_transport()
             status_target_ids = {COMMAND_TARGET_ID}
             status_target_ids.update(
@@ -954,7 +958,11 @@ async def lifespan(app: FastAPI):
     try:
         boot_subscriber = _start_target_boot_subscriber()
     except Exception as error:
-        log.error("[MQTT-BOOT] subscriber unavailable; commands stay disabled")
+        log.error(
+            "[MQTT-BOOT] subscriber unavailable error_type=%s; "
+            "commands stay disabled",
+            type(error).__name__,
+        )
     try:
         acl_refresh_worker = _start_acl_refresh_worker()
     except Exception:
