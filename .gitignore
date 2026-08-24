@@ -4,6 +4,8 @@
 .piolibdeps/
 compile_commands.json
 .clangd/
+/dist/
+/delivery/
 
 # --- Arduino IDE Temp & Build Files ---
 .build/
@@ -21,6 +23,7 @@ Thumbs.db
 
 # --- Python & Backend ---
 .venv/
+/.venn/
 __pycache__/
 *.pyc
 *.pyo
@@ -44,7 +47,13 @@ android/key.properties
 # --- Obsidian personal UI state ---
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
+/.obsidian/appearance.json
+/.obsidian/core-plugins.json
+/.obsidian/graph.json
 .obsidian/cache/
 .trash/
+
+# --- Local agent attachments ---
+/.codex-remote-attachments/
 
 upload-keystore.jks
