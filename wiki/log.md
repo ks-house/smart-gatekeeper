@@ -3363,3 +3363,10 @@
 - Verified that reviewed feature `7021150d`, policy-connected head `cd625503` and merged main `6ca977f7` have 186 matching protected-object comparisons across the complete ordered 62-file set, with both earlier commits proven ancestors of merged main.
 - The live GitHub verifier selected `current-main-baseline` for exact merged main with 62 protected files. The focused final-policy suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
 - Full Windows discovery ran 292 tests with 290 passing. Only the two unchanged checkout-materialization CRLF checks failed for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`; their staged Git entries remain LF.
+
+## [2026-08-24] test | Verify exact-main Target connectivity and recovery paths
+
+- Observed exact main `af779e1e61cd6c5c25b9b11e9aab9d1197ca094d` as `2.1.251+main.gaf779e1` on the physical ESP32-C6. NVS restored the saved Fold7 hotspot profile without recording its SSID, obtained `10.71.25.196`, kept the relay in logged OFF state and completed exact per-Target MQTTS subscriptions plus retained boot/config publication.
+- The periodic signed OTA manifest check reported already current. Same-LAN local recovery enforced HTTP 401 without authentication, returned HTTP 200 with authentication and accepted the authenticated bounded AP enable request with HTTP 202.
+- Home Assistant kept all 15 read-only entities available during AP+STA while uptime advanced 234 to 302 seconds, then reconverged all 15 after the final reset while uptime advanced 51 to 101 seconds.
+- Missing ACL-signer and hardwareless-door NVS overrides remained fail-closed/default-disabled. No inactive-slot OTA write, health-valid mark, rollback, power-loss injection, physical relay actuation/electrical measurement or sensor test was performed.

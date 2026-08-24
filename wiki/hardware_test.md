@@ -282,3 +282,21 @@ ESP32-C6. It does not prove beacon continuity or coexistence behavior. Physical
 testing must also leave a phone associated but idle through the bounded hold,
 confirm that active authenticated upload is not interrupted, and verify that
 normal pure-STA auto-reconnect, MQTTS, and signed OTA resume after AP exit.
+
+## 2026-08-24 exact-main Target connectivity and recovery-path evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact runtime identity | The ESP32-C6 serial banner reported exact main `af779e1e61cd6c5c25b9b11e9aab9d1197ca094d` as `2.1.251+main.gaf779e1` | PASS for the observed running image |
+| NVS Wi-Fi recovery | The Target restored the saved Fold7 hotspot profile from NVS, recovered from one transient authentication failure and obtained `10.71.25.196`; the SSID is intentionally omitted | PASS for this boot and reconnect only |
+| Relay boot state | Serial reported the relay OFF before and after application initialization | PASS for logged software state; no physical relay actuation or electrical measurement |
+| MQTTS | The Target authenticated, subscribed to the exact per-Target topics and successfully published retained boot diagnostics and config state | PASS for this live session |
+| Periodic signed OTA | The periodic signed manifest check completed with an already-current result for the running exact release | PASS for manifest reachability/validation/current-version handling; no inactive-slot write or reboot |
+| Authenticated local recovery | The same-LAN recovery path returned HTTP 401 without authentication, HTTP 200 with authentication and HTTP 202 for authenticated `enable-ap` | PASS for authentication enforcement and bounded AP enable request |
+| AP+STA service continuity | During the recovery AP+STA window, Home Assistant kept all 15 read-only entities available while Target uptime advanced from 234 to 302 seconds | PASS for the observed 68-second coexistence interval |
+| Post-reset convergence | After the final reset, Home Assistant again showed all 15 read-only entities available while uptime advanced from 51 to 101 seconds | PASS for one reset/reconnect interval |
+| Default-disabled security state | NVS had no ACL signer or hardwareless-door override; the Target logged ACL verification fail-closed and Hardwareless GATT disabled | PASS for default-disabled behavior; provisioning/functionality was not exercised |
+
+This run does not prove a real inactive-slot OTA installation, the continuous
+health-valid mark, bootloader rollback, power-loss recovery, physical relay
+operation/electrical safety, AJ-SR04T behavior or final wall-install acceptance.
