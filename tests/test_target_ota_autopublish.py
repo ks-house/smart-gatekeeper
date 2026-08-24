@@ -3,6 +3,7 @@ import hashlib
 import io
 import os
 import stat
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -475,6 +476,32 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         step["run"] for step in compiler["steps"]
         if step["name"] == "Verify exact protected main before production secrets"
     )
+    expected_build_rows = []
+    for line in privileged_verify.splitlines():
+      parts = line.strip().split()
+      if (
+          len(parts) == 3
+          and parts[0] == "100644"
+          and len(parts[1]) == 64
+          and all(char in "0123456789abcdef" for char in parts[1])
+      ):
+        expected_build_rows.append(parts)
+    expected_build_paths = [row[2] for row in expected_build_rows]
+    tracked_build_paths = subprocess.run(
+        [
+            "git", "ls-files", "--", "src", "include", "lib", "boards",
+            "variants", "sitecustomize.py", "usercustomize.py",
+            "platformio_override.ini", "platformio.ini",
+            "partitions_16MB_ota.csv", "ota/requirements.lock",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    self.assertEqual(len(expected_build_rows), 40)
+    self.assertEqual(expected_build_paths, sorted(expected_build_paths))
+    self.assertEqual(expected_build_paths, tracked_build_paths)
     self.assertNotIn("unittest", privileged_verify)
     self.assertNotIn("ota_contract_gate.py contract", privileged_verify)
     self.assertIn(

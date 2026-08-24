@@ -3327,9 +3327,27 @@
 - The live GitHub verifier selected `current-main-baseline` for exact merged main with 62 protected files. The focused final-policy suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
 - Full Windows discovery ran 292 tests with 290 passing. Only the two unchanged checkout-materialization CRLF checks failed for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`; their staged Git entries remain LF.
 
+## [2026-08-24] fix | Align privileged Target build inventory with Git order
+
+- Exact-main runs `32679358174` and `32679992103` passed the secret-free ESP32-C6 canary but failed closed at `Verify exact protected main before production secrets`; Secret materialization, production compilation, handoff and NAS publication were skipped.
+- Isolated the mismatch to the new `include/RecoveryRadioPolicy.h` row being declared after `include/RelayController.h` while `git ls-files` emits `RecoveryRadioPolicy.h` first in byte order. Moved only those two existing mode/digest rows into exact Git order without changing any build input, Secret, runtime or artifact byte.
+- Added a regression that extracts all 40 privileged inventory rows and requires their declared path order and membership to equal the tracked build-input list returned by `git ls-files`, preventing a future file insertion from silently blocking exact-main production publication.
+
+## [2026-08-24] test | Verify Target build inventory order correction
+
+- The focused Target autopublish suite passed 18/18, including exact 40-row order/membership comparison. The OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
+- The corrected `deploy.yml` has normalized SHA-256 `7f26fe2b5250927304cf2f4be5a6c5fa3e110429602f870c05ae991410fa4b1e`; it is the only protected byte change and therefore remains intentionally rejected by the predecessor trusted policy until a separate exact-feature authorization is merged and connected.
+- No Secret was materialized, no production firmware was built, no NAS pointer was changed and no Target install, reboot, health-valid or rollback evidence is claimed by this source-level correction.
+
 ## [2026-08-24] compile | Authorize exact Target build inventory order fix
 
 - Replaced the completed `current-main-baseline` with one temporary-exact and one future persistent identity for reviewed PR #118 commit `7021150d57aa6ceffec6a69e12cdf12cc88c548f`; both identities bind the same complete ordered 62-file normalized digest map.
 - Verified that `deploy.yml` is the only protected change from exact current main `5444ced107cdacbaf47bad1aca683f0e4694285c`, with normalized SHA-256 `7f26fe2b5250927304cf2f4be5a6c5fa3e110429602f870c05ae991410fa4b1e`; all seven workflow entries remain regular files and the local-Action inventory remains empty.
 - The live GitHub content/tree verifier selected `temporary-build-tree-order-7021150d` for the exact candidate with 62 protected files. The focused transition suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
 - This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical or commercial evidence.
+
+## [2026-08-24] compile | Connect Target build-order fix to trusted policy main
+
+- Merged policy main `b23a13a1e17d6c4c7028fc6995999fcc54e5e464` into exact reviewed feature `7021150d57aa6ceffec6a69e12cdf12cc88c548f` without rebasing or squashing; resolved only the append-only log by retaining both histories.
+- Retained the exact corrected `deploy.yml` bytes and complete authorized 62-file map, seven-workflow inventory and empty local-Action inventory. The focused Target autopublish plus trusted-policy suites passed 60/60; the OTA contract, all workflow `actionlint` checks and whitespace validation passed.
+- Production publication remains gated on fresh hosted checks and merge to exact main; no Secret, NAS, Target install, reboot, health-valid or rollback result is claimed.

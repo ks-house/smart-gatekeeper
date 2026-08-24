@@ -351,8 +351,8 @@ jobs:
           100644 a42780d48211f0306f8278298ee7b598d349c52b0ba2e4913223a60bf30426c1 include/OtaHealthPolicy.h
           100644 333dbe7e825443210fad253d11722b70b6df2067a2f888f2810f7adfa83d7d6f include/OtaManager.h
           100644 ade406347069742dec9139e011e6a45a897a9f0a75f2e30a24debb9f7074d8aa include/OtaVersionPolicy.h
-          100644 199bd44240f7df0082ee065ac715f47c03ef893e7d86d9a129df820969e35164 include/RelayController.h
           100644 3e25df300a313b8081e0c1bbba8b43e04aa5d8d439226c303d560d24e801ff79 include/RecoveryRadioPolicy.h
+          100644 199bd44240f7df0082ee065ac715f47c03ef893e7d86d9a129df820969e35164 include/RelayController.h
           100644 cf7169403dd333e5e8c09fbff58d6934ea17d1a144e06fd08603eb51d51d8845 include/TargetAccessFsm.h
           100644 72ae43ed6754c63d1b7fa2113504be8ea7f5b2865cfc9daf0c95917ae9894f81 include/TargetAclManager.h
           100644 656941b67a9eef62964d8578d3959ded1a041b558d7caebe6ee14c1e4389108a include/TargetCommandSecurity.h
