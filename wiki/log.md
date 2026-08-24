@@ -3393,3 +3393,15 @@
 
 - Branched from local commit `6018b2a4922bec025f89fe8e2aa81165757c840d`, whose parent is exact remote main `afb1360a578d0dc6161fb8a53c655270edae845e`, as `codex/ha-incident-workspace-hygiene-20260824` without rebasing or force-updating any ref.
 - Revalidated the four-file scope: root-local ignore rules, the privacy-minimized historical Home Assistant incident page, its navigation entry and append-only evidence. No production firmware, workflow, Secret, ignored delivery artifact or physical Target state changes in this pull request.
+
+## [2026-08-25] compile | Authorize personal GATT and signed HA controls
+
+- Replaced the completed `current-main-baseline` with one temporary-exact and one future persistent identity for reviewed PR #123 feature commit `47f7e111ed3c8f625dad09597af3426f8204930d`; both identities bind the same complete ordered 68-file normalized digest map.
+- Added the ACL refresh, Home Assistant bridge and Target ACL-delivery modules plus their three direct tests to the protected set. The seven-workflow inventory remains exact and the repository-local Action inventory remains empty; 23 protected files are changed or newly protected relative to the predecessor baseline.
+- This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no ACL application, GATT session, Home Assistant command, relay, health-valid, rollback or physical evidence.
+
+## [2026-08-25] test | Verify PR 123 exact-commit policy authorization
+
+- Verified 42 focused policy tests with 201 subtests, the OTA contract gate, all workflow files with `actionlint`, JSON parsing and whitespace validation on the policy-only branch.
+- The live GitHub verifier selected `temporary-personal-gatt-ha-47f7e111` for exact feature commit `47f7e111ed3c8f625dad09597af3426f8204930d` and approved the complete ordered 68-file protected set.
+- This validation authorizes only the reviewed Git objects. It does not prove CI publication, NAS deployment, Target installation, Android installation, ACL acknowledgement, GATT control, Home Assistant command delivery or physical relay operation.

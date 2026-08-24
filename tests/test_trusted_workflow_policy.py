@@ -17,41 +17,44 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "6ca977f71f19a9b2017bc51922b5fc808a8e5d2c"
+MERGED_MAIN_COMMIT = "47f7e111ed3c8f625dad09597af3426f8204930d"
 MERGED_MAIN_DIGEST_LINES = """\
-.github/workflows/deploy.yml 7f26fe2b5250927304cf2f4be5a6c5fa3e110429602f870c05ae991410fa4b1e
-.github/workflows/build_app.yml b581543a03e32e6a641a7b7cefd7050ec2467d110b608f34fb31f54aad5dafec
+.github/workflows/deploy.yml 80c9d1800f8f95425de8f5dff53b96398dbe55ea6f3373dd554d02918733db5b
+.github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
-.github/workflows/personal_installation_firmware.yml 391b1c2db8c1dc2bb23a243ada314cc878f4edcf8be235a1dc31536b8818a4ed
+.github/workflows/personal_installation_firmware.yml 0b9268c978f7c5a92cb0d59945ab2adabc13d11b71ea914fd495b574633ff766
 .github/workflows/protocol.yml b60ce78c630c30f6ab5b5b3d23a042f08d125c6507ebd347e3fc4d0dc66b5740
 .github/workflows/trusted_workflow_policy.yml 79aaf7a773592ecf9156191f589a9ae3e3649b4de06a1b08034507c83184a658
 scripts/verify_trusted_workflow_policy.py 78a96058cd12cfadde01ac0c7aa733bfa96a43789a0a5173d02ffaea582e2641
-scripts/ota_contract_gate.py 634d8542da17838ded1a3e6e75f5e7f94113f2e3bc0a2d47aaa05bd28b780437
+scripts/ota_contract_gate.py 6f9532c872d939a4d41a0adbda9f5d720c71a5be2b565d6addca7d9593089e30
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
 .github/workflows/backend_security.yml 405e42978f88a1256bcae57c7caa96741adf9b766ee4fbfee31b0409e1350342
 .orca/scripts/setup_worktree.ps1 07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab
 scripts/ops_commercial_gate.py af48700570b2ba68c910da9850a96995bb96a1647cc0ac9ff72d9261583f1e88
-ops/backend_trusted_bundle_paths.json 81384991a57444c459c4b7bff540480caa0b234e32fcbc09b66ba5e68cd0f0e9
+ops/backend_trusted_bundle_paths.json 011e8d4d5bda5f0b5e691ab54c60185914add2dee0586142ec9a0dbc63815676
 ops/evidence_sources.json 49d23f9125f65db4ba0e4398e742bcf7f41b34174b2df3d47aef1efa4fbb951b
 ops/fixtures/evidence_adversarial_v1.json c2bbc316b4730a28e873abc3017f533afab2e6d7d45f95e29e228b661f72c04f
 ops/fixtures/load_nominal.jsonl c7ae231d1d7321255ce0d5539b3fd18b1aa077c94ae5060fc293624913b8015e
 ops/prometheus_rules.yml 8bfea1ed8d82d4bf4ce7c75ee52e5909c4b7af2c0f405d1b942ddf1119012fe9
 ops/slo_policy.json e7c734c431d232e6caffa32d0796990e3dc71ff88c557498bd4433479c825e4a
-backend/.env.example ae9e7c8e647c4f7544321d55cd3407d40c43b7f0a6b384cd0e8b596c8c25872e
+backend/.env.example 9efc01b14e793d8c367dc1b67a4899d000f1745d1f9bd5de0b678a245dfc559a
 backend/app/Dockerfile ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573
-backend/app/acl_api.py c8ca43b7f6c648645c37aa789128c7e262076f673e79a2560fb5d5cdf6931366
-backend/app/acl_management.py 3c9d712c436eb98632c1e4840e4268889253706c162de7ce22a2d9d83ddb1ad7
+backend/app/acl_refresh.py 4f040eb22f2d1e7277f6eb65c47e0db8cd122de17296cd707217cb7aafafd537
+backend/app/acl_api.py db74a10b592ea50c375be0a4a8cfdc5a83ccf2736fa303a1dd9b31ad8f782686
+backend/app/acl_management.py 562d99511ee4d420d9685997940e374e2a70859a9c5f8ec822a47e4fe5133976
 backend/app/admin_security.py 5b88de305f35159641c176005b5e741bd4b9e1f9b0eb24a521c4fb5dcf774327
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
-backend/app/main.py 9da41f2db0e3a999be1f9ffa9cb67e34a6bb25d4ddb847d9771b06863efe1083
-backend/app/ops_runtime.py 1a5d8cb2c08181c9e76d67bb93339da6a9b8d05b3ff8ccf7141a985070f56608
+backend/app/home_assistant_bridge.py 586f5f43910e26a2425f8416959f4bb4c85d48cd49c88a29d2e99f790c42071b
+backend/app/main.py cb3b4f8403e0514eab0a08070b10703db9f82c57afbb84665858101008c83b8a
+backend/app/ops_runtime.py 9aad988a7bd1c59d90d445ff3577e265289424c17e98c0b1f8311c1e14a58b26
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/requirements.txt 75bca144713e5c0ac8c09f2963cccb45e077e22b2f5a166a0db1fa28617595f7
 backend/app/static/admin.html ca61cf93520cfdd7bab0d5c710ab01a6b7215e94d2be54ee61f4537deb4b141e
 backend/app/static/index.html 4218d95905ae238339987cb0887d2fd03e352493dcabfe1133500296ec25f01d
-backend/app/target_boot_registry.py c5cd20f2a54baf4746245e7c9dfa62916b7fe1152f9789f532d7f119c86288cf
-backend/compose.production.yml 645f08487de733d76a4fe34b427179284d264decb1c55717ccf194677f51d5de
+backend/app/target_boot_registry.py 7650ad165594d3a35ee59fafa36ce1f6cbc0ffa4fd8b3dfb98873339a83859dd
+backend/app/target_acl_delivery.py 3888c4fb5d5814471e6d1827d6227015a730683eee089733b65b8703fdb1093d
+backend/compose.production.yml 24b99b2b0d0fbf54ba36f0a9f98f78b212faeaac6c82e7258c4ffabcaac60107
 backend/db/Dockerfile 317ad438b9d2ce25325027b5b1170f92d14c45f536ba413bd0d3ca853fd73c2a
 backend/db/migrations/002_acl_management_expand_down.sql 19c26782df1ef78755681805839e704f3adaf83cce1dec4b29c4ecdf1c0cf687
 backend/db/migrations/002_acl_management_expand_up.sql aa3b07f195c0502434f8ad5ba633b0d46d6b04f7e21fa0ff22215fb136746543
@@ -68,18 +71,21 @@ backend/db/migrations/007_ops_privacy_up.sql edde5662c42e65dda82b2e0a9145d64dc4e
 backend/db/production_schema.sql b9e6910bff05272c1b05f1e23805abf250c6a9e3df9e4a7db966ae6517b555e3
 backend/db/run_migrations.sh b408f0b2e6ffe7b58a095430a3ecdbc6d719cef31b8cb7c6a2b62b4ab39d7d3b
 backend/db/schema.sql ce22d4e2675490f2e238cd98e9f9168e572cd45d0de8030811b01384226f4d43
-backend/docker-compose.yml 4ce83d166d6f90bea175b1ba9c80182b54cc86fcf61db2ff57064e60ffa6095e
+backend/docker-compose.yml 766dc30fcb529868a269e91d76f9c5d323e03aa550d52b8788426871a8ff9e47
 backend/sbom.cdx.json 67b78d1a2cb4d5e48dc8b79f9630a58da0cee207d126c469cb0b0bfbd1945fd7
 backend/supply_chain_policy.json fef90253f3ec0b065f14dd1e83a2b6702b4dd2ad8dbeefc59b12dc78f3cb15e4
-backend/tests/test_acl_api.py 4e276a773d5a7d52e470b5f4922c231a20141d2078db00f925d8aee2a855e72b
-backend/tests/test_acl_management.py 63466520512ea0a259b61976417150feb622ebbbd0fb0e287769669e47764566
+backend/tests/test_acl_api.py bbfe5841959e262ea54906cb74da9db549bc199e81b90dba4df6860df3a584bb
+backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad70e8f02b13f1e54bb70
+backend/tests/test_acl_management.py 1f3f77153651a62a916211233f9191079e05fbabcb5ad401f6d30438fe8575c3
 backend/tests/test_admin_security.py f3ea883b82b45c9141f7b12b098f683da54a510df85cac7f21b5eb9c4ac43a5e
+backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
 backend/tests/test_legacy_ota_independence.py 5819701b2b2fc5c9c0e2b7bbaf710f23360d6a0df36c1966c345621dc4aceca4
-backend/tests/test_migrations.py 2143f4e9a4ca6b9b672f5ed6a9d1de84f45a41db78e1d169d3cc5dde69f22289
+backend/tests/test_migrations.py 3f29ea27716280a88dd89456b1450a51ccba0c162ede69258edd34b6def59913
 backend/tests/test_ops_api.py faf541fdbbf7db438ab2c838767a431ea524f37d11ee963ca7dadea6f6d806ea
 backend/tests/test_ops_commercial_gate.py 0bc3396d0705e4d4328092c6d87ac66352c297095108336f19c0db87e7a16d94
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
-backend/tests/test_target_boot_registry.py d02627f6ef826f5e57c8086c1251d46bbab1fa5346bb87e03015b759791649d5
+backend/tests/test_target_boot_registry.py c512fabbc8952a550c942a746291e6be23e06847e7482dc9b707a6443620e51b
+backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
 MERGED_MAIN_DIGESTS = dict(
@@ -140,6 +146,7 @@ RETIRED_SOURCE_COMMITS = {
     "23a3f3ed8fac513f1b7f88962e561cfd376f7ea2",
     "539844ecead1576afd54518bb8db63eb3ec72422",
     "7021150d57aa6ceffec6a69e12cdf12cc88c548f",
+    "6ca977f71f19a9b2017bc51922b5fc808a8e5d2c",
 }
 
 
@@ -392,7 +399,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
   def assert_current_main_baseline_is_exact(self, policy):
     self.assertEqual(policy["format_version"], 3)
     self.assertEqual(policy["protected_paths"], list(MERGED_MAIN_DIGESTS))
-    self.assertEqual(len(policy["protected_paths"]), 62)
+    self.assertEqual(len(policy["protected_paths"]), 68)
     self.assertEqual(
         policy["protected_inventories"],
         {
@@ -400,20 +407,28 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             ".github/workflows/": CURRENT_WORKFLOW_PATHS,
         },
     )
-    self.assertEqual(len(policy["approved_bundles"]), 1)
-    persistent = policy["approved_bundles"][0]
-    self.assertEqual(persistent["id"], "current-main-baseline")
+    self.assertEqual(len(policy["approved_bundles"]), 2)
+    temporary, persistent = policy["approved_bundles"]
+    self.assertEqual(
+        temporary["id"], "temporary-personal-gatt-ha-47f7e111"
+    )
+    self.assertEqual(temporary["mode"], "temporary-exact")
+    self.assertEqual(
+        persistent["id"],
+        "future-personal-gatt-ha-47f7e111-persistent-baseline",
+    )
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
         "repository": "ks-house/smart-gatekeeper",
         "commit": MERGED_MAIN_COMMIT,
     }
-    self.assertEqual(persistent["source"], expected_source)
-    self.assertEqual(persistent["files"], MERGED_MAIN_DIGESTS)
-    self.assertEqual(list(persistent["files"]), policy["protected_paths"])
+    for bundle in (temporary, persistent):
+      self.assertEqual(bundle["source"], expected_source)
+      self.assertEqual(bundle["files"], MERGED_MAIN_DIGESTS)
+      self.assertEqual(list(bundle["files"]), policy["protected_paths"])
     self.assertNotIn(
-        "temporary-exact",
-        {bundle["mode"] for bundle in policy["approved_bundles"]},
+        "current-main-baseline",
+        {bundle["id"] for bundle in policy["approved_bundles"]},
     )
 
   def setUp(self):
@@ -949,7 +964,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           is_descendant,
       )
 
-  def test_final_policy_has_sole_current_main_baseline(self):
+  def test_transition_has_exact_and_future_persistent_baselines(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -958,10 +973,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     bundle = self.verify_merged_main_digest_map(
         policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(bundle["id"], "current-main-baseline")
-    ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, MERGED_MAIN_COMMIT)
-    self.assertNotIn(
-        "temporary-exact",
+    self.assertEqual(bundle["id"], "temporary-personal-gatt-ha-47f7e111")
+    ancestry.assert_not_called()
+    self.assertEqual(
+        {"temporary-exact", "persistent-baseline"},
         {approved["mode"] for approved in policy["approved_bundles"]},
     )
 
@@ -990,7 +1005,12 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         actual_actions,
     )
     protected = policy["approved_bundles"][0]["files"]
-    for path in policy["protected_paths"]:
+    locally_unchanged_protected = [
+        ".github/workflows/trusted_workflow_policy.yml",
+        "scripts/verify_trusted_workflow_policy.py",
+        "ota/requirements.lock",
+    ]
+    for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
         self.assertEqual(
@@ -1017,7 +1037,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     with self.assertRaisesRegex(trusted.PolicyError, lock_path):
       self.verify_merged_main_digest_map(policy, modified)
 
-  def test_current_main_baseline_accepts_only_proven_descendant(self):
+  def test_future_baseline_accepts_only_proven_descendant(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -1033,7 +1053,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         ref=future_ref,
         is_descendant=ancestry,
     )
-    self.assertEqual(bundle["id"], "current-main-baseline")
+    self.assertEqual(
+        bundle["id"],
+        "future-personal-gatt-ha-47f7e111-persistent-baseline",
+    )
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 
     with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):
