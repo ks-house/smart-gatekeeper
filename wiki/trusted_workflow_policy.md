@@ -63,11 +63,11 @@ fail closed. When an exact temporary identity and a persistent baseline both cov
 the exact temporary match takes precedence without invoking ancestry; later descendants use only the one
 persistent baseline.
 
-The completed weak-link transition and its final policy rotation are connected into current main
-`380d013e819cd013c17253161d664cc69c6e7402`. The next reviewed feature candidate is exact PR #115 commit
-`23a3f3ed8fac513f1b7f88962e561cfd376f7ea2`. It stabilizes the ESP32-C6 recovery AP with bounded quiet,
+The completed weak-link transition and its final policy rotation were connected into main
+`380d013e819cd013c17253161d664cc69c6e7402`. Reviewed PR #115 feature commit
+`23a3f3ed8fac513f1b7f88962e561cfd376f7ea2` stabilizes the ESP32-C6 recovery AP with bounded quiet,
 station-attempt, authenticated-request and local-upload radio ownership while preserving dual-slot OTA,
-MQTTS and authenticated local recovery. Relative to current main, only one protected path changes:
+MQTTS and authenticated local recovery. Relative to that base, only one protected path changed:
 
 - `.github/workflows/deploy.yml` becomes normalized SHA-256
   `5d7a72e774b1c2df0b08c1feea9156568d4f057902d6a74c7f0055b40df36eb3`. Its production build tree adds
@@ -76,26 +76,20 @@ MQTTS and authenticated local recovery. Relative to current main, only one prote
   `src/WifiManager.cpp` to SHA-256
   `9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3`.
 
-This bounded authorization replaces the completed `current-main-baseline` with exactly two identities for
-that immutable recovery-AP candidate:
+PR #116 separately authorized that exact feature commit plus later same-byte descendants and was merge-commit
+merged as main `5198b8aca401dc73c01137a4ab8efda3ae590dac`. The feature branch then merged trusted main into the
+reviewed commit without rebasing or squashing, producing policy-connected head
+`aa9fe818482e5a2f7aaaee7471d3e5248624287b`. PR #115 retained both parents and was merge-commit merged as
+main `539844ecead1576afd54518bb8db63eb3ec72422`.
 
-- `temporary-recovery-ap-23a3f3ed` is a `temporary-exact` identity for only that repository commit.
-- `future-recovery-ap-23a3f3ed-persistent-baseline` is the sole `persistent-baseline`; it permits only that
-  commit or a GitHub Compare-proven descendant with the same complete protected bytes.
+This final rotation removes both `23a3f3ed` transition identities and pins the sole `current-main-baseline`
+persistent identity to that actual merged-main commit. The reviewed feature and policy-connected head are both
+ancestors of the merge. All 62 protected Git objects are unchanged from the reviewed feature through merged
+main; the ordered digest map, seven-workflow inventory and empty local-Action inventory therefore remain exact.
 
-Both identities carry the same ordered 62-file digest map and unchanged seven-workflow/zero-local-action
-inventories. Remote GitHub tree verification found `truncated=false`, all protected entries as regular
-`100644 blob` objects, exactly seven workflow files, and no local Action entries. The former main baseline is
-removed because the schema permits only one persistent baseline per repository; its trusted bytes remain
-inside the new complete map except for the independently reviewed `deploy.yml` change.
-
-The exact PR #115 head is intentionally rejected by the predecessor policy: Hosted Trusted, OTA contract and
-firmware checks fail closed on the unapproved `deploy.yml` digest while the focused recovery tests pass. Only
-fresh checks after this policy is merged may authorize the exact protected bundle.
-
-Regression tests pin the exact repository, recovery candidate SHA, two IDs and modes, ordered 62-path set,
-identical complete maps, and exact workflow/action inventories. They require explicit ancestry for later
-descendants and reject the retired baseline source. They also reject an extra bundle, fork,
+Regression tests pin the exact repository, final merged-main SHA, sole baseline ID and mode, ordered 62-path
+set, exact workflow/action inventories, and every local protected digest, including `deploy.yml`. They require
+explicit ancestry for later descendants and reject the retired feature source. They also reject an extra bundle, fork,
 retired or altered commit, unproven/diverged history, case/path variant, old five-path partial set, missing or
 reordered path, swapped/mixed/per-file digest mutation, truncated/malformed Git trees, workflow/action
 additions, removals, renames, executable blobs, symlinks and gitlinks. No branch, wildcard, partial set, mixed
@@ -120,12 +114,14 @@ separately app-pinned status identity and repository policy outside the mutable 
 
 PR #68 and PR #69 established the identity-bound schema version 2 validator and bounded transition on trusted
 main; later protected bundles completed the same sequence, including PR #86/#85, PR #100/#101,
-PR #106/#105 and PR #113/#112. This authorization starts from exact current main `380d013e` and changes only
-policy data, regression tests, this guide, and the append-only log. It does not modify the validator, trusted
-workflow, or any other protected byte. Its hosted check therefore executes current main's final weak-link
-baseline and can admit this policy-only descendant because it retains the same complete protected bytes. A
-green Hosted Trusted check is required before merge; no branch-protection change is authorized. That green
-check does not close the version-3 self-policy or same-status-context producer residual.
+PR #106/#105 and PR #113/#112. PR #116 was the bounded policy-only authorization for this rollout, and PR #115
+integrated that trusted main without rewriting history. This final rotation starts from exact current main
+`539844ecead1576afd54518bb8db63eb3ec72422` and changes only policy data, regression tests, this guide, and
+the append-only log. It does not modify the validator, trusted workflow, or any other protected byte. Its
+hosted check executes the recovery-AP transition policy from the trusted base and can admit this policy-only
+descendant only because `23a3f3ed` remains an ancestor and all 62 protected bytes are unchanged. A green
+Hosted Trusted check is required before merge; no branch-protection change is authorized. That green check
+does not close the version-3 self-policy or same-status-context producer residual.
 
 ## 4. Rotation procedure
 
@@ -136,19 +132,17 @@ bundle, merge only through trusted-base authorization, then use a separate polic
 temporary approval and pin one current-main baseline. Never add a wildcard, branch name, partial-file
 exception, mixed bundle, or candidate-derived digest.
 
-For this recovery-AP correction, first merge this policy-only authorization from current main. Merge the newly
-trusted main into exact feature `23a3f3ed8fac513f1b7f88962e561cfd376f7ea2` without rebasing or squashing,
-verify that all 62 protected Git objects and both namespace inventories remain unchanged, push the
-policy-connected head, and obtain fresh Hosted Trusted, OTA contract and ESP32-C6 firmware checks. Merge PR
-#115 through a merge commit so the reviewed exact SHA remains an ancestor of resulting main.
+The recovery-AP sequence was: base `380d013e`, reviewed feature `23a3f3ed`, PR #116 authorization merge
+`5198b8ac`, policy-connected feature head `aa9fe818`, and PR #115 merge commit `539844ec`. The protected
+objects and both inventories were rechecked after the ancestry connection, and the feature was never rebased
+or squashed.
 
-Immediately create a separate final policy-only rotation from that actual feature merge on main. Remove both
-recovery-AP transition identities and pin one `persistent-baseline` named `current-main-baseline` to the actual
-feature merge commit with the same 62-file map. The transition persistent baseline admits that rotation only
-when GitHub Compare proves ancestry and every protected byte is unchanged. After merge, verify final-main
-policy selection and both automatic OTA publishers. Any path, digest, repository, or reviewed source-commit
-change requires a fresh whole-bundle review; never prolong the transition window or reuse a retired transition
-identity.
+This separate final policy-only rotation starts from that actual merged main, removes both transition identities,
+and pins one `persistent-baseline` named `current-main-baseline` to `539844ec` with the same 62-file map. The
+transition persistent baseline admits this rotation only when GitHub Compare proves ancestry and every protected
+byte is unchanged. After merge, verify final-main policy selection and both automatic OTA publishers. Any path,
+digest, repository, or reviewed source-commit change requires a fresh whole-bundle review; never prolong the
+transition window or reuse a retired transition identity.
 
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
