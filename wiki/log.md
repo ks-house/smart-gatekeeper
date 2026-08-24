@@ -3370,3 +3370,21 @@
 - The periodic signed OTA manifest check reported already current. Same-LAN local recovery enforced HTTP 401 without authentication, returned HTTP 200 with authentication and accepted the authenticated bounded AP enable request with HTTP 202.
 - Home Assistant kept all 15 read-only entities available during AP+STA while uptime advanced 234 to 302 seconds, then reconverged all 15 after the final reset while uptime advanced 51 to 101 seconds.
 - Missing ACL-signer and hardwareless-door NVS overrides remained fail-closed/default-disabled. No inactive-slot OTA write, health-valid mark, rollback, power-loss injection, physical relay actuation/electrical measurement or sensor test was performed.
+
+## [2026-08-24] compile | Backfill and close the 2026-08-13 Home Assistant 502 incident
+
+- Recorded the 2026-08-13 evidence that DNS and egress addressing agreed, multiple external probes reached nginx with HTTP 502, the NAS remained reachable and the Home Assistant TCP 8123 upstream was closed. Exact public/LAN addresses and host volume paths are intentionally omitted from the public wiki.
+- Preserved the DSM read-only confirmation that the Home Assistant container was stopped with automatic restart disabled. Weather-integration and browser-frontend errors were not treated as proof of the container exit cause.
+- Marked the incident historical after the 2026-08-24 upstream/reverse-proxy recovery and live 15/15 SmartGatekeeper entity verification; the page now distinguishes the past failure from current service state.
+
+## [2026-08-24] compile | Fast-forward local main while preserving user work
+
+- Fetched and fast-forwarded the original workspace from `264cfe096d1d137ef00c9c8e297cd55c8eb5ac0a` to merged `origin/main` `afb1360a578d0dc6161fb8a53c655270edae845e` without rebasing, force-updating or altering untracked directories.
+- Preserved all four tracked local files in Git stash `863c97089acfd0e394c57df0c091acd3aa164e12` and a repository-external backup before integration. The local 8 MB partition content was already byte-identical to upstream; the optional `esp32c6_8mb` environment was not reapplied because physical `flash_id` proved this installed N16 Target has 16 MB.
+- Restored the unique Home Assistant incident page and navigation entry, then consolidated its historical evidence into one current-date append-only backfill record. Existing `.codex-remote-attachments`, `.obsidian`, `.venn`, `delivery` and `dist` user files remain untouched.
+
+## [2026-08-24] lint | Track HA evidence and ignore local-only artifacts
+
+- Added the recovered Home Assistant 502 incident page to the compiled wiki and navigation map while retaining its historical evidence in an append-only backfill record.
+- Ignored local Codex attachment cache, the `.venn` environment, generated `dist` output, secret-bearing local `delivery` artifacts and Obsidian appearance/plugin/graph UI state. Existing tracked `.obsidian/app.json` and ignored `include/secrets.h` remain unchanged.
+- Kept the obsolete 8 MB PlatformIO override only in the pre-pull stash and repository-external backup; current main retains the physically verified N16 16 MB dual-OTA configuration.
