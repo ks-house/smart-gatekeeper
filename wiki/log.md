@@ -3485,6 +3485,30 @@
 - The focused trusted-policy suite, OTA contract, all workflow syntax checks, JSON parsing, relative wiki links and whitespace validation pass locally. Hosted base-policy verification remains required before this final rotation merges.
 - This closes only the repository authorization transition. Exact-main production build/NAS publication, Target OTA/reboot and Android GATT challenge/proof/result remain the next connected evidence steps.
 
+## [2026-08-25] test | Exercise exact Android wake and Home Assistant OTA
+
+- Verified ten exact-filter Android PendingIntent deliveries from the corrected iBeacon, with observed RSSI about -46 to -50 dBm and callback latency 6–20 ms. Installed production-signed `1.0.0-gbc9bb5d` from run `32768108110` by same-signature replacement while preserving application data and the enrolled AndroidKeyStore credential.
+- Exercised the enabled Home Assistant OTA control. Its signed Backend/MQTT command caused Target to install and reboot into NAS-published exact main `2.1.259+main.gbc9bb5d` from run `32768108034`; Wi-Fi, MQTTS, ACL and connectable GATT returned. Remote open and relay actuation were not invoked.
+- The first real GATT Target Hello/challenge exchange repeatedly exposed a stack-protection reset in `nimble_host`. This is a failed local-auth observation, not proof/result/FSM or relay success.
+
+## [2026-08-25] fix | Move heavy GATT callback work to the main loop
+
+- Traced the reset to callback paths that could enter a 2,736-byte output-drain frame or 3,216-byte canonical JSON/MQTTS frame on the prebuilt 5,120-byte NimBLE host task. BLE callbacks now perform bounded state/event copies only; the 16 KB Arduino loop drains subsequent indication fragments and a bounded 16-entry canonical-event queue.
+- Separated authentication control from best-effort telemetry: proof-request/grant changes reach the FSM before Result output, callback-originated abort and advertising restart are drained on loopTask, and audit-queue overflow cannot produce `RESULT OK` with an unarmed FSM. Added source regressions requiring the heavy and advertising paths to remain outside NimBLE callbacks.
+- App-only flashed local candidate `2.1.260-test.g163610d` without erasing bootloader, partitions, NVS, OTA data or the fallback slot. Wi-Fi `192.168.35.19`, MQTTS, ACL and GATT recovered, and the same phone reached Target Hello/challenge without the prior reset. This is candidate evidence, not exact-main signed OTA proof.
+
+## [2026-08-25] fix | Serialize Android Challenge delivery
+
+- After the Target reset was removed, the installed bc9 APK truthfully reported `MALFORMED_PROOF`. The app had subscribed to ACK-gated Challenge indications and simultaneously read the same characteristic, allowing a single-frame read to interleave with indicated fragments that shared a message ID.
+- Changed the production transport to consume Target Hello and Challenge only through the already-enabled ordered indication mailbox. Added a mailbox ordering regression and a source contract that rejects any Challenge `readCharacteristic` call.
+- The focused source suite passed 11/11; the JDK17 Android build/JUnit run completed all 209 Gradle tasks, and the final personal-production Target build used 1,780,268/7,340,032 bytes flash plus 67,088/327,680 bytes RAM. Updated the Android worker, Target transport, security protocol, project status, hardware evidence and navigation pages. Signed exact-main APK/firmware publication, replacement install/OTA and successful physical proof/result remain the next evidence Gate.
+
+## [2026-08-25] lint | Verify callback-stack and single-stream release candidate
+
+- Passed the Hardwareless source/native-host suite 11/11 and 124 Target security, OTA contract, exact inventory, personal-production and personal-mobile publisher tests. The exact `src/GattServer.cpp` normalized SHA matches its privileged `deploy.yml` inventory row.
+- Passed the focused Android JDK17 build/JUnit run with 209 executed Gradle tasks, all workflow files with `actionlint`, the relative wiki link check and whitespace validation. Docker-generated desktop registrants, lockfile and analysis-option changes were discarded because they were test side effects rather than reviewed source changes.
+- The trusted policy still correctly rejects the newly changed `deploy.yml` digest until a separate exact feature authorization is merged. No production Secret was read, no NAS pointer changed, and the hardened source/APK was not installed by these checks.
+
 ## [2026-08-25] compile | Authorize exact GATT stack release candidate
 
 - Replaced the completed `current-main-baseline` with temporary-exact `temporary-gatt-stack-df2ac48` and future persistent `future-gatt-stack-df2ac48-persistent-baseline`, both bound to reviewed feature commit `df2ac4869f4ee15c567f4a5ce1e0a99fab08e269` and the same complete ordered 69-file normalized digest map.

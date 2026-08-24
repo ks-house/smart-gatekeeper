@@ -367,7 +367,7 @@ jobs:
           100644 54dad6206a9a9bd9bbe245313b34c690fc3f4ce066ad01eb3e8b3b3223696f07 src/ConfigManager.cpp
           100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
           100644 fe67e1d6bac745f7654f6c41e94ef184fea407901bbf581ef5fc6955f3447048 src/GattProtocol.cpp
-          100644 0b0ca29f775b988da6ccb9d5867aa1a4ef0863d7256d69cf0bdc5e77b31afead src/GattServer.cpp
+          100644 797887362494c0450e40fbd07b832e8db8ffc3bfa68a077cf36da6c363baddfe src/GattServer.cpp
           100644 b6c4fb43f1ec1bf8e379b103dab3cebcfe75ba495356bfa813891970225735fd src/MqttManager.cpp
           100644 99e45cfec3094c95efbef4a7802ba12a881c4e2c93dcce81eaae92ab083ab346 src/OfflineEventQueue.cpp
           100644 94e2dd421d8787c6204b599414e4e9e78d0a3a4af6f9991c7b5efa85a86f34c5 src/OtaManager.cpp

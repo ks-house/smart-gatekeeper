@@ -45,6 +45,25 @@ class GattTransportCallbackTest {
   }
 
   @Test
+  fun targetHelloAndChallengeIndicationsShareOneOrderedMailbox() = runBlocking {
+    val mailbox = GattCallbackMailbox()
+    val targetHello = ByteArray(20) { (it + 1).toByte() }
+    val challenge = ByteArray(138) { (it + 31).toByte() }
+
+    GattFraming.fragment(GattProtocol.TARGET_HELLO, 7, targetHello, 23)
+      .forEach(mailbox::onFrame)
+    GattFraming.fragment(GattProtocol.CHALLENGE, 8, challenge, 23)
+      .forEach(mailbox::onFrame)
+
+    assertTrue(
+      targetHello.contentEquals(mailbox.awaitMessage(GattProtocol.TARGET_HELLO)),
+    )
+    assertTrue(
+      challenge.contentEquals(mailbox.awaitMessage(GattProtocol.CHALLENGE)),
+    )
+  }
+
+  @Test
   fun disconnectDuringClientHelloWriteWakesWaiterWithExactStatusBeforeTimeout() = runBlocking {
     val fixture = connectedFixture()
     val write = fixture.coordinator.begin(

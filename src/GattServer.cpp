@@ -70,6 +70,7 @@ portMUX_TYPE core_mux = portMUX_INITIALIZER_UNLOCKED;
 sgk::IndicationToken in_flight_token_{};
 sgk::MessageType in_flight_type_{sgk::MessageType::kError};
 bool in_flight_valid_{false};
+bool advertising_restart_requested_{false};
 
 class CanonicalMqttEventSink final : public sgk::EventSink {
  public:
@@ -205,19 +206,6 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     last_event_id_bytes_ = event_id;
     std::strncpy(last_event_id_, event_id_text, sizeof(last_event_id_) - 1);
 
-    if (event.code == sgk::EventCode::kAccessProofRequested &&
-        s_auth_pending_callback != nullptr) {
-      s_auth_pending_callback(static_cast<uint32_t>(event.monotonic_ms));
-    }
-    if (event.code == sgk::EventCode::kAccessProofVerified &&
-        s_auth_grant_callback != nullptr) {
-      s_auth_grant_callback(static_cast<uint32_t>(event.monotonic_ms));
-    }
-    if ((event.code == sgk::EventCode::kAccessProofRejected ||
-         event.code == sgk::EventCode::kAccessSessionTerminated) &&
-        s_auth_abort_callback != nullptr) {
-      s_auth_abort_callback(static_cast<uint32_t>(event.monotonic_ms));
-    }
   }
 
  private:
@@ -374,8 +362,144 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
 };
 
 CanonicalMqttEventSink production_event_sink;
+// NimBLE invokes server/characteristic callbacks on its 5 KB host task.  The
+// canonical sink builds JSON and publishes over MQTTS, so running it from a BLE
+// callback can exhaust that stack (and did on the physical ESP32-C6 while a
+// multi-fragment challenge was being acknowledged).  Keep callback work to a
+// bounded event copy and publish from the 16 KB Arduino loop task instead.
+class DeferredCanonicalEventSink final : public sgk::EventSink {
+ public:
+  explicit DeferredCanonicalEventSink(sgk::EventSink* downstream)
+      : downstream_(downstream) {}
+
+  void emit(const sgk::Event& event) override {
+    portENTER_CRITICAL(&mux_);
+    if (count_ == events_.size()) {
+      overflowed_ = true;
+    } else {
+      const size_t tail = (head_ + count_) % events_.size();
+      events_[tail] = event;
+      ++count_;
+    }
+    portEXIT_CRITICAL(&mux_);
+  }
+
+  void drain() {
+    bool reported_overflow = false;
+    while (true) {
+      sgk::Event event{};
+      bool available = false;
+      portENTER_CRITICAL(&mux_);
+      if (overflowed_ && !reported_overflow) {
+        overflowed_ = false;
+        reported_overflow = true;
+      }
+      if (count_ != 0) {
+        event = events_[head_];
+        head_ = (head_ + 1) % events_.size();
+        --count_;
+        available = true;
+      }
+      portEXIT_CRITICAL(&mux_);
+      if (reported_overflow) {
+        LOGF("[ERROR] GATT canonical event queue overflow; audit event dropped");
+        reported_overflow = false;
+      }
+      if (!available) return;
+      if (downstream_ != nullptr) downstream_->emit(event);
+    }
+  }
+
+  void clear() {
+    portENTER_CRITICAL(&mux_);
+    head_ = 0;
+    count_ = 0;
+    overflowed_ = false;
+    portEXIT_CRITICAL(&mux_);
+  }
+
+ private:
+  static constexpr size_t kCapacity = 16;
+  sgk::EventSink* downstream_ = nullptr;
+  std::array<sgk::Event, kCapacity> events_{};
+  size_t head_ = 0;
+  size_t count_ = 0;
+  bool overflowed_ = false;
+  portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
+};
+
+DeferredCanonicalEventSink deferred_event_sink(&production_event_sink);
+// Authentication state changes are control-plane effects, not best-effort
+// telemetry.  ProofRequested/ProofVerified are emitted only while update()
+// processes queued writes on loopTask, so apply them synchronously before a
+// successful RESULT can be drained.  Abort can originate from a NimBLE
+// disconnect/status callback; coalesce it and apply it on loopTask as well.
+class ProductionLifecycleEventSink final : public sgk::EventSink {
+ public:
+  explicit ProductionLifecycleEventSink(sgk::EventSink* telemetry)
+      : telemetry_(telemetry) {}
+
+  void emit(const sgk::Event& event) override {
+    if (event.code == sgk::EventCode::kAccessProofRequested &&
+        s_auth_pending_callback != nullptr) {
+      s_auth_pending_callback(static_cast<uint32_t>(event.monotonic_ms));
+    } else if (event.code == sgk::EventCode::kAccessProofVerified &&
+               s_auth_grant_callback != nullptr) {
+      s_auth_grant_callback(static_cast<uint32_t>(event.monotonic_ms));
+    } else if (event.code == sgk::EventCode::kAccessProofRejected ||
+               event.code == sgk::EventCode::kAccessSessionTerminated) {
+      portENTER_CRITICAL(&mux_);
+      abort_pending_ = true;
+      abort_now_ms_ = static_cast<uint32_t>(event.monotonic_ms);
+      portEXIT_CRITICAL(&mux_);
+    }
+    if (telemetry_ != nullptr) telemetry_->emit(event);
+  }
+
+  void drainControls() {
+    bool abort_pending = false;
+    uint32_t abort_now_ms = 0;
+    portENTER_CRITICAL(&mux_);
+    abort_pending = abort_pending_;
+    abort_now_ms = abort_now_ms_;
+    abort_pending_ = false;
+    portEXIT_CRITICAL(&mux_);
+    if (abort_pending && s_auth_abort_callback != nullptr) {
+      s_auth_abort_callback(abort_now_ms);
+    }
+  }
+
+  void clear() {
+    portENTER_CRITICAL(&mux_);
+    abort_pending_ = false;
+    abort_now_ms_ = 0;
+    portEXIT_CRITICAL(&mux_);
+  }
+
+ private:
+  sgk::EventSink* telemetry_ = nullptr;
+  bool abort_pending_ = false;
+  uint32_t abort_now_ms_ = 0;
+  portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
+};
+
+ProductionLifecycleEventSink production_lifecycle_sink(&deferred_event_sink);
 sgk::LocalGattLifecycleBridge production_lifecycle_bridge(
-    &production_event_sink);
+    &production_lifecycle_sink);
+
+void requestAdvertisingRestart() {
+  portENTER_CRITICAL(&core_mux);
+  advertising_restart_requested_ = true;
+  portEXIT_CRITICAL(&core_mux);
+}
+
+bool consumeAdvertisingRestartRequest() {
+  portENTER_CRITICAL(&core_mux);
+  const bool requested = advertising_restart_requested_;
+  advertising_restart_requested_ = false;
+  portEXIT_CRITICAL(&core_mux);
+  return requested;
+}
 
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
@@ -391,10 +515,7 @@ class ServerCallbacks final : public BLEServerCallbacks {
   void onDisconnect(BLEServer*,
                     esp_ble_gatts_cb_param_t* parameters) override {
     GattServer::handleDisconnect(parameters->disconnect.conn_id);
-    if (GattServer::isEnabled() &&
-        GattServer::getActiveConnections() == 0) {
-      BLEDevice::startAdvertising();
-    }
+    requestAdvertisingRestart();
   }
 #elif defined(CONFIG_NIMBLE_ENABLED)
   void onConnect(BLEServer* server, ble_gap_conn_desc* description) override {
@@ -406,10 +527,7 @@ class ServerCallbacks final : public BLEServerCallbacks {
 
   void onDisconnect(BLEServer*, ble_gap_conn_desc* description) override {
     GattServer::handleDisconnect(description->conn_handle);
-    if (GattServer::isEnabled() &&
-        GattServer::getActiveConnections() == 0) {
-      BLEDevice::startAdvertising();
-    }
+    requestAdvertisingRestart();
   }
 #endif
 };
@@ -489,6 +607,9 @@ BLECharacteristic* characteristicFor(sgk::MessageType type) {
 
 void GattServer::init() {
 #if ENABLE_HARDWARELESS_RC
+  deferred_event_sink.clear();
+  production_lifecycle_sink.clear();
+  advertising_restart_requested_ = false;
   if (core != nullptr) {
     delete core;
     core = nullptr;
@@ -526,6 +647,14 @@ void GattServer::init() {
 
 void GattServer::update() {
 #if ENABLE_HARDWARELESS_RC
+  // Flush control and telemetry effects produced by NimBLE callbacks before
+  // doing protocol work, then flush again below for this update pass.
+  production_lifecycle_sink.drainControls();
+  deferred_event_sink.drain();
+  if (consumeAdvertisingRestartRequest() && isEnabled() &&
+      getActiveConnections() == 0) {
+    BLEDevice::startAdvertising();
+  }
   if (core == nullptr || !core->enabled()) return;
 
   const uint32_t now_ms = millis();
@@ -569,6 +698,10 @@ void GattServer::update() {
   if (indication_timeout) {
     LOGF("[ERROR] GATT indication confirmation timed out; session aborted");
   }
+  production_lifecycle_sink.drainControls();
+  deferred_event_sink.drain();
+  // Preserve the synchronous contract: authentication lifecycle callbacks
+  // (including ARMED transition) run before the corresponding RESULT is sent.
   drainOutputs();
 #endif
 }
@@ -870,10 +1003,8 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
   if (result == sgk::IndicationResult::kAborted) {
     LOGF("[ERROR] GATT indication failed; session aborted");
   }
-  if (result == sgk::IndicationResult::kFragmentConfirmed ||
-      result == sgk::IndicationResult::kMessageConfirmed) {
-    drainOutputs();
-  }
+  // onStatus() runs on NimBLE's small host stack.  update() drains the next
+  // fragment from the Arduino loop task, avoiding a 2.7 KB adapter frame there.
 #else
   (void)token;
   (void)type;
