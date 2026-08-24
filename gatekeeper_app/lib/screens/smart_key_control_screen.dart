@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/credential_service.dart';
 import '../services/feature_flag_service.dart';
+import '../services/local_gatt_enrollment_service.dart';
 import '../services/native_gatt_worker_health.dart';
 import '../services/update_checker.dart';
 
@@ -16,6 +17,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
   final FeatureFlagService _flagService = FeatureFlagService();
   final NativeGattWorkerHealthBridge _healthBridge =
       NativeGattWorkerHealthBridge();
+  final LocalGattEnrollmentService _enrollmentService =
+      LocalGattEnrollmentService();
   final UpdateChecker _updateChecker = UpdateChecker();
 
   bool _loading = true;
@@ -45,6 +48,12 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
     await _flagService.loadFlags();
     try {
       _workerHealth = await _healthBridge.read();
+      if (_workerHealth!.featureEnabled && _flagService.enableLegacyPrearm) {
+        await _flagService.updateFlags(
+          legacyPrearm: false,
+          killSwitch: _flagService.remoteKillSwitch,
+        );
+      }
     } catch (_) {
       _workerHealth = null;
     }
@@ -54,6 +63,32 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
         _roomController.text = _credentialService.roomNumber;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _setNativeGattEnabled(bool enabled) async {
+    late final bool accepted;
+    late final String reason;
+    if (enabled) {
+      final enrollment = await _enrollmentService.ensureEnrolledAndEnabled();
+      accepted = enrollment.accepted;
+      reason = enrollment.reason;
+    } else {
+      final result = await _healthBridge.setLocalGattEnabled(false);
+      accepted = result['accepted'] == true;
+      reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
+    }
+    if (accepted && enabled && _flagService.enableLegacyPrearm) {
+      await _flagService.updateFlags(
+        legacyPrearm: false,
+        killSwitch: _flagService.remoteKillSwitch,
+      );
+    }
+    await _loadAllState();
+    if (mounted && !accepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Local GATT setting failed: $reason')),
+      );
     }
   }
 
@@ -67,12 +102,28 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
 
     setState(() {
       _isRetrying = true;
-      _retryMessage = '⚡ Local GATT 수동 출입 요청 송신 중...';
+      _retryMessage = '⚡ Local GATT 자격 및 Target ACL 확인 중...';
     });
+
+    final enrollment = await _enrollmentService.ensureEnrolledAndEnabled();
+    if (!enrollment.accepted) {
+      if (mounted) {
+        setState(() {
+          _isRetrying = false;
+          _retryMessage = '⚠️ 수동 출입 준비 실패: ${enrollment.reason}';
+        });
+      }
+      return;
+    }
 
     final result = await _healthBridge.triggerLocalGattRetry();
     final success = result['accepted'] == true;
     final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
+    try {
+      _workerHealth = await _healthBridge.read();
+    } catch (_) {
+      _workerHealth = null;
+    }
 
     if (mounted) {
       setState(() {
@@ -350,19 +401,15 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                             const SizedBox(height: 8),
                             SwitchListTile(
                               title: const Text('Hardwareless GATT Local Auth'),
-                              subtitle: const Text('BLE GATT 직접 로컬 인증 활성화'),
-                              value: _flagService.enableHardwarelessRc,
+                              subtitle: Text(
+                                'Native status: ${_workerHealth?.featureStatus ?? "unavailable"}',
+                              ),
+                              value: _workerHealth?.featureEnabled ?? false,
                               activeThumbColor: Colors.cyan,
-                              onChanged: (val) async {
-                                await _flagService.updateFlags(
-                                  hardwarelessRc: val,
-                                  legacyPrearm: val
-                                      ? false
-                                      : _flagService.enableLegacyPrearm,
-                                  killSwitch: _flagService.remoteKillSwitch,
-                                );
-                                setState(() {});
-                              },
+                              onChanged:
+                                  _workerHealth?.localBootstrapAllowed == true
+                                      ? _setNativeGattEnabled
+                                      : null,
                             ),
                             SwitchListTile(
                               title: const Text('Legacy REST Pre-arm Flow'),
@@ -371,14 +418,15 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               value: _flagService.enableLegacyPrearm,
                               activeThumbColor: Colors.amber,
                               onChanged: (val) async {
+                                if (val) {
+                                  await _healthBridge
+                                      .setLocalGattEnabled(false);
+                                }
                                 await _flagService.updateFlags(
-                                  hardwarelessRc: val
-                                      ? false
-                                      : _flagService.enableHardwarelessRc,
                                   legacyPrearm: val,
                                   killSwitch: _flagService.remoteKillSwitch,
                                 );
-                                setState(() {});
+                                await _loadAllState();
                               },
                             ),
                             SwitchListTile(
@@ -388,13 +436,17 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               value: _flagService.remoteKillSwitch,
                               activeThumbColor: Colors.red,
                               onChanged: (val) async {
+                                if (val) {
+                                  await _healthBridge
+                                      .setLocalGattEnabled(false);
+                                }
                                 await _flagService.updateFlags(
-                                  hardwarelessRc:
-                                      _flagService.enableHardwarelessRc,
-                                  legacyPrearm: _flagService.enableLegacyPrearm,
+                                  legacyPrearm: val
+                                      ? false
+                                      : _flagService.enableLegacyPrearm,
                                   killSwitch: val,
                                 );
-                                setState(() {});
+                                await _loadAllState();
                               },
                             ),
                             const SizedBox(height: 8),
@@ -405,9 +457,11 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                     color: Colors.orangeAccent),
                               ),
                               onPressed: () async {
+                                await _healthBridge.setLocalGattEnabled(false);
                                 await _flagService.rollbackToLegacy();
                                 if (!context.mounted) return;
-                                setState(() {});
+                                await _loadAllState();
+                                if (!context.mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text(

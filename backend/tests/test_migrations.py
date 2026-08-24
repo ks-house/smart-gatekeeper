@@ -45,9 +45,31 @@ OPS_PRIVACY_DOWN = ROOT / "backend" / "db" / "migrations" / "007_ops_privacy_dow
 PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
+DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 
 
 class MigrationContractTest(unittest.TestCase):
+    def test_personal_nas_compose_runs_backup_first_existing_volume_migration(self) -> None:
+        compose = DEVELOPMENT_COMPOSE.read_text(encoding="utf-8")
+        migrate_start = compose.index("  migrate:")
+        api_start = compose.index("  api:")
+        migrate = compose[migrate_start:api_start]
+        api = compose[api_start:]
+        for required in (
+            'command: ["/usr/local/bin/sgk-migrate", "up", "007"]',
+            "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
+            "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
+            "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
+            "./secrets/db_root_password",
+            "./migration_backups",
+            "condition: service_healthy",
+        ):
+            self.assertIn(required, migrate)
+        self.assertIn("migrate:", api)
+        self.assertIn("condition: service_completed_successfully", api)
+        self.assertIn("EXPECTED_DB_SCHEMA_VERSION", api)
+        self.assertIn("EXPECTED_DB_SCHEMA_SHA256", api)
+
     def test_expand_preserves_legacy_columns_and_down_drops_only_new_state(self) -> None:
         up = UP.read_text(encoding="utf-8")
         down = DOWN.read_text(encoding="utf-8")

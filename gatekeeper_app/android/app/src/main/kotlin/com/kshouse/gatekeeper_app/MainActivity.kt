@@ -8,6 +8,7 @@ import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import com.kshouse.gatekeeper_app.gattworker.BleGattFeatureFlagStore
 import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -77,6 +78,35 @@ class MainActivity: FlutterActivity() {
                 }
                 "triggerLocalGattRetry" -> {
                     result.success(BleGattWorkScheduler.manualRetry(applicationContext).toMap())
+                }
+                "prepareLocalGattEnrollment" -> {
+                    val material = BleGattFeatureFlagStore(applicationContext)
+                        .prepareLocalEnrollmentMaterial()
+                    result.success(
+                        mapOf(
+                            "accepted" to material.accepted,
+                            "reason" to material.reason,
+                            "credentialId" to material.credentialIdHex,
+                            "publicKeySec1" to material.publicKeySec1Hex,
+                            "minProtocol" to 1,
+                            "maxProtocol" to 1,
+                        ),
+                    )
+                }
+                "setLocalGattEnabled" -> {
+                    val enabled = call.argument<Boolean>("enabled")
+                    if (enabled == null) {
+                        result.error("INVALID_ARGUMENT", "enabled must be a boolean", null)
+                    } else {
+                        val control = BleGattFeatureFlagStore(applicationContext)
+                            .setLocalManualEnabled(enabled)
+                        result.success(
+                            BleGattHealthBridge.snapshot(applicationContext) + mapOf(
+                                "accepted" to control.accepted,
+                                "reason" to control.reason,
+                            ),
+                        )
+                    }
                 }
                 else -> {
                     result.notImplemented()

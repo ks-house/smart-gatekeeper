@@ -234,6 +234,10 @@ void start(sgk::ProtocolCore& core, uint32_t now = 1000) {
 
 void testCanonicalVectorsAndFraming() {
   CHECK(!sgk::effectiveFeatureEnabled(true));  // stale NVS true, compile OFF.
+  CHECK(sgk::shouldInitializePersonalHardwarelessState(true, false, true));
+  CHECK(!sgk::shouldInitializePersonalHardwarelessState(true, true, true));
+  CHECK(!sgk::shouldInitializePersonalHardwarelessState(true, false, false));
+  CHECK(!sgk::shouldInitializePersonalHardwarelessState(false, false, true));
   const auto challenge = hex(
       "53474b4348414c31000100112233445566778899aabbccddeeff102132435465"
       "768798a9bacbdcedfe0f000102030405060708090a0b0c0d0e0f101112131415"

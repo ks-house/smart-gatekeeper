@@ -84,6 +84,15 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!--
+          APK-signature-bound personal-production policy. This permits an
+          explicit manual-local bootstrap only; Target ACL proof remains
+          mandatory and a signed remote rollout snapshot takes precedence.
+        -->
+        <meta-data
+            android:name="com.kshouse.gatekeeper_app.GATT_LOCAL_MANUAL_BOOTSTRAP"
+            android:value="${sgkPersonalGattBootstrap}" />
+
         <!-- Flutter Foreground Task Service -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"

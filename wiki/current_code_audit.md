@@ -22,18 +22,18 @@ applies_to:
 
 현재 저장소는 초기 “ESP32 scanner + VL53L0X + 직접 HTTPS 인증” PoC가 아니다. 기준 아키텍처는 **ESP32-C6 iBeacon/secure Target + Android foreground/native worker + FastAPI/MariaDB 관리면 + per-Target MQTTS signed command/ACL + AJ-SR04T + GPIO3 relay + signed recoverable OTA**다.
 
-Hardwareless RC의 Android worker, connectable GATT transport, signed ACL verifier와 Target FSM 연동은 소프트웨어에 존재하지만 기본·production 빌드는 `ENABLE_HARDWARELESS_RC=0`이다. 구현 존재를 production 활성화나 실기기 합격으로 확대 해석하지 않는다.
+Hardwareless RC의 Android worker, connectable GATT transport, signed ACL verifier와 Target FSM 연동은 소프트웨어에 존재한다. 기본 개발과 commercial production 빌드는 `ENABLE_HARDWARELESS_RC=0`이고, 개인 설치 전용 `esp32c6_personal_production`만 valid door/ACL trust를 전제로 compile/runtime ON이다. 이 개인 source enable을 NAS/phone/Target 배포나 실기기 합격으로 확대 해석하지 않는다.
 
 ## 2. 현재 코드 계약
 
 | 계층 | 현재 값/동작 | 주요 근거 |
 |---|---|---|
-| Target build | ESP32-C6, pioarduino, `esp32c6`, 16 MB dual OTA; lab-only `esp32c6_hwless_rc` | `platformio.ini`, `partitions_16MB_ota.csv` |
+| Target build | ESP32-C6, pioarduino, 16 MB dual OTA; default/commercial OFF, personal production ON, lab-only feature profile 분리 | `platformio.ini`, `partitions_16MB_ota.csv` |
 | Sensor/relay | AJ-SR04T GPIO10/11, 20 cm min, 50 cm default; GPIO3 Active-LOW relay | `include/config.h`, `src/UltrasonicSensor.cpp`, `src/RelayController.cpp` |
 | Access FSM | `IDLE → ARMED → RELAY_HOLD → COOLDOWN → IDLE`; IDLE만 새 arm/manual open 허용 | `src/TargetAccessFsm.cpp`, `src/main.cpp` |
 | MQTT transport | Root CA, non-1883, Target ID principal, exact `gatekeeper/v1/targets/<id>/...` namespace; invalid provisioning closes command plane | `src/MqttManager.cpp` |
 | Command security | signed canonical envelope, target/tenant/door/boot binding, expiry, nonce/replay storage, command ACK | `src/TargetCommandSecurity.cpp`, `src/MqttManager.cpp`, `backend/app/command_security.py` |
-| Local ACL/GATT | signed ACL anti-rollback, P-256 proof, connection-owned GATT, offline event queue; compile/runtime default-OFF | `src/TargetAclManager.cpp`, `src/TargetProofVerifier.cpp`, `src/GattServer.cpp` |
+| Local ACL/GATT | signed ACL anti-rollback, P-256 proof, connection-owned GATT, offline event queue; personal-only compile/runtime ON with persisted false kill switch | `src/TargetAclManager.cpp`, `src/TargetProofVerifier.cpp`, `src/GattServer.cpp` |
 | Target OTA | periodic HTTPS, CA validation, Ed25519 manifest, SHA-256/size, inactive partition, safe-state wait, health mark/rollback, version floor | `src/OtaManager.cpp`, `include/OtaHealthPolicy.h`, `src/OtaVersionPolicy.cpp` |
 | Local recovery | provisioned authenticated recovery endpoints/AP with bounded AP window | `src/WifiManager.cpp`, `include/secrets.h.example` |
 | Android scanning | foreground-service isolate, monitoring/ranging, RSSI filtering, IPC/diagnostics | `gatekeeper_app/lib/services/foreground_service.dart`, `ble_scanner.dart` |
@@ -67,7 +67,7 @@ Hardwareless RC의 Android worker, connectable GATT transport, signed ACL verifi
 
 1. production Compose, reverse proxy mTLS, migration, backup/restore는 코드 계약과 live NAS 실행 증거를 구분한다.
 2. signed command의 PUBACK/HTTP 성공은 Target authorization, command ACK, FSM과 relay 실행을 증명하지 않는다.
-3. Hardwareless RC는 software-complete라는 표현만 허용하며 compile/runtime default-OFF와 physical Gate를 유지한다.
+3. Hardwareless RC의 personal source enable은 exact-main same-signature app/Target/NAS 배포와 GATT physical evidence가 아니다. Commercial/default compile-OFF, local kill switch와 physical Gate를 유지한다.
 4. iBeacon은 presence hint이지 자격 증명이 아니다. 권한은 approved identity, signed command 또는 local proof가 결정한다.
 
 ### P2 — 정리 부채

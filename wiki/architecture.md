@@ -1,5 +1,5 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-08-23 (authenticated recovery AP SSID, per-Target MQTTS signed command/ACL, secure OTA, admin control plane 반영)
+> Last updated: 2026-08-24 (personal local GATT enrollment and signed Home Assistant backend bridge reflected; live deployment pending)
 >
 > 저장소 구현과 현장 배포 상태의 차이는 [project_status.md](project_status.md)를 먼저 확인한다.
 
@@ -135,11 +135,23 @@ unavailable/unknown이 되는 것을 피하려고 discovery는 두 토픽을 참
 놓친 모든 15개 entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
 
 동시에 legacy plaintext command를 가리키던 button 3개와 number 4개의 retained discovery config에는
-빈 payload를 먼저 발행해 제거한 다음 read-only config를 갱신합니다. 따라서 중간 실패에서도 write
-control을 복구하는 방향으로 진행하지 않습니다. 이 도구는 button/number 또는 `command_topic`을 새
-namespace에 재생성하지 않습니다. 문 열기, OTA, reboot, 설정 변경 UI를 다시 제공하려면 Home Assistant가 Target
-topic에 평문을 직접 발행하는 방식이 아니라 backend가 사용자 권한·fresh authorization을 검증하고
-current boot에 묶인 signed command envelope를 생성하는 별도 bridge가 먼저 구현·검증되어야 합니다.
+빈 payload를 먼저 발행해 제거합니다. 새 secure control config는 Target command topic이 아니라
+`gatekeeper/v1/ha-bridge/<target_id>/request/<control>`에만 QoS 1, non-retained payload를 보냅니다.
+중간 실패에서는 기존 direct-Target control을 복구하지 않으므로 fail-closed합니다.
+
+Backend bridge는 별도 opt-in `HA_BRIDGE_ENABLED=true`일 때 Target `/status`, `/availability`,
+`/command-ack`와 HA ingress를 구독합니다. 요청이 retained이거나 MQTT duplicate이면 거부하고, payload/range,
+2초 duplicate window, action별 rate limit, 15초 기본 status freshness와 현재 boot identity를 검증합니다.
+그 뒤에만 기존 command signer로 target/tenant/door/current boot/session/nonce/time/key에 묶인 15초 TTL
+envelope를 생성해 exact Target command topic으로 발행합니다. Target command ACK는 session/action과
+상관되어 bridge result로 투영되며, PUBACK만으로 실행 성공을 주장하지 않습니다. Backend 연결이나 fresh
+Target status가 없으면 bridge availability는 offline입니다.
+
+재부팅, OTA check와 설정 number 4개는 bridge enable 시 노출할 수 있지만, `manual_remote` 문 열기는
+`HA_BRIDGE_ALLOW_MANUAL_REMOTE=true`의 독립적인 명시 승인 없이는 discovery에도 생성되지 않고 ingress에서도
+거부됩니다. 이는 Android의 `manual_local_gatt`와 다른 remote command plane입니다. 이 source-level bridge와
+discovery 계획은 구현됐지만 NAS Backend 재배포, retained discovery apply, HA availability 및 실제 Target
+ACK는 아직 확인되지 않았습니다.
 
 ##### 기기 정보의 entity 수와 영역 화면 표시 수가 다른 이유
 
@@ -213,8 +225,11 @@ lease, while a stalled upload or merely associated client cannot.
 Connectable GATT local auth의 Android Keystore P-256 자격, MTU 독립 framing,
 canonical challenge/proof, signed ACL과 N/N-1 보안 계약은
 [security_protocol.md](security_protocol.md)를 따릅니다. Android worker, Target GATT transport,
-proof verifier, signed ACL과 Target FSM 연결은 소프트웨어에 구현됐지만 기본·production 빌드는
-`ENABLE_HARDWARELESS_RC=0`입니다. physical/operator/OTA Gate 없이 활성화하지 않습니다.
+proof verifier, signed ACL과 Target FSM 연결은 소프트웨어에 구현됐습니다. 기본 개발과 commercial
+production 빌드는 `ENABLE_HARDWARELESS_RC=0`을 유지하고, 개인 설치 전용
+`esp32c6_personal_production`만 compile-ON입니다. 이 profile은 valid door/ACL trust 뒤 한 번만 runtime
+ON을 초기화하며 이후 persisted false를 kill switch로 보존합니다. Source/build enable은
+physical/operator/OTA Gate 통과가 아닙니다.
 
 ## 4. Android 앱
 
@@ -236,6 +251,12 @@ server-side session, CSRF, RBAC/tenant scope, fresh re-auth와 rate limit을 적
 서로 다른 제안자/승인자와 reconciliation 상태를 요구합니다. live reverse proxy와 production NAS
 운영 증거는 소프트웨어 구현과 별도로 검증합니다.
 
+개인 local GATT bootstrap은 별도 opt-in endpoint에서 기존 approved device와 API key를 exact personal
+tenant/door scope에 결합하고 Android가 선택한 public credential만 등록합니다. Backend는 credential
+activation/grant와 signed ACL snapshot을 처리한 뒤 configured Target의 exact applied ACK까지 상관한 경우에만
+positive ACL version을 반환합니다. Target reboot와 900초 기본 lease 만료에 대비한 boot-triggered/periodic
+signed snapshot renewal도 source 계약에 포함되며, live NAS scheduler와 장기 outage 동작은 별도 검증합니다.
+
 ## 6. 실패 안전 경계
 
 | 실패 | 기대 동작 |
@@ -248,11 +269,14 @@ server-side session, CSRF, RBAC/tenant scope, fresh re-auth와 rate limit을 적
 | invalid/expired/replayed signed command | Target 거부와 command ACK reason; relay 동작 없음 |
 | MQTT provisioning/TLS 검증 실패 | command plane 비활성 또는 재연결; insecure fallback 없음 |
 | force-open 승인·publish 불확실 | fail closed 또는 reconciliation required; 상태 확인 전 중복 발행 금지 |
+| HA bridge disabled/stale Target/retained·duplicate request | control unavailable 또는 요청 거부; direct Target plaintext fallback 없음 |
+| personal enrollment publish/Target apply 불확실 | 앱 native GATT OFF 유지; MQTT PUBACK을 ACL 적용 성공으로 취급하지 않음 |
 
 ## 7. 현 단계
 
 저장소 기능은 Target, backend, Android, 보안·OTA·운영 계약까지 통합되어 **프로덕션 증거 수집 단계**입니다.
-GATT/ACL/FSM core는 연결됐지만 default-OFF이며 physical Gate가 남았습니다. 매립 Target은 최신 저장소
-firmware보다 오래된 배포본이므로 exact-main signed firmware의 install→reboot→version/boot/health 확인,
-연결 자동 복구, GPIO3 relay 전기 안전, Android OEM background, production NAS/proxy/backup/operator
-증거가 완료 조건입니다. 현재 요약은 [project_status.md](project_status.md)를 따릅니다.
+개인 GATT와 HA signed bridge는 source/test 단계에서 활성화됐지만 NAS, phone, Target에 배포됐다고
+주장하지 않습니다. exact-main signed firmware install→reboot→version/boot/health, same-signature APK
+install→public enrollment→Target ACL applied→GATT proof, HA discovery/bridge ACK, 연결 자동 복구, GPIO3
+relay 전기 안전, Android OEM background, production NAS/proxy/backup/operator 증거가 완료 조건입니다.
+현재 요약은 [project_status.md](project_status.md)를 따릅니다.

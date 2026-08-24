@@ -876,6 +876,9 @@ PERSONAL_TARGET_SECRET_ENV = {
     "SECRET_TARGET_DOOR_ID": "${{ secrets.SECRET_TARGET_DOOR_ID }}",
     "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}",
     "SECRET_COMMAND_SIGNING_KEY_ID": "${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}",
+    "SECRET_HARDWARELESS_DOOR_ID_HEX": "${{ secrets.SECRET_HARDWARELESS_DOOR_ID_HEX }}",
+    "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}",
+    "SECRET_ACL_SIGNING_KEY_ID": "${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}",
     "SECRET_OTA_VERSION_URL": "${{ secrets.SECRET_OTA_VERSION_URL }}",
     "SECRET_OTA_FIRMWARE_URL": "${{ secrets.SECRET_OTA_FIRMWARE_URL }}",
     "SECRET_OTA_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
@@ -888,7 +891,7 @@ PERSONAL_TARGET_SECRET_ENV = {
 }
 
 PINNED_TARGET_BUILD_INPUTS = {
-    "platformio.ini": "cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1",
+    "platformio.ini": "a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839",
 }
 PINNED_OTA_PYTHON_INPUTS = {
     "ota/requirements.txt": (
@@ -1041,7 +1044,7 @@ def _validate_personal_target_ota_job(
       "partitions_16MB_ota.csv ota/requirements.lock |",
       "100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock",
       "100644 6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv",
-      "100644 cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1 platformio.ini",
+      "100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini",
       'while read -r mode object stage path; do',
       'test "$mode" = "100644"',
       'test -f "$path"',
@@ -1064,8 +1067,15 @@ def _validate_personal_target_ota_job(
   for fragment in (
       "require_cpp_string",
       "cat <<EOF > include/secrets.h",
-      '#define SECRET_HARDWARELESS_DOOR_ID_HEX ""',
-      '#define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX ""',
+      '[[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]]',
+      'test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "00000000000000000000000000000000"',
+      'test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "ffffffffffffffffffffffffffffffff"',
+      '[[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]]',
+      '[[ "$SECRET_ACL_SIGNING_KEY_ID" =~ ^[1-9][0-9]{0,9}$ ]]',
+      '((10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295))',
+      '#define SECRET_HARDWARELESS_DOOR_ID_HEX "${SECRET_HARDWARELESS_DOOR_ID_HEX}"',
+      '#define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX "${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"',
+      '#define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}',
       '#define SECRET_OTA_VERSION_URL "${SECRET_OTA_VERSION_URL}"',
       '#define SECRET_OTA_FIRMWARE_URL "${SECRET_OTA_FIRMWARE_URL}"',
       '#define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"',
@@ -1091,10 +1101,10 @@ def _validate_personal_target_ota_job(
       'echo "TARGET_BUILD_ID=${TARGET_BUILD_ID}" >> "$GITHUB_ENV"',
       'SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"',
       "export SOURCE_DATE_EPOCH",
-      "python -I -m platformio run -e esp32c6_production",
-      "cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware-first.bin",
-      "python -I -m platformio run -e esp32c6_production -t clean",
-      "cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_production/firmware.bin",
+      "python -I -m platformio run -e esp32c6_personal_production",
+      "cp .pio/build/esp32c6_personal_production/firmware.bin dist/gatekeeper-firmware-first.bin",
+      "python -I -m platformio run -e esp32c6_personal_production -t clean",
+      "cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_personal_production/firmware.bin",
       'version = os.environ["FULL_VERSION"].encode("ascii")',
       "if version not in firmware:",
       'raise SystemExit("exact Target version is absent from firmware bytes")',
@@ -1102,7 +1112,7 @@ def _validate_personal_target_ota_job(
       "--partitions partitions_16MB_ota.csv",
       "--flash-size 0x1000000",
       "--max-slot-usage-percent 80",
-      "cp .pio/build/esp32c6_production/firmware.bin dist/gatekeeper-firmware.bin",
+      "cp .pio/build/esp32c6_personal_production/firmware.bin dist/gatekeeper-firmware.bin",
   ):
     if fragment not in build_run:
       raise GateError(f"{path}: monotonic N16 Target production build is incomplete")
@@ -1431,6 +1441,7 @@ PERSONAL_MOBILE_EMBEDDED_BUILD_ENV = {
     "MOBILE_UPDATE_KEY_ID": "${{ secrets.OTA_SIGNING_KEY_ID }}",
     "MOBILE_UPDATE_PUBLIC_KEY_HEX": "${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}",
     "GATEKEEPER_API_KEY": "${{ secrets.GATEKEEPER_API_KEY }}",
+    "SGK_PERSONAL_GATT_BOOTSTRAP": "1",
 }
 
 PERSONAL_TARGET_CONTENT_ENV = {
@@ -2164,6 +2175,7 @@ CANONICAL_RELEASE_STEPS = {
                 "SECRET_TARGET_DOOR_ID": "${{ secrets.SECRET_TARGET_DOOR_ID }}",
                 "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}",
                 "SECRET_COMMAND_SIGNING_KEY_ID": "${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}",
+                "SECRET_HARDWARELESS_DOOR_ID_HEX": "${{ secrets.SECRET_HARDWARELESS_DOOR_ID_HEX }}",
                 "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX": "${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}",
                 "SECRET_ACL_SIGNING_KEY_ID": "${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}",
                 "SECRET_OTA_VERSION_URL": "${{ secrets.SECRET_OTA_VERSION_URL }}",
@@ -2700,6 +2712,15 @@ def validate_workflow_release_triggers(
             '#define SECRET_OTA_FIRMWARE_URL "${SECRET_OTA_FIRMWARE_URL}"',
             '#define SECRET_OTA_SIGNER_PUBLIC_KEY_HEX "${SECRET_OTA_SIGNER_PUBLIC_KEY_HEX}"',
             '#define SECRET_OTA_SIGNING_KEY_ID "${SECRET_OTA_SIGNING_KEY_ID}"',
+            '[[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]]',
+            'test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "00000000000000000000000000000000"',
+            'test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "ffffffffffffffffffffffffffffffff"',
+            '[[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]]',
+            '[[ "$SECRET_ACL_SIGNING_KEY_ID" =~ ^[1-9][0-9]{0,9}$ ]]',
+            '((10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295))',
+            '#define SECRET_HARDWARELESS_DOOR_ID_HEX "${SECRET_HARDWARELESS_DOOR_ID_HEX}"',
+            '#define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX "${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"',
+            '#define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}',
         ):
           if fragment not in run_cmd:
             raise GateError(
@@ -2713,8 +2734,8 @@ def validate_workflow_release_triggers(
       if canonical.get("target_production_build"):
         run_cmd = str(step.get("run", ""))
         for fragment in (
-            "pio run -e esp32c6",
-            "cp .pio/build/esp32c6/firmware.bin dist/gatekeeper-firmware.bin",
+            "pio run -e esp32c6_personal_production",
+            "cp .pio/build/esp32c6_personal_production/firmware.bin dist/gatekeeper-firmware.bin",
             "test -s dist/gatekeeper-firmware.bin",
         ):
           if fragment not in run_cmd:

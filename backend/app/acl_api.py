@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal, Optional
 
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 try:
-    from .acl_management import AclManagementService
+    from .acl_management import AclManagementService, CredentialConflictError
 except ImportError:  # Docker runs uvicorn with /app as the import root.
-    from acl_management import AclManagementService
+    from acl_management import AclManagementService, CredentialConflictError
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,10 @@ class AclApiConfig:
     enrollment_credentials: dict[str, dict[str, str]]
     admin_key: str
     target_credentials: dict[str, dict[str, str]]
+    personal_enabled: bool = False
+    personal_api_key: str = ""
+    personal_tenant_id: str = ""
+    personal_door_id: str = ""
 
 
 class TenantRequest(BaseModel):
@@ -51,6 +55,20 @@ class EnrollmentSubmitRequest(TenantRequest):
     min_protocol: int = Field(default=1, ge=1, le=65535)
     max_protocol: int = Field(default=1, ge=1, le=65535)
     legacy_device_id: Optional[str] = Field(default=None, max_length=256)
+
+
+class PersonalEnrollmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: str = Field(
+        min_length=8,
+        max_length=128,
+        pattern=r"^(?:DEV|GK)-[A-Z0-9-]+$",
+    )
+    credential_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    public_key_sec1: str = Field(pattern=r"^04[0-9a-f]{128}$")
+    min_protocol: Literal[1]
+    max_protocol: Literal[1]
 
 
 class SnapshotPublishRequest(TenantRequest):
@@ -99,6 +117,8 @@ def _invoke(function: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except CredentialConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -235,6 +255,39 @@ def create_acl_router(
             actor_tenant_id=tenant_id,
             legacy_device_id=request.legacy_device_id,
             expires_at=request.expires_at,
+            min_protocol=request.min_protocol,
+            max_protocol=request.max_protocol,
+        )
+
+    @router.post("/api/v1/acl/personal/enroll")
+    def personal_enroll(
+        request: PersonalEnrollmentRequest,
+        x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
+    ) -> dict[str, Any]:
+        require_enabled()
+        if not config.personal_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="personal credential enrollment is disabled",
+            )
+        if (
+            not config.personal_api_key
+            or not x_api_key
+            or not secrets.compare_digest(x_api_key, config.personal_api_key)
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="invalid or missing X-API-KEY",
+            )
+        actor = _actor_ref("personal-enrollment", config.personal_api_key)
+        return _invoke(
+            service.bootstrap_personal_credential,
+            config.personal_tenant_id,
+            config.personal_door_id,
+            request.device_id,
+            request.credential_id,
+            request.public_key_sec1,
+            actor_ref=actor,
             min_protocol=request.min_protocol,
             max_protocol=request.max_protocol,
         )

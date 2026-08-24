@@ -1,6 +1,6 @@
 # Personal production profile
 
-> Status: reduced physical checks owner-attested on 2026-08-12; release remains fail-closed pending exact-main signed artifact deployment and post-deploy version/boot/health evidence.
+> Status: the reviewed personal-only Target and Android enablement paths are implemented and software-tested; exact-main CI publication, same-signature phone install, NAS activation, Target install/reboot/health and physical GATT/relay evidence remain pending.
 
 This profile is for one repository owner, one primary phone, and the ESP32-C6 Target already installed at the owner's entrance. It does not authorize a commercial deployment and does not weaken the commercial `production` workflow.
 
@@ -16,8 +16,10 @@ This profile is for one repository owner, one primary phone, and the ESP32-C6 Ta
 
 - Build and deploy only an exact `main` commit.
 - Verify the signed manifest and exact artifact digest.
-- Keep the currently validated legacy BLE/API/MQTT access path.
-- Keep `ENABLE_HARDWARELESS_RC=0`.
+- Keep the currently validated legacy BLE/API/MQTT access path recoverable as the rollback path; native GATT and legacy BLE ownership must never run concurrently.
+- Use `esp32c6_personal_production` only for this installed personal Target. It sets `SGK_PRODUCTION_BUILD=1`, `SGK_PERSONAL_INSTALLATION_BUILD=1`, and `ENABLE_HARDWARELESS_RC=1`; the default developer profile and commercial `esp32c6_production` profile remain compile-OFF.
+- Provision an exact nonzero/non-`ff` 16-byte Hardwareless door ID, a valid P-256 ACL signer public key, and a nonzero ACL signing key ID. Placeholder or malformed values must fail before CI build and fail closed again on Target initialization.
+- Require the app-selected AndroidKeyStore public credential to be present in a signed ACL applied by the exact Target before native ownership is enabled. MQTT PUBACK or ACL artifact generation alone is not Target apply evidence.
 - Confirm relay OFF safety during Target boot.
 - Confirm the previous Target version remains recoverable.
 - After deployment, record expected version, boot ID, and health.
@@ -34,6 +36,20 @@ This profile is for one repository owner, one primary phone, and the ESP32-C6 Ta
 The reduced screen-off, Activity-terminated, Target reboot, network reconnect, relay boot fail-safe and previous-version recovery checks were owner-attested on 2026-08-12. They do not satisfy the remaining exact-main artifact identity and post-deploy health requirements.
 
 The validator passing is readiness evidence for the reduced personal profile. It is not commercial release evidence and does not alter `ota/release-evidence.json`.
+
+## Personal Hardwareless enablement boundary
+
+The personal Target profile requests Hardwareless GATT at runtime only after its door identity and ACL signer provisioning validate. On the first transition from a compile-OFF image it writes the runtime enable request and then a one-time migration marker. After that marker exists, a persisted `hwless_rc=false` is an authoritative local kill switch and is not overwritten by reboot or rebuild. Returning to a compile-OFF image clears the migration epoch and forces the transport OFF.
+
+Only the exact-main personal Android build permits an explicit local bootstrap: the Gradle manifest placeholder defaults OFF and is enabled by `SGK_PERSONAL_GATT_BOOTSTRAP=1` only in the personal OTA producer. Installation alone still does not turn native ownership on. The operator's first local-open attempt or explicit ON action creates or loads one non-exportable AndroidKeyStore P-256 credential, sends only its 16-byte credential ID and SEC1 public key over authenticated HTTPS to `POST /api/v1/acl/personal/enroll`, and waits for the backend to confirm the exact signed ACL version was applied by the configured Target. Only then is encrypted, credential-bound local consent committed and the native worker allowed to own BLE. A signed remote rollout snapshot, when present, retains precedence. Disabling local GATT, selecting legacy pre-arm, or using the kill switch returns ownership to the legacy path.
+
+This narrow enablement does not close Samsung screen-off/process-death, ESP32-C6 radio interoperability, ACL lease renewal across reboot/outage, relay electrical, or OTA rollback Gates. Those are physical and operational evidence, not consequences of a successful build.
+
+## Automatic exact-main Target OTA lane
+
+Both the main-push personal Target compiler/publisher in `deploy.yml` and the manual personal-installation workflow build `esp32c6_personal_production`. Before materializing `include/secrets.h`, they require and validate `SECRET_HARDWARELESS_DOOR_ID_HEX`, `SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`, and `SECRET_ACL_SIGNING_KEY_ID` alongside the existing per-Target command, MQTTS, recovery and OTA inputs. The N16 16 MB dual-slot layout, 80% slot ceiling, deterministic rebuild comparison, encrypted handoff/content envelope, signed manifest, immutable NAS candidate and previous-version preservation remain unchanged.
+
+The current source tree built both personal and commercial profiles successfully. The personal image was 1,844,880 bytes in each 7,340,032-byte OTA slot (25.13%, 5,495,152 bytes headroom); Hardwareless tests passed 9/9, personal workflow tests 6/6, physical profile tests 5/5, Target auto-publish tests 18/18, and the OTA gate passed 78/78. These are source/build results only: no new NAS pointer, inactive-slot install, reboot health-valid mark, rollback, or physical GATT session is claimed by this page.
 
 ## Automatic exact-main mobile OTA lane
 
@@ -61,6 +77,9 @@ attempt-specific retained CI artifact name. A repository-pinned
 never trusts an unauthenticated runtime keyscan.
 
 This automatic lane only keeps the owner's existing mobile updater supplied
-with exact-main artifacts. The explicit `release_to_production` job,
+with exact-main artifacts. The APK now contains the personal local-bootstrap
+policy and enrollment client described above, but publication is not
+installation or enrollment evidence. The explicit `release_to_production` job,
 `production` Environment approval, `ota/release-evidence.json`, commercial
-OTA-G1..G4 decisions, and default-OFF Hardwareless RC policy remain unchanged.
+OTA-G1..G4 decisions, and commercial/default Target Hardwareless compile-OFF
+policy remain unchanged.

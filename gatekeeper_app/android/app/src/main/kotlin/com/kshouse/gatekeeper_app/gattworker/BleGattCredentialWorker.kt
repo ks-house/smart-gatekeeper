@@ -65,8 +65,10 @@ object BleGattWorkScheduler {
 
   fun manualRetry(context: Context): ManualRetryResult {
     val appContext = context.applicationContext
-    if (!BleGattFeatureFlagStore(appContext).decision().newWorkerEnabled) {
-      return ManualRetryResult(false, "NATIVE_GATT_DISABLED")
+    val flagStore = BleGattFeatureFlagStore(appContext)
+    val flagDecision = flagStore.decision()
+    if (!flagDecision.newWorkerEnabled) {
+      return ManualRetryResult(false, "NATIVE_GATT_DISABLED:${flagDecision.status}")
     }
     val target = AuthenticatedTargetLocatorStore(appContext).resolve()
       ?: return ManualRetryResult(false, "TARGET_UNAVAILABLE")
@@ -340,13 +342,18 @@ class BleGattCredentialWorker(
 
 object BleGattHealthBridge {
   fun snapshot(context: Context): Map<String, Any?> {
-    val decision = BleGattFeatureFlagStore(context.applicationContext).decision()
+    val flagStore = BleGattFeatureFlagStore(context.applicationContext)
+    val decision = flagStore.decision()
+    val localConsent = flagStore.localConsentStatus()
     val last = SharedPreferencesSessionLedger(context.applicationContext).last()
     return mapOf(
       "featureEnabled" to decision.newWorkerEnabled,
       "featureStatus" to decision.status,
       "featureRevision" to decision.revision,
       "bleOwner" to decision.owner,
+      "localBootstrapAllowed" to flagStore.localBootstrapAllowed(),
+      "credentialProvisioned" to localConsent.credentialProvisioned,
+      "localConsentValid" to localConsent.valid,
       "healthy" to (last?.state !in setOf(DurableSessionState.FAILED, DurableSessionState.PROOF_UNCERTAIN)),
       "lastSession" to last?.redactedMap(),
       "lastReasonCode" to last?.reasonCode,

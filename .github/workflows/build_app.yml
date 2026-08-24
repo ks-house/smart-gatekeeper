@@ -634,6 +634,7 @@ jobs:
           MOBILE_UPDATE_KEY_ID: ${{ secrets.OTA_SIGNING_KEY_ID }}
           MOBILE_UPDATE_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
           GATEKEEPER_API_KEY: ${{ secrets.GATEKEEPER_API_KEY }}
+          SGK_PERSONAL_GATT_BOOTSTRAP: "1"
         run: |
           set -euo pipefail
           for name in APK_VERSION_URL APK_FALLBACK_VERSION_URL MOBILE_UPDATE_KEY_ID \

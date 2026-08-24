@@ -463,15 +463,21 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         "python -I -m pip install --require-hashes -r ota/requirements.lock",
         source,
     )
-    self.assertIn("python -I -m platformio run -e esp32c6_production -t clean", source)
     self.assertIn(
-        "cmp dist/gatekeeper-firmware-first.bin .pio/build/esp32c6_production/firmware.bin",
+        "python -I -m platformio run -e esp32c6_personal_production -t clean",
+        source,
+    )
+    self.assertIn(
+        "cmp dist/gatekeeper-firmware-first.bin "
+        ".pio/build/esp32c6_personal_production/firmware.bin",
         source,
     )
     self.assertIn('version = os.environ["FULL_VERSION"].encode("ascii")', source)
     self.assertIn("if version not in firmware:", source)
     self.assertIn('PUBLISHED_AT="$(git show -s --format=%cI "$GITHUB_SHA")"', source)
-    self.assertIn("python -I -m platformio run -e esp32c6_production", source)
+    self.assertIn(
+        "python -I -m platformio run -e esp32c6_personal_production", source
+    )
     privileged_verify = next(
         step["run"] for step in compiler["steps"]
         if step["name"] == "Verify exact protected main before production secrets"
@@ -485,6 +491,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
           and len(parts[1]) == 64
           and all(char in "0123456789abcdef" for char in parts[1])
       ):
+        self.assertEqual(line, line.strip(), parts[2])
         expected_build_rows.append(parts)
     expected_build_paths = [row[2] for row in expected_build_rows]
     tracked_build_paths = subprocess.run(
@@ -502,6 +509,15 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     self.assertEqual(len(expected_build_rows), 40)
     self.assertEqual(expected_build_paths, sorted(expected_build_paths))
     self.assertEqual(expected_build_paths, tracked_build_paths)
+    for _mode, expected_digest, path in expected_build_rows:
+      normalized = (ROOT / path).read_bytes().replace(b"\r\n", b"\n").replace(
+          b"\r", b"\n"
+      )
+      self.assertEqual(
+          expected_digest,
+          hashlib.sha256(normalized).hexdigest(),
+          path,
+      )
     self.assertNotIn("unittest", privileged_verify)
     self.assertNotIn("ota_contract_gate.py contract", privileged_verify)
     self.assertIn(
@@ -533,7 +549,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         privileged_verify,
     )
     self.assertIn(
-        "cd4ade51f2e8934470ec0027c9e204e2f344853c8b05f610616b700f63869de1 platformio.ini",
+        "a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini",
         privileged_verify,
     )
     self.assertIn("src/OtaManager.cpp", privileged_verify)
@@ -552,6 +568,22 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         privileged_verify,
     )
     self.assertIn("sitecustomize.py usercustomize.py", privileged_verify)
+    materialize = next(
+        step for step in compiler["steps"]
+        if step["name"] == "Materialize personal Target production inputs"
+    )
+    materialize_text = str(materialize)
+    for secret_name in (
+        "SECRET_HARDWARELESS_DOOR_ID_HEX",
+        "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX",
+        "SECRET_ACL_SIGNING_KEY_ID",
+    ):
+      self.assertIn(secret_name, materialize_text)
+    self.assertIn("^04[0-9a-f]{128}$", materialize_text)
+    self.assertIn("^[0-9a-f]{32}$", materialize_text)
+    self.assertIn("10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295", materialize_text)
+    self.assertIn("esp32c6_personal_production", str(compiler))
+    self.assertIn("esp32c6_personal_production", str(commercial))
     self.assertIn("personal-target-auto-20260823-1", str(compiler))
     self.assertIn(
         "65154566393ecfb249c8aceb637e3258e349eb36e4dbca0dd52d61a6e55cb61b",
@@ -611,6 +643,21 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         (
             "65154566393ecfb249c8aceb637e3258e349eb36e4dbca0dd52d61a6e55cb61b",
             "87d8b43a994f1021feca0d7079658f02bee2eb2f5711e67b12d450f841af08c5",
+        ),
+        (
+            "python -I -m platformio run -e "
+            "esp32c6_personal_production -t clean",
+            "python -I -m platformio run -e esp32c6_production -t clean",
+        ),
+        (
+            '#define SECRET_HARDWARELESS_DOOR_ID_HEX '
+            '"${SECRET_HARDWARELESS_DOOR_ID_HEX}"',
+            '#define SECRET_HARDWARELESS_DOOR_ID_HEX ""',
+        ),
+        (
+            '[[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ '
+            '^04[0-9a-f]{128}$ ]]',
+            "true # ACL signer format bypassed",
         ),
     )
     for before, after in mutations:

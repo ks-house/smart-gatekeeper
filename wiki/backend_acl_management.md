@@ -1,6 +1,6 @@
 # Backend public-key enrollment and signed ACL management
 
-> Status: Issue #19 Hardwareless RC, feature-flagged and production-OFF
+> Status: Issue #19 core plus personal public-key bootstrap implemented and software-tested; ACL management/personal enrollment remain explicit runtime opt-ins and live NAS deployment is pending
 > Protocol: [security_protocol.md](security_protocol.md)
 > OTA parent contract: [ota_reliability_contract.md](ota_reliability_contract.md)
 
@@ -16,6 +16,12 @@ legacy Pre-arm and the authenticated explicit `POST /api/v1/door/open` `manual_r
 separate. A legacy device ID may be stored only as a keyed HMAC migration reference and never
 becomes an ACL authorization credential. `ACL_LEGACY_REF_HMAC_KEY` is an independent random
 server-only key; no static production default exists.
+
+The personal seam adds another independent flag, `ACL_PERSONAL_ENROLLMENT_ENABLED=false`, and exact
+`ACL_PERSONAL_TENANT_ID`/`ACL_PERSONAL_DOOR_ID` scope. Enabling general ACL management does not
+implicitly enable personal enrollment. The app API key authenticates this narrow bootstrap request,
+but an existing approved legacy device row is still required; the raw device ID is used for that
+locked lookup and is not promoted into a GATT credential.
 
 ## 2. Expand → migrate → contract
 
@@ -49,6 +55,31 @@ All management endpoints fail closed if their independent server credential is a
 | logged-in enrollment bridge | identity-bound `X-Enrollment-Actor-ID`, `X-Enrollment-Key`, `X-Tenant-ID` | challenge and proof-of-possession enrollment |
 | admin | `X-Admin-Key`, `X-Tenant-ID` | tenant registration/disable, credential approve/disable/revoke, per-door grant/remove, snapshot publish, fleet status, OTA metadata |
 | Target | identity-bound `X-Target-ID`, `X-Target-Key`, `X-Tenant-ID` | periodic ACL pull, idempotent apply ACK, OTA metadata/health confirmation |
+
+### 3.1 Personal installed-phone bootstrap
+
+`POST /api/v1/acl/personal/enroll` is a narrow migration endpoint for the one configured personal
+tenant/door. It requires the normal nonempty `X-API-KEY`, an approved legacy `device_id`, an exact
+nonzero 16-byte `credential_id`, an uncompressed on-curve P-256 SEC1 public key, and protocol v1.
+There is no private-key, shared unlock-secret, caller-selected tenant, caller-selected door, status,
+grant or signer field.
+
+The store locks the approved legacy device and exact credential binding, then atomically creates or
+reuses the ACTIVE credential, exact-door OPEN grant and durable snapshot job. A different public key
+for an existing credential ID, a disabled/revoked credential, an unapproved device, another tenant or
+door, malformed point or invalid protocol fails closed; a retry of the identical binding is
+idempotent. The Backend signs canonical ACL bytes with its protected ACL signer, publishes the
+Target-compatible signed envelope to the exact Target ACL topic, and waits for that configured
+Target's non-retained `APPLIED` ACK for the same version. Artifact generation or MQTT PUBACK alone
+does not satisfy the endpoint. Only after exact apply does the response return
+`accepted=true`, the exact credential ID and a positive `acl_version`; otherwise the app leaves native
+GATT OFF.
+
+The Target's ACL lease remains bounded (900 seconds by default, maximum 3,600). Backend startup and
+Target boot/status observation schedule signed snapshot delivery, and a periodic renewal loop
+refreshes it before expiry; retained or malformed ACKs never count. This is an availability mechanism,
+not a relaxation of signature, door, version/high-watermark, trusted-time or reboot checks. Source
+tests do not prove the live NAS scheduler, broker delivery or long-outage behavior.
 
 Enrollment auth maps each login-bridge actor to its tenant and key; Target auth maps each Target ID
 to its tenant, authorized door and management key. A caller cannot select another tenant, cross a door, forge another audit
@@ -129,23 +160,39 @@ Backend/MQTT outage does not revoke an already verified, unexpired local Target 
 prevents a newer snapshot from arriving. After expiry the Target fails closed according to the
 security protocol.
 
+The authenticated boot registry distinguishes a physically advanced boot from the same
+`(boot_count, boot_id)` being replayed by a normal MQTT reconnect. Either the non-retained boot
+event or fresh periodic status may establish the advance, but the first one to commit queues the
+`TARGET_BOOT_REFRESH` path and allocates `N+1` exactly once. The second observation is unchanged
+and does not republish. The worker's immediate startup pass still restores a valid lease after a
+Backend restart. This prevents missed boot events from delaying local recovery while routine
+broker reconnects cannot create unbounded ACL versions or unnecessary Target NVS writes.
+
 ## 5. OTA and manual path independence
 
 ACL routes are mounted only when the feature and all prerequisites are valid. Initialization
 failure leaves legacy `manual_remote`, APK/version download, health and config routes active.
-The mobile WebView button contract is the authenticated/approved tenant request
-`POST /api/v1/door/open` with `{"reason":"manual_click","device_id":"<approved device>"}` and
-no administrator API key. It directly publishes `force_open` only after the device-to-tenant
-approval lookup; it does not call the hands-free Pre-arm/RELAY assessment path and remains
-available while ACL management is disabled or fails initialization.
+The authenticated remote contract `POST /api/v1/door/open` with an approved device remains available
+as `manual_remote`; it is distinct from the app's `manual_local_gatt`, which uses the personal
+enrollment seam once and then authenticates locally. The remote path directly publishes a signed
+command only after device-to-tenant approval; it does not call the hands-free Pre-arm/RELAY assessment
+path and remains available while ACL management is disabled or fails initialization. Home Assistant
+may reach `manual_remote` only through its separate signed bridge opt-in, never by publishing a
+plaintext Target command.
 Management OTA metadata requires distinct primary/fallback HTTPS URLs, artifact digest,
 signature and N/N-1 protocol range. Target health confirmation must match the published version
 and digest; metadata upload or MQTT publication alone is not OTA success.
 
-This is management-plane support only. Periodic Target HTTPS, authenticated local recovery,
+This is management-plane support plus the narrow personal bootstrap described above. Periodic Target HTTPS, authenticated local recovery,
 dual-slot health/rollback, mobile fallback and physical install/boot evidence remain pending in
 issue #23. No Samsung, ESP32-C6 radio, relay, sensor, bootloader or physical OTA evidence is
 claimed here.
+
+The personal enrollment API is a supervised commissioning seam, not a permanent ownership
+credential: the shared mobile API key is extractable from the personal APK. Enable enrollment
+only while the owner is commissioning the connected phone, require the exact Target ACL ACK,
+then disable the endpoint and restart the Backend. A future multi-user/commercial flow requires
+one-time owner pairing or explicit administrator approval instead of this exception.
 
 ## 6. Verification
 

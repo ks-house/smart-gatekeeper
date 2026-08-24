@@ -6,11 +6,21 @@ import json
 import re
 import secrets
 import time
+from enum import Enum
 from typing import Callable
 
 
 _TOPIC = re.compile(r"^gatekeeper/v1/targets/([A-Za-z0-9_-]{1,64})/boot$")
+_STATUS_TOPIC = re.compile(
+    r"^gatekeeper/v1/targets/([A-Za-z0-9_-]{1,64})/status$"
+)
 _BOOT_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+class BootRefreshOutcome(str, Enum):
+    REJECTED = "rejected"
+    UNCHANGED = "unchanged"
+    ADVANCED = "advanced"
 
 
 class TargetBootRegistry:
@@ -19,21 +29,29 @@ class TargetBootRegistry:
         self._clock = clock
 
     def refresh_from_authenticated_topic(self, topic: str, payload: bytes) -> bool:
+        return (
+            self.refresh_outcome_from_authenticated_topic(topic, payload)
+            is not BootRefreshOutcome.REJECTED
+        )
+
+    def refresh_outcome_from_authenticated_topic(
+        self, topic: str, payload: bytes
+    ) -> BootRefreshOutcome:
         match = _TOPIC.fullmatch(topic or "")
         if match is None or not isinstance(payload, (bytes, bytearray)):
-            return False
+            return BootRefreshOutcome.REJECTED
         try:
             document = json.loads(bytes(payload).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            return False
+            return BootRefreshOutcome.REJECTED
         target_id = match.group(1)
         if not isinstance(document, dict):
-            return False
+            return BootRefreshOutcome.REJECTED
         payload_target_id = document.get("target_id")
         if not isinstance(payload_target_id, str) or not secrets.compare_digest(
             payload_target_id, target_id
         ):
-            return False
+            return BootRefreshOutcome.REJECTED
         boot_id = document.get("boot_id")
         boot_count = document.get("boot_count")
         if (
@@ -43,7 +61,7 @@ class TargetBootRegistry:
             or not isinstance(boot_count, int)
             or not 0 < boot_count <= 0xFFFFFFFF
         ):
-            return False
+            return BootRefreshOutcome.REJECTED
 
         connection = self._connection_factory()
         try:
@@ -63,10 +81,10 @@ class TargetBootRegistry:
                         and not secrets.compare_digest(boot_id, current_id)
                     ):
                         connection.rollback()
-                        return False
+                        return BootRefreshOutcome.REJECTED
                     if boot_count == current_count:
                         connection.commit()
-                        return True
+                        return BootRefreshOutcome.UNCHANGED
                     cursor.execute(
                         "UPDATE target_boot_state SET boot_id=%s, boot_count=%s, "
                         "updated_at=%s WHERE target_id=%s",
@@ -80,12 +98,38 @@ class TargetBootRegistry:
                         (target_id, boot_id, boot_count, int(self._clock())),
                     )
             connection.commit()
-            return True
+            return BootRefreshOutcome.ADVANCED
         except Exception:
             connection.rollback()
-            return False
+            return BootRefreshOutcome.REJECTED
         finally:
             connection.close()
+
+    def refresh_from_authenticated_status_topic(
+        self, topic: str, payload: bytes, *, retained: bool = False
+    ) -> bool:
+        """Use periodic exact Target status as non-retained boot continuity evidence."""
+
+        return (
+            self.refresh_outcome_from_authenticated_status_topic(
+                topic, payload, retained=retained
+            )
+            is not BootRefreshOutcome.REJECTED
+        )
+
+    def refresh_outcome_from_authenticated_status_topic(
+        self, topic: str, payload: bytes, *, retained: bool = False
+    ) -> BootRefreshOutcome:
+        """Preserve whether fresh status discovered a new physical boot."""
+
+        if retained:
+            return BootRefreshOutcome.REJECTED
+        match = _STATUS_TOPIC.fullmatch(topic or "")
+        if match is None:
+            return BootRefreshOutcome.REJECTED
+        return self.refresh_outcome_from_authenticated_topic(
+            f"gatekeeper/v1/targets/{match.group(1)}/boot", payload
+        )
 
     def current_boot_id(self, target_id: str) -> str | None:
         if _TOPIC.fullmatch(f"gatekeeper/v1/targets/{target_id}/boot") is None:

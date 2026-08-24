@@ -159,3 +159,28 @@ object AndroidFeatureFlagAuthorityConfig {
   const val META_KEY_ID = "com.kshouse.gatekeeper_app.GATT_FLAG_AUTHORITY_KEY_ID"
   const val META_PUBLIC_KEY = "com.kshouse.gatekeeper_app.GATT_FLAG_AUTHORITY_P256_SEC1_HEX"
 }
+
+/**
+ * Local-manual bootstrap is an APK policy, not a Flutter preference. Android
+ * verifies the APK signature before installing an update, while Target ACL
+ * proof remains the final authorization boundary.
+ */
+object AndroidLocalGattBootstrapConfig {
+  fun isAllowed(context: Context): Boolean = try {
+    val info = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      context.packageManager.getApplicationInfo(
+        context.packageName,
+        PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()),
+      )
+    } else {
+      @Suppress("DEPRECATION")
+      context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+    }
+    info.metaData?.getBoolean(META_LOCAL_MANUAL_BOOTSTRAP, false) == true
+  } catch (_: Exception) {
+    false
+  }
+
+  const val META_LOCAL_MANUAL_BOOTSTRAP =
+    "com.kshouse.gatekeeper_app.GATT_LOCAL_MANUAL_BOOTSTRAP"
+}

@@ -35,6 +35,7 @@ class AclApiTest(unittest.TestCase):
             DeterministicP256Signer(2, signing_key_id=7),
             RecordingPublisher(),
             clock=lambda: 1_785_542_400,
+            legacy_hmac_key=b"personal-api-test-hmac-key",
         )
         app = FastAPI()
         app.include_router(
@@ -63,6 +64,10 @@ class AclApiTest(unittest.TestCase):
                             "key": "target-secret-b",
                         },
                     },
+                    personal_enabled=True,
+                    personal_api_key="personal-api-key",
+                    personal_tenant_id=TENANT_A,
+                    personal_door_id=DOOR,
                 ),
             )
         )
@@ -86,6 +91,169 @@ class AclApiTest(unittest.TestCase):
             },
         )
         self.assertEqual(403, cross_tenant.status_code)
+
+    def test_personal_enrollment_contract_is_authenticated_and_idempotent(self) -> None:
+        device_id = "DEV-PERSONAL-API"
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, ?)",
+            ("personal", "home", device_id, TENANT_A),
+        )
+        self.conn.commit()
+        device = DeterministicP256Signer(15, signing_key_id=0)
+        body = {
+            "device_id": device_id,
+            "credential_id": "12" * 16,
+            "public_key_sec1": device.public_key_sec1.hex(),
+            "min_protocol": 1,
+            "max_protocol": 1,
+        }
+        self.assertEqual(
+            401,
+            self.client.post("/api/v1/acl/personal/enroll", json=body).status_code,
+        )
+        wrong = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=body,
+            headers={"X-API-KEY": "wrong"},
+        )
+        self.assertEqual(401, wrong.status_code)
+
+        first = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        second = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, first.status_code, first.text)
+        self.assertEqual(first.json(), second.json())
+        self.assertEqual(
+            {
+                "accepted": True,
+                "credential_id": body["credential_id"],
+                "acl_version": 1,
+            },
+            first.json(),
+        )
+
+        mismatch = dict(
+            body,
+            public_key_sec1=DeterministicP256Signer(
+                16, signing_key_id=0
+            ).public_key_sec1.hex(),
+        )
+        conflict = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=mismatch,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(409, conflict.status_code)
+
+        extra_private_material = dict(body, private_key="must-never-be-accepted")
+        rejected = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=extra_private_material,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(422, rejected.status_code)
+
+    def test_personal_enrollment_bootstraps_unmapped_approved_legacy_row(self) -> None:
+        self.conn.execute("DELETE FROM acl_tenants WHERE tenant_id=?", (TENANT_A,))
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, NULL)",
+            ("personal", "home", "DEV-FIRST-BOOTSTRAP"),
+        )
+        self.conn.commit()
+        device = DeterministicP256Signer(21, signing_key_id=0)
+        response = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json={
+                "device_id": "DEV-FIRST-BOOTSTRAP",
+                "credential_id": "bc" * 16,
+                "public_key_sec1": device.public_key_sec1.hex(),
+                "min_protocol": 1,
+                "max_protocol": 1,
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertTrue(response.json()["accepted"])
+        mapping = self.conn.execute(
+            "SELECT tenant_uuid, credential_mode FROM tenants "
+            "WHERE ble_device_mac='DEV-FIRST-BOOTSTRAP'"
+        ).fetchone()
+        self.assertEqual(TENANT_A, mapping["tenant_uuid"])
+        self.assertEqual("dual", mapping["credential_mode"])
+
+    def test_personal_enrollment_unapproved_device_is_forbidden(self) -> None:
+        device = DeterministicP256Signer(17, signing_key_id=0)
+        response = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json={
+                "device_id": "DEV-NOT-APPROVED",
+                "credential_id": "34" * 16,
+                "public_key_sec1": device.public_key_sec1.hex(),
+                "min_protocol": 1,
+                "max_protocol": 1,
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(403, response.status_code, response.text)
+
+    def test_personal_enrollment_never_accepts_before_acl_delivery(self) -> None:
+        device_id = "DEV-PERSONAL-DELIVERY"
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, ?)",
+            ("personal", "home", device_id, TENANT_A),
+        )
+        self.conn.commit()
+        device = DeterministicP256Signer(18, signing_key_id=0)
+        body = {
+            "device_id": device_id,
+            "credential_id": "56" * 16,
+            "public_key_sec1": device.public_key_sec1.hex(),
+            "min_protocol": 1,
+            "max_protocol": 1,
+        }
+
+        class FailingPublisher:
+            def publish(self, _topic: str, _envelope: dict) -> bool:
+                return False
+
+        self.service.publisher = FailingPublisher()
+        failed = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(503, failed.status_code, failed.text)
+        self.assertNotEqual(True, failed.json().get("accepted"))
+        pending = self.store.snapshot_job(TENANT_A, DOOR)
+        failed_version = int(pending["generated_version"])
+
+        recovered = RecordingPublisher()
+        self.service.publisher = recovered
+        accepted = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, accepted.status_code, accepted.text)
+        self.assertTrue(accepted.json()["accepted"])
+        self.assertEqual(failed_version, accepted.json()["acl_version"])
+        self.assertEqual(
+            failed_version,
+            recovered.messages[0][1]["fields"]["acl_version"],
+        )
 
     def test_enrollment_approval_snapshot_pull_ack_api(self) -> None:
         user_headers = {

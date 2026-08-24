@@ -1,7 +1,7 @@
 # Target Local ACL Verification and Access Session FSM (Issue #20)
 
-> Last updated: 2026-08-02
-> Status: **software core implemented and host/build verified; production default-OFF and physical/operator gates pending**
+> Last updated: 2026-08-24
+> Status: **software core implemented and host/build verified; personal production profile enabled, commercial/default profiles OFF, and physical/operator gates pending**
 > Tracking: GitHub [#20](https://github.com/ks-house/smart-gatekeeper/issues/20), Epic [#13](https://github.com/ks-house/smart-gatekeeper/issues/13)
 
 ---

@@ -93,13 +93,19 @@ constexpr const char* LOCAL_RECOVERY_AP_PASSWORD =
 // 스마트폰 앱은 이 UUID를 수신하면 NAS 인증 절차를 개시한다.
 constexpr const char* GATEKEEPER_BEACON_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
-// Hardwareless RC compile flag (기본값 OFF)
+// Hardwareless RC compile flag. The default developer image keeps the
+// transport compiled out; only the explicit personal-production profile opts in.
 #ifndef ENABLE_HARDWARELESS_RC
 #define ENABLE_HARDWARELESS_RC 0
 #endif
 
-#if SGK_PRODUCTION_BUILD && ENABLE_HARDWARELESS_RC
-#error "Production firmware must compile hardwareless RC out"
+#ifndef SGK_PERSONAL_INSTALLATION_BUILD
+#define SGK_PERSONAL_INSTALLATION_BUILD 0
+#endif
+
+#if SGK_PRODUCTION_BUILD && ENABLE_HARDWARELESS_RC && \
+    !SGK_PERSONAL_INSTALLATION_BUILD
+#error "Commercial production firmware must compile Hardwareless RC out"
 #endif
 
 // Provision per Target through secrets.h or NVS key "hwless_door". Empty is

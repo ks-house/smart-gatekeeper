@@ -5,6 +5,9 @@ class NativeGattWorkerHealth {
     required this.featureEnabled,
     required this.featureStatus,
     required this.bleOwner,
+    required this.localBootstrapAllowed,
+    required this.credentialProvisioned,
+    required this.localConsentValid,
     required this.healthy,
     required this.lastReasonCode,
     required this.lastTargetReasonCode,
@@ -21,6 +24,9 @@ class NativeGattWorkerHealth {
   final bool featureEnabled;
   final String featureStatus;
   final String bleOwner;
+  final bool localBootstrapAllowed;
+  final bool credentialProvisioned;
+  final bool localConsentValid;
   final bool healthy;
   final String? lastReasonCode;
   final int? lastTargetReasonCode;
@@ -38,6 +44,9 @@ class NativeGattWorkerHealth {
       featureEnabled: value['featureEnabled'] == true,
       featureStatus: value['featureStatus']?.toString() ?? 'unavailable',
       bleOwner: value['bleOwner']?.toString() ?? 'legacy',
+      localBootstrapAllowed: value['localBootstrapAllowed'] == true,
+      credentialProvisioned: value['credentialProvisioned'] == true,
+      localConsentValid: value['localConsentValid'] == true,
       healthy: value['healthy'] != false,
       lastReasonCode: value['lastReasonCode']?.toString(),
       lastTargetReasonCode: (value['lastTargetReasonCode'] as num?)?.toInt(),
@@ -54,7 +63,7 @@ class NativeGattWorkerHealth {
   }
 }
 
-/// Read-only native bridge. It cannot toggle ownership, mutate credentials, or access keys.
+/// Native GATT control bridge. It exposes no private key or raw peer locator.
 class NativeGattWorkerHealthBridge {
   static const MethodChannel _channel = MethodChannel(
     'com.kshouse.gatekeeper_app/ble_gatt_worker_health',
@@ -69,6 +78,43 @@ class NativeGattWorkerHealthBridge {
     try {
       final res = await _channel
           .invokeMethod<Map<Object?, Object?>>('triggerLocalGattRetry');
+      return res ??
+          const <Object?, Object?>{
+            'accepted': false,
+            'reason': 'NATIVE_UNAVAILABLE'
+          };
+    } catch (_) {
+      return const <Object?, Object?>{
+        'accepted': false,
+        'reason': 'NATIVE_UNAVAILABLE'
+      };
+    }
+  }
+
+  Future<Map<Object?, Object?>> setLocalGattEnabled(bool enabled) async {
+    try {
+      final res = await _channel.invokeMethod<Map<Object?, Object?>>(
+        'setLocalGattEnabled',
+        <String, Object?>{'enabled': enabled},
+      );
+      return res ??
+          const <Object?, Object?>{
+            'accepted': false,
+            'reason': 'NATIVE_UNAVAILABLE'
+          };
+    } catch (_) {
+      return const <Object?, Object?>{
+        'accepted': false,
+        'reason': 'NATIVE_UNAVAILABLE'
+      };
+    }
+  }
+
+  Future<Map<Object?, Object?>> prepareLocalGattEnrollment() async {
+    try {
+      final res = await _channel.invokeMethod<Map<Object?, Object?>>(
+        'prepareLocalGattEnrollment',
+      );
       return res ??
           const <Object?, Object?>{
             'accepted': false,

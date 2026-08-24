@@ -8,7 +8,8 @@
   `cbc3349061987c28bc1b48d43d473e70c5ae04ed` for release `55.03.39`
   (Arduino 3.3.9)
 - Framework: Arduino
-- 환경: `esp32c6` (기본 개발), `esp32c6_production` (실제 production secret 설치),
+- 환경: `esp32c6` (기본 개발), `esp32c6_production` (commercial production, Hardwareless compile-OFF),
+  `esp32c6_personal_production` (개인 설치 production, Hardwareless compile-ON),
   `esp32c6_hwless_rc` (명시적 lab-only)
 - 파티션: `partitions_16MB_ota.csv` (dual OTA)
 - 라이브러리: ArduinoJson 6.21.5, PubSubClient 2.8 exact pin; BLE 헤더는 Arduino-ESP32 코어 제공
@@ -16,7 +17,8 @@
 ```bash
 cp include/secrets.h.example include/secrets.h  # 실제 값 입력, 커밋 금지
 pio run -e esp32c6
-pio run -e esp32c6_production  # production secret이 준비된 설치/CI 전용
+pio run -e esp32c6_production           # commercial production, Hardwareless OFF
+pio run -e esp32c6_personal_production  # 개인 설치, valid door/ACL trust 필수
 pio run -e esp32c6 -t upload
 pio device monitor -b 115200
 ```
@@ -286,7 +288,7 @@ compiler job은 exact main 전체 history와 mode/SHA-256으로 고정된 build 
 평문 firmware를 X25519/HKDF/AES-GCM 단기 handoff로 바꾼 뒤 삭제합니다. Isolated publisher job만
 handoff를 인증 복호화하고 signing/NAS 값을 단계별로 받습니다. 두 job은 first-parent commit count를
 patch precedence로 올리는 `2.1.<count>+main.g<SHA>`를 사용하므로 임의 Git SHA 문자열 순서나 stable
-`2.1.1` 때문에 Target version floor에 downgrade로 막히지 않습니다. `esp32c6_production` N16 image와
+`2.1.1` 때문에 Target version floor에 downgrade로 막히지 않습니다. `esp32c6_personal_production` N16 image와
 production-signed schema-v2 manifest를 만든 후 AES-256-GCM `SGKOTA2` envelope와 manifest만 commit별
 immutable NAS 경로에 staging하고 byte readback합니다. Public NAS/Actions artifact에는 평문 firmware를
 남기지 않습니다.
@@ -386,6 +388,8 @@ public-key pin 전환, N/N-1과 rollback 검증을 포함한 별도 검토 절�
   `SECRET_MQTT_PASSWORD`
 - identity/command: `SECRET_TARGET_TENANT_ID`, `SECRET_TARGET_DOOR_ID`,
   `SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX`, `SECRET_COMMAND_SIGNING_KEY_ID`
+- local GATT/ACL trust: `SECRET_HARDWARELESS_DOOR_ID_HEX`,
+  `SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`, `SECRET_ACL_SIGNING_KEY_ID`
 - OTA/recovery: `SECRET_OTA_VERSION_URL`, `SECRET_OTA_FIRMWARE_URL`,
   `SECRET_OTA_CONTENT_KEY_HEX`, `SECRET_OTA_CONTENT_KEY_ID`,
   `SECRET_LOCAL_RECOVERY_AP_PASSWORD`, `SECRET_LOCAL_RECOVERY_USER`,
@@ -397,9 +401,11 @@ public-key pin 전환, N/N-1과 rollback 검증을 포함한 별도 검토 절�
 `OTA_SIGNING_PRIVATE_KEY_HEX`, `OTA_SIGNING_PUBLIC_KEY_HEX`, `OTA_SIGNING_KEY_ID`,
 `NAS_HOST`, `NAS_USER`, `NAS_PASSWORD`, `NAS_PORT`, `NAS_KNOWN_HOSTS`, `NAS_TARGET_DIR`입니다.
 `NAS_PORT`와 `NAS_TARGET_DIR`은 workflow 기본값을 가질 수 있지만, 나머지 값은 게시 전에 fail-closed로
-검사합니다. 개인 Target profile은 Hardwareless ACL을 비활성화하므로
-`SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`와 `SECRET_ACL_SIGNING_KEY_ID`를 이 Environment에 임의 값으로
-추가하지 않습니다.
+검사합니다. 개인 Target profile은 Hardwareless GATT를 명시적으로 포함하므로 위 세 local GATT/ACL
+값을 모두 요구합니다. Door ID는 정확히 16-byte lowercase hex이며 all-zero/all-`ff`가 아니어야 하고,
+ACL signer public key는 uncompressed P-256 SEC1 65-byte hex(`04` prefix), key ID는 nonzero uint32여야
+합니다. 임의 placeholder는 CI와 Target 양쪽에서 fail-closed합니다. ACL private scalar는 Target
+firmware나 GitHub Target build Secret에 넣지 않고 Backend의 signer 경계에만 둡니다.
 
 `SECRET_OTA_CONTENT_KEY_HEX`는 MQTT password에서 파생하지 않는 별도 32-byte key이며 Target firmware와
 publisher가 동일 key ID를 사용합니다. 최초 등록은 Windows DPAPI backup을 저장소 밖에 만드는
@@ -588,7 +594,7 @@ setup은 ignored `.venv`, ignored `include/secrets.h`, PlatformIO package cache�
 [orca_development_environment.md](orca_development_environment.md)를 따른다.
 ## Target security build environments (2026-08-09)
 
-`esp32c6` is the default release-mode software build with `ENABLE_HARDWARELESS_RC=0` and `SGK_PRODUCTION_BUILD=0`. `esp32c6_hwless_rc` is an explicit lab-only environment and is never a production authorization path. Production packaging must set `SGK_PRODUCTION_BUILD=1`, keep hardwareless RC at zero, provision exact per-Target MQTT and recovery credentials plus command/OTA public keys, and separately satisfy `security/target-production-policy.json` physical/eFuse/operator Gates.
+`esp32c6` is the default release-mode software build with `ENABLE_HARDWARELESS_RC=0` and `SGK_PRODUCTION_BUILD=0`. `esp32c6_hwless_rc` is an explicit lab-only environment and is never a production authorization path. Commercial packaging uses `esp32c6_production`, sets `SGK_PRODUCTION_BUILD=1`, and keeps Hardwareless at zero. The separate `esp32c6_personal_production` profile also sets `SGK_PERSONAL_INSTALLATION_BUILD=1` and compiles Hardwareless ON for the single installed personal Target; it still requires exact per-Target door/ACL trust, MQTT, recovery and command/OTA keys and does not satisfy `security/target-production-policy.json` physical/eFuse/operator Gates by compilation alone.
 
 Use a worktree-scoped PlatformIO directory on Windows, for example `$env:PLATFORMIO_BUILD_DIR='.pio/build-issue50'; pio run -e esp32c6 -j 4`. A successful build is software evidence only and does not validate secure boot, flash/NVS encryption, debug locks, broker deployment, radio, relay, or OTA rollback on hardware.
 
@@ -598,7 +604,9 @@ Use a worktree-scoped PlatformIO directory on Windows, for example `$env:PLATFOR
 workflow protected by the GitHub `production` environment. It validates the
 Wi-Fi/MQTTS/OTA contracts before accessing secrets, injects the provisioned
 Wi-Fi, per-Target MQTTS, command verification, OTA signing and authenticated
-recovery values, then builds the default `ENABLE_HARDWARELESS_RC=0` firmware.
+recovery values plus the Hardwareless door and ACL trust root, then builds
+`esp32c6_personal_production` with `ENABLE_HARDWARELESS_RC=1`. Missing,
+placeholder or malformed Hardwareless inputs stop before compilation.
 
 The workflow produces separate NVS-preserving USB images, a full-recovery
 factory image, checksums, an encrypted OTA envelope and a production-signed
@@ -632,8 +640,11 @@ validity before selecting the new boot slot.
 
 The production environment also fixes `ARDUINO_LOOP_STACK_SIZE=16384`; the
 default 8 KiB loop task overflowed during MQTTS verifier initialization on the
-physical ESP32-C6. `SGK_PRODUCTION_BUILD=1` is defined only by
-`esp32c6_production`, using `build_unflags` to remove the developer default.
+physical ESP32-C6. `SGK_PRODUCTION_BUILD=1` is defined by
+`esp32c6_production` and `esp32c6_personal_production`, each using
+`build_unflags` to remove the developer default. Only the personal profile also
+defines `SGK_PERSONAL_INSTALLATION_BUILD=1` and opts Hardwareless in; the
+commercial profile remains compile-OFF.
 
 ## Personal mobile exact-main OTA (2026-08-23)
 

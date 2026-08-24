@@ -7,6 +7,7 @@ import '../services/device_id_service.dart';
 import '../services/native_gatt_worker_health.dart';
 import '../services/update_checker.dart';
 import '../services/error_logger.dart';
+import '../services/local_gatt_enrollment_service.dart';
 import 'debug_screen.dart';
 import 'smart_key_control_screen.dart';
 
@@ -32,6 +33,8 @@ class _WebViewScreenState extends State<WebViewScreen>
   static const String _apiKey = String.fromEnvironment('GATEKEEPER_API_KEY');
   final NativeGattWorkerHealthBridge _gattBridge =
       NativeGattWorkerHealthBridge();
+  final LocalGattEnrollmentService _gattEnrollment =
+      LocalGattEnrollmentService();
   late final WebViewController _controller;
   bool _isLoading = true;
   Timer? _updateCheckTimer;
@@ -154,6 +157,14 @@ class _WebViewScreenState extends State<WebViewScreen>
                     as Map<String, dynamic>)['status'] !=
                 'approved') {
           throw const FormatException('device is not approved');
+        }
+        final enrollment = await _gattEnrollment.ensureEnrolledAndEnabled();
+        if (!enrollment.accepted) {
+          await _controller.runJavaScript(
+            'window.completeDoorOpen(false, '
+            '${jsonEncode('로컬 자격 등록 실패: ${enrollment.reason}')});',
+          );
+          return;
         }
         final result = await _gattBridge.triggerLocalGattRetry();
         final accepted = result['accepted'] == true;

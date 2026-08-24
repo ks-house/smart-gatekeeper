@@ -8,6 +8,7 @@ from pathlib import Path
 from backend.app.acl_management import (
     AclManagementService,
     AclStore,
+    CredentialConflictError,
     DeterministicP256Signer,
     RecordingPublisher,
     acl_snapshot_is_usable,
@@ -84,6 +85,284 @@ class AclManagementTest(unittest.TestCase):
             max_protocol=max_protocol,
         )
         return result["credential_id"]
+
+    def approve_legacy_personal_device(
+        self,
+        device_id: str = "DEV-PERSONAL-A",
+        *,
+        active: bool = True,
+        tenant_id: str | None = TENANT_A,
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("personal", "home", device_id, int(active), tenant_id),
+        )
+        self.conn.commit()
+
+    def test_personal_bootstrap_is_atomic_exact_and_idempotent(self) -> None:
+        self.approve_legacy_personal_device()
+        device = DeterministicP256Signer(11, signing_key_id=0)
+        credential_id = "ab" * 16
+        request = dict(
+            tenant_id=TENANT_A,
+            door_id=DOOR_A,
+            legacy_device_id="DEV-PERSONAL-A",
+            credential_id=credential_id,
+            public_key_hex=device.public_key_sec1.hex(),
+            actor_ref="personal:test",
+            min_protocol=1,
+            max_protocol=1,
+        )
+
+        first = self.service.bootstrap_personal_credential(**request)
+        second = self.service.bootstrap_personal_credential(**request)
+        self.assertEqual(
+            {
+                "accepted": True,
+                "credential_id": credential_id,
+                "acl_version": 1,
+            },
+            first,
+        )
+        self.assertEqual(first, second)
+        self.assertEqual(1, len(self.publisher.messages))
+        credential = self.store.get_credential(TENANT_A, credential_id)
+        self.assertEqual("ACTIVE", credential["status"])
+        self.assertIsNone(credential["expires_at"])
+        self.assertNotEqual("DEV-PERSONAL-A", credential["legacy_device_ref"])
+        self.assertEqual([DOOR_A], self.store.active_grant_doors(TENANT_A, credential_id))
+        snapshot = self.publisher.messages[0][1]
+        self.assertEqual(
+            [credential_id],
+            [entry["credential_id"] for entry in snapshot["fields"]["entries"]],
+        )
+        audits = self.store.list_audit(TENANT_A)
+        self.assertEqual(
+            1,
+            sum(
+                row["action"] == "PERSONAL_CREDENTIAL_BOOTSTRAPPED"
+                for row in audits
+            ),
+        )
+        rendered = json.dumps([dict(row) for row in audits], sort_keys=True)
+        self.assertNotIn("DEV-PERSONAL-A", rendered)
+        self.assertNotIn(device.public_key_sec1.hex(), rendered)
+
+    def test_personal_bootstrap_creates_missing_tenant_mapping_atomically(self) -> None:
+        self.conn.execute("DELETE FROM acl_tenants WHERE tenant_id=?", (TENANT_A,))
+        self.conn.commit()
+        self.approve_legacy_personal_device(tenant_id=None)
+        device = DeterministicP256Signer(19, signing_key_id=0)
+        result = self.service.bootstrap_personal_credential(
+            TENANT_A,
+            DOOR_A,
+            "DEV-PERSONAL-A",
+            "78" * 16,
+            device.public_key_sec1.hex(),
+            actor_ref="personal:test",
+        )
+        self.assertTrue(result["accepted"])
+        self.assertTrue(self.store.tenant_exists(TENANT_A))
+        mapping = self.conn.execute(
+            "SELECT tenant_uuid, credential_mode FROM tenants "
+            "WHERE ble_device_mac='DEV-PERSONAL-A'"
+        ).fetchone()
+        self.assertEqual(TENANT_A, mapping["tenant_uuid"])
+        self.assertEqual("dual", mapping["credential_mode"])
+
+    def test_personal_bootstrap_rejects_existing_other_tenant_mapping(self) -> None:
+        self.approve_legacy_personal_device(tenant_id=TENANT_B)
+        device = DeterministicP256Signer(20, signing_key_id=0)
+        with self.assertRaisesRegex(CredentialConflictError, "another tenant"):
+            self.service.bootstrap_personal_credential(
+                TENANT_A,
+                DOOR_A,
+                "DEV-PERSONAL-A",
+                "9a" * 16,
+                device.public_key_sec1.hex(),
+                actor_ref="personal:test",
+            )
+        self.assertIsNone(self.store.get_credential(TENANT_A, "9a" * 16))
+
+    def test_personal_bootstrap_rejects_unapproved_and_identity_collisions(self) -> None:
+        device = DeterministicP256Signer(12, signing_key_id=0)
+        with self.assertRaisesRegex(PermissionError, "not approved"):
+            self.service.bootstrap_personal_credential(
+                TENANT_A,
+                DOOR_A,
+                "DEV-NOT-APPROVED",
+                "cd" * 16,
+                device.public_key_sec1.hex(),
+                actor_ref="personal:test",
+            )
+        self.assertIsNone(self.store.get_credential(TENANT_A, "cd" * 16))
+
+        self.approve_legacy_personal_device()
+        self.service.bootstrap_personal_credential(
+            TENANT_A,
+            DOOR_A,
+            "DEV-PERSONAL-A",
+            "cd" * 16,
+            device.public_key_sec1.hex(),
+            actor_ref="personal:test",
+        )
+        other = DeterministicP256Signer(13, signing_key_id=0)
+        with self.assertRaisesRegex(CredentialConflictError, "credential ID"):
+            self.service.bootstrap_personal_credential(
+                TENANT_A,
+                DOOR_A,
+                "DEV-PERSONAL-A",
+                "cd" * 16,
+                other.public_key_sec1.hex(),
+                actor_ref="personal:test",
+            )
+
+    def test_personal_bootstrap_publish_failure_retries_same_snapshot(self) -> None:
+        self.approve_legacy_personal_device()
+        device = DeterministicP256Signer(14, signing_key_id=0)
+
+        class FailingPublisher:
+            def publish(self, _topic: str, _envelope: dict) -> bool:
+                return False
+
+        self.service.publisher = FailingPublisher()
+        with self.assertRaisesRegex(RuntimeError, "pull is current"):
+            self.service.bootstrap_personal_credential(
+                TENANT_A,
+                DOOR_A,
+                "DEV-PERSONAL-A",
+                "ef" * 16,
+                device.public_key_sec1.hex(),
+                actor_ref="personal:test",
+            )
+        job = self.store.snapshot_job(TENANT_A, DOOR_A)
+        failed_version = int(job["generated_version"])
+        recovered = RecordingPublisher()
+        self.service.publisher = recovered
+        result = self.service.bootstrap_personal_credential(
+            TENANT_A,
+            DOOR_A,
+            "DEV-PERSONAL-A",
+            "ef" * 16,
+            device.public_key_sec1.hex(),
+            actor_ref="personal:test",
+        )
+        self.assertEqual(failed_version, result["acl_version"])
+        self.assertEqual(failed_version, recovered.messages[0][1]["fields"]["acl_version"])
+        self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
+
+    def test_boot_and_lease_refresh_create_fresh_versions_and_coalesce_retry(self) -> None:
+        credential_id = self.enroll()
+        self.service.approve_credential(
+            TENANT_A, credential_id, actor_ref="admin:test"
+        )
+        self.service.grant_credential_to_door(
+            TENANT_A, DOOR_A, credential_id, actor_ref="admin:test"
+        )
+        first = self.service.publish_snapshot(
+            TENANT_A, DOOR_A, actor_ref="admin:test"
+        )
+        self.clock.value += 600
+        boot_refresh = self.service.refresh_snapshot(
+            TENANT_A,
+            DOOR_A,
+            actor_ref="system:target_boot",
+            reason="TARGET_BOOT_REFRESH",
+        )
+        self.assertGreater(
+            boot_refresh["fields"]["acl_version"],
+            first["fields"]["acl_version"],
+        )
+        self.assertEqual(
+            self.clock.value + 900, boot_refresh["fields"]["expires_at_epoch_s"]
+        )
+
+        class FailingPublisher:
+            def publish(self, _topic: str, _envelope: dict) -> bool:
+                return False
+
+        self.service.publisher = FailingPublisher()
+        with self.assertRaisesRegex(RuntimeError, "pull is current"):
+            self.service.refresh_snapshot(
+                TENANT_A,
+                DOOR_A,
+                actor_ref="system:lease_refresh",
+                reason="ACL_LEASE_REFRESH",
+            )
+        failed_version = int(
+            self.store.snapshot_job(TENANT_A, DOOR_A)["generated_version"]
+        )
+        recovered = RecordingPublisher()
+        self.service.publisher = recovered
+        retry = self.service.refresh_snapshot(
+            TENANT_A,
+            DOOR_A,
+            actor_ref="system:lease_refresh",
+            reason="ACL_LEASE_REFRESH",
+        )
+        self.assertEqual(failed_version, retry["fields"]["acl_version"])
+        self.assertEqual(
+            failed_version, recovered.messages[0][1]["fields"]["acl_version"]
+        )
+        self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
+
+    def test_boot_supersedes_ack_lost_version_above_persisted_target_watermark(self) -> None:
+        credential_id = self.enroll()
+        self.service.approve_credential(
+            TENANT_A, credential_id, actor_ref="admin:test"
+        )
+        self.service.grant_credential_to_door(
+            TENANT_A, DOOR_A, credential_id, actor_ref="admin:test"
+        )
+        initial = self.service.publish_snapshot(
+            TENANT_A, DOOR_A, actor_ref="admin:test"
+        )
+
+        class TargetWithLostAck:
+            def __init__(self, high_watermark: int) -> None:
+                self.high_watermark = high_watermark
+                self.lose_next_ack = True
+                self.versions: list[int] = []
+
+            def publish(self, _topic: str, envelope: dict) -> bool:
+                version = int(envelope["fields"]["acl_version"])
+                self.versions.append(version)
+                if version <= self.high_watermark:
+                    return False
+                self.high_watermark = version
+                if self.lose_next_ack:
+                    self.lose_next_ack = False
+                    return False
+                return True
+
+        target = TargetWithLostAck(initial["fields"]["acl_version"])
+        self.service.publisher = target
+        with self.assertRaisesRegex(RuntimeError, "pull is current"):
+            self.service.refresh_snapshot(
+                TENANT_A,
+                DOOR_A,
+                actor_ref="system:lease_refresh",
+                reason="ACL_LEASE_REFRESH",
+            )
+        ack_lost_version = target.high_watermark
+        pending = self.store.snapshot_job(TENANT_A, DOOR_A)
+        self.assertEqual(ack_lost_version, int(pending["generated_version"]))
+
+        # Reboot clears Target active_ready but preserves high-watermark. Boot
+        # recovery must not retry the equal version, which Target rejects.
+        recovered = self.service.refresh_snapshot(
+            TENANT_A,
+            DOOR_A,
+            actor_ref="system:target_boot",
+            reason="TARGET_BOOT_REFRESH",
+        )
+        self.assertEqual(ack_lost_version + 1, recovered["fields"]["acl_version"])
+        self.assertEqual(
+            [ack_lost_version, ack_lost_version + 1], target.versions
+        )
+        self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
 
     def test_enrollment_is_proof_of_possession_single_use_and_tenant_scoped(self) -> None:
         credential_id = self.enroll()

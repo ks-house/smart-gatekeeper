@@ -26,7 +26,10 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
         "SECRET_WIFI_SSID", "SECRET_WIFI_PASSWORD", "SECRET_MQTT_HOST",
         "SECRET_MQTT_USER", "SECRET_MQTT_PASSWORD",
         "SECRET_TARGET_TENANT_ID", "SECRET_TARGET_DOOR_ID",
-        "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX", "SECRET_OTA_VERSION_URL",
+        "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX",
+        "SECRET_HARDWARELESS_DOOR_ID_HEX",
+        "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX", "SECRET_ACL_SIGNING_KEY_ID",
+        "SECRET_OTA_VERSION_URL",
         "SECRET_OTA_FIRMWARE_URL", "SECRET_LOCAL_RECOVERY_AP_PASSWORD",
         "SECRET_LOCAL_RECOVERY_USER", "SECRET_LOCAL_RECOVERY_PASSWORD",
         "SECRET_OTA_CONTENT_KEY_HEX", "SECRET_OTA_CONTENT_KEY_ID",
@@ -34,6 +37,35 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
       self.assertIn(name, job_text)
     self.assertIn('test "$SECRET_WIFI_SSID" != "YOUR_WIFI_SSID"', self.raw)
     self.assertNotIn('SECRET_MQTT_USER" =~', self.raw)
+    self.assertIn(
+        '[[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]]',
+        self.raw,
+    )
+    self.assertIn(
+        '[[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]]',
+        self.raw,
+    )
+    self.assertIn(
+        '#define SECRET_HARDWARELESS_DOOR_ID_HEX '
+        '"${SECRET_HARDWARELESS_DOOR_ID_HEX}"',
+        self.raw,
+    )
+    self.assertIn(
+        '#define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX '
+        '"${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"',
+        self.raw,
+    )
+    self.assertIn(
+        "#define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}",
+        self.raw,
+    )
+    self.assertIn("10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295", self.raw)
+
+  def test_personal_production_profile_is_used_for_every_installation_image(self):
+    self.assertIn("pio run -e esp32c6_personal_production", self.raw)
+    self.assertIn(".pio/build/esp32c6_personal_production/firmware.bin", self.raw)
+    self.assertNotIn("pio run -e esp32c6_production", self.raw)
+    self.assertNotIn(".pio/build/esp32c6_production/", self.raw)
 
   def test_only_encrypted_one_day_bundle_is_uploaded(self):
     upload = next(
