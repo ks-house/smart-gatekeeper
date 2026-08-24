@@ -3314,3 +3314,15 @@
 - The pre-authorization PR #115 Hosted Trusted, OTA and firmware checks correctly fail closed on the unapproved protected digest. The live GitHub content/tree verifier selected `temporary-recovery-ap-23a3f3ed` for the exact candidate, with 62 protected regular blobs, seven workflow entries and zero local Actions.
 - The focused transition suite passed 42/42; JSON/Python parsing, identical two-map validation, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed. Full Windows discovery passed 283/285; only the unchanged checkout-materialization CRLF checks for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1` failed, while both staged Git blobs remain strict LF.
 - This policy-only authorization reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical, or commercial evidence.
+
+## [2026-08-24] compile | Rotate recovery AP policy to merged-main baseline
+
+- PR #116 merged the exact `23a3f3ed8fac513f1b7f88962e561cfd376f7ea2` authorization as `5198b8aca401dc73c01137a4ab8efda3ae590dac`; policy-connected feature head `aa9fe818482e5a2f7aaaee7471d3e5248624287b` retained both histories, and PR #115 merge-commit merged it as `539844ecead1576afd54518bb8db63eb3ec72422` after Hosted Trusted, OTA contract and ESP32-C6 canary checks passed.
+- Removed both recovery-AP transition identities and pinned the sole `current-main-baseline` persistent identity to the actual PR #115 merge commit with the unchanged ordered 62-file map, seven-workflow inventory and empty local-Action inventory. The reviewed feature source is now explicitly retired.
+- This policy-only rotation changes no protected workflow, production build input or runtime byte. It reads no production Secret, publishes no firmware or APK, writes no NAS state, installs or reboots no Target, and claims no health-valid, rollback, Home Assistant, relay, physical or commercial evidence.
+
+## [2026-08-24] test | Verify final recovery AP policy rotation
+
+- Verified that reviewed feature `23a3f3ed`, policy-connected head `aa9fe818` and merged main `539844ec` have 186 matching protected-object comparisons across the complete ordered 62-file set, with both earlier commits proven ancestors of merged main.
+- The live GitHub verifier selected `current-main-baseline` for exact merged main with 62 protected files. The focused final-policy suite passed 42/42; JSON parsing, the OTA contract, all seven workflow `actionlint` checks and whitespace validation passed.
+- Full Windows discovery ran 292 tests with 290 passing. Only the two unchanged checkout-materialization CRLF checks failed for `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`; their staged Git entries remain LF.
