@@ -3520,3 +3520,15 @@
 - Passed all 42 focused trusted-policy tests. Both bounded identities contain the same complete ordered 69-file map; direct `utf8-lf-v1` recomputation from immutable feature commit `df2ac4869f4ee15c567f4a5ce1e0a99fab08e269` matched all 69 entries, while the policy branch verified the 68 locally unchanged protected files and intentionally excluded only its predecessor `deploy.yml` byte.
 - Passed the OTA contract gate, JSON parsing, all seven workflow files with `actionlint` and whitespace validation. Exact workflow/action inventories remain seven and zero, and predecessor baseline source `900f22179db54b50aba03fba519ac80266519c2d` is retired from future authorization identities.
 - Hosted base-policy verification remains required before merge. Passing this policy authorization does not publish or install firmware/APK and does not prove GATT challenge/proof/result, physical relay actuation, health-valid or rollback behavior.
+
+## [2026-08-25] compile | Finalize GATT stack trusted baseline
+
+- PR #130 merge `813a849f` separately authorized reviewed feature `df2ac4869`; policy-connected head `4baa3fa8` retained both parents and the exact 69-file map, and PR #129 merge-commit produced actual main `a9d4bd0de7cf5393cba47b8be1fa6c17c0b6759e` after fresh Hosted Trusted, OTA, protocol, Android and ESP32-C6 checks passed.
+- Removed both bounded `df2ac48` transition identities and pinned the sole `current-main-baseline` persistent identity to actual PR #129 merged main `a9d4bd0d`. All 69 protected normalized objects, seven workflow entries and the empty repository-local Action inventory remain unchanged from the reviewed feature.
+- This policy-only rotation changes no runtime or protected workflow byte and claims no production Secret materialization, NAS publication, Target OTA, Android replacement install, GATT proof/result, relay, health-valid or rollback evidence.
+
+## [2026-08-25] test | Verify final GATT stack baseline
+
+- Recomputed the complete ordered 69-file map from exact merged-main Git blobs and verified it matches reviewed feature `df2ac4869`, policy-connected head `4baa3fa8` and the sole final bundle; both the reviewed feature and authorization main are ancestors of actual main.
+- The focused trusted-policy suite, OTA contract, all workflow syntax checks, JSON parsing, relative wiki links and whitespace validation pass locally. Hosted base-policy verification remains required before this final rotation merges.
+- This closes only the repository authorization transition. Exact-main production build/NAS publication, Target OTA/reboot and Android GATT challenge/proof/result remain the next connected evidence steps.
