@@ -3532,3 +3532,14 @@
 - Recomputed the complete ordered 69-file map from exact merged-main Git blobs and verified it matches reviewed feature `df2ac4869`, policy-connected head `4baa3fa8` and the sole final bundle; both the reviewed feature and authorization main are ancestors of actual main.
 - The focused trusted-policy suite, OTA contract, all workflow syntax checks, JSON parsing, relative wiki links and whitespace validation pass locally. Hosted base-policy verification remains required before this final rotation merges.
 - This closes only the repository authorization transition. Exact-main production build/NAS publication, Target OTA/reboot and Android GATT challenge/proof/result remain the next connected evidence steps.
+
+## [2026-08-26] compile | Authorize exact issue 133 manual-open candidate
+
+- Replaced the completed baseline with temporary-exact `temporary-manual-open-9185858` and future persistent `future-manual-open-9185858-persistent-baseline`, both bound to reviewed feature commit `91858585f8db6fb1b8b50ca0182526fdb653f0bf` and the same complete ordered 69-file protected map.
+- Relative to exact main `db37bc2390efbf94bf1a9fca261834c3728606b5`, only `.github/workflows/deploy.yml` changes in the protected set, to normalized SHA-256 `e46ba83350633b13fd13ad5f5fdee2024481d2eab4857bca3f231a2ad003d409`; the other 68 protected objects and exact inventories remain unchanged.
+- This policy-only authorization changes no runtime/workflow byte, reads no production Secret and publishes or installs no firmware/APK.
+
+## [2026-08-26] test | Verify issue 133 transition policy
+
+- Passed all 42 focused trusted-policy tests. Both identities pin the exact feature source and complete protected map; the policy branch locally verifies the 68 unchanged files while the immutable feature commit supplies the reviewed deploy digest.
+- Hosted base-policy verification remains required before merge. Passing this authorization is not Android, Target, relay, sensor, OTA install or rollback evidence.
