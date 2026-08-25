@@ -251,6 +251,15 @@ After this policy-only PR merges, its main commit must be merge-connected into
 PR #135 without rebasing or squashing; a separate rotation then pins the actual
 feature merge as the sole baseline.
 
+PR #137 merged the bounded authorization as policy main `26bed3df`. That
+policy main was merge-connected to the reviewed feature in `bba7bf4d`, retaining
+both parents and the reviewed 69-file map. Fresh Hosted Trusted, OTA, protocol,
+Android and ESP32-C6 checks then passed before PR #135 was merge-commit merged
+as actual main `737d3243af04d18e0c3f5c5b8e2c8435d177ac2c`. The immediate
+issue #138 rotation removes both `9185858` transition identities and pins this
+actual merge as the sole `current-main-baseline`; all 69 normalized protected
+objects and both exact inventories remain unchanged from the reviewed feature.
+
 ## 5. Scope and OTA status
 
 This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,
