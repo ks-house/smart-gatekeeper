@@ -3641,3 +3641,14 @@
 
 - Passed 105 focused NVS, Hardwareless, pocket, Target security and OTA contract tests. `esp32c6_personal_production` built successfully at 1,782,274/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%) without partition-generator warnings.
 - Hosted CI, trusted build-inventory authorization, exact-main signed OTA and connected action-1/ultrasonic/relay repetition remain required; no physical sensor/contact acceptance is inferred from this local build.
+
+## [2026-08-26] compile | Authorize exact issue 149 durable NVS candidate
+
+- Reviewed immutable issue #149 / PR #150 feature commit `042718180e3943e8dd6e135a140e59763a602f8c`. Relative to current authorized protected bytes, only `.github/workflows/deploy.yml` changes to normalized digest `61ce6009...` and `scripts/ota_contract_gate.py` changes to `89be924d...`; the other 67 protected objects and both inventories remain exact.
+- Issue #151 replaces the sole baseline with bounded `temporary-nvs-0427181` and `future-nvs-0427181-persistent-baseline` identities carrying the same complete ordered map. This policy-only branch does not modify runtime bytes, initialize/erase NVS, publish artifacts or change a connected device.
+- After hosted policy CI passes and this authorization merges, its policy main must be merge-connected into PR #150. Fresh Target/OTA/trusted checks, actual feature merge, final policy rotation, signed OTA and connected action-1 retry remain required.
+
+## [2026-08-26] lint | Merge-connect issue 149 authorization
+
+- PR #152 passed its hosted Trusted Workflow check and merged as policy main `9ec55ed856c5365494cf2959d3902894680448c0`, closing issue #151.
+- Merge-connected that authorization main into PR #150 while preserving both immutable feature parent `04271818` and policy parent. Both append-only evidence streams were retained during the bounded wiki conflict resolution; fresh hosted checks remain required before feature merge.

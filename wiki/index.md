@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-26 (exact-main 848 connected action-2 acceptance; issue #149 durable NVS candidate)
+> Last updated: 2026-08-26 (issue #149 durable NVS candidate merge-connected to issue #151 authorization)
 
 ---
 
