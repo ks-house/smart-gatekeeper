@@ -425,3 +425,20 @@ trace reaches it; it does not prove a relay contact or electrical load. Issue
 #143 cannot close until the exact merged signed image completes terminal action
 2 without reset and logs one relay command ON/OFF sequence. Physical contact,
 sensor threshold and power behavior remain separate #54 Gates.
+
+## 2026-08-26 exact-main 848 action-2 acceptance and pocket NVS blocker
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact Target release | Run `32888032443` signed/encrypted and NAS-published exact main `848bbf16`; periodic inactive-slot OTA installed `2.1.270+main.g848bbf1`, then Wi-Fi `192.168.35.19`, MQTTS, GATT and ACL returned | PASS for publication, install, reboot and connected runtime; no pending-health/valid-mark trace, rollback still pending |
+| Exact Android release | Run `32888032174` published the production-signed 55,786,649-byte APK, SHA-256 `016e62c5d0fe834f42a06e6651442860a62e06f3798fcaaff4781a8a92c379d4`; same-signature `adb install -r` produced `1.0.0-g848bbf1` / 20201 with data and AndroidKeyStore preserved | PASS for exact identity and replacement install |
+| Main action-2 button | Four connected attempts across the prior and exact 848 APKs completed authenticated GATT, Target relay-command ON/OFF and terminal UI success without reset; UI completion was about 4.5--5.2 seconds | PASS for board/FSM/GPIO command path; contact voltage, actuator and actual door remain unmeasured |
+| Screen-off first match | Android registered OS BLE wake, moved to background with the display dozing and its WorkManager job completed; Target accepted one GATT connection but never logged `ARMED` or relay | INCONCLUSIVE/FAIL for core pocket acceptance; WorkManager completion is not Target success |
+| NVS fault | The same attempt emitted `ledger_b NOT_ENOUGH_SPACE`; prior retained ACL delivery emitted `slot_0 NOT_ENOUGH_SPACE` and rejection | ROOT CAUSE CANDIDATE for action-1 fail-closed storage rejection; issue #149 |
+| Issue #149 local candidate | Original 20 KiB NVS and both 7 MiB OTA slot offsets remain fixed. ACL/replay/queue writes use the unused 1.875 MiB region, legacy reads fall back, automatic erase is forbidden. 105 focused tests passed; personal-production build used 1,782,274/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%) | PASS for local source/build/capacity; hosted CI, merge, signed OTA and connected action-1 retry pending |
+
+The connected board currently has no AJ-SR04T/relay load acceptance fixture.
+After issue #149 merges and installs, the release Gate requires serial evidence
+for durable partition readiness, replay write success, `AUTH_PENDING -> ARMED`,
+a valid ultrasonic threshold event and relay-command ON/OFF. Only the first
+three can be evaluated without the physical sensor and contact fixture.

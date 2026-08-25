@@ -1043,7 +1043,7 @@ def _validate_personal_target_ota_job(
       "sitecustomize.py usercustomize.py platformio_override.ini platformio.ini",
       "partitions_16MB_ota.csv ota/requirements.lock |",
       "100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock",
-      "100644 6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv",
+      "100644 20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv",
       "100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini",
       'while read -r mode object stage path; do',
       'test "$mode" = "100644"',

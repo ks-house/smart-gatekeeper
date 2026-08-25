@@ -343,6 +343,7 @@ jobs:
           EXPECTED_BUILD_TREE="$(cat <<'EOF'
           100644 9979085720f5b860d8135737b64269cedc6ec42515c352e6a65ac7a6b1c9466f include/ConfigManager.h
           100644 9ebeac418fe2cd0c858889206bda9c4f0a45250eafe4c9276ba848ea0f09f29b include/DiagnosticsManager.h
+          100644 bab4d5f0cf614e0dfe060c7896ae0fc8be8b1cdaa86a8fe44437471ee9f03864 include/DurablePreferences.h
           100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
           100644 da900d01180a01f203c47a7bc455e8fc5aa3ad9da03c9df292663a49facb491c include/GattProtocol.h
           100644 252f9dbd64cb3e54484906254d13e0d56c69ece91270c3b6f075c53d683de6e3 include/GattServer.h
@@ -362,13 +363,13 @@ jobs:
           100644 1f7b88daf8bebfa0a3e35f8a475a764ebefde3c09fa46d55506104e7a0ff6008 include/config.h
           100644 7fb16bde7025386547d2e3b6e90f2236ad00e2695eb04c7f4f3947e503450fd8 include/secrets.h.example
           100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock
-          100644 6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv
+          100644 20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv
           100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini
           100644 54dad6206a9a9bd9bbe245313b34c690fc3f4ce066ad01eb3e8b3b3223696f07 src/ConfigManager.cpp
           100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
           100644 b4b5ce7c3193cf3b59542501e52dd15458dcd75fb3f467c3da83ad2f9733cd5e src/GattProtocol.cpp
           100644 fee22c57f0ec9a771675cbb025e03159a3bb2f72a6774208ad95a0b2825cadfa src/GattServer.cpp
-          100644 b6c4fb43f1ec1bf8e379b103dab3cebcfe75ba495356bfa813891970225735fd src/MqttManager.cpp
+          100644 d14e6d7aa05a2e5cf4233e3e9e955e99de195f8c25390bd13da185dbc2283205 src/MqttManager.cpp
           100644 99e45cfec3094c95efbef4a7802ba12a881c4e2c93dcce81eaae92ab083ab346 src/OfflineEventQueue.cpp
           100644 94e2dd421d8787c6204b599414e4e9e78d0a3a4af6f9991c7b5efa85a86f34c5 src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
@@ -380,7 +381,7 @@ jobs:
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
-          100644 e5fc14fe5eb88886a8d050218997ae260f122857bc6eba62f911ced95c16722a src/main.cpp
+          100644 fe0e98df3bda1646d2bf3cc3fb27c153e6cbbe81b576d8c96223f7937869636f src/main.cpp
           EOF
           )"
           test ! -e .pio

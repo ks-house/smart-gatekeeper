@@ -506,7 +506,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    self.assertEqual(len(expected_build_rows), 40)
+    self.assertEqual(len(expected_build_rows), 41)
     self.assertEqual(expected_build_paths, sorted(expected_build_paths))
     self.assertEqual(expected_build_paths, tracked_build_paths)
     for _mode, expected_digest, path in expected_build_rows:
@@ -545,7 +545,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         privileged_verify,
     )
     self.assertIn(
-        "6a43bf72346adc028df3ee46734c856373a79216ad15e7e9461681a128a96d04 partitions_16MB_ota.csv",
+        "20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv",
         privileged_verify,
     )
     self.assertIn(

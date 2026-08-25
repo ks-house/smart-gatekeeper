@@ -14,9 +14,39 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소 exact main `b6cf6ec1a725e734d67df1ae8729e02f3ade0a9c`, 실제 Target `2.1.267+main.gb6cf6ec`, Android `1.0.0-gb6cf6ec` (`versionCode=19901`), 그리고 issue #143 action-2 reset 증거
+> 관측 기준: 저장소 exact main `848bbf16add9d4e06125739086e24fef6b685bca`, 실제 Target `2.1.270+main.g848bbf1`, Android `1.0.0-g848bbf1` (`versionCode=20201`), 수동 action-2 반복 성공, 그리고 issue #149 NVS 용량 결함 증거
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-08-26 exact-main 848 connected acceptance and issue #149
+
+- Target run `32888032443` built, signed, encrypted and NAS-published exact
+  main `848bbf16`; periodic signed HTTPS OTA installed
+  `2.1.270+main.g848bbf1`. Wi-Fi `192.168.35.19`, per-Target MQTTS,
+  connectable GATT and ACL delivery returned after reboot. The retained OTA
+  path did not expose a `PENDING_VERIFY`/valid-mark trace, so rollback health
+  remains a separate open Gate.
+- Android run `32888032174` published the production-signed exact-main APK.
+  SHA-256 was `016e62c5d0fe834f42a06e6651442860a62e06f3798fcaaff4781a8a92c379d4`;
+  `adb install -r` installed `1.0.0-g848bbf1` / 20201 while preserving app
+  data, first-install identity and AndroidKeyStore state.
+- The main mobile open button completed action 2 four times across the prior
+  and exact 848 APKs. Each Target trace reached authenticated GATT acceptance,
+  relay-command ON, timer-bound OFF and terminal mobile success without reset;
+  observed UI completion was about 4.5--5.2 seconds. This is a board/GPIO
+  command result, not relay contact voltage or door mechanics evidence.
+- A true screen-off first-match attempt reached the Android background worker
+  and Target GATT connection, but no action-1 `ARMED` result followed. Target
+  serial emitted `ledger_b NOT_ENOUGH_SPACE`; earlier ACL writes had also
+  emitted `slot_0 NOT_ENOUGH_SPACE`. Issue #149 therefore blocks the pocket
+  acceptance test until durable ACL/replay writes are restored and the exact
+  merged image is redeployed.
+- The issue #149 candidate leaves both 7 MiB OTA slots and offsets unchanged,
+  keeps Wi-Fi/config in the original 20 KiB NVS, and moves ACL snapshots,
+  command replay ledgers and the offline event queue to the unused 1.875 MiB
+  data region. Existing application-only OTA installations discover the legacy
+  `spiffs` label; new full flashes declare the same region as `sgkstate` NVS.
+  Reads fall back to legacy NVS and no automatic erase is allowed.
 
 ## 2026-08-26 connected b6 acceptance와 issue #143
 

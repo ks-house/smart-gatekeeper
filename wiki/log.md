@@ -3627,8 +3627,28 @@
 - Removed both bounded `9565f67` transition identities and pinned the sole `current-main-baseline` to actual merged main `ff3535a3`; the complete ordered 69-file map and both inventories remain unchanged from the reviewed candidate.
 - This policy-only issue #147 does not claim exact-main NAS publication, Target OTA/install/reboot health, Android installation, action-2 relay success, pocket action-1, ultrasonic threshold or physical contact evidence.
 
+## [2026-08-26] test | Validate exact-main 848 manual open and isolate pocket blocker
+
+- Installed exact main `848bbf16` from production CI/NAS on the connected ESP32-C6 Target and Samsung phone. Target Wi-Fi/MQTTS/GATT recovered, and four main action-2 attempts completed relay-command ON/OFF plus terminal mobile success without reset.
+- A screen-off OS wake attempt reached the Android background worker and one Target GATT connection but not `ARMED`; Target emitted `ledger_b NOT_ENOUGH_SPACE`, matching earlier `slot_0 NOT_ENOUGH_SPACE` ACL failures. Opened issue #149 and kept sensor/contact/rollback claims pending.
+
+## [2026-08-26] fix | Expand durable security state without moving OTA slots
+
+- Kept the original 20 KiB NVS for Wi-Fi/config and both 7 MiB OTA slots at their existing offsets. Routed ACL snapshots, command replay ledgers and the offline event queue to the unused 1.875 MiB data region with legacy-read fallback and no automatic erase.
+- Existing application-only OTA installations select the legacy `spiffs` label at `0xE10000`; new full flashes label the same region `sgkstate` with NVS subtype. Added boot-time partition statistics and a fail-closed unavailable diagnostic.
+
+## [2026-08-26] test | Verify issue 149 local candidate
+
+- Passed 105 focused NVS, Hardwareless, pocket, Target security and OTA contract tests. `esp32c6_personal_production` built successfully at 1,782,274/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%) without partition-generator warnings.
+- Hosted CI, trusted build-inventory authorization, exact-main signed OTA and connected action-1/ultrasonic/relay repetition remain required; no physical sensor/contact acceptance is inferred from this local build.
+
 ## [2026-08-26] compile | Authorize exact issue 149 durable NVS candidate
 
 - Reviewed immutable issue #149 / PR #150 feature commit `042718180e3943e8dd6e135a140e59763a602f8c`. Relative to current authorized protected bytes, only `.github/workflows/deploy.yml` changes to normalized digest `61ce6009...` and `scripts/ota_contract_gate.py` changes to `89be924d...`; the other 67 protected objects and both inventories remain exact.
 - Issue #151 replaces the sole baseline with bounded `temporary-nvs-0427181` and `future-nvs-0427181-persistent-baseline` identities carrying the same complete ordered map. This policy-only branch does not modify runtime bytes, initialize/erase NVS, publish artifacts or change a connected device.
 - After hosted policy CI passes and this authorization merges, its policy main must be merge-connected into PR #150. Fresh Target/OTA/trusted checks, actual feature merge, final policy rotation, signed OTA and connected action-1 retry remain required.
+
+## [2026-08-26] lint | Merge-connect issue 149 authorization
+
+- PR #152 passed its hosted Trusted Workflow check and merged as policy main `9ec55ed856c5365494cf2959d3902894680448c0`, closing issue #151.
+- Merge-connected that authorization main into PR #150 while preserving both immutable feature parent `04271818` and policy parent. Both append-only evidence streams were retained during the bounded wiki conflict resolution; fresh hosted checks remain required before feature merge.

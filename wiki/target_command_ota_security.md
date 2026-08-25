@@ -19,7 +19,7 @@ The per-boot identity is 128 bits from the ESP hardware RNG. The Target publishe
 
 ## 3. Durable replay and idempotency boundary
 
-The replay ledger is stored in two alternating NVS records with generation and CRC checks. A nonce/session/digest record is persisted before the effect and marked complete only after the effect attempt, so a reset before completion returns `duplicate_uncertain` and never repeats a relay, reboot, configuration, or OTA effect. Completed duplicates return their duplicate status without execution; storage write or readback failure rejects the command before any effect.
+The replay ledger is stored in two alternating NVS records with generation and CRC checks. Issue #149 places these records in the fixed 1.875 MiB durable-state partition because the original 20 KiB default NVS could not hold ACL, replay, queue and NVS metadata safely together. Existing application-only OTA Targets select the unused legacy `spiffs`-labelled region; new partition tables label the identical offset `sgkstate` with NVS subtype. Reads fall back to the old NVS until each record is rewritten, but writes never fall back and no automatic erase is permitted. A nonce/session/digest record is persisted before the effect and marked complete only after the effect attempt, so a reset before completion returns `duplicate_uncertain` and never repeats a relay, reboot, configuration, or OTA effect. Completed duplicates return their duplicate status without execution; storage write or readback failure rejects the command before any effect.
 
 ## 4. Signed Target OTA
 
