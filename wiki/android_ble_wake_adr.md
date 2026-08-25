@@ -283,3 +283,19 @@ physical 16 MB N16 layout at 1,779,430 bytes, leaving 5,560,602 bytes in either
 7,340,032-byte OTA slot. This is source/build evidence only. CI production
 signing, NAS readback, Target inactive-slot install/reboot, non-zero exact scan,
 locator creation and GATT challenge/proof/result remain the connected Gate.
+
+## 12. Issue #134 activation and dispatch bound
+
+The personal native-GATT enable operation now attempts `register()` in the same
+native control call, and disable calls `stop()`. Registration health is derived
+from the persisted opt-in plus current scan/connect/location permissions and
+Bluetooth/scanner availability, rather than from the persisted bit alone. The
+first presence work is expedited on Android 12+ with a quota-safe fallback;
+Android 8 through 11 retain the existing regular work request, retries are
+delayed normally, and work older than 45 seconds fails closed before proof.
+
+This connects setup to the selected OS wake mechanism and bounds stale work, but
+does not change the Samsung Gate above. `handsFreeReady`, wake status,
+presence-to-dispatch and presence-to-Target-ARMED measurements are software
+observability until a release APK is installed on the phone and repeated with
+screen off, Activity/process background, reboot, sensor and relay.

@@ -91,6 +91,7 @@ Worker outcomes are mapped to the observability access reason vocabulary where a
 | `BLUETOOTH_DISABLED` | exact schema code `BLUETOOTH_DISABLED` |
 | `FORCE_STOPPED` | exact schema code `FORCE_STOPPED`; OS will not deliver PendingIntent work until user launch |
 | `BATTERY_RESTRICTED` | exact schema code `BATTERY_RESTRICTED` |
+| `PRESENCE_EXPIRED` | a delayed/retried wake exceeded the 45-second presence execution window and is terminally discarded before GATT proof |
 | `GATT_CONNECT_FAILED` | exact schema code `GATT_CONNECT_FAILED` |
 | `GATT_TIMEOUT` | exact schema code `GATT_TIMEOUT` |
 | `GATT_DISCONNECTED` | exact schema code `GATT_DISCONNECTED` |
@@ -125,3 +126,29 @@ The JVM coverage includes signed flag tamper/expiry/replay/key-binding negatives
 On 2026-08-25 the production-signed `1.0.0-gbc9bb5d` APK (`versionCode=18501`) was installed with `adb install -r`; package data, local consent and the AndroidKeyStore credential were preserved. Corrected iBeacon bytes produced exact-filter PendingIntent deliveries and native GATT connected to the ESP32-C6. After the Target callback-stack fix stopped its reset, the installed app reached Target Hello/challenge but returned `MALFORMED_PROOF`. The physical trace and source path identified the simultaneous Challenge indication/read stream race described above. The single-indication-stream source correction passed its focused source regression and a JDK17 Android build/JUnit run with 209 executed Gradle tasks, but a production-signed APK containing that correction has not yet been installed in this evidence snapshot.
 
 This establishes same-signature installation, exact Android BLE wake, native ownership and a real Android-to-ESP32-C6 GATT connection through challenge reception. It does not yet establish successful proof/result, screen-off repetition, Activity/process-killed or reboot registration behavior, OEM battery-policy survival, latency percentile, relay, sensor, health-valid or bootloader rollback. Personal enablement does not retire the legacy rollback path, and issue/Epic closure remains blocked by the remaining applicable G0-HW, RELAY-G0 through G2, OTA-G1 through G4, and issue #14/#23 device/operator evidence.
+
+## 9. Issue #134 fast pocket-approach dispatch
+
+Enabling the personal native GATT control now immediately attempts the exact OS
+`PendingIntent` wake registration, while disabling it stops that registration.
+The health projection reports the live permission/Bluetooth registration status
+and exposes `handsFreeReady`; local manual action 2 remains usable when enrolled
+even if wake registration is blocked, but the UI must not call that state
+hands-free ready.
+
+On Android 12+, the first WorkManager request for one exact presence is expedited with
+`RUN_AS_NON_EXPEDITED_WORK_REQUEST` as the quota fallback. Delayed retries keep
+their requested delay and are not expedited. Android 8 through 11 retain the
+non-expedited request rather than introducing a new foreground-service contract.
+A wake older than 45 seconds is
+terminally recorded as `PRESENCE_EXPIRED` and discarded before acquiring the
+BLE owner or signing a proof, preventing a stale approach from arming the door
+later. Successful action-1 Result is already bound to the Target's real
+`AUTH_PENDING -> ARMED` transition, so the ledger records both
+`presenceToDispatchMs` and `presenceToArmedMs`; session-only GATT latency remains
+a separate field.
+
+These bounds improve Android-side dispatch and make latency measurable. They do
+not guarantee OS radio discovery time or Samsung background scheduling. A phone
+was not connected for this change, and AJ-SR04T/GPIO3 were not wired, so pocket,
+screen-off, sensor and physical relay timing remain field gates.

@@ -115,10 +115,19 @@ class MainActivity: FlutterActivity() {
                     } else {
                         val control = BleGattFeatureFlagStore(applicationContext)
                             .setLocalManualEnabled(enabled)
+                        val wakeRegistration = when {
+                            enabled && control.accepted && control.decision.newWorkerEnabled ->
+                                BleWakeRegistrar.register(applicationContext)
+                            !enabled && control.accepted ->
+                                BleWakeRegistrar.stop(applicationContext)
+                            else -> BleWakeRegistrar.status(applicationContext)
+                        }
                         result.success(
                             BleGattHealthBridge.snapshot(applicationContext) + mapOf(
                                 "accepted" to control.accepted,
                                 "reason" to control.reason,
+                                "wakeRegistrationStatus" to wakeRegistration.status,
+                                "wakeRegistered" to wakeRegistration.enabled,
                             ),
                         )
                     }

@@ -3567,3 +3567,16 @@
 - Recomputed the complete ordered 69-file map from exact merged-main GitHub API bytes and verified it matches reviewed feature `91858585`, policy-connected head `bba7bf4d` and the sole final bundle; both the reviewed feature and authorization main are ancestors of actual main.
 - Passed 42 focused trusted-policy tests, the OTA contract gate, JSON parsing, relative wiki links and whitespace validation locally. Hosted base-policy verification remains required before this final rotation merges.
 - This closes the repository authorization transition only. Main production NAS publication and Target/Android installation remain separate evidence steps, while phone, ultrasonic and physical relay validation remain pending.
+
+## [2026-08-26] fix | Bound and expedite pocket-approach action 1
+
+- Connected personal native-GATT enable/disable to exact OS PendingIntent wake register/stop and changed registration health to re-evaluate current permission, Bluetooth and scanner readiness instead of trusting the persisted opt-in alone.
+- Made the first Android 12+ presence work expedited with quota-safe fallback while Android 8~11 retain regular work, retained normal delayed retry semantics and added a 45-second fail-closed presence age limit so stale work cannot arm the Target later. Background work remains network-independent and explicitly signs only `ARM_FOR_SENSOR(1)`.
+- Added redacted durable presence-to-dispatch and presence-to-Target-ARMED latency fields plus UI/health readiness. Target Result reason 0 remains bound to the actual action-1 FSM commit, and the relay remains OFF until a valid ARMED ultrasonic trigger.
+
+## [2026-08-26] test | Verify issue 134 software candidate
+
+- Passed 15 pocket/Target native-host tests and 21 implementation/mobile contract tests. Coverage includes wake-to-worker action 1 routing, enable/register and disable/stop wiring, expedited initial work, stale presence rejection, codec metrics and the Target relay-OFF-before-sensor sequence.
+- The complete 304-test Python suite passed 302 tests; its only two failures are the unchanged Windows CRLF policy findings in `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`. The candidate does not modify either file, and the hosted Linux policy baseline remains the merge authority.
+- Whitespace validation passed. Hosted Kotlin/Flutter/APK and ESP32-C6 CI remain required before merge.
+- No phone, AJ-SR04T or physical relay was connected; screen-off/pocket delivery, OEM scheduling, sensor threshold and relay contact latency remain pending physical evidence.

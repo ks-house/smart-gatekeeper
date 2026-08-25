@@ -75,6 +75,29 @@ class WorkerPolicyTest {
     assertFalse(BleGattWorkScheduler.HAS_NETWORK_CONSTRAINT)
     assertEquals("KEEP", BleGattWorkScheduler.UNIQUE_WORK_POLICY)
     assertEquals("APPEND_OR_REPLACE", BleGattWorkScheduler.RETRY_WORK_POLICY)
+    assertEquals(31, BleGattWorkScheduler.EXPEDITED_MIN_API)
+    assertTrue(HandsFreeDispatchPolicy.shouldExpedite(0))
+    assertFalse(HandsFreeDispatchPolicy.shouldExpedite(1))
+  }
+
+  @Test
+  fun handsFreePresenceHasBoundedFreshnessAndClockRollbackDoesNotExpireIt() {
+    val created = 1_000L
+    assertEquals(0, HandsFreeDispatchPolicy.presenceAgeMs(created, 500))
+    assertTrue(HandsFreeDispatchPolicy.isFresh(created, 500))
+    assertTrue(
+      HandsFreeDispatchPolicy.isFresh(
+        created,
+        created + HandsFreeDispatchPolicy.MAX_PRESENCE_AGE_MS,
+      ),
+    )
+    assertFalse(
+      HandsFreeDispatchPolicy.isFresh(
+        created,
+        created + HandsFreeDispatchPolicy.MAX_PRESENCE_AGE_MS + 1,
+      ),
+    )
+    assertFalse(AccessReasonCode.PRESENCE_EXPIRED.retryable)
   }
 
   @Test
@@ -87,6 +110,20 @@ class WorkerPolicyTest {
     assertFalse(migrated.contains("credential_id_hex"))
     assertFalse(migrated.contains("device_address"))
     assertTrue(migrated.contains("fingerprint"))
+  }
+
+  @Test
+  fun sessionLedgerRoundTripsPresenceToArmedObservability() {
+    val session = sampleSession().copy(
+      dispatchStartedEpochMs = 20,
+      presenceToDispatchMs = 19,
+      presenceToArmedMs = 240,
+    )
+    val decoded = SessionLedgerCodec.decode(SessionLedgerCodec.encode(listOf(session))).sessions.single()
+    assertEquals(20L, decoded.dispatchStartedEpochMs)
+    assertEquals(19L, decoded.presenceToDispatchMs)
+    assertEquals(240L, decoded.presenceToArmedMs)
+    assertEquals(240L, decoded.redactedMap()["presenceToArmedMs"])
   }
 
   @Test

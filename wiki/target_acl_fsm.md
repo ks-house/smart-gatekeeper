@@ -84,6 +84,7 @@ Host unit tests (`python -m unittest tests/test_hardwareless_rc.py` running nati
 - Signed ACL parsing, signature verification, dual-slot storage, anti-rollback floor, and lease expiry.
 - Proof verification with strict low-S, explicit action 1/2 acceptance, invalid action rejection, and unknown credential denial.
 - Target FSM transitions, action 1 relay-OFF arming, action 2 immediate relay, fail-closed Result/control binding, and dedicated `manual_remote` regression.
+- Issue #134 pocket-approach regression fixes the exact action-1 order as `AUTH_PENDING -> ARMED` with both software and relay callback OFF, then permits `RELAY_HOLD` only after the ultrasonic trigger; the main loop samples only while `ARMED` at a 100 ms polling interval.
 - Bounded offline event queue push, pop, and overflow eviction (capacity 8).
 - Default-OFF and feature-ON PlatformIO builds for `esp32c6`.
 
