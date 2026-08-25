@@ -3716,3 +3716,9 @@
 - PR #161 head `d994a7f0` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `17793de56289a9fe4f740b8b539aef97fb9182b2`.
 - Issue #164 removes both bounded `748c268` transition identities and pins the sole `current-main-baseline` to actual merged main `17793de5`; the complete ordered 69-file protected map and both inventories remain unchanged from the reviewed candidate.
 - This policy-only rotation does not publish or install firmware. Issue #160 was reopened and remains pending production NAS publication plus connected Target install, reboot and Wi-Fi/MQTTS/GATT/health recovery; AJ-SR04T and physical relay-contact acceptance remain pending.
+
+## [2026-08-26] test | Disprove client-destruction-only Target OTA fix
+
+- Main run `32907218154` built, signed, atomically published and HTTPS-read-back exact main `c5d79eb51dda4e49ba274292af80dc1d38df128d` as `2.1.278+main.gc5d79eb` (`1,849,076` encrypted bytes, SHA-256 `09137168...d6d234d`). The connected 493 Target accepted its signed manifest but again failed the artifact's second TLS handshake with Mbed TLS `-9984`; no inactive-slot write began.
+- Reopened #160 and opened follow-up issue #166. The live endpoint returns HTTP/1.1 keep-alive, while the pinned framework preserves the fully drained manifest connection. The new bounded candidate enforces exact HTTPS authority equality and reuses that already CA/hostname-verified socket via one `WiFiClientSecure` and one `HTTPClient`; it fails closed when reuse is unavailable and never calls `setInsecure`.
+- Focused Target security, Hardwareless and connectivity tests passed 39/39. The production N16 build succeeded at 1,782,600/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%). Hosted CI, protected build-input authorization, merge, newer signed publication and connected install/reboot/recovery remain required.

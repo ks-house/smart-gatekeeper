@@ -126,15 +126,17 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("[OTA-ERROR] manifest rejected: %s", ota)
         self.assertIn("[OTA] running image marked VALID", ota)
         self.assertIn("OtaManager::getLastError()", wifi)
-        manifest_client = ota.index("WiFiClientSecure manifestClient")
-        manifest_scope_end = ota.index("\n  }\n  status = OtaStatus::VERIFYING", manifest_client)
-        artifact_client = ota.index("WiFiClientSecure artifactClient")
-        self.assertLess(manifest_client, manifest_scope_end)
-        self.assertLess(manifest_scope_end, artifact_client)
-        manifest_scope = ota[manifest_client:manifest_scope_end]
-        self.assertIn("manifestHttp.end()", manifest_scope)
-        self.assertIn("manifestClient.setCACert(SECRET_ROOT_CA_CERT)", manifest_scope)
-        self.assertIn("artifactClient.setCACert(SECRET_ROOT_CA_CERT)", ota)
+        self.assertEqual(ota.count("WiFiClientSecure otaClient"), 1)
+        self.assertEqual(ota.count("HTTPClient otaHttp"), 1)
+        self.assertIn("otaClient.setCACert(SECRET_ROOT_CA_CERT)", ota)
+        self.assertIn("otaHttp.setReuse(true)", ota)
+        self.assertIn(
+            "sameHttpsAuthority(OTA_VERSION_URL, stagedManifest.artifact_url)",
+            ota,
+        )
+        self.assertIn("otaHttp.connected()", ota)
+        self.assertIn("otaHttp.setURL(stagedManifest.artifact_url)", ota)
+        self.assertNotIn("WiFiClientSecure artifactClient", ota)
         self.assertNotIn("setInsecure", ota)
         safe_state_failure = ota.split("if (!waitForSafeState())", 1)[1].split(
             "}", 1
@@ -149,7 +151,7 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
 
         download_loop = ota.split(
             "while (updateBytes < stagedManifest.artifact_size)", 1
-        )[1].split("artifactHttp.end()", 1)[0]
+        )[1].split("otaHttp.end()", 1)[0]
         self.assertIn("kArtifactIdleTimeoutMs", download_loop)
         self.assertIn("kArtifactDownloadTimeoutMs", download_loop)
         self.assertIn("observedMs - downloadStartedMs", download_loop)

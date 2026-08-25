@@ -136,6 +136,25 @@ bool asciiToken(const char* value, size_t maximum) {
   return true;
 }
 
+String httpsAuthority(const String& url) {
+  static constexpr const char* kPrefix = "https://";
+  static constexpr size_t kPrefixLength = 8;
+  if (!url.startsWith(kPrefix)) return "";
+  int end = url.indexOf('/', kPrefixLength);
+  if (end < 0) end = url.length();
+  const String authority = url.substring(kPrefixLength, end);
+  if (authority.isEmpty() || authority.indexOf('@') >= 0 ||
+      authority.indexOf('?') >= 0 || authority.indexOf('#') >= 0) {
+    return "";
+  }
+  return authority;
+}
+
+bool sameHttpsAuthority(const String& left, const String& right) {
+  const String leftAuthority = httpsAuthority(left);
+  return !leftAuthority.isEmpty() && leftAuthority == httpsAuthority(right);
+}
+
 String quoted(const char* value) {
   StaticJsonDocument<192> document;
   document.set(value == nullptr ? "" : value);
@@ -906,41 +925,38 @@ void OtaManager::checkAndUpdate(bool force) {
   }
   status = OtaStatus::CHECKING;
   String payload;
-  {
-    // A long certificate chain can consume enough ESP32-C6 TLS state that a
-    // second simultaneous WiFiClientSecure handshake fails certificate
-    // verification. Destroy the manifest client before allocating the
-    // artifact client; both requests still use the provisioned CA and strict
-    // hostname verification.
-    WiFiClientSecure manifestClient;
-    manifestClient.setCACert(SECRET_ROOT_CA_CERT);
-    HTTPClient manifestHttp;
-    if (!manifestHttp.begin(manifestClient, OTA_VERSION_URL)) {
-      status = OtaStatus::FAILED;
-      lastError = "manifest begin";
-      nextPeriodicCheckMs = millis() + kFailureRetryMs;
-      LOGF("[OTA-ERROR] %s", lastError.c_str());
-      return;
-    }
-    manifestHttp.setTimeout(10000);
-    const char* responseHeaders[] = {"Date"};
-    manifestHttp.collectHeaders(responseHeaders, 1);
-    const int manifestCode = manifestHttp.GET();
-    if (manifestCode != HTTP_CODE_OK) {
-      manifestHttp.end();
-      status = OtaStatus::FAILED;
-      lastError = "manifest HTTP";
-      nextPeriodicCheckMs = millis() + kFailureRetryMs;
-      LOGF("[OTA-ERROR] %s code=%d", lastError.c_str(), manifestCode);
-      return;
-    }
-    setClockFromAuthenticatedHttpDate(manifestHttp.header("Date"));
-    payload = manifestHttp.getString();
-    manifestHttp.end();
+  // The production NAS keeps HTTP/1.1 connections alive. Preserve the one
+  // CA-verified manifest socket for the signed same-origin artifact so the
+  // ESP32-C6 never needs a second handshake against the long served chain.
+  WiFiClientSecure otaClient;
+  otaClient.setCACert(SECRET_ROOT_CA_CERT);
+  HTTPClient otaHttp;
+  otaHttp.setReuse(true);
+  if (!otaHttp.begin(otaClient, OTA_VERSION_URL)) {
+    status = OtaStatus::FAILED;
+    lastError = "manifest begin";
+    nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s", lastError.c_str());
+    return;
   }
+  otaHttp.setTimeout(10000);
+  const char* responseHeaders[] = {"Date"};
+  otaHttp.collectHeaders(responseHeaders, 1);
+  const int manifestCode = otaHttp.GET();
+  if (manifestCode != HTTP_CODE_OK) {
+    otaHttp.end();
+    status = OtaStatus::FAILED;
+    lastError = "manifest HTTP";
+    nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s code=%d", lastError.c_str(), manifestCode);
+    return;
+  }
+  setClockFromAuthenticatedHttpDate(otaHttp.header("Date"));
+  payload = otaHttp.getString();
   status = OtaStatus::VERIFYING;
   String reason;
   if (!verifyManifestJson(payload, &stagedManifest, &reason)) {
+    otaHttp.end();
     status = OtaStatus::FAILED;
     lastError = reason;
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
@@ -948,6 +964,7 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   if (stagedManifest.version == FIRMWARE_VERSION) {
+    otaHttp.end();
     status = OtaStatus::UP_TO_DATE;
     nextPeriodicCheckMs = millis() + kPeriodicCheckMs;
     LOGF("[OTA] already current: %s", FIRMWARE_VERSION);
@@ -956,23 +973,29 @@ void OtaManager::checkAndUpdate(bool force) {
 
   LOGF("[OTA] signed manifest accepted: %s", stagedManifest.version.c_str());
 
-  WiFiClientSecure artifactClient;
-  artifactClient.setCACert(SECRET_ROOT_CA_CERT);
-  HTTPClient artifactHttp;
-  if (!artifactHttp.begin(artifactClient, stagedManifest.artifact_url)) {
+  if (!sameHttpsAuthority(OTA_VERSION_URL, stagedManifest.artifact_url)) {
+    otaHttp.end();
     status = OtaStatus::FAILED;
-    lastError = "artifact begin";
+    lastError = "artifact origin";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
     LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
-  artifactHttp.setTimeout(15000);
-  const int artifactCode = artifactHttp.GET();
-  const int receivedArtifactSize = artifactHttp.getSize();
+  if (!otaHttp.connected() || !otaHttp.setURL(stagedManifest.artifact_url)) {
+    otaHttp.end();
+    status = OtaStatus::FAILED;
+    lastError = "artifact connection reuse";
+    nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    LOGF("[OTA-ERROR] %s", lastError.c_str());
+    return;
+  }
+  otaHttp.setTimeout(15000);
+  const int artifactCode = otaHttp.GET();
+  const int receivedArtifactSize = otaHttp.getSize();
   if (artifactCode != HTTP_CODE_OK ||
       receivedArtifactSize != static_cast<int>(stagedManifest.artifact_size) ||
       !beginImageWrite()) {
-    artifactHttp.end();
+    otaHttp.end();
     status = OtaStatus::FAILED;
     lastError = "artifact HTTP/size";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
@@ -984,7 +1007,7 @@ void OtaManager::checkAndUpdate(bool force) {
   status = OtaStatus::DOWNLOADING;
   LOGF("[OTA] encrypted artifact download started: %lu bytes",
        static_cast<unsigned long>(stagedManifest.artifact_size));
-  WiFiClient* stream = artifactHttp.getStreamPtr();
+  WiFiClient* stream = otaHttp.getStreamPtr();
   uint8_t buffer[4096]{};
   bool downloadOk = true;
   bool downloadTimedOut = false;
@@ -1001,7 +1024,7 @@ void OtaManager::checkAndUpdate(bool force) {
     const size_t remaining = stagedManifest.artifact_size - updateBytes;
     const size_t available = stream->available();
     if (available == 0) {
-      if (!artifactHttp.connected()) { downloadOk = false; break; }
+      if (!otaHttp.connected()) { downloadOk = false; break; }
       delay(1);
       continue;
     }
@@ -1014,7 +1037,7 @@ void OtaManager::checkAndUpdate(bool force) {
     }
     lastProgressMs = millis();
   }
-  artifactHttp.end();
+  otaHttp.end();
   if (!downloadOk || !finishImageWrite()) {
     abortImageWrite();
     status = OtaStatus::FAILED;

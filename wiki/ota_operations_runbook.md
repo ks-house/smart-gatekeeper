@@ -225,7 +225,7 @@ Recovery 자동 판정은 `ota/recovery-matrix.json`의 allowlist outcome/action
   never cancel a Target publisher or an unidentified run. The bounded publisher
   must then finish both NAS roots and public HTTPS equality before APK install.
 
-## 8. 2026-08-26 sequential Target TLS lifetime incident
+## 8. 2026-08-26 authenticated Target TLS connection reuse incident
 
 - Main run `32903378312` atomically published and read back signed exact-main
   `2.1.275+main.g1e3dfcf`. The installed Target accepted that signed manifest,
@@ -238,9 +238,18 @@ Recovery 자동 판정은 `ota/recovery-matrix.json`의 allowlist outcome/action
   Keeping the manifest `WiFiClientSecure` alive while allocating the artifact
   client leaves two TLS contexts resident on the ESP32-C6 and exposes the
   second-handshake failure boundary.
-- Issue #160 scopes the correction to a strict sequential lifetime: finish and
-  destroy the CA-verified manifest HTTP/TLS objects before allocating the
-  separately CA-verified artifact client. `setInsecure`, certificate bypass,
+- PR #161 implemented strict sequential client lifetime and main run
+  `32907218154` published/read back `2.1.278+main.gc5d79eb`. The connected
+  Target accepted that newer signed manifest but the separately allocated
+  artifact client still failed the second handshake with the same `-9984`.
+  Client destruction alone is therefore disproven on this hardware/chain.
+- The live endpoint explicitly returns HTTP/1.1 `Connection: keep-alive`, and
+  the pinned Arduino `HTTPClient::getString()` drains the manifest body while
+  preserving that authenticated socket. Issue #166 requires the signed
+  artifact URL to match the exact HTTPS authority of `OTA_VERSION_URL`, then
+  changes path with `HTTPClient::setURL()` and downloads over the already
+  CA/hostname-verified connection. If same-origin or connection reuse is not
+  available, fail closed and retry later. `setInsecure`, certificate bypass,
   plaintext fallback and hostname-verification weakening remain forbidden.
 - A passing host test and ESP32-C6 build are candidate evidence only. Close the
   incident only after a strictly newer exact-main signed publication completes

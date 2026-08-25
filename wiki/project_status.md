@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소 `1e3dfcf32c7b3ef88121fb824c35d81d2f6d40a7`, Target `493591bb482756c6713240387d7c68d319bba439` / `2.1.273+main.g493591b`, Android exact main `1.0.0-g1e3dfcf` (`versionCode=21001`), 모바일 action-2 relay-command와 screen-off action-1 `ARMED` 실기기 성공, 그리고 issue #160 Target OTA artifact TLS 수정 대기
+> 관측 기준: 저장소 `c5d79eb51dda4e49ba274292af80dc1d38df128d`, Target `493591bb482756c6713240387d7c68d319bba439` / `2.1.273+main.g493591b`, Android exact main `1.0.0-g1e3dfcf` (`versionCode=21001`), 모바일 action-2 relay-command와 screen-off action-1 `ARMED` 실기기 성공, 그리고 issues #160/#166 Target OTA authenticated-connection 재사용 수정 대기
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -42,9 +42,14 @@ applies_to:
   `2.1.275+main.g1e3dfcf`, but the installed 493 Target accepted the manifest and
   then failed the immediately following artifact TLS handshake with Mbed TLS
   `-9984`; it did not write or boot the new slot. The NAS serves a valid longer
-  Let's Encrypt chain rooted at the provisioned ISRG Root X1. Issue #160 scopes
-  the fix to destroying the manifest TLS context before allocating the artifact
-  TLS context, without weakening CA or hostname verification.
+  Let's Encrypt chain rooted at the provisioned ISRG Root X1. PR #161 changed
+  the two clients to sequential lifetime, and run `32907218154` then published
+  `2.1.278+main.gc5d79eb`; the connected Target again accepted the signed
+  manifest and failed the second artifact handshake with the same `-9984`.
+  That disproves client destruction alone. Issue #166 instead requires the
+  signed artifact to use the exact manifest HTTPS authority and reuses the
+  already CA/hostname-verified HTTP/1.1 keep-alive connection; no certificate
+  bypass or insecure fallback is allowed.
 - AJ-SR04T and a physical relay/contact fixture are still absent. Therefore
   `ARMED -> distance <= 80 cm -> RELAY_HOLD`, electrical contact timing,
   pending-image valid marking, rollback and final wall-install acceptance remain
