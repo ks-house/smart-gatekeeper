@@ -3604,3 +3604,8 @@
 - Replaced the GATT adapter/core FreeRTOS spinlock with a recursive task-context mutex. NimBLE callbacks and loopTask protocol processing remain serialized, while Result-to-FSM action commit may safely execute GPIO, relay failsafe timer, diagnostics and logging without running them inside a critical section.
 - Added a source regression that rejects restoration of `core_mux` critical-section protocol execution. The focused Hardwareless and pocket suites passed 16/16, and `esp32c6_personal_production` built at 1,781,874/7,340,032 bytes flash and 67,088/327,680 bytes RAM.
 - The broader selected suite retained one unrelated pre-existing Windows CRLF failure in `manuals/README.md`; this issue does not modify that file. Exact hosted CI, NAS publication, Target OTA and connected action-2 repetition remain required before issue #143 can close.
+
+## [2026-08-26] compile | Bind issue 143 candidate into Target build inventory
+
+- Updated the privileged Target build inventory with the normalized `src/GattServer.cpp` digest `fee22c57...`; the preceding hosted failure was the expected fail-closed inventory mismatch rather than a compiler or test failure.
+- The completed immutable feature candidate now includes both the runtime fix and its exact build input declaration. A separate policy-only issue and PR must authorize that exact commit before PR #144 can merge; the feature PR does not self-authorize its protected workflow byte.
