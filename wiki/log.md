@@ -3652,3 +3652,9 @@
 
 - PR #152 passed its hosted Trusted Workflow check and merged as policy main `9ec55ed856c5365494cf2959d3902894680448c0`, closing issue #151.
 - Merge-connected that authorization main into PR #150 while preserving both immutable feature parent `04271818` and policy parent. Both append-only evidence streams were retained during the bounded wiki conflict resolution; fresh hosted checks remain required before feature merge.
+
+## [2026-08-26] compile | Finalize issue 149 trusted baseline
+
+- PR #150 head `a2cff40` passed fresh Hosted Trusted, OTA-contract, ESP32-C6 canary and Android canary checks, then merge-commit merged as actual main `b637b046ca94f0be6e874029818d253c3d1b9978`.
+- Removed both bounded `0427181` transition identities and pinned the sole `current-main-baseline` to actual merged main `b637b046`; the complete ordered 69-file protected map and both inventories remain unchanged from the reviewed candidate.
+- This policy-only issue #153 does not initialize or erase NVS, publish production firmware, install the Target, prove action-1 `ARMED`, exercise the ultrasonic threshold or claim physical relay/rollback evidence.

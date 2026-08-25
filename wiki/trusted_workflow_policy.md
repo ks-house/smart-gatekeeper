@@ -287,6 +287,15 @@ not change from the reviewed feature.
 
 ## 5. Scope and OTA status
 
+PR #150 passed fresh Hosted Trusted, OTA contract, ESP32-C6 and Android canary
+checks after policy main `9ec55ed8` was merge-connected, then merged as actual
+main `b637b046ca94f0be6e874029818d253c3d1b9978`. Issue #153 removes both
+bounded `0427181` transition identities and pins that actual merge as the sole
+`current-main-baseline`. The complete 69-file normalized protected map and both
+inventories remain byte-for-byte identical to the reviewed feature bundle.
+This rotation changes no runtime/workflow protected byte and does not claim
+production OTA or connected action-1 acceptance.
+
 Issue #151 authorizes immutable issue #149 / PR #150 feature commit
 `042718180e3943e8dd6e135a140e59763a602f8c`. The reviewed feature changes two
 protected objects: `.github/workflows/deploy.yml` has normalized SHA-256
