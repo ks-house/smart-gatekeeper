@@ -335,3 +335,25 @@ an ESP32-C6 compile/capacity check pass. Physical evidence is still required
 for 30-second continuous AP visibility, Android scan-list rendering, save and
 reboot, late STA+MQTTS recovery, local signed OTA, and repeated outage cycles at
 the intended installation RF level.
+
+## 16. 2026-08-26 exact-main 281 OTA and connectivity acceptance
+
+The connected pre-fix 493 image accepted the signed 281 manifest and then
+reproduced Mbed TLS `-9984` on the second artifact handshake. One bounded COM5
+bootstrap installed exact source `082e431` at the documented NVS-preserving
+offsets; it did not erase flash or use the padded factory image, and esptool
+verified every written region. Saved station and durable-security state
+survived.
+
+On the corrected downloader, the independent periodic HTTPS path accepted
+`2.1.281+main.g082e431`, downloaded the exact 1,849,444-byte encrypted artifact
+over the reused CA/hostname-verified connection, verified the inactive image and
+rebooted. Exact CI identity 281 obtained `192.168.35.19`, restored exact
+per-Target MQTTS subscriptions, applied ACL v188 and exposed enabled GATT. A
+later check reported the manifest already current. Issues #160/#166 are closed
+at their TLS/install/connectivity boundary.
+
+No `PENDING_VERIFY` health-window or valid-mark trace appeared. Issue #172 owns
+that distinct bootloader/rollback Gate; install/reboot/current identity is not
+rollback evidence. Intended-wall RF margin, repeated AP/broker/WAN outage
+recovery, AJ-SR04T, relay contact and enclosure acceptance remain open.

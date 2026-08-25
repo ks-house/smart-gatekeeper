@@ -590,3 +590,26 @@ NVS-preserving app-only USB bootstrap. OTA completion remains open until a
 strictly newer signed release is written to the inactive slot, boots under a
 new identity, keeps Wi-Fi plus MQTTS healthy for the continuous window and is
 marked valid. Rollback and power-loss injection remain separate Gates.
+
+## 20. 2026-08-26 exact-main 281 authenticated keep-alive acceptance
+
+The connected pre-fix 493 Target accepted the production-signed
+`2.1.281+main.g082e431` manifest but reproduced Mbed TLS `-9984` on the second
+artifact handshake before inactive write. After one bounded, NVS-preserving
+COM5 bootstrap of exact source `082e431`, the periodic HTTPS path reused the
+already CA/hostname-verified HTTP/1.1 connection. It accepted the same manifest,
+started the exact 1,849,444-byte encrypted artifact, verified the inactive image
+and rebooted into exact CI identity `2.1.281+main.g082e431`. Saved Wi-Fi at
+`192.168.35.19`, exact per-Target MQTTS, ACL and GATT all returned, and a later
+periodic check reported already current. This is connected acceptance for issue
+#166's authenticated manifest-to-artifact reuse and for install/reboot/network
+recovery.
+
+The boot emitted neither `pending image health window started` nor `running
+image marked VALID after health window`. Waiting more than the required
+30-second stable interval did not change that result. Therefore this evidence
+does not satisfy pending-verify, valid marking, automatic rollback, power-loss
+or OTA-G4. Issue #172 owns the production N16 bootloader configuration and
+physical rollback proof. No `erase_flash`, factory image or single-slot layout
+was used during bootstrap, and AJ-SR04T/relay-contact acceptance remains a
+separate Gate.

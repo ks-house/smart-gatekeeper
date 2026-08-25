@@ -478,3 +478,16 @@ and closes #156. It does not reopen the storage design.
 The action-1 and action-2 software/control requirements now pass their connected
 board-level boundaries. This does not convert the absent sensor, relay contact,
 OTA health-valid/rollback or wall-install checks into evidence.
+
+## 2026-08-26 exact-main 281 OTA acceptance and screen-off repetition
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Pre-fix reproduction | Running 493 accepted signed `2.1.281+main.g082e431`, then failed the artifact's second TLS handshake with Mbed TLS `-9984`; no inactive write began | FAIL reproduced at the exact historical boundary |
+| NVS-preserving bootstrap | COM5 wrote `bootloader.bin`, reviewed 16 MiB `partitions.bin`, `boot_app0.bin` and exact-source 082 `firmware.bin` at `0x0/0x8000/0xe000/0x10000`. No erase/factory image was used; every written region passed esptool digest readback | PASS for bounded bootstrap and written-region integrity; local build did not carry CI release-version injection |
+| Periodic signed OTA | Corrected downloader accepted the signed manifest, started the exact 1,849,444-byte encrypted artifact, verified the inactive image and rebooted | PASS for CA/hostname-verified keep-alive download, decrypt/hash/image verification, inactive write and boot selection |
+| Exact runtime recovery | Boot banner reported `2.1.281+main.g082e431`; saved Wi-Fi returned at `192.168.35.19`, exact per-Target MQTTS subscribed, ACL v188 applied and GATT was enabled. A later periodic check reported already current | PASS for exact CI runtime identity and connected service recovery |
+| Pending health/valid mark | Neither first OTA boot nor the following 30-second healthy interval logged `PENDING_VERIFY` health start or valid mark | FAIL/PENDING; issue #172. Install/reboot/current version is not rollback proof |
+| Exact 281 screen-off action 1 | OS first match at RSSI -53 and `screen_interactive=false`; Android connected, discovered services and enabled Hello/Challenge/Result indications, then WorkManager returned `FAILURE` after about 3.4 seconds. Target accepted GATT but never entered `ARMED` | FAIL for current repetition. Secure keyguard prevents reading the redacted durable reason until user unlock; earlier 493 success does not supersede this result |
+| Current manual action 2 | Phone is connected but secure PIN keyguard prevents the user-visible button from being exercised | BLOCKED on user unlock; prior 493 relay-command ON/OFF remains historical evidence only |
+| Physical sensor/contact | AJ-SR04T and relay/contact/load are not attached | PENDING; threshold-to-relay, contact voltage/timing and actual door remain unclaimed |
