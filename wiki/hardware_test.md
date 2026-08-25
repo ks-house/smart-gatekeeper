@@ -356,6 +356,29 @@ Android transport are merged, CI-built, NAS-published, installed from exact
 main, and one authenticated proof/result completes without a reboot. No relay
 actuation or wall-install acceptance is claimed by this section.
 
+## 2026-08-25 exact-main db37bc2 foreground evidence recovered from PR #132
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact source/artifacts | Runs `32777471683` and `32777471718` built and published exact main `db37bc2390efbf94bf1a9fca261834c3728606b5` as Target `2.1.262+main.gdb37bc2` and Android `1.0.0-gdb37bc2` / 19001 | PASS for exact historical identities |
+| Target OTA/runtime | HA signed OTA installed/rebooted the Target; Wi-Fi `192.168.35.19`, MQTTS, current ACL and GATT returned | PASS for install/reboot/runtime; rollback and power loss not exercised |
+| Android replacement | Production-signed APK was installed with `adb install -r` on SM-F966N, preserving package data, consent and AndroidKeyStore credential | PASS for same-signature replacement |
+| Foreground local GATT | One foreground action-1 request completed service/indication/framed proof/result exchange; fresh health was `HEALTHY`, no failure/Target denial, 4,599 ms. HA independently recorded `AUTH_PENDING` 06:27:33, `ARMED` 06:27:36 and `IDLE` 06:28:35; Target did not reset | PASS for this historical foreground authenticated proof/result and FSM ARM |
+| Physical boundary | No AJ-SR04T threshold, GPIO3 relay/contact, electrical, screen-off/OEM, rollback or power-loss measurement was captured | PENDING; no physical-open or wall-install claim |
+
+Issue #133 later split the mobile manual button into action 2 immediate relay
+and bound successful Result to the actual FSM transition. Consequently this
+historical action-1 ARM evidence is not evidence for the current action-2 button
+or pocket/background behavior.
+
+## 2026-08-26 current a9 deployment boundary
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Target CI/NAS/install | Run `32872303874` published exact main `a9b68222f8c7d47a1ed36f4395c636f959bfb15d` as `2.1.266+main.ga9b6822`; 1,846,624-byte plaintext and 1,846,660-byte encrypted artifact fit a 7,340,032-byte slot at 25.16%, leaving 5,493,408 bytes. Signed OTA installed/rebooted it and Wi-Fi/MQTTS/ACL v147/GATT returned | PASS for exact Target publication and connected runtime |
+| Android CI/NAS | Run `32872303799` published production-signed `1.0.0-ga9b6822` / 19801, 55,786,649 bytes, to primary/fallback NAS paths with HTTPS readback | PASS for artifact publication only; no phone installation |
+| Current access E2E | Phone, AJ-SR04T and relay were not connected | PENDING action-2 manual button, pocket action-1, sensor and contact evidence |
+
 ## 2026-08-26 issue #133 manual local-open software candidate
 
 | Test | Observed result | Verdict / boundary |
