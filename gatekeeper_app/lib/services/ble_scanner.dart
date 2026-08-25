@@ -13,6 +13,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'device_id_service.dart';
 import 'update_checker.dart';
 import 'error_logger.dart';
+import 'ranging_recovery.dart';
 import 'scan_diagnostics.dart';
 
 enum ScannerState {
@@ -126,6 +127,8 @@ class BleScanner {
   StreamSubscription<RangingResult>? _streamRanging;
   Timer? _timeoutTimer;
   Timer? _watchdogTimer;
+  final SingleFlightDelayedRecovery _rangingRecovery =
+      SingleFlightDelayedRecovery();
 
   /// 모드 전환을 직렬화하는 뮤텍스 (issue.md P1-7).
   ///
@@ -604,6 +607,7 @@ class BleScanner {
 
   /// 모든 스트림/타이머를 정리한다. **반드시 뮤텍스 안에서 호출**할 것.
   Future<void> _teardownStreamsLocked() async {
+    _rangingRecovery.cancel();
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
 
@@ -945,7 +949,8 @@ class BleScanner {
 
     _lastRangingCallbackAt = null;
     _rangingSubscribedAt = DateTime.now();
-    _streamRanging = flutterBeacon.ranging(_rangingRegions).listen(
+    late final StreamSubscription<RangingResult> subscription;
+    subscription = flutterBeacon.ranging(_rangingRegions).listen(
       (RangingResult result) {
         _lastRangingCallbackAt = DateTime.now();
         _rangingCallbackCount++;
@@ -954,17 +959,57 @@ class BleScanner {
         }
       },
       onError: (dynamic error, StackTrace? stack) {
-        debugPrint('[BleScanner] ⚠️ Ranging stream error: $error');
-        AppErrorLogger().logError('Ranging 스트림 오류', error, stack);
-        _lastScanError = 'ranging: $error';
-        _streamRanging = null;
-        _rangingSubscribedAt = null;
         // ignore: unawaited_futures
-        _restartRanging(reason: 'ranging stream 오류');
+        _handleRangingStreamError(subscription, error, stack);
       },
     );
+    _streamRanging = subscription;
 
     _startTimeoutCheckTimer();
+  }
+
+  Future<void> _handleRangingStreamError(
+    StreamSubscription<RangingResult> failedSubscription,
+    Object error,
+    StackTrace? stack,
+  ) async {
+    // Only the first error from the active generation owns recovery. Clearing
+    // the field before cancel prevents queued callbacks from scheduling a
+    // second subscription while cancellation is in flight.
+    if (!identical(_streamRanging, failedSubscription)) return;
+    _streamRanging = null;
+    _rangingSubscribedAt = null;
+    try {
+      await failedSubscription.cancel();
+    } catch (cancelError) {
+      // EventChannel cancellation can reach the same native ownership guard.
+      // The Dart subscription is already detached, so recovery must continue.
+      debugPrint(
+        '[BleScanner] Failed ranging subscription detached: $cancelError',
+      );
+    }
+
+    if (!_ownsNativeScanner || _mode != ScanMode.active) return;
+    final ownerExcluded =
+        RangingRecoveryPolicy.isNativeGattOwnerExclusion(error);
+    _lastScanError = 'ranging: $error';
+    if (ownerExcluded) {
+      debugPrint(
+        '[BleScanner] Native GATT owns BLE; ranging recovery deferred',
+      );
+    } else {
+      debugPrint('[BleScanner] ⚠️ Ranging stream error: $error');
+      AppErrorLogger().logError('Ranging 스트림 오류', error, stack);
+    }
+
+    _rangingRecovery.schedule(
+      RangingRecoveryPolicy.retryDelay(error),
+      () => _restartRanging(
+        reason: ownerExcluded
+            ? 'native GATT BLE lease released 확인'
+            : 'ranging stream 오류',
+      ),
+    );
   }
 
   Future<void> _enterActiveMode({required String reason}) {
@@ -1036,6 +1081,7 @@ class BleScanner {
     return _synchronized('restartRanging($reason)', () async {
       if (!_ownsNativeScanner || _mode != ScanMode.active) return;
 
+      _rangingRecovery.cancel();
       final ranging = _streamRanging;
       _streamRanging = null;
       _rangingSubscribedAt = null;

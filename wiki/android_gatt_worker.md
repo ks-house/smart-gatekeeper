@@ -178,3 +178,9 @@ terminal-result defect; the durable worker reason/Target reason must still be
 read after one user unlock before selecting the smallest corrective layer.
 Issue #149 is closed because its durable-storage acceptance is complete.
 AJ-SR04T threshold and physical relay/contact evidence remain pending.
+
+The same third trial exposed a separate Flutter ownership-recovery defect:
+while native GATT held the BLE lease, `BLE_OWNER_EXCLUDED` caused immediate
+ranging subscription recreation and a high-volume error loop. Issue #158 owns
+the bounded cancel-before-retry correction. That defect is connected evidence,
+but it is not assumed to be the Target denial cause tracked by issue #156.

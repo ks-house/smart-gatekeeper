@@ -1,5 +1,30 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-08-26 native GATT BLE ownership recovery
+
+Connected Samsung evidence for issue #158 showed that the foreground-service
+Flutter ranging stream received `BLE_OWNER_EXCLUDED` while the native
+credential worker correctly owned BLE. The prior `onError` path immediately
+created another subscription without first cancelling the exact failed stream.
+That produced a tight error/recreate loop, repeated AltBeacon not-bound
+warnings and 3,624 Android notification enqueue attempts during the observed
+process lifetime.
+
+The issue #158 candidate treats this code as an expected temporary native-GATT
+lease. It clears and cancels only the active subscription generation, tolerates
+the same ownership guard during EventChannel cancellation, and coalesces all
+errors into one delayed recovery. Native ownership uses a one-second retry;
+other stream failures use two seconds. Teardown cancels a pending recovery, and
+all actual restart work remains serialized by the existing transition lock.
+The foreground service therefore resumes ranging after the native lease ends
+without competing with action-1/action-2 GATT or creating concurrent streams.
+
+Four focused Dart recovery tests, three source-order contract tests and the
+complete 39-test Flutter suite pass under the exact CI Flutter 3.44.8 toolchain. This is source/test evidence only until a
+production-signed APK is built, installed and a screen-off GATT lease shows
+bounded log volume plus automatic ranging recovery. It does not classify or
+close the separate Target terminal-result defect in issue #156.
+
 > Last updated: 2026-07-31
 > 대상: Android Smart Key 앱
 > 관련 문서: [mobile_app_background_audit.md](mobile_app_background_audit.md) · [mobile_app_scenario.md](mobile_app_scenario.md)
