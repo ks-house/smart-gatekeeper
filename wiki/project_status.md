@@ -14,9 +14,43 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소 `c5d79eb51dda4e49ba274292af80dc1d38df128d`, Target `493591bb482756c6713240387d7c68d319bba439` / `2.1.273+main.g493591b`, Android exact main `1.0.0-g1e3dfcf` (`versionCode=21001`), 모바일 action-2 relay-command와 screen-off action-1 `ARMED` 실기기 성공, 그리고 issues #160/#166 Target OTA authenticated-connection 재사용 수정 대기
+> 관측 기준: 저장소 `082e431b50cd569ab0f557d463305e3b48ad27cc`, Target exact CI `2.1.281+main.g082e431`, Android exact main `1.0.0-g1e3dfcf` (`versionCode=21001`). Target periodic signed HTTPS OTA download→inactive verify→reboot와 Wi-Fi/MQTTS/ACL/GATT 복구는 성공했다. Bootloader `PENDING_VERIFY`/valid mark는 issue #172로 열려 있고, exact 281의 새 screen-off action-1 회차는 GATT indication 등록 뒤 WorkManager `FAILURE`로 `ARMED`에 도달하지 못했다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-08-26 exact-main 281 OTA acceptance and current mobile boundary
+
+- Runs and atomic NAS evidence published exact main
+  `082e431b50cd569ab0f557d463305e3b48ad27cc` as
+  `2.1.281+main.g082e431`. The encrypted artifact is 1,849,444 bytes with
+  SHA-256 `ea17493b...ab5566`; the signed manifest SHA-256 is
+  `d936f157...b92eda9`.
+- The installed pre-fix 493 image accepted that manifest but reproduced the
+  second-handshake Mbed TLS `-9984` failure before any inactive write. A bounded
+  COM5 bootstrap then wrote bootloader, the reviewed 16 MiB partition table,
+  `boot_app0` and exact-source 082 firmware at the documented offsets. It did
+  not run `erase_flash` or write `firmware.factory.bin`; every region passed
+  esptool readback verification and saved Wi-Fi/security NVS remained present.
+- From that corrected downloader, the independent periodic HTTPS path accepted
+  the signed 281 manifest, started the exact 1,849,444-byte encrypted download,
+  verified the inactive image and rebooted. Exact CI identity
+  `2.1.281+main.g082e431` then restored `192.168.35.19`, exact per-Target MQTTS,
+  ACL v188 and enabled GATT. A later periodic check reported already current.
+  This closes the #166 TLS reuse defect; #160 is closed as superseded.
+- The OTA boot never logged `pending image health window started` or `running
+  image marked VALID`, including after a full 30-second healthy interval. Issue
+  #172 owns the distinct production N16 bootloader pending-verify/rollback Gate.
+- On the exact 281 Target, a new Samsung screen-off first match arrived at RSSI
+  -53 with `screen_interactive=false`. Android connected, discovered services
+  and enabled all three indications, but WorkManager returned `FAILURE` after
+  about 3.4 seconds and Target never entered `ARMED`. The secure keyguard blocks
+  the redacted native health screen and current manual-open retest until the
+  user unlocks the phone. The earlier 493 action-1/action-2 successes remain
+  valid historical connected evidence but do not override this failed current
+  repetition.
+- AJ-SR04T and relay/contact/load remain physically absent. Sensor threshold,
+  relay voltage/contact timing, actual door movement, automatic rollback and
+  final wall-install acceptance are not claimed.
 
 ## 2026-08-26 exact-main Android action acceptance and Target OTA TLS blocker
 
@@ -238,11 +272,11 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 
 ## 5. 열려 있는 주요 Gate
 
-1. 현장 bootloader/OTA data가 새 OTA image를 `PENDING_VERIFY`로 표시하고 firmware가 30초 health window 뒤 valid mark하는지, 실패 시 이전 slot으로 rollback하는지 별도 확인한다. install/reboot/current-version만으로 이 Gate를 닫지 않는다.
+1. Issue #172에서 production N16 bootloader/OTA data가 새 OTA image를 `PENDING_VERIFY`로 표시하고 firmware가 30초 health window 뒤 valid mark하는지, 실패 시 이전 slot으로 rollback하는지 별도 확인한다. 281의 install/reboot/current-version 성공만으로 이 Gate를 닫지 않는다.
 2. 약신호 compatibility release를 동일 위치에서 홈 AP와 가까운 AP로 A/B하고, 홈 위치 RSSI를 최소 `-75 dBm` 이상으로 개선한 뒤 Wi-Fi/DHCP/MQTTS와 broker/WAN 장애 자동 복구를 실측한다.
 3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.
-5. Personal Hardwareless RC의 compile/runtime enable, `db37bc2` exact-main Target/APK install과 foreground action-1 proof/result까지는 관측했다. 현재 a9 APK를 phone에 설치한 뒤 action-2 버튼, Samsung/OEM screen-off·process-killed pocket action-1과 latency 분포를 다시 검증한다. Commercial/default compile-OFF와 local kill switch는 보존한다.
+5. Personal Hardwareless RC의 compile/runtime enable, current Android APK의 493 Target action-2 relay-command와 한 번의 screen-off action-1 `ARMED`는 관측했다. Exact 281 반복은 OS first-match/GATT indication까지 간 뒤 WorkManager `FAILURE`로 끝났으므로, 잠금 해제 후 durable reason을 읽고 current manual action-2와 Samsung/OEM screen-off·process-killed pocket action-1의 반복/latency 분포를 다시 검증한다. Commercial/default compile-OFF와 local kill switch는 보존한다.
 6. production NAS 배포, reverse proxy, backup/restore와 operator acceptance는 소프트웨어 계약과 별개의 운영 증거로 남긴다.
 
 ## 6. 문서 읽기 순서

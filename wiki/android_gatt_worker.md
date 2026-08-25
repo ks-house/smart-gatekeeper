@@ -184,3 +184,22 @@ while native GATT held the BLE lease, `BLE_OWNER_EXCLUDED` caused immediate
 ranging subscription recreation and a high-volume error loop. Issue #158 owns
 the bounded cancel-before-retry correction. That defect is connected evidence,
 but it is not assumed to be the Target denial cause tracked by issue #156.
+
+## 11. Exact-main 281 screen-off repetition boundary
+
+The connected phone still runs production-signed `1.0.0-g1e3dfcf` / 21001 and
+preserves its AndroidKeyStore enrollment. After the Target reached exact CI
+`2.1.281+main.g082e431`, the phone was placed behind the secure keyguard with
+the display `Dozing`. A signed HA reboot created a fresh beacon. Android logged
+one OS first-match callback at RSSI -53 with `screen_interactive=false`, then
+connected to the Target, discovered the service and enabled the
+Hello/Challenge/Result indications.
+
+That worker returned `FAILURE` after about 3.4 seconds; Target serial recorded
+the accepted GATT connection but no action-1 `AUTH_PENDING -> ARMED`. This is a
+failed current repetition, even though one earlier 493 attempt with the same
+APK reached terminal `ARMED`. The phone's secure PIN keyguard prevents reading
+the redacted native health screen or exercising the current main manual-open
+button until the user unlocks it. No failure reason is guessed from ATT setup
+alone. AJ-SR04T threshold, GPIO3 contact timing and actual door motion remain
+separate physical Gates.

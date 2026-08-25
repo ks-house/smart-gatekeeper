@@ -3739,3 +3739,10 @@
 - PR #167 head `c6d2b85` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `c23793cbee1ba7cde4e03add4b1c944d8bf39032`.
 - Issue #170 removes both bounded `db8d1fe` transition identities and pins the sole `current-main-baseline` to actual merged main `c23793cb`; the complete ordered 69-file map and both inventories remain unchanged.
 - This policy-only rotation does not publish or install firmware. Issues #160/#166 remain open pending newer exact-main NAS publication and connected Target download, inactive-slot verification, reboot and Wi-Fi/MQTTS/GATT/health recovery.
+
+## [2026-08-26] test | Accept exact-main 281 OTA transport and preserve remaining Gates
+
+- The running pre-fix 493 Target accepted signed `2.1.281+main.g082e431` and reproduced the artifact's second-handshake Mbed TLS `-9984` before inactive write. A bounded COM5 bootstrap then wrote exact-source 082 bootloader, reviewed 16 MiB partitions, `boot_app0` and application at the documented offsets without `erase_flash` or the factory image; all four regions passed esptool readback verification and saved NVS survived.
+- The independent periodic HTTPS path reused the authenticated connection, downloaded the exact 1,849,444-byte encrypted artifact, verified the inactive image and rebooted. Exact CI 281 restored `192.168.35.19`, exact per-Target MQTTS, ACL v188 and enabled GATT; a later periodic check was already current. Closed #166 as accepted and #160 as superseded.
+- No `PENDING_VERIFY`/valid-mark trace appeared after the required 30-second connected interval, so opened P0 #172 for production N16 bootloader health/rollback instead of overstating OTA-G4.
+- A new exact-281 Samsung screen-off first match reached RSSI -53, service discovery and all three indication registrations but WorkManager ended `FAILURE` before Target `ARMED`. Secure keyguard currently blocks the redacted native reason and main-button retest; AJ-SR04T and relay/contact/load remain absent. Opened docs-only #173 to preserve these evidence boundaries.
