@@ -905,31 +905,39 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   status = OtaStatus::CHECKING;
-  WiFiClientSecure manifestClient;
-  manifestClient.setCACert(SECRET_ROOT_CA_CERT);
-  HTTPClient manifestHttp;
-  if (!manifestHttp.begin(manifestClient, OTA_VERSION_URL)) {
-    status = OtaStatus::FAILED;
-    lastError = "manifest begin";
-    nextPeriodicCheckMs = millis() + kFailureRetryMs;
-    LOGF("[OTA-ERROR] %s", lastError.c_str());
-    return;
-  }
-  manifestHttp.setTimeout(10000);
-  const char* responseHeaders[] = {"Date"};
-  manifestHttp.collectHeaders(responseHeaders, 1);
-  const int manifestCode = manifestHttp.GET();
-  if (manifestCode != HTTP_CODE_OK) {
+  String payload;
+  {
+    // A long certificate chain can consume enough ESP32-C6 TLS state that a
+    // second simultaneous WiFiClientSecure handshake fails certificate
+    // verification. Destroy the manifest client before allocating the
+    // artifact client; both requests still use the provisioned CA and strict
+    // hostname verification.
+    WiFiClientSecure manifestClient;
+    manifestClient.setCACert(SECRET_ROOT_CA_CERT);
+    HTTPClient manifestHttp;
+    if (!manifestHttp.begin(manifestClient, OTA_VERSION_URL)) {
+      status = OtaStatus::FAILED;
+      lastError = "manifest begin";
+      nextPeriodicCheckMs = millis() + kFailureRetryMs;
+      LOGF("[OTA-ERROR] %s", lastError.c_str());
+      return;
+    }
+    manifestHttp.setTimeout(10000);
+    const char* responseHeaders[] = {"Date"};
+    manifestHttp.collectHeaders(responseHeaders, 1);
+    const int manifestCode = manifestHttp.GET();
+    if (manifestCode != HTTP_CODE_OK) {
+      manifestHttp.end();
+      status = OtaStatus::FAILED;
+      lastError = "manifest HTTP";
+      nextPeriodicCheckMs = millis() + kFailureRetryMs;
+      LOGF("[OTA-ERROR] %s code=%d", lastError.c_str(), manifestCode);
+      return;
+    }
+    setClockFromAuthenticatedHttpDate(manifestHttp.header("Date"));
+    payload = manifestHttp.getString();
     manifestHttp.end();
-    status = OtaStatus::FAILED;
-    lastError = "manifest HTTP";
-    nextPeriodicCheckMs = millis() + kFailureRetryMs;
-    LOGF("[OTA-ERROR] %s code=%d", lastError.c_str(), manifestCode);
-    return;
   }
-  setClockFromAuthenticatedHttpDate(manifestHttp.header("Date"));
-  const String payload = manifestHttp.getString();
-  manifestHttp.end();
   status = OtaStatus::VERIFYING;
   String reason;
   if (!verifyManifestJson(payload, &stagedManifest, &reason)) {

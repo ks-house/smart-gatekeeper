@@ -224,3 +224,26 @@ Recovery 자동 판정은 `ota/recovery-matrix.json`의 allowlist outcome/action
   that a newer main run exists, cancel only that obsolete mobile workflow run;
   never cancel a Target publisher or an unidentified run. The bounded publisher
   must then finish both NAS roots and public HTTPS equality before APK install.
+
+## 8. 2026-08-26 sequential Target TLS lifetime incident
+
+- Main run `32903378312` atomically published and read back signed exact-main
+  `2.1.275+main.g1e3dfcf`. The installed Target accepted that signed manifest,
+  proving the version endpoint, provisioned CA and manifest signature path.
+- The immediately following immutable artifact connection failed closed with
+  Mbed TLS `-9984` and `artifact HTTP/size code=-1`; no inactive-slot write or
+  reboot occurred. Manifest and artifact use the same HTTPS host and port.
+- The live NAS chain is valid but longer than the prior chain:
+  `leaf -> YE2 -> Root YE -> ISRG Root X2 cross-sign -> ISRG Root X1`.
+  Keeping the manifest `WiFiClientSecure` alive while allocating the artifact
+  client leaves two TLS contexts resident on the ESP32-C6 and exposes the
+  second-handshake failure boundary.
+- Issue #160 scopes the correction to a strict sequential lifetime: finish and
+  destroy the CA-verified manifest HTTP/TLS objects before allocating the
+  separately CA-verified artifact client. `setInsecure`, certificate bypass,
+  plaintext fallback and hostname-verification weakening remain forbidden.
+- A passing host test and ESP32-C6 build are candidate evidence only. Close the
+  incident only after a strictly newer exact-main signed publication completes
+  Target artifact download, inactive-slot verification, reboot and
+  Wi-Fi/MQTTS/GATT recovery. Record health-valid separately unless the serial
+  trace actually emits the valid mark.
