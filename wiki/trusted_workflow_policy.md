@@ -276,6 +276,15 @@ ordered map. After this policy-only PR merges, its main merge commit must be
 merge-connected into PR #144 without rebasing or squashing. A separate final
 rotation must then pin the actual feature merge as the sole baseline.
 
+PR #146 merged the bounded authorization as policy main `fcb6731f`. That
+policy main was merge-connected to the reviewed feature as `22c73bf4`, retaining
+both parents and the reviewed 69-file map. Fresh Hosted Trusted, OTA contract
+and ESP32-C6 canary checks passed before PR #144 was merge-commit merged as
+actual main `ff3535a34df004aca296cabd5f4b69ecb698f2a3`. Issue #147 now
+removes both `9565f67` transition identities and pins that actual merge as the
+sole `current-main-baseline`; the normalized protected map and inventories do
+not change from the reviewed feature.
+
 ## 5. Scope and OTA status
 
 This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,
