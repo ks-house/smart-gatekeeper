@@ -3626,3 +3626,9 @@
 - PR #144 head `22c73bf4` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `ff3535a34df004aca296cabd5f4b69ecb698f2a3`. Issue #143 remains open until connected post-merge validation finishes.
 - Removed both bounded `9565f67` transition identities and pinned the sole `current-main-baseline` to actual merged main `ff3535a3`; the complete ordered 69-file map and both inventories remain unchanged from the reviewed candidate.
 - This policy-only issue #147 does not claim exact-main NAS publication, Target OTA/install/reboot health, Android installation, action-2 relay success, pocket action-1, ultrasonic threshold or physical contact evidence.
+
+## [2026-08-26] compile | Authorize exact issue 149 durable NVS candidate
+
+- Reviewed immutable issue #149 / PR #150 feature commit `042718180e3943e8dd6e135a140e59763a602f8c`. Relative to current authorized protected bytes, only `.github/workflows/deploy.yml` changes to normalized digest `61ce6009...` and `scripts/ota_contract_gate.py` changes to `89be924d...`; the other 67 protected objects and both inventories remain exact.
+- Issue #151 replaces the sole baseline with bounded `temporary-nvs-0427181` and `future-nvs-0427181-persistent-baseline` identities carrying the same complete ordered map. This policy-only branch does not modify runtime bytes, initialize/erase NVS, publish artifacts or change a connected device.
+- After hosted policy CI passes and this authorization merges, its policy main must be merge-connected into PR #150. Fresh Target/OTA/trusted checks, actual feature merge, final policy rotation, signed OTA and connected action-1 retry remain required.

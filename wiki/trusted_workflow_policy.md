@@ -287,6 +287,25 @@ not change from the reviewed feature.
 
 ## 5. Scope and OTA status
 
+Issue #151 authorizes immutable issue #149 / PR #150 feature commit
+`042718180e3943e8dd6e135a140e59763a602f8c`. The reviewed feature changes two
+protected objects: `.github/workflows/deploy.yml` has normalized SHA-256
+`61ce60093ce84b65c2a973f58ae903f7f115b1692a38cba8a88ccd3ba52f17e9`,
+and `scripts/ota_contract_gate.py` has normalized SHA-256
+`89be924d2293bad15d7e4386ee62d5427d69edbfab9e994e1150e12869e035c3`.
+The other 67 protected objects, seven-workflow inventory and empty local-Action
+inventory remain exact. The transition uses `temporary-nvs-0427181` and
+`future-nvs-0427181-persistent-baseline` with the same complete ordered map.
+After this policy-only PR merges, its main merge commit must be merge-connected
+into PR #150 without rebasing or squashing. Fresh hosted CI must pass before
+the feature merges, after which a separate rotation pins the actual feature
+merge as the sole current baseline.
+
+This authorization does not initialize or erase either NVS partition, build or
+publish firmware, install a Target image, dispatch production secrets, or claim
+screen-off action-1, ultrasonic, relay contact, health-valid or rollback
+evidence.
+
 This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,
 backend/product/runtime file, dispatch a workflow, or write to a NAS. It does not change the authenticated mobile
 `manual_remote` door-open path, firmware/app runtime code, dual OTA partitions, health/rollback, periodic
