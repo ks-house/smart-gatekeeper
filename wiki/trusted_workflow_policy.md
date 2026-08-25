@@ -237,6 +237,20 @@ the seven-workflow inventory and the empty local-Action inventory remain exact.
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
+Reviewed issue #133 candidate `91858585f8db6fb1b8b50ca0182526fdb653f0bf`
+adds the authenticated action-2 manual local-open path and updates the
+privileged Target source inventory. Relative to exact main
+`db37bc2390efbf94bf1a9fca261834c3728606b5`, only the protected
+`.github/workflows/deploy.yml` blob changes, to normalized digest
+`e46ba83350633b13fd13ad5f5fdee2024481d2eab4857bca3f231a2ad003d409`;
+the other 68 protected blobs, seven-workflow inventory and empty local-Action
+inventory remain exact. The bounded transition uses
+`temporary-manual-open-9185858` and
+`future-manual-open-9185858-persistent-baseline` with the same complete map.
+After this policy-only PR merges, its main commit must be merge-connected into
+PR #135 without rebasing or squashing; a separate rotation then pins the actual
+feature merge as the sole baseline.
+
 ## 5. Scope and OTA status
 
 This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,
