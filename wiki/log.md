@@ -3710,3 +3710,9 @@
 
 - Fresh PR #161 CI correctly rejected the stale `src/OtaManager.cpp` digest asserted by `test_target_ota_autopublish.py`, even though the privileged workflow inventory contained the reviewed candidate digest. Updated that source-level contract to the exact normalized candidate digest `8d8f560f...`.
 - The correction changes no firmware, workflow, secret, NAS object or connected device. Fresh Target publisher, OTA-contract and trusted checks must all pass before merge.
+
+## [2026-08-26] compile | Finalize issue 160 trusted baseline
+
+- PR #161 head `d994a7f0` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `17793de56289a9fe4f740b8b539aef97fb9182b2`.
+- Issue #164 removes both bounded `748c268` transition identities and pins the sole `current-main-baseline` to actual merged main `17793de5`; the complete ordered 69-file protected map and both inventories remain unchanged from the reviewed candidate.
+- This policy-only rotation does not publish or install firmware. Issue #160 was reopened and remains pending production NAS publication plus connected Target install, reboot and Wi-Fi/MQTTS/GATT/health recovery; AJ-SR04T and physical relay-contact acceptance remain pending.
