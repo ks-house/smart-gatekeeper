@@ -3609,3 +3609,14 @@
 
 - Updated the privileged Target build inventory with the normalized `src/GattServer.cpp` digest `fee22c57...`; the preceding hosted failure was the expected fail-closed inventory mismatch rather than a compiler or test failure.
 - The completed immutable feature candidate now includes both the runtime fix and its exact build input declaration. A separate policy-only issue and PR must authorize that exact commit before PR #144 can merge; the feature PR does not self-authorize its protected workflow byte.
+
+## [2026-08-26] compile | Authorize exact issue 143 GATT action-2 candidate
+
+- Reviewed immutable feature commit `9565f67cf16d78342ac7ebbb9035a5517bd5cdb2` for issue #143 / PR #144. Relative to exact main `b6cf6ec1`, only protected `.github/workflows/deploy.yml` changes, with normalized GitHub-object digest `76325aac...`; the other 68 protected bytes and both inventories remain exact.
+- Replaced the sole current baseline with bounded `temporary-gatt-action2-9565f67` and `future-gatt-action2-9565f67-persistent-baseline` identities carrying the same complete ordered map. This policy-only issue #145 changes no runtime or production device state.
+- After hosted policy CI passes and this authorization merges, its main merge commit must be merge-connected into PR #144. Target OTA, Android install, action-2 relay repetition, pocket/background action-1, ultrasonic threshold, physical contacts and rollback health remain separate evidence gates.
+
+## [2026-08-26] lint | Merge-connect issue 143 authorization
+
+- PR #146 passed its hosted Trusted Workflow check and merged as policy main `fcb6731f5d7771aa01d96dcef26d7aa1485d03b2`, closing issue #145.
+- Merge-connected that authorization main into PR #144 without rebasing or squashing, preserving both the exact reviewed feature parent `9565f67c` and the policy parent. Fresh Hosted Trusted, OTA, protocol, Android and ESP32-C6 checks remain required before the feature can merge.

@@ -260,6 +260,22 @@ issue #138 rotation removes both `9185858` transition identities and pins this
 actual merge as the sole `current-main-baseline`; all 69 normalized protected
 objects and both exact inventories remain unchanged from the reviewed feature.
 
+Reviewed issue #143 / PR #144 candidate
+`9565f67cf16d78342ac7ebbb9035a5517bd5cdb2` moves authenticated GATT
+action effects out of the ESP32-C6 FreeRTOS critical-section spinlock and binds
+the changed `src/GattServer.cpp` normalized digest into the privileged Target
+build inventory. Relative to exact main
+`b6cf6ec1a725e734d67df1ae8729e02f3ade0a9c`, only protected
+`.github/workflows/deploy.yml` changes, to normalized digest
+`76325aac1a37b982f3efd2f317a4ed85af6939c3120a616468e15b7a33320b7f`;
+the other 68 protected blobs and both inventories remain exact. Issue #145
+authorizes this bounded candidate through
+`temporary-gatt-action2-9565f67` and
+`future-gatt-action2-9565f67-persistent-baseline`, each with the same complete
+ordered map. After this policy-only PR merges, its main merge commit must be
+merge-connected into PR #144 without rebasing or squashing. A separate final
+rotation must then pin the actual feature merge as the sole baseline.
+
 ## 5. Scope and OTA status
 
 This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,

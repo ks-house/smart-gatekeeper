@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-26 (exact b6 connected deployment, issue #143 action-2 abort root cause/candidate, and #133/#134 action split)
+> Last updated: 2026-08-26 (exact b6 connected deployment, issue #143 action-2 crash candidate, and issue #145 bounded authorization merged into PR #144)
 
 ---
 
