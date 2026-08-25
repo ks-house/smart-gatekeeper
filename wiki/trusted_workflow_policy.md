@@ -349,3 +349,15 @@ backend/product/runtime file, dispatch a workflow, or write to a NAS. It does no
 `manual_remote` door-open path, firmware/app runtime code, dual OTA partitions, health/rollback, periodic
 HTTPS, authenticated local recovery, mobile updater independence, N/N-1 compatibility, signing trust, or
 artifact verification. No physical OTA evidence is claimed.
+
+Issue #168 authorizes immutable issue #166 / PR #167 feature commit
+`db8d1fe861aeb8815badc7cbf03dd148a815f0d2`. Relative to current main, only
+protected `.github/workflows/deploy.yml` changes, to normalized SHA-256
+`bd1f5c0c2368bcc1b027c9b7823bda15112f281f7b9652f9b4b3b8082cb6e630`,
+binding reviewed `src/OtaManager.cpp` digest `6b1d39f1...`. The other 68
+protected objects and both inventories remain exact. The transition uses
+`temporary-ota-keepalive-db8d1fe` and
+`future-ota-keepalive-db8d1fe-persistent-baseline` with the same complete map.
+This policy-only authorization does not publish or install firmware; policy
+merge-connection, fresh feature CI, feature merge, final rotation and connected
+OTA install/reboot/health recovery remain required.
