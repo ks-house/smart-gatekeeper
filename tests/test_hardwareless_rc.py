@@ -264,7 +264,7 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         )
         self.assertLess(
             ota.index("if (!WifiManager::isConnected())"),
-            ota.index("WiFiClientSecure manifestClient"),
+            ota.index("WiFiClientSecure otaClient"),
         )
         self.assertTrue(
             "g_access_fsm.otaSafeState()" in main or

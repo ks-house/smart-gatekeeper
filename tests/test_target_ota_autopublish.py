@@ -554,7 +554,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     )
     self.assertIn("src/OtaManager.cpp", privileged_verify)
     self.assertIn(
-        "8d8f560fc1aa1ea30052b39d5781f6a60c8865fe1ddcbabb5d628e4c74f32547",
+        "6b1d39f15d0c404aef0d767ba29cb38f2a70d0ae1eca9cdfb870e35bc95cb1a8",
         privileged_verify,
     )
     self.assertIn("src/WifiManager.cpp", privileged_verify)
