@@ -315,6 +315,25 @@ publish firmware, install a Target image, dispatch production secrets, or claim
 screen-off action-1, ultrasonic, relay contact, health-valid or rollback
 evidence.
 
+Issue #162 authorizes immutable issue #160 / PR #161 feature commit
+`748c2681a866c1330d8bfcfd8ecee11c75fbbea3`. The connected Target accepted the
+signed exact-main manifest but failed the second TLS connection before artifact
+download while the first manifest TLS client remained alive. The candidate
+ends that client scope before allocating the artifact client and keeps CA
+verification enabled. Relative to authorized main, only protected
+`.github/workflows/deploy.yml` changes, to normalized SHA-256
+`1b8bf00d885297ad5e4e90c3ae3fc712c91026eaed628a0023e913a1ec8a5582`;
+the other 68 protected objects and both inventories remain exact.
+
+The transition uses `temporary-ota-tls-748c268` and
+`future-ota-tls-748c268-persistent-baseline` with the same complete ordered
+map. After the policy-only PR merges, its main merge commit must be
+merge-connected into PR #161. Fresh hosted checks must pass before the feature
+merges, after which a separate policy rotation must pin the actual feature
+merge as the sole current baseline. This authorization does not publish or
+install firmware and does not claim OTA install/reboot/health, ultrasonic, or
+physical relay-contact evidence.
+
 This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,
 backend/product/runtime file, dispatch a workflow, or write to a NAS. It does not change the authenticated mobile
 `manual_remote` door-open path, firmware/app runtime code, dual OTA partitions, health/rollback, periodic

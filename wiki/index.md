@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-26 (issue #158 bounds Flutter ranging recovery during native GATT ownership; issue #156 retains the terminal action-1 defect)
+> Last updated: 2026-08-26 (issues #156/#158 connected acceptance; issue #162 authorizes the bounded #160 OTA TLS candidate)
 
 ---
 
