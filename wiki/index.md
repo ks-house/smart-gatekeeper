@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-26 (issue #133 explicit action split and terminal manual local-open candidate)
+> Last updated: 2026-08-26 (PR #132 historical GATT/HA evidence recovery, current a9 deployment boundary, and issue #133/#134 action split)
 
 ---
 

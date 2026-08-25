@@ -3580,3 +3580,15 @@
 - The complete 304-test Python suite passed 302 tests; its only two failures are the unchanged Windows CRLF policy findings in `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`. The candidate does not modify either file, and the hosted Linux policy baseline remains the merge authority.
 - Whitespace validation passed. Hosted Kotlin/Flutter/APK and ESP32-C6 CI remain required before merge.
 - No phone, AJ-SR04T or physical relay was connected; screen-off/pocket delivery, OEM scheduling, sensor threshold and relay contact latency remain pending physical evidence.
+
+## [2026-08-26] compile | Recover PR 132 connected-device evidence
+
+- Opened issue #141 and selectively recovered the unique exact-main `db37bc2` Target/Android/HA evidence from conflicting draft PR #132 without applying its stale project-status replacements. Runs `32777471683` and `32777471718`, the installed Target/APK identities, one 4,599 ms foreground action-1 proof/result and HA `AUTH_PENDING → ARMED → IDLE` observation are retained as historical evidence.
+- Preserved the later issue #133 action-1/action-2 split and Result-to-FSM coupling, issue #134 pocket-dispatch behavior, and current exact-main `a9b68222` boundary. The a9 Target is signed-OTA installed; the a9 APK is NAS-published but not phone-installed.
+- No firmware, Android, Backend, workflow, production Secret, NAS pointer or device state was changed by this documentation branch. Historical action-1 success is explicitly not treated as current action-2 relay, pocket/background, sensor, electrical, rollback or wall-install proof.
+
+## [2026-08-26] lint | Validate recovered evidence and supersession
+
+- Synchronized project status, Android worker, Target GATT transport, hardware evidence and navigation, and appended this log without modifying `raw/` or prior log entries.
+- Passed the relative Markdown link regression, all 42 trusted-workflow policy tests and `git diff --check` locally.
+- Issue #141 owns this docs-only recovery. After its PR passes hosted CI and merges, conflicting draft PR #132 is to be closed as superseded with the replacement PR link rather than merged over newer status.
