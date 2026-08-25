@@ -91,6 +91,25 @@ class NativeGattWorkerHealthBridge {
     }
   }
 
+  /// Executes manual open immediately and completes only after the Target
+  /// returns a terminal authenticated result.
+  Future<Map<Object?, Object?>> triggerLocalGattOpen() async {
+    try {
+      final res = await _channel
+          .invokeMethod<Map<Object?, Object?>>('triggerLocalGattOpen');
+      return res ??
+          const <Object?, Object?>{
+            'accepted': false,
+            'reason': 'NATIVE_UNAVAILABLE'
+          };
+    } catch (_) {
+      return const <Object?, Object?>{
+        'accepted': false,
+        'reason': 'NATIVE_UNAVAILABLE'
+      };
+    }
+  }
+
   Future<Map<Object?, Object?>> setLocalGattEnabled(bool enabled) async {
     try {
       final res = await _channel.invokeMethod<Map<Object?, Object?>>(

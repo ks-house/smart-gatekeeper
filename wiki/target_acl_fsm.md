@@ -1,6 +1,6 @@
 # Target Local ACL Verification and Access Session FSM (Issue #20)
 
-> Last updated: 2026-08-24
+> Last updated: 2026-08-26
 > Status: **software core implemented and host/build verified; personal production profile enabled, commercial/default profiles OFF, and physical/operator gates pending**
 > Tracking: GitHub [#20](https://github.com/ks-house/smart-gatekeeper/issues/20), Epic [#13](https://github.com/ks-house/smart-gatekeeper/issues/13)
 
@@ -20,7 +20,8 @@ Target (ESP32-C6) is the sole authoritative owner of local ACL verification, acc
 ## 2. Access FSM State Machine
 
 ```
-   [ IDLE ] ──(handleAuthPending)──> [ AUTH_PENDING ] ──(handleAuthSuccess)──> [ ARMED ] ──(sensor trigger)──> [ RELAY_HOLD ] ──(hold_ms)──> [ COOLDOWN ] ──(cooldown_ms)──> [ IDLE ]
+   [ IDLE ] ──(handleAuthPending)──> [ AUTH_PENDING ] ──(action 1)──> [ ARMED ] ──(sensor trigger)──> [ RELAY_HOLD ] ──(hold_ms)──> [ COOLDOWN ] ──(cooldown_ms)──> [ IDLE ]
+                                             └────────(action 2)───────────────────────────────> [ RELAY_HOLD ]
       │                                    │                                                                      ▲
       │                                    └──(disconnect/abort)───────────> [ IDLE ]                             │
       │                                                                                                           │
@@ -40,9 +41,11 @@ Target (ESP32-C6) is the sole authoritative owner of local ACL verification, acc
 ### Interlock Rules
 
 - **Single FSM Ownership**: `g_access_fsm` is the single authoritative owner for state transitions, relay interlock, and OTA safe state classification.
-- **Local GATT Auth Flow**: Local GATT auth follows `IDLE -> AUTH_PENDING -> ARMED (target armed, relay OFF) -> passage sensor trigger -> RELAY_HOLD (relay ON) -> COOLDOWN -> IDLE`. `handleAuthSuccess` requires `AUTH_PENDING` and transitions to `ARMED` (relay OFF); it rejects `IDLE` fail-closed.
+- **Hands-free Local GATT Flow**: action 1 follows `IDLE -> AUTH_PENDING -> ARMED (relay OFF) -> passage sensor trigger -> RELAY_HOLD (relay ON) -> COOLDOWN -> IDLE`.
+- **Manual Local GATT Flow**: action 2 follows `IDLE -> AUTH_PENDING -> RELAY_HOLD (relay ON immediately) -> COOLDOWN -> IDLE`; it does not wait for the ultrasonic sensor.
+- **Result/FSM Binding**: `AuthControlGate` begins `AUTH_PENDING` before challenge delivery and commits the signed action after proof verification. `RESULT OK` is queued only after the corresponding FSM transition returns true. Missing callbacks or rejected transitions fail closed and abort pending state.
 - **Auth Abort / Disconnect**: `handleAuthAbort` transitions `AUTH_PENDING` to `IDLE` upon disconnect or proof rejection, but does not abort an already verified `ARMED` passage nor an active `RELAY_HOLD`.
-- **Relay Interlock**: Relay activation (`RELAY_HOLD`) is only permitted from `ARMED` (or `IDLE` for manual remote) when relay is `OFF`. Double-activation while in `RELAY_HOLD` or `COOLDOWN` is rejected fail-closed.
+- **Relay Interlock**: Relay activation (`RELAY_HOLD`) is permitted from `ARMED` after a sensor trigger, from `AUTH_PENDING` for signed local action 2, or from `IDLE` for signed MQTT manual remote. Double-activation while in `RELAY_HOLD` or `COOLDOWN` is rejected fail-closed.
 - **Manual Remote Path**: Authenticated explicit-button `manual_remote` (`triggerManualDoorOpen()`) via MQTT is independent of hands-free GATT local auth proof. It requires Target `IDLE` state and transitions directly to `RELAY_HOLD`.
 - **Boot Validation**: `TargetAclManager::begin()` validates stored slot semantics, ECDSA signature, door ID binding, generation CRC, and high-watermark floor on boot before marking active.
 - **Relay Failsafe**: Independent esp_timer / hardware failsafe timeout transitions FSM to `COOLDOWN`.
@@ -79,8 +82,8 @@ Target (ESP32-C6) is the sole authoritative owner of local ACL verification, acc
 Host unit tests (`python -m unittest tests/test_hardwareless_rc.py` running native C++ `tests/gatt_protocol_test.cpp`) verify:
 - Canonical test vectors and framing (challenge SHA-256 `7cebae...`).
 - Signed ACL parsing, signature verification, dual-slot storage, anti-rollback floor, and lease expiry.
-- Proof verification with strict low-S, invalid action rejection, and unknown credential denial.
-- Target FSM transitions, relay interlock, and dedicated `manual_remote` regression.
+- Proof verification with strict low-S, explicit action 1/2 acceptance, invalid action rejection, and unknown credential denial.
+- Target FSM transitions, action 1 relay-OFF arming, action 2 immediate relay, fail-closed Result/control binding, and dedicated `manual_remote` regression.
 - Bounded offline event queue push, pop, and overflow eviction (capacity 8).
 - Default-OFF and feature-ON PlatformIO builds for `esp32c6`.
 

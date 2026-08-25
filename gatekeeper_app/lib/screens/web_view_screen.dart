@@ -127,11 +127,11 @@ class _WebViewScreenState extends State<WebViewScreen>
       }
       final message = jsonDecode(rawMessage) as Map<String, dynamic>;
       action = message['action']?.toString();
-      if (_apiKey.isEmpty) {
-        throw const FormatException('app authentication unavailable');
-      }
       final deviceId = await DeviceIdService.getDeviceId();
       if (action == 'get_access_status') {
+        if (_apiKey.isEmpty) {
+          throw const FormatException('app authentication unavailable');
+        }
         final response = await http.get(
           Uri.parse(
               '$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
@@ -146,18 +146,6 @@ class _WebViewScreenState extends State<WebViewScreen>
         return;
       }
       if (action == 'open_door') {
-        final statusResponse = await http.get(
-          Uri.parse(
-              '$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
-          headers: {'X-API-KEY': _apiKey},
-        ).timeout(const Duration(seconds: 10));
-        if (statusResponse.statusCode < 200 ||
-            statusResponse.statusCode >= 300 ||
-            (jsonDecode(statusResponse.body)
-                    as Map<String, dynamic>)['status'] !=
-                'approved') {
-          throw const FormatException('device is not approved');
-        }
         final enrollment = await _gattEnrollment.ensureEnrolledAndEnabled();
         if (!enrollment.accepted) {
           await _controller.runJavaScript(
@@ -166,17 +154,21 @@ class _WebViewScreenState extends State<WebViewScreen>
           );
           return;
         }
-        final result = await _gattBridge.triggerLocalGattRetry();
+        final result = await _gattBridge.triggerLocalGattOpen();
         final accepted = result['accepted'] == true;
         final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
+        final latencyMs = (result['latencyMs'] as num?)?.toInt();
         await _controller.runJavaScript(
           'window.completeDoorOpen(${accepted ? 'true' : 'false'}, '
-          '${jsonEncode(accepted ? 'Target 인증 요청을 시작했습니다.' : '출입 요청 실패: $reason')});',
+          '${jsonEncode(accepted ? '문이 열렸습니다${latencyMs == null ? '' : ' (${latencyMs}ms)'}.' : '수동 출입 실패: $reason')});',
         );
         return;
       }
       if (action != 'request_access') {
         throw const FormatException('unsupported action');
+      }
+      if (_apiKey.isEmpty) {
+        throw const FormatException('app authentication unavailable');
       }
       final response = await http
           .post(

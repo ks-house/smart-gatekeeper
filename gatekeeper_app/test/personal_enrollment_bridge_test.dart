@@ -11,7 +11,8 @@ void main() {
     expect(source, contains("/user/request"));
     expect(source, contains('DeviceIdService.getDeviceId()'));
     expect(source, contains("action == 'open_door'"));
-    expect(source, contains('triggerLocalGattRetry()'));
+    expect(source, contains('triggerLocalGattOpen()'));
+    expect(source, isNot(contains("final statusResponse = await http.get")));
     expect(source, contains("currentUrl.host != 'tworimpa.synology.me'"));
   });
 

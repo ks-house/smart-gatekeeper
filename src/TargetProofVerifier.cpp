@@ -90,7 +90,10 @@ VerifyResult TargetProofVerifier::verify(const VerifyRequest& request) {
     return {ResultReason::kExpiredOrReplay, acl_version};
   }
 
-  if (request.action != 1) {
+  if (request.action !=
+          static_cast<uint8_t>(LocalAccessAction::kArmForSensor) &&
+      request.action !=
+          static_cast<uint8_t>(LocalAccessAction::kOpenImmediately)) {
     return {ResultReason::kProofInvalid, acl_version};
   }
 

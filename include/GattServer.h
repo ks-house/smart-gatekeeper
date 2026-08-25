@@ -29,8 +29,9 @@ class GattServer {
   static bool hasActiveOutput();
   static void setProofVerifier(sgk::ProofVerifier* verifier);
   static void setEventSink(sgk::EventSink* sink);
-  static void setOnAuthPendingCallback(void (*callback)(uint32_t now_ms));
-  static void setOnAuthGrantCallback(void (*callback)(uint32_t now_ms));
+  static void setOnAuthPendingCallback(bool (*callback)(uint32_t now_ms));
+  static void setOnAuthGrantCallback(
+      bool (*callback)(sgk::LocalAccessAction action, uint32_t now_ms));
   static void setOnAuthAbortCallback(void (*callback)(uint32_t now_ms));
   static void useProductionEventSink();
   static void notifyAccessArmed(uint64_t now_ms);

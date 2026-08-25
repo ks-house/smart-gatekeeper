@@ -38,8 +38,9 @@ bool requested_enabled = false;
 sgk::FailClosedProofVerifier fail_closed_verifier;
 sgk::ProofVerifier* selected_verifier = &fail_closed_verifier;
 sgk::EventSink* selected_event_sink = nullptr;
-static void (*s_auth_pending_callback)(uint32_t now_ms) = nullptr;
-static void (*s_auth_grant_callback)(uint32_t now_ms) = nullptr;
+static bool (*s_auth_pending_callback)(uint32_t now_ms) = nullptr;
+static bool (*s_auth_grant_callback)(sgk::LocalAccessAction action,
+                                     uint32_t now_ms) = nullptr;
 static void (*s_auth_abort_callback)(uint32_t now_ms) = nullptr;
 
 #if ENABLE_HARDWARELESS_RC
@@ -429,31 +430,23 @@ class DeferredCanonicalEventSink final : public sgk::EventSink {
 };
 
 DeferredCanonicalEventSink deferred_event_sink(&production_event_sink);
-// Authentication state changes are control-plane effects, not best-effort
-// telemetry.  ProofRequested/ProofVerified are emitted only while update()
-// processes queued writes on loopTask, so apply them synchronously before a
-// successful RESULT can be drained.  Abort can originate from a NimBLE
-// disconnect/status callback; coalesce it and apply it on loopTask as well.
+// Abort can originate from a NimBLE disconnect/status callback. Coalesce it
+// and apply it on loopTask rather than running the application FSM/MQTT work on
+// NimBLE's smaller host-task stack.
 class ProductionLifecycleEventSink final : public sgk::EventSink {
  public:
   explicit ProductionLifecycleEventSink(sgk::EventSink* telemetry)
       : telemetry_(telemetry) {}
 
   void emit(const sgk::Event& event) override {
-    if (event.code == sgk::EventCode::kAccessProofRequested &&
-        s_auth_pending_callback != nullptr) {
-      s_auth_pending_callback(static_cast<uint32_t>(event.monotonic_ms));
-    } else if (event.code == sgk::EventCode::kAccessProofVerified &&
-               s_auth_grant_callback != nullptr) {
-      s_auth_grant_callback(static_cast<uint32_t>(event.monotonic_ms));
-    } else if (event.code == sgk::EventCode::kAccessProofRejected ||
-               event.code == sgk::EventCode::kAccessSessionTerminated) {
-      portENTER_CRITICAL(&mux_);
-      abort_pending_ = true;
-      abort_now_ms_ = static_cast<uint32_t>(event.monotonic_ms);
-      portEXIT_CRITICAL(&mux_);
-    }
     if (telemetry_ != nullptr) telemetry_->emit(event);
+  }
+
+  void requestAbort(uint32_t now_ms) {
+    portENTER_CRITICAL(&mux_);
+    abort_pending_ = true;
+    abort_now_ms_ = now_ms;
+    portEXIT_CRITICAL(&mux_);
   }
 
   void drainControls() {
@@ -484,6 +477,26 @@ class ProductionLifecycleEventSink final : public sgk::EventSink {
 };
 
 ProductionLifecycleEventSink production_lifecycle_sink(&deferred_event_sink);
+
+class ProductionAuthControlGate final : public sgk::AuthControlGate {
+ public:
+  bool beginAuth(uint32_t now_ms) override {
+    return s_auth_pending_callback != nullptr &&
+           s_auth_pending_callback(now_ms);
+  }
+
+  bool commitAuthorizedAction(sgk::LocalAccessAction action,
+                              uint32_t now_ms) override {
+    return s_auth_grant_callback != nullptr &&
+           s_auth_grant_callback(action, now_ms);
+  }
+
+  void abortAuth(uint32_t now_ms) override {
+    production_lifecycle_sink.requestAbort(now_ms);
+  }
+};
+
+ProductionAuthControlGate production_auth_control_gate;
 sgk::LocalGattLifecycleBridge production_lifecycle_bridge(
     &production_lifecycle_sink);
 
@@ -630,7 +643,8 @@ void GattServer::init() {
   }
   adapter_state.clear();
   core = new sgk::ProtocolCore(random_source, *selected_verifier, door_id,
-                               selected_event_sink);
+                               selected_event_sink,
+                               &production_auth_control_gate);
   if (!core->initialize()) {
     requested_enabled = false;
     LOGF("[FATAL] GATT CSPRNG boot ID initialization failed; auth disabled");
@@ -810,11 +824,12 @@ void GattServer::setEventSink(sgk::EventSink* sink) {
   selected_event_sink = sink;
 }
 
-void GattServer::setOnAuthPendingCallback(void (*callback)(uint32_t now_ms)) {
+void GattServer::setOnAuthPendingCallback(bool (*callback)(uint32_t now_ms)) {
   s_auth_pending_callback = callback;
 }
 
-void GattServer::setOnAuthGrantCallback(void (*callback)(uint32_t now_ms)) {
+void GattServer::setOnAuthGrantCallback(
+    bool (*callback)(sgk::LocalAccessAction action, uint32_t now_ms)) {
   s_auth_grant_callback = callback;
 }
 

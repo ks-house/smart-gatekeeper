@@ -3532,3 +3532,15 @@
 - Recomputed the complete ordered 69-file map from exact merged-main Git blobs and verified it matches reviewed feature `df2ac4869`, policy-connected head `4baa3fa8` and the sole final bundle; both the reviewed feature and authorization main are ancestors of actual main.
 - The focused trusted-policy suite, OTA contract, all workflow syntax checks, JSON parsing, relative wiki links and whitespace validation pass locally. Hosted base-policy verification remains required before this final rotation merges.
 - This closes only the repository authorization transition. Exact-main production build/NAS publication, Target OTA/reboot and Android GATT challenge/proof/result remain the next connected evidence steps.
+
+## [2026-08-26] code | Split authenticated local manual open from sensor arm
+
+- Added explicit signed local GATT actions: `ARM_FOR_SENSOR(1)` retains the background `AUTH_PENDING → ARMED → sensor` path, while `OPEN_IMMEDIATELY(2)` drives `AUTH_PENDING → RELAY_HOLD` for the mobile button without waiting for the ultrasonic sensor.
+- Bound protocol success to the application control plane through `AuthControlGate`; Target `RESULT OK` is now queued only after the requested FSM transition succeeds. Missing callbacks, busy state or transition refusal abort pending state and return non-OK fail-closed.
+- Replaced the manual UI's WorkManager queue acknowledgement with a foreground native GATT executor that waits for terminal Target Result. Existing enrollment avoids a per-tap backend status request; background presence remains explicit action 1.
+
+## [2026-08-26] test | Verify issue 133 software candidate and capacity
+
+- Passed the Hardwareless source/native-host suite 11/11, including action 1/2 selection, immediate relay callback, unsupported action rejection, control-gate refusal and no false-success Result.
+- Built `esp32c6_personal_production` successfully for ESP32-C6 N16: 1,780,836/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%). Dual OTA slot capacity remains ample.
+- Local Android Gradle execution could not use the repository's CI-only `/opt/flutter` SDK path on this Windows host; hosted Android CI remains required. No phone, AJ-SR04T or physical relay was connected, so APK behavior, contact timing and sensor actuation remain pending rather than claimed.

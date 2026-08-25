@@ -1,6 +1,6 @@
 # Android native BLE GATT credential worker
 
-> Hardwareless RC for issue #17. The personal local-bootstrap and ACL-enrollment path is implemented and software-tested; same-signature phone installation, Samsung/OEM screen-off delivery and ESP32-C6 radio interoperability remain G0-HW gates.
+> Hardwareless RC for issues #17 and #133. The personal local-bootstrap, background action-1 worker and foreground action-2 manual-open paths are implemented and software-tested; current phone/relay physical evidence remains pending.
 
 ## 1. Scope and safety boundary
 
@@ -8,7 +8,8 @@ The Android execution path is an OS-managed `PendingIntent` scan receiver follow
 
 This RC does not change either of these independent paths:
 
-- `manual_local_gatt`: the app's local-open action uses the same enrolled native GATT proof path and never sends a plaintext Target command.
+- `manual_local_gatt`: the app's button runs signed `OPEN_IMMEDIATELY(2)` directly in a foreground coroutine, waits for the terminal Target Result, and never sends a plaintext Target command.
+- `background_local_gatt`: PendingIntent/WorkManager presence always signs `ARM_FOR_SENSOR(1)`; it can arm the Target but cannot bypass the ultrasonic trigger.
 - `manual_remote`: the authenticated Backend/MQTT command remains a separate remote-control path; Home Assistant can expose it only through the signed backend bridge's independent opt-in.
 - OTA: the mobile update manager remains reachable through its existing UI and storage path regardless of the BLE flag, worker state, or worker crash. Target dual-slot update, rollback, periodic HTTPS pull, and authenticated local recovery are unchanged.
 
@@ -48,11 +49,13 @@ When no remote snapshot exists, the personal-build-only `GATT_LOCAL_MANUAL_BOOTS
 
 Ownership is not inferred from cross-process SharedPreferences. A no-backup requested-owner marker plus an exclusive kernel file lease serializes the vendored legacy scanner and native worker across processes. OFF→ON first publishes the native request and sends a package-scoped stop signal; every legacy initialize/ranging/monitoring/bind entry point also reacquires the same legacy lease. Native GATT cannot start until legacy releases it. Expiry or authenticated rollback clears the marker, native work exits before proof, and legacy can reacquire only after the native lease closes. Process death releases the kernel lease automatically.
 
-The Flutter bridge now exposes only three bounded personal operations in addition to health: prepare public enrollment material, set explicit local consent ON/OFF, and request one manual retry. It never returns a private key, signature proof, challenge, raw peer locator, or secret. The UI first calls `POST /api/v1/acl/personal/enroll` over HTTPS with the existing API credential and exact approved device ID; the request contains only the 16-byte credential ID, uncompressed P-256 SEC1 public key and protocol range. A response is accepted only when it echoes the exact credential and a positive ACL version after the backend has observed the configured Target's exact applied ACK. Native ON happens after that response, never before it.
+The Flutter bridge exposes bounded operations for health, public enrollment material, explicit local consent ON/OFF, diagnostic background retry, and terminal manual open. `triggerLocalGattOpen` returns only redacted success/reason/session/latency fields after the Target result; it never returns a private key, signature proof, challenge, raw peer locator, or secret. The UI first calls `POST /api/v1/acl/personal/enroll` over HTTPS only when local enrollment is absent or invalid; an already valid local credential starts manual GATT without a per-tap backend status round trip. Enrollment accepts only an echoed exact credential and positive ACL version after the backend observed exact Target ACL applied ACK. Native ON happens after that response, never before it.
 
 ## 4. Credential and protocol contract
 
 `BleGattTransport` is the testable boundary between the state machine and Android Bluetooth APIs. The production transport performs service discovery, enables the hello/challenge/result CCCDs, writes client hello, receives Target Hello and Challenge as ACK-gated indications through one ordered mailbox, writes proof, and awaits a result indication. It must not issue a simultaneous Challenge characteristic read: the readable single-frame representation and fragmented indication representation can share a message ID and interleave in Android callbacks, which the strict reassembler correctly rejects as malformed. Protocol messages use the UUIDs, lengths, field ordering, unsigned integer encoding, SHA-256 inputs, ATT fragmentation, and reassembly rules in `security_protocol.md` and `protocol/test_vectors/v1.json`.
+
+`GattSessionEngine.run(..., action)` signs the action into both canonical proof bytes and the wire payload. Background `BleGattCredentialWorker` passes action 1 explicitly. `BleGattManualOpenExecutor` acquires the same exclusive native BLE lease and passes action 2 explicitly; before proof write it durably records `PROOF_UNCERTAIN`, and it reports success only for Target reason 0. This separation prevents the manual button from merely arming the sensor path and prevents background presence from directly opening the relay.
 
 Every `connectGatt` call now owns a monotonic transport generation and a callback object captured for that generation. The first callback and the returned `BluetoothGatt` must identify the same connection owner; callbacks from an older generation, a different GATT object, or a terminal connection are ignored. Characteristic and CCCD writes use operation-scoped single-consumer latches keyed by operation kind and characteristic UUID instead of buffered result channels. A disconnect atomically completes connection, service-discovery, message, characteristic-write, and descriptor-write waiters exactly once with `DISCONNECTED` and the original Android GATT status. Late or duplicate callbacks cannot be buffered for a later operation, and reconnect creates a clean generation, so an in-flight disconnect is never allowed to drift into the outer 15-second `GATT_TIMEOUT` classification.
 
