@@ -31,79 +31,53 @@
 #include "TargetProofVerifier.h"
 #include "TargetAccessFsm.h"
 #include "OfflineEventQueue.h"
+#include "DurablePreferences.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
 class NvsAclStorage final : public sgk::TargetAclStorage {
  public:
   bool saveSlot(uint8_t slot, const uint8_t* blob, size_t length) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_acl", false)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "slot_%u", slot);
-    size_t written = prefs.putBytes(key, blob, length);
-    prefs.end();
-    return written == length;
+    return sgk::writeDurableBlob("sgk_acl", key, blob, length);
   }
 
   bool readSlot(uint8_t slot, uint8_t* buffer, size_t capacity,
                 size_t* read_bytes) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_acl", true)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "slot_%u", slot);
-    size_t len = prefs.getBytesLength(key);
-    if (len == 0 || len > capacity) {
-      prefs.end();
-      return false;
-    }
-    size_t read_len = prefs.getBytes(key, buffer, capacity);
-    prefs.end();
+    const size_t read_len = sgk::readDurableBlobWithLegacyFallback(
+        "sgk_acl", key, buffer, capacity);
     if (read_bytes != nullptr) *read_bytes = read_len;
-    return read_len == len;
+    return read_len != 0;
   }
 
   bool saveGenerationRecord(uint8_t record_index,
                              const sgk::GenerationRecord& record) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_acl", false)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "gen_%u", record_index);
-    size_t written = prefs.putBytes(key, &record, sizeof(record));
-    prefs.end();
-    return written == sizeof(record);
+    return sgk::writeDurableBlob("sgk_acl", key, &record, sizeof(record));
   }
 
   bool readGenerationRecord(uint8_t record_index,
                              sgk::GenerationRecord* record) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_acl", true)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "gen_%u", record_index);
-    size_t len = prefs.getBytesLength(key);
-    if (len != sizeof(sgk::GenerationRecord)) {
-      prefs.end();
-      return false;
-    }
-    size_t read_len = prefs.getBytes(key, record, sizeof(sgk::GenerationRecord));
-    prefs.end();
+    const size_t read_len = sgk::readDurableBlobWithLegacyFallback(
+        "sgk_acl", key, record, sizeof(sgk::GenerationRecord));
     return read_len == sizeof(sgk::GenerationRecord);
   }
 
   bool saveHighWatermark(uint64_t version) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_acl", false)) return false;
-    size_t written = prefs.putBytes("hw_ver", &version, sizeof(version));
-    prefs.end();
-    return written == sizeof(version);
+    return sgk::writeDurableBlob("sgk_acl", "hw_ver", &version,
+                                 sizeof(version));
   }
 
   uint64_t readHighWatermark() override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_acl", true)) return 0;
     uint64_t version = 0;
-    prefs.getBytes("hw_ver", &version, sizeof(version));
-    prefs.end();
+    sgk::readDurableBlobWithLegacyFallback("sgk_acl", "hw_ver", &version,
+                                           sizeof(version));
     return version;
   }
 };
@@ -116,61 +90,37 @@ static sgk::TargetProofVerifier g_proof_verifier(
 class NvsQueueStorage final : public sgk::OfflineQueueStorage {
  public:
   bool saveRecord(size_t slot, const sgk::CanonicalEvent& event) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_queue", false)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "rec_%u", static_cast<unsigned int>(slot));
-    size_t written = prefs.putBytes(key, &event, sizeof(event));
-    prefs.end();
-    return written == sizeof(event);
+    return sgk::writeDurableBlob("sgk_queue", key, &event, sizeof(event));
   }
 
   bool readRecord(size_t slot, sgk::CanonicalEvent* event) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_queue", true)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "rec_%u", static_cast<unsigned int>(slot));
-    size_t len = prefs.getBytesLength(key);
-    if (len != sizeof(sgk::CanonicalEvent) || event == nullptr) {
-      prefs.end();
-      return false;
-    }
-    size_t read_len = prefs.getBytes(key, event, sizeof(sgk::CanonicalEvent));
-    prefs.end();
+    if (event == nullptr) return false;
+    const size_t read_len = sgk::readDurableBlobWithLegacyFallback(
+        "sgk_queue", key, event, sizeof(sgk::CanonicalEvent));
     return read_len == sizeof(sgk::CanonicalEvent);
   }
 
   bool saveMetaRecord(uint8_t meta_slot, const sgk::QueueMetaRecord& meta) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_queue", false)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "meta_%u", static_cast<unsigned int>(meta_slot));
-    size_t written = prefs.putBytes(key, &meta, sizeof(meta));
-    prefs.end();
-    return written == sizeof(meta);
+    return sgk::writeDurableBlob("sgk_queue", key, &meta, sizeof(meta));
   }
 
   bool readMetaRecord(uint8_t meta_slot, sgk::QueueMetaRecord* meta) override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_queue", true)) return false;
     char key[16] = {};
     std::snprintf(key, sizeof(key), "meta_%u", static_cast<unsigned int>(meta_slot));
-    size_t len = prefs.getBytesLength(key);
-    if (len != sizeof(sgk::QueueMetaRecord) || meta == nullptr) {
-      prefs.end();
-      return false;
-    }
-    size_t read_len = prefs.getBytes(key, meta, sizeof(sgk::QueueMetaRecord));
-    prefs.end();
+    if (meta == nullptr) return false;
+    const size_t read_len = sgk::readDurableBlobWithLegacyFallback(
+        "sgk_queue", key, meta, sizeof(sgk::QueueMetaRecord));
     return read_len == sizeof(sgk::QueueMetaRecord);
   }
 
   bool clearStorage() override {
-    Preferences prefs;
-    if (!prefs.begin("sgk_queue", false)) return false;
-    bool ok = prefs.clear();
-    prefs.end();
-    return ok;
+    return sgk::clearDurableAndLegacyNamespace("sgk_queue");
   }
 };
 
@@ -553,6 +503,20 @@ void setup() {
        g_tx_power_dbm, savedDist, (unsigned long)g_pre_arm_duration_ms, (unsigned long)g_relay_cooldown_ms);
 
   // 4. Wi-Fi 초기화
+  nvs_stats_t durable_nvs_stats{};
+  if (sgk::durableStateStats(&durable_nvs_stats)) {
+    LOGF("[NVS] Durable security state partition '%s' ready: "
+         "used=%u free=%u total=%u",
+         sgk::durableStatePartitionLabel(),
+         static_cast<unsigned int>(durable_nvs_stats.used_entries),
+         static_cast<unsigned int>(durable_nvs_stats.free_entries),
+         static_cast<unsigned int>(durable_nvs_stats.total_entries));
+  } else {
+    LOGF("[NVS-ERROR] Durable security state partition '%s' unavailable; "
+         "ACL and replay writes will fail closed",
+         sgk::durableStatePartitionLabel());
+  }
+
   WifiManager::init();
   OtaManager::setSafeStateProvider(currentOtaSafeState);
   OtaManager::init();

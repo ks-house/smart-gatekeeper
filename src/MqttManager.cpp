@@ -12,6 +12,7 @@
 #include "OfflineEventQueue.h"
 #include "TargetCommandSecurity.h"
 #include "FlatJsonObjectPolicy.h"
+#include "DurablePreferences.h"
 
 #include <cstring>
 #include <ctime>
@@ -56,26 +57,17 @@ class NvsCommandReplayStorage final : public sgk::CommandReplayStorage {
  public:
   bool readLedger(uint8_t slot, sgk::CommandReplayLedger* ledger) override {
     if (ledger == nullptr || slot > 1) return false;
-    Preferences preferences;
-    if (!preferences.begin("sgk_cmd", true)) return false;
     const char* key = slot == 0 ? "ledger_a" : "ledger_b";
-    const size_t length = preferences.getBytesLength(key);
-    const size_t read = length == sizeof(*ledger)
-                            ? preferences.getBytes(key, ledger, sizeof(*ledger))
-                            : 0;
-    preferences.end();
+    const size_t read = sgk::readDurableBlobWithLegacyFallback(
+        "sgk_cmd", key, ledger, sizeof(*ledger));
     return read == sizeof(*ledger);
   }
 
   bool writeLedger(uint8_t slot,
                    const sgk::CommandReplayLedger& ledger) override {
     if (slot > 1) return false;
-    Preferences preferences;
-    if (!preferences.begin("sgk_cmd", false)) return false;
     const char* key = slot == 0 ? "ledger_a" : "ledger_b";
-    const size_t written = preferences.putBytes(key, &ledger, sizeof(ledger));
-    preferences.end();
-    return written == sizeof(ledger);
+    return sgk::writeDurableBlob("sgk_cmd", key, &ledger, sizeof(ledger));
   }
 };
 

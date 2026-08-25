@@ -3626,3 +3626,18 @@
 - PR #144 head `22c73bf4` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `ff3535a34df004aca296cabd5f4b69ecb698f2a3`. Issue #143 remains open until connected post-merge validation finishes.
 - Removed both bounded `9565f67` transition identities and pinned the sole `current-main-baseline` to actual merged main `ff3535a3`; the complete ordered 69-file map and both inventories remain unchanged from the reviewed candidate.
 - This policy-only issue #147 does not claim exact-main NAS publication, Target OTA/install/reboot health, Android installation, action-2 relay success, pocket action-1, ultrasonic threshold or physical contact evidence.
+
+## [2026-08-26] test | Validate exact-main 848 manual open and isolate pocket blocker
+
+- Installed exact main `848bbf16` from production CI/NAS on the connected ESP32-C6 Target and Samsung phone. Target Wi-Fi/MQTTS/GATT recovered, and four main action-2 attempts completed relay-command ON/OFF plus terminal mobile success without reset.
+- A screen-off OS wake attempt reached the Android background worker and one Target GATT connection but not `ARMED`; Target emitted `ledger_b NOT_ENOUGH_SPACE`, matching earlier `slot_0 NOT_ENOUGH_SPACE` ACL failures. Opened issue #149 and kept sensor/contact/rollback claims pending.
+
+## [2026-08-26] fix | Expand durable security state without moving OTA slots
+
+- Kept the original 20 KiB NVS for Wi-Fi/config and both 7 MiB OTA slots at their existing offsets. Routed ACL snapshots, command replay ledgers and the offline event queue to the unused 1.875 MiB data region with legacy-read fallback and no automatic erase.
+- Existing application-only OTA installations select the legacy `spiffs` label at `0xE10000`; new full flashes label the same region `sgkstate` with NVS subtype. Added boot-time partition statistics and a fail-closed unavailable diagnostic.
+
+## [2026-08-26] test | Verify issue 149 local candidate
+
+- Passed 105 focused NVS, Hardwareless, pocket, Target security and OTA contract tests. `esp32c6_personal_production` built successfully at 1,782,274/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%) without partition-generator warnings.
+- Hosted CI, trusted build-inventory authorization, exact-main signed OTA and connected action-1/ultrasonic/relay repetition remain required; no physical sensor/contact acceptance is inferred from this local build.
