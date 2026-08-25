@@ -3555,3 +3555,15 @@
 - Passed the Hardwareless source/native-host suite 11/11, including action 1/2 selection, immediate relay callback, unsupported action rejection, control-gate refusal and no false-success Result.
 - Built `esp32c6_personal_production` successfully for ESP32-C6 N16: 1,780,836/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%). Dual OTA slot capacity remains ample.
 - Local Android Gradle execution could not use the repository's CI-only `/opt/flutter` SDK path on this Windows host; hosted Android CI remains required. No phone, AJ-SR04T or physical relay was connected, so APK behavior, contact timing and sensor actuation remain pending rather than claimed.
+
+## [2026-08-26] compile | Finalize issue 133 trusted baseline
+
+- PR #137 merge `26bed3df` authorized reviewed feature `91858585`; policy-connected head `bba7bf4d` retained both parents and the exact 69-file protected map, and all fresh Hosted Trusted, OTA, protocol, Android and ESP32-C6 checks passed before PR #135 merge-commit produced actual main `737d3243af04d18e0c3f5c5b8e2c8435d177ac2c`.
+- Removed both bounded `9185858` transition identities and pinned the sole `current-main-baseline` persistent identity to actual merged main `737d3243`. All protected normalized Git blobs, seven workflow entries and the empty repository-local Action inventory remain unchanged from the reviewed feature.
+- This policy-only rotation changes no runtime/workflow byte and claims no production Secret materialization, NAS publication, Target OTA, Android installation, GATT result, relay, sensor, health-valid or rollback evidence.
+
+## [2026-08-26] test | Verify final issue 133 baseline
+
+- Recomputed the complete ordered 69-file map from exact merged-main GitHub API bytes and verified it matches reviewed feature `91858585`, policy-connected head `bba7bf4d` and the sole final bundle; both the reviewed feature and authorization main are ancestors of actual main.
+- Passed 42 focused trusted-policy tests, the OTA contract gate, JSON parsing, relative wiki links and whitespace validation locally. Hosted base-policy verification remains required before this final rotation merges.
+- This closes the repository authorization transition only. Main production NAS publication and Target/Android installation remain separate evidence steps, while phone, ultrasonic and physical relay validation remain pending.
