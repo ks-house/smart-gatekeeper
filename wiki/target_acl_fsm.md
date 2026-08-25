@@ -93,3 +93,15 @@ Host unit tests (`python -m unittest tests/test_hardwareless_rc.py` running nati
 ## 5. Physical Gate Notice
 
 This documentation and C++ core implementation cover software-only host and build evidence. Physical hardware evidence (ESP32-C6 radio capture, GPIO3 relay timing, sensor integration, power-loss/bootloader recovery, `RELAY-G0..G2`, `OTA-G1..G4`) remains pending.
+
+The first connected exact-main action-2 trial on 2026-08-26 exposed issue #143:
+`ProtocolCore::processProof()` synchronously committed the authenticated action
+while `GattServer::update()` still held a FreeRTOS critical-section spinlock.
+`TargetAccessFsm::handleLocalManualOpen()` then reached the relay callback and
+newlib aborted when `LOGF` attempted to acquire its recursive stdout lock. The
+issue #143 candidate replaces that adapter/core spinlock with a recursive
+task-context mutex; this preserves serialized Result-to-FSM binding without
+executing GPIO, timer, diagnostics or logging inside a critical section. Host
+and build evidence does not close the Gate: the exact merged signed image must
+complete action 2, terminal Result and one commanded relay ON/OFF sequence on
+the connected Target without a reset.

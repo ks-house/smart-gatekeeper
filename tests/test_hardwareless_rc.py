@@ -222,6 +222,21 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("s_auth_grant_callback", control_gate)
         self.assertIn("production_lifecycle_sink.requestAbort", control_gate)
 
+    def test_authenticated_action_commit_is_not_run_under_a_spinlock(self):
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(encoding="utf-8")
+        update_handler = adapter.split("void GattServer::update()", 1)[1].split(
+            "bool GattServer::isEnabled()", 1
+        )[0]
+
+        # processProof synchronously commits the action to the application FSM.
+        # That path reaches GPIO, esp_timer, diagnostics and LOGF, so a FreeRTOS
+        # critical section here aborts newlib's recursive stdout lock on target.
+        self.assertIn("std::recursive_mutex core_mutex;", adapter)
+        self.assertNotIn("portENTER_CRITICAL(&core_mux)", adapter)
+        self.assertIn("core_mutex.lock();", update_handler)
+        self.assertIn("core->receiveFrame", update_handler)
+        self.assertIn("core_mutex.unlock();", update_handler)
+
     def test_android_challenge_uses_only_the_subscribed_indication_stream(self):
         transport = (
             ROOT

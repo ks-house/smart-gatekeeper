@@ -408,3 +408,20 @@ separately in issue #134.
 No phone, AJ-SR04T or physical relay was connected. Screen-off/pocket success
 rate, OS delivery delay, presence-to-ARMED distribution, sensor threshold and
 GPIO3 contact timing remain pending and must not be inferred from these tests.
+
+## 2026-08-26 exact-main b6 action-2 abort and issue #143 candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact Target OTA | Run `32881540989` published exact main `b6cf6ec1a725e734d67df1ae8729e02f3ade0a9c` as `2.1.267+main.gb6cf6ec`. The connected a9 Target accepted the signed manifest, downloaded the 1,846,660-byte encrypted artifact, verified the inactive slot and rebooted into b6; Wi-Fi `192.168.35.19`, MQTTS, GATT and ACL v159 returned | PASS for signed install/reboot/current runtime; the retained OTA-data path again emitted no pending-health/valid-mark log, so rollback remains pending |
+| Exact Android replacement | Run `32881541103` supplied a 55,786,649-byte production-signed APK. SHA-256 was `d0d3ae4b193b5a42e1003197019d865841d1f461ebf012bffab77ceff91e62f7`, signer SHA-256 matched the installed app, and embedded source was exact b6. `adb install -r` produced `1.0.0-gb6cf6ec` / 19901 while preserving first-install time, app data and AndroidKeyStore | PASS for exact identity and same-signature replacement |
+| Main `문 열기` action 2 | Android connected, discovered the service and enabled Hello/Challenge/Result indications. Proof processing then reset the Target before any `RELAY_HOLD`, relay ON/OFF or successful Result; Android reported `PROOF_OUTCOME_UNCERTAIN` | FAIL; issue #143 release blocker |
+| Crash decode | Physical trace reported `abort()` at `0x40801c75`; production-equivalent ELF mapped the call chain through `TargetAccessFsm::handleLocalManualOpen`, `ProtocolCore::processProof` and the relay callback. `relayOn()` reached `LOGF` while `GattServer::update()` still held the `core_mux` FreeRTOS critical section, and newlib aborted while acquiring its recursive stdout lock | ROOT CAUSE CONFIRMED |
+| Issue #143 source candidate | The protocol/adapter serialization lock is a task-context `std::recursive_mutex`, so the synchronous Result-to-FSM action commit may safely reach GPIO, failsafe timer, diagnostics and logging while remaining serialized with NimBLE callbacks. Focused Hardwareless/pocket tests passed 16/16 | PASS for source/host regression only |
+| ESP32-C6 candidate capacity | `esp32c6_personal_production` compiled successfully with 1,781,874/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%) | PASS for local build/capacity; exact CI/NAS publication, install and connected action-2 repetition remain pending |
+
+The board-only setup proves the commanded GPIO/FSM path only when the serial
+trace reaches it; it does not prove a relay contact or electrical load. Issue
+#143 cannot close until the exact merged signed image completes terminal action
+2 without reset and logs one relay command ON/OFF sequence. Physical contact,
+sensor threshold and power behavior remain separate #54 Gates.

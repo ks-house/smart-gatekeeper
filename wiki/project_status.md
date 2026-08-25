@@ -14,9 +14,28 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소 exact main `a9b68222f8c7d47a1ed36f4395c636f959bfb15d`, 실제 Target `2.1.266+main.ga9b6822`, NAS mobile `1.0.0-ga9b6822` (`versionCode=19801`), 그리고 과거 exact-main `db37bc2` foreground GATT proof/result
+> 관측 기준: 저장소 exact main `b6cf6ec1a725e734d67df1ae8729e02f3ade0a9c`, 실제 Target `2.1.267+main.gb6cf6ec`, Android `1.0.0-gb6cf6ec` (`versionCode=19901`), 그리고 issue #143 action-2 reset 증거
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-08-26 connected b6 acceptance와 issue #143
+
+- runs `32881540989` / `32881541103`의 exact b6 Target/APK를 각각 signed
+  periodic HTTPS OTA와 same-signature `adb install -r`로 설치했다. Target은
+  Wi-Fi `192.168.35.19`, MQTTS, GATT와 ACL v159를 복원했고 Android 앱 데이터와
+  AndroidKeyStore credential은 보존됐다.
+- 메인 `문 열기` action 2는 GATT 연결·service discovery·indication enable까지 진행했지만
+  proof 처리 중 Target이 `abort()`로 재부팅했다. `RELAY_HOLD`, relay ON/OFF와 terminal
+  Result OK는 발생하지 않았고 앱은 `PROOF_OUTCOME_UNCERTAIN`을 표시했다. 요구사항 1은
+  현재 FAIL이며 issue #143이 release blocker다.
+- production-equivalent ELF는 `GattServer::update()`가 `core_mux` critical section 안에서
+  `ProtocolCore::processProof()`를 실행하고, 동기 Result-to-FSM commit이
+  `TargetAccessFsm::handleLocalManualOpen()` → relay callback → `LOGF`에 도달하면서
+  newlib stdout recursive-lock assert를 일으킨 경로를 가리켰다.
+- issue #143 후보는 adapter/core 직렬화를 recursive task mutex로 바꿔 GPIO, failsafe timer,
+  diagnostics와 logging을 critical section 밖 task context에서 실행한다. focused 16/16과
+  personal-production ESP32-C6 build(1,781,874/7,340,032 bytes)는 통과했다. 아직 merge,
+  exact CI/NAS 재게시, Target OTA와 action-2 재시험 전이므로 수정 완료로 판정하지 않는다.
 
 ## 2026-08-26 PR #132 증거 복구와 현재 경계
 

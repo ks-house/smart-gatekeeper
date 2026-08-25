@@ -3592,3 +3592,15 @@
 - Synchronized project status, Android worker, Target GATT transport, hardware evidence and navigation, and appended this log without modifying `raw/` or prior log entries.
 - Passed the relative Markdown link regression, all 42 trusted-workflow policy tests and `git diff --check` locally.
 - Issue #141 owns this docs-only recovery. After its PR passes hosted CI and merges, conflicting draft PR #132 is to be closed as superseded with the replacement PR link rather than merged over newer status.
+
+## [2026-08-26] test | Reproduce exact-main action-2 Target abort
+
+- Installed exact main `b6cf6ec1a725e734d67df1ae8729e02f3ade0a9c` on the connected devices: Target run `32881540989` reached `2.1.267+main.gb6cf6ec` through signed periodic HTTPS inactive-slot OTA, and Android run `32881541103` reached production-signed `1.0.0-gb6cf6ec` / 19901 through same-signature replacement with app data and AndroidKeyStore preserved.
+- The main `문 열기` action-2 request connected and enabled the GATT indications, then reset the Target with `abort()` before `RELAY_HOLD`, relay ON/OFF or terminal Result OK. Android reported `PROOF_OUTCOME_UNCERTAIN`; the rebooted Target recovered Wi-Fi, MQTTS, GATT and ACL.
+- Production-equivalent ELF decoding mapped the crash through `ProtocolCore::processProof`, `TargetAccessFsm::handleLocalManualOpen` and the relay callback. `GattServer::update()` held the `core_mux` critical section while the synchronous action commit reached `LOGF`, causing newlib recursive stdout-lock acquisition to abort. Opened issue #143 as the connected release blocker.
+
+## [2026-08-26] fix | Keep authenticated action effects out of critical sections
+
+- Replaced the GATT adapter/core FreeRTOS spinlock with a recursive task-context mutex. NimBLE callbacks and loopTask protocol processing remain serialized, while Result-to-FSM action commit may safely execute GPIO, relay failsafe timer, diagnostics and logging without running them inside a critical section.
+- Added a source regression that rejects restoration of `core_mux` critical-section protocol execution. The focused Hardwareless and pocket suites passed 16/16, and `esp32c6_personal_production` built at 1,781,874/7,340,032 bytes flash and 67,088/327,680 bytes RAM.
+- The broader selected suite retained one unrelated pre-existing Windows CRLF failure in `manuals/README.md`; this issue does not modify that file. Exact hosted CI, NAS publication, Target OTA and connected action-2 repetition remain required before issue #143 can close.

@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 
 #include "ConfigManager.h"
 #include "MqttManager.h"
@@ -67,7 +68,15 @@ BLECharacteristic* result_characteristic = nullptr;
 std::array<uint8_t, sgk::kMaxMessageSize + sgk::kFrameHeaderSize>
     challenge_read_value{};
 size_t challenge_read_length = 0;
-portMUX_TYPE core_mux = portMUX_INITIALIZER_UNLOCKED;
+// Protocol processing can synchronously commit an authenticated action into the
+// application FSM.  That path intentionally reaches GPIO, the relay failsafe
+// timer, diagnostics and logging.  A FreeRTOS critical-section spinlock must
+// never cover those operations: newlib aborts when LOGF attempts to acquire its
+// recursive stdout lock from inside a critical section.  NimBLE callbacks run
+// in task context, so a recursive task mutex safely serializes their bounded
+// adapter updates with loopTask protocol processing while allowing the FSM's
+// lifecycle callbacks to re-enter GattServer for sequence bookkeeping.
+std::recursive_mutex core_mutex;
 sgk::IndicationToken in_flight_token_{};
 sgk::MessageType in_flight_type_{sgk::MessageType::kError};
 bool in_flight_valid_{false};
@@ -501,16 +510,16 @@ sgk::LocalGattLifecycleBridge production_lifecycle_bridge(
     &production_lifecycle_sink);
 
 void requestAdvertisingRestart() {
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   advertising_restart_requested_ = true;
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
 }
 
 bool consumeAdvertisingRestartRequest() {
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   const bool requested = advertising_restart_requested_;
   advertising_restart_requested_ = false;
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   return requested;
 }
 
@@ -673,32 +682,32 @@ void GattServer::update() {
 
   const uint32_t now_ms = millis();
   sgk::ConnectionToken overflow_owner;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   const bool overflow = adapter_state.consumeOverflow(&overflow_owner);
   if (overflow) {
     // Overflow wins before any queued proof can reach the verifier.
     core->receiveFrame(sgk::MessageType::kProof, overflow_owner, nullptr, 0,
                        now_ms);
   }
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
 
   if (!overflow) {
     while (true) {
       sgk::PendingWrite pending;
-      portENTER_CRITICAL(&core_mux);
+      core_mutex.lock();
       const bool available = adapter_state.popWrite(&pending);
       if (available) {
         core->receiveFrame(pending.type, pending.owner, pending.bytes.data(),
                            pending.length, millis());
       }
-      portEXIT_CRITICAL(&core_mux);
+      core_mutex.unlock();
       if (!available) break;
     }
   }
 
   sgk::ConnectionToken timeout_owner;
   bool indication_timeout = false;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   core->tick(millis());
   if (adapter_state.confirmationTimedOut(millis())) {
     timeout_owner = adapter_state.activeOwner();
@@ -708,7 +717,7 @@ void GattServer::update() {
                          sgk::ResultReason::kInternalFailClosed, millis());
     indication_timeout = true;
   }
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   if (indication_timeout) {
     LOGF("[ERROR] GATT indication confirmation timed out; session aborted");
   }
@@ -732,9 +741,9 @@ void GattServer::setEnabled(bool enabled) {
 #if ENABLE_HARDWARELESS_RC
   requested_enabled = enabled;
   if (core == nullptr) return;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   core->setEnabled(enabled);
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   if (enabled) {
     createService();
   } else {
@@ -751,9 +760,9 @@ bool GattServer::isConnected() { return getActiveConnections() != 0; }
 uint32_t GattServer::getActiveConnections() {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return 0;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   const uint32_t count = core->connected() ? 1 : 0;
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   return count;
 #else
   return 0;
@@ -771,14 +780,14 @@ bool GattServer::isOtaBusy() {
 void GattServer::setOtaBusy(bool busy) {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   in_flight_valid_ = false;
   if (busy) {
     adapter_state.abortOutput();
     adapter_state.clearWrites();
   }
   core->setOtaBusy(busy, millis());
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   drainOutputs();
 #else
   (void)busy;
@@ -805,11 +814,11 @@ void GattServer::flushOtaBusy(uint32_t timeout_ms) {
 bool GattServer::hasActiveOutput() {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return false;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   const bool active = adapter_state.outputActive() ||
                        adapter_state.confirmationPending() ||
                        core->hasOutput();
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   return active;
 #else
   return false;
@@ -906,12 +915,12 @@ GattServer::Telemetry GattServer::getTelemetry() {
   Telemetry telemetry{0, 0, sgk::SessionState::kIdle, false};
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return telemetry;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   telemetry.active_connections = core->connected() ? 1 : 0;
   telemetry.failed_attempts = core->failedAttempts();
   telemetry.session_state = core->state();
   telemetry.ota_busy = core->otaBusy();
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
 #endif
   return telemetry;
 }
@@ -919,7 +928,7 @@ GattServer::Telemetry GattServer::getTelemetry() {
 bool GattServer::handleConnect(uint16_t connection_id) {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return false;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   sgk::ConnectionToken owner;
   const bool core_accepted = core->connect(connection_id, millis(), &owner);
   const bool accepted =
@@ -927,7 +936,7 @@ bool GattServer::handleConnect(uint16_t connection_id) {
   if (core_accepted && !accepted) {
     core->disconnect(owner, millis());
   }
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   LOGF("[INFO] GATT connection %u %s", connection_id,
        accepted ? "accepted" : "rejected (single-connection limit)");
   return accepted;
@@ -940,14 +949,14 @@ bool GattServer::handleConnect(uint16_t connection_id) {
 void GattServer::handleDisconnect(uint16_t connection_id) {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   sgk::ConnectionToken owner;
   if (adapter_state.ownerForHandle(connection_id, &owner)) {
     in_flight_valid_ = false;
     core->disconnect(owner, millis());
     adapter_state.disconnect(connection_id);
   }
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
 #else
   (void)connection_id;
 #endif
@@ -957,9 +966,9 @@ void GattServer::handleWrite(uint16_t connection_id, sgk::MessageType type,
                              const uint8_t* value, size_t length) {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   adapter_state.enqueueWrite(connection_id, type, value, length);
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
 #else
   (void)connection_id;
   (void)type;
@@ -971,9 +980,9 @@ void GattServer::handleWrite(uint16_t connection_id, sgk::MessageType type,
 void GattServer::handleSubscribe(uint16_t connection_id,
                                  sgk::MessageType type, bool subscribed) {
 #if ENABLE_HARDWARELESS_RC
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   adapter_state.setSubscribed(connection_id, type, subscribed);
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
 #else
   (void)connection_id;
   (void)type;
@@ -984,12 +993,12 @@ void GattServer::handleSubscribe(uint16_t connection_id,
 void GattServer::handleIndicationStatus(sgk::MessageType type, bool success) {
 #if ENABLE_HARDWARELESS_RC
   sgk::IndicationToken token{};
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   if (in_flight_valid_ && type == in_flight_type_) {
     token = in_flight_token_;
     in_flight_valid_ = false;
   }
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   handleIndicationStatus(token, type, success);
 #else
   (void)type;
@@ -1003,7 +1012,7 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
   (void)type;
   sgk::ConnectionToken owner;
   sgk::IndicationResult result = sgk::IndicationResult::kIgnored;
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   if (in_flight_valid_ && token == in_flight_token_) {
     in_flight_valid_ = false;
   }
@@ -1014,7 +1023,7 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
     core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                          millis());
   }
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
   if (result == sgk::IndicationResult::kAborted) {
     LOGF("[ERROR] GATT indication failed; session aborted");
   }
@@ -1109,7 +1118,7 @@ void GattServer::drainOutputs() {
   size_t frame_length = 0;
   sgk::MessageType type = sgk::MessageType::kError;
 
-  portENTER_CRITICAL(&core_mux);
+  core_mutex.lock();
   if (!adapter_state.outputActive() && core->popOutput(&newly_staged)) {
     staged = adapter_state.stageOutput(newly_staged);
     if (!staged) {
@@ -1145,7 +1154,7 @@ void GattServer::drainOutputs() {
       in_flight_valid_ = true;
     }
   }
-  portEXIT_CRITICAL(&core_mux);
+  core_mutex.unlock();
 
   if (stage_failed || begin_failed) {
     LOGF("[ERROR] GATT output owner/subscription mismatch; session aborted");
