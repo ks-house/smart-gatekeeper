@@ -3620,3 +3620,9 @@
 
 - PR #146 passed its hosted Trusted Workflow check and merged as policy main `fcb6731f5d7771aa01d96dcef26d7aa1485d03b2`, closing issue #145.
 - Merge-connected that authorization main into PR #144 without rebasing or squashing, preserving both the exact reviewed feature parent `9565f67c` and the policy parent. Fresh Hosted Trusted, OTA, protocol, Android and ESP32-C6 checks remain required before the feature can merge.
+
+## [2026-08-26] compile | Finalize issue 143 trusted baseline
+
+- PR #144 head `22c73bf4` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `ff3535a34df004aca296cabd5f4b69ecb698f2a3`. Issue #143 remains open until connected post-merge validation finishes.
+- Removed both bounded `9565f67` transition identities and pinned the sole `current-main-baseline` to actual merged main `ff3535a3`; the complete ordered 69-file map and both inventories remain unchanged from the reviewed candidate.
+- This policy-only issue #147 does not claim exact-main NAS publication, Target OTA/install/reboot health, Android installation, action-2 relay success, pocket action-1, ultrasonic threshold or physical contact evidence.
