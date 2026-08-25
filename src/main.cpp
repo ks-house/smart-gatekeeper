@@ -193,6 +193,8 @@ static sgk::TargetAccessFsm g_access_fsm(
         GattServer::notifySensorDetected(now_ms);
       } else if (std::strcmp(event, "relay_on_sensor") == 0) {
         GattServer::notifyRelayOn(now_ms);
+      } else if (std::strcmp(event, "relay_on_local_manual") == 0) {
+        GattServer::notifyRelayOn(now_ms);
       } else if (std::strcmp(event, "door_close") == 0) {
         GattServer::notifyRelayOff(now_ms, false);
       } else if (std::strcmp(event, "door_close_failsafe") == 0) {
@@ -479,10 +481,16 @@ static void initBleAdvertiser() {
   GattServer::useProductionEventSink();
   GattServer::setProofVerifier(&g_proof_verifier);
   GattServer::setOnAuthPendingCallback([](uint32_t now_ms) {
-    g_access_fsm.handleAuthPending(now_ms, 5000);
+    return g_access_fsm.handleAuthPending(now_ms, 5000);
   });
-  GattServer::setOnAuthGrantCallback([](uint32_t now_ms) {
-    g_access_fsm.handleAuthSuccess(now_ms, g_pre_arm_duration_ms, g_relay_cooldown_ms);
+  GattServer::setOnAuthGrantCallback([](sgk::LocalAccessAction action,
+                                        uint32_t now_ms) {
+    if (action == sgk::LocalAccessAction::kOpenImmediately) {
+      return g_access_fsm.handleLocalManualOpen(
+          now_ms, RELAY_HOLD_MS, g_relay_cooldown_ms);
+    }
+    return g_access_fsm.handleAuthSuccess(
+        now_ms, g_pre_arm_duration_ms, g_relay_cooldown_ms);
   });
   GattServer::setOnAuthAbortCallback([](uint32_t now_ms) {
     g_access_fsm.handleAuthAbort(now_ms, "gatt_auth_aborted");

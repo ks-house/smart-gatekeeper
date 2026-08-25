@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-08-25
+updated: 2026-08-26
 source_of_truth: true
 applies_to:
   - firmware
@@ -17,6 +17,20 @@ applies_to:
 > 관측 기준: 마지막 NAS/OTA exact-main Target `2.1.259+main.gbc9bb5d`, 현재 물리 Target의 USB-only GATT stack-safety candidate `2.1.260-test.g163610d`, 연결된 phone `1.0.0-gbc9bb5d` (`versionCode=18501`), live NAS Backend/HA bridge, plus 아직 배포하지 않은 hardened Target/Android source correction
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-08-26 issue #133 구현 후보
+
+- 수동 앱 버튼과 background presence가 더 이상 같은 의미를 공유하지 않는다. 수동 버튼은 signed
+  local GATT action 2를 foreground에서 즉시 실행하고 Target terminal result를 기다리며, presence
+  worker는 action 1을 명시적으로 사용해 `ARMED`까지만 전환한다.
+- Target protocol은 `AuthControlGate`로 proof와 FSM을 결합한다. action 1은
+  `AUTH_PENDING → ARMED`, action 2는 `AUTH_PENDING → RELAY_HOLD`이며 실제 전이가 성공한 뒤에만
+  `RESULT OK`를 생성한다.
+- native C++/source suite 11/11과 `esp32c6_personal_production` build가 통과했다. firmware는
+  1,780,836/7,340,032 bytes(24.3%), RAM 67,088/327,680 bytes(20.5%)다.
+- 이 후보는 아직 PR CI/merge/NAS publication/Target install 전이다. 현재 phone은 연결되어 있지 않고
+  sensor/relay가 배선되지 않았으므로 버튼-to-GPIO latency, 실제 접점, 초음파 hands-free 결과를
+  주장하지 않는다.
 
 ## 1. 한눈에 보기
 

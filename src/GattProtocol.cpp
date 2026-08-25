@@ -325,10 +325,12 @@ void AdapterState::abortOutput() {
 
 ProtocolCore::ProtocolCore(RandomSource& random, ProofVerifier& verifier,
                            const std::array<uint8_t, 16>& door_id,
-                           EventSink* event_sink)
+                           EventSink* event_sink,
+                           AuthControlGate* auth_control_gate)
     : random_(random),
       verifier_(verifier),
       event_sink_(event_sink),
+      auth_control_gate_(auth_control_gate),
       door_id_(door_id) {
   door_id_ready_ = !allZero(door_id_.data(), door_id_.size()) &&
                    !std::all_of(door_id_.begin(), door_id_.end(),
@@ -350,6 +352,7 @@ bool ProtocolCore::initialize() {
 void ProtocolCore::setEnabled(bool enabled) {
   enabled_ = enabled && rng_ready_;
   if (!enabled_) {
+    abortAuthControl(0);
     connection_active_ = false;
     resetSession();
   }
@@ -368,6 +371,7 @@ void ProtocolCore::setOtaBusy(bool busy, uint32_t now_ms) {
     output_count_ = 0;
     queueResult(ResultReason::kBusy, 1000, active_acl_version_);
     emit(EventCode::kAccessSessionTerminated, ResultReason::kBusy, now_ms);
+    abortAuthControl(now_ms);
     resetSessionPreservingOutputs();
   }
 }
@@ -396,6 +400,7 @@ void ProtocolCore::disconnect(const ConnectionToken& owner, uint32_t now_ms) {
       emit(EventCode::kAccessSessionTerminated, ResultReason::kSessionInvalid,
            now_ms);
     }
+    abortAuthControl(now_ms);
   }
   resetSession();
 }
@@ -404,6 +409,7 @@ void ProtocolCore::abortTransport(const ConnectionToken& owner,
                                   ResultReason reason, uint32_t now_ms) {
   if (!connection_active_ || owner != connectionOwner()) return;
   emit(EventCode::kAccessSessionTerminated, reason, now_ms);
+  abortAuthControl(now_ms);
   resetSession();
 }
 
@@ -637,6 +643,17 @@ bool ProtocolCore::processHello(const uint8_t* payload, size_t length,
   event_last_causation_sequence_ = 0;
   emit(EventCode::kAccessGattConnected, ResultReason::kOk, now_ms);
 
+  auth_control_active_ = auth_control_gate_ != nullptr;
+  if (!auth_control_active_ || !auth_control_gate_->beginAuth(now_ms)) {
+    abortAuthControl(now_ms);
+    queueTargetHello(0, 2);
+    emit(EventCode::kAccessSessionTerminated,
+         auth_control_gate_ == nullptr ? ResultReason::kInternalFailClosed
+                                       : ResultReason::kBusy,
+         now_ms);
+    resetSessionPreservingOutputs();
+    return false;
+  }
   uint8_t target_hello[kTargetHelloSize] = {};
   writeU16(target_hello, selected_protocol_);
   writeU16(target_hello + 2, target_min);
@@ -701,7 +718,8 @@ bool ProtocolCore::processProof(const uint8_t* payload, size_t length,
     return false;
   }
   const uint8_t action = payload[34];
-  if (action != 1) {  // action 2 belongs exclusively to manual_remote.
+  if (action != static_cast<uint8_t>(LocalAccessAction::kArmForSensor) &&
+      action != static_cast<uint8_t>(LocalAccessAction::kOpenImmediately)) {
     reject(ResultReason::kProofInvalid, now_ms);
     return false;
   }
@@ -736,10 +754,21 @@ bool ProtocolCore::processProof(const uint8_t* payload, size_t length,
     return false;
   }
 
+  emit(EventCode::kAccessProofVerified, ResultReason::kOk, now_ms);
+  const bool action_committed =
+      auth_control_active_ && auth_control_gate_ != nullptr &&
+      auth_control_gate_->commitAuthorizedAction(
+          static_cast<LocalAccessAction>(action), now_ms);
+  if (!action_committed) {
+    abortAuthControl(now_ms);
+    reject(ResultReason::kInternalFailClosed, now_ms, false);
+    return false;
+  }
+  auth_control_active_ = false;
+
   queueResult(ResultReason::kOk, 0, active_acl_version_);
   state_ = SessionState::kCompleted;
   failed_attempts_ = 0;
-  emit(EventCode::kAccessProofVerified, ResultReason::kOk, now_ms);
   return true;
 }
 
@@ -801,6 +830,7 @@ void ProtocolCore::reject(ResultReason reason, uint32_t now_ms,
               active_acl_version_);
   emit(EventCode::kAccessProofRejected, reason, now_ms);
   emit(EventCode::kAccessSessionTerminated, reason, now_ms);
+  abortAuthControl(now_ms);
   if (count_failure) {
     if (failed_attempts_ == 0 ||
         reached(now_ms, failure_window_started_ms_ + 10000)) {
@@ -814,6 +844,12 @@ void ProtocolCore::reject(ResultReason reason, uint32_t now_ms,
     }
   }
   resetSessionPreservingOutputs();
+}
+
+void ProtocolCore::abortAuthControl(uint32_t now_ms) {
+  if (!auth_control_active_) return;
+  auth_control_active_ = false;
+  if (auth_control_gate_ != nullptr) auth_control_gate_->abortAuth(now_ms);
 }
 
 void ProtocolCore::resetSessionPreservingOutputs() {

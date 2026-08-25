@@ -30,6 +30,11 @@ class TargetAccessFsm {
   bool handleAuthSuccess(uint32_t now_ms, uint32_t arm_duration_ms = 60000,
                          uint32_t cooldown_duration_ms = 2000);
 
+  // Authenticated local manual-open action: AUTH_PENDING -> RELAY_HOLD.
+  bool handleLocalManualOpen(uint32_t now_ms,
+                             uint32_t hold_duration_ms = 1000,
+                             uint32_t cooldown_duration_ms = 2000);
+
   bool handleAuthAbort(uint32_t now_ms, const char* reason = "auth_aborted");
 
   // Manual remote trigger (MQTT): only allowed when IDLE.

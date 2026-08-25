@@ -297,7 +297,7 @@ Android가 `SHA256withECDSA`로 서명하는 bytes는 정확히 61 bytes다.
 | 0 | 8 | ASCII `SGKPRF01` |
 | 8 | 32 | SHA256(CHALLENGE canonical payload 138 bytes) |
 | 40 | 16 | credential_id |
-| 56 | 1 | action, v1 open=`1` |
+| 56 | 1 | action: `1=ARM_FOR_SENSOR`, `2=OPEN_IMMEDIATELY` |
 | 57 | 4 | client_capabilities |
 
 `PROOF` wire payload는 별도로 다음 103 bytes다.
@@ -321,7 +321,11 @@ Target은 다음 순서를 유지한다.
    허용하지 않는다.
 4. active ACL signature/lease/version과 credential status/time/protocol/OPEN permission을 확인한다.
 5. canonical input을 재구성해 P-256 signature를 constant-time library API로 검증한다.
-6. Target FSM이 IDLE일 때만 `ARMED`로 전환한다. relay는 기존 sensor/one-shot interlock 뒤에만 켠다.
+6. cryptographic proof 성공을 기록한 뒤 Target control gate가 서명된 action을 실제 FSM에 적용한다.
+   `ARM_FOR_SENSOR(1)`은 `AUTH_PENDING → ARMED`로 전환하며 relay를 켜지 않고,
+   `OPEN_IMMEDIATELY(2)`는 `AUTH_PENDING → RELAY_HOLD`로 전환하며 relay hold timer를 즉시 시작한다.
+7. 실제 FSM 전이가 성공한 경우에만 `RESULT OK`를 만든다. callback 누락, busy/cooldown 또는 전이
+   거부는 `INTERNAL_FAIL_CLOSED` 등 non-OK terminal result가 되며 성공으로 표시하지 않는다.
 
 동시에 최대 한 auth session만 허용하고 credential/connection 실패율을 rate limit한다. signature
 실패 상세를 BLE peer에게 구분해 주지 않아 credential enumeration oracle을 줄인다.

@@ -51,6 +51,31 @@ class GattSessionEngineTest {
   }
 
   @Test
+  fun manualOpenSignsAndWritesExplicitImmediateAction() = runBlocking {
+    val transport = FakeTransport(
+      targetHello,
+      challenge,
+      successResult(challenge.copyOfRange(26, 42)),
+    )
+    val signer = DeterministicFakeCredentialSigner(fixtureSignature)
+    val result = GattSessionEngine(
+      transport,
+      signer,
+      timeoutMs = 1000,
+      clock = MonotonicClock { 100 },
+      mobileBuild = 100,
+    ).run(
+      "00:11:22:33:44:55",
+      credential,
+      GattProtocol.ACTION_OPEN_IMMEDIATELY,
+    )
+
+    assertTrue(result is SessionOutcome.Success)
+    assertEquals(GattProtocol.ACTION_OPEN_IMMEDIATELY, signer.lastCanonical?.get(56)?.toInt())
+    assertEquals(GattProtocol.ACTION_OPEN_IMMEDIATELY, transport.proof?.get(34)?.toInt())
+  }
+
+  @Test
   fun malformedResultFailsClosedWithSchemaReason() = runBlocking {
     val transport = FakeTransport(targetHello, challenge, byteArrayOf(1, 2, 3))
     val result = GattSessionEngine(

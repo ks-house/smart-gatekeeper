@@ -183,7 +183,11 @@ class BleGattCredentialWorker(
             vault.delete(sessionId)
           }
         },
-      ).run(secret.deviceAddress, secret.credentialId)
+      ).run(
+        secret.deviceAddress,
+        secret.credentialId,
+        GattProtocol.ACTION_ARM_FOR_SENSOR,
+      )
       if (flagDisabledBeforeProof) {
         secret.credentialId.fill(0)
         terminateDisabled(ledger, vault, ledger.get(sessionId) ?: running)

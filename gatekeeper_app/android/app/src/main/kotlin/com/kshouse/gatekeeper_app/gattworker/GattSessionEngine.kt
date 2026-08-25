@@ -111,7 +111,15 @@ class GattSessionEngine(
   private val mobileBuild: Long = 0,
   private val proofObserver: ProofExecutionObserver = ProofExecutionObserver.NONE,
 ) {
-  suspend fun run(deviceAddress: String, credentialId: ByteArray): SessionOutcome {
+  suspend fun run(
+    deviceAddress: String,
+    credentialId: ByteArray,
+    action: Int = GattProtocol.ACTION_ARM_FOR_SENSOR,
+  ): SessionOutcome {
+    require(
+      action == GattProtocol.ACTION_ARM_FOR_SENSOR ||
+        action == GattProtocol.ACTION_OPEN_IMMEDIATELY,
+    ) { "unsupported local access action" }
     val started = clock.nowMs()
     var proofMayHaveExecuted = false
     return try {
@@ -125,11 +133,17 @@ class GattSessionEngine(
           transport.readChallenge(),
           negotiationHash,
         )
-        val canonical = GattCanonicalCodec.proofSigningInput(challenge.canonical, credentialId)
+        val canonical = GattCanonicalCodec.proofSigningInput(
+          challenge.canonical,
+          credentialId,
+          action,
+        )
         val signature = signer.signCanonical(credentialId, canonical)
         proofObserver.beforeProofWrite()
         proofMayHaveExecuted = true
-        transport.writeProof(GattCanonicalCodec.proofWire(challenge, credentialId, signature))
+        transport.writeProof(
+          GattCanonicalCodec.proofWire(challenge, credentialId, signature, action),
+        )
         proofObserver.afterProofWrite()
         val result = GattCanonicalCodec.parseResult(transport.awaitResult(), challenge.sessionId)
         proofObserver.afterResultReceived(result)

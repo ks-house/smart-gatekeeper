@@ -19,7 +19,8 @@ object GattProtocol {
   const val FRAMING_VERSION = 1
   const val MAX_MESSAGE_BYTES = 2048
   const val CLIENT_CAPABILITIES = 3L
-  const val ACTION_OPEN = 1
+  const val ACTION_ARM_FOR_SENSOR = 1
+  const val ACTION_OPEN_IMMEDIATELY = 2
   const val CLIENT_HELLO = 0x01
   const val TARGET_HELLO = 0x02
   const val CHALLENGE = 0x10
@@ -112,7 +113,7 @@ object GattCanonicalCodec {
   fun proofSigningInput(
     challengeCanonical: ByteArray,
     credentialId: ByteArray,
-    action: Int = GattProtocol.ACTION_OPEN,
+    action: Int = GattProtocol.ACTION_ARM_FOR_SENSOR,
     clientCapabilities: Long = GattProtocol.CLIENT_CAPABILITIES,
   ): ByteArray {
     require(challengeCanonical.size == 138) { "challenge canonical length" }
@@ -131,7 +132,7 @@ object GattCanonicalCodec {
     challenge: Challenge,
     credentialId: ByteArray,
     signatureRaw64: ByteArray,
-    action: Int = GattProtocol.ACTION_OPEN,
+    action: Int = GattProtocol.ACTION_ARM_FOR_SENSOR,
     clientCapabilities: Long = GattProtocol.CLIENT_CAPABILITIES,
   ): ByteArray {
     require(credentialId.size == 16) { "credential id length" }

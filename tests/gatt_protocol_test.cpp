@@ -165,6 +165,41 @@ class EventRecorder final : public sgk::EventSink {
   std::vector<sgk::Event> events;
 };
 
+class FakeAuthControlGate final : public sgk::AuthControlGate {
+ public:
+  bool beginAuth(uint32_t now_ms) override {
+    ++begin_calls;
+    last_now_ms = now_ms;
+    active = begin_result;
+    return begin_result;
+  }
+
+  bool commitAuthorizedAction(sgk::LocalAccessAction action,
+                              uint32_t now_ms) override {
+    ++commit_calls;
+    last_action = action;
+    last_now_ms = now_ms;
+    if (commit_result) active = false;
+    return commit_result;
+  }
+
+  void abortAuth(uint32_t now_ms) override {
+    ++abort_calls;
+    active = false;
+    last_now_ms = now_ms;
+  }
+
+  bool begin_result = true;
+  bool commit_result = true;
+  bool active = false;
+  int begin_calls = 0;
+  int commit_calls = 0;
+  int abort_calls = 0;
+  uint32_t last_now_ms = 0;
+  sgk::LocalAccessAction last_action =
+      sgk::LocalAccessAction::kArmForSensor;
+};
+
 std::array<uint8_t, 16> hello(uint16_t min = 1, uint16_t max = 1,
                               uint8_t framing_min = 1,
                               uint8_t framing_max = 1,
@@ -292,7 +327,8 @@ void testCanonicalSessionAndVerifier() {
   auto random = canonicalRandom();
   FakeVerifier verifier(sgk::ResultReason::kOk);
   EventRecorder events;
-  sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events);
+  FakeAuthControlGate control;
+  sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events, &control);
   start(core, 123451789);
   const auto client = hello();
   CHECK(send(core, sgk::MessageType::kClientHello, client.data(), client.size(),
@@ -320,11 +356,85 @@ void testCanonicalSessionAndVerifier() {
   CHECK(output.size() == 1);
   CHECK(u16(output[0].bytes.data() + 18) == 0);
   CHECK(verifier.calls == 1);
+  CHECK(control.begin_calls == 1);
+  CHECK(control.commit_calls == 1);
+  CHECK(control.last_action == sgk::LocalAccessAction::kArmForSensor);
   CHECK(std::vector<uint8_t>(verifier.last.signing_input.begin(),
                              verifier.last.signing_input.end()) ==
         hex("53474b50524630317cebae229af25267c8ae244cdb476a48a692feb81477cbc7f"
             "36e110e993bd464aabbccddeeff001122334455667788990100000003"));
   CHECK(events.events.size() >= 3);
+}
+
+void testAuthenticatedActionControlBinding() {
+  {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kOk);
+    EventRecorder events;
+    FakeAuthControlGate control;
+    sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events,
+                           &control);
+    start(core, 1000);
+    const auto client = hello();
+    CHECK(send(core, sgk::MessageType::kClientHello, client.data(),
+               client.size(), 1000));
+    drain(core);
+
+    const auto manual_proof = proof(
+        core.sessionId(),
+        static_cast<uint8_t>(sgk::LocalAccessAction::kOpenImmediately));
+    CHECK(send(core, sgk::MessageType::kProof, manual_proof.data(),
+               manual_proof.size(), 1100, 11, 2));
+    CHECK(control.commit_calls == 1);
+    CHECK(control.last_action == sgk::LocalAccessAction::kOpenImmediately);
+    const auto output = drain(core);
+    CHECK(output.size() == 1);
+    CHECK(output[0].type == sgk::MessageType::kResult);
+    CHECK(u16(output[0].bytes.data() + 18) == 0);
+  }
+
+  {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kOk);
+    EventRecorder events;
+    FakeAuthControlGate control;
+    control.commit_result = false;
+    sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events,
+                           &control);
+    start(core, 2000);
+    const auto client = hello();
+    CHECK(send(core, sgk::MessageType::kClientHello, client.data(),
+               client.size(), 2000));
+    drain(core);
+    const auto arm_proof = proof(core.sessionId());
+    CHECK(!send(core, sgk::MessageType::kProof, arm_proof.data(),
+                arm_proof.size(), 2100, 11, 2));
+    CHECK(control.abort_calls == 1);
+    const auto output = drain(core);
+    CHECK(output.size() == 1);
+    CHECK(u16(output[0].bytes.data() + 18) ==
+          static_cast<uint16_t>(sgk::ResultReason::kInternalFailClosed));
+  }
+
+  {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kOk);
+    EventRecorder events;
+    FakeAuthControlGate control;
+    control.begin_result = false;
+    sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events,
+                           &control);
+    start(core, 3000);
+    const auto client = hello();
+    CHECK(!send(core, sgk::MessageType::kClientHello, client.data(),
+                client.size(), 3000));
+    const auto output = drain(core);
+    CHECK(output.size() == 1);
+    CHECK(output[0].type == sgk::MessageType::kTargetHello);
+    CHECK(output[0].bytes[7] == 2);
+    CHECK(control.abort_calls == 1);
+    CHECK(control.commit_calls == 0);
+  }
 }
 
 void testTargetAclManagerAndStorage() {
@@ -483,7 +593,7 @@ void testTargetProofVerifierIntegration() {
 
   // Invalid action rejection
   auto bad_action_request = request;
-  bad_action_request.action = 2;
+  bad_action_request.action = 3;
   result = proof_verifier.verify(bad_action_request);
   CHECK(result.reason == sgk::ResultReason::kProofInvalid);
 
@@ -549,6 +659,15 @@ void testTargetAccessFsmAndRelayInterlock() {
   CHECK(fsm.state() == GateState::IDLE);
   CHECK(fsm.otaSafeState() == OtaSafeState::SAFE);
   CHECK(last_event_name == "gate_idle");
+
+  // Authenticated local manual action bypasses ARMED/sensor and drives relay.
+  CHECK(fsm.handleAuthPending(5003, 5000));
+  CHECK(fsm.handleLocalManualOpen(5004, 1000, 2000));
+  CHECK(fsm.state() == GateState::RELAY_HOLD);
+  CHECK(fsm.isRelayOn());
+  CHECK(last_relay_on);
+  CHECK(last_event_name == "relay_on_local_manual");
+  fsm.cleanupToIdle(5005);
 
   // Manual remote trigger (MQTT) when IDLE -> transitions to RELAY_HOLD
   CHECK(fsm.handleManualRemoteOpen(5000, 1000, 2000));
@@ -1056,10 +1175,12 @@ void testProtocolDisconnectHandoff() {
   const auto door_A = canonicalDoor();
 
   EventRecorder event_sink;
+  FakeAuthControlGate auth_control;
 
   // Case 1: Pre-verification disconnect emits ACCESS_GATT_FAILED & ACCESS_SESSION_TERMINATED
   {
-    sgk::ProtocolCore protocol(random, proof_verifier, door_A, &event_sink);
+    sgk::ProtocolCore protocol(random, proof_verifier, door_A, &event_sink,
+                               &auth_control);
     protocol.initialize();
     protocol.setEnabled(true);
 
@@ -1084,7 +1205,8 @@ void testProtocolDisconnectHandoff() {
   // Case 2: Post-proof completion disconnect hands off to Target FSM without failure events!
   {
     auto random_post = canonicalRandom();
-    sgk::ProtocolCore protocol2(random_post, proof_verifier, door_A, &event_sink);
+    sgk::ProtocolCore protocol2(random_post, proof_verifier, door_A,
+                                &event_sink, &auth_control);
     protocol2.initialize();
     protocol2.setEnabled(true);
 
@@ -1889,6 +2011,7 @@ int main() {
 
   testCanonicalVectorsAndFraming();
   testCanonicalSessionAndVerifier();
+  testAuthenticatedActionControlBinding();
   testTargetAclManagerAndStorage();
   testTargetProofVerifierIntegration();
   testTargetAccessFsmAndRelayInterlock();

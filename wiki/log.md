@@ -3543,3 +3543,15 @@
 
 - Passed all 42 focused trusted-policy tests. Both identities pin the exact feature source and complete protected map; the policy branch locally verifies the 68 unchanged files while the immutable feature commit supplies the reviewed deploy digest.
 - Hosted base-policy verification remains required before merge. Passing this authorization is not Android, Target, relay, sensor, OTA install or rollback evidence.
+
+## [2026-08-26] code | Split authenticated local manual open from sensor arm
+
+- Added explicit signed local GATT actions: `ARM_FOR_SENSOR(1)` retains the background `AUTH_PENDING → ARMED → sensor` path, while `OPEN_IMMEDIATELY(2)` drives `AUTH_PENDING → RELAY_HOLD` for the mobile button without waiting for the ultrasonic sensor.
+- Bound protocol success to the application control plane through `AuthControlGate`; Target `RESULT OK` is now queued only after the requested FSM transition succeeds. Missing callbacks, busy state or transition refusal abort pending state and return non-OK fail-closed.
+- Replaced the manual UI's WorkManager queue acknowledgement with a foreground native GATT executor that waits for terminal Target Result. Existing enrollment avoids a per-tap backend status request; background presence remains explicit action 1.
+
+## [2026-08-26] test | Verify issue 133 software candidate and capacity
+
+- Passed the Hardwareless source/native-host suite 11/11, including action 1/2 selection, immediate relay callback, unsupported action rejection, control-gate refusal and no false-success Result.
+- Built `esp32c6_personal_production` successfully for ESP32-C6 N16: 1,780,836/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%). Dual OTA slot capacity remains ample.
+- Local Android Gradle execution could not use the repository's CI-only `/opt/flutter` SDK path on this Windows host; hosted Android CI remains required. No phone, AJ-SR04T or physical relay was connected, so APK behavior, contact timing and sensor actuation remain pending rather than claimed.

@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.PowerManager
 import com.kshouse.gatekeeper_app.gattworker.BleGattFeatureFlagStore
 import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
+import com.kshouse.gatekeeper_app.gattworker.BleGattManualOpenExecutor
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,8 +20,15 @@ import com.kshouse.gatekeeper_app.blewake.BleWakeRegistrar
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class MainActivity: FlutterActivity() {
+    private val nativeActionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private companion object {
         const val CHANNEL_DIAGNOSTICS = "com.kshouse.gatekeeper_app/notification_channel"
         const val CHANNEL_GATT_WORKER_HEALTH =
@@ -78,6 +86,13 @@ class MainActivity: FlutterActivity() {
                 }
                 "triggerLocalGattRetry" -> {
                     result.success(BleGattWorkScheduler.manualRetry(applicationContext).toMap())
+                }
+                "triggerLocalGattOpen" -> {
+                    nativeActionScope.launch {
+                        result.success(
+                            BleGattManualOpenExecutor.execute(applicationContext).toMap(),
+                        )
+                    }
                 }
                 "prepareLocalGattEnrollment" -> {
                     val material = BleGattFeatureFlagStore(applicationContext)
@@ -184,6 +199,11 @@ class MainActivity: FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onDestroy() {
+        nativeActionScope.cancel()
+        super.onDestroy()
     }
 
     private fun archiveCertificateSha256(path: String): String {

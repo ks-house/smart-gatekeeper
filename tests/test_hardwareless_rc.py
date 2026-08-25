@@ -214,9 +214,13 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         lifecycle_sink = adapter.split(
             "class ProductionLifecycleEventSink final", 1
         )[1].split("ProductionLifecycleEventSink production_lifecycle_sink", 1)[0]
-        self.assertIn("s_auth_pending_callback", lifecycle_sink)
-        self.assertIn("s_auth_grant_callback", lifecycle_sink)
         self.assertIn("abort_pending_ = true", lifecycle_sink)
+        control_gate = adapter.split(
+            "class ProductionAuthControlGate final", 1
+        )[1].split("ProductionAuthControlGate production_auth_control_gate", 1)[0]
+        self.assertIn("s_auth_pending_callback", control_gate)
+        self.assertIn("s_auth_grant_callback", control_gate)
+        self.assertIn("production_lifecycle_sink.requestAbort", control_gate)
 
     def test_android_challenge_uses_only_the_subscribed_indication_stream(self):
         transport = (

@@ -355,3 +355,18 @@ The release Gate remains open until the same Target bytes and the corrected
 Android transport are merged, CI-built, NAS-published, installed from exact
 main, and one authenticated proof/result completes without a reboot. No relay
 actuation or wall-install acceptance is claimed by this section.
+
+## 2026-08-26 issue #133 manual local-open software candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Target action contract | Native host tests accept action 1 and 2, reject unsupported actions, and verify `RESULT OK` is not emitted when the application control gate rejects the transition | PASS for deterministic host logic |
+| Target FSM | action 1 reaches `ARMED` with relay OFF; action 2 reaches `RELAY_HOLD` and invokes the relay callback immediately; pending/action rejection returns non-OK and cleanup | PASS for host callback/FSM behavior; no physical GPIO/contact evidence |
+| Android action contract | `GattSessionEngine` signs the selected action into canonical byte 56 and proof wire byte 34; background worker passes action 1 and foreground manual executor passes action 2 | PASS for source/unit candidate; hosted Android CI pending |
+| Manual UI truthfulness | WebView no longer treats queue acceptance as open success. It calls terminal `triggerLocalGattOpen` and displays success only after Target reason 0; an already enrolled credential has no per-tap backend status GET | PASS for source contract; no connected-phone timing evidence |
+| ESP32-C6 build/capacity | `esp32c6_personal_production` compiled with 1,780,836/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%) | PASS for local build and dual-slot capacity headroom |
+
+Phone, AJ-SR04T and physical relay were not connected during this candidate
+test. Exact-main CI artifacts, NAS publication, Target OTA/install/reboot and
+manual button-to-contact timing remain pending. The hands-free path is tracked
+separately in issue #134.

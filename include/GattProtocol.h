@@ -82,6 +82,11 @@ enum class ResultReason : uint16_t {
   kInternalFailClosed = 10,
 };
 
+enum class LocalAccessAction : uint8_t {
+  kArmForSensor = 1,
+  kOpenImmediately = 2,
+};
+
 enum class SessionState : uint8_t {
   kIdle,
   kHelloReceived,
@@ -203,6 +208,18 @@ class ProofVerifier {
   virtual ~ProofVerifier() = default;
   virtual uint64_t activeAclVersion() const { return 0; }
   virtual VerifyResult verify(const VerifyRequest& request) = 0;
+};
+
+// Required control-plane binding between authenticated protocol completion and
+// the physical Target FSM. A successful proof must never produce RESULT OK
+// unless the requested action was accepted by this gate.
+class AuthControlGate {
+ public:
+  virtual ~AuthControlGate() = default;
+  virtual bool beginAuth(uint32_t now_ms) = 0;
+  virtual bool commitAuthorizedAction(LocalAccessAction action,
+                                      uint32_t now_ms) = 0;
+  virtual void abortAuth(uint32_t now_ms) = 0;
 };
 
 // Production default until Issue #20 installs signed ACL storage and P-256
@@ -328,7 +345,8 @@ class ProtocolCore {
  public:
   ProtocolCore(RandomSource& random, ProofVerifier& verifier,
                const std::array<uint8_t, 16>& door_id,
-               EventSink* event_sink = nullptr);
+               EventSink* event_sink = nullptr,
+               AuthControlGate* auth_control_gate = nullptr);
 
   bool initialize();
   void setEnabled(bool enabled);
@@ -390,6 +408,7 @@ class ProtocolCore {
   RandomSource& random_;
   ProofVerifier& verifier_;
   EventSink* event_sink_;
+  AuthControlGate* auth_control_gate_;
   bool enabled_ = false;
   bool rng_ready_ = false;
   bool ota_busy_ = false;
@@ -422,6 +441,7 @@ class ProtocolCore {
   uint64_t event_monotonic_high_ = 0;
   uint32_t event_last_now_ms_ = 0;
   bool event_time_initialized_ = false;
+  bool auth_control_active_ = false;
 
   static bool reached(uint32_t now_ms, uint32_t deadline_ms);
   static uint16_t readU16(const uint8_t* value);
@@ -443,6 +463,7 @@ class ProtocolCore {
   bool queue(MessageType type, const uint8_t* payload, size_t length);
   void reject(ResultReason reason, uint32_t now_ms, bool count_failure = true);
   void resetSessionPreservingOutputs();
+  void abortAuthControl(uint32_t now_ms);
   void emit(EventCode code, ResultReason reason, uint32_t now_ms);
   static EventReason eventReason(EventCode code, ResultReason reason);
 };

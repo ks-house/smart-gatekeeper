@@ -115,6 +115,31 @@ bool TargetAccessFsm::handleAuthSuccess(uint32_t now_ms,
   return true;
 }
 
+bool TargetAccessFsm::handleLocalManualOpen(uint32_t now_ms,
+                                            uint32_t hold_duration_ms,
+                                            uint32_t cooldown_duration_ms) {
+  if (state_ != GateState::AUTH_PENDING || relay_on_) {
+    if (event_emit_ != nullptr) {
+      event_emit_("local_manual_open_rejected",
+                  "authenticated local manual open rejected");
+    }
+    return false;
+  }
+
+  is_armed_ = false;
+  hold_duration_ms_ = hold_duration_ms;
+  cooldown_duration_ms_ = cooldown_duration_ms;
+  state_ = GateState::RELAY_HOLD;
+  state_start_ms_ = now_ms;
+  setRelay(true);
+
+  if (event_emit_ != nullptr) {
+    event_emit_("relay_on_local_manual",
+                "Access Granted via authenticated local GATT manual open");
+  }
+  return true;
+}
+
 bool TargetAccessFsm::handleAuthAbort(uint32_t now_ms, const char* reason) {
   if (state_ == GateState::AUTH_PENDING) {
     state_ = GateState::IDLE;

@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-25 (live HA OTA, exact Android wake, GATT callback-stack and challenge-stream corrections)
+> Last updated: 2026-08-26 (issue #133 explicit action split and terminal manual local-open candidate)
 
 ---
 
@@ -57,7 +57,7 @@
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
 | [android_ble_wake_adr.md](android_ble_wake_adr.md) | #14 PendingIntent filtered BLE wake 결정, exact filter contract, hardwareless PoC와 Samsung 20회 pending Gate |
-| [android_gatt_worker.md](android_gatt_worker.md) | #17 signed default-OFF rollout, cross-process BLE lease, crash-idempotent proof boundary, encrypted locators, exact GATT reasons, and pending physical gates |
+| [android_gatt_worker.md](android_gatt_worker.md) | #17/#133 signed default-OFF rollout, action-1 background ARM, action-2 terminal manual open, BLE lease, crash boundary and pending physical gates |
 | [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
 | [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
 | [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |
@@ -67,8 +67,8 @@
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |
-| [target_acl_fsm.md](target_acl_fsm.md) | #20 Target-owned local ACL verification, access session FSM, relay interlock, offline queue and evidence boundary |
-| [flutter_thin_ui.md](flutter_thin_ui.md) | #21 Flutter Thin UI, credential/approval status, 1-tap manual local GATT retry, interlocked feature flags, OEM recovery, and independent OTA |
+| [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |
+| [flutter_thin_ui.md](flutter_thin_ui.md) | #21/#133 Flutter Thin UI, terminal 1-tap immediate local GATT open, enrollment, OEM recovery and independent OTA |
 | [mobile_commercial_ux.md](mobile_commercial_ux.md) | #51 capability-based recovery shell, fresh-install native wake, authenticated Target resolution, signed updater, truthful states, privacy/accessibility/localization |
 | [hardwareless_implementation_gates.md](hardwareless_implementation_gates.md) | #22 Two-tier authorization gate structure, software release candidate G0-SW validation, and physical G0-HW fail-closed boundaries |
 | [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest와 workflow/action exact inventory Gate, policy rotation, self-policy/status-context 잔여 경계 |
