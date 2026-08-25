@@ -3733,3 +3733,9 @@
 
 - PR #169 passed its hosted Trusted Workflow check and merged as policy main `15951dd7bc6642488b24c1717cb4f47cf1ddd7db`, closing issue #168.
 - Merge-connected that authorization main into PR #167 without rebasing or squashing, preserving immutable feature parent `db8d1fe8` and both append-only evidence streams. Fresh hosted Trusted, OTA-contract and ESP32-C6 checks remain required before the feature can merge.
+
+## [2026-08-26] compile | Finalize issue 166 OTA keep-alive baseline
+
+- PR #167 head `c6d2b85` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `c23793cbee1ba7cde4e03add4b1c944d8bf39032`.
+- Issue #170 removes both bounded `db8d1fe` transition identities and pins the sole `current-main-baseline` to actual merged main `c23793cb`; the complete ordered 69-file map and both inventories remain unchanged.
+- This policy-only rotation does not publish or install firmware. Issues #160/#166 remain open pending newer exact-main NAS publication and connected Target download, inactive-slot verification, reboot and Wi-Fi/MQTTS/GATT/health recovery.

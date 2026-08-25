@@ -361,3 +361,11 @@ protected objects and both inventories remain exact. The transition uses
 This policy-only authorization does not publish or install firmware; policy
 merge-connection, fresh feature CI, feature merge, final rotation and connected
 OTA install/reboot/health recovery remain required.
+
+PR #167 head `c6d2b85` passed fresh Hosted Trusted, OTA-contract and ESP32-C6
+canary checks, then merge-commit merged as actual main
+`c23793cbee1ba7cde4e03add4b1c944d8bf39032`. Issue #170 removes both bounded
+`db8d1fe` transition identities and pins that actual merge as the sole
+`current-main-baseline`; the reviewed 69-file map and both inventories are
+unchanged. This policy-only rotation does not publish or install firmware, and
+issues #160/#166 remain open until connected OTA install/reboot/health recovery.
