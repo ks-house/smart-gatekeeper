@@ -18,6 +18,13 @@ class NativeGattWorkerHealth {
     required this.lastLatencyMs,
     required this.updateManagerIndependent,
     required this.networkRequired,
+    this.handsFreeReady = false,
+    this.wakeRegistered = false,
+    this.wakeRegistrationStatus = 'not_registered',
+    this.initialWorkExpedited = false,
+    this.maxPresenceAgeMs,
+    this.lastPresenceToDispatchMs,
+    this.lastPresenceToArmedMs,
     this.lastSession,
   });
 
@@ -37,6 +44,13 @@ class NativeGattWorkerHealth {
   final int? lastLatencyMs;
   final bool updateManagerIndependent;
   final bool networkRequired;
+  final bool handsFreeReady;
+  final bool wakeRegistered;
+  final String wakeRegistrationStatus;
+  final bool initialWorkExpedited;
+  final int? maxPresenceAgeMs;
+  final int? lastPresenceToDispatchMs;
+  final int? lastPresenceToArmedMs;
   final Map<Object?, Object?>? lastSession;
 
   factory NativeGattWorkerHealth.fromMap(Map<Object?, Object?> value) {
@@ -58,6 +72,16 @@ class NativeGattWorkerHealth {
       lastLatencyMs: (value['lastLatencyMs'] as num?)?.toInt(),
       updateManagerIndependent: value['updateManagerIndependent'] == true,
       networkRequired: value['networkRequired'] == true,
+      handsFreeReady: value['handsFreeReady'] == true,
+      wakeRegistered: value['wakeRegistered'] == true,
+      wakeRegistrationStatus:
+          value['wakeRegistrationStatus']?.toString() ?? 'not_registered',
+      initialWorkExpedited: value['initialWorkExpedited'] == true,
+      maxPresenceAgeMs: (value['maxPresenceAgeMs'] as num?)?.toInt(),
+      lastPresenceToDispatchMs:
+          (value['lastPresenceToDispatchMs'] as num?)?.toInt(),
+      lastPresenceToArmedMs:
+          (value['lastPresenceToArmedMs'] as num?)?.toInt(),
       lastSession: (value['lastSession'] as Map?)?.cast<Object?, Object?>(),
     );
   }

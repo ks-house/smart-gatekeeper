@@ -339,6 +339,9 @@ data class DurableGattSession(
   val retryAfterMs: Long? = null,
   val scheduledRetryDelayMs: Long? = null,
   val latencyMs: Long? = null,
+  val dispatchStartedEpochMs: Long? = null,
+  val presenceToDispatchMs: Long? = null,
+  val presenceToArmedMs: Long? = null,
   val activeAclVersion: Long? = null,
 ) {
   fun redactedMap(): Map<String, Any?> = mapOf(
@@ -353,6 +356,9 @@ data class DurableGattSession(
     "retryAfterMs" to retryAfterMs,
     "scheduledRetryDelayMs" to scheduledRetryDelayMs,
     "latencyMs" to latencyMs,
+    "dispatchStartedEpochMs" to dispatchStartedEpochMs,
+    "presenceToDispatchMs" to presenceToDispatchMs,
+    "presenceToArmedMs" to presenceToArmedMs,
     "activeAclVersion" to activeAclVersion,
     "updatedEpochMs" to updatedEpochMs,
   )
@@ -420,6 +426,9 @@ object SessionLedgerCodec {
     .put("retry_after_ms", session.retryAfterMs)
     .put("scheduled_retry_delay_ms", session.scheduledRetryDelayMs)
     .put("latency_ms", session.latencyMs)
+    .put("dispatch_started_epoch_ms", session.dispatchStartedEpochMs)
+    .put("presence_to_dispatch_ms", session.presenceToDispatchMs)
+    .put("presence_to_armed_ms", session.presenceToArmedMs)
     .put("active_acl_version", session.activeAclVersion)
 
   private fun fromJson(value: JSONObject): DurableGattSession = DurableGattSession(
@@ -437,6 +446,9 @@ object SessionLedgerCodec {
     retryAfterMs = value.optionalLong("retry_after_ms"),
     scheduledRetryDelayMs = value.optionalLong("scheduled_retry_delay_ms"),
     latencyMs = value.optionalLong("latency_ms"),
+    dispatchStartedEpochMs = value.optionalLong("dispatch_started_epoch_ms"),
+    presenceToDispatchMs = value.optionalLong("presence_to_dispatch_ms"),
+    presenceToArmedMs = value.optionalLong("presence_to_armed_ms"),
     activeAclVersion = value.optionalLong("active_acl_version"),
   )
 

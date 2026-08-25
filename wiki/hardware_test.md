@@ -370,3 +370,18 @@ Phone, AJ-SR04T and physical relay were not connected during this candidate
 test. Exact-main CI artifacts, NAS publication, Target OTA/install/reboot and
 manual button-to-contact timing remain pending. The hands-free path is tracked
 separately in issue #134.
+
+## 2026-08-26 issue #134 pocket-approach software candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Activation wiring | Native GATT enable attempts the exact OS PendingIntent registration in the same control call; disable stops it, and health recomputes current permission/Bluetooth readiness | PASS for deterministic source/control wiring; OS registration survival requires a phone |
+| Background dispatch | Android 12+ first presence work is expedited with `RUN_AS_NON_EXPEDITED_WORK_REQUEST` fallback, Android 8~11 retain regular work, no network constraint is added, and the worker signs only `ARM_FOR_SENSOR(1)` | PASS for Android source/unit contract; OEM scheduling latency is pending |
+| Stale wake safety | Presence work older than 45 seconds terminates as non-retryable `PRESENCE_EXPIRED` before BLE ownership/proof; process clock rollback does not falsely expire new work | PASS for policy/JVM logic |
+| End-to-end observability | Durable redacted state records presence-to-dispatch and presence-to-Target-ARMED separately from GATT session latency | PASS for codec/health/UI source; no connected measurement yet |
+| Target sensor interlock | Native host regression holds relay OFF through `AUTH_PENDING -> ARMED`, then permits `RELAY_HOLD` only after a valid ultrasonic trigger; main loop samples only while `ARMED` at 100 ms intervals | PASS for deterministic Target host/source behavior; no AJ-SR04T/GPIO3 timing evidence |
+| Focused local suite | Pocket source contract plus Target native host suite: 15/15; implementation/mobile contract suites: 21/21 | PASS for 36 local software tests; hosted Android/Target CI pending |
+
+No phone, AJ-SR04T or physical relay was connected. Screen-off/pocket success
+rate, OS delivery delay, presence-to-ARMED distribution, sensor threshold and
+GPIO3 contact timing remain pending and must not be inferred from these tests.

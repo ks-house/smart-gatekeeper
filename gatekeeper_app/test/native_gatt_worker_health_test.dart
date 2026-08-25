@@ -33,6 +33,13 @@ void main() {
         'lastRetryAfterMs': 9000,
         'lastScheduledRetryDelayMs': 9000,
         'lastLatencyMs': 15000,
+        'handsFreeReady': true,
+        'wakeRegistered': true,
+        'wakeRegistrationStatus': 'registered',
+        'initialWorkExpedited': true,
+        'maxPresenceAgeMs': 45000,
+        'lastPresenceToDispatchMs': 320,
+        'lastPresenceToArmedMs': 1840,
         'updateManagerIndependent': true,
         'networkRequired': false,
       };
@@ -54,6 +61,13 @@ void main() {
     expect(health.lastRetryAfterMs, 9000);
     expect(health.lastScheduledRetryDelayMs, 9000);
     expect(health.lastLatencyMs, 15000);
+    expect(health.handsFreeReady, isTrue);
+    expect(health.wakeRegistered, isTrue);
+    expect(health.wakeRegistrationStatus, 'registered');
+    expect(health.initialWorkExpedited, isTrue);
+    expect(health.maxPresenceAgeMs, 45000);
+    expect(health.lastPresenceToDispatchMs, 320);
+    expect(health.lastPresenceToArmedMs, 1840);
     expect(health.updateManagerIndependent, isTrue);
     expect(health.networkRequired, isFalse);
   });

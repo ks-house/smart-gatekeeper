@@ -18,7 +18,21 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-08-26 issue #133 구현 후보
+## 2026-08-26 issue #134 pocket-approach 후보
+
+- 개인 native GATT enable은 같은 native 호출에서 exact `PendingIntent` wake 등록을 시도하고,
+  disable은 등록을 중지한다. live 권한/Bluetooth 상태와 `handsFreeReady`를 별도로 노출한다.
+- Android 12+의 첫 presence WorkManager 작업은 expedited이고 quota 부족 시 일반 작업으로 안전하게 강등된다.
+  Android 8~11은 새 foreground-service 계약을 요구하지 않도록 기존 일반 작업을 유지한다.
+  retry는 설정된 지연을 지키며, 45초를 넘긴 stale presence는 proof 전에
+  `PRESENCE_EXPIRED`로 종료한다.
+- action 1 성공은 실제 Target `ARMED` 전이 뒤에만 반환되므로 presence→dispatch와
+  presence→ARMED 시간을 분리 기록한다. Target은 ARMED 동안 100 ms 간격으로만 초음파를 읽고
+  유효 설정 거리 안에서만 relay를 켠다.
+- source/native-host 집중 테스트 36개가 통과했다. 현재 phone, AJ-SR04T와 physical relay가
+  연결되지 않았으므로 screen-off/pocket 성공률, 실제 sensor-to-contact latency는 미검증이다.
+
+## 2026-08-26 issue #133 merged software path
 
 - 수동 앱 버튼과 background presence가 더 이상 같은 의미를 공유하지 않는다. 수동 버튼은 signed
   local GATT action 2를 foreground에서 즉시 실행하고 Target terminal result를 기다리며, presence
@@ -28,7 +42,8 @@ applies_to:
   `RESULT OK`를 생성한다.
 - native C++/source suite 11/11과 `esp32c6_personal_production` build가 통과했다. firmware는
   1,780,836/7,340,032 bytes(24.3%), RAM 67,088/327,680 bytes(20.5%)다.
-- 이 후보는 아직 PR CI/merge/NAS publication/Target install 전이다. 현재 phone은 연결되어 있지 않고
+- PR #135는 Android, Target, OTA, protocol과 Trusted CI 통과 후 main `737d3243`으로
+  merge됐고, 최종 정책 회전 PR #139도 main `6cad8baa`에 병합됐다. 현재 phone은 연결되어 있지 않고
   sensor/relay가 배선되지 않았으므로 버튼-to-GPIO latency, 실제 접점, 초음파 hands-free 결과를
   주장하지 않는다.
 

@@ -16,6 +16,7 @@ enum class AccessReasonCode(val schemaReason: String, val retryable: Boolean) {
   BLUETOOTH_DISABLED("BLUETOOTH_DISABLED", true),
   FORCE_STOPPED("FORCE_STOPPED", false),
   BATTERY_RESTRICTED("BATTERY_RESTRICTED", true),
+  PRESENCE_EXPIRED("PRESENCE_EXPIRED", false),
   GATT_CONNECT_FAILED("GATT_CONNECT_FAILED", true),
   GATT_TIMEOUT("GATT_TIMEOUT", true),
   GATT_DISCONNECTED("GATT_DISCONNECTED", true),
@@ -249,4 +250,16 @@ object RetryPolicy {
     val elapsed = (nowEpochMs - session.updatedEpochMs).coerceAtLeast(0)
     return (scheduled - elapsed).coerceAtLeast(0)
   }
+}
+
+object HandsFreeDispatchPolicy {
+  const val MAX_PRESENCE_AGE_MS = 45_000L
+
+  fun shouldExpedite(initialDelayMs: Long): Boolean = initialDelayMs <= 0
+
+  fun presenceAgeMs(createdEpochMs: Long, nowEpochMs: Long): Long =
+    (nowEpochMs - createdEpochMs).coerceAtLeast(0)
+
+  fun isFresh(createdEpochMs: Long, nowEpochMs: Long): Boolean =
+    presenceAgeMs(createdEpochMs, nowEpochMs) <= MAX_PRESENCE_AGE_MS
 }

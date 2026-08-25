@@ -100,8 +100,24 @@ object BleWakeRegistrar {
     .getBoolean(KEY_ENABLED, false)
 
   fun status(context: Context): BleWakeRegistrationResult {
-    val enabled = isEnabled(context)
-    return BleWakeRegistrationResult(if (enabled) "registered" else "not_registered", enabled = enabled)
+    if (!isEnabled(context)) return BleWakeRegistrationResult("not_registered")
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      return BleWakeRegistrationResult("unsupported_api")
+    }
+    val missingPermission = missingPermission(context)
+    if (missingPermission != null) {
+      return BleWakeRegistrationResult("missing_permission:$missingPermission")
+    }
+    try {
+      val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+        ?: return BleWakeRegistrationResult("bluetooth_unavailable")
+      if (!adapter.isEnabled || adapter.bluetoothLeScanner == null) {
+        return BleWakeRegistrationResult("bluetooth_off_or_scanner_unavailable")
+      }
+    } catch (_: SecurityException) {
+      return BleWakeRegistrationResult("security_exception")
+    }
+    return BleWakeRegistrationResult("registered", enabled = true)
   }
 
   internal fun callbackIntent(context: Context): PendingIntent {
@@ -128,6 +144,8 @@ object BleWakeRegistrar {
     return when {
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && missing(Manifest.permission.BLUETOOTH_SCAN) ->
         Manifest.permission.BLUETOOTH_SCAN
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && missing(Manifest.permission.BLUETOOTH_CONNECT) ->
+        Manifest.permission.BLUETOOTH_CONNECT
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && missing(Manifest.permission.ACCESS_FINE_LOCATION) ->
         Manifest.permission.ACCESS_FINE_LOCATION
       Build.VERSION.SDK_INT in Build.VERSION_CODES.Q..Build.VERSION_CODES.R &&

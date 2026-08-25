@@ -11,6 +11,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -21,6 +22,7 @@ object BleGattWorkScheduler {
   const val HAS_NETWORK_CONSTRAINT = false
   const val UNIQUE_WORK_POLICY = "KEEP"
   const val RETRY_WORK_POLICY = "APPEND_OR_REPLACE"
+  const val EXPEDITED_MIN_API = Build.VERSION_CODES.S
   private const val INPUT_SESSION_ID = "session_id"
 
   data class ManualRetryResult(
@@ -85,8 +87,8 @@ object BleGattWorkScheduler {
     )
   }
 
-  private fun request(sessionId: String, initialDelayMs: Long): OneTimeWorkRequest =
-    OneTimeWorkRequestBuilder<BleGattCredentialWorker>()
+  private fun request(sessionId: String, initialDelayMs: Long): OneTimeWorkRequest {
+    val builder = OneTimeWorkRequestBuilder<BleGattCredentialWorker>()
       .setInputData(workDataOf(INPUT_SESSION_ID to sessionId))
       .setInitialDelay(initialDelayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
       .setBackoffCriteria(
@@ -94,7 +96,14 @@ object BleGattWorkScheduler {
         RetryPolicy.WORK_BACKOFF_SECONDS,
         TimeUnit.SECONDS,
       )
-      .build()
+    if (
+      Build.VERSION.SDK_INT >= EXPEDITED_MIN_API &&
+      HandsFreeDispatchPolicy.shouldExpedite(initialDelayMs)
+    ) {
+      builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+    }
+    return builder.build()
+  }
 
   private fun workName(sessionId: String) = "ble-gatt-session-$sessionId"
 
@@ -112,6 +121,17 @@ class BleGattCredentialWorker(
     val initial = ledger.get(sessionId) ?: return Result.failure()
     if (!DurableAttemptPolicy.canExecute(initial.state)) {
       vault.delete(sessionId)
+      return Result.success()
+    }
+    val dispatchEpochMs = System.currentTimeMillis()
+    if (!HandsFreeDispatchPolicy.isFresh(initial.createdEpochMs, dispatchEpochMs)) {
+      terminateFailure(
+        ledger,
+        vault,
+        initial,
+        AccessReasonCode.PRESENCE_EXPIRED,
+        "PRESENCE_AGE_EXCEEDED",
+      )
       return Result.success()
     }
     if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
@@ -151,10 +171,17 @@ class BleGattCredentialWorker(
       }
       configuredCredential.fill(0)
       val attempt = initial.attempt + 1
+      val runningEpochMs = System.currentTimeMillis()
       val running = initial.copy(
         attempt = attempt,
         state = DurableSessionState.RUNNING,
-        updatedEpochMs = System.currentTimeMillis(),
+        updatedEpochMs = runningEpochMs,
+        dispatchStartedEpochMs = runningEpochMs,
+        presenceToDispatchMs = HandsFreeDispatchPolicy.presenceAgeMs(
+          initial.createdEpochMs,
+          runningEpochMs,
+        ),
+        presenceToArmedMs = null,
         reasonCode = null,
         targetReasonCode = null,
         targetReasonName = null,
@@ -222,12 +249,17 @@ class BleGattCredentialWorker(
     outcome: SessionOutcome,
   ): Result = when (outcome) {
     is SessionOutcome.Success -> {
+      val armedEpochMs = System.currentTimeMillis()
       ledger.update(
         running.copy(
           state = DurableSessionState.SUCCEEDED,
-          updatedEpochMs = System.currentTimeMillis(),
+          updatedEpochMs = armedEpochMs,
           reasonCode = null,
           latencyMs = outcome.latencyMs,
+          presenceToArmedMs = HandsFreeDispatchPolicy.presenceAgeMs(
+            running.createdEpochMs,
+            armedEpochMs,
+          ),
           activeAclVersion = outcome.activeAclVersion,
         ),
       )
@@ -350,6 +382,8 @@ object BleGattHealthBridge {
     val decision = flagStore.decision()
     val localConsent = flagStore.localConsentStatus()
     val last = SharedPreferencesSessionLedger(context.applicationContext).last()
+    val wakeRegistration = com.kshouse.gatekeeper_app.blewake.BleWakeRegistrar.status(context)
+    val blockingReason = BleGattRuntimeEnvironment.currentBlockingReason(context)
     return mapOf(
       "featureEnabled" to decision.newWorkerEnabled,
       "featureStatus" to decision.status,
@@ -367,7 +401,18 @@ object BleGattHealthBridge {
       "lastRetryAfterMs" to last?.retryAfterMs,
       "lastScheduledRetryDelayMs" to last?.scheduledRetryDelayMs,
       "lastLatencyMs" to last?.latencyMs,
-      "currentBlockingReasonCode" to BleGattRuntimeEnvironment.currentBlockingReason(context),
+      "lastPresenceToDispatchMs" to last?.presenceToDispatchMs,
+      "lastPresenceToArmedMs" to last?.presenceToArmedMs,
+      "wakeRegistrationStatus" to wakeRegistration.status,
+      "wakeRegistered" to wakeRegistration.enabled,
+      "handsFreeReady" to (
+        decision.newWorkerEnabled && wakeRegistration.enabled && blockingReason == null
+      ),
+      "initialWorkExpedited" to (
+        Build.VERSION.SDK_INT >= BleGattWorkScheduler.EXPEDITED_MIN_API
+      ),
+      "maxPresenceAgeMs" to HandsFreeDispatchPolicy.MAX_PRESENCE_AGE_MS,
+      "currentBlockingReasonCode" to blockingReason,
       "forceStopReasonCode" to AccessReasonCode.FORCE_STOPPED.schemaReason,
       "reasonCodeMap" to mapOf(
         "permission" to AccessReasonCode.PERMISSION_DENIED.schemaReason,
@@ -387,7 +432,18 @@ object BleGattRuntimeEnvironment {
     val appContext = context.applicationContext
     if (
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-      appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+      (
+        appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
+          appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+      )
+    ) return AccessReasonCode.PERMISSION_DENIED.schemaReason
+    if (
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+      appContext.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+    ) return AccessReasonCode.PERMISSION_DENIED.schemaReason
+    if (
+      Build.VERSION.SDK_INT in Build.VERSION_CODES.Q..Build.VERSION_CODES.R &&
+      appContext.checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
     ) return AccessReasonCode.PERMISSION_DENIED.schemaReason
     val adapter = appContext.getSystemService(BluetoothManager::class.java)?.adapter
     if (adapter == null || !adapter.isEnabled) return AccessReasonCode.BLUETOOTH_DISABLED.schemaReason

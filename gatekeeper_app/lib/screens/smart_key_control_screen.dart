@@ -376,6 +376,19 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                 'Last Latency: ${_workerHealth?.lastLatencyMs ?? 0} ms',
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            Text(
+                                'Hands-free: ${_workerHealth?.handsFreeReady == true ? "READY" : "NOT READY"} '
+                                '(wake: ${_workerHealth?.wakeRegistrationStatus ?? "unknown"})',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            Text(
+                                'Presence → dispatch/ARMED: '
+                                '${_workerHealth?.lastPresenceToDispatchMs ?? 0} / '
+                                '${_workerHealth?.lastPresenceToArmedMs ?? 0} ms',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
                           ],
                         ),
                       ),
