@@ -21,6 +21,15 @@ The per-boot identity is 128 bits from the ESP hardware RNG. The Target publishe
 
 The replay ledger is stored in two alternating NVS records with generation and CRC checks. Issue #149 places these records in the fixed 1.875 MiB durable-state partition because the original 20 KiB default NVS could not hold ACL, replay, queue and NVS metadata safely together. Existing application-only OTA Targets select the unused legacy `spiffs`-labelled region; new partition tables label the identical offset `sgkstate` with NVS subtype. Reads fall back to the old NVS until each record is rewritten, but writes never fall back and no automatic erase is permitted. A nonce/session/digest record is persisted before the effect and marked complete only after the effect attempt, so a reset before completion returns `duplicate_uncertain` and never repeats a relay, reboot, configuration, or OTA effect. Completed duplicates return their duplicate status without execution; storage write or readback failure rejects the command before any effect.
 
+Connected post-merge evidence on exact Target `2.1.273+main.g493591b`
+initialized `sgkstate` with 60,480 free entries, accepted three successive
+signed ACL versions, executed two signed HA reboots and retained replay state
+across both boots (`used=179`, then 195). The HA OTA control then reached a
+forced Target check and correctly rejected a same-current reflash. This proves
+the device-side storage and signed effect path for the observed commands; it
+does not prove inactive-slot installation, pending-image valid marking,
+rollback or power-loss recovery.
+
 ## 4. Signed Target OTA
 
 - Periodic HTTPS manifest checks run after 60 seconds and every six hours, with a bounded 15-minute retry after failure. Signed `ota_check` remains an additional trigger, not the only trigger.

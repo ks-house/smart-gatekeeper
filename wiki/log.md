@@ -3658,3 +3658,20 @@
 - PR #150 head `a2cff40` passed fresh Hosted Trusted, OTA-contract, ESP32-C6 canary and Android canary checks, then merge-commit merged as actual main `b637b046ca94f0be6e874029818d253c3d1b9978`.
 - Removed both bounded `0427181` transition identities and pinned the sole `current-main-baseline` to actual merged main `b637b046`; the complete ordered 69-file protected map and both inventories remain unchanged from the reviewed candidate.
 - This policy-only issue #153 does not initialize or erase NVS, publish production firmware, install the Target, prove action-1 `ARMED`, exercise the ultrasonic threshold or claim physical relay/rollback evidence.
+
+## [2026-08-26] test | Validate final-main durable NVS and HA controls
+
+- Authenticated the live NAS exact-main 493 encrypted artifact and recovered plaintext against the signed manifest before bounded COM5 installation. Target booted `2.1.273+main.g493591b`, preserved Wi-Fi/config, initialized `sgkstate` with 60,480 free entries, restored MQTTS/GATT and applied ACL v169--v171 without another capacity error.
+- Two signed HA reboots succeeded and durable usage survived/advanced from 179 to 195. The signed HA OTA control reached a forced current-version check, and HA remote open produced one relay-command ON/OFF sequence without reset. These are board/control-path results, not inactive-slot install, electrical contact, health-valid or rollback proof.
+- Two real Samsung screen-off first matches reached native WorkManager, service discovery, indication subscription and framed proof writes with Target GATT acceptance, but neither reached action-1 `ARMED`. No NVS/ACL/replay error recurred; durable app result classification requires one user unlock, while AJ-SR04T/contact acceptance remains pending.
+
+## [2026-08-26] compile | Open issue 155 connected-evidence record
+
+- Opened docs-only issue #155 to preserve final-main Target/NVS/HA/Android evidence without mixing a possible new runtime defect into the completed issue #149 implementation PR.
+- Synchronized project status, hardware evidence, Android worker, Target ACL/command security and navigation. Runtime source, workflows, production Secrets, NAS pointers and device configuration are outside this documentation PR.
+
+## [2026-08-26] test | Exclude OTA collision from screen-off action-1 failure
+
+- Held the Target in its ROM bootloader for a bounded interval without writing flash, cleared Android logcat, turned the secured Samsung screen off and then hard-reset the Target. The OS first-match callback arrived with `screen_interactive=false` and the native worker completed GATT service discovery, indication subscription and all request/proof fragment writes before the later Target periodic OTA check.
+- The Target accepted the connection but emitted no `AUTH_PENDING -> ARMED`; Android WorkManager `SUCCESS` and ATT writes therefore remain transport-only evidence. No NVS, ACL or replay capacity failure recurred, and OTA-busy collision is excluded for this third trial.
+- Closed issue #149 after connected durable-storage acceptance and opened P0 issue #156 for the distinct missing terminal action-1 result. The exact durable app/Target reason still requires one user unlock before choosing the smallest corrective layer; AJ-SR04T and relay/contact acceptance remain pending.

@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-26 (issue #153 pins actual durable-NVS merge as current trusted baseline)
+> Last updated: 2026-08-26 (issue #155 records final-main connected evidence; issue #156 owns the screen-off action-1 defect)
 
 ---
 

@@ -14,9 +14,45 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소 exact main `848bbf16add9d4e06125739086e24fef6b685bca`, 실제 Target `2.1.270+main.g848bbf1`, Android `1.0.0-g848bbf1` (`versionCode=20201`), 수동 action-2 반복 성공, 그리고 issue #149 NVS 용량 결함 증거
+> 관측 기준: 저장소/Target exact main `493591bb482756c6713240387d7c68d319bba439` / `2.1.273+main.g493591b`, Android `1.0.0-g848bbf1` (`versionCode=20201`), durable NVS/HA reboot/OTA/remote-open 실기기 성공, 수동 action-2 반복 성공, 그리고 issue #156 screen-off action-1 결과 분류 대기
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-08-26 final-main 493 durable-NVS and connected control validation
+
+- Final push run `32895175240` built and published exact main `493591bb` as
+  `2.1.273+main.g493591b`. Before recovery installation, the live NAS manifest,
+  immutable encrypted artifact and authenticated plaintext were checked at
+  `1,849,044` bytes / SHA-256 `31480801...684e4d8a` and `1,849,008` bytes /
+  SHA-256 `b734ee43...1228a9a8`, respectively.
+- The old 848 command ledger was already full, so even the signed HA OTA
+  request failed before reaching the OTA effect. COM5 was therefore used as a
+  bounded recovery path: bootloader, the reviewed 16 MiB partition table,
+  `boot_app0` and the exact authenticated CI application were written at their
+  standard offsets without erasing the Wi-Fi/config NVS.
+- The recovered Target booted exact 493, restored Wi-Fi `192.168.35.19`, MQTTS
+  and GATT, and initialized `sgkstate` with `used=0 free=60480 total=60480`.
+  Signed retained ACLs v169--v171 then wrote successfully with no further
+  `NOT_ENOUGH_SPACE` error.
+- Two signed HA reboots succeeded. Durable usage survived the first reboot and
+  advanced from 179 to 195 entries by the second, proving that signed-command
+  replay writes now persist instead of failing at `ledger_b`. A signed HA OTA
+  request also reached `[OTA] forced update check started` and returned
+  `already current: 2.1.273+main.g493591b`. HA remote open produced one
+  relay-command ON/OFF sequence without reset.
+- Three Samsung screen-off first-match trials were delivered with
+  `screen_interactive=false`, RSSI -50/-52. Native WorkManager connected,
+  discovered services, enabled the three indication characteristics and wrote
+  all framed proof chunks, then disconnected. Target accepted all three BLE links,
+  but no action-1 `ARMED` trace followed. No NVS/ACL/replay error accompanied
+  these attempts. The third trial completed before the later periodic OTA check,
+  excluding OTA-busy collision. Issue #149 storage acceptance is complete and
+  closed; issue #156 separately tracks the missing terminal action-1 result.
+  The app's durable result/reason still requires an unlocked health-screen read
+  before selecting the smallest responsible runtime layer.
+- There is no AJ-SR04T/contact fixture in the current board-only setup.
+  Ultrasonic threshold-to-relay, electrical contact, pending-image valid mark,
+  rollback and wall-install acceptance remain open evidence Gates.
 
 ## 2026-08-26 exact-main 848 connected acceptance and issue #149
 

@@ -154,3 +154,27 @@ These bounds improve Android-side dispatch and make latency measurable. They do
 not guarantee OS radio discovery time or Samsung background scheduling. A phone
 was not connected for this change, and AJ-SR04T/GPIO3 were not wired, so pocket,
 screen-off, sensor and physical relay timing remain field gates.
+
+## 10. Final-main 493 screen-off observations
+
+The installed Samsung APK remains production-signed
+`1.0.0-g848bbf1` / 20201; final main 493 changed Target durable storage and
+trusted policy, not this Android runtime. After exact 493 recovered on the
+Target, three true screen-off first-match callbacks arrived at RSSI -50/-52
+with `screen_interactive=false`. Each expedited native worker connected to the
+Target, discovered the Hardwareless service, enabled Hello/Challenge/Result
+indications, wrote the framed request/proof chunks and closed cleanly in about
+4.6--5.8 seconds. Target serial independently recorded all accepted GATT
+connections. The third trial held the Target in its ROM bootloader before a
+hard reset and did not write flash; the worker completed before the later
+periodic OTA check started, excluding the earlier OTA-busy collision hypothesis.
+
+No attempt produced Target action-1 `AUTH_PENDING -> ARMED`. Unlike the
+earlier 848 trial, none was accompanied by `ledger_b`, `slot_0`, ACL or
+replay storage failure. WorkManager `SUCCESS`, Android ATT write success and a
+Target connection are transport evidence only; they do not establish an
+authenticated terminal Result or FSM ARM. Issue #156 owns this distinct mobile
+terminal-result defect; the durable worker reason/Target reason must still be
+read after one user unlock before selecting the smallest corrective layer.
+Issue #149 is closed because its durable-storage acceptance is complete.
+AJ-SR04T threshold and physical relay/contact evidence remain pending.
