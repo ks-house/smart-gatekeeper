@@ -3705,3 +3705,8 @@
 
 - PR #163 passed its hosted Trusted Workflow check and merged as policy main `c7678e36f43f5a8c5ea011b37d5bb006d268f6d6`, closing issue #162.
 - Merge-connected that authorization main into PR #161 without rebasing or squashing, preserving immutable feature parent `748c2681` and both append-only evidence streams. Fresh hosted Trusted, OTA-contract and ESP32-C6 checks remain required before the feature can merge.
+
+## [2026-08-26] fix | Synchronize Target publisher digest contract
+
+- Fresh PR #161 CI correctly rejected the stale `src/OtaManager.cpp` digest asserted by `test_target_ota_autopublish.py`, even though the privileged workflow inventory contained the reviewed candidate digest. Updated that source-level contract to the exact normalized candidate digest `8d8f560f...`.
+- The correction changes no firmware, workflow, secret, NAS object or connected device. Fresh Target publisher, OTA-contract and trusted checks must all pass before merge.
