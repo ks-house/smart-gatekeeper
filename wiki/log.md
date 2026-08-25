@@ -3716,3 +3716,9 @@
 - PR #161 head `d994a7f0` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `17793de56289a9fe4f740b8b539aef97fb9182b2`.
 - Issue #164 removes both bounded `748c268` transition identities and pins the sole `current-main-baseline` to actual merged main `17793de5`; the complete ordered 69-file protected map and both inventories remain unchanged from the reviewed candidate.
 - This policy-only rotation does not publish or install firmware. Issue #160 was reopened and remains pending production NAS publication plus connected Target install, reboot and Wi-Fi/MQTTS/GATT/health recovery; AJ-SR04T and physical relay-contact acceptance remain pending.
+
+## [2026-08-26] compile | Authorize exact issue 166 OTA keep-alive candidate
+
+- Reviewed immutable issue #166 / PR #167 feature commit `db8d1fe861aeb8815badc7cbf03dd148a815f0d2`. Relative to current main, only protected `.github/workflows/deploy.yml` changes to normalized digest `bd1f5c0c...`, binding reviewed `src/OtaManager.cpp` digest `6b1d39f1...`; the other 68 protected objects and both inventories remain exact.
+- Issue #168 uses bounded `temporary-ota-keepalive-db8d1fe` and `future-ota-keepalive-db8d1fe-persistent-baseline` identities carrying the same complete ordered map. This policy-only change does not alter runtime bytes, publish firmware, access NAS or mutate a connected device.
+- Hosted policy CI, merge-connection into #167, fresh feature checks, feature merge, final policy rotation and connected signed OTA install/reboot/Wi-Fi/MQTTS/GATT/health confirmation remain required.
