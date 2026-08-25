@@ -80,8 +80,7 @@ class NativeGattWorkerHealth {
       maxPresenceAgeMs: (value['maxPresenceAgeMs'] as num?)?.toInt(),
       lastPresenceToDispatchMs:
           (value['lastPresenceToDispatchMs'] as num?)?.toInt(),
-      lastPresenceToArmedMs:
-          (value['lastPresenceToArmedMs'] as num?)?.toInt(),
+      lastPresenceToArmedMs: (value['lastPresenceToArmedMs'] as num?)?.toInt(),
       lastSession: (value['lastSession'] as Map?)?.cast<Object?, Object?>(),
     );
   }
