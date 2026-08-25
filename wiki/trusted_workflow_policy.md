@@ -334,6 +334,16 @@ merge as the sole current baseline. This authorization does not publish or
 install firmware and does not claim OTA install/reboot/health, ultrasonic, or
 physical relay-contact evidence.
 
+PR #161 head `d994a7f0` passed fresh Hosted Trusted, OTA-contract and ESP32-C6
+canary checks, then merge-commit merged as actual main
+`17793de56289a9fe4f740b8b539aef97fb9182b2`. Issue #164 removes both bounded
+`748c268` transition identities and pins that actual merge as the sole
+`current-main-baseline`; the complete 69-file protected map and both
+inventories remain unchanged from the reviewed candidate. This policy rotation
+does not publish or install firmware. Issue #160 remains open until the
+connected Target installs the exact-main artifact, reboots and restores
+Wi-Fi/MQTTS/GATT/health.
+
 This policy expands a repository authorization boundary only. It does not itself modify any protected workflow,
 backend/product/runtime file, dispatch a workflow, or write to a NAS. It does not change the authenticated mobile
 `manual_remote` door-open path, firmware/app runtime code, dual OTA partitions, health/rollback, periodic
