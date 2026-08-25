@@ -126,6 +126,16 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("[OTA-ERROR] manifest rejected: %s", ota)
         self.assertIn("[OTA] running image marked VALID", ota)
         self.assertIn("OtaManager::getLastError()", wifi)
+        manifest_client = ota.index("WiFiClientSecure manifestClient")
+        manifest_scope_end = ota.index("\n  }\n  status = OtaStatus::VERIFYING", manifest_client)
+        artifact_client = ota.index("WiFiClientSecure artifactClient")
+        self.assertLess(manifest_client, manifest_scope_end)
+        self.assertLess(manifest_scope_end, artifact_client)
+        manifest_scope = ota[manifest_client:manifest_scope_end]
+        self.assertIn("manifestHttp.end()", manifest_scope)
+        self.assertIn("manifestClient.setCACert(SECRET_ROOT_CA_CERT)", manifest_scope)
+        self.assertIn("artifactClient.setCACert(SECRET_ROOT_CA_CERT)", ota)
+        self.assertNotIn("setInsecure", ota)
         safe_state_failure = ota.split("if (!waitForSafeState())", 1)[1].split(
             "}", 1
         )[0]

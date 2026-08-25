@@ -458,7 +458,23 @@ three can be evaluated without the physical sensor and contact fixture.
 | Screen-off attempt 3 | Target was held in the ROM bootloader without a flash write, phone logcat was cleared, then Target was hard-reset. The OS first match arrived with `screen_interactive=false`; service discovery, indications and all proof fragments completed before the later periodic OTA check, but no `ARMED` followed | FAIL for action-1 acceptance and excludes OTA-busy collision; issue #156, exact durable app reason pending unlock |
 | Physical sensor/contact | No AJ-SR04T echo or relay contact/load fixture is attached | PENDING; threshold-to-relay, electrical timing and actual door remain unclaimed |
 
-Issue #149's storage acceptance is complete and the issue is closed. The
-missing action-1 terminal result is tracked separately by issue #156 and must
-be classified from the app health projection before selecting the responsible
-mobile/transport/Target layer. It does not reopen the storage design.
+Issue #149's storage acceptance is complete and the issue is closed. At this
+point the missing action-1 terminal result was tracked separately by issue #156;
+the later exact-main Android acceptance section below supersedes that failure
+and closes #156. It does not reopen the storage design.
+
+## 2026-08-26 exact-main Android connected acceptance and OTA TLS failure
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Android artifact/install | Run `32903378187` production-signed exact source `1e3dfcf32c7b3ef88121fb824c35d81d2f6d40a7` as `1.0.0-g1e3dfcf` / 21001. APK SHA-256 `cbf8497c...9243a5b`, embedded source and production signer matched; `adb install -r` preserved first-install time and KeyStore state | PASS for exact APK identity, same-signature replacement and credential preservation |
+| Native health | Dashboard reported `HEALTHY`, `BLE Owner: native_gatt`, `Hands-free: READY` and `local_keystore_authenticated` | PASS for the observed installed state |
+| Main `문 열기` action 2 | Tap at 07:14:18 led to HA `AUTH_PENDING` 07:14:20, Target relay ON and HA `RELAY_HOLD`/door-open 07:14:23, OFF/`COOLDOWN` 07:14:24 and `IDLE` 07:14:29 without reset | PASS for mobile -> GATT -> Target FSM/GPIO command and timer cutoff; physical relay contact/door absent |
+| Bounded BLE-owner recovery | Observed Flutter owner-exclusion attempts at 07:14:46, 07:15:17, 07:15:47 and 07:16:17 rather than the prior immediate subscription/notification loop | PASS for connected bounded retry; issue #158 closed |
+| Screen-off action 1 | App was on Home and phone remained `Dozing`; after one authenticated Target reboot, native WorkManager completed `SUCCESS`, Target accepted GATT and HA recorded `AUTH_PENDING` 07:17:33 -> `ARMED` 07:17:36 | PASS for one real screen-off first-match through terminal action-1 ARM; issue #156 closed |
+| Signed exact-main Target OTA | Run `32903378312` published `2.1.275+main.g1e3dfcf`. Target accepted the signed manifest but the immediately following artifact TLS handshake failed `-9984`, returning HTTP/size code -1 | FAIL before inactive-slot write; issue #160, installed Target remains 493 |
+| Physical sensor/contact | AJ-SR04T and relay/contact/load are not attached | PENDING: `ARMED -> threshold -> relay`, electrical timing and actual door remain unclaimed |
+
+The action-1 and action-2 software/control requirements now pass their connected
+board-level boundaries. This does not convert the absent sensor, relay contact,
+OTA health-valid/rollback or wall-install checks into evidence.

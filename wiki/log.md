@@ -3682,3 +3682,15 @@
 - The candidate clears and cancels only the exact failed subscription generation before recovery, tolerates the same native ownership guard during EventChannel cancellation, and coalesces repeated errors into one delayed retry. Native-GATT lease retry is one second, other stream failures use two seconds, teardown cancels pending recovery and the existing transition lock continues to serialize restarts.
 - Four focused Dart policy/single-flight tests, three source-order contract tests and all 39 Flutter tests passed with the exact CI Flutter 3.44.8 toolchain. Production-signed APK CI, installation and connected bounded-log/automatic-resume acceptance remain required; issue #156 still owns the separate terminal action-1 result and no sensor/contact claim is made.
 - The complete 311-test Python discovery passed 309 tests; its only two failures are the unchanged Windows CRLF policy findings in `manuals/README.md` and `scripts/setup_ota_signing_secrets.ps1`. Issue #158 modifies neither file, and hosted Linux CI remains the merge authority.
+
+## [2026-08-26] test | Validate exact-main Android manual and screen-off actions
+
+- Main run `32903378187` production-signed and NAS-published Android exact source `1e3dfcf32c7b3ef88121fb824c35d81d2f6d40a7` as `1.0.0-g1e3dfcf` / 21001. Downloaded APK hash, embedded source and production signer matched; `adb install -r` preserved the original first-install time, app data and AndroidKeyStore-authenticated native state.
+- The actual main-screen `문 열기` action reached Target relay ON/OFF and HA `AUTH_PENDING -> RELAY_HOLD -> COOLDOWN -> IDLE` without reset. One separate Samsung Home/background plus `Dozing` first match reached native WorkManager success and HA `AUTH_PENDING -> ARMED`; issues #156 and #158 were closed with these connected results.
+- Flutter owner-exclusion logging remained bounded to about one ranging attempt per 30 seconds rather than the prior immediate subscription/notification storm. AJ-SR04T, relay contact/load, electrical timing and actual door movement remain unmeasured.
+
+## [2026-08-26] fix | Release manifest TLS state before Target artifact download
+
+- Run `32903378312` published signed exact-main Target `2.1.275+main.g1e3dfcf`; the installed Target accepted its manifest but the next artifact handshake failed closed with Mbed TLS `-9984` before any inactive-slot write. Manifest and artifact share the same host/port, whose valid longer Let's Encrypt chain reaches the provisioned ISRG Root X1 through four served intermediates/cross-signs.
+- Opened issue #160 and scoped the manifest HTTP/TLS objects so their `WiFiClientSecure` state is destroyed before the artifact client is allocated. Both requests retain the provisioned CA and hostname verification; no insecure fallback was added.
+- The targeted Target security/Hardwareless suite passed 20/20. `esp32c6_personal_production` built at 1,782,314/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%). Hosted trusted/OTA/Target CI, protected build-input authorization, merge, exact-main signed publication and connected install/reboot recovery remain required.
