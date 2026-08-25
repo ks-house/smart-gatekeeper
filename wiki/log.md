@@ -3694,3 +3694,14 @@
 - Run `32903378312` published signed exact-main Target `2.1.275+main.g1e3dfcf`; the installed Target accepted its manifest but the next artifact handshake failed closed with Mbed TLS `-9984` before any inactive-slot write. Manifest and artifact share the same host/port, whose valid longer Let's Encrypt chain reaches the provisioned ISRG Root X1 through four served intermediates/cross-signs.
 - Opened issue #160 and scoped the manifest HTTP/TLS objects so their `WiFiClientSecure` state is destroyed before the artifact client is allocated. Both requests retain the provisioned CA and hostname verification; no insecure fallback was added.
 - The targeted Target security/Hardwareless suite passed 20/20. `esp32c6_personal_production` built at 1,782,314/7,340,032 bytes flash (24.3%) and 67,088/327,680 bytes RAM (20.5%). Hosted trusted/OTA/Target CI, protected build-input authorization, merge, exact-main signed publication and connected install/reboot recovery remain required.
+
+## [2026-08-26] compile | Authorize exact issue 160 Target OTA TLS candidate
+
+- Reviewed immutable issue #160 / PR #161 feature commit `748c2681a866c1330d8bfcfd8ecee11c75fbbea3`. The connected Target accepted the signed manifest but failed artifact TLS verification while the manifest TLS client was still alive; the candidate releases that first TLS context before allocating the artifact client and keeps CA verification fail-closed.
+- Relative to authorized main, only protected `.github/workflows/deploy.yml` changes to normalized digest `1b8bf00d...`; the other 68 protected objects and both inventories remain exact. Issue #162 uses bounded `temporary-ota-tls-748c268` and `future-ota-tls-748c268-persistent-baseline` identities carrying the same complete ordered map.
+- This policy-only change does not publish or install firmware. Policy merge, merge-connection, fresh feature CI, feature merge, final policy rotation and connected signed OTA install/reboot/health confirmation remain required; AJ-SR04T and physical relay-contact acceptance remain pending.
+
+## [2026-08-26] lint | Merge-connect issue 160 authorization
+
+- PR #163 passed its hosted Trusted Workflow check and merged as policy main `c7678e36f43f5a8c5ea011b37d5bb006d268f6d6`, closing issue #162.
+- Merge-connected that authorization main into PR #161 without rebasing or squashing, preserving immutable feature parent `748c2681` and both append-only evidence streams. Fresh hosted Trusted, OTA-contract and ESP32-C6 checks remain required before the feature can merge.
