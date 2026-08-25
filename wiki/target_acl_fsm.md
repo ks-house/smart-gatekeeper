@@ -74,6 +74,14 @@ Target (ESP32-C6) is the sole authoritative owner of local ACL verification, acc
 - **Signature (64B)**: P-256 raw64 (`r||s`), checked for `1 <= r < n` and low-S `1 <= s <= half_n`.
 - **Anti-Rollback**: High-watermark version floor persisted in NVS generation records. Any snapshot with `acl_version < high_watermark` is rejected.
 - **Dual-Slot Durable NVS Storage**: Alternating NVS slots (`slot_0`, `slot_1`) with generation records (`gen_0`, `gen_1`) and CRC32 protection for atomic dual-slot recovery across power cuts. Issue #149 moves these records out of the original 20 KiB default NVS into the fixed 1.875 MiB durable-state region while retaining read fallback to the old partition for application-only OTA migration. Wi-Fi/config remains in the default NVS, and migration never erases it.
+- **Connected #149 validation**: Exact `2.1.273+main.g493591b` reported
+  `sgkstate used=0 free=60480 total=60480`, then applied ACL v169--v171 and
+  retained signed-command replay writes across two HA-triggered reboots without
+  another `NOT_ENOUGH_SPACE`. Three later screen-off action-1 transports still
+  stopped before `ARMED`, but did so without an ACL/replay storage error. The
+  third completed before the later periodic OTA check, excluding OTA-busy
+  collision. Issue #149 is closed; issue #156 owns the separate terminal
+  mobile/Target result classification.
 
 ---
 

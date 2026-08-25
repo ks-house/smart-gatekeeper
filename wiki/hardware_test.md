@@ -442,3 +442,23 @@ After issue #149 merges and installs, the release Gate requires serial evidence
 for durable partition readiness, replay write success, `AUTH_PENDING -> ARMED`,
 a valid ultrasonic threshold event and relay-command ON/OFF. Only the first
 three can be evaluated without the physical sensor and contact fixture.
+
+## 2026-08-26 final-main 493 post-merge connected validation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Artifact identity | Live signed NAS manifest selected commit `493591bb`, version `2.1.273+main.g493591b`; immutable ciphertext and authenticated plaintext matched `1,849,044` / `31480801...684e4d8a` and `1,849,008` / `b734ee43...1228a9a8` | PASS for exact CI/NAS artifact identity before recovery install |
+| Recovery install | The old full replay ledger rejected the HA OTA effect, so COM5 wrote the standard bootloader/partition/OTA-select offsets plus exact CI app without erasing Wi-Fi/config NVS | PASS for bounded serial recovery and exact boot; this is not a signed inactive-slot OTA install |
+| Durable NVS | Exact 493 boot reported `sgkstate used=0 free=60480 total=60480`; ACL v169, v170 and v171 all applied with no `NOT_ENOUGH_SPACE` | PASS for connected durable partition and ACL writes |
+| Replay persistence | Signed HA reboot succeeded twice; next boot usage persisted and advanced `179 -> 195` | PASS for signed command replay persistence across reboot |
+| HA OTA control | Enabled HA OTA button produced Target `[OTA] forced update check started` and `already current: 2.1.273+main.g493591b` | PASS for HA bridge -> signed command -> Target OTA-check effect; no install was needed because current |
+| HA remote open | Enabled HA remote-open button produced relay-command ON then timer-bound OFF without reset | PASS for HA/backend/Target board-FSM/GPIO command path; physical contact and door unmeasured |
+| Screen-off attempt 1 | OS first-match at RSSI -50 with `screen_interactive=false`; native worker completed and Target accepted GATT, but no `ARMED` | FAIL/UNCLASSIFIED for hands-free acceptance; app durable reason pending unlock |
+| Screen-off attempt 2 | OS first-match at RSSI -52; Android connected, discovered services, enabled indications and wrote the complete framed request/proof sequence; Target accepted GATT, but no `ARMED` | FAIL/UNCLASSIFIED for hands-free acceptance; importantly no NVS/ACL/replay error recurred |
+| Screen-off attempt 3 | Target was held in the ROM bootloader without a flash write, phone logcat was cleared, then Target was hard-reset. The OS first match arrived with `screen_interactive=false`; service discovery, indications and all proof fragments completed before the later periodic OTA check, but no `ARMED` followed | FAIL for action-1 acceptance and excludes OTA-busy collision; issue #156, exact durable app reason pending unlock |
+| Physical sensor/contact | No AJ-SR04T echo or relay contact/load fixture is attached | PENDING; threshold-to-relay, electrical timing and actual door remain unclaimed |
+
+Issue #149's storage acceptance is complete and the issue is closed. The
+missing action-1 terminal result is tracked separately by issue #156 and must
+be classified from the app health projection before selecting the responsible
+mobile/transport/Target layer. It does not reopen the storage design.
