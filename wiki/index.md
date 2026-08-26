@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-26 (issue #170 pins actual #166 OTA keep-alive merge; connected install/reboot acceptance remains open)
+> Last updated: 2026-08-26 (exact-main 285 accepted signed OTA and ACL-before-BLE startup order; phone/sensor/contact/rollback Gates remain open)
 
 ---
 

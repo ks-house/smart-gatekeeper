@@ -511,3 +511,18 @@ success. Final pocket acceptance requires the merged exact-main Target to log
 signed ACL application before iBeacon/GATT readiness and a reconnected phone to
 reach terminal `ARMED`. Sensor-to-relay acceptance remains a separate physical
 fixture Gate.
+
+## 2026-08-26 exact-main 285 post-merge ACL-before-BLE acceptance
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| CI/NAS identity | Run `32916682601` built, production-signed, encrypted, atomically published and HTTPS-read-back final main `577533186ba5b40ca13fc47aadf51747e2057b73` as `2.1.285+main.g5775331` | PASS for exact production artifact publication |
+| Connected OTA | Running 282 accepted the signed manifest, downloaded 1,849,860 encrypted bytes, verified the inactive image and rebooted into exact 285 | PASS for signed download, inactive verification, boot selection and exact runtime identity |
+| Service recovery | Saved Wi-Fi restored at `192.168.35.19`; MQTTS subscribed, retained diagnostics/config returned and signed ACL v203 applied | PASS for one connected reboot recovery |
+| Corrected BLE order | Boot logged `waiting for an active signed ACL`; after MQTT connected and ACL v203 applied it logged `active signed ACL ready`, then initialized enabled GATT and iBeacon | PASS for issue #175 Target startup-order acceptance |
+| Stable/current interval | No reset occurred over the following 30 seconds; periodic HTTPS OTA reported already current at exact 285 | PASS for bounded connected stability/current-version check |
+| Boot health/rollback | No `PENDING_VERIFY` health-window or running-image valid-mark trace appeared | PENDING/FAIL to prove rollback; issue #172 remains open |
+| Mobile and physical boundary | Android is disconnected; AJ-SR04T and relay contact/load are absent | PENDING post-fix screen-off action-1, ultrasonic threshold, contact/electrical timing and actual door movement |
+
+The startup-order result closes only the Target-side race. It does not replace a
+phone-delivered terminal action-1 result or any sensor/contact evidence.

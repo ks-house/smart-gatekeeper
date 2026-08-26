@@ -18,6 +18,30 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-08-26 exact-main 285 ACL-before-BLE connected acceptance
+
+- PR #176 and both trusted-policy PRs merged; final source/policy main is
+  `577533186ba5b40ca13fc47aadf51747e2057b73`. Run `32916682601` built,
+  production-signed, encrypted and atomically NAS-published it as
+  `2.1.285+main.g5775331`.
+- The connected 282 Target accepted the signed manifest, downloaded the exact
+  1,849,860-byte encrypted artifact, verified the inactive image and rebooted
+  into exact 285. Saved Wi-Fi returned at `192.168.35.19`; exact per-Target
+  MQTTS, retained diagnostics/config and signed ACL delivery recovered.
+- The corrected boot order was observed directly: `BLE waiting for active ACL`
+  appeared before MQTT connection; signed ACL v203 applied; only then did the
+  Target start GATT, iBeacon and the enabled Hardwareless transport. This closes
+  the Target-side startup-order acceptance for issue #175.
+- A following 30-second connected interval remained stable and periodic HTTPS
+  OTA reported `already current: 2.1.285+main.g5775331`. No pending-image
+  health-window/valid-mark trace appeared, so issue #172 remains open and this
+  is not rollback proof.
+- Android is disconnected, so the fixed Target has not yet received a new
+  Samsung screen-off first match. AJ-SR04T and relay contact/load are absent;
+  ultrasonic threshold, electrical contact and actual door movement remain
+  unclaimed. Android Bluetooth OFF->ON re-registration is tracked separately by
+  issue #179.
+
 ## 2026-08-26 exact-main 282 connected controls and boot ACL race
 
 - Target and production-signed Android were aligned to exact main

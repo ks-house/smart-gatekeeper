@@ -3771,3 +3771,10 @@
 - PR #176 head `902b53c` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `ed9ed2bb8d15d40db18db377ec72ba77f1b0de41`, closing issue #175.
 - Issue #180 removes both bounded `388dcac` transition identities and pins the sole `current-main-baseline` to actual merged main `ed9ed2bb`; the complete ordered 69-file protected map and both inventories remain unchanged.
 - This policy-only rotation does not publish/install firmware or mutate Target/phone/NAS. Exact-main Target publication and connected ACL-before-BLE boot evidence remain required; Android is disconnected and sensor/contact/rollback Gates stay open.
+
+## [2026-08-26] test | Accept exact-main 285 ACL-before-BLE Target startup
+
+- Run `32916682601` built, signed, encrypted, atomically NAS-published and HTTPS-read-back final main `577533186ba5b40ca13fc47aadf51747e2057b73` as `2.1.285+main.g5775331`.
+- The connected 282 Target accepted the signed manifest, downloaded 1,849,860 encrypted bytes, verified the inactive image and rebooted. Exact 285 restored saved Wi-Fi `192.168.35.19`, MQTTS and signed ACL v203.
+- The required order was observed: BLE waited while ACL was inactive, MQTT connected, ACL v203 applied, then enabled GATT/iBeacon started. A 30-second stable interval and periodic already-current check followed, accepting issue #175's Target-side startup order.
+- No pending-image valid-mark trace appeared, so #172 rollback remains open. Android is disconnected and AJ-SR04T/relay contact are absent; post-fix screen-off action-1, sensor threshold and physical-door acceptance remain pending. Issue #179 tracks Bluetooth OFF->ON wake re-registration.
