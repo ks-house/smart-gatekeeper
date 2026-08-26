@@ -125,7 +125,12 @@ legacy scanner와 I4 GATT가 요구하는 권한은 wake 최소 세트와 별도
   Samsung Gate pending**
 - 재부팅/앱 업데이트: 등록 opt-in 복구 구현, **Samsung Gate pending**
 - Android 설정의 force-stop, Android 13+ 활성 앱 `중지`, OEM restricted battery,
-  Bluetooth OFF, 권한 회수: **자동 wake 미지원**
+  권한 회수: **자동 wake 미지원**
+- Bluetooth OFF→ON: persistent wake opt-in과 native foreground-service process가
+  살아 있는 경우 process-lifetime receiver가 `STATE_ON`에서 scan 등록을 복구하는
+  **issue #179 후보 구현**, Samsung 연결 시험 pending. process가 살아 있지 않으면
+  Bluetooth broadcast만으로 앱을 시작한다고 보장하지 않으며, 이후 앱/서비스 process
+  시작 시 native `Application` reconciliation으로 복구한다.
 - force-stop 뒤에는 사용자가 앱을 명시적으로 다시 열어 stopped state를 해제해야 한다.
   앱은 이를 자동 복구했다고 표시하지 않고 manual local retry/update 화면을 제공해야 한다.
 
@@ -299,3 +304,32 @@ does not change the Samsung Gate above. `handsFreeReady`, wake status,
 presence-to-dispatch and presence-to-Target-ARMED measurements are software
 observability until a release APK is installed on the phone and repeated with
 screen off, Activity/process background, reboot, sensor and relay.
+
+## 13. Issue #179 Bluetooth OFF→ON registration recovery candidate
+
+`BluetoothAdapter.ACTION_STATE_CHANGED` is an implicit broadcast and is not in
+Android 8.0+'s manifest implicit-broadcast exception list. A manifest receiver
+would therefore be a false recovery guarantee. The candidate instead installs a
+native `GatekeeperApplication` process entrypoint and context-registers a
+process-lifetime receiver. Android 13+'s receiver is registered exported because
+the Bluetooth framework broadcast can originate from the privileged Bluetooth
+app rather than the system UID; the action itself is platform-protected.
+
+- [Android broadcast overview and receiver flags](https://developer.android.com/develop/background-work/background-tasks/broadcasts)
+- [Implicit broadcast exceptions](https://developer.android.com/develop/background-work/background-tasks/broadcasts/broadcast-exceptions)
+- [BluetoothAdapter `ACTION_STATE_CHANGED`](https://developer.android.com/reference/android/bluetooth/BluetoothAdapter#ACTION_STATE_CHANGED)
+
+The receiver tracks adapter transitions and calls the existing registrar only on
+the first observed `STATE_ON` while persistent registration intent is enabled.
+OFF, TURNING states, repeated ON, unrelated actions and disabled intent do
+nothing. It never calls the native access entrypoint or schedules action 1.
+`BleWakeRegistrar` now persists enable intent before touching the adapter,
+persists disable intent before best-effort stop, and reconciles one exact
+PendingIntent by stop-then-start so process restarts and repeated recovery do not
+accumulate scan registrations.
+
+The seven focused source/pocket contracts, an expanded 174-test mobile/OTA/
+trusted suite and the Android `:app:testDebugUnitTest` build pass. This is not
+connected evidence: the Samsung phone is disconnected, so Bluetooth
+OFF→ON delivery, later first-match wake, terminal Target `ARMED`, ultrasonic
+threshold and physical relay/contact remain pending.

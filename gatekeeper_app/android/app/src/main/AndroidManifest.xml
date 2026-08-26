@@ -60,7 +60,7 @@
     <application
 
         android:label="경성하우스 스마트키"
-        android:name="${applicationName}"
+        android:name=".GatekeeperApplication"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
         <activity
