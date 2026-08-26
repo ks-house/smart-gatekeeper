@@ -3754,3 +3754,14 @@
 - The bounded candidate delays BLE only for Hardwareless builds until `hasActiveAcl()` is true, starts once, and preserves immediate non-Hardwareless beacon startup. Focused startup/pocket/Hardwareless tests passed 18/18 and the expanded security/trusted suite passed 68/68. The N16 production build passed at 1,782,948/7,340,032 bytes flash and 67,096/327,680 bytes RAM; hosted CI remains required.
 - Android has been disconnected, so post-merge screen-off repetition remains pending. Issue #172 rollback and the absent AJ-SR04T/relay physical Gates remain open.
 - Initial hosted OTA/Target checks failed closed because the privileged exact-build inventory did not yet include the new header. The issue #175 candidate now pins normalized `BleStartupPolicy.h` and `main.cpp` digests and changes the exact Target build-input count from 41 to 42; this protected workflow change requires bounded trusted-policy authorization before feature merge.
+
+## [2026-08-26] compile | Authorize exact issue 175 BLE startup candidate
+
+- Reviewed immutable issue #175 / PR #176 candidate `388dcac079bbe3ddb04f35f7677b4692790f150b`. Only protected `.github/workflows/deploy.yml` changes, to normalized digest `17bd1df4...`, pinning the new BLE startup header, changed main source and complete sorted 42-file Target build-input inventory; the other 68 protected objects and both inventories remain exact.
+- Issue #177 uses bounded `temporary-ble-acl-388dcac` and `future-ble-acl-388dcac-persistent-baseline` identities with the same complete map. This policy-only change does not build/publish/install firmware, access secrets/NAS or mutate the connected Target.
+- Hosted policy CI, merge-connection into #176, fresh feature CI, feature merge, final rotation and exact-main Target boot-order verification remain required. Android is disconnected and no sensor/contact/rollback physical claim is made.
+
+## [2026-08-26] lint | Merge-connect issue 175 authorization
+
+- PR #178 passed its Hosted Trusted Workflow check and merged as policy main `fd06c18a52bd4acc2f9855c684731ec8896fac9d`, closing issue #177.
+- Merge-connected that authorization main into PR #176 without rebasing or squashing, preserving immutable feature parent `388dcac` and both append-only evidence streams. Fresh Hosted Trusted, OTA-contract and ESP32-C6 checks remain required before feature merge.
