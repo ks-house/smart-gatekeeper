@@ -14,9 +14,27 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소 `082e431b50cd569ab0f557d463305e3b48ad27cc`, Target exact CI `2.1.281+main.g082e431`, Android exact main `1.0.0-g1e3dfcf` (`versionCode=21001`). Target periodic signed HTTPS OTA download→inactive verify→reboot와 Wi-Fi/MQTTS/ACL/GATT 복구는 성공했다. Bootloader `PENDING_VERIFY`/valid mark는 issue #172로 열려 있고, exact 281의 새 screen-off action-1 회차는 GATT indication 등록 뒤 WorkManager `FAILURE`로 `ARMED`에 도달하지 못했다.
+> 관측 기준: 저장소 `11e9ea1179bcc6a3030329c492267636aa681875`, Target exact CI `2.1.286+main.g11e9ea1`, Android exact main `1.0.0-g3cf6eaa` (`versionCode=21701`). Target signed HTTPS OTA download→inactive verify→reboot와 Wi-Fi/MQTTS/ACL/GATT 복구는 성공했다. Bootloader `PENDING_VERIFY`/valid mark는 issue #172로 열려 있고, post-fix Samsung screen-off action-1과 Bluetooth OFF→ON recovery는 phone 분리로 pending이다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-08-26 issue #179 Bluetooth-state recovery candidate
+
+- Android's modern implicit-broadcast limits make a manifest-only
+  `ACTION_STATE_CHANGED` receiver unreliable. The candidate registers a native
+  process-lifetime receiver from `GatekeeperApplication`, independently of the
+  Flutter UI/isolate, while the existing foreground service keeps the process
+  resident.
+- Persistent registration intent survives a Bluetooth-OFF registration attempt;
+  disable intent is committed before best-effort platform stop. The first
+  observed `STATE_ON` reconciles one exact PendingIntent scan by stop-then-start.
+  OFF/TURNING/repeated-ON and disabled states do not dispatch work, and the state
+  receiver never invokes action 1 directly.
+- Seven focused Python source/pocket contracts, an expanded 174-test mobile/
+  OTA/trusted suite and the Android Gradle `:app:testDebugUnitTest` build
+  (209 tasks) passed locally. The phone remains disconnected, so OFF→ON
+  broadcast delivery, OS first match and terminal action-1 `ARMED` are
+  explicitly pending connected acceptance.
 
 ## 2026-08-26 exact-main 285 ACL-before-BLE connected acceptance
 

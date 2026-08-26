@@ -38,6 +38,9 @@ object BleWakeRegistrar {
   private const val REQUEST_CODE = 1414
 
   fun register(context: Context): BleWakeRegistrationResult {
+    // Persist user intent before touching the adapter. A Bluetooth-OFF attempt
+    // must remain eligible for restoration when the adapter later reaches ON.
+    setEnabled(context, true)
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
       return BleWakeRegistrationResult("unsupported_api")
     }
@@ -64,9 +67,13 @@ object BleWakeRegistrar {
         .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
         .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
         .build()
-      val errorCode = scanner.startScan(listOf(filter), settings, callbackIntent(context))
+      val callbackIntent = callbackIntent(context)
+      // Reconcile to one exact PendingIntent registration. This makes process
+      // restart and repeated STATE_ON recovery bounded instead of accumulating
+      // registrations or returning an already-started error.
+      scanner.stopScan(callbackIntent)
+      val errorCode = scanner.startScan(listOf(filter), settings, callbackIntent)
       if (errorCode == 0) {
-        setEnabled(context, true)
         BleWakeRegistrationResult("registered", errorCode)
       } else {
         BleWakeRegistrationResult("scan_error", errorCode)
@@ -79,8 +86,10 @@ object BleWakeRegistrar {
   }
 
   fun stop(context: Context): BleWakeRegistrationResult {
+    // Disable semantics are durable even when the adapter/permission prevents
+    // the best-effort platform stop call.
+    setEnabled(context, false)
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-      setEnabled(context, false)
       return BleWakeRegistrationResult("unsupported_api")
     }
     return try {
@@ -88,7 +97,6 @@ object BleWakeRegistrar {
         ?.adapter
         ?.bluetoothLeScanner
       if (scanner != null) scanner.stopScan(callbackIntent(context))
-      setEnabled(context, false)
       BleWakeRegistrationResult("stopped")
     } catch (_: SecurityException) {
       BleWakeRegistrationResult("security_exception")

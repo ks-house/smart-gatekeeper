@@ -3778,3 +3778,9 @@
 - The connected 282 Target accepted the signed manifest, downloaded 1,849,860 encrypted bytes, verified the inactive image and rebooted. Exact 285 restored saved Wi-Fi `192.168.35.19`, MQTTS and signed ACL v203.
 - The required order was observed: BLE waited while ACL was inactive, MQTT connected, ACL v203 applied, then enabled GATT/iBeacon started. A 30-second stable interval and periodic already-current check followed, accepting issue #175's Target-side startup order.
 - No pending-image valid-mark trace appeared, so #172 rollback remains open. Android is disconnected and AJ-SR04T/relay contact are absent; post-fix screen-off action-1, sensor threshold and physical-door acceptance remain pending. Issue #179 tracks Bluetooth OFF->ON wake re-registration.
+
+## [2026-08-26] fix | Restore Android OS wake registration after Bluetooth ON
+
+- Corrected issue #179's initial manifest-receiver assumption: modern Android does not exempt `ACTION_STATE_CHANGED` from implicit-broadcast manifest limits, so a native `GatekeeperApplication` context-registers the process-lifetime Bluetooth receiver instead. Android 13+ uses the required exported registration for privileged Bluetooth-app delivery; the platform-protected action never dispatches access directly.
+- Persistent registration intent is committed before adapter access, disable intent before best-effort stop, and the first observed `STATE_ON` reconciles one exact PendingIntent scan. OFF/TURNING/repeated-ON, unrelated actions and disabled intent remain no-ops.
+- Seven focused source/pocket contracts, an expanded 174-test mobile/OTA/trusted suite and Android Gradle `:app:testDebugUnitTest` passed (`BUILD SUCCESSFUL`, 209 tasks). The phone is disconnected, so Bluetooth OFF→ON, subsequent first match and terminal action-1 `ARMED` remain connected Gates; sensor/contact/rollback claims remain open.
