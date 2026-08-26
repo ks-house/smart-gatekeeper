@@ -3746,3 +3746,10 @@
 - The independent periodic HTTPS path reused the authenticated connection, downloaded the exact 1,849,444-byte encrypted artifact, verified the inactive image and rebooted. Exact CI 281 restored `192.168.35.19`, exact per-Target MQTTS, ACL v188 and enabled GATT; a later periodic check was already current. Closed #166 as accepted and #160 as superseded.
 - No `PENDING_VERIFY`/valid-mark trace appeared after the required 30-second connected interval, so opened P0 #172 for production N16 bootloader health/rollback instead of overstating OTA-G4.
 - A new exact-281 Samsung screen-off first match reached RSSI -53, service discovery and all three indication registrations but WorkManager ended `FAILURE` before Target `ARMED`. Secure keyguard currently blocks the redacted native reason and main-button retest; AJ-SR04T and relay/contact/load remain absent. Opened docs-only #173 to preserve these evidence boundaries.
+
+## [2026-08-26] fix | Defer Hardwareless BLE until signed ACL is active
+
+- Exact-main 282 Target and Android completed a 4,636 ms action-2 relay-command ON/OFF board path and a stable 4,688 ms action-1 `ARMED` path. No relay contact/load, sensor threshold or actual door movement was measured.
+- A controlled Home + Dozing boot-first-match reached Android native GATT with `screen_interactive=false` but failed before `ARMED`. Target startup advertised before MQTT reactivated the signed ACL; issue #175 now owns this confirmed ordering race.
+- The bounded candidate delays BLE only for Hardwareless builds until `hasActiveAcl()` is true, starts once, and preserves immediate non-Hardwareless beacon startup. Focused startup/pocket/Hardwareless tests passed 18/18 and the expanded security/trusted suite passed 68/68. The N16 production build passed at 1,782,948/7,340,032 bytes flash and 67,096/327,680 bytes RAM; hosted CI remains required.
+- Android has been disconnected, so post-merge screen-off repetition remains pending. Issue #172 rollback and the absent AJ-SR04T/relay physical Gates remain open.

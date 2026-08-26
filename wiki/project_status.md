@@ -18,6 +18,31 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-08-26 exact-main 282 connected controls and boot ACL race
+
+- Target and production-signed Android were aligned to exact main
+  `3cf6eaa925e5ef38ee7d538a6d7a1cf8720ad219`: Target
+  `2.1.282+main.g3cf6eaa`, Android `1.0.0-g3cf6eaa` / 21701. The APK hash,
+  embedded source and production signer matched before replacement install.
+- The actual main-screen action-2 completed authenticated GATT, Target relay
+  command ON then timer-bound OFF, and terminal UI success in 4,636 ms. A
+  separate foreground action-1 completed `Presence -> ARMED` in 4,688 ms once
+  the Target ACL was active. These are board/FSM/GPIO command results, not
+  relay-contact voltage, actuator or actual-door evidence.
+- A controlled Home + Dozing + secure-keyguard attempt held the Target absent
+  for 15 seconds and then booted it. Android received the first match with
+  `screen_interactive=false`, RSSI -51 and 5.37 ms callback latency, connected
+  and configured GATT, but failed after about 3.4 seconds without `ARMED`.
+- Source and runtime order identify the race: `TargetAclManager::begin()` must
+  leave a stored ACL inactive without trusted wall time, while setup advertised
+  iBeacon/GATT before MQTT delivered the fresh signed ACL. Issue #175 defers
+  personal Hardwareless BLE until `hasActiveAcl()` becomes true, starts it once,
+  and leaves non-Hardwareless immediate beacon startup unchanged.
+- Android has now been disconnected. Hosted CI, merge, exact-main Target boot
+  order verification and a new physical screen-off repetition remain pending.
+  AJ-SR04T and relay/contact/load are absent, and issue #172 still owns
+  pending-image valid-mark/rollback proof.
+
 ## 2026-08-26 exact-main 281 OTA acceptance and current mobile boundary
 
 - Runs and atomic NAS evidence published exact main

@@ -491,3 +491,22 @@ OTA health-valid/rollback or wall-install checks into evidence.
 | Exact 281 screen-off action 1 | OS first match at RSSI -53 and `screen_interactive=false`; Android connected, discovered services and enabled Hello/Challenge/Result indications, then WorkManager returned `FAILURE` after about 3.4 seconds. Target accepted GATT but never entered `ARMED` | FAIL for current repetition. Secure keyguard prevents reading the redacted durable reason until user unlock; earlier 493 success does not supersede this result |
 | Current manual action 2 | Phone is connected but secure PIN keyguard prevents the user-visible button from being exercised | BLOCKED on user unlock; prior 493 relay-command ON/OFF remains historical evidence only |
 | Physical sensor/contact | AJ-SR04T and relay/contact/load are not attached | PENDING; threshold-to-relay, contact voltage/timing and actual door remain unclaimed |
+
+## 2026-08-26 exact-main 282 controls and issue #175 ACL-gated BLE candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact artifacts | Target `2.1.282+main.g3cf6eaa` and production-signed Android `1.0.0-g3cf6eaa` / 21701 both identify exact source `3cf6eaa925e5ef38ee7d538a6d7a1cf8720ad219`; APK hash, embedded source and signer matched before replacement install | PASS for exact installed software identity |
+| Main action-2 button | Authenticated GATT reached Target relay-command ON, timer-bound OFF and terminal UI success in 4,636 ms | PASS for mobile -> GATT -> Target FSM/GPIO command; physical contact/load and actual door absent |
+| Stable foreground action-1 | With the signed ACL active, the explicit action-1 diagnostic reached Target `ARMED`; UI recorded `Presence -> ARMED` in 4,688 ms | PASS for authenticated transport/result and sensor-arm FSM only; no ultrasonic trigger followed |
+| Screen-off boot-first-match | Home + Dozing + secure keyguard; Target absent 15 seconds then booted. Callback was `screen_interactive=false`, RSSI -51 and 5.37 ms, but worker failed after about 3.4 seconds and Target never reached `ARMED` | FAIL for current pocket repetition |
+| Root cause | Stored ACL validates at boot but remains intentionally inactive without trusted wall time. BLE advertising began before MQTT applied the fresh signed ACL, so the phone consumed its first match during the fail-closed interval | CONFIRMED runtime/source ordering; issue #175 |
+| Issue #175 local candidate | Personal Hardwareless BLE waits for `hasActiveAcl()`, then initializes exactly once; non-Hardwareless startup remains immediate. Focused startup, pocket and Hardwareless tests passed 18/18; expanded security/trusted suite passed 68/68 | PASS for local source/host behavior; hosted CI, merge and exact-main boot trace pending |
+| ESP32-C6 N16 capacity | `esp32c6_personal_production` built successfully at 1,782,948/7,340,032 bytes flash (24.3%) and 67,096/327,680 bytes RAM (20.5%); total image size was 1,849,780 bytes | PASS for local production build/capacity and dual 7 MiB-slot fit |
+| Current physical boundary | Android phone has been disconnected; AJ-SR04T and relay/contact/load are absent | PENDING screen-off repetition, ultrasonic threshold, contact/electrical timing and door movement |
+
+The failed boot-first-match is not replaced by the stable foreground action-1
+success. Final pocket acceptance requires the merged exact-main Target to log
+signed ACL application before iBeacon/GATT readiness and a reconnected phone to
+reach terminal `ARMED`. Sensor-to-relay acceptance remains a separate physical
+fixture Gate.
