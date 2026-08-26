@@ -3747,8 +3747,21 @@
 - No `PENDING_VERIFY`/valid-mark trace appeared after the required 30-second connected interval, so opened P0 #172 for production N16 bootloader health/rollback instead of overstating OTA-G4.
 - A new exact-281 Samsung screen-off first match reached RSSI -53, service discovery and all three indication registrations but WorkManager ended `FAILURE` before Target `ARMED`. Secure keyguard currently blocks the redacted native reason and main-button retest; AJ-SR04T and relay/contact/load remain absent. Opened docs-only #173 to preserve these evidence boundaries.
 
+## [2026-08-26] fix | Defer Hardwareless BLE until signed ACL is active
+
+- Exact-main 282 Target and Android completed a 4,636 ms action-2 relay-command ON/OFF board path and a stable 4,688 ms action-1 `ARMED` path. No relay contact/load, sensor threshold or actual door movement was measured.
+- A controlled Home + Dozing boot-first-match reached Android native GATT with `screen_interactive=false` but failed before `ARMED`. Target startup advertised before MQTT reactivated the signed ACL; issue #175 now owns this confirmed ordering race.
+- The bounded candidate delays BLE only for Hardwareless builds until `hasActiveAcl()` is true, starts once, and preserves immediate non-Hardwareless beacon startup. Focused startup/pocket/Hardwareless tests passed 18/18 and the expanded security/trusted suite passed 68/68. The N16 production build passed at 1,782,948/7,340,032 bytes flash and 67,096/327,680 bytes RAM; hosted CI remains required.
+- Android has been disconnected, so post-merge screen-off repetition remains pending. Issue #172 rollback and the absent AJ-SR04T/relay physical Gates remain open.
+- Initial hosted OTA/Target checks failed closed because the privileged exact-build inventory did not yet include the new header. The issue #175 candidate now pins normalized `BleStartupPolicy.h` and `main.cpp` digests and changes the exact Target build-input count from 41 to 42; this protected workflow change requires bounded trusted-policy authorization before feature merge.
+
 ## [2026-08-26] compile | Authorize exact issue 175 BLE startup candidate
 
 - Reviewed immutable issue #175 / PR #176 candidate `388dcac079bbe3ddb04f35f7677b4692790f150b`. Only protected `.github/workflows/deploy.yml` changes, to normalized digest `17bd1df4...`, pinning the new BLE startup header, changed main source and complete sorted 42-file Target build-input inventory; the other 68 protected objects and both inventories remain exact.
 - Issue #177 uses bounded `temporary-ble-acl-388dcac` and `future-ble-acl-388dcac-persistent-baseline` identities with the same complete map. This policy-only change does not build/publish/install firmware, access secrets/NAS or mutate the connected Target.
 - Hosted policy CI, merge-connection into #176, fresh feature CI, feature merge, final rotation and exact-main Target boot-order verification remain required. Android is disconnected and no sensor/contact/rollback physical claim is made.
+
+## [2026-08-26] lint | Merge-connect issue 175 authorization
+
+- PR #178 passed its Hosted Trusted Workflow check and merged as policy main `fd06c18a52bd4acc2f9855c684731ec8896fac9d`, closing issue #177.
+- Merge-connected that authorization main into PR #176 without rebasing or squashing, preserving immutable feature parent `388dcac` and both append-only evidence streams. Fresh Hosted Trusted, OTA-contract and ESP32-C6 checks remain required before feature merge.

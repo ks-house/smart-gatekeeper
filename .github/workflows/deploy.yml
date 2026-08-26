@@ -341,6 +341,7 @@ jobs:
           # Keep the auto-compiled Target tree closed so a newly added source,
           # local library or interpreter startup hook cannot reach later secrets.
           EXPECTED_BUILD_TREE="$(cat <<'EOF'
+          100644 87508551abdc0eee107eb879bc979c7bb93e8032d166c716df159ad469602eac include/BleStartupPolicy.h
           100644 9979085720f5b860d8135737b64269cedc6ec42515c352e6a65ac7a6b1c9466f include/ConfigManager.h
           100644 9ebeac418fe2cd0c858889206bda9c4f0a45250eafe4c9276ba848ea0f09f29b include/DiagnosticsManager.h
           100644 bab4d5f0cf614e0dfe060c7896ae0fc8be8b1cdaa86a8fe44437471ee9f03864 include/DurablePreferences.h
@@ -381,7 +382,7 @@ jobs:
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
-          100644 fe0e98df3bda1646d2bf3cc3fb27c153e6cbbe81b576d8c96223f7937869636f src/main.cpp
+          100644 8651a590b9df6d70d1058a67facccac15d52819d73149314157d58e2c1a80bc5 src/main.cpp
           EOF
           )"
           test ! -e .pio

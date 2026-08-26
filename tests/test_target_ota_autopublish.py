@@ -506,7 +506,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    self.assertEqual(len(expected_build_rows), 41)
+    self.assertEqual(len(expected_build_rows), 42)
     self.assertEqual(expected_build_paths, sorted(expected_build_paths))
     self.assertEqual(expected_build_paths, tracked_build_paths)
     for _mode, expected_digest, path in expected_build_rows:

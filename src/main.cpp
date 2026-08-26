@@ -32,6 +32,7 @@
 #include "TargetAccessFsm.h"
 #include "OfflineEventQueue.h"
 #include "DurablePreferences.h"
+#include "BleStartupPolicy.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -84,6 +85,7 @@ class NvsAclStorage final : public sgk::TargetAclStorage {
 
 static NvsAclStorage g_nvs_acl_storage;
 sgk::TargetAclManager g_acl_manager(&g_nvs_acl_storage);
+sgk::BleStartupPolicy g_ble_startup_policy(ENABLE_HARDWARELESS_RC != 0);
 static sgk::TargetProofVerifier g_proof_verifier(
     g_acl_manager, []() -> uint32_t { return millis(); }, nullptr);
 
@@ -569,7 +571,14 @@ void setup() {
   }
 
   // 7. BLE Beacon Advertiser 시작
-  initBleAdvertiser();
+  // Hardwareless personal-production builds wait for the post-boot signed ACL
+  // refresh. Otherwise a nearby phone can consume its FIRST_MATCH wake while
+  // authentication must still fail closed.
+  if (g_ble_startup_policy.shouldStart(g_acl_manager.hasActiveAcl())) {
+    initBleAdvertiser();
+  } else {
+    LOGF("[BLE-ADV] waiting for an active signed ACL before advertising");
+  }
 
   LOGF("============================================");
   LOGF(" [SYSTEM] setup() 초기화 완료! 메인 루프 진입");
@@ -606,6 +615,10 @@ void loop() {
   WifiManager::handleClient();
   MqttManager::update();
   OtaManager::update();
+  if (g_ble_startup_policy.shouldStart(g_acl_manager.hasActiveAcl())) {
+    LOGF("[BLE-ADV] active signed ACL ready; starting advertising");
+    initBleAdvertiser();
+  }
   GattServer::update();
 
   now = millis();

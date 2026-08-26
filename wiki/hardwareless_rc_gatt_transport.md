@@ -1,7 +1,7 @@
 # ESP32-C6 connectable GATT transport (Issue #18)
 
-> Updated: 2026-08-25
-> Status: **personal production is compile/runtime ON and real Android radio has reached Challenge; the callback-stack fix is physical-candidate tested, while exact-main proof/result and remaining physical gates stay open**
+> Updated: 2026-08-26
+> Status: **personal production action-1/action-2 has connected board-level evidence; issue #175 defers actionable BLE until the post-boot signed ACL is active, while the disconnected phone and absent sensor/contact fixture keep final physical acceptance open**
 > Tracking: GitHub [#18](https://github.com/ks-house/smart-gatekeeper/issues/18), Epic [#13](https://github.com/ks-house/smart-gatekeeper/issues/13)
 
 ## 1. Scope boundary
@@ -18,6 +18,7 @@ Local GATT accepts only protocol action `1` (hands-free/local open intent). Acti
 - A personal image requests runtime ON exactly once, and only after the Hardwareless door ID, ACL signer public key and signer key ID all validate. The migration marker is written after the ON value; after that marker exists, an operator-persisted `hwless_rc=false` remains an authoritative kill switch across reboot and rebuild.
 - Runtime disable disconnects peers, removes/stops the service, clears queued writes, and resets session state. A feature-ON image still requires an exact, nonzero/non-`ff` 16-byte `door_id` provisioned through `secrets.h` or NVS; it also requires a valid P-256 ACL signer and nonzero signing key ID. Absent/invalid identity or trust material disables auth fail-closed, and no sample door ID or signer ships.
 - `SECRET_HARDWARELESS_DOOR_ID_HEX`, `SECRET_ACL_SIGNER_PUBLIC_KEY_HEX`, and `SECRET_ACL_SIGNING_KEY_ID` are required personal CI inputs. They are real identity/trust values, not fields that accept arbitrary placeholders.
+- A reboot intentionally leaves a stored ACL inactive until a fresh signed ACL is received because the Target has no trusted wall clock. In the personal Hardwareless image, iBeacon/connectable GATT therefore stays off until `hasActiveAcl()` becomes true after MQTT refresh. The BLE stack then starts exactly once. Non-Hardwareless builds retain immediate beacon startup.
 - Personal source enablement does not retire legacy recovery or close G0-HW, RELAY-G0..G2, OTA-G1..G4, OEM or operator gates.
 
 ## 3. Stable BLE contract
@@ -65,6 +66,10 @@ Native host tests compile `src/GattProtocol.cpp` directly and cover canonical SH
 The feature-ON `esp32c6_personal_production` path first exposed a repeatable `nimble_host` stack-protection reset and then an Android mixed Challenge read/indication race. Exact main `db37bc2390efbf94bf1a9fca261834c3728606b5` included both corrections. Run `32777471683` published and HA OTA installed Target `2.1.262+main.gdb37bc2`; run `32777471718` produced the matching production Android APK and it was replacement-installed on SM-F966N. One foreground action-1 session completed with worker health `HEALTHY`, no failure/Target denial and 4,599 ms latency. HA independently recorded `AUTH_PENDING` at 06:27:33, `ARMED` at 06:27:36 and `IDLE` at 06:28:35, without a Target reset.
 
 That historical session proves exact-main foreground transport/proof/result and action-1 FSM ARM only. Issue #133 subsequently introduced action 2 for immediate local relay and explicit Result-to-FSM coupling; issue #134 changed bounded pocket dispatch. Current exact-main `a9b68222` Target `2.1.266+main.ga9b6822` is signed-OTA installed, but the matching `1.0.0-ga9b6822` / 19801 APK is only NAS-published because no phone was connected. No current action-2 phone session, repeated Samsung screen-off/process-killed run, relay/sensor trial, heap/soak test, power-loss/bootloader test, complete OTA-G1..G4, or RELAY-G0..G2 evidence is claimed. Issue #18 and Epic #13 remain open.
+
+Exact main `3cf6eaa925e5ef38ee7d538a6d7a1cf8720ad219` was installed as Target `2.1.282+main.g3cf6eaa` and Android `1.0.0-g3cf6eaa` / 21701. With the ACL already active, the main action-2 button reached Target relay-command ON/OFF and terminal UI success in 4,636 ms; a separate foreground action-1 reached `ARMED` in 4,688 ms. These pass only the authenticated board/FSM/GPIO command boundaries.
+
+A controlled Home + Dozing + secure-keyguard first match immediately after Target boot then reproduced a narrower race: Android received `screen_interactive=false` at RSSI -51 and connected before the retained signed ACL had been reactivated; the worker failed after about 3.4 seconds and Target never entered `ARMED`. Runtime order and `TargetAclManager::begin()` confirm that BLE advertising preceded the post-boot MQTT ACL refresh. Issue #175 adds a one-shot ACL-gated startup policy for the personal Hardwareless build. Its host/source tests pass locally, but hosted CI, merge, exact-main deployment and Target boot-order evidence remain required. The phone is now disconnected, so screen-off repetition is explicitly pending. AJ-SR04T, relay contact/load and door movement were not tested.
 
 ## 7. Hardware contract
 
