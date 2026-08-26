@@ -388,3 +388,13 @@ after which a separate policy rotation must pin the actual feature merge as the
 sole current baseline. This authorization does not build, publish or install
 firmware, access production secrets or NAS objects, or claim screen-off,
 sensor, relay-contact, rollback or door evidence.
+
+PR #176 head `902b53c` passed fresh Hosted Trusted, OTA-contract and ESP32-C6
+canary checks, then merge-commit merged as actual main
+`ed9ed2bb8d15d40db18db377ec72ba77f1b0de41`. Issue #180 removes both bounded
+`388dcac` transition identities and pins that actual merge as the sole
+`current-main-baseline`. The complete ordered 69-file protected map and both
+inventories remain unchanged from the reviewed candidate. This rotation does
+not build, publish or install firmware; exact-main NAS publication, Target OTA,
+boot-order evidence, mobile repetition and physical sensor/contact checks stay
+separate.

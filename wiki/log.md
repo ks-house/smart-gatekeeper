@@ -3765,3 +3765,9 @@
 
 - PR #178 passed its Hosted Trusted Workflow check and merged as policy main `fd06c18a52bd4acc2f9855c684731ec8896fac9d`, closing issue #177.
 - Merge-connected that authorization main into PR #176 without rebasing or squashing, preserving immutable feature parent `388dcac` and both append-only evidence streams. Fresh Hosted Trusted, OTA-contract and ESP32-C6 checks remain required before feature merge.
+
+## [2026-08-26] compile | Finalize issue 175 merged-main baseline
+
+- PR #176 head `902b53c` passed fresh Hosted Trusted, OTA-contract and ESP32-C6 canary checks, then merge-commit merged as actual main `ed9ed2bb8d15d40db18db377ec72ba77f1b0de41`, closing issue #175.
+- Issue #180 removes both bounded `388dcac` transition identities and pins the sole `current-main-baseline` to actual merged main `ed9ed2bb`; the complete ordered 69-file protected map and both inventories remain unchanged.
+- This policy-only rotation does not publish/install firmware or mutate Target/phone/NAS. Exact-main Target publication and connected ACL-before-BLE boot evidence remain required; Android is disconnected and sensor/contact/rollback Gates stay open.
