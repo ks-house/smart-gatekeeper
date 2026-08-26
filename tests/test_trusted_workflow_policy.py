@@ -17,9 +17,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "c23793cbee1ba7cde4e03add4b1c944d8bf39032"
+MERGED_MAIN_COMMIT = "388dcac079bbe3ddb04f35f7677b4692790f150b"
 MERGED_MAIN_DIGEST_LINES = """\
-.github/workflows/deploy.yml bd1f5c0c2368bcc1b027c9b7823bda15112f281f7b9652f9b4b3b8082cb6e630
+.github/workflows/deploy.yml 17bd1df446bce0cbbf3f8d96f9c21979478d241ab29f25c1b02027e16698894f
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
 .github/workflows/personal_installation_firmware.yml 0b9268c978f7c5a92cb0d59945ab2adabc13d11b71ea914fd495b574633ff766
@@ -414,20 +414,26 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             ".github/workflows/": CURRENT_WORKFLOW_PATHS,
         },
     )
-    self.assertEqual(len(policy["approved_bundles"]), 1)
-    persistent = policy["approved_bundles"][0]
-    self.assertEqual(persistent["id"], "current-main-baseline")
+    self.assertEqual(len(policy["approved_bundles"]), 2)
+    temporary, persistent = policy["approved_bundles"]
+    self.assertEqual(temporary["id"], "temporary-ble-acl-388dcac")
+    self.assertEqual(temporary["mode"], "temporary-exact")
+    self.assertEqual(
+        persistent["id"],
+        "future-ble-acl-388dcac-persistent-baseline",
+    )
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
         "repository": "ks-house/smart-gatekeeper",
         "commit": MERGED_MAIN_COMMIT,
     }
-    self.assertEqual(persistent["source"], expected_source)
-    self.assertEqual(persistent["files"], MERGED_MAIN_DIGESTS)
-    self.assertEqual(list(persistent["files"]), policy["protected_paths"])
+    for bundle in (temporary, persistent):
+      self.assertEqual(bundle["source"], expected_source)
+      self.assertEqual(bundle["files"], MERGED_MAIN_DIGESTS)
+      self.assertEqual(list(bundle["files"]), policy["protected_paths"])
     self.assertNotIn(
-        "temporary-exact",
-        {bundle["mode"] for bundle in policy["approved_bundles"]},
+        "current-main-baseline",
+        {bundle["id"] for bundle in policy["approved_bundles"]},
     )
 
   def setUp(self):
@@ -963,7 +969,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           is_descendant,
       )
 
-  def test_final_policy_has_sole_current_main_baseline(self):
+  def test_transition_has_exact_and_future_persistent_baselines(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -972,10 +978,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     bundle = self.verify_merged_main_digest_map(
         policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(bundle["id"], "current-main-baseline")
-    ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, MERGED_MAIN_COMMIT)
+    self.assertEqual(bundle["id"], "temporary-ble-acl-388dcac")
+    ancestry.assert_not_called()
     self.assertEqual(
-        {"persistent-baseline"},
+        {"temporary-exact", "persistent-baseline"},
         {approved["mode"] for approved in policy["approved_bundles"]},
     )
 
@@ -1010,7 +1016,13 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )["paths"]
     self.assertEqual(policy["protected_paths"][10:], backend_inventory)
     protected = policy["approved_bundles"][0]["files"]
-    for path in policy["protected_paths"]:
+    locally_unchanged_protected = [
+        path
+        for path in policy["protected_paths"]
+        if path != ".github/workflows/deploy.yml"
+    ]
+    self.assertEqual(len(locally_unchanged_protected), 68)
+    for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
         self.assertEqual(
@@ -1037,7 +1049,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     with self.assertRaisesRegex(trusted.PolicyError, lock_path):
       self.verify_merged_main_digest_map(policy, modified)
 
-  def test_current_main_baseline_accepts_only_proven_descendant(self):
+  def test_future_baseline_accepts_only_proven_descendant(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -1053,7 +1065,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         ref=future_ref,
         is_descendant=ancestry,
     )
-    self.assertEqual(bundle["id"], "current-main-baseline")
+    self.assertEqual(
+        bundle["id"],
+        "future-ble-acl-388dcac-persistent-baseline",
+    )
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 
     with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):

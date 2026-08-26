@@ -3746,3 +3746,9 @@
 - The independent periodic HTTPS path reused the authenticated connection, downloaded the exact 1,849,444-byte encrypted artifact, verified the inactive image and rebooted. Exact CI 281 restored `192.168.35.19`, exact per-Target MQTTS, ACL v188 and enabled GATT; a later periodic check was already current. Closed #166 as accepted and #160 as superseded.
 - No `PENDING_VERIFY`/valid-mark trace appeared after the required 30-second connected interval, so opened P0 #172 for production N16 bootloader health/rollback instead of overstating OTA-G4.
 - A new exact-281 Samsung screen-off first match reached RSSI -53, service discovery and all three indication registrations but WorkManager ended `FAILURE` before Target `ARMED`. Secure keyguard currently blocks the redacted native reason and main-button retest; AJ-SR04T and relay/contact/load remain absent. Opened docs-only #173 to preserve these evidence boundaries.
+
+## [2026-08-26] compile | Authorize exact issue 175 BLE startup candidate
+
+- Reviewed immutable issue #175 / PR #176 candidate `388dcac079bbe3ddb04f35f7677b4692790f150b`. Only protected `.github/workflows/deploy.yml` changes, to normalized digest `17bd1df4...`, pinning the new BLE startup header, changed main source and complete sorted 42-file Target build-input inventory; the other 68 protected objects and both inventories remain exact.
+- Issue #177 uses bounded `temporary-ble-acl-388dcac` and `future-ble-acl-388dcac-persistent-baseline` identities with the same complete map. This policy-only change does not build/publish/install firmware, access secrets/NAS or mutate the connected Target.
+- Hosted policy CI, merge-connection into #176, fresh feature CI, feature merge, final rotation and exact-main Target boot-order verification remain required. Android is disconnected and no sensor/contact/rollback physical claim is made.

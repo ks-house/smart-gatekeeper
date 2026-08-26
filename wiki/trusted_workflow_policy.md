@@ -369,3 +369,22 @@ canary checks, then merge-commit merged as actual main
 `current-main-baseline`; the reviewed 69-file map and both inventories are
 unchanged. This policy-only rotation does not publish or install firmware, and
 issues #160/#166 remain open until connected OTA install/reboot/health recovery.
+
+Issue #177 authorizes immutable issue #175 / PR #176 feature commit
+`388dcac079bbe3ddb04f35f7677b4692790f150b`. Relative to the current baseline,
+only protected `.github/workflows/deploy.yml` changes, to normalized SHA-256
+`17bd1df446bce0cbbf3f8d96f9c21979478d241ab29f25c1b02027e16698894f`.
+The reviewed workflow pins the new `include/BleStartupPolicy.h` normalized
+digest, the changed `src/main.cpp` digest and the complete sorted 42-file Target
+build-input inventory before production secrets are reachable. The other 68
+protected objects and both inventories remain exact.
+
+The transition uses `temporary-ble-acl-388dcac` and
+`future-ble-acl-388dcac-persistent-baseline` with the same complete ordered
+map. After this policy-only PR merges, its main merge commit must be
+merge-connected into PR #176 without rebasing or squashing. Fresh Hosted
+Trusted, OTA-contract and ESP32-C6 checks must pass before the feature merges,
+after which a separate policy rotation must pin the actual feature merge as the
+sole current baseline. This authorization does not build, publish or install
+firmware, access production secrets or NAS objects, or claim screen-off,
+sensor, relay-contact, rollback or door evidence.
