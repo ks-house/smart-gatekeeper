@@ -12,6 +12,12 @@ class RangingRecoveryPolicy {
   static bool isNativeGattOwnerExclusion(Object error) =>
       error is PlatformException && error.code == nativeGattOwnerExcluded;
 
+  /// Native GATT and Flutter scanning intentionally share one BLE owner. The
+  /// native credential lease is a temporary transition, not a user-visible
+  /// scanner failure; every other initialization failure remains actionable.
+  static bool shouldSurfaceAsUserError(Object error) =>
+      !isNativeGattOwnerExclusion(error);
+
   static Duration retryDelay(Object error) => isNativeGattOwnerExclusion(error)
       ? nativeGattLeaseRetryDelay
       : streamFailureRetryDelay;
