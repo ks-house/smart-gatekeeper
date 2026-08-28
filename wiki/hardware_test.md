@@ -659,3 +659,17 @@ This closes issue #172's connected automatic rollback injection path. A newer
 exact-main artifact must still remain healthy through the complete application
 window and emit the explicit VALID mark. Relay contacts/load, door motion,
 AJ-SR04T threshold and hard power-loss remain separate physical Gates.
+
+## 2026-08-29 exact-main 296 health-to-VALID acceptance
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Strictly newer publication | Run `33204658431` published final-policy main `21c5d560a82a633831ed40e600cdcf5aad59688f` as signed/encrypted `2.1.296+main.g21c5d56`; manifest and sanitized evidence agree on 1,849,876 bytes and SHA-256 `007de3ea...bcdeeecf` | PASS for exact-main CI/NAS publication and HTTPS readback |
+| Pending health path | VALID 293 accepted 296, verified the inactive image and booted exact 296 with `pending image health window started`; relay stayed OFF and Wi-Fi, MQTTS, ACL v347 and GATT/iBeacon returned | PASS for deferred application health ownership and all configured runtime predicates |
+| Explicit acceptance | The uninterrupted observer captured `running image marked VALID after health window` | PASS for application-controlled stable window and OTA VALID marking |
+| Post-VALID persistence | A deliberate reboot selected exact 296 without another pending window; relay OFF, Wi-Fi `192.168.35.18`, MQTTS, ACL v348 and GATT/iBeacon recovered | PASS for durable boot selection and one bounded post-acceptance recovery |
+
+Together with the separate 295 pre-VALID rollback trial, issue #172 acceptance
+is complete. No factory erase or partition-layout change occurred. Hard power
+removal, relay contact/load, actual door motion and AJ-SR04T threshold remain
+separate physical Gates.

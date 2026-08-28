@@ -4362,3 +4362,9 @@
 - Removed both bounded `2d3221e` transition identities and pinned the sole `current-main-baseline` persistent identity to actual feature merge `a2f7ae2fc4bd1f4fa19839e1021d18cce85ad4fc`.
 - The complete ordered 83-path normalized digest map, including `src/OtaManager.cpp`, and exact workflow/action inventories remain unchanged; regression coverage retires the feature identity and rejects extra bundles.
 - This policy-only rotation does not itself publish or install firmware or prove application VALID, hard power-loss, relay contact, sensor threshold or door movement.
+
+## [2026-08-29] test | Pass exact 296 application health and durable VALID
+
+- Final policy PR #194 merge-commit produced exact main `21c5d560a82a633831ed40e600cdcf5aad59688f`; run `33204658431` atomically published signed/encrypted `2.1.296+main.g21c5d56` with matching 1,849,876-byte HTTPS artifact evidence and SHA-256 `007de3ea24d352731c228c3d585ce7ad71c3eaab3aa92cf623ba7159bcdeeecf`.
+- Previous VALID 293 accepted 296, verified the inactive image and booted exact 296 with `pending image health window started`; relay remained OFF and Wi-Fi, MQTTS, ACL v347 and GATT/iBeacon recovered before `running image marked VALID after health window` was observed.
+- One post-VALID reboot retained exact 296 without another pending window and recovered relay OFF, Wi-Fi, MQTTS, ACL v348 and GATT/iBeacon. Together with the separate 295 pre-VALID rollback trial, issue #172 acceptance is complete; hard power-removal and physical relay/sensor/door Gates remain open.

@@ -528,7 +528,7 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 
 ## 5. 열려 있는 주요 Gate
 
-1. Issue #172의 exact 295는 `PENDING_VERIFY` application health window를 시작했고 pre-VALID reset에서 이전 VALID 293으로 자동 rollback했다. 동일 295 재시도도 durable anti-replay가 차단했다. 남은 Gate는 strictly newer exact-main이 30초 health window 뒤 explicit valid mark하는 정상 경로와 별도 hard power-loss 시험이다.
+1. Issue #172는 exact 295 pre-VALID 자동 rollback/anti-replay와 strictly newer exact 296의 application health-window→explicit VALID→post-VALID reboot를 모두 연결 Target에서 통과해 닫혔다. OTA-G4의 별도 hard power-removal 시험은 계속 남는다.
 2. 약신호 compatibility release를 동일 위치에서 홈 AP와 가까운 AP로 A/B하고, 홈 위치 RSSI를 최소 `-75 dBm` 이상으로 개선한 뒤 Wi-Fi/DHCP/MQTTS와 broker/WAN 장애 자동 복구를 실측한다.
 3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.
@@ -581,3 +581,17 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 - Automatic rollback injection is therefore connected PASS. A strictly newer
   exact-main must still emit the explicit application VALID mark; relay
   contacts/load, sensor threshold, door motion and hard power-loss stay open.
+
+## 2026-08-29 exact-main Target 296 health acceptance
+
+- Final policy PR #194 merge-commit produced exact main
+  `21c5d560a82a633831ed40e600cdcf5aad59688f`; run `33204658431` published it
+  as signed/encrypted `2.1.296+main.g21c5d56` with matching HTTPS evidence.
+- VALID 293 installed exact 296. The new slot logged application health-window
+  start, kept relay OFF, restored Wi-Fi, MQTTS, ACL v347 and GATT/iBeacon, then
+  explicitly marked the running image VALID.
+- A deliberate reboot retained exact 296 without another pending window and
+  restored relay OFF, Wi-Fi, MQTTS, ACL v348 and GATT/iBeacon. Together with
+  the 295 rollback trial this closes issue #172.
+- Hard power-removal, physical relay contacts/load, AJ-SR04T threshold, door
+  motion and OEM screen-off repetition remain independent open Gates.
