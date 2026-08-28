@@ -4193,3 +4193,9 @@
 - Bash syntax, all 11 focused NAS deployment tests and the complete 133-test backend suite pass; the two real-MariaDB tests remain explicit opt-in skips.
 - The regression contract pins both supported Synology package paths and absolute resolved execution while rejecting the old literal Docker command preflight and any return to base mode `0700`.
 - A fresh wrapper hash, trusted owner-path installation and live forced `status` readback are still required. The old NAS wrapper must not receive `apply`.
+
+## [2026-08-29] test | Pass corrected NAS forced-SSH endpoint contract
+
+- Owner staging and installation matched corrected wrapper SHA-256 `c0b30b0149e5d6d466a0b451e7e6b2934d231820d209a9608eded946308711d9`; the root-owned mode-`0755` installed file is 18,277 bytes. The exact predecessor was preserved root-only mode `0600` with its original SHA-256 under migration backups.
+- Base `0711`, bin `0755`, local exact `status=not-deployed` and cache-cleared negative arbitrary sudo all passed. Sensitive paths retained their prior root-only modes; no apply, container or database action ran.
+- WSL batch-mode deploy-key SSH then returned `status=not-deployed` with exit zero. An attempted `sh -c id` was replaced by the forced dispatcher, printed only the allowlist and returned exit 126. This proves the forced endpoint over the temporary public bootstrap path, not Tailscale/OIDC, deployment, readiness, rollback or physical behavior.

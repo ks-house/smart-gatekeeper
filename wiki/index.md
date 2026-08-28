@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (forced dispatcher executes and blocks escape; Synology Docker path wrapper correction/install pending)
+> Last updated: 2026-08-29 (forced SSH status/escape contract passed with corrected Synology wrapper; private Tailscale Environment pending)
 
 ---
 

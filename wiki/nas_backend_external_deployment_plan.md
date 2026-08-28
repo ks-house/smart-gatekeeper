@@ -577,8 +577,11 @@ background success, or Target OTA health.
    `0755`; retain secrets, trust, incoming and release state as root-only. The
    resulting forced command executes and rejects arbitrary input, while status
    next exposed DSM sudo PATH omission of Docker; the corrected wrapper resolves
-   only fixed Synology package paths or an executable PATH client. The tailnet
-   grant remains unproven.
+   only fixed Synology package paths or an executable PATH client. Exact owner
+   installation and WSL readback now return `status=not-deployed` with exit zero,
+   while arbitrary input returns exit 126. The public-port bootstrap proves the
+   forced endpoint only; tailnet reachability/grant/host-key pinning remain
+   unproven.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed
