@@ -513,3 +513,17 @@ policy rotation to the actual feature merge commit.
 This authorization changes no runtime, artifact, Target, phone, NAS, database
 or router state. It does not prove signed publication, installation, relay
 command ON/OFF, physical relay contact/load, sensor threshold or door motion.
+
+PR #200 passed hosted Trusted verification and merge-commit merged the bounded
+authorization as policy main `2d18d694d28d548f1be4d383dd9c1550c3581932`.
+That exact main was merge-connected into PR #198 without changing the reviewed
+feature bytes. Fresh Trusted, OTA, Android and ESP32-C6 checks passed, then PR
+#198 merge-commit produced actual main
+`618220e106b0bc2eee5faba6485a54dd66a8b7c6`. This final rotation removes both
+`828820d` transition identities and pins that actual merge as the sole
+`current-main-baseline`; the ordered 83-path map and both inventories are
+unchanged.
+
+Policy completion remains authority evidence only. Signed exact-main Target
+and Android publication/install plus connected action-1-followed-by-action-2
+relay-command evidence are still required.
