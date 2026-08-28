@@ -528,7 +528,7 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 
 ## 5. 열려 있는 주요 Gate
 
-1. Issue #172에서 production N16 bootloader/OTA data가 새 OTA image를 `PENDING_VERIFY`로 표시하고 firmware가 30초 health window 뒤 valid mark하는지, 실패 시 이전 slot으로 rollback하는지 별도 확인한다. 281의 install/reboot/current-version 성공만으로 이 Gate를 닫지 않는다.
+1. Issue #172의 exact 295는 `PENDING_VERIFY` application health window를 시작했고 pre-VALID reset에서 이전 VALID 293으로 자동 rollback했다. 동일 295 재시도도 durable anti-replay가 차단했다. 남은 Gate는 strictly newer exact-main이 30초 health window 뒤 explicit valid mark하는 정상 경로와 별도 hard power-loss 시험이다.
 2. 약신호 compatibility release를 동일 위치에서 홈 AP와 가까운 AP로 A/B하고, 홈 위치 RSSI를 최소 `-75 dBm` 이상으로 개선한 뒤 Wi-Fi/DHCP/MQTTS와 broker/WAN 장애 자동 복구를 실측한다.
 3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.
@@ -567,3 +567,17 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   verification pass. It must still merge, publish and complete a strictly
   newer connected health-window/valid-mark trial; automatic rollback fault
   injection remains open under #172.
+
+## 2026-08-29 exact-main Target 295 connected rollback
+
+- PR #192 passed Hosted Trusted, OTA-contract and ESP32-C6 canary checks and
+  merge-commit produced actual main `a2f7ae2fc4bd1f4fa19839e1021d18cce85ad4fc`.
+  Run `33203136822` published it as signed/encrypted exact 295.
+- Connected 293 installed 295 and exact 295 emitted `pending image health
+  window started` while relay OFF, Wi-Fi, MQTTS, ACL and GATT/iBeacon returned.
+- A pre-VALID USB line-state reset caused automatic bootloader rollback to
+  previous VALID 293, whose services recovered. Reusing signed 295 was then
+  rejected as downgrade by the durable highest-seen-version contract.
+- Automatic rollback injection is therefore connected PASS. A strictly newer
+  exact-main must still emit the explicit application VALID mark; relay
+  contacts/load, sensor threshold, door motion and hard power-loss stay open.

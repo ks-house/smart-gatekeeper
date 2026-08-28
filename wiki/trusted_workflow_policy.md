@@ -475,3 +475,17 @@ This authorization is source and CI trust evidence only. It does not publish
 or install firmware and does not prove the 30-second health window, VALID mark,
 rollback, relay contact, sensor threshold or door movement; those remain
 separate connected-device Gates.
+
+PR #193 merge-commit merged the bounded authorization as policy main
+`482f127e388318d53a0da7627036fde55f84114b`. That commit was merge-connected
+into the immutable feature without rebase or squash as `b251218`; fresh Hosted
+Trusted, OTA-contract and ESP32-C6 checks passed, then PR #192 merge-commit
+produced actual main `a2f7ae2fc4bd1f4fa19839e1021d18cce85ad4fc`.
+This immediate final rotation removes both `2d3221e` transition identities and
+pins that actual merge as the sole `current-main-baseline`. The complete
+ordered 83-path map, including newly protected `src/OtaManager.cpp`, and both
+exact inventories remain unchanged.
+
+The subsequent exact-main publication and connected rollback are operational
+evidence, not policy authority. Rotation itself does not prove application
+VALID, hard power-loss, relay contact, sensor threshold or door movement.

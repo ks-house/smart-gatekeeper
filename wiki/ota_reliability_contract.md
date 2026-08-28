@@ -644,3 +644,22 @@ requires a strictly newer merged signed OTA to log the application health
 window and explicit valid mark, followed by a separate fault-injected reboot
 that proves automatic selection of the previous bootable slot without erasing
 NVS.
+
+## 22. 2026-08-29 connected deferred-health rollback proof
+
+Actual feature main `a2f7ae2fc4bd1f4fa19839e1021d18cce85ad4fc`
+published exact signed/encrypted `2.1.295+main.ga2f7ae2` in run
+`33203136822`. The connected Target accepted it from installed 293, verified
+the inactive image and booted 295 as `PENDING_VERIFY`. Unlike the pre-fix
+builds, application startup emitted `pending image health window started`;
+relay OFF, saved Wi-Fi, MQTTS, signed ACL and GATT/iBeacon all recovered.
+
+The bounded USB observer then changed serial line state and reset the Target
+before the application emitted its VALID mark. The rollback-enabled bootloader
+automatically returned to the previous VALID 293 slot, which again recovered
+relay OFF and the network/BLE services. The next periodic attempt rejected the
+same signed 295 as a downgrade because durable highest-seen-version state had
+already advanced. This is connected automatic rollback and anti-replay proof,
+not a hard power-removal test. The normal success path must use a strictly
+newer exact-main version and observe the full health window plus explicit
+`running image marked VALID after health window` before #172 can close.

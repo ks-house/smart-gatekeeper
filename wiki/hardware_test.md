@@ -645,3 +645,17 @@ No flash write occurred during bootloader/OTA-data readback. The two read-only
 esptool sessions reset the board, so they are runtime perturbations rather than
 passive telemetry. Automatic rollback fault injection, relay contacts/load,
 actual door motion and AJ-SR04T threshold remain unproven.
+
+## 2026-08-29 exact-main 295 pending boot and connected rollback
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact publication | Run `33203136822` published actual feature main `a2f7ae2fc4bd1f4fa19839e1021d18cce85ad4fc` as signed/encrypted `2.1.295+main.ga2f7ae2`; public metadata and sanitized evidence agree on 1,849,876 bytes and SHA-256 `fe88c23a...f7df5809` | PASS for exact-main CI/NAS publication and HTTPS readback |
+| Pending application boot | Installed 293 accepted 295, verified the inactive image and booted exact 295 with `[OTA] pending image health window started`; relay stayed OFF and Wi-Fi, MQTTS, ACL v342 and GATT/iBeacon returned | PASS for deferred application health ownership and bounded service recovery |
+| Automatic rollback injection | Closing the bounded USB observer changed the serial line state and reset the Target before application VALID marking; the rollback-enabled bootloader selected previous VALID `2.1.293+main.gc0ac5ed` and relay-OFF, Wi-Fi, MQTTS, ACL and GATT/iBeacon recovered | PASS for connected pre-VALID reset and automatic previous-slot rollback; not a power-removal test |
+| Anti-replay after rollback | The next periodic check rejected the same signed 295 manifest as `downgrade`, consistent with the durable highest-seen-version contract | PASS for same-version replay refusal; normal VALID proof requires a strictly newer artifact |
+
+This closes issue #172's connected automatic rollback injection path. A newer
+exact-main artifact must still remain healthy through the complete application
+window and emit the explicit VALID mark. Relay contacts/load, door motion,
+AJ-SR04T threshold and hard power-loss remain separate physical Gates.
