@@ -4374,3 +4374,9 @@
 - Docs-main run `33205843351` atomically published signed/encrypted `2.1.297+main.gf3f4121`; connected VALID 296 accepted it, verified the inactive image, booted with relay OFF, restored Wi-Fi, MQTTS, ACL v351 and GATT/iBeacon, then emitted `running image marked VALID after health window`.
 - A post-VALID reset retained exact 297 without another pending window and recovered relay OFF, Wi-Fi, MQTTS, ACL v352 and GATT/iBeacon. This is application-slot and service-recovery evidence, not physical relay-contact, load or door-motion proof.
 - Fresh exact-main status-only run `33207086898` passed Tailscale OIDC, pinned private SSH and forced dispatcher with retained `status=not-deployed`; all publication and `apply` jobs were skipped. Public `/live` still reports legacy build `7c2764a1`, and `/ready` remains HTTP 503 solely because `legacy_prearm_retired=false`, so issue #190 remains an owner maintenance Gate.
+
+## [2026-08-29] fix | Bind dashboard 1-Tap control to terminal action 2
+
+- Replacement-installed exact-main Android `1.0.0-gf3f4121` / 23301 preserved the original install and native credential state, but the dashboard control labelled `1-Tap 수동 로컬 개방` called diagnostic `triggerLocalGattRetry`; two taps only queued action-1 workers and produced no Target proof or relay transition.
+- Changed the dashboard to await `triggerLocalGattOpen`, accept success only for terminal native reason `OPENED`, and display the returned latency. Added bridge and source-contract regressions that reject diagnostic queue acceptance as a door-open result.
+- This is a source candidate only. Hosted Flutter/JVM checks, production-signed publication, replacement install, connected Target relay-command ON/OFF and terminal UI success remain required before the correction is called deployed.

@@ -92,7 +92,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
     }
   }
 
-  Future<void> _triggerManualRetry() async {
+  Future<void> _triggerManualOpen() async {
     if (_flagService.remoteKillSwitch) {
       setState(() {
         _retryMessage = '⚠️ Remote Kill-Switch가 활성화되어 있어 수동 개방이 차단되었습니다.';
@@ -116,9 +116,10 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
       return;
     }
 
-    final result = await _healthBridge.triggerLocalGattRetry();
-    final success = result['accepted'] == true;
+    final result = await _healthBridge.triggerLocalGattOpen();
     final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
+    final success = result['accepted'] == true && reason == 'OPENED';
+    final latencyMs = result['latencyMs'];
     try {
       _workerHealth = await _healthBridge.read();
     } catch (_) {
@@ -129,8 +130,8 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
       setState(() {
         _isRetrying = false;
         _retryMessage = success
-            ? '✅ Target 인증 요청이 durable queue에 등록되었습니다.'
-            : '⚠️ 수동 출입 실패: $reason (기존 credential/legacy 경로는 보존됩니다)';
+            ? '✅ 문이 열렸습니다${latencyMs is num ? ' (${latencyMs.toInt()}ms)' : ''}'
+            : '⚠️ 수동 출입 실패: $reason';
       });
     }
   }
@@ -153,7 +154,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // 1. 1-Tap Explicit Manual Local GATT Retry Section
+                    // 1. 1-Tap terminal action-2 Local GATT open section
                     Card(
                       color: const Color(0xFF1E293B),
                       shape: RoundedRectangleBorder(
@@ -199,7 +200,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                   ),
                                 ),
                                 onPressed:
-                                    _isRetrying ? null : _triggerManualRetry,
+                                    _isRetrying ? null : _triggerManualOpen,
                                 icon: _isRetrying
                                     ? const SizedBox(
                                         width: 20,

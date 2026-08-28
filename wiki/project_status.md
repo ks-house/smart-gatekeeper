@@ -202,6 +202,25 @@ evidence.
   install, reboot and health remain unconfirmed because this shell's group list
   has not refreshed `dialout` access to `/dev/ttyACM0`.
 
+## 2026-08-29 dashboard action-2 binding correction
+
+- The connected Fold7 was replacement-updated to the signed exact-main
+  `1.0.0-gf3f4121` / 23301 APK after its 55,786,649-byte size, artifact
+  SHA-256 and production signing-certificate SHA-256 matched the NAS manifest.
+  The original installation time and AndroidKeyStore-backed native status were
+  retained.
+- On that installed build, the dashboard control labelled `1-Tap 수동 로컬
+  개방` only returned `durable queue에 등록`; Android executed the action-1
+  WorkManager GATT path and Target serial never recorded proof or relay ON/OFF.
+  This reconfirms the historical source mismatch above and is not an access
+  success.
+- The source correction binds that dashboard control to
+  `triggerLocalGattOpen`, requires exact native terminal reason `OPENED`, and
+  reports the returned latency. Source contracts reject a return to
+  `triggerLocalGattRetry` or queue-acceptance success text. This remains a
+  candidate until hosted build, signed publication, replacement install and
+  connected Target action-2 relay ON/OFF evidence pass.
+
 ## 2026-08-29 backend NAS GitHub CI policy connection
 
 - Backend-NAS feature PR #186 passed fresh hosted trusted, OTA and backend
