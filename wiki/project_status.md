@@ -14,26 +14,167 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소 `11e9ea1179bcc6a3030329c492267636aa681875`, Target exact CI `2.1.286+main.g11e9ea1`, Android exact main `1.0.0-g3cf6eaa` (`versionCode=21701`). Target signed HTTPS OTA download→inactive verify→reboot와 Wi-Fi/MQTTS/ACL/GATT 복구는 성공했다. Bootloader `PENDING_VERIFY`/valid mark는 issue #172로 열려 있고, post-fix Samsung screen-off action-1과 Bluetooth OFF→ON recovery는 phone 분리로 pending이다.
+> 관측 기준: 저장소/USB Target source `21e71d1c8faf469d101a477207276a80297873c8`, Target local generic banner `v2.1.0`, Android `1.0.0-g3cf6eaa` (`versionCode=21701`). WSL serial에서 Wi-Fi/MQTTS/signed ACL v303/GATT 복구를 확인했지만, Fold7의 현재 main-screen action-2는 GATT 연결·service discovery·세 indication 등록 후 `PROTOCOL_INCOMPATIBLE`로 종료했다. proof 검증 증거, Target FSM, relay ON/OFF는 발생하지 않았다. 이 local USB image는 exact CI/signed OTA identity가 아니며 Bootloader rollback, post-fix screen-off action-1, sensor/contact Gate는 계속 열려 있다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-08-29 backend NAS GitHub CI policy candidate
+## 2026-08-28 external Synology backend CI deployment candidate
+
+- The backend is already running on the personal Synology NAS, but the
+  new lane is currently a local repository candidate rather than a deployed
+  production system.
+- The existing NAS SFTP-only identity remains suitable for firmware/APK artifact
+  delivery but has no remote shell for Compose, migration or readiness work.
+- The implementation and acceptance plan are documented in
+  [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md):
+  the protected backend workflow now builds DS423+ `linux/amd64` API/DB images,
+  publishes exact GHCR digests with provenance, signs a four-file release
+  bundle, joins Tailscale with OIDC and invokes only `apply/status` through a
+  forced SSH dispatcher. The NAS wrapper verifies signature, descriptor,
+  Compose hashes, fixed repositories/digests/schema, existing volumes and local
+  secret files before backup-first migration, then requires loopback and public
+  `/ready` before recording the current release.
+- Host validation currently passes the focused deployment-contract tests, Compose
+  rendering, shell syntax, trusted-input completeness and the 34-check backend
+  commercial contract. This is source/host evidence only: no GHCR image was
+  published and no NAS, router, tailnet, GitHub Environment, secret, database,
+  Compose project or reverse proxy was changed.
+- Before first adoption the owner must identify the exact live DB/API mounts,
+  prove an off-NAS backup restore, configure protected GitHub/Tailscale/SSH
+  identities, separately admit the protected-workflow policy rotation, and stop
+  the legacy API/DB in a change window. The wrapper rejects another running
+  project holding the MariaDB volume or API port and never attempts a blind DB
+  rollback.
+- Owner-provided live container inventory now identifies legacy
+  `gatekeeper-api` from local image `smart_gatekeeper-api` with wildcard IPv4
+  and IPv6 host port `8000`, and `gatekeeper-db` from mutable tag
+  `mariadb:10.11` with no published DB host port. This confirms the exact two
+  containers that must be stopped during first adoption. Their exact mounts and
+  volume identities were subsequently resolved as recorded below; automatic
+  deployment is still not authorized until the backup/restore and live-control
+  Gates close.
+- A subsequent mount inventory fixes the DB data volume as
+  `smart_gatekeeper_mariadb_data` and the APK source as the existing bind path
+  `/volume1/docker/smartbox_ota/gatekeeper_apk`. The API is a live source bind
+  from the NAS repository and has no `/var/lib/smart-gatekeeper` mount; its
+  default `target_config.json` therefore lives under `/app` and requires a
+  metadata check/copy into the new state volume. Existing DB init-SQL binds are
+  not persistent data and will be replaced by the immutable DB image/migration
+  runner.
+- The candidate no longer assumes a new `gatekeeper_runtime` account. Both DB
+  initialization and API connection now require explicit `DB_RUNTIME_USER` so
+  the first adoption can retain the exact existing account. Passwords remain
+  unprinted and will be migrated to NAS-local secret files.
+- Readback now confirms `DB_NAME=smart_gatekeeper` and
+  `DB_RUNTIME_USER=gatekeeper_user`. The legacy target config is a root-owned,
+  mode `0555`, 135-byte regular file at `/app/target_config.json` with SHA-256
+  `c5668365bd130ec42c7f49aafc53491b1a6ad3a3eb4858f3215b83de3505ece9`;
+  the successful bootstrap copied those exact bytes into the prepared API
+  state volume without changing the running legacy API.
+- Secret-semantic readback confirms the API DB password matches the DB account,
+  required DB/MQTT/API/operations/ACL values are set, both active P-256 scalars
+  have valid shape, and the personal administrator password is active with a
+  valid length. Administrator mTLS identities and the ACL transition signer are
+  empty, so the transition pair remains disabled. No secret value or secret
+  hash was recorded.
+- The production API now reads the active personal administrator credential
+  from a NAS-local file secret; ambiguous direct-plus-file configuration and an
+  unreadable file fail closed. The one-time
+  `bootstrap_legacy_synology.sh` candidate validates the exact observed legacy
+  containers/mounts, stages existing values without printing them, copies the
+  exact target config, and creates bind-backed API/APK/backup volumes without
+  stopping the live project. Owner execution now reports successful preparation:
+  the legacy containers remained unchanged, all three new external volume names
+  were created, and the copied target config retained the expected SHA-256.
+  This is NAS layout evidence only; DB migration, new containers and cutover
+  have not run.
+- Independent read-only verification now passes all 14 secret-file contracts,
+  the exact runtime key set, all three external volumes and unchanged running
+  legacy containers. The DB ledger contains migrations `002` through `007`;
+  one active credential/grant has latest snapshot `313` and an exact applied
+  ACK at `313`. The three legacy tenant rows report no `public_key` mode because
+  the personal bootstrap intentionally retains its mapped row in `dual` mode.
+  Exact tenant/door/Target boolean correlation remains the final lookup-disable
+  check before the separate owner decision. Owner execution subsequently passed
+  every boolean: feature flags, target-auth scope, dual/public tenant mapping,
+  active ACL tenant, exact active credential/grant and snapshot/ACK hash/version
+  all match. Latest snapshot and applied ACK advanced together to `314` during
+  the live readback. The technical path for disabling legacy lookup is present;
+  owner approval and off-NAS restore remain mandatory before cutover.
+- Owner size readback reports the current `smart_gatekeeper` database at
+  2,686,976 bytes over 20 tables, with a 1,638,400-byte largest table. The
+  repository now contains a no-cutover NAS dump/inventory helper plus WSL
+  digest/authentication/encryption and exact-digest isolated-restore harness.
+  Eleven focused deployment tests and the 34-check repository contract pass;
+  owner execution subsequently created a consistent 792,678-byte SQL dump and
+  bundle SHA-256 `d2321993a1858ec053c614bf6aecb212012f2dd25db59ff2fd49ed42056f418d`
+  for deployed source `7c2764a1a16492ec1620079c8211b47287b1b3fd`, while both legacy
+  containers stayed running. The root-only NAS copy and temporary owner export
+  were transferred with exact sidecar validation. WSL produced a mode-0600
+  AES-256 GPG copy whose streamed decrypt hash matched the NAS bundle, then
+  restored the dump into pinned MariaDB on IPv4 localhost. Exact schema/content
+  inventory passed in 1.680 seconds with 316 ACL snapshots, one credential, one
+  target boot-state row and three tenants. This closes the first isolated
+  restore Gate only; two disposable labs and plaintext copies await owner
+  cleanup, and recurring off-site 3-2-1 backup remains open. Owner subsequently
+  authorized cleanup: both WSL containers/volumes and all WSL plaintext
+  bundle/work files were removed, while the encrypted bundle, authenticated
+  manifest, restore result and keys were retained mode `0600`. NAS owner-home
+  export deletion subsequently passed through interactive SSH; all temporary
+  plaintext copies are now removed. The NAS root-only backup remains retained
+  by design.
+- GitHub control-plane readback confirms `origin/main` equals local main at
+  `21e71d1c8faf469d101a477207276a80297873c8`, the environment token is
+  authenticated as repository ADMIN, and `production` already has owner review
+  plus a `main`-only branch policy. Backend deploy variables/secrets are absent,
+  and the trusted workflow policy correctly blocks the 13-path deployment
+  inventory expansion until a separate exact-candidate authorization rotation.
+
+## 2026-08-28 current WSL/Fold7 core action-2 check
+
+- WSL-attached CH343 Target booted the local personal-production image, restored
+  saved Wi-Fi at `192.168.35.18`, connected exact per-Target MQTTS, applied
+  signed ACL v303, and started the enabled GATT/iBeacon service. Windows-hosted
+  ADB kept the authorized Fold7 connected independently.
+- The installed app's main WebView reported backend status `승인됨` and exposed
+  the enabled `문 열기` button. Native health was `HEALTHY`, BLE owner
+  `native_gatt`, and local consent `local_keystore_authenticated`.
+- One main-screen action-2 tap connected to the Target, discovered the service,
+  and enabled Target Hello, Challenge and Result indications. It then closed in
+  about 1.8 seconds with UI result `수동 출입 실패: PROTOCOL_INCOMPATIBLE`.
+  Target serial recorded only the accepted connection: there was no proof-verification evidence,
+  `AUTH_PENDING`, `RELAY_HOLD`, relay ON/OFF or terminal Result OK.
+- The installed `3cf6eaa` and current Target source still have protocol/framing
+  version 1 and no diff in the core Android/Target GATT protocol files. The
+  public error can also represent a rejected Target Hello or unexpected message
+  type, so the exact on-wire cause is unresolved and must not be called a simple
+  version-range mismatch without packet/transport diagnostics.
+- A preceding dashboard `1-Tap 수동 로컬 개방` control was found in the exact
+  installed source to enqueue the action-1 WorkManager retry path, not the
+  terminal action-2 executor. It remained `Target Result: NONE` during the
+  bounded observation and was not used as action-2 success evidence.
+
+Current core manual-open acceptance is therefore **FAIL at the authenticated
+protocol boundary**. The non-retryable result was not repeated. This run safely
+failed before relay actuation and provides no physical contact or door-motion
+evidence.
+
+## 2026-08-29 backend NAS GitHub CI policy connection
 
 - The backend-NAS implementation is frozen as immutable feature commit
   `2cda04bc0ec7aff3192fc65292eb946fb5b57929` and published only to branch
   `codex/backend-nas-ci`; it has not merged into `main` or deployed to the NAS.
-- A separate policy-only candidate expands the indivisible protected set from
-  69 to 82 paths and authorizes only that exact feature commit plus proven
-  same-byte descendants. Its 42 focused policy tests pass locally.
+- Policy PR #185 expanded the indivisible protected set from 69 to 82 paths,
+  passed the hosted trusted check and merge-commit merged as main `40852b7a`.
+  That main is merge-connected into the feature without rebasing or squashing;
+  fresh feature CI is still pending.
 - The GitHub `production` Environment already has owner review and a `main`-only
   branch rule, while backend-specific Tailscale/NAS variables and five secrets
   are still absent. Therefore no GHCR image publication, SSH dispatch, database
   migration, legacy-container cutover or readiness claim has occurred.
-- Required order remains policy PR and hosted check, merge-connection into the
-  feature, fresh feature CI, feature merge, final baseline rotation, then an
-  owner-approved canary/final NAS deployment using separately provisioned
-  identities.
+- Required order now resumes at fresh feature CI, feature merge, final baseline
+  rotation, then an owner-approved canary/final NAS deployment using separately
+  provisioned identities.
 
 ## 2026-08-26 issue #179 Bluetooth-state recovery candidate
 

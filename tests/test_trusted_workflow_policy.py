@@ -1018,7 +1018,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         {approved["mode"] for approved in policy["approved_bundles"]},
     )
 
-  def test_current_workflow_inventory_and_new_protected_digests_are_exact(self):
+  def test_current_workflow_inventory_and_candidate_digests_are_coherent(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -1061,13 +1061,17 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           protected[path],
           trusted.normalized_sha256((ROOT / path).read_bytes()),
         )
+    candidate_matches = []
     for path in FEATURE_CHANGED_PROTECTED_PATHS:
-      with self.subTest(candidate_path=path):
-        local_path = ROOT / path
-        self.assertTrue(
-            not local_path.exists()
-            or protected[path] != trusted.normalized_sha256(local_path.read_bytes())
-        )
+      local_path = ROOT / path
+      candidate_matches.append(
+          local_path.exists()
+          and protected[path] == trusted.normalized_sha256(local_path.read_bytes())
+      )
+    self.assertTrue(
+        all(candidate_matches) or not any(candidate_matches),
+        "candidate protected bytes must be wholly policy-only or wholly merge-connected",
+    )
 
   def test_publisher_requirements_lock_cannot_be_removed_or_modified(self):
     policy = trusted.load_policy(

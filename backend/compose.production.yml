@@ -7,7 +7,7 @@ services:
     environment:
       MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
       MARIADB_DATABASE: smart_gatekeeper
-      MARIADB_USER: gatekeeper_runtime
+      MARIADB_USER: ${DB_RUNTIME_USER:?existing or new MariaDB runtime user is required}
       MARIADB_PASSWORD_FILE: /run/secrets/db_password
       TZ: UTC
     secrets:
@@ -65,7 +65,7 @@ services:
       DB_HOST: db
       DB_PORT: "3306"
       DB_NAME: smart_gatekeeper
-      DB_USER: gatekeeper_runtime
+      DB_USER: ${DB_RUNTIME_USER:?existing or new MariaDB runtime user is required}
       DB_PASSWORD_FILE: /run/secrets/db_password
       MQTT_HOST: ${MQTT_HOST:?MQTT_HOST is required}
       MQTT_PORT: "8883"
@@ -83,6 +83,7 @@ services:
       GATEKEEPER_API_KEY_FILE: /run/secrets/api_key
       OPS_HMAC_KEY_FILE: /run/secrets/ops_hmac_key
       ADMIN_MTLS_IDENTITIES_JSON_FILE: /run/secrets/admin_identities
+      PERSONAL_ADMIN_PASSWORD_FILE: /run/secrets/personal_admin_password
       ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:?trusted TLS proxy IPs are required}
       ACL_MANAGEMENT_ENABLED: "true"
       ACL_LEGACY_DEVICE_LOOKUP_ENABLED: "false"
@@ -108,6 +109,7 @@ services:
       - ops_hmac_key
       - command_signing_scalar
       - admin_identities
+      - personal_admin_password
       - acl_enrollment_auth
       - acl_legacy_ref_hmac_key
       - acl_admin_api_key
@@ -158,6 +160,7 @@ secrets:
   ops_hmac_key: {external: true}
   command_signing_scalar: {external: true}
   admin_identities: {external: true}
+  personal_admin_password: {external: true}
   acl_enrollment_auth: {external: true}
   acl_legacy_ref_hmac_key: {external: true}
   acl_admin_api_key: {external: true}

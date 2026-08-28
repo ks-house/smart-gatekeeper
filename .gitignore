@@ -31,6 +31,10 @@ __pycache__/
 .env
 backend/secrets/
 backend/migration_backups/
+backend/deploy/runtime.env
+backend/deploy/*.pem
+backend/deploy/*ed25519*
+backend/deploy/backend-release*.tar.gz
 
 # --- Secrets & Configurations (CRITICAL) ---
 include/secrets.h
