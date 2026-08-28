@@ -4151,3 +4151,9 @@
 - Owner readback confirms `github-nas-deploy` is an unprivileged `users`-only account with home `/var/services/homes/github-nas-deploy`, but its shell is `/sbin/nologin` and both `.ssh` and `authorized_keys` are absent.
 - The expected deploy-key fingerprint is therefore not installed or comparable. No explicit global `AllowUsers`, `AllowGroups`, `DenyUsers`, `DenyGroups`, `AuthorizedKeysFile`, `PubkeyAuthentication` or `StrictModes` directive was reported; three unrelated per-user `Match` blocks exist.
 - Do not add this account to `administrators`, change its shell, or broaden/restart DSM SSH. Preflight the already SSH-capable owner account and, if its metadata is compatible, add only a distinct forced-command deploy key plus the same exact two-command sudo policy.
+
+## [2026-08-29] test | Pass owner-account forced-key fallback preflight
+
+- Owner account `noty00` has `/bin/sh`, established SSH capability and membership in `users`, `administrators` and `family`. Its home is an owned, non-symlink mode-`0711` directory; `.ssh` and `authorized_keys` do not exist, so no existing key entry can be overwritten or reordered.
+- Its current sudo policy is password-required `(ALL) ALL`; it does not yet provide the non-interactive exact wrapper calls needed by the dispatcher. The fallback must add only NOPASSWD `apply` and `status`, while a cache-cleared negative arbitrary-command probe must remain denied.
+- Proceed only with an atomically installed single deploy-key entry whose forced command is the root-owned dispatcher and whose fingerprint is `SHA256:fP1WpvmwNwI8tWQTDY3pTxSK0jR4yxFBRoYFt2aeHB8`. Existing password SSH remains unchanged; PR #186 and deployment remain blocked pending positive `status` and negative escape tests.

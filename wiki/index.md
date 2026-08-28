@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (dedicated deploy account lacks SSH key and login shell; owner-account forced-key fallback preflight pending)
+> Last updated: 2026-08-29 (owner-account forced-key fallback preflight passed; atomic key/sudo installation and SSH negative test pending)
 
 ---
 

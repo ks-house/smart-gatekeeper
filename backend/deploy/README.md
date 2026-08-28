@@ -248,8 +248,10 @@ not broaden SSH policy just for CI. Instead attach a separate forced deployment
 key to the existing owner account with the same exact sudoers restrictions, or
 run a separately reviewed private SSH endpoint. In either case the CI key must
 remain forced-command-only and must never inherit interactive administrator or
-Docker-group access. Then install the two scripts, public signing key, runtime
-file and secret directory:
+Docker-group access. When the owner-account fallback is selected, substitute
+that exact account in both sudoers lines, the forced-SSH test and
+`NAS_DEPLOY_USER`; do not grant NOPASSWD access to any additional command. Then
+install the two scripts, public signing key, runtime file and secret directory:
 
 ```bash
 sudo install -d -o root -g root -m 700 \
@@ -354,7 +356,7 @@ Configure the GitHub `production` Environment:
 | secret | `TS_OIDC_AUDIENCE` | exact configured OIDC audience |
 | variable | `NAS_TAILSCALE_HOST` | MagicDNS name or stable tailnet address |
 | variable | `NAS_DEPLOY_PORT` | confirmed tailnet SSH port, normally `4422` here |
-| variable | `NAS_DEPLOY_USER` | dedicated non-admin DSM deploy user |
+| variable | `NAS_DEPLOY_USER` | exact forced-command DSM account; use the owner fallback only when DSM blocks the dedicated non-admin account |
 | variable | `NAS_PUBLIC_API_URL` | existing public API origin, for Environment UI |
 
 Require an owner reviewer on `production`. The workflow uses exact-commit

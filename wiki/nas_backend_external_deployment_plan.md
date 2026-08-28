@@ -566,7 +566,10 @@ background success, or Target OTA health.
    local sudo `status` probe, but has `/sbin/nologin` and no `.ssh/authorized_keys`,
    so it cannot carry the forced command. Do not grant administrator membership
    or broaden DSM SSH; preflight the existing SSH-capable owner account for the
-   separate forced-key fallback. The tailnet grant also remains unproven.
+   separate forced-key fallback. Owner account `noty00` has `/bin/sh`, current
+   SSH access and no existing `.ssh`/`authorized_keys`, so an atomic one-key
+   installation can proceed with exact NOPASSWD wrapper commands and both
+   positive/negative forced-command tests. The tailnet grant remains unproven.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed
