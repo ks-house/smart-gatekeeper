@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-24 (H5 encrypted OTA manifest rejection and fail-closed Ed25519 provider correction)
+> Last updated: 2026-08-29 (exact-main 301 and mobile gf352a78 connected action-1 ARMED replacement by action-2 passed)
 
 ## 1. 판정 원칙
 
@@ -673,3 +673,18 @@ Together with the separate 295 pre-VALID rollback trial, issue #172 acceptance
 is complete. No factory erase or partition-layout change occurred. Hard power
 removal, relay contact/load, actual door motion and AJ-SR04T threshold remain
 separate physical Gates.
+
+## 2026-08-29 exact-main 301 action-1 followed by action-2 acceptance
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Target publication/install | Run `33212529200` published exact `f352a78db6870339c8e59f75e28fce0e3c327a07` as signed/encrypted `2.1.301+main.gf352a78`; connected 298 accepted and verified it, booted the pending slot, restored relay OFF/Wi-Fi/MQTTS/ACL v365/GATT and explicitly marked the image VALID | PASS for exact-main production OTA and bounded service recovery |
+| Mobile publication/install | Run `33212529199` published matching `1.0.0-gf352a78` / 24101 to both HTTPS paths. Size 55,786,649, SHA-256 `051a442a...fe03495`, embedded commit and signer certificate `8bdbcf86...e1d7ba0` matched before replacement install; first-install time remained 2026-07-29 | PASS for exact artifact identity, signing continuity and state-preserving install |
+| Fresh action 1 | Target reboot advertising produced a native OS beacon callback at 06:46:23, authenticated GATT writes/indications and WorkManager success at 06:46:28 | PASS for one foreground-visible native beacon action-1 completion; the Target's 60-second sensor ARMED window is established by the authenticated action contract |
+| ARMED replacement by action 2 | Dashboard action 2 started at 06:46:50, 22 seconds after action-1 completion. A separate authenticated GATT session completed and UI returned `문이 열렸습니다 (4530ms)` instead of `PROTOCOL_INCOMPATIBLE` or `TARGET_BUSY` | PASS for the exact incident ordering and terminal mobile result |
+| Target relay command | During the action-2 session serial recorded `릴레이 ON 상태로 변경 완료`, then timer-bound `릴레이 OFF 상태로 변경 완료` without reset | PASS for Target FSM/GPIO command and fail-safe timer output; not electrical contact/load proof |
+| Physical boundary | No contact voltage/current, attached actuator, actual door movement, AJ-SR04T threshold or repeated latency distribution was measured | PENDING physical and SLO acceptance |
+
+Issue #197 is closed with the exact connected evidence. The software/core
+path now passes the ordering that previously failed, while physical actuation
+and sensor acceptance remain explicitly separate.

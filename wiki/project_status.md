@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: connected ESP32-C6 Target은 exact-main `2.1.298+main.gfc0ebfb`을 signed/encrypted periodic OTA로 설치하고 application health window를 거쳐 `VALID`이 됐다. post-VALID 재부팅에서도 동일 버전, relay OFF, Wi-Fi, MQTTS, signed ACL과 GATT/iBeacon이 복구됐다. Fold7에는 matching production-signed `1.0.0-gfc0ebfb` (`versionCode=23601`)가 replacement-install됐고, corrected dashboard가 terminal action 2를 호출했다. 그러나 바로 앞 background action 1의 60초 `ARMED` window 때문에 Target Hello busy가 발생했고 앱은 이를 `PROTOCOL_INCOMPATIBLE`로 오분류했다. 현재 후보는 sensor-waiting `ARMED`만 새 인증 세션으로 대체하고 busy를 `TARGET_BUSY`로 분류한다. 신규 NAS stack은 아직 `status=not-deployed`이며 legacy build `7c2764a1`이 `/live` HTTP 200을 제공하고 `/ready`는 `legacy_prearm_retired=false` 하나 때문에 HTTP 503이다. Candidate CI/실기기 재검증, physical relay contact/load, actual door motion와 sensor threshold는 열린 Gate다.
+> 관측 기준: exact-main `f352a78db6870339c8e59f75e28fce0e3c327a07`의 connected ESP32-C6 Target `2.1.301+main.gf352a78`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gf352a78` (`versionCode=24101`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. 새 beacon action 1이 60초 `ARMED` window를 만든 뒤 dashboard action 2가 이를 교체해 terminal `문이 열렸습니다 (4530ms)`와 Target relay-command ON→OFF를 완료했다. 신규 NAS stack은 아직 `status=not-deployed`이며 legacy build `7c2764a1`이 `/live` HTTP 200을 제공하고 `/ready`는 `legacy_prearm_retired=false` 하나 때문에 HTTP 503이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -568,7 +568,7 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 2. 약신호 compatibility release를 동일 위치에서 홈 AP와 가까운 AP로 A/B하고, 홈 위치 RSSI를 최소 `-75 dBm` 이상으로 개선한 뒤 Wi-Fi/DHCP/MQTTS와 broker/WAN 장애 자동 복구를 실측한다.
 3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.
-5. Personal Hardwareless RC의 compile/runtime enable, current Android APK의 493 Target action-2 relay-command와 한 번의 screen-off action-1 `ARMED`는 관측했다. Exact 281 반복은 OS first-match/GATT indication까지 간 뒤 WorkManager `FAILURE`로 끝났으므로, 잠금 해제 후 durable reason을 읽고 current manual action-2와 Samsung/OEM screen-off·process-killed pocket action-1의 반복/latency 분포를 다시 검증한다. Commercial/default compile-OFF와 local kill switch는 보존한다.
+5. Personal Hardwareless RC의 compile/runtime enable에서 exact-main 301/`gf352a78` 조합은 fresh beacon action 1 `ARMED` 직후 dashboard action 2 relay-command ON/OFF와 terminal UI 성공을 통과했다. Samsung/OEM screen-off·process-killed pocket action 1의 반복/latency 분포, relay contact/load와 실제 문 움직임은 계속 검증한다. Commercial/default compile-OFF와 local kill switch는 보존한다.
 6. production NAS 배포, reverse proxy, backup/restore와 operator acceptance는 소프트웨어 계약과 별개의 운영 증거로 남긴다.
 
 ## 6. 문서 읽기 순서
@@ -631,3 +631,29 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   the 295 rollback trial this closes issue #172.
 - Hard power-removal, physical relay contacts/load, AJ-SR04T threshold, door
   motion and OEM screen-off repetition remain independent open Gates.
+
+## 2026-08-29 exact-main 301 connected ARMED-preemption acceptance
+
+- PR #198 passed fresh Trusted, OTA, ESP32-C6 and Android checks after its
+  merge-connection to the authorized policy main. It merge-commit produced
+  feature main `618220e106b0bc2eee5faba6485a54dd66a8b7c6`; final policy rotation
+  produced exact main `f352a78db6870339c8e59f75e28fce0e3c327a07`.
+- Target run `33212529200` published signed/encrypted
+  `2.1.301+main.gf352a78`. Connected exact 298 accepted it, verified the
+  inactive image, rebooted, restored relay OFF, Wi-Fi `192.168.35.18`, MQTTS,
+  ACL v365 and GATT/iBeacon, then emitted `running image marked VALID after
+  health window` and `already current`.
+- Mobile run `33212529199` published production-signed
+  `1.0.0-gf352a78` / 24101 to primary and fallback. The 55,786,649-byte APK,
+  SHA-256 `051a442a485ef4355e2207d0ef977bf929a57f7dff1215f0df4d66753fe03495`,
+  embedded exact commit and signing-certificate SHA-256
+  `8bdbcf86c2530d424758a37b5a678de02b8f35587143d820c730b83cfe1d7ba0`
+  matched before `adb install -r`; the original first-install time remained.
+- A fresh OS beacon callback at 06:46:23 completed the action-1 GATT worker at
+  06:46:28. Dashboard action 2 began at 06:46:50, within the 60-second ARMED
+  window, completed its own authenticated GATT session and returned
+  `문이 열렸습니다 (4530ms)`. Target serial recorded relay command ON and the
+  timer-bound OFF without reset.
+- This closes issue #197's action-1 ARMED replacement incident for the
+  connected board/FSM/GPIO-command path. It does not prove contact voltage,
+  attached load, actual door movement, AJ-SR04T threshold or repetition SLO.

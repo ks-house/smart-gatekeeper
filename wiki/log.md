@@ -4404,3 +4404,10 @@
 - Policy PR #200 passed hosted verification and merged as `2d18d694`; merge-connected PR #198 then passed Trusted, OTA, Android and ESP32-C6 checks and merge-commit produced actual main `618220e106b0bc2eee5faba6485a54dd66a8b7c6`.
 - Removed both bounded `828820d` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path protected map and exact workflow/action inventories remain unchanged.
 - This final rotation does not itself publish or install artifacts or prove connected action-2 relay-command ON/OFF, relay contact/load, sensor threshold or door movement.
+
+## [2026-08-29] test | Pass exact-main action-1 ARMED to action-2 relay command
+
+- Final exact main `f352a78db6870339c8e59f75e28fce0e3c327a07` passed Target run `33212529200` and mobile run `33212529199`. Signed/encrypted Target `2.1.301+main.gf352a78` installed from 298, recovered relay OFF, Wi-Fi, MQTTS, ACL v365 and GATT/iBeacon, then explicitly marked the pending slot VALID.
+- Production-signed mobile `1.0.0-gf352a78` / 24101 matched primary/fallback metadata, 55,786,649-byte size, SHA-256 `051a442a485ef4355e2207d0ef977bf929a57f7dff1215f0df4d66753fe03495`, embedded commit and existing signing certificate before state-preserving replacement install.
+- A fresh native beacon action 1 completed at 06:46:28. Dashboard action 2 began 22 seconds later inside the 60-second ARMED window, returned `문이 열렸습니다 (4530ms)`, and Target serial recorded relay command ON followed by timer-bound OFF without reset. Issue #197 received the corrected evidence and remains closed.
+- This passes the connected mobile-to-Target board/FSM/GPIO-command core use case. Physical contact/load, actual door movement, AJ-SR04T threshold, repetition SLO and owner-gated NAS first adoption remain open.
