@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -25,9 +26,42 @@ DISPATCHER = ROOT / "backend" / "deploy" / "sgk_backend_ssh_dispatch.sh"
 PRODUCTION_COMPOSE = ROOT / "backend" / "compose.production.yml"
 SYNOLOGY_COMPOSE = ROOT / "backend" / "compose.synology.yml"
 RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
+BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
+    def test_manual_nas_preflight_is_main_only_status_only_and_oidc_backed(self):
+        workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
+        trigger = workflow.split("jobs:", 1)[0]
+        self.assertIn("workflow_dispatch:", trigger)
+        match = re.search(
+            r"(?ms)^  nas_private_status_preflight:\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(match)
+        job = match.group(1)
+        for required in (
+            "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
+            "name: production",
+            "id-token: write",
+            "tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8",
+            "oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}",
+            "audience: ${{ secrets.TS_OIDC_AUDIENCE }}",
+            "tags: tag:sgk-github-deploy",
+            "NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}",
+            "StrictHostKeyChecking=yes",
+            '"$NAS_USER@$NAS_HOST" status',
+            "^status=(not-deployed|deployed)$",
+        ):
+            self.assertIn(required, job)
+        for forbidden in (
+            " apply",
+            "NAS_BACKEND_RELEASE_SIGNING_KEY_PEM",
+            "backend-release.tar.gz",
+            "docker pull",
+        ):
+            self.assertNotIn(forbidden, job)
+
     def signing_key(self, directory: Path) -> tuple[Path, Path]:
         private_key = directory / "release-private.pem"
         public_key = directory / "release-public.pem"

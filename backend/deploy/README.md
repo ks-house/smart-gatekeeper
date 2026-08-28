@@ -379,19 +379,31 @@ Require an owner reviewer on `production`. The workflow uses exact-commit
 action pins, exact image digests, strict host-key checking and a non-cancelled
 deployment concurrency group.
 
+Before approving any deployment, run the workflow's manual
+`nas_private_status_preflight` job from `main`. It obtains an ephemeral
+`tag:sgk-github-deploy` identity through OIDC, uses the pinned NAS host key and
+invokes only the forced `status` command. It accepts exactly one
+`status=not-deployed` or `status=deployed` line and uploads the complete status
+readback as `nas-private-status-<sha>-attempt-<attempt>`. This manual path has no
+checkout, release signing, image publication or `apply` step. A successful run
+proves the tagged GitHub runner can reach the restricted SSH endpoint; it does
+not deploy or change the NAS.
+
 ## 6. First adoption and later deployments
 
 For the first adoption only, use an owner-approved maintenance window:
 
 1. finish and verify the off-NAS backup/isolated restore;
-2. record old container images, mounts, environment and restart commands;
-3. stop the old API and old DB so neither port `8000` nor the MariaDB data
+2. pass the manual `nas_private_status_preflight` from exact `main` and retain
+   its status artifact;
+3. record old container images, mounts, environment and restart commands;
+4. stop the old API and old DB so neither port `8000` nor the MariaDB data
    directory has two owners;
-4. approve the `production` GitHub deployment;
-5. require `status=deployed`, the exact `source_sha`, and matching `status`
+5. approve the `production` GitHub deployment;
+6. require `status=deployed`, the exact `source_sha`, and matching `status`
    readback in the workflow artifact;
-6. verify public `/ready`, app/backend behavior, MQTT connectivity and logs;
-7. keep old images and the pre-migration backup until the accepted rollback
+7. verify public `/ready`, app/backend behavior, MQTT connectivity and logs;
+8. keep old images and the pre-migration backup until the accepted rollback
    window closes.
 
 After adoption, an admitted `main` backend change automatically builds and

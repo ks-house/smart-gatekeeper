@@ -568,6 +568,39 @@ def contract() -> dict:
         errors.append("backend workflow Python patch version is not locked")
     if re.search(r"image:\s*[^\s@]+:[^\s]+", workflow):
         errors.append("backend workflow contains a mutable service image")
+    status_job_match = re.search(
+        r"(?ms)^  nas_private_status_preflight:\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+        workflow,
+    )
+    if "workflow_dispatch:" not in workflow.split("jobs:", 1)[0]:
+        errors.append("backend workflow omits manual NAS status preflight trigger")
+    if status_job_match is None:
+        errors.append("backend workflow omits manual NAS status preflight job")
+    else:
+        status_job = status_job_match.group(1)
+        for required in (
+            "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
+            "name: production",
+            "id-token: write",
+            "tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8",
+            "oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}",
+            "audience: ${{ secrets.TS_OIDC_AUDIENCE }}",
+            "tags: tag:sgk-github-deploy",
+            "NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}",
+            "StrictHostKeyChecking=yes",
+            '"$NAS_USER@$NAS_HOST" status',
+            "^status=(not-deployed|deployed)$",
+        ):
+            if required not in status_job:
+                errors.append(f"NAS status preflight missing {required}")
+        for forbidden in (
+            " apply",
+            "NAS_BACKEND_RELEASE_SIGNING_KEY_PEM",
+            "backend-release.tar.gz",
+            "docker pull",
+        ):
+            if forbidden in status_job:
+                errors.append(f"NAS status preflight contains forbidden token {forbidden}")
     for required_path in (
         "'ops/**'", "'scripts/ops_commercial_gate.py'",
         "'.orca/scripts/setup_worktree.ps1'",
@@ -650,7 +683,7 @@ def contract() -> dict:
     if errors:
         raise GateError("; ".join(errors))
     return {
-        "status": "PASS", "checks": 34, "scope": "repository-software-only",
+        "status": "PASS", "checks": 35, "scope": "repository-software-only",
         "trusted_base_rotation": "required-before-merge",
     }
 

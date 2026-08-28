@@ -111,7 +111,7 @@ following non-secret deployment facts:
 | Container Manager | running, package `24.0.2-1606`; installed equals Package Center online version | compatible candidate; disposable Compose feature/secret probe remains required |
 | Docker/Compose | Docker client `24.0.2`; Compose `v2.20.1-6047-g6817716` | daemon architecture query was permission-denied as the non-privileged owner, which does not block the `uname` platform proof and does not justify a privilege change |
 | Volume 1 | `btrfs`, normal; about 13 TB used and 28.9 TB free (`df` rounded 42 TB total/29 TB available) | filesystem and capacity support image rollback reserve and snapshot-capable storage; actual snapshot/backup policy remains pending |
-| Tailscale | DSM package ID `Tailscale` is installed and running at `1.58.2-700058002`; packaged CLI reports NAS IPv4 `100.95.243.92`; WSL reaches private SSH `4422` and its ED25519/ECDSA keys intersect the already trusted public-bootstrap DSM keys | exact private host variable and matched ED25519 known-host entry are installed; GitHub ephemeral OIDC identity and least-privilege grant remain pending |
+| Tailscale | DSM package ID `Tailscale` is installed and running at `1.58.2-700058002`; packaged CLI reports NAS IPv4 `100.95.243.92`; WSL reaches private SSH `4422` and its ED25519/ECDSA keys intersect the already trusted public-bootstrap DSM keys | exact private host, matched ED25519 known-host entry, narrow tag grant and GitHub OIDC credential/Environment secret names are configured; the first ephemeral tagged-runner exchange remains pending |
 | DSM reverse proxy | HTTPS public listener `4442` to HTTP `localhost:8000`; HSTS off; no DSM access-control profile | preserves the installed app origin, but the current proxy capture does not prove the administrator mTLS/header contract |
 | router exposure | confirmed blanket external forward `4000-4999`; protocol/target details not yet captured | P0 excessive-exposure finding: inventory listeners, add exact required rules and verify them before removing the range |
 | public IPv6 | a read-only DNS check observed an AAAA answer for the current public hostname; NAS listeners also bind wildcard IPv6 | IPv4 NAT narrowing alone is insufficient; verify router/DSM IPv6 inbound default-deny and exact service rules without recording the public address |
@@ -407,8 +407,13 @@ The owner saved the replacement with no validation errors. A WSL user-owned
 source then reached private NAS SSH and reproduced `status=not-deployed` with
 exit zero; an attempted arbitrary command was forced to the dispatcher allowlist
 and returned exit 126. This proves the private network/host-key/forced-command
-lane after the grant change, but not the future tagged GitHub runner until OIDC
-exchange occurs.
+lane after the grant change. The Tailscale OIDC credential was subsequently
+created and both `TS_OIDC_CLIENT_ID` and `TS_OIDC_AUDIENCE` secret names are
+present in the protected GitHub Environment; values were not read back. The
+workflow now has a separate manual exact-`main` status-only preflight which can
+exercise the first tagged exchange without building, signing or invoking
+`apply`. That hosted run remains pending until the protected workflow bytes are
+admitted and merged.
 
 On the NAS, create a deployment identity distinct from the current SFTP-only
 publisher. Its authorized key is restricted to one root-owned wrapper, for
@@ -618,18 +623,19 @@ background success, or Target OTA health.
    next exposed DSM sudo PATH omission of Docker; the corrected wrapper resolves
    only fixed Synology package paths or an executable PATH client. Exact owner
    installation and WSL readback now return `status=not-deployed` with exit zero,
-   while arbitrary input returns exit 126. The public-port bootstrap proves the
-   forced endpoint only; tailnet reachability/grant/host-key pinning remain
-   unproven.
+   while arbitrary input returns exit 126. The same forced contract subsequently
+   passed over the pinned private Tailscale endpoint after the narrow grant was
+   saved; only the ephemeral tagged GitHub source remains unexercised.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed
    release descriptor to the protected backend workflow. No image has yet been
    published by this candidate.
-5. `DONE (NAS install and local status)` Add and install the fail-closed deploy
+5. `DONE (NAS install and private owner-source status)` Add and install the fail-closed deploy
    wrapper and forced dispatcher with exact protected hashes, root ownership and
-   mode `0755`. The dedicated account's exact NOPASSWD `status` command returns
-   `status=not-deployed`; SSH transport into that dispatcher remains pending.
+   mode `0755`. The SSH-capable owner fallback key is forced through the
+   dispatcher; private Tailscale `status` returns `status=not-deployed` and an
+   arbitrary command is rejected. The tagged GitHub source remains pending.
 6. `DONE (NAS layout preparation)` Add and owner-execute a no-cutover legacy bootstrap for the
    confirmed DB user/password pair, active personal admin credential, exact
    target config, NAS-local secret files and external volume layout. Existing
@@ -642,15 +648,18 @@ background success, or Target OTA health.
    inventory restore before the first DB-changing deployment. Recurring 3-2-1
    scheduling and key separation remain operational hardening work.
 8. `P1` Run owner-approved manual canary and rollback rehearsal.
-9. `IN PROGRESS` Configure the protected GitHub `production` Environment,
+9. `IN PROGRESS` Validate the protected GitHub `production` Environment,
    Tailscale OIDC client/tag grant, strict NAS host key and Environment
    secrets/variables. `NAS_DEPLOY_USER=noty00`, `NAS_DEPLOY_PORT=4422` and the
    public readiness URL are set. `NAS_TAILSCALE_HOST=100.95.243.92` and its
    independently matched ED25519 `NAS_DEPLOY_KNOWN_HOSTS` entry are also set.
-   The exact OIDC subject is confirmed; client ID and audience remain unset.
+   The exact OIDC subject is confirmed; the client ID and audience credential
+   were created and both protected Environment secret names are present.
    The wildcard grant has been replaced after confirming no tagged or routed
    compatibility sources, and the user-owned WSL-to-NAS forced-SSH contract
-   passes. The tagged GitHub-runner grant remains unexercised until OIDC setup.
+   passes. A manual exact-main status-only workflow Gate is now source-defined;
+   the tagged GitHub-runner exchange remains unexercised until policy admission,
+   merge and an owner-approved preflight run.
 10. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
 11. `P2` Evaluate a central secret manager only when operator/host count requires
     it.

@@ -4271,3 +4271,15 @@
 - Owner saved the wildcard replacement with no validation errors. WSL then reached exact Tailscale NAS endpoint `100.95.243.92:4422` using a dedicated mode-0600 known-host file whose ED25519 fingerprint matches the independently trusted DSM key.
 - Forced `status` returned `status=not-deployed` with exit zero. Attempted `sh -c id` was replaced by the dispatcher allowlist and returned exit 126, proving the private endpoint remained functional after policy narrowing.
 - This proves a user-owned source and the NAS forced endpoint, not the future tagged GitHub runner. OIDC client ID/audience, first tagged exchange, workflow deployment, release apply, container and database changes remain absent.
+
+## [2026-08-29] code | Add manual status-only GitHub OIDC preflight
+
+- Owner created the exact-subject Tailscale workload credential and set both protected `TS_OIDC_CLIENT_ID` and `TS_OIDC_AUDIENCE` secret names; GitHub readback confirmed names only and did not expose values.
+- Added a manual exact-`main`, `production` Environment job that obtains only `tag:sgk-github-deploy`, pins the existing Action/version/hash and NAS SSH host key, invokes only forced `status`, and retains the complete status evidence. It shares the non-cancelled NAS production concurrency group but has no checkout, signing, image publication or `apply` path.
+- Added repository fail-closed tests and commercial-contract checks for trigger, branch, Environment, OIDC inputs, private host, strict host-key validation, accepted status shape and forbidden deployment tokens. This is source validation only; no workflow was dispatched and no NAS, container or database state changed.
+
+## [2026-08-29] test | Validate status-only CI preflight candidate
+
+- Workflow YAML parsing, Markdown relative links, shell syntax, `git diff --check`, the 35-check commercial repository contract and all 134 backend tests passed; two real-MariaDB lanes remain explicit opt-in skips.
+- After installing the separate hash-locked OTA requirements into the existing local virtual environment, root discovery ran 316 tests with one explicit skip. The only two failures are the expected indivisible trusted-bundle digest/coherence rejection for the newly changed protected bytes; no functional or collection error remains.
+- This is local repository evidence only. The protected policy is not rotated, the branch is not merged, the status workflow is not dispatched and no release `apply`, image publication, container or database change ran.

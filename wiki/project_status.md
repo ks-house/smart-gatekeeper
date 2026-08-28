@@ -35,14 +35,15 @@ applies_to:
   secret files before backup-first migration, then requires loopback and public
   `/ready` before recording the current release.
 - Host validation currently passes the focused deployment-contract tests, Compose
-  rendering, shell syntax, trusted-input completeness and the 34-check backend
-  commercial contract. This is source/host evidence only: no GHCR image was
-  published and no NAS, router, tailnet, GitHub Environment, secret, database,
-  Compose project or reverse proxy was changed.
-- Before first adoption the owner must identify the exact live DB/API mounts,
-  prove an off-NAS backup restore, configure protected GitHub/Tailscale/SSH
-  identities, separately admit the protected-workflow policy rotation, and stop
-  the legacy API/DB in a change window. The wrapper rejects another running
+  rendering, shell syntax, trusted-input completeness and the 35-check backend
+  commercial contract. Separate bootstrap work has prepared the NAS wrapper,
+  tailnet policy and protected GitHub Environment as recorded below. No GHCR
+  image, workflow deployment, database migration, Compose cutover or reverse
+  proxy change has occurred.
+- Before first adoption the owner must separately admit the protected-workflow
+  policy rotation, pass the hosted tagged-runner status preflight, and stop the
+  legacy API/DB in an approved change window. The exact live mounts and first
+  off-NAS isolated restore are already evidenced below. The wrapper rejects another running
   project holding the MariaDB volume or API port and never attempts a blind DB
   rollback.
 - Owner-provided live container inventory now identifies legacy
@@ -105,7 +106,7 @@ applies_to:
   2,686,976 bytes over 20 tables, with a 1,638,400-byte largest table. The
   repository now contains a no-cutover NAS dump/inventory helper plus WSL
   digest/authentication/encryption and exact-digest isolated-restore harness.
-  Eleven focused deployment tests and the 34-check repository contract pass;
+  Twelve focused deployment tests and the 35-check repository contract pass;
   owner execution subsequently created a consistent 792,678-byte SQL dump and
   bundle SHA-256 `d2321993a1858ec053c614bf6aecb212012f2dd25db59ff2fd49ed42056f418d`
   for deployed source `7c2764a1a16492ec1620079c8211b47287b1b3fd`, while both legacy
@@ -123,12 +124,13 @@ applies_to:
   export deletion subsequently passed through interactive SSH; all temporary
   plaintext copies are now removed. The NAS root-only backup remains retained
   by design.
-- GitHub control-plane readback confirms `origin/main` equals local main at
+- The initial GitHub control-plane readback confirmed `origin/main` equaled local main at
   `21e71d1c8faf469d101a477207276a80297873c8`, the environment token is
   authenticated as repository ADMIN, and `production` already has owner review
-  plus a `main`-only branch policy. Backend deploy variables/secrets are absent,
-  and the trusted workflow policy correctly blocks the 13-path deployment
-  inventory expansion until a separate exact-candidate authorization rotation.
+  plus a `main`-only branch policy. Backend deploy variables/secrets were absent
+  at that snapshot; their later bounded setup is recorded in the 2026-08-29
+  section. The trusted workflow policy still requires a separate exact-candidate
+  authorization rotation.
 
 ## 2026-08-28 current WSL/Fold7 core action-2 check
 
@@ -161,26 +163,31 @@ evidence.
 
 ## 2026-08-29 backend NAS GitHub CI policy connection
 
-- The backend-NAS implementation is frozen as immutable feature commit
-  `2cda04bc0ec7aff3192fc65292eb946fb5b57929` and published only to branch
-  `codex/backend-nas-ci`; it has not merged into `main` or deployed to the NAS.
+- Backend-NAS work remains published only on PR #186 branch
+  `codex/backend-nas-ci`; the last remote evidence head is
+  `97d0108df962c7b37a0039dc15a1d842a3c5dc82`. It has not merged into `main` or
+  deployed to the NAS.
 - Policy PR #185 expanded the indivisible protected set from 69 to 82 paths,
   passed the hosted trusted check and merge-commit merged as main `40852b7a`.
   That main is merge-connected into the feature without rebasing or squashing;
   fresh feature CI is still pending.
-- The GitHub `production` Environment already has owner review and a `main`-only
-  branch rule, while backend-specific Tailscale/NAS variables and five secrets
-  are still absent. Therefore no GHCR image publication, SSH dispatch, database
-  migration, legacy-container cutover or readiness claim has occurred.
+- The GitHub `production` Environment has owner review and a `main`-only branch
+  rule. Exact NAS variables, pinned SSH host key/private key, release signer and
+  both Tailscale OIDC secret names are present; secret values were never read
+  back. The narrow tailnet grant is saved, and a WSL user-owned source passed
+  private forced `status` plus arbitrary-command rejection. The ephemeral
+  tagged GitHub runner has not yet been exercised.
 - Required order now resumes at fresh feature CI, feature merge, final baseline
   rotation, then an owner-approved canary/final NAS deployment using separately
   provisioned identities.
 - Feature PR #186 subsequently passed fresh hosted trusted, OTA and backend
   MariaDB checks at merge-connected head `cbaaf9e`; PR-only publish/deploy jobs
-  skipped. Independent release-signing/SSH private keys plus the confirmed port
-  and public-origin variables are now in the protected Environment. NAS public
-  key installation, host-key pinning, Tailscale OIDC/host and restricted deploy
-  user are still missing, so the PR remains unmerged.
+  skipped. Later NAS installation and private-path evidence are recorded on the
+  branch, but current protected bytes require a fresh trusted-policy admission.
+  The candidate workflow now separates a manual exact-main status-only OIDC
+  preflight from the push-main deployment path: the former cannot sign, build,
+  publish or invoke `apply`. No workflow dispatch, image publication, database
+  migration, legacy-container cutover or readiness claim has occurred.
 
 ## 2026-08-26 issue #179 Bluetooth-state recovery candidate
 
