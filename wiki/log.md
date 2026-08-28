@@ -4338,3 +4338,15 @@
 - Root cause is pioarduino `initArduino()`: before `setup()`, weak defaults `verifyRollbackLater()=false` and `verifyOta()=true` immediately mark the pending image valid, so `OtaManager::init()` cannot start its 30-second health policy.
 - Added a strong C-linkage `verifyRollbackLater()` that defers validation to `OtaManager` and a compile-time error when `CONFIG_APP_ROLLBACK_ENABLE` is absent. Focused tests pass, the local N16 production build succeeds, and the ELF exposes strong `T verifyRollbackLater` while retaining the byte-identical rollback-enabled bootloader.
 - This is local candidate evidence only. Issue #172 remains open pending protected authorization, PR/CI/merge, strictly newer signed connected health-window/valid-mark proof and separate automatic rollback fault injection.
+
+## [2026-08-29] compile | Authorize exact deferred OTA health candidate
+
+- Added `src/OtaManager.cpp` to the protected surface and authorized immutable feature commit `2d3221ee54b9277bc3783811f17e12658fb93901` through one temporary-exact and one future persistent identity with the same complete ordered 83-path digest map.
+- Relative to the current baseline, only `src/OtaManager.cpp` and `.github/workflows/deploy.yml` differ; regression coverage pins both normalized digests, the feature identity, exact inventories and indivisible bundle semantics.
+- This policy-only authorization does not publish or install firmware and does not prove the Target health window, VALID mark, rollback, relay contact, sensor threshold or door movement.
+
+## [2026-08-29] test | Reconnect deferred OTA health feature to trusted main
+
+- Policy PR #193 merge-commit merged as main `482f127e388318d53a0da7627036fde55f84114b`, then that exact `origin/main` was merge-connected into immutable feature commit `2d3221ee54b9277bc3783811f17e12658fb93901` without rebasing or squashing.
+- Both protected feature blobs remain byte-identical to the approved 83-path bundle; the merge preserves the policy and feature parents for hosted ancestry verification.
+- This connection is CI trust evidence only. Publication, connected 30-second health validation, VALID marking, rollback, relay contact and door movement remain separate Gates.
