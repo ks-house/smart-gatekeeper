@@ -569,7 +569,12 @@ background success, or Target OTA health.
    separate forced-key fallback. Owner account `noty00` has `/bin/sh`, current
    SSH access and no existing `.ssh`/`authorized_keys`, so an atomic one-key
    installation can proceed with exact NOPASSWD wrapper commands and both
-   positive/negative forced-command tests. The tailnet grant remains unproven.
+   positive/negative forced-command tests. The forced key now authenticates and
+   maps both requests to the dispatcher, but DSM returns permission denied while
+   executing its root-owned mode-`0755` path. Diagnose parent-directory traversal,
+   Synology ACL and mount execution flags before changing permissions; retain
+   secrets, trust, incoming and release state as root-only. The tailnet grant
+   remains unproven.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed

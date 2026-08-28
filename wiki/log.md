@@ -4157,3 +4157,15 @@
 - Owner account `noty00` has `/bin/sh`, established SSH capability and membership in `users`, `administrators` and `family`. Its home is an owned, non-symlink mode-`0711` directory; `.ssh` and `authorized_keys` do not exist, so no existing key entry can be overwritten or reordered.
 - Its current sudo policy is password-required `(ALL) ALL`; it does not yet provide the non-interactive exact wrapper calls needed by the dispatcher. The fallback must add only NOPASSWD `apply` and `status`, while a cache-cleared negative arbitrary-command probe must remain denied.
 - Proceed only with an atomically installed single deploy-key entry whose forced command is the root-owned dispatcher and whose fingerprint is `SHA256:fP1WpvmwNwI8tWQTDY3pTxSK0jR4yxFBRoYFt2aeHB8`. Existing password SSH remains unchanged; PR #186 and deployment remain blocked pending positive `status` and negative escape tests.
+
+## [2026-08-29] test | Reach forced dispatcher path but fail its NAS execution permission
+
+- The owner-account deploy key now authenticates on DSM SSH `4422`: both requested `status` and an arbitrary-command negative probe are replaced with the configured forced dispatcher path. This closes key selection/authentication but not dispatcher execution.
+- Both requests return shell exit code 126 with `sgk_backend_ssh_dispatch.sh: Permission denied`, before dispatcher command filtering or sudo execution. The identical result does not prove the escape-negative contract because the dispatcher never started.
+- The installed file was previously read back root-owned mode `0755`; inspect every parent directory's execute/traverse bit, Synology ACL and `/volume1` mount flags. Do not recursively relax the deployment tree: only the dispatcher path may become traversable, while secrets, trust, releases, incoming data and runtime configuration stay root-only. The separate post-quantum warning remains unrelated.
+
+## [2026-08-29] test | Detect protected-bundle drift after fallback documentation
+
+- Fresh PR #186 checks at head `afb3cde` reject the modified protected `backend/deploy/README.md` digest and the mixed candidate bundle; backend security still passes and all publish/deploy jobs remain skipped.
+- This is the trusted-policy mechanism working as designed, not an OTA functional regression. Do not merge the feature or weaken the policy; combine the live dispatcher-path correction with a newly frozen exact bundle and repeat the separate base-policy authorization flow.
+- The untracked local `test.sh` is unrelated user workspace state and remains untouched.
