@@ -4398,3 +4398,9 @@
 - Reviewed immutable PR #198 feature commit `828820da348afc509bc21ebd0b13f1c023563415`. Relative to current policy main, only protected `.github/workflows/deploy.yml` changes, to normalized digest `88cdf941...`; it pins the two changed Target FSM build inputs.
 - Added one exact feature identity and one future persistent identity with the same complete ordered 83-path map. The prior `a2f7ae2` source baseline is retired; tests require exact repository/SHA ancestry, inventories and indivisible protected bytes.
 - This policy-only candidate changes no runtime or device state. Policy CI/merge, merge-connection into PR #198, fresh feature CI, signed publication/install and connected action-2 relay-command evidence remain separate Gates.
+
+## [2026-08-29] compile | Rotate action-2 ARMED policy to actual merged main
+
+- Policy PR #200 passed hosted verification and merged as `2d18d694`; merge-connected PR #198 then passed Trusted, OTA, Android and ESP32-C6 checks and merge-commit produced actual main `618220e106b0bc2eee5faba6485a54dd66a8b7c6`.
+- Removed both bounded `828820d` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path protected map and exact workflow/action inventories remain unchanged.
+- This final rotation does not itself publish or install artifacts or prove connected action-2 relay-command ON/OFF, relay contact/load, sensor threshold or door movement.
