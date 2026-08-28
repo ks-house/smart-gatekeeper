@@ -4350,3 +4350,15 @@
 - Policy PR #193 merge-commit merged as main `482f127e388318d53a0da7627036fde55f84114b`, then that exact `origin/main` was merge-connected into immutable feature commit `2d3221ee54b9277bc3783811f17e12658fb93901` without rebasing or squashing.
 - Both protected feature blobs remain byte-identical to the approved 83-path bundle; the merge preserves the policy and feature parents for hosted ancestry verification.
 - This connection is CI trust evidence only. Publication, connected 30-second health validation, VALID marking, rollback, relay contact and door movement remain separate Gates.
+
+## [2026-08-29] test | Prove connected pending-slot rollback and anti-replay
+
+- PR #192 passed fresh Hosted Trusted, OTA-contract and ESP32-C6 checks and merge-commit produced actual main `a2f7ae2fc4bd1f4fa19839e1021d18cce85ad4fc`; run `33203136822` atomically published signed/encrypted exact `2.1.295+main.ga2f7ae2` with matching HTTPS evidence.
+- Connected 293 accepted 295, verified the inactive image and booted exact 295 with `pending image health window started`; relay remained OFF and Wi-Fi, MQTTS, ACL v342 and GATT/iBeacon returned.
+- A USB line-state reset before VALID caused automatic rollback to previous VALID 293 with service recovery. The next periodic check rejected reuse of signed 295 as downgrade, proving durable highest-seen-version anti-replay. Strictly newer health-to-VALID, hard power-loss and physical relay/sensor/door Gates remain open.
+
+## [2026-08-29] compile | Rotate deferred OTA health policy to actual main
+
+- Removed both bounded `2d3221e` transition identities and pinned the sole `current-main-baseline` persistent identity to actual feature merge `a2f7ae2fc4bd1f4fa19839e1021d18cce85ad4fc`.
+- The complete ordered 83-path normalized digest map, including `src/OtaManager.cpp`, and exact workflow/action inventories remain unchanged; regression coverage retires the feature identity and rejects extra bundles.
+- This policy-only rotation does not itself publish or install firmware or prove application VALID, hard power-loss, relay contact, sensor threshold or door movement.
