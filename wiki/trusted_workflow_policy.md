@@ -438,3 +438,14 @@ materialize a secret, exchange an OIDC token, publish a GHCR image, open an SSH
 session, migrate MariaDB, replace the legacy containers, change
 router/NAS/Tailscale state or prove production readiness. Those remain
 separately observed deployment Gates.
+
+PR #188 merge-commit merged the final authorization as policy main `29cf3d0`.
+That policy main was merge-connected into the immutable feature without
+rebasing or squashing as `f5e2ed9`; after fresh hosted trusted, OTA and backend
+checks passed, PR #186 merge-commit merged as actual main
+`89e047c2416de6924ee4b7aff4daf4250d55f907`. This immediate final rotation
+removes both `25562d1` transition identities and pins that actual merge as the
+sole `current-main-baseline`. All 82 protected normalized objects and both
+inventories remain exact. The separate status-only run `33199183911` passed,
+but policy rotation and status reachability do not prove a release `apply`,
+database migration, container cutover, readiness, rollback or physical access.

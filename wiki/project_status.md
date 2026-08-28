@@ -163,31 +163,25 @@ evidence.
 
 ## 2026-08-29 backend NAS GitHub CI policy connection
 
-- Backend-NAS work remains published only on PR #186 branch
-  `codex/backend-nas-ci`; the last remote evidence head is
-  `97d0108df962c7b37a0039dc15a1d842a3c5dc82`. It has not merged into `main` or
-  deployed to the NAS.
-- Policy PR #185 expanded the indivisible protected set from 69 to 82 paths,
-  passed the hosted trusted check and merge-commit merged as main `40852b7a`.
-  That main is merge-connected into the feature without rebasing or squashing;
-  fresh feature CI is still pending.
+- Backend-NAS feature PR #186 passed fresh hosted trusted, OTA and backend
+  MariaDB checks at merge-connected head `732e672`, then merge-commit merged as
+  exact main `89e047c2416de6924ee4b7aff4daf4250d55f907`.
+- Bridge PR #187 and final admission PR #188 connected and authorized the exact
+  82-path feature bundle without rebasing or squashing. This immediate final
+  rotation removes both `25562d1` transition identities and pins only
+  `current-main-baseline` to actual merged main `89e047c`.
 - The GitHub `production` Environment has owner review and a `main`-only branch
   rule. Exact NAS variables, pinned SSH host key/private key, release signer and
   both Tailscale OIDC secret names are present; secret values were never read
   back. The narrow tailnet grant is saved, and a WSL user-owned source passed
-  private forced `status` plus arbitrary-command rejection. The ephemeral
-  tagged GitHub runner has not yet been exercised.
-- Required order now resumes at fresh feature CI, feature merge, final baseline
-  rotation, then an owner-approved canary/final NAS deployment using separately
-  provisioned identities.
-- Feature PR #186 subsequently passed fresh hosted trusted, OTA and backend
-  MariaDB checks at merge-connected head `cbaaf9e`; PR-only publish/deploy jobs
-  skipped. Later NAS installation and private-path evidence are recorded on the
-  branch, but current protected bytes require a fresh trusted-policy admission.
-  The candidate workflow now separates a manual exact-main status-only OIDC
-  preflight from the push-main deployment path: the former cannot sign, build,
-  publish or invoke `apply`. No workflow dispatch, image publication, database
-  migration, legacy-container cutover or readiness claim has occurred.
+  private forced `status` plus arbitrary-command rejection.
+- Manual exact-main run `33199183911` then exercised the ephemeral
+  `tag:sgk-github-deploy` runner through Tailscale and the pinned forced SSH
+  endpoint. Its retained evidence is exactly `status=not-deployed`; all
+  publication and `apply` jobs were skipped.
+- The private CI transport Gate is therefore closed, but the new stack is not
+  deployed. Database migration, legacy-container cutover, API readiness,
+  rollback and external service evidence remain separate production Gates.
 
 ## 2026-08-26 issue #179 Bluetooth-state recovery candidate
 

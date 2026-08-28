@@ -4301,3 +4301,15 @@
 - Merged policy PR #188 as merge commit `29cf3d0808959906647e7cf541f6c42b877514d4`, then merged that exact `origin/main` into the unchanged final feature commit `25562d1e1ae57bb52a8a0317de8d07a9a1365bef` without rebasing or squashing.
 - The seven protected feature paths remain byte-identical to commit `25562d1`; the focused trusted-policy and NAS-deployment suites passed 54/54 after the merge.
 - This reconnects PR #186 to its approved ancestor for hosted CI only. The status-only workflow has not yet been dispatched, no production approval or deployment `apply` ran, and NAS containers and database remain unchanged.
+
+## [2026-08-29] test | Merge backend NAS CI and pass private status preflight
+
+- PR #186 passed fresh hosted trusted, OTA and backend MariaDB checks at merge-connected head `732e672` and merge-commit merged as actual main `89e047c2416de6924ee4b7aff4daf4250d55f907`; PR-event publication and deployment jobs remained skipped.
+- Manual exact-main run `33199183911` used the ephemeral `tag:sgk-github-deploy` identity, pinned Tailscale NAS endpoint and forced SSH dispatcher. Retained evidence read exactly `status=not-deployed`.
+- Only the status job received production approval; signing, image publication and deployment jobs were skipped. No `apply`, database migration, container cutover or readiness claim occurred.
+
+## [2026-08-29] compile | Rotate NAS OIDC policy to actual merged main
+
+- Removed both bounded `25562d1` transition identities and pinned the sole `current-main-baseline` persistent identity to actual merged main `89e047c2416de6924ee4b7aff4daf4250d55f907`.
+- The complete ordered 82-path normalized digest map and exact workflow/action inventories remain unchanged; regression coverage retires the feature SHA and rejects extra identities.
+- This policy-only rotation does not publish an image, approve a deployment, modify NAS state or prove the core physical access use case.
