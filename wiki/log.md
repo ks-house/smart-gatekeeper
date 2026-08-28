@@ -3784,3 +3784,313 @@
 - Corrected issue #179's initial manifest-receiver assumption: modern Android does not exempt `ACTION_STATE_CHANGED` from implicit-broadcast manifest limits, so a native `GatekeeperApplication` context-registers the process-lifetime Bluetooth receiver instead. Android 13+ uses the required exported registration for privileged Bluetooth-app delivery; the platform-protected action never dispatches access directly.
 - Persistent registration intent is committed before adapter access, disable intent before best-effort stop, and the first observed `STATE_ON` reconciles one exact PendingIntent scan. OFF/TURNING/repeated-ON, unrelated actions and disabled intent remain no-ops.
 - Seven focused source/pocket contracts, an expanded 174-test mobile/OTA/trusted suite and Android Gradle `:app:testDebugUnitTest` passed (`BUILD SUCCESSFUL`, 209 tasks). The phone is disconnected, so Bluetooth OFF→ON, subsequent first match and terminal action-1 `ARMED` remain connected Gates; sensor/contact/rollback claims remain open.
+
+## [2026-08-28] test | Verify Ubuntu 26.04 WSL 2 development baseline
+
+- Created the ignored workspace `.venv` with Python 3.14.4 and exact PlatformIO Core 6.1.19, installed immutable pioarduino `cbc3349`, and built `esp32c6` successfully with 16 MB Flash, 59,200/327,680 bytes RAM and 1,745,466/7,340,032 bytes application flash.
+- Docker Desktop WSL integration responded with Engine 29.6.2 and Compose 5.3.1. Backend Compose configuration accepted the exact 40-hex source commit and both API/migration images built from locked inputs; no backend services or production credentials were started or changed.
+- The cached Flutter builder started with Java 17 and Android SDK tools but reported Flutter 3.47.1, while hosted CI pins 3.44.8. The floating local `stable` image is therefore local-development evidence only. No USB serial device was visible, so Target upload, radio, OTA, sensor and relay physical Gates remain open.
+
+## [2026-08-28] compile | Document WSL-local setup and evidence boundaries
+
+- Added WSL Bash commands for the ignored PlatformIO virtual environment, workspace-local build output, Docker-backed backend/mobile checks, and the required exact `BUILD_SHA` Compose input.
+- Updated the navigation summary and preserved clear boundaries between toolchain/image validation, connected-device evidence and physical acceptance.
+
+## [2026-08-28] test | Isolate connected Target at the Windows-to-WSL USB boundary
+
+- Windows detected the connected Target as `USB-Enhanced-SERIAL CH343 (COM5)` with hardware ID `USB\\VID_1A86&PID_55D3`, manufacturer `wch.cn` and CDC-compatible class. This proves Windows enumeration only.
+- `usbipd-win` was absent, WSL had no `/dev/ttyACM*` or `/dev/ttyUSB*`, and PlatformIO listed only generic `/dev/ttyS0..7` nodes without hardware IDs. `/dev/ttyS4` resolved to a `serial8250` placeholder and was not accepted as COM5 mapping evidence.
+- The WSL 6.18.33.2 kernel contains USB/IP `vhci_hcd` and `cdc_acm`, but native CH343 enumeration remains pending usbipd install, exact-BUSID bind/attach, serial-node permission verification and a non-destructive identity check. No Target reset, upload, flash, serial capture or OTA mutation was performed.
+
+## [2026-08-28] compile | Document bounded Target USB/IP procedure
+
+- Added separate administrator PowerShell, normal PowerShell and WSL Bash commands for usbipd install, persistent exact-BUSID sharing, non-persistent attach, native USB/node checks, dialout membership and detach.
+- Kept upload and serial monitor outside the initial access check because either may reset the Target; connected runtime and physical acceptance Gates remain open.
+
+## [2026-08-28] test | Resolve exact Target USB/IP BUSID and administrator boundary
+
+- Newly installed `usbipd-win 5.3.0` listed `USB-Enhanced-SERIAL CH343 (COM5)` with exact BUSID `2-4`, VID:PID `1a86:55d3` and state `Not shared`; no other USB row was selected.
+- A bounded `usbipd bind --busid 2-4` attempt from the non-elevated agent session failed with the expected `Access denied; this operation requires administrator privileges`. The device remains unshared and unattached, and no Target reset, upload, flash or serial interaction occurred.
+- Next action is the same exact bind from administrator Windows PowerShell, followed by non-elevated WSL attach and native `/dev/ttyACM*`/permission verification.
+
+## [2026-08-28] test | Attach exact CH343 Target to WSL native USB
+
+- After administrator sharing, non-elevated `usbipd attach --wsl --busid 2-4` selected `Ubuntu-26.04` and changed only the CH343 row to `Attached`.
+- WSL enumerated USB `1a86:55d3`, product `USB Single Serial`, serial `5C37195343`; `cdc_acm` created `/dev/ttyACM0`, and PlatformIO reported the same VID:PID, serial and location `1-1:1.0`. This accepts Windows-to-WSL native USB identity and enumeration only.
+- `/dev/ttyACM0` is `root:dialout` mode `0660`, while `sh-cat-lee` is not yet a `dialout` member. Serial open, Target reset, upload, flash, monitor output and runtime/physical behavior remain untested pending the bounded group-membership step.
+
+## [2026-08-28] test | Accept WSL Target serial-node access without firmware mutation
+
+- Added `sh-cat-lee` to `dialout`; a newly launched `Ubuntu-26.04` process reported group 20 and read/write access to the exact `root:dialout` `/dev/ttyACM0` node. The original long-running agent process correctly retained its older supplementary-group snapshot.
+- A single read-only, nonblocking, no-controlling-terminal POSIX open returned file descriptor 3 and closed successfully. No baud, DTR/RTS, serial payload, Target reset, upload, flash, firmware identity or runtime/physical behavior was requested or claimed.
+- Windows-to-WSL USB identity, enumeration and device-file access are now accepted. Serial observation or upload remains a separate explicitly bounded step because those tools can reset or mutate the connected Target.
+
+## [2026-08-28] test | Upload personal-production Target and verify WSL serial monitoring
+
+- Built synchronized source `21e71d1c8faf469d101a477207276a80297873c8` as `esp32c6_personal_production` with pinned pioarduino `cbc3349`: 16 MB flash, 67,096/327,680 bytes RAM and 1,783,028/7,340,032 bytes application flash. The local firmware SHA-256 was `5ca2c39e3c605bff97911c8d9691ef69ae50f2def33a7dd1e9eedf8f24d11870`.
+- Exact attached `/dev/ttyACM0` / `1a86:55d3` / serial `5C37195343` identified ESP32-C6 revision 0.2 and 16 MB flash. Esptool wrote `0x0/0x8000/0xe000/0x10000`, verified every transmitted hash and hard-reset; no whole-chip or NVS erase was used.
+- A bounded 115200 monitor received 3,531 bytes after one RTS reset. The Target restored saved Wi-Fi/tuning, obtained `192.168.35.18`, connected MQTTS, published retained diagnostics/config, applied signed ACL v299, started GATT/iBeacon and accepted one GATT connection.
+- Missing `hwless_door`, persisted ACL signer and `next_restart` lookups were visible before configured signer provisioning and fresh ACL application. This local generic `v2.1.0` USB build is not signed CI identity, inactive-slot OTA, health-valid/rollback, authenticated GATT result, ultrasonic threshold or physical relay/contact evidence.
+- Serial open itself reset this CH343 path, so a final bounded observation disabled `HUPCL`, explicitly left DTR/RTS idle and again reached Wi-Fi, MQTTS, ACL v301 and GATT before close. Windows host `192.168.55.72/24` had no route to Target `192.168.35.18`, making later ping/HTTP timeouts inconclusive rather than Target-health failure. The generic local version may subsequently be replaced by periodic signed OTA; that post-monitor lifecycle was not observed.
+
+## [2026-08-28] test | Connect authorized Fold7 ADB from WSL shell
+
+- Windows enumerated the phone as BUSID `4-1`, VID:PID `04e8:6860` with Samsung composite/MTP/modem/ADB interfaces while Target BUSID `2-4` remained attached to WSL. The phone remained `Not shared`, avoiding disruption of Windows USB ownership.
+- Invoked the existing Windows Android SDK `adb.exe` from WSL Bash, started the ADB server and received authorized state `device` for Samsung `SM-F966N`, Android 16/API 36, `arm64-v8a`.
+- Read-only package metadata confirmed installed `com.kshouse.gatekeeper_app` `1.0.0-g3cf6eaa` / 21701. No APK mutation, app launch, permissions, logcat, private app data, BLE/GATT, screen-off or physical-door action was performed; this is Windows-hosted ADB transport rather than native Linux/container USB evidence.
+
+## [2026-08-28] test | Fail current main action-2 at the GATT protocol boundary
+
+- Foreground Fold7 preflight showed backend `승인됨`, an enabled main `문 열기`, native worker `HEALTHY`, BLE owner `native_gatt` and local consent `local_keystore_authenticated`. The WSL-monitored local Target restored Wi-Fi `192.168.35.18`, MQTTS, signed ACL v303 and enabled GATT/iBeacon.
+- Distinguished the dashboard's queue-accepting `1-Tap 수동 로컬 개방` as exact installed-source action-1 WorkManager retry, not terminal action 2; it remained `Target Result: NONE` during the bounded observation.
+- One actual main-WebView action-2 tap connected, discovered the Target service and enabled Hello/Challenge/Result indications, then closed in about 1.8 seconds with `수동 출입 실패: PROTOCOL_INCOMPATIBLE`. Target serial recorded only the accepted connection and no proof-verification evidence, FSM transition or relay ON/OFF.
+- Android/Target protocol and framing constants remain v1 and the core GATT protocol files do not differ between installed `3cf6eaa` and current `21e71d1`; the exact on-wire cause remains unresolved because rejected Target Hello and unexpected message types can map to the same public reason. The non-retryable attempt was not repeated.
+- Current core manual-open acceptance is FAIL while fail-closed/no-actuation behavior passed. No contact/load, door movement, sensor threshold, exact CI/signed OTA identity, health-valid or rollback claim is made.
+
+## [2026-08-28] lint | Validate current connected-test documentation
+
+- `git diff --check` passed and every relative Markdown link in `wiki/*.md` resolved after updating `project_status.md`, `hardware_test.md`, `index.md` and the append-only log.
+- No serial-reader process retained `/dev/ttyACM0`; the CH343 node remained present as `root:dialout` `0660`, and Windows-hosted ADB still listed the Fold7 as authorized `device`.
+
+## [2026-08-28] compile | Plan private external Synology backend deployment
+
+- Audited the repository deployment boundary: the backend workflow tests, attests and locally builds API/DB images but does not publish registry images or deploy the NAS; the existing NAS transport account is SFTP-only and cannot orchestrate containers or migrations.
+- Added `wiki/nas_backend_external_deployment_plan.md` with the recommended GHCR exact-digest build lane, GitHub-hosted ephemeral Tailscale control plane, forced-command NAS deploy wrapper, NAS-local file secrets compatibility Gate, backup-first schema `007` migration, private ingress, readiness, evidence and rollback contracts.
+- Kept the work planning-only: no NAS, network, GitHub Environment, container, secret, database or public ingress state was changed, and backend deployment remains separate from mobile/Target/relay physical proof.
+
+## [2026-08-28] lint | Validate Synology backend deployment plan
+
+- Rendered `backend/compose.production.yml` with structurally valid placeholder digests and required non-secret variables using the local Docker Compose parser; the private no-host-port production contract remained valid.
+- `git diff --check` passed and every relative Markdown link in `wiki/*.md` resolved after adding the plan, index entry and project-status boundary.
+
+## [2026-08-28] compile | Add owner-safe NAS inventory procedure
+
+- Expanded the external backend deployment plan with DSM UI paths, a read-only LAN SSH command block and a sanitized result template for NAS model/architecture, DSM, Container Manager, Docker/Compose, storage, Tailscale, Hyper Backup, reverse proxy and public forwarding state.
+- Explicitly excluded passwords, tokens, private keys, public IP, serial/MAC and full tailnet output; SSH enablement, router forwarding, privilege changes and live deployment remain outside this read-only inventory step.
+
+## [2026-08-28] compile | Record sanitized Synology hardware inventory
+
+- Read the owner-provided DSM Info Center capture through its WSL path and recorded only DS423+, DSM 7.3.2-86009 Update 4, Intel Celeron J4125 4-core/2 GHz, 18 GB memory and normal point-in-time thermal state.
+- Selected `linux/amd64` as the backend image build candidate while retaining `uname -m` or Docker server architecture as the publish Gate. Deliberately excluded the screenshot's owner account, server identity and device serial from repository evidence.
+- Container Manager/Docker/Compose, storage, Tailscale, backup, reverse proxy and public-forwarding inventory remain pending; no NAS setting or runtime state was changed.
+
+## [2026-08-28] compile | Accept partial NAS runtime and ingress inventory
+
+- Read four owner-provided captures through their WSL paths and accepted running Container Manager `24.0.2-1606`, running Tailscale `1.58.2-700058002`, normal Volume 1 with about 13 TB used/28.9 TB free, and DSM HTTPS `4442` reverse proxying to HTTP `localhost:8000` with HSTS off and no DSM access-control profile.
+- Accepted `uname -m=x86_64`, Docker client `24.0.2` and Compose `v2.20.1-6047-g6817716`, confirming `linux/amd64`; retained the non-privileged Docker-daemon permission denial as expected evidence and made no privilege/group change.
+- The owner's `4000`-range exposure report remains ambiguous rather than an accepted blanket-forward rule. Exact router entries/protocols, filesystem/snapshot state, Hyper Backup, Tailscale reachability/grants and disposable Compose compatibility remain pending; no NAS/router/runtime setting was changed.
+
+## [2026-08-28] compile | Confirm NAS Btrfs deployment volume
+
+- Accepted the owner-provided read-only `df -T /volume1` evidence: `/dev/mapper/cachedev_0` is Btrfs with approximately 13 TB used, 29 TB available and 31% utilization.
+- This closes the filesystem-type inventory and supports snapshot-capable storage plus image rollback reserve, but does not prove an enabled snapshot schedule, off-NAS backup or restore. Terminal account/server identities were not copied into repository evidence and no NAS setting changed.
+
+## [2026-08-28] compile | Classify blanket router exposure and backup evidence
+
+- Accepted the owner report that the router forwards the full external `4000-4999` range and classified it as a P0 excessive-exposure finding, not an approved deployment control path. Added a no-downtime narrowing sequence: inventory NAS listeners, add exact named rules, verify `4442` HTTPS/readiness and `4883` MQTTS plus any other owned service, then remove the blanket range and reverify.
+- The Tailscale capture proves the NAS package is connected; account, device and tailnet address were not copied. Deployment still needs a separate ephemeral GitHub identity and least-privilege grants, with no new public router port.
+- The second capture proves automatic encrypted DSM configuration backup, not Hyper Backup of containers, MariaDB, volumes or migration backups. Off-NAS data backup and restore evidence remain pending; no router, backup or NAS setting was changed.
+
+## [2026-08-28] compile | Inventory NAS listeners inside forwarded range
+
+- Accepted the owner's non-privileged socket inventory: TCP listeners were present on `4080`, `4085`-`4088`, `4123`, `4222`, `4422`, `4442`, `4443` and `4883`, with corresponding wildcard IPv6 listeners shown; no UDP listener appeared in `4000-4999`.
+- Repository evidence confirms current app/API HTTPS on `4442` and Target MQTTS on `4883`. `4443` remains a live listener and appears in example OTA/APK configuration, so it cannot be removed until the current production consumer is checked. No service owner was inferred for the other ports.
+- DSM Reverse Proxy and Container Manager port maps are required before narrowing. Listener presence alone is not public-need evidence, and no root/Docker privilege, router rule or NAS service was changed.
+
+## [2026-08-28] compile | Map NAS proxy and container port ownership
+
+- Accepted owner captures mapping DSM HTTPS `4085` to InfluxDB HTTP `localhost:4086`, HTTPS `4088` to Grafana HTTP `localhost:4087`, HTTPS `4123` to LAN Home Assistant `8123`, and HTTPS `4442` to backend HTTP `localhost:8000`.
+- Container mappings show direct wildcard host ports `4086 -> InfluxDB:8086`, `4087 -> Grafana:3000`, `8000 -> API:8000`, plaintext `1883 -> MQTT:1883` and `4883 -> MQTTS:8883`; MariaDB `3306/tcp` was not host-published in the capture. The blanket router rule therefore exposes direct InfluxDB/Grafana proxy-bypass ports 4086/4087 as a P0 finding.
+- `4442` and `4883` have current product retain evidence; `4123` depends on continued external HA use, while `4080`, `4222`, `4422` and `4443` still need ownership/current-consumer proof. No port, proxy, container or router state was changed.
+
+## [2026-08-28] test | Fingerprint remaining forwarded-range listeners
+
+- Owner-issued loopback HEAD probes showed `4080` is plaintext nginx returning HTTP 403 and rejects TLS; it has no accepted deployment-control or product-public need.
+- Ports `4222` and `4422` returned a non-HTTP plaintext response interpreted by curl as HTTP/0.9 and rejected TLS. This is compatible with a banner protocol such as SSH/SFTP but is not sufficient to name the service, so initial banners/current owners remain required.
+- Port `4443` is an HTTPS nginx virtual host: plaintext returned 400 and a direct-IP HTTPS request returned 403. Correct host/SNI and the repository's historical OTA/APK path must be checked before removal. These read-only fingerprints changed no listener, proxy or router state.
+
+## [2026-08-28] test | Confirm OTA virtual host and public service usage
+
+- Port `4222` emitted `SSH-2.0-OpenSSH_8.2`, confirming an SSH/SFTP-capable service; external workflow ownership is still required before retaining it, and the new backend control plane targets Tailscale rather than public SSH.
+- Correct-host/SNI probes to `4443` returned HTTP 200 with certificate verification result 0 for both firmware and APK `version.json`, closing current OTA/APK public-use identification and requiring an exact `4443/TCP` rule during range narrowing.
+- The owner confirms current external use of HA `4123`, Grafana proxy `4088` and InfluxDB proxy `4085`. Added temporary exact-rule retain status while preserving authentication/access-control review and Tailscale-only migration preference for observability services. Port `4422` remains unidentified and no router/service state changed.
+
+## [2026-08-28] test | Confirm second OpenSSH listener
+
+- An owner-issued active loopback probe on `4422` returned `SSH-2.0-OpenSSH_8.2` followed by the expected invalid-identification response to the bounded CRLF probe. Both `4222` and `4422` are therefore OpenSSH services.
+- The banner does not identify which port is DSM interactive SSH versus SFTP or which existing external publisher consumes it. Both remain conditional until DSM Terminal/File Services and workflow ownership are mapped; the planned backend control plane still targets Tailscale rather than public SSH. No authentication or configuration change occurred.
+
+## [2026-08-28] compile | Finalize current-consumer router narrowing set
+
+- Owner/DSM configuration identifies `4222` as enabled SFTP used by the GitHub NAS artifact publisher and `4422` as enabled externally used DSM interactive SSH. Both therefore remain temporary exact TCP rules while the workflows and owner access migrate to Tailscale.
+- The immediate no-downtime compatibility set is TCP-only `4085`, `4088`, `4123`, `4222`, `4422`, `4442`, `4443` and `4883`; `4080`, direct InfluxDB `4086`, direct Grafana `4087`, UDP and the blanket `4000-4999` rule have no retain basis.
+- Added an overlap-safe router change path and time-bounded rollback boundary. This documents the change but does not authorize or perform it; public observability/SSH/SFTP hardening and off-NAS backup remain open.
+
+## [2026-08-28] test | Add IPv6 exposure Gate to router narrowing
+
+- A read-only DNS check observed an AAAA answer for the current public hostname, while the NAS listener inventory showed wildcard IPv6 binds. No public address was recorded.
+- Added a P0 IPv6 firewall Gate: IPv4 NAT narrowing alone cannot prove direct InfluxDB/Grafana closure; required hostname services and rejected `4080/4086/4087` paths must be checked over both address families with router/DSM IPv6 inbound default-deny or equivalent exact rules. No DNS, firewall or router state changed.
+
+## [2026-08-28] code | Implement signed CI-to-Synology backend deployment candidate
+
+- Extended the protected backend workflow so verified exact-main commits build DS423+ `linux/amd64` API/DB images, publish immutable GHCR digests with image provenance/SBOM, create and attest a signed four-file release bundle, pause at the protected `production` Environment, join Tailscale through OIDC, and invoke the NAS with a strict known-host SSH identity.
+- Added a Synology Compose overlay with loopback-only API publication, NAS-local file secrets and four explicitly named external volumes; no MariaDB host port, mutable image tag, source bind mount or GitHub-provided runtime secret was added.
+- Added a P-256 release-bundle generator, root NAS deploy wrapper and unprivileged forced-command dispatcher. The wrapper admits only `apply/status`, verifies signature, hashes, exact repositories/digests/schema, root-controlled runtime input, secret permissions, volume existence and container ownership before backup-first migration, and records current state only after loopback and public `/ready` pass. It does not perform blind DB rollback.
+- Ignored local deployment runtime files, PEM/SSH key material and generated release bundles under `backend/deploy` to reduce accidental credential or artifact staging.
+- Added the executable bootstrap runbook and updated the external deployment plan, environment guide, status dashboard and trusted backend input inventory. The first handover still requires exact legacy DB/API mount inventory, an off-NAS restore proof, owner change window, GitHub/Tailscale/SSH configuration and a separate trusted-workflow policy rotation.
+
+## [2026-08-28] test | Validate Synology deployment repository contracts
+
+- Six `backend.tests.test_nas_backend_deploy` tests passed: signed descriptor verification, tamper rejection, repository/overwrite rejection, Synology Compose render, loopback/external-volume contract and restricted command/runtime-secret checks.
+- The hash-locked backend environment completed the full 126-test host suite with no failures; two opt-in real-MariaDB integration cases were skipped because `RUN_MARIADB_INTEGRATION=1` was not enabled. The protected workflow retains its dedicated real MariaDB integration step.
+- Both NAS shell scripts passed `bash -n`; the combined production/Synology Compose rendered with exact dummy digests; the 34-check backend commercial repository contract passed; workflow YAML parsed with all five jobs; `git diff --check` passed. `actionlint` was unavailable locally.
+- No workflow was executed on GitHub, no image was pushed to GHCR and no NAS, database, volume, secret, tailnet, SSH, router or reverse-proxy state changed. Live deployment/readiness/rollback evidence remains pending.
+
+## [2026-08-28] test | Identify live legacy backend containers before CI adoption
+
+- Accepted the owner-provided read-only Docker inventory: `gatekeeper-api` runs the local `smart_gatekeeper-api` image and exposes host port `8000` on wildcard IPv4 and IPv6; `gatekeeper-db` runs mutable `mariadb:10.11` with only container port `3306` and no host publication.
+- This confirms the first-adoption collision boundary enforced by the new wrapper: the legacy API and DB must be stopped in an approved window before the new project binds loopback `8000` or opens the same MariaDB data directory. The current containers were not stopped or changed.
+- Exact API/DB mounts and volume names remain required before constructing `runtime.env`; image names and port mappings alone do not identify persistent state or prove backup/restore readiness.
+
+## [2026-08-29] fix | Bind production DB identity to the adopted NAS account
+
+- Owner mount evidence fixes the live MariaDB data volume as `smart_gatekeeper_mariadb_data`, current project as `smart_gatekeeper`, API live-source bind under `/volume1/docker/smart-gatekeeper/smart-gatekeeper/backend/app`, and APK bind source as `/volume1/docker/smartbox_ota/gatekeeper_apk`. The API has no `/var/lib/smart-gatekeeper` state mount; its current target config must be checked under `/app` before adoption.
+- Replaced the production Compose assumption `gatekeeper_runtime` with required non-secret `DB_RUNTIME_USER` for both DB initialization and API connection. Existing MariaDB volumes do not rerun account creation, so guessing a new account would have caused first-deployment readiness failure even with the correct password file.
+- Updated the NAS runtime example, strict wrapper validation, CI Compose render environment, deployment tests and bootstrap runbook. Six focused tests and the 34-check repository contract pass after the correction. No NAS container, volume, DB user, file or secret changed.
+
+## [2026-08-29] test | Confirm legacy DB user, target config and secret-key inventory
+
+- Owner readback confirms the running API uses database `smart_gatekeeper` and runtime user `gatekeeper_user`. The new `DB_RUNTIME_USER` contract can therefore preserve the existing MariaDB account rather than trigger a first-adoption login failure.
+- The legacy target config is a root-owned mode-`0555`, 135-byte regular file at `/app/target_config.json`, SHA-256 `c5668365bd130ec42c7f49aafc53491b1a6ad3a3eb4858f3215b83de3505ece9`. Only metadata/digest were recorded; the file remains in place and has not yet been copied to a new state volume.
+- Environment key names confirm current DB/MQTT/command/ACL inputs and show optional `PERSONAL_ADMIN_PASSWORD` plus ACL transition signer fields. Presence alone does not show whether a value is empty, so the next Gate reports only SET/EMPTY/length and an in-memory DB-password equality result. No secret values or password hashes are to be printed or stored.
+
+## [2026-08-29] fix | Preserve active personal administrator during NAS adoption
+
+- Added mutually exclusive `PERSONAL_ADMIN_PASSWORD`/`PERSONAL_ADMIN_PASSWORD_FILE` loading to the administrator security boundary. An unreadable file or ambiguous dual configuration disables admin authentication rather than selecting an input.
+- Added the NAS-local `personal_admin_password` Compose file secret, Synology overlay mapping and strict deploy-wrapper preflight so the current personal `/admin/login` path is not silently lost during immutable-image adoption.
+- Recorded only the owner-provided semantic status: the personal password is valid-length, administrator mTLS identities and the ACL transition signer are empty, the active command/ACL signing scalars have valid shape, and API/DB runtime passwords match. No value or secret hash was recorded.
+
+## [2026-08-29] code | Add exact-layout no-cutover Synology bootstrap
+
+- Added `backend/deploy/bootstrap_legacy_synology.sh` for the observed `smart_gatekeeper` deployment. It verifies `gatekeeper-api`, `gatekeeper-db`, the existing MariaDB named volume, APK bind path and exact target-config digest/size before staging any file.
+- The helper migrates existing runtime values directly into root-only NAS files without printing them, copies the MQTT CA and target config, creates bind-backed API state/APK/migration-backup volumes and writes non-secret `runtime.env`.
+- Existing differing files or volume mappings are hard failures. The script has no stop/restart/remove path and does not inspect MariaDB data; successful execution would be layout preparation only, not backup, deployment or cutover.
+
+## [2026-08-29] test | Revalidate backend NAS deployment candidate
+
+- Passed 129 backend host tests with two explicit real-MariaDB integration tests skipped, including new personal-admin file/conflict/error tests and the no-cutover bootstrap contract.
+- Passed Synology Compose rendering with exact image inputs and the new personal-admin file secret, Bash syntax, `git diff --check` and the 34-check repository commercial contract.
+- GitHub CI/GHCR, trusted-base rotation, off-NAS backup restore, NAS bootstrap execution, live cutover/readiness and rollback remain unproven and unchanged.
+
+## [2026-08-29] test | Classify bootstrap SCP transport failure
+
+- A password-authenticated modern `scp` attempt to DSM interactive SSH port `4422` failed only after requesting the unavailable SFTP subsystem. No bootstrap file was transferred or executed and no NAS runtime state changed.
+- Documented exact-file stdin streaming over the authenticated `4422` SSH shell as the preferred retry, with SHA-256 readback before execution. The separate `4222` SFTP endpoint remains an alternative transport.
+- The OpenSSH post-quantum key-exchange warning is independent of the subsystem failure. Host-key checks and accepted algorithms must not be weakened; DSM/OpenSSH upgrade and later Tailscale-private migration remain hardening work.
+
+## [2026-08-29] fix | Resolve Synology Docker CLI under sudo PATH
+
+- The first streamed bootstrap execution stopped at its command preflight with `required command is missing: docker`; it had not reached directory, secret, volume or container operations.
+- Updated the helper to use an executable discovered in the current root environment or the fixed Synology `ContainerManager`/legacy `Docker` package binary paths. It neither modifies root `PATH` nor downloads/substitutes a client.
+- Added the package-path contract to host tests. A freshly transferred script and new SHA-256 are required before retry; the NAS copy that failed preflight remains obsolete and must not be executed again.
+
+## [2026-08-29] fix | Make secret staging portable to DSM Bash 4.4
+
+- The Docker-path retry passed container/mount preflight and created the root deployment directories, then strict-unset Bash 4.4 rejected a same-statement local initializer before the first secret file was written. The EXIT trap removes its temporary staging directory; no external volume, container, DB or service mutation was reached.
+- Split the dependent local declarations into declaration and assignment steps. Existing empty deployment directories are an admitted idempotent retry state and are not overwritten.
+- Added a regression assertion rejecting same-declaration positional-local expansion followed by a reference to that local. A fresh transfer and digest verification remain required.
+
+## [2026-08-29] test | Complete no-cutover NAS layout bootstrap
+
+- Owner execution returned `[PASS] legacy runtime prepared without cutover`; both legacy containers remained unchanged and the existing MariaDB volume name stayed `smart_gatekeeper_mariadb_data`.
+- Prepared named API state, APK artifact and migration-backup volumes. The copied target config retained SHA-256 `c5668365bd130ec42c7f49aafc53491b1a6ad3a3eb4858f3215b83de3505ece9`.
+- This closes only NAS-local layout preparation. It does not prove file permission readback, DB/ACL contents, off-NAS restore, GHCR/CI identities, migration, new Compose startup, traffic cutover, readiness or rollback.
+
+## [2026-08-29] code | Add read-only post-bootstrap NAS verifier
+
+- Added `verify_legacy_synology.sh` to check root-only file contracts, exact bind-volume devices, copied target-config identity, unchanged running legacy containers and aggregate DB/ACL state without outputting secret values or identifiers.
+- The verifier performs only Docker inspect/volume inspect and MariaDB SELECT queries. Static tests reject container lifecycle/image/volume creation commands and SQL mutation verbs.
+- Eight focused NAS deployment tests pass after adding the verifier; owner execution and the off-NAS backup/restore Gate remain pending.
+
+## [2026-08-29] test | Verify bootstrapped NAS layout and aggregate ACL state
+
+- Owner read-only execution passed 14 secret-file contracts, the exact runtime key set, three external bind-volume contracts, copied target-config digest and unchanged running legacy API/DB containers.
+- MariaDB reports migration ledger `002`-`007`, three active legacy tenants, one active public credential, one active grant, 313 snapshots and an applied ACK at the same latest version 313.
+- `tenants_public_key=0` is consistent with the personal bootstrap contract retaining the mapped legacy row as `dual`; it is not enough by itself to disable legacy lookup. Exact configured tenant/door/Target correlation and off-NAS restore remain open.
+
+## [2026-08-29] code | Add boolean-only exact ACL identity correlation
+
+- Extended the read-only verifier to compare the effective personal tenant/door/Target configuration with the target-auth map, mapped active/dual tenant, active credential/grant, door-state version, latest snapshot hash/version and exact Target-applied ACK.
+- The correlation runs inside the existing API container using its current DB/runtime inputs and emits booleans only; it never prints identifiers, keys, passwords, public keys or hashes.
+- The verifier remains read-only and eight focused deployment tests plus the 34-check repository contract pass. A fresh verifier transfer is required for owner execution.
+
+## [2026-08-29] test | Confirm exact non-legacy personal ACL path on NAS
+
+- Owner execution passed all boolean-only correlations: feature flags, configured Target authorization, mapped dual/public tenant, active ACL tenant, exact active credential/grant and matching door-state/latest snapshot/Target ACK.
+- The live snapshot and applied ACK advanced together from 313 to 314 between readbacks, while credential/grant counts remained exactly one and legacy containers remained unchanged.
+- This closes the technical identity-path prerequisite for disabling raw legacy lookup. It does not itself authorize that owner-visible behavior change and does not close encrypted off-NAS backup, isolated restore, migration, cutover, readiness or rollback.
+
+## [2026-08-29] compile | Select WSL as first isolated restore candidate
+
+- The WSL Linux filesystem has approximately 902 GB free and Docker client/server 29.6.2 with Compose 5.3.1; GPG and OpenSSL are available while a host MariaDB client is not installed.
+- Selected a Docker-isolated WSL MariaDB as the smallest no-cost first restore lab. The dump will originate transaction-consistently on NAS, move over authenticated SSH, be encrypted off-NAS and restore without any NAS DB port publication.
+- This future lab can prove one off-device restore and measured RTO only. It does not replace a recurring encrypted Hyper Backup/3-2-1 destination. Live DB size collection remains the next read-only step and no backup bytes were created in this turn.
+
+## [2026-08-29] code | Add no-cutover NAS backup and WSL isolated restore harness
+
+- Owner readback measured the live database at 2,686,976 bytes across 20 tables, with the largest table at 1,638,400 bytes; the WSL restore host has ample capacity.
+- Added an identifier-free consistent-snapshot inventory and NAS logical-backup helper. It accepts a dump only when required-table schema/content inventories immediately before and after `mariadb-dump --single-transaction` are byte-identical, preserves a root-only NAS copy and does not stop/restart containers or mutate SQL.
+- Added WSL helpers that verify the SSH-transfer digest and archive members, create an authenticated manifest and AES-256 GPG copy, then restore into the repository-pinned MariaDB image on an ephemeral IPv4 localhost port and compare exact schema/content inventories while measuring RTO.
+- Ten focused deployment tests and the 34-check repository contract pass. No live backup, encryption, restore, production migration, cutover or cleanup was performed; owner execution remains the next Gate.
+
+## [2026-08-29] test | Validate NAS-to-WSL backup and restore contracts
+
+- Full backend regression completed 132 tests successfully with the two explicit real-MariaDB integration tests skipped unless separately enabled.
+- Bash/Python syntax, ten focused NAS deployment tests and the 34-check repository software contract passed; the restore image remains exact-digest and localhost-only, and no automatic container/volume cleanup path was introduced.
+
+## [2026-08-29] fix | Remove unavailable DSM getent dependency from backup preflight
+
+- The first owner backup attempt stopped at the required-command preflight because DSM does not provide `getent`; it stopped before staging, Docker execution or backup creation.
+- Replaced passwd-database lookup with the already available `realpath`, `stat` and `id`: the resolved destination must remain under Synology homes and its numeric owner must exactly match the requested export owner.
+- The backup, database-consistency and no-cutover contracts are unchanged; a freshly hashed script transfer is required before retrying.
+
+## [2026-08-29] test | Create consistent legacy NAS backup without cutover
+
+- Owner execution passed the pre/dump/post inventory equality Gate and created backup `pre-cutover-20260828T155308Z-9349` for deployed source `7c2764a1a16492ec1620079c8211b47287b1b3fd`.
+- The SQL dump is 792,678 bytes and the compressed bundle SHA-256 is `d2321993a1858ec053c614bf6aecb212012f2dd25db59ff2fd49ed42056f418d`; both legacy containers remained running and unchanged.
+- The root-only NAS copy and mode-0600 owner export are backup-generation evidence only. Authenticated off-NAS transfer, digest readback, encryption, isolated restore/inventory/RTO verification and recurring 3-2-1 backup remain pending.
+
+## [2026-08-29] fix | Correct WSL backup metadata and MariaDB readiness gates
+
+- Authenticated SSH transfer matched the NAS bundle sidecar, but preparation first rejected valid `DUMP_SHA256` metadata because its parser allowed no digits in key names. The parser now admits uppercase alphanumeric keys and has a regression fixture for the exact metadata shape.
+- Preparation then passed at backup age 150 seconds, creating an authenticated manifest, three mode-0600 local keys and an AES-256 GPG bundle outside the repository.
+- The first isolated container connection raced the MariaDB entrypoint's port-0 temporary server shutdown before any SQL import. Readiness now requires an authenticated internal `SELECT @@port` result of exactly 3306 and handles client connection failures without a traceback. The empty first lab remains preserved pending cleanup.
+
+## [2026-08-29] test | Prove encrypted off-NAS copy and isolated WSL restore
+
+- SSH transfer digest matched the NAS sidecar. WSL produced an 88,542-byte mode-0600 AES-256 GPG bundle and three independent mode-0600 key files outside the repository; streamed decrypt readback reproduced bundle SHA-256 `d2321993a1858ec053c614bf6aecb212012f2dd25db59ff2fd49ed42056f418d`.
+- Pinned MariaDB digest `be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350` restored the real dump on IPv4 localhost. Required-table, orphan-invariant and exact source/target schema/content inventory verification passed in 1.680 seconds for deployed source `7c2764a1a16492ec1620079c8211b47287b1b3fd`.
+- The NAS production database remained unchanged. The empty first diagnostic lab, successful second lab, NAS owner plaintext export and WSL plaintext work files remain preserved pending explicit cleanup; recurring off-site 3-2-1 backup and key separation are still open.
+
+## [2026-08-29] lint | Revalidate backend after live restore fixes
+
+- Full backend regression passed 133 tests with two explicit real-MariaDB opt-in skips; eleven focused NAS deployment tests and the 34-check repository software contract passed.
+- `git diff --check` and all relative links in `wiki/*.md` passed after synchronizing the live encrypted-backup and restore evidence.
+
+## [2026-08-29] test | Clean isolated restore labs and WSL plaintext artifacts
+
+- With explicit owner authorization, removed `sgk-restore-lab`, `sgk-restore-lab-2` and their exact named data volumes; Docker readback reports zero matching containers and zero matching volumes.
+- Preserved mode-0600 top-level `backup-manifest.json` and `restore-result.json`, then unlinked the WSL plaintext tar, sidecar, SQL dump, source inventory, metadata and duplicate work files. The mode-0600 AES-256 GPG bundle and all three keys remain.
+- Batch-mode SSH could not authenticate to delete the two exact NAS owner-home export files, so no NAS deletion command ran. Interactive password-authenticated removal remains pending; the root-only NAS backup is intentionally excluded from cleanup.
+
+## [2026-08-29] test | Complete NAS owner-export plaintext cleanup
+
+- Owner interactive SSH returned `nas_owner_export_cleanup=passed` after unlinking and verifying absence of the exact temporary NAS owner-home tar and SHA-256 sidecar.
+- Temporary plaintext cleanup is complete across WSL and the NAS owner home. The root-only NAS backup, WSL mode-0600 encrypted bundle, three recovery keys, authenticated manifest and restore result remain intentionally preserved.
+
+## [2026-08-29] test | Verify GitHub backend CI control-plane prerequisites
+
+- Loaded the owner-provided `GITHUB_TOKEN` only into an interactive child shell without printing its value; `gh auth status` selected account `tworimpa` from that environment token with repository/workflow administration scope.
+- Remote `origin/main` and local `main` both resolve to exact commit `21e71d1c8faf469d101a477207276a80297873c8`; repository permission is ADMIN and main enforces the hosted trusted-policy status check with administrators included.
+- Existing `production` Environment requires reviewer `tworimpa` and permits only branch `main`. No backend deployment Environment variables or the five new backend deployment secrets exist yet; existing OTA/mobile secrets were inventoried by name only and left unchanged.
+- The current protected-path regression correctly rejects the unrotated 13-file backend deployment inventory expansion. The feature must be frozen at an immutable commit and admitted through a separate base-policy authorization before its PR can merge.

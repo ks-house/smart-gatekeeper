@@ -526,3 +526,91 @@ fixture Gate.
 
 The startup-order result closes only the Target-side race. It does not replace a
 phone-delivered terminal action-1 result or any sensor/contact evidence.
+
+## 2026-08-28 WSL USB personal-production upload and serial observation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Source and profile | Synchronized source `21e71d1c8faf469d101a477207276a80297873c8` built locally as `esp32c6_personal_production` with the ignored provisioned `include/secrets.h`; the local banner remained generic `v2.1.0` because no CI release-version override was injected | PASS for exact local source/profile build; not signed CI/NAS release identity |
+| N16 capacity | Pinned pioarduino `cbc3349` reported 16 MB flash, 67,096/327,680 bytes RAM and 1,783,028/7,340,032 bytes application flash. Bootloader image-info reported ESP32-C6, 16 MB, DIO, valid checksum/hash | PASS for local build/capacity and dual-slot layout |
+| WSL USB identity | `usbipd-win` BUSID `2-4` remained attached as `1a86:55d3`, serial `5C37195343`, and WSL/PlatformIO selected `/dev/ttyACM0` | PASS for the exact Windows-to-WSL serial bridge |
+| USB write | PlatformIO/esptool wrote bootloader, `partitions_16MB_ota.csv`, framework `boot_app0` and the local application at `0x0/0x8000/0xe000/0x10000`; each write passed esptool hash verification and the chip hard-reset through RTS. No whole-chip/NVS erase command was used | PASS for these written regions; not inactive-slot OTA/rollback evidence |
+| 115200 serial path | A bounded 30-second monitor after one RTS reset received 3,531 bytes including ESP32-C6 ROM boot, application banner and runtime logs | PASS for WSL serial receive/monitor path |
+| NVS and network recovery | Boot restored saved tuning and Wi-Fi, obtained `192.168.35.18`, started the Target WebServer, authenticated MQTTS, subscribed exact per-Target topics and published retained diagnostics/config | PASS for this observed boot/session; no outage soak or WAN recovery claim |
+| Security/BLE recovery | Boot reported missing optional `hwless_door`, persisted ACL signer and `next_restart` values, then provisioned the configured signer, applied signed ACL v299, started GATT and iBeacon, and accepted one GATT connection | PASS for bounded fail-closed-to-active startup; missing-key diagnostics remain observable and no authenticated proof/result was exercised |
+| Monitor-close/network boundary | A final 20-second reset/monitor disabled `HUPCL`, left DTR/RTS idle and repeated Wi-Fi/MQTTS/ACL v301/GATT startup before close. Windows was on `192.168.55.72/24` while Target used `192.168.35.18`; subsequent host ping/HTTP had no route and timed out | Serial startup remains accepted; post-close LAN reachability is unproven rather than failed Target health |
+| Relay/sensor boundary | Boot logged software relay OFF and initialized AJ-SR04T GPIO10/11, but no echo threshold, GPIO3 contact/load, actuator or door movement was measured | PENDING physical sensor/contact/electrical acceptance |
+
+This direct USB install overwrote the selected boot/application regions and is
+not evidence for periodic signed OTA, inactive-slot verification, health-valid
+marking or rollback. The successful serial boot also does not by itself prove
+mobile action-1/action-2 completion or physical door operation.
+Because the locally flashed banner is generic `v2.1.0`, a later periodic signed
+OTA check can replace it with a newer authorized release. This session did not
+wait for or block that recovery path.
+
+## 2026-08-28 Windows-hosted ADB connection from WSL
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Windows USB identity | `usbipd-win` listed the Z Fold7 as BUSID `4-1`, VID:PID `04e8:6860`, state `Not shared`; Windows PnP exposed Samsung composite, MTP, modem and Android ADB interfaces | PASS for Windows enumeration; phone was not transferred to WSL USB/IP |
+| ADB authorization | Windows SDK `adb.exe` started its server and listed serial `R3CY707DL7L` as `device`, product `q7qksx`, model `SM_F966N` | PASS for authorized Windows-hosted ADB transport invoked from WSL Bash |
+| Read-only shell | `get-state` returned `device`; properties reported Samsung `SM-F966N`, Android 16/API 36 and `arm64-v8a` | PASS for bounded ADB shell access |
+| Installed app identity | Package `com.kshouse.gatekeeper_app` was present as `versionName=1.0.0-g3cf6eaa`, `versionCode=21701`, `minSdk=24`, `targetSdk=36` | PASS for installed package metadata only |
+| Runtime boundary | No APK install/update, app launch, permission change, logcat capture, BLE/GATT action, screen-off trial or package-data access was performed | PENDING all mobile behavior and current-source replacement evidence |
+
+The phone remains Windows-owned while the CH343 Target remains WSL-attached.
+This accepts a practical ADB control path from the WSL shell, not native Linux
+ADB visibility inside WSL or the Docker Flutter builder.
+
+## 2026-08-28 current Fold7 main action-2 core-use-case check
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Connected preflight | Target local source `21e71d1` booted through the WSL CH343 path, restored saved Wi-Fi `192.168.35.18`, connected MQTTS, applied signed ACL v303 and started enabled GATT/iBeacon. Fold7 ADB remained authorized and the app was foreground-visible | PASS for this bounded transport/runtime precondition; local generic `v2.1.0` is not exact CI/signed OTA identity |
+| App state | Installed `1.0.0-g3cf6eaa` / 21701 showed backend `승인됨`, enabled main `문 열기`, native worker `HEALTHY`, BLE owner `native_gatt`, and `local_keystore_authenticated` | PASS for visible preflight state; outer Flutter beacon scan was owner-excluded by the native worker as designed |
+| Dashboard retry distinction | The local-control-screen `1-Tap 수동 로컬 개방` returned queue acceptance, but exact installed source maps it to `triggerLocalGattRetry()` / action-1 WorkManager rather than terminal action 2. It stayed `Target Result: NONE`, latency 0 during observation | NOT action-2 evidence; the misleading label must not be treated as an opened door |
+| Main action-2 execution | One exact main-WebView `문 열기` tap connected at about 22:36:37, completed service discovery, and enabled Hello/Challenge/Result indications. Android closed the GATT session about 1.8 seconds later and displayed `수동 출입 실패: PROTOCOL_INCOMPATIBLE` | FAIL before authenticated proof/result; unchanged non-retryable attempt was not repeated |
+| Target-side effect | Serial recorded the GATT connection as accepted but no proof-verification evidence, `AUTH_PENDING`, `RELAY_HOLD`, relay ON/OFF, cooldown or successful Result. Later periodic OTA check rejected a downgrade and kept the running image | PASS for fail-closed/no-actuation behavior; FAIL for the requested core manual-open outcome |
+| Compatibility diagnosis boundary | Installed commit and current HEAD both declare protocol/framing v1, and the core Android/Target protocol files have no diff between `3cf6eaa` and `21e71d1`. Android also maps rejected Target Hello or an unexpected message type into the same public reason | Exact wire cause unresolved; `PROTOCOL_INCOMPATIBLE` does not by itself prove a numeric version mismatch |
+| Physical boundary | No relay contact voltage/current, actuator movement, door movement, AJ-SR04T threshold, repeated timing or rollback was measured | PENDING physical acceptance; software fail-closed evidence only |
+
+The current connected core use case is not accepted. The phone reached the
+Target over BLE, but no authenticated action reached the Target FSM or relay.
+Historical exact-282 action-2 success remains historical and does not override
+this current local-Target repetition.
+
+## 2026-08-28 backend CI to Synology deployment host verification
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Signed release bundle | P-256 descriptor signing produced exactly `release.env`, detached signature and the two Compose files; public-key verification passed and a descriptor mutation failed verification | PASS for host cryptographic contract; production key and GitHub execution untested |
+| Synology Compose overlay | Compose v2 rendered exact API/DB digest references, API host bind `127.0.0.1:8000`, NAS file secrets and four explicitly named external volumes; production base exposes no DB/API host port | PASS for local render/static boundary; exact DSM render and start untested |
+| Restricted NAS command | Bash syntax passed; arbitrary command input was rejected; source checks require signature/hashes/fixed repos/schema, root-controlled config, existing volumes/secrets, first-adoption holder rejection, migration, exact running-image identity, loopback/public readiness and sanitized evidence | PASS for six focused host unit tests and shell/static contract; no NAS sudo/SSH invocation |
+| Backend commercial contract | `scripts/ops_commercial_gate.py contract` passed all 34 repository-only checks after the new backend/deploy inputs were added to the trusted bundle inventory | PASS for repository completeness; protected trusted-policy rotation remains required before merge |
+| Full backend regression | The hash-locked backend environment completed 126 tests successfully; two explicit real-MariaDB integration cases remained skipped because `RUN_MARIADB_INTEGRATION=1` was not enabled in this host run | PASS for unit/host regression; CI real-MariaDB jobs and live NAS DB remain separate |
+| Live deployment | The owner successfully ran the no-cutover bootstrap: existing containers remained running, NAS-local secret/state files and three external bind-backed volumes were prepared, and copied target config retained SHA-256 `c5668365bd130ec42c7f49aafc53491b1a6ad3a3eb4858f3215b83de3505ece9` | PASS for layout preparation only; no GHCR package, GitHub Environment/Tailscale deploy identity, DB migration, new Compose project, traffic cutover, readiness or rollback rehearsal |
+| Legacy container identity | Owner output identified `gatekeeper-api` using local `smart_gatekeeper-api` and publishing `8000` on wildcard IPv4/IPv6; `gatekeeper-db` uses mutable `mariadb:10.11` and publishes no DB host port | PASS for container/port identity only; exact mounts, image bytes/schema and backup remain unknown |
+| Legacy persistent mounts | `gatekeeper-db` mounts named volume `smart_gatekeeper_mariadb_data` at `/var/lib/mysql`; API bind-mounts live source at `/app`, APKs from `/volume1/docker/smartbox_ota/gatekeeper_apk`, and one MQTT CA file, with no `/var/lib/smart-gatekeeper` state mount | PASS for DB/APK source identity; target config, runtime user/secrets and backup remain pending |
+| Legacy runtime identity/state | API readback reported database `smart_gatekeeper`, user `gatekeeper_user`, and root-owned mode-`0555` `/app/target_config.json` at 135 bytes with SHA-256 `c5668365bd130ec42c7f49aafc53491b1a6ad3a3eb4858f3215b83de3505ece9` | PASS for non-secret identity and source-byte fingerprint; state-volume copy/readback pending |
+
+These results prove the candidate's source and host contracts only. They do not
+prove a running NAS backend, and they do not imply mobile, Target, BLE, relay,
+sensor or physical-door success.
+
+## 2026-08-29 legacy NAS bootstrap and personal-admin preservation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Secret semantics | Owner-side checks reported the API/DB runtime passwords match, required primary secrets are set, active command/ACL P-256 scalars have valid shape, the personal administrator password has valid length, and the transition signer pair is disabled | PASS for non-secret semantic state only; no secret value/hash was recorded or independently read by this workspace |
+| Personal admin file secret | `AdminSecurity.from_environment()` accepts only one of direct value or `PERSONAL_ADMIN_PASSWORD_FILE`; file success enables the personal session while conflicts and unreadable paths fail closed | PASS in host tests; live NAS Compose/admin login remains untested |
+| No-cutover bootstrap | Exact-layout script checked legacy container/project/mount identities, password equality, signing-scalar shape and target-config hash/size; owner execution staged root-only secrets/state and three bind-backed volumes while both legacy containers remained running | PASS for observed layout preparation; no database migration, new Compose startup or cutover occurred |
+| Backend regression | 129 backend tests passed in the local hash-locked environment; two opt-in isolated real-MariaDB integration tests were skipped | PASS for host regression; GitHub CI, live MariaDB restore and first deployment remain pending |
+| Repository contract | The backend commercial repository contract passed all 34 checks and Compose rendered with the personal-admin file secret | PASS for repository scope; trusted-base rotation is required before merge |
+| NAS layout/ACL readback | Owner read-only verifier passed 14 secret-file contracts, exact runtime keys, three external volumes and unchanged legacy containers; DB ledger is `002`-`007`, active credential/grant counts are 1/1, and latest snapshot/applied ACK both equal 313 | PASS for aggregate layout and ACL freshness; exact identity correlation, off-NAS restore, migration and cutover remain separate |
+| NAS exact ACL identity correlation | Boolean-only owner rerun matched feature flags, Target auth, dual/public tenant mapping, active ACL tenant, active credential/grant, door state, latest snapshot and applied Target ACK; snapshot/ACK advanced together to 314 | PASS for the technical non-legacy authorization path; owner legacy-lookup-disable decision, off-NAS restore and live cutover remain pending |
+| DB size and restore harness | Owner readback reports 2,686,976 database bytes across 20 tables and a 1,638,400-byte largest table; NAS before/dump/after inventory gating, WSL authenticated encryption and exact-digest localhost restore code passed eleven focused tests and the full 133-test backend run (two real-MariaDB opt-in skips) | PASS for capacity and repository software; live NAS backup, encrypted-copy readback and restore are recorded separately below |
+| Consistent NAS logical backup | Owner run created a 792,678-byte dump in backup `pre-cutover-20260828T155308Z-9349` for deployed source `7c2764a1a16492ec1620079c8211b47287b1b3fd`; bundle SHA-256 is `d2321993a1858ec053c614bf6aecb212012f2dd25db59ff2fd49ed42056f418d` and legacy containers remained running | PASS for NAS-local consistent backup and temporary plaintext owner export; transfer/encryption/restore results are recorded separately below, recurring backup remains pending |
+| WSL encrypted copy readback | Authenticated SSH stream matched the bundle sidecar; AES-256 GPG output and all three local keys are owner-only mode `0600`, and streamed decrypt reproduced SHA-256 `d2321993a1858ec053c614bf6aecb212012f2dd25db59ff2fd49ed42056f418d` without another plaintext file | PASS for this WSL encrypted copy and key readability; keys remain on the same host and recurring/off-site retention is pending |
+| WSL isolated MariaDB restore | Pinned MariaDB digest `be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350` restored the 792,678-byte dump on `127.0.0.1:56889`; exact source/target schema and content inventories passed with measured RTO 1.680 seconds | PASS for one isolated restore of source `7c2764a1a16492ec1620079c8211b47287b1b3fd`; NAS production DB was unchanged, disposable lab cleanup and recurring backup remain pending |
+| Restore-lab cleanup | After explicit owner authorization, both localhost lab containers and their named volumes were removed and verified absent; WSL plaintext tar/sidecar/SQL/inventory/work files were unlinked, then interactive SSH removed and verified absence of the two exact NAS owner-home export files | PASS for temporary plaintext cleanup; recovery remains possible from the mode-0600 encrypted bundle/keys or retained NAS root-only copy |

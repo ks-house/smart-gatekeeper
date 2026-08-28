@@ -96,6 +96,7 @@ jobs:
           DB_IMAGE_DIGEST: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           MQTT_HOST: broker.invalid
           MQTT_USER: ci-only
+          DB_RUNTIME_USER: gatekeeper_runtime
           COMMAND_TARGET_ID: ci-target
           COMMAND_TENANT_ID: ci-tenant
           COMMAND_DOOR_ID: ci-door
@@ -103,9 +104,15 @@ jobs:
           ADMIN_TRUSTED_PROXY_IPS: '127.0.0.1'
           ACL_SIGNING_KEY_ID: '1'
           BUILD_SHA: ${{ github.sha }}
+          SGK_SECRET_DIR: /tmp/sgk-ci-secrets
+          MARIADB_DATA_VOLUME: ci-existing-db
+          API_STATE_VOLUME: ci-api-state
+          APK_ARTIFACTS_VOLUME: ci-apk-artifacts
+          MIGRATION_BACKUPS_VOLUME: ci-migration-backups
         run: |
           docker compose -f backend/docker-compose.yml config --quiet
           docker compose -f backend/compose.production.yml config --quiet
+          docker compose -f backend/compose.production.yml -f backend/compose.synology.yml config --quiet
           docker build -f backend/app/Dockerfile backend/app
           docker build -f backend/db/Dockerfile backend/db
 
@@ -162,5 +169,170 @@ jobs:
         with:
           name: operations-evidence-${{ github.sha }}
           path: build/ops-evidence-register.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish_backend_images:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify-operations-evidence]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      api_image: ghcr.io/ks-house/smart-gatekeeper-backend@${{ steps.build_api.outputs.digest }}
+      db_image: ghcr.io/ks-house/smart-gatekeeper-db@${{ steps.build_db.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Authenticate to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Configure Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and publish exact API image
+        id: build_api
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: backend/app
+          file: backend/app/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/ks-house/smart-gatekeeper-backend:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=sgk-backend-api
+          cache-to: type=gha,mode=max,scope=sgk-backend-api
+      - name: Build and publish exact database image
+        id: build_db
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: backend/db
+          file: backend/db/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/ks-house/smart-gatekeeper-db:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=sgk-backend-db
+          cache-to: type=gha,mode=max,scope=sgk-backend-db
+      - name: Attest API image provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ghcr.io/ks-house/smart-gatekeeper-backend
+          subject-digest: ${{ steps.build_api.outputs.digest }}
+          push-to-registry: true
+      - name: Attest database image provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ghcr.io/ks-house/smart-gatekeeper-db
+          subject-digest: ${{ steps.build_db.outputs.digest }}
+          push-to-registry: true
+
+  deploy_backend_to_nas:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [publish_backend_images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: smart-gatekeeper-nas-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: ${{ vars.NAS_PUBLIC_API_URL }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12.13'
+      - name: Create signed exact-digest NAS release bundle
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.NAS_BACKEND_RELEASE_SIGNING_KEY_PEM }}
+          API_IMAGE: ${{ needs.publish_backend_images.outputs.api_image }}
+          DB_IMAGE: ${{ needs.publish_backend_images.outputs.db_image }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p build
+          signing_key="${RUNNER_TEMP}/nas-backend-release-signing.pem"
+          printf '%s' "$RELEASE_SIGNING_KEY" > "$signing_key"
+          openssl pkey -in "$signing_key" -noout -check >/dev/null
+          python backend/deploy/create_release_bundle.py \
+            --source-sha "${{ github.sha }}" \
+            --api-image "$API_IMAGE" \
+            --db-image "$DB_IMAGE" \
+            --github-run-id "${{ github.run_id }}" \
+            --github-run-attempt "${{ github.run_attempt }}" \
+            --signing-key "$signing_key" \
+            --output build/backend-release.tar.gz
+          rm -f "$signing_key"
+      - name: Attest signed deployment bundle
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: build/backend-release.tar.gz
+      - name: Upload signed deployment bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-release-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: build/backend-release.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+      - name: Join NAS deployment network with an ephemeral Tailscale node
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          tags: tag:sgk-github-deploy
+          version: 1.94.2
+          sha256-sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
+      - name: Configure restricted NAS SSH identity
+        env:
+          NAS_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.NAS_DEPLOY_SSH_PRIVATE_KEY }}
+          NAS_DEPLOY_KNOWN_HOSTS: ${{ secrets.NAS_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "${RUNNER_TEMP}/sgk-ssh"
+          printf '%s\n' "$NAS_DEPLOY_SSH_PRIVATE_KEY" > "${RUNNER_TEMP}/sgk-ssh/id_ed25519"
+          printf '%s\n' "$NAS_DEPLOY_KNOWN_HOSTS" > "${RUNNER_TEMP}/sgk-ssh/known_hosts"
+          ssh-keygen -y -f "${RUNNER_TEMP}/sgk-ssh/id_ed25519" >/dev/null
+          test -s "${RUNNER_TEMP}/sgk-ssh/known_hosts"
+      - name: Deploy and verify NAS readiness
+        env:
+          NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}
+          NAS_PORT: ${{ vars.NAS_DEPLOY_PORT }}
+          NAS_USER: ${{ vars.NAS_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh_options=(
+            -i "${RUNNER_TEMP}/sgk-ssh/id_ed25519"
+            -p "$NAS_PORT"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=${RUNNER_TEMP}/sgk-ssh/known_hosts"
+          )
+          ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" apply \
+            < build/backend-release.tar.gz | tee build/nas-deployment.evidence
+          grep -Fqx 'status=deployed' build/nas-deployment.evidence
+          grep -Fqx 'source_sha=${{ github.sha }}' build/nas-deployment.evidence
+          ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" status \
+            > build/nas-status.evidence
+          cmp build/nas-deployment.evidence build/nas-status.evidence
+      - name: Upload NAS deployment evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nas-deployment-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            build/nas-deployment.evidence
+            build/nas-status.evidence
           if-no-files-found: error
           retention-days: 30

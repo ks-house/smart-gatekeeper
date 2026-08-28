@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -370,6 +373,45 @@ class PersonalAdminLoginTest(unittest.TestCase):
         self.assertEqual("DEV-BP4A25120500", response.json()[0]["ble_device_mac"])
         query = cursor.execute.call_args.args[0]
         self.assertIn("ble_device_mac", query)
+
+
+class PersonalAdminEnvironmentTest(unittest.TestCase):
+    def test_password_file_enables_personal_admin_without_direct_secret(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            password_file = Path(raw_directory) / "personal_admin_password"
+            password_file.write_text("personal-admin-password-123456\n", encoding="utf-8")
+            environment = {
+                "PERSONAL_ADMIN_PASSWORD_FILE": str(password_file),
+                "ADMIN_MTLS_IDENTITIES_JSON": "{}",
+                "ADMIN_TRUSTED_PROXY_IPS": "127.0.0.1",
+            }
+            with patch.dict(os.environ, environment, clear=True):
+                security = AdminSecurity.from_environment()
+        self.assertTrue(security.enabled)
+        self.assertTrue(security.browser_login_ready)
+        self.assertEqual("personal-admin-password-123456", security.personal_password)
+
+    def test_conflicting_or_unreadable_password_file_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            password_file = Path(raw_directory) / "personal_admin_password"
+            password_file.write_text("personal-admin-password-123456", encoding="utf-8")
+            cases = (
+                {
+                    "PERSONAL_ADMIN_PASSWORD": "personal-admin-password-123456",
+                    "PERSONAL_ADMIN_PASSWORD_FILE": str(password_file),
+                },
+                {
+                    "PERSONAL_ADMIN_PASSWORD_FILE": str(
+                        Path(raw_directory) / "missing-password"
+                    ),
+                },
+            )
+            for environment in cases:
+                with self.subTest(environment=sorted(environment)):
+                    with patch.dict(os.environ, environment, clear=True):
+                        security = AdminSecurity.from_environment()
+                    self.assertFalse(security.enabled)
+                    self.assertFalse(security.browser_login_ready)
 
 
 class PersonalEnrollmentTest(unittest.TestCase):

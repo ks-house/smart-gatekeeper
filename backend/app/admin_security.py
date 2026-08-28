@@ -39,6 +39,20 @@ ROLE_OPERATOR = "SECURITY_OPERATOR"
 ROLE_APPROVER = "SECURITY_APPROVER"
 
 
+def _secret_text_from_environment(name: str) -> tuple[bool, str]:
+    """Read one text secret without allowing ambiguous direct/file inputs."""
+    direct = os.getenv(name)
+    file_path = os.getenv(f"{name}_FILE", "").strip()
+    if direct is not None and file_path:
+        return False, ""
+    if file_path:
+        try:
+            return True, Path(file_path).read_text(encoding="utf-8").strip()
+        except OSError:
+            return False, ""
+    return True, (direct or "").strip()
+
+
 @dataclass(frozen=True)
 class AdminPrincipal:
     subject: str
@@ -123,6 +137,11 @@ class AdminSecurity:
             except ValueError:
                 # Bad proxy configuration must make the mTLS boundary unusable.
                 return cls({})
+        password_ok, personal_password = _secret_text_from_environment(
+            "PERSONAL_ADMIN_PASSWORD"
+        )
+        if not password_ok:
+            return cls({})
         return cls(
             identities,
             session_seconds=_positive_env("ADMIN_SESSION_SECONDS", 900, 60, 3600),
@@ -130,7 +149,7 @@ class AdminSecurity:
             auth_attempts=_positive_env("ADMIN_AUTH_RATE_LIMIT", 5, 1, 100),
             auth_window_seconds=_positive_env("ADMIN_AUTH_RATE_WINDOW_SECONDS", 60, 1, 3600),
             trusted_proxy_ips=trusted_proxies,
-            personal_password=os.getenv("PERSONAL_ADMIN_PASSWORD", "").strip(),
+            personal_password=personal_password,
         )
 
     @property

@@ -43,6 +43,12 @@ actions. Keep this secret separate from the mobile control API key. Commercial
 or multi-operator deployments must continue to use proxy-verified mTLS and
 separate operator/approver identities.
 
+Production Compose supplies the same value as the NAS-local
+`PERSONAL_ADMIN_PASSWORD_FILE` secret. Direct and file forms are mutually
+exclusive: setting both, or configuring an unreadable file, disables the admin
+authentication boundary rather than silently selecting one. CI never receives
+or prints the password.
+
 The personal NAS compose binds API port `8000` on the NAS/LAN solely for the
 DSM reverse proxy, which terminates public HTTPS on `4442`. Do not forward port
 `8000` on the router.

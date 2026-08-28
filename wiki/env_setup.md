@@ -1,5 +1,5 @@
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-24 (encrypted Target OTA and isolated Android publisher verified)
+> Last updated: 2026-08-29 (Synology backend CI deployment and no-cutover legacy bootstrap candidate verified)
 
 ## 1. 펌웨어
 
@@ -32,6 +32,147 @@ Target local ACL 및 access session FSM (Issue #20) 검증을 위한
 `TargetAclManager`, `TargetProofVerifier`, `TargetAccessFsm`, `OfflineEventQueue` 모듈이 포함되며
 host unit test는 `python -m unittest tests/test_hardwareless_rc.py`로 실행할 수 있습니다. 공식 `espressif32`나 과거 `tof_test`/`relay_test` 환경은 현재
 `platformio.ini`에 없습니다.
+
+### 1.0 Ubuntu 26.04 WSL 2 로컬 개발 기준선
+
+저장소는 Windows 마운트(`/mnt/c/...`)가 아니라 WSL의 Linux 파일시스템
+`/home/sh-cat-lee/workspaces/smart-gatekeeper`에 둔다. Windows PowerShell과 WSL Bash의 명령을
+혼용하지 않는다. 다음 확인과 설치 명령은 모두 **WSL Bash**에서 실행한다.
+
+```bash
+cat /etc/os-release
+printf '%s\n' "$WSL_DISTRO_NAME"
+pwd
+git status --short --branch
+
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install 'platformio==6.1.19'
+.venv/bin/pio --version
+
+PLATFORMIO_BUILD_DIR=.pio/build-wsl-default \
+  .venv/bin/pio run -e esp32c6 -j 4
+```
+
+`.venv/`와 `.pio/`는 ignore된다. 기존 `include/secrets.h`는 내용이나 값을 출력하지 말고
+`git check-ignore include/secrets.h`로 ignore 여부만 확인한다. 2026-08-28 기준 Ubuntu 26.04,
+Python 3.14.4, PlatformIO Core 6.1.19에서 고정 pioarduino `cbc3349`를 설치해 기본
+`esp32c6` 빌드가 성공했고, 16 MB Flash와 7,340,032-byte application partition을 확인했다.
+
+백엔드와 모바일은 WSL에 별도 Java/Android SDK/MariaDB를 중복 설치하지 않고 Docker Desktop의
+WSL integration을 사용한다. 아래 명령은 **WSL Bash**에서 실행한다.
+
+```bash
+docker --version
+docker compose version
+docker info --format '{{.ServerVersion}}'
+
+cd backend
+BUILD_SHA="$(git rev-parse HEAD)" \
+  docker compose --env-file .env.example config --quiet
+BUILD_SHA="$(git rev-parse HEAD)" \
+  docker compose --env-file .env.example build
+
+cd ../gatekeeper_app
+docker compose run --rm flutter-builder flutter --version
+```
+
+`.env.example`은 Compose 구조·이미지 빌드 검증 입력일 뿐 실행용 비밀 설정이 아니다. 실제 backend를
+기동하려면 ignored `backend/.env`를 만들고 DB/MQTT/API 값과 인증서 host path를 검증한 뒤
+`docker compose up`을 실행한다. 2026-08-28 로컬 cached mobile builder는 Flutter 3.47.1을
+보고했지만 hosted Android lane은 Flutter 3.44.8을 고정한다. 현재 `gatekeeper_app/Dockerfile`의
+`stable` clone은 floating input이므로 이 cached builder 결과는 개발 편의 증거이며 CI/release
+재현성 증거가 아니다.
+
+당시 WSL에는 `/dev/ttyACM*` 또는 `/dev/ttyUSB*`가 없었다. 따라서 위 firmware 성공은 compiler와
+toolchain의 software evidence이고, Target upload/serial, Wi-Fi/MQTT/BLE, OTA, GPIO3 relay 또는
+AJ-SR04T 현장 동작을 증명하지 않는다.
+
+#### 1.0.1 WSL 2에서 ESP32-C6 Target USB 전달
+
+Windows가 USB serial을 COM 포트로 인식해도 WSL 2가 그 장치를 자동으로 소유하지는 않는다.
+2026-08-28 연결 진단에서 Windows는 Target의 CH343을 `USB-Enhanced-SERIAL CH343 (COM5)`,
+hardware ID `USB\\VID_1A86&PID_55D3`와 CDC-compatible class로 정상 인식했다. 그러나
+`usbipd-win`은 설치되어 있지 않았고 WSL에는 `/dev/ttyACM*`/`/dev/ttyUSB*`가 없었다.
+WSL의 `/dev/ttyS4`는 `serial8250` placeholder이며 USB hardware ID가 없으므로 COM5 Target
+접근 증거로 사용하지 않는다.
+
+공식 WSL USB/IP 절차는 다음 세 셸을 구분한다. `<BUSID>`는 설치 후 `usbipd list`에서
+`USB-Enhanced-SERIAL CH343` 행의 실제 값을 복사하며 포트 위치로 추측하지 않는다.
+
+1. **관리자 Windows PowerShell** — 설치 및 최초 1회 persistent share:
+
+   ```powershell
+   winget install --interactive --exact dorssel.usbipd-win
+   # 설치 후 새 관리자 PowerShell을 연다.
+   usbipd --version
+   usbipd list
+   usbipd bind --busid <BUSID>
+   usbipd list
+   ```
+
+2. WSL Bash 창을 하나 열어 둔 뒤 **일반 Windows PowerShell** — 매 연결/재부팅 후 attach:
+
+   ```powershell
+   usbipd attach --wsl --busid <BUSID>
+   usbipd list
+   ```
+
+   attached 상태에서는 Windows COM5를 동시에 사용할 수 없다. USB unplug/replug, Target USB
+   reset 또는 WSL 재시작 뒤에는 attach를 다시 해야 할 수 있다.
+
+3. **WSL Bash** — native USB와 serial node 확인:
+
+   ```bash
+   sudo apt update
+   sudo apt install -y usbutils
+   lsusb | grep -i '1a86:55d3'
+   dmesg | tail -n 50
+   ls -l /dev/ttyACM* /dev/ttyUSB* 2>/dev/null
+   .venv/bin/pio device list
+   ```
+
+   2026-08-28 BUSID `2-4` attach에서는 USB/IP가 `1a86:55d3`, product `USB Single Serial`,
+   serial `5C37195343`을 WSL에 전달했고 CDC ACM이 `/dev/ttyACM0`을 생성했다. PlatformIO도 같은
+   VID:PID/serial/location을 표시했다. serial node가 `root:dialout`이고 현재 사용자가 `dialout`
+   구성원이 아니면 다음을 한 번 실행한 뒤 새 WSL login shell에서 `id`와 node 접근을 다시 확인한다.
+
+   ```bash
+   sudo usermod -aG dialout "$USER"
+   newgrp dialout
+   id
+   ```
+
+   `newgrp`가 설치되지 않은 최소 Ubuntu 환경에서는 새 WSL login process를 열어 membership을
+   적용한다. 2026-08-28 검증에서는 새 `Ubuntu-26.04` process가 `dialout`을 포함했고
+   `/dev/ttyACM0` read/write access와 read-only, nonblocking, no-controlling-terminal open/close가
+   성공했다. 이는 WSL device access 증거이며 baud/DTR/RTS, boot log, upload 또는 firmware identity
+   증거는 아니다.
+
+검증이 끝나 Windows로 장치를 반환할 때는 **일반 Windows PowerShell**에서
+`usbipd detach --busid <BUSID>`를 실행한다. `pio run -t upload`와 serial monitor는 Target을
+reset할 수 있으므로 USB node·권한 확인과 현재 firmware/OTA 보존 결정을 마친 다음 별도 단계로 수행한다.
+
+#### 1.0.2 WSL 셸에서 Windows-hosted ADB 사용
+
+Android phone을 WSL USB/IP에 넘기지 않아도 Windows Android SDK의 `adb.exe`를 WSL Bash에서
+직접 호출할 수 있다. 이 경로는 Windows가 phone USB/ADB interface를 계속 소유하며 Target의
+WSL-attached BUSID와 충돌하지 않는다.
+
+```bash
+adb_win='/mnt/c/Users/shcat/AppData/Local/Android/Sdk/platform-tools/adb.exe'
+"$adb_win" start-server
+"$adb_win" devices -l
+"$adb_win" -s <SERIAL> get-state
+"$adb_win" -s <SERIAL> shell getprop ro.product.model
+```
+
+2026-08-28 Windows는 Z Fold7을 BUSID `4-1`, `04e8:6860`으로 유지하고 Target BUSID `2-4`만
+WSL에 attached한 상태에서 Windows ADB server를 시작했다. Phone은 authorized `device`, model
+`SM-F966N`, Android 16/API 36, `arm64-v8a`로 응답했다. 이 방식은 WSL Bash에서 ADB 명령을
+실행할 수 있다는 증거지만 WSL-native Linux `adb`, Docker Flutter builder의 USB visibility 또는
+앱 기능 동작을 증명하지 않는다. Linux-native ADB가 필요할 때만 phone BUSID를 별도로 bind/attach하고
+WSL에 Android platform-tools를 설치한다.
 
 ### 1.1 Windows에서 긴 PlatformIO 빌드가 timeout된 경우
 
@@ -691,3 +832,48 @@ whole two-root publish, preventing a partial stale rollback.
 Successful SFTP/HTTPS readback is publication evidence only. It is not evidence that Android displayed or
 completed the package installer, preserved credentials through first run, passed device health, or exercised
 fallback/rollback.
+
+## Backend CI to Synology deployment candidate (2026-08-28)
+
+The backend deployment lane is part of
+`.github/workflows/backend_security.yml` so the existing trusted-input and
+exact-action-pin contract covers its build and deployment code. On an admitted
+`main` push it waits for backend security/evidence verification, builds only
+`linux/amd64` for the confirmed DS423+, publishes independent API/DB images to
+GHCR, and passes their registry-returned `sha256` digests to a signed release
+bundle. It does not deploy mutable tags.
+
+The deploy job uses the protected GitHub `production` Environment and these
+Environment values:
+
+| Type | Name |
+|---|---|
+| secret | `NAS_BACKEND_RELEASE_SIGNING_KEY_PEM` |
+| secret | `NAS_DEPLOY_SSH_PRIVATE_KEY` |
+| secret | `NAS_DEPLOY_KNOWN_HOSTS` |
+| secret | `TS_OIDC_CLIENT_ID` |
+| secret | `TS_OIDC_AUDIENCE` |
+| variable | `NAS_TAILSCALE_HOST` |
+| variable | `NAS_DEPLOY_PORT` |
+| variable | `NAS_DEPLOY_USER` |
+| variable | `NAS_PUBLIC_API_URL` |
+
+Tailscale grants the ephemeral runner tag only NAS SSH reachability. Strict
+SSH host-key checking invokes a forced dispatcher that permits `apply` and
+`status` only; exact sudoers entries admit those two root-wrapper commands.
+Runtime DB/MQTT/API/signing secrets remain root-readable NAS files and never
+enter GitHub. The exact install, volume adoption, key generation and owner
+checks are in [`backend/deploy/README.md`](../backend/deploy/README.md).
+
+The active personal administrator credential follows the same rule through
+`PERSONAL_ADMIN_PASSWORD_FILE`. The legacy-adoption helper migrates it and the
+other confirmed runtime values directly from the running containers into
+root-only NAS files without echoing values; this preparation does not stop the
+legacy project or constitute a deployment.
+
+Before the first deployment, inventory the current DB/API container mounts and
+stop both legacy containers in an owner-approved window. The new wrapper rejects
+a different running Compose project holding either the selected MariaDB volume
+or API host port. An independently restored off-NAS backup and separate trusted
+workflow policy rotation are release Gates. The current candidate has not
+published GHCR images or changed the NAS, GitHub Environment or tailnet.

@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-26 (issue #179 Bluetooth ON scan-registration recovery candidate; phone/sensor/contact/rollback Gates remain open)
+> Last updated: 2026-08-29 (isolated restore and all temporary plaintext cleanup complete; recurring off-site backup and CI production setup remain pending)
 
 ---
 
@@ -19,7 +19,7 @@
 
 | Page | Summary |
 |------|---------|
-| [env_setup.md](env_setup.md) | 현재 firmware/backend/Android 빌드, Windows PlatformIO timeout/orphan 안전 복구, OTA 서명 키 최초 등록, CI/CD와 GITHUB_TOKEN 인증 가이드 |
+| [env_setup.md](env_setup.md) | Ubuntu 26.04 WSL 2와 현재 firmware/backend/Android 빌드, Windows PlatformIO 안전 복구, OTA 서명·CI/CD·GITHUB_TOKEN 가이드 |
 | [orca_development_environment.md](orca_development_environment.md) | Orca 워크트리 자동 setup, doctor/validation, 프로파일 작업 시작과 안전한 완료 수명주기 |
 | [orca_lifecycle_incident.md](orca_lifecycle_incident.md) | #55 post-merge packaged worker-start 재발, staged-launcher workaround, 장기 lifecycle transport 증거와 fail-closed 복구 경계 |
 
@@ -64,6 +64,7 @@
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [target_command_ota_security.md](target_command_ota_security.md) | #50 verified per-Target MQTTS, signed durable commands, signed inactive-slot OTA, local recovery, and production hardening evidence boundary |
 | [commercial_operations.md](commercial_operations.md) | #52 privacy-safe operations, bounded resilience, readiness/metrics/SLO, backup/restore, hardened production Compose, supply-chain and evidence Gates |
+| [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 버튼 access와 update envelope, immutable artifact correlation, reset/rollback evidence, uint64·causal ordering, I7/I9/OTA 합격 계약 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |
@@ -115,6 +116,7 @@
 | 현재 전체 출입 시퀀스 | [architecture.md](architecture.md#2-정상-출입-시퀀스) |
 | AJ-SR04T/Relay 핀과 전기 안전 | [pin_mapping.md](pin_mapping.md) |
 | 현재 빌드·시크릿·CI/CD | [env_setup.md](env_setup.md) |
+| Synology backend CI 배포 구현/부트스트랩 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md), [backend/deploy/README.md](../backend/deploy/README.md) |
 | 현재 검증 상태와 E2E 절차 | [hardware_test.md](hardware_test.md) |
 | #54 physical Gate pending-only template | [physical_gate_preparation.md](physical_gate_preparation.md) |
 | 앱/서비스 상태별 동작 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#3-서비스-생애주기) |

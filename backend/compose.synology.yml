@@ -1,0 +1,69 @@
+# Synology-specific overlay for backend/compose.production.yml.
+# Runtime values and secret files stay on the NAS; CI supplies only signed image
+# digests and source identity through the deployment wrapper.
+
+services:
+  api:
+    ports:
+      - target: 8000
+        published: "${SGK_API_LOOPBACK_PORT:-8000}"
+        host_ip: 127.0.0.1
+        protocol: tcp
+
+volumes:
+  mariadb_data:
+    external: true
+    name: ${MARIADB_DATA_VOLUME:?existing MariaDB data volume is required}
+  api_state:
+    external: true
+    name: ${API_STATE_VOLUME:?API state volume is required}
+  apk_artifacts:
+    external: true
+    name: ${APK_ARTIFACTS_VOLUME:?APK artifacts volume is required}
+  migration_backups:
+    external: true
+    name: ${MIGRATION_BACKUPS_VOLUME:?migration backup volume is required}
+
+secrets:
+  db_root_password:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/db_root_password
+  db_password:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/db_password
+  mqtt_password:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/mqtt_password
+  mqtt_ca:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/mqtt_ca.pem
+  api_key:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/api_key
+  ops_hmac_key:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/ops_hmac_key
+  command_signing_scalar:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/command_signing_scalar
+  admin_identities:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/admin_identities.json
+  personal_admin_password:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/personal_admin_password
+  acl_enrollment_auth:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/acl_enrollment_auth.json
+  acl_legacy_ref_hmac_key:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/acl_legacy_ref_hmac_key
+  acl_admin_api_key:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/acl_admin_api_key
+  acl_target_auth:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/acl_target_auth.json
+  acl_signing_scalar:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/acl_signing_scalar
