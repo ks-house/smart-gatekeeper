@@ -14,11 +14,28 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: USB Target source 계보 `21e71d1c8faf469d101a477207276a80297873c8`, Android production-signed `1.0.0-g40852b7` (`versionCode=22401`). Fold7의 main-screen action-2는 authenticated GATT terminal success와 UI `문이 열렸습니다 (4585ms)`를 반환해 이전 stale-app `PROTOCOL_INCOMPATIBLE`을 재현하지 않았다. Exact-main Target `2.1.291+main.g89e047c`는 NAS에 게시됐지만 연결된 Target 설치·재부팅 health는 아직 serial 권한 경계로 확인하지 못했다. relay contact/load, actual door, post-fix screen-off action-1, sensor 및 rollback Gate는 계속 열려 있다.
+> 관측 기준: connected ESP32-C6 Target은 exact-main `2.1.297+main.gf3f4121`을 signed/encrypted periodic OTA로 설치하고 application health window를 거쳐 `VALID`이 됐다. post-VALID 재부팅에서도 동일 버전, relay OFF, Wi-Fi, MQTTS, signed ACL v352와 GATT/iBeacon이 복구됐고 pending window에 재진입하지 않았다. Fold7의 Android production-signed `1.0.0-g40852b7` (`versionCode=22401`) main-screen action-2는 authenticated GATT terminal success와 UI `문이 열렸습니다 (4585ms)`를 반환했다. 신규 NAS stack은 아직 `status=not-deployed`이며 legacy build `7c2764a1`이 `/live` HTTP 200을 제공하고 `/ready`는 `legacy_prearm_retired=false` 하나 때문에 HTTP 503이다. physical relay contact/load, actual door motion, sensor threshold와 post-fix screen-off action-1은 계속 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
 ## 2026-08-28 external Synology backend CI deployment candidate
+
+### 2026-08-29 live first-adoption boundary
+
+- Exact-main status-only run `33207086898` used the protected `production`
+  Environment, ephemeral Tailscale OIDC identity, pinned private NAS endpoint
+  and forced SSH dispatcher. The retained evidence is exactly
+  `status=not-deployed`; all image publication and `apply` jobs were skipped.
+- A separate public readback still identifies the legacy API build
+  `7c2764a1a16492ec1620079c8211b47287b1b3fd`: `/live` is HTTP 200, while
+  `/ready` is HTTP 503 with every reported check true except
+  `legacy_prearm_retired=false`. This proves the owner maintenance action has
+  not yet occurred; it is not evidence of a new-stack deployment.
+- First adoption remains tracked by issue #190. The owner must back up and set
+  `ACL_LEGACY_DEVICE_LOOKUP_ENABLED=false`, stop exactly `gatekeeper-api` and
+  `gatekeeper-db` without removing either container or volume, and then admit
+  the already-built exact-main deployment. Recovery remains starting those
+  same two legacy containers.
 
 - The backend is already running on the personal Synology NAS, but the
   new lane is currently a local repository candidate rather than a deployed
@@ -184,6 +201,25 @@ evidence.
   `2.1.291+main.g89e047c`. Publication is not installation: current Target
   install, reboot and health remain unconfirmed because this shell's group list
   has not refreshed `dialout` access to `/dev/ttyACM0`.
+
+## 2026-08-29 dashboard action-2 binding correction
+
+- The connected Fold7 was replacement-updated to the signed exact-main
+  `1.0.0-gf3f4121` / 23301 APK after its 55,786,649-byte size, artifact
+  SHA-256 and production signing-certificate SHA-256 matched the NAS manifest.
+  The original installation time and AndroidKeyStore-backed native status were
+  retained.
+- On that installed build, the dashboard control labelled `1-Tap 수동 로컬
+  개방` only returned `durable queue에 등록`; Android executed the action-1
+  WorkManager GATT path and Target serial never recorded proof or relay ON/OFF.
+  This reconfirms the historical source mismatch above and is not an access
+  success.
+- The source correction binds that dashboard control to
+  `triggerLocalGattOpen`, requires exact native terminal reason `OPENED`, and
+  reports the returned latency. Source contracts reject a return to
+  `triggerLocalGattRetry` or queue-acceptance success text. This remains a
+  candidate until hosted build, signed publication, replacement install and
+  connected Target action-2 relay ON/OFF evidence pass.
 
 ## 2026-08-29 backend NAS GitHub CI policy connection
 

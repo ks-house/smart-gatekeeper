@@ -1,13 +1,13 @@
 # Flutter Thin UI, User Fallback, and Legacy Feature Flag Architecture (`wiki/flutter_thin_ui.md`)
 
 > **Single Source of Truth**: Flutter Thin UI, immediate manual Local GATT open, and interlocked fallback specification
-> **Last updated**: 2026-08-26
+> **Last updated**: 2026-08-29
 
 ---
 
 ## 1. 개요 (Overview)
 
-Issue #21 (`[APP][I8]`)에서는 Flutter 스마트폰 앱의 역할을 **BLE Scanner / Pre-arm 오케스트레이터에서 Credential 관리, 1-Tap 수동 출입 및 상태 대시보드 UI**로 축소(Thin UI)하고, 백그라운드 자동 Wake 차단 시 사용자가 즉시 복구할 수 있는 **1-Tap 수동 Local GATT Retry**와 **앱 재설치 없는 Legacy 롤백 / Kill-switch**를 제공한다.
+Issue #21 (`[APP][I8]`)에서는 Flutter 스마트폰 앱의 역할을 **BLE Scanner / Pre-arm 오케스트레이터에서 Credential 관리, 1-Tap 수동 출입 및 상태 대시보드 UI**로 축소(Thin UI)하고, 백그라운드 자동 Wake 차단 시 사용자가 즉시 복구할 수 있는 **1-Tap terminal Local GATT action-2 open**과 **앱 재설치 없는 Legacy 롤백 / Kill-switch**를 제공한다.
 
 ---
 
@@ -24,7 +24,7 @@ Issue #21 (`[APP][I8]`)에서는 Flutter 스마트폰 앱의 역할을 **BLE Sca
 
 ### 2.2 1-Tap Explicit Manual Local GATT Open
 - **목적**: 삼성 One UI, 샤오미 MIUI 등 OEM 백그라운드 절전 정책이나 위치/Bluetooth 권한 차단으로 인해 자동 비콘 스캔/Wake가 실패한 경우 사용자가 단 1회의 터치로 출입 시도.
-- **채널 연동**: WebView `open_door`는 `triggerLocalGattOpen`을 호출하고 foreground coroutine에서 GATT action 2를 즉시 실행한다. WorkManager queue 수락은 문 열림 성공으로 취급하지 않는다.
+- **채널 연동**: WebView `open_door`와 `SmartKeyControlScreen`의 `1-Tap 수동 로컬 개방`은 모두 `triggerLocalGattOpen`을 호출하고 foreground coroutine에서 GATT action 2를 즉시 실행한다. 진단용 `triggerLocalGattRetry`의 WorkManager queue 수락은 문 열림 성공으로 취급하지 않는다.
 - **완료 의미**: Target terminal `RESULT OK`를 받은 뒤에만 `문이 열렸습니다`를 표시하고 latency를 함께 반환한다. Target non-OK, transport 실패 또는 불확실한 proof는 실패 상태로 표시한다.
 - **네트워크 경계**: 최초 credential/ACL enrollment에는 HTTPS가 필요하지만 이미 유효한 local consent가 있으면 버튼 실행 시 backend status GET이나 MQTT를 기다리지 않는다.
 - **인터락**: Remote Kill-Switch 활성화 시 수동 출입 시도가 차단되고 경고 메시지를 표시.

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gatekeeper_app/services/feature_flag_service.dart';
@@ -5,6 +7,20 @@ import 'package:gatekeeper_app/services/credential_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('1-Tap local control awaits terminal action-2 open result', () {
+    final source =
+        File('lib/screens/smart_key_control_screen.dart').readAsStringSync();
+
+    expect(
+      source,
+      contains('final result = await _healthBridge.triggerLocalGattOpen();'),
+    );
+    expect(source, contains("reason == 'OPENED'"));
+    expect(source, contains('✅ 문이 열렸습니다'));
+    expect(source, isNot(contains('_healthBridge.triggerLocalGattRetry();')));
+    expect(source, isNot(contains('durable queue에 등록되었습니다')));
+  });
 
   group('FeatureFlagService Unit Tests', () {
     setUp(() {
