@@ -4145,3 +4145,9 @@
 - A WSL batch-mode probe using the dedicated Ed25519 deploy identity and strict known-host checking reached public DSM SSH port `4422` but was rejected with `Permission denied (publickey,password)` for `github-nas-deploy`.
 - Both requested `status` and a negative arbitrary-command probe failed at authentication with exit code 255, before the forced dispatcher or sudo wrapper ran. The separate OpenSSH post-quantum warning is not the authentication cause.
 - Do not broaden or restart DSM SSH on this evidence. Next inspect only the deploy account shell/groups, home and `.ssh/authorized_keys` ownership/modes/symlink state, installed key fingerprint, and effective SSH allow/deny policy; use the documented owner-account forced-key fallback only if DSM's non-admin admission restriction is confirmed.
+
+## [2026-08-29] test | Confirm dedicated DSM deploy account cannot carry forced SSH
+
+- Owner readback confirms `github-nas-deploy` is an unprivileged `users`-only account with home `/var/services/homes/github-nas-deploy`, but its shell is `/sbin/nologin` and both `.ssh` and `authorized_keys` are absent.
+- The expected deploy-key fingerprint is therefore not installed or comparable. No explicit global `AllowUsers`, `AllowGroups`, `DenyUsers`, `DenyGroups`, `AuthorizedKeysFile`, `PubkeyAuthentication` or `StrictModes` directive was reported; three unrelated per-user `Match` blocks exist.
+- Do not add this account to `administrators`, change its shell, or broaden/restart DSM SSH. Preflight the already SSH-capable owner account and, if its metadata is compatible, add only a distinct forced-command deploy key plus the same exact two-command sudo policy.

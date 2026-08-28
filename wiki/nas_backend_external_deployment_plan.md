@@ -563,9 +563,10 @@ background success, or Target OTA health.
    recurring independent backup destination remains open.
 2. `DONE (repository design)` Select ephemeral Tailscale plus restricted
    OpenSSH forced command. The dedicated non-admin account passes its exact
-   local sudo `status` probe, but public-port SSH rejects its deploy key before
-   the forced dispatcher runs; account key metadata and DSM SSH admission still
-   require read-only diagnosis, and the tailnet grant remains unproven.
+   local sudo `status` probe, but has `/sbin/nologin` and no `.ssh/authorized_keys`,
+   so it cannot carry the forced command. Do not grant administrator membership
+   or broaden DSM SSH; preflight the existing SSH-capable owner account for the
+   separate forced-key fallback. The tailnet grant also remains unproven.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed
