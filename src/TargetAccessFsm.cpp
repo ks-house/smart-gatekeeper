@@ -79,14 +79,23 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
 }
 
 bool TargetAccessFsm::handleAuthPending(uint32_t now_ms, uint32_t timeout_ms) {
-  if (state_ != GateState::IDLE || relay_on_) {
+  const bool replacing_armed_session = state_ == GateState::ARMED;
+  if ((state_ != GateState::IDLE && !replacing_armed_session) || relay_on_) {
     return false;
   }
+  // A foreground action-2 request cannot be distinguished from action 1 until
+  // its authenticated proof arrives. Let a new authenticated session replace
+  // a sensor-waiting ARMED session, but never preempt RELAY_HOLD or COOLDOWN.
+  // A failed replacement returns to IDLE through the normal abort path.
+  is_armed_ = false;
   state_ = GateState::AUTH_PENDING;
   state_start_ms_ = now_ms;
   pre_arm_duration_ms_ = timeout_ms;
   if (event_emit_ != nullptr) {
-    event_emit_("auth_pending", "AUTH_PENDING verification in progress");
+    event_emit_("auth_pending",
+                replacing_armed_session
+                    ? "AUTH_PENDING replacing existing ARMED session"
+                    : "AUTH_PENDING verification in progress");
   }
   return true;
 }

@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: connected ESP32-C6 Target은 exact-main `2.1.297+main.gf3f4121`을 signed/encrypted periodic OTA로 설치하고 application health window를 거쳐 `VALID`이 됐다. post-VALID 재부팅에서도 동일 버전, relay OFF, Wi-Fi, MQTTS, signed ACL v352와 GATT/iBeacon이 복구됐고 pending window에 재진입하지 않았다. Fold7의 Android production-signed `1.0.0-g40852b7` (`versionCode=22401`) main-screen action-2는 authenticated GATT terminal success와 UI `문이 열렸습니다 (4585ms)`를 반환했다. 신규 NAS stack은 아직 `status=not-deployed`이며 legacy build `7c2764a1`이 `/live` HTTP 200을 제공하고 `/ready`는 `legacy_prearm_retired=false` 하나 때문에 HTTP 503이다. physical relay contact/load, actual door motion, sensor threshold와 post-fix screen-off action-1은 계속 열린 Gate다.
+> 관측 기준: connected ESP32-C6 Target은 exact-main `2.1.298+main.gfc0ebfb`을 signed/encrypted periodic OTA로 설치하고 application health window를 거쳐 `VALID`이 됐다. post-VALID 재부팅에서도 동일 버전, relay OFF, Wi-Fi, MQTTS, signed ACL과 GATT/iBeacon이 복구됐다. Fold7에는 matching production-signed `1.0.0-gfc0ebfb` (`versionCode=23601`)가 replacement-install됐고, corrected dashboard가 terminal action 2를 호출했다. 그러나 바로 앞 background action 1의 60초 `ARMED` window 때문에 Target Hello busy가 발생했고 앱은 이를 `PROTOCOL_INCOMPATIBLE`로 오분류했다. 현재 후보는 sensor-waiting `ARMED`만 새 인증 세션으로 대체하고 busy를 `TARGET_BUSY`로 분류한다. 신규 NAS stack은 아직 `status=not-deployed`이며 legacy build `7c2764a1`이 `/live` HTTP 200을 제공하고 `/ready`는 `legacy_prearm_retired=false` 하나 때문에 HTTP 503이다. Candidate CI/실기기 재검증, physical relay contact/load, actual door motion와 sensor threshold는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 

@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (exact-main Target 297 is VALID on the connected device; private NAS status-only CI passes while first adoption remains owner-gated)
+> Last updated: 2026-08-29 (exact-main Target 298 is VALID; action-1 ARMED preemption correction is under CI/device validation; NAS first adoption remains owner-gated)
 
 ---
 

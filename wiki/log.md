@@ -4380,3 +4380,15 @@
 - Replacement-installed exact-main Android `1.0.0-gf3f4121` / 23301 preserved the original install and native credential state, but the dashboard control labelled `1-Tap 수동 로컬 개방` called diagnostic `triggerLocalGattRetry`; two taps only queued action-1 workers and produced no Target proof or relay transition.
 - Changed the dashboard to await `triggerLocalGattOpen`, accept success only for terminal native reason `OPENED`, and display the returned latency. Added bridge and source-contract regressions that reject diagnostic queue acceptance as a door-open result.
 - This is a source candidate only. Hosted Flutter/JVM checks, production-signed publication, replacement install, connected Target relay-command ON/OFF and terminal UI success remain required before the correction is called deployed.
+
+## [2026-08-29] fix | Let authenticated action 2 replace a sensor-waiting arm
+
+- Exact-main Target `2.1.298+main.gfc0ebfb` became VALID and the matching production-signed Android `1.0.0-gfc0ebfb` / 23601 was replacement-installed. The corrected dashboard entered terminal action 2 but returned `PROTOCOL_INCOMPATIBLE`; Target showed no proof or relay transition.
+- Android timing isolated the cause: a preceding background action-1 worker had left the Target in its 60-second `ARMED` sensor window, so the IDLE-only auth gate rejected the foreground session with Target Hello status 2. The mobile parser collapsed that busy status into a protocol mismatch.
+- Changed only sensor-waiting `ARMED` to permit a fresh `AUTH_PENDING` session, preserving fail-closed `RELAY_HOLD` and `COOLDOWN` interlocks, and classified Target Hello status 2 as retryable `TARGET_BUSY`. Added native FSM and Android engine regressions and pinned both changed Target build-input digests in the privileged exact-build inventory. Hosted trusted-policy authorization, CI, signed publication, exact-main Target/mobile install and connected terminal action-2 relay-command ON/OFF remain required.
+
+## [2026-08-29] test | Validate action-2 ARMED replacement candidate locally
+
+- The Hardwareless host suite passed 12/12, including the production C++ protocol/FSM executable. The Android Gradle 9.1 targeted GATT suite freshly executed 35 tests across six XML suites with zero failures or errors.
+- `esp32c6_personal_production` built successfully at 1,783,096/7,340,032 bytes flash and 67,096/327,680 bytes RAM. Diff whitespace validation passed; unrelated untracked `test.sh` remains untouched.
+- These checks establish source/build behavior only. The protected Target/workflow byte change still needs separate immutable trusted-policy authorization before feature merge, then signed OTA/install and connected action-1-followed-by-action-2 relay-command evidence.

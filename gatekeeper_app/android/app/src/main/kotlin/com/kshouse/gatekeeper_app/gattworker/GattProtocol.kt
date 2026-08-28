@@ -52,6 +52,9 @@ data class TargetResult(
   val activeAclVersion: Long,
 )
 
+class TargetHelloRejectedException(val status: Int) :
+  IllegalArgumentException("target hello rejected with status $status")
+
 object GattCanonicalCodec {
   private val challengeMagic = "SGKCHAL1".toByteArray(Charsets.US_ASCII)
   private val proofMagic = "SGKPRF01".toByteArray(Charsets.US_ASCII)
@@ -79,7 +82,7 @@ object GattCanonicalCodec {
     buffer.int // capabilities
     buffer.int // firmware build
     val securityFloor = buffer.short.toInt() and 0xffff
-    require(status == 0) { "target rejected protocol negotiation" }
+    if (status != 0) throw TargetHelloRejectedException(status)
     require(selected == GattProtocol.PROTOCOL_VERSION) { "unsupported protocol" }
     require(selected in targetMin..targetMax && selected >= securityFloor) { "unsafe protocol selection" }
     require(framing == GattProtocol.FRAMING_VERSION) { "unsupported framing" }
