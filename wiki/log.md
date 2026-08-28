@@ -4123,3 +4123,8 @@
 
 - Owner `stat` readback confirms `/volume1/docker/smart-gatekeeper-backend/trust/release-signing-public.pem` does not exist. This explains the prior empty-stream SHA-256 and narrows the fault to public endpoint staging/installation, not the WSL private key or GitHub Environment secret.
 - Require the staged public key to parse and match the independently recorded DER SHA-256 before a single root-owned mode-0644 install. Keep PR #186 unmerged until installed-key readback and restricted sudo/forced-command checks pass.
+
+## [2026-08-29] test | Install exact NAS release verification key
+
+- The staged 178-byte public key parsed successfully and its P-256 DER SHA-256 matched the independently generated identity `73585ffb...cad`; the owner then installed only that public key as root-owned mode `0644` under the NAS deployment trust directory.
+- Installed-key parse/readback reproduced the same exact DER identity and reports `release_public_key_install=passed`. This closes release-verification key placement only; restricted sudo, forced SSH, pinned host key, Tailscale identity and first deployment remain pending.
