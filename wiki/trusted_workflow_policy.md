@@ -402,24 +402,29 @@ separate.
 
 ## 5. Backend Synology CI transition candidate
 
-The immutable backend-NAS feature commit is
-`2cda04bc0ec7aff3192fc65292eb946fb5b57929` on repository
-`ks-house/smart-gatekeeper`. It expands the protected backend inventory by 13
-paths and changes or adds 18 protected objects relative to base main. The
+The final backend-NAS/OIDC feature commit is
+`25562d1e1ae57bb52a8a0317de8d07a9a1365bef` on repository
+`ks-house/smart-gatekeeper`. Bridge PR #187 first merge-connected the previously
+approved 82-path bundle as main `087e918b7ed86b71c3c1a13908f94b1dc832251e`.
+Relative to that bridged main, the final candidate changes exactly seven
+protected objects. The
 complete 82-file normalized map is duplicated exactly in two bounded
 authorizations:
 
-- `temporary-backend-nas-2cda04b` admits only that exact repository and commit.
-- `future-backend-nas-2cda04b-persistent-baseline` admits only proven
+- `temporary-backend-nas-oidc-25562d1` admits only that exact repository and commit.
+- `future-backend-nas-oidc-25562d1-persistent-baseline` admits only proven
   same-repository descendants retaining all 82 exact protected bytes.
 
 The newly protected surface contains `backend/compose.synology.yml`, all eleven
 `backend/deploy/` operational inputs and
 `backend/tests/test_nas_backend_deploy.py`. The other changed protected objects
-are the backend security workflow and inventory, administrator secret-file
-support, production Compose contract and its direct security test. Regression
-tests pin the ordered 82-path set, both source identities, all normalized
-digests, exact workflow/action inventories and the 18-path candidate delta.
+were admitted by the bridge. The final seven-path delta is the backend workflow,
+commercial gate, deployment README, bootstrap, root wrapper, read-only verifier
+and direct deployment test. It includes the manual exact-main status-only
+Tailscale OIDC preflight with no signing, image publication or `apply` path.
+Regression tests pin the ordered 82-path set, both source identities, all
+normalized digests, exact workflow/action inventories and the seven-path delta.
+The earlier `2cda04b` identities are retired.
 
 This policy-only candidate must pass the hosted trusted check and merge first.
 Its main merge commit must then be merge-connected into the immutable feature
@@ -428,7 +433,8 @@ feature merge. A final policy-only rotation must remove both transition
 identities and pin the actual feature merge commit as the sole
 `current-main-baseline`.
 
-This authorization does not create GitHub Environment values, materialize a
-secret, publish a GHCR image, open an SSH session, migrate MariaDB, replace the
-legacy containers, change router/NAS/Tailscale state or prove production
-readiness. Those remain separately observed deployment Gates.
+This authorization does not create or read GitHub Environment values,
+materialize a secret, exchange an OIDC token, publish a GHCR image, open an SSH
+session, migrate MariaDB, replace the legacy containers, change
+router/NAS/Tailscale state or prove production readiness. Those remain
+separately observed deployment Gates.

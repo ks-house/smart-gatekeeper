@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "2cda04bc0ec7aff3192fc65292eb946fb5b57929"
+MERGED_MAIN_COMMIT = "25562d1e1ae57bb52a8a0317de8d07a9a1365bef"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 17bd1df446bce0cbbf3f8d96f9c21979478d241ab29f25c1b02027e16698894f
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -29,9 +29,9 @@ scripts/verify_trusted_workflow_policy.py 78a96058cd12cfadde01ac0c7aa733bfa96a43
 scripts/ota_contract_gate.py 89be924d2293bad15d7e4386ee62d5427d69edbfab9e994e1150e12869e035c3
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
-.github/workflows/backend_security.yml a4b49b9a2d3a43428dea757ef9dfb84f91e2c112e9e4750711150093e18c85bb
+.github/workflows/backend_security.yml a926adea3ca2216d790a93b165aeae3b8447b47d8ccb0817923acb58b5e9b99e
 .orca/scripts/setup_worktree.ps1 07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab
-scripts/ops_commercial_gate.py af48700570b2ba68c910da9850a96995bb96a1647cc0ac9ff72d9261583f1e88
+scripts/ops_commercial_gate.py 3ccf126a3f5b1335eb14df2686101a339d183d812a31abe29427158c40afd892
 ops/backend_trusted_bundle_paths.json 7b15ef495c227c21d991a48455dd159ae768b18758faa567670b4b0a44793f22
 ops/evidence_sources.json 49d23f9125f65db4ba0e4398e742bcf7f41b34174b2df3d47aef1efa4fbb951b
 ops/fixtures/evidence_adversarial_v1.json c2bbc316b4730a28e873abc3017f533afab2e6d7d45f95e29e228b661f72c04f
@@ -73,17 +73,17 @@ backend/db/migrations/007_ops_privacy_up.sql edde5662c42e65dda82b2e0a9145d64dc4e
 backend/db/production_schema.sql b9e6910bff05272c1b05f1e23805abf250c6a9e3df9e4a7db966ae6517b555e3
 backend/db/run_migrations.sh b408f0b2e6ffe7b58a095430a3ecdbc6d719cef31b8cb7c6a2b62b4ab39d7d3b
 backend/db/schema.sql ce22d4e2675490f2e238cd98e9f9168e572cd45d0de8030811b01384226f4d43
-backend/deploy/README.md 1ba8d843bbf0cb72e154e12dac6d6c9bcd68abf1cd6d14fcf02de60f22e2dcf9
-backend/deploy/bootstrap_legacy_synology.sh 48c1465994d9746b0315d8928e4aa4cfb21aba7dea68e3d4b85cd1ab34930cce
+backend/deploy/README.md 5dcb5f707fcc0bfe1c3630bd8244681d1d0219714d3bb0da47f5946c41ebbe7b
+backend/deploy/bootstrap_legacy_synology.sh 9e04e4e14d47197849c4cd14d9028f424f919deef88f5a449fa669acdc3940e4
 backend/deploy/capture_legacy_inventory.py 71bb7d9721934a00f44a8913ce3d5c514d18d3aeac0031679afe146d8a06181d
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
 backend/deploy/create_release_bundle.py e1278dc16899e067048d35f05d5c31a50964b1c38fe45ad4d42593e01125bab0
 backend/deploy/prepare_backup_in_wsl.py d502283be7b594f8d0d6c7fa0f2e65d6e61c0c9c548252215d3cf3ac3c484e79
 backend/deploy/restore_backup_in_wsl.py 7e317efe496cc5f339a4bb90776a304268c20c2501066575488baa2677bd393b
 backend/deploy/runtime.env.example 337c61d7044531dc1ea2a0d271ed48030ab8671b05fc799318355b4f6e3b760f
-backend/deploy/sgk_backend_deploy.sh 085a48e4aaa79ef67ac6e962b7ea6163b0a10786f40c451def48e272eda8b3eb
+backend/deploy/sgk_backend_deploy.sh c0b30b0149e5d6d466a0b451e7e6b2934d231820d209a9608eded946308711d9
 backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
-backend/deploy/verify_legacy_synology.sh 5bd3b13294d0664c3af4b521c67c71f408f32acea694c3a9b79364aa98d93bfc
+backend/deploy/verify_legacy_synology.sh 04392aab5add0d66c8688861bc0b404e68bd4936a4c205a4620328350444f3b5
 backend/docker-compose.yml 766dc30fcb529868a269e91d76f9c5d323e03aa550d52b8788426871a8ff9e47
 backend/sbom.cdx.json 67b78d1a2cb4d5e48dc8b79f9630a58da0cee207d126c469cb0b0bfbd1945fd7
 backend/supply_chain_policy.json fef90253f3ec0b065f14dd1e83a2b6702b4dd2ad8dbeefc59b12dc78f3cb15e4
@@ -94,7 +94,7 @@ backend/tests/test_admin_security.py 4acded35686962d675e945143b3aa7857c9c10ca4f5
 backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
 backend/tests/test_legacy_ota_independence.py 5819701b2b2fc5c9c0e2b7bbaf710f23360d6a0df36c1966c345621dc4aceca4
 backend/tests/test_migrations.py 3f29ea27716280a88dd89456b1450a51ccba0c162ede69258edd34b6def59913
-backend/tests/test_nas_backend_deploy.py e1bd17b7b7b0f630333ea1fd517d995004dab120bebf6b87b602badd08ae3033
+backend/tests/test_nas_backend_deploy.py 80a5af03c12f920a3a709d128549af5adf4e0016c20842d0e1bf56705417ffc7
 backend/tests/test_ops_api.py faf541fdbbf7db438ab2c838767a431ea524f37d11ee963ca7dadea6f6d806ea
 backend/tests/test_ops_commercial_gate.py 0bc3396d0705e4d4328092c6d87ac66352c297095108336f19c0db87e7a16d94
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
@@ -104,22 +104,11 @@ protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6a
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
     ".github/workflows/backend_security.yml",
-    "ops/backend_trusted_bundle_paths.json",
-    "backend/app/admin_security.py",
-    "backend/compose.production.yml",
-    "backend/compose.synology.yml",
+    "scripts/ops_commercial_gate.py",
     "backend/deploy/README.md",
     "backend/deploy/bootstrap_legacy_synology.sh",
-    "backend/deploy/capture_legacy_inventory.py",
-    "backend/deploy/create_legacy_backup.sh",
-    "backend/deploy/create_release_bundle.py",
-    "backend/deploy/prepare_backup_in_wsl.py",
-    "backend/deploy/restore_backup_in_wsl.py",
-    "backend/deploy/runtime.env.example",
     "backend/deploy/sgk_backend_deploy.sh",
-    "backend/deploy/sgk_backend_ssh_dispatch.sh",
     "backend/deploy/verify_legacy_synology.sh",
-    "backend/tests/test_admin_security.py",
     "backend/tests/test_nas_backend_deploy.py",
 }
 MERGED_MAIN_DIGESTS = dict(
@@ -144,6 +133,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "2cda04bc0ec7aff3192fc65292eb946fb5b57929",
     "aaeeb92b105d3864454b19921eb12de45d9458c0",
     "72fa8610e509de4bff3b20d60d9da19ab312bd3b",
     "44b43411d5156d9a3a08ec0f94b8336c90f6bcb5",
@@ -449,11 +439,11 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     self.assertEqual(len(policy["approved_bundles"]), 2)
     temporary, persistent = policy["approved_bundles"]
-    self.assertEqual(temporary["id"], "temporary-backend-nas-2cda04b")
+    self.assertEqual(temporary["id"], "temporary-backend-nas-oidc-25562d1")
     self.assertEqual(temporary["mode"], "temporary-exact")
     self.assertEqual(
         persistent["id"],
-        "future-backend-nas-2cda04b-persistent-baseline",
+        "future-backend-nas-oidc-25562d1-persistent-baseline",
     )
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
@@ -1011,7 +1001,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     bundle = self.verify_merged_main_digest_map(
         policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(bundle["id"], "temporary-backend-nas-2cda04b")
+    self.assertEqual(bundle["id"], "temporary-backend-nas-oidc-25562d1")
     ancestry.assert_not_called()
     self.assertEqual(
         {"temporary-exact", "persistent-baseline"},
@@ -1052,8 +1042,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 18)
-    self.assertEqual(len(locally_unchanged_protected), 64)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 7)
+    self.assertEqual(len(locally_unchanged_protected), 75)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
@@ -1109,7 +1099,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         is_descendant=ancestry,
     )
     self.assertEqual(
-        bundle["id"], "future-backend-nas-2cda04b-persistent-baseline"
+        bundle["id"], "future-backend-nas-oidc-25562d1-persistent-baseline"
     )
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 

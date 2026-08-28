@@ -4101,6 +4101,18 @@
 - Expanded the protected inventory from 69 to 82 paths and pinned the complete normalized map in `temporary-backend-nas-2cda04b` and `future-backend-nas-2cda04b-persistent-baseline`. Exactly 18 protected objects are changed or new relative to base main.
 - The 42 focused trusted-policy tests pass locally. Hosted policy review/merge, merge-connection into the feature, fresh feature CI, feature merge and final baseline rotation remain required before any owner-approved deployment.
 
+## [2026-08-29] compile | Merge approved backend NAS bridge
+
+- Created bridge PR #187 from exact merge-connected commit `cbaaf9ec17c2bf201d80e1d101ce9c2a5dcf2195`; all 82 protected digests matched the existing `2cda04b` authorization.
+- Hosted Trusted, OTA P0 and Backend/MariaDB checks passed, and the PR merge-commit merged as main `087e918b7ed86b71c3c1a13908f94b1dc832251e`.
+- The merge connects the previously approved deployment source to main. It does not prove NAS apply, migration, container cutover, mobile/Target installation or physical access success; production Environment approval remains withheld.
+
+## [2026-08-29] compile | Authorize final backend NAS OIDC status candidate
+
+- Froze final PR #186 commit `25562d1e1ae57bb52a8a0317de8d07a9a1365bef`. Relative to bridged main, exactly seven protected objects change: the backend workflow, commercial gate, deployment README, bootstrap, root wrapper, read-only verifier and direct deployment test.
+- Recomputed all 82 normalized digests from the immutable commit and duplicated the exact ordered map in bounded temporary and future-persistent identities. The earlier `2cda04b` identities are retired.
+- The candidate adds a manual exact-main status-only OIDC/Tailscale preflight while keeping release `apply` separate. This policy-only authorization does not exchange OIDC, dispatch a workflow, access NAS, publish an image, migrate MariaDB or cut over containers.
+
 ## [2026-08-29] lint | Merge-connect backend NAS CI authorization
 
 - Policy PR #185 passed the hosted `Verify protected files against trusted base policy` check and merge-commit merged as policy main `40852b7ae341873cd4a5876dd5b1f5aad7ce6788`.
