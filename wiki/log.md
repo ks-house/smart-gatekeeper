@@ -4325,3 +4325,9 @@
 - Verified the NAS APK `1.0.0-g40852b7` / 22401 against its exact size, artifact SHA-256 and signing-certificate SHA-256, then used `adb install -r` to preserve the approved user and AndroidKeyStore-backed native credential state.
 - One main-WebView action-2 returned terminal `문이 열렸습니다 (4585ms)`; native health stayed `HEALTHY`, and Android recorded successful GATT writes/indications plus normal local disconnect. The stale-app `PROTOCOL_INCOMPATIBLE` did not recur.
 - Exact-main Target `2.1.291+main.g89e047c` is signed/encrypted and NAS-published, not install-confirmed. Physical relay contacts/load, door motion, sensor threshold, screen-off action-1 and rollback remain open Gates.
+
+## [2026-08-29] compile | Authorize exact deferred OTA health candidate
+
+- Added `src/OtaManager.cpp` to the protected surface and authorized immutable feature commit `2d3221ee54b9277bc3783811f17e12658fb93901` through one temporary-exact and one future persistent identity with the same complete ordered 83-path digest map.
+- Relative to the current baseline, only `src/OtaManager.cpp` and `.github/workflows/deploy.yml` differ; regression coverage pins both normalized digests, the feature identity, exact inventories and indivisible bundle semantics.
+- This policy-only authorization does not publish or install firmware and does not prove the Target health window, VALID mark, rollback, relay contact, sensor threshold or door movement.
