@@ -580,6 +580,19 @@ Target over BLE, but no authenticated action reached the Target FSM or relay.
 Historical exact-282 action-2 success remains historical and does not override
 this current local-Target repetition.
 
+## 2026-08-29 production-app action-2 connected recovery
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| APK identity and preservation | NAS production APK `1.0.0-g40852b7` / 22401 matched 55,786,649 bytes, SHA-256 `2790c2844c62881a9fc3e27c1632514fb2ba82080deb12d2ff3775373b63468d` and signer-certificate SHA-256 `8bdbcf86c2530d424758a37b5a678de02b8f35587143d820c730b83cfe1d7ba0`; `adb install -r` retained approved user/native credential state | PASS for production-signed mobile replacement and state preservation |
+| Main action-2 | One enabled WebView `문 열기` tap completed terminal UI `문이 열렸습니다 (4585ms)`; native health stayed `HEALTHY`, last latency became 4585 ms, and Android recorded successful writes/indications followed by local disconnect | PASS for authenticated mobile -> Target action-2 terminal software/FSM outcome; stale-app `PROTOCOL_INCOMPATIBLE` not reproduced |
+| Target publication | Exact-main run `33199155599` published signed encrypted `2.1.291+main.g89e047c` and the public manifest readback matched commit `89e047c` | PASS for CI/NAS publication only; connected Target install, reboot and health are not observed |
+| Physical boundary | No relay contact voltage/current, attached actuator, actual door motion, AJ-SR04T threshold, repetition distribution or rollback was measured | PENDING physical acceptance; terminal protocol success is not contact/door proof |
+
+The earlier failure remains valid for stale installed APK `g3cf6eaa`; the
+current production-app repetition supersedes it for the connected action-2
+software outcome only.
+
 ## 2026-08-28 backend CI to Synology deployment host verification
 
 | Test | Observed result | Verdict / boundary |

@@ -4313,3 +4313,15 @@
 - Removed both bounded `25562d1` transition identities and pinned the sole `current-main-baseline` persistent identity to actual merged main `89e047c2416de6924ee4b7aff4daf4250d55f907`.
 - The complete ordered 82-path normalized digest map and exact workflow/action inventories remain unchanged; regression coverage retires the feature SHA and rejects extra identities.
 - This policy-only rotation does not publish an image, approve a deployment, modify NAS state or prove the core physical access use case.
+
+## [2026-08-29] test | Fail first NAS adoption before shared-volume cutover
+
+- Exact-main run `33199155624` built and attested the immutable API/DB images, created the signed bundle, joined Tailscale and reached the restricted NAS endpoint.
+- The wrapper failed closed before migration with `MariaDB volume is held by another running project; stop it during first adoption`; issue #190 now tracks the owner maintenance window and exact legacy-container handover.
+- No new-stack readiness or cutover claim is made. The legacy service remains live; `/live` is healthy for build `7c2764a1`, while `/ready` is 503 only because `legacy_prearm_retired=false`.
+
+## [2026-08-29] test | Recover connected action-2 with production-signed mobile
+
+- Verified the NAS APK `1.0.0-g40852b7` / 22401 against its exact size, artifact SHA-256 and signing-certificate SHA-256, then used `adb install -r` to preserve the approved user and AndroidKeyStore-backed native credential state.
+- One main-WebView action-2 returned terminal `문이 열렸습니다 (4585ms)`; native health stayed `HEALTHY`, and Android recorded successful GATT writes/indications plus normal local disconnect. The stale-app `PROTOCOL_INCOMPATIBLE` did not recur.
+- Exact-main Target `2.1.291+main.g89e047c` is signed/encrypted and NAS-published, not install-confirmed. Physical relay contacts/load, door motion, sensor threshold, screen-off action-1 and rollback remain open Gates.

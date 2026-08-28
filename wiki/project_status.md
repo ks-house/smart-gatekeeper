@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 저장소/USB Target source `21e71d1c8faf469d101a477207276a80297873c8`, Target local generic banner `v2.1.0`, Android `1.0.0-g3cf6eaa` (`versionCode=21701`). WSL serial에서 Wi-Fi/MQTTS/signed ACL v303/GATT 복구를 확인했지만, Fold7의 현재 main-screen action-2는 GATT 연결·service discovery·세 indication 등록 후 `PROTOCOL_INCOMPATIBLE`로 종료했다. proof 검증 증거, Target FSM, relay ON/OFF는 발생하지 않았다. 이 local USB image는 exact CI/signed OTA identity가 아니며 Bootloader rollback, post-fix screen-off action-1, sensor/contact Gate는 계속 열려 있다.
+> 관측 기준: USB Target source 계보 `21e71d1c8faf469d101a477207276a80297873c8`, Android production-signed `1.0.0-g40852b7` (`versionCode=22401`). Fold7의 main-screen action-2는 authenticated GATT terminal success와 UI `문이 열렸습니다 (4585ms)`를 반환해 이전 stale-app `PROTOCOL_INCOMPATIBLE`을 재현하지 않았다. Exact-main Target `2.1.291+main.g89e047c`는 NAS에 게시됐지만 연결된 Target 설치·재부팅 health는 아직 serial 권한 경계로 확인하지 못했다. relay contact/load, actual door, post-fix screen-off action-1, sensor 및 rollback Gate는 계속 열려 있다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -160,6 +160,30 @@ Current core manual-open acceptance is therefore **FAIL at the authenticated
 protocol boundary**. The non-retryable result was not repeated. This run safely
 failed before relay actuation and provides no physical contact or door-motion
 evidence.
+
+## 2026-08-29 production-app action-2 recovery
+
+- Windows ADB showed the connected Fold7 still running stale
+  `1.0.0-g3cf6eaa` / 21701. The NAS production APK
+  `1.0.0-g40852b7` / 22401 was downloaded and independently matched its
+  55,786,649-byte length, SHA-256
+  `2790c2844c62881a9fc3e27c1632514fb2ba82080deb12d2ff3775373b63468d`
+  and signer-certificate SHA-256
+  `8bdbcf86c2530d424758a37b5a678de02b8f35587143d820c730b83cfe1d7ba0`.
+  `adb install -r` preserved the approved user and native credential state.
+- One main-WebView `문 열기` action-2 completed with terminal UI
+  `문이 열렸습니다 (4585ms)`. Native health remained `HEALTHY` with last
+  latency 4585 ms; Android recorded successful characteristic writes,
+  indications and a normal local GATT disconnect. The prior
+  `PROTOCOL_INCOMPATIBLE` was not reproduced.
+- This closes the currently connected authenticated mobile-to-Target action-2
+  software/FSM outcome. It does not prove physical relay contacts/load, actual
+  door motion, AJ-SR04T threshold, repeated latency, screen-off action-1 or OTA
+  rollback.
+- Exact-main run `33199155599` separately published signed encrypted Target
+  `2.1.291+main.g89e047c`. Publication is not installation: current Target
+  install, reboot and health remain unconfirmed because this shell's group list
+  has not refreshed `dialout` access to `/dev/ttyACM0`.
 
 ## 2026-08-29 backend NAS GitHub CI policy connection
 
