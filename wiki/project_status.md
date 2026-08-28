@@ -175,6 +175,12 @@ evidence.
 - Required order now resumes at fresh feature CI, feature merge, final baseline
   rotation, then an owner-approved canary/final NAS deployment using separately
   provisioned identities.
+- Feature PR #186 subsequently passed fresh hosted trusted, OTA and backend
+  MariaDB checks at merge-connected head `cbaaf9e`; PR-only publish/deploy jobs
+  skipped. Independent release-signing/SSH private keys plus the confirmed port
+  and public-origin variables are now in the protected Environment. NAS public
+  key installation, host-key pinning, Tailscale OIDC/host and restricted deploy
+  user are still missing, so the PR remains unmerged.
 
 ## 2026-08-26 issue #179 Bluetooth-state recovery candidate
 

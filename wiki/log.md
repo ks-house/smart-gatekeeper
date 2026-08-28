@@ -4106,3 +4106,9 @@
 - Policy PR #185 passed the hosted `Verify protected files against trusted base policy` check and merge-commit merged as policy main `40852b7ae341873cd4a5876dd5b1f5aad7ce6788`.
 - Merge-connected that policy main into the immutable feature branch without rebasing or squashing, retaining reviewed feature parent `2cda04bc0ec7aff3192fc65292eb946fb5b57929` and the policy ancestry.
 - Fresh hosted feature checks, feature merge, final baseline rotation and owner-approved Environment/NAS deployment remain required. This merge connection does not materialize secrets, publish GHCR images or change the NAS.
+
+## [2026-08-29] test | Pass hosted backend CI and bootstrap production identities
+
+- Feature PR #186 head `cbaaf9ec17c2bf201d80e1d101ce9c2a5dcf2195` passed the hosted trusted-policy, OTA-contract and backend-security/MariaDB checks. PR-only image publication, attestation, evidence verification and NAS deployment jobs all skipped as designed.
+- Generated independent P-256 release-signing and Ed25519 deploy identities in a mode-0700 WSL directory with mode-0600 files. Registered only their private inputs as `production` Environment secrets without printing values; the public release key and SSH public key remain to be installed through the trusted NAS administration path.
+- Set confirmed Environment variables `NAS_DEPLOY_PORT=4422` and `NAS_PUBLIC_API_URL=https://tworimpa.synology.me:4442`. Pinned NAS known-host data, Tailscale workload identity/audience, exact tailnet host and restricted deploy user remain unset, so feature merge and production execution remain blocked.
