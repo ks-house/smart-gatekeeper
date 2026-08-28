@@ -6,6 +6,7 @@ set -Eeuo pipefail
 umask 077
 
 readonly DEPLOY_BASE="${SGK_DEPLOY_BASE:-/volume1/docker/smart-gatekeeper-backend}"
+readonly BIN_DIR="${DEPLOY_BASE}/bin"
 readonly RUNTIME_ENV="${DEPLOY_BASE}/runtime.env"
 readonly TRUST_KEY="${DEPLOY_BASE}/trust/release-signing-public.pem"
 readonly RELEASES_DIR="${DEPLOY_BASE}/releases"
@@ -48,8 +49,12 @@ validate_common_host() {
     die "deployment base must be owned by root"
   local base_mode
   base_mode="$(stat -c '%a' "$DEPLOY_BASE")"
-  (( (8#$base_mode & 022) == 0 )) || \
-    die "deployment base must not be group/other writable"
+  [[ "$base_mode" == "711" ]] || \
+    die "deployment base must be mode 0711 for forced-command traversal"
+  [[ -d "$BIN_DIR" && ! -L "$BIN_DIR" ]] || \
+    die "deployment bin must be a regular directory"
+  [[ "$(stat -c '%u:%g:%a' "$BIN_DIR")" == "0:0:755" ]] || \
+    die "deployment bin must be root-owned mode 0755"
   docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is unavailable"
 }
 
@@ -304,7 +309,8 @@ apply_release() {
   validate_root_controlled_file "$TRUST_KEY" "release trust key"
   validate_runtime
   mkdir -p "$RELEASES_DIR" "$INCOMING_DIR"
-  chmod 700 "$DEPLOY_BASE" "$RELEASES_DIR" "$INCOMING_DIR"
+  chmod 711 "$DEPLOY_BASE"
+  chmod 700 "$RELEASES_DIR" "$INCOMING_DIR"
   mkdir "$LOCK_DIR" 2>/dev/null || die "another deployment is active; inspect $LOCK_DIR"
 
   local stage_dir

@@ -571,10 +571,11 @@ background success, or Target OTA health.
    installation can proceed with exact NOPASSWD wrapper commands and both
    positive/negative forced-command tests. The forced key now authenticates and
    maps both requests to the dispatcher, but DSM returns permission denied while
-   executing its root-owned mode-`0755` path. Diagnose parent-directory traversal,
-   Synology ACL and mount execution flags before changing permissions; retain
-   secrets, trust, incoming and release state as root-only. The tailnet grant
-   remains unproven.
+   executing its root-owned mode-`0755` path. Live readback isolated this to
+   Linux mode `0700` on both the deployment base and `bin`, not Synology ACL or
+   a `noexec` mount. Correct only base to traversal-only `0711` and `bin` to
+   `0755`; retain secrets, trust, incoming and release state as root-only. The
+   tailnet grant remains unproven.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed

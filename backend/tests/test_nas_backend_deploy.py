@@ -233,6 +233,9 @@ class NasBackendDeployContractTest(unittest.TestCase):
         wrapper = WRAPPER.read_text(encoding="utf-8")
         for required in (
             "SSH_ORIGINAL_COMMAND",
+            '[[ "$base_mode" == "711" ]]',
+            '"0:0:755"',
+            'chmod 711 "$DEPLOY_BASE"',
             'openssl dgst -sha256 -verify "$TRUST_KEY"',
             'docker volume inspect "${RUNTIME[$key]}"',
             'docker pull "$api_image"',
@@ -246,6 +249,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             self.assertIn(required, wrapper)
         self.assertNotRegex(wrapper, r"(?m)^\s*eval\s+")
         self.assertNotRegex(wrapper, r"(?m)^\s*(source|\.)\s+")
+        self.assertNotIn('chmod 700 "$DEPLOY_BASE"', wrapper)
 
         dispatcher_syntax = subprocess.run(
             ["bash", "-n", str(DISPATCHER)], text=True, capture_output=True
@@ -272,8 +276,13 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "personal_admin_password",
             "API and DB runtime passwords do not match",
             "legacy_containers=unchanged",
+            'install -d -o root -g root -m 711 "$DEPLOY_BASE"',
+            'install -d -o root -g root -m 700 "$SECRET_DIR" "$MIGRATION_BACKUP_DIR"',
         ):
             self.assertIn(required, bootstrap)
+        self.assertNotIn(
+            'install -d -o root -g root -m 700 "$DEPLOY_BASE"', bootstrap
+        )
         self.assertNotRegex(
             bootstrap,
             r'(?m)^\s*local\s+.*\b([A-Za-z_][A-Za-z0-9_]*)="\$[0-9]+".*\$\{\1\}',
@@ -303,6 +312,9 @@ class NasBackendDeployContractTest(unittest.TestCase):
             r"docker\s+(stop|restart|rm|create|run|pull|start)\b",
         )
         self.assertNotRegex(verifier, r"(?i)\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b")
+        self.assertIn(
+            'require_directory_contract "$DEPLOY_BASE" 0 0 711', verifier
+        )
 
     def test_legacy_backup_is_consistent_no_cutover_and_identifier_free(self):
         syntax = subprocess.run(

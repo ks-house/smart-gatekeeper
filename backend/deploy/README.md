@@ -254,8 +254,12 @@ that exact account in both sudoers lines, the forced-SSH test and
 install the two scripts, public signing key, runtime file and secret directory:
 
 ```bash
+sudo install -d -o root -g root -m 711 \
+  /volume1/docker/smart-gatekeeper-backend
+sudo install -d -o root -g root -m 755 \
+  /volume1/docker/smart-gatekeeper-backend/bin
 sudo install -d -o root -g root -m 700 \
-  /volume1/docker/smart-gatekeeper-backend/{bin,trust,secrets,releases,incoming}
+  /volume1/docker/smart-gatekeeper-backend/{trust,secrets,releases,incoming}
 sudo install -o root -g root -m 755 sgk_backend_deploy.sh \
   /volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh
 sudo install -o root -g root -m 755 sgk_backend_ssh_dispatch.sh \
@@ -265,6 +269,12 @@ sudo install -o root -g root -m 644 release-signing-public.pem \
 sudo install -o root -g root -m 600 runtime.env \
   /volume1/docker/smart-gatekeeper-backend/runtime.env
 ```
+
+Mode `0711` on the deployment base grants path traversal without directory
+listing, and mode `0755` on `bin` permits the forced SSH account to execute only
+the root-owned dispatcher selected by its `authorized_keys` entry. Keep
+`trust`, `secrets`, `releases`, `incoming`, migration backups and runtime files
+root-only; never apply these traversal modes recursively.
 
 Copy `runtime.env.example` to `runtime.env`, replace every placeholder and use
 the exact external volume names found in step 1. `SGK_SECRET_DIR` must remain:

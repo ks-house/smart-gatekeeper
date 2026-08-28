@@ -4169,3 +4169,15 @@
 - Fresh PR #186 checks at head `afb3cde` reject the modified protected `backend/deploy/README.md` digest and the mixed candidate bundle; backend security still passes and all publish/deploy jobs remain skipped.
 - This is the trusted-policy mechanism working as designed, not an OTA functional regression. Do not merge the feature or weaken the policy; combine the live dispatcher-path correction with a newly frozen exact bundle and repeat the separate base-policy authorization flow.
 - The untracked local `test.sh` is unrelated user workspace state and remains untouched.
+
+## [2026-08-29] fix | Preserve minimal forced-dispatcher path traversal
+
+- Live NAS readback confirms `/volume1` mode `0755` and `/volume1/docker` mode `0555` are traversable, while deployment base and `bin` are root-owned mode `0700`; the root-owned dispatcher itself is mode `0755`. Synology reports Linux mode rather than an ACL, and the Btrfs mount has no `noexec` flag.
+- Changed the bootstrap and verifier contract to base mode `0711`, documented and tested a root-owned mode-`0755` `bin`, and kept secret, trust, releases, incoming, migration-backup and runtime data root-only. Base `0711` permits traversal without directory listing and is not applied recursively.
+- Changed the root wrapper to require the exact base/bin contracts and to preserve base `0711` during every apply, preventing the first deployment from silently restoring mode `0700` and breaking later SSH status/rollback operations.
+
+## [2026-08-29] test | Validate dispatcher traversal correction before policy rotation
+
+- Bash syntax and all 11 focused NAS deployment tests pass with the base/bin permission contract. The full backend suite passes 133 tests with the same two explicit real-MariaDB opt-in skips.
+- The full repository suite passes 315 of 316 tests with one expected trusted-policy coherence failure because the newly corrected protected bytes are not yet an authorized indivisible bundle. This is the next required policy step, not a functional test waiver.
+- `git diff --check` passes. No NAS mode, deployed script, container, database, release, Environment variable or PR merge changed during the source correction.
