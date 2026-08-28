@@ -4128,3 +4128,8 @@
 
 - The staged 178-byte public key parsed successfully and its P-256 DER SHA-256 matched the independently generated identity `73585ffb...cad`; the owner then installed only that public key as root-owned mode `0644` under the NAS deployment trust directory.
 - Installed-key parse/readback reproduced the same exact DER identity and reports `release_public_key_install=passed`. This closes release-verification key placement only; restricted sudo, forced SSH, pinned host key, Tailscale identity and first deployment remain pending.
+
+## [2026-08-29] test | Accept restricted sudo policy and identify missing wrapper
+
+- DSM includes `/etc/sudoers.d`; the deploy fragment is root-owned mode `0440`, policy parsing succeeds, and `github-nas-deploy` receives exactly two NOPASSWD commands: the root wrapper's `apply` and `status`. A negative `/bin/id` sudo probe is denied.
+- Exact `status` invocation fails before wrapper execution because `/volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh` is not installed. Validate both staged operational scripts against their protected digests and install only those root-owned mode-0755 files before repeating status and forced-SSH tests.
