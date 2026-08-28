@@ -96,6 +96,8 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         wifi = (ROOT / "src/WifiManager.cpp").read_text(encoding="utf-8")
         for required in (
             "#include <sodium.h>",
+            "#ifndef CONFIG_APP_ROLLBACK_ENABLE",
+            'extern "C" bool verifyRollbackLater()',
             "sodium_init()",
             "crypto_sign_verify_detached",
             "crypto_sign_PUBLICKEYBYTES == 32U",
@@ -110,6 +112,11 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             "healthPolicy.update",
         ):
             self.assertIn(required, ota)
+        deferred_hook = ota.split(
+            'extern "C" bool verifyRollbackLater()', 1
+        )[1].split("}", 1)[0]
+        self.assertIn("return true;", deferred_hook)
+        self.assertNotIn('extern "C" bool verifyOta()', ota)
         self.assertNotIn("PSA_ALG_PURE_EDDSA", ota)
         self.assertNotIn("psa_verify_message", ota)
         self.assertNotIn("#include <psa/crypto.h>", ota)

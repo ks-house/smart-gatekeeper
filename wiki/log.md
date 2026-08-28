@@ -4325,3 +4325,16 @@
 - Verified the NAS APK `1.0.0-g40852b7` / 22401 against its exact size, artifact SHA-256 and signing-certificate SHA-256, then used `adb install -r` to preserve the approved user and AndroidKeyStore-backed native credential state.
 - One main-WebView action-2 returned terminal `문이 열렸습니다 (4585ms)`; native health stayed `HEALTHY`, and Android recorded successful GATT writes/indications plus normal local disconnect. The stale-app `PROTOCOL_INCOMPATIBLE` did not recur.
 - Exact-main Target `2.1.291+main.g89e047c` is signed/encrypted and NAS-published, not install-confirmed. Physical relay contacts/load, door motion, sensor threshold, screen-off action-1 and rollback remain open Gates.
+
+## [2026-08-29] test | Install exact-main Target 293 through signed periodic OTA
+
+- Main run `33200199481` atomically published exact `c0ac5ed8b9f6cf5860a50f48e760b0cb4df78634` as signed/encrypted `2.1.293+main.gc0ac5ed`; public metadata and sanitized evidence agree on the 1,849,860-byte artifact and SHA-256 `d736d9fe9bf6071f13523837fc95b57632d08d57aafc19cf9aff58875b910138`.
+- A bounded Target reset started exact `2.1.288+main.g40852b7` with relay OFF, Wi-Fi, MQTTS, ACL v336 and GATT. Its 60-second periodic check accepted exact 293, downloaded and verified the inactive image, rebooted into exact 293 and restored relay-OFF, Wi-Fi `192.168.35.18`, MQTTS, ACL v337 and GATT; the next periodic check was already current.
+- This proves exact-main install, reboot and bounded service recovery. No relay contact/load, door motion, sensor threshold, application health-valid or rollback is inferred.
+
+## [2026-08-29] fix | Defer Arduino pre-setup OTA auto-validation
+
+- Read-only bootloader and OTA-data flash evidence showed both OTA records already `VALID`. The installed 20,976-byte bootloader SHA-256 exactly matched the pinned local production bootloader, whose ESP32-C6 sdkconfig enables bootloader/app rollback.
+- Root cause is pioarduino `initArduino()`: before `setup()`, weak defaults `verifyRollbackLater()=false` and `verifyOta()=true` immediately mark the pending image valid, so `OtaManager::init()` cannot start its 30-second health policy.
+- Added a strong C-linkage `verifyRollbackLater()` that defers validation to `OtaManager` and a compile-time error when `CONFIG_APP_ROLLBACK_ENABLE` is absent. Focused tests pass, the local N16 production build succeeds, and the ELF exposes strong `T verifyRollbackLater` while retaining the byte-identical rollback-enabled bootloader.
+- This is local candidate evidence only. Issue #172 remains open pending protected authorization, PR/CI/merge, strictly newer signed connected health-window/valid-mark proof and separate automatic rollback fault injection.

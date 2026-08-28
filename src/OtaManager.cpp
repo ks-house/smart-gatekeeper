@@ -23,6 +23,18 @@
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while (0)
 
+#ifndef CONFIG_APP_ROLLBACK_ENABLE
+#error "Target OTA health policy requires ESP-IDF application rollback support"
+#endif
+
+// Arduino's initArduino() otherwise accepts a PENDING_VERIFY image before
+// setup() runs. Defer that framework default so OtaManager can require the
+// bounded relay-safe, Wi-Fi, MQTTS and heap health window before marking the
+// running slot valid.
+extern "C" bool verifyRollbackLater() {
+  return true;
+}
+
 OtaManager::OtaStatus OtaManager::status = OtaManager::OtaStatus::IDLE;
 String OtaManager::lastError = "";
 OtaManager::SafeStateProvider OtaManager::safeStateProvider = nullptr;

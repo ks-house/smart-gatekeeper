@@ -547,3 +547,23 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 | 모바일 background 문제 | [mobile_app_background_audit.md](mobile_app_background_audit.md) |
 | 핀과 전기 안전 | [pin_mapping.md](pin_mapping.md) |
 | 검증 결과 | [hardware_test.md](hardware_test.md) |
+
+## 2026-08-29 exact-main Target 293 connected update and #172 correction
+
+- Main run `33200199481` published exact `c0ac5ed8b9f6cf5860a50f48e760b0cb4df78634`
+  as signed/encrypted `2.1.293+main.gc0ac5ed`. The connected Target upgraded
+  from exact 288 by periodic HTTPS, verified the inactive image, rebooted into
+  exact 293 and restored relay-OFF, Wi-Fi `192.168.35.18`, MQTTS, ACL v337 and
+  GATT. A later periodic check was already current.
+- This closes exact-main Target install/reboot/service recovery for 293, not
+  OTA health-valid or rollback. No application health-window trace appeared,
+  and read-only OTA-data evidence showed both slots already `VALID`.
+- The installed bootloader exactly matches the rollback-enabled pinned
+  pioarduino bootloader. Root cause is Arduino core's pre-`setup()` weak
+  auto-validation, which marks a pending slot valid before `OtaManager` can
+  apply its 30-second predicates.
+- The current candidate supplies strong `verifyRollbackLater()` and a
+  compile-time rollback requirement. Local production build and ELF symbol
+  verification pass. It must still merge, publish and complete a strictly
+  newer connected health-window/valid-mark trial; automatic rollback fault
+  injection remains open under #172.
