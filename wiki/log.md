@@ -4241,3 +4241,33 @@
 - The root-readable packaged CLI reports exact NAS Tailscale IPv4 `100.95.243.92`. WSL reaches TCP `4422` through that private address and reads ED25519, ECDSA and RSA host keys.
 - The private endpoint's ED25519 and ECDSA fingerprints intersect the previously trusted public-bootstrap DSM host keys. Stored only the matched ED25519 line as `NAS_DEPLOY_KNOWN_HOSTS` and set `NAS_TAILSCALE_HOST=100.95.243.92` in the protected `production` Environment without printing the key blob.
 - Tailscale OIDC client ID/audience and least-privilege tailnet grant remain pending. No workflow dispatch, release apply, image publication, PR merge, container or database change ran.
+
+## [2026-08-29] test | Detect tailnet wildcard grant blocking CI isolation
+
+- Owner readback confirms the active policy contains the default `src=["*"]`, `dst=["*"]`, `ip=["*"]` grant. A new narrow CI grant would be additive and therefore would not restrict the tagged runner while this rule remains.
+- The compatibility candidate is `autogroup:member -> *` for existing user-owned devices plus `tag:sgk-github-deploy -> 100.95.243.92:tcp/4422`. First inventory existing tagged devices because member selectors do not cover tag identities; never preserve all tags with another wildcard that would include CI.
+- No tailnet policy was saved and no OIDC credential, workflow, deployment, container or database state changed.
+
+## [2026-08-29] test | Confirm no visible tagged machines in tailnet overview
+
+- The owner-provided Machines overview shows three user-owned devices and no tag badges. Connected NAS `tworim423` displays the already verified Tailscale IPv4 `100.95.243.92`.
+- This closes the visible tag inventory only. The overview does not show whether any device advertises subnet routes, so that detail must be checked before replacing the wildcard grant.
+- No tailnet policy, device identity, OIDC credential, workflow, deployment, container or database state changed.
+
+## [2026-08-29] test | Read one machine's empty Tailscale route detail
+
+- The provided machine-detail capture states that the selected machine exposes no routes; Exit Node is `Not Allowed` and no Apps entry is configured.
+- The screenshot omits the machine name, so this closes only that selected machine's route state. Confirm it is `tworim423` and check the two remaining user devices before declaring the whole tailnet free of subnet routers.
+- No route, exit-node, app, policy, OIDC, deployment, container or database state changed.
+
+## [2026-08-29] test | Close tailnet compatibility inventory for wildcard replacement
+
+- Owner confirms all three current user-owned machines have the same empty route detail: no exposed subnet routes, Exit Node not allowed and no Apps routing. The overview also showed no tag badges.
+- There are therefore no existing tagged sources, subnet routers or exit nodes requiring compatibility grants. Replacing the wildcard source with `autogroup:member` preserves the current user-owned device class while excluding the future CI tag.
+- The policy edit is now prepared but not yet saved. No device, route, policy, OIDC, workflow, deployment, container or database state changed.
+
+## [2026-08-29] test | Pass private forced SSH after tailnet isolation
+
+- Owner saved the wildcard replacement with no validation errors. WSL then reached exact Tailscale NAS endpoint `100.95.243.92:4422` using a dedicated mode-0600 known-host file whose ED25519 fingerprint matches the independently trusted DSM key.
+- Forced `status` returned `status=not-deployed` with exit zero. Attempted `sh -c id` was replaced by the dispatcher allowlist and returned exit 126, proving the private endpoint remained functional after policy narrowing.
+- This proves a user-owned source and the NAS forced endpoint, not the future tagged GitHub runner. OIDC client ID/audience, first tagged exchange, workflow deployment, release apply, container and database changes remain absent.

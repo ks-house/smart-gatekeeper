@@ -390,6 +390,26 @@ over a trusted LAN/tailnet path, then compare the key fingerprints with the
 already accepted DSM SSH host key before storing it. A successful `ssh-keyscan`
 connection alone is not trust evidence.
 
+The live tailnet policy still contains the default `* -> *`, `ip: ["*"]`
+grant. Because grants are additive, the narrow CI rule cannot enforce isolation
+until that wildcard source rule is replaced. Preserve current user-owned device
+behavior with an `autogroup:member -> *` compatibility grant and add the CI
+tag-to-exact-host `tcp:4422` grant separately. Before saving, inventory every
+currently tagged device: `autogroup:member` excludes tag-based identities, so
+each pre-existing service tag needs an explicit compatibility decision. Do not
+use `autogroup:tagged -> *` because it would also re-expand the new CI runner.
+The current Machines overview shows three user-owned devices and no visible tag
+badges, including connected NAS `tworim423` at `100.95.243.92`. Owner detail
+readback confirms all three expose no subnet routes, are not allowed as exit
+nodes and have no Apps routing. The wildcard replacement therefore has no
+pre-existing tagged or routed-source compatibility exception to preserve.
+The owner saved the replacement with no validation errors. A WSL user-owned
+source then reached private NAS SSH and reproduced `status=not-deployed` with
+exit zero; an attempted arbitrary command was forced to the dispatcher allowlist
+and returned exit 126. This proves the private network/host-key/forced-command
+lane after the grant change, but not the future tagged GitHub runner until OIDC
+exchange occurs.
+
 On the NAS, create a deployment identity distinct from the current SFTP-only
 publisher. Its authorized key is restricted to one root-owned wrapper, for
 example `sgk-deploy`, with no PTY, forwarding, agent forwarding, or arbitrary
@@ -627,8 +647,10 @@ background success, or Target OTA health.
    secrets/variables. `NAS_DEPLOY_USER=noty00`, `NAS_DEPLOY_PORT=4422` and the
    public readiness URL are set. `NAS_TAILSCALE_HOST=100.95.243.92` and its
    independently matched ED25519 `NAS_DEPLOY_KNOWN_HOSTS` entry are also set.
-   The exact OIDC subject is confirmed; client ID, audience and tailnet grant
-   remain unset.
+   The exact OIDC subject is confirmed; client ID and audience remain unset.
+   The wildcard grant has been replaced after confirming no tagged or routed
+   compatibility sources, and the user-owned WSL-to-NAS forced-SSH contract
+   passes. The tagged GitHub-runner grant remains unexercised until OIDC setup.
 10. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
 11. `P2` Evaluate a central secret manager only when operator/host count requires
     it.
