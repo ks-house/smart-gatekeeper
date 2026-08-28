@@ -93,25 +93,29 @@ void main() {
     expect(result['featureEnabled'], isTrue);
   });
 
-  test('manual open bridge waits for terminal native action-2 result', () async {
-    MethodCall? observed;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
-      observed = call;
-      return <String, Object?>{
-        'accepted': true,
-        'reason': 'OPENED',
-        'sessionId': 'redacted-session',
-        'latencyMs': 4585,
-      };
-    });
+  test(
+    'manual open bridge waits for terminal native action-2 result',
+    () async {
+      MethodCall? observed;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        observed = call;
+        return <String, Object?>{
+          'accepted': true,
+          'reason': 'OPENED',
+          'sessionId': 'redacted-session',
+          'latencyMs': 4585,
+        };
+      });
 
-    final result = await NativeGattWorkerHealthBridge().triggerLocalGattOpen();
+      final result =
+          await NativeGattWorkerHealthBridge().triggerLocalGattOpen();
 
-    expect(observed?.method, 'triggerLocalGattOpen');
-    expect(observed?.arguments, isNull);
-    expect(result['accepted'], isTrue);
-    expect(result['reason'], 'OPENED');
-    expect(result['latencyMs'], 4585);
-  });
+      expect(observed?.method, 'triggerLocalGattOpen');
+      expect(observed?.arguments, isNull);
+      expect(result['accepted'], isTrue);
+      expect(result['reason'], 'OPENED');
+      expect(result['latencyMs'], 4585);
+    },
+  );
 }
