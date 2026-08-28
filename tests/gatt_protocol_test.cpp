@@ -1141,21 +1141,37 @@ void testAuthPendingStateFlow() {
   CHECK(!last_relay_on);
   CHECK(last_event_name == "auth_verified_armed");
 
-  // 4. Passage sensor trigger while ARMED transitions to RELAY_HOLD (turns relay ON!)
+  // 4. A foreground action-2 session may replace an existing action-1 ARMED
+  // window, but still requires a fresh authenticated proof before relay ON.
+  CHECK(fsm.handleAuthPending(1600, 5000));
+  CHECK(fsm.state() == GateState::AUTH_PENDING);
+  CHECK(!fsm.isArmed());
+  CHECK(!fsm.isRelayOn());
+  CHECK(fsm.handleLocalManualOpen(1700, 1000, 2000));
+  CHECK(fsm.state() == GateState::RELAY_HOLD);
+  CHECK(fsm.isRelayOn());
+  CHECK(last_event_name == "relay_on_local_manual");
+  fsm.cleanupToIdle(1800);
+
+  // Re-arm for the independent sensor path.
+  CHECK(fsm.handleAuthPending(1900, 5000));
+  CHECK(fsm.handleAuthSuccess(1950, 60000, 2000));
+
+  // 5. Passage sensor trigger while ARMED transitions to RELAY_HOLD (turns relay ON!)
   CHECK(fsm.handleSensorTrigger(2000, 1000, 2000));
   CHECK(fsm.state() == GateState::RELAY_HOLD);
   CHECK(fsm.isRelayOn());
   CHECK(last_relay_on);
   CHECK(last_event_name == "relay_on_sensor");
 
-  // 5. Failsafe off during RELAY_HOLD transitions to COOLDOWN (never cleanup directly to IDLE!)
+  // 6. Failsafe off during RELAY_HOLD transitions to COOLDOWN (never cleanup directly to IDLE!)
   fsm.handleRelayFailsafeOff(2500, 2000);
   CHECK(fsm.state() == GateState::COOLDOWN);
   CHECK(!fsm.isRelayOn());
   CHECK(!last_relay_on);
   CHECK(last_event_name == "session_completed");
 
-  // 6. Reset and test AUTH_PENDING timeout
+  // 7. Reset and test AUTH_PENDING timeout
   fsm.cleanupToIdle(3000);
   CHECK(fsm.state() == GateState::IDLE);
 

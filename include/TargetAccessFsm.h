@@ -23,7 +23,9 @@ class TargetAccessFsm {
 
   OtaSafeState otaSafeState() const;
 
-  // State transitions
+  // IDLE or sensor-waiting ARMED -> AUTH_PENDING. This lets a newly
+  // authenticated action 2 replace action-1 pre-arm while relay/cooldown
+  // interlocks remain fail-closed.
   bool handleAuthPending(uint32_t now_ms, uint32_t timeout_ms = 5000);
 
   // Local GATT Auth Proof verification success transitions AUTH_PENDING -> ARMED (arms target for passage sensor).

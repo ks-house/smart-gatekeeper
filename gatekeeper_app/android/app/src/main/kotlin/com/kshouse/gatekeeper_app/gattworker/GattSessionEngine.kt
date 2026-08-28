@@ -194,6 +194,16 @@ class GattSessionEngine(
         transportStatus = error.gattStatus,
         proofMayHaveExecuted = proofMayHaveExecuted,
       )
+    } catch (error: TargetHelloRejectedException) {
+      SessionOutcome.Failure(
+        reason = if (error.status == 2) {
+          AccessReasonCode.TARGET_BUSY
+        } else {
+          AccessReasonCode.PROTOCOL_INCOMPATIBLE
+        },
+        latencyMs = elapsed(started),
+        proofMayHaveExecuted = false,
+      )
     } catch (error: IllegalArgumentException) {
       val reason = if (error.message.orEmpty().contains("protocol")) {
         AccessReasonCode.PROTOCOL_INCOMPATIBLE

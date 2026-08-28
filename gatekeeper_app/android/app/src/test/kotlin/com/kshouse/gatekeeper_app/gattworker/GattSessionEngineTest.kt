@@ -149,6 +149,22 @@ class GattSessionEngineTest {
   }
 
   @Test
+  fun busyTargetHelloIsRetryableAndNotMisreportedAsProtocolMismatch() = runBlocking {
+    val busyTargetHello = targetHello.copyOf().also { it[7] = 2 }
+    val result = GattSessionEngine(
+      FakeTransport(busyTargetHello, challenge, successResult(challenge.copyOfRange(26, 42))),
+      DeterministicFakeCredentialSigner(fixtureSignature),
+      timeoutMs = 1000,
+      clock = MonotonicClock { 100 },
+      mobileBuild = 100,
+    ).run("00:11:22:33:44:55", credential) as SessionOutcome.Failure
+
+    assertEquals(AccessReasonCode.TARGET_BUSY, result.reason)
+    assertTrue(result.retryable)
+    assertFalse(result.proofMayHaveExecuted)
+  }
+
+  @Test
   fun everyFrozenTargetReasonRetainsExactWireCodeAndName() = runBlocking {
     for (targetReason in TargetResultReason.entries) {
       val result = GattSessionEngine(
