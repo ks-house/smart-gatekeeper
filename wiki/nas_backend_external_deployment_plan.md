@@ -703,6 +703,25 @@ encrypted bundle, authenticated manifest and restore result. Owner interactive
 SSH subsequently deleted and verified absence of both exact NAS owner-home
 plaintext export files. The root-only NAS backup is intentionally retained.
 
+### First exact-main deployment attempt
+
+Exact-main run `33199155624` built and attested both immutable backend images,
+created the signed release bundle, joined Tailscale and passed restricted SSH
+setup. The NAS wrapper then failed closed before migration or cutover with
+`MariaDB volume is held by another running project; stop it during first
+adoption`. The legacy API/DB were not removed and no new-stack readiness is
+claimed. Issue #190 records the owner maintenance Gate: retain the existing
+containers and backup, stop exactly the two legacy containers, rerun the
+admitted deployment, then require exact source/status, loopback/public
+readiness, migration, MQTT and rollback evidence.
+
+The still-running legacy Backend reports process liveness for build `7c2764a1`
+but `/ready` is HTTP 503 solely because `legacy_prearm_retired=false`; database,
+schema, MQTT, runtime secrets, control/admin authentication, ACL management and
+build identity checks are true. The exact-identity correlation was previously
+proved, but changing the legacy lookup flag remains an explicit owner/runtime
+cutover decision rather than an automatic CI side effect.
+
 ## 12. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)
