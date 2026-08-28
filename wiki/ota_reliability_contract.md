@@ -663,3 +663,20 @@ already advanced. This is connected automatic rollback and anti-replay proof,
 not a hard power-removal test. The normal success path must use a strictly
 newer exact-main version and observe the full health window plus explicit
 `running image marked VALID after health window` before #172 can close.
+
+## 23. 2026-08-29 connected health-to-VALID acceptance
+
+Final-policy main `21c5d560a82a633831ed40e600cdcf5aad59688f`
+published strictly newer signed/encrypted `2.1.296+main.g21c5d56` in run
+`33204658431`. The previous VALID 293 accepted the manifest, authenticated and
+wrote the inactive image, then booted exact 296 as pending. The application
+logged its health-window start, restored relay OFF, Wi-Fi, exact per-Target
+MQTTS, signed ACL and GATT/iBeacon, and later explicitly logged
+`running image marked VALID after health window`.
+
+A post-VALID reboot selected exact 296 again without reopening the pending
+window and restored the same safety/network/BLE services. Combined with the
+separate 295 pre-VALID reset rollback and durable same-version replay refusal,
+this satisfies issue #172's connected positive and negative OTA acceptance.
+No factory erase or single-slot change occurred. Hard power-removal and the
+relay/sensor/door electrical-mechanical Gates remain separate.
