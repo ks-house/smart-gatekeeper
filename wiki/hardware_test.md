@@ -627,3 +627,21 @@ sensor or physical-door success.
 | WSL encrypted copy readback | Authenticated SSH stream matched the bundle sidecar; AES-256 GPG output and all three local keys are owner-only mode `0600`, and streamed decrypt reproduced SHA-256 `d2321993a1858ec053c614bf6aecb212012f2dd25db59ff2fd49ed42056f418d` without another plaintext file | PASS for this WSL encrypted copy and key readability; keys remain on the same host and recurring/off-site retention is pending |
 | WSL isolated MariaDB restore | Pinned MariaDB digest `be981e4113326ada8d6004174dd09eeaefc03094037f811182a52d4f2e737350` restored the 792,678-byte dump on `127.0.0.1:56889`; exact source/target schema and content inventories passed with measured RTO 1.680 seconds | PASS for one isolated restore of source `7c2764a1a16492ec1620079c8211b47287b1b3fd`; NAS production DB was unchanged, disposable lab cleanup and recurring backup remain pending |
 | Restore-lab cleanup | After explicit owner authorization, both localhost lab containers and their named volumes were removed and verified absent; WSL plaintext tar/sidecar/SQL/inventory/work files were unlinked, then interactive SSH removed and verified absence of the two exact NAS owner-home export files | PASS for temporary plaintext cleanup; recovery remains possible from the mode-0600 encrypted bundle/keys or retained NAS root-only copy |
+
+## 2026-08-29 exact-main 293 install and framework auto-validation root cause
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact publication | Main run `33200199481` built, encrypted, signed, atomically published and HTTPS-read-back commit `c0ac5ed8b9f6cf5860a50f48e760b0cb4df78634` as `2.1.293+main.gc0ac5ed`; encrypted size/SHA-256 were `1,849,860` / `d736d9fe...b910138` | PASS for CI/NAS publication; not installation by itself |
+| Starting Target | A bounded RTS reset booted installed `2.1.288+main.g40852b7`, asserted relay OFF, restored saved Wi-Fi `192.168.35.18`, MQTTS, ACL v336 and GATT | PASS for exact pre-update identity and one fail-safe service recovery |
+| Signed periodic OTA | The 60-second periodic path accepted exact 293, downloaded all `1,849,860` encrypted bytes, verified the inactive image and software-rebooted | PASS for signed manifest, encrypted transport, inactive validation and boot selection |
+| Exact post-update runtime | The next banner was `2.1.293+main.gc0ac5ed`; relay remained OFF and Wi-Fi, MQTTS, ACL v337, GATT/iBeacon and the later `already current` check all returned | PASS for install, reboot, exact identity and bounded runtime recovery |
+| OTA state readback | Read-only `0xe000..0xffff` flash readback showed both selection records already `VALID`; no application health-window/valid-mark trace occurred | FAIL for application-gated health acceptance; successful boot did not exercise `OtaHealthPolicy` |
+| Bootloader identity | The installed 20,976-byte bootloader SHA-256 `646f5c63...b3a5b92f` was byte-identical to the pinned local pioarduino production bootloader, whose ESP32-C6 sdkconfig enables bootloader/app rollback | PASS for exact bootloader identity; disproves a missing rollback-enabled bootloader byte |
+| Root cause | pioarduino `initArduino()` runs before `setup()` and its weak defaults `verifyRollbackLater() == false`, `verifyOta() == true` immediately mark `PENDING_VERIFY` valid | CONFIRMED source/runtime explanation for #172; app health policy is bypassed |
+| Candidate fix | `OtaManager.cpp` now defines a strong C-linkage `verifyRollbackLater()` returning true and compile-fails without `CONFIG_APP_ROLLBACK_ENABLE`; local ELF exposes strong `T verifyRollbackLater` and the production N16 build passes | PASS for local source/build only; a newer merged signed OTA must prove health-window start and explicit valid mark |
+
+No flash write occurred during bootloader/OTA-data readback. The two read-only
+esptool sessions reset the board, so they are runtime perturbations rather than
+passive telemetry. Automatic rollback fault injection, relay contacts/load,
+actual door motion and AJ-SR04T threshold remain unproven.

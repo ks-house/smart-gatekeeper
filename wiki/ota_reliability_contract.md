@@ -613,3 +613,34 @@ or OTA-G4. Issue #172 owns the production N16 bootloader configuration and
 physical rollback proof. No `erase_flash`, factory image or single-slot layout
 was used during bootstrap, and AJ-SR04T/relay-contact acceptance remains a
 separate Gate.
+
+## 21. 2026-08-29 Arduino pre-setup auto-validation root cause
+
+Exact-main Target run `33200199481` published `2.1.293+main.gc0ac5ed`. The
+connected Target upgraded from exact `2.1.288+main.g40852b7` through the signed
+periodic HTTPS path: it downloaded the 1,849,860-byte encrypted artifact,
+verified the inactive image, rebooted into exact 293, restored relay-OFF,
+Wi-Fi, MQTTS, signed ACL and GATT, then reported `already current`.
+
+The missing health trace was not caused by an old or rollback-disabled
+bootloader. Read-only flash evidence proved that the installed 20,976-byte
+bootloader is byte-identical to the pinned pioarduino production bootloader,
+and that build enables both `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` and
+`CONFIG_APP_ROLLBACK_ENABLE`. Both OTA selection records were already `VALID`.
+
+The actual bypass occurs in Arduino core startup before application `setup()`:
+`initArduino()` observes `PENDING_VERIFY`, the weak default
+`verifyRollbackLater()` returns false, and the weak default `verifyOta()`
+returns true, causing an immediate `esp_ota_mark_app_valid_cancel_rollback()`.
+By the time `OtaManager::init()` runs, no pending state remains for its
+30-second relay-safe/Wi-Fi/MQTTS/heap health window.
+
+The Target application therefore supplies a strong C-linkage
+`verifyRollbackLater()` that returns true, and compilation fails if
+`CONFIG_APP_ROLLBACK_ENABLE` is absent. The local N16 production ELF contains
+strong `T verifyRollbackLater`, the matching bootloader digest, and fits both
+7 MiB application slots. This is source/build evidence only. Acceptance still
+requires a strictly newer merged signed OTA to log the application health
+window and explicit valid mark, followed by a separate fault-injected reboot
+that proves automatic selection of the previous bootable slot without erasing
+NVS.

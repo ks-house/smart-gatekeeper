@@ -4326,8 +4326,27 @@
 - One main-WebView action-2 returned terminal `문이 열렸습니다 (4585ms)`; native health stayed `HEALTHY`, and Android recorded successful GATT writes/indications plus normal local disconnect. The stale-app `PROTOCOL_INCOMPATIBLE` did not recur.
 - Exact-main Target `2.1.291+main.g89e047c` is signed/encrypted and NAS-published, not install-confirmed. Physical relay contacts/load, door motion, sensor threshold, screen-off action-1 and rollback remain open Gates.
 
+## [2026-08-29] test | Install exact-main Target 293 through signed periodic OTA
+
+- Main run `33200199481` atomically published exact `c0ac5ed8b9f6cf5860a50f48e760b0cb4df78634` as signed/encrypted `2.1.293+main.gc0ac5ed`; public metadata and sanitized evidence agree on the 1,849,860-byte artifact and SHA-256 `d736d9fe9bf6071f13523837fc95b57632d08d57aafc19cf9aff58875b910138`.
+- A bounded Target reset started exact `2.1.288+main.g40852b7` with relay OFF, Wi-Fi, MQTTS, ACL v336 and GATT. Its 60-second periodic check accepted exact 293, downloaded and verified the inactive image, rebooted into exact 293 and restored relay-OFF, Wi-Fi `192.168.35.18`, MQTTS, ACL v337 and GATT; the next periodic check was already current.
+- This proves exact-main install, reboot and bounded service recovery. No relay contact/load, door motion, sensor threshold, application health-valid or rollback is inferred.
+
+## [2026-08-29] fix | Defer Arduino pre-setup OTA auto-validation
+
+- Read-only bootloader and OTA-data flash evidence showed both OTA records already `VALID`. The installed 20,976-byte bootloader SHA-256 exactly matched the pinned local production bootloader, whose ESP32-C6 sdkconfig enables bootloader/app rollback.
+- Root cause is pioarduino `initArduino()`: before `setup()`, weak defaults `verifyRollbackLater()=false` and `verifyOta()=true` immediately mark the pending image valid, so `OtaManager::init()` cannot start its 30-second health policy.
+- Added a strong C-linkage `verifyRollbackLater()` that defers validation to `OtaManager` and a compile-time error when `CONFIG_APP_ROLLBACK_ENABLE` is absent. Focused tests pass, the local N16 production build succeeds, and the ELF exposes strong `T verifyRollbackLater` while retaining the byte-identical rollback-enabled bootloader.
+- This is local candidate evidence only. Issue #172 remains open pending protected authorization, PR/CI/merge, strictly newer signed connected health-window/valid-mark proof and separate automatic rollback fault injection.
+
 ## [2026-08-29] compile | Authorize exact deferred OTA health candidate
 
 - Added `src/OtaManager.cpp` to the protected surface and authorized immutable feature commit `2d3221ee54b9277bc3783811f17e12658fb93901` through one temporary-exact and one future persistent identity with the same complete ordered 83-path digest map.
 - Relative to the current baseline, only `src/OtaManager.cpp` and `.github/workflows/deploy.yml` differ; regression coverage pins both normalized digests, the feature identity, exact inventories and indivisible bundle semantics.
 - This policy-only authorization does not publish or install firmware and does not prove the Target health window, VALID mark, rollback, relay contact, sensor threshold or door movement.
+
+## [2026-08-29] test | Reconnect deferred OTA health feature to trusted main
+
+- Policy PR #193 merge-commit merged as main `482f127e388318d53a0da7627036fde55f84114b`, then that exact `origin/main` was merge-connected into immutable feature commit `2d3221ee54b9277bc3783811f17e12658fb93901` without rebasing or squashing.
+- Both protected feature blobs remain byte-identical to the approved 83-path bundle; the merge preserves the policy and feature parents for hosted ancestry verification.
+- This connection is CI trust evidence only. Publication, connected 30-second health validation, VALID marking, rollback, relay contact and door movement remain separate Gates.
