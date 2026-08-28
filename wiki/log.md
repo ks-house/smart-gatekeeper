@@ -4368,3 +4368,9 @@
 - Final policy PR #194 merge-commit produced exact main `21c5d560a82a633831ed40e600cdcf5aad59688f`; run `33204658431` atomically published signed/encrypted `2.1.296+main.g21c5d56` with matching 1,849,876-byte HTTPS artifact evidence and SHA-256 `007de3ea24d352731c228c3d585ce7ad71c3eaab3aa92cf623ba7159bcdeeecf`.
 - Previous VALID 293 accepted 296, verified the inactive image and booted exact 296 with `pending image health window started`; relay remained OFF and Wi-Fi, MQTTS, ACL v347 and GATT/iBeacon recovered before `running image marked VALID after health window` was observed.
 - One post-VALID reboot retained exact 296 without another pending window and recovered relay OFF, Wi-Fi, MQTTS, ACL v348 and GATT/iBeacon. Together with the separate 295 pre-VALID rollback trial, issue #172 acceptance is complete; hard power-removal and physical relay/sensor/door Gates remain open.
+
+## [2026-08-29] test | Retain exact 297 and reconfirm owner-gated NAS adoption
+
+- Docs-main run `33205843351` atomically published signed/encrypted `2.1.297+main.gf3f4121`; connected VALID 296 accepted it, verified the inactive image, booted with relay OFF, restored Wi-Fi, MQTTS, ACL v351 and GATT/iBeacon, then emitted `running image marked VALID after health window`.
+- A post-VALID reset retained exact 297 without another pending window and recovered relay OFF, Wi-Fi, MQTTS, ACL v352 and GATT/iBeacon. This is application-slot and service-recovery evidence, not physical relay-contact, load or door-motion proof.
+- Fresh exact-main status-only run `33207086898` passed Tailscale OIDC, pinned private SSH and forced dispatcher with retained `status=not-deployed`; all publication and `apply` jobs were skipped. Public `/live` still reports legacy build `7c2764a1`, and `/ready` remains HTTP 503 solely because `legacy_prearm_retired=false`, so issue #190 remains an owner maintenance Gate.
