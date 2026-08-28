@@ -4094,3 +4094,15 @@
 - Remote `origin/main` and local `main` both resolve to exact commit `21e71d1c8faf469d101a477207276a80297873c8`; repository permission is ADMIN and main enforces the hosted trusted-policy status check with administrators included.
 - Existing `production` Environment requires reviewer `tworimpa` and permits only branch `main`. No backend deployment Environment variables or the five new backend deployment secrets exist yet; existing OTA/mobile secrets were inventoried by name only and left unchanged.
 - The current protected-path regression correctly rejects the unrotated 13-file backend deployment inventory expansion. The feature must be frozen at an immutable commit and admitted through a separate base-policy authorization before its PR can merge.
+
+## [2026-08-29] compile | Authorize exact backend NAS CI candidate
+
+- Froze and published backend-NAS feature commit `2cda04bc0ec7aff3192fc65292eb946fb5b57929` on `codex/backend-nas-ci`; it remains unmerged and has not dispatched a production workflow or changed the NAS.
+- Expanded the protected inventory from 69 to 82 paths and pinned the complete normalized map in `temporary-backend-nas-2cda04b` and `future-backend-nas-2cda04b-persistent-baseline`. Exactly 18 protected objects are changed or new relative to base main.
+- The 42 focused trusted-policy tests pass locally. Hosted policy review/merge, merge-connection into the feature, fresh feature CI, feature merge and final baseline rotation remain required before any owner-approved deployment.
+
+## [2026-08-29] lint | Merge-connect backend NAS CI authorization
+
+- Policy PR #185 passed the hosted `Verify protected files against trusted base policy` check and merge-commit merged as policy main `40852b7ae341873cd4a5876dd5b1f5aad7ce6788`.
+- Merge-connected that policy main into the immutable feature branch without rebasing or squashing, retaining reviewed feature parent `2cda04bc0ec7aff3192fc65292eb946fb5b57929` and the policy ancestry.
+- Fresh hosted feature checks, feature merge, final baseline rotation and owner-approved Environment/NAS deployment remain required. This merge connection does not materialize secrets, publish GHCR images or change the NAS.

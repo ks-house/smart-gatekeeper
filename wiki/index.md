@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (isolated restore and all temporary plaintext cleanup complete; recurring off-site backup and CI production setup remain pending)
+> Last updated: 2026-08-29 (backup/restore and plaintext cleanup complete; backend NAS policy merged and fresh feature CI pending)
 
 ---
 

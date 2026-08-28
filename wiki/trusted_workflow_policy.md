@@ -9,7 +9,8 @@ The job has only `contents: read`. Pull-request titles, branches, file contents,
 ## 2. Protected bundle decision
 
 The machine-readable policy is `.github/workflow-policy/trusted_workflow_policy.json`; the base validator is
-`scripts/verify_trusted_workflow_policy.py`. Policy format version 3 protects 69 files as one indivisible
+`scripts/verify_trusted_workflow_policy.py`. The current backend-NAS authorization candidate expands policy
+format version 3 from 69 to 82 files as one indivisible
 bundle. It includes every current workflow plus the validator itself. Its exact namespace inventories are:
 
 - `.github/workflows/`: the seven current workflow files; additions, removals, renames, case variants,
@@ -30,8 +31,8 @@ not rely only on a workflow/gate assertion about that lock file: removal or any 
 same complete-bundle digest decision before a secret-bearing publisher can run.
 
 It also includes `personal_installation_firmware.yml`, `protocol.yml`,
-`trusted_workflow_policy.yml`, and `scripts/verify_trusted_workflow_policy.py`, followed by the exact 59
-backend and operations inputs authorized for PR #67: the backend-security
+`trusted_workflow_policy.yml`, and `scripts/verify_trusted_workflow_policy.py`, followed by the exact 72
+backend and operations inputs in `ops/backend_trusted_bundle_paths.json`: the backend-security
 workflow, Orca setup input, commercial-operations gate, evidence/SLO fixtures and policies, backend runtime,
 locked dependencies, static admin surfaces, production Compose and database migration inputs, SBOM/supply
 chain policy, backend tests, and canonical protocol vectors. The JSON policy contains the authoritative
@@ -398,3 +399,36 @@ inventories remain unchanged from the reviewed candidate. This rotation does
 not build, publish or install firmware; exact-main NAS publication, Target OTA,
 boot-order evidence, mobile repetition and physical sensor/contact checks stay
 separate.
+
+## 5. Backend Synology CI transition candidate
+
+The immutable backend-NAS feature commit is
+`2cda04bc0ec7aff3192fc65292eb946fb5b57929` on repository
+`ks-house/smart-gatekeeper`. It expands the protected backend inventory by 13
+paths and changes or adds 18 protected objects relative to base main. The
+complete 82-file normalized map is duplicated exactly in two bounded
+authorizations:
+
+- `temporary-backend-nas-2cda04b` admits only that exact repository and commit.
+- `future-backend-nas-2cda04b-persistent-baseline` admits only proven
+  same-repository descendants retaining all 82 exact protected bytes.
+
+The newly protected surface contains `backend/compose.synology.yml`, all eleven
+`backend/deploy/` operational inputs and
+`backend/tests/test_nas_backend_deploy.py`. The other changed protected objects
+are the backend security workflow and inventory, administrator secret-file
+support, production Compose contract and its direct security test. Regression
+tests pin the ordered 82-path set, both source identities, all normalized
+digests, exact workflow/action inventories and the 18-path candidate delta.
+
+This policy-only candidate must pass the hosted trusted check and merge first.
+Its main merge commit must then be merge-connected into the immutable feature
+branch without rebasing or squashing. Fresh feature CI must pass before any
+feature merge. A final policy-only rotation must remove both transition
+identities and pin the actual feature merge commit as the sole
+`current-main-baseline`.
+
+This authorization does not create GitHub Environment values, materialize a
+secret, publish a GHCR image, open an SSH session, migrate MariaDB, replace the
+legacy containers, change router/NAS/Tailscale state or prove production
+readiness. Those remain separately observed deployment Gates.

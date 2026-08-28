@@ -159,6 +159,23 @@ protocol boundary**. The non-retryable result was not repeated. This run safely
 failed before relay actuation and provides no physical contact or door-motion
 evidence.
 
+## 2026-08-29 backend NAS GitHub CI policy connection
+
+- The backend-NAS implementation is frozen as immutable feature commit
+  `2cda04bc0ec7aff3192fc65292eb946fb5b57929` and published only to branch
+  `codex/backend-nas-ci`; it has not merged into `main` or deployed to the NAS.
+- Policy PR #185 expanded the indivisible protected set from 69 to 82 paths,
+  passed the hosted trusted check and merge-commit merged as main `40852b7a`.
+  That main is merge-connected into the feature without rebasing or squashing;
+  fresh feature CI is still pending.
+- The GitHub `production` Environment already has owner review and a `main`-only
+  branch rule, while backend-specific Tailscale/NAS variables and five secrets
+  are still absent. Therefore no GHCR image publication, SSH dispatch, database
+  migration, legacy-container cutover or readiness claim has occurred.
+- Required order now resumes at fresh feature CI, feature merge, final baseline
+  rotation, then an owner-approved canary/final NAS deployment using separately
+  provisioned identities.
+
 ## 2026-08-26 issue #179 Bluetooth-state recovery candidate
 
 - Android's modern implicit-broadcast limits make a manifest-only
