@@ -4133,3 +4133,15 @@
 
 - DSM includes `/etc/sudoers.d`; the deploy fragment is root-owned mode `0440`, policy parsing succeeds, and `github-nas-deploy` receives exactly two NOPASSWD commands: the root wrapper's `apply` and `status`. A negative `/bin/id` sudo probe is denied.
 - Exact `status` invocation fails before wrapper execution because `/volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh` is not installed. Validate both staged operational scripts against their protected digests and install only those root-owned mode-0755 files before repeating status and forced-SSH tests.
+
+## [2026-08-29] test | Install exact NAS deploy scripts and pass local status
+
+- Owner readback confirms the staged and installed deploy wrapper SHA-256 `085a48e4aaa79ef67ac6e962b7ea6163b0a10786f40c451def48e272eda8b3eb` and forced dispatcher SHA-256 `6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98` match exactly.
+- Both installed scripts are root-owned mode `0755`. The dedicated deploy account's exact allowed sudo command now returns `status=not-deployed` with exit code zero, proving local wrapper discovery and narrow sudo execution without applying a release.
+- This is not SSH, image publication, deployment, migration, readiness or rollback evidence. PR #186 remains unmerged and no production workflow has run.
+
+## [2026-08-29] test | Isolate forced-SSH failure to deploy-user authentication
+
+- A WSL batch-mode probe using the dedicated Ed25519 deploy identity and strict known-host checking reached public DSM SSH port `4422` but was rejected with `Permission denied (publickey,password)` for `github-nas-deploy`.
+- Both requested `status` and a negative arbitrary-command probe failed at authentication with exit code 255, before the forced dispatcher or sudo wrapper ran. The separate OpenSSH post-quantum warning is not the authentication cause.
+- Do not broaden or restart DSM SSH on this evidence. Next inspect only the deploy account shell/groups, home and `.ssh/authorized_keys` ownership/modes/symlink state, installed key fingerprint, and effective SSH allow/deny policy; use the documented owner-account forced-key fallback only if DSM's non-admin admission restriction is confirmed.

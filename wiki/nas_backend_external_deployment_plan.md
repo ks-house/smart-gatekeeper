@@ -558,28 +558,34 @@ background success, or Target OTA health.
 
 ## 11. Implementation backlog
 
-1. `DONE (repository)` Collect NAS/DSM/CPU/Compose/storage facts; off-NAS data
-   backup/restore remains open.
+1. `DONE (live inventory)` Collect NAS/DSM/CPU/Compose/storage facts and prove
+   one encrypted off-NAS backup plus isolated exact-inventory restore. A
+   recurring independent backup destination remains open.
 2. `DONE (repository design)` Select ephemeral Tailscale plus restricted
-   OpenSSH forced command; live DSM account compatibility and tailnet grant are
-   still unproven.
+   OpenSSH forced command. The dedicated non-admin account passes its exact
+   local sudo `status` probe, but public-port SSH rejects its deploy key before
+   the forced dispatcher runs; account key metadata and DSM SSH admission still
+   require read-only diagnosis, and the tailnet grant remains unproven.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed
    release descriptor to the protected backend workflow. No image has yet been
    published by this candidate.
-5. `DONE (host tests)` Add the fail-closed deploy wrapper, forced dispatcher,
-   lock, signature/hash checks, first-adoption ownership preflight, readiness and
-   evidence. Exact DSM execution remains pending.
+5. `DONE (NAS install and local status)` Add and install the fail-closed deploy
+   wrapper and forced dispatcher with exact protected hashes, root ownership and
+   mode `0755`. The dedicated account's exact NOPASSWD `status` command returns
+   `status=not-deployed`; SSH transport into that dispatcher remains pending.
 6. `DONE (NAS layout preparation)` Add and owner-execute a no-cutover legacy bootstrap for the
    confirmed DB user/password pair, active personal admin credential, exact
    target config, NAS-local secret files and external volume layout. Existing
    API/DB remained running. Independent read-only layout/ACL readback passed;
    exact boolean tenant/door/Target correlation also passed at snapshot/applied
    ACK 314. The technical path is present, while the owner lookup-disable
-   decision and off-NAS restore remain blocking.
-7. `P0` Prove logical backup plus isolated restore before the first DB-changing
-   deployment.
+   decision remains separate from deployment automation.
+7. `DONE (pre-cutover backup Gate)` Prove a consistent logical backup,
+   authenticated off-NAS transfer, encrypted WSL copy and isolated exact-
+   inventory restore before the first DB-changing deployment. Recurring 3-2-1
+   scheduling and key separation remain operational hardening work.
 8. `P1` Run owner-approved manual canary and rollback rehearsal.
 9. `P1` Configure the protected GitHub `production` Environment, Tailscale OIDC
    client/tag grant, strict NAS host key and Environment secrets/variables.
