@@ -4295,3 +4295,9 @@
 - Workflow YAML parsing, Markdown relative links, shell syntax, `git diff --check`, the 35-check commercial repository contract and all 134 backend tests passed; two real-MariaDB lanes remain explicit opt-in skips.
 - After installing the separate hash-locked OTA requirements into the existing local virtual environment, root discovery ran 316 tests with one explicit skip. The only two failures are the expected indivisible trusted-bundle digest/coherence rejection for the newly changed protected bytes; no functional or collection error remains.
 - This is local repository evidence only. The protected policy is not rotated, the branch is not merged, the status workflow is not dispatched and no release `apply`, image publication, container or database change ran.
+
+## [2026-08-29] test | Reconnect final NAS OIDC feature to trusted main
+
+- Merged policy PR #188 as merge commit `29cf3d0808959906647e7cf541f6c42b877514d4`, then merged that exact `origin/main` into the unchanged final feature commit `25562d1e1ae57bb52a8a0317de8d07a9a1365bef` without rebasing or squashing.
+- The seven protected feature paths remain byte-identical to commit `25562d1`; the focused trusted-policy and NAS-deployment suites passed 54/54 after the merge.
+- This reconnects PR #186 to its approved ancestor for hosted CI only. The status-only workflow has not yet been dispatched, no production approval or deployment `apply` ran, and NAS containers and database remain unchanged.
