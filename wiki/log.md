@@ -4392,3 +4392,9 @@
 - The Hardwareless host suite passed 12/12, including the production C++ protocol/FSM executable. The Android Gradle 9.1 targeted GATT suite freshly executed 35 tests across six XML suites with zero failures or errors.
 - `esp32c6_personal_production` built successfully at 1,783,096/7,340,032 bytes flash and 67,096/327,680 bytes RAM. Diff whitespace validation passed; unrelated untracked `test.sh` remains untouched.
 - These checks establish source/build behavior only. The protected Target/workflow byte change still needs separate immutable trusted-policy authorization before feature merge, then signed OTA/install and connected action-1-followed-by-action-2 relay-command evidence.
+
+## [2026-08-29] compile | Authorize exact action-2 ARMED replacement candidate
+
+- Reviewed immutable PR #198 feature commit `828820da348afc509bc21ebd0b13f1c023563415`. Relative to current policy main, only protected `.github/workflows/deploy.yml` changes, to normalized digest `88cdf941...`; it pins the two changed Target FSM build inputs.
+- Added one exact feature identity and one future persistent identity with the same complete ordered 83-path map. The prior `a2f7ae2` source baseline is retired; tests require exact repository/SHA ancestry, inventories and indivisible protected bytes.
+- This policy-only candidate changes no runtime or device state. Policy CI/merge, merge-connection into PR #198, fresh feature CI, signed publication/install and connected action-2 relay-command evidence remain separate Gates.
