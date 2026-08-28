@@ -93,7 +93,7 @@ db_scalar() {
   ' sh "$query"
 }
 
-require_directory_contract "$DEPLOY_BASE" 0 0 700
+require_directory_contract "$DEPLOY_BASE" 0 0 711
 require_directory_contract "$SECRET_DIR" 0 0 700
 require_directory_contract "$API_STATE_DIR" 10001 10001 700
 require_directory_contract "$MIGRATION_BACKUP_DIR" 0 0 700

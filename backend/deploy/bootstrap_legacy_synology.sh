@@ -159,7 +159,8 @@ docker volume inspect "$MARIADB_VOLUME" >/dev/null 2>&1 || die "existing MariaDB
 [[ "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/app/gatekeeper_apk"}}{{.Source}}{{end}}{{end}}' "$LEGACY_API")" == "$APK_SOURCE" ]] || \
   die "legacy APK bind mapping changed"
 
-install -d -o root -g root -m 700 "$DEPLOY_BASE" "$SECRET_DIR" "$MIGRATION_BACKUP_DIR"
+install -d -o root -g root -m 711 "$DEPLOY_BASE"
+install -d -o root -g root -m 700 "$SECRET_DIR" "$MIGRATION_BACKUP_DIR"
 install -d -o 10001 -g 10001 -m 700 "$API_STATE_DIR"
 STAGING="$(mktemp -d "${DEPLOY_BASE}/.bootstrap.XXXXXX")"
 chmod 700 "$STAGING"

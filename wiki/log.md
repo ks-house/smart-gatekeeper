@@ -4118,3 +4118,186 @@
 - Policy PR #185 passed the hosted `Verify protected files against trusted base policy` check and merge-commit merged as policy main `40852b7ae341873cd4a5876dd5b1f5aad7ce6788`.
 - Merge-connected that policy main into the immutable feature branch without rebasing or squashing, retaining reviewed feature parent `2cda04bc0ec7aff3192fc65292eb946fb5b57929` and the policy ancestry.
 - Fresh hosted feature checks, feature merge, final baseline rotation and owner-approved Environment/NAS deployment remain required. This merge connection does not materialize secrets, publish GHCR images or change the NAS.
+
+## [2026-08-29] test | Pass hosted backend CI and bootstrap production identities
+
+- Feature PR #186 head `cbaaf9ec17c2bf201d80e1d101ce9c2a5dcf2195` passed the hosted trusted-policy, OTA-contract and backend-security/MariaDB checks. PR-only image publication, attestation, evidence verification and NAS deployment jobs all skipped as designed.
+- Generated independent P-256 release-signing and Ed25519 deploy identities in a mode-0700 WSL directory with mode-0600 files. Registered only their private inputs as `production` Environment secrets without printing values; the public release key and SSH public key remain to be installed through the trusted NAS administration path.
+- Set confirmed Environment variables `NAS_DEPLOY_PORT=4422` and `NAS_PUBLIC_API_URL=https://tworimpa.synology.me:4442`. Pinned NAS known-host data, Tailscale workload identity/audience, exact tailnet host and restricted deploy user remain unset, so feature merge and production execution remain blocked.
+
+## [2026-08-29] test | Hold NAS deploy endpoint on incomplete key and sudo validation
+
+- Owner readback confirms the dedicated deploy home exists. The release-public-key DER probe returned SHA-256 `e3b0c442...b855`, which is the empty-input digest rather than the expected key identity; file metadata, non-empty state and the DSM `openssl` executable path must be separated before reinstall or acceptance.
+- DSM reports no `visudo` command. The sudoers fragment is not accepted on that basis; use sudo policy parsing/listing and an exact forced-command execution probe, and stop on any parse, include-policy or permission mismatch.
+- PR #186 remains unmerged. No GHCR publication, migration, container cutover or NAS deployment is authorized by these partial endpoint results.
+
+## [2026-08-29] test | Identify missing NAS release public key installation
+
+- Owner `stat` readback confirms `/volume1/docker/smart-gatekeeper-backend/trust/release-signing-public.pem` does not exist. This explains the prior empty-stream SHA-256 and narrows the fault to public endpoint staging/installation, not the WSL private key or GitHub Environment secret.
+- Require the staged public key to parse and match the independently recorded DER SHA-256 before a single root-owned mode-0644 install. Keep PR #186 unmerged until installed-key readback and restricted sudo/forced-command checks pass.
+
+## [2026-08-29] test | Install exact NAS release verification key
+
+- The staged 178-byte public key parsed successfully and its P-256 DER SHA-256 matched the independently generated identity `73585ffb...cad`; the owner then installed only that public key as root-owned mode `0644` under the NAS deployment trust directory.
+- Installed-key parse/readback reproduced the same exact DER identity and reports `release_public_key_install=passed`. This closes release-verification key placement only; restricted sudo, forced SSH, pinned host key, Tailscale identity and first deployment remain pending.
+
+## [2026-08-29] test | Accept restricted sudo policy and identify missing wrapper
+
+- DSM includes `/etc/sudoers.d`; the deploy fragment is root-owned mode `0440`, policy parsing succeeds, and `github-nas-deploy` receives exactly two NOPASSWD commands: the root wrapper's `apply` and `status`. A negative `/bin/id` sudo probe is denied.
+- Exact `status` invocation fails before wrapper execution because `/volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh` is not installed. Validate both staged operational scripts against their protected digests and install only those root-owned mode-0755 files before repeating status and forced-SSH tests.
+
+## [2026-08-29] test | Install exact NAS deploy scripts and pass local status
+
+- Owner readback confirms the staged and installed deploy wrapper SHA-256 `085a48e4aaa79ef67ac6e962b7ea6163b0a10786f40c451def48e272eda8b3eb` and forced dispatcher SHA-256 `6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98` match exactly.
+- Both installed scripts are root-owned mode `0755`. The dedicated deploy account's exact allowed sudo command now returns `status=not-deployed` with exit code zero, proving local wrapper discovery and narrow sudo execution without applying a release.
+- This is not SSH, image publication, deployment, migration, readiness or rollback evidence. PR #186 remains unmerged and no production workflow has run.
+
+## [2026-08-29] test | Isolate forced-SSH failure to deploy-user authentication
+
+- A WSL batch-mode probe using the dedicated Ed25519 deploy identity and strict known-host checking reached public DSM SSH port `4422` but was rejected with `Permission denied (publickey,password)` for `github-nas-deploy`.
+- Both requested `status` and a negative arbitrary-command probe failed at authentication with exit code 255, before the forced dispatcher or sudo wrapper ran. The separate OpenSSH post-quantum warning is not the authentication cause.
+- Do not broaden or restart DSM SSH on this evidence. Next inspect only the deploy account shell/groups, home and `.ssh/authorized_keys` ownership/modes/symlink state, installed key fingerprint, and effective SSH allow/deny policy; use the documented owner-account forced-key fallback only if DSM's non-admin admission restriction is confirmed.
+
+## [2026-08-29] test | Confirm dedicated DSM deploy account cannot carry forced SSH
+
+- Owner readback confirms `github-nas-deploy` is an unprivileged `users`-only account with home `/var/services/homes/github-nas-deploy`, but its shell is `/sbin/nologin` and both `.ssh` and `authorized_keys` are absent.
+- The expected deploy-key fingerprint is therefore not installed or comparable. No explicit global `AllowUsers`, `AllowGroups`, `DenyUsers`, `DenyGroups`, `AuthorizedKeysFile`, `PubkeyAuthentication` or `StrictModes` directive was reported; three unrelated per-user `Match` blocks exist.
+- Do not add this account to `administrators`, change its shell, or broaden/restart DSM SSH. Preflight the already SSH-capable owner account and, if its metadata is compatible, add only a distinct forced-command deploy key plus the same exact two-command sudo policy.
+
+## [2026-08-29] test | Pass owner-account forced-key fallback preflight
+
+- Owner account `noty00` has `/bin/sh`, established SSH capability and membership in `users`, `administrators` and `family`. Its home is an owned, non-symlink mode-`0711` directory; `.ssh` and `authorized_keys` do not exist, so no existing key entry can be overwritten or reordered.
+- Its current sudo policy is password-required `(ALL) ALL`; it does not yet provide the non-interactive exact wrapper calls needed by the dispatcher. The fallback must add only NOPASSWD `apply` and `status`, while a cache-cleared negative arbitrary-command probe must remain denied.
+- Proceed only with an atomically installed single deploy-key entry whose forced command is the root-owned dispatcher and whose fingerprint is `SHA256:fP1WpvmwNwI8tWQTDY3pTxSK0jR4yxFBRoYFt2aeHB8`. Existing password SSH remains unchanged; PR #186 and deployment remain blocked pending positive `status` and negative escape tests.
+
+## [2026-08-29] test | Reach forced dispatcher path but fail its NAS execution permission
+
+- The owner-account deploy key now authenticates on DSM SSH `4422`: both requested `status` and an arbitrary-command negative probe are replaced with the configured forced dispatcher path. This closes key selection/authentication but not dispatcher execution.
+- Both requests return shell exit code 126 with `sgk_backend_ssh_dispatch.sh: Permission denied`, before dispatcher command filtering or sudo execution. The identical result does not prove the escape-negative contract because the dispatcher never started.
+- The installed file was previously read back root-owned mode `0755`; inspect every parent directory's execute/traverse bit, Synology ACL and `/volume1` mount flags. Do not recursively relax the deployment tree: only the dispatcher path may become traversable, while secrets, trust, releases, incoming data and runtime configuration stay root-only. The separate post-quantum warning remains unrelated.
+
+## [2026-08-29] test | Detect protected-bundle drift after fallback documentation
+
+- Fresh PR #186 checks at head `afb3cde` reject the modified protected `backend/deploy/README.md` digest and the mixed candidate bundle; backend security still passes and all publish/deploy jobs remain skipped.
+- This is the trusted-policy mechanism working as designed, not an OTA functional regression. Do not merge the feature or weaken the policy; combine the live dispatcher-path correction with a newly frozen exact bundle and repeat the separate base-policy authorization flow.
+- The untracked local `test.sh` is unrelated user workspace state and remains untouched.
+
+## [2026-08-29] fix | Preserve minimal forced-dispatcher path traversal
+
+- Live NAS readback confirms `/volume1` mode `0755` and `/volume1/docker` mode `0555` are traversable, while deployment base and `bin` are root-owned mode `0700`; the root-owned dispatcher itself is mode `0755`. Synology reports Linux mode rather than an ACL, and the Btrfs mount has no `noexec` flag.
+- Changed the bootstrap and verifier contract to base mode `0711`, documented and tested a root-owned mode-`0755` `bin`, and kept secret, trust, releases, incoming, migration-backup and runtime data root-only. Base `0711` permits traversal without directory listing and is not applied recursively.
+- Changed the root wrapper to require the exact base/bin contracts and to preserve base `0711` during every apply, preventing the first deployment from silently restoring mode `0700` and breaking later SSH status/rollback operations.
+
+## [2026-08-29] test | Validate dispatcher traversal correction before policy rotation
+
+- Bash syntax and all 11 focused NAS deployment tests pass with the base/bin permission contract. The full backend suite passes 133 tests with the same two explicit real-MariaDB opt-in skips.
+- The full repository suite passes 315 of 316 tests with one expected trusted-policy coherence failure because the newly corrected protected bytes are not yet an authorized indivisible bundle. This is the next required policy step, not a functional test waiver.
+- `git diff --check` passes. No NAS mode, deployed script, container, database, release, Environment variable or PR merge changed during the source correction.
+
+## [2026-08-29] fix | Resolve Synology Docker under forced sudo PATH
+
+- After the exact base/bin mode correction, the deploy key reaches and executes the dispatcher. The arbitrary command is rejected with exit 126 as required, but `status` stops in wrapper preflight because DSM's forced `sudo -n` PATH does not contain `docker`.
+- Added the same bounded Docker resolution used by the successful legacy bootstrap: executable Container Manager/legacy package paths, `/usr/local/bin`, then an executable PATH result. The wrapper invokes the resolved absolute binary and does not change sudo PATH, create a symlink or grant Docker-group access.
+- This remains source/host-test work only. No release apply, container mutation, database operation or PR merge is authorized by the negative live probe.
+
+## [2026-08-29] test | Validate forced-sudo Docker path correction
+
+- Bash syntax, all 11 focused NAS deployment tests and the complete 133-test backend suite pass; the two real-MariaDB tests remain explicit opt-in skips.
+- The regression contract pins both supported Synology package paths and absolute resolved execution while rejecting the old literal Docker command preflight and any return to base mode `0700`.
+- A fresh wrapper hash, trusted owner-path installation and live forced `status` readback are still required. The old NAS wrapper must not receive `apply`.
+
+## [2026-08-29] test | Pass corrected NAS forced-SSH endpoint contract
+
+- Owner staging and installation matched corrected wrapper SHA-256 `c0b30b0149e5d6d466a0b451e7e6b2934d231820d209a9608eded946308711d9`; the root-owned mode-`0755` installed file is 18,277 bytes. The exact predecessor was preserved root-only mode `0600` with its original SHA-256 under migration backups.
+- Base `0711`, bin `0755`, local exact `status=not-deployed` and cache-cleared negative arbitrary sudo all passed. Sensitive paths retained their prior root-only modes; no apply, container or database action ran.
+- WSL batch-mode deploy-key SSH then returned `status=not-deployed` with exit zero. An attempted `sh -c id` was replaced by the forced dispatcher, printed only the allowlist and returned exit 126. This proves the forced endpoint over the temporary public bootstrap path, not Tailscale/OIDC, deployment, readiness, rollback or physical behavior.
+
+## [2026-08-29] compile | Bind confirmed forced-SSH owner in GitHub Environment
+
+- Published the live forced-endpoint evidence on feature head `6cf2a60d3269ac1a00720c1cf9a88529f2fa7012` and verified the remote branch matches.
+- Added only confirmed non-secret Environment variable `NAS_DEPLOY_USER=noty00`; existing `NAS_DEPLOY_PORT` and `NAS_PUBLIC_API_URL` remain. No secret value was printed or changed.
+- Tailscale workload client ID/audience, exact private NAS hostname and its pinned SSH known-host entry remain unset. No workflow deployment, image publication, release apply or PR merge ran.
+
+## [2026-08-29] compile | Pin exact GitHub OIDC trust contract
+
+- Read-only GitHub API reports the repository uses its default OIDC subject and has not enabled immutable subjects. Because the deploy job binds `production`, the exact Tailscale trust subject is `repo:ks-house/smart-gatekeeper:environment:production`.
+- Confirmed the deploy job already grants `id-token: write`, requests only `tag:sgk-github-deploy`, and consumes client ID/audience through the protected Environment. The remaining private-path inputs are still absent rather than guessed.
+- WSL has no Tailscale CLI. Obtain only the NAS self IPv4/FQDN from DSM/Tailscale, then pin the port-4422 host key after fingerprint comparison. No `apply`, image publication, PR merge, container change or database change ran.
+
+## [2026-08-29] test | Isolate NAS Tailscale CLI lookup boundary
+
+- The non-root NAS probe returned `TAILSCALE_CLI=not_found` even though Package Center previously proved the Tailscale `1.58.2-700058002` package is running and connected.
+- Treat this as a PATH or package-directory execution boundary, not evidence that Tailscale is absent. Next inspect only root-readable package metadata and executable paths; do not reinstall, restart, re-authenticate or change tags.
+- No Tailscale policy, GitHub Environment, SSH, deployment, container or database state changed.
+
+## [2026-08-29] test | Challenge the assumed DSM shell boundary
+
+- The follow-up root probe found neither `synopkg` nor `/var/packages/Tailscale`, so the active shell is not yet proven to be the DSM host. It may be WSL or a container, and the earlier package evidence remains separate.
+- Next identify only hostname, `/volume1`, DSM tool paths and container markers before any further Tailscale command. Do not infer package removal and do not reinstall or restart it.
+- No NAS, Tailscale, GitHub, container, database or deployment state changed.
+
+## [2026-08-29] test | Confirm DSM host and isolate Synology tool PATH
+
+- Readback proves user `noty00` is on hostname `tworim423`, kernel `4.4.302+` x86_64, with `/volume1`, `/etc.defaults/VERSION`, `/var/packages` and `/usr/syno/bin/synopkg`; Docker and WSL markers are absent.
+- The earlier `synopkg: not found` was therefore the root shell's restricted PATH. The unresolved fact is the exact registered Tailscale package name/location because `/var/packages/Tailscale` was absent in that probe.
+- Continue with absolute Synology tool paths and read-only package-name discovery. Do not reinstall, restart, re-authenticate, retag or deploy.
+
+## [2026-08-29] test | Confirm running DSM Tailscale package identity
+
+- Absolute Synology package queries confirm exact package ID `Tailscale`, running status and version `1.58.2-700058002`; lowercase `tailscale` is correctly reported as a different non-installed ID.
+- Both `/var/packages/Tailscale` and `/volume1/@appstore/Tailscale` are present. The prior missing-path output did not prove removal and no reinstall or restart is needed.
+- Next invoke only the packaged CLI under root to read its version and this NAS's private Tailscale IPv4. No authentication, tag, policy, deployment, container or database state changed.
+
+## [2026-08-29] test | Pin verified private NAS SSH endpoint in GitHub
+
+- The root-readable packaged CLI reports exact NAS Tailscale IPv4 `100.95.243.92`. WSL reaches TCP `4422` through that private address and reads ED25519, ECDSA and RSA host keys.
+- The private endpoint's ED25519 and ECDSA fingerprints intersect the previously trusted public-bootstrap DSM host keys. Stored only the matched ED25519 line as `NAS_DEPLOY_KNOWN_HOSTS` and set `NAS_TAILSCALE_HOST=100.95.243.92` in the protected `production` Environment without printing the key blob.
+- Tailscale OIDC client ID/audience and least-privilege tailnet grant remain pending. No workflow dispatch, release apply, image publication, PR merge, container or database change ran.
+
+## [2026-08-29] test | Detect tailnet wildcard grant blocking CI isolation
+
+- Owner readback confirms the active policy contains the default `src=["*"]`, `dst=["*"]`, `ip=["*"]` grant. A new narrow CI grant would be additive and therefore would not restrict the tagged runner while this rule remains.
+- The compatibility candidate is `autogroup:member -> *` for existing user-owned devices plus `tag:sgk-github-deploy -> 100.95.243.92:tcp/4422`. First inventory existing tagged devices because member selectors do not cover tag identities; never preserve all tags with another wildcard that would include CI.
+- No tailnet policy was saved and no OIDC credential, workflow, deployment, container or database state changed.
+
+## [2026-08-29] test | Confirm no visible tagged machines in tailnet overview
+
+- The owner-provided Machines overview shows three user-owned devices and no tag badges. Connected NAS `tworim423` displays the already verified Tailscale IPv4 `100.95.243.92`.
+- This closes the visible tag inventory only. The overview does not show whether any device advertises subnet routes, so that detail must be checked before replacing the wildcard grant.
+- No tailnet policy, device identity, OIDC credential, workflow, deployment, container or database state changed.
+
+## [2026-08-29] test | Read one machine's empty Tailscale route detail
+
+- The provided machine-detail capture states that the selected machine exposes no routes; Exit Node is `Not Allowed` and no Apps entry is configured.
+- The screenshot omits the machine name, so this closes only that selected machine's route state. Confirm it is `tworim423` and check the two remaining user devices before declaring the whole tailnet free of subnet routers.
+- No route, exit-node, app, policy, OIDC, deployment, container or database state changed.
+
+## [2026-08-29] test | Close tailnet compatibility inventory for wildcard replacement
+
+- Owner confirms all three current user-owned machines have the same empty route detail: no exposed subnet routes, Exit Node not allowed and no Apps routing. The overview also showed no tag badges.
+- There are therefore no existing tagged sources, subnet routers or exit nodes requiring compatibility grants. Replacing the wildcard source with `autogroup:member` preserves the current user-owned device class while excluding the future CI tag.
+- The policy edit is now prepared but not yet saved. No device, route, policy, OIDC, workflow, deployment, container or database state changed.
+
+## [2026-08-29] test | Pass private forced SSH after tailnet isolation
+
+- Owner saved the wildcard replacement with no validation errors. WSL then reached exact Tailscale NAS endpoint `100.95.243.92:4422` using a dedicated mode-0600 known-host file whose ED25519 fingerprint matches the independently trusted DSM key.
+- Forced `status` returned `status=not-deployed` with exit zero. Attempted `sh -c id` was replaced by the dispatcher allowlist and returned exit 126, proving the private endpoint remained functional after policy narrowing.
+- This proves a user-owned source and the NAS forced endpoint, not the future tagged GitHub runner. OIDC client ID/audience, first tagged exchange, workflow deployment, release apply, container and database changes remain absent.
+
+## [2026-08-29] code | Add manual status-only GitHub OIDC preflight
+
+- Owner created the exact-subject Tailscale workload credential and set both protected `TS_OIDC_CLIENT_ID` and `TS_OIDC_AUDIENCE` secret names; GitHub readback confirmed names only and did not expose values.
+- Added a manual exact-`main`, `production` Environment job that obtains only `tag:sgk-github-deploy`, pins the existing Action/version/hash and NAS SSH host key, invokes only forced `status`, and retains the complete status evidence. It shares the non-cancelled NAS production concurrency group but has no checkout, signing, image publication or `apply` path.
+- Added repository fail-closed tests and commercial-contract checks for trigger, branch, Environment, OIDC inputs, private host, strict host-key validation, accepted status shape and forbidden deployment tokens. This is source validation only; no workflow was dispatched and no NAS, container or database state changed.
+
+## [2026-08-29] test | Validate status-only CI preflight candidate
+
+- Workflow YAML parsing, Markdown relative links, shell syntax, `git diff --check`, the 35-check commercial repository contract and all 134 backend tests passed; two real-MariaDB lanes remain explicit opt-in skips.
+- After installing the separate hash-locked OTA requirements into the existing local virtual environment, root discovery ran 316 tests with one explicit skip. The only two failures are the expected indivisible trusted-bundle digest/coherence rejection for the newly changed protected bytes; no functional or collection error remains.
+- This is local repository evidence only. The protected policy is not rotated, the branch is not merged, the status workflow is not dispatched and no release `apply`, image publication, container or database change ran.
+
+## [2026-08-29] test | Reconnect final NAS OIDC feature to trusted main
+
+- Merged policy PR #188 as merge commit `29cf3d0808959906647e7cf541f6c42b877514d4`, then merged that exact `origin/main` into the unchanged final feature commit `25562d1e1ae57bb52a8a0317de8d07a9a1365bef` without rebasing or squashing.
+- The seven protected feature paths remain byte-identical to commit `25562d1`; the focused trusted-policy and NAS-deployment suites passed 54/54 after the merge.
+- This reconnects PR #186 to its approved ancestor for hosted CI only. The status-only workflow has not yet been dispatched, no production approval or deployment `apply` ran, and NAS containers and database remain unchanged.

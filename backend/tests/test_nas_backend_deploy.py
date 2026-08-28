@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -25,9 +26,42 @@ DISPATCHER = ROOT / "backend" / "deploy" / "sgk_backend_ssh_dispatch.sh"
 PRODUCTION_COMPOSE = ROOT / "backend" / "compose.production.yml"
 SYNOLOGY_COMPOSE = ROOT / "backend" / "compose.synology.yml"
 RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
+BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
+    def test_manual_nas_preflight_is_main_only_status_only_and_oidc_backed(self):
+        workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
+        trigger = workflow.split("jobs:", 1)[0]
+        self.assertIn("workflow_dispatch:", trigger)
+        match = re.search(
+            r"(?ms)^  nas_private_status_preflight:\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(match)
+        job = match.group(1)
+        for required in (
+            "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'",
+            "name: production",
+            "id-token: write",
+            "tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8",
+            "oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}",
+            "audience: ${{ secrets.TS_OIDC_AUDIENCE }}",
+            "tags: tag:sgk-github-deploy",
+            "NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}",
+            "StrictHostKeyChecking=yes",
+            '"$NAS_USER@$NAS_HOST" status',
+            "^status=(not-deployed|deployed)$",
+        ):
+            self.assertIn(required, job)
+        for forbidden in (
+            " apply",
+            "NAS_BACKEND_RELEASE_SIGNING_KEY_PEM",
+            "backend-release.tar.gz",
+            "docker pull",
+        ):
+            self.assertNotIn(forbidden, job)
+
     def signing_key(self, directory: Path) -> tuple[Path, Path]:
         private_key = directory / "release-private.pem"
         public_key = directory / "release-public.pem"
@@ -233,6 +267,12 @@ class NasBackendDeployContractTest(unittest.TestCase):
         wrapper = WRAPPER.read_text(encoding="utf-8")
         for required in (
             "SSH_ORIGINAL_COMMAND",
+            '[[ "$base_mode" == "711" ]]',
+            '"0:0:755"',
+            'chmod 711 "$DEPLOY_BASE"',
+            "/var/packages/ContainerManager/target/usr/bin/docker",
+            "/var/packages/Docker/target/usr/bin/docker",
+            '"$DOCKER_BIN" "$@"',
             'openssl dgst -sha256 -verify "$TRUST_KEY"',
             'docker volume inspect "${RUNTIME[$key]}"',
             'docker pull "$api_image"',
@@ -246,6 +286,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
             self.assertIn(required, wrapper)
         self.assertNotRegex(wrapper, r"(?m)^\s*eval\s+")
         self.assertNotRegex(wrapper, r"(?m)^\s*(source|\.)\s+")
+        self.assertNotIn('chmod 700 "$DEPLOY_BASE"', wrapper)
+        self.assertNotIn("required command is missing: docker", wrapper)
 
         dispatcher_syntax = subprocess.run(
             ["bash", "-n", str(DISPATCHER)], text=True, capture_output=True
@@ -272,8 +314,13 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "personal_admin_password",
             "API and DB runtime passwords do not match",
             "legacy_containers=unchanged",
+            'install -d -o root -g root -m 711 "$DEPLOY_BASE"',
+            'install -d -o root -g root -m 700 "$SECRET_DIR" "$MIGRATION_BACKUP_DIR"',
         ):
             self.assertIn(required, bootstrap)
+        self.assertNotIn(
+            'install -d -o root -g root -m 700 "$DEPLOY_BASE"', bootstrap
+        )
         self.assertNotRegex(
             bootstrap,
             r'(?m)^\s*local\s+.*\b([A-Za-z_][A-Za-z0-9_]*)="\$[0-9]+".*\$\{\1\}',
@@ -303,6 +350,9 @@ class NasBackendDeployContractTest(unittest.TestCase):
             r"docker\s+(stop|restart|rm|create|run|pull|start)\b",
         )
         self.assertNotRegex(verifier, r"(?i)\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b")
+        self.assertIn(
+            'require_directory_contract "$DEPLOY_BASE" 0 0 711', verifier
+        )
 
     def test_legacy_backup_is_consistent_no_cutover_and_identifier_free(self):
         syntax = subprocess.run(

@@ -6,6 +6,7 @@ set -Eeuo pipefail
 umask 077
 
 readonly DEPLOY_BASE="${SGK_DEPLOY_BASE:-/volume1/docker/smart-gatekeeper-backend}"
+readonly BIN_DIR="${DEPLOY_BASE}/bin"
 readonly RUNTIME_ENV="${DEPLOY_BASE}/runtime.env"
 readonly TRUST_KEY="${DEPLOY_BASE}/trust/release-signing-public.pem"
 readonly RELEASES_DIR="${DEPLOY_BASE}/releases"
@@ -18,6 +19,7 @@ readonly EXPECTED_DB_REPOSITORY="ghcr.io/ks-house/smart-gatekeeper-db"
 readonly EXPECTED_SCHEMA_VERSION="007"
 readonly EXPECTED_SCHEMA_SHA256="edde5662c42e65dda82b2e0a9145d64dc4ebfc9fe7a5e5bd44b0b3aae0fe1d79"
 readonly MAX_BUNDLE_MIB=8
+DOCKER_BIN=""
 
 log() {
   printf '[sgk-backend-deploy] %s\n' "$*" >&2
@@ -32,15 +34,37 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"
 }
 
+resolve_docker() {
+  local discovered candidate
+  discovered="$(type -P docker 2>/dev/null || true)"
+  for candidate in \
+    /var/packages/ContainerManager/target/usr/bin/docker \
+    /var/packages/Docker/target/usr/bin/docker \
+    /usr/local/bin/docker \
+    "$discovered"; do
+    [[ -n "$candidate" && -x "$candidate" ]] || continue
+    DOCKER_BIN="$candidate"
+    break
+  done
+  [[ -n "$DOCKER_BIN" ]] || \
+    die "Docker CLI was not found in a supported Synology package path or PATH"
+}
+
+docker() {
+  [[ -n "$DOCKER_BIN" ]] || die "Docker CLI was not resolved"
+  "$DOCKER_BIN" "$@"
+}
+
 sha256_file() {
   sha256sum "$1" | awk '{print $1}'
 }
 
 validate_common_host() {
-  for tool in awk chmod cp curl date dd docker env grep id mkdir mktemp mv \
+  for tool in awk chmod cp curl date dd env grep id mkdir mktemp mv \
     openssl rm rmdir sha256sum sleep stat tar; do
     require_command "$tool"
   done
+  resolve_docker
   [[ "$(id -u)" == "0" ]] || die "deployment wrapper must run as root through sudo"
   [[ -d "$DEPLOY_BASE" && ! -L "$DEPLOY_BASE" ]] || \
     die "deployment base must be a regular directory"
@@ -48,8 +72,12 @@ validate_common_host() {
     die "deployment base must be owned by root"
   local base_mode
   base_mode="$(stat -c '%a' "$DEPLOY_BASE")"
-  (( (8#$base_mode & 022) == 0 )) || \
-    die "deployment base must not be group/other writable"
+  [[ "$base_mode" == "711" ]] || \
+    die "deployment base must be mode 0711 for forced-command traversal"
+  [[ -d "$BIN_DIR" && ! -L "$BIN_DIR" ]] || \
+    die "deployment bin must be a regular directory"
+  [[ "$(stat -c '%u:%g:%a' "$BIN_DIR")" == "0:0:755" ]] || \
+    die "deployment bin must be root-owned mode 0755"
   docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is unavailable"
 }
 
@@ -304,7 +332,8 @@ apply_release() {
   validate_root_controlled_file "$TRUST_KEY" "release trust key"
   validate_runtime
   mkdir -p "$RELEASES_DIR" "$INCOMING_DIR"
-  chmod 700 "$DEPLOY_BASE" "$RELEASES_DIR" "$INCOMING_DIR"
+  chmod 711 "$DEPLOY_BASE"
+  chmod 700 "$RELEASES_DIR" "$INCOMING_DIR"
   mkdir "$LOCK_DIR" 2>/dev/null || die "another deployment is active; inspect $LOCK_DIR"
 
   local stage_dir

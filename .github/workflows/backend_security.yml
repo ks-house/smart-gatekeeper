@@ -1,6 +1,7 @@
 name: Backend security and MariaDB
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'backend/**'
@@ -24,6 +25,7 @@ permissions:
 
 jobs:
   backend-security:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     services:
       mariadb:
@@ -232,6 +234,66 @@ jobs:
           subject-name: ghcr.io/ks-house/smart-gatekeeper-db
           subject-digest: ${{ steps.build_db.outputs.digest }}
           push-to-registry: true
+
+  nas_private_status_preflight:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: smart-gatekeeper-nas-production
+      cancel-in-progress: false
+    environment:
+      name: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Join NAS status network with an ephemeral Tailscale node
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          tags: tag:sgk-github-deploy
+          version: 1.94.2
+          sha256-sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
+      - name: Configure restricted NAS status identity
+        env:
+          NAS_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.NAS_DEPLOY_SSH_PRIVATE_KEY }}
+          NAS_DEPLOY_KNOWN_HOSTS: ${{ secrets.NAS_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "${RUNNER_TEMP}/sgk-ssh" build
+          printf '%s\n' "$NAS_DEPLOY_SSH_PRIVATE_KEY" > "${RUNNER_TEMP}/sgk-ssh/id_ed25519"
+          printf '%s\n' "$NAS_DEPLOY_KNOWN_HOSTS" > "${RUNNER_TEMP}/sgk-ssh/known_hosts"
+          ssh-keygen -y -f "${RUNNER_TEMP}/sgk-ssh/id_ed25519" >/dev/null
+          test -s "${RUNNER_TEMP}/sgk-ssh/known_hosts"
+      - name: Verify private forced status endpoint without deployment
+        env:
+          NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}
+          NAS_PORT: ${{ vars.NAS_DEPLOY_PORT }}
+          NAS_USER: ${{ vars.NAS_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh_options=(
+            -i "${RUNNER_TEMP}/sgk-ssh/id_ed25519"
+            -p "$NAS_PORT"
+            -o BatchMode=yes
+            -o ConnectTimeout=15
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=${RUNNER_TEMP}/sgk-ssh/known_hosts"
+          )
+          ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" status \
+            | tee build/nas-private-status.evidence
+          test "$(grep -Ec '^status=(not-deployed|deployed)$' build/nas-private-status.evidence)" -eq 1
+      - name: Upload NAS private status evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nas-private-status-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: build/nas-private-status.evidence
+          if-no-files-found: error
+          retention-days: 30
 
   deploy_backend_to_nas:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -248,12 +248,18 @@ not broaden SSH policy just for CI. Instead attach a separate forced deployment
 key to the existing owner account with the same exact sudoers restrictions, or
 run a separately reviewed private SSH endpoint. In either case the CI key must
 remain forced-command-only and must never inherit interactive administrator or
-Docker-group access. Then install the two scripts, public signing key, runtime
-file and secret directory:
+Docker-group access. When the owner-account fallback is selected, substitute
+that exact account in both sudoers lines, the forced-SSH test and
+`NAS_DEPLOY_USER`; do not grant NOPASSWD access to any additional command. Then
+install the two scripts, public signing key, runtime file and secret directory:
 
 ```bash
+sudo install -d -o root -g root -m 711 \
+  /volume1/docker/smart-gatekeeper-backend
+sudo install -d -o root -g root -m 755 \
+  /volume1/docker/smart-gatekeeper-backend/bin
 sudo install -d -o root -g root -m 700 \
-  /volume1/docker/smart-gatekeeper-backend/{bin,trust,secrets,releases,incoming}
+  /volume1/docker/smart-gatekeeper-backend/{trust,secrets,releases,incoming}
 sudo install -o root -g root -m 755 sgk_backend_deploy.sh \
   /volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh
 sudo install -o root -g root -m 755 sgk_backend_ssh_dispatch.sh \
@@ -263,6 +269,18 @@ sudo install -o root -g root -m 644 release-signing-public.pem \
 sudo install -o root -g root -m 600 runtime.env \
   /volume1/docker/smart-gatekeeper-backend/runtime.env
 ```
+
+Mode `0711` on the deployment base grants path traversal without directory
+listing, and mode `0755` on `bin` permits the forced SSH account to execute only
+the root-owned dispatcher selected by its `authorized_keys` entry. Keep
+`trust`, `secrets`, `releases`, `incoming`, migration backups and runtime files
+root-only; never apply these traversal modes recursively.
+
+DSM may reset `PATH` for the forced command's `sudo -n` process. The wrapper
+therefore resolves Docker only from the executable Container Manager/legacy
+Docker package paths, `/usr/local/bin`, or an executable discovered in the
+current PATH. Do not widen sudo `secure_path`, create a Docker symlink, or add
+the deploy account to the Docker group.
 
 Copy `runtime.env.example` to `runtime.env`, replace every placeholder and use
 the exact external volume names found in step 1. `SGK_SECRET_DIR` must remain:
@@ -354,26 +372,38 @@ Configure the GitHub `production` Environment:
 | secret | `TS_OIDC_AUDIENCE` | exact configured OIDC audience |
 | variable | `NAS_TAILSCALE_HOST` | MagicDNS name or stable tailnet address |
 | variable | `NAS_DEPLOY_PORT` | confirmed tailnet SSH port, normally `4422` here |
-| variable | `NAS_DEPLOY_USER` | dedicated non-admin DSM deploy user |
+| variable | `NAS_DEPLOY_USER` | exact forced-command DSM account; use the owner fallback only when DSM blocks the dedicated non-admin account |
 | variable | `NAS_PUBLIC_API_URL` | existing public API origin, for Environment UI |
 
 Require an owner reviewer on `production`. The workflow uses exact-commit
 action pins, exact image digests, strict host-key checking and a non-cancelled
 deployment concurrency group.
 
+Before approving any deployment, run the workflow's manual
+`nas_private_status_preflight` job from `main`. It obtains an ephemeral
+`tag:sgk-github-deploy` identity through OIDC, uses the pinned NAS host key and
+invokes only the forced `status` command. It accepts exactly one
+`status=not-deployed` or `status=deployed` line and uploads the complete status
+readback as `nas-private-status-<sha>-attempt-<attempt>`. This manual path has no
+checkout, release signing, image publication or `apply` step. A successful run
+proves the tagged GitHub runner can reach the restricted SSH endpoint; it does
+not deploy or change the NAS.
+
 ## 6. First adoption and later deployments
 
 For the first adoption only, use an owner-approved maintenance window:
 
 1. finish and verify the off-NAS backup/isolated restore;
-2. record old container images, mounts, environment and restart commands;
-3. stop the old API and old DB so neither port `8000` nor the MariaDB data
+2. pass the manual `nas_private_status_preflight` from exact `main` and retain
+   its status artifact;
+3. record old container images, mounts, environment and restart commands;
+4. stop the old API and old DB so neither port `8000` nor the MariaDB data
    directory has two owners;
-4. approve the `production` GitHub deployment;
-5. require `status=deployed`, the exact `source_sha`, and matching `status`
+5. approve the `production` GitHub deployment;
+6. require `status=deployed`, the exact `source_sha`, and matching `status`
    readback in the workflow artifact;
-6. verify public `/ready`, app/backend behavior, MQTT connectivity and logs;
-7. keep old images and the pre-migration backup until the accepted rollback
+7. verify public `/ready`, app/backend behavior, MQTT connectivity and logs;
+8. keep old images and the pre-migration backup until the accepted rollback
    window closes.
 
 After adoption, an admitted `main` backend change automatically builds and
