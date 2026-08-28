@@ -449,3 +449,29 @@ sole `current-main-baseline`. All 82 protected normalized objects and both
 inventories remain exact. The separate status-only run `33199183911` passed,
 but policy rotation and status reachability do not prove a release `apply`,
 database migration, container cutover, readiness, rollback or physical access.
+
+## 6. Target deferred OTA health transition candidate
+
+Reviewed feature commit `2d3221ee54b9277bc3783811f17e12658fb93901`
+prevents the Arduino core from auto-validating a newly booted OTA slot before
+the application health policy can run. The protected surface expands from 82
+to 83 paths by adding `src/OtaManager.cpp`; relative to the current main
+baseline, only that source and `.github/workflows/deploy.yml` differ. Their
+normalized SHA-256 values are respectively
+`36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7`
+and `649ff762b2baa9a57d3b8893b346f32abd094b77b77e16f216bd1b2ebf92284a`.
+
+The transition duplicates the complete ordered 83-path map in exactly two
+bounded identities: `temporary-target-ota-health-2d3221e` for the immutable
+feature commit, and
+`future-target-ota-health-2d3221e-persistent-baseline` for proven descendants
+that retain every protected byte. After this policy-only PR merges, its exact
+main merge commit must be merge-connected into PR #192 without rebase or
+squash. Fresh Hosted Trusted, OTA-contract and ESP32-C6 checks are required
+before merge. A separate policy-only rotation must then remove both transition
+identities and pin the actual feature merge commit as the sole baseline.
+
+This authorization is source and CI trust evidence only. It does not publish
+or install firmware and does not prove the 30-second health window, VALID mark,
+rollback, relay contact, sensor threshold or door movement; those remain
+separate connected-device Gates.
