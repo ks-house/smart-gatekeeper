@@ -236,6 +236,9 @@ class NasBackendDeployContractTest(unittest.TestCase):
             '[[ "$base_mode" == "711" ]]',
             '"0:0:755"',
             'chmod 711 "$DEPLOY_BASE"',
+            "/var/packages/ContainerManager/target/usr/bin/docker",
+            "/var/packages/Docker/target/usr/bin/docker",
+            '"$DOCKER_BIN" "$@"',
             'openssl dgst -sha256 -verify "$TRUST_KEY"',
             'docker volume inspect "${RUNTIME[$key]}"',
             'docker pull "$api_image"',
@@ -250,6 +253,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertNotRegex(wrapper, r"(?m)^\s*eval\s+")
         self.assertNotRegex(wrapper, r"(?m)^\s*(source|\.)\s+")
         self.assertNotIn('chmod 700 "$DEPLOY_BASE"', wrapper)
+        self.assertNotIn("required command is missing: docker", wrapper)
 
         dispatcher_syntax = subprocess.run(
             ["bash", "-n", str(DISPATCHER)], text=True, capture_output=True

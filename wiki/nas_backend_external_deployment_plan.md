@@ -575,7 +575,10 @@ background success, or Target OTA health.
    Linux mode `0700` on both the deployment base and `bin`, not Synology ACL or
    a `noexec` mount. Correct only base to traversal-only `0711` and `bin` to
    `0755`; retain secrets, trust, incoming and release state as root-only. The
-   tailnet grant remains unproven.
+   resulting forced command executes and rejects arbitrary input, while status
+   next exposed DSM sudo PATH omission of Docker; the corrected wrapper resolves
+   only fixed Synology package paths or an executable PATH client. The tailnet
+   grant remains unproven.
 3. `DONE (repository)` Add `compose.synology.yml` with NAS-local file secrets,
    named external volumes and loopback-only API ingress.
 4. `DONE (repository)` Add exact GHCR digest publication/provenance and a signed

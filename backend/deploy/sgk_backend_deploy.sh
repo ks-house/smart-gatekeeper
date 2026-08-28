@@ -19,6 +19,7 @@ readonly EXPECTED_DB_REPOSITORY="ghcr.io/ks-house/smart-gatekeeper-db"
 readonly EXPECTED_SCHEMA_VERSION="007"
 readonly EXPECTED_SCHEMA_SHA256="edde5662c42e65dda82b2e0a9145d64dc4ebfc9fe7a5e5bd44b0b3aae0fe1d79"
 readonly MAX_BUNDLE_MIB=8
+DOCKER_BIN=""
 
 log() {
   printf '[sgk-backend-deploy] %s\n' "$*" >&2
@@ -33,15 +34,37 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"
 }
 
+resolve_docker() {
+  local discovered candidate
+  discovered="$(type -P docker 2>/dev/null || true)"
+  for candidate in \
+    /var/packages/ContainerManager/target/usr/bin/docker \
+    /var/packages/Docker/target/usr/bin/docker \
+    /usr/local/bin/docker \
+    "$discovered"; do
+    [[ -n "$candidate" && -x "$candidate" ]] || continue
+    DOCKER_BIN="$candidate"
+    break
+  done
+  [[ -n "$DOCKER_BIN" ]] || \
+    die "Docker CLI was not found in a supported Synology package path or PATH"
+}
+
+docker() {
+  [[ -n "$DOCKER_BIN" ]] || die "Docker CLI was not resolved"
+  "$DOCKER_BIN" "$@"
+}
+
 sha256_file() {
   sha256sum "$1" | awk '{print $1}'
 }
 
 validate_common_host() {
-  for tool in awk chmod cp curl date dd docker env grep id mkdir mktemp mv \
+  for tool in awk chmod cp curl date dd env grep id mkdir mktemp mv \
     openssl rm rmdir sha256sum sleep stat tar; do
     require_command "$tool"
   done
+  resolve_docker
   [[ "$(id -u)" == "0" ]] || die "deployment wrapper must run as root through sudo"
   [[ -d "$DEPLOY_BASE" && ! -L "$DEPLOY_BASE" ]] || \
     die "deployment base must be a regular directory"

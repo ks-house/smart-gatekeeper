@@ -4181,3 +4181,15 @@
 - Bash syntax and all 11 focused NAS deployment tests pass with the base/bin permission contract. The full backend suite passes 133 tests with the same two explicit real-MariaDB opt-in skips.
 - The full repository suite passes 315 of 316 tests with one expected trusted-policy coherence failure because the newly corrected protected bytes are not yet an authorized indivisible bundle. This is the next required policy step, not a functional test waiver.
 - `git diff --check` passes. No NAS mode, deployed script, container, database, release, Environment variable or PR merge changed during the source correction.
+
+## [2026-08-29] fix | Resolve Synology Docker under forced sudo PATH
+
+- After the exact base/bin mode correction, the deploy key reaches and executes the dispatcher. The arbitrary command is rejected with exit 126 as required, but `status` stops in wrapper preflight because DSM's forced `sudo -n` PATH does not contain `docker`.
+- Added the same bounded Docker resolution used by the successful legacy bootstrap: executable Container Manager/legacy package paths, `/usr/local/bin`, then an executable PATH result. The wrapper invokes the resolved absolute binary and does not change sudo PATH, create a symlink or grant Docker-group access.
+- This remains source/host-test work only. No release apply, container mutation, database operation or PR merge is authorized by the negative live probe.
+
+## [2026-08-29] test | Validate forced-sudo Docker path correction
+
+- Bash syntax, all 11 focused NAS deployment tests and the complete 133-test backend suite pass; the two real-MariaDB tests remain explicit opt-in skips.
+- The regression contract pins both supported Synology package paths and absolute resolved execution while rejecting the old literal Docker command preflight and any return to base mode `0700`.
+- A fresh wrapper hash, trusted owner-path installation and live forced `status` readback are still required. The old NAS wrapper must not receive `apply`.

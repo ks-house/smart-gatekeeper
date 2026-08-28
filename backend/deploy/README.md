@@ -276,6 +276,12 @@ the root-owned dispatcher selected by its `authorized_keys` entry. Keep
 `trust`, `secrets`, `releases`, `incoming`, migration backups and runtime files
 root-only; never apply these traversal modes recursively.
 
+DSM may reset `PATH` for the forced command's `sudo -n` process. The wrapper
+therefore resolves Docker only from the executable Container Manager/legacy
+Docker package paths, `/usr/local/bin`, or an executable discovered in the
+current PATH. Do not widen sudo `secure_path`, create a Docker symlink, or add
+the deploy account to the Docker group.
+
 Copy `runtime.env.example` to `runtime.env`, replace every placeholder and use
 the exact external volume names found in step 1. `SGK_SECRET_DIR` must remain:
 
