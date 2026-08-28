@@ -371,6 +371,25 @@ tag:sgk-github-deploy -> tag:sgk-nas-deploy:<restricted SSH port>
 It must not reach DSM administration, MariaDB, MQTT administration, other LAN
 hosts, or the public service port. Do not enable Tailscale Funnel for this lane.
 
+The live GitHub repository OIDC configuration currently reports
+`use_default=true` and `use_immutable_subject=false`. Because the deployment job
+binds the `production` Environment, create the Tailscale OpenID Connect trust
+credential with the exact GitHub subject
+`repo:ks-house/smart-gatekeeper:environment:production`, tag
+`tag:sgk-github-deploy`, and only the write scopes required to create the
+ephemeral node (`Keys > Auth Keys` and `Devices > Core`). Record the generated
+client ID and audience in the `production` Environment as
+`TS_OIDC_CLIENT_ID` and `TS_OIDC_AUDIENCE`; the workflow already has
+`id-token: write` and does not use a long-lived Tailscale client secret.
+
+The NAS endpoint must be the NAS's exact Tailscale MagicDNS FQDN or stable
+Tailscale IPv4 address, not its public Synology hostname. Set it as
+`NAS_TAILSCALE_HOST` only after a self-only NAS readback and a private-path SSH
+probe. Generate `NAS_DEPLOY_KNOWN_HOSTS` for that exact host and port `4422`
+over a trusted LAN/tailnet path, then compare the key fingerprints with the
+already accepted DSM SSH host key before storing it. A successful `ssh-keyscan`
+connection alone is not trust evidence.
+
 On the NAS, create a deployment identity distinct from the current SFTP-only
 publisher. Its authorized key is restricted to one root-owned wrapper, for
 example `sgk-deploy`, with no PTY, forwarding, agent forwarding, or arbitrary
@@ -603,8 +622,11 @@ background success, or Target OTA health.
    inventory restore before the first DB-changing deployment. Recurring 3-2-1
    scheduling and key separation remain operational hardening work.
 8. `P1` Run owner-approved manual canary and rollback rehearsal.
-9. `P1` Configure the protected GitHub `production` Environment, Tailscale OIDC
-   client/tag grant, strict NAS host key and Environment secrets/variables.
+9. `IN PROGRESS` Configure the protected GitHub `production` Environment,
+   Tailscale OIDC client/tag grant, strict NAS host key and Environment
+   secrets/variables. `NAS_DEPLOY_USER=noty00`, `NAS_DEPLOY_PORT=4422` and the
+   public readiness URL are set. The exact OIDC subject is confirmed; client ID,
+   audience, NAS private hostname and its pinned host-key entry remain unset.
 10. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
 11. `P2` Evaluate a central secret manager only when operator/host count requires
     it.

@@ -4199,3 +4199,15 @@
 - Owner staging and installation matched corrected wrapper SHA-256 `c0b30b0149e5d6d466a0b451e7e6b2934d231820d209a9608eded946308711d9`; the root-owned mode-`0755` installed file is 18,277 bytes. The exact predecessor was preserved root-only mode `0600` with its original SHA-256 under migration backups.
 - Base `0711`, bin `0755`, local exact `status=not-deployed` and cache-cleared negative arbitrary sudo all passed. Sensitive paths retained their prior root-only modes; no apply, container or database action ran.
 - WSL batch-mode deploy-key SSH then returned `status=not-deployed` with exit zero. An attempted `sh -c id` was replaced by the forced dispatcher, printed only the allowlist and returned exit 126. This proves the forced endpoint over the temporary public bootstrap path, not Tailscale/OIDC, deployment, readiness, rollback or physical behavior.
+
+## [2026-08-29] compile | Bind confirmed forced-SSH owner in GitHub Environment
+
+- Published the live forced-endpoint evidence on feature head `6cf2a60d3269ac1a00720c1cf9a88529f2fa7012` and verified the remote branch matches.
+- Added only confirmed non-secret Environment variable `NAS_DEPLOY_USER=noty00`; existing `NAS_DEPLOY_PORT` and `NAS_PUBLIC_API_URL` remain. No secret value was printed or changed.
+- Tailscale workload client ID/audience, exact private NAS hostname and its pinned SSH known-host entry remain unset. No workflow deployment, image publication, release apply or PR merge ran.
+
+## [2026-08-29] compile | Pin exact GitHub OIDC trust contract
+
+- Read-only GitHub API reports the repository uses its default OIDC subject and has not enabled immutable subjects. Because the deploy job binds `production`, the exact Tailscale trust subject is `repo:ks-house/smart-gatekeeper:environment:production`.
+- Confirmed the deploy job already grants `id-token: write`, requests only `tag:sgk-github-deploy`, and consumes client ID/audience through the protected Environment. The remaining private-path inputs are still absent rather than guessed.
+- WSL has no Tailscale CLI. Obtain only the NAS self IPv4/FQDN from DSM/Tailscale, then pin the port-4422 host key after fingerprint comparison. No `apply`, image publication, PR merge, container change or database change ran.
