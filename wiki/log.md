@@ -4112,3 +4112,9 @@
 - Feature PR #186 head `cbaaf9ec17c2bf201d80e1d101ce9c2a5dcf2195` passed the hosted trusted-policy, OTA-contract and backend-security/MariaDB checks. PR-only image publication, attestation, evidence verification and NAS deployment jobs all skipped as designed.
 - Generated independent P-256 release-signing and Ed25519 deploy identities in a mode-0700 WSL directory with mode-0600 files. Registered only their private inputs as `production` Environment secrets without printing values; the public release key and SSH public key remain to be installed through the trusted NAS administration path.
 - Set confirmed Environment variables `NAS_DEPLOY_PORT=4422` and `NAS_PUBLIC_API_URL=https://tworimpa.synology.me:4442`. Pinned NAS known-host data, Tailscale workload identity/audience, exact tailnet host and restricted deploy user remain unset, so feature merge and production execution remain blocked.
+
+## [2026-08-29] test | Hold NAS deploy endpoint on incomplete key and sudo validation
+
+- Owner readback confirms the dedicated deploy home exists. The release-public-key DER probe returned SHA-256 `e3b0c442...b855`, which is the empty-input digest rather than the expected key identity; file metadata, non-empty state and the DSM `openssl` executable path must be separated before reinstall or acceptance.
+- DSM reports no `visudo` command. The sudoers fragment is not accepted on that basis; use sudo policy parsing/listing and an exact forced-command execution probe, and stop on any parse, include-policy or permission mismatch.
+- PR #186 remains unmerged. No GHCR publication, migration, container cutover or NAS deployment is authorized by these partial endpoint results.
