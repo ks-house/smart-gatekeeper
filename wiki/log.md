@@ -4118,3 +4118,8 @@
 - Owner readback confirms the dedicated deploy home exists. The release-public-key DER probe returned SHA-256 `e3b0c442...b855`, which is the empty-input digest rather than the expected key identity; file metadata, non-empty state and the DSM `openssl` executable path must be separated before reinstall or acceptance.
 - DSM reports no `visudo` command. The sudoers fragment is not accepted on that basis; use sudo policy parsing/listing and an exact forced-command execution probe, and stop on any parse, include-policy or permission mismatch.
 - PR #186 remains unmerged. No GHCR publication, migration, container cutover or NAS deployment is authorized by these partial endpoint results.
+
+## [2026-08-29] test | Identify missing NAS release public key installation
+
+- Owner `stat` readback confirms `/volume1/docker/smart-gatekeeper-backend/trust/release-signing-public.pem` does not exist. This explains the prior empty-stream SHA-256 and narrows the fault to public endpoint staging/installation, not the WSL private key or GitHub Environment secret.
+- Require the staged public key to parse and match the independently recorded DER SHA-256 before a single root-owned mode-0644 install. Keep PR #186 unmerged until installed-key readback and restricted sudo/forced-command checks pass.
