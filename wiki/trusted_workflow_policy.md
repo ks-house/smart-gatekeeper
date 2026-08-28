@@ -489,3 +489,27 @@ exact inventories remain unchanged.
 The subsequent exact-main publication and connected rollback are operational
 evidence, not policy authority. Rotation itself does not prove application
 VALID, hard power-loss, relay contact, sensor threshold or door movement.
+
+## 7. Action-2 ARMED replacement transition candidate
+
+Reviewed immutable feature commit `828820da348afc509bc21ebd0b13f1c023563415`
+for PR #198. It lets a fresh authenticated GATT session replace only a
+sensor-waiting action-1 `ARMED` window so foreground action 2 can proceed,
+while `RELAY_HOLD` and `COOLDOWN` stay fail-closed. Android also classifies
+Target Hello status 2 as retryable `TARGET_BUSY`. Relative to current policy
+main, the sole protected delta is `.github/workflows/deploy.yml`, normalized
+SHA-256 `88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea`;
+it pins the matching `TargetAccessFsm` header/source build-input digests.
+
+The complete ordered 83-path protected map is duplicated in exactly two
+bounded identities: `temporary-action2-armed-828820d` for the immutable
+feature commit and `future-action2-armed-828820d-persistent-baseline` for
+proven descendants retaining every protected byte. After this policy-only PR
+merges, its exact main merge commit must be merge-connected into PR #198
+without rebase or squash. Fresh Hosted Trusted, OTA, Android and ESP32-C6
+checks are required before feature merge, followed by an immediate final
+policy rotation to the actual feature merge commit.
+
+This authorization changes no runtime, artifact, Target, phone, NAS, database
+or router state. It does not prove signed publication, installation, relay
+command ON/OFF, physical relay contact/load, sensor threshold or door motion.

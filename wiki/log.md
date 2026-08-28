@@ -4380,3 +4380,9 @@
 - Replacement-installed exact-main Android `1.0.0-gf3f4121` / 23301 preserved the original install and native credential state, but the dashboard control labelled `1-Tap 수동 로컬 개방` called diagnostic `triggerLocalGattRetry`; two taps only queued action-1 workers and produced no Target proof or relay transition.
 - Changed the dashboard to await `triggerLocalGattOpen`, accept success only for terminal native reason `OPENED`, and display the returned latency. Added bridge and source-contract regressions that reject diagnostic queue acceptance as a door-open result.
 - This is a source candidate only. Hosted Flutter/JVM checks, production-signed publication, replacement install, connected Target relay-command ON/OFF and terminal UI success remain required before the correction is called deployed.
+
+## [2026-08-29] compile | Authorize exact action-2 ARMED replacement candidate
+
+- Reviewed immutable PR #198 feature commit `828820da348afc509bc21ebd0b13f1c023563415`. Relative to current policy main, only protected `.github/workflows/deploy.yml` changes, to normalized digest `88cdf941...`; it pins the two changed Target FSM build inputs.
+- Added one exact feature identity and one future persistent identity with the same complete ordered 83-path map. The prior `a2f7ae2` source baseline is retired; tests require exact repository/SHA ancestry, inventories and indivisible protected bytes.
+- This policy-only candidate changes no runtime or device state. Policy CI/merge, merge-connection into PR #198, fresh feature CI, signed publication/install and connected action-2 relay-command evidence remain separate Gates.
