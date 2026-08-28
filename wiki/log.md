@@ -4211,3 +4211,33 @@
 - Read-only GitHub API reports the repository uses its default OIDC subject and has not enabled immutable subjects. Because the deploy job binds `production`, the exact Tailscale trust subject is `repo:ks-house/smart-gatekeeper:environment:production`.
 - Confirmed the deploy job already grants `id-token: write`, requests only `tag:sgk-github-deploy`, and consumes client ID/audience through the protected Environment. The remaining private-path inputs are still absent rather than guessed.
 - WSL has no Tailscale CLI. Obtain only the NAS self IPv4/FQDN from DSM/Tailscale, then pin the port-4422 host key after fingerprint comparison. No `apply`, image publication, PR merge, container change or database change ran.
+
+## [2026-08-29] test | Isolate NAS Tailscale CLI lookup boundary
+
+- The non-root NAS probe returned `TAILSCALE_CLI=not_found` even though Package Center previously proved the Tailscale `1.58.2-700058002` package is running and connected.
+- Treat this as a PATH or package-directory execution boundary, not evidence that Tailscale is absent. Next inspect only root-readable package metadata and executable paths; do not reinstall, restart, re-authenticate or change tags.
+- No Tailscale policy, GitHub Environment, SSH, deployment, container or database state changed.
+
+## [2026-08-29] test | Challenge the assumed DSM shell boundary
+
+- The follow-up root probe found neither `synopkg` nor `/var/packages/Tailscale`, so the active shell is not yet proven to be the DSM host. It may be WSL or a container, and the earlier package evidence remains separate.
+- Next identify only hostname, `/volume1`, DSM tool paths and container markers before any further Tailscale command. Do not infer package removal and do not reinstall or restart it.
+- No NAS, Tailscale, GitHub, container, database or deployment state changed.
+
+## [2026-08-29] test | Confirm DSM host and isolate Synology tool PATH
+
+- Readback proves user `noty00` is on hostname `tworim423`, kernel `4.4.302+` x86_64, with `/volume1`, `/etc.defaults/VERSION`, `/var/packages` and `/usr/syno/bin/synopkg`; Docker and WSL markers are absent.
+- The earlier `synopkg: not found` was therefore the root shell's restricted PATH. The unresolved fact is the exact registered Tailscale package name/location because `/var/packages/Tailscale` was absent in that probe.
+- Continue with absolute Synology tool paths and read-only package-name discovery. Do not reinstall, restart, re-authenticate, retag or deploy.
+
+## [2026-08-29] test | Confirm running DSM Tailscale package identity
+
+- Absolute Synology package queries confirm exact package ID `Tailscale`, running status and version `1.58.2-700058002`; lowercase `tailscale` is correctly reported as a different non-installed ID.
+- Both `/var/packages/Tailscale` and `/volume1/@appstore/Tailscale` are present. The prior missing-path output did not prove removal and no reinstall or restart is needed.
+- Next invoke only the packaged CLI under root to read its version and this NAS's private Tailscale IPv4. No authentication, tag, policy, deployment, container or database state changed.
+
+## [2026-08-29] test | Pin verified private NAS SSH endpoint in GitHub
+
+- The root-readable packaged CLI reports exact NAS Tailscale IPv4 `100.95.243.92`. WSL reaches TCP `4422` through that private address and reads ED25519, ECDSA and RSA host keys.
+- The private endpoint's ED25519 and ECDSA fingerprints intersect the previously trusted public-bootstrap DSM host keys. Stored only the matched ED25519 line as `NAS_DEPLOY_KNOWN_HOSTS` and set `NAS_TAILSCALE_HOST=100.95.243.92` in the protected `production` Environment without printing the key blob.
+- Tailscale OIDC client ID/audience and least-privilege tailnet grant remain pending. No workflow dispatch, release apply, image publication, PR merge, container or database change ran.

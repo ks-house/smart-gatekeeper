@@ -111,7 +111,7 @@ following non-secret deployment facts:
 | Container Manager | running, package `24.0.2-1606`; installed equals Package Center online version | compatible candidate; disposable Compose feature/secret probe remains required |
 | Docker/Compose | Docker client `24.0.2`; Compose `v2.20.1-6047-g6817716` | daemon architecture query was permission-denied as the non-privileged owner, which does not block the `uname` platform proof and does not justify a privilege change |
 | Volume 1 | `btrfs`, normal; about 13 TB used and 28.9 TB free (`df` rounded 42 TB total/29 TB available) | filesystem and capacity support image rollback reserve and snapshot-capable storage; actual snapshot/backup policy remains pending |
-| Tailscale | package running and connected, `1.58.2-700058002`; Package Center reports the same online version | private NAS reachability is present; GitHub ephemeral identity and least-privilege grants remain pending |
+| Tailscale | DSM package ID `Tailscale` is installed and running at `1.58.2-700058002`; packaged CLI reports NAS IPv4 `100.95.243.92`; WSL reaches private SSH `4422` and its ED25519/ECDSA keys intersect the already trusted public-bootstrap DSM keys | exact private host variable and matched ED25519 known-host entry are installed; GitHub ephemeral OIDC identity and least-privilege grant remain pending |
 | DSM reverse proxy | HTTPS public listener `4442` to HTTP `localhost:8000`; HSTS off; no DSM access-control profile | preserves the installed app origin, but the current proxy capture does not prove the administrator mTLS/header contract |
 | router exposure | confirmed blanket external forward `4000-4999`; protocol/target details not yet captured | P0 excessive-exposure finding: inventory listeners, add exact required rules and verify them before removing the range |
 | public IPv6 | a read-only DNS check observed an AAAA answer for the current public hostname; NAS listeners also bind wildcard IPv6 | IPv4 NAT narrowing alone is insufficient; verify router/DSM IPv6 inbound default-deny and exact service rules without recording the public address |
@@ -625,8 +625,10 @@ background success, or Target OTA health.
 9. `IN PROGRESS` Configure the protected GitHub `production` Environment,
    Tailscale OIDC client/tag grant, strict NAS host key and Environment
    secrets/variables. `NAS_DEPLOY_USER=noty00`, `NAS_DEPLOY_PORT=4422` and the
-   public readiness URL are set. The exact OIDC subject is confirmed; client ID,
-   audience, NAS private hostname and its pinned host-key entry remain unset.
+   public readiness URL are set. `NAS_TAILSCALE_HOST=100.95.243.92` and its
+   independently matched ED25519 `NAS_DEPLOY_KNOWN_HOSTS` entry are also set.
+   The exact OIDC subject is confirmed; client ID, audience and tailnet grant
+   remain unset.
 10. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
 11. `P2` Evaluate a central secret manager only when operator/host count requires
     it.
