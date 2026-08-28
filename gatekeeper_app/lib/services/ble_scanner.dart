@@ -552,6 +552,19 @@ class BleScanner {
       try {
         await flutterBeacon.initializeScanning;
       } catch (e, s) {
+        if (!RangingRecoveryPolicy.shouldSurfaceAsUserError(e)) {
+          debugPrint(
+            '[BleScanner] Native GATT owns BLE; scanner initialization deferred',
+          );
+          AppErrorLogger().log(
+            '🔄 로컬 BLE 인증 진행 중 — 비콘 스캔은 자동으로 재개됩니다.',
+          );
+          _lastScanError = null;
+          _setMode(ScanMode.stopped);
+          _startWatchdog();
+          await refreshDiagnostics();
+          return;
+        }
         debugPrint('[BleScanner] flutterBeacon 초기화 실패: $e');
         AppErrorLogger().logError('BLE 비콘 스캔 초기화 실패', e, s);
         _lastScanError = 'initializeScanning: $e';

@@ -40,6 +40,27 @@ void main() {
     );
   });
 
+  test('surfaces real initialization failures but not a native GATT lease', () {
+    expect(
+      RangingRecoveryPolicy.shouldSurfaceAsUserError(
+        PlatformException(code: 'BLE_OWNER_EXCLUDED'),
+      ),
+      isFalse,
+    );
+    expect(
+      RangingRecoveryPolicy.shouldSurfaceAsUserError(
+        PlatformException(code: 'BLUETOOTH_DISABLED'),
+      ),
+      isTrue,
+    );
+    expect(
+      RangingRecoveryPolicy.shouldSurfaceAsUserError(
+        StateError('scanner unavailable'),
+      ),
+      isTrue,
+    );
+  });
+
   test('coalesces repeated scheduling into one recovery', () async {
     final recovery = SingleFlightDelayedRecovery();
     final invoked = Completer<void>();

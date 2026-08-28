@@ -1,5 +1,23 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-08-29 initialization ownership transition UX
+
+Connected exact-main Android `1.0.0-gd614d56` completed background action 1
+and foreground action 2 against Target `2.1.302+main.gd614d56`, but the
+successful screen still carried a red `BLE 비콘 스캔 초기화 실패` banner.
+The foreground-service scanner had called `initializeScanning` while the
+native credential worker intentionally held the shared BLE lease; the expected
+`BLE_OWNER_EXCLUDED` transition was incorrectly routed through
+`AppErrorLogger.logError`.
+
+Issue #204 keeps the existing stopped/watchdog recovery but classifies that one
+initialization result as a temporary native-GATT lease. It records a neutral
+diagnostic without setting `latestError` or publishing a red failure
+notification. Bluetooth-disabled, permission, plugin and all other
+initialization failures remain user-visible. This is a source/test correction
+until hosted CI, production-signed publication and connected replacement
+installation prove the banner is absent during a successful ownership handoff.
+
 ## 2026-08-26 native GATT BLE ownership recovery
 
 Connected Samsung evidence for issue #158 showed that the foreground-service
@@ -25,7 +43,7 @@ production-signed APK is built, installed and a screen-off GATT lease shows
 bounded log volume plus automatic ranging recovery. It does not classify or
 close the separate Target terminal-result defect in issue #156.
 
-> Last updated: 2026-07-31
+> Last updated: 2026-08-29
 > 대상: Android Smart Key 앱
 > 관련 문서: [mobile_app_background_audit.md](mobile_app_background_audit.md) · [mobile_app_scenario.md](mobile_app_scenario.md)
 

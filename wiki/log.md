@@ -4411,3 +4411,9 @@
 - Production-signed mobile `1.0.0-gf352a78` / 24101 matched primary/fallback metadata, 55,786,649-byte size, SHA-256 `051a442a485ef4355e2207d0ef977bf929a57f7dff1215f0df4d66753fe03495`, embedded commit and existing signing certificate before state-preserving replacement install.
 - A fresh native beacon action 1 completed at 06:46:28. Dashboard action 2 began 22 seconds later inside the 60-second ARMED window, returned `문이 열렸습니다 (4530ms)`, and Target serial recorded relay command ON followed by timer-bound OFF without reset. Issue #197 received the corrected evidence and remains closed.
 - This passes the connected mobile-to-Target board/FSM/GPIO-command core use case. Physical contact/load, actual door movement, AJ-SR04T threshold, repetition SLO and owner-gated NAS first adoption remain open.
+
+## [2026-08-29] fix | Suppress expected native-GATT ownership failure banner
+
+- Production-signed Android `1.0.0-gd614d56` / 24201 and Target `2.1.302+main.gd614d56` repeated action-1 followed by terminal action-2 `문이 열렸습니다 (5403ms)` with Target relay-command ON then OFF, but the successful screen also showed a red initialization-failure banner.
+- Root cause was `BleScanner.startScanning`: `BLE_OWNER_EXCLUDED` from `initializeScanning` during the intentional native-GATT credential lease entered the generic `logError` and failure-notification path even though issue #158 already treats the same ownership code as recoverable at the ranging boundary.
+- Issue #204 now classifies only that initialization result as an expected transition, keeps stopped/watchdog automatic recovery and emits a neutral diagnostic without `latestError`; all other initialization failures remain user-visible. Focused/hosted tests and production-signed connected absence evidence remain required before deployment is claimed.
