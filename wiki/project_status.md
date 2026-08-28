@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-08-26
+updated: 2026-08-29
 source_of_truth: true
 applies_to:
   - firmware
@@ -17,6 +17,23 @@ applies_to:
 > 관측 기준: 저장소 `11e9ea1179bcc6a3030329c492267636aa681875`, Target exact CI `2.1.286+main.g11e9ea1`, Android exact main `1.0.0-g3cf6eaa` (`versionCode=21701`). Target signed HTTPS OTA download→inactive verify→reboot와 Wi-Fi/MQTTS/ACL/GATT 복구는 성공했다. Bootloader `PENDING_VERIFY`/valid mark는 issue #172로 열려 있고, post-fix Samsung screen-off action-1과 Bluetooth OFF→ON recovery는 phone 분리로 pending이다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-08-29 backend NAS GitHub CI policy candidate
+
+- The backend-NAS implementation is frozen as immutable feature commit
+  `2cda04bc0ec7aff3192fc65292eb946fb5b57929` and published only to branch
+  `codex/backend-nas-ci`; it has not merged into `main` or deployed to the NAS.
+- A separate policy-only candidate expands the indivisible protected set from
+  69 to 82 paths and authorizes only that exact feature commit plus proven
+  same-byte descendants. Its 42 focused policy tests pass locally.
+- The GitHub `production` Environment already has owner review and a `main`-only
+  branch rule, while backend-specific Tailscale/NAS variables and five secrets
+  are still absent. Therefore no GHCR image publication, SSH dispatch, database
+  migration, legacy-container cutover or readiness claim has occurred.
+- Required order remains policy PR and hosted check, merge-connection into the
+  feature, fresh feature CI, feature merge, final baseline rotation, then an
+  owner-approved canary/final NAS deployment using separately provisioned
+  identities.
 
 ## 2026-08-26 issue #179 Bluetooth-state recovery candidate
 

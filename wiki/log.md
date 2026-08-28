@@ -3784,3 +3784,9 @@
 - Corrected issue #179's initial manifest-receiver assumption: modern Android does not exempt `ACTION_STATE_CHANGED` from implicit-broadcast manifest limits, so a native `GatekeeperApplication` context-registers the process-lifetime Bluetooth receiver instead. Android 13+ uses the required exported registration for privileged Bluetooth-app delivery; the platform-protected action never dispatches access directly.
 - Persistent registration intent is committed before adapter access, disable intent before best-effort stop, and the first observed `STATE_ON` reconciles one exact PendingIntent scan. OFF/TURNING/repeated-ON, unrelated actions and disabled intent remain no-ops.
 - Seven focused source/pocket contracts, an expanded 174-test mobile/OTA/trusted suite and Android Gradle `:app:testDebugUnitTest` passed (`BUILD SUCCESSFUL`, 209 tasks). The phone is disconnected, so Bluetooth OFF→ON, subsequent first match and terminal action-1 `ARMED` remain connected Gates; sensor/contact/rollback claims remain open.
+
+## [2026-08-29] compile | Authorize exact backend NAS CI candidate
+
+- Froze and published backend-NAS feature commit `2cda04bc0ec7aff3192fc65292eb946fb5b57929` on `codex/backend-nas-ci`; it remains unmerged and has not dispatched a production workflow or changed the NAS.
+- Expanded the protected inventory from 69 to 82 paths and pinned the complete normalized map in `temporary-backend-nas-2cda04b` and `future-backend-nas-2cda04b-persistent-baseline`. Exactly 18 protected objects are changed or new relative to base main.
+- The 42 focused trusted-policy tests pass locally. Hosted policy review/merge, merge-connection into the feature, fresh feature CI, feature merge and final baseline rotation remain required before any owner-approved deployment.
