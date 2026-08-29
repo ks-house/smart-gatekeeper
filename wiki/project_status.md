@@ -817,7 +817,7 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   `Smart Key` tab, and RSSI/scan diagnostics, Target tuning and logs in the
   `진단·튜닝` tab. Manual refresh and independent mobile OTA access remain
   present.
-- Focused Flutter analysis, eight navigation/recovery tests and the complete
-  44-test Flutter suite pass in the exact CI Flutter environment. Signed APK
-  publication, install and connected on-device visual confirmation remain
-  separate release evidence.
+- Focused Flutter analysis, eight navigation/recovery tests, the complete
+  44-test Flutter suite and the 316-test repository contract suite pass (one
+  platform-specific test skipped). Signed APK publication, install and
+  connected on-device visual confirmation remain separate release evidence.

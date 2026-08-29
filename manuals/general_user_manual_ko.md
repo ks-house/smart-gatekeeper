@@ -62,7 +62,7 @@ Smart Gatekeeper는 Android 앱, backend, ESP32-C6 Target, 거리 센서와 rela
 
 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
 |---|---|---|---|---|---|---|---|---|
-| 사용자 | recovery shell 접근, 최근 encrypted Target, credential, Bluetooth ON | `Manual local / remote recovery` → local retry 1회 | `QUEUED/RUNNING/SUCCEEDED`, `PROOF_UNCERTAIN`, `FAILED/DISABLED`가 각각 authorizing/opening/confirmed/unknown/failed로 표시 | `BleGattCredentialWorker.manualRetry`, `GattSessionEngine` | session ID, reason, retry delay; radio/relay **PENDING** | operation 15초 검증 목표 | retryable reason일 때 같은 session 1회 | `PROOF_UNCERTAIN` 자동 재시도 금지; 지원/현장 owner |
+| 사용자 | recovery shell 접근, 최근 encrypted Target, credential, Bluetooth ON | `Smart Key 설정 및 진단` → `Smart Key` 탭 → `1-Tap 수동 로컬 개방` 1회 | `QUEUED/RUNNING/SUCCEEDED`, `PROOF_UNCERTAIN`, `FAILED/DISABLED`가 각각 authorizing/opening/confirmed/unknown/failed로 표시 | `BleGattCredentialWorker.manualRetry`, `GattSessionEngine` | session ID, reason, retry delay; radio/relay **PENDING** | operation 15초 검증 목표 | retryable reason일 때 같은 session 1회 | `PROOF_UNCERTAIN` 자동 재시도 금지; 지원/현장 owner |
 | 사용자 | remote control UI 확인 | remote 버튼 확인 | scoped credential이 없으면 unavailable이며 request를 보내지 않음 | Flutter Web shell, planned `/api/v1/door/open` v2 | no-effect host tests | 즉시 | 0회 | 비밀키 입력·legacy API 우회 금지; mobile/backend credential owner |
 | 관리자 2인 | 안전 현장, 별도 `SECURITY_OPERATOR`/`SECURITY_APPROVER` | 승인된 force-open 절차 | `approval_required → published`; 실제 Target event 전 `EFFECT_UNKNOWN` | admin force-open APIs, signed command plane | approval/audit/broker/Target/relay evidence | proposal 300초, effect 120초 검증 목표 | publication/effect 0회 | incident commander와 현장 safety owner |
 

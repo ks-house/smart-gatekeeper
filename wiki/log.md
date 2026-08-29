@@ -4920,3 +4920,10 @@
 
 - Exact CI Flutter environment passed targeted analysis for all changed screens and tests with no findings.
 - Eight focused navigation, recovery, consent and settings tests plus the complete 44-test Flutter suite passed. This is source/widget contract evidence; production-signed APK publication/install and connected visual validation remain pending.
+
+## [2026-08-30] fix | Synchronize recovery manual contract with unified settings
+
+- CI correctly rejected the removed legacy recovery labels because the source-bound manual contract still required two separate destinations.
+- Updated that contract to require the single `Smart Key 설정 및 진단` recovery action and to verify both preserved `Smart Key` and `진단·튜닝` tab owners.
+- Updated the Korean user procedure to use the unified route before the terminal local-open action; no access, OTA or Target behavior changed.
+- The complete 316-test repository contract suite then passed with one expected platform-specific skip.
