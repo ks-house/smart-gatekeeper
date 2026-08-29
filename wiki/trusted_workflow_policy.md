@@ -604,3 +604,42 @@ Final rotation is authority evidence, not NAS installation or deployment
 evidence. Exact-main run `33235596047` is retained at protected `production`
 approval pending owner readback of the installed wrapper digest and the legacy
 maintenance stop. Deployment and connected access Gates remain open.
+
+## 11. Ephemeral GHCR pull-auth transition candidate
+
+Reviewed immutable PR #211 feature commit
+`7b54997a8b5316e3d741648211db18f6bd7a4a7f`. Exact-main run
+`33235596047` proved the corrected Synology Docker path but failed closed on
+the first private GHCR image pull with `unauthorized`; Compose and migration did
+not run, and the retained legacy API/DB were restarted successfully.
+
+The candidate grants only `packages: read` to the protected deployment job,
+streams its short-lived `github.token` in a versioned stdin envelope, and keeps
+Docker auth solely in the root-only per-attempt directory removed by the common
+cleanup trap. It does not store a long-lived PAT on the NAS or include any
+credential in the signed bundle artifact or deployment evidence.
+
+Relative to the current protected baseline, exactly four normalized blobs
+change as one indivisible candidate:
+
+- `.github/workflows/backend_security.yml` becomes
+  `ba723b29efd4e00f2849173bcd7ce43a8203eb3a6bd3fd3e060f997cce9d5bbb`.
+- `backend/deploy/README.md` becomes
+  `2a1a9277ec8b797ac2cc1776982f6a4a4a6711c1afaca7b83b4bd726e817af7d`.
+- `backend/deploy/sgk_backend_deploy.sh` becomes
+  `afda60b403988653ed92b0714fa25dc97980d1103c5709d0090fb49e9889ab7e`.
+- `backend/tests/test_nas_backend_deploy.py` becomes
+  `aba8b7803c4c94cbb2f7fafd15f84cd7f7ad7a3bcf0ba4d791740b02239ae594`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-ephemeral-ghcr-auth-7b54997` and
+`future-ephemeral-ghcr-auth-7b54997-persistent-baseline`. After this
+policy-only PR merges, its main must be merge-connected into PR #211 without
+rebase or squash, followed by fresh Trusted/OTA/Backend checks and an immediate
+final baseline rotation after feature merge.
+
+This policy change grants no production approval and changes no NAS file,
+container, database, phone or Target state. Wrapper installation, a new owner
+maintenance stop, protected deployment, exact source/status evidence,
+loopback/public readiness and backend-included access E2E remain separate
+Gates.

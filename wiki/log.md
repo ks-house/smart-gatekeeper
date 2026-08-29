@@ -4447,3 +4447,9 @@
 - Policy PR #209 merged as `095cb6ed`; policy-connected PR #208 head `779ef12` passed fresh Trusted, OTA and Backend checks before merge-main `21a0124f6e4b5dfc300b205073e1b464066355e8`.
 - Removed both `750a545` transition identities and pinned the sole `current-main-baseline` to actual feature main. The ordered 83-path map, inventories and corrected wrapper/test digests remain unchanged.
 - Exact-main backend run `33235596047` has published images/provenance and waits for protected production approval. This rotation does not install the NAS wrapper, stop legacy containers, deploy, prove readiness or complete backend-included E2E.
+
+## [2026-08-29] compile | Authorize ephemeral GHCR pull-auth candidate
+
+- Reviewed immutable PR #211 feature commit `7b54997a8b5316e3d741648211db18f6bd7a4a7f`; its four protected normalized changes are backend workflow `ba723b29...`, deploy README `2a1a9277...`, wrapper `afda60b4...` and direct test `aba8b780...`.
+- Added exact and future persistent identities with the same complete ordered 83-path map. The prior `21a0124` Docker-path baseline is retired; regressions require exact repository/SHA, ancestry, inventories and all four changed bytes as one indivisible candidate.
+- This policy-only candidate changes no NAS file, runtime, container or database and grants no production approval. Merge-connection, fresh CI, root-owned wrapper installation, maintenance stop, deployment/readiness and backend-included E2E remain separate Gates.
