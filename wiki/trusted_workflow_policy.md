@@ -584,3 +584,23 @@ Policy authority and source correction do not update the root-owned installed
 NAS wrapper. The owner must install exact corrected bytes before retrying the
 protected deployment. Only `status=deployed`, exact `source_sha`, matching
 status readback and loopback/public readiness can close the deployment Gate.
+
+## 10. Synology Compose Docker-path final baseline
+
+Policy PR #209 passed Hosted Trusted verification and merge-commit produced
+policy main `095cb6ed317bea49957af9f8d8c36b8a35060a69`. That main was
+merge-connected into PR #208 as `779ef1225842b4756173cf3fb673318cd553542c`,
+preserving reviewed feature `750a5456fae988c2595098dcec01f410c8941d4b` as
+the first parent. Fresh Trusted, OTA and Backend checks passed before PR #208
+merge-commit produced actual main
+`21a0124f6e4b5dfc300b205073e1b464066355e8`.
+
+This final policy-only rotation removes both `750a545` transition identities
+and pins the sole `current-main-baseline` to actual feature main `21a0124f`.
+The complete ordered 83-path map, workflow/action inventories and the two
+reviewed corrected wrapper/test digests remain unchanged.
+
+Final rotation is authority evidence, not NAS installation or deployment
+evidence. Exact-main run `33235596047` is retained at protected `production`
+approval pending owner readback of the installed wrapper digest and the legacy
+maintenance stop. Deployment and connected access Gates remain open.
