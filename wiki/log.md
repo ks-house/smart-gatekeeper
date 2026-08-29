@@ -4495,3 +4495,9 @@
 - The explicit 42-module repository run passed 451 tests with three documented environment-dependent skips; the focused trusted-policy suite is included and passes 42/42.
 - The backend commercial contract passes all 35 checks. JSON structure, shell syntax and whitespace validation also pass with a sole `current-main-baseline` at `42b754d75863072e4ad0af32f2667ff54ceb050c` and the unchanged 83-path map.
 - These are repository validation results only; no NAS wrapper, container, database, release, phone or Target state changed.
+
+## [2026-08-29] compile | Authorize exact DSM backend compatibility candidate
+
+- Reviewed immutable feature commit `e787786f2514c641e02dd5608d0fe21c4476eca4`; relative to the current baseline, exactly the backend workflow, Synology overlay, deploy README, deploy wrapper and direct NAS deployment test change as one protected bundle.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path normalized digest map. The five candidate digests are pinned and the previous `42b754d7` baseline is retired from the transition policy.
+- Focused trusted-policy regressions pass 42/42. This policy-only candidate changes no NAS runtime and grants no production approval; policy CI/merge, feature merge-connection, fresh CI, final rotation, wrapper installation and live retry remain separate Gates.

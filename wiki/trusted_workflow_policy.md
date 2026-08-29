@@ -665,3 +665,37 @@ Final policy authority is not NAS installation or deployment evidence. The
 root-owned NAS wrapper must match `afda60b403988653ed92b0714fa25dc97980d1103c5709d0090fb49e9889ab7e`
 before a new maintenance stop and protected apply. Only exact source/status and
 loopback/public readiness can close the backend deployment Gate.
+
+## 13. DSM backend compatibility transition
+
+The first authenticated feature-main deployment failed before migration after
+starting the new DB because the DS423+ DSM kernel rejects Docker's nonzero
+`NanoCPUs` field. Immutable feature commit
+`e787786f2514c641e02dd5608d0fe21c4476eca4` corrects that host compatibility,
+partial-project cleanup and the Tailscale action checksum input.
+
+Relative to the current protected baseline, exactly five normalized blobs
+change as one indivisible candidate:
+
+- `.github/workflows/backend_security.yml` becomes
+  `f48e242ba34d1ccdfe58faf95859e9d6b18af4ad947a9e9319317d187a054efb`.
+- `backend/compose.synology.yml` becomes
+  `fa0f88acdfd0c6de87b6fde278804c673f18f07a099e5844d2b21ac10be451a2`.
+- `backend/deploy/README.md` becomes
+  `a7dad4437568d8c76a1ffe96dac9011565a1952fdc4f4bc0f29b9b1fc709293e`.
+- `backend/deploy/sgk_backend_deploy.sh` becomes
+  `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805`.
+- `backend/tests/test_nas_backend_deploy.py` becomes
+  `f79ba51e87045e1731542602a588c6f2f63aebcc1dad64497b1f39a0714f64bd`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-dsm-backend-compat-e787786` and
+`future-dsm-backend-compat-e787786-persistent-baseline`. After this policy-only
+PR merges, its exact main must be merge-connected into feature PR #215 without
+rebase or squash. Fresh Trusted, OTA and Backend checks remain mandatory, and
+the policy must rotate again to the actual feature merge-main.
+
+This transition changes no NAS file, container, volume or database and grants
+no production approval. Legacy recovery, root-owned wrapper installation, a
+new maintenance stop, protected deploy, exact source/status/readiness and the
+backend-included access E2E remain separate Gates.
