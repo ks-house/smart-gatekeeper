@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-08-29
+updated: 2026-08-30
 source_of_truth: true
 applies_to:
   - firmware
@@ -34,6 +34,23 @@ applies_to:
   publication, phone installation, and a visible real Target transition are
   still required before calling the user-facing behavior deployed or
   physically verified.
+
+## 2026-08-30 GATT latency optimization candidate
+
+- Issue #260 tracks the observed foreground baseline: presence-to-dispatch
+  61 ms, native GATT session 4,801 ms and presence-to-ARMED 5,765 ms. This
+  localizes the current delay after dispatch, but one run is not an accepted
+  latency SLO.
+- Android now requests high connection priority and ATT MTU 247, with a bounded
+  750 ms negotiation wait and automatic MTU-23 fallback. The wire protocol,
+  authentication proof, crash-safe no-replay boundary, feature kill switch and
+  mobile/Target OTA paths are unchanged.
+- Durable redacted phase timing and negotiated-link diagnostics are projected
+  to the foreground Native Worker card. Android `gattworker.*`, targeted Flutter
+  analysis, all 45 Flutter tests and all 317 repository contract tests pass
+  locally with one expected skip. Production signed APK publication, phone
+  installation and repeated connected before/after evidence remain required
+  before accepting the candidate `<2.5 s` objective.
 
 ## 2026-08-28 external Synology backend CI deployment candidate
 

@@ -343,6 +343,7 @@ data class DurableGattSession(
   val presenceToDispatchMs: Long? = null,
   val presenceToArmedMs: Long? = null,
   val activeAclVersion: Long? = null,
+  val gattPerformance: GattSessionPerformance? = null,
 ) {
   fun redactedMap(): Map<String, Any?> = mapOf(
     "sessionId" to id,
@@ -360,6 +361,7 @@ data class DurableGattSession(
     "presenceToDispatchMs" to presenceToDispatchMs,
     "presenceToArmedMs" to presenceToArmedMs,
     "activeAclVersion" to activeAclVersion,
+    "gattPerformance" to gattPerformance?.redactedMap(),
     "updatedEpochMs" to updatedEpochMs,
   )
 }
@@ -430,6 +432,7 @@ object SessionLedgerCodec {
     .put("presence_to_dispatch_ms", session.presenceToDispatchMs)
     .put("presence_to_armed_ms", session.presenceToArmedMs)
     .put("active_acl_version", session.activeAclVersion)
+    .put("gatt_performance", session.gattPerformance?.let(::performanceToJson))
 
   private fun fromJson(value: JSONObject): DurableGattSession = DurableGattSession(
     id = value.getString("id"),
@@ -450,6 +453,34 @@ object SessionLedgerCodec {
     presenceToDispatchMs = value.optionalLong("presence_to_dispatch_ms"),
     presenceToArmedMs = value.optionalLong("presence_to_armed_ms"),
     activeAclVersion = value.optionalLong("active_acl_version"),
+    gattPerformance = value.optJSONObject("gatt_performance")?.let(::performanceFromJson),
+  )
+
+  private fun performanceToJson(performance: GattSessionPerformance): JSONObject = JSONObject()
+    .put("connect_setup_ms", performance.connectSetupMs)
+    .put("negotiation_ms", performance.negotiationMs)
+    .put("challenge_ms", performance.challengeMs)
+    .put("signing_ms", performance.signingMs)
+    .put("proof_write_ms", performance.proofWriteMs)
+    .put("result_wait_ms", performance.resultWaitMs)
+    .put("negotiated_mtu", performance.transport.negotiatedMtu)
+    .put("mtu_status", performance.transport.mtuStatus.name)
+    .put("high_priority_requested", performance.transport.highPriorityRequested)
+
+  private fun performanceFromJson(value: JSONObject): GattSessionPerformance = GattSessionPerformance(
+    connectSetupMs = value.optionalLong("connect_setup_ms"),
+    negotiationMs = value.optionalLong("negotiation_ms"),
+    challengeMs = value.optionalLong("challenge_ms"),
+    signingMs = value.optionalLong("signing_ms"),
+    proofWriteMs = value.optionalLong("proof_write_ms"),
+    resultWaitMs = value.optionalLong("result_wait_ms"),
+    transport = GattTransportPerformance(
+      negotiatedMtu = value.optionalInt("negotiated_mtu") ?: 23,
+      mtuStatus = runCatching {
+        MtuNegotiationStatus.valueOf(value.optString("mtu_status"))
+      }.getOrDefault(MtuNegotiationStatus.NOT_REQUESTED),
+      highPriorityRequested = value.optBoolean("high_priority_requested", false),
+    ),
   )
 
   private fun JSONObject.optionalString(key: String): String? =

@@ -28,7 +28,12 @@ class GattSessionEngineTest {
 
   @Test
   fun hardwarelessSessionDoesChallengeSignProofAndResultWithoutNetwork() = runBlocking {
-    val transport = FakeTransport(targetHello, challenge, successResult(challenge.copyOfRange(26, 42)))
+    val transport = FakeTransport(
+      targetHello,
+      challenge,
+      successResult(challenge.copyOfRange(26, 42)),
+      GattTransportPerformance(247, MtuNegotiationStatus.ACCEPTED, true),
+    )
     val signer = DeterministicFakeCredentialSigner(fixtureSignature)
     var now = 100L
     val result = GattSessionEngine(
@@ -48,6 +53,16 @@ class GattSessionEngineTest {
     assertEquals(103, transport.proof?.size)
     assertFalse((transport.proof ?: byteArrayOf()).toHex().contains("00:11:22"))
     assertTrue(transport.closed)
+    val performance = (result as SessionOutcome.Success).performance!!
+    assertEquals(25L, performance.connectSetupMs)
+    assertEquals(25L, performance.negotiationMs)
+    assertEquals(25L, performance.challengeMs)
+    assertEquals(25L, performance.signingMs)
+    assertEquals(25L, performance.proofWriteMs)
+    assertEquals(25L, performance.resultWaitMs)
+    assertEquals(247, performance.transport.negotiatedMtu)
+    assertEquals(MtuNegotiationStatus.ACCEPTED, performance.transport.mtuStatus)
+    assertTrue(performance.transport.highPriorityRequested)
   }
 
   @Test
@@ -264,6 +279,7 @@ private class FakeTransport(
   private val targetHello: ByteArray,
   private val challenge: ByteArray,
   private val result: ByteArray,
+  private val performance: GattTransportPerformance = GattTransportPerformance(),
 ) : BleGattTransport {
   var proof: ByteArray? = null
   var proofWrites = 0
@@ -283,5 +299,6 @@ private class FakeTransport(
     this.proof = proof.copyOf()
   }
   override suspend fun awaitResult(): ByteArray = result.copyOf()
+  override fun performanceSnapshot(): GattTransportPerformance = performance
   override fun close() { closed = true }
 }

@@ -13,6 +13,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.UUID
 
@@ -80,6 +81,11 @@ internal sealed class GattOperationResult {
   data class Failure(val exception: GattTransportException) : GattOperationResult()
 }
 
+internal data class GattMtuResult(
+  val mtu: Int,
+  val status: Int,
+)
+
 internal class GattOperationToken internal constructor(
   internal val connection: GattConnectionCoordinator.Connection,
   internal val operation: GattPendingOperation,
@@ -106,6 +112,7 @@ internal class GattConnectionCoordinator {
   ) {
     internal val connected = CompletableDeferred<Unit>()
     internal val servicesReady = CompletableDeferred<Unit>()
+    internal val mtuChanged = CompletableDeferred<GattMtuResult>()
     internal val mailbox = GattCallbackMailbox()
     internal var owner: Any? = null
     internal var terminalFailure: GattTransportException? = null
@@ -150,6 +157,17 @@ internal class GattConnectionCoordinator {
     return connection.servicesReady.completeExceptionally(
       GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED, status),
     )
+  }
+
+  @Synchronized
+  fun onMtuChanged(
+    connection: Connection,
+    owner: Any,
+    mtu: Int,
+    status: Int,
+  ): Boolean {
+    if (!acceptCallbackLocked(connection, owner)) return false
+    return connection.mtuChanged.complete(GattMtuResult(mtu, status))
   }
 
   @Synchronized
@@ -258,6 +276,7 @@ internal class GattConnectionCoordinator {
     connection.terminalFailure = error
     connection.connected.completeExceptionally(error)
     connection.servicesReady.completeExceptionally(error)
+    connection.mtuChanged.completeExceptionally(error)
     connection.mailbox.onDisconnected(error.gattStatus ?: 0)
     connection.characteristicWrite?.result?.complete(GattOperationResult.Failure(error))
     connection.descriptorWrite?.result?.complete(GattOperationResult.Failure(error))
@@ -288,7 +307,11 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
   private val callbackCoordinator = GattConnectionCoordinator()
   private var connection: GattConnectionCoordinator.Connection? = null
   private var gatt: BluetoothGatt? = null
-  private var mtu = 23
+  @Volatile
+  private var mtu = DEFAULT_MTU
+  @Volatile
+  private var mtuStatus = MtuNegotiationStatus.NOT_REQUESTED
+  private var highPriorityRequested = false
 
   override suspend fun connect(deviceAddress: String) {
     requireConnectPermission()
@@ -299,6 +322,9 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     val device = adapter.getRemoteDevice(deviceAddress)
     val newConnection = callbackCoordinator.openConnection()
     connection = newConnection
+    mtu = DEFAULT_MTU
+    mtuStatus = MtuNegotiationStatus.NOT_REQUESTED
+    highPriorityRequested = false
     val callback = callback(newConnection)
     val newGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
@@ -313,7 +339,11 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
         ?: GattTransportException(TransportFailureCode.DISCONNECTED)
     }
     newConnection.connected.await()
+    highPriorityRequested = newGatt.requestConnectionPriority(
+      BluetoothGatt.CONNECTION_PRIORITY_HIGH,
+    )
     newConnection.servicesReady.await()
+    negotiateMtu(newGatt, newConnection)
     enableIndication(GattProtocol.HELLO_UUID)
     enableIndication(GattProtocol.CHALLENGE_UUID)
     enableIndication(GattProtocol.RESULT_UUID)
@@ -351,6 +381,36 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     gatt?.close()
     gatt = null
     connection = null
+  }
+
+  override fun performanceSnapshot(): GattTransportPerformance = GattTransportPerformance(
+    negotiatedMtu = mtu,
+    mtuStatus = mtuStatus,
+    highPriorityRequested = highPriorityRequested,
+  )
+
+  private suspend fun negotiateMtu(
+    activeGatt: BluetoothGatt,
+    activeConnection: GattConnectionCoordinator.Connection,
+  ) {
+    if (!activeGatt.requestMtu(DESIRED_MTU)) {
+      mtuStatus = MtuNegotiationStatus.REJECTED
+      return
+    }
+    mtuStatus = MtuNegotiationStatus.REQUESTED
+    val result = withTimeoutOrNull(MTU_NEGOTIATION_WAIT_MS) {
+      activeConnection.mtuChanged.await()
+    }
+    if (result == null) {
+      mtuStatus = MtuNegotiationStatus.TIMED_OUT
+      return
+    }
+    if (result.status == BluetoothGatt.GATT_SUCCESS) {
+      mtu = result.mtu.coerceAtLeast(DEFAULT_MTU)
+      mtuStatus = MtuNegotiationStatus.ACCEPTED
+    } else {
+      mtuStatus = MtuNegotiationStatus.REJECTED
+    }
   }
 
   private suspend fun writeMessage(uuid: java.util.UUID, type: Int, payload: ByteArray) {
@@ -480,12 +540,11 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     }
 
     override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-      if (
-        status == BluetoothGatt.GATT_SUCCESS &&
-        callbackCoordinator.acceptsCallback(connection, gatt)
-      ) {
-        this@AndroidBleGattTransport.mtu = mtu.coerceAtLeast(23)
+      if (status == BluetoothGatt.GATT_SUCCESS) {
+        this@AndroidBleGattTransport.mtu = mtu.coerceAtLeast(DEFAULT_MTU)
+        this@AndroidBleGattTransport.mtuStatus = MtuNegotiationStatus.ACCEPTED
       }
+      callbackCoordinator.onMtuChanged(connection, gatt, mtu, status)
     }
 
     @Deprecated("API 33 callback")
@@ -556,6 +615,12 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
         status,
       )
     }
+  }
+
+  companion object {
+    internal const val DEFAULT_MTU = 23
+    internal const val DESIRED_MTU = 247
+    internal const val MTU_NEGOTIATION_WAIT_MS = 750L
   }
 }
 

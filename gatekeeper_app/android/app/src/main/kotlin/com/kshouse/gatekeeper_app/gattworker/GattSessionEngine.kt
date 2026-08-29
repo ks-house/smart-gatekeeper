@@ -2,12 +2,49 @@ package com.kshouse.gatekeeper_app.gattworker
 
 import kotlinx.coroutines.withTimeout
 
+enum class MtuNegotiationStatus {
+  NOT_REQUESTED,
+  REQUESTED,
+  ACCEPTED,
+  REJECTED,
+  TIMED_OUT,
+}
+
+data class GattTransportPerformance(
+  val negotiatedMtu: Int = 23,
+  val mtuStatus: MtuNegotiationStatus = MtuNegotiationStatus.NOT_REQUESTED,
+  val highPriorityRequested: Boolean = false,
+)
+
+data class GattSessionPerformance(
+  val connectSetupMs: Long? = null,
+  val negotiationMs: Long? = null,
+  val challengeMs: Long? = null,
+  val signingMs: Long? = null,
+  val proofWriteMs: Long? = null,
+  val resultWaitMs: Long? = null,
+  val transport: GattTransportPerformance = GattTransportPerformance(),
+) {
+  fun redactedMap(): Map<String, Any?> = mapOf(
+    "connectSetupMs" to connectSetupMs,
+    "negotiationMs" to negotiationMs,
+    "challengeMs" to challengeMs,
+    "signingMs" to signingMs,
+    "proofWriteMs" to proofWriteMs,
+    "resultWaitMs" to resultWaitMs,
+    "negotiatedMtu" to transport.negotiatedMtu,
+    "mtuStatus" to transport.mtuStatus.name,
+    "highPriorityRequested" to transport.highPriorityRequested,
+  )
+}
+
 interface BleGattTransport {
   suspend fun connect(deviceAddress: String)
   suspend fun negotiate(clientHello: ByteArray): ByteArray
   suspend fun readChallenge(): ByteArray
   suspend fun writeProof(proof: ByteArray)
   suspend fun awaitResult(): ByteArray
+  fun performanceSnapshot(): GattTransportPerformance = GattTransportPerformance()
   fun close()
 }
 
@@ -72,7 +109,11 @@ open class GattTransportException(
 ) : IllegalStateException(failureCode.name, cause)
 
 sealed class SessionOutcome {
-  data class Success(val latencyMs: Long, val activeAclVersion: Long) : SessionOutcome()
+  data class Success(
+    val latencyMs: Long,
+    val activeAclVersion: Long,
+    val performance: GattSessionPerformance? = null,
+  ) : SessionOutcome()
   data class Failure(
     val reason: AccessReasonCode,
     val latencyMs: Long,
@@ -81,6 +122,7 @@ sealed class SessionOutcome {
     val transportFailure: TransportFailureCode? = null,
     val transportStatus: Int? = null,
     val proofMayHaveExecuted: Boolean = false,
+    val performance: GattSessionPerformance? = null,
   ) : SessionOutcome() {
     val retryable: Boolean
       get() = targetReason?.retryable ?: reason.retryable
@@ -122,35 +164,64 @@ class GattSessionEngine(
         action == GattProtocol.ACTION_OPEN_IMMEDIATELY,
     ) { "unsupported local access action" }
     val started = clock.nowMs()
+    var phaseStarted = started
+    var connectSetupMs: Long? = null
+    var negotiationMs: Long? = null
+    var challengeMs: Long? = null
+    var signingMs: Long? = null
+    var proofWriteMs: Long? = null
+    var resultWaitMs: Long? = null
     var proofMayHaveExecuted = false
+
+    fun markPhase(): Long {
+      val now = clock.nowMs()
+      return (now - phaseStarted).coerceAtLeast(0).also { phaseStarted = now }
+    }
+
+    fun performance() = GattSessionPerformance(
+      connectSetupMs = connectSetupMs,
+      negotiationMs = negotiationMs,
+      challengeMs = challengeMs,
+      signingMs = signingMs,
+      proofWriteMs = proofWriteMs,
+      resultWaitMs = resultWaitMs,
+      transport = transport.performanceSnapshot(),
+    )
+
     return try {
       withTimeout(timeoutMs) {
         transport.connect(deviceAddress)
+        connectSetupMs = markPhase()
         val clientHello = GattCanonicalCodec.clientHello(mobileBuild)
         val targetHelloBytes = transport.negotiate(clientHello)
         val targetHello = GattCanonicalCodec.parseTargetHello(targetHelloBytes)
+        negotiationMs = markPhase()
         val negotiationHash = GattCanonicalCodec.sha256(clientHello + targetHello.canonical)
         val challenge = GattCanonicalCodec.parseChallenge(
           transport.readChallenge(),
           negotiationHash,
         )
+        challengeMs = markPhase()
         val canonical = GattCanonicalCodec.proofSigningInput(
           challenge.canonical,
           credentialId,
           action,
         )
         val signature = signer.signCanonical(credentialId, canonical)
+        signingMs = markPhase()
         proofObserver.beforeProofWrite()
         proofMayHaveExecuted = true
         transport.writeProof(
           GattCanonicalCodec.proofWire(challenge, credentialId, signature, action),
         )
+        proofWriteMs = markPhase()
         proofObserver.afterProofWrite()
         val result = GattCanonicalCodec.parseResult(transport.awaitResult(), challenge.sessionId)
+        resultWaitMs = markPhase()
         proofObserver.afterResultReceived(result)
         val elapsed = elapsed(started)
         if (result.reason == 0) {
-          SessionOutcome.Success(elapsed, result.activeAclVersion)
+          SessionOutcome.Success(elapsed, result.activeAclVersion, performance())
         } else {
           val targetReason = TargetResultReason.fromWireCode(result.reason)
           SessionOutcome.Failure(
@@ -159,6 +230,7 @@ class GattSessionEngine(
             retryAfterMs = result.retryAfterMs,
             targetReason = targetReason,
             proofMayHaveExecuted = true,
+            performance = performance(),
           )
         }
       }
@@ -167,24 +239,28 @@ class GattSessionEngine(
         AccessReasonCode.GATT_TIMEOUT,
         elapsed(started),
         proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
       )
     } catch (_: SecurityException) {
       SessionOutcome.Failure(
         AccessReasonCode.PERMISSION_DENIED,
         elapsed(started),
         proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
       )
     } catch (_: BluetoothDisabledException) {
       SessionOutcome.Failure(
         AccessReasonCode.BLUETOOTH_DISABLED,
         elapsed(started),
         proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
       )
     } catch (_: CredentialKeyUnavailableException) {
       SessionOutcome.Failure(
         AccessReasonCode.CREDENTIAL_INACTIVE,
         elapsed(started),
         proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
       )
     } catch (error: GattTransportException) {
       SessionOutcome.Failure(
@@ -193,6 +269,7 @@ class GattSessionEngine(
         transportFailure = error.failureCode,
         transportStatus = error.gattStatus,
         proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
       )
     } catch (error: TargetHelloRejectedException) {
       SessionOutcome.Failure(
@@ -203,6 +280,7 @@ class GattSessionEngine(
         },
         latencyMs = elapsed(started),
         proofMayHaveExecuted = false,
+        performance = performance(),
       )
     } catch (error: IllegalArgumentException) {
       val reason = if (error.message.orEmpty().contains("protocol")) {
@@ -210,18 +288,25 @@ class GattSessionEngine(
       } else {
         AccessReasonCode.MALFORMED_PROOF
       }
-      SessionOutcome.Failure(reason, elapsed(started), proofMayHaveExecuted = proofMayHaveExecuted)
+      SessionOutcome.Failure(
+        reason,
+        elapsed(started),
+        proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
+      )
     } catch (_: FeatureFlagDisabledBeforeProofException) {
       SessionOutcome.Failure(
         AccessReasonCode.CREDENTIAL_INACTIVE,
         elapsed(started),
         proofMayHaveExecuted = false,
+        performance = performance(),
       )
     } catch (_: Exception) {
       SessionOutcome.Failure(
         AccessReasonCode.GATT_CONNECT_FAILED,
         elapsed(started),
         proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
       )
     } finally {
       transport.close()
