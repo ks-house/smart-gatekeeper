@@ -4843,3 +4843,9 @@
 - Owner executed the production-shaped `curl --resolve tworimpa.synology.me:4442:127.0.0.1` probe through the installed wrapper's intended DSM ingress transport. It completed without timeout or TLS certificate error and returned recovered legacy build `7c2764a1a16492ec1620079c8211b47287b1b3fd`.
 - Readiness was the expected HTTP 503 with `mqtt=true` and every check true except the intentionally unretired legacy pre-arm path. This proves HTTPS hostname, SNI/certificate verification and NAS-loopback routing, not a new-stack deployment.
 - Exact run `33253911475` remains waiting. A fresh owner-proved stop of only `gatekeeper-api` and `gatekeeper-db` is still required before approval; deployment, external readiness and backend-included Target/mobile E2E remain open.
+
+## [2026-08-29] compile | Authorize canonical NAS apply-evidence candidate
+
+- Reviewed immutable candidate `0144613d28b318528487543e5e71dd10d5206955`: among protected paths it changes exactly the deploy README, root wrapper and direct NAS deployment test to reserve apply stdout for canonical evidence and redirect Docker/migration progress to stderr.
+- Replaced the current source identity with `future-nas-canonical-evidence-0144613-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `fe30c4b8...`, `30364e7a...` and `137c56a2...`.
+- This policy-only authorization changes no NAS runtime. Policy CI/merge, feature merge-connection, fresh checks and final actual-main rotation remain separate Gates; the currently deployed exact backend stays ready while backend-included device E2E remains open.
