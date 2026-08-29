@@ -4627,3 +4627,9 @@
 - Final bootstrap policy PR #228 passed Hosted Trusted and merge-committed as main `ae69332f16d855f39cec99bd46a21736194769b1`, authorizing exact backend feature main `3fdc615833da68af22623eefafc876d4c84b86d7` without changing its reviewed deployment bytes.
 - Exact feature-main run `33246998513` passed backend/MariaDB tests, operations evidence, provenance and immutable API/DB image publication and now waits at the protected production Environment.
 - Approval remains withheld while retained legacy `gatekeeper-api` and `gatekeeper-db` run. Exact bootstrap/verifier/wrapper transfer, secret metadata and wrapper/status readback are the next owner Gate; no NAS deployment or readiness is claimed.
+
+## [2026-08-29] compile | Define backend-included personal core acceptance
+
+- Clarified that production retires raw device-ID `/door/prearm`; its 410 response is expected while Backend personal enrollment, signed ACL publication and exact Target APPLIED ACK remain mandatory control-plane evidence.
+- Defined the combined acceptance evidence as exact deployed/readiness identity, read-only credential/grant/snapshot/ACK correlation, and connected mobile action-1 `ARMED` followed by action-2 `OPENED` plus Target relay-command ON/OFF.
+- Default-key batch SSH to the owner account was denied, confirming that exact bootstrap/verifier/wrapper installation still requires the owner-authenticated NAS step. No NAS, container, database, phone or Target state changed.

@@ -1,5 +1,5 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-08-24 (personal local GATT enrollment and signed Home Assistant backend bridge reflected; live deployment pending)
+> Last updated: 2026-08-29 (personal-production backend ACL enrollment/ACK and local GATT access acceptance boundary clarified; live exact-main NAS deployment pending)
 >
 > 저장소 구현과 현장 배포 상태의 차이는 [project_status.md](project_status.md)를 먼저 확인한다.
 
@@ -48,6 +48,44 @@ sequenceDiagram
 ```
 
 서버는 사용자 검증이 성공해도 MQTT PUBACK을 받지 못하면 503을 반환합니다. 앱도 HTTP 200뿐 아니라 `result=armed`와 `mqtt_published=true`를 모두 요구합니다.
+
+### 2.1 Personal-production core acceptance path
+
+The sequence above remains the legacy rollback path. The current personal
+production profile deliberately sets `ACL_LEGACY_DEVICE_LOOKUP_ENABLED=false`;
+therefore raw device-ID `/api/v1/door/prearm` authority is retired and a 410
+response is expected rather than a core-use-case failure.
+
+Current enrollment and access have two coupled but independently observable
+phases:
+
+1. Android generates a P-256 credential in AndroidKeyStore and sends only its
+   public material to authenticated HTTPS
+   `/api/v1/acl/personal/enroll`.
+2. The Backend stores the credential/grant, creates a signed ACL snapshot,
+   publishes it through exact per-Target MQTTS and records the Target's exact
+   `APPLIED` ACK.
+3. After that durable control-plane agreement, Android action 1 authenticates
+   locally over GATT and moves the Target to `ARMED`; action 2 authenticates in
+   a separate GATT session and moves it directly to `RELAY_HOLD`.
+
+The Backend is therefore required for identity enrollment, revocation, signed
+ACL delivery and operational readiness, but it is intentionally not a
+real-time dependency of each local door opening while the accepted ACL lease
+is valid. A production core acceptance claim must combine all of the following
+evidence instead of treating one subsystem as a substitute for the others:
+
+- new-stack `status=deployed`, exact `source_sha`, loopback/public `/ready=200`
+  with DB/schema/MQTTS/control/ACL checks and `legacy_prearm_retired=true`;
+- exact personal tenant/door/Target, active credential/grant and latest signed
+  ACL snapshot/APPLIED-ACK correlation from the read-only NAS verifier;
+- connected mobile terminal action-1 `ARMED`, followed by action-2 `OPENED`,
+  plus Target relay-command ON and timer-bound OFF without reset.
+
+Those three results prove the implemented Backend/mobile/Target software and
+control path. Relay contact voltage, actuator load, ultrasonic threshold,
+actual door motion and repeated Samsung/OEM screen-off behavior remain separate
+physical acceptance Gates until directly measured.
 
 ## 3. Target 펌웨어
 
