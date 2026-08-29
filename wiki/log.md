@@ -4633,3 +4633,9 @@
 - Clarified that production retires raw device-ID `/door/prearm`; its 410 response is expected while Backend personal enrollment, signed ACL publication and exact Target APPLIED ACK remain mandatory control-plane evidence.
 - Defined the combined acceptance evidence as exact deployed/readiness identity, read-only credential/grant/snapshot/ACK correlation, and connected mobile action-1 `ARMED` followed by action-2 `OPENED` plus Target relay-command ON/OFF.
 - Default-key batch SSH to the owner account was denied, confirming that exact bootstrap/verifier/wrapper installation still requires the owner-authenticated NAS step. No NAS, container, database, phone or Target state changed.
+
+## [2026-08-29] fix | Invoke verified DSM temporary helpers through Bash
+
+- Owner readback proves the exact merged wrapper SHA-256 `234231e8...`, `root:root 0755` and `status=not-deployed`, while direct execution of both mode-0700 staged `/tmp` helpers failed with `Permission denied`.
+- Corrected the operator contract to use `sudo bash /tmp/<verified-helper>.sh`, which respects a DSM `noexec`-style `/tmp` policy without remounting or weakening it; added a regression covering bootstrap, verifier and backup examples.
+- Retained legacy containers remain the required running precondition. Bootstrap/verifier PASS, maintenance stop and protected run `33246998513` approval remain separate Gates; no deployment/readiness is claimed.
