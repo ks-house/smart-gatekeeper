@@ -498,7 +498,7 @@ names, and image digests instead.
 `backend/compose.production.yml` intentionally has no host port. Add a reviewed
 ingress layer instead of exposing the API container directly:
 
-- a dedicated nginx/Caddy/Traefik container joins only the `edge` network;
+- a dedicated nginx/Caddy/Traefik container joins the single `data` network;
 - it binds a fixed NAS-loopback/LAN-only port for DSM reverse proxy, never a
   router-forwarded API port;
 - DSM continues serving the installed mobile app's existing
@@ -864,14 +864,10 @@ then a synchronous subscriber `TimeoutError`, without a certificate, TLS or
 broker-authentication rejection. The production API is multi-homed on `edge`
 and `internal: true` `data`, whereas the working legacy API uses one ordinary
 bridge. DSM's Docker Engine 24 and Compose 2.20 predate Compose `gw_priority`
-(2.33.1+) and cannot deterministically select the routable bridge. The bounded
-compatibility correction therefore overrides only the Synology `data` network
-to `internal: false`; no DB port is published, API publication remains
-loopback-only, and generic production keeps its internal data network. This is
-a reviewed compatibility tradeoff: the DB container gains outbound routing on
-DSM, but remains unreachable from the host/WAN because it has no published
-port. A fresh protected CI run and live MQTTS/readiness evidence are required
-before the next cutover claim.
+(2.33.1+) and cannot deterministically select the routable bridge. The first
+bounded correction made the Synology `data` bridge routable as well, but exact
+run `33250299026` still timed out at the same subscriber connection. That live
+result invalidates the narrower internal-bridge-only hypothesis.
 
 The compatibility cycle is now source-complete. Policy PR #238 authorized the
 exact two protected candidate blobs, PR #239 passed fresh Hosted Trusted, OTA
@@ -882,9 +878,21 @@ P0 and Backend checks and merged as actual feature main
 context; the final policy has one persistent 83-path baseline sourced from the
 feature main. Exact push run `33250299026` passed backend/security, operations
 evidence and immutable API/DB publication and waits at the protected production
-Environment. The retained legacy pair must be proved stopped immediately before
-approval. Until that owner output, the run remains unapproved and no new NAS
-container, database migration, readiness or access result is claimed.
+Environment. The owner then proved exactly the retained legacy pair stopped and
+run `33250299026` alone was approved. The run pulled immutable API digest
+`58f83948...` and DB digest `5ba469cf...`, passed DB health and migration `up
+007`, and started the API, but loopback `/ready` timed out. The wrapper retained
+root-only runtime/API diagnostics, removed the partial containers and networks
+without deleting volumes, and did not attempt DB rollback. External API
+readback is currently 502 while the retained legacy pair remains stopped.
+Owner restart restored both retained legacy containers. External readback is
+again `/live=200`; legacy `/ready=503` reports MQTT true and only the expected
+`legacy_prearm_retired=false` check is false. The deterministic candidate now
+removes API multi-homing entirely: API, DB and migration share exactly one
+routable `data` bridge. DB 3306 remains unpublished, base Compose publishes no
+API port, and the Synology overlay remains loopback-only. This is source only;
+trusted policy authorization, hosted CI and live MQTTS/readiness evidence are
+required before another cutover claim.
 
 ## 12. Primary references
 

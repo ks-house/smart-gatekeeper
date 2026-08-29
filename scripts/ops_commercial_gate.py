@@ -547,20 +547,22 @@ def contract() -> dict:
     forbidden_compose = (
         "DB_PASSWORD:-", "DB_ROOT_PASSWORD:-", "MYSQL_PASSWORD:",
         "./app:/app", "./db/", "docker-entrypoint-initdb.d", "build:",
-        "ports:", "network_mode: host",
+        "ports:", "network_mode: host", "internal: true", "edge:",
     )
     for forbidden in forbidden_compose:
         if forbidden in compose:
             errors.append(f"production Compose contains forbidden token {forbidden}")
     for required in (
         "read_only: true", "no-new-privileges:true", "cap_drop:",
-        "DB_PASSWORD_FILE:", "OPS_HMAC_KEY_FILE:", "internal: true",
+        "DB_PASSWORD_FILE:", "OPS_HMAC_KEY_FILE:", "internal: false",
         "ACL_MANAGEMENT_ENABLED: \"true\"", "ACL_LEGACY_DEVICE_LOOKUP_ENABLED: \"false\"",
         "127.0.0.1:8000/ready", "service_completed_successfully",
         "EXPECTED_DB_SCHEMA_VERSION: \"007\"", "migration_backups:",
     ):
         if required not in compose:
             errors.append(f"production Compose missing {required}")
+    if compose.count("networks: [data]") < 3:
+        errors.append("production Compose does not keep API, DB, and migration on one data bridge")
     action_uses = re.findall(r"^\s*-?\s*uses:\s*([^\s#]+)", workflow, re.MULTILINE)
     if not action_uses or any(not re.fullmatch(r"[^@]+@[a-f0-9]{40}", use) for use in action_uses):
         errors.append("backend workflow actions are not exact-commit pinned")

@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`과 matching production-signed Fold7 앱은 action 1 `ARMED` 뒤 action 2 terminal open 및 Target relay-command ON→OFF를 완료한 마지막 connected core evidence다. NAS route compatibility PR #239는 Hosted Trusted, OTA P0, Backend CI를 통과해 feature main `aebad8ef398e7d5a69e192547543424931ed38af`로 병합됐고, PR #240은 final policy main `da39fe07dc2575ac5c23181523baae010f8bf610`에서 그 feature main을 유일한 83-path baseline으로 고정했다. Exact push run `33250299026`은 backend/security, evidence와 immutable API/DB image publication을 통과하고 production 승인을 기다린다. Retained legacy DB/API는 이전 MQTTS timeout 실패 뒤 복구돼 running이라는 마지막 owner evidence가 있으며, 신규 stack은 아직 배포 성공이나 `mqtt=true`가 아니다. WSL에는 CH343 Target이 attached됐지만 bounded 21-second serial probe는 0 bytes였고, Android phone은 Windows USB와 ADB 모두 미연결이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`과 matching production-signed Fold7 앱은 action 1 `ARMED` 뒤 action 2 terminal open 및 Target relay-command ON→OFF를 완료한 마지막 connected core evidence다. NAS route compatibility PR #239는 feature main `aebad8ef398e7d5a69e192547543424931ed38af`로 병합됐고 final policy main `da39fe07dc2575ac5c23181523baae010f8bf610`이 그 source baseline을 고정했다. Exact run `33250299026`은 DB health, migration `up 007`, API start까지 통과했지만 두 bridge가 모두 routable인 상태에서도 MQTTS subscriber `TimeoutError`로 `/ready`가 실패했다. Partial stack은 볼륨 삭제와 DB rollback 없이 정리됐고, owner restart 뒤 외부 legacy `/live=200`, MQTT true가 복구됐다. 다음 source candidate는 DSM Engine 24가 선택할 두 번째 gateway 자체를 제거해 API/DB/migrator가 하나의 routable·미게시 bridge만 사용한다. WSL CH343 serial은 여전히 0 bytes지만 Android `SM-F966N`은 ADB authorized이고 앱 `1.0.0-gd9ecc87`이 실행 중이다. 신규 stack 배포 성공, `mqtt=true`, backend-included `ARMED`→`OPENED`→relay ON/OFF 및 physical relay contact/load는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -154,10 +154,11 @@ applies_to:
   supersedes any immediate deployment retry. Those logs show a synchronous
   subscriber `TimeoutError` after MQTTS configuration validation, with no
   TLS/certificate/authentication rejection. DSM Docker 24/Compose 2.20 cannot
-  set the newer `gw_priority` for the API's routable `edge` plus internal
-  `data` networks; the Synology-only candidate makes `data` routable while
-  keeping DB ports unpublished and the API port loopback-only. CI and a fresh
-  live attempt remain required.
+  set deterministic `gw_priority`; a second attempt still timed out after both
+  bridges were made routable. The current candidate therefore removes API
+  multi-homing and uses one routable `data` bridge for API/DB/migration while
+  keeping DB ports unpublished and the Synology API port loopback-only. Trusted
+  policy authorization, CI and a fresh live attempt remain required.
 - Owner-provided live container inventory now identifies legacy
   `gatekeeper-api` from local image `smart_gatekeeper-api` with wildcard IPv4
   and IPv6 host port `8000`, and `gatekeeper-db` from mutable tag

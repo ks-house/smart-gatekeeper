@@ -4741,3 +4741,15 @@
 - Final policy main is `da39fe07dc2575ac5c23181523baae010f8bf610`; branch protection readback remains administrator-enforced and strict with the original Trusted required context. Exact feature-main push run `33250299026` passed backend/security, operations evidence and immutable image publication and waits at production without approval.
 - Windows usbipd and WSL expose attached CH343 `1a86:55d3` at `/dev/ttyACM0`. A new WSL login gains `dialout`, but 15-second filtered and 6-second raw probes received zero serial bytes; this proves USB transport presence, not Target runtime health or identity.
 - Windows PnP and ADB show no connected Android phone. Owner-proved exact legacy stop remains required before NAS approval, and mobile connection/authorization remains required before backend-included action-1/action-2 evidence; no deployment or E2E pass is claimed.
+
+## [2026-08-29] test | Fail DSM route-corrected deployment readiness
+
+- Owner evidence proved exactly retained `gatekeeper-api` and `gatekeeper-db` stopped; exact feature-main run `33250299026` alone was approved. Immutable API `58f83948...` and DB `5ba469cf...` pulls, DB health, migration `up 007` and API container start passed.
+- Loopback `/ready` timed out. The wrapper retained root-only runtime/API evidence, removed the partial project without deleting volumes and did not attempt DB rollback; external API readback is currently 502 while legacy recovery remains pending.
+- Android `SM-F966N` serial `R3CY707DL7L` is now ADB-authorized. App `1.0.0-gd9ecc87` versionCode `24401` is installed/running and logs native GATT BLE ownership; this is mobile preparation only, not backend-included access or Target relay proof.
+
+## [2026-08-29] fix | Remove indeterminate DSM API multi-homing
+
+- Owner root-only evidence confirms the route-corrected API repeated the same MQTTS subscriber `TimeoutError` and bounded ACL publish failures after DB health, migration and startup. This invalidates the narrower internal-data-bridge hypothesis; legacy recovery is externally verified with `/live=200`, MQTT true and only expected `legacy_prearm_retired=false` keeping legacy `/ready=503`.
+- Production API, DB and one-shot migrator now share one routable `data` bridge and the unused API `edge` attachment is removed, eliminating Engine 24 default-gateway ambiguity instead of trying to prioritize two routes. DB 3306 remains unpublished, base Compose has no host API port, and the Synology overlay still publishes only `127.0.0.1:8000`.
+- Updated rendered/source network assertions and synchronized operations, deployment, status and hardware evidence docs. This is a source candidate only; trusted-policy authorization, hosted CI, exact NAS deployment, MQTT readiness and backend-included Target/mobile access remain separate Gates.
