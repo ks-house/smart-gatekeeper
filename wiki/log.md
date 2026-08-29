@@ -4549,3 +4549,9 @@
 - Owner readback proves `smart-gatekeeper-production-db-1` stopped to `exited` while retaining its exact failed-attempt digest, and the original `gatekeeper-db` plus `gatekeeper-api` restarted to `running`; no volume deletion occurred.
 - Fresh external `/live` returned HTTP 200 for legacy build `7c2764a1a16492ec1620079c8211b47287b1b3fd`. `/ready` returned the expected legacy HTTP 503 with every check true except `legacy_prearm_retired=false`.
 - Protected run `33241850366` remains waiting and unapproved. The next Gate is root-owned wrapper SHA-256 `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805` installation/readback; installation alone changes no container or database state.
+
+## [2026-08-29] compile | Authorize exact DSM NanoCPUs removal candidate
+
+- Reviewed immutable feature commit `5a32570a8ec08a2433601dd29ff6ff9c4b31d44d`; relative to the current baseline, exactly production Compose, Synology overlay, deploy README and the direct NAS deployment test change as one protected bundle.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path map. The four candidate digests are pinned and the previous `6b1f1da3` baseline is retired from the transition policy.
+- Focused trusted-policy regressions pass 42/42. This policy-only candidate changes no NAS runtime and grants no production approval; hosted CI/merge, feature merge-connection, fresh CI, final rotation and a new live window remain separate Gates.
