@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. DSM compatibility feature main은 `6b1f1da3359dcca95c8434b73970ba992ef9d41d`, final policy main은 `bb970bb68c365140b2b1717116fc19eac307cb59`로 병합됐다. Exact backend run `33241850366`은 image/provenance/evidence를 통과하고 production 승인 대기 중이지만, 외부 `/live`와 `/ready`는 모두 HTTP 502여서 retained legacy 복구와 새 wrapper 설치 전에는 승인하면 안 된다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. DSM compatibility feature main은 `6b1f1da3359dcca95c8434b73970ba992ef9d41d`, final policy main은 `bb970bb68c365140b2b1717116fc19eac307cb59`로 병합됐다. 실패한 production DB는 `exited`, retained legacy DB/API는 `running`으로 복구됐고 외부 `/live`는 HTTP 200, `/ready`는 알려진 `legacy_prearm_retired=false`만 남은 HTTP 503이다. Exact backend run `33241850366`은 production 승인 대기 중이며 새 wrapper 설치 전에는 승인하면 안 된다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -77,11 +77,12 @@ applies_to:
   run `33241850366` has passed tests, evidence, provenance and immutable image
   publication and is waiting at the protected `production` Environment. The
   merged wrapper SHA-256 is `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805`.
-- A fresh external read-only probe returns HTTP 502 for both `/live` and
-  `/ready`. This proves there is currently no reachable API upstream; it does
-  not identify container state. Production approval remains withheld until the
-  partial new DB is stopped, the retained legacy pair is restarted/read back,
-  and the new wrapper is installed with exact root-owned digest evidence.
+- Owner readback now proves the partial new DB is `exited` and the retained
+  legacy DB/API are both `running`, without volume deletion. External `/live`
+  is HTTP 200 for legacy build `7c2764a1`; `/ready` is the expected legacy HTTP
+  503 with only `legacy_prearm_retired=false`. Production approval remains
+  withheld until the new wrapper is installed with exact root-owned digest
+  evidence and the recovered legacy pair is stopped in a new change window.
 
 - The retained legacy backend was stopped for run `33240731351`; its restart
   and public health readback are now the immediate recovery Gate. The new

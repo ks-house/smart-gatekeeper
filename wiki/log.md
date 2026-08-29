@@ -4543,3 +4543,9 @@
 - Final policy PR #217 passed Hosted Trusted and merge-committed as main `bb970bb68c365140b2b1717116fc19eac307cb59`; branch protection retains administrator enforcement, strict checking and the original required Trusted context.
 - Exact feature-main backend run `33241850366` passed backend tests, evidence, provenance and immutable image publication and now waits for protected production approval. The merged wrapper is 20,205 bytes with SHA-256 `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805`.
 - Fresh external read-only `/live` and `/ready` probes both return HTTP 502. Production approval remains withheld until owner readback proves the partial new DB stopped, retained legacy API/DB running, and the exact new wrapper installed; no volume deletion is authorized or inferred.
+
+## [2026-08-29] test | Recover retained legacy backend after NanoCPUs failure
+
+- Owner readback proves `smart-gatekeeper-production-db-1` stopped to `exited` while retaining its exact failed-attempt digest, and the original `gatekeeper-db` plus `gatekeeper-api` restarted to `running`; no volume deletion occurred.
+- Fresh external `/live` returned HTTP 200 for legacy build `7c2764a1a16492ec1620079c8211b47287b1b3fd`. `/ready` returned the expected legacy HTTP 503 with every check true except `legacy_prearm_retired=false`.
+- Protected run `33241850366` remains waiting and unapproved. The next Gate is root-owned wrapper SHA-256 `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805` installation/readback; installation alone changes no container or database state.
