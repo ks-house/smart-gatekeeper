@@ -4,6 +4,12 @@
 
 services:
   api:
+    # Preserve the public certificate hostname while bypassing NAS public-IP
+    # hairpin routing.  The broker already publishes verified MQTTS on the NAS
+    # host at 4883; host-gateway keeps that traffic local without disabling TLS
+    # hostname verification or exposing another container port.
+    extra_hosts:
+      - "${MQTT_HOST:?MQTT_HOST is required}:host-gateway"
     ports:
       - target: 8000
         published: "${SGK_API_LOOPBACK_PORT:-8000}"
@@ -12,8 +18,10 @@ services:
 
 # The production definition deliberately gives the API one routable data
 # bridge.  Do not add a DSM-only second bridge: Engine 24 / Compose 2.20 cannot
-# select its default gateway deterministically.  DB port 3306 remains
-# unpublished and the API host publication below remains loopback-only.
+# select its default gateway deterministically.  The hostname override above
+# affects only the API container and preserves the hostname used for TLS SNI
+# and certificate verification.  DB port 3306 remains unpublished and the API
+# host publication below remains loopback-only.
 
 volumes:
   mariadb_data:

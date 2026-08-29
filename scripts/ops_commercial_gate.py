@@ -522,6 +522,9 @@ def contract() -> dict:
     dockerfile = (ROOT / "backend/app/Dockerfile").read_text(encoding="utf-8")
     runtime = (ROOT / "backend/app/main.py").read_text(encoding="utf-8")
     compose = (ROOT / "backend/compose.production.yml").read_text(encoding="utf-8")
+    synology_compose = (ROOT / "backend/compose.synology.yml").read_text(
+        encoding="utf-8"
+    )
     workflow = (ROOT / ".github/workflows/backend_security.yml").read_text(encoding="utf-8")
     alert_rules = (ROOT / "ops/prometheus_rules.yml").read_text(encoding="utf-8")
     setup_script = (ROOT / ".orca/scripts/setup_worktree.ps1").read_text(encoding="utf-8")
@@ -563,6 +566,8 @@ def contract() -> dict:
             errors.append(f"production Compose missing {required}")
     if compose.count("networks: [data]") < 3:
         errors.append("production Compose does not keep API, DB, and migration on one data bridge")
+    if '"${MQTT_HOST:?MQTT_HOST is required}:host-gateway"' not in synology_compose:
+        errors.append("Synology Compose does not bypass public-IP MQTT hairpin through host-gateway")
     action_uses = re.findall(r"^\s*-?\s*uses:\s*([^\s#]+)", workflow, re.MULTILINE)
     if not action_uses or any(not re.fullmatch(r"[^@]+@[a-f0-9]{40}", use) for use in action_uses):
         errors.append("backend workflow actions are not exact-commit pinned")

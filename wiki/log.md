@@ -4772,8 +4772,26 @@
 - Removed transition source `8e2ec16` and pinned the sole `current-main-baseline` to actual main while preserving the complete ordered 83-path map, inventories and four reviewed protected digests.
 - This final policy rotation changes no NAS state and proves no readiness. A fresh exact-main deployment run, owner maintenance window, MQTT true and backend-included access E2E remain open.
 
+## [2026-08-29] test | Fail exact single-bridge deployment readiness
+
+- Owner output proved exactly retained `gatekeeper-api` and `gatekeeper-db` stopped; exact run `33251769358` for feature main `dbafe9d4f803938d7570ef18769ef0925c6b0230` alone was approved. It pulled immutable API `e947786a...` and DB `365d7c3f...`, created only the routable `data` bridge, passed DB health and migration `up 007`, and started the API.
+- Loopback `/ready` timed out. The wrapper retained root-only runtime/API evidence, removed the partial production containers/network without deleting volumes and did not attempt DB rollback; fresh external `/live` and `/ready` both return 502 while legacy remains stopped.
+- Issue #190 records the exact run boundary. Owner-assisted legacy recovery and filtered retained-log classification are mandatory before another implementation or deployment retry; no backend deployment or core-use-case pass is claimed.
+
+## [2026-08-29] fix | Bypass Synology public-IP MQTT hairpin through host gateway
+
+- Root-only run `33251769358` evidence proves the single-bridge DB stayed healthy and the API running while the MQTTS subscriber repeated a `TimeoutError` 5.417 seconds after startup; bounded ACL publishes also failed. Readiness traffic reached the API from bridge gateway peer `192.168.0.1`, and owner restart restored legacy `/live=200` with MQTT true.
+- The Synology overlay now maps the unchanged runtime `MQTT_HOST` to Docker `host-gateway` only inside the API container. Paho still connects with the public certificate hostname, preserving TLS SNI and hostname verification while avoiding public-IP NAT hairpin to the NAS-published 4883 listener.
+- Added source, rendered-Compose and commercial contract assertions and synchronized deployment/status evidence. This is source only; trusted authorization, hosted CI, exact NAS `/ready` with MQTT true, and backend-included mobile/Target access remain separate Gates.
+
 ## [2026-08-29] compile | Authorize exact Synology MQTT host-gateway candidate
 
 - Reviewed immutable feature candidate `1feb4b9d14ee2742e228f298557e3335a2060d09`; relative to feature main `dbafe9d4`, exactly the Synology Compose overlay, commercial contract and direct NAS deployment test change among protected paths.
 - Replaced the current source identity with `future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `8859e089...`, `307d0486...` and `e90cec4c...`.
 - This policy-only candidate changes no NAS state and grants no deployment approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect MQTT host-gateway feature to policy main
+
+- Policy PR #246 passed the required Trusted check and merge-committed as main `be8c462d35cd25790cdf45a92bbcb6eb6b95c44e`; that exact policy main was merged without rebase or squash into immutable feature candidate `1feb4b9d14ee2742e228f298557e3335a2060d09` as `56029d3f8eeba717fd6f81505b607294d4846d4b`.
+- All three reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged. The append-only log conflict preserved both the live failure/fix evidence and policy authorization entries.
+- Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS runtime and proves no readiness or backend-included E2E.

@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (run `33250299026` confirmed a second multi-homed MQTTS timeout; legacy is externally recovered with MQTT true, and a deterministic single unpublished bridge candidate is under review)
+> Last updated: 2026-08-29 (single-bridge run `33251769358` repeated a five-second MQTTS connect timeout; legacy is recovered, and a TLS-hostname-preserving Synology host-gateway hairpin bypass is under review)
 
 ---
 

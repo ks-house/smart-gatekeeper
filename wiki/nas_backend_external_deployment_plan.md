@@ -894,6 +894,31 @@ API port, and the Synology overlay remains loopback-only. This is source only;
 trusted policy authorization, hosted CI and live MQTTS/readiness evidence are
 required before another cutover claim.
 
+The single-bridge source completed its protected cycle as feature main
+`dbafe9d4f803938d7570ef18769ef0925c6b0230`, with final policy main
+`6e8a1346f2e14d5ca3fd41b37d6975349e2d8be5` retaining the strict Trusted
+context. After owner evidence proved exactly the legacy API/DB stopped, exact
+run `33251769358` pulled API digest `e947786a...` and DB digest `365d7c3f...`,
+created the sole `data` bridge, passed DB health and migration `up 007`, and
+started the API. Loopback `/ready` still timed out. The wrapper retained
+root-only runtime/API evidence and removed the partial project without deleting
+volumes or attempting DB rollback. External `/live` and `/ready` now return
+502 while legacy remains stopped. No further deployment is admitted until the
+owner restores the retained legacy pair and the filtered retained logs classify
+the exact remaining readiness failure.
+
+Owner readback closed those two immediate gates. The retained API was running
+and the DB healthy; the subscriber again raised `TimeoutError` 5.417 seconds
+after startup and later ACL publishes failed within their bounded deadlines.
+No TLS, certificate, credential or broker refusal was logged. Readiness traffic
+reached the API from bridge gateway peer `192.168.0.1`, and restarting the
+retained legacy pair restored external `/live=200` plus MQTT true. The next
+candidate therefore keeps `MQTT_HOST=tworimpa.synology.me` as the Paho connect
+and TLS verification name but adds a Synology-only `extra_hosts` mapping from
+that exact runtime hostname to Docker `host-gateway`. This directs port 4883 to
+the already-published NAS host listener without public-IP NAT hairpin, disabling
+TLS validation, adding a second network or publishing MariaDB.
+
 ## 12. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)
