@@ -465,6 +465,12 @@ For the first adoption only, use an owner-approved maintenance window:
 8. keep old images and the pre-migration backup until the accepted rollback
    window closes.
 
+The forced `apply` command reserves stdout for the canonical nine-line
+`deployment.evidence` record. Docker pull/Compose/migration progress is emitted
+on stderr so the workflow can compare the apply record byte-for-byte with the
+subsequent forced `status` readback without mixing operational logs into the
+artifact.
+
 ### 2026-08-29 live first-adoption window
 
 The owner recorded legacy `gatekeeper-api` (`smart_gatekeeper-api`) and
