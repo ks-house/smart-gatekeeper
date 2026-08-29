@@ -709,9 +709,12 @@ action's valid `sha256sum` input. Policy PR #216, policy-connected feature PR
 final main `bb970bb68c365140b2b1717116fc19eac307cb59`; the reviewed feature main
 is `6b1f1da3359dcca95c8434b73970ba992ef9d41d`. Its backend run `33241850366`
 has published exact images/provenance and waits at protected production
-approval. The merged wrapper SHA-256 is `6a29bf87...`. External `/live` and
-`/ready` currently return HTTP 502, so recovery and exact wrapper installation
-must precede approval. No deployed/readiness result exists yet.
+approval. The merged wrapper SHA-256 is `6a29bf87...`. Owner readback now proves
+the partial new DB `exited` and both retained legacy containers `running`;
+external `/live` returned HTTP 200 for build `7c2764a1` and `/ready` returned
+the expected legacy HTTP 503 with only `legacy_prearm_retired=false`. Exact
+wrapper installation and a new maintenance stop must still precede approval.
+No deployed/readiness result exists yet.
 
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
