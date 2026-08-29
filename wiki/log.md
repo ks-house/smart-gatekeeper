@@ -4537,3 +4537,9 @@
 - Policy-connected PR #215 head `a581e370fc0895041792cdc7c975a83aa6bf19e3` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `6b1f1da3359dcca95c8434b73970ba992ef9d41d`.
 - Removed both `e787786` transition identities and pinned the sole `current-main-baseline` to that actual main. The complete ordered 83-path map, inventories and five reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS runtime and proves no deployment/readiness. Legacy recovery, root-owned wrapper install, maintenance stop, protected retry and backend-included E2E remain open.
+
+## [2026-08-29] test | Confirm final DSM policy and live recovery blocker
+
+- Final policy PR #217 passed Hosted Trusted and merge-committed as main `bb970bb68c365140b2b1717116fc19eac307cb59`; branch protection retains administrator enforcement, strict checking and the original required Trusted context.
+- Exact feature-main backend run `33241850366` passed backend tests, evidence, provenance and immutable image publication and now waits for protected production approval. The merged wrapper is 20,205 bytes with SHA-256 `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805`.
+- Fresh external read-only `/live` and `/ready` probes both return HTTP 502. Production approval remains withheld until owner readback proves the partial new DB stopped, retained legacy API/DB running, and the exact new wrapper installed; no volume deletion is authorized or inferred.

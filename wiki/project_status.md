@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. Feature-main run `33240731351`은 exact image pull과 새 DB 시작 뒤 DSM의 unsupported `NanoCPUs`에서 migration 전에 실패했고, retained legacy API/DB 복구 readback은 대기 중이다. NAS 호환 correction은 아직 source/test candidate다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. DSM compatibility feature main은 `6b1f1da3359dcca95c8434b73970ba992ef9d41d`, final policy main은 `bb970bb68c365140b2b1717116fc19eac307cb59`로 병합됐다. Exact backend run `33241850366`은 image/provenance/evidence를 통과하고 production 승인 대기 중이지만, 외부 `/live`와 `/ready`는 모두 HTTP 502여서 retained legacy 복구와 새 wrapper 설치 전에는 승인하면 안 된다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -66,11 +66,22 @@ applies_to:
   attempted and no deployment/readiness result exists. The installed wrapper
   did not yet clean the partial project, so recovery must stop that new DB and
   restart the retained legacy pair without deleting the shared volume.
-- The current correction candidate keeps portable base CPU limits but causes
+- The merged correction keeps portable base CPU limits but causes
   the merged Synology Compose to omit unsupported `cpus`; it also cleans only a
   partial production project with `down --remove-orphans` and never
   `--volumes`, records cleanup evidence, and corrects the Tailscale action input
-  to `sha256sum`. Local tests do not admit or deploy these bytes.
+  to `sha256sum`.
+- Policy PR #216, policy-connected feature PR #215 and final policy PR #217
+  all passed their required Hosted checks and merge-committed through final
+  main `bb970bb68c365140b2b1717116fc19eac307cb59`. Exact feature-main backend
+  run `33241850366` has passed tests, evidence, provenance and immutable image
+  publication and is waiting at the protected `production` Environment. The
+  merged wrapper SHA-256 is `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805`.
+- A fresh external read-only probe returns HTTP 502 for both `/live` and
+  `/ready`. This proves there is currently no reachable API upstream; it does
+  not identify container state. Production approval remains withheld until the
+  partial new DB is stopped, the retained legacy pair is restarted/read back,
+  and the new wrapper is installed with exact root-owned digest evidence.
 
 - The retained legacy backend was stopped for run `33240731351`; its restart
   and public health readback are now the immediate recovery Gate. The new

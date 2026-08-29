@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; DSM backend compatibility merged as main 6b1f1da3 after fresh Trusted/OTA/Backend checks; final policy rotation and legacy recovery readback remain open)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; DSM backend compatibility and final policy are merged through main bb970bb6; exact backend run 33241850366 waits for production approval while public live/ready remain HTTP 502 pending legacy recovery)
 
 ---
 
