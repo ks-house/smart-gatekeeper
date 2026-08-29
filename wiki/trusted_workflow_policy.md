@@ -744,3 +744,19 @@ policy-only PR merges, its exact main must be merge-connected into feature PR
 #220 without rebase or squash. Fresh Trusted, OTA and Backend checks remain
 mandatory, and the policy must rotate again to the actual feature merge-main.
 This authority changes no NAS runtime and is not deployment/readiness evidence.
+
+## 16. DSM NanoCPUs field-removal final baseline
+
+Policy-connected feature PR #220 head
+`719564f159205cdbabb769037f7783f5e0aaabad` passed fresh Hosted Trusted, OTA P0
+and Backend checks. Merge commit
+`b6cab8384efe7b5e046841ff84681b74d0cae113` is the actual feature main.
+
+This final rotation removes both bounded `5a32570` transition identities and
+pins the sole `current-main-baseline` to actual feature main `b6cab83`. The
+complete ordered 83-path map, workflow/action inventories and four reviewed
+CPU-field-removal digests remain unchanged.
+
+Final policy authority is still source/CI evidence only. It does not stop the
+recovered legacy containers, approve production, migrate the DB, prove
+readiness or complete the backend-included access E2E.
