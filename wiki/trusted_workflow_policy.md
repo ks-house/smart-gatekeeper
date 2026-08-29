@@ -527,3 +527,31 @@ unchanged.
 Policy completion remains authority evidence only. Signed exact-main Target
 and Android publication/install plus connected action-1-followed-by-action-2
 relay-command evidence are still required.
+
+## 8. NAS first-adoption documentation transition candidate
+
+Reviewed immutable PR #206 feature commit
+`43c775969b082397ceb063e7ef929307a72d4b74`. It records the owner's
+maintenance-window stop of only the two legacy containers and the exact-main
+status preflight run `33234620284`; the change deliberately causes the
+backend-main workflow to run after merge. Relative to current policy main, the
+sole protected delta is `backend/deploy/README.md`, normalized SHA-256
+`9940c34e4a6dc57b2fa27411fee4c5def1e24aaede8b7c1e4480a3d19770b33b`.
+No executable backend, workflow, image, migration or deploy-wrapper byte is
+changed.
+
+The complete ordered 83-path protected map is duplicated in exactly two
+bounded identities: `temporary-nas-first-adoption-43c7759` for the immutable
+feature commit and
+`future-nas-first-adoption-43c7759-persistent-baseline` for proven descendants
+retaining every protected byte. After this policy-only PR merges, its exact
+main merge commit must be merge-connected into PR #206 without rebase or
+squash. Fresh Hosted Trusted, OTA and Backend checks are required before the
+feature merge, followed by an immediate final policy rotation to the actual
+feature merge commit.
+
+This authorization changes no NAS runtime or database state and does not
+approve the protected `production` environment. Deployment success still
+requires the post-merge job to return `status=deployed`, exact `source_sha`,
+matching status readback and HTTP readiness. Failure recovery remains starting
+the untouched legacy `gatekeeper-db` and `gatekeeper-api` containers.

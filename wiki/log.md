@@ -4423,3 +4423,9 @@
 - PR #205 merge-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a` passed exact Target/mobile CI; connected Target `2.1.303+main.gd9ecc87` became VALID and production-signed mobile `1.0.0-gd9ecc87` / 24401 replacement-installed with action-1 followed by terminal action-2 `문이 열렸습니다 (4612ms)` and relay-command ON then OFF without the false BLE ownership banner.
 - The owner recorded legacy `gatekeeper-api` (`smart_gatekeeper-api`) and `gatekeeper-db` (`mariadb:10.11`) as running, then stopped exactly those two containers without deleting either container or volume. Recovery remains starting the same pair.
 - Manual exact-main status-only run `33234620284` passed protected production approval, ephemeral Tailscale OIDC, pinned private SSH and forced dispatcher with retained `status=not-deployed`. The next Gate is a newly admitted backend-main run whose `apply` must return `status=deployed`, exact `source_sha`, matching status readback and readiness or fail closed.
+
+## [2026-08-29] compile | Authorize exact NAS first-adoption candidate
+
+- Reviewed immutable PR #206 feature commit `43c775969b082397ceb063e7ef929307a72d4b74`; its sole protected delta is `backend/deploy/README.md`, normalized SHA-256 `9940c34e...`, and it changes no executable backend, workflow, migration or wrapper byte.
+- Added exact and future persistent identities with the same complete ordered 83-path map. The prior `618220e` baseline is retired; regressions require exact repository/SHA, ancestry, inventories and indivisible protected bytes.
+- This policy-only candidate changes no NAS runtime, container or database state and grants no `production` approval. Policy merge, merge-connection into PR #206, fresh CI, protected approval, deploy evidence and backend-included E2E remain separate Gates.
