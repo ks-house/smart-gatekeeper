@@ -4988,3 +4988,16 @@
 - Updated the source-bound recovery contract and Korean user procedure to name the recovery-only `고급 진단` route and its `고급 제어` tab; the normal ready path remains Home/Activity/Settings.
 - Removed the stale `Smart Key 설정` tooltip from the transitional WebView and retained manual local open, verified updater, Android settings and setup retry reachability.
 - This is navigation/manual synchronization only; credential, Target, OTA trust and physical behavior are unchanged.
+
+## [2026-08-30] code | Add normal mobile language update and support experience
+
+- Added generated ko/en resources and system-locale delegates for the normal Home/Activity/Settings shell, including explicit live readiness and support semantics.
+- Added a normal-settings update experience that projects installed and available version, signed download progress and replacement first-run health while preserving Android confirmation, old-app retention and independent recovery.
+- Added a bounded preview-first support report with explicit copy consent, opaque event correlation and no tenant label/name, unit, MAC, token, key or proof material.
+- Retained raw GATT phase timing under advanced diagnostics; the disconnected phone prevents the required 10 foreground plus 10 screen-off latency baseline and connected accessibility acceptance.
+
+## [2026-08-30] compile | Synchronize mobile P1 plan and user procedure
+
+- Marked P0 PR #266 as merged and documented the #269 P1 source candidate, its exact evidence boundary and the intentionally gated multi-door, replacement-phone, iOS and connected latency scopes.
+- Updated the Korean user procedure for the consolidated normal update card and preview-consent-copy support path.
+- No phone install, Target transition, notification delivery, TalkBack visual result or physical door result is claimed by these source changes.

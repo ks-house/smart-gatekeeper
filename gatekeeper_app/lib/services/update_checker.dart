@@ -21,6 +21,24 @@ enum UpdateState {
   failed
 }
 
+class UpdateExperience {
+  const UpdateExperience({
+    required this.installedVersion,
+    required this.installedBuild,
+    required this.firstRunHealthy,
+    this.firstRunReason,
+    this.pendingVersion,
+    this.pendingBuild,
+  });
+
+  final String installedVersion;
+  final String installedBuild;
+  final bool? firstRunHealthy;
+  final String? firstRunReason;
+  final String? pendingVersion;
+  final int? pendingBuild;
+}
+
 String updateStatusMessage(
   UpdateState state, {
   String? version,
@@ -79,6 +97,21 @@ class UpdateChecker {
   final ValueNotifier<double?> downloadProgress = ValueNotifier<double?>(null);
   final ValueNotifier<UpdateState> stateNotifier =
       ValueNotifier<UpdateState>(UpdateState.idle);
+
+  Future<UpdateExperience> readExperience() async {
+    final package = await PackageInfo.fromPlatform();
+    final prefs = await SharedPreferences.getInstance();
+    return UpdateExperience(
+      installedVersion: package.version,
+      installedBuild: package.buildNumber,
+      firstRunHealthy: prefs.containsKey('update_first_run_healthy')
+          ? prefs.getBool('update_first_run_healthy')
+          : null,
+      firstRunReason: prefs.getString('update_first_run_reason'),
+      pendingVersion: prefs.getString('update_pending_version_name'),
+      pendingBuild: prefs.getInt('update_pending_build_number'),
+    );
+  }
 
   Future<bool> checkForUpdates(
       {String? customVersionUrl, String? customDownloadUrl}) async {

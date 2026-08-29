@@ -889,3 +889,22 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   Android Gradle/Trusted/Backend/OTA checks, exact-main signed publication and
   NAS deployment are still pending. The phone remains disconnected, so install,
   visual, notification, background and physical results remain unclaimed.
+
+## 2026-08-30 mobile P0 merge and P1 experience candidate
+
+- PR #266 merged as exact main `8ea9ff1f8177bf49dba524b11d586715af5e1f6b`
+  after Backend, Trusted, OTA, Flutter and hosted Android APK checks passed.
+- Issue #269 source now generates ko/en resources for the normal Home/Activity/
+  Settings shell and uses the system locale, while keeping engineering details
+  behind the existing advanced diagnostics route.
+- Normal settings projects installed and available app versions, signed update
+  progress and replacement first-run health without weakening installer
+  confirmation, signature/hash validation, old-app preservation or independent
+  recovery access.
+- The in-app support report is preview-first and bounded. Copy remains disabled
+  until explicit consent; exported data uses an opaque event reference and
+  excludes tenant label/name, unit, MAC, token, key and proof values.
+- These are source/widget results until PR #269 CI/merge and exact-main signed
+  publication complete. The disconnected phone leaves TalkBack, 200% font,
+  landscape/foldable, install, notification, Target transition and physical
+  door acceptance pending.

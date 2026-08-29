@@ -2,9 +2,9 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'screens/background_disclosure_screen.dart';
 import 'screens/smart_key_home_screen.dart';
 import 'screens/recovery_shell_screen.dart';
@@ -260,12 +260,8 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
           ),
           useMaterial3: true,
         ),
-        supportedLocales: const [Locale('ko'), Locale('en')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
         localeResolutionCallback: (locale, supported) => supported.firstWhere(
           (candidate) => candidate.languageCode == locale?.languageCode,
           orElse: () => supported.last,

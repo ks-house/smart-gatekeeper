@@ -8,17 +8,22 @@
 
 ## 0. Implementation progress
 
-- 2026-08-30 P0 source candidate (`#265`): implemented a native
+- 2026-08-30 P0 (`#265`, merged by PR #266): implemented a native
   Home/Activity/Settings shell, credential/public-key-bound personal status and
   lifecycle APIs, bounded privacy-safe local activity, terminal-state Android
   notifications, and a separate advanced diagnostics route.
 - The transitional WebView now projects the same credential-bound status and no
   longer calls retired `/user/me` as an authority. Its broken administrator
   `/api/v1/logs` history affordance was removed.
-- Backend ACL API tests (9), Flutter analysis and all 49 Flutter tests pass. The
-  Android notification policy is covered by a JVM unit test; the full Android
-  Gradle compile remains a hosted-CI Gate because this checkout intentionally
-  does not carry an executable Gradle wrapper.
+- Backend ACL API tests (9), Flutter analysis, all 49 Flutter tests and the
+  hosted Android Gradle/APK canary passed before merge.
+- 2026-08-30 P1 source candidate (`#269`): added generated ko/en resources for
+  the normal shell, explicit semantics for live readiness/support controls, a
+  normal-settings update experience with installed/available version,
+  download progress and replacement first-run health, plus a preview-first
+  bounded support report whose copy action is disabled until explicit consent.
+  The report contains opaque event correlation and excludes tenant label/name,
+  unit, MAC, token, key and proof material.
 - Phone installation, connected screen readback, notification delivery,
   foreground/screen-off Target trials, ultrasonic/contact actuation and actual
   door movement remain pending. They are not implied by this source status.
@@ -104,8 +109,8 @@ Exit: a redacted before-capture and an agreed five-step user journey exist.
 
 ### Phase 1 — truthful core Home (MU-P0-01, 02, 04)
 
-Source status: **implemented in the #265 candidate; CI, merge, publication and
-connected acceptance remain separate.**
+Source status: **merged by PR #266; exact-main publication, NAS deployment and
+connected acceptance remain separate evidence.**
 
 - Introduce a native `SmartKeyViewModel` that joins capability readiness,
   credential/enrollment state, latest Target session and update state.
@@ -135,6 +140,11 @@ and one recovery action; unknown outcomes are never auto-retried.
 
 ### Phase 3 — update, language, accessibility and support (MU-P1-01..04)
 
+Source status: **implemented in the #269 candidate. Generated ko/en normal-shell
+copy, live-region semantics, normal update status and consented redacted support
+report have source/widget coverage; hosted CI, merge, publication and connected
+visual/TalkBack acceptance remain separate.**
+
 - Consolidate update status and first-run health in normal settings.
 - Convert user copy to generated ko/en resources.
 - Complete TalkBack, 200% font, foldable/landscape and touch-target work.
@@ -144,6 +154,13 @@ Exit: the complete normal-user path passes widget/accessibility contracts and a
 connected visual walkthrough without accessing engineering diagnostics.
 
 ### Phase 4 — performance and lifecycle expansion (MU-P1-05, MU-P2-01..03)
+
+Source status: **bounded 30-second authoritative status refresh and privacy-safe
+GATT phase diagnostics already exist. The required 10 foreground plus 10
+screen-off sample set cannot be produced while the phone is disconnected, so
+no latency SLO or protocol-timing change is accepted. Multi-door/phone transfer
+is intentionally gated on the single-owner connected loop; iOS remains a
+separately approved product scope.**
 
 - Measure first, optimize the dominant connected GATT phase second, and preserve
   N/N-1 plus OTA rollback throughout.
