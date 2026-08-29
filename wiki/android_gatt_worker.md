@@ -69,17 +69,20 @@ A duplicate fingerprint is an HMAC over the private address plus stable OS wake 
 
 The redacted `sessions_v2` ledger never serializes raw address or credential ID. On first read, legacy `sessions_v1` is decoded, sensitive fields are discarded, the redacted record is durably written, and the old preference is removed; corrupt legacy data is removed rather than retained. The credential ID and temporary locator moved to AES-GCM/no-backup storage, the old plaintext credential and HMAC preferences are deleted, and the old raw-ID Keystore alias is deleted with authenticated re-enrollment required because a non-exportable key cannot be renamed safely. Terminal and uncertain states delete the locator record immediately. Logs, health, WorkManager data, wake JSON, and filenames contain no raw locator.
 
-The health projection exposes only bounded fields: state, stable observability reason, exact Target reason code/name, exact transport failure/status, raw and scheduled bounded retry delays, attempt count, update time, and latency.
+The health projection exposes only bounded fields: state, stable observability reason, exact Target reason code/name, exact transport failure/status, raw and scheduled bounded retry delays, attempt count, update time, latency, and the latest privacy-safe BLE wake summary. That summary contains only source, success, receive time, callback latency, strongest RSSI, screen-interactive state, result count, and scan error code. It never contains a raw peer address, credential ID, challenge, proof, token, or private key.
 
-The Flutter MethodChannel `com.kshouse.gatekeeper_app/ble_gatt_worker_health` accepts only `getHealth` and returns:
+The Flutter MethodChannel `com.kshouse.gatekeeper_app/ble_gatt_worker_health` `getHealth` response returns:
 
 - effective owner and flag reason;
 - healthy/unhealthy state;
 - last stable session reason;
 - last latency in milliseconds;
-- last update time.
+- last update time;
+- latest redacted Target-detection summary and presence-to-dispatch/ARMED timing.
 
-It has no enable, enrollment, signing, connection, retry, or door-open method.
+The same bounded channel also owns the explicit local-consent toggle, enrollment material, diagnostic retry, and terminal manual action-2 operation described in section 3. None of those methods exports signing material or a raw peer locator.
+
+While the Smart Key control screen is mounted, Flutter polls this projection once per second and renders `waiting`, `detected`, `authenticating`, `armed`, `failed`, or `disabled`. The card shows the latest receive time and age, one advertisement RSSI sample, screen ON/OFF state, durable session state, and presence-to-ARMED latency. A detection older than the native `maxPresenceAgeMs` contract (currently 45 seconds) is rendered as waiting, so an old journal entry cannot masquerade as current presence. This is a latest-event/status projection, not continuous BLE ranging and not a distance measurement.
 
 ## 6. Stable reasons
 

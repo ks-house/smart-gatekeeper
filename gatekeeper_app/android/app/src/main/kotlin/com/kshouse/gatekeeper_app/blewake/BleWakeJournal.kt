@@ -64,6 +64,33 @@ object BleWakeJournal {
       )
   }
 
+  /**
+   * Returns only the latest privacy-safe presence fields needed by the
+   * foreground dashboard. Raw BLE addresses and credential identifiers are
+   * never written to the journal and therefore cannot cross this bridge.
+   */
+  @Synchronized
+  fun latestRedacted(context: Context): Map<String, Any?>? = latestRedactedFromJson(
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getString(KEY_EVENTS, null),
+  )
+
+  internal fun latestRedactedFromJson(value: String?): Map<String, Any?>? {
+    val events = readArray(value)
+    if (events.length() == 0) return null
+    val event = events.optJSONObject(events.length() - 1) ?: return null
+    return mapOf(
+      "source" to event.optString("source", "unknown"),
+      "success" to event.optBoolean("success", false),
+      "receivedEpochMs" to event.optLong("received_epoch_ms", 0L),
+      "callbackLatencyMs" to event.optDoubleOrNull("latency_ms"),
+      "strongestRssi" to event.optIntOrNull("strongest_rssi"),
+      "screenInteractive" to event.optBoolean("screen_interactive", true),
+      "resultCount" to event.optInt("result_count", 0),
+      "errorCode" to event.optInt("error_code", 0),
+    )
+  }
+
   fun logDump(context: Context) {
     Log.i(TAG, JSONObject().put("action", "dump").put("data", dump(context)).toString())
   }
@@ -73,4 +100,10 @@ object BleWakeJournal {
   } catch (_: Exception) {
     JSONArray()
   }
+
+  private fun JSONObject.optIntOrNull(key: String): Int? =
+    if (!has(key) || isNull(key)) null else optInt(key)
+
+  private fun JSONObject.optDoubleOrNull(key: String): Double? =
+    if (!has(key) || isNull(key)) null else optDouble(key)
 }

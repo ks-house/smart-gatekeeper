@@ -16,6 +16,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.flutterbeacon.CrossProcessBleOwnerCoordinator
+import com.kshouse.gatekeeper_app.blewake.BleWakeJournal
 import java.util.concurrent.TimeUnit
 
 object BleGattWorkScheduler {
@@ -393,6 +394,7 @@ object BleGattHealthBridge {
       "credentialProvisioned" to localConsent.credentialProvisioned,
       "localConsentValid" to localConsent.valid,
       "healthy" to (last?.state !in setOf(DurableSessionState.FAILED, DurableSessionState.PROOF_UNCERTAIN)),
+      "latestDetection" to BleWakeJournal.latestRedacted(context.applicationContext),
       "lastSession" to last?.redactedMap(),
       "lastReasonCode" to last?.reasonCode,
       "lastTargetReasonCode" to last?.targetReasonCode,
