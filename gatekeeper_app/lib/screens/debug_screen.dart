@@ -7,7 +7,11 @@ import '../services/foreground_service.dart';
 import '../services/scan_diagnostics.dart';
 
 class DebugScreen extends StatefulWidget {
-  const DebugScreen({super.key});
+  const DebugScreen({super.key, this.embedded = false});
+
+  /// Hides this feature area's own AppBar when hosted by the unified settings
+  /// screen. The embedded body retains an explicit refresh control.
+  final bool embedded;
 
   @override
   State<DebugScreen> createState() => _DebugScreenState();
@@ -157,24 +161,14 @@ class _DebugScreenState extends State<DebugScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        title: const Text('🔧 엔지니어 디버그 & 튜닝'),
-        backgroundColor: const Color(0xFF1E1E1E),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: _isFetching
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.cyanAccent))
-                : const Icon(Icons.refresh, color: Colors.cyanAccent),
-            tooltip: '최신 튜닝 설정 새로고침',
-            onPressed: _isFetching ? null : _fetchAdminConfig,
-          ),
-        ],
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('🔧 엔지니어 디버그 & 튜닝'),
+              backgroundColor: const Color(0xFF1E1E1E),
+              elevation: 0,
+              actions: [_buildRefreshButton()],
+            ),
       body: SafeArea(
         bottom: true,
         child: SingleChildScrollView(
@@ -182,6 +176,13 @@ class _DebugScreenState extends State<DebugScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.embedded) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildRefreshButton(),
+                ),
+                const SizedBox(height: 4),
+              ],
               // ─── SECTION 1: 실시간 RSSI 모니터 ───────────────────
               _buildRssiMonitorCard(),
 
@@ -208,6 +209,23 @@ class _DebugScreenState extends State<DebugScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildRefreshButton() {
+    return IconButton(
+      icon: _isFetching
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.cyanAccent,
+              ),
+            )
+          : const Icon(Icons.refresh, color: Colors.cyanAccent),
+      tooltip: '최신 튜닝 설정 새로고침',
+      onPressed: _isFetching ? null : _fetchAdminConfig,
     );
   }
 

@@ -1,6 +1,6 @@
 # Mobile commercial UX and recovery contract (#51)
 
-Last updated: 2026-08-09
+Last updated: 2026-08-30
 
 ## Capability shell
 
@@ -21,6 +21,14 @@ local GATT, authenticated `manual_remote`, updater, settings, and redacted
 diagnostics reachable without the scanner, WebView, or foreground service. A
 denied permission therefore changes automatic-wake capability; it does not hide
 recovery capabilities.
+
+The main WebView shell and degraded recovery shell expose one shared
+`Smart Key 설정` destination instead of separate local-control and diagnostics
+pages. Its `Smart Key` tab retains manual local access, Target detection,
+credential/fallback and independent OTA controls; its `진단·튜닝` tab retains
+privacy-redacted RSSI, scan health, Target tuning and logs. Consolidation changes
+navigation only and does not make advanced controls available without their
+existing Backend authentication contract.
 
 `BleWakeRegistrar` is invoked after the visible permission gate on fresh install,
 persists the opt-in, and re-registers on `BOOT_COMPLETED` and

@@ -807,3 +807,17 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 - This closes issue #197's action-1 ARMED replacement incident for the
   connected board/FSM/GPIO-command path. It does not prove contact voltage,
   attached load, actual door movement, AJ-SR04T threshold or repetition SLO.
+
+## 2026-08-30 unified mobile settings source state
+
+- The main WebView AppBar and degraded recovery shell now route to one
+  `AppSettingsScreen` rather than exposing separate Smart Key control and
+  engineer-debug pages.
+- The unified screen keeps user controls and privacy-safe Target status in the
+  `Smart Key` tab, and RSSI/scan diagnostics, Target tuning and logs in the
+  `진단·튜닝` tab. Manual refresh and independent mobile OTA access remain
+  present.
+- Focused Flutter analysis, eight navigation/recovery tests and the complete
+  44-test Flutter suite pass in the exact CI Flutter environment. Signed APK
+  publication, install and connected on-device visual confirmation remain
+  separate release evidence.

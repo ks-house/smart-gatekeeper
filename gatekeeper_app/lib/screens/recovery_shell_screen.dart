@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/native_wake_registration.dart';
 import '../services/update_checker.dart';
-import 'debug_screen.dart';
-import 'smart_key_control_screen.dart';
+import 'app_settings_screen.dart';
 
 /// A capability shell deliberately independent from scanner, WebView, and FGS.
 /// It remains reachable when permissions, Bluetooth, OEM policy, or the web UI
@@ -152,19 +151,9 @@ class _RecoveryShellScreenState extends State<RecoveryShellScreen> {
                                     context,
                                     MaterialPageRoute(
                                         builder: (_) =>
-                                            const SmartKeyControlScreen())),
-                                icon: const Icon(Icons.lock_open),
-                                label: const Text(
-                                    'Manual local / remote recovery'),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) => const DebugScreen())),
-                                icon: const Icon(Icons.monitor_heart),
-                                label:
-                                    const Text('Privacy-redacted diagnostics'),
+                                            const AppSettingsScreen())),
+                                icon: const Icon(Icons.settings),
+                                label: const Text('Smart Key 설정 및 진단'),
                               ),
                               OutlinedButton.icon(
                                 onPressed: _checkUpdates,

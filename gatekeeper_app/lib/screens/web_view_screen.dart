@@ -8,8 +8,7 @@ import '../services/native_gatt_worker_health.dart';
 import '../services/update_checker.dart';
 import '../services/error_logger.dart';
 import '../services/local_gatt_enrollment_service.dart';
-import 'debug_screen.dart';
-import 'smart_key_control_screen.dart';
+import 'app_settings_screen.dart';
 
 class WebViewScreen extends StatefulWidget {
   final String? initialUrl;
@@ -226,24 +225,13 @@ class _WebViewScreenState extends State<WebViewScreen>
         elevation: 0,
         actions: [
           IconButton(
-            icon:
-                const Icon(Icons.dashboard_customize, color: Colors.cyanAccent),
-            tooltip: 'Smart Key 로컬 제어',
+            icon: const Icon(Icons.settings, color: Colors.cyanAccent),
+            tooltip: 'Smart Key 설정',
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) => const SmartKeyControlScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.tune, color: Colors.white70),
-            tooltip: '엔지니어 디버그 모드',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const DebugScreen()),
+                    builder: (context) => const AppSettingsScreen()),
               );
             },
           ),

@@ -4909,3 +4909,14 @@
 - Exact CI Flutter environment passed focused bridge/stage tests, targeted analysis with no findings, and the complete 43-test Flutter suite.
 - Gradle 9.1.0 targeted Android execution passed two native journal projection tests with a successful Kotlin/Android compile; the test remains under the existing `gattworker.*` CI selector.
 - These results prove source parsing, privacy redaction and UI state mapping only. Production-signed APK publication/install and a connected real Target transition visible on the phone remain pending.
+
+## [2026-08-30] code | Consolidate mobile settings and diagnostics navigation
+
+- Replaced the two WebView AppBar destinations and two recovery-shell actions with one shared `Smart Key 설정` route.
+- Added `AppSettingsScreen` with `Smart Key` and `진단·튜닝` tabs while preserving Target live status, terminal local open, credentials, feature flags, independent OTA, RSSI/scan diagnostics, Target tuning, logs and manual diagnostic refresh.
+- Retained direct-screen compatibility through embedded presentation flags; no Backend, Target firmware, credential, OTA trust or access-control contract changed.
+
+## [2026-08-30] test | Verify unified settings navigation contract
+
+- Exact CI Flutter environment passed targeted analysis for all changed screens and tests with no findings.
+- Eight focused navigation, recovery, consent and settings tests plus the complete 44-test Flutter suite passed. This is source/widget contract evidence; production-signed APK publication/install and connected visual validation remain pending.

@@ -1,7 +1,7 @@
 # Flutter Thin UI, User Fallback, and Legacy Feature Flag Architecture (`wiki/flutter_thin_ui.md`)
 
 > **Single Source of Truth**: Flutter Thin UI, immediate manual Local GATT open, and interlocked fallback specification
-> **Last updated**: 2026-08-29
+> **Last updated**: 2026-08-30
 
 ---
 
@@ -55,17 +55,26 @@ Issue #21 (`[APP][I8]`)에서는 Flutter 스마트폰 앱의 역할을 **BLE Sca
 SmartKeyApp (MaterialApp)
  ├── WebViewScreen (메인 앱 화면)
  │    └── AppBar Actions
- │         ├── 🎛️ SmartKeyControlScreen (Smart Key 대시보드 & 1-Tap 수동 제어)
- │         ├── 🛠️ DebugScreen (엔지니어 디버그 모드)
+ │         ├── ⚙️ AppSettingsScreen (단일 설정 진입점)
+ │         │    ├── Smart Key 탭 → SmartKeyControlScreen
+ │         │    └── 진단·튜닝 탭 → DebugScreen
  │         └── 🔄 Refresh
- └── SetupScreen (필수 권한/배터리 예외 요청)
+ ├── SetupScreen (필수 권한/배터리 예외 요청)
+ └── RecoveryShellScreen
+      └── ⚙️ AppSettingsScreen (동일한 단일 설정 진입점)
 ```
+
+`SmartKeyControlScreen`과 `DebugScreen`은 기존 직접 라우트 호환성을
+유지하지만, 사용자에게 노출되는 WebView/복구 네비게이션은
+`AppSettingsScreen` 하나로 통일한다. 탭 구조는 Target 실시간 감지,
+1-Tap 수동 개방, credential/feature flag, 독립 OTA, RSSI/스캔 진단,
+Target 튜닝 및 로그 기능을 삭제하지 않고 하나의 설정 면으로 묶는다.
 
 ---
 
 ## 4. 검증 내역 (Verification)
 
-- **Flutter Unit Tests**: `flutter test` (5/5 tests PASS)
+- **Flutter Unit Tests**: 통합 설정 네비게이션 계약과 복구 셸 집중 시험 8개 PASS
 - **Flutter Code Analysis**: `flutter analyze` (No issues found!)
 - **Host C++ Unit Tests**: `wsl ./test_runner` (369 checks PASS)
 - **Python Unit Tests**: `python -m unittest discover -s tests` (87/87 PASS)
