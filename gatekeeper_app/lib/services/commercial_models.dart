@@ -47,7 +47,14 @@ DoorState doorStateFromNative(Map<Object?, Object?>? session) {
   };
 }
 
-enum EnrollmentState { unregistered, pending, approved, revoked, expired }
+enum EnrollmentState {
+  unregistered,
+  pending,
+  readyToEnroll,
+  approved,
+  revoked,
+  expired
+}
 
 EnrollmentState enrollmentStateFromWire(String? value,
     {int? aclExpiresAtEpoch}) {
@@ -58,6 +65,7 @@ EnrollmentState enrollmentStateFromWire(String? value,
   }
   return switch (value) {
     'pending' => EnrollmentState.pending,
+    'ready_to_enroll' => EnrollmentState.readyToEnroll,
     'approved' => EnrollmentState.approved,
     'revoked' => EnrollmentState.revoked,
     _ => EnrollmentState.unregistered,

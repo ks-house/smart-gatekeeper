@@ -153,7 +153,7 @@ class _RecoveryShellScreenState extends State<RecoveryShellScreen> {
                                         builder: (_) =>
                                             const AppSettingsScreen())),
                                 icon: const Icon(Icons.settings),
-                                label: const Text('Smart Key 설정 및 진단'),
+                                label: const Text('고급 진단 열기'),
                               ),
                               OutlinedButton.icon(
                                 onPressed: _checkUpdates,

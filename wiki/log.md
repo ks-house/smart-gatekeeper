@@ -4964,8 +4964,27 @@
 - Added `mobile_usability_improvement_plan.md`, separating implemented foundations from unwired or missing mobile product flows and prioritizing authoritative credential state, a plain-language native Home, truthful activity/results, recovery, update UX, localization/accessibility, support and measured latency.
 - The audit found that the WebView status still depends on a retired device-ID lookup and its recent-history widget calls an administrator-only endpoint without the required admin contract. The plan requires credential-bound replacements and keeps admin audit access out of the app.
 
+## [2026-08-30] code | Implement credential-bound native mobile Home and activity
+
+- Added authenticated personal status and credential-lifecycle endpoints. Exact Android credential ID/public key, active tenant/grant, signed ACL entry and Target ACK are required for `access_ready`; legacy device identity is retained only as migration context.
+- Made a plain-language native Home/Activity/Settings shell the ready-state entry, retained the hosted page only for transitional registration, replaced its retired `/user/me` authority and removed its broken administrator-log history request.
+- Added a bounded privacy-safe local activity timeline plus terminal Android notifications. Action-1 success is labeled `출입 준비 완료` and explicitly remains distinct from sensor/contact or physical door-open evidence; proof-uncertain outcomes prohibit automatic retry.
+- Moved worker/tuning controls behind `고급 진단`, retained independent update and manual recovery access, and mapped blocked identity/ACL/backend states to one context-sensitive primary action.
+
+## [2026-08-30] test | Verify mobile P0 source candidate without connected phone
+
+- All nine Backend ACL API tests passed, including exact credential status/activity and the negative legacy-device-only readiness case.
+- Flutter analysis reported no findings and all 49 Flutter tests passed, including identity request, unavailable-state, activity truth/deduplication and unified-navigation contracts.
+- The new Android notification policy has focused JVM coverage and awaits hosted Gradle compilation. The phone is disconnected, so APK installation, notification delivery, connected screen readback, Target background transitions and physical door evidence remain pending.
+
 ## [2026-08-30] compile | Authorize exact credential-bound mobile P0 bundle
 
 - Reviewed immutable PR #266 candidate `c80933a411990022bf14b075b18260a127cb590c`; among 83 protected paths it changes exactly the personal ACL API, ACL management service, hosted user page and direct ACL API tests.
 - Bound those normalized blobs to `a262c8f6...`, `4c703860...`, `4423c3e0...` and `c478d95f...` in the sole future persistent bundle while preserving all other protected bytes and exact workflow/action inventories.
 - This policy-only candidate changes no runtime or NAS state. Its merge, policy-history connection into PR #266, fresh CI, feature merge, final baseline rotation and deployment remain separate Gates.
+
+## [2026-08-30] fix | Synchronize recovery manual with native Home separation
+
+- Updated the source-bound recovery contract and Korean user procedure to name the recovery-only `고급 진단` route and its `고급 제어` tab; the normal ready path remains Home/Activity/Settings.
+- Removed the stale `Smart Key 설정` tooltip from the transitional WebView and retained manual local open, verified updater, Android settings and setup retry reachability.
+- This is navigation/manual synchronization only; credential, Target, OTA trust and physical behavior are unchanged.

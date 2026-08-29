@@ -653,6 +653,39 @@ class AclStore:
         )
         return str(row["status"]) if row else None
 
+    def tenant_display_name(self, tenant_id: str) -> Optional[str]:
+        row = self._one(
+            "SELECT display_name FROM acl_tenants WHERE tenant_id=?", (tenant_id,)
+        )
+        return str(row["display_name"]) if row else None
+
+    def legacy_personal_state(
+        self, tenant_id: str, legacy_device_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Migration-only lookup; never reports the local credential as ready."""
+
+        if self.dialect == "sqlite":
+            row = self._one(
+                "SELECT name, unit_number, is_active, tenant_uuid FROM tenants "
+                "WHERE UPPER(ble_device_mac)=?",
+                (legacy_device_id.upper(),),
+            )
+        else:
+            row = self._one(
+                "SELECT name, unit_number, is_active, tenant_uuid FROM tenants "
+                "WHERE UPPER(ble_device_mac)=?",
+                (legacy_device_id.upper(),),
+            )
+        if row is None:
+            return None
+        mapped = row.get("tenant_uuid")
+        if mapped is not None and not hmac.compare_digest(str(mapped), tenant_id):
+            return None
+        return {
+            "is_active": bool(row["is_active"]),
+            "tenant_label": str(row.get("unit_number") or "Smart Key"),
+        }
+
     def legacy_tenant_is_active(self, tenant_id: str) -> Optional[bool]:
         """Return the mapped legacy state; SQLite has no legacy tenant table."""
         if self.dialect == "sqlite":
@@ -1416,6 +1449,15 @@ class AclStore:
             "SELECT * FROM management_audit WHERE tenant_id=? ORDER BY id ASC", (tenant_id,)
         )
 
+    def credential_audit(
+        self, tenant_id: str, credential_id: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        return self._all(
+            "SELECT id, action, created_at FROM management_audit "
+            "WHERE tenant_id=? AND credential_id=? ORDER BY id DESC LIMIT ?",
+            (tenant_id, credential_id, max(1, min(limit, 50))),
+        )
+
     def latest_snapshot(self, tenant_id: str, door_id: str) -> Optional[dict[str, Any]]:
         row = self._one(
             "SELECT * FROM acl_snapshots WHERE tenant_id=? AND door_id=? "
@@ -1880,6 +1922,141 @@ class AclManagementService:
             "credential_id": credential_id,
             "acl_version": acl_version,
         }
+
+    def personal_mobile_status(
+        self,
+        tenant_id: str,
+        door_id: str,
+        legacy_device_id: str,
+        credential_id: Optional[str],
+        public_key_hex: Optional[str],
+    ) -> dict[str, Any]:
+        """Return one truthful mobile status without treating legacy ID as access proof."""
+
+        _hex_bytes(tenant_id, 16, "tenant_id")
+        _hex_bytes(door_id, 16, "door_id")
+        normalized_device_id = legacy_device_id.strip().upper()
+        if credential_id is None or public_key_hex is None:
+            legacy = self.store.legacy_personal_state(tenant_id, normalized_device_id)
+            if legacy is None:
+                return {
+                    "enrollment_state": "unregistered",
+                    "access_ready": False,
+                    "next_action": "request_registration",
+                    "door_count": 0,
+                    "target_synced": False,
+                }
+            return {
+                "enrollment_state": (
+                    "ready_to_enroll" if legacy["is_active"] else "pending"
+                ),
+                "access_ready": False,
+                "next_action": (
+                    "enroll_credential" if legacy["is_active"] else "wait_for_approval"
+                ),
+                "tenant_label": legacy["tenant_label"],
+                "door_count": 0,
+                "target_synced": False,
+            }
+
+        _hex_bytes(credential_id, 16, "credential_id")
+        public_key = _hex_bytes(public_key_hex, 65, "public_key_sec1")
+        _parse_public_key(public_key)
+        credential = self.store.get_credential(tenant_id, credential_id)
+        if credential is None or not hmac.compare_digest(
+            str(credential["public_key_sec1"]), public_key_hex
+        ):
+            raise PermissionError("credential identity mismatch")
+
+        now = self.clock()
+        tenant_status = self.store.tenant_status(tenant_id)
+        credential_status = str(credential["status"])
+        expires_at = credential.get("expires_at")
+        expired = expires_at is not None and int(expires_at) <= now
+        doors = self.store.active_grant_doors(tenant_id, credential_id)
+        granted = door_id in doors
+        snapshot = self.store.latest_snapshot(tenant_id, door_id) if granted else None
+        acl_version = int(snapshot["acl_version"]) if snapshot else None
+        snapshot_fields = snapshot["envelope"]["fields"] if snapshot else {}
+        entry_active = any(
+            item.get("credential_id") == credential_id
+            and item.get("status") == 1
+            and item.get("permissions") == 1
+            for item in snapshot_fields.get("entries", [])
+        ) and int(snapshot_fields.get("expires_at_epoch_s", 0)) > now
+        latest_digest = str(snapshot.get("sha256", "")) if snapshot else ""
+        target_synced = any(
+            ack.get("status") == "APPLIED"
+            and int(ack.get("acl_version", 0)) == (acl_version or 0)
+            and hmac.compare_digest(str(ack.get("sha256", "")), latest_digest)
+            for ack in (self.store.latest_acks(tenant_id, door_id) if snapshot else [])
+        )
+
+        if tenant_status != "ACTIVE" or credential_status in {"DISABLED", "REVOKED"}:
+            enrollment_state = "revoked"
+            next_action = "contact_administrator"
+        elif expired:
+            enrollment_state = "expired"
+            next_action = "renew_credential"
+        elif credential_status == "PENDING":
+            enrollment_state = "pending"
+            next_action = "wait_for_approval"
+        else:
+            enrollment_state = "approved"
+            next_action = "none" if entry_active and target_synced else "wait_for_acl"
+
+        return {
+            "enrollment_state": enrollment_state,
+            "access_ready": (
+                enrollment_state == "approved" and entry_active and target_synced
+            ),
+            "next_action": next_action,
+            "tenant_label": self.store.tenant_display_name(tenant_id) or "Smart Key",
+            "door_count": len(doors),
+            "selected_door": "default" if granted else None,
+            "credential_expires_at": expires_at,
+            "acl_version": acl_version,
+            "target_synced": target_synced,
+        }
+
+    def personal_mobile_activity(
+        self,
+        tenant_id: str,
+        credential_id: str,
+        public_key_hex: str,
+    ) -> dict[str, Any]:
+        """Return a bounded allow-listed credential lifecycle, never admin audit data."""
+
+        _hex_bytes(credential_id, 16, "credential_id")
+        _parse_public_key(_hex_bytes(public_key_hex, 65, "public_key_sec1"))
+        credential = self.store.get_credential(tenant_id, credential_id)
+        if credential is None or not hmac.compare_digest(
+            str(credential["public_key_sec1"]), public_key_hex
+        ):
+            raise PermissionError("credential identity mismatch")
+        allowed = {
+            "PERSONAL_CREDENTIAL_BOOTSTRAPPED": "credential_registered",
+            "CREDENTIAL_APPROVED": "credential_approved",
+            "CREDENTIAL_DISABLED": "credential_disabled",
+            "CREDENTIAL_REVOKED": "credential_revoked",
+            "CREDENTIAL_DOOR_GRANTED": "door_granted",
+            "CREDENTIAL_DOOR_REMOVED": "door_removed",
+        }
+        events = []
+        for row in self.store.credential_audit(tenant_id, credential_id):
+            event_type = allowed.get(str(row["action"]))
+            if event_type is None:
+                continue
+            events.append(
+                {
+                    "event_ref": hashlib.sha256(
+                        f"mobile-activity:{row['id']}".encode("utf-8")
+                    ).hexdigest()[:24],
+                    "type": event_type,
+                    "created_at": int(row["created_at"]),
+                }
+            )
+        return {"events": events[:20]}
 
     def _set_status(
         self, tenant_id: str, credential_id: str, status: str, actor_ref: str, action: str

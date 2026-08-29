@@ -317,7 +317,7 @@ class ManualContractTests(unittest.TestCase):
             test_source,
         )
         for token in (
-            "Smart Key 설정 및 진단",
+            "고급 진단 열기",
             "Check verified app update",
             "Open Android settings",
             "retry-background-setup",
@@ -325,8 +325,8 @@ class ManualContractTests(unittest.TestCase):
             self.assertIn(token, test_source)
             self.assertIn(token, production_source)
         for token in (
-            "Smart Key 설정",
-            "text: 'Smart Key'",
+            "title: const Text('고급 진단')",
+            "text: '고급 제어'",
             "text: '진단·튜닝'",
             "SmartKeyControlScreen(embedded: true)",
             "DebugScreen(embedded: true)",

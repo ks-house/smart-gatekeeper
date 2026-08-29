@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (mobile usability baseline tagged and implementation gaps prioritized; phone install and connected walkthrough remain pending)
+> Last updated: 2026-08-30 (credential-bound native mobile Home/activity P0 candidate implemented; CI/deploy and disconnected-phone acceptance remain pending)
 
 ---
 

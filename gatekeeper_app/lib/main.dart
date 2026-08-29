@@ -6,7 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/background_disclosure_screen.dart';
-import 'screens/web_view_screen.dart';
+import 'screens/smart_key_home_screen.dart';
 import 'screens/recovery_shell_screen.dart';
 import 'services/background_setup.dart';
 import 'services/foreground_service.dart';
@@ -295,7 +295,7 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
                   )
                 : _initialized
                     ? (_serviceReady
-                        ? const WebViewScreen()
+                        ? const SmartKeyHomeScreen()
                         : RecoveryShellScreen(
                             status: _permissionStatus,
                             missing: _missingRequirements,
