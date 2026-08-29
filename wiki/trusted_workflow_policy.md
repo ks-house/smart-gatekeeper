@@ -760,3 +760,26 @@ CPU-field-removal digests remain unchanged.
 Final policy authority is still source/CI evidence only. It does not stop the
 recovered legacy containers, approve production, migrate the DB, prove
 readiness or complete the backend-included access E2E.
+
+## 17. Non-root Compose secret-access transition
+
+Protected run `33245672804` passed DB startup and migration but failed new API
+readiness. Immutable feature commit
+`2b32fc5fe14b5c90db022ed14deca5f572a68040` corrects the root cause and adds
+bounded failure evidence. Relative to the current baseline, exactly five
+protected normalized blobs change as one indivisible candidate:
+
+- `backend/deploy/README.md` becomes `17c02dbb...`.
+- `backend/deploy/bootstrap_legacy_synology.sh` becomes `8d0eccae...`.
+- `backend/deploy/sgk_backend_deploy.sh` becomes `234231e8...`.
+- `backend/deploy/verify_legacy_synology.sh` becomes `2b58d125...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `c27affbb...`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-compose-secret-access-2b32fc5` and
+`future-compose-secret-access-2b32fc5-persistent-baseline`. After this
+policy-only PR merges, its exact main must be merge-connected into feature PR
+#223 without rebase or squash. Fresh Trusted, OTA and Backend checks remain
+mandatory, followed by a final rotation to the actual feature merge-main.
+This authority changes no NAS file, secret, container or database state and is
+not readiness/deployment evidence.
