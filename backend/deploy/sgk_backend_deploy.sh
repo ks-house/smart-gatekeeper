@@ -259,7 +259,7 @@ compose_for_release() {
     DB_IMAGE_REPOSITORY="${RELEASE[DB_IMAGE_REPOSITORY]}" \
     DB_IMAGE_DIGEST="${RELEASE[DB_IMAGE_DIGEST]}" \
     BUILD_SHA="${RELEASE[SOURCE_SHA]}" \
-    docker compose --project-name "$PROJECT_NAME" --env-file "$RUNTIME_ENV" \
+    "$DOCKER_BIN" compose --project-name "$PROJECT_NAME" --env-file "$RUNTIME_ENV" \
       -f "${release_dir}/compose.production.yml" \
       -f "${release_dir}/compose.synology.yml" "$@"
 }
