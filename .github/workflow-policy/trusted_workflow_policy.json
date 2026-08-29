@@ -104,7 +104,7 @@
       "mode": "temporary-exact",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "b2e7d607bd54d625528390f01f5baa1ac03276f8"
+        "commit": "b2e7d6000fc5096cf3fb8a1ed00761030b1c073a"
       },
       "files": {
         ".github/workflows/deploy.yml": "88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea",
@@ -197,7 +197,7 @@
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "b2e7d607bd54d625528390f01f5baa1ac03276f8"
+        "commit": "b2e7d6000fc5096cf3fb8a1ed00761030b1c073a"
       },
       "files": {
         ".github/workflows/deploy.yml": "88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea",
