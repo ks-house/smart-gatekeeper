@@ -608,7 +608,7 @@ maintenance stop. Deployment and connected access Gates remain open.
 ## 11. Ephemeral GHCR pull-auth transition candidate
 
 Reviewed immutable PR #211 feature commit
-`7b54997a8b5316e3d741648211db18f6bd7a4a7f`. Exact-main run
+`7b549978239455f12620429ffc06a553a1a0dd41`. Exact-main run
 `33235596047` proved the corrected Synology Docker path but failed closed on
 the first private GHCR image pull with `unauthorized`; Compose and migration did
 not run, and the retained legacy API/DB were restarted successfully.
