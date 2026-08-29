@@ -100,7 +100,7 @@
   },
   "approved_bundles": [
     {
-      "id": "future-nas-public-ingress-hairpin-1500594-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",

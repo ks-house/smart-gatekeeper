@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "7be876804c23d91caf252b92e2b859f81aee168a"
+MERGED_MAIN_COMMIT = "15005944591a43a5437ccf33f9a945ab7b47809f"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -74,7 +74,7 @@ backend/db/migrations/007_ops_privacy_up.sql edde5662c42e65dda82b2e0a9145d64dc4e
 backend/db/production_schema.sql b9e6910bff05272c1b05f1e23805abf250c6a9e3df9e4a7db966ae6517b555e3
 backend/db/run_migrations.sh b408f0b2e6ffe7b58a095430a3ecdbc6d719cef31b8cb7c6a2b62b4ab39d7d3b
 backend/db/schema.sql ce22d4e2675490f2e238cd98e9f9168e572cd45d0de8030811b01384226f4d43
-backend/deploy/README.md 6db1ae722421dd6b619393e23e0f44a13a74555ef7caea9329e43e7a2edc3cf4
+backend/deploy/README.md 083089b39fcf528df3440e2f98d31af70bc3fb54bf7dceea48cf952fdc8b51b3
 backend/deploy/bootstrap_legacy_synology.sh cc0a758d2da119bcd01c607e952f7739de4c41f5a14c62f7c166370b21f6ffef
 backend/deploy/capture_legacy_inventory.py 71bb7d9721934a00f44a8913ce3d5c514d18d3aeac0031679afe146d8a06181d
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
@@ -82,7 +82,7 @@ backend/deploy/create_release_bundle.py e1278dc16899e067048d35f05d5c31a50964b1c3
 backend/deploy/prepare_backup_in_wsl.py d502283be7b594f8d0d6c7fa0f2e65d6e61c0c9c548252215d3cf3ac3c484e79
 backend/deploy/restore_backup_in_wsl.py 7e317efe496cc5f339a4bb90776a304268c20c2501066575488baa2677bd393b
 backend/deploy/runtime.env.example 48a84108c1a00479ef3bb9ec33e6e81e58302717c6ae91ecb7c3fa0575ad7a04
-backend/deploy/sgk_backend_deploy.sh 62181892ee84fd5d888083798c1bb0c093448dcd8e3753858b9821587a7f07bc
+backend/deploy/sgk_backend_deploy.sh 3e0fdd660316817493a5cc29e972fdcbfc90833621fb440a75bccc7875381bb5
 backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
 backend/deploy/verify_legacy_synology.sh c4ab1fddfe0581d9f15ac64174b51374389d71de8b4e5800899ef7f04b0226e1
 backend/docker-compose.yml 766dc30fcb529868a269e91d76f9c5d323e03aa550d52b8788426871a8ff9e47
@@ -95,7 +95,7 @@ backend/tests/test_admin_security.py 4acded35686962d675e945143b3aa7857c9c10ca4f5
 backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
 backend/tests/test_legacy_ota_independence.py 5819701b2b2fc5c9c0e2b7bbaf710f23360d6a0df36c1966c345621dc4aceca4
 backend/tests/test_migrations.py 3f29ea27716280a88dd89456b1450a51ccba0c162ede69258edd34b6def59913
-backend/tests/test_nas_backend_deploy.py e90cec4c98de604cd6369b95844b983240bb7e78a002857eca13a0bd40cf3b91
+backend/tests/test_nas_backend_deploy.py 5968e0ce186017a079da8f018aa82ca1bfaaec423193e90490f768817c5f0124
 backend/tests/test_ops_api.py faf541fdbbf7db438ab2c838767a431ea524f37d11ee963ca7dadea6f6d806ea
 backend/tests/test_ops_commercial_gate.py 0bc3396d0705e4d4328092c6d87ac66352c297095108336f19c0db87e7a16d94
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
@@ -104,8 +104,8 @@ backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279e
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    "scripts/ops_commercial_gate.py",
-    "backend/compose.synology.yml",
+    "backend/deploy/README.md",
+    "backend/deploy/sgk_backend_deploy.sh",
     "backend/tests/test_nas_backend_deploy.py",
 }
 MERGED_MAIN_DIGESTS = dict(
@@ -130,6 +130,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "7be876804c23d91caf252b92e2b859f81aee168a",
     "1feb4b9d14ee2742e228f298557e3335a2060d09",
     "dbafe9d4f803938d7570ef18769ef0925c6b0230",
     "8e2ec16daad6ead3d981ba476ada67936179a72a",

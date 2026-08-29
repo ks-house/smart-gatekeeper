@@ -4819,3 +4819,9 @@
 - Policy PR #248 passed the Trusted check and merge-committed as main `36c720aabf5d2b7deb685836b612c1633d8f2e15`; that exact policy main was merged without rebase or squash into immutable feature candidate `15005944591a43a5437ccf33f9a945ab7b47809f` as `6a5c75eec07062f3ec4d5acd50914f669a88f24e`.
 - All three reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged. The append-only log conflict preserved both live failure/fix evidence and policy authorization entries.
 - Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS runtime and proves no deployment or backend-included E2E.
+
+## [2026-08-29] fix | Synchronize merge-connected trusted-policy regression fixture
+
+- PR #249 Hosted Trusted and Backend checks passed, while OTA P0 exposed that the merge-connected branch still carried the transition bundle ID and prior final-main regression constants.
+- Renamed the sole candidate bundle to required `current-main-baseline` and synchronized the unprotected policy regression fixture to immutable source `1500594` plus the same reviewed `083089b3...`, `3e0fdd66...` and `5968e0ce...` protected digests.
+- No additional protected byte or NAS state changed. Full local OTA policy regression and fresh hosted checks are required before feature merge.

@@ -1108,3 +1108,9 @@ merged without rebase or squash into immutable feature candidate `1500594` as
 candidate blobs and the complete 83-path map remain unchanged. Fresh Hosted
 Trusted, OTA P0 and Backend checks are required on the connected feature head
 before merge.
+
+The merge-connected feature head uses the required single
+`current-main-baseline` ID with source `1500594` and the same reviewed 83-path
+map. The OTA policy regression fixture is synchronized to that immutable
+candidate and its three changed digests; this does not alter any additional
+protected file or broaden the source identity.
