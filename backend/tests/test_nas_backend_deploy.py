@@ -300,6 +300,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         wrapper = WRAPPER.read_text(encoding="utf-8")
         verifier = LEGACY_VERIFY.read_text(encoding="utf-8")
         runtime = RUNTIME_EXAMPLE.read_text(encoding="utf-8")
+        workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn('MQTT_PORT: "${MQTT_PORT:?', production)
         self.assertNotIn('MQTT_PORT: "8883"', production)
@@ -312,6 +313,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertIn('runtime_mqtt_port="$(awk -F=', verifier)
         self.assertIn('runtime MQTT_PORT does not match the retained legacy endpoint', verifier)
         self.assertIn("MQTT_PORT=4883", runtime)
+        self.assertIn("MQTT_PORT: '4883'", workflow)
 
     def test_restricted_wrapper_has_fail_closed_command_and_release_contract(self):
         syntax = subprocess.run(

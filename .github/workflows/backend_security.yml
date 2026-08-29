@@ -97,6 +97,7 @@ jobs:
           DB_IMAGE_REPOSITORY: ghcr.io/ks-house/smart-gatekeeper-db
           DB_IMAGE_DIGEST: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
           MQTT_HOST: broker.invalid
+          MQTT_PORT: '4883'
           MQTT_USER: ci-only
           DB_RUNTIME_USER: gatekeeper_runtime
           COMMAND_TARGET_ID: ci-target

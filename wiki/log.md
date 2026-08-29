@@ -4645,3 +4645,9 @@
 - Exact run `33246998513` passed new DB health, migration `up 007` and API process startup, but retained diagnostics showed MQTT subscriber and ACL publish `ConnectionRefusedError`; `/ready` stayed 503 and cleanup removed only the partial project without volumes or DB rollback.
 - Owner readback proved legacy `MQTT_HOST=tworimpa.synology.me` with `MQTT_PORT=4883`, while generated `runtime.env` omitted the port and production Compose forced `8883`. The retained legacy DB/API were restarted to running.
 - Bootstrap now captures the exact legacy port, safely upgrades only an otherwise byte-identical prior runtime file, verifier requires exact legacy parity, wrapper rejects missing/out-of-range/plaintext `1883`, and Compose consumes the validated value. Focused tests pass; policy authorization, hosted CI and a fresh deployment remain separate Gates.
+
+## [2026-08-29] fix | Supply the validated MQTT port to hosted Compose rendering
+
+- PR #234's first Backend run failed at the Compose rendering step because the workflow fixture supplied `MQTT_HOST` but not the newly required non-secret `MQTT_PORT`; no image publication or NAS job ran.
+- Added TLS port `4883` only to the inert CI render environment and pinned it in the focused NAS contract. This does not create a runtime default: bootstrap/verifier/wrapper still require the observed NAS value.
+- Hosted Backend, OTA and Trusted checks must rerun after publication. The known broken base Trusted policy remains a separate fail-closed Gate.
