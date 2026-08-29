@@ -1071,3 +1071,32 @@ This final rotation removes transition source `1feb4b9` and pins the sole
 digests remain unchanged. This changes no NAS runtime and proves no MQTTS
 readiness; exact deployment and backend-included Target/mobile evidence remain
 separate Gates.
+
+## 30. Synology DSM public-ingress hairpin transition
+
+Exact run `33252726976` for feature main `7be8768` passed immutable image
+identity, DB health, migration `up 007`, API start and loopback `/ready`. This
+closes the MQTTS dependency Gate for that attempt. The following NAS-local curl
+to the public `:4442/ready` origin exhausted its bounded retries, so the wrapper
+retained diagnostics and removed the partial project without volumes or DB
+rollback. External probes then returned 502 because the retained legacy pair
+remained stopped.
+
+Immutable candidate `15005944591a43a5437ccf33f9a945ab7b47809f`
+changes the NAS-side DSM ingress probe only. Curl resolves the configured HTTPS
+hostname transport to `127.0.0.1`, while continuing to send the hostname as TLS
+SNI and verify its public certificate. It does not add `--insecure`, widen API
+publication, expose MariaDB, change the public mobile origin or claim external
+reachability. Relative to feature main `7be8768`, exactly three protected
+normalized blobs change:
+
+- `backend/deploy/README.md` becomes `083089b3...`.
+- `backend/deploy/sgk_backend_deploy.sh` becomes `3e0fdd66...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `5968e0ce...`.
+
+The complete ordered 83-path map is pinned by
+`future-nas-public-ingress-hairpin-1500594-persistent-baseline`, sourced from
+the exact immutable candidate. Policy merge, feature merge-connection, fresh
+Hosted Trusted/OTA/Backend checks, final policy rotation, exact NAS deployment,
+external `/ready`, and backend-included Target/mobile access remain separate
+Gates.
