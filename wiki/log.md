@@ -4441,3 +4441,9 @@
 - Reviewed immutable PR #208 feature commit `750a5456fae988c2595098dcec01f410c8941d4b`; exactly the protected deploy wrapper and its direct test change, to normalized SHA-256 `5f108cc2...` and `97fcdbcd...`.
 - Added exact and future persistent identities with the same complete ordered 83-path map and retired the `43c7759` first-adoption transition source. Tests require exact repository/SHA, ancestry, inventories and both changed bytes as one indivisible candidate.
 - This policy-only candidate changes no NAS file or runtime state. Merge-connection, fresh CI, root-owned wrapper installation, maintenance stop, protected deploy retry/readiness and backend-included E2E remain separate Gates.
+
+## [2026-08-29] compile | Rotate Synology Docker-path policy to merged main
+
+- Policy PR #209 merged as `095cb6ed`; policy-connected PR #208 head `779ef12` passed fresh Trusted, OTA and Backend checks before merge-main `21a0124f6e4b5dfc300b205073e1b464066355e8`.
+- Removed both `750a545` transition identities and pinned the sole `current-main-baseline` to actual feature main. The ordered 83-path map, inventories and corrected wrapper/test digests remain unchanged.
+- Exact-main backend run `33235596047` has published images/provenance and waits for protected production approval. This rotation does not install the NAS wrapper, stop legacy containers, deploy, prove readiness or complete backend-included E2E.
