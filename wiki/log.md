@@ -4687,3 +4687,9 @@
 - Policy PR #236 passed Hosted Trusted and merge-committed as main `911752dabf45d28b1ed9efac61a08d85046310ea`; that exact policy main was merged into PR #234 without rebase or squash as `8ea8de387d705defbb2cfd1b318ee2281da762da`.
 - Both immutable candidate parent `2339f6c9319f973b2b2a3b3062d87b5fb29137dc` and policy-main parent are preserved, and all 83 protected bytes still match the approved candidate map.
 - Fresh Hosted Trusted, OTA and Backend checks are required before feature merge. This source-history connection changes no NAS runtime and proves no API readiness or backend-included E2E.
+
+## [2026-08-29] compile | Rotate MQTT port preservation policy to actual feature main
+
+- Policy-connected PR #234 head `33666674ada4c53552fda8b022a3bd0b2bb5fd9e` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `146fd7f85f14c4da0a5ce17518f876bdb9c1b21b`.
+- Removed both bounded `2339f6c` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and eight reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS state and proves no deployment/readiness. Exact NAS script installation, preflight, a new owner maintenance window and backend-included access E2E remain open.

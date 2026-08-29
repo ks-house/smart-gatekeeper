@@ -900,3 +900,21 @@ immutable candidate parent `2339f6c` and the policy-main parent. The complete
 83-path protected map still matches the reviewed candidate bytes. Fresh
 Trusted, OTA and Backend checks on the connected head remain required before
 feature merge; no runtime deployment is inferred from this connection.
+
+## 23. Legacy MQTTS port-preservation final baseline
+
+Policy-connected PR #234 head
+`33666674ada4c53552fda8b022a3bd0b2bb5fd9e` passed fresh Hosted Trusted, OTA
+P0 and Backend checks. Merge commit
+`146fd7f85f14c4da0a5ce17518f876bdb9c1b21b` is the actual feature main.
+
+This final rotation removes both bounded `2339f6c` transition identities and
+pins the sole `current-main-baseline` to actual feature main `146fd7f`. The
+complete ordered 83-path map, inventories and eight reviewed MQTT-port
+preservation digests remain unchanged.
+
+Final policy authority is source/CI evidence only. It changes no NAS helper,
+runtime file, container or database and proves no deployment/readiness. Exact
+NAS installation, bootstrap/verifier preflight, owner maintenance stop,
+protected deployment and backend-included mobile/Target access E2E remain
+separate Gates.
