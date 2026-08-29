@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "6b1f1da3359dcca95c8434b73970ba992ef9d41d"
+MERGED_MAIN_COMMIT = "5a32570a8ec08a2433601dd29ff6ff9c4b31d44d"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -56,8 +56,8 @@ backend/app/static/admin_login.html 87000b8f02d22b84bc24a41b0360caf9ce1c8a58741a
 backend/app/static/index.html 4218d95905ae238339987cb0887d2fd03e352493dcabfe1133500296ec25f01d
 backend/app/target_boot_registry.py 7650ad165594d3a35ee59fafa36ce1f6cbc0ffa4fd8b3dfb98873339a83859dd
 backend/app/target_acl_delivery.py 3888c4fb5d5814471e6d1827d6227015a730683eee089733b65b8703fdb1093d
-backend/compose.production.yml dd181b5cf4171b33234315d8945cd52306084837f2d1b13e37d9c537fd0474f6
-backend/compose.synology.yml fa0f88acdfd0c6de87b6fde278804c673f18f07a099e5844d2b21ac10be451a2
+backend/compose.production.yml 8d094aeef780db18d0b97e14ee845dc05eec8bdb8b2df00fa077a3fbc40b6702
+backend/compose.synology.yml 1d93e3bf87a950d6e7a38e8412c79d7f1dada7dce76da89f5a4678656003e1a4
 backend/db/Dockerfile 317ad438b9d2ce25325027b5b1170f92d14c45f536ba413bd0d3ca853fd73c2a
 backend/db/migrations/002_acl_management_expand_down.sql 19c26782df1ef78755681805839e704f3adaf83cce1dec4b29c4ecdf1c0cf687
 backend/db/migrations/002_acl_management_expand_up.sql aa3b07f195c0502434f8ad5ba633b0d46d6b04f7e21fa0ff22215fb136746543
@@ -74,7 +74,7 @@ backend/db/migrations/007_ops_privacy_up.sql edde5662c42e65dda82b2e0a9145d64dc4e
 backend/db/production_schema.sql b9e6910bff05272c1b05f1e23805abf250c6a9e3df9e4a7db966ae6517b555e3
 backend/db/run_migrations.sh b408f0b2e6ffe7b58a095430a3ecdbc6d719cef31b8cb7c6a2b62b4ab39d7d3b
 backend/db/schema.sql ce22d4e2675490f2e238cd98e9f9168e572cd45d0de8030811b01384226f4d43
-backend/deploy/README.md a7dad4437568d8c76a1ffe96dac9011565a1952fdc4f4bc0f29b9b1fc709293e
+backend/deploy/README.md 9ffd1f09bd60b2adbd6814dabf35b797d9ecacdaaf78758c99f40583e78a0125
 backend/deploy/bootstrap_legacy_synology.sh 9e04e4e14d47197849c4cd14d9028f424f919deef88f5a449fa669acdc3940e4
 backend/deploy/capture_legacy_inventory.py 71bb7d9721934a00f44a8913ce3d5c514d18d3aeac0031679afe146d8a06181d
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
@@ -95,7 +95,7 @@ backend/tests/test_admin_security.py 4acded35686962d675e945143b3aa7857c9c10ca4f5
 backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
 backend/tests/test_legacy_ota_independence.py 5819701b2b2fc5c9c0e2b7bbaf710f23360d6a0df36c1966c345621dc4aceca4
 backend/tests/test_migrations.py 3f29ea27716280a88dd89456b1450a51ccba0c162ede69258edd34b6def59913
-backend/tests/test_nas_backend_deploy.py f79ba51e87045e1731542602a588c6f2f63aebcc1dad64497b1f39a0714f64bd
+backend/tests/test_nas_backend_deploy.py 9701fb18f0f5a51374f97a74d47e45c80a3d585adcef741fb949bad5fb026687
 backend/tests/test_ops_api.py faf541fdbbf7db438ab2c838767a431ea524f37d11ee963ca7dadea6f6d806ea
 backend/tests/test_ops_commercial_gate.py 0bc3396d0705e4d4328092c6d87ac66352c297095108336f19c0db87e7a16d94
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
@@ -104,10 +104,9 @@ backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279e
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/backend_security.yml",
+    "backend/compose.production.yml",
     "backend/compose.synology.yml",
     "backend/deploy/README.md",
-    "backend/deploy/sgk_backend_deploy.sh",
     "backend/tests/test_nas_backend_deploy.py",
 }
 MERGED_MAIN_DIGESTS = dict(
@@ -132,6 +131,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "6b1f1da3359dcca95c8434b73970ba992ef9d41d",
     "e787786f2514c641e02dd5608d0fe21c4476eca4",
     "42b754d75863072e4ad0af32f2667ff54ceb050c",
     "7b549978239455f12620429ffc06a553a1a0dd41",
@@ -448,17 +448,23 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
             ".github/workflows/": CURRENT_WORKFLOW_PATHS,
         },
     )
-    self.assertEqual(len(policy["approved_bundles"]), 1)
-    persistent = policy["approved_bundles"][0]
-    self.assertEqual(persistent["id"], "current-main-baseline")
+    self.assertEqual(len(policy["approved_bundles"]), 2)
+    exact, persistent = policy["approved_bundles"]
+    self.assertEqual(exact["id"], "temporary-dsm-nanocpus-removal-5a32570")
+    self.assertEqual(exact["mode"], "temporary-exact")
+    self.assertEqual(
+        persistent["id"],
+        "future-dsm-nanocpus-removal-5a32570-persistent-baseline",
+    )
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
         "repository": "ks-house/smart-gatekeeper",
         "commit": MERGED_MAIN_COMMIT,
     }
-    self.assertEqual(persistent["source"], expected_source)
-    self.assertEqual(persistent["files"], MERGED_MAIN_DIGESTS)
-    self.assertEqual(list(persistent["files"]), policy["protected_paths"])
+    for approved in (exact, persistent):
+      self.assertEqual(approved["source"], expected_source)
+      self.assertEqual(approved["files"], MERGED_MAIN_DIGESTS)
+      self.assertEqual(list(approved["files"]), policy["protected_paths"])
 
   def setUp(self):
     self.main_files = {
@@ -993,7 +999,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           is_descendant,
       )
 
-  def test_final_rotation_has_one_current_main_baseline(self):
+  def test_transition_has_exact_and_future_persistent_baselines(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -1002,10 +1008,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     bundle = self.verify_merged_main_digest_map(
         policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(bundle["id"], "current-main-baseline")
-    ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, MERGED_MAIN_COMMIT)
+    self.assertEqual(bundle["id"], "temporary-dsm-nanocpus-removal-5a32570")
+    ancestry.assert_not_called()
     self.assertEqual(
-        {"persistent-baseline"},
+        {"temporary-exact", "persistent-baseline"},
         {approved["mode"] for approved in policy["approved_bundles"]},
     )
 
@@ -1043,8 +1049,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 5)
-    self.assertEqual(len(locally_unchanged_protected), 78)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 4)
+    self.assertEqual(len(locally_unchanged_protected), 79)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
@@ -1083,7 +1089,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     with self.assertRaisesRegex(trusted.PolicyError, lock_path):
       self.verify_merged_main_digest_map(policy, modified)
 
-  def test_current_main_baseline_accepts_only_proven_descendant(self):
+  def test_future_baseline_accepts_only_proven_descendant(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
@@ -1099,7 +1105,10 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         ref=future_ref,
         is_descendant=ancestry,
     )
-    self.assertEqual(bundle["id"], "current-main-baseline")
+    self.assertEqual(
+        bundle["id"],
+        "future-dsm-nanocpus-removal-5a32570-persistent-baseline",
+    )
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 
     with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):

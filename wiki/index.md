@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; backend run 33241850366 failed before migration because DSM Compose preserved `cpus: 0`, automatic partial-stack cleanup passed without deleting volumes, and retained legacy API/DB are recovered)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; live run 33241850366 proved automatic cleanup and DSM `cpus: 0` incompatibility, legacy API/DB are recovered, and policy main bdf7dc0 is merge-connected to removal PR #220 pending fresh checks)
 
 ---
 

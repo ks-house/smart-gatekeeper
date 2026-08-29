@@ -4555,3 +4555,15 @@
 - Owner-approved run `33241850366` pulled exact API digest `044a3ab1...` and DB digest `8f1baca0...`, recreated and started the production DB, then proved DSM Compose v2.20.1 preserves `cpus: 0` as an unsupported Docker `NanoCPUs` request. Migration, API readiness and deployment status did not run.
 - The installed wrapper automatically removed only the partial production container and networks with `down --remove-orphans`, never deleted volumes and did not attempt DB rollback. Owner recovery restarted both retained legacy containers; external `/live` is HTTP 200 for build `7c2764a1`, while `/ready` is the expected legacy HTTP 503 with only `legacy_prearm_retired=false`.
 - Removed `cpus` from both production Compose inputs instead of relying on version-dependent zero-reset behavior. Memory/PID/capability/read-only hardening remains; the focused NAS deployment contract passes 13/13 and the backend commercial contract passes 35/35. This is a source candidate pending protected policy authorization, hosted CI and a new live window.
+
+## [2026-08-29] compile | Authorize exact DSM NanoCPUs removal candidate
+
+- Reviewed immutable feature commit `5a32570a8ec08a2433601dd29ff6ff9c4b31d44d`; relative to the current baseline, exactly production Compose, Synology overlay, deploy README and the direct NAS deployment test change as one protected bundle.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path map. The four candidate digests are pinned and the previous `6b1f1da3` baseline is retired from the transition policy.
+- Focused trusted-policy regressions pass 42/42. This policy-only candidate changes no NAS runtime and grants no production approval; hosted CI/merge, feature merge-connection, fresh CI, final rotation and a new live window remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect NanoCPUs removal feature to policy main
+
+- Policy PR #221 passed Hosted Trusted and merge-committed as main `bdf7dc0`. That exact policy main is merged into immutable feature `5a32570a8ec08a2433601dd29ff6ff9c4b31d44d` without rebase or squash.
+- The merge preserves the immutable feature parent and policy-main parent; all four authorized protected feature blobs remain the reviewed candidate bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
+- This source-history connection changes no NAS runtime and proves no migration, readiness or backend-included E2E.
