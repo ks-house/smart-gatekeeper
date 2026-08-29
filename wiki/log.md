@@ -4963,3 +4963,9 @@
 - Audited the Flutter shell, hosted WebView, Backend user/status/history routes, native wake/GATT health, updater and existing commercial UX/manual contracts. The phone is disconnected, so the tag and audit do not claim installation or connected visual/physical acceptance.
 - Added `mobile_usability_improvement_plan.md`, separating implemented foundations from unwired or missing mobile product flows and prioritizing authoritative credential state, a plain-language native Home, truthful activity/results, recovery, update UX, localization/accessibility, support and measured latency.
 - The audit found that the WebView status still depends on a retired device-ID lookup and its recent-history widget calls an administrator-only endpoint without the required admin contract. The plan requires credential-bound replacements and keeps admin audit access out of the app.
+
+## [2026-08-30] compile | Authorize exact credential-bound mobile P0 bundle
+
+- Reviewed immutable PR #266 candidate `c80933a411990022bf14b075b18260a127cb590c`; among 83 protected paths it changes exactly the personal ACL API, ACL management service, hosted user page and direct ACL API tests.
+- Bound those normalized blobs to `a262c8f6...`, `4c703860...`, `4423c3e0...` and `c478d95f...` in the sole future persistent bundle while preserving all other protected bytes and exact workflow/action inventories.
+- This policy-only candidate changes no runtime or NAS state. Its merge, policy-history connection into PR #266, fresh CI, feature merge, final baseline rotation and deployment remain separate Gates.

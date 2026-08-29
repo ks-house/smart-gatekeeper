@@ -238,6 +238,23 @@ the seven-workflow inventory and the empty local-Action inventory remain exact.
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
+Issue #265 / PR #266 reviewed feature commit
+`c80933a411990022bf14b075b18260a127cb590c` adds the credential-bound
+personal mobile status/activity contract and native user Home. Relative to the
+current baseline, exactly four protected Backend blobs change:
+`backend/app/acl_api.py` (`a262c8f6...`),
+`backend/app/acl_management.py` (`4c703860...`),
+`backend/app/static/index.html` (`4423c3e0...`) and
+`backend/tests/test_acl_api.py` (`c478d95f...`). The other 79 protected blobs
+and both namespace inventories remain exact. This policy-only authorization
+uses `future-mobile-ux-p0-c80933a-persistent-baseline`; after it merges, policy
+main must be merge-connected into PR #266 without rebasing or squashing and all
+fresh checks must pass. A final policy-only rotation must then pin the actual
+feature merge as the sole `current-main-baseline`.
+
+This authorization changes no NAS runtime, deploys no Backend, publishes or
+installs no APK/firmware and claims no connected or physical result.
+
 Reviewed issue #133 candidate `91858585f8db6fb1b8b50ca0182526fdb653f0bf`
 adds the authenticated action-2 manual local-open path and updates the
 privileged Target source inventory. Relative to exact main

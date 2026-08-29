@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "d50b98f9c1e4e046fb62d1e8698c0ed2407291fe"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "c80933a411990022bf14b075b18260a127cb590c"
+EXPECTED_BUNDLE_ID = "future-mobile-ux-p0-c80933a-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -43,8 +43,8 @@ ops/slo_policy.json e7c734c431d232e6caffa32d0796990e3dc71ff88c557498bd4433479c82
 backend/.env.example 9efc01b14e793d8c367dc1b67a4899d000f1745d1f9bd5de0b678a245dfc559a
 backend/app/Dockerfile ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573
 backend/app/acl_refresh.py 4f040eb22f2d1e7277f6eb65c47e0db8cd122de17296cd707217cb7aafafd537
-backend/app/acl_api.py db74a10b592ea50c375be0a4a8cfdc5a83ccf2736fa303a1dd9b31ad8f782686
-backend/app/acl_management.py 562d99511ee4d420d9685997940e374e2a70859a9c5f8ec822a47e4fe5133976
+backend/app/acl_api.py a262c8f61cad13bb9be0bb84a6048aca922af2d73396923dc0f5fbf59d1c9cdb
+backend/app/acl_management.py 4c7038608648c3757cdfeaad2050269e110a58e5d4c2c7229790f40da9895c15
 backend/app/admin_security.py 9785a9d205f8db3f533ae1f36dd9ff1047f94da05af6d4efac51b261b33d614e
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
 backend/app/home_assistant_bridge.py 586f5f43910e26a2425f8416959f4bb4c85d48cd49c88a29d2e99f790c42071b
@@ -54,7 +54,7 @@ backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a5616
 backend/app/requirements.txt 75bca144713e5c0ac8c09f2963cccb45e077e22b2f5a166a0db1fa28617595f7
 backend/app/static/admin.html ca61cf93520cfdd7bab0d5c710ab01a6b7215e94d2be54ee61f4537deb4b141e
 backend/app/static/admin_login.html 87000b8f02d22b84bc24a41b0360caf9ce1c8a58741a95d090bf5e8acaabff3f
-backend/app/static/index.html 4218d95905ae238339987cb0887d2fd03e352493dcabfe1133500296ec25f01d
+backend/app/static/index.html 4423c3e0e3c81db8fbff8ca2a4801a5ef6911ad2fd9438a6e9866894b3ab97da
 backend/app/target_boot_registry.py 7650ad165594d3a35ee59fafa36ce1f6cbc0ffa4fd8b3dfb98873339a83859dd
 backend/app/target_acl_delivery.py 3888c4fb5d5814471e6d1827d6227015a730683eee089733b65b8703fdb1093d
 backend/compose.production.yml 42f04b42431d4df34bf33220536b1ecf6d761f4eff8cbb91b81f61a1be15cc71
@@ -89,7 +89,7 @@ backend/deploy/verify_legacy_synology.sh c4ab1fddfe0581d9f15ac64174b51374389d71d
 backend/docker-compose.yml 766dc30fcb529868a269e91d76f9c5d323e03aa550d52b8788426871a8ff9e47
 backend/sbom.cdx.json 67b78d1a2cb4d5e48dc8b79f9630a58da0cee207d126c469cb0b0bfbd1945fd7
 backend/supply_chain_policy.json fef90253f3ec0b065f14dd1e83a2b6702b4dd2ad8dbeefc59b12dc78f3cb15e4
-backend/tests/test_acl_api.py bbfe5841959e262ea54906cb74da9db549bc199e81b90dba4df6860df3a584bb
+backend/tests/test_acl_api.py c478d95f65b43f64bd7b96c2d79c59d15dcf3a53b3c52007e5e1f1a05ce1d2ea
 backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad70e8f02b13f1e54bb70
 backend/tests/test_acl_management.py 1f3f77153651a62a916211233f9191079e05fbabcb5ad401f6d30438fe8575c3
 backend/tests/test_admin_security.py 4acded35686962d675e945143b3aa7857c9c10ca4f50a8217852e1334dfa0200
@@ -105,9 +105,10 @@ backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279e
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    "backend/deploy/README.md",
-    "backend/deploy/sgk_backend_deploy.sh",
-    "backend/tests/test_nas_backend_deploy.py",
+    "backend/app/acl_api.py",
+    "backend/app/acl_management.py",
+    "backend/app/static/index.html",
+    "backend/tests/test_acl_api.py",
 }
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
@@ -1059,8 +1060,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 3)
-    self.assertEqual(len(locally_unchanged_protected), 80)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 4)
+    self.assertEqual(len(locally_unchanged_protected), 79)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
