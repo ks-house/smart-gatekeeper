@@ -4598,3 +4598,8 @@
 - Policy-connected PR #223 head `40556adbb8ed067c43bfd19a73da7098f9f31984` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `5e0aec37282ec0af9846bb6681aee87d89dabfa3`.
 - Removed both `2b32fc5` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and five reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS metadata/runtime and proves no deployment/readiness. Exact wrapper and secret metadata installation, maintenance stop, protected retry and backend-included E2E remain open.
+
+## [2026-08-29] fix | Preserve runtime.env bootstrap install arguments
+
+- Post-merge audit found `install_staged_file` expanded from three to five arguments for explicit owner/group/mode, while the unchanged `runtime.env` call still supplied only mode. A NAS bootstrap rerun would therefore fail closed with an unbound third argument before container or DB mutation.
+- Pass explicit `root root 600` for `runtime.env` and pin the exact call in the focused deployment test. Secret file split remains unchanged; no NAS command, metadata change, container action or deployment approval occurred.

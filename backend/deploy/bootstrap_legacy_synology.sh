@@ -296,7 +296,8 @@ runtime_staged="${STAGING}/runtime.env"
     printf 'MIGRATION_BACKUPS_VOLUME=%s\n' "$MIGRATION_BACKUP_VOLUME"
   } > "$runtime_staged"
 )
-install_staged_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env" 600
+install_staged_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env" \
+  root root 600
 
 printf '[PASS] legacy runtime prepared without cutover\n'
 printf 'legacy_containers=unchanged\n'

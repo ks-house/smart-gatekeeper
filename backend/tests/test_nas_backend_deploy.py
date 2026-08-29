@@ -374,6 +374,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             'install -d -o root -g root -m 700 "$SECRET_DIR" "$MIGRATION_BACKUP_DIR"',
             'root 10001 640',
             'root root 600',
+            'install_staged_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env" \\',
         ):
             self.assertIn(required, bootstrap)
         self.assertNotIn(
@@ -433,6 +434,10 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertIn('"0:0:600"', wrapper)
         self.assertIn('root 10001 640', bootstrap)
         self.assertIn('root root 600', bootstrap)
+        self.assertIn(
+            'install_staged_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env" \\',
+            bootstrap,
+        )
         self.assertIn('0 10001 640', verifier)
         self.assertIn('0 0 600', verifier)
         self.assertNotIn('chown 10001:10001 "${SECRET_DIR}', bootstrap)
