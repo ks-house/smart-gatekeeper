@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`과 matching production-signed Fold7 앱은 action 1 `ARMED` 뒤 action 2 terminal open 및 Target relay-command ON→OFF를 완료한 마지막 connected core evidence다. Run `33252726976`은 immutable pull, DB health, migration `up 007`, API start와 새 stack loopback `/ready`를 통과해 MQTTS 복구를 증명했지만 NAS 내부의 public-origin DSM ingress probe가 실패했다. Partial stack은 볼륨 삭제와 DB rollback 없이 정리됐고, owner가 레거시를 복구한 뒤 외부 `/live=200`, `/ready=503`, MQTT true와 유일한 예상 blocker `legacy_prearm_retired=false`가 재확인됐다. HTTPS hostname/SNI/certificate 검증을 유지한 DSM loopback ingress 수정은 feature main `db37772de5a3f18be7bcaa73170933ab18442475`로 병합돼 Hosted Trusted·OTA P0·Backend를 통과했고, final policy main `71a576f3c80527bb083121826547536cb2126534`가 이를 승인한다. Exact wrapper SHA-256 `3e0fdd66...`은 NAS에 `root:root 0755`로 설치됐고 status는 `not-deployed`다. NAS-local DSM loopback ingress probe와 maintenance stop은 아직 실행하지 않았다. WSL CH343 serial은 여전히 0 bytes지만 Android `SM-F966N`은 ADB authorized이고 앱 `1.0.0-gd9ecc87`이 실행 중이다. 신규 stack 재배포 성공, 외부 readiness, backend-included `ARMED`→`OPENED`→relay ON/OFF 및 physical relay contact/load는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`과 matching production-signed Fold7 앱은 action 1 `ARMED` 뒤 action 2 terminal open 및 Target relay-command ON→OFF를 완료한 마지막 connected core evidence다. Run `33252726976`은 immutable pull, DB health, migration `up 007`, API start와 새 stack loopback `/ready`를 통과해 MQTTS 복구를 증명했지만 NAS 내부의 public-origin DSM ingress probe가 실패했다. Partial stack은 볼륨 삭제와 DB rollback 없이 정리됐고, owner가 레거시를 복구한 뒤 외부 `/live=200`, `/ready=503`, MQTT true와 유일한 예상 blocker `legacy_prearm_retired=false`가 재확인됐다. HTTPS hostname/SNI/certificate 검증을 유지한 DSM loopback ingress 수정은 feature main `db37772de5a3f18be7bcaa73170933ab18442475`로 병합돼 Hosted Trusted·OTA P0·Backend를 통과했고, final policy main `71a576f3c80527bb083121826547536cb2126534`가 이를 승인한다. Exact wrapper SHA-256 `3e0fdd66...`은 NAS에 `root:root 0755`로 설치됐고 status는 `not-deployed`다. NAS-local `--resolve tworimpa.synology.me:4442:127.0.0.1` probe는 TLS/timeout 오류 없이 legacy JSON, `mqtt=true`, 예상된 단일 blocker `legacy_prearm_retired=false`, HTTP 503을 반환해 DSM loopback ingress 경로를 증명했다. Fresh maintenance stop은 아직 실행하지 않았다. WSL CH343 serial은 여전히 0 bytes지만 Android `SM-F966N`은 ADB authorized이고 앱 `1.0.0-gd9ecc87`이 실행 중이다. 신규 stack 재배포 성공, 외부 readiness, backend-included `ARMED`→`OPENED`→relay ON/OFF 및 physical relay contact/load는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -119,8 +119,11 @@ applies_to:
   SHA-256 `3e0fdd660316817493a5cc29e972fdcbfc90833621fb440a75bccc7875381bb5`,
   owner/mode `root:root 0755` and size 23,210 bytes. Its staged validation
   passed and exact status remains `not-deployed`; this changed no container or
-  database. A NAS-local `curl --resolve` probe of DSM `:4442` is still required
-  before another maintenance stop or approval of run `33253911475`.
+  database. The following NAS-local `curl --resolve` probe of DSM `:4442`
+  completed without timeout or TLS failure and returned the recovered legacy
+  build `7c2764a1...`, MQTT true, only `legacy_prearm_retired=false`, and the
+  expected HTTP 503. This closes the transport preflight only; a fresh owner
+  maintenance stop is still required before approval of run `33253911475`.
 - The existing NAS SFTP-only identity remains suitable for firmware/APK artifact
   delivery but has no remote shell for Compose, migration or readiness work.
 - The implementation and acceptance plan are documented in

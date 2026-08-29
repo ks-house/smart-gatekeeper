@@ -4837,3 +4837,9 @@
 - Owner staging validation passed, then NAS readback matched exact feature-main wrapper SHA-256 `3e0fdd660316817493a5cc29e972fdcbfc90833621fb440a75bccc7875381bb5` at `/volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh`.
 - Installed metadata is `root:root 0755`, 23,210 bytes, and exact status remains `not-deployed`; the previously installed wrapper was `62181892...`.
 - This installation changed no container or database and proves no deployment. NAS-local TLS-hostname-preserving DSM loopback ingress, fresh legacy maintenance stop, exact run approval, external readiness and backend-included Target/mobile E2E remain separate Gates.
+
+## [2026-08-29] test | Pass NAS-local DSM loopback ingress preflight
+
+- Owner executed the production-shaped `curl --resolve tworimpa.synology.me:4442:127.0.0.1` probe through the installed wrapper's intended DSM ingress transport. It completed without timeout or TLS certificate error and returned recovered legacy build `7c2764a1a16492ec1620079c8211b47287b1b3fd`.
+- Readiness was the expected HTTP 503 with `mqtt=true` and every check true except the intentionally unretired legacy pre-arm path. This proves HTTPS hostname, SNI/certificate verification and NAS-loopback routing, not a new-stack deployment.
+- Exact run `33253911475` remains waiting. A fresh owner-proved stop of only `gatekeeper-api` and `gatekeeper-db` is still required before approval; deployment, external readiness and backend-included Target/mobile E2E remain open.
