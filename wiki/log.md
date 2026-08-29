@@ -4598,3 +4598,9 @@
 - Policy-connected PR #223 head `40556adbb8ed067c43bfd19a73da7098f9f31984` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `5e0aec37282ec0af9846bb6681aee87d89dabfa3`.
 - Removed both `2b32fc5` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and five reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS metadata/runtime and proves no deployment/readiness. Exact wrapper and secret metadata installation, maintenance stop, protected retry and backend-included E2E remain open.
+
+## [2026-08-29] compile | Authorize exact bootstrap runtime.env argument fix
+
+- Reviewed immutable feature commit `ecc189e8d1ab21ad0c797b3a6009f3f12ac48829`; exactly bootstrap and its direct NAS deployment test change as one protected bundle.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path map, pinning normalized digests `1969b5a8...` and `ce8b1dff...`.
+- This policy-only change grants no production approval and changes no NAS file, secret, container or database. Policy CI/merge, feature merge-connection, fresh CI, final rotation and live deployment remain separate Gates.
