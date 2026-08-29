@@ -119,7 +119,11 @@ services:
       - apk_artifacts:/app/gatekeeper_apk:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001
-    networks: [edge, data]
+    # One routable bridge is intentional.  Docker Engine 24 on DSM cannot
+    # select a deterministic default gateway for a multi-homed container, and
+    # MQTTS timed out even when both candidate bridges were routable.  The DB
+    # remains unpublished; sharing this bridge does not expose port 3306.
+    networks: [data]
     depends_on:
       db:
         condition: service_healthy
@@ -137,9 +141,8 @@ services:
     mem_limit: 512m
 
 networks:
-  edge: {}
   data:
-    internal: true
+    internal: false
 
 volumes:
   mariadb_data: {}

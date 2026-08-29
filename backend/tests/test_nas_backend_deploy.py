@@ -232,7 +232,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         overlay = SYNOLOGY_COMPOSE.read_text(encoding="utf-8")
         self.assertIn("host_ip: 127.0.0.1", overlay)
         self.assertIn('published: "${SGK_API_LOOPBACK_PORT:-8000}"', overlay)
-        self.assertIn("data:\n    internal: false", overlay)
+        self.assertNotIn("\nnetworks:\n", overlay)
         self.assertNotIn("cpus:", overlay)
         for variable in (
             "MARIADB_DATA_VOLUME",
@@ -242,10 +242,13 @@ class NasBackendDeployContractTest(unittest.TestCase):
         ):
             self.assertIn(f"name: ${{{variable}:?", overlay)
         self.assertNotIn("0.0.0.0", overlay)
-        self.assertNotIn("3306", overlay)
+        self.assertNotIn("target: 3306", overlay)
+        self.assertNotIn("published: 3306", overlay)
         production = PRODUCTION_COMPOSE.read_text(encoding="utf-8")
         self.assertNotIn("ports:", production)
-        self.assertIn("data:\n    internal: true", production)
+        self.assertIn("data:\n    internal: false", production)
+        self.assertNotIn("edge:", production)
+        self.assertGreaterEqual(production.count("networks: [data]"), 3)
         self.assertNotIn("cpus:", production)
         self.assertIn("pids_limit: 64", production)
         self.assertIn("pids_limit: 256", production)
@@ -307,6 +310,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             rendered.stdout,
         )
         self.assertNotIn("internal: true", rendered.stdout)
+        self.assertNotIn("smart-gatekeeper-production_edge", rendered.stdout)
         self.assertNotIn("cpus:", rendered.stdout)
 
     def test_mqtt_tls_port_is_preserved_from_legacy_through_compose(self):

@@ -4742,8 +4742,26 @@
 - Windows usbipd and WSL expose attached CH343 `1a86:55d3` at `/dev/ttyACM0`. A new WSL login gains `dialout`, but 15-second filtered and 6-second raw probes received zero serial bytes; this proves USB transport presence, not Target runtime health or identity.
 - Windows PnP and ADB show no connected Android phone. Owner-proved exact legacy stop remains required before NAS approval, and mobile connection/authorization remains required before backend-included action-1/action-2 evidence; no deployment or E2E pass is claimed.
 
+## [2026-08-29] test | Fail DSM route-corrected deployment readiness
+
+- Owner evidence proved exactly retained `gatekeeper-api` and `gatekeeper-db` stopped; exact feature-main run `33250299026` alone was approved. Immutable API `58f83948...` and DB `5ba469cf...` pulls, DB health, migration `up 007` and API container start passed.
+- Loopback `/ready` timed out. The wrapper retained root-only runtime/API evidence, removed the partial project without deleting volumes and did not attempt DB rollback; external API readback is currently 502 while legacy recovery remains pending.
+- Android `SM-F966N` serial `R3CY707DL7L` is now ADB-authorized. App `1.0.0-gd9ecc87` versionCode `24401` is installed/running and logs native GATT BLE ownership; this is mobile preparation only, not backend-included access or Target relay proof.
+
+## [2026-08-29] fix | Remove indeterminate DSM API multi-homing
+
+- Owner root-only evidence confirms the route-corrected API repeated the same MQTTS subscriber `TimeoutError` and bounded ACL publish failures after DB health, migration and startup. This invalidates the narrower internal-data-bridge hypothesis; legacy recovery is externally verified with `/live=200`, MQTT true and only expected `legacy_prearm_retired=false` keeping legacy `/ready=503`.
+- Production API, DB and one-shot migrator now share one routable `data` bridge and the unused API `edge` attachment is removed, eliminating Engine 24 default-gateway ambiguity instead of trying to prioritize two routes. DB 3306 remains unpublished, base Compose has no host API port, and the Synology overlay still publishes only `127.0.0.1:8000`.
+- Updated rendered/source network assertions and synchronized operations, deployment, status and hardware evidence docs. This is a source candidate only; trusted-policy authorization, hosted CI, exact NAS deployment, MQTT readiness and backend-included Target/mobile access remain separate Gates.
+
 ## [2026-08-29] compile | Authorize deterministic single-network backend candidate
 
 - Reviewed immutable candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`: exactly production/Synology Compose, the operations contract, and the direct NAS deployment test change among protected paths. API, DB and migration use one routable bridge while DB remains unpublished and Synology API publication remains loopback-only.
 - Replaced the current source identity with `future-dsm-single-network-8e2ec16-persistent-baseline`, preserving the complete ordered 83-path map and pinning the four normalized candidate digests `321a6221...`, `42f04b42...`, `b5c6542f...` and `673467ab...`.
 - This policy-only candidate changes no NAS state and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect single-network backend feature to policy main
+
+- Policy PR #242 passed the required Hosted Trusted check and merge-committed as main `0fd6788d93d216283b2bb8dc49eb048c49d331ff`. That exact policy main was merged without rebase or squash into immutable feature candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`.
+- All four reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged; local backend tests pass 138 with two real-MariaDB opt-in skips and policy tests pass 42.
+- Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This ancestry connection changes no NAS runtime and proves no MQTT readiness or backend-included E2E.

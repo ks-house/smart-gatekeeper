@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (DSM route compatibility feature main `aebad8ef` and final policy main `da39fe0` are merged; exact push run `33250299026` passed build/evidence/image publication and waits for an owner-proved legacy stop before NAS approval)
+> Last updated: 2026-08-29 (run `33250299026` confirmed a second multi-homed MQTTS timeout; legacy is externally recovered with MQTT true, and a deterministic single unpublished bridge candidate is under review)
 
 ---
 
