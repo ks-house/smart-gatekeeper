@@ -1004,3 +1004,19 @@ final policy rotation.
 This policy transition changes no NAS file, container, database or network and
 grants no deployment approval. Exact live `/ready` with MQTT true and the
 backend-included Target/mobile access sequence remain separate physical Gates.
+
+## 27. Deterministic single-network final baseline
+
+Policy-connected PR #243 head
+`81968677ef3e18bdc50abcef186c600894c9e687` passed fresh Hosted Trusted, OTA P0
+and Backend checks. Merge commit
+`dbafe9d4f803938d7570ef18769ef0925c6b0230` is the actual feature main.
+
+This final rotation removes transition source `8e2ec16` and pins the sole
+`current-main-baseline` to actual feature main `dbafe9d4`. The complete ordered
+83-path map, inventories and four reviewed single-network digests remain
+unchanged.
+
+Final policy authority is source/CI evidence only. It changes no NAS network,
+container or database and does not prove MQTTS readiness. Exact live deployment
+and backend-included Target/mobile evidence remain separate Gates.
