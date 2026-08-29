@@ -4495,3 +4495,27 @@
 - The explicit 42-module repository run passed 451 tests with three documented environment-dependent skips; the focused trusted-policy suite is included and passes 42/42.
 - The backend commercial contract passes all 35 checks. JSON structure, shell syntax and whitespace validation also pass with a sole `current-main-baseline` at `42b754d75863072e4ad0af32f2667ff54ceb050c` and the unchanged 83-path map.
 - These are repository validation results only; no NAS wrapper, container, database, release, phone or Target state changed.
+
+## [2026-08-29] test | Hold exact feature-main deployment before wrapper installation
+
+- Final policy PR #214 merge-main is `2020f0781639aea35a84481edddff6fde8043bfa`; `enforce_admins=true`, strict checking and the original required Trusted context remain active.
+- Exact feature-main backend run `33240731351` at `42b754d75863072e4ad0af32f2667ff54ceb050c` passed security/evidence and published both immutable GHCR images with provenance, then stopped at the protected `production` approval Gate. Approval remains withheld until the root-owned NAS wrapper reads back SHA-256 `afda60b403988653ed92b0714fa25dc97980d1103c5709d0090fb49e9889ab7e`.
+- Public legacy `/live` remains HTTP 200 for build `7c2764a1`; `/ready` remains the known HTTP 503 with only `legacy_prearm_retired=false`. The WSL default SSH key is not the forced deploy key and batch authentication is denied, so owner password/sudo installation is the next external Gate; no container or database state changed.
+
+## [2026-08-29] test | Pass ephemeral GHCR wrapper installation Gate
+
+- Owner readback proves `/volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh` matches exact SHA-256 `afda60b403988653ed92b0714fa25dc97980d1103c5709d0090fb49e9889ab7e`, is root-owned mode `0755`, and is 19,516 bytes.
+- The exact installed wrapper returned `status=not-deployed`; no release apply, container stop, database migration or readiness transition is inferred from installation.
+- The next Gate is a new owner maintenance stop of exactly retained `gatekeeper-api` and `gatekeeper-db`, followed by protected approval of feature-main run `33240731351`. Recovery before successful adoption remains starting the same two retained containers.
+
+## [2026-08-29] test | Fail first authenticated deployment on unsupported DSM NanoCPUs
+
+- The owner stopped exactly the retained `gatekeeper-api` and `gatekeeper-db`; protected feature-main run `33240731351` was then approved. Signed bundle verification, attestation, Tailscale OIDC, forced SSH and ephemeral GHCR authentication passed, and the NAS pulled exact API digest `36c777a9011c0cf91e770728a797bd91879da8dc174a59d01f88677317a2aa0e` plus DB digest `4ec45e3de3a6ce14814af951f7dab8b0bda738d33b4e6b9426a71c774590834d`.
+- Compose created both production networks and started `smart-gatekeeper-production-db-1`, then failed before migration with `NanoCPUs can not be set, as your kernel does not support CPU CFS scheduler or the cgroup is not mounted`. The wrapper reported that DB rollback was not attempted; no `status=deployed` or readiness evidence exists.
+- Because that installed wrapper did not remove partial containers, recovery must stop the new production DB and start the retained legacy pair without deleting the shared MariaDB volume.
+
+## [2026-08-29] fix | Omit unsupported Synology CPU field and clean partial stack
+
+- Retained portable base CPU limits and set `cpus: 0` only in the Synology overlay; the merged NAS Compose omits `cpus` while preserving the remaining memory, PID, capability, read-only and `no-new-privileges` hardening.
+- Apply failure cleanup now removes only the fixed production Compose project with `down --remove-orphans`, never `--volumes`, records `partial_stack_cleanup`, and still never attempts a blind DB rollback. Corrected both Tailscale action inputs from ignored `sha256-sum` to supported `sha256sum`.
+- Focused deployment contracts pass 13/13, the backend commercial contract passes 35/35, and merged Compose rendering, shell syntax and whitespace validation pass. These are source/test results only; protected authorization, hosted CI, root-owned wrapper installation, live deployment and readiness remain open.

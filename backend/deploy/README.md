@@ -67,7 +67,20 @@ Do not start the first deployment until all of these are true:
 - the GitHub `production` Environment requires an owner reviewer.
 
 The wrapper never performs a blind DB restore or down-migration. A migration or
-readiness failure is a stop-and-review condition.
+readiness failure is a stop-and-review condition. If an apply attempt has
+already materialized the new Compose project, the wrapper removes only that
+partial project with `down --remove-orphans`; it never adds `--volumes`, so the
+external MariaDB, API-state, APK and migration-backup volumes remain intact.
+
+### DS423+ CPU-controller compatibility
+
+DSM 7.3 on the observed DS423+ kernel does not expose the CPU CFS controller
+required by Docker's nonzero `NanoCPUs` field. The portable production Compose
+keeps its `0.5` migration and `1.0` API CPU limits for capable Linux hosts. The
+Synology overlay sets those two fields to zero so the merged NAS configuration
+omits `cpus` and container creation does not fail after the DB has started.
+Memory and PID limits, dropped capabilities, read-only filesystems and
+`no-new-privileges` remain enforced.
 
 ## 1. Inventory the current containers and volumes
 
@@ -425,6 +438,17 @@ status path with retained `status=not-deployed`. The next admitted backend
 `main` run must either complete `status=deployed` plus matching status readback
 or fail closed; until that evidence exists, recovery is still starting the two
 recorded legacy containers.
+
+Feature-main run `33240731351` later authenticated to GHCR and pulled the exact
+API digest `36c777a9011c0cf91e770728a797bd91879da8dc174a59d01f88677317a2aa0e`
+and DB digest `4ec45e3de3a6ce14814af951f7dab8b0bda738d33b4e6b9426a71c774590834d`.
+The new DB container started, but DSM rejected the following service before
+migration with `NanoCPUs can not be set`. The installed wrapper correctly did
+not attempt a DB rollback, but that version did not yet remove the partial
+Compose project. Restore the retained legacy pair before retrying and do not
+delete the shared MariaDB volume. The source correction described above is not
+a deployed result until its protected policy, CI, root-owned wrapper install
+and a new approved run all pass.
 
 After adoption, an admitted `main` backend change automatically builds and
 publishes immutable images. Deployment still pauses at the protected

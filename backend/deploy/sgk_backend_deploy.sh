@@ -23,6 +23,7 @@ readonly GHCR_AUTH_ENVELOPE="SGK-GHCR-AUTH-V1"
 readonly MAX_GHCR_AUTH_B64=4096
 DOCKER_BIN=""
 DOCKER_CONFIG_DIR=""
+ACTIVE_RELEASE_DIR=""
 
 log() {
   printf '[sgk-backend-deploy] %s\n' "$*" >&2
@@ -325,6 +326,7 @@ verify_running_image() {
 record_failure() {
   local stage_dir="${1:-}"
   local status="${2:-1}"
+  local partial_stack_cleanup="${3:-not-attempted}"
   local failed_at
   failed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   local failure_file="${DEPLOY_BASE}/last-failure.evidence"
@@ -333,6 +335,7 @@ record_failure() {
     printf 'failed_at_utc=%s\n' "$failed_at"
     printf 'exit_code=%s\n' "$status"
     printf 'release_id=%s\n' "${RELEASE[RELEASE_ID]:-unverified}"
+    printf 'partial_stack_cleanup=%s\n' "$partial_stack_cleanup"
     if [[ -n "$stage_dir" && -f "${stage_dir}/release.tar.gz" ]]; then
       printf 'received_bundle_sha256=%s\n' "$(sha256_file "${stage_dir}/release.tar.gz")"
     fi
@@ -348,9 +351,19 @@ record_failure() {
 cleanup_apply() {
   local stage_dir="$1"
   local status="$2"
+  local partial_stack_cleanup="not-attempted"
   trap - EXIT
   if (( status != 0 )); then
-    record_failure "$stage_dir" "$status"
+    if [[ -n "$ACTIVE_RELEASE_DIR" && -d "$ACTIVE_RELEASE_DIR" ]]; then
+      if compose_for_release "$ACTIVE_RELEASE_DIR" down --remove-orphans; then
+        partial_stack_cleanup="passed"
+        log "partial deployment stack removed without deleting volumes"
+      else
+        partial_stack_cleanup="failed"
+        log "ERROR: partial deployment stack cleanup failed; operator inspection required"
+      fi
+    fi
+    record_failure "$stage_dir" "$status" "$partial_stack_cleanup"
   fi
   DOCKER_CONFIG_DIR=""
   rm -rf -- "$stage_dir"
@@ -404,6 +417,7 @@ apply_release() {
   cp "${extracted}/release.env" "${extracted}/release.env.sig" \
     "${extracted}/compose.production.yml" "${extracted}/compose.synology.yml" "$release_dir/"
   chmod 600 "$release_dir"/*
+  ACTIVE_RELEASE_DIR="$release_dir"
 
   compose_for_release "$release_dir" config --quiet
   local api_image="${RELEASE[API_IMAGE_REPOSITORY]}@sha256:${RELEASE[API_IMAGE_DIGEST]}"
@@ -433,6 +447,7 @@ apply_release() {
   } > "${release_dir}/deployment.evidence"
   cp "${release_dir}/release.env" "${CURRENT_RELEASE}.tmp"
   mv "${CURRENT_RELEASE}.tmp" "$CURRENT_RELEASE"
+  ACTIVE_RELEASE_DIR=""
   log "deployment passed: ${RELEASE[RELEASE_ID]}"
   cat "${release_dir}/deployment.evidence"
 }

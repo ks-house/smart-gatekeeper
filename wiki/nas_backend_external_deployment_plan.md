@@ -687,6 +687,27 @@ Trusted, OTA and Backend checks and merge-committed as main
 root-owned wrapper installation, a new maintenance stop, protected deployment,
 matching status/readiness and backend-included access remain open.
 
+After the exact `afda60b4...` wrapper was installed and the legacy pair was
+stopped again, protected feature-main run `33240731351` passed release
+signature, attestation, Tailscale OIDC, forced SSH and ephemeral GHCR
+authentication. The NAS pulled exact API digest `36c777a9...` and DB digest
+`4ec45e3d...`, created both project networks and started
+`smart-gatekeeper-production-db-1`. DSM then rejected a nonzero Docker
+`NanoCPUs` request because this DS423+ kernel lacks the CPU CFS controller. The
+failure occurred before migration and the wrapper did not attempt DB rollback;
+no `status=deployed` or readiness evidence exists. That wrapper version also
+left the partial project for explicit recovery.
+
+The correction retains the portable base CPU limits but sets `cpus: 0` for the
+migration and API services in the Synology overlay; the merged NAS Compose then
+omits the unsupported field while preserving memory/PID/capability/read-only
+hardening. Apply failure cleanup now runs `down --remove-orphans` only for the
+fixed production project, never `--volumes`, records the cleanup result and
+continues to prohibit blind DB rollback. The workflow also uses the Tailscale
+action's valid `sha256sum` input. These are source/test results until protected
+authorization, CI, wrapper installation and a fresh owner-approved deployment
+pass.
+
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
 does not close the backup/restore, first handover, live workflow, NAS readiness,

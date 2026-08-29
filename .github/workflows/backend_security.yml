@@ -255,7 +255,7 @@ jobs:
           audience: ${{ secrets.TS_OIDC_AUDIENCE }}
           tags: tag:sgk-github-deploy
           version: 1.94.2
-          sha256-sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
+          sha256sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
       - name: Configure restricted NAS status identity
         env:
           NAS_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.NAS_DEPLOY_SSH_PRIVATE_KEY }}
@@ -355,7 +355,7 @@ jobs:
           audience: ${{ secrets.TS_OIDC_AUDIENCE }}
           tags: tag:sgk-github-deploy
           version: 1.94.2
-          sha256-sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
+          sha256sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
       - name: Configure restricted NAS SSH identity
         env:
           NAS_DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.NAS_DEPLOY_SSH_PRIVATE_KEY }}
