@@ -267,6 +267,7 @@ class BleGattCredentialWorker(
         ),
       )
       vault.delete(running.id)
+      AccessResultNotifier.post(applicationContext, DurableSessionState.SUCCEEDED)
       Result.success()
     }
     is SessionOutcome.Failure -> {
@@ -275,6 +276,11 @@ class BleGattCredentialWorker(
         // No authenticated Target result resolved whether proof/ARM executed. Never replay this wake.
         ledger.update(failureCopy(running, outcome, DurableSessionState.PROOF_UNCERTAIN, null))
         vault.delete(running.id)
+        AccessResultNotifier.post(
+          applicationContext,
+          DurableSessionState.PROOF_UNCERTAIN,
+          "PROOF_OUTCOME_UNCERTAIN",
+        )
         Result.success()
       } else if (retry) {
         val delayMs = RetryPolicy.boundedDelayMs(running.attempt, outcome.retryAfterMs)
@@ -286,6 +292,11 @@ class BleGattCredentialWorker(
       } else {
         ledger.update(failureCopy(running, outcome, DurableSessionState.FAILED, null))
         vault.delete(running.id)
+        AccessResultNotifier.post(
+          applicationContext,
+          DurableSessionState.FAILED,
+          outcome.reason.schemaReason,
+        )
         Result.failure()
       }
     }
@@ -330,6 +341,11 @@ class BleGattCredentialWorker(
         ),
       )
       AndroidEncryptedLocatorVault(applicationContext).delete(session.id)
+      AccessResultNotifier.post(
+        applicationContext,
+        DurableSessionState.FAILED,
+        AccessReasonCode.GATT_CONNECT_FAILED.schemaReason,
+      )
       return Result.failure()
     }
     val delayMs = RetryPolicy.boundedDelayMs(attempt)
@@ -359,6 +375,7 @@ class BleGattCredentialWorker(
       ),
     )
     vault.delete(session.id)
+    AccessResultNotifier.post(applicationContext, DurableSessionState.DISABLED)
   }
 
   private fun terminateFailure(
@@ -377,6 +394,11 @@ class BleGattCredentialWorker(
       ),
     )
     vault.delete(session.id)
+    AccessResultNotifier.post(
+      applicationContext,
+      DurableSessionState.FAILED,
+      reason.schemaReason,
+    )
   }
 }
 

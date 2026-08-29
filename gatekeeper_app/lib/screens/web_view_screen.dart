@@ -8,6 +8,8 @@ import '../services/native_gatt_worker_health.dart';
 import '../services/update_checker.dart';
 import '../services/error_logger.dart';
 import '../services/local_gatt_enrollment_service.dart';
+import '../services/commercial_models.dart';
+import '../services/mobile_identity_service.dart';
 import 'app_settings_screen.dart';
 
 class WebViewScreen extends StatefulWidget {
@@ -34,6 +36,7 @@ class _WebViewScreenState extends State<WebViewScreen>
       NativeGattWorkerHealthBridge();
   final LocalGattEnrollmentService _gattEnrollment =
       LocalGattEnrollmentService();
+  final MobileIdentityService _identity = MobileIdentityService();
   late final WebViewController _controller;
   bool _isLoading = true;
   Timer? _updateCheckTimer;
@@ -128,19 +131,21 @@ class _WebViewScreenState extends State<WebViewScreen>
       action = message['action']?.toString();
       final deviceId = await DeviceIdService.getDeviceId();
       if (action == 'get_access_status') {
-        if (_apiKey.isEmpty) {
-          throw const FormatException('app authentication unavailable');
-        }
-        final response = await http.get(
-          Uri.parse(
-              '$_backendBaseUrl/user/me?device_id=${Uri.encodeQueryComponent(deviceId)}'),
-          headers: {'X-API-KEY': _apiKey},
-        ).timeout(const Duration(seconds: 10));
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw FormatException('status HTTP ${response.statusCode}');
-        }
+        final status = await _identity.status();
+        final legacyProjection = <String, Object?>{
+          'status': switch (status.enrollmentState) {
+            EnrollmentState.pending => 'pending',
+            EnrollmentState.readyToEnroll || EnrollmentState.approved =>
+              'approved',
+            _ => 'unregistered',
+          },
+          'tenant_name': status.tenantLabel,
+          'unit_number': status.doorCount == 0
+              ? '-'
+              : '등록 출입문 ${status.doorCount}개',
+        };
         await _controller.runJavaScript(
-          'window.completeStatusCheck(${jsonEncode(jsonDecode(response.body))});',
+          'window.completeStatusCheck(${jsonEncode(legacyProjection)});',
         );
         return;
       }

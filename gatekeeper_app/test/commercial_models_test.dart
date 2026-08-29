@@ -15,6 +15,8 @@ void main() {
         EnrollmentState.expired);
     expect(enrollmentStateFromWire('approved', aclExpiresAtEpoch: 4102444800),
         EnrollmentState.approved);
+    expect(enrollmentStateFromWire('ready_to_enroll'),
+        EnrollmentState.readyToEnroll);
     expect(enrollmentStateFromWire('revoked'), EnrollmentState.revoked);
   });
 }

@@ -6,6 +6,23 @@
 - Published identities at the baseline: mobile `1.0.0-g38fe3b1` build `30501`,
   Target `2.1.359+main.g38fe3b1`
 
+## 0. Implementation progress
+
+- 2026-08-30 P0 source candidate (`#265`): implemented a native
+  Home/Activity/Settings shell, credential/public-key-bound personal status and
+  lifecycle APIs, bounded privacy-safe local activity, terminal-state Android
+  notifications, and a separate advanced diagnostics route.
+- The transitional WebView now projects the same credential-bound status and no
+  longer calls retired `/user/me` as an authority. Its broken administrator
+  `/api/v1/logs` history affordance was removed.
+- Backend ACL API tests (9), Flutter analysis and all 49 Flutter tests pass. The
+  Android notification policy is covered by a JVM unit test; the full Android
+  Gradle compile remains a hosted-CI Gate because this checkout intentionally
+  does not carry an executable Gradle wrapper.
+- Phone installation, connected screen readback, notification delivery,
+  foreground/screen-off Target trials, ultrasonic/contact actuation and actual
+  door movement remain pending. They are not implied by this source status.
+
 ## 1. Goal and evidence boundary
 
 The next mobile iteration has one product goal: a resident should understand
@@ -87,6 +104,9 @@ Exit: a redacted before-capture and an agreed five-step user journey exist.
 
 ### Phase 1 — truthful core Home (MU-P0-01, 02, 04)
 
+Source status: **implemented in the #265 candidate; CI, merge, publication and
+connected acceptance remain separate.**
+
 - Introduce a native `SmartKeyViewModel` that joins capability readiness,
   credential/enrollment state, latest Target session and update state.
 - Wire the already-defined `DoorState` and `EnrollmentState` into production.
@@ -99,6 +119,10 @@ Exit: a user can tell, in one screen, whether access is ready and why; no stale
 device-ID state can contradict the Keystore/ACL authority.
 
 ### Phase 2 — live result and recovery (MU-P0-03, 05; #179)
+
+Source status: **activity and terminal notification implemented; existing
+capability recovery is preserved. Bluetooth OFF→ON and OEM behavior still need
+the disconnected-phone matrix before #179 can be closed.**
 
 - Add a bounded native activity store and local notifications for meaningful
   state transitions.

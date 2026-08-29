@@ -71,6 +71,23 @@ class PersonalEnrollmentRequest(BaseModel):
     max_protocol: Literal[1]
 
 
+class PersonalStatusRequest(BaseModel):
+    """Personal mobile identity lookup without making device ID authoritative."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: str = Field(
+        min_length=8,
+        max_length=128,
+        pattern=r"^(?:DEV|GK)-[A-Z0-9-]+$",
+    )
+    credential_id: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    public_key_sec1: Optional[str] = Field(
+        default=None,
+        pattern=r"^04[0-9a-f]{128}$",
+    )
+
+
 class SnapshotPublishRequest(TenantRequest):
     min_protocol: int = Field(default=1, ge=1, le=65535)
     max_protocol: int = Field(default=1, ge=1, le=65535)
@@ -179,6 +196,24 @@ def create_acl_router(
             raise HTTPException(status_code=401, detail="missing tenant scope")
         return x_tenant_id, _actor_ref("admin", x_admin_key)
 
+    def require_personal(x_api_key: Optional[str]) -> str:
+        require_enabled()
+        if not config.personal_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="personal credential service is disabled",
+            )
+        if (
+            not config.personal_api_key
+            or not x_api_key
+            or not secrets.compare_digest(x_api_key, config.personal_api_key)
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail="invalid or missing X-API-KEY",
+            )
+        return _actor_ref("personal-mobile", config.personal_api_key)
+
     def require_target(
         x_target_key: Optional[str] = Header(default=None, alias="X-Target-Key"),
         x_target_id: Optional[str] = Header(default=None, alias="X-Target-ID"),
@@ -264,21 +299,7 @@ def create_acl_router(
         request: PersonalEnrollmentRequest,
         x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
     ) -> dict[str, Any]:
-        require_enabled()
-        if not config.personal_enabled:
-            raise HTTPException(
-                status_code=503,
-                detail="personal credential enrollment is disabled",
-            )
-        if (
-            not config.personal_api_key
-            or not x_api_key
-            or not secrets.compare_digest(x_api_key, config.personal_api_key)
-        ):
-            raise HTTPException(
-                status_code=401,
-                detail="invalid or missing X-API-KEY",
-            )
+        require_personal(x_api_key)
         actor = _actor_ref("personal-enrollment", config.personal_api_key)
         return _invoke(
             service.bootstrap_personal_credential,
@@ -290,6 +311,44 @@ def create_acl_router(
             actor_ref=actor,
             min_protocol=request.min_protocol,
             max_protocol=request.max_protocol,
+        )
+
+    @router.post("/api/v1/acl/personal/status")
+    def personal_status(
+        request: PersonalStatusRequest,
+        x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
+    ) -> dict[str, Any]:
+        require_personal(x_api_key)
+        if (request.credential_id is None) != (request.public_key_sec1 is None):
+            raise HTTPException(
+                status_code=422,
+                detail="credential identity fields must be provided together",
+            )
+        return _invoke(
+            service.personal_mobile_status,
+            config.personal_tenant_id,
+            config.personal_door_id,
+            request.device_id,
+            request.credential_id,
+            request.public_key_sec1,
+        )
+
+    @router.post("/api/v1/acl/personal/activity")
+    def personal_activity(
+        request: PersonalStatusRequest,
+        x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
+    ) -> dict[str, Any]:
+        require_personal(x_api_key)
+        if request.credential_id is None or request.public_key_sec1 is None:
+            raise HTTPException(
+                status_code=422,
+                detail="credential identity is required",
+            )
+        return _invoke(
+            service.personal_mobile_activity,
+            config.personal_tenant_id,
+            request.credential_id,
+            request.public_key_sec1,
         )
 
     def admin_status_change(

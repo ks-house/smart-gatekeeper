@@ -4963,3 +4963,16 @@
 - Audited the Flutter shell, hosted WebView, Backend user/status/history routes, native wake/GATT health, updater and existing commercial UX/manual contracts. The phone is disconnected, so the tag and audit do not claim installation or connected visual/physical acceptance.
 - Added `mobile_usability_improvement_plan.md`, separating implemented foundations from unwired or missing mobile product flows and prioritizing authoritative credential state, a plain-language native Home, truthful activity/results, recovery, update UX, localization/accessibility, support and measured latency.
 - The audit found that the WebView status still depends on a retired device-ID lookup and its recent-history widget calls an administrator-only endpoint without the required admin contract. The plan requires credential-bound replacements and keeps admin audit access out of the app.
+
+## [2026-08-30] code | Implement credential-bound native mobile Home and activity
+
+- Added authenticated personal status and credential-lifecycle endpoints. Exact Android credential ID/public key, active tenant/grant, signed ACL entry and Target ACK are required for `access_ready`; legacy device identity is retained only as migration context.
+- Made a plain-language native Home/Activity/Settings shell the ready-state entry, retained the hosted page only for transitional registration, replaced its retired `/user/me` authority and removed its broken administrator-log history request.
+- Added a bounded privacy-safe local activity timeline plus terminal Android notifications. Action-1 success is labeled `출입 준비 완료` and explicitly remains distinct from sensor/contact or physical door-open evidence; proof-uncertain outcomes prohibit automatic retry.
+- Moved worker/tuning controls behind `고급 진단`, retained independent update and manual recovery access, and mapped blocked identity/ACL/backend states to one context-sensitive primary action.
+
+## [2026-08-30] test | Verify mobile P0 source candidate without connected phone
+
+- All nine Backend ACL API tests passed, including exact credential status/activity and the negative legacy-device-only readiness case.
+- Flutter analysis reported no findings and all 49 Flutter tests passed, including identity request, unavailable-state, activity truth/deduplication and unified-navigation contracts.
+- The new Android notification policy has focused JVM coverage and awaits hosted Gradle compilation. The phone is disconnected, so APK installation, notification delivery, connected screen readback, Target background transitions and physical door evidence remain pending.

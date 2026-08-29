@@ -114,6 +114,7 @@ class NativeGattWorkerHealth {
     this.latestDetection,
     this.lastSession,
     this.lastGattPerformance,
+    this.currentBlockingReasonCode,
   });
 
   final bool featureEnabled;
@@ -143,6 +144,7 @@ class NativeGattWorkerHealth {
   final TargetDetectionSummary? latestDetection;
   final Map<Object?, Object?>? lastSession;
   final GattPerformanceSummary? lastGattPerformance;
+  final String? currentBlockingReasonCode;
 
   bool get credentialRegistered => credentialProvisioned && localConsentValid;
 
@@ -226,6 +228,8 @@ class NativeGattWorkerHealth {
               (value['lastGattPerformance'] as Map).cast<Object?, Object?>(),
             )
           : null,
+      currentBlockingReasonCode:
+          value['currentBlockingReasonCode']?.toString(),
     );
   }
 }

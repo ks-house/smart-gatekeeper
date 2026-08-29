@@ -162,6 +162,107 @@ class AclApiTest(unittest.TestCase):
         )
         self.assertEqual(422, rejected.status_code)
 
+        status = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={
+                "device_id": device_id,
+                "credential_id": body["credential_id"],
+                "public_key_sec1": body["public_key_sec1"],
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, status.status_code, status.text)
+        self.assertEqual("approved", status.json()["enrollment_state"])
+        self.assertFalse(status.json()["access_ready"])
+        self.assertEqual("wait_for_acl", status.json()["next_action"])
+        self.assertEqual(1, status.json()["door_count"])
+        self.assertEqual(1, status.json()["acl_version"])
+
+        snapshot = self.store.latest_snapshot(TENANT_A, DOOR)
+        assert snapshot is not None
+        acked = self.client.post(
+            "/api/v1/acl/acks",
+            json={
+                "tenant_id": TENANT_A,
+                "target_id": "target-a",
+                "door_id": DOOR,
+                "acl_version": 1,
+                "sha256": snapshot["sha256"],
+                "status": "APPLIED",
+            },
+            headers={
+                "X-Target-Key": "target-secret-a",
+                "X-Target-ID": "target-a",
+                "X-Tenant-ID": TENANT_A,
+            },
+        )
+        self.assertEqual(200, acked.status_code, acked.text)
+        synced_status = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={
+                "device_id": device_id,
+                "credential_id": body["credential_id"],
+                "public_key_sec1": body["public_key_sec1"],
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertTrue(synced_status.json()["access_ready"])
+        self.assertTrue(synced_status.json()["target_synced"])
+
+        activity = self.client.post(
+            "/api/v1/acl/personal/activity",
+            json={
+                "device_id": device_id,
+                "credential_id": body["credential_id"],
+                "public_key_sec1": body["public_key_sec1"],
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, activity.status_code, activity.text)
+        self.assertEqual(
+            ["credential_registered"],
+            [item["type"] for item in activity.json()["events"]],
+        )
+        self.assertNotIn("actor_ref", activity.text)
+
+    def test_personal_status_separates_legacy_migration_from_access_ready(self) -> None:
+        device_id = "DEV-PENDING-MOBILE"
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 0, NULL)",
+            ("pending", "unit", device_id),
+        )
+        self.conn.commit()
+        pending = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={"device_id": device_id},
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, pending.status_code, pending.text)
+        self.assertEqual("pending", pending.json()["enrollment_state"])
+        self.assertFalse(pending.json()["access_ready"])
+
+        self.conn.execute(
+            "UPDATE tenants SET is_active=1 WHERE ble_device_mac=?", (device_id,)
+        )
+        self.conn.commit()
+        approved_legacy = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={"device_id": device_id},
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual("ready_to_enroll", approved_legacy.json()["enrollment_state"])
+        self.assertFalse(approved_legacy.json()["access_ready"])
+        self.assertEqual("enroll_credential", approved_legacy.json()["next_action"])
+
+        denied = self.client.post(
+            "/api/v1/acl/personal/activity",
+            json={"device_id": device_id},
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(422, denied.status_code)
+
     def test_personal_enrollment_bootstraps_unmapped_approved_legacy_row(self) -> None:
         self.conn.execute("DELETE FROM acl_tenants WHERE tenant_id=?", (TENANT_A,))
         self.conn.execute(

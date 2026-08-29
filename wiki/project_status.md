@@ -871,3 +871,21 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   `DoorState`/`EnrollmentState` models, no durable user activity notification,
   mixed hard-coded ko/en copy and engineering controls in the normal Smart Key
   tab. No implementation change is included in this planning baseline.
+
+## 2026-08-30 mobile P0 native-home candidate
+
+- Issue #265 source now makes a native Home/Activity/Settings shell the normal
+  ready-state entry. It joins native wake/GATT health with an authenticated
+  personal Backend status contract and exposes one context-sensitive next
+  action; installer timing and feature controls remain under `고급 진단`.
+- Personal status and lifecycle routes bind the legacy migration context to the
+  exact AndroidKeyStore credential ID and public key. `access_ready` additionally
+  requires an active tenant, credential, door grant, current signed ACL entry
+  and Target ACK; a device-ID-only legacy row can never report ready.
+- A bounded on-device timeline and Android terminal notifications distinguish
+  `출입 준비 완료` from physical `문 열림`, remove the non-functional admin-log
+  history affordance and preserve proof-uncertain no-auto-retry semantics.
+- Nine Backend ACL tests, Flutter analysis and all 49 Flutter tests pass. Hosted
+  Android Gradle/Trusted/Backend/OTA checks, exact-main signed publication and
+  NAS deployment are still pending. The phone remains disconnected, so install,
+  visual, notification, background and physical results remain unclaimed.
