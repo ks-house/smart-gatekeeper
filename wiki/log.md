@@ -4639,3 +4639,9 @@
 - Owner readback proves the exact merged wrapper SHA-256 `234231e8...`, `root:root 0755` and `status=not-deployed`, while direct execution of both mode-0700 staged `/tmp` helpers failed with `Permission denied`.
 - Corrected the operator contract to use `sudo bash /tmp/<verified-helper>.sh`, which respects a DSM `noexec`-style `/tmp` policy without remounting or weakening it; added a regression covering bootstrap, verifier and backup examples.
 - Retained legacy containers remain the required running precondition. Bootstrap/verifier PASS, maintenance stop and protected run `33246998513` approval remain separate Gates; no deployment/readiness is claimed.
+
+## [2026-08-29] compile | Authorize exact DSM noexec-safe guide candidate
+
+- Reviewed immutable feature commit `b2e7d607bd54d625528390f01f5baa1ac03276f8`; exactly deploy README and its direct NAS deployment test change as one protected bundle with normalized digests `da807427...` and `d97079ed...`.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path map, retiring previous feature baseline `3fdc615` from this transition policy.
+- This policy-only candidate changes no NAS state and grants no production approval. Separately, owner preflight passed all secret/runtime/volume/DB/ACL identity contracts and exact run `33246998513` entered its approved live deployment step.
