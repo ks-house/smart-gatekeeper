@@ -75,12 +75,14 @@ external MariaDB, API-state, APK and migration-backup volumes remain intact.
 ### DS423+ CPU-controller compatibility
 
 DSM 7.3 on the observed DS423+ kernel does not expose the CPU CFS controller
-required by Docker's nonzero `NanoCPUs` field. The portable production Compose
-keeps its `0.5` migration and `1.0` API CPU limits for capable Linux hosts. The
-Synology overlay sets those two fields to zero so the merged NAS configuration
-omits `cpus` and container creation does not fail after the DB has started.
+required by Docker's `NanoCPUs` field. Compose v2.20.1 on DSM preserves an
+overlay value of `cpus: 0` as a Docker update request instead of treating it as
+field deletion, so a zero-valued override is not a compatible reset mechanism.
+The production and Synology Compose inputs therefore omit `cpus` entirely.
 Memory and PID limits, dropped capabilities, read-only filesystems and
-`no-new-privileges` remain enforced.
+`no-new-privileges` remain enforced. CPU quotas can only be reintroduced after
+the deployed DSM kernel exposes a compatible controller and a NAS create/run
+probe passes.
 
 ## 1. Inventory the current containers and volumes
 
@@ -449,6 +451,15 @@ Compose project. Restore the retained legacy pair before retrying and do not
 delete the shared MariaDB volume. The source correction described above is not
 a deployed result until its protected policy, CI, root-owned wrapper install
 and a new approved run all pass.
+
+The next protected attempt, run `33241850366`, proved the partial-stack cleanup
+path but also disproved the zero-valued overlay assumption. DSM recreated and
+started the exact new DB, then again rejected `NanoCPUs` before migration.
+Cleanup stopped and removed only the partial production container and networks,
+reported that volumes were not deleted, and did not attempt DB rollback. The
+production and Synology Compose inputs must both omit `cpus` before another
+live attempt; the owner subsequently restarted the retained legacy pair and
+external liveness recovered.
 
 After adoption, an admitted `main` backend change automatically builds and
 publishes immutable images. Deployment still pauses at the protected

@@ -3,15 +3,7 @@
 # digests and source identity through the deployment wrapper.
 
 services:
-  # DSM 7.3 on the DS423+ kernel does not expose the CPU CFS controller used
-  # by Docker's NanoCPUs field. Keep the portable base limits for supported
-  # hosts, but explicitly omit them in this NAS overlay so container creation
-  # does not fail after the database has started.
-  migrate:
-    cpus: 0
-
   api:
-    cpus: 0
     ports:
       - target: 8000
         published: "${SGK_API_LOOPBACK_PORT:-8000}"

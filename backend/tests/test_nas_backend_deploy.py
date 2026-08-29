@@ -220,7 +220,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         overlay = SYNOLOGY_COMPOSE.read_text(encoding="utf-8")
         self.assertIn("host_ip: 127.0.0.1", overlay)
         self.assertIn('published: "${SGK_API_LOOPBACK_PORT:-8000}"', overlay)
-        self.assertEqual(2, overlay.count("cpus: 0"))
+        self.assertNotIn("cpus:", overlay)
         for variable in (
             "MARIADB_DATA_VOLUME",
             "API_STATE_VOLUME",
@@ -232,8 +232,11 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertNotIn("3306", overlay)
         production = PRODUCTION_COMPOSE.read_text(encoding="utf-8")
         self.assertNotIn("ports:", production)
-        self.assertIn("cpus: 0.5", production)
-        self.assertIn("cpus: 1.0", production)
+        self.assertNotIn("cpus:", production)
+        self.assertIn("pids_limit: 64", production)
+        self.assertIn("pids_limit: 256", production)
+        self.assertIn("mem_limit: 256m", production)
+        self.assertIn("mem_limit: 512m", production)
 
     @unittest.skipUnless(shutil.which("docker"), "Docker Compose is required")
     def test_synology_overlay_renders_with_exact_images_and_file_secrets(self):

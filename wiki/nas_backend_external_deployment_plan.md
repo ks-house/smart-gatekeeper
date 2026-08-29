@@ -698,23 +698,28 @@ failure occurred before migration and the wrapper did not attempt DB rollback;
 no `status=deployed` or readiness evidence exists. That wrapper version also
 left the partial project for explicit recovery.
 
-The correction retains the portable base CPU limits but sets `cpus: 0` for the
-migration and API services in the Synology overlay; the merged NAS Compose then
-omits the unsupported field while preserving memory/PID/capability/read-only
-hardening. Apply failure cleanup now runs `down --remove-orphans` only for the
-fixed production project, never `--volumes`, records the cleanup result and
+The first correction retained the portable base CPU limits and set `cpus: 0`
+for migration and API in the Synology overlay. Hosted Compose rendering omitted
+the field, but DSM Compose v2.20.1 preserved the zero value as a Docker
+`NanoCPUs` update request. Run `33241850366` therefore failed before migration
+after starting the exact new DB. Apply failure cleanup ran
+`down --remove-orphans` only for the fixed production project, never
+`--volumes`, recorded the cleanup result and
 continues to prohibit blind DB rollback. The workflow also uses the Tailscale
 action's valid `sha256sum` input. Policy PR #216, policy-connected feature PR
 #215 and final policy PR #217 passed their Hosted checks and merged through
 final main `bb970bb68c365140b2b1717116fc19eac307cb59`; the reviewed feature main
 is `6b1f1da3359dcca95c8434b73970ba992ef9d41d`. Its backend run `33241850366`
-has published exact images/provenance and waits at protected production
-approval. The merged wrapper SHA-256 is `6a29bf87...`. Owner readback now proves
-the partial new DB `exited` and both retained legacy containers `running`;
-external `/live` returned HTTP 200 for build `7c2764a1` and `/ready` returned
-the expected legacy HTTP 503 with only `legacy_prearm_retired=false`. Exact
-wrapper installation and a new maintenance stop must still precede approval.
-No deployed/readiness result exists yet.
+published exact images/provenance and was owner-approved after exact wrapper
+installation and a new maintenance stop. The cleanup contract passed: the
+partial production DB and networks were removed without volume deletion, and
+no DB rollback was attempted. Because zero does not reset this field on DSM,
+the next source candidate removes `cpus` from both production inputs while
+retaining memory/PID/capability/read-only hardening. Owner recovery restarted
+both retained legacy containers; external `/live` returned HTTP 200 for build
+`7c2764a1` and `/ready` returned the expected legacy HTTP 503 with only
+`legacy_prearm_retired=false`. Protected source authorization, fresh CI and
+another change window remain required. No deployed/readiness result exists yet.
 
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
