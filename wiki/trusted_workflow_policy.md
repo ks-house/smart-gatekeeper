@@ -815,3 +815,20 @@ The complete ordered 83-path map is duplicated in
 merge-connection into PR #226, fresh checks and final rotation remain required.
 This authority changes no NAS state and the previous deployment run remains
 unapproved.
+
+## 20. Bootstrap runtime.env argument final baseline
+
+Policy-connected feature PR #226 head
+`527a671124c87e6a01241ddb55193b71fa1b7af8` passed fresh Hosted Trusted, OTA
+P0 and Backend checks. Merge commit
+`3fdc615833da68af22623eefafc876d4c84b86d7` is the actual feature main.
+
+This final rotation removes both bounded `ecc189e` transition identities and
+pins the sole `current-main-baseline` to actual feature main `3fdc615`. The
+complete ordered 83-path map, inventories and the two reviewed bootstrap/test
+digests remain unchanged.
+
+Final policy authority is source/CI evidence only. It changes no NAS file,
+secret metadata, container or database and proves no deployment/readiness.
+Exact bootstrap/verifier/wrapper installation, owner maintenance stop,
+protected deployment and backend-included access E2E remain separate Gates.

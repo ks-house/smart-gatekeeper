@@ -4615,3 +4615,9 @@
 - Policy PR #227 passed Hosted Trusted and merge-committed as main `5e357cbccbbb0f5e3e2643d9555eaa8febaf47c5`. That exact policy main is merged into immutable feature commit `ecc189e8d1ab21ad0c797b3a6009f3f12ac48829` without rebase or squash.
 - Both authorized protected feature blobs remain the reviewed bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
 - This source-history connection changes no NAS state and the earlier deployment run remains unapproved.
+
+## [2026-08-29] compile | Rotate bootstrap runtime policy to actual feature main
+
+- Policy-connected PR #226 head `527a671124c87e6a01241ddb55193b71fa1b7af8` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `3fdc615833da68af22623eefafc876d4c84b86d7`.
+- Removed both `ecc189e` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and two reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS state and proves no deployment/readiness. Exact bootstrap/verifier/wrapper installation, owner maintenance stop, protected deployment and backend-included E2E remain open.
