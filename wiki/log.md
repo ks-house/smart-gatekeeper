@@ -4813,3 +4813,9 @@
 - Reviewed immutable candidate `15005944591a43a5437ccf33f9a945ab7b47809f`; relative to feature main `7be8768`, exactly the deploy README, root wrapper and direct NAS deployment test change among protected paths.
 - Replaced the current source identity with `future-nas-public-ingress-hairpin-1500594-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `083089b3...`, `3e0fdd66...` and `5968e0ce...`.
 - This policy-only candidate changes no NAS file, container or database and grants no deployment approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation, exact deployment and external/backend-included E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect DSM ingress fix to policy main
+
+- Policy PR #248 passed the Trusted check and merge-committed as main `36c720aabf5d2b7deb685836b612c1633d8f2e15`; that exact policy main was merged without rebase or squash into immutable feature candidate `15005944591a43a5437ccf33f9a945ab7b47809f` as `6a5c75eec07062f3ec4d5acd50914f669a88f24e`.
+- All three reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged. The append-only log conflict preserved both live failure/fix evidence and policy authorization entries.
+- Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS runtime and proves no deployment or backend-included E2E.
