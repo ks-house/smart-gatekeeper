@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-29 (exact-main 301 and mobile gf352a78 connected action-1 ARMED replacement by action-2 passed)
+> Last updated: 2026-08-29 (deployed backend `db37772d`, Fold7 `gd9ecc87` and connected Target passed action-1 ARMED replacement by action-2 OPENED plus relay-command ON/OFF)
 
 ## 1. 판정 원칙
 
@@ -701,3 +701,21 @@ separate physical Gates.
 Issue #197 is closed with the exact connected evidence. The software/core
 path now passes the ordering that previously failed, while physical actuation
 and sensor acceptance remain explicitly separate.
+
+## 2026-08-29 deployed-backend included core-use-case repetition
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Backend production precondition | Exact source `db37772de5a3f18be7bcaa73170933ab18442475` is `status=deployed`; external `/live` and `/ready` returned HTTP 200 with all checks true, and read-only run `33254703582` retained the canonical status artifact | PASS for deployed backend, DB/schema, MQTTS, auth/ACL, legacy retirement and build identity |
+| Connected inventory | Windows ADB authorized Fold7 `SM-F966N` serial `R3CY707DL7L`; installed production-signed app is `1.0.0-gd9ecc87` / 24401. CH343 is attached as WSL `/dev/ttyACM0`, and a fresh nested WSL login activated its configured `dialout` membership | PASS for current mobile/serial transport identity |
+| Fresh native action 1 | After a bounded app process restart, OS native wake connected to `SmartGatekeeper`, completed authenticated characteristic writes/indications, and WorkManager returned `SUCCESS`. Dashboard showed `HEALTHY`, owner `native_gatt`, hands-free `READY`, and `Presence → dispatch/ARMED` 44 / 4509 ms | PASS for one current action-1 terminal ARM in the deployed-backend test window |
+| ARMED replacement by action 2 | About 47 seconds after action-1 completion, the dashboard terminal action-2 button completed a separate GATT session and displayed `문이 열렸습니다 (4909ms)` | PASS for current authenticated action-2 `OPENED` within the 60-second ARMED window |
+| Target relay command | Independent serial observation recorded a second accepted GATT connection, `릴레이 ON 상태로 변경 완료`, then timer-bound `릴레이 OFF 상태로 변경 완료` without reset | PASS for Target FSM/GPIO command and fail-safe timer cutoff |
+| Physical boundary | No contact voltage/current, attached actuator, actual door motion, AJ-SR04T threshold or repeated latency distribution was measured | PENDING physical actuation, sensor and SLO acceptance; no physical-open claim |
+
+This repetition closes the requested backend-included software/core loop across
+the deployed NAS backend, current Fold7 app and connected Target. Local GATT
+does not perform a backend request per tap by design; the backend contribution
+is the deployed ready control/ACL plane and the approved app state visible in
+the same acceptance window. Physical actuation remains a separate owner-observed
+Gate.
