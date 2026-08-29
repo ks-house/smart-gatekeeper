@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. Exact backend run `33245672804`은 DSM CPU-field 제거 뒤 DB 시작과 migration `up 007`까지 통과했지만 새 API의 loopback `/ready`가 실패해 partial stack을 볼륨 삭제 없이 정리했다. Source audit는 UID/GID `10001:10001` API와 `root:root 0600` local Compose file-secret bind mount의 읽기 권한 불일치를 확인했다. retained legacy DB/API는 다시 `running`, 외부 `/live`는 HTTP 200이고 `/ready`는 알려진 `legacy_prearm_retired=false`만 남은 HTTP 503이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. Exact backend run `33245672804`은 DSM CPU-field 제거 뒤 DB 시작과 migration `up 007`까지 통과했지만 새 API의 loopback `/ready`가 실패해 partial stack을 볼륨 삭제 없이 정리했다. Source audit가 확인한 UID/GID `10001:10001` API와 local Compose file-secret 권한 불일치는 protected feature main `3fdc615833da68af22623eefafc876d4c84b86d7`에서 수정됐고 final policy main은 `ae69332f16d855f39cec99bd46a21736194769b1`이다. Exact run `33246998513`은 tests/evidence/provenance/API·DB image publication을 통과하고 production 승인을 기다리지만, exact NAS metadata/wrapper readback 전에는 승인하지 않는다. retained legacy DB/API는 `running`, 외부 `/live`는 HTTP 200이고 `/ready`는 알려진 `legacy_prearm_retired=false`만 남은 HTTP 503이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -95,15 +95,20 @@ applies_to:
   volumes, and DB rollback was not attempted. The retained legacy pair was
   restarted; public `/live` is HTTP 200 and `/ready` is its expected single
   legacy-boundary 503.
-- The next source candidate fixes the newly isolated startup contract: local
+- Protected feature main `3fdc615833da68af22623eefafc876d4c84b86d7`
+  fixes the newly isolated startup contract: local
   Compose `file:` secrets retain host bind-mount metadata, while the immutable
   API runs as `10001:10001`. The root-only `secrets/` directory remains
   `0700`; only `db_root_password` stays `root:root 0600`, and API-consumed
   files become `root:10001 0640`. Failure cleanup also preserves root-only API
-  logs and non-secret runtime state before removing a partial stack. These are
-  repository changes, not a deployed/readiness pass. The post-merge bootstrap
-  audit also requires its unchanged `runtime.env` install call to pass explicit
-  `root root 600` metadata to the expanded helper before any NAS rerun.
+  logs and non-secret runtime state before removing a partial stack. The
+  post-merge bootstrap audit additionally fixed the unchanged `runtime.env`
+  install call to pass explicit `root root 600` metadata to the expanded
+  helper. PRs #223/#226 and their policy rotations through PR #228 passed;
+  final policy main is `ae69332f16d855f39cec99bd46a21736194769b1`.
+  Exact feature-main run `33246998513` passed backend/MariaDB tests, evidence,
+  provenance and exact API/DB publication, then stopped at protected production
+  approval. These remain source/CI results, not a NAS deployed/readiness pass.
 
 - The retained legacy backend is recovered after run `33241850366`; its public
   liveness is restored, but the new exact-digest lane is not deployed
@@ -125,7 +130,8 @@ applies_to:
   tailnet policy and protected GitHub Environment as recorded below. GHCR image
   publication has occurred, but no successful workflow deployment, database
   migration, Compose cutover or reverse-proxy change has occurred.
-- Before retry the owner must install the exact merged wrapper, apply and read
+- Before approving run `33246998513`, the owner must install the exact merged
+  bootstrap/verifier/wrapper, apply and read
   back the corrected secret metadata contract, and stop the recovered legacy
   API/DB in a new approved change window before approving the protected
   deployment. The exact

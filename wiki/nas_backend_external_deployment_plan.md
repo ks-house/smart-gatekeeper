@@ -742,6 +742,19 @@ also retains non-secret container state and a root-only bounded API log before
 removal. Protected authorization, exact NAS metadata readback and another live
 window remain separate Gates.
 
+Secret-access feature PR #223 and bootstrap-arity feature PR #226, together
+with their bounded policy admission/final rotations through PR #228, passed
+the required Hosted Trusted, OTA P0 and Backend checks. The reviewed backend
+feature main is `3fdc615833da68af22623eefafc876d4c84b86d7`; final policy main is
+`ae69332f16d855f39cec99bd46a21736194769b1`. Exact feature-main run
+`33246998513` passed tests, real MariaDB verification, evidence/provenance and
+both immutable image publications and now waits at protected production
+approval. Approval remains withheld until bootstrap SHA-256 `1969b5a8...`,
+verifier `2b58d125...`, wrapper `234231e8...`, secret metadata contracts and
+`status=not-deployed` are read back from the NAS while the recovered legacy
+pair remains running. These are explicit pre-cutover Gates, not deployment
+evidence.
+
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
 does not close the backup/restore, first handover, live workflow, NAS readiness,

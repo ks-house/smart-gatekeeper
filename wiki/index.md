@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; NAS legacy is recovered, bootstrap runtime.env fix merged as feature main 3fdc615, and its final trusted-policy rotation is pending)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; NAS legacy is recovered, secret-access/bootstrap fixes are protected through final main ae69332, and exact feature run 33246998513 waits for metadata readback before approval)
 
 ---
 
