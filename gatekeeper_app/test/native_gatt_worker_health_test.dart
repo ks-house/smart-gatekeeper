@@ -40,6 +40,7 @@ void main() {
         'maxPresenceAgeMs': 45000,
         'lastPresenceToDispatchMs': 320,
         'lastPresenceToArmedMs': 1840,
+        'lastActiveAclVersion': 434,
         'latestDetection': <String, Object?>{
           'source': 'ble_scan',
           'success': true,
@@ -82,6 +83,9 @@ void main() {
     expect(health.maxPresenceAgeMs, 45000);
     expect(health.lastPresenceToDispatchMs, 320);
     expect(health.lastPresenceToArmedMs, 1840);
+    expect(health.lastActiveAclVersion, 434);
+    expect(health.credentialRegistered, isTrue);
+    expect(health.targetAclConfirmed, isTrue);
     expect(health.latestDetection?.strongestRssi, -54);
     expect(health.latestDetection?.screenInteractive, isFalse);
     expect(
@@ -195,6 +199,24 @@ void main() {
     expect(health.lastGattPerformance?.negotiatedMtu, 247);
     expect(health.lastGattPerformance?.mtuStatus, 'ACCEPTED');
     expect(health.lastGattPerformance?.highPriorityRequested, isTrue);
+  });
+
+  test('credential and Target ACL status require authoritative native proof',
+      () {
+    final keyOnly = NativeGattWorkerHealth.fromMap(<Object?, Object?>{
+      'credentialProvisioned': true,
+      'localConsentValid': true,
+    });
+    final missingConsent = NativeGattWorkerHealth.fromMap(<Object?, Object?>{
+      'credentialProvisioned': true,
+      'localConsentValid': false,
+      'lastActiveAclVersion': 434,
+    });
+
+    expect(keyOnly.credentialRegistered, isTrue);
+    expect(keyOnly.targetAclConfirmed, isFalse);
+    expect(missingConsent.credentialRegistered, isFalse);
+    expect(missingConsent.targetAclConfirmed, isFalse);
   });
 
   test('local GATT toggle delegates to native authoritative control', () async {

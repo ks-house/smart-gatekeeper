@@ -408,6 +408,7 @@ object BleGattHealthBridge {
       "lastLatencyMs" to last?.latencyMs,
       "lastPresenceToDispatchMs" to last?.presenceToDispatchMs,
       "lastPresenceToArmedMs" to last?.presenceToArmedMs,
+      "lastActiveAclVersion" to last?.activeAclVersion,
       "lastGattPerformance" to last?.gattPerformance?.redactedMap(),
       "wakeRegistrationStatus" to wakeRegistration.status,
       "wakeRegistered" to wakeRegistration.enabled,

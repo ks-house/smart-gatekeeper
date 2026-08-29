@@ -118,6 +118,7 @@ class WorkerPolicyTest {
       dispatchStartedEpochMs = 20,
       presenceToDispatchMs = 19,
       presenceToArmedMs = 240,
+      activeAclVersion = 434,
       gattPerformance = GattSessionPerformance(
         connectSetupMs = 120,
         negotiationMs = 80,
@@ -137,6 +138,8 @@ class WorkerPolicyTest {
     assertEquals(19L, decoded.presenceToDispatchMs)
     assertEquals(240L, decoded.presenceToArmedMs)
     assertEquals(240L, decoded.redactedMap()["presenceToArmedMs"])
+    assertEquals(434L, decoded.activeAclVersion)
+    assertEquals(434L, decoded.redactedMap()["activeAclVersion"])
     assertEquals(120L, decoded.gattPerformance?.connectSetupMs)
     assertEquals(247, decoded.gattPerformance?.transport?.negotiatedMtu)
     assertEquals(MtuNegotiationStatus.ACCEPTED, decoded.gattPerformance?.transport?.mtuStatus)

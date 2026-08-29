@@ -4944,3 +4944,15 @@
 - Targeted Flutter analysis reported no findings and all 45 Flutter tests passed, including the new phase/link diagnostic parser.
 - The complete 317-test repository contract suite passed with one expected platform-specific skip, including the bounded priority/MTU fallback source contract.
 - These are local source/build results only. Exact-main signed APK publication, replacement install and repeated connected foreground/screen-off measurements remain required before accepting a latency improvement or the candidate sub-2.5-second objective.
+
+## [2026-08-30] fix | Replace stale Key and Tenant badge with native authority
+
+- Removed the unused SharedPreferences-only `CredentialService`, editable name/room form and local-only `Tenant 승인 요청 제출` action from the operational Smart Key screen; that action never contacted the Backend and could falsely imply a tenant approval request.
+- Derived key registration from native `credentialProvisioned` plus `localConsentValid`, and exposed the latest session's redacted `activeAclVersion` as `lastActiveAclVersion` through the existing health bridge.
+- The card now distinguishes bridge unavailable, key registration required, key registered without Target ACL evidence, and key plus Target ACL confirmed. Tenant authorization remains explicitly Backend-owned and is not inferred or mutated by this display change.
+
+## [2026-08-30] test | Verify authoritative mobile credential status candidate
+
+- Targeted Flutter analysis completed with no findings; 11 focused status/control tests and all 45 Flutter tests passed.
+- Android debug Kotlin compilation and the complete `gattworker.*` unit selector passed, including the new health projection field.
+- All 317 repository contract tests passed with one expected platform-specific skip. These are source/build results; production-signed publication, replacement install and on-device visual readback remain pending.
