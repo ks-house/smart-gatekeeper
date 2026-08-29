@@ -232,6 +232,9 @@ class NasBackendDeployContractTest(unittest.TestCase):
         overlay = SYNOLOGY_COMPOSE.read_text(encoding="utf-8")
         self.assertIn("host_ip: 127.0.0.1", overlay)
         self.assertIn('published: "${SGK_API_LOOPBACK_PORT:-8000}"', overlay)
+        self.assertIn(
+            '"${MQTT_HOST:?MQTT_HOST is required}:host-gateway"', overlay
+        )
         self.assertNotIn("\nnetworks:\n", overlay)
         self.assertNotIn("cpus:", overlay)
         for variable in (
@@ -301,6 +304,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             self.skipTest("Docker Compose plugin is unavailable")
         self.assertEqual(0, rendered.returncode, rendered.stderr)
         self.assertIn("host_ip: 127.0.0.1", rendered.stdout)
+        self.assertIn("broker.invalid=host-gateway", rendered.stdout)
         self.assertIn("file: /tmp/sgk-ci-secrets/db_password", rendered.stdout)
         self.assertIn(
             "file: /tmp/sgk-ci-secrets/personal_admin_password", rendered.stdout
