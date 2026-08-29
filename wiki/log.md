@@ -4573,3 +4573,9 @@
 - Policy-connected PR #220 head `719564f159205cdbabb769037f7783f5e0aaabad` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `b6cab8384efe7b5e046841ff84681b74d0cae113`.
 - Removed both `5a32570` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and four reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS runtime and proves no deployment/readiness. A new owner maintenance stop, protected exact-main run and backend-included E2E remain open.
+
+## [2026-08-29] compile | Authorize exact non-root Compose secret-access candidate
+
+- Reviewed immutable feature commit `2b32fc5fe14b5c90db022ed14deca5f572a68040`; exactly deploy README, bootstrap, wrapper, read-only verifier and direct NAS deployment test change as one protected bundle.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path map. Five candidate digests are pinned and feature main `b6cab838` is retired from the transition policy.
+- Focused trusted-policy regressions must pass before publication. This policy-only candidate changes no NAS secret metadata, runtime, container or database and grants no production approval; policy CI/merge, feature merge-connection, fresh CI, final rotation and live readiness remain separate Gates.

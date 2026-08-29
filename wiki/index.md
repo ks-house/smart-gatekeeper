@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; DSM CPU-field removal merged as feature main b6cab83 after fresh Trusted/OTA/Backend checks, legacy API/DB remain recovered, and final policy rotation is pending)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; NAS DB migration reached 007 before API secret-access readiness failure, legacy recovered, and exact feature 2b32fc5 is pending trusted-policy admission)
 
 ---
 
