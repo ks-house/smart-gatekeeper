@@ -4873,3 +4873,9 @@
 - With exact backend `db37772de5a3f18be7bcaa73170933ab18442475` deployed and externally `/ready=200`, ADB-authorized Fold7 app `1.0.0-gd9ecc87` restarted into a native beacon action-1 session. Android WorkManager returned `SUCCESS`; the dashboard reported `HEALTHY`, `native_gatt`, hands-free ready and `Presence → ARMED` in 4,509 ms.
 - About 47 seconds later, the terminal action-2 button completed another authenticated GATT session and displayed `문이 열렸습니다 (4909ms)`. Independent CH343 serial recorded the second connection plus relay-command ON completion and timer-bound OFF completion without reset.
 - This passes the requested deployed-backend software/FSM/GPIO command loop across NAS, mobile and Target. No contact voltage/current, actuator, actual door motion, AJ-SR04T threshold or repeated latency SLO was observed, so physical opening remains unclaimed.
+
+## [2026-08-29] test | Complete canonical CI-to-NAS managed redeployment
+
+- Owner staged and installed exact wrapper SHA-256 `30364e7a3442a6631d1a49adf7e129469838aeb9ee8bd8af3b894ef049b9abb7` as `root:root 0755`, retaining the prior `3e0fdd66...` wrapper as a root-only recoverable backup. Read-only status still proved the healthy deployed `db37772d` release before approval.
+- Protected run `33255038063` deployed exact source `d50b98f9c1e4e046fb62d1e8698c0ed2407291fe`, immutable API `dff4fda6...` and DB `bc348186...`, passed migration `up 007`, loopback/public readiness, canonical apply/status byte equality and two-file evidence artifact upload. The workflow completed green.
+- Independent external `/live` and `/ready` both returned HTTP 200 for exact build `d50b98f` with every readiness check true. Branch protection remains administrator-enforced and strict with the sole Trusted required context; physical contact/load, actual door movement, sensor threshold and repeated SLO remain separate Gates.
