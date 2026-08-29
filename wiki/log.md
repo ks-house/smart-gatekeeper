@@ -4795,3 +4795,9 @@
 - Policy PR #246 passed the required Trusted check and merge-committed as main `be8c462d35cd25790cdf45a92bbcb6eb6b95c44e`; that exact policy main was merged without rebase or squash into immutable feature candidate `1feb4b9d14ee2742e228f298557e3335a2060d09` as `56029d3f8eeba717fd6f81505b607294d4846d4b`.
 - All three reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged. The append-only log conflict preserved both the live failure/fix evidence and policy authorization entries.
 - Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS runtime and proves no readiness or backend-included E2E.
+
+## [2026-08-29] compile | Rotate MQTT host-gateway policy to actual feature main
+
+- Policy-connected PR #245 head `799c65152ba4a3edea16c7c18bcd4ad0a4c05736` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `7be876804c23d91caf252b92e2b859f81aee168a`.
+- Removed transition source `1feb4b9` and pinned the sole `current-main-baseline` to actual main while preserving the complete ordered 83-path map, inventories and three reviewed protected digests.
+- This final policy rotation changes no NAS state and proves no readiness. Exact feature-main deployment, owner maintenance window, MQTT true and backend-included access E2E remain open.
