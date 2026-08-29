@@ -4879,3 +4879,33 @@
 - Owner staged and installed exact wrapper SHA-256 `30364e7a3442a6631d1a49adf7e129469838aeb9ee8bd8af3b894ef049b9abb7` as `root:root 0755`, retaining the prior `3e0fdd66...` wrapper as a root-only recoverable backup. Read-only status still proved the healthy deployed `db37772d` release before approval.
 - Protected run `33255038063` deployed exact source `d50b98f9c1e4e046fb62d1e8698c0ed2407291fe`, immutable API `dff4fda6...` and DB `bc348186...`, passed migration `up 007`, loopback/public readiness, canonical apply/status byte equality and two-file evidence artifact upload. The workflow completed green.
 - Independent external `/live` and `/ready` both returned HTTP 200 for exact build `d50b98f` with every readiness check true. Branch protection remains administrator-enforced and strict with the sole Trusted required context; physical contact/load, actual door movement, sensor threshold and repeated SLO remain separate Gates.
+
+## [2026-08-29] compile | Reconfirm wall-install update automation boundary
+
+- Current Target source checks signed HTTPS metadata after the initial 60-second gate, every six hours while healthy, and every 15 minutes after failure; connected evidence already covers encrypted periodic inactive-slot installation, application health VALID marking and a separate pre-VALID automatic rollback without NVS erase.
+- The Android updater independently discovers signed primary/fallback metadata, verifies APK size/hash/package/version/commit/certificate and opens the package installer. Android user confirmation remains an intentional platform security boundary; recent connected replacements used same-signature `adb install -r`, so unattended mobile installation is not claimed.
+- Final wall-install approval still requires intended-location RF and three power-cycle plus AP/broker/WAN outage recovery trials. Existing updater/rollback evidence proves the mechanisms, not those installation-site recovery conditions or a completely unattended Android update.
+
+## [2026-08-29] compile | Clarify current hands-free pocket access sequence
+
+- Current personal-production hands-free flow uses Android's filtered BLE `FIRST_MATCH` PendingIntent to enqueue a fresh network-independent WorkManager session. The phone signs local GATT action 1 with its AndroidKeyStore credential; Target ACL verification then transitions the FSM to `ARMED` for 60 seconds while keeping the relay OFF.
+- BLE RSSI is discovery evidence, not the door-opening distance measurement. Only while `ARMED`, the AJ-SR04T is sampled every 100 ms; a valid 20 cm through the configurable threshold (default 50 cm) transitions to `RELAY_HOLD`, drives GPIO3 for one second, forces OFF, waits the default three-second cooldown and returns to `IDLE`.
+- Connected evidence proves current native action 1 reaches `ARMED` and a separate authenticated action 2 drives relay-command ON/OFF. It does not yet prove one unattended screen-off/pocket action 1 followed by AJ-SR04T trigger, electrical contact/load and actual door motion as one continuous physical sequence.
+
+## [2026-08-29] compile | Audit process-death wake and Target-detection visibility
+
+- The manifest-declared filtered BLE PendingIntent receiver and native entrypoint are Flutter-independent. When the OS scan registration already exists, an ordinary reclaimed/killed process can be relaunched to journal the real BLE event, retain a privacy-safe authenticated Target locator and enqueue network-independent WorkManager action 1; reboot and package replacement re-register the opted-in scan.
+- Android force-stop, active-app `Stop`, revoked permissions, Bluetooth OFF and OEM restricted battery remain unsupported until the user clears the stopped/blocked condition. Samsung ordinary-process-kill repetition is still a physical Gate, so source support is not represented as a current reliability pass.
+- Production UI currently exposes hands-free/wake registration, last reason, Target result, latency and presence-to-dispatch/ARMED timing after the app is opened. The native journal additionally persists event time, RSSI and screen state, but only a debug ADB command dumps it; there is no immediate production notification or clear `last Target detected at/RSSI` user card yet.
+
+## [2026-08-29] code | Add foreground real-time Target detection card
+
+- Projected the latest native BLE wake journal event through the existing health bridge using only source, success, receive time, callback latency, strongest RSSI, screen state, result count and error code; raw BLE address and credential/authentication material remain excluded.
+- Added a one-second foreground refresh and a dedicated Smart Key card that maps fresh detection plus durable GATT state to waiting, detected, authenticating, ARMED, failed or disabled and shows event time/age, RSSI, screen state and presence-to-ARMED timing.
+- Events older than the native 45-second presence window render as waiting. The displayed RSSI remains a latest `FIRST_MATCH` sample, not continuous ranging, ultrasonic distance or proof of current physical proximity.
+
+## [2026-08-29] test | Verify Target detection projection and UI state model
+
+- Exact CI Flutter environment passed focused bridge/stage tests, targeted analysis with no findings, and the complete 43-test Flutter suite.
+- Gradle 9.1.0 targeted Android execution passed two native journal projection tests with a successful Kotlin/Android compile; the test remains under the existing `gattworker.*` CI selector.
+- These results prove source parsing, privacy redaction and UI state mapping only. Production-signed APK publication/install and a connected real Target transition visible on the phone remain pending.

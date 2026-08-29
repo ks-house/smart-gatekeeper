@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/credential_service.dart';
 import '../services/feature_flag_service.dart';
@@ -23,8 +25,10 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
 
   bool _loading = true;
   bool _isRetrying = false;
+  bool _liveRefreshInFlight = false;
   NativeGattWorkerHealth? _workerHealth;
   String _retryMessage = '';
+  Timer? _liveStatusTimer;
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _roomController = TextEditingController();
@@ -33,13 +37,80 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
   void initState() {
     super.initState();
     _loadAllState();
+    _liveStatusTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _refreshLiveWorkerHealth(),
+    );
   }
 
   @override
   void dispose() {
+    _liveStatusTimer?.cancel();
     _nameController.dispose();
     _roomController.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshLiveWorkerHealth() async {
+    if (_liveRefreshInFlight || !mounted) return;
+    _liveRefreshInFlight = true;
+    try {
+      final health = await _healthBridge.read();
+      if (mounted) setState(() => _workerHealth = health);
+    } catch (_) {
+      // Keep the last durable snapshot visible during a transient bridge error.
+    } finally {
+      _liveRefreshInFlight = false;
+    }
+  }
+
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  String _detectionTime(TargetDetectionSummary detection) {
+    final value = detection.receivedAt.toLocal();
+    return '${_twoDigits(value.hour)}:${_twoDigits(value.minute)}:'
+        '${_twoDigits(value.second)}';
+  }
+
+  String _detectionAge(TargetDetectionSummary detection) {
+    final elapsed = DateTime.now().difference(detection.receivedAt);
+    if (elapsed.isNegative || elapsed.inSeconds < 1) return '방금';
+    if (elapsed.inMinutes < 1) return '${elapsed.inSeconds}초 전';
+    if (elapsed.inHours < 1) return '${elapsed.inMinutes}분 전';
+    return '${elapsed.inHours}시간 전';
+  }
+
+  String _detectionLabel(TargetDetectionStage stage) {
+    switch (stage) {
+      case TargetDetectionStage.waiting:
+        return 'Target 감지 대기 중';
+      case TargetDetectionStage.detected:
+        return 'Target 감지됨';
+      case TargetDetectionStage.authenticating:
+        return 'Target 감지 · 인증 진행 중';
+      case TargetDetectionStage.armed:
+        return 'Target 인증 완료 · 센서 대기(ARMED)';
+      case TargetDetectionStage.failed:
+        return 'Target 감지/인증 실패';
+      case TargetDetectionStage.disabled:
+        return 'Target 감지 · 자동 인증 비활성';
+    }
+  }
+
+  Color _detectionColor(TargetDetectionStage stage) {
+    switch (stage) {
+      case TargetDetectionStage.armed:
+        return Colors.greenAccent;
+      case TargetDetectionStage.detected:
+      case TargetDetectionStage.authenticating:
+        return Colors.cyanAccent;
+      case TargetDetectionStage.failed:
+        return Colors.redAccent;
+      case TargetDetectionStage.disabled:
+        return Colors.orangeAccent;
+      case TargetDetectionStage.waiting:
+        return Colors.white70;
+    }
   }
 
   Future<void> _loadAllState() async {
@@ -317,7 +388,82 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 3. Native GATT Worker Health Card
+                    // 3. Real-time privacy-safe Target detection card
+                    Builder(builder: (context) {
+                      final detection = _workerHealth?.latestDetection;
+                      final stage = _workerHealth?.detectionStage ??
+                          TargetDetectionStage.waiting;
+                      return Card(
+                        color: const Color(0xFF102A43),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: _detectionColor(stage),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '📡 Target 실시간 감지',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                _detectionLabel(stage),
+                                key: const Key('target-detection-stage'),
+                                style: TextStyle(
+                                  color: _detectionColor(stage),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if (detection != null) ...[
+                                Text(
+                                  '최근 감지: ${_detectionTime(detection)} '
+                                  '(${_detectionAge(detection)})',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                                Text(
+                                  '신호: ${detection.strongestRssi != null ? '${detection.strongestRssi} dBm' : '측정 없음'} · '
+                                  '화면: ${detection.screenInteractive ? 'ON' : 'OFF'}',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                                Text(
+                                  '결과: ${_workerHealth?.lastSession?['state'] ?? 'DETECTED'} · '
+                                  '${_workerHealth?.lastPresenceToArmedMs != null ? 'ARMED ${_workerHealth!.lastPresenceToArmedMs} ms' : 'ARMED 미확인'}',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                              ] else
+                                const Text(
+                                  '등록된 Target 광고를 기다리고 있습니다.',
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '1초마다 자동 갱신하며 오래된 감지는 대기 상태로 전환합니다. '
+                                'BLE 주소와 credential은 표시하지 않습니다.',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 16),
+
+                    // 4. Native GATT Worker Health Card
                     Card(
                       color: const Color(0xFF1E1E1E),
                       child: Padding(
@@ -396,7 +542,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 4. Feature Flags & Interlocked Control
+                    // 5. Feature Flags & Interlocked Control
                     Card(
                       color: const Color(0xFF1E1E1E),
                       child: Padding(

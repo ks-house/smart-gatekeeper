@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (canonical-evidence run `33255038063` deployed backend `d50b98f` and passed apply/status byte equality plus external readiness; the connected Fold7/Target repetition passed native action-1 ARMED followed by terminal action-2 OPENED and relay command ON/OFF, while physical contact/load and actual door movement remain pending)
+> Last updated: 2026-08-29 (foreground Smart Key Target detection/status card is source- and test-complete with privacy-safe one-second projection; signed APK publication/install and visible connected validation remain pending)
 
 ---
 
@@ -48,7 +48,7 @@
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |
 | [embedded_target_connectivity_policy.md](embedded_target_connectivity_policy.md) | 벽 매립형 Target의 Wi-Fi/MQTTS 상시 연결 SLO, 자동 복구, 경보, 매립 승인 Gate와 현재 P0 공백 |
 | [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |
-| [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | 서비스-isolate monitoring/ranging, 상태바 알림·IPC 복구, 화면 OFF 진단과 bounded native-GATT ownership recovery |
+| [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | 서비스-isolate monitoring/ranging, 상태바 알림·IPC 복구, 화면 OFF 진단, bounded native-GATT ownership recovery와 foreground Target 상태 카드 |
 | [mobile_app_background_audit.md](mobile_app_background_audit.md) | 화면 OFF·앱 종료 구현 감사와 P0/P1 수정 결과, 남은 플랫폼 제약·실기기 검증표 |
 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) | 화면 OFF 출입 실패의 확정 증거, 원인 우선순위, 단계별 판별·실기기 수집 절차 |
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
@@ -57,7 +57,7 @@
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
 | [android_ble_wake_adr.md](android_ble_wake_adr.md) | #14 PendingIntent filtered BLE wake 결정, #179 Bluetooth ON native re-registration, exact filter contract와 Samsung pending Gate |
-| [android_gatt_worker.md](android_gatt_worker.md) | #17/#133 signed default-OFF rollout, action-1 background ARM, action-2 terminal manual open, BLE lease, crash boundary and pending physical gates |
+| [android_gatt_worker.md](android_gatt_worker.md) | #17/#133 signed default-OFF rollout, action-1 background ARM, action-2 terminal manual open, privacy-safe Target detection projection, BLE lease, crash boundary and pending physical gates |
 | [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
 | [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
 | [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |

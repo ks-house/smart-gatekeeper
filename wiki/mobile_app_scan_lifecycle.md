@@ -1,5 +1,26 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-08-29 foreground Target detection dashboard candidate
+
+The Smart Key control screen now reads the native authoritative health bridge
+once per second while the screen is mounted. A dedicated privacy-safe card
+shows the latest filtered Target event as `감지 대기`, `감지됨`, `인증 진행 중`,
+`ARMED`, `실패`, or `비활성`, together with receive time/age, strongest RSSI,
+screen ON/OFF, durable session state, and presence-to-ARMED latency.
+
+The native wake journal projection deliberately excludes the BLE address,
+credential ID, challenge, proof, token, and key material. The UI applies the
+same 45-second `maxPresenceAgeMs` boundary used by the worker and returns to
+waiting when an event becomes stale. RSSI is the strongest sample from the
+latest OS `FIRST_MATCH` callback; it is not continuous ranging, an ultrasonic
+distance, or proof that the user is still beside the Target.
+
+Focused Flutter bridge/stage tests, the complete 43-test Flutter suite, and two
+native journal projection tests pass locally. This remains source/test evidence
+until a production-signed APK is published, replacement-installed on the
+connected phone, and a real approach visibly advances the card through
+detected/authenticating/ARMED without exposing sensitive identifiers.
+
 ## 2026-08-29 initialization ownership transition UX
 
 Connected exact-main Android `1.0.0-gd614d56` completed background action 1

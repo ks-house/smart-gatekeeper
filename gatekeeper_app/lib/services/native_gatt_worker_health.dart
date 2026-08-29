@@ -1,5 +1,52 @@
 import 'package:flutter/services.dart';
 
+enum TargetDetectionStage {
+  waiting,
+  detected,
+  authenticating,
+  armed,
+  failed,
+  disabled,
+}
+
+class TargetDetectionSummary {
+  const TargetDetectionSummary({
+    required this.source,
+    required this.success,
+    required this.receivedEpochMs,
+    required this.screenInteractive,
+    required this.resultCount,
+    required this.errorCode,
+    this.callbackLatencyMs,
+    this.strongestRssi,
+  });
+
+  final String source;
+  final bool success;
+  final int receivedEpochMs;
+  final double? callbackLatencyMs;
+  final int? strongestRssi;
+  final bool screenInteractive;
+  final int resultCount;
+  final int errorCode;
+
+  DateTime get receivedAt =>
+      DateTime.fromMillisecondsSinceEpoch(receivedEpochMs);
+
+  factory TargetDetectionSummary.fromMap(Map<Object?, Object?> value) {
+    return TargetDetectionSummary(
+      source: value['source']?.toString() ?? 'unknown',
+      success: value['success'] == true,
+      receivedEpochMs: (value['receivedEpochMs'] as num?)?.toInt() ?? 0,
+      callbackLatencyMs: (value['callbackLatencyMs'] as num?)?.toDouble(),
+      strongestRssi: (value['strongestRssi'] as num?)?.toInt(),
+      screenInteractive: value['screenInteractive'] != false,
+      resultCount: (value['resultCount'] as num?)?.toInt() ?? 0,
+      errorCode: (value['errorCode'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class NativeGattWorkerHealth {
   const NativeGattWorkerHealth({
     required this.featureEnabled,
@@ -25,6 +72,7 @@ class NativeGattWorkerHealth {
     this.maxPresenceAgeMs,
     this.lastPresenceToDispatchMs,
     this.lastPresenceToArmedMs,
+    this.latestDetection,
     this.lastSession,
   });
 
@@ -51,7 +99,43 @@ class NativeGattWorkerHealth {
   final int? maxPresenceAgeMs;
   final int? lastPresenceToDispatchMs;
   final int? lastPresenceToArmedMs;
+  final TargetDetectionSummary? latestDetection;
   final Map<Object?, Object?>? lastSession;
+
+  TargetDetectionStage get detectionStage => detectionStageAt(DateTime.now());
+
+  TargetDetectionStage detectionStageAt(DateTime now) {
+    final detection = latestDetection;
+    if (detection == null) return TargetDetectionStage.waiting;
+    final ageMs = now.millisecondsSinceEpoch - detection.receivedEpochMs;
+    final freshnessMs = maxPresenceAgeMs ?? 45000;
+    if (ageMs > freshnessMs) return TargetDetectionStage.waiting;
+    if (!detection.success) return TargetDetectionStage.failed;
+
+    final session = lastSession;
+    if (session == null) return TargetDetectionStage.detected;
+    final updatedEpochMs = (session['updatedEpochMs'] as num?)?.toInt();
+    if (updatedEpochMs == null || updatedEpochMs < detection.receivedEpochMs) {
+      return TargetDetectionStage.detected;
+    }
+    switch (session['state']?.toString()) {
+      case 'QUEUED':
+      case 'RUNNING':
+      case 'RETRY_PENDING':
+        return TargetDetectionStage.authenticating;
+      case 'SUCCEEDED':
+        return lastPresenceToArmedMs != null
+            ? TargetDetectionStage.armed
+            : TargetDetectionStage.detected;
+      case 'DISABLED':
+        return TargetDetectionStage.disabled;
+      case 'FAILED':
+      case 'PROOF_UNCERTAIN':
+        return TargetDetectionStage.failed;
+      default:
+        return TargetDetectionStage.detected;
+    }
+  }
 
   factory NativeGattWorkerHealth.fromMap(Map<Object?, Object?> value) {
     return NativeGattWorkerHealth(
@@ -81,6 +165,11 @@ class NativeGattWorkerHealth {
       lastPresenceToDispatchMs:
           (value['lastPresenceToDispatchMs'] as num?)?.toInt(),
       lastPresenceToArmedMs: (value['lastPresenceToArmedMs'] as num?)?.toInt(),
+      latestDetection: value['latestDetection'] is Map
+          ? TargetDetectionSummary.fromMap(
+              (value['latestDetection'] as Map).cast<Object?, Object?>(),
+            )
+          : null,
       lastSession: (value['lastSession'] as Map?)?.cast<Object?, Object?>(),
     );
   }

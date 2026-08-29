@@ -18,6 +18,23 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-08-29 foreground Target detection dashboard candidate
+
+- The Smart Key control screen now polls native GATT health once per second and
+  renders a dedicated Target card for waiting, detected, authenticating,
+  ARMED, failed, and disabled states. It displays latest event time/age,
+  strongest callback RSSI, screen ON/OFF, durable session state, and
+  presence-to-ARMED latency.
+- The native bridge returns only a redacted latest-event summary. BLE address,
+  credential ID and all authentication/key material remain outside Flutter.
+  Events older than the native 45-second presence window return the card to
+  waiting; the RSSI value is one `FIRST_MATCH` sample, not continuous distance.
+- Focused and complete Flutter tests (43 total), targeted analysis, and two
+  native redaction/projection tests pass locally. Production-signed APK
+  publication, phone installation, and a visible real Target transition are
+  still required before calling the user-facing behavior deployed or
+  physically verified.
+
 ## 2026-08-28 external Synology backend CI deployment candidate
 
 ### 2026-08-29 canonical CI deployment completion
