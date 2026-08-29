@@ -4657,3 +4657,9 @@
 - With explicit owner approval, administrator enforcement alone was temporarily disabled because the invalid source identity in main made policy PR #233 unable to authorize its own correction. PR #233 merge-committed as main `fb9b8e5eea01df470d18afe83e329fcc034f8f25`; administrator enforcement was immediately restored while the original strict Trusted context remained unchanged.
 - Merged that corrected policy main into PR #231 without rebase or squash. The immutable feature parent `b2e7d6000fc5096cf3fb8a1ed00761030b1c073a` and its reviewed README/test bytes remain in ancestry.
 - Fresh Hosted Trusted, OTA and Backend checks are required before feature merge. This recovery changed no NAS file, container, database or deployment state.
+
+## [2026-08-29] compile | Rotate DSM noexec guide policy to actual feature main
+
+- Policy-connected PR #231 head `e986fd9ed226c17b0ee588361d85e9736f62e776` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `7236c550c05e8972c7517544d105adea7c957671`.
+- Removed both bounded `b2e7d60` transition identities and pinned the sole `current-main-baseline` to actual main. The complete ordered 83-path map, inventories and two reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS state and proves no deployment/readiness. MQTT endpoint candidate authorization, fresh CI and a new owner maintenance window remain separate Gates.
