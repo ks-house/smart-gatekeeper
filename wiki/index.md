@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (final policy main `71a576f` admits feature main `db37772d`; its exact wrapper is installed and the TLS-hostname-preserving DSM loopback ingress probe passed, while the maintenance stop, exact redeployment and external/backend-included E2E remain pending)
+> Last updated: 2026-08-29 (feature main `db37772d` is deployed and externally ready with all checks true; the original run's post-success apply/status evidence comparison false negative is being corrected, while backend-included device E2E remains pending)
 
 ---
 

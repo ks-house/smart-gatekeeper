@@ -72,6 +72,24 @@ class NasBackendDeployContractTest(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, job)
 
+    def test_apply_stdout_is_reserved_for_canonical_deployment_evidence(self):
+        wrapper = WRAPPER.read_text(encoding="utf-8")
+        for required in (
+            'docker pull "$api_image" >&2',
+            'docker pull "$db_image" >&2',
+            'compose_for_release "$release_dir" up -d db >&2',
+            'compose_for_release "$release_dir" run --rm migrate >&2',
+            'compose_for_release "$release_dir" up -d --no-deps api >&2',
+            'cat "${release_dir}/deployment.evidence"',
+        ):
+            self.assertIn(required, wrapper)
+
+        workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "cmp build/nas-deployment.evidence build/nas-status.evidence",
+            workflow,
+        )
+
     def test_manual_nas_preflight_is_main_only_status_only_and_oidc_backed(self):
         workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
         trigger = workflow.split("jobs:", 1)[0]

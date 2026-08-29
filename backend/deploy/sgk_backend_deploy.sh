@@ -490,11 +490,14 @@ apply_release() {
   compose_for_release "$release_dir" config --quiet
   local api_image="${RELEASE[API_IMAGE_REPOSITORY]}@sha256:${RELEASE[API_IMAGE_DIGEST]}"
   local db_image="${RELEASE[DB_IMAGE_REPOSITORY]}@sha256:${RELEASE[DB_IMAGE_DIGEST]}"
-  docker pull "$api_image"
-  docker pull "$db_image"
-  compose_for_release "$release_dir" up -d db
-  compose_for_release "$release_dir" run --rm migrate
-  compose_for_release "$release_dir" up -d --no-deps api
+  # Keep stdout machine-readable: the caller compares apply output byte-for-byte
+  # with a subsequent status readback. Operational Docker and migration output
+  # belongs on stderr; only deployment.evidence is emitted on stdout below.
+  docker pull "$api_image" >&2
+  docker pull "$db_image" >&2
+  compose_for_release "$release_dir" up -d db >&2
+  compose_for_release "$release_dir" run --rm migrate >&2
+  compose_for_release "$release_dir" up -d --no-deps api >&2
   verify_running_image "$release_dir" db "$db_image"
   verify_running_image "$release_dir" api "$api_image"
   wait_ready "http://127.0.0.1:${RUNTIME[SGK_API_LOOPBACK_PORT]}/ready" "loopback API"

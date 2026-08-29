@@ -4844,8 +4844,20 @@
 - Readiness was the expected HTTP 503 with `mqtt=true` and every check true except the intentionally unretired legacy pre-arm path. This proves HTTPS hostname, SNI/certificate verification and NAS-loopback routing, not a new-stack deployment.
 - Exact run `33253911475` remains waiting. A fresh owner-proved stop of only `gatekeeper-api` and `gatekeeper-db` is still required before approval; deployment, external readiness and backend-included Target/mobile E2E remain open.
 
+## [2026-08-29] test | Deploy exact backend and isolate post-success evidence false negative
+
+- Owner output proved only retained `gatekeeper-api` and `gatekeeper-db` stopped. Exact run `33253911475` pulled immutable API `85040373...` and DB `96bb7aad...`, passed DB start, migration `up 007` with retained backup, API start, loopback readiness and TLS-hostname-preserving DSM public readiness, then wrote `status=deployed` for source `db37772de5a3f18be7bcaa73170933ab18442475`.
+- Fresh external `/live` and `/ready` both return HTTP 200 with the exact build and all readiness checks true. Read-only status run `33254703582` passed and uploaded the canonical nine-line deployment record.
+- The original job turned red only after success because Docker/migration stdout preceded the canonical apply record and byte comparison with status failed at byte one. The wrapper candidate redirects operational stdout to stderr so apply stdout contains only deployment evidence; protected review/CI remain required. Backend-included mobile/Target and physical relay evidence are still open.
+
 ## [2026-08-29] compile | Authorize canonical NAS apply-evidence candidate
 
 - Reviewed immutable candidate `0144613d28b318528487543e5e71dd10d5206955`: among protected paths it changes exactly the deploy README, root wrapper and direct NAS deployment test to reserve apply stdout for canonical evidence and redirect Docker/migration progress to stderr.
 - Replaced the current source identity with `future-nas-canonical-evidence-0144613-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `fe30c4b8...`, `30364e7a...` and `137c56a2...`.
 - This policy-only authorization changes no NAS runtime. Policy CI/merge, feature merge-connection, fresh checks and final actual-main rotation remain separate Gates; the currently deployed exact backend stays ready while backend-included device E2E remains open.
+
+## [2026-08-29] compile | Merge-connect canonical evidence fix to policy main
+
+- Policy PR #253 passed the required Trusted check and merge-committed as main `e19536fddf04da96d5e5f9326246eb2347bd1502`; that exact policy main was merged without rebase or squash into immutable feature candidate `0144613d28b318528487543e5e71dd10d5206955`.
+- All three reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged. The append-only log conflict preserved both live deployment/false-negative evidence and policy authorization entries.
+- Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS runtime; the deployed backend remains externally ready and device E2E remains open.
