@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (backend `db37772d` is deployed and ready; connected Fold7/Target repetition passed native action-1 ARMED followed by terminal action-2 OPENED and relay command ON/OFF, while physical contact/load and actual door movement remain pending)
+> Last updated: 2026-08-29 (canonical-evidence run `33255038063` deployed backend `d50b98f` and passed apply/status byte equality plus external readiness; the connected Fold7/Target repetition passed native action-1 ARMED followed by terminal action-2 OPENED and relay command ON/OFF, while physical contact/load and actual door movement remain pending)
 
 ---
 

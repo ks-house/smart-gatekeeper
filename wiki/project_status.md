@@ -14,11 +14,32 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: owner가 retained legacy API/DB만 중지한 뒤 run `33253911475`은 feature main `db37772de5a3f18be7bcaa73170933ab18442475`의 immutable API/DB를 pull하고 migration `up 007`, loopback readiness와 DSM public readiness를 통과해 `status=deployed`를 기록했다. 외부 `/live`와 `/ready`는 exact build로 HTTP 200이며 DB/schema/MQTT/runtime/auth/ACL/legacy retirement/build identity가 모두 true다. Read-only run `33254703582`도 같은 canonical deployment record를 artifact로 보존했다. 배포된 backend 아래에서 ADB-authorized Fold7 앱 `1.0.0-gd9ecc87`을 재시작하자 native action 1이 WorkManager `SUCCESS`, `Presence → ARMED` 4,509 ms로 끝났고, 약 47초 뒤 terminal action 2가 `문이 열렸습니다 (4909ms)`를 반환했다. WSL CH343 serial은 두 GATT connection과 Target relay-command ON 완료 뒤 timer-bound OFF 완료를 독립 기록했다. 따라서 현재 backend-included software/FSM/GPIO command 핵심 유스케이스는 PASS다. 물리 relay contact/load, 실제 문 움직임, AJ-SR04T threshold 및 반복 SLO는 여전히 열린 Gate다. 원래 deploy run의 red 결론은 성공 후 apply operational stdout이 canonical status와 byte compare를 깨뜨린 false negative였고, PR #253~#255가 stdout-isolation과 final trusted-policy rotation을 완료했다.
+> 관측 기준: protected run `33255038063`은 feature main `d50b98f9c1e4e046fb62d1e8698c0ed2407291fe`의 immutable API/DB를 배포하고 migration `up 007`, loopback readiness, DSM public readiness, canonical apply/status byte equality와 evidence upload를 모두 통과했다. 독립 외부 `/live`와 `/ready`도 exact build로 HTTP 200이며 DB/schema/MQTT/runtime/auth/ACL/legacy retirement/build identity가 모두 true다. 그 직전 배포된 backend 아래에서 ADB-authorized Fold7 앱 `1.0.0-gd9ecc87`을 재시작하자 native action 1이 WorkManager `SUCCESS`, `Presence → ARMED` 4,509 ms로 끝났고, 약 47초 뒤 terminal action 2가 `문이 열렸습니다 (4909ms)`를 반환했다. WSL CH343 serial은 두 GATT connection과 Target relay-command ON 완료 뒤 timer-bound OFF 완료를 독립 기록했다. 따라서 현재 backend deployment lane과 backend-included software/FSM/GPIO command 핵심 유스케이스는 모두 PASS다. 물리 relay contact/load, 실제 문 움직임, AJ-SR04T threshold 및 반복 SLO는 여전히 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
 ## 2026-08-28 external Synology backend CI deployment candidate
+
+### 2026-08-29 canonical CI deployment completion
+
+- Owner validation installed wrapper SHA-256
+  `30364e7a3442a6631d1a49adf7e129469838aeb9ee8bd8af3b894ef049b9abb7`
+  as `root:root 0755` and retained the prior wrapper as a root-only recoverable
+  backup. Read-only status before approval still reported the healthy deployed
+  `db37772d` release.
+- Exact feature-main run `33255038063` deployed source
+  `d50b98f9c1e4e046fb62d1e8698c0ed2407291fe`, API digest
+  `dff4fda6298a77a8cc9b712afd25f4849ad3f3aa02908919d3638d1089310738`
+  and DB digest
+  `bc3481867340ef3134dbddb435998f4438c497ecdf79683074b45abd352a2385`.
+  Migration `up 007`, loopback/public readiness, canonical apply/status byte
+  comparison and two-file evidence artifact upload all passed. The signed
+  bundle SHA-256 is
+  `5b12762281b6b6a246aeb3c3df7f065da18fe391b674633cdcebcd200b59eefb`.
+- A separate WSL request after CI returned HTTP 200 from both `/live` and
+  `/ready` with exact build `d50b98f`; every readiness check was true. Branch
+  protection readback remains administrator-enforced and strict with exactly
+  `Verify protected files against trusted base policy` required.
 
 ### 2026-08-29 live first-adoption boundary
 

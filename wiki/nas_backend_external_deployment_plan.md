@@ -929,6 +929,20 @@ loopback but still sends that hostname as SNI and verifies its certificate.
 External WSL/mobile access to the unchanged origin remains a separate
 post-deploy proof; this source change alone is not a deployment pass.
 
+The remaining deployment and evidence Gates are now closed. Exact run
+`33253911475` first deployed source `db37772d` and passed migration, loopback
+and DSM public readiness, but its job turned red after success because
+operational stdout contaminated the canonical apply record. PRs #253-#255
+reviewed, merged and finally re-pinned the stdout-isolation wrapper. After the
+owner installed exact wrapper SHA-256 `30364e7a...` with a recoverable backup,
+protected run `33255038063` deployed feature main `d50b98f` with immutable API
+digest `dff4fda6...` and DB digest `bc348186...`. Migration `up 007`, loopback
+and public readiness, canonical apply/status byte equality and evidence upload
+all passed. Independent external `/live` and `/ready` both returned HTTP 200
+for build `d50b98f` with every readiness check true. This proves the protected
+CI-to-NAS deployment lane; physical relay contact/load and actual door motion
+remain outside this deployment proof.
+
 ## 12. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)
