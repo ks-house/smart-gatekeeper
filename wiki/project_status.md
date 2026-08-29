@@ -908,3 +908,14 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   publication complete. The disconnected phone leaves TalkBack, 200% font,
   landscape/foldable, install, notification, Target transition and physical
   door acceptance pending.
+
+## 2026-08-30 mobile P1 merge and final policy rotation candidate
+
+- PR #270 merged as main `2ae453a0206796650ee99da0e0e57b8fb5078598`.
+  Hosted Android APK completion, exact-main signed mobile publication and NAS
+  backend readiness are still tracked independently.
+- Issue #271 rotates the sole persistent trusted bundle from its transitional
+  P0 identity to `current-main-baseline` at actual merged mobile UX main. P1
+  changed no protected path, so all 83 reviewed protected digests remain exact.
+- The policy candidate changes no runtime. Connected phone acceptance and
+  physical Target/door evidence remain pending even after CI and NAS succeed.
