@@ -4723,3 +4723,9 @@
 - Reviewed immutable candidate `40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61`; relative to the current baseline, exactly Synology Compose and its direct deployment contract test change as one protected bundle, with normalized digests `29d82f97...` and `de15e6b7...`.
 - Replaced the current source identity with `future-dsm-mqtt-route-40ccecc-persistent-baseline`, preserving the complete ordered 83-path map and admitting only the exact candidate or merge-connected descendants with identical protected bytes.
 - This policy-only candidate changes no NAS file, network, container or database and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included access E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect DSM MQTT route feature to policy main
+
+- Policy PR #238 passed Hosted Trusted and merge-committed as main `7fd54c7ca802a25689e246da7caabc5d095aaaad`; that exact policy main was merged into immutable feature candidate `40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61` without rebase or squash as `df5357ec3685afa33b4ab64b0b58d974a71adde5`.
+- Both reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged, while the merge commit preserves both exact parents for hosted ancestry verification.
+- Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS network, container or database and proves no readiness or backend-included E2E.
