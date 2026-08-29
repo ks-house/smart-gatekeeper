@@ -721,6 +721,27 @@ both retained legacy containers; external `/live` returned HTTP 200 for build
 `legacy_prearm_retired=false`. Protected source authorization, fresh CI and
 another change window remain required. No deployed/readiness result exists yet.
 
+CPU-field-free feature main `b6cab8384efe7b5e046841ff84681b74d0cae113`
+was admitted by final policy main `7a09a25ad01e21b7d0e515cbbf96bce2ca5af23a`.
+Protected run `33245672804` proved the next layer: exact DB startup and migration
+`up 007` passed with a retained pre-migration backup, and the API container was
+created. Loopback `/ready` did not pass, so the wrapper removed only the
+partial production project, retained all external volumes, and attempted no
+blind DB rollback. The retained legacy pair was restarted and public liveness
+returned to HTTP 200.
+
+The source audit isolated a file-permission contract error. The immutable API
+runs as `10001:10001`, but bootstrap had installed every NAS secret as
+`root:root 0600`. Docker Compose documents that a local `file:` secret is a
+bind mount and its `uid`, `gid` and `mode` cannot be remapped. The corrected
+layout therefore keeps the containing directory `root:root 0700`, keeps only
+the DB root password `root:root 0600`, and makes API-consumed secret files
+`root:10001 0640`. Host group traversal remains impossible, while the exact
+container group can read only the explicitly mounted files. Failure cleanup
+also retains non-secret container state and a root-only bounded API log before
+removal. Protected authorization, exact NAS metadata readback and another live
+window remain separate Gates.
+
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
 does not close the backup/restore, first handover, live workflow, NAS readiness,

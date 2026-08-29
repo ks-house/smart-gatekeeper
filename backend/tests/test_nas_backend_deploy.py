@@ -328,6 +328,10 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "database rollback was not attempted",
             'compose_for_release "$ACTIVE_RELEASE_DIR" down --remove-orphans',
             "partial_stack_cleanup=",
+            'capture_failure_diagnostics "$ACTIVE_RELEASE_DIR"',
+            "failure-runtime.evidence",
+            "failure-api.log",
+            "logs --no-color --tail 200 api",
             "http://127.0.0.1:",
             "SGK_PUBLIC_READY_URL",
         ):
@@ -368,6 +372,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "legacy_containers=unchanged",
             'install -d -o root -g root -m 711 "$DEPLOY_BASE"',
             'install -d -o root -g root -m 700 "$SECRET_DIR" "$MIGRATION_BACKUP_DIR"',
+            'root 10001 640',
+            'root root 600',
         ):
             self.assertIn(required, bootstrap)
         self.assertNotIn(
@@ -405,6 +411,31 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertIn(
             'require_directory_contract "$DEPLOY_BASE" 0 0 711', verifier
         )
+        self.assertIn(
+            'require_file_contract "${SECRET_DIR}/${secret}" 0 10001 640',
+            verifier,
+        )
+        self.assertIn(
+            'require_file_contract "${SECRET_DIR}/${secret}" 0 0 600',
+            verifier,
+        )
+
+    def test_api_file_secrets_match_non_root_compose_bind_mount_contract(self):
+        wrapper = WRAPPER.read_text(encoding="utf-8")
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        verifier = LEGACY_VERIFY.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'secret_contract="$(stat -c \'%u:%g:%a\' "$secret_path")"',
+            wrapper,
+        )
+        self.assertIn('"0:10001:640"', wrapper)
+        self.assertIn('"0:0:600"', wrapper)
+        self.assertIn('root 10001 640', bootstrap)
+        self.assertIn('root root 600', bootstrap)
+        self.assertIn('0 10001 640', verifier)
+        self.assertIn('0 0 600', verifier)
+        self.assertNotIn('chown 10001:10001 "${SECRET_DIR}', bootstrap)
 
     def test_legacy_backup_is_consistent_no_cutover_and_identifier_free(self):
         syntax = subprocess.run(

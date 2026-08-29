@@ -71,6 +71,10 @@ readiness failure is a stop-and-review condition. If an apply attempt has
 already materialized the new Compose project, the wrapper removes only that
 partial project with `down --remove-orphans`; it never adds `--volumes`, so the
 external MariaDB, API-state, APK and migration-backup volumes remain intact.
+Before removing that partial project, the wrapper records container
+status/exit/OOM/health fields in `failure-runtime.evidence` and retains the last
+200 API log lines as root-only `failure-api.log` in the immutable release
+directory. The API log is deliberately not streamed into GitHub Actions.
 
 ### DS423+ CPU-controller compatibility
 
@@ -309,7 +313,15 @@ the exact external volume names found in step 1. `SGK_SECRET_DIR` must remain:
 /volume1/docker/smart-gatekeeper-backend/secrets
 ```
 
-Create these non-empty files with mode `600`, owned by root:
+Local Docker Compose implements `file:` secrets as bind mounts. It does not
+remap `uid`, `gid` or `mode`, so the API's fixed non-root runtime
+`10001:10001` must be able to read its mounted source files. Keep the
+`secrets/` directory itself `root:root 0700`; use `root:root 0600` for
+`db_root_password`, and `root:10001 0640` for the remaining API-consumed files.
+This grants no host traversal to group 10001 while making the mounted files
+readable only by the intended container group.
+
+Create these non-empty files:
 
 ```text
 db_root_password
@@ -337,6 +349,11 @@ for file in /volume1/docker/smart-gatekeeper-backend/secrets/*; do
   sudo stat -c '%n %U:%G %a %s-bytes' "$file"
 done
 ```
+
+Expected metadata is exactly `root:root 600` for `db_root_password` and
+numeric `root:10001 640` for every other file. The bootstrap is idempotent for
+matching secret content and applies this metadata without stopping containers
+or changing the database.
 
 Do not install a long-lived GHCR PAT or root Docker login on the NAS. The
 protected deployment job has `packages: read` and streams only its short-lived
@@ -460,6 +477,20 @@ reported that volumes were not deleted, and did not attempt DB rollback. The
 production and Synology Compose inputs must both omit `cpus` before another
 live attempt; the owner subsequently restarted the retained legacy pair and
 external liveness recovered.
+
+Exact feature-main run `33245672804` at
+`b6cab8384efe7b5e046841ff84681b74d0cae113` then proved that CPU-field removal
+worked: the new DB started and migration `up 007` completed with a retained
+pre-migration backup. The new API container was created, but loopback `/ready`
+never passed; cleanup removed only the partial production project and retained
+all external volumes, and no blind DB rollback was attempted. The retained
+legacy pair was restarted and public `/live` returned HTTP 200 again. The
+source audit found the API runs as `10001:10001` while every NAS `file:` secret
+was `root:root 0600`; local Compose bind mounts preserve that metadata, so the
+API cannot read its startup secrets. The next candidate corrects only the
+host-file access contract, retains the secret directory as root-only, and adds
+pre-cleanup runtime evidence. It is not deployed until protected CI, exact NAS
+metadata readback and another approved maintenance window pass.
 
 After adoption, an admitted `main` backend change automatically builds and
 publishes immutable images. Deployment still pauses at the protected

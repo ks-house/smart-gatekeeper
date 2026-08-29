@@ -4574,8 +4574,21 @@
 - Removed both `5a32570` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and four reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS runtime and proves no deployment/readiness. A new owner maintenance stop, protected exact-main run and backend-included E2E remain open.
 
+## [2026-08-29] fix | Correct non-root API access to local Compose file secrets
+
+- Protected run `33245672804` at CPU-field-free feature main `b6cab8384efe7b5e046841ff84681b74d0cae113` started the exact DB and passed migration `up 007` with a retained backup, then failed loopback API readiness. Cleanup removed the partial production project without volumes or DB rollback; owner recovery restored legacy `/live` HTTP 200 and the expected legacy-only `/ready` 503.
+- Root cause is the immutable API `10001:10001` runtime reading local Compose `file:` secrets installed as `root:root 0600`; file-backed Compose secrets are bind mounts and do not remap source ownership/mode. Keep the host secret directory `root:root 0700` and DB-root secret `root:root 0600`, but make the API-consumed files `root:10001 0640`.
+- Bootstrap, read-only verification and deploy admission now enforce that exact split. Failed apply also retains non-secret container state plus a root-only bounded API log before partial-stack cleanup. Focused tests pass; protected policy/CI, exact NAS metadata and live readiness remain pending.
+- Validation passes 14/14 focused NAS deployment tests, all 136 backend tests with two documented real-MariaDB opt-in skips, the 35-check commercial contract, shell syntax and whitespace checks.
+
 ## [2026-08-29] compile | Authorize exact non-root Compose secret-access candidate
 
 - Reviewed immutable feature commit `2b32fc5fe14b5c90db022ed14deca5f572a68040`; exactly deploy README, bootstrap, wrapper, read-only verifier and direct NAS deployment test change as one protected bundle.
 - Added temporary-exact and future persistent identities with the same complete ordered 83-path map. Five candidate digests are pinned and feature main `b6cab838` is retired from the transition policy.
 - Focused trusted-policy regressions must pass before publication. This policy-only candidate changes no NAS secret metadata, runtime, container or database and grants no production approval; policy CI/merge, feature merge-connection, fresh CI, final rotation and live readiness remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect secret-access feature to policy main
+
+- Policy PR #224 passed Hosted Trusted and merge-committed as main `ddc4bbc52900e24ecb8a3ee63ed04db6dc3181a4`. That exact policy main is merged into immutable feature commit `2b32fc5fe14b5c90db022ed14deca5f572a68040` without rebase or squash.
+- The merge preserves the immutable feature parent and policy-main parent; all five authorized protected feature blobs remain the reviewed bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
+- This source-history connection changes no NAS secret metadata, container or database and proves no API readiness or deployment.

@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. Exact backend run `33241850366`은 owner approval 뒤 새 DB를 시작했지만 DSM Compose v2.20.1이 `cpus: 0`을 제거가 아닌 `NanoCPUs` 요청으로 보존해 migration 전에 실패했다. 새 wrapper는 production 컨테이너/네트워크만 자동 제거하고 볼륨은 삭제하지 않았으며 DB rollback도 시도하지 않았다. retained legacy DB/API는 다시 `running`, 외부 `/live`는 HTTP 200이고 `/ready`는 알려진 `legacy_prearm_retired=false`만 남은 HTTP 503이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. Exact backend run `33245672804`은 DSM CPU-field 제거 뒤 DB 시작과 migration `up 007`까지 통과했지만 새 API의 loopback `/ready`가 실패해 partial stack을 볼륨 삭제 없이 정리했다. Source audit는 UID/GID `10001:10001` API와 `root:root 0600` local Compose file-secret bind mount의 읽기 권한 불일치를 확인했다. retained legacy DB/API는 다시 `running`, 외부 `/live`는 HTTP 200이고 `/ready`는 알려진 `legacy_prearm_retired=false`만 남은 HTTP 503이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -86,6 +86,23 @@ applies_to:
   `7c2764a1`, while `/ready` is the expected legacy HTTP 503 with only
   `legacy_prearm_retired=false`.
 
+- Final policy main `7a09a25ad01e21b7d0e515cbbf96bce2ca5af23a`
+  admitted CPU-field-free feature main
+  `b6cab8384efe7b5e046841ff84681b74d0cae113`. Protected run `33245672804`
+  pulled the exact images, started the DB, and passed migration `up 007` with
+  a retained pre-migration backup. The API was created but loopback `/ready`
+  failed; cleanup removed the partial project without deleting external
+  volumes, and DB rollback was not attempted. The retained legacy pair was
+  restarted; public `/live` is HTTP 200 and `/ready` is its expected single
+  legacy-boundary 503.
+- The next source candidate fixes the newly isolated startup contract: local
+  Compose `file:` secrets retain host bind-mount metadata, while the immutable
+  API runs as `10001:10001`. The root-only `secrets/` directory remains
+  `0700`; only `db_root_password` stays `root:root 0600`, and API-consumed
+  files become `root:10001 0640`. Failure cleanup also preserves root-only API
+  logs and non-secret runtime state before removing a partial stack. These are
+  repository changes, not a deployed/readiness pass.
+
 - The retained legacy backend is recovered after run `33241850366`; its public
   liveness is restored, but the new exact-digest lane is not deployed
   production.
@@ -106,9 +123,10 @@ applies_to:
   tailnet policy and protected GitHub Environment as recorded below. GHCR image
   publication has occurred, but no successful workflow deployment, database
   migration, Compose cutover or reverse-proxy change has occurred.
-- Before retry the owner must install the exact merged compatibility wrapper,
-  verify its root-owned digest, and stop the recovered legacy API/DB in a new
-  approved change window before approving the protected deployment. The exact
+- Before retry the owner must install the exact merged wrapper, apply and read
+  back the corrected secret metadata contract, and stop the recovered legacy
+  API/DB in a new approved change window before approving the protected
+  deployment. The exact
   live mounts and first off-NAS isolated restore are already evidenced below.
   The wrapper rejects another running
   project holding the MariaDB volume or API port and never attempts a blind DB

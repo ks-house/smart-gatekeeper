@@ -120,17 +120,17 @@ stage_secret() {
 }
 
 install_staged_file() {
-  local staged="$1" destination="$2" mode="$3"
+  local staged="$1" destination="$2" owner="$3" group="$4" mode="$5"
   if [[ -e "$destination" ]]; then
     [[ -f "$destination" && ! -L "$destination" ]] || \
       die "refusing non-regular existing destination: $destination"
     cmp -s -- "$staged" "$destination" || \
       die "existing destination differs; refusing overwrite: $destination"
-    chown root:root "$destination"
+    chown "$owner:$group" "$destination"
     chmod "$mode" "$destination"
     return
   fi
-  install -o root -g root -m "$mode" "$staged" "$destination"
+  install -o "$owner" -g "$group" -m "$mode" "$staged" "$destination"
 }
 
 ensure_bind_volume() {
@@ -211,7 +211,17 @@ docker cp "${LEGACY_API}:/app/target_config.json" "${STAGING}/target_config.json
 for staged in "$STAGING"/*; do
   case "$(basename "$staged")" in
     target_config.json) ;;
-    *) install_staged_file "$staged" "${SECRET_DIR}/$(basename "$staged")" 600 ;;
+    db_root_password)
+      install_staged_file "$staged" "${SECRET_DIR}/$(basename "$staged")" \
+        root root 600
+      ;;
+    *)
+      # Local Compose file secrets are bind mounts. Keep the containing host
+      # directory root-only while granting only the non-root API runtime group
+      # read access to the exact files it consumes.
+      install_staged_file "$staged" "${SECRET_DIR}/$(basename "$staged")" \
+        root 10001 640
+      ;;
   esac
 done
 
