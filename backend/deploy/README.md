@@ -168,9 +168,10 @@ correct digest. Do not remount `/tmp`, weaken its policy or move a pre-verified
 helper merely to make it executable.
 
 It verifies the legacy project/container/mount identities, confirms the API and
-MariaDB runtime passwords match in memory, copies the MQTT CA and the exact
-target-config bytes, creates three bind-backed external volumes, and writes
-root-only secret files plus `runtime.env`. It never prints secret values, opens
+MariaDB runtime passwords match in memory, preserves the exact non-plaintext
+legacy `MQTT_HOST` and `MQTT_PORT`, copies the MQTT CA and the exact target-config
+bytes, creates three bind-backed external volumes, and writes root-only secret
+files plus `runtime.env`. It never prints secret values, opens
 the MariaDB files, or stops/restarts containers. Existing destinations are
 accepted only when byte-identical; a mismatch is a hard stop. Its successful
 result is layout preparation, not a backup, restore, cutover or deployment.
@@ -502,6 +503,19 @@ API cannot read its startup secrets. The next candidate corrects only the
 host-file access contract, retains the secret directory as root-only, and adds
 pre-cleanup runtime evidence. It is not deployed until protected CI, exact NAS
 metadata readback and another approved maintenance window pass.
+
+Exact run `33246998513` then proved the secret metadata correction: both new
+containers ran, the DB was healthy and migration `up 007` passed. The API
+process completed startup but `/ready` remained 503 because both its MQTT
+subscriber and ACL publisher received `ConnectionRefusedError`. Owner readback
+showed the retained legacy API uses `tworimpa.synology.me:4883`, while bootstrap
+had omitted `MQTT_PORT` and production Compose hard-coded `8883`. Failure
+cleanup again removed only the partial project without deleting external
+volumes or attempting a blind DB rollback, and the owner restarted both legacy
+containers. The next candidate preserves the exact legacy TLS port, rejects
+plaintext `1883`, and upgrades only an otherwise byte-identical old
+`runtime.env`. It is source evidence until protected CI and a fresh live run
+pass.
 
 After adoption, an admitted `main` backend change automatically builds and
 publishes immutable images. Deployment still pauses at the protected

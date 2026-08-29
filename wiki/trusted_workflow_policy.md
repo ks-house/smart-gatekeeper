@@ -892,3 +892,11 @@ followed by a final rotation to the actual feature merge-main.
 This authority is source/CI evidence only. It does not install corrected NAS
 helpers, stop the running legacy pair, approve a production run, migrate the
 database, prove API readiness, or complete the mobile/Target access E2E.
+
+Policy PR #236 passed Hosted Trusted and merge-committed as main
+`911752dabf45d28b1ed9efac61a08d85046310ea`. That exact policy main was then
+merged into PR #234 without rebase or squash as `8ea8de3`, preserving both the
+immutable candidate parent `2339f6c` and the policy-main parent. The complete
+83-path protected map still matches the reviewed candidate bytes. Fresh
+Trusted, OTA and Backend checks on the connected head remain required before
+feature merge; no runtime deployment is inferred from this connection.

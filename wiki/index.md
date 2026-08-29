@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; exact wrapper 234231e8 is installed with status=not-deployed, DSM /tmp direct execution is denied, and bootstrap/verifier must run through sudo bash before run 33246998513 approval)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; NAS run 33246998513 isolated the omitted legacy MQTTS port, legacy is recovered, DSM temporary helpers use sudo bash, and the exact-port candidate awaits policy/CI)
 
 ---
 

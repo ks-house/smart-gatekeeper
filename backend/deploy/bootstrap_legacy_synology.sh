@@ -133,6 +133,19 @@ install_staged_file() {
   install -o "$owner" -g "$group" -m "$mode" "$staged" "$destination"
 }
 
+install_runtime_file() {
+  local staged="$1" destination="$2" previous_shape
+  if [[ -e "$destination" ]] && ! cmp -s -- "$staged" "$destination"; then
+    [[ -f "$destination" && ! -L "$destination" ]] || \
+      die "refusing non-regular existing runtime environment: $destination"
+    previous_shape="${STAGING}/runtime.env.without-mqtt-port"
+    awk -F= '$1 != "MQTT_PORT" { print }' "$staged" > "$previous_shape"
+    cmp -s -- "$previous_shape" "$destination" || \
+      die "existing runtime environment differs beyond the MQTT_PORT upgrade"
+  fi
+  install -o root -g root -m 600 "$staged" "$destination"
+}
+
 ensure_bind_volume() {
   local name="$1" device="$2" driver type option bound_device
   [[ -d "$device" ]] || die "bind source directory is missing: $device"
@@ -240,7 +253,7 @@ ensure_bind_volume "$APK_VOLUME" "$APK_SOURCE"
 ensure_bind_volume "$MIGRATION_BACKUP_VOLUME" "$MIGRATION_BACKUP_DIR"
 
 runtime_keys=(
-  MQTT_HOST MQTT_USER DB_USER COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID
+  MQTT_HOST MQTT_PORT MQTT_USER DB_USER COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID
   COMMAND_SIGNING_KEY_ID ADMIN_TRUSTED_PROXY_IPS ACL_SIGNING_KEY_ID
   HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE HA_BRIDGE_STATUS_MAX_AGE_SECONDS
   ACL_PERSONAL_ENROLLMENT_ENABLED ACL_PERSONAL_TENANT_ID ACL_PERSONAL_DOOR_ID
@@ -254,6 +267,10 @@ runtime[DB_RUNTIME_USER]="${runtime[DB_USER]}"
 unset 'runtime[DB_USER]'
 [[ "${runtime[DB_RUNTIME_USER]}" =~ ^[A-Za-z0-9_]{1,64}$ ]] || die "unsafe DB runtime user"
 [[ -n "${runtime[MQTT_HOST]}" && -n "${runtime[MQTT_USER]}" ]] || die "MQTT identity is empty"
+[[ "${runtime[MQTT_PORT]}" =~ ^[0-9]{1,5}$ ]] || die "MQTT_PORT must be numeric"
+(( 10#${runtime[MQTT_PORT]} >= 1 && 10#${runtime[MQTT_PORT]} <= 65535 )) || \
+  die "MQTT_PORT is outside 1-65535"
+[[ "${runtime[MQTT_PORT]}" != "1883" ]] || die "MQTT_PORT must use the TLS listener"
 for key in COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID; do
   [[ -n "${runtime[$key]}" ]] || die "command identity is empty: $key"
 done
@@ -273,6 +290,7 @@ runtime_staged="${STAGING}/runtime.env"
   umask 077
   {
     printf 'MQTT_HOST=%s\n' "${runtime[MQTT_HOST]}"
+    printf 'MQTT_PORT=%s\n' "${runtime[MQTT_PORT]}"
     printf 'MQTT_USER=%s\n' "${runtime[MQTT_USER]}"
     printf 'DB_RUNTIME_USER=%s\n' "${runtime[DB_RUNTIME_USER]}"
     printf 'COMMAND_TARGET_ID=%s\n' "${runtime[COMMAND_TARGET_ID]}"
@@ -296,8 +314,7 @@ runtime_staged="${STAGING}/runtime.env"
     printf 'MIGRATION_BACKUPS_VOLUME=%s\n' "$MIGRATION_BACKUP_VOLUME"
   } > "$runtime_staged"
 )
-install_staged_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env" \
-  root root 600
+install_runtime_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env"
 
 printf '[PASS] legacy runtime prepared without cutover\n'
 printf 'legacy_containers=unchanged\n'

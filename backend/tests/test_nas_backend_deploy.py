@@ -260,6 +260,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
                 "DB_IMAGE_REPOSITORY": "ghcr.io/ks-house/smart-gatekeeper-db",
                 "DB_IMAGE_DIGEST": "b" * 64,
                 "MQTT_HOST": "broker.invalid",
+                "MQTT_PORT": "4883",
                 "MQTT_USER": "ci",
                 "DB_RUNTIME_USER": "gatekeeper_runtime",
                 "COMMAND_TARGET_ID": "target",
@@ -304,6 +305,27 @@ class NasBackendDeployContractTest(unittest.TestCase):
             rendered.stdout,
         )
         self.assertNotIn("cpus:", rendered.stdout)
+
+    def test_mqtt_tls_port_is_preserved_from_legacy_through_compose(self):
+        production = PRODUCTION_COMPOSE.read_text(encoding="utf-8")
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        wrapper = WRAPPER.read_text(encoding="utf-8")
+        verifier = LEGACY_VERIFY.read_text(encoding="utf-8")
+        runtime = RUNTIME_EXAMPLE.read_text(encoding="utf-8")
+        workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('MQTT_PORT: "${MQTT_PORT:?', production)
+        self.assertNotIn('MQTT_PORT: "8883"', production)
+        self.assertIn("MQTT_HOST MQTT_PORT MQTT_USER", bootstrap)
+        self.assertIn("printf 'MQTT_PORT=%s\\n'", bootstrap)
+        self.assertIn('[[ "${runtime[MQTT_PORT]}" != "1883" ]]', bootstrap)
+        self.assertIn("existing runtime environment differs beyond", bootstrap)
+        self.assertIn("MQTT_HOST MQTT_PORT MQTT_USER", wrapper)
+        self.assertIn('[[ "${RUNTIME[MQTT_PORT]}" != "1883" ]]', wrapper)
+        self.assertIn('runtime_mqtt_port="$(awk -F=', verifier)
+        self.assertIn('runtime MQTT_PORT does not match the retained legacy endpoint', verifier)
+        self.assertIn("MQTT_PORT=4883", runtime)
+        self.assertIn("MQTT_PORT: '4883'", workflow)
 
     def test_restricted_wrapper_has_fail_closed_command_and_release_contract(self):
         syntax = subprocess.run(
@@ -386,7 +408,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             'install -d -o root -g root -m 700 "$SECRET_DIR" "$MIGRATION_BACKUP_DIR"',
             'root 10001 640',
             'root root 600',
-            'install_staged_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env" \\',
+            'install_runtime_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env"',
         ):
             self.assertIn(required, bootstrap)
         self.assertNotIn(
@@ -447,7 +469,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertIn('root 10001 640', bootstrap)
         self.assertIn('root root 600', bootstrap)
         self.assertIn(
-            'install_staged_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env" \\',
+            'install_runtime_file "$runtime_staged" "${DEPLOY_BASE}/runtime.env"',
             bootstrap,
         )
         self.assertIn('0 10001 640', verifier)
@@ -553,6 +575,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             self.assertNotIn(forbidden, runtime)
         self.assertIn("MARIADB_DATA_VOLUME=replace-existing-mariadb-volume", runtime)
         self.assertIn("DB_RUNTIME_USER=replace-with-existing-db-user", runtime)
+        self.assertIn("MQTT_PORT=4883", runtime)
 
 
 if __name__ == "__main__":

@@ -821,6 +821,16 @@ build identity checks are true. The exact-identity correlation was previously
 proved, but changing the legacy lookup flag remains an explicit owner/runtime
 cutover decision rather than an automatic CI side effect.
 
+Exact run `33246998513` later reached the API readiness Gate after DB health
+and migration `up 007`. The bounded failure evidence showed a running API
+process and repeated MQTT `ConnectionRefusedError`; owner readback then proved
+the legacy API endpoint is `tworimpa.synology.me:4883`, while the generated
+`runtime.env` retained only the host and production Compose forced `8883`.
+The failed partial project was removed without deleting external volumes or
+attempting DB rollback, and the retained legacy pair is running again. The
+source correction must copy and validate the legacy non-1883 port through
+bootstrap, verifier, wrapper and Compose before another maintenance window.
+
 ## 12. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)

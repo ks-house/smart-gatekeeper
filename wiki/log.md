@@ -4646,6 +4646,18 @@
 - Added temporary-exact and future persistent identities with the same complete ordered 83-path map, retiring previous feature baseline `3fdc615` from this transition policy.
 - This policy-only candidate changes no NAS state and grants no production approval. Separately, owner preflight passed all secret/runtime/volume/DB/ACL identity contracts and exact run `33246998513` entered its approved live deployment step.
 
+## [2026-08-29] fix | Preserve the observed legacy MQTTS port during first adoption
+
+- Exact run `33246998513` passed new DB health, migration `up 007` and API process startup, but retained diagnostics showed MQTT subscriber and ACL publish `ConnectionRefusedError`; `/ready` stayed 503 and cleanup removed only the partial project without volumes or DB rollback.
+- Owner readback proved legacy `MQTT_HOST=tworimpa.synology.me` with `MQTT_PORT=4883`, while generated `runtime.env` omitted the port and production Compose forced `8883`. The retained legacy DB/API were restarted to running.
+- Bootstrap now captures the exact legacy port, safely upgrades only an otherwise byte-identical prior runtime file, verifier requires exact legacy parity, wrapper rejects missing/out-of-range/plaintext `1883`, and Compose consumes the validated value. Focused tests pass; policy authorization, hosted CI and a fresh deployment remain separate Gates.
+
+## [2026-08-29] fix | Supply the validated MQTT port to hosted Compose rendering
+
+- PR #234's first Backend run failed at the Compose rendering step because the workflow fixture supplied `MQTT_HOST` but not the newly required non-secret `MQTT_PORT`; no image publication or NAS job ran.
+- Added TLS port `4883` only to the inert CI render environment and pinned it in the focused NAS contract. This does not create a runtime default: bootstrap/verifier/wrapper still require the observed NAS value.
+- Hosted Backend, OTA and Trusted checks must rerun after publication. The known broken base Trusted policy remains a separate fail-closed Gate.
+
 ## [2026-08-29] fix | Correct DSM guide policy source identity
 
 - Hosted Trusted correctly rejected PR #231 because policy PR #232 recorded a nonexistent full commit identity despite the matching `b2e7d60` short prefix.
@@ -4669,3 +4681,9 @@
 - Reviewed immutable merge candidate `2339f6c9319f973b2b2a3b3062d87b5fb29137dc`; relative to the current baseline, exactly the Backend workflow fixture, production Compose, deploy README, bootstrap, runtime example, wrapper, read-only verifier and direct NAS deployment test change as one protected bundle.
 - Added `temporary-mqtt-port-2339f6c` and `future-mqtt-port-2339f6c-persistent-baseline` with the same complete ordered 83-path normalized digest map; all eight candidate digests are pinned and prior feature main `7236c550` is retired from this transition policy.
 - This policy-only candidate changes no NAS file, container or database and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation, exact NAS installation and backend-included access E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect MQTT port preservation feature to policy main
+
+- Policy PR #236 passed Hosted Trusted and merge-committed as main `911752dabf45d28b1ed9efac61a08d85046310ea`; that exact policy main was merged into PR #234 without rebase or squash as `8ea8de387d705defbb2cfd1b318ee2281da762da`.
+- Both immutable candidate parent `2339f6c9319f973b2b2a3b3062d87b5fb29137dc` and policy-main parent are preserved, and all 83 protected bytes still match the approved candidate map.
+- Fresh Hosted Trusted, OTA and Backend checks are required before feature merge. This source-history connection changes no NAS runtime and proves no API readiness or backend-included E2E.
