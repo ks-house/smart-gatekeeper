@@ -837,7 +837,7 @@ protected deployment and backend-included access E2E remain separate Gates.
 
 Owner execution proved a DSM `/tmp` policy can reject direct execution of an
 otherwise digest-matched mode-0700 helper. Immutable feature commit
-`b2e7d607bd54d625528390f01f5baa1ac03276f8` changes the operator guide to use
+`b2e7d6000fc5096cf3fb8a1ed00761030b1c073a` changes the operator guide to use
 the trusted system Bash interpreter without remounting or weakening `/tmp` and
 adds a focused regression. Exactly two protected normalized blobs change:
 
@@ -850,3 +850,15 @@ The complete ordered 83-path map is duplicated in
 merge-connection into PR #231, fresh checks and final rotation remain required.
 This source authority changes no NAS container, database or deployment state;
 the live production run remains an independently monitored Gate.
+
+The complete source identity above supersedes the invalid full SHA originally
+recorded by policy PR #232. Hosted ancestry validation must resolve this exact
+commit before the feature can pass; no prefix-only identity is accepted.
+
+After policy repair, PR #231 head `e986fd9` passed fresh Hosted Trusted, OTA P0
+and Backend checks and merge-committed as actual main
+`7236c550c05e8972c7517544d105adea7c957671`. The final rotation removes both
+bounded transition identities and pins the sole `current-main-baseline` to
+that actual main. The complete ordered 83-path map and two reviewed protected
+digests remain unchanged. This rotation changes no NAS state and proves no
+deployment or readiness.

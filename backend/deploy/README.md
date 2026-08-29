@@ -156,9 +156,16 @@ post-quantum negotiation warning. That warning is independent of an SFTP
 subsystem rejection and remains a NAS OpenSSH upgrade/hardening item.
 
 ```bash
-sudo /tmp/sgk-bootstrap-legacy.sh \
+sudo bash /tmp/sgk-bootstrap-legacy.sh \
   --public-ready-url https://tworimpa.synology.me:4442/ready
 ```
+
+Invoke every staged shell helper through the trusted system `bash` path rather
+than executing the `/tmp` inode directly. DSM may mount `/tmp` with `noexec` or
+apply an equivalent execution policy; direct `sudo /tmp/helper.sh` then fails
+with `Permission denied` even when the staged file is mode `0700` and has the
+correct digest. Do not remount `/tmp`, weaken its policy or move a pre-verified
+helper merely to make it executable.
 
 It verifies the legacy project/container/mount identities, confirms the API and
 MariaDB runtime passwords match in memory, preserves the exact non-plaintext
@@ -183,6 +190,10 @@ or Target identifier. The final identity correlation runs inside the existing
 API container and emits booleans only: configured personal tenant/door/Target,
 active credential/grant, latest snapshot and exact applied ACK must all match.
 
+```bash
+sudo bash /tmp/sgk-verify-legacy.sh
+```
+
 ### Create and prove the first off-NAS backup
 
 Transfer both backup helpers through the authenticated SSH channel, compare the
@@ -191,7 +202,7 @@ home directory:
 
 ```bash
 cd ~
-sudo /tmp/sgk-create-legacy-backup.sh \
+sudo bash /tmp/sgk-create-legacy-backup.sh \
   --inventory-script /tmp/sgk-capture-legacy-inventory.py \
   --export-dir "$(pwd -P)" \
   --export-owner "$(id -un)"

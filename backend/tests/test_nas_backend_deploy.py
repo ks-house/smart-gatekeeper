@@ -27,9 +27,21 @@ PRODUCTION_COMPOSE = ROOT / "backend" / "compose.production.yml"
 SYNOLOGY_COMPOSE = ROOT / "backend" / "compose.synology.yml"
 RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
+DEPLOY_README = ROOT / "backend" / "deploy" / "README.md"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
+    def test_dsm_tmp_helpers_are_invoked_through_bash(self):
+        readme = DEPLOY_README.read_text(encoding="utf-8")
+        for required in (
+            "sudo bash /tmp/sgk-bootstrap-legacy.sh",
+            "sudo bash /tmp/sgk-verify-legacy.sh",
+            "sudo bash /tmp/sgk-create-legacy-backup.sh",
+            "Do not remount `/tmp`",
+        ):
+            self.assertIn(required, readme)
+        self.assertNotRegex(readme, r"(?m)^sudo /tmp/sgk-[^ ]+\.sh")
+
     def test_deploy_job_streams_only_ephemeral_github_package_auth(self):
         workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
         match = re.search(

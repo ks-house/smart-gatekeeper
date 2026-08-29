@@ -755,6 +755,15 @@ verifier `2b58d125...`, wrapper `234231e8...`, secret metadata contracts and
 pair remains running. These are explicit pre-cutover Gates, not deployment
 evidence.
 
+Owner readback subsequently proved the exact wrapper SHA-256 `234231e8...`,
+`root:root 0755` installation and `status=not-deployed`. Direct execution of
+both correctly staged `/tmp` bootstrap and verifier returned `Permission
+denied`, consistent with a DSM `/tmp` `noexec`-style policy rather than bad
+script bytes. The safe invocation is `sudo bash /tmp/<verified-helper>.sh`;
+the operator must not remount `/tmp` or weaken its policy. Bootstrap and
+read-only verifier PASS evidence remain required before stopping the recovered
+legacy pair or approving run `33246998513`.
+
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
 does not close the backup/restore, first handover, live workflow, NAS readiness,

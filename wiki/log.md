@@ -4634,6 +4634,12 @@
 - Defined the combined acceptance evidence as exact deployed/readiness identity, read-only credential/grant/snapshot/ACK correlation, and connected mobile action-1 `ARMED` followed by action-2 `OPENED` plus Target relay-command ON/OFF.
 - Default-key batch SSH to the owner account was denied, confirming that exact bootstrap/verifier/wrapper installation still requires the owner-authenticated NAS step. No NAS, container, database, phone or Target state changed.
 
+## [2026-08-29] fix | Invoke verified DSM temporary helpers through Bash
+
+- Owner readback proves the exact merged wrapper SHA-256 `234231e8...`, `root:root 0755` and `status=not-deployed`, while direct execution of both mode-0700 staged `/tmp` helpers failed with `Permission denied`.
+- Corrected the operator contract to use `sudo bash /tmp/<verified-helper>.sh`, which respects a DSM `noexec`-style `/tmp` policy without remounting or weakening it; added a regression covering bootstrap, verifier and backup examples.
+- Retained legacy containers remain the required running precondition. Bootstrap/verifier PASS, maintenance stop and protected run `33246998513` approval remain separate Gates; no deployment/readiness is claimed.
+
 ## [2026-08-29] compile | Authorize exact DSM noexec-safe guide candidate
 
 - Reviewed immutable feature commit `b2e7d607bd54d625528390f01f5baa1ac03276f8`; exactly deploy README and its direct NAS deployment test change as one protected bundle with normalized digests `da807427...` and `d97079ed...`.
@@ -4651,3 +4657,21 @@
 - PR #234's first Backend run failed at the Compose rendering step because the workflow fixture supplied `MQTT_HOST` but not the newly required non-secret `MQTT_PORT`; no image publication or NAS job ran.
 - Added TLS port `4883` only to the inert CI render environment and pinned it in the focused NAS contract. This does not create a runtime default: bootstrap/verifier/wrapper still require the observed NAS value.
 - Hosted Backend, OTA and Trusted checks must rerun after publication. The known broken base Trusted policy remains a separate fail-closed Gate.
+
+## [2026-08-29] fix | Correct DSM guide policy source identity
+
+- Hosted Trusted correctly rejected PR #231 because policy PR #232 recorded a nonexistent full commit identity despite the matching `b2e7d60` short prefix.
+- Replaced both transition bundle sources with the actual immutable feature commit `b2e7d6000fc5096cf3fb8a1ed00761030b1c073a`; reviewed protected blob digests and the complete ordered path map remain unchanged.
+- This policy-only correction changes no NAS state and authorizes no deployment. A fresh policy check and merge remain required before reconnecting and rerunning the feature PR.
+
+## [2026-08-29] compile | Recover policy enforcement and reconnect DSM guide feature
+
+- With explicit owner approval, administrator enforcement alone was temporarily disabled because the invalid source identity in main made policy PR #233 unable to authorize its own correction. PR #233 merge-committed as main `fb9b8e5eea01df470d18afe83e329fcc034f8f25`; administrator enforcement was immediately restored while the original strict Trusted context remained unchanged.
+- Merged that corrected policy main into PR #231 without rebase or squash. The immutable feature parent `b2e7d6000fc5096cf3fb8a1ed00761030b1c073a` and its reviewed README/test bytes remain in ancestry.
+- Fresh Hosted Trusted, OTA and Backend checks are required before feature merge. This recovery changed no NAS file, container, database or deployment state.
+
+## [2026-08-29] compile | Rotate DSM noexec guide policy to actual feature main
+
+- Policy-connected PR #231 head `e986fd9ed226c17b0ee588361d85e9736f62e776` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `7236c550c05e8972c7517544d105adea7c957671`.
+- Removed both bounded `b2e7d60` transition identities and pinned the sole `current-main-baseline` to actual main. The complete ordered 83-path map, inventories and two reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS state and proves no deployment/readiness. MQTT endpoint candidate authorization, fresh CI and a new owner maintenance window remain separate Gates.
