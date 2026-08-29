@@ -4681,3 +4681,9 @@
 - Reviewed immutable merge candidate `2339f6c9319f973b2b2a3b3062d87b5fb29137dc`; relative to the current baseline, exactly the Backend workflow fixture, production Compose, deploy README, bootstrap, runtime example, wrapper, read-only verifier and direct NAS deployment test change as one protected bundle.
 - Added `temporary-mqtt-port-2339f6c` and `future-mqtt-port-2339f6c-persistent-baseline` with the same complete ordered 83-path normalized digest map; all eight candidate digests are pinned and prior feature main `7236c550` is retired from this transition policy.
 - This policy-only candidate changes no NAS file, container or database and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation, exact NAS installation and backend-included access E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect MQTT port preservation feature to policy main
+
+- Policy PR #236 passed Hosted Trusted and merge-committed as main `911752dabf45d28b1ed9efac61a08d85046310ea`; that exact policy main was merged into PR #234 without rebase or squash as `8ea8de387d705defbb2cfd1b318ee2281da762da`.
+- Both immutable candidate parent `2339f6c9319f973b2b2a3b3062d87b5fb29137dc` and policy-main parent are preserved, and all 83 protected bytes still match the approved candidate map.
+- Fresh Hosted Trusted, OTA and Backend checks are required before feature merge. This source-history connection changes no NAS runtime and proves no API readiness or backend-included E2E.
