@@ -873,6 +873,19 @@ DSM, but remains unreachable from the host/WAN because it has no published
 port. A fresh protected CI run and live MQTTS/readiness evidence are required
 before the next cutover claim.
 
+The compatibility cycle is now source-complete. Policy PR #238 authorized the
+exact two protected candidate blobs, PR #239 passed fresh Hosted Trusted, OTA
+P0 and Backend checks and merged as actual feature main
+`aebad8ef398e7d5a69e192547543424931ed38af`, and final policy PR #240 merged as
+`da39fe07dc2575ac5c23181523baae010f8bf610`. Branch protection readback remains
+`enforce_admins=true`, strict status checks true, with the original Trusted
+context; the final policy has one persistent 83-path baseline sourced from the
+feature main. Exact push run `33250299026` passed backend/security, operations
+evidence and immutable API/DB publication and waits at the protected production
+Environment. The retained legacy pair must be proved stopped immediately before
+approval. Until that owner output, the run remains unapproved and no new NAS
+container, database migration, readiness or access result is claimed.
+
 ## 12. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)

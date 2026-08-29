@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (run 33249202719 reached exact build 146fd7f live but DSM Docker 24 timed out MQTTS through the multi-network route; retained legacy live is recovered and a Synology-only route compatibility correction is under review)
+> Last updated: 2026-08-29 (DSM route compatibility feature main `aebad8ef` and final policy main `da39fe0` are merged; exact push run `33250299026` passed build/evidence/image publication and waits for an owner-proved legacy stop before NAS approval)
 
 ---
 

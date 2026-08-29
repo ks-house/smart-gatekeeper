@@ -4735,3 +4735,9 @@
 - Policy-connected PR #239 head `2f0de8aff4f00ca1af22138d66a0f81ff7489710` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `aebad8ef398e7d5a69e192547543424931ed38af`.
 - Removed the transition source identity `40ccecc2` and pinned the sole `current-main-baseline` to actual main. The complete ordered 83-path map, inventories and two reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS network, container or database and proves no readiness. A new approved maintenance window, exact deployment, MQTT true and backend-included Target/mobile access E2E remain open.
+
+## [2026-08-29] test | Reconfirm protected deployment and connected-device Gates
+
+- Final policy main is `da39fe07dc2575ac5c23181523baae010f8bf610`; branch protection readback remains administrator-enforced and strict with the original Trusted required context. Exact feature-main push run `33250299026` passed backend/security, operations evidence and immutable image publication and waits at production without approval.
+- Windows usbipd and WSL expose attached CH343 `1a86:55d3` at `/dev/ttyACM0`. A new WSL login gains `dialout`, but 15-second filtered and 6-second raw probes received zero serial bytes; this proves USB transport presence, not Target runtime health or identity.
+- Windows PnP and ADB show no connected Android phone. Owner-proved exact legacy stop remains required before NAS approval, and mobile connection/authorization remains required before backend-included action-1/action-2 evidence; no deployment or E2E pass is claimed.
