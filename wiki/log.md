@@ -4621,3 +4621,9 @@
 - Policy-connected PR #226 head `527a671124c87e6a01241ddb55193b71fa1b7af8` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `3fdc615833da68af22623eefafc876d4c84b86d7`.
 - Removed both `ecc189e` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and two reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS state and proves no deployment/readiness. Exact bootstrap/verifier/wrapper installation, owner maintenance stop, protected deployment and backend-included E2E remain open.
+
+## [2026-08-29] compile | Record exact corrected backend approval Gate
+
+- Final bootstrap policy PR #228 passed Hosted Trusted and merge-committed as main `ae69332f16d855f39cec99bd46a21736194769b1`, authorizing exact backend feature main `3fdc615833da68af22623eefafc876d4c84b86d7` without changing its reviewed deployment bytes.
+- Exact feature-main run `33246998513` passed backend/MariaDB tests, operations evidence, provenance and immutable API/DB image publication and now waits at the protected production Environment.
+- Approval remains withheld while retained legacy `gatekeeper-api` and `gatekeeper-db` run. Exact bootstrap/verifier/wrapper transfer, secret metadata and wrapper/status readback are the next owner Gate; no NAS deployment or readiness is claimed.
