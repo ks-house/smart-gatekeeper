@@ -4453,3 +4453,9 @@
 - Reviewed immutable PR #211 feature commit `7b54997a8b5316e3d741648211db18f6bd7a4a7f`; its four protected normalized changes are backend workflow `ba723b29...`, deploy README `2a1a9277...`, wrapper `afda60b4...` and direct test `aba8b780...`.
 - Added exact and future persistent identities with the same complete ordered 83-path map. The prior `21a0124` Docker-path baseline is retired; regressions require exact repository/SHA, ancestry, inventories and all four changed bytes as one indivisible candidate.
 - This policy-only candidate changes no NAS file, runtime, container or database and grants no production approval. Merge-connection, fresh CI, root-owned wrapper installation, maintenance stop, deployment/readiness and backend-included E2E remain separate Gates.
+
+## [2026-08-29] fix | Correct ephemeral GHCR feature source identity
+
+- Post-merge parent readback found that the policy used an incorrectly expanded `7b54997a...` source identity; the immutable PR #211 feature commit is actually `7b549978239455f12620429ffc06a553a1a0dd41`.
+- Corrected only both policy source identities, their regression constant and the compiled policy page. All four protected candidate digests and the complete ordered 83-path maps remain byte-for-byte unchanged.
+- The first policy merge therefore remains fail-closed rather than authorizing the wrong feature. PR #211 was not updated or merged with that identity; a separate hosted policy correction and fresh merge-connection are required.
