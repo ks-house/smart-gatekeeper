@@ -4435,3 +4435,9 @@
 - PR #207 policy main was merge-connected into PR #206; fresh Trusted, OTA and Backend checks passed and merge-main `a0baab91f2e1a13643a25ce7f82485aca33dc269` started run `33235108484`. Backend tests, evidence, exact API/DB GHCR images, provenance, signed bundle, protected approval, ephemeral Tailscale and forced SSH all passed.
 - NAS `apply` failed closed before Compose with `env: 'docker': No such file or directory`. `compose_for_release` used `env ... docker compose`; `docker` is a non-exportable shell function, so `env` ignored the already resolved Synology absolute CLI path.
 - Changed that invocation to `env ... "$DOCKER_BIN" compose` and added positive/negative source contracts. This is a source correction only; CI, protected policy authorization, root-owned NAS wrapper installation, deployment retry/readiness, legacy recovery and backend-included E2E remain pending.
+
+## [2026-08-29] compile | Authorize exact Synology Compose Docker-path fix
+
+- Reviewed immutable PR #208 feature commit `750a5456fae988c2595098dcec01f410c8941d4b`; exactly the protected deploy wrapper and its direct test change, to normalized SHA-256 `5f108cc2...` and `97fcdbcd...`.
+- Added exact and future persistent identities with the same complete ordered 83-path map and retired the `43c7759` first-adoption transition source. Tests require exact repository/SHA, ancestry, inventories and both changed bytes as one indivisible candidate.
+- This policy-only candidate changes no NAS file or runtime state. Merge-connection, fresh CI, root-owned wrapper installation, maintenance stop, protected deploy retry/readiness and backend-included E2E remain separate Gates.
