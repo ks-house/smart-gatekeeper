@@ -320,6 +320,32 @@ wait_ready() {
   die "$label readiness failed: $url"
 }
 
+wait_public_ready_local_ingress() {
+  local url="$1"
+  local label="$2"
+  local attempts="${3:-30}"
+  local count public_host public_port
+  [[ "$url" =~ ^https://([A-Za-z0-9.-]+)(:([1-9][0-9]{0,4}))?/ready$ ]] || \
+    die "$label readiness URL is not a supported HTTPS origin: $url"
+  public_host="${BASH_REMATCH[1]}"
+  public_port="${BASH_REMATCH[3]:-443}"
+  (( 10#$public_port <= 65535 )) || die "$label readiness port is outside 1-65535"
+  for (( count = 1; count <= attempts; count++ )); do
+    # DSM terminates the public TLS origin on this NAS. Resolve only the
+    # transport address to loopback so curl still sends the configured SNI and
+    # verifies the public certificate hostname without depending on router NAT
+    # hairpin support from the NAS itself.
+    if curl --fail --silent --show-error --max-time 5 \
+      --resolve "${public_host}:${public_port}:127.0.0.1" "$url" \
+      >/dev/null 2>&1; then
+      log "$label readiness passed"
+      return 0
+    fi
+    sleep 2
+  done
+  die "$label readiness failed: $url"
+}
+
 verify_running_image() {
   local release_dir="$1"
   local service="$2"
@@ -472,7 +498,8 @@ apply_release() {
   verify_running_image "$release_dir" db "$db_image"
   verify_running_image "$release_dir" api "$api_image"
   wait_ready "http://127.0.0.1:${RUNTIME[SGK_API_LOOPBACK_PORT]}/ready" "loopback API"
-  wait_ready "${RUNTIME[SGK_PUBLIC_READY_URL]}" "public reverse proxy"
+  wait_public_ready_local_ingress "${RUNTIME[SGK_PUBLIC_READY_URL]}" \
+    "public reverse proxy"
 
   local bundle_sha
   bundle_sha="$(sha256_file "$bundle")"

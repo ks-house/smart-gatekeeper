@@ -919,6 +919,16 @@ that exact runtime hostname to Docker `host-gateway`. This directs port 4883 to
 the already-published NAS host listener without public-IP NAT hairpin, disabling
 TLS validation, adding a second network or publishing MariaDB.
 
+Exact run `33252726976` closed that MQTT Gate: the new stack passed loopback
+`/ready` after immutable pull, DB health and migration `up 007`. The next
+NAS-local request to the public `:4442/ready` origin then exhausted its bounded
+retry window, while the wrapper retained diagnostics and removed only the
+partial project. The follow-up candidate applies the same transport-only
+principle to DSM ingress: curl resolves the configured HTTPS hostname to NAS
+loopback but still sends that hostname as SNI and verifies its certificate.
+External WSL/mobile access to the unchanged origin remains a separate
+post-deploy proof; this source change alone is not a deployment pass.
+
 ## 12. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)

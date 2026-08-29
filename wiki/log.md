@@ -4801,3 +4801,9 @@
 - Policy-connected PR #245 head `799c65152ba4a3edea16c7c18bcd4ad0a4c05736` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `7be876804c23d91caf252b92e2b859f81aee168a`.
 - Removed transition source `1feb4b9` and pinned the sole `current-main-baseline` to actual main while preserving the complete ordered 83-path map, inventories and three reviewed protected digests.
 - This final policy rotation changes no NAS state and proves no readiness. Exact feature-main deployment, owner maintenance window, MQTT true and backend-included access E2E remain open.
+
+## [2026-08-29] test | Pass MQTTS readiness and isolate DSM public-origin hairpin
+
+- Owner evidence proved exactly the retained legacy API/DB stopped; exact run `33252726976` for feature main `7be876804c23d91caf252b92e2b859f81aee168a` pulled immutable API `91a22d34...` and DB `ca89ea4c...`, passed DB health, migration `up 007`, API start and loopback `/ready`.
+- The following NAS-local request to `https://tworimpa.synology.me:4442/ready` exhausted its bounded retry window. Root-only diagnostics were retained; cleanup removed the partial project/network without volumes and did not attempt DB rollback. Fresh external `/live` and `/ready` return 502 while retained legacy remains stopped.
+- Added a source candidate that resolves only the public HTTPS hostname transport to `127.0.0.1` for the NAS-side DSM ingress probe. TLS SNI and certificate hostname verification remain enabled; external origin verification and backend-included access remain separate Gates.

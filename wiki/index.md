@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (single-bridge run `33251769358` repeated a five-second MQTTS connect timeout; legacy is recovered, and a TLS-hostname-preserving Synology host-gateway hairpin bypass is under review)
+> Last updated: 2026-08-29 (run `33252726976` passed new-stack loopback readiness including MQTTS, then isolated a second NAS-public-origin hairpin in the DSM ingress probe; a TLS-hostname-preserving loopback ingress candidate is under review)
 
 ---
 

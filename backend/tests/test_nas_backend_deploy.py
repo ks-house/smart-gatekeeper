@@ -379,6 +379,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "logs --no-color --tail 200 api",
             "http://127.0.0.1:",
             "SGK_PUBLIC_READY_URL",
+            "wait_public_ready_local_ingress",
+            '--resolve "${public_host}:${public_port}:127.0.0.1"',
         ):
             self.assertIn(required, wrapper)
         self.assertNotRegex(wrapper, r"(?m)^\s*eval\s+")
@@ -389,6 +391,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertNotIn("/root/.docker", wrapper)
         self.assertNotIn("read:packages", wrapper)
         self.assertNotIn("down --remove-orphans --volumes", wrapper)
+        self.assertNotIn("--insecure", wrapper)
 
         dispatcher_syntax = subprocess.run(
             ["bash", "-n", str(DISPATCHER)], text=True, capture_output=True
