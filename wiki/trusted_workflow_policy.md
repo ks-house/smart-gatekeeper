@@ -1100,3 +1100,17 @@ the exact immutable candidate. Policy merge, feature merge-connection, fresh
 Hosted Trusted/OTA/Backend checks, final policy rotation, exact NAS deployment,
 external `/ready`, and backend-included Target/mobile access remain separate
 Gates.
+
+Policy PR #248 passed the required Trusted check and merge-committed as main
+`36c720aabf5d2b7deb685836b612c1633d8f2e15`. That exact policy main was then
+merged without rebase or squash into immutable feature candidate `1500594` as
+`6a5c75eec07062f3ec4d5acd50914f669a88f24e`. All three reviewed protected
+candidate blobs and the complete 83-path map remain unchanged. Fresh Hosted
+Trusted, OTA P0 and Backend checks are required on the connected feature head
+before merge.
+
+The merge-connected feature head uses the required single
+`current-main-baseline` ID with source `1500594` and the same reviewed 83-path
+map. The OTA policy regression fixture is synchronized to that immutable
+candidate and its three changed digests; this does not alter any additional
+protected file or broaden the source identity.

@@ -76,6 +76,13 @@ status/exit/OOM/health fields in `failure-runtime.evidence` and retains the last
 200 API log lines as root-only `failure-api.log` in the immutable release
 directory. The API log is deliberately not streamed into GitHub Actions.
 
+The NAS-side public-origin readiness probe resolves only the configured HTTPS
+hostname's transport address to `127.0.0.1`. Curl still sends that hostname as
+TLS SNI and verifies its public certificate, while the connection reaches the
+local DSM reverse-proxy listener without requiring the router to hairpin the
+NAS public IP back to itself. An external WSL/mobile request to the unchanged
+public origin remains a separate post-deploy acceptance check.
+
 ### DS423+ CPU-controller compatibility
 
 DSM 7.3 on the observed DS423+ kernel does not expose the CPU CFS controller
