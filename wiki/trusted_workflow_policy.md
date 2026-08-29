@@ -699,3 +699,19 @@ This transition changes no NAS file, container, volume or database and grants
 no production approval. Legacy recovery, root-owned wrapper installation, a
 new maintenance stop, protected deploy, exact source/status/readiness and the
 backend-included access E2E remain separate Gates.
+
+## 14. DSM backend compatibility final baseline
+
+Policy-connected feature PR #215 head
+`a581e370fc0895041792cdc7c975a83aa6bf19e3` passed fresh Hosted Trusted, OTA P0
+and Backend checks. Merge commit
+`6b1f1da3359dcca95c8434b73970ba992ef9d41d` is the actual feature main.
+
+This final rotation removes both bounded `e787786` transition identities and
+pins the sole `current-main-baseline` to actual feature main `6b1f1da3`. The
+complete ordered 83-path map, workflow/action inventories and five reviewed
+DSM compatibility digests remain unchanged.
+
+Final policy authority is still source/CI evidence only. It does not recover
+legacy containers, install the root-owned wrapper, approve production, migrate
+the DB, prove readiness or complete the backend-included access E2E.

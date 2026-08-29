@@ -4531,3 +4531,9 @@
 - Policy PR #216 passed Hosted Trusted and merge-committed as main `fba095894ab9cf429561bfb81c4d8ad998b64049`. Its exact main was merged into immutable feature `e787786f2514c641e02dd5608d0fe21c4476eca4` without rebase or squash.
 - The merge preserves the immutable feature parent and policy-main parent; all five authorized protected feature blobs remain the reviewed candidate bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
 - This source-history connection changes no NAS runtime, does not recover the retained legacy containers and does not prove deployment/readiness.
+
+## [2026-08-29] compile | Rotate DSM compatibility policy to actual feature main
+
+- Policy-connected PR #215 head `a581e370fc0895041792cdc7c975a83aa6bf19e3` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `6b1f1da3359dcca95c8434b73970ba992ef9d41d`.
+- Removed both `e787786` transition identities and pinned the sole `current-main-baseline` to that actual main. The complete ordered 83-path map, inventories and five reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS runtime and proves no deployment/readiness. Legacy recovery, root-owned wrapper install, maintenance stop, protected retry and backend-included E2E remain open.
