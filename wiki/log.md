@@ -4519,3 +4519,15 @@
 - Retained portable base CPU limits and set `cpus: 0` only in the Synology overlay; the merged NAS Compose omits `cpus` while preserving the remaining memory, PID, capability, read-only and `no-new-privileges` hardening.
 - Apply failure cleanup now removes only the fixed production Compose project with `down --remove-orphans`, never `--volumes`, records `partial_stack_cleanup`, and still never attempts a blind DB rollback. Corrected both Tailscale action inputs from ignored `sha256-sum` to supported `sha256sum`.
 - Focused deployment contracts pass 13/13, the backend commercial contract passes 35/35, and merged Compose rendering, shell syntax and whitespace validation pass. These are source/test results only; protected authorization, hosted CI, root-owned wrapper installation, live deployment and readiness remain open.
+
+## [2026-08-29] compile | Authorize exact DSM backend compatibility candidate
+
+- Reviewed immutable feature commit `e787786f2514c641e02dd5608d0fe21c4476eca4`; relative to the current baseline, exactly the backend workflow, Synology overlay, deploy README, deploy wrapper and direct NAS deployment test change as one protected bundle.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path normalized digest map. The five candidate digests are pinned and the previous `42b754d7` baseline is retired from the transition policy.
+- Focused trusted-policy regressions pass 42/42. This policy-only candidate changes no NAS runtime and grants no production approval; policy CI/merge, feature merge-connection, fresh CI, final rotation, wrapper installation and live retry remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect DSM compatibility feature to policy main
+
+- Policy PR #216 passed Hosted Trusted and merge-committed as main `fba095894ab9cf429561bfb81c4d8ad998b64049`. Its exact main was merged into immutable feature `e787786f2514c641e02dd5608d0fe21c4476eca4` without rebase or squash.
+- The merge preserves the immutable feature parent and policy-main parent; all five authorized protected feature blobs remain the reviewed candidate bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
+- This source-history connection changes no NAS runtime, does not recover the retained legacy containers and does not prove deployment/readiness.
