@@ -1114,3 +1114,16 @@ The merge-connected feature head uses the required single
 map. The OTA policy regression fixture is synchronized to that immutable
 candidate and its three changed digests; this does not alter any additional
 protected file or broaden the source identity.
+
+## 31. Synology DSM public-ingress hairpin final baseline
+
+Corrected PR #249 head `ad7c31331bd671823007d94f7eef609c19cc088c`
+passed Hosted Trusted, OTA P0 and Backend checks. Its merge commit
+`db37772de5a3f18be7bcaa73170933ab18442475` is the actual feature main.
+
+This final rotation retires source `1500594` and pins the sole
+`current-main-baseline` plus its regression fixture to actual feature main
+`db37772d`. The complete ordered 83-path map, workflow/action inventories and
+three reviewed DSM-ingress digests remain unchanged. This policy change affects
+no NAS runtime and proves no deployment; exact NAS apply, external readiness
+and backend-included Target/mobile evidence remain separate Gates.
