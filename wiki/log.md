@@ -4693,3 +4693,9 @@
 - Policy-connected PR #234 head `33666674ada4c53552fda8b022a3bd0b2bb5fd9e` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `146fd7f85f14c4da0a5ce17518f876bdb9c1b21b`.
 - Removed both bounded `2339f6c` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and eight reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS state and proves no deployment/readiness. Exact NAS script installation, preflight, a new owner maintenance window and backend-included access E2E remain open.
+
+## [2026-08-29] compile | Authorize exact DSM 24 MQTT route candidate
+
+- Reviewed immutable candidate `40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61`; relative to the current baseline, exactly Synology Compose and its direct deployment contract test change as one protected bundle, with normalized digests `29d82f97...` and `de15e6b7...`.
+- Replaced the current source identity with `future-dsm-mqtt-route-40ccecc-persistent-baseline`, preserving the complete ordered 83-path map and admitting only the exact candidate or merge-connected descendants with identical protected bytes.
+- This policy-only candidate changes no NAS file, network, container or database and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included access E2E remain separate Gates.

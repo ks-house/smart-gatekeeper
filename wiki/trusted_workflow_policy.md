@@ -918,3 +918,33 @@ runtime file, container or database and proves no deployment/readiness. Exact
 NAS installation, bootstrap/verifier preflight, owner maintenance stop,
 protected deployment and backend-included mobile/Target access E2E remain
 separate Gates.
+
+## 24. DSM 24 MQTT route compatibility transition
+
+Protected deployment run `33249202719` started exact feature main `146fd7f`,
+passed DB health and migration, and returned `/live` 200, but `/ready` remained
+503 solely with MQTT false. Retained logs showed MQTTS configuration validation
+followed by subscriber `TimeoutError`, without TLS, certificate or broker-auth
+rejection. The recovered legacy single-bridge API reconnects to the same broker
+host and TLS port 4883.
+
+Immutable candidate `40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61`
+adds a DSM-only Compose compatibility override for Docker Engine 24 / Compose
+2.20, which cannot express the newer `gw_priority`. Relative to the current
+baseline, exactly two protected normalized blobs change:
+
+- `backend/compose.synology.yml` becomes `29d82f97...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `de15e6b7...`.
+
+The complete ordered 83-path map is pinned by
+`future-dsm-mqtt-route-40ccecc-persistent-baseline`, whose source is the exact
+candidate and whose ancestry check admits only that commit or a merge-connected
+descendant with the same complete protected bytes. After policy merge, main
+must be merged into the feature branch without rebase or squash; fresh Hosted
+Trusted, OTA P0 and Backend checks remain mandatory before feature merge and a
+final policy rotation.
+
+This policy transition changes no NAS file, container, database or network. It
+does not prove that the route hypothesis is correct, that the new API is ready,
+or that the Target/mobile/backend access flow succeeds. Those require a new
+approved maintenance window and live evidence after feature merge.
