@@ -406,6 +406,18 @@ For the first adoption only, use an owner-approved maintenance window:
 8. keep old images and the pre-migration backup until the accepted rollback
    window closes.
 
+### 2026-08-29 live first-adoption window
+
+The owner recorded legacy `gatekeeper-api` (`smart_gatekeeper-api`) and
+`gatekeeper-db` (`mariadb:10.11`) as running, then stopped exactly those two
+containers without deleting either container or any volume. Exact-main manual
+run `33234620284` at `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`
+subsequently passed the protected Tailscale OIDC, pinned host-key and forced
+status path with retained `status=not-deployed`. The next admitted backend
+`main` run must either complete `status=deployed` plus matching status readback
+or fail closed; until that evidence exists, recovery is still starting the two
+recorded legacy containers.
+
 After adoption, an admitted `main` backend change automatically builds and
 publishes immutable images. Deployment still pauses at the protected
 `production` Environment reviewer. A green deployment proves backend image,

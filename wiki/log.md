@@ -4418,6 +4418,12 @@
 - Root cause was `BleScanner.startScanning`: `BLE_OWNER_EXCLUDED` from `initializeScanning` during the intentional native-GATT credential lease entered the generic `logError` and failure-notification path even though issue #158 already treats the same ownership code as recoverable at the ranging boundary.
 - Issue #204 now classifies only that initialization result as an expected transition, keeps stopped/watchdog automatic recovery and emits a neutral diagnostic without `latestError`; all other initialization failures remain user-visible. Focused/hosted tests and production-signed connected absence evidence remain required before deployment is claimed.
 
+## [2026-08-29] test | Open owner-approved NAS first-adoption window
+
+- PR #205 merge-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a` passed exact Target/mobile CI; connected Target `2.1.303+main.gd9ecc87` became VALID and production-signed mobile `1.0.0-gd9ecc87` / 24401 replacement-installed with action-1 followed by terminal action-2 `문이 열렸습니다 (4612ms)` and relay-command ON then OFF without the false BLE ownership banner.
+- The owner recorded legacy `gatekeeper-api` (`smart_gatekeeper-api`) and `gatekeeper-db` (`mariadb:10.11`) as running, then stopped exactly those two containers without deleting either container or volume. Recovery remains starting the same pair.
+- Manual exact-main status-only run `33234620284` passed protected production approval, ephemeral Tailscale OIDC, pinned private SSH and forced dispatcher with retained `status=not-deployed`. The next Gate is a newly admitted backend-main run whose `apply` must return `status=deployed`, exact `source_sha`, matching status readback and readiness or fail closed.
+
 ## [2026-08-29] compile | Authorize exact NAS first-adoption candidate
 
 - Reviewed immutable PR #206 feature commit `43c775969b082397ceb063e7ef929307a72d4b74`; its sole protected delta is `backend/deploy/README.md`, normalized SHA-256 `9940c34e...`, and it changes no executable backend, workflow, migration or wrapper byte.

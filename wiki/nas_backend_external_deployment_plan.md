@@ -657,10 +657,14 @@ background success, or Target OTA health.
    were created and both protected Environment secret names are present.
    The wildcard grant has been replaced after confirming no tagged or routed
    compatibility sources, and the user-owned WSL-to-NAS forced-SSH contract
-   passes. Manual exact-main run `33199183911` obtained only
+   passes. Latest manual exact-main run `33234620284` at
+   `d9ecc87e04fc2b0e57cc892e549b02ddce26184a` obtained only
    `tag:sgk-github-deploy`, reached the pinned forced SSH endpoint and retained
    `status=not-deployed`; its image publication and deployment jobs were
-   skipped. This closes transport/status only, not release `apply` or readiness.
+   skipped. The owner then stopped exactly the recorded legacy API/DB
+   containers without deleting them or their volumes, opening the first-
+   adoption maintenance window. This closes transport/status and concurrent-
+   owner preconditions only, not release `apply` or readiness.
 10. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
 11. `P2` Evaluate a central secret manager only when operator/host count requires
     it.
