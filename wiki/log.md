@@ -4825,3 +4825,9 @@
 - PR #249 Hosted Trusted and Backend checks passed, while OTA P0 exposed that the merge-connected branch still carried the transition bundle ID and prior final-main regression constants.
 - Renamed the sole candidate bundle to required `current-main-baseline` and synchronized the unprotected policy regression fixture to immutable source `1500594` plus the same reviewed `083089b3...`, `3e0fdd66...` and `5968e0ce...` protected digests.
 - No additional protected byte or NAS state changed. Full local OTA policy regression and fresh hosted checks are required before feature merge.
+
+## [2026-08-29] compile | Rotate DSM ingress policy to actual feature main
+
+- Corrected PR #249 head `ad7c31331bd671823007d94f7eef609c19cc088c` passed Hosted Trusted, OTA P0 and Backend; merge commit produced actual feature main `db37772de5a3f18be7bcaa73170933ab18442475`.
+- Retired transition source `1500594` and pinned the sole `current-main-baseline` plus policy regression fixture to actual main while preserving the complete ordered 83-path map, inventories and three reviewed protected digests.
+- Owner recovery restored both retained legacy containers and fresh external `/live=200`; legacy `/ready=503` reports MQTT true with only expected `legacy_prearm_retired=false`. This final policy candidate changes no NAS state and exact redeployment plus backend-included E2E remain open.

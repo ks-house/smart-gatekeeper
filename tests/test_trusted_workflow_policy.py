@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "15005944591a43a5437ccf33f9a945ab7b47809f"
+MERGED_MAIN_COMMIT = "db37772de5a3f18be7bcaa73170933ab18442475"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -130,6 +130,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "15005944591a43a5437ccf33f9a945ab7b47809f",
     "7be876804c23d91caf252b92e2b859f81aee168a",
     "1feb4b9d14ee2742e228f298557e3335a2060d09",
     "dbafe9d4f803938d7570ef18769ef0925c6b0230",
