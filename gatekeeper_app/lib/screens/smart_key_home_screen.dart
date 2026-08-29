@@ -252,7 +252,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   }
 
   Widget _home() {
-    final ready = _identityStatus.accessReady && _health?.handsFreeReady == true;
+    final ready =
+        _identityStatus.accessReady && _health?.handsFreeReady == true;
     return RefreshIndicator(
       onRefresh: _loadAll,
       child: ListView(
@@ -351,11 +352,15 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
           ...local.map((item) => Card(
                 child: ListTile(
                   leading: Icon(
-                    item.isFailure ? Icons.error_outline : Icons.check_circle_outline,
-                    color: item.isFailure ? Colors.redAccent : Colors.cyanAccent,
+                    item.isFailure
+                        ? Icons.error_outline
+                        : Icons.check_circle_outline,
+                    color:
+                        item.isFailure ? Colors.redAccent : Colors.cyanAccent,
                   ),
                   title: Text(item.title),
-                  subtitle: Text('${item.detail}\n${_formatTime(item.occurredAt)}'),
+                  subtitle:
+                      Text('${item.detail}\n${_formatTime(item.occurredAt)}'),
                   isThreeLine: true,
                 ),
               )),
@@ -385,9 +390,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
               ListTile(
                 leading: const Icon(Icons.security),
                 title: const Text('백그라운드 출입'),
-                subtitle: Text(_health?.handsFreeReady == true
-                    ? '사용 가능'
-                    : '설정 확인 필요'),
+                subtitle: Text(
+                    _health?.handsFreeReady == true ? '사용 가능' : '설정 확인 필요'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await _wake.register();

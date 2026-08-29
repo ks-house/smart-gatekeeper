@@ -228,8 +228,7 @@ class NativeGattWorkerHealth {
               (value['lastGattPerformance'] as Map).cast<Object?, Object?>(),
             )
           : null,
-      currentBlockingReasonCode:
-          value['currentBlockingReasonCode']?.toString(),
+      currentBlockingReasonCode: value['currentBlockingReasonCode']?.toString(),
     );
   }
 }

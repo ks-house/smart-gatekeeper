@@ -31,8 +31,7 @@ class MobileIdentityStatus {
     return MobileIdentityStatus(
       enrollmentState: enrollmentStateFromWire(
         value['enrollment_state']?.toString(),
-        aclExpiresAtEpoch:
-            (value['credential_expires_at'] as num?)?.toInt(),
+        aclExpiresAtEpoch: (value['credential_expires_at'] as num?)?.toInt(),
       ),
       accessReady: value['access_ready'] == true,
       nextAction: value['next_action']?.toString() ?? 'retry',
@@ -40,8 +39,7 @@ class MobileIdentityStatus {
       targetSynced: value['target_synced'] == true,
       tenantLabel: value['tenant_label']?.toString(),
       aclVersion: (value['acl_version'] as num?)?.toInt(),
-      expiresAtEpoch:
-          (value['credential_expires_at'] as num?)?.toInt(),
+      expiresAtEpoch: (value['credential_expires_at'] as num?)?.toInt(),
     );
   }
 
@@ -125,17 +123,21 @@ class MobileIdentityService {
     final response = await _post('activity', body);
     final events = response?['events'];
     if (events is! List) return const [];
-    return events.whereType<Map>().map((raw) {
-      final value = raw.cast<String, dynamic>();
-      return MobileLifecycleEvent(
-        eventRef: value['event_ref']?.toString() ?? '',
-        type: value['type']?.toString() ?? 'unknown',
-        createdAt: DateTime.fromMillisecondsSinceEpoch(
-          ((value['created_at'] as num?)?.toInt() ?? 0) * 1000,
-          isUtc: true,
-        ),
-      );
-    }).where((event) => event.eventRef.isNotEmpty).toList(growable: false);
+    return events
+        .whereType<Map>()
+        .map((raw) {
+          final value = raw.cast<String, dynamic>();
+          return MobileLifecycleEvent(
+            eventRef: value['event_ref']?.toString() ?? '',
+            type: value['type']?.toString() ?? 'unknown',
+            createdAt: DateTime.fromMillisecondsSinceEpoch(
+              ((value['created_at'] as num?)?.toInt() ?? 0) * 1000,
+              isUtc: true,
+            ),
+          );
+        })
+        .where((event) => event.eventRef.isNotEmpty)
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>?> _post(

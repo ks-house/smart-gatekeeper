@@ -47,7 +47,8 @@ void main() {
     expect(status.targetSynced, isTrue);
   });
 
-  test('invalid or unavailable response stays explicitly unavailable', () async {
+  test('invalid or unavailable response stays explicitly unavailable',
+      () async {
     final service = MobileIdentityService(
       client: MockClient((_) async => http.Response('unavailable', 503)),
       nativeBridge: _IdentityNativeBridge(),

@@ -56,8 +56,8 @@ class MobileActivityStore {
       if (decoded is! List) return const [];
       return decoded
           .whereType<Map>()
-          .map((item) => MobileActivityItem.fromJson(
-              item.cast<String, dynamic>()))
+          .map((item) =>
+              MobileActivityItem.fromJson(item.cast<String, dynamic>()))
           .where((item) => item.id.isNotEmpty)
           .take(_limit)
           .toList(growable: false);
@@ -69,8 +69,10 @@ class MobileActivityStore {
   Future<List<MobileActivityItem>> ingest(NativeGattWorkerHealth health) async {
     final current = await read();
     final next = _project(health);
-    if (next == null || current.any((item) => item.id == next.id)) return current;
-    final updated = <MobileActivityItem>[next, ...current].take(_limit).toList();
+    if (next == null || current.any((item) => item.id == next.id))
+      return current;
+    final updated =
+        <MobileActivityItem>[next, ...current].take(_limit).toList();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _key,

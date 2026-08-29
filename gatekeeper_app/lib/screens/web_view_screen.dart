@@ -135,14 +135,14 @@ class _WebViewScreenState extends State<WebViewScreen>
         final legacyProjection = <String, Object?>{
           'status': switch (status.enrollmentState) {
             EnrollmentState.pending => 'pending',
-            EnrollmentState.readyToEnroll || EnrollmentState.approved =>
+            EnrollmentState.readyToEnroll ||
+            EnrollmentState.approved =>
               'approved',
             _ => 'unregistered',
           },
           'tenant_name': status.tenantLabel,
-          'unit_number': status.doorCount == 0
-              ? '-'
-              : '등록 출입문 ${status.doorCount}개',
+          'unit_number':
+              status.doorCount == 0 ? '-' : '등록 출입문 ${status.doorCount}개',
         };
         await _controller.runJavaScript(
           'window.completeStatusCheck(${jsonEncode(legacyProjection)});',
