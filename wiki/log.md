@@ -4429,3 +4429,9 @@
 - Reviewed immutable PR #206 feature commit `43c775969b082397ceb063e7ef929307a72d4b74`; its sole protected delta is `backend/deploy/README.md`, normalized SHA-256 `9940c34e...`, and it changes no executable backend, workflow, migration or wrapper byte.
 - Added exact and future persistent identities with the same complete ordered 83-path map. The prior `618220e` baseline is retired; regressions require exact repository/SHA, ancestry, inventories and indivisible protected bytes.
 - This policy-only candidate changes no NAS runtime, container or database state and grants no `production` approval. Policy merge, merge-connection into PR #206, fresh CI, protected approval, deploy evidence and backend-included E2E remain separate Gates.
+
+## [2026-08-29] compile | Authorize exact Synology Compose Docker-path fix
+
+- Reviewed immutable PR #208 feature commit `750a5456fae988c2595098dcec01f410c8941d4b`; exactly the protected deploy wrapper and its direct test change, to normalized SHA-256 `5f108cc2...` and `97fcdbcd...`.
+- Added exact and future persistent identities with the same complete ordered 83-path map and retired the `43c7759` first-adoption transition source. Tests require exact repository/SHA, ancestry, inventories and both changed bytes as one indivisible candidate.
+- This policy-only candidate changes no NAS file or runtime state. Merge-connection, fresh CI, root-owned wrapper installation, maintenance stop, protected deploy retry/readiness and backend-included E2E remain separate Gates.
