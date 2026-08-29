@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../services/credential_service.dart';
+import '../services/device_id_service.dart';
 import '../services/feature_flag_service.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/native_gatt_worker_health.dart';
@@ -19,7 +19,6 @@ class SmartKeyControlScreen extends StatefulWidget {
 }
 
 class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
-  final CredentialService _credentialService = CredentialService();
   final FeatureFlagService _flagService = FeatureFlagService();
   final NativeGattWorkerHealthBridge _healthBridge =
       NativeGattWorkerHealthBridge();
@@ -31,11 +30,9 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
   bool _isRetrying = false;
   bool _liveRefreshInFlight = false;
   NativeGattWorkerHealth? _workerHealth;
+  String? _deviceId;
   String _retryMessage = '';
   Timer? _liveStatusTimer;
-
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _roomController = TextEditingController();
 
   @override
   void initState() {
@@ -50,8 +47,6 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
   @override
   void dispose() {
     _liveStatusTimer?.cancel();
-    _nameController.dispose();
-    _roomController.dispose();
     super.dispose();
   }
 
@@ -119,7 +114,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
 
   Future<void> _loadAllState() async {
     setState(() => _loading = true);
-    await _credentialService.loadCredentialInfo();
+    _deviceId = await DeviceIdService.getDeviceId();
     await _flagService.loadFlags();
     try {
       _workerHealth = await _healthBridge.read();
@@ -133,11 +128,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
       _workerHealth = null;
     }
     if (mounted) {
-      setState(() {
-        _nameController.text = _credentialService.tenantName;
-        _roomController.text = _credentialService.roomNumber;
-        _loading = false;
-      });
+      setState(() => _loading = false);
     }
   }
 
@@ -315,7 +306,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 2. Credential & Tenant Status Card
+                    // 2. Native-authoritative credential and Target ACL card
                     Card(
                       color: const Color(0xFF1E1E1E),
                       child: Padding(
@@ -327,66 +318,37 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text(
-                                  '🔑 Key & Tenant 상태',
+                                  '🔑 Local GATT 자격 상태',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
                                 ),
-                                _buildStatusBadge(
-                                    _credentialService.approvalStatus),
+                                _buildCredentialStatusBadge(_workerHealth),
                               ],
                             ),
                             const Divider(height: 24, color: Colors.white24),
-                            Text(
-                                'Device ID: ${_credentialService.deviceId ?? "불러오는 중..."}',
+                            Text('Device ID: ${_deviceId ?? "불러오는 중..."}',
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            Text('기기 키: ${_credentialLabel(_workerHealth)}',
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12)),
                             const SizedBox(height: 4),
                             Text(
-                                'ACL Lease Version: ${_credentialService.aclVersion}',
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12)),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _nameController,
-                              decoration: const InputDecoration(
-                                labelText: '사용자 이름',
-                                labelStyle: TextStyle(color: Colors.white70),
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              style: const TextStyle(color: Colors.white),
+                              'Target ACL: ${_targetAclLabel(_workerHealth)}',
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 12),
                             ),
                             const SizedBox(height: 8),
-                            TextField(
-                              controller: _roomController,
-                              decoration: const InputDecoration(
-                                labelText: '호수 (Room)',
-                                labelStyle: TextStyle(color: Colors.white70),
-                                border: OutlineInputBorder(),
-                                isDense: true,
+                            const Text(
+                              'Tenant 승인은 Backend가 관리합니다. 이 화면은 로컬 저장값으로 승인 상태를 추정하지 않습니다.',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11,
                               ),
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton.icon(
-                              onPressed: () async {
-                                await _credentialService
-                                    .saveRegistrationRequest(
-                                  _nameController.text,
-                                  _roomController.text,
-                                );
-                                if (!context.mounted) return;
-                                setState(() {});
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('등록 요청이 저장되었습니다.')),
-                                );
-                              },
-                              icon: const Icon(Icons.send),
-                              label: const Text('Tenant 승인 요청 제출'),
                             ),
                           ],
                         ),
@@ -788,26 +750,37 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
     );
   }
 
-  Widget _buildStatusBadge(TenantApprovalStatus status) {
-    Color color;
-    String text;
-    switch (status) {
-      case TenantApprovalStatus.approved:
-        color = Colors.green;
-        text = 'APPROVED (승인 완료)';
-        break;
-      case TenantApprovalStatus.pending:
-        color = Colors.amber;
-        text = 'PENDING (승인 대기)';
-        break;
-      case TenantApprovalStatus.revoked:
-        color = Colors.red;
-        text = 'REVOKED (권한 회수)';
-        break;
-      case TenantApprovalStatus.unregistered:
-        color = Colors.grey;
-        text = 'UNREGISTERED (미등록)';
-        break;
+  String _credentialLabel(NativeGattWorkerHealth? health) {
+    if (health == null) return 'Native 상태 확인 불가';
+    if (!health.credentialProvisioned) return '등록 필요';
+    if (!health.localConsentValid) return '등록됨 · Local consent 확인 필요';
+    return 'AndroidKeyStore 등록됨 · Local consent 유효';
+  }
+
+  String _targetAclLabel(NativeGattWorkerHealth? health) {
+    if (health == null) return '확인 불가';
+    if (!health.credentialRegistered) return '키 등록 후 확인 가능';
+    final version = health.lastActiveAclVersion;
+    return version != null && version > 0
+        ? 'v$version 최근 인증 세션에서 확인'
+        : '아직 성공 세션에서 확인되지 않음';
+  }
+
+  Widget _buildCredentialStatusBadge(NativeGattWorkerHealth? health) {
+    final Color color;
+    final String text;
+    if (health == null) {
+      color = Colors.grey;
+      text = '상태 확인 불가';
+    } else if (health.targetAclConfirmed) {
+      color = Colors.green;
+      text = '등록 · ACL 확인됨';
+    } else if (health.credentialRegistered) {
+      color = Colors.amber;
+      text = '키 등록됨 · ACL 미확인';
+    } else {
+      color = Colors.redAccent;
+      text = '기기 키 등록 필요';
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

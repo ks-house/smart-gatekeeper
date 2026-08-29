@@ -110,6 +110,7 @@ class NativeGattWorkerHealth {
     this.maxPresenceAgeMs,
     this.lastPresenceToDispatchMs,
     this.lastPresenceToArmedMs,
+    this.lastActiveAclVersion,
     this.latestDetection,
     this.lastSession,
     this.lastGattPerformance,
@@ -138,9 +139,17 @@ class NativeGattWorkerHealth {
   final int? maxPresenceAgeMs;
   final int? lastPresenceToDispatchMs;
   final int? lastPresenceToArmedMs;
+  final int? lastActiveAclVersion;
   final TargetDetectionSummary? latestDetection;
   final Map<Object?, Object?>? lastSession;
   final GattPerformanceSummary? lastGattPerformance;
+
+  bool get credentialRegistered => credentialProvisioned && localConsentValid;
+
+  bool get targetAclConfirmed =>
+      credentialRegistered &&
+      lastActiveAclVersion != null &&
+      lastActiveAclVersion! > 0;
 
   TargetDetectionStage get detectionStage => detectionStageAt(DateTime.now());
 
@@ -205,6 +214,7 @@ class NativeGattWorkerHealth {
       lastPresenceToDispatchMs:
           (value['lastPresenceToDispatchMs'] as num?)?.toInt(),
       lastPresenceToArmedMs: (value['lastPresenceToArmedMs'] as num?)?.toInt(),
+      lastActiveAclVersion: (value['lastActiveAclVersion'] as num?)?.toInt(),
       latestDetection: value['latestDetection'] is Map
           ? TargetDetectionSummary.fromMap(
               (value['latestDetection'] as Map).cast<Object?, Object?>(),

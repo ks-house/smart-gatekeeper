@@ -52,6 +52,21 @@ applies_to:
   installation and repeated connected before/after evidence remain required
   before accepting the candidate `<2.5 s` objective.
 
+## 2026-08-30 authoritative mobile credential status candidate
+
+- Issue #262 replaces the `Key & Tenant` card's legacy SharedPreferences
+  projection. That old projection defaulted to `UNREGISTERED` and its submit
+  button only stored name, room and `pending` locally; it did not submit a
+  Backend tenant approval request.
+- The candidate reads Android native `credentialProvisioned` and
+  `localConsentValid` for key registration and displays a Target ACL version
+  only when the latest authenticated GATT session returned a positive
+  `activeAclVersion`. A native bridge failure is `상태 확인 불가`, not
+  `미등록`.
+- Tenant authorization remains Backend-owned and is not inferred in Flutter.
+  This corrects operator visibility only; it does not create, approve, revoke
+  or migrate any credential, tenant, ACL, Backend row or Target state.
+
 ## 2026-08-28 external Synology backend CI deployment candidate
 
 ### 2026-08-29 canonical CI deployment completion

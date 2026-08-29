@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gatekeeper_app/services/feature_flag_service.dart';
-import 'package:gatekeeper_app/services/credential_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +19,21 @@ void main() {
     expect(source, contains('✅ 문이 열렸습니다'));
     expect(source, isNot(contains('_healthBridge.triggerLocalGattRetry();')));
     expect(source, isNot(contains('durable queue에 등록되었습니다')));
+  });
+
+  test('credential card uses native authority without local tenant fiction',
+      () {
+    final source =
+        File('lib/screens/smart_key_control_screen.dart').readAsStringSync();
+
+    expect(source, contains('health.credentialProvisioned'));
+    expect(source, contains('health.localConsentValid'));
+    expect(source, contains('health.lastActiveAclVersion'));
+    expect(source, contains('Tenant 승인은 Backend가 관리합니다.'));
+    expect(source, isNot(contains('_credentialService.approvalStatus')));
+    expect(source, isNot(contains('ACL Lease Version')));
+    expect(source, isNot(contains('Tenant 승인 요청 제출')));
+    expect(source, isNot(contains('saveRegistrationRequest')));
   });
 
   group('FeatureFlagService Unit Tests', () {
@@ -55,28 +69,6 @@ void main() {
 
       expect(flagService.enableLegacyPrearm, isFalse);
       expect(flagService.remoteKillSwitch, isTrue);
-    });
-  });
-
-  group('CredentialService Unit Tests', () {
-    setUp(() {
-      SharedPreferences.setMockInitialValues({});
-    });
-
-    test('saveRegistrationRequest sets status to pending', () async {
-      final service = CredentialService();
-      await service.saveRegistrationRequest('Hong Gildong', '101');
-
-      expect(service.tenantName, equals('Hong Gildong'));
-      expect(service.roomNumber, equals('101'));
-      expect(service.approvalStatus, equals(TenantApprovalStatus.pending));
-    });
-
-    test('updateStatus updates status correctly', () async {
-      final service = CredentialService();
-      await service.updateStatus(TenantApprovalStatus.approved);
-
-      expect(service.approvalStatus, equals(TenantApprovalStatus.approved));
     });
   });
 }
