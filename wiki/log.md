@@ -4633,3 +4633,9 @@
 - Clarified that production retires raw device-ID `/door/prearm`; its 410 response is expected while Backend personal enrollment, signed ACL publication and exact Target APPLIED ACK remain mandatory control-plane evidence.
 - Defined the combined acceptance evidence as exact deployed/readiness identity, read-only credential/grant/snapshot/ACK correlation, and connected mobile action-1 `ARMED` followed by action-2 `OPENED` plus Target relay-command ON/OFF.
 - Default-key batch SSH to the owner account was denied, confirming that exact bootstrap/verifier/wrapper installation still requires the owner-authenticated NAS step. No NAS, container, database, phone or Target state changed.
+
+## [2026-08-29] compile | Authorize exact DSM noexec-safe guide candidate
+
+- Reviewed immutable feature commit `b2e7d607bd54d625528390f01f5baa1ac03276f8`; exactly deploy README and its direct NAS deployment test change as one protected bundle with normalized digests `da807427...` and `d97079ed...`.
+- Added temporary-exact and future persistent identities with the same complete ordered 83-path map, retiring previous feature baseline `3fdc615` from this transition policy.
+- This policy-only candidate changes no NAS state and grants no production approval. Separately, owner preflight passed all secret/runtime/volume/DB/ACL identity contracts and exact run `33246998513` entered its approved live deployment step.

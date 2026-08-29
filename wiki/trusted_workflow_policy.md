@@ -832,3 +832,21 @@ Final policy authority is source/CI evidence only. It changes no NAS file,
 secret metadata, container or database and proves no deployment/readiness.
 Exact bootstrap/verifier/wrapper installation, owner maintenance stop,
 protected deployment and backend-included access E2E remain separate Gates.
+
+## 21. DSM noexec-safe operator-guide transition
+
+Owner execution proved a DSM `/tmp` policy can reject direct execution of an
+otherwise digest-matched mode-0700 helper. Immutable feature commit
+`b2e7d607bd54d625528390f01f5baa1ac03276f8` changes the operator guide to use
+the trusted system Bash interpreter without remounting or weakening `/tmp` and
+adds a focused regression. Exactly two protected normalized blobs change:
+
+- `backend/deploy/README.md` becomes `da807427...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `d97079ed...`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-dsm-noexec-guide-b2e7d60` and
+`future-dsm-noexec-guide-b2e7d60-persistent-baseline`. Policy merge,
+merge-connection into PR #231, fresh checks and final rotation remain required.
+This source authority changes no NAS container, database or deployment state;
+the live production run remains an independently monitored Gate.
