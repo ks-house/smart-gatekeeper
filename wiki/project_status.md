@@ -130,15 +130,34 @@ applies_to:
   tailnet policy and protected GitHub Environment as recorded below. GHCR image
   publication has occurred, but no successful workflow deployment, database
   migration, Compose cutover or reverse-proxy change has occurred.
-- Before approving run `33246998513`, the owner must install the exact merged
-  bootstrap/verifier/wrapper, apply and read
-  back the corrected secret metadata contract, and stop the recovered legacy
-  API/DB in a new approved change window before approving the protected
-  deployment. The exact
-  live mounts and first off-NAS isolated restore are already evidenced below.
-  The wrapper rejects another running
-  project holding the MariaDB volume or API port and never attempts a blind DB
-  rollback.
+- MQTT-port preservation feature main `146fd7f85f14c4da0a5ce17518f876bdb9c1b21b`
+  passed fresh Hosted Trusted, OTA P0 and Backend checks; final policy main
+  `c9b6419006709f0f3cd19591a7162314fa48fd18` restored the sole persistent
+  baseline. Exact feature-main run `33249202719` passed security, evidence and
+  immutable image publication before its production deployment attempt.
+  Owner readback proves bootstrap/verifier PASS, wrapper SHA-256 `62181892...`,
+  dispatcher SHA-256 `6e80dedc...` and `status=not-deployed` while both retained
+  legacy containers remain running. The exact live mounts and first off-NAS
+  isolated restore are already evidenced below. The only remaining cutover
+  precondition is the owner maintenance stop of exactly `gatekeeper-api` and
+  `gatekeeper-db`; the wrapper rejects another running project holding the
+  MariaDB volume or API port and never attempts a blind DB rollback.
+  Owner output then proved that exact maintenance stop and the run was approved.
+  It pulled exact API/DB digests, passed migration `up 007`, and exposed exact
+  build `146fd7f` at `/live` HTTP 200, but `/ready` remained 503 solely with
+  `mqtt=false`. After the loopback deadline the wrapper retained root-only
+  runtime/API-log evidence, removed the partial project and networks without
+  deleting volumes, and did not attempt DB rollback. The owner restarted the
+  retained legacy DB/API; external `/live` is again HTTP 200 for build
+  `7c2764a1`, and `/ready` is the known legacy-only HTTP 503 with MQTT true and
+  only `legacy_prearm_retired=false`. The retained failure-log diagnosis
+  supersedes any immediate deployment retry. Those logs show a synchronous
+  subscriber `TimeoutError` after MQTTS configuration validation, with no
+  TLS/certificate/authentication rejection. DSM Docker 24/Compose 2.20 cannot
+  set the newer `gw_priority` for the API's routable `edge` plus internal
+  `data` networks; the Synology-only candidate makes `data` routable while
+  keeping DB ports unpublished and the API port loopback-only. CI and a fresh
+  live attempt remain required.
 - Owner-provided live container inventory now identifies legacy
   `gatekeeper-api` from local image `smart_gatekeeper-api` with wildcard IPv4
   and IPv6 host port `8000`, and `gatekeeper-db` from mutable tag
@@ -195,6 +214,11 @@ applies_to:
   all match. Latest snapshot and applied ACK advanced together to `314` during
   the live readback. The technical path for disabling legacy lookup is present;
   owner approval and off-NAS restore remain mandatory before cutover.
+  The MQTT-port-corrected owner rerun again passed all contracts and exact
+  identity booleans with latest ACL snapshot `439` and exact applied ACK `439`;
+  this supersedes the older count while preserving the same one active
+  credential/grant and three active tenants. The owner lookup-disable decision
+  remains separate from the now-proved deployment preflight.
 - Owner size readback reports the current `smart_gatekeeper` database at
   2,686,976 bytes over 20 tables, with a 1,638,400-byte largest table. The
   repository now contains a no-cutover NAS dump/inventory helper plus WSL

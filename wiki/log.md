@@ -4693,3 +4693,27 @@
 - Policy-connected PR #234 head `33666674ada4c53552fda8b022a3bd0b2bb5fd9e` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `146fd7f85f14c4da0a5ce17518f876bdb9c1b21b`.
 - Removed both bounded `2339f6c` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and eight reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS state and proves no deployment/readiness. Exact NAS script installation, preflight, a new owner maintenance window and backend-included access E2E remain open.
+
+## [2026-08-29] test | Pass corrected MQTT-port NAS deployment preflight
+
+- Owner execution of the exact merged bootstrap and read-only verifier passed 14 secret-file contracts, the runtime key contract including retained TLS port 4883, three external volumes, migrations `002`-`007`, all exact identity booleans and latest ACL snapshot/applied ACK `439`/`439`; both retained legacy containers remained running.
+- Root-owned installed wrapper SHA-256 is `62181892ee84fd5d888083798c1bb0c093448dcd8e3753858b9821587a7f07bc`, dispatcher SHA-256 is `6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98`, and exact status is `not-deployed`.
+- Feature-main run `33249202719` has passed security, evidence and immutable image publication and waits at production. Deployment approval remains withheld until owner output proves exactly `gatekeeper-api` and `gatekeeper-db` stopped in the maintenance window; no new readiness or access result is claimed.
+
+## [2026-08-29] test | Fail corrected deployment on live MQTT readiness
+
+- Owner output proved exactly `gatekeeper-api` and `gatekeeper-db` stopped; stale older run `33248763862` was cancelled, then exact run `33249202719` alone was approved. Signed bundle, Tailscale, restricted SSH, exact API digest `a82a2b73...`, DB digest `2e35e1ad...`, DB health and migration `up 007` passed.
+- Exact build `146fd7f85f14c4da0a5ce17518f876bdb9c1b21b` reached external `/live` HTTP 200, while `/ready` remained HTTP 503 solely with `mqtt=false` until the loopback readiness deadline.
+- The wrapper retained root-only runtime/API logs, removed the partial containers and networks without deleting volumes, and did not attempt DB rollback. Public endpoints are now 502 while the retained legacy pair remains stopped; exact legacy recovery and bounded log diagnosis are mandatory before retry.
+
+## [2026-08-29] test | Recover retained legacy after MQTT-readiness failure
+
+- Owner restarted exactly `gatekeeper-db` and `gatekeeper-api`; both report `running` with their retained `mariadb:10.11` and `smart_gatekeeper-api` images.
+- Fresh external `/live` returned HTTP 200 for legacy build `7c2764a1a16492ec1620079c8211b47287b1b3fd`; `/ready` returned the expected legacy HTTP 503 with MQTT true and only `legacy_prearm_retired=false`.
+- Service recovery is complete without volume deletion or DB rollback. The root-only failure-runtime/API logs from run `33249202719` must classify the new-stack MQTTS failure before any implementation or deployment retry.
+
+## [2026-08-29] fix | Correct DSM 24 multi-network MQTT route compatibility
+
+- Retained failure evidence showed healthy DB, running API, successful MQTTS provisioning validation and then subscriber `TimeoutError`; no TLS, certificate or broker-authentication rejection was logged. The recovered legacy single-bridge API reconnects to the same broker host and TLS port 4883.
+- Docker Engine 24 and Compose 2.20 on DSM predate service-network `gw_priority`; the production API's routable `edge` plus internal `data` bridge can therefore leave outbound MQTT on the internal default route. The Synology overlay now makes only `data` routable so either selected bridge can carry MQTTS, while the DB remains unpublished and the API remains bound to host loopback.
+- Added source and rendered-Compose regression assertions. This is a source candidate only; protected CI, immutable images, a new approved maintenance window, `/ready` MQTT true and backend-included Target/mobile evidence remain mandatory.

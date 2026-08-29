@@ -831,6 +831,48 @@ attempting DB rollback, and the retained legacy pair is running again. The
 source correction must copy and validate the legacy non-1883 port through
 bootstrap, verifier, wrapper and Compose before another maintenance window.
 
+That correction is now merged as feature main
+`146fd7f85f14c4da0a5ce17518f876bdb9c1b21b`, with final policy main
+`c9b6419006709f0f3cd19591a7162314fa48fd18`. Exact run `33249202719` passed
+backend/MariaDB tests, operations evidence and immutable image publication and
+waits at production. Owner execution of the corrected bootstrap and verifier
+passed all runtime/secret/volume/DB/ACL contracts, including snapshot/applied
+ACK `439`/`439`; root-owned installed wrapper/dispatcher hashes are
+`62181892...` and `6e80dedc...`, and status remains `not-deployed`. This closes
+the corrected admission preflight, not deployment. Stop exactly the retained
+legacy API/DB in the approved maintenance window before releasing the waiting
+job; then require matching deployed/source status plus loopback and public
+readiness before any backend-included access claim.
+
+Owner output subsequently proved the exact maintenance stop and the protected
+run was released. It pulled immutable API digest `a82a2b73...` and DB digest
+`2e35e1ad...`, passed DB health plus migration `up 007`, and started exact API
+build `146fd7f`. External `/live` returned 200, but `/ready` remained 503 solely
+with `mqtt=false` through the loopback deadline. The wrapper retained
+root-only `failure-runtime.evidence` and `failure-api.log`, removed the partial
+Compose project and networks without deleting external volumes, and did not
+attempt blind DB rollback. The owner restarted the retained legacy DB/API;
+external `/live` returned 200 for build `7c2764a1`, while `/ready` returned the
+known legacy-only 503 with MQTT true and only `legacy_prearm_retired=false`.
+No new deployment attempt is admitted until the bounded root-only logs classify
+and a reviewed change corrects the actual MQTTS failure.
+
+The retained evidence classified that failure more narrowly: both new
+containers remained running, the DB was healthy and the API healthcheck was
+still starting; the API logged successful MQTTS provisioning validation and
+then a synchronous subscriber `TimeoutError`, without a certificate, TLS or
+broker-authentication rejection. The production API is multi-homed on `edge`
+and `internal: true` `data`, whereas the working legacy API uses one ordinary
+bridge. DSM's Docker Engine 24 and Compose 2.20 predate Compose `gw_priority`
+(2.33.1+) and cannot deterministically select the routable bridge. The bounded
+compatibility correction therefore overrides only the Synology `data` network
+to `internal: false`; no DB port is published, API publication remains
+loopback-only, and generic production keeps its internal data network. This is
+a reviewed compatibility tradeoff: the DB container gains outbound routing on
+DSM, but remains unreachable from the host/WAN because it has no published
+port. A fresh protected CI run and live MQTTS/readiness evidence are required
+before the next cutover claim.
+
 ## 12. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)

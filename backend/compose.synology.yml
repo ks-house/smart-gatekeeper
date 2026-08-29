@@ -10,6 +10,15 @@ services:
         host_ip: 127.0.0.1
         protocol: tcp
 
+# DSM 7.3.2 currently ships Docker Engine 24 / Compose 2.20.  That pair cannot
+# express the newer service-network gw_priority setting and can select the
+# internal data bridge as a multi-homed API container's default route.  Keep
+# the DB unpublished, but make the Synology data bridge routable so either
+# selected bridge can carry the API's outbound MQTTS connection.
+networks:
+  data:
+    internal: false
+
 volumes:
   mariadb_data:
     external: true
