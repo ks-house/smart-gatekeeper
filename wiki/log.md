@@ -4741,3 +4741,9 @@
 - Final policy main is `da39fe07dc2575ac5c23181523baae010f8bf610`; branch protection readback remains administrator-enforced and strict with the original Trusted required context. Exact feature-main push run `33250299026` passed backend/security, operations evidence and immutable image publication and waits at production without approval.
 - Windows usbipd and WSL expose attached CH343 `1a86:55d3` at `/dev/ttyACM0`. A new WSL login gains `dialout`, but 15-second filtered and 6-second raw probes received zero serial bytes; this proves USB transport presence, not Target runtime health or identity.
 - Windows PnP and ADB show no connected Android phone. Owner-proved exact legacy stop remains required before NAS approval, and mobile connection/authorization remains required before backend-included action-1/action-2 evidence; no deployment or E2E pass is claimed.
+
+## [2026-08-29] compile | Authorize deterministic single-network backend candidate
+
+- Reviewed immutable candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`: exactly production/Synology Compose, the operations contract, and the direct NAS deployment test change among protected paths. API, DB and migration use one routable bridge while DB remains unpublished and Synology API publication remains loopback-only.
+- Replaced the current source identity with `future-dsm-single-network-8e2ec16-persistent-baseline`, preserving the complete ordered 83-path map and pinning the four normalized candidate digests `321a6221...`, `42f04b42...`, `b5c6542f...` and `673467ab...`.
+- This policy-only candidate changes no NAS state and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.
