@@ -4771,3 +4771,9 @@
 - Policy-connected PR #243 head `81968677ef3e18bdc50abcef186c600894c9e687` passed Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `dbafe9d4f803938d7570ef18769ef0925c6b0230`.
 - Removed transition source `8e2ec16` and pinned the sole `current-main-baseline` to actual main while preserving the complete ordered 83-path map, inventories and four reviewed protected digests.
 - This final policy rotation changes no NAS state and proves no readiness. A fresh exact-main deployment run, owner maintenance window, MQTT true and backend-included access E2E remain open.
+
+## [2026-08-29] compile | Authorize exact Synology MQTT host-gateway candidate
+
+- Reviewed immutable feature candidate `1feb4b9d14ee2742e228f298557e3335a2060d09`; relative to feature main `dbafe9d4`, exactly the Synology Compose overlay, commercial contract and direct NAS deployment test change among protected paths.
+- Replaced the current source identity with `future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `8859e089...`, `307d0486...` and `e90cec4c...`.
+- This policy-only candidate changes no NAS state and grants no deployment approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.
