@@ -34,6 +34,15 @@ applies_to:
   volume. This opens the issue #190 first-adoption window but is not evidence
   of new-stack deployment. Recovery remains starting those same legacy
   containers until `status=deployed`, exact `source_sha` and readiness pass.
+- Main run `33235108484` at `a0baab91f2e1a13643a25ce7f82485aca33dc269`
+  passed backend/MariaDB contracts, evidence verification, exact API/DB image
+  publication, provenance, signed bundle creation, protected approval,
+  ephemeral Tailscale and restricted SSH. Its NAS `apply` then failed closed
+  before Compose with `env: 'docker': No such file or directory`. The installed
+  wrapper had resolved Synology's absolute Docker CLI but `compose_for_release`
+  incorrectly asked `env` to execute the non-exportable shell function name
+  `docker`. No deployment evidence or database rollback was claimed; legacy
+  recovery and an absolute-CLI wrapper correction are required before retry.
 
 - The backend is already running on the personal Synology NAS, but the
   new lane is currently a local repository candidate rather than a deployed
