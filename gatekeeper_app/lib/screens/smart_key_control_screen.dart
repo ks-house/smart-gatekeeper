@@ -529,6 +529,25 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                 'Last Latency: ${_workerHealth?.lastLatencyMs ?? 0} ms',
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12)),
+                            if (_workerHealth?.lastGattPerformance != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                  'GATT phases (ms): connect ${_workerHealth!.lastGattPerformance!.connectSetupMs ?? 0} · '
+                                  'hello ${_workerHealth!.lastGattPerformance!.negotiationMs ?? 0} · '
+                                  'challenge ${_workerHealth!.lastGattPerformance!.challengeMs ?? 0} · '
+                                  'sign ${_workerHealth!.lastGattPerformance!.signingMs ?? 0} · '
+                                  'proof ${_workerHealth!.lastGattPerformance!.proofWriteMs ?? 0} · '
+                                  'result ${_workerHealth!.lastGattPerformance!.resultWaitMs ?? 0}',
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 11)),
+                              const SizedBox(height: 4),
+                              Text(
+                                  'GATT link: MTU ${_workerHealth!.lastGattPerformance!.negotiatedMtu} '
+                                  '(${_workerHealth!.lastGattPerformance!.mtuStatus}) · '
+                                  'high priority ${_workerHealth!.lastGattPerformance!.highPriorityRequested ? "REQUESTED" : "UNAVAILABLE"}',
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 11)),
+                            ],
                             const SizedBox(height: 4),
                             Text(
                                 'Hands-free: ${_workerHealth?.handsFreeReady == true ? "READY" : "NOT READY"} '

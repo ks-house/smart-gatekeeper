@@ -190,6 +190,7 @@ class BleGattCredentialWorker(
         transportStatus = null,
         retryAfterMs = null,
         scheduledRetryDelayMs = null,
+        gattPerformance = null,
       )
       ledger.update(running)
       var flagDisabledBeforeProof = false
@@ -262,6 +263,7 @@ class BleGattCredentialWorker(
             armedEpochMs,
           ),
           activeAclVersion = outcome.activeAclVersion,
+          gattPerformance = outcome.performance,
         ),
       )
       vault.delete(running.id)
@@ -309,6 +311,7 @@ class BleGattCredentialWorker(
     retryAfterMs = failure.retryAfterMs,
     scheduledRetryDelayMs = scheduledDelayMs,
     latencyMs = failure.latencyMs,
+    gattPerformance = failure.performance,
   )
 
   private fun scheduleOwnershipRetry(
@@ -405,6 +408,7 @@ object BleGattHealthBridge {
       "lastLatencyMs" to last?.latencyMs,
       "lastPresenceToDispatchMs" to last?.presenceToDispatchMs,
       "lastPresenceToArmedMs" to last?.presenceToArmedMs,
+      "lastGattPerformance" to last?.gattPerformance?.redactedMap(),
       "wakeRegistrationStatus" to wakeRegistration.status,
       "wakeRegistered" to wakeRegistration.enabled,
       "handsFreeReady" to (

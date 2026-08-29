@@ -84,6 +84,7 @@ object BleGattManualOpenExecutor {
             reasonCode = null,
             latencyMs = outcome.latencyMs,
             activeAclVersion = outcome.activeAclVersion,
+            gattPerformance = outcome.performance,
           )
           ledger.update(succeeded)
           ManualOpenResult(true, "OPENED", succeeded.id, outcome.latencyMs)
@@ -100,6 +101,7 @@ object BleGattManualOpenExecutor {
             transportStatus = outcome.transportStatus,
             retryAfterMs = outcome.retryAfterMs,
             latencyMs = outcome.latencyMs,
+            gattPerformance = outcome.performance,
           )
           ledger.update(failed)
           ManualOpenResult(

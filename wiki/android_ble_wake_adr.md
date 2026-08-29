@@ -333,3 +333,31 @@ trusted suite and the Android `:app:testDebugUnitTest` build pass. This is not
 connected evidence: the Samsung phone is disconnected, so Bluetooth
 OFF→ON delivery, later first-match wake, terminal Target `ARMED`, ultrasonic
 threshold and physical relay/contact remain pending.
+
+## 14. Issue #260 GATT latency optimization candidate
+
+The connected foreground baseline observed `presence → dispatch=61 ms`, native
+session latency `4,801 ms`, and `presence → ARMED=5,765 ms`. The wake/dispatch
+portion is therefore already small; the optimization candidate targets the
+subsequent GATT connect, negotiation, challenge, proof and result path. These
+three values are one observation, not a percentile SLO.
+
+Android now requests `CONNECTION_PRIORITY_HIGH` after connection and negotiates
+ATT MTU 247 after service discovery. Both are Android/controller hints rather
+than protocol requirements. An MTU request rejection or 750 ms callback timeout
+retains the MTU-23 framing path; the Target protocol, proof bytes, replay
+contract, durable pre-proof boundary and independent update manager are
+unchanged.
+
+Each durable session records privacy-safe monotonic phase durations for
+connect/setup, hello negotiation, challenge, Keystore signing, proof write and
+terminal result wait, plus negotiated MTU/status and whether the high-priority
+request was accepted by the Android API. The foreground Native Worker card
+shows those fields so a connected run can identify the dominant phase without
+logging BLE addresses, credential identifiers, nonce or signature material.
+
+The engineering objective is a repeatable `presence → ARMED < 2,500 ms` on the
+current phone/Target pair, but it remains a candidate objective until the signed
+exact-main APK is published, replacement-installed, and measured in repeated
+connected foreground and screen-off trials. Source/unit success alone does not
+claim the objective is met.

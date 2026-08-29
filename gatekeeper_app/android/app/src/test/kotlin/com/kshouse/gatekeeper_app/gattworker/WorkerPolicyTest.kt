@@ -118,12 +118,30 @@ class WorkerPolicyTest {
       dispatchStartedEpochMs = 20,
       presenceToDispatchMs = 19,
       presenceToArmedMs = 240,
+      gattPerformance = GattSessionPerformance(
+        connectSetupMs = 120,
+        negotiationMs = 80,
+        challengeMs = 40,
+        signingMs = 10,
+        proofWriteMs = 60,
+        resultWaitMs = 90,
+        transport = GattTransportPerformance(
+          negotiatedMtu = 247,
+          mtuStatus = MtuNegotiationStatus.ACCEPTED,
+          highPriorityRequested = true,
+        ),
+      ),
     )
     val decoded = SessionLedgerCodec.decode(SessionLedgerCodec.encode(listOf(session))).sessions.single()
     assertEquals(20L, decoded.dispatchStartedEpochMs)
     assertEquals(19L, decoded.presenceToDispatchMs)
     assertEquals(240L, decoded.presenceToArmedMs)
     assertEquals(240L, decoded.redactedMap()["presenceToArmedMs"])
+    assertEquals(120L, decoded.gattPerformance?.connectSetupMs)
+    assertEquals(247, decoded.gattPerformance?.transport?.negotiatedMtu)
+    assertEquals(MtuNegotiationStatus.ACCEPTED, decoded.gattPerformance?.transport?.mtuStatus)
+    assertTrue(decoded.gattPerformance?.transport?.highPriorityRequested == true)
+    assertFalse(SessionLedgerCodec.encode(listOf(session)).contains("device_address"))
   }
 
   @Test

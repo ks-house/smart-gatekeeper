@@ -238,6 +238,24 @@ class GattTransportCallbackTest {
     assertEquals(0, coordinator.await(newWrite))
   }
 
+  @Test
+  fun mtuCallbackIsBoundToExactlyOneActiveGattGeneration() = runBlocking {
+    val coordinator = GattConnectionCoordinator()
+    val oldConnection = coordinator.openConnection()
+    val oldOwner = Any()
+    assertTrue(coordinator.bind(oldConnection, oldOwner))
+
+    val activeConnection = coordinator.openConnection()
+    val activeOwner = Any()
+    assertTrue(coordinator.bind(activeConnection, activeOwner))
+
+    assertFalse(coordinator.onMtuChanged(oldConnection, oldOwner, 247, 0))
+    assertFalse(activeConnection.mtuChanged.isCompleted)
+    assertTrue(coordinator.onMtuChanged(activeConnection, activeOwner, 247, 0))
+    assertFalse(coordinator.onMtuChanged(activeConnection, activeOwner, 185, 0))
+    assertEquals(GattMtuResult(247, 0), activeConnection.mtuChanged.await())
+  }
+
   private fun connectedFixture(): CoordinatorFixture {
     val coordinator = GattConnectionCoordinator()
     val connection = coordinator.openConnection()

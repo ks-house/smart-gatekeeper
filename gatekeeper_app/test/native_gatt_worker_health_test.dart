@@ -175,6 +175,28 @@ void main() {
     );
   });
 
+  test('GATT performance parses phase and negotiated link diagnostics', () {
+    final health = NativeGattWorkerHealth.fromMap(<Object?, Object?>{
+      'lastGattPerformance': <Object?, Object?>{
+        'connectSetupMs': 120,
+        'negotiationMs': 80,
+        'challengeMs': 40,
+        'signingMs': 10,
+        'proofWriteMs': 60,
+        'resultWaitMs': 90,
+        'negotiatedMtu': 247,
+        'mtuStatus': 'ACCEPTED',
+        'highPriorityRequested': true,
+      },
+    });
+
+    expect(health.lastGattPerformance?.connectSetupMs, 120);
+    expect(health.lastGattPerformance?.resultWaitMs, 90);
+    expect(health.lastGattPerformance?.negotiatedMtu, 247);
+    expect(health.lastGattPerformance?.mtuStatus, 'ACCEPTED');
+    expect(health.lastGattPerformance?.highPriorityRequested, isTrue);
+  });
+
   test('local GATT toggle delegates to native authoritative control', () async {
     MethodCall? observed;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

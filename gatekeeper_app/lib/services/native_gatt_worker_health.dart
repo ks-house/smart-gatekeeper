@@ -47,6 +47,44 @@ class TargetDetectionSummary {
   }
 }
 
+class GattPerformanceSummary {
+  const GattPerformanceSummary({
+    this.connectSetupMs,
+    this.negotiationMs,
+    this.challengeMs,
+    this.signingMs,
+    this.proofWriteMs,
+    this.resultWaitMs,
+    required this.negotiatedMtu,
+    required this.mtuStatus,
+    required this.highPriorityRequested,
+  });
+
+  final int? connectSetupMs;
+  final int? negotiationMs;
+  final int? challengeMs;
+  final int? signingMs;
+  final int? proofWriteMs;
+  final int? resultWaitMs;
+  final int negotiatedMtu;
+  final String mtuStatus;
+  final bool highPriorityRequested;
+
+  factory GattPerformanceSummary.fromMap(Map<Object?, Object?> value) {
+    return GattPerformanceSummary(
+      connectSetupMs: (value['connectSetupMs'] as num?)?.toInt(),
+      negotiationMs: (value['negotiationMs'] as num?)?.toInt(),
+      challengeMs: (value['challengeMs'] as num?)?.toInt(),
+      signingMs: (value['signingMs'] as num?)?.toInt(),
+      proofWriteMs: (value['proofWriteMs'] as num?)?.toInt(),
+      resultWaitMs: (value['resultWaitMs'] as num?)?.toInt(),
+      negotiatedMtu: (value['negotiatedMtu'] as num?)?.toInt() ?? 23,
+      mtuStatus: value['mtuStatus']?.toString() ?? 'NOT_REQUESTED',
+      highPriorityRequested: value['highPriorityRequested'] == true,
+    );
+  }
+}
+
 class NativeGattWorkerHealth {
   const NativeGattWorkerHealth({
     required this.featureEnabled,
@@ -74,6 +112,7 @@ class NativeGattWorkerHealth {
     this.lastPresenceToArmedMs,
     this.latestDetection,
     this.lastSession,
+    this.lastGattPerformance,
   });
 
   final bool featureEnabled;
@@ -101,6 +140,7 @@ class NativeGattWorkerHealth {
   final int? lastPresenceToArmedMs;
   final TargetDetectionSummary? latestDetection;
   final Map<Object?, Object?>? lastSession;
+  final GattPerformanceSummary? lastGattPerformance;
 
   TargetDetectionStage get detectionStage => detectionStageAt(DateTime.now());
 
@@ -171,6 +211,11 @@ class NativeGattWorkerHealth {
             )
           : null,
       lastSession: (value['lastSession'] as Map?)?.cast<Object?, Object?>(),
+      lastGattPerformance: value['lastGattPerformance'] is Map
+          ? GattPerformanceSummary.fromMap(
+              (value['lastGattPerformance'] as Map).cast<Object?, Object?>(),
+            )
+          : null,
     );
   }
 }

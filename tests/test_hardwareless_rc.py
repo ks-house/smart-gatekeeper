@@ -248,6 +248,32 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("awaitMessage(GattProtocol.CHALLENGE)", challenge)
         self.assertNotIn("readCharacteristic", challenge)
 
+    def test_android_gatt_latency_hints_fall_back_and_remain_observable(self):
+        transport = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/gattworker/AndroidBleGattTransport.kt"
+        ).read_text(encoding="utf-8")
+        engine = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/gattworker/GattSessionEngine.kt"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("requestConnectionPriority", transport)
+        self.assertIn("BluetoothGatt.CONNECTION_PRIORITY_HIGH", transport)
+        self.assertIn("requestMtu(DESIRED_MTU)", transport)
+        self.assertIn("MTU_NEGOTIATION_WAIT_MS = 750L", transport)
+        self.assertIn("DEFAULT_MTU = 23", transport)
+        self.assertIn("GattSessionPerformance", engine)
+        for phase in (
+            "connectSetupMs",
+            "negotiationMs",
+            "challengeMs",
+            "signingMs",
+            "proofWriteMs",
+            "resultWaitMs",
+        ):
+            self.assertIn(phase, engine)
+
     def test_ota_waits_on_real_target_state_before_network(self):
         ota = (ROOT / "src" / "OtaManager.cpp").read_text(encoding="utf-8")
         main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")

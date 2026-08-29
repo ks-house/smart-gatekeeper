@@ -4927,3 +4927,20 @@
 - Updated that contract to require the single `Smart Key 설정 및 진단` recovery action and to verify both preserved `Smart Key` and `진단·튜닝` tab owners.
 - Updated the Korean user procedure to use the unified route before the terminal local-open action; no access, OTA or Target behavior changed.
 - The complete 316-test repository contract suite then passed with one expected platform-specific skip.
+
+## [2026-08-30] code | Add bounded Android GATT latency optimization and phase diagnostics
+
+- Added Android high-connection-priority and ATT MTU 247 requests after connection/service discovery, retaining MTU-23 framing when negotiation is rejected or its 750 ms callback window expires.
+- Captured privacy-safe monotonic timing for connect/setup, hello negotiation, challenge, Keystore signing, proof write and result wait, and persisted it with negotiated MTU/status across process restart.
+- Exposed the redacted phase/link summary in the foreground Native Worker card without BLE address, credential, nonce or signature material; protocol, proof, no-replay and independent OTA contracts remain unchanged.
+
+## [2026-08-30] test | Verify GATT optimization source and native contracts
+
+- Android application compilation and the targeted `gattworker.*` unit suite passed, including active-generation MTU callback ownership, session phase projection and backward-compatible durable-ledger round-trip.
+- Flutter parsing/UI tests and the complete repository contract suite remain to be executed; connected signed-APK installation and repeated latency comparison are still physical/runtime Gates.
+
+## [2026-08-30] test | Complete local GATT latency candidate verification
+
+- Targeted Flutter analysis reported no findings and all 45 Flutter tests passed, including the new phase/link diagnostic parser.
+- The complete 317-test repository contract suite passed with one expected platform-specific skip, including the bounded priority/MTU fallback source contract.
+- These are local source/build results only. Exact-main signed APK publication, replacement install and repeated connected foreground/screen-off measurements remain required before accepting a latency improvement or the candidate sub-2.5-second objective.
