@@ -4592,3 +4592,9 @@
 - Policy PR #224 passed Hosted Trusted and merge-committed as main `ddc4bbc52900e24ecb8a3ee63ed04db6dc3181a4`. That exact policy main is merged into immutable feature commit `2b32fc5fe14b5c90db022ed14deca5f572a68040` without rebase or squash.
 - The merge preserves the immutable feature parent and policy-main parent; all five authorized protected feature blobs remain the reviewed bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
 - This source-history connection changes no NAS secret metadata, container or database and proves no API readiness or deployment.
+
+## [2026-08-29] compile | Rotate secret-access policy to actual feature main
+
+- Policy-connected PR #223 head `40556adbb8ed067c43bfd19a73da7098f9f31984` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `5e0aec37282ec0af9846bb6681aee87d89dabfa3`.
+- Removed both `2b32fc5` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and five reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS metadata/runtime and proves no deployment/readiness. Exact wrapper and secret metadata installation, maintenance stop, protected retry and backend-included E2E remain open.

@@ -783,3 +783,17 @@ policy-only PR merges, its exact main must be merge-connected into feature PR
 mandatory, followed by a final rotation to the actual feature merge-main.
 This authority changes no NAS file, secret, container or database state and is
 not readiness/deployment evidence.
+
+## 18. Non-root Compose secret-access final baseline
+
+Policy-connected feature PR #223 head
+`40556adbb8ed067c43bfd19a73da7098f9f31984` passed fresh Hosted Trusted, OTA
+P0 and Backend checks. Merge commit
+`5e0aec37282ec0af9846bb6681aee87d89dabfa3` is the actual feature main.
+
+This final rotation removes both bounded `2b32fc5` transition identities and
+pins the sole `current-main-baseline` to actual feature main `5e0aec3`. The
+complete ordered 83-path map, inventories and five reviewed secret-access
+digests remain unchanged. It is source/CI authority only: exact NAS file
+metadata, wrapper installation, approved deployment, readiness and
+backend-included access remain separate Gates.
