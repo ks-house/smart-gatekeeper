@@ -30,6 +30,36 @@ BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
+    def test_deploy_job_streams_only_ephemeral_github_package_auth(self):
+        workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
+        match = re.search(
+            r"(?ms)^  deploy_backend_to_nas:\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(match)
+        job = match.group(1)
+        for required in (
+            "packages: read",
+            "GHCR_USERNAME: ${{ github.actor }}",
+            "GHCR_TOKEN: ${{ github.token }}",
+            "base64 --wrap=0",
+            "SGK-GHCR-AUTH-V1",
+            "cat build/backend-release.tar.gz",
+            '"$NAS_USER@$NAS_HOST" apply',
+        ):
+            self.assertIn(required, job)
+        self.assertLess(
+            job.index("Upload signed deployment bundle"),
+            job.index("GHCR_TOKEN: ${{ github.token }}"),
+        )
+        for forbidden in (
+            "NAS_GHCR_TOKEN",
+            "GHCR_PAT",
+            "docker login",
+            "--password-stdin",
+        ):
+            self.assertNotIn(forbidden, job)
+
     def test_manual_nas_preflight_is_main_only_status_only_and_oidc_backed(self):
         workflow = BACKEND_WORKFLOW.read_text(encoding="utf-8")
         trigger = workflow.split("jobs:", 1)[0]
@@ -274,6 +304,12 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "/var/packages/Docker/target/usr/bin/docker",
             '"$DOCKER_BIN" "$@"',
             '"$DOCKER_BIN" compose --project-name "$PROJECT_NAME"',
+            'readonly GHCR_AUTH_ENVELOPE="SGK-GHCR-AUTH-V1"',
+            'DOCKER_CONFIG_DIR="${stage_dir}/docker-config"',
+            'DOCKER_CONFIG="$DOCKER_CONFIG_DIR" "$DOCKER_BIN" "$@"',
+            'DOCKER_CONFIG="$DOCKER_CONFIG_DIR"',
+            'chmod 600 "${DOCKER_CONFIG_DIR}/config.json"',
+            'read_ephemeral_ghcr_auth "$stage_dir"',
             'openssl dgst -sha256 -verify "$TRUST_KEY"',
             'docker volume inspect "${RUNTIME[$key]}"',
             'docker pull "$api_image"',
@@ -290,6 +326,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertNotIn('chmod 700 "$DEPLOY_BASE"', wrapper)
         self.assertNotIn("required command is missing: docker", wrapper)
         self.assertNotIn("docker compose --project-name", wrapper)
+        self.assertNotIn("/root/.docker", wrapper)
+        self.assertNotIn("read:packages", wrapper)
 
         dispatcher_syntax = subprocess.run(
             ["bash", "-n", str(DISPATCHER)], text=True, capture_output=True

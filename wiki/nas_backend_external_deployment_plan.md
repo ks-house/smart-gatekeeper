@@ -352,9 +352,11 @@ production credentials.
    database password, NAS credential, or decrypted Target artifact in an Actions
    artifact or container layer.
 
-The workflow needs `packages: write`, `contents: read`, `id-token: write` for
-provenance/workload identity, and only the minimum attestation permissions. Pin
-third-party Actions by full commit SHA, consistent with the existing workflow.
+The publication job needs `packages: write`; the deployment job needs only
+`packages: read`. Both retain `contents: read`, while provenance/workload
+identity receives only its required `id-token` and attestation permissions.
+Pin third-party Actions by full commit SHA, consistent with the existing
+workflow.
 
 ## 5. Private control plane
 
@@ -462,9 +464,12 @@ sanitized append-only release record for every attempt.
 5. Create the migration logical backup and SHA-256 sidecar. Copy/confirm it in
    the approved encrypted backup destination before a destructive or
    incompatible migration.
-6. Authenticate to GHCR using a read-only package credential stored on the NAS,
-   pull both exact digests, and verify the local image IDs/platforms. Never run
-   `latest`.
+6. Authenticate to GHCR using the protected job's short-lived, repository-scoped
+   `github.token` carried in a versioned SSH stdin envelope immediately before
+   the signed bundle. Keep its Docker config only in the root-only per-attempt
+   directory and remove it through the common success/failure cleanup; never
+   store a long-lived registry credential on the NAS. Pull both exact digests,
+   verify local image IDs/platforms, and never run `latest`.
 7. Materialize a release directory containing only the descriptor, reviewed
    Compose, non-secret configuration, and digest evidence. Secrets are
    referenced from the fixed NAS secret directory.
@@ -668,6 +673,17 @@ background success, or Target OTA health.
 10. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
 11. `P2` Evaluate a central secret manager only when operator/host count requires
     it.
+
+The first protected attempt with the corrected absolute Synology Docker path,
+run `33235596047` at exact main `21a0124f6e4b5dfc300b205073e1b464066355e8`,
+reached the two immutable image pulls but GHCR returned `unauthorized` because
+the NAS had no package credential. The wrapper failed before Compose or
+migration and did not attempt a database rollback. The owner restarted the
+retained legacy API/DB; external `/live` returned HTTP 200 for build `7c2764a1`
+and `/ready` returned the expected legacy-only HTTP 503 with every check true
+except `legacy_prearm_retired=false`. The ephemeral envelope change is a source
+candidate until protected policy admission, CI, wrapper installation and a new
+deployment pass.
 
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion

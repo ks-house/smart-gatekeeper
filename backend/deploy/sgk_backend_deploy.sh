@@ -19,7 +19,10 @@ readonly EXPECTED_DB_REPOSITORY="ghcr.io/ks-house/smart-gatekeeper-db"
 readonly EXPECTED_SCHEMA_VERSION="007"
 readonly EXPECTED_SCHEMA_SHA256="edde5662c42e65dda82b2e0a9145d64dc4ebfc9fe7a5e5bd44b0b3aae0fe1d79"
 readonly MAX_BUNDLE_MIB=8
+readonly GHCR_AUTH_ENVELOPE="SGK-GHCR-AUTH-V1"
+readonly MAX_GHCR_AUTH_B64=4096
 DOCKER_BIN=""
+DOCKER_CONFIG_DIR=""
 
 log() {
   printf '[sgk-backend-deploy] %s\n' "$*" >&2
@@ -52,7 +55,11 @@ resolve_docker() {
 
 docker() {
   [[ -n "$DOCKER_BIN" ]] || die "Docker CLI was not resolved"
-  "$DOCKER_BIN" "$@"
+  if [[ -n "$DOCKER_CONFIG_DIR" ]]; then
+    DOCKER_CONFIG="$DOCKER_CONFIG_DIR" "$DOCKER_BIN" "$@"
+  else
+    "$DOCKER_BIN" "$@"
+  fi
 }
 
 sha256_file() {
@@ -253,7 +260,9 @@ validate_release() {
 compose_for_release() {
   local release_dir="$1"
   shift
+  [[ -n "$DOCKER_CONFIG_DIR" ]] || die "ephemeral Docker configuration is unavailable"
   env \
+    DOCKER_CONFIG="$DOCKER_CONFIG_DIR" \
     API_IMAGE_REPOSITORY="${RELEASE[API_IMAGE_REPOSITORY]}" \
     API_IMAGE_DIGEST="${RELEASE[API_IMAGE_DIGEST]}" \
     DB_IMAGE_REPOSITORY="${RELEASE[DB_IMAGE_REPOSITORY]}" \
@@ -262,6 +271,27 @@ compose_for_release() {
     "$DOCKER_BIN" compose --project-name "$PROJECT_NAME" --env-file "$RUNTIME_ENV" \
       -f "${release_dir}/compose.production.yml" \
       -f "${release_dir}/compose.synology.yml" "$@"
+}
+
+read_ephemeral_ghcr_auth() {
+  local stage_dir="$1"
+  local envelope auth_b64
+  IFS= read -r envelope || die "GHCR authentication envelope is missing"
+  [[ "$envelope" == "$GHCR_AUTH_ENVELOPE" ]] || \
+    die "unsupported GHCR authentication envelope"
+  IFS= read -r auth_b64 || die "GHCR authentication value is missing"
+  (( ${#auth_b64} >= 16 && ${#auth_b64} <= MAX_GHCR_AUTH_B64 )) || \
+    die "GHCR authentication value length is invalid"
+  [[ "$auth_b64" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] || \
+    die "GHCR authentication value is malformed"
+
+  DOCKER_CONFIG_DIR="${stage_dir}/docker-config"
+  mkdir "$DOCKER_CONFIG_DIR"
+  chmod 700 "$DOCKER_CONFIG_DIR"
+  printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' "$auth_b64" \
+    > "${DOCKER_CONFIG_DIR}/config.json"
+  chmod 600 "${DOCKER_CONFIG_DIR}/config.json"
+  unset auth_b64
 }
 
 wait_ready() {
@@ -322,6 +352,7 @@ cleanup_apply() {
   if (( status != 0 )); then
     record_failure "$stage_dir" "$status"
   fi
+  DOCKER_CONFIG_DIR=""
   rm -rf -- "$stage_dir"
   rmdir -- "$LOCK_DIR" 2>/dev/null || true
   exit "$status"
@@ -339,6 +370,7 @@ apply_release() {
   local stage_dir
   stage_dir="$(mktemp -d "${INCOMING_DIR}/release.XXXXXXXX")"
   trap 'cleanup_apply "'"$stage_dir"'" "$?"' EXIT
+  read_ephemeral_ghcr_auth "$stage_dir"
   local bundle="${stage_dir}/release.tar.gz"
   dd bs=1048576 count=$((MAX_BUNDLE_MIB + 1)) of="$bundle" 2>/dev/null
   (( $(stat -c '%s' "$bundle") > 0 )) || die "release bundle is empty"
