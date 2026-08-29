@@ -4789,3 +4789,9 @@
 - Reviewed immutable feature candidate `1feb4b9d14ee2742e228f298557e3335a2060d09`; relative to feature main `dbafe9d4`, exactly the Synology Compose overlay, commercial contract and direct NAS deployment test change among protected paths.
 - Replaced the current source identity with `future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `8859e089...`, `307d0486...` and `e90cec4c...`.
 - This policy-only candidate changes no NAS state and grants no deployment approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect MQTT host-gateway feature to policy main
+
+- Policy PR #246 passed the required Trusted check and merge-committed as main `be8c462d35cd25790cdf45a92bbcb6eb6b95c44e`; that exact policy main was merged without rebase or squash into immutable feature candidate `1feb4b9d14ee2742e228f298557e3335a2060d09` as `56029d3f8eeba717fd6f81505b607294d4846d4b`.
+- All three reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged. The append-only log conflict preserved both the live failure/fix evidence and policy authorization entries.
+- Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS runtime and proves no readiness or backend-included E2E.

@@ -1049,3 +1049,11 @@ merge first; that exact policy main must then be merge-connected into the
 feature branch without rebase or squash. Fresh Hosted Trusted, OTA P0 and
 Backend checks, final policy rotation, exact live `/ready` with MQTT true, and
 backend-included Target/mobile access remain separate Gates.
+
+Policy PR #246 passed the required Trusted check and merge-committed as main
+`be8c462d35cd25790cdf45a92bbcb6eb6b95c44e`. That exact policy main was then
+merged without rebase or squash into immutable feature candidate `1feb4b9` as
+`56029d3f8eeba717fd6f81505b607294d4846d4b`. All three reviewed protected
+candidate blobs and the complete 83-path map remain unchanged. Fresh Hosted
+Trusted, OTA P0 and Backend checks are required on this connected head before
+feature merge.
