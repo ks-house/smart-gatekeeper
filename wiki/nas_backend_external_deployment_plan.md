@@ -681,9 +681,11 @@ the NAS had no package credential. The wrapper failed before Compose or
 migration and did not attempt a database rollback. The owner restarted the
 retained legacy API/DB; external `/live` returned HTTP 200 for build `7c2764a1`
 and `/ready` returned the expected legacy-only HTTP 503 with every check true
-except `legacy_prearm_retired=false`. The ephemeral envelope change is a source
-candidate until protected policy admission, CI, wrapper installation and a new
-deployment pass.
+except `legacy_prearm_retired=false`. The ephemeral envelope change passed fresh
+Trusted, OTA and Backend checks and merge-committed as main
+`42b754d75863072e4ad0af32f2667ff54ceb050c`. This admits the source only: exact
+root-owned wrapper installation, a new maintenance stop, protected deployment,
+matching status/readiness and backend-included access remain open.
 
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
