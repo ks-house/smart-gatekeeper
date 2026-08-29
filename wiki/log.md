@@ -4651,3 +4651,9 @@
 - Hosted Trusted correctly rejected PR #231 because policy PR #232 recorded a nonexistent full commit identity despite the matching `b2e7d60` short prefix.
 - Replaced both transition bundle sources with the actual immutable feature commit `b2e7d6000fc5096cf3fb8a1ed00761030b1c073a`; reviewed protected blob digests and the complete ordered path map remain unchanged.
 - This policy-only correction changes no NAS state and authorizes no deployment. A fresh policy check and merge remain required before reconnecting and rerunning the feature PR.
+
+## [2026-08-29] compile | Recover policy enforcement and reconnect DSM guide feature
+
+- With explicit owner approval, administrator enforcement alone was temporarily disabled because the invalid source identity in main made policy PR #233 unable to authorize its own correction. PR #233 merge-committed as main `fb9b8e5eea01df470d18afe83e329fcc034f8f25`; administrator enforcement was immediately restored while the original strict Trusted context remained unchanged.
+- Merged that corrected policy main into PR #231 without rebase or squash. The immutable feature parent `b2e7d6000fc5096cf3fb8a1ed00761030b1c073a` and its reviewed README/test bytes remain in ancestry.
+- Fresh Hosted Trusted, OTA and Backend checks are required before feature merge. This recovery changed no NAS file, container, database or deployment state.
