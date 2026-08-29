@@ -1020,3 +1020,32 @@ unchanged.
 Final policy authority is source/CI evidence only. It changes no NAS network,
 container or database and does not prove MQTTS readiness. Exact live deployment
 and backend-included Target/mobile evidence remain separate Gates.
+
+## 28. Synology MQTT host-gateway transition
+
+Exact single-bridge run `33251769358` still failed before broker CONNACK: the
+API and DB remained running/healthy, while the subscriber raised `TimeoutError`
+5.417 seconds after startup and bounded ACL publishes also failed. Owner
+recovery restored the retained legacy API with MQTT true. The evidence narrows
+the remaining path to the container's public-IP hairpin rather than DB, API
+process, TLS provisioning or multi-network gateway selection.
+
+Immutable candidate `1feb4b9d14ee2742e228f298557e3335a2060d09`
+keeps `MQTT_HOST` as the Paho connect and certificate verification hostname but
+maps it to Docker `host-gateway` only in the Synology API container. The NAS
+already publishes verified MQTTS on port 4883, so this bypasses public-IP NAT
+hairpin without disabling TLS SNI/hostname validation, adding another network,
+publishing DB 3306 or widening the loopback API bind. Relative to feature main
+`dbafe9d4`, exactly three protected normalized blobs change:
+
+- `scripts/ops_commercial_gate.py` becomes `8859e089...`.
+- `backend/compose.synology.yml` becomes `307d0486...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `e90cec4c...`.
+
+The complete ordered 83-path map is pinned by
+`future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline`, sourced from the
+exact immutable candidate. The policy PR must pass against trusted main and
+merge first; that exact policy main must then be merge-connected into the
+feature branch without rebase or squash. Fresh Hosted Trusted, OTA P0 and
+Backend checks, final policy rotation, exact live `/ready` with MQTT true, and
+backend-included Target/mobile access remain separate Gates.
