@@ -4639,3 +4639,9 @@
 - Reviewed immutable feature commit `b2e7d607bd54d625528390f01f5baa1ac03276f8`; exactly deploy README and its direct NAS deployment test change as one protected bundle with normalized digests `da807427...` and `d97079ed...`.
 - Added temporary-exact and future persistent identities with the same complete ordered 83-path map, retiring previous feature baseline `3fdc615` from this transition policy.
 - This policy-only candidate changes no NAS state and grants no production approval. Separately, owner preflight passed all secret/runtime/volume/DB/ACL identity contracts and exact run `33246998513` entered its approved live deployment step.
+
+## [2026-08-29] fix | Correct DSM guide policy source identity
+
+- Hosted Trusted correctly rejected PR #231 because policy PR #232 recorded a nonexistent full commit identity despite the matching `b2e7d60` short prefix.
+- Replaced both transition bundle sources with the actual immutable feature commit `b2e7d6000fc5096cf3fb8a1ed00761030b1c073a`; reviewed protected blob digests and the complete ordered path map remain unchanged.
+- This policy-only correction changes no NAS state and authorizes no deployment. A fresh policy check and merge remain required before reconnecting and rerunning the feature PR.
