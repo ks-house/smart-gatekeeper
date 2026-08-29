@@ -105,7 +105,11 @@ required_secrets=(
   acl_target_auth.json acl_signing_scalar
 )
 for secret in "${required_secrets[@]}"; do
-  require_file_contract "${SECRET_DIR}/${secret}" 0 0 600
+  if [[ "$secret" == "db_root_password" ]]; then
+    require_file_contract "${SECRET_DIR}/${secret}" 0 0 600
+  else
+    require_file_contract "${SECRET_DIR}/${secret}" 0 10001 640
+  fi
 done
 require_file_contract "${DEPLOY_BASE}/runtime.env" 0 0 600
 require_file_contract "${API_STATE_DIR}/target_config.json" 10001 10001 600

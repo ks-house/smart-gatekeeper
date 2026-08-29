@@ -197,9 +197,15 @@ validate_runtime() {
     local secret_path="${RUNTIME[SGK_SECRET_DIR]}/${secret}"
     [[ -f "$secret_path" && ! -L "$secret_path" && -s "$secret_path" ]] || \
       die "required non-empty regular secret file is missing: $secret"
-    local secret_mode
-    secret_mode="$(stat -c '%a' "$secret_path")"
-    (( (8#$secret_mode & 077) == 0 )) || die "secret file must not grant group/other access: $secret"
+    local secret_contract
+    secret_contract="$(stat -c '%u:%g:%a' "$secret_path")"
+    if [[ "$secret" == "db_root_password" ]]; then
+      [[ "$secret_contract" == "0:0:600" ]] || \
+        die "database root secret must be root-owned mode 0600: $secret"
+    else
+      [[ "$secret_contract" == "0:10001:640" ]] || \
+        die "API secret must be root-owned, group 10001, mode 0640: $secret"
+    fi
   done
 
   local container project
@@ -348,6 +354,36 @@ record_failure() {
   log "deployment failed; database rollback was not attempted"
 }
 
+capture_failure_diagnostics() {
+  local release_dir="$1"
+  local diagnostics="${release_dir}/failure-runtime.evidence"
+  local api_log="${release_dir}/failure-api.log"
+  local service container
+
+  {
+    printf 'captured_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    for service in db api; do
+      container="$(compose_for_release "$release_dir" ps -a -q "$service" 2>/dev/null || true)"
+      if [[ -z "$container" ]]; then
+        printf 'service=%s container=missing\n' "$service"
+        continue
+      fi
+      docker inspect --format \
+        'service='"$service"' container={{.Name}} status={{.State.Status}} exit_code={{.State.ExitCode}} oom_killed={{.State.OOMKilled}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+        "$container" 2>/dev/null || printf 'service=%s inspect=failed\n' "$service"
+    done
+  } > "$diagnostics"
+  chmod 600 "$diagnostics"
+
+  # Application output may contain operational detail, so retain it only in
+  # the root-controlled release directory instead of streaming it to CI.
+  compose_for_release "$release_dir" logs --no-color --tail 200 api \
+    > "$api_log" 2>&1 || true
+  chmod 600 "$api_log"
+  log "failure runtime evidence retained: $diagnostics"
+  log "failure API log retained root-only: $api_log"
+}
+
 cleanup_apply() {
   local stage_dir="$1"
   local status="$2"
@@ -355,6 +391,8 @@ cleanup_apply() {
   trap - EXIT
   if (( status != 0 )); then
     if [[ -n "$ACTIVE_RELEASE_DIR" && -d "$ACTIVE_RELEASE_DIR" ]]; then
+      capture_failure_diagnostics "$ACTIVE_RELEASE_DIR" || \
+        log "ERROR: failure diagnostic capture failed"
       if compose_for_release "$ACTIVE_RELEASE_DIR" down --remove-orphans; then
         partial_stack_cleanup="passed"
         log "partial deployment stack removed without deleting volumes"

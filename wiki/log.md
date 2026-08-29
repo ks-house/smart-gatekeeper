@@ -4573,3 +4573,10 @@
 - Policy-connected PR #220 head `719564f159205cdbabb769037f7783f5e0aaabad` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `b6cab8384efe7b5e046841ff84681b74d0cae113`.
 - Removed both `5a32570` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and four reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS runtime and proves no deployment/readiness. A new owner maintenance stop, protected exact-main run and backend-included E2E remain open.
+
+## [2026-08-29] fix | Correct non-root API access to local Compose file secrets
+
+- Protected run `33245672804` at CPU-field-free feature main `b6cab8384efe7b5e046841ff84681b74d0cae113` started the exact DB and passed migration `up 007` with a retained backup, then failed loopback API readiness. Cleanup removed the partial production project without volumes or DB rollback; owner recovery restored legacy `/live` HTTP 200 and the expected legacy-only `/ready` 503.
+- Root cause is the immutable API `10001:10001` runtime reading local Compose `file:` secrets installed as `root:root 0600`; file-backed Compose secrets are bind mounts and do not remap source ownership/mode. Keep the host secret directory `root:root 0700` and DB-root secret `root:root 0600`, but make the API-consumed files `root:10001 0640`.
+- Bootstrap, read-only verification and deploy admission now enforce that exact split. Failed apply also retains non-secret container state plus a root-only bounded API log before partial-stack cleanup. Focused tests pass; protected policy/CI, exact NAS metadata and live readiness remain pending.
+- Validation passes 14/14 focused NAS deployment tests, all 136 backend tests with two documented real-MariaDB opt-in skips, the 35-check commercial contract, shell syntax and whitespace checks.
