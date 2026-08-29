@@ -4982,3 +4982,9 @@
 - Reviewed immutable PR #266 candidate `c80933a411990022bf14b075b18260a127cb590c`; among 83 protected paths it changes exactly the personal ACL API, ACL management service, hosted user page and direct ACL API tests.
 - Bound those normalized blobs to `a262c8f6...`, `4c703860...`, `4423c3e0...` and `c478d95f...` in the sole future persistent bundle while preserving all other protected bytes and exact workflow/action inventories.
 - This policy-only candidate changes no runtime or NAS state. Its merge, policy-history connection into PR #266, fresh CI, feature merge, final baseline rotation and deployment remain separate Gates.
+
+## [2026-08-30] fix | Synchronize recovery manual with native Home separation
+
+- Updated the source-bound recovery contract and Korean user procedure to name the recovery-only `고급 진단` route and its `고급 제어` tab; the normal ready path remains Home/Activity/Settings.
+- Removed the stale `Smart Key 설정` tooltip from the transitional WebView and retained manual local open, verified updater, Android settings and setup retry reachability.
+- This is navigation/manual synchronization only; credential, Target, OTA trust and physical behavior are unchanged.

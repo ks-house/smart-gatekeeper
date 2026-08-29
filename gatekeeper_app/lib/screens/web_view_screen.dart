@@ -231,7 +231,7 @@ class _WebViewScreenState extends State<WebViewScreen>
         actions: [
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.cyanAccent),
-            tooltip: 'Smart Key 설정',
+            tooltip: '고급 진단',
             onPressed: () {
               Navigator.push(
                 context,
