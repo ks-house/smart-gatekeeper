@@ -4861,3 +4861,9 @@
 - Policy PR #253 passed the required Trusted check and merge-committed as main `e19536fddf04da96d5e5f9326246eb2347bd1502`; that exact policy main was merged without rebase or squash into immutable feature candidate `0144613d28b318528487543e5e71dd10d5206955`.
 - All three reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged. The append-only log conflict preserved both live deployment/false-negative evidence and policy authorization entries.
 - Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS runtime; the deployed backend remains externally ready and device E2E remains open.
+
+## [2026-08-29] compile | Rotate canonical evidence policy to actual feature main
+
+- Policy-connected PR #254 head `8b673fc5b4a91de56c2eb241e6f8e7da3fcae261` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `d50b98f9c1e4e046fb62d1e8698c0ed2407291fe`.
+- Replaced transition source `0144613` with the sole `current-main-baseline` at actual main while preserving the complete ordered 83-path map, inventories and three reviewed protected digests.
+- This final policy rotation changes no NAS runtime. The deployed backend remains exact source `db37772d` and externally ready; installing the CI-only wrapper correction is not required for current service continuity, while backend-included device E2E remains open.

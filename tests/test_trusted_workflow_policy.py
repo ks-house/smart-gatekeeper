@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "0144613d28b318528487543e5e71dd10d5206955"
-EXPECTED_BUNDLE_ID = "future-nas-canonical-evidence-0144613-persistent-baseline"
+MERGED_MAIN_COMMIT = "d50b98f9c1e4e046fb62d1e8698c0ed2407291fe"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
