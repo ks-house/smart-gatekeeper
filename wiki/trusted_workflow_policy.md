@@ -957,3 +957,19 @@ into the immutable feature candidate without rebase or squash as
 protected blobs and the complete ordered 83-path map remain unchanged. Fresh
 Hosted Trusted, OTA P0 and Backend checks are still required before feature
 merge; no NAS runtime result follows from this source-history connection.
+
+## 25. DSM 24 MQTT route final baseline
+
+Policy-connected PR #239 head
+`2f0de8aff4f00ca1af22138d66a0f81ff7489710` passed fresh Hosted Trusted, OTA
+P0 and Backend checks. Merge commit
+`aebad8ef398e7d5a69e192547543424931ed38af` is the actual feature main.
+
+This final rotation removes the transition source identity `40ccecc2` and pins
+the sole `current-main-baseline` to actual feature main `aebad8ef`. The complete
+ordered 83-path map, inventories and two reviewed DSM route compatibility
+digests remain unchanged.
+
+Final policy authority is source/CI evidence only. It changes no NAS network,
+container or database and does not prove MQTT readiness. Exact live deployment
+and backend-included Target/mobile evidence remain separate Gates.

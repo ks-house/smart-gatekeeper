@@ -4729,3 +4729,9 @@
 - Policy PR #238 passed Hosted Trusted and merge-committed as main `7fd54c7ca802a25689e246da7caabc5d095aaaad`; that exact policy main was merged into immutable feature candidate `40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61` without rebase or squash as `df5357ec3685afa33b4ab64b0b58d974a71adde5`.
 - Both reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged, while the merge commit preserves both exact parents for hosted ancestry verification.
 - Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This source-history connection changes no NAS network, container or database and proves no readiness or backend-included E2E.
+
+## [2026-08-29] compile | Rotate DSM MQTT route policy to actual feature main
+
+- Policy-connected PR #239 head `2f0de8aff4f00ca1af22138d66a0f81ff7489710` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `aebad8ef398e7d5a69e192547543424931ed38af`.
+- Removed the transition source identity `40ccecc2` and pinned the sole `current-main-baseline` to actual main. The complete ordered 83-path map, inventories and two reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS network, container or database and proves no readiness. A new approved maintenance window, exact deployment, MQTT true and backend-included Target/mobile access E2E remain open.

@@ -100,11 +100,11 @@
   },
   "approved_bundles": [
     {
-      "id": "future-dsm-mqtt-route-40ccecc-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61"
+        "commit": "aebad8ef398e7d5a69e192547543424931ed38af"
       },
       "files": {
         ".github/workflows/deploy.yml": "88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea",
