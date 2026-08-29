@@ -4807,3 +4807,9 @@
 - Owner evidence proved exactly the retained legacy API/DB stopped; exact run `33252726976` for feature main `7be876804c23d91caf252b92e2b859f81aee168a` pulled immutable API `91a22d34...` and DB `ca89ea4c...`, passed DB health, migration `up 007`, API start and loopback `/ready`.
 - The following NAS-local request to `https://tworimpa.synology.me:4442/ready` exhausted its bounded retry window. Root-only diagnostics were retained; cleanup removed the partial project/network without volumes and did not attempt DB rollback. Fresh external `/live` and `/ready` return 502 while retained legacy remains stopped.
 - Added a source candidate that resolves only the public HTTPS hostname transport to `127.0.0.1` for the NAS-side DSM ingress probe. TLS SNI and certificate hostname verification remain enabled; external origin verification and backend-included access remain separate Gates.
+
+## [2026-08-29] compile | Authorize exact DSM public-ingress hairpin candidate
+
+- Reviewed immutable candidate `15005944591a43a5437ccf33f9a945ab7b47809f`; relative to feature main `7be8768`, exactly the deploy README, root wrapper and direct NAS deployment test change among protected paths.
+- Replaced the current source identity with `future-nas-public-ingress-hairpin-1500594-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `083089b3...`, `3e0fdd66...` and `5968e0ce...`.
+- This policy-only candidate changes no NAS file, container or database and grants no deployment approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation, exact deployment and external/backend-included E2E remain separate Gates.
