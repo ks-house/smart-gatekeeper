@@ -704,9 +704,14 @@ omits the unsupported field while preserving memory/PID/capability/read-only
 hardening. Apply failure cleanup now runs `down --remove-orphans` only for the
 fixed production project, never `--volumes`, records the cleanup result and
 continues to prohibit blind DB rollback. The workflow also uses the Tailscale
-action's valid `sha256sum` input. These are source/test results until protected
-authorization, CI, wrapper installation and a fresh owner-approved deployment
-pass.
+action's valid `sha256sum` input. Policy PR #216, policy-connected feature PR
+#215 and final policy PR #217 passed their Hosted checks and merged through
+final main `bb970bb68c365140b2b1717116fc19eac307cb59`; the reviewed feature main
+is `6b1f1da3359dcca95c8434b73970ba992ef9d41d`. Its backend run `33241850366`
+has published exact images/provenance and waits at protected production
+approval. The merged wrapper SHA-256 is `6a29bf87...`. External `/live` and
+`/ready` currently return HTTP 502, so recovery and exact wrapper installation
+must precede approval. No deployed/readiness result exists yet.
 
 The executable bootstrap and owner checklist are in
 [`backend/deploy/README.md`](../backend/deploy/README.md). Repository completion
