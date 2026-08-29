@@ -1057,3 +1057,17 @@ merged without rebase or squash into immutable feature candidate `1feb4b9` as
 candidate blobs and the complete 83-path map remain unchanged. Fresh Hosted
 Trusted, OTA P0 and Backend checks are required on this connected head before
 feature merge.
+
+## 29. Synology MQTT host-gateway final baseline
+
+Policy-connected PR #245 head
+`799c65152ba4a3edea16c7c18bcd4ad0a4c05736` passed fresh Hosted Trusted, OTA
+P0 and Backend checks. Its merge commit
+`7be876804c23d91caf252b92e2b859f81aee168a` is the actual feature main.
+
+This final rotation removes transition source `1feb4b9` and pins the sole
+`current-main-baseline` to actual feature main `7be8768`. The complete ordered
+83-path map, workflow/action inventories and three reviewed host-gateway
+digests remain unchanged. This changes no NAS runtime and proves no MQTTS
+readiness; exact deployment and backend-included Target/mobile evidence remain
+separate Gates.

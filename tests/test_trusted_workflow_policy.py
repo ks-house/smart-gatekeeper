@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "1feb4b9d14ee2742e228f298557e3335a2060d09"
+MERGED_MAIN_COMMIT = "7be876804c23d91caf252b92e2b859f81aee168a"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -130,6 +130,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "1feb4b9d14ee2742e228f298557e3335a2060d09",
     "dbafe9d4f803938d7570ef18769ef0925c6b0230",
     "8e2ec16daad6ead3d981ba476ada67936179a72a",
     "aebad8ef398e7d5a69e192547543424931ed38af",
@@ -449,7 +450,7 @@ def validate_trusted_workflow_structure(
 
 
 class TrustedWorkflowPolicyTest(unittest.TestCase):
-  def assert_candidate_baseline_is_exact(self, policy):
+  def assert_current_main_baseline_is_exact(self, policy):
     self.assertEqual(policy["format_version"], 3)
     self.assertEqual(policy["protected_paths"], list(MERGED_MAIN_DIGESTS))
     self.assertEqual(len(policy["protected_paths"]), 83)
@@ -462,10 +463,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     self.assertEqual(len(policy["approved_bundles"]), 1)
     persistent = policy["approved_bundles"][0]
-    self.assertEqual(
-        persistent["id"],
-        "future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline",
-    )
+    self.assertEqual(persistent["id"], "current-main-baseline")
     self.assertEqual(persistent["mode"], "persistent-baseline")
     expected_source = {
         "repository": "ks-house/smart-gatekeeper",
@@ -1008,19 +1006,16 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           is_descendant,
       )
 
-  def test_transition_has_one_exact_candidate_baseline(self):
+  def test_final_rotation_has_one_current_main_baseline(self):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
-    self.assert_candidate_baseline_is_exact(policy)
+    self.assert_current_main_baseline_is_exact(policy)
     ancestry = mock.Mock(return_value=True)
     bundle = self.verify_merged_main_digest_map(
         policy, MERGED_MAIN_DIGESTS, is_descendant=ancestry
     )
-    self.assertEqual(
-        bundle["id"],
-        "future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline",
-    )
+    self.assertEqual(bundle["id"], "current-main-baseline")
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, MERGED_MAIN_COMMIT)
     self.assertEqual(
         {"persistent-baseline"},
@@ -1094,7 +1089,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
       del bundle["files"][lock_path]
     trusted.validate_policy(removed)
     with self.assertRaises(AssertionError):
-      self.assert_candidate_baseline_is_exact(removed)
+      self.assert_current_main_baseline_is_exact(removed)
 
     modified = dict(MERGED_MAIN_DIGESTS)
     modified[lock_path] = "0" * 64
@@ -1117,10 +1112,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         ref=future_ref,
         is_descendant=ancestry,
     )
-    self.assertEqual(
-        bundle["id"],
-        "future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline",
-    )
+    self.assertEqual(bundle["id"], "current-main-baseline")
     ancestry.assert_called_once_with(MERGED_MAIN_COMMIT, future_ref)
 
     with self.assertRaisesRegex(trusted.PolicyError, "source repository/ref"):
@@ -1135,7 +1127,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     policy = trusted.load_policy(
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
-    self.assert_candidate_baseline_is_exact(policy)
+    self.assert_current_main_baseline_is_exact(policy)
     mutations = [("repository", "attacker/fork"), ("commit", "f" * 40)]
     mutations.extend(("commit", commit) for commit in RETIRED_SOURCE_COMMITS)
     for field, value in mutations:
@@ -1144,7 +1136,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         mutated["approved_bundles"][0]["source"][field] = value
         trusted.validate_policy(mutated)
         with self.assertRaises(AssertionError):
-          self.assert_candidate_baseline_is_exact(mutated)
+          self.assert_current_main_baseline_is_exact(mutated)
 
     runtime_identities = [
         ("attacker/fork", MERGED_MAIN_COMMIT),
@@ -1199,7 +1191,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
       }
     trusted.validate_policy(partial)
     with self.assertRaises(AssertionError):
-      self.assert_candidate_baseline_is_exact(partial)
+      self.assert_current_main_baseline_is_exact(partial)
 
     reordered = copy.deepcopy(policy)
     reordered["protected_paths"][5], reordered["protected_paths"][6] = (
@@ -1208,7 +1200,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     )
     trusted.validate_policy(reordered)
     with self.assertRaises(AssertionError):
-      self.assert_candidate_baseline_is_exact(reordered)
+      self.assert_current_main_baseline_is_exact(reordered)
 
   def test_merged_main_swapped_mixed_partial_and_digest_mutations_are_rejected(self):
     policy = trusted.load_policy(
@@ -1250,7 +1242,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     mutated["approved_bundles"][0]["files"]["backend/app/main.py"] = "0" * 64
     trusted.validate_policy(mutated)
     with self.assertRaises(AssertionError):
-      self.assert_candidate_baseline_is_exact(mutated)
+      self.assert_current_main_baseline_is_exact(mutated)
     with self.assertRaises(trusted.PolicyError):
       self.verify_merged_main_digest_map(mutated, MERGED_MAIN_DIGESTS)
 
@@ -1266,7 +1258,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
     })
     trusted.validate_policy(extra)
     with self.assertRaises(AssertionError):
-      self.assert_candidate_baseline_is_exact(extra)
+      self.assert_current_main_baseline_is_exact(extra)
 
 
 class TrustedWorkflowStructureTest(unittest.TestCase):
