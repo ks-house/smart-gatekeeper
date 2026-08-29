@@ -4976,3 +4976,9 @@
 - All nine Backend ACL API tests passed, including exact credential status/activity and the negative legacy-device-only readiness case.
 - Flutter analysis reported no findings and all 49 Flutter tests passed, including identity request, unavailable-state, activity truth/deduplication and unified-navigation contracts.
 - The new Android notification policy has focused JVM coverage and awaits hosted Gradle compilation. The phone is disconnected, so APK installation, notification delivery, connected screen readback, Target background transitions and physical door evidence remain pending.
+
+## [2026-08-30] compile | Authorize exact credential-bound mobile P0 bundle
+
+- Reviewed immutable PR #266 candidate `c80933a411990022bf14b075b18260a127cb590c`; among 83 protected paths it changes exactly the personal ACL API, ACL management service, hosted user page and direct ACL API tests.
+- Bound those normalized blobs to `a262c8f6...`, `4c703860...`, `4423c3e0...` and `c478d95f...` in the sole future persistent bundle while preserving all other protected bytes and exact workflow/action inventories.
+- This policy-only candidate changes no runtime or NAS state. Its merge, policy-history connection into PR #266, fresh CI, feature merge, final baseline rotation and deployment remain separate Gates.
