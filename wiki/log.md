@@ -4753,3 +4753,9 @@
 - Owner root-only evidence confirms the route-corrected API repeated the same MQTTS subscriber `TimeoutError` and bounded ACL publish failures after DB health, migration and startup. This invalidates the narrower internal-data-bridge hypothesis; legacy recovery is externally verified with `/live=200`, MQTT true and only expected `legacy_prearm_retired=false` keeping legacy `/ready=503`.
 - Production API, DB and one-shot migrator now share one routable `data` bridge and the unused API `edge` attachment is removed, eliminating Engine 24 default-gateway ambiguity instead of trying to prioritize two routes. DB 3306 remains unpublished, base Compose has no host API port, and the Synology overlay still publishes only `127.0.0.1:8000`.
 - Updated rendered/source network assertions and synchronized operations, deployment, status and hardware evidence docs. This is a source candidate only; trusted-policy authorization, hosted CI, exact NAS deployment, MQTT readiness and backend-included Target/mobile access remain separate Gates.
+
+## [2026-08-29] compile | Authorize deterministic single-network backend candidate
+
+- Reviewed immutable candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`: exactly production/Synology Compose, the operations contract, and the direct NAS deployment test change among protected paths. API, DB and migration use one routable bridge while DB remains unpublished and Synology API publication remains loopback-only.
+- Replaced the current source identity with `future-dsm-single-network-8e2ec16-persistent-baseline`, preserving the complete ordered 83-path map and pinning the four normalized candidate digests `321a6221...`, `42f04b42...`, `b5c6542f...` and `673467ab...`.
+- This policy-only candidate changes no NAS state and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.
