@@ -4956,3 +4956,10 @@
 - Targeted Flutter analysis completed with no findings; 11 focused status/control tests and all 45 Flutter tests passed.
 - Android debug Kotlin compilation and the complete `gattworker.*` unit selector passed, including the new health projection field.
 - All 317 repository contract tests passed with one expected platform-specific skip. These are source/build results; production-signed publication, replacement install and on-device visual readback remain pending.
+
+## [2026-08-30] compile | Tag mobile usability baseline and audit product gaps
+
+- Created and pushed annotated tag `baseline-mobile-usability-2026-08-30`; it dereferences to exact main `38fe3b164e6615a9b727910a7776de5d5747eec7`, whose CI-published identities are mobile `1.0.0-g38fe3b1` build `30501` and Target `2.1.359+main.g38fe3b1`.
+- Audited the Flutter shell, hosted WebView, Backend user/status/history routes, native wake/GATT health, updater and existing commercial UX/manual contracts. The phone is disconnected, so the tag and audit do not claim installation or connected visual/physical acceptance.
+- Added `mobile_usability_improvement_plan.md`, separating implemented foundations from unwired or missing mobile product flows and prioritizing authoritative credential state, a plain-language native Home, truthful activity/results, recovery, update UX, localization/accessibility, support and measured latency.
+- The audit found that the WebView status still depends on a retired device-ID lookup and its recent-history widget calls an administrator-only endpoint without the required admin contract. The plan requires credential-bound replacements and keeps admin audit access out of the app.

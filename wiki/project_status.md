@@ -853,3 +853,21 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   44-test Flutter suite and the 316-test repository contract suite pass (one
   platform-specific test skipped). Signed APK publication, install and
   connected on-device visual confirmation remain separate release evidence.
+
+## 2026-08-30 mobile usability planning baseline
+
+- Annotated tag `baseline-mobile-usability-2026-08-30` is pushed and
+  dereferences to exact main
+  `38fe3b164e6615a9b727910a7776de5d5747eec7`. Its published identities are
+  mobile `1.0.0-g38fe3b1` build `30501` and Target
+  `2.1.359+main.g38fe3b1`; the disconnected phone means installation and visual
+  acceptance remain unclaimed.
+- The source-backed plan in `mobile_usability_improvement_plan.md` prioritizes a
+  native plain-language Home, credential-bound tenant/door state, truthful
+  activity/results and reason-specific recovery before localization,
+  accessibility, support and measured latency iteration.
+- Current product gaps include the WebView's retired device-ID status authority,
+  its non-functional user history call to an administrator-only API, unwired
+  `DoorState`/`EnrollmentState` models, no durable user activity notification,
+  mixed hard-coded ko/en copy and engineering controls in the normal Smart Key
+  tab. No implementation change is included in this planning baseline.

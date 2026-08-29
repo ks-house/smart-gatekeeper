@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (mobile control and diagnostics now share one two-tab settings destination in source and tests; signed APK publication/install and visible connected validation remain pending)
+> Last updated: 2026-08-30 (mobile usability baseline tagged and implementation gaps prioritized; phone install and connected walkthrough remain pending)
 
 ---
 
@@ -71,6 +71,7 @@
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |
 | [flutter_thin_ui.md](flutter_thin_ui.md) | #21/#133 Flutter Thin UI, terminal 1-tap immediate local GATT open, enrollment, OEM recovery and independent OTA |
 | [mobile_commercial_ux.md](mobile_commercial_ux.md) | #51 capability-based recovery shell, fresh-install native wake, authenticated Target resolution, signed updater, truthful states, privacy/accessibility/localization |
+| [mobile_usability_improvement_plan.md](mobile_usability_improvement_plan.md) | Tagged mobile baseline, current source-backed UX gaps, native Home/activity/settings target, phased P0/P1/P2 delivery and acceptance metrics |
 | [hardwareless_implementation_gates.md](hardwareless_implementation_gates.md) | #22 Two-tier authorization gate structure, software release candidate G0-SW validation, and physical G0-HW fail-closed boundaries |
 | [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest와 workflow/action exact inventory Gate, policy rotation, self-policy/status-context 잔여 경계 |
 
@@ -120,6 +121,7 @@
 | 현재 검증 상태와 E2E 절차 | [hardware_test.md](hardware_test.md) |
 | #54 physical Gate pending-only template | [physical_gate_preparation.md](physical_gate_preparation.md) |
 | 앱/서비스 상태별 동작 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#3-서비스-생애주기) |
+| 모바일 사용성 미구현·개선 계획 | [mobile_usability_improvement_plan.md](mobile_usability_improvement_plan.md) |
 | 화면 OFF·앱 종료 감사 | [mobile_app_background_audit.md](mobile_app_background_audit.md) |
 | 화면 OFF 출입 실패 상세 분석 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) |
 | 모바일 병목 근본 재설계 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) |
