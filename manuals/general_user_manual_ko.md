@@ -78,6 +78,11 @@ Smart Gatekeeper는 Android 앱, backend, ESP32-C6 Target, 거리 센서와 rela
 
 ## 7. 앱·Target 업데이트와 rollback
 
+정상 앱의 `설정`에서 현재 설치 버전, 배포 가능한 버전, 다운로드 진행률과
+교체 설치 후 첫 실행 상태를 함께 확인한다. 설치 버튼은 Android 설치 확인
+화면으로 이어지며, 사용자가 취소하거나 검증이 실패하면 기존 앱과 자격을
+삭제하지 않는다. `다운로드 완료`는 설치 완료가 아니다.
+
 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
 |---|---|---|---|---|---|---|---|---|
 | 사용자 | primary/secondary HTTPS metadata, pinned key, 충분한 저장 공간 | `Check verified app update` | `checking → available/healthy/failed`; 서명·schema·시간·protocol 불일치는 failed | `UpdateChecker`, `SignedUpdateManifest` | signed manifest, reason; production signature **PENDING** | metadata/download 각 60초 검증 목표 | primary/fallback 각 1회 | failure reason과 artifact digest를 release owner에 전달 |
@@ -103,6 +108,12 @@ Smart Gatekeeper는 Android 앱, backend, ESP32-C6 Target, 거리 센서와 rela
 - TalkBack으로 제목→상태→누락 요구사항→주요 행동 순서와 live-region 상태를 읽는다.
 - 200% 글자 크기, 작은 화면, 가로 화면에서 버튼과 reason이 잘리지 않는지 확인한다.
 - 색상만으로 성공·실패를 구분하지 않고 항상 상태 텍스트와 reason을 확인한다.
-- 앱은 OS locale `ko`/`en`을 선언하지만 첫 실행·recovery 화면 일부는 한국어·영어가 혼합되어 있다. 완전한 영문 사용성은 `GAP-51-04`가 해결되기 전까지 보장하지 않는다.
+- 정상 Home/Activity/Settings와 지원 흐름은 생성된 `ko`/`en` 리소스로 OS
+  언어를 따른다. 고급 진단과 일부 첫 실행/recovery 문구의 완전한 영문
+  인수는 연결된 화면 검증 전까지 보장하지 않는다.
 
 지원 bundle에는 ticket ID, 시간대, app/firmware/backend version, opaque target/session/boot/event ID, reason, state transition, artifact SHA-256와 마지막 관찰 결과만 포함한다. 비밀번호, token, private key, proof, nonce, 원본 tenant/unit/name/MAC, 주소와 URL query는 제거한다. 자세한 절차는 [지원·사고 대응 핸드북](support_incident_handbook_ko.md)을 따른다.
+
+앱의 `설정 → 지원 리포트`에서 먼저 제거된 내용만 미리 본다. 복사 동의
+체크 전에는 복사할 수 없으며, 동의 후 복사한 JSON만 승인된 지원 채널에
+붙여 넣는다. 화면 캡처나 로그 전체를 대신 보내지 않는다.

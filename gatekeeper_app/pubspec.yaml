@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  intl: any # Pinned transitively by the CI Flutter SDK.
   webview_flutter: ^4.7.0
   permission_handler: ^11.3.1
   http: ^1.2.1
@@ -33,6 +34,7 @@ dev_dependencies:
   flutter_lints: ^3.0.0
 
 flutter:
+  generate: true
   uses-material-design: true
   assets:
     - assets/source_commit.txt

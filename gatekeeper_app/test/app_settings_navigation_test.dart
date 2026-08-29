@@ -18,7 +18,10 @@ void main() {
     expect(settings, contains('SmartKeyControlScreen(embedded: true)'));
     expect(settings, contains('DebugScreen(embedded: true)'));
 
-    expect(home, contains("final titles = ['홈', '활동', '설정']"));
+    expect(
+        home,
+        contains(
+            'final titles = [strings.home, strings.activity, strings.settings]'));
     expect(home, contains('const AppSettingsScreen()'));
 
     expect(webView, contains('const AppSettingsScreen()'));

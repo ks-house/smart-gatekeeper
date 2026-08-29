@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/generated/app_localizations.dart';
 import '../services/commercial_models.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/mobile_activity_store.dart';
@@ -10,6 +11,7 @@ import '../services/native_gatt_worker_health.dart';
 import '../services/native_wake_registration.dart';
 import '../services/update_checker.dart';
 import 'app_settings_screen.dart';
+import 'support_report_screen.dart';
 import 'web_view_screen.dart';
 
 class SmartKeyHomeScreen extends StatefulWidget {
@@ -31,6 +33,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   bool _busy = false;
   MobileIdentityStatus _identityStatus = MobileIdentityStatus.unavailable;
   NativeGattWorkerHealth? _health;
+  UpdateExperience? _updateExperience;
   List<MobileActivityItem> _activity = const [];
   List<MobileLifecycleEvent> _lifecycle = const [];
   String? _actionMessage;
@@ -40,6 +43,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _updates.downloadProgress.addListener(_refreshUpdateProgress);
     _loadAll();
     _healthTimer = Timer.periodic(
       const Duration(seconds: 1),
@@ -53,17 +57,28 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
 
   @override
   void dispose() {
+    _updates.downloadProgress.removeListener(_refreshUpdateProgress);
     _healthTimer?.cancel();
     _identityTimer?.cancel();
     super.dispose();
+  }
+
+  void _refreshUpdateProgress() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadAll() async {
     await Future.wait<void>([
       _refreshHealth(),
       _refreshIdentity(),
-      _updates.checkForUpdates(),
+      _refreshUpdate(),
     ]);
+  }
+
+  Future<void> _refreshUpdate() async {
+    await _updates.checkForUpdates();
+    final experience = await _updates.readExperience();
+    if (mounted) setState(() => _updateExperience = experience);
   }
 
   Future<void> _refreshHealth() async {
@@ -163,20 +178,20 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
     return '요청을 완료하지 못했습니다. 고급 진단에서 상태를 확인해주세요.';
   }
 
-  String get _readinessTitle {
+  String _readinessTitle(AppLocalizations strings) {
     if (_identityStatus.nextAction == 'status_unavailable') {
-      return '상태 확인 필요';
+      return strings.statusCheckNeeded;
     }
     if (_identityStatus.accessReady && _health?.handsFreeReady == true) {
-      return '스마트키 사용 가능';
+      return strings.smartKeyAvailable;
     }
-    if (_identityStatus.accessReady) return '설정 확인 필요';
+    if (_identityStatus.accessReady) return strings.setupCheckNeeded;
     return switch (_identityStatus.enrollmentState) {
-      EnrollmentState.pending => '관리자 승인 대기 중',
-      EnrollmentState.readyToEnroll => '스마트키 등록 준비 완료',
-      EnrollmentState.revoked => '스마트키 권한이 해제됨',
-      EnrollmentState.expired => '스마트키 권한이 만료됨',
-      _ => '스마트키 등록 필요',
+      EnrollmentState.pending => strings.registrationPending,
+      EnrollmentState.readyToEnroll => strings.readyToEnroll,
+      EnrollmentState.revoked => strings.credentialRevoked,
+      EnrollmentState.expired => strings.credentialExpired,
+      _ => strings.registrationRequired,
     };
   }
 
@@ -208,28 +223,29 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         _ => _identityStatus.accessReady ? '문 열기' : '다시 확인',
       };
 
-  String _targetState() {
+  String _targetState(AppLocalizations strings) {
     final health = _health;
     if (health == null) return 'Target 상태 확인 중';
     return switch (health.detectionStage) {
-      TargetDetectionStage.waiting => 'Target 감지 대기 중',
-      TargetDetectionStage.detected => 'Target 감지됨',
-      TargetDetectionStage.authenticating => '스마트키 인증 중',
-      TargetDetectionStage.armed => '출입 준비 완료 · 센서 접근 대기',
-      TargetDetectionStage.failed => 'Target 인증 실패',
-      TargetDetectionStage.disabled => '자동 출입 비활성',
+      TargetDetectionStage.waiting => strings.targetWaiting,
+      TargetDetectionStage.detected => strings.targetDetected,
+      TargetDetectionStage.authenticating => strings.targetAuthenticating,
+      TargetDetectionStage.armed => strings.targetArmed,
+      TargetDetectionStage.failed => strings.targetFailed,
+      TargetDetectionStage.disabled => strings.automaticAccessDisabled,
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final titles = ['홈', '활동', '설정'];
+    final strings = AppLocalizations.of(context);
+    final titles = [strings.home, strings.activity, strings.settings];
     return Scaffold(
       appBar: AppBar(
-        title: Text('Smart Key · ${titles[_tab]}'),
+        title: Text('${strings.appTitle} · ${titles[_tab]}'),
         actions: [
           IconButton(
-            tooltip: '새로고침',
+            tooltip: strings.refresh,
             onPressed: _loadAll,
             icon: const Icon(Icons.refresh),
           ),
@@ -242,16 +258,20 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (value) => setState(() => _tab = value),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: '홈'),
-          NavigationDestination(icon: Icon(Icons.history), label: '활동'),
-          NavigationDestination(icon: Icon(Icons.settings), label: '설정'),
+        destinations: [
+          NavigationDestination(
+              icon: const Icon(Icons.home_outlined), label: strings.home),
+          NavigationDestination(
+              icon: const Icon(Icons.history), label: strings.activity),
+          NavigationDestination(
+              icon: const Icon(Icons.settings), label: strings.settings),
         ],
       ),
     );
   }
 
   Widget _home() {
+    final strings = AppLocalizations.of(context);
     final ready =
         _identityStatus.accessReady && _health?.handsFreeReady == true;
     return RefreshIndicator(
@@ -261,7 +281,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         children: [
           Semantics(
             liveRegion: true,
-            label: '$_readinessTitle. $_readinessDetail',
+            label: '${_readinessTitle(strings)}. $_readinessDetail',
             child: Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -274,7 +294,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
                       color: ready ? Colors.greenAccent : Colors.amberAccent,
                     ),
                     const SizedBox(height: 12),
-                    Text(_readinessTitle,
+                    Text(_readinessTitle(strings),
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 8),
@@ -304,7 +324,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
           Card(
             child: ListTile(
               leading: const Icon(Icons.sensors),
-              title: Text(_targetState()),
+              title: Text(_targetState(strings)),
               subtitle: Text(_health?.latestDetection == null
                   ? '최근 감지 없음'
                   : '최근 감지 ${_formatTime(_health!.latestDetection!.receivedAt)}'),
@@ -381,6 +401,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   }
 
   Widget _settings() {
+    final strings = AppLocalizations.of(context);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -401,23 +422,49 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
               const Divider(height: 1),
               ValueListenableBuilder<UpdateState>(
                 valueListenable: _updates.stateNotifier,
-                builder: (context, state, _) => ListTile(
-                  leading: const Icon(Icons.system_update),
-                  title: const Text('앱 업데이트'),
-                  subtitle: Text(updateStatusMessage(
-                    state,
-                    version: _updates.remoteVersion,
-                    failureReason: _updates.lastFailureReason,
-                    mandatory: _updates.updateMandatory,
-                  )),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    await _updates.checkForUpdates();
-                    if (_updates.state == UpdateState.available) {
-                      await _updates.downloadUpdate();
-                    }
-                  },
-                ),
+                builder: (context, state, _) {
+                  final current = _updateExperience;
+                  final progress = _updates.downloadProgress.value;
+                  final versionLine = current == null
+                      ? ''
+                      : '${strings.currentVersion} '
+                          '${current.installedVersion}+${current.installedBuild}';
+                  final availableLine = _updates.remoteVersion == null
+                      ? ''
+                      : '\n${strings.availableVersion} ${_updates.remoteVersion}';
+                  final progressLine = progress == null
+                      ? ''
+                      : '\n${(progress * 100).toStringAsFixed(0)}%';
+                  final healthLine = current?.firstRunHealthy == null
+                      ? ''
+                      : current!.firstRunHealthy == true
+                          ? '\n설치 후 앱 상태 확인 완료'
+                          : '\n설치 후 확인 필요: '
+                              '${current.firstRunReason ?? 'UNKNOWN'}';
+                  return Semantics(
+                    button: true,
+                    child: ListTile(
+                      leading: const Icon(Icons.system_update),
+                      title: const Text('앱 업데이트'),
+                      subtitle: Text(
+                          '$versionLine$availableLine$progressLine$healthLine\n'
+                          '${updateStatusMessage(
+                        state,
+                        version: _updates.remoteVersion,
+                        failureReason: _updates.lastFailureReason,
+                        mandatory: _updates.updateMandatory,
+                      )}'),
+                      isThreeLine: true,
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await _refreshUpdate();
+                        if (_updates.state == UpdateState.available) {
+                          await _updates.downloadUpdate();
+                        }
+                      },
+                    ),
+                  );
+                },
               ),
               const Divider(height: 1),
               const ListTile(
@@ -430,8 +477,25 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         ),
         Card(
           child: ListTile(
+            leading: const Icon(Icons.support_agent),
+            title: Text(strings.supportReport),
+            subtitle: Text(strings.supportReportDescription),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SupportReportScreen(
+                  identity: _identityStatus,
+                  health: _health,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Card(
+          child: ListTile(
             leading: const Icon(Icons.monitor_heart_outlined),
-            title: const Text('고급 진단'),
+            title: Text(strings.advancedDiagnostics),
             subtitle: const Text('RSSI, Worker, GATT 단계와 설치자 튜닝'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(

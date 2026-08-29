@@ -69,8 +69,9 @@ class MobileActivityStore {
   Future<List<MobileActivityItem>> ingest(NativeGattWorkerHealth health) async {
     final current = await read();
     final next = _project(health);
-    if (next == null || current.any((item) => item.id == next.id))
+    if (next == null || current.any((item) => item.id == next.id)) {
       return current;
+    }
     final updated =
         <MobileActivityItem>[next, ...current].take(_limit).toList();
     final prefs = await SharedPreferences.getInstance();
