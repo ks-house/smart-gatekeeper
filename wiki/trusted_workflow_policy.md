@@ -862,3 +862,33 @@ bounded transition identities and pins the sole `current-main-baseline` to
 that actual main. The complete ordered 83-path map and two reviewed protected
 digests remain unchanged. This rotation changes no NAS state and proves no
 deployment or readiness.
+
+## 22. Legacy MQTTS port-preservation transition
+
+Protected deployment run `33246998513` proved the production DB and migration
+path but the API remained unready because its MQTT clients attempted the
+hard-coded port 8883 while the retained legacy runtime uses authenticated TLS
+on port 4883. Immutable merge candidate
+`2339f6c9319f973b2b2a3b3062d87b5fb29137dc` preserves that exact runtime port,
+validates it, and renders the hosted Backend fixture explicitly. Relative to
+the current baseline, exactly eight protected normalized blobs change:
+
+- `.github/workflows/backend_security.yml` becomes `e209b1b2...`.
+- `backend/compose.production.yml` becomes `cb0a84db...`.
+- `backend/deploy/README.md` becomes `6db1ae72...`.
+- `backend/deploy/bootstrap_legacy_synology.sh` becomes `cc0a758d...`.
+- `backend/deploy/runtime.env.example` becomes `48a84108...`.
+- `backend/deploy/sgk_backend_deploy.sh` becomes `62181892...`.
+- `backend/deploy/verify_legacy_synology.sh` becomes `c4ab1fdd...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `4d26c7a5...`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-mqtt-port-2339f6c` and
+`future-mqtt-port-2339f6c-persistent-baseline`. After this policy-only PR
+merges, its exact main must be merge-connected into feature PR #234 without
+rebase or squash. Fresh Trusted, OTA and Backend checks remain mandatory,
+followed by a final rotation to the actual feature merge-main.
+
+This authority is source/CI evidence only. It does not install corrected NAS
+helpers, stop the running legacy pair, approve a production run, migrate the
+database, prove API readiness, or complete the mobile/Target access E2E.

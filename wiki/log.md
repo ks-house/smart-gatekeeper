@@ -4663,3 +4663,9 @@
 - Policy-connected PR #231 head `e986fd9ed226c17b0ee588361d85e9736f62e776` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `7236c550c05e8972c7517544d105adea7c957671`.
 - Removed both bounded `b2e7d60` transition identities and pinned the sole `current-main-baseline` to actual main. The complete ordered 83-path map, inventories and two reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS state and proves no deployment/readiness. MQTT endpoint candidate authorization, fresh CI and a new owner maintenance window remain separate Gates.
+
+## [2026-08-29] compile | Authorize exact legacy MQTTS port preservation candidate
+
+- Reviewed immutable merge candidate `2339f6c9319f973b2b2a3b3062d87b5fb29137dc`; relative to the current baseline, exactly the Backend workflow fixture, production Compose, deploy README, bootstrap, runtime example, wrapper, read-only verifier and direct NAS deployment test change as one protected bundle.
+- Added `temporary-mqtt-port-2339f6c` and `future-mqtt-port-2339f6c-persistent-baseline` with the same complete ordered 83-path normalized digest map; all eight candidate digests are pinned and prior feature main `7236c550` is retired from this transition policy.
+- This policy-only candidate changes no NAS file, container or database and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation, exact NAS installation and backend-included access E2E remain separate Gates.
