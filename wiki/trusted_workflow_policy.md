@@ -973,3 +973,34 @@ digests remain unchanged.
 Final policy authority is source/CI evidence only. It changes no NAS network,
 container or database and does not prove MQTT readiness. Exact live deployment
 and backend-included Target/mobile evidence remain separate Gates.
+
+## 26. Deterministic single-network backend transition
+
+Exact protected run `33250299026` invalidated the narrower DSM internal-bridge
+hypothesis: after both API bridges were routable, DB health, migration and API
+startup passed, but MQTTS repeated the same subscriber `TimeoutError`. Owner
+recovery then restored the legacy single-bridge API with MQTT true.
+
+Immutable candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`
+removes API multi-homing. API, DB and the one-shot migrator share one routable
+`data` bridge; DB 3306 remains unpublished, base Compose publishes no API port,
+and the Synology overlay remains loopback-only. Relative to the current
+baseline, exactly four protected normalized blobs change:
+
+- `scripts/ops_commercial_gate.py` becomes `321a6221...`.
+- `backend/compose.production.yml` becomes `42f04b42...`.
+- `backend/compose.synology.yml` becomes `b5c6542f...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `673467ab...`.
+
+The complete ordered 83-path map is pinned by
+`future-dsm-single-network-8e2ec16-persistent-baseline`, whose source is the
+exact candidate and whose ancestry check admits only that commit or a
+merge-connected descendant with identical protected bytes. The policy PR must
+pass against the trusted base and merge first; that exact policy main must then
+be merged into the feature branch without rebase or squash. Fresh Hosted
+Trusted, OTA P0 and Backend checks remain mandatory before feature merge and a
+final policy rotation.
+
+This policy transition changes no NAS file, container, database or network and
+grants no deployment approval. Exact live `/ready` with MQTT true and the
+backend-included Target/mobile access sequence remain separate physical Gates.
