@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; failed production DB is stopped and retained legacy API/DB are recovered; exact backend run 33241850366 remains unapproved pending root-owned wrapper SHA 6a29bf87 installation)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; backend run 33241850366 failed before migration because DSM Compose preserved `cpus: 0`, automatic partial-stack cleanup passed without deleting volumes, and retained legacy API/DB are recovered)
 
 ---
 

@@ -4549,3 +4549,9 @@
 - Owner readback proves `smart-gatekeeper-production-db-1` stopped to `exited` while retaining its exact failed-attempt digest, and the original `gatekeeper-db` plus `gatekeeper-api` restarted to `running`; no volume deletion occurred.
 - Fresh external `/live` returned HTTP 200 for legacy build `7c2764a1a16492ec1620079c8211b47287b1b3fd`. `/ready` returned the expected legacy HTTP 503 with every check true except `legacy_prearm_retired=false`.
 - Protected run `33241850366` remains waiting and unapproved. The next Gate is root-owned wrapper SHA-256 `6a29bf87f1e5b91050cc37c5bcff260564e95abd41dd8749d37a8f63514cf805` installation/readback; installation alone changes no container or database state.
+
+## [2026-08-29] fix | Remove zero-valued DSM NanoCPUs override
+
+- Owner-approved run `33241850366` pulled exact API digest `044a3ab1...` and DB digest `8f1baca0...`, recreated and started the production DB, then proved DSM Compose v2.20.1 preserves `cpus: 0` as an unsupported Docker `NanoCPUs` request. Migration, API readiness and deployment status did not run.
+- The installed wrapper automatically removed only the partial production container and networks with `down --remove-orphans`, never deleted volumes and did not attempt DB rollback. Owner recovery restarted both retained legacy containers; external `/live` is HTTP 200 for build `7c2764a1`, while `/ready` is the expected legacy HTTP 503 with only `legacy_prearm_retired=false`.
+- Removed `cpus` from both production Compose inputs instead of relying on version-dependent zero-reset behavior. Memory/PID/capability/read-only hardening remains; the focused NAS deployment contract passes 13/13 and the backend commercial contract passes 35/35. This is a source candidate pending protected policy authorization, hosted CI and a new live window.

@@ -54,7 +54,6 @@ services:
     cap_drop: ["ALL"]
     pids_limit: 64
     mem_limit: 256m
-    cpus: 0.5
 
   api:
     image: ${API_IMAGE_REPOSITORY:?API image repository is required}@sha256:${API_IMAGE_DIGEST:?API image digest is required}
@@ -136,7 +135,6 @@ services:
     cap_drop: ["ALL"]
     pids_limit: 256
     mem_limit: 512m
-    cpus: 1.0
 
 networks:
   edge: {}
