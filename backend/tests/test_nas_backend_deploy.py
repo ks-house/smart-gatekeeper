@@ -232,6 +232,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         overlay = SYNOLOGY_COMPOSE.read_text(encoding="utf-8")
         self.assertIn("host_ip: 127.0.0.1", overlay)
         self.assertIn('published: "${SGK_API_LOOPBACK_PORT:-8000}"', overlay)
+        self.assertIn("data:\n    internal: false", overlay)
         self.assertNotIn("cpus:", overlay)
         for variable in (
             "MARIADB_DATA_VOLUME",
@@ -244,6 +245,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertNotIn("3306", overlay)
         production = PRODUCTION_COMPOSE.read_text(encoding="utf-8")
         self.assertNotIn("ports:", production)
+        self.assertIn("data:\n    internal: true", production)
         self.assertNotIn("cpus:", production)
         self.assertIn("pids_limit: 64", production)
         self.assertIn("pids_limit: 256", production)
@@ -304,6 +306,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "image: ghcr.io/ks-house/smart-gatekeeper-backend@sha256:" + "a" * 64,
             rendered.stdout,
         )
+        self.assertNotIn("internal: true", rendered.stdout)
         self.assertNotIn("cpus:", rendered.stdout)
 
     def test_mqtt_tls_port_is_preserved_from_legacy_through_compose(self):

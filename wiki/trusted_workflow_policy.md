@@ -948,3 +948,12 @@ This policy transition changes no NAS file, container, database or network. It
 does not prove that the route hypothesis is correct, that the new API is ready,
 or that the Target/mobile/backend access flow succeeds. Those require a new
 approved maintenance window and live evidence after feature merge.
+
+Policy PR #238 passed Hosted Trusted and merge-committed as main
+`7fd54c7ca802a25689e246da7caabc5d095aaaad`. That exact policy main was merged
+into the immutable feature candidate without rebase or squash as
+`df5357ec3685afa33b4ab64b0b58d974a71adde5`; its parents are exactly
+`40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61` and the policy main. Both reviewed
+protected blobs and the complete ordered 83-path map remain unchanged. Fresh
+Hosted Trusted, OTA P0 and Backend checks are still required before feature
+merge; no NAS runtime result follows from this source-history connection.
