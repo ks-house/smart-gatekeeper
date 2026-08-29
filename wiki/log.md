@@ -4765,3 +4765,9 @@
 - Policy PR #242 passed the required Hosted Trusted check and merge-committed as main `0fd6788d93d216283b2bb8dc49eb048c49d331ff`. That exact policy main was merged without rebase or squash into immutable feature candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`.
 - All four reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged; local backend tests pass 138 with two real-MariaDB opt-in skips and policy tests pass 42.
 - Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This ancestry connection changes no NAS runtime and proves no MQTT readiness or backend-included E2E.
+
+## [2026-08-29] compile | Rotate single-network policy to actual feature main
+
+- Policy-connected PR #243 head `81968677ef3e18bdc50abcef186c600894c9e687` passed Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `dbafe9d4f803938d7570ef18769ef0925c6b0230`.
+- Removed transition source `8e2ec16` and pinned the sole `current-main-baseline` to actual main while preserving the complete ordered 83-path map, inventories and four reviewed protected digests.
+- This final policy rotation changes no NAS state and proves no readiness. A fresh exact-main deployment run, owner maintenance window, MQTT true and backend-included access E2E remain open.
