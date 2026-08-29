@@ -4783,3 +4783,9 @@
 - Root-only run `33251769358` evidence proves the single-bridge DB stayed healthy and the API running while the MQTTS subscriber repeated a `TimeoutError` 5.417 seconds after startup; bounded ACL publishes also failed. Readiness traffic reached the API from bridge gateway peer `192.168.0.1`, and owner restart restored legacy `/live=200` with MQTT true.
 - The Synology overlay now maps the unchanged runtime `MQTT_HOST` to Docker `host-gateway` only inside the API container. Paho still connects with the public certificate hostname, preserving TLS SNI and hostname verification while avoiding public-IP NAT hairpin to the NAS-published 4883 listener.
 - Added source, rendered-Compose and commercial contract assertions and synchronized deployment/status evidence. This is source only; trusted authorization, hosted CI, exact NAS `/ready` with MQTT true, and backend-included mobile/Target access remain separate Gates.
+
+## [2026-08-29] compile | Authorize exact Synology MQTT host-gateway candidate
+
+- Reviewed immutable feature candidate `1feb4b9d14ee2742e228f298557e3335a2060d09`; relative to feature main `dbafe9d4`, exactly the Synology Compose overlay, commercial contract and direct NAS deployment test change among protected paths.
+- Replaced the current source identity with `future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `8859e089...`, `307d0486...` and `e90cec4c...`.
+- This policy-only candidate changes no NAS state and grants no deployment approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.

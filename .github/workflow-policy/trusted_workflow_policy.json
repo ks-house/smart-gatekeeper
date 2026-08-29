@@ -100,11 +100,11 @@
   },
   "approved_bundles": [
     {
-      "id": "current-main-baseline",
+      "id": "future-nas-mqtt-host-gateway-1feb4b9-persistent-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "dbafe9d4f803938d7570ef18769ef0925c6b0230"
+        "commit": "1feb4b9d14ee2742e228f298557e3335a2060d09"
       },
       "files": {
         ".github/workflows/deploy.yml": "88cdf941157c778e626ace7977c2bdb2e860b50f5e21a3871b9b9cb2cd7dffea",
@@ -120,7 +120,7 @@
         "src/OtaManager.cpp": "36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7",
         ".github/workflows/backend_security.yml": "e209b1b2a9473453feb302a6e8c783fef2e7df422ba24de46087d239de5294b5",
         ".orca/scripts/setup_worktree.ps1": "07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab",
-        "scripts/ops_commercial_gate.py": "321a622173e6cb784009c48a02f35ed444aeafde1fde344bb04f3642158d88e6",
+        "scripts/ops_commercial_gate.py": "8859e089d65936fa6fa15964e9f06fa774a26d7bb3340ad8e85d878fc385f09a",
         "ops/backend_trusted_bundle_paths.json": "7b15ef495c227c21d991a48455dd159ae768b18758faa567670b4b0a44793f22",
         "ops/evidence_sources.json": "49d23f9125f65db4ba0e4398e742bcf7f41b34174b2df3d47aef1efa4fbb951b",
         "ops/fixtures/evidence_adversarial_v1.json": "c2bbc316b4730a28e873abc3017f533afab2e6d7d45f95e29e228b661f72c04f",
@@ -145,7 +145,7 @@
         "backend/app/target_boot_registry.py": "7650ad165594d3a35ee59fafa36ce1f6cbc0ffa4fd8b3dfb98873339a83859dd",
         "backend/app/target_acl_delivery.py": "3888c4fb5d5814471e6d1827d6227015a730683eee089733b65b8703fdb1093d",
         "backend/compose.production.yml": "42f04b42431d4df34bf33220536b1ecf6d761f4eff8cbb91b81f61a1be15cc71",
-        "backend/compose.synology.yml": "b5c6542fdc5f90814ffb79c941f18501d5c22662ec8932e1f7a5897178c88d13",
+        "backend/compose.synology.yml": "307d0486815d178f8faae245129904fd08fef2cf9c5b565dc3a7c63656d718af",
         "backend/db/Dockerfile": "317ad438b9d2ce25325027b5b1170f92d14c45f536ba413bd0d3ca853fd73c2a",
         "backend/db/migrations/002_acl_management_expand_down.sql": "19c26782df1ef78755681805839e704f3adaf83cce1dec4b29c4ecdf1c0cf687",
         "backend/db/migrations/002_acl_management_expand_up.sql": "aa3b07f195c0502434f8ad5ba633b0d46d6b04f7e21fa0ff22215fb136746543",
@@ -183,7 +183,7 @@
         "backend/tests/test_home_assistant_bridge.py": "eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe",
         "backend/tests/test_legacy_ota_independence.py": "5819701b2b2fc5c9c0e2b7bbaf710f23360d6a0df36c1966c345621dc4aceca4",
         "backend/tests/test_migrations.py": "3f29ea27716280a88dd89456b1450a51ccba0c162ede69258edd34b6def59913",
-        "backend/tests/test_nas_backend_deploy.py": "673467ab5c008907bf200d3b4c1dec623841e0dbb24a1c3aff7c01ff24246cca",
+        "backend/tests/test_nas_backend_deploy.py": "e90cec4c98de604cd6369b95844b983240bb7e78a002857eca13a0bd40cf3b91",
         "backend/tests/test_ops_api.py": "faf541fdbbf7db438ab2c838767a431ea524f37d11ee963ca7dadea6f6d806ea",
         "backend/tests/test_ops_commercial_gate.py": "0bc3396d0705e4d4328092c6d87ac66352c297095108336f19c0db87e7a16d94",
         "backend/tests/test_ops_runtime.py": "322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519",
