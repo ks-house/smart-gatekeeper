@@ -4867,3 +4867,9 @@
 - Policy-connected PR #254 head `8b673fc5b4a91de56c2eb241e6f8e7da3fcae261` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `d50b98f9c1e4e046fb62d1e8698c0ed2407291fe`.
 - Replaced transition source `0144613` with the sole `current-main-baseline` at actual main while preserving the complete ordered 83-path map, inventories and three reviewed protected digests.
 - This final policy rotation changes no NAS runtime. The deployed backend remains exact source `db37772d` and externally ready; installing the CI-only wrapper correction is not required for current service continuity, while backend-included device E2E remains open.
+
+## [2026-08-29] test | Pass deployed-backend mobile and Target core loop
+
+- With exact backend `db37772de5a3f18be7bcaa73170933ab18442475` deployed and externally `/ready=200`, ADB-authorized Fold7 app `1.0.0-gd9ecc87` restarted into a native beacon action-1 session. Android WorkManager returned `SUCCESS`; the dashboard reported `HEALTHY`, `native_gatt`, hands-free ready and `Presence → ARMED` in 4,509 ms.
+- About 47 seconds later, the terminal action-2 button completed another authenticated GATT session and displayed `문이 열렸습니다 (4909ms)`. Independent CH343 serial recorded the second connection plus relay-command ON completion and timer-bound OFF completion without reset.
+- This passes the requested deployed-backend software/FSM/GPIO command loop across NAS, mobile and Target. No contact voltage/current, actuator, actual door motion, AJ-SR04T threshold or repeated latency SLO was observed, so physical opening remains unclaimed.
