@@ -4417,3 +4417,9 @@
 - Production-signed Android `1.0.0-gd614d56` / 24201 and Target `2.1.302+main.gd614d56` repeated action-1 followed by terminal action-2 `문이 열렸습니다 (5403ms)` with Target relay-command ON then OFF, but the successful screen also showed a red initialization-failure banner.
 - Root cause was `BleScanner.startScanning`: `BLE_OWNER_EXCLUDED` from `initializeScanning` during the intentional native-GATT credential lease entered the generic `logError` and failure-notification path even though issue #158 already treats the same ownership code as recoverable at the ranging boundary.
 - Issue #204 now classifies only that initialization result as an expected transition, keeps stopped/watchdog automatic recovery and emits a neutral diagnostic without `latestError`; all other initialization failures remain user-visible. Focused/hosted tests and production-signed connected absence evidence remain required before deployment is claimed.
+
+## [2026-08-29] compile | Authorize exact NAS first-adoption candidate
+
+- Reviewed immutable PR #206 feature commit `43c775969b082397ceb063e7ef929307a72d4b74`; its sole protected delta is `backend/deploy/README.md`, normalized SHA-256 `9940c34e...`, and it changes no executable backend, workflow, migration or wrapper byte.
+- Added exact and future persistent identities with the same complete ordered 83-path map. The prior `618220e` baseline is retired; regressions require exact repository/SHA, ancestry, inventories and indivisible protected bytes.
+- This policy-only candidate changes no NAS runtime, container or database state and grants no `production` approval. Policy merge, merge-connection into PR #206, fresh CI, protected approval, deploy evidence and backend-included E2E remain separate Gates.
