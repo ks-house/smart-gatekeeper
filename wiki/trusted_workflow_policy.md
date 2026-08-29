@@ -555,3 +555,32 @@ approve the protected `production` environment. Deployment success still
 requires the post-merge job to return `status=deployed`, exact `source_sha`,
 matching status readback and HTTP readiness. Failure recovery remains starting
 the untouched legacy `gatekeeper-db` and `gatekeeper-api` containers.
+
+## 9. Synology Compose Docker-path correction candidate
+
+Reviewed immutable PR #208 feature commit
+`750a5456fae988c2595098dcec01f410c8941d4b`. It corrects the exact failure
+observed in main deploy run `33235108484`: `compose_for_release` passed the
+non-exportable shell function name `docker` to `env`, which could not resolve
+an executable even though the wrapper had already selected Synology's absolute
+Container Manager CLI. The feature invokes `"$DOCKER_BIN" compose` and adds a
+source regression rejecting the bare form.
+
+Relative to current policy main, exactly two protected normalized blobs change:
+
+- `backend/deploy/sgk_backend_deploy.sh` becomes
+  `5f108cc233fdab5194c4522b06fb9daa8436aef337a49136e838bcfd5177df8e`.
+- `backend/tests/test_nas_backend_deploy.py` becomes
+  `97fcdbcd25be718528f0241e6490ef11771535e856a8d7aacf6290456d1a5b18`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-synology-docker-path-750a545` and
+`future-synology-docker-path-750a545-persistent-baseline`. After this
+policy-only PR merges, its main must be merge-connected into PR #208 without
+rebase or squash, followed by fresh Trusted/OTA/Backend checks and an immediate
+final baseline rotation after feature merge.
+
+Policy authority and source correction do not update the root-owned installed
+NAS wrapper. The owner must install exact corrected bytes before retrying the
+protected deployment. Only `status=deployed`, exact `source_sha`, matching
+status readback and loopback/public readiness can close the deployment Gate.
