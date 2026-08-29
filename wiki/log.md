@@ -4599,8 +4599,19 @@
 - Removed both `2b32fc5` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and five reviewed protected digests remain unchanged.
 - This final policy rotation changes no NAS metadata/runtime and proves no deployment/readiness. Exact wrapper and secret metadata installation, maintenance stop, protected retry and backend-included E2E remain open.
 
+## [2026-08-29] fix | Preserve runtime.env bootstrap install arguments
+
+- Post-merge audit found `install_staged_file` expanded from three to five arguments for explicit owner/group/mode, while the unchanged `runtime.env` call still supplied only mode. A NAS bootstrap rerun would therefore fail closed with an unbound third argument before container or DB mutation.
+- Pass explicit `root root 600` for `runtime.env` and pin the exact call in the focused deployment test. Secret file split remains unchanged; no NAS command, metadata change, container action or deployment approval occurred.
+
 ## [2026-08-29] compile | Authorize exact bootstrap runtime.env argument fix
 
 - Reviewed immutable feature commit `ecc189e8d1ab21ad0c797b3a6009f3f12ac48829`; exactly bootstrap and its direct NAS deployment test change as one protected bundle.
 - Added temporary-exact and future persistent identities with the same complete ordered 83-path map, pinning normalized digests `1969b5a8...` and `ce8b1dff...`.
 - This policy-only change grants no production approval and changes no NAS file, secret, container or database. Policy CI/merge, feature merge-connection, fresh CI, final rotation and live deployment remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect bootstrap runtime fix to policy main
+
+- Policy PR #227 passed Hosted Trusted and merge-committed as main `5e357cbccbbb0f5e3e2643d9555eaa8febaf47c5`. That exact policy main is merged into immutable feature commit `ecc189e8d1ab21ad0c797b3a6009f3f12ac48829` without rebase or squash.
+- Both authorized protected feature blobs remain the reviewed bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
+- This source-history connection changes no NAS state and the earlier deployment run remains unapproved.

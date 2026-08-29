@@ -101,7 +101,9 @@ applies_to:
   `0700`; only `db_root_password` stays `root:root 0600`, and API-consumed
   files become `root:10001 0640`. Failure cleanup also preserves root-only API
   logs and non-secret runtime state before removing a partial stack. These are
-  repository changes, not a deployed/readiness pass.
+  repository changes, not a deployed/readiness pass. The post-merge bootstrap
+  audit also requires its unchanged `runtime.env` install call to pass explicit
+  `root root 600` metadata to the expanded helper before any NAS rerun.
 
 - The retained legacy backend is recovered after run `33241850366`; its public
   liveness is restored, but the new exact-digest lane is not deployed
