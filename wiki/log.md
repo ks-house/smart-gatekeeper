@@ -4717,3 +4717,9 @@
 - Retained failure evidence showed healthy DB, running API, successful MQTTS provisioning validation and then subscriber `TimeoutError`; no TLS, certificate or broker-authentication rejection was logged. The recovered legacy single-bridge API reconnects to the same broker host and TLS port 4883.
 - Docker Engine 24 and Compose 2.20 on DSM predate service-network `gw_priority`; the production API's routable `edge` plus internal `data` bridge can therefore leave outbound MQTT on the internal default route. The Synology overlay now makes only `data` routable so either selected bridge can carry MQTTS, while the DB remains unpublished and the API remains bound to host loopback.
 - Added source and rendered-Compose regression assertions. This is a source candidate only; protected CI, immutable images, a new approved maintenance window, `/ready` MQTT true and backend-included Target/mobile evidence remain mandatory.
+
+## [2026-08-29] compile | Authorize exact DSM 24 MQTT route candidate
+
+- Reviewed immutable candidate `40ccecc2bd5d0b35e648f7a5c2d0ed4923fc3b61`; relative to the current baseline, exactly Synology Compose and its direct deployment contract test change as one protected bundle, with normalized digests `29d82f97...` and `de15e6b7...`.
+- Replaced the current source identity with `future-dsm-mqtt-route-40ccecc-persistent-baseline`, preserving the complete ordered 83-path map and admitting only the exact candidate or merge-connected descendants with identical protected bytes.
+- This policy-only candidate changes no NAS file, network, container or database and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included access E2E remain separate Gates.
