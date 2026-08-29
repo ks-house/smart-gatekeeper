@@ -4801,3 +4801,9 @@
 - Policy-connected PR #245 head `799c65152ba4a3edea16c7c18bcd4ad0a4c05736` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `7be876804c23d91caf252b92e2b859f81aee168a`.
 - Removed transition source `1feb4b9` and pinned the sole `current-main-baseline` to actual main while preserving the complete ordered 83-path map, inventories and three reviewed protected digests.
 - This final policy rotation changes no NAS state and proves no readiness. Exact feature-main deployment, owner maintenance window, MQTT true and backend-included access E2E remain open.
+
+## [2026-08-29] compile | Authorize exact DSM public-ingress hairpin candidate
+
+- Reviewed immutable candidate `15005944591a43a5437ccf33f9a945ab7b47809f`; relative to feature main `7be8768`, exactly the deploy README, root wrapper and direct NAS deployment test change among protected paths.
+- Replaced the current source identity with `future-nas-public-ingress-hairpin-1500594-persistent-baseline`, preserving the complete ordered 83-path map and pinning candidate digests `083089b3...`, `3e0fdd66...` and `5968e0ce...`.
+- This policy-only candidate changes no NAS file, container or database and grants no deployment approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation, exact deployment and external/backend-included E2E remain separate Gates.
