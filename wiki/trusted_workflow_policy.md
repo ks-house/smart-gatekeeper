@@ -715,3 +715,32 @@ DSM compatibility digests remain unchanged.
 Final policy authority is still source/CI evidence only. It does not recover
 legacy containers, install the root-owned wrapper, approve production, migrate
 the DB, prove readiness or complete the backend-included access E2E.
+
+## 15. DSM NanoCPUs field-removal transition
+
+Protected run `33241850366` disproved the earlier assumption that Synology
+Compose v2.20.1 treats `cpus: 0` as field deletion. DSM preserved it as a
+Docker `NanoCPUs` request and failed before migration, although the installed
+wrapper then removed the partial production stack without deleting volumes.
+
+Immutable feature commit
+`5a32570a8ec08a2433601dd29ff6ff9c4b31d44d` removes `cpus` from both signed
+Compose inputs. Relative to the current protected baseline, exactly four
+normalized blobs change as one indivisible candidate:
+
+- `backend/compose.production.yml` becomes
+  `8d094aeef780db18d0b97e14ee845dc05eec8bdb8b2df00fa077a3fbc40b6702`.
+- `backend/compose.synology.yml` becomes
+  `1d93e3bf87a950d6e7a38e8412c79d7f1dada7dce76da89f5a4678656003e1a4`.
+- `backend/deploy/README.md` becomes
+  `9ffd1f09bd60b2adbd6814dabf35b797d9ecacdaaf78758c99f40583e78a0125`.
+- `backend/tests/test_nas_backend_deploy.py` becomes
+  `9701fb18f0f5a51374f97a74d47e45c80a3d585adcef741fb949bad5fb026687`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-dsm-nanocpus-removal-5a32570` and
+`future-dsm-nanocpus-removal-5a32570-persistent-baseline`. After this
+policy-only PR merges, its exact main must be merge-connected into feature PR
+#220 without rebase or squash. Fresh Trusted, OTA and Backend checks remain
+mandatory, and the policy must rotate again to the actual feature merge-main.
+This authority changes no NAS runtime and is not deployment/readiness evidence.
