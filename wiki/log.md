@@ -4639,3 +4639,9 @@
 - Reviewed immutable feature commit `b2e7d607bd54d625528390f01f5baa1ac03276f8`; exactly deploy README and its direct NAS deployment test change as one protected bundle with normalized digests `da807427...` and `d97079ed...`.
 - Added temporary-exact and future persistent identities with the same complete ordered 83-path map, retiring previous feature baseline `3fdc615` from this transition policy.
 - This policy-only candidate changes no NAS state and grants no production approval. Separately, owner preflight passed all secret/runtime/volume/DB/ACL identity contracts and exact run `33246998513` entered its approved live deployment step.
+
+## [2026-08-29] fix | Preserve the observed legacy MQTTS port during first adoption
+
+- Exact run `33246998513` passed new DB health, migration `up 007` and API process startup, but retained diagnostics showed MQTT subscriber and ACL publish `ConnectionRefusedError`; `/ready` stayed 503 and cleanup removed only the partial project without volumes or DB rollback.
+- Owner readback proved legacy `MQTT_HOST=tworimpa.synology.me` with `MQTT_PORT=4883`, while generated `runtime.env` omitted the port and production Compose forced `8883`. The retained legacy DB/API were restarted to running.
+- Bootstrap now captures the exact legacy port, safely upgrades only an otherwise byte-identical prior runtime file, verifier requires exact legacy parity, wrapper rejects missing/out-of-range/plaintext `1883`, and Compose consumes the validated value. Focused tests pass; policy authorization, hosted CI and a fresh deployment remain separate Gates.

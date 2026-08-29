@@ -118,7 +118,7 @@ require_file_contract "${API_STATE_DIR}/target_config.json" 10001 10001 600
   die "target config digest mismatch"
 
 expected_runtime_keys="$(printf '%s\n' \
-  MQTT_HOST MQTT_USER DB_RUNTIME_USER COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID \
+  MQTT_HOST MQTT_PORT MQTT_USER DB_RUNTIME_USER COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID \
   COMMAND_SIGNING_KEY_ID ADMIN_TRUSTED_PROXY_IPS ACL_SIGNING_KEY_ID \
   HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE HA_BRIDGE_STATUS_MAX_AGE_SECONDS \
   ACL_PERSONAL_ENROLLMENT_ENABLED ACL_PERSONAL_TENANT_ID ACL_PERSONAL_DOOR_ID \
@@ -131,6 +131,37 @@ actual_runtime_keys="$(
   ' "${DEPLOY_BASE}/runtime.env" | sort
 )" || die "runtime.env contains a malformed line"
 [[ "$actual_runtime_keys" == "$expected_runtime_keys" ]] || die "runtime.env key set mismatch"
+
+runtime_mqtt_port="$(awk -F= '
+  $1 == "MQTT_PORT" {
+    if (++matches > 1) exit 42
+    value = substr($0, length($1) + 2)
+  }
+  END {
+    if (matches != 1) exit 43
+    printf "%s", value
+  }
+' "${DEPLOY_BASE}/runtime.env")" || die "runtime MQTT_PORT is missing or duplicated"
+[[ "$runtime_mqtt_port" =~ ^[0-9]{1,5}$ ]] || die "runtime MQTT_PORT must be numeric"
+(( 10#$runtime_mqtt_port >= 1 && 10#$runtime_mqtt_port <= 65535 )) || \
+  die "runtime MQTT_PORT is outside 1-65535"
+[[ "$runtime_mqtt_port" != "1883" ]] || die "runtime MQTT_PORT must use the TLS listener"
+
+legacy_mqtt_port="$(
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$LEGACY_API" |
+    awk -F= '
+      $1 == "MQTT_PORT" {
+        if (++matches > 1) exit 42
+        value = substr($0, length($1) + 2)
+      }
+      END {
+        if (matches != 1) exit 43
+        printf "%s", value
+      }
+    '
+)" || die "legacy MQTT_PORT is missing or duplicated"
+[[ "$runtime_mqtt_port" == "$legacy_mqtt_port" ]] || \
+  die "runtime MQTT_PORT does not match the retained legacy endpoint"
 
 require_running_legacy_container "$LEGACY_API"
 require_running_legacy_container "$LEGACY_DB"

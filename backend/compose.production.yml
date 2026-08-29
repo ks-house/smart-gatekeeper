@@ -67,7 +67,7 @@ services:
       DB_USER: ${DB_RUNTIME_USER:?existing or new MariaDB runtime user is required}
       DB_PASSWORD_FILE: /run/secrets/db_password
       MQTT_HOST: ${MQTT_HOST:?MQTT_HOST is required}
-      MQTT_PORT: "8883"
+      MQTT_PORT: "${MQTT_PORT:?MQTT TLS port is required}"
       MQTT_USER: ${MQTT_USER:?MQTT_USER is required}
       MQTT_PASSWORD_FILE: /run/secrets/mqtt_password
       MQTT_CA_FILE: /run/secrets/mqtt_ca
