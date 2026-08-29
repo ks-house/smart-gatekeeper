@@ -4567,3 +4567,9 @@
 - Policy PR #221 passed Hosted Trusted and merge-committed as main `bdf7dc0`. That exact policy main is merged into immutable feature `5a32570a8ec08a2433601dd29ff6ff9c4b31d44d` without rebase or squash.
 - The merge preserves the immutable feature parent and policy-main parent; all four authorized protected feature blobs remain the reviewed candidate bytes. Fresh Trusted, OTA and Backend checks are required before feature merge.
 - This source-history connection changes no NAS runtime and proves no migration, readiness or backend-included E2E.
+
+## [2026-08-29] compile | Rotate NanoCPUs removal policy to actual feature main
+
+- Policy-connected PR #220 head `719564f159205cdbabb769037f7783f5e0aaabad` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `b6cab8384efe7b5e046841ff84681b74d0cae113`.
+- Removed both `5a32570` transition identities and pinned the sole `current-main-baseline` to actual feature main. The complete ordered 83-path map, inventories and four reviewed protected digests remain unchanged.
+- This final policy rotation changes no NAS runtime and proves no deployment/readiness. A new owner maintenance stop, protected exact-main run and backend-included E2E remain open.
