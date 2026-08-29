@@ -5001,3 +5001,9 @@
 - Marked P0 PR #266 as merged and documented the #269 P1 source candidate, its exact evidence boundary and the intentionally gated multi-door, replacement-phone, iOS and connected latency scopes.
 - Updated the Korean user procedure for the consolidated normal update card and preview-consent-copy support path.
 - No phone install, Target transition, notification delivery, TalkBack visual result or physical door result is claimed by these source changes.
+
+## [2026-08-30] compile | Rotate trusted policy to merged mobile UX main
+
+- Replaced the transitional mobile P0 bundle identity with the sole `current-main-baseline` sourced from actual merged mobile UX main `2ae453a0206796650ee99da0e0e57b8fb5078598`.
+- Preserved all 83 reviewed normalized protected digests and exact workflow/action inventories; mobile P1 changed no protected path.
+- This policy candidate changes no NAS runtime, container, database, phone installation or Target state; hosted validation and deployment remain separate Gates.

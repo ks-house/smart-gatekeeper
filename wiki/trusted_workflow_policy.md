@@ -1144,3 +1144,18 @@ This final rotation retires source `1500594` and pins the sole
 three reviewed DSM-ingress digests remain unchanged. This policy change affects
 no NAS runtime and proves no deployment; exact NAS apply, external readiness
 and backend-included Target/mobile evidence remain separate Gates.
+
+## 32. Credential-bound mobile UX final baseline
+
+Credential-bound mobile P0 PR #266 merged as main `8ea9ff1f`, and the normal
+language/update/support P1 PR #270 subsequently merged as main
+`2ae453a0206796650ee99da0e0e57b8fb5078598`. P1 changes no protected path; all
+83 normalized protected blobs still match the reviewed P0 candidate map.
+
+This rotation removes the transitional
+`future-mobile-ux-p0-c80933a-persistent-baseline` identity and pins the sole
+`current-main-baseline` plus its regression fixture to actual merged mobile UX
+main `2ae453a`. It changes no workflow/action inventory, NAS runtime, container,
+database, mobile installation or Target state. Hosted policy validation, NAS
+deployment readiness and disconnected-phone physical acceptance remain
+separate evidence Gates.
