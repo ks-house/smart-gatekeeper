@@ -43,10 +43,21 @@ applies_to:
   incorrectly asked `env` to execute the non-exportable shell function name
   `docker`. No deployment evidence or database rollback was claimed; legacy
   recovery and an absolute-CLI wrapper correction are required before retry.
+- The corrected root-installed wrapper SHA-256 `5f108cc2...` was verified and
+  exact-main run `33235596047` at `21a0124f6e4b5dfc300b205073e1b464066355e8`
+  was owner-approved. It passed publication, provenance, signed bundle,
+  Tailscale and forced SSH, then failed closed on the first exact API image pull
+  with GHCR `unauthorized`; the NAS had no registry credential. Compose and
+  migration did not run and DB rollback was not attempted. The owner restarted
+  both retained legacy containers; their runtime state is `running`, public
+  `/live` is HTTP 200 for build `7c2764a1`, and `/ready` is the known HTTP 503
+  with only `legacy_prearm_retired=false`. A source candidate now streams the
+  deployment job's short-lived `github.token` through a versioned envelope and
+  confines Docker auth to the wrapper's per-attempt temporary directory; it is
+  not yet admitted, installed or deployed.
 
-- The backend is already running on the personal Synology NAS, but the
-  new lane is currently a local repository candidate rather than a deployed
-  production system.
+- The legacy backend is again running on the personal Synology NAS, but the new
+  exact-digest lane is not yet deployed production.
 - The existing NAS SFTP-only identity remains suitable for firmware/APK artifact
   delivery but has no remote shell for Compose, migration or readiness work.
 - The implementation and acceptance plan are documented in

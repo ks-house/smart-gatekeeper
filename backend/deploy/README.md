@@ -9,13 +9,18 @@ backend:
    descriptor inside a four-file bundle;
 4. a GitHub-hosted runner joins the tailnet as an ephemeral tagged node;
 5. a restricted SSH key can call only `apply` or `status` on the NAS;
-6. the root-owned wrapper verifies the signature, hashes, repositories,
+6. the runner prefixes the signed bundle with a versioned GHCR authentication
+   envelope derived from its short-lived `github.token`;
+7. the root-owned wrapper keeps that authentication only in its root-only
+   per-attempt temporary directory, verifies the signature, hashes, repositories,
    digests, schema, local volumes and secret files before it pulls anything;
-7. the wrapper starts the DB, runs the backup-first migration, starts the API,
+8. the wrapper starts the DB, runs the backup-first migration, starts the API,
    and records success only after loopback and public `/ready` both pass.
 
 The workflow does not send runtime credentials to the NAS. Runtime secrets
-remain as root-readable files under the NAS deployment directory.
+remain as root-readable files under the NAS deployment directory. The GHCR
+credential is transport-only, is never added to the signed release artifact or
+NAS persistent Docker configuration, and is removed on every success or failure.
 
 ## Files
 
@@ -318,9 +323,12 @@ for file in /volume1/docker/smart-gatekeeper-backend/secrets/*; do
 done
 ```
 
-If the GHCR packages are private, perform a one-time root Docker login on the
-NAS using a read-only package token via `--password-stdin`. The CI deploy key is
-not a registry credential.
+Do not install a long-lived GHCR PAT or root Docker login on the NAS. The
+protected deployment job has `packages: read` and streams only its short-lived
+repository-scoped `github.token` in the `SGK-GHCR-AUTH-V1` envelope immediately
+before the signed bundle. The wrapper writes the encoded Docker auth value only
+under its root-only per-attempt directory and removes it through the common
+cleanup trap. The CI deploy SSH key remains a separate transport credential.
 
 ## 4. Restrict sudo and SSH
 

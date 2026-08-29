@@ -4448,6 +4448,24 @@
 - Removed both `750a545` transition identities and pinned the sole `current-main-baseline` to actual feature main. The ordered 83-path map, inventories and corrected wrapper/test digests remain unchanged.
 - Exact-main backend run `33235596047` has published images/provenance and waits for protected production approval. This rotation does not install the NAS wrapper, stop legacy containers, deploy, prove readiness or complete backend-included E2E.
 
+## [2026-08-29] test | Reopen exact-main NAS deployment maintenance window
+
+- The owner stopped exactly the retained legacy `gatekeeper-api` and `gatekeeper-db` containers; both now report `exited`, without deletion evidence.
+- Final baseline PR #210 is mergeable and its hosted Trusted Workflow Policy check passed, but remains intentionally open until first-adoption deployment succeeds.
+- Protected run `33235596047` remains unapproved pending root-installed wrapper SHA-256 readback `5f108cc233fdab5194c4522b06fb9daa8436aef337a49136e838bcfd5177df8e`; no deployment or readiness result is inferred from the maintenance stop.
+
+## [2026-08-29] test | Reject stale NAS deployment wrapper
+
+- Root-installed wrapper readback returned SHA-256 `c0b30b0149e5d6d466a0b451e7e6b2934d231820d209a9608eded946308711d9`, not the corrected exact-main digest `5f108cc233fdab5194c4522b06fb9daa8436aef337a49136e838bcfd5177df8e`.
+- Protected deployment approval remains withheld because the stale wrapper contains the already reproduced Synology Compose Docker-path failure. The stopped legacy containers remain recoverable by starting the same retained pair.
+
+## [2026-08-29] fix | Stream ephemeral GHCR pull authentication
+
+- The owner installed corrected wrapper SHA-256 `5f108cc233fdab5194c4522b06fb9daa8436aef337a49136e838bcfd5177df8e`; protected run `33235596047` reached the exact API image pull but GHCR returned `unauthorized`. Compose and migration did not run, and no DB rollback was attempted.
+- Both retained legacy containers were restarted. External `4442/live` returned HTTP 200 for build `7c2764a1`; `4442/ready` returned the known legacy HTTP 503 with only `legacy_prearm_retired=false`.
+- Added a versioned stdin envelope carrying only the deployment job's short-lived repository-scoped `github.token`, `packages: read` on that job, and a root-only per-attempt Docker config removed by the common cleanup trap. This is a source candidate pending tests, protected policy authorization, CI, wrapper install and live retry.
+- Previously green policy-only PR #210 was merge-committed as main `2b1f364502d6cdb34afee1395bffb0fecf8d3c92` to establish the corrected Docker-path baseline before authorizing this new protected candidate; it changed no NAS runtime and no later production deployment was approved.
+
 ## [2026-08-29] compile | Authorize ephemeral GHCR pull-auth candidate
 
 - Reviewed immutable PR #211 feature commit `7b54997a8b5316e3d741648211db18f6bd7a4a7f`; its four protected normalized changes are backend workflow `ba723b29...`, deploy README `2a1a9277...`, wrapper `afda60b4...` and direct test `aba8b780...`.
@@ -4459,3 +4477,9 @@
 - Post-merge parent readback found that the policy used an incorrectly expanded `7b54997a...` source identity; the immutable PR #211 feature commit is actually `7b549978239455f12620429ffc06a553a1a0dd41`.
 - Corrected only both policy source identities, their regression constant and the compiled policy page. All four protected candidate digests and the complete ordered 83-path maps remain byte-for-byte unchanged.
 - The first policy merge therefore remains fail-closed rather than authorizing the wrong feature. PR #211 was not updated or merged with that identity; a separate hosted policy correction and fresh merge-connection are required.
+
+## [2026-08-29] compile | Recover exact GHCR policy identity and reconnect feature
+
+- GitHub rejected the first PR #213 administrator merge because `enforce_admins=true` applies the failing trusted-policy check to administrators. With explicit owner approval, only `enforce_admins` was temporarily disabled; PR #213 then merge-committed as `c926a71dab78934719c3123fa68ad16b0edd5d9d`, and `enforce_admins=true`, strict checking and the original required status context were immediately restored.
+- Reconnected immutable PR #211 feature commit `7b549978239455f12620429ffc06a553a1a0dd41` directly to corrected policy main. Both corrected transition identities now name that exact feature commit and retain the reviewed four-file protected digest bundle.
+- The override recovered policy reachability only; it did not deploy to NAS, change containers or database state, prove readiness or complete backend-included access. Fresh Trusted, OTA and Backend checks remain mandatory before feature merge.

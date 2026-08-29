@@ -308,6 +308,7 @@ jobs:
       url: ${{ vars.NAS_PUBLIC_API_URL }}
     permissions:
       contents: read
+      packages: read
       id-token: write
       attestations: write
     steps:
@@ -372,8 +373,12 @@ jobs:
           NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}
           NAS_PORT: ${{ vars.NAS_DEPLOY_PORT }}
           NAS_USER: ${{ vars.NAS_DEPLOY_USER }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          test -n "$GHCR_USERNAME"
+          test -n "$GHCR_TOKEN"
           ssh_options=(
             -i "${RUNNER_TEMP}/sgk-ssh/id_ed25519"
             -p "$NAS_PORT"
@@ -382,8 +387,13 @@ jobs:
             -o StrictHostKeyChecking=yes
             -o "UserKnownHostsFile=${RUNNER_TEMP}/sgk-ssh/known_hosts"
           )
-          ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" apply \
-            < build/backend-release.tar.gz | tee build/nas-deployment.evidence
+          ghcr_auth_b64="$(printf '%s:%s' "$GHCR_USERNAME" "$GHCR_TOKEN" | base64 --wrap=0)"
+          {
+            printf 'SGK-GHCR-AUTH-V1\n%s\n' "$ghcr_auth_b64"
+            cat build/backend-release.tar.gz
+          } | ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" apply \
+            | tee build/nas-deployment.evidence
+          unset ghcr_auth_b64
           grep -Fqx 'status=deployed' build/nas-deployment.evidence
           grep -Fqx 'source_sha=${{ github.sha }}' build/nas-deployment.evidence
           ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" status \
