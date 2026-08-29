@@ -797,3 +797,21 @@ complete ordered 83-path map, inventories and five reviewed secret-access
 digests remain unchanged. It is source/CI authority only: exact NAS file
 metadata, wrapper installation, approved deployment, readiness and
 backend-included access remain separate Gates.
+
+## 19. Bootstrap runtime.env argument transition
+
+Post-merge audit found a fail-closed bootstrap arity regression after the
+secret metadata helper expanded. Immutable feature commit
+`ecc189e8d1ab21ad0c797b3a6009f3f12ac48829` passes explicit
+`root root 600` metadata for `runtime.env` and pins the call in its direct test.
+Exactly two protected normalized blobs change:
+
+- `backend/deploy/bootstrap_legacy_synology.sh` becomes `1969b5a8...`.
+- `backend/tests/test_nas_backend_deploy.py` becomes `ce8b1dff...`.
+
+The complete ordered 83-path map is duplicated in
+`temporary-bootstrap-runtime-ecc189e` and
+`future-bootstrap-runtime-ecc189e-persistent-baseline`. Policy merge,
+merge-connection into PR #226, fresh checks and final rotation remain required.
+This authority changes no NAS state and the previous deployment run remains
+unapproved.
