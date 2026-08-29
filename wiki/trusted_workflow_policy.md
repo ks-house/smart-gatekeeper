@@ -643,3 +643,25 @@ container, database, phone or Target state. Wrapper installation, a new owner
 maintenance stop, protected deployment, exact source/status evidence,
 loopback/public readiness and backend-included access E2E remain separate
 Gates.
+
+## 12. Ephemeral GHCR pull-auth final baseline
+
+The corrected policy PR #213 merge-committed as
+`c926a71dab78934719c3123fa68ad16b0edd5d9d` after an owner-approved one-time
+administrator recovery. Only `enforce_admins` was temporarily disabled; it was
+immediately restored with strict checking and the same required status context.
+That main was merge-connected into immutable feature
+`7b549978239455f12620429ffc06a553a1a0dd41` as PR #211 head
+`35410f0b8f00c7a033f8952bcfd6d8d007199072`. Fresh Trusted, OTA and Backend
+checks passed before feature merge-main
+`42b754d75863072e4ad0af32f2667ff54ceb050c`.
+
+This final rotation removes both `7b549978` transition identities and pins the
+sole `current-main-baseline` to actual feature main `42b754d7`. The complete
+ordered 83-path digest map, exact workflow/action inventories and reviewed
+four-file GHCR-auth bundle remain unchanged.
+
+Final policy authority is not NAS installation or deployment evidence. The
+root-owned NAS wrapper must match `afda60b403988653ed92b0714fa25dc97980d1103c5709d0090fb49e9889ab7e`
+before a new maintenance stop and protected apply. Only exact source/status and
+loopback/public readiness can close the backend deployment Gate.

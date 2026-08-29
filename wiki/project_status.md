@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`이며 owner가 first-adoption을 위해 legacy API/DB 두 컨테이너를 정지한 유지보수 구간이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`이고 실패 후 복구한 legacy API/DB 두 컨테이너가 `running`이다. Ephemeral GHCR pull-auth는 main `42b754d75863072e4ad0af32f2667ff54ceb050c`에 병합됐지만 새 root-owned wrapper 설치와 재배포 증거는 아직 없다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -51,10 +51,12 @@ applies_to:
   migration did not run and DB rollback was not attempted. The owner restarted
   both retained legacy containers; their runtime state is `running`, public
   `/live` is HTTP 200 for build `7c2764a1`, and `/ready` is the known HTTP 503
-  with only `legacy_prearm_retired=false`. A source candidate now streams the
+  with only `legacy_prearm_retired=false`. Main
+  `42b754d75863072e4ad0af32f2667ff54ceb050c` now streams the
   deployment job's short-lived `github.token` through a versioned envelope and
-  confines Docker auth to the wrapper's per-attempt temporary directory; it is
-  not yet admitted, installed or deployed.
+  confines Docker auth to the wrapper's per-attempt temporary directory. Its
+  protected checks passed, but the new wrapper is not yet installed on the NAS
+  and no deployment/readiness result is inferred from the merge.
 
 - The legacy backend is again running on the personal Synology NAS, but the new
   exact-digest lane is not yet deployed production.
@@ -72,13 +74,13 @@ applies_to:
 - Host validation currently passes the focused deployment-contract tests, Compose
   rendering, shell syntax, trusted-input completeness and the 35-check backend
   commercial contract. Separate bootstrap work has prepared the NAS wrapper,
-  tailnet policy and protected GitHub Environment as recorded below. No GHCR
-  image, workflow deployment, database migration, Compose cutover or reverse
-  proxy change has occurred.
-- Before first adoption the owner must separately admit the protected-workflow
-  policy rotation, pass the hosted tagged-runner status preflight, and stop the
-  legacy API/DB in an approved change window. The exact live mounts and first
-  off-NAS isolated restore are already evidenced below. The wrapper rejects another running
+  tailnet policy and protected GitHub Environment as recorded below. GHCR image
+  publication has occurred, but no successful workflow deployment, database
+  migration, Compose cutover or reverse-proxy change has occurred.
+- Before first adoption the owner must install the exact merged wrapper, verify
+  its root-owned digest, and stop the legacy API/DB in a new approved change
+  window before approving the protected deployment. The exact live mounts and
+  first off-NAS isolated restore are already evidenced below. The wrapper rejects another running
   project holding the MariaDB volume or API port and never attempts a blind DB
   rollback.
 - Owner-provided live container inventory now identifies legacy

@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (exact-main Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes without false ownership banner; owner opened NAS first-adoption maintenance window)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; ephemeral GHCR pull-auth merged as backend main 42b754d7, NAS wrapper installation/deployment pending)
 
 ---
 

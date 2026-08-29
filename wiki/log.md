@@ -4483,3 +4483,15 @@
 - GitHub rejected the first PR #213 administrator merge because `enforce_admins=true` applies the failing trusted-policy check to administrators. With explicit owner approval, only `enforce_admins` was temporarily disabled; PR #213 then merge-committed as `c926a71dab78934719c3123fa68ad16b0edd5d9d`, and `enforce_admins=true`, strict checking and the original required status context were immediately restored.
 - Reconnected immutable PR #211 feature commit `7b549978239455f12620429ffc06a553a1a0dd41` directly to corrected policy main. Both corrected transition identities now name that exact feature commit and retain the reviewed four-file protected digest bundle.
 - The override recovered policy reachability only; it did not deploy to NAS, change containers or database state, prove readiness or complete backend-included access. Fresh Trusted, OTA and Backend checks remain mandatory before feature merge.
+
+## [2026-08-29] compile | Rotate ephemeral GHCR auth policy to feature main
+
+- Corrected policy-connected PR #211 head `35410f0b8f00c7a033f8952bcfd6d8d007199072` passed fresh Hosted Trusted, OTA P0 and Backend checks; merge commit produced actual feature main `42b754d75863072e4ad0af32f2667ff54ceb050c`.
+- Removed both `7b549978` transition identities and pinned the sole `current-main-baseline` to actual feature main. The ordered 83-path map, inventories and four reviewed GHCR-auth digests remain unchanged.
+- This policy-only rotation does not install the root-owned NAS wrapper, stop the running legacy containers, apply the release, migrate the database, prove readiness or complete backend-included access.
+
+## [2026-08-29] test | Validate final GHCR auth baseline rotation
+
+- The explicit 42-module repository run passed 451 tests with three documented environment-dependent skips; the focused trusted-policy suite is included and passes 42/42.
+- The backend commercial contract passes all 35 checks. JSON structure, shell syntax and whitespace validation also pass with a sole `current-main-baseline` at `42b754d75863072e4ad0af32f2667ff54ceb050c` and the unchanged 83-path map.
+- These are repository validation results only; no NAS wrapper, container, database, release, phone or Target state changed.
