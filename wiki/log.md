@@ -4759,3 +4759,9 @@
 - Reviewed immutable candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`: exactly production/Synology Compose, the operations contract, and the direct NAS deployment test change among protected paths. API, DB and migration use one routable bridge while DB remains unpublished and Synology API publication remains loopback-only.
 - Replaced the current source identity with `future-dsm-single-network-8e2ec16-persistent-baseline`, preserving the complete ordered 83-path map and pinning the four normalized candidate digests `321a6221...`, `42f04b42...`, `b5c6542f...` and `673467ab...`.
 - This policy-only candidate changes no NAS state and grants no production approval. Policy CI/merge, feature merge-connection, fresh checks, final rotation and live backend-included E2E remain separate Gates.
+
+## [2026-08-29] compile | Merge-connect single-network backend feature to policy main
+
+- Policy PR #242 passed the required Hosted Trusted check and merge-committed as main `0fd6788d93d216283b2bb8dc49eb048c49d331ff`. That exact policy main was merged without rebase or squash into immutable feature candidate `8e2ec16daad6ead3d981ba476ada67936179a72a`.
+- All four reviewed protected candidate blobs and the complete ordered 83-path map remain unchanged; local backend tests pass 138 with two real-MariaDB opt-in skips and policy tests pass 42.
+- Fresh Hosted Trusted, OTA P0 and Backend checks remain mandatory before feature merge. This ancestry connection changes no NAS runtime and proves no MQTT readiness or backend-included E2E.
