@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `f352a78db6870339c8e59f75e28fce0e3c327a07`의 connected ESP32-C6 Target `2.1.301+main.gf352a78`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gf352a78` (`versionCode=24101`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. 새 beacon action 1이 60초 `ARMED` window를 만든 뒤 dashboard action 2가 이를 교체해 terminal `문이 열렸습니다 (4530ms)`와 Target relay-command ON→OFF를 완료했다. 신규 NAS stack은 아직 `status=not-deployed`이며 legacy build `7c2764a1`이 `/live` HTTP 200을 제공하고 `/ready`는 `legacy_prearm_retired=false` 하나 때문에 HTTP 503이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`이며 owner가 first-adoption을 위해 legacy API/DB 두 컨테이너를 정지한 유지보수 구간이다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -22,20 +22,18 @@ applies_to:
 
 ### 2026-08-29 live first-adoption boundary
 
-- Exact-main status-only run `33207086898` used the protected `production`
+- Exact-main status-only run `33234620284` at `d9ecc87e04fc2b0e57cc892e549b02ddce26184a` used the protected `production`
   Environment, ephemeral Tailscale OIDC identity, pinned private NAS endpoint
   and forced SSH dispatcher. The retained evidence is exactly
   `status=not-deployed`; all image publication and `apply` jobs were skipped.
-- A separate public readback still identifies the legacy API build
+- Immediately before the maintenance stop, public readback identified legacy API build
   `7c2764a1a16492ec1620079c8211b47287b1b3fd`: `/live` is HTTP 200, while
   `/ready` is HTTP 503 with every reported check true except
-  `legacy_prearm_retired=false`. This proves the owner maintenance action has
-  not yet occurred; it is not evidence of a new-stack deployment.
-- First adoption remains tracked by issue #190. The owner must back up and set
-  `ACL_LEGACY_DEVICE_LOOKUP_ENABLED=false`, stop exactly `gatekeeper-api` and
-  `gatekeeper-db` without removing either container or volume, and then admit
-  the already-built exact-main deployment. Recovery remains starting those
-  same two legacy containers.
+  `legacy_prearm_retired=false`. The owner then recorded and stopped exactly
+  `gatekeeper-api` and `gatekeeper-db` without removing either container or
+  volume. This opens the issue #190 first-adoption window but is not evidence
+  of new-stack deployment. Recovery remains starting those same legacy
+  containers until `status=deployed`, exact `source_sha` and readiness pass.
 
 - The backend is already running on the personal Synology NAS, but the
   new lane is currently a local repository candidate rather than a deployed
