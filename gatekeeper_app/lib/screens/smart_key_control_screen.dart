@@ -8,7 +8,11 @@ import '../services/native_gatt_worker_health.dart';
 import '../services/update_checker.dart';
 
 class SmartKeyControlScreen extends StatefulWidget {
-  const SmartKeyControlScreen({super.key});
+  const SmartKeyControlScreen({super.key, this.embedded = false});
+
+  /// Hides this feature area's own AppBar when hosted by the unified settings
+  /// screen. Keeping the default preserves direct-route compatibility.
+  final bool embedded;
 
   @override
   State<SmartKeyControlScreen> createState() => _SmartKeyControlScreenState();
@@ -211,10 +215,12 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        title: const Text('Smart Key 대시보드 및 로컬 제어'),
-        backgroundColor: const Color(0xFF1E1E1E),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('Smart Key 대시보드 및 로컬 제어'),
+              backgroundColor: const Color(0xFF1E1E1E),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(

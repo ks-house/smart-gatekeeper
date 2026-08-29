@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (foreground Smart Key Target detection/status card is source- and test-complete with privacy-safe one-second projection; signed APK publication/install and visible connected validation remain pending)
+> Last updated: 2026-08-30 (mobile control and diagnostics now share one two-tab settings destination in source and tests; signed APK publication/install and visible connected validation remain pending)
 
 ---
 

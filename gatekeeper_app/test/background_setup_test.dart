@@ -185,8 +185,7 @@ void main() {
     ));
     await tester.pump();
 
-    expect(find.text('Manual local / remote recovery'), findsOneWidget);
-    expect(find.text('Privacy-redacted diagnostics'), findsOneWidget);
+    expect(find.text('Smart Key 설정 및 진단'), findsOneWidget);
     expect(find.text('Check verified app update'), findsOneWidget);
     expect(find.text('Open Android settings'), findsOneWidget);
     final retry = find.byKey(const Key('retry-background-setup'));
