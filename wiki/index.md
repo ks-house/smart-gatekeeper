@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; failed NAS run 33240731351 isolated unsupported DSM NanoCPUs, and immutable compatibility feature e787786 is pending separate trusted-policy authorization)
+> Last updated: 2026-08-29 (Target 303/mobile gd9ecc87 connected action-1 -> action-2 passes; backend run 33240731351 failed before migration on unsupported DSM NanoCPUs; policy main fba0958 is merge-connected into compatibility PR #215 with fresh CI pending, and legacy recovery readback remains open)
 
 ---
 

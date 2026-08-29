@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`이고 실패 후 복구한 legacy API/DB 두 컨테이너가 `running`이다. Ephemeral GHCR pull-auth는 main `42b754d75863072e4ad0af32f2667ff54ceb050c`에 병합됐지만 새 root-owned wrapper 설치와 재배포 증거는 아직 없다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
+> 관측 기준: exact-main `d9ecc87e04fc2b0e57cc892e549b02ddce26184a`의 connected ESP32-C6 Target `2.1.303+main.gd9ecc87`은 signed/encrypted periodic OTA 설치, pending-slot reboot, relay-OFF/Wi-Fi/MQTTS/signed ACL/GATT 복구와 application health-window `VALID` 표시를 완료했다. Fold7에는 matching production-signed `1.0.0-gd9ecc87` (`versionCode=24401`)을 replacement-install해 기존 앱 데이터와 AndroidKeyStore 자격을 보존했다. Native action 1 뒤 dashboard action 2는 terminal `문이 열렸습니다 (4612ms)`와 Target relay-command ON→OFF를 완료했고 정상 BLE 소유권 전환의 거짓 오류 배너도 제거됐다. 신규 NAS stack은 아직 `status=not-deployed`다. Feature-main run `33240731351`은 exact image pull과 새 DB 시작 뒤 DSM의 unsupported `NanoCPUs`에서 migration 전에 실패했고, retained legacy API/DB 복구 readback은 대기 중이다. NAS 호환 correction은 아직 source/test candidate다. Physical relay contact/load, actual door motion, sensor threshold와 반복/OEM 분포는 열린 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -55,11 +55,26 @@ applies_to:
   `42b754d75863072e4ad0af32f2667ff54ceb050c` now streams the
   deployment job's short-lived `github.token` through a versioned envelope and
   confines Docker auth to the wrapper's per-attempt temporary directory. Its
-  protected checks passed, but the new wrapper is not yet installed on the NAS
-  and no deployment/readiness result is inferred from the merge.
+  protected checks passed; at that point the new wrapper was not yet installed
+  on the NAS and no deployment/readiness result was inferred from the merge.
+- The owner subsequently installed the exact `afda60b4...` wrapper, stopped the
+  retained legacy pair and approved feature-main run `33240731351`. Signed
+  bundle verification, attestation, Tailscale OIDC, forced SSH, ephemeral GHCR
+  authentication and both exact image pulls passed. Compose created the
+  production networks and started the new DB, then DSM rejected the next
+  container with `NanoCPUs can not be set` before migration. No DB rollback was
+  attempted and no deployment/readiness result exists. The installed wrapper
+  did not yet clean the partial project, so recovery must stop that new DB and
+  restart the retained legacy pair without deleting the shared volume.
+- The current correction candidate keeps portable base CPU limits but causes
+  the merged Synology Compose to omit unsupported `cpus`; it also cleans only a
+  partial production project with `down --remove-orphans` and never
+  `--volumes`, records cleanup evidence, and corrects the Tailscale action input
+  to `sha256sum`. Local tests do not admit or deploy these bytes.
 
-- The legacy backend is again running on the personal Synology NAS, but the new
-  exact-digest lane is not yet deployed production.
+- The retained legacy backend was stopped for run `33240731351`; its restart
+  and public health readback are now the immediate recovery Gate. The new
+  exact-digest lane is not deployed production.
 - The existing NAS SFTP-only identity remains suitable for firmware/APK artifact
   delivery but has no remote shell for Compose, migration or readiness work.
 - The implementation and acceptance plan are documented in
@@ -77,10 +92,11 @@ applies_to:
   tailnet policy and protected GitHub Environment as recorded below. GHCR image
   publication has occurred, but no successful workflow deployment, database
   migration, Compose cutover or reverse-proxy change has occurred.
-- Before first adoption the owner must install the exact merged wrapper, verify
-  its root-owned digest, and stop the legacy API/DB in a new approved change
-  window before approving the protected deployment. The exact live mounts and
-  first off-NAS isolated restore are already evidenced below. The wrapper rejects another running
+- Before retry the owner must install the exact merged compatibility wrapper,
+  verify its root-owned digest, and stop the recovered legacy API/DB in a new
+  approved change window before approving the protected deployment. The exact
+  live mounts and first off-NAS isolated restore are already evidenced below.
+  The wrapper rejects another running
   project holding the MariaDB volume or API port and never attempts a blind DB
   rollback.
 - Owner-provided live container inventory now identifies legacy

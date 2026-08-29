@@ -78,6 +78,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}",
             "audience: ${{ secrets.TS_OIDC_AUDIENCE }}",
             "tags: tag:sgk-github-deploy",
+            "sha256sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32",
             "NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}",
             "StrictHostKeyChecking=yes",
             '"$NAS_USER@$NAS_HOST" status',
@@ -89,6 +90,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "NAS_BACKEND_RELEASE_SIGNING_KEY_PEM",
             "backend-release.tar.gz",
             "docker pull",
+            "sha256-sum:",
         ):
             self.assertNotIn(forbidden, job)
 
@@ -218,6 +220,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         overlay = SYNOLOGY_COMPOSE.read_text(encoding="utf-8")
         self.assertIn("host_ip: 127.0.0.1", overlay)
         self.assertIn('published: "${SGK_API_LOOPBACK_PORT:-8000}"', overlay)
+        self.assertEqual(2, overlay.count("cpus: 0"))
         for variable in (
             "MARIADB_DATA_VOLUME",
             "API_STATE_VOLUME",
@@ -229,6 +232,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertNotIn("3306", overlay)
         production = PRODUCTION_COMPOSE.read_text(encoding="utf-8")
         self.assertNotIn("ports:", production)
+        self.assertIn("cpus: 0.5", production)
+        self.assertIn("cpus: 1.0", production)
 
     @unittest.skipUnless(shutil.which("docker"), "Docker Compose is required")
     def test_synology_overlay_renders_with_exact_images_and_file_secrets(self):
@@ -283,6 +288,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
             "image: ghcr.io/ks-house/smart-gatekeeper-backend@sha256:" + "a" * 64,
             rendered.stdout,
         )
+        self.assertNotIn("cpus:", rendered.stdout)
 
     def test_restricted_wrapper_has_fail_closed_command_and_release_contract(self):
         syntax = subprocess.run(
@@ -317,6 +323,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
             'verify_running_image "$release_dir" db "$db_image"',
             'verify_running_image "$release_dir" api "$api_image"',
             "database rollback was not attempted",
+            'compose_for_release "$ACTIVE_RELEASE_DIR" down --remove-orphans',
+            "partial_stack_cleanup=",
             "http://127.0.0.1:",
             "SGK_PUBLIC_READY_URL",
         ):
@@ -328,6 +336,7 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertNotIn("docker compose --project-name", wrapper)
         self.assertNotIn("/root/.docker", wrapper)
         self.assertNotIn("read:packages", wrapper)
+        self.assertNotIn("down --remove-orphans --volumes", wrapper)
 
         dispatcher_syntax = subprocess.run(
             ["bash", "-n", str(DISPATCHER)], text=True, capture_output=True
