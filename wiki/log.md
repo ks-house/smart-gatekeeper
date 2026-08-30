@@ -5163,3 +5163,15 @@
 - Recorded exact-main `a78ec0c25e0e498eb1f9f83189279cccba236236` checks and immutable image publication, followed by the owner-approved Tailscale deployment failing closed with `unexpected schema version` before Compose, migration or cutover because the installed root wrapper still admits schema 007.
 - Corrected the signed bundle, root wrapper, production Compose and development Compose readiness contract from the prior migration-007 digest to the actual migration-008 SHA-256 `f95e752d96ea34ce7373d8573738936c5ec08ac296ee600a96c45d087e7219a8`.
 - Added a regression test deriving the digest from migration 008 bytes and requiring the exact value across all four consumers while rejecting the stale 007 value. Review/policy/CI, owner-authenticated root wrapper replacement, protected retry, app installation and physical door proof remain separate Gates.
+
+## [2026-08-30] compile | Authorize exact migration-008 deployment identity correction
+
+- Bound the complete 86-path persistent bundle to correction candidate `b6aff4c517a54a4242862c7856c388770eb89146`, replacing the stale migration-007 readiness digest with actual migration-008 SHA-256 `f95e752d96ea34ce7373d8573738936c5ec08ac296ee600a96c45d087e7219a8`.
+- Exactly five protected blobs change: production Compose, signed release generator, root deploy wrapper, development Compose and the focused NAS deployment regression test; all other protected bytes and both namespace inventories remain fixed.
+- This policy-only step installs no wrapper, starts no Compose project, migrates no database, deploys no APK and issues no Target or door command. Merge-connection, fresh CI, owner-authenticated wrapper replacement and protected deployment retry remain separate Gates.
+
+## [2026-08-30] compile | Connect schema-008 correction to trusted policy main
+
+- PR #288 passed Hosted Trusted and merge-committed as policy main `99cb93efd2ba9aac717e8a806232d86301762ad0`; merge-connected that main into immutable correction candidate `b6aff4c517a54a4242862c7856c388770eb89146` without rebase or squash.
+- The five reviewed protected correction blobs and complete 86-path map remain identical to the authorized candidate. Fresh Hosted Trusted, Backend and OTA checks are required before feature merge.
+- This graph connection replaces no NAS wrapper, starts no runtime, migrates no database and issues no mobile/Target/door action.
