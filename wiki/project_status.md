@@ -98,6 +98,17 @@ applies_to:
   digest failures for the changed implementation and regression files.
   Protected policy/CI/NAS deployment are separate Gates; no phone, account,
   credential or live database mutation was performed during diagnosis.
+- Policy PR #314 and feature PR #315 passed their protected checks and merged
+  normally. Exact-main Backend run `33326079617` published digest-pinned API/DB
+  images and deployed source `b0e1339c186bde81e2f4602ff426251b88e57db6`
+  through the reviewed Tailscale/restricted-SSH path. Canonical evidence reports
+  `status=deployed`, `loopback_ready=passed` and `public_ready=passed`.
+- Independent strict-TLS requests returned HTTP 200 from `/live` and `/ready`;
+  both named exact build `b0e1339c...`, and readiness reported database, schema,
+  MQTT, runtime secrets, control/admin auth, ACL management, legacy retirement
+  and build identity all true. This closes source/CI/deployment readiness only.
+  The owner must retry `이 휴대폰 등록`; successful Target ACL apply and a door
+  cycle from that newly enrolled key remain device/physical acceptance Gates.
 
 ## 2026-08-30 credential-signed remote Home button rollout
 

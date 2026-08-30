@@ -108,11 +108,11 @@
   },
   "approved_bundles": [
     {
-      "id": "reenrollment-d1272a5-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "d1272a5ec16269e51d852f0fc70854cd00048eb3"
+        "commit": "b0e1339c186bde81e2f4602ff426251b88e57db6"
       },
       "files": {
         ".github/workflows/deploy.yml": "a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8",

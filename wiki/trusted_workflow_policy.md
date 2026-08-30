@@ -1418,3 +1418,17 @@ an active or pending duplicate, relax public-key uniqueness, weaken signed ACL
 or Target ACK requirements, or mutate NAS/database/device state. Hosted policy
 CI and merge, merge-connection into the feature, fresh feature CI, exact-main
 merge and NAS deployment remain separate Gates.
+
+## 45. Final re-enrollment correction main baseline
+
+Feature PR #315 passed Hosted Trusted, Backend/MariaDB and OTA/schema checks,
+then merge-committed normally as exact main
+`b0e1339c186bde81e2f4602ff426251b88e57db6`. The transitional candidate
+identity is retired in favor of the sole `current-main-baseline` pinned to that
+exact merge commit.
+
+All 91 ordered protected paths and normalized digests remain byte-identical to
+the reviewed candidate. This final rotation changes no Backend runtime byte,
+publishes no ACL, changes no account or credential, installs no app or Target
+image and performs no physical action. Hosted policy CI/merge and the owner's
+post-deployment phone retry remain separate Gates.
