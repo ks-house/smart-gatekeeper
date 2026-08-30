@@ -66,6 +66,7 @@ class OpsCommercialGateTest(unittest.TestCase):
             "backend/docker-compose.yml", "backend/db/schema.sql",
             "backend/db/migrations/007_ops_privacy_up.sql",
             "backend/db/migrations/008_mobile_credential_control_up.sql",
+            "backend/db/migrations/009_admin_account_management_up.sql",
             "backend/tests/test_target_boot_registry.py",
             "protocol/test_vectors/v1.json",
         ):

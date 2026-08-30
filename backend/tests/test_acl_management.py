@@ -166,11 +166,12 @@ class AclManagementTest(unittest.TestCase):
         self.assertTrue(result["accepted"])
         self.assertTrue(self.store.tenant_exists(TENANT_A))
         mapping = self.conn.execute(
-            "SELECT tenant_uuid, credential_mode FROM tenants "
+            "SELECT tenant_uuid, credential_mode, credential_id FROM tenants "
             "WHERE ble_device_mac='DEV-PERSONAL-A'"
         ).fetchone()
         self.assertEqual(TENANT_A, mapping["tenant_uuid"])
         self.assertEqual("dual", mapping["credential_mode"])
+        self.assertEqual("78" * 16, mapping["credential_id"])
 
     def test_personal_bootstrap_rejects_existing_other_tenant_mapping(self) -> None:
         self.approve_legacy_personal_device(tenant_id=TENANT_B)
@@ -529,7 +530,10 @@ class AclManagementTest(unittest.TestCase):
 
         recovered_publisher = RecordingPublisher()
         self.service.publisher = recovered_publisher
-        retried = self.service.pull_snapshot(TENANT_A, DOOR_A)
+        retry_result = self.service.revoke_credential(
+            TENANT_A, credential_id, actor_ref="admin:a"
+        )
+        retried = retry_result["replacement_snapshots"][0]
         self.assertEqual(2, retried["fields"]["acl_version"])
         self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
         self.assertEqual(retried, recovered_publisher.messages[0][1])

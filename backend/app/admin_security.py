@@ -145,7 +145,11 @@ class AdminSecurity:
         return cls(
             identities,
             session_seconds=_positive_env("ADMIN_SESSION_SECONDS", 900, 60, 3600),
-            reauth_seconds=_positive_env("ADMIN_REAUTH_SECONDS", 120, 15, 600),
+            # Personal administration is typically performed from one trusted
+            # household console. Keep the risky-action proof bounded by the
+            # server-side session, but do not expire it while the operator is
+            # reviewing a short tenant list.
+            reauth_seconds=_positive_env("ADMIN_REAUTH_SECONDS", 900, 300, 3600),
             auth_attempts=_positive_env("ADMIN_AUTH_RATE_LIMIT", 5, 1, 100),
             auth_window_seconds=_positive_env("ADMIN_AUTH_RATE_WINDOW_SECONDS", 60, 1, 3600),
             trusted_proxy_ips=trusted_proxies,

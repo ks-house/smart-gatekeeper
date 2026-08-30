@@ -161,6 +161,8 @@
 
     .btn-approve { background: var(--success); color: white; }
     .btn-revoke { background: var(--danger); color: white; }
+    .btn-edit { background: var(--primary); color: white; }
+    .btn-delete { background: #7f1d1d; color: white; }
     .btn-action:hover { opacity: 0.8; }
   </style>
 </head>
@@ -246,6 +248,7 @@
     let adminCsrfToken = null;
     let adminTenantScope = null;
     let adminAuthMethod = 'mtls';
+    let tenantRows = new Map();
     async function bootstrapAdminSession() {
       const res = await fetch('/api/v1/admin/session', { credentials: 'same-origin' });
       if (res.status === 401) {
@@ -278,6 +281,7 @@
         const res = await fetch('/api/v1/admin/tenants');
         if (!res.ok) throw new Error('API return error');
         const tenants = await res.json();
+        tenantRows = new Map(tenants.map((tenant) => [Number(tenant.id), tenant]));
 
         document.getElementById('statTotalTenants').innerText = tenants.length + ' 명';
         const pendingCount = tenants.filter(t => !t.is_active).length;
@@ -303,10 +307,12 @@
             <td><code>${t.ble_device_mac || '-'}</code></td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
             <td>
+              <button class="btn-action btn-edit" onclick="editTenant(${Number(t.id)})">정보 수정</button>
               ${t.is_active 
                 ? `<button class="btn-action btn-revoke" onclick="updateTenantStatus(${t.id}, false)">권한 회수</button>`
                 : `<button class="btn-action btn-approve" onclick="updateTenantStatus(${t.id}, true)">승인하기</button>`
               }
+              <button class="btn-action btn-delete" onclick="deleteTenant(${t.id})">계정 삭제</button>
             </td>
           `;
           tbody.appendChild(tr);
@@ -323,19 +329,77 @@
         if (res.ok) {
           loadTenants();
         } else {
-          alert('상태 변경 실패');
+          await showRequestFailure(res, '상태 변경 실패');
         }
       } catch (e) {
         alert('에러: ' + e);
       }
     }
 
+    async function showRequestFailure(res, fallback) {
+      const data = await res.json().catch(() => ({}));
+      const detail = data.detail || data.message || `${fallback} (HTTP ${res.status})`;
+      if (res.status === 401 || (res.status === 403 && String(detail).includes('re-login'))) {
+        alert('관리자 재인증이 만료되었습니다. 다시 로그인해 주세요.');
+        location.replace('/admin/login');
+        return;
+      }
+      alert(`${fallback}: ${detail}`);
+    }
+
+    async function editTenant(tenantId) {
+      const tenant = tenantRows.get(Number(tenantId));
+      if (!tenant) {
+        alert('사용자 정보를 다시 불러온 뒤 시도해 주세요.');
+        return;
+      }
+      const currentName = String(tenant.name || '');
+      const currentUnit = String(tenant.unit_number || '');
+      const name = prompt('변경할 이름을 입력하세요 (최대 50자):', currentName);
+      if (name === null) return;
+      const unitNumber = prompt('변경할 동/호수를 입력하세요 (최대 20자):', currentUnit);
+      if (unitNumber === null) return;
+      if (!name.trim() || !unitNumber.trim()) {
+        alert('이름과 동/호수는 비워둘 수 없습니다.');
+        return;
+      }
+      const res = await fetch(`/api/v1/admin/tenants/${tenantId}`, {
+        method: 'PATCH',
+        headers: { ...adminHeaders(true), 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ name: name.trim(), unit_number: unitNumber.trim() })
+      });
+      if (!res.ok) {
+        await showRequestFailure(res, '사용자 정보 변경 실패');
+        return;
+      }
+      await loadTenants();
+    }
+
+    async function deleteTenant(tenantId) {
+      if (!confirm('이 계정의 출입 자격을 폐기하고 사용자 정보를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+      const res = await fetch(`/api/v1/admin/tenants/${tenantId}`, {
+        method: 'DELETE',
+        headers: adminHeaders(true),
+        credentials: 'same-origin'
+      });
+      if (!res.ok) {
+        await showRequestFailure(res, '사용자 계정 삭제 실패');
+        return;
+      }
+      await Promise.all([loadTenants(), loadLogs()]);
+    }
+
     async function loadLogs() {
       try {
-        const res = await fetch('/api/v1/logs?limit=30', { headers: adminHeaders(), credentials: 'same-origin' });
-        if (!res.ok) return;
-        const logs = await res.json();
-        document.getElementById('statTodayLogs').innerText = logs.length + ' 건';
+        const res = await fetch('/api/v1/admin/access-events?limit=30', { headers: adminHeaders(), credentials: 'same-origin' });
+        if (!res.ok) {
+          await showRequestFailure(res, '출입 이력 조회 실패');
+          return;
+        }
+        const payload = await res.json();
+        const logs = payload.events || [];
+        document.getElementById('statTodayLogs').innerText = Number(payload.today_total || 0) + ' 건';
 
         const tbody = document.getElementById('logsTableBody');
         tbody.innerHTML = '';
@@ -348,10 +412,10 @@
 
           tr.innerHTML = `
             <td>${dateStr}</td>
-            <td>${escapeHtml(l.auth_method)}</td>
+            <td>${escapeHtml(l.auth_method)}${l.tenant_name ? `<br><small>${escapeHtml(l.tenant_name)} · ${escapeHtml(l.unit_number || '-')}</small>` : ''}</td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
             <td>${l.distance_mm ? l.distance_mm + ' mm' : '-'}</td>
-            <td>${l.failure_reason || '정상 개방'}</td>
+            <td>${escapeHtml(l.failure_reason || '정상 처리')}</td>
           `;
           tbody.appendChild(tr);
         });

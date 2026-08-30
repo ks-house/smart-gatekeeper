@@ -419,12 +419,13 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual(200, first.status_code, first.text)
         self.assertEqual(first.json(), second.json())
         mapping = self.conn.execute(
-            "SELECT tenant_uuid, credential_mode FROM tenants "
+            "SELECT tenant_uuid, credential_mode, credential_id FROM tenants "
             "WHERE ble_device_mac=?",
             (family_locator,),
         ).fetchone()
         self.assertIsNone(mapping["tenant_uuid"])
         self.assertEqual("dual", mapping["credential_mode"])
+        self.assertEqual(body["credential_id"], mapping["credential_id"])
         credential = self.store.get_credential(TENANT_A, body["credential_id"])
         self.assertIsNotNone(credential)
         self.assertEqual(

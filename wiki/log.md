@@ -5350,3 +5350,16 @@
 - The owner's single post-deploy `이 휴대폰 등록` retry changed the connected A24 to `스마트키 사용 가능`, one registered door and ACL 608. Activity records `이 휴대폰의 스마트키가 등록됨` at 22:53:15.
 - The mobile access-ready contract requires the current exact signed snapshot to have an `APPLIED` Target ACK with matching version and digest; therefore credential enrollment, exact door grant and Target ACL synchronization pass for this observation.
 - Activity records one later `원격 개방 명령 전달` at 22:53:40, proving Backend-to-MQTT-broker delivery only. No Target receipt, relay actuation or physical door movement is inferred until the owner reports that observation.
+
+## [2026-08-30] test | Diagnose wife-phone administrator approval failure boundary
+
+- The administrator-console screenshot was recovered through its WSL-translated Windows path and showed one pending registration plus the generic `상태 변경 실패` dialog after an approval attempt. No attached Android device was visible to ADB during this observation.
+- Source inspection confirmed that tenant approval is an unsafe administrator action requiring a fresh personal-session reauthentication marker; the default reauthentication window is 120 seconds. The current console collapses every non-success response, including an expired reauthentication response, into the same generic dialog, so the screenshot alone does not prove the exact HTTP status.
+- No tenant approval, database mutation, Android permission grant, app-data reset or credential enrollment was performed. The immediate owner test is a fresh administrator login followed by one prompt approval attempt; exact response diagnostics or a UI correction remain a separate follow-up if that attempt still fails.
+
+## [2026-08-30] code | Add safe administrator family-account management and global access history
+
+- Added bounded administrator name/unit editing, account deletion, exact HTTP failure feedback and a global recent-access view. Personal administrator reauthentication now defaults to 900 seconds while retaining server-side sessions, CSRF, roles, tenant boundaries and idempotency.
+- Account deletion is fail-closed: migration 009 adds one nullable unique public-credential link, new enrollment writes it atomically, and existing phones reconcile it only after proving their public key. An enrolled credential is revoked and a replacement signed ACL is published before the legacy PII row is deleted; an unlinked dual-mode account returns conflict instead of leaving live access behind.
+- Mobile remote-open attempts now persist access rows as broker-accepted or broker-failed with an explicit physical-result-unconfirmed boundary. The administrator view uses a wildcard-authorized global endpoint and reports the true current-day count.
+- All 158 Backend tests passed with the two Docker lanes separately enabled. Both MariaDB 10.11 integration lanes passed repeated schema 002-through-009 application, backup, rollback and legacy-data survival. Hosted trusted-policy authorization, PR CI, NAS migration/deployment, live readiness and administrator browser verification remain separate Gates.

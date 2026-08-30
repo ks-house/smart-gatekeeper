@@ -29,16 +29,16 @@ SYNOLOGY_COMPOSE = ROOT / "backend" / "compose.synology.yml"
 RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 DEPLOY_README = ROOT / "backend" / "deploy" / "README.md"
-MOBILE_CONTROL_UP = (
-    ROOT / "backend" / "db" / "migrations" / "008_mobile_credential_control_up.sql"
+ADMIN_ACCOUNT_MANAGEMENT_UP = (
+    ROOT / "backend" / "db" / "migrations" / "009_admin_account_management_up.sql"
 )
 DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
-    def test_schema_008_identity_is_exact_across_bundle_wrapper_and_readiness(self):
-        expected = hashlib.sha256(MOBILE_CONTROL_UP.read_bytes()).hexdigest()
-        self.assertEqual("008", create_release_bundle.SCHEMA_VERSION)
+    def test_schema_009_identity_is_exact_across_bundle_wrapper_and_readiness(self):
+        expected = hashlib.sha256(ADMIN_ACCOUNT_MANAGEMENT_UP.read_bytes()).hexdigest()
+        self.assertEqual("009", create_release_bundle.SCHEMA_VERSION)
         self.assertEqual(expected, create_release_bundle.SCHEMA_SHA256)
         for path in (WRAPPER, PRODUCTION_COMPOSE, DEVELOPMENT_COMPOSE):
             with self.subTest(path=path.name):

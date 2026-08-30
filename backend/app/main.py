@@ -900,6 +900,13 @@ class UserRequestSchema(BaseModel):
 class PersonalAdminLoginSchema(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
+
+class AdminTenantUpdateSchema(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=50)
+    unit_number: str = Field(min_length=1, max_length=20)
+
 class PrearmRequestSchema(BaseModel):
     beacon_uuid: str
     device_id: Optional[str] = None
@@ -1517,6 +1524,212 @@ def reject_tenant(tenant_id: int, request: Request):
             conn.close()
 
 
+@app.patch("/api/v1/admin/tenants/{tenant_id}")
+def update_tenant_admin(
+    tenant_id: int, payload: AdminTenantUpdateSchema, request: Request
+):
+    principal = _admin_principal(
+        request,
+        unsafe=True,
+        roles=(ROLE_ADMIN,),
+        tenant_scope=_legacy_tenant_scope(tenant_id),
+        reauthenticate=True,
+    )
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
+    name = payload.name.strip()
+    unit_number = payload.unit_number.strip()
+    if not name or not unit_number:
+        raise HTTPException(status_code=422, detail="name and unit number are required")
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tenant_uuid FROM tenants WHERE id=%s FOR UPDATE",
+                (tenant_id,),
+            )
+            existing = cur.fetchone()
+            if existing is None:
+                raise LookupError("tenant not found")
+            _audit_admin(
+                conn,
+                principal,
+                _legacy_tenant_scope(tenant_id),
+                "TENANT_PROFILE_UPDATED",
+                str(tenant_id),
+                idempotency_key,
+            )
+            cur.execute(
+                "UPDATE tenants SET name=%s, unit_number=%s WHERE id=%s",
+                (name, unit_number, tenant_id),
+            )
+            if cur.rowcount != 1:
+                raise RuntimeError("tenant update lost its state lock")
+            canonical_tenant = existing.get("tenant_uuid")
+            if canonical_tenant:
+                cur.execute(
+                    "UPDATE acl_tenants SET display_name=%s, updated_at=%s "
+                    "WHERE tenant_id=%s",
+                    (f"{name} {unit_number}"[:100], int(time.time()), canonical_tenant),
+                )
+        conn.commit()
+        return {"status": "updated", "tenant_id": tenant_id}
+    except LookupError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        log.error("[ADMIN] tenant profile update unavailable")
+        raise HTTPException(status_code=503, detail="tenant profile update unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.delete("/api/v1/admin/tenants/{tenant_id}")
+def delete_tenant_admin(tenant_id: int, request: Request):
+    principal = _admin_principal(
+        request,
+        unsafe=True,
+        roles=(ROLE_ADMIN,),
+        tenant_scope=_legacy_tenant_scope(tenant_id),
+        reauthenticate=True,
+    )
+    idempotency_key = request.headers.get(IDEMPOTENCY_HEADER)
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise HTTPException(status_code=400, detail="bounded Idempotency-Key required")
+
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, is_active, tenant_uuid, credential_mode, credential_id "
+                "FROM tenants WHERE id=%s",
+                (tenant_id,),
+            )
+            account = cur.fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="tenant deletion preflight unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+    if account is None:
+        raise HTTPException(status_code=404, detail="tenant not found")
+
+    credential_id = account.get("credential_id")
+    if credential_id is None and str(account.get("credential_mode") or "legacy") != "legacy":
+        raise HTTPException(
+            status_code=409,
+            detail="open the enrolled phone once to reconcile its credential before deletion",
+        )
+    if credential_id is not None:
+        service = globals().get("_acl_service")
+        if not globals().get("_acl_runtime_ready", False) or service is None:
+            raise HTTPException(status_code=503, detail="credential revocation unavailable")
+        try:
+            service.revoke_credential(
+                ACL_PERSONAL_TENANT_ID,
+                str(credential_id),
+                actor_ref=f"admin:{principal.subject}",
+            )
+        except Exception as exc:
+            # Revocation is durable before MQTT publication. Keep the account
+            # row for a safe retry instead of claiming deletion.
+            log.error("[ADMIN] credential revocation or ACL publication unavailable")
+            raise HTTPException(
+                status_code=503,
+                detail="credential revocation or ACL publication unavailable",
+            ) from exc
+
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tenant_uuid, credential_id FROM tenants WHERE id=%s FOR UPDATE",
+                (tenant_id,),
+            )
+            locked = cur.fetchone()
+            if locked is None:
+                raise LookupError("tenant not found")
+            if str(locked.get("credential_id") or "") != str(credential_id or ""):
+                raise RuntimeError("tenant credential changed during deletion")
+
+            replacement = None
+            canonical_tenant = locked.get("tenant_uuid")
+            if canonical_tenant:
+                cur.execute(
+                    "SELECT id, name, unit_number, credential_id FROM tenants "
+                    "WHERE id<>%s AND is_active=TRUE ORDER BY id LIMIT 1 FOR UPDATE",
+                    (tenant_id,),
+                )
+                replacement = cur.fetchone()
+                if replacement is not None and not replacement.get("credential_id"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="open another active phone once before deleting the tenant owner",
+                    )
+                if replacement is not None:
+                    cur.execute(
+                        "UPDATE tenants SET tenant_uuid=NULL WHERE id=%s",
+                        (tenant_id,),
+                    )
+                    cur.execute(
+                        "UPDATE tenants SET tenant_uuid=%s, credential_mode='dual' WHERE id=%s",
+                        (canonical_tenant, replacement["id"]),
+                    )
+                    cur.execute(
+                        "UPDATE acl_tenants SET display_name=%s, updated_at=%s "
+                        "WHERE tenant_id=%s",
+                        (
+                            f"{replacement['name']} {replacement['unit_number']}"[:100],
+                            int(time.time()),
+                            canonical_tenant,
+                        ),
+                    )
+
+            _audit_admin(
+                conn,
+                principal,
+                _legacy_tenant_scope(tenant_id),
+                "TENANT_ACCOUNT_DELETED",
+                str(tenant_id),
+                idempotency_key,
+            )
+            cur.execute("DELETE FROM tenants WHERE id=%s", (tenant_id,))
+            if cur.rowcount != 1:
+                raise RuntimeError("tenant deletion lost its state lock")
+        conn.commit()
+        return {"status": "deleted", "tenant_id": tenant_id}
+    except LookupError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        log.error("[ADMIN] tenant account deletion unavailable")
+        raise HTTPException(status_code=503, detail="tenant account deletion unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.get("/live", status_code=status.HTTP_200_OK)
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
@@ -1997,8 +2210,10 @@ def manual_open_v2(
                 # different tenant/door identity on an installed Target.
                 cur.execute(
                     "SELECT c.credential_id,c.tenant_id,c.public_key_sec1,"
-                    "c.status,c.expires_at,t.status AS tenant_status "
+                    "c.status,c.expires_at,t.status AS tenant_status,"
+                    "l.id AS legacy_tenant_id "
                     "FROM credentials c JOIN acl_tenants t ON t.tenant_id=c.tenant_id "
+                    "LEFT JOIN tenants l ON l.credential_id=c.credential_id "
                     "WHERE c.credential_id=%s FOR UPDATE",
                     (req.credential_id,),
                 )
@@ -2077,8 +2292,23 @@ def manual_open_v2(
         finally:
             if conn:
                 conn.close()
+        legacy_tenant_id = credential.get("legacy_tenant_id")
         if not publish_force_open_to_mqtt("credential-signature-v3"):
+            _write_access_event(
+                legacy_tenant_id,
+                "MOBILE_REMOTE",
+                False,
+                None,
+                "broker delivery failed",
+            )
             raise HTTPException(status_code=503, detail="manual control was not delivered")
+        _write_access_event(
+            legacy_tenant_id,
+            "MOBILE_REMOTE",
+            True,
+            None,
+            "broker accepted; physical result unconfirmed",
+        )
         request_id = hashlib.sha256(
             f"{req.credential_id}:{req.nonce}".encode("utf-8")
         ).hexdigest()[:24]
@@ -2456,6 +2686,46 @@ def get_access_logs(
             conn.close()
 
 
+@app.get("/api/v1/admin/access-events")
+def get_all_access_events_admin(
+    request: Request,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope="*")
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT l.id, l.tenant_id, t.name AS tenant_name, "
+                "t.unit_number, l.auth_method, l.is_success, l.distance_mm, "
+                "l.failure_reason, l.created_at "
+                "FROM access_logs l LEFT JOIN tenants t ON t.id=l.tenant_id "
+                "ORDER BY l.created_at DESC LIMIT %s OFFSET %s",
+                (limit, offset),
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                if isinstance(row.get("created_at"), datetime):
+                    row["created_at"] = row["created_at"].isoformat()
+            cur.execute(
+                "SELECT COUNT(*) AS total FROM access_logs "
+                "WHERE created_at >= CURRENT_DATE() AND created_at < CURRENT_DATE() + INTERVAL 1 DAY"
+            )
+            count = cur.fetchone()
+        return {
+            "events": rows,
+            "today_total": int((count or {}).get("total", 0)),
+        }
+    except Exception as exc:
+        log.error("[ADMIN-DB] global access-event query unavailable")
+        raise HTTPException(status_code=503, detail="global access-event query unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.get("/api/v1/admin/privacy/support-export")
 def create_support_export(
     request: Request,
@@ -2649,6 +2919,18 @@ def _log_access(
     failure_reason: Optional[str],
     tenant_id: Optional[int] = None
 ):
+    _write_access_event(
+        tenant_id, "BLE_BEACON", success, distance_mm, failure_reason
+    )
+
+
+def _write_access_event(
+    tenant_id: Optional[int],
+    auth_method: str,
+    success: bool,
+    distance_mm: Optional[int],
+    failure_reason: Optional[str],
+):
     conn = None
     try:
         conn = get_db()
@@ -2657,7 +2939,7 @@ def _log_access(
                 "INSERT INTO access_logs "
                 "(tenant_id, auth_method, is_success, distance_mm, failure_reason) "
                 "VALUES (%s, %s, %s, %s, %s)",
-                (tenant_id, "BLE_BEACON", success, distance_mm, failure_reason)
+                (tenant_id, auth_method, success, distance_mm, failure_reason)
             )
     except Exception as e:
         log.error("[DB] access-event persistence unavailable")

@@ -434,7 +434,8 @@ def initialize_sqlite_test_schema(connection: sqlite3.Connection) -> None:
           ble_device_mac TEXT UNIQUE,
           is_active INTEGER NOT NULL DEFAULT 1,
           tenant_uuid TEXT UNIQUE,
-          credential_mode TEXT NOT NULL DEFAULT 'legacy'
+          credential_mode TEXT NOT NULL DEFAULT 'legacy',
+          credential_id TEXT UNIQUE
         );
         CREATE TABLE acl_tenants (
           tenant_id TEXT PRIMARY KEY,
@@ -825,6 +826,81 @@ class AclStore:
             (tenant_id, credential_id),
         )
 
+    def bind_personal_credential_to_legacy_row(
+        self,
+        tenant_id: str,
+        legacy_device_id: str,
+        credential_id: str,
+        legacy_ref: str,
+    ) -> None:
+        """Idempotently bind a verified public credential to one legacy row.
+
+        This is the deletion/revocation join.  It stores neither the original
+        high-entropy app identifier nor private key material.
+        """
+        connection = self._connection()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                "BEGIN IMMEDIATE" if self.dialect == "sqlite" else "START TRANSACTION"
+            )
+            placeholder = "?" if self.dialect == "sqlite" else "%s"
+            lock_suffix = "" if self.dialect == "sqlite" else " FOR UPDATE"
+            locator = legacy_device_storage_id(legacy_device_id)
+            cursor.execute(
+                f"SELECT id, credential_id FROM tenants "
+                f"WHERE UPPER(ble_device_mac)={placeholder}{lock_suffix}",
+                (locator,),
+            )
+            legacy = cursor.fetchone()
+            if legacy is None:
+                raise PermissionError("legacy device is not registered")
+            legacy_id = int(legacy["id"] if isinstance(legacy, dict) else legacy[0])
+            linked = legacy["credential_id"] if isinstance(legacy, dict) else legacy[1]
+            cursor.execute(
+                f"SELECT tenant_id, legacy_device_ref FROM credentials "
+                f"WHERE credential_id={placeholder}{lock_suffix}",
+                (credential_id,),
+            )
+            credential = cursor.fetchone()
+            if credential is None:
+                raise PermissionError("public credential is unavailable")
+            credential_tenant = str(
+                credential["tenant_id"] if isinstance(credential, dict) else credential[0]
+            )
+            credential_ref = str(
+                credential["legacy_device_ref"]
+                if isinstance(credential, dict)
+                else credential[1]
+            )
+            if not hmac.compare_digest(credential_tenant, tenant_id) or not hmac.compare_digest(
+                credential_ref, legacy_ref
+            ):
+                raise PermissionError("credential does not belong to legacy device")
+            if linked is not None and not hmac.compare_digest(str(linked), credential_id):
+                raise CredentialConflictError("legacy account has another credential")
+            cursor.execute(
+                f"SELECT id FROM tenants WHERE credential_id={placeholder} "
+                f"AND id<>{placeholder}{lock_suffix}",
+                (credential_id, legacy_id),
+            )
+            if cursor.fetchone() is not None:
+                raise CredentialConflictError("credential belongs to another legacy account")
+            if linked is None:
+                cursor.execute(
+                    f"UPDATE tenants SET credential_id={placeholder} "
+                    f"WHERE id={placeholder} AND credential_id IS NULL",
+                    (credential_id, legacy_id),
+                )
+                if cursor.rowcount != 1:
+                    raise CredentialConflictError("legacy credential binding lost its lock")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            self._close(connection)
+
     def list_credentials(
         self, tenant_id: str, *, statuses: tuple[str, ...] = ("ACTIVE",)
     ) -> list[dict[str, Any]]:
@@ -892,7 +968,7 @@ class AclStore:
                 return row[name] if isinstance(row, dict) else row[index]
 
             cursor.execute(
-                "SELECT id, name, unit_number, tenant_uuid, is_active, credential_mode "
+                "SELECT id, name, unit_number, tenant_uuid, is_active, credential_mode, credential_id "
                 "FROM tenants "
                 f"WHERE UPPER(ble_device_mac)={placeholder}{lock_suffix}",
                 (legacy_device_storage_id(legacy_device_id),),
@@ -905,6 +981,7 @@ class AclStore:
             legacy_tenant_id = row_value(legacy, "tenant_uuid", 3)
             legacy_active = bool(row_value(legacy, "is_active", 4))
             legacy_credential_mode = str(row_value(legacy, "credential_mode", 5))
+            linked_credential_id = row_value(legacy, "credential_id", 6)
             if not legacy_active:
                 raise PermissionError("legacy device is not approved")
             if legacy_tenant_id is not None and (
@@ -1075,6 +1152,32 @@ class AclStore:
                         "credential ID conflicts with existing registration"
                     )
 
+            if linked_credential_id is not None and not hmac.compare_digest(
+                str(linked_credential_id), credential_id
+            ):
+                raise CredentialConflictError(
+                    "legacy account is already linked to another credential"
+                )
+            if linked_credential_id is None:
+                cursor.execute(
+                    f"SELECT id FROM tenants WHERE credential_id={placeholder} "
+                    f"AND id<>{placeholder}{lock_suffix}",
+                    (credential_id, legacy_id),
+                )
+                if cursor.fetchone() is not None:
+                    raise CredentialConflictError(
+                        "credential is already linked to another legacy account"
+                    )
+                cursor.execute(
+                    f"UPDATE tenants SET credential_id={placeholder} "
+                    f"WHERE id={placeholder} AND credential_id IS NULL",
+                    (credential_id, legacy_id),
+                )
+                if cursor.rowcount != 1:
+                    raise CredentialConflictError(
+                        "legacy credential binding lost its state lock"
+                    )
+
             cursor.execute(
                 f"SELECT permissions, revoked_at FROM credential_door_grants "
                 f"WHERE tenant_id={placeholder} AND door_id={placeholder} "
@@ -1215,6 +1318,19 @@ class AclStore:
             cursor = connection.cursor()
             cursor.execute("BEGIN IMMEDIATE" if self.dialect == "sqlite" else "START TRANSACTION")
             placeholder = "?" if self.dialect == "sqlite" else "%s"
+            lock_suffix = "" if self.dialect == "sqlite" else " FOR UPDATE"
+            cursor.execute(
+                f"SELECT status FROM credentials WHERE tenant_id={placeholder} "
+                f"AND credential_id={placeholder}{lock_suffix}",
+                (tenant_id, credential_id),
+            )
+            credential = cursor.fetchone()
+            if credential is None:
+                connection.rollback()
+                return None
+            current_status = str(
+                credential["status"] if isinstance(credential, dict) else credential[0]
+            )
             cursor.execute(
                 "SELECT door_id FROM credential_door_grants "
                 f"WHERE tenant_id={placeholder} AND credential_id={placeholder} "
@@ -1223,18 +1339,29 @@ class AclStore:
             )
             rows = cursor.fetchall()
             door_ids = [str(row["door_id"] if isinstance(row, dict) else row[0]) for row in rows]
-            cursor.execute(
-                f"UPDATE credentials SET status={placeholder}, updated_at={placeholder} "
-                f"WHERE tenant_id={placeholder} AND credential_id={placeholder}",
-                (status, now, tenant_id, credential_id),
-            )
-            if cursor.rowcount != 1:
-                connection.rollback()
-                return None
-            for queued_door_id in door_ids:
-                self._queue_snapshot_job_cursor(
-                    cursor, tenant_id, queued_door_id, reason, now
+            if current_status != status:
+                cursor.execute(
+                    f"UPDATE credentials SET status={placeholder}, updated_at={placeholder} "
+                    f"WHERE tenant_id={placeholder} AND credential_id={placeholder}",
+                    (status, now, tenant_id, credential_id),
                 )
+                if cursor.rowcount != 1:
+                    raise CredentialConflictError(
+                        "credential status transition lost its state lock"
+                    )
+            for queued_door_id in door_ids:
+                preserve_existing_job = False
+                if current_status == status:
+                    cursor.execute(
+                        f"SELECT 1 FROM acl_snapshot_jobs WHERE tenant_id={placeholder} "
+                        f"AND door_id={placeholder}",
+                        (tenant_id, queued_door_id),
+                    )
+                    preserve_existing_job = cursor.fetchone() is not None
+                if not preserve_existing_job:
+                    self._queue_snapshot_job_cursor(
+                        cursor, tenant_id, queued_door_id, reason, now
+                    )
             connection.commit()
             return door_ids
         except Exception:
@@ -2020,6 +2147,16 @@ class AclManagementService:
             str(credential["public_key_sec1"]), public_key_hex
         ):
             raise PermissionError("credential identity mismatch")
+
+        # Migration 009 backfills the account-to-public-credential join when
+        # an already enrolled phone next proves its key identity. This keeps
+        # account deletion fail-closed without storing the raw app identifier.
+        self.store.bind_personal_credential_to_legacy_row(
+            tenant_id,
+            normalized_device_id,
+            credential_id,
+            self._legacy_ref(normalized_device_id),
+        )
 
         now = self.clock()
         tenant_status = self.store.tenant_status(tenant_id)

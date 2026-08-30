@@ -15,6 +15,8 @@ COPY migrations/007_ops_privacy_up.sql /opt/smart-gatekeeper/migrations/007_up.s
 COPY migrations/007_ops_privacy_down.sql /opt/smart-gatekeeper/migrations/007_down.sql
 COPY migrations/008_mobile_credential_control_up.sql /opt/smart-gatekeeper/migrations/008_up.sql
 COPY migrations/008_mobile_credential_control_down.sql /opt/smart-gatekeeper/migrations/008_down.sql
+COPY migrations/009_admin_account_management_up.sql /opt/smart-gatekeeper/migrations/009_up.sql
+COPY migrations/009_admin_account_management_down.sql /opt/smart-gatekeeper/migrations/009_down.sql
 COPY run_migrations.sh /usr/local/bin/sgk-migrate
 RUN chmod 0555 /usr/local/bin/sgk-migrate \
     && chmod 0444 /opt/smart-gatekeeper/migrations/*.sql \
