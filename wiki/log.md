@@ -5287,3 +5287,16 @@
 - Policy PR #294 passed Hosted Trusted and merge-committed as main `6a714f86c5661cf5b5343c3af98281499d815c33`; merged that exact policy main without rebase or squash into feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2` as `79bdf7b36ea20801ce035a05d70a6c60c221e64f`.
 - The two reviewed protected feature blobs and complete 86-path bundle remain exact; all 42 policy tests and all 149 Backend tests passed after graph connection with two expected Docker-only skips.
 - No user registration, credential/database/runtime mutation or deployment occurred. Fresh hosted checks, feature merge, NAS deployment/readiness and connected A24 onboarding readback remain separate Gates.
+
+## [2026-08-30] test | Deploy and verify fresh-family registration onboarding
+
+- PR #295 passed Hosted Trusted, Backend and OTA/schema checks and merge-committed as exact main `bf435bf4c9681c3ef5e926ecc23f8f7619da9bf5`; Backend run `33312971831` published immutable images and completed the owner-approved restricted-Tailscale NAS deployment.
+- Canonical evidence reported `status=deployed`, exact source and loopback/public readiness passed. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with every readiness check true.
+- The unchanged fresh A24 changed from Backend unavailable to `스마트키 등록 필요` with `등록 요청`; opening it exposed name/unit inputs and `출입 권한 신청하기`. This verified UI reachability only; the owner's later submission is recorded separately below.
+
+## [2026-08-30] fix | Align fresh-install registration identity with legacy storage
+
+- The owner's first A24 registration submission displayed `신청 접수에 실패했습니다`; it was not automatically retried and no successful registration/database effect is claimed.
+- Source established that new installations generate random UUID-shaped `GK-*` IDs, while the registration request admitted only `DEV-*`; widening that validation alone would still exceed the existing 17-character MariaDB legacy locator column.
+- Added one deterministic 70-bit storage locator used consistently by registration, status and credential bootstrap for accepted IDs longer than the legacy column, while preserving existing values that already fit and keeping the raw high-entropy ID out of the legacy row. Name/unit validation now matches the existing column bounds and the form advertises the same limits.
+- The focused fresh flow passed request, pending/approved status and public-key credential bootstrap. All 151 Backend tests passed with two expected Docker-only integration skips; protected policy/CI, deployment and the owner's single explicit retry remain separate Gates.

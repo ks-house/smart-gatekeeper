@@ -322,11 +322,11 @@
       <form onsubmit="handleSignup(event)">
         <div class="form-group">
           <label>세입자 이름</label>
-          <input type="text" class="form-input" id="inputName" placeholder="예: 홍길동" required>
+          <input type="text" class="form-input" id="inputName" placeholder="예: 홍길동" maxlength="50" required>
         </div>
         <div class="form-group">
           <label>동/호수</label>
-          <input type="text" class="form-input" id="inputRoom" placeholder="예: 101호" required>
+          <input type="text" class="form-input" id="inputRoom" placeholder="예: 101호" maxlength="20" required>
         </div>
         <button type="submit" class="btn-submit">출입 권한 신청하기</button>
       </form>

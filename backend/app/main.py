@@ -46,7 +46,11 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
     )
 
 try:
-    from .acl_management import DeterministicP256Signer, verify_raw64
+    from .acl_management import (
+        DeterministicP256Signer,
+        legacy_device_storage_id,
+        verify_raw64,
+    )
     from .command_security import build_signed_command
     from .home_assistant_bridge import (
         HomeAssistantCommandBridge,
@@ -70,7 +74,11 @@ try:
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
 except ImportError:  # Docker runs uvicorn with /app as the import root.
-    from acl_management import DeterministicP256Signer, verify_raw64
+    from acl_management import (
+        DeterministicP256Signer,
+        legacy_device_storage_id,
+        verify_raw64,
+    )
     from command_security import build_signed_command
     from home_assistant_bridge import (
         HomeAssistantCommandBridge,
@@ -880,9 +888,13 @@ class AuthVerifyResponse(BaseModel):
     arm_published: Optional[bool] = Field(None, description="MQTT arm 발행 성공 여부")
 
 class UserRequestSchema(BaseModel):
-    name: str = Field(min_length=1, max_length=80)
-    room_no: str = Field(min_length=1, max_length=40)
-    device_id: str = Field(min_length=8, max_length=128, pattern=r"^DEV-[A-Z0-9]+$")
+    name: str = Field(min_length=1, max_length=50)
+    room_no: str = Field(min_length=1, max_length=20)
+    device_id: str = Field(
+        min_length=8,
+        max_length=128,
+        pattern=r"^(?:DEV|GK)-[A-Z0-9-]+$",
+    )
 
 
 class PersonalAdminLoginSchema(BaseModel):
@@ -1655,7 +1667,7 @@ def get_user_me(
     _auth=Depends(require_api_key),
 ):
     """현재 기기(device_id)의 세입자 등록 상태 및 세입자 정보 조회"""
-    mac_upper = device_id.strip().upper()
+    mac_upper = legacy_device_storage_id(device_id)
     log.info("[USER-ME] retired device-id lookup invoked")
     conn = None
     try:
@@ -1703,7 +1715,7 @@ def request_user_access(
     _auth=Depends(require_api_key),
 ):
     """신규 세입자 가입 및 출입 권한 신청"""
-    mac_upper = req.device_id.strip().upper()
+    mac_upper = legacy_device_storage_id(req.device_id)
     log.info("[USER-REQ] authenticated personal enrollment requested")
     conn = None
     try:
