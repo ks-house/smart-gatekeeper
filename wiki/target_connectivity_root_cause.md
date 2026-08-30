@@ -462,7 +462,7 @@ GPIO 손상, 입력 clamp/과전압 경로를 통한 역주입, latch-up/reset �
 
 ### 10.2 historical relay GPIO23 High-Z와 전원/역기전력
 
-이 절은 과거 GPIO23 배선에서 수집한 진단 가설을 보존한다. 2026-08-02 authoritative firmware/pin contract는 GPIO3이며, GPIO23 관찰을 GPIO3 실기기 증거로 전용하지 않는다.
+이 절은 과거 GPIO23 배선에서 수집한 진단 가설을 보존한다. 2026-08-02 당시 authoritative firmware/pin contract는 GPIO3이었으며, GPIO23 관찰을 당시 GPIO3 실기기 증거로 전용하지 않는다. 2026-08-30 소유자 확인에 따라 현재 source contract는 AJ-SR04T GPIO10/11과 relay GPIO23으로 복원됐지만, 새 exact-main OTA health와 물리 접점 증거는 별도로 수집한다.
 
 `src/RelayController.cpp:48-61`의 Active-LOW 동작은 다음과 같다.
 

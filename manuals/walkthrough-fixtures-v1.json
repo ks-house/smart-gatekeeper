@@ -197,7 +197,7 @@
       "manual": "installer_service_manual_ko.md",
       "precondition": "source and wiring documents only",
       "input": "trace configured pins and electrical boundaries",
-      "observable_output": "relay GPIO3 TRIG GPIO10 ECHO GPIO11 3.3V and forbidden pins agree",
+      "observable_output": "relay GPIO23 TRIG GPIO10 ECHO GPIO11 3.3V and forbidden pins agree",
       "code_api_owner": "config.h pin_mapping.md and installer manual",
       "evidence": "manual source token test",
       "command": "python -S -m unittest tests.test_manual_contract.ManualContractTests.test_installation_tokens_match_current_config -v",

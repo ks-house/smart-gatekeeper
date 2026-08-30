@@ -13,7 +13,7 @@
 |---|---|---|
 | [일반 사용자 매뉴얼](general_user_manual_ko.md) | 입주자·일반 사용자 | 첫 실행, 동의·권한, 등록, 자동·수동 출입, 장애 복구, 업데이트, 분실·교체 |
 | [관리자 매뉴얼](administrator_manual_ko.md) | 보안 관리자·건물 운영자 | hardened 배포, RBAC, tenant/device/door, force-open, TLS·secret, audit, backup·restore, canary·폐기 |
-| [설치·서비스 매뉴얼](installer_service_manual_ko.md) | 설치자·서비스 기술자 | GPIO3, 전원·flyback·level shifting, provisioning, 시운전, OTA 복구, RMA |
+| [설치·서비스 매뉴얼](installer_service_manual_ko.md) | 설치자·서비스 기술자 | GPIO23, 전원·flyback·level shifting, provisioning, 시운전, OTA 복구, RMA |
 | [개인정보 안내](privacy_notice_ko.md) | 사용자·관리자·지원팀 | 수집 목적, 최소화, 동의, 보관·삭제, redacted support |
 | [지원·사고 대응 핸드북](support_incident_handbook_ko.md) | 1차 지원·on-call·사고 지휘자 | triage, timeout/retry/escalation, 증거, containment·복구·종료 |
 | [제품 역분석·갭 등록부](product_gap_register_v1.md) | 제품·개발·QA·운영 owner | 매뉴얼 walkthrough에서 발견한 구현·운영·물리 gap과 반복 결과 |
@@ -44,7 +44,7 @@
 - `detecting → authorizing → armed → opening → confirmed`는 서로 다른 상태다. `armed`, MQTT `published`, 다운로드 완료 또는 installer 열림은 `confirmed`가 아니다.
 - `confirmed`는 Target 결과가 내구성 있게 기록되고 해당 물리 효과가 관찰된 경우만 사용한다. 이번 문서 작업은 물리 효과를 만들거나 관찰하지 않았다.
 - `unknown`, `duplicate_uncertain`, `RECONCILIATION_REQUIRED`, `EFFECT_UNKNOWN`은 성공이 아니며 자동 재시도하지 않는다.
-- Host/unit tests와 CI는 software evidence다. NAS 검증 배포는 사용자의 실기기 시험을 위한 staging이며 production 승인이 아니다. Samsung/One UI, radio, GPIO3 relay, 센서, dual-slot boot, power-cut rollback, operator drill과 production 승인을 대체하지 않는다.
+- Host/unit tests와 CI는 software evidence다. NAS 검증 배포는 사용자의 실기기 시험을 위한 staging이며 production 승인이 아니다. Samsung/One UI, radio, GPIO23 relay, 센서, dual-slot boot, power-cut rollback, operator drill과 production 승인을 대체하지 않는다.
 - public RFC 8032 test key와 `.invalid` URL로 만든 artifact는 canary 검증용이며 production 배포물이 아니다.
 
 ## 매뉴얼 갱신 및 역분석 규칙

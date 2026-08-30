@@ -30,12 +30,12 @@
       "pass_condition": "No unclassified reset, radio loss, unsafe access transition, or OTA-safe-state violation occurs."
     },
     {
-      "id": "GPIO3-RELAY-100",
+      "id": "GPIO23-RELAY-100",
       "evidence_level": "L2",
       "minimum_trials": 100,
       "matrix": [{"scenario": "active_low_high_z_off_repetition", "trials": 100}],
       "required_raw_evidence": ["scope-capture", "rail-capture", "serial-log"],
-      "pass_condition_id": "PC-GPIO3-RELAY-100-V1",
+      "pass_condition_id": "PC-GPIO23-RELAY-100-V1",
       "required_approval_role": "independent_reviewer",
       "pass_condition": "Every ON/OFF cycle has the required one-shot cutoff, no unsafe rail/GPIO observation, and no reset."
     },

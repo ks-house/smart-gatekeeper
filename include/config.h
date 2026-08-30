@@ -138,7 +138,8 @@ constexpr uint8_t PIN_TRIG = 10; // TRIG: GPIO 10 (OUTPUT)
 constexpr uint8_t PIN_ECHO = 11; // ECHO: GPIO 11 (INPUT)
 
 // ─── 릴레이 제어 핀 ───────────────────────────────────────────
-constexpr uint8_t PIN_RELAY      = 3;
+// Restored to the physically proven/wall-wired Gatekeeper relay input.
+constexpr uint8_t PIN_RELAY      = 23;
 constexpr bool    RELAY_ACTIVE_LOW = true;
 
 // ─── 애플리케이션 파라미터 ───────────────────────────────────

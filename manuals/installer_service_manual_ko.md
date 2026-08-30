@@ -18,7 +18,7 @@
 | MCU | ESP32-C6-DevKitC-1, RISC-V, 3.3V | board label, exact board/layout artifact | Xtensa ESP32 artifact 사용 |
 | 센서 | 현재 AJ-SR04T/JSN-SR04T 계열 | TRIG GPIO10 `PIN_TRIG`, ECHO GPIO11 `PIN_ECHO` | 과거 VL53L0X GPIO6/7 또는 GPIO21/22 배선 |
 | ECHO | 측정 후 3.3V 이하 | 전원 OFF continuity, 분배기/level shifter, powered high-voltage trace | 5V ECHO를 GPIO11에 직결 |
-| relay IN | GPIO3, `RELAY_ACTIVE_LOW=true` 가정 | 점퍼 L/H, idle/active voltage, High-Z OFF를 실측 | GPIO4/5/8/9/15/17–20 사용 |
+| relay IN | GPIO23, `RELAY_ACTIVE_LOW=true` 가정 | 점퍼 L/H, idle/active voltage, High-Z OFF를 실측 | GPIO4/5/8/9/15/17–20 사용 |
 | relay 출력 | 자동문에는 승인된 무전압 접점 | COM/NO/NC, 접점 정격, 문 controller manual | coil·mains를 MCU rail에서 직접 구동 |
 | 전원 보호 | MCU/sensor/relay 부하와 ground 설계 검토 | 별도 전원/광절연, fuse, flyback, 역극성·brownout trace | 보호 소자 없는 inductive load |
 
@@ -38,7 +38,7 @@ GPIO6/7은 현재 센서 핀이 아니지만 부팅 bus-clear 코드가 남아 �
 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
 |---|---|---|---|---|---|---|---|---|
 | installer | mains/door 격리, approved wiring | continuity·polarity·rail 측정 | short 없음, GPIO 보호, relay contact/coil 분리 | wiring plan, `config.h` | timestamped photo/meter trace | 작업 window | 재측정 1회 | safety owner; 불명확하면 전원 금지 |
-| installer + safety observer | emergency stop, relay contact는 door에서 분리 | Target만 power-on | boot 중 GPIO3 idle/High-Z, relay contact 변화 0, stable 3.3V | `RelayController`, `main.cpp` | boot/rail/GPIO waveform **PHYSICAL PENDING** | boot 60초 | power cycle 1회 | unexpected active/reset이면 즉시 차단 |
+| installer + safety observer | emergency stop, relay contact는 door에서 분리 | Target만 power-on | boot 중 GPIO23 idle/High-Z, relay contact 변화 0, stable 3.3V | `RelayController`, `main.cpp` | boot/rail/GPIO waveform **PHYSICAL PENDING** | boot 60초 | power cycle 1회 | unexpected active/reset이면 즉시 차단 |
 | sensor owner | relay OFF, 20–200cm test jig, ECHO 보호 | 거리 point와 obstruction 입력 | valid distance 또는 explicit timeout/out-of-range; 0을 성공으로 사용 안 함 | `UltrasonicSensor.cpp`, `config.h` | raw readings와 fixture geometry | reading 30ms source pulse timeout; 500ms 운영 목표 미검증 | point별 최대 3회 | repeated fault면 firmware/safety owner |
 | installer + operator | relay dry contact만 안전 test load 연결 | 승인된 1회 open command | relay LOW active, 1초 hold, OFF/High-Z, 3초 cooldown; event와 waveform 일치 | `TargetAccessFsm`, `GattServer`, relay controller | boot/session/event + waveform **PHYSICAL PENDING** | hold 1초, cooldown 3초 source 값 | effect 0회 자동 | latch/duplicate면 전원 차단, RELAY-G owner |
 | installer + operator | 실제 door 연결, safety zone clear | Issue #54 planned trials | 센서/relay/door event와 physical effect correlation | physical gate plan | 100-run ledgers, approvals **PENDING** | plan 조건 | plan 이외 0회 | trial 중 unsafe 관찰 즉시 stop |

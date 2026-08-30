@@ -68,7 +68,7 @@
 | **App** | **Native Shell**<br>*(Flutter Engine)* | • **보이지 않는 엔진 역할**<br>• OS 필수 권한(위치, 블루투스, 푸시 알림, 백그라운드) 획득 및 관리<br>• 백엔드 동적 설정 API (`GET /api/v1/config`) 호출 ➔ Target 비콘 UUID, RSSI 기준, 쿨다운 등 동적 로드 (Remote Config)<br>• foreground-service isolate의 단일 BLE 스캐너가 비콘 감지 시 Pre-arm API (`POST /api/v1/door/prearm`) 호출<br>• 연속 비콘 수신 시 중복 API 요청 방지를 위한 **쿨다운(Cooldown, 기본 10초·원격 가변)** 타이머 제어<br>• FCM/APNs 푸시 알림 수신 및 알림 클릭 시 WebView 페이지 전환 핸들링 |
 | | **WebView UI**<br>*(NAS Hosted Web)* | • **눈에 보이는 UI 전체 (HTML/JS/CSS)**<br>• 세입자 회원가입 폼, 동/호수 입력 UI 렌더링<br>• 사용자 승인 상태 (`pending`, `active`, `revoked`) 안내 화면 표시<br>• 앱 내 수동 **'문 열기(Force Open)'** 원격 개방 버튼 UI 제공<br>• 출입 기록 및 사용자 프로필 관리 화면 제공 |
 | **Backend** | **Synology NAS**<br>*(FastAPI + MariaDB)* | • WebView 웹 프론트엔드 호스팅 (Nginx / FastAPI Static)<br>• 세입자 계정 및 권한 상태 관리 (`pending`, `active`, `revoked`)<br>• 동적 설정 API (`GET /api/v1/config`) 제공<br>• 모바일 앱 API 요청 인증/인가 검증 (JWT Token & Device Identifier)<br>• 검증 성공 시 MQTTS 브로커를 통해 Target으로 제어 명령(`gatekeeper/arm`, `gatekeeper/force_open`) 발행<br>• 출입 이력 및 모니터링 로그 DB 저장 |
-| **Target** | **ESP32-C6 Gatekeeper** | • `GATEKEEPER_BEACON_UUID` 상시 비콘 브로드캐스팅 (외부 10~15m 반경)<br>• MQTTS 암호화 채널 수신 대기<br>• `gatekeeper/arm` 수신 시 초음파 센서 60초간 대기(Armed) 상태로 전환<br>• Armed 상태에서 초음파 20~50cm 물리적 접근 감지 시 릴레이(authoritative GPIO3) 1초 개방 후 COOLDOWN 전환<br>• `gatekeeper/force_open` 수신 시 초음파 감지 조건 없이 즉시 릴레이 1초 개방 |
+| **Target** | **ESP32-C6 Gatekeeper** | • `GATEKEEPER_BEACON_UUID` 상시 비콘 브로드캐스팅 (외부 10~15m 반경)<br>• MQTTS 암호화 채널 수신 대기<br>• `gatekeeper/arm` 수신 시 초음파 센서 60초간 대기(Armed) 상태로 전환<br>• Armed 상태에서 초음파 20~50cm 물리적 접근 감지 시 릴레이(authoritative GPIO23) 1초 개방 후 COOLDOWN 전환<br>• `gatekeeper/force_open` 수신 시 초음파 감지 조건 없이 즉시 릴레이 1초 개방 |
 
 ---
 

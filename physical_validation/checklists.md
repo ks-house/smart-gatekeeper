@@ -25,7 +25,7 @@
 
 | Gate group | Required approval role |
 |---|---|
-| Samsung/OEM, ESP32-C6, GPIO3, AJ-SR04T, OTA-G1..G3 | `independent_reviewer` |
+| Samsung/OEM, ESP32-C6, GPIO23, AJ-SR04T, OTA-G1..G3 | `independent_reviewer` |
 | RELAY-G0..G2 | `risk_owner` |
 | OTA-G4 and operator drills | `operator_risk_owner` |
 | Canary stop/rollback | `release_risk_owner` |
@@ -45,11 +45,11 @@ timestamps, one redacted `BLE_WAKE_POC` capture per trial, and latency samples.
 Force-stop, Bluetooth-off, permission-revoked, and unsupported OEM settings are
 explicitly unsupported cases; do not silently count them as wake successes.
 
-## ESP32-C6, GPIO3 relay, and AJ-SR04T
+## ESP32-C6, GPIO23 relay, and AJ-SR04T
 
 For the 100-cycle coexistence campaign capture serial/reset reasons and radio
 observations while Wi-Fi, BLE/GATT, MQTT, and OTA-safe-state transitions are
-exercised. For GPIO3, confirm the actual relay jumper/polarity, capture the
+exercised. For GPIO23, confirm the actual relay jumper/polarity, capture the
 active-low ON and High-Z OFF waveform plus 3.3 V/5 V rail behavior, and stop
 immediately on an unsafe rail observation, missed cutoff, unexpected reset, or
 advertisement loss. For AJ-SR04T capture the 19/20 cm boundary and ghost-filter

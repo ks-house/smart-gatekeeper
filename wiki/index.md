@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (#276 truthful ko/en command-result install and connected readback complete; physical Gates remain)
+> Last updated: 2026-08-30 (AJ-SR04T GPIO10/11 + relay GPIO23 source contract restored; OTA and physical Gates tracked separately)
 
 ---
 
@@ -29,11 +29,11 @@
 
 | Page | Summary |
 |------|---------|
-| [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, authoritative relay GPIO3 및 3.3V 전기 안전 기준 |
+| [pin_mapping.md](pin_mapping.md) | AJ-SR04T GPIO10/11, relay GPIO23 복원 및 변경 이력, SmartBox GPIO4~8 비호환과 3.3V 전기 안전 기준 |
 | [hardware_test.md](hardware_test.md) | 현재 아키텍처 검증표와 과거 ToF 테스트 증거 분리 |
-| [physical_gate_preparation.md](physical_gate_preparation.md) | #54 Samsung/OEM, ESP32-C6, relay/sensor, OTA, operator/canary evidence preparation |
+| [physical_gate_preparation.md](physical_gate_preparation.md) | #54 Samsung/OEM, ESP32-C6, relay/sensor, OTA, operator/canary evidence preparation 및 service-access를 유지하는 wall-first commissioning 경계 |
 | [nas_physical_test_delivery.md](nas_physical_test_delivery.md) | exact-main public canary bounded SFTP-only staging/readback/rename, optional pin with audited runtime-keyscan fallback, connected-tier prerequisites and operator handoff |
-| [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO3 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
+| [relay_troubleshooting_guide.md](relay_troubleshooting_guide.md) | GPIO23 High-Z OFF의 한계와 릴레이 전기·반복 진단 절차 |
 
 ---
 
@@ -82,7 +82,7 @@
 | [manuals/README.md](../manuals/README.md) | Issue #53 v0.3 manual set, NAS staging/evidence boundary, field contract, and repeat loop |
 | [general_user_manual_ko.md](../manuals/general_user_manual_ko.md) | Korean-first end-user installation, access, degraded/OEM, update/rollback, lost-phone and support journeys |
 | [administrator_manual_ko.md](../manuals/administrator_manual_ko.md) | Admin roles, tenant/device/door lifecycle, force-open, NAS readiness/metrics, privacy, backup/restore, OTA and decommission |
-| [installer_service_manual_ko.md](../manuals/installer_service_manual_ko.md) | ESP32-C6 wiring, GPIO3/polarity, power safety, commissioning, and explicit relay/offline/OTA/sensor incident contracts (evidence pending) |
+| [installer_service_manual_ko.md](../manuals/installer_service_manual_ko.md) | ESP32-C6 wiring, GPIO23/polarity, power safety, commissioning, and explicit relay/offline/OTA/sensor incident contracts (evidence pending) |
 | [privacy_notice_ko.md](../manuals/privacy_notice_ko.md) | Data inventory, minimization, consented/redacted support export, retention/deletion and incident privacy |
 | [support_incident_handbook_ko.md](../manuals/support_incident_handbook_ko.md) | Support triage, reason/state handling, force-open, offline/OEM, update, lost phone and incident loop |
 | [product_gap_register_v1.md](../manuals/product_gap_register_v1.md) | Manual-to-product reverse analysis with explicit #49–#52, NAS, test, P0/P1 and physical gaps |

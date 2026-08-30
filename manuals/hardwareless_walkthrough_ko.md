@@ -26,7 +26,7 @@
 | HWL-ADMIN-05 | deploy owner | `/live`와 `/ready` admission 경계 구분 | readiness API/contract tests PASS | NAS ingress·broker·DB fault |
 | HWL-ADMIN-06 | privacy owner | tenant/purpose/expiry/revocation consent와 redacted export 검증 | support-export negative tests PASS | approved consent capture/ticket lifecycle |
 | HWL-ADMIN-07 | tenant admin | retention request와 idempotency key binding 검증 | deletion concurrency/mismatch tests PASS | legal retention approval/NAS drill |
-| HWL-INSTALL-01 | 설치자 | GPIO3/GPIO10/11/금지 핀과 3.3V 경계 식별 | source/manual contract PASS | continuity/voltage/waveform |
+| HWL-INSTALL-01 | 설치자 | GPIO23/GPIO10/11/금지 핀과 3.3V 경계 식별 | source/manual contract PASS | continuity/voltage/waveform |
 | HWL-INSTALL-02 | service 기술자 | dual-slot health와 rollback 상태 식별 | OTA host state tests PASS | power-cut/bootloader |
 | HWL-SUPPORT-01 | 1차 지원 | redacted bundle의 허용/금지 필드 분류 | logger/manual redaction tests PASS | support system access/retention |
 | HWL-SUPPORT-02 | 사고 지휘자 | published/unknown/physical evidence 분리 | event/force-open/manual contract PASS | operator drill/canary |
@@ -58,7 +58,7 @@
 
 - [ ] `SAMSUNG-WAKE-100`: fresh install, screen-off, reboot, process kill, permission/Bluetooth/network transition을 각 20회
 - [ ] `ESP32-C6-COEXISTENCE-100`: BLE/Wi-Fi/Target command coexistence와 reset/rail 관찰
-- [ ] `GPIO3-RELAY-100`: boot/idle/active/1초 hold/High-Z OFF/3초 cooldown waveform과 실제 문 effect
+- [ ] `GPIO23-RELAY-100`: boot/idle/active/1초 hold/High-Z OFF/3초 cooldown waveform과 실제 문 effect
 - [ ] `AJ-SR04T-BOUNDARY-100`: 20cm blind boundary, 50cm threshold, out-of-range/timeout, 5V ECHO protection
 - [ ] `RELAY-G0/G1/G2`: replay, unknown, reset, ACL/credential denial에서 effect-before-success 불변조건
 - [ ] `OTA-G1..G4`: signed artifact, inactive-slot boot, continuous health, power/network cut, rollback, local recovery

@@ -1,5 +1,5 @@
 # pin_mapping.md — 현재 하드웨어 핀 매핑
-> Last updated: 2026-07-30 (AJ-SR04T current-code audit)
+> Last updated: 2026-08-30 (historical Gatekeeper GPIO23 relay mapping restored in source)
 
 ## 1. 실제 펌웨어 핀
 
@@ -7,7 +7,7 @@
 |---|---:|---|---|---|
 | 초음파 TRIG | 10 | OUTPUT | `PIN_TRIG` | 10 µs trigger pulse |
 | 초음파 ECHO | 11 | INPUT | `PIN_ECHO` | **센서가 5V ECHO를 내면 저항 분배/레벨 시프터 필수** |
-| 릴레이 IN | 3 | OUTPUT(ON) / INPUT(OFF) | `PIN_RELAY` | Active-LOW; OFF는 High-Z; 실기기 검증 pending |
+| 릴레이 IN | 23 | OUTPUT(ON) / INPUT(OFF) | `PIN_RELAY` | Active-LOW; OFF는 High-Z; 재설치 펌웨어의 실기기 검증 pending |
 | Native USB D+ / D- | 19 / 20 | 예약 | USB CDC | 사용 금지 |
 
 현재 런타임 거리 센서는 AJ-SR04T/JSN-SR04T 계열이며 VL53L0X는 제거되었습니다. GPIO6/7은 센서 핀이 아닙니다.
@@ -44,3 +44,48 @@ GPIO21/22는 현재 보드에서 일반 GPIO 후보일 수 있으나 이 프로�
 | 접근 임계값 | 50 cm (NVS/MQTT 20–200 cm) |
 | 릴레이 hold | 1 s |
 | Target cooldown | 3 s |
+
+## 6. SmartBox 배선은 호환되지 않음
+
+`/home/sh-cat-lee/workspaces/smartbox`는 같은 ESP32-C6 계열을 사용하지만
+별도 제품이며 핀과 actuator topology가 다르다. SmartBox 배선을 이
+Smart Gatekeeper Target에 그대로 적용하지 않는다.
+
+| 기능 | Smart Gatekeeper | SmartBox | 영향 |
+|---|---:|---:|---|
+| AJ-SR04T TRIG | GPIO10 | GPIO4 | SmartBox 배선에서는 Gatekeeper trigger가 센서에 도달하지 않음 |
+| AJ-SR04T ECHO | GPIO11 | GPIO5 | SmartBox 배선에서는 Gatekeeper가 echo를 읽지 못함 |
+| 문 개방 relay IN | GPIO23 단일 Active-Low | GPIO6 main, GPIO7/8 direction | Gatekeeper는 GPIO6/7/8 actuator relay를 구동하지 않음 |
+
+Gatekeeper의 GPIO23은 자동문 제어기의 무전압 입력을 위한 단일
+COM/NO relay를 구동한다. SmartBox의 GPIO6 main-power와 GPIO7/8
+forward/reverse actuator 회로를 대체하지 않는다. 또한 Gatekeeper의
+현재 부팅 코드에는 잔존 GPIO6/7 I2C bus-clear가 있으므로 그 두 핀을
+relay input에 연결하면 부팅 중 예기치 않은 전위 변화가 생길 수 있다.
+
+배선을 바꾸기 전에 Target, sensor, relay와 door-side load 전원을 모두
+차단한다. 첫 재시험은 실제 문 입력을 분리하고 GPIO23 relay 접점과
+GPIO10/11 sensor 신호를 계측한 뒤 수행한다. GPIO11에는 5 V ECHO를
+직결하지 않는다.
+
+## 7. 저장소 배선 변경 이력 감사
+
+Git history는 다음 세 기준선을 구분한다.
+
+| 날짜/commit | 센서 | relay | 증거 경계 |
+|---|---|---:|---|
+| 2026-06-27 `e8c01f9` | VL53L0X SDA/SCL GPIO6/7, XSHUT GPIO10 | GPIO3 | 초기 계획; 뒤의 현장 배선 확인 전 |
+| 2026-07-24 `ddd7961` | VL53L0X GPIO6/7/10 | GPIO23 | 실제 배선과 sensor/relay/integration PASS가 당시 `hardware_test.md`에 기록됨 |
+| 2026-07-27 `f3eee35` | AJ-SR04T TRIG/ECHO GPIO10/11 | GPIO23 | ToF를 ultrasonic으로 교체하고 당시 문서에 배선 완료로 기록 |
+| 2026-08-02 `d957718` | AJ-SR04T GPIO10/11 | GPIO3 | Hardwareless GATT 계약 정리와 함께 authoritative pin을 GPIO3으로 변경; 같은 변경이 physical validation pending을 명시 |
+| 2026-08-30 source candidate | AJ-SR04T GPIO10/11 | GPIO23 | 소유자가 설치 배선을 확인해 과거 Gatekeeper 조합으로 복원; 빌드·서명 OTA·재부팅 health와 물리 접점 시험은 각각 별도 Gate |
+
+Smart Gatekeeper의 전체 Git history에는 AJ-SR04T GPIO4/5 또는 relay
+GPIO6을 정의한 revision이 없다. 그 값은 별도 SmartBox 프로젝트의
+배선이다. 따라서 “초기 Gatekeeper 동작 배선으로 복귀”와 “현재
+SmartBox식 현장 배선을 firmware가 수용”하는 것은 다른 변경이다.
+
+현재 authoritative 조합은 소유자가 확인한 과거 Gatekeeper 배선인
+relay GPIO23과 ultrasonic GPIO10/11이다. SmartBox GPIO4/5/6 배선은
+지원하지 않는다. 서명 OTA 적용 후에도 GPIO11 ECHO 전압, relay 접점과
+실제 문 동작은 별도 현장 증거로 확인해야 한다.

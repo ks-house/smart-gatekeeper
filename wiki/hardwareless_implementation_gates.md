@@ -27,7 +27,7 @@ Epic #13 (모바일 독립 BLE 로컬 인증 및 Gatekeeper 하드웨어리스 �
 - **필수 실기기 증거**:
   1. `samsung_oem_ble_wake`: Samsung Android 기기 100회 자동 스캔/Wake 성공
   2. `esp32_c6_real_ble_gatt_radio_coexistence`: ESP32-C6 실제 BLE GATT 5.3 및 Wi-Fi 6 라디오 공존
-  3. `relay_one_shot_and_fail_safe`: GPIO3 릴레이 One-shot 3초 구동 및 부팅 시 High-Z OFF 보장
+  3. `relay_one_shot_and_fail_safe`: GPIO23 릴레이 One-shot 3초 구동 및 부팅 시 High-Z OFF 보장
   4. `sensor_real_passage_detection`: 초음파 센서 19cm/20cm 통과 시 동작 및 미통과 시 ARMED 타임아웃
   5. `bootloader_dual_slot_health_rollback_power_loss`: Dual-slot 파티션 전원 차단 / 롤백 시동
   6. `ota_g1_through_g4`: OTA-G1 ~ OTA-G4 물리 장비 롤아웃 및 롤백 드릴

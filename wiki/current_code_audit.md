@@ -20,7 +20,7 @@ applies_to:
 
 ## 1. 결론
 
-현재 저장소는 초기 “ESP32 scanner + VL53L0X + 직접 HTTPS 인증” PoC가 아니다. 기준 아키텍처는 **ESP32-C6 iBeacon/secure Target + Android foreground/native worker + FastAPI/MariaDB 관리면 + per-Target MQTTS signed command/ACL + AJ-SR04T + GPIO3 relay + signed recoverable OTA**다.
+현재 저장소는 초기 “ESP32 scanner + VL53L0X + 직접 HTTPS 인증” PoC가 아니다. 기준 아키텍처는 **ESP32-C6 iBeacon/secure Target + Android foreground/native worker + FastAPI/MariaDB 관리면 + per-Target MQTTS signed command/ACL + AJ-SR04T + GPIO23 relay + signed recoverable OTA**다.
 
 Hardwareless RC의 Android worker, connectable GATT transport, signed ACL verifier와 Target FSM 연동은 소프트웨어에 존재한다. 기본 개발과 commercial production 빌드는 `ENABLE_HARDWARELESS_RC=0`이고, 개인 설치 전용 `esp32c6_personal_production`만 valid door/ACL trust를 전제로 compile/runtime ON이다. 이 개인 source enable을 NAS/phone/Target 배포나 실기기 합격으로 확대 해석하지 않는다.
 
@@ -29,7 +29,7 @@ Hardwareless RC의 Android worker, connectable GATT transport, signed ACL verifi
 | 계층 | 현재 값/동작 | 주요 근거 |
 |---|---|---|
 | Target build | ESP32-C6, pioarduino, 16 MB dual OTA; default/commercial OFF, personal production ON, lab-only feature profile 분리 | `platformio.ini`, `partitions_16MB_ota.csv` |
-| Sensor/relay | AJ-SR04T GPIO10/11, 20 cm min, 50 cm default; GPIO3 Active-LOW relay | `include/config.h`, `src/UltrasonicSensor.cpp`, `src/RelayController.cpp` |
+| Sensor/relay | AJ-SR04T GPIO10/11, 20 cm min, 50 cm default; GPIO23 Active-LOW relay | `include/config.h`, `src/UltrasonicSensor.cpp`, `src/RelayController.cpp` |
 | Access FSM | `IDLE → ARMED → RELAY_HOLD → COOLDOWN → IDLE`; IDLE만 새 arm/manual open 허용 | `src/TargetAccessFsm.cpp`, `src/main.cpp` |
 | MQTT transport | Root CA, non-1883, Target ID principal, exact `gatekeeper/v1/targets/<id>/...` namespace; invalid provisioning closes command plane | `src/MqttManager.cpp` |
 | Command security | signed canonical envelope, target/tenant/door/boot binding, expiry, nonce/replay storage, command ACK | `src/TargetCommandSecurity.cpp`, `src/MqttManager.cpp`, `backend/app/command_security.py` |
@@ -59,7 +59,7 @@ Hardwareless RC의 Android worker, connectable GATT transport, signed ACL verifi
 
 1. 매립 Target은 감사 시점에 구형 `2.1.0-g75b946a`였으며 최신 secure MQTT/periodic OTA 구현이 배포됐다는 증거가 없다.
 2. 최신 signed artifact의 install → reboot → expected version/boot ID → health confirmation이 필요하다.
-3. GPIO3 Active-LOW relay의 High-Z OFF, ECHO 5 V 보호, 전원 강하·노이즈·반복 구동은 물리 Gate다.
+3. GPIO23 Active-LOW relay의 High-Z OFF, ECHO 5 V 보호, 전원 강하·노이즈·반복 구동은 물리 Gate다.
 4. Wi-Fi/AP/broker/WAN 장애 자동 복구와 벽 매립 연결 SLO는 실기기 증거가 필요하다.
 5. Android 화면 OFF/Activity 종료 증거와 force-stop/OEM kill 한계는 구분해야 한다.
 

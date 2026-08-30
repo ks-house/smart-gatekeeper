@@ -35,7 +35,7 @@
 ### 3.1 핀 및 통신 제약 (엄수)
 - MCU: **ESP32-C6-DevKitC-1** (RISC-V 계열. 구형 Xtensa GPIO 사용 절대 금지)
 - I2C: `Wire.begin(6, 7, 400000UL)` (SDA=GPIO6, SCL=GPIO7)
-- 릴레이 IN: **GPIO 3**
+- 릴레이 IN: **GPIO 23**
 - 금지 핀: GPIO 4, 5, 8, 9, 15 (스트래핑) / GPIO 17, 18, 19, 20 (USB/UART)
 - 핀 상수는 `include/config.h`에서만 관리 (소스 하드코딩 금지)
 
