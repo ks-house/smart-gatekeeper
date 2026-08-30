@@ -1025,7 +1025,15 @@ tracking.
   and tenant data are not persisted.
 - Local Flutter analysis reported no findings, all 57 Flutter tests passed,
   Android `gattworker.*` unit tests rebuilt and passed, and all 317 repository
-  contract tests passed with one expected platform-specific skip. PR review,
-  exact-main signed APK publication, replacement install and connected
-  Korean/English readback remain pending. The absent sensor/relay/contact/door
-  fixture means physical opening remains unverified regardless of UI result.
+  contract tests passed with one expected platform-specific skip. PR #278
+  merged as exact main `b96afb7de3e13c2cfcf38326ffbf402568fa2838` after all
+  required checks passed.
+- Exact-main mobile run `33298655135` built, signed and atomically published
+  personal OTA `1.0.0-gb96afb7` / 32001. Independent strict-TLS manifest/APK
+  readback matched the 56,134,809-byte artifact, SHA-256
+  `5ca0b476bf34a638ad92a82b630e9eca6a5ac1169b20cb947e3ac267b693863f`
+  and pinned Android signer digest.
+- Windows PnP and ADB currently enumerate no phone, so replacement install and
+  connected Korean/English readback remain pending and issue #276 stays open.
+  The absent sensor/relay/contact/door fixture means physical opening remains
+  unverified regardless of UI result.
