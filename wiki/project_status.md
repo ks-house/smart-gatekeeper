@@ -919,3 +919,28 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   changed no protected path, so all 83 reviewed protected digests remain exact.
 - The policy candidate changes no runtime. Connected phone acceptance and
   physical Target/door evidence remain pending even after CI and NAS succeed.
+
+## 2026-08-30 private Tailscale NAS deployment completion
+
+- Public DSM SSH `4422` remains closed. DSM OpenSSH moved to `8822`, and the
+  deployment control plane uses only Tailscale address `100.95.243.92:8822`;
+  no router SSH forwarding is required.
+- The live private ED25519/ECDSA host fingerprints matched the previously
+  accepted DSM keys. GitHub `production` pins the exact private endpoint and
+  the `tag:sgk-github-deploy` identity is allowed only to that NAS SSH port.
+- Status-only preflight run `33289323225` attempt 2 passed OIDC Tailscale join,
+  strict host-key verification, restricted deploy-key authentication and the
+  forced dispatcher with `status=deployed`.
+- Backend run `33269719228` attempt 2 reran only its failed deploy job and passed
+  with canonical `status=deployed`, exact source
+  `8ea9ff1f8177bf49dba524b11d586715af5e1f6b`, matching status readback,
+  `loopback_ready=passed` and `public_ready=passed`.
+- An independent strict-TLS check returned HTTP 200 for public `/live` and
+  `/ready`; both reported the exact deployed build and every readiness check was
+  `true`. This proves backend deployment/readiness, not phone installation,
+  Target OTA transition, notification delivery, sensor/relay operation or
+  physical door motion.
+- Exact final-main mobile run `33270789676` and Target run `33270789693` remain
+  successful at `89164ce4eb43f6deba8667bf9db6926fcfedfe46`, including both signed
+  personal OTA publication jobs. The disconnected phone and physical Target
+  acceptance Gates remain open.

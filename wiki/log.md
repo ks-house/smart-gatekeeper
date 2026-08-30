@@ -5007,3 +5007,22 @@
 - Replaced the transitional mobile P0 bundle identity with the sole `current-main-baseline` sourced from actual merged mobile UX main `2ae453a0206796650ee99da0e0e57b8fb5078598`.
 - Preserved all 83 reviewed normalized protected digests and exact workflow/action inventories; mobile P1 changed no protected path.
 - This policy candidate changes no NAS runtime, container, database, phone installation or Target state; hosted validation and deployment remain separate Gates.
+
+## [2026-08-30] compile | Record NAS SSH 8822 transport migration
+
+- Recorded the owner decision to keep former public SSH `4422` closed and use `8822` as the replacement compatibility endpoint while retaining the forced dispatcher, exact sudo allowlist, pinned host key and signed deployment bundle contracts.
+- Updated the operator commands, port inventory, GitHub Environment contract and private-Tailscale end-state guidance without rewriting historical `4422` preflight and bootstrap evidence.
+- The first external TCP, SSH banner and host-key probes to `tworimpa.synology.me:8822` found no listener. No deploy credential, bundle, GitHub Environment variable, NAS runtime, container, database or router configuration was changed; host-key match and forced `status` remain required.
+
+## [2026-08-30] compile | Correct SSH 8822 migration to Tailscale-only transport
+
+- The owner confirmed DSM OpenSSH 8.2 listens on `0.0.0.0:8822`/`:::8822`, Tailscale is running and the NAS tailnet address remains `100.95.243.92`; public router forwarding is not required or approved.
+- WSL reached `100.95.243.92:8822`, and the live ED25519/ECDSA fingerprints matched the previously accepted DSM keys. The protected GitHub Environment now pins that exact private host/port and only those matching keys.
+- Manual preflight run `33289323225` joined Tailscale with OIDC and prepared the restricted key, then timed out at SSH. This isolates the remaining Gate to the `tag:sgk-github-deploy` Tailnet grant for `tcp:8822`; no deployment `apply` or NAS runtime/database change occurred.
+
+## [2026-08-30] test | Verify private Tailscale status and exact backend deployment
+
+- After the owner saved the exact CI-tag `tcp:8822` Tailnet grant, preflight run `33289323225` attempt 2 passed OIDC join, pinned private host-key validation, restricted-key authentication and forced `status=deployed` without running `apply`.
+- Backend run `33269719228` attempt 2 reran only the failed NAS deploy job and returned canonical `status=deployed`, `source_sha=8ea9ff1f8177bf49dba524b11d586715af5e1f6b`, matching forced status readback, `loopback_ready=passed` and `public_ready=passed`.
+- Independent strict-TLS `/live` and `/ready` checks returned HTTP 200, the exact build SHA and all nine readiness checks `true`. Public SSH forwarding remains unnecessary; the phone is disconnected, so install, notification, Target transition and physical door evidence remain pending.
+- Final-main mobile run `33270789676` and Target run `33270789693` at `89164ce4eb43f6deba8667bf9db6926fcfedfe46` retain successful signed personal OTA publication evidence.
