@@ -68,6 +68,13 @@ applies_to:
   OTA `1.0.0-g1b701df` / `35801`; independent primary/fallback manifest
   readback matched commit and APK SHA-256
   `bc4d24fdeacda655a1f1465f466abf15192c3287117965308abe1329cdc9faf3`.
+  The subsequent policy-only actual main `4d906aee...` preserved the same
+  feature blobs and completed its own exact-main publications. Current public
+  pointers independently read back as mobile `1.0.0-g4d906ae` / `35901` with
+  APK SHA-256
+  `a5d3e9b332a36a85ea9ab1b7f06dd89dc318ab15b9abf693c00ece67d373667a`
+  and Target `2.1.400+main.g4d906ae`; both manifests name exact commit
+  `4d906aeeaab972e9abe07325fe3c8ba43febff8a`.
   Phone installation, visible logout/registration/admin acceptance and Target
   install/reboot/health remain separately recorded Gates.
 

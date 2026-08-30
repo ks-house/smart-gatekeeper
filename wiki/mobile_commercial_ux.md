@@ -173,6 +173,12 @@ signed, atomically published and HTTPS-read-back personal OTA
 `1.0.0-g1b701df` / `35801`. Independent primary/fallback manifests matched
 exact commit and APK SHA-256
 `bc4d24fdeacda655a1f1465f466abf15192c3287117965308abe1329cdc9faf3`.
+The policy-only actual main `4d906aee...` retained those feature bytes and
+subsequently published the current public mobile pointer
+`1.0.0-g4d906ae` / `35901`, SHA-256
+`a5d3e9b332a36a85ea9ab1b7f06dd89dc318ab15b9abf693c00ece67d373667a`.
+Independent primary/fallback manifests matched each other and exact commit
+`4d906aeeaab972e9abe07325fe3c8ba43febff8a`.
 Publication and installation are separate evidence; no phone
 logout, fresh registration rendering, or `TENANT_ADMIN` navigation is claimed
 until observed on an updated device.
