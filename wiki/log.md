@@ -5080,3 +5080,9 @@
 - Replacement-installed `1.0.0-g6d7ed42` / 32301 over 32001 with `adb install -r`; first-install time stayed `2026-07-29 22:41:57`, registration remained present and the Home read ACL 570. No uninstall, force-stop or data clear was used.
 - In app-only English locale, one bounded action-2 completed in 1834 ms and displayed `Target executed the open command. Physical door opening is not confirmed.` Restoring the original empty app-locale override re-rendered the same retained result in Korean with the same latency; final device locale was `ko-KR`.
 - This completes issue #276's connected ko/en wording acceptance. AJ-SR04T, ECHO protection, relay contact/load, actuator and door are still absent, so distance trigger, electrical actuation and physical opening remain unclaimed under #54.
+
+## [2026-08-30] compile | Authorize reviewed GPIO23 Target build bundle
+
+- Bound the complete trusted 83-file bundle to reviewed feature candidate `4c16b44352a986417ee679465da1c61f670abde1` and its future merge-connected descendants.
+- The only protected-byte change is `.github/workflows/deploy.yml`, whose privileged Target build inventory now pins the reviewed GPIO23 `include/config.h` digest; all other protected bytes and both namespace inventories remain unchanged.
+- This policy-only step publishes or installs no firmware and performs no relay or door action. Feature merge, exact-main signed publication, Target OTA health and final baseline rotation remain separate Gates.
