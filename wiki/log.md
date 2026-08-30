@@ -5072,3 +5072,11 @@
 - Replaced the Home screen's rendered-string terminal state with a semantic message projection that resolves command-executed, unknown, normalized failure, enrollment and status-recovery messages through the active ko/en localization at render time.
 - Localized the core ready-state detail, action labels, detection metadata and registration summary so an app-locale change no longer leaves the normal Home control path mixed Korean/English.
 - Added focused ko/en tests proving the same 2007 ms command result renders independently in each locale, generic failure never claims a physical open, and proof uncertainty remains terminal with no automatic retry. All 60 Flutter tests passed, analysis reported no issues and formatting/diff checks passed locally; CI, exact-main signed publication and connected replacement readback remain separate Gates.
+
+## [2026-08-30] test | Close truthful ko/en mobile result Gate on exact signed main
+
+- PR #280 passed trusted-policy, OTA/schema, Flutter format/analyze/60 tests, native GATT and Android canary checks, then merged as exact main `6d7ed42c56483ee61ee4f36302428c0c7a7d3db6`. Main run `33300474502` passed the isolated unsigned build and signed atomic primary/fallback NAS publication with strict HTTPS verification.
+- Independently downloaded the public manifest and 56,134,809-byte APK. Manifest and embedded source identity matched exact main, SHA-256 was `da629f3c43d56302860cfe506c234f48569e06424a135ed355d014ff8964ae94`, APK Signature Scheme v2/v3 passed and the signer digest matched the pinned identity.
+- Replacement-installed `1.0.0-g6d7ed42` / 32301 over 32001 with `adb install -r`; first-install time stayed `2026-07-29 22:41:57`, registration remained present and the Home read ACL 570. No uninstall, force-stop or data clear was used.
+- In app-only English locale, one bounded action-2 completed in 1834 ms and displayed `Target executed the open command. Physical door opening is not confirmed.` Restoring the original empty app-locale override re-rendered the same retained result in Korean with the same latency; final device locale was `ko-KR`.
+- This completes issue #276's connected ko/en wording acceptance. AJ-SR04T, ECHO protection, relay contact/load, actuator and door are still absent, so distance trigger, electrical actuation and physical opening remain unclaimed under #54.

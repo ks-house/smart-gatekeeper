@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (truthful action-2 installed/read back; locale-state follow-up candidate under review)
+> Last updated: 2026-08-30 (#276 truthful ko/en command-result install and connected readback complete; physical Gates remain)
 
 ---
 
