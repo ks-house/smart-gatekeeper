@@ -25,6 +25,11 @@ supersedes the old Bearer/JWT and shared-topic examples below:
 - The normal ready UI is native Home/Activity/Settings. Hosted WebView remains a
   transitional enrollment/recovery surface and delegates privileged signing to
   native code.
+- A fresh install may generate its AndroidKeyStore key before Backend
+  enrollment. An unknown valid provisional credential must receive the
+  device-scoped supervised registration state, allowing Home to expose the
+  existing registration WebView; an existing credential ID with a different
+  public key remains a hard denial.
 
 The remaining legacy diagrams are retained as design history and must not be
 used as current security or topic specifications. Current authority is defined

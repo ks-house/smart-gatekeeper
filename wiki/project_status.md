@@ -1139,3 +1139,22 @@ tracking.
   legacy retirement and build identity were all true. No post-fix mobile request
   was sent during deployment. One owner-triggered button trial and observed
   Target/relay/physical-door outcome remain pending.
+
+## 2026-08-30 owner remote-open success and fresh-family onboarding defect
+
+- After the personal-scope Backend deployment, the owner used the installed
+  `1.0.0-gf403e10` normal `문 열기` button and observed the physical door open.
+  This closes one complete mobile credential → Backend → signed MQTTS → Target
+  → relay → door observation, while repetition/OEM/SLO remain open.
+- A different connected A24 was a true fresh install of the same APK. Android
+  16 reported Bluetooth scan/connect, fine/coarse location and notifications
+  granted, but Home showed zero doors and Backend unavailable without a
+  registration action. No access request or database change was made.
+- The app had already generated a provisional AndroidKeyStore credential and
+  included it in personal status. Backend treated the not-yet-enrolled valid
+  credential ID as a 403, hiding its existing `request_registration` flow.
+- Issue #293 source returns the supervised device registration projection only
+  when the credential ID is absent from storage. A stored credential ID with a
+  different public key still fails closed. Focused 9 and full 149 Backend tests
+  pass with the two expected Docker-only skips; policy, protected CI, NAS
+  deployment/readiness and connected A24 UI readback remain pending.

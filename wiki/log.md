@@ -5269,3 +5269,9 @@
 - PR #290 passed fresh protected checks and merge-committed as exact main `6c12f169bd2d8733352beb3415159a6e60c01081`; Backend run `33311924158` passed security/MariaDB, evidence verification, immutable image publication and the owner-approved production deployment over the restricted Tailscale path.
 - Canonical NAS evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with every readiness check true.
 - This closes source, CI, deployment and readiness for the personal-vs-command authorization defect. No post-fix mobile request was sent, so Target receipt, relay actuation and physical door movement require one owner-triggered trial and remain unclaimed.
+
+## [2026-08-30] fix | Restore fresh family-member registration onboarding
+
+- Owner confirmed one post-fix normal mobile `문 열기` request opened the physical door, closing a single mobile credential through Backend, signed MQTTS, Target, relay and door observation without claiming repetition/OEM/SLO acceptance.
+- A connected fresh-install A24 had all Android runtime permissions granted and a newly generated provisional AndroidKeyStore credential, but Home showed Backend unavailable and no registration action because Backend returned 403 for the valid not-yet-enrolled credential ID.
+- Corrected personal status to project the supervised device registration state only when the credential ID is absent; an existing credential ID with a different public key remains a 403 hard denial. Focused 9 and full 149 Backend tests passed with two expected Docker-only skips; protected policy/CI, NAS deployment and connected UI readback remain pending.
