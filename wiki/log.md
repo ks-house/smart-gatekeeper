@@ -5503,3 +5503,15 @@
 - Policy PR #314 passed Hosted Trusted and merge-committed normally as main `067e60346bb516701a0395722bdc700cdd4f09c8`; merged that exact policy history into feature candidate `d1272a5ec16269e51d852f0fc70854cd00048eb3` without rebase or squash.
 - The three reviewed protected feature blobs now exactly match the sole complete 91-path authorization. Fresh local/hosted validation, feature PR merge, exact-main deployment and one owner retry remain separate Gates.
 - On the merge-connected branch, the complete Backend suite passed 165 tests with two expected environment-only skips and the complete OTA/operations suite passed 317 tests with one expected environment-only skip.
+
+## [2026-08-31] test | Deploy fresh credential re-enrollment correction
+
+- Feature PR #315 passed Hosted Trusted, Backend/MariaDB and OTA/schema checks and merge-committed normally as exact main `b0e1339c186bde81e2f4602ff426251b88e57db6`.
+- Backend run `33326079617` published digest-pinned API/DB images and deployed that exact source through the restricted Tailscale/forced-dispatch path. Canonical evidence reported `status=deployed`, `loopback_ready=passed` and `public_ready=passed`.
+- Independent strict-TLS `/live` and `/ready` requests returned HTTP 200 for exact build `b0e1339c...`; every readiness check was true. No phone, account or credential was changed by this verification, so one owner `이 휴대폰 등록` retry and subsequent Target/door observation remain separate acceptance Gates.
+
+## [2026-08-31] compile | Finalize re-enrollment correction main policy
+
+- Retired the transitional candidate identity and pinned the sole `current-main-baseline` to exact feature merge `b0e1339c186bde81e2f4602ff426251b88e57db6`, retaining all 91 reviewed protected digests unchanged.
+- This policy-only finalization changes no Backend runtime byte, account, credential, ACL, NAS container, APK, Target, relay or door. Hosted Trusted and normal policy merge remain separate Gates.
+- All 42 focused trusted-policy regressions and the complete 317-test OTA/operations suite passed locally with one expected environment-only skip.
