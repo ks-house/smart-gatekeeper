@@ -5416,3 +5416,9 @@
 - Mobile run `33318827185` passed the complete mobile suite and signed, atomically published and HTTPS-read-back personal OTA `1.0.0-g4a3067c` / `35101`. Independent primary/fallback HTTPS manifests both returned HTTP 200 and matched exact commit and APK SHA-256 `654d1d726b3ab56628d36c560db8cc5e0a5bce6c433c73606a207776bb019ace`.
 - Target run `33318827246` separately passed exact-main build, signing, atomic publication and HTTPS read-back for `2.1.395+main.g4a3067c`; this is publication evidence, not Target installation, reboot or health confirmation.
 - No APK was installed during this work. Wife/daughter phone update and visual confirmation that each verified credential displays only its own approved name/unit remain the final device acceptance Gate; missing/N-1 data must remain generic and must never fall back to the shared owner label.
+
+## [2026-08-31] compile | Authorize mobile lifecycle and manifest schema candidate
+
+- Bound the complete ordered 91-path protected bundle to immutable feature candidate `68c9c3172782339a731f01dfb960b1aa8aeabaff`, adding migration 010 up/down and signed `schema.env` to the trusted inventory.
+- Exactly 18 protected normalized blobs are new or changed across the Backend logout/admin role path, manifest-derived migration deployment, trusted inventory and direct regressions. The persistent identity admits only the exact repository candidate or proven same-byte descendants.
+- This policy-only candidate changes no NAS wrapper, database, credential, ACL, container, APK, Target, relay or physical door. Hosted policy CI/merge, feature merge-connection, fresh full CI, exact-main merge and deployment remain separate Gates.
