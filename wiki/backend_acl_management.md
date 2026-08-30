@@ -75,6 +75,13 @@ does not satisfy the endpoint. Only after exact apply does the response return
 `accepted=true`, the exact credential ID and a positive `acl_version`; otherwise the app leaves native
 GATT OFF.
 
+After server-first logout or administrator account deletion, the retired public credential remains
+`REVOKED` as immutable audit history. If the same phone later submits a fresh account request, receives
+explicit administrator approval and creates a new AndroidKeyStore credential, that terminal historical
+row does not conflict with the new credential. `ACTIVE` and `PENDING` bindings for the same keyed device
+reference still fail closed, and neither the old credential nor its grants are revived. The replacement
+signed ACL contains only currently active credentials.
+
 ### 3.2 Per-credential account identity projection
 
 The personal mobile status response treats the ACL tenant as an authorization

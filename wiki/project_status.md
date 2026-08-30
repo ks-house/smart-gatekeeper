@@ -78,6 +78,27 @@ applies_to:
   Phone installation, visible logout/registration/admin acceptance and Target
   install/reboot/health remain separately recorded Gates.
 
+## 2026-08-31 account deletion and fresh re-enrollment correction
+
+- A current mobile build reproduced a user-visible failure after account
+  deletion, fresh registration request and administrator approval. Source-level
+  tracing and a failing regression identified the exact conflict: immutable
+  `REVOKED` credential history for the same keyed phone locator was being treated
+  as if it were a live credential during personal bootstrap.
+- The candidate now admits a new AndroidKeyStore credential only when every
+  different prior credential for that locator is terminal (`REVOKED`, `DISABLED`
+  or `EXPIRED`). `ACTIVE`/`PENDING` conflicts, public-key uniqueness, explicit
+  approval, exact tenant/door scope, ACL signing and Target apply gates remain
+  unchanged. The old credential remains revoked and is excluded from the new
+  signed ACL.
+- Store-level and HTTP API regressions cover logout/account-row deletion,
+  reapproval and fresh credential bootstrap. The complete Backend suite passed
+  165 tests with two expected environment-only skips. The 317-test OTA and
+  operations suite has only the three expected pre-authorization protected
+  digest failures for the changed implementation and regression files.
+  Protected policy/CI/NAS deployment are separate Gates; no phone, account,
+  credential or live database mutation was performed during diagnosis.
+
 ## 2026-08-30 credential-signed remote Home button rollout
 
 - The owner-observed direct MQTT command opened the installed door. The mobile
