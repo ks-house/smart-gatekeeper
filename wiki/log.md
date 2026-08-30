@@ -5157,3 +5157,9 @@
 - PR #286 passed Hosted Trusted and merge-committed as policy main `649ecf0f7b9840d08787ddb6eaad31c2f70c128a`; merge-connected that trusted main into immutable feature candidate `3073d716b2c7157178a1f06fa5f38c3a9bc6a56d` without rebase or squash.
 - The reviewed mobile/Backend source and all fifteen changed or new protected candidate blobs remain those pinned by the complete 86-path persistent bundle. Fresh Hosted Trusted, Backend, OTA and mobile checks are required on the connected head before feature merge.
 - This graph connection changes no NAS runtime, database, installed APK, Target command, relay or physical door state.
+
+## [2026-08-30] fix | Pin the actual migration-008 deployment identity
+
+- Recorded exact-main `a78ec0c25e0e498eb1f9f83189279cccba236236` checks and immutable image publication, followed by the owner-approved Tailscale deployment failing closed with `unexpected schema version` before Compose, migration or cutover because the installed root wrapper still admits schema 007.
+- Corrected the signed bundle, root wrapper, production Compose and development Compose readiness contract from the prior migration-007 digest to the actual migration-008 SHA-256 `f95e752d96ea34ce7373d8573738936c5ec08ac296ee600a96c45d087e7219a8`.
+- Added a regression test deriving the digest from migration 008 bytes and requiring the exact value across all four consumers while rejecting the stale 007 value. Review/policy/CI, owner-authenticated root wrapper replacement, protected retry, app installation and physical door proof remain separate Gates.

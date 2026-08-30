@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -28,9 +29,26 @@ SYNOLOGY_COMPOSE = ROOT / "backend" / "compose.synology.yml"
 RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 DEPLOY_README = ROOT / "backend" / "deploy" / "README.md"
+MOBILE_CONTROL_UP = (
+    ROOT / "backend" / "db" / "migrations" / "008_mobile_credential_control_up.sql"
+)
+DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
+    def test_schema_008_identity_is_exact_across_bundle_wrapper_and_readiness(self):
+        expected = hashlib.sha256(MOBILE_CONTROL_UP.read_bytes()).hexdigest()
+        self.assertEqual("008", create_release_bundle.SCHEMA_VERSION)
+        self.assertEqual(expected, create_release_bundle.SCHEMA_SHA256)
+        for path in (WRAPPER, PRODUCTION_COMPOSE, DEVELOPMENT_COMPOSE):
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(expected, text)
+                self.assertNotIn(
+                    "edde5662c42e65dda82b2e0a9145d64dc4ebfc9fe7a5e5bd44b0b3aae0fe1d79",
+                    text,
+                )
+
     def test_dsm_tmp_helpers_are_invoked_through_bash(self):
         readme = DEPLOY_README.read_text(encoding="utf-8")
         for required in (
