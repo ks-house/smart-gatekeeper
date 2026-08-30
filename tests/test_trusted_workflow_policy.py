@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "1b701df93194029fb7be733a372f7ddb68f57e97"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "d1272a5ec16269e51d852f0fc70854cd00048eb3"
+EXPECTED_BUNDLE_ID = "reenrollment-d1272a5-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -44,7 +44,7 @@ backend/.env.example 9efc01b14e793d8c367dc1b67a4899d000f1745d1f9bd5de0b678a245df
 backend/app/Dockerfile ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573
 backend/app/acl_refresh.py 4f040eb22f2d1e7277f6eb65c47e0db8cd122de17296cd707217cb7aafafd537
 backend/app/acl_api.py a262c8f61cad13bb9be0bb84a6048aca922af2d73396923dc0f5fbf59d1c9cdb
-backend/app/acl_management.py b6178bbf187568dd2fba009a05c9a05ed782d2b763b5a54004b058cfb750a43f
+backend/app/acl_management.py 190b7c7891b46a7b313ca3876d0bfa552eeba62bc122d39cfbac3bb53b17d6c9
 backend/app/admin_security.py f3f769eebea014f94b36cdba1bec4627b657094f2d5fa737f29f54a57db0d4c9
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
 backend/app/home_assistant_bridge.py 586f5f43910e26a2425f8416959f4bb4c85d48cd49c88a29d2e99f790c42071b
@@ -96,9 +96,9 @@ backend/deploy/verify_legacy_synology.sh c4ab1fddfe0581d9f15ac64174b51374389d71d
 backend/docker-compose.yml 7a33092f1ab64cabd08e3e89e960f127a6935815eb41369152045da7b6bef58d
 backend/sbom.cdx.json 67b78d1a2cb4d5e48dc8b79f9630a58da0cee207d126c469cb0b0bfbd1945fd7
 backend/supply_chain_policy.json fef90253f3ec0b065f14dd1e83a2b6702b4dd2ad8dbeefc59b12dc78f3cb15e4
-backend/tests/test_acl_api.py c89a7be1eb33baaeeb90150236a0d8c5b57a7eb6400de9d028869a0d12f6d356
+backend/tests/test_acl_api.py 6dd1a816361b4638c0f8d71bcf119a110a92e4f482cfe4300cfb619dc3ca8644
 backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad70e8f02b13f1e54bb70
-backend/tests/test_acl_management.py f9ce99ad5acb538fbb27dd8805601ee7916bfd1eebbf3fd027597d9b5ca773be
+backend/tests/test_acl_management.py c1d476aad60f06aac4335a3b052135bf838739dbcc204996d33b1404eeb7ccc3
 backend/tests/test_admin_security.py ff8b0c0cd49e7d322c0a4f3cc564d3d058aba0f6ed0735e8c3f2156bd53555f8
 backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
 backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
@@ -112,7 +112,11 @@ backend/tests/test_target_boot_registry.py 4f29b72539e9c4c190e83f702e92ec71fb9bc
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    "backend/app/acl_management.py",
+    "backend/tests/test_acl_api.py",
+    "backend/tests/test_acl_management.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1066,8 +1070,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 91)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 3)
+    self.assertEqual(len(locally_unchanged_protected), 88)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
