@@ -81,10 +81,11 @@ Target 튜닝 및 로그 기능을 삭제하지 않고 하나의 설정 면으�
 
 ## 4. 검증 내역 (Verification)
 
-- **Flutter Unit Tests**: native 자격/ACL projection을 포함한 전체 45개 PASS
-- **Flutter Code Analysis**: 변경 Flutter 파일 targeted analysis (No issues found!)
-- **Android Native Tests**: `gattworker.*` unit suite와 debug Kotlin compile PASS
+- **Flutter Unit Tests**: action-1 armed 경계와 action-2 success/unknown/failure 표현을 포함한 전체 57개 PASS
+- **Flutter Code Analysis**: 전체 Flutter analysis (No issues found!)
+- **Android Native Tests**: `gattworker.*` unit suite와 debug Kotlin compile PASS; success/failure 알림은 물리 문 열림을 주장하지 않음
 - **Host C++ Unit Tests**: `wsl ./test_runner` (369 checks PASS)
 - **Repository Contracts**: `python3 -m unittest discover -s tests` (317 PASS, 1 expected skip)
 - **Vector Verifier**: `verify_vectors.py` (PASS)
 - **OTA Contract Gate**: `ota_contract_gate.py contract` (PASS)
+- **Exact-main mobile publication**: PR #278 merge main `b96afb7...`, run `33298655135` personal signed primary/fallback OTA and strict HTTPS readback PASS; connected replacement install/ko-en readback pending

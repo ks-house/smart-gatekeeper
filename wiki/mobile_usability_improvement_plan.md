@@ -193,11 +193,12 @@ weakening authentication, replay protection, result confirmation, or OTA.
 
 ## 6. Current issue register and implementation order
 
-1. [#276](https://github.com/ks-house/smart-gatekeeper/issues/276) — source
-   candidate now projects action-1 `SUCCEEDED` as armed and action-2 `OPENED`
-   as command-executed across Home, WebView, advanced control and the bounded
-   activity timeline. CI, exact-main signed publication and connected ko/en
-   replacement-install readback remain separate acceptance Gates.
+1. [#276](https://github.com/ks-house/smart-gatekeeper/issues/276) — PR #278
+   is merged and exact-main signed mobile OTA is published. Action-1
+   `SUCCEEDED` is armed and action-2 `OPENED` is command-executed across Home,
+   WebView, advanced control and the bounded activity timeline. The phone is
+   not currently enumerated, so replacement install and connected ko/en
+   readback remain the final issue-specific Gate.
 2. [#179](https://github.com/ks-house/smart-gatekeeper/issues/179) — run the
    Bluetooth OFF→ON registration recovery trial without opening the Activity.
 3. [#51](https://github.com/ks-house/smart-gatekeeper/issues/51) — complete

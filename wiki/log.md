@@ -5053,3 +5053,10 @@
 - Flutter analysis completed with no findings and all 57 Flutter tests passed, including action-1 armed mapping, manual success/unknown/failure projection, bounded activity persistence and all three manual UI entry points.
 - Android `gattworker.*` tests rebuilt with Gradle 9.1.0 and passed, retaining the notification contract that action-1 success says sensor-ready and never claims a physical opening.
 - All 317 repository contract tests passed with one expected platform-specific skip, and `git diff --check` passed. PR review, exact-main signed APK publication and connected Korean/English replacement-install readback remain separate Gates; sensors, relay contact/load, actuator and door remain absent.
+
+## [2026-08-30] test | Publish exact-main truthful-result mobile OTA
+
+- PR #278 passed trusted-policy, schema/OTA, Flutter format/analyze/test, native GATT and Android canary checks, then merged as exact main `b96afb7de3e13c2cfcf38326ffbf402568fa2838`.
+- Exact-main mobile run `33298655135` built the isolated unsigned release, verified the pinned Android package/signer identity, signed it and atomically published primary/fallback personal OTA with NAS and strict-HTTPS readback.
+- Independent public-manifest and APK download verified `1.0.0-gb96afb7` / 32001, 56,134,809 bytes, SHA-256 `5ca0b476bf34a638ad92a82b630e9eca6a5ac1169b20cb947e3ac267b693863f`, APK Signature Scheme v2/v3 and the pinned signer digest.
+- Windows PnP and ADB currently enumerate no phone, so replacement installation and connected Korean/English readback were not claimed. Issue #276 remains open for that bounded Gate; sensors, relay contact/load, actuator and door remain absent and no physical opening is claimed.

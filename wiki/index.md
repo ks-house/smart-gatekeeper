@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (truthful action-2 #276 source candidate separates command execution from physical door confirmation)
+> Last updated: 2026-08-30 (truthful action-2 #276 merged and signed OTA published; disconnected-phone readback remains)
 
 ---
 
