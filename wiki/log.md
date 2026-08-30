@@ -5175,3 +5175,9 @@
 - PR #288 passed Hosted Trusted and merge-committed as policy main `99cb93efd2ba9aac717e8a806232d86301762ad0`; merge-connected that main into immutable correction candidate `b6aff4c517a54a4242862c7856c388770eb89146` without rebase or squash.
 - The five reviewed protected correction blobs and complete 86-path map remain identical to the authorized candidate. Fresh Hosted Trusted, Backend and OTA checks are required before feature merge.
 - This graph connection replaces no NAS wrapper, starts no runtime, migrates no database and issues no mobile/Target/door action.
+
+## [2026-08-30] compile | Finalize migration-008 correction policy baseline
+
+- PR #287 passed Hosted Trusted, OTA/schema and Backend checks, then merge-committed as actual feature main `07b3543a1846a1b7220c09874fb89b9e7836d7eb`.
+- Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact feature merge while retaining all 86 reviewed protected digests and both namespace inventories unchanged.
+- This final policy rotation replaces no NAS wrapper, deploys no runtime or APK, migrates no database and proves no Target, relay or physical door result. Owner-authenticated wrapper installation and a protected deployment retry remain separate Gates.
