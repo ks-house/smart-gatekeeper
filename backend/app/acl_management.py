@@ -1144,7 +1144,11 @@ class AclStore:
             for legacy_credential in legacy_credentials:
                 if not hmac.compare_digest(
                     str(row_value(legacy_credential, "credential_id", 0)), credential_id
-                ):
+                ) and str(row_value(legacy_credential, "status", 3)) not in {
+                    "DISABLED",
+                    "REVOKED",
+                    "EXPIRED",
+                }:
                     raise CredentialConflictError(
                         "legacy device already has another public credential"
                     )

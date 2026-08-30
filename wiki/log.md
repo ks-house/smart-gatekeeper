@@ -5483,3 +5483,10 @@
 - Policy-only actual main `4d906aeeaab972e9abe07325fe3c8ba43febff8a` retained the deployed feature blobs. Target run `33324135363` and mobile run `33324135320` completed their exact-main signed personal publications after the feature deployment.
 - Independent HTTPS readback found current Target `2.1.400+main.g4d906ae` and current mobile `1.0.0-g4d906ae` / `35901`; both manifests name exact commit `4d906aeeaab972e9abe07325fe3c8ba43febff8a`. Primary/fallback mobile manifests matched, with signed APK SHA-256 `a5d3e9b332a36a85ea9ab1b7f06dd89dc318ab15b9abf693c00ece67d373667a`.
 - Publication is not installation. No phone package update, logout, fresh registration, administrator navigation, Target install/reboot/health or physical door cycle is inferred from these HTTPS results.
+
+## [2026-08-31] fix | Permit fresh credential after logout and reapproval
+
+- Reproduced the post-deletion registration failure in the personal bootstrap store: the immutable revoked credential for the same keyed phone locator incorrectly triggered the live-credential conflict path.
+- Limited the correction to terminal historical credentials (`REVOKED`, `DISABLED`, `EXPIRED`). Active or pending credential conflicts, public-key uniqueness, administrator approval, exact scope, signed ACL and Target apply requirements remain fail closed; no old credential or grant is revived.
+- Added store-level and HTTP API regressions covering account-row deletion, fresh approval and new AndroidKeyStore credential activation while preserving the prior credential as revoked audit history. Full validation, trusted-policy authorization, hosted CI and NAS deployment remain separate Gates.
+- The complete Backend suite passed 165 tests with two expected environment-only skips. The 317-test OTA/operations run reported only the three expected pre-authorization digest mismatches for the changed protected implementation and regression files.

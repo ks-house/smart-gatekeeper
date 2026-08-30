@@ -240,6 +240,75 @@ class AclApiTest(unittest.TestCase):
         )
         self.assertNotIn("actor_ref", activity.text)
 
+    def test_personal_enrollment_accepts_new_key_after_logout_and_reapproval(
+        self,
+    ) -> None:
+        device_id = "GK-REENROLL-AFTER-LOGOUT"
+        stored_locator = legacy_device_storage_id(device_id)
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, ?)",
+            ("resident", "401", stored_locator, TENANT_A),
+        )
+        self.conn.commit()
+
+        old_signer = DeterministicP256Signer(33, signing_key_id=0)
+        old_credential_id = "33" * 16
+        old_response = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json={
+                "device_id": device_id,
+                "credential_id": old_credential_id,
+                "public_key_sec1": old_signer.public_key_sec1.hex(),
+                "min_protocol": 1,
+                "max_protocol": 1,
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, old_response.status_code, old_response.text)
+        self.service.revoke_credential(
+            TENANT_A,
+            old_credential_id,
+            actor_ref="mobile:logout",
+        )
+        self.conn.execute(
+            "DELETE FROM tenants WHERE ble_device_mac=?",
+            (stored_locator,),
+        )
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, NULL)",
+            ("resident", "401", stored_locator),
+        )
+        self.conn.commit()
+
+        new_signer = DeterministicP256Signer(34, signing_key_id=0)
+        new_credential_id = "34" * 16
+        new_response = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json={
+                "device_id": device_id,
+                "credential_id": new_credential_id,
+                "public_key_sec1": new_signer.public_key_sec1.hex(),
+                "min_protocol": 1,
+                "max_protocol": 1,
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+
+        self.assertEqual(200, new_response.status_code, new_response.text)
+        self.assertTrue(new_response.json()["accepted"])
+        self.assertEqual(
+            "REVOKED",
+            self.store.get_credential(TENANT_A, old_credential_id)["status"],
+        )
+        self.assertEqual(
+            "ACTIVE",
+            self.store.get_credential(TENANT_A, new_credential_id)["status"],
+        )
+
     def test_personal_status_separates_legacy_migration_from_access_ready(self) -> None:
         device_id = "DEV-PENDING-MOBILE"
         stored_locator = legacy_device_storage_id(device_id)

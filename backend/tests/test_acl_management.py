@@ -220,6 +220,61 @@ class AclManagementTest(unittest.TestCase):
                 actor_ref="personal:test",
             )
 
+    def test_personal_bootstrap_allows_fresh_credential_after_logout_reapproval(
+        self,
+    ) -> None:
+        self.approve_legacy_personal_device()
+        old_signer = DeterministicP256Signer(31, signing_key_id=0)
+        old_credential_id = "31" * 16
+        self.service.bootstrap_personal_credential(
+            TENANT_A,
+            DOOR_A,
+            "DEV-PERSONAL-A",
+            old_credential_id,
+            old_signer.public_key_sec1.hex(),
+            actor_ref="personal:first-enrollment",
+        )
+        self.service.revoke_credential(
+            TENANT_A,
+            old_credential_id,
+            actor_ref="mobile:logout",
+        )
+        self.conn.execute(
+            "DELETE FROM tenants WHERE ble_device_mac=?",
+            ("DEV-PERSONAL-A",),
+        )
+        self.conn.commit()
+
+        # A fresh registration and explicit administrator approval create a
+        # new account row for the same phone identity.  The old revoked public
+        # credential remains immutable audit history and must never be revived.
+        self.approve_legacy_personal_device(tenant_id=None)
+        new_signer = DeterministicP256Signer(32, signing_key_id=0)
+        new_credential_id = "32" * 16
+        result = self.service.bootstrap_personal_credential(
+            TENANT_A,
+            DOOR_A,
+            "DEV-PERSONAL-A",
+            new_credential_id,
+            new_signer.public_key_sec1.hex(),
+            actor_ref="personal:reenrollment",
+        )
+
+        self.assertTrue(result["accepted"])
+        self.assertEqual(
+            "REVOKED",
+            self.store.get_credential(TENANT_A, old_credential_id)["status"],
+        )
+        self.assertEqual(
+            "ACTIVE",
+            self.store.get_credential(TENANT_A, new_credential_id)["status"],
+        )
+        latest = self.publisher.messages[-1][1]
+        self.assertEqual(
+            [new_credential_id],
+            [entry["credential_id"] for entry in latest["fields"]["entries"]],
+        )
+
     def test_personal_bootstrap_publish_failure_retries_same_snapshot(self) -> None:
         self.approve_legacy_personal_device()
         device = DeterministicP256Signer(14, signing_key_id=0)
