@@ -5422,3 +5422,9 @@
 - Bound the complete ordered 91-path protected bundle to immutable feature candidate `68c9c3172782339a731f01dfb960b1aa8aeabaff`, adding migration 010 up/down and signed `schema.env` to the trusted inventory.
 - Exactly 18 protected normalized blobs are new or changed across the Backend logout/admin role path, manifest-derived migration deployment, trusted inventory and direct regressions. The persistent identity admits only the exact repository candidate or proven same-byte descendants.
 - This policy-only candidate changes no NAS wrapper, database, credential, ACL, container, APK, Target, relay or physical door. Hosted policy CI/merge, feature merge-connection, fresh full CI, exact-main merge and deployment remain separate Gates.
+
+## [2026-08-31] compile | Authorize hosted schema-manifest validation correction
+
+- Bound exact corrective feature candidate `67f87a1dddccb6630564160a1c38d25926817891` to a complete 91-path persistent baseline after PR #309 failed closed before publication because hosted Compose validation had not exported `backend/db/schema.env`.
+- The policy authorizes the reviewed workflow load plus its direct migration regression: 19 changed or new protected paths and 72 byte-identical protected paths. No wildcard, partial bundle, caller-selected schema value or runtime exception is introduced.
+- This policy-only change performs no image publication, NAS migration, mobile installation, Target update or physical action. Hosted Trusted, policy merge, feature merge-connection and fresh feature CI remain separate Gates.

@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "68c9c3172782339a731f01dfb960b1aa8aeabaff"
-EXPECTED_BUNDLE_ID = "mobile-account-schema-68c9c31-persistent-baseline"
+MERGED_MAIN_COMMIT = "67f87a1dddccb6630564160a1c38d25926817891"
+EXPECTED_BUNDLE_ID = "mobile-account-schema-ci-67f87a1-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -31,7 +31,7 @@ scripts/ota_contract_gate.py 89be924d2293bad15d7e4386ee62d5427d69edbfab9e994e115
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
 src/OtaManager.cpp 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7
-.github/workflows/backend_security.yml e209b1b2a9473453feb302a6e8c783fef2e7df422ba24de46087d239de5294b5
+.github/workflows/backend_security.yml d33470907517e7d394aa0cb7b75d277c23cbd01403945719e79e0102f5c8b787
 .orca/scripts/setup_worktree.ps1 07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab
 scripts/ops_commercial_gate.py 9a529a7a9242fb7d7f5cba67e7b4131156bee54d016ce6e298e4b4bcccbc94a5
 ops/backend_trusted_bundle_paths.json 52d70b8a028717b0fccfefd8b799fed21e915a55beed075294852edf76043f58
@@ -102,7 +102,7 @@ backend/tests/test_acl_management.py f9ce99ad5acb538fbb27dd8805601ee7916bfd1eebb
 backend/tests/test_admin_security.py ff8b0c0cd49e7d322c0a4f3cc564d3d058aba0f6ed0735e8c3f2156bd53555f8
 backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
 backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
-backend/tests/test_migrations.py 3b0ca4026742669a4c1cd7237f542f4276dd2e2bddd3bd0d6bdaee225bcc3e0f
+backend/tests/test_migrations.py da4acb3375a9cc9f33b1029bf4f0b11ecfcded82b934b151be94dd98133cf94f
 backend/tests/test_mobile_remote_control.py 0d847814ec779b236f2bfd7b162bc555c00c7a352d66042ea9d9a575a820edaa
 backend/tests/test_nas_backend_deploy.py 27629bde61a895d667d34f5566c731f3e92859f332910c50df513e6b5ee56168
 backend/tests/test_ops_api.py 82e8d2e992fffc75b910ea0c00849a6d2130b2b80fa2d412541b726b1d138f15
@@ -113,6 +113,7 @@ backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279e
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
+    ".github/workflows/backend_security.yml",
     "scripts/ops_commercial_gate.py",
     "ops/backend_trusted_bundle_paths.json",
     "backend/app/acl_management.py",
@@ -1085,8 +1086,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 18)
-    self.assertEqual(len(locally_unchanged_protected), 73)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 19)
+    self.assertEqual(len(locally_unchanged_protected), 72)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
