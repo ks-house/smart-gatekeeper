@@ -5463,3 +5463,9 @@
 - With explicit owner approval, disabled only `main` administrator enforcement, merge-committed policy PR #310 as `639d5752d6d3da1267258a833afc78e834381c7c`, then immediately restored and read back `enforce_admins=true`, strict required checks and the unchanged `Verify protected files against trusted base policy` context.
 - Merged that exact policy main into corrective feature candidate `67f87a1dddccb6630564160a1c38d25926817891` without rebase or squash. The source-controlled schema manifest load and its direct regression now match the complete 91-path authorization.
 - Fresh full feature CI, normal feature merge, final actual-main policy rotation, root-owned NAS wrapper installation, schema-010 migration and readiness remain separate Gates.
+
+## [2026-08-31] compile | Finalize mobile account and schema-010 main policy
+
+- Feature PR #309 passed Hosted Trusted, Backend/MariaDB, OTA/schema and Android canary checks, then merge-committed normally as exact main `1b701df93194029fb7be733a372f7ddb68f57e97`.
+- Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact merge while retaining all 91 ordered protected digests unchanged; the local delta set is therefore empty.
+- Exact-main API/DB images and provenance were published, but the protected NAS deployment failed closed before migration because the installed root wrapper rejected schema 010 as unexpected. This final policy rotation changes no NAS state; owner-authenticated wrapper installation and deployment retry remain separate Gates.

@@ -1382,3 +1382,18 @@ This correction relaxes no schema, signature, image, backup, migration,
 no-downgrade, readiness, rollback or access-control Gate and performs no NAS or
 device mutation. Policy merge, merge-connection, fresh hosted CI, feature merge
 and exact-main deployment remain separate Gates.
+
+## 43. Final mobile-account and schema-010 main baseline
+
+Feature PR #309 passed Hosted Trusted, Backend/MariaDB, OTA/schema and Android
+canary checks, then merge-committed as exact main
+`1b701df93194029fb7be733a372f7ddb68f57e97`. The transitional candidate identity
+is retired in favor of the sole `current-main-baseline` pinned to that exact
+merge commit.
+
+All 91 ordered protected paths and normalized digests remain byte-identical to
+the reviewed corrective candidate. The final rotation changes no runtime or
+workflow byte, publishes no artifact, installs no NAS wrapper, migrates no
+database and performs no mobile, Target, relay or door action. Hosted policy
+merge, owner-authenticated root-wrapper installation, exact-main deployment and
+runtime acceptance remain separate Gates.
