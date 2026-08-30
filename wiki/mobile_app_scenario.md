@@ -15,9 +15,10 @@ supersedes the old Bearer/JWT and shared-topic examples below:
   WAN/backend latency after the signed ACL has been installed.
 - The normal visible **문 열기** button is remote: Flutter asks native Android to
   sign a fresh `SGKRMO01` request with the enrolled non-exportable
-  AndroidKeyStore key, Backend verifies the exact active tenant/credential/door
-  grant and durable nonce, and only then publishes a per-Target signed MQTTS
-  force-open command.
+  AndroidKeyStore key, Backend verifies the exact active personal-ACL
+  tenant/credential/door grant and durable nonce, and only then publishes a
+  per-Target signed MQTTS force-open command using the independently configured
+  legacy command-envelope identity.
 - Neither `device_id`, an APK-wide API key nor a Bearer token alone authorizes a
   door effect. HTTP success proves broker acknowledgement only, never physical
   door movement. Unknown transport outcome is not retried automatically.

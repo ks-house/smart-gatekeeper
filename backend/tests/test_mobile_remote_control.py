@@ -11,8 +11,10 @@ from backend.app import main
 from backend.app.acl_management import DeterministicP256Signer
 
 
-TENANT = "11" * 16
-DOOR = "22" * 16
+COMMAND_TENANT = "11" * 16
+COMMAND_DOOR = "22" * 16
+PERSONAL_TENANT = "66" * 16
+PERSONAL_DOOR = "77" * 16
 CREDENTIAL = "33" * 16
 
 
@@ -43,7 +45,7 @@ class MobileRemoteControlTest(unittest.TestCase):
         cursor.fetchone.side_effect = [
             {
                 "credential_id": CREDENTIAL,
-                "tenant_id": TENANT,
+                "tenant_id": PERSONAL_TENANT,
                 "public_key_sec1": self.signer.public_key_sec1.hex(),
                 "status": "ACTIVE",
                 "expires_at": None,
@@ -67,8 +69,10 @@ class MobileRemoteControlTest(unittest.TestCase):
         }
         with (
             patch.object(main, "_acl_runtime_ready", True),
-            patch.object(main, "COMMAND_TENANT_ID", TENANT),
-            patch.object(main, "COMMAND_DOOR_ID", DOOR),
+            patch.object(main, "COMMAND_TENANT_ID", COMMAND_TENANT),
+            patch.object(main, "COMMAND_DOOR_ID", COMMAND_DOOR),
+            patch.object(main, "ACL_PERSONAL_TENANT_ID", PERSONAL_TENANT),
+            patch.object(main, "ACL_PERSONAL_DOOR_ID", PERSONAL_DOOR),
             patch.object(main, "get_db", return_value=connection),
             patch.object(main, "publish_force_open_to_mqtt", return_value=True) as publish,
         ):
@@ -89,7 +93,25 @@ class MobileRemoteControlTest(unittest.TestCase):
         self.assertTrue(connection.commit.called)
         statements = [call.args[0] for call in cursor.execute.call_args_list]
         self.assertTrue(any("mobile_credential_control_nonces" in sql for sql in statements))
+        grant_query = next(
+            call
+            for call in cursor.execute.call_args_list
+            if "credential_door_grants" in call.args[0]
+        )
+        self.assertEqual(
+            (PERSONAL_TENANT, PERSONAL_DOOR, CREDENTIAL),
+            grant_query.args[1],
+        )
         self.assertNotIn("X-API-KEY", response.request.headers)
+
+    def test_personal_acl_scope_is_independent_from_legacy_command_scope(self) -> None:
+        self.assertNotEqual(PERSONAL_TENANT, COMMAND_TENANT)
+        self.assertNotEqual(PERSONAL_DOOR, COMMAND_DOOR)
+
+        response, _, _, publish = self._request()
+
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(1, publish.call_count)
 
     def test_invalid_signature_and_missing_grant_never_publish(self) -> None:
         invalid, _, _, invalid_publish = self._request(signature="00" * 64)

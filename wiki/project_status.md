@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: protected run `33255038063`은 feature main `d50b98f9c1e4e046fb62d1e8698c0ed2407291fe`의 immutable API/DB를 배포하고 migration `up 007`, loopback readiness, DSM public readiness, canonical apply/status byte equality와 evidence upload를 모두 통과했다. 독립 외부 `/live`와 `/ready`도 exact build로 HTTP 200이며 DB/schema/MQTT/runtime/auth/ACL/legacy retirement/build identity가 모두 true다. 그 직전 배포된 backend 아래에서 ADB-authorized Fold7 앱 `1.0.0-gd9ecc87`을 재시작하자 native action 1이 WorkManager `SUCCESS`, `Presence → ARMED` 4,509 ms로 끝났고, 약 47초 뒤 terminal action 2가 `문이 열렸습니다 (4909ms)`를 반환했다. WSL CH343 serial은 두 GATT connection과 Target relay-command ON 완료 뒤 timer-bound OFF 완료를 독립 기록했다. 따라서 현재 backend deployment lane과 backend-included software/FSM/GPIO command 핵심 유스케이스는 모두 PASS다. 물리 relay contact/load, 실제 문 움직임, AJ-SR04T threshold 및 반복 SLO는 여전히 열린 Gate다.
+> 관측 기준: protected run `33309298877`은 credential-signed remote button feature source `07b3543a1846a1b7220c09874fb89b9e7836d7eb`의 immutable API/DB를 배포하고 migration `up 008`, pre-migration backup, loopback readiness, DSM public readiness와 canonical evidence upload를 모두 통과했다. 독립 외부 `/live`와 `/ready`도 exact build로 HTTP 200이며 DB/schema/MQTT/runtime/auth/ACL/legacy retirement/build identity가 모두 true다. Final policy main `f403e10c8f48103b2e5d6f7da144fd2ad113d3bc`의 signed mobile 및 Target OTA publication도 HTTPS readback까지 성공했다. 연결된 ADB는 모바일 exact `1.0.0-gf403e10` / 33401 replacement install과 보존된 앱 identity를 확인했다. 세 번의 remote button 시도는 모두 Backend `REMOTE_CONTROL_DENIED`였고, NAS aggregate query로 v3가 개인 credential을 잘못된 legacy `COMMAND_*` 범위에서 조회한 원인이 확정됐다. `ACL_PERSONAL_*` authorization으로 교정하고 command Target 결합을 fail-closed로 검증한 source regression과 전체 149 backend test는 통과했지만 아직 review/CI/NAS 재배포 전이다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -38,12 +38,34 @@ applies_to:
   tailnet, but the installed root-owned schema-007 wrapper rejected the signed
   schema-008 descriptor before Compose, migration or cutover. No deployment
   success is inferred from this fail-closed result.
-- A follow-up source correction pins the actual migration-008 SHA-256
-  `f95e752d...e7219a8` consistently in the signed bundle, NAS wrapper and API
-  readiness environment. The root-owned NAS wrapper still requires an explicit
-  owner-authenticated replacement before a protected retry. Exact-main signed
-  APK publication/install and a connected button-to-door observation remain
-  separate Gates.
+- The owner installed the corrected root wrapper at exact SHA-256
+  `6baba70f...b16758`. Protected run `33309298877` then deployed exact source
+  `07b3543a...36d7eb`, migrated the production database to schema 008 with a
+  pre-migration backup, and passed canonical loopback/public readiness evidence.
+- Independent strict-TLS `/live` and `/ready` requests returned HTTP 200 for
+  `07b3543a...36d7eb`; every readiness check was `true`. Final policy main
+  `f403e10c...113d3bc` mobile run `33309381350` and Target run `33309381357`
+  signed, atomically published and HTTPS-read-back their personal OTA artifacts.
+  Connected ADB subsequently verified exact installed mobile
+  `1.0.0-gf403e10` / 33401 with the original first-install time preserved. The
+  refreshed Home still reported access ready and ACL 594, but the Activity
+  timeline classified all three owner attempts as `REMOTE_CONTROL_DENIED`.
+  They were rejected at Backend credential authorization before MQTT publish;
+  no retry was issued during diagnosis. Target install/reboot/health and the
+  mobile authorization defect remain open.
+- The owner-run aggregate NAS query then confirmed both tenant and door scopes
+  differ and that the legacy command scope has zero active mobile credentials
+  or grants. This is a code-scope defect, not missing production data: v3 now
+  authorizes the AndroidKeyStore credential and exact grant in `ACL_PERSONAL_*`
+  while leaving the already-working `COMMAND_*` signed MQTTS publisher intact.
+  A regression with deliberately different scopes, a cross-Target rejection
+  check and all 149 backend tests
+  passed locally; review, protected CI, NAS deployment and a single bounded
+  owner-triggered button trial remain open.
+- Root discovery also passed every method outside the trusted protected-byte
+  Gate; the policy test rejected the four expected changed protected blobs.
+  This is the required separate policy-authorization boundary, not a reason to
+  weaken workflow/digest enforcement.
 
 ## 2026-08-29 foreground Target detection dashboard candidate
 
