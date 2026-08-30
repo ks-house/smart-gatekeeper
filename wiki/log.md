@@ -5381,3 +5381,8 @@
 - The first owner-approved deployment joined Tailscale and failed closed before Compose or migration because the installed root wrapper admitted schema 008. The owner installed the reviewed schema-009 wrapper at exact SHA-256 `8b0e230f...352f2a8`, retained the preceding wrapper as a root-only backup and confirmed the prior release stayed deployed and ready.
 - Backend run `33316931652` attempt 2 completed the restricted-Tailscale deployment. Canonical evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`; independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with all readiness checks true.
 - Name/unit editing, fail-closed account deletion, global recent access history and the 900-second personal reauthentication default are deployed. No account edit/delete was executed during verification, so administrator browser acceptance remains an explicit operator Gate.
+
+## [2026-08-30] compile | Authorize exact per-phone identity candidate
+
+- The trusted policy now authorizes the immutable feature candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06` as one complete 88-path bundle; only `backend/app/acl_management.py` and `backend/tests/test_acl_api.py` differ from the preceding protected bytes.
+- The authorization is repository/ancestry/digest bound and changes no workflow, signer, OTA, NAS transport, backup, health, rollback or access-control behavior. A separate policy PR and fresh Hosted Trusted result remain required before the feature can be merge-connected.

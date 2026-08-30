@@ -238,6 +238,16 @@ the seven-workflow inventory and the empty local-Action inventory remain exact.
 Issue #23 remains open and OTA-G1 through OTA-G4 physical/operator evidence remains pending throughout any
 policy rotation.
 
+The per-phone resident identity candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06`
+changes exactly two protected Backend blobs:
+`backend/app/acl_management.py` (`681c2d83...a49266`) and
+`backend/tests/test_acl_api.py` (`c89a7be1...d356`). The complete 88-path
+bundle is authorized only for that exact reviewed commit and its proven
+same-repository descendants with identical protected bytes. This does not
+weaken request authentication, ACL signatures, OTA, deployment health, backup,
+rollback, host-key or NAS access controls, and it is not deployment or
+installed-phone evidence.
+
 Issue #265 / PR #266 reviewed feature commit
 `c80933a411990022bf14b075b18260a127cb590c` adds the credential-bound
 personal mobile status/activity contract and native user Home. Relative to the
