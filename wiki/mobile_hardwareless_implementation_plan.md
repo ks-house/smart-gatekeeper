@@ -7,6 +7,14 @@
 > 1차 플랫폼: 현재 운영 대상인 Android. iOS 자동 출입은 별도 후속 의사결정
 > P0 불변조건: 모바일 앱·Target OTA/rollback 가능성은 모든 단계에서 유지 ([#23](https://github.com/ks-house/smart-gatekeeper/issues/23))
 
+> 2026-08-30 maintenance note: Epic #13 is closed after its Wave 0~3
+> implementation and bounded connected foreground/screen-off GATT acceptance.
+> Remaining process-death/OEM work is tracked by #51/#179, while sensor,
+> relay/contact, door, RF/soak, power-loss and operator canary work is tracked by
+> #54 and release Epic #48. Historical paragraphs below preserve the stricter
+> pre-acceptance rule that kept #13 open; its closure is not G0-HW or production
+> approval.
+
 2026-08-01 #14 진행 상황: filtered `BluetoothLeScanner` + `PendingIntent`를 기준
 wake 경로로 선택하고 Flutter-independent native receiver, exact iBeacon filter contract,
 hardwareless test seam을 구현했다. 상세 결정과 미완료 20회 Gate는

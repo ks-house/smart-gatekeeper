@@ -4,6 +4,14 @@
 > Production status: **BLOCKED / fail-closed**
 >
 > Status note (2026-08-12): 이 문서는 2026-08-08 출시 프로그램 snapshot이다. #49~#52의 관리자 인증, per-Target MQTTS/signed command/OTA, mobile recovery/update와 operations software gap은 이후 구현됐다. 아래 당시 P0 목록과 작업 배정은 역사적 계획으로 보존하며 현재 상태는 [project_status.md](project_status.md)와 [current_code_audit.md](current_code_audit.md)를 따른다. 상용 physical/operator/production Gate는 여전히 닫혀 있다.
+>
+> Status note (2026-08-30): #49/#55와 NAS adoption/deployment blockers are
+> closed; the exact backend is deployed and one signed mobile/Target
+> foreground/screen-off software loop is accepted. Epic #13 and issue #262 were
+> closed during issue hygiene because their remaining work is already owned by
+> #51/#54/#48. Current open release work is #48, #50~#54, #179 and truthful
+> result bug #276. Sensor/relay/door, process-death/OEM repetition, soak,
+> operator walkthrough and production canary remain release-blocking.
 
 ## 1. 최종 목표
 

@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (exact mobile installed; connected foreground/screen-off GATT and Target rollback accepted; sensor/relay/door and process-death Gates pending)
+> Last updated: 2026-08-30 (GitHub issues triaged to eight current items; completed #13/#262 closed; truthful result #276 and physical/process Gates tracked)
 
 ---
 
