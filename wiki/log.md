@@ -5263,3 +5263,9 @@
 - Policy PR #291 passed the Hosted Trusted check and merge-committed as main `41d89fb302ed95310db9585dffe3721797139ee2`.
 - Merged that exact trusted main without rebase or squash into immutable feature candidate `e14f34c8896854dc50e7f8a0183eb764f205a622` as `a5671be`; the four reviewed protected blobs and complete 86-path map remain unchanged.
 - Fresh Hosted Trusted, Backend and OTA checks, feature merge, NAS deployment/readiness and one owner-triggered mobile-to-door trial remain separate Gates; no runtime or physical state changed in this graph connection.
+
+## [2026-08-30] test | Deploy mobile remote personal-ACL scope correction
+
+- PR #290 passed fresh protected checks and merge-committed as exact main `6c12f169bd2d8733352beb3415159a6e60c01081`; Backend run `33311924158` passed security/MariaDB, evidence verification, immutable image publication and the owner-approved production deployment over the restricted Tailscale path.
+- Canonical NAS evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with every readiness check true.
+- This closes source, CI, deployment and readiness for the personal-vs-command authorization defect. No post-fix mobile request was sent, so Target receipt, relay actuation and physical door movement require one owner-triggered trial and remain unclaimed.
