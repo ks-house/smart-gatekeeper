@@ -1936,7 +1936,8 @@ class AclManagementService:
         _hex_bytes(tenant_id, 16, "tenant_id")
         _hex_bytes(door_id, 16, "door_id")
         normalized_device_id = legacy_device_id.strip().upper()
-        if credential_id is None or public_key_hex is None:
+
+        def legacy_registration_status() -> dict[str, Any]:
             legacy = self.store.legacy_personal_state(tenant_id, normalized_device_id)
             if legacy is None:
                 return {
@@ -1959,11 +1960,19 @@ class AclManagementService:
                 "target_synced": False,
             }
 
+        if credential_id is None or public_key_hex is None:
+            return legacy_registration_status()
+
         _hex_bytes(credential_id, 16, "credential_id")
         public_key = _hex_bytes(public_key_hex, 65, "public_key_sec1")
         _parse_public_key(public_key)
         credential = self.store.get_credential(tenant_id, credential_id)
-        if credential is None or not hmac.compare_digest(
+        if credential is None:
+            # Android prepares its non-exportable key before the first status
+            # request. Until that key is enrolled, project the supervised
+            # legacy registration state so the UI can expose onboarding.
+            return legacy_registration_status()
+        if not hmac.compare_digest(
             str(credential["public_key_sec1"]), public_key_hex
         ):
             raise PermissionError("credential identity mismatch")

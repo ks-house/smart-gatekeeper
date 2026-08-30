@@ -5270,8 +5270,20 @@
 - Canonical NAS evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with every readiness check true.
 - This closes source, CI, deployment and readiness for the personal-vs-command authorization defect. No post-fix mobile request was sent, so Target receipt, relay actuation and physical door movement require one owner-triggered trial and remain unclaimed.
 
+## [2026-08-30] fix | Restore fresh family-member registration onboarding
+
+- Owner confirmed one post-fix normal mobile `문 열기` request opened the physical door, closing a single mobile credential through Backend, signed MQTTS, Target, relay and door observation without claiming repetition/OEM/SLO acceptance.
+- A connected fresh-install A24 had all Android runtime permissions granted and a newly generated provisional AndroidKeyStore credential, but Home showed Backend unavailable and no registration action because Backend returned 403 for the valid not-yet-enrolled credential ID.
+- Corrected personal status to project the supervised device registration state only when the credential ID is absent; an existing credential ID with a different public key remains a 403 hard denial. Focused 9 and full 149 Backend tests passed with two expected Docker-only skips; protected policy/CI, NAS deployment and connected UI readback remain pending.
+
 ## [2026-08-30] compile | Authorize fresh-install registration onboarding candidate
 
 - Bound the complete 86-path persistent protected bundle to feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2`, changing only the reviewed Backend personal-status implementation and focused ACL API regression bytes.
 - The candidate lets a valid but absent provisional credential receive the supervised device registration projection, while a stored credential ID with a different public key remains a 403 hard denial.
 - This policy step registers no user, mutates no credential/database/runtime and deploys no image. Policy merge, graph connection, fresh protected CI, NAS deployment/readiness and connected A24 UI readback remain separate Gates.
+
+## [2026-08-30] compile | Connect fresh-install onboarding to trusted policy main
+
+- Policy PR #294 passed Hosted Trusted and merge-committed as main `6a714f86c5661cf5b5343c3af98281499d815c33`; merged that exact policy main without rebase or squash into feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2` as `79bdf7b36ea20801ce035a05d70a6c60c221e64f`.
+- The two reviewed protected feature blobs and complete 86-path bundle remain exact; all 42 policy tests and all 149 Backend tests passed after graph connection with two expected Docker-only skips.
+- No user registration, credential/database/runtime mutation or deployment occurred. Fresh hosted checks, feature merge, NAS deployment/readiness and connected A24 onboarding readback remain separate Gates.

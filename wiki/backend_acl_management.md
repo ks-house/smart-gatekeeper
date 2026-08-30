@@ -1,6 +1,6 @@
 # Backend public-key enrollment and signed ACL management
 
-> Status: Issue #19 core plus personal public-key bootstrap deployed; ACL management/personal enrollment remain explicit runtime opt-ins and post-fix mobile physical validation is pending
+> Status: Issue #19 core plus personal public-key bootstrap deployed; first owner physical remote-open passed and fresh-family onboarding correction is under review
 > Protocol: [security_protocol.md](security_protocol.md)
 > OTA parent contract: [ota_reliability_contract.md](ota_reliability_contract.md)
 
@@ -190,6 +190,12 @@ Canonical Tailscale deployment evidence and an independent strict-TLS readback
 both passed loopback/public readiness with every check true. This is runtime
 authorization/readiness evidence only; a post-fix mobile request, Target receipt,
 relay actuation and physical door movement remain separate observations.
+On a fresh install Android prepares a valid non-exportable key before its first
+status request. If that credential ID does not yet exist, status projects only
+the same supervised legacy registration state used before key creation so Home
+can offer `request_registration`, `wait_for_approval` or `enroll_credential`.
+If the credential ID exists but its public key differs, status still fails
+closed; an unknown key never inherits an existing credential's authorization.
 It fails closed while ACL management is unavailable. The older HMAC v2 envelope
 remains N-1 compatible, while device-ID-only calls are upgrade-required and
 cause no control effect. Home Assistant

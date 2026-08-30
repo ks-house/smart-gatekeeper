@@ -178,6 +178,17 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual(1, status.json()["door_count"])
         self.assertEqual(1, status.json()["acl_version"])
 
+        status_key_mismatch = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={
+                "device_id": device_id,
+                "credential_id": body["credential_id"],
+                "public_key_sec1": mismatch["public_key_sec1"],
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(403, status_key_mismatch.status_code)
+
         snapshot = self.store.latest_snapshot(TENANT_A, DOOR)
         assert snapshot is not None
         acked = self.client.post(
@@ -227,6 +238,22 @@ class AclApiTest(unittest.TestCase):
 
     def test_personal_status_separates_legacy_migration_from_access_ready(self) -> None:
         device_id = "DEV-PENDING-MOBILE"
+        provisional = DeterministicP256Signer(31, signing_key_id=0)
+        provisional_body = {
+            "device_id": device_id,
+            "credential_id": "31" * 16,
+            "public_key_sec1": provisional.public_key_sec1.hex(),
+        }
+
+        fresh = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={**provisional_body, "device_id": "DEV-FRESH-MOBILE"},
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, fresh.status_code, fresh.text)
+        self.assertEqual("unregistered", fresh.json()["enrollment_state"])
+        self.assertEqual("request_registration", fresh.json()["next_action"])
+
         self.conn.execute(
             "INSERT INTO tenants "
             "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
@@ -243,6 +270,15 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual("pending", pending.json()["enrollment_state"])
         self.assertFalse(pending.json()["access_ready"])
 
+        pending_with_key = self.client.post(
+            "/api/v1/acl/personal/status",
+            json=provisional_body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, pending_with_key.status_code, pending_with_key.text)
+        self.assertEqual("pending", pending_with_key.json()["enrollment_state"])
+        self.assertEqual("wait_for_approval", pending_with_key.json()["next_action"])
+
         self.conn.execute(
             "UPDATE tenants SET is_active=1 WHERE ble_device_mac=?", (device_id,)
         )
@@ -255,6 +291,15 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual("ready_to_enroll", approved_legacy.json()["enrollment_state"])
         self.assertFalse(approved_legacy.json()["access_ready"])
         self.assertEqual("enroll_credential", approved_legacy.json()["next_action"])
+
+        approved_with_key = self.client.post(
+            "/api/v1/acl/personal/status",
+            json=provisional_body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, approved_with_key.status_code, approved_with_key.text)
+        self.assertEqual("ready_to_enroll", approved_with_key.json()["enrollment_state"])
+        self.assertEqual("enroll_credential", approved_with_key.json()["next_action"])
 
         denied = self.client.post(
             "/api/v1/acl/personal/activity",
