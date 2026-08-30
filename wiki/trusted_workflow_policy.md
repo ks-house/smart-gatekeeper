@@ -1218,3 +1218,27 @@ the feature without rebase or squash. Fresh Hosted Trusted, Backend, OTA and
 mobile checks, feature merge, exact-main deployment/publication, connected app
 installation, bounded button trial and final baseline rotation remain separate
 Gates.
+
+## 36. Migration-008 deployment identity correction authorization
+
+Exact feature main `a78ec0c25e0e498eb1f9f83189279cccba236236`
+passed its Hosted checks and immutable image publication, but its approved NAS
+job failed closed before Compose, migration or cutover because the installed
+root wrapper still admits schema 007. Source review then found the schema-008
+readiness value was the prior migration-007 hash rather than the actual
+migration-008 bytes.
+
+Reviewed correction candidate
+`b6aff4c517a54a4242862c7856c388770eb89146` pins the actual migration-008
+SHA-256 `f95e752d...e7219a8` in the signed release descriptor, root deploy
+wrapper, production Compose and development Compose. A focused regression test
+derives the digest from migration 008 and requires every consumer to match.
+Exactly these five protected blobs change inside the complete ordered 86-path
+map; the sole `future-schema008-b6aff4c-persistent-baseline` bundle binds them
+to the immutable candidate and its merge-connected descendants.
+
+This policy-only authorization does not replace the root-owned NAS wrapper,
+run migration 008, deploy a Backend, install an APK or issue a door command.
+Policy merge, merge-connection, fresh CI, feature merge, owner-authenticated
+wrapper replacement, protected retry/readiness and physical observation remain
+separate Gates.
