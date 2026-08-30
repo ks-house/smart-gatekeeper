@@ -1,7 +1,7 @@
 # Synology NAS backend external deployment plan
 
-> Status: **repository implementation merged; private CI status preflight passed; no NAS deployment has been run.**
-> Last reviewed: 2026-08-29
+> Status: **exact backend source `8ea9ff1f...` deployed and independently ready through private Tailscale SSH `100.95.243.92:8822`; public SSH forwarding is not required.**
+> Last reviewed: 2026-08-30
 >
 > Scope: deploy the FastAPI and MariaDB images in
 > `backend/compose.production.yml` to the existing personal Synology NAS from
@@ -155,10 +155,11 @@ the range and these TCP listeners on both wildcard IPv4 and IPv6 where shown:
 | `4088` | DSM HTTPS Reverse Proxy for Grafana, forwarding to local HTTP `4087`; owner confirms current external use, so temporary exact-rule retain; Tailscale-only migration remains preferred |
 | `4123` | DSM HTTPS Reverse Proxy to a LAN Home Assistant `8123`; owner confirms current external use, so exact-rule retain |
 | `4222` | DSM SFTP, `SSH-2.0-OpenSSH_8.2`; existing GitHub NAS artifact publisher uses it, so temporary exact-rule retain until that workflow joins Tailscale |
-| `4422` | DSM interactive SSH, `SSH-2.0-OpenSSH_8.2`; owner currently uses it externally, so temporary exact-rule retain while private Tailscale SSH replacement is proven |
+| `4422` | historical DSM interactive SSH endpoint; the owner closed this public forward on 2026-08-30, so it is not a current CI route |
 | `4442` | repository-confirmed current mobile/WebView/APK/backend HTTPS origin |
 | `4443` | current HTTPS OTA virtual host: correct SNI returned HTTP 200 with verified TLS for both `/firmware/version.json` and `/gatekeeper_apk/version.json`; exact-rule retain |
 | `4883` | repository and live-history confirmed public Target MQTTS |
+| `8822` | current DSM SSH listener; keep it unforwarded publicly and permit it only through the private Tailscale path after the exact CI-tag grant passes |
 
 Listening on the NAS does not by itself prove that a service must be reachable
 from the Internet. Resolve unknown ownership from the DSM Reverse Proxy rule
@@ -167,8 +168,9 @@ optional; do not grant Docker/root access solely for this inventory.
 
 The protocol fingerprint is enough to reject `4080` as a deployment-control
 port. Owner/DSM configuration identifies `4222` as SFTP used by the existing
-GitHub NAS publisher and `4422` as externally used interactive SSH. Both are
-temporary compatibility ports, not the target backend deployment control plane.
+GitHub NAS publisher. The owner retired public interactive SSH `4422` and moved
+the DSM listener to `8822` on 2026-08-30. The replacement is a Tailscale-only
+deployment endpoint and must not be added to the router forward.
 Port `4443` has separately passed correct-host firmware/APK version-path checks.
 
 A live modern-`scp` attempt against interactive SSH `4422` authenticated but
@@ -192,9 +194,11 @@ Current no-downtime narrowing candidate:
 
 | Action | TCP ports | Condition |
 |---|---|---|
-| retain as exact public rules now | `4085`, `4088`, `4123`, `4222`, `4422`, `4442`, `4443`, `4883` | all have named current consumers; verify authentication/TLS and client operation after the change |
+| retain as exact public rules now | `4085`, `4088`, `4123`, `4222`, `4442`, `4443`, `4883` | all have named current consumers; verify authentication/TLS and client operation after the change |
 | remove with blanket range | `4080`, `4086`, `4087` | no accepted direct-public need; 4086/4087 bypass HTTPS proxies |
-| later remove after private migration | `4085`, `4088`, `4222`, `4422` | move observability, GitHub SFTP and interactive SSH to Tailscale before closing their public rules |
+| closed/replaced | `4422` | owner closed the former public SSH route on 2026-08-30 |
+| private only, never forward | `8822` | DSM SSH for the forced CI dispatcher; exact Tailscale CI-tag grant only |
+| later remove after private migration | `4085`, `4088`, `4222` | move observability and GitHub SFTP to Tailscale before closing their public rules |
 
 Owner use does not by itself close the security Gate for public InfluxDB or
 Grafana. Their exact rules are temporary compatibility decisions; application
@@ -384,11 +388,12 @@ client ID and audience in the `production` Environment as
 `TS_OIDC_CLIENT_ID` and `TS_OIDC_AUDIENCE`; the workflow already has
 `id-token: write` and does not use a long-lived Tailscale client secret.
 
-The NAS endpoint must be the NAS's exact Tailscale MagicDNS FQDN or stable
-Tailscale IPv4 address, not its public Synology hostname. Set it as
-`NAS_TAILSCALE_HOST` only after a self-only NAS readback and a private-path SSH
-probe. Generate `NAS_DEPLOY_KNOWN_HOSTS` for that exact host and port `4422`
-over a trusted LAN/tailnet path, then compare the key fingerprints with the
+The NAS endpoint is the stable Tailscale IPv4 `100.95.243.92` on port `8822`,
+not its public Synology hostname. A 2026-08-30 WSL private-path probe reached
+OpenSSH 8.2 and the live ED25519/ECDSA fingerprints matched the previously
+accepted DSM keys. Set `NAS_TAILSCALE_HOST=100.95.243.92`,
+`NAS_DEPLOY_PORT=8822`, and bind `NAS_DEPLOY_KNOWN_HOSTS` to that exact private
+host and port over a trusted path, then compare the key fingerprints with the
 already accepted DSM SSH host key before storing it. A successful `ssh-keyscan`
 connection alone is not trust evidence.
 
@@ -396,8 +401,11 @@ The live tailnet policy still contains the default `* -> *`, `ip: ["*"]`
 grant. Because grants are additive, the narrow CI rule cannot enforce isolation
 until that wildcard source rule is replaced. Preserve current user-owned device
 behavior with an `autogroup:member -> *` compatibility grant and add the CI
-tag-to-exact-host `tcp:4422` grant separately. Before saving, inventory every
-currently tagged device: `autogroup:member` excludes tag-based identities, so
+tag-to-exact-host SSH grant separately, using the private-path DSM listener
+port confirmed from the NAS. The router's external `8822` may map to a distinct
+internal port and is not automatically the tailnet port. Before saving,
+inventory every currently tagged device: `autogroup:member` excludes tag-based
+identities, so
 each pre-existing service tag needs an explicit compatibility decision. Do not
 use `autogroup:tagged -> *` because it would also re-expand the new CI runner.
 The current Machines overview shows three user-owned devices and no visible tag
@@ -670,8 +678,21 @@ background success, or Target OTA health.
    containers without deleting them or their volumes, opening the first-
    adoption maintenance window. This closes transport/status and concurrent-
    owner preconditions only, not release `apply` or readiness.
-10. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
-11. `P2` Evaluate a central secret manager only when operator/host count requires
+10. `DONE (2026-08-30 private transport migration and deployment)` The owner closed
+    public `4422`, moved the DSM listener to `8822`, and kept it off the router.
+    WSL reached `100.95.243.92:8822`; OpenSSH 8.2 and both accepted ED25519/ECDSA
+    fingerprints matched. The protected Environment now pins that exact private
+    host and port. Preflight run `33289323225` attempt 2 joined Tailscale through
+    OIDC, reached the forced dispatcher and returned `status=deployed` after the
+    exact CI-tag `tcp:8822` grant was saved. Backend run `33269719228` attempt 2
+    then reran only the failed deploy job and produced canonical
+    `status=deployed`, exact
+    `source_sha=8ea9ff1f8177bf49dba524b11d586715af5e1f6b`, matching status readback,
+    `loopback_ready=passed` and `public_ready=passed`. Independent strict-TLS
+    `/live` and `/ready` returned HTTP 200 with the exact build SHA, and all nine
+    readiness checks were `true`.
+11. `P1` Add external readiness/TLS/expiry monitoring and alert acknowledgement.
+12. `P2` Evaluate a central secret manager only when operator/host count requires
     it.
 
 The first protected attempt with the corrected absolute Synology Docker path,
