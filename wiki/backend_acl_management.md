@@ -1,6 +1,6 @@
 # Backend public-key enrollment and signed ACL management
 
-> Status: Issue #19 core plus personal public-key bootstrap implemented and software-tested; ACL management/personal enrollment remain explicit runtime opt-ins and live NAS deployment is pending
+> Status: Issue #19 core plus personal public-key bootstrap deployed; ACL management/personal enrollment remain explicit runtime opt-ins and post-fix mobile physical validation is pending
 > Protocol: [security_protocol.md](security_protocol.md)
 > OTA parent contract: [ota_reliability_contract.md](ota_reliability_contract.md)
 
@@ -184,6 +184,12 @@ authorization succeeds. Startup fails closed unless the personal ACL scope is
 the exact tenant/door authorization registered for `COMMAND_TARGET_ID`, so a
 credential approved for another configured Target cannot bridge into this
 command publisher.
+PR #290 deployed this scope correction as exact main
+`6c12f169bd2d8733352beb3415159a6e60c01081` in Backend run `33311924158`.
+Canonical Tailscale deployment evidence and an independent strict-TLS readback
+both passed loopback/public readiness with every check true. This is runtime
+authorization/readiness evidence only; a post-fix mobile request, Target receipt,
+relay actuation and physical door movement remain separate observations.
 It fails closed while ACL management is unavailable. The older HMAC v2 envelope
 remains N-1 compatible, while device-ID-only calls are upgrade-required and
 cause no control effect. Home Assistant

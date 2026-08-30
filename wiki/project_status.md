@@ -1116,3 +1116,26 @@ tracking.
 - The absent sensor/relay/contact/door fixture means distance sensing,
   electrical relay actuation and physical opening remain unverified regardless
   of UI or Target command result.
+
+## 2026-08-30 mobile remote personal-scope production correction
+
+- Owner-side aggregate diagnostics found `tenant_scope_match=NO`,
+  `door_scope_match=NO`, zero active credentials/grants in the legacy command
+  scope and different personal/command credential and grant sets. This proved
+  that deployed mobile v3 was authorizing the AndroidKeyStore credential in the
+  wrong scope before MQTT publication.
+- PR #290 retained `COMMAND_*` for the signed per-Target MQTTS envelope but moved
+  credential and exact-door grant authorization to `ACL_PERSONAL_*`; startup
+  also fails closed if the personal scope does not belong to
+  `COMMAND_TARGET_ID`. No production ID, credential, grant or database row was
+  rewritten to hide the mismatch.
+- Exact main `6c12f169bd2d8733352beb3415159a6e60c01081` passed Backend run
+  `33311924158`: security/MariaDB, evidence verification, immutable API/DB image
+  publication and the owner-approved Tailscale NAS deployment all completed.
+  Canonical deployment evidence reported `status=deployed`,
+  `loopback_ready=passed` and `public_ready=passed`.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 for that exact
+  build; database, schema, MQTT, secrets, control/admin auth, ACL management,
+  legacy retirement and build identity were all true. No post-fix mobile request
+  was sent during deployment. One owner-triggered button trial and observed
+  Target/relay/physical-door outcome remain pending.
