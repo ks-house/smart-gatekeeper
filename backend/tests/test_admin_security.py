@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
@@ -412,6 +413,148 @@ class PersonalAdminEnvironmentTest(unittest.TestCase):
                         security = AdminSecurity.from_environment()
                     self.assertFalse(security.enabled)
                     self.assertFalse(security.browser_login_ready)
+
+    def test_personal_reauthentication_defaults_to_fifteen_minutes(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "PERSONAL_ADMIN_PASSWORD": "personal-admin-password-123456",
+                "ADMIN_REAUTH_SECONDS": "120",
+            },
+            clear=True,
+        ):
+            security = AdminSecurity.from_environment()
+        self.assertEqual(900, security.reauth_seconds)
+
+
+class PersonalAdminAccountManagementTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.security = AdminSecurity(
+            personal_password="personal-admin-password-123456",
+            session_seconds=1800,
+            reauth_seconds=900,
+        )
+        self.patch = patch.object(main, "admin_security", self.security)
+        self.patch.start()
+        self.client = TestClient(main.app, base_url="https://testserver")
+        login = self.client.post(
+            "/api/v1/admin/personal-sessions",
+            json={"password": "personal-admin-password-123456"},
+        )
+        self.assertEqual(200, login.status_code, login.text)
+        self.headers = {
+            "X-CSRF-Token": login.json()["csrf_token"],
+            "X-Admin-Reauthenticate": "personal-session",
+            "X-Tenant-ID": "*",
+            "Idempotency-Key": "admin-account-management-test",
+        }
+
+    def tearDown(self) -> None:
+        self.patch.stop()
+
+    def test_admin_can_update_bounded_name_and_unit_with_audit(self) -> None:
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {"tenant_uuid": None}
+        cursor.rowcount = 1
+        with patch.object(main, "get_db", return_value=connection):
+            response = self.client.patch(
+                "/api/v1/admin/tenants/5",
+                headers=self.headers,
+                json={"name": "family", "unit_number": "401호"},
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("updated", response.json()["status"])
+        calls = [call.args for call in cursor.execute.call_args_list]
+        self.assertTrue(any("UPDATE tenants SET name" in args[0] for args in calls))
+        self.assertTrue(any("TENANT_PROFILE_UPDATED" in args[1] for args in calls if len(args) > 1))
+
+    def test_pending_legacy_account_can_be_deleted_without_acl_effect(self) -> None:
+        preflight = MagicMock()
+        preflight_cursor = preflight.cursor.return_value.__enter__.return_value
+        preflight_cursor.fetchone.return_value = {
+            "id": 5,
+            "is_active": False,
+            "tenant_uuid": None,
+            "credential_mode": "legacy",
+            "credential_id": None,
+        }
+        deletion = MagicMock()
+        deletion_cursor = deletion.cursor.return_value.__enter__.return_value
+        deletion_cursor.fetchone.return_value = {
+            "tenant_uuid": None,
+            "credential_id": None,
+        }
+        deletion_cursor.rowcount = 1
+        with patch.object(main, "get_db", side_effect=(preflight, deletion)):
+            response = self.client.delete(
+                "/api/v1/admin/tenants/5", headers=self.headers
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("deleted", response.json()["status"])
+        self.assertTrue(
+            any(
+                call.args[0] == "DELETE FROM tenants WHERE id=%s"
+                for call in deletion_cursor.execute.call_args_list
+            )
+        )
+
+    def test_enrolled_account_revokes_credential_before_delete(self) -> None:
+        credential_id = "ab" * 16
+        preflight = MagicMock()
+        preflight_cursor = preflight.cursor.return_value.__enter__.return_value
+        preflight_cursor.fetchone.return_value = {
+            "id": 5,
+            "is_active": True,
+            "tenant_uuid": None,
+            "credential_mode": "dual",
+            "credential_id": credential_id,
+        }
+        deletion = MagicMock()
+        deletion_cursor = deletion.cursor.return_value.__enter__.return_value
+        deletion_cursor.fetchone.return_value = {
+            "tenant_uuid": None,
+            "credential_id": credential_id,
+        }
+        deletion_cursor.rowcount = 1
+        service = MagicMock()
+        with patch.object(main, "get_db", side_effect=(preflight, deletion)), patch.object(
+            main, "_acl_service", service, create=True
+        ), patch.object(main, "_acl_runtime_ready", True):
+            response = self.client.delete(
+                "/api/v1/admin/tenants/5", headers=self.headers
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        service.revoke_credential.assert_called_once_with(
+            main.ACL_PERSONAL_TENANT_ID,
+            credential_id,
+            actor_ref="admin:personal-admin",
+        )
+
+    def test_global_access_events_include_today_total(self) -> None:
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [
+            {
+                "id": 9,
+                "tenant_id": 5,
+                "tenant_name": "family",
+                "unit_number": "401호",
+                "auth_method": "MOBILE_REMOTE",
+                "is_success": True,
+                "distance_mm": None,
+                "failure_reason": "broker accepted; physical result unconfirmed",
+                "created_at": datetime(2026, 8, 30, 23, 0, 0),
+            }
+        ]
+        cursor.fetchone.return_value = {"total": 1}
+        with patch.object(main, "get_db", return_value=connection):
+            response = self.client.get(
+                "/api/v1/admin/access-events", headers={"X-Tenant-ID": "*"}
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(1, response.json()["today_total"])
+        self.assertEqual("MOBILE_REMOTE", response.json()["events"][0]["auth_method"])
 
 
 class PersonalEnrollmentTest(unittest.TestCase):

@@ -26,8 +26,8 @@ EXPECTED_REPOSITORIES = {
     "api": "ghcr.io/ks-house/smart-gatekeeper-backend",
     "db": "ghcr.io/ks-house/smart-gatekeeper-db",
 }
-SCHEMA_VERSION = "008"
-SCHEMA_SHA256 = "f95e752d96ea34ce7373d8573738936c5ec08ac296ee600a96c45d087e7219a8"
+SCHEMA_VERSION = "009"
+SCHEMA_SHA256 = "5ffe2f22c145faa1441af76b873606af7015310402b7e3f08e7e97fdce9a507d"
 BUNDLE_MEMBERS = (
     "release.env",
     "release.env.sig",

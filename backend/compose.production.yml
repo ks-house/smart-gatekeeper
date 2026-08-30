@@ -29,7 +29,7 @@ services:
   migrate:
     image: ${DB_IMAGE_REPOSITORY:?DB image repository is required}@sha256:${DB_IMAGE_DIGEST:?DB image digest is required}
     restart: "no"
-    command: ["/usr/local/bin/sgk-migrate", "up", "008"]
+    command: ["/usr/local/bin/sgk-migrate", "up", "009"]
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -95,8 +95,9 @@ services:
       ACL_PERSONAL_ENROLLMENT_ENABLED: ${ACL_PERSONAL_ENROLLMENT_ENABLED:-false}
       ACL_PERSONAL_TENANT_ID: ${ACL_PERSONAL_TENANT_ID:-}
       ACL_PERSONAL_DOOR_ID: ${ACL_PERSONAL_DOOR_ID:-}
-      EXPECTED_DB_SCHEMA_VERSION: "008"
-      EXPECTED_DB_SCHEMA_SHA256: "f95e752d96ea34ce7373d8573738936c5ec08ac296ee600a96c45d087e7219a8"
+      EXPECTED_DB_SCHEMA_VERSION: "009"
+      EXPECTED_DB_SCHEMA_SHA256: "5ffe2f22c145faa1441af76b873606af7015310402b7e3f08e7e97fdce9a507d"
+      ADMIN_REAUTH_SECONDS: ${ADMIN_REAUTH_SECONDS:-900}
       BUILD_SHA: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}
       TARGET_CONFIG_FILE: /var/lib/smart-gatekeeper/target_config.json
       TZ: UTC

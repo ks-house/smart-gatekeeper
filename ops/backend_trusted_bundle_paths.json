@@ -44,6 +44,8 @@
     "backend/db/migrations/007_ops_privacy_up.sql",
     "backend/db/migrations/008_mobile_credential_control_down.sql",
     "backend/db/migrations/008_mobile_credential_control_up.sql",
+    "backend/db/migrations/009_admin_account_management_down.sql",
+    "backend/db/migrations/009_admin_account_management_up.sql",
     "backend/db/production_schema.sql",
     "backend/db/run_migrations.sh",
     "backend/db/schema.sql",

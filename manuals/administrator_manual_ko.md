@@ -20,6 +20,14 @@
 
 현재 repository의 `security/target-production-policy.json`은 `production_enabled=false`다. 아래 조건과 [상용 운영 계약](../wiki/commercial_operations.md), 물리 Gate, risk-owner 승인이 모두 충족되기 전 true로 바꾸거나 production job을 승인하지 않는다. 사용자가 요청한 NAS 배포는 실기기 검증용 staging으로 취급하며 이 플래그나 production 승인을 자동으로 바꾸지 않는다.
 
+### 개인 사용자 계정 관리
+
+- 관리자 콘솔의 `정보 수정`에서 이름(최대 50자)과 동/호수(최대 20자)를 변경한다. 변경은 관리자 감사 이력에 남지만 이전 이름/동호수 원문은 감사 로그에 복제하지 않는다.
+- `계정 삭제`는 먼저 해당 휴대폰 공개키 자격을 폐기하고 새 ACL을 Target에 발행한 뒤 사용자 개인정보 행을 삭제한다. 오류가 나오면 삭제 완료로 간주하지 않는다.
+- 기존 등록 휴대폰에 “휴대폰을 한 번 열어 동기화” 안내가 나오면 그 휴대폰에서 앱을 열고 상태 새로고침을 한 번 수행한다. 공개키가 확인되기 전에는 삭제가 fail-closed 된다.
+- 최근 출입 이력의 `MOBILE_REMOTE` 성공은 Backend가 MQTT broker에 명령을 전달했다는 뜻이다. Target 수신, 릴레이 동작, 실제 문 움직임은 별도 현장 증거다.
+- 개인 관리자 재인증 기본 유효시간은 15분이다. 세션/CSRF/역할 검증은 그대로 유지되며, 만료 안내가 나오면 다시 로그인한다.
+
 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
 |---|---|---|---|---|---|---|---|---|
 | deploy owner + security reviewer | exact main SHA, immutable API/DB image digest, external secrets, 검증용 NAS change window | `backend/compose.production.yml` render·migration·reverse proxy 계획 | API/DB host port와 source bind 없음, migration backup 우선, API는 migration 완료 뒤 `/ready`; ingress가 mTLS 종료·client header strip/rebuild | production Compose, DB migration runner, `admin_security.py` | rendered config, image digest, migration backup, NAS `/live`·`/ready` capture **OPS PENDING** | maintenance window | failed deployment 1회 rollback | platform/security owner; mutable tag·직접 API 공개·`.env` secret 복사 금지 |

@@ -147,3 +147,33 @@ possession-credential provisioning and the v2 client envelope rollout. Until
 that rollout exists, Flutter must not import or expose the legacy Backend HMAC
 secret, and N/N-1 clients receive upgrade-required with no effect. Both issues
 must retain N/N-1 update/rollback compatibility.
+
+## Personal administrator account-management console
+
+The personal administrator console now has explicit, audited operations for
+editing a registration name/unit and deleting one user account. `PATCH
+/api/v1/admin/tenants/{id}` validates the database bounds (name 1..50, unit
+1..20) and records `TENANT_PROFILE_UPDATED`. `DELETE` is deliberately not a
+raw row deletion: an enrolled account must first have its public credential
+linked, that credential is revoked, a replacement signed ACL is published, and
+only then is the legacy personal-data row deleted with
+`TENANT_ACCOUNT_DELETED`. Access history remains with its tenant foreign key
+set to null; immutable administrator audit never stores the deleted name/unit.
+
+Migration 009 adds only the unique nullable account-to-public-credential link.
+New enrollment writes it atomically. Already enrolled phones reconcile it only
+after presenting the matching public key during a normal status request. A
+dual-mode account without that verified link returns HTTP 409 instead of being
+deleted unsafely. Deleting the canonical legacy owner transfers that mapping to
+another active, credential-linked family account when one exists.
+
+The global access-history view uses `/api/v1/admin/access-events`, not the
+single-legacy-scope `/api/v1/logs` compatibility route. Mobile manual-open rows
+mean Backend validation plus broker acceptance/failure only; they never claim
+Target receipt or physical door movement. UI failures preserve the HTTP detail,
+and an expired personal reauthentication response directs the operator to login.
+
+Personal reauthentication now defaults to 900 seconds and accepts configured
+values from 300 through 3600 seconds. The server-side session, CSRF,
+same-origin cookie, administrator role, tenant authorization and idempotency
+requirements are unchanged.

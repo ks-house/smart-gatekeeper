@@ -560,7 +560,7 @@ def contract() -> dict:
         "DB_PASSWORD_FILE:", "OPS_HMAC_KEY_FILE:", "internal: false",
         "ACL_MANAGEMENT_ENABLED: \"true\"", "ACL_LEGACY_DEVICE_LOOKUP_ENABLED: \"false\"",
         "127.0.0.1:8000/ready", "service_completed_successfully",
-        "EXPECTED_DB_SCHEMA_VERSION: \"008\"", "migration_backups:",
+        "EXPECTED_DB_SCHEMA_VERSION: \"009\"", "migration_backups:",
     ):
         if required not in compose:
             errors.append(f"production Compose missing {required}")
@@ -638,8 +638,8 @@ def contract() -> dict:
             errors.append(f"backend workflow omits fixed evidence producer token: {required}")
     if not re.search(r"^FROM mariadb@sha256:[a-f0-9]{64}$", db_dockerfile, re.MULTILINE):
         errors.append("migration database image base is not digest-pinned")
-    if "COPY migrations/008_mobile_credential_control_up.sql /opt/smart-gatekeeper/migrations/008_up.sql" not in db_dockerfile:
-        errors.append("migration database artifact omits the current privacy migration")
+    if "COPY migrations/009_admin_account_management_up.sql /opt/smart-gatekeeper/migrations/009_up.sql" not in db_dockerfile:
+        errors.append("migration database artifact omits the current account-management migration")
     if "production_schema.sql" not in db_dockerfile or re.search(
         r"(?m)^COPY\s+schema\.sql\s+/docker-entrypoint", db_dockerfile
     ):
@@ -651,7 +651,7 @@ def contract() -> dict:
             errors.append("production database artifact contains demo credentials or PII")
     for required in (
         "mariadb-dump", "pre-migration-", "schema_migrations", "canonical_sha",
-        "up:008|down:001", ".schema-migration-lock",
+        "up:009|down:001", ".schema-migration-lock",
     ):
         if required not in migration_runner:
             errors.append(f"migration runner missing {required}")

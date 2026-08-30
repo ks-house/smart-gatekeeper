@@ -256,7 +256,19 @@ only while the owner is commissioning the connected phone, require the exact Tar
 then disable the endpoint and restart the Backend. A future multi-user/commercial flow requires
 one-time owner pairing or explicit administrator approval instead of this exception.
 
-## 6. Verification
+## 6. Administrator account-to-credential deletion join
+
+Migration 009 adds a nullable unique `tenants.credential_id` join used by the
+administrator account-deletion path. It contains a public credential ID only,
+not a private key, raw fresh-install device ID or API secret. Enrollment binds
+new rows atomically, and existing enrolled phones backfill only after the
+status request proves the matching public key and keyed legacy reference.
+Deletion revokes that credential and publishes the replacement ACL before the
+legacy PII row can be removed. Local MariaDB 10.11 tests cover repeated
+002-through-009 apply, backup creation, full rollback and legacy-row survival;
+hosted CI and NAS migration/deployment remain separate Gates.
+
+## 7. Verification
 
 ```bash
 python -m unittest discover -s backend/tests -v
