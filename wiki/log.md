@@ -5477,3 +5477,9 @@
 - Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with database, schema, MQTT, runtime secrets, control/admin authentication, ACL management, legacy retirement and build identity all true. Target run `33323849255` separately completed signed exact-main personal OTA publication for `2.1.399+main.g1b701df`; publication is not installation, reboot or health confirmation.
 - Mobile run `33323849352` passed canary and exact-main build/signing, atomically published personal OTA `1.0.0-g1b701df` / `35801`, and read back primary/fallback manifests plus APKs over HTTPS. An independent manifest comparison matched exact commit and APK SHA-256 `bc4d24fdeacda655a1f1465f466abf15192c3287117965308abe1329cdc9faf3`.
 - Native registration-only onboarding, server-first signed logout, reduced user settings and console-assigned mobile administrator projection are now source-merged and Backend/schema-deployed. Updated-phone logout, registration/admin rendering and physical access remain explicit device acceptance Gates.
+
+## [2026-08-31] test | Verify final actual-main mobile and Target OTA pointers
+
+- Policy-only actual main `4d906aeeaab972e9abe07325fe3c8ba43febff8a` retained the deployed feature blobs. Target run `33324135363` and mobile run `33324135320` completed their exact-main signed personal publications after the feature deployment.
+- Independent HTTPS readback found current Target `2.1.400+main.g4d906ae` and current mobile `1.0.0-g4d906ae` / `35901`; both manifests name exact commit `4d906aeeaab972e9abe07325fe3c8ba43febff8a`. Primary/fallback mobile manifests matched, with signed APK SHA-256 `a5d3e9b332a36a85ea9ab1b7f06dd89dc318ab15b9abf693c00ece67d373667a`.
+- Publication is not installation. No phone package update, logout, fresh registration, administrator navigation, Target install/reboot/health or physical door cycle is inferred from these HTTPS results.
