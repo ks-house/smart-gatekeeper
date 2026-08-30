@@ -5287,3 +5287,9 @@
 - Policy PR #294 passed Hosted Trusted and merge-committed as main `6a714f86c5661cf5b5343c3af98281499d815c33`; merged that exact policy main without rebase or squash into feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2` as `79bdf7b36ea20801ce035a05d70a6c60c221e64f`.
 - The two reviewed protected feature blobs and complete 86-path bundle remain exact; all 42 policy tests and all 149 Backend tests passed after graph connection with two expected Docker-only skips.
 - No user registration, credential/database/runtime mutation or deployment occurred. Fresh hosted checks, feature merge, NAS deployment/readiness and connected A24 onboarding readback remain separate Gates.
+
+## [2026-08-30] compile | Authorize bounded fresh-registration identity candidate
+
+- Bound the complete protected bundle to immutable feature candidate `8e0c02c415ac2f2214cca5393a2682fd4b6c3a85`, which accepts fresh `GK-*` registration IDs and uses one consistent bounded legacy locator across request, status and credential bootstrap.
+- Exactly five protected normalized blobs change: ACL management, Backend request validation, the registration form limits and two focused Backend regression suites. Existing fitting `DEV-*` locators, public-key credentials, signed ACL and all deployment/OTA workflows remain fixed.
+- This policy-only step submits no registration, mutates no database/NAS/runtime, installs no APK and issues no Target or door effect. Policy merge, feature graph connection, fresh CI, Backend deployment and one owner-triggered retry remain separate Gates.
