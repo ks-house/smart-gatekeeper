@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (per-phone resident identity projection implemented; shared household-owner label is no longer a mobile fallback)
+> Last updated: 2026-08-31 (mobile account lifecycle and manifest schema candidate policy authorization documented)
 
 ---
 

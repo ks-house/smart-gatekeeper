@@ -1335,3 +1335,28 @@ database/container, publishes no ACL, installs no app or Target image and opens
 no door. Policy merge, exact merge-connection, fresh protected CI, feature
 merge, owner-approved NAS deployment/readiness, one owner retry, Target ACK and
 daughter-device access remain separate Gates.
+
+## 41. Mobile account lifecycle and manifest schema authorization
+
+Immutable feature candidate
+`68c9c3172782339a731f01dfb960b1aa8aeabaff` adds exact-phone logout,
+native registration-only onboarding, console-assigned mobile administrator
+projection and migration 010. It also replaces per-version deployment-script
+edits with a signed `schema.env` contract whose version and digest are verified
+against the pinned database image before the backup-first migration runs.
+
+The indivisible protected set expands from 88 to 91 by adding migration 010 up
+and down files plus `backend/db/schema.env`. Eighteen protected blobs are new or
+changed, covering the exact Backend authorization/cleanup path, administrator
+role console, schema image/bundle/Compose/wrapper consumers, trusted inventory
+and their direct regressions. The sole
+`mobile-account-schema-68c9c31-persistent-baseline` is repository, immutable
+candidate, ancestry, ordered inventory and normalized-digest bound; it grants no
+partial-file, branch, wildcard or caller-selected schema exception.
+
+This policy-only authorization changes no NAS file, database, container,
+credential, ACL, mobile installation or Target state. After it merges, that
+exact trusted main must be merge-connected into the feature without rebase or
+squash. Fresh Hosted Trusted, Backend/MariaDB, OTA/schema, Flutter/native checks,
+feature merge, one final root-wrapper installation and exact-main NAS migration
+and readiness remain separate Gates.
