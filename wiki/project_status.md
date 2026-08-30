@@ -66,6 +66,10 @@ applies_to:
   Gate; the policy test rejected the four expected changed protected blobs.
   This is the required separate policy-authorization boundary, not a reason to
   weaken workflow/digest enforcement.
+- Policy PR #291 subsequently passed Hosted Trusted and merged as main
+  `41d89fb`; that exact policy main was merge-connected without rebase or
+  squash as `a5671be`. The reviewed protected bytes are unchanged and fresh
+  feature CI is now the next Gate.
 
 ## 2026-08-29 foreground Target detection dashboard candidate
 

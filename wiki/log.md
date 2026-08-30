@@ -5257,3 +5257,9 @@
 - Bound the complete 86-path protected bundle to immutable feature candidate `e14f34c8896854dc50e7f8a0183eb764f205a622`, which authorizes mobile credentials in `ACL_PERSONAL_*` while preserving the independent `COMMAND_*` signed-MQTTS envelope.
 - Exactly four protected normalized blobs change: Backend v3, the DSM Bash-validator guide correction and two focused regressions. The candidate also fails closed unless the personal scope belongs to `COMMAND_TARGET_ID`.
 - This policy-only step mutates no NAS runtime ID, credential, grant, database, container, MQTT command, Target, relay or door. Policy merge, feature merge-connection, fresh CI, deployment/readiness and owner-triggered physical validation remain separate Gates.
+
+## [2026-08-30] compile | Connect personal-ACL correction to trusted policy main
+
+- Policy PR #291 passed the Hosted Trusted check and merge-committed as main `41d89fb302ed95310db9585dffe3721797139ee2`.
+- Merged that exact trusted main without rebase or squash into immutable feature candidate `e14f34c8896854dc50e7f8a0183eb764f205a622` as `a5671be`; the four reviewed protected blobs and complete 86-path map remain unchanged.
+- Fresh Hosted Trusted, Backend and OTA checks, feature merge, NAS deployment/readiness and one owner-triggered mobile-to-door trial remain separate Gates; no runtime or physical state changed in this graph connection.

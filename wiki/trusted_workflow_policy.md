@@ -1279,3 +1279,9 @@ This policy-only authorization changes no NAS runtime ID, credential, grant,
 database, container, MQTT command, Target, relay or door state. Policy merge,
 merge-connection, fresh feature CI, feature merge, NAS deployment/readiness
 and one owner-triggered physical trial remain separate Gates.
+
+Policy PR #291 passed the trusted-base check and merge-committed as main
+`41d89fb302ed95310db9585dffe3721797139ee2`. That exact policy main was then
+merged without rebase or squash into immutable feature candidate `e14f34c` as
+`a5671be`. The four reviewed protected candidate blobs and the complete 86-path
+map remain unchanged; fresh feature checks are required before merge.
