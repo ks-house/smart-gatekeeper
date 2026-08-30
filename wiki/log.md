@@ -5124,3 +5124,9 @@
 - Merge-connected trusted policy main `a62315e` into reviewed feature candidate `4c16b44352a986417ee679465da1c61f670abde1` without rebase or squash, preserving both immutable parents.
 - The GPIO23 source and the sole changed protected workflow byte remain identical to the reviewed bundle. Fresh Hosted Trusted, OTA and ESP32-C6 checks are required before feature merge.
 - No firmware was published or installed and no relay, sensor or physical door action was performed in this graph-connection step.
+
+## [2026-08-30] test | Merge reviewed GPIO23 Target source
+
+- PR #283 passed Hosted Trusted, OTA schema/signature/recovery and ESP32-C6 firmware canary checks, then merge-committed as actual main `c96e85410d2e56bf6757f4ec3f30df2133213bd0`.
+- Rotated the sole trusted `current-main-baseline` source to that actual merge while retaining the exact reviewed 83-file map and protected namespace inventories.
+- Exact-main signed publication and Target install/reboot/health are still being observed; no GPIO11 electrical, relay contact/load or physical door success is inferred from merge or CI.

@@ -1178,3 +1178,16 @@ rebasing or squashing, and a separate final policy rotation must replace this
 transition with the actual feature merged-main commit. It authorizes no
 firmware publication, Target installation, relay actuation or physical door
 claim by itself.
+
+## 34. GPIO23 Target final baseline
+
+GPIO23 restoration PR #283 passed Hosted Trusted, OTA-contract and ESP32-C6
+canary checks after policy main was merge-connected without rebase or squash.
+It merge-committed as actual main
+`c96e85410d2e56bf6757f4ec3f30df2133213bd0`.
+
+This final rotation retires the transitional feature identity and pins the
+sole `current-main-baseline` to that actual merged main. The complete ordered
+83-path map, workflow/action inventories and reviewed deploy-workflow digest
+remain unchanged. Signed exact-main publication, Target OTA installation and
+physical GPIO23/contact/door evidence remain separate from this policy result.
