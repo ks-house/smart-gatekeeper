@@ -5382,7 +5382,29 @@
 - Backend run `33316931652` attempt 2 completed the restricted-Tailscale deployment. Canonical evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`; independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with all readiness checks true.
 - Name/unit editing, fail-closed account deletion, global recent access history and the 900-second personal reauthentication default are deployed. No account edit/delete was executed during verification, so administrator browser acceptance remains an explicit operator Gate.
 
+## [2026-08-30] test | Diagnose shared owner name on family phones
+
+- Source inspection confirms the Android app has no shared user/password login: every enrolled phone presents its own non-exportable AndroidKeyStore public credential, while all approved family credentials intentionally share the configured personal ACL tenant and door grant.
+- After credential enrollment, `personal_mobile_status` returns the one shared `acl_tenants.display_name` as `tenant_label`; that label was initialized from the canonical first owner's name/unit. The Home card therefore renders the owner's label on wife and daughter phones even though their credential IDs and keys are distinct.
+- This is a truthful-identity UI/data-projection defect, not evidence that the phones copied the owner's private key. The corrective boundary is to project the legacy account row linked by migration-009 `credential_id` for each verified phone while retaining the shared household ACL tenant and per-phone revocation/audit contracts.
+
+## [2026-08-30] fix | Isolate the mobile identity label per enrolled phone
+
+- Backend personal status now resolves `account_name` and `unit_number` only from the one legacy account row bound to the verified AndroidKeyStore credential. Its N-1 `tenant_label` compatibility field uses the same private projection and never falls back to the shared ACL tenant display name.
+- Flutter derives the Home and legacy WebView identity fields only from the new per-account response. If an older Backend supplies only a shared `tenant_label`, the app renders no resident identity instead of exposing the household owner's name.
+- Backend focused and full suites passed (`11` focused; `158` total with `2` environment-dependent skips), and the focused Flutter identity suite passed all `3` tests. CI, signed APK publication, NAS deployment and installed-phone acceptance remain separate Gates.
+
 ## [2026-08-30] compile | Authorize exact per-phone identity candidate
 
 - The trusted policy now authorizes the immutable feature candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06` as one complete 88-path bundle; only `backend/app/acl_management.py` and `backend/tests/test_acl_api.py` differ from the preceding protected bytes.
 - The authorization is repository/ancestry/digest bound and changes no workflow, signer, OTA, NAS transport, backup, health, rollback or access-control behavior. A separate policy PR and fresh Hosted Trusted result remain required before the feature can be merge-connected.
+
+## [2026-08-31] compile | Connect per-phone identity candidate to trusted policy main
+
+- Policy PR #305 passed Hosted Trusted and merge-committed as main `4dcbaa1b384bc82e94b2e25769ca04cc0b6e1e3f`; merged that exact policy history into immutable candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06` without rebasing or changing its two protected feature blobs.
+- Fresh trusted-policy regression synchronization, feature PR checks, merge, NAS deployment/readiness, signed APK publication and installed-phone acceptance remain separate Gates.
+
+## [2026-08-31] fix | Synchronize per-phone identity trusted-policy regression
+
+- Updated the local regression fixture from the preceding administrator-management baseline to immutable candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06`, exact 88-path digests and the two-path protected delta.
+- This test-only synchronization changes no approved policy bytes, Backend runtime, mobile behavior, workflow, NAS state or device installation. Fresh local/hosted checks and the feature merge remain separate Gates.

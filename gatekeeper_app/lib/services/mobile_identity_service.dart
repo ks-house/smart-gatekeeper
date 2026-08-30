@@ -14,6 +14,8 @@ class MobileIdentityStatus {
     required this.doorCount,
     required this.targetSynced,
     this.tenantLabel,
+    this.accountName,
+    this.unitNumber,
     this.aclVersion,
     this.expiresAtEpoch,
   });
@@ -24,10 +26,18 @@ class MobileIdentityStatus {
   final int doorCount;
   final bool targetSynced;
   final String? tenantLabel;
+  final String? accountName;
+  final String? unitNumber;
   final int? aclVersion;
   final int? expiresAtEpoch;
 
   factory MobileIdentityStatus.fromJson(Map<String, dynamic> value) {
+    final accountName = value['account_name']?.toString().trim();
+    final unitNumber = value['unit_number']?.toString().trim();
+    final hasPrivateAccountLabel = accountName != null &&
+        accountName.isNotEmpty &&
+        unitNumber != null &&
+        unitNumber.isNotEmpty;
     return MobileIdentityStatus(
       enrollmentState: enrollmentStateFromWire(
         value['enrollment_state']?.toString(),
@@ -37,7 +47,11 @@ class MobileIdentityStatus {
       nextAction: value['next_action']?.toString() ?? 'retry',
       doorCount: (value['door_count'] as num?)?.toInt() ?? 0,
       targetSynced: value['target_synced'] == true,
-      tenantLabel: value['tenant_label']?.toString(),
+      // Do not render the legacy shared tenant label as a person's identity.
+      // Older Backends may populate it with the household owner's PII.
+      tenantLabel: hasPrivateAccountLabel ? '$accountName $unitNumber' : null,
+      accountName: hasPrivateAccountLabel ? accountName : null,
+      unitNumber: hasPrivateAccountLabel ? unitNumber : null,
       aclVersion: (value['acl_version'] as num?)?.toInt(),
       expiresAtEpoch: (value['credential_expires_at'] as num?)?.toInt(),
     );

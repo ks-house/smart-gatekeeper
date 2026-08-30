@@ -901,6 +901,36 @@ class AclStore:
         finally:
             self._close(connection)
 
+    def personal_account_profile(
+        self, tenant_id: str, credential_id: str
+    ) -> Optional[dict[str, str]]:
+        """Return only the account linked to this verified phone credential.
+
+        A personal ACL tenant may contain multiple residents.  Its shared
+        display name is therefore never a valid per-phone identity label.
+        """
+
+        _hex_bytes(tenant_id, 16, "tenant_id")
+        _hex_bytes(credential_id, 16, "credential_id")
+        rows = self._all(
+            "SELECT name, unit_number, tenant_uuid FROM tenants "
+            "WHERE credential_id=? ORDER BY id ASC",
+            (credential_id,),
+        )
+        if len(rows) != 1:
+            return None
+        row = rows[0]
+        mapped_tenant = row.get("tenant_uuid")
+        if mapped_tenant is not None and not hmac.compare_digest(
+            str(mapped_tenant), tenant_id
+        ):
+            return None
+        name = str(row.get("name") or "").strip()
+        unit_number = str(row.get("unit_number") or "").strip()
+        if not name or not unit_number:
+            return None
+        return {"name": name, "unit_number": unit_number}
+
     def list_credentials(
         self, tenant_id: str, *, statuses: tuple[str, ...] = ("ACTIVE",)
     ) -> list[dict[str, Any]]:
@@ -2157,6 +2187,14 @@ class AclManagementService:
             credential_id,
             self._legacy_ref(normalized_device_id),
         )
+        account_profile = self.store.personal_account_profile(
+            tenant_id, credential_id
+        )
+        account_name = account_profile["name"] if account_profile else None
+        unit_number = account_profile["unit_number"] if account_profile else None
+        account_label = (
+            f"{account_name} {unit_number}" if account_name and unit_number else None
+        )
 
         now = self.clock()
         tenant_status = self.store.tenant_status(tenant_id)
@@ -2201,7 +2239,12 @@ class AclManagementService:
                 enrollment_state == "approved" and entry_active and target_synced
             ),
             "next_action": next_action,
-            "tenant_label": self.store.tenant_display_name(tenant_id) or "Smart Key",
+            # N-1 clients still render tenant_label as their user card.  Keep
+            # that field per-account and never fall back to the household ACL
+            # tenant display name, which may contain another resident's PII.
+            "tenant_label": account_label,
+            "account_name": account_name,
+            "unit_number": unit_number,
             "door_count": len(doors),
             "selected_door": "default" if granted else None,
             "credential_expires_at": expires_at,

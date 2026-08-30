@@ -75,6 +75,19 @@ does not satisfy the endpoint. Only after exact apply does the response return
 `accepted=true`, the exact credential ID and a positive `acl_version`; otherwise the app leaves native
 GATT OFF.
 
+### 3.2 Per-credential account identity projection
+
+The personal mobile status response treats the ACL tenant as an authorization
+scope, not a user profile. Only after the submitted AndroidKeyStore public key
+matches the submitted credential and the bounded legacy-device binding succeeds
+does the Backend resolve the single `tenants` row linked by that credential ID.
+It returns that row's `name` and `unit_number` as `account_name` and
+`unit_number`; the compatibility `tenant_label` is derived from the same
+per-account values. It never falls back to `acl_tenants.display_name`, because
+one household tenant can contain multiple residents and that shared label may
+contain the first owner's PII. Missing, ambiguous, blank or cross-tenant links
+therefore produce null account fields rather than another resident's identity.
+
 The Target's ACL lease remains bounded (900 seconds by default, maximum 3,600). Backend startup and
 Target boot/status observation schedule signed snapshot delivery, and a periodic renewal loop
 refreshes it before expiry; retained or malformed ACKs never count. This is an availability mechanism,

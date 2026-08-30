@@ -140,9 +140,8 @@ class _WebViewScreenState extends State<WebViewScreen>
               'approved',
             _ => 'unregistered',
           },
-          'tenant_name': status.tenantLabel,
-          'unit_number':
-              status.doorCount == 0 ? '-' : '등록 출입문 ${status.doorCount}개',
+          'tenant_name': status.accountName,
+          'unit_number': status.unitNumber,
         };
         await _controller.runJavaScript(
           'window.completeStatusCheck(${jsonEncode(legacyProjection)});',
