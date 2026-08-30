@@ -5181,3 +5181,9 @@
 - PR #287 passed Hosted Trusted, OTA/schema and Backend checks, then merge-committed as actual feature main `07b3543a1846a1b7220c09874fb89b9e7836d7eb`.
 - Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact feature merge while retaining all 86 reviewed protected digests and both namespace inventories unchanged.
 - This final policy rotation replaces no NAS wrapper, deploys no runtime or APK, migrates no database and proves no Target, relay or physical door result. Owner-authenticated wrapper installation and a protected deployment retry remain separate Gates.
+
+## [2026-08-30] fix | Correct DSM staged-wrapper syntax validation shell
+
+- Classified the staged schema-008 wrapper's `/bin/sh -n` error at process substitution `< <(...)` as a validator-shell mismatch, not file corruption: the script declares `#!/usr/bin/env bash` and intentionally uses Bash arrays and process substitution.
+- Corrected the owner procedure and deployment guide to require `bash -n` for the staged wrapper while retaining exact SHA-256 validation before root installation.
+- No wrapper was installed and no container, database, API, MQTT, Target, relay or door state changed in this diagnosis.

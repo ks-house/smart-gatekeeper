@@ -283,6 +283,12 @@ to the NAS through an already trusted administration path.
 
 ## 3. Install the root-owned NAS endpoint
 
+`sgk_backend_deploy.sh` is a Bash program and uses arrays plus process
+substitution. On DSM, validate a staged copy with `bash -n
+sgk_backend_deploy.sh`; `/bin/sh -n` is not a valid syntax check and will reject
+the first `< <(...)` expression even when the file and its SHA-256 are correct.
+The installed executable retains its `#!/usr/bin/env bash` shebang.
+
 Create a dedicated DSM user such as `github-nas-deploy`. It must not be an
 administrator and must not join the Docker group. First verify that the exact
 DSM/OpenSSH configuration admits that non-admin account for a forced command;
