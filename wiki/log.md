@@ -5130,3 +5130,9 @@
 - PR #283 passed Hosted Trusted, OTA schema/signature/recovery and ESP32-C6 firmware canary checks, then merge-committed as actual main `c96e85410d2e56bf6757f4ec3f30df2133213bd0`.
 - Rotated the sole trusted `current-main-baseline` source to that actual merge while retaining the exact reviewed 83-file map and protected namespace inventories.
 - Exact-main signed publication and Target install/reboot/health are still being observed; no GPIO11 electrical, relay contact/load or physical door success is inferred from merge or CI.
+
+## [2026-08-30] compile | Authorize credential-signed mobile remote-open bundle
+
+- Bound one complete 86-path persistent bundle to immutable feature candidate `3073d716b2c7157178a1f06fa5f38c3a9bc6a56d`, which routes the normal mobile `문 열기` button through Backend authorization and the existing per-Target signed MQTTS command plane while preserving hands-free Local GATT action 1.
+- Added migration 008 up/down and the focused mobile remote-control backend test to the directly protected path set; the complete map pins all fifteen reviewed changed or new protected blobs without branch, wildcard, fork or partial-map authorization.
+- This policy-only step deploys no Backend, installs no APK, sends no MQTT command and proves no Target relay or physical door result. Policy merge, merge-connection, fresh CI, feature merge, NAS deployment, signed app publication/install and a bounded physical trial remain separate Gates.

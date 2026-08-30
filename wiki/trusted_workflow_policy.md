@@ -1191,3 +1191,30 @@ sole `current-main-baseline` to that actual merged main. The complete ordered
 83-path map, workflow/action inventories and reviewed deploy-workflow digest
 remain unchanged. Signed exact-main publication, Target OTA installation and
 physical GPIO23/contact/door evidence remain separate from this policy result.
+
+## 35. Credential-signed mobile remote-open authorization
+
+Reviewed feature candidate
+`3073d716b2c7157178a1f06fa5f38c3a9bc6a56d` changes the normal visible
+mobile `문 열기` action from direct Local GATT action 2 to Backend
+authorization followed by the existing per-Target signed MQTTS command plane.
+The Android Keystore credential signs a fixed 128-byte request envelope; the
+Backend validates the active credential, tenant and exact door grant, consumes
+a durable nonce and returns only broker-ack evidence. The pocket-approach path
+remains Local GATT action 1 followed by Target ARMED and sensor confirmation.
+
+The complete protected bundle grows from 83 to 86 paths so both migration 008
+directions and the focused remote-control backend test are protected directly.
+Fifteen normalized blobs differ from the previous baseline: the three newly
+protected paths plus the reviewed Backend endpoint, migration wiring, release
+bundle/deploy wrapper, commercial gate and regression-test changes. The sole
+`future-mobile-remote-open-3073d71-persistent-baseline` bundle is pinned to the
+exact immutable candidate and permits only its merge-connected descendants.
+
+This policy-only authorization neither deploys the Backend nor installs the
+mobile APK, publishes a command, actuates GPIO23 or proves a physical door
+opening. After this policy merges, trusted main must be merge-connected into
+the feature without rebase or squash. Fresh Hosted Trusted, Backend, OTA and
+mobile checks, feature merge, exact-main deployment/publication, connected app
+installation, bounded button trial and final baseline rotation remain separate
+Gates.
