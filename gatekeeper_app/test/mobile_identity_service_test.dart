@@ -20,7 +20,9 @@ void main() {
           'next_action': 'open_door',
           'door_count': 1,
           'target_synced': true,
-          'tenant_label': 'Tenant A',
+          'tenant_label': 'Household Owner 401',
+          'account_name': 'Resident A',
+          'unit_number': '401',
           'acl_version': 42,
           'credential_expires_at': 4102444800,
         }),
@@ -45,6 +47,36 @@ void main() {
     expect(status.enrollmentState, EnrollmentState.approved);
     expect(status.accessReady, isTrue);
     expect(status.targetSynced, isTrue);
+    expect(status.accountName, 'Resident A');
+    expect(status.unitNumber, '401');
+    expect(status.tenantLabel, 'Resident A 401');
+  });
+
+  test('shared legacy tenant label is never rendered as phone identity',
+      () async {
+    final service = MobileIdentityService(
+      client: MockClient((_) async => http.Response(
+            jsonEncode(<String, Object?>{
+              'enrollment_state': 'approved',
+              'access_ready': true,
+              'next_action': 'open_door',
+              'door_count': 1,
+              'target_synced': true,
+              'tenant_label': 'Household Owner 401',
+            }),
+            200,
+          )),
+      nativeBridge: _IdentityNativeBridge(),
+      deviceIdProvider: () async => 'legacy-device',
+      backendBaseUrl: 'https://example.test/api/v1',
+      apiKey: 'test-key',
+    );
+
+    final status = await service.status();
+
+    expect(status.tenantLabel, isNull);
+    expect(status.accountName, isNull);
+    expect(status.unitNumber, isNull);
   });
 
   test('invalid or unavailable response stays explicitly unavailable',

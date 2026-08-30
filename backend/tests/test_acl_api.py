@@ -176,6 +176,9 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual("approved", status.json()["enrollment_state"])
         self.assertFalse(status.json()["access_ready"])
         self.assertEqual("wait_for_acl", status.json()["next_action"])
+        self.assertEqual("personal", status.json()["account_name"])
+        self.assertEqual("home", status.json()["unit_number"])
+        self.assertEqual("personal home", status.json()["tenant_label"])
         self.assertEqual(1, status.json()["door_count"])
         self.assertEqual(1, status.json()["acl_version"])
 
@@ -432,6 +435,21 @@ class AclApiTest(unittest.TestCase):
             [DOOR],
             self.store.active_grant_doors(TENANT_A, body["credential_id"]),
         )
+        status = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={
+                "device_id": family_id,
+                "credential_id": body["credential_id"],
+                "public_key_sec1": body["public_key_sec1"],
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, status.status_code, status.text)
+        self.assertEqual("family", status.json()["account_name"])
+        self.assertEqual("home", status.json()["unit_number"])
+        self.assertEqual("family home", status.json()["tenant_label"])
+        self.assertNotIn("primary", status.text)
+        self.assertNotIn('"tenant_label":"A"', status.text)
 
     def test_personal_enrollment_unapproved_device_is_forbidden(self) -> None:
         device = DeterministicP256Signer(17, signing_key_id=0)

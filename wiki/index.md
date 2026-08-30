@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (administrator account management, global access history and 900-second reauthentication deployed; browser acceptance pending)
+> Last updated: 2026-08-30 (per-phone resident identity projection implemented; shared household-owner label is no longer a mobile fallback)
 
 ---
 
@@ -59,7 +59,7 @@
 | [android_ble_wake_adr.md](android_ble_wake_adr.md) | #14 PendingIntent filtered BLE wake 결정, #179 Bluetooth ON native re-registration, exact filter contract와 Samsung pending Gate |
 | [android_gatt_worker.md](android_gatt_worker.md) | #17/#133 signed default-OFF rollout, action-1 background ARM, action-2 terminal manual open, privacy-safe Target detection projection, BLE lease, crash boundary and pending physical gates |
 | [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
-| [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
+| [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, credential-bound resident profile, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
 | [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [target_command_ota_security.md](target_command_ota_security.md) | #50 verified per-Target MQTTS, signed durable commands, signed inactive-slot OTA, local recovery, and production hardening evidence boundary |
@@ -70,7 +70,7 @@
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |
 | [flutter_thin_ui.md](flutter_thin_ui.md) | #21/#133 Flutter Thin UI, terminal 1-tap immediate local GATT open, enrollment, OEM recovery and independent OTA |
-| [mobile_commercial_ux.md](mobile_commercial_ux.md) | #51 capability-based recovery shell, fresh-install native wake, authenticated Target resolution, signed updater, truthful states, privacy/accessibility/localization |
+| [mobile_commercial_ux.md](mobile_commercial_ux.md) | #51 capability-based recovery shell, per-phone resident identity privacy, fresh-install native wake, authenticated Target resolution, signed updater, truthful states/accessibility/localization |
 | [mobile_usability_improvement_plan.md](mobile_usability_improvement_plan.md) | Tagged mobile baseline, current source-backed UX gaps, native Home/activity/settings target, phased P0/P1/P2 delivery and acceptance metrics |
 | [hardwareless_implementation_gates.md](hardwareless_implementation_gates.md) | #22 Two-tier authorization gate structure, software release candidate G0-SW validation, and physical G0-HW fail-closed boundaries |
 | [trusted_workflow_policy.md](trusted_workflow_policy.md) | Trusted workflow digest와 workflow/action exact inventory Gate, policy rotation, self-policy/status-context 잔여 경계 |

@@ -114,6 +114,15 @@ not the normal Home-button transport.
 
 ## Privacy and UI
 
+The Home identity card is a per-phone account projection, not the shared ACL
+tenant label. After public-key proof succeeds, the Backend resolves only the
+legacy account row bound to that exact credential and returns its `name` and
+`unit_number`; the app derives the visible label from those two fields. Multiple
+residents may continue to share one household ACL tenant and door grant without
+seeing the first resident's name. If a Backend cannot provide the credential-
+bound fields, the app shows a generic/unavailable identity instead of falling
+back to legacy `tenant_label` data that may contain another resident's PII.
+
 Support diagnostics redact tenant/unit/device identifiers, URLs and query
 strings, tokens, API keys, passwords, Bluetooth addresses, credentials, raw
 proof material, and unbounded exception text at the `AppErrorLogger`

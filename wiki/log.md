@@ -5381,3 +5381,15 @@
 - The first owner-approved deployment joined Tailscale and failed closed before Compose or migration because the installed root wrapper admitted schema 008. The owner installed the reviewed schema-009 wrapper at exact SHA-256 `8b0e230f...352f2a8`, retained the preceding wrapper as a root-only backup and confirmed the prior release stayed deployed and ready.
 - Backend run `33316931652` attempt 2 completed the restricted-Tailscale deployment. Canonical evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`; independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with all readiness checks true.
 - Name/unit editing, fail-closed account deletion, global recent access history and the 900-second personal reauthentication default are deployed. No account edit/delete was executed during verification, so administrator browser acceptance remains an explicit operator Gate.
+
+## [2026-08-30] test | Diagnose shared owner name on family phones
+
+- Source inspection confirms the Android app has no shared user/password login: every enrolled phone presents its own non-exportable AndroidKeyStore public credential, while all approved family credentials intentionally share the configured personal ACL tenant and door grant.
+- After credential enrollment, `personal_mobile_status` returns the one shared `acl_tenants.display_name` as `tenant_label`; that label was initialized from the canonical first owner's name/unit. The Home card therefore renders the owner's label on wife and daughter phones even though their credential IDs and keys are distinct.
+- This is a truthful-identity UI/data-projection defect, not evidence that the phones copied the owner's private key. The corrective boundary is to project the legacy account row linked by migration-009 `credential_id` for each verified phone while retaining the shared household ACL tenant and per-phone revocation/audit contracts.
+
+## [2026-08-30] fix | Isolate the mobile identity label per enrolled phone
+
+- Backend personal status now resolves `account_name` and `unit_number` only from the one legacy account row bound to the verified AndroidKeyStore credential. Its N-1 `tenant_label` compatibility field uses the same private projection and never falls back to the shared ACL tenant display name.
+- Flutter derives the Home and legacy WebView identity fields only from the new per-account response. If an older Backend supplies only a shared `tenant_label`, the app renders no resident identity instead of exposing the household owner's name.
+- Backend focused and full suites passed (`11` focused; `158` total with `2` environment-dependent skips), and the focused Flutter identity suite passed all `3` tests. CI, signed APK publication, NAS deployment and installed-phone acceptance remain separate Gates.
