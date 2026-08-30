@@ -1,6 +1,6 @@
 # Backend public-key enrollment and signed ACL management
 
-> Status: Issue #19 core plus personal public-key bootstrap deployed; first owner physical remote-open passed and approved additional-family-phone enrollment correction is in review
+> Status: Issue #19 core plus personal public-key bootstrap deployed; first owner physical remote-open passed and approved additional family phone is enrolled with Target ACL synced
 > Protocol: [security_protocol.md](security_protocol.md)
 > OTA parent contract: [ota_reliability_contract.md](ota_reliability_contract.md)
 
@@ -224,9 +224,18 @@ keeps that unique compatibility owner while allowing each separately approved
 additional family row to remain unmapped and receive its own public credential,
 door grant and shared-tenant signed ACL entry. Unapproved, inactive,
 cross-tenant, conflicting and revoked identities remain fail-closed. Source
-regressions and all 152 Backend tests pass with two expected Docker-only skips;
-policy authorization, protected CI, NAS deployment, one owner retry, signed ACL
-Target ACK and access remain pending.
+regressions and all 152 Backend tests pass with two expected Docker-only skips.
+Policy PR #299 and feature PR #300 passed the protected checks; #300 merged as
+exact main `38b90e5febc525c96a4013b737850fd6a90235d3`. Backend run
+`33315099974` deployed it to NAS with canonical loopback/public readiness, and
+independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact
+build with every readiness check true. The owner's single post-deploy retry then
+changed the A24 to `스마트키 사용 가능`, one registered door and ACL 608.
+Its Activity timeline records the phone credential registration at 22:53:15;
+the access-ready projection requires an exact current signed ACL Target ACK, so
+credential, grant and Target synchronization passed. A later 22:53:40 remote
+open records only Backend-to-broker delivery; physical door movement remains a
+separate owner observation.
 It fails closed while ACL management is unavailable. The older HMAC v2 envelope
 remains N-1 compatible, while device-ID-only calls are upgrade-required and
 cause no control effect. Home Assistant
