@@ -5181,3 +5181,9 @@
 - PR #287 passed Hosted Trusted, OTA/schema and Backend checks, then merge-committed as actual feature main `07b3543a1846a1b7220c09874fb89b9e7836d7eb`.
 - Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact feature merge while retaining all 86 reviewed protected digests and both namespace inventories unchanged.
 - This final policy rotation replaces no NAS wrapper, deploys no runtime or APK, migrates no database and proves no Target, relay or physical door result. Owner-authenticated wrapper installation and a protected deployment retry remain separate Gates.
+
+## [2026-08-30] compile | Authorize mobile remote personal-ACL scope correction
+
+- Bound the complete 86-path protected bundle to immutable feature candidate `e14f34c8896854dc50e7f8a0183eb764f205a622`, which authorizes mobile credentials in `ACL_PERSONAL_*` while preserving the independent `COMMAND_*` signed-MQTTS envelope.
+- Exactly four protected normalized blobs change: Backend v3, the DSM Bash-validator guide correction and two focused regressions. The candidate also fails closed unless the personal scope belongs to `COMMAND_TARGET_ID`.
+- This policy-only step mutates no NAS runtime ID, credential, grant, database, container, MQTT command, Target, relay or door. Policy merge, feature merge-connection, fresh CI, deployment/readiness and owner-triggered physical validation remain separate Gates.

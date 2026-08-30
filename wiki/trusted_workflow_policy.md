@@ -1256,3 +1256,26 @@ protected blobs and both workflow/action inventories remain exactly those
 reviewed in the correction bundle. This policy change installs no root-owned
 wrapper, deploys no Backend or APK, runs no migration and proves no Target,
 relay or physical-door result.
+
+## 38. Mobile remote personal-ACL scope authorization
+
+Connected exact mobile `1.0.0-gf403e10` reached the deployed Backend three
+times but received `REMOTE_CONTROL_DENIED`. A privacy-safe owner aggregate
+query proved that `ACL_PERSONAL_*` and legacy `COMMAND_*` tenant/door scopes
+intentionally differ and that the command scope contains no mobile credential
+or grant. Immutable feature candidate
+`e14f34c8896854dc50e7f8a0183eb764f205a622` corrects v3 authorization to the
+personal ACL scope while preserving the signed MQTTS command-envelope scope.
+
+The candidate also fails closed unless that personal ACL scope belongs to the
+configured `COMMAND_TARGET_ID`, preventing a credential for another Target
+from bridging into this publisher. Exactly four protected normalized blobs
+change: `backend/app/main.py`, the DSM deployment guide validator correction,
+and the two focused Backend tests. The complete ordered 86-path bundle is bound
+to the immutable candidate and its merge-connected descendants by
+`future-mobile-remote-personal-scope-e14f34c-persistent-baseline`.
+
+This policy-only authorization changes no NAS runtime ID, credential, grant,
+database, container, MQTT command, Target, relay or door state. Policy merge,
+merge-connection, fresh feature CI, feature merge, NAS deployment/readiness
+and one owner-triggered physical trial remain separate Gates.
