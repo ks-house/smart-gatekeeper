@@ -944,3 +944,34 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   successful at `89164ce4eb43f6deba8667bf9db6926fcfedfe46`, including both signed
   personal OTA publication jobs. The disconnected phone and physical Target
   acceptance Gates remain open.
+
+## 2026-08-30 connected mobile/Target software acceptance and physical boundary
+
+- The connected Fold7 replacement-installed production-signed
+  `1.0.0-g89164ce` / 31501 after APK size/hash/package/commit and signer
+  continuity checks. First-install time, app data, AndroidKeyStore-backed
+  registration and required permissions remained intact.
+- The connected ESP32-C6 booted valid `2.1.364+main.g89164ce`, asserted relay
+  OFF, restored Wi-Fi/MQTTS, applied signed ACL v539 and enabled GATT/iBeacon.
+  Backend `/live` and `/ready` remained HTTP 200 at exact deployed source
+  `8ea9ff1f8177bf49dba524b11d586715af5e1f6b` with all readiness checks true.
+- One foreground native action 1 completed with `ARMED 1726 ms` and a separate
+  manual action 2 completed in 1846 ms; independent Target serial captured the
+  latter relay-command ON and timer-bound OFF. One screen-off/background
+  `FIRST_MATCH` at RSSI -54 completed the GATT Worker and posted a result
+  notification while `screen_interactive=false`.
+- Ordinary process-absent cold wake remains pending: Android kept the active
+  foreground-service PID alive and the shell could not stop that non-exported
+  service. No force-stop was used because it deliberately disables automatic
+  wake until the user reopens the app.
+- A pending newer Target image failed its health window and automatically
+  rolled back to valid 364. After transient `AUTH_EXPIRE`/`NO_AP_FOUND`, the
+  bounded recovery loop restored Wi-Fi `192.168.35.18`, MQTTS, ACL v541 and
+  GATT/iBeacon. Same-version replay was then rejected as `downgrade`; a strictly
+  newer publication is required for the next health-to-VALID installation.
+- AJ-SR04T, 5 V ECHO protection, relay module/contact/load, actuator and door
+  were absent. Therefore distance-triggered pocket opening, electrical
+  actuation, actual door motion, repetition SLO and hard power-loss remain open
+  physical Gates. The action-2 UI text `문이 열렸습니다` currently overstates
+  the proven command/FSM result and requires truthful wording or independent
+  physical confirmation.
