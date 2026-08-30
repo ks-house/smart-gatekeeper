@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "07b3543a1846a1b7220c09874fb89b9e7836d7eb"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "e14f34c8896854dc50e7f8a0183eb764f205a622"
+EXPECTED_BUNDLE_ID = "future-mobile-remote-personal-scope-e14f34c-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -48,7 +48,7 @@ backend/app/acl_management.py 4c7038608648c3757cdfeaad2050269e110a58e5d4c2c72297
 backend/app/admin_security.py 9785a9d205f8db3f533ae1f36dd9ff1047f94da05af6d4efac51b261b33d614e
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
 backend/app/home_assistant_bridge.py 586f5f43910e26a2425f8416959f4bb4c85d48cd49c88a29d2e99f790c42071b
-backend/app/main.py a51dc5511609c6bdf776fb5719ee02aab7a7ce6020a4decf9a959fc1698c8871
+backend/app/main.py a3d2bddaa3a8c38ee31d9de6d4393ffb5e017469653ad4d585989ecc8df86767
 backend/app/ops_runtime.py 9aad988a7bd1c59d90d445ff3577e265289424c17e98c0b1f8311c1e14a58b26
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/requirements.txt 75bca144713e5c0ac8c09f2963cccb45e077e22b2f5a166a0db1fa28617595f7
@@ -77,7 +77,7 @@ backend/db/migrations/008_mobile_credential_control_up.sql f95e752d96ea34ce7373d
 backend/db/production_schema.sql b9e6910bff05272c1b05f1e23805abf250c6a9e3df9e4a7db966ae6517b555e3
 backend/db/run_migrations.sh 9a878c9a0655ab2d2983328a9dc8e5cbd9fd6c1fd64b29c97b1474472e87b5c4
 backend/db/schema.sql ce22d4e2675490f2e238cd98e9f9168e572cd45d0de8030811b01384226f4d43
-backend/deploy/README.md fe30c4b89b58884504a6b9e276e04f9956e984bd0eba610d6dc2292eedf127cf
+backend/deploy/README.md 5012290667222803d0f5511c12e8c35a51466df3348d21046c09f0c0847df5ee
 backend/deploy/bootstrap_legacy_synology.sh cc0a758d2da119bcd01c607e952f7739de4c41f5a14c62f7c166370b21f6ffef
 backend/deploy/capture_legacy_inventory.py 71bb7d9721934a00f44a8913ce3d5c514d18d3aeac0031679afe146d8a06181d
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
@@ -96,9 +96,9 @@ backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad7
 backend/tests/test_acl_management.py 1f3f77153651a62a916211233f9191079e05fbabcb5ad401f6d30438fe8575c3
 backend/tests/test_admin_security.py 4acded35686962d675e945143b3aa7857c9c10ca4f50a8217852e1334dfa0200
 backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
-backend/tests/test_legacy_ota_independence.py 5819701b2b2fc5c9c0e2b7bbaf710f23360d6a0df36c1966c345621dc4aceca4
+backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
 backend/tests/test_migrations.py a5e1ba99086504c00092c160c97af166e3097e7e34393a99e3dbe2c196c9c3da
-backend/tests/test_mobile_remote_control.py db8baeeb51651bd079d546eeaab205c3260baee730cec1e77bb4b7ac201f5172
+backend/tests/test_mobile_remote_control.py 74cb2fb2e2f40cb8d0608c8ae9a4d31b8c655f6b9b2913a7f604d9ff8ada0df9
 backend/tests/test_nas_backend_deploy.py ce11dd1eae249f924c2b311a67cc2636ad1550dccc9204578f1ad349660f7547
 backend/tests/test_ops_api.py 82e8d2e992fffc75b910ea0c00849a6d2130b2b80fa2d412541b726b1d138f15
 backend/tests/test_ops_commercial_gate.py 0d9252de06b80c384a54a6646932ef94e7ff3d43461859f5e11995b6fda5ab36
@@ -107,7 +107,12 @@ backend/tests/test_target_boot_registry.py 4f29b72539e9c4c190e83f702e92ec71fb9bc
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    "backend/app/main.py",
+    "backend/deploy/README.md",
+    "backend/tests/test_legacy_ota_independence.py",
+    "backend/tests/test_mobile_remote_control.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1058,8 +1063,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 86)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 4)
+    self.assertEqual(len(locally_unchanged_protected), 82)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])

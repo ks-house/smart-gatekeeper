@@ -5251,3 +5251,9 @@
 - Corrected v3 mobile credential authorization to validate the credential tenant and exact active door grant in `ACL_PERSONAL_TENANT_ID`/`ACL_PERSONAL_DOOR_ID`; retained the independently configured `COMMAND_*` identity for the already-working signed MQTTS publisher and made no runtime ID or database mutation.
 - Added regressions with deliberately different personal and command scopes and a cross-Target fail-closed case. The focused twelve tests and complete 149 backend tests passed with the two expected Docker-only integration skips; review, protected CI, NAS deployment/readiness and one owner-triggered physical trial remain pending.
 - Root discovery ran 317 test methods: all 316 methods outside the trusted-policy digest Gate passed with one expected platform skip, while the policy test rejected the four changed protected blobs (`backend/app/main.py`, both focused Backend tests and the preceding DSM deployment guide correction). A separate reviewed policy authorization is required; no digest or workflow check was weakened.
+
+## [2026-08-30] compile | Authorize mobile remote personal-ACL scope correction
+
+- Bound the complete 86-path protected bundle to immutable feature candidate `e14f34c8896854dc50e7f8a0183eb764f205a622`, which authorizes mobile credentials in `ACL_PERSONAL_*` while preserving the independent `COMMAND_*` signed-MQTTS envelope.
+- Exactly four protected normalized blobs change: Backend v3, the DSM Bash-validator guide correction and two focused regressions. The candidate also fails closed unless the personal scope belongs to `COMMAND_TARGET_ID`.
+- This policy-only step mutates no NAS runtime ID, credential, grant, database, container, MQTT command, Target, relay or door. Policy merge, feature merge-connection, fresh CI, deployment/readiness and owner-triggered physical validation remain separate Gates.
