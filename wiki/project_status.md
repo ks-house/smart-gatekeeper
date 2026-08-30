@@ -1246,3 +1246,32 @@ tracking.
   policy/CI, NAS deployment, one owner retry, administrator approval,
   credential enrollment, Target ACL publication and daughter-device access
   remain separate Gates.
+
+## 2026-08-31 per-phone resident identity privacy deployment
+
+- PR #306 passed Hosted Trusted, Backend security/MariaDB, OTA/schema, Flutter
+  format/analyze/unit, native GATT and Android canary checks and merged normally
+  as exact main `4a3067ce45faea01fcc7d1097cf19d2e112dfbc1`.
+- Backend run `33318827231` published immutable API/database images and
+  completed the owner-authorized restricted-Tailscale NAS deployment. Canonical
+  evidence reports `status=deployed`, exact source, and passed loopback/public
+  readiness. Independent strict-TLS `/live` and `/ready` both returned HTTP 200
+  for the exact build with every readiness check true.
+- Mobile run `33318827185` passed the complete Flutter/native suite and signed,
+  atomically published and HTTPS-read-back personal OTA
+  `1.0.0-g4a3067c` / `35101`. Independent strict-TLS primary and fallback
+  manifests both returned HTTP 200 and matched exact commit and APK SHA-256
+  `654d1d726b3ab56628d36c560db8cc5e0a5bce6c433c73606a207776bb019ace`.
+- Target run `33318827246` also built, signed, atomically published and
+  HTTPS-read-back exact-main personal firmware `2.1.395+main.g4a3067c`. The
+  application change did not require a Target behavior change, and publication
+  alone is not Target install/reboot/health evidence.
+- The deployed Backend and published app now project a resident name/unit only
+  from the account row bound to that phone's verified AndroidKeyStore
+  credential. The app never renders an older shared ACL `tenant_label` as a
+  resident identity, so missing/N-1 profile data becomes generic rather than
+  exposing the household owner.
+- The publication evidence is explicitly personal/non-release evidence. No APK
+  was installed during this work. Wife/daughter phone update and visual
+  confirmation that each phone shows only its own approved name/unit remain the
+  final device acceptance Gate.
