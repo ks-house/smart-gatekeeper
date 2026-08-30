@@ -5112,3 +5112,15 @@
 - Built `esp32c6_personal_production` with the pinned pioarduino toolchain at 1,783,096/7,340,032 bytes Flash and 67,096/327,680 bytes RAM.
 - Updated the privileged Target build-tree row to the reviewed LF-normalized GPIO23 `include/config.h` digest; the workflow remains protected and therefore requires the normal separate trusted-policy authorization before feature merge.
 - These are source/build results only. Exact-main CI publication, Target signed OTA install/reboot/health, GPIO11 ECHO voltage, GPIO23 relay contact/load and actual door behavior remain separate Gates.
+
+## [2026-08-30] compile | Authorize reviewed GPIO23 Target build bundle
+
+- Bound the complete trusted 83-file bundle to reviewed feature candidate `4c16b44352a986417ee679465da1c61f670abde1` and its future merge-connected descendants.
+- The only protected-byte change is `.github/workflows/deploy.yml`, whose privileged Target build inventory now pins the reviewed GPIO23 `include/config.h` digest; all other protected bytes and both namespace inventories remain unchanged.
+- This policy-only step publishes or installs no firmware and performs no relay or door action. Feature merge, exact-main signed publication, Target OTA health and final baseline rotation remain separate Gates.
+
+## [2026-08-30] compile | Connect GPIO23 candidate to trusted policy main
+
+- Merge-connected trusted policy main `a62315e` into reviewed feature candidate `4c16b44352a986417ee679465da1c61f670abde1` without rebase or squash, preserving both immutable parents.
+- The GPIO23 source and the sole changed protected workflow byte remain identical to the reviewed bundle. Fresh Hosted Trusted, OTA and ESP32-C6 checks are required before feature merge.
+- No firmware was published or installed and no relay, sensor or physical door action was performed in this graph-connection step.
