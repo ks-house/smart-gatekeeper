@@ -18,7 +18,7 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-08-30 credential-signed remote Home button candidate
+## 2026-08-30 credential-signed remote Home button rollout
 
 - The owner-observed direct MQTT command opened the installed door. The mobile
   button failed separately at `GATT_DISCONNECTED` before every GATT protocol
@@ -32,12 +32,18 @@ applies_to:
   grant, expiry and signature, consumes a durable database nonce, then reuses
   the existing per-Target signed MQTTS command path. Legacy HMAC v2 remains for
   N-1, and device-ID-only calls remain HTTP 426/no-effect.
-- Focused Backend tests and mobile widget/service tests pass. The broader root
-  suite is intentionally blocked until the protected backend bundle receives
-  its separate exact-candidate trust-policy authorization. NAS migration `008`,
-  production deployment, exact-main signed APK publication/replacement install
-  and a connected button-to-door observation are not yet complete and must not
-  be inferred from this source candidate.
+- PR #285 merged as exact main `a78ec0c25e0e498eb1f9f83189279cccba236236`
+  after Hosted Trusted, OTA/schema, Backend and Android canary checks passed.
+  Its protected Backend run published immutable images and joined the NAS
+  tailnet, but the installed root-owned schema-007 wrapper rejected the signed
+  schema-008 descriptor before Compose, migration or cutover. No deployment
+  success is inferred from this fail-closed result.
+- A follow-up source correction pins the actual migration-008 SHA-256
+  `f95e752d...e7219a8` consistently in the signed bundle, NAS wrapper and API
+  readiness environment. The root-owned NAS wrapper still requires an explicit
+  owner-authenticated replacement before a protected retry. Exact-main signed
+  APK publication/install and a connected button-to-door observation remain
+  separate Gates.
 
 ## 2026-08-29 foreground Target detection dashboard candidate
 
