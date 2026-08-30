@@ -5145,3 +5145,15 @@
 - Owner evidence remains split: direct MQTT opened the installed door, while the mobile Local GATT attempt ended `GATT_DISCONNECTED` before all protocol phases. The new remote button has not yet been PR-authorized, CI-built, NAS-deployed, signed/published, replacement-installed or physically exercised.
 - Gradle 9.1 rebuilt the Android debug Kotlin graph and passed the focused `RemoteManualOpenCanonicalTest`, proving the native and Backend canonical field layout/width agree at source-test level.
 - Both Docker-backed MariaDB 10.11 lanes passed: migration `002` through `008` up, legacy write, explicit down and legacy read; and the seed-free production DB image existing-volume upgrade/backup contract. This is isolated data-path evidence, not NAS migration or deployment evidence.
+
+## [2026-08-30] compile | Authorize credential-signed mobile remote-open bundle
+
+- Bound one complete 86-path persistent bundle to immutable feature candidate `3073d716b2c7157178a1f06fa5f38c3a9bc6a56d`, which routes the normal mobile `문 열기` button through Backend authorization and the existing per-Target signed MQTTS command plane while preserving hands-free Local GATT action 1.
+- Added migration 008 up/down and the focused mobile remote-control backend test to the directly protected path set; the complete map pins all fifteen reviewed changed or new protected blobs without branch, wildcard, fork or partial-map authorization.
+- This policy-only step deploys no Backend, installs no APK, sends no MQTT command and proves no Target relay or physical door result. Policy merge, merge-connection, fresh CI, feature merge, NAS deployment, signed app publication/install and a bounded physical trial remain separate Gates.
+
+## [2026-08-30] compile | Connect mobile remote-open candidate to trusted policy main
+
+- PR #286 passed Hosted Trusted and merge-committed as policy main `649ecf0f7b9840d08787ddb6eaad31c2f70c128a`; merge-connected that trusted main into immutable feature candidate `3073d716b2c7157178a1f06fa5f38c3a9bc6a56d` without rebase or squash.
+- The reviewed mobile/Backend source and all fifteen changed or new protected candidate blobs remain those pinned by the complete 86-path persistent bundle. Fresh Hosted Trusted, Backend, OTA and mobile checks are required on the connected head before feature merge.
+- This graph connection changes no NAS runtime, database, installed APK, Target command, relay or physical door state.
