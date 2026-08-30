@@ -5403,3 +5403,8 @@
 
 - Policy PR #305 passed Hosted Trusted and merge-committed as main `4dcbaa1b384bc82e94b2e25769ca04cc0b6e1e3f`; merged that exact policy history into immutable candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06` without rebasing or changing its two protected feature blobs.
 - Fresh trusted-policy regression synchronization, feature PR checks, merge, NAS deployment/readiness, signed APK publication and installed-phone acceptance remain separate Gates.
+
+## [2026-08-31] fix | Synchronize per-phone identity trusted-policy regression
+
+- Updated the local regression fixture from the preceding administrator-management baseline to immutable candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06`, exact 88-path digests and the two-path protected delta.
+- This test-only synchronization changes no approved policy bytes, Backend runtime, mobile behavior, workflow, NAS state or device installation. Fresh local/hosted checks and the feature merge remain separate Gates.
