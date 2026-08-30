@@ -5182,8 +5182,84 @@
 - Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact feature merge while retaining all 86 reviewed protected digests and both namespace inventories unchanged.
 - This final policy rotation replaces no NAS wrapper, deploys no runtime or APK, migrates no database and proves no Target, relay or physical door result. Owner-authenticated wrapper installation and a protected deployment retry remain separate Gates.
 
+## [2026-08-30] fix | Correct DSM staged-wrapper syntax validation shell
+
+- Classified the staged schema-008 wrapper's `/bin/sh -n` error at process substitution `< <(...)` as a validator-shell mismatch, not file corruption: the script declares `#!/usr/bin/env bash` and intentionally uses Bash arrays and process substitution.
+- Corrected the owner procedure and deployment guide to require `bash -n` for the staged wrapper while retaining exact SHA-256 validation before root installation.
+- No wrapper was installed and no container, database, API, MQTT, Target, relay or door state changed in this diagnosis.
+
+## [2026-08-30] test | Deploy credential-signed remote Backend with schema 008
+
+- Owner readback confirmed the corrected root wrapper SHA-256 `6baba70facb90eeab50fd16e9261dd5e18af6b675738d7130fbc30a659b16758`; protected run `33309298877` then deployed exact source `07b3543a1846a1b7220c09874fb89b9e7836d7eb` with immutable API/DB images.
+- The deploy created a pre-migration backup, passed migration `up 008`, loopback readiness, DSM public readiness and canonical evidence upload. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with every readiness check true.
+- This proves Backend deployment and runtime readiness only. The disconnected phone prevented ADB identity and a mobile-button trial, and no Target receipt, relay or physical door outcome is inferred.
+
+## [2026-08-30] test | Publish final-main mobile and Target OTA artifacts
+
+- Final policy main `f403e10c8f48103b2e5d6f7da144fd2ad113d3bc` Target run `33309381357` and mobile run `33309381350` completed signed atomic personal OTA publication and strict HTTPS byte readback.
+- Public Target metadata reports `2.1.379+main.gf403e10`; public mobile metadata reports `1.0.0-gf403e10` / 33401. The owner reports receiving the APK, but the phone is now disconnected so installation identity was not independently captured.
+- Publication is not installation. Exact Target runtime version, install/reboot/health confirmation and the mobile remote-button physical-door trial remain open.
+
+## [2026-08-30] test | Verify public administrator login route
+
+- Strict-TLS readback of `https://tworimpa.synology.me:4442/admin` returned the expected redirect to `/admin/login`, and the login page returned HTTP 200 as HTML.
+- No login credential, session, administrator action or runtime mutation was used in this route check.
+
+## [2026-08-30] compile | Confirm administrator password custody boundary
+
+- Confirmed production reads the personal administrator password only from the NAS-local `personal_admin_password` file secret; CI and the repository intentionally contain neither its value nor a recoverable hash.
+- No password file was read or printed. If the owner no longer knows the value, the safe path is an owner-authenticated NAS-local secret rotation followed by an API-only controlled restart and readiness verification.
+
+## [2026-08-30] test | Confirm personal administrator secret permissions
+
+- Owner metadata readback showed `personal_admin_password` as `-rw-r-----`, owned by `root:10001`; this is exactly mode `0640` with the required API runtime group.
+- No permission correction, password readback, container restart or runtime mutation is required from this result.
+
+## [2026-08-30] compile | Prepare owner-chosen administrator password rotation
+
+- Source verification shows personal administrator login enables only for a password of 20 or more characters; the owner-reported 13-byte file cannot satisfy that production minimum even before accounting for a possible trailing newline.
+- Prepared an owner-side hidden-input rotation procedure that keeps a root-only rollback copy, writes the existing bind-mounted file in place, restores `root:10001 0640`, restarts only the production API and requires strict-TLS `/live` and `/ready` verification.
+- No password value was requested, generated, read or stored by the workspace, and no NAS file or container was changed in this preparation.
+
+## [2026-08-30] test | Interpret numeric administrator secret group
+
+- Owner `stat` readback reported `owner=root group=UNKNOWN mode=640 bytes=13`; the preceding numeric `ls -l` identified the same file group as GID `10001`.
+- DSM lacking a host group name for numeric GID 10001 does not break the container's fixed `10001:10001` read contract. Numeric `uid:gid=0:10001` is the authoritative verification.
+- The 13-byte content remains below the 20-character administrator-password minimum, so permission repair alone cannot enable personal login.
+
+## [2026-08-30] test | Triage first updated-app remote-button failure
+
+- Owner reported one updated-app manual button attempt ending in the generic request-failed message. No success, Target receipt, relay actuation or physical door effect is claimed, and the request was not repeated.
+- Independent strict-TLS readback kept `/live` and `/ready` at HTTP 200 for exact deployed Backend `07b3543a1846a1b7220c09874fb89b9e7836d7eb`; database, schema 008, MQTT, secrets, auth, ACL, legacy retirement and build identity were all true.
+- Windows ADB enumerated no phone, so the app's bounded Activity reason code is the next evidence needed to separate local `CREDENTIAL_UNAVAILABLE`/proof failure, HTTP 401/403 denial, HTTP 503 command delivery failure and a timeout-unknown outcome.
+
+## [2026-08-30] test | Isolate mobile failure with successful HA MQTT open
+
+- Owner reports HA MQTT remote open successfully opened the installed door while the updated mobile manual button failed.
+- This passes the contemporaneous HA-to-signed-MQTT-to-Target relay/door route and makes Target connectivity, broker availability and relay wiring lower-priority causes for the mobile incident.
+- The remaining highest-priority boundary is the mobile-only AndroidKeyStore credential, active tenant/exact door grant and v3 request authorization path; the app Activity reason code is required before changing any credential or grant.
+
+## [2026-08-30] test | Capture connected mobile remote-control denial
+
+- Windows ADB connected the Fold7 as `R3CY707DL7L` and verified exact installed app `1.0.0-gf403e10` / 33401; replacement installation preserved the original 2026-07-29 first-install time and current app process.
+- A non-effect Home refresh retained `스마트키 사용 가능`, user `이승환 401호`, one registered door and ACL 594. The Activity timeline showed three owner remote attempts at 21:00:58, 21:02:00 and 21:09:19, all `REMOTE_CONTROL_DENIED`.
+- No door request was triggered or retried during diagnosis. The evidence places failure at Backend HTTP 401/403 credential authorization before MQTT publication; the remaining read-only split is command-vs-personal tenant/door scope, exact grant and device P-256 proof verification.
+
+## [2026-08-30] fix | Authorize mobile remote proof in personal ACL scope
+
+- Owner-executed aggregate NAS diagnostics confirmed tenant and door scope mismatch, zero active credentials/grants in the legacy command scope and nonmatching personal/command credential and grant sets. This establishes the deployed 403 as a deterministic scope-selection defect without exposing any identifier or secret.
+- Corrected v3 mobile credential authorization to validate the credential tenant and exact active door grant in `ACL_PERSONAL_TENANT_ID`/`ACL_PERSONAL_DOOR_ID`; retained the independently configured `COMMAND_*` identity for the already-working signed MQTTS publisher and made no runtime ID or database mutation.
+- Added regressions with deliberately different personal and command scopes and a cross-Target fail-closed case. The focused twelve tests and complete 149 backend tests passed with the two expected Docker-only integration skips; review, protected CI, NAS deployment/readiness and one owner-triggered physical trial remain pending.
+- Root discovery ran 317 test methods: all 316 methods outside the trusted-policy digest Gate passed with one expected platform skip, while the policy test rejected the four changed protected blobs (`backend/app/main.py`, both focused Backend tests and the preceding DSM deployment guide correction). A separate reviewed policy authorization is required; no digest or workflow check was weakened.
+
 ## [2026-08-30] compile | Authorize mobile remote personal-ACL scope correction
 
 - Bound the complete 86-path protected bundle to immutable feature candidate `e14f34c8896854dc50e7f8a0183eb764f205a622`, which authorizes mobile credentials in `ACL_PERSONAL_*` while preserving the independent `COMMAND_*` signed-MQTTS envelope.
 - Exactly four protected normalized blobs change: Backend v3, the DSM Bash-validator guide correction and two focused regressions. The candidate also fails closed unless the personal scope belongs to `COMMAND_TARGET_ID`.
 - This policy-only step mutates no NAS runtime ID, credential, grant, database, container, MQTT command, Target, relay or door. Policy merge, feature merge-connection, fresh CI, deployment/readiness and owner-triggered physical validation remain separate Gates.
+
+## [2026-08-30] compile | Connect personal-ACL correction to trusted policy main
+
+- Policy PR #291 passed the Hosted Trusted check and merge-committed as main `41d89fb302ed95310db9585dffe3721797139ee2`.
+- Merged that exact trusted main without rebase or squash into immutable feature candidate `e14f34c8896854dc50e7f8a0183eb764f205a622` as `a5671be`; the four reviewed protected blobs and complete 86-path map remain unchanged.
+- Fresh Hosted Trusted, Backend and OTA checks, feature merge, NAS deployment/readiness and one owner-triggered mobile-to-door trial remain separate Gates; no runtime or physical state changed in this graph connection.

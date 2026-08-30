@@ -176,7 +176,14 @@ The authenticated remote contract `POST /api/v1/door/open` remains available as
 `manual_remote`; it is distinct from hands-free `manual_local_gatt` action 1.
 The current mobile v3 path proves possession of the enrolled AndroidKeyStore
 credential, requires an ACTIVE tenant and the exact ACTIVE credential-to-door
-grant, then consumes a durable replay nonce before publishing a signed command.
+grant in `ACL_PERSONAL_TENANT_ID`/`ACL_PERSONAL_DOOR_ID`, then consumes a durable
+replay nonce before publishing a signed command. Credential authorization must
+not be looked up in the independent legacy `COMMAND_TENANT_ID`/`COMMAND_DOOR_ID`
+scope; those identifiers remain the signed MQTTS command-envelope scope after
+authorization succeeds. Startup fails closed unless the personal ACL scope is
+the exact tenant/door authorization registered for `COMMAND_TARGET_ID`, so a
+credential approved for another configured Target cannot bridge into this
+command publisher.
 It fails closed while ACL management is unavailable. The older HMAC v2 envelope
 remains N-1 compatible, while device-ID-only calls are upgrade-required and
 cause no control effect. Home Assistant

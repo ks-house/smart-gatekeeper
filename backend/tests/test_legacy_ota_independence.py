@@ -132,6 +132,45 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_personal_scope_cannot_authorize_a_different_command_target(self) -> None:
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "ACL_MANAGEMENT_ENABLED": "true",
+                "ACL_PERSONAL_ENROLLMENT_ENABLED": "true",
+                "GATEKEEPER_API_KEY": "personal-api-key",
+                "ACL_LEGACY_REF_HMAC_KEY": "test-hmac",
+                "ACL_ENROLLMENT_AUTH_JSON": '{"actor-a":{"tenant_id":"22222222222222222222222222222222","key":"e"}}',
+                "ACL_ADMIN_API_KEY": "a",
+                "COMMAND_TARGET_ID": "target-a",
+                "COMMAND_TENANT_ID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "COMMAND_DOOR_ID": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "ACL_PERSONAL_TENANT_ID": "22222222222222222222222222222222",
+                "ACL_PERSONAL_DOOR_ID": "22222222222222222222222222222223",
+                "ACL_TARGET_AUTH_JSON": (
+                    '{"target-a":{"tenant_id":"11111111111111111111111111111111",'
+                    '"door_id":"11111111111111111111111111111112","key":"ta"},'
+                    '"target-b":{"tenant_id":"22222222222222222222222222222222",'
+                    '"door_id":"22222222222222222222222222222223","key":"tb"}}'
+                ),
+                "ACL_SIGNING_PRIVATE_SCALAR_HEX": "2",
+            }
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from backend.app import main; paths={r.path for r in main.app.routes}; "
+                "assert '/api/v1/door/open' in paths; "
+                "assert '/api/v1/acl/enrollment/challenge' not in paths",
+            ],
+            text=True,
+            capture_output=True,
+            env=environment,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

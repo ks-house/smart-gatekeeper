@@ -1249,6 +1249,9 @@ if ACL_MANAGEMENT_ENABLED:
                         "ACL_TARGET_AUTH_JSON cannot assign one door to multiple tenants"
                     )
             if ACL_PERSONAL_ENROLLMENT_ENABLED:
+                _personal_command_target = _acl_target_credentials.get(
+                    COMMAND_TARGET_ID
+                )
                 if (
                     len(ACL_PERSONAL_TENANT_ID) != 32
                     or any(
@@ -1260,18 +1263,20 @@ if ACL_MANAGEMENT_ENABLED:
                         char not in "0123456789abcdef"
                         for char in ACL_PERSONAL_DOOR_ID
                     )
-                    or not any(
+                    or not isinstance(_personal_command_target, dict)
+                    or not (
                         secrets.compare_digest(
-                            authorization["tenant_id"], ACL_PERSONAL_TENANT_ID
+                            _personal_command_target.get("tenant_id", ""),
+                            ACL_PERSONAL_TENANT_ID,
                         )
                         and secrets.compare_digest(
-                            authorization["door_id"], ACL_PERSONAL_DOOR_ID
+                            _personal_command_target.get("door_id", ""),
+                            ACL_PERSONAL_DOOR_ID,
                         )
-                        for authorization in _acl_target_credentials.values()
                     )
                 ):
                     raise ValueError(
-                        "personal enrollment scope must match one configured Target"
+                        "personal enrollment scope must match the configured command Target"
                     )
 
             class _AclMqttPublisher:
@@ -1974,6 +1979,10 @@ def manual_open_v2(
             conn = get_db()
             conn.begin()
             with conn.cursor() as cur:
+                # AndroidKeyStore credentials and door grants belong to the
+                # personal ACL scope.  COMMAND_* is the independent legacy
+                # signed-MQTT command envelope and may intentionally use a
+                # different tenant/door identity on an installed Target.
                 cur.execute(
                     "SELECT c.credential_id,c.tenant_id,c.public_key_sec1,"
                     "c.status,c.expires_at,t.status AS tenant_status "
@@ -1991,7 +2000,7 @@ def manual_open_v2(
                         and int(credential["expires_at"]) <= now
                     )
                     or not secrets.compare_digest(
-                        str(credential["tenant_id"]), COMMAND_TENANT_ID
+                        str(credential["tenant_id"]), ACL_PERSONAL_TENANT_ID
                     )
                 ):
                     raise PermissionError("mobile credential is inactive")
@@ -1999,7 +2008,11 @@ def manual_open_v2(
                     "SELECT permissions FROM credential_door_grants "
                     "WHERE tenant_id=%s AND door_id=%s AND credential_id=%s "
                     "AND revoked_at IS NULL FOR UPDATE",
-                    (COMMAND_TENANT_ID, COMMAND_DOOR_ID, req.credential_id),
+                    (
+                        ACL_PERSONAL_TENANT_ID,
+                        ACL_PERSONAL_DOOR_ID,
+                        req.credential_id,
+                    ),
                 )
                 grant = cur.fetchone()
                 if not grant or (int(grant["permissions"]) & 1) != 1:

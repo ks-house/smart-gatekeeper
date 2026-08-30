@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (normal mobile button uses AndroidKeyStore-authorized Backend → signed MQTTS; hands-free Local GATT remains separate)
+> Last updated: 2026-08-30 (mobile remote 403 root cause fixed at personal-vs-command ACL scope; review/deployment/retest pending)
 
 ---
 
