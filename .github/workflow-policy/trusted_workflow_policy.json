@@ -108,11 +108,11 @@
   },
   "approved_bundles": [
     {
-      "id": "mobile-account-schema-ci-67f87a1-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "67f87a1dddccb6630564160a1c38d25926817891"
+        "commit": "1b701df93194029fb7be733a372f7ddb68f57e97"
       },
       "files": {
         ".github/workflows/deploy.yml": "a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8",
