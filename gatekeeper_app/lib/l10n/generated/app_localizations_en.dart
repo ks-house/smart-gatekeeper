@@ -77,6 +77,117 @@ class AppLocalizationsEn extends AppLocalizations {
       'The open-command outcome is unknown. Do not retry automatically.';
 
   @override
+  String get statusRefreshing => 'Refreshing status.';
+
+  @override
+  String get backendUnavailableRetry =>
+      'Could not reach the backend. Please try again shortly.';
+
+  @override
+  String get statusUpdated => 'Latest status applied.';
+
+  @override
+  String get credentialEnrolling =>
+      'Registering this phone\'s Smart Key credential.';
+
+  @override
+  String get credentialEnrollmentComplete =>
+      'Smart Key registration completed.';
+
+  @override
+  String get bluetoothRequired => 'Turn on Bluetooth and try again.';
+
+  @override
+  String get permissionsRequired => 'Check the required permissions.';
+
+  @override
+  String get batteryRestrictionRequired =>
+      'Remove the battery usage restriction.';
+
+  @override
+  String get targetUnavailable => 'No recently detected Target is available.';
+
+  @override
+  String get smartKeyPermissionCheck =>
+      'Ask an administrator to check your Smart Key access.';
+
+  @override
+  String get targetResponseTimeout => 'The Target response timed out.';
+
+  @override
+  String get requestFailedGeneric =>
+      'The request did not complete. Check Advanced diagnostics.';
+
+  @override
+  String get smartKeyAvailableDetail =>
+      'Keep this phone with you. Authentication starts automatically when you approach the Target.';
+
+  @override
+  String get backendStatusUnavailableDetail =>
+      'Backend status is unavailable. Local recovery and updates remain available.';
+
+  @override
+  String get requestRegistrationDetail =>
+      'Enter registration details and request administrator approval.';
+
+  @override
+  String get waitForApprovalDetail => 'This screen refreshes after approval.';
+
+  @override
+  String get enrollCredentialDetail =>
+      'Link this phone\'s secure key to the approved account.';
+
+  @override
+  String get waitForAclDetail =>
+      'Wait until the Target applies the latest access policy.';
+
+  @override
+  String get advancedDiagnosticsDetail =>
+      'Detailed status is available in Advanced diagnostics.';
+
+  @override
+  String get requestRegistration => 'Request registration';
+
+  @override
+  String get checkApprovalStatus => 'Check approval';
+
+  @override
+  String get registerThisPhone => 'Register this phone';
+
+  @override
+  String get checkRegistration => 'Check registration';
+
+  @override
+  String get viewRenewalGuide => 'View renewal guide';
+
+  @override
+  String get refreshStatus => 'Refresh status';
+
+  @override
+  String get requestOpenCommand => 'Request open';
+
+  @override
+  String get checkAgain => 'Check again';
+
+  @override
+  String get processing => 'Processing';
+
+  @override
+  String get noRecentDetection => 'No recent detection';
+
+  @override
+  String get recentDetection => 'Last detected';
+
+  @override
+  String get registrationInfo => 'Registration information';
+
+  @override
+  String get registeredDoors => 'Registered doors';
+
+  @override
+  String get checking => 'Checking';
+
+  @override
   String get currentVersion => 'Installed version';
 
   @override
