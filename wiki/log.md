@@ -5469,3 +5469,11 @@
 - Feature PR #309 passed Hosted Trusted, Backend/MariaDB, OTA/schema and Android canary checks, then merge-committed normally as exact main `1b701df93194029fb7be733a372f7ddb68f57e97`.
 - Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact merge while retaining all 91 ordered protected digests unchanged; the local delta set is therefore empty.
 - Exact-main API/DB images and provenance were published, but the protected NAS deployment failed closed before migration because the installed root wrapper rejected schema 010 as unexpected. This final policy rotation changes no NAS state; owner-authenticated wrapper installation and deployment retry remain separate Gates.
+
+## [2026-08-31] test | Deploy mobile lifecycle and automatic schema target 010
+
+- The owner installed the reviewed stable NAS wrapper at exact SHA-256 `66507318ad2b5b7fff6e4bdc6b3f2bd8994a97877be6500df9f218619ac0223e`; read-only status retained the preceding deployed release before retry.
+- Backend run `33323849258` attempt 2 used the restricted Tailscale/forced-dispatch path, created a pre-migration backup, applied the contiguous signed schema target `010`, and deployed exact source `1b701df93194029fb7be733a372f7ddb68f57e97`. Canonical loopback and public readiness passed.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with database, schema, MQTT, runtime secrets, control/admin authentication, ACL management, legacy retirement and build identity all true. Target run `33323849255` separately completed signed exact-main personal OTA publication for `2.1.399+main.g1b701df`; publication is not installation, reboot or health confirmation.
+- Mobile run `33323849352` passed canary and exact-main build/signing, atomically published personal OTA `1.0.0-g1b701df` / `35801`, and read back primary/fallback manifests plus APKs over HTTPS. An independent manifest comparison matched exact commit and APK SHA-256 `bc4d24fdeacda655a1f1465f466abf15192c3287117965308abe1329cdc9faf3`.
+- Native registration-only onboarding, server-first signed logout, reduced user settings and console-assigned mobile administrator projection are now source-merged and Backend/schema-deployed. Updated-phone logout, registration/admin rendering and physical access remain explicit device acceptance Gates.

@@ -483,8 +483,9 @@ sanitized append-only release record for every attempt.
    referenced from the fixed NAS secret directory.
 8. Render Compose and reject any API/DB public host binding, source bind mount,
    mutable image reference, missing external volume, or plaintext secret.
-9. Run `migrate` once. Require exit 0, schema `007`, exact ledger digest, and
-   the migration backup record before API admission.
+9. Run `migrate` once. Require exit 0, the signed `schema.env` target, exact
+   contiguous ledger digests, and the migration backup record before API
+   admission. Never accept a caller-selected schema target or a downgrade.
 10. Start/replace the API and DB project. Wait for DB health and `/live`, then
     require `/ready=200` with every readiness check true.
 11. Verify the expected running API/DB digests from the engine, not just the

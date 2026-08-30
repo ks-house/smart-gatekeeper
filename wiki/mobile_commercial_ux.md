@@ -162,3 +162,17 @@ fresh reauthentication gates. The mobile status response projects that role only
 after exact credential/public-key proof. It reveals a separate administrator
 settings entry that opens the existing secure console; it does not bypass the
 console password or reauthentication for unsafe actions.
+
+PR #309 merged these paths as exact source
+`1b701df93194029fb7be733a372f7ddb68f57e97`. Backend run `33323849258`
+attempt 2 deployed the same source and schema 010 after backup and passed
+canonical plus independent strict-TLS readiness. Target run `33323849255`
+signed and atomically published exact-main personal OTA
+`2.1.399+main.g1b701df`. Mobile run `33323849352` passed host/native CI and
+signed, atomically published and HTTPS-read-back personal OTA
+`1.0.0-g1b701df` / `35801`. Independent primary/fallback manifests matched
+exact commit and APK SHA-256
+`bc4d24fdeacda655a1f1465f466abf15192c3287117965308abe1329cdc9faf3`.
+Publication and installation are separate evidence; no phone
+logout, fresh registration rendering, or `TENANT_ADMIN` navigation is claimed
+until observed on an updated device.
