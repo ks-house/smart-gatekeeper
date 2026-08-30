@@ -177,3 +177,10 @@ Personal reauthentication now defaults to 900 seconds and accepts configured
 values from 300 through 3600 seconds. The server-side session, CSRF,
 same-origin cookie, administrator role, tenant authorization and idempotency
 requirements are unchanged.
+
+PR #303 merged and Backend run `33316931652` attempt 2 deployed this contract
+as exact source `05a58dc3785ca36924c062181a6a3bc114c68281`. Canonical NAS
+evidence and independent strict-TLS `/live` and `/ready` both passed for that
+exact build with every readiness check true. This proves source, CI, schema 009
+migration, deployment and service readiness; it does not by itself prove an
+operator completed an edit, deletion or access-history browser journey.

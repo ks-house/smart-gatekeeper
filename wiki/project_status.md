@@ -18,6 +18,28 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-08-30 administrator account-management deployment
+
+- PR #303 passed Hosted Trusted, Backend/MariaDB and the complete 317-test
+  OTA/schema Gate, then merged as exact main
+  `05a58dc3785ca36924c062181a6a3bc114c68281`.
+- The first protected deployment failed closed before Compose or migration
+  because the root-owned NAS wrapper admitted schema 008 while the signed
+  bundle required schema 009. The owner installed the reviewed wrapper at
+  exact SHA-256 `8b0e230f...352f2a8`, preserving the preceding wrapper as a
+  root-only backup; read-only status still showed the healthy prior release.
+- Backend run `33316931652` attempt 2 then completed the owner-approved
+  restricted-Tailscale deployment. Canonical evidence reported
+  `status=deployed`, the exact source, and passed loopback/public readiness.
+  Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact
+  build with database, schema, MQTT, runtime secrets, control/admin auth, ACL,
+  legacy retirement and build identity all true.
+- Name/unit editing, fail-closed user deletion, global recent access history
+  and the 900-second personal reauthentication default are therefore deployed.
+  Administrator browser rendering and one bounded edit/delete/history
+  acceptance trial remain separate operator Gates; no user account was edited
+  or deleted during deployment verification.
+
 ## 2026-08-30 credential-signed remote Home button rollout
 
 - The owner-observed direct MQTT command opened the installed door. The mobile

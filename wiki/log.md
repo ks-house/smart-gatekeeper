@@ -5374,3 +5374,10 @@
 - The feature PR's Hosted Trusted check passed, but the broader OTA/schema job exposed that `tests/test_trusted_workflow_policy.py` still described the preceding 86-path family-enrollment baseline while the reviewed persistent policy already authorized the 88-path administrator account-management bundle.
 - Updated only the regression fixture identity, exact protected digests, 20-path candidate delta and 88/68 inventory counts to the merged policy contract; no workflow, trusted verifier, approved bundle, application runtime or NAS state changed.
 - The focused 42 trusted-policy tests and complete 317 OTA/schema tests passed with one expected platform skip. Feature PR CI, merge, exact-main deployment and browser/runtime verification remain separate Gates.
+
+## [2026-08-30] test | Deploy administrator account management and global access history
+
+- PR #303 passed Hosted Trusted, Backend/MariaDB and the complete 317-test OTA/schema Gate, then merged as exact main `05a58dc3785ca36924c062181a6a3bc114c68281`.
+- The first owner-approved deployment joined Tailscale and failed closed before Compose or migration because the installed root wrapper admitted schema 008. The owner installed the reviewed schema-009 wrapper at exact SHA-256 `8b0e230f...352f2a8`, retained the preceding wrapper as a root-only backup and confirmed the prior release stayed deployed and ready.
+- Backend run `33316931652` attempt 2 completed the restricted-Tailscale deployment. Canonical evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`; independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with all readiness checks true.
+- Name/unit editing, fail-closed account deletion, global recent access history and the 900-second personal reauthentication default are deployed. No account edit/delete was executed during verification, so administrator browser acceptance remains an explicit operator Gate.
