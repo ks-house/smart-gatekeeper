@@ -5033,3 +5033,10 @@
 - Verified Target `2.1.364+main.g89164ce` relay-OFF boot, Wi-Fi/MQTTS/ACL/GATT readiness, one foreground action-1 `ARMED` result, one 1846 ms manual action-2 session with independently observed Target relay-command ON/OFF, and one screen-off native detection-to-GATT Worker success with result notification.
 - Observed a pending newer Target image time out its health window and automatically roll back to valid 364. The bounded recovery loop later restored Wi-Fi, MQTTS, ACL v541 and GATT/iBeacon; same-version replay was rejected by the durable downgrade floor as designed.
 - Kept evidence boundaries explicit: active foreground service prevented an ordinary process-absent cold-wake trial; no force-stop was used. AJ-SR04T, ECHO protection, relay contact/load, actuator and door were absent, so no distance trigger, electrical actuation or physical opening is claimed. The current manual success copy overstates the proven software/FSM result.
+
+## [2026-08-30] compile | Triage and consolidate the GitHub issue register
+
+- Audited all nine open GitHub issues against merged implementation, protected CI, exact NAS deployment and connected mobile/Target evidence; preserved history by closing rather than deleting completed tracking.
+- Closed authoritative credential-state issue #262 as completed after connected installation/readback, and closed redesign Epic #13 after consolidating its remaining commercial physical/OEM work into #51/#54/#48 without claiming those Gates complete.
+- Updated #48, #50~#53 and #179 with current evidence and narrowed open acceptance, retained #54 as the physical/operator release Gate, and applied `bug`, `enhancement` or `documentation` labels.
+- Opened #276 to correct action-2 UI/activity/notification semantics that currently represent Target command/FSM/GPIO success as confirmed physical door opening. The resulting open register has eight actionable issues.

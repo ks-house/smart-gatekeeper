@@ -109,8 +109,9 @@ Exit: a redacted before-capture and an agreed five-step user journey exist.
 
 ### Phase 1 — truthful core Home (MU-P0-01, 02, 04)
 
-Source status: **merged by PR #266; exact-main publication, NAS deployment and
-connected acceptance remain separate evidence.**
+Source status: **merged by PR #266, deployed on the NAS, and replacement-installed
+in exact production app `1.0.0-g89164ce`; the connected Home/credential/ACL
+readback passed.**
 
 - Introduce a native `SmartKeyViewModel` that joins capability readiness,
   credential/enrollment state, latest Target session and update state.
@@ -125,9 +126,10 @@ device-ID state can contradict the Keystore/ACL authority.
 
 ### Phase 2 — live result and recovery (MU-P0-03, 05; #179)
 
-Source status: **activity and terminal notification implemented; existing
-capability recovery is preserved. Bluetooth OFF→ON and OEM behavior still need
-the disconnected-phone matrix before #179 can be closed.**
+Source status: **activity and terminal notification are installed. One
+foreground action-1 reached `ARMED`, and one screen-off first match completed
+the GATT Worker and notification. Bluetooth OFF→ON and ordinary process-absent
+wake remain open in #179/#51; truthful manual action-2 wording is #276.**
 
 - Add a bounded native activity store and local notifications for meaningful
   state transitions.
@@ -140,10 +142,11 @@ and one recovery action; unknown outcomes are never auto-retried.
 
 ### Phase 3 — update, language, accessibility and support (MU-P1-01..04)
 
-Source status: **implemented in the #269 candidate. Generated ko/en normal-shell
-copy, live-region semantics, normal update status and consented redacted support
-report have source/widget coverage; hosted CI, merge, publication and connected
-visual/TalkBack acceptance remain separate.**
+Source status: **merged by PR #270 and installed in the exact production app.
+Generated ko/en normal-shell copy, live-region semantics, normal update status
+and consented redacted support report have source/widget coverage; connected
+settings/update readback passed, while TalkBack, 200% text and responsive-layout
+acceptance remain separate.**
 
 - Consolidate update status and first-run health in normal settings.
 - Convert user copy to generated ko/en resources.
@@ -155,12 +158,11 @@ connected visual walkthrough without accessing engineering diagnostics.
 
 ### Phase 4 — performance and lifecycle expansion (MU-P1-05, MU-P2-01..03)
 
-Source status: **bounded 30-second authoritative status refresh and privacy-safe
-GATT phase diagnostics already exist. The required 10 foreground plus 10
-screen-off sample set cannot be produced while the phone is disconnected, so
-no latency SLO or protocol-timing change is accepted. Multi-door/phone transfer
-is intentionally gated on the single-owner connected loop; iOS remains a
-separately approved product scope.**
+Source status: **bounded authoritative status refresh and privacy-safe GATT
+phase diagnostics are installed. The phone is connected and one foreground
+ARMED result plus one screen-off completion were observed, but the required 10
+foreground plus 10 screen-off sample set has not been run. No latency SLO is
+accepted. Multi-door/phone transfer and iOS remain separately gated scopes.**
 
 - Measure first, optimize the dominant connected GATT phase second, and preserve
   N/N-1 plus OTA rollback throughout.
@@ -189,18 +191,22 @@ The P95 latency target is a candidate objective, not a current promise. If radio
 or Target conditions dominate, the plan reports that boundary instead of
 weakening authentication, replay protection, result confirmation, or OTA.
 
-## 6. Proposed issue split and implementation order
+## 6. Current issue register and implementation order
 
-1. `[P0][MOBILE UX] Native Home and authoritative credential/enrollment state`
-2. `[P0][MOBILE UX] User-scoped activity API and truthful access timeline`
-3. `[P0][ANDROID] Result notification and reason-specific recovery`
-4. Continue `#179` for Bluetooth-return wake recovery
-5. `[P1][MOBILE UX] Signed updater status and first-run health experience`
-6. `[P1][MOBILE UX] ko/en localization and accessibility acceptance`
-7. `[P1][SUPPORT] Redacted in-app support report`
-8. `[P1][PERF] Connected GATT phase baseline and bounded latency iteration`
+1. [#276](https://github.com/ks-house/smart-gatekeeper/issues/276) — correct
+   action-2 UI/activity/notification wording so command/FSM success is never
+   presented as independently confirmed physical opening.
+2. [#179](https://github.com/ks-house/smart-gatekeeper/issues/179) — run the
+   Bluetooth OFF→ON registration recovery trial without opening the Activity.
+3. [#51](https://github.com/ks-house/smart-gatekeeper/issues/51) — complete
+   process-absent, 100-run Samsung/OEM, accessibility/responsive and repeated
+   latency/battery acceptance.
+4. [#54](https://github.com/ks-house/smart-gatekeeper/issues/54) — connect the
+   sensor/relay/contact/door fixture and complete physical/operator/canary Gates.
 
-Each implementation PR should address one issue, preserve mobile/Target OTA
-contracts, update this page and `wiki/log.md`, and state separately: source/test,
-CI artifact publication, connected install, Target terminal result, and physical
-door evidence. Phase 1 is the recommended next implementation scope.
+Issue #262 is closed after authoritative credential status was installed and
+visually confirmed. Epic #13 is closed after its redesign implementation and
+bounded connected acceptance; its remaining commercial Gates are consolidated
+into #51/#54/#48 rather than duplicated. Each follow-up PR must preserve
+mobile/Target OTA contracts and keep source/test, CI publication, connected
+runtime, Target terminal and physical-door evidence separate.

@@ -975,3 +975,36 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
   physical Gates. The action-2 UI text `문이 열렸습니다` currently overstates
   the proven command/FSM result and requires truthful wording or independent
   physical confirmation.
+
+## 2026-08-30 GitHub issue hygiene and current open register
+
+- Audited all nine open issues against merged PRs, exact NAS deployment and the
+  connected mobile/Target evidence. Issue deletion was not used; completed or
+  duplicate tracking was closed with an evidence comment so history remains.
+- Closed #262 as completed after its authoritative credential/ACL card was
+  replacement-installed and visually confirmed. Closed redesign Epic #13 as
+  completed because Wave 0~3 and bounded connected foreground/screen-off GATT
+  acceptance are done; remaining commercial Gates are already consolidated in
+  #51, #54 and #48 and were not declared complete.
+- Updated release Epic #48 to the 2026-08-30 deployed/runtime baseline. Updated
+  #50~#53 and #179 with passed evidence and narrowed remaining acceptance; #54
+  retains the latest physical trial and stays open. Added area-appropriate
+  `bug`, `enhancement` or `documentation` labels.
+- Opened #276 for the independently actionable truth defect where manual
+  action-2 displays `문이 열렸습니다` after Target command/FSM/GPIO success
+  without an authoritative contact/door event.
+
+| Open issue | Current owner boundary |
+|---|---|
+| #276 | truthful command result versus physical-open confirmation |
+| #179 | Bluetooth OFF→ON wake-registration recovery |
+| #54 | sensor/relay/door, RF/soak, operator and production canary |
+| #53 | independent manual walkthrough and zero product/manual mismatches |
+| #52 | alert drills, recurring recovery, RPO/RTO policy and 24-hour SLO |
+| #51 | process-death/OEM 100-run, accessibility and repeated mobile SLO |
+| #50 | production device hardening, power-loss, RELAY/OTA matrix and soak |
+| #48 | aggregate commercial-release approval |
+
+The register contains eight open issues after the cleanup. It intentionally
+keeps broad release Gates open while removing only completed or duplicate
+tracking.
