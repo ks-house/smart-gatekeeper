@@ -66,14 +66,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get automaticAccessDisabled => '자동 출입 비활성';
 
   @override
-  String get manualOpenRequesting => 'Target에 개방 명령을 요청하고 있습니다.';
+  String get manualOpenRequesting => '백엔드에 원격 개방 명령을 요청하고 있습니다.';
 
   @override
   String get manualOpenCommandExecuted =>
-      'Target이 개방 명령을 실행했습니다. 실제 문 열림은 별도 확인이 필요합니다.';
+      '백엔드가 원격 개방 명령을 MQTT로 전달했습니다. 실제 문 열림은 별도 확인이 필요합니다.';
 
   @override
-  String get manualOpenOutcomeUnknown => '개방 결과를 확인할 수 없습니다. 자동 재시도하지 마세요.';
+  String get manualOpenOutcomeUnknown =>
+      '원격 명령 전달 결과를 확인할 수 없습니다. 자동 재시도하지 마세요.';
 
   @override
   String get statusRefreshing => '상태를 다시 확인하고 있습니다.';

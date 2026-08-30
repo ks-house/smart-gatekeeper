@@ -115,7 +115,7 @@ class OperationsApiTest(unittest.TestCase):
             main, "ACL_MANAGEMENT_ENABLED", True
         ), patch.object(main, "_acl_runtime_ready", True), patch.object(
             main, "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", False
-        ), patch.object(main, "EXPECTED_DB_SCHEMA_VERSION", "007"), patch.object(
+        ), patch.object(main, "EXPECTED_DB_SCHEMA_VERSION", "008"), patch.object(
             main, "EXPECTED_DB_SCHEMA_SHA256", "f" * 64
         ):
             ready = self.client.get("/ready")
@@ -129,7 +129,7 @@ class OperationsApiTest(unittest.TestCase):
             {"ready": 1}, {"script_sha256": "0" * 64},
         ]
         with patch.object(main, "get_db", return_value=connection), patch.object(
-            main, "EXPECTED_DB_SCHEMA_VERSION", "007"
+            main, "EXPECTED_DB_SCHEMA_VERSION", "008"
         ), patch.object(main, "EXPECTED_DB_SCHEMA_SHA256", "f" * 64):
             ready, checks = main._readiness_snapshot()
         self.assertFalse(ready)

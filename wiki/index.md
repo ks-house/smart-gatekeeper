@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (AJ-SR04T GPIO10/11 + relay GPIO23 source contract restored; OTA and physical Gates tracked separately)
+> Last updated: 2026-08-30 (normal mobile button uses AndroidKeyStore-authorized Backend → signed MQTTS; hands-free Local GATT remains separate)
 
 ---
 
@@ -47,7 +47,7 @@
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |
 | [embedded_target_connectivity_policy.md](embedded_target_connectivity_policy.md) | 벽 매립형 Target의 Wi-Fi/MQTTS 상시 연결 SLO, 자동 복구, 경보, 매립 승인 Gate와 현재 P0 공백 |
-| [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 세입자용 모바일 앱(Smart Key) 공식 시나리오 기획서 (Flutter 하이브리드 Zero-Update, Role Reversal) |
+| [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 기획 이력과 현재 hands-free Local GATT / 수동 Backend-signed-MQTTS 전송 경계 |
 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | 서비스-isolate monitoring/ranging, 상태바 알림·IPC 복구, 화면 OFF 진단, bounded native-GATT ownership recovery와 foreground Target 상태 카드 |
 | [mobile_app_background_audit.md](mobile_app_background_audit.md) | 화면 OFF·앱 종료 구현 감사와 P0/P1 수정 결과, 남은 플랫폼 제약·실기기 검증표 |
 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) | 화면 OFF 출입 실패의 확정 증거, 원인 우선순위, 단계별 판별·실기기 수집 절차 |

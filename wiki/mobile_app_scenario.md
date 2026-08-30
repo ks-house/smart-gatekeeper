@@ -1,7 +1,35 @@
 # wiki/mobile_app_scenario.md — 모바일 어플리케이션(Smart Key) 시나리오 기획서
 > **Step 6: 세입자용 모바일 어플리케이션 개발 기획서**  
-> Last updated: 2026-07-25  
+> Last updated: 2026-08-30
 > Architecture Model: **Entry-Only (외부 진입 전용)**, **Role Reversal (Target BLE Beacon 상시 발신)** & **Flutter 하이브리드 Zero-Update 전략**
+
+---
+
+## 2026-08-30 current transport correction
+
+This page began as the Step 6 planning baseline. The current production contract
+supersedes the old Bearer/JWT and shared-topic examples below:
+
+- Hands-free approach is `Target beacon -> Android native wake -> authenticated
+  Local GATT action 1 -> Target ARMED -> AJ-SR04T -> relay`; it does not depend on
+  WAN/backend latency after the signed ACL has been installed.
+- The normal visible **문 열기** button is remote: Flutter asks native Android to
+  sign a fresh `SGKRMO01` request with the enrolled non-exportable
+  AndroidKeyStore key, Backend verifies the exact active tenant/credential/door
+  grant and durable nonce, and only then publishes a per-Target signed MQTTS
+  force-open command.
+- Neither `device_id`, an APK-wide API key nor a Bearer token alone authorizes a
+  door effect. HTTP success proves broker acknowledgement only, never physical
+  door movement. Unknown transport outcome is not retried automatically.
+- The normal ready UI is native Home/Activity/Settings. Hosted WebView remains a
+  transitional enrollment/recovery surface and delegates privileged signing to
+  native code.
+
+The remaining legacy diagrams are retained as design history and must not be
+used as current security or topic specifications. Current authority is defined
+by [security_protocol.md](security_protocol.md),
+[backend_acl_management.md](backend_acl_management.md) and
+[target_command_ota_security.md](target_command_ota_security.md).
 
 ---
 

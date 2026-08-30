@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../services/commercial_models.dart';
 import '../services/device_id_service.dart';
 import '../services/feature_flag_service.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/mobile_activity_store.dart';
 import '../services/native_gatt_worker_health.dart';
+import '../services/remote_manual_open_service.dart';
 import '../services/update_checker.dart';
 
 class SmartKeyControlScreen extends StatefulWidget {
@@ -27,6 +27,7 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
   final LocalGattEnrollmentService _enrollmentService =
       LocalGattEnrollmentService();
   final UpdateChecker _updateChecker = UpdateChecker();
+  final RemoteManualOpenService _remoteOpen = RemoteManualOpenService();
 
   bool _loading = true;
   bool _isRetrying = false;
@@ -184,16 +185,12 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
       return;
     }
 
-    final result = await _healthBridge.triggerLocalGattOpen();
-    final outcome = ManualOpenOutcome.fromNative(result);
+    final outcome = await _remoteOpen.request();
     try {
-      await MobileActivityStore().recordManualOpenResult(result);
+      await MobileActivityStore().recordRemoteOpenResult(outcome);
     } catch (_) {
       // A local timeline write failure must not hide the terminal result.
     }
-    final latency = outcome.latencyMs == null
-        ? ''
-        : ' (${outcome.latencyMs!.toString()}ms)';
     try {
       _workerHealth = await _healthBridge.read();
     } catch (_) {
@@ -204,11 +201,11 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
       setState(() {
         _isRetrying = false;
         _retryMessage = switch (outcome.state) {
-          ManualOpenState.commandExecuted =>
-            '✅ 개방 명령 실행 완료$latency\n실제 문 열림은 별도 확인이 필요합니다.',
-          ManualOpenState.outcomeUnknown =>
-            '⚠️ 개방 결과 확인 필요: ${outcome.reason}\n자동 재시도하지 마세요.',
-          ManualOpenState.failed => '⚠️ 개방 명령 실패: ${outcome.reason}',
+          RemoteManualOpenState.requested =>
+            '✅ 백엔드가 원격 개방 명령을 MQTT로 전달했습니다.\n실제 문 열림은 별도 확인이 필요합니다.',
+          RemoteManualOpenState.outcomeUnknown =>
+            '⚠️ 원격 전달 결과 확인 필요: ${outcome.reason}\n자동 재시도하지 마세요.',
+          RemoteManualOpenState.failed => '⚠️ 원격 개방 요청 실패: ${outcome.reason}',
         };
       });
     }

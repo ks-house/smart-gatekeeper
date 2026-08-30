@@ -7,35 +7,34 @@ import 'package:gatekeeper_app/services/feature_flag_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('1-Tap local control awaits terminal action-2 open result', () {
+  test('1-Tap control uses credential-signed Backend manual remote', () {
     final source =
         File('lib/screens/smart_key_control_screen.dart').readAsStringSync();
 
     expect(
       source,
-      contains('final result = await _healthBridge.triggerLocalGattOpen();'),
+      contains('final outcome = await _remoteOpen.request();'),
     );
-    expect(source, contains('ManualOpenOutcome.fromNative(result)'));
-    expect(source, contains('✅ 개방 명령 실행 완료'));
+    expect(source, contains('RemoteManualOpenState.requested'));
+    expect(source, contains('백엔드가 원격 개방 명령을 MQTT로 전달'));
     expect(source, contains('실제 문 열림은 별도 확인'));
     expect(source, isNot(contains('문이 열렸습니다')));
     expect(source, isNot(contains('_healthBridge.triggerLocalGattRetry();')));
     expect(source, isNot(contains('durable queue에 등록되었습니다')));
   });
 
-  test('all manual action entry points use the truthful outcome projection',
-      () {
+  test('all manual action entry points use remote broker-ack projection', () {
     final home =
         File('lib/screens/smart_key_home_screen.dart').readAsStringSync();
     final web = File('lib/screens/web_view_screen.dart').readAsStringSync();
 
-    expect(home, contains('ManualOpenOutcome.fromNative(result)'));
+    expect(home, contains('final outcome = await _remoteOpen.request();'));
     expect(home, contains('manualOpenCommandExecuted'));
     expect(home, contains('manualOpenOutcomeUnknown'));
-    expect(home, contains('recordManualOpenResult(result)'));
-    expect(web, contains('ManualOpenOutcome.fromNative(result)'));
-    expect(web, contains('outcome.commandExecuted'));
-    expect(web, contains('recordManualOpenResult(result)'));
+    expect(home, contains('recordRemoteOpenResult(outcome)'));
+    expect(web, contains('final outcome = await _remoteOpen.request();'));
+    expect(web, contains('RemoteManualOpenState.requested'));
+    expect(web, contains('recordRemoteOpenResult(outcome)'));
     expect(home, isNot(contains('문 열림을 Target에서 확인했습니다')));
     expect(web, isNot(contains('문이 열렸습니다')));
   });

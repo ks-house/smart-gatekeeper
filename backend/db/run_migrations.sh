@@ -2,9 +2,9 @@
 set -eu
 
 mode="${1:-up}"
-target="${2:-007}"
+target="${2:-008}"
 case "$mode:$target" in
-  up:007|down:001) ;;
+  up:008|down:001) ;;
   *) echo "[ERROR] migration mode/target is not admitted" >&2; exit 2 ;;
 esac
 
@@ -114,11 +114,11 @@ apply_down() {
 }
 
 if [ "$mode" = "up" ]; then
-  for version in 002 003 004 005 006 007; do
+  for version in 002 003 004 005 006 007 008; do
     apply_up "$version" "/opt/smart-gatekeeper/migrations/${version}_up.sql"
   done
 else
-  for version in 007 006 005 004 003 002; do
+  for version in 008 007 006 005 004 003 002; do
     apply_down "$version" "/opt/smart-gatekeeper/migrations/${version}_down.sql"
   done
 fi

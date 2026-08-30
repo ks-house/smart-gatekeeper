@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import '../services/device_id_service.dart';
-import '../services/native_gatt_worker_health.dart';
+import '../services/remote_manual_open_service.dart';
 import '../services/update_checker.dart';
 import '../services/error_logger.dart';
 import '../services/local_gatt_enrollment_service.dart';
@@ -33,8 +33,7 @@ class _WebViewScreenState extends State<WebViewScreen>
   static const String _backendBaseUrl = String.fromEnvironment('BACKEND_URL',
       defaultValue: 'https://tworimpa.synology.me:4442/api/v1');
   static const String _apiKey = String.fromEnvironment('GATEKEEPER_API_KEY');
-  final NativeGattWorkerHealthBridge _gattBridge =
-      NativeGattWorkerHealthBridge();
+  final RemoteManualOpenService _remoteOpen = RemoteManualOpenService();
   final LocalGattEnrollmentService _gattEnrollment =
       LocalGattEnrollmentService();
   final MobileIdentityService _identity = MobileIdentityService();
@@ -159,24 +158,21 @@ class _WebViewScreenState extends State<WebViewScreen>
           );
           return;
         }
-        final result = await _gattBridge.triggerLocalGattOpen();
-        final outcome = ManualOpenOutcome.fromNative(result);
+        final outcome = await _remoteOpen.request();
         try {
-          await MobileActivityStore().recordManualOpenResult(result);
+          await MobileActivityStore().recordRemoteOpenResult(outcome);
         } catch (_) {
           // A local timeline write failure must not hide the terminal result.
         }
-        final latency = outcome.latencyMs == null
-            ? ''
-            : ' (${outcome.latencyMs!.toString()}ms)';
         final message = switch (outcome.state) {
-          ManualOpenState.commandExecuted =>
-            '개방 명령 실행 완료$latency. 실제 문 열림은 별도 확인이 필요합니다.',
-          ManualOpenState.outcomeUnknown => '개방 결과를 확인할 수 없습니다. 자동 재시도하지 마세요.',
-          ManualOpenState.failed => '개방 명령 실패: ${outcome.reason}',
+          RemoteManualOpenState.requested =>
+            '백엔드가 원격 개방 명령을 MQTT로 전달했습니다. 실제 문 열림은 별도 확인이 필요합니다.',
+          RemoteManualOpenState.outcomeUnknown =>
+            '원격 전달 결과를 확인할 수 없습니다. 자동 재시도하지 마세요.',
+          RemoteManualOpenState.failed => '원격 개방 요청 실패: ${outcome.reason}',
         };
         await _controller.runJavaScript(
-          'window.completeDoorOpen(${outcome.commandExecuted ? 'true' : 'false'}, '
+          'window.completeDoorOpen(${outcome.state == RemoteManualOpenState.requested ? 'true' : 'false'}, '
           '${jsonEncode(message)});',
         );
         return;
