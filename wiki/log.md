@@ -5269,3 +5269,9 @@
 - PR #290 passed fresh protected checks and merge-committed as exact main `6c12f169bd2d8733352beb3415159a6e60c01081`; Backend run `33311924158` passed security/MariaDB, evidence verification, immutable image publication and the owner-approved production deployment over the restricted Tailscale path.
 - Canonical NAS evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with every readiness check true.
 - This closes source, CI, deployment and readiness for the personal-vs-command authorization defect. No post-fix mobile request was sent, so Target receipt, relay actuation and physical door movement require one owner-triggered trial and remain unclaimed.
+
+## [2026-08-30] compile | Authorize fresh-install registration onboarding candidate
+
+- Bound the complete 86-path persistent protected bundle to feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2`, changing only the reviewed Backend personal-status implementation and focused ACL API regression bytes.
+- The candidate lets a valid but absent provisional credential receive the supervised device registration projection, while a stored credential ID with a different public key remains a 403 hard denial.
+- This policy step registers no user, mutates no credential/database/runtime and deploys no image. Policy merge, graph connection, fresh protected CI, NAS deployment/readiness and connected A24 UI readback remain separate Gates.
