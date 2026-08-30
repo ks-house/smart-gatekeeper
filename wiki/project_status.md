@@ -106,9 +106,15 @@ applies_to:
 - Independent strict-TLS requests returned HTTP 200 from `/live` and `/ready`;
   both named exact build `b0e1339c...`, and readiness reported database, schema,
   MQTT, runtime secrets, control/admin auth, ACL management, legacy retirement
-  and build identity all true. This closes source/CI/deployment readiness only.
-  The owner must retry `이 휴대폰 등록`; successful Target ACL apply and a door
-  cycle from that newly enrolled key remain device/physical acceptance Gates.
+  and build identity all true. This closes source/CI/deployment readiness.
+- The owner subsequently confirmed that the freshly approved account completed
+  `이 휴대폰 등록` and that a door-open request from that newly enrolled phone
+  physically opened the installed door. This closes the exact post-deletion
+  re-enrollment, replacement credential, Target ACL apply and one
+  user-initiated physical door-cycle acceptance Gate for the observed trial.
+  It does not establish repeated reliability, OEM background proximity,
+  another resident phone, ultrasonic/sensor actuation, outage recovery or OTA
+  install/reboot/health.
 
 ## 2026-08-30 credential-signed remote Home button rollout
 

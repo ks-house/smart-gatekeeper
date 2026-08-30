@@ -303,6 +303,13 @@ publication complete before the account row is removed and local key deletion
 is authorized. Interrupted publication keeps the account/key for a safe retry;
 an invalid, replayed or cross-tenant proof has no account effect.
 
+On 2026-08-31 the owner confirmed the deployed correction through the complete
+post-deletion path: fresh account request and approval, `이 휴대폰 등록`, and one
+physical door open requested from that newly enrolled phone. This is acceptance
+evidence for that exact observed credential lifecycle and door cycle; it is not
+repeated/OEM background-proximity, another resident phone, sensor, outage or
+long-run reliability evidence.
+
 ## 8. Verification
 
 ```bash

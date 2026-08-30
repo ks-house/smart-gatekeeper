@@ -5515,3 +5515,9 @@
 - Retired the transitional candidate identity and pinned the sole `current-main-baseline` to exact feature merge `b0e1339c186bde81e2f4602ff426251b88e57db6`, retaining all 91 reviewed protected digests unchanged.
 - This policy-only finalization changes no Backend runtime byte, account, credential, ACL, NAS container, APK, Target, relay or door. Hosted Trusted and normal policy merge remain separate Gates.
 - All 42 focused trusted-policy regressions and the complete 317-test OTA/operations suite passed locally with one expected environment-only skip.
+
+## [2026-08-31] test | Accept fresh re-enrollment and physical door open
+
+- The owner confirmed that the previously failing phone completed `이 휴대폰 등록` after Backend source `b0e1339c186bde81e2f4602ff426251b88e57db6` was deployed.
+- The owner then confirmed that a door-open request from that newly registered phone physically opened the installed door. This closes the exact post-account-deletion re-enrollment and one user-initiated physical-open acceptance Gate.
+- This observation does not assert repeated or OEM background-proximity behavior, another resident phone, ultrasonic/sensor actuation, WAN/broker outage recovery, Target OTA install/reboot/health or long-run reliability.
