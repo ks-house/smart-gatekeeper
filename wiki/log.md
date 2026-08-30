@@ -5026,3 +5026,10 @@
 - Backend run `33269719228` attempt 2 reran only the failed NAS deploy job and returned canonical `status=deployed`, `source_sha=8ea9ff1f8177bf49dba524b11d586715af5e1f6b`, matching forced status readback, `loopback_ready=passed` and `public_ready=passed`.
 - Independent strict-TLS `/live` and `/ready` checks returned HTTP 200, the exact build SHA and all nine readiness checks `true`. Public SSH forwarding remains unnecessary; the phone is disconnected, so install, notification, Target transition and physical door evidence remain pending.
 - Final-main mobile run `33270789676` and Target run `33270789693` at `89164ce4eb43f6deba8667bf9db6926fcfedfe46` retain successful signed personal OTA publication evidence.
+
+## [2026-08-30] test | Validate connected mobile and Target software path without sensors
+
+- Replacement-installed production-signed mobile `1.0.0-g89164ce` / 31501 on the authorized Fold7 after exact metadata, APK hash and signer-continuity checks; preserved first-install time, app data, registration and required permissions.
+- Verified Target `2.1.364+main.g89164ce` relay-OFF boot, Wi-Fi/MQTTS/ACL/GATT readiness, one foreground action-1 `ARMED` result, one 1846 ms manual action-2 session with independently observed Target relay-command ON/OFF, and one screen-off native detection-to-GATT Worker success with result notification.
+- Observed a pending newer Target image time out its health window and automatically roll back to valid 364. The bounded recovery loop later restored Wi-Fi, MQTTS, ACL v541 and GATT/iBeacon; same-version replay was rejected by the durable downgrade floor as designed.
+- Kept evidence boundaries explicit: active foreground service prevented an ordinary process-absent cold-wake trial; no force-stop was used. AJ-SR04T, ECHO protection, relay contact/load, actuator and door were absent, so no distance trigger, electrical actuation or physical opening is claimed. The current manual success copy overstates the proven software/FSM result.

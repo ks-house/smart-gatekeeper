@@ -720,3 +720,25 @@ does not perform a backend request per tap by design; the backend contribution
 is the deployed ready control/ACL plane and the approved app state visible in
 the same acceptance window. Physical actuation remains a separate owner-observed
 Gate.
+
+## 2026-08-30 exact-main mobile/Target connected acceptance without sensors
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Connected identities | Windows ADB authorized Fold7 `SM-F966N` on Android 16/API 36. A fresh WSL login opened CH343 `/dev/ttyACM0`; esptool identified an ESP32-C6 revision 0.2. Target booted `2.1.364+main.g89164ce` and the installed mobile app initially reported `1.0.0-gbd3a27b` / 30301 | PASS for exact device transports and pre-update runtime identities; no sensor/contact evidence |
+| Mobile signed replacement | Public metadata named `1.0.0-g89164ce` / 31501 at exact commit `89164ce4eb43f6deba8667bf9db6926fcfedfe46`. The 56,134,809-byte APK matched metadata SHA-256 and its signer certificate matched the installed app before `adb install -r`; replacement returned `Success`, preserved first-install time and app data, and retained required BLE/location/notification permissions | PASS for production-signed same-signer replacement and credential/data preservation |
+| Target boot and control plane | Relay fail-safe OFF ran before application start; saved Wi-Fi returned at `192.168.35.18`, exact per-Target MQTTS subscribed, signed ACL v539 applied, and GATT/iBeacon started. Strict-TLS backend `/live` and `/ready` independently returned HTTP 200 at build `8ea9ff1f8177bf49dba524b11d586715af5e1f6b` with every readiness check true | PASS for one bounded Target/backend runtime window |
+| Foreground action 1 | The exact app observed Target RSSI -52, completed authenticated GATT, reported `SUCCEEDED · ARMED 1726 ms`, worker `HEALTHY`, MTU 256, and 1669 ms last GATT latency. Activity rendered `출입 준비 완료 · 센서 접근 대기`, not physical-open confirmation | PASS for one mobile-to-Target sensor-arm result; ultrasonic trigger and relay remain unexercised |
+| Manual action 2 | `1-Tap 수동 로컬 개방` completed in 1846 ms. Independent CH343 serial recorded a GATT connection, relay-command ON completion and timer-bound OFF completion | PASS for authenticated Target FSM/GPIO command and fail-safe cutoff; the app's `문이 열렸습니다` text is not physical evidence and is misleading while no relay module/door is attached |
+| Screen-off automatic detection | With the app backgrounded and display non-interactive, a Target reset/re-advertisement produced a native `FIRST_MATCH` at RSSI -54 with `screen_interactive=false` and 35.65 ms callback latency. The exact app's GATT Worker returned `SUCCESS` about 1.9 seconds later and posted the result notification | PASS for one screen-off/background auto-detect-to-GATT completion on this Fold7 |
+| Process-death boundary | Android retained the app PID because its foreground service was active; `am kill` did not reclaim it, and the shell was not authorized to stop the non-exported service. No force-stop was used because that intentionally disables wake registration | PENDING ordinary process-absent cold-wake repetition; screen-off success is not process-death proof |
+| OTA failure/rollback | Public Target metadata was newer at `2.1.365+main.g95355c2`. A pending image later logged `health window timed out; rolling back`; boot returned to valid `2.1.364+main.g89164ce` with relay OFF. Saved Wi-Fi initially failed with `AUTH_EXPIRE`/`NO_AP_FOUND`, then the bounded AP+STA recovery restored `192.168.35.18`, MQTTS, ACL v541 and GATT/iBeacon. The periodic check rejected the same manifest as `downgrade`, matching the durable highest-seen-version contract | PASS for prior-slot automatic rollback, relay fail-safe and eventual network/control-plane recovery. The candidate boot identity was not directly captured, and no newer image reached explicit health VALID in this session |
+| Missing hardware boundary | AJ-SR04T, ECHO-level protection, relay module/contact/load, actuator and door were not connected | PENDING distance threshold, electrical timing, actual door motion, repeated SLO, hard power-loss and complete wall-install acceptance |
+
+This session accepts the currently installed mobile and Target software path for
+foreground action 1, manual action 2 and one screen-off action-1 repetition. It
+also directly exercises automatic Target rollback and eventual network recovery.
+It does not claim that a pocket approach opens a physical door, because the
+distance sensor, relay contact/load and door actuator were absent. The manual
+success copy must be treated as a product wording defect until it distinguishes
+an authenticated command from independently confirmed physical opening.
