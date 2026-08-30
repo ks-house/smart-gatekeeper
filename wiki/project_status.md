@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐으나 첫 신청이 `GK-*` UUID와 기존 17자 legacy storage 계약 불일치로 실패했다. Policy PR #296과 feature PR #297이 보호 검사를 통과했고 exact main `f03acdfaad4fa2fad61439f58f318ddbc756d084`를 Backend run `33314043691`이 NAS에 배포했다. Canonical loopback/public readiness와 독립 strict-TLS `/live`·`/ready`가 exact build HTTP 200 및 모든 check=true를 확인했다. 이후 owner의 접수와 관리자 승인은 완료됐으며 연결된 ADB는 예상된 `이 휴대폰 등록` key-enrollment 단계를 확인했다. AndroidKeyStore credential enrollment·signed ACL Target ACK·딸아이 기기 출입은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
+> 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐고 PR #297/Backend run `33314043691`이 `GK-*` 신청 저장 불일치를 교정·배포했다. 이후 owner의 접수와 관리자 승인은 완료됐지만 `이 휴대폰 등록`은 한 번 실패했다. 연결된 진단은 native key가 healthy임을 보였고 production-shaped local 재현은 첫 owner legacy 행의 unique personal-tenant mapping 때문에 두 번째 승인 기기가 HTTP 409로 거절되는 단일 사용자 제약을 확정했다. 승인된 추가 가족 행을 같은 personal tenant의 별도 public credential/door grant로 수용하는 source correction과 전체 152 Backend tests는 통과했지만 아직 정책 승인·CI·NAS 재배포 전이다. AndroidKeyStore credential enrollment·signed ACL Target ACK·딸아이 기기 출입은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -94,6 +94,17 @@ applies_to:
   AndroidKeyStore enrollment step, not another tenant request. One owner tap,
   credential result, signed ACL Target ACK and daughter-device access remain
   unclaimed.
+- The owner's one enrollment tap failed and the A24 remained
+  `readyToEnroll`. Its bounded support report showed native healthy, no native
+  blocking reason, zero doors and no ACL version. A production-shaped local
+  reproduction returned HTTP 409 because the first owner's legacy row already
+  holds the configured personal tenant's unique compatibility mapping.
+- The source correction leaves that first mapping intact and keeps each newly
+  approved family row unmapped while creating a distinct active public
+  credential and exact shared-personal-door grant. Idempotency and the existing
+  unapproved/cross-tenant/conflict denials are retained. Focused and complete
+  Backend tests pass; policy authorization, protected CI, NAS deployment and a
+  single owner retry remain separate Gates.
 
 ## 2026-08-29 foreground Target detection dashboard candidate
 

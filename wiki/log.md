@@ -5320,8 +5320,20 @@
 - Connected read-only ADB UI evidence showed `스마트키 등록 준비 완료`, the instruction to link this phone's security key to the approved account, `이 휴대폰 등록`, zero doors and ACL pending.
 - This is the expected `enroll_credential` state, not a repeated tenant request. The agent did not press the effectful enrollment button; owner key enrollment, credential result, signed ACL Target ACK and daughter-device access remain separate Gates.
 
+## [2026-08-30] fix | Admit an approved additional family phone to the personal tenant
+
+- The owner's single `이 휴대폰 등록` attempt failed and remained `readyToEnroll`. Connected ADB support evidence showed native healthy, no native blocking reason, zero doors and no ACL version; no repeat request was triggered during diagnosis.
+- A production-shaped local reproduction with the first owner's legacy row already mapped to the configured personal tenant returned exact HTTP 409 `personal tenant is already mapped to another legacy device`, confirming a retained single-user compatibility constraint.
+- Corrected bootstrap so one legacy row remains the unique compatibility owner while each separately approved additional family row stays unmapped and receives its own active public credential and exact shared-personal-door grant. Unapproved, inactive, cross-tenant, conflicting and revoked identities remain fail-closed.
+- The focused three enrollment regressions and all 152 Backend tests passed with two expected Docker-only skips. Trusted-policy authorization, protected CI, NAS deployment, one owner retry, signed ACL Target ACK and daughter-device access remain separate Gates.
+
 ## [2026-08-30] compile | Authorize approved additional family-phone enrollment candidate
 
 - Bound the complete ordered 86-path protected bundle to immutable feature candidate `e2ecc68f9e5f7a15c9ca9319d244c99bc778f371`, changing exactly `backend/app/acl_management.py` and `backend/tests/test_acl_api.py`.
 - The candidate retains one unique legacy compatibility owner while allowing a separately approved additional family row to receive its own active public credential and exact shared-personal-door grant without a second `tenant_uuid` mapping. Existing unapproved, inactive, cross-tenant, conflict and revocation denials remain fixed.
 - This policy-only step mutates no credential, grant, NAS database/container, signed ACL, mobile/Target install or physical door. Policy merge, feature merge-connection, fresh CI, NAS deployment/readiness, one owner retry, Target ACK and daughter-device access remain separate Gates.
+
+## [2026-08-30] compile | Connect family-phone enrollment to trusted policy main
+
+- Policy PR #299 passed Hosted Trusted and merge-committed as main `d998e0eae095cba9326ff7e4fb08ef50a810d706`; merged that exact policy main without rebase or squash into immutable feature candidate `e2ecc68f9e5f7a15c9ca9319d244c99bc778f371`.
+- Both reviewed protected feature blobs and the complete ordered 86-path bundle remain exact. Fresh policy and Backend tests, hosted checks, feature merge, NAS deployment/readiness and one owner retry remain separate Gates.

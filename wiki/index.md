@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-30 (mobile remote physical success; fresh family-member request approved, phone key enrollment pending)
+> Last updated: 2026-08-30 (mobile remote physical success; approved second-family-phone enrollment correction in review)
 
 ---
 

@@ -379,6 +379,59 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual(200, enrolled.status_code, enrolled.text)
         self.assertTrue(enrolled.json()["accepted"])
 
+    def test_approved_family_phone_joins_existing_personal_tenant(self) -> None:
+        primary_id = "DEV-PRIMARY-OWNER"
+        family_id = "GK-887A7FAC-0C0A-4E95-9C7A-F6C84D734655"
+        family_locator = legacy_device_storage_id(family_id)
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, ?)",
+            ("primary", "home", legacy_device_storage_id(primary_id), TENANT_A),
+        )
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, NULL)",
+            ("family", "home", family_locator),
+        )
+        self.conn.commit()
+
+        device = DeterministicP256Signer(23, signing_key_id=0)
+        body = {
+            "device_id": family_id,
+            "credential_id": "ef" * 16,
+            "public_key_sec1": device.public_key_sec1.hex(),
+            "min_protocol": 1,
+            "max_protocol": 1,
+        }
+        first = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        second = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json=body,
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+
+        self.assertEqual(200, first.status_code, first.text)
+        self.assertEqual(first.json(), second.json())
+        mapping = self.conn.execute(
+            "SELECT tenant_uuid, credential_mode FROM tenants "
+            "WHERE ble_device_mac=?",
+            (family_locator,),
+        ).fetchone()
+        self.assertIsNone(mapping["tenant_uuid"])
+        self.assertEqual("dual", mapping["credential_mode"])
+        credential = self.store.get_credential(TENANT_A, body["credential_id"])
+        self.assertIsNotNone(credential)
+        self.assertEqual(
+            [DOOR],
+            self.store.active_grant_doors(TENANT_A, body["credential_id"]),
+        )
+
     def test_personal_enrollment_unapproved_device_is_forbidden(self) -> None:
         device = DeterministicP256Signer(17, signing_key_id=0)
         response = self.client.post(

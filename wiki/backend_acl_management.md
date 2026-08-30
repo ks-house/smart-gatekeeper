@@ -1,6 +1,6 @@
 # Backend public-key enrollment and signed ACL management
 
-> Status: Issue #19 core plus personal public-key bootstrap deployed; first owner physical remote-open passed and fresh-family request is approved with phone key enrollment pending
+> Status: Issue #19 core plus personal public-key bootstrap deployed; first owner physical remote-open passed and approved additional-family-phone enrollment correction is in review
 > Protocol: [security_protocol.md](security_protocol.md)
 > OTA parent contract: [ota_reliability_contract.md](ota_reliability_contract.md)
 
@@ -215,8 +215,18 @@ was retried automatically. The owner's later submission and administrator
 approval reached the expected `enroll_credential` projection; connected ADB
 rendered `이 휴대폰 등록` with the instruction to link this phone's security
 key to the approved account. This is the intended next step, not another tenant
-request. One owner-triggered key-enrollment action, signed ACL propagation and
-access remain pending.
+request. The owner then pressed the key-enrollment action once, but it failed
+and remained `ready_to_enroll`. Connected diagnostics showed healthy native key
+material and no Bluetooth/permission failure. A production-shaped local
+reproduction returned HTTP 409 because the configured personal tenant was
+already compatibility-mapped to the first owner's legacy row. The correction
+keeps that unique compatibility owner while allowing each separately approved
+additional family row to remain unmapped and receive its own public credential,
+door grant and shared-tenant signed ACL entry. Unapproved, inactive,
+cross-tenant, conflicting and revoked identities remain fail-closed. Source
+regressions and all 152 Backend tests pass with two expected Docker-only skips;
+policy authorization, protected CI, NAS deployment, one owner retry, signed ACL
+Target ACK and access remain pending.
 It fails closed while ACL management is unavailable. The older HMAC v2 envelope
 remains N-1 compatible, while device-ID-only calls are upgrade-required and
 cause no control effect. Home Assistant
