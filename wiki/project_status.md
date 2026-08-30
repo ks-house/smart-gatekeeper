@@ -1156,5 +1156,6 @@ tracking.
 - Issue #293 source returns the supervised device registration projection only
   when the credential ID is absent from storage. A stored credential ID with a
   different public key still fails closed. Focused 9 and full 149 Backend tests
-  pass with the two expected Docker-only skips; policy, protected CI, NAS
+  pass with the two expected Docker-only skips. Trusted policy main `6a714f8`
+  is merge-connected as `79bdf7b`; fresh protected CI, feature merge, NAS
   deployment/readiness and connected A24 UI readback remain pending.

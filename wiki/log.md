@@ -5281,3 +5281,9 @@
 - Bound the complete 86-path persistent protected bundle to feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2`, changing only the reviewed Backend personal-status implementation and focused ACL API regression bytes.
 - The candidate lets a valid but absent provisional credential receive the supervised device registration projection, while a stored credential ID with a different public key remains a 403 hard denial.
 - This policy step registers no user, mutates no credential/database/runtime and deploys no image. Policy merge, graph connection, fresh protected CI, NAS deployment/readiness and connected A24 UI readback remain separate Gates.
+
+## [2026-08-30] compile | Connect fresh-install onboarding to trusted policy main
+
+- Policy PR #294 passed Hosted Trusted and merge-committed as main `6a714f86c5661cf5b5343c3af98281499d815c33`; merged that exact policy main without rebase or squash into feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2` as `79bdf7b36ea20801ce035a05d70a6c60c221e64f`.
+- The two reviewed protected feature blobs and complete 86-path bundle remain exact; all 42 policy tests and all 149 Backend tests passed after graph connection with two expected Docker-only skips.
+- No user registration, credential/database/runtime mutation or deployment occurred. Fresh hosted checks, feature merge, NAS deployment/readiness and connected A24 onboarding readback remain separate Gates.
