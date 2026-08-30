@@ -15,6 +15,8 @@ class AccessResultNotificationPolicyTest {
     assertEquals("출입 준비 완료", notice!!.title)
     assertTrue(notice.detail.contains("센서"))
     assertFalse(notice.detail.contains("문이 열"))
+    assertFalse(notice.detail.contains("문 열림"))
+    assertFalse(notice.title.contains("확인"))
   }
 
   @Test
@@ -24,6 +26,15 @@ class AccessResultNotificationPolicyTest {
     )!!
     assertTrue(notice.isFailure)
     assertTrue(notice.detail.contains("다시 시도하지"))
+  }
+
+  @Test
+  fun `failure reports authentication failure without a physical door claim`() {
+    val notice = AccessResultNotificationPolicy.forState(DurableSessionState.FAILED)!!
+    assertTrue(notice.isFailure)
+    assertEquals("스마트키 인증 실패", notice.title)
+    assertFalse(notice.title.contains("문 열림"))
+    assertFalse(notice.detail.contains("문이 열"))
   }
 
   @Test

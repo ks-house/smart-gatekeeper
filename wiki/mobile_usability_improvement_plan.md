@@ -179,7 +179,7 @@ than adding complexity to an unproven core journey.
 |---|---|---|
 | First-run understanding | Ready/blocked state and one next action visible within 90 seconds | fresh-install screen recording + state fixture |
 | Core navigation | Home to recovery/update/manual action in at most two taps | widget navigation contract + connected walkthrough |
-| State truth | zero `confirmed`/“문 열림” display without terminal Target result | native ledger fixtures + negative/unknown cases |
+| State truth | zero `confirmed`/"실제 문 열림" display without an independent authoritative physical event; Target `OPENED`는 command-executed로만 표시 | native ledger fixtures + negative/unknown cases |
 | Foreground visibility | latest native event reflected within two seconds | bridge/widget timing test + connected observation |
 | Latency | establish connected P50/P95 with 10 foreground and 10 screen-off trials; improvement candidate targets presence→ARMED P95 below 2.5 seconds without protocol weakening | redacted phase sample and Target terminal timestamps |
 | Recovery | each blocker exposes exactly one safe next action; manual local and updater stay reachable | permission/Bluetooth/battery/force-stop matrix |
@@ -193,9 +193,11 @@ weakening authentication, replay protection, result confirmation, or OTA.
 
 ## 6. Current issue register and implementation order
 
-1. [#276](https://github.com/ks-house/smart-gatekeeper/issues/276) — correct
-   action-2 UI/activity/notification wording so command/FSM success is never
-   presented as independently confirmed physical opening.
+1. [#276](https://github.com/ks-house/smart-gatekeeper/issues/276) — source
+   candidate now projects action-1 `SUCCEEDED` as armed and action-2 `OPENED`
+   as command-executed across Home, WebView, advanced control and the bounded
+   activity timeline. CI, exact-main signed publication and connected ko/en
+   replacement-install readback remain separate acceptance Gates.
 2. [#179](https://github.com/ks-house/smart-gatekeeper/issues/179) — run the
    Bluetooth OFF→ON registration recovery trial without opening the Activity.
 3. [#51](https://github.com/ks-house/smart-gatekeeper/issues/51) — complete

@@ -9,6 +9,7 @@ import '../services/update_checker.dart';
 import '../services/error_logger.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/commercial_models.dart';
+import '../services/mobile_activity_store.dart';
 import '../services/mobile_identity_service.dart';
 import 'app_settings_screen.dart';
 
@@ -159,12 +160,24 @@ class _WebViewScreenState extends State<WebViewScreen>
           return;
         }
         final result = await _gattBridge.triggerLocalGattOpen();
-        final accepted = result['accepted'] == true;
-        final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
-        final latencyMs = (result['latencyMs'] as num?)?.toInt();
+        final outcome = ManualOpenOutcome.fromNative(result);
+        try {
+          await MobileActivityStore().recordManualOpenResult(result);
+        } catch (_) {
+          // A local timeline write failure must not hide the terminal result.
+        }
+        final latency = outcome.latencyMs == null
+            ? ''
+            : ' (${outcome.latencyMs!.toString()}ms)';
+        final message = switch (outcome.state) {
+          ManualOpenState.commandExecuted =>
+            '개방 명령 실행 완료$latency. 실제 문 열림은 별도 확인이 필요합니다.',
+          ManualOpenState.outcomeUnknown => '개방 결과를 확인할 수 없습니다. 자동 재시도하지 마세요.',
+          ManualOpenState.failed => '개방 명령 실패: ${outcome.reason}',
+        };
         await _controller.runJavaScript(
-          'window.completeDoorOpen(${accepted ? 'true' : 'false'}, '
-          '${jsonEncode(accepted ? '문이 열렸습니다${latencyMs == null ? '' : ' (${latencyMs}ms)'}.' : '수동 출입 실패: $reason')});',
+          'window.completeDoorOpen(${outcome.commandExecuted ? 'true' : 'false'}, '
+          '${jsonEncode(message)});',
         );
         return;
       }

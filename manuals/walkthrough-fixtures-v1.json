@@ -44,7 +44,7 @@
       "manual": "general_user_manual_ko.md",
       "precondition": "synthetic native session result",
       "input": "map QUEUED RUNNING SUCCEEDED PROOF_UNCERTAIN FAILED",
-      "observable_output": "only SUCCEEDED maps confirmed and PROOF_UNCERTAIN maps unknown",
+      "observable_output": "SUCCEEDED maps armed, OPENED maps command-executed without physical confirmation, and PROOF_UNCERTAIN maps unknown",
       "code_api_owner": "commercial_models.dart and GattSessionEngine.kt",
       "evidence": "Flutter and native GATT tests",
       "command": "python -S -m unittest tests.test_hardwareless_rc.HardwarelessRcProductionCoreTest.test_production_cpp_core -v",
