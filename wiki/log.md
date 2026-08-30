@@ -5434,3 +5434,14 @@
 - The complete Backend suite passed with 162 tests and two expected environment-only skips; MariaDB 10.11 applied the contiguous 002-through-010 migration chain, backup/ledger contracts and rollback checks across all 13 integration tests.
 - Flutter formatting, analysis and all 66 unit/widget tests passed. CI-equivalent Gradle 9.1/JDK 17 executed 49 targeted native tests, including the fixed-width domain-separated `SGKOUT01` canonical proof, with zero failures or skips.
 - Updated the recovery walkthrough and source-bound manual contract to expose only verified update, Android settings and bounded permission retry to ordinary users; its focused source and all 16 bounded walkthrough commands passed. The complete 317-test OTA/operations run now has only expected pre-policy protected-digest failures, so trusted-policy rotation remains the next Gate rather than a source or OTA bypass.
+
+## [2026-08-31] compile | Authorize mobile lifecycle and manifest schema candidate
+
+- Bound the complete ordered 91-path protected bundle to immutable feature candidate `68c9c3172782339a731f01dfb960b1aa8aeabaff`, adding migration 010 up/down and signed `schema.env` to the trusted inventory.
+- Exactly 18 protected normalized blobs are new or changed across the Backend logout/admin role path, manifest-derived migration deployment, trusted inventory and direct regressions. The persistent identity admits only the exact repository candidate or proven same-byte descendants.
+- This policy-only candidate changes no NAS wrapper, database, credential, ACL, container, APK, Target, relay or physical door. Hosted policy CI/merge, feature merge-connection, fresh full CI, exact-main merge and deployment remain separate Gates.
+
+## [2026-08-31] compile | Connect mobile lifecycle candidate to trusted policy main
+
+- Policy PR #308 passed Hosted Trusted and merge-committed as main `8ac609c15275639c9eb385d10960d1cb02f3613f`; merged that exact policy history into immutable feature candidate `68c9c3172782339a731f01dfb960b1aa8aeabaff` without rebase or squash.
+- Both exact parents are retained and all 18 reviewed new or changed protected blobs plus the complete ordered 91-path map remain identical to the authorization. Fresh full local and hosted feature checks remain required before feature merge.
