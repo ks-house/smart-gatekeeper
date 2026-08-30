@@ -1042,11 +1042,24 @@ tracking.
 - App-locale switching exposed a remaining issue-specific gap: the terminal
   Home message was retained as an already-rendered Korean string, and a
   distinct English-mode failure also used a Korean generic error. The current
-  source candidate preserves the terminal outcome as a semantic message and
+  implementation preserves the terminal outcome as a semantic message and
   resolves success, unknown, failure and core Home recovery text through the
-  active ko/en localization at render time. All 60 Flutter tests and analysis
-  pass locally; reviewed CI, exact-main publication and replacement readback of
-  that new candidate remain required before closing #276.
+  active ko/en localization at render time.
+- PR #280 passed trusted-policy, OTA/schema, Flutter, native GATT and Android
+  canary checks and merged as `6d7ed42c56483ee61ee4f36302428c0c7a7d3db6`.
+  Exact-main run `33300474502` passed the isolated unsigned build and signed
+  primary/fallback NAS publication. Independent strict-TLS download bound
+  `1.0.0-g6d7ed42` / 32301 and its 56,134,809-byte APK SHA-256
+  `da629f3c43d56302860cfe506c234f48569e06424a135ed355d014ff8964ae94`
+  to the exact commit; embedded source identity, APK v2/v3 signatures and the
+  pinned signer digest also matched.
+- `adb install -r` advanced the authorized Fold7 from 32001 to 32301 while
+  preserving first-install time and the registered identity. The exact app's
+  English ready Home was fully localized; one bounded English action-2 ended
+  in command-executed at 1834 ms with `Physical door opening is not confirmed`.
+  Removing the app-locale override re-rendered the same retained result in
+  Korean with the same latency, and final locale state returned to system
+  default `ko-KR`. This closes the issue-specific connected ko/en wording Gate.
 - The absent sensor/relay/contact/door fixture means distance sensing,
   electrical relay actuation and physical opening remain unverified regardless
   of UI or Target command result.
