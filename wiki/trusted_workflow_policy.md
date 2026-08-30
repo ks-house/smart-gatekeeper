@@ -1300,3 +1300,28 @@ authorize a partial map, wildcard, runtime data mutation or credential
 replacement. This policy step changes no runtime data, credential or deployed
 image; merge-connection, protected CI, NAS deployment and connected A24 UI
 readback remain separate Gates.
+
+## 40. Approved additional family-phone enrollment authorization
+
+After the bounded registration correction was deployed, the approved A24
+reached `이 휴대폰 등록` but one explicit enrollment attempt failed. Native
+support evidence remained healthy. A production-shaped local reproduction
+returned HTTP 409 because the first owner's legacy row already holds the
+configured personal tenant's unique compatibility mapping.
+
+Immutable feature candidate
+`e2ecc68f9e5f7a15c9ca9319d244c99bc778f371` changes exactly two protected
+blobs: `backend/app/acl_management.py` and `backend/tests/test_acl_api.py`.
+It retains one unique compatibility owner while a separately approved
+additional family row remains unmapped and receives its own active public
+credential and exact shared-personal-door grant. Unapproved, inactive,
+cross-tenant, conflicting and revoked identities remain fail-closed. The
+complete ordered 86-path bundle is bound as
+`future-family-phone-enrollment-e2ecc68-persistent-baseline` to this immutable
+candidate and its merge-connected descendants.
+
+This policy-only authorization creates no credential or grant, changes no NAS
+database/container, publishes no ACL, installs no app or Target image and opens
+no door. Policy merge, exact merge-connection, fresh protected CI, feature
+merge, owner-approved NAS deployment/readiness, one owner retry, Target ACK and
+daughter-device access remain separate Gates.
