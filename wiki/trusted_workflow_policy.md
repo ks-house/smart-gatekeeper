@@ -1242,3 +1242,17 @@ run migration 008, deploy a Backend, install an APK or issue a door command.
 Policy merge, merge-connection, fresh CI, feature merge, owner-authenticated
 wrapper replacement, protected retry/readiness and physical observation remain
 separate Gates.
+
+## 37. Migration-008 deployment identity final baseline
+
+Correction PR #287 passed Hosted Trusted, OTA/schema and Backend checks after
+policy main was merge-connected without rebase or squash. It merge-committed
+as actual feature main `07b3543a1846a1b7220c09874fb89b9e7836d7eb`.
+
+This final rotation retires the transitional
+`future-schema008-b6aff4c-persistent-baseline` identity and pins the sole
+`current-main-baseline` to that actual feature merge. All 86 normalized
+protected blobs and both workflow/action inventories remain exactly those
+reviewed in the correction bundle. This policy change installs no root-owned
+wrapper, deploys no Backend or APK, runs no migration and proves no Target,
+relay or physical-door result.
