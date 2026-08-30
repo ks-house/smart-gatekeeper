@@ -5300,3 +5300,9 @@
 - Source established that new installations generate random UUID-shaped `GK-*` IDs, while the registration request admitted only `DEV-*`; widening that validation alone would still exceed the existing 17-character MariaDB legacy locator column.
 - Added one deterministic 70-bit storage locator used consistently by registration, status and credential bootstrap for accepted IDs longer than the legacy column, while preserving existing values that already fit and keeping the raw high-entropy ID out of the legacy row. Name/unit validation now matches the existing column bounds and the form advertises the same limits.
 - The focused fresh flow passed request, pending/approved status and public-key credential bootstrap. All 151 Backend tests passed with two expected Docker-only integration skips; protected policy/CI, deployment and the owner's single explicit retry remain separate Gates.
+
+## [2026-08-30] compile | Authorize bounded fresh-registration identity candidate
+
+- Bound the complete protected bundle to immutable feature candidate `8e0c02c415ac2f2214cca5393a2682fd4b6c3a85`, which accepts fresh `GK-*` registration IDs and uses one consistent bounded legacy locator across request, status and credential bootstrap.
+- Exactly five protected normalized blobs change: ACL management, Backend request validation, the registration form limits and two focused Backend regression suites. Existing fitting `DEV-*` locators, public-key credentials, signed ACL and all deployment/OTA workflows remain fixed.
+- This policy-only step submits no registration, mutates no database/NAS/runtime, installs no APK and issues no Target or door effect. Policy merge, feature graph connection, fresh CI, Backend deployment and one owner-triggered retry remain separate Gates.
