@@ -11,7 +11,6 @@ import '../services/local_gatt_enrollment_service.dart';
 import '../services/commercial_models.dart';
 import '../services/mobile_activity_store.dart';
 import '../services/mobile_identity_service.dart';
-import 'app_settings_screen.dart';
 
 class WebViewScreen extends StatefulWidget {
   final String? initialUrl;
@@ -237,17 +236,6 @@ class _WebViewScreenState extends State<WebViewScreen>
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings, color: Colors.cyanAccent),
-            tooltip: '고급 진단',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const AppSettingsScreen()),
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => _controller.reload(),

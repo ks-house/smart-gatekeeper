@@ -305,33 +305,19 @@ class ManualContractTests(unittest.TestCase):
             / "screens"
             / "recovery_shell_screen.dart"
         ).read_text(encoding="utf-8")
-        settings_source = (
-            ROOT
-            / "gatekeeper_app"
-            / "lib"
-            / "screens"
-            / "app_settings_screen.dart"
-        ).read_text(encoding="utf-8")
         self.assertIn(
-            "recovery shell keeps manual update diagnostics settings and retry reachable",
+            "recovery shell keeps update Android settings and retry reachable",
             test_source,
         )
         for token in (
-            "고급 진단 열기",
             "Check verified app update",
             "Open Android settings",
             "retry-background-setup",
         ):
             self.assertIn(token, test_source)
             self.assertIn(token, production_source)
-        for token in (
-            "title: const Text('고급 진단')",
-            "text: '고급 제어'",
-            "text: '진단·튜닝'",
-            "SmartKeyControlScreen(embedded: true)",
-            "DebugScreen(embedded: true)",
-        ):
-            self.assertIn(token, settings_source)
+        self.assertIn("find.text('고급 진단 열기'), findsNothing", test_source)
+        self.assertNotIn("AppSettingsScreen", production_source)
 
     def test_support01_app_error_logger_flutter_contract_source(self) -> None:
         test_source = (

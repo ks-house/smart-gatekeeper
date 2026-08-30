@@ -137,6 +137,17 @@ class BleGattFeatureFlagStore(private val context: Context) {
     }
   }
 
+  fun clearForLogout(): Boolean = try {
+    withFlagUpdateLock {
+      LocalGattConsentStore(context).clear()
+      flagFile.delete()
+      cleanupUnauthenticatedV1()
+      CrossProcessBleOwnerCoordinator.forContext(context).setNativeRequested(false)
+    }
+  } catch (_: Exception) {
+    false
+  }
+
   /**
    * Authenticated remote management-plane seam. A revision must be signed,
    * unexpired, strictly monotonic, and bound to the exact Keystore key.
@@ -519,6 +530,8 @@ class SharedPreferencesSessionLedger(private val context: Context) : DurableSess
 
   @Synchronized
   override fun last(): DurableGattSession? = readAll().maxByOrNull { it.updatedEpochMs }
+
+  fun clear(): Boolean = prefs.edit().clear().commit()
 
   private fun readAll(): List<DurableGattSession> {
     return try {

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/native_wake_registration.dart';
 import '../services/update_checker.dart';
-import 'app_settings_screen.dart';
 
 /// A capability shell deliberately independent from scanner, WebView, and FGS.
 /// It remains reachable when permissions, Bluetooth, OEM policy, or the web UI
@@ -146,15 +145,6 @@ class _RecoveryShellScreenState extends State<RecoveryShellScreen> {
                                 ),
                               if (widget.onRetrySetup != null)
                                 const SizedBox(height: 8),
-                              OutlinedButton.icon(
-                                onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (_) =>
-                                            const AppSettingsScreen())),
-                                icon: const Icon(Icons.settings),
-                                label: const Text('고급 진단 열기'),
-                              ),
                               OutlinedButton.icon(
                                 onPressed: _checkUpdates,
                                 icon: const Icon(Icons.system_update),

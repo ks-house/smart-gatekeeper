@@ -469,6 +469,36 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
         self.assertTrue(any("UPDATE tenants SET name" in args[0] for args in calls))
         self.assertTrue(any("TENANT_PROFILE_UPDATED" in args[1] for args in calls if len(args) > 1))
 
+    def test_admin_can_assign_mobile_role_without_mobile_self_escalation(self) -> None:
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = {
+            "tenant_uuid": None,
+            "mobile_role": "USER",
+        }
+        cursor.rowcount = 1
+        with patch.object(main, "get_db", return_value=connection):
+            response = self.client.patch(
+                "/api/v1/admin/tenants/5",
+                headers=self.headers,
+                json={
+                    "name": "family",
+                    "unit_number": "401호",
+                    "mobile_role": "TENANT_ADMIN",
+                },
+            )
+        self.assertEqual(200, response.status_code, response.text)
+        update_calls = [
+            call.args
+            for call in cursor.execute.call_args_list
+            if call.args and "UPDATE tenants SET name" in call.args[0]
+        ]
+        self.assertEqual(1, len(update_calls))
+        self.assertEqual(
+            ("family", "401호", "TENANT_ADMIN", 5),
+            update_calls[0][1],
+        )
+
     def test_pending_legacy_account_can_be_deleted_without_acl_effect(self) -> None:
         preflight = MagicMock()
         preflight_cursor = preflight.cursor.return_value.__enter__.return_value

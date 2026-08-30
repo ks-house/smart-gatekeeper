@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('mobile exposes one normal settings page and one advanced route', () {
+  test('normal user and recovery routes hide installer controls', () {
     final settings =
         File('lib/screens/app_settings_screen.dart').readAsStringSync();
     final home =
@@ -22,13 +22,25 @@ void main() {
         home,
         contains(
             'final titles = [strings.home, strings.activity, strings.settings]'));
-    expect(home, contains('const AppSettingsScreen()'));
+    expect(home, isNot(contains('const AppSettingsScreen()')));
+    expect(home, contains('const MobileAdminSettingsScreen()'));
+    expect(home, contains('if (_identityStatus.isMobileAdmin)'));
+    expect(home, contains('const RegistrationScreen()'));
 
-    expect(webView, contains('const AppSettingsScreen()'));
+    expect(webView, isNot(contains('const AppSettingsScreen()')));
     expect(webView, isNot(contains('const SmartKeyControlScreen()')));
     expect(webView, isNot(contains('const DebugScreen()')));
-    expect(recovery, contains('const AppSettingsScreen()'));
+    expect(recovery, isNot(contains('const AppSettingsScreen()')));
     expect(recovery, isNot(contains('const SmartKeyControlScreen()')));
     expect(recovery, isNot(contains('const DebugScreen()')));
+  });
+
+  test('registration screen is registration-only', () {
+    final source =
+        File('lib/screens/registration_screen.dart').readAsStringSync();
+    expect(source, contains('등록 신청'));
+    expect(source, isNot(contains('requestOpenCommand')));
+    expect(source, isNot(contains('RemoteManualOpenService')));
+    expect(source, isNot(contains('AppSettingsScreen')));
   });
 }

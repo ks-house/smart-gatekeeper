@@ -36,7 +36,7 @@ services:
       dockerfile: Dockerfile
     container_name: gatekeeper-db-migrate
     restart: "no"
-    command: ["/usr/local/bin/sgk-migrate", "up", "009"]
+    command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-010}"]
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -97,8 +97,8 @@ services:
       GATEKEEPER_API_KEY: ${GATEKEEPER_API_KEY:-}
       OPS_HMAC_KEY: ${OPS_HMAC_KEY:-}
       BUILD_SHA: ${BUILD_SHA:-unknown}
-      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-009}
-      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-5ffe2f22c145faa1441af76b873606af7015310402b7e3f08e7e97fdce9a507d}
+      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-010}
+      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-76260eac7406904ec5f039c68ec34440c829611a9a85d23208372dee4b02cfd7}
       # ── Issue #19 Hardwareless RC ACL management (production-OFF) ──
       ACL_MANAGEMENT_ENABLED: ${ACL_MANAGEMENT_ENABLED:-false}
       ACL_LEGACY_DEVICE_LOOKUP_ENABLED: ${ACL_LEGACY_DEVICE_LOOKUP_ENABLED:-true}

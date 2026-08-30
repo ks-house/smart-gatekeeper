@@ -29,25 +29,24 @@ SYNOLOGY_COMPOSE = ROOT / "backend" / "compose.synology.yml"
 RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 DEPLOY_README = ROOT / "backend" / "deploy" / "README.md"
-ADMIN_ACCOUNT_MANAGEMENT_UP = (
-    ROOT / "backend" / "db" / "migrations" / "009_admin_account_management_up.sql"
+MOBILE_ACCOUNT_ROLES_UP = (
+    ROOT / "backend" / "db" / "migrations" / "010_mobile_account_roles_up.sql"
 )
 DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
-    def test_schema_009_identity_is_exact_across_bundle_wrapper_and_readiness(self):
-        expected = hashlib.sha256(ADMIN_ACCOUNT_MANAGEMENT_UP.read_bytes()).hexdigest()
-        self.assertEqual("009", create_release_bundle.SCHEMA_VERSION)
-        self.assertEqual(expected, create_release_bundle.SCHEMA_SHA256)
-        for path in (WRAPPER, PRODUCTION_COMPOSE, DEVELOPMENT_COMPOSE):
-            with self.subTest(path=path.name):
-                text = path.read_text(encoding="utf-8")
-                self.assertIn(expected, text)
-                self.assertNotIn(
-                    "edde5662c42e65dda82b2e0a9145d64dc4ebfc9fe7a5e5bd44b0b3aae0fe1d79",
-                    text,
-                )
+    def test_schema_identity_is_manifest_derived_and_image_bound(self):
+        expected = hashlib.sha256(MOBILE_ACCOUNT_ROLES_UP.read_bytes()).hexdigest()
+        self.assertEqual(("010", expected), create_release_bundle.schema_identity())
+        wrapper = WRAPPER.read_text(encoding="utf-8")
+        self.assertIn("validate_db_image_schema_identity", wrapper)
+        self.assertIn("schema downgrade is not admitted", wrapper)
+        self.assertNotIn('readonly EXPECTED_SCHEMA_VERSION=', wrapper)
+        production = PRODUCTION_COMPOSE.read_text(encoding="utf-8")
+        self.assertIn('${SCHEMA_VERSION:?signed schema version is required}', production)
+        self.assertIn('${SCHEMA_SHA256:?signed schema digest is required}', production)
+        self.assertIn(expected, DEVELOPMENT_COMPOSE.read_text(encoding="utf-8"))
 
     def test_dsm_tmp_helpers_are_invoked_through_bash(self):
         readme = DEPLOY_README.read_text(encoding="utf-8")
@@ -314,6 +313,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
                 "ADMIN_TRUSTED_PROXY_IPS": "127.0.0.1",
                 "ACL_SIGNING_KEY_ID": "1",
                 "BUILD_SHA": "c" * 40,
+                "SCHEMA_VERSION": "010",
+                "SCHEMA_SHA256": "76260eac7406904ec5f039c68ec34440c829611a9a85d23208372dee4b02cfd7",
                 "SGK_SECRET_DIR": "/tmp/sgk-ci-secrets",
                 "MARIADB_DATA_VOLUME": "existing-db",
                 "API_STATE_VOLUME": "api-state",

@@ -17,7 +17,11 @@ COPY migrations/008_mobile_credential_control_up.sql /opt/smart-gatekeeper/migra
 COPY migrations/008_mobile_credential_control_down.sql /opt/smart-gatekeeper/migrations/008_down.sql
 COPY migrations/009_admin_account_management_up.sql /opt/smart-gatekeeper/migrations/009_up.sql
 COPY migrations/009_admin_account_management_down.sql /opt/smart-gatekeeper/migrations/009_down.sql
+COPY migrations/010_mobile_account_roles_up.sql /opt/smart-gatekeeper/migrations/010_up.sql
+COPY migrations/010_mobile_account_roles_down.sql /opt/smart-gatekeeper/migrations/010_down.sql
+COPY schema.env /opt/smart-gatekeeper/schema.env
 COPY run_migrations.sh /usr/local/bin/sgk-migrate
 RUN chmod 0555 /usr/local/bin/sgk-migrate \
     && chmod 0444 /opt/smart-gatekeeper/migrations/*.sql \
+    && chmod 0444 /opt/smart-gatekeeper/schema.env \
     && chmod 0444 /docker-entrypoint-initdb.d/01_production_schema.sql

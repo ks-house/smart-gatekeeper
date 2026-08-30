@@ -137,3 +137,28 @@ No Samsung/OEM, relay, radio, bootloader, install/health, or production gate is
 claimed by host tests. Legacy scanner, explicit `manual_remote`, independent
 mobile updater, Target dual-slot rollback, periodic HTTPS, authenticated local
 recovery, and OEM limitations remain preserved.
+
+## Native onboarding, logout and role-based settings
+
+Registration no longer opens the legacy `/app` WebView. A native, registration-
+only screen accepts name and unit, shows pending/approved state, and deliberately
+contains no door-open, credential, Backend URL, RSSI or installer-tuning controls.
+Normal Settings retains only background-access status, signed app update,
+system language, redacted support and account logout. Engineering GATT controls
+remain in source for service builds but are unreachable from normal-user and
+recovery-shell navigation.
+
+Logout is a credential revocation, not a visual reset. The phone signs the
+fixed-width `SGKOUT01` proof; the Backend consumes its nonce, revokes the exact
+credential, publishes the replacement signed ACL and removes the linked account
+row before returning `local_clear_authorized`. Only then does Android stop BLE
+wake/work, remove encrypted locators and delete the exact non-exportable key and
+credential locator. A timeout or server rejection preserves the local key and
+never reports success.
+
+Migration 010 gives every account `mobile_role=USER` by default. The administrator
+console may set `TENANT_ADMIN` under the existing CSRF, RBAC, idempotency and
+fresh reauthentication gates. The mobile status response projects that role only
+after exact credential/public-key proof. It reveals a separate administrator
+settings entry that opens the existing secure console; it does not bypass the
+console password or reauthentication for unsafe actions.

@@ -88,8 +88,13 @@ object BleGattWorkScheduler {
     )
   }
 
+  fun cancelAll(context: Context) {
+    WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(WORK_TAG)
+  }
+
   private fun request(sessionId: String, initialDelayMs: Long): OneTimeWorkRequest {
     val builder = OneTimeWorkRequestBuilder<BleGattCredentialWorker>()
+      .addTag(WORK_TAG)
       .setInputData(workDataOf(INPUT_SESSION_ID to sessionId))
       .setInitialDelay(initialDelayMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
       .setBackoffCriteria(
@@ -107,6 +112,8 @@ object BleGattWorkScheduler {
   }
 
   private fun workName(sessionId: String) = "ble-gatt-session-$sessionId"
+
+  private const val WORK_TAG = "ble-gatt-session"
 
   internal fun inputSessionId(worker: CoroutineWorker): String? = worker.inputData.getString(INPUT_SESSION_ID)
 }

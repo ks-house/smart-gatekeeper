@@ -25,6 +25,7 @@ void main() {
           'unit_number': '401',
           'acl_version': 42,
           'credential_expires_at': 4102444800,
+          'mobile_role': 'TENANT_ADMIN',
         }),
         200,
       );
@@ -50,6 +51,7 @@ void main() {
     expect(status.accountName, 'Resident A');
     expect(status.unitNumber, '401');
     expect(status.tenantLabel, 'Resident A 401');
+    expect(status.isMobileAdmin, isTrue);
   });
 
   test('shared legacy tenant label is never rendered as phone identity',
@@ -93,6 +95,36 @@ void main() {
 
     expect(status.accessReady, isFalse);
     expect(status.nextAction, 'status_unavailable');
+  });
+
+  test('native registration request contains only supervised profile fields',
+      () async {
+    late http.Request captured;
+    final service = MobileIdentityService(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response('{"status":"pending"}', 200);
+      }),
+      nativeBridge: _IdentityNativeBridge(),
+      deviceIdProvider: () async => 'GK-12345678-1234-1234-1234-123456789012',
+      backendBaseUrl: 'https://example.test/api/v1',
+      apiKey: 'test-key',
+    );
+
+    final outcome = await service.requestRegistration(
+      name: ' Resident B ',
+      unitNumber: ' 402 ',
+    );
+    final body = jsonDecode(captured.body) as Map<String, dynamic>;
+
+    expect(outcome, 'REQUEST_ACCEPTED');
+    expect(captured.url.path, '/api/v1/user/request');
+    expect(body, <String, dynamic>{
+      'name': 'Resident B',
+      'room_no': '402',
+      'device_id': 'GK-12345678-1234-1234-1234-123456789012',
+    });
+    expect(body, isNot(contains('open_door')));
   });
 }
 

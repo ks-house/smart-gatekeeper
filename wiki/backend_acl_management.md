@@ -281,7 +281,22 @@ legacy PII row can be removed. Local MariaDB 10.11 tests cover repeated
 002-through-009 apply, backup creation, full rollback and legacy-row survival;
 hosted CI and NAS migration/deployment remain separate Gates.
 
-## 7. Verification
+## 7. Mobile logout and administrator role
+
+Migration 010 adds a constrained `mobile_role` column with least-privilege
+`USER` default and the only elevated value `TENANT_ADMIN`. The role is assigned
+from the administrator console and returned to a phone only through the exact
+credential-bound personal status projection. Client-supplied role values never
+authorize an operation.
+
+`POST /api/v1/mobile/account/logout` accepts no shared API key. It requires an
+unused bounded nonce, idempotency key, expiry and exact AndroidKeyStore
+`SGKOUT01` signature. Credential revocation and replacement signed-ACL
+publication complete before the account row is removed and local key deletion
+is authorized. Interrupted publication keeps the account/key for a safe retry;
+an invalid, replayed or cross-tenant proof has no account effect.
+
+## 8. Verification
 
 ```bash
 python -m unittest discover -s backend/tests -v

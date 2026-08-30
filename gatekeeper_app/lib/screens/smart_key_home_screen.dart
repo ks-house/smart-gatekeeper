@@ -9,12 +9,12 @@ import '../services/local_gatt_enrollment_service.dart';
 import '../services/mobile_activity_store.dart';
 import '../services/mobile_identity_service.dart';
 import '../services/native_gatt_worker_health.dart';
-import '../services/native_wake_registration.dart';
 import '../services/remote_manual_open_service.dart';
 import '../services/update_checker.dart';
-import 'app_settings_screen.dart';
+import '../services/account_logout_service.dart';
+import 'mobile_admin_settings_screen.dart';
+import 'registration_screen.dart';
 import 'support_report_screen.dart';
-import 'web_view_screen.dart';
 
 class SmartKeyHomeScreen extends StatefulWidget {
   const SmartKeyHomeScreen({super.key});
@@ -29,8 +29,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   final _healthBridge = NativeGattWorkerHealthBridge();
   final _activityStore = MobileActivityStore();
   final _updates = UpdateChecker();
-  final _wake = NativeWakeRegistrationBridge();
   final _remoteOpen = RemoteManualOpenService();
+  final _logout = AccountLogoutService();
 
   int _tab = 0;
   bool _busy = false;
@@ -115,7 +115,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         action == 'renew_credential') {
       await Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const WebViewScreen()),
+        MaterialPageRoute(builder: (_) => const RegistrationScreen()),
       );
       await _refreshIdentity();
       return;
@@ -438,11 +438,14 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
                 title: const Text('백그라운드 출입'),
                 subtitle: Text(
                     _health?.handsFreeReady == true ? '사용 가능' : '설정 확인 필요'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  await _wake.register();
-                  await _refreshHealth();
-                },
+                trailing: Icon(
+                  _health?.handsFreeReady == true
+                      ? Icons.check_circle
+                      : Icons.info_outline,
+                  color: _health?.handsFreeReady == true
+                      ? Colors.greenAccent
+                      : Colors.amberAccent,
+                ),
               ),
               const Divider(height: 1),
               ValueListenableBuilder<UpdateState>(
@@ -517,19 +520,74 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
             ),
           ),
         ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.monitor_heart_outlined),
-            title: Text(strings.advancedDiagnostics),
-            subtitle: const Text('RSSI, Worker, GATT 단계와 설치자 튜닝'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AppSettingsScreen()),
+        if (_identityStatus.isMobileAdmin)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.admin_panel_settings),
+              title: const Text('관리자 설정'),
+              subtitle: const Text('사용자 및 출입 이력 관리'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MobileAdminSettingsScreen(),
+                ),
+              ),
             ),
           ),
-        ),
+        if (_identityStatus.accountName != null)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text('로그아웃'),
+              subtitle: const Text('이 휴대폰의 스마트키 권한을 폐기합니다.'),
+              onTap: _busy ? null : _confirmLogout,
+            ),
+          ),
       ],
+    );
+  }
+
+  Future<void> _confirmLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('이 휴대폰에서 로그아웃할까요?'),
+        content: const Text(
+          '서버에서 이 휴대폰의 출입 자격을 폐기한 뒤 로컬 보안 키를 삭제합니다. 다시 사용하려면 관리자 승인을 새로 받아야 합니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('로그아웃'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final outcome = await _logout.logout();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (outcome.serverRevoked) {
+      _identityStatus = MobileIdentityStatus.unavailable;
+      await _loadAll();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          outcome.accepted
+              ? '로그아웃되었습니다. 출입 권한과 로컬 보안 키를 삭제했습니다.'
+              : outcome.serverRevoked
+                  ? '서버 출입 권한은 폐기했지만 로컬 보안 키 정리를 완료하지 못했습니다. 앱을 다시 열어 확인해 주세요.'
+                  : '로그아웃을 완료하지 못했습니다. 서버 출입 권한은 변경되지 않았습니다.',
+        ),
+      ),
     );
   }
 

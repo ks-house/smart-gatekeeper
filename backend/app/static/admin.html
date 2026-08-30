@@ -303,11 +303,12 @@
           tr.innerHTML = `
             <td>${t.id}</td>
             <td><strong>${escapeHtml(t.name)}</strong></td>
-            <td>${escapeHtml(t.unit_number || '-')}</td>
+            <td>${escapeHtml(t.unit_number || '-')}<br><small>${t.mobile_role === 'TENANT_ADMIN' ? '모바일 관리자' : '일반 사용자'}</small></td>
             <td><code>${t.ble_device_mac || '-'}</code></td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
             <td>
               <button class="btn-action btn-edit" onclick="editTenant(${Number(t.id)})">정보 수정</button>
+              <button class="btn-action btn-edit" onclick="setMobileRole(${Number(t.id)}, '${t.mobile_role === 'TENANT_ADMIN' ? 'USER' : 'TENANT_ADMIN'}')">${t.mobile_role === 'TENANT_ADMIN' ? '관리자 해제' : '관리자 지정'}</button>
               ${t.is_active 
                 ? `<button class="btn-action btn-revoke" onclick="updateTenantStatus(${t.id}, false)">권한 회수</button>`
                 : `<button class="btn-action btn-approve" onclick="updateTenantStatus(${t.id}, true)">승인하기</button>`
@@ -371,6 +372,28 @@
       });
       if (!res.ok) {
         await showRequestFailure(res, '사용자 정보 변경 실패');
+        return;
+      }
+      await loadTenants();
+    }
+
+    async function setMobileRole(tenantId, mobileRole) {
+      const tenant = tenantRows.get(Number(tenantId));
+      if (!tenant) return;
+      const label = mobileRole === 'TENANT_ADMIN' ? '모바일 관리자로 지정' : '일반 사용자로 변경';
+      if (!confirm(`${String(tenant.name)} 계정을 ${label}할까요?`)) return;
+      const res = await fetch(`/api/v1/admin/tenants/${tenantId}`, {
+        method: 'PATCH',
+        headers: { ...adminHeaders(true), 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          name: String(tenant.name),
+          unit_number: String(tenant.unit_number),
+          mobile_role: mobileRole
+        })
+      });
+      if (!res.ok) {
+        await showRequestFailure(res, '모바일 관리자 권한 변경 실패');
         return;
       }
       await loadTenants();

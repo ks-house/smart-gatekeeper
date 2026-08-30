@@ -1275,3 +1275,24 @@ tracking.
   was installed during this work. Wife/daughter phone update and visual
   confirmation that each phone shows only its own approved name/unit remain the
   final device acceptance Gate.
+
+## 2026-08-31 mobile account/settings and schema automation candidate
+
+- The owner visually confirmed that family phones now show their own approved
+  identity. This closes the per-phone label acceptance Gate for that observation;
+  it does not broaden physical door or OEM repetition evidence.
+- Native registration now replaces the legacy `/app` onboarding path and cannot
+  render door-open or installer controls. Normal Settings no longer navigates to
+  GATT/RSSI tuning; a console-assigned, server-projected `TENANT_ADMIN` role alone
+  reveals the separate administrator entry, whose unsafe operations still require
+  existing console reauthentication.
+- Server-first signed logout, migration 010 and a manifest/image-bound automatic
+  schema runner are implemented on the feature branch. Backend host regression is
+  passing; protected policy authorization, hosted mobile/native/MariaDB CI, merge,
+  one final stable-wrapper install, NAS migration/readiness, APK installation and
+  logout/admin UI device acceptance remain separate Gates.
+- Local validation passed the complete Backend suite (`162`, two environment-only
+  skips), MariaDB 10.11 migration integration (`13`), Flutter analyze and unit
+  suite (`66`), and targeted Android native JUnit (`49`). The OTA/operations
+  contract run exposed only the expected pre-authorization trusted-policy digest
+  mismatch after stale recovery-manual assertions were corrected and rerun.

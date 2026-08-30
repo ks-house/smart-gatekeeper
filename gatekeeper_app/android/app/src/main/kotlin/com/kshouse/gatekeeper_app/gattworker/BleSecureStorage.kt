@@ -86,6 +86,13 @@ class AuthenticatedTargetLocatorStore(private val context: Context) {
     }
   }
 
+  fun clear(): Boolean = try {
+    store.delete(NAME)
+    true
+  } catch (_: Exception) {
+    false
+  }
+
   companion object {
     private const val NAME = "current-target-locator-v1"
     private const val MAX_AGE_MS = 24L * 60L * 60L * 1000L
@@ -147,6 +154,13 @@ class AndroidEncryptedLocatorVault(context: Context) : LocatorVault {
     }
   }
 
+  fun clearAll(): Boolean = try {
+    store.names("locator-").forEach(store::delete)
+    true
+  } catch (_: Exception) {
+    false
+  }
+
   private fun requireSessionId(sessionId: String) {
     require(sessionId.matches(Regex("^[0-9a-fA-F-]{36}$"))) { "session id" }
   }
@@ -178,6 +192,14 @@ class BleCredentialConfigStore(private val context: Context) {
     require(credentialId.size == 16) { "credential id length" }
     store.write(CREDENTIAL_NAME, credentialId)
     context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE).edit().remove(LEGACY_KEY).commit()
+  } catch (_: Exception) {
+    false
+  }
+
+  fun clear(): Boolean = try {
+    store.delete(CREDENTIAL_NAME)
+    context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+      .edit().remove(LEGACY_KEY).commit()
   } catch (_: Exception) {
     false
   }
@@ -368,6 +390,13 @@ class LocalGattConsentStore(private val context: Context) {
       credentialId?.fill(0)
       publicKey?.fill(0)
     }
+  }
+
+  fun clear(): Boolean = try {
+    store.delete(CONSENT_NAME)
+    true
+  } catch (_: Exception) {
+    false
   }
 
   private fun generateCredentialId(): ByteArray {

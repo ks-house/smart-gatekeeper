@@ -18,6 +18,7 @@ class MobileIdentityStatus {
     this.unitNumber,
     this.aclVersion,
     this.expiresAtEpoch,
+    this.mobileRole = 'USER',
   });
 
   final EnrollmentState enrollmentState;
@@ -30,6 +31,9 @@ class MobileIdentityStatus {
   final String? unitNumber;
   final int? aclVersion;
   final int? expiresAtEpoch;
+  final String mobileRole;
+
+  bool get isMobileAdmin => mobileRole == 'TENANT_ADMIN';
 
   factory MobileIdentityStatus.fromJson(Map<String, dynamic> value) {
     final accountName = value['account_name']?.toString().trim();
@@ -54,6 +58,8 @@ class MobileIdentityStatus {
       unitNumber: hasPrivateAccountLabel ? unitNumber : null,
       aclVersion: (value['acl_version'] as num?)?.toInt(),
       expiresAtEpoch: (value['credential_expires_at'] as num?)?.toInt(),
+      mobileRole:
+          value['mobile_role'] == 'TENANT_ADMIN' ? 'TENANT_ADMIN' : 'USER',
     );
   }
 
@@ -152,6 +158,39 @@ class MobileIdentityService {
         })
         .where((event) => event.eventRef.isNotEmpty)
         .toList(growable: false);
+  }
+
+  Future<String> requestRegistration({
+    required String name,
+    required String unitNumber,
+  }) async {
+    if (_apiKey.isEmpty) return 'APP_AUTH_UNAVAILABLE';
+    final base = _backendBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final uri = Uri.tryParse('$base/user/request');
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      return 'BACKEND_URL_INVALID';
+    }
+    try {
+      final response = await _client
+          .post(
+            uri,
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+              'X-API-KEY': _apiKey,
+            },
+            body: jsonEncode(<String, Object?>{
+              'name': name.trim(),
+              'room_no': unitNumber.trim(),
+              'device_id': await _deviceIdProvider(),
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode >= 200 && response.statusCode < 300
+          ? 'REQUEST_ACCEPTED'
+          : 'REQUEST_REJECTED_${response.statusCode}';
+    } catch (_) {
+      return 'REQUEST_UNAVAILABLE';
+    }
   }
 
   Future<Map<String, dynamic>?> _post(

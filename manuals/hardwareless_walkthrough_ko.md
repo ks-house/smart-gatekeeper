@@ -16,7 +16,7 @@
 | ID | Actor | 목표 | 기대 결과 | 남은 Gate |
 |---|---|---|---|---|
 | HWL-USER-01 | 신규 사용자 | consent 전 system request가 없고 defer recovery가 있는지 확인 | disclosure/defer와 consent-order tests PASS | Samsung permission UI |
-| HWL-USER-02 | 권한 거부 사용자 | recovery shell에서 manual/update/diagnostics 접근 | recovery capability widget tests PASS | Samsung/OEM screen-off |
+| HWL-USER-02 | 권한 거부 사용자 | recovery shell에서 검증된 update/Android 설정/권한 재시도 접근, 설치자 제어 미노출 | recovery capability widget tests PASS | Samsung/OEM screen-off |
 | HWL-USER-03 | 출입 사용자 | `unknown`과 `confirmed`를 구분 | model/GATT terminal-state tests PASS | Target/radio/relay effect |
 | HWL-USER-04 | 업데이트 사용자 | unsigned/changed APK가 installer에 도달하지 않음 | manifest/artifact identity mutations PASS | signed production APK install |
 | HWL-ADMIN-01 | tenant 관리자 | anonymous/cross-tenant/CSRF 요청 fail closed | admin security negative suite PASS | deployed mTLS ingress |

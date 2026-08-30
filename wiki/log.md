@@ -5417,14 +5417,49 @@
 - Target run `33318827246` separately passed exact-main build, signing, atomic publication and HTTPS read-back for `2.1.395+main.g4a3067c`; this is publication evidence, not Target installation, reboot or health confirmation.
 - No APK was installed during this work. Wife/daughter phone update and visual confirmation that each verified credential displays only its own approved name/unit remain the final device acceptance Gate; missing/N-1 data must remain generic and must never fall back to the shared owner label.
 
+## [2026-08-31] test | Accept per-phone family identity display
+
+- The owner confirmed the corrected display is normal after updating the family phones. This closes the wife/daughter per-phone name/unit visual acceptance Gate for the observed devices.
+- The confirmation does not assert a fresh registration, logout, administrator action, repeated OEM background access or a new physical door cycle.
+
+## [2026-08-31] code | Add native account lifecycle and schema automation candidate
+
+- Replaced legacy WebView registration navigation with a native registration-only screen and removed normal-user/recovery navigation to engineering GATT/RSSI tuning. Added server-projected mobile administrator settings, with role assignment retained behind the existing console CSRF/RBAC/re-authentication controls.
+- Added server-first `SGKOUT01` logout: exact-key proof and replay protection, credential revocation, replacement signed ACL publication and linked account deletion precede Android wake/work shutdown and non-exportable key/locator removal.
+- Added additive migration 010 with least-privilege mobile role and changed release creation, DB image, Compose, migration runner and root wrapper to a signed manifest/image-bound contiguous schema target with backup-first, digest, no-downgrade, readiness and rollback gates retained.
+- Focused Backend/deployment/migration/logout tests and the full 161-test Backend suite were run; application tests passed, while two operations-contract checks initially exposed stale hardcoded schema tokens and trusted-input inventory. Those gate definitions were updated and require a fresh complete rerun before claiming source validation.
+
+## [2026-08-31] test | Validate mobile lifecycle and manifest schema candidate
+
+- The complete Backend suite passed with 162 tests and two expected environment-only skips; MariaDB 10.11 applied the contiguous 002-through-010 migration chain, backup/ledger contracts and rollback checks across all 13 integration tests.
+- Flutter formatting, analysis and all 66 unit/widget tests passed. CI-equivalent Gradle 9.1/JDK 17 executed 49 targeted native tests, including the fixed-width domain-separated `SGKOUT01` canonical proof, with zero failures or skips.
+- Updated the recovery walkthrough and source-bound manual contract to expose only verified update, Android settings and bounded permission retry to ordinary users; its focused source and all 16 bounded walkthrough commands passed. The complete 317-test OTA/operations run now has only expected pre-policy protected-digest failures, so trusted-policy rotation remains the next Gate rather than a source or OTA bypass.
+
 ## [2026-08-31] compile | Authorize mobile lifecycle and manifest schema candidate
 
 - Bound the complete ordered 91-path protected bundle to immutable feature candidate `68c9c3172782339a731f01dfb960b1aa8aeabaff`, adding migration 010 up/down and signed `schema.env` to the trusted inventory.
 - Exactly 18 protected normalized blobs are new or changed across the Backend logout/admin role path, manifest-derived migration deployment, trusted inventory and direct regressions. The persistent identity admits only the exact repository candidate or proven same-byte descendants.
 - This policy-only candidate changes no NAS wrapper, database, credential, ACL, container, APK, Target, relay or physical door. Hosted policy CI/merge, feature merge-connection, fresh full CI, exact-main merge and deployment remain separate Gates.
 
+## [2026-08-31] compile | Connect mobile lifecycle candidate to trusted policy main
+
+- Policy PR #308 passed Hosted Trusted and merge-committed as main `8ac609c15275639c9eb385d10960d1cb02f3613f`; merged that exact policy history into immutable feature candidate `68c9c3172782339a731f01dfb960b1aa8aeabaff` without rebase or squash.
+- Both exact parents are retained and all 18 reviewed new or changed protected blobs plus the complete ordered 91-path map remain identical to the authorization. Fresh full local and hosted feature checks remain required before feature merge.
+
+## [2026-08-31] fix | Load signed schema metadata in hosted Compose validation
+
+- Feature PR #309 exposed a hosted-only fail-closed gap: production Compose correctly required `SCHEMA_VERSION` and `SCHEMA_SHA256`, but its CI validation step had not exported the reviewed `backend/db/schema.env` before interpolation.
+- The validation now exports that source-controlled two-field manifest before all Compose checks, and a direct regression requires the load to precede production interpolation. Runtime image binding, backup, no-downgrade, migration, readiness, rollback and authorization gates are unchanged.
+- The first hosted Backend job failed before image publication or NAS deployment. Fresh local checks, trusted-policy authorization for the protected workflow byte, hosted CI and deployment remain separate Gates.
+
 ## [2026-08-31] compile | Authorize hosted schema-manifest validation correction
 
 - Bound exact corrective feature candidate `67f87a1dddccb6630564160a1c38d25926817891` to a complete 91-path persistent baseline after PR #309 failed closed before publication because hosted Compose validation had not exported `backend/db/schema.env`.
 - The policy authorizes the reviewed workflow load plus its direct migration regression: 19 changed or new protected paths and 72 byte-identical protected paths. No wildcard, partial bundle, caller-selected schema value or runtime exception is introduced.
 - This policy-only change performs no image publication, NAS migration, mobile installation, Target update or physical action. Hosted Trusted, policy merge, feature merge-connection and fresh feature CI remain separate Gates.
+
+## [2026-08-31] compile | Recover and connect hosted schema validation policy
+
+- With explicit owner approval, disabled only `main` administrator enforcement, merge-committed policy PR #310 as `639d5752d6d3da1267258a833afc78e834381c7c`, then immediately restored and read back `enforce_admins=true`, strict required checks and the unchanged `Verify protected files against trusted base policy` context.
+- Merged that exact policy main into corrective feature candidate `67f87a1dddccb6630564160a1c38d25926817891` without rebase or squash. The source-controlled schema manifest load and its direct regression now match the complete 91-path authorization.
+- Fresh full feature CI, normal feature merge, final actual-main policy rotation, root-owned NAS wrapper installation, schema-010 migration and readiness remain separate Gates.

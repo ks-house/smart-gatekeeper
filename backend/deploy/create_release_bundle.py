@@ -26,8 +26,7 @@ EXPECTED_REPOSITORIES = {
     "api": "ghcr.io/ks-house/smart-gatekeeper-backend",
     "db": "ghcr.io/ks-house/smart-gatekeeper-db",
 }
-SCHEMA_VERSION = "009"
-SCHEMA_SHA256 = "5ffe2f22c145faa1441af76b873606af7015310402b7e3f08e7e97fdce9a507d"
+SCHEMA_MANIFEST = ROOT / "backend" / "db" / "schema.env"
 BUNDLE_MEMBERS = (
     "release.env",
     "release.env.sig",
@@ -38,6 +37,38 @@ BUNDLE_MEMBERS = (
 
 class BundleError(ValueError):
     """Raised when release inputs do not satisfy the deployment contract."""
+
+
+def schema_identity() -> tuple[str, str]:
+    """Read and verify the repository-owned latest migration identity."""
+    try:
+        lines = SCHEMA_MANIFEST.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise BundleError("schema manifest is unavailable") from exc
+    values: dict[str, str] = {}
+    for line in lines:
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.partition("=")
+        if not separator or key in values:
+            raise BundleError("schema manifest is malformed")
+        values[key] = value
+    if set(values) != {"SCHEMA_VERSION", "SCHEMA_SHA256"}:
+        raise BundleError("schema manifest keys are invalid")
+    version = values["SCHEMA_VERSION"]
+    digest = values["SCHEMA_SHA256"]
+    if not re.fullmatch(r"[0-9]{3}", version) or int(version) < 2:
+        raise BundleError("schema version is invalid")
+    if not DIGEST_PATTERN.fullmatch(digest):
+        raise BundleError("schema digest is invalid")
+    migration = ROOT / "backend" / "db" / "migrations" / f"{version}_mobile_account_roles_up.sql"
+    candidates = sorted((ROOT / "backend" / "db" / "migrations").glob(f"{version}_*_up.sql"))
+    if len(candidates) != 1:
+        raise BundleError("latest schema migration is missing or ambiguous")
+    migration = candidates[0]
+    if sha256_file(migration) != digest:
+        raise BundleError("schema manifest does not match latest migration")
+    return version, digest
 
 
 def sha256_file(path: Path) -> str:
@@ -92,6 +123,7 @@ def create_bundle(args: argparse.Namespace) -> dict[str, str]:
         raise BundleError("output bundle already exists")
     output.parent.mkdir(parents=True, exist_ok=True)
     created_at = validated_created_at(args.created_at)
+    schema_version, schema_sha256 = schema_identity()
     release_id = (
         f"{args.source_sha}-run{args.github_run_id}-attempt{args.github_run_attempt}"
     )
@@ -114,8 +146,8 @@ def create_bundle(args: argparse.Namespace) -> dict[str, str]:
                 ("DB_IMAGE_DIGEST", db_digest),
                 ("COMPOSE_PRODUCTION_SHA256", sha256_file(production_copy)),
                 ("COMPOSE_SYNOLOGY_SHA256", sha256_file(synology_copy)),
-                ("SCHEMA_VERSION", SCHEMA_VERSION),
-                ("SCHEMA_SHA256", SCHEMA_SHA256),
+                ("SCHEMA_VERSION", schema_version),
+                ("SCHEMA_SHA256", schema_sha256),
                 ("CREATED_AT_UTC", created_at),
                 ("GITHUB_RUN_ID", args.github_run_id),
                 ("GITHUB_RUN_ATTEMPT", args.github_run_attempt),
