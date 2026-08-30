@@ -5319,3 +5319,9 @@
 - The owner completed the fresh A24 request and administrator approval after the corrected Backend deployment.
 - Connected read-only ADB UI evidence showed `스마트키 등록 준비 완료`, the instruction to link this phone's security key to the approved account, `이 휴대폰 등록`, zero doors and ACL pending.
 - This is the expected `enroll_credential` state, not a repeated tenant request. The agent did not press the effectful enrollment button; owner key enrollment, credential result, signed ACL Target ACK and daughter-device access remain separate Gates.
+
+## [2026-08-30] compile | Authorize approved additional family-phone enrollment candidate
+
+- Bound the complete ordered 86-path protected bundle to immutable feature candidate `e2ecc68f9e5f7a15c9ca9319d244c99bc778f371`, changing exactly `backend/app/acl_management.py` and `backend/tests/test_acl_api.py`.
+- The candidate retains one unique legacy compatibility owner while allowing a separately approved additional family row to receive its own active public credential and exact shared-personal-door grant without a second `tenant_uuid` mapping. Existing unapproved, inactive, cross-tenant, conflict and revocation denials remain fixed.
+- This policy-only step mutates no credential, grant, NAS database/container, signed ACL, mobile/Target install or physical door. Policy merge, feature merge-connection, fresh CI, NAS deployment/readiness, one owner retry, Target ACK and daughter-device access remain separate Gates.
