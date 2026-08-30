@@ -5368,3 +5368,9 @@
 
 - Trusted-policy PR #302 passed its base-policy verification and merged as main `076fc1d822c0a387fb96c4fdaeb044116c2f0bb8`. The persistent baseline pins immutable feature candidate `d3d15d1f540950b1232b3ebf3ee5eb4614c19fac`, all 88 protected paths and the two new migration-009 files to exact normalized SHA-256 values.
 - Merged that exact policy main into the feature branch without rebasing or changing any protected feature blob. Feature PR checks, merge, NAS backup/migration/deployment, live readiness and administrator browser verification remain separate Gates.
+
+## [2026-08-30] fix | Synchronize trusted-policy regression baseline with migration 009
+
+- The feature PR's Hosted Trusted check passed, but the broader OTA/schema job exposed that `tests/test_trusted_workflow_policy.py` still described the preceding 86-path family-enrollment baseline while the reviewed persistent policy already authorized the 88-path administrator account-management bundle.
+- Updated only the regression fixture identity, exact protected digests, 20-path candidate delta and 88/68 inventory counts to the merged policy contract; no workflow, trusted verifier, approved bundle, application runtime or NAS state changed.
+- The focused 42 trusted-policy tests and complete 317 OTA/schema tests passed with one expected platform skip. Feature PR CI, merge, exact-main deployment and browser/runtime verification remain separate Gates.
