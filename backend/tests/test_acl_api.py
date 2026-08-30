@@ -14,6 +14,7 @@ from backend.app.acl_management import (
     RecordingPublisher,
     build_enrollment_input,
     initialize_sqlite_test_schema,
+    legacy_device_storage_id,
 )
 
 
@@ -238,6 +239,7 @@ class AclApiTest(unittest.TestCase):
 
     def test_personal_status_separates_legacy_migration_from_access_ready(self) -> None:
         device_id = "DEV-PENDING-MOBILE"
+        stored_locator = legacy_device_storage_id(device_id)
         provisional = DeterministicP256Signer(31, signing_key_id=0)
         provisional_body = {
             "device_id": device_id,
@@ -258,7 +260,7 @@ class AclApiTest(unittest.TestCase):
             "INSERT INTO tenants "
             "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
             "VALUES (?, ?, ?, 0, NULL)",
-            ("pending", "unit", device_id),
+            ("pending", "unit", stored_locator),
         )
         self.conn.commit()
         pending = self.client.post(
@@ -280,7 +282,7 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual("wait_for_approval", pending_with_key.json()["next_action"])
 
         self.conn.execute(
-            "UPDATE tenants SET is_active=1 WHERE ble_device_mac=?", (device_id,)
+            "UPDATE tenants SET is_active=1 WHERE ble_device_mac=?", (stored_locator,)
         )
         self.conn.commit()
         approved_legacy = self.client.post(
@@ -309,19 +311,21 @@ class AclApiTest(unittest.TestCase):
         self.assertEqual(422, denied.status_code)
 
     def test_personal_enrollment_bootstraps_unmapped_approved_legacy_row(self) -> None:
+        device_id = "DEV-FIRST-BOOTSTRAP"
+        stored_locator = legacy_device_storage_id(device_id)
         self.conn.execute("DELETE FROM acl_tenants WHERE tenant_id=?", (TENANT_A,))
         self.conn.execute(
             "INSERT INTO tenants "
             "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
             "VALUES (?, ?, ?, 1, NULL)",
-            ("personal", "home", "DEV-FIRST-BOOTSTRAP"),
+            ("personal", "home", stored_locator),
         )
         self.conn.commit()
         device = DeterministicP256Signer(21, signing_key_id=0)
         response = self.client.post(
             "/api/v1/acl/personal/enroll",
             json={
-                "device_id": "DEV-FIRST-BOOTSTRAP",
+                "device_id": device_id,
                 "credential_id": "bc" * 16,
                 "public_key_sec1": device.public_key_sec1.hex(),
                 "min_protocol": 1,
@@ -333,10 +337,47 @@ class AclApiTest(unittest.TestCase):
         self.assertTrue(response.json()["accepted"])
         mapping = self.conn.execute(
             "SELECT tenant_uuid, credential_mode FROM tenants "
-            "WHERE ble_device_mac='DEV-FIRST-BOOTSTRAP'"
+            "WHERE ble_device_mac=?",
+            (stored_locator,),
         ).fetchone()
         self.assertEqual(TENANT_A, mapping["tenant_uuid"])
         self.assertEqual("dual", mapping["credential_mode"])
+
+    def test_fresh_install_locator_survives_registration_status_and_enrollment(self) -> None:
+        device_id = "GK-01234567-89AB-4CDE-8F01-23456789ABCD"
+        stored_locator = legacy_device_storage_id(device_id)
+        self.assertEqual(17, len(stored_locator))
+        self.assertNotEqual(device_id, stored_locator)
+        self.conn.execute(
+            "INSERT INTO tenants "
+            "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
+            "VALUES (?, ?, ?, 1, NULL)",
+            ("family", "home", stored_locator),
+        )
+        self.conn.commit()
+
+        status = self.client.post(
+            "/api/v1/acl/personal/status",
+            json={"device_id": device_id},
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, status.status_code, status.text)
+        self.assertEqual("ready_to_enroll", status.json()["enrollment_state"])
+
+        device = DeterministicP256Signer(22, signing_key_id=0)
+        enrolled = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json={
+                "device_id": device_id,
+                "credential_id": "de" * 16,
+                "public_key_sec1": device.public_key_sec1.hex(),
+                "min_protocol": 1,
+                "max_protocol": 1,
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, enrolled.status_code, enrolled.text)
+        self.assertTrue(enrolled.json()["accepted"])
 
     def test_personal_enrollment_unapproved_device_is_forbidden(self) -> None:
         device = DeterministicP256Signer(17, signing_key_id=0)
@@ -355,11 +396,12 @@ class AclApiTest(unittest.TestCase):
 
     def test_personal_enrollment_never_accepts_before_acl_delivery(self) -> None:
         device_id = "DEV-PERSONAL-DELIVERY"
+        stored_locator = legacy_device_storage_id(device_id)
         self.conn.execute(
             "INSERT INTO tenants "
             "(name, unit_number, ble_device_mac, is_active, tenant_uuid) "
             "VALUES (?, ?, ?, 1, ?)",
-            ("personal", "home", device_id, TENANT_A),
+            ("personal", "home", stored_locator, TENANT_A),
         )
         self.conn.commit()
         device = DeterministicP256Signer(18, signing_key_id=0)

@@ -196,6 +196,18 @@ the same supervised legacy registration state used before key creation so Home
 can offer `request_registration`, `wait_for_approval` or `enroll_credential`.
 If the credential ID exists but its public key differs, status still fails
 closed; an unknown key never inherits an existing credential's authorization.
+PR #295 deployed this onboarding correction as exact main
+`bf435bf4c9681c3ef5e926ecc23f8f7619da9bf5`. Run `33312971831` passed
+canonical loopback/public readiness, independent strict-TLS readback returned
+HTTP 200 with all checks true, and the connected fresh A24 displayed the
+registration action and form. The owner's subsequent submission failed before
+persistence because the legacy request schema accepted only `DEV-*`, while a
+fresh install generates a random UUID-shaped `GK-*` ID. The proposed correction
+accepts both bounded formats, preserves identifiers that already fit, and maps
+longer values such as the high-entropy `GK-*` UUID to a deterministic
+17-character locator for the existing legacy MariaDB column;
+status and credential bootstrap use the same mapping, while credentials keep
+their separate keyed legacy reference. Approval and access remain pending.
 It fails closed while ACL management is unavailable. The older HMAC v2 envelope
 remains N-1 compatible, while device-ID-only calls are upgrade-required and
 cause no control effect. Home Assistant

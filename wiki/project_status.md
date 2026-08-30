@@ -1157,5 +1157,25 @@ tracking.
   when the credential ID is absent from storage. A stored credential ID with a
   different public key still fails closed. Focused 9 and full 149 Backend tests
   pass with the two expected Docker-only skips. Trusted policy main `6a714f8`
-  is merge-connected as `79bdf7b`; fresh protected CI, feature merge, NAS
-  deployment/readiness and connected A24 UI readback remain pending.
+  was merge-connected as `79bdf7b`; PR #295 passed fresh checks and merged as
+  exact main `bf435bf4c9681c3ef5e926ecc23f8f7619da9bf5`.
+- Backend run `33312971831` passed immutable image publication and the
+  owner-approved Tailscale NAS deployment. Canonical evidence reported
+  `status=deployed` with loopback/public readiness passed; independent
+  strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with all
+  checks true.
+- The unchanged connected A24 then rendered `스마트키 등록 필요` and
+  `등록 요청`; opening it showed the existing name/unit inputs and
+  `출입 권한 신청하기`. The owner submitted once and received
+  `신청 접수에 실패했습니다`; no successful database mutation is claimed.
+- Source comparison established a two-stage contract defect: fresh installs
+  generate UUID-shaped `GK-*` IDs, while `/api/v1/user/request` accepted only
+  `DEV-*`, and the legacy tenant locator column is fixed at 17 characters. The
+  proposed correction accepts the same `DEV|GK` grammar as the personal ACL
+  routes, preserves identifiers that already fit, and maps longer values such
+  as `GK-*` to a deterministic 17-character digest locator used consistently
+  by request, status and bootstrap. Focused flow and
+  all 151 Backend tests pass with two expected Docker-only skips. Protected
+  policy/CI, NAS deployment, one owner retry, administrator approval,
+  credential enrollment, Target ACL publication and daughter-device access
+  remain separate Gates.

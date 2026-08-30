@@ -442,6 +442,30 @@ class PersonalEnrollmentTest(unittest.TestCase):
         parameters = cursor.execute.call_args.args[1]
         self.assertEqual("DEV-BP4A25120500", parameters[2])
 
+    def test_request_accepts_fresh_install_id_with_bounded_legacy_locator(self) -> None:
+        device_id = "GK-01234567-89AB-4CDE-8F01-23456789ABCD"
+        payload = {
+            "name": "family",
+            "room_no": "personal",
+            "device_id": device_id,
+        }
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        with patch.object(main, "GATEKEEPER_API_KEY", "app-secret"), patch.object(
+            main, "get_db", return_value=connection
+        ):
+            response = self.client.post(
+                "/api/v1/user/request",
+                headers={"X-API-KEY": "app-secret"},
+                json=payload,
+            )
+
+        self.assertEqual(200, response.status_code, response.text)
+        stored_locator = cursor.execute.call_args.args[1][2]
+        self.assertEqual(main.legacy_device_storage_id(device_id), stored_locator)
+        self.assertEqual(17, len(stored_locator))
+        self.assertNotEqual(device_id, stored_locator)
+
     def test_request_rejects_browser_generated_or_malformed_identifier(self) -> None:
         with patch.object(main, "GATEKEEPER_API_KEY", "app-secret"):
             response = self.client.post(

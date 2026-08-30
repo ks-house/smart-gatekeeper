@@ -7,6 +7,7 @@ adapter is DB-API based so production can use PyMySQL while tests use an isolate
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -30,6 +31,26 @@ ACL_DOMAIN = b"SGKACL01"
 ENROLLMENT_DOMAIN = b"SGKENR01"
 ACTIVE_STATUS = "ACTIVE"
 KNOWN_CREDENTIAL_STATUSES = {"PENDING", "ACTIVE", "DISABLED", "REVOKED", "EXPIRED"}
+
+
+def legacy_device_storage_id(device_id: str) -> str:
+    """Return the bounded legacy-table locator for one validated app ID.
+
+    Existing ``DEV-*`` installations that already fit keep their historical
+    value. Fresh installs use a random UUID-shaped ``GK-*`` identifier, which
+    cannot fit the legacy MariaDB ``VARCHAR(17)`` column. Store a deterministic
+    70-bit digest locator for any longer accepted ID instead of truncating or
+    persisting it.
+    """
+
+    normalized = device_id.strip().upper()
+    if normalized.startswith(("DEV-", "GK-")) and len(normalized) <= 17:
+        return normalized
+    if not normalized.startswith(("DEV-", "GK-")):
+        raise ValueError("invalid legacy device ID")
+    digest = hashlib.sha256(normalized.encode("utf-8")).digest()
+    token = base64.b32encode(digest).decode("ascii").rstrip("=")[:14]
+    return f"ID-{token}"
 
 
 class MqttPublishError(RuntimeError):
@@ -668,13 +689,13 @@ class AclStore:
             row = self._one(
                 "SELECT name, unit_number, is_active, tenant_uuid FROM tenants "
                 "WHERE UPPER(ble_device_mac)=?",
-                (legacy_device_id.upper(),),
+                (legacy_device_storage_id(legacy_device_id),),
             )
         else:
             row = self._one(
                 "SELECT name, unit_number, is_active, tenant_uuid FROM tenants "
                 "WHERE UPPER(ble_device_mac)=?",
-                (legacy_device_id.upper(),),
+                (legacy_device_storage_id(legacy_device_id),),
             )
         if row is None:
             return None
@@ -871,7 +892,7 @@ class AclStore:
                 "SELECT id, name, unit_number, tenant_uuid, is_active, credential_mode "
                 "FROM tenants "
                 f"WHERE UPPER(ble_device_mac)={placeholder}{lock_suffix}",
-                (legacy_device_id.upper(),),
+                (legacy_device_storage_id(legacy_device_id),),
             )
             legacy_rows = cursor.fetchall()
             if len(legacy_rows) != 1:
