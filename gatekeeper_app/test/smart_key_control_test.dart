@@ -15,10 +15,29 @@ void main() {
       source,
       contains('final result = await _healthBridge.triggerLocalGattOpen();'),
     );
-    expect(source, contains("reason == 'OPENED'"));
-    expect(source, contains('✅ 문이 열렸습니다'));
+    expect(source, contains('ManualOpenOutcome.fromNative(result)'));
+    expect(source, contains('✅ 개방 명령 실행 완료'));
+    expect(source, contains('실제 문 열림은 별도 확인'));
+    expect(source, isNot(contains('문이 열렸습니다')));
     expect(source, isNot(contains('_healthBridge.triggerLocalGattRetry();')));
     expect(source, isNot(contains('durable queue에 등록되었습니다')));
+  });
+
+  test('all manual action entry points use the truthful outcome projection',
+      () {
+    final home =
+        File('lib/screens/smart_key_home_screen.dart').readAsStringSync();
+    final web = File('lib/screens/web_view_screen.dart').readAsStringSync();
+
+    expect(home, contains('ManualOpenOutcome.fromNative(result)'));
+    expect(home, contains('manualOpenCommandExecuted'));
+    expect(home, contains('manualOpenOutcomeUnknown'));
+    expect(home, contains('recordManualOpenResult(result)'));
+    expect(web, contains('ManualOpenOutcome.fromNative(result)'));
+    expect(web, contains('outcome.commandExecuted'));
+    expect(web, contains('recordManualOpenResult(result)'));
+    expect(home, isNot(contains('문 열림을 Target에서 확인했습니다')));
+    expect(web, isNot(contains('문이 열렸습니다')));
   });
 
   test('credential card uses native authority without local tenant fiction',

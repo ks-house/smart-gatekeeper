@@ -1008,3 +1008,24 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 The register contains eight open issues after the cleanup. It intentionally
 keeps broad release Gates open while removing only completed or duplicate
 tracking.
+
+## 2026-08-30 truthful action-2 result source candidate (#276)
+
+- The mobile projection no longer maps background durable `SUCCEEDED` to
+  physical `confirmed`; it maps to `armed`, while queued/running/retry-pending
+  remain authorization progress. `confirmed` is reserved for a future
+  independent authoritative contact/door event.
+- Home, hosted WebView and advanced control now treat native `OPENED` as
+  `개방 명령 실행 완료` and explicitly say physical door opening is not
+  confirmed. Accepted-but-non-`OPENED` and proof-uncertain results become
+  unknown and prohibit automatic retry; non-accepted results remain failures.
+- Manual action-2 outcomes are written to the bounded privacy-safe activity
+  timeline with command-executed/unknown/failed types, latency where available
+  and a normalized bounded reason. Raw Target addresses, credentials, proofs
+  and tenant data are not persisted.
+- Local Flutter analysis reported no findings, all 57 Flutter tests passed,
+  Android `gattworker.*` unit tests rebuilt and passed, and all 317 repository
+  contract tests passed with one expected platform-specific skip. PR review,
+  exact-main signed APK publication, replacement install and connected
+  Korean/English readback remain pending. The absent sensor/relay/contact/door
+  fixture means physical opening remains unverified regardless of UI result.

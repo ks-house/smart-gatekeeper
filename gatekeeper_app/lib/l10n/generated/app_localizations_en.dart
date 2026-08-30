@@ -66,6 +66,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get automaticAccessDisabled => 'Automatic access disabled';
 
   @override
+  String get manualOpenRequesting => 'Requesting an open command from Target.';
+
+  @override
+  String get manualOpenCommandExecuted =>
+      'Target executed the open command. Physical door opening is not confirmed.';
+
+  @override
+  String get manualOpenOutcomeUnknown =>
+      'The open-command outcome is unknown. Do not retry automatically.';
+
+  @override
   String get currentVersion => 'Installed version';
 
   @override

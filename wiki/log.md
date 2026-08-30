@@ -5040,3 +5040,16 @@
 - Closed authoritative credential-state issue #262 as completed after connected installation/readback, and closed redesign Epic #13 after consolidating its remaining commercial physical/OEM work into #51/#54/#48 without claiming those Gates complete.
 - Updated #48, #50~#53 and #179 with current evidence and narrowed open acceptance, retained #54 as the physical/operator release Gate, and applied `bug`, `enhancement` or `documentation` labels.
 - Opened #276 to correct action-2 UI/activity/notification semantics that currently represent Target command/FSM/GPIO success as confirmed physical door opening. The resulting open register has eight actionable issues.
+
+## [2026-08-30] fix | Separate command execution from physical door confirmation
+
+- Changed the mobile commercial projection so background `SUCCEEDED` means armed/sensor-waiting rather than confirmed physical opening; queued, running and retry-pending remain authorization progress, and physical `confirmed` is reserved for a future independent authoritative event.
+- Unified Home, hosted WebView and advanced-control action-2 results through `ManualOpenOutcome`: exact accepted `OPENED` is `개방 명령 실행 완료`, accepted-but-inconsistent or proof-uncertain results are unknown with no automatic retry, and non-accepted outcomes fail.
+- Added ko/en foreground copy and a bounded privacy-safe activity record for command-executed/unknown/failed outcomes. Timeline write failure does not hide the terminal UI result, and no raw credential, proof, Target address or tenant data is persisted.
+- Updated the thin-UI architecture, Korean user/support procedures, machine-readable walkthrough fixture, usability plan and project status while retaining prior observed copy only as historical evidence.
+
+## [2026-08-30] test | Verify truthful action-2 source candidate
+
+- Flutter analysis completed with no findings and all 57 Flutter tests passed, including action-1 armed mapping, manual success/unknown/failure projection, bounded activity persistence and all three manual UI entry points.
+- Android `gattworker.*` tests rebuilt with Gradle 9.1.0 and passed, retaining the notification contract that action-1 success says sensor-ready and never claims a physical opening.
+- All 317 repository contract tests passed with one expected platform-specific skip, and `git diff --check` passed. PR review, exact-main signed APK publication and connected Korean/English replacement-install readback remain separate Gates; sensors, relay contact/load, actuator and door remain absent.

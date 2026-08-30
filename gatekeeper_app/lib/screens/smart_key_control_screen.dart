@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../services/commercial_models.dart';
 import '../services/device_id_service.dart';
 import '../services/feature_flag_service.dart';
 import '../services/local_gatt_enrollment_service.dart';
+import '../services/mobile_activity_store.dart';
 import '../services/native_gatt_worker_health.dart';
 import '../services/update_checker.dart';
 
@@ -183,9 +185,15 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
     }
 
     final result = await _healthBridge.triggerLocalGattOpen();
-    final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
-    final success = result['accepted'] == true && reason == 'OPENED';
-    final latencyMs = result['latencyMs'];
+    final outcome = ManualOpenOutcome.fromNative(result);
+    try {
+      await MobileActivityStore().recordManualOpenResult(result);
+    } catch (_) {
+      // A local timeline write failure must not hide the terminal result.
+    }
+    final latency = outcome.latencyMs == null
+        ? ''
+        : ' (${outcome.latencyMs!.toString()}ms)';
     try {
       _workerHealth = await _healthBridge.read();
     } catch (_) {
@@ -195,9 +203,13 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
     if (mounted) {
       setState(() {
         _isRetrying = false;
-        _retryMessage = success
-            ? '✅ 문이 열렸습니다${latencyMs is num ? ' (${latencyMs.toInt()}ms)' : ''}'
-            : '⚠️ 수동 출입 실패: $reason';
+        _retryMessage = switch (outcome.state) {
+          ManualOpenState.commandExecuted =>
+            '✅ 개방 명령 실행 완료$latency\n실제 문 열림은 별도 확인이 필요합니다.',
+          ManualOpenState.outcomeUnknown =>
+            '⚠️ 개방 결과 확인 필요: ${outcome.reason}\n자동 재시도하지 마세요.',
+          ManualOpenState.failed => '⚠️ 개방 명령 실패: ${outcome.reason}',
+        };
       });
     }
   }

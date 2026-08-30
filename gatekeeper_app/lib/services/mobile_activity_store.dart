@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'commercial_models.dart';
 import 'native_gatt_worker_health.dart';
 
 class MobileActivityItem {
@@ -69,9 +70,68 @@ class MobileActivityStore {
   Future<List<MobileActivityItem>> ingest(NativeGattWorkerHealth health) async {
     final current = await read();
     final next = _project(health);
-    if (next == null || current.any((item) => item.id == next.id)) {
-      return current;
-    }
+    if (next == null) return current;
+    return _append(current, next);
+  }
+
+  Future<List<MobileActivityItem>> recordManualOpenResult(
+    Map<Object?, Object?> result, {
+    DateTime? occurredAt,
+  }) async {
+    final current = await read();
+    final outcome = ManualOpenOutcome.fromNative(result);
+    final timestamp = occurredAt ?? DateTime.now();
+    final latency = outcome.latencyMs == null
+        ? ''
+        : ' (${outcome.latencyMs!.toString()}ms)';
+    final safeReason = _boundedReason(outcome.reason);
+    final item = switch (outcome.state) {
+      ManualOpenState.commandExecuted => MobileActivityItem(
+          id: _manualId(outcome, timestamp),
+          type: 'manual_command_executed',
+          occurredAt: timestamp,
+          title: '개방 명령 실행 완료',
+          detail: 'Target이 개방 명령을 실행했습니다$latency. 실제 문 열림은 별도 확인이 필요합니다.',
+          isFailure: false,
+        ),
+      ManualOpenState.outcomeUnknown => MobileActivityItem(
+          id: _manualId(outcome, timestamp),
+          type: 'manual_command_unknown',
+          occurredAt: timestamp,
+          title: '개방 결과 확인 필요',
+          detail: 'Target 실행 결과를 확인할 수 없습니다 ($safeReason). 자동 재시도하지 마세요.',
+          isFailure: true,
+        ),
+      ManualOpenState.failed => MobileActivityItem(
+          id: _manualId(outcome, timestamp),
+          type: 'manual_command_failed',
+          occurredAt: timestamp,
+          title: '개방 명령 실패',
+          detail: 'Target이 개방 명령을 완료하지 못했습니다 ($safeReason).',
+          isFailure: true,
+        ),
+    };
+    return _append(current, item);
+  }
+
+  String _manualId(ManualOpenOutcome outcome, DateTime timestamp) {
+    return 'manual-${outcome.sessionId ?? timestamp.toUtc().millisecondsSinceEpoch}-${outcome.state.name}';
+  }
+
+  String _boundedReason(String reason) {
+    final bounded = reason
+        .toUpperCase()
+        .replaceAll(RegExp('[^A-Z0-9_-]'), '_')
+        .replaceAll(RegExp('_+'), '_');
+    if (bounded.isEmpty) return 'UNKNOWN';
+    return bounded.length <= 64 ? bounded : bounded.substring(0, 64);
+  }
+
+  Future<List<MobileActivityItem>> _append(
+    List<MobileActivityItem> current,
+    MobileActivityItem next,
+  ) async {
+    if (current.any((item) => item.id == next.id)) return current;
     final updated =
         <MobileActivityItem>[next, ...current].take(_limit).toList();
     final prefs = await SharedPreferences.getInstance();

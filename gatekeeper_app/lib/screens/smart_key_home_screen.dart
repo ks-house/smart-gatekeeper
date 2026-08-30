@@ -105,6 +105,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
 
   Future<void> _runPrimaryAction() async {
     if (_busy) return;
+    final strings = AppLocalizations.of(context);
     final action = _identityStatus.nextAction;
     if (action == 'request_registration' ||
         action == 'wait_for_approval' ||
@@ -137,7 +138,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
       _busy = true;
       _actionMessage = action == 'enroll_credential'
           ? '스마트키 자격을 등록하고 있습니다.'
-          : 'Target에 문 열기를 요청하고 있습니다.';
+          : strings.manualOpenRequesting;
     });
     try {
       final enrolled = await _enrollment.ensureEnrolledAndEnabled();
@@ -151,11 +152,25 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         return;
       }
       final result = await _healthBridge.triggerLocalGattOpen();
-      final reason = result['reason']?.toString() ?? 'NATIVE_UNAVAILABLE';
+      final outcome = ManualOpenOutcome.fromNative(result);
+      List<MobileActivityItem>? activity;
+      try {
+        activity = await _activityStore.recordManualOpenResult(result);
+      } catch (_) {
+        // A local timeline write failure must not hide the terminal result.
+      }
+      final latency = outcome.latencyMs == null
+          ? ''
+          : ' (${outcome.latencyMs!.toString()}ms)';
+      if (!mounted) return;
       setState(() {
-        _actionMessage = result['accepted'] == true && reason == 'OPENED'
-            ? '문 열림을 Target에서 확인했습니다.'
-            : _friendlyReason(reason);
+        if (activity != null) _activity = activity;
+        _actionMessage = switch (outcome.state) {
+          ManualOpenState.commandExecuted =>
+            '${strings.manualOpenCommandExecuted}$latency',
+          ManualOpenState.outcomeUnknown => strings.manualOpenOutcomeUnknown,
+          ManualOpenState.failed => _friendlyReason(outcome.reason),
+        };
       });
       await _refreshHealth();
     } finally {

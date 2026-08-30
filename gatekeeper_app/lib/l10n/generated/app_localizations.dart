@@ -212,6 +212,24 @@ abstract class AppLocalizations {
   /// **'Automatic access disabled'**
   String get automaticAccessDisabled;
 
+  /// No description provided for @manualOpenRequesting.
+  ///
+  /// In en, this message translates to:
+  /// **'Requesting an open command from Target.'**
+  String get manualOpenRequesting;
+
+  /// No description provided for @manualOpenCommandExecuted.
+  ///
+  /// In en, this message translates to:
+  /// **'Target executed the open command. Physical door opening is not confirmed.'**
+  String get manualOpenCommandExecuted;
+
+  /// No description provided for @manualOpenOutcomeUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The open-command outcome is unknown. Do not retry automatically.'**
+  String get manualOpenOutcomeUnknown;
+
   /// No description provided for @currentVersion.
   ///
   /// In en, this message translates to:
