@@ -874,7 +874,10 @@ class AclStore:
 
         The raw legacy device identifier is used only for the locked legacy-row
         lookup and is never copied into the public credential or audit tables.
-        Existing revoked/disabled bindings are deliberately not resurrected.
+        One legacy row may remain the compatibility owner of the configured
+        personal tenant while additional independently approved family devices
+        join that same tenant with distinct public credentials. Existing
+        revoked/disabled bindings are deliberately not resurrected.
         """
         connection = self._connection()
         try:
@@ -901,6 +904,7 @@ class AclStore:
             legacy_id = int(row_value(legacy, "id", 0))
             legacy_tenant_id = row_value(legacy, "tenant_uuid", 3)
             legacy_active = bool(row_value(legacy, "is_active", 4))
+            legacy_credential_mode = str(row_value(legacy, "credential_mode", 5))
             if not legacy_active:
                 raise PermissionError("legacy device is not approved")
             if legacy_tenant_id is not None and (
@@ -916,12 +920,14 @@ class AclStore:
                 (tenant_id,),
             )
             mapped_owner = cursor.fetchone()
-            if mapped_owner is not None and int(
-                row_value(mapped_owner, "id", 0)
-            ) != legacy_id:
-                raise CredentialConflictError(
-                    "personal tenant is already mapped to another legacy device"
-                )
+            mapped_owner_id = (
+                int(row_value(mapped_owner, "id", 0))
+                if mapped_owner is not None
+                else None
+            )
+            is_additional_personal_device = (
+                mapped_owner_id is not None and mapped_owner_id != legacy_id
+            )
 
             cursor.execute(
                 f"SELECT status FROM acl_tenants WHERE tenant_id={placeholder}{lock_suffix}",
@@ -947,16 +953,33 @@ class AclStore:
                     raise PermissionError("personal ACL tenant is disabled")
 
             if legacy_tenant_id is None:
-                cursor.execute(
-                    f"UPDATE tenants SET tenant_uuid={placeholder}, "
-                    "credential_mode='dual' "
-                    f"WHERE id={placeholder} AND tenant_uuid IS NULL",
-                    (tenant_id, legacy_id),
-                )
-                if cursor.rowcount != 1:
-                    raise CredentialConflictError(
-                        "legacy tenant bootstrap lost its state lock"
+                if is_additional_personal_device:
+                    if legacy_credential_mode == "legacy":
+                        cursor.execute(
+                            "UPDATE tenants SET credential_mode='dual' "
+                            f"WHERE id={placeholder} AND tenant_uuid IS NULL "
+                            "AND credential_mode='legacy'",
+                            (legacy_id,),
+                        )
+                        if cursor.rowcount != 1:
+                            raise CredentialConflictError(
+                                "additional personal device lost its state lock"
+                            )
+                    elif legacy_credential_mode != "dual":
+                        raise CredentialConflictError(
+                            "additional personal device has incompatible credential mode"
+                        )
+                else:
+                    cursor.execute(
+                        f"UPDATE tenants SET tenant_uuid={placeholder}, "
+                        "credential_mode='dual' "
+                        f"WHERE id={placeholder} AND tenant_uuid IS NULL",
+                        (tenant_id, legacy_id),
                     )
+                    if cursor.rowcount != 1:
+                        raise CredentialConflictError(
+                            "legacy tenant bootstrap lost its state lock"
+                        )
             else:
                 cursor.execute(
                     f"UPDATE tenants SET credential_mode='dual' "

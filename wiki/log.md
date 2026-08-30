@@ -5319,3 +5319,10 @@
 - The owner completed the fresh A24 request and administrator approval after the corrected Backend deployment.
 - Connected read-only ADB UI evidence showed `스마트키 등록 준비 완료`, the instruction to link this phone's security key to the approved account, `이 휴대폰 등록`, zero doors and ACL pending.
 - This is the expected `enroll_credential` state, not a repeated tenant request. The agent did not press the effectful enrollment button; owner key enrollment, credential result, signed ACL Target ACK and daughter-device access remain separate Gates.
+
+## [2026-08-30] fix | Admit an approved additional family phone to the personal tenant
+
+- The owner's single `이 휴대폰 등록` attempt failed and remained `readyToEnroll`. Connected ADB support evidence showed native healthy, no native blocking reason, zero doors and no ACL version; no repeat request was triggered during diagnosis.
+- A production-shaped local reproduction with the first owner's legacy row already mapped to the configured personal tenant returned exact HTTP 409 `personal tenant is already mapped to another legacy device`, confirming a retained single-user compatibility constraint.
+- Corrected bootstrap so one legacy row remains the unique compatibility owner while each separately approved additional family row stays unmapped and receives its own active public credential and exact shared-personal-door grant. Unapproved, inactive, cross-tenant, conflicting and revoked identities remain fail-closed.
+- The focused three enrollment regressions and all 152 Backend tests passed with two expected Docker-only skips. Trusted-policy authorization, protected CI, NAS deployment, one owner retry, signed ACL Target ACK and daughter-device access remain separate Gates.
