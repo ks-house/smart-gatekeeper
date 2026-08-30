@@ -5408,3 +5408,11 @@
 
 - Updated the local regression fixture from the preceding administrator-management baseline to immutable candidate `d23933d7780f0100b99ddcf38fcfa426b17e9b06`, exact 88-path digests and the two-path protected delta.
 - This test-only synchronization changes no approved policy bytes, Backend runtime, mobile behavior, workflow, NAS state or device installation. Fresh local/hosted checks and the feature merge remain separate Gates.
+
+## [2026-08-31] test | Deploy and publish per-phone resident identity privacy fix
+
+- PR #306 passed Hosted Trusted, Backend security/MariaDB, OTA/schema, Flutter format/analyze/unit, native GATT and Android canary checks and merged normally as exact main `4a3067ce45faea01fcc7d1097cf19d2e112dfbc1`.
+- Backend run `33318827231` completed immutable image publication and the owner-authorized restricted-Tailscale NAS deployment. Canonical evidence reported `status=deployed`, the exact source, and passed loopback/public readiness; independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact build with every readiness check true.
+- Mobile run `33318827185` passed the complete mobile suite and signed, atomically published and HTTPS-read-back personal OTA `1.0.0-g4a3067c` / `35101`. Independent primary/fallback HTTPS manifests both returned HTTP 200 and matched exact commit and APK SHA-256 `654d1d726b3ab56628d36c560db8cc5e0a5bce6c433c73606a207776bb019ace`.
+- Target run `33318827246` separately passed exact-main build, signing, atomic publication and HTTPS read-back for `2.1.395+main.g4a3067c`; this is publication evidence, not Target installation, reboot or health confirmation.
+- No APK was installed during this work. Wife/daughter phone update and visual confirmation that each verified credential displays only its own approved name/unit remain the final device acceptance Gate; missing/N-1 data must remain generic and must never fall back to the shared owner label.
