@@ -5502,3 +5502,4 @@
 
 - Policy PR #314 passed Hosted Trusted and merge-committed normally as main `067e60346bb516701a0395722bdc700cdd4f09c8`; merged that exact policy history into feature candidate `d1272a5ec16269e51d852f0fc70854cd00048eb3` without rebase or squash.
 - The three reviewed protected feature blobs now exactly match the sole complete 91-path authorization. Fresh local/hosted validation, feature PR merge, exact-main deployment and one owner retry remain separate Gates.
+- On the merge-connected branch, the complete Backend suite passed 165 tests with two expected environment-only skips and the complete OTA/operations suite passed 317 tests with one expected environment-only skip.
