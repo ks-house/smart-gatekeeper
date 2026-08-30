@@ -1159,3 +1159,22 @@ main `2ae453a`. It changes no workflow/action inventory, NAS runtime, container,
 database, mobile installation or Target state. Hosted policy validation, NAS
 deployment readiness and disconnected-phone physical acceptance remain
 separate evidence Gates.
+
+## 33. GPIO23 Target build-input authorization
+
+Reviewed feature candidate `4c16b44352a986417ee679465da1c61f670abde1`
+restores only the authoritative relay pin in `include/config.h` from GPIO3 to
+the owner-confirmed historical Gatekeeper GPIO23 mapping while retaining
+AJ-SR04T GPIO10/11, fail-safe High-Z OFF, signed dual-slot OTA and rollback.
+The privileged Target build inventory must therefore change its reviewed
+`include/config.h` row, making the only protected-byte change
+`.github/workflows/deploy.yml` at LF-normalized SHA-256
+`a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8`.
+
+This policy-only authorization binds one complete 83-file persistent bundle to
+that exact candidate and its future merge-connected descendants. After this
+policy merges, trusted main must be merge-connected into the feature without
+rebasing or squashing, and a separate final policy rotation must replace this
+transition with the actual feature merged-main commit. It authorizes no
+firmware publication, Target installation, relay actuation or physical door
+claim by itself.
