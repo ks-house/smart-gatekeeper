@@ -194,11 +194,14 @@ weakening authentication, replay protection, result confirmation, or OTA.
 ## 6. Current issue register and implementation order
 
 1. [#276](https://github.com/ks-house/smart-gatekeeper/issues/276) — PR #278
-   is merged and exact-main signed mobile OTA is published. Action-1
-   `SUCCEEDED` is armed and action-2 `OPENED` is command-executed across Home,
-   WebView, advanced control and the bounded activity timeline. The phone is
-   not currently enumerated, so replacement install and connected ko/en
-   readback remain the final issue-specific Gate.
+   is merged, exact-main signed mobile OTA is published and the authorized
+   Fold7 replacement-installed `1.0.0-gb96afb7` / 32001 without losing its
+   registration. Korean connected action-2 showed command execution plus the
+   physical-evidence disclaimer at 2007 ms. App-locale switching then exposed
+   stale rendered-language state and a Korean generic failure in English mode;
+   the follow-up candidate stores a semantic Home result and resolves the
+   result/recovery projection through the active ko/en locale. Reviewed CI,
+   exact-main OTA and connected replacement readback remain before closure.
 2. [#179](https://github.com/ks-house/smart-gatekeeper/issues/179) — run the
    Bluetooth OFF→ON registration recovery trial without opening the Activity.
 3. [#51](https://github.com/ks-house/smart-gatekeeper/issues/51) — complete

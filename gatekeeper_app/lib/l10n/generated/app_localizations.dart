@@ -230,6 +230,204 @@ abstract class AppLocalizations {
   /// **'The open-command outcome is unknown. Do not retry automatically.'**
   String get manualOpenOutcomeUnknown;
 
+  /// No description provided for @statusRefreshing.
+  ///
+  /// In en, this message translates to:
+  /// **'Refreshing status.'**
+  String get statusRefreshing;
+
+  /// No description provided for @backendUnavailableRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the backend. Please try again shortly.'**
+  String get backendUnavailableRetry;
+
+  /// No description provided for @statusUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest status applied.'**
+  String get statusUpdated;
+
+  /// No description provided for @credentialEnrolling.
+  ///
+  /// In en, this message translates to:
+  /// **'Registering this phone\'s Smart Key credential.'**
+  String get credentialEnrolling;
+
+  /// No description provided for @credentialEnrollmentComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Smart Key registration completed.'**
+  String get credentialEnrollmentComplete;
+
+  /// No description provided for @bluetoothRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on Bluetooth and try again.'**
+  String get bluetoothRequired;
+
+  /// No description provided for @permissionsRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the required permissions.'**
+  String get permissionsRequired;
+
+  /// No description provided for @batteryRestrictionRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the battery usage restriction.'**
+  String get batteryRestrictionRequired;
+
+  /// No description provided for @targetUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No recently detected Target is available.'**
+  String get targetUnavailable;
+
+  /// No description provided for @smartKeyPermissionCheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Ask an administrator to check your Smart Key access.'**
+  String get smartKeyPermissionCheck;
+
+  /// No description provided for @targetResponseTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'The Target response timed out.'**
+  String get targetResponseTimeout;
+
+  /// No description provided for @requestFailedGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'The request did not complete. Check Advanced diagnostics.'**
+  String get requestFailedGeneric;
+
+  /// No description provided for @smartKeyAvailableDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep this phone with you. Authentication starts automatically when you approach the Target.'**
+  String get smartKeyAvailableDetail;
+
+  /// No description provided for @backendStatusUnavailableDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Backend status is unavailable. Local recovery and updates remain available.'**
+  String get backendStatusUnavailableDetail;
+
+  /// No description provided for @requestRegistrationDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter registration details and request administrator approval.'**
+  String get requestRegistrationDetail;
+
+  /// No description provided for @waitForApprovalDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This screen refreshes after approval.'**
+  String get waitForApprovalDetail;
+
+  /// No description provided for @enrollCredentialDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Link this phone\'s secure key to the approved account.'**
+  String get enrollCredentialDetail;
+
+  /// No description provided for @waitForAclDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait until the Target applies the latest access policy.'**
+  String get waitForAclDetail;
+
+  /// No description provided for @advancedDiagnosticsDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Detailed status is available in Advanced diagnostics.'**
+  String get advancedDiagnosticsDetail;
+
+  /// No description provided for @requestRegistration.
+  ///
+  /// In en, this message translates to:
+  /// **'Request registration'**
+  String get requestRegistration;
+
+  /// No description provided for @checkApprovalStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Check approval'**
+  String get checkApprovalStatus;
+
+  /// No description provided for @registerThisPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Register this phone'**
+  String get registerThisPhone;
+
+  /// No description provided for @checkRegistration.
+  ///
+  /// In en, this message translates to:
+  /// **'Check registration'**
+  String get checkRegistration;
+
+  /// No description provided for @viewRenewalGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'View renewal guide'**
+  String get viewRenewalGuide;
+
+  /// No description provided for @refreshStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh status'**
+  String get refreshStatus;
+
+  /// No description provided for @requestOpenCommand.
+  ///
+  /// In en, this message translates to:
+  /// **'Request open'**
+  String get requestOpenCommand;
+
+  /// No description provided for @checkAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Check again'**
+  String get checkAgain;
+
+  /// No description provided for @processing.
+  ///
+  /// In en, this message translates to:
+  /// **'Processing'**
+  String get processing;
+
+  /// No description provided for @noRecentDetection.
+  ///
+  /// In en, this message translates to:
+  /// **'No recent detection'**
+  String get noRecentDetection;
+
+  /// No description provided for @recentDetection.
+  ///
+  /// In en, this message translates to:
+  /// **'Last detected'**
+  String get recentDetection;
+
+  /// No description provided for @registrationInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Registration information'**
+  String get registrationInfo;
+
+  /// No description provided for @registeredDoors.
+  ///
+  /// In en, this message translates to:
+  /// **'Registered doors'**
+  String get registeredDoors;
+
+  /// No description provided for @checking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking'**
+  String get checking;
+
   /// No description provided for @currentVersion.
   ///
   /// In en, this message translates to:

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/commercial_models.dart';
+import '../services/home_message_projection.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/mobile_activity_store.dart';
 import '../services/mobile_identity_service.dart';
@@ -36,7 +37,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   UpdateExperience? _updateExperience;
   List<MobileActivityItem> _activity = const [];
   List<MobileLifecycleEvent> _lifecycle = const [];
-  String? _actionMessage;
+  HomeMessage? _actionMessage;
   Timer? _healthTimer;
   Timer? _identityTimer;
 
@@ -105,7 +106,6 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
 
   Future<void> _runPrimaryAction() async {
     if (_busy) return;
-    final strings = AppLocalizations.of(context);
     final action = _identityStatus.nextAction;
     if (action == 'request_registration' ||
         action == 'wait_for_approval' ||
@@ -121,34 +121,47 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
     if (action == 'wait_for_acl' || action == 'status_unavailable') {
       setState(() {
         _busy = true;
-        _actionMessage = '상태를 다시 확인하고 있습니다.';
+        _actionMessage = const HomeMessage(HomeMessageKind.statusRefreshing);
       });
       await Future.wait<void>([_refreshIdentity(), _refreshHealth()]);
       if (mounted) {
         setState(() {
           _busy = false;
-          _actionMessage = _identityStatus.nextAction == 'status_unavailable'
-              ? '백엔드에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.'
-              : '최신 상태를 반영했습니다.';
+          _actionMessage = HomeMessage(
+            _identityStatus.nextAction == 'status_unavailable'
+                ? HomeMessageKind.backendUnavailable
+                : HomeMessageKind.statusUpdated,
+          );
         });
       }
       return;
     }
     setState(() {
       _busy = true;
-      _actionMessage = action == 'enroll_credential'
-          ? '스마트키 자격을 등록하고 있습니다.'
-          : strings.manualOpenRequesting;
+      _actionMessage = HomeMessage(
+        action == 'enroll_credential'
+            ? HomeMessageKind.credentialEnrolling
+            : HomeMessageKind.manualOpenRequesting,
+      );
     });
     try {
       final enrolled = await _enrollment.ensureEnrolledAndEnabled();
       if (!enrolled.accepted) {
-        setState(() => _actionMessage = _friendlyReason(enrolled.reason));
+        setState(() {
+          _actionMessage = HomeMessage(
+            HomeMessageKind.failure,
+            reason: enrolled.reason,
+          );
+        });
         return;
       }
       await _refreshIdentity();
       if (action == 'enroll_credential') {
-        setState(() => _actionMessage = '스마트키 등록이 완료되었습니다.');
+        setState(() {
+          _actionMessage = const HomeMessage(
+            HomeMessageKind.credentialEnrollmentComplete,
+          );
+        });
         return;
       }
       final result = await _healthBridge.triggerLocalGattOpen();
@@ -159,38 +172,27 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
       } catch (_) {
         // A local timeline write failure must not hide the terminal result.
       }
-      final latency = outcome.latencyMs == null
-          ? ''
-          : ' (${outcome.latencyMs!.toString()}ms)';
       if (!mounted) return;
       setState(() {
         if (activity != null) _activity = activity;
         _actionMessage = switch (outcome.state) {
-          ManualOpenState.commandExecuted =>
-            '${strings.manualOpenCommandExecuted}$latency',
-          ManualOpenState.outcomeUnknown => strings.manualOpenOutcomeUnknown,
-          ManualOpenState.failed => _friendlyReason(outcome.reason),
+          ManualOpenState.commandExecuted => HomeMessage(
+              HomeMessageKind.manualOpenCommandExecuted,
+              latencyMs: outcome.latencyMs,
+            ),
+          ManualOpenState.outcomeUnknown => const HomeMessage(
+              HomeMessageKind.manualOpenOutcomeUnknown,
+            ),
+          ManualOpenState.failed => HomeMessage(
+              HomeMessageKind.failure,
+              reason: outcome.reason,
+            ),
         };
       });
       await _refreshHealth();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  String _friendlyReason(String reason) {
-    if (reason.contains('BLUETOOTH')) return 'Bluetooth를 켠 뒤 다시 시도해주세요.';
-    if (reason.contains('PERMISSION')) return '필수 권한을 확인해주세요.';
-    if (reason.contains('BATTERY')) return '배터리 사용 제한을 해제해주세요.';
-    if (reason.contains('TARGET_UNAVAILABLE')) return '최근 감지된 Target이 없습니다.';
-    if (reason.contains('REVOKED') || reason.contains('INACTIVE')) {
-      return '스마트키 권한을 관리자에게 확인해주세요.';
-    }
-    if (reason.contains('PROOF') || reason.contains('UNCERTAIN')) {
-      return '결과를 확인할 수 없습니다. 자동 재시도하지 마세요.';
-    }
-    if (reason.contains('TIMEOUT')) return 'Target 응답 시간이 초과되었습니다.';
-    return '요청을 완료하지 못했습니다. 고급 진단에서 상태를 확인해주세요.';
   }
 
   String _readinessTitle(AppLocalizations strings) {
@@ -210,32 +212,35 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
     };
   }
 
-  String get _readinessDetail {
+  String _readinessDetail(AppLocalizations strings) {
     if (_identityStatus.accessReady && _health?.handsFreeReady == true) {
-      return '휴대폰을 소지하고 Target에 접근하면 자동 인증을 시작합니다.';
+      return strings.smartKeyAvailableDetail;
     }
     final blocked = _health?.currentBlockingReasonCode;
-    if (blocked != null) return _friendlyReason(blocked);
+    if (blocked != null) return friendlyFailure(blocked, strings);
     if (_identityStatus.nextAction == 'status_unavailable') {
-      return '백엔드 상태를 확인할 수 없습니다. 로컬 복구와 업데이트는 계속 사용할 수 있습니다.';
+      return strings.backendStatusUnavailableDetail;
     }
     return switch (_identityStatus.nextAction) {
-      'request_registration' => '등록 정보를 입력하고 관리자 승인을 요청해주세요.',
-      'wait_for_approval' => '승인 후 이 화면이 자동으로 갱신됩니다.',
-      'enroll_credential' => '승인된 계정에 이 휴대폰의 보안 키를 연결해주세요.',
-      'wait_for_acl' => 'Target이 최신 출입 권한을 적용할 때까지 기다려주세요.',
-      _ => '고급 진단에서 상세 상태를 확인할 수 있습니다.',
+      'request_registration' => strings.requestRegistrationDetail,
+      'wait_for_approval' => strings.waitForApprovalDetail,
+      'enroll_credential' => strings.enrollCredentialDetail,
+      'wait_for_acl' => strings.waitForAclDetail,
+      _ => strings.advancedDiagnosticsDetail,
     };
   }
 
-  String get _primaryLabel => switch (_identityStatus.nextAction) {
-        'request_registration' => '등록 요청',
-        'wait_for_approval' => '승인 상태 확인',
-        'enroll_credential' => '이 휴대폰 등록',
-        'contact_administrator' => '등록 정보 확인',
-        'renew_credential' => '갱신 안내 확인',
-        'wait_for_acl' => '상태 새로고침',
-        _ => _identityStatus.accessReady ? '문 열기' : '다시 확인',
+  String _primaryLabel(AppLocalizations strings) =>
+      switch (_identityStatus.nextAction) {
+        'request_registration' => strings.requestRegistration,
+        'wait_for_approval' => strings.checkApprovalStatus,
+        'enroll_credential' => strings.registerThisPhone,
+        'contact_administrator' => strings.checkRegistration,
+        'renew_credential' => strings.viewRenewalGuide,
+        'wait_for_acl' => strings.refreshStatus,
+        _ => _identityStatus.accessReady
+            ? strings.requestOpenCommand
+            : strings.checkAgain,
       };
 
   String _targetState(AppLocalizations strings) {
@@ -296,7 +301,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         children: [
           Semantics(
             liveRegion: true,
-            label: '${_readinessTitle(strings)}. $_readinessDetail',
+            label: '${_readinessTitle(strings)}. ${_readinessDetail(strings)}',
             child: Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
@@ -313,7 +318,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 8),
-                    Text(_readinessDetail, textAlign: TextAlign.center),
+                    Text(_readinessDetail(strings),
+                        textAlign: TextAlign.center),
                     const SizedBox(height: 18),
                     FilledButton.icon(
                       onPressed: _busy ? null : _runPrimaryAction,
@@ -324,11 +330,13 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
                           : Icon(_identityStatus.accessReady
                               ? Icons.lock_open
                               : Icons.arrow_forward),
-                      label: Text(_busy ? '처리 중' : _primaryLabel),
+                      label: Text(
+                          _busy ? strings.processing : _primaryLabel(strings)),
                     ),
                     if (_actionMessage != null) ...[
                       const SizedBox(height: 12),
-                      Text(_actionMessage!, textAlign: TextAlign.center),
+                      Text(_actionMessage!.resolve(strings),
+                          textAlign: TextAlign.center),
                     ],
                   ],
                 ),
@@ -341,8 +349,9 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
               leading: const Icon(Icons.sensors),
               title: Text(_targetState(strings)),
               subtitle: Text(_health?.latestDetection == null
-                  ? '최근 감지 없음'
-                  : '최근 감지 ${_formatTime(_health!.latestDetection!.receivedAt)}'),
+                  ? strings.noRecentDetection
+                  : '${strings.recentDetection} '
+                      '${_formatTime(_health!.latestDetection!.receivedAt)}'),
               trailing: _health?.detectionStage == TargetDetectionStage.armed
                   ? const Icon(Icons.check_circle, color: Colors.greenAccent)
                   : null,
@@ -351,10 +360,11 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
           Card(
             child: ListTile(
               leading: const Icon(Icons.badge_outlined),
-              title: Text(_identityStatus.tenantLabel ?? '등록 정보'),
+              title:
+                  Text(_identityStatus.tenantLabel ?? strings.registrationInfo),
               subtitle: Text(
-                '등록 출입문 ${_identityStatus.doorCount}개 · '
-                'ACL ${_identityStatus.aclVersion ?? '확인 중'}',
+                '${strings.registeredDoors} ${_identityStatus.doorCount} · '
+                'ACL ${_identityStatus.aclVersion ?? strings.checking}',
               ),
               trailing: Icon(
                 _identityStatus.accessReady ? Icons.verified : Icons.pending,

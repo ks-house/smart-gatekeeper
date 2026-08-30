@@ -1033,7 +1033,20 @@ tracking.
   readback matched the 56,134,809-byte artifact, SHA-256
   `5ca0b476bf34a638ad92a82b630e9eca6a5ac1169b20cb947e3ac267b693863f`
   and pinned Android signer digest.
-- Windows PnP and ADB currently enumerate no phone, so replacement install and
-  connected Korean/English readback remain pending and issue #276 stays open.
-  The absent sensor/relay/contact/door fixture means physical opening remains
-  unverified regardless of UI result.
+- The authorized Fold7 replacement-installed that exact APK with `install -r`:
+  version advanced from `1.0.0-g89164ce` / 31501 to
+  `1.0.0-gb96afb7` / 32001 while first-install time, native registration,
+  tenant label, one-door assignment and ACL 566 remained present. A bounded
+  Korean action-2 readback returned Target command execution in 2007 ms and
+  rendered the corrected physical-evidence disclaimer.
+- App-locale switching exposed a remaining issue-specific gap: the terminal
+  Home message was retained as an already-rendered Korean string, and a
+  distinct English-mode failure also used a Korean generic error. The current
+  source candidate preserves the terminal outcome as a semantic message and
+  resolves success, unknown, failure and core Home recovery text through the
+  active ko/en localization at render time. All 60 Flutter tests and analysis
+  pass locally; reviewed CI, exact-main publication and replacement readback of
+  that new candidate remain required before closing #276.
+- The absent sensor/relay/contact/door fixture means distance sensing,
+  electrical relay actuation and physical opening remain unverified regardless
+  of UI or Target command result.

@@ -5060,3 +5060,15 @@
 - Exact-main mobile run `33298655135` built the isolated unsigned release, verified the pinned Android package/signer identity, signed it and atomically published primary/fallback personal OTA with NAS and strict-HTTPS readback.
 - Independent public-manifest and APK download verified `1.0.0-gb96afb7` / 32001, 56,134,809 bytes, SHA-256 `5ca0b476bf34a638ad92a82b630e9eca6a5ac1169b20cb947e3ac267b693863f`, APK Signature Scheme v2/v3 and the pinned signer digest.
 - Windows PnP and ADB currently enumerate no phone, so replacement installation and connected Korean/English readback were not claimed. Issue #276 remains open for that bounded Gate; sensors, relay contact/load, actuator and door remain absent and no physical opening is claimed.
+
+## [2026-08-30] test | Replacement-install truthful mobile result on connected Fold7
+
+- Verified the independently downloaded signed APK SHA-256, then replacement-installed exact published mobile `1.0.0-gb96afb7` / 32001 with `adb install -r`; first-install time remained `2026-07-29 22:41:57` and the existing native registration, tenant label, one-door assignment and ACL 566 remained visible.
+- Ran one bounded Korean action-2 language contract trial. The UI progressed from Target request to `Target이 개방 명령을 실행했습니다. 실제 문 열림은 별도 확인이 필요합니다. (2007ms)`, proving the corrected command-versus-physical wording on the connected app without claiming sensor/contact/door evidence.
+- Switched only the app locale to English and restored the original empty app-locale override afterward. A distinct English-mode trial ended in failure without automatic retry and exposed that the retained Home outcome and generic error were already-rendered Korean strings; no force-stop, uninstall or data clear was used.
+
+## [2026-08-30] fix | Make terminal Home messages locale-semantic
+
+- Replaced the Home screen's rendered-string terminal state with a semantic message projection that resolves command-executed, unknown, normalized failure, enrollment and status-recovery messages through the active ko/en localization at render time.
+- Localized the core ready-state detail, action labels, detection metadata and registration summary so an app-locale change no longer leaves the normal Home control path mixed Korean/English.
+- Added focused ko/en tests proving the same 2007 ms command result renders independently in each locale, generic failure never claims a physical open, and proof uncertainty remains terminal with no automatic retry. All 60 Flutter tests passed, analysis reported no issues and formatting/diff checks passed locally; CI, exact-main signed publication and connected replacement readback remain separate Gates.
