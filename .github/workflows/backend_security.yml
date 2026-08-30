@@ -113,6 +113,9 @@ jobs:
           APK_ARTIFACTS_VOLUME: ci-apk-artifacts
           MIGRATION_BACKUPS_VOLUME: ci-migration-backups
         run: |
+          set -a
+          . backend/db/schema.env
+          set +a
           docker compose -f backend/docker-compose.yml config --quiet
           docker compose -f backend/compose.production.yml config --quiet
           docker compose -f backend/compose.production.yml -f backend/compose.synology.yml config --quiet

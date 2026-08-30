@@ -52,9 +52,21 @@ PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
 DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
+BACKEND_SECURITY_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 
 
 class MigrationContractTest(unittest.TestCase):
+    def test_hosted_compose_validation_loads_signed_schema_metadata(self) -> None:
+        workflow = BACKEND_SECURITY_WORKFLOW.read_text(encoding="utf-8")
+        validation = workflow.split(
+            "      - name: Validate Compose is private by default", 1
+        )[1]
+        self.assertIn("set -a\n          . backend/db/schema.env\n          set +a", validation)
+        self.assertLess(
+            validation.index(". backend/db/schema.env"),
+            validation.index("docker compose -f backend/compose.production.yml"),
+        )
+
     def test_personal_nas_compose_runs_backup_first_existing_volume_migration(self) -> None:
         compose = DEVELOPMENT_COMPOSE.read_text(encoding="utf-8")
         migrate_start = compose.index("  migrate:")

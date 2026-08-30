@@ -5445,3 +5445,9 @@
 
 - Policy PR #308 passed Hosted Trusted and merge-committed as main `8ac609c15275639c9eb385d10960d1cb02f3613f`; merged that exact policy history into immutable feature candidate `68c9c3172782339a731f01dfb960b1aa8aeabaff` without rebase or squash.
 - Both exact parents are retained and all 18 reviewed new or changed protected blobs plus the complete ordered 91-path map remain identical to the authorization. Fresh full local and hosted feature checks remain required before feature merge.
+
+## [2026-08-31] fix | Load signed schema metadata in hosted Compose validation
+
+- Feature PR #309 exposed a hosted-only fail-closed gap: production Compose correctly required `SCHEMA_VERSION` and `SCHEMA_SHA256`, but its CI validation step had not exported the reviewed `backend/db/schema.env` before interpolation.
+- The validation now exports that source-controlled two-field manifest before all Compose checks, and a direct regression requires the load to precede production interpolation. Runtime image binding, backup, no-downgrade, migration, readiness, rollback and authorization gates are unchanged.
+- The first hosted Backend job failed before image publication or NAS deployment. Fresh local checks, trusted-policy authorization for the protected workflow byte, hosted CI and deployment remain separate Gates.
