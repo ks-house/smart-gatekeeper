@@ -5366,5 +5366,5 @@
 
 ## [2026-08-30] compile | Authorize administrator account-management candidate
 
-- Trusted-policy PR #302 passed its base-policy verification and merged as main `076fc1d9d5b93ca93505fc66646207309ff392cd`. The persistent baseline pins immutable feature candidate `d3d15d1f540950b1232b3ebf3ee5eb4614c19fac`, all 88 protected paths and the two new migration-009 files to exact normalized SHA-256 values.
+- Trusted-policy PR #302 passed its base-policy verification and merged as main `076fc1d822c0a387fb96c4fdaeb044116c2f0bb8`. The persistent baseline pins immutable feature candidate `d3d15d1f540950b1232b3ebf3ee5eb4614c19fac`, all 88 protected paths and the two new migration-009 files to exact normalized SHA-256 values.
 - Merged that exact policy main into the feature branch without rebasing or changing any protected feature blob. Feature PR checks, merge, NAS backup/migration/deployment, live readiness and administrator browser verification remain separate Gates.
