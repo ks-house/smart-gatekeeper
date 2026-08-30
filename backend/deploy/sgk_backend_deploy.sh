@@ -16,8 +16,6 @@ readonly CURRENT_RELEASE="${DEPLOY_BASE}/current.release.env"
 readonly PROJECT_NAME="smart-gatekeeper-production"
 readonly EXPECTED_API_REPOSITORY="ghcr.io/ks-house/smart-gatekeeper-backend"
 readonly EXPECTED_DB_REPOSITORY="ghcr.io/ks-house/smart-gatekeeper-db"
-readonly EXPECTED_SCHEMA_VERSION="009"
-readonly EXPECTED_SCHEMA_SHA256="5ffe2f22c145faa1441af76b873606af7015310402b7e3f08e7e97fdce9a507d"
 readonly MAX_BUNDLE_MIB=8
 readonly GHCR_AUTH_ENVELOPE="SGK-GHCR-AUTH-V1"
 readonly MAX_GHCR_AUTH_B64=4096
@@ -255,10 +253,9 @@ validate_release() {
     die "invalid production Compose digest"
   [[ "${RELEASE[COMPOSE_SYNOLOGY_SHA256]}" =~ ^[0-9a-f]{64}$ ]] || \
     die "invalid Synology Compose digest"
-  [[ "${RELEASE[SCHEMA_VERSION]}" == "$EXPECTED_SCHEMA_VERSION" ]] || \
-    die "unexpected schema version"
-  [[ "${RELEASE[SCHEMA_SHA256]}" == "$EXPECTED_SCHEMA_SHA256" ]] || \
-    die "unexpected schema digest"
+  [[ "${RELEASE[SCHEMA_VERSION]}" =~ ^[0-9]{3}$ ]] || die "invalid schema version"
+  (( 10#${RELEASE[SCHEMA_VERSION]} >= 2 )) || die "schema version is below the production baseline"
+  [[ "${RELEASE[SCHEMA_SHA256]}" =~ ^[0-9a-f]{64}$ ]] || die "invalid schema digest"
   [[ "${RELEASE[CREATED_AT_UTC]}" =~ \
     ^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || \
     die "invalid release timestamp"
@@ -278,10 +275,21 @@ compose_for_release() {
     API_IMAGE_DIGEST="${RELEASE[API_IMAGE_DIGEST]}" \
     DB_IMAGE_REPOSITORY="${RELEASE[DB_IMAGE_REPOSITORY]}" \
     DB_IMAGE_DIGEST="${RELEASE[DB_IMAGE_DIGEST]}" \
+    SCHEMA_VERSION="${RELEASE[SCHEMA_VERSION]}" \
+    SCHEMA_SHA256="${RELEASE[SCHEMA_SHA256]}" \
     BUILD_SHA="${RELEASE[SOURCE_SHA]}" \
     "$DOCKER_BIN" compose --project-name "$PROJECT_NAME" --env-file "$RUNTIME_ENV" \
       -f "${release_dir}/compose.production.yml" \
       -f "${release_dir}/compose.synology.yml" "$@"
+}
+
+validate_db_image_schema_identity() {
+  local db_image="$1" manifest
+  manifest="$(docker run --rm --read-only --network none --entrypoint cat \
+    "$db_image" /opt/smart-gatekeeper/schema.env)" || \
+    die "database image schema manifest is unavailable"
+  [[ "$manifest" == "SCHEMA_VERSION=${RELEASE[SCHEMA_VERSION]}"$'\n'"SCHEMA_SHA256=${RELEASE[SCHEMA_SHA256]}" ]] || \
+    die "signed release schema does not match the immutable database image"
 }
 
 read_ephemeral_ghcr_auth() {
@@ -478,6 +486,14 @@ apply_release() {
     "${extracted}/release.env" >/dev/null 2>&1 || die "release signature verification failed"
   validate_release "${extracted}/release.env" "${extracted}/compose.production.yml" \
     "${extracted}/compose.synology.yml"
+  if [[ -f "$CURRENT_RELEASE" && ! -L "$CURRENT_RELEASE" ]]; then
+    local current_schema_version
+    current_schema_version="$(awk -F= '$1 == "SCHEMA_VERSION" {print $2}' "$CURRENT_RELEASE")"
+    [[ "$current_schema_version" =~ ^[0-9]{3}$ ]] || \
+      die "current release schema identity is malformed"
+    (( 10#${RELEASE[SCHEMA_VERSION]} >= 10#$current_schema_version )) || \
+      die "schema downgrade is not admitted by automatic deployment"
+  fi
 
   local release_dir="${RELEASES_DIR}/${RELEASE[RELEASE_ID]}"
   [[ ! -e "$release_dir" ]] || die "release ID already exists: ${RELEASE[RELEASE_ID]}"
@@ -495,6 +511,7 @@ apply_release() {
   # belongs on stderr; only deployment.evidence is emitted on stdout below.
   docker pull "$api_image" >&2
   docker pull "$db_image" >&2
+  validate_db_image_schema_identity "$db_image"
   compose_for_release "$release_dir" up -d db >&2
   compose_for_release "$release_dir" run --rm migrate >&2
   compose_for_release "$release_dir" up -d --no-deps api >&2

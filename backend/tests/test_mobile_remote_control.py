@@ -158,6 +158,69 @@ class MobileRemoteControlTest(unittest.TestCase):
             ),
         )
 
+    def test_signed_logout_revokes_before_account_cleanup(self) -> None:
+        nonce = "88" * 32
+        idempotency = "99" * 24
+        expires_at = int(time.time()) + 60
+        canonical = main.build_mobile_account_logout_input(
+            CREDENTIAL, nonce, expires_at, idempotency
+        )
+        verification = MagicMock()
+        verification_cursor = verification.cursor.return_value.__enter__.return_value
+        verification_cursor.fetchone.return_value = {
+            "credential_id": CREDENTIAL,
+            "tenant_id": PERSONAL_TENANT,
+            "public_key_sec1": self.signer.public_key_sec1.hex(),
+            "status": "ACTIVE",
+            "tenant_status": "ACTIVE",
+            "legacy_tenant_id": 7,
+        }
+        cleanup = MagicMock()
+        cleanup_cursor = cleanup.cursor.return_value.__enter__.return_value
+        cleanup_cursor.fetchone.return_value = {
+            "tenant_uuid": None,
+            "credential_id": CREDENTIAL,
+        }
+        cleanup_cursor.rowcount = 1
+        service = MagicMock()
+        with (
+            patch.object(main, "_acl_runtime_ready", True),
+            patch.object(main, "_acl_service", service, create=True),
+            patch.object(main, "ACL_PERSONAL_TENANT_ID", PERSONAL_TENANT),
+            patch.object(main, "get_db", side_effect=[verification, cleanup]),
+        ):
+            response = self.client.post(
+                "/api/v1/mobile/account/logout",
+                headers={"Idempotency-Key": idempotency},
+                json={
+                    "credential_id": CREDENTIAL,
+                    "nonce": nonce,
+                    "expires_at": expires_at,
+                    "signature_raw64": self.signer.sign(canonical).hex(),
+                },
+            )
+
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertTrue(response.json()["local_clear_authorized"])
+        service.revoke_credential.assert_called_once()
+        self.assertTrue(verification.commit.called)
+        self.assertTrue(cleanup.commit.called)
+        statements = [call.args[0] for call in cleanup_cursor.execute.call_args_list]
+        self.assertTrue(any("DELETE FROM tenants" in sql for sql in statements))
+
+    def test_logout_canonical_is_separate_and_fixed_width(self) -> None:
+        canonical = main.build_mobile_account_logout_input(
+            CREDENTIAL, "88" * 32, 1_900_000_000, "99" * 24
+        )
+        self.assertEqual(96, len(canonical))
+        self.assertEqual(b"SGKOUT01", canonical[:8])
+        self.assertNotEqual(
+            canonical,
+            main.build_mobile_account_logout_input(
+                CREDENTIAL, "88" * 32, 1_900_000_001, "99" * 24
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

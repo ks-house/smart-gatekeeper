@@ -906,6 +906,9 @@ class AdminTenantUpdateSchema(BaseModel):
 
     name: str = Field(min_length=1, max_length=50)
     unit_number: str = Field(min_length=1, max_length=20)
+    mobile_role: Optional[str] = Field(
+        default=None, pattern=r"^(USER|TENANT_ADMIN)$"
+    )
 
 class PrearmRequestSchema(BaseModel):
     beacon_uuid: str
@@ -928,6 +931,15 @@ class ManualOpenV2Request(BaseModel):
     expires_at: Optional[int] = None
     credential_id: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     signature_raw64: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{128}$")
+
+
+class MobileAccountLogoutRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    credential_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    nonce: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: int
+    signature_raw64: str = Field(pattern=r"^[0-9a-f]{128}$")
 
 
 def build_mobile_manual_open_input(
@@ -953,6 +965,27 @@ def build_mobile_manual_open_input(
             bytes.fromhex(nonce),
             int(expires_at).to_bytes(8, "big"),
             hashlib.sha256(reason.encode("utf-8")).digest(),
+            hashlib.sha256(idempotency_key.encode("utf-8")).digest(),
+        )
+    )
+
+
+def build_mobile_account_logout_input(
+    credential_id: str, nonce: str, expires_at: int, idempotency_key: str
+) -> bytes:
+    """Canonical proof for exact-device logout and credential revocation."""
+    if not re.fullmatch(r"[0-9a-f]{32}", credential_id):
+        raise ValueError("credential id")
+    if not re.fullmatch(r"[0-9a-f]{64}", nonce):
+        raise ValueError("nonce")
+    if not 16 <= len(idempotency_key) <= 128:
+        raise ValueError("idempotency")
+    return b"".join(
+        (
+            b"SGKOUT01",
+            bytes.fromhex(credential_id),
+            bytes.fromhex(nonce),
+            int(expires_at).to_bytes(8, "big"),
             hashlib.sha256(idempotency_key.encode("utf-8")).digest(),
         )
     )
@@ -1450,7 +1483,7 @@ def get_all_tenants_admin(request: Request):
         conn = get_db()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, unit_number, ble_device_mac, is_active "
+                "SELECT id, name, unit_number, ble_device_mac, is_active, mobile_role "
                 "FROM tenants ORDER BY id DESC"
             )
             rows = [row for row in cur.fetchall() if principal.can_access_tenant(_legacy_tenant_scope(row["id"]))]
@@ -1548,12 +1581,13 @@ def update_tenant_admin(
         conn.begin()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT tenant_uuid FROM tenants WHERE id=%s FOR UPDATE",
+                "SELECT tenant_uuid, mobile_role FROM tenants WHERE id=%s FOR UPDATE",
                 (tenant_id,),
             )
             existing = cur.fetchone()
             if existing is None:
                 raise LookupError("tenant not found")
+            mobile_role = payload.mobile_role or str(existing.get("mobile_role") or "USER")
             _audit_admin(
                 conn,
                 principal,
@@ -1563,8 +1597,8 @@ def update_tenant_admin(
                 idempotency_key,
             )
             cur.execute(
-                "UPDATE tenants SET name=%s, unit_number=%s WHERE id=%s",
-                (name, unit_number, tenant_id),
+                "UPDATE tenants SET name=%s, unit_number=%s, mobile_role=%s WHERE id=%s",
+                (name, unit_number, mobile_role, tenant_id),
             )
             if cur.rowcount != 1:
                 raise RuntimeError("tenant update lost its state lock")
@@ -2162,6 +2196,173 @@ def approve_force_open(approval_id: str, request: Request):
     finally:
         if conn:
             conn.close()
+
+
+@app.post("/api/v1/mobile/account/logout")
+def mobile_account_logout(
+    req: MobileAccountLogoutRequest,
+    request: Request,
+    x_idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER),
+):
+    """Revoke this exact phone before authorizing deletion of its local key."""
+    now = int(time.time())
+    if (
+        not x_idempotency_key
+        or len(x_idempotency_key) > 128
+        or not now < req.expires_at <= now + 120
+    ):
+        raise HTTPException(status_code=400, detail="logout proof expiry or idempotency is invalid")
+    if not globals().get("_acl_runtime_ready", False):
+        raise HTTPException(status_code=503, detail="credential revocation unavailable")
+
+    conn = None
+    account = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT c.credential_id,c.tenant_id,c.public_key_sec1,c.status,"
+                "t.status AS tenant_status,l.id AS legacy_tenant_id "
+                "FROM credentials c JOIN acl_tenants t ON t.tenant_id=c.tenant_id "
+                "JOIN tenants l ON l.credential_id=c.credential_id "
+                "WHERE c.credential_id=%s FOR UPDATE",
+                (req.credential_id,),
+            )
+            account = cur.fetchone()
+            if (
+                not account
+                or account["status"] not in {"ACTIVE", "REVOKED"}
+                or account["tenant_status"] != "ACTIVE"
+                or not secrets.compare_digest(
+                    str(account["tenant_id"]), ACL_PERSONAL_TENANT_ID
+                )
+            ):
+                raise PermissionError("mobile account logout denied")
+            canonical = build_mobile_account_logout_input(
+                req.credential_id, req.nonce, req.expires_at, x_idempotency_key
+            )
+            if not verify_raw64(
+                bytes.fromhex(str(account["public_key_sec1"])),
+                canonical,
+                bytes.fromhex(req.signature_raw64),
+            ):
+                raise PermissionError("mobile account logout proof rejected")
+            cur.execute(
+                "INSERT INTO mobile_credential_control_nonces "
+                "(credential_id,nonce_hash,action,expires_at,consumed_at) "
+                "VALUES (%s,%s,'account_logout_v1',%s,%s)",
+                (
+                    req.credential_id,
+                    hashlib.sha256(req.nonce.encode("utf-8")).hexdigest(),
+                    req.expires_at,
+                    now,
+                ),
+            )
+        conn.commit()
+    except PermissionError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=403, detail="mobile account logout denied") from exc
+    except pymysql.err.IntegrityError as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=409, detail="logout proof already consumed") from exc
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=503, detail="mobile account logout unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+    service = globals().get("_acl_service")
+    try:
+        service.revoke_credential(
+            ACL_PERSONAL_TENANT_ID,
+            req.credential_id,
+            actor_ref=f"mobile:{hashlib.sha256(req.credential_id.encode()).hexdigest()[:16]}",
+        )
+    except Exception as exc:
+        # The app keeps its key and can retry. A queued replacement snapshot is
+        # retained by the ACL service if broker publication was interrupted.
+        raise HTTPException(
+            status_code=503, detail="credential revocation publication unavailable"
+        ) from exc
+
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            legacy_tenant_id = int(account["legacy_tenant_id"])
+            cur.execute(
+                "SELECT tenant_uuid,credential_id FROM tenants WHERE id=%s FOR UPDATE",
+                (legacy_tenant_id,),
+            )
+            locked = cur.fetchone()
+            if locked is None or not secrets.compare_digest(
+                str(locked.get("credential_id") or ""), req.credential_id
+            ):
+                raise RuntimeError("mobile account link changed during logout")
+            canonical_tenant = locked.get("tenant_uuid")
+            if canonical_tenant:
+                cur.execute(
+                    "SELECT id,name,unit_number,credential_id FROM tenants "
+                    "WHERE id<>%s AND is_active=TRUE ORDER BY id LIMIT 1 FOR UPDATE",
+                    (legacy_tenant_id,),
+                )
+                replacement = cur.fetchone()
+                if replacement is not None and not replacement.get("credential_id"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="another active phone must reconcile before owner logout",
+                    )
+                cur.execute("UPDATE tenants SET tenant_uuid=NULL WHERE id=%s", (legacy_tenant_id,))
+                if replacement is not None:
+                    cur.execute(
+                        "UPDATE tenants SET tenant_uuid=%s,credential_mode='dual' WHERE id=%s",
+                        (canonical_tenant, replacement["id"]),
+                    )
+                    display_name = f"{replacement['name']} {replacement['unit_number']}"[:100]
+                else:
+                    display_name = "Smart Key"
+                cur.execute(
+                    "UPDATE acl_tenants SET display_name=%s,updated_at=%s WHERE tenant_id=%s",
+                    (display_name, now, canonical_tenant),
+                )
+            cur.execute(
+                "INSERT INTO admin_audit "
+                "(actor_subject,tenant_scope,action,object_ref,idempotency_hash,created_at) "
+                "VALUES (%s,%s,'MOBILE_ACCOUNT_LOGOUT',%s,%s,%s)",
+                (
+                    "mobile-credential",
+                    _legacy_tenant_scope(legacy_tenant_id),
+                    str(legacy_tenant_id),
+                    hashlib.sha256(x_idempotency_key.encode()).hexdigest(),
+                    now,
+                ),
+            )
+            cur.execute("DELETE FROM tenants WHERE id=%s", (legacy_tenant_id,))
+            if cur.rowcount != 1:
+                raise RuntimeError("mobile account deletion lost its state lock")
+        conn.commit()
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=503, detail="mobile account cleanup unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+    return {"status": "logged_out", "local_clear_authorized": True}
 
 
 @app.post("/api/v1/door/open")

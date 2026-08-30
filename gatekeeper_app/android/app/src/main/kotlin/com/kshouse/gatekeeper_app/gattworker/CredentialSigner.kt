@@ -49,6 +49,20 @@ class AndroidKeystoreCredentialSigner : CredentialSigner {
     return byteArrayOf(0x04) + fixed32(point.affineX.toByteArray()) + fixed32(point.affineY.toByteArray())
   }
 
+  fun deleteCredentialKey(credentialId: ByteArray): Boolean = try {
+    require(credentialId.size == 16) { "credential id length" }
+    val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    for (candidate in listOf(
+      alias(credentialId),
+      "sgk.device.p256.v1.${credentialId.toHex()}",
+    )) {
+      if (keyStore.containsAlias(candidate)) keyStore.deleteEntry(candidate)
+    }
+    true
+  } catch (_: Exception) {
+    false
+  }
+
   private fun ensureKey(alias: String) {
     val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
     if (keyStore.containsAlias(alias)) return

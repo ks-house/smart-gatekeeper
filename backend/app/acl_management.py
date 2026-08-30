@@ -435,7 +435,8 @@ def initialize_sqlite_test_schema(connection: sqlite3.Connection) -> None:
           is_active INTEGER NOT NULL DEFAULT 1,
           tenant_uuid TEXT UNIQUE,
           credential_mode TEXT NOT NULL DEFAULT 'legacy',
-          credential_id TEXT UNIQUE
+          credential_id TEXT UNIQUE,
+          mobile_role TEXT NOT NULL DEFAULT 'USER'
         );
         CREATE TABLE acl_tenants (
           tenant_id TEXT PRIMARY KEY,
@@ -913,7 +914,7 @@ class AclStore:
         _hex_bytes(tenant_id, 16, "tenant_id")
         _hex_bytes(credential_id, 16, "credential_id")
         rows = self._all(
-            "SELECT name, unit_number, tenant_uuid FROM tenants "
+            "SELECT name, unit_number, tenant_uuid, mobile_role FROM tenants "
             "WHERE credential_id=? ORDER BY id ASC",
             (credential_id,),
         )
@@ -929,7 +930,14 @@ class AclStore:
         unit_number = str(row.get("unit_number") or "").strip()
         if not name or not unit_number:
             return None
-        return {"name": name, "unit_number": unit_number}
+        mobile_role = str(row.get("mobile_role") or "USER")
+        if mobile_role not in {"USER", "TENANT_ADMIN"}:
+            mobile_role = "USER"
+        return {
+            "name": name,
+            "unit_number": unit_number,
+            "mobile_role": mobile_role,
+        }
 
     def list_credentials(
         self, tenant_id: str, *, statuses: tuple[str, ...] = ("ACTIVE",)
@@ -2192,6 +2200,7 @@ class AclManagementService:
         )
         account_name = account_profile["name"] if account_profile else None
         unit_number = account_profile["unit_number"] if account_profile else None
+        mobile_role = account_profile["mobile_role"] if account_profile else "USER"
         account_label = (
             f"{account_name} {unit_number}" if account_name and unit_number else None
         )
@@ -2245,6 +2254,7 @@ class AclManagementService:
             "tenant_label": account_label,
             "account_name": account_name,
             "unit_number": unit_number,
+            "mobile_role": mobile_role,
             "door_count": len(doors),
             "selected_door": "default" if granted else None,
             "credential_expires_at": expires_at,

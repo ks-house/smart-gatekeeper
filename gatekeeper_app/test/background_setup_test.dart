@@ -171,7 +171,7 @@ void main() {
   });
 
   testWidgets(
-      'recovery shell keeps manual update diagnostics settings and retry reachable',
+      'recovery shell keeps update Android settings and retry reachable',
       (tester) async {
     var retries = 0;
     await tester.pumpWidget(MaterialApp(
@@ -185,7 +185,7 @@ void main() {
     ));
     await tester.pump();
 
-    expect(find.text('고급 진단 열기'), findsOneWidget);
+    expect(find.text('고급 진단 열기'), findsNothing);
     expect(find.text('Check verified app update'), findsOneWidget);
     expect(find.text('Open Android settings'), findsOneWidget);
     final retry = find.byKey(const Key('retry-background-setup'));

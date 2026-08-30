@@ -27,7 +27,7 @@
       "manual": "general_user_manual_ko.md",
       "precondition": "permission denied or consent deferred",
       "input": "open recovery shell",
-      "observable_output": "manual local, verified update, settings, and redacted diagnostics remain reachable",
+      "observable_output": "verified update, Android settings, and bounded setup retry remain reachable without installer controls",
       "code_api_owner": "RecoveryShellScreen",
       "evidence": "Flutter recovery widget tests",
       "command": "python -S -m unittest tests.test_manual_contract.ManualContractTests.test_user02_recovery_shell_flutter_contract_source -v",

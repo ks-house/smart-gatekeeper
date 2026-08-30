@@ -5416,3 +5416,21 @@
 - Mobile run `33318827185` passed the complete mobile suite and signed, atomically published and HTTPS-read-back personal OTA `1.0.0-g4a3067c` / `35101`. Independent primary/fallback HTTPS manifests both returned HTTP 200 and matched exact commit and APK SHA-256 `654d1d726b3ab56628d36c560db8cc5e0a5bce6c433c73606a207776bb019ace`.
 - Target run `33318827246` separately passed exact-main build, signing, atomic publication and HTTPS read-back for `2.1.395+main.g4a3067c`; this is publication evidence, not Target installation, reboot or health confirmation.
 - No APK was installed during this work. Wife/daughter phone update and visual confirmation that each verified credential displays only its own approved name/unit remain the final device acceptance Gate; missing/N-1 data must remain generic and must never fall back to the shared owner label.
+
+## [2026-08-31] test | Accept per-phone family identity display
+
+- The owner confirmed the corrected display is normal after updating the family phones. This closes the wife/daughter per-phone name/unit visual acceptance Gate for the observed devices.
+- The confirmation does not assert a fresh registration, logout, administrator action, repeated OEM background access or a new physical door cycle.
+
+## [2026-08-31] code | Add native account lifecycle and schema automation candidate
+
+- Replaced legacy WebView registration navigation with a native registration-only screen and removed normal-user/recovery navigation to engineering GATT/RSSI tuning. Added server-projected mobile administrator settings, with role assignment retained behind the existing console CSRF/RBAC/re-authentication controls.
+- Added server-first `SGKOUT01` logout: exact-key proof and replay protection, credential revocation, replacement signed ACL publication and linked account deletion precede Android wake/work shutdown and non-exportable key/locator removal.
+- Added additive migration 010 with least-privilege mobile role and changed release creation, DB image, Compose, migration runner and root wrapper to a signed manifest/image-bound contiguous schema target with backup-first, digest, no-downgrade, readiness and rollback gates retained.
+- Focused Backend/deployment/migration/logout tests and the full 161-test Backend suite were run; application tests passed, while two operations-contract checks initially exposed stale hardcoded schema tokens and trusted-input inventory. Those gate definitions were updated and require a fresh complete rerun before claiming source validation.
+
+## [2026-08-31] test | Validate mobile lifecycle and manifest schema candidate
+
+- The complete Backend suite passed with 162 tests and two expected environment-only skips; MariaDB 10.11 applied the contiguous 002-through-010 migration chain, backup/ledger contracts and rollback checks across all 13 integration tests.
+- Flutter formatting, analysis and all 66 unit/widget tests passed. CI-equivalent Gradle 9.1/JDK 17 executed 49 targeted native tests, including the fixed-width domain-separated `SGKOUT01` canonical proof, with zero failures or skips.
+- Updated the recovery walkthrough and source-bound manual contract to expose only verified update, Android settings and bounded permission retry to ordinary users; its focused source and all 16 bounded walkthrough commands passed. The complete 317-test OTA/operations run now has only expected pre-policy protected-digest failures, so trusted-policy rotation remains the next Gate rather than a source or OTA bypass.

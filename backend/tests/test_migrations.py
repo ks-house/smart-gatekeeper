@@ -46,6 +46,8 @@ MOBILE_CONTROL_UP = ROOT / "backend" / "db" / "migrations" / "008_mobile_credent
 MOBILE_CONTROL_DOWN = ROOT / "backend" / "db" / "migrations" / "008_mobile_credential_control_down.sql"
 ADMIN_ACCOUNT_UP = ROOT / "backend" / "db" / "migrations" / "009_admin_account_management_up.sql"
 ADMIN_ACCOUNT_DOWN = ROOT / "backend" / "db" / "migrations" / "009_admin_account_management_down.sql"
+MOBILE_ROLE_UP = ROOT / "backend" / "db" / "migrations" / "010_mobile_account_roles_up.sql"
+MOBILE_ROLE_DOWN = ROOT / "backend" / "db" / "migrations" / "010_mobile_account_roles_down.sql"
 PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
@@ -60,7 +62,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "009"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-010}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -104,6 +106,14 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("DROP COLUMN IF EXISTS credential_id", down)
         self.assertNotIn("DROP TABLE", down)
         self.assertNotIn("DELETE FROM", down)
+
+    def test_mobile_role_is_least_privilege_and_additive(self) -> None:
+        up = MOBILE_ROLE_UP.read_text(encoding="utf-8")
+        down = MOBILE_ROLE_DOWN.read_text(encoding="utf-8")
+        self.assertIn("mobile_role VARCHAR(24) NOT NULL DEFAULT 'USER'", up)
+        self.assertIn("'TENANT_ADMIN'", up)
+        self.assertIn("DROP COLUMN IF EXISTS mobile_role", down)
+        self.assertNotIn("DROP TABLE", down)
 
     def test_admin_audit_migration_is_append_only_and_has_explicit_rollback(self) -> None:
         up = ADMIN_UP.read_text(encoding="utf-8")
@@ -176,7 +186,8 @@ class MigrationContractTest(unittest.TestCase):
         self.assertNotIn("COPY schema.sql /docker-entrypoint-initdb.d", dockerfile)
         for required in (
             "mariadb-dump", "pre-migration-", "schema_migrations",
-            "canonical_sha", "up:009|down:001", ".schema-migration-lock",
+            "canonical_sha", "up:0[0-9][0-9]|down:001", ".schema-migration-lock",
+            "non-contiguous migration sequence", "target migration ${target} is unavailable",
             "%Y%m%dT%H%M%S%NZ", "pre-migration backup identity collision",
         ):
             self.assertIn(required, runner)
@@ -250,7 +261,7 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "009", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "010", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
                 state = docker(
@@ -258,15 +269,15 @@ class MigrationContractTest(unittest.TestCase):
                     "smart_gatekeeper", "-e",
                     "SELECT (SELECT COUNT(*) FROM tenants WHERE unit_number='E-1'),"
                     "(SELECT COUNT(*) FROM schema_migrations),"
-                    "(SELECT script_sha256 FROM schema_migrations WHERE version='009');",
+                    "(SELECT script_sha256 FROM schema_migrations WHERE version='010');",
                 ).stdout.strip().split("\t")
-                expected_009 = subprocess.run(
-                    ["sha256sum", str(ADMIN_ACCOUNT_UP)],
+                expected_010 = subprocess.run(
+                    ["sha256sum", str(MOBILE_ROLE_UP)],
                     text=True,
                     capture_output=True,
                     check=True,
                 ).stdout.split()[0]
-                self.assertEqual(["1", "8", expected_009], state)
+                self.assertEqual(["1", "9", expected_010], state)
                 self.assertGreaterEqual(len(list(backup.glob("*.sql"))), 2)
                 self.assertEqual(len(list(backup.glob("*.sql"))), len(list(backup.glob("*.sha256"))))
 

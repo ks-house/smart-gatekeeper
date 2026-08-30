@@ -62,8 +62,8 @@ Smart Gatekeeper는 Android 앱, backend, ESP32-C6 Target, 거리 센서와 rela
 
 | Actor | Preconditions | Input | Observable output | Code/API owner | Evidence artifact | Timeout | Bounded retry | Escalation |
 |---|---|---|---|---|---|---|---|---|
-| 사용자 | recovery shell 접근, 최근 encrypted Target, credential, Bluetooth ON | recovery에서는 `고급 진단 열기` → `고급 제어` → `1-Tap 수동 로컬 개방` 1회; 정상 진입에서는 홈의 주 동작 사용 | background `QUEUED/RUNNING/RETRY_PENDING`는 authorizing, `SUCCEEDED`는 armed; action-2 `OPENED`는 `개방 명령 실행 완료`+물리 미확인. `PROOF_UNCERTAIN`은 unknown, non-OK는 failed | `BleGattCredentialWorker.manualRetry`, `GattSessionEngine`, `ManualOpenOutcome` | session ID, bounded reason, latency; radio/relay/문 **PHYSICAL PENDING** | operation 15초 검증 목표 | retryable reason일 때 같은 session 1회 | `PROOF_UNCERTAIN` 자동 재시도 금지; `OPENED`도 문 열림 증거로 사용 금지; 지원/현장 owner |
-| 사용자 | remote control UI 확인 | remote 버튼 확인 | scoped credential이 없으면 unavailable이며 request를 보내지 않음 | Flutter Web shell, planned `/api/v1/door/open` v2 | no-effect host tests | 즉시 | 0회 | 비밀키 입력·legacy API 우회 금지; mobile/backend credential owner |
+| 사용자 | 승인된 이 휴대폰 credential, Backend 연결 | 정상 Home의 `문 열기` 1회 | exact phone credential 서명 후 Backend가 Target-bound 명령을 전달; broker 수락은 물리 문 열림 확정이 아님 | `RemoteManualOpenService`, `/api/v1/mobile/door/open` | redacted command event와 Target/relay 결과 **PHYSICAL PENDING** | 요청 15초 검증 목표 | 결과 불명이면 자동 재시도 0회 | 비밀키 입력·legacy API 우회 금지; mobile/backend/현장 owner |
+| 사용자 | 권한 거부 또는 설정 미완료, recovery shell 접근 | 검증된 앱 update 확인, Android 설정 열기 또는 권한·배터리 설정 재시도 | update/OS 설정/재시도만 노출되고 GATT·RSSI·Target tuning과 수동 문 제어는 노출되지 않음 | `RecoveryShellScreen`, `BackgroundSetupController` | recovery widget tests; Samsung **PENDING** | 화면 30초 검증 목표 | 설정 복귀 후 1회 | 계속 blocked면 reason과 OEM/build를 지원팀에 전달 |
 | 관리자 2인 | 안전 현장, 별도 `SECURITY_OPERATOR`/`SECURITY_APPROVER` | 승인된 force-open 절차 | `approval_required → published`; 실제 Target event 전 `EFFECT_UNKNOWN` | admin force-open APIs, signed command plane | approval/audit/broker/Target/relay evidence | proposal 300초, effect 120초 검증 목표 | publication/effect 0회 | incident commander와 현장 safety owner |
 
 ## 6. Offline·권한·Bluetooth·재부팅 복구
@@ -109,8 +109,8 @@ Smart Gatekeeper는 Android 앱, backend, ESP32-C6 Target, 거리 센서와 rela
 - 200% 글자 크기, 작은 화면, 가로 화면에서 버튼과 reason이 잘리지 않는지 확인한다.
 - 색상만으로 성공·실패를 구분하지 않고 항상 상태 텍스트와 reason을 확인한다.
 - 정상 Home/Activity/Settings와 지원 흐름은 생성된 `ko`/`en` 리소스로 OS
-  언어를 따른다. 고급 진단과 일부 첫 실행/recovery 문구의 완전한 영문
-  인수는 연결된 화면 검증 전까지 보장하지 않는다.
+  언어를 따른다. 일부 첫 실행/recovery 문구의 완전한 영문 인수는 연결된
+  화면 검증 전까지 보장하지 않는다.
 
 지원 bundle에는 ticket ID, 시간대, app/firmware/backend version, opaque target/session/boot/event ID, reason, state transition, artifact SHA-256와 마지막 관찰 결과만 포함한다. 비밀번호, token, private key, proof, nonce, 원본 tenant/unit/name/MAC, 주소와 URL query는 제거한다. 자세한 절차는 [지원·사고 대응 핸드북](support_incident_handbook_ko.md)을 따른다.
 

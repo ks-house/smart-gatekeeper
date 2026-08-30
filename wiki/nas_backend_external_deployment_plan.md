@@ -964,7 +964,26 @@ for build `d50b98f` with every readiness check true. This proves the protected
 CI-to-NAS deployment lane; physical relay contact/load and actual door motion
 remain outside this deployment proof.
 
-## 12. Primary references
+## 12. Manifest-driven schema deployment
+
+The NAS wrapper no longer hardcodes one schema version or migration digest.
+The repository owns `backend/db/schema.env`; release creation verifies that its
+version and SHA-256 match the single latest `*_up.sql`, then signs both values
+inside `release.env`. The immutable DB image carries the same manifest. After
+digest-pinned pull, the root wrapper compares the signed values to the image
+before starting DB or migration, rejects downgrade relative to the current
+release, and passes those exact values to Compose and API readiness.
+
+The migration runner discovers a contiguous 002-through-signed-target sequence,
+verifies every already-applied script digest and still creates a consistent
+pre-migration dump plus sidecar before any SQL. Rollback scripts remain explicit
+and reverse ordered. This removes the per-schema root-wrapper edit while
+retaining signature, immutable image, backup, no-downgrade, readiness, failure
+diagnostics and rollback gates. The transition to this stable wrapper itself is
+one final owner-installed root-wrapper update; later additive schema releases do
+not require another wrapper replacement.
+
+## 13. Primary references
 
 - [Synology Container Manager projects](https://kb.synology.com/en-us/DSM/help/ContainerManager/docker_project)
 - [Synology Hyper Backup](https://kb.synology.com/en-global/DSM/help/HyperBackup/BackupApp_desc)

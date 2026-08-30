@@ -2,9 +2,9 @@
 set -eu
 
 mode="${1:-up}"
-target="${2:-009}"
+target="${2:-}"
 case "$mode:$target" in
-  up:009|down:001) ;;
+  up:0[0-9][0-9]|down:001) ;;
   *) echo "[ERROR] migration mode/target is not admitted" >&2; exit 2 ;;
 esac
 
@@ -114,12 +114,29 @@ apply_down() {
 }
 
 if [ "$mode" = "up" ]; then
-  for version in 002 003 004 005 006 007 008 009; do
-    apply_up "$version" "/opt/smart-gatekeeper/migrations/${version}_up.sql"
+  expected=2
+  for file in /opt/smart-gatekeeper/migrations/[0-9][0-9][0-9]_up.sql; do
+    [ -f "$file" ] || { echo "[ERROR] no migration scripts found" >&2; exit 2; }
+    version=${file##*/}; version=${version%%_*}
+    [ "$version" -le "$target" ] || continue
+    [ "$version" -eq "$expected" ] || {
+      echo "[ERROR] non-contiguous migration sequence at ${version}" >&2; exit 2;
+    }
+    apply_up "$version" "$file"
+    expected=$((expected + 1))
   done
+  [ $((expected - 1)) -eq "$target" ] || {
+    echo "[ERROR] target migration ${target} is unavailable" >&2; exit 2;
+  }
 else
-  for version in 009 008 007 006 005 004 003 002; do
-    apply_down "$version" "/opt/smart-gatekeeper/migrations/${version}_down.sql"
+  current=$(client --batch --skip-column-names -e \
+    "SELECT COALESCE(MAX(CAST(version AS UNSIGNED)),1) FROM schema_migrations;")
+  while [ "$current" -ge 2 ]; do
+    version=$(printf '%03d' "$current")
+    file="/opt/smart-gatekeeper/migrations/${version}_down.sql"
+    [ -f "$file" ] || { echo "[ERROR] rollback script ${version} is unavailable" >&2; exit 2; }
+    apply_down "$version" "$file"
+    current=$((current - 1))
   done
 fi
 

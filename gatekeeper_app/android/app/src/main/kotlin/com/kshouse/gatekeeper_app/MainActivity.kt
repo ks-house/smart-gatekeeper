@@ -12,6 +12,7 @@ import com.kshouse.gatekeeper_app.gattworker.BleGattFeatureFlagStore
 import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import com.kshouse.gatekeeper_app.gattworker.BleGattManualOpenExecutor
 import com.kshouse.gatekeeper_app.gattworker.RemoteManualOpenProofSigner
+import com.kshouse.gatekeeper_app.gattworker.AccountLogoutManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -113,6 +114,26 @@ class MainActivity: FlutterActivity() {
                             ).toMap(),
                         )
                     }
+                }
+                "signAccountLogout" -> {
+                    val nonce = call.argument<String>("nonce")
+                    val expiresAt = call.argument<Number>("expiresAt")?.toLong()
+                    val idempotencyKey = call.argument<String>("idempotencyKey")
+                    if (nonce == null || expiresAt == null || idempotencyKey == null) {
+                        result.error("INVALID_ARGUMENT", "logout proof fields are required", null)
+                    } else {
+                        result.success(
+                            AccountLogoutManager.sign(
+                                applicationContext,
+                                nonce,
+                                expiresAt,
+                                idempotencyKey,
+                            ).toMap(),
+                        )
+                    }
+                }
+                "clearLocalIdentityAfterLogout" -> {
+                    result.success(AccountLogoutManager.clearLocalIdentity(applicationContext))
                 }
                 "prepareLocalGattEnrollment" -> {
                     val material = BleGattFeatureFlagStore(applicationContext)
