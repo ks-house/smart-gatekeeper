@@ -5275,3 +5275,9 @@
 - Owner confirmed one post-fix normal mobile `문 열기` request opened the physical door, closing a single mobile credential through Backend, signed MQTTS, Target, relay and door observation without claiming repetition/OEM/SLO acceptance.
 - A connected fresh-install A24 had all Android runtime permissions granted and a newly generated provisional AndroidKeyStore credential, but Home showed Backend unavailable and no registration action because Backend returned 403 for the valid not-yet-enrolled credential ID.
 - Corrected personal status to project the supervised device registration state only when the credential ID is absent; an existing credential ID with a different public key remains a 403 hard denial. Focused 9 and full 149 Backend tests passed with two expected Docker-only skips; protected policy/CI, NAS deployment and connected UI readback remain pending.
+
+## [2026-08-30] compile | Authorize fresh-install registration onboarding candidate
+
+- Bound the complete 86-path persistent protected bundle to feature candidate `9291758c99fd21231ddb30fe029b3f6f11fb1de2`, changing only the reviewed Backend personal-status implementation and focused ACL API regression bytes.
+- The candidate lets a valid but absent provisional credential receive the supervised device registration projection, while a stored credential ID with a different public key remains a 403 hard denial.
+- This policy step registers no user, mutates no credential/database/runtime and deploys no image. Policy merge, graph connection, fresh protected CI, NAS deployment/readiness and connected A24 UI readback remain separate Gates.

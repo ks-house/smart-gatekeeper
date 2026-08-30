@@ -1285,3 +1285,18 @@ Policy PR #291 passed the trusted-base check and merge-committed as main
 merged without rebase or squash into immutable feature candidate `e14f34c` as
 `a5671be`. The four reviewed protected candidate blobs and the complete 86-path
 map remain unchanged; fresh feature checks are required before merge.
+
+## 39. Fresh family-member registration onboarding authorization
+
+Connected A24 evidence showed that a fresh app generated valid provisional
+AndroidKeyStore material before its first personal status call. Candidate
+`9291758c99fd21231ddb30fe029b3f6f11fb1de2` changes only
+`backend/app/acl_management.py` and `backend/tests/test_acl_api.py` in the
+protected map: an unknown valid credential now receives the supervised legacy
+registration projection, while a stored credential ID with a different public
+key remains a hard denial. The complete 86-path bundle is pinned as
+`future-fresh-registration-onboarding-9291758-persistent-baseline`; it does not
+authorize a partial map, wildcard, runtime data mutation or credential
+replacement. This policy step changes no runtime data, credential or deployed
+image; merge-connection, protected CI, NAS deployment and connected A24 UI
+readback remain separate Gates.
