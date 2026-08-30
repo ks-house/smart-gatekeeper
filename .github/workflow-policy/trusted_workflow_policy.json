@@ -100,11 +100,11 @@
   },
   "approved_bundles": [
     {
-      "id": "future-relay-gpio23-4c16b44-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "4c16b44352a986417ee679465da1c61f670abde1"
+        "commit": "c96e85410d2e56bf6757f4ec3f30df2133213bd0"
       },
       "files": {
         ".github/workflows/deploy.yml": "a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8",

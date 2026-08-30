@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "4c16b44352a986417ee679465da1c61f670abde1"
-EXPECTED_BUNDLE_ID = "future-relay-gpio23-4c16b44-persistent-baseline"
+MERGED_MAIN_COMMIT = "c96e85410d2e56bf6757f4ec3f30df2133213bd0"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
