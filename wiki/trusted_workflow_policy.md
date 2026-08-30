@@ -1360,3 +1360,25 @@ exact trusted main must be merge-connected into the feature without rebase or
 squash. Fresh Hosted Trusted, Backend/MariaDB, OTA/schema, Flutter/native checks,
 feature merge, one final root-wrapper installation and exact-main NAS migration
 and readiness remain separate Gates.
+
+## 42. Hosted schema-manifest validation correction
+
+Feature PR #309 proved the application, migration and OTA contracts locally,
+but its first hosted Backend job failed closed before publication because the
+production Compose validation step did not export the reviewed
+`backend/db/schema.env`. Immutable corrective candidate
+`67f87a1dddccb6630564160a1c38d25926817891` loads that exact two-field manifest
+before Compose interpolation and adds a direct ordering regression.
+
+The complete ordered 91-path bundle changes one additional protected runtime
+blob relative to the preceding candidate: `.github/workflows/backend_security.yml`.
+`backend/tests/test_migrations.py` remains in the feature delta with its new
+hosted-validation regression, for 19 changed or new protected paths total and
+72 unchanged paths. The sole
+`mobile-account-schema-ci-67f87a1-persistent-baseline` remains repository,
+immutable-candidate, ancestry, inventory and normalized-digest bound.
+
+This correction relaxes no schema, signature, image, backup, migration,
+no-downgrade, readiness, rollback or access-control Gate and performs no NAS or
+device mutation. Policy merge, merge-connection, fresh hosted CI, feature merge
+and exact-main deployment remain separate Gates.
