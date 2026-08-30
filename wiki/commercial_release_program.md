@@ -31,7 +31,7 @@ Android 모바일 앱, OTA/rollback, 관측성, 운영 절차, 일반 사용자�
 | 관리자 시스템 | 2026-08-08 당시 인증/RBAC gap; 이후 session/CSRF/RBAC/re-auth software 구현 | software gap resolved; live ops evidence pending |
 | Target 네트워크 보안 | 2026-08-08 당시 insecure fallback; 이후 per-Target MQTTS/signed command fail-closed 구현 | software gap resolved; deployed handshake pending |
 | 모바일 사용성 | 2026-08-08 당시 native wake/GATT/updater gap; 이후 default-OFF worker와 recovery/update 구현 | software gap resolved; OEM/physical Gate pending |
-| 물리 장비 | Samsung/OEM, ESP32-C6 BLE/Wi-Fi, GPIO3 relay, AJ-SR04T, bootloader/OTA 증거 없음 | `G0-HW PENDING` |
+| 물리 장비 | Samsung/OEM, ESP32-C6 BLE/Wi-Fi, GPIO23 relay, AJ-SR04T, bootloader/OTA 증거 없음 | `G0-HW PENDING` |
 | Production | `release-evidence.json`이 release blocked를 유지 | `BLOCKED` |
 
 ## 3. 증거 등급과 출시 권한
@@ -87,7 +87,7 @@ flowchart LR
 
 - signed local GATT proof → ACL → access-session FSM → relay 인터록을 production 경로로 통합한다.
 - stale/duplicate callback, disconnect, reset, queue overflow, Wi-Fi/BLE 공존을 fail-closed 시험한다.
-- GPIO3 High-Z OFF, one-shot, AJ-SR04T 19/20 cm 경계, 전원·레벨 시프팅·flyback을 검증한다.
+- GPIO23 High-Z OFF, one-shot, AJ-SR04T 19/20 cm 경계, 전원·레벨 시프팅·flyback을 검증한다.
 - OTA dual-slot, periodic HTTPS, 인증 local recovery, install→reboot→health→rollback을 구현·검증한다.
 - 완료 조건: RELAY-G0~G2, OTA-G1~G4, 24시간 RF/네트워크 soak, power-loss matrix.
 

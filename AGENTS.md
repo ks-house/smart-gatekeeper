@@ -13,7 +13,7 @@
 MCU       : ESP32-C6-DevKitC-1 (RISC-V, NOT Xtensa)
 플랫폼    : pioarduino (공식 espressif32 사용 금지)
 센서      : AJ-SR04T TRIG=GPIO10, ECHO=GPIO11 (5V ECHO 보호 필수)
-릴레이    : GPIO3 Active-LOW, OFF=INPUT High-Z (현장 전기 검증 필수)
+릴레이    : GPIO23 Active-LOW, OFF=INPUT High-Z (현장 전기 검증 필수)
 금지 핀   : GPIO 4,5,8,9,15 (스트래핑), 17,18,19,20 (USB/UART)
 지식베이스: wiki/index.md 를 먼저 읽어라
 로그      : wiki/log.md 에 반드시 기록하라
@@ -125,7 +125,7 @@ smart-gatekeeper/
 | Logic level | **3.3V** |
 | Ultrasonic TRIG | **GPIO 10** |
 | Ultrasonic ECHO | **GPIO 11** (sensor 5 V output 보호 필요) |
-| Relay IN | **GPIO 3** |
+| Relay IN | **GPIO 23** |
 
 ### 절대 사용 금지 핀
 
@@ -201,7 +201,7 @@ lib_deps  = ArduinoJson, PubSubClient
 | # | 질문 | 상태 |
 |---|------|------|
 | Q1 | 매립 Target을 exact-main signed firmware로 복구·갱신하고 boot health를 확인했는가 | 🔴 Pending |
-| Q2 | GPIO3 relay High-Z OFF, ECHO 5 V 보호와 반복 구동을 현장에서 확인했는가 | 🔴 Pending |
+| Q2 | GPIO23 relay High-Z OFF, ECHO 5 V 보호와 반복 구동을 현장에서 확인했는가 | 🔴 Pending |
 | Q3 | Wi-Fi/broker/WAN 장애 자동 복구와 wall-install SLO를 증명했는가 | 🔴 Pending |
 | Q4 | Android OEM background와 Hardwareless RC physical Gate를 닫았는가 | 🔴 Pending |
 

@@ -162,5 +162,5 @@ transcript를 보존하고 fail closed한다. coordinator-side ready 상태가 �
 ## 5. 증거 경계
 
 doctor와 모든 validation suite는 host/software evidence다. 성공해도 Samsung/OEM 화면 OFF, ESP32-C6
-BLE radio/GPIO3, relay/sensor timing, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, production 승인
+BLE radio/GPIO23, relay/sensor timing, bootloader rollback, OTA-G1..G4, RELAY-G0..G2, production 승인
 증거를 만들지 않는다. 물리 장비와 운영자 증거가 없으면 해당 Gate는 계속 `pending / fail-closed`다.

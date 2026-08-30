@@ -30,7 +30,7 @@ conditions:
 | Group | Planned Gate |
 |---|---|
 | Samsung/OEM mobile wake | `SAMSUNG-WAKE-100`: five fixed 20-trial scenarios, totaling 100 eligible trials |
-| Target physical behavior | `ESP32-C6-COEXISTENCE-100`, `GPIO3-RELAY-100`, `AJ-SR04T-BOUNDARY-100` |
+| Target physical behavior | `ESP32-C6-COEXISTENCE-100`, `GPIO23-RELAY-100`, `AJ-SR04T-BOUNDARY-100` |
 | Hands-free relay security | `RELAY-G0`, `RELAY-G1`, `RELAY-G2` |
 | OTA and recovery | `OTA-G1`, `OTA-G2`, `OTA-G3`, `OTA-G4`, including power-cut/recovery evidence |
 | Operator and release action | `OPERATOR-DRILLS`, `CANARY-STOP-ROLLBACK` |
@@ -84,3 +84,43 @@ No result may be promoted from this package to `hardware_test.md` as PASS until
 the raw L2 evidence is independently reviewed. L3 operator and L4 canary
 records remain separate; the plan explicitly does not authorize a production
 contact, canary start, deployment, or production approval.
+
+## 5. Wall-first commissioning boundary
+
+The AJ-SR04T and door-side relay wiring can be connected only at the entrance,
+so installation may precede their physical trials. This is a **conditional
+commissioning installation**, not final concealed-wall acceptance.
+
+Before placing the Target in the wall:
+
+1. Leave a removable service cover or an equivalent non-destructive extraction
+   path. Keep Target USB/serial reachable with an external service lead or
+   conduit, and keep a separately accessible power-isolation point. Signed OTA
+   and rollback reduce service visits but are not the sole recovery mechanism
+   until the complete wall-install campaign passes.
+2. Route and label sensor, relay-input, dry-contact, ground and power conductors
+   separately. Preserve measurement points for GPIO11 ECHO voltage, GPIO23
+   relay input and COM/NO/NC contact behavior.
+3. Do not connect a 5 V ECHO directly to GPIO11. Install and verify the planned
+   divider or level shifter before the first powered sensor trial.
+4. Keep the actual lock/door actuator electrically isolated for initial tests.
+   First prove sensor distance reporting, GPIO23 active-low ON, High-Z OFF,
+   timer cutoff, relay contact behavior and safe power/reset behavior with no
+   door load.
+5. Measure 2.4 GHz RSSI after the Target is at its real depth and the cover is
+   in place. Stop final closure below `-75 dBm`; `-67 dBm` or better remains the
+   preferred installation target.
+
+After the mechanical placement, execute the physical sequence in increasing
+risk order: boot/relay-OFF and network recovery, raw distance and 19/20 cm
+boundary capture, action-1 `ARMED` to sensor-threshold relay command, dry
+contact timing, isolated actuator trial, repeated hands-free trials, power/AP/
+broker/WAN recovery, and signed OTA install/health/rollback. Stop on direct
+5 V ECHO, unexpected relay ON, missed cutoff, reset/brownout, unstable radio or
+loss of the service recovery path.
+
+Final wall closure is permitted only after the applicable Issue #54 evidence
+and the wall-install connectivity Gates are complete. If the service cover,
+USB/serial lead and accessible power isolation cannot be retained, installation
+must wait; current OTA and one connected rollback observation do not justify an
+irretrievable sealed Target.

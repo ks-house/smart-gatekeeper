@@ -742,3 +742,16 @@ It does not claim that a pocket approach opens a physical door, because the
 distance sensor, relay contact/load and door actuator were absent. The manual
 success copy must be treated as a product wording defect until it distinguishes
 an authenticated command from independently confirmed physical opening.
+
+## 2026-08-30 GPIO23 relay source-restoration candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Authoritative pin contract | `include/config.h` defines AJ-SR04T TRIG/ECHO as GPIO10/11 and the single Active-Low, High-Z-OFF relay input as GPIO23 | PASS for source contract; this does not measure the installed Target |
+| Contract validation | Manual/physical-plan unit tests passed 23/23; the pending evidence template validated and the forged-pass self-test was rejected | PASS for deterministic L0/L1 contract checks only |
+| Personal production build | `esp32c6_personal_production` built with pinned pioarduino; 1,783,096/7,340,032 bytes Flash (24.3%) and 67,096/327,680 bytes RAM (20.5%) | PASS for local compile and dual-slot image fit |
+| Physical boundary | No GPIO11 ECHO voltage, GPIO23 input/contact/load, AJ-SR04T distance, actuator movement or door opening was measured in this source/build step | PENDING exact-main signed OTA install/health and on-wall physical acceptance |
+
+The source change intentionally retains the existing one-shot FSM, Active-Low
+polarity, High-Z OFF behavior, signed OTA verification and rollback contract.
+It does not add SmartBox GPIO4/5/6 compatibility or modify the wall wiring.

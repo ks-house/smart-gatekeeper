@@ -9,7 +9,7 @@ is intentionally an all-`not_run` template.
 
 - `issue54_gate_plan.json` is the canonical fixed gate matrix and minimum trial
   counts. It covers the Samsung/OEM 100-run wake campaign, ESP32-C6
-  coexistence, GPIO3 relay, AJ-SR04T, `RELAY-G0` through `RELAY-G2`,
+  coexistence, GPIO23 relay, AJ-SR04T, `RELAY-G0` through `RELAY-G2`,
   `OTA-G1` through `OTA-G4`, operator drills, and the canary stop/rollback
   drill.
 - `schemas/issue54_evidence.schema.json` is the portable JSON Schema for an

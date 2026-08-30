@@ -85,7 +85,7 @@ docker compose run --rm flutter-builder flutter --version
 재현성 증거가 아니다.
 
 당시 WSL에는 `/dev/ttyACM*` 또는 `/dev/ttyUSB*`가 없었다. 따라서 위 firmware 성공은 compiler와
-toolchain의 software evidence이고, Target upload/serial, Wi-Fi/MQTT/BLE, OTA, GPIO3 relay 또는
+toolchain의 software evidence이고, Target upload/serial, Wi-Fi/MQTT/BLE, OTA, GPIO23 relay 또는
 AJ-SR04T 현장 동작을 증명하지 않는다.
 
 #### 1.0.1 WSL 2에서 ESP32-C6 Target USB 전달
@@ -245,7 +245,7 @@ WSL에 Android platform-tools를 설치한다.
 - 검증 후 workspace-owned compiler가 0개이고, ephemeral `include/secrets.h`가 제거됐으며,
   `git status --short`에 build/secret artifact가 없는지 확인합니다.
 - 위 결과는 local software/toolchain evidence입니다. 별도의 GitHub Actions 결과와 혼합하지 않으며,
-  ESP32-C6 radio, GPIO3 relay/sensor, Samsung/OEM, power-loss/bootloader, OTA-G1..G4 또는
+  ESP32-C6 radio, GPIO23 relay/sensor, Samsung/OEM, power-loss/bootloader, OTA-G1..G4 또는
   RELAY-G0..G2 physical evidence를 대신하지 않습니다.
 
 ### 1.2 Windows managed-runner PlatformIO package lock
@@ -704,7 +704,7 @@ execution으로 실행하고, broad staging 또는 parent repository file mutati
   기본-OFF가 green이 된 뒤에만 `PLATFORMIO_BUILD_FLAGS=-DENABLE_HARDWARELESS_RC=1` feature-ON을
   순차 실행한다.
 - 위 빌드는 hardwareless software evidence다. Samsung/OEM 화면 OFF·task swipe-away,
-  ESP32-C6 BLE radio/GATT, GPIO3 relay/sensor timing, bootloader rollback 및 OTA-G1..G4 물리 gate를
+  ESP32-C6 BLE radio/GATT, GPIO23 relay/sensor timing, bootloader rollback 및 OTA-G1..G4 물리 gate를
   대체하지 않는다.
 
 ## 8. Linux GCC `strncpy` literal 경고

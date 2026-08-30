@@ -361,7 +361,7 @@ jobs:
           100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
           100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
           100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
-          100644 1f7b88daf8bebfa0a3e35f8a475a764ebefde3c09fa46d55506104e7a0ff6008 include/config.h
+          100644 e27c075c08668543c10336746a26bbe33f2ff42e72a7c34837368a8ad951269b include/config.h
           100644 7fb16bde7025386547d2e3b6e90f2236ad00e2695eb04c7f4f3947e503450fd8 include/secrets.h.example
           100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock
           100644 20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv

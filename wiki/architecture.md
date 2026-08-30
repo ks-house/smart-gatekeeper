@@ -15,7 +15,7 @@ flowchart LR
   B -->|QoS 1 + PUBACK\nsigned per-Target command| M[MQTT broker]
   M --> T
   S[AJ-SR04T\nGPIO10/11] --> T
-  T -->|GPIO3, 1 s| R[Active-LOW relay]
+  T -->|GPIO23, 1 s| R[Active-LOW relay]
   B --> W[WebView tenant/admin UI]
 ```
 
@@ -315,6 +315,6 @@ signed snapshot renewal도 source 계약에 포함되며, live NAS scheduler와 
 저장소 기능은 Target, backend, Android, 보안·OTA·운영 계약까지 통합되어 **프로덕션 증거 수집 단계**입니다.
 개인 GATT와 HA signed bridge는 source/test 단계에서 활성화됐지만 NAS, phone, Target에 배포됐다고
 주장하지 않습니다. exact-main signed firmware install→reboot→version/boot/health, same-signature APK
-install→public enrollment→Target ACL applied→GATT proof, HA discovery/bridge ACK, 연결 자동 복구, GPIO3
+install→public enrollment→Target ACL applied→GATT proof, HA discovery/bridge ACK, 연결 자동 복구, GPIO23
 relay 전기 안전, Android OEM background, production NAS/proxy/backup/operator 증거가 완료 조건입니다.
 현재 요약은 [project_status.md](project_status.md)를 따릅니다.

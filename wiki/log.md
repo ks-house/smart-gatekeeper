@@ -5081,8 +5081,46 @@
 - In app-only English locale, one bounded action-2 completed in 1834 ms and displayed `Target executed the open command. Physical door opening is not confirmed.` Restoring the original empty app-locale override re-rendered the same retained result in Korean with the same latency; final device locale was `ko-KR`.
 - This completes issue #276's connected ko/en wording acceptance. AJ-SR04T, ECHO protection, relay contact/load, actuator and door are still absent, so distance trigger, electrical actuation and physical opening remain unclaimed under #54.
 
+## [2026-08-30] compile | Define conditional wall-first commissioning boundary
+
+- Assessed the owner's constraint that AJ-SR04T and door-side relay wiring can be connected only after entrance-wall placement; allowed a removable commissioning installation while keeping final concealed closure blocked.
+- Required a service cover or extraction path, externally reachable USB/serial and power isolation, labelled test points, verified GPIO11 ECHO level protection, and no-load relay/contact trials before connecting the door actuator.
+- Ordered the remaining on-wall evidence from relay-OFF/network recovery through distance boundary, action-1 sensor trigger, dry contact, isolated actuator, repeated hands-free, outage and signed OTA/rollback trials. Existing software, CI and rollback evidence does not claim sensor, contact or physical-door acceptance.
+
+## [2026-08-30] compile | Identify incompatible SmartBox wall wiring
+
+- Compared current source in Smart Gatekeeper and `/home/sh-cat-lee/workspaces/smartbox` after the owner reported successful `ARMED` with no remote or ultrasonic physical opening.
+- Confirmed that Smart Gatekeeper drives AJ-SR04T on GPIO10/11 and one Active-Low relay on GPIO3, while SmartBox uses AJ-SR04T GPIO4/5 plus main/direction relay GPIO6/7/8. The copied wiring therefore cannot receive the Gatekeeper trigger/echo or relay drive.
+- Recorded the additional safety boundary that Gatekeeper's residual GPIO6/7 I2C bus-clear may alter those pins during boot. No remote command, relay actuation, serial reset, wiring mutation or physical-door success was performed or claimed.
+
+## [2026-08-30] compile | Audit historical Gatekeeper wiring changes
+
+- Traced pin definitions and physical-test records across the full Git history after the owner recalled an initially working installation.
+- Confirmed the 2026-07-24 physical PASS baseline used VL53L0X GPIO6/7/10 and relay GPIO23; the 2026-07-27 ultrasonic migration changed the sensor to AJ-SR04T GPIO10/11 while retaining relay GPIO23.
+- Confirmed commit `d957718` changed relay GPIO23 to GPIO3 during fail-closed GATT contract reconciliation and explicitly left GPIO3 physical validation pending. No Smart Gatekeeper revision ever defined SmartBox AJ-SR04T GPIO4/5 or relay GPIO6.
+- Classified restoration of the historical Gatekeeper mapping separately from adding a new SmartBox-wiring compatibility profile. No firmware build, OTA publication, Target command or hardware mutation was performed.
+
+## [2026-08-30] code | Restore AJ-SR04T GPIO10/11 and relay GPIO23 contract
+
+- Restored the owner-confirmed Gatekeeper wall-wiring contract to AJ-SR04T TRIG/ECHO GPIO10/11 and one Active-Low relay input on GPIO23; retained the existing High-Z OFF, one-shot FSM, signed dual-slot OTA and rollback behavior.
+- Synchronized agent guidance, manuals, architecture, current-status pages and Issue #54 physical-gate identifiers from the unverified GPIO3 candidate to GPIO23 without changing historical GPIO3-era evidence.
+- Kept SmartBox GPIO4/5/6 actuator wiring unsupported and retained the GPIO11 5 V ECHO protection and isolated dry-contact commissioning requirements.
+
+## [2026-08-30] test | Build GPIO23 personal-production source candidate
+
+- Passed 23 manual/physical preparation unit tests, the pending-template validator and forged-pass rejection self-test.
+- Built `esp32c6_personal_production` with the pinned pioarduino toolchain at 1,783,096/7,340,032 bytes Flash and 67,096/327,680 bytes RAM.
+- Updated the privileged Target build-tree row to the reviewed LF-normalized GPIO23 `include/config.h` digest; the workflow remains protected and therefore requires the normal separate trusted-policy authorization before feature merge.
+- These are source/build results only. Exact-main CI publication, Target signed OTA install/reboot/health, GPIO11 ECHO voltage, GPIO23 relay contact/load and actual door behavior remain separate Gates.
+
 ## [2026-08-30] compile | Authorize reviewed GPIO23 Target build bundle
 
 - Bound the complete trusted 83-file bundle to reviewed feature candidate `4c16b44352a986417ee679465da1c61f670abde1` and its future merge-connected descendants.
 - The only protected-byte change is `.github/workflows/deploy.yml`, whose privileged Target build inventory now pins the reviewed GPIO23 `include/config.h` digest; all other protected bytes and both namespace inventories remain unchanged.
 - This policy-only step publishes or installs no firmware and performs no relay or door action. Feature merge, exact-main signed publication, Target OTA health and final baseline rotation remain separate Gates.
+
+## [2026-08-30] compile | Connect GPIO23 candidate to trusted policy main
+
+- Merge-connected trusted policy main `a62315e` into reviewed feature candidate `4c16b44352a986417ee679465da1c61f670abde1` without rebase or squash, preserving both immutable parents.
+- The GPIO23 source and the sole changed protected workflow byte remain identical to the reviewed bundle. Fresh Hosted Trusted, OTA and ESP32-C6 checks are required before feature merge.
+- No firmware was published or installed and no relay, sensor or physical door action was performed in this graph-connection step.

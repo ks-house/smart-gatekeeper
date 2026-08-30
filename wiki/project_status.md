@@ -662,7 +662,7 @@ evidence.
 - 현재 exact main `a9b68222`의 firmware는 signed OTA로 Target에 설치되어 Wi-Fi
   `192.168.35.19`, MQTTS, ACL v147과 GATT를 복원했고 이후 OTA 확인에서 current로 판정됐다.
   같은 main의 APK는 NAS에 게시됐지만 phone이 연결되지 않아 설치하지 않았다. 따라서 현재
-  action 2 버튼, screen-off/pocket action 1, AJ-SR04T와 GPIO3 접점 결과는 여전히 미검증이다.
+  action 2 버튼, screen-off/pocket action 1, AJ-SR04T와 당시 GPIO3 접점 결과는 여전히 미검증이다.
 
 ## 2026-08-26 issue #134 pocket-approach 후보
 
@@ -697,7 +697,7 @@ evidence.
 
 | 축 | 저장소 최신 구현 | 검증/운영 경계 |
 |---|---|---|
-| Target | ESP32-C6, AJ-SR04T, GPIO3 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA. 개인 설치 전용 `esp32c6_personal_production`은 valid door/ACL trust 뒤 Hardwareless를 compile/runtime ON하고, default/commercial profile은 OFF를 유지 | run `32872303874`의 exact-main `2.1.266+main.ga9b6822`가 NAS immutable/pointer readback 뒤 signed OTA로 설치·재부팅됐다. Wi-Fi `192.168.35.19`, MQTTS, ACL v147과 connectable GATT가 정상이고 이후 확인에서 current였다. sensor/relay/rollback은 별도 Gate다 |
+| Target | ESP32-C6, AJ-SR04T GPIO10/11, GPIO23 relay, per-Target MQTTS, signed command/ACL, signed dual-slot OTA. 개인 설치 전용 `esp32c6_personal_production`은 valid door/ACL trust 뒤 Hardwareless를 compile/runtime ON하고, default/commercial profile은 OFF를 유지 | GPIO23 source restoration is a new candidate. Its build, exact-main signed OTA install/reboot/health and the GPIO11 electrical/relay-contact/door trials must be recorded separately before physical success is claimed |
 | Android | foreground scan, OS-managed BLE wake, native GATT credential worker, AndroidKeyStore public enrollment, native-authoritative consent/ownership, recovery/update UI, bounded NAS APK publisher | run `32872303799`가 production-signed `1.0.0-ga9b6822` / 19801을 NAS primary/fallback에 게시·readback했다. phone 미연결로 설치하지 않았다. 마지막 연결 증거는 `db37bc2` action-1 foreground GATT 성공이며, 현재 action-2 수동 개방과 pocket action-1은 실기기 미검증이다 |
 | Backend | FastAPI/MariaDB, enrollment/ACL, personal public-key bootstrap, exact Target ACL apply correlation, signed HA command bridge, admin session/RBAC/CSRF/re-auth, operations APIs | paho-mqtt 1.6.1 MQTTv5 `ReasonCodes` callback correction은 exact main `bc9bb5d`에 포함됐다. NAS live Backend를 rebuild/recreate했고 readiness, Target status, subscriber/discovery와 bridge availability가 정상이다 |
 | Access | legacy iBeacon → pre-arm, personal native local GATT, signed Backend/MQTT remote command가 상호 구분됨 | 과거 `db37bc2`에서 action-1 foreground proof/result와 `ARMED`를 실기기로 확인했다. 현재 소스는 action 1 sensor ARM과 action 2 immediate relay를 분리하고 Target FSM 전이 성공에 Result를 결합한다. a9 APK/phone 및 실제 sensor/relay E2E는 미검증이다 |
@@ -730,7 +730,7 @@ Target iBeacon
   → Target command verification
   → TargetAccessFsm ARMED
   → AJ-SR04T valid distance
-  → GPIO3 relay
+  → GPIO23 relay
 ```
 
 Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해 Target-local FSM으로 연결되는 별도 경로다. 기본 개발 및 commercial production 빌드는 `ENABLE_HARDWARELESS_RC=0`을 유지한다. 단일 설치용 `esp32c6_personal_production`만 compile-ON이며, valid Target identity/ACL trust에 따른 일회성 NVS migration과 이후 `false` kill switch를 적용한다. 모바일은 명시적 enrollment가 exact Target ACL applied ACK까지 확인된 뒤에만 native ownership을 ON한다.
@@ -748,7 +748,7 @@ Hardwareless RC는 AndroidKeyStore 자격과 connectable GATT proof를 사용해
 
 1. Issue #172는 exact 295 pre-VALID 자동 rollback/anti-replay와 strictly newer exact 296의 application health-window→explicit VALID→post-VALID reboot를 모두 연결 Target에서 통과해 닫혔다. OTA-G4의 별도 hard power-removal 시험은 계속 남는다.
 2. 약신호 compatibility release를 동일 위치에서 홈 AP와 가까운 AP로 A/B하고, 홈 위치 RSSI를 최소 `-75 dBm` 이상으로 개선한 뒤 Wi-Fi/DHCP/MQTTS와 broker/WAN 장애 자동 복구를 실측한다.
-3. GPIO3 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
+3. GPIO23 Active-LOW relay, High-Z OFF, ECHO 5 V 보호, 전원 강하와 반복 구동을 물리 검증한다.
 4. Samsung/OEM 화면 OFF, Activity 종료, OS background 제한을 release artifact로 반복 검증한다.
 5. Personal Hardwareless RC의 compile/runtime enable에서 exact-main 301/`gf352a78` 조합은 fresh beacon action 1 `ARMED` 직후 dashboard action 2 relay-command ON/OFF와 terminal UI 성공을 통과했다. Samsung/OEM screen-off·process-killed pocket action 1의 반복/latency 분포, relay contact/load와 실제 문 움직임은 계속 검증한다. Commercial/default compile-OFF와 local kill switch는 보존한다.
 6. production NAS 배포, reverse proxy, backup/restore와 operator acceptance는 소프트웨어 계약과 별개의 운영 증거로 남긴다.

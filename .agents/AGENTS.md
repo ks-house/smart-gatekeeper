@@ -16,7 +16,7 @@ wiki/log.md     → 직전 에이전트 작업 내용
 ### 2. 하드웨어 절대 규칙
 - MCU: **ESP32-C6** (RISC-V). 구형 ESP32(Xtensa) 핀 번호 사용 금지.
 - 현재 센서: AJ-SR04T `TRIG=GPIO10`, `ECHO=GPIO11`; 5 V ECHO 직결 금지.
-- 릴레이: authoritative `GPIO3`, Active-LOW, OFF `INPUT` High-Z; 전기 안전 실측 필수.
+- 릴레이: authoritative `GPIO23`, Active-LOW, OFF `INPUT` High-Z; 전기 안전 실측 필수.
 - GPIO6/7 I2C는 초기 VL53L0X 이력이며 현재 배선 지시가 아니다. 잔존 bus-clear와 충돌하지 않게 비워 둔다.
 - 금지 핀: **GPIO 4, 5, 8, 9, 15** (스트래핑) / **17, 18, 19, 20** (USB)
 - 플랫폼: `pioarduino` (공식 `espressif32` 사용 시 C6 Arduino 빌드 불가)

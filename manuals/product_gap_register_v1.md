@@ -53,7 +53,7 @@
 |---|---|---|---|
 | SAMSUNG-WAKE-100 | 5개 고정 scenario×20회, permission/Bluetooth/network/reboot/kill, TalkBack/200%/ko-en | user + mobile/OEM reviewer | `PHYSICAL PENDING` |
 | ESP32-C6-COEXISTENCE-100 | radio, boot/reset, rail, broker TLS와 BLE coexistence | firmware/hardware owner | `PHYSICAL PENDING` |
-| GPIO3-RELAY-100 | boot/idle/active/High-Z, 1초 hold/3초 cooldown, actual door effect | installer + separate safety reviewer | `PHYSICAL PENDING` |
+| GPIO23-RELAY-100 | boot/idle/active/High-Z, 1초 hold/3초 cooldown, actual door effect | installer + separate safety reviewer | `PHYSICAL PENDING` |
 | AJ-SR04T-BOUNDARY-100 | GPIO10/11, ECHO protection, 20cm boundary/50cm threshold/timeout | sensor/safety owner | `PHYSICAL PENDING` |
 | RELAY-G0/G1/G2 | unauthorized/replay/reset/unknown effect에서 relay fail-closed | security + physical owner | `PHYSICAL PENDING` |
 | OTA-G1..G4 | app install health/fallback, inactive-slot boot, continuous health, power/network cut, rollback/local recovery | release/mobile/firmware owners | `PHYSICAL PENDING` |

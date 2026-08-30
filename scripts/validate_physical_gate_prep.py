@@ -23,7 +23,7 @@ EXPECTED_GATE_CONTRACTS = {
         "PC-ESP32-C6-COEXISTENCE-100-V1",
         "independent_reviewer",
     ),
-    "GPIO3-RELAY-100": ("PC-GPIO3-RELAY-100-V1", "independent_reviewer"),
+    "GPIO23-RELAY-100": ("PC-GPIO23-RELAY-100-V1", "independent_reviewer"),
     "AJ-SR04T-BOUNDARY-100": (
         "PC-AJ-SR04T-BOUNDARY-100-V1",
         "independent_reviewer",

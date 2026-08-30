@@ -253,11 +253,11 @@ class ManualContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         config = (ROOT / "include" / "config.h").read_text(encoding="utf-8")
-        for token in ("GPIO3", "GPIO10", "GPIO11", "3.3V", "High-Z", "flyback"):
+        for token in ("GPIO23", "GPIO10", "GPIO11", "3.3V", "High-Z", "flyback"):
             self.assertIn(token, installer)
         self.assertRegex(config, r"PIN_TRIG\s*=\s*10")
         self.assertRegex(config, r"PIN_ECHO\s*=\s*11")
-        self.assertRegex(config, r"PIN_RELAY\s*=\s*3")
+        self.assertRegex(config, r"PIN_RELAY\s*=\s*23")
         self.assertRegex(config, r"RELAY_ACTIVE_LOW\s*=\s*true")
 
     def test_fixture_contains_no_secret_material_or_production_claim(self) -> None:
@@ -442,7 +442,7 @@ class ManualContractTests(unittest.TestCase):
             "PHYSICAL PENDING",
             "PRODUCTION PENDING",
             "OTA-G1..G4",
-            "GPIO3-RELAY-100",
+            "GPIO23-RELAY-100",
             "SAMSUNG-WAKE-100",
         ):
             self.assertIn(token, corpus)

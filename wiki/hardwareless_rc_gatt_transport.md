@@ -76,6 +76,6 @@ Issue #175 added the one-shot ACL-gated startup policy and merged through PR #17
 ## 7. Hardware contract
 
 - ESP32-C6-DevKitC-1, RISC-V, pioarduino.
-- Relay input is authoritative GPIO3, active-low assumption, boot OFF safety retained.
+- Relay input is authoritative GPIO23, active-low assumption, boot OFF safety retained.
 - AJ-SR04T remains GPIO10/11 in the current firmware.
-- Physical relay polarity, electrical safety, and GPIO3 behavior remain unverified.
+- Physical relay polarity, electrical safety, and GPIO23 behavior remain unverified after the source restoration.
