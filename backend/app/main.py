@@ -30,7 +30,7 @@ except Exception:
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from .acl_refresh import AclRefreshWorker
@@ -46,7 +46,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
     )
 
 try:
-    from .acl_management import DeterministicP256Signer
+    from .acl_management import DeterministicP256Signer, verify_raw64
     from .command_security import build_signed_command
     from .home_assistant_bridge import (
         HomeAssistantCommandBridge,
@@ -70,7 +70,7 @@ try:
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
 except ImportError:  # Docker runs uvicorn with /app as the import root.
-    from acl_management import DeterministicP256Signer
+    from acl_management import DeterministicP256Signer, verify_raw64
     from command_security import build_signed_command
     from home_assistant_bridge import (
         HomeAssistantCommandBridge,
@@ -901,10 +901,42 @@ class ForceOpenRequestSchema(BaseModel):
 
 
 class ManualOpenV2Request(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     device_id: Optional[str] = Field(default=None, max_length=128)
     reason: Optional[str] = Field(default=None, max_length=256)
     nonce: Optional[str] = Field(default=None, min_length=32, max_length=128)
     expires_at: Optional[int] = None
+    credential_id: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    signature_raw64: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{128}$")
+
+
+def build_mobile_manual_open_input(
+    credential_id: str,
+    nonce: str,
+    expires_at: int,
+    reason: str,
+    idempotency_key: str,
+) -> bytes:
+    """Canonical AndroidKeyStore possession proof; never includes private material."""
+    if reason != "mobile_manual_button":
+        raise ValueError("unsupported mobile manual reason")
+    if not re.fullmatch(r"[0-9a-f]{32}", credential_id):
+        raise ValueError("credential id")
+    if not re.fullmatch(r"[0-9a-f]{64}", nonce):
+        raise ValueError("nonce")
+    if not 16 <= len(idempotency_key) <= 128:
+        raise ValueError("idempotency")
+    return b"".join(
+        (
+            b"SGKRMO01",
+            bytes.fromhex(credential_id),
+            bytes.fromhex(nonce),
+            int(expires_at).to_bytes(8, "big"),
+            hashlib.sha256(reason.encode("utf-8")).digest(),
+            hashlib.sha256(idempotency_key.encode("utf-8")).digest(),
+        )
+    )
 
 
 class PrivacyDeletionRequest(BaseModel):
@@ -1909,8 +1941,129 @@ def manual_open_v2(
     x_device_proof: Optional[str] = Header(default=None, alias="X-Device-Proof"),
     x_idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER),
 ):
-    """N/N-1-safe URI: only a v2 proof envelope can request manual control."""
+    """N/N-1-safe URI for legacy HMAC v2 and AndroidKeyStore signature v3."""
     now = int(time.time())
+    if req.credential_id is not None or req.signature_raw64 is not None:
+        if not all(
+            (
+                req.credential_id,
+                req.signature_raw64,
+                req.reason,
+                req.nonce,
+                req.expires_at,
+                x_idempotency_key,
+            )
+        ):
+            raise HTTPException(
+                status_code=426,
+                detail="manual control requires the signed credential envelope",
+            )
+        if (
+            not now < int(req.expires_at) <= now + 120
+            or len(x_idempotency_key) > 128
+            or req.reason != "mobile_manual_button"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="manual control proof expiry, reason or idempotency is invalid",
+            )
+        if not globals().get("_acl_runtime_ready", False):
+            raise HTTPException(status_code=503, detail="credential control unavailable")
+        conn = None
+        try:
+            conn = get_db()
+            conn.begin()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT c.credential_id,c.tenant_id,c.public_key_sec1,"
+                    "c.status,c.expires_at,t.status AS tenant_status "
+                    "FROM credentials c JOIN acl_tenants t ON t.tenant_id=c.tenant_id "
+                    "WHERE c.credential_id=%s FOR UPDATE",
+                    (req.credential_id,),
+                )
+                credential = cur.fetchone()
+                if (
+                    not credential
+                    or credential["status"] != "ACTIVE"
+                    or credential["tenant_status"] != "ACTIVE"
+                    or (
+                        credential.get("expires_at") is not None
+                        and int(credential["expires_at"]) <= now
+                    )
+                    or not secrets.compare_digest(
+                        str(credential["tenant_id"]), COMMAND_TENANT_ID
+                    )
+                ):
+                    raise PermissionError("mobile credential is inactive")
+                cur.execute(
+                    "SELECT permissions FROM credential_door_grants "
+                    "WHERE tenant_id=%s AND door_id=%s AND credential_id=%s "
+                    "AND revoked_at IS NULL FOR UPDATE",
+                    (COMMAND_TENANT_ID, COMMAND_DOOR_ID, req.credential_id),
+                )
+                grant = cur.fetchone()
+                if not grant or (int(grant["permissions"]) & 1) != 1:
+                    raise PermissionError("mobile credential has no open grant")
+                canonical = build_mobile_manual_open_input(
+                    req.credential_id,
+                    req.nonce,
+                    int(req.expires_at),
+                    req.reason,
+                    x_idempotency_key,
+                )
+                if not verify_raw64(
+                    bytes.fromhex(str(credential["public_key_sec1"])),
+                    canonical,
+                    bytes.fromhex(req.signature_raw64),
+                ):
+                    raise PermissionError("mobile credential proof rejected")
+                cur.execute(
+                    "INSERT INTO mobile_credential_control_nonces "
+                    "(credential_id,nonce_hash,action,expires_at,consumed_at) "
+                    "VALUES (%s,%s,%s,%s,%s)",
+                    (
+                        req.credential_id,
+                        hashlib.sha256(req.nonce.encode("utf-8")).hexdigest(),
+                        "manual_remote_v3",
+                        req.expires_at,
+                        now,
+                    ),
+                )
+            conn.commit()
+        except PermissionError as exc:
+            if conn:
+                conn.rollback()
+            raise HTTPException(status_code=403, detail="manual control denied") from exc
+        except pymysql.err.IntegrityError as exc:
+            if conn:
+                conn.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="manual control proof already consumed",
+            ) from exc
+        except HTTPException:
+            if conn:
+                conn.rollback()
+            raise
+        except Exception as exc:
+            if conn:
+                conn.rollback()
+            raise HTTPException(status_code=503, detail="manual control unavailable") from exc
+        finally:
+            if conn:
+                conn.close()
+        if not publish_force_open_to_mqtt("credential-signature-v3"):
+            raise HTTPException(status_code=503, detail="manual control was not delivered")
+        request_id = hashlib.sha256(
+            f"{req.credential_id}:{req.nonce}".encode("utf-8")
+        ).hexdigest()[:24]
+        return {
+            "result": "requested",
+            "delivery": "broker-ack-only",
+            "auth": "credential-signature-v3",
+            "request_id": request_id,
+        }
+
     if not all((req.device_id, req.reason, req.nonce, req.expires_at, x_device_proof, x_idempotency_key)):
         raise HTTPException(status_code=426, detail="manual control requires the v2 proof envelope")
     if not now < int(req.expires_at) <= now + 120 or len(x_idempotency_key) > 128:

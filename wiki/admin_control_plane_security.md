@@ -21,7 +21,12 @@ production-authorization evidence. Those gates remain separate and fail closed.
 
 The retired `/api/v1/door/open` device-ID bearer route and anonymous device-ID
 data/write routes are not registered. A supplied device ID is not proof of
-identity or permission.
+identity or permission. The same URI additionally accepts the mobile
+credential-signature v3 envelope: Android signs the exact `SGKRMO01` canonical
+request with its enrolled non-exportable P-256 key, and the Backend verifies the
+active credential, tenant and exact door grant before consuming a durable nonce.
+This user credential path is separate from administrator sessions and from the
+two-person administrator force-open path.
 
 The single-owner personal app uses a narrower compatibility exception for
 enrollment only: Flutter native code, not WebView JavaScript, calls
@@ -91,7 +96,7 @@ when `RUN_MARIADB_INTEGRATION=1`, validates the real MariaDB immutable trigger.
 migration checks against the exact pull-request SHA; a green local container
 run is useful evidence but never substitutes for this hosted result.
 
-## Additive v2 manual-control compatibility contract
+## Additive v2/v3 manual-control compatibility contract
 
 Issue #49 does not reinterpret an N-1 `device_id` as a credential. The legacy
 `POST /api/v1/door/open` URI remains reserved for compatibility, but a request
@@ -108,6 +113,14 @@ fact commit before any broker call, so a crash, broker failure, or final
 persistence outage is visible to an operator and never silently retried as an
 unknown physical open. `mobile_control_nonces` makes replay persistence survive
 API restarts.
+
+The mobile v3 envelope binds credential ID, 32-byte random nonce, expiry,
+fixed reason and idempotency key in a 128-byte canonical input. Its replay row
+is stored in `mobile_credential_control_nonces` before broker publication. It
+uses neither the APK-wide API key nor the legacy tenant HMAC. A 2xx response is
+explicitly `broker-ack-only`; Target receipt, relay/contact and physical door
+state require separate evidence. A client transport timeout is outcome-unknown
+and must not cause an automatic retry of a physical-effect request.
 
 The approval handler reads precisely the durable names `tenant_scope` and
 `proposer_subject`; it never falls back to transient aliases such as

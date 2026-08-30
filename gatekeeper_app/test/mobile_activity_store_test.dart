@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gatekeeper_app/services/mobile_activity_store.dart';
 import 'package:gatekeeper_app/services/native_gatt_worker_health.dart';
+import 'package:gatekeeper_app/services/remote_manual_open_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -61,6 +62,24 @@ void main() {
     expect(items.single.detail, contains('1846ms'));
     expect(items.single.detail, contains('실제 문 열림은 별도 확인'));
     expect(items.single.detail, isNot(contains('문이 열렸습니다')));
+    expect(items.single.isFailure, isFalse);
+  });
+
+  test('remote broker acknowledgement is not physical-open confirmation',
+      () async {
+    final store = MobileActivityStore();
+    final items = await store.recordRemoteOpenResult(
+      const RemoteManualOpenOutcome(
+        state: RemoteManualOpenState.requested,
+        reason: 'BROKER_ACKNOWLEDGED',
+        requestId: 'opaque-request',
+      ),
+      occurredAt: DateTime.utc(2026, 8, 30),
+    );
+
+    expect(items.single.type, 'manual_remote_requested');
+    expect(items.single.detail, contains('MQTT broker 전달'));
+    expect(items.single.detail, contains('실제 문 열림은 별도 확인'));
     expect(items.single.isFailure, isFalse);
   });
 

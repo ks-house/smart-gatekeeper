@@ -172,11 +172,14 @@ broker reconnects cannot create unbounded ACL versions or unnecessary Target NVS
 
 ACL routes are mounted only when the feature and all prerequisites are valid. Initialization
 failure leaves legacy `manual_remote`, APK/version download, health and config routes active.
-The authenticated remote contract `POST /api/v1/door/open` with an approved device remains available
-as `manual_remote`; it is distinct from the app's `manual_local_gatt`, which uses the personal
-enrollment seam once and then authenticates locally. The remote path directly publishes a signed
-command only after device-to-tenant approval; it does not call the hands-free Pre-arm/RELAY assessment
-path and remains available while ACL management is disabled or fails initialization. Home Assistant
+The authenticated remote contract `POST /api/v1/door/open` remains available as
+`manual_remote`; it is distinct from hands-free `manual_local_gatt` action 1.
+The current mobile v3 path proves possession of the enrolled AndroidKeyStore
+credential, requires an ACTIVE tenant and the exact ACTIVE credential-to-door
+grant, then consumes a durable replay nonce before publishing a signed command.
+It fails closed while ACL management is unavailable. The older HMAC v2 envelope
+remains N-1 compatible, while device-ID-only calls are upgrade-required and
+cause no control effect. Home Assistant
 may reach `manual_remote` only through its separate signed bridge opt-in, never by publishing a
 plaintext Target command.
 Management OTA metadata requires distinct primary/fallback HTTPS URLs, artifact digest,

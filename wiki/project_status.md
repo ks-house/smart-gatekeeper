@@ -18,6 +18,27 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-08-30 credential-signed remote Home button candidate
+
+- The owner-observed direct MQTT command opened the installed door. The mobile
+  button failed separately at `GATT_DISCONNECTED` before every GATT protocol
+  phase, so the Target MQTT/relay result is not evidence that the old mobile
+  Local GATT button worked.
+- The normal Home, advanced-control and hosted-shell button paths now request a
+  Backend remote open. Native Android signs a fresh fixed-width request with the
+  already-enrolled non-exportable AndroidKeyStore P-256 key; no shared API key or
+  legacy tenant HMAC is placed in the control request.
+- Backend v3 verifies the active credential, active tenant, exact active door
+  grant, expiry and signature, consumes a durable database nonce, then reuses
+  the existing per-Target signed MQTTS command path. Legacy HMAC v2 remains for
+  N-1, and device-ID-only calls remain HTTP 426/no-effect.
+- Focused Backend tests and mobile widget/service tests pass. The broader root
+  suite is intentionally blocked until the protected backend bundle receives
+  its separate exact-candidate trust-policy authorization. NAS migration `008`,
+  production deployment, exact-main signed APK publication/replacement install
+  and a connected button-to-door observation are not yet complete and must not
+  be inferred from this source candidate.
+
 ## 2026-08-29 foreground Target detection dashboard candidate
 
 - The Smart Key control screen now polls native GATT health once per second and

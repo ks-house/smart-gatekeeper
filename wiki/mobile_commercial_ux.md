@@ -90,14 +90,27 @@ release fallback.
 
 ## Manual control compatibility
 
-The explicit local GATT retry remains available through the encrypted recent
-Target capability. It does not claim that an MQTT `manual_remote` command moved
-the relay. Main's `/api/v1/door/open` now requires the additive v2 proof envelope;
-the app does not possess or expose the legacy Backend HMAC secret. Until issue
-#52 provisions a scoped possession credential and completes the client rollout,
-the legacy Web shell keeps anonymous enrolment, device-ID status, and remote-open
-actions visibly disabled and sends no mock-success request. An HTTP `426` from an
-N-1 client is an upgrade-required result with no control effect.
+The normal user-visible **문 열기** button is a Backend remote-control action;
+it is not the hands-free Local GATT action. The native shell creates a fresh
+nonce, expiry and idempotency key, signs the fixed-width `SGKRMO01` canonical
+request with the already-enrolled non-exportable AndroidKeyStore P-256 key, and
+sends only the credential ID and signature to `POST /api/v1/door/open`. It never
+embeds the shared Backend API key or the legacy tenant HMAC secret in this
+control request.
+
+The Backend requires an active credential, active tenant, an exact active grant
+for the configured door, a valid signature and an unused durable nonce before
+publishing the existing per-Target signed MQTTS force-open command. The prior
+HMAC v2 envelope remains available for N-1 compatibility; a device-ID-only
+request still returns HTTP `426` and has no database or broker effect. HTTP 2xx
+means only that the Backend accepted the proof and received broker acknowledgement.
+The app must not infer Target receipt, relay actuation or physical door movement;
+a transport timeout is terminal `outcome unknown` and is never retried
+automatically.
+
+Hands-free pocket approach remains action 1 over Local GATT followed by Target
+sensor assessment. Native action 2 remains an advanced diagnostic/recovery seam,
+not the normal Home-button transport.
 
 ## Privacy and UI
 

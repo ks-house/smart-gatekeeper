@@ -66,15 +66,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get automaticAccessDisabled => 'Automatic access disabled';
 
   @override
-  String get manualOpenRequesting => 'Requesting an open command from Target.';
+  String get manualOpenRequesting =>
+      'Requesting a remote open command from the Backend.';
 
   @override
   String get manualOpenCommandExecuted =>
-      'Target executed the open command. Physical door opening is not confirmed.';
+      'The Backend delivered the remote open command to MQTT. Physical door opening is not confirmed.';
 
   @override
   String get manualOpenOutcomeUnknown =>
-      'The open-command outcome is unknown. Do not retry automatically.';
+      'The remote delivery outcome is unknown. Do not retry automatically.';
 
   @override
   String get statusRefreshing => 'Refreshing status.';

@@ -11,16 +11,15 @@ void main() {
       () {
     const message = HomeMessage(
       HomeMessageKind.manualOpenCommandExecuted,
-      latencyMs: 2007,
     );
 
     expect(
       message.resolve(korean),
-      'Target이 개방 명령을 실행했습니다. 실제 문 열림은 별도 확인이 필요합니다. (2007ms)',
+      '백엔드가 원격 개방 명령을 MQTT로 전달했습니다. 실제 문 열림은 별도 확인이 필요합니다.',
     );
     expect(
       message.resolve(english),
-      'Target executed the open command. Physical door opening is not confirmed. (2007ms)',
+      'The Backend delivered the remote open command to MQTT. Physical door opening is not confirmed.',
     );
   });
 

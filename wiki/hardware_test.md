@@ -1,9 +1,22 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-29 (canonical CI deployed backend `d50b98f`; Fold7 `gd9ecc87` and connected Target passed action-1 ARMED replacement by action-2 OPENED plus relay-command ON/OFF)
+> Last updated: 2026-08-30 (wall Target MQTT open succeeded; mobile Local GATT failed before protocol; credential-signed Backend manual path is source-only)
 
 ## 1. 판정 원칙
 
 과거 VL53L0X/ESP32 BLE scanner 아키텍처의 PASS는 변경 이력으로 보존하지만, 현재 **iBeacon → Android → FastAPI → MQTT → AJ-SR04T → Relay** 경로의 합격 근거로 간주하지 않습니다. 소프트웨어 빌드 통과와 실기기 E2E 통과도 분리합니다.
+
+## 2026-08-30 wall Target manual-open transport split
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Direct MQTT open | Owner observed the installed door open through the MQTT command path after restoring AJ-SR04T GPIO10/11 and relay GPIO23 firmware | PASS for the installed Target MQTTS/relay/door path in that observation; this does not authenticate the mobile app |
+| Mobile Local GATT button | Advanced diagnostics showed stale Target detection at RSSI -97 dBm, native worker `UNHEALTHY`, `GATT_DISCONNECTED`, 10,014 ms latency and all connect/hello/challenge/sign/proof/result phases at zero | FAIL before credential proof or relay command; no door effect |
+| Backend-button source candidate | The normal Home, advanced-control and hosted-shell button paths create a fresh AndroidKeyStore credential proof and call Backend `/api/v1/door/open`; Backend verifies active tenant/credential/exact door grant, durable nonce and P-256 signature before per-Target signed MQTTS publication | PASS for focused source/unit tests only; PR, CI, NAS migration/deploy, signed APK publication/install and physical button trial remain pending |
+
+This evidence supports the transport decision: the visible manual button should
+use the already working Backend-to-MQTTS control plane, while pocket approach
+remains Local GATT action 1. Broker acknowledgement is not itself physical-door
+confirmation, and the client never automatically retries an unknown outcome.
 
 ## 2026-08-23 N16 USB 설치 및 최초 부팅 확인
 

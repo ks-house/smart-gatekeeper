@@ -10,6 +10,7 @@ import '../services/mobile_activity_store.dart';
 import '../services/mobile_identity_service.dart';
 import '../services/native_gatt_worker_health.dart';
 import '../services/native_wake_registration.dart';
+import '../services/remote_manual_open_service.dart';
 import '../services/update_checker.dart';
 import 'app_settings_screen.dart';
 import 'support_report_screen.dart';
@@ -29,6 +30,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   final _activityStore = MobileActivityStore();
   final _updates = UpdateChecker();
   final _wake = NativeWakeRegistrationBridge();
+  final _remoteOpen = RemoteManualOpenService();
 
   int _tab = 0;
   bool _busy = false;
@@ -164,11 +166,10 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         });
         return;
       }
-      final result = await _healthBridge.triggerLocalGattOpen();
-      final outcome = ManualOpenOutcome.fromNative(result);
+      final outcome = await _remoteOpen.request();
       List<MobileActivityItem>? activity;
       try {
-        activity = await _activityStore.recordManualOpenResult(result);
+        activity = await _activityStore.recordRemoteOpenResult(outcome);
       } catch (_) {
         // A local timeline write failure must not hide the terminal result.
       }
@@ -176,14 +177,13 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
       setState(() {
         if (activity != null) _activity = activity;
         _actionMessage = switch (outcome.state) {
-          ManualOpenState.commandExecuted => HomeMessage(
+          RemoteManualOpenState.requested => const HomeMessage(
               HomeMessageKind.manualOpenCommandExecuted,
-              latencyMs: outcome.latencyMs,
             ),
-          ManualOpenState.outcomeUnknown => const HomeMessage(
+          RemoteManualOpenState.outcomeUnknown => const HomeMessage(
               HomeMessageKind.manualOpenOutcomeUnknown,
             ),
-          ManualOpenState.failed => HomeMessage(
+          RemoteManualOpenState.failed => HomeMessage(
               HomeMessageKind.failure,
               reason: outcome.reason,
             ),

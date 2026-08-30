@@ -11,6 +11,7 @@ import android.os.PowerManager
 import com.kshouse.gatekeeper_app.gattworker.BleGattFeatureFlagStore
 import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import com.kshouse.gatekeeper_app.gattworker.BleGattManualOpenExecutor
+import com.kshouse.gatekeeper_app.gattworker.RemoteManualOpenProofSigner
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -91,6 +92,25 @@ class MainActivity: FlutterActivity() {
                     nativeActionScope.launch {
                         result.success(
                             BleGattManualOpenExecutor.execute(applicationContext).toMap(),
+                        )
+                    }
+                }
+                "signRemoteManualOpen" -> {
+                    val nonce = call.argument<String>("nonce")
+                    val expiresAt = call.argument<Number>("expiresAt")?.toLong()
+                    val reason = call.argument<String>("reason")
+                    val idempotencyKey = call.argument<String>("idempotencyKey")
+                    if (nonce == null || expiresAt == null || reason == null || idempotencyKey == null) {
+                        result.error("INVALID_ARGUMENT", "remote proof fields are required", null)
+                    } else {
+                        result.success(
+                            RemoteManualOpenProofSigner.sign(
+                                applicationContext,
+                                nonce,
+                                expiresAt,
+                                reason,
+                                idempotencyKey,
+                            ).toMap(),
                         )
                     }
                 }

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'commercial_models.dart';
 import 'native_gatt_worker_health.dart';
+import 'remote_manual_open_service.dart';
 
 class MobileActivityItem {
   const MobileActivityItem({
@@ -108,6 +109,44 @@ class MobileActivityStore {
           occurredAt: timestamp,
           title: '개방 명령 실패',
           detail: 'Target이 개방 명령을 완료하지 못했습니다 ($safeReason).',
+          isFailure: true,
+        ),
+    };
+    return _append(current, item);
+  }
+
+  Future<List<MobileActivityItem>> recordRemoteOpenResult(
+    RemoteManualOpenOutcome outcome, {
+    DateTime? occurredAt,
+  }) async {
+    final current = await read();
+    final timestamp = occurredAt ?? DateTime.now();
+    final safeReason = _boundedReason(outcome.reason);
+    final id = outcome.requestId ??
+        timestamp.toUtc().millisecondsSinceEpoch.toString();
+    final item = switch (outcome.state) {
+      RemoteManualOpenState.requested => MobileActivityItem(
+          id: 'remote-$id-requested',
+          type: 'manual_remote_requested',
+          occurredAt: timestamp,
+          title: '원격 개방 명령 전달',
+          detail: '백엔드가 MQTT broker 전달을 확인했습니다. 실제 문 열림은 별도 확인이 필요합니다.',
+          isFailure: false,
+        ),
+      RemoteManualOpenState.outcomeUnknown => MobileActivityItem(
+          id: 'remote-$id-unknown',
+          type: 'manual_remote_unknown',
+          occurredAt: timestamp,
+          title: '원격 개방 결과 확인 필요',
+          detail: '전달 결과를 확인할 수 없습니다 ($safeReason). 자동 재시도하지 마세요.',
+          isFailure: true,
+        ),
+      RemoteManualOpenState.failed => MobileActivityItem(
+          id: 'remote-$id-failed',
+          type: 'manual_remote_failed',
+          occurredAt: timestamp,
+          title: '원격 개방 요청 실패',
+          detail: '백엔드가 요청을 완료하지 못했습니다 ($safeReason).',
           isFailure: true,
         ),
     };
