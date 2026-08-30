@@ -14,7 +14,7 @@ applies_to:
 
 # 현재 프로젝트 상태
 
-> 관측 기준: protected run `33309298877`은 credential-signed remote button feature source `07b3543a1846a1b7220c09874fb89b9e7836d7eb`의 immutable API/DB를 배포하고 migration `up 008`, pre-migration backup, loopback readiness, DSM public readiness와 canonical evidence upload를 모두 통과했다. 독립 외부 `/live`와 `/ready`도 exact build로 HTTP 200이며 DB/schema/MQTT/runtime/auth/ACL/legacy retirement/build identity가 모두 true다. Final policy main `f403e10c8f48103b2e5d6f7da144fd2ad113d3bc`의 signed mobile 및 Target OTA publication도 HTTPS readback까지 성공했다. 연결된 ADB는 모바일 exact `1.0.0-gf403e10` / 33401 replacement install과 보존된 앱 identity를 확인했다. 세 번의 remote button 시도는 모두 Backend `REMOTE_CONTROL_DENIED`였고, NAS aggregate query로 v3가 개인 credential을 잘못된 legacy `COMMAND_*` 범위에서 조회한 원인이 확정됐다. `ACL_PERSONAL_*` authorization으로 교정하고 command Target 결합을 fail-closed로 검증한 source regression과 전체 149 backend test는 통과했지만 아직 review/CI/NAS 재배포 전이다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
+> 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐으나 첫 신청이 `GK-*` UUID와 기존 17자 legacy storage 계약 불일치로 실패했다. Policy PR #296과 feature PR #297이 보호 검사를 통과했고 exact main `f03acdfaad4fa2fad61439f58f318ddbc756d084`를 Backend run `33314043691`이 NAS에 배포했다. Canonical loopback/public readiness와 독립 strict-TLS `/live`·`/ready`가 exact build HTTP 200 및 모든 check=true를 확인했다. 이후 owner의 접수와 관리자 승인은 완료됐으며 연결된 ADB는 예상된 `이 휴대폰 등록` key-enrollment 단계를 확인했다. AndroidKeyStore credential enrollment·signed ACL Target ACK·딸아이 기기 출입은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
@@ -70,6 +70,30 @@ applies_to:
   `41d89fb`; that exact policy main was merge-connected without rebase or
   squash as `a5671be`. The reviewed protected bytes are unchanged and fresh
   feature CI is now the next Gate.
+
+## 2026-08-30 fresh family-member registration rollout
+
+- PR #295 restored the fresh-install registration projection and form, but the
+  owner's first A24 submission failed before persistence. New installs use a
+  UUID-shaped `GK-*` credential ID, while the request admitted only `DEV-*`
+  and the legacy MariaDB locator is limited to 17 characters.
+- The correction accepts the reviewed `DEV-*`/`GK-*` forms and derives one
+  deterministic 17-character internal locator for longer values. Registration,
+  status and credential bootstrap use the same mapping; existing fitting IDs
+  are preserved and the raw high-entropy device ID is not stored in the legacy
+  tenant row.
+- Policy PR #296 passed Hosted Trusted and merged as `44f8879`; feature PR #297
+  passed Hosted Trusted, Backend and OTA/schema checks and merged as exact main
+  `f03acdfaad4fa2fad61439f58f318ddbc756d084`. Backend run `33314043691`
+  completed the restricted Tailscale NAS deployment. Canonical loopback/public
+  readiness and independent strict-TLS `/live` and `/ready` passed for that
+  exact build with every check true.
+- No registration was automatically retried. The owner's later submit and
+  administrator approval reached the expected connected ADB projection:
+  `스마트키 등록 준비 완료` and `이 휴대폰 등록`. This is the separate
+  AndroidKeyStore enrollment step, not another tenant request. One owner tap,
+  credential result, signed ACL Target ACK and daughter-device access remain
+  unclaimed.
 
 ## 2026-08-29 foreground Target detection dashboard candidate
 

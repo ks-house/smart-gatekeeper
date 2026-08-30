@@ -1,6 +1,6 @@
 # Backend public-key enrollment and signed ACL management
 
-> Status: Issue #19 core plus personal public-key bootstrap deployed; first owner physical remote-open passed and fresh-family onboarding correction is under review
+> Status: Issue #19 core plus personal public-key bootstrap deployed; first owner physical remote-open passed and fresh-family request is approved with phone key enrollment pending
 > Protocol: [security_protocol.md](security_protocol.md)
 > OTA parent contract: [ota_reliability_contract.md](ota_reliability_contract.md)
 
@@ -202,12 +202,21 @@ canonical loopback/public readiness, independent strict-TLS readback returned
 HTTP 200 with all checks true, and the connected fresh A24 displayed the
 registration action and form. The owner's subsequent submission failed before
 persistence because the legacy request schema accepted only `DEV-*`, while a
-fresh install generates a random UUID-shaped `GK-*` ID. The proposed correction
-accepts both bounded formats, preserves identifiers that already fit, and maps
-longer values such as the high-entropy `GK-*` UUID to a deterministic
-17-character locator for the existing legacy MariaDB column;
-status and credential bootstrap use the same mapping, while credentials keep
-their separate keyed legacy reference. Approval and access remain pending.
+fresh install generates a random UUID-shaped `GK-*` ID. PR #297 deployed the
+correction as exact main `f03acdfaad4fa2fad61439f58f318ddbc756d084` in
+Backend run `33314043691`: it accepts both bounded formats, preserves
+identifiers that already fit, and maps longer values such as the high-entropy
+`GK-*` UUID to a deterministic 17-character locator for the existing legacy
+MariaDB column. Status and credential bootstrap use the same mapping, while
+credentials keep their separate keyed legacy reference. Canonical loopback and
+public readiness passed; independent strict-TLS `/live` and `/ready` returned
+HTTP 200 for the exact build with every readiness check true. No registration
+was retried automatically. The owner's later submission and administrator
+approval reached the expected `enroll_credential` projection; connected ADB
+rendered `이 휴대폰 등록` with the instruction to link this phone's security
+key to the approved account. This is the intended next step, not another tenant
+request. One owner-triggered key-enrollment action, signed ACL propagation and
+access remain pending.
 It fails closed while ACL management is unavailable. The older HMAC v2 envelope
 remains N-1 compatible, while device-ID-only calls are upgrade-required and
 cause no control effect. Home Assistant

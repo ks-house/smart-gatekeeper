@@ -5306,3 +5306,16 @@
 - Bound the complete protected bundle to immutable feature candidate `8e0c02c415ac2f2214cca5393a2682fd4b6c3a85`, which accepts fresh `GK-*` registration IDs and uses one consistent bounded legacy locator across request, status and credential bootstrap.
 - Exactly five protected normalized blobs change: ACL management, Backend request validation, the registration form limits and two focused Backend regression suites. Existing fitting `DEV-*` locators, public-key credentials, signed ACL and all deployment/OTA workflows remain fixed.
 - This policy-only step submits no registration, mutates no database/NAS/runtime, installs no APK and issues no Target or door effect. Policy merge, feature graph connection, fresh CI, Backend deployment and one owner-triggered retry remain separate Gates.
+
+## [2026-08-30] test | Deploy fresh-registration submission correction
+
+- Policy PR #296 passed Hosted Trusted and merged as `44f8879ae719c8a528f0b489680f4b98c8046d6d`; feature PR #297 passed Hosted Trusted, Backend and OTA/schema checks and merged as exact main `f03acdfaad4fa2fad61439f58f318ddbc756d084`.
+- Backend run `33314043691` published immutable images and completed the owner-approved restricted-Tailscale NAS deployment. Canonical evidence reported `status=deployed`, the exact source, and passed loopback/public readiness.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 with TLS verification enabled, exact build SHA and every readiness check true.
+- Registration was not automatically retried. One owner-triggered A24 submit is the remaining Gate; expected UI is `신청이 접수되었습니다.` followed by approval-pending. Administrator approval, credential enrollment, signed ACL Target ACK and daughter-device access remain pending.
+
+## [2026-08-30] test | Confirm approved phone reaches credential enrollment
+
+- The owner completed the fresh A24 request and administrator approval after the corrected Backend deployment.
+- Connected read-only ADB UI evidence showed `스마트키 등록 준비 완료`, the instruction to link this phone's security key to the approved account, `이 휴대폰 등록`, zero doors and ACL pending.
+- This is the expected `enroll_credential` state, not a repeated tenant request. The agent did not press the effectful enrollment button; owner key enrollment, credential result, signed ACL Target ACK and daughter-device access remain separate Gates.
