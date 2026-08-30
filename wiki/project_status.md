@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-08-30
+updated: 2026-08-31
 source_of_truth: true
 applies_to:
   - firmware
@@ -39,6 +39,37 @@ applies_to:
   Administrator browser rendering and one bounded edit/delete/history
   acceptance trial remain separate operator Gates; no user account was edited
   or deleted during deployment verification.
+
+## 2026-08-31 mobile account lifecycle and schema-010 deployment
+
+- PR #309 passed Hosted Trusted, Backend/MariaDB, OTA/schema and Android
+  canary checks and merge-committed normally as exact feature main
+  `1b701df93194029fb7be733a372f7ddb68f57e97`. Final policy PR #311 then
+  passed Hosted Trusted and restored the protected actual-main baseline with
+  administrator enforcement and strict required checks retained.
+- Exact-main Backend run `33323849258` published immutable API/DB images. Its
+  first NAS attempt failed closed before migration because the installed root
+  wrapper admitted only the preceding schema generation. The owner installed
+  the reviewed stable wrapper at exact SHA-256
+  `66507318ad2b5b7fff6e4bdc6b3f2bd8994a97877be6500df9f218619ac0223e`;
+  read-only status still showed the preceding deployed release ready.
+- Attempt 2 then completed the restricted-Tailscale deployment, created a
+  pre-migration backup, and applied the contiguous migration target `010`.
+  Canonical evidence reports `status=deployed`, exact source `1b701df...`, and
+  passed loopback/public readiness. Independent strict-TLS `/live` and `/ready`
+  returned HTTP 200 for the exact build with every readiness check true.
+- Native registration-only onboarding, server-first signed logout, reduced
+  ordinary-user settings and console-assigned `TENANT_ADMIN` projection are
+  therefore merged and backed by the deployed API/schema. Exact-main Target
+  run `33323849255` also completed signed personal OTA publication for
+  `2.1.399+main.g1b701df`. These are
+  source, deployment and publication results. Exact-main mobile run
+  `33323849352` also signed, atomically published and HTTPS-read-back personal
+  OTA `1.0.0-g1b701df` / `35801`; independent primary/fallback manifest
+  readback matched commit and APK SHA-256
+  `bc4d24fdeacda655a1f1465f466abf15192c3287117965308abe1329cdc9faf3`.
+  Phone installation, visible logout/registration/admin acceptance and Target
+  install/reboot/health remain separately recorded Gates.
 
 ## 2026-08-30 credential-signed remote Home button rollout
 
@@ -1276,7 +1307,7 @@ tracking.
   confirmation that each phone shows only its own approved name/unit remain the
   final device acceptance Gate.
 
-## 2026-08-31 mobile account/settings and schema automation candidate
+## 2026-08-31 mobile account/settings and schema automation implementation
 
 - The owner visually confirmed that family phones now show their own approved
   identity. This closes the per-phone label acceptance Gate for that observation;
@@ -1287,10 +1318,10 @@ tracking.
   reveals the separate administrator entry, whose unsafe operations still require
   existing console reauthentication.
 - Server-first signed logout, migration 010 and a manifest/image-bound automatic
-  schema runner are implemented on the feature branch. Backend host regression is
-  passing; protected policy authorization, hosted mobile/native/MariaDB CI, merge,
-  one final stable-wrapper install, NAS migration/readiness, APK installation and
-  logout/admin UI device acceptance remain separate Gates.
+  schema runner are merged. Protected CI passed, the one-time stable wrapper was
+  installed, and schema 010 plus exact-build readiness were verified on NAS.
+  APK installation and logout/registration/admin UI device acceptance remain
+  separate Gates.
 - Local validation passed the complete Backend suite (`162`, two environment-only
   skips), MariaDB 10.11 migration integration (`13`), Flutter analyze and unit
   suite (`66`), and targeted Android native JUnit (`49`). The OTA/operations
