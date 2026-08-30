@@ -5337,3 +5337,16 @@
 
 - Policy PR #299 passed Hosted Trusted and merge-committed as main `d998e0eae095cba9326ff7e4fb08ef50a810d706`; merged that exact policy main without rebase or squash into immutable feature candidate `e2ecc68f9e5f7a15c9ca9319d244c99bc778f371`.
 - Both reviewed protected feature blobs and the complete ordered 86-path bundle remain exact. Fresh policy and Backend tests, hosted checks, feature merge, NAS deployment/readiness and one owner retry remain separate Gates.
+
+## [2026-08-30] test | Deploy approved additional family-phone enrollment correction
+
+- Feature PR #300 passed Hosted Trusted, Backend and OTA/schema checks and merge-committed as exact main `38b90e5febc525c96a4013b737850fd6a90235d3`.
+- Backend run `33315099974` published immutable API/database images and completed the owner-approved restricted-Tailscale NAS deployment. Canonical evidence reported `status=deployed`, exact source, `loopback_ready=passed` and `public_ready=passed`.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 with TLS verification enabled, exact build SHA and every readiness check true.
+- No post-deploy phone enrollment was sent. One owner retry, credential result, signed ACL Target ACK and daughter-device access remain separate Gates.
+
+## [2026-08-30] test | Enroll second family phone and confirm Target ACL synchronization
+
+- The owner's single post-deploy `이 휴대폰 등록` retry changed the connected A24 to `스마트키 사용 가능`, one registered door and ACL 608. Activity records `이 휴대폰의 스마트키가 등록됨` at 22:53:15.
+- The mobile access-ready contract requires the current exact signed snapshot to have an `APPLIED` Target ACK with matching version and digest; therefore credential enrollment, exact door grant and Target ACL synchronization pass for this observation.
+- Activity records one later `원격 개방 명령 전달` at 22:53:40, proving Backend-to-MQTT-broker delivery only. No Target receipt, relay actuation or physical door movement is inferred until the owner reports that observation.
