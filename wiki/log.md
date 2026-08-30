@@ -5157,3 +5157,9 @@
 - PR #286 passed Hosted Trusted and merge-committed as policy main `649ecf0f7b9840d08787ddb6eaad31c2f70c128a`; merge-connected that trusted main into immutable feature candidate `3073d716b2c7157178a1f06fa5f38c3a9bc6a56d` without rebase or squash.
 - The reviewed mobile/Backend source and all fifteen changed or new protected candidate blobs remain those pinned by the complete 86-path persistent bundle. Fresh Hosted Trusted, Backend, OTA and mobile checks are required on the connected head before feature merge.
 - This graph connection changes no NAS runtime, database, installed APK, Target command, relay or physical door state.
+
+## [2026-08-30] compile | Authorize exact migration-008 deployment identity correction
+
+- Bound the complete 86-path persistent bundle to correction candidate `b6aff4c517a54a4242862c7856c388770eb89146`, replacing the stale migration-007 readiness digest with actual migration-008 SHA-256 `f95e752d96ea34ce7373d8573738936c5ec08ac296ee600a96c45d087e7219a8`.
+- Exactly five protected blobs change: production Compose, signed release generator, root deploy wrapper, development Compose and the focused NAS deployment regression test; all other protected bytes and both namespace inventories remain fixed.
+- This policy-only step installs no wrapper, starts no Compose project, migrates no database, deploys no APK and issues no Target or door command. Merge-connection, fresh CI, owner-authenticated wrapper replacement and protected deployment retry remain separate Gates.

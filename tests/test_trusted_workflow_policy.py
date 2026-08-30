@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "3073d716b2c7157178a1f06fa5f38c3a9bc6a56d"
-EXPECTED_BUNDLE_ID = "future-mobile-remote-open-3073d71-persistent-baseline"
+MERGED_MAIN_COMMIT = "b6aff4c517a54a4242862c7856c388770eb89146"
+EXPECTED_BUNDLE_ID = "future-schema008-b6aff4c-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -57,7 +57,7 @@ backend/app/static/admin_login.html 87000b8f02d22b84bc24a41b0360caf9ce1c8a58741a
 backend/app/static/index.html 4423c3e0e3c81db8fbff8ca2a4801a5ef6911ad2fd9438a6e9866894b3ab97da
 backend/app/target_boot_registry.py 7650ad165594d3a35ee59fafa36ce1f6cbc0ffa4fd8b3dfb98873339a83859dd
 backend/app/target_acl_delivery.py 3888c4fb5d5814471e6d1827d6227015a730683eee089733b65b8703fdb1093d
-backend/compose.production.yml 6595474fb9098ad11109e283626a79d501a84d4798208df0317eff690c2b40c0
+backend/compose.production.yml 0580c2dfd7d744dbc67685d47adf2c4a7664ddff53402f197df67d1e7ab72276
 backend/compose.synology.yml 307d0486815d178f8faae245129904fd08fef2cf9c5b565dc3a7c63656d718af
 backend/db/Dockerfile 2e8e8d089346508f720a0c7cad417aa92a48511c515e347be96c452a9be1addb
 backend/db/migrations/002_acl_management_expand_down.sql 19c26782df1ef78755681805839e704f3adaf83cce1dec4b29c4ecdf1c0cf687
@@ -81,14 +81,14 @@ backend/deploy/README.md fe30c4b89b58884504a6b9e276e04f9956e984bd0eba610d6dc2292
 backend/deploy/bootstrap_legacy_synology.sh cc0a758d2da119bcd01c607e952f7739de4c41f5a14c62f7c166370b21f6ffef
 backend/deploy/capture_legacy_inventory.py 71bb7d9721934a00f44a8913ce3d5c514d18d3aeac0031679afe146d8a06181d
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
-backend/deploy/create_release_bundle.py 45bc4347bfd0547252252fe5756ca62f09638e0555d3ec176418a36097cb0742
+backend/deploy/create_release_bundle.py cfbbebb9920f56a4e89fcb31c39ad01dd2b2ea36da8c7fdb18733b80275d88c8
 backend/deploy/prepare_backup_in_wsl.py d502283be7b594f8d0d6c7fa0f2e65d6e61c0c9c548252215d3cf3ac3c484e79
 backend/deploy/restore_backup_in_wsl.py 7e317efe496cc5f339a4bb90776a304268c20c2501066575488baa2677bd393b
 backend/deploy/runtime.env.example 48a84108c1a00479ef3bb9ec33e6e81e58302717c6ae91ecb7c3fa0575ad7a04
-backend/deploy/sgk_backend_deploy.sh f8ae7a61876a58ad40eb1ce9218880bb68a70dc49e6f42c0ab6c3bb92c764f03
+backend/deploy/sgk_backend_deploy.sh 6baba70facb90eeab50fd16e9261dd5e18af6b675738d7130fbc30a659b16758
 backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
 backend/deploy/verify_legacy_synology.sh c4ab1fddfe0581d9f15ac64174b51374389d71de8b4e5800899ef7f04b0226e1
-backend/docker-compose.yml b5306ccfd53b2653da5a29a52d46d1e356be6195fe4b82d460656caff6bff398
+backend/docker-compose.yml 103990028db14e4e7fd87cbaa3d7602178f3cdaaec79a08cd13980a302c8bcdc
 backend/sbom.cdx.json 67b78d1a2cb4d5e48dc8b79f9630a58da0cee207d126c469cb0b0bfbd1945fd7
 backend/supply_chain_policy.json fef90253f3ec0b065f14dd1e83a2b6702b4dd2ad8dbeefc59b12dc78f3cb15e4
 backend/tests/test_acl_api.py c478d95f65b43f64bd7b96c2d79c59d15dcf3a53b3c52007e5e1f1a05ce1d2ea
@@ -99,7 +99,7 @@ backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f
 backend/tests/test_legacy_ota_independence.py 5819701b2b2fc5c9c0e2b7bbaf710f23360d6a0df36c1966c345621dc4aceca4
 backend/tests/test_migrations.py a5e1ba99086504c00092c160c97af166e3097e7e34393a99e3dbe2c196c9c3da
 backend/tests/test_mobile_remote_control.py db8baeeb51651bd079d546eeaab205c3260baee730cec1e77bb4b7ac201f5172
-backend/tests/test_nas_backend_deploy.py 137c56a26f21dd8ac0b861f84f546460ba047ac0bcdfd404b00c264d913c3037
+backend/tests/test_nas_backend_deploy.py ce11dd1eae249f924c2b311a67cc2636ad1550dccc9204578f1ad349660f7547
 backend/tests/test_ops_api.py 82e8d2e992fffc75b910ea0c00849a6d2130b2b80fa2d412541b726b1d138f15
 backend/tests/test_ops_commercial_gate.py 0d9252de06b80c384a54a6646932ef94e7ff3d43461859f5e11995b6fda5ab36
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
@@ -108,21 +108,11 @@ backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279e
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    "scripts/ops_commercial_gate.py",
-    "ops/backend_trusted_bundle_paths.json",
-    "backend/app/main.py",
     "backend/compose.production.yml",
-    "backend/db/Dockerfile",
-    "backend/db/migrations/008_mobile_credential_control_down.sql",
-    "backend/db/migrations/008_mobile_credential_control_up.sql",
-    "backend/db/run_migrations.sh",
     "backend/deploy/create_release_bundle.py",
     "backend/deploy/sgk_backend_deploy.sh",
     "backend/docker-compose.yml",
-    "backend/tests/test_migrations.py",
-    "backend/tests/test_mobile_remote_control.py",
-    "backend/tests/test_ops_api.py",
-    "backend/tests/test_ops_commercial_gate.py",
+    "backend/tests/test_nas_backend_deploy.py",
 }
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
@@ -1074,8 +1064,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 15)
-    self.assertEqual(len(locally_unchanged_protected), 71)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 5)
+    self.assertEqual(len(locally_unchanged_protected), 81)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
