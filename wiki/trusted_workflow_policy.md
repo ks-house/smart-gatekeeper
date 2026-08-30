@@ -1397,3 +1397,24 @@ workflow byte, publishes no artifact, installs no NAS wrapper, migrates no
 database and performs no mobile, Target, relay or door action. Hosted policy
 merge, owner-authenticated root-wrapper installation, exact-main deployment and
 runtime acceptance remain separate Gates.
+
+## 44. Fresh credential after logout candidate
+
+Immutable feature candidate
+`d1272a5ec16269e51d852f0fc70854cd00048eb3` corrects a narrow personal
+bootstrap conflict after server-first logout or administrator deletion. The
+old credential remains terminal audit history, while a newly approved account
+may bind a new AndroidKeyStore credential for the same keyed device locator.
+
+The complete ordered 91-path bundle changes exactly three protected blobs:
+`backend/app/acl_management.py` and its store/API regressions. The sole
+`reenrollment-d1272a5-persistent-baseline` is bound to the exact repository,
+immutable candidate SHA, ancestry, protected inventory and normalized digest of
+every protected path. The other 88 protected blobs remain byte-identical to the
+current baseline.
+
+This authorization does not revive retired credentials, bypass approval, admit
+an active or pending duplicate, relax public-key uniqueness, weaken signed ACL
+or Target ACK requirements, or mutate NAS/database/device state. Hosted policy
+CI and merge, merge-connection into the feature, fresh feature CI, exact-main
+merge and NAS deployment remain separate Gates.

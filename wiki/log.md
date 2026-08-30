@@ -5483,3 +5483,10 @@
 - Policy-only actual main `4d906aeeaab972e9abe07325fe3c8ba43febff8a` retained the deployed feature blobs. Target run `33324135363` and mobile run `33324135320` completed their exact-main signed personal publications after the feature deployment.
 - Independent HTTPS readback found current Target `2.1.400+main.g4d906ae` and current mobile `1.0.0-g4d906ae` / `35901`; both manifests name exact commit `4d906aeeaab972e9abe07325fe3c8ba43febff8a`. Primary/fallback mobile manifests matched, with signed APK SHA-256 `a5d3e9b332a36a85ea9ab1b7f06dd89dc318ab15b9abf693c00ece67d373667a`.
 - Publication is not installation. No phone package update, logout, fresh registration, administrator navigation, Target install/reboot/health or physical door cycle is inferred from these HTTPS results.
+
+## [2026-08-31] compile | Authorize fresh credential after logout candidate
+
+- Bound immutable feature candidate `d1272a5ec16269e51d852f0fc70854cd00048eb3` to the complete ordered 91-path protected bundle under `reenrollment-d1272a5-persistent-baseline`.
+- Exactly three protected blobs change: the personal bootstrap conflict correction and its store/API regressions; the remaining 88 paths retain exact baseline bytes. Repository, commit, ancestry, inventory and normalized digests remain fail closed.
+- This policy-only candidate changes no account, credential, ACL, database, NAS container, APK, Target or physical door. Hosted policy CI/merge, feature merge-connection, fresh CI and deployment remain separate Gates.
+- All 42 focused trusted-policy regressions and the complete 317-test OTA/operations suite passed locally with one expected environment-only skip.
