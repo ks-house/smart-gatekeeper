@@ -68,6 +68,16 @@ class FlutterBeacon {
     return result;
   }
 
+  /// Returns the privacy-safe cross-process BLE ownership mode.
+  ///
+  /// The native request is a durable mode selection, not proof that a Target
+  /// is nearby or that a GATT session is currently connected.
+  Future<Map<Object?, Object?>> get bleOwnershipState async {
+    final result = await _methodChannel
+        .invokeMapMethod<Object?, Object?>('getBleOwnershipState');
+    return result ?? const <Object?, Object?>{};
+  }
+
   /// Initialize scanning API and check required permissions.
   ///
   /// For Android, it will check whether Bluetooth is enabled,

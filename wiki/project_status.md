@@ -31,8 +31,13 @@ applies_to:
 - The planned correction separates native-wake idle from an active GATT lease,
   skips legacy scanner initialization when native wake is authoritative, and
   explicitly replaces stale failure UI without weakening cross-process BLE
-  exclusion. Source tests, signed APK publication/install, a no-Target soak and
-  a subsequent real-Target approach remain open Gates.
+  exclusion. The source candidate now implements the privacy-safe plugin state,
+  explicit `nativeWake` scanner mode, cross-isolate error clear, neutral forced
+  notification replacement and single-flight transition recovery.
+- The OTA contract and all 320 Python source/operations tests pass locally with
+  one expected PowerShell-only skip. Flutter format/analyze/unit, targeted JVM
+  tests, hosted CI, exact-main signed APK publication/install, a no-Target soak
+  and a subsequent real-Target approach remain open Gates.
 
 ## 2026-08-30 administrator account-management deployment
 

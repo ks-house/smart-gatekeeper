@@ -98,6 +98,12 @@ class AppErrorLogger {
 
   void clearError() {
     latestError.value = null;
+    try {
+      backgroundSendPort?.send({
+        'type': 'AppErrorLogger',
+        'action': 'clearError',
+      });
+    } catch (_) {}
   }
 
   void clearLogs() {
@@ -118,6 +124,8 @@ class AppErrorLogger {
     if (data['action'] == 'logError') {
       final latest = data['latestError'];
       latestError.value = latest is String ? _redact(latest) : null;
+    } else if (data['action'] == 'clearError') {
+      latestError.value = null;
     }
   }
 }

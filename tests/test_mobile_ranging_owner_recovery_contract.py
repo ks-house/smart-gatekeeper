@@ -9,6 +9,11 @@ SCANNER = (
 RECOVERY = (
     ROOT / "gatekeeper_app" / "lib" / "services" / "ranging_recovery.dart"
 ).read_text(encoding="utf-8")
+PLUGIN = (
+    ROOT
+    / "gatekeeper_app/android/app/libs/flutter_beacon_local/android/src/main/java/"
+    "com/flutterbeacon/FlutterBeaconPlugin.java"
+).read_text(encoding="utf-8")
 
 
 class MobileRangingOwnerRecoveryContractTest(unittest.TestCase):
@@ -42,6 +47,38 @@ class MobileRangingOwnerRecoveryContractTest(unittest.TestCase):
         )
         self.assertIn("if (_timer != null) return;", RECOVERY)
         self.assertIn("_timer?.cancel();", RECOVERY)
+
+    def test_native_mode_is_structured_before_legacy_initialization(self) -> None:
+        start = SCANNER.split(
+            "Future<void> startScanning({bool forceRestart = false})", 1
+        )[1].split("Future<void> stopScanning()", 1)[0]
+        read_owner = start.index("final ownership = await _readBleOwnershipState();")
+        native_gate = start.index("if (ownership.nativeWakeAuthoritative)")
+        legacy_init = start.index("await flutterBeacon.initializeScanning;")
+        self.assertLess(read_owner, native_gate)
+        self.assertLess(native_gate, legacy_init)
+        self.assertIn("_enterNativeWakeIdleLocked();", start)
+
+    def test_native_idle_replaces_failure_notification_without_legacy_scan(self) -> None:
+        transition = SCANNER.split(
+            "void _enterNativeWakeIdleLocked()", 1
+        )[1].split("void _syncToUi()", 1)[0]
+        notification = SCANNER.split(
+            "void _syncStateAndNotify()", 1
+        )[1].split("List<Region> get _rangingRegions", 1)[0]
+        self.assertIn("AppErrorLogger().clearError();", transition)
+        self.assertIn("_setMode(ScanMode.nativeWake);", transition)
+        self.assertIn("스마트키 감지 대기", notification)
+        self.assertIn("force = true;", notification)
+
+    def test_plugin_exposes_privacy_safe_owner_state(self) -> None:
+        method = PLUGIN.split('call.method.equals("getBleOwnershipState")', 1)[1]
+        method = method.split('call.method.equals("initialize")', 1)[0]
+        self.assertIn('"native_wake"', method)
+        self.assertIn('"legacy_scanner"', method)
+        self.assertIn('"nativeRequested"', method)
+        self.assertNotIn("credential", method.lower())
+        self.assertNotIn("address", method.lower())
 
 
 if __name__ == "__main__":

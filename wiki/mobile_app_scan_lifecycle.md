@@ -45,6 +45,25 @@ the signed native-mode request merely because no Target is nearby. Instead:
    scan-state recovery. OTA install/rollback and ordinary actionable permission
    alerts remain separate required Gates.
 
+The implementation candidate now exposes `getBleOwnershipState` from every
+Flutter engine through the vendored beacon plugin. It returns only schema,
+mode, native-request and legacy-lease booleans; it carries no Target address,
+credential or account data. `BleScanner.startScanning` evaluates that state
+before any legacy initialization. Authoritative native wake enters the explicit
+`ScanMode.nativeWake`, clears the prior scanner error across isolate IPC and
+force-replaces the service notification with neutral `스마트키 감지 대기`.
+Monitoring/ranging owner transitions converge through the same single-flight
+restart, and the 30-second watchdog polls only for a real native-to-legacy mode
+transition. Active GATT session detail remains in the existing native health
+journal instead of being guessed from Target absence.
+
+The OTA contract and all 320 Python source/operations regressions pass locally
+with one expected PowerShell-only skip. Focused ownership tests cover structured
+native/legacy projection, unknown future native mode fail-closed behavior,
+native-wake diagnostics and ordering before `initializeScanning`. Flutter
+format/analyze/unit, targeted JVM tests, hosted CI, exact-main signed publication,
+installation, off-site soak and real-Target recovery remain separate Gates.
+
 ## 2026-08-29 foreground Target detection dashboard candidate
 
 The Smart Key control screen now reads the native authoritative health bridge
