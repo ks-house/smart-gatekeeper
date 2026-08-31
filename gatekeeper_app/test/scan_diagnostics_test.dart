@@ -60,8 +60,11 @@ void main() {
     expect(diagnostics.canScan, isTrue);
     expect(
       diagnostics.warningReasons,
-      isNot(contains(
-          '화면 OFF 대응 스캔 설정(setBackgroundMode)이 적용되지 않았습니다')),
+      isNot(
+        contains(
+          '화면 OFF 대응 스캔 설정(setBackgroundMode)이 적용되지 않았습니다',
+        ),
+      ),
     );
     expect(diagnostics.toMap()['mode'], 'nativeWake');
   });
