@@ -1455,3 +1455,18 @@ rollback requirements. It publishes no firmware, changes no Target state and
 performs no physical door action. Policy CI/merge, merge-connection, fresh
 feature CI, exact-main merge, signed OTA publication, Target
 install/reboot/health and physical acceptance remain separate Gates.
+
+## 47. Final ultrasonic session-isolation main baseline
+
+Feature PR #321 passed Hosted Trusted, OTA/schema and ESP32-C6 canary checks,
+then merge-committed normally as exact main
+`c2d22cc80d30942729a72d4f4628bedb66414e6e`. The transitional immutable
+candidate identity is retired in favor of the sole `current-main-baseline`
+pinned to that exact merge commit.
+
+All 91 ordered protected paths and normalized digests remain byte-identical to
+the reviewed candidate bundle, including the closed personal-Target build
+inventory for the session-isolation `src/main.cpp`. This final rotation changes
+no runtime or workflow byte and performs no firmware installation, Target
+reboot, relay or door action. Hosted policy merge, final exact-main signed OTA
+publication and Target install/reboot/health remain separate Gates.

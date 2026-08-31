@@ -108,11 +108,11 @@
   },
   "approved_bundles": [
     {
-      "id": "ultrasonic-session-a57ea44-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "a57ea44e295e6c780f154a005ae111d69b59f669"
+        "commit": "c2d22cc80d30942729a72d4f4628bedb66414e6e"
       },
       "files": {
         ".github/workflows/deploy.yml": "017379b4d76c875ac44ab29e619e133df0944b79d07d812ded383462c4dac4bd",

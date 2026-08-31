@@ -5599,3 +5599,9 @@
 - On merge-connected feature head `6cc2af7`, the OTA contract passed, all 81 focused trusted-policy/session-isolation/pocket/Target-publisher/Hardwareless regressions passed, and full Python discovery passed 324 tests with one expected environment-only skip.
 - The approved protected deploy byte is identical to immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669`; its previously successful local `esp32c6_personal_production` build therefore remains the exact reviewed Target source input. Hosted feature CI and merge are still required.
 - No firmware was signed, published or installed by these local checks. Target reboot/health and the fresh no-person-then-current-person sensor sequence remain physical acceptance Gates.
+
+## [2026-08-31] compile | Finalize ultrasonic session-isolation main policy
+
+- Feature PR #321 passed Hosted Trusted, OTA/schema and ESP32-C6 canary checks and merge-committed normally as exact main `c2d22cc80d30942729a72d4f4628bedb66414e6e`; branch protection remained strict and administrator-enforced.
+- Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact feature merge while retaining all 91 protected digests unchanged.
+- This policy-only finalization changes no Target runtime byte and performs no installation, reboot, sensor, relay or door action. Hosted policy merge, final exact-main signed Target publication, Target install/health and physical acceptance remain separate Gates.
