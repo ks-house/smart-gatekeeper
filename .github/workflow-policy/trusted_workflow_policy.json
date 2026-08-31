@@ -108,14 +108,14 @@
   },
   "approved_bundles": [
     {
-      "id": "current-main-baseline",
+      "id": "ultrasonic-session-a57ea44-persistent-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "b0e1339c186bde81e2f4602ff426251b88e57db6"
+        "commit": "a57ea44e295e6c780f154a005ae111d69b59f669"
       },
       "files": {
-        ".github/workflows/deploy.yml": "a69c6abfe5006c40f1088f8ac756018d72b5e6d8fd314d5435323b14913d9bc8",
+        ".github/workflows/deploy.yml": "017379b4d76c875ac44ab29e619e133df0944b79d07d812ded383462c4dac4bd",
         ".github/workflows/build_app.yml": "64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487",
         ".github/workflows/ota_contract.yml": "ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d",
         ".github/workflows/personal_installation_firmware.yml": "0b9268c978f7c5a92cb0d59945ab2adabc13d11b71ea914fd495b574633ff766",

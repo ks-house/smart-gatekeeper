@@ -1432,3 +1432,26 @@ the reviewed candidate. This final rotation changes no Backend runtime byte,
 publishes no ACL, changes no account or credential, installs no app or Target
 image and performs no physical action. Hosted policy CI/merge and the owner's
 post-deployment phone retry remain separate Gates.
+
+## 46. Local GATT ultrasonic session-isolation candidate
+
+Immutable feature candidate
+`a57ea44e295e6c780f154a005ae111d69b59f669` resets the five-slot ultrasonic
+median only after an authenticated Local GATT action-1 has successfully entered
+`ARMED`. This prevents valid distance samples retained by an earlier passage
+from satisfying a new sensor session before three fresh measurements exist.
+
+The complete ordered 91-path bundle changes exactly one protected blob:
+`.github/workflows/deploy.yml`, whose closed personal-Target build inventory now
+pins the reviewed `src/main.cpp` digest. The sole
+`ultrasonic-session-a57ea44-persistent-baseline` is bound to the exact
+repository, immutable candidate SHA, ancestry, protected inventory and
+normalized digest of every protected path; the other 90 protected blobs remain
+byte-identical to the current baseline.
+
+This authorization does not admit an arbitrary Target source tree or relax
+ACL/proof, nonce/replay, action-2, relay/cooldown, OTA signing, health or
+rollback requirements. It publishes no firmware, changes no Target state and
+performs no physical door action. Policy CI/merge, merge-connection, fresh
+feature CI, exact-main merge, signed OTA publication, Target
+install/reboot/health and physical acceptance remain separate Gates.
