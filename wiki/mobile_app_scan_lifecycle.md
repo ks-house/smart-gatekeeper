@@ -1,5 +1,69 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-08-31 off-site native-owner false alert analysis
+
+The owner observed a foreground notification titled `BLE 비콘 스캔 초기화
+실패` on the latest installed app while away from home, where no Gatekeeper
+Target was present. The notification included the exact
+`BLE_OWNER_EXCLUDED` code. Target absence is normal idle state and is not
+evidence that Bluetooth, location service or an Android permission was off.
+
+Source tracing establishes the control-path cause. A successful personal
+native-GATT feature decision persistently calls `setNativeRequested(true)`.
+The vendored Flutter beacon plugin rejects legacy `initializeScanning` whenever
+that request marker is true, independently of Target presence and independently
+of whether a native GATT session currently holds the kernel lease. The Flutter
+foreground scanner still attempts legacy initialization. The earlier issue
+#204 correction suppresses only a directly typed `PlatformException` and, on
+that suppressed path, does not explicitly replace a preceding failure
+notification. The attached alert proves that this runtime attempt entered, or
+retained the result of, the generic failure-notification path. Without a
+bounded logcat capture the evidence does not distinguish exception wrapping
+from a stale notification title, so neither is claimed as the sole mechanism.
+
+The correction must retain mutually exclusive BLE ownership. It must not clear
+the signed native-mode request merely because no Target is nearby. Instead:
+
+1. Expose a structured, privacy-safe native ownership mode to the
+   foreground-service Flutter engine and model at least `legacy_scanner`,
+   `native_wake_idle` and `native_gatt_session` separately.
+2. When native wake is authoritative, do not call legacy
+   `initializeScanning`. Project Target absence as neutral `감지 대기`; retain a
+   bounded transition/watchdog path for authenticated native disable or expiry.
+3. Keep exact `BLE_OWNER_EXCLUDED` handling as a fail-safe fallback, but clear
+   the stale scanner error and force-replace any preceding failure notification
+   with the neutral native-wake state. Do not suppress Bluetooth-disabled,
+   permission, location-service, plugin or unexpected ownership failures.
+4. Drive resumption from a single-flight structured ownership transition rather
+   than a repeated error/recreate loop. The kernel lease, stop-before-native
+   ordering, signed feature decision and default-OFF/commercial boundaries stay
+   unchanged.
+5. Add native coordinator/plugin, Dart scanner-state and notification
+   regressions. A latest signed APK must then pass an off-site/no-Target,
+   screen-off soak with zero false failure notifications and bounded retries,
+   followed by a real Target approach proving native wake, authentication and
+   scan-state recovery. OTA install/rollback and ordinary actionable permission
+   alerts remain separate required Gates.
+
+The implementation candidate now exposes `getBleOwnershipState` from every
+Flutter engine through the vendored beacon plugin. It returns only schema,
+mode, native-request and legacy-lease booleans; it carries no Target address,
+credential or account data. `BleScanner.startScanning` evaluates that state
+before any legacy initialization. Authoritative native wake enters the explicit
+`ScanMode.nativeWake`, clears the prior scanner error across isolate IPC and
+force-replaces the service notification with neutral `스마트키 감지 대기`.
+Monitoring/ranging owner transitions converge through the same single-flight
+restart, and the 30-second watchdog polls only for a real native-to-legacy mode
+transition. Active GATT session detail remains in the existing native health
+journal instead of being guessed from Target absence.
+
+The OTA contract and all 320 Python source/operations regressions pass locally
+with one expected PowerShell-only skip. Focused ownership tests cover structured
+native/legacy projection, unknown future native mode fail-closed behavior,
+native-wake diagnostics and ordering before `initializeScanning`. Flutter
+format/analyze/unit, targeted JVM tests, hosted CI, exact-main signed publication,
+installation, off-site soak and real-Target recovery remain separate Gates.
+
 ## 2026-08-29 foreground Target detection dashboard candidate
 
 The Smart Key control screen now reads the native authoritative health bridge
@@ -64,7 +128,7 @@ production-signed APK is built, installed and a screen-off GATT lease shows
 bounded log volume plus automatic ranging recovery. It does not classify or
 close the separate Target terminal-result defect in issue #156.
 
-> Last updated: 2026-08-29
+> Last updated: 2026-08-31
 > 대상: Android Smart Key 앱
 > 관련 문서: [mobile_app_background_audit.md](mobile_app_background_audit.md) · [mobile_app_scenario.md](mobile_app_scenario.md)
 

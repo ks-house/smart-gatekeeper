@@ -5,6 +5,40 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gatekeeper_app/services/ranging_recovery.dart';
 
 void main() {
+  test('projects structured native wake without claiming Target presence', () {
+    final state = BleOwnershipState.fromMap(const <Object?, Object?>{
+      'schemaVersion': 1,
+      'mode': 'native_wake',
+      'nativeRequested': true,
+      'legacyLeaseHeld': false,
+    });
+
+    expect(state.mode, BleOwnershipMode.nativeWake);
+    expect(state.nativeWakeAuthoritative, isTrue);
+    expect(state.legacyLeaseHeld, isFalse);
+  });
+
+  test('native request remains fail closed when mode text is unknown', () {
+    final state = BleOwnershipState.fromMap(const <Object?, Object?>{
+      'mode': 'future_native_mode',
+      'nativeRequested': true,
+    });
+
+    expect(state.mode, BleOwnershipMode.unknown);
+    expect(state.nativeWakeAuthoritative, isTrue);
+  });
+
+  test('legacy owner permits the legacy scanner path', () {
+    final state = BleOwnershipState.fromMap(const <Object?, Object?>{
+      'mode': 'legacy_scanner',
+      'nativeRequested': false,
+      'legacyLeaseHeld': true,
+    });
+
+    expect(state.mode, BleOwnershipMode.legacyScanner);
+    expect(state.nativeWakeAuthoritative, isFalse);
+  });
+
   test('recognizes only the native GATT BLE ownership exclusion', () {
     expect(
       RangingRecoveryPolicy.isNativeGattOwnerExclusion(

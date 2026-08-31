@@ -5521,3 +5521,15 @@
 - The owner confirmed that the previously failing phone completed `이 휴대폰 등록` after Backend source `b0e1339c186bde81e2f4602ff426251b88e57db6` was deployed.
 - The owner then confirmed that a door-open request from that newly registered phone physically opened the installed door. This closes the exact post-account-deletion re-enrollment and one user-initiated physical-open acceptance Gate.
 - This observation does not assert repeated or OEM background-proximity behavior, another resident phone, ultrasonic/sensor actuation, WAN/broker outage recovery, Target OTA install/reboot/health or long-run reliability.
+
+## [2026-08-31] compile | Analyze off-site BLE owner false alert
+
+- The owner reported the latest installed app displaying `BLE 비콘 스캔 초기화 실패` with exact `BLE_OWNER_EXCLUDED` while at work with no Gatekeeper Target nearby. Target absence is normal idle state and does not demonstrate a Bluetooth, location or permission failure.
+- Source tracing found that an enabled native-GATT decision persistently requests native BLE ownership while the Flutter foreground scanner still attempts excluded legacy initialization. The earlier direct-`PlatformException` suppression also does not force-clear a preceding failure notification; without runtime logcat, exception wrapping versus retained notification state remains unresolved.
+- Planned the smallest security-preserving correction: structured native-wake idle versus active-session state, no legacy initialization under authoritative native wake, explicit neutral notification replacement, single-flight ownership transition, focused native/Dart regressions, a signed no-Target soak and a subsequent real-Target approach. Cross-process exclusion, signed feature control and OTA/rollback gates remain unchanged.
+
+## [2026-08-31] code | Delegate off-site idle scanning to native wake
+
+- Added a privacy-safe `getBleOwnershipState` bridge to the vendored beacon plugin and an explicit Flutter `nativeWake` mode. When signed personal native wake is authoritative, the foreground service now skips legacy AltBeacon initialization, clears any prior scanner error across isolate IPC and force-replaces the notification with neutral `스마트키 감지 대기`.
+- Monitoring/ranging owner transitions use the same structured, single-flight restart; the watchdog polls for an actual native-to-legacy transition instead of reporting a missing legacy monitoring subscription. Bluetooth, location, permission, plugin and unexpected failures remain actionable, while the cross-process request marker, kernel lease and default-OFF/signed-control boundaries are unchanged.
+- The OTA contract and all 320 Python source/operations regressions passed locally with one expected PowerShell-only skip. Flutter format/analyze/unit, targeted JVM tests, hosted CI, signed exact-main publication/install, off-site no-Target soak and real-Target approach recovery remain separate Gates.

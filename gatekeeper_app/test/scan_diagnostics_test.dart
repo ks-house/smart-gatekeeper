@@ -50,6 +50,25 @@ void main() {
     expect(restored.canScan, isTrue);
   });
 
+  test('native wake idle does not require legacy AltBeacon tuning', () {
+    final diagnostics = buildDiagnostics(mode: ScanMode.nativeWake).copyWith(
+      monitoringSubscribed: false,
+      rangingSubscribed: false,
+      backgroundScanTuningApplied: false,
+    );
+
+    expect(diagnostics.canScan, isTrue);
+    expect(
+      diagnostics.warningReasons,
+      isNot(
+        contains(
+          '화면 OFF 대응 스캔 설정(setBackgroundMode)이 적용되지 않았습니다',
+        ),
+      ),
+    );
+    expect(diagnostics.toMap()['mode'], 'nativeWake');
+  });
+
   test('Android 10+ background location is a blocking requirement', () {
     final diagnostics = buildDiagnostics(locationAlways: false);
 

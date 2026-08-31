@@ -18,6 +18,7 @@ import 'scan_diagnostics.dart';
 
 enum ScannerState {
   stopped,
+  nativeWakeIdle,
   idleMonitoring,
   activeSearching,
   activeWeak,
@@ -545,10 +546,22 @@ class BleScanner {
         await refreshDiagnostics();
         return;
       }
-      // ── 2. JobScheduler 위임 차단 — 반드시 바인딩 전 (issue.md P0-2) ────
+
+      // ── 2. 구조화된 BLE 소유권 게이트 ─────────────────────────────────
+      // Personal native wake가 authoritative일 때 Target 부재는 정상
+      // 대기다. Legacy AltBeacon 초기화를 시도하면 두 소유자가 경쟁하거나
+      // BLE_OWNER_EXCLUDED를 사용자 권한 오류로 오표시하게 된다.
+      final ownership = await _readBleOwnershipState();
+      if (ownership.nativeWakeAuthoritative) {
+        _enterNativeWakeIdleLocked();
+        await refreshDiagnostics();
+        return;
+      }
+
+      // ── 3. JobScheduler 위임 차단 — 반드시 바인딩 전 (issue.md P0-2) ────
       await _disableScheduledScanJobs();
 
-      // ── 3. 네이티브 스캔 초기화 ─────────────────────────────────────────
+      // ── 4. 네이티브 스캔 초기화 ─────────────────────────────────────────
       try {
         await flutterBeacon.initializeScanning;
       } catch (e, s) {
@@ -559,9 +572,7 @@ class BleScanner {
           AppErrorLogger().log(
             '🔄 로컬 BLE 인증 진행 중 — 비콘 스캔은 자동으로 재개됩니다.',
           );
-          _lastScanError = null;
-          _setMode(ScanMode.stopped);
-          _startWatchdog();
+          _enterNativeWakeIdleLocked();
           await refreshDiagnostics();
           return;
         }
@@ -579,7 +590,7 @@ class BleScanner {
         return;
       }
 
-      // ── 4. 화면 OFF 대응 스캔 설정 (issue.md P0-2) ──────────────────────
+      // ── 5. 화면 OFF 대응 스캔 설정 (issue.md P0-2) ──────────────────────
       await _applyBackgroundScanTuning();
       // backgroundMode는 이 시점에야 적용된다. 적용 전 snapshot의 false 값을
       // 경고로 출력하면 서비스 재시작마다 가짜 오류가 남는다.
@@ -588,7 +599,7 @@ class BleScanner {
         AppErrorLogger().log('⚠️ $warning');
       }
 
-      // ── 5. monitoring + ranging 병렬 구독 ──────────────────────────────
+      // ── 6. monitoring + ranging 병렬 구독 ──────────────────────────────
       // 화면 OFF에서 OEM/AltBeacon monitoring enter callback이 누락돼도 ranging이
       // 직접 Target 패킷을 받아 Pre-arm할 수 있어야 한다. monitoring과 ranging은
       // 같은 native scan cycle을 공유하므로 radio scan을 하나 더 만드는 것이 아니다.
@@ -667,6 +678,27 @@ class BleScanner {
   void _setMode(ScanMode next) {
     _mode = next;
     modeNotifier.value = next;
+  }
+
+  Future<BleOwnershipState> _readBleOwnershipState() async {
+    if (!Platform.isAndroid) return const BleOwnershipState.legacy();
+    try {
+      return BleOwnershipState.fromMap(await flutterBeacon.bleOwnershipState);
+    } catch (error) {
+      // An old or unavailable bridge falls back to initializeScanning, whose
+      // exact BLE_OWNER_EXCLUDED guard remains fail-safe and neutral.
+      debugPrint('[BleScanner] BLE ownership state unavailable: $error');
+      return const BleOwnershipState.unknown();
+    }
+  }
+
+  void _enterNativeWakeIdleLocked() {
+    _backgroundTuningApplied = false;
+    _lastScanError = null;
+    AppErrorLogger().clearError();
+    _setMode(ScanMode.nativeWake);
+    _startWatchdog();
+    _syncStateAndNotify();
   }
 
   Future<void> _disableScheduledScanJobs() async {
@@ -817,12 +849,23 @@ class BleScanner {
         }
       },
       onError: (dynamic error, StackTrace? stack) {
-        debugPrint('[BleScanner] ⚠️ Monitoring stream error: $error');
-        AppErrorLogger().logError('Monitoring 스트림 오류', error, stack);
-        _lastScanError = 'monitoring: $error';
+        final ownerExcluded =
+            RangingRecoveryPolicy.isNativeGattOwnerExclusion(error);
+        if (ownerExcluded) {
+          debugPrint(
+            '[BleScanner] Native wake owns BLE; monitoring transition deferred',
+          );
+          _lastScanError = null;
+        } else {
+          debugPrint('[BleScanner] ⚠️ Monitoring stream error: $error');
+          AppErrorLogger().logError('Monitoring 스트림 오류', error, stack);
+          _lastScanError = 'monitoring: $error';
+        }
         _streamMonitoring = null;
-        // ignore: unawaited_futures
-        startScanning(forceRestart: true);
+        _rangingRecovery.schedule(
+          RangingRecoveryPolicy.retryDelay(error),
+          () => startScanning(forceRestart: true),
+        );
       },
     );
   }
@@ -859,6 +902,11 @@ class BleScanner {
       newState = ScannerState.stopped;
       title = '❌ 스캔 중지됨';
       text = '블루투스 권한이나 설정 오류로 중지되었습니다.';
+    } else if (_mode == ScanMode.nativeWake) {
+      newState = ScannerState.nativeWakeIdle;
+      title = '🔐 스마트키 감지 대기';
+      text = 'Target에 접근하면 안전한 자동 인증을 시작합니다.';
+      force = true;
     } else if (_mode == ScanMode.idle) {
       newState = ScannerState.idleMonitoring;
       title = '💤 저전력 감시 중';
@@ -1005,23 +1053,22 @@ class BleScanner {
     if (!_ownsNativeScanner || _mode != ScanMode.active) return;
     final ownerExcluded =
         RangingRecoveryPolicy.isNativeGattOwnerExclusion(error);
-    _lastScanError = 'ranging: $error';
     if (ownerExcluded) {
+      _lastScanError = null;
       debugPrint(
         '[BleScanner] Native GATT owns BLE; ranging recovery deferred',
       );
     } else {
+      _lastScanError = 'ranging: $error';
       debugPrint('[BleScanner] ⚠️ Ranging stream error: $error');
       AppErrorLogger().logError('Ranging 스트림 오류', error, stack);
     }
 
     _rangingRecovery.schedule(
       RangingRecoveryPolicy.retryDelay(error),
-      () => _restartRanging(
-        reason: ownerExcluded
-            ? 'native GATT BLE lease released 확인'
-            : 'ranging stream 오류',
-      ),
+      () => ownerExcluded
+          ? startScanning(forceRestart: true)
+          : _restartRanging(reason: 'ranging stream 오류'),
     );
   }
 
@@ -1326,6 +1373,14 @@ class BleScanner {
   Future<void> _watchdogTick() async {
     final snapshot = await refreshDiagnostics();
 
+    if (_mode == ScanMode.nativeWake) {
+      final ownership = await _readBleOwnershipState();
+      if (ownership.nativeWakeAuthoritative) return;
+      AppErrorLogger().log('🔄 native wake 해제 감지 → legacy 스캔 재시작');
+      await startScanning(forceRestart: true);
+      return;
+    }
+
     if (_mode == ScanMode.stopped) {
       if (snapshot.canScan) {
         AppErrorLogger().log('🔄 워치독: 차단 사유 해소 감지 → 스캔 재시작');
@@ -1353,6 +1408,12 @@ class BleScanner {
   /// 앱이 포그라운드로 복귀했을 때 스캔 상태를 점검·복구한다.
   Future<void> onAppResumed() async {
     final snapshot = await refreshDiagnostics();
+    if (_mode == ScanMode.nativeWake) {
+      final ownership = await _readBleOwnershipState();
+      if (ownership.nativeWakeAuthoritative) return;
+      await startScanning(forceRestart: true);
+      return;
+    }
     if (_mode == ScanMode.stopped) {
       if (snapshot.canScan) {
         await startScanning();

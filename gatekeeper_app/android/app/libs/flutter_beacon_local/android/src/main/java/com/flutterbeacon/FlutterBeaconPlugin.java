@@ -27,6 +27,9 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.PluginRegistry;
 
+import java.util.HashMap;
+import java.util.Map;
+
 
 /**
  * flutter_beacon Android plugin.
@@ -248,6 +251,17 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
       PowerManager powerManager =
           (PowerManager) applicationContext.getSystemService(Context.POWER_SERVICE);
       result.success(powerManager == null || powerManager.isInteractive());
+      return;
+    }
+
+    if (call.method.equals("getBleOwnershipState")) {
+      boolean nativeRequested = nativeGattOwnsScanner();
+      Map<String, Object> state = new HashMap<>();
+      state.put("schemaVersion", 1);
+      state.put("mode", nativeRequested ? "native_wake" : "legacy_scanner");
+      state.put("nativeRequested", nativeRequested);
+      state.put("legacyLeaseHeld", legacyOwnerLease != null);
+      result.success(state);
       return;
     }
 
