@@ -5587,3 +5587,15 @@
 - Bound immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669` to the complete ordered 91-path protected bundle under `ultrasonic-session-a57ea44-persistent-baseline`.
 - Exactly one protected blob changes: `.github/workflows/deploy.yml` pins the reviewed `src/main.cpp` digest in the closed personal-Target build tree; the remaining 90 paths retain exact baseline bytes. Repository, commit, ancestry, inventories and normalized digests remain fail closed.
 - This policy-only candidate publishes no firmware and changes no Backend, mobile, Target, sensor, relay or door state. Hosted policy CI/merge, feature merge-connection, fresh CI, signed exact-main OTA publication, Target installation/reboot/health and physical acceptance remain separate Gates.
+
+## [2026-08-31] compile | Connect ultrasonic isolation to trusted policy main
+
+- Policy PR #320 passed Hosted Trusted and merge-committed normally as main `5a70bf5315a5125aaf832417e236b8b316e8e334`; merged that exact policy history into immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669` without rebase or squash.
+- The reviewed `.github/workflows/deploy.yml` feature byte remains unchanged and matches the sole complete 91-path authorization. Branch protection readback retained strict required Hosted Trusted and `enforce_admins=true` without a bypass.
+- Corrected the OTA operations runbook to name the actual privileged `esp32c6_personal_production` profile. Fresh merge-connected local/hosted checks, feature merge, final actual-main policy rotation, signed publication, Target install/reboot/health and physical acceptance remain separate Gates.
+
+## [2026-08-31] test | Validate merge-connected ultrasonic isolation candidate
+
+- On merge-connected feature head `6cc2af7`, the OTA contract passed, all 81 focused trusted-policy/session-isolation/pocket/Target-publisher/Hardwareless regressions passed, and full Python discovery passed 324 tests with one expected environment-only skip.
+- The approved protected deploy byte is identical to immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669`; its previously successful local `esp32c6_personal_production` build therefore remains the exact reviewed Target source input. Hosted feature CI and merge are still required.
+- No firmware was signed, published or installed by these local checks. Target reboot/health and the fresh no-person-then-current-person sensor sequence remain physical acceptance Gates.
