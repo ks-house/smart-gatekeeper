@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-30 (mobile remote physical success; second family phone enrolled and Target ACL synced, its physical door observation pending)
+> Last updated: 2026-08-31 (Local GATT action-1 ultrasonic session isolation candidate validated locally; policy, OTA install and physical acceptance pending)
 
 ## 1. 판정 원칙
 
@@ -778,3 +778,25 @@ an authenticated command from independently confirmed physical opening.
 The source change intentionally retains the existing one-shot FSM, Active-Low
 polarity, High-Z OFF behavior, signed OTA verification and rollback contract.
 It does not add SmartBox GPIO4/5/6 compatibility or modify the wall wiring.
+
+## 2026-08-31 Local GATT ultrasonic session-isolation candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Session reset contract | An accepted Local GATT action-1 now clears the five-slot ultrasonic median history before the next sensor loop. The reset is not applied to action-2 or a rejected arm request | PASS for source-level session separation; no Target runtime observation |
+| Fresh-sample threshold | The reset seeds five invalid sentinels and index zero, so the relay predicate cannot become true until at least three fresh, current-session distance samples are valid | PASS for deterministic host regression; this is not GPIO/echo evidence |
+| Focused regressions | New session-isolation regressions plus existing pocket-path tests passed 8/8 | PASS for the targeted source contract |
+| Hardwareless RC regressions | The complete Hardwareless RC host suite passed 13/13, including the C++ protocol/FSM build and execution | PASS for host software behavior only |
+| Integrated focused suite | `test_ultrasonic_session_isolation`, `test_pocket_approach_contract`, `test_target_ota_autopublish` and `test_hardwareless_rc` passed together 39/39 | PASS for their combined host/source contracts; no OTA publication or device action occurred |
+| ESP32-C6 build | `.venv/bin/pio run -e esp32c6` completed successfully. RAM was 59,200/327,680 bytes (18.1%); application flash was 1,745,602/7,340,032 bytes (23.8%) | PASS for local compile, capacity and image fit; not a signed production artifact or installed image |
+| Personal-production build | `.venv/bin/pio run -e esp32c6_personal_production` completed successfully. RAM was 67,096/327,680 bytes (20.5%); application flash was 1,783,164/7,340,032 bytes (24.3%) | PASS for the local production-profile compile and dual-slot image fit; not signing, publication or Target installation evidence |
+| Repository regression | The full Python discovery ran 324 tests: 322 passed, one skipped, and only the expected trusted-workflow-policy test failed because the changed protected `deploy.yml` digest has not yet been authorized | SOURCE TESTS PASS / POLICY GATE OPEN; the fail-closed result must be resolved by normal policy rotation before merge |
+| Field causation boundary | The five-slot stale-median pattern deterministically fits the owner-correlated HA sequence after the owner ruled out manual remote open and requested analysis under the assumption of intact wiring and sensor hardware | HIGH-CONFIDENCE source/timeline correlation, not canonical per-session event proof |
+| Release boundary | No protected CI, merge, signed Target OTA publication, Target download/install/reboot/health confirmation, fresh sensor distance, relay contact or physical door cycle was performed by these local tests | PENDING all release and physical acceptance Gates |
+
+The correction is deliberately limited to the start of a successfully accepted
+Local GATT action-1 sensor session. It does not weaken signed ACL/proof,
+nonce/replay, action-2, relay cooldown, OTA signature, health or rollback
+contracts. A signed exact-main artifact must still be installed and observed on
+the wall Target, followed by a fresh hands-free approach in which three current
+distance samples precede relay activation.

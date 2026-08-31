@@ -4,6 +4,143 @@
 > 범위: `gatekeeper_app`의 Android 백그라운드 비콘 감지 → Pre-arm REST API 호출 경로
 > 관련 문서: [mobile_app_scenario.md](mobile_app_scenario.md) · [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md)
 
+## 0. 2026-08-31 현재 운영 계약과 다중 휴대폰 관찰
+
+이 문서의 아래 본문은 과거 REST Pre-arm 경로 감사 이력이다. 현재 hands-free
+운영 경로는 `iBeacon first-match → Android native wake → authenticated Local GATT
+action 1 → Target ARMED → AJ-SR04T → relay`이며, 성공 알림은 Target이 action 1을
+검증하고 실제 `ARMED`로 전환한 뒤에 표시된다.
+
+현재 기본값은 다음과 같다.
+
+- `ARMED` 센서 대기 시간: 60초
+- 센서 폴링: 약 100 ms 간격, 5개 샘플 중앙값
+- 유효 거리: 20 cm 이상 50 cm 이하
+- 릴레이 유지: 1초, 이후 기본 3초 cooldown
+
+소유자 휴대폰은 주머니 상태 접근에서 열리지만 다른 승인 휴대폰은 `Target 인증
+완료` 알림 후 문앞에서 열리지 않고 앱을 열면 열리는 현상이 1회 보고됐다. 공통
+Target 센서·릴레이가 소유자 휴대폰에서 동작하고, 다른 휴대폰도 앱을 연 뒤 동작한
+사실은 상시 센서/배선 고장보다 mobile wake 시점 차이를 우선하게 한다.
+
+네이티브 wake는 RSSI 임계값 없이 정확한 iBeacon의 `FIRST_MATCH`에서 인증 작업을
+예약한다. 따라서 복도·엘리베이터·주차 위치 등 문앞보다 이른 지점에서 인증되어
+60초가 먼저 시작될 수 있다. 성공 알림은 Target의 이후 `arm_expired`를 수신해
+취소하거나 남은 시간을 표시하지 않는다. 앱 resume은 권한/백그라운드 설정을 다시
+평가하고 네이티브 scan을 stop/start 재등록하므로 새 first-match와 새 action-1이
+발생해 60초 창을 갱신할 수 있다. 이것이 현재 관찰과 가장 잘 맞는 가설이지만,
+실패 회차의 Target 이벤트와 휴대폰 세션 시각 없이는 확정 원인으로 승격하지 않는다.
+
+확정에는 같은 회차에서 `auth_verified_armed → arm_expired`가 문앞 도착 전에
+발생했는지, 앱 resume 뒤 새 `AUTH_PENDING → ARMED → sensor trigger`가 이어졌는지를
+상관 분석해야 한다. 단일 성공은 다른 OEM·주머니 방향·반복 접근 신뢰성을 증명하지
+않는다.
+
+### 0.1 제한된 접근 세션 갱신 권고
+
+비콘이 보이는 동안 action-1 인증을 무기한 반복해 `ARMED` 만료를 계속 미루는
+방식은 채택하지 않는다. 승인 휴대폰이 현관 주변 실내에 놓여 있으면 Target이
+상시 `ARMED`가 되어, 휴대폰을 소지하지 않은 외부 사람도 초음파 조건만 만족해
+문을 열 수 있기 때문이다. 배터리 소모와 여러 휴대폰의 GATT 경합도 증가한다.
+
+대신 다음의 bounded approach-session을 후보 계약으로 둔다.
+
+1. exact iBeacon 첫 감지는 접근 후보만 만든다.
+2. 최근 RSSI가 현장 보정된 근접 진입 조건을 연속 충족할 때 action 1을 수행한다.
+3. 근접 조건이 유지되는 동안에만 약 20초 간격으로 인증을 갱신해 Target의 60초
+   `ARMED` deadline을 연장한다.
+4. 한 접근 세션의 총 갱신 시간은 90~120초로 제한한다.
+5. 비콘 무수신 또는 약한 RSSI가 일정 시간 유지될 때만 `OUTSIDE`로 복귀하고,
+   다음 접근 세션을 허용한다. 최대 시간에 도달하면 반드시 OUTSIDE 재진입을
+   요구한다.
+6. Target은 최소 갱신 간격, nonce/replay, credential/ACL, relay/cooldown interlock을
+   그대로 강제하고, 앱은 남은 센서 대기 시간과 만료를 사용자에게 표시한다.
+
+Android `PeriodicWorkRequest`는 최소 주기와 Doze 지연 때문에 이 초 단위 제어에
+적합하지 않다. processless 경로를 유지하려면 PendingIntent BLE 결과를 native
+receiver에서 RSSI/hysteresis와 single-flight로 제한한 뒤 기존 signed GATT worker를
+예약해야 한다. 정확한 RSSI와 주기는 현관 매립 상태에서 두 휴대폰의 분포를 측정한
+뒤 확정한다.
+
+### 0.2 모바일 관리자 역할과 센서 활성화 경계
+
+모바일 `ADMIN`/`USER` 역할은 관리자 UI와 Backend 관리 권한의 경계이며 Target의
+hands-free action-1 허용 조건이 아니다. Target은 signed ACL에서 credential 존재,
+`ACTIVE` 상태, `OPEN` permission bit, 프로토콜/시간 유효성과 P-256 서명을 검사한다.
+일반 사용자도 이 조건을 충족하면 동일하게 action 1을 실행할 수 있다.
+
+현재 RESULT OK는 control gate가 action 1을 받아 실제 FSM을 `ARMED`로 전환한 뒤에만
+전송되며, Android의 `Target 인증 완료` 알림은 이 RESULT OK를 받은 durable session에
+대해서만 게시된다. 따라서 새 성공 알림이 정확히 해당 회차의 것이라면 관리자가
+아니어서 센서가 처음부터 비활성인 경우와 양립하지 않는다.
+
+다만 알림은 Target의 `arm_expired`와 동기화되지 않고 사용자가 누를 때까지 남을 수
+있다. Target은 60초 만료, 새 인증이 기존 `ARMED`를 교체한 뒤 실패/abort한 경우,
+relay hold/cooldown 등에서 센서 측정 상태를 벗어난다. 그러므로 문앞 도착 시점에
+`ARMED`였는지는 알림 존재가 아니라 같은 회차 Target state/event와 distance telemetry로
+확인해야 한다.
+
+### 0.3 2026-08-31 아내 휴대폰 HA 상태 이력 판독
+
+소유자가 제공한 Home Assistant 상태 이력에는 다음 두 가지 결정적 구간이 있다.
+
+- `21:54:20 AUTH_PENDING → 21:54:21 ARMED → 21:54:22 RELAY_HOLD →
+  21:54:23 COOLDOWN → 21:54:28 IDLE`: action-1 인증 후 센서 조건이 약 1초 안에
+  충족되어 relay까지 진행한 정상 hands-free 형태다. 이 화면만으로 credential/phone
+  identity를 직접 상관할 수는 없지만, 같은 현장 Target의 인증-센서-FSM 경로가
+  적어도 한 번 동작했음을 증명한다.
+- `21:56:26 ARMED → 21:57:26 IDLE`: 소유자 확인상 이미 문이 열린 뒤 사용자가 집
+  안으로 이동하던 시간이다. 따라서 실패 회차의 센서 미감지 증거가 아니라, 출입
+  완료 후 추가 인증이 Target을 다시 60초간 ARMED한 불필요한 후행 세션이다.
+  관리자 권한 거부나 credential 거부라면 ARMED까지 도달할 수 없다는 판정만
+  유지한다.
+
+후행 ARMED는 `21:56:05 RELAY_HOLD → 21:56:11 IDLE` 이후 15초 만에 시작됐다. 이는
+이미 완료된 접근과 뒤늦은/중복 native wake가 하나의 consumed approach session으로
+묶이지 않는 현재 한계를 보여준다. 해당 60초에는 사용자가 외부 센서 앞에 없었으므로
+relay 없이 timeout된 것이 정상이며, 최초 무개방 원인을 설명하지 않는다.
+
+`RELAY_HOLD → COOLDOWN`은 약 1초이며 `COOLDOWN → IDLE`은 화면상 약 5초로 반복된다.
+따라서 현장 runtime cooldown은 정적 기본값 3초와 다르게 5초로 설정됐을 가능성이
+높다. 나머지 IDLE 직행 relay 회차는 이 화면만으로 manual/MQTT와 누락된 sub-second
+action-1을 구분하지 않는다.
+
+### 0.4 RELAY_HOLD 전에 ARMED가 보이지 않는 이유
+
+소유자는 해당 시험에서 원격 수동 개방을 하지 않았다고 확인했다. 그러므로
+`21:53:53`, `21:54:42`, `21:56:05`의 `IDLE → RELAY_HOLD`처럼 보이는 회차는 현재
+증거상 action-1 `ARMED → sensor trigger`가 HA 스냅샷 사이에서 완료됐을 가능성을
+우선한다.
+
+Target은 약 100 ms마다 loop를 돌지만 HA가 구독하는 status MQTT telemetry는 1초마다
+한 번만 발행한다. 인증 완료 후 사람이 이미 센서 범위에 있으면 `ARMED`가 100~300 ms
+정도만 지속되고 다음 1초 publish 전에 `RELAY_HOLD`가 될 수 있다. 따라서 HA 상태
+이력의 ARMED 누락은 FSM이 ARMED를 건너뛰었다는 증거가 아니다. local action-2도
+설계상 `AUTH_PENDING → RELAY_HOLD`이므로, 고급 로컬 수동 기능 사용 여부는 canonical
+event로 별도 구분해야 한다.
+
+소스 감사에서는 추가 결함 후보도 확인됐다. MQTT pre-arm은 새 세션 전에
+`UltrasonicSensor::resetHistory()`를 호출하지만 Local GATT action-1 grant는 호출하지
+않는다. 이전 세션의 유효한 5표본이 남으면 새 ARMED 직후 더 빠르게 relay로 전환하거나
+현재 사람이 없어도 stale median을 재사용할 수 있다. 정확한 경로 판정은 1초 상태
+스냅샷이 아니라 `auth_verified_armed`, `sensor_detected`, `relay_on_sensor`,
+`relay_on_local_manual`, `relay_on_manual` canonical/event 순서를 사용해야 한다.
+
+원격 수동 개방이 없었다는 소유자 확인 뒤에는 이 stale-median 가설이 화면의 정확한
+패턴까지 설명한다. 초기화된 `[999,999,999,999,999]`에서 첫 정상 회차는 유효 표본
+3개가 쌓이는 순간 중앙값이 유효해져 relay로 전환하고 `[valid,valid,valid,999,999]`
+형태를 남길 수 있다. 다음 action-1의 첫 invalid 표본은 네 번째 슬롯만, 그 다음
+action-1은 다섯 번째 슬롯만 덮으므로 두 회차 모두 중앙값에는 여전히 세 valid가 남아
+즉시 relay가 된다. 세 번째 action-1에서 첫 valid 슬롯이 invalid로 덮이면 중앙값이
+999가 되어 비로소 ARMED가 유지된다.
+
+이는 `21:54:22` 첫 명시적 ARMED-sensor relay 뒤 `21:54:42`, `21:56:05` 두 개의
+ARMED가 보이지 않는 relay, 이어서 `21:56:26`의 60초 ARMED timeout과 정확히 같은
+모양이다. canonical event가 없으므로 물리 확정은 아니지만, 단순 telemetry sampling
+설명보다 구체적인 source-and-timeline 일치 증거다. 주기적 인증 갱신보다 먼저 모든
+Local GATT action-1 성공 시 sensor history를 초기화하고 현 세션의 fresh valid 표본
+3개를 요구해야 한다.
+
 ## 1. 결론
 
 현재 앱에는 다음 경로가 **구현되어 있다**.

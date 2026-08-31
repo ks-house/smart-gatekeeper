@@ -18,6 +18,37 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-08-31 Local GATT ultrasonic session isolation
+
+- After the owner excluded manual remote open and asked to assume intact wiring
+  and sensor hardware, source/timeline correlation identified a deterministic
+  session-boundary defect: Local GATT action-1 retained the five-slot ultrasonic
+  median from an earlier passage, while MQTT pre-arm already cleared it. Three
+  retained valid samples could therefore satisfy a later session before three
+  fresh measurements existed. This is high-confidence source/timeline
+  correlation rather than canonical per-session event proof.
+- The candidate resets ultrasonic history only after Local GATT action-1 is
+  successfully accepted. Five invalid sentinels then require at least three
+  fresh current-session valid samples before the 20-50 cm relay predicate can
+  succeed. Rejected arms and action-2 are unchanged; ACL/proof, nonce/replay,
+  relay interlocks, signed OTA, health and rollback boundaries remain intact.
+- New session-isolation plus pocket-path regressions passed 8/8. The complete
+  Hardwareless RC host suite passed 13/13, including its C++ protocol/FSM build
+  and run. A combined session-isolation, pocket, Target OTA-autopublish and
+  Hardwareless RC invocation passed 39/39. The `esp32c6` PlatformIO build
+  succeeded at 59,200/327,680 bytes RAM (18.1%) and 1,745,602/7,340,032 bytes
+  application flash (23.8%). The separate `esp32c6_personal_production` profile
+  also succeeded at 67,096/327,680 bytes RAM (20.5%) and
+  1,783,164/7,340,032 bytes application flash (24.3%).
+- Full Python discovery ran 324 tests: 322 passed, one skipped, and only the
+  expected fail-closed trusted-workflow-policy test failed because the
+  protected `deploy.yml` digest rotation is still pending. Protected policy,
+  reviewed CI, merge, exact-main signed Target publication and physical Target
+  installation/reboot/health are separate Gates.
+- No firmware was installed and no sensor, relay contact or physical door was
+  exercised by this change. A fresh on-wall hands-free trial after exact-main
+  OTA installation remains required; no deployed or physical success is claimed.
+
 ## 2026-08-31 off-site BLE ownership notification incident
 
 - The owner reports the latest installed mobile app raised `BLE 비콘 스캔
