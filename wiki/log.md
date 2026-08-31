@@ -5539,3 +5539,9 @@
 - PR #318 passed Hosted Trusted, OTA P0, Flutter format/analyze/unit, targeted native GATT tests and the Android canary build, then merged normally as exact main `d9100240c8c9c07faacd2b0c293b46e01462d3ad`.
 - Exact-main mobile run `33380064991` verified the pinned Android signer, package and embedded source, then atomically published production-signed `1.0.0-gd910024` / `36801` to the NAS primary and fallback roots with the preceding valid artifact retained.
 - Independent strict-TLS readback matched both public manifests at SHA-256 `1ce61bf0fb374411f0e16d37cd8a23487aefd00091603b803f52945230b4ace5` and both 55,119,001-byte APKs at SHA-256 `0f18386709983d157acb23bcb3b7b2b070c123e1d6fef0a27260c12dfc8654f5`. No phone installation, off-site no-Target soak, real-Target approach/authentication or physical door action is inferred from publication.
+
+## [2026-08-31] compile | Authorize Local GATT ultrasonic session isolation
+
+- Bound immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669` to the complete ordered 91-path protected bundle under `ultrasonic-session-a57ea44-persistent-baseline`.
+- Exactly one protected blob changes: `.github/workflows/deploy.yml` pins the reviewed `src/main.cpp` digest in the closed personal-Target build tree; the remaining 90 paths retain exact baseline bytes. Repository, commit, ancestry, inventories and normalized digests remain fail closed.
+- This policy-only candidate publishes no firmware and changes no Backend, mobile, Target, sensor, relay or door state. Hosted policy CI/merge, feature merge-connection, fresh CI, signed exact-main OTA publication, Target installation/reboot/health and physical acceptance remain separate Gates.
