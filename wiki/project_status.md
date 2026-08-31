@@ -34,10 +34,16 @@ applies_to:
   exclusion. The source candidate now implements the privacy-safe plugin state,
   explicit `nativeWake` scanner mode, cross-isolate error clear, neutral forced
   notification replacement and single-flight transition recovery.
-- The OTA contract and all 320 Python source/operations tests pass locally with
-  one expected PowerShell-only skip. Flutter format/analyze/unit, targeted JVM
-  tests, hosted CI, exact-main signed APK publication/install, a no-Target soak
-  and a subsequent real-Target approach remain open Gates.
+- PR #318 passed Hosted Trusted, OTA P0, Flutter format/analyze/unit, targeted
+  native GATT tests and Android canary build, then merged normally as exact main
+  `d9100240c8c9c07faacd2b0c293b46e01462d3ad`. Mobile run `33380064991`
+  built and pinned the exact source, verified the production Android signer and
+  published signed `1.0.0-gd910024` / `36801` to both NAS OTA roots.
+- Independent strict-TLS readback matched both public manifests byte-for-byte
+  at SHA-256 `1ce61bf0...b4ace5` and both 55,119,001-byte APKs at SHA-256
+  `0f183867...c8654f5`. Publication is not installation: the latest package is
+  not yet confirmed on a phone, and the off-site no-Target soak plus subsequent
+  real-Target native-wake/authentication recovery remain open physical Gates.
 
 ## 2026-08-30 administrator account-management deployment
 

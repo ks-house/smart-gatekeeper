@@ -60,9 +60,19 @@ journal instead of being guessed from Target absence.
 The OTA contract and all 320 Python source/operations regressions pass locally
 with one expected PowerShell-only skip. Focused ownership tests cover structured
 native/legacy projection, unknown future native mode fail-closed behavior,
-native-wake diagnostics and ordering before `initializeScanning`. Flutter
-format/analyze/unit, targeted JVM tests, hosted CI, exact-main signed publication,
-installation, off-site soak and real-Target recovery remain separate Gates.
+native-wake diagnostics and ordering before `initializeScanning`.
+
+PR #318 passed its protected Hosted Trusted, OTA P0 and Flutter/Android canary
+checks and merged as exact main
+`d9100240c8c9c07faacd2b0c293b46e01462d3ad`. Exact-main mobile run
+`33380064991` then passed the production signer/package/source checks and
+atomically published signed `1.0.0-gd910024` / `36801` to both NAS roots.
+Independent strict-TLS downloads matched the signed CI manifest and the
+55,119,001-byte APK at SHA-256
+`0f18386709983d157acb23bcb3b7b2b070c123e1d6fef0a27260c12dfc8654f5`
+for both primary and fallback paths. This proves artifact publication only.
+Replacement installation, an off-site no-Target screen-off soak and real-Target
+native wake/authentication recovery remain separate physical Gates.
 
 ## 2026-08-29 foreground Target detection dashboard candidate
 
