@@ -5540,8 +5540,62 @@
 - Exact-main mobile run `33380064991` verified the pinned Android signer, package and embedded source, then atomically published production-signed `1.0.0-gd910024` / `36801` to the NAS primary and fallback roots with the preceding valid artifact retained.
 - Independent strict-TLS readback matched both public manifests at SHA-256 `1ce61bf0fb374411f0e16d37cd8a23487aefd00091603b803f52945230b4ace5` and both 55,119,001-byte APKs at SHA-256 `0f18386709983d157acb23bcb3b7b2b070c123e1d6fef0a27260c12dfc8654f5`. No phone installation, off-site no-Target soak, real-Target approach/authentication or physical door action is inferred from publication.
 
+## [2026-08-31] compile | Explain multi-phone hands-free sensor timing
+
+- Recorded the owner observation that one phone opens the installed door hands-free from a pocket, while another approved phone reports Target authentication but does not open until the app is resumed.
+- Confirmed the current source contract: Target sends GATT success only after entering 60-second `ARMED`; AJ-SR04T then accepts a five-sample median in the 20-50 cm range and holds the relay for one second.
+- Native wake currently schedules authentication on exact iBeacon first-match without an RSSI proximity gate. Early authentication and expiry before doorstep arrival, followed by scan re-registration and a fresh action-1 on app resume, is the leading explanation but remains a hypothesis until phone-session and Target-event timestamps from the same failed cycle are correlated.
+
+## [2026-08-31] compile | Bound hands-free ARMED renewal design
+
+- Evaluated periodic Local GATT authentication while a phone remains in beacon range. Unbounded renewal was rejected because a resident phone near the entrance could keep Target continuously `ARMED`, allowing a non-holder to satisfy only the ultrasonic condition; it would also increase battery use and multi-phone GATT contention.
+- Recommended a bounded near-approach session: RSSI/hysteresis entry, approximately 20-second signed action-1 refreshes while near, a 90-120 second total cap, and mandatory OUTSIDE/reset before another session. Target nonce/replay, ACL, minimum refresh interval, relay and cooldown interlocks remain fail closed.
+- Exact RSSI thresholds and timing remain field-calibration decisions. Implementation, CI, signed APK/Target publication, installation and owner/wife screen-off physical acceptance are separate Gates.
+
+## [2026-08-31] compile | Separate mobile admin role from Target sensor authorization
+
+- Confirmed that Target Local GATT authorization does not consume the mobile `ADMIN`/`USER` role. It requires an active signed ACL credential with the OPEN permission, valid protocol/time bounds and a valid P-256 proof.
+- RESULT OK and the Android `Target 인증 완료` notification occur only after the authenticated action-1 control gate has transitioned the Target FSM to `ARMED`; a fresh matching success notification therefore rules out non-admin status as the reason the sensor was initially disabled.
+- The notification is not synchronized with later `arm_expired`, replacement-auth abort or other FSM transitions. Doorstep Target state and distance telemetry from the same cycle are still required to distinguish early expiry from an ultrasonic field-of-view or measurement problem.
+
+## [2026-08-31] test | Analyze wife-phone Home Assistant FSM history
+
+- Read the owner-provided HA timeline. `21:56:26 ARMED → 21:57:26 IDLE` is an exact 60-second no-relay interval, confirming accepted authorization followed by normal ARMED expiry; non-admin status and missing OPEN authorization are incompatible with reaching ARMED.
+- The same image includes `21:54:20 AUTH_PENDING → 21:54:21 ARMED → 21:54:22 RELAY_HOLD`, proving that the installed Target authentication-to-sensor FSM completed at least once in the observed period. The image does not carry credential/session identity, so attributing that successful cycle to a particular phone remains an owner/time-correlation fact.
+- The remaining branch is physical timing versus measurement: arrival after the 60-second window supports early wake/expiry, while presence in the 20-50 cm field during that exact minute would instead require distance/echo/beam diagnostics. The repeated approximately five-second cooldown also suggests a runtime override from the three-second source default.
+
+## [2026-08-31] compile | Correct post-entry ARMED and missing-state interpretation
+
+- The owner clarified that `21:56:26 ARMED → 21:57:26 IDLE` occurred after the door had opened while the user was already moving inside. Corrected its interpretation from a failed sensor window to an unnecessary post-entry re-arm that expired normally; it cannot explain the initial no-open observation.
+- The owner also confirmed no remote manual open during the test. Because Target status is published only every second while the sensor loop runs about every 100 ms, an action-1 `ARMED → sensor trigger → RELAY_HOLD` transition can complete between HA samples and appear as `IDLE → RELAY_HOLD`.
+- Source audit found MQTT pre-arm resets the ultrasonic five-sample history but Local GATT action-1 does not. Stale valid samples can shorten or falsely satisfy the next sensor transition; this is a correction candidate, not yet an implemented or physically verified fix. Canonical event causation is required to distinguish sensor, local action-2 and MQTT manual relay paths.
+
+## [2026-08-31] compile | Correlate missing ARMED cycles with stale ultrasonic median
+
+- After the owner ruled out remote manual opens, correlated the exact HA sequence with the five-slot median implementation. One legitimate detection can leave three valid and two invalid slots; two subsequent GATT action-1 sessions can each overwrite only an invalid slot and immediately reuse the same valid median, while the third finally overwrites a valid slot and remains ARMED until timeout.
+- This deterministic pattern matches the visible `21:54:22` sensor-shaped relay, two relay cycles without a sampled ARMED at `21:54:42` and `21:56:05`, and the later `21:56:26 → 21:57:26` ARMED timeout. It remains high-confidence source/timeline correlation rather than canonical-event proof.
+- Any bounded periodic re-auth design must follow, not precede, a fix that resets history on every accepted Local GATT action-1 and requires three fresh current-session valid samples. No firmware, Target OTA or physical state was changed in this analysis.
+
+## [2026-08-31] fix | Isolate ultrasonic median by Local GATT arm session
+
+- Reset the five-slot ultrasonic history only after an authenticated Local GATT action-1 is accepted, preventing valid samples retained by an earlier passage from satisfying a new sensor session. Five invalid sentinels now require at least three fresh current-session valid measurements; rejected arms and action-2 remain unchanged.
+- New session-isolation regressions plus the pocket path passed 8/8, and the complete Hardwareless RC host suite passed 13/13 including its C++ protocol/FSM build and execution. The combined session-isolation, pocket, Target OTA-autopublish and Hardwareless RC invocation passed 39/39. The local `esp32c6` PlatformIO build succeeded at 59,200/327,680 bytes RAM (18.1%) and 1,745,602/7,340,032 bytes application flash (23.8%); the separate `esp32c6_personal_production` profile succeeded at 67,096/327,680 bytes RAM (20.5%) and 1,783,164/7,340,032 bytes application flash (24.3%).
+- Full Python discovery ran 324 tests: 322 passed, one skipped, and only the expected trusted-workflow-policy test failed for the changed protected `deploy.yml` digest. Policy rotation, protected CI, merge, signed exact-main Target publication, installation/reboot/health and a fresh physical sensor-to-door trial remain separate Gates; no deployed, OTA-install or physical-success claim is made.
+
 ## [2026-08-31] compile | Authorize Local GATT ultrasonic session isolation
 
 - Bound immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669` to the complete ordered 91-path protected bundle under `ultrasonic-session-a57ea44-persistent-baseline`.
 - Exactly one protected blob changes: `.github/workflows/deploy.yml` pins the reviewed `src/main.cpp` digest in the closed personal-Target build tree; the remaining 90 paths retain exact baseline bytes. Repository, commit, ancestry, inventories and normalized digests remain fail closed.
 - This policy-only candidate publishes no firmware and changes no Backend, mobile, Target, sensor, relay or door state. Hosted policy CI/merge, feature merge-connection, fresh CI, signed exact-main OTA publication, Target installation/reboot/health and physical acceptance remain separate Gates.
+
+## [2026-08-31] compile | Connect ultrasonic isolation to trusted policy main
+
+- Policy PR #320 passed Hosted Trusted and merge-committed normally as main `5a70bf5315a5125aaf832417e236b8b316e8e334`; merged that exact policy history into immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669` without rebase or squash.
+- The reviewed `.github/workflows/deploy.yml` feature byte remains unchanged and matches the sole complete 91-path authorization. Branch protection readback retained strict required Hosted Trusted and `enforce_admins=true` without a bypass.
+- Corrected the OTA operations runbook to name the actual privileged `esp32c6_personal_production` profile. Fresh merge-connected local/hosted checks, feature merge, final actual-main policy rotation, signed publication, Target install/reboot/health and physical acceptance remain separate Gates.
+
+## [2026-08-31] test | Validate merge-connected ultrasonic isolation candidate
+
+- On merge-connected feature head `6cc2af7`, the OTA contract passed, all 81 focused trusted-policy/session-isolation/pocket/Target-publisher/Hardwareless regressions passed, and full Python discovery passed 324 tests with one expected environment-only skip.
+- The approved protected deploy byte is identical to immutable feature candidate `a57ea44e295e6c780f154a005ae111d69b59f669`; its previously successful local `esp32c6_personal_production` build therefore remains the exact reviewed Target source input. Hosted feature CI and merge are still required.
+- No firmware was signed, published or installed by these local checks. Target reboot/health and the fresh no-person-then-current-person sensor sequence remain physical acceptance Gates.

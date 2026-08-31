@@ -441,8 +441,17 @@ static void initBleAdvertiser() {
       return g_access_fsm.handleLocalManualOpen(
           now_ms, RELAY_HOLD_MS, g_relay_cooldown_ms);
     }
-    return g_access_fsm.handleAuthSuccess(
+    const bool armed = g_access_fsm.handleAuthSuccess(
         now_ms, g_pre_arm_duration_ms, g_relay_cooldown_ms);
+    if (armed) {
+      // A Local GATT action-1 starts a new physical passage session. Never let
+      // valid samples retained by an earlier person satisfy this session's
+      // five-sample median. Starting from five invalid sentinels requires at
+      // least three fresh, current-session valid measurements before relay ON.
+      UltrasonicSensor::resetHistory();
+      DiagnosticsManager::noteAction("gatt_armed_fresh_sensor_history");
+    }
+    return armed;
   });
   GattServer::setOnAuthAbortCallback([](uint32_t now_ms) {
     g_access_fsm.handleAuthAbort(now_ms, "gatt_auth_aborted");

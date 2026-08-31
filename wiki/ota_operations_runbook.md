@@ -1,6 +1,6 @@
 # OTA 운영 runbook
 
-> Last updated: 2026-08-24
+> Last updated: 2026-08-31
 > Scope: Android mobile, ESP32-C6 Target, Backend/NAS distribution, CI
 > Status: 절차 확정; OTA-G1~G4 실기기 증거 pending
 
@@ -9,7 +9,8 @@
 ### 1.1 Exact-main 개인 Target 자동 게시
 
 `main` push가 public build/test를 통과하면 privileged compiler job이 exact SHA를 full-history
-checkout하고 mode/SHA-256으로 고정된 build input inventory에서 `esp32c6_production` N16 image를
+checkout하고 mode/SHA-256으로 고정된 build input inventory에서
+`esp32c6_personal_production` N16 image를
 빌드한다. 평문 image는 X25519/HKDF/AES-GCM 단기 handoff로만 isolated publisher job에 전달되며,
 public Actions artifact에는 노출되지 않는다. Version은
 `2.1.<first-parent-count>+main.g<short-sha>`여야 하며, commit count를 patch precedence로 사용해
