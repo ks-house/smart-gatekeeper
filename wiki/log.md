@@ -5521,3 +5521,9 @@
 - The owner confirmed that the previously failing phone completed `이 휴대폰 등록` after Backend source `b0e1339c186bde81e2f4602ff426251b88e57db6` was deployed.
 - The owner then confirmed that a door-open request from that newly registered phone physically opened the installed door. This closes the exact post-account-deletion re-enrollment and one user-initiated physical-open acceptance Gate.
 - This observation does not assert repeated or OEM background-proximity behavior, another resident phone, ultrasonic/sensor actuation, WAN/broker outage recovery, Target OTA install/reboot/health or long-run reliability.
+
+## [2026-08-31] compile | Analyze off-site BLE owner false alert
+
+- The owner reported the latest installed app displaying `BLE 비콘 스캔 초기화 실패` with exact `BLE_OWNER_EXCLUDED` while at work with no Gatekeeper Target nearby. Target absence is normal idle state and does not demonstrate a Bluetooth, location or permission failure.
+- Source tracing found that an enabled native-GATT decision persistently requests native BLE ownership while the Flutter foreground scanner still attempts excluded legacy initialization. The earlier direct-`PlatformException` suppression also does not force-clear a preceding failure notification; without runtime logcat, exception wrapping versus retained notification state remains unresolved.
+- Planned the smallest security-preserving correction: structured native-wake idle versus active-session state, no legacy initialization under authoritative native wake, explicit neutral notification replacement, single-flight ownership transition, focused native/Dart regressions, a signed no-Target soak and a subsequent real-Target approach. Cross-process exclusion, signed feature control and OTA/rollback gates remain unchanged.

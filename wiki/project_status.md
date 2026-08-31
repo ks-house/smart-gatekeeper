@@ -18,6 +18,22 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-08-31 off-site BLE ownership notification incident
+
+- The owner reports the latest installed mobile app raised `BLE 비콘 스캔
+  초기화 실패` with exact code `BLE_OWNER_EXCLUDED` while at work with no
+  Gatekeeper Target present. This is not evidence of a Bluetooth, location or
+  permission failure; no Target is a normal native-wake idle condition.
+- Source tracing shows that enabled native GATT persists the native-request
+  marker, while the Flutter foreground scanner still attempts mutually
+  excluded legacy initialization. The existing direct-exception suppression
+  and notification cleanup are insufficient for the observed runtime path.
+- The planned correction separates native-wake idle from an active GATT lease,
+  skips legacy scanner initialization when native wake is authoritative, and
+  explicitly replaces stale failure UI without weakening cross-process BLE
+  exclusion. Source tests, signed APK publication/install, a no-Target soak and
+  a subsequent real-Target approach remain open Gates.
+
 ## 2026-08-30 administrator account-management deployment
 
 - PR #303 passed Hosted Trusted, Backend/MariaDB and the complete 317-test
