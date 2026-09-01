@@ -800,3 +800,18 @@ nonce/replay, action-2, relay cooldown, OTA signature, health or rollback
 contracts. A signed exact-main artifact must still be installed and observed on
 the wall Target, followed by a fresh hands-free approach in which three current
 distance samples precede relay activation.
+
+## 2026-09-02 access-critical MQTT deferral exact-main installation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact merge and publication | Policy PR #329 and feature PR #330 passed normal protection. Exact main `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` run `33529692563` built, encrypted, signed, atomically published and strict-HTTPS-read-back `2.1.418+main.ge62b681`; encrypted/plaintext sizes were 1,855,492 / 1,855,456 bytes | PASS for reviewed exact-main artifact publication |
+| Safe preflight | The installed Target reported `2.1.413+main.ga9f72fa`, boot count 685, boot ID `aee54f1d43fca05ea611cdd1b303296b`, IDLE, unarmed, relay command OFF, pin high and RSSI -56 dBm | PASS for bounded pre-install safe state |
+| Signed OTA trigger | The Home Assistant bridge accepted one `trigger_ota` request and Backend published signed boot-bound `ota_check` session `c9da763106b798d919dd42ac1af7724d`. No duplicate request was sent when the synchronous OTA path rebooted before ACK | PASS for one Backend-signed install trigger; ACK absence alone is not install evidence |
+| Installed runtime | Target status advanced to exact `2.1.418+main.ge62b681`, boot count 686 and new boot ID `5400d2f178eed725f6f5f3caa252bceb`; it remained IDLE, unarmed, relay OFF/pin high with status age below three seconds for a continuous 30-second verification window | PASS for install, reboot, exact identity and bounded healthy runtime |
+| Behavioral boundary | No fresh wife-phone approach, sensor-to-relay latency sample, GPIO voltage/contact measurement or physical door travel was performed in this installation window | PENDING repeated on-wall latency and physical acceptance |
+
+The OTA used the existing inactive-slot signed path and did not erase NVS or
+the previous bootable slot. Status evidence establishes the new runtime and
+fail-safe output; it does not by itself prove that the reported seven-second
+ARMED-to-sensor delay is physically eliminated.
