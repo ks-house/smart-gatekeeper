@@ -309,6 +309,23 @@ def build_discovery_plan(
         controls.append(_discovery_publication("number", object_id, config))
 
     read_only = []
+    connectivity_config = _base_config(
+        "[Gatekeeper] 연결 상태", "connectivity"
+    )
+    connectivity_config.update(
+        {
+            "device_class": "connectivity",
+            "payload_off": "offline",
+            "payload_on": "online",
+            "state_topic": bridge_availability_topic(target_id),
+        }
+    )
+    read_only.append(
+        _discovery_publication(
+            "binary_sensor", "connectivity", connectivity_config
+        )
+    )
+
     status_sensors = (
         (
             "distance",

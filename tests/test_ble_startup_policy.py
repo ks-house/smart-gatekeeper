@@ -55,14 +55,14 @@ class BleStartupPolicyTests(unittest.TestCase):
       self.assertEqual(run_result.returncode, 0, run_result.stderr)
       self.assertIn("BleStartupPolicy host tests passed", run_result.stdout)
 
-  def test_main_checks_after_mqtt_update(self):
+  def test_main_checks_after_safe_mqtt_update(self):
     main = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
+    gatt = main.index("GattServer::update();")
     update = main.index("MqttManager::update();")
     decision = main.index("g_ble_startup_policy.shouldStart", update)
-    gatt = main.index("GattServer::update();", decision)
+    self.assertLess(gatt, update)
     self.assertLess(update, decision)
-    self.assertLess(decision, gatt)
-    self.assertIn("g_acl_manager.hasActiveAcl()", main[decision:gatt])
+    self.assertIn("g_acl_manager.hasActiveAcl()", main[decision:])
 
 
 if __name__ == "__main__":

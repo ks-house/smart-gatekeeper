@@ -53,8 +53,8 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
     def test_discovery_controls_use_only_backend_ingress(self) -> None:
         default_plan = build_discovery_plan(TARGET)
         enabled_plan = build_discovery_plan(TARGET, allow_manual_remote=True)
-        self.assertEqual(28, len(default_plan))
-        self.assertEqual(29, len(enabled_plan))
+        self.assertEqual(29, len(default_plan))
+        self.assertEqual(30, len(enabled_plan))
         self.assertTrue(all(not item.payload for item in enabled_plan[:7]))
 
         updates = [item for item in enabled_plan if item.payload]
@@ -65,7 +65,7 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         ]
         read_only = [item for item in updates if item not in controls]
         self.assertEqual(7, len(controls))
-        self.assertEqual(15, len(read_only))
+        self.assertEqual(16, len(read_only))
         for publication in controls:
             config = json.loads(publication.payload)
             self.assertTrue(
@@ -77,9 +77,29 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
             self.assertEqual(bridge_availability_topic(TARGET), config["availability_topic"])
             self.assertFalse(config["retain"])
             self.assertEqual(1, config["qos"])
+        connectivity = next(
+            item
+            for item in read_only
+            if item.topic.endswith("/connectivity/config")
+        )
+        connectivity_config = json.loads(connectivity.payload)
+        self.assertEqual(
+            bridge_availability_topic(TARGET),
+            connectivity_config["state_topic"],
+        )
+        self.assertEqual("connectivity", connectivity_config["device_class"])
+        self.assertEqual("online", connectivity_config["payload_on"])
+        self.assertEqual("offline", connectivity_config["payload_off"])
+        self.assertNotIn("availability_topic", connectivity_config)
+        self.assertNotIn("entity_category", connectivity_config)
+        self.assertNotIn("expire_after", connectivity_config)
+
         for publication in read_only:
             config = json.loads(publication.payload)
-            self.assertEqual(target_status_topic(TARGET), config["state_topic"])
+            if publication is not connectivity:
+                self.assertEqual(
+                    target_status_topic(TARGET), config["state_topic"]
+                )
             self.assertNotIn("command_topic", config)
 
     def test_request_requires_fresh_authenticated_status_and_safe_payload(self) -> None:

@@ -1,5 +1,5 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-08-29 (personal-production backend ACL enrollment/ACK and local GATT access acceptance boundary clarified; live exact-main NAS deployment pending)
+> Last updated: 2026-09-02 (access-critical GATT/sensor/relay loop separated from MQTT/TLS writes; physical Target validation pending)
 >
 > 저장소 구현과 현장 배포 상태의 차이는 [project_status.md](project_status.md)를 먼저 확인한다.
 
@@ -100,6 +100,27 @@ IDLE --MQTT arm--> ARMED --valid ultrasonic--> RELAY_HOLD --1 s--> COOLDOWN --co
 - 거리: 5개 중앙값 필터, 20 cm 미만 무시, 기본 50 cm 임계값
 - manual remote: 같은 signed per-Target command plane의 `manual_remote`; IDLE interlock과 관리자 승인 계약을 유지
 - AJ-SR04T는 IDLE에서 상시 trigger하지 않고 ARMED 동안만 측정
+
+#### Access-critical network deferral
+
+Local GATT와 MQTT pre-arm 모두 같은 Target FSM으로 들어가지만, 2026-09-02 source candidate부터
+physical control 우선순위는 다음처럼 고정된다.
+
+```text
+GATT protocol update → ultrasonic sample/filter → relay/FSM transition
+                     → latest telemetry snapshot → safe-state MQTT/OTA work
+```
+
+GATT canonical event와 legacy event producer는 TLS socket을 호출하지 않고 16-entry fixed RAM outbox에
+복사한다. `AUTH_PENDING`, `ARMED`, `RELAY_HOLD`, `COOLDOWN`과 진행 중 GATT protocol output 동안
+Wi-Fi web handler, MQTT connect/read/publish/offline flush, OTA update는 보류된다. IDLE safe-state에서
+기존 loopTask 하나만 PubSubClient를 소유해 durable oldest event, volatile FIFO event, latest coalesced
+status 순으로 처리하며 audit event 전송은 loop pass당 한 건으로 제한한다.
+
+volatile overflow에서는 가장 오래된 record를 기존 durable NVS queue로 먼저 spill해 순서를 유지한다.
+새 FreeRTOS MQTT task나 concurrent callback owner를 만들지 않으므로 FSM/ACL/OTA 동시 실행 race를
+추가하지 않는다. 이 source/build 계약은 installed Target latency, MQTT outage soak 또는 physical door
+동작 증거가 아니며 exact signed OTA install→reboot→health 후 같은 접근 시험이 필요하다.
 - relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
   생겨도 timer task가 물리 출력을 OFF
 - relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소
@@ -158,19 +179,25 @@ python scripts/migrate_home_assistant_discovery.py --broker-host <host> --broker
 파일 대신 `SGK_MQTT_USERNAME`, `SGK_MQTT_PASSWORD`, `SGK_MQTT_CA_FILE` 프로세스 환경 변수를
 사용할 수 있습니다. 동일 credential을 환경 변수와 파일 양쪽에 동시에 주면 모호성을 거부합니다.
 
-Migration은 기존 Home Assistant device identifier와 15개 read-only entity unique ID를 보존해
-registry identity를 유지하면서 다음 state source만 secure per-Target namespace로 교체합니다.
+Migration은 기존 Home Assistant device identifier와 15개 read-only entity unique ID를 보존하고
+연결 상태 entity 1개를 추가해, 총 16개 read-only entity를 다음 source에 연결합니다.
 
-- status sensor 9개와 binary sensor 2개: `gatekeeper/v1/targets/<target_id>/status`
 - status sensor 9개, binary sensor 2개, config diagnostic sensor 4개:
   `gatekeeper/v1/targets/<target_id>/status`
-- 15개 모두 10초 주기 status에 `expire_after=30`을 적용
+- 연결 상태 binary sensor 1개: retained
+  `gatekeeper/v1/ha-bridge/<target_id>/availability`의 `online/offline`
+- 기존 15개 status-backed entity는 10초 주기 status에 `expire_after=30`을 적용
 
 Target의 `/availability`와 별도 `/config-state`는 MQTT connect 시 1회만 publish되고 retained가
 아니다. 따라서 migration 이후나 Home Assistant 재시작 뒤 이 메시지를 못 받아 entity가 영구
 unavailable/unknown이 되는 것을 피하려고 discovery는 두 토픽을 참조하지 않는다. 최신 Target의
 주기 `/status`에는 현재 Tx power, 거리 기준, pre-arm duration, relay cooldown도 포함된다. 세 주기를
-놓친 모든 15개 entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
+놓친 기존 15개 entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
+별도 `[Gatekeeper] 연결 상태` entity는 `device_class: connectivity`와 retained bridge availability를
+직접 사용한다. 자기 자신에 availability gate나 `expire_after`를 적용하지 않으므로 offline일 때
+숨거나 unavailable이 되지 않고 HA에서 `연결 끊김`으로 지속 표시된다. Bridge는 Backend MQTT 연결과
+fresh Target boot/status 정합성이 모두 있을 때만 `online`을 발행하고, Backend LWT 또는 Target 상태
+불일치 시 `offline`을 유지한다.
 
 동시에 legacy plaintext command를 가리키던 button 3개와 number 4개의 retained discovery config에는
 빈 payload를 먼저 발행해 제거합니다. 새 secure control config는 Target command topic이 아니라
@@ -188,8 +215,10 @@ Target status가 없으면 bridge availability는 offline입니다.
 재부팅, OTA check와 설정 number 4개는 bridge enable 시 노출할 수 있지만, `manual_remote` 문 열기는
 `HA_BRIDGE_ALLOW_MANUAL_REMOTE=true`의 독립적인 명시 승인 없이는 discovery에도 생성되지 않고 ingress에서도
 거부됩니다. 이는 Android의 `manual_local_gatt`와 다른 remote command plane입니다. 이 source-level bridge와
-discovery 계획은 구현됐지만 NAS Backend 재배포, retained discovery apply, HA availability 및 실제 Target
-ACK는 아직 확인되지 않았습니다.
+discovery plan은 구현되어 있고 기존 bridge availability와 controls는 live 배포에서 확인됐지만, 이번 연결
+상태 entity의 NAS Backend
+재배포와 retained discovery apply, HA 화면 표시는 아직 별도 Gate입니다. 실제 Target ACK와 물리 동작도
+계속 별도 Gate입니다.
 
 ##### 기기 정보의 entity 수와 영역 화면 표시 수가 다른 이유
 
@@ -198,13 +227,15 @@ Home Assistant의 **기기 정보**는 discovery로 생성된 entity 전체를 �
 primary entity만 선별하고, 화면별로 지원하는 domain/device class만 카드 또는 요약에 포함합니다.
 이는 등록 실패가 아니라 Home Assistant UI의 의도된 필터링입니다.
 
-현재 22개 중 Wi-Fi RSSI, free heap, uptime, firmware와 설정 상태 센서 4개, 합계 **8개**가
+manual remote가 활성화된 총 23개 entity 중 Wi-Fi RSSI, free heap, uptime, firmware와 설정 상태 센서
+4개, 합계 **8개**가
 `entity_category: diagnostic`입니다. 이들은 기기 정보의 진단 섹션에는 존재하지만 영역 자동
-대시보드에서는 제외됩니다. 나머지 entity도 sensor/button/number/binary_sensor domain별 영역 카드
-지원 방식에 따라 요약되므로, 현장에서 약 11개만 보이는 현상은 22개 discovery 누락의 증거가
+대시보드에서는 제외됩니다. 새 연결 상태 entity는 primary connectivity binary sensor라 영역 화면의
+기본 카드 후보가 됩니다. 나머지 entity도 sensor/button/number/binary_sensor domain별 영역 카드
+지원 방식에 따라 요약되므로, 현장에서 일부만 보이는 현상은 discovery 누락의 증거가
 아닙니다.
 
-모든 22개를 한 화면에 표시하려면 firmware의 진단 분류를 제거하지 말고 Home Assistant에서
+모든 entity를 한 화면에 표시하려면 firmware의 진단 분류를 제거하지 말고 Home Assistant에서
 수동 대시보드의 Entities 카드를 만들어 해당 entity를 명시적으로 추가해야 합니다. 진단 분류를
 제거하면 영역 자동 화면에 일부가 더 노출될 수 있지만 RSSI/heap/firmware/저장 설정값을 primary
 entity로 오분류하고 기본 UI를 혼잡하게 하므로 적용하지 않습니다.

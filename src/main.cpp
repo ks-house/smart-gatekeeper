@@ -243,6 +243,7 @@ static void clearI2CBus(uint8_t sdaPin, uint8_t sclPin) {
 // FSM 상태 & Telemetry 보조 변수
 // ─────────────────────────────────────────────────────────────
 static uint32_t lastMqttMs = 0;
+static GateState lastTelemetryState = GateState::IDLE;
 
 // ─────────────────────────────────────────────────────────────
 // 엔지니어 원격 튜닝용 동적 설정 변수 (기본값: config.h 설정치, NVS 복원)
@@ -621,13 +622,8 @@ void loop() {
     g_access_fsm.handleRelayFailsafeOff(now, g_relay_cooldown_ms);
   }
 
-  WifiManager::handleClient();
-  MqttManager::update();
-  OtaManager::update();
-  if (g_ble_startup_policy.shouldStart(g_acl_manager.hasActiveAcl())) {
-    LOGF("[BLE-ADV] active signed ACL ready; starting advertising");
-    initBleAdvertiser();
-  }
+  // Process local authentication before any network/TLS work. Canonical and
+  // legacy events only enter the bounded MQTT outbox on this path.
   GattServer::update();
 
   now = millis();
@@ -648,18 +644,46 @@ void loop() {
   }
 
   // ─── 1초 주기 MQTT 텔레메트리 발행 (실시간 센서값 모니터링) ────────────────────────────────
-  if (now - lastMqttMs >= 1000) {
+  const GateState telemetryState = g_access_fsm.state();
+  if (now - lastMqttMs >= 1000 || telemetryState != lastTelemetryState) {
     lastMqttMs = now;
+    lastTelemetryState = telemetryState;
     const char* stateStr =
-        (g_access_fsm.state() == GateState::IDLE) ? "IDLE" :
-        (g_access_fsm.state() == GateState::AUTH_PENDING) ? "AUTH_PENDING" :
-        (g_access_fsm.state() == GateState::ARMED) ? "ARMED" :
-        (g_access_fsm.state() == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
+        (telemetryState == GateState::IDLE) ? "IDLE" :
+        (telemetryState == GateState::AUTH_PENDING) ? "AUTH_PENDING" :
+        (telemetryState == GateState::ARMED) ? "ARMED" :
+        (telemetryState == GateState::RELAY_HOLD) ? "RELAY_HOLD" : "COOLDOWN";
     uint16_t distance_mm = (distCm > 0.0f && distCm < 900.0f) ? (uint16_t)(distCm * 10.0f) : 9990;
     DiagnosticsManager::heartbeat(stateStr, g_access_fsm.isArmed(), relay.isOn(),
                                   relay.pinLevel());
     MqttManager::publishTelemetry(distance_mm, stateStr, g_access_fsm.isArmed(),
                                   0, relay.isOn(), relay.pinLevel());
+  }
+
+  const GateState postControlState = g_access_fsm.state();
+  const GattServer::Telemetry gattTelemetry = GattServer::getTelemetry();
+  const bool gattProtocolCritical =
+      (gattTelemetry.session_state != sgk::SessionState::kIdle &&
+       gattTelemetry.session_state != sgk::SessionState::kCompleted) ||
+      GattServer::hasActiveOutput();
+  const bool accessCritical =
+      postControlState == GateState::AUTH_PENDING ||
+      postControlState == GateState::ARMED ||
+      postControlState == GateState::RELAY_HOLD ||
+      postControlState == GateState::COOLDOWN ||
+      gattProtocolCritical;
+
+  // PubSubClient remains single-owner on loopTask, but no socket connect,
+  // read, publish or durable-queue flush is allowed to precede sensor/relay
+  // control or run while a local access session is active.
+  if (!accessCritical) {
+    WifiManager::handleClient();
+    MqttManager::update();
+    OtaManager::update();
+    if (g_ble_startup_policy.shouldStart(g_acl_manager.hasActiveAcl())) {
+      LOGF("[BLE-ADV] active signed ACL ready; starting advertising");
+      initBleAdvertiser();
+    }
   }
 
   delay(ULTRASONIC_POLL_INTERVAL_MS);

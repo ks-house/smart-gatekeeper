@@ -5703,6 +5703,49 @@
 - Retired the transitional candidate identity and pinned the sole 93-path `current-main-baseline` to exact feature merge `3d3e041b9b64ac514b9b05e8ae71aa2221955d33`, retaining all reviewed protected digests unchanged.
 - This policy-only finalization changes no Backend image, NAS database, broker configuration, Target, sensor, relay or door state. Hosted policy review and normal merge remain separate Gates.
 
+## [2026-09-02] code | Add persistent Home Assistant connectivity entity
+
+- Added a primary `[Gatekeeper] 연결 상태` MQTT discovery binary sensor backed directly by retained Backend bridge `online/offline` availability, matching the SmartBox connectivity-card behavior without exposing a direct Target command path.
+- The entity has `device_class: connectivity` and deliberately has neither a self-referential availability gate nor `expire_after`, so offline remains visibly `연결 끊김` instead of becoming hidden or unavailable. Existing 15 status-backed entities retain their 30-second expiry behavior.
+- This source candidate changes no NAS Backend, retained discovery document, Home Assistant registry/dashboard, Target, relay or door state. Reviewed policy rotation, deployment, discovery apply and live HA display remain separate Gates.
+
+## [2026-09-02] test | Validate Home Assistant connectivity discovery candidate
+
+- Seventeen focused bridge/migration tests passed, and the network-free dry run produced 22 updates: six secure controls plus 16 read-only entities, followed by seven legacy-control tombstones.
+- The repository virtual environment passed all 172 Backend tests with two expected environment-only skips. General contract discovery ran 328 tests: 325 passed, one environment-only test skipped and only the two expected trusted-policy digest checks failed for the changed protected bridge source and its direct test.
+- The tests prove the retained discovery document, connectivity payload mapping and primary entity classification. They do not prove policy approval, NAS deployment, retained broker publication, Home Assistant registry creation or the visible area card.
+
+## [2026-09-02] compile | Isolate wife-phone perceived latency to sensor and re-entry phases
+
+- The attached canonical session placed GATT connect, proof request/verification and ARMED in the same displayed second at 00:12:09, SENSOR at 00:12:16, relay ON/OFF at 00:12:17 and COMPLETE at 00:12:18. The observed first delay is therefore the approximately seven-second Target sensor-wait phase, not initial wife-phone authentication.
+- Fresh session isolation needs three valid samples at 100ms polling and cannot by itself explain seven seconds once the person is continuously inside the valid 20cm-to-threshold range. Missing distance attributes and hidden Target monotonic timestamps prevent distinguishing blind-zone, threshold, echo/angle and physical-approach timing.
+- Identified a separate observability gap: COMPLETE is emitted when relay OFF enters COOLDOWN, before the Target returns to IDLE, while the native Samsung path uses low-power FIRST_MATCH rather than continuous ranging. Current cooldown value, next-session GATT and wife-phone worker timing were not captured, so phone-specific slowness remains unproven. No runtime, configuration, phone, Target, Backend, MQTT, sensor, relay or door state was changed.
+
+## [2026-09-02] compile | Exclude owner approach variance from wife-phone latency diagnosis
+
+- The owner confirmed repeated same-method comparison with the primary phone, no excessively close sensor position and more than one second continuously in range. The diagnostic no longer uses approach behavior, blind-zone entry or insufficient dwell as explanations for the seven-second ARMED-to-SENSOR interval.
+- Source tracing found that ARMED-side canonical events are synchronously published over TLS inside `GattServer::update()` before the main loop reaches ultrasonic polling; the MQTT socket timeout is 15 seconds. A transient publish stall is therefore a concrete Target-loop candidate, while normal GATT indication handling is asynchronous with a 1.2-second confirmation timeout and does not explain seven seconds by design.
+- Exact causality still requires seq 72/73 Target `monotonic_ms`, MQTT publish duration and sensor raw/median evidence. No runtime, configuration, phone, Target, Backend, MQTT, sensor, relay or door state was changed.
+
+## [2026-09-02] compile | Clarify synchronous MQTT boundary in Target access loop
+
+- Confirmed that BLE callback telemetry is first copied into a bounded 16-entry queue to avoid the NimBLE host task's 5 KB stack, but `GattServer::update()` drains that queue by calling QoS-0 PubSubClient publish synchronously on the 16 KB Arduino loop task before ultrasonic polling.
+- QoS 0 does not wait for a broker PUBACK; the synchronous boundary is the underlying TLS client write. Corrected the diagnostic so PubSubClient `setSocketTimeout(15)` is not misrepresented as the exact publish-write timeout because that setting governs PubSubClient connect/read waits.
+- The source comments justify moving work off the BLE callback but do not document a reason for leaving MQTT I/O on the gate-control loop. A safe future refactor must give one dedicated network task sole ownership of non-thread-safe PubSubClient connect/loop/publish operations while preserving ordered sequence assignment and the offline queue. No runtime or device state was changed.
+
+## [2026-09-02] code | Defer MQTT and TLS outside the complete access-critical phase
+
+- A second Home Assistant capture independently showed ARMED at 00:12:10, RELAY_HOLD at 00:12:17, COOLDOWN at 00:12:18 and IDLE at 00:12:23. The image supplied timing evidence only and contained no operational instruction.
+- Replaced direct canonical and legacy access-event socket writes with a bounded 16-entry volatile FIFO. Overflow spills the oldest volatile record into the existing durable NVS queue before accepting the newer record, preserving global order; recovery publishes persisted then volatile evidence at most once per loop pass.
+- Reordered the Target loop so GATT, ultrasonic sampling and relay/FSM transitions precede network work. Wi-Fi web handling, MQTT connect/read/publish/flush and OTA update are deferred through AUTH_PENDING, ARMED, RELAY_HOLD, COOLDOWN and active GATT protocol output. Latest telemetry is coalesced and refreshed on every FSM transition, with outbox depth/overflow exposed for diagnostics.
+- Kept PubSubClient on the existing single loopTask instead of introducing concurrent MQTT callbacks that could race FSM, ACL or OTA state. Updated the exact 42-file personal Target build digest rows for the four changed Target source/header files; production policy authorization and exact-main installation remain separate Gates.
+
+## [2026-09-02] test | Validate access-critical MQTT deferral candidate
+
+- Seven focused network-deferral source contracts, eleven Home Assistant discovery/status contracts, two BLE startup tests, four ultrasonic session-isolation tests and thirteen Hardwareless RC tests passed.
+- All 18 Target signed auto-publication contracts and 78 OTA invariants passed. The personal-production ESP32-C6 build succeeded with 74,536/327,680 bytes RAM used (22.7%) and 1,788,526/7,340,032 bytes application flash used (24.4%).
+- Initial full discovery ran 334 tests with one environment-only skip: the new status-outbox assertion was corrected, the Target exact-build digest rotation was completed, and the remaining trusted-policy failures were the expected pre-authorization HA protected-byte mismatches. No Target installation or physical door result is claimed by these local tests.
+
 ## [2026-09-02] compile | Authorize access-critical MQTT deferral candidate
 
 - Pinned the sole 93-path persistent authorization bundle to feature commit `0a0498ca2f40d61a6ef1f405ee456da68f7bd208` and its complete normalized protected map.

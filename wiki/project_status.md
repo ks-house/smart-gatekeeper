@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-08-31
+updated: 2026-09-02
 source_of_truth: true
 applies_to:
   - firmware
@@ -17,6 +17,30 @@ applies_to:
 > 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐고 PR #297/Backend run `33314043691`이 `GK-*` 신청 저장 불일치를 교정·배포했다. 이후 owner의 접수와 관리자 승인은 완료됐지만 첫 `이 휴대폰 등록`은 단일-user compatibility mapping 때문에 HTTP 409로 실패했다. 승인된 추가 가족 행을 같은 personal tenant의 별도 public credential/door grant로 수용하는 PR #300이 exact main `38b90e5febc525c96a4013b737850fd6a90235d3`으로 병합됐고 Backend run `33315099974`가 NAS `status=deployed`, canonical loopback/public readiness와 독립 strict-TLS exact-build HTTP 200/all-checks-true를 통과했다. 이후 한 번의 owner retry로 A24가 `스마트키 사용 가능`, 등록 출입문 1, ACL 608이 됐으며 Activity가 credential 등록을 기록했다. Access-ready 계약상 exact signed ACL의 matching APPLIED Target ACK도 통과했다. 뒤이은 원격 개방은 MQTT broker 전달까지만 확인됐고 딸아이 휴대폰에서 실제 문이 열린 물리 관찰은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-09-02 access-critical MQTT deferral candidate
+
+- Administrator canonical history showed local GATT `ARMED` at about 00:12:09
+  and `SENSOR` about seven seconds later. A separate Home Assistant state history
+  showed `ARMED` 00:12:10, `RELAY_HOLD` 00:12:17, `COOLDOWN` 00:12:18 and `IDLE`
+  00:12:23. The owner excluded different approach behavior, blind-zone position
+  and insufficient dwell through repeated same-method comparison and more than
+  one second continuously in range.
+- Source tracing found canonical QoS-0 MQTT/TLS writes inside GATT event draining
+  before ultrasonic polling. The candidate replaces those direct access-path
+  writes with a bounded 16-entry volatile FIFO, oldest-first durable NVS spill,
+  one-event recovery flushing and latest-state telemetry coalescing. GATT,
+  ultrasonic and relay/FSM work now precede all network work, which is forbidden
+  through AUTH_PENDING, ARMED, RELAY_HOLD and COOLDOWN.
+- The design deliberately keeps PubSubClient on the existing single loopTask
+  rather than adding a concurrent MQTT task whose callbacks would race FSM, ACL
+  and OTA state. Outbox depth/overflow are observable in boot/status telemetry.
+- Seven direct source contracts, eleven related HA migration contracts, the
+  18-test Target autopublish contract and all 78 OTA invariants passed. The
+  personal-production ESP32-C6 build succeeded at 74,536/327,680 bytes RAM
+  (22.7%) and 1,788,526/7,340,032 bytes application flash (24.4%). Full policy,
+  review, exact-main signed publication and Target install/reboot/health remain
+  separate Gates at this point; no physical latency improvement is claimed yet.
 
 ## 2026-08-31 Local GATT ultrasonic session isolation
 
@@ -956,7 +980,7 @@ evidence.
 | Backend | FastAPI/MariaDB, enrollment/ACL, personal public-key bootstrap, exact Target ACL apply correlation, signed HA command bridge, admin session/RBAC/CSRF/re-auth, operations APIs | paho-mqtt 1.6.1 MQTTv5 `ReasonCodes` callback correction은 exact main `bc9bb5d`에 포함됐다. NAS live Backend를 rebuild/recreate했고 readiness, Target status, subscriber/discovery와 bridge availability가 정상이다 |
 | Access | legacy iBeacon → pre-arm, personal native local GATT, signed Backend/MQTT remote command가 상호 구분됨 | 과거 `db37bc2`에서 action-1 foreground proof/result와 `ARMED`를 실기기로 확인했다. 현재 소스는 action 1 sensor ARM과 action 2 immediate relay를 분리하고 Target FSM 전이 성공에 Result를 결합한다. a9 APK/phone 및 실제 sensor/relay E2E는 미검증이다 |
 | OTA | Target periodic HTTPS pull, signed manifest/artifact, inactive slot, health mark/rollback, authenticated local recovery; mobile signed update/recovery 계약 | run `32872303874`의 1,846,624-byte plaintext와 1,846,660-byte encrypted Target artifact가 게시되고 Target에 설치됐다. 7,340,032-byte OTA slot의 25.16%로 5,493,408 bytes가 남는다. run `32872303799`의 55,786,649-byte APK도 NAS에 게시됐으나 미설치다. rollback/power-loss Gate는 열려 있다 |
-| Home Assistant | 15개 read-only entity에 더해 Backend ingress→fresh boot/status→서명된 per-Target command bridge 기반 reboot/OTA/config control을 구현. `manual_remote`는 별도 opt-in | live bridge availability와 controls는 enabled다. 과거 `db37bc2`에서 HA OTA와 GATT FSM 상태를 관측했고, 현재 a9 Target OTA도 완료했다. remote/manual relay와 sensor actuation은 수행하지 않았다 |
+| Home Assistant | 기존 15개 status-backed read-only entity와 retained bridge availability 기반 `[Gatekeeper] 연결 상태` entity, Backend ingress→fresh boot/status→서명된 per-Target command bridge 기반 reboot/OTA/config control을 구현. `manual_remote`는 별도 opt-in | 기존 live bridge availability와 controls는 enabled다. 새 connectivity entity는 source/test candidate이며 NAS 재배포·retained discovery apply·HA 화면 확인 전이다. remote/manual relay와 sensor actuation은 수행하지 않았다 |
 
 ## 2. 저장소 구현과 현장 배포를 혼동하지 않는다
 
