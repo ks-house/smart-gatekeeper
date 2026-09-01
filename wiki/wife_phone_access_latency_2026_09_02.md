@@ -144,3 +144,12 @@ single-owner 계약을 유지한다. 이는 MQTT callback에서 FSM, ACL, OTA를
 Target에서 ARMED→sensor latency가 줄었다는 물리 증거는 설치 후 동일 재현 전까지 성립하지 않는다.
 또한 access-critical 동안 HA status 수신은 의도적으로 보류되므로 HA history의 수신 시각은 Target
 발생 시각이 아니다. canonical event의 `monotonic_ms`가 정확한 원인 분석 기준으로 남는다.
+같은 이유로 모바일의 `sensor_detected → relay_active → cooldown` 중간 단계도 실시간 표시를 보장하지
+않는다. 앱은 4초 polling에서 도착한 signed evidence의 최선 단계를 표시하고, 정상적으로는 `센서 대기`
+에서 fresh IDLE 기반 `다음 인증 가능`으로 바로 건너뛸 수 있다. NVS/config timing은 ARMED 최대 60초,
+relay hold 1초, true-failsafe grace 250ms, cooldown 최대 10초로 clamp한다. 현재 Target은 한 세션이
+`ARMED`인 동안에는 아내/소유자 휴대폰을 구분하지 않고 새 `ClientHello`를 모두 busy로 거부한다.
+새 인증은 센서/릴레이/쿨다운 주기가 종료되고 fresh IDLE와 relay OFF가 확인된 뒤에만 시작한다.
+실행 수명주기의 5초 auth window는 하나이며, compile-time 상한은 추가 5초 안전 여유를
+유지해도 90초보다 작다. MQTT keepalive 120초와 HA 연결
+expiry 90.25초가 이 의도된 network deferral보다 길게 유지된다.

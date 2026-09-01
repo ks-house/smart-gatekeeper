@@ -156,6 +156,18 @@ class NativeGattWorkerHealth {
   final GattPerformanceSummary? lastGattPerformance;
   final String? currentBlockingReasonCode;
 
+  /// Canonical Target event session UUID, not the Android WorkManager ledger ID.
+  String? get lastTargetSessionId {
+    final value = lastSession?['targetSessionId']?.toString().toLowerCase();
+    if (value == null || !isCanonicalTargetSessionId(value)) return null;
+    return value;
+  }
+
+  String? get lastSessionState => lastSession?['state']?.toString();
+
+  int? get lastSessionUpdatedEpochMs =>
+      (lastSession?['updatedEpochMs'] as num?)?.toInt();
+
   bool get credentialRegistered => credentialProvisioned && localConsentValid;
 
   bool get targetAclConfirmed =>
@@ -251,6 +263,13 @@ class NativeGattWorkerHealth {
   }
 }
 
+final RegExp _canonicalTargetSession = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+);
+
+bool isCanonicalTargetSessionId(String value) =>
+    _canonicalTargetSession.hasMatch(value.toLowerCase());
+
 /// Native GATT control bridge. It exposes no private key or raw peer locator.
 class NativeGattWorkerHealthBridge {
   static const MethodChannel _channel = MethodChannel(
@@ -275,6 +294,33 @@ class NativeGattWorkerHealthBridge {
       return const <Object?, Object?>{
         'accepted': false,
         'reason': 'NATIVE_UNAVAILABLE'
+      };
+    }
+  }
+
+  Future<Map<Object?, Object?>> signAccessSessionRead(
+    String targetSessionId,
+  ) async {
+    if (!isCanonicalTargetSessionId(targetSessionId)) {
+      return const <Object?, Object?>{
+        'accepted': false,
+        'reason': 'TARGET_SESSION_INVALID',
+      };
+    }
+    try {
+      final result = await _channel.invokeMethod<Map<Object?, Object?>>(
+        'signAccessSessionRead',
+        <String, Object?>{'targetSessionId': targetSessionId.toLowerCase()},
+      );
+      return result ??
+          const <Object?, Object?>{
+            'accepted': false,
+            'reason': 'ACCESS_SESSION_PROOF_UNAVAILABLE',
+          };
+    } catch (_) {
+      return const <Object?, Object?>{
+        'accepted': false,
+        'reason': 'ACCESS_SESSION_PROOF_UNAVAILABLE',
       };
     }
   }

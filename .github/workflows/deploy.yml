@@ -346,43 +346,43 @@ jobs:
           100644 9ebeac418fe2cd0c858889206bda9c4f0a45250eafe4c9276ba848ea0f09f29b include/DiagnosticsManager.h
           100644 bab4d5f0cf614e0dfe060c7896ae0fc8be8b1cdaa86a8fe44437471ee9f03864 include/DurablePreferences.h
           100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
-          100644 da900d01180a01f203c47a7bc455e8fc5aa3ad9da03c9df292663a49facb491c include/GattProtocol.h
+          100644 283518188b81b5bd9500c092bc36f806e3639f32741550fb54fedd11465f5d7b include/GattProtocol.h
           100644 252f9dbd64cb3e54484906254d13e0d56c69ece91270c3b6f075c53d683de6e3 include/GattServer.h
-          100644 e860071282b5d74b3929bf9785e151f1bfc3f9be97e73a5fcea7d37ebde30317 include/MqttManager.h
-          100644 c002d43122a1f1be3b9509f784aba872ca84d666a24d0738dea7a59adcb15592 include/OfflineEventQueue.h
+          100644 0d9f317ad0277032fea23ad8399df641033a03cadd54e77c0cdc558225b2c425 include/MqttManager.h
+          100644 a1976f3cd57dc9f2873ce651cccc212a39827c9d31a5a880c9029f89be0d735e include/OfflineEventQueue.h
           100644 a42780d48211f0306f8278298ee7b598d349c52b0ba2e4913223a60bf30426c1 include/OtaHealthPolicy.h
           100644 333dbe7e825443210fad253d11722b70b6df2067a2f888f2810f7adfa83d7d6f include/OtaManager.h
           100644 ade406347069742dec9139e011e6a45a897a9f0a75f2e30a24debb9f7074d8aa include/OtaVersionPolicy.h
           100644 3e25df300a313b8081e0c1bbba8b43e04aa5d8d439226c303d560d24e801ff79 include/RecoveryRadioPolicy.h
           100644 199bd44240f7df0082ee065ac715f47c03ef893e7d86d9a129df820969e35164 include/RelayController.h
-          100644 4a248b958f18f903cc6a3a9a76a40fbba7d323b6b0e7934dd53216250f263d95 include/TargetAccessFsm.h
+          100644 7d893a2d5114c4b6b7041d2c4a430d6110fcbdef2a68aa84d3b7ddb26eaedb86 include/TargetAccessFsm.h
           100644 72ae43ed6754c63d1b7fa2113504be8ea7f5b2865cfc9daf0c95917ae9894f81 include/TargetAclManager.h
           100644 656941b67a9eef62964d8578d3959ded1a041b558d7caebe6ee14c1e4389108a include/TargetCommandSecurity.h
           100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
           100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
           100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
-          100644 e27c075c08668543c10336746a26bbe33f2ff42e72a7c34837368a8ad951269b include/config.h
-          100644 7fb16bde7025386547d2e3b6e90f2236ad00e2695eb04c7f4f3947e503450fd8 include/secrets.h.example
+          100644 065c1d96230b35b35d665d7dfc213b9608d4b9fd2b87cb5f981b93ec37efe769 include/config.h
+          100644 314da70cb34a86b5fdb6830f6c50ec2611ec69e38b964e476ee2bd79354a326a include/secrets.h.example
           100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock
           100644 20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv
           100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini
-          100644 54dad6206a9a9bd9bbe245313b34c690fc3f4ce066ad01eb3e8b3b3223696f07 src/ConfigManager.cpp
+          100644 0a197ffa68213f1651f9b25a92256ef209b58dca1cf1dd7be77e3f861afffb96 src/ConfigManager.cpp
           100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
-          100644 b4b5ce7c3193cf3b59542501e52dd15458dcd75fb3f467c3da83ad2f9733cd5e src/GattProtocol.cpp
-          100644 381228143e209bcd649bad4bdcd6c939f39936154f4ee9e57ad80309fc99293a src/GattServer.cpp
-          100644 1e692311145aeae31dbaa1decf275ce976a7740cf29c9ce2b4097e8da5f7160f src/MqttManager.cpp
-          100644 99e45cfec3094c95efbef4a7802ba12a881c4e2c93dcce81eaae92ab083ab346 src/OfflineEventQueue.cpp
+          100644 4f8bf33f49ae28254b7fb124e229cf0f5d82b9b61df9f2d59a4ffbaff0fd2ebc src/GattProtocol.cpp
+          100644 6ec34c5706d9cbd0410f7ca9f20a160920f6bb6332c52ef9ccce3c120d8b1cb4 src/GattServer.cpp
+          100644 7f62fb631048dd438c1ee7d63b0f9bb387ec54e6277a43b36a2267a433c86053 src/MqttManager.cpp
+          100644 4f2508172140436df9b6d00504e367a36aba9c519f8c12cd7f09b0d2d31bed41 src/OfflineEventQueue.cpp
           100644 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7 src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
           100644 447ef319af59cc3316ec6e2e1bb2a62a5a8d2b33efecb399653234e321aa1fea src/RelayController.cpp
-          100644 3e3b7819e7095cf23066d85f7b2a58906fbac3e5ade7c2a663c38c0bf1d8c20c src/TargetAccessFsm.cpp
+          100644 f976c8080e0c0bdf6dc58c4439c94166c76d8dec9351f810536be209d6a50921 src/TargetAccessFsm.cpp
           100644 7ce6135340065ef6f03afc2fa41a9ac79a04ac5a277d7edb946c388bd6eead61 src/TargetAclManager.cpp
           100644 b280393bfc93b0a3d09e6869621c3d8b8a27937f1d85f8afb6a24df204279596 src/TargetCommandSecurity.cpp
           100644 248edb5e1c5c67b1a87c4bb7fda2a9dead4eb6f043ef50e6a58c175634e0a291 src/TargetProofVerifier.cpp
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
-          100644 59ee044674528e7cee38b3e47d15fc9ee51fbf47f810632092f742ceec663727 src/main.cpp
+          100644 9532110d29f89ef6812e34008fe5d459f236804dca4907dc4bd2d45c86ef59cf src/main.cpp
           EOF
           )"
           test ! -e .pio
@@ -421,6 +421,8 @@ jobs:
           SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_COMMAND_SIGNING_KEY_ID: ${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}
           SECRET_HARDWARELESS_DOOR_ID_HEX: ${{ secrets.SECRET_HARDWARELESS_DOOR_ID_HEX }}
+          SECRET_ACCESS_EVENT_REF_KEY_HEX: ${{ secrets.SECRET_ACCESS_EVENT_REF_KEY_HEX }}
+          SECRET_ACCESS_EVENT_REF_KEY_ID: ${{ secrets.SECRET_ACCESS_EVENT_REF_KEY_ID }}
           SECRET_ACL_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_ACL_SIGNING_KEY_ID: ${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}
           SECRET_OTA_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
@@ -450,7 +452,8 @@ jobs:
             SECRET_API_KEY SECRET_MQTT_HOST SECRET_MQTT_USER \
             SECRET_MQTT_PASSWORD SECRET_TARGET_TENANT_ID SECRET_TARGET_DOOR_ID \
             SECRET_OTA_VERSION_URL SECRET_OTA_FIRMWARE_URL \
-            SECRET_OTA_SIGNING_KEY_ID SECRET_LOCAL_RECOVERY_AP_PASSWORD \
+            SECRET_OTA_SIGNING_KEY_ID SECRET_ACCESS_EVENT_REF_KEY_ID \
+            SECRET_LOCAL_RECOVERY_AP_PASSWORD \
             SECRET_LOCAL_RECOVERY_USER SECRET_LOCAL_RECOVERY_PASSWORD; do
             require_cpp_string "$name"
           done
@@ -462,6 +465,9 @@ jobs:
           [[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]] || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX format"
           test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "00000000000000000000000000000000" || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX all-zero"
           test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "ffffffffffffffffffffffffffffffff" || fail_secret_contract "SECRET_HARDWARELESS_DOOR_ID_HEX all-FF"
+          [[ "$SECRET_ACCESS_EVENT_REF_KEY_HEX" =~ ^[0-9a-f]{64}$ ]] || fail_secret_contract "SECRET_ACCESS_EVENT_REF_KEY_HEX format"
+          test "$SECRET_ACCESS_EVENT_REF_KEY_HEX" != "0000000000000000000000000000000000000000000000000000000000000000" || fail_secret_contract "SECRET_ACCESS_EVENT_REF_KEY_HEX all-zero"
+          [[ "$SECRET_ACCESS_EVENT_REF_KEY_ID" =~ ^[a-z0-9]{1,4}$ ]] || fail_secret_contract "SECRET_ACCESS_EVENT_REF_KEY_ID format"
           [[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]] || fail_secret_contract "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX format"
           [[ "$SECRET_ACL_SIGNING_KEY_ID" =~ ^[1-9][0-9]{0,9}$ ]] || fail_secret_contract "SECRET_ACL_SIGNING_KEY_ID format"
           ((10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295)) || fail_secret_contract "SECRET_ACL_SIGNING_KEY_ID range"
@@ -482,6 +488,8 @@ jobs:
           #define SECRET_API_KEY "${SECRET_API_KEY}"
           #define SECRET_TEST_BLE_MAC "AA:BB:CC:DD:EE:01"
           #define SECRET_HARDWARELESS_DOOR_ID_HEX "${SECRET_HARDWARELESS_DOOR_ID_HEX}"
+          #define SECRET_ACCESS_EVENT_REF_KEY_HEX "${SECRET_ACCESS_EVENT_REF_KEY_HEX}"
+          #define SECRET_ACCESS_EVENT_REF_KEY_ID "${SECRET_ACCESS_EVENT_REF_KEY_ID}"
           #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX "${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"
           #define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}
           #define SECRET_MQTT_HOST "${SECRET_MQTT_HOST}"
@@ -894,6 +902,8 @@ jobs:
           SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_COMMAND_SIGNING_KEY_ID: ${{ secrets.SECRET_COMMAND_SIGNING_KEY_ID }}
           SECRET_HARDWARELESS_DOOR_ID_HEX: ${{ secrets.SECRET_HARDWARELESS_DOOR_ID_HEX }}
+          SECRET_ACCESS_EVENT_REF_KEY_HEX: ${{ secrets.SECRET_ACCESS_EVENT_REF_KEY_HEX }}
+          SECRET_ACCESS_EVENT_REF_KEY_ID: ${{ secrets.SECRET_ACCESS_EVENT_REF_KEY_ID }}
           SECRET_ACL_SIGNER_PUBLIC_KEY_HEX: ${{ secrets.SECRET_ACL_SIGNER_PUBLIC_KEY_HEX }}
           SECRET_ACL_SIGNING_KEY_ID: ${{ secrets.SECRET_ACL_SIGNING_KEY_ID }}
           SECRET_OTA_VERSION_URL: ${{ secrets.SECRET_OTA_VERSION_URL }}
@@ -909,6 +919,7 @@ jobs:
             SECRET_MQTT_USER SECRET_MQTT_PASSWORD SECRET_TARGET_TENANT_ID \
             SECRET_TARGET_DOOR_ID SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX \
             SECRET_COMMAND_SIGNING_KEY_ID SECRET_HARDWARELESS_DOOR_ID_HEX \
+            SECRET_ACCESS_EVENT_REF_KEY_HEX SECRET_ACCESS_EVENT_REF_KEY_ID \
             SECRET_ACL_SIGNER_PUBLIC_KEY_HEX \
             SECRET_ACL_SIGNING_KEY_ID SECRET_OTA_VERSION_URL \
             SECRET_OTA_FIRMWARE_URL SECRET_OTA_SIGNER_PUBLIC_KEY_HEX \
@@ -919,6 +930,9 @@ jobs:
           [[ "$SECRET_HARDWARELESS_DOOR_ID_HEX" =~ ^[0-9a-f]{32}$ ]]
           test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "00000000000000000000000000000000"
           test "$SECRET_HARDWARELESS_DOOR_ID_HEX" != "ffffffffffffffffffffffffffffffff"
+          [[ "$SECRET_ACCESS_EVENT_REF_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]
+          test "$SECRET_ACCESS_EVENT_REF_KEY_HEX" != "0000000000000000000000000000000000000000000000000000000000000000"
+          [[ "$SECRET_ACCESS_EVENT_REF_KEY_ID" =~ ^[a-z0-9]{1,4}$ ]]
           [[ "$SECRET_ACL_SIGNER_PUBLIC_KEY_HEX" =~ ^04[0-9a-f]{128}$ ]]
           [[ "$SECRET_ACL_SIGNING_KEY_ID" =~ ^[1-9][0-9]{0,9}$ ]]
           ((10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295))
@@ -930,6 +944,8 @@ jobs:
           #define SECRET_API_KEY "${SECRET_API_KEY}"
           #define SECRET_TEST_BLE_MAC "AA:BB:CC:DD:EE:01"
           #define SECRET_HARDWARELESS_DOOR_ID_HEX "${SECRET_HARDWARELESS_DOOR_ID_HEX}"
+          #define SECRET_ACCESS_EVENT_REF_KEY_HEX "${SECRET_ACCESS_EVENT_REF_KEY_HEX}"
+          #define SECRET_ACCESS_EVENT_REF_KEY_ID "${SECRET_ACCESS_EVENT_REF_KEY_ID}"
           #define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX "${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"
           #define SECRET_ACL_SIGNING_KEY_ID ${SECRET_ACL_SIGNING_KEY_ID}
           #define SECRET_MQTT_HOST "${SECRET_MQTT_HOST}"

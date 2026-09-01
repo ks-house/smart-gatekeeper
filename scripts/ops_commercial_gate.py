@@ -613,6 +613,8 @@ def contract() -> dict:
         "'ops/**'", "'scripts/ops_commercial_gate.py'",
         "'.orca/scripts/setup_worktree.ps1'",
         "'protocol/test_vectors/v1.json'",
+        "'security/mosquitto.conf'", "'security/target-acl'",
+        "'tests/test_target_security_ota.py'",
     ):
         if workflow.count(required_path) != 2:
             errors.append(f"backend workflow trigger coverage missing {required_path}")
@@ -639,8 +641,8 @@ def contract() -> dict:
             errors.append(f"backend workflow omits fixed evidence producer token: {required}")
     if not re.search(r"^FROM mariadb@sha256:[a-f0-9]{64}$", db_dockerfile, re.MULTILINE):
         errors.append("migration database image base is not digest-pinned")
-    if "COPY migrations/011_access_event_history_up.sql /opt/smart-gatekeeper/migrations/011_up.sql" not in db_dockerfile:
-        errors.append("migration database artifact omits the current access-event migration")
+    if "COPY migrations/012_access_event_actor_ref_up.sql /opt/smart-gatekeeper/migrations/012_up.sql" not in db_dockerfile:
+        errors.append("migration database artifact omits the current access-actor migration")
     if "COPY schema.env /opt/smart-gatekeeper/schema.env" not in db_dockerfile:
         errors.append("migration database artifact omits its signed schema identity")
     if "production_schema.sql" not in db_dockerfile or re.search(
@@ -664,6 +666,9 @@ def contract() -> dict:
         ".orca/scripts/setup_worktree.ps1",
         "scripts/ops_commercial_gate.py",
         "protocol/test_vectors/v1.json",
+        "security/mosquitto.conf",
+        "security/target-acl",
+        "tests/test_target_security_ota.py",
         *(
             path.relative_to(ROOT).as_posix()
             for root in (ROOT / "backend", ROOT / "ops")

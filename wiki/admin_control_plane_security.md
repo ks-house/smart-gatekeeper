@@ -184,3 +184,76 @@ evidence and independent strict-TLS `/live` and `/ready` both passed for that
 exact build with every readiness check true. This proves source, CI, schema 009
 migration, deployment and service readiness; it does not by itself prove an
 operator completed an edit, deletion or access-history browser journey.
+
+## Authenticated access actor and terminal projection candidate
+
+The Target access timeline now has a source candidate that can answer “who
+authenticated” without publishing a raw credential or copying a resident name
+into MQTT. After a valid Local GATT proof, the Target derives a
+domain-separated, session-and-door-bound `credential_ref` from the access
+evidence key, exact door ID, UUIDv4 session and credential ID. It emits that
+pseudonym only in allowed signed proof/post-proof events and the signed terminal
+status. Every new trusted event and status snapshot also carries a truncated
+HMAC over an exact, fixed binary canonical input.
+
+Backend ingest accepts a new trusted row only when all of the following agree:
+
+- configured exact Target topic and stable Target-to-door mapping;
+- known access-evidence key ID and valid event/status HMAC;
+- Target boot ID/count plus monotonic event sequence or status revision;
+- catalog event semantics and, where present, a syntactically valid actor ref.
+
+Unsigned schema 1.0 messages remain recognizable only as historical/unverified
+rows; they cannot create a trusted count, actor label, fresh Target state or
+readiness. Exact signed replay is idempotent and does not refresh status age;
+revision conflict, rollback or boot inconsistency fails closed. The DB stores a
+stable Target ID for security correlation and exposes a separately HMACed
+collector reference for presentation, so rotating the operations display key
+does not fork the status high-water identity.
+
+At admin read time the Backend recomputes the session-bound ref for current
+credential-linked tenant candidates behind the configured door. It returns a
+name and unit only for exactly one cryptographic match. Deleted/unlinked
+accounts, missing historical keys, an unavailable door mapping, zero matches or
+multiple matches remain unresolved; time proximity is never used as identity
+evidence. Raw session IDs and credential refs are not returned to the browser;
+the API supplies an opaque `session_ref`, `actor_name`, `actor_unit_number`,
+resolution and evidence-source labels.
+
+The timeline keeps proof, `ARMED`, sensor, relay ON/OFF and terminal rows
+separate. A signed terminal summary can fill the display boundary when
+individual QoS 0 events are missing, but a completed success requires proof,
+armed, sensor, relay-on and relay-off bits and no failsafe bit. Legacy unsigned
+Target sessions are counted separately and never hidden behind a verified
+summary. A Target-signed result proves Target software/FSM/GPIO stages only;
+without an independent door-contact sensor it does not prove that the door leaf
+moved.
+
+The personal app's status lookup reuses the existing authenticated
+`/api/v1/user/activity` route only when it includes an exact UUIDv4 Target
+session and a fresh AndroidKeyStore signature over the fixed 80-byte
+`SGKASR01` read input. The Backend verifies the active credential and exact
+door grant, then filters signed rows by both session and actor ref. It binds the
+fresh Target-global state only when the signed terminal session/ref matches the
+caller. Thus one resident cannot query another resident's latest terminal
+result merely by racing the shared Target state.
+
+Target canonical events and signed status use separate bounded worker paths;
+Paho callbacks perform no DB I/O. Home Assistant receives only an allow-listed
+verified access projection, while raw diagnostics remain on the Target status
+topic. This application-layer integrity does not replace broker authorization:
+production still requires distinct Target, Backend and HA principals, exact
+topic ACLs, anonymous/cross-principal denial and reconnect/readback evidence.
+
+The latest Target terminal summary is same-boot RAM best-effort. If power is
+lost before a signed status reaches the Backend, the summary may be absent and
+the system must leave the result unconfirmed. Safe rollout provisions the same
+key/key ID to the Target build environments and NAS keyring, installs and
+health-confirms Target N first, then deploys Backend N and mobile N. Rolling the
+Target back to N-1 preserves access and OTA recovery but deliberately removes
+new actor/completion evidence rather than synthesizing success.
+
+This section records a source and security contract only. It does not claim the
+new schema/key is provisioned on GitHub or NAS, that the broker ACL is installed,
+that Backend/HA/mobile/Target are deployed, or that a physical door cycle was
+observed.

@@ -5,6 +5,7 @@
 // =============================================================
 #include "MqttManager.h"
 #include "config.h"
+#include "ConfigManager.h"
 #include "DiagnosticsManager.h"
 #include "WifiManager.h"
 #include "OtaManager.h"
@@ -65,8 +66,109 @@ size_t eventOutboxHead = 0;
 size_t eventOutboxCount = 0;
 uint32_t eventOutboxOverflowCount = 0;
 
-char pendingTelemetry[1536] = {};
+char pendingTelemetry[2048] = {};
 bool pendingTelemetryValid = false;
+
+std::array<uint8_t, 32> accessEvidenceKey{};
+char accessEvidenceKeyId[sgk::kAccessEvidenceKeyIdCapacity] = {};
+std::array<uint8_t, 16> accessEvidenceDoorId{};
+std::array<uint8_t, 16> accessEvidenceBootId{};
+char accessEvidenceTargetId[49] = {};
+char accessEvidenceBootIdText[33] = {};
+uint64_t accessEvidenceBootCount = 0;
+uint64_t accessStatusRevision = 0;
+bool accessEvidenceReady = false;
+
+struct AccessTerminalSummary {
+    bool present = false;
+    std::array<uint8_t, 16> session_id{};
+    char session_id_text[37] = {};
+    uint64_t event_sequence = 0;
+    char event_code[32] = {};
+    char reason_code[24] = {};
+    char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
+    uint16_t phase_mask = 0;
+};
+
+AccessTerminalSummary accessTerminalSummary{};
+
+bool parseLowerHex16(const char* value, std::array<uint8_t, 16>* output) {
+    if (value == nullptr || output == nullptr || std::strlen(value) != 32) {
+        return false;
+    }
+    output->fill(0);
+    for (size_t index = 0; index < output->size(); ++index) {
+        auto nibble = [](char character, uint8_t* parsed) {
+            if (parsed == nullptr) return false;
+            if (character >= '0' && character <= '9') {
+                *parsed = static_cast<uint8_t>(character - '0');
+                return true;
+            }
+            if (character >= 'a' && character <= 'f') {
+                *parsed = static_cast<uint8_t>(character - 'a' + 10);
+                return true;
+            }
+            return false;
+        };
+        uint8_t high = 0;
+        uint8_t low = 0;
+        if (!nibble(value[index * 2], &high) ||
+            !nibble(value[index * 2 + 1], &low)) {
+            output->fill(0);
+            return false;
+        }
+        (*output)[index] = static_cast<uint8_t>((high << 4) | low);
+    }
+    uint8_t aggregate = 0;
+    for (uint8_t byte : *output) aggregate |= byte;
+    return aggregate != 0;
+}
+
+bool parseLowerUuid4(const char* value, std::array<uint8_t, 16>* output) {
+    if (value == nullptr || output == nullptr || std::strlen(value) != 36) {
+        return false;
+    }
+    char compact[33] = {};
+    size_t compact_index = 0;
+    for (size_t index = 0; index < 36; ++index) {
+        if (index == 8 || index == 13 || index == 18 || index == 23) {
+            if (value[index] != '-') return false;
+            continue;
+        }
+        if (compact_index >= 32) return false;
+        compact[compact_index++] = value[index];
+    }
+    if (!parseLowerHex16(compact, output) ||
+        ((*output)[6] & 0xf0) != 0x40 || ((*output)[8] & 0xc0) != 0x80) {
+        output->fill(0);
+        return false;
+    }
+    return true;
+}
+
+void bytesToLowerHex(const uint8_t* value, size_t length, char* output,
+                     size_t capacity) {
+    static constexpr char kHex[] = "0123456789abcdef";
+    if (value == nullptr || output == nullptr || capacity < length * 2 + 1) {
+        return;
+    }
+    for (size_t index = 0; index < length; ++index) {
+        output[index * 2] = kHex[value[index] >> 4];
+        output[index * 2 + 1] = kHex[value[index] & 0x0f];
+    }
+    output[length * 2] = '\0';
+}
+
+bool actorEventCodeAllowsCredentialRef(const char* code) {
+    if (code == nullptr) return false;
+    return std::strcmp(code, "ACCESS_PROOF_VERIFIED") == 0 ||
+           std::strcmp(code, "ACCESS_ARMED") == 0 ||
+           std::strcmp(code, "ACCESS_SENSOR_DETECTED") == 0 ||
+           std::strcmp(code, "ACCESS_RELAY_ON") == 0 ||
+           std::strcmp(code, "ACCESS_RELAY_OFF") == 0 ||
+           std::strcmp(code, "ACCESS_SESSION_COMPLETED") == 0 ||
+           std::strcmp(code, "ACCESS_SESSION_TERMINATED") == 0;
+}
 
 bool enqueueEventOutbox(const sgk::CanonicalEvent& event) {
     if (eventOutboxCount == eventOutbox.size()) {
@@ -222,6 +324,17 @@ void MqttManager::publishCommandAck(
 
 void MqttManager::init() {
     mqttSecurityReady = false;
+    accessEvidenceReady = false;
+    accessEvidenceKey.fill(0);
+    accessEvidenceDoorId.fill(0);
+    accessEvidenceBootId.fill(0);
+    std::memset(accessEvidenceKeyId, 0, sizeof(accessEvidenceKeyId));
+    std::memset(accessEvidenceTargetId, 0, sizeof(accessEvidenceTargetId));
+    std::memset(accessEvidenceBootIdText, 0,
+                sizeof(accessEvidenceBootIdText));
+    accessEvidenceBootCount = 0;
+    accessStatusRevision = 0;
+    accessTerminalSummary = AccessTerminalSummary{};
     wifiAvailableLastUpdate = false;
     eventOutboxHead = 0;
     eventOutboxCount = 0;
@@ -237,14 +350,33 @@ void MqttManager::init() {
     const bool commandProvisioned = commandSecurity.begin(
         targetId.c_str(), TARGET_TENANT_ID, TARGET_DOOR_ID,
         DiagnosticsManager::bootId(), COMMAND_SIGNING_KEY_ID);
-    if (!transportProvisioned || !verifierProvisioned || !commandProvisioned) {
+    const char* bootId = DiagnosticsManager::bootId();
+    const uint64_t bootCount = DiagnosticsManager::bootCount();
+    const bool evidenceProvisioned =
+        targetId.length() > 0 &&
+        targetId.length() < sizeof(accessEvidenceTargetId) &&
+        ConfigManager::getHardwarelessDoorId(&accessEvidenceDoorId) &&
+        parseLowerHex16(bootId, &accessEvidenceBootId) && bootCount > 0 &&
+        sgk::parseAccessEvidenceProvisioning(
+            ACCESS_EVENT_REF_KEY_HEX, ACCESS_EVENT_REF_KEY_ID,
+            &accessEvidenceKey, accessEvidenceKeyId);
+    if (!transportProvisioned || !verifierProvisioned || !commandProvisioned ||
+        !evidenceProvisioned) {
         LOGF("[MQTT-SECURITY] Per-Target provisioning invalid "
-             "(transport=%s verifier=%s command=%s); command plane disabled",
+             "(transport=%s verifier=%s command=%s evidence=%s); "
+             "command/status plane disabled",
              transportProvisioned ? "ready" : "invalid",
              verifierProvisioned ? "ready" : "invalid",
-             commandProvisioned ? "ready" : "invalid");
+             commandProvisioned ? "ready" : "invalid",
+             evidenceProvisioned ? "ready" : "invalid");
         return;
     }
+    std::snprintf(accessEvidenceTargetId, sizeof(accessEvidenceTargetId), "%s",
+                  targetId.c_str());
+    std::snprintf(accessEvidenceBootIdText,
+                  sizeof(accessEvidenceBootIdText), "%s", bootId);
+    accessEvidenceBootCount = bootCount;
+    accessEvidenceReady = true;
     const String prefix = "gatekeeper/v1/targets/" + targetId;
     commandTopic = prefix + "/command";
     aclTopic = prefix + "/acl";
@@ -259,7 +391,7 @@ void MqttManager::init() {
     wifiClient.setCACert(SECRET_ROOT_CA_CERT);
     client.setServer(MQTT_HOST, MQTT_PORT);
     client.setBufferSize(8192); // boot diagnostics, HA discovery, and 64-entry Signed ACL payload 수용
-    client.setKeepAlive(30);
+    client.setKeepAlive(MQTT_KEEP_ALIVE_SECONDS);
     client.setSocketTimeout(15); // TLS Handshake 대기 타임아웃 15초로 확장 (rc=-4 방지)
     client.setCallback(callback);
     mqttSecurityReady = true;
@@ -396,11 +528,16 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         else setDistanceThresholdCm(static_cast<int>(envelope.value));
         break;
       case sgk::CommandAction::kSetDuration:
-        if (envelope.value < 1000 || envelope.value > 60000) effectCompleted = false;
-        else setPreArmDurationMs(static_cast<uint32_t>(envelope.value));
+        if (envelope.value < PRE_ARM_MIN_DURATION_MS ||
+            envelope.value > PRE_ARM_MAX_DURATION_MS) {
+          effectCompleted = false;
+        } else {
+          setPreArmDurationMs(static_cast<uint32_t>(envelope.value));
+        }
         break;
       case sgk::CommandAction::kSetRelayCooldown: {
-        if (envelope.value < 1000 || envelope.value > 10000) {
+        if (envelope.value < RELAY_COOLDOWN_MIN_MS ||
+            envelope.value > RELAY_COOLDOWN_MAX_MS) {
           effectCompleted = false;
         } else {
           extern void setRelayCooldownMs(uint32_t cooldownMs);
@@ -530,13 +667,41 @@ void MqttManager::update() {
     } else {
         client.loop();
 
+        // Deliver the newest signed terminal/IDLE snapshot before draining the
+        // audit backlog so the mobile exact-session poll is not delayed behind
+        // every QoS0 lifecycle event. A failed status publish does not block the
+        // durable event queue from making its own bounded retry.
+        if (pendingTelemetryValid &&
+            client.publish(statusTopic.c_str(), pendingTelemetry, false)) {
+            pendingTelemetryValid = false;
+            return;
+        }
+
         extern sgk::OfflineEventQueue g_offline_queue;
         auto publishEventRecord = [](const sgk::CanonicalEvent& evt) {
             bool pub_ok = false;
             if (evt.is_canonical == 1 || std::strcmp(evt.event_type, "canonical_event") == 0) {
                 if (evt.event_id[0] != '\0' && evt.stage_text[0] != '\0' && evt.outcome_text[0] != '\0') {
-                    StaticJsonDocument<1024> doc;
-                    doc["schema_version"] = "1.0";
+                    const bool authenticated =
+                        evt.schema_version == sgk::kCanonicalEventSchemaV2;
+                    if (evt.schema_version != sgk::kCanonicalEventSchemaV1 &&
+                        !authenticated) {
+                        return false;
+                    }
+                    char auth_key_id[sgk::kAccessEvidenceKeyIdCapacity] = {};
+                    uint8_t auth_tag[sgk::kAccessEvidenceTagSize] = {};
+                    char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
+                    if (authenticated &&
+                        (evt.boot_count == 0 ||
+                         !sgk::canonicalEventAccessAuth(
+                             evt, auth_key_id, auth_tag, credential_ref) ||
+                         (credential_ref[0] != '\0' &&
+                          !actorEventCodeAllowsCredentialRef(evt.event_type)))) {
+                        return false;
+                    }
+
+                    StaticJsonDocument<1280> doc;
+                    doc["schema_version"] = authenticated ? "1.1" : "1.0";
                     doc["event_id"] = evt.event_id;
                     doc["session_id"] = evt.session_id;
                     doc["session_kind"] = "access";
@@ -549,7 +714,7 @@ void MqttManager::update() {
                     doc["event_code"] = evt.event_type;
                     doc["stage"] = evt.stage_text;
                     doc["outcome"] = evt.outcome_text;
-                    doc["reason_code"] = evt.detail;
+                    doc["reason_code"] = sgk::canonicalEventReason(evt);
 
                     JsonObject clock = doc.createNestedObject("clock");
                     clock["wall_time"] = nullptr;
@@ -559,6 +724,7 @@ void MqttManager::update() {
                     JsonObject target = doc.createNestedObject("target");
                     target["target_ref"] = evt.target_ref;
                     target["boot_id"] = evt.source_boot_id;
+                    if (authenticated) target["boot_count"] = evt.boot_count;
 
                     if (evt.has_causation && evt.causation_event_id[0] != '\0') {
                         doc["causation_event_id"] = evt.causation_event_id;
@@ -569,10 +735,24 @@ void MqttManager::update() {
                     JsonObject attributes = doc.createNestedObject("attributes");
                     attributes["path"] = "local_gatt";
                     attributes["transport"] = "ble_gatt";
+                    if (authenticated && credential_ref[0] != '\0') {
+                        attributes["credential_ref"] = credential_ref;
+                    }
 
-                    char payload_buf[1024] = {};
+                    if (authenticated) {
+                        char auth_tag_hex[sgk::kAccessEvidenceTagHexCapacity] = {};
+                        bytesToLowerHex(auth_tag, sizeof(auth_tag), auth_tag_hex,
+                                        sizeof(auth_tag_hex));
+                        JsonObject auth = doc.createNestedObject("auth");
+                        auth["version"] = 1;
+                        auth["key_id"] = auth_key_id;
+                        auth["tag"] = auth_tag_hex;
+                    }
+
+                    char payload_buf[1280] = {};
                     size_t bytes_needed = measureJson(doc);
-                    if (bytes_needed > 0 && bytes_needed < sizeof(payload_buf)) {
+                    if (!doc.overflowed() && bytes_needed > 0 &&
+                        bytes_needed < sizeof(payload_buf)) {
                         size_t written = serializeJson(doc, payload_buf, sizeof(payload_buf));
                         if (written > 0) {
                             pub_ok = MqttManager::publishCanonicalEvent(payload_buf);
@@ -621,12 +801,6 @@ void MqttManager::update() {
                 popEventOutbox();
             }
             return;
-        }
-
-        if (pendingTelemetryValid) {
-            if (client.publish(statusTopic.c_str(), pendingTelemetry, false)) {
-                pendingTelemetryValid = false;
-            }
         }
     }
 }
@@ -727,7 +901,42 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     extern uint32_t g_pre_arm_duration_ms;
     extern uint32_t g_relay_cooldown_ms;
 
-    StaticJsonDocument<1536> doc;
+    if (!accessEvidenceReady || stateStr == nullptr || stateStr[0] == '\0' ||
+        (relayPinLevel != 0 && relayPinLevel != 1) ||
+        accessStatusRevision == UINT64_MAX) {
+        pendingTelemetryValid = false;
+        return;
+    }
+    ++accessStatusRevision;
+    sgk::AccessStatusMacInput macInput{};
+    macInput.key_id = accessEvidenceKeyId;
+    macInput.topic_target_id = accessEvidenceTargetId;
+    macInput.door_id = accessEvidenceDoorId;
+    macInput.source_boot_id = accessEvidenceBootId;
+    macInput.source_boot_count = accessEvidenceBootCount;
+    macInput.access_revision = accessStatusRevision;
+    macInput.state = stateStr;
+    macInput.has_last_terminal = accessTerminalSummary.present;
+    macInput.last_terminal_session_id = accessTerminalSummary.session_id;
+    macInput.last_terminal_event_sequence =
+        accessTerminalSummary.event_sequence;
+    macInput.last_terminal_event_code = accessTerminalSummary.event_code;
+    macInput.last_terminal_reason_code = accessTerminalSummary.reason_code;
+    macInput.last_terminal_credential_ref =
+        accessTerminalSummary.credential_ref;
+    macInput.last_terminal_phase_mask = accessTerminalSummary.phase_mask;
+    macInput.relay_commanded_on = relayCommandedOn;
+    macInput.relay_pin_level = static_cast<uint8_t>(relayPinLevel);
+    uint8_t accessTag[sgk::kAccessEvidenceTagSize] = {};
+    if (!sgk::deriveAccessStatusMac(accessEvidenceKey, macInput, accessTag)) {
+        pendingTelemetryValid = false;
+        return;
+    }
+    char accessTagHex[sgk::kAccessEvidenceTagHexCapacity] = {};
+    bytesToLowerHex(accessTag, sizeof(accessTag), accessTagHex,
+                    sizeof(accessTagHex));
+
+    StaticJsonDocument<2048> doc;
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
     doc["state"]           = stateStr ? stateStr : "UNKNOWN";
@@ -738,12 +947,38 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["wifi_rssi"]       = WiFi.RSSI();
     doc["uptime_s"]        = millis() / 1000;
     doc["firmware"]        = FIRMWARE_VERSION;
-    doc["target_id"]       = DiagnosticsManager::targetId();
-    doc["boot_id"]         = DiagnosticsManager::bootId();
-    doc["boot_count"]      = DiagnosticsManager::bootCount();
+    doc["target_id"]       = accessEvidenceTargetId;
+    doc["boot_id"]         = accessEvidenceBootIdText;
+    doc["boot_count"]      = accessEvidenceBootCount;
     doc["reset_reason"]    = DiagnosticsManager::resetReason();
     doc["relay_commanded_on"] = relayCommandedOn;
     doc["relay_pin_level"] = relayPinLevel;
+    doc["access_status_revision"] = accessStatusRevision;
+    if (accessTerminalSummary.present) {
+        doc["last_terminal_session_id"] =
+            accessTerminalSummary.session_id_text;
+        doc["last_terminal_event_sequence"] =
+            accessTerminalSummary.event_sequence;
+        doc["last_terminal_event_code"] = accessTerminalSummary.event_code;
+        doc["last_terminal_reason_code"] = accessTerminalSummary.reason_code;
+        if (accessTerminalSummary.credential_ref[0] != '\0') {
+            doc["last_terminal_credential_ref"] =
+                accessTerminalSummary.credential_ref;
+        } else {
+            doc["last_terminal_credential_ref"] = nullptr;
+        }
+    } else {
+        doc["last_terminal_session_id"] = nullptr;
+        doc["last_terminal_event_sequence"] = nullptr;
+        doc["last_terminal_event_code"] = nullptr;
+        doc["last_terminal_reason_code"] = nullptr;
+        doc["last_terminal_credential_ref"] = nullptr;
+    }
+    doc["last_terminal_phase_mask"] = accessTerminalSummary.phase_mask;
+    JsonObject accessAuth = doc.createNestedObject("access_auth");
+    accessAuth["version"] = 1;
+    accessAuth["key_id"] = accessEvidenceKeyId;
+    accessAuth["tag"] = accessTagHex;
     doc["min_free_heap"]   = ESP.getMinFreeHeap();
     doc["largest_free_block"] = ESP.getMaxAllocHeap();
     doc["loop_stack_hwm"]  = uxTaskGetStackHighWaterMark(nullptr);
@@ -760,8 +995,12 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["mqtt_event_outbox_depth"] = eventOutboxCount;
     doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
 
-    pendingTelemetryValid =
-        serializeJson(doc, pendingTelemetry, sizeof(pendingTelemetry)) > 0;
+    const size_t telemetryBytes = measureJson(doc);
+    pendingTelemetryValid = !doc.overflowed() && telemetryBytes > 0 &&
+        telemetryBytes < sizeof(pendingTelemetry) &&
+        serializeJson(doc, pendingTelemetry, sizeof(pendingTelemetry)) ==
+            telemetryBytes;
+    if (!pendingTelemetryValid) pendingTelemetry[0] = '\0';
 }
 
 void MqttManager::publishEvent(const char* eventType, const char* detail) {
@@ -785,14 +1024,71 @@ void MqttManager::publishEvent(const char* eventType, const char* detail) {
 }
 
 bool MqttManager::enqueueCanonicalEvent(const sgk::CanonicalEvent& event) {
-    if (event.is_canonical != 1 || event.event_id[0] == '\0' ||
+    if (!sgk::isValidCanonicalEventRecord(event) ||
+        event.is_canonical != 1 ||
+        (event.schema_version == sgk::kCanonicalEventSchemaV1 &&
+         event.padding == sgk::kCanonicalV2OverlayMarker) ||
+        (event.schema_version != sgk::kCanonicalEventSchemaV1 &&
+         event.schema_version != sgk::kCanonicalEventSchemaV2) ||
+        event.event_id[0] == '\0' ||
         event.session_id[0] == '\0' || event.source_boot_id[0] == '\0' ||
         event.target_ref[0] == '\0' || event.event_type[0] == '\0' ||
         event.stage_text[0] == '\0' || event.outcome_text[0] == '\0' ||
-        event.detail[0] == '\0') {
+        event.detail[0] == '\0' ||
+        (event.schema_version == sgk::kCanonicalEventSchemaV1 &&
+         std::memchr(event.detail, '\0', sizeof(event.detail)) == nullptr)) {
         return false;
     }
+    if (event.schema_version == sgk::kCanonicalEventSchemaV2) {
+        char keyId[sgk::kAccessEvidenceKeyIdCapacity] = {};
+        uint8_t tag[sgk::kAccessEvidenceTagSize] = {};
+        char credentialRef[sgk::kAccessEventCredentialRefCapacity] = {};
+        if (event.boot_count == 0 ||
+            !sgk::canonicalEventAccessAuth(event, keyId, tag, credentialRef) ||
+            (credentialRef[0] != '\0' &&
+             !actorEventCodeAllowsCredentialRef(event.event_type))) {
+            return false;
+        }
+    }
     return enqueueEventWithDurableSpill(event);
+}
+
+void MqttManager::noteAccessTerminal(const char* sessionId,
+                                     uint64_t eventSequence,
+                                     const char* eventCode,
+                                     const char* reasonCode,
+                                     const char* credentialRef,
+                                     uint16_t phaseMask) {
+    std::array<uint8_t, 16> session{};
+    const bool terminalCode =
+        eventCode != nullptr &&
+        (std::strcmp(eventCode, "ACCESS_SESSION_COMPLETED") == 0 ||
+         std::strcmp(eventCode, "ACCESS_SESSION_TERMINATED") == 0);
+    const bool credentialValid =
+        credentialRef == nullptr || credentialRef[0] == '\0' ||
+        sgk::isValidCanonicalCredentialRef(
+            credentialRef, sgk::kAccessEventCredentialRefCapacity);
+    if (!accessEvidenceReady || !terminalCode || reasonCode == nullptr ||
+        reasonCode[0] == '\0' || std::strlen(eventCode) >= 32 ||
+        std::strlen(reasonCode) >= 24 || phaseMask > 0x003f ||
+        !credentialValid || !parseLowerUuid4(sessionId, &session)) {
+        return;
+    }
+    AccessTerminalSummary next{};
+    next.present = true;
+    next.session_id = session;
+    next.event_sequence = eventSequence;
+    next.phase_mask = phaseMask;
+    std::snprintf(next.session_id_text, sizeof(next.session_id_text), "%s",
+                  sessionId);
+    std::snprintf(next.event_code, sizeof(next.event_code), "%s", eventCode);
+    std::snprintf(next.reason_code, sizeof(next.reason_code), "%s",
+                  reasonCode);
+    if (credentialRef != nullptr && credentialRef[0] != '\0') {
+        std::snprintf(next.credential_ref, sizeof(next.credential_ref), "%s",
+                      credentialRef);
+    }
+    accessTerminalSummary = next;
 }
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {

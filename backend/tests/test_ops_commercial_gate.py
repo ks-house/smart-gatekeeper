@@ -59,6 +59,9 @@ class OpsCommercialGateTest(unittest.TestCase):
             ".orca/scripts/setup_worktree.ps1",
             "scripts/ops_commercial_gate.py",
             "protocol/test_vectors/v1.json",
+            "security/mosquitto.conf",
+            "security/target-acl",
+            "tests/test_target_security_ota.py",
         }
         self.assertEqual(actual_inputs, declared)
         for review_omission in (

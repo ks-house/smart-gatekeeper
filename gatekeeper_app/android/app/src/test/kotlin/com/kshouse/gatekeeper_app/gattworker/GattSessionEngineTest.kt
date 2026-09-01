@@ -53,7 +53,9 @@ class GattSessionEngineTest {
     assertEquals(103, transport.proof?.size)
     assertFalse((transport.proof ?: byteArrayOf()).toHex().contains("00:11:22"))
     assertTrue(transport.closed)
-    val performance = (result as SessionOutcome.Success).performance!!
+    val success = result as SessionOutcome.Success
+    assertEquals("10213243-5465-4687-98a9-bacbdcedfe0f", success.targetSessionId)
+    val performance = success.performance!!
     assertEquals(25L, performance.connectSetupMs)
     assertEquals(25L, performance.negotiationMs)
     assertEquals(25L, performance.challengeMs)

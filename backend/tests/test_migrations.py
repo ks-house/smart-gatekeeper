@@ -50,6 +50,8 @@ MOBILE_ROLE_UP = ROOT / "backend" / "db" / "migrations" / "010_mobile_account_ro
 MOBILE_ROLE_DOWN = ROOT / "backend" / "db" / "migrations" / "010_mobile_account_roles_down.sql"
 ACCESS_HISTORY_UP = ROOT / "backend" / "db" / "migrations" / "011_access_event_history_up.sql"
 ACCESS_HISTORY_DOWN = ROOT / "backend" / "db" / "migrations" / "011_access_event_history_down.sql"
+ACCESS_ACTOR_UP = ROOT / "backend" / "db" / "migrations" / "012_access_event_actor_ref_up.sql"
+ACCESS_ACTOR_DOWN = ROOT / "backend" / "db" / "migrations" / "012_access_event_actor_ref_down.sql"
 PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
@@ -76,7 +78,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-011}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-012}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -149,6 +151,28 @@ class MigrationContractTest(unittest.TestCase):
             self.assertIn(required, up)
         self.assertIn("access_event_history_preserved", down)
         self.assertNotIn("DROP TABLE", down)
+        self.assertNotIn("DELETE FROM", down)
+
+    def test_access_event_actor_ref_is_additive_idempotent_and_preserved(self) -> None:
+        up = ACCESS_ACTOR_UP.read_text(encoding="utf-8")
+        down = ACCESS_ACTOR_DOWN.read_text(encoding="utf-8")
+        for required in (
+            "information_schema.COLUMNS",
+            "credential_ref VARCHAR(32) NULL",
+            "collector_target_id VARCHAR(64) NULL",
+            "source_boot_count BIGINT UNSIGNED NULL",
+            "integrity_status VARCHAR(16)",
+            "idx_access_event_credential_received",
+            "information_schema.STATISTICS",
+            "CREATE TABLE IF NOT EXISTS target_access_status_highwater",
+            "CREATE TABLE IF NOT EXISTS access_terminal_summary",
+            "target_id VARCHAR(64) PRIMARY KEY",
+            "access_terminal_summary_no_update",
+            "access_terminal_summary_no_delete",
+        ):
+            self.assertIn(required, up)
+        self.assertIn("authenticated_access_evidence_preserved", down)
+        self.assertNotIn("DROP COLUMN", down)
         self.assertNotIn("DELETE FROM", down)
 
     def test_admin_audit_migration_is_append_only_and_has_explicit_rollback(self) -> None:
@@ -297,7 +321,7 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "011", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "012", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
                 state = docker(
@@ -305,15 +329,15 @@ class MigrationContractTest(unittest.TestCase):
                     "smart_gatekeeper", "-e",
                     "SELECT (SELECT COUNT(*) FROM tenants WHERE unit_number='E-1'),"
                     "(SELECT COUNT(*) FROM schema_migrations),"
-                    "(SELECT script_sha256 FROM schema_migrations WHERE version='011');",
+                    "(SELECT script_sha256 FROM schema_migrations WHERE version='012');",
                 ).stdout.strip().split("\t")
-                expected_011 = subprocess.run(
-                    ["sha256sum", str(ACCESS_HISTORY_UP)],
+                expected_012 = subprocess.run(
+                    ["sha256sum", str(ACCESS_ACTOR_UP)],
                     text=True,
                     capture_output=True,
                     check=True,
                 ).stdout.split()[0]
-                self.assertEqual(["1", "10", expected_011], state)
+                self.assertEqual(["1", "11", expected_012], state)
                 inserted = docker(
                     "exec", name, "mariadb", "-uroot", f"-p{password}",
                     "smart_gatekeeper", "-e",
@@ -326,13 +350,28 @@ class MigrationContractTest(unittest.TestCase):
                     "source_boot_id,source_sequence,event_attempt,event_code,event_stage,"
                     "event_outcome,reason_code,causation_event_id,target_ref,event_path,"
                     "event_transport,distance_mm,duration_ms,relay_hold_ms,monotonic_ms,"
-                    "clock_quality,collector_target_ref,received_at) VALUES "
+                    "clock_quality,collector_target_ref,collector_target_id,received_at) VALUES "
                     "('11111111-1111-4111-8111-111111111111',"
                     "'22222222-2222-4222-8222-222222222222','target',"
                     "'target_0123456789abcdef','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',"
                     "1,1,'ACCESS_ARMED','ARMED','SUCCEEDED','ARM_ACCEPTED',NULL,"
                     "'target_0123456789abcdef','local_gatt','ble_gatt',NULL,NULL,NULL,"
-                    "12345,'UNSYNCED','target_abcdef0123456789abcdef01',UTC_TIMESTAMP(3));",
+                    "12345,'UNSYNCED','target_abcdef0123456789abcdef01','target-a',UTC_TIMESTAMP(3));"
+                    "INSERT INTO access_terminal_summary "
+                    "(target_id,collector_target_ref,source_boot_id,source_boot_count,"
+                    "terminal_event_sequence,session_id,event_code,reason_code,"
+                    "credential_ref,phase_mask,first_status_revision,integrity_key_id,"
+                    "integrity_tag,received_at) VALUES "
+                    "('target-a','target_abcdef0123456789abcdef01',"
+                    "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1,1,"
+                    "'22222222-2222-4222-8222-222222222222',"
+                    "'ACCESS_SESSION_COMPLETED','ACCESS_GRANTED',NULL,31,2,'k1',"
+                    "UNHEX(REPEAT('11',16)),UTC_TIMESTAMP(3)),"
+                    "('target-a','target_abcdef0123456789abcdef01',"
+                    "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1,2,"
+                    "'33333333-3333-4333-8333-333333333333',"
+                    "'ACCESS_SESSION_COMPLETED','ACCESS_GRANTED',NULL,31,3,'k1',"
+                    "UNHEX(REPEAT('22',16)),UTC_TIMESTAMP(3));",
                     check=False,
                 )
                 self.assertEqual(0, inserted.returncode, inserted.stderr)
@@ -344,14 +383,14 @@ class MigrationContractTest(unittest.TestCase):
                     "smart_gatekeeper", "-e", history_sql,
                 ).stdout.strip().splitlines()
                 self.assertEqual(
-                    {"canonical", "legacy"},
+                    {"canonical", "legacy", "terminal_summary"},
                     {line.split("\t", 1)[0] for line in history},
                 )
                 today = docker(
                     "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
                     "smart_gatekeeper", "-e", admin_main._ADMIN_ACCESS_TODAY_COUNT_SQL,
                 )
-                self.assertEqual("2", today.stdout.strip())
+                self.assertEqual("3\t1", today.stdout.strip())
                 immutable = docker(
                     "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
                     "smart_gatekeeper", "-e",

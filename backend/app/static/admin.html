@@ -187,8 +187,9 @@
       <div class="stat-value" style="color: var(--warning);" id="statPendingTenants">0 명</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">오늘(KST) 출입 시도</div>
+      <div class="stat-label">오늘(KST) 신뢰 출입 시도</div>
       <div class="stat-value" style="color: var(--primary);" id="statTodayLogs">0 건</div>
+      <small id="statTodayUnsigned" style="color: var(--text-muted);">미검증 구형 Target 0 건</small>
     </div>
     <div class="stat-card">
       <div class="stat-label">ESP32-C6 게이트 상태</div>
@@ -227,7 +228,7 @@
       <span>📜 최근 전체 출입 감지 이력 (수신 이벤트)</span>
       <button class="btn-action" style="background: var(--card-border); color: var(--text);" onclick="loadLogs()">🔄 새로고침</button>
     </div>
-    <p class="audit-note">인증 성공, 센서 감지, 릴레이 구동, 세션 완료를 분리해 표시합니다. 이벤트 미수신만으로 성공 또는 실패를 단정하지 않습니다.</p>
+    <p class="audit-note">인증 성공, 센서 감지, 릴레이 구동, 세션 완료를 분리해 표시합니다. Target이 보고한 소프트웨어 이벤트이며, 현장 broker 발행자 인증과 실제 문짝 이동은 별도 확인입니다. 이벤트 미수신만으로 성공 또는 실패를 단정하지 않습니다.</p>
     <table>
       <thead>
         <tr>
@@ -471,6 +472,7 @@
       ACCESS_GRANTED: 'Target 소프트웨어 출입 흐름 정상 완료',
       ARM_TIMEOUT: '인증 후 제한 시간 내 센서 미감지',
       SESSION_TIMEOUT: '출입 세션 시간 초과',
+      SESSION_SUPERSEDED: '이전 센서 대기 세션이 새 인증으로 교체됨',
       INTERNAL_ERROR: 'Target 내부 오류'
     };
     const accessOutcomePresentation = {
@@ -487,7 +489,7 @@
       return text ? text.slice(0, 16) : '-';
     }
     function accessResult(log) {
-      if (log.record_kind === 'canonical') {
+      if (log.record_kind === 'canonical' || log.record_kind === 'terminal_summary') {
         return accessOutcomePresentation[log.event_outcome] || ['미확인', 'badge-warning'];
       }
       if (log.auth_method === 'MOBILE_REMOTE' && log.is_success) {
@@ -505,6 +507,8 @@
         const payload = await res.json();
         const logs = payload.events || [];
         document.getElementById('statTodayLogs').innerText = Number(payload.today_total || 0) + ' 건';
+        document.getElementById('statTodayUnsigned').innerText =
+          '미검증 구형 Target ' + Number(payload.today_legacy_unsigned_total || 0) + ' 건';
 
         const tbody = document.getElementById('logsTableBody');
         tbody.innerHTML = '';
@@ -518,18 +522,37 @@
           const tr = document.createElement('tr');
           const dateStr = new Date(l.created_at).toLocaleString('ko-KR');
           const [badgeText, badgeClass] = accessResult(l);
-          const canonical = l.record_kind === 'canonical';
-          const pathText = canonical
-            ? `로컬 자동 출입<br><small>Target ${escapeHtml(shortOpaqueRef(l.collector_target_ref))}</small>`
+          const targetEvidence = l.record_kind === 'canonical' || l.record_kind === 'terminal_summary';
+          const signedSummary = l.record_kind === 'terminal_summary';
+          const actorText = targetEvidence
+            ? (l.actor_resolution === 'verified'
+                ? `<br><strong>${escapeHtml(l.actor_name)} · ${escapeHtml(l.actor_unit_number)}</strong><br><small>${signedSummary ? 'Target 서명 terminal 요약' : '서명된 자격 proof 이벤트'}</small>`
+                : (l.actor_resolution === 'not_reported'
+                    ? '<br><small>인증 전 단계 또는 구형 Target · 주체 미보고</small>'
+                    : (l.actor_resolution === 'legacy_unsigned'
+                        ? '<br><small>구형 unsigned 이벤트 · 인증자 표시 안 함</small>'
+                    : '<br><small>인증 주체 확인 불가</small>')))
+            : '';
+          const pathText = targetEvidence
+            ? `로컬 자동 출입<br><small>Target ${escapeHtml(shortOpaqueRef(l.collector_target_ref))}</small>${actorText}`
             : `${escapeHtml(l.auth_method)}${l.tenant_name ? `<br><small>${escapeHtml(l.tenant_name)} · ${escapeHtml(l.unit_number || '-')}</small>` : ''}`;
-          const eventText = canonical
-            ? `${escapeHtml(accessEventLabels[l.event_code] || l.event_code)}<br><small>${escapeHtml(l.event_stage)} · seq ${escapeHtml(String(l.source_sequence))}</small>`
+          const eventText = targetEvidence
+            ? `${escapeHtml(accessEventLabels[l.event_code] || l.event_code)}<br><small>${signedSummary ? '서명 요약' : escapeHtml(l.event_stage)} · seq ${escapeHtml(String(l.source_sequence))}</small>`
             : '기존 출입 기록';
-          const reasonText = canonical
+          const phaseMask = Number(l.phase_mask || 0);
+          let reasonText = targetEvidence
             ? (accessReasonLabels[l.reason_code] || l.reason_code || '사유 미확인')
             : (l.failure_reason || '정상 처리');
-          const sessionText = canonical
-            ? `<br><small>session ${escapeHtml(shortOpaqueRef(l.session_id))}</small>`
+          if (signedSummary && (phaseMask & 0x20) !== 0) {
+            reasonText = 'Target failsafe 종료 · 성공으로 표시하지 않음';
+          } else if (signedSummary && l.event_code === 'ACCESS_SESSION_COMPLETED' && (phaseMask & 0x1f) !== 0x1f) {
+            reasonText = '필수 센서·릴레이 단계 미완료 · 성공 근거 부족';
+          }
+          const summaryBoundary = signedSummary
+            ? '<br><small>개별 QoS0 이벤트 일부 유실 가능 · 실제 문짝 이동 미확인</small>'
+            : '';
+          const sessionText = targetEvidence
+            ? `<br><small>session ${escapeHtml(shortOpaqueRef(l.session_ref))}</small>${summaryBoundary}`
             : '';
 
           tr.innerHTML = `

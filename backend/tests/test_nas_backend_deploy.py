@@ -29,16 +29,16 @@ SYNOLOGY_COMPOSE = ROOT / "backend" / "compose.synology.yml"
 RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 DEPLOY_README = ROOT / "backend" / "deploy" / "README.md"
-ACCESS_EVENT_HISTORY_UP = (
-    ROOT / "backend" / "db" / "migrations" / "011_access_event_history_up.sql"
+ACCESS_EVENT_ACTOR_UP = (
+    ROOT / "backend" / "db" / "migrations" / "012_access_event_actor_ref_up.sql"
 )
 DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 
 
 class NasBackendDeployContractTest(unittest.TestCase):
     def test_schema_identity_is_manifest_derived_and_image_bound(self):
-        expected = hashlib.sha256(ACCESS_EVENT_HISTORY_UP.read_bytes()).hexdigest()
-        self.assertEqual(("011", expected), create_release_bundle.schema_identity())
+        expected = hashlib.sha256(ACCESS_EVENT_ACTOR_UP.read_bytes()).hexdigest()
+        self.assertEqual(("012", expected), create_release_bundle.schema_identity())
         wrapper = WRAPPER.read_text(encoding="utf-8")
         self.assertIn("validate_db_image_schema_identity", wrapper)
         self.assertIn("schema downgrade is not admitted", wrapper)
@@ -313,8 +313,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
                 "ADMIN_TRUSTED_PROXY_IPS": "127.0.0.1",
                 "ACL_SIGNING_KEY_ID": "1",
                 "BUILD_SHA": "c" * 40,
-                "SCHEMA_VERSION": "011",
-                "SCHEMA_SHA256": "d29f683a1ad8aad86ba5e11b48d35aab1e39acadaca1f34b2c26c748fd364572",
+                "SCHEMA_VERSION": "012",
+                "SCHEMA_SHA256": "f550f7857eb09a2f119454fe2698bdefc07365cf1105ca6447e9cafdc0586f4d",
                 "SGK_SECRET_DIR": "/tmp/sgk-ci-secrets",
                 "MARIADB_DATA_VOLUME": "existing-db",
                 "API_STATE_VOLUME": "api-state",
@@ -374,6 +374,45 @@ class NasBackendDeployContractTest(unittest.TestCase):
         self.assertIn('runtime MQTT_PORT does not match the retained legacy endpoint', verifier)
         self.assertIn("MQTT_PORT=4883", runtime)
         self.assertIn("MQTT_PORT: '4883'", workflow)
+
+    def test_signed_status_readiness_cutover_is_explicit_and_n_minus_1_safe(self):
+        production = PRODUCTION_COMPOSE.read_text(encoding="utf-8")
+        runtime = RUNTIME_EXAMPLE.read_text(encoding="utf-8")
+        wrapper = WRAPPER.read_text(encoding="utf-8")
+        bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
+        verifier = LEGACY_VERIFY.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "ACCESS_SIGNED_STATUS_READINESS_REQUIRED: "
+            "${ACCESS_SIGNED_STATUS_READINESS_REQUIRED:-false}",
+            production,
+        )
+        self.assertIn(
+            "ACCESS_SIGNED_STATUS_READINESS_REQUIRED=false",
+            runtime,
+        )
+        self.assertIn("ACCESS_STATUS_MAX_AGE_SECONDS=5", runtime)
+        self.assertIn("TARGET_RELAY_OFF_PIN_LEVEL=1", runtime)
+        for source in (wrapper, bootstrap, verifier):
+            self.assertIn("ACCESS_SIGNED_STATUS_READINESS_REQUIRED", source)
+            self.assertIn("ACCESS_STATUS_MAX_AGE_SECONDS", source)
+            self.assertIn("TARGET_RELAY_OFF_PIN_LEVEL", source)
+        self.assertIn(
+            'runtime[ACCESS_SIGNED_STATUS_READINESS_REQUIRED]="false"',
+            bootstrap,
+        )
+        self.assertIn(
+            "signed-status readiness cutover must be true or false",
+            verifier,
+        )
+        self.assertIn(
+            "TARGET_RELAY_OFF_PIN_LEVEL must be 0 or 1",
+            wrapper,
+        )
+        self.assertIn(
+            "Target relay OFF pin level must be 0 or 1",
+            verifier,
+        )
 
     def test_restricted_wrapper_has_fail_closed_command_and_release_contract(self):
         syntax = subprocess.run(

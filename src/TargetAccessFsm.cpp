@@ -25,6 +25,28 @@ OtaSafeState TargetAccessFsm::otaSafeState() const {
   return classifyOtaSafeState(state_, is_armed_, relay_on_);
 }
 
+void TargetAccessFsm::completeRelayHold(uint32_t now_ms,
+                                        uint32_t cooldown_duration_ms,
+                                        bool failsafe) {
+  if (state_ != GateState::RELAY_HOLD || !relay_on_) {
+    return;
+  }
+  setRelay(false);
+  is_armed_ = false;
+  cooldown_duration_ms_ = cooldown_duration_ms;
+  state_ = GateState::COOLDOWN;
+  state_start_ms_ = now_ms;
+  if (event_emit_ != nullptr) {
+    event_emit_(failsafe ? "door_close_failsafe" : "door_close",
+                failsafe ? "Relay forced off after cutoff grace"
+                         : "Relay hold timer completed normally");
+    event_emit_(failsafe ? "session_terminated_failsafe"
+                         : "session_completed",
+                failsafe ? "Access session terminated via relay failsafe"
+                         : "Access session completed successfully");
+  }
+}
+
 void TargetAccessFsm::tick(uint32_t now_ms) {
   switch (state_) {
     case GateState::IDLE:
@@ -42,7 +64,7 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
       break;
 
     case GateState::ARMED:
-      if (is_armed_ && pre_arm_start_ms_ > 0 &&
+      if (is_armed_ &&
           (now_ms - pre_arm_start_ms_ >= pre_arm_duration_ms_)) {
         is_armed_ = false;
         state_ = GateState::IDLE;
@@ -56,13 +78,7 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
 
     case GateState::RELAY_HOLD:
       if (now_ms - state_start_ms_ >= hold_duration_ms_) {
-        setRelay(false);
-        state_ = GateState::COOLDOWN;
-        state_start_ms_ = now_ms;
-        if (event_emit_ != nullptr) {
-          event_emit_("door_close", "Relay Timeout OFF");
-          event_emit_("session_completed", "Access session completed successfully");
-        }
+        completeRelayHold(now_ms, cooldown_duration_ms_, false);
       }
       break;
 
@@ -79,23 +95,15 @@ void TargetAccessFsm::tick(uint32_t now_ms) {
 }
 
 bool TargetAccessFsm::handleAuthPending(uint32_t now_ms, uint32_t timeout_ms) {
-  const bool replacing_armed_session = state_ == GateState::ARMED;
-  if ((state_ != GateState::IDLE && !replacing_armed_session) || relay_on_) {
+  if (state_ != GateState::IDLE || relay_on_) {
     return false;
   }
-  // A foreground action-2 request cannot be distinguished from action 1 until
-  // its authenticated proof arrives. Let a new authenticated session replace
-  // a sensor-waiting ARMED session, but never preempt RELAY_HOLD or COOLDOWN.
-  // A failed replacement returns to IDLE through the normal abort path.
   is_armed_ = false;
   state_ = GateState::AUTH_PENDING;
   state_start_ms_ = now_ms;
   pre_arm_duration_ms_ = timeout_ms;
   if (event_emit_ != nullptr) {
-    event_emit_("auth_pending",
-                replacing_armed_session
-                    ? "AUTH_PENDING replacing existing ARMED session"
-                    : "AUTH_PENDING verification in progress");
+    event_emit_("auth_pending", "AUTH_PENDING verification in progress");
   }
   return true;
 }
@@ -134,7 +142,6 @@ bool TargetAccessFsm::handleLocalManualOpen(uint32_t now_ms,
     }
     return false;
   }
-
   is_armed_ = false;
   hold_duration_ms_ = hold_duration_ms;
   cooldown_duration_ms_ = cooldown_duration_ms;
@@ -228,20 +235,14 @@ bool TargetAccessFsm::handleSensorTrigger(uint32_t now_ms,
   return true;
 }
 
+void TargetAccessFsm::handleRelayTimerOff(uint32_t now_ms,
+                                          uint32_t cooldown_duration_ms) {
+  completeRelayHold(now_ms, cooldown_duration_ms, false);
+}
+
 void TargetAccessFsm::handleRelayFailsafeOff(uint32_t now_ms,
                                              uint32_t cooldown_duration_ms) {
-  if (state_ != GateState::RELAY_HOLD || !relay_on_) {
-    return;
-  }
-  setRelay(false);
-  is_armed_ = false;
-  cooldown_duration_ms_ = cooldown_duration_ms;
-  state_ = GateState::COOLDOWN;
-  state_start_ms_ = now_ms;
-  if (event_emit_ != nullptr) {
-    event_emit_("door_close_failsafe", "Relay forced off, entering COOLDOWN");
-    event_emit_("session_completed", "Access session completed via failsafe");
-  }
+  completeRelayHold(now_ms, cooldown_duration_ms, true);
 }
 
 void TargetAccessFsm::cleanupToIdle(uint32_t now_ms) {

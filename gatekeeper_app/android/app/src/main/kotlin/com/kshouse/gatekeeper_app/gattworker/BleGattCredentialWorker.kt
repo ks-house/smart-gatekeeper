@@ -270,6 +270,7 @@ class BleGattCredentialWorker(
             armedEpochMs,
           ),
           activeAclVersion = outcome.activeAclVersion,
+          targetSessionId = outcome.targetSessionId,
           gattPerformance = outcome.performance,
         ),
       )

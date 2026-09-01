@@ -67,6 +67,18 @@ class GattProtocolVectorTest {
     assertFails { GattCanonicalCodec.parseResult(wrong, expectedSession) }
   }
 
+  @Test
+  fun targetSessionBytesUseTheSameCanonicalUuidProjectionAsTargetEvents() {
+    val raw = "102132435465768709a9bacbdcedfe0f".hexToBytes()
+
+    assertEquals(
+      "10213243-5465-4687-89a9-bacbdcedfe0f",
+      GattCanonicalCodec.canonicalSessionUuid(raw),
+    )
+    assertEquals("102132435465768709a9bacbdcedfe0f", raw.toHex())
+    assertFails { GattCanonicalCodec.canonicalSessionUuid(ByteArray(15)) }
+  }
+
   private fun rawToDer(raw: ByteArray): ByteArray {
     fun integer(bytes: ByteArray): ByteArray {
       val strippedBytes = bytes.dropWhile { it == 0.toByte() }.toByteArray()

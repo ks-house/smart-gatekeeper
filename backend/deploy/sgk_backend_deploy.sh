@@ -143,7 +143,9 @@ validate_runtime() {
     MQTT_HOST MQTT_PORT MQTT_USER DB_RUNTIME_USER COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID \
     COMMAND_SIGNING_KEY_ID ADMIN_TRUSTED_PROXY_IPS ACL_SIGNING_KEY_ID \
     HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE \
-    HA_BRIDGE_STATUS_MAX_AGE_SECONDS ACL_PERSONAL_ENROLLMENT_ENABLED \
+    HA_BRIDGE_STATUS_MAX_AGE_SECONDS ACCESS_SIGNED_STATUS_READINESS_REQUIRED \
+    ACCESS_STATUS_MAX_AGE_SECONDS TARGET_RELAY_OFF_PIN_LEVEL \
+    ACL_PERSONAL_ENROLLMENT_ENABLED \
     ACL_PERSONAL_TENANT_ID ACL_PERSONAL_DOOR_ID SGK_API_LOOPBACK_PORT \
     SGK_SECRET_DIR SGK_PUBLIC_READY_URL MARIADB_DATA_VOLUME API_STATE_VOLUME \
     APK_ARTIFACTS_VOLUME MIGRATION_BACKUPS_VOLUME
@@ -171,7 +173,12 @@ validate_runtime() {
     die "ACL_SIGNING_KEY_ID must be a positive integer"
   [[ "${RUNTIME[HA_BRIDGE_STATUS_MAX_AGE_SECONDS]}" =~ ^[1-9][0-9]*$ ]] || \
     die "HA_BRIDGE_STATUS_MAX_AGE_SECONDS must be a positive integer"
-  for key in HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE ACL_PERSONAL_ENROLLMENT_ENABLED; do
+  [[ "${RUNTIME[ACCESS_STATUS_MAX_AGE_SECONDS]}" =~ ^([1-9]|10)$ ]] || \
+    die "ACCESS_STATUS_MAX_AGE_SECONDS must be an integer from 1 through 10"
+  [[ "${RUNTIME[TARGET_RELAY_OFF_PIN_LEVEL]}" =~ ^[01]$ ]] || \
+    die "TARGET_RELAY_OFF_PIN_LEVEL must be 0 or 1"
+  for key in HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE \
+    ACCESS_SIGNED_STATUS_READINESS_REQUIRED ACL_PERSONAL_ENROLLMENT_ENABLED; do
     [[ "${RUNTIME[$key]}" == "true" || "${RUNTIME[$key]}" == "false" ]] || \
       die "$key must be true or false"
   done
@@ -193,7 +200,7 @@ validate_runtime() {
 
   local secret
   for secret in db_root_password db_password mqtt_password mqtt_ca.pem api_key \
-    ops_hmac_key command_signing_scalar admin_identities.json personal_admin_password \
+    ops_hmac_key access_event_ref_keys.json command_signing_scalar admin_identities.json personal_admin_password \
     acl_enrollment_auth.json acl_legacy_ref_hmac_key acl_admin_api_key \
     acl_target_auth.json acl_signing_scalar; do
     local secret_path="${RUNTIME[SGK_SECRET_DIR]}/${secret}"

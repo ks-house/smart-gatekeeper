@@ -10,6 +10,15 @@
 Preferences ConfigManager::preferences;
 static bool configManagerInitialized = false;
 
+namespace {
+uint32_t clampAccessTiming(uint32_t value, uint32_t minimum,
+                           uint32_t maximum) {
+    if (value < minimum) return minimum;
+    if (value > maximum) return maximum;
+    return value;
+}
+}  // namespace
+
 void ConfigManager::begin() {
     if (configManagerInitialized) {
         return;
@@ -59,11 +68,15 @@ int ConfigManager::getTofDistanceCm(int defaultVal) {
 }
 
 uint32_t ConfigManager::getPreArmDurationMs(uint32_t defaultVal) {
-    return preferences.getUInt("prearm_dur", defaultVal);
+    return clampAccessTiming(
+        preferences.getUInt("prearm_dur", defaultVal),
+        PRE_ARM_MIN_DURATION_MS, PRE_ARM_MAX_DURATION_MS);
 }
 
 uint32_t ConfigManager::getRelayCooldownMs(uint32_t defaultVal) {
-    return preferences.getUInt("relay_cool", defaultVal);
+    return clampAccessTiming(
+        preferences.getUInt("relay_cool", defaultVal),
+        RELAY_COOLDOWN_MIN_MS, RELAY_COOLDOWN_MAX_MS);
 }
 
 bool ConfigManager::getHardwarelessRcEnabled(bool defaultVal) {
@@ -181,11 +194,17 @@ void ConfigManager::setTofDistanceCm(int distanceCm) {
 
 
 void ConfigManager::setPreArmDurationMs(uint32_t durationMs) {
-    preferences.putUInt("prearm_dur", durationMs);
+    preferences.putUInt(
+        "prearm_dur",
+        clampAccessTiming(durationMs, PRE_ARM_MIN_DURATION_MS,
+                          PRE_ARM_MAX_DURATION_MS));
 }
 
 void ConfigManager::setRelayCooldownMs(uint32_t cooldownMs) {
-    preferences.putUInt("relay_cool", cooldownMs);
+    preferences.putUInt(
+        "relay_cool",
+        clampAccessTiming(cooldownMs, RELAY_COOLDOWN_MIN_MS,
+                          RELAY_COOLDOWN_MAX_MS));
 }
 
 void ConfigManager::setHardwarelessRcEnabled(bool enabled) {

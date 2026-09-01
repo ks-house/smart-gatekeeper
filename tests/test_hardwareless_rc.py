@@ -222,6 +222,148 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("s_auth_grant_callback", control_gate)
         self.assertIn("production_lifecycle_sink.requestAbort", control_gate)
 
+    def test_verified_lifecycle_isolated_from_interleaved_unverified_sessions(self):
+        shared = (ROOT / "include" / "GattProtocol.h").read_text(
+            encoding="utf-8"
+        )
+        protocol = (ROOT / "src" / "GattProtocol.cpp").read_text(
+            encoding="utf-8"
+        )
+        adapter_header = (ROOT / "include" / "GattServer.h").read_text(
+            encoding="utf-8"
+        )
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(
+            encoding="utf-8"
+        )
+        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("sequence_high_water_", shared)
+        self.assertIn("verified_causation_sequence_", shared)
+        self.assertIn("VerifiedAccessPhaseTracker", shared)
+        self.assertIn(
+            "sequence_high_water_ = std::max(sequence_high_water_, event.sequence)",
+            protocol,
+        )
+        clear = protocol.split(
+            "void LocalGattLifecycleBridge::clearVerifiedSession()", 1
+        )[1].split("bool VerifiedAccessPhaseTracker::observe", 1)[0]
+        self.assertNotIn("sequence_high_water_ = 0", clear)
+        self.assertIn("verified_causation_sequence_ = 0", clear)
+
+        canonical_sink = adapter.split(
+            "class CanonicalMqttEventSink final", 1
+        )[1].split("CanonicalMqttEventSink production_event_sink", 1)[0]
+        self.assertIn("phase_tracker_.observe(event", canonical_sink)
+        self.assertIn("if (verified_terminal)", canonical_sink)
+        self.assertNotIn("void updatePhase", canonical_sink)
+        self.assertIn("SESSION_SUPERSEDED", canonical_sink)
+        self.assertIn(
+            "event.reason == sgk::EventReason::kRelayFailsafeCutoff",
+            canonical_sink,
+        )
+        self.assertIn(
+            'document["reason_code"] = "RELAY_CONTROL_ERROR"', canonical_sink
+        )
+        self.assertNotIn("supersedeVerifiedSession", adapter_header)
+        self.assertNotIn("supersedeVerifiedSession", adapter)
+        self.assertNotIn("supersedeVerifiedSession", main)
+        for name, next_name in (
+            ("notifyAccessArmed", "notifySensorDetected"),
+            ("notifySensorDetected", "notifyRelayOn"),
+            ("notifyRelayOn", "notifyRelayOff"),
+            ("notifyRelayOff", "notifySessionCompleted"),
+            ("notifySessionCompleted", "notifySessionTerminated"),
+            ("notifySessionTerminated", "Telemetry GattServer::getTelemetry"),
+        ):
+            notification = adapter.split(
+                f"void GattServer::{name}", 1
+            )[1].split(f"GattServer::{next_name}", 1)[0]
+            self.assertIn("core_mutex.lock();", notification)
+            self.assertIn("core_mutex.unlock();", notification)
+
+    def test_access_actor_ref_is_pseudonymous_durable_v2_only(self):
+        shared = (ROOT / "include" / "GattProtocol.h").read_text(
+            encoding="utf-8"
+        )
+        protocol = (ROOT / "src" / "GattProtocol.cpp").read_text(
+            encoding="utf-8"
+        )
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(
+            encoding="utf-8"
+        )
+        queue_header = (ROOT / "include" / "OfflineEventQueue.h").read_text(
+            encoding="utf-8"
+        )
+        queue = (ROOT / "src" / "OfflineEventQueue.cpp").read_text(
+            encoding="utf-8"
+        )
+        mqtt = (ROOT / "src" / "MqttManager.cpp").read_text(
+            encoding="utf-8"
+        )
+        config = (ROOT / "include" / "config.h").read_text(encoding="utf-8")
+        secret_template = (ROOT / "include" / "secrets.h.example").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("std::array<uint8_t, 16> credential_id{}", shared)
+        self.assertIn('"SGK-CREDENTIAL-REF-V1"', protocol)
+        self.assertIn('"SGK-ACCESS-EVENT-MAC-V1"', protocol)
+        self.assertIn('"SGK-ACCESS-STATUS-MAC-V1"', protocol)
+        self.assertIn("sizeof(kAccessEventCredentialRefDomain)", protocol)
+        self.assertIn("buildAccessEventMacInput", protocol)
+        self.assertIn("buildAccessStatusMacInput", protocol)
+        self.assertIn("deriveAccessEventMac", protocol)
+        self.assertIn("deriveAccessStatusMac", protocol)
+        self.assertIn("normalized_session[6]", protocol)
+        self.assertIn("normalized_session[8]", protocol)
+        self.assertIn('"c_%s_%s"', protocol)
+        self.assertIn("&request.credential_id", protocol)
+        self.assertIn("secureZeroBytes(credential_id_.data()", protocol)
+        self.assertIn("void secureZeroBytes", protocol)
+        self.assertIn("volatile uint8_t* cursor", protocol)
+        self.assertIn("secureZeroBytes(&request, sizeof(request))", protocol)
+        self.assertIn("secureZeroBytes(complete.data(), complete.size())", protocol)
+        self.assertIn("secureZeroBytes(pending_writes_.data()", protocol)
+
+        self.assertIn("SECRET_ACCESS_EVENT_REF_KEY_HEX", config)
+        self.assertIn("SECRET_ACCESS_EVENT_REF_KEY_ID", config)
+        self.assertIn("SECRET_ACCESS_EVENT_REF_KEY_HEX", secret_template)
+        self.assertIn("SECRET_ACCESS_EVENT_REF_KEY_ID", secret_template)
+        self.assertIn("parseAccessEvidenceProvisioning", adapter)
+        self.assertIn("accessEventCodeAllowsCredentialRef(event.code)", adapter)
+        self.assertIn("deriveAccessEventMac", adapter)
+        self.assertIn("MqttManager::noteAccessTerminal", adapter)
+        self.assertIn("setCanonicalV2Detail", adapter)
+        self.assertIn("secureZeroEventCredential(&event)", adapter)
+        self.assertIn("secureZeroPendingWrite(&pending)", adapter)
+        self.assertNotIn('document["credential_id"]', adapter)
+        self.assertNotIn('attributes["credential_id"]', adapter)
+
+        self.assertIn("char detail[64]", queue_header)
+        self.assertNotIn("credential_id", queue_header)
+        self.assertIn("offsetof(CanonicalEvent, detail) == 297", queue_header)
+        self.assertIn("offsetof(CanonicalEvent, padding) == 362", queue_header)
+        self.assertIn("sizeof(CanonicalEvent) == 368", queue_header)
+        self.assertIn("kCanonicalV2AuthTagOffset = 42", queue_header)
+        self.assertIn("kCanonicalV2CredentialDigestOffset = 30", queue_header)
+        self.assertIn("kCanonicalV2OverlayMarker", queue_header)
+        self.assertIn("evt.schema_version == kCanonicalEventSchemaV1 ||", queue)
+        self.assertIn("evt.schema_version == kCanonicalEventSchemaV2", queue)
+        self.assertIn(
+            "durable.schema_version = kCanonicalEventSchemaV1", queue
+        )
+        self.assertIn("durable.padding = kCanonicalV2OverlayMarker", queue)
+        self.assertIn("runtime_evt.schema_version = kCanonicalEventSchemaV2", queue)
+
+        self.assertIn("canonicalEventAccessAuth", mqtt)
+        self.assertIn("isValidCanonicalEventRecord(event)", mqtt)
+        self.assertIn('attributes["credential_ref"] = credential_ref', mqtt)
+        self.assertIn('doc["schema_version"] = authenticated ? "1.1" : "1.0"', mqtt)
+        self.assertIn('doc["access_status_revision"]', mqtt)
+        self.assertIn('createNestedObject("access_auth")', mqtt)
+        self.assertIn("deriveAccessStatusMac", mqtt)
+        self.assertNotIn('attributes["credential_id"]', mqtt)
+
     def test_authenticated_action_commit_is_not_run_under_a_spinlock(self):
         adapter = (ROOT / "src" / "GattServer.cpp").read_text(encoding="utf-8")
         update_handler = adapter.split("void GattServer::update()", 1)[1].split(
@@ -310,8 +452,10 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn('preferences.getString(\n        "hwless_door"', config)
         self.assertIn('SECRET_HARDWARELESS_DOOR_ID_HEX ""', example)
         self.assertIn("class CanonicalMqttEventSink", adapter)
-        self.assertIn('document["sequence"] = event.sequence', adapter)
-        self.assertIn('document["causation_event_id"]', adapter)
+        self.assertIn("queued_evt.sequence = event.sequence", adapter)
+        self.assertIn("mac_input.sequence = event.sequence", adapter)
+        self.assertIn("mac_input.has_causation = causal", adapter)
+        self.assertIn("queued_evt.causation_event_id", adapter)
         self.assertIn(
             "selected_event_sink == &production_lifecycle_bridge", adapter
         )

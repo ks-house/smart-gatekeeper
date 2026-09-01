@@ -64,6 +64,18 @@ Do not start the first deployment until all of these are true:
   `/ready` URL has a valid certificate;
 - the repository's trusted-workflow policy rotation for the workflow change
   has been separately reviewed and admitted;
+- the root-owned `access_event_ref_keys.json` contains the same reviewed key ID
+  and key bytes used by the Target release environment; keep
+  `ACCESS_SIGNED_STATUS_READINESS_REQUIRED=false` for Backend N / Target N-1,
+  then set it to `true` only after Target N install/reboot/health and a matching
+  signed status observation; after cutover, `/ready` must stay fail-closed until
+  a live HMAC-verified Target status is persisted on each MQTT connection;
+- root-owned runtime explicitly sets `ACCESS_STATUS_MAX_AGE_SECONDS=5` and the
+  reviewed personal active-LOW relay OFF evidence value
+  `TARGET_RELAY_OFF_PIN_LEVEL=1`; do not rely on an implicit Compose default;
+- the repository `security/target-acl` changes have been installed and reloaded
+  through the trusted broker administration path, followed by Backend publish
+  and Home Assistant exact-topic readback;
 - the GitHub `production` Environment requires an owner reviewer.
 
 The wrapper never performs a blind DB restore or down-migration. A migration or
@@ -355,6 +367,7 @@ mqtt_password
 mqtt_ca.pem
 api_key
 ops_hmac_key
+access_event_ref_keys.json
 command_signing_scalar
 admin_identities.json
 personal_admin_password

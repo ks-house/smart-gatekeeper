@@ -134,14 +134,24 @@ install_staged_file() {
 }
 
 install_runtime_file() {
-  local staged="$1" destination="$2" previous_shape
+  local staged="$1" destination="$2" previous_shape previous_mqtt_shape
   if [[ -e "$destination" ]] && ! cmp -s -- "$staged" "$destination"; then
     [[ -f "$destination" && ! -L "$destination" ]] || \
       die "refusing non-regular existing runtime environment: $destination"
-    previous_shape="${STAGING}/runtime.env.without-mqtt-port"
-    awk -F= '$1 != "MQTT_PORT" { print }' "$staged" > "$previous_shape"
+    previous_shape="${STAGING}/runtime.env.without-access-evidence-runtime"
+    previous_mqtt_shape="${STAGING}/runtime.env.without-mqtt-port-or-access-evidence-runtime"
+    awk -F= '$1 != "ACCESS_SIGNED_STATUS_READINESS_REQUIRED" && \
+      $1 != "ACCESS_STATUS_MAX_AGE_SECONDS" && \
+      $1 != "TARGET_RELAY_OFF_PIN_LEVEL" { print }' \
+      "$staged" > "$previous_shape"
+    awk -F= '$1 != "MQTT_PORT" && \
+      $1 != "ACCESS_SIGNED_STATUS_READINESS_REQUIRED" && \
+      $1 != "ACCESS_STATUS_MAX_AGE_SECONDS" && \
+      $1 != "TARGET_RELAY_OFF_PIN_LEVEL" { print }' \
+      "$staged" > "$previous_mqtt_shape"
     cmp -s -- "$previous_shape" "$destination" || \
-      die "existing runtime environment differs beyond the MQTT_PORT upgrade"
+      cmp -s -- "$previous_mqtt_shape" "$destination" || \
+      die "existing runtime environment differs beyond admitted additive upgrades"
   fi
   install -o root -g root -m 600 "$staged" "$destination"
 }
@@ -256,6 +266,8 @@ runtime_keys=(
   MQTT_HOST MQTT_PORT MQTT_USER DB_USER COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID
   COMMAND_SIGNING_KEY_ID ADMIN_TRUSTED_PROXY_IPS ACL_SIGNING_KEY_ID
   HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE HA_BRIDGE_STATUS_MAX_AGE_SECONDS
+  ACCESS_SIGNED_STATUS_READINESS_REQUIRED ACCESS_STATUS_MAX_AGE_SECONDS
+  TARGET_RELAY_OFF_PIN_LEVEL
   ACL_PERSONAL_ENROLLMENT_ENABLED ACL_PERSONAL_TENANT_ID ACL_PERSONAL_DOOR_ID
 )
 declare -A runtime=()
@@ -263,6 +275,15 @@ for key in "${runtime_keys[@]}"; do
   runtime["$key"]="$(get_env "$LEGACY_API" "$key")"
   require_safe_runtime "$key" "${runtime[$key]}"
 done
+if [[ -z "${runtime[ACCESS_SIGNED_STATUS_READINESS_REQUIRED]}" ]]; then
+  runtime[ACCESS_SIGNED_STATUS_READINESS_REQUIRED]="false"
+fi
+if [[ -z "${runtime[ACCESS_STATUS_MAX_AGE_SECONDS]}" ]]; then
+  runtime[ACCESS_STATUS_MAX_AGE_SECONDS]="5"
+fi
+if [[ -z "${runtime[TARGET_RELAY_OFF_PIN_LEVEL]}" ]]; then
+  runtime[TARGET_RELAY_OFF_PIN_LEVEL]="1"
+fi
 runtime[DB_RUNTIME_USER]="${runtime[DB_USER]}"
 unset 'runtime[DB_USER]'
 [[ "${runtime[DB_RUNTIME_USER]}" =~ ^[A-Za-z0-9_]{1,64}$ ]] || die "unsafe DB runtime user"
@@ -277,7 +298,12 @@ done
 for key in COMMAND_SIGNING_KEY_ID ACL_SIGNING_KEY_ID HA_BRIDGE_STATUS_MAX_AGE_SECONDS; do
   [[ "${runtime[$key]}" =~ ^[1-9][0-9]*$ ]] || die "runtime integer is invalid: $key"
 done
-for key in HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE ACL_PERSONAL_ENROLLMENT_ENABLED; do
+[[ "${runtime[ACCESS_STATUS_MAX_AGE_SECONDS]}" =~ ^([1-9]|10)$ ]] || \
+  die "ACCESS_STATUS_MAX_AGE_SECONDS must be an integer from 1 through 10"
+[[ "${runtime[TARGET_RELAY_OFF_PIN_LEVEL]}" =~ ^[01]$ ]] || \
+  die "TARGET_RELAY_OFF_PIN_LEVEL must be 0 or 1"
+for key in HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE \
+  ACCESS_SIGNED_STATUS_READINESS_REQUIRED ACL_PERSONAL_ENROLLMENT_ENABLED; do
   [[ "${runtime[$key]}" == "true" || "${runtime[$key]}" == "false" ]] || \
     die "runtime boolean is invalid: $key"
 done
@@ -302,6 +328,9 @@ runtime_staged="${STAGING}/runtime.env"
     printf 'HA_BRIDGE_ENABLED=%s\n' "${runtime[HA_BRIDGE_ENABLED]}"
     printf 'HA_BRIDGE_ALLOW_MANUAL_REMOTE=%s\n' "${runtime[HA_BRIDGE_ALLOW_MANUAL_REMOTE]}"
     printf 'HA_BRIDGE_STATUS_MAX_AGE_SECONDS=%s\n' "${runtime[HA_BRIDGE_STATUS_MAX_AGE_SECONDS]}"
+    printf 'ACCESS_SIGNED_STATUS_READINESS_REQUIRED=%s\n' "${runtime[ACCESS_SIGNED_STATUS_READINESS_REQUIRED]}"
+    printf 'ACCESS_STATUS_MAX_AGE_SECONDS=%s\n' "${runtime[ACCESS_STATUS_MAX_AGE_SECONDS]}"
+    printf 'TARGET_RELAY_OFF_PIN_LEVEL=%s\n' "${runtime[TARGET_RELAY_OFF_PIN_LEVEL]}"
     printf 'ACL_PERSONAL_ENROLLMENT_ENABLED=%s\n' "${runtime[ACL_PERSONAL_ENROLLMENT_ENABLED]}"
     printf 'ACL_PERSONAL_TENANT_ID=%s\n' "${runtime[ACL_PERSONAL_TENANT_ID]}"
     printf 'ACL_PERSONAL_DOOR_ID=%s\n' "${runtime[ACL_PERSONAL_DOOR_ID]}"

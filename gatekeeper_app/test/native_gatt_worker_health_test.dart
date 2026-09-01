@@ -59,6 +59,7 @@ void main() {
         'lastSession': <String, Object?>{
           'state': 'SUCCEEDED',
           'updatedEpochMs': 1724930002000,
+          'targetSessionId': '10213243-5465-4687-98a9-bacbdcedfe0f',
         },
         'updateManagerIndependent': true,
         'networkRequired': false,
@@ -94,6 +95,12 @@ void main() {
     expect(health.lastPresenceToDispatchMs, 320);
     expect(health.lastPresenceToArmedMs, 1840);
     expect(health.lastActiveAclVersion, 434);
+    expect(
+      health.lastTargetSessionId,
+      '10213243-5465-4687-98a9-bacbdcedfe0f',
+    );
+    expect(health.lastSessionState, 'SUCCEEDED');
+    expect(health.lastSessionUpdatedEpochMs, 1724930002000);
     expect(health.credentialRegistered, isTrue);
     expect(health.targetAclConfirmed, isTrue);
     expect(health.latestDetection?.strongestRssi, -54);
@@ -211,6 +218,18 @@ void main() {
     expect(health.lastGattPerformance?.highPriorityRequested, isTrue);
   });
 
+  test('non-canonical Target session IDs are not exposed for Backend lookup',
+      () {
+    final wrongVersion = NativeGattWorkerHealth.fromMap(<Object?, Object?>{
+      'lastSession': <Object?, Object?>{
+        'state': 'SUCCEEDED',
+        'targetSessionId': '10213243-5465-1687-98a9-bacbdcedfe0f',
+      },
+    });
+
+    expect(wrongVersion.lastTargetSessionId, isNull);
+  });
+
   test('credential and Target ACL status require authoritative native proof',
       () {
     final keyOnly = NativeGattWorkerHealth.fromMap(<Object?, Object?>{
@@ -275,4 +294,31 @@ void main() {
       expect(result['latencyMs'], 4585);
     },
   );
+
+  test('access session read proof is bound to one canonical Target session',
+      () async {
+    MethodCall? observed;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      observed = call;
+      return <String, Object?>{
+        'accepted': true,
+        'reason': 'SIGNED',
+        'nonce': List<String>.filled(32, 'ab').join(),
+        'expiresAt': 1724930030,
+        'signatureRaw64': List<String>.filled(64, 'cd').join(),
+      };
+    });
+
+    final proof = await NativeGattWorkerHealthBridge().signAccessSessionRead(
+      '10213243-5465-4687-98a9-bacbdcedfe0f',
+    );
+
+    expect(observed?.method, 'signAccessSessionRead');
+    expect(observed?.arguments, <String, Object?>{
+      'targetSessionId': '10213243-5465-4687-98a9-bacbdcedfe0f',
+    });
+    expect(proof['accepted'], isTrue);
+    expect(proof['expiresAt'], 1724930030);
+  });
 }

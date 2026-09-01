@@ -48,6 +48,16 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
     )
 
 try:
+    from .access_actor_ref import (
+        access_credential_ref_is_valid,
+        access_credential_ref_key_id,
+        build_access_event_mac_input,
+        build_access_status_mac_input,
+        build_mobile_access_session_read_input,
+        matches_access_credential_ref,
+        parse_access_event_ref_keyring,
+        verify_access_evidence_mac,
+    )
     from .acl_management import (
         DeterministicP256Signer,
         legacy_device_storage_id,
@@ -59,6 +69,7 @@ try:
         bridge_availability_topic,
         bridge_request_topic,
         bridge_result_topic,
+        bridge_verified_status_topic,
         build_discovery_plan,
         target_ack_topic,
         target_availability_topic,
@@ -76,6 +87,16 @@ try:
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
 except ImportError:  # Docker runs uvicorn with /app as the import root.
+    from access_actor_ref import (
+        access_credential_ref_is_valid,
+        access_credential_ref_key_id,
+        build_access_event_mac_input,
+        build_access_status_mac_input,
+        build_mobile_access_session_read_input,
+        matches_access_credential_ref,
+        parse_access_event_ref_keyring,
+        verify_access_evidence_mac,
+    )
     from acl_management import (
         DeterministicP256Signer,
         legacy_device_storage_id,
@@ -87,6 +108,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
         bridge_availability_topic,
         bridge_request_topic,
         bridge_result_topic,
+        bridge_verified_status_topic,
         build_discovery_plan,
         target_ack_topic,
         target_availability_topic,
@@ -173,6 +195,46 @@ BEACON_UUID         = os.getenv("GATEKEEPER_BEACON_UUID", "a1b2c3d4-e5f6-7890-ab
 # 관리자 콘솔의 마스터 개방도 이 키를 사용한다.
 GATEKEEPER_API_KEY  = _secret("GATEKEEPER_API_KEY")
 OPS_HMAC_KEY        = _secret("OPS_HMAC_KEY").encode("utf-8")
+ACCESS_EVENT_REF_KEYS_JSON = _secret("ACCESS_EVENT_REF_KEYS_JSON")
+try:
+    ACCESS_EVENT_REF_KEYS = parse_access_event_ref_keyring(
+        ACCESS_EVENT_REF_KEYS_JSON
+    )
+except (ValueError, json.JSONDecodeError):
+    # Actor attribution is optional during the Backend-first N/N-1 rollout.
+    # Never guess an identity when provisioning is malformed, and never take
+    # the independent local door path down with this read-side feature.
+    ACCESS_EVENT_REF_KEYS = {}
+    log.error("[ACCESS-ACTOR] reference keyring invalid; attribution disabled")
+try:
+    ACCESS_STATUS_MAX_AGE_SECONDS = float(
+        os.getenv("ACCESS_STATUS_MAX_AGE_SECONDS", "5")
+    )
+except ValueError:
+    ACCESS_STATUS_MAX_AGE_SECONDS = 5.0
+# Backend N must remain deployable with Target N-1 during an independent
+# rollout or rollback. Operators enable this only after Target N has been
+# installed and its signed status has been observed with the reviewed keyring.
+ACCESS_SIGNED_STATUS_READINESS_REQUIRED = (
+    os.getenv("ACCESS_SIGNED_STATUS_READINESS_REQUIRED", "false")
+    .strip()
+    .lower()
+    == "true"
+)
+
+# The Target intentionally defers all socket work while local GATT, ranging,
+# relay hold and cooldown own the loop.  Firmware clamps that interval below
+# 90 seconds and uses a 120-second MQTT keepalive.  Command authorization still
+# requires the much fresher HA_BRIDGE_STATUS_MAX_AGE_SECONDS value; this wider
+# window is only for preventing a false retained connectivity-offline state
+# during a valid local access session.
+HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS = 90.25
+try:
+    TARGET_RELAY_OFF_PIN_LEVEL = int(
+        os.getenv("TARGET_RELAY_OFF_PIN_LEVEL", "1")
+    )
+except ValueError:
+    TARGET_RELAY_OFF_PIN_LEVEL = -1
 BUILD_SHA           = os.getenv("BUILD_SHA", "unknown").strip()
 EXPECTED_DB_SCHEMA_VERSION = os.getenv("EXPECTED_DB_SCHEMA_VERSION", "").strip()
 EXPECTED_DB_SCHEMA_SHA256 = os.getenv("EXPECTED_DB_SCHEMA_SHA256", "").strip()
@@ -564,8 +626,27 @@ _CANONICAL_ACCESS_REQUIRED_FIELDS = frozenset(
         "attributes",
     }
 )
+_CANONICAL_ACCESS_SIGNED_FIELDS = _CANONICAL_ACCESS_REQUIRED_FIELDS | {"auth"}
 _CANONICAL_ACCESS_ATTRIBUTE_FIELDS = frozenset(
-    {"path", "transport", "distance_mm", "duration_ms", "relay_hold_ms"}
+    {
+        "path",
+        "transport",
+        "distance_mm",
+        "duration_ms",
+        "relay_hold_ms",
+        "credential_ref",
+    }
+)
+_CANONICAL_ACTOR_EVENT_CODES = frozenset(
+    {
+        "ACCESS_PROOF_VERIFIED",
+        "ACCESS_ARMED",
+        "ACCESS_SENSOR_DETECTED",
+        "ACCESS_RELAY_ON",
+        "ACCESS_RELAY_OFF",
+        "ACCESS_SESSION_COMPLETED",
+        "ACCESS_SESSION_TERMINATED",
+    }
 )
 _CANONICAL_OPAQUE_REF = re.compile(r"^[a-z][a-z0-9_-]{7,63}$")
 _CANONICAL_BOOT_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{7,63}$")
@@ -634,7 +715,7 @@ _CANONICAL_TARGET_ACCESS_CODES = {
             "TARGET_BUSY", "TARGET_NOT_IDLE", "OTA_BUSY", "ARM_TIMEOUT",
             "SENSOR_TIMEOUT", "SENSOR_INVALID", "SENSOR_IO_ERROR",
             "RELAY_CONTROL_ERROR", "RESET_DURING_SESSION", "SESSION_TIMEOUT",
-            "USER_CANCELLED", "INTERNAL_ERROR",
+            "SESSION_SUPERSEDED", "USER_CANCELLED", "INTERNAL_ERROR",
         },
     ),
 }
@@ -645,6 +726,23 @@ def _configured_target_ids() -> set[str]:
     target_ids.update(globals().get("_acl_target_credentials", {}).keys())
     target_ids.discard("")
     return target_ids
+
+
+def _configured_target_door_id(target_id: str) -> str | None:
+    candidates: list[str] = []
+    authorization = globals().get("_acl_target_credentials", {}).get(target_id)
+    if isinstance(authorization, dict):
+        candidates.append(str(authorization.get("door_id") or ""))
+    if target_id and secrets.compare_digest(target_id, COMMAND_TARGET_ID):
+        candidates.extend((COMMAND_DOOR_ID, ACL_PERSONAL_DOOR_ID))
+    valid = {
+        value
+        for value in candidates
+        if len(value) == 32
+        and value == value.lower()
+        and all(character in "0123456789abcdef" for character in value)
+    }
+    return next(iter(valid)) if len(valid) == 1 else None
 
 
 def _canonical_target_event_topic(target_id: str) -> str:
@@ -696,10 +794,15 @@ def _parse_canonical_target_access_event(payload: bytes) -> dict | None:
         )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return None
-    if not isinstance(event, dict) or set(event) != _CANONICAL_ACCESS_REQUIRED_FIELDS:
+    if not isinstance(event, dict) or set(event) not in {
+        _CANONICAL_ACCESS_REQUIRED_FIELDS,
+        _CANONICAL_ACCESS_SIGNED_FIELDS,
+    }:
         return None
+    signed_schema = event.get("schema_version") == "1.1"
     if (
-        event.get("schema_version") != "1.0"
+        event.get("schema_version") not in {"1.0", "1.1"}
+        or signed_schema != (set(event) == _CANONICAL_ACCESS_SIGNED_FIELDS)
         or event.get("session_kind") != "access"
         or event.get("source_component") != "target"
         or not _is_lower_uuid4(event.get("event_id"))
@@ -755,11 +858,23 @@ def _parse_canonical_target_access_event(payload: bytes) -> dict | None:
         return None
 
     target = event.get("target")
+    expected_target_fields = (
+        {"target_ref", "boot_id", "boot_count"}
+        if signed_schema
+        else {"target_ref", "boot_id"}
+    )
     if (
         not isinstance(target, dict)
-        or set(target) != {"target_ref", "boot_id"}
+        or set(target) != expected_target_fields
         or target.get("target_ref") != source_ref
         or target.get("boot_id") != source_boot_id
+    ):
+        return None
+    source_boot_count = target.get("boot_count") if signed_schema else None
+    if signed_schema and (
+        isinstance(source_boot_count, bool)
+        or not isinstance(source_boot_count, int)
+        or not 1 <= source_boot_count <= (1 << 64) - 1
     ):
         return None
     cause = event.get("causation_event_id")
@@ -791,11 +906,34 @@ def _parse_canonical_target_access_event(payload: bytes) -> dict | None:
         ):
             return None
 
+    credential_ref = attributes.get("credential_ref")
+    if credential_ref is not None and (
+        not access_credential_ref_is_valid(credential_ref)
+        or event.get("event_code") not in _CANONICAL_ACTOR_EVENT_CODES
+    ):
+        return None
+
+    auth = event.get("auth") if signed_schema else None
+    if signed_schema and (
+        not isinstance(auth, dict)
+        or set(auth) != {"version", "key_id", "tag"}
+        or auth.get("version") != 1
+        or not isinstance(auth.get("key_id"), str)
+        or re.fullmatch(r"[a-z0-9]{1,4}", auth["key_id"]) is None
+        or not isinstance(auth.get("tag"), str)
+        or re.fullmatch(r"[0-9a-f]{32}", auth["tag"]) is None
+    ):
+        return None
+
     outcome = event["outcome"]
     return {
         "distance_mm": attributes.get("distance_mm"),
         "duration_ms": attributes.get("duration_ms"),
         "relay_hold_ms": attributes.get("relay_hold_ms"),
+        "credential_ref": credential_ref,
+        "source_boot_count": source_boot_count,
+        "integrity_key_id": auth.get("key_id") if auth is not None else None,
+        "integrity_tag": auth.get("tag") if auth is not None else None,
         "event_id": event["event_id"],
         "session_id": event["session_id"],
         "attempt": attempt,
@@ -816,19 +954,82 @@ def _parse_canonical_target_access_event(payload: bytes) -> dict | None:
     }
 
 
+def _authenticate_canonical_target_access_event(
+    topic_target_id: str, event: dict
+) -> bool:
+    """Verify signed v1.1 evidence; legacy v1.0 deliberately returns false."""
+
+    key_id = event.get("integrity_key_id")
+    tag = event.get("integrity_tag")
+    door_id = _configured_target_door_id(topic_target_id)
+    if key_id is None or tag is None or door_id is None:
+        return False
+    try:
+        canonical = build_access_event_mac_input(
+            key_id=key_id,
+            topic_target_id=topic_target_id,
+            door_id=door_id,
+            source_instance_id=event["source_instance_id"],
+            source_boot_id=event["source_boot_id"],
+            source_boot_count=event["source_boot_count"],
+            event_id=event["event_id"],
+            session_id=event["session_id"],
+            sequence=event["source_sequence"],
+            attempt=event["attempt"],
+            event_code=event["event_code"],
+            stage=event["event_stage"],
+            outcome=event["event_outcome"],
+            reason_code=event["reason_code"],
+            causation_event_id=event["causation_event_id"],
+            monotonic_ms=event["monotonic_ms"],
+            credential_ref=event["credential_ref"],
+            distance_mm=event["distance_mm"],
+            duration_ms=event["duration_ms"],
+            relay_hold_ms=event["relay_hold_ms"],
+        )
+    except (KeyError, ValueError, TypeError):
+        return False
+    return verify_access_evidence_mac(
+        tag,
+        keyring=ACCESS_EVENT_REF_KEYS,
+        key_id=key_id,
+        canonical=canonical,
+    )
+
+
 def _persist_canonical_target_access_event(
     topic: str, payload: bytes, *, retained: bool
-) -> bool:
+) -> bool | None:
     """Persist one exact-topic canonical Target event idempotently."""
     topic_target_id = _exact_canonical_target_id(topic)
     if retained or topic_target_id is None:
-        return False
+        return None
     event = _parse_canonical_target_access_event(payload)
     if event is None:
-        return False
+        return None
+    signed = event.get("integrity_key_id") is not None
+    evidence_authenticated = _authenticate_canonical_target_access_event(
+        topic_target_id, event
+    )
+    # Unsigned v1.0 remains parseable for old stored-row tests and admin
+    # rendering, but live ingestion is closed once authenticated evidence is
+    # available.  Otherwise an anonymous broker publisher can fill the audit
+    # table with plausible-looking legacy rows.
+    if not signed or not evidence_authenticated:
+        return None
+    event["evidence_authenticated"] = evidence_authenticated
+    event["integrity_tag_bytes"] = (
+        bytes.fromhex(event["integrity_tag"])
+        if evidence_authenticated
+        else None
+    )
+    event["integrity_status"] = (
+        "verified" if evidence_authenticated else "legacy_unsigned"
+    )
     event["collector_target_ref"] = opaque_ref(
         topic_target_id, _ops_hmac_key, "target"
     )
+    event["collector_target_id"] = topic_target_id
     conn = None
     try:
         conn = get_db()
@@ -836,16 +1037,18 @@ def _persist_canonical_target_access_event(
             cur.execute(
                 "INSERT INTO access_event_history "
                 "(event_id,session_id,source_component,source_instance_id,"
-                "source_boot_id,source_sequence,event_attempt,event_code,event_stage,"
+                "source_boot_id,source_boot_count,source_sequence,event_attempt,event_code,event_stage,"
                 "event_outcome,reason_code,causation_event_id,target_ref,event_path,"
                 "event_transport,distance_mm,duration_ms,relay_hold_ms,monotonic_ms,"
-                "clock_quality,collector_target_ref,received_at) "
+                "clock_quality,collector_target_ref,collector_target_id,credential_ref,integrity_key_id,"
+                "integrity_tag,integrity_status,received_at) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                "%s,%s,%s,UTC_TIMESTAMP(3))",
+                "%s,%s,%s,%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(3))",
                 (
                     event["event_id"], event["session_id"],
                     event["source_component"], event["source_instance_id"],
-                    event["source_boot_id"], event["source_sequence"],
+                    event["source_boot_id"], event["source_boot_count"],
+                    event["source_sequence"],
                     event["attempt"],
                     event["event_code"], event["event_stage"],
                     event["event_outcome"], event["reason_code"],
@@ -854,6 +1057,10 @@ def _persist_canonical_target_access_event(
                     event["distance_mm"], event["duration_ms"],
                     event["relay_hold_ms"], event["monotonic_ms"],
                     event["clock_quality"], event["collector_target_ref"],
+                    event["collector_target_id"],
+                    event["credential_ref"],
+                    event["integrity_key_id"], event["integrity_tag_bytes"],
+                    event["integrity_status"],
                 ),
             )
         return True
@@ -864,15 +1071,17 @@ def _persist_canonical_target_access_event(
                     cur.execute(
                         "SELECT event_id,session_id,source_component,"
                         "source_instance_id,source_boot_id,source_sequence,"
+                        "source_boot_count,"
                         "event_attempt,event_code,event_stage,event_outcome,"
                         "reason_code,causation_event_id,target_ref,event_path,"
                         "event_transport,distance_mm,duration_ms,relay_hold_ms,"
-                        "monotonic_ms,clock_quality,collector_target_ref "
+                        "monotonic_ms,clock_quality,collector_target_ref,collector_target_id,credential_ref,"
+                        "integrity_key_id,integrity_tag,integrity_status "
                         "FROM access_event_history WHERE event_id=%s OR "
-                        "(collector_target_ref=%s AND "
+                        "(collector_target_id=%s AND "
                         "source_boot_id=%s AND source_sequence=%s)",
                         (
-                            event["event_id"], event["collector_target_ref"],
+                            event["event_id"], event["collector_target_id"],
                             event["source_boot_id"], event["source_sequence"],
                         ),
                     )
@@ -883,6 +1092,7 @@ def _persist_canonical_target_access_event(
                     "source_component": event["source_component"],
                     "source_instance_id": event["source_instance_id"],
                     "source_boot_id": event["source_boot_id"],
+                    "source_boot_count": event["source_boot_count"],
                     "source_sequence": event["source_sequence"],
                     "event_attempt": event["attempt"],
                     "event_code": event["event_code"],
@@ -899,6 +1109,11 @@ def _persist_canonical_target_access_event(
                     "monotonic_ms": event["monotonic_ms"],
                     "clock_quality": event["clock_quality"],
                     "collector_target_ref": event["collector_target_ref"],
+                    "collector_target_id": event["collector_target_id"],
+                    "credential_ref": event["credential_ref"],
+                    "integrity_key_id": event["integrity_key_id"],
+                    "integrity_tag": event["integrity_tag_bytes"],
+                    "integrity_status": event["integrity_status"],
                 }
                 if len(existing) == 1 and all(
                     existing[0].get(key) == value for key, value in expected.items()
@@ -907,7 +1122,7 @@ def _persist_canonical_target_access_event(
             except Exception:
                 pass
             log.warning("[MQTT-AUDIT] canonical access event identity conflict")
-            return False
+            return None
         log.warning("[MQTT-AUDIT] canonical access event persistence rejected")
         return False
     except Exception:
@@ -916,6 +1131,426 @@ def _persist_canonical_target_access_event(
     finally:
         if conn:
             conn.close()
+
+
+def _configured_access_target_doors() -> dict[str, str | None]:
+    """Map stable collector Target IDs to one exact configured door.
+
+    A conflicting Target-to-door configuration deliberately resolves to None;
+    actor attribution must never try unrelated doors until one happens to match.
+    """
+
+    resolved: dict[str, str | None] = {}
+    for target_id in _configured_target_ids():
+        door_id = _configured_target_door_id(target_id)
+        if door_id is None:
+            continue
+        resolved[target_id] = door_id
+    return resolved
+
+
+def _resolve_admin_access_actors(rows: list[dict], candidates: list[dict]) -> None:
+    """Attach names only for a unique cryptographic ref match.
+
+    The immutable history keeps a session-scoped pseudonym.  Names and units
+    are a current read-side projection, so deleted accounts remain explicitly
+    unresolved instead of being guessed from time proximity.
+    """
+
+    target_doors = _configured_access_target_doors()
+    for row in rows:
+        credential_ref = row.pop("credential_ref", None)
+        collector_target_id = row.pop("collector_target_id", None)
+        if row.get("record_kind") == "legacy":
+            row["actor_name"] = row.get("tenant_name")
+            row["actor_unit_number"] = row.get("unit_number")
+            row["actor_resolution"] = (
+                "legacy_account" if row.get("tenant_name") else "unresolved"
+            )
+            row["actor_source"] = "legacy_backend"
+            continue
+        row["actor_name"] = None
+        row["actor_unit_number"] = None
+        row["actor_source"] = (
+            "target_signed_summary"
+            if row.get("record_kind") == "terminal_summary"
+            else "target_signed_proof"
+        )
+        if row.get("integrity_status") != "verified":
+            row["actor_resolution"] = "legacy_unsigned"
+            row["actor_source"] = "target_unsigned"
+            continue
+        if credential_ref is None:
+            row["actor_resolution"] = "not_reported"
+            continue
+        key_id = access_credential_ref_key_id(credential_ref)
+        if key_id is None:
+            row["actor_resolution"] = "invalid_ref"
+            continue
+        if key_id not in ACCESS_EVENT_REF_KEYS:
+            row["actor_resolution"] = "key_unavailable"
+            continue
+        door_id = target_doors.get(str(collector_target_id or ""))
+        if door_id is None:
+            row["actor_resolution"] = "door_unavailable"
+            continue
+        matches: list[dict] = []
+        for candidate in candidates:
+            credential_id = str(candidate.get("credential_id") or "")
+            if matches_access_credential_ref(
+                credential_ref,
+                keyring=ACCESS_EVENT_REF_KEYS,
+                door_id=door_id,
+                session_id=str(row.get("session_id") or ""),
+                credential_id=credential_id,
+            ):
+                matches.append(candidate)
+        if len(matches) != 1:
+            row["actor_resolution"] = (
+                "ambiguous" if len(matches) > 1 else "unresolved"
+            )
+            continue
+        row["actor_name"] = str(matches[0].get("name") or "") or None
+        row["actor_unit_number"] = (
+            str(matches[0].get("unit_number") or "") or None
+        )
+        row["actor_resolution"] = (
+            "verified"
+            if row["actor_name"] is not None
+            and row["actor_unit_number"] is not None
+            else "unresolved"
+        )
+
+
+def _epoch_seconds(value: object) -> int | None:
+    if isinstance(value, datetime):
+        return int(value.timestamp())
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            return None
+    return None
+
+
+def _personal_access_session(
+    credential_id: str,
+    public_key_sec1: str,
+    target_session_id: str | None,
+    access_nonce: str | None,
+    access_expires_at: int | None,
+    access_signature_raw64: str | None,
+) -> dict | None:
+    """Project one exact Target session only when it matches this credential."""
+
+    if target_session_id is None:
+        return None
+    if not _is_lower_uuid4(target_session_id):
+        raise ValueError("target session id is invalid")
+    now = int(time.time())
+    if (
+        access_nonce is None
+        or access_expires_at is None
+        or access_signature_raw64 is None
+        or not now < access_expires_at <= now + 30
+    ):
+        raise PermissionError("mobile access read proof is invalid")
+    try:
+        canonical = build_mobile_access_session_read_input(
+            credential_id,
+            target_session_id,
+            access_nonce,
+            access_expires_at,
+        )
+        proof_valid = verify_raw64(
+            bytes.fromhex(public_key_sec1),
+            canonical,
+            bytes.fromhex(access_signature_raw64),
+        )
+    except (ValueError, TypeError):
+        proof_valid = False
+    if not proof_valid:
+        raise PermissionError("mobile access read proof is invalid")
+    result = {
+        "status": "pending",
+        "event_ref": None,
+        "occurred_at": None,
+        "target_state": None,
+        "target_fresh": False,
+        "next_auth_ready": False,
+        "terminal": False,
+    }
+
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            # The Android app creates a fresh proof for every poll.  Consume
+            # the verified nonce before reading any session evidence so a
+            # captured read-only request cannot be replayed during its 20s
+            # signature lifetime.  The existing credential-scoped ledger is
+            # durable across Backend restarts and replicas.
+            try:
+                cur.execute(
+                    "INSERT INTO mobile_credential_control_nonces "
+                    "(credential_id,nonce_hash,action,expires_at,consumed_at) "
+                    "VALUES (%s,%s,'access_session_read_v1',%s,%s)",
+                    (
+                        credential_id,
+                        hashlib.sha256(access_nonce.encode("ascii")).hexdigest(),
+                        access_expires_at,
+                        now,
+                    ),
+                )
+            except pymysql.err.IntegrityError as exc:
+                if exc.args and exc.args[0] == 1062:
+                    raise PermissionError(
+                        "mobile access read proof is already consumed"
+                    ) from exc
+                raise RuntimeError(
+                    "mobile access read proof ledger is unavailable"
+                ) from exc
+            if not ACCESS_EVENT_REF_KEYS or not ACL_PERSONAL_DOOR_ID:
+                return result
+            cur.execute(
+                "SELECT event_id,event_code,event_outcome,reason_code,"
+                "credential_ref,received_at,source_sequence,source_boot_id,"
+                "source_boot_count,id "
+                "FROM access_event_history WHERE session_id=%s "
+                "AND collector_target_id=%s AND credential_ref IS NOT NULL "
+                "AND integrity_status='verified' "
+                "ORDER BY source_sequence ASC,id ASC LIMIT 32",
+                (
+                    target_session_id,
+                    COMMAND_TARGET_ID,
+                ),
+            )
+            rows = cur.fetchall()
+    except pymysql.MySQLError as exc:
+        raise RuntimeError(
+            "mobile access read proof ledger is unavailable"
+        ) from exc
+    finally:
+        if conn:
+            conn.close()
+
+    matched = [
+        row
+        for row in rows
+        if matches_access_credential_ref(
+            row.get("credential_ref"),
+            keyring=ACCESS_EVENT_REF_KEYS,
+            door_id=ACL_PERSONAL_DOOR_ID,
+            session_id=target_session_id,
+            credential_id=credential_id,
+        )
+    ]
+    live_evidence = _target_gate_states.live_evidence(COMMAND_TARGET_ID)
+    terminal_ref_matches = bool(
+        live_evidence is not None
+        and matches_access_credential_ref(
+            live_evidence.get("last_terminal_credential_ref"),
+            keyring=ACCESS_EVENT_REF_KEYS,
+            door_id=ACL_PERSONAL_DOOR_ID,
+            session_id=target_session_id,
+            credential_id=credential_id,
+        )
+        and live_evidence.get("last_terminal_session_id") == target_session_id
+    )
+    if not matched and not terminal_ref_matches:
+        return result
+
+    # The periodic FSM state is Target-global and does not identify the active
+    # session.  Bind it to this caller only when the signed terminal fields
+    # carry the exact session-scoped credential reference; before that, expose
+    # only this session's signed canonical events.
+    bound_live_evidence = live_evidence if terminal_ref_matches else None
+    target_state = (
+        bound_live_evidence.get("state")
+        if bound_live_evidence is not None
+        else None
+    )
+    live_boot_id = (
+        bound_live_evidence.get("source_boot_id")
+        if bound_live_evidence is not None
+        else None
+    )
+    result["target_state"] = target_state
+    result["target_fresh"] = target_state is not None
+
+    event_boot_ids = {str(row.get("source_boot_id") or "") for row in matched}
+    event_boot_counts = {
+        int(row["source_boot_count"])
+        for row in matched
+        if row.get("source_boot_count") is not None
+    }
+    if matched and (len(event_boot_ids) != 1 or len(event_boot_counts) != 1):
+        return result
+    event_boot_id = next(iter(event_boot_ids)) if matched else live_boot_id
+    event_boot_count = (
+        next(iter(event_boot_counts))
+        if matched
+        else bound_live_evidence.get("source_boot_count")
+    )
+
+    latest = matched[-1] if matched else None
+    codes = {str(row.get("event_code") or "") for row in matched}
+    status_boot_aligned = bool(
+        bound_live_evidence is not None
+        and live_boot_id is not None
+        and event_boot_id is not None
+        and secrets.compare_digest(str(live_boot_id), str(event_boot_id))
+        and bound_live_evidence.get("source_boot_count") == event_boot_count
+    )
+    live_session_idle = bool(
+        target_state == "IDLE"
+        and status_boot_aligned
+        and not bound_live_evidence.get("relay_commanded_on", True)
+        and bound_live_evidence.get("relay_pin_level")
+        == TARGET_RELAY_OFF_PIN_LEVEL
+    )
+    terminal_code = (
+        bound_live_evidence.get("last_terminal_event_code")
+        if status_boot_aligned
+        else None
+    )
+    terminal_sequence = (
+        bound_live_evidence.get("last_terminal_event_sequence")
+        if status_boot_aligned
+        else None
+    )
+    terminal_rows = [
+        row
+        for row in matched
+        if row.get("event_code") in _ACCESS_TERMINAL_CODES
+    ]
+    signed_termination = bool(
+        terminal_rows
+        and terminal_rows[-1].get("event_code")
+        == "ACCESS_SESSION_TERMINATED"
+    )
+    global_status_boot_aligned = bool(
+        live_evidence is not None
+        and live_evidence.get("source_boot_id") is not None
+        and event_boot_id is not None
+        and secrets.compare_digest(
+            str(live_evidence.get("source_boot_id")), str(event_boot_id)
+        )
+        and live_evidence.get("source_boot_count") == event_boot_count
+    )
+    # A verified replacement B can overwrite A's same-boot terminal summary
+    # before deferred MQTT status is published.  A's actor-bound signed
+    # termination event still proves only that A ended; combine it with the
+    # fresh Target-global IDLE/OFF state solely for next-auth readiness.  Never
+    # synthesize A success or expose B's intermediate state through this path.
+    signed_termination_ready = bool(
+        signed_termination
+        and global_status_boot_aligned
+        and live_evidence.get("state") == "IDLE"
+        and not live_evidence.get("relay_commanded_on", True)
+        and live_evidence.get("relay_pin_level")
+        == TARGET_RELAY_OFF_PIN_LEVEL
+    )
+    if signed_termination_ready and bound_live_evidence is None:
+        target_state = "IDLE"
+        result["target_state"] = target_state
+        result["target_fresh"] = True
+    terminal_event_consistent = not terminal_rows or bool(
+        terminal_rows[-1].get("event_code") == terminal_code
+        and terminal_rows[-1].get("source_sequence") == terminal_sequence
+    )
+    terminal_summary_valid = bool(
+        terminal_ref_matches
+        and status_boot_aligned
+        and terminal_event_consistent
+        and terminal_code in _ACCESS_TERMINAL_CODES
+    )
+    terminal_phase_mask = (
+        int(bound_live_evidence.get("last_terminal_phase_mask") or 0)
+        if terminal_summary_valid
+        else 0
+    )
+    failsafe_terminal = bool(
+        terminal_summary_valid
+        and terminal_phase_mask & _ACCESS_FAILSAFE_PHASE_MASK
+    )
+    completed_by_sensor = bool(
+        terminal_summary_valid
+        and terminal_code == "ACCESS_SESSION_COMPLETED"
+        and (terminal_phase_mask & _ACCESS_SUCCESS_PHASE_MASK)
+        == _ACCESS_SUCCESS_PHASE_MASK
+        and not failsafe_terminal
+    )
+    terminated = bool(
+        signed_termination
+        or (
+            terminal_summary_valid
+            and (
+                terminal_code == "ACCESS_SESSION_TERMINATED"
+                or failsafe_terminal
+            )
+        )
+    )
+    if terminated:
+        status_value = "terminated"
+    elif completed_by_sensor and live_session_idle:
+        status_value = "complete"
+    elif "ACCESS_RELAY_OFF" in codes:
+        status_value = "cooldown"
+    elif "ACCESS_RELAY_ON" in codes:
+        status_value = "relay_active"
+    elif "ACCESS_SENSOR_DETECTED" in codes:
+        status_value = "sensor_detected"
+    elif {"ACCESS_ARMED", "ACCESS_PROOF_VERIFIED"}.intersection(codes):
+        status_value = "armed"
+    else:
+        status_value = "pending"
+
+    next_auth_ready = bool(
+        signed_termination_ready
+        or (
+            live_session_idle
+            and terminal_summary_valid
+            and (completed_by_sensor or terminated)
+        )
+    )
+    result.update(
+        {
+            "status": status_value,
+            "event_ref": (
+                opaque_ref(
+                    str(latest.get("event_id") or ""),
+                    _ops_hmac_key,
+                    "mobile-access-event",
+                )
+                if latest is not None
+                else None
+            ),
+            "occurred_at": (
+                _epoch_seconds(latest.get("received_at"))
+                if latest is not None
+                else None
+            ),
+            "next_auth_ready": next_auth_ready,
+            "terminal": bool(next_auth_ready),
+            "evidence_source": (
+                "target_signed_termination_and_status"
+                if signed_termination_ready and not terminal_summary_valid
+                else (
+                    "target_signed_event_and_status"
+                    if terminal_summary_valid and terminal_rows
+                    else (
+                        "target_signed_status_summary"
+                        if terminal_summary_valid
+                        else "target_signed_event"
+                    )
+                )
+            ),
+        }
+    )
+    return result
 
 
 class _CanonicalAccessEventWorker:
@@ -967,9 +1602,11 @@ class _CanonicalAccessEventWorker:
                     return
                 topic, payload, retained = item
                 stored = self._persist(topic, payload, retained=retained)
-                if self._health is not None:
+                if self._health is not None and stored is not None:
                     self._health.note_writer_result(stored)
-                if not stored:
+                if stored is None:
+                    log.warning("[MQTT-AUDIT] rejected canonical Target access event")
+                elif not stored:
                     log.warning("[MQTT-AUDIT] canonical Target access event was not stored")
             finally:
                 self._queue.task_done()
@@ -1004,15 +1641,24 @@ class _CanonicalAccessCollectorHealth:
         self._expected: set[str] = set()
         self._accepted: set[str] = set()
         self._pending: dict[int, str] = {}
+        self._require_verified_evidence = False
+        self._verified_evidence_seen = False
         self._connected = False
         self._subscription_failed = False
         self._writer_failed = False
 
-    def configure(self, expected_topics: set[str]) -> None:
+    def configure(
+        self,
+        expected_topics: set[str],
+        *,
+        require_verified_evidence: bool = False,
+    ) -> None:
         with self._lock:
             self._expected = set(expected_topics)
             self._accepted.clear()
             self._pending.clear()
+            self._require_verified_evidence = require_verified_evidence
+            self._verified_evidence_seen = False
             self._connected = False
             self._subscription_failed = False
             self._writer_failed = False
@@ -1021,6 +1667,7 @@ class _CanonicalAccessCollectorHealth:
         with self._lock:
             self._accepted.clear()
             self._pending.clear()
+            self._verified_evidence_seen = False
             self._connected = True
             self._subscription_failed = False
 
@@ -1062,10 +1709,17 @@ class _CanonicalAccessCollectorHealth:
             self._connected = False
             self._accepted.clear()
             self._pending.clear()
+            self._verified_evidence_seen = False
 
     def note_writer_result(self, stored: bool) -> None:
         with self._lock:
             self._writer_failed = not stored
+
+    def note_verified_evidence(self) -> None:
+        """Record one MAC-verified status accepted on this connection."""
+
+        with self._lock:
+            self._verified_evidence_seen = True
 
     def ready(self, worker: _CanonicalAccessEventWorker | None) -> bool:
         with self._lock:
@@ -1075,22 +1729,760 @@ class _CanonicalAccessCollectorHealth:
                 and self._expected.issubset(self._accepted)
                 and not self._subscription_failed
                 and not self._writer_failed
+                and (
+                    not self._require_verified_evidence
+                    or self._verified_evidence_seen
+                )
             )
         return subscriptions_ready and worker is not None and worker.healthy
 
 
 _canonical_access_collector_health = _CanonicalAccessCollectorHealth()
 _canonical_access_event_worker: _CanonicalAccessEventWorker | None = None
+_authenticated_status_collector_health = _CanonicalAccessCollectorHealth()
+
+
+_ACCESS_GATE_STATES = frozenset(
+    {"IDLE", "AUTH_PENDING", "ARMED", "RELAY_HOLD", "COOLDOWN"}
+)
+_ACCESS_TERMINAL_CODES = frozenset(
+    {"ACCESS_SESSION_COMPLETED", "ACCESS_SESSION_TERMINATED"}
+)
+_ACCESS_TERMINAL_PHASE_MASK = 0x003F
+_ACCESS_SUCCESS_PHASE_MASK = 0x001F
+_ACCESS_FAILSAFE_PHASE_MASK = 0x0020
+
+
+def _parse_authenticated_target_status(
+    target_id: str, payload: bytes
+) -> dict | None:
+    """Verify one exact Target status snapshot without touching freshness."""
+
+    if not isinstance(payload, bytes) or not 1 <= len(payload) <= 8192:
+        return None
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate JSON key")
+            value[key] = item
+        return value
+
+    try:
+        document = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=lambda _value: (_ for _ in ()).throw(
+                ValueError("non-finite JSON number")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    required = {
+        "target_id",
+        "boot_id",
+        "boot_count",
+        "state",
+        "access_status_revision",
+        "last_terminal_session_id",
+        "last_terminal_event_sequence",
+        "last_terminal_event_code",
+        "last_terminal_reason_code",
+        "last_terminal_credential_ref",
+        "last_terminal_phase_mask",
+        "relay_commanded_on",
+        "relay_pin_level",
+        "access_auth",
+    }
+    if not required.issubset(document):
+        return None
+    if (
+        not isinstance(document["target_id"], str)
+        or not secrets.compare_digest(document["target_id"], target_id)
+        or document["state"] not in _ACCESS_GATE_STATES
+        or not isinstance(document["boot_id"], str)
+        or re.fullmatch(r"[0-9a-f]{32}", document["boot_id"]) is None
+    ):
+        return None
+    boot_count = document["boot_count"]
+    revision = document["access_status_revision"]
+    phase_mask = document["last_terminal_phase_mask"]
+    if (
+        isinstance(boot_count, bool)
+        or not isinstance(boot_count, int)
+        or not 1 <= boot_count <= (1 << 64) - 1
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or not 1 <= revision <= (1 << 64) - 1
+        or isinstance(phase_mask, bool)
+        or not isinstance(phase_mask, int)
+        or not 0 <= phase_mask <= _ACCESS_TERMINAL_PHASE_MASK
+        or not isinstance(document["relay_commanded_on"], bool)
+        or isinstance(document["relay_pin_level"], bool)
+        or document["relay_pin_level"] not in (0, 1)
+    ):
+        return None
+
+    terminal_session = document["last_terminal_session_id"]
+    terminal_sequence = document["last_terminal_event_sequence"]
+    terminal_code = document["last_terminal_event_code"]
+    terminal_reason = document["last_terminal_reason_code"]
+    terminal_ref = document["last_terminal_credential_ref"]
+    required_terminal = (
+        terminal_session,
+        terminal_sequence,
+        terminal_code,
+        terminal_reason,
+    )
+    if all(value is None for value in required_terminal):
+        if terminal_ref is not None or phase_mask != 0:
+            return None
+    elif any(value is None for value in required_terminal):
+        return None
+    else:
+        contract = _CANONICAL_TARGET_ACCESS_CODES.get(terminal_code)
+        if (
+            not _is_lower_uuid4(terminal_session)
+            or isinstance(terminal_sequence, bool)
+            or not isinstance(terminal_sequence, int)
+            or not 0 <= terminal_sequence <= (1 << 64) - 1
+            or terminal_code not in _ACCESS_TERMINAL_CODES
+            or contract is None
+            or terminal_reason not in contract[2]
+            or (
+                terminal_ref is not None
+                and not access_credential_ref_is_valid(terminal_ref)
+            )
+        ):
+            return None
+
+    access_auth = document["access_auth"]
+    if (
+        not isinstance(access_auth, dict)
+        or set(access_auth) != {"version", "key_id", "tag"}
+        or access_auth.get("version") != 1
+        or not isinstance(access_auth.get("key_id"), str)
+        or re.fullmatch(r"[a-z0-9]{1,4}", access_auth["key_id"]) is None
+        or not isinstance(access_auth.get("tag"), str)
+        or re.fullmatch(r"[0-9a-f]{32}", access_auth["tag"]) is None
+    ):
+        return None
+    door_id = _configured_target_door_id(target_id)
+    if door_id is None:
+        return None
+    try:
+        canonical = build_access_status_mac_input(
+            key_id=access_auth["key_id"],
+            topic_target_id=target_id,
+            door_id=door_id,
+            source_boot_id=document["boot_id"],
+            source_boot_count=boot_count,
+            access_revision=revision,
+            state=document["state"],
+            last_terminal_session_id=terminal_session,
+            last_terminal_event_sequence=terminal_sequence,
+            last_terminal_event_code=terminal_code,
+            last_terminal_credential_ref=terminal_ref,
+            last_terminal_reason_code=terminal_reason,
+            last_terminal_phase_mask=phase_mask,
+            relay_commanded_on=document["relay_commanded_on"],
+            relay_pin_level=document["relay_pin_level"],
+        )
+    except (TypeError, ValueError):
+        return None
+    if not verify_access_evidence_mac(
+        access_auth["tag"],
+        keyring=ACCESS_EVENT_REF_KEYS,
+        key_id=access_auth["key_id"],
+        canonical=canonical,
+    ):
+        return None
+    return {
+        "target_id": target_id,
+        "source_boot_id": document["boot_id"],
+        "source_boot_count": boot_count,
+        "status_revision": revision,
+        "state": document["state"],
+        "last_terminal_session_id": terminal_session,
+        "last_terminal_event_sequence": terminal_sequence,
+        "last_terminal_event_code": terminal_code,
+        "last_terminal_reason_code": terminal_reason,
+        "last_terminal_credential_ref": terminal_ref,
+        "last_terminal_phase_mask": phase_mask,
+        "relay_commanded_on": document["relay_commanded_on"],
+        "relay_pin_level": document["relay_pin_level"],
+        "integrity_key_id": access_auth["key_id"],
+        "integrity_tag": bytes.fromhex(access_auth["tag"]),
+    }
+
+
+def _verified_home_assistant_status_projection(
+    target_id: str, stored: dict
+) -> bytes | None:
+    """Project only MAC-covered access state into the HA trust namespace."""
+
+    boot_count = stored.get("source_boot_count") if isinstance(stored, dict) else None
+    revision = stored.get("status_revision") if isinstance(stored, dict) else None
+    relay_commanded_on = (
+        stored.get("relay_commanded_on") if isinstance(stored, dict) else None
+    )
+    relay_pin_level = (
+        stored.get("relay_pin_level") if isinstance(stored, dict) else None
+    )
+    if (
+        not isinstance(stored, dict)
+        or stored.get("target_id") != target_id
+        or stored.get("state") not in _ACCESS_GATE_STATES
+        or re.fullmatch(
+            r"[0-9a-f]{32}", str(stored.get("source_boot_id") or "")
+        )
+        is None
+        or isinstance(boot_count, bool)
+        or not isinstance(boot_count, int)
+        or not 1 <= boot_count <= (1 << 64) - 1
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or not 1 <= revision <= (1 << 64) - 1
+        or not isinstance(relay_commanded_on, bool)
+        or isinstance(relay_pin_level, bool)
+        or relay_pin_level not in (0, 1)
+    ):
+        return None
+    document = {
+        "target_id": target_id,
+        "boot_id": stored["source_boot_id"],
+        "boot_count": boot_count,
+        "access_status_revision": revision,
+        "state": stored["state"],
+        "is_armed": stored["state"] == "ARMED",
+        "relay_commanded_on": relay_commanded_on,
+        "relay_pin_level": relay_pin_level,
+    }
+    return json.dumps(
+        document, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+
+
+def _persist_authenticated_target_status(
+    target_id: str, payload: bytes, *, retained: bool
+) -> dict | bool | None:
+    """Atomically advance Target status high-water and terminal summary."""
+
+    if retained:
+        return None
+    status_value = _parse_authenticated_target_status(target_id, payload)
+    if status_value is None:
+        return None
+    collector_ref = opaque_ref(target_id, _ops_hmac_key, "target")
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT source_boot_id,source_boot_count,status_revision,"
+                "integrity_key_id,integrity_tag "
+                "FROM target_access_status_highwater "
+                "WHERE target_id=%s FOR UPDATE",
+                (target_id,),
+            )
+            previous = cur.fetchone()
+            replay = False
+            boot_refresh_outcome = BootRefreshOutcome.ADVANCED
+            if previous is not None:
+                previous_count = int(previous["source_boot_count"])
+                previous_revision = int(previous["status_revision"])
+                same_boot = secrets.compare_digest(
+                    str(previous["source_boot_id"]),
+                    status_value["source_boot_id"],
+                )
+                if (
+                    status_value["source_boot_count"] < previous_count
+                    or (
+                        status_value["source_boot_count"] == previous_count
+                        and not same_boot
+                    )
+                    or (
+                        status_value["source_boot_count"] > previous_count
+                        and same_boot
+                    )
+                ):
+                    conn.rollback()
+                    return None
+                if status_value["source_boot_count"] == previous_count:
+                    if status_value["status_revision"] < previous_revision:
+                        conn.rollback()
+                        return None
+                    if status_value["status_revision"] == previous_revision:
+                        same_identity = bool(
+                            secrets.compare_digest(
+                                str(previous["integrity_key_id"]),
+                                status_value["integrity_key_id"],
+                            )
+                            and secrets.compare_digest(
+                                bytes(previous["integrity_tag"]),
+                                status_value["integrity_tag"],
+                            )
+                        )
+                        if not same_identity:
+                            conn.rollback()
+                            return None
+                        replay = True
+                if (
+                    status_value["source_boot_count"] == previous_count
+                    and same_boot
+                ):
+                    boot_refresh_outcome = BootRefreshOutcome.UNCHANGED
+
+            # target_boot_state was historically fed by unsigned MQTT payloads.
+            # A verified status high-water is now the sole authority and repairs
+            # any stale or previously poisoned advisory value in the same
+            # transaction.  Replaying an identical signed status may repair the
+            # derived row, but it never refreshes live readiness freshness.
+            cur.execute(
+                "INSERT INTO target_boot_state "
+                "(target_id,boot_id,boot_count,updated_at) VALUES (%s,%s,%s,%s) "
+                "ON DUPLICATE KEY UPDATE boot_id=VALUES(boot_id),"
+                "boot_count=VALUES(boot_count),updated_at=VALUES(updated_at)",
+                (
+                    target_id,
+                    status_value["source_boot_id"],
+                    status_value["source_boot_count"],
+                    int(time.time()),
+                ),
+            )
+            if replay:
+                conn.commit()
+                return {
+                    **status_value,
+                    "advanced": False,
+                    "boot_refresh_outcome": boot_refresh_outcome,
+                }
+
+            terminal_sequence = status_value["last_terminal_event_sequence"]
+            if terminal_sequence is not None:
+                cur.execute(
+                    "SELECT session_id,event_code,reason_code,credential_ref,"
+                    "phase_mask,source_boot_count "
+                    "FROM access_terminal_summary WHERE target_id=%s "
+                    "AND source_boot_id=%s AND terminal_event_sequence=%s "
+                    "FOR UPDATE",
+                    (
+                        target_id,
+                        status_value["source_boot_id"],
+                        terminal_sequence,
+                    ),
+                )
+                summary = cur.fetchone()
+                expected_summary = {
+                    "session_id": status_value["last_terminal_session_id"],
+                    "event_code": status_value["last_terminal_event_code"],
+                    "reason_code": status_value["last_terminal_reason_code"],
+                    "credential_ref": status_value[
+                        "last_terminal_credential_ref"
+                    ],
+                    "phase_mask": status_value["last_terminal_phase_mask"],
+                    "source_boot_count": status_value["source_boot_count"],
+                }
+                if summary is not None and any(
+                    summary.get(key) != value
+                    for key, value in expected_summary.items()
+                ):
+                    conn.rollback()
+                    return None
+                if summary is None:
+                    cur.execute(
+                        "INSERT INTO access_terminal_summary "
+                        "(target_id,collector_target_ref,source_boot_id,source_boot_count,"
+                        "terminal_event_sequence,session_id,event_code,reason_code,"
+                        "credential_ref,phase_mask,first_status_revision,"
+                        "integrity_key_id,integrity_tag,received_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                        "UTC_TIMESTAMP(3))",
+                        (
+                            target_id,
+                            collector_ref,
+                            status_value["source_boot_id"],
+                            status_value["source_boot_count"],
+                            terminal_sequence,
+                            status_value["last_terminal_session_id"],
+                            status_value["last_terminal_event_code"],
+                            status_value["last_terminal_reason_code"],
+                            status_value["last_terminal_credential_ref"],
+                            status_value["last_terminal_phase_mask"],
+                            status_value["status_revision"],
+                            status_value["integrity_key_id"],
+                            status_value["integrity_tag"],
+                        ),
+                    )
+
+            values = (
+                status_value["source_boot_id"],
+                status_value["source_boot_count"],
+                status_value["status_revision"],
+                status_value["state"],
+                status_value["last_terminal_session_id"],
+                status_value["last_terminal_event_sequence"],
+                status_value["last_terminal_event_code"],
+                status_value["last_terminal_reason_code"],
+                status_value["last_terminal_credential_ref"],
+                status_value["last_terminal_phase_mask"],
+                status_value["relay_commanded_on"],
+                status_value["relay_pin_level"],
+                status_value["integrity_key_id"],
+                status_value["integrity_tag"],
+            )
+            if previous is None:
+                cur.execute(
+                    "INSERT INTO target_access_status_highwater "
+                    "(target_id,collector_target_ref,source_boot_id,source_boot_count,"
+                    "status_revision,gate_state,last_terminal_session_id,"
+                    "last_terminal_event_sequence,last_terminal_event_code,"
+                    "last_terminal_reason_code,last_terminal_credential_ref,"
+                    "last_terminal_phase_mask,relay_commanded_on,relay_pin_level,"
+                    "integrity_key_id,integrity_tag,received_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                    "UTC_TIMESTAMP(3))",
+                    (target_id, collector_ref, *values),
+                )
+            else:
+                cur.execute(
+                    "UPDATE target_access_status_highwater SET collector_target_ref=%s,source_boot_id=%s,"
+                    "source_boot_count=%s,status_revision=%s,gate_state=%s,"
+                    "last_terminal_session_id=%s,last_terminal_event_sequence=%s,"
+                    "last_terminal_event_code=%s,last_terminal_reason_code=%s,"
+                    "last_terminal_credential_ref=%s,last_terminal_phase_mask=%s,"
+                    "relay_commanded_on=%s,relay_pin_level=%s,integrity_key_id=%s,"
+                    "integrity_tag=%s,received_at=UTC_TIMESTAMP(3) "
+                    "WHERE target_id=%s",
+                    (collector_ref, *values, target_id),
+                )
+        conn.commit()
+        return {
+            **status_value,
+            "advanced": True,
+            "boot_refresh_outcome": boot_refresh_outcome,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        log.warning("[MQTT-STATUS] authenticated status persistence unavailable")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+class _TargetGateStateRegistry:
+    """Keep only DB-advanced, HMAC-verified Target status in process memory."""
+
+    _allowed = _ACCESS_GATE_STATES
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._states: dict[str, tuple[dict, float]] = {}
+
+    def note_verified(self, target_id: str, status_value: dict) -> bool:
+        if (
+            not isinstance(status_value, dict)
+            or not status_value.get("advanced", False)
+            or status_value.get("target_id") != target_id
+            or status_value.get("state") not in self._allowed
+            or re.fullmatch(
+                r"[0-9a-f]{32}", str(status_value.get("source_boot_id") or "")
+            )
+            is None
+        ):
+            return False
+        stored = dict(status_value)
+        stored.pop("integrity_tag", None)
+        stored.pop("integrity_key_id", None)
+        stored.pop("advanced", None)
+        with self._lock:
+            self._states[target_id] = (stored, time.monotonic())
+        return True
+
+    def live_evidence(
+        self,
+        target_id: str,
+        max_age_seconds: float = ACCESS_STATUS_MAX_AGE_SECONDS,
+    ) -> dict | None:
+        now = time.monotonic()
+        with self._lock:
+            value = self._states.get(target_id)
+            if value is None or now < value[1] or now - value[1] > max_age_seconds:
+                return None
+            return dict(value[0])
+
+    def live_snapshot(
+        self,
+        target_id: str,
+        max_age_seconds: float = ACCESS_STATUS_MAX_AGE_SECONDS,
+    ) -> tuple[str, str] | None:
+        value = self.live_evidence(target_id, max_age_seconds)
+        if value is None:
+            return None
+        return str(value["state"]), str(value["source_boot_id"])
+
+    def live_state(
+        self,
+        target_id: str,
+        max_age_seconds: float = ACCESS_STATUS_MAX_AGE_SECONDS,
+    ) -> str | None:
+        snapshot = self.live_snapshot(target_id, max_age_seconds)
+        return snapshot[0] if snapshot is not None else None
+
+    def clear(self) -> None:
+        with self._lock:
+            self._states.clear()
+
+    def clear_target(self, target_id: str) -> None:
+        with self._lock:
+            self._states.pop(target_id, None)
+
+
+_target_gate_states = _TargetGateStateRegistry()
+
+
+class _BridgeAvailabilityExpiry:
+    """Publish retained offline when signed Target status stops refreshing."""
+
+    def __init__(
+        self,
+        delay_seconds: float,
+        publish_offline,
+        timer_factory=threading.Timer,
+    ) -> None:
+        if not 1.0 <= delay_seconds <= 120.5:
+            raise ValueError("availability expiry must be 1..120.5 seconds")
+        self._delay_seconds = delay_seconds
+        self._publish_offline = publish_offline
+        self._timer_factory = timer_factory
+        self._lock = threading.Lock()
+        self._generation = 0
+        self._timer = None
+        self._stopped = False
+
+    def arm(self) -> bool:
+        """Replace the prior expiry after one newly verified status."""
+
+        with self._lock:
+            if self._stopped:
+                return False
+            self._generation += 1
+            generation = self._generation
+            if self._timer is not None:
+                self._timer.cancel()
+            timer = self._timer_factory(
+                self._delay_seconds,
+                lambda: self._expire(generation),
+            )
+            timer.daemon = True
+            self._timer = timer
+            try:
+                timer.start()
+            except Exception:
+                timer.cancel()
+                self._timer = None
+                return False
+            return True
+
+    def reset(self) -> None:
+        """Cancel an armed expiry while allowing a later reconnect to re-arm."""
+
+        with self._lock:
+            self._generation += 1
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+
+    def stop(self) -> None:
+        with self._lock:
+            self._stopped = True
+            self._generation += 1
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+
+    def _expire(self, generation: int) -> None:
+        # Keep the lock through the non-blocking Paho publish. A concurrent
+        # fresh-status arm therefore cannot be overwritten by an older timer.
+        with self._lock:
+            if self._stopped or generation != self._generation:
+                return
+            self._timer = None
+            try:
+                self._publish_offline()
+            except Exception:
+                log.exception("[MQTT-HA] availability expiry publish failed")
+
+
+class _AuthenticatedTargetStatusWorker:
+    """Verify and persist status away from the MQTT callback thread."""
+
+    def __init__(
+        self,
+        persist=_persist_authenticated_target_status,
+        registry: _TargetGateStateRegistry = _target_gate_states,
+        on_verified=None,
+        health=None,
+        capacity: int = 32,
+    ) -> None:
+        self._persist = persist
+        self._registry = registry
+        self._on_verified = on_verified
+        self._health = health
+        self._queue: queue.Queue[
+            tuple[str, bytes, bool, int] | None
+        ] = queue.Queue(maxsize=capacity)
+        self._stopping = threading.Event()
+        self._started = False
+        self._lock = threading.Lock()
+        self._transport_lock = threading.Lock()
+        self._transport_generation = 0
+        self._transport_connected = False
+        self._thread = threading.Thread(
+            target=self._run,
+            name="authenticated-target-status-writer",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        with self._lock:
+            if not self._started:
+                self._thread.start()
+                self._started = True
+
+    def connect_transport(self) -> int:
+        """Start a new MQTT connection generation for live status effects."""
+
+        with self._transport_lock:
+            self._transport_generation += 1
+            self._transport_connected = True
+            return self._transport_generation
+
+    def disconnect_transport(self) -> None:
+        """Invalidate queued/in-flight live effects before registries clear."""
+
+        with self._transport_lock:
+            self._transport_connected = False
+            self._transport_generation += 1
+
+    def invalidate_live_effects(self) -> None:
+        """Drop older queued effects while keeping the subscriber connected."""
+
+        with self._transport_lock:
+            self._transport_generation += 1
+
+    def request(self, target_id: str, payload: bytes, retained: bool) -> bool:
+        if self._stopping.is_set():
+            return False
+        with self._transport_lock:
+            if not self._transport_connected:
+                return False
+            generation = self._transport_generation
+        self.start()
+        try:
+            self._queue.put_nowait((target_id, payload, retained, generation))
+            return True
+        except queue.Full:
+            with self._transport_lock:
+                if (
+                    self._health is not None
+                    and self._transport_connected
+                    and generation == self._transport_generation
+                ):
+                    self._health.note_writer_result(False)
+            return False
+
+    def _run(self) -> None:
+        while True:
+            item = self._queue.get()
+            try:
+                if item is None:
+                    return
+                target_id, payload, retained, generation = item
+                stored = self._persist(target_id, payload, retained=retained)
+                if stored is False:
+                    log.warning("[MQTT-STATUS] authenticated status was not stored")
+                elif stored is None:
+                    log.warning("[MQTT-STATUS] rejected authenticated status")
+                if stored is not None:
+                    # Keep health and live effects on the same transport
+                    # generation. A status that began on an older connection
+                    # cannot prove key agreement or clear a writer failure for
+                    # a newly established connection.
+                    with self._transport_lock:
+                        if (
+                            self._transport_connected
+                            and generation == self._transport_generation
+                        ):
+                            if self._health is not None:
+                                self._health.note_writer_result(
+                                    isinstance(stored, dict)
+                                )
+                                if isinstance(stored, dict):
+                                    self._health.note_verified_evidence()
+                            if not (
+                                isinstance(stored, dict)
+                                and stored.get("advanced", False)
+                            ):
+                                continue
+                            try:
+                                self._registry.note_verified(target_id, stored)
+                                if self._on_verified is not None:
+                                    self._on_verified(target_id, payload, stored)
+                            except Exception:
+                                if self._health is not None:
+                                    self._health.note_writer_result(False)
+                                log.exception(
+                                    "[MQTT-STATUS] verified status side effect failed"
+                                )
+            finally:
+                self._queue.task_done()
+            if self._stopping.is_set():
+                return
+
+    def stop(self) -> None:
+        self._stopping.set()
+        self.disconnect_transport()
+        if not self._started:
+            return
+        try:
+            self._queue.put_nowait(None)
+        except queue.Full:
+            pass
+        self._thread.join(timeout=6.0)
+
+    @property
+    def healthy(self) -> bool:
+        return not self._stopping.is_set() and (
+            not self._started or self._thread.is_alive()
+        )
+
+
+_authenticated_target_status_worker: _AuthenticatedTargetStatusWorker | None = None
 
 
 def _start_target_boot_subscriber():
-    global _canonical_access_event_worker
+    global _canonical_access_event_worker, _authenticated_target_status_worker
     event_topics = {
         _canonical_target_event_topic(target_id)
         for target_id in _configured_target_ids()
     }
+    status_topics = {
+        target_status_topic(target_id) for target_id in _configured_target_ids()
+    }
     _canonical_access_collector_health.configure(event_topics)
+    _authenticated_status_collector_health.configure(
+        status_topics,
+        require_verified_evidence=ACCESS_SIGNED_STATUS_READINESS_REQUIRED,
+    )
     _canonical_access_event_worker = None
+    _authenticated_target_status_worker = None
     if _command_provisioning_error() is not None or not HAS_PAHO_MQTT:
         return None
     bridge = None
@@ -1119,6 +2511,19 @@ def _start_target_boot_subscriber():
             qos=1,
             retain=True,
         )
+    availability_expiry = (
+        _BridgeAvailabilityExpiry(
+            HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS,
+            lambda: client.publish(
+                bridge_availability_topic(COMMAND_TARGET_ID),
+                "offline",
+                qos=1,
+                retain=True,
+            ),
+        )
+        if bridge is not None
+        else None
+    )
 
     def publish_bridge_result(connected_client, result: dict) -> None:
         connected_client.publish(
@@ -1147,6 +2552,54 @@ def _start_target_boot_subscriber():
     )
     _canonical_access_event_worker = event_worker
 
+    def accept_verified_status(
+        target_id: str, _payload: bytes, stored: dict
+    ) -> None:
+        """Apply live side effects only after signed DB high-water advances."""
+
+        if stored.get("boot_refresh_outcome") is BootRefreshOutcome.ADVANCED:
+            _request_target_acl_refresh(target_id, "target_boot")
+        if bridge is None or not secrets.compare_digest(
+            target_id, COMMAND_TARGET_ID
+        ):
+            return
+        projection = _verified_home_assistant_status_projection(
+            target_id, stored
+        )
+        if projection is None or not bridge.note_status(
+            target_status_topic(target_id), projection
+        ):
+            log.warning("[MQTT-HA] rejected verified Target status")
+            return
+        expiry_armed = bool(
+            availability_expiry is not None and availability_expiry.arm()
+        )
+        if not expiry_armed:
+            log.warning("[MQTT-HA] signed-status availability expiry unavailable")
+        client.publish(
+            bridge_verified_status_topic(COMMAND_TARGET_ID),
+            projection,
+            qos=1,
+            retain=False,
+        )
+        client.publish(
+            bridge_availability_topic(COMMAND_TARGET_ID),
+            (
+                "online"
+                if expiry_armed and bridge_boot_is_aligned()
+                else "offline"
+            ),
+            qos=1,
+            retain=True,
+        )
+
+    status_worker = _AuthenticatedTargetStatusWorker(
+        persist=_persist_authenticated_target_status,
+        on_verified=accept_verified_status,
+        health=_authenticated_status_collector_health,
+    )
+    _authenticated_target_status_worker = status_worker
+
     def on_connect(connected_client, _userdata, _flags, reason_code, *args):
         # MQTT v5 in paho-mqtt 1.6.1 passes a ReasonCodes object here.  It
         # deliberately supports comparison with integer reason codes but does
@@ -1154,7 +2607,10 @@ def _start_target_boot_subscriber():
         # thread before subscriptions or HA discovery can be published.
         if reason_code == 0:
             _canonical_access_collector_health.begin_connection()
+            _authenticated_status_collector_health.begin_connection()
             _target_acl_delivery_tracker.reset_transport()
+            _target_gate_states.clear()
+            status_worker.connect_transport()
             status_target_ids = _configured_target_ids()
             for target_id in sorted(status_target_ids):
                 connected_client.subscribe(
@@ -1174,10 +2630,16 @@ def _start_target_boot_subscriber():
                     )
 
             for target_id in sorted(status_target_ids):
-                connected_client.subscribe(target_status_topic(target_id), qos=1)
+                status_topic = target_status_topic(target_id)
+                subscription = connected_client.subscribe(status_topic, qos=1)
+                _authenticated_status_collector_health.track_subscription(
+                    status_topic, subscription
+                )
 
             if bridge is None:
                 return
+            if availability_expiry is not None:
+                availability_expiry.reset()
             bridge.reset_transport()
             connected_client.subscribe(
                 target_availability_topic(COMMAND_TARGET_ID), qos=1
@@ -1204,14 +2666,27 @@ def _start_target_boot_subscriber():
                 )
         else:
             _canonical_access_collector_health.disconnect()
+            _authenticated_status_collector_health.disconnect()
+            status_worker.disconnect_transport()
+            _target_gate_states.clear()
+            if availability_expiry is not None:
+                availability_expiry.reset()
 
     def on_subscribe(
         _connected_client, _userdata, message_id, granted_qos, *args
     ):
         _canonical_access_collector_health.acknowledge(message_id, granted_qos)
+        _authenticated_status_collector_health.acknowledge(
+            message_id, granted_qos
+        )
 
     def on_disconnect(_connected_client, _userdata, _reason_code, *args):
         _canonical_access_collector_health.disconnect()
+        _authenticated_status_collector_health.disconnect()
+        status_worker.disconnect_transport()
+        _target_gate_states.clear()
+        if availability_expiry is not None:
+            availability_expiry.reset()
 
     def on_message(connected_client, _userdata, message):
         payload = bytes(message.payload)
@@ -1250,15 +2725,9 @@ def _start_target_boot_subscriber():
             if boot_target_id is None or bool(getattr(message, "retain", False)):
                 log.warning("[MQTT-BOOT] rejected boot refresh")
                 return
-            refresh_outcome = (
-                _target_boot_registry.refresh_outcome_from_authenticated_topic(
-                    message.topic, payload
-                )
-            )
-            if refresh_outcome is BootRefreshOutcome.REJECTED:
-                log.warning("[MQTT-BOOT] rejected boot refresh")
-            elif refresh_outcome is BootRefreshOutcome.ADVANCED:
-                _request_target_acl_refresh(boot_target_id, "target_boot")
+            # MQTT does not expose publisher identity to subscribers.  This
+            # legacy boot document is therefore advisory only; durable boot
+            # authority advances exclusively through a signed status envelope.
             return
         if message.topic.endswith("/acl/ack"):
             ack = parse_target_acl_ack(
@@ -1315,30 +2784,12 @@ def _start_target_boot_subscriber():
         )
         if status_target_id is not None:
             retained = bool(getattr(message, "retain", False))
-            refresh_outcome = (
-                _target_boot_registry.refresh_outcome_from_authenticated_status_topic(
-                    message.topic, payload, retained=retained
-                )
-            )
-            if refresh_outcome is BootRefreshOutcome.REJECTED:
-                log.warning("[MQTT-BOOT] rejected status boot refresh")
-                return
-            if refresh_outcome is BootRefreshOutcome.ADVANCED:
-                _request_target_acl_refresh(status_target_id, "target_boot")
-            if bridge is None or not secrets.compare_digest(
-                status_target_id, COMMAND_TARGET_ID
+            if (
+                retained
+                or not 1 <= len(payload) <= 8192
+                or not status_worker.request(status_target_id, payload, retained)
             ):
-                return
-            if not bridge.note_status(message.topic, payload):
-                log.warning("[MQTT-HA] rejected malformed Target status")
-                return
-            online = bridge_boot_is_aligned()
-            connected_client.publish(
-                bridge_availability_topic(COMMAND_TARGET_ID),
-                "online" if online else "offline",
-                qos=1,
-                retain=True,
-            )
+                log.warning("[MQTT-STATUS] authenticated status queue unavailable")
             return
         if bridge is None:
             return
@@ -1348,11 +2799,16 @@ def _start_target_boot_subscriber():
                 return
             state = bridge.note_target_availability(message.topic, payload)
             if state is not None:
+                # Raw Target availability is an unauthenticated LWT on the
+                # current broker.  Treat it only as a prompt to re-evaluate
+                # signed-status freshness; never let it invalidate verified
+                # mobile readiness or force HA offline while that status is
+                # still fresh.
                 connected_client.publish(
                     bridge_availability_topic(COMMAND_TARGET_ID),
                     (
                         "online"
-                        if state == "online" and bridge_boot_is_aligned()
+                        if bridge_boot_is_aligned()
                         else "offline"
                     ),
                     qos=1,
@@ -1428,7 +2884,9 @@ def _start_target_boot_subscriber():
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
     client.loop_start()
     client._sgk_ha_bridge = bridge
+    client._sgk_ha_availability_expiry = availability_expiry
     client._sgk_access_event_worker = event_worker
+    client._sgk_authenticated_status_worker = status_worker
     return client
 
 
@@ -1646,6 +3104,11 @@ async def lifespan(app: FastAPI):
         if acl_refresh_worker is not None:
             acl_refresh_worker.stop()
         if boot_subscriber is not None:
+            availability_expiry = getattr(
+                boot_subscriber, "_sgk_ha_availability_expiry", None
+            )
+            if availability_expiry is not None:
+                availability_expiry.stop()
             if getattr(boot_subscriber, "_sgk_ha_bridge", None) is not None:
                 try:
                     boot_subscriber.publish(
@@ -1663,6 +3126,11 @@ async def lifespan(app: FastAPI):
             )
             if access_event_worker is not None:
                 access_event_worker.stop()
+            authenticated_status_worker = getattr(
+                boot_subscriber, "_sgk_authenticated_status_worker", None
+            )
+            if authenticated_status_worker is not None:
+                authenticated_status_worker.stop()
             _canonical_access_collector_health.disconnect()
         if _mqtt_publisher is not None:
             _mqtt_publisher.close()
@@ -1684,12 +3152,17 @@ _control_proposals: dict[str, dict] = {}
 _control_proposals_lock = threading.Lock()
 _ops_metrics = OperationalMetrics()
 _ops_rate_limiter = SlidingWindowRateLimiter(limit=30, window_seconds=60, max_keys=4096)
+_access_status_rate_limiter = SlidingWindowRateLimiter(
+    limit=40, window_seconds=60, max_keys=4096
+)
 _ops_hmac_key = OPS_HMAC_KEY if len(OPS_HMAC_KEY) >= 32 else secrets.token_bytes(32)
 
 
 def _route_group(path: str) -> str:
     if path.startswith("/api/v1/admin/control") or path == "/api/v1/door/open":
         return "control"
+    if path == "/api/v1/acl/personal/activity":
+        return "access_status"
     if path in {"/api/v1/door/prearm", "/api/v1/auth/verify"}:
         return "authentication"
     if path.startswith("/api/v1/admin/privacy"):
@@ -1722,9 +3195,19 @@ async def deny_by_default_admin_routes(request: Request, call_next):
     started = time.monotonic()
     path = request.url.path
     route_group = _route_group(path)
-    if route_group in {"control", "authentication", "privacy"}:
+    if route_group in {
+        "control",
+        "authentication",
+        "privacy",
+        "access_status",
+    }:
         peer_ref = _rate_limit_identity(request)
-        allowed, retry_after = _ops_rate_limiter.allow(f"{route_group}:{peer_ref}")
+        limiter = (
+            _access_status_rate_limiter
+            if route_group == "access_status"
+            else _ops_rate_limiter
+        )
+        allowed, retry_after = limiter.allow(f"{route_group}:{peer_ref}")
         if not allowed:
             _ops_metrics.event("rate_limit", route_group)
             return JSONResponse(
@@ -1752,7 +3235,12 @@ async def deny_by_default_admin_routes(request: Request, call_next):
     status_class = f"{response.status_code // 100}xx"
     _ops_metrics.request(route_group, status_class, time.monotonic() - started)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Cache-Control"] = "no-store" if route_group in {"control", "authentication", "privacy"} else "no-cache"
+    response.headers["Cache-Control"] = (
+        "no-store"
+        if route_group in {"control", "authentication", "privacy", "access_status"}
+        or path.startswith("/api/v1/admin/")
+        else "no-cache"
+    )
     return response
 
 
@@ -1975,6 +3463,7 @@ if ACL_MANAGEMENT_ENABLED:
                         personal_api_key=GATEKEEPER_API_KEY,
                         personal_tenant_id=ACL_PERSONAL_TENANT_ID,
                         personal_door_id=ACL_PERSONAL_DOOR_ID,
+                        personal_access_session=_personal_access_session,
                     ),
                 )
             )
@@ -2382,6 +3871,15 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         "control_api_auth": len(GATEKEEPER_API_KEY) >= 32,
         "admin_auth": admin_security.browser_login_ready,
         "acl_management": bool(ACL_MANAGEMENT_ENABLED and _acl_runtime_ready),
+        "access_actor_ref": bool(
+            ACCESS_EVENT_REF_KEYS and ACL_PERSONAL_DOOR_ID
+        ),
+        "access_evidence_integrity": bool(
+            ACCESS_EVENT_REF_KEYS
+            and ACL_PERSONAL_DOOR_ID
+            and TARGET_RELAY_OFF_PIN_LEVEL in (0, 1)
+            and 1.0 <= ACCESS_STATUS_MAX_AGE_SECONDS <= 10.0
+        ),
         "legacy_prearm_retired": not _legacy_prearm_authority_enabled(),
         "build_identity": bool(re.fullmatch(r"[a-f0-9]{40}", BUILD_SHA)),
     }
@@ -2422,6 +3920,12 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         )
         if not checks["access_event_collector"]:
             _ops_metrics.event("readiness", "access_event_collector_failed")
+        checks["access_evidence_integrity"] = bool(
+            checks["access_evidence_integrity"]
+            and _authenticated_status_collector_health.ready(
+                _authenticated_target_status_worker
+            )
+        )
     return all(checks.values()), checks
 
 
@@ -3497,11 +5001,13 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "l.distance_mm,l.failure_reason,l.created_at,NULL AS event_id,"
     "NULL AS session_id,NULL AS source_component,"
     "NULL AS source_instance_id,NULL AS source_boot_id,"
-    "NULL AS source_sequence,NULL AS event_attempt,NULL AS event_code,"
+    "NULL AS source_boot_count,NULL AS source_sequence,NULL AS event_attempt,NULL AS event_code,"
     "NULL AS event_stage,NULL AS event_outcome,NULL AS reason_code,"
     "NULL AS causation_event_id,NULL AS target_ref,NULL AS event_path,"
     "NULL AS event_transport,NULL AS monotonic_ms,NULL AS clock_quality,"
-    "NULL AS collector_target_ref,NULL AS received_at FROM access_logs l "
+    "NULL AS collector_target_ref,NULL AS collector_target_id,"
+    "NULL AS credential_ref,NULL AS integrity_status,NULL AS phase_mask,"
+    "NULL AS received_at FROM access_logs l "
     "LEFT JOIN tenants t ON t.id=l.tenant_id "
     "UNION ALL "
     "SELECT 'canonical' AS record_kind,e.id,NULL AS tenant_id,"
@@ -3509,10 +5015,41 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "NULL AS is_success,e.distance_mm,NULL AS failure_reason,"
     "e.received_at AS created_at,e.event_id,e.session_id,"
     "e.source_component,e.source_instance_id,e.source_boot_id,"
-    "e.source_sequence,e.event_attempt,e.event_code,e.event_stage,"
+    "e.source_boot_count,e.source_sequence,e.event_attempt,e.event_code,e.event_stage,"
     "e.event_outcome,e.reason_code,e.causation_event_id,e.target_ref,"
     "e.event_path,e.event_transport,e.monotonic_ms,e.clock_quality,"
-    "e.collector_target_ref,e.received_at FROM access_event_history e"
+    "e.collector_target_ref,e.collector_target_id,e.credential_ref,"
+    "e.integrity_status,NULL AS phase_mask,e.received_at "
+    "FROM access_event_history e "
+    "UNION ALL "
+    "SELECT 'terminal_summary' AS record_kind,s.id,NULL AS tenant_id,"
+    "NULL AS tenant_name,NULL AS unit_number,'LOCAL_GATT_SUMMARY' AS auth_method,"
+    "(s.event_code='ACCESS_SESSION_COMPLETED' AND "
+    "(s.phase_mask & 31)=31 AND (s.phase_mask & 32)=0) AS is_success,"
+    "NULL AS distance_mm,CASE "
+    "WHEN (s.phase_mask & 32)=32 THEN "
+    "'Target signed failsafe terminal summary; physical door unconfirmed' "
+    "WHEN s.event_code='ACCESS_SESSION_COMPLETED' AND (s.phase_mask & 31)<>31 "
+    "THEN 'Target signed incomplete-phase summary; success not established' "
+    "ELSE 'Target signed terminal summary; individual QoS0 events may be missing' "
+    "END AS failure_reason,s.received_at AS created_at,NULL AS event_id,s.session_id,"
+    "'target' AS source_component,NULL AS source_instance_id,s.source_boot_id,"
+    "s.source_boot_count,s.terminal_event_sequence AS source_sequence,"
+    "1 AS event_attempt,s.event_code,'COMPLETE' AS event_stage,"
+    "CASE WHEN s.event_code='ACCESS_SESSION_COMPLETED' "
+    "AND (s.phase_mask & 31)=31 AND (s.phase_mask & 32)=0 THEN 'SUCCEEDED' "
+    "ELSE 'FAILED' END AS event_outcome,s.reason_code,"
+    "NULL AS causation_event_id,NULL AS target_ref,'local_gatt' AS event_path,"
+    "'signed_status' AS event_transport,NULL AS monotonic_ms,"
+    "'SIGNED_SUMMARY' AS clock_quality,s.collector_target_ref,s.target_id,"
+    "s.credential_ref,'verified' AS integrity_status,s.phase_mask,s.received_at "
+    "FROM access_terminal_summary s WHERE NOT EXISTS ("
+    "SELECT 1 FROM access_event_history e WHERE "
+    "e.collector_target_id=s.target_id AND "
+    "e.source_boot_id=s.source_boot_id AND "
+    "e.source_sequence=s.terminal_event_sequence AND "
+    "e.integrity_status='verified' AND "
+    "e.event_code IN ('ACCESS_SESSION_COMPLETED','ACCESS_SESSION_TERMINATED'))"
     ") AS history ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s"
 )
 _ADMIN_ACCESS_TODAY_COUNT_SQL = (
@@ -3522,11 +5059,29 @@ _ADMIN_ACCESS_TODAY_COUNT_SQL = (
     "AND created_at < DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) "
     "+ INTERVAL 15 HOUR"
     ") + ("
-    "SELECT COUNT(DISTINCT session_id) FROM access_event_history "
+    "SELECT COUNT(DISTINCT collector_target_id,session_id) "
+    "FROM access_event_history "
     "WHERE received_at >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) "
     "- INTERVAL 9 HOUR AND received_at < "
-    "DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) + INTERVAL 15 HOUR"
-    ") AS total"
+    "DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) + INTERVAL 15 HOUR "
+    "AND integrity_status='verified'"
+    ") + ("
+    "SELECT COUNT(*) FROM access_terminal_summary s WHERE s.received_at >= "
+    "DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) - INTERVAL 9 HOUR "
+    "AND s.received_at < DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) + INTERVAL 15 HOUR "
+    "AND NOT EXISTS (SELECT 1 FROM access_event_history e "
+    "WHERE e.collector_target_id=s.target_id AND e.session_id=s.session_id "
+    "AND e.integrity_status='verified' "
+    "AND e.received_at >= "
+    "DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) - INTERVAL 9 HOUR "
+    "AND e.received_at < DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) + INTERVAL 15 HOUR)"
+    ") AS total,(SELECT COUNT(DISTINCT "
+    "COALESCE(collector_target_id,collector_target_ref),session_id) "
+    "FROM access_event_history "
+    "WHERE received_at >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) "
+    "- INTERVAL 9 HOUR AND received_at < "
+    "DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) + INTERVAL 15 HOUR "
+    "AND integrity_status<>'verified') AS legacy_unsigned_total"
 )
 
 
@@ -3546,7 +5101,19 @@ def get_all_access_events_admin(
                 (limit, offset),
             )
             rows = cur.fetchall()
+            cur.execute(
+                "SELECT name,unit_number,credential_id FROM tenants "
+                "WHERE credential_id IS NOT NULL ORDER BY id ASC"
+            )
+            actor_candidates = cur.fetchall()
+            _resolve_admin_access_actors(rows, actor_candidates)
             for row in rows:
+                session_id = row.pop("session_id", None)
+                row["session_ref"] = (
+                    opaque_ref(session_id, _ops_hmac_key, "admin-access-session")
+                    if session_id
+                    else None
+                )
                 for time_field in ("created_at", "received_at"):
                     if isinstance(row.get(time_field), datetime):
                         row[time_field] = row[time_field].isoformat() + "Z"
@@ -3558,6 +5125,9 @@ def get_all_access_events_admin(
         return {
             "events": rows,
             "today_total": int((count or {}).get("total", 0)),
+            "today_legacy_unsigned_total": int(
+                (count or {}).get("legacy_unsigned_total", 0)
+            ),
         }
     except Exception as exc:
         log.error("[ADMIN-DB] global access-event query unavailable")

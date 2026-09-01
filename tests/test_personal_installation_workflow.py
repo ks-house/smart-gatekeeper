@@ -28,6 +28,7 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
         "SECRET_TARGET_TENANT_ID", "SECRET_TARGET_DOOR_ID",
         "SECRET_COMMAND_SIGNER_PUBLIC_KEY_HEX",
         "SECRET_HARDWARELESS_DOOR_ID_HEX",
+        "SECRET_ACCESS_EVENT_REF_KEY_HEX", "SECRET_ACCESS_EVENT_REF_KEY_ID",
         "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX", "SECRET_ACL_SIGNING_KEY_ID",
         "SECRET_OTA_VERSION_URL",
         "SECRET_OTA_FIRMWARE_URL", "SECRET_LOCAL_RECOVERY_AP_PASSWORD",
@@ -53,6 +54,24 @@ class PersonalInstallationWorkflowTests(unittest.TestCase):
     self.assertIn(
         '#define SECRET_ACL_SIGNER_PUBLIC_KEY_HEX '
         '"${SECRET_ACL_SIGNER_PUBLIC_KEY_HEX}"',
+        self.raw,
+    )
+    self.assertIn(
+        '[[ "$SECRET_ACCESS_EVENT_REF_KEY_HEX" =~ ^[0-9a-f]{64}$ ]]',
+        self.raw,
+    )
+    self.assertIn(
+        '[[ "$SECRET_ACCESS_EVENT_REF_KEY_ID" =~ ^[a-z0-9]{1,4}$ ]]',
+        self.raw,
+    )
+    self.assertIn(
+        '#define SECRET_ACCESS_EVENT_REF_KEY_HEX '
+        '"${SECRET_ACCESS_EVENT_REF_KEY_HEX}"',
+        self.raw,
+    )
+    self.assertIn(
+        '#define SECRET_ACCESS_EVENT_REF_KEY_ID '
+        '"${SECRET_ACCESS_EVENT_REF_KEY_ID}"',
         self.raw,
     )
     self.assertIn(

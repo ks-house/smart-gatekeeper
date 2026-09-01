@@ -115,10 +115,18 @@ class OperationsApiTest(unittest.TestCase):
             main, "ACL_MANAGEMENT_ENABLED", True
         ), patch.object(main, "_acl_runtime_ready", True), patch.object(
             main, "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", False
+        ), patch.object(
+            main, "ACCESS_EVENT_REF_KEYS", {"k1": b"r" * 32}
+        ), patch.object(
+            main, "ACL_PERSONAL_DOOR_ID", "1" * 32
         ), patch.object(main, "EXPECTED_DB_SCHEMA_VERSION", "008"), patch.object(
             main, "EXPECTED_DB_SCHEMA_SHA256", "f" * 64
         ), patch.object(
             main._canonical_access_collector_health, "ready", return_value=True
+        ), patch.object(
+            main._authenticated_status_collector_health,
+            "ready",
+            return_value=True,
         ):
             ready = self.client.get("/ready")
         self.assertEqual(200, ready.status_code, ready.text)

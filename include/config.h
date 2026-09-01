@@ -30,6 +30,15 @@ constexpr uint16_t    MQTT_PORT     = SECRET_MQTT_PORT;
 constexpr const char* MQTT_USER     = SECRET_MQTT_USER;
 constexpr const char* MQTT_PASSWORD = SECRET_MQTT_PASSWORD;
 
+// PubSubClient is deliberately not serviced while local authentication,
+// ranging, relay hold or cooldown owns the loop.  All user-configurable access
+// timings are bounded below, so this keepalive remains strictly longer than
+// the longest normal access-critical interval without moving socket I/O back
+// onto the sensor/relay path.
+constexpr uint16_t MQTT_KEEP_ALIVE_SECONDS = 120;
+constexpr uint32_t ACCESS_CRITICAL_STATUS_GRACE_MS = 90000;
+constexpr uint32_t GATT_AUTH_PENDING_TIMEOUT_MS = 5000;
+
 // A production Target uses one broker principal and one exact topic namespace.
 // The broker ACL maps that principal to gatekeeper/v1/targets/<target-id>/#.
 #ifndef SECRET_TARGET_TENANT_ID
@@ -116,6 +125,19 @@ constexpr const char* GATEKEEPER_BEACON_UUID = "a1b2c3d4-e5f6-7890-abcd-ef123456
 constexpr const char* HARDWARELESS_DOOR_ID_HEX =
     SECRET_HARDWARELESS_DOOR_ID_HEX;
 
+// Optional, dedicated HMAC key for pseudonymous access-event attribution.
+// This key has a separate rotation domain from API/MQTT/OTA credentials.
+// Empty or invalid provisioning preserves the v1 actorless event contract.
+#ifndef SECRET_ACCESS_EVENT_REF_KEY_HEX
+#define SECRET_ACCESS_EVENT_REF_KEY_HEX ""
+#endif
+#ifndef SECRET_ACCESS_EVENT_REF_KEY_ID
+#define SECRET_ACCESS_EVENT_REF_KEY_ID ""
+#endif
+constexpr const char* ACCESS_EVENT_REF_KEY_HEX =
+    SECRET_ACCESS_EVENT_REF_KEY_HEX;
+constexpr const char* ACCESS_EVENT_REF_KEY_ID = SECRET_ACCESS_EVENT_REF_KEY_ID;
+
 // Hardwareless RC Connectable GATT Service 및 Characteristic UUIDs
 constexpr const char* HARDWARELESS_SERVICE_UUID     = "9f4d1000-7d9e-4fb1-9c54-6f4d53474b31";
 constexpr const char* HARDWARELESS_CHAR_HELLO_UUID  = "9f4d1001-7d9e-4fb1-9c54-6f4d53474b31";
@@ -129,7 +151,9 @@ constexpr uint32_t BLE_ADV_INTERVAL_MS = 100;
 // Signed arm command behavior after per-Target authorization.
 // MQTT arm 메시지 수신 후 초음파 센서를 활성화해 둘 유효 시간 (60초)
 // 이 시간 내에 초음파 접근 감지가 없으면 자동으로 IDLE 복귀
-constexpr uint32_t PRE_ARM_DURATION_MS = 60000;
+constexpr uint32_t PRE_ARM_MIN_DURATION_MS = 1000;
+constexpr uint32_t PRE_ARM_MAX_DURATION_MS = 60000;
+constexpr uint32_t PRE_ARM_DURATION_MS = PRE_ARM_MAX_DURATION_MS;
 
 
 // ─── AJ-SR04T (JSN-SR04T) 방수 초음파 센서 핀 매핑 ─────────────────
@@ -152,10 +176,25 @@ constexpr uint16_t DEFAULT_DISTANCE_THRESHOLD_CM = 50;
 // 릴레이 ON 유지 시간 (1초)
 constexpr uint32_t RELAY_HOLD_MS        = 1000;
 constexpr uint32_t RELAY_ON_DURATION_MS = RELAY_HOLD_MS;
+// The esp_timer cutoff at RELAY_HOLD_MS is a normal completion. Only a missed
+// timer plus a blocked main loop beyond this extra grace is classified as the
+// independent relay failsafe.
+constexpr uint32_t RELAY_FAILSAFE_GRACE_MS = 250;
 
 // 릴레이 작동 후 쿨다운 시간 (기본 3초, 원격 가변 조절 가능)
+constexpr uint32_t RELAY_COOLDOWN_MIN_MS = 1000;
+constexpr uint32_t RELAY_COOLDOWN_MAX_MS = 10000;
 constexpr uint32_t DEFAULT_RELAY_COOLDOWN_MS = 3000;
 extern uint32_t g_relay_cooldown_ms;
+
+static_assert(2 * GATT_AUTH_PENDING_TIMEOUT_MS + PRE_ARM_MAX_DURATION_MS +
+                  RELAY_HOLD_MS +
+                  RELAY_FAILSAFE_GRACE_MS + RELAY_COOLDOWN_MAX_MS <
+              ACCESS_CRITICAL_STATUS_GRACE_MS,
+              "replacement access timing must remain below status grace");
+static_assert(ACCESS_CRITICAL_STATUS_GRACE_MS <
+                  MQTT_KEEP_ALIVE_SECONDS * 1000UL,
+              "MQTT keepalive must outlive access-critical deferral");
 
 // 초음파 폴링 인터벌 (ARMED 상태에서만 적용)
 constexpr uint32_t ULTRASONIC_POLL_INTERVAL_MS = 100;

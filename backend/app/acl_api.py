@@ -26,6 +26,12 @@ class AclApiConfig:
     personal_api_key: str = ""
     personal_tenant_id: str = ""
     personal_door_id: str = ""
+    personal_access_session: Optional[
+        Callable[
+            [str, str, Optional[str], Optional[str], Optional[int], Optional[str]],
+            Optional[dict[str, Any]],
+        ]
+    ] = None
 
 
 class TenantRequest(BaseModel):
@@ -85,6 +91,23 @@ class PersonalStatusRequest(BaseModel):
     public_key_sec1: Optional[str] = Field(
         default=None,
         pattern=r"^04[0-9a-f]{128}$",
+    )
+
+
+class PersonalActivityRequest(PersonalStatusRequest):
+    target_session_id: Optional[str] = Field(
+        default=None,
+        pattern=(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
+            r"[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        ),
+    )
+    access_nonce: Optional[str] = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    access_expires_at: Optional[int] = Field(default=None, ge=1)
+    access_signature_raw64: Optional[str] = Field(
+        default=None, pattern=r"^[0-9a-f]{128}$"
     )
 
 
@@ -335,7 +358,7 @@ def create_acl_router(
 
     @router.post("/api/v1/acl/personal/activity")
     def personal_activity(
-        request: PersonalStatusRequest,
+        request: PersonalActivityRequest,
         x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
     ) -> dict[str, Any]:
         require_personal(x_api_key)
@@ -344,12 +367,53 @@ def create_acl_router(
                 status_code=422,
                 detail="credential identity is required",
             )
-        return _invoke(
+        access_proof = (
+            request.target_session_id,
+            request.access_nonce,
+            request.access_expires_at,
+            request.access_signature_raw64,
+        )
+        if any(value is not None for value in access_proof) and not all(
+            value is not None for value in access_proof
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="complete access session proof is required",
+            )
+        response = _invoke(
             service.personal_mobile_activity,
             config.personal_tenant_id,
             request.credential_id,
             request.public_key_sec1,
         )
+        if request.target_session_id is not None:
+            mobile_status = _invoke(
+                service.personal_mobile_status,
+                config.personal_tenant_id,
+                config.personal_door_id,
+                request.device_id,
+                request.credential_id,
+                request.public_key_sec1,
+            )
+            if not mobile_status.get("access_ready", False):
+                raise HTTPException(
+                    status_code=403,
+                    detail="credential is not ready for access session reads",
+                )
+            response["access_session"] = (
+                _invoke(
+                    config.personal_access_session,
+                    request.credential_id,
+                    request.public_key_sec1,
+                    request.target_session_id,
+                    request.access_nonce,
+                    request.access_expires_at,
+                    request.access_signature_raw64,
+                )
+                if config.personal_access_session is not None
+                else None
+            )
+        return response
 
     def admin_status_change(
         request: CredentialActionRequest,

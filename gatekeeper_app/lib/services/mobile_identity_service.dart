@@ -84,6 +84,131 @@ class MobileLifecycleEvent {
   final DateTime createdAt;
 }
 
+enum MobileAccessSessionStatus {
+  pending,
+  armed,
+  sensorDetected,
+  relayActive,
+  cooldown,
+  complete,
+  terminated,
+}
+
+class MobileAccessSession {
+  const MobileAccessSession({
+    required this.targetSessionId,
+    required this.status,
+    required this.targetFresh,
+    required this.nextAuthReady,
+    required this.backendTerminal,
+    this.eventRef,
+    this.occurredAt,
+    this.targetState,
+  });
+
+  final String targetSessionId;
+  final MobileAccessSessionStatus status;
+  final String? eventRef;
+  final DateTime? occurredAt;
+  final String? targetState;
+  final bool targetFresh;
+  final bool nextAuthReady;
+  final bool backendTerminal;
+
+  bool get isReadyComplete =>
+      backendTerminal &&
+      status == MobileAccessSessionStatus.complete &&
+      targetFresh &&
+      nextAuthReady &&
+      targetState == 'IDLE';
+
+  bool get isTerminal =>
+      (backendTerminal && status == MobileAccessSessionStatus.terminated) ||
+      isReadyComplete;
+
+  static MobileAccessSession? tryParse(
+    Map<String, dynamic> value, {
+    required String targetSessionId,
+  }) {
+    if (!isCanonicalTargetSessionId(targetSessionId)) return null;
+    final status = switch (value['status']?.toString()) {
+      'pending' => MobileAccessSessionStatus.pending,
+      'armed' => MobileAccessSessionStatus.armed,
+      'sensor_detected' => MobileAccessSessionStatus.sensorDetected,
+      'relay_active' => MobileAccessSessionStatus.relayActive,
+      'cooldown' => MobileAccessSessionStatus.cooldown,
+      'complete' => MobileAccessSessionStatus.complete,
+      'terminated' => MobileAccessSessionStatus.terminated,
+      _ => null,
+    };
+    if (status == null) return null;
+    final targetState = value['target_state']?.toString();
+    const targetStates = <String>{
+      'IDLE',
+      'AUTH_PENDING',
+      'ARMED',
+      'RELAY_HOLD',
+      'COOLDOWN',
+    };
+    final occurredAtSeconds = (value['occurred_at'] as num?)?.toInt();
+    return MobileAccessSession(
+      targetSessionId: targetSessionId.toLowerCase(),
+      status: status,
+      eventRef: value['event_ref']?.toString().trim().isNotEmpty == true
+          ? value['event_ref'].toString()
+          : null,
+      occurredAt: occurredAtSeconds == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              occurredAtSeconds * 1000,
+              isUtc: true,
+            ),
+      targetState: targetStates.contains(targetState) ? targetState : null,
+      targetFresh: value['target_fresh'] == true,
+      nextAuthReady: value['next_auth_ready'] == true,
+      backendTerminal: value['terminal'] == true,
+    );
+  }
+}
+
+class MobilePersonalActivity {
+  const MobilePersonalActivity({
+    required this.lifecycleEvents,
+    this.accessSession,
+    this.accessLookupAuthorized = true,
+    this.outcome = MobilePersonalActivityOutcome.success,
+    this.retryAfter,
+  });
+
+  final List<MobileLifecycleEvent> lifecycleEvents;
+  final MobileAccessSession? accessSession;
+  final bool accessLookupAuthorized;
+  final MobilePersonalActivityOutcome outcome;
+  final Duration? retryAfter;
+
+  static const empty = MobilePersonalActivity(lifecycleEvents: []);
+}
+
+enum MobilePersonalActivityOutcome {
+  success,
+  accessDenied,
+  rateLimited,
+  retryableFailure,
+  terminalFailure,
+}
+
+class _PersonalActivityHttpResult {
+  const _PersonalActivityHttpResult(
+    this.outcome, {
+    this.body,
+    this.retryAfter,
+  });
+
+  final MobilePersonalActivityOutcome outcome;
+  final Map<String, dynamic>? body;
+  final Duration? retryAfter;
+}
+
 /// Reads the authenticated personal identity contract. The legacy device ID is
 /// migration context only; `accessReady` is returned only for the exact native
 /// credential and signed ACL entry.
@@ -136,28 +261,99 @@ class MobileIdentityService {
     return MobileIdentityStatus.fromJson(response);
   }
 
-  Future<List<MobileLifecycleEvent>> activity() async {
-    if (_apiKey.isEmpty) return const [];
+  Future<MobilePersonalActivity> activity({String? targetSessionId}) async {
+    if (_apiKey.isEmpty) {
+      return MobilePersonalActivity(
+        lifecycleEvents: const [],
+        accessLookupAuthorized: targetSessionId == null,
+        outcome: targetSessionId == null
+            ? MobilePersonalActivityOutcome.terminalFailure
+            : MobilePersonalActivityOutcome.accessDenied,
+      );
+    }
     final body = await _identityBody();
-    if (!body.containsKey('credential_id')) return const [];
-    final response = await _post('activity', body);
-    final events = response?['events'];
-    if (events is! List) return const [];
-    return events
-        .whereType<Map>()
-        .map((raw) {
-          final value = raw.cast<String, dynamic>();
-          return MobileLifecycleEvent(
-            eventRef: value['event_ref']?.toString() ?? '',
-            type: value['type']?.toString() ?? 'unknown',
-            createdAt: DateTime.fromMillisecondsSinceEpoch(
-              ((value['created_at'] as num?)?.toInt() ?? 0) * 1000,
-              isUtc: true,
-            ),
-          );
-        })
-        .where((event) => event.eventRef.isNotEmpty)
-        .toList(growable: false);
+    if (!body.containsKey('credential_id')) {
+      return MobilePersonalActivity(
+        lifecycleEvents: const [],
+        accessLookupAuthorized: targetSessionId == null,
+        outcome: targetSessionId == null
+            ? MobilePersonalActivityOutcome.terminalFailure
+            : MobilePersonalActivityOutcome.accessDenied,
+      );
+    }
+    final exactTargetSessionId = targetSessionId?.toLowerCase();
+    var accessLookupAuthorized = exactTargetSessionId == null;
+    if (exactTargetSessionId != null &&
+        isCanonicalTargetSessionId(exactTargetSessionId)) {
+      final proof = await _native.signAccessSessionRead(exactTargetSessionId);
+      final nonce = proof['nonce']?.toString().toLowerCase();
+      final expiresAt = (proof['expiresAt'] as num?)?.toInt();
+      final signature = proof['signatureRaw64']?.toString().toLowerCase();
+      accessLookupAuthorized = proof['accepted'] == true &&
+          nonce != null &&
+          _nonceHex.hasMatch(nonce) &&
+          expiresAt != null &&
+          expiresAt > 0 &&
+          signature != null &&
+          _signatureHex.hasMatch(signature);
+      if (accessLookupAuthorized) {
+        body['target_session_id'] = exactTargetSessionId;
+        body['access_nonce'] = nonce;
+        body['access_expires_at'] = expiresAt;
+        body['access_signature_raw64'] = signature;
+      }
+    }
+    final httpResult = await _postActivity(body);
+    final effectiveOutcome =
+        exactTargetSessionId != null && !accessLookupAuthorized
+            ? MobilePersonalActivityOutcome.accessDenied
+            : httpResult.outcome;
+    if (httpResult.outcome == MobilePersonalActivityOutcome.accessDenied) {
+      accessLookupAuthorized = false;
+    }
+    final response = httpResult.body;
+    if (response == null) {
+      return MobilePersonalActivity(
+        lifecycleEvents: const [],
+        accessLookupAuthorized: accessLookupAuthorized,
+        outcome: effectiveOutcome,
+        retryAfter: httpResult.retryAfter,
+      );
+    }
+    final events = response['events'];
+    final lifecycle = events is! List
+        ? const <MobileLifecycleEvent>[]
+        : events
+            .whereType<Map>()
+            .map((raw) {
+              final value = raw.cast<String, dynamic>();
+              return MobileLifecycleEvent(
+                eventRef: value['event_ref']?.toString() ?? '',
+                type: value['type']?.toString() ?? 'unknown',
+                createdAt: DateTime.fromMillisecondsSinceEpoch(
+                  ((value['created_at'] as num?)?.toInt() ?? 0) * 1000,
+                  isUtc: true,
+                ),
+              );
+            })
+            .where((event) => event.eventRef.isNotEmpty)
+            .toList(growable: false);
+    final accessRaw = response['access_session'];
+    final accessSession = accessLookupAuthorized &&
+            exactTargetSessionId != null &&
+            accessRaw is Map
+        ? MobileAccessSession.tryParse(
+            accessRaw.cast<String, dynamic>(),
+            targetSessionId: exactTargetSessionId,
+          )
+        : null;
+    return MobilePersonalActivity(
+      lifecycleEvents: lifecycle,
+      accessSession: accessSession,
+      accessLookupAuthorized: accessLookupAuthorized,
+      outcome: effectiveOutcome,
+      retryAfter: httpResult.retryAfter,
+    );
   }
 
   Future<String> requestRegistration({
@@ -221,4 +417,87 @@ class MobileIdentityService {
       return null;
     }
   }
+
+  Future<_PersonalActivityHttpResult> _postActivity(
+    Map<String, Object?> body,
+  ) async {
+    final base = _backendBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final uri = Uri.tryParse('$base/acl/personal/activity');
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      return const _PersonalActivityHttpResult(
+        MobilePersonalActivityOutcome.terminalFailure,
+      );
+    }
+    try {
+      final response = await _client
+          .post(
+            uri,
+            headers: <String, String>{
+              'Content-Type': 'application/json',
+              'X-API-KEY': _apiKey,
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        try {
+          final decoded = jsonDecode(response.body);
+          return decoded is Map<String, dynamic>
+              ? _PersonalActivityHttpResult(
+                  MobilePersonalActivityOutcome.success,
+                  body: decoded,
+                )
+              : const _PersonalActivityHttpResult(
+                  MobilePersonalActivityOutcome.terminalFailure,
+                );
+        } catch (_) {
+          return const _PersonalActivityHttpResult(
+            MobilePersonalActivityOutcome.terminalFailure,
+          );
+        }
+      }
+      if (const <int>{400, 401, 403, 422}.contains(response.statusCode)) {
+        return const _PersonalActivityHttpResult(
+          MobilePersonalActivityOutcome.accessDenied,
+        );
+      }
+      if (response.statusCode == 429) {
+        return _PersonalActivityHttpResult(
+          MobilePersonalActivityOutcome.rateLimited,
+          retryAfter: _parseRetryAfter(response.headers['retry-after']),
+        );
+      }
+      if (response.statusCode >= 500 && response.statusCode < 600) {
+        return const _PersonalActivityHttpResult(
+          MobilePersonalActivityOutcome.retryableFailure,
+        );
+      }
+      return const _PersonalActivityHttpResult(
+        MobilePersonalActivityOutcome.terminalFailure,
+      );
+    } catch (_) {
+      return const _PersonalActivityHttpResult(
+        MobilePersonalActivityOutcome.retryableFailure,
+      );
+    }
+  }
+}
+
+final RegExp _nonceHex = RegExp(r'^[0-9a-f]{64}$');
+final RegExp _signatureHex = RegExp(r'^[0-9a-f]{128}$');
+
+Duration? _parseRetryAfter(String? rawValue) {
+  final value = rawValue?.trim();
+  if (value == null || value.isEmpty) return null;
+  final deltaSeconds = int.tryParse(value);
+  if (deltaSeconds != null) {
+    return deltaSeconds < 0 ? null : Duration(seconds: deltaSeconds);
+  }
+  final retryAt = DateTime.tryParse(value)?.toUtc();
+  if (retryAt == null) return null;
+  final delay = retryAt.difference(DateTime.now().toUtc());
+  return delay.isNegative ? Duration.zero : delay;
 }

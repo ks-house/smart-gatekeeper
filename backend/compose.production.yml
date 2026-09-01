@@ -81,6 +81,10 @@ services:
       HA_BRIDGE_STATUS_MAX_AGE_SECONDS: ${HA_BRIDGE_STATUS_MAX_AGE_SECONDS:-15}
       GATEKEEPER_API_KEY_FILE: /run/secrets/api_key
       OPS_HMAC_KEY_FILE: /run/secrets/ops_hmac_key
+      ACCESS_EVENT_REF_KEYS_JSON_FILE: /run/secrets/access_event_ref_keys
+      ACCESS_STATUS_MAX_AGE_SECONDS: ${ACCESS_STATUS_MAX_AGE_SECONDS:-5}
+      ACCESS_SIGNED_STATUS_READINESS_REQUIRED: ${ACCESS_SIGNED_STATUS_READINESS_REQUIRED:-false}
+      TARGET_RELAY_OFF_PIN_LEVEL: ${TARGET_RELAY_OFF_PIN_LEVEL:-1}
       ADMIN_MTLS_IDENTITIES_JSON_FILE: /run/secrets/admin_identities
       PERSONAL_ADMIN_PASSWORD_FILE: /run/secrets/personal_admin_password
       ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:?trusted TLS proxy IPs are required}
@@ -107,6 +111,7 @@ services:
       - mqtt_ca
       - api_key
       - ops_hmac_key
+      - access_event_ref_keys
       - command_signing_scalar
       - admin_identities
       - personal_admin_password
@@ -160,6 +165,7 @@ secrets:
   mqtt_ca: {external: true}
   api_key: {external: true}
   ops_hmac_key: {external: true}
+  access_event_ref_keys: {external: true}
   command_signing_scalar: {external: true}
   admin_identities: {external: true}
   personal_admin_password: {external: true}

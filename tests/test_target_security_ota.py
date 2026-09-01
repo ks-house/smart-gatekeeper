@@ -89,7 +89,17 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         )
         self.assertIn("user homeassistant", acl)
         self.assertIn("topic write gatekeeper/v1/ha-bridge/+/request/+", acl)
+        self.assertIn(
+            "topic write gatekeeper/v1/ha-bridge/+/verified-status", acl
+        )
         home_assistant_acl = acl.split("user homeassistant", 1)[1]
+        self.assertIn(
+            "topic read gatekeeper/v1/ha-bridge/+/verified-status",
+            home_assistant_acl,
+        )
+        self.assertIn(
+            "topic read gatekeeper/v1/targets/+/status", home_assistant_acl
+        )
         self.assertNotIn("/command", home_assistant_acl)
         self.assertNotIn("/acl", home_assistant_acl)
         self.assertNotIn("/canonical-event", home_assistant_acl)

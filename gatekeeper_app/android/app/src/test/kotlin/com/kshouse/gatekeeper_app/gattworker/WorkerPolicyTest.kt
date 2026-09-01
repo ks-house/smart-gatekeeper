@@ -119,6 +119,7 @@ class WorkerPolicyTest {
       presenceToDispatchMs = 19,
       presenceToArmedMs = 240,
       activeAclVersion = 434,
+      targetSessionId = "10213243-5465-4687-98a9-bacbdcedfe0f",
       gattPerformance = GattSessionPerformance(
         connectSetupMs = 120,
         negotiationMs = 80,
@@ -140,11 +141,26 @@ class WorkerPolicyTest {
     assertEquals(240L, decoded.redactedMap()["presenceToArmedMs"])
     assertEquals(434L, decoded.activeAclVersion)
     assertEquals(434L, decoded.redactedMap()["activeAclVersion"])
+    assertEquals("10213243-5465-4687-98a9-bacbdcedfe0f", decoded.targetSessionId)
+    assertEquals(
+      "10213243-5465-4687-98a9-bacbdcedfe0f",
+      decoded.redactedMap()["targetSessionId"],
+    )
     assertEquals(120L, decoded.gattPerformance?.connectSetupMs)
     assertEquals(247, decoded.gattPerformance?.transport?.negotiatedMtu)
     assertEquals(MtuNegotiationStatus.ACCEPTED, decoded.gattPerformance?.transport?.mtuStatus)
     assertTrue(decoded.gattPerformance?.transport?.highPriorityRequested == true)
     assertFalse(SessionLedgerCodec.encode(listOf(session)).contains("device_address"))
+  }
+
+  @Test
+  fun sessionLedgerReadsPreTargetSessionJsonBackwardCompatibly() {
+    val raw = """[{"id":"00000000-0000-0000-0000-000000000001","presence_fingerprint":"fingerprint","created_epoch_ms":1,"updated_epoch_ms":2,"attempt":1,"state":"SUCCEEDED"}]"""
+
+    val decoded = SessionLedgerCodec.decode(raw).sessions.single()
+
+    assertNull(decoded.targetSessionId)
+    assertFalse(SessionLedgerCodec.encode(listOf(decoded)).contains("target_session_id"))
   }
 
   @Test

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gatekeeper_app/services/mobile_activity_store.dart';
+import 'package:gatekeeper_app/services/mobile_identity_service.dart';
 import 'package:gatekeeper_app/services/native_gatt_worker_health.dart';
 import 'package:gatekeeper_app/services/remote_manual_open_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,6 +42,64 @@ void main() {
 
     expect(items, hasLength(1));
     expect(items.single.isFailure, isTrue);
+  });
+
+  test('access phases are persisted once per Backend event reference',
+      () async {
+    final store = MobileActivityStore();
+    const sensor = MobileAccessSession(
+      targetSessionId: '10213243-5465-4687-98a9-bacbdcedfe0f',
+      status: MobileAccessSessionStatus.sensorDetected,
+      eventRef: 'sensor-event',
+      targetState: 'RELAY_HOLD',
+      targetFresh: true,
+      nextAuthReady: false,
+      backendTerminal: false,
+    );
+
+    await store.recordAccessSession(sensor, observedAt: DateTime.utc(2026));
+    final items = await store.recordAccessSession(
+      sensor,
+      observedAt: DateTime.utc(2026, 1, 1, 0, 0, 2),
+    );
+
+    expect(items, hasLength(1));
+    expect(items.single.title, '센서 감지 · 개방 동작 중');
+    expect(items.single.detail, isNot(contains('문이 열렸')));
+  });
+
+  test('only fresh IDLE completion records next authentication ready',
+      () async {
+    final store = MobileActivityStore();
+    const notReady = MobileAccessSession(
+      targetSessionId: '10213243-5465-4687-98a9-bacbdcedfe0f',
+      status: MobileAccessSessionStatus.complete,
+      eventRef: 'premature-complete',
+      targetState: 'COOLDOWN',
+      targetFresh: true,
+      nextAuthReady: true,
+      backendTerminal: true,
+    );
+    const ready = MobileAccessSession(
+      targetSessionId: '10213243-5465-4687-98a9-bacbdcedfe0f',
+      status: MobileAccessSessionStatus.complete,
+      eventRef: 'ready-complete',
+      targetState: 'IDLE',
+      targetFresh: true,
+      nextAuthReady: true,
+      backendTerminal: true,
+    );
+
+    await store.recordAccessSession(notReady, observedAt: DateTime.utc(2026));
+    final items = await store.recordAccessSession(
+      ready,
+      observedAt: DateTime.utc(2026, 1, 1, 0, 0, 1),
+    );
+
+    expect(items, hasLength(2));
+    expect(items.first.title, '출입 동작 완료 · 다음 인증 가능');
+    expect(items.last.title, '개방 동작 완료 · 다음 출입 준비 중');
+    expect(items.first.detail, contains('문 개폐 자체를 확정하지 않습니다'));
   });
 
   test('manual command success is persisted without physical-open claim',

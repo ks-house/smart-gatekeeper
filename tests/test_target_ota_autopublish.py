@@ -575,12 +575,16 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     materialize_text = str(materialize)
     for secret_name in (
         "SECRET_HARDWARELESS_DOOR_ID_HEX",
+        "SECRET_ACCESS_EVENT_REF_KEY_HEX",
+        "SECRET_ACCESS_EVENT_REF_KEY_ID",
         "SECRET_ACL_SIGNER_PUBLIC_KEY_HEX",
         "SECRET_ACL_SIGNING_KEY_ID",
     ):
       self.assertIn(secret_name, materialize_text)
     self.assertIn("^04[0-9a-f]{128}$", materialize_text)
     self.assertIn("^[0-9a-f]{32}$", materialize_text)
+    self.assertIn("^[0-9a-f]{64}$", materialize_text)
+    self.assertIn("^[a-z0-9]{1,4}$", materialize_text)
     self.assertIn("10#$SECRET_ACL_SIGNING_KEY_ID <= 4294967295", materialize_text)
     self.assertIn("esp32c6_personal_production", str(compiler))
     self.assertIn("esp32c6_personal_production", str(commercial))

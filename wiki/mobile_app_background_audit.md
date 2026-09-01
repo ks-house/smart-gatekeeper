@@ -75,8 +75,9 @@ hands-free action-1 허용 조건이 아니다. Target은 signed ACL에서 crede
 아니어서 센서가 처음부터 비활성인 경우와 양립하지 않는다.
 
 다만 알림은 Target의 `arm_expired`와 동기화되지 않고 사용자가 누를 때까지 남을 수
-있다. Target은 60초 만료, 새 인증이 기존 `ARMED`를 교체한 뒤 실패/abort한 경우,
-relay hold/cooldown 등에서 센서 측정 상태를 벗어난다. 그러므로 문앞 도착 시점에
+있다. Target은 60초 만료, relay hold/cooldown, reset/cleanup에서 센서 측정 상태를
+벗어난다. 새 인증은 기존 verified `ARMED`를 교체하지 못하고 fresh IDLE/relay OFF까지
+busy로 거부된다. 그러므로 문앞 도착 시점에
 `ARMED`였는지는 알림 존재가 아니라 같은 회차 Target state/event와 distance telemetry로
 확인해야 한다.
 

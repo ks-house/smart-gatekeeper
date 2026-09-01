@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-09-02 (wife-phone latency evidence and access-critical MQTT deferral candidate added)
+> Last updated: 2026-09-02 (authenticated actor and exact-session completion evidence candidate added)
 
 ---
 

@@ -7,8 +7,10 @@ from backend.app.home_assistant_bridge import (
     HomeAssistantCommandBridge,
     bridge_availability_topic,
     bridge_request_topic,
+    bridge_verified_status_topic,
     build_discovery_plan,
     target_ack_topic,
+    target_availability_topic,
     target_status_topic,
 )
 
@@ -94,11 +96,41 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         self.assertNotIn("entity_category", connectivity_config)
         self.assertNotIn("expire_after", connectivity_config)
 
+        relay_status = next(
+            item
+            for item in read_only
+            if item.topic.endswith("/door_binary/config")
+        )
+        relay_status_config = json.loads(relay_status.payload)
+        self.assertEqual(
+            "homeassistant/binary_sensor/smart_gatekeeper_01/door_binary/config",
+            relay_status.topic,
+        )
+        self.assertEqual(
+            "smart_gatekeeper_01_door_binary",
+            relay_status_config["unique_id"],
+        )
+        self.assertEqual(
+            "[Gatekeeper] 릴레이 구동 상태",
+            relay_status_config["name"],
+        )
+        self.assertEqual(
+            "{% if value_json.state == 'RELAY_HOLD' %}ON{% else %}OFF{% endif %}",
+            relay_status_config["value_template"],
+        )
+        self.assertNotIn("device_class", relay_status_config)
+
         for publication in read_only:
             config = json.loads(publication.payload)
             if publication is not connectivity:
+                object_id = publication.topic.split("/")[-2]
                 self.assertEqual(
-                    target_status_topic(TARGET), config["state_topic"]
+                    (
+                        bridge_verified_status_topic(TARGET)
+                        if object_id in {"state", "door_binary", "pre_armed"}
+                        else target_status_topic(TARGET)
+                    ),
+                    config["state_topic"],
                 )
             self.assertNotIn("command_topic", config)
 
@@ -141,6 +173,36 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
             "target_status_stale",
             self.bridge.accept_request(topic, b"6000").reason,
         )
+
+    def test_live_gate_state_requires_fresh_valid_status(self) -> None:
+        payload = json.dumps(
+            {"target_id": TARGET, "boot_id": BOOT, "state": "IDLE"}
+        ).encode()
+        self.assertTrue(
+            self.bridge.note_status(target_status_topic(TARGET), payload)
+        )
+        self.assertEqual("IDLE", self.bridge.live_gate_state())
+        self.clock.value += 16
+        self.assertIsNone(self.bridge.live_gate_state())
+        invalid = json.dumps(
+            {"target_id": TARGET, "boot_id": BOOT, "state": "OPEN"}
+        ).encode()
+        self.assertFalse(
+            self.bridge.note_status(target_status_topic(TARGET), invalid)
+        )
+
+    def test_unsigned_availability_is_advisory_and_cannot_clear_status(self) -> None:
+        self.assertTrue(self.note_status())
+        advisory = json.dumps(
+            {"target_id": TARGET, "status": "offline"}
+        ).encode()
+        self.assertEqual(
+            "offline",
+            self.bridge.note_target_availability(
+                target_availability_topic(TARGET), advisory
+            ),
+        )
+        self.assertEqual(BOOT, self.bridge.live_boot_id())
 
     def test_manual_remote_is_independently_disabled(self) -> None:
         self.assertTrue(self.note_status())

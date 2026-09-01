@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from backend.app import main
+from backend.app.access_actor_ref import access_credential_ref
 from backend.app.admin_security import AdminSecurity
 
 
@@ -564,7 +565,15 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
     def test_global_access_events_include_today_total(self) -> None:
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
-        cursor.fetchall.return_value = [
+        door_id = "00112233445566778899aabbccddeeff"
+        credential_id = "ffeeddccbbaa99887766554433221100"
+        session_id = "22222222-2222-4222-8222-222222222222"
+        ref_key = bytes.fromhex("11" * 32)
+        credential_ref = access_credential_ref(
+            "k1", ref_key, door_id, session_id, credential_id
+        )
+        collector_ref = main.opaque_ref("target-a", b"o" * 32, "target")
+        history_rows = [
             {
                 "record_kind": "canonical",
                 "id": 10,
@@ -577,7 +586,7 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
                 "failure_reason": None,
                 "created_at": datetime(2026, 8, 30, 23, 0, 1, 123000),
                 "event_id": "1" * 36,
-                "session_id": "2" * 36,
+                "session_id": session_id,
                 "source_component": "target",
                 "source_instance_id": "target_0123456789abcdef",
                 "source_boot_id": "a" * 32,
@@ -593,7 +602,10 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
                 "event_transport": "ble_gatt",
                 "monotonic_ms": 12345,
                 "clock_quality": "UNSYNCED",
-                "collector_target_ref": "target_abcdef0123456789abcdef01",
+                "collector_target_ref": collector_ref,
+                "collector_target_id": "target-a",
+                "credential_ref": credential_ref,
+                "integrity_status": "verified",
                 "received_at": datetime(2026, 8, 30, 23, 0, 1, 123000),
             },
             {
@@ -607,21 +619,62 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
                 "distance_mm": None,
                 "failure_reason": "broker accepted; physical result unconfirmed",
                 "created_at": datetime(2026, 8, 30, 23, 0, 0),
+                "credential_ref": None,
+                "integrity_status": None,
             }
         ]
-        cursor.fetchone.return_value = {"total": 1}
-        with patch.object(main, "get_db", return_value=connection):
+        cursor.fetchall.side_effect = [
+            history_rows,
+            [
+                {
+                    "name": "wife",
+                    "unit_number": "401호",
+                    "credential_id": credential_id,
+                }
+            ],
+        ]
+        cursor.fetchone.return_value = {
+            "total": 1,
+            "legacy_unsigned_total": 2,
+        }
+        with patch.multiple(
+            main,
+            ACCESS_EVENT_REF_KEYS={"k1": ref_key},
+            ACL_PERSONAL_DOOR_ID=door_id,
+            COMMAND_DOOR_ID=door_id,
+            COMMAND_TARGET_ID="target-a",
+            _acl_target_credentials={
+                "target-a": {
+                    "tenant_id": "1" * 32,
+                    "door_id": door_id,
+                    "key": "unused-test-key",
+                }
+            },
+            _ops_hmac_key=b"o" * 32,
+        ), patch.object(main, "get_db", return_value=connection):
             response = self.client.get(
                 "/api/v1/admin/access-events", headers={"X-Tenant-ID": "*"}
             )
         self.assertEqual(200, response.status_code, response.text)
         self.assertEqual(1, response.json()["today_total"])
         self.assertEqual(
+            2, response.json()["today_legacy_unsigned_total"]
+        )
+        self.assertEqual(
             "ACCESS_SENSOR_DETECTED",
             response.json()["events"][0]["event_code"],
         )
         self.assertEqual("7", response.json()["events"][0]["source_sequence"])
         self.assertEqual("12345", response.json()["events"][0]["monotonic_ms"])
+        self.assertEqual("wife", response.json()["events"][0]["actor_name"])
+        self.assertEqual("401호", response.json()["events"][0]["actor_unit_number"])
+        self.assertEqual("verified", response.json()["events"][0]["actor_resolution"])
+        self.assertNotIn("credential_ref", response.json()["events"][0])
+        self.assertNotIn("session_id", response.json()["events"][0])
+        self.assertRegex(
+            response.json()["events"][0]["session_ref"],
+            r"^admin-access-session_[0-9a-f]{24}$",
+        )
         self.assertTrue(response.json()["events"][0]["created_at"].endswith("Z"))
         self.assertTrue(response.json()["events"][0]["received_at"].endswith("Z"))
         self.assertEqual(
@@ -630,9 +683,25 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
         history_query = cursor.execute.call_args_list[0].args[0]
         self.assertIn("access_event_history", history_query)
         self.assertIn("UNION ALL", history_query)
-        count_query = cursor.execute.call_args_list[1].args[0]
-        self.assertIn("COUNT(DISTINCT session_id)", count_query)
+        self.assertIn("e.collector_target_id=s.target_id", history_query)
+        self.assertIn("(s.phase_mask & 31)=31", history_query)
+        self.assertIn("(s.phase_mask & 32)=0", history_query)
+        self.assertIn("s.phase_mask", history_query)
+        count_query = cursor.execute.call_args_list[2].args[0]
+        self.assertIn(
+            "COUNT(DISTINCT collector_target_id,session_id)", count_query
+        )
+        self.assertIn(
+            "e.collector_target_id=s.target_id AND e.session_id=s.session_id",
+            count_query,
+        )
+        self.assertIn(
+            "COALESCE(collector_target_id,collector_target_ref),session_id",
+            count_query,
+        )
         self.assertIn("UTC_TIMESTAMP() + INTERVAL 9 HOUR", count_query)
+        self.assertIn("legacy_unsigned_total", count_query)
+        self.assertIn("integrity_status='verified'", count_query)
 
     def test_admin_page_explains_received_event_evidence_boundaries(self) -> None:
         page = (
@@ -645,7 +714,12 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
             "ACCESS_RELAY_ON",
             "ACCESS_SESSION_COMPLETED",
             "서버 전송 접수",
-            "오늘(KST) 출입 시도",
+            "오늘(KST) 신뢰 출입 시도",
+            "미검증 구형 Target",
+            "Target failsafe 종료 · 성공으로 표시하지 않음",
+            "필수 센서·릴레이 단계 미완료 · 성공 근거 부족",
+            "이전 센서 대기 세션이 새 인증으로 교체됨",
+            "현장 broker 발행자 인증과 실제 문짝 이동은 별도 확인입니다.",
             "이벤트 미수신만으로 성공 또는 실패를 단정하지 않습니다.",
         ):
             self.assertIn(required, page)

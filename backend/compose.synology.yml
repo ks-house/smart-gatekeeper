@@ -56,6 +56,9 @@ secrets:
   ops_hmac_key:
     external: false
     file: ${SGK_SECRET_DIR:?NAS secret directory is required}/ops_hmac_key
+  access_event_ref_keys:
+    external: false
+    file: ${SGK_SECRET_DIR:?NAS secret directory is required}/access_event_ref_keys.json
   command_signing_scalar:
     external: false
     file: ${SGK_SECRET_DIR:?NAS secret directory is required}/command_signing_scalar

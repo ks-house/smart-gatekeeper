@@ -260,6 +260,7 @@
         "RELAY_CONTROL_ERROR",
         "RESET_DURING_SESSION",
         "SESSION_TIMEOUT",
+        "SESSION_SUPERSEDED",
         "USER_CANCELLED",
         "INTERNAL_ERROR"
       ],

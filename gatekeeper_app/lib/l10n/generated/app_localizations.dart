@@ -200,6 +200,36 @@ abstract class AppLocalizations {
   /// **'Access ready - waiting for sensor approach'**
   String get targetArmed;
 
+  /// No description provided for @accessSessionArmed.
+  ///
+  /// In en, this message translates to:
+  /// **'Access ready - waiting for sensor'**
+  String get accessSessionArmed;
+
+  /// No description provided for @accessSessionRelayActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Sensor detected - opening action in progress'**
+  String get accessSessionRelayActive;
+
+  /// No description provided for @accessSessionCooldown.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening action complete - preparing next access'**
+  String get accessSessionCooldown;
+
+  /// No description provided for @accessSessionComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Access action complete - next authentication ready'**
+  String get accessSessionComplete;
+
+  /// No description provided for @accessSessionTerminated.
+  ///
+  /// In en, this message translates to:
+  /// **'Access action ended'**
+  String get accessSessionTerminated;
+
   /// No description provided for @targetFailed.
   ///
   /// In en, this message translates to:

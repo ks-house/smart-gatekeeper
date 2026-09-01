@@ -10,6 +10,7 @@ on:
       - '.orca/scripts/setup_worktree.ps1'
       - 'protocol/test_vectors/v1.json'
       - 'observability/event_codes_v1.json'
+      - 'security/mosquitto.conf'
       - 'security/target-acl'
       - 'tests/test_target_security_ota.py'
       - '.github/workflows/backend_security.yml'
@@ -22,6 +23,7 @@ on:
       - '.orca/scripts/setup_worktree.ps1'
       - 'protocol/test_vectors/v1.json'
       - 'observability/event_codes_v1.json'
+      - 'security/mosquitto.conf'
       - 'security/target-acl'
       - 'tests/test_target_security_ota.py'
       - '.github/workflows/backend_security.yml'
@@ -51,7 +53,9 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install --require-hashes -r backend/app/requirements.lock
       - name: Validate all backend security tests
-        run: python -m unittest discover -s backend/tests -p 'test_*.py' -v
+        run: |
+          python -m unittest discover -s backend/tests -p 'test_*.py' -v
+          python -m unittest tests.test_target_security_ota -v
       - name: Validate operations, privacy, production, and supply-chain contract
         env:
           API_IMAGE: ghcr.io/ks-house/smart-gatekeeper-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

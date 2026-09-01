@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-08-31 (Local GATT action-1 ultrasonic session isolation candidate validated locally; policy, OTA install and physical acceptance pending)
+> Last updated: 2026-09-02 (authenticated actor/session-completion and fail-closed session ownership source candidates recorded; deployment and physical acceptance pending)
 
 ## 1. 판정 원칙
 
@@ -815,3 +815,45 @@ The OTA used the existing inactive-slot signed path and did not erase NVS or
 the previous bootable slot. Status evidence establishes the new runtime and
 fail-safe output; it does not by itself prove that the reported seven-second
 ARMED-to-sensor delay is physically eliminated.
+
+## 2026-09-02 Home Assistant connectivity entity production deployment
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner approval and protected deployment | The owner approved the sole pending `production` environment request for run `33529692517`. Exact source `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` completed Backend security, evidence verification, immutable image publication and `deploy_backend_to_nas` successfully | PASS for approved NAS Backend deployment |
+| External runtime identity | Strict public TLS requests to `/live` and `/ready` returned build SHA `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`; readiness reported database, schema, MQTT, event collector, runtime secrets, control/admin authentication, ACL management, legacy prearm retirement and build identity all true | PASS for exact deployed process and dependency readiness |
+| Retained HA discovery | A strict-TLS MQTTS subscriber received retained QoS-1 `homeassistant/binary_sensor/smart_gatekeeper_01/connectivity/config`. It names `[Gatekeeper] 연결 상태`, uses unique ID `smart_gatekeeper_01_connectivity`, `device_class=connectivity`, and maps `online/offline` from `gatekeeper/v1/ha-bridge/c0feffe6ebac/availability` | PASS for live discovery publication and stable HA entity identity |
+| Current bridge state | The discovery config deliberately has no self-referential `availability_topic` and no `expire_after`; the referenced bridge availability topic delivered retained QoS-1 payload `online` | PASS for current Backend-to-HA connectivity state and visible offline semantics |
+| Display and physical boundary | No Home Assistant frontend screenshot, entity-registry row, dashboard card placement, sensor approach, relay contact or physical door movement was observed in this verification | PENDING only visible dashboard placement and physical behavior; broker evidence proves the HA discovery input, not the rendered card |
+
+The connectivity entity is now available to Home Assistant through its normal
+MQTT discovery path and continuously represents the Backend bridge's retained
+online/offline state. A browser refresh or MQTT integration entity reload may
+be needed before a previously open dashboard view displays the newly discovered
+entity.
+
+## 2026-09-02 authenticated actor and post-ARM completion candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Cross-language evidence contract | Target and Backend implement domain-separated fixed binary inputs for credential ref, event MAC and status MAC, with deterministic vectors and strict key/key-ID parsing. Raw credential/name/unit/proof material is excluded from the MQTT evidence envelope | SOURCE CONTRACT PRESENT; this is not live secret provisioning, broker identity or NAS ingestion evidence |
+| Target evidence path | Signed schema 1.1 events carry boot count and optional session actor ref; signed status carries monotonic revision, FSM/relay state and latest terminal phase mask. Event/status production uses the existing bounded outbox and safe-state single MQTT owner rather than socket writes in the GATT/sensor/relay critical phase | SOURCE/HOST CONTRACT; a reviewed exact-main build, install, reboot, status readback and outage soak are separate Gates |
+| Durable compatibility | The deployed 368-byte offline event ABI is preserved with a v2 overlay marker that an N-1 reader ignores. New readers recover the actor/tag overlay without changing record offsets | N/N-1 SOURCE CONTRACT; an actual N→N-1 rollback with queued authenticated records remains a connected acceptance Gate |
+| Durable overflow and wrapped-ring recovery | A full eight-record queue replaces the two oldest records with one noncanonical `queue_overflow` diagnostic plus the incoming record. Host recovery restored all eight records without torn recovery and drained through the following event. A separate full→pop→wrapped-push→reboot→pop→reboot case preserved physical ring indices, did not replay the second event, and drained the wrapped tail exactly once; the gap carries no fabricated access UUID or HMAC | HOST PASS for queue/repeated-reboot logic; sustained connected Target outage, NVS wear and real power interruption remain physical/runtime Gates |
+| Backend integrity and actor projection | New live trust requires signed event/status, exact Target/door, boot/revision high-water and unique credential-ref match. Exact replay cannot refresh live age; legacy unsigned rows are separate. Stable Target ID owns security correlation while opaque collector/session refs remain presentation values | SOURCE/DB CONTRACT; the final schema migration and complete Backend/MariaDB regression must pass at the reviewed candidate SHA before deployment |
+| Mobile exact-session display | Native code signs the exact Target UUIDv4 session with a 20-second, fixed 80-byte AndroidKeyStore read proof. Flutter polling is bounded to 4-second intervals and 120 seconds, uses typed stop/backoff rules, and renders armed, relay, cooldown, complete/terminated separately | SOURCE/HOST CONTRACT; no matching APK was installed and no wife's-phone post-ARM/next-auth timing was measured in this entry |
+| Home Assistant trust split | Access state/door/pre-armed discovery points at Backend `verified-status`, whose payload contains only HMAC-covered allow-listed fields. Raw Target status remains for diagnostics/config and requires the HA broker principal's exact read ACL | SOURCE CONTRACT; repository ACL text is not live Mosquitto installation or HA retained/readback evidence |
+| Terminal power-loss boundary | Same-boot RAM terminal summary can preserve a complete phase mask after individual QoS 0 event loss once Backend receives it. Power loss before that signed status can lose the summary and must leave the outcome unconfirmed | EXPECTED BEST-EFFORT BOUNDARY; hard power interruption around terminal publish remains untested |
+| Relay completion/failsafe arbitration | The one-second esp-timer cutoff is recorded as normal `door_close` plus successful completion. Only a missed timer/FSM transition beyond an additional 250 ms records `door_close_failsafe` plus `session_terminated_failsafe`; both paths drive relay OFF exactly once and the true failsafe projects as failed rather than sensor-complete | PASS for source order and native host FSM regression; no installed-Target timer latency, GPIO voltage/contact or physical door result |
+| Verified-session preemption rejection | With A verified and sensor-waiting in `ARMED`, adversarial B ClientHello is rejected busy before challenge/proof. A subsequent invalid B proof is not verified and cannot change A's original 60-second deadline, actor reference, phase mask or A-scoped causal parent; A still reaches sensor, relay ON/OFF, terminal phase `0x1f`, cooldown and fresh IDLE. New authentication remains rejected in `AUTH_PENDING`, `ARMED`, `RELAY_HOLD` and `COOLDOWN` and is accepted only at fresh IDLE/relay OFF | PASS for integrated native ProtocolCore/FSM/lifecycle regression; no second phone or installed Target was exercised |
+| Focused fail-closed regressions | `test_hardwareless_rc` and `test_access_control_network_deferral` passed 25/25. The broader five-module security/personal-install/OTA command ran 57 tests: 56 passed and only the expected protected-source digest assertion failed because the source freeze hash has not yet been rotated | SOURCE TESTS PASS / POLICY ROTATION OPEN; protected workflow policy and exact hash rows were not edited |
+| Personal-production build after fail-closed correction | `.venv/bin/pio run -e esp32c6_personal_production` succeeded at 75,848/327,680 bytes RAM (23.1%) and 1,798,862/7,340,032 bytes application flash (24.5%) | PASS for local compile and dual-slot fit; not signed publication, Target install/reboot/health or physical action |
+| Physical result boundary | A complete phase mask proves Target proof→ARMED→sensor→relay ON→relay OFF software stages and fresh IDLE can prove next-auth readiness | NO PHYSICAL-DOOR CLAIM: there is no independent door-contact sensor, and this entry measures no GPIO voltage/contact, actuator travel or door leaf movement |
+
+Safe connected validation is ordered Target N publication/install/reboot/health,
+then Backend N schema/runtime and signed status ingestion, then mobile N
+replacement install and one exact-session sensor/relay cycle. The same evidence
+key/key ID must be present in both Target release environments and the NAS
+keyring before Target N is built. Broker anonymous/crossover denial and
+legitimate Target/Backend/HA reconnect/readback are release prerequisites, not
+an inference from application HMAC tests.

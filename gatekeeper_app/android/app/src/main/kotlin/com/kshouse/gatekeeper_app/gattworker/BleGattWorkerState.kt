@@ -373,6 +373,7 @@ data class DurableGattSession(
   val presenceToDispatchMs: Long? = null,
   val presenceToArmedMs: Long? = null,
   val activeAclVersion: Long? = null,
+  val targetSessionId: String? = null,
   val gattPerformance: GattSessionPerformance? = null,
 ) {
   fun redactedMap(): Map<String, Any?> = mapOf(
@@ -391,6 +392,7 @@ data class DurableGattSession(
     "presenceToDispatchMs" to presenceToDispatchMs,
     "presenceToArmedMs" to presenceToArmedMs,
     "activeAclVersion" to activeAclVersion,
+    "targetSessionId" to targetSessionId,
     "gattPerformance" to gattPerformance?.redactedMap(),
     "updatedEpochMs" to updatedEpochMs,
   )
@@ -462,6 +464,7 @@ object SessionLedgerCodec {
     .put("presence_to_dispatch_ms", session.presenceToDispatchMs)
     .put("presence_to_armed_ms", session.presenceToArmedMs)
     .put("active_acl_version", session.activeAclVersion)
+    .put("target_session_id", session.targetSessionId)
     .put("gatt_performance", session.gattPerformance?.let(::performanceToJson))
 
   private fun fromJson(value: JSONObject): DurableGattSession = DurableGattSession(
@@ -483,6 +486,7 @@ object SessionLedgerCodec {
     presenceToDispatchMs = value.optionalLong("presence_to_dispatch_ms"),
     presenceToArmedMs = value.optionalLong("presence_to_armed_ms"),
     activeAclVersion = value.optionalLong("active_acl_version"),
+    targetSessionId = value.optionalString("target_session_id"),
     gattPerformance = value.optJSONObject("gatt_performance")?.let(::performanceFromJson),
   )
 

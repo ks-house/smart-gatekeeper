@@ -165,6 +165,25 @@ class EventRecorder final : public sgk::EventSink {
   std::vector<sgk::Event> events;
 };
 
+class PhaseTrackingEventRecorder final : public sgk::EventSink {
+ public:
+  void emit(const sgk::Event& event) override {
+    uint16_t phase_mask = 0;
+    if (phase_tracker.observe(event, &phase_mask)) {
+      terminal_count++;
+      terminal_phase_mask = phase_mask;
+      terminal_session_id = event.session_id;
+    }
+    events.push_back(event);
+  }
+
+  sgk::VerifiedAccessPhaseTracker phase_tracker;
+  std::vector<sgk::Event> events;
+  size_t terminal_count = 0;
+  uint16_t terminal_phase_mask = 0;
+  std::array<uint8_t, 16> terminal_session_id{};
+};
+
 class FakeAuthControlGate final : public sgk::AuthControlGate {
  public:
   bool beginAuth(uint32_t now_ms) override {
@@ -198,6 +217,53 @@ class FakeAuthControlGate final : public sgk::AuthControlGate {
   uint32_t last_now_ms = 0;
   sgk::LocalAccessAction last_action =
       sgk::LocalAccessAction::kArmForSensor;
+};
+
+class FsmAuthControlGate final : public sgk::AuthControlGate {
+ public:
+  FsmAuthControlGate(sgk::TargetAccessFsm* fsm,
+                     sgk::LocalGattLifecycleBridge* lifecycle)
+      : fsm_(fsm), lifecycle_(lifecycle) {}
+
+  bool beginAuth(uint32_t now_ms) override {
+    ++begin_calls;
+    return fsm_ != nullptr && fsm_->handleAuthPending(now_ms, 5000);
+  }
+
+  bool commitAuthorizedAction(sgk::LocalAccessAction action,
+                              uint32_t now_ms) override {
+    ++commit_calls;
+    if (fsm_ == nullptr || lifecycle_ == nullptr) return false;
+    bool accepted = false;
+    bool emitted = false;
+    if (action == sgk::LocalAccessAction::kOpenImmediately) {
+      accepted = fsm_->handleLocalManualOpen(now_ms, 1000, 2000);
+      if (accepted) emitted = lifecycle_->emitRelayOn(now_ms);
+    } else {
+      accepted = fsm_->handleAuthSuccess(now_ms, 60000, 2000);
+      if (accepted) emitted = lifecycle_->emitArmed(now_ms);
+    }
+    lifecycle_emit_ok = lifecycle_emit_ok && (!accepted || emitted);
+    if (emitted && core != nullptr) {
+      core->advanceEventSequence(lifecycle_->lastSequence());
+    }
+    return accepted;
+  }
+
+  void abortAuth(uint32_t now_ms) override {
+    ++abort_calls;
+    if (fsm_ != nullptr) fsm_->handleAuthAbort(now_ms, "auth_aborted");
+  }
+
+  sgk::ProtocolCore* core = nullptr;
+  int begin_calls = 0;
+  int commit_calls = 0;
+  int abort_calls = 0;
+  bool lifecycle_emit_ok = true;
+
+ private:
+  sgk::TargetAccessFsm* fsm_ = nullptr;
+  sgk::LocalGattLifecycleBridge* lifecycle_ = nullptr;
 };
 
 std::array<uint8_t, 16> hello(uint16_t min = 1, uint16_t max = 1,
@@ -321,6 +387,153 @@ void testCanonicalVectorsAndFraming() {
   CHECK(std::equal(sgk::kIBeaconFilterPrefix.begin(),
                    sgk::kIBeaconFilterPrefix.end(),
                    hex("0215a1b2c3d4e5f67890abcdef1234567890").begin()));
+
+  std::array<uint8_t, 32> event_ref_key{};
+  for (size_t index = 0; index < event_ref_key.size(); ++index) {
+    event_ref_key[index] = static_cast<uint8_t>(index);
+  }
+  std::array<uint8_t, 16> event_ref_session{};
+  const auto event_ref_session_bytes =
+      hex("102132435465768798a9bacbdcedfe0f");
+  std::copy(event_ref_session_bytes.begin(), event_ref_session_bytes.end(),
+            event_ref_session.begin());
+  std::array<uint8_t, 16> event_ref_credential{};
+  const auto event_ref_credential_bytes =
+      hex("aabbccddeeff00112233445566778899");
+  std::copy(event_ref_credential_bytes.begin(),
+            event_ref_credential_bytes.end(), event_ref_credential.begin());
+  char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
+  CHECK(sgk::deriveAccessEventCredentialRef(
+      event_ref_key, "k1", canonicalDoor(), event_ref_session,
+      event_ref_credential, credential_ref));
+  CHECK(std::string(credential_ref) ==
+        "c_k1_653b090fafcdaffa677766a2");
+  CHECK(sgk::deriveAccessEventCredentialRef(
+      event_ref_key, "k", canonicalDoor(), event_ref_session,
+      event_ref_credential, credential_ref));
+  CHECK(std::string(credential_ref) ==
+        "c_k_653b090fafcdaffa677766a2");
+  CHECK(!sgk::deriveAccessEventCredentialRef(
+      event_ref_key, "TOO_LONG", canonicalDoor(), event_ref_session,
+      event_ref_credential, credential_ref));
+
+  // Shared with backend/tests/test_access_actor_ref.py.
+  event_ref_key.fill(0x11);
+  const auto shared_session_bytes =
+      hex("22222222222242228222222222222222");
+  const auto shared_credential_bytes =
+      hex("ffeeddccbbaa99887766554433221100");
+  std::copy(shared_session_bytes.begin(), shared_session_bytes.end(),
+            event_ref_session.begin());
+  std::copy(shared_credential_bytes.begin(), shared_credential_bytes.end(),
+            event_ref_credential.begin());
+  CHECK(sgk::deriveAccessEventCredentialRef(
+      event_ref_key, "k1", canonicalDoor(), event_ref_session,
+      event_ref_credential, credential_ref));
+  CHECK(std::string(credential_ref) ==
+        "c_k1_8e1681bdeb8f7c5f392c48ef");
+}
+
+void testAccessEvidenceMacFixedVectors() {
+  CHECK(!sgk::accessEventCodeAllowsCredentialRef(
+      sgk::EventCode::kAccessProofRejected));
+  CHECK(sgk::accessEventCodeAllowsCredentialRef(
+      sgk::EventCode::kAccessProofVerified));
+  CHECK(sgk::accessEventCodeAllowsCredentialRef(
+      sgk::EventCode::kAccessSessionTerminated));
+  const auto bytes16 = [](const char* encoded) {
+    std::array<uint8_t, 16> output{};
+    const auto decoded = hex(encoded);
+    std::copy(decoded.begin(), decoded.end(), output.begin());
+    return output;
+  };
+  std::array<uint8_t, 32> key{};
+  key.fill(0x11);
+
+  sgk::AccessEventMacInput event{};
+  event.key_id = "k1";
+  event.topic_target_id = "sgk-personal-01";
+  event.door_id = canonicalDoor();
+  event.source_instance_id = "target_0123456789abcdef";
+  event.source_boot_id = bytes16("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  event.source_boot_count = 686;
+  event.event_id = bytes16("11111111111141118111111111111111");
+  event.session_id = bytes16("22222222222242228222222222222222");
+  event.sequence = 7;
+  event.attempt = 1;
+  event.event_code = "ACCESS_SENSOR_DETECTED";
+  event.stage = "SENSOR";
+  event.outcome = "SUCCEEDED";
+  event.reason_code = "SENSOR_THRESHOLD_MET";
+  event.has_causation = true;
+  event.causation_event_id =
+      bytes16("33333333333343338333333333333333");
+  event.monotonic_ms = 123456789;
+  event.credential_ref = "c_k1_8e1681bdeb8f7c5f392c48ef";
+  event.has_distance_mm = true;
+  event.distance_mm = 420;
+
+  std::array<uint8_t, sgk::kAccessEventMacInputCapacity> canonical{};
+  size_t length = 0;
+  CHECK(sgk::buildAccessEventMacInput(
+      event, canonical.data(), canonical.size(), &length));
+  CHECK(length == 282);
+  uint8_t input_digest[32] = {};
+  sgk::ProtocolCore::sha256(canonical.data(), length, input_digest);
+  CHECK(std::memcmp(
+            input_digest,
+            hex("fd208a51ceca2a76017b06234befd077d9302c4507a504bf0c896939aeffe3fc")
+                .data(),
+            sizeof(input_digest)) == 0);
+  uint8_t tag[sgk::kAccessEvidenceTagSize] = {};
+  CHECK(sgk::deriveAccessEventMac(key, event, tag));
+  CHECK(std::memcmp(tag,
+                    hex("ee82880739ce2d2ae3a726c641a6dd08").data(),
+                    sizeof(tag)) == 0);
+
+  sgk::AccessStatusMacInput status{};
+  status.key_id = "k1";
+  status.topic_target_id = "sgk-personal-01";
+  status.door_id = canonicalDoor();
+  status.source_boot_id = bytes16("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  status.source_boot_count = 686;
+  status.access_revision = 42;
+  status.state = "IDLE";
+  status.has_last_terminal = true;
+  status.last_terminal_session_id =
+      bytes16("22222222222242228222222222222222");
+  status.last_terminal_event_sequence = 11;
+  status.last_terminal_event_code = "ACCESS_SESSION_COMPLETED";
+  status.last_terminal_reason_code = "ACCESS_GRANTED";
+  status.last_terminal_credential_ref =
+      "c_k1_8e1681bdeb8f7c5f392c48ef";
+  status.last_terminal_phase_mask = 0x001f;
+  status.relay_commanded_on = false;
+  status.relay_pin_level = 1;
+
+  std::array<uint8_t, sgk::kAccessStatusMacInputCapacity> status_canonical{};
+  length = 0;
+  CHECK(sgk::buildAccessStatusMacInput(
+      status, status_canonical.data(), status_canonical.size(), &length));
+  CHECK(length == 203);
+  sgk::ProtocolCore::sha256(status_canonical.data(), length, input_digest);
+  CHECK(std::memcmp(
+            input_digest,
+            hex("4d171b5fdb6d1de6539dcc966e1c22d8a46f7cf9672bd47e0d4adcbcb9a46c86")
+                .data(),
+            sizeof(input_digest)) == 0);
+  CHECK(sgk::deriveAccessStatusMac(key, status, tag));
+  CHECK(std::memcmp(tag,
+                    hex("ee13d37c543d4a8e5a046a7fc4cb7a86").data(),
+                    sizeof(tag)) == 0);
+
+  event.has_relay_hold_ms = true;
+  event.relay_hold_ms = 600001;
+  CHECK(!sgk::buildAccessEventMacInput(
+      event, canonical.data(), canonical.size(), &length));
+  status.last_terminal_phase_mask = 0x0040;
+  CHECK(!sgk::buildAccessStatusMacInput(
+      status, status_canonical.data(), status_canonical.size(), &length));
 }
 
 void testCanonicalSessionAndVerifier() {
@@ -364,6 +577,19 @@ void testCanonicalSessionAndVerifier() {
         hex("53474b50524630317cebae229af25267c8ae244cdb476a48a692feb81477cbc7f"
             "36e110e993bd464aabbccddeeff001122334455667788990100000003"));
   CHECK(events.events.size() >= 3);
+  const auto expected_credential = hex("aabbccddeeff00112233445566778899");
+  bool found_verified = false;
+  for (const auto& event : events.events) {
+    if (event.code == sgk::EventCode::kAccessProofVerified) {
+      found_verified = true;
+      CHECK(std::equal(event.credential_id.begin(), event.credential_id.end(),
+                       expected_credential.begin()));
+    } else {
+      CHECK(std::all_of(event.credential_id.begin(), event.credential_id.end(),
+                        [](uint8_t value) { return value == 0; }));
+    }
+  }
+  CHECK(found_verified);
 }
 
 void testAuthenticatedActionControlBinding() {
@@ -396,7 +622,8 @@ void testAuthenticatedActionControlBinding() {
   {
     auto random = canonicalRandom();
     FakeVerifier verifier(sgk::ResultReason::kOk);
-    EventRecorder events;
+    EventRecorder downstream;
+    sgk::LocalGattLifecycleBridge events(&downstream);
     FakeAuthControlGate control;
     control.commit_result = false;
     sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events,
@@ -414,6 +641,26 @@ void testAuthenticatedActionControlBinding() {
     CHECK(output.size() == 1);
     CHECK(u16(output[0].bytes.data() + 18) ==
           static_cast<uint16_t>(sgk::ResultReason::kInternalFailClosed));
+    const auto rejected = std::find_if(
+        downstream.events.begin(), downstream.events.end(),
+        [](const sgk::Event& event) {
+          return event.code == sgk::EventCode::kAccessProofRejected;
+        });
+    const auto terminated = std::find_if(
+        downstream.events.begin(), downstream.events.end(),
+        [](const sgk::Event& event) {
+          return event.code == sgk::EventCode::kAccessSessionTerminated;
+        });
+    CHECK(rejected != downstream.events.end());
+    CHECK(terminated != downstream.events.end());
+    CHECK(std::any_of(rejected->credential_id.begin(),
+                      rejected->credential_id.end(),
+                      [](uint8_t value) { return value != 0; }));
+    CHECK(std::any_of(terminated->credential_id.begin(),
+                      terminated->credential_id.end(),
+                      [](uint8_t value) { return value != 0; }));
+    CHECK(!sgk::accessEventCodeAllowsCredentialRef(rejected->code));
+    CHECK(sgk::accessEventCodeAllowsCredentialRef(terminated->code));
   }
 
   {
@@ -693,8 +940,11 @@ void testVerifiedLocalGattLifecycleBridge() {
   proof.monotonic_ms = 1000;
   const auto session_bytes = hex("102132435465768798a9babbdcddedef");
   const auto boot_bytes = hex("00112233445566778899aabbccddeeff");
+  const auto credential_bytes = hex("aabbccddeeff00112233445566778899");
   std::copy(session_bytes.begin(), session_bytes.end(), proof.session_id.begin());
   std::copy(boot_bytes.begin(), boot_bytes.end(), proof.boot_id.begin());
+  std::copy(credential_bytes.begin(), credential_bytes.end(),
+            proof.credential_id.begin());
   proof.sequence = 41;
   proof.has_causation = true;
   proof.causation_sequence = 40;
@@ -722,6 +972,7 @@ void testVerifiedLocalGattLifecycleBridge() {
     CHECK(downstream.events[i].code == expected[i]);
     CHECK(downstream.events[i].session_id == proof.session_id);
     CHECK(downstream.events[i].boot_id == proof.boot_id);
+    CHECK(downstream.events[i].credential_id == proof.credential_id);
     CHECK(downstream.events[i].sequence == proof.sequence + i);
     if (i > 0) {
       CHECK(downstream.events[i].has_causation);
@@ -730,14 +981,371 @@ void testVerifiedLocalGattLifecycleBridge() {
     }
   }
 
+  CHECK(bridge.lastSequence() == 46);
+  proof.sequence = 47;
+  proof.session_id[15] ^= 0x01;
   bridge.emit(proof);
   CHECK(bridge.emitArmed(3000));
   CHECK(bridge.emitTerminated(4000, sgk::EventReason::kArmTimeout));
   CHECK(!bridge.hasVerifiedSession());
+  CHECK(bridge.lastSequence() == 49);
   CHECK(downstream.events.back().code ==
         sgk::EventCode::kAccessSessionTerminated);
   CHECK(downstream.events.back().reason == sgk::EventReason::kArmTimeout);
   CHECK(!bridge.emitRelayOn(4001));
+
+  sgk::Event post_terminal{};
+  post_terminal.code = sgk::EventCode::kAccessGattConnected;
+  post_terminal.session_id = proof.session_id;
+  bridge.emit(post_terminal);
+  CHECK(std::all_of(downstream.events.back().credential_id.begin(),
+                    downstream.events.back().credential_id.end(),
+                    [](uint8_t value) { return value == 0; }));
+}
+
+void testInterleavedGattPreservesVerifiedLifecycleIntegrity() {
+  EventRecorder downstream;
+  sgk::LocalGattLifecycleBridge bridge(&downstream);
+
+  sgk::Event proof_a{};
+  proof_a.code = sgk::EventCode::kAccessProofVerified;
+  proof_a.reason = sgk::EventReason::kProofValid;
+  proof_a.transport_reason = sgk::ResultReason::kOk;
+  proof_a.session_id = {{0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x47, 0x87,
+                         0x98, 0xa9, 0xba, 0xcb, 0xdc, 0xed, 0xfe, 0x0f}};
+  proof_a.boot_id = {{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                      0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}};
+  proof_a.credential_id = {{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11,
+                            0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99}};
+  proof_a.sequence = 41;
+  bridge.emit(proof_a);
+  CHECK(bridge.emitArmed(1001));
+  CHECK(bridge.emitRelayOn(1002));
+  CHECK(bridge.lastSequence() == 43);
+
+  sgk::Event b_connected{};
+  b_connected.code = sgk::EventCode::kAccessGattConnected;
+  b_connected.reason = sgk::EventReason::kGattConnected;
+  b_connected.transport_reason = sgk::ResultReason::kOk;
+  b_connected.session_id = {{0x20, 0x31, 0x42, 0x53, 0x64, 0x75, 0x46, 0x86,
+                              0x97, 0xa8, 0xb9, 0xca, 0xdb, 0xec, 0xfd, 0x0e}};
+  b_connected.boot_id = proof_a.boot_id;
+  b_connected.sequence = 44;
+  b_connected.has_causation = true;
+  b_connected.causation_sequence = 43;
+  bridge.emit(b_connected);
+
+  sgk::Event b_terminated = b_connected;
+  b_terminated.code = sgk::EventCode::kAccessSessionTerminated;
+  b_terminated.reason = sgk::EventReason::kOtaBusy;
+  b_terminated.transport_reason = sgk::ResultReason::kBusy;
+  b_terminated.sequence = 45;
+  b_terminated.causation_sequence = 44;
+  bridge.emit(b_terminated);
+
+  CHECK(bridge.hasVerifiedSession());
+  CHECK(bridge.lastSequence() == 45);
+  CHECK(bridge.emitRelayOff(2002, false));
+  CHECK(bridge.emitCompleted(2003));
+  CHECK(!bridge.hasVerifiedSession());
+  CHECK(bridge.lastSequence() == 47);
+
+  const sgk::Event& a_relay_off = downstream.events[5];
+  CHECK(a_relay_off.code == sgk::EventCode::kAccessRelayOff);
+  CHECK(a_relay_off.sequence == 46);
+  CHECK(a_relay_off.causation_sequence == 43);
+  CHECK(a_relay_off.causation_sequence != b_terminated.sequence);
+  CHECK(a_relay_off.credential_id == proof_a.credential_id);
+  CHECK(std::all_of(downstream.events[3].credential_id.begin(),
+                    downstream.events[3].credential_id.end(),
+                    [](uint8_t value) { return value == 0; }));
+  CHECK(std::all_of(downstream.events[4].credential_id.begin(),
+                    downstream.events[4].credential_id.end(),
+                    [](uint8_t value) { return value == 0; }));
+
+  std::vector<uint64_t> sequences;
+  for (const sgk::Event& event : downstream.events) {
+    sequences.push_back(event.sequence);
+  }
+  std::sort(sequences.begin(), sequences.end());
+  CHECK(std::adjacent_find(sequences.begin(), sequences.end()) ==
+        sequences.end());
+}
+
+void testLegacySupersededTerminalCompatibilityClearsActor() {
+  EventRecorder downstream;
+  sgk::LocalGattLifecycleBridge bridge(&downstream);
+
+  sgk::Event proof_a{};
+  proof_a.code = sgk::EventCode::kAccessProofVerified;
+  proof_a.reason = sgk::EventReason::kProofValid;
+  proof_a.transport_reason = sgk::ResultReason::kOk;
+  proof_a.session_id.fill(0x11);
+  proof_a.boot_id.fill(0x22);
+  proof_a.credential_id.fill(0x33);
+  proof_a.sequence = 100;
+  bridge.emit(proof_a);
+  CHECK(bridge.emitArmed(3001));
+
+  sgk::Event b_connected{};
+  b_connected.code = sgk::EventCode::kAccessGattConnected;
+  b_connected.reason = sgk::EventReason::kGattConnected;
+  b_connected.transport_reason = sgk::ResultReason::kOk;
+  b_connected.session_id.fill(0x44);
+  b_connected.boot_id = proof_a.boot_id;
+  b_connected.sequence = 102;
+  bridge.emit(b_connected);
+
+  // N/N-1 consumers retain this historical terminal reason, although the
+  // current Target no longer replaces an ARMED session before proof.
+  CHECK(bridge.emitTerminated(3002, sgk::EventReason::kSessionSuperseded));
+  CHECK(!bridge.hasVerifiedSession());
+  CHECK(bridge.lastSequence() == 103);
+  const sgk::Event& superseded = downstream.events.back();
+  CHECK(superseded.code == sgk::EventCode::kAccessSessionTerminated);
+  CHECK(superseded.reason == sgk::EventReason::kSessionSuperseded);
+  CHECK(superseded.session_id == proof_a.session_id);
+  CHECK(superseded.credential_id == proof_a.credential_id);
+  CHECK(superseded.causation_sequence == 101);
+
+  sgk::Event b_terminated = b_connected;
+  b_terminated.code = sgk::EventCode::kAccessSessionTerminated;
+  b_terminated.reason = sgk::EventReason::kOtaBusy;
+  b_terminated.transport_reason = sgk::ResultReason::kBusy;
+  b_terminated.sequence = 104;
+  b_terminated.has_causation = true;
+  b_terminated.causation_sequence = 102;
+  bridge.emit(b_terminated);
+  CHECK(bridge.lastSequence() == 104);
+  CHECK(std::all_of(downstream.events.back().credential_id.begin(),
+                    downstream.events.back().credential_id.end(),
+                    [](uint8_t value) { return value == 0; }));
+  CHECK(!bridge.emitRelayOn(3003));
+
+  sgk::Event proof_b = proof_a;
+  proof_b.session_id = b_connected.session_id;
+  proof_b.credential_id.fill(0x55);
+  proof_b.sequence = 105;
+  bridge.emit(proof_b);
+  CHECK(bridge.emitArmed(3004));
+  CHECK(downstream.events.back().sequence == 106);
+  CHECK(downstream.events.back().causation_sequence == 105);
+  CHECK(downstream.events.back().credential_id == proof_b.credential_id);
+}
+
+void testVerifiedPhaseTrackerIgnoresUnverifiedInterleaving() {
+  sgk::VerifiedAccessPhaseTracker tracker;
+  uint16_t terminal_mask = 0xffff;
+
+  sgk::Event actorless_proof{};
+  actorless_proof.code = sgk::EventCode::kAccessProofVerified;
+  actorless_proof.session_id.fill(0x7a);
+  CHECK(!tracker.observe(actorless_proof, &terminal_mask));
+  CHECK(!tracker.hasVerifiedSession());
+  CHECK(terminal_mask == 0);
+
+  sgk::Event a{};
+  a.code = sgk::EventCode::kAccessProofVerified;
+  a.session_id.fill(0x11);
+  a.credential_id.fill(0x33);
+  CHECK(!tracker.observe(a, &terminal_mask));
+  CHECK(terminal_mask == 0);
+  CHECK(tracker.hasVerifiedSession());
+  CHECK(tracker.phaseMask() ==
+        sgk::VerifiedAccessPhaseTracker::kProofVerified);
+
+  a.code = sgk::EventCode::kAccessArmed;
+  CHECK(!tracker.observe(a, &terminal_mask));
+  CHECK(tracker.phaseMask() ==
+        (sgk::VerifiedAccessPhaseTracker::kProofVerified |
+         sgk::VerifiedAccessPhaseTracker::kArmed));
+
+  sgk::Event b{};
+  b.code = sgk::EventCode::kAccessGattConnected;
+  b.session_id.fill(0x22);
+  CHECK(!tracker.observe(b, &terminal_mask));
+  b.code = sgk::EventCode::kAccessSessionTerminated;
+  CHECK(!tracker.observe(b, &terminal_mask));
+  CHECK(terminal_mask == 0);
+  CHECK(tracker.hasVerifiedSession());
+  CHECK(tracker.phaseMask() ==
+        (sgk::VerifiedAccessPhaseTracker::kProofVerified |
+         sgk::VerifiedAccessPhaseTracker::kArmed));
+
+  a.code = sgk::EventCode::kAccessSensorDetected;
+  CHECK(!tracker.observe(a));
+  a.code = sgk::EventCode::kAccessRelayOn;
+  CHECK(!tracker.observe(a));
+  a.code = sgk::EventCode::kAccessRelayOff;
+  a.reason = sgk::EventReason::kRelayHoldComplete;
+  CHECK(!tracker.observe(a));
+  a.code = sgk::EventCode::kAccessSessionCompleted;
+  CHECK(tracker.observe(a, &terminal_mask));
+  CHECK(terminal_mask == 0x001f);
+  CHECK(!tracker.hasVerifiedSession());
+  CHECK(tracker.phaseMask() == 0);
+
+  // A later unverified terminal cannot replay A's completed phase summary.
+  CHECK(!tracker.observe(b, &terminal_mask));
+  CHECK(terminal_mask == 0);
+
+  b.code = sgk::EventCode::kAccessProofVerified;
+  b.credential_id.fill(0x44);
+  CHECK(!tracker.observe(b));
+  b.code = sgk::EventCode::kAccessRelayOff;
+  b.reason = sgk::EventReason::kRelayFailsafeCutoff;
+  CHECK(!tracker.observe(b));
+  b.code = sgk::EventCode::kAccessSessionTerminated;
+  CHECK(tracker.observe(b, &terminal_mask));
+  CHECK(terminal_mask ==
+        (sgk::VerifiedAccessPhaseTracker::kProofVerified |
+         sgk::VerifiedAccessPhaseTracker::kRelayOff |
+         sgk::VerifiedAccessPhaseTracker::kRelayFailsafe));
+}
+
+void testUnauthenticatedHelloCannotPreemptArmedLifecycle() {
+  auto random = canonicalRandom();
+  FakeVerifier verifier(sgk::ResultReason::kOk);
+  PhaseTrackingEventRecorder downstream;
+  sgk::LocalGattLifecycleBridge lifecycle(&downstream);
+  sgk::TargetAccessFsm fsm;
+  fsm.begin(0);
+  FsmAuthControlGate control(&fsm, &lifecycle);
+  sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &lifecycle,
+                             &control);
+  control.core = &protocol;
+  CHECK(protocol.initialize());
+  protocol.setEnabled(true);
+
+  sgk::ConnectionToken owner_a;
+  CHECK(protocol.connect(40, 1000, &owner_a));
+  const auto client = hello();
+  CHECK(send(protocol, sgk::MessageType::kClientHello, client.data(),
+             client.size(), 1000, 502, 1, owner_a));
+  CHECK(drain(protocol).size() == 2);
+  const std::array<uint8_t, 16> session_a = protocol.sessionId();
+  const auto proof_a = proof(session_a);
+  CHECK(send(protocol, sgk::MessageType::kProof, proof_a.data(),
+             proof_a.size(), 2000, 502, 2, owner_a));
+  CHECK(drain(protocol).size() == 1);
+  CHECK(protocol.state() == sgk::SessionState::kCompleted);
+  CHECK(fsm.state() == GateState::ARMED);
+  CHECK(fsm.isArmed());
+  CHECK(!fsm.isRelayOn());
+  CHECK(control.lifecycle_emit_ok);
+  CHECK(lifecycle.hasVerifiedSession());
+  CHECK(downstream.phase_tracker.phaseMask() ==
+        (sgk::VerifiedAccessPhaseTracker::kProofVerified |
+         sgk::VerifiedAccessPhaseTracker::kArmed));
+
+  uint64_t armed_sequence = 0;
+  std::array<uint8_t, 16> credential_a{};
+  for (const sgk::Event& event : downstream.events) {
+    if (event.code == sgk::EventCode::kAccessProofVerified) {
+      credential_a = event.credential_id;
+    }
+    if (event.code == sgk::EventCode::kAccessArmed) {
+      armed_sequence = event.sequence;
+    }
+  }
+  CHECK(armed_sequence != 0);
+  CHECK(!std::all_of(credential_a.begin(), credential_a.end(),
+                     [](uint8_t value) { return value == 0; }));
+
+  protocol.disconnect(owner_a, 2100);
+  CHECK(lifecycle.hasVerifiedSession());
+  sgk::ConnectionToken owner_b;
+  CHECK(protocol.connect(41, 12000, &owner_b));
+  const size_t b_event_start = downstream.events.size();
+
+  // B is rejected at ClientHello, before it receives a challenge or proof can
+  // affect the existing sensor-waiting A lifecycle.
+  CHECK(!send(protocol, sgk::MessageType::kClientHello, client.data(),
+              client.size(), 12000, 502, 3, owner_b));
+  const auto rejected_hello_outputs = drain(protocol);
+  CHECK(rejected_hello_outputs.size() == 1);
+  CHECK(rejected_hello_outputs[0].type == sgk::MessageType::kTargetHello);
+  CHECK(rejected_hello_outputs[0].bytes[7] == 2);
+  CHECK(fsm.state() == GateState::ARMED);
+  CHECK(fsm.isArmed());
+  CHECK(!fsm.isRelayOn());
+  CHECK(lifecycle.hasVerifiedSession());
+  CHECK(downstream.phase_tracker.phaseMask() ==
+        (sgk::VerifiedAccessPhaseTracker::kProofVerified |
+         sgk::VerifiedAccessPhaseTracker::kArmed));
+  CHECK(downstream.terminal_count == 0);
+
+  // A no-proof B disconnect after that busy response cannot abort A either.
+  protocol.disconnect(owner_b, 12500);
+  CHECK(fsm.state() == GateState::ARMED);
+  CHECK(lifecycle.hasVerifiedSession());
+  CHECK(downstream.phase_tracker.phaseMask() ==
+        (sgk::VerifiedAccessPhaseTracker::kProofVerified |
+         sgk::VerifiedAccessPhaseTracker::kArmed));
+  CHECK(downstream.terminal_count == 0);
+
+  // A new peer's proof frame without an accepted hello is invalid in IDLE
+  // protocol state and likewise cannot abort or replace A.
+  sgk::ConnectionToken owner_c;
+  CHECK(protocol.connect(42, 13000, &owner_c));
+  std::array<uint8_t, 16> zero_session{};
+  const auto invalid_b_proof = proof(zero_session);
+  CHECK(!send(protocol, sgk::MessageType::kProof, invalid_b_proof.data(),
+              invalid_b_proof.size(), 13000, 502, 4, owner_c));
+  drain(protocol);
+  CHECK(verifier.calls == 1);
+  CHECK(control.begin_calls == 2);
+  CHECK(control.commit_calls == 1);
+  CHECK(control.abort_calls == 1);
+  CHECK(fsm.state() == GateState::ARMED);
+  CHECK(fsm.isArmed());
+  CHECK(lifecycle.hasVerifiedSession());
+  CHECK(downstream.phase_tracker.phaseMask() ==
+        (sgk::VerifiedAccessPhaseTracker::kProofVerified |
+         sgk::VerifiedAccessPhaseTracker::kArmed));
+  CHECK(downstream.terminal_count == 0);
+  for (size_t index = b_event_start; index < downstream.events.size(); ++index) {
+    CHECK(downstream.events[index].session_id != session_a);
+    CHECK(std::all_of(downstream.events[index].credential_id.begin(),
+                      downstream.events[index].credential_id.end(),
+                      [](uint8_t value) { return value == 0; }));
+  }
+
+  // B did not alter A's original 60-second arm deadline. A can still trigger
+  // the normal sensor/relay path at the final millisecond of that window.
+  fsm.tick(61999);
+  CHECK(fsm.state() == GateState::ARMED);
+  const uint64_t interleaved_high_water = lifecycle.lastSequence();
+  CHECK(fsm.handleSensorTrigger(61999, 1000, 2000));
+  CHECK(lifecycle.emitSensorDetected(61999));
+  protocol.advanceEventSequence(lifecycle.lastSequence());
+  const sgk::Event& sensor_event = downstream.events.back();
+  CHECK(sensor_event.session_id == session_a);
+  CHECK(sensor_event.credential_id == credential_a);
+  CHECK(sensor_event.sequence > interleaved_high_water);
+  CHECK(sensor_event.causation_sequence == armed_sequence);
+  CHECK(lifecycle.emitRelayOn(61999));
+  protocol.advanceEventSequence(lifecycle.lastSequence());
+
+  fsm.handleRelayTimerOff(62999, 2000);
+  CHECK(fsm.state() == GateState::COOLDOWN);
+  CHECK(!fsm.isRelayOn());
+  CHECK(lifecycle.emitRelayOff(62999, false));
+  protocol.advanceEventSequence(lifecycle.lastSequence());
+  CHECK(lifecycle.emitCompleted(62999));
+  protocol.advanceEventSequence(lifecycle.lastSequence());
+  CHECK(!lifecycle.hasVerifiedSession());
+  CHECK(downstream.terminal_count == 1);
+  CHECK(downstream.terminal_phase_mask == 0x001f);
+  CHECK(downstream.terminal_session_id == session_a);
+
+  CHECK(!fsm.handleAuthPending(63000, 5000));
+  fsm.tick(64998);
+  CHECK(fsm.state() == GateState::COOLDOWN);
+  fsm.tick(64999);
+  CHECK(fsm.state() == GateState::IDLE);
+  CHECK(!fsm.isRelayOn());
+  CHECK(fsm.handleAuthPending(65000, 5000));
 }
 
 void testRelayFailsafeIsExactlyOnce() {
@@ -760,15 +1368,75 @@ void testRelayFailsafeIsExactlyOnce() {
   CHECK(fsm.handleSensorTrigger(3, 1000, 2000));
   emitted.clear();
 
-  fsm.handleRelayFailsafeOff(4, 2000);
-  fsm.handleRelayFailsafeOff(5, 2000);
-  fsm.tick(1004);
+  // The independent hardware timer firing at the exact hold deadline is the
+  // normal completion path, not a failsafe failure.
+  fsm.handleRelayTimerOff(1003, 2000);
+  fsm.tick(1003);
+  fsm.handleRelayFailsafeOff(1004, 2000);
+
+  CHECK(fsm.state() == GateState::COOLDOWN);
+  CHECK(relay_off_calls == 1);
+  CHECK(emitted.size() == 2);
+  CHECK(emitted[0] == "door_close");
+  CHECK(emitted[1] == "session_completed");
+  CHECK(std::find(emitted.begin(), emitted.end(), "door_close_failsafe") ==
+        emitted.end());
+
+  // A genuinely late independent fallback remains an exactly-once failsafe
+  // and can never also emit the normal relay-off phase.
+  fsm.cleanupToIdle(4000);
+  relay_off_calls = 0;
+  emitted.clear();
+  CHECK(fsm.handleAuthPending(4001));
+  CHECK(fsm.handleAuthSuccess(4002));
+  CHECK(fsm.handleSensorTrigger(4003, 1000, 2000));
+  emitted.clear();
+  fsm.handleRelayFailsafeOff(5253, 2000);
+  fsm.tick(5253);
+  fsm.handleRelayFailsafeOff(5254, 2000);
 
   CHECK(fsm.state() == GateState::COOLDOWN);
   CHECK(relay_off_calls == 1);
   CHECK(emitted.size() == 2);
   CHECK(emitted[0] == "door_close_failsafe");
-  CHECK(emitted[1] == "session_completed");
+  CHECK(emitted[1] == "session_terminated_failsafe");
+  CHECK(std::find(emitted.begin(), emitted.end(), "door_close") ==
+        emitted.end());
+}
+
+void testNewAuthenticationWaitsForFreshIdleAfterTerminalCooldown() {
+  sgk::TargetAccessFsm fsm;
+  fsm.begin(1000);
+  CHECK(fsm.handleAuthPending(1000, 5000));
+  CHECK(!fsm.handleAuthPending(1001, 5000));
+  CHECK(fsm.state() == GateState::AUTH_PENDING);
+  CHECK(fsm.handleAuthSuccess(2000, 60000, 2000));
+
+  // B cannot replace sensor-waiting A before proof. Rejection preserves A's
+  // armed state and its original 62,000 ms deadline.
+  CHECK(!fsm.handleAuthPending(12000, 5000));
+  CHECK(fsm.state() == GateState::ARMED);
+  CHECK(fsm.isArmed());
+  fsm.tick(61999);
+  CHECK(fsm.state() == GateState::ARMED);
+  fsm.tick(62000);
+  CHECK(fsm.state() == GateState::IDLE);
+
+  // A fresh IDLE may authenticate, but RELAY_HOLD and COOLDOWN reject every
+  // new attempt until relay OFF and terminal cooldown are complete.
+  CHECK(fsm.handleAuthPending(62001, 5000));
+  CHECK(fsm.handleAuthSuccess(62002, 60000, 2000));
+  CHECK(fsm.handleSensorTrigger(62003, 1000, 2000));
+  CHECK(fsm.state() == GateState::RELAY_HOLD);
+  CHECK(!fsm.handleAuthPending(62004, 5000));
+  fsm.handleRelayTimerOff(63003, 2000);
+  CHECK(fsm.state() == GateState::COOLDOWN);
+  CHECK(!fsm.handleAuthPending(63004, 5000));
+  fsm.tick(65002);
+  CHECK(fsm.state() == GateState::COOLDOWN);
+  fsm.tick(65003);
+  CHECK(fsm.state() == GateState::IDLE);
+  CHECK(fsm.handleAuthPending(65004, 5000));
 }
 
 void testDedicatedManualRemoteRegression() {
@@ -933,6 +1601,13 @@ void testOfflineEventQueue() {
   CHECK(std::string(front.event_type) == "door_open");
   CHECK(queue.size() == 2);
 
+  sgk::Event compatibility_event{};
+  compatibility_event.credential_id.fill(0xff);
+  CHECK(queue.peek(&compatibility_event));
+  CHECK(std::all_of(compatibility_event.credential_id.begin(),
+                    compatibility_event.credential_id.end(),
+                    [](uint8_t value) { return value == 0; }));
+
   // 2. Publish success: popFront removes front event
   CHECK(queue.popFront(&front));
   CHECK(std::string(front.event_type) == "door_open");
@@ -1034,9 +1709,113 @@ void testOfflineEventQueueBoundedOverflowAndGap() {
   CHECK(queue.popFront(&evt)); // evt_7
   CHECK(queue.popFront(&evt)); // evt_8
   CHECK(queue.popFront(&evt)); // gap_evt1
-  CHECK(evt.is_canonical == 1);
+  CHECK(evt.is_canonical == 0);
+  CHECK(evt.schema_version == sgk::kCanonicalEventSchemaV1);
+  CHECK(sgk::isValidCanonicalEventRecord(evt));
+  CHECK(evt.event_id[0] == '\0');
   CHECK(std::string(evt.event_type) == "queue_overflow");
   CHECK(std::string(evt.detail).find("dropped seq 1-2") != std::string::npos);
+  CHECK(queue.popFront(&evt)); // evt_9 must remain reachable after the gap.
+  CHECK(std::string(evt.event_type) == "evt_9");
+}
+
+
+
+void testOfflineEventQueueOverflowGapRebootsAndDrains() {
+  TestQueueStorage storage;
+  {
+    sgk::OfflineEventQueue queue1(&storage);
+    queue1.begin();
+    for (uint64_t i = 1; i <= 9; ++i) {
+      char event_name[32] = {};
+      std::snprintf(event_name, sizeof(event_name), "evt_%llu",
+                    static_cast<unsigned long long>(i));
+      CHECK(queue1.pushEvent(event_name, "durable_overflow_test", 2000 + i,
+                             i, "target_1", "boot_1", 7));
+    }
+    CHECK(queue1.size() == sgk::OfflineEventQueue::kCapacity);
+    CHECK(queue1.overflowCount() == 2);
+  }
+
+  sgk::OfflineEventQueue queue2(&storage);
+  queue2.begin();
+  CHECK(queue2.size() == sgk::OfflineEventQueue::kCapacity);
+  CHECK(queue2.tornRecoveryCount() == 0);
+
+  const std::vector<std::string> expected = {
+      "evt_3", "evt_4", "evt_5", "evt_6", "evt_7", "evt_8",
+      "queue_overflow", "evt_9"};
+  for (const std::string& event_type : expected) {
+    sgk::CanonicalEvent restored{};
+    CHECK(queue2.peekFront(&restored));
+    CHECK(sgk::isValidCanonicalEventRecord(restored));
+    CHECK(std::string(restored.event_type) == event_type);
+    if (event_type == "queue_overflow") {
+      char key_id[sgk::kAccessEvidenceKeyIdCapacity] = {};
+      uint8_t tag[sgk::kAccessEvidenceTagSize] = {};
+      char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
+      CHECK(restored.is_canonical == 0);
+      CHECK(restored.event_id[0] == '\0');
+      CHECK(!sgk::canonicalEventAccessAuth(restored, key_id, tag,
+                                           credential_ref));
+      CHECK(std::string(restored.detail).find("dropped seq 1-2") !=
+            std::string::npos);
+    }
+    CHECK(queue2.popFront());
+  }
+  CHECK(queue2.isEmpty());
+}
+
+
+void testOfflineEventQueueWrappedHeadSurvivesRepeatedReboot() {
+  TestQueueStorage storage;
+  {
+    sgk::OfflineEventQueue queue1(&storage);
+    queue1.begin();
+    for (uint64_t i = 1; i <= sgk::OfflineEventQueue::kCapacity; ++i) {
+      char event_name[32] = {};
+      std::snprintf(event_name, sizeof(event_name), "evt_%llu",
+                    static_cast<unsigned long long>(i));
+      CHECK(queue1.pushEvent(event_name, "wrapped_head_test", 3000 + i, i,
+                             "target_1", "boot_1", 9));
+    }
+
+    sgk::CanonicalEvent popped{};
+    CHECK(queue1.popFront(&popped));
+    CHECK(std::string(popped.event_type) == "evt_1");
+    CHECK(queue1.pushEvent("evt_9", "wrapped_tail_test", 3009, 9,
+                           "target_1", "boot_1", 9));
+  }
+
+  // The first reboot restores a full ring whose durable head and tail are both
+  // physical slot 1. Popping evt_2 must commit head=2 without compacting RAM.
+  {
+    sgk::OfflineEventQueue queue2(&storage);
+    queue2.begin();
+    CHECK(queue2.size() == sgk::OfflineEventQueue::kCapacity);
+    CHECK(queue2.tornRecoveryCount() == 0);
+    sgk::CanonicalEvent popped{};
+    CHECK(queue2.popFront(&popped));
+    CHECK(std::string(popped.event_type) == "evt_2");
+  }
+
+  // A second reboot must not replay evt_2 or lose the wrapped evt_9 tail.
+  sgk::OfflineEventQueue queue3(&storage);
+  queue3.begin();
+  CHECK(queue3.size() == sgk::OfflineEventQueue::kCapacity - 1);
+  CHECK(queue3.tornRecoveryCount() == 0);
+  for (uint64_t i = 3; i <= 9; ++i) {
+    sgk::CanonicalEvent restored{};
+    CHECK(queue3.popFront(&restored));
+    CHECK(std::string(restored.event_type) ==
+          "evt_" + std::to_string(i));
+  }
+  CHECK(queue3.isEmpty());
+
+  sgk::OfflineEventQueue queue4(&storage);
+  queue4.begin();
+  CHECK(queue4.isEmpty());
+  CHECK(queue4.tornRecoveryCount() == 0);
 }
 
 
@@ -1141,21 +1920,11 @@ void testAuthPendingStateFlow() {
   CHECK(!last_relay_on);
   CHECK(last_event_name == "auth_verified_armed");
 
-  // 4. A foreground action-2 session may replace an existing action-1 ARMED
-  // window, but still requires a fresh authenticated proof before relay ON.
-  CHECK(fsm.handleAuthPending(1600, 5000));
-  CHECK(fsm.state() == GateState::AUTH_PENDING);
-  CHECK(!fsm.isArmed());
+  // 4. A new ClientHello cannot replace a verified sensor-waiting session.
+  CHECK(!fsm.handleAuthPending(1600, 5000));
+  CHECK(fsm.state() == GateState::ARMED);
+  CHECK(fsm.isArmed());
   CHECK(!fsm.isRelayOn());
-  CHECK(fsm.handleLocalManualOpen(1700, 1000, 2000));
-  CHECK(fsm.state() == GateState::RELAY_HOLD);
-  CHECK(fsm.isRelayOn());
-  CHECK(last_event_name == "relay_on_local_manual");
-  fsm.cleanupToIdle(1800);
-
-  // Re-arm for the independent sensor path.
-  CHECK(fsm.handleAuthPending(1900, 5000));
-  CHECK(fsm.handleAuthSuccess(1950, 60000, 2000));
 
   // 5. Passage sensor trigger while ARMED transitions to RELAY_HOLD (turns relay ON!)
   CHECK(fsm.handleSensorTrigger(2000, 1000, 2000));
@@ -1169,7 +1938,7 @@ void testAuthPendingStateFlow() {
   CHECK(fsm.state() == GateState::COOLDOWN);
   CHECK(!fsm.isRelayOn());
   CHECK(!last_relay_on);
-  CHECK(last_event_name == "session_completed");
+  CHECK(last_event_name == "session_terminated_failsafe");
 
   // 7. Reset and test AUTH_PENDING timeout
   fsm.cleanupToIdle(3000);
@@ -1249,6 +2018,84 @@ void testProtocolDisconnectHandoff() {
     }
     CHECK(!has_failed);
     CHECK(!has_terminated);
+  }
+}
+
+void testCommittedActionSurvivesResultTransportFailure() {
+  for (const bool subscribe_to_result : {false, true}) {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kOk);
+    EventRecorder downstream;
+    sgk::LocalGattLifecycleBridge bridge(&downstream);
+    FakeAuthControlGate control;
+    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &bridge,
+                               &control);
+    CHECK(protocol.initialize());
+    protocol.setEnabled(true);
+
+    sgk::ConnectionToken owner;
+    CHECK(protocol.connect(subscribe_to_result ? 31 : 30, 5000, &owner));
+    const auto client = hello();
+    CHECK(send(protocol, sgk::MessageType::kClientHello, client.data(),
+               client.size(), 5000, 502, 1, owner));
+    const auto handshake_outputs = drain(protocol);
+    CHECK(handshake_outputs.size() == 2);
+
+    const auto valid_proof = proof(protocol.sessionId());
+    CHECK(send(protocol, sgk::MessageType::kProof, valid_proof.data(),
+               valid_proof.size(), 5100, 502, 2, owner));
+    CHECK(protocol.state() == sgk::SessionState::kCompleted);
+    CHECK(bridge.hasVerifiedSession());
+
+    sgk::OutputMessage result{};
+    CHECK(protocol.popOutput(&result));
+    CHECK(result.type == sgk::MessageType::kResult);
+    sgk::AdapterState adapter;
+    CHECK(adapter.acceptConnection(owner));
+
+    if (!subscribe_to_result) {
+      // Production drainOutputs treats this missing subscription as a
+      // transport failure after the action has already been committed.
+      CHECK(!adapter.stageOutput(result));
+    } else {
+      CHECK(adapter.setSubscribed(owner.handle, sgk::MessageType::kResult,
+                                  true));
+      CHECK(adapter.stageOutput(result));
+      uint8_t frame[sgk::kAdapterFrameCapacity] = {};
+      size_t written = 0;
+      sgk::MessageType type = sgk::MessageType::kError;
+      sgk::IndicationToken token{};
+      CHECK(adapter.beginNextIndication(247, 5101, frame, sizeof(frame),
+                                        &written, &type, &token));
+      CHECK(written != 0);
+      CHECK(adapter.confirmIndication(token, type, false) ==
+            sgk::IndicationResult::kAborted);
+    }
+
+    const size_t event_count_before_abort = downstream.events.size();
+    protocol.abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
+                            5102);
+    CHECK(protocol.state() == sgk::SessionState::kIdle);
+    CHECK(bridge.hasVerifiedSession());
+    CHECK(control.abort_calls == 0);
+    CHECK(downstream.events.size() == event_count_before_abort);
+
+    // The independent Target FSM may still complete the committed action. Its
+    // lifecycle must retain the verified actor despite RESULT transport loss.
+    CHECK(bridge.emitArmed(5103));
+    CHECK(bridge.emitSensorDetected(5104));
+    CHECK(bridge.emitRelayOn(5105));
+    CHECK(bridge.emitRelayOff(6105, false));
+    CHECK(bridge.emitCompleted(6106));
+    CHECK(!bridge.hasVerifiedSession());
+    for (size_t index = downstream.events.size() - 5;
+         index < downstream.events.size(); ++index) {
+      CHECK(!std::all_of(downstream.events[index].credential_id.begin(),
+                         downstream.events[index].credential_id.end(),
+                         [](uint8_t value) { return value == 0; }));
+      CHECK(downstream.events[index].session_id ==
+            downstream.events[event_count_before_abort - 1].session_id);
+    }
   }
 }
 
@@ -1567,7 +2414,9 @@ void testOfflineCanonicalEventReplayAndPreservation() {
     std::strncpy(canonical_evt.event_type, "ACCESS_PROOF_VERIFIED", sizeof(canonical_evt.event_type) - 1);
     std::strncpy(canonical_evt.stage_text, "PROOF", sizeof(canonical_evt.stage_text) - 1);
     std::strncpy(canonical_evt.outcome_text, "SUCCEEDED", sizeof(canonical_evt.outcome_text) - 1);
-    std::strncpy(canonical_evt.detail, "PROOF_VALID", sizeof(canonical_evt.detail) - 1);
+    std::strncpy(canonical_evt.detail,
+                 "PROOF_VALID_LEGACY_REASON_REMAINS_LONGER_THAN_32",
+                 sizeof(canonical_evt.detail) - 1);
 
     constexpr char kEventId[] = "12345678-1234-1234-1234-123456789abc";
     constexpr char kSessionId[] = "87654321-4321-4321-4321-cba987654321";
@@ -1613,7 +2462,8 @@ void testOfflineCanonicalEventReplayAndPreservation() {
   CHECK(std::string(restored.event_type) == "ACCESS_PROOF_VERIFIED");
   CHECK(std::string(restored.stage_text) == "PROOF");
   CHECK(std::string(restored.outcome_text) == "SUCCEEDED");
-  CHECK(std::string(restored.detail) == "PROOF_VALID");
+  CHECK(std::string(restored.detail) ==
+        "PROOF_VALID_LEGACY_REASON_REMAINS_LONGER_THAN_32");
   CHECK(std::string(restored.event_id) == "12345678-1234-1234-1234-123456789abc");
   CHECK(std::string(restored.session_id) == "87654321-4321-4321-4321-cba987654321");
   CHECK(std::string(restored.source_boot_id) == "abcdef12-3456-7890-abcd-ef1234567890");
@@ -1625,6 +2475,153 @@ void testOfflineCanonicalEventReplayAndPreservation() {
   CHECK(queue2.size() == 1);
   CHECK(queue2.popFront(&restored));
   CHECK(queue2.isEmpty());
+}
+
+void testOfflineCanonicalV2CredentialRefOverlay() {
+  CHECK(sizeof(sgk::CanonicalEvent) == 368);
+  CHECK(offsetof(sgk::CanonicalEvent, detail) == 297);
+  CHECK(offsetof(sgk::CanonicalEvent, padding) == 362);
+  CHECK(offsetof(sgk::CanonicalEvent, crc32) == 364);
+
+  TestQueueStorage storage;
+  sgk::OfflineEventQueue queue1(&storage);
+  queue1.begin();
+  sgk::CanonicalEvent event{};
+  event.is_canonical = 1;
+  event.code =
+      static_cast<uint16_t>(sgk::EventCode::kAccessSensorDetected);
+  event.sequence = 77;
+  event.boot_count = 686;
+  constexpr char kEventId[] = "12345678-1234-4234-8234-123456789abc";
+  constexpr char kSessionId[] = "87654321-4321-4321-8321-cba987654321";
+  constexpr char kSourceBootId[] =
+      "abcdef12-3456-7890-abcd-ef1234567890";
+  std::memcpy(event.event_id, kEventId, sizeof(kEventId));
+  std::memcpy(event.session_id, kSessionId, sizeof(kSessionId));
+  std::memcpy(event.source_boot_id, kSourceBootId, sizeof(kSourceBootId));
+  std::strncpy(event.target_ref, "target_c6_01_ref_12345678",
+               sizeof(event.target_ref) - 1);
+  std::strncpy(event.event_type, "ACCESS_SENSOR_DETECTED",
+               sizeof(event.event_type) - 1);
+  std::strncpy(event.stage_text, "SENSOR", sizeof(event.stage_text) - 1);
+  std::strncpy(event.outcome_text, "SUCCEEDED",
+               sizeof(event.outcome_text) - 1);
+  const auto tag_bytes = hex("ee82880739ce2d2ae3a726c641a6dd08");
+  uint8_t event_tag[sgk::kAccessEvidenceTagSize] = {};
+  std::copy(tag_bytes.begin(), tag_bytes.end(), event_tag);
+  CHECK(sgk::setCanonicalV2Detail(
+      &event, "SENSOR_THRESHOLD_MET", "k1",
+      "c_k1_653b090fafcdaffa677766a2", event_tag));
+  CHECK(event.schema_version == sgk::kCanonicalEventSchemaV2);
+  CHECK(std::string(sgk::canonicalEventReason(event)) ==
+        "SENSOR_THRESHOLD_MET");
+  char key_id[sgk::kAccessEvidenceKeyIdCapacity] = {};
+  uint8_t decoded_tag[sgk::kAccessEvidenceTagSize] = {};
+  char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
+  CHECK(sgk::canonicalEventAccessAuth(event, key_id, decoded_tag,
+                                      credential_ref));
+  CHECK(std::string(key_id) == "k1");
+  CHECK(std::memcmp(decoded_tag, event_tag, sizeof(event_tag)) == 0);
+  CHECK(std::string(credential_ref) ==
+        "c_k1_653b090fafcdaffa677766a2");
+  CHECK(queue1.push(event));
+
+  // Exact N-1 rollback fixture: the previous reader requires record schema 1,
+  // checks the unchanged CRC range, and ignores the padding word. It must be
+  // able to replay the reason rather than stopping recovery at this record.
+  CHECK(storage.meta1_valid_);
+  CHECK(storage.meta1_.schema_version == 1);
+  CHECK(storage.meta1_.head == 0);
+  CHECK(storage.meta1_.count == 1);
+  CHECK(storage.record_valid_[0]);
+  const sgk::CanonicalEvent& durable = storage.records_[0];
+  const auto legacy_v1_reader_accepts = [](const sgk::CanonicalEvent& value) {
+    const uint32_t expected_crc = sgk::OfflineEventQueue::computeCrc32(
+        reinterpret_cast<const uint8_t*>(&value),
+        offsetof(sgk::CanonicalEvent, crc32));
+    if (value.magic != 0x53475145 || value.schema_version != 1 ||
+        value.crc32 != expected_crc || value.generation == 0) {
+      return false;
+    }
+    if (value.is_canonical != 1) return true;
+    return value.event_id[0] != '\0' && value.session_id[0] != '\0' &&
+           value.source_boot_id[0] != '\0' &&
+           value.target_ref[0] != '\0' && value.event_type[0] != '\0' &&
+           value.stage_text[0] != '\0' &&
+           value.outcome_text[0] != '\0' && value.detail[0] != '\0';
+  };
+  CHECK(durable.schema_version == sgk::kCanonicalEventSchemaV1);
+  CHECK(durable.padding == sgk::kCanonicalV2OverlayMarker);
+  CHECK(!sgk::canonicalEventAccessAuth(durable, key_id, decoded_tag,
+                                       credential_ref));
+  CHECK(legacy_v1_reader_accepts(durable));
+  CHECK(std::string(durable.detail) == "SENSOR_THRESHOLD_MET");
+  sgk::CanonicalEvent runtime_front{};
+  CHECK(queue1.peekFront(&runtime_front));
+  CHECK(runtime_front.schema_version == sgk::kCanonicalEventSchemaV2);
+  CHECK(sgk::canonicalEventAccessAuth(runtime_front, key_id, decoded_tag,
+                                      credential_ref));
+  CHECK(std::string(credential_ref) ==
+        "c_k1_653b090fafcdaffa677766a2");
+
+  sgk::CanonicalEvent following_v1 = event;
+  following_v1.schema_version = sgk::kCanonicalEventSchemaV1;
+  following_v1.padding = 0;
+  following_v1.sequence = 78;
+  following_v1.event_id[0] = '2';
+  std::memset(following_v1.detail, 0, sizeof(following_v1.detail));
+  std::strncpy(following_v1.detail, "FOLLOWING_V1_EVENT",
+               sizeof(following_v1.detail) - 1);
+  CHECK(queue1.push(following_v1));
+  CHECK(storage.meta0_valid_);
+  CHECK(storage.meta0_.schema_version == 1);
+  CHECK(storage.meta0_.head == 0);
+  CHECK(storage.meta0_.count == 2);
+  CHECK(storage.record_valid_[1]);
+  CHECK(legacy_v1_reader_accepts(storage.records_[0]));
+  CHECK(legacy_v1_reader_accepts(storage.records_[1]));
+  CHECK(std::string(storage.records_[1].detail) == "FOLLOWING_V1_EVENT");
+
+  sgk::OfflineEventQueue queue2(&storage);
+  queue2.begin();
+  CHECK(queue2.size() == 2);
+  sgk::CanonicalEvent restored{};
+  CHECK(queue2.peekFront(&restored));
+  CHECK(restored.schema_version == sgk::kCanonicalEventSchemaV2);
+  CHECK(std::string(sgk::canonicalEventReason(restored)) ==
+        "SENSOR_THRESHOLD_MET");
+  CHECK(sgk::canonicalEventAccessAuth(restored, key_id, decoded_tag,
+                                      credential_ref));
+  CHECK(std::string(credential_ref) ==
+        "c_k1_653b090fafcdaffa677766a2");
+  CHECK(queue2.popFront());
+  CHECK(queue2.peekFront(&restored));
+  CHECK(restored.schema_version == sgk::kCanonicalEventSchemaV1);
+  CHECK(std::string(restored.detail) == "FOLLOWING_V1_EVENT");
+
+  sgk::CanonicalEvent malformed = event;
+  malformed.detail[sgk::kCanonicalV2KeyIdOffset] = 'K';
+  CHECK(!queue2.push(malformed));
+
+  sgk::CanonicalEvent missing_tag = event;
+  std::memset(missing_tag.detail + sgk::kCanonicalV2AuthTagOffset, 0,
+              sgk::kCanonicalV2AuthTagSize);
+  CHECK(!sgk::isValidCanonicalEventRecord(missing_tag));
+
+  sgk::CanonicalEvent missing_marker = event;
+  missing_marker.padding = 0;
+  CHECK(!sgk::isValidCanonicalEventRecord(missing_marker));
+
+  sgk::CanonicalEvent unterminated = event;
+  std::memset(unterminated.event_id, 'x', sizeof(unterminated.event_id));
+  CHECK(!sgk::isValidCanonicalEventRecord(unterminated));
+  CHECK(!queue2.push(unterminated));
+
+  sgk::CanonicalEvent noncanonical{};
+  noncanonical.schema_version = sgk::kCanonicalEventSchemaV2;
+  std::strncpy(noncanonical.event_type, "legacy_event",
+               sizeof(noncanonical.event_type) - 1);
+  CHECK(!queue2.push(noncanonical));
 }
 
 void testProductionMainAuthAbortWiring() {
@@ -2026,13 +3023,19 @@ int main() {
       });
 
   testCanonicalVectorsAndFraming();
+  testAccessEvidenceMacFixedVectors();
   testCanonicalSessionAndVerifier();
   testAuthenticatedActionControlBinding();
   testTargetAclManagerAndStorage();
   testTargetProofVerifierIntegration();
   testTargetAccessFsmAndRelayInterlock();
   testVerifiedLocalGattLifecycleBridge();
+  testInterleavedGattPreservesVerifiedLifecycleIntegrity();
+  testLegacySupersededTerminalCompatibilityClearsActor();
+  testVerifiedPhaseTrackerIgnoresUnverifiedInterleaving();
+  testUnauthenticatedHelloCannotPreemptArmedLifecycle();
   testRelayFailsafeIsExactlyOnce();
+  testNewAuthenticationWaitsForFreshIdleAfterTerminalCooldown();
   testDedicatedManualRemoteRegression();
   testAdversarialSignaturesAndLowS();
   testCrossDoorAndStaleLeaseReplay();
@@ -2041,6 +3044,8 @@ int main() {
   testOfflineEventQueueRebootRestoreAndCorruptRejection();
   testOfflineEventQueuePersistenceFailureInterlock();
   testOfflineEventQueueBoundedOverflowAndGap();
+  testOfflineEventQueueOverflowGapRebootsAndDrains();
+  testOfflineEventQueueWrappedHeadSurvivesRepeatedReboot();
   testOfflineEventQueueFullQueuePowerLossOverwriting();
   testAuthAbortAndDisconnectFlow();
   testProductionMainAuthAbortWiring();
@@ -2054,7 +3059,9 @@ int main() {
   testKeyPresentKeyIdAbsentOrFailClosed();
   testQueueMetaSemanticCorruptionMutations();
   testOfflineCanonicalEventReplayAndPreservation();
+  testOfflineCanonicalV2CredentialRefOverlay();
   testProtocolDisconnectHandoff();
+  testCommittedActionSurvivesResultTransportFailure();
   testInvalidTypedCanonicalRecordQuarantine();
   testSignedCommandDurableReplayAndMutations();
   testRawCommandSchemaRejectsEveryDuplicateField();
