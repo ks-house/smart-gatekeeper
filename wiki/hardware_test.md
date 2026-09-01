@@ -857,3 +857,15 @@ key/key ID must be present in both Target release environments and the NAS
 keyring before Target N is built. Broker anonymous/crossover denial and
 legitimate Target/Backend/HA reconnect/readback are release prerequisites, not
 an inference from application HMAC tests.
+
+## 2026-09-02 authenticated actor/result final-main rollout evidence
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Normal merge and final policy | PRs #332, #333 and #334 were normal merge commits. Final `main` is `10d7a1f2e38ed467143db05d5662ae24d575eda5`; its sole policy bundle is `current-main-baseline`, and all 100 protected runtime blobs match immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558` | PASS for reviewed source and final policy identity; no deployment implied |
+| Exact Target publication | Run `33555893409` built and published `2.1.422+main.g10d7a1f`, build ID `main-422-10d7a1f2e38ed467143db05d5662ae24d575eda5`. CI and independent HTTPS readback verified signed schema v2, immutable 1,867,636-byte ciphertext, Ed25519, AES-GCM and plaintext SHA | PASS for exact artifact publication and cryptographic readback; install/reboot/health still separate |
+| Exact mobile publication | Run `33555893523` signed and atomically published `1.0.0-g10d7a1f` / `38501` to primary and fallback roots with exact HTTPS readback and previous-valid preservation | PASS for OTA publication; no phone replacement install or wife's-phone rendering evidence |
+| Target pre-install safety | Fresh status at 05:47 KST showed installed `2.1.419+main.g7981498`, boot 690, `IDLE`, unarmed, relay OFF/pin 1 and cooldown 5000 ms | PASS for safe preflight only; this proves the new firmware was not installed at that time |
+| Authenticated local recovery reachability | The first `/recovery/enable-ap` request could not complete a TCP/80 handshake from WSL or Windows. There was no HTTP code, manifest transfer or firmware upload; no retry was sent. Fresh readback kept old firmware/boot and safe relay state | FAIL for station-local recovery reachability, SAFE NO-CHANGE for Target. Periodic signed HTTPS OTA remains the recovery path |
+| Backend/HA/broker/mobile runtime | NAS access-evidence keyring/runtime are not yet root-provisioned, Backend N is not deployed, anonymous broker read remains observable, HA ACL/readback is open, and no phone install occurred | PENDING; admin actor names and mobile completion state are not claimed live |
+| Physical access | No sensor passage, GPIO/contact measurement, actuator travel or door-leaf observation was performed | PENDING; no physical latency or door-open claim |

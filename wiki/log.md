@@ -5986,3 +5986,20 @@
 - Feature PR #333 passed required review and checks and merge-committed normally as exact main `b29cb2497c4adf151b3d60eeab31acb525555340`, retaining immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558` and merge-connected head `ab0e772606b0af57cf952b650b9bdf31a97f714c` in its ancestry.
 - Retired the transitional feature identity and pinned the sole `current-main-baseline` to that actual feature merge. All 100 protected normalized blobs remain byte-identical across feature, merge-connected head and merged main; workflow inventory remains exactly seven and local Actions remain empty.
 - This final policy-only candidate changes no Backend/NAS runtime, schema, broker ACL, mobile/Target installation, sensor, relay or physical door state. Hosted review/normal merge, signed exact-main publication, deployment, runtime readiness and physical acceptance remain separate Gates.
+
+## [2026-09-02] compile | Merge authenticated actor/result release normally
+
+- Policy PR #332, feature PR #333 and final-policy PR #334 passed their hosted checks and were merge-committed normally without administrator bypass, squash, rebase or force update. Final main is `10d7a1f2e38ed467143db05d5662ae24d575eda5` with sole `current-main-baseline` source `b29cb2497c4adf151b3d60eeab31acb525555340`.
+- Verified that immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558`, its merge-connected head, actual feature main and final main have identical Git blobs for all 100 protected runtime paths.
+
+## [2026-09-02] test | Publish exact-main Target and mobile OTA artifacts
+
+- Target run `33555893409` built and atomically published `2.1.422+main.g10d7a1f`, build ID `main-422-10d7a1f2e38ed467143db05d5662ae24d575eda5`. NAS/public readback and independent verification passed for the signed schema-v2 manifest, 1,867,636-byte encrypted artifact, Ed25519 signature, AES-GCM envelope and plaintext SHA.
+- Mobile run `33555893523` built, production-signed and atomically published `1.0.0-g10d7a1f` / `38501` to primary and fallback roots with HTTPS readback and previous-valid preservation.
+- These are publication results only. They do not prove Target installation/reboot/health, phone installation, Backend deployment, HA projection, relay contact or physical door movement.
+
+## [2026-09-02] test | Stop unreachable local Target recovery without mutation
+
+- A fresh non-retained preflight showed installed Target `2.1.419+main.g7981498`, boot 690, `IDLE`, unarmed, relay OFF/pin 1 and cooldown 5000 ms. Exact M2 manifest/artifact verification passed before any Target request.
+- The first authenticated station-local `/recovery/enable-ap` attempt could not establish TCP port 80 from either WSL or Windows. It returned no HTTP code; no manifest or firmware bytes were sent and no retry was made. Follow-up status confirmed unchanged firmware, boot and safe state.
+- Periodic signed HTTPS OTA remains active and is monitored separately. NAS keyring/runtime provisioning, Backend N, broker ACL/HA readback, phone installation and physical sensor/relay/door acceptance remain open Gates.

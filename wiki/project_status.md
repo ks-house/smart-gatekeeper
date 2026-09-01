@@ -18,6 +18,42 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-02 authenticated actor/result final-main publication and rollout
+
+- Policy PR #332, feature PR #333 and final-policy PR #334 were each merged
+  normally without an administrator bypass, squash, rebase or force update.
+  Final `main` is `10d7a1f2e38ed467143db05d5662ae24d575eda5` with the sole
+  `current-main-baseline`; all 100 protected runtime blobs remain identical to
+  immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558`.
+- Target run `33555893409` built and atomically published exact-main personal
+  firmware `2.1.422+main.g10d7a1f`, build ID
+  `main-422-10d7a1f2e38ed467143db05d5662ae24d575eda5`. NAS stage/readback,
+  signed schema-v2 metadata, immutable encrypted artifact, public HTTPS
+  pointer and previous-valid preservation all passed. Independent readback
+  verified the Ed25519 signature, AES-GCM envelope and plaintext hash.
+- Mobile run `33555893523` built, production-signed and atomically published
+  exact-main personal mobile OTA `1.0.0-g10d7a1f` / `38501` to both primary
+  and fallback roots with HTTPS readback and previous-valid preservation.
+  Publication is not phone installation; neither the owner's nor wife's phone
+  has been observed running this APK in this rollout.
+- Immediately before local Target recovery, a fresh non-retained status showed
+  installed `2.1.419+main.g7981498`, boot count 690, `IDLE`, unarmed and relay
+  OFF at pin level 1. The first authenticated station-local
+  `/recovery/enable-ap` attempt could not establish TCP port 80 from either WSL
+  or Windows. It produced no HTTP response; no manifest or firmware bytes were
+  sent and no retry was made. A later status confirmed the same firmware, boot
+  and safe state. The intended periodic signed HTTPS OTA remains active and is
+  being monitored separately for install, reboot and post-health stability.
+- Backend N is not deployed in this evidence point. The root-owned NAS
+  `access_event_ref_keys.json` and exact runtime keys must be provisioned before
+  the restricted deployment can safely run. The live broker's anonymous-read
+  drift and HA principal ACL installation/readback also remain open. Therefore
+  the admin actor display, mobile exact-session completion and verified HA
+  projection are published source artifacts, not live end-to-end behavior yet.
+- No sensor approach, GPIO voltage, relay contact, actuator travel or physical
+  door-leaf motion was exercised. Software publication and a safe old-runtime
+  readback do not prove the reported wife-phone latency improvement.
+
 ## 2026-09-02 authenticated actor and post-ARM completion source candidate
 
 - The source candidate gives each successfully verified Local GATT session a
