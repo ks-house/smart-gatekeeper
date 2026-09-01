@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "23e28e14cf79e618070d0ea3543bf92910ca9558"
-EXPECTED_BUNDLE_ID = "access-actor-result-23e28e1-persistent-baseline"
+MERGED_MAIN_COMMIT = "b29cb2497c4adf151b3d60eeab31acb525555340"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 977f015b2f839a23fd863957491abff244a2eb7047e3f08aab35096eaf2ab9d5
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -121,43 +121,7 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 4677a99651767157abe826744018e052d31c754890ecd32cce5f24712b3c21eb
 tests/test_target_security_ota.py 34a98b9ae139d96e8a13611dc5c6f05c8d2b96cbd0538d7d09fe6ef3d627e8e3
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/deploy.yml",
-    ".github/workflows/personal_installation_firmware.yml",
-    "scripts/ota_contract_gate.py",
-    ".github/workflows/backend_security.yml",
-    "scripts/ops_commercial_gate.py",
-    "ops/backend_trusted_bundle_paths.json",
-    "backend/.env.example",
-    "backend/app/acl_api.py",
-    "backend/app/access_actor_ref.py",
-    "backend/app/home_assistant_bridge.py",
-    "backend/app/main.py",
-    "backend/app/static/admin.html",
-    "backend/compose.production.yml",
-    "backend/compose.synology.yml",
-    "backend/db/Dockerfile",
-    "backend/db/migrations/012_access_event_actor_ref_down.sql",
-    "backend/db/migrations/012_access_event_actor_ref_up.sql",
-    "backend/db/schema.env",
-    "backend/deploy/README.md",
-    "backend/deploy/bootstrap_legacy_synology.sh",
-    "backend/deploy/runtime.env.example",
-    "backend/deploy/sgk_backend_deploy.sh",
-    "backend/deploy/verify_legacy_synology.sh",
-    "backend/docker-compose.yml",
-    "backend/tests/test_acl_api.py",
-    "backend/tests/test_access_actor_ref.py",
-    "backend/tests/test_admin_security.py",
-    "backend/tests/test_home_assistant_bridge.py",
-    "backend/tests/test_migrations.py",
-    "backend/tests/test_nas_backend_deploy.py",
-    "backend/tests/test_ops_api.py",
-    "backend/tests/test_ops_commercial_gate.py",
-    "backend/tests/test_target_boot_registry.py",
-    "security/target-acl",
-    "tests/test_target_security_ota.py",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -257,6 +221,7 @@ RETIRED_SOURCE_COMMITS = {
     "df2ac4869f4ee15c567f4a5ce1e0a99fab08e269",
     "91858585f8db6fb1b8b50ca0182526fdb653f0bf",
     "e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0",
+    "23e28e14cf79e618070d0ea3543bf92910ca9558",
 }
 
 
@@ -1112,8 +1077,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 35)
-    self.assertEqual(len(locally_unchanged_protected), 65)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 100)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])

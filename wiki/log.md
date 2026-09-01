@@ -5980,3 +5980,9 @@
 - Bound immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558` to the sole `access-actor-result-23e28e1-persistent-baseline` with its complete normalized protected map.
 - Expanded the indivisible inventory from 93 to 100 paths. Thirty-five protected blobs carry the reviewed actor attribution, exact-session mobile completion, schema 012, signed Target evidence, deployment/readiness and direct-test contracts; the other 65 retain trusted-main bytes. Workflow inventory remains exactly seven and local Actions remain empty.
 - This policy-only candidate changes no Backend/NAS runtime, broker ACL, mobile or Target installation, sensor, relay or physical door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, deployment and physical acceptance remain separate Gates.
+
+## [2026-09-02] compile | Finalize authenticated access actor/result main policy
+
+- Feature PR #333 passed required review and checks and merge-committed normally as exact main `b29cb2497c4adf151b3d60eeab31acb525555340`, retaining immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558` and merge-connected head `ab0e772606b0af57cf952b650b9bdf31a97f714c` in its ancestry.
+- Retired the transitional feature identity and pinned the sole `current-main-baseline` to that actual feature merge. All 100 protected normalized blobs remain byte-identical across feature, merge-connected head and merged main; workflow inventory remains exactly seven and local Actions remain empty.
+- This final policy-only candidate changes no Backend/NAS runtime, schema, broker ACL, mobile/Target installation, sensor, relay or physical door state. Hosted review/normal merge, signed exact-main publication, deployment, runtime readiness and physical acceptance remain separate Gates.
