@@ -421,3 +421,28 @@ the no-backup owner marker cannot be safely reconstructed from restored ordinary
 SharedPreferences; restoring only `registration_enabled` would create a stale
 radio request rather than a valid identity. Process-start feature evaluation
 still clears such mismatches defensively for upgrades and legacy installs.
+
+## 16. Hosted merge and personal OTA publication evidence
+
+PR #323 passed its required Hosted Trusted, OTA P0 and Android APK canary checks
+and merged normally as exact main
+`e0d809cfb6b31a532840c66eb250ae6feaf82c7b`; no branch-protection bypass was
+used. The exact-main OTA contract run `33457276522` passed. Mobile run
+`33457276558` built, signed and atomically published personal OTA
+`1.0.0-ge0d809c` / `37401`. Target run `33457276556` built, signed and
+atomically published unchanged-source personal Target OTA
+`2.1.412+main.ge0d809c`.
+
+Independent strict-TLS reads of the public fixed manifests matched the exact
+commit. The primary and fallback mobile APKs were byte-identical at 55,200,921
+bytes with SHA-256
+`5964dffaa9f1e5c0978be90388f64d7bf2720a82cd8fff39cc7eee53b6ca4e8a`;
+the encrypted Target artifact was 1,850,036 bytes with SHA-256
+`71c845c219efd0b23983efa83215acb00fbc602d02282d7585fe3b58fa6d32da`.
+
+The sanitized artifacts deliberately mark `production_authorized=false` and
+`release_evidence=false`. These results establish personal signed publication,
+not phone installation, permanent Android PendingIntent liveness, screen-off
+Target detection, Local GATT authentication, `ARMED`, ultrasonic/relay action,
+Target OTA installation/reboot/health or a physical door opening. Issue #179
+therefore remains open for connected exact-APK physical acceptance.

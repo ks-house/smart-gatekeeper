@@ -212,6 +212,20 @@ Keystore credential과 no-backup owner marker 없이 일반 preference만 복원
 위해 Android app backup도 비활성화했다. 기존 설치/업그레이드의 잔존 상태는 process-start
 feature decision이 다시 검증하고 비인가 등록을 stop한다.
 
+PR #323은 필수 Hosted Trusted, OTA P0, Flutter/native Android canary를 모두 통과한 뒤
+정상 merge commit `e0d809cfb6b31a532840c66eb250ae6feaf82c7b`로 병합됐다. exact-main
+mobile run `33457276558`은 personal signed OTA `1.0.0-ge0d809c` / `37401`을 primary와
+fallback에 원자적으로 게시했고, 독립 strict-TLS readback은 두 55,200,921-byte APK가
+manifest SHA-256 `5964dffaa9f1e5c0978be90388f64d7bf2720a82cd8fff39cc7eee53b6ca4e8a`와
+일치함을 확인했다. 동일 main의 Target run `33457276556`도 변경 없는 Target source를
+`2.1.412+main.ge0d809c` personal signed OTA로 게시했다.
+
+두 sanitized publication record는 모두 `production_authorized=false`,
+`release_evidence=false`를 명시한다. 따라서 이 증거는 exact source CI와 personal OTA
+publication까지 닫지만, 아내 휴대폰에 해당 APK가 설치됐는지, 화면 OFF에서 native wake가
+Target을 감지하고 Local GATT action-1을 성공시켰는지, Target이 `ARMED`로 전환했는지,
+초음파·릴레이·물리 문이 동작했는지는 증명하지 않는다.
+
 ## 1. 결론
 
 현재 앱에는 다음 경로가 **구현되어 있다**.
