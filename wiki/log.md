@@ -5974,3 +5974,9 @@
 - The full Backend suite passed 193 tests with two explicit MariaDB-only skips. Focused Target security, personal workflow, OTA and FSM coverage passed 57/57; the OTA contract gate and all 35 operations-contract checks passed. The personal-production ESP32-C6 build passed at 75,848/327,680 bytes RAM and 1,798,862/7,340,032 bytes application flash.
 - The workflow-pinned mobile checks remain green at Flutter 95/95 and Android JVM 70/70. Three NAS deployment shells passed `bash -n`, the exact Target build-tree contract passed and the repository diff passed whitespace validation.
 - Full repository discovery ran 340 tests: 310 passed, one environment-only test skipped and 29 assertions failed solely because the immutable feature bytes have not yet received the required two-step trusted-workflow policy rotation. No code, OTA hash or runtime-contract failure remained. This is source/host evidence, not NAS deployment, broker ACL reload, Target installation/reboot/health, wife-phone UI, relay contact or physical door evidence.
+
+## [2026-09-02] compile | Authorize authenticated access actor and completion candidate
+
+- Bound immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558` to the sole `access-actor-result-23e28e1-persistent-baseline` with its complete normalized protected map.
+- Expanded the indivisible inventory from 93 to 100 paths. Thirty-five protected blobs carry the reviewed actor attribution, exact-session mobile completion, schema 012, signed Target evidence, deployment/readiness and direct-test contracts; the other 65 retain trusted-main bytes. Workflow inventory remains exactly seven and local Actions remain empty.
+- This policy-only candidate changes no Backend/NAS runtime, broker ACL, mobile or Target installation, sensor, relay or physical door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, deployment and physical acceptance remain separate Gates.
