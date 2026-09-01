@@ -5648,3 +5648,9 @@
 - Final isolated Flutter 3.47.1 validation formatted all 52 Dart files without changes, reported no analyzer issue, and passed 79/79 tests. The OTA contract passed and full Python discovery passed 328 tests with one expected PowerShell-only skip.
 - Release-matched Flutter 3.44.8, Gradle 9.1.0 and JDK 17 validation passed the Hosted exact selector with 52 test methods, the direct BLE-wake policy scope 5/5, and app Kotlin, app Java and vendored beacon-plugin Java compilation. Only pre-existing dependency/deprecation warnings remained.
 - No signed APK, phone installation, screen-off Target detection, authentication, `ARMED`, ultrasonic relay action or physical door success is inferred. Normal review/CI, exact-main signed publication and connected physical acceptance remain separate Gates.
+
+## [2026-09-01] test | Publish and read back native-wake exact-main artifacts
+
+- PR #323 passed Hosted Trusted, OTA P0 and Android APK canary checks and merged normally without a protection bypass as exact main `e0d809cfb6b31a532840c66eb250ae6feaf82c7b`.
+- Exact-main OTA contract run `33457276522`, Target run `33457276556` and mobile run `33457276558` all completed successfully. The latter two signed and atomically published personal OTA `2.1.412+main.ge0d809c` and `1.0.0-ge0d809c` / `37401` respectively.
+- Independent strict-TLS fixed-manifest and artifact readback matched the exact commit and SHA-256 for the 1,850,036-byte encrypted Target artifact and both byte-identical 55,200,921-byte mobile APK endpoints. Sanitized evidence remains explicitly non-production/non-release; phone/Target installation, screen-off detection/authentication, `ARMED`, sensor/relay and physical door acceptance remain open.

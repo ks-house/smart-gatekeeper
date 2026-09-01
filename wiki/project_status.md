@@ -1430,3 +1430,26 @@ tracking.
   suite (`66`), and targeted Android native JUnit (`49`). The OTA/operations
   contract run exposed only the expected pre-authorization trusted-policy digest
   mismatch after stale recovery-manual assertions were corrected and rerun.
+
+## 2026-09-01 native-wake registration recovery publication
+
+- PR #323 separated durable native-wake intent from current-process
+  reconciliation evidence, bounded transient recovery to one native WorkManager
+  chain, and serialized native/legacy scanner ownership. Required PR checks
+  passed and the change merged normally as exact main
+  `e0d809cfb6b31a532840c66eb250ae6feaf82c7b`.
+- Exact-main OTA contract run `33457276522` passed. Mobile run `33457276558`
+  signed and atomically published personal OTA `1.0.0-ge0d809c` / `37401`;
+  Target run `33457276556` signed and atomically published unchanged-source
+  personal OTA `2.1.412+main.ge0d809c`.
+- Independent strict-TLS readback matched the exact commit and published
+  manifests. Mobile primary/fallback were byte-identical 55,200,921-byte APKs
+  with SHA-256
+  `5964dffaa9f1e5c0978be90388f64d7bf2720a82cd8fff39cc7eee53b6ca4e8a`;
+  the 1,850,036-byte encrypted Target artifact matched SHA-256
+  `71c845c219efd0b23983efa83215acb00fbc602d02282d7585fe3b58fa6d32da`.
+- Publication evidence is explicitly personal and non-release
+  (`production_authorized=false`, `release_evidence=false`). No phone install,
+  screen-off wake, Target detection/authentication, `ARMED`, sensor/relay,
+  Target install/reboot/health or physical door result is inferred. #179 and
+  the broader #51 remain open for connected acceptance.
