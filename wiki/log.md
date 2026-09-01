@@ -5679,3 +5679,9 @@
 - The complete Backend suite passed 172 tests with two expected environment-only skips after adding collector health and KST/UTC contracts.
 - A real production DB image upgraded an existing volume to schema 011 twice, inserted both legacy and canonical rows, executed the exact administrator UNION and KST count queries, rejected audit-row mutation, rolled the application schema back and preserved the canonical evidence row.
 - Hosted trusted policy remains intentionally red until the complete protected candidate receives the normal reviewed policy rotation; no broker policy, NAS runtime or physical Target was changed by these local tests.
+
+## [2026-09-01] compile | Authorize Target access-history candidate
+
+- Bound immutable feature candidate `e33664096e72a880896997490769da006b50c5aa` to the sole 93-path `target-access-history-e336640-persistent-baseline`, expanding the protected set with both schema 011 migration directions.
+- Fifteen protected blobs carry the reviewed Backend collector, administrator timeline, schema/Compose, workflow trigger and direct tests; the remaining 78 retain baseline bytes. Exact repository/SHA, ancestry, inventories and normalized digests remain fail closed.
+- This policy-only candidate changes no Backend runtime, Mosquitto ACL, NAS database, Target, relay or physical door. Normal policy review/CI/merge and every deployment/physical Gate remain separate.

@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "c2d22cc80d30942729a72d4f4628bedb66414e6e"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "e33664096e72a880896997490769da006b50c5aa"
+EXPECTED_BUNDLE_ID = "target-access-history-e336640-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 017379b4d76c875ac44ab29e619e133df0944b79d07d812ded383462c4dac4bd
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -31,10 +31,10 @@ scripts/ota_contract_gate.py 89be924d2293bad15d7e4386ee62d5427d69edbfab9e994e115
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
 src/OtaManager.cpp 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7
-.github/workflows/backend_security.yml d33470907517e7d394aa0cb7b75d277c23cbd01403945719e79e0102f5c8b787
+.github/workflows/backend_security.yml 41177e406147cb175ecf1e94a73ab74f2cfb1e8f1d815b86f5048a9a98213a3e
 .orca/scripts/setup_worktree.ps1 07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab
-scripts/ops_commercial_gate.py 9a529a7a9242fb7d7f5cba67e7b4131156bee54d016ce6e298e4b4bcccbc94a5
-ops/backend_trusted_bundle_paths.json 52d70b8a028717b0fccfefd8b799fed21e915a55beed075294852edf76043f58
+scripts/ops_commercial_gate.py 771367e581f0b4a51b268e98d802689b1fd76a084d6b8efd1b4e3468d64329d2
+ops/backend_trusted_bundle_paths.json 7e06a57661aec13a8b5ab0fe2ae58cc8bb8b455702171e0b07aa0b2824b57bfb
 ops/evidence_sources.json 49d23f9125f65db4ba0e4398e742bcf7f41b34174b2df3d47aef1efa4fbb951b
 ops/fixtures/evidence_adversarial_v1.json c2bbc316b4730a28e873abc3017f533afab2e6d7d45f95e29e228b661f72c04f
 ops/fixtures/load_nominal.jsonl c7ae231d1d7321255ce0d5539b3fd18b1aa077c94ae5060fc293624913b8015e
@@ -48,18 +48,18 @@ backend/app/acl_management.py 190b7c7891b46a7b313ca3876d0bfa552eeba62bc122d39cfb
 backend/app/admin_security.py f3f769eebea014f94b36cdba1bec4627b657094f2d5fa737f29f54a57db0d4c9
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
 backend/app/home_assistant_bridge.py 586f5f43910e26a2425f8416959f4bb4c85d48cd49c88a29d2e99f790c42071b
-backend/app/main.py 880c962a5472bfadec19504124218aaa0f11dc9e00515ba0f6297f0ab020ec32
+backend/app/main.py f27b9cb6e1b9f028d2c830d68acd9a746af133f49a5f841522b5c8b2880e562e
 backend/app/ops_runtime.py 9aad988a7bd1c59d90d445ff3577e265289424c17e98c0b1f8311c1e14a58b26
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/requirements.txt 75bca144713e5c0ac8c09f2963cccb45e077e22b2f5a166a0db1fa28617595f7
-backend/app/static/admin.html 0ed94365915af2bcb816173a698ca5e16f0a8b59e076c274281a521085f2d3bb
+backend/app/static/admin.html f99169f1ba54351f61cad2fa628e4b5d2d1f808fcd5de2550494694135ad1323
 backend/app/static/admin_login.html 87000b8f02d22b84bc24a41b0360caf9ce1c8a58741a95d090bf5e8acaabff3f
 backend/app/static/index.html 1ae6e77c85f965b09334ebf6222d3a8a66b8ad35b409aba65a0a9543bcf2bc12
 backend/app/target_boot_registry.py 7650ad165594d3a35ee59fafa36ce1f6cbc0ffa4fd8b3dfb98873339a83859dd
 backend/app/target_acl_delivery.py 3888c4fb5d5814471e6d1827d6227015a730683eee089733b65b8703fdb1093d
 backend/compose.production.yml 8cdf0cf5a422a7725b32358339315a958c2c3af6659b09a9ecbe53f75988c2ce
 backend/compose.synology.yml 307d0486815d178f8faae245129904fd08fef2cf9c5b565dc3a7c63656d718af
-backend/db/Dockerfile d96cc10c173bea4e458f3f4432640e70c1338efb22c7088c1aff17b67eb40805
+backend/db/Dockerfile 612ba93cb79c54da003ebaae4cf1bfa49d80029f6ee577ab4f61f68015003402
 backend/db/migrations/002_acl_management_expand_down.sql 19c26782df1ef78755681805839e704f3adaf83cce1dec4b29c4ecdf1c0cf687
 backend/db/migrations/002_acl_management_expand_up.sql aa3b07f195c0502434f8ad5ba633b0d46d6b04f7e21fa0ff22215fb136746543
 backend/db/migrations/003_admin_security_down.sql 1fb6804703a9fdd4d9ffdb74adb1113cd7f420b914fa572978dcb2e6212f9d71
@@ -78,7 +78,9 @@ backend/db/migrations/009_admin_account_management_down.sql ad2fff10af88b6c382eb
 backend/db/migrations/009_admin_account_management_up.sql 5ffe2f22c145faa1441af76b873606af7015310402b7e3f08e7e97fdce9a507d
 backend/db/migrations/010_mobile_account_roles_down.sql 7af41ea77538e3ec3b8eb2c8a1d281bb03ed65c78113fa73e46160bda56865d6
 backend/db/migrations/010_mobile_account_roles_up.sql 76260eac7406904ec5f039c68ec34440c829611a9a85d23208372dee4b02cfd7
-backend/db/schema.env a0635177b64473c119d3b873cda3a70a41b2c3560fea7b751f47e892b0646f59
+backend/db/migrations/011_access_event_history_down.sql 436cfa498ac7074c07f84f71c945606284f6b9a5d09df09828a852c6bd2fdee3
+backend/db/migrations/011_access_event_history_up.sql d29f683a1ad8aad86ba5e11b48d35aab1e39acadaca1f34b2c26c748fd364572
+backend/db/schema.env 253990862145b2113e874cbc976702bf34d0097116d5cc95106afdc4d10c7971
 backend/db/production_schema.sql b9e6910bff05272c1b05f1e23805abf250c6a9e3df9e4a7db966ae6517b555e3
 backend/db/run_migrations.sh 2452092130ac42a69c6335e396203ce5d48d66039b95a39863f4178cdfc19917
 backend/db/schema.sql ce22d4e2675490f2e238cd98e9f9168e572cd45d0de8030811b01384226f4d43
@@ -93,26 +95,42 @@ backend/deploy/runtime.env.example 48a84108c1a00479ef3bb9ec33e6e81e58302717c6ae9
 backend/deploy/sgk_backend_deploy.sh 66507318ad2b5b7fff6e4bdc6b3f2bd8994a97877be6500df9f218619ac0223e
 backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
 backend/deploy/verify_legacy_synology.sh c4ab1fddfe0581d9f15ac64174b51374389d71de8b4e5800899ef7f04b0226e1
-backend/docker-compose.yml 7a33092f1ab64cabd08e3e89e960f127a6935815eb41369152045da7b6bef58d
+backend/docker-compose.yml 72a694b28e502fc41b811a42502d18ee1ee45ce18a246cfc426c4e52eac6d94b
 backend/sbom.cdx.json 67b78d1a2cb4d5e48dc8b79f9630a58da0cee207d126c469cb0b0bfbd1945fd7
 backend/supply_chain_policy.json fef90253f3ec0b065f14dd1e83a2b6702b4dd2ad8dbeefc59b12dc78f3cb15e4
 backend/tests/test_acl_api.py 6dd1a816361b4638c0f8d71bcf119a110a92e4f482cfe4300cfb619dc3ca8644
 backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad70e8f02b13f1e54bb70
 backend/tests/test_acl_management.py c1d476aad60f06aac4335a3b052135bf838739dbcc204996d33b1404eeb7ccc3
-backend/tests/test_admin_security.py ff8b0c0cd49e7d322c0a4f3cc564d3d058aba0f6ed0735e8c3f2156bd53555f8
+backend/tests/test_admin_security.py a327b0e4937f59896a77744fd043b71e626f426776ea24139855f261163d0ae5
 backend/tests/test_home_assistant_bridge.py eb3c0efea7f8eec88d21bea54c6a5a91835f785871868895a28650e2db1b9cbe
 backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
-backend/tests/test_migrations.py da4acb3375a9cc9f33b1029bf4f0b11ecfcded82b934b151be94dd98133cf94f
+backend/tests/test_migrations.py b94ab4c333893c7e28cfb3e4c8e01d9408c3209bdb4c6793c5fdd71024de410a
 backend/tests/test_mobile_remote_control.py 0d847814ec779b236f2bfd7b162bc555c00c7a352d66042ea9d9a575a820edaa
-backend/tests/test_nas_backend_deploy.py 27629bde61a895d667d34f5566c731f3e92859f332910c50df513e6b5ee56168
-backend/tests/test_ops_api.py 82e8d2e992fffc75b910ea0c00849a6d2130b2b80fa2d412541b726b1d138f15
+backend/tests/test_nas_backend_deploy.py 4737ed97a3761e1a686021b48ce9e6aa603dd900281017f728e01955094fb5e2
+backend/tests/test_ops_api.py 46e99c41f7dd72f27501a8b43355995ee3e300dfa85ef27512247d42b9d1f3e6
 backend/tests/test_ops_commercial_gate.py 7d6521b1a00824042f6e2665f382e85236797695c2c1fb997215f6223d7659ee
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
-backend/tests/test_target_boot_registry.py 4f29b72539e9c4c190e83f702e92ec71fb9bc6d2e44f260f2094c4388ced430f
+backend/tests/test_target_boot_registry.py 33102281199ac24ff389d8b0b4f8c981ffc232c8680fd833bf821f1b8a522be2
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    ".github/workflows/backend_security.yml",
+    "scripts/ops_commercial_gate.py",
+    "ops/backend_trusted_bundle_paths.json",
+    "backend/app/main.py",
+    "backend/app/static/admin.html",
+    "backend/db/Dockerfile",
+    "backend/db/migrations/011_access_event_history_down.sql",
+    "backend/db/migrations/011_access_event_history_up.sql",
+    "backend/db/schema.env",
+    "backend/docker-compose.yml",
+    "backend/tests/test_admin_security.py",
+    "backend/tests/test_migrations.py",
+    "backend/tests/test_nas_backend_deploy.py",
+    "backend/tests/test_ops_api.py",
+    "backend/tests/test_target_boot_registry.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -463,7 +481,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
   def assert_current_main_baseline_is_exact(self, policy):
     self.assertEqual(policy["format_version"], 3)
     self.assertEqual(policy["protected_paths"], list(MERGED_MAIN_DIGESTS))
-    self.assertEqual(len(policy["protected_paths"]), 91)
+    self.assertEqual(len(policy["protected_paths"]), 93)
     self.assertEqual(
         policy["protected_inventories"],
         {
@@ -1066,8 +1084,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 91)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 15)
+    self.assertEqual(len(locally_unchanged_protected), 78)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
