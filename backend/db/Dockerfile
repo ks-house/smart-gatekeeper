@@ -19,6 +19,8 @@ COPY migrations/009_admin_account_management_up.sql /opt/smart-gatekeeper/migrat
 COPY migrations/009_admin_account_management_down.sql /opt/smart-gatekeeper/migrations/009_down.sql
 COPY migrations/010_mobile_account_roles_up.sql /opt/smart-gatekeeper/migrations/010_up.sql
 COPY migrations/010_mobile_account_roles_down.sql /opt/smart-gatekeeper/migrations/010_down.sql
+COPY migrations/011_access_event_history_up.sql /opt/smart-gatekeeper/migrations/011_up.sql
+COPY migrations/011_access_event_history_down.sql /opt/smart-gatekeeper/migrations/011_down.sql
 COPY schema.env /opt/smart-gatekeeper/schema.env
 COPY run_migrations.sh /usr/local/bin/sgk-migrate
 RUN chmod 0555 /usr/local/bin/sgk-migrate \

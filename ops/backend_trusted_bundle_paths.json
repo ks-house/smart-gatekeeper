@@ -48,6 +48,8 @@
     "backend/db/migrations/009_admin_account_management_up.sql",
     "backend/db/migrations/010_mobile_account_roles_down.sql",
     "backend/db/migrations/010_mobile_account_roles_up.sql",
+    "backend/db/migrations/011_access_event_history_down.sql",
+    "backend/db/migrations/011_access_event_history_up.sql",
     "backend/db/production_schema.sql",
     "backend/db/run_migrations.sh",
     "backend/db/schema.env",

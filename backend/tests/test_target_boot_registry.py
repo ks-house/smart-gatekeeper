@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import ssl
 import tempfile
+import threading
 import unittest
 from contextlib import ExitStack
 from pathlib import Path
@@ -16,6 +17,49 @@ from backend.app.target_boot_registry import BootRefreshOutcome, TargetBootRegis
 TARGET = "target-a"
 BOOT_1 = "1" * 32
 BOOT_2 = "2" * 32
+EVENT_ID = "11111111-1111-4111-8111-111111111111"
+SESSION_ID = "22222222-2222-4222-8222-222222222222"
+SOURCE_REF = "target_0123456789abcdef"
+
+
+def canonical_event_payload(
+    *,
+    event_code="ACCESS_PROOF_VERIFIED",
+    stage="PROOF",
+    outcome="SUCCEEDED",
+    reason_code="PROOF_VALID",
+    sequence=7,
+    attributes=None,
+):
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "event_id": EVENT_ID,
+            "session_id": SESSION_ID,
+            "session_kind": "access",
+            "source_component": "target",
+            "source_instance_id": SOURCE_REF,
+            "source_boot_id": BOOT_1,
+            "sequence": sequence,
+            "attempt": 1,
+            "event_code": event_code,
+            "stage": stage,
+            "outcome": outcome,
+            "reason_code": reason_code,
+            "clock": {
+                "wall_time": None,
+                "monotonic_ms": 12345,
+                "quality": "UNSYNCED",
+            },
+            "target": {"target_ref": SOURCE_REF, "boot_id": BOOT_1},
+            "causation_event_id": None,
+            "attributes": attributes or {
+                "path": "local_gatt",
+                "transport": "ble_gatt",
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
 
 
 def connection_with(row):
@@ -26,6 +70,242 @@ def connection_with(row):
 
 
 class TargetBootRegistryTest(unittest.TestCase):
+    def test_canonical_target_access_contract_matches_authoritative_catalog(self) -> None:
+        catalog = json.loads(
+            (
+                Path(__file__).resolve().parents[2]
+                / "observability"
+                / "event_codes_v1.json"
+            ).read_text(encoding="utf-8")
+        )["event_codes"]
+        for event_code, (stage, outcomes, reasons) in (
+            main._CANONICAL_TARGET_ACCESS_CODES.items()
+        ):
+            with self.subTest(event_code=event_code):
+                authoritative = catalog[event_code]
+                self.assertEqual("access", authoritative["session_kind"])
+                self.assertEqual(stage, authoritative["stage"])
+                self.assertEqual(outcomes, set(authoritative["allowed_outcomes"]))
+                self.assertEqual(reasons, set(authoritative["allowed_reason_codes"]))
+
+    def test_canonical_target_access_parser_is_strict_and_privacy_safe(self) -> None:
+        parsed = main._parse_canonical_target_access_event(
+            canonical_event_payload(
+                event_code="ACCESS_SENSOR_DETECTED",
+                stage="SENSOR",
+                reason_code="SENSOR_THRESHOLD_MET",
+                attributes={
+                    "path": "local_gatt",
+                    "transport": "ble_gatt",
+                    "distance_mm": 0,
+                },
+            )
+        )
+        self.assertIsNotNone(parsed)
+        self.assertEqual(0, parsed["distance_mm"])
+        self.assertEqual("ACCESS_SENSOR_DETECTED", parsed["event_code"])
+
+        malformed = json.loads(canonical_event_payload())
+        malformed["stage"] = "RELAY_ON"
+        self.assertIsNone(
+            main._parse_canonical_target_access_event(json.dumps(malformed).encode())
+        )
+        malformed = json.loads(canonical_event_payload())
+        malformed["proof"] = "must-never-be-stored"
+        self.assertIsNone(
+            main._parse_canonical_target_access_event(json.dumps(malformed).encode())
+        )
+        too_far = canonical_event_payload(
+            event_code="ACCESS_SENSOR_DETECTED",
+            stage="SENSOR",
+            reason_code="SENSOR_THRESHOLD_MET",
+            attributes={
+                "path": "local_gatt",
+                "transport": "ble_gatt",
+                "distance_mm": 10001,
+            },
+        )
+        self.assertIsNone(main._parse_canonical_target_access_event(too_far))
+        duplicate_key = canonical_event_payload().replace(
+            b'"schema_version":"1.0",',
+            b'"schema_version":"1.0","schema_version":"1.0",',
+        )
+        self.assertIsNone(main._parse_canonical_target_access_event(duplicate_key))
+
+    def test_canonical_target_access_persistence_binds_topic_and_deduplicates(self) -> None:
+        topic = main._canonical_target_event_topic(TARGET)
+        payload = canonical_event_payload()
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        with patch.multiple(
+            main,
+            COMMAND_TARGET_ID=TARGET,
+            _acl_target_credentials={},
+            _ops_hmac_key=b"k" * 32,
+        ), patch.object(main, "get_db", return_value=connection):
+            self.assertTrue(
+                main._persist_canonical_target_access_event(
+                    topic, payload, retained=False
+                )
+            )
+        self.assertIn("INSERT INTO access_event_history", cursor.execute.call_args.args[0])
+        collector_ref = main.opaque_ref(TARGET, b"k" * 32, "target")
+        self.assertIn(collector_ref, cursor.execute.call_args.args[1])
+        connection.close.assert_called_once()
+
+        parsed = main._parse_canonical_target_access_event(payload)
+        self.assertIsNotNone(parsed)
+        expected = {
+            "event_id": parsed["event_id"],
+            "session_id": parsed["session_id"],
+            "source_component": parsed["source_component"],
+            "source_instance_id": parsed["source_instance_id"],
+            "source_boot_id": parsed["source_boot_id"],
+            "source_sequence": parsed["source_sequence"],
+            "event_attempt": parsed["attempt"],
+            "event_code": parsed["event_code"],
+            "event_stage": parsed["event_stage"],
+            "event_outcome": parsed["event_outcome"],
+            "reason_code": parsed["reason_code"],
+            "causation_event_id": parsed["causation_event_id"],
+            "target_ref": parsed["target_ref"],
+            "event_path": parsed["event_path"],
+            "event_transport": parsed["event_transport"],
+            "distance_mm": parsed["distance_mm"],
+            "duration_ms": parsed["duration_ms"],
+            "relay_hold_ms": parsed["relay_hold_ms"],
+            "monotonic_ms": parsed["monotonic_ms"],
+            "clock_quality": parsed["clock_quality"],
+            "collector_target_ref": collector_ref,
+        }
+        duplicate_connection = MagicMock()
+        duplicate_cursor = (
+            duplicate_connection.cursor.return_value.__enter__.return_value
+        )
+        duplicate_cursor.execute.side_effect = [
+            main.pymysql.err.IntegrityError(1062, "duplicate"),
+            None,
+        ]
+        duplicate_cursor.fetchall.return_value = [expected]
+        with patch.multiple(
+            main,
+            COMMAND_TARGET_ID=TARGET,
+            _acl_target_credentials={},
+            _ops_hmac_key=b"k" * 32,
+        ), patch.object(main, "get_db", return_value=duplicate_connection):
+            self.assertTrue(
+                main._persist_canonical_target_access_event(
+                    topic, payload, retained=False
+                )
+            )
+
+        conflicting = dict(expected, reason_code="SIGNATURE_INVALID")
+        conflict_connection = MagicMock()
+        conflict_cursor = conflict_connection.cursor.return_value.__enter__.return_value
+        conflict_cursor.execute.side_effect = [
+            main.pymysql.err.IntegrityError(1062, "duplicate"),
+            None,
+        ]
+        conflict_cursor.fetchall.return_value = [conflicting]
+        with patch.multiple(
+            main,
+            COMMAND_TARGET_ID=TARGET,
+            _acl_target_credentials={},
+            _ops_hmac_key=b"k" * 32,
+        ), patch.object(main, "get_db", return_value=conflict_connection):
+            self.assertFalse(
+                main._persist_canonical_target_access_event(
+                    topic, payload, retained=False
+                )
+            )
+
+    def test_canonical_event_callback_is_bounded_and_offloads_database_work(self) -> None:
+        with tempfile.NamedTemporaryFile() as ca, ExitStack() as stack:
+            stack.enter_context(
+                patch.multiple(
+                    main,
+                    HAS_PAHO_MQTT=True,
+                    MQTT_HOST="mqtt.example.test",
+                    MQTT_PORT=8883,
+                    MQTT_USER="gatekeeper-backend",
+                    MQTT_PASSWORD="unique-backend-password",
+                    MQTT_CA_FILE=ca.name,
+                    COMMAND_TARGET_ID=TARGET,
+                    COMMAND_TENANT_ID="tenant-a",
+                    COMMAND_DOOR_ID="door-a",
+                    COMMAND_SIGNING_KEY_ID=7,
+                    COMMAND_SIGNING_PRIVATE_SCALAR_HEX="2" * 64,
+                    HA_BRIDGE_ENABLED=False,
+                )
+            )
+            client = MagicMock()
+            stack.enter_context(
+                patch.object(main, "_create_mqtt_client", return_value=client)
+            )
+            persisted = threading.Event()
+            persist = stack.enter_context(
+                patch.object(
+                    main,
+                    "_persist_canonical_target_access_event",
+                    side_effect=lambda *_args, **_kwargs: persisted.set() or True,
+                )
+            )
+            main._start_target_boot_subscriber()
+            client.on_connect(client, None, None, 0)
+            topic = main._canonical_target_event_topic(TARGET)
+            self.assertIn(
+                topic, {call.args[0] for call in client.subscribe.call_args_list}
+            )
+            client.on_message(
+                client,
+                None,
+                SimpleNamespace(
+                    topic=topic,
+                    payload=canonical_event_payload(),
+                    retain=False,
+                    dup=False,
+                ),
+            )
+            self.assertTrue(persisted.wait(timeout=1.0))
+            persist.assert_called_once()
+            client._sgk_access_event_worker.stop()
+
+            persist.reset_mock()
+            client.on_message(
+                client,
+                None,
+                SimpleNamespace(
+                    topic=topic,
+                    payload=b"x" * 8193,
+                    retain=False,
+                    dup=False,
+                ),
+            )
+            persist.assert_not_called()
+
+    def test_canonical_collector_requires_successful_suback_and_live_writer(self) -> None:
+        topic = main._canonical_target_event_topic(TARGET)
+        health = main._CanonicalAccessCollectorHealth()
+        worker = MagicMock(healthy=True)
+        health.configure({topic})
+        health.begin_connection()
+        health.track_subscription(topic, (0, 41))
+        self.assertFalse(health.ready(worker))
+        health.acknowledge(41, [1])
+        self.assertTrue(health.ready(worker))
+        health.note_writer_result(False)
+        self.assertFalse(health.ready(worker))
+        health.note_writer_result(True)
+        self.assertTrue(health.ready(worker))
+        health.disconnect()
+        self.assertFalse(health.ready(worker))
+
+        health.configure({topic})
+        health.begin_connection()
+        health.track_subscription(topic, (0, 42))
+        health.acknowledge(42, [128])
+        self.assertFalse(health.ready(worker))
+
     def test_acl_delivery_resolves_only_exact_authorized_target_topics(self) -> None:
         tenant = "1" * 32
         door = "2" * 32

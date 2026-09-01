@@ -1453,3 +1453,24 @@ tracking.
   screen-off wake, Target detection/authentication, `ARMED`, sensor/relay,
   Target install/reboot/health or physical door result is inferred. #179 and
   the broader #51 remain open for connected acceptance.
+
+## 2026-09-01 administrator Target access timeline implementation
+
+- Schema 011 adds a separate append-only `access_event_history` projection for privacy-safe Target
+  canonical access events. Exact topic binding, strict envelope/catalog validation, bounded worker
+  offload and exact replay-versus-conflict checks are implemented without reinterpreting legacy
+  `access_logs.is_success`.
+- The administrator timeline now distinguishes proof verification/denial, ACL denial, `ARMED`,
+  sensor threshold detection, relay ON/OFF and session completion/termination. A legacy manual
+  remote success is labelled only as Backend transmission acceptance, not Target or physical-door
+  success.
+- Local unit, MariaDB 10.11 migration and repository contract tests passed before review. At this
+  entry the change is still an unmerged local candidate: hosted CI, broker ACL installation, NAS
+  schema/API deployment, live event ingestion and a physical approach remain separate Gates.
+- Canonical publication remains Target QoS 0 with a bounded offline queue. Missing events therefore
+  remain `unconfirmed`, and the current no-door-contact hardware cannot prove physical door travel.
+- Collector readiness now fails closed until every configured canonical subscription receives a
+  successful SUBACK and also fails on disconnect, dead writer, queue overflow or persistence failure.
+  UTC receive timestamps are explicit and the administrator “today” count uses the KST day boundary.
+- The Backend release bundle does not install the separate Mosquitto ACL. Applying and reading back
+  the Backend-only canonical read rule before NAS API deployment is an explicit operational Gate.

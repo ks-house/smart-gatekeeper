@@ -84,11 +84,15 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("retain_available true", config)
         self.assertIn("allow_anonymous false", config)
         self.assertIn("pattern read gatekeeper/v1/targets/%u/command", acl)
+        self.assertIn(
+            "topic read gatekeeper/v1/targets/+/canonical-event", acl
+        )
         self.assertIn("user homeassistant", acl)
         self.assertIn("topic write gatekeeper/v1/ha-bridge/+/request/+", acl)
         home_assistant_acl = acl.split("user homeassistant", 1)[1]
         self.assertNotIn("/command", home_assistant_acl)
         self.assertNotIn("/acl", home_assistant_acl)
+        self.assertNotIn("/canonical-event", home_assistant_acl)
         self.assertNotIn("pattern readwrite gatekeeper/#", acl)
 
     def test_ota_runtime_uses_one_verified_inactive_slot_engine(self) -> None:

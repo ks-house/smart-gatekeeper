@@ -566,6 +566,38 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
         cursor = connection.cursor.return_value.__enter__.return_value
         cursor.fetchall.return_value = [
             {
+                "record_kind": "canonical",
+                "id": 10,
+                "tenant_id": None,
+                "tenant_name": None,
+                "unit_number": None,
+                "auth_method": "LOCAL_GATT",
+                "is_success": None,
+                "distance_mm": 420,
+                "failure_reason": None,
+                "created_at": datetime(2026, 8, 30, 23, 0, 1, 123000),
+                "event_id": "1" * 36,
+                "session_id": "2" * 36,
+                "source_component": "target",
+                "source_instance_id": "target_0123456789abcdef",
+                "source_boot_id": "a" * 32,
+                "source_sequence": 7,
+                "event_attempt": 1,
+                "event_code": "ACCESS_SENSOR_DETECTED",
+                "event_stage": "SENSOR",
+                "event_outcome": "SUCCEEDED",
+                "reason_code": "SENSOR_THRESHOLD_MET",
+                "causation_event_id": None,
+                "target_ref": "target_0123456789abcdef",
+                "event_path": "local_gatt",
+                "event_transport": "ble_gatt",
+                "monotonic_ms": 12345,
+                "clock_quality": "UNSYNCED",
+                "collector_target_ref": "target_abcdef0123456789abcdef01",
+                "received_at": datetime(2026, 8, 30, 23, 0, 1, 123000),
+            },
+            {
+                "record_kind": "legacy",
                 "id": 9,
                 "tenant_id": 5,
                 "tenant_name": "family",
@@ -584,7 +616,39 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
             )
         self.assertEqual(200, response.status_code, response.text)
         self.assertEqual(1, response.json()["today_total"])
-        self.assertEqual("MOBILE_REMOTE", response.json()["events"][0]["auth_method"])
+        self.assertEqual(
+            "ACCESS_SENSOR_DETECTED",
+            response.json()["events"][0]["event_code"],
+        )
+        self.assertEqual("7", response.json()["events"][0]["source_sequence"])
+        self.assertEqual("12345", response.json()["events"][0]["monotonic_ms"])
+        self.assertTrue(response.json()["events"][0]["created_at"].endswith("Z"))
+        self.assertTrue(response.json()["events"][0]["received_at"].endswith("Z"))
+        self.assertEqual(
+            "MOBILE_REMOTE", response.json()["events"][1]["auth_method"]
+        )
+        history_query = cursor.execute.call_args_list[0].args[0]
+        self.assertIn("access_event_history", history_query)
+        self.assertIn("UNION ALL", history_query)
+        count_query = cursor.execute.call_args_list[1].args[0]
+        self.assertIn("COUNT(DISTINCT session_id)", count_query)
+        self.assertIn("UTC_TIMESTAMP() + INTERVAL 9 HOUR", count_query)
+
+    def test_admin_page_explains_received_event_evidence_boundaries(self) -> None:
+        page = (
+            Path(__file__).resolve().parents[1] / "app" / "static" / "admin.html"
+        ).read_text(encoding="utf-8")
+        for required in (
+            "최근 전체 출입 감지 이력 (수신 이벤트)",
+            "ACCESS_PROOF_VERIFIED",
+            "ACCESS_SENSOR_DETECTED",
+            "ACCESS_RELAY_ON",
+            "ACCESS_SESSION_COMPLETED",
+            "서버 전송 접수",
+            "오늘(KST) 출입 시도",
+            "이벤트 미수신만으로 성공 또는 실패를 단정하지 않습니다.",
+        ):
+            self.assertIn(required, page)
 
 
 class PersonalEnrollmentTest(unittest.TestCase):

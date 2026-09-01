@@ -7,6 +7,8 @@
 - The Target accepts MQTT only when the broker host, non-1883 port, unique password, root CA, and signer identity are provisioned.
 - The Target subscribes only to `gatekeeper/v1/targets/<target_id>/command` and `/acl` with QoS 1. The generic `security/target-acl` template uses a broker username equal to that Target ID; a personal deployment whose provisioned username differs must use an explicit, exact Target namespace overlay instead of `%u`.
 - `security/mosquitto.conf` disables anonymous access but permits retained Home Assistant discovery and bridge availability. `security/target-acl` keeps Target effect topics isolated: Backend alone can publish non-retained `/command` and `/acl`, while Home Assistant can publish only to the Backend bridge ingress.
+- The Backend principal alone may read each Target's `/canonical-event` audit topic. Target principals remain write-only inside their exact namespace and Home Assistant receives no canonical-event permission. This read path cannot publish a command or otherwise create a door effect.
+- The Backend release bundle does not own the separate Mosquitto container policy. Production activation therefore requires an independently verified install/reload/readback of this exact ACL rule before an API release whose readiness requires canonical SUBACK.
 - The backend uses `ssl.CERT_REQUIRED`, a configured CA file, hostname verification, and non-retained QoS 1 publications. Compose can render without production secrets for private-default validation, but blank signer, Target identity, broker, or CA provisioning makes the runtime effect path return failure before publication. There is no plaintext, `CERT_NONE`, `tls_insecure_set(True)`, or Target `setInsecure` fallback.
 
 ## 2. Signed command envelope

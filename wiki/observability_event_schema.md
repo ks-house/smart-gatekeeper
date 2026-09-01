@@ -342,3 +342,48 @@ storage를 수정하지 않는다. 따라서 현재 mobile/Target OTA reachabili
 약화하지 않는다. 대신 이후 구현이 install/boot/health/rollback 완료를 잘못 성공 처리하지
 않도록 고정 schema와 executable gate를 추가한다. 실제 periodic HTTPS, local AP recovery,
 Target health valid mark, mobile artifact 검증의 구현과 실기기 fault injection은 #23 범위로 남는다.
+
+## 13. Backend 수신 이력과 관리자 판정
+
+Schema 011부터 Backend는 기존 `access_logs.is_success`와 Target이 발행하는 canonical access
+event를 분리해 보존한다. 기존 테이블은 모바일 원격 요청 등 과거 projection을 유지하고,
+`access_event_history`는 다음 Target 단계를 append-only row로 저장한다.
+
+- BLE GATT 연결과 proof 검증/거부
+- ACL 거부, `ARMED` 진입, 초음파 threshold 감지
+- relay ON/OFF와 failsafe 차단
+- session 정상 완료 또는 고정 reason code의 종료
+
+수집기는 configured Target의 정확한
+`gatekeeper/v1/targets/<target_id>/canonical-event` topic만 읽는다. retained message, 8 KiB 초과,
+중복 JSON key, catalog 밖 event/stage/outcome/reason 조합, 잘못된 UUID/boot/sequence/attribute는
+저장하지 않는다. MQTT callback은 bounded queue에만 넣고 DB I/O는 별도 worker에서 수행한다.
+`event_id` 및 인증된 topic Target의 HMAC ref + boot + sequence를 함께 unique 처리하며, 완전히
+같은 replay만 idempotent하게 인정하고 충돌은 generic warning으로 남긴다. raw Target ID, BLE 주소,
+credential, proof, 주민 이름은 이 테이블에 저장하지 않는다.
+
+관리자 화면의 판정 경계는 다음과 같다.
+
+| 화면 이벤트 | 확인 가능한 사실 | 확인할 수 없는 사실 |
+|---|---|---|
+| `ACCESS_PROOF_VERIFIED` | Target에서 active ACL·credential·permission과 서명 proof 검증이 모두 성공함 | 아직 `ARMED`, sensor, relay 성공은 아님 |
+| `ACCESS_ACL_REJECTED` / proof reject | 표시된 고정 reason으로 인증·권한 단계가 거부됨 | 이벤트가 없다는 사실만으로 동일 실패를 추론할 수 없음 |
+| `ACCESS_ARMED` | Target FSM이 sensor 감지 대기에 진입함 | 사람이 감지됐거나 문이 열렸다는 뜻은 아님 |
+| `ACCESS_SENSOR_DETECTED` | Target threshold 조건이 충족됨 | 현재 펌웨어 payload에는 실제 거리 값이 없어 화면은 `-`일 수 있음 |
+| `ACCESS_RELAY_ON/OFF` | Target software가 relay GPIO 동작 단계를 수행함 | 도어 접점·문짝의 물리 개방 확인은 아님 |
+| `ACCESS_SESSION_COMPLETED` | Target software access chain이 정상 종료됨 | 별도 door contact가 없는 현재 배선에서 물리 개방 성공은 아님 |
+| legacy `MOBILE_REMOTE` success | Backend가 signed MQTT 전송을 접수함 | Target 수신·relay·물리 개방 성공은 아님 |
+
+Target canonical topic은 현재 QoS 0이며 offline queue도 bounded이므로 이 화면은 **수신 이벤트
+타임라인**이다. 이벤트가 빠졌을 때 성공 또는 실패를 확정하지 않는다. Target은 현재
+`distance_mm`를 canonical attributes에 넣지 않고 명시적인 sensor I/O failure event도 발행하지
+않는다. 다만 `ARMED` 뒤 `ACCESS_SESSION_TERMINATED/ARM_TIMEOUT`이 수신되면 그 세션에서 제한
+시간 내 sensor threshold가 충족되지 않았다는 것은 확인할 수 있다. 거리 원문과 sensor fault를
+추가하려면 Target schema, 개인정보·크기 제한, OTA 비회귀를 별도 변경으로 검토한다.
+
+Backend readiness의 `access_event_collector`는 모든 configured canonical topic의 MQTT SUBACK이
+허용됐고 writer thread가 유효하며 마지막 저장 시도가 실패 상태가 아님을 뜻한다. 구독 거부,
+disconnect, queue overflow 또는 저장 실패는 `/ready`를 503으로 만든다. 이것도 실제 access event나
+물리 문 개방을 만들었다는 뜻은 아니므로 배포 acceptance에서는 별도의 live event ingest를 확인한다.
+DB의 `received_at`은 UTC로 저장·`Z`가 붙은 ISO-8601로 반환하고, 관리자 “오늘” session 집계는
+KST(UTC+09:00) 경계로 계산한다.

@@ -48,6 +48,8 @@ ADMIN_ACCOUNT_UP = ROOT / "backend" / "db" / "migrations" / "009_admin_account_m
 ADMIN_ACCOUNT_DOWN = ROOT / "backend" / "db" / "migrations" / "009_admin_account_management_down.sql"
 MOBILE_ROLE_UP = ROOT / "backend" / "db" / "migrations" / "010_mobile_account_roles_up.sql"
 MOBILE_ROLE_DOWN = ROOT / "backend" / "db" / "migrations" / "010_mobile_account_roles_down.sql"
+ACCESS_HISTORY_UP = ROOT / "backend" / "db" / "migrations" / "011_access_event_history_up.sql"
+ACCESS_HISTORY_DOWN = ROOT / "backend" / "db" / "migrations" / "011_access_event_history_down.sql"
 PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
@@ -74,7 +76,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-010}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-011}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -126,6 +128,28 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("'TENANT_ADMIN'", up)
         self.assertIn("DROP COLUMN IF EXISTS mobile_role", down)
         self.assertNotIn("DROP TABLE", down)
+
+    def test_access_event_history_is_typed_idempotent_and_rollback_preserved(self) -> None:
+        up = ACCESS_HISTORY_UP.read_text(encoding="utf-8")
+        down = ACCESS_HISTORY_DOWN.read_text(encoding="utf-8")
+        for required in (
+            "CREATE TABLE IF NOT EXISTS access_event_history",
+            "UNIQUE KEY uq_access_event_id (event_id)",
+            "UNIQUE KEY uq_access_event_source_position",
+            "collector_target_ref",
+            "source_boot_id",
+            "source_sequence",
+            "event_outcome",
+            "reason_code",
+            "monotonic_ms",
+            "received_at DATETIME(3)",
+            "access_event_history_no_update",
+            "access_event_history_no_delete",
+        ):
+            self.assertIn(required, up)
+        self.assertIn("access_event_history_preserved", down)
+        self.assertNotIn("DROP TABLE", down)
+        self.assertNotIn("DELETE FROM", down)
 
     def test_admin_audit_migration_is_append_only_and_has_explicit_rollback(self) -> None:
         up = ADMIN_UP.read_text(encoding="utf-8")
@@ -273,7 +297,7 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "010", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "011", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
                 state = docker(
@@ -281,15 +305,61 @@ class MigrationContractTest(unittest.TestCase):
                     "smart_gatekeeper", "-e",
                     "SELECT (SELECT COUNT(*) FROM tenants WHERE unit_number='E-1'),"
                     "(SELECT COUNT(*) FROM schema_migrations),"
-                    "(SELECT script_sha256 FROM schema_migrations WHERE version='010');",
+                    "(SELECT script_sha256 FROM schema_migrations WHERE version='011');",
                 ).stdout.strip().split("\t")
-                expected_010 = subprocess.run(
-                    ["sha256sum", str(MOBILE_ROLE_UP)],
+                expected_011 = subprocess.run(
+                    ["sha256sum", str(ACCESS_HISTORY_UP)],
                     text=True,
                     capture_output=True,
                     check=True,
                 ).stdout.split()[0]
-                self.assertEqual(["1", "9", expected_010], state)
+                self.assertEqual(["1", "10", expected_011], state)
+                inserted = docker(
+                    "exec", name, "mariadb", "-uroot", f"-p{password}",
+                    "smart_gatekeeper", "-e",
+                    "INSERT INTO access_logs "
+                    "(tenant_id,auth_method,is_success,distance_mm,failure_reason,created_at) "
+                    "SELECT id,'MOBILE_REMOTE',TRUE,NULL,'broker accepted',UTC_TIMESTAMP(3) "
+                    "FROM tenants WHERE unit_number='E-1';"
+                    "INSERT INTO access_event_history "
+                    "(event_id,session_id,source_component,source_instance_id,"
+                    "source_boot_id,source_sequence,event_attempt,event_code,event_stage,"
+                    "event_outcome,reason_code,causation_event_id,target_ref,event_path,"
+                    "event_transport,distance_mm,duration_ms,relay_hold_ms,monotonic_ms,"
+                    "clock_quality,collector_target_ref,received_at) VALUES "
+                    "('11111111-1111-4111-8111-111111111111',"
+                    "'22222222-2222-4222-8222-222222222222','target',"
+                    "'target_0123456789abcdef','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',"
+                    "1,1,'ACCESS_ARMED','ARMED','SUCCEEDED','ARM_ACCEPTED',NULL,"
+                    "'target_0123456789abcdef','local_gatt','ble_gatt',NULL,NULL,NULL,"
+                    "12345,'UNSYNCED','target_abcdef0123456789abcdef01',UTC_TIMESTAMP(3));",
+                    check=False,
+                )
+                self.assertEqual(0, inserted.returncode, inserted.stderr)
+                history_sql = admin_main._ADMIN_ACCESS_HISTORY_SQL.replace(
+                    "%s", "100", 1
+                ).replace("%s", "0", 1)
+                history = docker(
+                    "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
+                    "smart_gatekeeper", "-e", history_sql,
+                ).stdout.strip().splitlines()
+                self.assertEqual(
+                    {"canonical", "legacy"},
+                    {line.split("\t", 1)[0] for line in history},
+                )
+                today = docker(
+                    "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
+                    "smart_gatekeeper", "-e", admin_main._ADMIN_ACCESS_TODAY_COUNT_SQL,
+                )
+                self.assertEqual("2", today.stdout.strip())
+                immutable = docker(
+                    "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
+                    "smart_gatekeeper", "-e",
+                    "UPDATE access_event_history SET event_outcome='FAILED' WHERE id=1;",
+                    check=False,
+                )
+                self.assertNotEqual(0, immutable.returncode)
+                self.assertIn("access_event_history is append-only", immutable.stderr)
                 self.assertGreaterEqual(len(list(backup.glob("*.sql"))), 2)
                 self.assertEqual(len(list(backup.glob("*.sql"))), len(list(backup.glob("*.sha256"))))
 
@@ -304,6 +374,12 @@ class MigrationContractTest(unittest.TestCase):
                     "SELECT unit_number FROM tenants WHERE unit_number='E-1';",
                 )
                 self.assertEqual("E-1", legacy.stdout.strip())
+                preserved = docker(
+                    "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
+                    "smart_gatekeeper", "-e",
+                    "SELECT COUNT(*) FROM access_event_history;",
+                )
+                self.assertEqual("1", preserved.stdout.strip())
             finally:
                 docker("rm", "-f", name, check=False)
                 docker("image", "rm", image, check=False)
