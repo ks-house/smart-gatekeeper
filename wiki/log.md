@@ -5762,3 +5762,9 @@
 
 - Retired the transitional feature identity and pinned the sole 93-path `current-main-baseline` to actual feature merge `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`, retaining every reviewed protected digest unchanged.
 - This policy-only candidate changes no workflow/runtime byte, NAS state, Target slot, relay or door. Hosted review/merge and the resulting final exact-main publication/install remain separate Gates.
+
+## [2026-09-02] test | Deploy and verify Home Assistant connectivity entity
+
+- Applied the owner's approval only to the pending `production` environment request for run `33529692517`; exact source `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` completed immutable Backend image publication and NAS deployment successfully.
+- Strict public TLS `/live` and `/ready` readback returned that exact build SHA, with every readiness check true. A strict-TLS MQTTS readback received the retained `[Gatekeeper] 연결 상태` discovery document and retained bridge payload `online`.
+- The live entity uses `device_class=connectivity`, stable unique ID `smart_gatekeeper_01_connectivity`, and explicit `online/offline` payloads without a self-referential availability gate or expiry. HA frontend rendering/dashboard placement and a fresh physical sensor/door cycle remain separate evidence.

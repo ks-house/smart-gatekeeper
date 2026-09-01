@@ -815,3 +815,19 @@ The OTA used the existing inactive-slot signed path and did not erase NVS or
 the previous bootable slot. Status evidence establishes the new runtime and
 fail-safe output; it does not by itself prove that the reported seven-second
 ARMED-to-sensor delay is physically eliminated.
+
+## 2026-09-02 Home Assistant connectivity entity production deployment
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner approval and protected deployment | The owner approved the sole pending `production` environment request for run `33529692517`. Exact source `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` completed Backend security, evidence verification, immutable image publication and `deploy_backend_to_nas` successfully | PASS for approved NAS Backend deployment |
+| External runtime identity | Strict public TLS requests to `/live` and `/ready` returned build SHA `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`; readiness reported database, schema, MQTT, event collector, runtime secrets, control/admin authentication, ACL management, legacy prearm retirement and build identity all true | PASS for exact deployed process and dependency readiness |
+| Retained HA discovery | A strict-TLS MQTTS subscriber received retained QoS-1 `homeassistant/binary_sensor/smart_gatekeeper_01/connectivity/config`. It names `[Gatekeeper] 연결 상태`, uses unique ID `smart_gatekeeper_01_connectivity`, `device_class=connectivity`, and maps `online/offline` from `gatekeeper/v1/ha-bridge/c0feffe6ebac/availability` | PASS for live discovery publication and stable HA entity identity |
+| Current bridge state | The discovery config deliberately has no self-referential `availability_topic` and no `expire_after`; the referenced bridge availability topic delivered retained QoS-1 payload `online` | PASS for current Backend-to-HA connectivity state and visible offline semantics |
+| Display and physical boundary | No Home Assistant frontend screenshot, entity-registry row, dashboard card placement, sensor approach, relay contact or physical door movement was observed in this verification | PENDING only visible dashboard placement and physical behavior; broker evidence proves the HA discovery input, not the rendered card |
+
+The connectivity entity is now available to Home Assistant through its normal
+MQTT discovery path and continuously represents the Backend bridge's retained
+online/offline state. A browser refresh or MQTT integration entity reload may
+be needed before a previously open dashboard view displays the newly discovered
+entity.
