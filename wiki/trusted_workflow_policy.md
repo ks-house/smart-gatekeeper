@@ -1492,3 +1492,18 @@ Target, sensor, relay or physical door state. Policy CI/merge, feature
 merge-connection and fresh CI, broker ACL installation/readback, Backend
 deployment, live canonical event ingestion and physical observation remain
 separate Gates.
+
+## 49. Final Target access-history main baseline
+
+Feature PR #326 passed Hosted Trusted, Backend/MariaDB and OTA/schema checks,
+then merge-committed normally as exact main
+`3d3e041b9b64ac514b9b05e8ae71aa2221955d33`. The transitional immutable
+candidate identity is retired in favor of the sole `current-main-baseline`
+pinned to that exact merge commit.
+
+All 93 ordered protected paths and normalized digests remain byte-identical to
+the reviewed candidate bundle, including both schema 011 migration directions.
+This final policy-only rotation changes no Backend image, NAS database, broker,
+Target, relay or door state. Hosted policy CI and normal merge remain separate
+Gates; live canonical-event collection and physical-door evidence are not
+inferred from policy identity.

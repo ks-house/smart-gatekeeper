@@ -1464,13 +1464,24 @@ tracking.
   sensor threshold detection, relay ON/OFF and session completion/termination. A legacy manual
   remote success is labelled only as Backend transmission acceptance, not Target or physical-door
   success.
-- Local unit, MariaDB 10.11 migration and repository contract tests passed before review. At this
-  entry the change is still an unmerged local candidate: hosted CI, broker ACL installation, NAS
-  schema/API deployment, live event ingestion and a physical approach remain separate Gates.
+- PR #326 passed Hosted Trusted, Backend/MariaDB and OTA/schema checks and merged normally as exact
+  main `3d3e041b9b64ac514b9b05e8ae71aa2221955d33`. Backend run `33516916385`
+  published digest-pinned API/DB images and deployed schema 011 through the restricted Tailscale
+  forced-dispatch path. Deployment and status evidence matched, with loopback/public readiness
+  passed.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 for that exact build. Every readiness
+  check was true, including `database_schema`, `mqtt` and `access_event_collector`. The public
+  administrator asset also contains the new `최근 전체 출입 감지 이력 (수신 이벤트)` contract.
 - Canonical publication remains Target QoS 0 with a bounded offline queue. Missing events therefore
   remain `unconfirmed`, and the current no-door-contact hardware cannot prove physical door travel.
 - Collector readiness now fails closed until every configured canonical subscription receives a
   successful SUBACK and also fails on disconnect, dead writer, queue overflow or persistence failure.
   UTC receive timestamps are explicit and the administrator “today” count uses the KST day boundary.
-- The Backend release bundle does not install the separate Mosquitto ACL. Applying and reading back
-  the Backend-only canonical read rule before NAS API deployment is an explicit operational Gate.
+- A same-day read-only NAS inspection found deployment drift: the running Mosquitto config has no
+  `password_file` or `acl_file` and permits anonymous access on both 1883 and 8883. Collection is
+  operational under that topology, but broker-principal provenance and topic isolation are not
+  production-grade evidence. This confirmed P0 remains tracked in #50 and requires a staged
+  credential/ACL migration; it was not hidden or altered by the access-history deployment.
+- No natural post-deployment Target access event has yet been correlated in the administrator UI.
+  Target relay/session events, when received, remain firmware lifecycle evidence rather than proof
+  of physical door travel because no door-contact sensor is present.

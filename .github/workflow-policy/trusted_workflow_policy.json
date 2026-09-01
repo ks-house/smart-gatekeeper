@@ -110,11 +110,11 @@
   },
   "approved_bundles": [
     {
-      "id": "target-access-history-e336640-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "e33664096e72a880896997490769da006b50c5aa"
+        "commit": "3d3e041b9b64ac514b9b05e8ae71aa2221955d33"
       },
       "files": {
         ".github/workflows/deploy.yml": "017379b4d76c875ac44ab29e619e133df0944b79d07d812ded383462c4dac4bd",
