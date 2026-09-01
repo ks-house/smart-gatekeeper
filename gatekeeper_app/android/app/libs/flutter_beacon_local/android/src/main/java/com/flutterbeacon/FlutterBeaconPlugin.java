@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.RemoteException;
@@ -69,6 +70,16 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     PluginRegistry.ActivityResultListener {
 
   private static final String TAG = "FlutterBeaconPlugin";
+  private static final String BLE_WAKE_PREFS = "ble_wake_poc";
+  private static final String KEY_REGISTRATION_REQUESTED = "registration_enabled";
+  private static final String KEY_REGISTRATION_RECONCILED = "registration_reconciled";
+  private static final String KEY_REGISTRATION_STATUS = "registration_last_status";
+  private static final String KEY_REGISTRATION_ATTEMPTED_AT =
+      "registration_attempted_at_epoch_ms";
+  private static final String KEY_REGISTRATION_RECONCILED_AT =
+      "registration_reconciled_at_epoch_ms";
+  private static final String KEY_REGISTRATION_CALLBACK_AT =
+      "registration_callback_at_epoch_ms";
 
   private static final BeaconParser iBeaconLayout = new BeaconParser()
       .setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24");
@@ -256,10 +267,43 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
 
     if (call.method.equals("getBleOwnershipState")) {
       boolean nativeRequested = nativeGattOwnsScanner();
+      SharedPreferences wake = applicationContext.getSharedPreferences(
+          BLE_WAKE_PREFS, Context.MODE_PRIVATE);
+      boolean registrationRequested = wake.getBoolean(KEY_REGISTRATION_REQUESTED, false);
+      boolean registrationReconciled = wake.getBoolean(KEY_REGISTRATION_RECONCILED, false);
+      // GatekeeperApplication synchronously reconciles through the Kotlin
+      // registrar before this plugin can attach in the same Android process.
+      // The registrar alone owns the private process-generation marker; this
+      // projection intentionally exposes only its redacted accepted bit.
+      boolean nativeWakeOperational =
+          nativeRequested && registrationRequested && registrationReconciled;
+      boolean nativeExclusionRequired = nativeRequested || registrationRequested;
       Map<String, Object> state = new HashMap<>();
-      state.put("schemaVersion", 1);
-      state.put("mode", nativeRequested ? "native_wake" : "legacy_scanner");
+      state.put("schemaVersion", 2);
+      state.put(
+          "mode",
+          nativeWakeOperational
+              ? "native_wake"
+              : (nativeExclusionRequired ? "native_wake_recovery" : "legacy_scanner"));
       state.put("nativeRequested", nativeRequested);
+      state.put("nativeExclusionRequired", nativeExclusionRequired);
+      state.put("registrationRequested", registrationRequested);
+      state.put("registrationReconciled", registrationReconciled);
+      state.put(
+          "registrationStatus",
+          wake.getString(KEY_REGISTRATION_STATUS, "unavailable"));
+      putPositiveLong(
+          state,
+          "registrationAttemptedAtEpochMs",
+          wake.getLong(KEY_REGISTRATION_ATTEMPTED_AT, 0L));
+      putPositiveLong(
+          state,
+          "registrationReconciledAtEpochMs",
+          wake.getLong(KEY_REGISTRATION_RECONCILED_AT, 0L));
+      putPositiveLong(
+          state,
+          "lastCallbackAtEpochMs",
+          wake.getLong(KEY_REGISTRATION_CALLBACK_AT, 0L));
       state.put("legacyLeaseHeld", legacyOwnerLease != null);
       result.success(state);
       return;
@@ -545,8 +589,24 @@ public class FlutterBeaconPlugin implements FlutterPlugin, ActivityAware, Method
     return ownerCoordinator != null && ownerCoordinator.isNativeRequested();
   }
 
+  private boolean nativeWakeRegistrationRequested() {
+    return applicationContext != null
+        && applicationContext
+            .getSharedPreferences(BLE_WAKE_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_REGISTRATION_REQUESTED, false);
+  }
+
+  private static void putPositiveLong(
+      Map<String, Object> state, String key, long value) {
+    if (value > 0L) state.put(key, value);
+  }
+
   boolean tryAcquireLegacyOwnership() {
-    if (ownerCoordinator == null || nativeGattOwnsScanner()) return false;
+    if (ownerCoordinator == null
+        || nativeGattOwnsScanner()
+        || nativeWakeRegistrationRequested()) {
+      return false;
+    }
     if (legacyOwnerLease != null) return true;
     legacyOwnerLease = ownerCoordinator.tryAcquireLegacy();
     return legacyOwnerLease != null;

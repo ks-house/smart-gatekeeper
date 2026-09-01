@@ -69,6 +69,29 @@ void main() {
     expect(diagnostics.toMap()['mode'], 'nativeWake');
   });
 
+  test('native wake recovery is explicit and does not require legacy tuning',
+      () {
+    final diagnostics =
+        buildDiagnostics(mode: ScanMode.nativeWakeRecovery).copyWith(
+      monitoringSubscribed: false,
+      rangingSubscribed: false,
+      backgroundScanTuningApplied: false,
+      lastScanError: 'nativeWakeRegistration: scan_error',
+    );
+
+    expect(diagnostics.canScan, isTrue);
+    expect(
+      diagnostics.warningReasons,
+      isNot(
+        contains(
+          '화면 OFF 대응 스캔 설정(setBackgroundMode)이 적용되지 않았습니다',
+        ),
+      ),
+    );
+    expect(diagnostics.toMap()['mode'], 'nativeWakeRecovery');
+    expect(diagnostics.lastScanError, contains('scan_error'));
+  });
+
   test('Android 10+ background location is a blocking requirement', () {
     final diagnostics = buildDiagnostics(locationAlways: false);
 

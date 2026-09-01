@@ -62,6 +62,8 @@
         android:label="경성하우스 스마트키"
         android:name=".GatekeeperApplication"
         android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"

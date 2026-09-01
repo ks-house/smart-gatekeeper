@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -13,11 +14,13 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'device_id_service.dart';
 import 'update_checker.dart';
 import 'error_logger.dart';
+import 'native_wake_registration.dart';
 import 'ranging_recovery.dart';
 import 'scan_diagnostics.dart';
 
 enum ScannerState {
   stopped,
+  nativeWakeRecovery,
   nativeWakeIdle,
   idleMonitoring,
   activeSearching,
@@ -157,6 +160,10 @@ class BleScanner {
   int _rangingCallbackCount = 0;
   String? _lastScanError;
 
+  bool _nativeWakeReconcileInFlight = false;
+  int _nativeWakeReconcileFailures = 0;
+  DateTime? _nextNativeWakeReconcileAt;
+
   DateTime? _nextPrearmAllowedAt;
   DateTime? _lastArmSuccessTime;
   bool _isPrearmInProgress = false;
@@ -166,7 +173,10 @@ class BleScanner {
 
   int? _androidSdkInt;
 
-  bool get isScanning => _mode != ScanMode.stopped;
+  bool get isScanning =>
+      _mode == ScanMode.nativeWake ||
+      _mode == ScanMode.idle ||
+      _mode == ScanMode.active;
   ScanMode get mode => _mode;
 
   List<Region> get _regions => <Region>[
@@ -557,6 +567,20 @@ class BleScanner {
         await refreshDiagnostics();
         return;
       }
+      if (ownership.requiresNativeWakeRelease) {
+        _enterNativeWakeRecoveryLocked(ownership);
+        final released = await _attemptNativeWakeReleaseLocked();
+        if (!released) {
+          await refreshDiagnostics();
+          return;
+        }
+      }
+      if (ownership.requiresNativeWakeReconciliation) {
+        _enterNativeWakeRecoveryLocked(ownership);
+        await _attemptNativeWakeReconciliationLocked();
+        await refreshDiagnostics();
+        return;
+      }
 
       // ── 3. JobScheduler 위임 차단 — 반드시 바인딩 전 (issue.md P0-2) ────
       await _disableScheduledScanJobs();
@@ -569,10 +593,33 @@ class BleScanner {
           debugPrint(
             '[BleScanner] Native GATT owns BLE; scanner initialization deferred',
           );
-          AppErrorLogger().log(
-            '🔄 로컬 BLE 인증 진행 중 — 비콘 스캔은 자동으로 재개됩니다.',
-          );
-          _enterNativeWakeIdleLocked();
+          final excludedOwnership = await _readBleOwnershipState();
+          if (excludedOwnership.nativeWakeAuthoritative) {
+            _enterNativeWakeIdleLocked();
+          } else if (excludedOwnership.requiresNativeWakeRelease) {
+            _enterNativeWakeRecoveryLocked(excludedOwnership);
+            final released = await _attemptNativeWakeReleaseLocked();
+            if (released) {
+              _lastScanError = null;
+              _setMode(ScanMode.stopped);
+              _startWatchdog();
+              _syncStateAndNotify();
+            }
+          } else if (excludedOwnership.requiresNativeWakeReconciliation) {
+            _enterNativeWakeRecoveryLocked(excludedOwnership);
+            await _attemptNativeWakeReconciliationLocked();
+          } else {
+            // A live native lease can briefly outlast its durable request. Do
+            // not start legacy concurrently; the watchdog retries after the
+            // lease owner releases it.
+            AppErrorLogger().log(
+              '🔄 로컬 BLE 소유권 전환 중 — 비콘 스캔을 잠시 대기합니다.',
+            );
+            _lastScanError = null;
+            _setMode(ScanMode.stopped);
+            _startWatchdog();
+            _syncStateAndNotify();
+          }
           await refreshDiagnostics();
           return;
         }
@@ -621,6 +668,8 @@ class BleScanner {
       if (!_ownsNativeScanner) return;
       _watchdogTimer?.cancel();
       _watchdogTimer = null;
+      _nativeWakeReconcileFailures = 0;
+      _nextNativeWakeReconcileAt = null;
       await _teardownStreamsLocked();
       _setMode(ScanMode.stopped);
       debugPrint('[BleScanner] 비콘 스캐닝 중지됨.');
@@ -692,8 +741,131 @@ class BleScanner {
     }
   }
 
+  void _enterNativeWakeRecoveryLocked(BleOwnershipState ownership) {
+    final changed = _mode != ScanMode.nativeWakeRecovery;
+    _backgroundTuningApplied = false;
+    _lastScanError = 'nativeWakeRegistration: ${ownership.registrationStatus}';
+    _setMode(ScanMode.nativeWakeRecovery);
+    _startWatchdog();
+    if (changed) {
+      AppErrorLogger().logError(
+        '네이티브 감지 등록 확인 필요 (${ownership.registrationStatus})',
+      );
+    }
+    _syncStateAndNotify();
+  }
+
+  Future<bool> _attemptNativeWakeReconciliationLocked() async {
+    final now = DateTime.now();
+    if (!NativeWakeReconciliationPolicy.shouldAttempt(
+      now: now,
+      nextAttemptAt: _nextNativeWakeReconcileAt,
+      inFlight: _nativeWakeReconcileInFlight,
+      consecutiveFailures: _nativeWakeReconcileFailures,
+    )) {
+      return false;
+    }
+
+    _nativeWakeReconcileInFlight = true;
+    try {
+      // This MethodChannel asks only for an idempotent PendingIntent
+      // stop-then-start reconciliation. It never starts GATT or dispatches
+      // action-1.
+      final registration = await NativeWakeRegistrationBridge().register();
+      final refreshedOwnership = await _readBleOwnershipState();
+      if (registration.reconciled &&
+          refreshedOwnership.nativeWakeAuthoritative) {
+        _nativeWakeReconcileFailures = 0;
+        _nextNativeWakeReconcileAt = null;
+        _enterNativeWakeIdleLocked();
+        return true;
+      }
+      _recordNativeWakeReconciliationFailure(
+        now,
+        registration.rawStatus,
+      );
+    } catch (error) {
+      // A foreground-service FlutterEngine may not expose the Activity-owned
+      // bridge. Keep the exclusive native request, remain visibly degraded,
+      // and let process/app lifecycle registration update shared evidence.
+      _recordNativeWakeReconciliationFailure(
+        now,
+        error is MissingPluginException ? 'bridge_unavailable' : 'bridge_error',
+      );
+    } finally {
+      _nativeWakeReconcileInFlight = false;
+    }
+    _syncStateAndNotify();
+    return false;
+  }
+
+  Future<bool> _attemptNativeWakeReleaseLocked() async {
+    final now = DateTime.now();
+    if (!NativeWakeReconciliationPolicy.shouldAttempt(
+      now: now,
+      nextAttemptAt: _nextNativeWakeReconcileAt,
+      inFlight: _nativeWakeReconcileInFlight,
+      consecutiveFailures: _nativeWakeReconcileFailures,
+    )) {
+      return false;
+    }
+
+    _nativeWakeReconcileInFlight = true;
+    try {
+      // A remote/local feature downgrade must release the PendingIntent scan
+      // before legacy AltBeacon can become eligible.
+      final registration = await NativeWakeRegistrationBridge().stop();
+      final refreshedOwnership = await _readBleOwnershipState();
+      if (!registration.requested && refreshedOwnership.legacyScannerAllowed) {
+        _nativeWakeReconcileFailures = 0;
+        _nextNativeWakeReconcileAt = null;
+        _lastScanError = null;
+        AppErrorLogger().clearError();
+        return true;
+      }
+      _recordNativeWakeReconciliationFailure(
+        now,
+        registration.rawStatus,
+      );
+    } catch (error) {
+      _recordNativeWakeReconciliationFailure(
+        now,
+        error is MissingPluginException
+            ? 'release_bridge_unavailable'
+            : 'release_bridge_error',
+      );
+    } finally {
+      _nativeWakeReconcileInFlight = false;
+    }
+    _syncStateAndNotify();
+    return false;
+  }
+
+  void _recordNativeWakeReconciliationFailure(DateTime now, String status) {
+    _nativeWakeReconcileFailures++;
+    if (_nativeWakeReconcileFailures >=
+        NativeWakeReconciliationPolicy.maxAttempts) {
+      _nextNativeWakeReconcileAt = null;
+      _lastScanError = 'nativeWakeRegistration: $status';
+      AppErrorLogger().logError(
+        '네이티브 감지 자동 복구 한도 도달 ($status) — 앱을 열어 다시 확인해주세요.',
+      );
+      return;
+    }
+    final retryDelay = NativeWakeReconciliationPolicy.retryDelay(
+      _nativeWakeReconcileFailures,
+    );
+    _nextNativeWakeReconcileAt = now.add(retryDelay);
+    _lastScanError = 'nativeWakeRegistration: $status';
+    AppErrorLogger().logError(
+      '네이티브 감지 등록 복구 대기 ($status, ${retryDelay.inSeconds}초 후 재시도)',
+    );
+  }
+
   void _enterNativeWakeIdleLocked() {
     _backgroundTuningApplied = false;
+    _nativeWakeReconcileFailures = 0;
+    _nextNativeWakeReconcileAt = null;
     _lastScanError = null;
     AppErrorLogger().clearError();
     _setMode(ScanMode.nativeWake);
@@ -902,6 +1074,11 @@ class BleScanner {
       newState = ScannerState.stopped;
       title = '❌ 스캔 중지됨';
       text = '블루투스 권한이나 설정 오류로 중지되었습니다.';
+    } else if (_mode == ScanMode.nativeWakeRecovery) {
+      newState = ScannerState.nativeWakeRecovery;
+      title = '⚠️ 스마트키 자동 감지 복구 중';
+      text = '네이티브 감지 등록을 다시 확인하고 있습니다.';
+      force = true;
     } else if (_mode == ScanMode.nativeWake) {
       newState = ScannerState.nativeWakeIdle;
       title = '🔐 스마트키 감지 대기';
@@ -1373,10 +1550,25 @@ class BleScanner {
   Future<void> _watchdogTick() async {
     final snapshot = await refreshDiagnostics();
 
+    if (_mode == ScanMode.nativeWakeRecovery) {
+      final ownership = await _readBleOwnershipState();
+      if (ownership.nativeWakeAuthoritative ||
+          ownership.legacyScannerAllowed ||
+          NativeWakeReconciliationPolicy.shouldAttempt(
+            now: DateTime.now(),
+            nextAttemptAt: _nextNativeWakeReconcileAt,
+            inFlight: _nativeWakeReconcileInFlight,
+            consecutiveFailures: _nativeWakeReconcileFailures,
+          )) {
+        await startScanning(forceRestart: true);
+      }
+      return;
+    }
+
     if (_mode == ScanMode.nativeWake) {
       final ownership = await _readBleOwnershipState();
       if (ownership.nativeWakeAuthoritative) return;
-      AppErrorLogger().log('🔄 native wake 해제 감지 → legacy 스캔 재시작');
+      AppErrorLogger().log('🔄 native wake 등록 상태 변경 감지 → 소유권 재평가');
       await startScanning(forceRestart: true);
       return;
     }
@@ -1408,6 +1600,14 @@ class BleScanner {
   /// 앱이 포그라운드로 복귀했을 때 스캔 상태를 점검·복구한다.
   Future<void> onAppResumed() async {
     final snapshot = await refreshDiagnostics();
+    if (_mode == ScanMode.nativeWakeRecovery) {
+      // App resume is a user-driven recovery opportunity. Permit one immediate
+      // bounded registration series even if the background backoff was exhausted.
+      _nativeWakeReconcileFailures = 0;
+      _nextNativeWakeReconcileAt = null;
+      await startScanning(forceRestart: true);
+      return;
+    }
     if (_mode == ScanMode.nativeWake) {
       final ownership = await _readBleOwnershipState();
       if (ownership.nativeWakeAuthoritative) return;

@@ -70,8 +70,10 @@ class FlutterBeacon {
 
   /// Returns the privacy-safe cross-process BLE ownership mode.
   ///
-  /// The native request is a durable mode selection, not proof that a Target
-  /// is nearby or that a GATT session is currently connected.
+  /// The native request is a durable, fail-closed mode selection. Separate
+  /// reconciliation fields report the latest accepted PendingIntent
+  /// stop/start attempt; neither is proof that a Target is nearby or that a
+  /// GATT session is currently connected.
   Future<Map<Object?, Object?>> get bleOwnershipState async {
     final result = await _methodChannel
         .invokeMapMethod<Object?, Object?>('getBleOwnershipState');

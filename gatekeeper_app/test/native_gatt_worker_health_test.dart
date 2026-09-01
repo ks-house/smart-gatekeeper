@@ -35,7 +35,12 @@ void main() {
         'lastLatencyMs': 15000,
         'handsFreeReady': true,
         'wakeRegistered': true,
+        'wakeRegistrationRequested': true,
+        'wakeRegistrationReconciled': true,
         'wakeRegistrationStatus': 'registered',
+        'wakeRegistrationAttemptedAtEpochMs': 1724929999000,
+        'wakeRegistrationReconciledAtEpochMs': 1724930000000,
+        'wakeRegistrationLastCallbackAtEpochMs': 1724930000100,
         'initialWorkExpedited': true,
         'maxPresenceAgeMs': 45000,
         'lastPresenceToDispatchMs': 320,
@@ -78,7 +83,12 @@ void main() {
     expect(health.lastLatencyMs, 15000);
     expect(health.handsFreeReady, isTrue);
     expect(health.wakeRegistered, isTrue);
+    expect(health.wakeRegistrationRequested, isTrue);
+    expect(health.wakeRegistrationReconciled, isTrue);
     expect(health.wakeRegistrationStatus, 'registered');
+    expect(health.wakeRegistrationAttemptedAtEpochMs, 1724929999000);
+    expect(health.wakeRegistrationReconciledAtEpochMs, 1724930000000);
+    expect(health.wakeRegistrationLastCallbackAtEpochMs, 1724930000100);
     expect(health.initialWorkExpedited, isTrue);
     expect(health.maxPresenceAgeMs, 45000);
     expect(health.lastPresenceToDispatchMs, 320);

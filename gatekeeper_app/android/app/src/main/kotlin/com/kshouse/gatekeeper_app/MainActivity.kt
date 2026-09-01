@@ -184,7 +184,8 @@ class MainActivity: FlutterActivity() {
             CHANNEL_WAKE_REGISTRATION,
         ).setMethodCallHandler { call, result ->
             val registration = when (call.method) {
-                "register" -> BleWakeRegistrar.register(applicationContext)
+                "register" -> BleGattFeatureFlagStore(applicationContext)
+                    .reconcileWakeRegistration()
                 "stop" -> BleWakeRegistrar.stop(applicationContext)
                 "getStatus" -> BleWakeRegistrar.status(applicationContext)
                 else -> {

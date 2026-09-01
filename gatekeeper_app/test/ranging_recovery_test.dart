@@ -10,6 +10,9 @@ void main() {
       'schemaVersion': 1,
       'mode': 'native_wake',
       'nativeRequested': true,
+      'registrationRequested': true,
+      'registrationReconciled': true,
+      'registrationStatus': 'registered',
       'legacyLeaseHeld': false,
     });
 
@@ -18,14 +21,52 @@ void main() {
     expect(state.legacyLeaseHeld, isFalse);
   });
 
-  test('native request remains fail closed when mode text is unknown', () {
+  test(
+      'native request remains exclusive but is not operational without evidence',
+      () {
     final state = BleOwnershipState.fromMap(const <Object?, Object?>{
       'mode': 'future_native_mode',
       'nativeRequested': true,
     });
 
     expect(state.mode, BleOwnershipMode.unknown);
+    expect(state.nativeWakeAuthoritative, isFalse);
+    expect(state.requiresNativeWakeReconciliation, isTrue);
+    expect(state.legacyScannerAllowed, isFalse);
+  });
+
+  test('registered mode text cannot manufacture reconciliation evidence', () {
+    final state = BleOwnershipState.fromMap(const <Object?, Object?>{
+      'mode': 'native_wake',
+      'nativeRequested': true,
+      'registrationRequested': true,
+      'registrationReconciled': false,
+      'registrationStatus': 'scan_error',
+    });
+
+    expect(state.mode, BleOwnershipMode.nativeWake);
+    expect(state.nativeWakeAuthoritative, isFalse);
+    expect(state.requiresNativeWakeReconciliation, isTrue);
+    expect(state.legacyScannerAllowed, isFalse);
+  });
+
+  test('projects reconciled registration timestamps without Target identity',
+      () {
+    final state = BleOwnershipState.fromMap(const <Object?, Object?>{
+      'mode': 'native_wake',
+      'nativeRequested': true,
+      'registrationRequested': true,
+      'registrationReconciled': true,
+      'registrationStatus': 'registered',
+      'registrationAttemptedAtEpochMs': 1000,
+      'registrationReconciledAtEpochMs': 1100,
+      'lastCallbackAtEpochMs': 1200,
+    });
+
     expect(state.nativeWakeAuthoritative, isTrue);
+    expect(state.registrationAttemptedAtEpochMs, 1000);
+    expect(state.registrationReconciledAtEpochMs, 1100);
+    expect(state.lastCallbackAtEpochMs, 1200);
   });
 
   test('legacy owner permits the legacy scanner path', () {
@@ -37,6 +78,24 @@ void main() {
 
     expect(state.mode, BleOwnershipMode.legacyScanner);
     expect(state.nativeWakeAuthoritative, isFalse);
+    expect(state.legacyScannerAllowed, isTrue);
+  });
+
+  test('stale OS registration excludes legacy until native release completes',
+      () {
+    final state = BleOwnershipState.fromMap(const <Object?, Object?>{
+      'mode': 'native_wake_recovery',
+      'nativeRequested': false,
+      'registrationRequested': true,
+      'registrationReconciled': true,
+      'registrationStatus': 'registered',
+    });
+
+    expect(state.nativeWakeAuthoritative, isFalse);
+    expect(state.nativeExclusionRequired, isTrue);
+    expect(state.legacyScannerAllowed, isFalse);
+    expect(state.requiresNativeWakeReconciliation, isFalse);
+    expect(state.requiresNativeWakeRelease, isTrue);
   });
 
   test('recognizes only the native GATT BLE ownership exclusion', () {
@@ -71,6 +130,65 @@ void main() {
     expect(
       RangingRecoveryPolicy.nativeGattLeaseRetryDelay,
       greaterThan(Duration.zero),
+    );
+  });
+
+  test('native wake reconciliation uses bounded exponential backoff', () {
+    expect(
+      NativeWakeReconciliationPolicy.retryDelay(1),
+      const Duration(seconds: 30),
+    );
+    expect(
+      NativeWakeReconciliationPolicy.retryDelay(2),
+      const Duration(minutes: 1),
+    );
+    expect(
+      NativeWakeReconciliationPolicy.retryDelay(3),
+      const Duration(minutes: 2),
+    );
+    expect(
+      NativeWakeReconciliationPolicy.retryDelay(100),
+      NativeWakeReconciliationPolicy.maxRetryDelay,
+    );
+  });
+
+  test('native wake reconciliation is single-flight and deadline gated', () {
+    final now = DateTime.utc(2026, 9, 1, 1);
+    expect(
+      NativeWakeReconciliationPolicy.shouldAttempt(
+        now: now,
+        nextAttemptAt: null,
+        inFlight: false,
+        consecutiveFailures: 0,
+      ),
+      isTrue,
+    );
+    expect(
+      NativeWakeReconciliationPolicy.shouldAttempt(
+        now: now,
+        nextAttemptAt: now.add(const Duration(seconds: 1)),
+        inFlight: false,
+        consecutiveFailures: 1,
+      ),
+      isFalse,
+    );
+    expect(
+      NativeWakeReconciliationPolicy.shouldAttempt(
+        now: now,
+        nextAttemptAt: now.subtract(const Duration(seconds: 1)),
+        inFlight: true,
+        consecutiveFailures: 1,
+      ),
+      isFalse,
+    );
+    expect(
+      NativeWakeReconciliationPolicy.shouldAttempt(
+        now: now,
+        nextAttemptAt: now.subtract(const Duration(seconds: 1)),
+        inFlight: false,
+        consecutiveFailures: NativeWakeReconciliationPolicy.maxAttempts,
+      ),
+      isFalse,
     );
   });
 

@@ -3,6 +3,7 @@ package com.kshouse.gatekeeper_app.gattworker
 import android.content.Context
 import android.util.AtomicFile
 import com.flutterbeacon.CrossProcessBleOwnerCoordinator
+import com.kshouse.gatekeeper_app.blewake.BleWakeRegistrar
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -86,9 +87,18 @@ class BleGattFeatureFlagStore(private val context: Context) {
         nowEpochMs,
         localBootstrapDecision(),
       )
+      // Release the OS PendingIntent registration before publishing legacy
+      // ownership. Otherwise an expired/disabled remote flag can leave native
+      // wake and AltBeacon active at the same time.
+      if (!decision.newWorkerEnabled && BleWakeRegistrar.isEnabled(context)) {
+        BleWakeRegistrar.stop(context)
+      }
       val coordinator = CrossProcessBleOwnerCoordinator.forContext(context)
       if (!coordinator.setNativeRequested(decision.newWorkerEnabled)) {
         coordinator.setNativeRequested(false)
+        if (BleWakeRegistrar.isEnabled(context)) {
+          BleWakeRegistrar.stop(context)
+        }
         return FeatureFlagDecision(false, "legacy", "owner_state_unavailable", decision.revision)
       }
       return decision
@@ -120,6 +130,15 @@ class BleGattFeatureFlagStore(private val context: Context) {
       reason = if (!mutation.accepted) mutation.reason else current.status,
       decision = current,
     )
+  }
+
+  fun reconcileWakeRegistration(): com.kshouse.gatekeeper_app.blewake.BleWakeRegistrationResult {
+    val current = decision()
+    return if (current.newWorkerEnabled) {
+      BleWakeRegistrar.register(context)
+    } else {
+      BleWakeRegistrar.stop(context)
+    }
   }
 
   fun localConsentStatus(): LocalGattConsentStatus = LocalGattConsentStore(context).status()

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
+import com.kshouse.gatekeeper_app.gattworker.BleGattFeatureFlagStore
 
 object BleWakeBluetoothRestorePolicy {
   fun shouldRestore(
@@ -64,7 +65,20 @@ object BleWakeBluetoothStateMonitor {
       started = true
     } catch (error: RuntimeException) {
       Log.w(TAG, "Bluetooth state monitor registration failed: ${error.javaClass.simpleName}")
-      return
+    }
+
+    val wakeRequested = BleWakeRegistrar.isEnabled(appContext)
+    val featureEnabled = wakeRequested &&
+      BleGattFeatureFlagStore(appContext).decision().newWorkerEnabled
+    if (featureEnabled && currentState != BluetoothAdapter.STATE_ON) {
+      BleWakeRegistrar.invalidateReconciliation(
+        appContext,
+        if (currentState == null) {
+          "bluetooth_unavailable"
+        } else {
+          "bluetooth_off_or_scanner_unavailable"
+        },
+      )
     }
 
     if (
@@ -72,7 +86,7 @@ object BleWakeBluetoothStateMonitor {
         BluetoothAdapter.ACTION_STATE_CHANGED,
         currentState ?: BluetoothAdapter.ERROR,
         null,
-        BleWakeRegistrar.isEnabled(appContext),
+        featureEnabled && BleWakeRegistrar.isEnabled(appContext),
       )
     ) {
       restore(appContext, "process_start")
@@ -84,19 +98,28 @@ object BleWakeBluetoothStateMonitor {
     if (action != BluetoothAdapter.ACTION_STATE_CHANGED) return
     val oldState = previousObservedState
     previousObservedState = newState
+    val wakeRequested = BleWakeRegistrar.isEnabled(context)
+    val featureEnabled = wakeRequested &&
+      BleGattFeatureFlagStore(context).decision().newWorkerEnabled
+    if (newState != BluetoothAdapter.STATE_ON && featureEnabled) {
+      BleWakeRegistrar.invalidateReconciliation(
+        context,
+        "bluetooth_off_or_scanner_unavailable",
+      )
+    }
     if (
       !BleWakeBluetoothRestorePolicy.shouldRestore(
         action,
         newState,
         oldState,
-        BleWakeRegistrar.isEnabled(context),
+        featureEnabled && BleWakeRegistrar.isEnabled(context),
       )
     ) return
     restore(context, "bluetooth_state_on")
   }
 
   private fun restore(context: Context, source: String) {
-    val result = BleWakeRegistrar.register(context)
+    val result = BleGattFeatureFlagStore(context).reconcileWakeRegistration()
     val message = "$source registration restore: ${result.status}" +
       (result.errorCode?.let { " ($it)" } ?: "")
     if (result.succeeded) {

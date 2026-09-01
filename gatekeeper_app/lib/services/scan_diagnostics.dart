@@ -3,16 +3,19 @@ import 'package:flutter/foundation.dart';
 /// 스캐너의 전력/동작 모드 (issue.md §2.2 2단 전력 모델).
 ///
 /// * [stopped]   — 스캔하지 않음. 권한/OS 스위치 문제로 시작조차 못 한 상태도 포함.
+/// * [nativeWakeRecovery] — native owner는 유지하되 PendingIntent 등록 증거 복구 중.
 /// * [nativeWake] — OS PendingIntent 기반 native wake가 감지를 전담하는 정상 대기.
 /// * [idle]      — monitoring 만 구독. RSSI 가 나오지 않는 저전력 감시 상태.
 /// * [active]    — monitoring + ranging. RSSI 는 이 모드에서만 갱신된다.
-enum ScanMode { stopped, nativeWake, idle, active }
+enum ScanMode { stopped, nativeWakeRecovery, nativeWake, idle, active }
 
 extension ScanModeLabel on ScanMode {
   String get label {
     switch (this) {
       case ScanMode.stopped:
         return '정지 (STOPPED)';
+      case ScanMode.nativeWakeRecovery:
+        return '네이티브 감지 복구 (NATIVE WAKE RECOVERY)';
       case ScanMode.nativeWake:
         return '네이티브 감지 대기 (NATIVE WAKE)';
       case ScanMode.idle:
@@ -170,7 +173,9 @@ class ScanDiagnostics {
     if (!foregroundServiceRunning) {
       warnings.add('포그라운드 서비스가 실행 중이 아닙니다');
     }
-    if (mode != ScanMode.nativeWake && !backgroundScanTuningApplied) {
+    if (mode != ScanMode.nativeWake &&
+        mode != ScanMode.nativeWakeRecovery &&
+        !backgroundScanTuningApplied) {
       warnings.add('화면 OFF 대응 스캔 설정(setBackgroundMode)이 적용되지 않았습니다');
     }
     return warnings;

@@ -1,36 +1,65 @@
 import 'package:flutter/services.dart';
 
-enum NativeWakeStatus { registered, notRegistered, blocked, unavailable }
+enum NativeWakeStatus {
+  registered,
+  reconciling,
+  notRegistered,
+  blocked,
+  unavailable,
+}
 
 class NativeWakeRegistration {
   const NativeWakeRegistration({
     required this.status,
+    required this.rawStatus,
+    required this.requested,
+    required this.reconciled,
     required this.registered,
     required this.nextAction,
     this.errorCode,
+    this.attemptedAtEpochMs,
+    this.reconciledAtEpochMs,
+    this.lastCallbackAtEpochMs,
   });
 
   final NativeWakeStatus status;
+  final String rawStatus;
+  final bool requested;
+  final bool reconciled;
   final bool registered;
   final String nextAction;
   final int? errorCode;
+  final int? attemptedAtEpochMs;
+  final int? reconciledAtEpochMs;
+  final int? lastCallbackAtEpochMs;
 
   factory NativeWakeRegistration.fromMap(Map<Object?, Object?> value) {
     final raw = value['status']?.toString() ?? 'unavailable';
+    final requested = value['requested'] == true;
+    final reconciled = value['reconciled'] == true;
     final status = switch (raw) {
-      'registered' => NativeWakeStatus.registered,
+      'registered' when reconciled => NativeWakeStatus.registered,
       'not_registered' => NativeWakeStatus.notRegistered,
       _
           when raw.startsWith('missing_permission') ||
               raw.contains('bluetooth') =>
         NativeWakeStatus.blocked,
+      _ when requested => NativeWakeStatus.reconciling,
       _ => NativeWakeStatus.unavailable,
     };
     return NativeWakeRegistration(
       status: status,
-      registered: value['registered'] == true,
+      rawStatus: raw,
+      requested: requested,
+      reconciled: reconciled,
+      // Do not trust a legacy `registered` alias without the registrar's
+      // explicit reconciliation evidence.
+      registered: reconciled,
       nextAction: value['nextAction']?.toString() ?? 'retry',
       errorCode: (value['errorCode'] as num?)?.toInt(),
+      attemptedAtEpochMs: (value['attemptedAtEpochMs'] as num?)?.toInt(),
+      reconciledAtEpochMs: (value['reconciledAtEpochMs'] as num?)?.toInt(),
+      lastCallbackAtEpochMs: (value['lastCallbackAtEpochMs'] as num?)?.toInt(),
     );
   }
 }
