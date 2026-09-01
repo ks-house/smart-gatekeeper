@@ -11,9 +11,11 @@ import hashlib
 import hmac
 import ipaddress
 import logging
+import queue
 import re
 import threading
 import time
+import uuid
 from typing import Optional, List
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -267,6 +269,7 @@ def get_db():
 _target_boot_registry = TargetBootRegistry(get_db)
 _target_acl_delivery_tracker = TargetAclDeliveryTracker()
 _acl_refresh_worker: AclRefreshWorker | None = None
+_acl_target_credentials: dict[str, dict[str, str]] = {}
 _P256_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
 
 
@@ -540,7 +543,554 @@ def _request_target_acl_refresh(target_id: str, reason: str) -> bool:
     return worker.request(target_id, reason) if worker is not None else False
 
 
+_CANONICAL_ACCESS_REQUIRED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "event_id",
+        "session_id",
+        "session_kind",
+        "source_component",
+        "source_instance_id",
+        "source_boot_id",
+        "sequence",
+        "attempt",
+        "event_code",
+        "stage",
+        "outcome",
+        "reason_code",
+        "clock",
+        "target",
+        "causation_event_id",
+        "attributes",
+    }
+)
+_CANONICAL_ACCESS_ATTRIBUTE_FIELDS = frozenset(
+    {"path", "transport", "distance_mm", "duration_ms", "relay_hold_ms"}
+)
+_CANONICAL_OPAQUE_REF = re.compile(r"^[a-z][a-z0-9_-]{7,63}$")
+_CANONICAL_BOOT_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{7,63}$")
+_CANONICAL_TARGET_ACCESS_CODES = {
+    "ACCESS_GATT_CONNECTED": (
+        "GATT_CONNECT", {"SUCCEEDED"}, {"GATT_CONNECTED"},
+    ),
+    "ACCESS_GATT_FAILED": (
+        "GATT_CONNECT", {"FAILED", "TIMED_OUT"},
+        {"GATT_CONNECT_FAILED", "GATT_TIMEOUT", "GATT_DISCONNECTED"},
+    ),
+    "ACCESS_PROOF_REQUESTED": (
+        "PROOF", {"STARTED"}, {"PROOF_CHALLENGE_ISSUED"},
+    ),
+    "ACCESS_PROOF_VERIFIED": ("PROOF", {"SUCCEEDED"}, {"PROOF_VALID"}),
+    "ACCESS_PROOF_REJECTED": (
+        "PROOF", {"DENIED", "FAILED"},
+        {
+            "SIGNATURE_INVALID", "PROOF_EXPIRED", "NONCE_REPLAYED",
+            "MALFORMED_PROOF", "PROTOCOL_INCOMPATIBLE",
+        },
+    ),
+    "ACCESS_ACL_ACCEPTED": ("ACL", {"SUCCEEDED"}, {"ACL_ALLOW"}),
+    "ACCESS_ACL_REJECTED": (
+        "ACL", {"DENIED", "FAILED"},
+        {
+            "ACL_NOT_FOUND", "ACL_REVOKED", "ACL_EXPIRED", "ACL_STALE",
+            "ACL_SIGNATURE_INVALID", "CREDENTIAL_INACTIVE",
+        },
+    ),
+    "ACCESS_ARM_RECEIVED": ("ARMED", {"SUCCEEDED"}, {"ARM_RECEIVED"}),
+    "ACCESS_ARMED": ("ARMED", {"SUCCEEDED"}, {"ARM_ACCEPTED"}),
+    "ACCESS_ARM_REJECTED": (
+        "ARMED", {"DENIED", "FAILED"},
+        {"TARGET_BUSY", "TARGET_NOT_IDLE", "OTA_BUSY"},
+    ),
+    "ACCESS_MANUAL_OPEN_RECEIVED": (
+        "ARMED", {"SUCCEEDED"}, {"MANUAL_OPEN_RECEIVED"},
+    ),
+    "ACCESS_SENSOR_DETECTED": (
+        "SENSOR", {"SUCCEEDED"}, {"SENSOR_THRESHOLD_MET"},
+    ),
+    "ACCESS_SENSOR_FAILED": (
+        "SENSOR", {"FAILED", "TIMED_OUT"},
+        {"SENSOR_TIMEOUT", "SENSOR_INVALID", "SENSOR_IO_ERROR"},
+    ),
+    "ACCESS_RELAY_ON": ("RELAY_ON", {"SUCCEEDED"}, {"RELAY_ACTIVATED"}),
+    "ACCESS_RELAY_OFF": (
+        "RELAY_OFF", {"SUCCEEDED", "FAILED"},
+        {"RELAY_HOLD_COMPLETE", "RELAY_FAILSAFE_CUTOFF", "RELAY_CONTROL_ERROR"},
+    ),
+    "ACCESS_SESSION_COMPLETED": (
+        "COMPLETE", {"SUCCEEDED"}, {"ACCESS_GRANTED"},
+    ),
+    "ACCESS_SESSION_TERMINATED": (
+        "COMPLETE", {"DENIED", "FAILED", "TIMED_OUT", "CANCELLED"},
+        {
+            "WAKE_OS_BLOCKED", "PERMISSION_DENIED", "BLUETOOTH_DISABLED",
+            "FORCE_STOPPED", "BATTERY_RESTRICTED", "GATT_CONNECT_FAILED",
+            "GATT_TIMEOUT", "GATT_DISCONNECTED", "SIGNATURE_INVALID",
+            "PROOF_EXPIRED", "NONCE_REPLAYED", "MALFORMED_PROOF",
+            "PROTOCOL_INCOMPATIBLE", "ACL_NOT_FOUND", "ACL_REVOKED",
+            "ACL_EXPIRED", "ACL_STALE", "ACL_SIGNATURE_INVALID",
+            "CREDENTIAL_INACTIVE", "API_UNAUTHORIZED", "BACKEND_ERROR",
+            "BACKEND_UNAVAILABLE", "MQTT_PUBLISH_FAILED", "TARGET_OFFLINE",
+            "TARGET_BUSY", "TARGET_NOT_IDLE", "OTA_BUSY", "ARM_TIMEOUT",
+            "SENSOR_TIMEOUT", "SENSOR_INVALID", "SENSOR_IO_ERROR",
+            "RELAY_CONTROL_ERROR", "RESET_DURING_SESSION", "SESSION_TIMEOUT",
+            "USER_CANCELLED", "INTERNAL_ERROR",
+        },
+    ),
+}
+
+
+def _configured_target_ids() -> set[str]:
+    target_ids = {COMMAND_TARGET_ID}
+    target_ids.update(globals().get("_acl_target_credentials", {}).keys())
+    target_ids.discard("")
+    return target_ids
+
+
+def _canonical_target_event_topic(target_id: str) -> str:
+    return f"gatekeeper/v1/targets/{target_id}/canonical-event"
+
+
+def _exact_canonical_target_id(topic: str) -> str | None:
+    return next(
+        (
+            target_id
+            for target_id in _configured_target_ids()
+            if secrets.compare_digest(topic, _canonical_target_event_topic(target_id))
+        ),
+        None,
+    )
+
+
+def _is_lower_uuid4(value: object) -> bool:
+    if not isinstance(value, str) or value != value.lower():
+        return False
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError):
+        return False
+    return parsed.version == 4 and str(parsed) == value
+
+
+def _parse_canonical_target_access_event(payload: bytes) -> dict | None:
+    """Validate and project one privacy-safe Target access event for storage."""
+    if not isinstance(payload, bytes) or not 1 <= len(payload) <= 8192:
+        return None
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate JSON key")
+            value[key] = item
+        return value
+
+    def reject_nonfinite(_value):
+        raise ValueError("non-finite JSON number")
+
+    try:
+        event = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_nonfinite,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(event, dict) or set(event) != _CANONICAL_ACCESS_REQUIRED_FIELDS:
+        return None
+    if (
+        event.get("schema_version") != "1.0"
+        or event.get("session_kind") != "access"
+        or event.get("source_component") != "target"
+        or not _is_lower_uuid4(event.get("event_id"))
+        or not _is_lower_uuid4(event.get("session_id"))
+    ):
+        return None
+    source_ref = event.get("source_instance_id")
+    source_boot_id = event.get("source_boot_id")
+    if (
+        not isinstance(source_ref, str)
+        or _CANONICAL_OPAQUE_REF.fullmatch(source_ref) is None
+        or not isinstance(source_boot_id, str)
+        or _CANONICAL_BOOT_ID.fullmatch(source_boot_id) is None
+    ):
+        return None
+    sequence = event.get("sequence")
+    attempt = event.get("attempt")
+    if (
+        isinstance(sequence, bool)
+        or not isinstance(sequence, int)
+        or not 0 <= sequence <= (1 << 64) - 1
+        or isinstance(attempt, bool)
+        or not isinstance(attempt, int)
+        or attempt < 1
+    ):
+        return None
+
+    contract = _CANONICAL_TARGET_ACCESS_CODES.get(event.get("event_code"))
+    if contract is None:
+        return None
+    expected_stage, allowed_outcomes, allowed_reasons = contract
+    if (
+        event.get("stage") != expected_stage
+        or event.get("outcome") not in allowed_outcomes
+        or event.get("reason_code") not in allowed_reasons
+    ):
+        return None
+
+    clock = event.get("clock")
+    if (
+        not isinstance(clock, dict)
+        or set(clock) != {"wall_time", "monotonic_ms", "quality"}
+        or clock.get("wall_time") is not None
+        or clock.get("quality") != "UNSYNCED"
+    ):
+        return None
+    monotonic_ms = clock.get("monotonic_ms")
+    if (
+        isinstance(monotonic_ms, bool)
+        or not isinstance(monotonic_ms, int)
+        or not 0 <= monotonic_ms <= (1 << 64) - 1
+    ):
+        return None
+
+    target = event.get("target")
+    if (
+        not isinstance(target, dict)
+        or set(target) != {"target_ref", "boot_id"}
+        or target.get("target_ref") != source_ref
+        or target.get("boot_id") != source_boot_id
+    ):
+        return None
+    cause = event.get("causation_event_id")
+    if cause is not None and not _is_lower_uuid4(cause):
+        return None
+    if cause == event.get("event_id"):
+        return None
+
+    attributes = event.get("attributes")
+    if (
+        not isinstance(attributes, dict)
+        or not {"path", "transport"}.issubset(attributes)
+        or set(attributes) - _CANONICAL_ACCESS_ATTRIBUTE_FIELDS
+        or attributes.get("path") != "local_gatt"
+        or attributes.get("transport") != "ble_gatt"
+    ):
+        return None
+    limits = {
+        "distance_mm": 10_000,
+        "duration_ms": 86_400_000,
+        "relay_hold_ms": 600_000,
+    }
+    for field, maximum in limits.items():
+        value = attributes.get(field)
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not 0 <= value <= maximum
+        ):
+            return None
+
+    outcome = event["outcome"]
+    return {
+        "distance_mm": attributes.get("distance_mm"),
+        "duration_ms": attributes.get("duration_ms"),
+        "relay_hold_ms": attributes.get("relay_hold_ms"),
+        "event_id": event["event_id"],
+        "session_id": event["session_id"],
+        "attempt": attempt,
+        "source_component": event["source_component"],
+        "source_instance_id": source_ref,
+        "source_boot_id": source_boot_id,
+        "target_ref": source_ref,
+        "source_sequence": sequence,
+        "event_code": event["event_code"],
+        "event_stage": event["stage"],
+        "event_outcome": outcome,
+        "reason_code": event["reason_code"],
+        "causation_event_id": cause,
+        "event_path": attributes["path"],
+        "event_transport": attributes["transport"],
+        "monotonic_ms": monotonic_ms,
+        "clock_quality": clock["quality"],
+    }
+
+
+def _persist_canonical_target_access_event(
+    topic: str, payload: bytes, *, retained: bool
+) -> bool:
+    """Persist one exact-topic canonical Target event idempotently."""
+    topic_target_id = _exact_canonical_target_id(topic)
+    if retained or topic_target_id is None:
+        return False
+    event = _parse_canonical_target_access_event(payload)
+    if event is None:
+        return False
+    event["collector_target_ref"] = opaque_ref(
+        topic_target_id, _ops_hmac_key, "target"
+    )
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO access_event_history "
+                "(event_id,session_id,source_component,source_instance_id,"
+                "source_boot_id,source_sequence,event_attempt,event_code,event_stage,"
+                "event_outcome,reason_code,causation_event_id,target_ref,event_path,"
+                "event_transport,distance_mm,duration_ms,relay_hold_ms,monotonic_ms,"
+                "clock_quality,collector_target_ref,received_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                "%s,%s,%s,UTC_TIMESTAMP(3))",
+                (
+                    event["event_id"], event["session_id"],
+                    event["source_component"], event["source_instance_id"],
+                    event["source_boot_id"], event["source_sequence"],
+                    event["attempt"],
+                    event["event_code"], event["event_stage"],
+                    event["event_outcome"], event["reason_code"],
+                    event["causation_event_id"], event["target_ref"],
+                    event["event_path"], event["event_transport"],
+                    event["distance_mm"], event["duration_ms"],
+                    event["relay_hold_ms"], event["monotonic_ms"],
+                    event["clock_quality"], event["collector_target_ref"],
+                ),
+            )
+        return True
+    except pymysql.err.IntegrityError as exc:
+        if exc.args and exc.args[0] == 1062 and conn is not None:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT event_id,session_id,source_component,"
+                        "source_instance_id,source_boot_id,source_sequence,"
+                        "event_attempt,event_code,event_stage,event_outcome,"
+                        "reason_code,causation_event_id,target_ref,event_path,"
+                        "event_transport,distance_mm,duration_ms,relay_hold_ms,"
+                        "monotonic_ms,clock_quality,collector_target_ref "
+                        "FROM access_event_history WHERE event_id=%s OR "
+                        "(collector_target_ref=%s AND "
+                        "source_boot_id=%s AND source_sequence=%s)",
+                        (
+                            event["event_id"], event["collector_target_ref"],
+                            event["source_boot_id"], event["source_sequence"],
+                        ),
+                    )
+                    existing = cur.fetchall()
+                expected = {
+                    "event_id": event["event_id"],
+                    "session_id": event["session_id"],
+                    "source_component": event["source_component"],
+                    "source_instance_id": event["source_instance_id"],
+                    "source_boot_id": event["source_boot_id"],
+                    "source_sequence": event["source_sequence"],
+                    "event_attempt": event["attempt"],
+                    "event_code": event["event_code"],
+                    "event_stage": event["event_stage"],
+                    "event_outcome": event["event_outcome"],
+                    "reason_code": event["reason_code"],
+                    "causation_event_id": event["causation_event_id"],
+                    "target_ref": event["target_ref"],
+                    "event_path": event["event_path"],
+                    "event_transport": event["event_transport"],
+                    "distance_mm": event["distance_mm"],
+                    "duration_ms": event["duration_ms"],
+                    "relay_hold_ms": event["relay_hold_ms"],
+                    "monotonic_ms": event["monotonic_ms"],
+                    "clock_quality": event["clock_quality"],
+                    "collector_target_ref": event["collector_target_ref"],
+                }
+                if len(existing) == 1 and all(
+                    existing[0].get(key) == value for key, value in expected.items()
+                ):
+                    return True
+            except Exception:
+                pass
+            log.warning("[MQTT-AUDIT] canonical access event identity conflict")
+            return False
+        log.warning("[MQTT-AUDIT] canonical access event persistence rejected")
+        return False
+    except Exception:
+        log.warning("[MQTT-AUDIT] canonical access event persistence unavailable")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+class _CanonicalAccessEventWorker:
+    """Keep bounded database I/O off the Paho network callback thread."""
+
+    def __init__(
+        self,
+        persist=_persist_canonical_target_access_event,
+        capacity: int = 128,
+        health=None,
+    ):
+        self._persist = persist
+        self._health = health
+        self._queue: queue.Queue[tuple[str, bytes, bool] | None] = queue.Queue(
+            maxsize=capacity
+        )
+        self._stopping = threading.Event()
+        self._start_lock = threading.Lock()
+        self._started = False
+        self._thread = threading.Thread(
+            target=self._run,
+            name="canonical-access-event-writer",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        with self._start_lock:
+            if not self._started:
+                self._thread.start()
+                self._started = True
+
+    def request(self, topic: str, payload: bytes, retained: bool) -> bool:
+        if self._stopping.is_set():
+            return False
+        self.start()
+        try:
+            self._queue.put_nowait((topic, payload, retained))
+            return True
+        except queue.Full:
+            if self._health is not None:
+                self._health.note_writer_result(False)
+            return False
+
+    def _run(self) -> None:
+        while True:
+            item = self._queue.get()
+            try:
+                if item is None:
+                    return
+                topic, payload, retained = item
+                stored = self._persist(topic, payload, retained=retained)
+                if self._health is not None:
+                    self._health.note_writer_result(stored)
+                if not stored:
+                    log.warning("[MQTT-AUDIT] canonical Target access event was not stored")
+            finally:
+                self._queue.task_done()
+            if self._stopping.is_set():
+                return
+
+    def stop(self) -> None:
+        self._stopping.set()
+        if not self._started:
+            return
+        try:
+            self._queue.put_nowait(None)
+        except queue.Full:
+            # The worker observes _stopping immediately after its in-flight
+            # persistence call. It must not stay blocked forever on a full
+            # queue when an application lifespan is restarted in-process.
+            pass
+        self._thread.join(timeout=6.0)
+
+    @property
+    def healthy(self) -> bool:
+        if self._stopping.is_set():
+            return False
+        return not self._started or self._thread.is_alive()
+
+
+class _CanonicalAccessCollectorHealth:
+    """Track authenticated subscription acknowledgement and writer failures."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._expected: set[str] = set()
+        self._accepted: set[str] = set()
+        self._pending: dict[int, str] = {}
+        self._connected = False
+        self._subscription_failed = False
+        self._writer_failed = False
+
+    def configure(self, expected_topics: set[str]) -> None:
+        with self._lock:
+            self._expected = set(expected_topics)
+            self._accepted.clear()
+            self._pending.clear()
+            self._connected = False
+            self._subscription_failed = False
+            self._writer_failed = False
+
+    def begin_connection(self) -> None:
+        with self._lock:
+            self._accepted.clear()
+            self._pending.clear()
+            self._connected = True
+            self._subscription_failed = False
+
+    def track_subscription(self, topic: str, result: object) -> None:
+        try:
+            result_code, message_id = result
+            result_code = int(result_code)
+            message_id = int(message_id)
+        except (TypeError, ValueError):
+            with self._lock:
+                self._subscription_failed = True
+            return
+        with self._lock:
+            if result_code != 0 or topic not in self._expected:
+                self._subscription_failed = True
+                return
+            self._pending[message_id] = topic
+
+    def acknowledge(self, message_id: object, granted_qos: object) -> None:
+        try:
+            mid = int(message_id)
+            grants = list(granted_qos)
+            value = getattr(grants[0], "value", grants[0]) if grants else 128
+            accepted = int(value) in (0, 1, 2)
+        except (TypeError, ValueError):
+            accepted = False
+            mid = -1
+        with self._lock:
+            topic = self._pending.pop(mid, None)
+            if topic is None:
+                return
+            if not accepted:
+                self._subscription_failed = True
+                return
+            self._accepted.add(topic)
+
+    def disconnect(self) -> None:
+        with self._lock:
+            self._connected = False
+            self._accepted.clear()
+            self._pending.clear()
+
+    def note_writer_result(self, stored: bool) -> None:
+        with self._lock:
+            self._writer_failed = not stored
+
+    def ready(self, worker: _CanonicalAccessEventWorker | None) -> bool:
+        with self._lock:
+            subscriptions_ready = bool(
+                self._connected
+                and self._expected
+                and self._expected.issubset(self._accepted)
+                and not self._subscription_failed
+                and not self._writer_failed
+            )
+        return subscriptions_ready and worker is not None and worker.healthy
+
+
+_canonical_access_collector_health = _CanonicalAccessCollectorHealth()
+_canonical_access_event_worker: _CanonicalAccessEventWorker | None = None
+
+
 def _start_target_boot_subscriber():
+    global _canonical_access_event_worker
+    event_topics = {
+        _canonical_target_event_topic(target_id)
+        for target_id in _configured_target_ids()
+    }
+    _canonical_access_collector_health.configure(event_topics)
+    _canonical_access_event_worker = None
     if _command_provisioning_error() is not None or not HAS_PAHO_MQTT:
         return None
     bridge = None
@@ -591,21 +1141,31 @@ def _start_target_boot_subscriber():
             and secrets.compare_digest(live_boot_id, registered_boot_id)
         )
 
+    event_worker = _CanonicalAccessEventWorker(
+        persist=_persist_canonical_target_access_event,
+        health=_canonical_access_collector_health,
+    )
+    _canonical_access_event_worker = event_worker
+
     def on_connect(connected_client, _userdata, _flags, reason_code, *args):
         # MQTT v5 in paho-mqtt 1.6.1 passes a ReasonCodes object here.  It
         # deliberately supports comparison with integer reason codes but does
         # not implement int(), so coercion raises TypeError inside the network
         # thread before subscriptions or HA discovery can be published.
         if reason_code == 0:
+            _canonical_access_collector_health.begin_connection()
             _target_acl_delivery_tracker.reset_transport()
-            status_target_ids = {COMMAND_TARGET_ID}
-            status_target_ids.update(
-                globals().get("_acl_target_credentials", {}).keys()
-            )
-            status_target_ids.discard("")
+            status_target_ids = _configured_target_ids()
             for target_id in sorted(status_target_ids):
                 connected_client.subscribe(
                     f"gatekeeper/v1/targets/{target_id}/boot", qos=1
+                )
+                canonical_topic = _canonical_target_event_topic(target_id)
+                subscription = connected_client.subscribe(
+                    canonical_topic, qos=1
+                )
+                _canonical_access_collector_health.track_subscription(
+                    canonical_topic, subscription
                 )
             if globals().get("_acl_runtime_ready", False):
                 for target_id in globals().get("_acl_target_credentials", {}):
@@ -642,9 +1202,35 @@ def _start_target_boot_subscriber():
                     qos=publication.qos,
                     retain=publication.retain,
                 )
+        else:
+            _canonical_access_collector_health.disconnect()
+
+    def on_subscribe(
+        _connected_client, _userdata, message_id, granted_qos, *args
+    ):
+        _canonical_access_collector_health.acknowledge(message_id, granted_qos)
+
+    def on_disconnect(_connected_client, _userdata, _reason_code, *args):
+        _canonical_access_collector_health.disconnect()
 
     def on_message(connected_client, _userdata, message):
         payload = bytes(message.payload)
+        if message.topic.endswith("/canonical-event"):
+            retained = bool(getattr(message, "retain", False))
+            if (
+                retained
+                or _exact_canonical_target_id(message.topic) is None
+                or not 1 <= len(payload) <= 8192
+            ):
+                log.warning("[MQTT-AUDIT] rejected canonical Target access envelope")
+                return
+            if not event_worker.request(
+                message.topic,
+                payload,
+                retained,
+            ):
+                log.warning("[MQTT-AUDIT] canonical access event queue unavailable")
+            return
         if message.topic.endswith("/boot"):
             boot_target_id = next(
                 (
@@ -836,10 +1422,13 @@ def _start_target_boot_subscriber():
             )
 
     client.on_connect = on_connect
+    client.on_subscribe = on_subscribe
+    client.on_disconnect = on_disconnect
     client.on_message = on_message
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
     client.loop_start()
     client._sgk_ha_bridge = bridge
+    client._sgk_access_event_worker = event_worker
     return client
 
 
@@ -1069,6 +1658,12 @@ async def lifespan(app: FastAPI):
                     pass
             boot_subscriber.loop_stop()
             boot_subscriber.disconnect()
+            access_event_worker = getattr(
+                boot_subscriber, "_sgk_access_event_worker", None
+            )
+            if access_event_worker is not None:
+                access_event_worker.stop()
+            _canonical_access_collector_health.disconnect()
         if _mqtt_publisher is not None:
             _mqtt_publisher.close()
         log.info("[SHUTDOWN] Smart Gatekeeper API 종료")
@@ -1782,6 +2377,7 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         "database": False,
         "database_schema": False,
         "mqtt": False,
+        "access_event_collector": False,
         "runtime_secrets": bool(DB_PASSWORD and len(OPS_HMAC_KEY) >= 32),
         "control_api_auth": len(GATEKEEPER_API_KEY) >= 32,
         "admin_auth": admin_security.browser_login_ready,
@@ -1819,6 +2415,13 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         checks["mqtt"] = _persistent_publisher().probe(timeout=1.0)
         if not checks["mqtt"]:
             _ops_metrics.event("readiness", "mqtt_failed")
+        checks["access_event_collector"] = (
+            _canonical_access_collector_health.ready(
+                _canonical_access_event_worker
+            )
+        )
+        if not checks["access_event_collector"]:
+            _ops_metrics.event("readiness", "access_event_collector_failed")
     return all(checks.values()), checks
 
 
@@ -2887,6 +3490,46 @@ def get_access_logs(
             conn.close()
 
 
+_ADMIN_ACCESS_HISTORY_SQL = (
+    "SELECT * FROM ("
+    "SELECT 'legacy' AS record_kind,l.id,l.tenant_id,"
+    "t.name AS tenant_name,t.unit_number,l.auth_method,l.is_success,"
+    "l.distance_mm,l.failure_reason,l.created_at,NULL AS event_id,"
+    "NULL AS session_id,NULL AS source_component,"
+    "NULL AS source_instance_id,NULL AS source_boot_id,"
+    "NULL AS source_sequence,NULL AS event_attempt,NULL AS event_code,"
+    "NULL AS event_stage,NULL AS event_outcome,NULL AS reason_code,"
+    "NULL AS causation_event_id,NULL AS target_ref,NULL AS event_path,"
+    "NULL AS event_transport,NULL AS monotonic_ms,NULL AS clock_quality,"
+    "NULL AS collector_target_ref,NULL AS received_at FROM access_logs l "
+    "LEFT JOIN tenants t ON t.id=l.tenant_id "
+    "UNION ALL "
+    "SELECT 'canonical' AS record_kind,e.id,NULL AS tenant_id,"
+    "NULL AS tenant_name,NULL AS unit_number,'LOCAL_GATT' AS auth_method,"
+    "NULL AS is_success,e.distance_mm,NULL AS failure_reason,"
+    "e.received_at AS created_at,e.event_id,e.session_id,"
+    "e.source_component,e.source_instance_id,e.source_boot_id,"
+    "e.source_sequence,e.event_attempt,e.event_code,e.event_stage,"
+    "e.event_outcome,e.reason_code,e.causation_event_id,e.target_ref,"
+    "e.event_path,e.event_transport,e.monotonic_ms,e.clock_quality,"
+    "e.collector_target_ref,e.received_at FROM access_event_history e"
+    ") AS history ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s"
+)
+_ADMIN_ACCESS_TODAY_COUNT_SQL = (
+    "SELECT ("
+    "SELECT COUNT(*) FROM access_logs WHERE created_at >= "
+    "DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) - INTERVAL 9 HOUR "
+    "AND created_at < DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) "
+    "+ INTERVAL 15 HOUR"
+    ") + ("
+    "SELECT COUNT(DISTINCT session_id) FROM access_event_history "
+    "WHERE received_at >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) "
+    "- INTERVAL 9 HOUR AND received_at < "
+    "DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR) + INTERVAL 15 HOUR"
+    ") AS total"
+)
+
+
 @app.get("/api/v1/admin/access-events")
 def get_all_access_events_admin(
     request: Request,
@@ -2899,21 +3542,18 @@ def get_all_access_events_admin(
         conn = get_db()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT l.id, l.tenant_id, t.name AS tenant_name, "
-                "t.unit_number, l.auth_method, l.is_success, l.distance_mm, "
-                "l.failure_reason, l.created_at "
-                "FROM access_logs l LEFT JOIN tenants t ON t.id=l.tenant_id "
-                "ORDER BY l.created_at DESC LIMIT %s OFFSET %s",
+                _ADMIN_ACCESS_HISTORY_SQL,
                 (limit, offset),
             )
             rows = cur.fetchall()
             for row in rows:
-                if isinstance(row.get("created_at"), datetime):
-                    row["created_at"] = row["created_at"].isoformat()
-            cur.execute(
-                "SELECT COUNT(*) AS total FROM access_logs "
-                "WHERE created_at >= CURRENT_DATE() AND created_at < CURRENT_DATE() + INTERVAL 1 DAY"
-            )
+                for time_field in ("created_at", "received_at"):
+                    if isinstance(row.get(time_field), datetime):
+                        row[time_field] = row[time_field].isoformat() + "Z"
+                for uint64_field in ("source_sequence", "monotonic_ms"):
+                    if row.get(uint64_field) is not None:
+                        row[uint64_field] = str(row[uint64_field])
+            cur.execute(_ADMIN_ACCESS_TODAY_COUNT_SQL)
             count = cur.fetchone()
         return {
             "events": rows,

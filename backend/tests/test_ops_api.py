@@ -117,6 +117,8 @@ class OperationsApiTest(unittest.TestCase):
             main, "ACL_LEGACY_DEVICE_LOOKUP_ENABLED", False
         ), patch.object(main, "EXPECTED_DB_SCHEMA_VERSION", "008"), patch.object(
             main, "EXPECTED_DB_SCHEMA_SHA256", "f" * 64
+        ), patch.object(
+            main._canonical_access_collector_health, "ready", return_value=True
         ):
             ready = self.client.get("/ready")
         self.assertEqual(200, ready.status_code, ready.text)

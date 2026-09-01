@@ -9,6 +9,9 @@ on:
       - 'scripts/ops_commercial_gate.py'
       - '.orca/scripts/setup_worktree.ps1'
       - 'protocol/test_vectors/v1.json'
+      - 'observability/event_codes_v1.json'
+      - 'security/target-acl'
+      - 'tests/test_target_security_ota.py'
       - '.github/workflows/backend_security.yml'
   push:
     branches: [main]
@@ -18,6 +21,9 @@ on:
       - 'scripts/ops_commercial_gate.py'
       - '.orca/scripts/setup_worktree.ps1'
       - 'protocol/test_vectors/v1.json'
+      - 'observability/event_codes_v1.json'
+      - 'security/target-acl'
+      - 'tests/test_target_security_ota.py'
       - '.github/workflows/backend_security.yml'
 
 permissions:

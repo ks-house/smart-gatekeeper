@@ -20,6 +20,8 @@ services:
       - ./db/migrations/007_ops_privacy_up.sql:/docker-entrypoint-initdb.d/07_ops_privacy.sql:ro
       - ./db/migrations/008_mobile_credential_control_up.sql:/docker-entrypoint-initdb.d/08_mobile_credential_control.sql:ro
       - ./db/migrations/009_admin_account_management_up.sql:/docker-entrypoint-initdb.d/09_admin_account_management.sql:ro
+      - ./db/migrations/010_mobile_account_roles_up.sql:/docker-entrypoint-initdb.d/10_mobile_account_roles.sql:ro
+      - ./db/migrations/011_access_event_history_up.sql:/docker-entrypoint-initdb.d/11_access_event_history.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
@@ -36,7 +38,7 @@ services:
       dockerfile: Dockerfile
     container_name: gatekeeper-db-migrate
     restart: "no"
-    command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-010}"]
+    command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-011}"]
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -97,8 +99,8 @@ services:
       GATEKEEPER_API_KEY: ${GATEKEEPER_API_KEY:-}
       OPS_HMAC_KEY: ${OPS_HMAC_KEY:-}
       BUILD_SHA: ${BUILD_SHA:-unknown}
-      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-010}
-      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-76260eac7406904ec5f039c68ec34440c829611a9a85d23208372dee4b02cfd7}
+      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-011}
+      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-d29f683a1ad8aad86ba5e11b48d35aab1e39acadaca1f34b2c26c748fd364572}
       # ── Issue #19 Hardwareless RC ACL management (production-OFF) ──
       ACL_MANAGEMENT_ENABLED: ${ACL_MANAGEMENT_ENABLED:-false}
       ACL_LEGACY_DEVICE_LOOKUP_ENABLED: ${ACL_LEGACY_DEVICE_LOOKUP_ENABLED:-true}

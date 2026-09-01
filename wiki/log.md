@@ -5655,6 +5655,31 @@
 - Exact-main OTA contract run `33457276522`, Target run `33457276556` and mobile run `33457276558` all completed successfully. The latter two signed and atomically published personal OTA `2.1.412+main.ge0d809c` and `1.0.0-ge0d809c` / `37401` respectively.
 - Independent strict-TLS fixed-manifest and artifact readback matched the exact commit and SHA-256 for the 1,850,036-byte encrypted Target artifact and both byte-identical 55,200,921-byte mobile APK endpoints. Sanitized evidence remains explicitly non-production/non-release; phone/Target installation, screen-off detection/authentication, `ARMED`, sensor/relay and physical door acceptance remain open.
 
+## [2026-09-01] code | Add typed Target access history to the administrator console
+
+- Added additive schema 011 `access_event_history`, immutable update/delete guards, exact MQTT topic binding, strict canonical envelope/catalog validation, authenticated Target projection, bounded callback offload and exact replay-versus-conflict handling.
+- The administrator timeline now separates proof/ACL decisions, `ARMED`, sensor detection, relay ON/OFF and session completion/termination. Legacy manual-open success is labelled only as Backend transmission acceptance.
+- Granted only the Backend broker principal read access to per-Target canonical events; Target namespaces remain exact and Home Assistant cannot read the audit topic or publish direct effects.
+
+## [2026-09-01] test | Validate Target access history candidate
+
+- Focused Backend and security suites passed 64 tests with two expected environment-only skips; 15 canonical collector tests and the MariaDB 10.11 schema 011 upgrade/repeat compatibility test passed separately.
+- Operations contract and deterministic SBOM checks passed. Hosted review/CI, broker ACL installation, NAS schema/API deployment, live event ingestion and physical door behavior remain separate Gates.
+- Canonical Target publication is QoS 0 and the current payload omits distance attributes; missing events remain unconfirmed and Target relay events do not prove physical door travel without a door contact sensor.
+
+## [2026-09-01] fix | Fail readiness on inaccessible Target access history
+
+- Added per-topic SUBACK correlation and collector health so broker denial, disconnect, writer termination, queue overflow or persistence failure cannot coexist with a successful `/ready` response. A later successful store clears only the writer failure; every reconnect must earn fresh SUBACKs.
+- Returned database receive timestamps as explicit UTC and changed the administrator “today” count to a KST day boundary, preventing a browser from interpreting naive UTC as local time.
+- Clarified that `ACCESS_PROOF_VERIFIED` already includes active ACL, credential, permission and signature verification, while `ARMED`, sensor, relay and physical-door evidence remain later independent stages.
+- Recorded the Mosquitto ACL as a separate pre-deployment operational Gate because the signed Backend release bundle does not install or reload the broker container policy.
+
+## [2026-09-01] test | Exercise administrator history on MariaDB 10.11
+
+- The complete Backend suite passed 172 tests with two expected environment-only skips after adding collector health and KST/UTC contracts.
+- A real production DB image upgraded an existing volume to schema 011 twice, inserted both legacy and canonical rows, executed the exact administrator UNION and KST count queries, rejected audit-row mutation, rolled the application schema back and preserved the canonical evidence row.
+- Hosted trusted policy remains intentionally red until the complete protected candidate receives the normal reviewed policy rotation; no broker policy, NAS runtime or physical Target was changed by these local tests.
+
 ## [2026-09-01] compile | Authorize Target access-history candidate
 
 - Bound immutable feature candidate `e33664096e72a880896997490769da006b50c5aa` to the sole 93-path `target-access-history-e336640-persistent-baseline`, expanding the protected set with both schema 011 migration directions.

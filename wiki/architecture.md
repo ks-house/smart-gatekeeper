@@ -295,6 +295,19 @@ activation/grant와 signed ACL snapshot을 처리한 뒤 configured Target의 ex
 positive ACL version을 반환합니다. Target reboot와 900초 기본 lease 만료에 대비한 boot-triggered/periodic
 signed snapshot renewal도 source 계약에 포함되며, live NAS scheduler와 장기 outage 동작은 별도 검증합니다.
 
+Backend MQTT subscriber는 configured Target의 canonical access topic도 읽습니다. Paho callback은 payload를
+bounded queue로 넘기기만 하고 worker가 schema 011 `access_event_history`에 typed stage/outcome/reason을
+append합니다. 관리자 화면은 기존 원격 요청 기록과 이 Target 타임라인을 함께 보여 주되, 인증 성공,
+`ARMED`, sensor 감지, relay ON/OFF, session 완료를 하나의 boolean 성공으로 합치지 않습니다. MQTT QoS 0
+수신 이력과 Target GPIO 동작은 door contact의 물리 개방 증거가 아니며, 누락 이벤트도 실패 확정 증거가
+아닙니다. 상세 계약은 [observability_event_schema.md](observability_event_schema.md#13-backend-수신-이력과-관리자-판정)를
+따릅니다.
+
+`/ready`는 command publisher probe와 별도로 configured canonical topic 전체의 successful SUBACK,
+collector writer 생존 및 저장 실패 상태를 확인합니다. Source `security/target-acl` 변경은 Backend
+release bundle에 포함되지 않으므로 NAS broker ACL 설치·reload와 readback은 Backend 배포 전에 별도
+운영 Gate로 수행합니다.
+
 ## 6. 실패 안전 경계
 
 | 실패 | 기대 동작 |

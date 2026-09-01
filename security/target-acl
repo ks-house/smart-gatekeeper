@@ -22,6 +22,7 @@ topic read gatekeeper/v1/targets/+/acl/ack
 topic read gatekeeper/v1/targets/+/boot
 topic read gatekeeper/v1/targets/+/status
 topic read gatekeeper/v1/targets/+/availability
+topic read gatekeeper/v1/targets/+/canonical-event
 topic read gatekeeper/v1/ha-bridge/+/request/+
 topic write gatekeeper/v1/ha-bridge/+/availability
 topic write gatekeeper/v1/ha-bridge/+/result

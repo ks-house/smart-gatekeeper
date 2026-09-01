@@ -147,6 +147,7 @@
     .badge-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
     .badge-warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
     .badge-danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .audit-note { color: var(--text-muted); font-size: 12px; margin: -6px 0 14px; }
 
     .btn-action {
       border: none;
@@ -186,7 +187,7 @@
       <div class="stat-value" style="color: var(--warning);" id="statPendingTenants">0 명</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">오늘 총 출입 횟수</div>
+      <div class="stat-label">오늘(KST) 출입 시도</div>
       <div class="stat-value" style="color: var(--primary);" id="statTodayLogs">0 건</div>
     </div>
     <div class="stat-card">
@@ -223,22 +224,24 @@
   <!-- 시스템 출입 이력 Audit Logs -->
   <div class="card">
     <div class="card-title">
-      <span>📜 최근 전체 출입 감지 이력 (Audit Logs)</span>
+      <span>📜 최근 전체 출입 감지 이력 (수신 이벤트)</span>
       <button class="btn-action" style="background: var(--card-border); color: var(--text);" onclick="loadLogs()">🔄 새로고침</button>
     </div>
+    <p class="audit-note">인증 성공, 센서 감지, 릴레이 구동, 세션 완료를 분리해 표시합니다. 이벤트 미수신만으로 성공 또는 실패를 단정하지 않습니다.</p>
     <table>
       <thead>
         <tr>
           <th>시간</th>
-          <th>인증 방식</th>
+          <th>경로 / 주체</th>
+          <th>단계 / 이벤트</th>
           <th>결과</th>
-          <th>감지 거리 (mm)</th>
-          <th>비고 / 실패 사유</th>
+          <th>센서 거리</th>
+          <th>진단 / 세션</th>
         </tr>
       </thead>
       <tbody id="logsTableBody">
         <tr>
-          <td colspan="5" style="text-align: center; color: var(--text-muted);">데이터를 불러오는 중...</td>
+          <td colspan="6" style="text-align: center; color: var(--text-muted);">데이터를 불러오는 중...</td>
         </tr>
       </tbody>
     </table>
@@ -413,9 +416,88 @@
       await Promise.all([loadTenants(), loadLogs()]);
     }
 
+    const accessEventLabels = {
+      ACCESS_GATT_CONNECTED: 'Target BLE 연결',
+      ACCESS_GATT_FAILED: 'Target BLE 연결 실패',
+      ACCESS_PROOF_REQUESTED: '인증 증명 요청',
+      ACCESS_PROOF_VERIFIED: '인증 검증 성공',
+      ACCESS_PROOF_REJECTED: '인증 검증 실패',
+      ACCESS_ACL_ACCEPTED: '출입 권한 확인 성공',
+      ACCESS_ACL_REJECTED: '출입 권한 거부',
+      ACCESS_ARM_RECEIVED: '센서 대기 요청 수신',
+      ACCESS_ARMED: '센서 대기 시작 (ARMED)',
+      ACCESS_ARM_REJECTED: '센서 대기 전환 실패',
+      ACCESS_MANUAL_OPEN_RECEIVED: '수동 개방 명령 수신',
+      ACCESS_SENSOR_DETECTED: '근접 센서 감지',
+      ACCESS_SENSOR_FAILED: '근접 센서 처리 실패',
+      ACCESS_RELAY_ON: '릴레이 ON 명령',
+      ACCESS_RELAY_OFF: '릴레이 OFF 명령',
+      ACCESS_SESSION_COMPLETED: 'Target 출입 흐름 완료',
+      ACCESS_SESSION_TERMINATED: 'Target 출입 흐름 종료'
+    };
+    const accessReasonLabels = {
+      GATT_CONNECTED: 'BLE GATT 연결됨',
+      GATT_CONNECT_FAILED: 'BLE GATT 연결 실패',
+      GATT_TIMEOUT: 'BLE GATT 연결 시간 초과',
+      GATT_DISCONNECTED: 'BLE GATT 연결 해제',
+      PROOF_CHALLENGE_ISSUED: '인증 challenge 발급',
+      PROOF_VALID: '서명 증명 유효',
+      SIGNATURE_INVALID: '서명 검증 실패',
+      PROOF_EXPIRED: '인증 증명 만료',
+      NONCE_REPLAYED: '재사용 nonce 거부',
+      MALFORMED_PROOF: '인증 증명 형식 오류',
+      PROTOCOL_INCOMPATIBLE: '인증 프로토콜 불일치',
+      ACL_ALLOW: '출입 권한 허용',
+      ACL_NOT_FOUND: 'Target ACL에서 자격을 찾지 못함',
+      ACL_REVOKED: '출입 자격 폐기됨',
+      ACL_EXPIRED: '출입 자격 만료',
+      ACL_STALE: 'Target ACL 갱신 필요',
+      ACL_SIGNATURE_INVALID: 'ACL 서명 검증 실패',
+      CREDENTIAL_INACTIVE: '비활성 출입 자격',
+      ARM_RECEIVED: 'ARM 요청 수신',
+      ARM_ACCEPTED: '센서 감지 대기 진입',
+      TARGET_BUSY: 'Target 사용 중',
+      TARGET_NOT_IDLE: 'Target이 IDLE 상태가 아님',
+      OTA_BUSY: 'Target 업데이트 진행 중',
+      MANUAL_OPEN_RECEIVED: '수동 개방 명령 수신',
+      SENSOR_THRESHOLD_MET: '설정 거리 이내 감지',
+      SENSOR_TIMEOUT: '센서 감지 시간 초과',
+      SENSOR_INVALID: '센서 측정값 무효',
+      SENSOR_IO_ERROR: '센서 입출력 오류',
+      RELAY_ACTIVATED: '릴레이 활성화 명령 수행',
+      RELAY_HOLD_COMPLETE: '릴레이 유지 시간 완료',
+      RELAY_FAILSAFE_CUTOFF: '릴레이 failsafe 차단',
+      RELAY_CONTROL_ERROR: '릴레이 제어 오류',
+      ACCESS_GRANTED: 'Target 소프트웨어 출입 흐름 정상 완료',
+      ARM_TIMEOUT: '인증 후 제한 시간 내 센서 미감지',
+      SESSION_TIMEOUT: '출입 세션 시간 초과',
+      INTERNAL_ERROR: 'Target 내부 오류'
+    };
+    const accessOutcomePresentation = {
+      STARTED: ['진행 시작', 'badge-warning'],
+      PROGRESS: ['진행 중', 'badge-warning'],
+      SUCCEEDED: ['단계 성공', 'badge-success'],
+      DENIED: ['인증/권한 거부', 'badge-danger'],
+      FAILED: ['실패', 'badge-danger'],
+      TIMED_OUT: ['시간 초과', 'badge-warning'],
+      CANCELLED: ['취소', 'badge-warning']
+    };
+    function shortOpaqueRef(value) {
+      const text = String(value || '');
+      return text ? text.slice(0, 16) : '-';
+    }
+    function accessResult(log) {
+      if (log.record_kind === 'canonical') {
+        return accessOutcomePresentation[log.event_outcome] || ['미확인', 'badge-warning'];
+      }
+      if (log.auth_method === 'MOBILE_REMOTE' && log.is_success) {
+        return ['서버 전송 접수', 'badge-warning'];
+      }
+      return log.is_success ? ['성공', 'badge-success'] : ['실패', 'badge-danger'];
+    }
     async function loadLogs() {
       try {
-        const res = await fetch('/api/v1/admin/access-events?limit=30', { headers: adminHeaders(), credentials: 'same-origin' });
+        const res = await fetch('/api/v1/admin/access-events?limit=100', { headers: adminHeaders(), credentials: 'same-origin' });
         if (!res.ok) {
           await showRequestFailure(res, '출입 이력 조회 실패');
           return;
@@ -427,18 +509,36 @@
         const tbody = document.getElementById('logsTableBody');
         tbody.innerHTML = '';
 
+        if (logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">수집된 출입 이벤트가 없습니다.</td></tr>';
+          return;
+        }
+
         logs.forEach(l => {
           const tr = document.createElement('tr');
           const dateStr = new Date(l.created_at).toLocaleString('ko-KR');
-          const badgeClass = l.is_success ? 'badge-success' : 'badge-danger';
-          const badgeText = l.is_success ? '성공' : '실패';
+          const [badgeText, badgeClass] = accessResult(l);
+          const canonical = l.record_kind === 'canonical';
+          const pathText = canonical
+            ? `로컬 자동 출입<br><small>Target ${escapeHtml(shortOpaqueRef(l.collector_target_ref))}</small>`
+            : `${escapeHtml(l.auth_method)}${l.tenant_name ? `<br><small>${escapeHtml(l.tenant_name)} · ${escapeHtml(l.unit_number || '-')}</small>` : ''}`;
+          const eventText = canonical
+            ? `${escapeHtml(accessEventLabels[l.event_code] || l.event_code)}<br><small>${escapeHtml(l.event_stage)} · seq ${escapeHtml(String(l.source_sequence))}</small>`
+            : '기존 출입 기록';
+          const reasonText = canonical
+            ? (accessReasonLabels[l.reason_code] || l.reason_code || '사유 미확인')
+            : (l.failure_reason || '정상 처리');
+          const sessionText = canonical
+            ? `<br><small>session ${escapeHtml(shortOpaqueRef(l.session_id))}</small>`
+            : '';
 
           tr.innerHTML = `
             <td>${dateStr}</td>
-            <td>${escapeHtml(l.auth_method)}${l.tenant_name ? `<br><small>${escapeHtml(l.tenant_name)} · ${escapeHtml(l.unit_number || '-')}</small>` : ''}</td>
+            <td>${pathText}</td>
+            <td>${eventText}</td>
             <td><span class="badge ${badgeClass}">${badgeText}</span></td>
-            <td>${l.distance_mm ? l.distance_mm + ' mm' : '-'}</td>
-            <td>${escapeHtml(l.failure_reason || '정상 처리')}</td>
+            <td>${l.distance_mm !== null && l.distance_mm !== undefined ? Number(l.distance_mm) + ' mm' : '-'}</td>
+            <td>${escapeHtml(reasonText)}${sessionText}</td>
           `;
           tbody.appendChild(tr);
         });
