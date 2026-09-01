@@ -5685,3 +5685,20 @@
 - Bound immutable feature candidate `e33664096e72a880896997490769da006b50c5aa` to the sole 93-path `target-access-history-e336640-persistent-baseline`, expanding the protected set with both schema 011 migration directions.
 - Fifteen protected blobs carry the reviewed Backend collector, administrator timeline, schema/Compose, workflow trigger and direct tests; the remaining 78 retain baseline bytes. Exact repository/SHA, ancestry, inventories and normalized digests remain fail closed.
 - This policy-only candidate changes no Backend runtime, Mosquitto ACL, NAS database, Target, relay or physical door. Normal policy review/CI/merge and every deployment/physical Gate remain separate.
+
+## [2026-09-01] test | Deploy exact-main Target access history
+
+- PR #326 passed Hosted Trusted, Backend/MariaDB and OTA/schema checks and merged normally as exact main `3d3e041b9b64ac514b9b05e8ae71aa2221955d33`.
+- Backend run `33516916385` published digest-pinned API/DB images and deployed release `3d3e041b9b64ac514b9b05e8ae71aa2221955d33-run33516916385-attempt1`; deployment and independent status evidence matched with `loopback_ready=passed` and `public_ready=passed`.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the exact main build and every readiness check was true, including `access_event_collector`. The new administrator static asset was also read back. A natural Target event and physical door observation remain separate Gates.
+
+## [2026-09-01] test | Identify live Mosquitto authorization drift
+
+- Owner-authenticated read-only NAS inspection confirmed the running `eclipse-mosquitto:latest` process uses the bind-mounted production config, but that config has no `password_file` or `acl_file` and permits anonymous access on both 1883 and 8883. No broker file, process or container was changed during inspection.
+- The canonical collector can subscribe in this topology, but received rows are not broker-principal-authenticated production evidence and an anonymous publisher can attack audit availability or provenance. Signed command-effect verification remains a separate application boundary.
+- The confirmed P0 was recorded on issue #50. Closure requires an exact-image, backup-first credential and topic-ACL migration, anonymous/crossover denial, bounded restart or session eviction, legitimate Backend/Target/HA reconnection and rollback evidence; a SIGHUP-only claim is insufficient for pre-existing anonymous sessions.
+
+## [2026-09-01] compile | Finalize Target access-history main policy
+
+- Retired the transitional candidate identity and pinned the sole 93-path `current-main-baseline` to exact feature merge `3d3e041b9b64ac514b9b05e8ae71aa2221955d33`, retaining all reviewed protected digests unchanged.
+- This policy-only finalization changes no Backend image, NAS database, broker configuration, Target, sensor, relay or door state. Hosted policy review and normal merge remain separate Gates.

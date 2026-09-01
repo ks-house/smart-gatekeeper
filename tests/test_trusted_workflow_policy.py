@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "e33664096e72a880896997490769da006b50c5aa"
-EXPECTED_BUNDLE_ID = "target-access-history-e336640-persistent-baseline"
+MERGED_MAIN_COMMIT = "3d3e041b9b64ac514b9b05e8ae71aa2221955d33"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 017379b4d76c875ac44ab29e619e133df0944b79d07d812ded383462c4dac4bd
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -114,23 +114,7 @@ backend/tests/test_target_boot_registry.py 33102281199ac24ff389d8b0b4f8c981ffc23
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/backend_security.yml",
-    "scripts/ops_commercial_gate.py",
-    "ops/backend_trusted_bundle_paths.json",
-    "backend/app/main.py",
-    "backend/app/static/admin.html",
-    "backend/db/Dockerfile",
-    "backend/db/migrations/011_access_event_history_down.sql",
-    "backend/db/migrations/011_access_event_history_up.sql",
-    "backend/db/schema.env",
-    "backend/docker-compose.yml",
-    "backend/tests/test_admin_security.py",
-    "backend/tests/test_migrations.py",
-    "backend/tests/test_nas_backend_deploy.py",
-    "backend/tests/test_ops_api.py",
-    "backend/tests/test_target_boot_registry.py",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1084,8 +1068,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 15)
-    self.assertEqual(len(locally_unchanged_protected), 78)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 93)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
