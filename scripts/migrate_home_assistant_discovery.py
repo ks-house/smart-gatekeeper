@@ -2,7 +2,7 @@
 """Migrate HA discovery to read-only state and backend-signed controls.
 
 The default mode is a network-free dry run. ``--apply`` first removes seven
-legacy direct-Target controls, then publishes backend-ingress controls and 15
+legacy direct-Target controls, then publishes backend-ingress controls and 16
 read-only discovery documents.
 Credentials are accepted only through fixed environment variables or files.
 """

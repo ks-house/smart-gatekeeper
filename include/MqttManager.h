@@ -12,6 +12,10 @@
 #include <ArduinoJson.h>
 #include "TargetCommandSecurity.h"
 
+namespace sgk {
+struct CanonicalEvent;
+}
+
 class MqttManager {
 private:
     static WiFiClientSecure wifiClient;
@@ -31,10 +35,13 @@ public:
                                  bool is_armed, uint32_t armRemainingMs,
                                  bool relayCommandedOn, int relayPinLevel);
     static void publishEvent(const char* eventType, const char* detail);
+    // Queue typed access evidence without touching the TLS socket. The Arduino
+    // loop remains the sole PubSubClient owner and drains this outbox only after
+    // the access-critical GATT/sensor/relay phase has finished.
+    static bool enqueueCanonicalEvent(const sgk::CanonicalEvent& event);
     static bool publishCanonicalEvent(const char* payload);
     static void publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs);
     static void publishSensorInfo(unsigned long duration_us, float distance_cm);
     static void publishBootDiagnostics();
 
 };
-

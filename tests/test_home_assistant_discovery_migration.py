@@ -26,20 +26,20 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.prefix = f"gatekeeper/v1/targets/{self.target_id}"
     self.plan = MIGRATION.build_plan(self.target_id)
 
-  def test_plan_updates_exactly_15_read_only_entities(self):
+  def test_plan_updates_exactly_16_read_only_entities(self):
     updates = [
         item for item in self.plan if item.payload and
         "command_topic" not in json.loads(item.payload)]
-    self.assertEqual(len(updates), 15)
+    self.assertEqual(len(updates), 16)
     self.assertEqual(
-        sum("/binary_sensor/" in item.topic for item in updates), 2)
+        sum("/binary_sensor/" in item.topic for item in updates), 3)
     self.assertEqual(sum("/sensor/" in item.topic for item in updates), 13)
 
     object_ids = {item.topic.split("/")[-2] for item in updates}
     self.assertEqual(object_ids, {
         "distance", "distance_cm", "state", "ip", "arm_remaining_s",
         "wifi_rssi", "free_heap", "uptime_s", "firmware",
-        "door_binary", "pre_armed", "cfg_tx_power",
+        "connectivity", "door_binary", "pre_armed", "cfg_tx_power",
         "cfg_distance_thresh", "cfg_prearm_duration",
         "cfg_relay_cooldown",
     })
@@ -57,10 +57,20 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
       self.assertEqual(publication.qos, 1)
 
   def test_state_topics_use_only_secure_target_namespace(self):
-    updates = [
-        json.loads(item.payload) for item in self.plan if item.payload and
-        "command_topic" not in json.loads(item.payload)]
-    for config in updates:
+    updates = {
+        item.topic.split("/")[-2]: json.loads(item.payload)
+        for item in self.plan if item.payload and
+        "command_topic" not in json.loads(item.payload)}
+    connectivity = updates.pop("connectivity")
+    self.assertEqual(
+        connectivity["state_topic"],
+        f"gatekeeper/v1/ha-bridge/{self.target_id}/availability")
+    self.assertEqual(connectivity["device_class"], "connectivity")
+    self.assertEqual(connectivity["payload_on"], "online")
+    self.assertEqual(connectivity["payload_off"], "offline")
+    self.assertNotIn("entity_category", connectivity)
+    self.assertNotIn("expire_after", connectivity)
+    for config in updates.values():
       self.assertEqual(config["state_topic"], f"{self.prefix}/status")
       self.assertEqual(config["expire_after"], 30)
       self.assertNotIn("smart-gatekeeper/", config["state_topic"])
@@ -96,7 +106,12 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         'doc["relay_cooldown_ms"] = g_relay_cooldown_ms;',
     ):
       self.assertIn(assignment, body)
-    self.assertIn("client.publish(statusTopic.c_str(), buf, false)", body)
+    self.assertIn("pendingTelemetry", body)
+    self.assertNotIn("client.publish", body)
+    update = source[source.index("void MqttManager::update()") : start]
+    self.assertIn(
+        "client.publish(statusTopic.c_str(), pendingTelemetry, false)", update
+    )
 
   def test_plan_removes_all_seven_legacy_plaintext_controls(self):
     removals = [item for item in self.plan if not item.payload]
@@ -131,8 +146,8 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
       ])
     output = stdout.getvalue()
     self.assertEqual(result, 0)
-    self.assertIn("DRY_RUN discovery_updates=21", output)
-    self.assertIn("secure_controls=6 read_only=15", output)
+    self.assertIn("DRY_RUN discovery_updates=22", output)
+    self.assertIn("secure_controls=6 read_only=16", output)
     self.assertIn("No network connection", output)
     self.assertNotIn(secret_user, output)
     self.assertNotIn(secret_password, output)
@@ -232,7 +247,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
           "example.invalid", 8883, self.plan,
           username="hidden-user", password="hidden-password")
 
-    self.assertEqual(len(calls), 28)
+    self.assertEqual(len(calls), 29)
     self.assertTrue(all(qos == 1 and retain for _, _, qos, retain in calls))
 
 

@@ -17,6 +17,7 @@
 #include <cstring>
 #include <ctime>
 #include <sys/time.h>
+#include <array>
 
 #include <Preferences.h>
 #include <mbedtls/ecdsa.h>
@@ -52,6 +53,56 @@ String canonicalEventTopic;
 String sensorTopic;
 String bootTopic;
 String configStateTopic;
+
+// Access events are produced by the gate-control loop and consumed by the same
+// Arduino loop only after the physical access-critical phase. Keeping this
+// queue single-owner avoids introducing a second PubSubClient task and the
+// resulting FSM/ACL/OTA callback races while removing TLS writes from GATT,
+// ultrasonic and relay transitions.
+static constexpr size_t kEventOutboxCapacity = 16;
+std::array<sgk::CanonicalEvent, kEventOutboxCapacity> eventOutbox{};
+size_t eventOutboxHead = 0;
+size_t eventOutboxCount = 0;
+uint32_t eventOutboxOverflowCount = 0;
+
+char pendingTelemetry[1536] = {};
+bool pendingTelemetryValid = false;
+
+bool enqueueEventOutbox(const sgk::CanonicalEvent& event) {
+    if (eventOutboxCount == eventOutbox.size()) {
+        ++eventOutboxOverflowCount;
+        return false;
+    }
+    const size_t tail = (eventOutboxHead + eventOutboxCount) % eventOutbox.size();
+    eventOutbox[tail] = event;
+    ++eventOutboxCount;
+    return true;
+}
+
+bool peekEventOutbox(sgk::CanonicalEvent* event) {
+    if (event == nullptr || eventOutboxCount == 0) return false;
+    *event = eventOutbox[eventOutboxHead];
+    return true;
+}
+
+void popEventOutbox() {
+    if (eventOutboxCount == 0) return;
+    eventOutboxHead = (eventOutboxHead + 1) % eventOutbox.size();
+    --eventOutboxCount;
+}
+
+bool enqueueEventWithDurableSpill(const sgk::CanonicalEvent& event) {
+    if (enqueueEventOutbox(event)) return true;
+
+    // Preserve global FIFO order when the volatile queue is saturated: spill
+    // its oldest record, not the newer incoming record, into the durable queue.
+    sgk::CanonicalEvent oldest{};
+    if (!peekEventOutbox(&oldest) || !g_offline_queue.push(oldest)) {
+        return false;
+    }
+    popEventOutbox();
+    return enqueueEventOutbox(event);
+}
 
 class NvsCommandReplayStorage final : public sgk::CommandReplayStorage {
  public:
@@ -172,6 +223,10 @@ void MqttManager::publishCommandAck(
 void MqttManager::init() {
     mqttSecurityReady = false;
     wifiAvailableLastUpdate = false;
+    eventOutboxHead = 0;
+    eventOutboxCount = 0;
+    eventOutboxOverflowCount = 0;
+    pendingTelemetryValid = false;
     const String targetId = DiagnosticsManager::targetId();
     const bool transportProvisioned =
         std::strlen(MQTT_HOST) > 0 && MQTT_PORT != 1883 &&
@@ -476,8 +531,7 @@ void MqttManager::update() {
         client.loop();
 
         extern sgk::OfflineEventQueue g_offline_queue;
-        sgk::CanonicalEvent evt{};
-        while (client.connected() && g_offline_queue.peekFront(&evt)) {
+        auto publishEventRecord = [](const sgk::CanonicalEvent& evt) {
             bool pub_ok = false;
             if (evt.is_canonical == 1 || std::strcmp(evt.event_type, "canonical_event") == 0) {
                 if (evt.event_id[0] != '\0' && evt.stage_text[0] != '\0' && evt.outcome_text[0] != '\0') {
@@ -545,10 +599,33 @@ void MqttManager::update() {
                     }
                 }
             }
-            if (pub_ok) {
-                g_offline_queue.popFront(); // Dequeue confirmed publish success
-            } else {
-                break; // Pause flushing if publish failed or record invalid
+            return pub_ok;
+        };
+
+        // Bound each update pass to one audit write. A stalled TLS socket must
+        // never turn recovery flushing into an unbounded burst immediately
+        // before a new local access session.
+        sgk::CanonicalEvent evt{};
+        if (g_offline_queue.peekFront(&evt)) {
+            if (publishEventRecord(evt)) {
+                g_offline_queue.popFront();
+            }
+            return;
+        }
+
+        if (peekEventOutbox(&evt)) {
+            if (publishEventRecord(evt)) {
+                popEventOutbox();
+            } else if (g_offline_queue.push(evt)) {
+                // Preserve the exact event and retry it from durable storage.
+                popEventOutbox();
+            }
+            return;
+        }
+
+        if (pendingTelemetryValid) {
+            if (client.publish(statusTopic.c_str(), pendingTelemetry, false)) {
+                pendingTelemetryValid = false;
             }
         }
     }
@@ -608,6 +685,8 @@ void MqttManager::publishBootDiagnostics() {
     doc["mqtt_connect_attempts"] = mqttConnectAttempts;
     doc["mqtt_connect_failures"] = mqttConnectFailures;
     doc["mqtt_last_error"] = mqttLastError;
+    doc["mqtt_event_outbox_depth"] = eventOutboxCount;
+    doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
 
     char buffer[1536];
     size_t length = serializeJson(doc, buffer, sizeof(buffer));
@@ -643,8 +722,6 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
                                    uint32_t armRemainingMs,
                                    bool relayCommandedOn,
                                    int relayPinLevel) {
-    if (!isConnected()) return;
-
     extern int g_tx_power_dbm;
     extern uint16_t g_distance_threshold_cm;
     extern uint32_t g_pre_arm_duration_ms;
@@ -680,49 +757,42 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
         DiagnosticsManager::mqttConnectCount();
     doc["mqtt_connect_attempts"] = mqttConnectAttempts;
     doc["mqtt_connect_failures"] = mqttConnectFailures;
+    doc["mqtt_event_outbox_depth"] = eventOutboxCount;
+    doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
 
-    char buf[1536];
-    serializeJson(doc, buf, sizeof(buf));
-
-    if (isConnected()) {
-        client.publish(statusTopic.c_str(), buf, false);
-    }
+    pendingTelemetryValid =
+        serializeJson(doc, pendingTelemetry, sizeof(pendingTelemetry)) > 0;
 }
 
 void MqttManager::publishEvent(const char* eventType, const char* detail) {
     if (!eventType) return;
 
-    if (!isConnected()) {
-        extern sgk::OfflineEventQueue g_offline_queue;
-        g_offline_queue.pushEvent(eventType, detail, millis(), 0,
-                                  DiagnosticsManager::targetId(),
-                                  DiagnosticsManager::bootId(),
-                                  DiagnosticsManager::bootCount());
-        return;
+    sgk::CanonicalEvent event{};
+    event.monotonic_ms = millis();
+    event.boot_count = DiagnosticsManager::bootCount();
+    std::strncpy(event.event_type, eventType, sizeof(event.event_type) - 1);
+    if (detail != nullptr) {
+        std::strncpy(event.detail, detail, sizeof(event.detail) - 1);
     }
+    std::strncpy(event.target_ref, DiagnosticsManager::targetId(),
+                 sizeof(event.target_ref) - 1);
+    std::strncpy(event.source_boot_id, DiagnosticsManager::bootId(),
+                 sizeof(event.source_boot_id) - 1);
 
-    StaticJsonDocument<384> doc;
-    doc["event"]  = eventType;
-    doc["detail"] = detail ? detail : "";
-    doc["time"]   = millis();
-    doc["target_id"] = DiagnosticsManager::targetId();
-    doc["boot_id"] = DiagnosticsManager::bootId();
-    doc["boot_count"] = DiagnosticsManager::bootCount();
-
-    char buf[384] = {};
-    const size_t bytes_needed = measureJson(doc);
-    if (bytes_needed == 0 || bytes_needed >= sizeof(buf) ||
-        serializeJson(doc, buf, sizeof(buf)) == 0) {
-        return;
+    if (!enqueueEventWithDurableSpill(event)) {
+        LOGF("[ERROR] MQTT event outbox and durable fallback are full");
     }
+}
 
-    if (!client.publish(eventTopic.c_str(), buf, false)) {
-        extern sgk::OfflineEventQueue g_offline_queue;
-        g_offline_queue.pushEvent(eventType, detail, millis(), 0,
-                                  DiagnosticsManager::targetId(),
-                                  DiagnosticsManager::bootId(),
-                                  DiagnosticsManager::bootCount());
+bool MqttManager::enqueueCanonicalEvent(const sgk::CanonicalEvent& event) {
+    if (event.is_canonical != 1 || event.event_id[0] == '\0' ||
+        event.session_id[0] == '\0' || event.source_boot_id[0] == '\0' ||
+        event.target_ref[0] == '\0' || event.event_type[0] == '\0' ||
+        event.stage_text[0] == '\0' || event.outcome_text[0] == '\0' ||
+        event.detail[0] == '\0') {
+        return false;
     }
+    return enqueueEventWithDurableSpill(event);
 }
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {

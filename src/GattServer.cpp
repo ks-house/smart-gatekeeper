@@ -165,50 +165,50 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     attributes["path"] = "local_gatt";
     attributes["transport"] = "ble_gatt";
 
-    char payload[1024] = {};
-    if (measureJson(document) >= sizeof(payload) ||
-        serializeJson(document, payload, sizeof(payload)) == 0) {
+    sgk::CanonicalEvent queued_evt{};
+    queued_evt.is_canonical = 1;
+    queued_evt.code = static_cast<uint16_t>(event.code);
+    queued_evt.transport_reason = static_cast<uint16_t>(event.transport_reason);
+    queued_evt.monotonic_ms = event.monotonic_ms;
+    queued_evt.sequence = event.sequence;
+    queued_evt.attempt = 1;
+
+    const char* ev_code_str = document["event_code"];
+    const char* stage_str = document["stage"];
+    const char* outcome_str = document["outcome"];
+    const char* reason_str = document["reason_code"];
+
+    if (ev_code_str == nullptr || ev_code_str[0] == '\0' ||
+        stage_str == nullptr || stage_str[0] == '\0' ||
+        outcome_str == nullptr || outcome_str[0] == '\0' ||
+        reason_str == nullptr || reason_str[0] == '\0' ||
+        event_id_text[0] == '\0' || session_id_text[0] == '\0' ||
+        boot_id_text[0] == '\0' || target_ref_[0] == '\0') {
       return;
     }
-    if (!MqttManager::publishCanonicalEvent(payload)) {
-      sgk::CanonicalEvent queued_evt{};
-      queued_evt.is_canonical = 1;
-      queued_evt.code = static_cast<uint16_t>(event.code);
-      queued_evt.transport_reason = static_cast<uint16_t>(event.transport_reason);
-      queued_evt.monotonic_ms = event.monotonic_ms;
-      queued_evt.sequence = event.sequence;
-      queued_evt.attempt = 1;
-
-      const char* ev_code_str = document["event_code"];
-      const char* stage_str = document["stage"];
-      const char* outcome_str = document["outcome"];
-      const char* reason_str = document["reason_code"];
-
-      if (ev_code_str && ev_code_str[0] != '\0' &&
-          stage_str && stage_str[0] != '\0' &&
-          outcome_str && outcome_str[0] != '\0' &&
-          reason_str && reason_str[0] != '\0' &&
-          event_id_text[0] != '\0' &&
-          session_id_text[0] != '\0' &&
-          boot_id_text[0] != '\0' &&
-          target_ref_[0] != '\0') {
-        std::strncpy(queued_evt.event_type, ev_code_str, sizeof(queued_evt.event_type) - 1);
-        std::strncpy(queued_evt.stage_text, stage_str, sizeof(queued_evt.stage_text) - 1);
-        std::strncpy(queued_evt.outcome_text, outcome_str, sizeof(queued_evt.outcome_text) - 1);
-        std::strncpy(queued_evt.detail, reason_str, sizeof(queued_evt.detail) - 1);
-
-        std::strncpy(queued_evt.event_id, event_id_text, sizeof(queued_evt.event_id) - 1);
-        std::strncpy(queued_evt.session_id, session_id_text, sizeof(queued_evt.session_id) - 1);
-        std::strncpy(queued_evt.source_boot_id, boot_id_text, sizeof(queued_evt.source_boot_id) - 1);
-        std::strncpy(queued_evt.target_ref, target_ref_, sizeof(queued_evt.target_ref) - 1);
-        if (causal) {
-          queued_evt.has_causation = 1;
-          std::strncpy(queued_evt.causation_event_id, last_event_id_, sizeof(queued_evt.causation_event_id) - 1);
-        }
-        if (!g_offline_queue.push(queued_evt)) {
-          LOGF("[ERROR] CanonicalMqttEventSink: Offline queue enqueue failed for %s", ev_code_str);
-        }
-      }
+    std::strncpy(queued_evt.event_type, ev_code_str,
+                 sizeof(queued_evt.event_type) - 1);
+    std::strncpy(queued_evt.stage_text, stage_str,
+                 sizeof(queued_evt.stage_text) - 1);
+    std::strncpy(queued_evt.outcome_text, outcome_str,
+                 sizeof(queued_evt.outcome_text) - 1);
+    std::strncpy(queued_evt.detail, reason_str, sizeof(queued_evt.detail) - 1);
+    std::strncpy(queued_evt.event_id, event_id_text,
+                 sizeof(queued_evt.event_id) - 1);
+    std::strncpy(queued_evt.session_id, session_id_text,
+                 sizeof(queued_evt.session_id) - 1);
+    std::strncpy(queued_evt.source_boot_id, boot_id_text,
+                 sizeof(queued_evt.source_boot_id) - 1);
+    std::strncpy(queued_evt.target_ref, target_ref_,
+                 sizeof(queued_evt.target_ref) - 1);
+    if (causal) {
+      queued_evt.has_causation = 1;
+      std::strncpy(queued_evt.causation_event_id, last_event_id_,
+                   sizeof(queued_evt.causation_event_id) - 1);
+    }
+    if (!MqttManager::enqueueCanonicalEvent(queued_evt)) {
+      LOGF("[ERROR] CanonicalMqttEventSink: event outbox enqueue failed for %s",
+           ev_code_str);
     }
 
     last_session_ = schema_session;

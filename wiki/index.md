@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-08-31 (mobile account lifecycle exact-main policy finalized)
+> Last updated: 2026-09-02 (wife-phone latency evidence and access-critical MQTT deferral candidate added)
 
 ---
 
@@ -53,6 +53,7 @@
 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) | 화면 OFF 출입 실패의 확정 증거, 원인 우선순위, 단계별 판별·실기기 수집 절차 |
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 | [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md) | 개인 PROD 모바일 등록·문 열기 배포와 매립 Target MQTT/Wi-Fi/OTA 장애 증거 및 재개 절차 |
+| [wife_phone_access_latency_2026_09_02.md](wife_phone_access_latency_2026_09_02.md) | 관리자/HA의 ARMED→RELAY 약 7초 증거, owner 재현 조건, access-critical MQTT deferral 후보와 설치 후 검증 Gate |
 | [ha_external_access_incident_2026_08_13.md](ha_external_access_incident_2026_08_13.md) | 2026-08-13 HA nginx 502의 upstream 장애 격리, 안전한 복구 순서와 2026-08-24 복구 경계 |
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
