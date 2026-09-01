@@ -1525,3 +1525,19 @@ review and merge, exact-main signed artifact publication, inactive-slot install,
 reboot, health confirmation and repeated on-wall latency measurement remain
 separate Gates. This policy change writes no NAS file, broker state, Target
 slot, NVS, relay or door output.
+
+## 51. Final access-critical MQTT deferral main baseline
+
+Feature PR #330 passed Hosted Trusted, OTA P0, Backend/MariaDB and ESP32-C6
+canary checks, then merge-committed normally as exact main
+`e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`. The transitional feature
+identity is retired in favor of the sole `current-main-baseline` pinned to that
+actual merge commit.
+
+All 93 protected paths and normalized digests remain byte-identical to the
+reviewed candidate bundle. Main run `33529692563` built, encrypted, signed,
+atomically published and HTTPS-read-back `2.1.418+main.ge62b681`; the installed
+Target advanced from boot count 685 to 686 and reported that exact version,
+IDLE and relay OFF for a continuous 30-second observation. This policy-only
+rotation changes no workflow/runtime byte or Target state. Its own Hosted
+review/merge and resulting final exact-main artifact remain separate Gates.

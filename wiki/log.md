@@ -5751,3 +5751,14 @@
 - Pinned the sole 93-path persistent authorization bundle to feature commit `0a0498ca2f40d61a6ef1f405ee456da68f7bd208` and its complete normalized protected map.
 - Exactly three protected bytes change as one reviewed candidate: the Target personal publisher workflow exact source inventory, Backend Home Assistant bridge connectivity entity and its direct test. Target source/header changes remain bound indirectly by the workflow's exact 42-file digest verification.
 - This policy-only candidate changes no NAS, broker, Target slot, NVS, relay or physical door. Normal policy review/merge, feature review/merge, exact-main signed publication, Target install/reboot/health and repeated physical latency remain separate Gates.
+
+## [2026-09-02] test | Install exact-main access-critical MQTT deferral Target
+
+- Policy PR #329 and feature PR #330 passed normal protection; feature exact main `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` run `33529692563` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.418+main.ge62b681`.
+- A safe preflight observed installed `2.1.413+main.ga9f72fa`, boot count 685, IDLE, unarmed and relay OFF. The HA bridge accepted one signed `ota_check`; no duplicate was sent when the synchronous OTA path rebooted before ACK.
+- The Target returned as exact `2.1.418+main.ge62b681`, boot count 686 with a new boot ID, IDLE, unarmed and relay OFF/pin high, then sustained fresh status for 30 seconds. NVS erase, full flash and previous-slot destruction were not used. A fresh wife-phone approach and physical sensor/door latency remain separate evidence.
+
+## [2026-09-02] compile | Finalize access-critical MQTT deferral main policy
+
+- Retired the transitional feature identity and pinned the sole 93-path `current-main-baseline` to actual feature merge `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`, retaining every reviewed protected digest unchanged.
+- This policy-only candidate changes no workflow/runtime byte, NAS state, Target slot, relay or door. Hosted review/merge and the resulting final exact-main publication/install remain separate Gates.

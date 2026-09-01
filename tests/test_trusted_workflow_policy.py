@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "0a0498ca2f40d61a6ef1f405ee456da68f7bd208"
-EXPECTED_BUNDLE_ID = "mqtt-deferral-0a0498c-persistent-baseline"
+MERGED_MAIN_COMMIT = "e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 550d3a66dccb324f06500082b7f32b43d96d73ec625fece59367c8c8ec0cafb1
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -114,11 +114,7 @@ backend/tests/test_target_boot_registry.py 33102281199ac24ff389d8b0b4f8c981ffc23
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/deploy.yml",
-    "backend/app/home_assistant_bridge.py",
-    "backend/tests/test_home_assistant_bridge.py",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1072,8 +1068,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 3)
-    self.assertEqual(len(locally_unchanged_protected), 90)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 93)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
