@@ -5654,3 +5654,9 @@
 - PR #323 passed Hosted Trusted, OTA P0 and Android APK canary checks and merged normally without a protection bypass as exact main `e0d809cfb6b31a532840c66eb250ae6feaf82c7b`.
 - Exact-main OTA contract run `33457276522`, Target run `33457276556` and mobile run `33457276558` all completed successfully. The latter two signed and atomically published personal OTA `2.1.412+main.ge0d809c` and `1.0.0-ge0d809c` / `37401` respectively.
 - Independent strict-TLS fixed-manifest and artifact readback matched the exact commit and SHA-256 for the 1,850,036-byte encrypted Target artifact and both byte-identical 55,200,921-byte mobile APK endpoints. Sanitized evidence remains explicitly non-production/non-release; phone/Target installation, screen-off detection/authentication, `ARMED`, sensor/relay and physical door acceptance remain open.
+
+## [2026-09-01] compile | Authorize Target access-history candidate
+
+- Bound immutable feature candidate `e33664096e72a880896997490769da006b50c5aa` to the sole 93-path `target-access-history-e336640-persistent-baseline`, expanding the protected set with both schema 011 migration directions.
+- Fifteen protected blobs carry the reviewed Backend collector, administrator timeline, schema/Compose, workflow trigger and direct tests; the remaining 78 retain baseline bytes. Exact repository/SHA, ancestry, inventories and normalized digests remain fail closed.
+- This policy-only candidate changes no Backend runtime, Mosquitto ACL, NAS database, Target, relay or physical door. Normal policy review/CI/merge and every deployment/physical Gate remain separate.

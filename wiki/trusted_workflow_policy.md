@@ -1470,3 +1470,25 @@ inventory for the session-isolation `src/main.cpp`. This final rotation changes
 no runtime or workflow byte and performs no firmware installation, Target
 reboot, relay or door action. Hosted policy merge, final exact-main signed OTA
 publication and Target install/reboot/health remain separate Gates.
+
+## 48. Target access-history candidate
+
+Immutable feature candidate
+`e33664096e72a880896997490769da006b50c5aa` adds schema 011 and a strict
+Backend collector for the Target canonical authentication, `ARMED`, sensor,
+relay and terminal event timeline. The protected inventory expands from 91 to
+93 paths by adding both schema 011 migration directions.
+
+The complete `target-access-history-e336640-persistent-baseline` changes 15
+protected blobs: the Backend workflow trigger, operations inventory/gate,
+runtime and administrator surface, database image/schema/Compose, both new
+migrations and five direct Backend tests. The other 78 protected blobs retain
+their existing normalized bytes. The sole bundle is bound to the exact
+repository, immutable feature SHA, ancestry, namespace inventories and every
+normalized digest; mixing baseline and candidate bytes remains rejected.
+
+This policy-only authorization changes no runtime, broker ACL, NAS container,
+Target, sensor, relay or physical door state. Policy CI/merge, feature
+merge-connection and fresh CI, broker ACL installation/readback, Backend
+deployment, live canonical event ingestion and physical observation remain
+separate Gates.
