@@ -1507,3 +1507,21 @@ This final policy-only rotation changes no Backend image, NAS database, broker,
 Target, relay or door state. Hosted policy CI and normal merge remain separate
 Gates; live canonical-event collection and physical-door evidence are not
 inferred from policy identity.
+
+## 50. Access-critical MQTT deferral authorization candidate
+
+The policy-only candidate replaces the preceding actual-main identity with one
+reviewed persistent bundle pinned to feature commit
+`0a0498ca2f40d61a6ef1f405ee456da68f7bd208`. The complete 93-path protected
+map remains indivisible. Exactly three protected objects change together: the
+Target personal publisher workflow updates its exact 42-file source digest
+inventory, while the Backend Home Assistant bridge and its direct test add the
+retained connectivity entity contract.
+
+The Target source change behind the publisher digest removes MQTT/TLS writes
+from the access-critical GATT/sensor/relay phase through a bounded single-owner
+event outbox. The policy does not itself approve a physical result: feature
+review and merge, exact-main signed artifact publication, inactive-slot install,
+reboot, health confirmation and repeated on-wall latency measurement remain
+separate Gates. This policy change writes no NAS file, broker state, Target
+slot, NVS, relay or door output.

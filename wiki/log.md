@@ -5745,3 +5745,9 @@
 - Seven focused network-deferral source contracts, eleven Home Assistant discovery/status contracts, two BLE startup tests, four ultrasonic session-isolation tests and thirteen Hardwareless RC tests passed.
 - All 18 Target signed auto-publication contracts and 78 OTA invariants passed. The personal-production ESP32-C6 build succeeded with 74,536/327,680 bytes RAM used (22.7%) and 1,788,526/7,340,032 bytes application flash used (24.4%).
 - Initial full discovery ran 334 tests with one environment-only skip: the new status-outbox assertion was corrected, the Target exact-build digest rotation was completed, and the remaining trusted-policy failures were the expected pre-authorization HA protected-byte mismatches. No Target installation or physical door result is claimed by these local tests.
+
+## [2026-09-02] compile | Authorize access-critical MQTT deferral candidate
+
+- Pinned the sole 93-path persistent authorization bundle to feature commit `0a0498ca2f40d61a6ef1f405ee456da68f7bd208` and its complete normalized protected map.
+- Exactly three protected bytes change as one reviewed candidate: the Target personal publisher workflow exact source inventory, Backend Home Assistant bridge connectivity entity and its direct test. Target source/header changes remain bound indirectly by the workflow's exact 42-file digest verification.
+- This policy-only candidate changes no NAS, broker, Target slot, NVS, relay or physical door. Normal policy review/merge, feature review/merge, exact-main signed publication, Target install/reboot/health and repeated physical latency remain separate Gates.
