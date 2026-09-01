@@ -13,6 +13,7 @@ import com.kshouse.gatekeeper_app.gattworker.BleGattHealthBridge
 import com.kshouse.gatekeeper_app.gattworker.BleGattManualOpenExecutor
 import com.kshouse.gatekeeper_app.gattworker.RemoteManualOpenProofSigner
 import com.kshouse.gatekeeper_app.gattworker.AccountLogoutManager
+import com.kshouse.gatekeeper_app.gattworker.AccessSessionReadProofSigner
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -128,6 +129,19 @@ class MainActivity: FlutterActivity() {
                                 nonce,
                                 expiresAt,
                                 idempotencyKey,
+                            ).toMap(),
+                        )
+                    }
+                }
+                "signAccessSessionRead" -> {
+                    val targetSessionId = call.argument<String>("targetSessionId")
+                    if (targetSessionId == null) {
+                        result.error("INVALID_ARGUMENT", "targetSessionId is required", null)
+                    } else {
+                        result.success(
+                            AccessSessionReadProofSigner.sign(
+                                applicationContext,
+                                targetSessionId,
                             ).toMap(),
                         )
                     }

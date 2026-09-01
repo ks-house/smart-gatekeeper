@@ -60,6 +60,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get targetArmed => 'Access ready - waiting for sensor approach';
 
   @override
+  String get accessSessionArmed => 'Access ready - waiting for sensor';
+
+  @override
+  String get accessSessionRelayActive =>
+      'Sensor detected - opening action in progress';
+
+  @override
+  String get accessSessionCooldown =>
+      'Opening action complete - preparing next access';
+
+  @override
+  String get accessSessionComplete =>
+      'Access action complete - next authentication ready';
+
+  @override
+  String get accessSessionTerminated => 'Access action ended';
+
+  @override
   String get targetFailed => 'Target authentication failed';
 
   @override

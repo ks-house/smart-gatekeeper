@@ -54,6 +54,12 @@ constexpr uint32_t kChallengeLifetimeMs = 5000;
 constexpr uint32_t kIndicationConfirmationTimeoutMs = 1200;
 constexpr size_t kPendingWriteCapacity = 4;
 constexpr size_t kAdapterFrameCapacity = 512;
+constexpr size_t kAccessEventCredentialRefCapacity = 32;
+constexpr size_t kAccessEvidenceKeyIdCapacity = 5;
+constexpr size_t kAccessEvidenceTagSize = 16;
+constexpr size_t kAccessEvidenceTagHexCapacity = 33;
+constexpr size_t kAccessEventMacInputCapacity = 512;
+constexpr size_t kAccessStatusMacInputCapacity = 384;
 
 constexpr std::array<uint8_t, 18> kIBeaconFilterPrefix = {{
     0x02, 0x15, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x78,
@@ -131,6 +137,7 @@ enum class EventReason : uint8_t {
   kRelayFailsafeCutoff,
   kAccessGranted,
   kArmTimeout,
+  kSessionSuperseded,
 };
 
 struct Event {
@@ -143,7 +150,96 @@ struct Event {
   uint64_t sequence;
   bool has_causation;
   uint64_t causation_sequence;
+  // Verified credential identity is volatile only. It may be retained by the
+  // local lifecycle bridge long enough to derive a pseudonymous event
+  // reference, but it must never be copied into JSON, logs, or durable NVS.
+  std::array<uint8_t, 16> credential_id{};
 };
+
+// Only these post-proof lifecycle codes may expose the session-scoped
+// pseudonym. In particular, a commit failure emits ACCESS_PROOF_REJECTED after
+// proof verification, but that rejection must remain actor-ref free.
+bool accessEventCodeAllowsCredentialRef(EventCode code);
+
+// Derives the bounded, pseudonymous identity stored on canonical access
+// events. The session UUID is normalized to RFC 4122 UUIDv4 before HMAC input
+// construction so the textual session_id and credential reference bind to the
+// same identity. key_id is deliberately limited to four lowercase alphanumeric
+// characters so c_<keyid>_<24hex> including NUL fits the 32-byte v2 overlay.
+bool deriveAccessEventCredentialRef(
+    const std::array<uint8_t, 32>& key, const char* key_id,
+    const std::array<uint8_t, 16>& door_id,
+    const std::array<uint8_t, 16>& session_id,
+    const std::array<uint8_t, 16>& credential_id,
+    char output[kAccessEventCredentialRefCapacity]);
+
+// The access-evidence key is deliberately independent from MQTT, API, ACL,
+// command-signing and OTA credentials. Both the Target event and heartbeat
+// contracts use fixed, length-prefixed binary inputs; JSON serialization is
+// never part of either MAC.
+bool parseAccessEvidenceProvisioning(
+    const char* key_hex, const char* key_id,
+    std::array<uint8_t, 32>* key_out,
+    char key_id_out[kAccessEvidenceKeyIdCapacity]);
+
+struct AccessEventMacInput {
+  const char* key_id = nullptr;
+  const char* topic_target_id = nullptr;
+  std::array<uint8_t, 16> door_id{};
+  const char* source_instance_id = nullptr;
+  std::array<uint8_t, 16> source_boot_id{};
+  uint64_t source_boot_count = 0;
+  std::array<uint8_t, 16> event_id{};
+  std::array<uint8_t, 16> session_id{};
+  uint64_t sequence = 0;
+  uint32_t attempt = 0;
+  const char* event_code = nullptr;
+  const char* stage = nullptr;
+  const char* outcome = nullptr;
+  const char* reason_code = nullptr;
+  bool has_causation = false;
+  std::array<uint8_t, 16> causation_event_id{};
+  uint64_t monotonic_ms = 0;
+  const char* credential_ref = nullptr;
+  bool has_distance_mm = false;
+  uint32_t distance_mm = 0;
+  bool has_duration_ms = false;
+  uint64_t duration_ms = 0;
+  bool has_relay_hold_ms = false;
+  uint32_t relay_hold_ms = 0;
+};
+
+struct AccessStatusMacInput {
+  const char* key_id = nullptr;
+  const char* topic_target_id = nullptr;
+  std::array<uint8_t, 16> door_id{};
+  std::array<uint8_t, 16> source_boot_id{};
+  uint64_t source_boot_count = 0;
+  uint64_t access_revision = 0;
+  const char* state = nullptr;
+  bool has_last_terminal = false;
+  std::array<uint8_t, 16> last_terminal_session_id{};
+  uint64_t last_terminal_event_sequence = 0;
+  const char* last_terminal_event_code = nullptr;
+  const char* last_terminal_reason_code = nullptr;
+  const char* last_terminal_credential_ref = nullptr;
+  uint16_t last_terminal_phase_mask = 0;
+  bool relay_commanded_on = false;
+  uint8_t relay_pin_level = 0;
+};
+
+bool buildAccessEventMacInput(const AccessEventMacInput& input,
+                              uint8_t* output, size_t capacity,
+                              size_t* written);
+bool buildAccessStatusMacInput(const AccessStatusMacInput& input,
+                               uint8_t* output, size_t capacity,
+                               size_t* written);
+bool deriveAccessEventMac(
+    const std::array<uint8_t, 32>& key, const AccessEventMacInput& input,
+    uint8_t output[kAccessEvidenceTagSize]);
+bool deriveAccessStatusMac(
+    const std::array<uint8_t, 32>& key, const AccessStatusMacInput& input,
+    uint8_t output[kAccessEvidenceTagSize]);
 
 class EventSink {
  public:
@@ -162,7 +258,7 @@ class LocalGattLifecycleBridge final : public EventSink {
   void setDownstream(EventSink* downstream) { downstream_ = downstream; }
   void emit(const Event& event) override;
   bool hasVerifiedSession() const { return verified_session_active_; }
-  uint64_t lastSequence() const { return sequence_; }
+  uint64_t lastSequence() const { return sequence_high_water_; }
   bool emitArmed(uint64_t now_ms);
   bool emitSensorDetected(uint64_t now_ms);
   bool emitRelayOn(uint64_t now_ms);
@@ -175,12 +271,45 @@ class LocalGattLifecycleBridge final : public EventSink {
   bool verified_session_active_ = false;
   std::array<uint8_t, 16> session_id_{};
   std::array<uint8_t, 16> boot_id_{};
-  uint64_t sequence_ = 0;
+  std::array<uint8_t, 16> credential_id_{};
+  // Every ProtocolCore event advances this process-wide source-position
+  // ceiling, even when it belongs to an unverified interleaved session.
+  uint64_t sequence_high_water_ = 0;
+  // Causation remains scoped to the currently verified session. An unrelated
+  // session may advance the global ceiling but can never become its parent.
+  uint64_t verified_causation_sequence_ = 0;
 
   bool emitLifecycle(EventCode code, EventReason reason,
                      ResultReason transport_reason, uint64_t now_ms,
                      bool terminal);
   void clearVerifiedSession();
+};
+
+// Accumulates only post-proof lifecycle evidence for one verified session.
+// Unverified GATT traffic is still emitted as canonical diagnostics, but it
+// cannot reset another session's phase mask or publish a terminal summary.
+class VerifiedAccessPhaseTracker final {
+ public:
+  static constexpr uint16_t kProofVerified = 0x0001;
+  static constexpr uint16_t kArmed = 0x0002;
+  static constexpr uint16_t kSensorDetected = 0x0004;
+  static constexpr uint16_t kRelayOn = 0x0008;
+  static constexpr uint16_t kRelayOff = 0x0010;
+  static constexpr uint16_t kRelayFailsafe = 0x0020;
+
+  // Returns true only when event is a terminal for the currently verified
+  // session. terminal_phase_mask is cleared for every non-terminal/unmatched
+  // event and receives the final mask before the verified session is cleared.
+  bool observe(const Event& event, uint16_t* terminal_phase_mask = nullptr);
+  bool hasVerifiedSession() const { return verified_session_active_; }
+  uint16_t phaseMask() const { return phase_mask_; }
+
+ private:
+  bool verified_session_active_ = false;
+  std::array<uint8_t, 16> session_id_{};
+  uint16_t phase_mask_ = 0;
+
+  void clear();
 };
 
 class RandomSource {
@@ -464,7 +593,8 @@ class ProtocolCore {
   void reject(ResultReason reason, uint32_t now_ms, bool count_failure = true);
   void resetSessionPreservingOutputs();
   void abortAuthControl(uint32_t now_ms);
-  void emit(EventCode code, ResultReason reason, uint32_t now_ms);
+  void emit(EventCode code, ResultReason reason, uint32_t now_ms,
+            const std::array<uint8_t, 16>* credential_id = nullptr);
   static EventReason eventReason(EventCode code, ResultReason reason);
 };
 

@@ -100,6 +100,7 @@ require_directory_contract "$MIGRATION_BACKUP_DIR" 0 0 700
 
 required_secrets=(
   db_root_password db_password mqtt_password mqtt_ca.pem api_key ops_hmac_key
+  access_event_ref_keys.json
   command_signing_scalar admin_identities.json personal_admin_password
   acl_enrollment_auth.json acl_legacy_ref_hmac_key acl_admin_api_key
   acl_target_auth.json acl_signing_scalar
@@ -121,6 +122,8 @@ expected_runtime_keys="$(printf '%s\n' \
   MQTT_HOST MQTT_PORT MQTT_USER DB_RUNTIME_USER COMMAND_TARGET_ID COMMAND_TENANT_ID COMMAND_DOOR_ID \
   COMMAND_SIGNING_KEY_ID ADMIN_TRUSTED_PROXY_IPS ACL_SIGNING_KEY_ID \
   HA_BRIDGE_ENABLED HA_BRIDGE_ALLOW_MANUAL_REMOTE HA_BRIDGE_STATUS_MAX_AGE_SECONDS \
+  ACCESS_SIGNED_STATUS_READINESS_REQUIRED ACCESS_STATUS_MAX_AGE_SECONDS \
+  TARGET_RELAY_OFF_PIN_LEVEL \
   ACL_PERSONAL_ENROLLMENT_ENABLED ACL_PERSONAL_TENANT_ID ACL_PERSONAL_DOOR_ID \
   SGK_API_LOOPBACK_PORT SGK_SECRET_DIR SGK_PUBLIC_READY_URL MARIADB_DATA_VOLUME \
   API_STATE_VOLUME APK_ARTIFACTS_VOLUME MIGRATION_BACKUPS_VOLUME | sort)"
@@ -146,6 +149,49 @@ runtime_mqtt_port="$(awk -F= '
 (( 10#$runtime_mqtt_port >= 1 && 10#$runtime_mqtt_port <= 65535 )) || \
   die "runtime MQTT_PORT is outside 1-65535"
 [[ "$runtime_mqtt_port" != "1883" ]] || die "runtime MQTT_PORT must use the TLS listener"
+
+runtime_signed_status_cutover="$(awk -F= '
+  $1 == "ACCESS_SIGNED_STATUS_READINESS_REQUIRED" {
+    if (++matches > 1) exit 42
+    value = substr($0, length($1) + 2)
+  }
+  END {
+    if (matches != 1) exit 43
+    printf "%s", value
+  }
+' "${DEPLOY_BASE}/runtime.env")" || \
+  die "signed-status readiness cutover is missing or duplicated"
+[[ "$runtime_signed_status_cutover" == "true" || \
+   "$runtime_signed_status_cutover" == "false" ]] || \
+  die "signed-status readiness cutover must be true or false"
+
+runtime_access_status_max_age="$(awk -F= '
+  $1 == "ACCESS_STATUS_MAX_AGE_SECONDS" {
+    if (++matches > 1) exit 42
+    value = substr($0, length($1) + 2)
+  }
+  END {
+    if (matches != 1) exit 43
+    printf "%s", value
+  }
+' "${DEPLOY_BASE}/runtime.env")" || \
+  die "access status max age is missing or duplicated"
+[[ "$runtime_access_status_max_age" =~ ^([1-9]|10)$ ]] || \
+  die "access status max age must be an integer from 1 through 10"
+
+runtime_relay_off_pin_level="$(awk -F= '
+  $1 == "TARGET_RELAY_OFF_PIN_LEVEL" {
+    if (++matches > 1) exit 42
+    value = substr($0, length($1) + 2)
+  }
+  END {
+    if (matches != 1) exit 43
+    printf "%s", value
+  }
+' "${DEPLOY_BASE}/runtime.env")" || \
+  die "Target relay OFF pin level is missing or duplicated"
+[[ "$runtime_relay_off_pin_level" =~ ^[01]$ ]] || \
+  die "Target relay OFF pin level must be 0 or 1"
 
 legacy_mqtt_port="$(
   docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$LEGACY_API" |

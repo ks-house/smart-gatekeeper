@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'commercial_models.dart';
+import 'mobile_identity_service.dart';
 import 'native_gatt_worker_health.dart';
 import 'remote_manual_open_service.dart';
 
@@ -151,6 +152,77 @@ class MobileActivityStore {
         ),
     };
     return _append(current, item);
+  }
+
+  Future<List<MobileActivityItem>> recordAccessSession(
+    MobileAccessSession session, {
+    DateTime? observedAt,
+  }) async {
+    final current = await read();
+    final timestamp = session.occurredAt ?? observedAt ?? DateTime.now();
+    final effectiveStatus = session.isReadyComplete
+        ? MobileAccessSessionStatus.complete
+        : session.status == MobileAccessSessionStatus.complete
+            ? MobileAccessSessionStatus.cooldown
+            : session.status;
+    final item = switch (effectiveStatus) {
+      MobileAccessSessionStatus.pending ||
+      MobileAccessSessionStatus.armed =>
+        MobileActivityItem(
+          id: _accessId(session, effectiveStatus),
+          type: 'access_armed',
+          occurredAt: timestamp,
+          title: '출입 준비 완료 · 센서 대기',
+          detail: 'Target 인증이 완료되어 센서 접근을 기다리고 있습니다.',
+          isFailure: false,
+        ),
+      MobileAccessSessionStatus.sensorDetected ||
+      MobileAccessSessionStatus.relayActive =>
+        MobileActivityItem(
+          id: _accessId(session, effectiveStatus),
+          type: 'access_relay_active',
+          occurredAt: timestamp,
+          title: '센서 감지 · 개방 동작 중',
+          detail: 'Target이 센서를 감지하여 릴레이 개방 동작을 수행하고 있습니다.',
+          isFailure: false,
+        ),
+      MobileAccessSessionStatus.cooldown => MobileActivityItem(
+          id: _accessId(session, effectiveStatus),
+          type: 'access_cooldown',
+          occurredAt: timestamp,
+          title: '개방 동작 완료 · 다음 출입 준비 중',
+          detail: '릴레이 동작이 종료되어 Target이 다음 인증을 준비하고 있습니다.',
+          isFailure: false,
+        ),
+      MobileAccessSessionStatus.complete => MobileActivityItem(
+          id: _accessId(session, effectiveStatus),
+          type: 'access_complete',
+          occurredAt: timestamp,
+          title: '출입 동작 완료 · 다음 인증 가능',
+          detail: 'Target 출입 흐름이 완료되었습니다. 이 상태는 문 개폐 자체를 확정하지 않습니다.',
+          isFailure: false,
+        ),
+      MobileAccessSessionStatus.terminated => MobileActivityItem(
+          id: _accessId(session, effectiveStatus),
+          type: 'access_terminated',
+          occurredAt: timestamp,
+          title: '출입 동작 종료',
+          detail: 'Target 출입 흐름이 완료되지 않고 종료되었습니다.',
+          isFailure: true,
+        ),
+    };
+    return _append(current, item);
+  }
+
+  String _accessId(
+    MobileAccessSession session,
+    MobileAccessSessionStatus effectiveStatus,
+  ) {
+    final eventRef = session.eventRef;
+    if (eventRef != null && eventRef.isNotEmpty) {
+      return 'access-$eventRef-${effectiveStatus.name}';
+    }
+    return 'access-${session.targetSessionId}-${effectiveStatus.name}';
   }
 
   String _manualId(ManualOpenOutcome outcome, DateTime timestamp) {

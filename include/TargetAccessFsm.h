@@ -23,9 +23,9 @@ class TargetAccessFsm {
 
   OtaSafeState otaSafeState() const;
 
-  // IDLE or sensor-waiting ARMED -> AUTH_PENDING. This lets a newly
-  // authenticated action 2 replace action-1 pre-arm while relay/cooldown
-  // interlocks remain fail-closed.
+  // Only a fresh IDLE/relay-OFF Target may enter AUTH_PENDING. Once a proof
+  // has armed an access session, every new ClientHello remains rejected until
+  // that lifecycle reaches its terminal cooldown and returns to IDLE.
   bool handleAuthPending(uint32_t now_ms, uint32_t timeout_ms = 5000);
 
   // Local GATT Auth Proof verification success transitions AUTH_PENDING -> ARMED (arms target for passage sensor).
@@ -52,6 +52,8 @@ class TargetAccessFsm {
                            uint32_t cooldown_duration_ms = 2000);
 
   // Independent relay timeout / hardware failsafe transition to COOLDOWN.
+  void handleRelayTimerOff(uint32_t now_ms,
+                           uint32_t cooldown_duration_ms = 2000);
   void handleRelayFailsafeOff(uint32_t now_ms, uint32_t cooldown_duration_ms = 2000);
 
   // Called on session timeout, GATT disconnect, or reset cleanup.
@@ -77,6 +79,8 @@ class TargetAccessFsm {
   uint32_t pre_arm_start_ms_ = 0;
 
   void setRelay(bool on);
+  void completeRelayHold(uint32_t now_ms, uint32_t cooldown_duration_ms,
+                         bool failsafe);
 };
 
 }  // namespace sgk

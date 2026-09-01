@@ -1,6 +1,7 @@
 #include "GattProtocol.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 namespace sgk {
@@ -21,35 +22,537 @@ constexpr uint32_t kShaK[64] = {
     0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
 
+constexpr char kAccessEventCredentialRefDomain[] =
+    "SGK-CREDENTIAL-REF-V1";
+constexpr char kAccessEventMacDomain[] = "SGK-ACCESS-EVENT-MAC-V1";
+constexpr char kAccessStatusMacDomain[] = "SGK-ACCESS-STATUS-MAC-V1";
+
 uint32_t rotateRight(uint32_t value, uint32_t bits) {
   return (value >> bits) | (value << (32 - bits));
 }
 
+bool allZeroBytes(const uint8_t* value, size_t length) {
+  uint8_t aggregate = 0;
+  for (size_t index = 0; index < length; ++index) aggregate |= value[index];
+  return aggregate == 0;
+}
+
+// Volatile writes provide the same optimization barrier required from
+// mbedtls_platform_zeroize while keeping native host tests dependency-free.
+void secureZeroBytes(void* value, size_t length) {
+  volatile uint8_t* cursor =
+      reinterpret_cast<volatile uint8_t*>(value);
+  while (length-- != 0) *cursor++ = 0;
+}
+
+bool validAccessEvidenceKeyId(const char* value, size_t* length_out = nullptr) {
+  if (length_out != nullptr) *length_out = 0;
+  if (value == nullptr) return false;
+  size_t length = 0;
+  while (value[length] != '\0' && length <= 4) {
+    const char character = value[length];
+    if (!((character >= 'a' && character <= 'z') ||
+          (character >= '0' && character <= '9'))) {
+      return false;
+    }
+    ++length;
+  }
+  if (length == 0 || length > 4 || value[length] != '\0') return false;
+  if (length_out != nullptr) *length_out = length;
+  return true;
+}
+
+bool validCredentialRefText(const char* value) {
+  if (value == nullptr || value[0] == '\0') return false;
+  const size_t length = std::strlen(value);
+  if (length < 28 || length > 31 || value[0] != 'c' || value[1] != '_') {
+    return false;
+  }
+  const char* separator = std::strchr(value + 2, '_');
+  if (separator == nullptr) return false;
+  const size_t key_id_length = static_cast<size_t>(separator - (value + 2));
+  if (key_id_length == 0 || key_id_length > 4 ||
+      std::strlen(separator + 1) != 24) {
+    return false;
+  }
+  for (const char* cursor = value + 2; cursor < separator; ++cursor) {
+    if (!((*cursor >= 'a' && *cursor <= 'z') ||
+          (*cursor >= '0' && *cursor <= '9'))) {
+      return false;
+    }
+  }
+  for (const char* cursor = separator + 1; *cursor != '\0'; ++cursor) {
+    if (!((*cursor >= '0' && *cursor <= '9') ||
+          (*cursor >= 'a' && *cursor <= 'f'))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool isUuid4(const std::array<uint8_t, 16>& value) {
+  return !allZeroBytes(value.data(), value.size()) &&
+         (value[6] & 0xf0) == 0x40 && (value[8] & 0xc0) == 0x80;
+}
+
+class CanonicalBinaryBuilder {
+ public:
+  CanonicalBinaryBuilder(uint8_t* output, size_t capacity)
+      : output_(output), capacity_(capacity) {}
+
+  bool append(const void* value, size_t length) {
+    if (!valid_ || value == nullptr || length > capacity_ - size_) {
+      valid_ = false;
+      return false;
+    }
+    std::memcpy(output_ + size_, value, length);
+    size_ += length;
+    return true;
+  }
+
+  bool appendU8(uint8_t value) { return append(&value, sizeof(value)); }
+
+  bool appendU16(uint16_t value) {
+    const uint8_t encoded[2] = {static_cast<uint8_t>(value >> 8),
+                                static_cast<uint8_t>(value)};
+    return append(encoded, sizeof(encoded));
+  }
+
+  bool appendU32(uint32_t value) {
+    const uint8_t encoded[4] = {
+        static_cast<uint8_t>(value >> 24),
+        static_cast<uint8_t>(value >> 16),
+        static_cast<uint8_t>(value >> 8),
+        static_cast<uint8_t>(value)};
+    return append(encoded, sizeof(encoded));
+  }
+
+  bool appendU64(uint64_t value) {
+    uint8_t encoded[8] = {};
+    for (size_t index = 0; index < sizeof(encoded); ++index) {
+      encoded[index] = static_cast<uint8_t>(value >> (56 - index * 8));
+    }
+    return append(encoded, sizeof(encoded));
+  }
+
+  bool appendLpAscii(const char* value, bool allow_empty = false) {
+    if (!valid_ || value == nullptr) {
+      valid_ = false;
+      return false;
+    }
+    const size_t length = std::strlen(value);
+    if ((!allow_empty && length == 0) || length > 0xffff) {
+      valid_ = false;
+      return false;
+    }
+    for (size_t index = 0; index < length; ++index) {
+      if (static_cast<unsigned char>(value[index]) > 0x7f) {
+        valid_ = false;
+        return false;
+      }
+    }
+    return appendU16(static_cast<uint16_t>(length)) &&
+           (length == 0 || append(value, length));
+  }
+
+  bool appendOptionalUuid(bool present,
+                          const std::array<uint8_t, 16>& value) {
+    return appendU8(present ? 1 : 0) &&
+           (!present || append(value.data(), value.size()));
+  }
+
+  bool appendOptionalU32(bool present, uint32_t value) {
+    return appendU8(present ? 1 : 0) && (!present || appendU32(value));
+  }
+
+  bool appendOptionalU64(bool present, uint64_t value) {
+    return appendU8(present ? 1 : 0) && (!present || appendU64(value));
+  }
+
+  bool valid() const { return valid_; }
+  size_t size() const { return size_; }
+
+ private:
+  uint8_t* output_ = nullptr;
+  size_t capacity_ = 0;
+  size_t size_ = 0;
+  bool valid_ = true;
+};
+
+bool hmacSha256(const std::array<uint8_t, 32>& key, const uint8_t* message,
+                size_t message_length, uint8_t output[32]) {
+  if (message == nullptr || message_length == 0 || output == nullptr ||
+      allZeroBytes(key.data(), key.size()) ||
+      message_length > kAccessEventMacInputCapacity) {
+    return false;
+  }
+  std::array<uint8_t, 64> inner_pad{};
+  std::array<uint8_t, 64> outer_pad{};
+  for (size_t index = 0; index < inner_pad.size(); ++index) {
+    const uint8_t key_byte = index < key.size() ? key[index] : 0;
+    inner_pad[index] = static_cast<uint8_t>(key_byte ^ 0x36);
+    outer_pad[index] = static_cast<uint8_t>(key_byte ^ 0x5c);
+  }
+  std::array<uint8_t, 64 + kAccessEventMacInputCapacity> inner_input{};
+  std::memcpy(inner_input.data(), inner_pad.data(), inner_pad.size());
+  std::memcpy(inner_input.data() + inner_pad.size(), message, message_length);
+  std::array<uint8_t, 32> inner_digest{};
+  ProtocolCore::sha256(inner_input.data(), inner_pad.size() + message_length,
+                       inner_digest.data());
+
+  std::array<uint8_t, 96> outer_input{};
+  std::memcpy(outer_input.data(), outer_pad.data(), outer_pad.size());
+  std::memcpy(outer_input.data() + outer_pad.size(), inner_digest.data(),
+              inner_digest.size());
+  ProtocolCore::sha256(outer_input.data(), outer_input.size(), output);
+
+  secureZeroBytes(inner_pad.data(), inner_pad.size());
+  secureZeroBytes(outer_pad.data(), outer_pad.size());
+  secureZeroBytes(inner_input.data(), inner_input.size());
+  secureZeroBytes(inner_digest.data(), inner_digest.size());
+  secureZeroBytes(outer_input.data(), outer_input.size());
+  return true;
+}
+
 }  // namespace
 
+bool parseAccessEvidenceProvisioning(
+    const char* key_hex, const char* key_id,
+    std::array<uint8_t, 32>* key_out,
+    char key_id_out[kAccessEvidenceKeyIdCapacity]) {
+  if (key_out == nullptr || key_id_out == nullptr) return false;
+  secureZeroBytes(key_out->data(), key_out->size());
+  secureZeroBytes(key_id_out, kAccessEvidenceKeyIdCapacity);
+  size_t key_id_length = 0;
+  if (key_hex == nullptr || std::strlen(key_hex) != key_out->size() * 2 ||
+      !validAccessEvidenceKeyId(key_id, &key_id_length)) {
+    return false;
+  }
+  for (size_t index = 0; index < key_out->size(); ++index) {
+    const char high = key_hex[index * 2];
+    const char low = key_hex[index * 2 + 1];
+    const auto nibble = [](char value, uint8_t* parsed) {
+      if (parsed == nullptr) return false;
+      if (value >= '0' && value <= '9') {
+        *parsed = static_cast<uint8_t>(value - '0');
+        return true;
+      }
+      if (value >= 'a' && value <= 'f') {
+        *parsed = static_cast<uint8_t>(value - 'a' + 10);
+        return true;
+      }
+      return false;
+    };
+    uint8_t high_value = 0;
+    uint8_t low_value = 0;
+    if (!nibble(high, &high_value) || !nibble(low, &low_value)) {
+      secureZeroBytes(key_out->data(), key_out->size());
+      return false;
+    }
+    (*key_out)[index] =
+        static_cast<uint8_t>((high_value << 4) | low_value);
+  }
+  if (allZeroBytes(key_out->data(), key_out->size())) {
+    secureZeroBytes(key_out->data(), key_out->size());
+    return false;
+  }
+  std::memcpy(key_id_out, key_id, key_id_length);
+  return true;
+}
+
+bool buildAccessEventMacInput(const AccessEventMacInput& input,
+                              uint8_t* output, size_t capacity,
+                              size_t* written) {
+  if (written == nullptr) return false;
+  *written = 0;
+  if (output == nullptr || capacity == 0) return false;
+  output[0] = 0;
+  if (!validAccessEvidenceKeyId(input.key_id) ||
+      allZeroBytes(input.door_id.data(), input.door_id.size()) ||
+      allZeroBytes(input.source_boot_id.data(), input.source_boot_id.size()) ||
+      input.source_boot_count == 0 || !isUuid4(input.event_id) ||
+      !isUuid4(input.session_id) || input.attempt == 0 ||
+      (input.has_causation && !isUuid4(input.causation_event_id)) ||
+      (input.has_distance_mm && input.distance_mm > 10000) ||
+      (input.has_duration_ms && input.duration_ms > 86400000ULL) ||
+      (input.has_relay_hold_ms && input.relay_hold_ms > 600000U) ||
+      (input.credential_ref != nullptr && input.credential_ref[0] != '\0' &&
+       !validCredentialRefText(input.credential_ref))) {
+    return false;
+  }
+  CanonicalBinaryBuilder builder(output, capacity);
+  builder.append(kAccessEventMacDomain, sizeof(kAccessEventMacDomain));
+  builder.appendLpAscii(input.key_id);
+  builder.appendLpAscii(input.topic_target_id);
+  builder.append(input.door_id.data(), input.door_id.size());
+  builder.appendLpAscii(input.source_instance_id);
+  builder.append(input.source_boot_id.data(), input.source_boot_id.size());
+  builder.appendU64(input.source_boot_count);
+  builder.append(input.event_id.data(), input.event_id.size());
+  builder.append(input.session_id.data(), input.session_id.size());
+  builder.appendU64(input.sequence);
+  builder.appendU32(input.attempt);
+  builder.appendLpAscii(input.event_code);
+  builder.appendLpAscii(input.stage);
+  builder.appendLpAscii(input.outcome);
+  builder.appendLpAscii(input.reason_code);
+  builder.appendOptionalUuid(input.has_causation, input.causation_event_id);
+  builder.appendU64(input.monotonic_ms);
+  builder.appendLpAscii(input.credential_ref == nullptr
+                            ? ""
+                            : input.credential_ref,
+                        true);
+  builder.appendOptionalU32(input.has_distance_mm, input.distance_mm);
+  builder.appendOptionalU64(input.has_duration_ms, input.duration_ms);
+  builder.appendOptionalU32(input.has_relay_hold_ms, input.relay_hold_ms);
+  if (!builder.valid()) return false;
+  *written = builder.size();
+  return true;
+}
+
+bool buildAccessStatusMacInput(const AccessStatusMacInput& input,
+                               uint8_t* output, size_t capacity,
+                               size_t* written) {
+  if (written == nullptr) return false;
+  *written = 0;
+  if (output == nullptr || capacity == 0) return false;
+  output[0] = 0;
+  const char* terminal_code = input.last_terminal_event_code;
+  const char* terminal_reason = input.last_terminal_reason_code;
+  const char* terminal_ref = input.last_terminal_credential_ref;
+  if (!validAccessEvidenceKeyId(input.key_id) ||
+      allZeroBytes(input.door_id.data(), input.door_id.size()) ||
+      allZeroBytes(input.source_boot_id.data(), input.source_boot_id.size()) ||
+      input.source_boot_count == 0 || input.access_revision == 0 ||
+      input.relay_pin_level > 1 || input.last_terminal_phase_mask > 0x003f ||
+      (input.has_last_terminal &&
+       (!isUuid4(input.last_terminal_session_id) || terminal_code == nullptr ||
+        terminal_code[0] == '\0' || terminal_reason == nullptr ||
+        terminal_reason[0] == '\0' ||
+        (terminal_ref != nullptr && terminal_ref[0] != '\0' &&
+         !validCredentialRefText(terminal_ref)))) ||
+      (!input.has_last_terminal &&
+       (input.last_terminal_phase_mask != 0 ||
+        (terminal_ref != nullptr && terminal_ref[0] != '\0')))) {
+    return false;
+  }
+  CanonicalBinaryBuilder builder(output, capacity);
+  builder.append(kAccessStatusMacDomain, sizeof(kAccessStatusMacDomain));
+  builder.appendLpAscii(input.key_id);
+  builder.appendLpAscii(input.topic_target_id);
+  builder.append(input.door_id.data(), input.door_id.size());
+  builder.append(input.source_boot_id.data(), input.source_boot_id.size());
+  builder.appendU64(input.source_boot_count);
+  builder.appendU64(input.access_revision);
+  builder.appendLpAscii(input.state);
+  builder.appendOptionalUuid(input.has_last_terminal,
+                             input.last_terminal_session_id);
+  builder.appendU8(input.has_last_terminal ? 1 : 0);
+  if (input.has_last_terminal) {
+    builder.appendU64(input.last_terminal_event_sequence);
+  }
+  builder.appendLpAscii(input.has_last_terminal ? terminal_code : "", true);
+  builder.appendLpAscii(input.has_last_terminal ? terminal_reason : "", true);
+  builder.appendLpAscii(
+      input.has_last_terminal && terminal_ref != nullptr ? terminal_ref : "",
+      true);
+  builder.appendU16(input.last_terminal_phase_mask);
+  builder.appendU8(input.relay_commanded_on ? 1 : 0);
+  builder.appendU8(input.relay_pin_level);
+  if (!builder.valid()) return false;
+  *written = builder.size();
+  return true;
+}
+
+bool deriveAccessEventMac(
+    const std::array<uint8_t, 32>& key, const AccessEventMacInput& input,
+    uint8_t output[kAccessEvidenceTagSize]) {
+  if (output == nullptr) return false;
+  secureZeroBytes(output, kAccessEvidenceTagSize);
+  std::array<uint8_t, kAccessEventMacInputCapacity> canonical{};
+  size_t length = 0;
+  std::array<uint8_t, 32> digest{};
+  const bool ok = buildAccessEventMacInput(input, canonical.data(),
+                                            canonical.size(), &length) &&
+                  hmacSha256(key, canonical.data(), length, digest.data());
+  if (ok) std::memcpy(output, digest.data(), kAccessEvidenceTagSize);
+  secureZeroBytes(canonical.data(), canonical.size());
+  secureZeroBytes(digest.data(), digest.size());
+  return ok;
+}
+
+bool deriveAccessStatusMac(
+    const std::array<uint8_t, 32>& key, const AccessStatusMacInput& input,
+    uint8_t output[kAccessEvidenceTagSize]) {
+  if (output == nullptr) return false;
+  secureZeroBytes(output, kAccessEvidenceTagSize);
+  std::array<uint8_t, kAccessStatusMacInputCapacity> canonical{};
+  size_t length = 0;
+  std::array<uint8_t, 32> digest{};
+  const bool ok = buildAccessStatusMacInput(input, canonical.data(),
+                                             canonical.size(), &length) &&
+                  hmacSha256(key, canonical.data(), length, digest.data());
+  if (ok) std::memcpy(output, digest.data(), kAccessEvidenceTagSize);
+  secureZeroBytes(canonical.data(), canonical.size());
+  secureZeroBytes(digest.data(), digest.size());
+  return ok;
+}
+
+bool deriveAccessEventCredentialRef(
+    const std::array<uint8_t, 32>& key, const char* key_id,
+    const std::array<uint8_t, 16>& door_id,
+    const std::array<uint8_t, 16>& session_id,
+    const std::array<uint8_t, 16>& credential_id,
+    char output[kAccessEventCredentialRefCapacity]) {
+  if (output == nullptr) return false;
+  output[0] = '\0';
+
+  size_t key_id_length = 0;
+  if (key_id != nullptr) {
+    while (key_id[key_id_length] != '\0' && key_id_length <= 4) {
+      const char value = key_id[key_id_length];
+      if (!((value >= 'a' && value <= 'z') ||
+            (value >= '0' && value <= '9'))) {
+        return false;
+      }
+      ++key_id_length;
+    }
+  }
+  if (key_id_length == 0 || key_id_length > 4 ||
+      key_id[key_id_length] != '\0' ||
+      allZeroBytes(key.data(), key.size()) ||
+      allZeroBytes(door_id.data(), door_id.size()) ||
+      allZeroBytes(session_id.data(), session_id.size()) ||
+      allZeroBytes(credential_id.data(), credential_id.size())) {
+    return false;
+  }
+
+  std::array<uint8_t, 16> normalized_session = session_id;
+  normalized_session[6] =
+      static_cast<uint8_t>((normalized_session[6] & 0x0f) | 0x40);
+  normalized_session[8] =
+      static_cast<uint8_t>((normalized_session[8] & 0x3f) | 0x80);
+
+  constexpr size_t kMessageSize =
+      sizeof(kAccessEventCredentialRefDomain) + 16 + 16 + 16;
+  std::array<uint8_t, kMessageSize> message{};
+  size_t offset = 0;
+  // sizeof includes the required domain separator NUL.
+  std::memcpy(message.data() + offset, kAccessEventCredentialRefDomain,
+              sizeof(kAccessEventCredentialRefDomain));
+  offset += sizeof(kAccessEventCredentialRefDomain);
+  std::memcpy(message.data() + offset, door_id.data(), door_id.size());
+  offset += door_id.size();
+  std::memcpy(message.data() + offset, normalized_session.data(),
+              normalized_session.size());
+  offset += normalized_session.size();
+  std::memcpy(message.data() + offset, credential_id.data(),
+              credential_id.size());
+
+  std::array<uint8_t, 64> inner_pad{};
+  std::array<uint8_t, 64> outer_pad{};
+  for (size_t index = 0; index < inner_pad.size(); ++index) {
+    const uint8_t key_byte = index < key.size() ? key[index] : 0;
+    inner_pad[index] = static_cast<uint8_t>(key_byte ^ 0x36);
+    outer_pad[index] = static_cast<uint8_t>(key_byte ^ 0x5c);
+  }
+  std::array<uint8_t, 64 + kMessageSize> inner_input{};
+  std::memcpy(inner_input.data(), inner_pad.data(), inner_pad.size());
+  std::memcpy(inner_input.data() + inner_pad.size(), message.data(),
+              message.size());
+  std::array<uint8_t, 32> inner_digest{};
+  ProtocolCore::sha256(inner_input.data(), inner_input.size(),
+                       inner_digest.data());
+
+  std::array<uint8_t, 96> outer_input{};
+  std::memcpy(outer_input.data(), outer_pad.data(), outer_pad.size());
+  std::memcpy(outer_input.data() + outer_pad.size(), inner_digest.data(),
+              inner_digest.size());
+  std::array<uint8_t, 32> digest{};
+  ProtocolCore::sha256(outer_input.data(), outer_input.size(), digest.data());
+
+  static constexpr char kHex[] = "0123456789abcdef";
+  char truncated_hex[25] = {};
+  for (size_t index = 0; index < 12; ++index) {
+    truncated_hex[index * 2] = kHex[digest[index] >> 4];
+    truncated_hex[index * 2 + 1] = kHex[digest[index] & 0x0f];
+  }
+  const int written = std::snprintf(output, kAccessEventCredentialRefCapacity,
+                                    "c_%s_%s", key_id, truncated_hex);
+
+  secureZeroBytes(inner_pad.data(), inner_pad.size());
+  secureZeroBytes(outer_pad.data(), outer_pad.size());
+  secureZeroBytes(inner_input.data(), inner_input.size());
+  secureZeroBytes(inner_digest.data(), inner_digest.size());
+  secureZeroBytes(outer_input.data(), outer_input.size());
+  secureZeroBytes(digest.data(), digest.size());
+  secureZeroBytes(message.data(), message.size());
+  secureZeroBytes(truncated_hex, sizeof(truncated_hex));
+  return written > 0 &&
+         static_cast<size_t>(written) < kAccessEventCredentialRefCapacity;
+}
+
+bool accessEventCodeAllowsCredentialRef(EventCode code) {
+  switch (code) {
+    case EventCode::kAccessProofVerified:
+    case EventCode::kAccessArmed:
+    case EventCode::kAccessSensorDetected:
+    case EventCode::kAccessRelayOn:
+    case EventCode::kAccessRelayOff:
+    case EventCode::kAccessSessionCompleted:
+    case EventCode::kAccessSessionTerminated:
+      return true;
+    default:
+      return false;
+  }
+}
+
 void LocalGattLifecycleBridge::emit(const Event& event) {
-  if (event.code == EventCode::kAccessProofVerified) {
+  sequence_high_water_ = std::max(sequence_high_water_, event.sequence);
+  if (event.code == EventCode::kAccessProofVerified && event.sequence != 0 &&
+      !allZeroBytes(event.session_id.data(), event.session_id.size()) &&
+      !allZeroBytes(event.credential_id.data(), event.credential_id.size())) {
     session_id_ = event.session_id;
     boot_id_ = event.boot_id;
-    sequence_ = event.sequence;
+    credential_id_ = event.credential_id;
+    verified_causation_sequence_ = event.sequence;
     verified_session_active_ = true;
   }
-  if (downstream_ != nullptr) downstream_->emit(event);
-  if (event.code == EventCode::kAccessSessionTerminated &&
-      verified_session_active_ && event.session_id == session_id_) {
-    clearVerifiedSession();
+  const bool matches_verified_session =
+      verified_session_active_ && event.session_id == session_id_;
+  Event forwarded = event;
+  if (matches_verified_session) {
+    forwarded.credential_id = credential_id_;
+  }
+  if (downstream_ != nullptr) downstream_->emit(forwarded);
+  secureZeroBytes(forwarded.credential_id.data(),
+                  forwarded.credential_id.size());
+  if (matches_verified_session) {
+    if (event.code == EventCode::kAccessSessionTerminated) {
+      clearVerifiedSession();
+    } else if (event.sequence > verified_causation_sequence_) {
+      verified_causation_sequence_ = event.sequence;
+    }
   }
 }
 
 bool LocalGattLifecycleBridge::emitLifecycle(
     EventCode code, EventReason reason, ResultReason transport_reason,
     uint64_t now_ms, bool terminal) {
-  if (!verified_session_active_ || downstream_ == nullptr) return false;
-  const uint64_t cause = sequence_;
-  const Event event{code, reason, transport_reason, now_ms, session_id_,
-                    boot_id_, ++sequence_, true, cause};
+  if (!verified_session_active_ || downstream_ == nullptr ||
+      sequence_high_water_ == UINT64_MAX) {
+    return false;
+  }
+  const uint64_t cause = verified_causation_sequence_;
+  const uint64_t sequence = ++sequence_high_water_;
+  Event event{code, reason, transport_reason, now_ms, session_id_, boot_id_,
+              sequence, cause != 0, cause, credential_id_};
   downstream_->emit(event);
-  if (terminal) clearVerifiedSession();
+  secureZeroBytes(event.credential_id.data(), event.credential_id.size());
+  verified_causation_sequence_ = sequence;
+  if (terminal) {
+    clearVerifiedSession();
+  }
   return true;
 }
 
@@ -92,7 +595,63 @@ void LocalGattLifecycleBridge::clearVerifiedSession() {
   verified_session_active_ = false;
   session_id_.fill(0);
   boot_id_.fill(0);
-  sequence_ = 0;
+  secureZeroBytes(credential_id_.data(), credential_id_.size());
+  verified_causation_sequence_ = 0;
+}
+
+bool VerifiedAccessPhaseTracker::observe(const Event& event,
+                                         uint16_t* terminal_phase_mask) {
+  if (terminal_phase_mask != nullptr) *terminal_phase_mask = 0;
+
+  if (event.code == EventCode::kAccessProofVerified) {
+    if (allZeroBytes(event.session_id.data(), event.session_id.size()) ||
+        allZeroBytes(event.credential_id.data(), event.credential_id.size())) {
+      return false;
+    }
+    verified_session_active_ = true;
+    session_id_ = event.session_id;
+    phase_mask_ = kProofVerified;
+    return false;
+  }
+
+  if (!verified_session_active_ || event.session_id != session_id_) {
+    return false;
+  }
+
+  switch (event.code) {
+    case EventCode::kAccessArmed:
+      phase_mask_ |= kArmed;
+      break;
+    case EventCode::kAccessSensorDetected:
+      phase_mask_ |= kSensorDetected;
+      break;
+    case EventCode::kAccessRelayOn:
+      phase_mask_ |= kRelayOn;
+      break;
+    case EventCode::kAccessRelayOff:
+      phase_mask_ |= kRelayOff;
+      if (event.reason == EventReason::kRelayFailsafeCutoff) {
+        phase_mask_ |= kRelayFailsafe;
+      }
+      break;
+    default:
+      break;
+  }
+
+  const bool terminal =
+      event.code == EventCode::kAccessSessionCompleted ||
+      event.code == EventCode::kAccessSessionTerminated;
+  if (!terminal) return false;
+
+  if (terminal_phase_mask != nullptr) *terminal_phase_mask = phase_mask_;
+  clear();
+  return true;
+}
+
+void VerifiedAccessPhaseTracker::clear() {
+  verified_session_active_ = false;
+  session_id_.fill(0);
+  phase_mask_ = 0;
 }
 
 bool AdapterState::acceptConnection(const ConnectionToken& owner) {
@@ -195,12 +754,15 @@ bool AdapterState::consumeOverflow(ConnectionToken* owner) {
 bool AdapterState::popWrite(PendingWrite* pending) {
   if (pending == nullptr || pending_count_ == 0) return false;
   *pending = pending_writes_[pending_head_];
+  secureZeroBytes(&pending_writes_[pending_head_],
+                  sizeof(pending_writes_[pending_head_]));
   pending_head_ = (pending_head_ + 1) % pending_writes_.size();
   pending_count_--;
   return true;
 }
 
 void AdapterState::clearWrites() {
+  secureZeroBytes(pending_writes_.data(), sizeof(pending_writes_));
   pending_head_ = 0;
   pending_count_ = 0;
   pending_overflow_ = false;
@@ -408,8 +970,13 @@ void ProtocolCore::disconnect(const ConnectionToken& owner, uint32_t now_ms) {
 void ProtocolCore::abortTransport(const ConnectionToken& owner,
                                   ResultReason reason, uint32_t now_ms) {
   if (!connection_active_ || owner != connectionOwner()) return;
-  emit(EventCode::kAccessSessionTerminated, reason, now_ms);
-  abortAuthControl(now_ms);
+  // RESULT delivery is downstream of the already committed Target action.
+  // Losing that indication must not fabricate a failed access terminal or
+  // clear the verified actor while ARMED/RELAY_HOLD continues independently.
+  if (state_ != SessionState::kCompleted) {
+    emit(EventCode::kAccessSessionTerminated, reason, now_ms);
+    abortAuthControl(now_ms);
+  }
   resetSession();
 }
 
@@ -466,7 +1033,10 @@ bool ProtocolCore::randomUnique(uint8_t* output, size_t length,
   return false;
 }
 
-void ProtocolCore::clearReassembly() { reassembly_ = Reassembly{}; }
+void ProtocolCore::clearReassembly() {
+  secureZeroBytes(&reassembly_, sizeof(reassembly_));
+  reassembly_.type = MessageType::kError;
+}
 
 void ProtocolCore::resetSession() {
   state_ = SessionState::kIdle;
@@ -583,8 +1153,10 @@ bool ProtocolCore::receiveFrame(MessageType expected_type,
   const size_t complete_length = reassembly_.length;
   const MessageType complete_type = reassembly_.type;
   clearReassembly();
-  return processMessage(complete_type, complete.data(), complete_length,
-                        now_ms);
+  const bool processed =
+      processMessage(complete_type, complete.data(), complete_length, now_ms);
+  secureZeroBytes(complete.data(), complete.size());
+  return processed;
 }
 
 bool ProtocolCore::processMessage(MessageType type, const uint8_t* payload,
@@ -750,11 +1322,14 @@ bool ProtocolCore::processProof(const uint8_t* payload, size_t length,
             : (result.reason == ResultReason::kCredentialDenied
                    ? ResultReason::kCredentialDenied
                    : ResultReason::kProofInvalid);
+    secureZeroBytes(&request, sizeof(request));
     reject(public_reason, now_ms);
     return false;
   }
 
-  emit(EventCode::kAccessProofVerified, ResultReason::kOk, now_ms);
+  emit(EventCode::kAccessProofVerified, ResultReason::kOk, now_ms,
+       &request.credential_id);
+  secureZeroBytes(&request, sizeof(request));
   const bool action_committed =
       auth_control_active_ && auth_control_gate_ != nullptr &&
       auth_control_gate_->commitAuthorizedAction(
@@ -862,7 +1437,9 @@ void ProtocolCore::resetSessionPreservingOutputs() {
   outputs_ = preserved_outputs;
 }
 
-void ProtocolCore::emit(EventCode code, ResultReason reason, uint32_t now_ms) {
+void ProtocolCore::emit(
+    EventCode code, ResultReason reason, uint32_t now_ms,
+    const std::array<uint8_t, 16>* credential_id) {
   if (event_sink_ != nullptr) {
     if (event_time_initialized_ && now_ms < event_last_now_ms_) {
       event_monotonic_high_ += (uint64_t{1} << 32);
@@ -870,15 +1447,18 @@ void ProtocolCore::emit(EventCode code, ResultReason reason, uint32_t now_ms) {
     event_time_initialized_ = true;
     event_last_now_ms_ = now_ms;
     const uint64_t sequence = ++event_sequence_;
-    event_sink_->emit({code,
-                       eventReason(code, reason),
-                       reason,
-                       event_monotonic_high_ + now_ms,
-                       session_id_,
-                       boot_id_,
-                       sequence,
-                       event_last_causation_sequence_ != 0,
-                       event_last_causation_sequence_});
+    Event event{code,
+                eventReason(code, reason),
+                reason,
+                event_monotonic_high_ + now_ms,
+                session_id_,
+                boot_id_,
+                sequence,
+                event_last_causation_sequence_ != 0,
+                event_last_causation_sequence_};
+    if (credential_id != nullptr) event.credential_id = *credential_id;
+    event_sink_->emit(event);
+    secureZeroBytes(event.credential_id.data(), event.credential_id.size());
     event_last_causation_sequence_ = sequence;
   }
 }

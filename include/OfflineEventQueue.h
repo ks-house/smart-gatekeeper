@@ -7,6 +7,25 @@
 
 namespace sgk {
 
+constexpr uint16_t kCanonicalEventSchemaV1 = 1;
+constexpr uint16_t kCanonicalEventSchemaV2 = 2;
+constexpr size_t kCanonicalV2ReasonCapacity = 24;
+constexpr size_t kCanonicalV2KeyIdLengthOffset = 24;
+constexpr size_t kCanonicalV2KeyIdOffset = 25;
+constexpr size_t kCanonicalV2KeyIdStorageSize = 4;
+constexpr size_t kCanonicalV2CredentialPresentOffset = 29;
+constexpr size_t kCanonicalV2CredentialDigestOffset = 30;
+constexpr size_t kCanonicalV2CredentialDigestSize = 12;
+constexpr size_t kCanonicalV2AuthTagOffset = 42;
+constexpr size_t kCanonicalV2AuthTagSize = 16;
+constexpr size_t kCanonicalV2ReservedOffset = 58;
+constexpr size_t kCanonicalV2ReservedSize = 6;
+// Durable records retain schema_version=1 so the immediately prior firmware
+// can replay them after OTA rollback. The otherwise-unused padding word marks
+// the authenticated compact overlay for new readers without changing the
+// 368-byte ABI. A v1 reader sees only the leading NUL-terminated reason.
+constexpr uint16_t kCanonicalV2OverlayMarker = 0x414d;  // "AM"
+
 struct CanonicalEvent {
   uint32_t magic = 0x53475145; // "SGQE"
   uint16_t schema_version = 1;
@@ -29,11 +48,28 @@ struct CanonicalEvent {
   char event_type[32] = {};  // Used for event_code text (or fallback event type)
   char stage_text[24] = {};   // Used for stage text
   char outcome_text[16] = {}; // Used for outcome text
-  char detail[64] = {};       // Used for reason_code text (or fallback detail)
+  // v1: one 64-byte reason/detail string. Authenticated runtime v2 and its
+  // durable schema-v1 rollback overlay use a 24-byte reason followed by compact
+  // key-id/ref/tag bytes. An N-1 reader stops at the reason NUL and ignores the
+  // overlay. Keeping all field offsets unchanged preserves the deployed ABI.
+  char detail[64] = {};
 
-  uint16_t padding = 0;
+  uint16_t padding = 0;  // v2 durable overlay marker; ignored by v1 readers
   uint32_t crc32 = 0;
 };
+
+const char* canonicalEventReason(const CanonicalEvent& event);
+bool canonicalEventAccessAuth(
+    const CanonicalEvent& event,
+    char key_id_out[kAccessEvidenceKeyIdCapacity],
+    uint8_t tag_out[kAccessEvidenceTagSize],
+    char credential_ref_out[kAccessEventCredentialRefCapacity]);
+bool isValidCanonicalCredentialRef(const char* credential_ref,
+                                   size_t capacity);
+bool isValidCanonicalEventRecord(const CanonicalEvent& event);
+bool setCanonicalV2Detail(CanonicalEvent* event, const char* reason_code,
+                          const char* key_id, const char* credential_ref,
+                          const uint8_t tag[kAccessEvidenceTagSize]);
 
 struct QueueMetaRecord {
   uint32_t magic = 0x5347514D; // "SGQM"
@@ -100,7 +136,14 @@ class OfflineEventQueue {
 };
 
 static constexpr size_t kMaxAclSnapshotBytes = 6924;
-static_assert(sizeof(CanonicalEvent) <= 384, "CanonicalEvent struct size exceeds 384 byte budget");
+static_assert(offsetof(CanonicalEvent, detail) == 297,
+              "CanonicalEvent detail offset is a deployed NVS ABI");
+static_assert(offsetof(CanonicalEvent, padding) == 362,
+              "CanonicalEvent padding offset is a deployed NVS ABI");
+static_assert(offsetof(CanonicalEvent, crc32) == 364,
+              "CanonicalEvent CRC offset is a deployed NVS ABI");
+static_assert(sizeof(CanonicalEvent) == 368,
+              "CanonicalEvent size is a deployed NVS ABI");
 static_assert(2 * kMaxAclSnapshotBytes + OfflineEventQueue::kCapacity * sizeof(CanonicalEvent) + 2 * sizeof(QueueMetaRecord) <= 18432,
               "Offline event queue and dual ACL snapshot storage budget exceeds 18 KiB NVS allocation");
 

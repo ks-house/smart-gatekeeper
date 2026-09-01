@@ -5768,3 +5768,209 @@
 - Applied the owner's approval only to the pending `production` environment request for run `33529692517`; exact source `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` completed immutable Backend image publication and NAS deployment successfully.
 - Strict public TLS `/live` and `/ready` readback returned that exact build SHA, with every readiness check true. A strict-TLS MQTTS readback received the retained `[Gatekeeper] 연결 상태` discovery document and retained bridge payload `online`.
 - The live entity uses `device_class=connectivity`, stable unique ID `smart_gatekeeper_01_connectivity`, and explicit `online/offline` payloads without a self-referential availability gate or expiry. HA frontend rendering/dashboard placement and a fresh physical sensor/door cycle remain separate evidence.
+
+## [2026-09-02] compile | Define authenticated actor and post-ARM completion evidence
+
+- Documented the session/door-bound pseudonymous credential reference, signed Target event/status high-water, terminal phase mask and unique read-side name/unit resolution. Legacy unsigned rows remain separate and raw session/credential values are not exposed to the administrator browser.
+- Defined exact AndroidKeyStore session-read proof and bounded mobile status progression from sensor wait through relay/cooldown to fresh-IDLE next-auth readiness. The status does not automatically restart BLE authentication and does not claim physical door movement without a door-contact sensor.
+- Kept MQTT/TLS and Backend DB writes outside the access-critical GATT/sensor/relay path, separated Home Assistant's verified access projection from raw ACL-protected diagnostics, and recorded same-boot RAM/power-loss plus Target-first N/N-1 rollout boundaries.
+- This coordinated documentation entry records no new key provisioning, broker ACL installation, NAS/HA/mobile/Target deployment, phone trial, relay contact or physical door result.
+
+## [2026-09-02] code | Add authenticated actor attribution and exact-session access progress
+
+- Added a session/door-bound pseudonymous credential reference and signed Target event/status envelopes. The Backend verifies HMAC, stable Target identity, revision high-water and terminal phase evidence before resolving one exact active credential to the administrator-visible resident name and unit; historical unsigned rows remain explicitly marked legacy evidence.
+- Added an AndroidKeyStore-signed, fixed-length exact-session read proof and bounded mobile polling that displays sensor wait, sensor detected/relay active, cooldown and fresh-IDLE next-auth readiness without automatically restarting scanning or claiming physical door movement.
+- Kept MQTT/TLS work deferred outside the access-critical GATT/sensor/relay phase, persisted immutable terminal summaries in Backend schema 012, and projected only a strict signed-status allow-list to Home Assistant. Raw Target availability remains advisory and cannot clear or elevate verified access state.
+- Provisioning contracts now require a shared access-evidence key and stable Target evidence identity for Target and Backend. This source candidate does not provision those secrets, install broker ACLs, deploy Backend/HA/mobile, update the Target, operate the relay or prove a physical door cycle.
+
+## [2026-09-02] test | Validate authenticated access evidence candidate before policy rotation
+
+- All 185 Backend unit/contract tests passed with two expected environment-only skips. Real MariaDB migration 012 up/down and existing-volume production-image upgrade tests passed, including legacy/canonical coexistence and immutable terminal-summary behavior.
+- Sixty-four focused Target, Hardwareless RC, Home Assistant discovery, personal workflow, OTA auto-publication and broker-security tests passed; the OTA contract gate passed. The personal-production ESP32-C6 build succeeded at 75,824/327,680 bytes RAM (23.1%) and 1,797,926/7,340,032 bytes application flash (24.5%).
+- Flutter formatting and analysis passed and 94 Flutter tests passed in an isolated copy. The targeted Android native suite passed 57 tests. Python compilation, shell syntax, repository whitespace and Backend schema-digest checks passed.
+- Full repository discovery ran 336 tests: 308 passed, one environment-only test skipped and 27 protected-path digest assertions failed solely because the complete feature bytes have not yet received the required immutable workflow-policy rotation. No deployment, installed version, phone trial, relay contact or physical door result is claimed.
+
+## [2026-09-02] fix | Bound Home Assistant online state to signed-status freshness
+
+- Added a generation-bound max-age timer that is replaced only by newly verified Target status. When signed status stops, the Backend publishes retained bridge `offline` after the configured freshness window instead of leaving `[Gatekeeper] 연결 상태` permanently online until another MQTT event.
+- Raw Target availability remains advisory: it cannot clear still-fresh signed state or elevate unverified state. MQTT reconnect, disconnect and Backend shutdown cancel stale timers, with reconnect/shutdown publishing the existing fail-closed offline state.
+- Corrected the schema 012 digest in `backend/.env.example` to the exact migration SHA-256 used by schema metadata, Compose and deployment tests. No NAS, broker, Home Assistant, Target, relay or door state was changed.
+
+## [2026-09-02] test | Validate signed-status availability expiry
+
+- Added a deterministic timer regression covering replacement, a cancelled callback race, reset, stop and refusal to re-arm after stop. The Home Assistant subscriber regression also stops its owned expiry timer during teardown.
+- The three focused exact-session, subscriber and expiry regressions passed, and Python compilation plus repository whitespace checks passed. Full suite and protected-policy counts will be refreshed against the immutable feature commit before authorization.
+
+## [2026-09-02] fix | Preserve relay failsafe cause before normal FSM tick
+
+- Reordered the Target loop so the esp-timer cutoff flag and independent elapsed-deadline cutoff are handled before normal `TargetAccessFsm::tick()`. A hardware cutoff now moves `RELAY_HOLD` to `COOLDOWN` with `door_close_failsafe` before the normal tick can clear the flag or relabel the same relay-OFF transition as a routine hold completion.
+- The signed access lifecycle therefore retains `RELAY_FAILSAFE_CUTOFF` and terminal phase bit `0x20`; duplicate cutoff handling remains idempotent and relay OFF is driven once. MQTT/TLS work remains deferred outside the access-critical phase.
+- This source correction changes no installed Target, relay contact, actuator or physical door state. The exact personal Target build inventory will be rotated once the complete feature source is frozen.
+
+## [2026-09-02] test | Validate relay failsafe evidence ordering
+
+- Nine access-control/network source contracts passed, including explicit timer-cutoff and elapsed-deadline transitions before the normal FSM tick and continued local-control-before-network ordering.
+- The native C++ production core built with warnings-as-errors and passed the exact-deadline arbitration case: one relay OFF drive, `door_close_failsafe` followed by `session_completed`, no routine `door_close`, and no duplicate emission.
+- These are deterministic source/host results only. ESP32-C6 build, protected policy rotation, signed publication, Target install/reboot/health, GPIO/contact timing and a physical door cycle remain separate Gates.
+
+## [2026-09-02] fix | Make Home Assistant relay evidence physically truthful
+
+- Preserved the retained discovery topic, historical object ID `door_binary` and unique ID `smart_gatekeeper_01_door_binary` so an existing Home Assistant entity migrates in place rather than being duplicated.
+- Renamed the entity to `[Gatekeeper] 릴레이 구동 상태` and removed its door device class. ON still derives only from the MAC-verified `RELAY_HOLD` FSM state and therefore claims neither relay contact nor actuator or physical door-leaf movement.
+- Updated the architecture, event-schema and project-status contracts. This source correction publishes no retained discovery, changes no Home Assistant registry, and performs no NAS, Target, relay or physical door action.
+
+## [2026-09-02] test | Validate truthful Home Assistant relay discovery
+
+- Nineteen focused Backend bridge and discovery-migration tests passed, including stable `door_binary` topic/unique ID, the new relay-only display name, absence of a door device class, verified-status binding and unchanged 16-entity migration count.
+- Python compilation, repository whitespace validation and the network-free migration dry run passed. The dry run retained 22 updates, six secure controls, 16 read-only entities and seven legacy-control removals without connecting to MQTT.
+- These tests validate source/discovery bytes only. No retained config was published, no Home Assistant entity registry or dashboard was observed, and no relay contact, actuator or physical door motion was tested.
+
+## [2026-09-02] fix | Prevent durable queue overflow head-of-line blocking
+
+- Changed the full-queue gap record from an invalid canonical access event into an explicit schema-v1 noncanonical `queue_overflow` transport diagnostic. It carries no fabricated access event UUID, actor reference or evidence HMAC.
+- Validated the synthesized gap before committing queue metadata, so an invalid internal record cannot become a durable head that blocks every following signed event.
+- Preserved the deployed 368-byte queue ABI, signed-event overlay bytes, oldest-two-drop accounting and persisted-before-volatile recovery order. This source fix changes no Target NVS, broker, relay, sensor or physical door state.
+
+## [2026-09-02] test | Validate durable overflow reboot and drain
+
+- Extended the native C++ queue regression to require a valid noncanonical gap, absence of access authentication, and reachability of the following event after the gap.
+- Added an eight-record persistent recovery case: after overflow and simulated reboot, all surviving records restored with zero torn-recovery count and drained in order through `queue_overflow` to the incoming event.
+- All 23 focused Hardwareless RC and access-network-deferral tests passed, including the native C++ core. This is host evidence only; sustained Target outage, NVS wear/power loss and connected recovery remain runtime Gates.
+
+## [2026-09-02] fix | Bound deferred MQTT keepalive and consume mobile read proofs
+
+- Clamped all boot/NVS/MQTT/Web access timing paths to 1~60 seconds pre-arm and 1~10 seconds cooldown, retained the one-second relay hold, and extended the single-owner PubSubClient keepalive from 30 to 120 seconds. Static contracts keep the normal 71-second control window below a 90-second signed-status grace without moving socket I/O back into the sensor/relay path.
+- Kept Home Assistant command acceptance on the existing 15-second fresh-status gate while extending only the retained connectivity watchdog to 90.25 seconds, preventing a normal 60-second ARMED session from appearing disconnected.
+- Consumed every verified exact-session mobile read nonce in the existing durable credential ledger before returning evidence. A captured 20-second read proof can no longer be replayed, while each normal four-second poll already creates a new AndroidKeyStore proof.
+- Clarified that access-critical MQTT deferral makes intermediate mobile phases best-effort: the UI may jump from sensor wait directly to signed terminal plus fresh-IDLE next-auth readiness. This source fix does not prove installed keepalive behavior, phone rendering, broker ACL, sensor/relay timing or physical door motion.
+
+## [2026-09-02] test | Validate bounded deferral and read-proof replay rejection
+
+- The focused access-control contracts passed with timing bounds, 120-second keepalive, 90.25-second HA connectivity grace and local-control-before-network ordering. Backend exact-session tests passed with durable nonce insertion and duplicate-key replay rejection before any evidence read.
+- Python compilation and repository whitespace checks passed for the focused changes. Full Backend/Target/mobile suites, exact-build digest rotation, policy authorization, signed publication and connected installation remain separate Gates.
+
+## [2026-09-02] fix | Preserve durable queue physical ring indices across reboot
+
+- Kept the selected durable meta head and every restored record at their original physical ring slots instead of compacting a non-zero head into RAM slot zero. The next pop now persists storage coordinates that still describe the same records.
+- When recovery stops at the first invalid record, the volatile tail remains that invalid physical slot; no boot-time metadata rewrite or fabricated event is introduced. The schema-v1 noncanonical `queue_overflow` gap and deployed 368-byte signed-event ABI remain unchanged.
+- This source correction changes no Target NVS, broker, relay, sensor or physical door state.
+
+## [2026-09-02] test | Validate wrapped durable ring through repeated reboot
+
+- Added the exact full→pop→wrapped-push→reboot→pop→reboot regression. The second reboot starts at `evt_3`, restores seven records with zero torn recovery and drains `evt_3` through wrapped `evt_9` exactly once.
+- All 23 focused Hardwareless RC and access-network-deferral tests passed. The native C++ production core built with warnings treated as errors, including the existing overflow-gap reboot/drain and failed-meta future-generation quarantine cases.
+- These are host storage-model results only. Real ESP32-C6 NVS wear, abrupt power loss, installed firmware recovery and connected MQTT drain remain separate Gates.
+
+## [2026-09-02] fix | Fail closed mobile projection on signed relay failsafe
+
+- Added an explicit `0x20` failsafe-mask gate to the Backend exact-session projection. Even when every normal proof/armed/sensor/relay bit is present and the Target event code says `ACCESS_SESSION_COMPLETED`, the mobile result is now failure `terminated`, never `complete`.
+- Kept re-entry fail closed: a failsafe terminal reports `next_auth_ready=true` only after the same actor/session/boot has a fresh signed `IDLE` status with relay command OFF and the configured OFF pin level. The administrator terminal-summary query already applies the same no-failsafe success condition.
+- This source correction changes no NAS Backend, phone, Target, relay contact, actuator or physical door state.
+
+## [2026-09-02] test | Validate failsafe result and next-auth readiness
+
+- Added a regression with a signed `ACCESS_SESSION_COMPLETED` summary carrying all normal phase bits plus `0x20`. It remains `cooldown` and not ready before IDLE, then becomes failure `terminated` with next-auth readiness only after the fresh signed IDLE/OFF evidence; it never projects `complete`.
+- All 47 focused Backend Target-status and administrator-security tests passed, including the existing SQL assertions that success requires `(phase_mask & 31)=31` and `(phase_mask & 32)=0`.
+- Python compilation and repository whitespace checks passed for the scoped Backend/test/wiki changes. Full suite, protected policy rotation, publication, installation and a physical door cycle remain separate Gates.
+
+## [2026-09-02] code | Accept superseded ARMED sessions as failed terminals
+
+- Added `SESSION_SUPERSEDED` to the authoritative access-event catalog and Backend terminal validator only for `ACCESS_SESSION_TERMINATED` with a failed outcome. The same reason with `SUCCEEDED` remains invalid and cannot become a completed sensor/relay result.
+- Added the administrator label `이전 센서 대기 세션이 새 인증으로 교체됨`. Exact-session mobile projection reports the verified result as `terminated`, never `complete`; next-auth readiness still requires fresh signed IDLE/relay-OFF evidence.
+- This Backend/catalog compatibility change does not itself prove the Target emits the new reason, close a live session, install firmware or move a physical door.
+
+## [2026-09-02] test | Validate signed superseded terminal compatibility
+
+- Added regressions proving a correctly HMAC-signed failed `SESSION_SUPERSEDED` terminal is accepted, the same reason with a successful outcome is rejected, and its exact-session mobile projection remains `terminated` rather than `complete`.
+- All 49 focused Backend Target-status and administrator-security tests passed. Python compilation, authoritative JSON parsing and scoped repository whitespace checks also passed.
+- Full Backend/Target suites, integrated firmware emission, protected policy rotation, deployment and a physical access cycle remain separate Gates.
+
+## [2026-09-02] fix | Isolate verified lifecycle from interleaved GATT sessions
+
+- Replaced the Local GATT lifecycle bridge's session-local sequence counter with a boot-local global high-water plus a separate verified-session causal pointer. Unverified interleaved sessions may advance the source position but cannot duplicate an existing position, become the verified session's causal parent or inherit its actor reference.
+- Started/reset terminal phase accumulation only on `ACCESS_PROOF_VERIFIED` and allowed only the exact verified session's completed/terminated event to update the Target status summary. A rejected pre-proof session can no longer erase an active session's phase evidence or overwrite its terminal summary.
+- Added the re-entrant `GattServer::supersedeVerifiedSession` integration point. After the FSM accepts an `ARMED` replacement, it emits the prior actor-bound terminal as `SESSION_SUPERSEDED`, advances ProtocolCore sequencing and clears the stale actor before the new session continues.
+
+## [2026-09-02] test | Validate adversarial GATT lifecycle interleaving
+
+- Added native C++ adversarial cases for B connect/reject traffic during A's relay lifecycle, explicit A supersession before B failure and a new B proof after the old actor is cleared. They assert unique global positions, A-only causation, no credential leakage and retained high-water across terminal cleanup.
+- Added a host-testable verified phase tracker regression proving unverified B terminals do not reset A's mask or publish a terminal summary, while matching success and failsafe terminals produce the exact fixed phase bits once.
+- All 15 focused Hardwareless RC tests passed; the production C++ core compiled with C++17 warnings treated as errors. These are source/host results only and do not establish Target installation, live MQTT status, relay contact, sensor behavior or physical door movement.
+
+## [2026-09-02] test | Run full Backend suite after terminal fail-closed changes
+
+- All 189 Backend unit and contract tests passed with two expected environment-only skips after the failsafe projection and `SESSION_SUPERSEDED` catalog changes.
+- This full Backend result does not cover the Target build/runtime, signed publication, NAS rollout, phone installation, relay contact or physical door motion.
+
+## [2026-09-02] test | Build serialized lifecycle integrity candidate for ESP32-C6
+
+- Re-ran 24 focused Hardwareless RC and access-network-deferral tests after serializing every ProtocolCore/NimBLE and loopTask lifecycle bridge access through the existing recursive task mutex; all passed, including the native C++ adversarial core with warnings as errors.
+- The `esp32c6_personal_production` PlatformIO build succeeded at 75,864/327,680 bytes RAM (23.2%) and 1,798,984/7,340,032 bytes application flash (24.5%).
+- This build is local source evidence only. It does not establish exact-main publication, Target installation/reboot/health, signed MQTT ingest, sensor/relay timing, actuator behavior or physical door movement.
+
+## [2026-09-02] fix | Emit late relay failsafe as a failed terminal
+
+- Mapped a lifecycle termination carrying `kRelayFailsafeCutoff` to canonical `ACCESS_SESSION_TERMINATED/FAILED/RELAY_CONTROL_ERROR`. The signed terminal can no longer claim `ACCESS_SESSION_COMPLETED/SUCCEEDED` while its phase mask simultaneously records failsafe bit `0x20`.
+- Preserved normal timer-driven relay OFF as the successful completion path; only the independent late cutoff fallback uses the failed terminal mapping.
+
+## [2026-09-02] test | Validate integrated late-failsafe terminal build
+
+- All 24 focused Hardwareless RC and access-network-deferral tests passed after the terminal catalog mapping and distinct FSM event were integrated.
+- The refreshed `esp32c6_personal_production` PlatformIO build succeeded at 75,864/327,680 bytes RAM (23.2%) and 1,799,130/7,340,032 bytes application flash (24.5%). This remains local build evidence, not installed Target or physical door evidence.
+
+## [2026-09-02] fix | Preserve committed lifecycle across GATT RESULT failure
+
+- Changed ProtocolCore transport abort semantics so missing RESULT subscription, indication failure or confirmation timeout after an authenticated action commit resets only the protocol transport. It no longer emits a false failed terminal, clears the verified actor or aborts the independently running Target FSM lifecycle.
+- Kept pre-commit transport failures fail closed with their existing terminal and auth-abort behavior. Production diagnostics now distinguish a post-commit output loss whose Target lifecycle continues from a genuinely aborted pre-commit session.
+
+## [2026-09-02] test | Validate actor handoff after RESULT transport loss
+
+- Added native C++ regressions for both a missing RESULT subscription and an explicitly failed RESULT indication after action commit. Both preserve the verified actor through ARMED, sensor, relay ON/OFF and completion without emitting an intermediate failed terminal; pre-existing disconnect tests remain green.
+- All 24 focused Hardwareless RC and access-network-deferral tests passed, and the refreshed personal-production ESP32-C6 build succeeded at 75,864/327,680 bytes RAM (23.2%) and 1,799,468/7,340,032 bytes application flash (24.5%). No installed-device or physical-door result is inferred.
+
+## [2026-09-02] test | Complete final mobile exact-session security review
+
+- Reviewed the Android Result-to-canonical-UUID handoff, fixed 80-byte AndroidKeyStore read proof, fresh nonce generation, Backend pre-read nonce consumption, exact-session response binding, signed terminal/fresh-IDLE readiness gate and physical-door wording. No mobile release-blocking cross-session, proof-replay, failsafe-success or automatic scan-restart path remained.
+- On the workflow-pinned Flutter 3.44.8/Dart 3.12.2 toolchain, formatting checked 54 files with zero changes, analysis reported no issues and all 95 Flutter tests passed. The full Android debug JVM suite passed 70 tests with zero failures, errors or skips under Gradle 9.1.0.
+- Polling remains UI-isolate best-effort and bounded to 120 seconds; dispose, session replacement, terminal/denial and the deadline cancel future polls. These host tests do not establish APK installation, wife-phone rendering, live Backend/Target interoperability, sensor/relay timing or physical door movement.
+
+## [2026-09-02] fix | Reject unauthenticated ARMED session preemption
+
+- Corrected the same-day provisional ARMED-replacement design: `TargetAccessFsm::handleAuthPending` now accepts only fresh `IDLE` with relay OFF. New ClientHello attempts are rejected through authenticated sensor wait, relay hold and cooldown, and authentication resumes only after the lifecycle returns to fresh IDLE/OFF.
+- Removed the main-loop pre-proof ARMED replacement branch and the Target-side `supersedeVerifiedSession` callable. An unauthenticated second phone can no longer change the verified session's actor, original arm deadline, phase accumulator, causal parent or sensor/relay completion.
+- Retained `SESSION_SUPERSEDED` only as Backend/catalog compatibility for historical N/N-1 events; the current Target does not emit it to replace an ARMED session. This correction supersedes the earlier same-day log entry that described the integration point as current Target behavior; append-only history was preserved.
+- Updated current architecture, event-schema, mobile-worker/UI, latency analysis, project status and test-evidence pages to the fail-closed contract. Historical exact-version field observations remain historical evidence rather than the current release contract.
+
+## [2026-09-02] test | Validate fail-closed verified-session ownership
+
+- Added an integrated native ProtocolCore/FSM/lifecycle adversarial case in which verified A remains ARMED while B sends ClientHello, provides no valid proof and then sends an invalid proof. B is rejected busy before challenge; A retains its original deadline, actor, phase and A-scoped causation and still completes sensor, relay ON/OFF, terminal phase `0x1f`, cooldown and fresh IDLE.
+- The focused Hardwareless RC and access-network-deferral suites passed 25/25. A broader security, personal-install and OTA run passed 56 of 57 tests; the sole failure is the expected protected `GattProtocol.h` digest mismatch that must remain open until final source freeze/policy rotation.
+- The `esp32c6_personal_production` PlatformIO build succeeded at 75,848/327,680 bytes RAM (23.1%) and 1,798,862/7,340,032 bytes application flash (24.5%). Protected workflow policy and exact hash rows were not edited. This is local source/build evidence only, not signed publication, Target installation/reboot/health, second-phone runtime behavior, relay contact or physical door movement.
+
+## [2026-09-02] fix | Require live key agreement for Backend readiness
+
+- Changed authenticated Target-status readiness to require at least one HMAC-verified status accepted by the database on each current MQTT connection. A Target/NAS access-evidence key mismatch can no longer appear ready from subscription acknowledgement and worker liveness alone.
+- Bound queue failure, persistence health and verified-evidence effects to the exact connected transport generation under the same lock. A status that started on an older connection cannot mark a reconnect ready or clear its writer failure; malformed or wrong-MAC traffic remains ignored rather than becoming an unauthenticated denial-of-service switch.
+- Kept Home Assistant projection ACL installation and exact publish/readback as a separate deployment Gate. Readiness proves signed Target ingest and key agreement, not broker authorization for the derived HA topic or a physical door action.
+
+## [2026-09-02] test | Validate per-connection signed-status readiness
+
+- All 28 Backend Target boot/status registry tests passed, including successful-SUBACK-without-evidence remaining unready, readiness after a verified persisted status, reset on disconnect and an in-flight old-generation status failing to satisfy the new connection.
+- Python source whitespace validation passed for the readiness change. Full Backend/repository suites, protected-policy rotation, NAS keyring provisioning, broker ACL reload, signed publication, Target installation and physical access remain separate Gates.
+
+## [2026-09-02] fix | Preserve Backend N and Target N-1 readiness compatibility
+
+- Gated the per-connection HMAC-verified status requirement behind explicit `ACCESS_SIGNED_STATUS_READINESS_REQUIRED`. Its default is false so Backend N remains deployable and rollback-safe with Target N-1; production may set it true only after Target N install, reboot, health and matching signed-status observation.
+- Added the cutover field to development/production Compose, the root-owned NAS runtime exact-key and boolean contracts, fresh legacy bootstrap default, read-only verifier and deployment guide. Existing runtime files must be intentionally upgraded rather than silently assuming cutover.
+- Once enabled, the connection-generation and wrong-key fail-closed protections remain unchanged. Home Assistant broker ACL publish/readback is still an independent Gate, and neither readiness mode claims a physical door action.
+
+## [2026-09-02] fix | Pin access evidence semantics in NAS runtime
+
+- Added `ACCESS_STATUS_MAX_AGE_SECONDS=5` and `TARGET_RELAY_OFF_PIN_LEVEL=1` to the root-owned NAS runtime exact-key contract instead of relying on Compose defaults. The latter is the reviewed active-LOW personal Target meaning: relay OFF/High-Z is evidenced by a HIGH pin level.
+- Fresh legacy bootstrap supplies those bounded defaults only when the old container has no value; deploy validation and read-only verification require max age 1 through 10 seconds and relay pin level exactly 0 or 1. The signed-status cutover remains independently default-off for Backend N / Target N-1 compatibility.
+
+## [2026-09-02] test | Freeze authenticated actor and exact-session release candidate
+
+- The full Backend suite passed 193 tests with two explicit MariaDB-only skips. Focused Target security, personal workflow, OTA and FSM coverage passed 57/57; the OTA contract gate and all 35 operations-contract checks passed. The personal-production ESP32-C6 build passed at 75,848/327,680 bytes RAM and 1,798,862/7,340,032 bytes application flash.
+- The workflow-pinned mobile checks remain green at Flutter 95/95 and Android JVM 70/70. Three NAS deployment shells passed `bash -n`, the exact Target build-tree contract passed and the repository diff passed whitespace validation.
+- Full repository discovery ran 340 tests: 310 passed, one environment-only test skipped and 29 assertions failed solely because the immutable feature bytes have not yet received the required two-step trusted-workflow policy rotation. No code, OTA hash or runtime-contract failure remained. This is source/host evidence, not NAS deployment, broker ACL reload, Target installation/reboot/health, wife-phone UI, relay contact or physical door evidence.

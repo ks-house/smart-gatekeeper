@@ -112,6 +112,7 @@ sealed class SessionOutcome {
   data class Success(
     val latencyMs: Long,
     val activeAclVersion: Long,
+    val targetSessionId: String,
     val performance: GattSessionPerformance? = null,
   ) : SessionOutcome()
   data class Failure(
@@ -221,7 +222,12 @@ class GattSessionEngine(
         proofObserver.afterResultReceived(result)
         val elapsed = elapsed(started)
         if (result.reason == 0) {
-          SessionOutcome.Success(elapsed, result.activeAclVersion, performance())
+          SessionOutcome.Success(
+            elapsed,
+            result.activeAclVersion,
+            GattCanonicalCodec.canonicalSessionUuid(result.sessionId),
+            performance(),
+          )
         } else {
           val targetReason = TargetResultReason.fromWireCode(result.reason)
           SessionOutcome.Failure(

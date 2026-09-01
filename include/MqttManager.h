@@ -39,6 +39,13 @@ public:
     // loop remains the sole PubSubClient owner and drains this outbox only after
     // the access-critical GATT/sensor/relay phase has finished.
     static bool enqueueCanonicalEvent(const sgk::CanonicalEvent& event);
+    // Update the signed heartbeat fallback without touching the TLS socket.
+    static void noteAccessTerminal(const char* sessionId,
+                                   uint64_t eventSequence,
+                                   const char* eventCode,
+                                   const char* reasonCode,
+                                   const char* credentialRef,
+                                   uint16_t phaseMask);
     static bool publishCanonicalEvent(const char* payload);
     static void publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs);
     static void publishSensorInfo(unsigned long duration_us, float distance_cm);

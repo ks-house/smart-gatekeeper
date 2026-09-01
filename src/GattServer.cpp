@@ -8,6 +8,7 @@
 #include <mutex>
 
 #include "ConfigManager.h"
+#include "DiagnosticsManager.h"
 #include "MqttManager.h"
 #include "OfflineEventQueue.h"
 
@@ -43,6 +44,21 @@ static bool (*s_auth_pending_callback)(uint32_t now_ms) = nullptr;
 static bool (*s_auth_grant_callback)(sgk::LocalAccessAction action,
                                      uint32_t now_ms) = nullptr;
 static void (*s_auth_abort_callback)(uint32_t now_ms) = nullptr;
+
+void secureZeroEventCredential(sgk::Event* event) {
+  if (event == nullptr) return;
+  volatile uint8_t* cursor = event->credential_id.data();
+  size_t remaining = event->credential_id.size();
+  while (remaining-- != 0) *cursor++ = 0;
+}
+
+void secureZeroPendingWrite(sgk::PendingWrite* pending) {
+  if (pending == nullptr) return;
+  volatile uint8_t* cursor =
+      reinterpret_cast<volatile uint8_t*>(pending);
+  size_t remaining = sizeof(*pending);
+  while (remaining-- != 0) *cursor++ = 0;
+}
 
 #if ENABLE_HARDWARELESS_RC
 constexpr uint16_t kNimbleSubscribeIndicate = 0x0002;
@@ -98,6 +114,26 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     char suffix[17] = {};
     bytesToHex(digest, 8, suffix, sizeof(suffix));
     std::snprintf(target_ref_, sizeof(target_ref_), "target_%s", suffix);
+    const char* topic_target_id = DiagnosticsManager::targetId();
+    const char* source_boot_id = DiagnosticsManager::bootId();
+    const uint64_t source_boot_count = DiagnosticsManager::bootCount();
+    if (topic_target_id == nullptr || topic_target_id[0] == '\0' ||
+        std::strlen(topic_target_id) >= sizeof(topic_target_id_) ||
+        source_boot_id == nullptr ||
+        !parseHex16(source_boot_id, &source_boot_id_) ||
+        source_boot_count == 0 ||
+        !sgk::parseAccessEvidenceProvisioning(
+            ACCESS_EVENT_REF_KEY_HEX, ACCESS_EVENT_REF_KEY_ID,
+            &access_event_ref_key_, access_event_ref_key_id_)) {
+      configured_ = false;
+      return false;
+    }
+    door_id_ = door_id;
+    source_boot_count_ = source_boot_count;
+    std::snprintf(topic_target_id_, sizeof(topic_target_id_), "%s",
+                  topic_target_id);
+    std::snprintf(source_boot_id_text_, sizeof(source_boot_id_text_), "%s",
+                  source_boot_id);
     configured_ = true;
     return true;
   }
@@ -110,26 +146,24 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     bool event_id_ready = false;
     for (size_t attempt = 0; attempt < 4; ++attempt) {
       esp_fill_random(event_id.data(), event_id.size());
-      if (!allZero(event_id.data(), event_id.size()) &&
-          event_id != last_event_id_bytes_) {
+      const bool random_nonzero =
+          !allZero(event_id.data(), event_id.size());
+      event_id[6] = static_cast<uint8_t>((event_id[6] & 0x0f) | 0x40);
+      event_id[8] = static_cast<uint8_t>((event_id[8] & 0x3f) | 0x80);
+      if (random_nonzero && event_id != last_event_id_bytes_) {
         event_id_ready = true;
         break;
       }
     }
     if (!event_id_ready) return;
-    event_id[6] = static_cast<uint8_t>((event_id[6] & 0x0f) | 0x40);
-    event_id[8] = static_cast<uint8_t>((event_id[8] & 0x3f) | 0x80);
 
     std::array<uint8_t, 16> schema_session = event.session_id;
     schema_session[6] = static_cast<uint8_t>((schema_session[6] & 0x0f) | 0x40);
     schema_session[8] = static_cast<uint8_t>((schema_session[8] & 0x3f) | 0x80);
     char event_id_text[37] = {};
     char session_id_text[37] = {};
-    char boot_id_text[33] = {};
     uuidText(event_id, event_id_text);
     uuidText(schema_session, session_id_text);
-    bytesToHex(event.boot_id.data(), event.boot_id.size(), boot_id_text,
-               sizeof(boot_id_text));
 
     const bool same_session =
         std::memcmp(last_session_.data(), schema_session.data(),
@@ -138,32 +172,15 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
                         event.causation_sequence == last_sequence_ &&
                         last_event_id_[0] != '\0';
 
-    StaticJsonDocument<1024> document;
-    document["schema_version"] = "1.0";
-    document["event_id"] = event_id_text;
-    document["session_id"] = session_id_text;
-    document["session_kind"] = "access";
-    document["source_component"] = "target";
-    document["source_instance_id"] = target_ref_;
-    document["source_boot_id"] = boot_id_text;
-    document["sequence"] = event.sequence;
-    document["attempt"] = 1;
+    StaticJsonDocument<256> document;
     if (!addCatalogFields(document, event)) return;
-    JsonObject clock = document.createNestedObject("clock");
-    clock["wall_time"] = nullptr;
-    clock["monotonic_ms"] = event.monotonic_ms;
-    clock["quality"] = "UNSYNCED";
-    JsonObject target = document.createNestedObject("target");
-    target["target_ref"] = target_ref_;
-    target["boot_id"] = boot_id_text;
-    if (causal) {
-      document["causation_event_id"] = last_event_id_;
-    } else {
-      document["causation_event_id"] = nullptr;
-    }
-    JsonObject attributes = document.createNestedObject("attributes");
-    attributes["path"] = "local_gatt";
-    attributes["transport"] = "ble_gatt";
+
+    char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
+    const bool has_credential_ref =
+        sgk::accessEventCodeAllowsCredentialRef(event.code) &&
+        sgk::deriveAccessEventCredentialRef(
+            access_event_ref_key_, access_event_ref_key_id_, door_id_,
+            schema_session, event.credential_id, credential_ref);
 
     sgk::CanonicalEvent queued_evt{};
     queued_evt.is_canonical = 1;
@@ -183,7 +200,8 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         outcome_str == nullptr || outcome_str[0] == '\0' ||
         reason_str == nullptr || reason_str[0] == '\0' ||
         event_id_text[0] == '\0' || session_id_text[0] == '\0' ||
-        boot_id_text[0] == '\0' || target_ref_[0] == '\0') {
+        source_boot_id_text_[0] == '\0' || target_ref_[0] == '\0') {
+      secureZero(credential_ref, sizeof(credential_ref));
       return;
     }
     std::strncpy(queued_evt.event_type, ev_code_str,
@@ -192,19 +210,62 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
                  sizeof(queued_evt.stage_text) - 1);
     std::strncpy(queued_evt.outcome_text, outcome_str,
                  sizeof(queued_evt.outcome_text) - 1);
-    std::strncpy(queued_evt.detail, reason_str, sizeof(queued_evt.detail) - 1);
     std::strncpy(queued_evt.event_id, event_id_text,
                  sizeof(queued_evt.event_id) - 1);
     std::strncpy(queued_evt.session_id, session_id_text,
                  sizeof(queued_evt.session_id) - 1);
-    std::strncpy(queued_evt.source_boot_id, boot_id_text,
+    std::strncpy(queued_evt.source_boot_id, source_boot_id_text_,
                  sizeof(queued_evt.source_boot_id) - 1);
     std::strncpy(queued_evt.target_ref, target_ref_,
                  sizeof(queued_evt.target_ref) - 1);
+    queued_evt.boot_count = static_cast<uint32_t>(source_boot_count_);
     if (causal) {
       queued_evt.has_causation = 1;
       std::strncpy(queued_evt.causation_event_id, last_event_id_,
                    sizeof(queued_evt.causation_event_id) - 1);
+    }
+
+    sgk::AccessEventMacInput mac_input{};
+    mac_input.key_id = access_event_ref_key_id_;
+    mac_input.topic_target_id = topic_target_id_;
+    mac_input.door_id = door_id_;
+    mac_input.source_instance_id = target_ref_;
+    mac_input.source_boot_id = source_boot_id_;
+    mac_input.source_boot_count = source_boot_count_;
+    mac_input.event_id = event_id;
+    mac_input.session_id = schema_session;
+    mac_input.sequence = event.sequence;
+    mac_input.attempt = 1;
+    mac_input.event_code = ev_code_str;
+    mac_input.stage = stage_str;
+    mac_input.outcome = outcome_str;
+    mac_input.reason_code = reason_str;
+    mac_input.has_causation = causal;
+    mac_input.causation_event_id = last_event_id_bytes_;
+    mac_input.monotonic_ms = event.monotonic_ms;
+    mac_input.credential_ref = has_credential_ref ? credential_ref : "";
+    // The deployed 368-byte event ABI has no measurement slots. Authenticating
+    // all three optional fields as absent prevents an untrusted broker from
+    // adding forged measurements to a replayed event.
+    uint8_t event_tag[sgk::kAccessEvidenceTagSize] = {};
+    if (!sgk::deriveAccessEventMac(access_event_ref_key_, mac_input,
+                                   event_tag) ||
+        !sgk::setCanonicalV2Detail(
+            &queued_evt, reason_str, access_event_ref_key_id_,
+            has_credential_ref ? credential_ref : nullptr, event_tag)) {
+      secureZero(event_tag, sizeof(event_tag));
+      secureZero(credential_ref, sizeof(credential_ref));
+      return;
+    }
+    secureZero(event_tag, sizeof(event_tag));
+
+    uint16_t terminal_phase_mask = 0;
+    const bool verified_terminal =
+        phase_tracker_.observe(event, &terminal_phase_mask);
+    if (verified_terminal) {
+      MqttManager::noteAccessTerminal(
+          session_id_text, event.sequence, ev_code_str, reason_str,
+          has_credential_ref ? credential_ref : nullptr, terminal_phase_mask);
     }
     if (!MqttManager::enqueueCanonicalEvent(queued_evt)) {
       LOGF("[ERROR] CanonicalMqttEventSink: event outbox enqueue failed for %s",
@@ -215,7 +276,7 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     last_sequence_ = event.sequence;
     last_event_id_bytes_ = event_id;
     std::strncpy(last_event_id_, event_id_text, sizeof(last_event_id_) - 1);
-
+    secureZero(credential_ref, sizeof(credential_ref));
   }
 
  private:
@@ -234,6 +295,42 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
       output[index * 2 + 1] = kHex[value[index] & 0x0f];
     }
     output[length * 2] = '\0';
+  }
+
+  static void secureZero(void* value, size_t length) {
+    volatile uint8_t* cursor = reinterpret_cast<volatile uint8_t*>(value);
+    while (length-- != 0) *cursor++ = 0;
+  }
+
+  static bool parseHex16(const char* value,
+                         std::array<uint8_t, 16>* output) {
+    if (value == nullptr || output == nullptr || std::strlen(value) != 32) {
+      return false;
+    }
+    output->fill(0);
+    for (size_t index = 0; index < output->size(); ++index) {
+      const auto nibble = [](char character, uint8_t* parsed) {
+        if (parsed == nullptr) return false;
+        if (character >= '0' && character <= '9') {
+          *parsed = static_cast<uint8_t>(character - '0');
+          return true;
+        }
+        if (character >= 'a' && character <= 'f') {
+          *parsed = static_cast<uint8_t>(character - 'a' + 10);
+          return true;
+        }
+        return false;
+      };
+      uint8_t high = 0;
+      uint8_t low = 0;
+      if (!nibble(value[index * 2], &high) ||
+          !nibble(value[index * 2 + 1], &low)) {
+        output->fill(0);
+        return false;
+      }
+      (*output)[index] = static_cast<uint8_t>((high << 4) | low);
+    }
+    return !allZero(output->data(), output->size());
   }
 
   static void uuidText(const std::array<uint8_t, 16>& value, char output[37]) {
@@ -354,6 +451,12 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         if (event.reason == sgk::EventReason::kArmTimeout) {
           document["outcome"] = "TIMED_OUT";
           document["reason_code"] = "ARM_TIMEOUT";
+        } else if (event.reason == sgk::EventReason::kSessionSuperseded) {
+          document["outcome"] = "FAILED";
+          document["reason_code"] = "SESSION_SUPERSEDED";
+        } else if (event.reason == sgk::EventReason::kRelayFailsafeCutoff) {
+          document["outcome"] = "FAILED";
+          document["reason_code"] = "RELAY_CONTROL_ERROR";
         } else {
           document["outcome"] = "FAILED";
           document["reason_code"] = reasonCode(event.transport_reason);
@@ -365,10 +468,18 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
 
   bool configured_ = false;
   char target_ref_[32] = {};
+  char topic_target_id_[49] = {};
+  char source_boot_id_text_[33] = {};
+  std::array<uint8_t, 16> door_id_{};
+  std::array<uint8_t, 16> source_boot_id_{};
+  uint64_t source_boot_count_ = 0;
+  std::array<uint8_t, 32> access_event_ref_key_{};
+  char access_event_ref_key_id_[sgk::kAccessEvidenceKeyIdCapacity] = {};
   std::array<uint8_t, 16> last_session_{};
   std::array<uint8_t, 16> last_event_id_bytes_{};
   uint64_t last_sequence_ = 0;
   char last_event_id_[37] = {};
+  sgk::VerifiedAccessPhaseTracker phase_tracker_;
 };
 
 CanonicalMqttEventSink production_event_sink;
@@ -406,6 +517,7 @@ class DeferredCanonicalEventSink final : public sgk::EventSink {
       }
       if (count_ != 0) {
         event = events_[head_];
+        events_[head_] = sgk::Event{};
         head_ = (head_ + 1) % events_.size();
         --count_;
         available = true;
@@ -417,11 +529,13 @@ class DeferredCanonicalEventSink final : public sgk::EventSink {
       }
       if (!available) return;
       if (downstream_ != nullptr) downstream_->emit(event);
+      secureZeroEventCredential(&event);
     }
   }
 
   void clear() {
     portENTER_CRITICAL(&mux_);
+    events_.fill(sgk::Event{});
     head_ = 0;
     count_ = 0;
     overflowed_ = false;
@@ -699,6 +813,7 @@ void GattServer::update() {
       if (available) {
         core->receiveFrame(pending.type, pending.owner, pending.bytes.data(),
                            pending.length, millis());
+        secureZeroPendingWrite(&pending);
       }
       core_mutex.unlock();
       if (!available) break;
@@ -707,19 +822,26 @@ void GattServer::update() {
 
   sgk::ConnectionToken timeout_owner;
   bool indication_timeout = false;
+  bool timeout_after_action_commit = false;
   core_mutex.lock();
   core->tick(millis());
   if (adapter_state.confirmationTimedOut(millis())) {
     timeout_owner = adapter_state.activeOwner();
     adapter_state.abortOutput();
     adapter_state.clearWrites();
+    timeout_after_action_commit =
+        core->state() == sgk::SessionState::kCompleted;
     core->abortTransport(timeout_owner,
                          sgk::ResultReason::kInternalFailClosed, millis());
     indication_timeout = true;
   }
   core_mutex.unlock();
   if (indication_timeout) {
-    LOGF("[ERROR] GATT indication confirmation timed out; session aborted");
+    if (timeout_after_action_commit) {
+      LOGF("[WARN] GATT output confirmation timed out after action commit; Target lifecycle continues");
+    } else {
+      LOGF("[ERROR] GATT indication confirmation timed out; session aborted");
+    }
   }
   production_lifecycle_sink.drainControls();
   deferred_event_sink.drain();
@@ -854,34 +976,42 @@ void GattServer::useProductionEventSink() {
 
 void GattServer::notifyAccessArmed(uint64_t now_ms) {
 #if ENABLE_HARDWARELESS_RC
+  core_mutex.lock();
   if (production_lifecycle_bridge.emitArmed(now_ms) && core != nullptr) {
     core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
   }
+  core_mutex.unlock();
 #endif
 }
 
 void GattServer::notifySensorDetected(uint64_t now_ms) {
 #if ENABLE_HARDWARELESS_RC
+  core_mutex.lock();
   if (production_lifecycle_bridge.emitSensorDetected(now_ms) && core != nullptr) {
     core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
   }
+  core_mutex.unlock();
 #endif
 }
 
 void GattServer::notifyRelayOn(uint64_t now_ms) {
 #if ENABLE_HARDWARELESS_RC
+  core_mutex.lock();
   if (production_lifecycle_bridge.emitRelayOn(now_ms) && core != nullptr) {
     core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
   }
+  core_mutex.unlock();
 #endif
 }
 
 void GattServer::notifyRelayOff(uint64_t now_ms, bool failsafe) {
 #if ENABLE_HARDWARELESS_RC
+  core_mutex.lock();
   if (production_lifecycle_bridge.emitRelayOff(now_ms, failsafe) &&
       core != nullptr) {
     core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
   }
+  core_mutex.unlock();
 #else
   (void)failsafe;
 #endif
@@ -889,23 +1019,23 @@ void GattServer::notifyRelayOff(uint64_t now_ms, bool failsafe) {
 
 void GattServer::notifySessionCompleted(uint64_t now_ms) {
 #if ENABLE_HARDWARELESS_RC
-  const uint64_t completed_sequence =
-      production_lifecycle_bridge.lastSequence() + 1;
+  core_mutex.lock();
   if (production_lifecycle_bridge.emitCompleted(now_ms) && core != nullptr) {
-    core->advanceEventSequence(completed_sequence);
+    core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
   }
+  core_mutex.unlock();
 #endif
 }
 
 void GattServer::notifySessionTerminated(uint64_t now_ms,
                                          sgk::EventReason reason) {
 #if ENABLE_HARDWARELESS_RC
-  const uint64_t terminal_sequence =
-      production_lifecycle_bridge.lastSequence() + 1;
+  core_mutex.lock();
   if (production_lifecycle_bridge.emitTerminated(now_ms, reason) &&
       core != nullptr) {
-    core->advanceEventSequence(terminal_sequence);
+    core->advanceEventSequence(production_lifecycle_bridge.lastSequence());
   }
+  core_mutex.unlock();
 #else
   (void)reason;
 #endif
@@ -1012,6 +1142,7 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
   (void)type;
   sgk::ConnectionToken owner;
   sgk::IndicationResult result = sgk::IndicationResult::kIgnored;
+  bool failure_after_action_commit = false;
   core_mutex.lock();
   if (in_flight_valid_ && token == in_flight_token_) {
     in_flight_valid_ = false;
@@ -1020,12 +1151,18 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
   result = adapter_state.confirmIndication(token, type, success);
   if (result == sgk::IndicationResult::kAborted && core != nullptr) {
     adapter_state.clearWrites();
+    failure_after_action_commit =
+        core->state() == sgk::SessionState::kCompleted;
     core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                          millis());
   }
   core_mutex.unlock();
   if (result == sgk::IndicationResult::kAborted) {
-    LOGF("[ERROR] GATT indication failed; session aborted");
+    if (failure_after_action_commit) {
+      LOGF("[WARN] GATT output failed after action commit; Target lifecycle continues");
+    } else {
+      LOGF("[ERROR] GATT indication failed; session aborted");
+    }
   }
   // onStatus() runs on NimBLE's small host stack.  update() drains the next
   // fragment from the Arduino loop task, avoiding a 2.7 KB adapter frame there.
@@ -1112,6 +1249,7 @@ void GattServer::drainOutputs() {
   bool staged = false;
   bool stage_failed = false;
   bool begin_failed = false;
+  bool failure_after_action_commit = false;
   sgk::ConnectionToken owner;
   sgk::IndicationToken token{};
   uint8_t frame[sgk::kAdapterFrameCapacity] = {};
@@ -1124,6 +1262,8 @@ void GattServer::drainOutputs() {
     if (!staged) {
       owner = adapter_state.activeOwner();
       adapter_state.clearWrites();
+      failure_after_action_commit =
+          core->state() == sgk::SessionState::kCompleted;
       core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                            millis());
       stage_failed = true;
@@ -1145,6 +1285,8 @@ void GattServer::drainOutputs() {
       owner = adapter_state.activeOwner();
       adapter_state.abortOutput();
       adapter_state.clearWrites();
+      failure_after_action_commit =
+          core->state() == sgk::SessionState::kCompleted;
       core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                            millis());
       begin_failed = true;
@@ -1157,7 +1299,11 @@ void GattServer::drainOutputs() {
   core_mutex.unlock();
 
   if (stage_failed || begin_failed) {
-    LOGF("[ERROR] GATT output owner/subscription mismatch; session aborted");
+    if (failure_after_action_commit) {
+      LOGF("[WARN] GATT output unavailable after action commit; Target lifecycle continues");
+    } else {
+      LOGF("[ERROR] GATT output owner/subscription mismatch; session aborted");
+    }
     return;
   }
   if (staged && challenge_read_length != 0 &&

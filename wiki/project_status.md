@@ -18,6 +18,82 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-02 authenticated actor and post-ARM completion source candidate
+
+- The source candidate gives each successfully verified Local GATT session a
+  door/session/credential-bound HMAC actor reference. Target schema 1.1 events
+  and access status are HMAC authenticated; raw credential IDs, resident names,
+  proofs and secrets do not enter MQTT or immutable access history. The admin
+  read-side shows a name/unit only when the ref has one exact current
+  credential match. Unsigned legacy Target rows remain visibly unverified.
+- Signed status adds stable Target boot/count and revision high-water, latest
+  terminal session/code/reason/actor and phase bits for proof, armed, sensor,
+  relay ON/OFF and failsafe. A normal completed summary requires all five normal
+  bits and no failsafe. Exact replay does not renew freshness, and stale boot,
+  revision rollback or payload conflict fails closed.
+- The mobile app carries the exact UUIDv4 session returned by native action 1,
+  signs a fresh 80-byte AndroidKeyStore read proof, and polls one session every
+  four seconds for at most two minutes. It separates sensor waiting, relay
+  active, cooldown and `next authentication ready`; the last state requires a
+  matching signed terminal plus fresh `IDLE`, relay OFF and the configured OFF
+  pin level. Each proof nonce is durably consumed after verification. It does
+  not automatically restart scanning or issue another access authentication.
+- Target MQTT/TLS emission remains outside the access-critical GATT/sensor/relay
+  phase through the bounded outbox and single PubSubClient owner. Backend MQTT
+  callbacks likewise enqueue for event/status DB workers. Home Assistant access
+  state consumes a MAC-verified allow-list projection, while raw IP/RSSI/
+  distance/config diagnostics remain a broker-ACL-protected, non-authoritative
+  display path. NVS/config access timings are clamped to 60 seconds ARMED plus
+  one second relay hold, 250 ms true-failsafe grace and at most ten seconds
+  cooldown. Once one verified session is ARMED, every new ClientHello is
+  rejected as busy through sensor wait, relay hold and cooldown; authentication
+  resumes only at fresh IDLE with relay OFF. An unverified second phone cannot
+  change the original actor, deadline, phase, causation or sensor/relay path.
+  The runtime lifecycle has one five-second auth window; the compile-time
+  bound retains an additional five-second safety margin and remains below 90
+  seconds. A 120-second MQTT keepalive and 90.25-second HA connectivity
+  watchdog therefore outlive it
+  without weakening the 15-second HA command freshness check.
+- Because Target MQTT is intentionally deferred through the access-critical
+  phase, mobile intermediate states are best-effort observations, not a live
+  stream. The UI may move directly from sensor wait to final next-auth-ready
+  once signed terminal plus fresh IDLE arrive.
+- The Home Assistant relay binary sensor keeps its historical `door_binary`
+  object/unique ID so existing entity-registry references migrate in place, but
+  is named `[Gatekeeper] 릴레이 구동 상태` and has no door device class. Its ON
+  state means only verified Target `RELAY_HOLD`, not contact, actuator or door-
+  leaf confirmation.
+- The latest terminal summary is same-boot RAM best-effort. Power loss before
+  its signed status reaches Backend can leave the result unconfirmed; neither
+  DB nor mobile reconstructs success. No door-contact sensor exists, so signed
+  sensor/relay completion is not physical door-leaf confirmation.
+- Safe N/N-1 rollout provisions one reviewed key/key ID to both Target release
+  environments and the NAS keyring, installs and health-confirms Target N first,
+  then deploys Backend N and mobile N. Target N-1 rollback preserves existing
+  access/OTA but makes the new actor/terminal evidence unavailable instead of
+  fabricating `complete`.
+- After the explicit signed-status readiness cutover, Backend requires one
+  persisted HMAC-verified Target status on each current MQTT connection. An
+  old-generation in-flight result cannot satisfy a reconnect, and invalid MAC
+  traffic is ignored without poisoning health; a Target/NAS key mismatch then
+  remains unready. The default cutover-off mode preserves Backend N / Target
+  N-1 deployment and rollback until Target N health plus matching status is
+  observed. Broker ACL installation plus Backend publish/HA readback remains a
+  distinct live Gate.
+- Native adversarial coverage holds verified session A in `ARMED` while B sends
+  ClientHello, no proof and an invalid proof. B receives busy before challenge,
+  while A keeps its original deadline, actor, phase and causal parent and still
+  completes the sensor/relay/cooldown path. The focused GATT/FSM source suite
+  passed 25/25, and the personal-production ESP32-C6 build passed at
+  75,848/327,680 bytes RAM (23.1%) and 1,798,862/7,340,032 bytes application
+  flash (24.5%). The one extended OTA failure is the intentionally unrotated
+  protected-source digest, not a firmware compile/runtime failure.
+- This is source-contract status only. The new release-environment key exists,
+  but the matching root-owned NAS keyring file is not asserted installed; the
+  live broker's previously observed anonymous/ACL drift is not asserted fixed,
+  and no Backend/HA/mobile/Target deployment or new physical access cycle is
+  claimed here.
+
 ## 2026-09-02 access-critical MQTT deferral candidate
 
 - Administrator canonical history showed local GATT `ARMED` at about 00:12:09
@@ -980,7 +1056,7 @@ evidence.
 | Backend | FastAPI/MariaDB, enrollment/ACL, personal public-key bootstrap, exact Target ACL apply correlation, signed HA command bridge, admin session/RBAC/CSRF/re-auth, operations APIs | paho-mqtt 1.6.1 MQTTv5 `ReasonCodes` callback correction은 exact main `bc9bb5d`에 포함됐다. NAS live Backend를 rebuild/recreate했고 readiness, Target status, subscriber/discovery와 bridge availability가 정상이다 |
 | Access | legacy iBeacon → pre-arm, personal native local GATT, signed Backend/MQTT remote command가 상호 구분됨 | 과거 `db37bc2`에서 action-1 foreground proof/result와 `ARMED`를 실기기로 확인했다. 현재 소스는 action 1 sensor ARM과 action 2 immediate relay를 분리하고 Target FSM 전이 성공에 Result를 결합한다. a9 APK/phone 및 실제 sensor/relay E2E는 미검증이다 |
 | OTA | Target periodic HTTPS pull, signed manifest/artifact, inactive slot, health mark/rollback, authenticated local recovery; mobile signed update/recovery 계약 | run `32872303874`의 1,846,624-byte plaintext와 1,846,660-byte encrypted Target artifact가 게시되고 Target에 설치됐다. 7,340,032-byte OTA slot의 25.16%로 5,493,408 bytes가 남는다. run `32872303799`의 55,786,649-byte APK도 NAS에 게시됐으나 미설치다. rollback/power-loss Gate는 열려 있다 |
-| Home Assistant | 기존 15개 status-backed read-only entity와 retained bridge availability 기반 `[Gatekeeper] 연결 상태` entity, Backend ingress→fresh boot/status→서명된 per-Target command bridge 기반 reboot/OTA/config control을 구현. `manual_remote`는 별도 opt-in | 기존 live bridge availability와 controls는 enabled다. 새 connectivity entity는 source/test candidate이며 NAS 재배포·retained discovery apply·HA 화면 확인 전이다. remote/manual relay와 sensor actuation은 수행하지 않았다 |
+| Home Assistant | 기존 15개 status-backed read-only entity와 retained bridge availability 기반 `[Gatekeeper] 연결 상태` entity, Backend ingress→fresh boot/status→서명된 per-Target command bridge 기반 reboot/OTA/config control을 구현. 검증 status max-age watchdog은 갱신 중단 시 retained `offline`을 발행한다. `manual_remote`는 별도 opt-in | 기존 live bridge availability와 controls는 enabled다. signed-status/watchdog 변경은 source/test candidate이며 NAS 재배포·retained discovery apply·HA 화면 확인 전이다. remote/manual relay와 sensor actuation은 수행하지 않았다 |
 
 ## 2. 저장소 구현과 현장 배포를 혼동하지 않는다
 

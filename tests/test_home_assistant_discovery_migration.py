@@ -70,8 +70,21 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.assertEqual(connectivity["payload_off"], "offline")
     self.assertNotIn("entity_category", connectivity)
     self.assertNotIn("expire_after", connectivity)
-    for config in updates.values():
-      self.assertEqual(config["state_topic"], f"{self.prefix}/status")
+    relay_status = updates["door_binary"]
+    self.assertEqual(
+        relay_status["unique_id"], "smart_gatekeeper_01_door_binary")
+    self.assertEqual(
+        relay_status["name"], "[Gatekeeper] 릴레이 구동 상태")
+    self.assertNotIn("device_class", relay_status)
+    self.assertIn("RELAY_HOLD", relay_status["value_template"])
+    for object_id, config in updates.items():
+      self.assertEqual(
+          config["state_topic"],
+          (
+              f"gatekeeper/v1/ha-bridge/{self.target_id}/verified-status"
+              if object_id in {"state", "door_binary", "pre_armed"}
+              else f"{self.prefix}/status"
+          ))
       self.assertEqual(config["expire_after"], 30)
       self.assertNotIn("smart-gatekeeper/", config["state_topic"])
       self.assertNotIn("gatekeeper/config/", config["state_topic"])

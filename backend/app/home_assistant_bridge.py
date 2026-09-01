@@ -112,6 +112,10 @@ def bridge_result_topic(target_id: str) -> str:
     return f"{bridge_prefix(target_id)}/result"
 
 
+def bridge_verified_status_topic(target_id: str) -> str:
+    return f"{bridge_prefix(target_id)}/verified-status"
+
+
 def target_status_topic(target_id: str) -> str:
     _validate_target_id(target_id)
     return f"gatekeeper/v1/targets/{target_id}/status"
@@ -166,7 +170,8 @@ def build_discovery_plan(
 ) -> list[Publication]:
     """Return legacy tombstones followed by secure controls and read-only state."""
     _validate_target_id(target_id)
-    status_topic = target_status_topic(target_id)
+    verified_status_topic = bridge_verified_status_topic(target_id)
+    diagnostic_status_topic = target_status_topic(target_id)
 
     # Deleting every historical direct-Target control first makes a partial
     # migration fail closed.  Secure controls are published only afterwards.
@@ -300,7 +305,7 @@ def build_discovery_plan(
                 "mode": "slider",
                 "qos": 1,
                 "retain": False,
-                "state_topic": status_topic,
+                "state_topic": diagnostic_status_topic,
                 "step": step,
                 "unit_of_measurement": unit,
                 "value_template": value_template,
@@ -423,7 +428,11 @@ def build_discovery_plan(
             {
                 "expire_after": 30,
                 "icon": icon,
-                "state_topic": status_topic,
+                "state_topic": (
+                    verified_status_topic
+                    if object_id == "state"
+                    else diagnostic_status_topic
+                ),
                 "value_template": value_template,
             }
         )
@@ -438,9 +447,9 @@ def build_discovery_plan(
     binary_sensors = (
         (
             "door_binary",
-            "[Gatekeeper] 도어 개방 여부",
+            "[Gatekeeper] 릴레이 구동 상태",
             "{% if value_json.state == 'RELAY_HOLD' %}ON{% else %}OFF{% endif %}",
-            "door",
+            None,
             None,
         ),
         (
@@ -455,14 +464,15 @@ def build_discovery_plan(
         config = _base_config(name, object_id)
         config.update(
             {
-                "device_class": device_class,
                 "expire_after": 30,
                 "payload_off": "OFF",
                 "payload_on": "ON",
-                "state_topic": status_topic,
+                "state_topic": verified_status_topic,
                 "value_template": value_template,
             }
         )
+        if device_class is not None:
+            config["device_class"] = device_class
         if icon is not None:
             config["icon"] = icon
         read_only.append(_discovery_publication("binary_sensor", object_id, config))
@@ -504,7 +514,7 @@ def build_discovery_plan(
                 "entity_category": "diagnostic",
                 "expire_after": 30,
                 "icon": icon,
-                "state_topic": status_topic,
+                "state_topic": diagnostic_status_topic,
                 "unit_of_measurement": unit,
                 "value_template": value_template,
             }
@@ -537,6 +547,7 @@ class HomeAssistantCommandBridge:
         self._lock = threading.Lock()
         self._boot_id: Optional[str] = None
         self._status_seen_at: Optional[float] = None
+        self._gate_state: Optional[str] = None
         self._last_action_at: dict[str, float] = {}
         self._last_fingerprint: Optional[tuple[str, bytes, float]] = None
         self._pending: dict[str, tuple[str, str, str]] = {}
@@ -545,6 +556,7 @@ class HomeAssistantCommandBridge:
         with self._lock:
             self._boot_id = None
             self._status_seen_at = None
+            self._gate_state = None
             self._last_fingerprint = None
             self._pending.clear()
 
@@ -556,19 +568,33 @@ class HomeAssistantCommandBridge:
             return False
         target_id = document.get("target_id")
         boot_id = document.get("boot_id")
+        gate_state = document.get("state")
         if (
             not isinstance(target_id, str)
             or not secrets.compare_digest(target_id, self.target_id)
             or not isinstance(boot_id, str)
             or BOOT_ID_PATTERN.fullmatch(boot_id) is None
+            or (
+                gate_state is not None
+                and gate_state
+                not in {"IDLE", "AUTH_PENDING", "ARMED", "RELAY_HOLD", "COOLDOWN"}
+            )
         ):
             return False
         with self._lock:
             self._boot_id = boot_id
             self._status_seen_at = self._clock()
+            self._gate_state = gate_state
         return True
 
     def note_target_availability(self, topic: str, payload: bytes) -> Optional[str]:
+        """Parse the legacy LWT document without granting it state authority.
+
+        MQTT subscribers cannot authenticate the publisher.  The document is
+        therefore only an advisory wake-up for the caller to re-evaluate the
+        freshness of the last HMAC-verified status; it must never erase that
+        status on its own.
+        """
         if topic != target_availability_topic(self.target_id):
             return None
         document = self._decode_document(payload, 512)
@@ -582,10 +608,6 @@ class HomeAssistantCommandBridge:
             or state not in ("online", "offline")
         ):
             return None
-        if state == "offline":
-            with self._lock:
-                self._boot_id = None
-                self._status_seen_at = None
         return state
 
     def live_boot_id(self) -> Optional[str]:
@@ -594,6 +616,14 @@ class HomeAssistantCommandBridge:
 
     def is_live(self) -> bool:
         return self.live_boot_id() is not None
+
+    def live_gate_state(self) -> Optional[str]:
+        """Return a fresh validated Target FSM state, never a stale snapshot."""
+
+        with self._lock:
+            if self._live_boot_locked(self._clock()) is None:
+                return None
+            return self._gate_state
 
     def accept_request(
         self,

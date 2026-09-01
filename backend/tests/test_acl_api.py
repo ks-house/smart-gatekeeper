@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
+from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -38,6 +39,17 @@ class AclApiTest(unittest.TestCase):
             clock=lambda: 1_785_542_400,
             legacy_hmac_key=b"personal-api-test-hmac-key",
         )
+        self.access_session_provider = MagicMock(
+            return_value={
+                "status": "complete",
+                "event_ref": "mobile_access_12345678",
+                "occurred_at": 1_785_542_400,
+                "target_state": "IDLE",
+                "target_fresh": True,
+                "next_auth_ready": True,
+                "terminal": True,
+            }
+        )
         app = FastAPI()
         app.include_router(
             create_acl_router(
@@ -69,6 +81,7 @@ class AclApiTest(unittest.TestCase):
                     personal_api_key="personal-api-key",
                     personal_tenant_id=TENANT_A,
                     personal_door_id=DOOR,
+                    personal_access_session=self.access_session_provider,
                 ),
             )
         )
@@ -239,6 +252,55 @@ class AclApiTest(unittest.TestCase):
             [item["type"] for item in activity.json()["events"]],
         )
         self.assertNotIn("actor_ref", activity.text)
+
+        target_session_id = "22222222-2222-4222-8222-222222222222"
+        access = self.client.post(
+            "/api/v1/acl/personal/activity",
+            json={
+                "device_id": device_id,
+                "credential_id": body["credential_id"],
+                "public_key_sec1": body["public_key_sec1"],
+                "target_session_id": target_session_id,
+                "access_nonce": "44" * 32,
+                "access_expires_at": 1_785_542_430,
+                "access_signature_raw64": "55" * 64,
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(200, access.status_code, access.text)
+        self.assertEqual("complete", access.json()["access_session"]["status"])
+        self.assertTrue(access.json()["access_session"]["next_auth_ready"])
+        self.access_session_provider.assert_called_once_with(
+            body["credential_id"],
+            body["public_key_sec1"],
+            target_session_id,
+            "44" * 32,
+            1_785_542_430,
+            "55" * 64,
+        )
+        self.assertNotIn("credential_id", access.json()["access_session"])
+
+        self.service.disable_credential(
+            TENANT_A,
+            body["credential_id"],
+            actor_ref="admin:test",
+        )
+        self.access_session_provider.reset_mock()
+        disabled_access = self.client.post(
+            "/api/v1/acl/personal/activity",
+            json={
+                "device_id": device_id,
+                "credential_id": body["credential_id"],
+                "public_key_sec1": body["public_key_sec1"],
+                "target_session_id": target_session_id,
+                "access_nonce": "44" * 32,
+                "access_expires_at": 1_785_542_430,
+                "access_signature_raw64": "55" * 64,
+            },
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(403, disabled_access.status_code, disabled_access.text)
+        self.access_session_provider.assert_not_called()
 
     def test_personal_enrollment_accepts_new_key_after_logout_and_reapproval(
         self,

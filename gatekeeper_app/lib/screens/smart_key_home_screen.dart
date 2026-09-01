@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../l10n/generated/app_localizations.dart';
+import '../services/access_session_polling_policy.dart';
 import '../services/commercial_models.dart';
 import '../services/home_message_projection.dart';
 import '../services/local_gatt_enrollment_service.dart';
@@ -39,9 +40,16 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   UpdateExperience? _updateExperience;
   List<MobileActivityItem> _activity = const [];
   List<MobileLifecycleEvent> _lifecycle = const [];
+  MobileAccessSession? _accessSession;
   HomeMessage? _actionMessage;
   Timer? _healthTimer;
   Timer? _identityTimer;
+  Timer? _accessSessionTimer;
+  Timer? _accessSessionExpiryTimer;
+  String? _activeAccessSessionId;
+  String? _closedAccessSessionId;
+  String? _accessSessionPollInFlightId;
+  int _accessSessionTransientFailures = 0;
 
   @override
   void initState() {
@@ -63,6 +71,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
     _updates.downloadProgress.removeListener(_refreshUpdateProgress);
     _healthTimer?.cancel();
     _identityTimer?.cancel();
+    _accessSessionTimer?.cancel();
+    _accessSessionExpiryTimer?.cancel();
     super.dispose();
   }
 
@@ -93,17 +103,151 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         _health = health;
         _activity = activity;
       });
+      _reconcileAccessSessionPolling(health);
     } catch (_) {}
   }
 
   Future<void> _refreshIdentity() async {
     final status = await _identity.status();
-    final lifecycle = await _identity.activity();
+    final personalActivity = await _identity.activity();
     if (!mounted) return;
     setState(() {
       _identityStatus = status;
-      _lifecycle = lifecycle;
+      _lifecycle = personalActivity.lifecycleEvents;
     });
+  }
+
+  void _reconcileAccessSessionPolling(NativeGattWorkerHealth health) {
+    final candidate = AccessSessionPollingPolicy.candidate(
+      health,
+      now: DateTime.now(),
+    );
+    if (candidate == null) {
+      if (_activeAccessSessionId != null &&
+          health.lastSessionState != 'SUCCEEDED') {
+        _stopAccessSessionPolling();
+      }
+      return;
+    }
+    final targetSessionId = candidate.targetSessionId;
+    if (_closedAccessSessionId == targetSessionId) return;
+    if (_activeAccessSessionId == targetSessionId) {
+      return;
+    }
+
+    final changedSession = _activeAccessSessionId != targetSessionId;
+    _stopAccessSessionPolling();
+    _activeAccessSessionId = targetSessionId;
+    _closedAccessSessionId = null;
+    if (changedSession && mounted) {
+      setState(() => _accessSession = null);
+    }
+    _accessSessionTransientFailures = 0;
+    _accessSessionExpiryTimer = Timer(
+      candidate.remaining,
+      () => _finishAccessSessionPolling(targetSessionId),
+    );
+    unawaited(_refreshAccessSession(targetSessionId));
+  }
+
+  Future<void> _refreshAccessSession(String targetSessionId) async {
+    if (_accessSessionPollInFlightId == targetSessionId ||
+        _activeAccessSessionId != targetSessionId) {
+      return;
+    }
+    _accessSessionPollInFlightId = targetSessionId;
+    try {
+      final personalActivity =
+          await _identity.activity(targetSessionId: targetSessionId);
+      if (!mounted || _activeAccessSessionId != targetSessionId) return;
+      if (!personalActivity.accessLookupAuthorized ||
+          personalActivity.outcome ==
+              MobilePersonalActivityOutcome.accessDenied ||
+          personalActivity.outcome ==
+              MobilePersonalActivityOutcome.terminalFailure) {
+        _finishAccessSessionPolling(targetSessionId);
+        return;
+      }
+      if (personalActivity.outcome ==
+          MobilePersonalActivityOutcome.rateLimited) {
+        _accessSessionTransientFailures = 0;
+        _scheduleAccessSessionPoll(
+          targetSessionId,
+          AccessSessionPollingPolicy.nextDelay(
+            outcome: personalActivity.outcome,
+            consecutiveTransientFailures: 0,
+            retryAfter: personalActivity.retryAfter,
+          ),
+        );
+        return;
+      }
+      if (personalActivity.outcome ==
+          MobilePersonalActivityOutcome.retryableFailure) {
+        _accessSessionTransientFailures += 1;
+        final delay = AccessSessionPollingPolicy.nextDelay(
+          outcome: personalActivity.outcome,
+          consecutiveTransientFailures: _accessSessionTransientFailures,
+        );
+        if (delay == null) {
+          _finishAccessSessionPolling(targetSessionId);
+        } else {
+          _scheduleAccessSessionPoll(targetSessionId, delay);
+        }
+        return;
+      }
+      _accessSessionTransientFailures = 0;
+      final accessSession = personalActivity.accessSession;
+      List<MobileActivityItem>? activity;
+      if (accessSession != null) {
+        activity = await _activityStore.recordAccessSession(accessSession);
+      }
+      if (!mounted || _activeAccessSessionId != targetSessionId) return;
+      setState(() {
+        _lifecycle = personalActivity.lifecycleEvents;
+        if (accessSession != null) _accessSession = accessSession;
+        if (activity != null) _activity = activity;
+      });
+      if (accessSession?.isTerminal == true) {
+        _finishAccessSessionPolling(targetSessionId);
+      } else {
+        _scheduleAccessSessionPoll(
+          targetSessionId,
+          AccessSessionPollingPolicy.interval,
+        );
+      }
+    } catch (_) {
+      // Network/5xx failures are already typed above. Any other local failure
+      // is terminal for this lookup and must not alter BLE SUCCEEDED state.
+      _finishAccessSessionPolling(targetSessionId);
+    } finally {
+      if (_accessSessionPollInFlightId == targetSessionId) {
+        _accessSessionPollInFlightId = null;
+      }
+    }
+  }
+
+  void _scheduleAccessSessionPoll(String targetSessionId, Duration? delay) {
+    if (delay == null || _activeAccessSessionId != targetSessionId) return;
+    _accessSessionTimer?.cancel();
+    _accessSessionTimer = Timer(
+      delay,
+      () => _refreshAccessSession(targetSessionId),
+    );
+  }
+
+  void _finishAccessSessionPolling(String targetSessionId) {
+    if (_activeAccessSessionId != targetSessionId) return;
+    _closedAccessSessionId = targetSessionId;
+    _stopAccessSessionPolling();
+  }
+
+  void _stopAccessSessionPolling() {
+    _accessSessionTimer?.cancel();
+    _accessSessionTimer = null;
+    _accessSessionExpiryTimer?.cancel();
+    _accessSessionExpiryTimer = null;
+    _activeAccessSessionId = null;
+    _accessSessionTransientFailures = 0;
   }
 
   Future<void> _runPrimaryAction() async {
@@ -246,6 +390,23 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   String _targetState(AppLocalizations strings) {
     final health = _health;
     if (health == null) return 'Target 상태 확인 중';
+    final accessSession = _accessSession;
+    if (accessSession != null &&
+        accessSession.targetSessionId == health.lastTargetSessionId) {
+      return switch (accessSession.status) {
+        MobileAccessSessionStatus.pending ||
+        MobileAccessSessionStatus.armed =>
+          strings.accessSessionArmed,
+        MobileAccessSessionStatus.sensorDetected ||
+        MobileAccessSessionStatus.relayActive =>
+          strings.accessSessionRelayActive,
+        MobileAccessSessionStatus.cooldown => strings.accessSessionCooldown,
+        MobileAccessSessionStatus.complete => accessSession.isReadyComplete
+            ? strings.accessSessionComplete
+            : strings.accessSessionCooldown,
+        MobileAccessSessionStatus.terminated => strings.accessSessionTerminated,
+      };
+    }
     return switch (health.detectionStage) {
       TargetDetectionStage.waiting => strings.targetWaiting,
       TargetDetectionStage.detected => strings.targetDetected,

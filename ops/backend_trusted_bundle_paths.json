@@ -15,6 +15,7 @@
     "backend/app/acl_refresh.py",
     "backend/app/acl_api.py",
     "backend/app/acl_management.py",
+    "backend/app/access_actor_ref.py",
     "backend/app/admin_security.py",
     "backend/app/command_security.py",
     "backend/app/home_assistant_bridge.py",
@@ -50,6 +51,8 @@
     "backend/db/migrations/010_mobile_account_roles_up.sql",
     "backend/db/migrations/011_access_event_history_down.sql",
     "backend/db/migrations/011_access_event_history_up.sql",
+    "backend/db/migrations/012_access_event_actor_ref_down.sql",
+    "backend/db/migrations/012_access_event_actor_ref_up.sql",
     "backend/db/production_schema.sql",
     "backend/db/run_migrations.sh",
     "backend/db/schema.env",
@@ -71,6 +74,7 @@
     "backend/tests/test_acl_api.py",
     "backend/tests/test_acl_refresh.py",
     "backend/tests/test_acl_management.py",
+    "backend/tests/test_access_actor_ref.py",
     "backend/tests/test_admin_security.py",
     "backend/tests/test_home_assistant_bridge.py",
     "backend/tests/test_legacy_ota_independence.py",
@@ -82,6 +86,9 @@
     "backend/tests/test_ops_runtime.py",
     "backend/tests/test_target_boot_registry.py",
     "backend/tests/test_target_acl_delivery.py",
-    "protocol/test_vectors/v1.json"
+    "protocol/test_vectors/v1.json",
+    "security/mosquitto.conf",
+    "security/target-acl",
+    "tests/test_target_security_ota.py"
   ]
 }

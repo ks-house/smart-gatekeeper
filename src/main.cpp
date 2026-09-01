@@ -153,6 +153,9 @@ static sgk::TargetAccessFsm g_access_fsm(
         GattServer::notifyRelayOff(now_ms, true);
       } else if (std::strcmp(event, "session_completed") == 0) {
         GattServer::notifySessionCompleted(now_ms);
+      } else if (std::strcmp(event, "session_terminated_failsafe") == 0) {
+        GattServer::notifySessionTerminated(
+            now_ms, sgk::EventReason::kRelayFailsafeCutoff);
       } else if (std::strcmp(event, "session_terminated") == 0) {
         GattServer::notifySessionTerminated(now_ms,
                                             sgk::EventReason::kArmTimeout);
@@ -163,9 +166,9 @@ static sgk::TargetAccessFsm g_access_fsm(
 // 릴레이 컨트롤러 인스턴스
 // ─────────────────────────────────────────────────────────────
 RelayController relay(PIN_RELAY, RELAY_ACTIVE_LOW);
-static Ticker relayFailsafeTimer;
+static Ticker relayCutoffTimer;
 static volatile bool relayDeadlineActive = false;
-static volatile bool relayFailsafeTriggered = false;
+static volatile bool relayTimerTriggered = false;
 static uint32_t relayActivatedMs = 0;
 
 static void forceRelayOffFromTimer() {
@@ -174,7 +177,7 @@ static void forceRelayOffFromTimer() {
   DiagnosticsManager::noteRelayState(false, relay.pinLevel(),
                                      "relay_timer_off");
   relayDeadlineActive = false;
-  relayFailsafeTriggered = true;
+  relayTimerTriggered = true;
 }
 
 static inline void relayOn() {
@@ -188,18 +191,18 @@ static inline void relayOn() {
   relay.on();
   relayActivatedMs = millis();
   relayDeadlineActive = true;
-  relayFailsafeTriggered = false;
-  relayFailsafeTimer.once_ms(RELAY_HOLD_MS, forceRelayOffFromTimer);
+  relayTimerTriggered = false;
+  relayCutoffTimer.once_ms(RELAY_HOLD_MS, forceRelayOffFromTimer);
   DiagnosticsManager::noteRelayState(true, relay.pinLevel(), "relay_on");
   LOGF("[RELAY] 릴레이 ON 상태로 변경 완료");
 }
 
 static inline void relayOff() {
   LOGF("[RELAY] 릴레이 OFF 상태로 변경 시도");
-  relayFailsafeTimer.detach();
+  relayCutoffTimer.detach();
   relay.off();
   relayDeadlineActive = false;
-  relayFailsafeTriggered = false;
+  relayTimerTriggered = false;
   DiagnosticsManager::noteRelayState(false, relay.pinLevel(), "relay_off");
   LOGF("[RELAY] 릴레이 OFF 상태로 변경 완료");
 }
@@ -365,7 +368,12 @@ void setTofDistanceCm(int distanceCm) {
 }
 
 void setPreArmDurationMs(uint32_t durationMs) {
-  if (durationMs < 1000) durationMs = 1000;
+  if (durationMs < PRE_ARM_MIN_DURATION_MS) {
+    durationMs = PRE_ARM_MIN_DURATION_MS;
+  }
+  if (durationMs > PRE_ARM_MAX_DURATION_MS) {
+    durationMs = PRE_ARM_MAX_DURATION_MS;
+  }
   g_pre_arm_duration_ms = durationMs;
   ConfigManager::setPreArmDurationMs(durationMs);
   MqttManager::publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, durationMs, g_relay_cooldown_ms);
@@ -373,8 +381,12 @@ void setPreArmDurationMs(uint32_t durationMs) {
 }
 
 void setRelayCooldownMs(uint32_t cooldownMs) {
-  if (cooldownMs < 1000) cooldownMs = 1000;
-  if (cooldownMs > 30000) cooldownMs = 30000;
+  if (cooldownMs < RELAY_COOLDOWN_MIN_MS) {
+    cooldownMs = RELAY_COOLDOWN_MIN_MS;
+  }
+  if (cooldownMs > RELAY_COOLDOWN_MAX_MS) {
+    cooldownMs = RELAY_COOLDOWN_MAX_MS;
+  }
   g_relay_cooldown_ms = cooldownMs;
   ConfigManager::setRelayCooldownMs(cooldownMs);
   MqttManager::publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, cooldownMs);
@@ -434,7 +446,8 @@ static void initBleAdvertiser() {
   GattServer::useProductionEventSink();
   GattServer::setProofVerifier(&g_proof_verifier);
   GattServer::setOnAuthPendingCallback([](uint32_t now_ms) {
-    return g_access_fsm.handleAuthPending(now_ms, 5000);
+    return g_access_fsm.handleAuthPending(now_ms,
+                                          GATT_AUTH_PENDING_TIMEOUT_MS);
   });
   GattServer::setOnAuthGrantCallback([](sgk::LocalAccessAction action,
                                         uint32_t now_ms) {
@@ -601,26 +614,29 @@ void setup() {
 // ─────────────────────────────────────────────────────────────
 void loop() {
   uint32_t now = millis();
-  g_access_fsm.tick(now);
 
-  if (relayFailsafeTriggered) {
-    relayFailsafeTriggered = false;
+  // The independent esp_timer is the normal RELAY_HOLD completion path: it
+  // turns the physical output off at the configured deadline even when the
+  // main loop is busy, then the FSM records a routine completion once resumed.
+  if (relayTimerTriggered) {
+    relayTimerTriggered = false;
     DiagnosticsManager::noteAction("relay_timer_off");
     LOGF("[GATE] 독립 esp_timer가 릴레이를 OFF 처리함");
-    MqttManager::publishEvent("door_close", "Independent timer relay OFF");
-    g_access_fsm.handleRelayFailsafeOff(now, g_relay_cooldown_ms);
+    g_access_fsm.handleRelayTimerOff(now, g_relay_cooldown_ms);
   }
 
-  // 네트워크/TLS/WebServer보다 먼저 실행되는 독립 fail-safe.
-  // FSM state가 잘못 덮여도 물리 릴레이는 RELAY_HOLD_MS 이후 반드시 OFF.
-  if (relayDeadlineActive && (now - relayActivatedMs >= RELAY_HOLD_MS)) {
+  // If neither the timer callback nor the normal FSM tick completed the hold,
+  // classify a cutoff only after the dedicated grace as a genuine failsafe.
+  if (relayDeadlineActive &&
+      (now - relayActivatedMs >= RELAY_HOLD_MS + RELAY_FAILSAFE_GRACE_MS)) {
     relayOff();
     DiagnosticsManager::noteAction("relay_failsafe_off");
     LOGF("[GATE] 릴레이 독립 fail-safe OFF (%lu ms 경과)",
-         (unsigned long)RELAY_HOLD_MS);
-    MqttManager::publishEvent("door_close", "Independent relay fail-safe OFF");
+         (unsigned long)(RELAY_HOLD_MS + RELAY_FAILSAFE_GRACE_MS));
     g_access_fsm.handleRelayFailsafeOff(now, g_relay_cooldown_ms);
   }
+
+  g_access_fsm.tick(now);
 
   // Process local authentication before any network/TLS work. Canonical and
   // legacy events only enter the bounded MQTT outbox on this path.

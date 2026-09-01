@@ -166,6 +166,22 @@ object GattCanonicalCodec {
     return TargetResult(protocol, session, reason, retryAfter, aclVersion)
   }
 
+  /**
+   * Mirrors the Target canonical-event UUID projection. The protocol session
+   * bytes are random and are not required to arrive with UUID version/variant
+   * bits set, while the Target MQTT event sink normalizes those bits before it
+   * renders `session_id`. Keeping the exact same projection is required for an
+   * Android session to query its own later access lifecycle.
+   */
+  fun canonicalSessionUuid(sessionId: ByteArray): String {
+    require(sessionId.size == 16) { "session id length" }
+    val canonical = sessionId.copyOf()
+    canonical[6] = ((canonical[6].toInt() and 0x0f) or 0x40).toByte()
+    canonical[8] = ((canonical[8].toInt() and 0x3f) or 0x80).toByte()
+    val buffer = ByteBuffer.wrap(canonical).order(ByteOrder.BIG_ENDIAN)
+    return UUID(buffer.long, buffer.long).toString()
+  }
+
   fun sha256(bytes: ByteArray): ByteArray = MessageDigest.getInstance("SHA-256").digest(bytes)
 }
 

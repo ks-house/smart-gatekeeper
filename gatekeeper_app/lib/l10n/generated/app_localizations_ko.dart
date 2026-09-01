@@ -60,6 +60,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get targetArmed => '출입 준비 완료 · 센서 접근 대기';
 
   @override
+  String get accessSessionArmed => '출입 준비 완료 · 센서 대기';
+
+  @override
+  String get accessSessionRelayActive => '센서 감지 · 개방 동작 중';
+
+  @override
+  String get accessSessionCooldown => '개방 동작 완료 · 다음 출입 준비 중';
+
+  @override
+  String get accessSessionComplete => '출입 동작 완료 · 다음 인증 가능';
+
+  @override
+  String get accessSessionTerminated => '출입 동작 종료';
+
+  @override
   String get targetFailed => 'Target 인증 실패';
 
   @override

@@ -1,5 +1,5 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-09-02 (access-critical GATT/sensor/relay loop separated from MQTT/TLS writes; physical Target validation pending)
+> Last updated: 2026-09-02 (authenticated actor/session completion source contract added; deployment and physical door evidence pending)
 >
 > 저장소 구현과 현장 배포 상태의 차이는 [project_status.md](project_status.md)를 먼저 확인한다.
 
@@ -87,6 +87,44 @@ control path. Relay contact voltage, actuator load, ultrasonic threshold,
 actual door motion and repeated Samsung/OEM screen-off behavior remain separate
 physical acceptance Gates until directly measured.
 
+### 2.2 Authenticated post-ARM evidence path
+
+`action-1 RESULT OK`와 기존 앱의 `출입 준비 완료`는 credential proof와 Target `ARMED`까지의
+결과다. Sensor/relay 완료와 다음 인증 가능 상태는 별도 경로로 확인한다.
+
+```mermaid
+sequenceDiagram
+  participant A as Android app
+  participant T as ESP32-C6 Target
+  participant M as MQTTS broker
+  participant B as Backend collector
+  participant H as Admin / HA
+
+  A->>T: action 1 + exact UUIDv4 session + Keystore proof
+  T->>T: actor ref 생성, ARMED
+  T-->>A: RESULT OK (출입 준비 완료)
+  T->>T: sensor → relay ON → relay OFF → cooldown → IDLE
+  T-->>M: HMAC-signed events + signed terminal/status
+  M-->>B: exact Target topics
+  B->>B: HMAC, boot/revision, exact session/actor 검증
+  B-->>H: actor-labelled admin timeline / allow-listed HA status
+  A->>B: exact session + AndroidKeyStore read proof
+  B-->>A: stage; fresh IDLE+relay OFF일 때 next_auth_ready
+```
+
+Target은 raw credential ID 대신 door/session-bound HMAC `credential_ref`만 내보낸다. Backend는
+현재 credential/tenant projection과 유일하게 일치할 때만 관리자 화면에 이름·호수를 붙이고,
+모바일에는 요청한 credential과 exact session에 해당하는 행만 반환한다. Global Target 상태가
+다른 사람이나 이전 session으로 새지 않도록 terminal actor ref와 session이 모두 맞아야 status를
+결합한다.
+
+이 경로에서 `next_auth_ready`는 동일 boot의 signed terminal, fresh `IDLE`, relay command OFF와
+configured OFF pin level을 뜻한다. 새 BLE scan 또는 인증을 자동 시작시키는 신호가 아니며,
+door-contact가 없는 현재 하드웨어에서 실제 문짝 개방·폐쇄를 확인하는 신호도 아니다.
+각 mobile poll은 새 AndroidKeyStore nonce를 사용하고 Backend가 서명 검증 직후 기존 durable
+credential nonce ledger에서 한 번만 소비한다. 같은 20초 read proof의 재전송은 상태를 다시 읽지
+못한다.
+
 ## 3. Target 펌웨어
 
 ### 3.1 상태 머신
@@ -117,10 +155,33 @@ Wi-Fi web handler, MQTT connect/read/publish/offline flush, OTA update는 보류
 기존 loopTask 하나만 PubSubClient를 소유해 durable oldest event, volatile FIFO event, latest coalesced
 status 순으로 처리하며 audit event 전송은 loop pass당 한 건으로 제한한다.
 
+NVS와 모든 설정 진입점은 pre-arm을 1~60초, cooldown을 1~10초로 clamp한다. 한 번
+proof가 통과해 `ARMED`가 된 세션은 sensor wait, `RELAY_HOLD`, `COOLDOWN`을 마치고
+relay OFF인 fresh `IDLE`로 돌아올 때까지 새 `ClientHello`를 모두 busy로 거부한다. 따라서
+미인증 B가 A의 actor, deadline, phase, causal parent나 sensor/relay 완료를 교체할 수 없다.
+실행 수명주기에는 5초 auth window가 하나만 있다. Compile-time 상한은 추가 5초 안전
+여유를 유지해 60초 ARMED, 1초 relay hold, 250ms true-failsafe grace와 10초 cooldown을
+모두 더해도 90초 상태 grace보다 짧고, PubSubClient keepalive는
+120초로 둔다. 따라서 정상 access-critical deferral만으로 기존 30초
+keepalive가 만료되던 문제를 막으면서 socket `loop()`을 sensor/relay 경로에 다시 넣지 않는다.
+HA command acceptance는 여전히 15초 fresh status를 요구하지만 연결 entity의 signed-status expiry는
+90.25초여서 정상 60초 ARMED 동안 거짓 offline으로 바뀌지 않는다.
+
 volatile overflow에서는 가장 오래된 record를 기존 durable NVS queue로 먼저 spill해 순서를 유지한다.
 새 FreeRTOS MQTT task나 concurrent callback owner를 만들지 않으므로 FSM/ACL/OTA 동시 실행 race를
 추가하지 않는다. 이 source/build 계약은 installed Target latency, MQTT outage soak 또는 physical door
 동작 증거가 아니며 exact signed OTA install→reboot→health 후 같은 접근 시험이 필요하다.
+
+Authenticated event/status도 같은 경계를 따른다. GATT/FSM code는 actor ref와 MAC-covered record를
+bounded outbox에 넣을 뿐 TLS write를 기다리지 않는다. 기존 단일 loopTask의 PubSubClient owner가
+safe phase에서 oldest-first publish하고, Backend Paho callback도 DB를 직접 쓰지 않고 bounded worker로
+넘긴다. 따라서 여기서 말하는 asynchronous/non-critical은 concurrent PubSubClient owner를 추가했다는
+뜻이 아니라 access-critical sensor/relay 진행이 socket/DB I/O를 기다리지 않는다는 뜻이다.
+
+최신 terminal summary는 같은 boot RAM에서 우선 status로 내보내고 Backend가 수신하면 immutable하게
+저장한다. 갑작스러운 power loss가 terminal 뒤 첫 signed status보다 먼저 발생하면 RAM summary는
+사라질 수 있다. 다음 boot나 이벤트 시각만으로 성공을 재구성하지 않으며, 이 best-effort 공백은
+door 결과를 추측해 메우지 않는다.
 - relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
   생겨도 timer task가 물리 출력을 OFF
 - relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소
@@ -182,11 +243,26 @@ python scripts/migrate_home_assistant_discovery.py --broker-host <host> --broker
 Migration은 기존 Home Assistant device identifier와 15개 read-only entity unique ID를 보존하고
 연결 상태 entity 1개를 추가해, 총 16개 read-only entity를 다음 source에 연결합니다.
 
-- status sensor 9개, binary sensor 2개, config diagnostic sensor 4개:
+- access state sensor와 relay/pre-armed binary sensor:
+  `gatekeeper/v1/ha-bridge/<target_id>/verified-status`
+- IP/RSSI/heap/uptime/firmware/distance와 config diagnostic sensor:
   `gatekeeper/v1/targets/<target_id>/status`
 - 연결 상태 binary sensor 1개: retained
   `gatekeeper/v1/ha-bridge/<target_id>/availability`의 `online/offline`
 - 기존 15개 status-backed entity는 10초 주기 status에 `expire_after=30`을 적용
+
+`verified-status`는 Backend가 Target HMAC을 검증하고 DB high-water를 전진시킨 뒤 target/boot/count,
+access revision, FSM state, armed, relay command/pin만 allow-list한 projection이다. Terminal session,
+actor ref, HMAC tag, IP/RSSI/distance와 임의 raw field를 재발행하지 않는다. 반면 raw `/status`를 쓰는
+진단 entity는 access 인증 근거가 아니며 HA broker principal의 exact read ACL이 설치된 경우에만
+허용한다. Source repository의 `security/target-acl`은 운영 broker 설정을 자동 변경하지 않으므로
+anonymous 및 cross-principal publish/subscribe 거부 readback 전에는 production trust를 주장하지 않는다.
+
+기존 Home Assistant entity registry를 중복 생성 없이 갱신하기 위해 relay binary sensor의 historical
+object ID `door_binary`와 unique ID `smart_gatekeeper_01_door_binary`는 유지한다. 표시명은
+`[Gatekeeper] 릴레이 구동 상태`이고 `RELAY_HOLD`일 때만 ON이다. 이 entity에는 물리 door 의미의
+`device_class`를 설정하지 않으며, ON은 Target FSM의 relay 명령 단계를 뜻할 뿐 접점·actuator·문짝
+이동 확인이 아니다.
 
 Target의 `/availability`와 별도 `/config-state`는 MQTT connect 시 1회만 publish되고 retained가
 아니다. 따라서 migration 이후나 Home Assistant 재시작 뒤 이 메시지를 못 받아 entity가 영구
@@ -197,7 +273,9 @@ unavailable/unknown이 되는 것을 피하려고 discovery는 두 토픽을 참
 직접 사용한다. 자기 자신에 availability gate나 `expire_after`를 적용하지 않으므로 offline일 때
 숨거나 unavailable이 되지 않고 HA에서 `연결 끊김`으로 지속 표시된다. Bridge는 Backend MQTT 연결과
 fresh Target boot/status 정합성이 모두 있을 때만 `online`을 발행하고, Backend LWT 또는 Target 상태
-불일치 시 `offline`을 유지한다.
+불일치 시 `offline`을 유지한다. 각 검증 status는 max-age watchdog을 다시 arm하며, 다음 검증 status가
+오지 않으면 max-age 직후 retained `offline`을 발행한다. 따라서 raw LWT를 신뢰 근거로 쓰지 않아도
+Target 단절 상태가 다음 MQTT 이벤트까지 `online`으로 고착되지 않는다.
 
 동시에 legacy plaintext command를 가리키던 button 3개와 number 4개의 retained discovery config에는
 빈 payload를 먼저 발행해 제거합니다. 새 secure control config는 Target command topic이 아니라
@@ -308,6 +386,16 @@ physical/operator/OTA Gate 통과가 아닙니다.
 - RSSI는 EMA α=0.3, 기본 threshold -85 dBm, 이탈 hysteresis 8 dB입니다.
 - 필수 권한/위치/Bluetooth/알림/배터리 최적화 상태를 확인하고 서비스 상태를 UI로 동기화합니다.
 - force-stop, Android Active Apps의 Stop, 일부 OEM 강제 종료 뒤에는 자동 접근을 보장할 수 없습니다.
+- Native action-1이 반환한 exact UUIDv4 Target session은 Flutter에 전달된다. 앱은 AndroidKeyStore로
+  20초 TTL의 고정 80-byte session-read proof를 만들고 4초 간격, 최대 120초 동안 한 session만
+  조회한다. 401/403/형식 오류는 즉시 종료하고, 429는 `Retry-After`, network/5xx는 4/8/16초의
+  최대 3회 bounded retry를 사용한다.
+- UI는 `출입 준비 완료 · 센서 대기`, `센서 감지 · 개방 동작 중`, `개방 동작 완료 · 다음 출입
+  준비 중`, `출입 동작 완료 · 다음 인증 가능`을 분리한다. 마지막 문구도 Target sensor/FSM/relay
+  결과이며 physical door confirmation이 아니다. Target가 access-critical 구간에서 MQTT를 보류하므로
+  중간 단계는 실시간 스트림 보장이 아니라 Backend에 도착한 signed evidence의 최선 상태다. 화면은
+  `센서 대기`에서 곧바로 최종 `다음 인증 가능`으로 건너뛸 수 있으며, 최종 상태만 fresh IDLE 뒤
+  보장한다. Polling 완료가 scanner를 자동 재시작하지 않는다.
 
 자세한 생애주기는 `mobile_app_scan_lifecycle.md`, 최신 수정 감사와 실기기 항목은 `mobile_app_background_audit.md`를 참조합니다.
 
@@ -326,18 +414,33 @@ activation/grant와 signed ACL snapshot을 처리한 뒤 configured Target의 ex
 positive ACL version을 반환합니다. Target reboot와 900초 기본 lease 만료에 대비한 boot-triggered/periodic
 signed snapshot renewal도 source 계약에 포함되며, live NAS scheduler와 장기 outage 동작은 별도 검증합니다.
 
-Backend MQTT subscriber는 configured Target의 canonical access topic도 읽습니다. Paho callback은 payload를
-bounded queue로 넘기기만 하고 worker가 schema 011 `access_event_history`에 typed stage/outcome/reason을
-append합니다. 관리자 화면은 기존 원격 요청 기록과 이 Target 타임라인을 함께 보여 주되, 인증 성공,
+Backend MQTT subscriber는 configured Target의 canonical access topic과 signed status를 읽습니다. Paho
+callback은 payload를 bounded queue로 넘기기만 하고 worker가 `access_event_history`, stable Target별
+status high-water와 terminal summary를 원자적으로 갱신합니다. 신규 event는 schema 1.1 HMAC과 exact
+topic/door/boot를 통과해야 신뢰 행이 되며 unsigned legacy row는 별도 표시만 유지합니다. 관리자 화면은
+현재 credential과 session-bound actor ref가 유일하게 일치할 때 이름·호수를 붙이고, 기존 원격 요청
+기록과 이 Target 타임라인을 함께 보여 주되, 인증 성공,
 `ARMED`, sensor 감지, relay ON/OFF, session 완료를 하나의 boolean 성공으로 합치지 않습니다. MQTT QoS 0
 수신 이력과 Target GPIO 동작은 door contact의 물리 개방 증거가 아니며, 누락 이벤트도 실패 확정 증거가
 아닙니다. 상세 계약은 [observability_event_schema.md](observability_event_schema.md#13-backend-수신-이력과-관리자-판정)를
 따릅니다.
 
 `/ready`는 command publisher probe와 별도로 configured canonical topic 전체의 successful SUBACK,
-collector writer 생존 및 저장 실패 상태를 확인합니다. Source `security/target-acl` 변경은 Backend
-release bundle에 포함되지 않으므로 NAS broker ACL 설치·reload와 readback은 Backend 배포 전에 별도
-운영 Gate로 수행합니다.
+collector writer 생존 및 저장 실패 상태를 확인합니다. Authenticated status 쪽은 매 MQTT 연결마다
+`ACCESS_SIGNED_STATUS_READINESS_REQUIRED=true` cutover 후 최소 한 건의 HMAC-verified Target status가
+DB에 수용돼야 준비 완료가 되므로 Target 내장 key와 NAS keyring이 다르면 SUBACK만으로 `/ready`가
+정상화되지 않습니다. 이전 연결에서 늦게 끝난 저장 결과도 새 연결의 증거가 될 수 없습니다. 기본
+`false`는 Backend N / Target N-1과 rollback 조합의 독립 배포를 보존하며, Target N install/reboot/health
+및 matching signed status를 관측한 뒤에만 production runtime을 `true`로 전환합니다. Source
+`security/target-acl` 변경은 Backend release bundle에
+포함되지 않으므로 NAS broker ACL 설치·reload와 HA projection publish/readback은 Backend 배포 전에
+별도 운영 Gate로 수행합니다.
+
+N/N-1 rollout은 공통 access-evidence key를 Target build environment와 NAS keyring에 먼저 준비하고
+Target N install→reboot→health를 확인한 뒤 Backend N, mobile N 순으로 진행합니다. Target N-1 rollback
+중에는 문 출입과 OTA 복구 경로를 유지하되 actor/terminal status가 없으므로 앱은 `다음 인증 가능`을
+합성하지 않습니다. 새 terminal summary는 same-boot RAM best-effort이며 power loss 전에 Backend가
+받지 못한 성공을 DB 또는 HA가 추정하지 않습니다.
 
 ## 6. 실패 안전 경계
 

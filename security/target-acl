@@ -26,6 +26,7 @@ topic read gatekeeper/v1/targets/+/canonical-event
 topic read gatekeeper/v1/ha-bridge/+/request/+
 topic write gatekeeper/v1/ha-bridge/+/availability
 topic write gatekeeper/v1/ha-bridge/+/result
+topic write gatekeeper/v1/ha-bridge/+/verified-status
 topic write homeassistant/button/smart_gatekeeper_01/+/config
 topic write homeassistant/number/smart_gatekeeper_01/+/config
 topic write homeassistant/sensor/smart_gatekeeper_01/+/config
@@ -36,7 +37,10 @@ topic write homeassistant/binary_sensor/smart_gatekeeper_01/+/config
 user homeassistant
 topic read homeassistant/#
 topic readwrite homeassistant/status
+# Diagnostics/config values are broker-principal authenticated after the
+# production ACL cutover. Access/relay readiness consumes verified-status.
 topic read gatekeeper/v1/targets/+/status
 topic read gatekeeper/v1/ha-bridge/+/availability
 topic read gatekeeper/v1/ha-bridge/+/result
+topic read gatekeeper/v1/ha-bridge/+/verified-status
 topic write gatekeeper/v1/ha-bridge/+/request/+
