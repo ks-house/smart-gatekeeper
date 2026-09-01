@@ -1541,3 +1541,29 @@ Target advanced from boot count 685 to 686 and reported that exact version,
 IDLE and relay OFF for a continuous 30-second observation. This policy-only
 rotation changes no workflow/runtime byte or Target state. Its own Hosted
 review/merge and resulting final exact-main artifact remain separate Gates.
+
+## 52. Authenticated access actor/result authorization candidate
+
+Immutable feature candidate
+`23e28e14cf79e618070d0ea3543bf92910ca9558` carries the authenticated actor
+reference from the verified Local GATT session into the Backend administrator
+timeline and exposes the same exact-session Target progress to the mobile app.
+The mobile terminal state means that the Target observed the authenticated
+session's sensor/relay/cooldown evidence and returned to a fresh safe state; it
+does not claim physical door travel without a door-contact sensor.
+
+The indivisible protected inventory expands from 93 to 100 paths. Seven newly
+protected inputs cover the actor-reference module and direct test, both schema
+012 migration directions, Mosquitto configuration, Target ACL and its security
+test. Relative to trusted main, 35 normalized protected blobs change and the
+other 65 retain their exact bytes. The sole
+`access-actor-result-23e28e1-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA, complete digest map, seven-workflow
+inventory and empty local-Action inventory; partial or mixed bundles remain
+rejected.
+
+This policy-only authorization deploys no Backend image or migration, reloads
+no broker ACL, publishes or installs no mobile/Target artifact, and performs no
+sensor, relay or physical door action. Normal policy review/merge, feature
+merge-connection and fresh CI, actual-main merge, signed publication,
+installation/reboot/readiness and physical observation remain separate Gates.
