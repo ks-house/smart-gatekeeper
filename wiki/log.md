@@ -5702,3 +5702,9 @@
 
 - Retired the transitional candidate identity and pinned the sole 93-path `current-main-baseline` to exact feature merge `3d3e041b9b64ac514b9b05e8ae71aa2221955d33`, retaining all reviewed protected digests unchanged.
 - This policy-only finalization changes no Backend image, NAS database, broker configuration, Target, sensor, relay or door state. Hosted policy review and normal merge remain separate Gates.
+
+## [2026-09-02] compile | Authorize access-critical MQTT deferral candidate
+
+- Pinned the sole 93-path persistent authorization bundle to feature commit `0a0498ca2f40d61a6ef1f405ee456da68f7bd208` and its complete normalized protected map.
+- Exactly three protected bytes change as one reviewed candidate: the Target personal publisher workflow exact source inventory, Backend Home Assistant bridge connectivity entity and its direct test. Target source/header changes remain bound indirectly by the workflow's exact 42-file digest verification.
+- This policy-only candidate changes no NAS, broker, Target slot, NVS, relay or physical door. Normal policy review/merge, feature review/merge, exact-main signed publication, Target install/reboot/health and repeated physical latency remain separate Gates.
