@@ -5605,3 +5605,46 @@
 - Feature PR #321 passed Hosted Trusted, OTA/schema and ESP32-C6 canary checks and merge-committed normally as exact main `c2d22cc80d30942729a72d4f4628bedb66414e6e`; branch protection remained strict and administrator-enforced.
 - Retired the transitional candidate identity and pinned the sole `current-main-baseline` to that exact feature merge while retaining all 91 protected digests unchanged.
 - This policy-only finalization changes no Target runtime byte and performs no installation, reboot, sensor, relay or door action. Hosted policy merge, final exact-main signed Target publication, Target install/health and physical acceptance remain separate Gates.
+
+## [2026-09-01] compile | Isolate missing ARMED to mobile native-wake liveness
+
+- The owner reported that remote manual open succeeded but a new approach produced no mobile Target-detected/authenticated status and no observed `ARMED`. The current button uses the Backend signed-MQTT path, so its success does not prove Android BLE wake, Local GATT proof or Target ACL.
+- Read-only Target observation captured exact installed `2.1.411+main.g1f31854` online for 45 consecutive one-second samples, always `IDLE`, unarmed and relay OFF. The current boot count is 679 with a `BROWNOUT` breadcrumb and more than eight hours uptime; the observation window showed no reboot or accepted action-1. Historical event topics are non-retained and the phone was absent from ADB, so the failed cycle's exact mobile/Target reason remains unavailable.
+- Target 406-to-411 source comparison found only the ultrasonic reset after `handleAuthSuccess()` has already accepted action-1, which cannot suppress beacon detection or the proof attempt. The higher-priority regression candidate is mobile PR #318: a durable native-owner request suppresses the legacy scanner without proving the OS PendingIntent scan is still registered, while `status()` reports registered from request/permission/adapter state rather than callback liveness. This source-and-symptom match remains a candidate until same-cycle Android worker health/logcat and Target event capture.
+- A safe correction must distinguish requested from reconciled/live registration, record idempotent registration outcomes, and keep OUTSIDE/RSSI/session caps before any repeated action-1. No app, Target, Backend, credential, MQTT command, relay or door state was changed during this diagnosis.
+
+## [2026-09-01] fix | Reconcile native BLE wake registration evidence
+
+- Separated durable native-owner request from current-process PendingIntent scan acceptance evidence. Health now reports requested/reconciled state and bounded attempt, acceptance and callback timestamps; it never claims Android can query permanent OS registration liveness.
+- Registration failure, explicit stop, Bluetooth OFF, package/boot lifecycle and scan callback errors invalidate reconciliation. Application/Bluetooth/package/boot paths reconcile natively, while transient scanner failures use one unique WorkManager chain capped at three attempts with exponential ten-second backoff; permission/security/unsupported failures remain fail closed without blind retry.
+- Legacy ownership remains excluded whenever native ownership is requested, including degraded recovery, and no proof, credential, ACL, Target, sensor, relay, Backend or OTA contract was weakened. The complete Hosted native-selector scope passed 46 Android JVM tests across 11 suites with zero failures/skips, and seven related source contracts passed; signed CI, APK publication/install and a screen-off Target approach to `ARMED` remain separate Gates.
+
+## [2026-09-01] compile | Audit native-wake mobile release path
+
+- Exact local and remote `origin/main` both resolve to `1f31854833b67e97084b2877460af535a9e31460`; its trusted policy retains one 91-path `current-main-baseline` whose protected bytes descend unchanged from `c2d22cc80d30942729a72d4f4628bedb66414e6e`.
+- The anticipated Dart, Android native, focused mobile test and wiki paths are outside that protected set, so a mobile-only correction needs no policy rotation while `.github/workflows/build_app.yml` remains byte-identical at normalized SHA-256 `64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487`. Changing that workflow to widen its native-test selector would require a separate complete-bundle authorization and final baseline rotation.
+- A normal mobile PR triggers Hosted Trusted, `Build and Deploy Flutter Smart Key App APK`, and `OTA P0 Contract Gate`. Every push to `main` then runs the personal mobile signed publisher automatically; because `deploy.yml` also has an unfiltered main-push trigger, the unchanged Target tree is rebuilt and its personal signed OTA publication lane runs too. Publication remains distinct from phone install and Target install/reboot/health.
+
+## [2026-09-01] test | Validate native-wake registration recovery candidate
+
+- Independent validation passed the OTA contract and all 325 Python source/operations tests with one expected PowerShell-only skip. The focused mobile ownership contracts passed 10/10.
+- In an isolated working copy, Dart formatting changed no file, Flutter analyze reported no issue, the 22 focused recovery/registration/diagnostics tests passed, and the complete 78-test Flutter suite passed. This local builder used Flutter 3.47.1, so hosted pinned Flutter 3.44.8 remains the release-reproducibility authority.
+- The hosted native selector scope passed 46 JVM tests across 11 suites, the additional BLE-wake policy scope passed 9/9, and Kotlin/Java compilation succeeded. No phone install, Target authentication, `ARMED`, relay, sensor or physical door result is inferred; normal PR review, hosted CI, exact-main signed publication and a connected screen-off approach remain separate Gates.
+
+## [2026-09-01] test | Preserve reconciliation evidence in mobile support diagnostics
+
+- Extended the privacy-safe Dart native-health projection and redacted support report with the registration requested/reconciled split plus bounded attempt, acceptance and callback timestamps. No process identifier, BLE address, credential or proof is exported.
+- Final isolated Flutter validation formatted all 52 Dart files without changes, reported no analyzer issue, and passed the complete 78-test app suite. The OTA contract and 10 focused native-owner source contracts also passed after the integration review.
+- These diagnostics and host tests do not establish phone installation, PendingIntent survival on the wife's Samsung device, Target authentication, `ARMED`, ultrasonic actuation or a physical door result; those remain connected exact-release Gates.
+
+## [2026-09-01] fix | Make native-wake ownership transitions fail closed
+
+- Connected transient health invalidation to one unique native retry chain while suppressing identical one-second health-poll transitions, preventing both a silent recovery gap and unbounded WorkManager churn.
+- Ordered feature enable/disable around the cross-process owner marker and PendingIntent lifecycle. Registration now requires a temporary native lease before `startScan`; stale or running legacy ownership yields retryable recovery, while feature expiry/disable stops native registration before legacy publication. Plugin and Dart gates also exclude legacy until any stale registration request is released.
+- Fresh setup registers through the authenticated feature decision before starting the foreground service, process/boot/Bluetooth restore uses the same decision, worker retries recheck durable intent under the synchronized registrar, and Android backup is disabled to prevent restoring registration preferences without Keystore/no-backup ownership state.
+
+## [2026-09-01] test | Validate final native-wake ownership candidate
+
+- Final isolated Flutter 3.47.1 validation formatted all 52 Dart files without changes, reported no analyzer issue, and passed 79/79 tests. The OTA contract passed and full Python discovery passed 328 tests with one expected PowerShell-only skip.
+- Release-matched Flutter 3.44.8, Gradle 9.1.0 and JDK 17 validation passed the Hosted exact selector with 52 test methods, the direct BLE-wake policy scope 5/5, and app Kotlin, app Java and vendored beacon-plugin Java compilation. Only pre-existing dependency/deprecation warnings remained.
+- No signed APK, phone installation, screen-off Target detection, authentication, `ARMED`, ultrasonic relay action or physical door success is inferred. Normal review/CI, exact-main signed publication and connected physical acceptance remain separate Gates.

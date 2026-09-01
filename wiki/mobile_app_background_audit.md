@@ -141,6 +141,77 @@ ARMED가 보이지 않는 relay, 이어서 `21:56:26`의 60초 ARMED timeout과 
 Local GATT action-1 성공 시 sensor history를 초기화하고 현 세션의 fresh valid 표본
 3개를 요구해야 한다.
 
+### 0.5 2026-09-01 native-wake 무상태 실패 감사
+
+소유자는 session-isolation Target OTA 뒤 수동 개방은 성공하지만 접근 시 모바일의
+Target 감지·인증 완료 표시가 전혀 갱신되지 않고 Target도 `ARMED`로 전환하지
+않았다고 보고했다. 현재 수동 버튼은 Backend 인증 뒤 signed MQTT command를 보내는
+`RemoteManualOpenService` 경로이므로, 그 성공은 Android BLE wake, Local GATT proof,
+Target ACL 또는 action-1을 검증하지 않는다.
+
+Target `2.1.411+main.g1f31854`의 45초 read-only MQTT 관찰에서는 45개 연속 status가
+모두 `IDLE`, `is_armed=false`, relay OFF였고 accepted action-1/relay cycle은 없었다.
+관찰은 실패 회차 뒤에 수행됐고 event 토픽은 비보존이므로, 과거 회차가 mobile
+감지 전인지 GATT 거부인지까지 복원하지는 못한다. 휴대폰도 ADB에서 열거되지 않아
+설치 APK와 durable worker reason을 읽지 못했다.
+
+소스 비교상 Target 406→411의 유일한 실행 코드 변경은 action-1이 이미
+`handleAuthSuccess()`로 `ARMED`를 승인한 뒤 ultrasonic history를 초기화하는 것이다.
+따라서 이 변경은 비콘 감지나 proof 이전에 action-1 자체가 시작되지 않는 현상을
+직접 만들 수 없다.
+
+같은 릴리스 구간의 모바일 PR #318은 durable `nativeRequested`가 true이면 Flutter
+AltBeacon 초기화를 생략하고 `nativeWake` 대기로 즉시 반환한다. 이 판정은 실제 OS
+PendingIntent scan callback 생존 여부를 확인하지 않는다. 또한
+`BleWakeRegistrar.status()`는 persisted request, 권한, Bluetooth 상태만으로
+`registered`를 반환하며 현재 OS scan 등록을 직접 증명하지 않는다. package replace,
+OEM background policy, force-stop 또는 scan 유실 뒤 request marker만 남으면 앱은
+native wake가 살아 있다고 표시하면서 legacy scanner도 시작하지 않는 silent gap이
+가능하다. 이는 현재 현장 증상과 일치하는 우선 회귀 후보지만, 같은 회차의 Android
+health/logcat과 Target `event`가 없으므로 아직 확정 root cause는 아니다.
+
+후속 수정은 owner request와 OS registration liveness를 분리하고, process/package/
+Bluetooth 복귀 때 idempotent `stopScan`/`startScan` reconciliation 결과를 기록하며,
+최근 성공한 registration evidence가 없으면 정상 `nativeWake`로 표시하지 않아야 한다.
+무기한 재등록이나 action-1 반복은 현관 주변 휴대폰이 Target을 상시 `ARMED`로 만드는
+위험이 있으므로 OUTSIDE 재진입, RSSI hysteresis, single-flight와 접근 세션 상한을
+동시에 강제해야 한다.
+
+이 감사에서 확인한 silent gap은 2026-09-01 후보에서 수정됐다. durable
+`registration_enabled`는 native owner 요청으로만 사용하고, 현재 프로세스의 exact
+PendingIntent에 대한 `stopScan()`/`startScan()`이 성공한 경우에만 별도
+`registration_reconciled` evidence를 기록한다. 등록 실패, 명시적 stop, Bluetooth OFF,
+package replacement/boot 및 scan callback error는 evidence를 무효화한다. Application
+process start, Bluetooth ON, package/boot receiver는 Flutter와 독립적으로 즉시 reconcile하며,
+일시적 scanner 오류만 unique WorkManager로 최대 3회 재시도한다. 권한·보안·미지원 오류는
+자동 반복하지 않는다.
+
+네이티브 health 조회가 adapter/scanner의 일시적 부재를 처음 발견한 경우에도 stale
+reconciliation evidence를 무효화한 뒤 동일한 unique WorkManager 체인을 예약한다. 따라서
+Activity 전용 MethodChannel이나 이후 Bluetooth 상태 전환 없이도 bounded recovery가 가능하다.
+
+Flutter는 native request가 남아 있는 동안 legacy scanner를 계속 배제하지만,
+reconciliation evidence가 없으면 정상 `nativeWake`가 아닌 명시적 recovery 상태와 알림을
+표시한다. 이 recovery 경로는 GATT proof나 action-1을 호출하지 않는다. 후보 검증에서 OTA
+contract, 전체 Python 325개(환경 전용 PowerShell 1개 skip), Flutter 78개, hosted native
+selector 46개가 통과했고 format/analyze도 오류가 없었다. 로컬 Flutter 3.47.1 검증은 개발
+편의 증거이며, pinned hosted Flutter 3.44.8 CI, signed APK 게시·설치, 화면 OFF 접근과 Target
+`ARMED`는 여전히 별도 Gate다.
+
+원격/로컬 기능 비활성, 만료, credential 검증 실패 또는 owner 저장 실패가 발생하면 native
+PendingIntent 등록을 먼저 stop한 뒤 legacy owner를 게시한다. 복원된 SharedPreferences처럼
+owner marker와 등록 요청이 불일치해도 둘 중 하나가 남아 있는 동안 plugin과 Dart가 legacy
+AltBeacon을 배제하고, native stop 확인 뒤에만 legacy 초기화를 허용한다.
+
+반대로 native 등록을 켤 때는 UI, process start, Bluetooth ON, boot/package-replace 경로가
+먼저 인증된 feature decision과 native owner marker를 확정한다. `startScan()` 직전에는 임시
+cross-process native lease를 요구하므로 기존 legacy lease가 stop broadcast를 처리하기 전에는
+retryable recovery로 남고 두 스캔을 동시에 시작하지 않는다. fresh setup은 등록을 foreground
+service 시작보다 먼저 수행하며, worker retry는 synchronized durable request를 다시 확인한다.
+Keystore credential과 no-backup owner marker 없이 일반 preference만 복원되는 불일치를 막기
+위해 Android app backup도 비활성화했다. 기존 설치/업그레이드의 잔존 상태는 process-start
+feature decision이 다시 검증하고 비인가 등록을 stop한다.
+
 ## 1. 결론
 
 현재 앱에는 다음 경로가 **구현되어 있다**.

@@ -440,7 +440,12 @@ object BleGattHealthBridge {
       "lastActiveAclVersion" to last?.activeAclVersion,
       "lastGattPerformance" to last?.gattPerformance?.redactedMap(),
       "wakeRegistrationStatus" to wakeRegistration.status,
+      "wakeRegistrationRequested" to wakeRegistration.requested,
+      "wakeRegistrationReconciled" to wakeRegistration.reconciled,
       "wakeRegistered" to wakeRegistration.enabled,
+      "wakeRegistrationAttemptedAtEpochMs" to wakeRegistration.attemptedAtEpochMs,
+      "wakeRegistrationReconciledAtEpochMs" to wakeRegistration.reconciledAtEpochMs,
+      "wakeRegistrationLastCallbackAtEpochMs" to wakeRegistration.lastCallbackAtEpochMs,
       "handsFreeReady" to (
         decision.newWorkerEnabled && wakeRegistration.enabled && blockingReason == null
       ),

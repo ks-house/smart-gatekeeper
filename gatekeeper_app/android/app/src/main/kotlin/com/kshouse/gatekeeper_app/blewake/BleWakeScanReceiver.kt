@@ -25,6 +25,7 @@ class BleWakeScanReceiver : BroadcastReceiver() {
       }
       val newestTimestamp = matchingResults.maxOfOrNull { it.timestampNanos }
       val errorCode = intent.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, ScanCallbackError.NONE)
+      BleWakeRegistrar.recordScanCallback(context.applicationContext, errorCode)
       val event = BleWakeEvent(
         source = "ble_scan",
         scenario = "field",

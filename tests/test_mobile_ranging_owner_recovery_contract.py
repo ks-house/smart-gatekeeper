@@ -14,6 +14,12 @@ PLUGIN = (
     / "gatekeeper_app/android/app/libs/flutter_beacon_local/android/src/main/java/"
     "com/flutterbeacon/FlutterBeaconPlugin.java"
 ).read_text(encoding="utf-8")
+WORKER_STATE = (
+    ROOT
+    / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/"
+    "gatekeeper_app/gattworker/BleGattWorkerState.kt"
+).read_text(encoding="utf-8")
+MAIN = (ROOT / "gatekeeper_app/lib/main.dart").read_text(encoding="utf-8")
 
 
 class MobileRangingOwnerRecoveryContractTest(unittest.TestCase):
@@ -54,10 +60,17 @@ class MobileRangingOwnerRecoveryContractTest(unittest.TestCase):
         )[1].split("Future<void> stopScanning()", 1)[0]
         read_owner = start.index("final ownership = await _readBleOwnershipState();")
         native_gate = start.index("if (ownership.nativeWakeAuthoritative)")
+        recovery_gate = start.index(
+            "if (ownership.requiresNativeWakeReconciliation)"
+        )
+        release_gate = start.index("if (ownership.requiresNativeWakeRelease)")
         legacy_init = start.index("await flutterBeacon.initializeScanning;")
         self.assertLess(read_owner, native_gate)
-        self.assertLess(native_gate, legacy_init)
+        self.assertLess(native_gate, release_gate)
+        self.assertLess(release_gate, recovery_gate)
+        self.assertLess(recovery_gate, legacy_init)
         self.assertIn("_enterNativeWakeIdleLocked();", start)
+        self.assertIn("_enterNativeWakeRecoveryLocked(ownership);", start)
 
     def test_native_idle_replaces_failure_notification_without_legacy_scan(self) -> None:
         transition = SCANNER.split(
@@ -75,10 +88,49 @@ class MobileRangingOwnerRecoveryContractTest(unittest.TestCase):
         method = PLUGIN.split('call.method.equals("getBleOwnershipState")', 1)[1]
         method = method.split('call.method.equals("initialize")', 1)[0]
         self.assertIn('"native_wake"', method)
+        self.assertIn('"native_wake_recovery"', method)
         self.assertIn('"legacy_scanner"', method)
         self.assertIn('"nativeRequested"', method)
+        self.assertIn('"registrationRequested"', method)
+        self.assertIn('"registrationReconciled"', method)
+        self.assertIn('"registrationStatus"', method)
+        self.assertIn('"nativeExclusionRequired"', method)
         self.assertNotIn("credential", method.lower())
         self.assertNotIn("address", method.lower())
+
+    def test_unreconciled_native_owner_never_starts_legacy_or_action_one(self) -> None:
+        start = SCANNER.split(
+            "Future<void> startScanning({bool forceRestart = false})", 1
+        )[1].split("Future<void> stopScanning()", 1)[0]
+        recovery = SCANNER.split(
+            "Future<bool> _attemptNativeWakeReconciliationLocked()", 1
+        )[1].split("void _recordNativeWakeReconciliationFailure", 1)[0]
+        self.assertLess(
+            start.index("if (ownership.requiresNativeWakeReconciliation)"),
+            start.index("await flutterBeacon.initializeScanning;"),
+        )
+        self.assertIn("NativeWakeRegistrationBridge().register()", recovery)
+        self.assertNotIn("_triggerPrearm", recovery)
+
+    def test_policy_downgrade_releases_native_registration_before_legacy_owner(self):
+        decision = WORKER_STATE.split("fun decision(nowEpochMs", 1)[1].split(
+            "fun setLocalManualEnabled", 1
+        )[0]
+        release = decision.index("BleWakeRegistrar.stop(context)")
+        publish_owner = decision.index(
+            "coordinator.setNativeRequested(decision.newWorkerEnabled)"
+        )
+        self.assertLess(release, publish_owner)
+        self.assertIn("nativeRequested || registrationRequested", PLUGIN)
+        self.assertIn("nativeWakeRegistrationRequested()", PLUGIN)
+        self.assertIn("requiresNativeWakeRelease", SCANNER)
+        self.assertIn("NativeWakeRegistrationBridge().stop()", SCANNER)
+
+    def test_fresh_start_publishes_native_registration_before_service_legacy_lease(self):
+        ready = MAIN.split("if (ready) {", 1)[1].split("} else {", 1)[0]
+        register = ready.index("NativeWakeRegistrationBridge().register()")
+        service = ready.index("ForegroundServiceManager.startService()")
+        self.assertLess(register, service)
 
 
 if __name__ == "__main__":

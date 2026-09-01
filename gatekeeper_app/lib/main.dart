@@ -209,15 +209,17 @@ class _SmartKeyAppState extends State<SmartKeyApp> with WidgetsBindingObserver {
 
       final ready = missing.isEmpty;
       if (ready) {
-        await ForegroundServiceManager.startService();
         // Registration is reached from the fresh-install path only after the
-        // user-visible permission gate has completed. It is independent of
-        // Flutter scanning and can be retried from the recovery shell.
+        // user-visible permission gate has completed. Publish native ownership
+        // and reconcile its OS scan before the foreground service can acquire
+        // a legacy lease; the native lease gate remains the cross-process
+        // authority if an existing service is already alive.
         if (Platform.isAndroid) {
           try {
             await NativeWakeRegistrationBridge().register();
           } catch (_) {}
         }
+        await ForegroundServiceManager.startService();
       } else {
         // 권한이 부족한데도 "감시 중" 알림만 남는 오해를 방지한다.
         await ForegroundServiceManager.stopService();

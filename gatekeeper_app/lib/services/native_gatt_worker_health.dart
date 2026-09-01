@@ -105,7 +105,12 @@ class NativeGattWorkerHealth {
     required this.networkRequired,
     this.handsFreeReady = false,
     this.wakeRegistered = false,
+    this.wakeRegistrationRequested = false,
+    this.wakeRegistrationReconciled = false,
     this.wakeRegistrationStatus = 'not_registered',
+    this.wakeRegistrationAttemptedAtEpochMs,
+    this.wakeRegistrationReconciledAtEpochMs,
+    this.wakeRegistrationLastCallbackAtEpochMs,
     this.initialWorkExpedited = false,
     this.maxPresenceAgeMs,
     this.lastPresenceToDispatchMs,
@@ -135,7 +140,12 @@ class NativeGattWorkerHealth {
   final bool networkRequired;
   final bool handsFreeReady;
   final bool wakeRegistered;
+  final bool wakeRegistrationRequested;
+  final bool wakeRegistrationReconciled;
   final String wakeRegistrationStatus;
+  final int? wakeRegistrationAttemptedAtEpochMs;
+  final int? wakeRegistrationReconciledAtEpochMs;
+  final int? wakeRegistrationLastCallbackAtEpochMs;
   final bool initialWorkExpedited;
   final int? maxPresenceAgeMs;
   final int? lastPresenceToDispatchMs;
@@ -209,8 +219,16 @@ class NativeGattWorkerHealth {
       networkRequired: value['networkRequired'] == true,
       handsFreeReady: value['handsFreeReady'] == true,
       wakeRegistered: value['wakeRegistered'] == true,
+      wakeRegistrationRequested: value['wakeRegistrationRequested'] == true,
+      wakeRegistrationReconciled: value['wakeRegistrationReconciled'] == true,
       wakeRegistrationStatus:
           value['wakeRegistrationStatus']?.toString() ?? 'not_registered',
+      wakeRegistrationAttemptedAtEpochMs:
+          (value['wakeRegistrationAttemptedAtEpochMs'] as num?)?.toInt(),
+      wakeRegistrationReconciledAtEpochMs:
+          (value['wakeRegistrationReconciledAtEpochMs'] as num?)?.toInt(),
+      wakeRegistrationLastCallbackAtEpochMs:
+          (value['wakeRegistrationLastCallbackAtEpochMs'] as num?)?.toInt(),
       initialWorkExpedited: value['initialWorkExpedited'] == true,
       maxPresenceAgeMs: (value['maxPresenceAgeMs'] as num?)?.toInt(),
       lastPresenceToDispatchMs:

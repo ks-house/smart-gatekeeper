@@ -361,3 +361,63 @@ current phone/Target pair, but it remains a candidate objective until the signed
 exact-main APK is published, replacement-installed, and measured in repeated
 connected foreground and screen-off trials. Source/unit success alone does not
 claim the objective is met.
+
+## 15. 2026-09-01 registration reconciliation liveness correction
+
+Persistent native-wake intent and Android scan-registration evidence are now
+separate states. `registration_enabled` remains the durable, fail-closed owner
+request, but it no longer makes health or Flutter ownership report native wake
+as operational. Only a current-process idempotent `stopScan()`/`startScan()`
+whose platform return code is zero records `registration_reconciled=true` and
+the attempt/accept timestamps. Android exposes no API that queries whether a
+PendingIntent scan is still registered, so this is explicitly acceptance
+evidence rather than a permanent OS-liveness claim.
+
+Reconciliation evidence is cleared before a new attempt and on registration
+failure, explicit stop, Bluetooth leaving `STATE_ON`, a non-zero scan callback
+error, boot, and package replacement. Process start and Bluetooth `STATE_ON`
+perform native reconciliation without Flutter or an Activity. Boot and package
+receivers invalidate then reconcile. Transient scanner failures additionally
+enqueue one unique native WorkManager recovery after the synchronous attempt;
+that worker chain is capped at three attempts with exponential ten-second
+backoff. Permission, security and unsupported API failures remain user/actionable
+and are never retried blindly. A successful reconciliation cancels pending
+recovery, while durable disable cancels it before the best-effort platform stop.
+
+A health read that first observes a transient missing adapter/scanner uses the
+same unique retry chain after invalidating stale acceptance evidence. This keeps
+recovery independent of an Activity-owned MethodChannel or a later Bluetooth
+state transition; non-retryable permission, security and unsupported-platform
+states still remain fail closed.
+
+Health exposes requested versus reconciled state and bounded timestamps without
+addresses, credentials, proofs, or process identifiers. Legacy scanning remains
+excluded while native ownership is requested, even during recovery, so the fix
+does not create concurrent scanner owners or bypass signed rollout, credential,
+ACL, nonce, proof, sensor, relay, or OTA gates. The `FIRST_MATCH` re-entry
+lifecycle and Samsung screen-off repetition remain separate physical Gates; the
+host tests do not prove Target detection, `ARMED`, sensor actuation, or a door
+open.
+
+Remote/local feature disable, expiry, invalid credential state, owner-store
+failure, and restored stale preferences release the PendingIntent registration
+before publishing legacy ownership. As a second fail-closed layer, either the
+coordinator request or an unreleased registration request excludes AltBeacon;
+the app projects that mismatch as recovery and uses the native stop bridge
+before allowing legacy acquisition. This closes a native/legacy overlap window
+without turning a policy downgrade into an access action.
+
+The inverse transition is also ordered. UI, process-start, Bluetooth-restore,
+boot and package-replace registration paths evaluate the authenticated feature
+decision first. `startScan()` then requires a temporary cross-process native
+lease; if a running legacy scanner has not processed the stop broadcast and
+released its lease, registration fails with a retryable owner-unavailable state
+instead of overlapping. The worker rechecks durable request state under the
+synchronized registrar before each retry, so a concurrent disable cannot revive
+the registration after stop.
+
+Android backup is disabled for the smart-key app. Keystore-bound credentials and
+the no-backup owner marker cannot be safely reconstructed from restored ordinary
+SharedPreferences; restoring only `registration_enabled` would create a stale
+radio request rather than a valid identity. Process-start feature evaluation
+still clears such mismatches defensively for upgrades and legacy installs.

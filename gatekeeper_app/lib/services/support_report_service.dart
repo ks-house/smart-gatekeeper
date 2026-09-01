@@ -38,6 +38,15 @@ class SupportReportService {
         'healthy': health?.healthy,
         'hands_free_ready': health?.handsFreeReady,
         'wake_registered': health?.wakeRegistered,
+        'wake_registration_requested': health?.wakeRegistrationRequested,
+        'wake_registration_reconciled': health?.wakeRegistrationReconciled,
+        'wake_registration_status': health?.wakeRegistrationStatus,
+        'wake_registration_attempted_at_epoch_ms':
+            health?.wakeRegistrationAttemptedAtEpochMs,
+        'wake_registration_reconciled_at_epoch_ms':
+            health?.wakeRegistrationReconciledAtEpochMs,
+        'wake_registration_last_callback_at_epoch_ms':
+            health?.wakeRegistrationLastCallbackAtEpochMs,
         'stage': health?.detectionStage.name,
         'reason': health?.currentBlockingReasonCode ?? health?.lastReasonCode,
         'presence_to_dispatch_ms': health?.lastPresenceToDispatchMs,

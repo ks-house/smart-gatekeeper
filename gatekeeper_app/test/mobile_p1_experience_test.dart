@@ -36,6 +36,11 @@ void main() {
     final health = NativeGattWorkerHealth.fromMap(<Object?, Object?>{
       'healthy': true,
       'handsFreeReady': true,
+      'wakeRegistered': false,
+      'wakeRegistrationRequested': true,
+      'wakeRegistrationReconciled': false,
+      'wakeRegistrationStatus': 'reconciling',
+      'wakeRegistrationAttemptedAtEpochMs': 1724930000000,
       'lastReasonCode': 'NONE',
       'lastSession': <Object?, Object?>{
         'id': 'private-session-id',
@@ -48,6 +53,9 @@ void main() {
 
     expect(report, contains('sgk-mobile-support-v1'));
     expect(report, contains('event_ref'));
+    expect(report, contains('"wake_registration_requested": true'));
+    expect(report, contains('"wake_registration_reconciled": false'));
+    expect(report, contains('"wake_registration_status": "reconciling"'));
     expect(report, isNot(contains('private-session-id')));
     expect(report, isNot(contains('must-not-be-exported')));
     for (final forbidden in <String>[
