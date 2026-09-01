@@ -1567,3 +1567,24 @@ no broker ACL, publishes or installs no mobile/Target artifact, and performs no
 sensor, relay or physical door action. Normal policy review/merge, feature
 merge-connection and fresh CI, actual-main merge, signed publication,
 installation/reboot/readiness and physical observation remain separate Gates.
+
+## 53. Final authenticated access actor/result main baseline
+
+Feature PR #333 passed the required Hosted Trusted and feature checks, retained
+merge-connected head `ab0e772606b0af57cf952b650b9bdf31a97f714c`, and was
+merged normally as exact main
+`b29cb2497c4adf151b3d60eeab31acb525555340`. The reviewed immutable feature
+`23e28e14cf79e618070d0ea3543bf92910ca9558` and merge-connected head are both
+ancestors of that merge.
+
+All 100 protected normalized blobs are byte-identical across the immutable
+feature, merge-connected head and exact feature main. The transitional feature
+identity is retired in favor of the sole `current-main-baseline` pinned to that
+actual merge; the complete digest map, seven-workflow inventory and empty
+local-Action inventory remain unchanged.
+
+This final policy-only rotation deploys no Backend image or schema, reloads no
+broker ACL, publishes or installs no mobile/Target artifact, and changes no
+sensor, relay or physical door state. Hosted review and normal merge of this
+final policy, signed exact-main publication, installation/reboot/readiness and
+physical observation remain separate Gates.
