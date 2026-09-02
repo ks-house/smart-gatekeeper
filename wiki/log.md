@@ -6138,3 +6138,9 @@
 - All 42 focused trusted-workflow policy tests passed for the exact feature SHA, complete 100-path map, four changed protected blobs, seven-workflow inventory and empty local-Action inventory.
 - Full repository discovery passed 342/342 tests with one declared environment-only skip. Whitespace validation remained clean.
 - These are local policy/source contracts only; hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend deployment and HA runtime observation remain separate Gates.
+
+## [2026-09-03] compile | Finalize asynchronous MQTT Activity main policy
+
+- Policy PR #340 and feature PR #341 passed their hosted checks and merge-committed normally. Exact feature main is `a87ef21dc9f66b227831066f45fab8cf0176a0e7`, with immutable feature `94f473fc1373dd8c819ab2b3636372d7d6b2e374` and merge-connected head `e01057f98e64fcef2dff208a96124db8a3ffe547` in its ancestry.
+- Verified zero protected-path byte differences between immutable feature and exact feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to actual feature main; all 100 normalized blobs, seven workflows and the empty local-Action inventory remain exact.
+- This final policy-only candidate publishes or deploys nothing and changes no Target/mobile/OTA/GPIO/relay state. Hosted review/normal merge, exact Backend publication/NAS deployment, retained discovery readback and one new HA Activity observation remain separate Gates.

@@ -1660,3 +1660,24 @@ and performs no physical action. Normal policy review/merge, feature
 merge-connection and fresh CI, actual-main merge, exact Backend deployment,
 retained discovery readback and one new door-cycle/HA Activity observation
 remain separate Gates.
+
+## 57. Final asynchronous MQTT per-access HA Activity main baseline
+
+Feature PR #341 passed Hosted Trusted, Backend/MariaDB and OTA/schema checks,
+retained merge-connected head
+`e01057f98e64fcef2dff208a96124db8a3ffe547`, and was merged normally as exact
+main `a87ef21dc9f66b227831066f45fab8cf0176a0e7`. The immutable feature
+`94f473fc1373dd8c819ab2b3636372d7d6b2e374` and merge-connected head are both
+ancestors of that merge.
+
+All 100 protected normalized blobs are byte-identical across immutable feature,
+merge-connected head and exact feature main. The transitional feature identity
+is retired in favor of the sole `current-main-baseline` pinned to that actual
+merge; the complete digest map, seven-workflow inventory and empty local-Action
+inventory remain unchanged.
+
+This final policy-only rotation publishes no Home Assistant discovery payload,
+deploys no Backend image and changes no Target/mobile/OTA/GPIO/relay state.
+Hosted review and normal merge of this policy, exact Backend publication/NAS
+deployment, retained discovery readback and one new physical access/HA Activity
+observation remain separate Gates.
