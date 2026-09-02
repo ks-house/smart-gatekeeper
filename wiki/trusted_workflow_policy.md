@@ -1633,6 +1633,29 @@ Assistant discovery payload. Hosted review and normal merge of this policy,
 exact Backend image publication/NAS deployment, retained discovery readback and
 an over-30-second live HA observation remain separate Gates.
 
+## 58. Signed MQTT terminal completion authorization candidate
+
+Immutable feature candidate
+`64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` retains the single safe-state
+MQTT owner while carrying signed `arm` and `manual_remote` command sessions
+through the Target FSM to a deferred HMAC terminal status. It also teaches the
+Backend and administrator projection the exact local/signed sensor/manual phase
+profiles so Home Assistant Activity can advance after a remote door cycle.
+
+The indivisible inventory remains 100 protected paths. Exactly five normalized
+protected blobs change together: the Target publisher workflow's exact build
+input digest map, Backend main/admin HTML and their two direct tests. The other
+95 protected bytes, seven-workflow inventory and empty local-Action inventory
+remain identical to trusted main. The sole
+`signed-mqtt-terminal-64a62fe-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+This policy-only authorization publishes no firmware or Backend image, deploys
+nothing and performs no physical action. Normal review/merge, feature
+merge-connection and fresh CI, actual-main merge, Backend deployment, signed
+Target OTA install/reboot/health and a new administrator/HA terminal observation
+remain separate Gates.
+
 ## 56. Asynchronous MQTT per-access HA Activity authorization candidate
 
 Immutable feature candidate
