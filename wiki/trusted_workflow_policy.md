@@ -1632,3 +1632,31 @@ This final policy-only rotation deploys no Backend image and publishes no Home
 Assistant discovery payload. Hosted review and normal merge of this policy,
 exact Backend image publication/NAS deployment, retained discovery readback and
 an over-30-second live HA observation remain separate Gates.
+
+## 56. Asynchronous MQTT per-access HA Activity authorization candidate
+
+Immutable feature candidate
+`94f473fc1373dd8c819ab2b3636372d7d6b2e374` keeps the Target's existing
+access-critical MQTT deferral and adds a Backend/Home Assistant completion
+surface that changes once for every HMAC-verified terminal session. Backend
+derives a non-identifying `<boot_count>-<terminal_sequence>` marker and
+`SUCCEEDED`/`TERMINATED`; the new `[Gatekeeper] 최근 출입 결과` discovery
+sensor renders that pair so repeated successful `IDLE -> IDLE` cycles still
+advance Home Assistant Activity without synchronous MQTT socket work.
+
+The indivisible inventory remains 100 protected paths. Exactly four normalized
+protected blobs change together: `backend/app/home_assistant_bridge.py`,
+`backend/app/main.py` and their two direct tests. The other 96 protected bytes,
+the seven-workflow inventory and empty local-Action inventory remain identical
+to trusted main. The sole
+`mqtt-access-history-94f473f-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+The projection excludes session UUID, credential/actor reference, reason and
+HMAC tag, and repeated periodic status for one terminal marker does not create
+duplicate Activity rows. This policy-only authorization publishes no discovery
+payload, deploys no Backend image, changes no Target/mobile/OTA/GPIO/relay code
+and performs no physical action. Normal policy review/merge, feature
+merge-connection and fresh CI, actual-main merge, exact Backend deployment,
+retained discovery readback and one new door-cycle/HA Activity observation
+remain separate Gates.
