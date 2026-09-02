@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c"
-EXPECTED_BUNDLE_ID = "ha-access-state-81ee01a-persistent-baseline"
+MERGED_MAIN_COMMIT = "993c1b6097992bce9fc4f7791a3033f9a34c7f9e"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 977f015b2f839a23fd863957491abff244a2eb7047e3f08aab35096eaf2ab9d5
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -121,10 +121,7 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 4677a99651767157abe826744018e052d31c754890ecd32cce5f24712b3c21eb
 tests/test_target_security_ota.py 34a98b9ae139d96e8a13611dc5c6f05c8d2b96cbd0538d7d09fe6ef3d627e8e3
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    "backend/app/home_assistant_bridge.py",
-    "backend/tests/test_home_assistant_bridge.py",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1080,8 +1077,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 2)
-    self.assertEqual(len(locally_unchanged_protected), 98)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 100)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
