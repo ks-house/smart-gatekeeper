@@ -1825,3 +1825,32 @@ tracking.
   refreshed. The personal-production firmware built warning-free at 75,880 bytes RAM and 1,766,442
   bytes application flash. Protected-policy rotation, normal merge, exact Backend/Target deployment
   and a repeated live access test remain open; no installed device changed from this local work.
+
+## 2026-09-03 crash-durable access Activity rollout
+
+- Policy PR #347, feature PR #348 and final-policy PR #349 passed their hosted
+  checks and merge-committed normally. Exact feature main is
+  `6aa8d188f509f2135c1551abca9284022ef88e2d`; final policy main is
+  `f4e22654eca1bce44044b5a461d2185c5982806a`, and all 102 protected blobs
+  retain the immutable feature bytes.
+- Owner-approved Backend run `33668277642` completed immutable image
+  publication, schema 013 migration and restricted NAS deployment. Independent
+  strict-TLS `/live` and `/ready` returned HTTP 200 for exact feature main with
+  every check true, including database schema, MQTT, access-event collector,
+  access-evidence integrity and build identity.
+- Target run `33668277535` built, encrypted, signed, atomically published and
+  HTTPS-read-back `2.1.436+main.g6aa8d18`, build ID
+  `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d`. Publication is complete,
+  but no fresh Target boot/version observation proves installation yet.
+- The owner reported that the recent-access result changed. This confirms the
+  already-deployed latest-status entity advanced; it does not by itself prove
+  schema 013 canonical history, the administrator row or one HA event for every
+  completion.
+- Windows Computer Use failed before browser selection because the WSL cwd was
+  not accepted as a Windows-local URI. The Target MQTTS principal correctly
+  could not read status or publish to the HA bridge under the reviewed broker
+  ACL, and station-local TCP/80 recovery remained unreachable. No duplicate OTA
+  request, direct unsigned command, NVS erase, full flash or relay action was
+  attempted. One owner press of the HA OTA button and subsequent exact
+  version/reboot/health readback remain the installation Gate; repeated live
+  administrator/HA correlation remains the delivery Gate.
