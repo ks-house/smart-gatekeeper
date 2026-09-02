@@ -119,11 +119,11 @@
   },
   "approved_bundles": [
     {
-      "id": "crash-durable-access-ca29776-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "ca2977638c535aa8ba7bc4ddbeb07342051d1f50"
+        "commit": "6aa8d188f509f2135c1551abca9284022ef88e2d"
       },
       "files": {
         ".github/workflows/deploy.yml": "4350339bac833ed6ac744940dc35f31fb8a41b45b8a094cb5065cd181678a98e",

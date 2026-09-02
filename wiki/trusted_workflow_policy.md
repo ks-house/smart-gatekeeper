@@ -1783,3 +1783,25 @@ Target, relay or door action. Normal policy review/merge, feature merge-
 connection, fresh CI, actual-main merge, schema 013 NAS deployment, Target
 install/reboot/health and repeated administrator/HA runtime observations remain
 separate Gates.
+
+## 62. Final crash-durable access Activity main baseline
+
+Feature PR #348 passed the trusted policy, Backend/MariaDB, OTA/schema and
+firmware canary checks. Merge-connected head
+`365fc9790deaacc8a81ce78ac3979cb38198aee9` contains immutable feature
+`ca2977638c535aa8ba7bc4ddbeb07342051d1f50` and policy main
+`418f16a2787b7085978b85fc78b54899eb84b7f3`, and was merged normally as exact
+feature main `6aa8d188f509f2135c1551abca9284022ef88e2d`.
+
+All 102 protected normalized blobs are byte-identical across the immutable
+feature, merge-connected head and exact feature main. The transitional
+`crash-durable-access-ca29776-persistent-baseline` identity is retired in favor
+of the sole `current-main-baseline` pinned to that actual merge. The complete
+digest map, seven-workflow inventory and empty local-Action inventory remain
+unchanged.
+
+This final policy-only rotation publishes no Backend or Target artifact,
+migrates no NAS schema and changes no Home Assistant, relay or physical door
+state. Hosted review/normal merge, exact Backend schema 013 deployment, signed
+Target OTA publication/install/reboot/health and repeated live administrator/HA
+correlation remain separate Gates.
