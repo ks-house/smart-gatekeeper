@@ -1842,6 +1842,13 @@ tracking.
   HTTPS-read-back `2.1.436+main.g6aa8d18`, build ID
   `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d`. Publication is complete,
   but no fresh Target boot/version observation proves installation yet.
+- The documentation-only main merge then completed Target run `33670207513`
+  and advanced the atomic OTA pointer to final exact-main
+  `2.1.438+main.gb9180af`, build ID
+  `main-438-b9180af2c36d4ee048dc27d397c400b8fb2b503f`. Its manifest and immutable
+  encrypted artifact passed NAS stage/readback and independent HTTPS binding.
+  Runtime firmware inputs are unchanged from the reviewed feature, but this
+  newer identity is now the only correct installation target.
 - The owner reported that the recent-access result changed. This confirms the
   already-deployed latest-status entity advanced; it does not by itself prove
   schema 013 canonical history, the administrator row or one HA event for every

@@ -6266,3 +6266,9 @@
 - Target run `33668277535` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.436+main.g6aa8d18`, build ID `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d`. Publication is not installation evidence.
 - The owner reported that the recent-access result changed. This is positive evidence for the already-deployed latest-status projection only; it does not yet prove every schema 013 canonical event, administrator row or HA Activity event.
 - Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows-local URI. The reviewed Target broker principal could not read status or publish HA ingress, and station-local TCP/80 recovery timed out. No duplicate OTA request, unsigned command, NVS erase, full flash or relay operation was attempted. One owner HA OTA press, exact post-reboot version/health readback and repeated administrator/HA correlation remain open.
+
+## [2026-09-03] test | Stabilize final exact-main Target OTA pointer
+
+- The documentation merge's main run `33670207513` completed successfully and atomically published `2.1.438+main.gb9180af`, build ID `main-438-b9180af2c36d4ee048dc27d397c400b8fb2b503f`; signed manifest, immutable encrypted artifact, NAS stage/readback and independent HTTPS binding all passed.
+- The reviewed runtime firmware bytes remain the crash-durable feature bytes, but version precedence makes `2.1.438` the only current installation target. Intermediate `2.1.436` and `2.1.437` must not be used for the requested final proof.
+- No OTA trigger, Target reboot, relay operation or physical access occurred in this observation. One owner HA OTA press followed by exact `2.1.438` boot/health readback remains required.
