@@ -6246,3 +6246,15 @@
 - All 42 focused trusted-workflow policy tests passed for exact feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50`, the complete 102-path map, 16 changed protected blobs, seven workflows and empty local-Action inventory.
 - Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and repository whitespace validation also passed.
 - These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend schema 013 deployment, Target installation and repeated administrator/HA runtime observations remain separate Gates.
+
+## [2026-09-03] compile | Finalize crash-durable access Activity main policy
+
+- Policy PR #347 and feature PR #348 passed their required hosted checks and merge-committed normally. Exact feature main is `6aa8d188f509f2135c1551abca9284022ef88e2d`, with immutable feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50` and merge-connected head `365fc9790deaacc8a81ce78ac3979cb38198aee9` in its ancestry.
+- Verified that all 102 protected normalized blobs are byte-identical across immutable feature, merge-connected head and actual feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to that main; seven workflows and the empty local-Action inventory remain exact.
+- This final policy-only candidate publishes and deploys nothing. Backend schema 013 deployment, signed Target publication/install/reboot/health and repeated administrator/HA runtime evidence remain separate Gates.
+
+## [2026-09-03] test | Validate final crash-durable main policy candidate
+
+- All 42 focused trusted-policy tests passed with the sole `current-main-baseline` pinned to actual feature main `6aa8d188f509f2135c1551abca9284022ef88e2d` and all 102 protected paths locally exact.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON and whitespace validation passed.
+- This remains local final-policy evidence until hosted review and normal merge; it does not deploy schema 013 or publish/install the Target firmware.
