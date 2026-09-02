@@ -173,15 +173,17 @@ volatile overflow에서는 가장 오래된 record를 기존 durable NVS queue�
 동작 증거가 아니며 exact signed OTA install→reboot→health 후 같은 접근 시험이 필요하다.
 
 Authenticated event/status도 같은 경계를 따른다. GATT/FSM code는 actor ref와 MAC-covered record를
-bounded outbox에 넣을 뿐 TLS write를 기다리지 않는다. 기존 단일 loopTask의 PubSubClient owner가
+bounded outbox에 넣을 뿐 TLS write를 기다리지 않는다. Signed MQTT terminal은 relay lifecycle 종료 뒤
+8-entry NVS queue에 먼저 commit하고 NVS 실패 때만 RAM outbox로 fallback한다. 기존 단일 loopTask의 PubSubClient owner가
 safe phase에서 oldest-first publish하고, Backend Paho callback도 DB를 직접 쓰지 않고 bounded worker로
 넘긴다. 따라서 여기서 말하는 asynchronous/non-critical은 concurrent PubSubClient owner를 추가했다는
 뜻이 아니라 access-critical sensor/relay 진행이 socket/DB I/O를 기다리지 않는다는 뜻이다.
 
 최신 terminal summary는 같은 boot RAM에서 우선 status로 내보내고 Backend가 수신하면 immutable하게
 저장한다. 갑작스러운 power loss가 terminal 뒤 첫 signed status보다 먼저 발생하면 RAM summary는
-사라질 수 있다. 다음 boot나 이벤트 시각만으로 성공을 재구성하지 않으며, 이 best-effort 공백은
-door 결과를 추측해 메우지 않는다.
+사라질 수 있지만, signed MQTT arm/manual은 같은 terminal callback에서 별도 HMAC canonical event를
+NVS에 먼저 기록하므로 다음 boot에서 원래 source position으로 재전송한다. Local GATT latest-summary와
+유한 queue overflow에는 여전히 best-effort 경계가 있고, 어느 경로도 door 결과를 추측해 메우지 않는다.
 
 Signed MQTT `arm`과 `manual_remote`는 Local GATT proof lifecycle과 별도이므로 command callback에서
 인증된 command session UUID만 RAM tracker에 시작한다. FSM callback은 `ARMED`, sensor, relay ON/OFF와
@@ -189,6 +191,12 @@ terminal bit만 메모리에 기록하고 MQTT/TLS를 호출하지 않는다. Te
 하나 배정해 기존 signed status summary에 넣으며, 단일 `loopTask`가 safe state에서 그 최신 status를
 전송한다. Local GATT sequence와 충돌하지 않도록 양쪽 high-water를 서로 전진시킨다. 따라서 command
 PUBACK/ACK는 즉시 유지되면서 실제 FSM 완료는 나중의 HMAC-verified terminal summary로 별도 관측된다.
+
+Backend schema 013은 인증된 canonical event history 행과 HA event projection outbox 행을 한 transaction으로
+commit한다. 별도 worker가 oldest pending row를 QoS 1/non-retained로 발행하고 broker PUBACK 뒤에만 완료로
+표시하므로 DB commit과 HA publish 사이의 API restart는 미완료 row 재시도로 복구된다. 이 구간은
+at-least-once이므로 PUBACK 직후 DB mark 전 crash에는 같은 marker가 중복 전달될 수 있다. Target→broker는
+여전히 PubSubClient QoS 0이고 queue도 유한하므로 schema 013이 end-to-end exactly-once를 뜻하지 않는다.
 - relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
   생겨도 timer task가 물리 출력을 OFF
 - relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소

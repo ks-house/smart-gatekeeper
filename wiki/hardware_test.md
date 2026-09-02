@@ -967,3 +967,16 @@ an inference from application HMAC tests.
 | Repository regression | Initial repository discovery ran 343 tests: 337 passed, one environment-only case skipped and six assertions identified only the expected protected-policy/build-input digest drift. The three exact Target build-input hashes were then refreshed and its focused 18-test contract passed | FUNCTIONAL PASS; trusted policy authorization still pending |
 | ESP32-C6 build | `esp32c6_personal_production` compiled and linked without warnings at 75,880/327,680 bytes RAM (23.2%) and 1,766,442/7,340,032 bytes application flash (24.1%) | PASS for local build and OTA partition fit; not a signed artifact, install, reboot or physical door result |
 | Deployment boundary | No GitHub push, Backend deployment, Target publication/OTA, relay command or physical access was performed | PENDING protected merge, exact deployment and at least two live consecutive accesses with admin/HA readback |
+
+## 2026-09-03 crash-durable terminal and HA projection candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner latest-result observation | The owner reported that the recent-access result changed after the latest test | POSITIVE runtime observation for the latest-status projection only; it does not prove every canonical event, administrator row or failure recovery |
+| Target production enqueue contract | Signed MQTT arm/manual terminal writes the exact HMAC canonical record to the 8-entry NVS queue before its callback returns, falling back to the 16-entry RAM outbox only if NVS rejects the write; no `client.publish` occurs in that producer | PASS for reboot-durable bounded enqueue without synchronous MQTT; finite overflow and QoS 0 delivery remain explicit gaps |
+| Backend atomicity | Regression commits `access_event_history` and `ha_access_event_outbox` in one transaction and rolls both back when outbox insertion fails | PASS for eliminating DB-row-without-pending-HA-record at commit time |
+| HA retry/PUBACK | Worker regression drained two consecutive committed rows in ID order, waited for QoS 1 PUBACK and marked each only afterwards; noncanonical/inconsistent stored payloads were rejected | PASS for restart-recoverable at-least-once HA projection; crash after PUBACK but before DB mark may repeat the same marker |
+| Schema migration | Real Docker/MariaDB run passed all 17 migration tests, including idempotent schema 013 up and N-1 rollback preservation of the pending-delivery table | PASS for host migration/rollback contract; live NAS backup/migration/readiness is separate |
+| Backend regression | Full Backend discovery passed 203 tests with two declared environment-only skips; the focused registry suite passed 38/38 including retry of the same row after a missing PUBACK | PASS for final local Backend source freeze |
+| ESP32-C6 build | `esp32c6_personal_production` compiled warning-free at 75,880/327,680 bytes RAM (23.2%) and 1,766,444/7,340,032 bytes application flash (24.1%) | PASS for local build/partition fit; not signed publication, installation, reboot/health or physical access |
+| End-to-end boundary | Target publisher remains QoS 0 with no Backend application ACK and both queues are finite | NOT absolute exactly-once; protected merge/deploy, outage/overflow soak and repeated live admin plus HA Activity correlation remain open |

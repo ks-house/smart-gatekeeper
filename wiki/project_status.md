@@ -18,6 +18,25 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-03 crash-durable access Activity candidate
+
+- 첫 post-install manual terminal과 HA entity-specific Activity가 실제로 갱신됐고, owner가 이번에도
+  `[Gatekeeper] 최근 출입 결과` 변경을 확인했다. 이는 signed status→Backend→HA latest-result 경로의
+  양성 runtime 증거지만 연속 모든 event의 무손실이나 관리자 이력까지 단독으로 증명하지 않는다.
+- 기존 후속 후보의 signed MQTT canonical terminal은 volatile outbox에 먼저 들어가므로 relay 완료와
+  NVS spill 사이 reset에서 잃을 수 있었다. 이제 terminal callback은 MQTT/TLS를 호출하지 않은 채
+  exact HMAC record를 8-entry NVS queue에 먼저 commit하고, NVS 실패 때만 16-entry RAM outbox를 쓴다.
+- Backend schema 013은 canonical access history와 HA projection outbox를 한 transaction으로 commit한다.
+  독립 worker가 oldest pending row를 QoS 1/non-retained로 전송하고 PUBACK 뒤 완료 표시하므로 API/broker
+  restart 후에도 미완료 projection을 재시도한다. PUBACK 뒤 DB mark 전 crash의 중복 가능성을 허용하는
+  at-least-once이며, stable marker로 동일 event를 식별한다.
+- Target publish는 여전히 PubSubClient QoS 0이고 queue는 유한하다. 따라서 이 후보는 reset과
+  Backend commit/publish crash gap을 닫지만, 무한 broker outage나 Target→broker 단절을 포함한 절대
+  exactly-once는 아니다. Application-level Backend ACK 및 overflow soak는 열린 강화 Gate다.
+- Focused Backend 38 tests, full Backend 203 tests, 실제 MariaDB migration 17 tests와 personal-production
+  ESP32-C6 build가 통과했다. trusted-policy rotation, normal merge,
+  Backend schema 013 배포, Target OTA/install/reboot/health와 연속 live admin/HA readback은 아직 남아 있다.
+
 ## 2026-09-03 signed MQTT terminal-history correction candidate
 
 - 첨부 관리자 화면은 01:31:26 `MOBILE_REMOTE`를 이승환·401호의 legacy
@@ -1781,8 +1800,10 @@ tracking.
 - The local candidate emits one separately HMAC-signed canonical terminal for every signed MQTT arm
   or manual session, enqueues it without socket I/O, preserves FIFO through the existing NVS queue,
   and derives its `mqtt_prearm`/`mqtt_manual_remote` route from a MAC-covered event code.
-- Backend publishes a QoS 1 HA event only after a new authenticated DB insert. Exact replay is stored
-  idempotently and does not create a duplicate HA Activity row. The existing latest-result sensor
+- Backend schema 013 commits an HA projection outbox row with each authenticated DB insert. Its worker
+  publishes QoS 1 and waits for PUBACK before completion; an exact replay reuses the same outbox identity.
+  A crash after PUBACK but before DB acknowledgement may repeat the stable marker, so this is durable
+  at-least-once rather than exactly-once. The existing latest-result sensor
   remains unchanged for Backend N / Target N-1 compatibility.
 - Backend 197/197 tests passed with two environment-only skips; repository discovery ran 343 tests
   with 337 passes, one skip and six expected trusted-policy/build-map mismatches before the map was

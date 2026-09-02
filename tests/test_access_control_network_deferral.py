@@ -158,7 +158,12 @@ class AccessControlNetworkDeferralTests(unittest.TestCase):
         )[1].split("bool enqueueEventOutbox", 1)[0]
         self.assertIn("deriveAccessEventMac", deferred)
         self.assertIn("setCanonicalV2Detail", deferred)
-        self.assertIn("enqueueEventWithDurableSpill(event)", deferred)
+        self.assertIn("g_offline_queue.push(event)", deferred)
+        self.assertIn("return enqueueEventOutbox(event)", deferred)
+        self.assertLess(
+            deferred.index("g_offline_queue.push(event)"),
+            deferred.index("return enqueueEventOutbox(event)"),
+        )
         self.assertNotIn("client.publish", deferred)
 
         update = self.mqtt.split("void MqttManager::update()", 1)[1]

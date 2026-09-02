@@ -6209,3 +6209,15 @@
 - The full Backend suite passed 197 tests with two declared environment-only skips. The personal-production ESP32-C6 build completed without warnings at 75,880/327,680 bytes RAM and 1,766,442/7,340,032 bytes application flash.
 - Repository discovery ran 343 tests: 337 passed, one environment-only case skipped and six expected assertions reported pre-authorization protected/build digest drift. The three exact Target build-input hashes were refreshed and the focused 18-test publication contract then passed.
 - These are local source/build results only. Trusted policy rotation, normal review/merge, exact Backend/Target publication and deployment, post-install health and repeated live administrator/HA Activity evidence remain separate Gates.
+
+## [2026-09-03] fix | Make signed terminal enqueue and HA projection crash durable
+
+- Changed signed MQTT arm/manual terminal production to commit the exact HMAC canonical record directly to the existing bounded NVS queue before returning, with RAM fallback only when NVS rejects the write. Authentication, sensor, relay and cooldown still perform no MQTT socket I/O.
+- Added schema 013 `ha_access_event_outbox`; the canonical access-history row and its Home Assistant projection now commit in one database transaction. A separate oldest-first worker waits for QoS 1 broker PUBACK before marking delivery and retries pending rows after API or broker restart.
+- Defined the projection as at-least-once: a crash after PUBACK but before the database mark may redeliver the stable event marker. Target PubSubClient publication remains QoS 0 and the NVS/RAM queues remain finite, so absolute end-to-end exactly-once is not claimed.
+
+## [2026-09-03] test | Validate crash-durable access Activity candidate
+
+- Focused Target deferral and Backend registry coverage passed, including NVS-first/no-MQTT production, atomic rollback, two consecutive oldest-first HA rows, PUBACK-before-mark and strict stored-payload validation.
+- The final full Backend suite passed 203 tests with two declared environment-only skips, and the focused registry suite passed 38/38 including retry of the same row after a missing PUBACK. A real Docker/MariaDB run passed all 17 migration tests including idempotent schema 013 and preservation of pending delivery state across N-1 rollback.
+- The personal-production ESP32-C6 build completed without warnings at 75,880 bytes RAM and 1,766,444 bytes application flash. The owner's latest-result change is recorded only as positive runtime evidence for the already-deployed status projection; no new candidate code is merged, deployed or installed by that observation.

@@ -173,6 +173,7 @@ bool actorEventCodeAllowsCredentialRef(const char* code) {
 }
 
 bool enqueueEventWithDurableSpill(const sgk::CanonicalEvent& event);
+bool enqueueEventOutbox(const sgk::CanonicalEvent& event);
 
 bool isSignedCommandTerminalCode(const char* code) {
     return code != nullptr &&
@@ -281,7 +282,12 @@ bool enqueueSignedCommandTerminalEvent(
         return false;
     }
     std::memset(eventTag, 0, sizeof(eventTag));
-    return enqueueEventWithDurableSpill(event);
+    // A signed terminal is the one record the operator must not lose on a
+    // reset between relay completion and the next MQTT update. Persist it
+    // before returning from the terminal callback; if NVS itself is
+    // unavailable, retain the exact record in the bounded RAM outbox.
+    if (g_offline_queue.push(event)) return true;
+    return enqueueEventOutbox(event);
 }
 
 bool enqueueEventOutbox(const sgk::CanonicalEvent& event) {
