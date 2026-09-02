@@ -115,6 +115,40 @@ void main() {
     expect(health.networkRequired, isFalse);
   });
 
+  test('bridge dismisses the transient access-ready notification', () async {
+    MethodCall? observed;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      observed = call;
+      return true;
+    });
+
+    final dismissed =
+        await NativeGattWorkerHealthBridge().dismissAccessReadyNotification();
+
+    expect(observed?.method, 'dismissAccessReadyNotification');
+    expect(observed?.arguments, isNull);
+    expect(dismissed, isTrue);
+  });
+
+  test('native match-lost projection returns detection state to waiting', () {
+    final health = NativeGattWorkerHealth.fromMap(<Object?, Object?>{
+      'latestDetection': <String, Object?>{
+        'source': 'ble_scan_exit',
+        'success': false,
+        'receivedEpochMs': 2000,
+        'screenInteractive': false,
+        'resultCount': 1,
+        'errorCode': 0,
+      },
+    });
+
+    expect(
+      health.detectionStageAt(DateTime.fromMillisecondsSinceEpoch(2001)),
+      TargetDetectionStage.waiting,
+    );
+  });
+
   test('detection stage distinguishes waiting, live authentication and failure',
       () {
     const detection = TargetDetectionSummary(

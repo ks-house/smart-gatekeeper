@@ -239,6 +239,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
     if (_activeAccessSessionId != targetSessionId) return;
     _closedAccessSessionId = targetSessionId;
     _stopAccessSessionPolling();
+    unawaited(_healthBridge.dismissAccessReadyNotification());
   }
 
   void _stopAccessSessionPolling() {

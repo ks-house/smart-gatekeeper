@@ -868,6 +868,17 @@ an inference from application HMAC tests.
 | Bridge and Target state | Retained bridge availability was `online`; a fresh non-retained verified projection reported boot 695, revision 29189, `IDLE`, unarmed and relay OFF/pin 1 | PASS for current signed projection and fail-safe output command; no relay-contact/door motion implied |
 | Rendered and physical boundary | No authenticated HA frontend entity-registry read, over-30-second UI observation, new administrator history row, sensor passage, GPIO/contact measurement or door-leaf observation was performed after this deployment | PENDING one new family-phone access and rendered UI/physical acceptance |
 
+## 2026-09-02 mobile transient access-ready notification candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Stale-notification diagnosis | Native `출입 준비 완료` used one fixed notification ID and `setAutoCancel(true)` only; no timeout, region-exit cancellation or exact-session terminal cancellation existed | CONFIRMED source cause for a notice surviving until user interaction; not an OEM runtime trace |
+| Bounded fallback | The access-ready policy now supplies 65,000 ms to `NotificationCompat.setTimeoutAfter`, covering the Target's 60-second ARMED window plus delivery grace; attention-required failure notices remain unbounded under a separate notification ID | SOURCE CONTRACT; Android/OEM delivery must be observed on replacement APK |
+| Area exit | PendingIntent scan requests `FIRST_MATCH | MATCH_LOST`; valid match-lost dismisses the ready notice and does not invoke `BleGattWorkScheduler.onPresence`. Error callbacks do not infer exit | SOURCE CONTRACT; physical exit latency and OEM callback reliability pending |
+| Normal/terminal result | Exact-session polling dismissal runs only after the active Target session generation closes, including terminal result and bounded expiry | SOURCE CONTRACT; live Backend/mobile session result observation pending |
+| Local regression suites | Flutter analysis reported no issues; Flutter tests passed 97/97; Android targeted JVM tests passed 60/60; repository contracts passed 342/342 with one declared skip; `git diff --check` passed | PASS for local source/unit/contract evidence; hosted exact-head and physical behavior remain pending |
+| Safety boundary | No Target, Backend, HA, sensor, relay or door control semantics change | PASS by changed-file scope; signed publication/install and physical behavior remain pending |
+
 ## 2026-09-02 authenticated actor/result final-main rollout evidence
 
 | Test | Observed result | Verdict / boundary |

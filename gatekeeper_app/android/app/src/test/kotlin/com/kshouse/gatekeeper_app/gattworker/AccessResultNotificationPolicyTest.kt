@@ -17,6 +17,14 @@ class AccessResultNotificationPolicyTest {
     assertFalse(notice.detail.contains("문이 열"))
     assertFalse(notice.detail.contains("문 열림"))
     assertFalse(notice.title.contains("확인"))
+    assertEquals(
+      AccessResultNotificationPolicy.ACCESS_READY_TIMEOUT_MS,
+      notice.timeoutAfterMs,
+    )
+    assertEquals(
+      AccessResultNotificationPolicy.ACCESS_READY_NOTIFICATION_ID,
+      AccessResultNotificationPolicy.notificationIdFor(notice),
+    )
   }
 
   @Test
@@ -35,6 +43,11 @@ class AccessResultNotificationPolicyTest {
     assertEquals("스마트키 인증 실패", notice.title)
     assertFalse(notice.title.contains("문 열림"))
     assertFalse(notice.detail.contains("문이 열"))
+    assertNull(notice.timeoutAfterMs)
+    assertEquals(
+      AccessResultNotificationPolicy.ATTENTION_NOTIFICATION_ID,
+      AccessResultNotificationPolicy.notificationIdFor(notice),
+    )
   }
 
   @Test

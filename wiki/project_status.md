@@ -18,6 +18,24 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-02 transient mobile access-ready notification correction
+
+- The observed morning-stale `출입 준비 완료` notification is explained by
+  the current native result notifier using only Android `autoCancel`, which
+  removes a notification after a user tap but supplies no lifecycle timeout or
+  session/region cancellation.
+- The source candidate bounds this transient ARMED notice to 65 seconds,
+  enables OS `FIRST_MATCH | MATCH_LOST`, dismisses on a valid match-lost exit
+  without dispatching access, and dismisses when exact-session Backend polling
+  finishes normally, terminally or at its bounded deadline. Scan errors do not
+  infer exit, and exit projects to mobile waiting rather than failure.
+- This changes no Target proof, ACL, relay, sensor, Backend, HA or OTA recovery
+  contract. Local Flutter analysis and 97 tests, targeted Android JVM 60/60,
+  repository contracts 342/342 with one declared skip, and diff checks passed.
+  Protected merge, signed mobile OTA publication, replacement installation on
+  each phone and screen-off area-exit/normal-door observation remain separate
+  Gates.
+
 ## 2026-09-02 HA verified access-state availability deployed
 
 - Policy PR #335, feature PR #336 and final-policy PR #337 passed their

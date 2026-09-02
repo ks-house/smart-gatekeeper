@@ -6089,3 +6089,26 @@
 - Owner-approved Backend run `33642436897` passed security/MariaDB, evidence verification, exact image publication and NAS deployment for feature main `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`. Public `/live` and `/ready` returned HTTP 200 for that exact build with every readiness check true.
 - Strict-TLS MQTTS readback received retained discovery for verified state, relay and pre-arm. All three now omit `expire_after` and point to the Backend verified-status topic; retained bridge availability was `online`.
 - A fresh non-retained verified projection reported Target boot 695, revision 29189, IDLE, unarmed and relay OFF/pin 1. This closes exact Backend deployment and retained discovery correction, but not a rendered HA UI observation, new administrator history row, GPIO/contact or physical door result.
+
+## [2026-09-02] fix | Bound and dismiss transient mobile access-ready notification
+
+- Confirmed that native `출입 준비 완료` used only Android `autoCancel`, so it could survive from morning until the user tapped it. Added a 65-second OS timeout aligned to the Target's maximum 60-second ARMED sensor window plus delivery grace.
+- Expanded the OS PendingIntent scan from `FIRST_MATCH` to `FIRST_MATCH | MATCH_LOST`. A valid match-lost callback records privacy-safe exit state, dismisses the ready notice and never schedules another access; scan errors do not infer exit.
+- Added a bounded Flutter-to-native dismissal after exact Target-session polling closes on completion, termination, denial or deadline, and renders native exit as waiting. Target proof/ACL, Backend/HA, relay/sensor and OTA recovery paths are unchanged.
+
+## [2026-09-02] test | Add access-ready notification lifecycle regressions
+
+- Added JVM policy coverage for presence, match-lost exit and scan-error classification, plus notification-policy coverage for the bounded success timeout and unbounded attention-required failure.
+- Added Flutter bridge/detection tests and repository source contracts proving that match-lost cannot dispatch access and that exact-session closure invokes notification dismissal.
+- Host suites, protected merge, exact signed mobile OTA publication, phone replacement install and screen-off area-exit/normal-completion observations remain separate Gates.
+
+## [2026-09-03] test | Validate access-ready lifecycle candidate locally
+
+- Flutter formatting was clean, analysis reported no issues and 97 Flutter tests passed in the available local container. The targeted Gradle 9.1 Android JVM lane compiled the native change and passed 60/60 tests, including the new match-lost dispatch policy.
+- Repository discovery passed 342/342 contracts with one declared skip; focused pocket/mobile-ranging contracts had already passed 15/15, and `git diff --check` remained clean.
+- These are local source/unit/contract results. Hosted exact-head checks, protected merge, signed personal mobile OTA publication, replacement install and Samsung screen-off area-exit/normal-door observations remain separate Gates.
+
+## [2026-09-03] fix | Preserve attention notifications during ready dismissal
+
+- Split transient access-ready and attention-required failure/uncertainty notices into separate notification IDs. Exit and exact-session terminal callbacks cancel only the ready ID; posting a failure replaces any stale ready notice but later exit cannot erase the failure evidence.
+- Extended policy and source-contract assertions for this separation. Target, Backend, HA and physical control behavior remain unchanged.
