@@ -936,3 +936,13 @@ an inference from application HMAC tests.
 | Live HA contract | Retained `state` and `last_access_event` discovery both point at Backend `verified-status` and omit legacy `expire_after`; bridge availability is retained `online`. Fresh verified status reports boot 696/revision 139 and safe IDLE, but no terminal marker exists after the reboot | PASS for live HA discovery/state transport; one new access is still required to prove the new admin terminal row and HA Activity marker |
 | Supplied UI comparison | The administrator screenshot contains only the pre-fix 01:31:26 broker-accepted legacy row, and the HA screenshot contains only older IDLE/unavailable transitions | CONSISTENT with the pre-rollout defect; screenshots do not constitute a post-install access result |
 | Physical/access boundary | No agent-triggered relay, sensor passage or door movement was performed after installation | PENDING one owner-triggered mobile manual/pre-arm cycle followed by administrator and HA readback |
+
+## 2026-09-03 post-install signed MQTT manual completion
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner action | The owner reported completion of one post-install test. The agent did not issue a relay or door-open command | OWNER-TRIGGERED test; physical door movement is owner-observed rather than instrumented |
+| Target terminal | Fresh verified-TLS MQTTS on exact firmware `2.1.434+main.g531b15a`, boot 696 reported terminal sequence 1, exact signed-manual success mask `0x18`, event `ACCESS_SESSION_COMPLETED` and reason `ACCESS_GRANTED` | PASS for asynchronous Target relay ON/OFF terminal production without critical-path MQTT I/O |
+| Backend verified projection | On the same status revision 426, Backend `verified-status` reported `last_access_result=SUCCEEDED` and marker `696-1`; Target and projection were both fresh IDLE with relay OFF/pin high and bridge availability online | PASS for HMAC verification, persisted status high-water and Backend-to-HA MQTT publication |
+| HA retained contract | Live discovery binds `[Gatekeeper] 최근 출입 결과` to the verified-status marker/result without `expire_after`; the new broker payload therefore supplies `SUCCEEDED #696-1` to that entity | PASS for live HA MQTT input contract; authenticated HA state/recorder Activity readback remains pending |
+| Administrator UI | Backend persistence is required before verified-status publication by the deployed transaction contract, but the authenticated administrator endpoint could not be read from WSL and Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows local file URI | BACKEND persistence proven; rendered administrator completion row remains pending authenticated readback |
