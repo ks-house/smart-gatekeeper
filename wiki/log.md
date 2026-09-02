@@ -6045,3 +6045,9 @@
 - Confirmed the personal Target workflows read GitHub Environment secrets `SECRET_ACCESS_EVENT_REF_KEY_HEX` and `SECRET_ACCESS_EVENT_REF_KEY_ID`, validate the former as a nonzero 64-character lowercase hex key and the latter as a 1-to-4-character lowercase key ID, then materialize only the ephemeral CI `include/secrets.h` macros with those names.
 - Both secret names are present in the `production` and `personal-auto-ota` GitHub Environments; GitHub exposes their names and update times but does not permit reading their stored values back. The installed Target reports only key ID `a1`, never the HMAC key bytes.
 - The local candidate key remains a format-valid 32-byte value. Its equality to installed firmware must be proven by verifying a fresh Target access-status HMAC, not by treating the visible `a1` ID or secret-name presence as key-value evidence.
+
+## [2026-09-02] test | Diagnose NAS temporary-file SCP failure
+
+- The owner's WSL OpenSSH 10.2 `scp` reached the NAS and authenticated by password, then failed with `subsystem request failed on channel 0`. Modern `scp` defaults to SFTP, so this error identifies the NAS SFTP subsystem as unavailable rather than a `/tmp` permission or credential failure.
+- The bounded transfer fallback is uppercase `scp -O` over the same Tailscale SSH endpoint, which forces the legacy SCP protocol. If the NAS account also rejects that remote command, stream the already-created JSON through an interactive administrator SSH shell or use a different sudo-capable DSM administrator account; do not weaken the forced GitHub deployment identity.
+- The OpenSSH post-quantum key-exchange warning is independent of the subsystem failure. It remains a server-upgrade hardening item and does not justify printing, regenerating or moving the access-evidence key through an unencrypted channel.
