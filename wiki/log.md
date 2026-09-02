@@ -6150,3 +6150,9 @@
 - Owner-approved run `33654112042` passed Backend security/MariaDB, evidence verification, immutable API/DB image publication and NAS deployment for exact feature main `a87ef21dc9f66b227831066f45fab8cf0176a0e7`. Deployment evidence recorded `status=deployed`, the matching source SHA, and both loopback and public readiness passed.
 - Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the same exact SHA. Every readiness check was true, including MQTT and `access_event_collector`, so the asynchronous deferred-event consumer is live without any Target/mobile/GPIO/relay/OTA source change.
 - Backend startup republishes the 17-entity retained Home Assistant discovery plan, including `[Gatekeeper] 최근 출입 결과`, by tested source contract. A credentialed retained broker readback and one new owner-observed access/HA Activity timestamp remain separate runtime UI Gates; process readiness alone is not recorded as an Activity-row proof.
+
+## [2026-09-03] compile | Authorize signed MQTT terminal completion candidate
+
+- Bound immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` to the sole `signed-mqtt-terminal-64a62fe-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly five protected blobs change: the Target publisher's exact build-input map, Backend main/admin projection and their two direct tests. The other 95 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The candidate preserves the single safe-state MQTT owner and OTA recovery contract. This policy-only candidate performs no publication, deployment or physical action; normal merge, Backend deployment, signed Target installation/reboot/health and one new administrator/HA terminal observation remain separate Gates.
