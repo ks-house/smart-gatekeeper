@@ -18,6 +18,36 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-02 HA verified access-state availability deployed
+
+- Policy PR #335, feature PR #336 and final-policy PR #337 passed their
+  required checks and were merge-committed normally. Exact feature main is
+  `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`; final policy main is
+  `6530d5ca7facf0faee82d4b2944e7ddd65986047` with the sole
+  `current-main-baseline`. All 100 protected normalized blobs match the exact
+  feature main.
+- Owner-approved Backend run `33642436897` passed Backend security, MariaDB,
+  evidence verification, exact image publication and NAS deployment. Public
+  `/live` and `/ready` returned HTTP 200 for exact build `993c1b6`, with every
+  reported database, schema, MQTT, access-event collector, runtime-secret,
+  authentication, ACL, actor-reference, evidence-integrity, legacy-retirement
+  and build-identity check true.
+- Strict-TLS MQTTS readback received the retained Home Assistant discovery for
+  verified `state`, `door_binary` and `pre_armed`; all three now omit the old
+  30-second `expire_after` and consume the Backend `verified-status` topic. The
+  dedicated connectivity discovery also has no expiry and consumes retained
+  bridge availability, which read back as `online`.
+- A fresh non-retained verified projection reported Target boot count 695,
+  status revision 29189, `IDLE`, unarmed and relay OFF/pin level 1. This proves
+  the corrected discovery is live against a healthy signed Target projection;
+  it does not replace a rendered Home Assistant UI observation or a fresh
+  physical access cycle longer than 30 seconds.
+- Signed access-event collection and actor projection remain ready. Historical
+  events that were never collected before Backend N cannot be reconstructed
+  from unsigned Home Assistant state history. One new family-phone access is
+  still required to confirm the resulting administrator row/name and mobile
+  completion rendering end to end.
+
 ## 2026-09-02 authenticated actor/result final-main publication and rollout
 
 - Policy PR #332, feature PR #333 and final-policy PR #334 were each merged

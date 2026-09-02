@@ -6083,3 +6083,9 @@
 - Policy PR #335 and feature PR #336 passed their required hosted checks and merge-committed normally. Exact feature main is `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`, with immutable feature `81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` and merge-connected head `65666ea535a9e73bac23ecb82939fc709c02304e` in its ancestry.
 - Retired the transitional HA candidate identity and pinned the sole `current-main-baseline` to the actual feature merge. All 100 protected normalized blobs remain byte-identical; the seven-workflow inventory and empty local-Action inventory are unchanged.
 - This final policy-only candidate changes no Backend/NAS/HA/broker runtime, Target, sensor, relay or physical door state. Hosted review/normal merge, Backend publication/deployment, retained discovery readback and live HA observation remain separate Gates.
+
+## [2026-09-02] test | Deploy and read back HA verified access-state availability
+
+- Owner-approved Backend run `33642436897` passed security/MariaDB, evidence verification, exact image publication and NAS deployment for feature main `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`. Public `/live` and `/ready` returned HTTP 200 for that exact build with every readiness check true.
+- Strict-TLS MQTTS readback received retained discovery for verified state, relay and pre-arm. All three now omit `expire_after` and point to the Backend verified-status topic; retained bridge availability was `online`.
+- A fresh non-retained verified projection reported Target boot 695, revision 29189, IDLE, unarmed and relay OFF/pin 1. This closes exact Backend deployment and retained discovery correction, but not a rendered HA UI observation, new administrator history row, GPIO/contact or physical door result.

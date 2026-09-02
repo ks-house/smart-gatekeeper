@@ -858,6 +858,16 @@ keyring before Target N is built. Broker anonymous/crossover denial and
 legitimate Target/Backend/HA reconnect/readback are release prerequisites, not
 an inference from application HMAC tests.
 
+## 2026-09-02 HA verified access-state availability deployment
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Protected merge | PRs #335, #336 and #337 passed their required checks and merged normally. Exact feature main is `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`; final policy main `6530d5ca7facf0faee82d4b2944e7ddd65986047` pins the sole `current-main-baseline` with all 100 protected blobs unchanged from feature main | PASS for reviewed exact source and final policy identity |
+| Exact Backend deployment | Owner-approved run `33642436897` passed Backend security/MariaDB, evidence verification, immutable API/DB image publication and NAS deployment. Public `/live` and `/ready` returned HTTP 200 for exact `993c1b6`; every readiness check was true | PASS for exact deployed process and dependency readiness |
+| Retained discovery correction | Strict-TLS MQTTS read back retained configs for verified `state`, `door_binary` and `pre_armed`. Each points to `gatekeeper/v1/ha-bridge/c0feffe6ebac/verified-status` and omits `expire_after`; raw diagnostic expiry remains source-tested at 30 seconds | PASS for live retained input that removes the false 30-second HA entity expiry |
+| Bridge and Target state | Retained bridge availability was `online`; a fresh non-retained verified projection reported boot 695, revision 29189, `IDLE`, unarmed and relay OFF/pin 1 | PASS for current signed projection and fail-safe output command; no relay-contact/door motion implied |
+| Rendered and physical boundary | No authenticated HA frontend entity-registry read, over-30-second UI observation, new administrator history row, sensor passage, GPIO/contact measurement or door-leaf observation was performed after this deployment | PENDING one new family-phone access and rendered UI/physical acceptance |
+
 ## 2026-09-02 authenticated actor/result final-main rollout evidence
 
 | Test | Observed result | Verdict / boundary |
