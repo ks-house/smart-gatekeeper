@@ -6258,3 +6258,11 @@
 - All 42 focused trusted-policy tests passed with the sole `current-main-baseline` pinned to actual feature main `6aa8d188f509f2135c1551abca9284022ef88e2d` and all 102 protected paths locally exact.
 - Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON and whitespace validation passed.
 - This remains local final-policy evidence until hosted review and normal merge; it does not deploy schema 013 or publish/install the Target firmware.
+
+## [2026-09-03] test | Deploy crash-durable access Activity Backend and publish Target OTA
+
+- PRs #347, #348 and #349 passed hosted checks and merged normally. Exact feature main is `6aa8d188f509f2135c1551abca9284022ef88e2d`; final policy main is `f4e22654eca1bce44044b5a461d2185c5982806a` with all 102 protected blobs unchanged from the reviewed feature.
+- Owner-approved Backend run `33668277642` deployed schema 013. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for exact feature main with every readiness check true, including schema, MQTT, collector and evidence integrity.
+- Target run `33668277535` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.436+main.g6aa8d18`, build ID `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d`. Publication is not installation evidence.
+- The owner reported that the recent-access result changed. This is positive evidence for the already-deployed latest-status projection only; it does not yet prove every schema 013 canonical event, administrator row or HA Activity event.
+- Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows-local URI. The reviewed Target broker principal could not read status or publish HA ingress, and station-local TCP/80 recovery timed out. No duplicate OTA request, unsigned command, NVS erase, full flash or relay operation was attempted. One owner HA OTA press, exact post-reboot version/health readback and repeated administrator/HA correlation remain open.

@@ -980,3 +980,14 @@ an inference from application HMAC tests.
 | Backend regression | Full Backend discovery passed 203 tests with two declared environment-only skips; the focused registry suite passed 38/38 including retry of the same row after a missing PUBACK | PASS for final local Backend source freeze |
 | ESP32-C6 build | `esp32c6_personal_production` compiled warning-free at 75,880/327,680 bytes RAM (23.2%) and 1,766,444/7,340,032 bytes application flash (24.1%) | PASS for local build/partition fit; not signed publication, installation, reboot/health or physical access |
 | End-to-end boundary | Target publisher remains QoS 0 with no Backend application ACK and both queues are finite | NOT absolute exactly-once; protected merge/deploy, outage/overflow soak and repeated live admin plus HA Activity correlation remain open |
+
+## 2026-09-03 crash-durable access Activity rollout
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Reviewed main | PRs #347, #348 and #349 passed hosted checks and merge-committed normally. Feature main is `6aa8d188f509f2135c1551abca9284022ef88e2d`; final policy main is `f4e22654eca1bce44044b5a461d2185c5982806a` | PASS for reviewed source and protected identity |
+| Backend schema 013 deployment | Run `33668277642` completed production deployment. Strict-TLS `/live` and `/ready` returned exact feature main with every readiness check true | PASS for deployed process, migration and dependencies; no access event is inferred from readiness |
+| Target OTA publication | Run `33668277535` published and HTTPS-read-back signed encrypted `2.1.436+main.g6aa8d18`, build ID `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d` | PASS for publication; install/reboot/health remains unproven |
+| Latest-result observation | The owner reports that the recent-access result changed | POSITIVE for the existing latest-status projection; not proof of every schema 013 canonical event or HA event outbox delivery |
+| Automated install attempt boundary | Windows Computer Use could not initialize from the WSL cwd; the constrained Target MQTT identity could not read state or write HA ingress, and station-local TCP/80 recovery timed out. No OTA request or unsafe fallback was issued | SAFE NO-CHANGE; one HA OTA button press and exact post-reboot readback remain required |
+| Delivery acceptance | No two consecutive post-`2.1.436` terminal events have yet been correlated across administrator history and HA Activity | PENDING repeated live test; finite Target queues/QoS 0 and at-least-once duplicate marker boundary remain explicit |
