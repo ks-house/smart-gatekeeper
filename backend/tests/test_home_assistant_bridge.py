@@ -55,8 +55,8 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
     def test_discovery_controls_use_only_backend_ingress(self) -> None:
         default_plan = build_discovery_plan(TARGET)
         enabled_plan = build_discovery_plan(TARGET, allow_manual_remote=True)
-        self.assertEqual(30, len(default_plan))
-        self.assertEqual(31, len(enabled_plan))
+        self.assertEqual(31, len(default_plan))
+        self.assertEqual(32, len(enabled_plan))
         self.assertTrue(all(not item.payload for item in enabled_plan[:7]))
 
         updates = [item for item in enabled_plan if item.payload]
@@ -67,7 +67,7 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         ]
         read_only = [item for item in updates if item not in controls]
         self.assertEqual(7, len(controls))
-        self.assertEqual(17, len(read_only))
+        self.assertEqual(18, len(read_only))
         for publication in controls:
             config = json.loads(publication.payload)
             self.assertTrue(
@@ -137,6 +137,25 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
             "value_json.last_access_result",
             last_access_config["value_template"],
         )
+        terminal_event = next(
+            item
+            for item in read_only
+            if item.topic.endswith("/access_terminal_event/config")
+        )
+        terminal_event_config = json.loads(terminal_event.payload)
+        self.assertEqual(
+            "homeassistant/event/smart_gatekeeper_01/access_terminal_event/config",
+            terminal_event.topic,
+        )
+        self.assertEqual(
+            f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+            terminal_event_config["state_topic"],
+        )
+        self.assertEqual(
+            ["succeeded", "terminated"],
+            terminal_event_config["event_types"],
+        )
+        self.assertEqual(1, terminal_event_config["qos"])
 
         verified_access_ids = {
             "state",
@@ -149,7 +168,7 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
             config = json.loads(publication.payload)
             if object_id in verified_access_ids:
                 self.assertNotIn("expire_after", config)
-            elif object_id != "connectivity":
+            elif object_id not in {"connectivity", "access_terminal_event"}:
                 self.assertEqual(30, config["expire_after"])
 
         for publication in read_only:
@@ -160,7 +179,11 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
                     (
                         bridge_verified_status_topic(TARGET)
                         if object_id in verified_access_ids
-                        else target_status_topic(TARGET)
+                        else (
+                            f"gatekeeper/v1/ha-bridge/{TARGET}/access-event"
+                            if object_id == "access_terminal_event"
+                            else target_status_topic(TARGET)
+                        )
                     ),
                     config["state_topic"],
                 )

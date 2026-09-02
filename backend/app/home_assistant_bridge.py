@@ -116,6 +116,10 @@ def bridge_verified_status_topic(target_id: str) -> str:
     return f"{bridge_prefix(target_id)}/verified-status"
 
 
+def bridge_access_event_topic(target_id: str) -> str:
+    return f"{bridge_prefix(target_id)}/access-event"
+
+
 def target_status_topic(target_id: str) -> str:
     _validate_target_id(target_id)
     return f"gatekeeper/v1/targets/{target_id}/status"
@@ -328,6 +332,25 @@ def build_discovery_plan(
     read_only.append(
         _discovery_publication(
             "binary_sensor", "connectivity", connectivity_config
+        )
+    )
+
+    access_event_config = _base_config(
+        "[Gatekeeper] 출입 완료 이벤트", "access_terminal_event"
+    )
+    access_event_config.update(
+        {
+            "state_topic": bridge_access_event_topic(target_id),
+            "event_types": ["succeeded", "terminated"],
+            "value_template": "{{ value_json.event_type }}",
+            "json_attributes_topic": bridge_access_event_topic(target_id),
+            "qos": 1,
+            "icon": "mdi:door-open",
+        }
+    )
+    read_only.append(
+        _discovery_publication(
+            "event", "access_terminal_event", access_event_config
         )
     )
 

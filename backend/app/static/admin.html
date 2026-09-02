@@ -434,7 +434,11 @@
       ACCESS_RELAY_ON: '릴레이 ON 명령',
       ACCESS_RELAY_OFF: '릴레이 OFF 명령',
       ACCESS_SESSION_COMPLETED: 'Target 출입 흐름 완료',
-      ACCESS_SESSION_TERMINATED: 'Target 출입 흐름 종료'
+      ACCESS_SESSION_TERMINATED: 'Target 출입 흐름 종료',
+      ACCESS_SIGNED_ARM_COMPLETED: '모바일 출입 준비 완료',
+      ACCESS_SIGNED_ARM_TERMINATED: '모바일 출입 준비 종료',
+      ACCESS_SIGNED_MANUAL_COMPLETED: '모바일 수동 문열기 완료',
+      ACCESS_SIGNED_MANUAL_TERMINATED: '모바일 수동 문열기 종료'
     };
     const accessReasonLabels = {
       GATT_CONNECTED: 'BLE GATT 연결됨',
@@ -533,9 +537,9 @@
                         ? '<br><small>구형 unsigned 이벤트 · 인증자 표시 안 함</small>'
                     : '<br><small>인증 주체 확인 불가</small>')))
             : '';
-          const targetPathLabel = signedSummary && l.auth_method === 'MOBILE_REMOTE'
+          const targetPathLabel = l.auth_method === 'MOBILE_REMOTE'
             ? '모바일 수동 문열기'
-            : (signedSummary && l.auth_method === 'MOBILE_PREARM'
+            : (l.auth_method === 'MOBILE_PREARM'
                 ? '모바일 출입 준비'
                 : '로컬 자동 출입');
           const pathText = targetEvidence

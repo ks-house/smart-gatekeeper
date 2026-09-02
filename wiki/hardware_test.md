@@ -956,3 +956,14 @@ an inference from application HMAC tests.
 | Entity Activity | The same page's Activity section recorded `SUCCEEDED #696-1` at 02:25:37, after `NO_EVENT` at 02:18:55 and prior boot marker `SUCCEEDED #695-17` at 01:24:24 | PASS for Home Assistant recorder/history of the post-install access completion |
 | Global Activity view | The supplied global Activity screenshot still showed only the older state entity rows because it was inspecting the state entity/device view rather than the separate recent-access entity change | UI selection/cache boundary; does not contradict the entity-specific recorded Activity proof |
 | Administrator view | The supplied administrator screenshot still showed only the 01:31:26 broker-accepted legacy row | PENDING a fresh `loadLogs()` readback after the 02:25 terminal event |
+
+## 2026-09-03 durable signed-MQTT terminal candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Consecutive terminal persistence | Native queue regression enqueued signed manual sequence 1 and signed arm sequence 2, reconstructed the NVS queue after a simulated reboot and drained both in original FIFO order | PASS for the existing 368-byte durable queue ABI and two-event replay; finite queue overflow remains explicitly gap-reported |
+| Backend insert/idempotency | Worker regression delivered two distinct inserted terminal events to HA in order and suppressed the callback for an identical replay. Route relabeling from signed MQTT to Local GATT was rejected | PASS for DB-first HA dispatch, replay dedupe and MAC-covered route semantics |
+| Backend regression | Full Backend discovery passed 197 tests with two explicit environment-only skips | PASS for parser, HMAC, DB worker, admin projection, HA discovery/event and N/N-1 latest-status compatibility |
+| Repository regression | Initial repository discovery ran 343 tests: 337 passed, one environment-only case skipped and six assertions identified only the expected protected-policy/build-input digest drift. The three exact Target build-input hashes were then refreshed and its focused 18-test contract passed | FUNCTIONAL PASS; trusted policy authorization still pending |
+| ESP32-C6 build | `esp32c6_personal_production` compiled and linked without warnings at 75,880/327,680 bytes RAM (23.2%) and 1,766,442/7,340,032 bytes application flash (24.1%) | PASS for local build and OTA partition fit; not a signed artifact, install, reboot or physical door result |
+| Deployment boundary | No GitHub push, Backend deployment, Target publication/OTA, relay command or physical access was performed | PENDING protected merge, exact deployment and at least two live consecutive accesses with admin/HA readback |

@@ -6196,3 +6196,16 @@
 - Its entity-specific Activity section recorded the new state at 02:25:37, following `NO_EVENT` at 02:18:55 and the prior boot's `SUCCEEDED #695-17`. This closes the Home Assistant state and recorder/history Gates for the post-install manual access.
 - The entity ID the owner first inspected belongs to the older FSM state sensor, which intentionally remains `IDLE`; filtering that entity cannot show the separate recent-access marker. The global Activity screenshot therefore does not contradict the new entity-specific history proof.
 - The supplied administrator screenshot still contained only the older 01:31:26 broker-accepted row. A fresh administrator `loadLogs()` readback remains required to close the rendered Backend terminal-row Gate.
+
+## [2026-09-03] fix | Preserve every signed MQTT terminal beyond the latest status
+
+- Added path-specific, HMAC-signed `ACCESS_SIGNED_ARM_*` and `ACCESS_SIGNED_MANUAL_*` canonical terminal events. FSM completion only enqueues them; MQTT/TLS remains deferred until the existing safe-state single owner drains the RAM/NVS queue.
+- Backend binds `mqtt_prearm` and `mqtt_manual_remote` routes to the MAC-covered event code, persists each event idempotently, labels the administrator path correctly and publishes a separate HA event only after a new DB insert. Identical replay cannot create a duplicate HA Activity event.
+- Kept the existing signed terminal status and `[Gatekeeper] 최근 출입 결과` sensor unchanged for Backend N / Target N-1 compatibility.
+
+## [2026-09-03] test | Validate durable signed MQTT terminal candidate
+
+- Native regression preserved two consecutive signed MQTT terminal records in FIFO order across simulated NVS reboot recovery; focused Target/network/Backend/HA tests passed 78/78.
+- The full Backend suite passed 197 tests with two declared environment-only skips. The personal-production ESP32-C6 build completed without warnings at 75,880/327,680 bytes RAM and 1,766,442/7,340,032 bytes application flash.
+- Repository discovery ran 343 tests: 337 passed, one environment-only case skipped and six expected assertions reported pre-authorization protected/build digest drift. The three exact Target build-input hashes were refreshed and the focused 18-test publication contract then passed.
+- These are local source/build results only. Trusted policy rotation, normal review/merge, exact Backend/Target publication and deployment, post-install health and repeated live administrator/HA Activity evidence remain separate Gates.

@@ -1772,3 +1772,20 @@ tracking.
 - No natural post-deployment Target access event has yet been correlated in the administrator UI.
   Target relay/session events, when received, remain firmware lifecycle evidence rather than proof
   of physical door travel because no door-contact sensor is present.
+
+## 2026-09-03 durable signed-MQTT terminal candidate
+
+- The deployed `2.1.434` status-summary path proved one signed manual completion in Backend and HA,
+  but retained only the newest terminal in boot-local RAM. A second completion before safe-state
+  publication or a reboot could therefore hide the earlier terminal from HA/admin history.
+- The local candidate emits one separately HMAC-signed canonical terminal for every signed MQTT arm
+  or manual session, enqueues it without socket I/O, preserves FIFO through the existing NVS queue,
+  and derives its `mqtt_prearm`/`mqtt_manual_remote` route from a MAC-covered event code.
+- Backend publishes a QoS 1 HA event only after a new authenticated DB insert. Exact replay is stored
+  idempotently and does not create a duplicate HA Activity row. The existing latest-result sensor
+  remains unchanged for Backend N / Target N-1 compatibility.
+- Backend 197/197 tests passed with two environment-only skips; repository discovery ran 343 tests
+  with 337 passes, one skip and six expected trusted-policy/build-map mismatches before the map was
+  refreshed. The personal-production firmware built warning-free at 75,880 bytes RAM and 1,766,442
+  bytes application flash. Protected-policy rotation, normal merge, exact Backend/Target deployment
+  and a repeated live access test remain open; no installed device changed from this local work.

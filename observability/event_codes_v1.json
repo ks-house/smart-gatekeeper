@@ -266,6 +266,41 @@
       ],
       "terminal": true
     },
+    "ACCESS_SIGNED_ARM_COMPLETED": {
+      "session_kind": "access",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ACCESS_GRANTED"],
+      "terminal": true
+    },
+    "ACCESS_SIGNED_ARM_TERMINATED": {
+      "session_kind": "access",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["FAILED", "TIMED_OUT"],
+      "allowed_reason_codes": [
+        "ARM_TIMEOUT",
+        "RELAY_CONTROL_ERROR",
+        "INTERNAL_ERROR"
+      ],
+      "terminal": true
+    },
+    "ACCESS_SIGNED_MANUAL_COMPLETED": {
+      "session_kind": "access",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["SUCCEEDED"],
+      "allowed_reason_codes": ["ACCESS_GRANTED"],
+      "terminal": true
+    },
+    "ACCESS_SIGNED_MANUAL_TERMINATED": {
+      "session_kind": "access",
+      "stage": "COMPLETE",
+      "allowed_outcomes": ["FAILED"],
+      "allowed_reason_codes": [
+        "RELAY_CONTROL_ERROR",
+        "INTERNAL_ERROR"
+      ],
+      "terminal": true
+    },
     "UPDATE_SESSION_STARTED": {
       "session_kind": "update",
       "stage": "UPDATE_REQUESTED",

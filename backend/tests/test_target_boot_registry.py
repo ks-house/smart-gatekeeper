@@ -129,6 +129,63 @@ def signed_canonical_event_payload(
     return json.dumps(document, separators=(",", ":")).encode()
 
 
+def signed_remote_terminal_payload(*, manual=True, completed=True):
+    event_code = (
+        "ACCESS_SIGNED_MANUAL_COMPLETED"
+        if manual and completed
+        else "ACCESS_SIGNED_MANUAL_TERMINATED"
+        if manual
+        else "ACCESS_SIGNED_ARM_COMPLETED"
+        if completed
+        else "ACCESS_SIGNED_ARM_TERMINATED"
+    )
+    outcome = "SUCCEEDED" if completed else "FAILED"
+    reason_code = "ACCESS_GRANTED" if completed else "RELAY_CONTROL_ERROR"
+    attributes = {
+        "path": "mqtt_manual_remote" if manual else "mqtt_prearm",
+        "transport": "signed_mqtt",
+    }
+    document = json.loads(
+        canonical_event_payload(
+            event_code=event_code,
+            stage="COMPLETE",
+            outcome=outcome,
+            reason_code=reason_code,
+            attributes=attributes,
+        )
+    )
+    document["schema_version"] = "1.1"
+    document["target"]["boot_count"] = 8
+    canonical = build_access_event_mac_input(
+        key_id="k1",
+        topic_target_id=TARGET,
+        door_id=ACCESS_DOOR_ID,
+        source_instance_id=SOURCE_REF,
+        source_boot_id=BOOT_1,
+        source_boot_count=8,
+        event_id=EVENT_ID,
+        session_id=SESSION_ID,
+        sequence=7,
+        attempt=1,
+        event_code=event_code,
+        stage="COMPLETE",
+        outcome=outcome,
+        reason_code=reason_code,
+        causation_event_id=None,
+        monotonic_ms=12345,
+        credential_ref=None,
+        distance_mm=None,
+        duration_ms=None,
+        relay_hold_ms=None,
+    )
+    document["auth"] = {
+        "version": 1,
+        "key_id": "k1",
+        "tag": access_evidence_mac(ACCESS_REF_KEY, canonical),
+    }
+    return json.dumps(document, separators=(",", ":")).encode()
+
+
 def connection_with(row):
     connection = MagicMock()
     cursor = connection.cursor.return_value.__enter__.return_value
@@ -137,6 +194,75 @@ def connection_with(row):
 
 
 class TargetBootRegistryTest(unittest.TestCase):
+    def test_signed_mqtt_terminal_route_is_code_bound_and_private(self) -> None:
+        payload = signed_remote_terminal_payload()
+        parsed = main._parse_canonical_target_access_event(payload)
+        self.assertIsNotNone(parsed)
+        self.assertEqual("ACCESS_SIGNED_MANUAL_COMPLETED", parsed["event_code"])
+        self.assertEqual("mqtt_manual_remote", parsed["event_path"])
+        self.assertEqual("signed_mqtt", parsed["event_transport"])
+        self.assertIsNone(parsed["credential_ref"])
+
+        relabeled = json.loads(payload)
+        relabeled["attributes"]["path"] = "local_gatt"
+        relabeled["attributes"]["transport"] = "ble_gatt"
+        self.assertIsNone(
+            main._parse_canonical_target_access_event(
+                json.dumps(relabeled, separators=(",", ":")).encode()
+            )
+        )
+
+    def test_authenticated_terminal_projects_one_privacy_safe_ha_event(self) -> None:
+        parsed = main._parse_canonical_target_access_event(
+            signed_remote_terminal_payload()
+        )
+        self.assertIsNotNone(parsed)
+        parsed.update(
+            collector_target_id=TARGET,
+            source_boot_count=8,
+            source_sequence=7,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            projection = main._home_assistant_access_event_projection(parsed)
+        self.assertIsNotNone(projection)
+        document = json.loads(projection)
+        self.assertEqual("succeeded", document["event_type"])
+        self.assertEqual("8-7", document["access_event_marker"])
+        self.assertEqual("mqtt_manual_remote", document["access_path"])
+        self.assertNotIn("session", projection.decode())
+        self.assertNotIn("credential", projection.decode())
+
+    def test_canonical_worker_notifies_only_for_new_insert(self) -> None:
+        inserted = MagicMock()
+        events = [
+            {"event_code": "ACCESS_SIGNED_MANUAL_COMPLETED", "source_sequence": 1},
+            {"event_code": "ACCESS_SIGNED_ARM_COMPLETED", "source_sequence": 2},
+        ]
+        persisted = iter(
+            {"inserted": True, "event": event} for event in events
+        )
+        worker = main._CanonicalAccessEventWorker(
+            persist=lambda *_args, **_kwargs: next(persisted),
+            on_insert=inserted,
+        )
+        self.assertTrue(worker.request("topic", b"payload-1", False))
+        self.assertTrue(worker.request("topic", b"payload-2", False))
+        worker._queue.join()
+        worker.stop()
+        self.assertEqual(
+            [call(event) for event in events], inserted.call_args_list
+        )
+
+        replayed = MagicMock()
+        replay_worker = main._CanonicalAccessEventWorker(
+            persist=lambda *_args, **_kwargs: True,
+            on_insert=replayed,
+        )
+        self.assertTrue(replay_worker.request("topic", b"payload", False))
+        replay_worker._queue.join()
+        replay_worker.stop()
+        replayed.assert_not_called()
+
     def test_bridge_availability_expiry_replaces_stale_timers(self) -> None:
         timers = []
 

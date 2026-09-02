@@ -116,6 +116,7 @@ bool SignedCommandAccessTracker::finish(bool failsafe, Terminal* terminal) {
   Terminal result{};
   std::snprintf(result.session_id, sizeof(result.session_id), "%s",
                 session_id_);
+  result.mode = mode_;
   result.phase_mask = phase_mask_;
   result.completed = !failsafe && phase_mask_ == expected;
   *terminal = result;

@@ -67,9 +67,10 @@ change는 새 major schema로 낸다. Collector는 알 수 없는 major를 원�
 3. Android가 시작하지 않는 manual remote path는 Backend가, 완전 offline Target-local path는
    Target이 UUIDv4를 만든다.
 4. GATT proof, MQTT legacy arm 등 모든 protocol request/response에 `session_id`를 전달한다.
-5. 모든 session은 정확히 하나의 terminal event로 끝난다. 성공은
-   `ACCESS_SESSION_COMPLETED/ACCESS_GRANTED`, 나머지는
-   `ACCESS_SESSION_TERMINATED/<fixed reason>`이다.
+5. 모든 session은 정확히 하나의 terminal event로 끝난다. Local GATT 성공/종료는
+   `ACCESS_SESSION_COMPLETED|TERMINATED`, signed MQTT arm/manual은 MAC 입력에 경로까지
+   결합하기 위해 `ACCESS_SIGNED_ARM_*` 또는 `ACCESS_SIGNED_MANUAL_*`를 사용한다. 성공
+   reason은 `ACCESS_GRANTED`, 종료 reason은 catalog의 fixed code만 허용한다.
 
 UUIDv4는 wall clock에 의존하지 않으므로 RTC가 틀리거나 Target이 재부팅돼도 같은 ID가 다시
 생성되지 않는다. MAC, timestamp, 증가 counter만 조합해 session ID를 만들면 안 된다.
@@ -380,6 +381,8 @@ BLE 주소, raw credential/proof와 주민 이름은 immutable evidence table에
 | `ACCESS_SENSOR_DETECTED` | Target threshold 조건이 충족됨 | 현재 펌웨어 payload에는 실제 거리 값이 없어 화면은 `-`일 수 있음 |
 | `ACCESS_RELAY_ON/OFF` | Target software가 relay GPIO 동작 단계를 수행함 | 도어 접점·문짝의 물리 개방 확인은 아님 |
 | `ACCESS_SESSION_COMPLETED` | Target software access chain이 정상 종료됨 | 별도 door contact가 없는 현재 배선에서 물리 개방 성공은 아님 |
+| `ACCESS_SIGNED_ARM_COMPLETED/TERMINATED` | signed MQTT 출입 준비 세션의 Target terminal이 영속 큐와 Backend DB에 도달함 | 문짝 이동과 MQTT 요청자의 실명은 이 이벤트만으로 확인하지 않음 |
+| `ACCESS_SIGNED_MANUAL_COMPLETED/TERMINATED` | signed MQTT 수동 개방 세션의 relay lifecycle terminal이 영속 큐와 Backend DB에 도달함 | 별도 door contact가 없어 물리 문짝 이동은 확인하지 않음 |
 | legacy `MOBILE_REMOTE` success | Backend가 signed MQTT 전송을 접수함 | Target 수신·relay·물리 개방 성공은 아님 |
 
 Target canonical topic은 현재 QoS 0이며 offline queue도 bounded이므로 이 화면은 **수신 이벤트
@@ -460,10 +463,18 @@ Terminal phase bit는 다음처럼 고정한다.
 완료 성공 profile은 경로별 exact mask로 고정한다: Local GATT sensor `0x1f`, Local GATT manual
 `0x19`, signed MQTT arm+sensor `0x1e`, signed MQTT `manual_remote` `0x18`. 이 네 값이 아니거나
 `0x20`이 있으면 `ACCESS_SESSION_COMPLETED` 문자열만으로 성공으로 집계하지 않는다. Individual QoS 0 event가 유실됐더라도 같은 boot의 서명된 terminal
-요약은 별도 immutable summary로 보존할 수 있다. 그러나 Target의 최신 terminal 요약 자체는
-**동일 boot RAM best-effort**다. terminal 뒤 status가 Backend에 도착하기 전에 전원이 끊기면 그
-요약은 유실될 수 있고 다음 boot에서 성공으로 재구성하지 않는다. Durable event queue가 이 공백을
-줄이더라도 physical result를 추정하는 근거는 아니다.
+요약은 별도 immutable summary로 보존할 수 있다. 최신 terminal status 요약은 여전히
+**동일 boot RAM best-effort**지만, signed MQTT arm/manual terminal은 별도의 HMAC canonical event로
+기존 16-entry RAM outbox와 8-entry NVS queue에 FIFO 보존된다. 따라서 status 전송 전 재부팅이
+발생해도 Backend는 원래 boot/count/sequence의 terminal event를 재수집한다. Queue가 포화되면 기존
+`queue_overflow` gap 정책이 손실 범위를 명시하며, 무한 단절을 무손실이라고 주장하지 않는다.
+어느 경우에도 software terminal은 physical door 이동을 추정하는 근거가 아니다.
+
+Backend canonical worker는 HMAC 검증과 DB의 새 행 삽입이 성공한 terminal에 대해서만 HA
+`event.smart_gatekeeper_01_access_terminal_event` 입력 topic을 QoS 1/non-retained로 발행한다.
+동일 event replay는 DB idempotency 경로에서 HA에 재발행하지 않으므로 중복 Activity를 만들지 않는다.
+기존 `[Gatekeeper] 최근 출입 결과` sensor는 signed status 기반 N/N-1 호환과 최신 결과 표시를
+그대로 유지한다.
 
 Backend 모바일 projection도 signed terminal phase에 `0x20`이 하나라도 있으면 다른 정상 phase bit와
 관계없이 `complete`가 아닌 실패 `terminated`로 분류한다. 이 실패 terminal 자체만으로 다음 인증을

@@ -66,6 +66,7 @@ try:
     from .command_security import build_signed_command
     from .home_assistant_bridge import (
         HomeAssistantCommandBridge,
+        bridge_access_event_topic,
         bridge_availability_topic,
         bridge_request_topic,
         bridge_result_topic,
@@ -105,6 +106,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
     from command_security import build_signed_command
     from home_assistant_bridge import (
         HomeAssistantCommandBridge,
+        bridge_access_event_topic,
         bridge_availability_topic,
         bridge_request_topic,
         bridge_result_topic,
@@ -648,6 +650,19 @@ _CANONICAL_ACTOR_EVENT_CODES = frozenset(
         "ACCESS_SESSION_TERMINATED",
     }
 )
+_SIGNED_COMMAND_TERMINAL_ROUTES = {
+    "ACCESS_SIGNED_ARM_COMPLETED": ("mqtt_prearm", "signed_mqtt"),
+    "ACCESS_SIGNED_ARM_TERMINATED": ("mqtt_prearm", "signed_mqtt"),
+    "ACCESS_SIGNED_MANUAL_COMPLETED": ("mqtt_manual_remote", "signed_mqtt"),
+    "ACCESS_SIGNED_MANUAL_TERMINATED": ("mqtt_manual_remote", "signed_mqtt"),
+}
+_CANONICAL_ACTIVITY_TERMINAL_CODES = frozenset(
+    {
+        "ACCESS_SESSION_COMPLETED",
+        "ACCESS_SESSION_TERMINATED",
+        *_SIGNED_COMMAND_TERMINAL_ROUTES,
+    }
+)
 _CANONICAL_OPAQUE_REF = re.compile(r"^[a-z][a-z0-9_-]{7,63}$")
 _CANONICAL_BOOT_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{7,63}$")
 _CANONICAL_TARGET_ACCESS_CODES = {
@@ -717,6 +732,20 @@ _CANONICAL_TARGET_ACCESS_CODES = {
             "RELAY_CONTROL_ERROR", "RESET_DURING_SESSION", "SESSION_TIMEOUT",
             "SESSION_SUPERSEDED", "USER_CANCELLED", "INTERNAL_ERROR",
         },
+    ),
+    "ACCESS_SIGNED_ARM_COMPLETED": (
+        "COMPLETE", {"SUCCEEDED"}, {"ACCESS_GRANTED"},
+    ),
+    "ACCESS_SIGNED_ARM_TERMINATED": (
+        "COMPLETE", {"FAILED", "TIMED_OUT"},
+        {"ARM_TIMEOUT", "RELAY_CONTROL_ERROR", "INTERNAL_ERROR"},
+    ),
+    "ACCESS_SIGNED_MANUAL_COMPLETED": (
+        "COMPLETE", {"SUCCEEDED"}, {"ACCESS_GRANTED"},
+    ),
+    "ACCESS_SIGNED_MANUAL_TERMINATED": (
+        "COMPLETE", {"FAILED"},
+        {"RELAY_CONTROL_ERROR", "INTERNAL_ERROR"},
     ),
 }
 
@@ -884,12 +913,15 @@ def _parse_canonical_target_access_event(payload: bytes) -> dict | None:
         return None
 
     attributes = event.get("attributes")
+    expected_path, expected_transport = _SIGNED_COMMAND_TERMINAL_ROUTES.get(
+        event.get("event_code"), ("local_gatt", "ble_gatt")
+    )
     if (
         not isinstance(attributes, dict)
         or not {"path", "transport"}.issubset(attributes)
         or set(attributes) - _CANONICAL_ACCESS_ATTRIBUTE_FIELDS
-        or attributes.get("path") != "local_gatt"
-        or attributes.get("transport") != "ble_gatt"
+        or attributes.get("path") != expected_path
+        or attributes.get("transport") != expected_transport
     ):
         return None
     limits = {
@@ -999,7 +1031,7 @@ def _authenticate_canonical_target_access_event(
 
 def _persist_canonical_target_access_event(
     topic: str, payload: bytes, *, retained: bool
-) -> bool | None:
+) -> dict | bool | None:
     """Persist one exact-topic canonical Target event idempotently."""
     topic_target_id = _exact_canonical_target_id(topic)
     if retained or topic_target_id is None:
@@ -1063,7 +1095,7 @@ def _persist_canonical_target_access_event(
                     event["integrity_status"],
                 ),
             )
-        return True
+        return {"inserted": True, "event": event}
     except pymysql.err.IntegrityError as exc:
         if exc.args and exc.args[0] == 1062 and conn is not None:
             try:
@@ -1558,9 +1590,11 @@ class _CanonicalAccessEventWorker:
         persist=_persist_canonical_target_access_event,
         capacity: int = 128,
         health=None,
+        on_insert=None,
     ):
         self._persist = persist
         self._health = health
+        self._on_insert = on_insert
         self._queue: queue.Queue[tuple[str, bytes, bool] | None] = queue.Queue(
             maxsize=capacity
         )
@@ -1600,7 +1634,13 @@ class _CanonicalAccessEventWorker:
                 topic, payload, retained = item
                 stored = self._persist(topic, payload, retained=retained)
                 if self._health is not None and stored is not None:
-                    self._health.note_writer_result(stored)
+                    self._health.note_writer_result(bool(stored))
+                if (
+                    isinstance(stored, dict)
+                    and stored.get("inserted") is True
+                    and self._on_insert is not None
+                ):
+                    self._on_insert(stored.get("event"))
                 if stored is None:
                     log.warning("[MQTT-AUDIT] rejected canonical Target access event")
                 elif not stored:
@@ -2014,6 +2054,40 @@ def _verified_home_assistant_status_projection(
         "last_access_result": last_access_result,
         "relay_commanded_on": relay_commanded_on,
         "relay_pin_level": relay_pin_level,
+    }
+    return json.dumps(
+        document, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+
+
+def _home_assistant_access_event_projection(event: object) -> bytes | None:
+    """Build one non-identifying HA event after an authenticated DB insert."""
+
+    if not isinstance(event, dict):
+        return None
+    event_code = event.get("event_code")
+    outcome = event.get("event_outcome")
+    boot_count = event.get("source_boot_count")
+    sequence = event.get("source_sequence")
+    target_id = event.get("collector_target_id")
+    if (
+        event_code not in _CANONICAL_ACTIVITY_TERMINAL_CODES
+        or outcome not in {"SUCCEEDED", "DENIED", "FAILED", "TIMED_OUT", "CANCELLED"}
+        or isinstance(boot_count, bool)
+        or not isinstance(boot_count, int)
+        or boot_count < 1
+        or isinstance(sequence, bool)
+        or not isinstance(sequence, int)
+        or sequence < 0
+        or not isinstance(target_id, str)
+        or target_id not in _configured_target_ids()
+    ):
+        return None
+    document = {
+        "event_type": "succeeded" if outcome == "SUCCEEDED" else "terminated",
+        "access_event_marker": f"{boot_count}-{sequence}",
+        "access_result": "SUCCEEDED" if outcome == "SUCCEEDED" else "TERMINATED",
+        "access_path": event.get("event_path"),
     }
     return json.dumps(
         document, separators=(",", ":"), sort_keys=True
@@ -2600,9 +2674,24 @@ def _start_target_boot_subscriber():
             and secrets.compare_digest(live_boot_id, registered_boot_id)
         )
 
+    def publish_inserted_access_event(event: object) -> None:
+        if bridge is None or not isinstance(event, dict):
+            return
+        projection = _home_assistant_access_event_projection(event)
+        target_id = event.get("collector_target_id")
+        if projection is None or not isinstance(target_id, str):
+            return
+        client.publish(
+            bridge_access_event_topic(target_id),
+            projection,
+            qos=1,
+            retain=False,
+        )
+
     event_worker = _CanonicalAccessEventWorker(
         persist=_persist_canonical_target_access_event,
         health=_canonical_access_collector_health,
+        on_insert=publish_inserted_access_event,
     )
     _canonical_access_event_worker = event_worker
 
@@ -5065,7 +5154,10 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "LEFT JOIN tenants t ON t.id=l.tenant_id "
     "UNION ALL "
     "SELECT 'canonical' AS record_kind,e.id,NULL AS tenant_id,"
-    "NULL AS tenant_name,NULL AS unit_number,'LOCAL_GATT' AS auth_method,"
+    "NULL AS tenant_name,NULL AS unit_number,CASE "
+    "WHEN e.event_path='mqtt_manual_remote' THEN 'MOBILE_REMOTE' "
+    "WHEN e.event_path='mqtt_prearm' THEN 'MOBILE_PREARM' "
+    "ELSE 'LOCAL_GATT' END AS auth_method,"
     "NULL AS is_success,e.distance_mm,NULL AS failure_reason,"
     "e.received_at AS created_at,e.event_id,e.session_id,"
     "e.source_component,e.source_instance_id,e.source_boot_id,"
@@ -5110,7 +5202,9 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "e.source_boot_id=s.source_boot_id AND "
     "e.source_sequence=s.terminal_event_sequence AND "
     "e.integrity_status='verified' AND "
-    "e.event_code IN ('ACCESS_SESSION_COMPLETED','ACCESS_SESSION_TERMINATED'))"
+    "e.event_code IN ('ACCESS_SESSION_COMPLETED','ACCESS_SESSION_TERMINATED',"
+    "'ACCESS_SIGNED_ARM_COMPLETED','ACCESS_SIGNED_ARM_TERMINATED',"
+    "'ACCESS_SIGNED_MANUAL_COMPLETED','ACCESS_SIGNED_MANUAL_TERMINATED'))"
     ") AS history ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s"
 )
 _ADMIN_ACCESS_TODAY_COUNT_SQL = (
