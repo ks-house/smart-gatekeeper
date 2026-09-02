@@ -6039,3 +6039,9 @@
 - Reran and owner-approved the last verified exact `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` NAS deployment job. Its signed bundle, private status comparison and public readiness all passed.
 - Post-recovery `/live` and `/ready` returned HTTP 200 with exact `e62b681`; readiness again reported `access_event_collector=true`. The database and persistent volumes were preserved.
 - Backend N must not be retried until the root-owned access-evidence key file and exact runtime entries are provisioned and checked. Admin actor history and corrected HA access-state discovery remain not live.
+
+## [2026-09-02] test | Confirm Target access-evidence secret injection names
+
+- Confirmed the personal Target workflows read GitHub Environment secrets `SECRET_ACCESS_EVENT_REF_KEY_HEX` and `SECRET_ACCESS_EVENT_REF_KEY_ID`, validate the former as a nonzero 64-character lowercase hex key and the latter as a 1-to-4-character lowercase key ID, then materialize only the ephemeral CI `include/secrets.h` macros with those names.
+- Both secret names are present in the `production` and `personal-auto-ota` GitHub Environments; GitHub exposes their names and update times but does not permit reading their stored values back. The installed Target reports only key ID `a1`, never the HMAC key bytes.
+- The local candidate key remains a format-valid 32-byte value. Its equality to installed firmware must be proven by verifying a fresh Target access-status HMAC, not by treating the visible `a1` ID or secret-name presence as key-value evidence.
