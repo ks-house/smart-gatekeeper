@@ -946,3 +946,13 @@ an inference from application HMAC tests.
 | Backend verified projection | On the same status revision 426, Backend `verified-status` reported `last_access_result=SUCCEEDED` and marker `696-1`; Target and projection were both fresh IDLE with relay OFF/pin high and bridge availability online | PASS for HMAC verification, persisted status high-water and Backend-to-HA MQTT publication |
 | HA retained contract | Live discovery binds `[Gatekeeper] 최근 출입 결과` to the verified-status marker/result without `expire_after`; the new broker payload therefore supplies `SUCCEEDED #696-1` to that entity | PASS for live HA MQTT input contract; authenticated HA state/recorder Activity readback remains pending |
 | Administrator UI | Backend persistence is required before verified-status publication by the deployed transaction contract, but the authenticated administrator endpoint could not be read from WSL and Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows local file URI | BACKEND persistence proven; rendered administrator completion row remains pending authenticated readback |
+
+## 2026-09-03 Home Assistant rendered access Activity proof
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Entity identity | The owner identified the older state entity as `sensor.smart_gatekeeper_gatekeeper_geiteukipeo_dongjag_sangtae`; that entity intentionally renders only the FSM state and is not the new access marker entity | EXPLAINS why filtering only the state entity does not show per-access marker changes |
+| Recent-access state | The authenticated HA entity page rendered `[Gatekeeper] 최근 출입 결과 = SUCCEEDED #696-1` five minutes after the owner test | PASS for HA MQTT entity state update matching Backend marker |
+| Entity Activity | The same page's Activity section recorded `SUCCEEDED #696-1` at 02:25:37, after `NO_EVENT` at 02:18:55 and prior boot marker `SUCCEEDED #695-17` at 01:24:24 | PASS for Home Assistant recorder/history of the post-install access completion |
+| Global Activity view | The supplied global Activity screenshot still showed only the older state entity rows because it was inspecting the state entity/device view rather than the separate recent-access entity change | UI selection/cache boundary; does not contradict the entity-specific recorded Activity proof |
+| Administrator view | The supplied administrator screenshot still showed only the 01:31:26 broker-accepted legacy row | PENDING a fresh `loadLogs()` readback after the 02:25 terminal event |

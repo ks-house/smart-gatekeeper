@@ -6189,3 +6189,10 @@
 - Backend `verified-status` at the same signed status revision 426 reported `last_access_result=SUCCEEDED` and marker `696-1`, with bridge availability online. Because that projection is emitted only after HMAC verification and persisted high-water advancement, this closes the Target MQTT and Backend ingestion Gates.
 - Retained live discovery binds `[Gatekeeper] 최근 출입 결과` to the verified marker/result without the legacy entity expiry, so the HA MQTT input changed to `SUCCEEDED #696-1`. HA's authenticated REST state/recorder remained inaccessible without a session token.
 - The bundled Windows Computer Use path was attempted read-only and reset once, but both initializations failed before browser selection with `sandboxCwd is not a local file URI`. The authenticated administrator API likewise returned 401 outside its session boundary. No browser input, configuration change or control action occurred; rendered HA Activity and administrator completion-row evidence remain pending owner-supplied screenshots or a working authenticated browser readback.
+
+## [2026-09-03] test | Confirm rendered Home Assistant access Activity
+
+- The owner's authenticated HA entity screenshot rendered `[Gatekeeper] 최근 출입 결과 = SUCCEEDED #696-1`, exactly matching the Backend verified marker observed over MQTTS.
+- Its entity-specific Activity section recorded the new state at 02:25:37, following `NO_EVENT` at 02:18:55 and the prior boot's `SUCCEEDED #695-17`. This closes the Home Assistant state and recorder/history Gates for the post-install manual access.
+- The entity ID the owner first inspected belongs to the older FSM state sensor, which intentionally remains `IDLE`; filtering that entity cannot show the separate recent-access marker. The global Activity screenshot therefore does not contradict the new entity-specific history proof.
+- The supplied administrator screenshot still contained only the older 01:31:26 broker-accepted row. A fresh administrator `loadLogs()` readback remains required to close the rendered Backend terminal-row Gate.
