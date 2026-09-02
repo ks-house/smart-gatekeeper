@@ -113,7 +113,9 @@ object BleWakeRegistrar {
         .build()
       val settings = ScanSettings.Builder()
         .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
-        .setCallbackType(ScanSettings.CALLBACK_TYPE_FIRST_MATCH)
+        .setCallbackType(
+          ScanSettings.CALLBACK_TYPE_FIRST_MATCH or ScanSettings.CALLBACK_TYPE_MATCH_LOST,
+        )
         .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
         .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
         .build()

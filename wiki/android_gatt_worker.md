@@ -158,6 +158,34 @@ not guarantee OS radio discovery time or Samsung background scheduling. A phone
 was not connected for this change, and AJ-SR04T/GPIO3 were not wired, so pocket,
 screen-off, sensor and physical relay timing remain field gates.
 
+### 9.1. Transient access-ready notification lifecycle
+
+`출입 준비 완료` represents only the bounded Target `ARMED` sensor window; it
+is not a durable success record and does not claim that the physical door
+opened. The notification therefore uses three independent removal paths:
+
+1. Android posts it with a 65-second timeout, covering the Target's maximum
+   60-second arm duration plus delivery grace. A missing process, lost callback
+   or offline Backend cannot leave an all-day ready claim.
+2. The OS PendingIntent scan requests both `FIRST_MATCH` and `MATCH_LOST`.
+   `MATCH_LOST` is classified as exit, records a privacy-safe `ble_scan_exit`,
+   dismisses the ready notification and never dispatches another GATT action.
+3. When the mounted app's exact-session Backend polling reaches complete,
+   terminated, denied or its bounded deadline, Flutter invokes the native
+   dismissal method after closing that exact polling generation.
+
+Scan errors never infer exit; the timeout remains the fallback. A match-lost
+projection renders as waiting rather than failed. Failure and uncertainty
+notifications remain user-visible until acknowledged because they require
+attention and are not access-ready claims; they use a separate notification ID,
+so exit/terminal dismissal cannot remove them. These contracts do not prove OEM
+`MATCH_LOST` delivery timing or physical door motion; replacement APK install
+and screen-off/area-exit/on-door observations remain device Gates.
+
+Local validation passed Flutter analysis, 97 Flutter tests, 60 targeted Android
+JVM tests and 342 repository contract tests with one declared skip. Hosted
+exact-head build/publication and installed-device behavior are separate Gates.
+
 ## 10. Final-main 493 screen-off observations
 
 The installed Samsung APK remains production-signed
