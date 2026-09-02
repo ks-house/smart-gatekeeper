@@ -5987,8 +5987,93 @@
 - Retired the transitional feature identity and pinned the sole `current-main-baseline` to that actual feature merge. All 100 protected normalized blobs remain byte-identical across feature, merge-connected head and merged main; workflow inventory remains exactly seven and local Actions remain empty.
 - This final policy-only candidate changes no Backend/NAS runtime, schema, broker ACL, mobile/Target installation, sensor, relay or physical door state. Hosted review/normal merge, signed exact-main publication, deployment, runtime readiness and physical acceptance remain separate Gates.
 
+## [2026-09-02] compile | Merge authenticated actor/result release normally
+
+- Policy PR #332, feature PR #333 and final-policy PR #334 passed their hosted checks and were merge-committed normally without administrator bypass, squash, rebase or force update. Final main is `10d7a1f2e38ed467143db05d5662ae24d575eda5` with sole `current-main-baseline` source `b29cb2497c4adf151b3d60eeab31acb525555340`.
+- Verified that immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558`, its merge-connected head, actual feature main and final main have identical Git blobs for all 100 protected runtime paths.
+
+## [2026-09-02] test | Publish exact-main Target and mobile OTA artifacts
+
+- Target run `33555893409` built and atomically published `2.1.422+main.g10d7a1f`, build ID `main-422-10d7a1f2e38ed467143db05d5662ae24d575eda5`. NAS/public readback and independent verification passed for the signed schema-v2 manifest, 1,867,636-byte encrypted artifact, Ed25519 signature, AES-GCM envelope and plaintext SHA.
+- Mobile run `33555893523` built, production-signed and atomically published `1.0.0-g10d7a1f` / `38501` to primary and fallback roots with HTTPS readback and previous-valid preservation.
+- These are publication results only. They do not prove Target installation/reboot/health, phone installation, Backend deployment, HA projection, relay contact or physical door movement.
+
+## [2026-09-02] test | Stop unreachable local Target recovery without mutation
+
+- A fresh non-retained preflight showed installed Target `2.1.419+main.g7981498`, boot 690, `IDLE`, unarmed, relay OFF/pin 1 and cooldown 5000 ms. Exact M2 manifest/artifact verification passed before any Target request.
+- The first authenticated station-local `/recovery/enable-ap` attempt could not establish TCP port 80 from either WSL or Windows. It returned no HTTP code; no manifest or firmware bytes were sent and no retry was made. Follow-up status confirmed unchanged firmware, boot and safe state.
+- Periodic signed HTTPS OTA remains active and is monitored separately. NAS keyring/runtime provisioning, Backend N, broker ACL/HA readback, phone installation and physical sensor/relay/door acceptance remain open Gates.
+
+## [2026-09-02] test | Verify periodic exact-main Target installation
+
+- Two fresh non-retained status samples at 22:35 KST showed `2.1.422+main.g10d7a1f`, boot count 695, a new boot ID and uptime above 26,042 seconds and increasing. State remained IDLE, unarmed and relay OFF/pin 1, with signed access status using key ID `a1`.
+- This closes exact Target OTA install, reboot and long post-boot safe-state observation for the final artifact. It does not measure GPIO voltage, relay contacts, actuator travel or physical door-leaf motion.
+- The owner separately reported successful access from both the wife's and daughter's phones. This supports the asynchronous path as owner-observed functional evidence but does not identify each installed APK or provide instrumented latency/physical measurements.
+
+## [2026-09-02] test | Diagnose missing Backend history and HA unavailable intervals
+
+- The supplied HA history alternated IDLE and unavailable, with the two visible unavailable intervals recovering after about 31 seconds. Public Backend `/live` still reported old build `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`; `/ready` returned HTTP 503 with `access_event_collector=false` while database, schema and MQTT remained true.
+- The observed pattern is consistent with the new Target intentionally deferring MQTT during the access-critical phase while the old deployed bridge expires status earlier. Final Backend source consumes the signed deferred events and uses a 90.25-second connectivity watchdog, but that source is not yet live.
+- Backend N deployment still requires the root-owned NAS access-evidence keyring and exact runtime contract, followed by broker ACL reload and retained HA projection readback. No missing history is reconstructed from unsigned HA state changes.
+
+## [2026-09-02] fix | Keep verified HA access state available through deferred MQTT
+
+- Removed the legacy 30-second Home Assistant `expire_after` from the HMAC-verified state, relay and pre-arm entities. A valid local access session can intentionally defer MQTT longer than 30 seconds, so those entities now use the retained 90.25-second Backend bridge availability watchdog as their single staleness authority.
+- Kept the 30-second expiry for raw diagnostic entities whose freshness is informational rather than access-authoritative. Existing retained discovery must be republished by the reviewed Backend deployment before Home Assistant applies this correction.
+- Added discovery-plan regression assertions that every verified access entity omits `expire_after`, every raw diagnostic retains 30 seconds and the dedicated connectivity entity remains independent. This source fix changes no live NAS, broker, HA registry, Target, relay or door state.
+
+## [2026-09-02] test | Validate HA access-state expiry correction
+
+- Focused Home Assistant bridge and Target status/availability coverage passed 37/37, including the 90.25-second replaceable watchdog and verified projection allow-list.
+- The full Backend suite passed 193 tests with two explicit MariaDB-only skips. Python compilation and repository whitespace validation also passed.
+- These are source/host results. Protected policy authorization, normal merge, exact image publication, NAS deployment, retained discovery republish and HA UI readback remain separate Gates.
+
+## [2026-09-02] test | Attempt Backend N rollout and identify exact root-key blocker
+
+- Owner-approved rerun `33555467447` passed Backend security, MariaDB, evidence verification, exact image publication and production approval. The NAS deployment created a schema-012 pre-migration backup and completed the up migration.
+- API container creation then failed because `/volume1/docker/smart-gatekeeper-backend/secrets/access_event_ref_keys.json` did not exist. The deploy wrapper retained root-only failure evidence, removed the partial stack without deleting volumes and did not attempt a database rollback.
+- Public `/live`, `/ready` and `/admin` returned HTTP 502 after the partial-stack cleanup. This was a material service outage, not a safe no-change failure.
+
+## [2026-09-02] test | Restore last verified Backend after failed N rollout
+
+- Reran and owner-approved the last verified exact `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` NAS deployment job. Its signed bundle, private status comparison and public readiness all passed.
+- Post-recovery `/live` and `/ready` returned HTTP 200 with exact `e62b681`; readiness again reported `access_event_collector=true`. The database and persistent volumes were preserved.
+- Backend N must not be retried until the root-owned access-evidence key file and exact runtime entries are provisioned and checked. Admin actor history and corrected HA access-state discovery remain not live.
+
+## [2026-09-02] test | Confirm Target access-evidence secret injection names
+
+- Confirmed the personal Target workflows read GitHub Environment secrets `SECRET_ACCESS_EVENT_REF_KEY_HEX` and `SECRET_ACCESS_EVENT_REF_KEY_ID`, validate the former as a nonzero 64-character lowercase hex key and the latter as a 1-to-4-character lowercase key ID, then materialize only the ephemeral CI `include/secrets.h` macros with those names.
+- Both secret names are present in the `production` and `personal-auto-ota` GitHub Environments; GitHub exposes their names and update times but does not permit reading their stored values back. The installed Target reports only key ID `a1`, never the HMAC key bytes.
+- The local candidate key remains a format-valid 32-byte value. Its equality to installed firmware must be proven by verifying a fresh Target access-status HMAC, not by treating the visible `a1` ID or secret-name presence as key-value evidence.
+
+## [2026-09-02] test | Diagnose NAS temporary-file SCP failure
+
+- The owner's WSL OpenSSH 10.2 `scp` reached the NAS and authenticated by password, then failed with `subsystem request failed on channel 0`. Modern `scp` defaults to SFTP, so this error identifies the NAS SFTP subsystem as unavailable rather than a `/tmp` permission or credential failure.
+- The bounded transfer fallback is uppercase `scp -O` over the same Tailscale SSH endpoint, which forces the legacy SCP protocol. If the NAS account also rejects that remote command, stream the already-created JSON through an interactive administrator SSH shell or use a different sudo-capable DSM administrator account; do not weaken the forced GitHub deployment identity.
+- The OpenSSH post-quantum key-exchange warning is independent of the subsystem failure. It remains a server-upgrade hardening item and does not justify printing, regenerating or moving the access-evidence key through an unencrypted channel.
+
+## [2026-09-02] test | Recheck Target N status and stop on legacy wrapper contract
+
+- After the owner installed the root access-evidence keyring and confirmed the Backend N runtime entries, a fresh read-only Target status showed exact `2.1.422+main.g10d7a1f`, boot 695, IDLE, signed status revision 27325 and key ID `a1`. The status intentionally omitted door identity and key bytes, so visible key ID alone was not treated as proof of HMAC key equality.
+- Owner-approved Backend run `33555467447` was retried. Hosted security/evidence/image jobs remained successful, but the NAS endpoint stopped before schema or container mutation because the installed legacy root wrapper rejected new key `ACCESS_STATUS_MAX_AGE_SECONDS` as unexpected.
+- Public `/live` and `/ready` remained HTTP 200 on exact rollback build `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` with the access event collector ready. Only `backend/deploy/sgk_backend_deploy.sh` differs between that legacy release and the reviewed Backend N deployment endpoint; the reviewed staged script passed `bash -n` and has SHA-256 `ec7e7eaafa0db301440dcfe4643efde4ebb67cfda914f48d9a5d2b99e11a9806`.
+- Backend N must not be retried until an administrator installs that exact root-owned mode-0755 wrapper and reads back the same digest. The forced GitHub SSH dispatcher and its restricted authorization are unchanged.
+
+## [2026-09-02] test | Deploy Backend N after root contract completion
+
+- After the owner provisioned the root `a1` keyring/runtime entries and installed the reviewed root wrapper, the final owner-approved rerun of `33555467447` completed the signed bundle, NAS migration, API/DB startup, private status comparison and public readiness for exact feature-main build `b29cb2497c4adf151b3d60eeab31acb525555340`.
+- Public `/live` and `/ready` returned HTTP 200. Readiness reported database, schema, MQTT, access event collector, runtime secrets, control/admin authentication, ACL management, access actor reference, access evidence integrity, legacy retirement and build identity all true.
+- Read-only MQTTS received retained bridge `online` and a fresh non-retained Backend `verified-status` for Target boot 695, revision 27868, IDLE and relay OFF/pin 1. Since this projection is emitted only after HMAC verification with the configured door scope, it proves the NAS keyring and installed Target agree on key ID `a1` without exposing the key.
+- The retained HA state discovery from this deployed build still carries `expire_after: 30`. Signed event/history ingestion is live, but false unavailable during a longer access-critical MQTT deferral remains open until the already-tested local discovery correction is protected, merged, redeployed and read back.
+
 ## [2026-09-02] compile | Authorize HA verified access-state availability candidate
 
 - Bound immutable feature `81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` to the sole `ha-access-state-81ee01a-persistent-baseline` with the complete ordered 100-path normalized digest map.
 - Exactly two protected blobs change: the Home Assistant bridge removes the false 30-second expiry from HMAC-verified access entities, and its direct test locks that contract. The other 98 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
 - This policy-only candidate changes no Backend/NAS runtime, Home Assistant registry, broker state, Target, sensor, relay or physical door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, deployment and retained discovery/runtime observation remain separate Gates.
+
+## [2026-09-02] fix | Align repository HA migration contract with verified availability
+
+- The first merge-connected feature run correctly passed the protected policy and Backend bridge tests but exposed one stale repository-level discovery assertion that still required 30-second expiry on every non-connectivity entity.
+- Updated that non-protected contract test to require no `expire_after` for verified state, relay and pre-arm entities while continuing to require 30 seconds for raw diagnostics. No protected runtime byte or approved digest changed after policy authorization.
+- This test correction changes no Backend image, NAS/HA/broker runtime, Target, sensor, relay or physical door state. Fresh full-suite CI remains required before merge.

@@ -120,6 +120,15 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         )
         self.assertNotIn("device_class", relay_status_config)
 
+        verified_access_ids = {"state", "door_binary", "pre_armed"}
+        for publication in read_only:
+            object_id = publication.topic.split("/")[-2]
+            config = json.loads(publication.payload)
+            if object_id in verified_access_ids:
+                self.assertNotIn("expire_after", config)
+            elif object_id != "connectivity":
+                self.assertEqual(30, config["expire_after"])
+
         for publication in read_only:
             config = json.loads(publication.payload)
             if publication is not connectivity:
@@ -127,7 +136,7 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
                 self.assertEqual(
                     (
                         bridge_verified_status_topic(TARGET)
-                        if object_id in {"state", "door_binary", "pre_armed"}
+                        if object_id in verified_access_ids
                         else target_status_topic(TARGET)
                     ),
                     config["state_topic"],

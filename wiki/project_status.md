@@ -18,6 +18,95 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-02 authenticated actor/result final-main publication and rollout
+
+- Policy PR #332, feature PR #333 and final-policy PR #334 were each merged
+  normally without an administrator bypass, squash, rebase or force update.
+  Final `main` is `10d7a1f2e38ed467143db05d5662ae24d575eda5` with the sole
+  `current-main-baseline`; all 100 protected runtime blobs remain identical to
+  immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558`.
+- Target run `33555893409` built and atomically published exact-main personal
+  firmware `2.1.422+main.g10d7a1f`, build ID
+  `main-422-10d7a1f2e38ed467143db05d5662ae24d575eda5`. NAS stage/readback,
+  signed schema-v2 metadata, immutable encrypted artifact, public HTTPS
+  pointer and previous-valid preservation all passed. Independent readback
+  verified the Ed25519 signature, AES-GCM envelope and plaintext hash.
+- Mobile run `33555893523` built, production-signed and atomically published
+  exact-main personal mobile OTA `1.0.0-g10d7a1f` / `38501` to both primary
+  and fallback roots with HTTPS readback and previous-valid preservation.
+  Publication is not phone installation; neither the owner's nor wife's phone
+  has been observed running this APK in this rollout.
+- Immediately before local Target recovery, a fresh non-retained status showed
+  installed `2.1.419+main.g7981498`, boot count 690, `IDLE`, unarmed and relay
+  OFF at pin level 1. The first authenticated station-local
+  `/recovery/enable-ap` attempt could not establish TCP port 80 from either WSL
+  or Windows. It produced no HTTP response; no manifest or firmware bytes were
+  sent and no retry was made. A later status confirmed the same firmware, boot
+  and safe state. The periodic signed HTTPS path subsequently installed exact
+  `2.1.422+main.g10d7a1f`: at 2026-09-02 22:35 KST two fresh non-retained
+  samples from boot count 695 showed a new boot ID, uptime already above
+  26,042 seconds and increasing, `IDLE`, unarmed, relay command OFF/pin level 1,
+  signed access-status revision and access key ID `a1`. This passes exact image,
+  reboot and long post-boot safe-state observation; it does not measure relay
+  contacts or physical door travel.
+- The owner then reported successful access from both the wife's and daughter's
+  phones. This is owner-observed multi-phone functional evidence supporting the
+  asynchronous access-path correction, but it is not an instrumented latency,
+  GPIO, contact or door-leaf measurement and does not prove which mobile APK
+  version each phone was running.
+- Backend N is not deployed in this evidence point. Public `/live` on
+  2026-09-02 still reported old build
+  `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`; `/ready` returned HTTP 503 with
+  `access_event_collector=false` while database, schema and MQTT checks remained
+  true. The owner's HA history showed `IDLE -> unavailable -> IDLE` intervals
+  of about 31 seconds during access. That is consistent with the old bridge's
+  30-second entity expiry while the new Target deliberately defers MQTT during
+  the access-critical phase. The source correction now removes that legacy
+  expiry from verified state/relay/pre-arm entities and delegates staleness to
+  the retained 90.25-second bridge availability watchdog; raw diagnostics keep
+  their 30-second expiry. Backend N also consumes signed deferred events, but
+  neither correction is live until a new reviewed Backend is safely deployed
+  and retained discovery is republished.
+- The root-owned NAS
+  `access_event_ref_keys.json` and exact runtime keys must be provisioned before
+  the restricted deployment can safely run. The live broker's anonymous-read
+  drift and HA principal ACL installation/readback also remain open. Therefore
+  the admin actor display, mobile exact-session completion and verified HA
+  projection are published source artifacts, not live end-to-end behavior yet.
+- An owner-approved rerun of Backend run `33555467447` passed all hosted tests,
+  evidence verification and exact-image publication, then migrated the database
+  to schema 012. API creation failed because the root-owned
+  `/volume1/docker/smart-gatekeeper-backend/secrets/access_event_ref_keys.json`
+  bind source did not exist. The wrapper removed the partial stack without
+  deleting volumes and retained a pre-migration backup, but the public service
+  returned 502 until an emergency rerun of the last verified `e62b681` deploy
+  job restored it. Post-rollback public `/live` and `/ready` both returned 200,
+  exact build `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`, and readiness again showed
+  `access_event_collector=true`. Do not retry Backend N until the root-owned
+  evidence key file and exact runtime contract are provisioned and verified.
+- The owner subsequently provisioned the root keyring/runtime contract and
+  installed the reviewed root deployment wrapper. A final owner-approved rerun
+  of `33555467447` deployed exact feature-main build
+  `b29cb2497c4adf151b3d60eeab31acb525555340`. Public `/live` and `/ready`
+  returned HTTP 200 for that exact identity, with database/schema/MQTT/event
+  collector/runtime secrets/admin/ACL/access actor reference/access evidence
+  integrity/build checks all true. MQTT readback received retained bridge
+  `online` and a fresh non-retained `verified-status` for Target boot 695,
+  revision 27868, IDLE and relay OFF/pin 1. Because the Backend publishes that
+  projection only after verifying the Target HMAC with its configured door
+  scope, this proves the NAS `a1` key matches the installed Target key without
+  exposing either value.
+- Retained HA state discovery from the deployed build still contains
+  `expire_after: 30`. Therefore signed history/actor ingestion and verified
+  projection are live, but the reported false unavailable interval remains
+  reproducible during a longer access-critical MQTT deferral. The tested local
+  correction that removes expiry from verified state/relay/pre-arm entities is
+  not part of deployed `b29cb249`; it still requires protected publication,
+  Backend redeployment and retained discovery readback.
+- No agent-controlled sensor approach, GPIO voltage, relay contact, actuator
+  travel or door-leaf measurement was exercised. The owner's access observation
+  is recorded separately from those still-open physical acceptance Gates.
+
 ## 2026-09-02 authenticated actor and post-ARM completion source candidate
 
 - The source candidate gives each successfully verified Local GATT session a
