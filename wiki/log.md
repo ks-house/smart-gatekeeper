@@ -6169,3 +6169,16 @@
 - Policy PR #344 and feature PR #345 passed required hosted checks and merge-committed normally. Exact feature main is `3be8310d85ad7c37659576a0cda618ab693b9927`, with immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` and merge-connected head `9a415b690a28c5ff73add182326e2cd2fd740e5b` in its ancestry.
 - Verified zero protected-path byte differences between immutable feature and exact feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to actual feature main; all 100 normalized blobs, seven workflows and the empty local-Action inventory remain exact.
 - This final policy-only candidate publishes or deploys nothing and changes no Target/HA/relay state. Hosted review/merge, Backend deployment, signed Target installation/reboot/health and one new administrator/HA terminal observation remain open.
+
+## [2026-09-03] compile | Authorize durable signed MQTT terminal-event candidate
+
+- Bound immutable feature `f5e2528d47e657226354a1ff80f0f11d6fdab01a` to the sole `durable-mqtt-terminal-f5e2528-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly six protected blobs change: the Target publisher's exact build-input map, Backend canonical-event ingestion, Home Assistant projection, administrator HTML and their two direct tests. The other 94 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The candidate keeps MQTT socket work outside the access-critical path, stores one authenticated canonical event per signed terminal, publishes one non-retained HA event only after a new database insert and suppresses exact replay duplicates. Finite queue overflow stays explicitly auditable and no software event is described as physical door-leaf proof.
+- This policy-only candidate publishes or installs no artifact and changes no live Backend, HA, Target, relay or door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, Backend deployment, signed Target install/reboot/health and two consecutive administrator/HA observations remain separate Gates.
+
+## [2026-09-03] test | Validate durable signed MQTT terminal-event policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for the exact feature SHA, complete 100-path map, six changed protected blobs, seven-workflow inventory and empty local-Action inventory.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend deployment, Target installation and consecutive administrator/HA runtime observations remain separate Gates.

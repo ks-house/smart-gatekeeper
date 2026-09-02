@@ -1724,3 +1724,33 @@ deploys no Backend image and changes no Target/mobile/OTA/GPIO/relay state.
 Hosted review and normal merge of this policy, exact Backend publication/NAS
 deployment, retained discovery readback and one new physical access/HA Activity
 observation remain separate Gates.
+
+## 60. Durable signed MQTT terminal-event authorization candidate
+
+Immutable feature candidate
+`f5e2528d47e657226354a1ff80f0f11d6fdab01a` preserves the Target's
+access-critical MQTT deferral while converting every authenticated signed
+`arm` and `manual_remote` terminal result into a separate HMAC-authenticated
+canonical event. The existing latest-result status remains available for N/N-1
+consumers, while Backend publishes a non-retained Home Assistant event only
+after a new canonical database insert; exact duplicate delivery is therefore
+idempotent and does not create a second HA event.
+
+The indivisible inventory remains 100 protected paths. Exactly six normalized
+protected blobs change together: the Target publisher workflow's exact build
+input digest map, Backend canonical-event ingestion, Home Assistant projection,
+administrator HTML and their two direct tests. The other 94 protected bytes,
+seven-workflow inventory and empty local-Action inventory remain identical to
+trusted main. The sole
+`durable-mqtt-terminal-f5e2528-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+The canonical queue is bounded and reboot-persistent; exhausted RAM/NVS
+capacity remains an explicit `queue_overflow` evidence condition rather than an
+unbounded lossless guarantee. The software terminal proves the authenticated
+Target FSM result, not physical door-leaf travel without a contact sensor. This
+policy-only authorization publishes no firmware or Backend image, deploys
+nothing and performs no Target, relay or physical action. Normal policy
+review/merge, feature merge-connection and fresh CI, actual-main merge, exact
+Backend deployment, signed Target OTA install/reboot/health and at least two
+consecutive administrator/HA event observations remain separate Gates.

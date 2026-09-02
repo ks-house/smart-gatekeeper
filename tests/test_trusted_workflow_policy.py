@@ -17,10 +17,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "3be8310d85ad7c37659576a0cda618ab693b9927"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "f5e2528d47e657226354a1ff80f0f11d6fdab01a"
+EXPECTED_BUNDLE_ID = "durable-mqtt-terminal-f5e2528-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
-.github/workflows/deploy.yml 3c1d234e6d0bfd01745b590764d26e9c411ed7f9969401838c857400d1d05718
+.github/workflows/deploy.yml 8c20d0f8126a351b065b6645d9909b71646c5e93e4fb0012085f0a8e2e66cad8
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
 .github/workflows/personal_installation_firmware.yml d29439b9754c8baec015bcb19989ced81fa950da5dd800a5c6c8ee7515c97704
@@ -48,12 +48,12 @@ backend/app/acl_management.py 190b7c7891b46a7b313ca3876d0bfa552eeba62bc122d39cfb
 backend/app/access_actor_ref.py 5e02534777365be7fc9c9997d96dc22458c4292bd3c2f1998cacebc44034cd3d
 backend/app/admin_security.py f3f769eebea014f94b36cdba1bec4627b657094f2d5fa737f29f54a57db0d4c9
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
-backend/app/home_assistant_bridge.py 5cb471f6fbdd1a4049c85958713d239481dbe6cd03d116f613430149752711da
-backend/app/main.py dd750eb0d4308ce89d8d12b79a5b79656096f2c4b86e1cbbbad12c5305d82eef
+backend/app/home_assistant_bridge.py 8c89a034937534524ee319065bcc6eae5502892f46435e02e20a683847ef92e9
+backend/app/main.py 12e5e16626c7853404a61791eaaf952e94a622b26db46870cc6124ace7bc4a23
 backend/app/ops_runtime.py 9aad988a7bd1c59d90d445ff3577e265289424c17e98c0b1f8311c1e14a58b26
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/requirements.txt 75bca144713e5c0ac8c09f2963cccb45e077e22b2f5a166a0db1fa28617595f7
-backend/app/static/admin.html bd916340eeb93c9849d037d76354426054b2722e9f7cc28a86392b2ddcdf2110
+backend/app/static/admin.html b787c235355e459133f18cbf796cc0b04bd728578a331a2453d7b4739932d120
 backend/app/static/admin_login.html 87000b8f02d22b84bc24a41b0360caf9ce1c8a58741a95d090bf5e8acaabff3f
 backend/app/static/index.html 1ae6e77c85f965b09334ebf6222d3a8a66b8ad35b409aba65a0a9543bcf2bc12
 backend/app/target_boot_registry.py 7650ad165594d3a35ee59fafa36ce1f6cbc0ffa4fd8b3dfb98873339a83859dd
@@ -106,7 +106,7 @@ backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad7
 backend/tests/test_acl_management.py c1d476aad60f06aac4335a3b052135bf838739dbcc204996d33b1404eeb7ccc3
 backend/tests/test_access_actor_ref.py 3c983d400b6d140166611fbe182efbbfb8fcc141668e431d8407278ba02810fc
 backend/tests/test_admin_security.py f905d98bc2b073d04bf791e5c254a6cf0fd220c24dffd75cd2d3f07fe9b76a19
-backend/tests/test_home_assistant_bridge.py d722d34852a53ef9d80a08e283a0c1dff3e21b2f97872fe914523546bf17fa33
+backend/tests/test_home_assistant_bridge.py 6d74feb0521246be2855fceca23af3846cff578d224090814301c8b4048ef3d7
 backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
 backend/tests/test_migrations.py a51230a8803293f6c3b01ef41df5cdae7416f3c55e9ad688b9883d0f7e1f12ad
 backend/tests/test_mobile_remote_control.py 0d847814ec779b236f2bfd7b162bc555c00c7a352d66042ea9d9a575a820edaa
@@ -114,14 +114,21 @@ backend/tests/test_nas_backend_deploy.py cfe06207e312b16c2106b4196f634bcb677e689
 backend/tests/test_ops_api.py 43b81c0be0f6e1545306a48a8d9bfc7ac6c903a1c69b8d1a55a7170971fadc5b
 backend/tests/test_ops_commercial_gate.py a56ca1d6becf3361097b4e3bc0c7939494c1841860456447e070afe690e29d18
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
-backend/tests/test_target_boot_registry.py b8216470c92f2cd2e79d7ed93afe8654a7781af467403dfc29fc52d9e9d699dd
+backend/tests/test_target_boot_registry.py 6aa356aaba3efc2d33fc4c06f6f7c20c7b63701e7e92d1aff6a7108b76ad9365
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df532f4587
 security/target-acl 4677a99651767157abe826744018e052d31c754890ecd32cce5f24712b3c21eb
 tests/test_target_security_ota.py 34a98b9ae139d96e8a13611dc5c6f05c8d2b96cbd0538d7d09fe6ef3d627e8e3
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    ".github/workflows/deploy.yml",
+    "backend/app/home_assistant_bridge.py",
+    "backend/app/main.py",
+    "backend/app/static/admin.html",
+    "backend/tests/test_home_assistant_bridge.py",
+    "backend/tests/test_target_boot_registry.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1077,8 +1084,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 100)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 6)
+    self.assertEqual(len(locally_unchanged_protected), 94)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
