@@ -2783,6 +2783,65 @@ void testSignedCommandDurableReplayAndMutations() {
         sgk::CommandResult::kExpired);
 }
 
+void testSignedCommandAccessTracker() {
+  static constexpr const char* kCompactSession =
+      "123e4567e89b42d3a456426614174000";
+  static constexpr const char* kCanonicalSession =
+      "123e4567-e89b-42d3-a456-426614174000";
+
+  sgk::SignedCommandAccessTracker manual;
+  CHECK(!manual.begin(sgk::SignedCommandAccessTracker::Mode::kNone,
+                      kCompactSession));
+  CHECK(!manual.begin(sgk::SignedCommandAccessTracker::Mode::kManualRemote,
+                      "123E4567E89B42D3A456426614174000"));
+  CHECK(manual.begin(sgk::SignedCommandAccessTracker::Mode::kManualRemote,
+                     kCompactSession));
+  CHECK(!manual.noteArmed());
+  CHECK(manual.noteRelayOn());
+  CHECK(!manual.noteRelayOn());
+  CHECK(manual.noteRelayOff(false));
+  sgk::SignedCommandAccessTracker::Terminal terminal{};
+  CHECK(manual.finish(false, &terminal));
+  CHECK(terminal.completed);
+  CHECK(terminal.phase_mask ==
+        sgk::SignedCommandAccessTracker::kManualSuccessMask);
+  CHECK(std::string(terminal.session_id) == kCanonicalSession);
+  CHECK(!manual.active());
+
+  sgk::SignedCommandAccessTracker arm;
+  CHECK(arm.begin(sgk::SignedCommandAccessTracker::Mode::kArm,
+                  kCanonicalSession));
+  CHECK(!arm.noteSensorDetected());
+  CHECK(arm.noteArmed());
+  CHECK(arm.noteSensorDetected());
+  CHECK(arm.noteRelayOn());
+  CHECK(arm.noteRelayOff(false));
+  CHECK(arm.finish(false, &terminal));
+  CHECK(terminal.completed);
+  CHECK(terminal.phase_mask ==
+        sgk::SignedCommandAccessTracker::kArmSuccessMask);
+
+  sgk::SignedCommandAccessTracker failsafe;
+  CHECK(failsafe.begin(
+      sgk::SignedCommandAccessTracker::Mode::kManualRemote,
+      kCompactSession));
+  CHECK(failsafe.noteRelayOn());
+  CHECK(failsafe.noteRelayOff(true));
+  CHECK(failsafe.finish(true, &terminal));
+  CHECK(!terminal.completed);
+  CHECK(terminal.phase_mask ==
+        (sgk::SignedCommandAccessTracker::kManualSuccessMask |
+         sgk::SignedCommandAccessTracker::kRelayFailsafe));
+
+  sgk::SignedCommandAccessTracker timeout;
+  CHECK(timeout.begin(sgk::SignedCommandAccessTracker::Mode::kArm,
+                      kCompactSession));
+  CHECK(timeout.noteArmed());
+  CHECK(timeout.finish(false, &terminal));
+  CHECK(!terminal.completed);
+  CHECK(terminal.phase_mask == sgk::SignedCommandAccessTracker::kArmed);
+}
+
 class MemoryVersionStorage final : public sgk::OtaVersionFloorStorage {
  public:
   bool read(uint8_t slot, sgk::OtaVersionFloorRecord* record) override {
@@ -3064,6 +3123,7 @@ int main() {
   testCommittedActionSurvivesResultTransportFailure();
   testInvalidTypedCanonicalRecordQuarantine();
   testSignedCommandDurableReplayAndMutations();
+  testSignedCommandAccessTracker();
   testRawCommandSchemaRejectsEveryDuplicateField();
   testOtaHealthRequiresContinuousPredicates();
   testOtaVersionFloorAndReplayMutations();

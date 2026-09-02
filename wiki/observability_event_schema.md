@@ -457,8 +457,9 @@ Terminal phase bit는 다음처럼 고정한다.
 경우만 late failsafe다. 그 경로는 signed relay-OFF에 `RELAY_FAILSAFE_CUTOFF`, terminal에
 `ACCESS_SESSION_TERMINATED/FAILED/RELAY_CONTROL_ERROR`, phase summary에 bit `0x20`을 남긴다.
 
-`ACCESS_SESSION_COMPLETED`라도 `0x01..0x10`이 모두 없거나 `0x20`이 있으면 정상 sensor 출입
-성공으로 집계하지 않는다. Individual QoS 0 event가 유실됐더라도 같은 boot의 서명된 terminal
+완료 성공 profile은 경로별 exact mask로 고정한다: Local GATT sensor `0x1f`, Local GATT manual
+`0x19`, signed MQTT arm+sensor `0x1e`, signed MQTT `manual_remote` `0x18`. 이 네 값이 아니거나
+`0x20`이 있으면 `ACCESS_SESSION_COMPLETED` 문자열만으로 성공으로 집계하지 않는다. Individual QoS 0 event가 유실됐더라도 같은 boot의 서명된 terminal
 요약은 별도 immutable summary로 보존할 수 있다. 그러나 Target의 최신 terminal 요약 자체는
 **동일 boot RAM best-effort**다. terminal 뒤 status가 Backend에 도착하기 전에 전원이 끊기면 그
 요약은 유실될 수 있고 다음 boot에서 성공으로 재구성하지 않는다. Durable event queue가 이 공백을
@@ -541,6 +542,12 @@ state로 사용하므로 반복 성공이 같은 `IDLE`로 끝나도 한 세션�
 같은 terminal summary를 반복해도 state는 같아 추가 이력을 만들지 않는다. Session UUID, credential/actor
 ref, reason과 HMAC tag는 HA projection에서 계속 제외한다. Canonical event outbox와 관리자 이력은 별도
 감사 경로이며 이 sensor가 누락 event를 합성하거나 물리 문 열림을 증명하지 않는다.
+
+Signed MQTT command는 callback에서 terminal event를 송신하지 않는다. 인증·replay 검증이 끝난 command의
+session UUID와 mode만 RAM에 보존하고 FSM event callback이 phase bit를 더한다. Relay OFF 뒤 terminal
+sequence와 summary를 완성하며 실제 signed status publish는 IDLE safe-state의 기존 단일 MQTT owner가
+수행한다. 이 경계는 비동기 동작을 유지하지만, status가 오기 전 power loss에는 완료 요약이 남지 않는
+best-effort 한계를 유지한다.
 
 HA relay binary sensor는 entity-registry 호환을 위해 historical object/unique ID의 `door_binary`를
 유지하지만 표시명은 `[Gatekeeper] 릴레이 구동 상태`이고 door `device_class`는 없다. ON은 검증된

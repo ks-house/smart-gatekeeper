@@ -1041,6 +1041,16 @@ void GattServer::notifySessionTerminated(uint64_t now_ms,
 #endif
 }
 
+void GattServer::advanceEventSequence(uint64_t used_sequence) {
+#if ENABLE_HARDWARELESS_RC
+  core_mutex.lock();
+  if (core != nullptr) core->advanceEventSequence(used_sequence);
+  core_mutex.unlock();
+#else
+  (void)used_sequence;
+#endif
+}
+
 GattServer::Telemetry GattServer::getTelemetry() {
   Telemetry telemetry{0, 0, sgk::SessionState::kIdle, false};
 #if ENABLE_HARDWARELESS_RC

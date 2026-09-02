@@ -46,6 +46,16 @@ public:
                                    const char* reasonCode,
                                    const char* credentialRef,
                                    uint16_t phaseMask);
+    // Record only in-memory phase evidence for an already-authorized signed
+    // arm/manual command. These methods never touch the MQTT/TLS socket.
+    static void noteSignedCommandArmed();
+    static void noteSignedCommandSensorDetected();
+    static void noteSignedCommandRelayOn();
+    static void noteSignedCommandRelayOff(bool failsafe);
+    // Returns the allocated terminal sequence, or zero when no signed-command
+    // access lifecycle was active. Publication remains deferred to update().
+    static uint64_t finishSignedCommandAccess(
+        bool failsafe, const char* failureReason = "INTERNAL_ERROR");
     static bool publishCanonicalEvent(const char* payload);
     static void publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs);
     static void publishSensorInfo(unsigned long duration_us, float distance_cm);

@@ -142,6 +142,29 @@ class AccessControlNetworkDeferralTests(unittest.TestCase):
             loop.index("if (!accessCritical)"),
         )
 
+    def test_signed_command_terminal_tracking_never_writes_mqtt_in_control_path(self) -> None:
+        tracker = self.mqtt.split(
+            "void MqttManager::noteSignedCommandArmed", 1
+        )[1].split("bool MqttManager::publishCanonicalEvent", 1)[0]
+        self.assertIn("signedCommandAccessTracker.noteRelayOn()", tracker)
+        self.assertIn("signedCommandAccessTracker.noteRelayOff", tracker)
+        self.assertIn("MqttManager::finishSignedCommandAccess", tracker)
+        self.assertIn("noteAccessTerminal(", tracker)
+        self.assertNotIn("client.publish", tracker)
+
+        callback = self.main.split(
+            "static sgk::TargetAccessFsm g_access_fsm", 1
+        )[1].split("// ─────────────────────────────────────────────────────────────", 1)[0]
+        for event in (
+            '"pre_armed"',
+            '"relay_on_manual"',
+            '"door_close"',
+            '"session_completed"',
+            '"session_terminated_failsafe"',
+        ):
+            self.assertIn(event, callback)
+        self.assertNotIn("MqttManager::update()", callback)
+
     def test_bounded_access_timing_outlives_keepalive_and_ha_grace(self) -> None:
         self.assertIn("PRE_ARM_MAX_DURATION_MS = 60000", self.config)
         self.assertIn("RELAY_COOLDOWN_MAX_MS = 10000", self.config)

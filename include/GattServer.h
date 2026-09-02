@@ -41,6 +41,9 @@ class GattServer {
   static void notifySessionCompleted(uint64_t now_ms);
   static void notifySessionTerminated(uint64_t now_ms,
                                       sgk::EventReason reason);
+  // Keep local GATT canonical sequencing above a terminal position allocated
+  // by the independent signed-command access path.
+  static void advanceEventSequence(uint64_t used_sequence);
   static Telemetry getTelemetry();
 
   // Callback entrypoints are public only so the BLE callback shims can remain

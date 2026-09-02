@@ -141,24 +141,47 @@ static sgk::TargetAccessFsm g_access_fsm(
       const uint64_t now_ms = millis();
       if (std::strcmp(event, "auth_verified_armed") == 0) {
         GattServer::notifyAccessArmed(now_ms);
+      } else if (std::strcmp(event, "pre_armed") == 0) {
+        MqttManager::noteSignedCommandArmed();
       } else if (std::strcmp(event, "sensor_detected") == 0) {
         GattServer::notifySensorDetected(now_ms);
+        MqttManager::noteSignedCommandSensorDetected();
       } else if (std::strcmp(event, "relay_on_sensor") == 0) {
         GattServer::notifyRelayOn(now_ms);
+        MqttManager::noteSignedCommandRelayOn();
       } else if (std::strcmp(event, "relay_on_local_manual") == 0) {
         GattServer::notifyRelayOn(now_ms);
+      } else if (std::strcmp(event, "relay_on_manual") == 0) {
+        MqttManager::noteSignedCommandRelayOn();
       } else if (std::strcmp(event, "door_close") == 0) {
         GattServer::notifyRelayOff(now_ms, false);
+        MqttManager::noteSignedCommandRelayOff(false);
       } else if (std::strcmp(event, "door_close_failsafe") == 0) {
         GattServer::notifyRelayOff(now_ms, true);
+        MqttManager::noteSignedCommandRelayOff(true);
       } else if (std::strcmp(event, "session_completed") == 0) {
         GattServer::notifySessionCompleted(now_ms);
+        const uint64_t remote_sequence =
+            MqttManager::finishSignedCommandAccess(false);
+        if (remote_sequence != 0) {
+          GattServer::advanceEventSequence(remote_sequence);
+        }
       } else if (std::strcmp(event, "session_terminated_failsafe") == 0) {
         GattServer::notifySessionTerminated(
             now_ms, sgk::EventReason::kRelayFailsafeCutoff);
+        const uint64_t remote_sequence =
+            MqttManager::finishSignedCommandAccess(true);
+        if (remote_sequence != 0) {
+          GattServer::advanceEventSequence(remote_sequence);
+        }
       } else if (std::strcmp(event, "session_terminated") == 0) {
         GattServer::notifySessionTerminated(now_ms,
                                             sgk::EventReason::kArmTimeout);
+        const uint64_t remote_sequence =
+            MqttManager::finishSignedCommandAccess(false, "ARM_TIMEOUT");
+        if (remote_sequence != 0) {
+          GattServer::advanceEventSequence(remote_sequence);
+        }
       }
     });
 
