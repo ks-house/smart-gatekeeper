@@ -18,28 +18,36 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-09-03 asynchronous MQTT access-history visibility candidate
+## 2026-09-03 asynchronous MQTT access-history visibility deployed
 
 - The owner repeated a manual local open at about 01:00 KST and observed the
   physical door open, while Home Assistant added no Activity timestamp. The
   deployed state entity renders only `value_json.state`; access-critical MQTT
   deferral can collapse relay/cooldown snapshots into a final `IDLE`, so a new
   `IDLE -> IDLE` access is invisible to that entity.
-- The source candidate keeps all MQTT socket work outside authentication,
+- The deployed correction keeps all MQTT socket work outside authentication,
   sensor, relay and cooldown. Backend projects only the HMAC-covered terminal
   boot count/sequence into a privacy-safe unique marker plus success/terminated,
   and new `[Gatekeeper] 최근 출입 결과` discovery uses that changing value.
   Repeated periodic status for the same terminal does not create duplicate HA
   Activity rows.
-- Focused Backend, discovery-migration and Target network-deferral tests pass
-  59/59, and the full Backend suite passes 194 tests with two declared skips.
-  Repository discovery runs 342 tests: 337 pass, one environment-only case is
-  skipped and the four expected assertions fail only because the changed
-  protected Backend blobs still carry the previous trusted-policy hashes.
-  Protected review/policy rotation, exact Backend image publication, NAS
-  deployment, retained discovery readback and one new physical access/HA
-  Activity observation remain separate Gates. No Target or mobile OTA is
-  required by this Backend/HA-only candidate.
+- Focused Backend, discovery-migration and Target network-deferral tests passed
+  59/59, and the full Backend suite passed 194 tests with two declared skips.
+  After trusted-policy rotation, repository discovery passed all 342 tests with
+  one declared environment-only skip. Policy PR #340, feature PR #341 and final
+  policy PR #342 passed hosted checks and merged normally; exact feature main is
+  `a87ef21dc9f66b227831066f45fab8cf0176a0e7`.
+- Owner-approved Backend run `33654112042` published immutable images and
+  deployed that exact feature main. Deployment evidence reports
+  `status=deployed`, matching `source_sha`, loopback readiness and public
+  readiness passed. Independent strict-TLS `/live` and `/ready` returned HTTP
+  200 for the same SHA, with MQTT and the access-event collector true along
+  with every other readiness check.
+- Backend startup republishes all retained discovery including the new
+  `[Gatekeeper] 최근 출입 결과` entity by source contract. A credentialed
+  broker readback and one new owner-observed access/HA Activity row remain the
+  final runtime UI Gate; deployment/readiness alone does not claim that row.
+  No Target or mobile OTA is required by this Backend/HA-only correction.
 
 ## 2026-09-02 transient mobile access-ready notification correction
 

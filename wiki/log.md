@@ -6144,3 +6144,9 @@
 - Policy PR #340 and feature PR #341 passed their hosted checks and merge-committed normally. Exact feature main is `a87ef21dc9f66b227831066f45fab8cf0176a0e7`, with immutable feature `94f473fc1373dd8c819ab2b3636372d7d6b2e374` and merge-connected head `e01057f98e64fcef2dff208a96124db8a3ffe547` in its ancestry.
 - Verified zero protected-path byte differences between immutable feature and exact feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to actual feature main; all 100 normalized blobs, seven workflows and the empty local-Action inventory remain exact.
 - This final policy-only candidate publishes or deploys nothing and changes no Target/mobile/OTA/GPIO/relay state. Hosted review/normal merge, exact Backend publication/NAS deployment, retained discovery readback and one new HA Activity observation remain separate Gates.
+
+## [2026-09-03] test | Deploy asynchronous MQTT per-access HA Activity Backend
+
+- Owner-approved run `33654112042` passed Backend security/MariaDB, evidence verification, immutable API/DB image publication and NAS deployment for exact feature main `a87ef21dc9f66b227831066f45fab8cf0176a0e7`. Deployment evidence recorded `status=deployed`, the matching source SHA, and both loopback and public readiness passed.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the same exact SHA. Every readiness check was true, including MQTT and `access_event_collector`, so the asynchronous deferred-event consumer is live without any Target/mobile/GPIO/relay/OTA source change.
+- Backend startup republishes the 17-entity retained Home Assistant discovery plan, including `[Gatekeeper] 최근 출입 결과`, by tested source contract. A credentialed retained broker readback and one new owner-observed access/HA Activity timestamp remain separate runtime UI Gates; process readiness alone is not recorded as an Activity-row proof.
