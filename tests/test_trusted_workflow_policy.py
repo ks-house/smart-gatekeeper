@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "b29cb2497c4adf151b3d60eeab31acb525555340"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c"
+EXPECTED_BUNDLE_ID = "ha-access-state-81ee01a-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 977f015b2f839a23fd863957491abff244a2eb7047e3f08aab35096eaf2ab9d5
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -48,7 +48,7 @@ backend/app/acl_management.py 190b7c7891b46a7b313ca3876d0bfa552eeba62bc122d39cfb
 backend/app/access_actor_ref.py 5e02534777365be7fc9c9997d96dc22458c4292bd3c2f1998cacebc44034cd3d
 backend/app/admin_security.py f3f769eebea014f94b36cdba1bec4627b657094f2d5fa737f29f54a57db0d4c9
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
-backend/app/home_assistant_bridge.py 5667c6c6f88cb267fb5e3f409665ed0d61dcb9083029e163fce49b2787231900
+backend/app/home_assistant_bridge.py bd6da64145641bd5b14a913c235b1b541bcb10c3519f3a063c2ad089c3d0bc66
 backend/app/main.py b127b3af8735c8b69867fc6909ed661e115fd97ce22f88f65065c359af276b30
 backend/app/ops_runtime.py 9aad988a7bd1c59d90d445ff3577e265289424c17e98c0b1f8311c1e14a58b26
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
@@ -106,7 +106,7 @@ backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad7
 backend/tests/test_acl_management.py c1d476aad60f06aac4335a3b052135bf838739dbcc204996d33b1404eeb7ccc3
 backend/tests/test_access_actor_ref.py 3c983d400b6d140166611fbe182efbbfb8fcc141668e431d8407278ba02810fc
 backend/tests/test_admin_security.py 7254db15007bd98f721129d25bb2f61370fd66fdf23c197d2cd1a7725381b17a
-backend/tests/test_home_assistant_bridge.py 64faccd39f73adf6d9873b075cf188d5444c1c241bd370bfd7f85ef674344cf3
+backend/tests/test_home_assistant_bridge.py 009969ae13bf130b1c2473f825bd707bebfc70f208d9a6119779ef7771416980
 backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
 backend/tests/test_migrations.py a51230a8803293f6c3b01ef41df5cdae7416f3c55e9ad688b9883d0f7e1f12ad
 backend/tests/test_mobile_remote_control.py 0d847814ec779b236f2bfd7b162bc555c00c7a352d66042ea9d9a575a820edaa
@@ -121,7 +121,10 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 4677a99651767157abe826744018e052d31c754890ecd32cce5f24712b3c21eb
 tests/test_target_security_ota.py 34a98b9ae139d96e8a13611dc5c6f05c8d2b96cbd0538d7d09fe6ef3d627e8e3
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    "backend/app/home_assistant_bridge.py",
+    "backend/tests/test_home_assistant_bridge.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1077,8 +1080,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 100)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 2)
+    self.assertEqual(len(locally_unchanged_protected), 98)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])

@@ -1588,3 +1588,27 @@ broker ACL, publishes or installs no mobile/Target artifact, and changes no
 sensor, relay or physical door state. Hosted review and normal merge of this
 final policy, signed exact-main publication, installation/reboot/readiness and
 physical observation remain separate Gates.
+
+## 54. HA verified access-state availability authorization candidate
+
+Immutable feature candidate
+`81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` removes the legacy 30-second
+Home Assistant entity expiry from the HMAC-verified state, relay and pre-arm
+entities. Those entities instead use the retained Backend bridge availability
+watchdog, whose bounded 90.25-second window covers the Target's intentional
+MQTT deferral during the local GATT, sensor, relay and cooldown critical path.
+Raw diagnostic entities retain their shorter 30-second freshness expiry.
+
+The indivisible inventory remains 100 protected paths. Exactly two normalized
+protected blobs change together: `backend/app/home_assistant_bridge.py` and its
+direct regression test. The other 98 protected bytes, the seven-workflow
+inventory and empty local-Action inventory remain identical to trusted main.
+The sole `ha-access-state-81ee01a-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+This policy-only authorization publishes no discovery payload, changes no Home
+Assistant registry, deploys no Backend image and performs no Target, sensor,
+relay or physical door action. Normal policy review/merge, feature
+merge-connection and fresh CI, actual-main merge, exact Backend deployment,
+retained discovery readback and an over-30-second live HA observation remain
+separate Gates.

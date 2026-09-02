@@ -5986,3 +5986,9 @@
 - Feature PR #333 passed required review and checks and merge-committed normally as exact main `b29cb2497c4adf151b3d60eeab31acb525555340`, retaining immutable feature `23e28e14cf79e618070d0ea3543bf92910ca9558` and merge-connected head `ab0e772606b0af57cf952b650b9bdf31a97f714c` in its ancestry.
 - Retired the transitional feature identity and pinned the sole `current-main-baseline` to that actual feature merge. All 100 protected normalized blobs remain byte-identical across feature, merge-connected head and merged main; workflow inventory remains exactly seven and local Actions remain empty.
 - This final policy-only candidate changes no Backend/NAS runtime, schema, broker ACL, mobile/Target installation, sensor, relay or physical door state. Hosted review/normal merge, signed exact-main publication, deployment, runtime readiness and physical acceptance remain separate Gates.
+
+## [2026-09-02] compile | Authorize HA verified access-state availability candidate
+
+- Bound immutable feature `81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` to the sole `ha-access-state-81ee01a-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly two protected blobs change: the Home Assistant bridge removes the false 30-second expiry from HMAC-verified access entities, and its direct test locks that contract. The other 98 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- This policy-only candidate changes no Backend/NAS runtime, Home Assistant registry, broker state, Target, sensor, relay or physical door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, deployment and retained discovery/runtime observation remain separate Gates.
