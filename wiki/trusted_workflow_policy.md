@@ -1754,3 +1754,32 @@ nothing and performs no Target, relay or physical action. Normal policy
 review/merge, feature merge-connection and fresh CI, actual-main merge, exact
 Backend deployment, signed Target OTA install/reboot/health and at least two
 consecutive administrator/HA event observations remain separate Gates.
+
+## 61. Crash-durable access Activity authorization candidate
+
+Immutable feature candidate
+`ca2977638c535aa8ba7bc4ddbeb07342051d1f50` supersedes the preceding local
+terminal candidate with two crash boundaries closed. Signed MQTT arm/manual
+terminal callbacks commit their HMAC canonical record to the bounded NVS queue
+before returning, without MQTT socket I/O. Backend schema 013 atomically commits
+canonical history and a Home Assistant projection outbox; an ordered worker
+waits for QoS 1 PUBACK before marking each projection delivered.
+
+The indivisible inventory expands from 100 to 102 protected paths by adding the
+schema 013 up/down migrations. Exactly 16 normalized protected blobs differ
+from trusted main: the prior six terminal-event paths plus schema identity,
+migration/deployment inventory, operations checks and direct migration/outbox
+tests. The other 86 protected bytes, seven-workflow inventory and empty
+local-Action inventory remain identical to trusted main. The sole
+`crash-durable-access-ca29776-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+Home Assistant delivery is deliberately at-least-once: restart before PUBACK or
+before the database delivery mark retries the stable marker, and a crash after
+PUBACK but before that mark may duplicate it. Target PubSubClient publication
+remains QoS 0 and both NVS/RAM queues are finite, so this authorization does not
+claim end-to-end exactly-once. It publishes or deploys nothing and performs no
+Target, relay or door action. Normal policy review/merge, feature merge-
+connection, fresh CI, actual-main merge, schema 013 NAS deployment, Target
+install/reboot/health and repeated administrator/HA runtime observations remain
+separate Gates.

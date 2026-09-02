@@ -18,6 +18,21 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-03 crash-durable access Activity policy candidate
+
+- Immutable feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50` persists each signed MQTT
+  terminal to the bounded Target NVS queue before returning and commits Backend canonical history plus
+  schema 013 HA projection outbox atomically. MQTT remains deferred to the single safe-state owner.
+- The trusted inventory expands from 100 to 102 paths for the schema 013 up/down migrations. The sole
+  `crash-durable-access-ca29776-persistent-baseline` binds all 102 normalized digests; 16 feature paths
+  differ and the remaining 86 retain trusted-main bytes. Seven workflows and the empty local-Action
+  inventory are unchanged.
+- This is policy/source authorization only. It does not publish, migrate NAS, deploy Backend, install
+  Target firmware, operate the relay or prove a physical access. Home Assistant delivery is durable
+  at-least-once, while Target QoS 0, finite queue overflow and live repeated correlation remain open Gates.
+  The 42 focused policy tests and all 343 repository tests passed locally with one declared
+  environment-only skip.
+
 ## 2026-09-03 signed MQTT terminal-history correction candidate
 
 - 첨부 관리자 화면은 01:31:26 `MOBILE_REMOTE`를 이승환·401호의 legacy

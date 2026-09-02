@@ -6182,3 +6182,15 @@
 - All 42 focused trusted-workflow policy tests passed for the exact feature SHA, complete 100-path map, six changed protected blobs, seven-workflow inventory and empty local-Action inventory.
 - Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and whitespace validation also passed.
 - These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend deployment, Target installation and consecutive administrator/HA runtime observations remain separate Gates.
+
+## [2026-09-03] compile | Authorize crash-durable access Activity candidate
+
+- Bound immutable feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50` to the sole `crash-durable-access-ca29776-persistent-baseline` with a complete ordered 102-path normalized digest map.
+- Expanded the protected inventory from 100 to 102 paths for schema 013 up/down. Sixteen protected blobs cover NVS-first terminal enqueue, transactional Home Assistant outbox, schema/deployment identity, operations inventory and direct tests; the other 86 bytes, seven workflows and empty local-Action inventory retain trusted-main content.
+- The policy records durable at-least-once HA delivery rather than exactly-once. It publishes and deploys nothing and changes no live Backend, Target, relay, Home Assistant or physical door state.
+
+## [2026-09-03] test | Validate crash-durable access Activity policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for exact feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50`, the complete 102-path map, 16 changed protected blobs, seven workflows and empty local-Action inventory.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and repository whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend schema 013 deployment, Target installation and repeated administrator/HA runtime observations remain separate Gates.
