@@ -77,15 +77,19 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         relay_status["name"], "[Gatekeeper] 릴레이 구동 상태")
     self.assertNotIn("device_class", relay_status)
     self.assertIn("RELAY_HOLD", relay_status["value_template"])
+    verified_access_ids = {"state", "door_binary", "pre_armed"}
     for object_id, config in updates.items():
       self.assertEqual(
           config["state_topic"],
           (
               f"gatekeeper/v1/ha-bridge/{self.target_id}/verified-status"
-              if object_id in {"state", "door_binary", "pre_armed"}
+              if object_id in verified_access_ids
               else f"{self.prefix}/status"
           ))
-      self.assertEqual(config["expire_after"], 30)
+      if object_id in verified_access_ids:
+        self.assertNotIn("expire_after", config)
+      else:
+        self.assertEqual(config["expire_after"], 30)
       self.assertNotIn("smart-gatekeeper/", config["state_topic"])
       self.assertNotIn("gatekeeper/config/", config["state_topic"])
 

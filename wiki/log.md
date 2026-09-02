@@ -6071,3 +6071,9 @@
 - Bound immutable feature `81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` to the sole `ha-access-state-81ee01a-persistent-baseline` with the complete ordered 100-path normalized digest map.
 - Exactly two protected blobs change: the Home Assistant bridge removes the false 30-second expiry from HMAC-verified access entities, and its direct test locks that contract. The other 98 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
 - This policy-only candidate changes no Backend/NAS runtime, Home Assistant registry, broker state, Target, sensor, relay or physical door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, deployment and retained discovery/runtime observation remain separate Gates.
+
+## [2026-09-02] fix | Align repository HA migration contract with verified availability
+
+- The first merge-connected feature run correctly passed the protected policy and Backend bridge tests but exposed one stale repository-level discovery assertion that still required 30-second expiry on every non-connectivity entity.
+- Updated that non-protected contract test to require no `expire_after` for verified state, relay and pre-arm entities while continuing to require 30 seconds for raw diagnostics. No protected runtime byte or approved digest changed after policy authorization.
+- This test correction changes no Backend image, NAS/HA/broker runtime, Target, sensor, relay or physical door state. Fresh full-suite CI remains required before merge.
