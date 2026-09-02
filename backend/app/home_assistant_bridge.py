@@ -426,7 +426,6 @@ def build_discovery_plan(
         config = _base_config(name, object_id)
         config.update(
             {
-                "expire_after": 30,
                 "icon": icon,
                 "state_topic": (
                     verified_status_topic
@@ -436,6 +435,15 @@ def build_discovery_plan(
                 "value_template": value_template,
             }
         )
+        # Verified access state can intentionally remain quiet for the whole
+        # local GATT -> sensor -> relay -> cooldown critical section.  Its
+        # dedicated bridge availability watchdog owns staleness and publishes
+        # retained offline after the bounded 90.25-second window.  Keeping the
+        # legacy 30-second entity expiry here would show a false unavailable
+        # state during a valid access session.  Raw diagnostics still use the
+        # shorter expiry below.
+        if object_id != "state":
+            config["expire_after"] = 30
         if unit is not None:
             config["unit_of_measurement"] = unit
         if device_class is not None:
@@ -464,7 +472,6 @@ def build_discovery_plan(
         config = _base_config(name, object_id)
         config.update(
             {
-                "expire_after": 30,
                 "payload_off": "OFF",
                 "payload_on": "ON",
                 "state_topic": verified_status_topic,

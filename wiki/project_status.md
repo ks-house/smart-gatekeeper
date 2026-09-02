@@ -42,17 +42,51 @@ applies_to:
   `/recovery/enable-ap` attempt could not establish TCP port 80 from either WSL
   or Windows. It produced no HTTP response; no manifest or firmware bytes were
   sent and no retry was made. A later status confirmed the same firmware, boot
-  and safe state. The intended periodic signed HTTPS OTA remains active and is
-  being monitored separately for install, reboot and post-health stability.
-- Backend N is not deployed in this evidence point. The root-owned NAS
+  and safe state. The periodic signed HTTPS path subsequently installed exact
+  `2.1.422+main.g10d7a1f`: at 2026-09-02 22:35 KST two fresh non-retained
+  samples from boot count 695 showed a new boot ID, uptime already above
+  26,042 seconds and increasing, `IDLE`, unarmed, relay command OFF/pin level 1,
+  signed access-status revision and access key ID `a1`. This passes exact image,
+  reboot and long post-boot safe-state observation; it does not measure relay
+  contacts or physical door travel.
+- The owner then reported successful access from both the wife's and daughter's
+  phones. This is owner-observed multi-phone functional evidence supporting the
+  asynchronous access-path correction, but it is not an instrumented latency,
+  GPIO, contact or door-leaf measurement and does not prove which mobile APK
+  version each phone was running.
+- Backend N is not deployed in this evidence point. Public `/live` on
+  2026-09-02 still reported old build
+  `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`; `/ready` returned HTTP 503 with
+  `access_event_collector=false` while database, schema and MQTT checks remained
+  true. The owner's HA history showed `IDLE -> unavailable -> IDLE` intervals
+  of about 31 seconds during access. That is consistent with the old bridge's
+  30-second entity expiry while the new Target deliberately defers MQTT during
+  the access-critical phase. The source correction now removes that legacy
+  expiry from verified state/relay/pre-arm entities and delegates staleness to
+  the retained 90.25-second bridge availability watchdog; raw diagnostics keep
+  their 30-second expiry. Backend N also consumes signed deferred events, but
+  neither correction is live until a new reviewed Backend is safely deployed
+  and retained discovery is republished.
+- The root-owned NAS
   `access_event_ref_keys.json` and exact runtime keys must be provisioned before
   the restricted deployment can safely run. The live broker's anonymous-read
   drift and HA principal ACL installation/readback also remain open. Therefore
   the admin actor display, mobile exact-session completion and verified HA
   projection are published source artifacts, not live end-to-end behavior yet.
-- No sensor approach, GPIO voltage, relay contact, actuator travel or physical
-  door-leaf motion was exercised. Software publication and a safe old-runtime
-  readback do not prove the reported wife-phone latency improvement.
+- An owner-approved rerun of Backend run `33555467447` passed all hosted tests,
+  evidence verification and exact-image publication, then migrated the database
+  to schema 012. API creation failed because the root-owned
+  `/volume1/docker/smart-gatekeeper-backend/secrets/access_event_ref_keys.json`
+  bind source did not exist. The wrapper removed the partial stack without
+  deleting volumes and retained a pre-migration backup, but the public service
+  returned 502 until an emergency rerun of the last verified `e62b681` deploy
+  job restored it. Post-rollback public `/live` and `/ready` both returned 200,
+  exact build `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`, and readiness again showed
+  `access_event_collector=true`. Do not retry Backend N until the root-owned
+  evidence key file and exact runtime contract are provisioned and verified.
+- No agent-controlled sensor approach, GPIO voltage, relay contact, actuator
+  travel or door-leaf measurement was exercised. The owner's access observation
+  is recorded separately from those still-open physical acceptance Gates.
 
 ## 2026-09-02 authenticated actor and post-ARM completion source candidate
 

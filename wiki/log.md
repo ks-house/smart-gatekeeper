@@ -6003,3 +6003,39 @@
 - A fresh non-retained preflight showed installed Target `2.1.419+main.g7981498`, boot 690, `IDLE`, unarmed, relay OFF/pin 1 and cooldown 5000 ms. Exact M2 manifest/artifact verification passed before any Target request.
 - The first authenticated station-local `/recovery/enable-ap` attempt could not establish TCP port 80 from either WSL or Windows. It returned no HTTP code; no manifest or firmware bytes were sent and no retry was made. Follow-up status confirmed unchanged firmware, boot and safe state.
 - Periodic signed HTTPS OTA remains active and is monitored separately. NAS keyring/runtime provisioning, Backend N, broker ACL/HA readback, phone installation and physical sensor/relay/door acceptance remain open Gates.
+
+## [2026-09-02] test | Verify periodic exact-main Target installation
+
+- Two fresh non-retained status samples at 22:35 KST showed `2.1.422+main.g10d7a1f`, boot count 695, a new boot ID and uptime above 26,042 seconds and increasing. State remained IDLE, unarmed and relay OFF/pin 1, with signed access status using key ID `a1`.
+- This closes exact Target OTA install, reboot and long post-boot safe-state observation for the final artifact. It does not measure GPIO voltage, relay contacts, actuator travel or physical door-leaf motion.
+- The owner separately reported successful access from both the wife's and daughter's phones. This supports the asynchronous path as owner-observed functional evidence but does not identify each installed APK or provide instrumented latency/physical measurements.
+
+## [2026-09-02] test | Diagnose missing Backend history and HA unavailable intervals
+
+- The supplied HA history alternated IDLE and unavailable, with the two visible unavailable intervals recovering after about 31 seconds. Public Backend `/live` still reported old build `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`; `/ready` returned HTTP 503 with `access_event_collector=false` while database, schema and MQTT remained true.
+- The observed pattern is consistent with the new Target intentionally deferring MQTT during the access-critical phase while the old deployed bridge expires status earlier. Final Backend source consumes the signed deferred events and uses a 90.25-second connectivity watchdog, but that source is not yet live.
+- Backend N deployment still requires the root-owned NAS access-evidence keyring and exact runtime contract, followed by broker ACL reload and retained HA projection readback. No missing history is reconstructed from unsigned HA state changes.
+
+## [2026-09-02] fix | Keep verified HA access state available through deferred MQTT
+
+- Removed the legacy 30-second Home Assistant `expire_after` from the HMAC-verified state, relay and pre-arm entities. A valid local access session can intentionally defer MQTT longer than 30 seconds, so those entities now use the retained 90.25-second Backend bridge availability watchdog as their single staleness authority.
+- Kept the 30-second expiry for raw diagnostic entities whose freshness is informational rather than access-authoritative. Existing retained discovery must be republished by the reviewed Backend deployment before Home Assistant applies this correction.
+- Added discovery-plan regression assertions that every verified access entity omits `expire_after`, every raw diagnostic retains 30 seconds and the dedicated connectivity entity remains independent. This source fix changes no live NAS, broker, HA registry, Target, relay or door state.
+
+## [2026-09-02] test | Validate HA access-state expiry correction
+
+- Focused Home Assistant bridge and Target status/availability coverage passed 37/37, including the 90.25-second replaceable watchdog and verified projection allow-list.
+- The full Backend suite passed 193 tests with two explicit MariaDB-only skips. Python compilation and repository whitespace validation also passed.
+- These are source/host results. Protected policy authorization, normal merge, exact image publication, NAS deployment, retained discovery republish and HA UI readback remain separate Gates.
+
+## [2026-09-02] test | Attempt Backend N rollout and identify exact root-key blocker
+
+- Owner-approved rerun `33555467447` passed Backend security, MariaDB, evidence verification, exact image publication and production approval. The NAS deployment created a schema-012 pre-migration backup and completed the up migration.
+- API container creation then failed because `/volume1/docker/smart-gatekeeper-backend/secrets/access_event_ref_keys.json` did not exist. The deploy wrapper retained root-only failure evidence, removed the partial stack without deleting volumes and did not attempt a database rollback.
+- Public `/live`, `/ready` and `/admin` returned HTTP 502 after the partial-stack cleanup. This was a material service outage, not a safe no-change failure.
+
+## [2026-09-02] test | Restore last verified Backend after failed N rollout
+
+- Reran and owner-approved the last verified exact `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0` NAS deployment job. Its signed bundle, private status comparison and public readiness all passed.
+- Post-recovery `/live` and `/ready` returned HTTP 200 with exact `e62b681`; readiness again reported `access_event_collector=true`. The database and persistent volumes were preserved.
+- Backend N must not be retried until the root-owned access-evidence key file and exact runtime entries are provisioned and checked. Admin actor history and corrected HA access-state discovery remain not live.
