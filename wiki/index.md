@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-09-02 (authenticated actor and exact-session completion evidence candidate added)
+> Last updated: 2026-09-03 (asynchronous MQTT terminal marker and HA per-access Activity candidate added)
 
 ---
 
@@ -42,7 +42,7 @@
 | Page | Summary |
 |------|---------|
 | [project_status.md](project_status.md) | 저장소 구현·검증 증거·현장 배포를 분리한 현재 프로젝트 대시보드와 열린 Gate |
-| [architecture.md](architecture.md) | Legacy HTTPS/MQTT, personal-production Backend ACL enrollment/ACK → local GATT action-1/action-2, typed Target access-event 수집을 구분한 출입·진단 구조 |
+| [architecture.md](architecture.md) | Legacy HTTPS/MQTT, personal-production Backend ACL enrollment/ACK → local GATT action-1/action-2, typed Target access-event 수집과 비식별 HA 완료 표식을 구분한 출입·진단 구조 |
 | [commercial_release_program.md](commercial_release_program.md) | 상용 출시 목표, 작업 DAG, 보안·핵심·모바일·매뉴얼·실기기·production 완료 Gate |
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |
@@ -66,7 +66,7 @@
 | [target_command_ota_security.md](target_command_ota_security.md) | #50 verified per-Target MQTTS, Backend-only canonical audit read, signed durable commands/OTA, local recovery와 production evidence boundary |
 | [commercial_operations.md](commercial_operations.md) | #52 privacy-safe operations, bounded resilience, readiness/metrics/SLO, backup/restore, hardened production Compose, supply-chain and evidence Gates |
 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
-| [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, Backend schema 011 수신 projection, immutable correlation, I7/I9/OTA 합격·증거 경계 |
+| [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, 비동기 terminal marker와 HA Activity projection, immutable correlation, I7/I9/OTA 합격·증거 경계 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |

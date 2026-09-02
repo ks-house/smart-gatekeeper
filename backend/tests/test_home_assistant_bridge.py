@@ -55,8 +55,8 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
     def test_discovery_controls_use_only_backend_ingress(self) -> None:
         default_plan = build_discovery_plan(TARGET)
         enabled_plan = build_discovery_plan(TARGET, allow_manual_remote=True)
-        self.assertEqual(29, len(default_plan))
-        self.assertEqual(30, len(enabled_plan))
+        self.assertEqual(30, len(default_plan))
+        self.assertEqual(31, len(enabled_plan))
         self.assertTrue(all(not item.payload for item in enabled_plan[:7]))
 
         updates = [item for item in enabled_plan if item.payload]
@@ -67,7 +67,7 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         ]
         read_only = [item for item in updates if item not in controls]
         self.assertEqual(7, len(controls))
-        self.assertEqual(16, len(read_only))
+        self.assertEqual(17, len(read_only))
         for publication in controls:
             config = json.loads(publication.payload)
             self.assertTrue(
@@ -120,7 +120,30 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         )
         self.assertNotIn("device_class", relay_status_config)
 
-        verified_access_ids = {"state", "door_binary", "pre_armed"}
+        last_access = next(
+            item
+            for item in read_only
+            if item.topic.endswith("/last_access_event/config")
+        )
+        last_access_config = json.loads(last_access.payload)
+        self.assertEqual(
+            "[Gatekeeper] 최근 출입 결과", last_access_config["name"]
+        )
+        self.assertIn(
+            "value_json.last_access_event_marker",
+            last_access_config["value_template"],
+        )
+        self.assertIn(
+            "value_json.last_access_result",
+            last_access_config["value_template"],
+        )
+
+        verified_access_ids = {
+            "state",
+            "last_access_event",
+            "door_binary",
+            "pre_armed",
+        }
         for publication in read_only:
             object_id = publication.topic.split("/")[-2]
             config = json.loads(publication.payload)

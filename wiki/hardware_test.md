@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-09-02 (authenticated actor/session-completion and fail-closed session ownership source candidates recorded; deployment and physical acceptance pending)
+> Last updated: 2026-09-03 (asynchronous MQTT terminal marker and HA per-access Activity candidate recorded; deployment acceptance pending)
 
 ## 1. 판정 원칙
 
@@ -895,3 +895,15 @@ an inference from application HMAC tests.
 | Backend N final deployment | After the owner provisioned the root `a1` keyring/runtime and installed reviewed wrapper SHA-256 `ec7e7eaa...9806`, run `33555467447` deployed exact `b29cb2497c4adf151b3d60eeab31acb525555340`. Public `/live` and `/ready` returned 200 with database, schema, MQTT, event collector, runtime secrets, admin/ACL, actor-ref and evidence-integrity checks all true | PASS for exact Backend N deployment and dependency readiness |
 | Signed Target key agreement and HA readback | Read-only MQTTS received retained bridge `online` plus non-retained Backend `verified-status` for Target boot 695/revision 27868, IDLE and relay OFF/pin 1. The projection is emitted only after HMAC verification with the configured door scope, proving NAS and installed Target key agreement for ID `a1`. Retained state discovery pointed at `verified-status` but still carried `expire_after: 30` | PASS for live signed-status ingestion/key agreement and bridge publication; FAIL remains for false 30-second entity expiry until the tested source correction is reviewed/deployed/republished |
 | Physical access | No agent-controlled sensor passage, GPIO/contact measurement, actuator travel or door-leaf measurement was performed | PENDING; owner observation is not an instrumented physical acceptance result |
+
+## 2026-09-03 asynchronous MQTT per-access HA Activity candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Repeated physical observation | The owner reports that a manual local open at about 01:00 KST opened the door, while the HA state entity added no new Activity timestamp or row | OWNER-OBSERVED door-cycle pass and CONFIRMED HA visibility defect; no agent-controlled GPIO/contact trace |
+| Root cause | Target intentionally defers MQTT throughout the access-critical interval and coalesces status to the newest snapshot. HA rendered only `state`, so the final `IDLE` matched the previous `IDLE` | CONFIRMED by source; the missing HA row is not evidence that the relay failed |
+| Asynchronous correction | Backend derives a privacy-safe `<boot_count>-<terminal_sequence>` marker and `SUCCEEDED`/`TERMINATED` from HMAC-verified terminal status. New `[Gatekeeper] 최근 출입 결과` discovery renders that pair as its state | SOURCE CANDIDATE: every terminal session changes HA state once without adding MQTT socket work to authentication/sensor/relay/cooldown |
+| Privacy and duplication | Session UUID, credential/actor ref, reason and HMAC tag stay outside HA projection. Repeated periodic snapshots of the same terminal marker render the same state | PASS by focused projection/discovery tests; no personal identifier exposure or periodic Activity spam |
+| Focused regression | Home Assistant bridge, authenticated status registry, discovery migration and access-network-deferral suites passed 59/59 | PASS for local source contracts; protected review, Backend deployment, retained discovery readback and one new physical Activity observation remain pending |
+| Full regression | Backend passed 194 tests with two declared skips. Repository discovery ran 342: 337 passed, one environment-only case skipped and four expected trusted-policy digest assertions failed only for the four changed protected Backend files | FUNCTIONAL/SECURITY/OTA CONTRACTS PASS; trusted-policy rotation remains the sole local Gate |
+| Release scope | No Target, mobile, GPIO, relay, sensor, ACL, command or OTA code changes | Backend/HA-only candidate; installed Target `2.1.422` remains protocol-compatible |

@@ -6112,3 +6112,17 @@
 
 - Split transient access-ready and attention-required failure/uncertainty notices into separate notification IDs. Exit and exact-session terminal callbacks cancel only the ready ID; posting a failure replaces any stale ready notice but later exit cannot erase the failure evidence.
 - Extended policy and source-contract assertions for this separation. Target, Backend, HA and physical control behavior remain unchanged.
+
+## [2026-09-03] fix | Record each deferred MQTT terminal session in HA Activity
+
+- The owner repeated a manual local open at about 01:00 KST, observed the physical door open and confirmed that the HA state entity added no new Activity timestamp. The deployed entity rendered only `state`, so an access collapsed by safe MQTT deferral to final `IDLE` was invisible as `IDLE -> IDLE`.
+- Kept all MQTT socket work outside auth, sensor, relay and cooldown. Backend now derives a privacy-safe `<boot_count>-<terminal_sequence>` marker and `SUCCEEDED`/`TERMINATED` from the HMAC-verified terminal summary, while excluding session UUID, credential/actor ref, reason and HMAC tag.
+- Added `[Gatekeeper] 최근 출입 결과` MQTT discovery on the verified-status topic. Its state changes once for each new terminal marker and remains stable across periodic repeats, producing one HA Activity record without synchronous MQTT or idle-state noise.
+- No Target/mobile/OTA/control-path source changed; installed Target 2.1.422 remains protocol-compatible.
+
+## [2026-09-03] test | Validate asynchronous MQTT terminal Activity candidate
+
+- Home Assistant bridge, authenticated Target status registry, discovery migration and access-network-deferral suites passed 59/59 after updating the read-only discovery inventory from 16 to 17 entities.
+- Projection tests cover success, failsafe termination, malformed terminal sequence rejection and exclusion of session, credential and reason material. Discovery tests bind the new entity only to Backend verified-status and keep it free of the raw 30-second diagnostic expiry.
+- The full Backend suite passed 194 tests with two declared skips. Repository discovery ran 342 tests: 337 passed, one environment-only case skipped and four expected assertions failed solely because the changed protected Backend files have not yet received trusted-policy rotation. Python compilation and whitespace validation passed.
+- These are local source/unit/contract results. Protected policy rotation, hosted full suites, exact Backend publication/NAS deployment, retained discovery readback and one new owner-observed HA Activity row remain separate Gates.
