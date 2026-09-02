@@ -6065,3 +6065,9 @@
 - Public `/live` and `/ready` returned HTTP 200. Readiness reported database, schema, MQTT, access event collector, runtime secrets, control/admin authentication, ACL management, access actor reference, access evidence integrity, legacy retirement and build identity all true.
 - Read-only MQTTS received retained bridge `online` and a fresh non-retained Backend `verified-status` for Target boot 695, revision 27868, IDLE and relay OFF/pin 1. Since this projection is emitted only after HMAC verification with the configured door scope, it proves the NAS keyring and installed Target agree on key ID `a1` without exposing the key.
 - The retained HA state discovery from this deployed build still carries `expire_after: 30`. Signed event/history ingestion is live, but false unavailable during a longer access-critical MQTT deferral remains open until the already-tested local discovery correction is protected, merged, redeployed and read back.
+
+## [2026-09-02] compile | Authorize HA verified access-state availability candidate
+
+- Bound immutable feature `81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` to the sole `ha-access-state-81ee01a-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly two protected blobs change: the Home Assistant bridge removes the false 30-second expiry from HMAC-verified access entities, and its direct test locks that contract. The other 98 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- This policy-only candidate changes no Backend/NAS runtime, Home Assistant registry, broker state, Target, sensor, relay or physical door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, deployment and retained discovery/runtime observation remain separate Gates.
