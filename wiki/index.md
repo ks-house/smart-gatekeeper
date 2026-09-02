@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-09-03 (crash-durable signed terminal and transactional HA Activity outbox candidate added)
+> Last updated: 2026-09-03 (crash-durable access Activity feature and policy candidates connected)
 
 ---
 
