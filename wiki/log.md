@@ -6157,3 +6157,9 @@
 - Added a bounded in-RAM tracker for authenticated signed MQTT `arm` and `manual_remote` session UUIDs. FSM callbacks record ordered armed/sensor/relay ON/OFF/failsafe bits only; they never publish MQTT. Relay/session terminal allocates the shared boot-local sequence and updates the existing HMAC status summary for later safe-state publication by the single MQTT owner.
 - Backend success classification now accepts exact path profiles `0x1f`, `0x19`, `0x1e` and `0x18` while rejecting failsafe/incomplete summaries. Administrator projection distinguishes mobile manual/pre-arm terminal summaries and its HTML uses the same success profiles as HA and the database.
 - Native core plus focused Target-network/Backend/HA/admin tests passed 73/73, added UI/SQL/HA tests passed 3/3, the personal-production ESP32-C6 build succeeded, and whitespace validation was clean. These are source/build results; protected merge, Backend deployment, Target OTA install/reboot/health and one new administrator/HA terminal observation remain open.
+
+## [2026-09-03] compile | Authorize signed MQTT terminal completion candidate
+
+- Bound immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` to the sole `signed-mqtt-terminal-64a62fe-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly five protected blobs change: the Target publisher's exact build-input map, Backend main/admin projection and their two direct tests. The other 95 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The candidate preserves the single safe-state MQTT owner and OTA recovery contract. This policy-only candidate performs no publication, deployment or physical action; normal merge, Backend deployment, signed Target installation/reboot/health and one new administrator/HA terminal observation remain separate Gates.
