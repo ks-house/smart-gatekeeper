@@ -6163,3 +6163,9 @@
 - Bound immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` to the sole `signed-mqtt-terminal-64a62fe-persistent-baseline` with the complete ordered 100-path normalized digest map.
 - Exactly five protected blobs change: the Target publisher's exact build-input map, Backend main/admin projection and their two direct tests. The other 95 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
 - The candidate preserves the single safe-state MQTT owner and OTA recovery contract. This policy-only candidate performs no publication, deployment or physical action; normal merge, Backend deployment, signed Target installation/reboot/health and one new administrator/HA terminal observation remain separate Gates.
+
+## [2026-09-03] compile | Finalize signed MQTT terminal completion main policy
+
+- Policy PR #344 and feature PR #345 passed required hosted checks and merge-committed normally. Exact feature main is `3be8310d85ad7c37659576a0cda618ab693b9927`, with immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` and merge-connected head `9a415b690a28c5ff73add182326e2cd2fd740e5b` in its ancestry.
+- Verified zero protected-path byte differences between immutable feature and exact feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to actual feature main; all 100 normalized blobs, seven workflows and the empty local-Action inventory remain exact.
+- This final policy-only candidate publishes or deploys nothing and changes no Target/HA/relay state. Hosted review/merge, Backend deployment, signed Target installation/reboot/health and one new administrator/HA terminal observation remain open.

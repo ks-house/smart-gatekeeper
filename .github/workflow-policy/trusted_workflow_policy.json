@@ -117,11 +117,11 @@
   },
   "approved_bundles": [
     {
-      "id": "signed-mqtt-terminal-64a62fe-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc"
+        "commit": "3be8310d85ad7c37659576a0cda618ab693b9927"
       },
       "files": {
         ".github/workflows/deploy.yml": "3c1d234e6d0bfd01745b590764d26e9c411ed7f9969401838c857400d1d05718",

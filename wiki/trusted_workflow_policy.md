@@ -1656,6 +1656,26 @@ merge-connection and fresh CI, actual-main merge, Backend deployment, signed
 Target OTA install/reboot/health and a new administrator/HA terminal observation
 remain separate Gates.
 
+## 59. Final signed MQTT terminal completion main baseline
+
+Feature PR #345 passed Hosted Trusted, Backend/MariaDB, OTA/schema and ESP32-C6
+canary checks at merge-connected head
+`9a415b690a28c5ff73add182326e2cd2fd740e5b`, and was merged normally as exact
+main `3be8310d85ad7c37659576a0cda618ab693b9927`. The immutable feature
+`64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` and merge-connected head are both
+ancestors of that merge.
+
+All 100 protected normalized blobs are byte-identical across immutable feature,
+merge-connected head and exact feature main. The transitional feature identity
+is retired in favor of the sole `current-main-baseline` pinned to that actual
+merge; the complete digest map, seven-workflow inventory and empty local-Action
+inventory remain unchanged.
+
+This final policy-only rotation publishes no firmware or Backend image, deploys
+nothing and changes no Target/HA/relay state. Hosted review/merge, exact Backend
+publication/NAS deployment, signed Target OTA install/reboot/health and one new
+administrator plus HA terminal observation remain separate Gates.
+
 ## 56. Asynchronous MQTT per-access HA Activity authorization candidate
 
 Immutable feature candidate
