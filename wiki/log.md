@@ -6126,3 +6126,15 @@
 - Projection tests cover success, failsafe termination, malformed terminal sequence rejection and exclusion of session, credential and reason material. Discovery tests bind the new entity only to Backend verified-status and keep it free of the raw 30-second diagnostic expiry.
 - The full Backend suite passed 194 tests with two declared skips. Repository discovery ran 342 tests: 337 passed, one environment-only case skipped and four expected assertions failed solely because the changed protected Backend files have not yet received trusted-policy rotation. Python compilation and whitespace validation passed.
 - These are local source/unit/contract results. Protected policy rotation, hosted full suites, exact Backend publication/NAS deployment, retained discovery readback and one new owner-observed HA Activity row remain separate Gates.
+
+## [2026-09-03] compile | Authorize asynchronous MQTT per-access HA Activity candidate
+
+- Bound immutable feature `94f473fc1373dd8c819ab2b3636372d7d6b2e374` to the sole `mqtt-access-history-94f473f-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly four protected blobs change: Backend verified-status projection, Home Assistant discovery and their two direct tests. The other 96 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The candidate preserves access-critical MQTT deferral, exposes only a non-identifying terminal marker/result and changes no Target/mobile/OTA/GPIO/relay source. This policy-only candidate performs no publication, deployment or physical action; normal review/merge, feature merge-connection, fresh CI, Backend deployment, retained discovery readback and one new HA Activity observation remain separate Gates.
+
+## [2026-09-03] test | Validate asynchronous MQTT Activity policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for the exact feature SHA, complete 100-path map, four changed protected blobs, seven-workflow inventory and empty local-Action inventory.
+- Full repository discovery passed 342/342 tests with one declared environment-only skip. Whitespace validation remained clean.
+- These are local policy/source contracts only; hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend deployment and HA runtime observation remain separate Gates.

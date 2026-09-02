@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "993c1b6097992bce9fc4f7791a3033f9a34c7f9e"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "94f473fc1373dd8c819ab2b3636372d7d6b2e374"
+EXPECTED_BUNDLE_ID = "mqtt-access-history-94f473f-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 977f015b2f839a23fd863957491abff244a2eb7047e3f08aab35096eaf2ab9d5
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -48,8 +48,8 @@ backend/app/acl_management.py 190b7c7891b46a7b313ca3876d0bfa552eeba62bc122d39cfb
 backend/app/access_actor_ref.py 5e02534777365be7fc9c9997d96dc22458c4292bd3c2f1998cacebc44034cd3d
 backend/app/admin_security.py f3f769eebea014f94b36cdba1bec4627b657094f2d5fa737f29f54a57db0d4c9
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
-backend/app/home_assistant_bridge.py bd6da64145641bd5b14a913c235b1b541bcb10c3519f3a063c2ad089c3d0bc66
-backend/app/main.py b127b3af8735c8b69867fc6909ed661e115fd97ce22f88f65065c359af276b30
+backend/app/home_assistant_bridge.py 5cb471f6fbdd1a4049c85958713d239481dbe6cd03d116f613430149752711da
+backend/app/main.py 99eb7f76de3b40c9095522292e3941eed1a0da5f089cf85398f80933a460cc4d
 backend/app/ops_runtime.py 9aad988a7bd1c59d90d445ff3577e265289424c17e98c0b1f8311c1e14a58b26
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/requirements.txt 75bca144713e5c0ac8c09f2963cccb45e077e22b2f5a166a0db1fa28617595f7
@@ -106,7 +106,7 @@ backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad7
 backend/tests/test_acl_management.py c1d476aad60f06aac4335a3b052135bf838739dbcc204996d33b1404eeb7ccc3
 backend/tests/test_access_actor_ref.py 3c983d400b6d140166611fbe182efbbfb8fcc141668e431d8407278ba02810fc
 backend/tests/test_admin_security.py 7254db15007bd98f721129d25bb2f61370fd66fdf23c197d2cd1a7725381b17a
-backend/tests/test_home_assistant_bridge.py 009969ae13bf130b1c2473f825bd707bebfc70f208d9a6119779ef7771416980
+backend/tests/test_home_assistant_bridge.py d722d34852a53ef9d80a08e283a0c1dff3e21b2f97872fe914523546bf17fa33
 backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
 backend/tests/test_migrations.py a51230a8803293f6c3b01ef41df5cdae7416f3c55e9ad688b9883d0f7e1f12ad
 backend/tests/test_mobile_remote_control.py 0d847814ec779b236f2bfd7b162bc555c00c7a352d66042ea9d9a575a820edaa
@@ -114,14 +114,19 @@ backend/tests/test_nas_backend_deploy.py cfe06207e312b16c2106b4196f634bcb677e689
 backend/tests/test_ops_api.py 43b81c0be0f6e1545306a48a8d9bfc7ac6c903a1c69b8d1a55a7170971fadc5b
 backend/tests/test_ops_commercial_gate.py a56ca1d6becf3361097b4e3bc0c7939494c1841860456447e070afe690e29d18
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
-backend/tests/test_target_boot_registry.py 41180e22961f08e920f0242dd5dd1a7f3cc8a85b58ebfc6d978352072a42c531
+backend/tests/test_target_boot_registry.py 8243a8a11be5eea77873a5826e91383762e373c31ee9852f00eb943e838fcb55
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df532f4587
 security/target-acl 4677a99651767157abe826744018e052d31c754890ecd32cce5f24712b3c21eb
 tests/test_target_security_ota.py 34a98b9ae139d96e8a13611dc5c6f05c8d2b96cbd0538d7d09fe6ef3d627e8e3
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    "backend/app/home_assistant_bridge.py",
+    "backend/app/main.py",
+    "backend/tests/test_home_assistant_bridge.py",
+    "backend/tests/test_target_boot_registry.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1077,8 +1082,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 100)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 4)
+    self.assertEqual(len(locally_unchanged_protected), 96)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
