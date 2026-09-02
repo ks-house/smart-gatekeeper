@@ -6077,3 +6077,9 @@
 - The first merge-connected feature run correctly passed the protected policy and Backend bridge tests but exposed one stale repository-level discovery assertion that still required 30-second expiry on every non-connectivity entity.
 - Updated that non-protected contract test to require no `expire_after` for verified state, relay and pre-arm entities while continuing to require 30 seconds for raw diagnostics. No protected runtime byte or approved digest changed after policy authorization.
 - This test correction changes no Backend image, NAS/HA/broker runtime, Target, sensor, relay or physical door state. Fresh full-suite CI remains required before merge.
+
+## [2026-09-02] compile | Finalize HA verified access-state main policy
+
+- Policy PR #335 and feature PR #336 passed their required hosted checks and merge-committed normally. Exact feature main is `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`, with immutable feature `81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` and merge-connected head `65666ea535a9e73bac23ecb82939fc709c02304e` in its ancestry.
+- Retired the transitional HA candidate identity and pinned the sole `current-main-baseline` to the actual feature merge. All 100 protected normalized blobs remain byte-identical; the seven-workflow inventory and empty local-Action inventory are unchanged.
+- This final policy-only candidate changes no Backend/NAS/HA/broker runtime, Target, sensor, relay or physical door state. Hosted review/normal merge, Backend publication/deployment, retained discovery readback and live HA observation remain separate Gates.

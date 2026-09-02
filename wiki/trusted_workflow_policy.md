@@ -1612,3 +1612,23 @@ relay or physical door action. Normal policy review/merge, feature
 merge-connection and fresh CI, actual-main merge, exact Backend deployment,
 retained discovery readback and an over-30-second live HA observation remain
 separate Gates.
+
+## 55. Final HA verified access-state availability main baseline
+
+Feature PR #336 passed the Hosted Trusted, repository OTA/contract and Backend
+security checks, retained merge-connected head
+`65666ea535a9e73bac23ecb82939fc709c02304e`, and was merged normally as exact
+main `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`. The immutable feature
+`81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` and merge-connected head are both
+ancestors of that merge.
+
+All 100 protected normalized blobs are byte-identical across the immutable
+feature, merge-connected head and exact feature main. The transitional feature
+identity is retired in favor of the sole `current-main-baseline` pinned to that
+actual merge; the complete digest map, seven-workflow inventory and empty
+local-Action inventory remain unchanged.
+
+This final policy-only rotation deploys no Backend image and publishes no Home
+Assistant discovery payload. Hosted review and normal merge of this policy,
+exact Backend image publication/NAS deployment, retained discovery readback and
+an over-30-second live HA observation remain separate Gates.

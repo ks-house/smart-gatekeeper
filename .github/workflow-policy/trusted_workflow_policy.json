@@ -117,11 +117,11 @@
   },
   "approved_bundles": [
     {
-      "id": "ha-access-state-81ee01a-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c"
+        "commit": "993c1b6097992bce9fc4f7791a3033f9a34c7f9e"
       },
       "files": {
         ".github/workflows/deploy.yml": "977f015b2f839a23fd863957491abff244a2eb7047e3f08aab35096eaf2ab9d5",
