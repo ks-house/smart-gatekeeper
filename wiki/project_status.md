@@ -84,6 +84,25 @@ applies_to:
   exact build `e62b681fe9f4ce52e5e5bdb1a795ef6a3ac532d0`, and readiness again showed
   `access_event_collector=true`. Do not retry Backend N until the root-owned
   evidence key file and exact runtime contract are provisioned and verified.
+- The owner subsequently provisioned the root keyring/runtime contract and
+  installed the reviewed root deployment wrapper. A final owner-approved rerun
+  of `33555467447` deployed exact feature-main build
+  `b29cb2497c4adf151b3d60eeab31acb525555340`. Public `/live` and `/ready`
+  returned HTTP 200 for that exact identity, with database/schema/MQTT/event
+  collector/runtime secrets/admin/ACL/access actor reference/access evidence
+  integrity/build checks all true. MQTT readback received retained bridge
+  `online` and a fresh non-retained `verified-status` for Target boot 695,
+  revision 27868, IDLE and relay OFF/pin 1. Because the Backend publishes that
+  projection only after verifying the Target HMAC with its configured door
+  scope, this proves the NAS `a1` key matches the installed Target key without
+  exposing either value.
+- Retained HA state discovery from the deployed build still contains
+  `expire_after: 30`. Therefore signed history/actor ingestion and verified
+  projection are live, but the reported false unavailable interval remains
+  reproducible during a longer access-critical MQTT deferral. The tested local
+  correction that removes expiry from verified state/relay/pre-arm entities is
+  not part of deployed `b29cb249`; it still requires protected publication,
+  Backend redeployment and retained discovery readback.
 - No agent-controlled sensor approach, GPIO voltage, relay contact, actuator
   travel or door-leaf measurement was exercised. The owner's access observation
   is recorded separately from those still-open physical acceptance Gates.
