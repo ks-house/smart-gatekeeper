@@ -1476,12 +1476,9 @@ def _personal_access_session(
         terminal_summary_valid
         and terminal_phase_mask & _ACCESS_FAILSAFE_PHASE_MASK
     )
-    completed_by_sensor = bool(
+    completed_access = bool(
         terminal_summary_valid
-        and terminal_code == "ACCESS_SESSION_COMPLETED"
-        and (terminal_phase_mask & _ACCESS_SUCCESS_PHASE_MASK)
-        == _ACCESS_SUCCESS_PHASE_MASK
-        and not failsafe_terminal
+        and _access_terminal_succeeded(terminal_code, terminal_phase_mask)
     )
     terminated = bool(
         signed_termination
@@ -1495,7 +1492,7 @@ def _personal_access_session(
     )
     if terminated:
         status_value = "terminated"
-    elif completed_by_sensor and live_session_idle:
+    elif completed_access and live_session_idle:
         status_value = "complete"
     elif "ACCESS_RELAY_OFF" in codes:
         status_value = "cooldown"
@@ -1513,7 +1510,7 @@ def _personal_access_session(
         or (
             live_session_idle
             and terminal_summary_valid
-            and (completed_by_sensor or terminated)
+            and (completed_access or terminated)
         )
     )
     result.update(
@@ -1749,8 +1746,29 @@ _ACCESS_TERMINAL_CODES = frozenset(
     {"ACCESS_SESSION_COMPLETED", "ACCESS_SESSION_TERMINATED"}
 )
 _ACCESS_TERMINAL_PHASE_MASK = 0x003F
-_ACCESS_SUCCESS_PHASE_MASK = 0x001F
+_ACCESS_LOCAL_SENSOR_SUCCESS_PHASE_MASK = 0x001F
+_ACCESS_LOCAL_MANUAL_SUCCESS_PHASE_MASK = 0x0019
+_ACCESS_SIGNED_ARM_SUCCESS_PHASE_MASK = 0x001E
+_ACCESS_SIGNED_MANUAL_SUCCESS_PHASE_MASK = 0x0018
+_ACCESS_SUCCESS_PHASE_MASKS = frozenset(
+    {
+        _ACCESS_LOCAL_SENSOR_SUCCESS_PHASE_MASK,
+        _ACCESS_LOCAL_MANUAL_SUCCESS_PHASE_MASK,
+        _ACCESS_SIGNED_ARM_SUCCESS_PHASE_MASK,
+        _ACCESS_SIGNED_MANUAL_SUCCESS_PHASE_MASK,
+    }
+)
 _ACCESS_FAILSAFE_PHASE_MASK = 0x0020
+
+
+def _access_terminal_succeeded(event_code: object, phase_mask: object) -> bool:
+    return bool(
+        event_code == "ACCESS_SESSION_COMPLETED"
+        and not isinstance(phase_mask, bool)
+        and isinstance(phase_mask, int)
+        and phase_mask in _ACCESS_SUCCESS_PHASE_MASKS
+        and not (phase_mask & _ACCESS_FAILSAFE_PHASE_MASK)
+    )
 
 
 def _parse_authenticated_target_status(
@@ -1982,12 +2000,7 @@ def _verified_home_assistant_status_projection(
         last_access_event_marker = f"{boot_count}-{terminal_sequence}"
         last_access_result = (
             "SUCCEEDED"
-            if terminal_code == "ACCESS_SESSION_COMPLETED"
-            and (
-                terminal_phase_mask & _ACCESS_SUCCESS_PHASE_MASK
-            )
-            == _ACCESS_SUCCESS_PHASE_MASK
-            and not (terminal_phase_mask & _ACCESS_FAILSAFE_PHASE_MASK)
+            if _access_terminal_succeeded(terminal_code, terminal_phase_mask)
             else "TERMINATED"
         )
     document = {
@@ -5064,13 +5077,17 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "FROM access_event_history e "
     "UNION ALL "
     "SELECT 'terminal_summary' AS record_kind,s.id,NULL AS tenant_id,"
-    "NULL AS tenant_name,NULL AS unit_number,'LOCAL_GATT_SUMMARY' AS auth_method,"
+    "NULL AS tenant_name,NULL AS unit_number,CASE "
+    "WHEN (s.phase_mask & 1)=1 THEN 'LOCAL_GATT_SUMMARY' "
+    "WHEN (s.phase_mask & 2)=2 THEN 'MOBILE_PREARM' "
+    "ELSE 'MOBILE_REMOTE' END AS auth_method,"
     "(s.event_code='ACCESS_SESSION_COMPLETED' AND "
-    "(s.phase_mask & 31)=31 AND (s.phase_mask & 32)=0) AS is_success,"
+    "s.phase_mask IN (24,25,30,31) AND (s.phase_mask & 32)=0) AS is_success,"
     "NULL AS distance_mm,CASE "
     "WHEN (s.phase_mask & 32)=32 THEN "
     "'Target signed failsafe terminal summary; physical door unconfirmed' "
-    "WHEN s.event_code='ACCESS_SESSION_COMPLETED' AND (s.phase_mask & 31)<>31 "
+    "WHEN s.event_code='ACCESS_SESSION_COMPLETED' "
+    "AND s.phase_mask NOT IN (24,25,30,31) "
     "THEN 'Target signed incomplete-phase summary; success not established' "
     "ELSE 'Target signed terminal summary; individual QoS0 events may be missing' "
     "END AS failure_reason,s.received_at AS created_at,NULL AS event_id,s.session_id,"
@@ -5078,9 +5095,12 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "s.source_boot_count,s.terminal_event_sequence AS source_sequence,"
     "1 AS event_attempt,s.event_code,'COMPLETE' AS event_stage,"
     "CASE WHEN s.event_code='ACCESS_SESSION_COMPLETED' "
-    "AND (s.phase_mask & 31)=31 AND (s.phase_mask & 32)=0 THEN 'SUCCEEDED' "
+    "AND s.phase_mask IN (24,25,30,31) AND (s.phase_mask & 32)=0 THEN 'SUCCEEDED' "
     "ELSE 'FAILED' END AS event_outcome,s.reason_code,"
-    "NULL AS causation_event_id,NULL AS target_ref,'local_gatt' AS event_path,"
+    "NULL AS causation_event_id,NULL AS target_ref,CASE "
+    "WHEN (s.phase_mask & 1)=1 THEN 'local_gatt' "
+    "WHEN (s.phase_mask & 2)=2 THEN 'mqtt_prearm' "
+    "ELSE 'mqtt_manual_remote' END AS event_path,"
     "'signed_status' AS event_transport,NULL AS monotonic_ms,"
     "'SIGNED_SUMMARY' AS clock_quality,s.collector_target_ref,s.target_id,"
     "s.credential_ref,'verified' AS integrity_status,s.phase_mask,s.received_at "

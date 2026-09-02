@@ -684,8 +684,13 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
         self.assertIn("access_event_history", history_query)
         self.assertIn("UNION ALL", history_query)
         self.assertIn("e.collector_target_id=s.target_id", history_query)
-        self.assertIn("(s.phase_mask & 31)=31", history_query)
+        self.assertIn("s.phase_mask IN (24,25,30,31)", history_query)
+        self.assertIn("s.phase_mask NOT IN (24,25,30,31)", history_query)
         self.assertIn("(s.phase_mask & 32)=0", history_query)
+        self.assertIn("THEN 'MOBILE_PREARM'", history_query)
+        self.assertIn("ELSE 'MOBILE_REMOTE'", history_query)
+        self.assertIn("THEN 'mqtt_prearm'", history_query)
+        self.assertIn("ELSE 'mqtt_manual_remote'", history_query)
         self.assertIn("s.phase_mask", history_query)
         count_query = cursor.execute.call_args_list[2].args[0]
         self.assertIn(
@@ -707,6 +712,9 @@ class PersonalAdminAccountManagementTest(unittest.TestCase):
         page = (
             Path(__file__).resolve().parents[1] / "app" / "static" / "admin.html"
         ).read_text(encoding="utf-8")
+        self.assertIn("'모바일 수동 문열기'", page)
+        self.assertIn("'모바일 출입 준비'", page)
+        self.assertIn("![0x18, 0x19, 0x1e, 0x1f].includes(phaseMask)", page)
         for required in (
             "최근 전체 출입 감지 이력 (수신 이벤트)",
             "ACCESS_PROOF_VERIFIED",

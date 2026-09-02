@@ -91,6 +91,8 @@ struct AccessTerminalSummary {
 };
 
 AccessTerminalSummary accessTerminalSummary{};
+sgk::SignedCommandAccessTracker signedCommandAccessTracker{};
+uint64_t accessEventSequenceHighWater = 0;
 
 bool parseLowerHex16(const char* value, std::array<uint8_t, 16>* output) {
     if (value == nullptr || output == nullptr || std::strlen(value) != 32) {
@@ -334,7 +336,9 @@ void MqttManager::init() {
                 sizeof(accessEvidenceBootIdText));
     accessEvidenceBootCount = 0;
     accessStatusRevision = 0;
+    accessEventSequenceHighWater = 0;
     accessTerminalSummary = AccessTerminalSummary{};
+    signedCommandAccessTracker.cancel();
     wifiAvailableLastUpdate = false;
     eventOutboxHead = 0;
     eventOutboxCount = 0;
@@ -512,12 +516,23 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         return;
     }
     bool effectCompleted = true;
+    bool accessLifecycleStarted = false;
+    if (envelope.action == sgk::CommandAction::kArm ||
+        envelope.action == sgk::CommandAction::kManualRemote) {
+        const sgk::SignedCommandAccessTracker::Mode mode =
+            envelope.action == sgk::CommandAction::kArm
+                ? sgk::SignedCommandAccessTracker::Mode::kArm
+                : sgk::SignedCommandAccessTracker::Mode::kManualRemote;
+        accessLifecycleStarted =
+            signedCommandAccessTracker.begin(mode, envelope.session_id);
+        if (!accessLifecycleStarted) effectCompleted = false;
+    }
     switch (envelope.action) {
       case sgk::CommandAction::kArm:
-        effectCompleted = triggerArm();
+        if (effectCompleted) effectCompleted = triggerArm();
         break;
       case sgk::CommandAction::kManualRemote:
-        effectCompleted = triggerManualDoorOpen();
+        if (effectCompleted) effectCompleted = triggerManualDoorOpen();
         break;
       case sgk::CommandAction::kSetTxPower:
         if (envelope.value < -6 || envelope.value > 9) effectCompleted = false;
@@ -554,6 +569,9 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
       default:
         effectCompleted = false;
         break;
+    }
+    if (accessLifecycleStarted && !effectCompleted) {
+        signedCommandAccessTracker.cancel();
     }
     if (!commandSecurity.markCompleted(envelope)) {
         publishCommandAck(envelope,
@@ -1068,7 +1086,8 @@ void MqttManager::noteAccessTerminal(const char* sessionId,
         credentialRef == nullptr || credentialRef[0] == '\0' ||
         sgk::isValidCanonicalCredentialRef(
             credentialRef, sgk::kAccessEventCredentialRefCapacity);
-    if (!accessEvidenceReady || !terminalCode || reasonCode == nullptr ||
+    if (!accessEvidenceReady || eventSequence == 0 || !terminalCode ||
+        reasonCode == nullptr ||
         reasonCode[0] == '\0' || std::strlen(eventCode) >= 32 ||
         std::strlen(reasonCode) >= 24 || phaseMask > 0x003f ||
         !credentialValid || !parseLowerUuid4(sessionId, &session)) {
@@ -1089,6 +1108,44 @@ void MqttManager::noteAccessTerminal(const char* sessionId,
                       credentialRef);
     }
     accessTerminalSummary = next;
+    if (eventSequence > accessEventSequenceHighWater) {
+        accessEventSequenceHighWater = eventSequence;
+    }
+}
+
+void MqttManager::noteSignedCommandArmed() {
+    signedCommandAccessTracker.noteArmed();
+}
+
+void MqttManager::noteSignedCommandSensorDetected() {
+    signedCommandAccessTracker.noteSensorDetected();
+}
+
+void MqttManager::noteSignedCommandRelayOn() {
+    signedCommandAccessTracker.noteRelayOn();
+}
+
+void MqttManager::noteSignedCommandRelayOff(bool failsafe) {
+    signedCommandAccessTracker.noteRelayOff(failsafe);
+}
+
+uint64_t MqttManager::finishSignedCommandAccess(bool failsafe,
+                                                const char* failureReason) {
+    sgk::SignedCommandAccessTracker::Terminal terminal{};
+    if (!signedCommandAccessTracker.finish(failsafe, &terminal) ||
+        accessEventSequenceHighWater == UINT64_MAX) {
+        return 0;
+    }
+    const uint64_t sequence = ++accessEventSequenceHighWater;
+    noteAccessTerminal(
+        terminal.session_id, sequence,
+        terminal.completed ? "ACCESS_SESSION_COMPLETED"
+                           : "ACCESS_SESSION_TERMINATED",
+        terminal.completed
+            ? "ACCESS_GRANTED"
+            : (failureReason == nullptr ? "INTERNAL_ERROR" : failureReason),
+        nullptr, terminal.phase_mask);
+    return sequence;
 }
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {

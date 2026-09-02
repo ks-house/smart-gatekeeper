@@ -1112,6 +1112,37 @@ class TargetBootRegistryTest(unittest.TestCase):
         self.assertNotIn("c_k1_0123456789abcdef01234567", serialized)
         self.assertNotIn("ACCESS_GRANTED", serialized)
 
+        for success_mask in (0x1F, 0x19, 0x1E, 0x18):
+            successful = dict(
+                stored,
+                status_revision=44 + success_mask,
+                last_terminal_event_sequence=12 + success_mask,
+                last_terminal_phase_mask=success_mask,
+            )
+            success_projection = main._verified_home_assistant_status_projection(
+                TARGET, successful
+            )
+            self.assertIsNotNone(success_projection)
+            self.assertEqual(
+                "SUCCEEDED",
+                json.loads(success_projection)["last_access_result"],
+            )
+
+        incomplete = dict(
+            stored,
+            status_revision=90,
+            last_terminal_event_sequence=90,
+            last_terminal_phase_mask=0x08,
+        )
+        incomplete_projection = main._verified_home_assistant_status_projection(
+            TARGET, incomplete
+        )
+        self.assertIsNotNone(incomplete_projection)
+        self.assertEqual(
+            "TERMINATED",
+            json.loads(incomplete_projection)["last_access_result"],
+        )
+
         failsafe = dict(stored, status_revision=44, last_terminal_phase_mask=0x3F)
         failed_projection = main._verified_home_assistant_status_projection(
             TARGET, failsafe

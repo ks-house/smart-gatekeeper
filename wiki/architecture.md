@@ -182,6 +182,13 @@ safe phase에서 oldest-first publish하고, Backend Paho callback도 DB를 직�
 저장한다. 갑작스러운 power loss가 terminal 뒤 첫 signed status보다 먼저 발생하면 RAM summary는
 사라질 수 있다. 다음 boot나 이벤트 시각만으로 성공을 재구성하지 않으며, 이 best-effort 공백은
 door 결과를 추측해 메우지 않는다.
+
+Signed MQTT `arm`과 `manual_remote`는 Local GATT proof lifecycle과 별도이므로 command callback에서
+인증된 command session UUID만 RAM tracker에 시작한다. FSM callback은 `ARMED`, sensor, relay ON/OFF와
+terminal bit만 메모리에 기록하고 MQTT/TLS를 호출하지 않는다. Terminal 뒤 global boot-local sequence를
+하나 배정해 기존 signed status summary에 넣으며, 단일 `loopTask`가 safe state에서 그 최신 status를
+전송한다. Local GATT sequence와 충돌하지 않도록 양쪽 high-water를 서로 전진시킨다. 따라서 command
+PUBACK/ACK는 즉시 유지되면서 실제 FSM 완료는 나중의 HMAC-verified terminal summary로 별도 관측된다.
 - relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
   생겨도 timer task가 물리 출력을 OFF
 - relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소
@@ -261,6 +268,9 @@ reason, HMAC tag, IP/RSSI/distance와 임의 raw field는 재발행하지 않는
 진단 entity는 access 인증 근거가 아니며 HA broker principal의 exact read ACL이 설치된 경우에만
 허용한다. Source repository의 `security/target-acl`은 운영 broker 설정을 자동 변경하지 않으므로
 anonymous 및 cross-principal publish/subscribe 거부 readback 전에는 production trust를 주장하지 않는다.
+Backend와 관리자 UI는 terminal phase profile로 local sensor/manual과 signed MQTT arm/manual을 구분한다.
+`manual_remote` terminal은 `모바일 수동 문열기`, signed arm terminal은 `모바일 출입 준비`로 표시하며
+둘 다 기존의 broker 접수 legacy row와 달리 Target FSM relay-OFF까지 도달한 서명 요약이다.
 
 기존 Home Assistant entity registry를 중복 생성 없이 갱신하기 위해 relay binary sensor의 historical
 object ID `door_binary`와 unique ID `smart_gatekeeper_01_door_binary`는 유지한다. 표시명은

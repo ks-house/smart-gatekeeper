@@ -6151,6 +6151,13 @@
 - Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the same exact SHA. Every readiness check was true, including MQTT and `access_event_collector`, so the asynchronous deferred-event consumer is live without any Target/mobile/GPIO/relay/OTA source change.
 - Backend startup republishes the 17-entity retained Home Assistant discovery plan, including `[Gatekeeper] 최근 출입 결과`, by tested source contract. A credentialed retained broker readback and one new owner-observed access/HA Activity timestamp remain separate runtime UI Gates; process readiness alone is not recorded as an Activity-row proof.
 
+## [2026-09-03] fix | Track signed MQTT access completion without critical-path network I/O
+
+- The supplied administrator view showed a 01:31:26 `MOBILE_REMOTE` legacy row and actor but only broker acceptance, while the supplied HA Activity had no matching recent-access row despite the owner's physical-open observation. Source inspection confirmed that deployed terminal summaries were generated only for verified Local GATT lifecycles.
+- Added a bounded in-RAM tracker for authenticated signed MQTT `arm` and `manual_remote` session UUIDs. FSM callbacks record ordered armed/sensor/relay ON/OFF/failsafe bits only; they never publish MQTT. Relay/session terminal allocates the shared boot-local sequence and updates the existing HMAC status summary for later safe-state publication by the single MQTT owner.
+- Backend success classification now accepts exact path profiles `0x1f`, `0x19`, `0x1e` and `0x18` while rejecting failsafe/incomplete summaries. Administrator projection distinguishes mobile manual/pre-arm terminal summaries and its HTML uses the same success profiles as HA and the database.
+- Native core plus focused Target-network/Backend/HA/admin tests passed 73/73, added UI/SQL/HA tests passed 3/3, the personal-production ESP32-C6 build succeeded, and whitespace validation was clean. These are source/build results; protected merge, Backend deployment, Target OTA install/reboot/health and one new administrator/HA terminal observation remain open.
+
 ## [2026-09-03] compile | Authorize signed MQTT terminal completion candidate
 
 - Bound immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` to the sole `signed-mqtt-terminal-64a62fe-persistent-baseline` with the complete ordered 100-path normalized digest map.

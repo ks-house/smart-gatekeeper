@@ -911,3 +911,15 @@ an inference from application HMAC tests.
 | Exact Backend deployment | Owner-approved run `33654112042` passed Backend security/MariaDB, evidence verification, immutable image publication and NAS deployment. Deployment evidence records `status=deployed`, the exact feature SHA, loopback readiness and public readiness passed | PASS for exact NAS rollout |
 | Independent public readiness | Strict-TLS `/live` and `/ready` returned HTTP 200 with build SHA `a87ef21dc9f66b227831066f45fab8cf0176a0e7`; all checks were true, including MQTT and `access_event_collector` | PASS for deployed process and dependency readiness |
 | Discovery and physical boundary | Backend startup republishes the 17-entity retained discovery plan including `last_access_event` by source contract. No credentialed retained broker readback or post-deployment owner access/HA Activity row was observed in this verification | PENDING live retained discovery readback and one new owner-observed HA Activity timestamp; no physical door claim inferred from readiness |
+
+## 2026-09-03 signed MQTT manual/arm terminal completion candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Supplied administrator evidence | At 01:31:26 the only new row was `MOBILE_REMOTE`, actor `이승환 · 401호`, `서버 전송 접수`, `broker accepted; physical result unconfirmed`; no Target terminal row followed | CONFIRMED signed MQTT completion-evidence gap; the owner separately reports the door opened |
+| Supplied HA evidence | The Activity panel contained only older IDLE/unavailable state rows and no `[Gatekeeper] 최근 출입 결과` row for the manual request | CONFIRMED deployed Backend-only marker did not cover signed MQTT manual completion |
+| Source root cause | Existing `LocalGattLifecycleBridge` created terminal summaries only after verified Local GATT proof. Signed MQTT command callback retained no session lifecycle through relay OFF | CONFIRMED by source inspection |
+| Async correction | Signed command callback starts only an in-RAM session/mode tracker; FSM callbacks add phase bits without network I/O; IDLE safe-state MQTT owner later sends the existing HMAC status terminal summary | SOURCE CONTRACT preserves access-critical MQTT deferral |
+| Path/result projection | Backend recognizes exact success masks local sensor/manual `0x1f/0x19` and signed arm/manual `0x1e/0x18`; admin labels remote summaries `모바일 출입 준비`/`모바일 수동 문열기` and HA advances on boot/terminal sequence | PASS for focused Backend/UI source tests; no live row yet |
+| Native and firmware validation | Native production core plus focused network/backend/HA/admin suites passed 73/73; targeted UI/SQL/HA tests passed 3/3; `esp32c6_personal_production` compiled and linked at 75,896/327,680 RAM and 1,800,410/7,340,032 flash | PASS for host/build evidence only |
+| Runtime boundary | No candidate artifact is merged, published or installed; no post-candidate Target boot/status, admin terminal row, HA Activity row, relay contact or door-leaf observation exists | PENDING policy/CI, Backend deployment, Target signed OTA install/reboot/health and one new access observation |

@@ -18,6 +18,25 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-03 signed MQTT terminal-history correction candidate
+
+- 첨부 관리자 화면은 01:31:26 `MOBILE_REMOTE`를 이승환·401호의 legacy
+  `서버 전송 접수`로만 표시했고, 첨부 HA Activity에는 같은 시각의
+  `[Gatekeeper] 최근 출입 결과` 행이 없었다. 문이 열린 owner 관찰과 함께 보면
+  Backend command 접수와 물리 릴레이 동작은 있었지만 signed terminal summary가 갱신되지 않았다.
+- 원인은 배포된 terminal summary producer가 verified Local GATT lifecycle에만 묶여 있고,
+  signed MQTT `arm`/`manual_remote` command session은 relay/session terminal까지 추적하지 않은
+  것이었다. 따라서 Backend-only HA marker 배포만으로 이 경로를 고칠 수 없었다.
+- Source candidate는 command callback에서 session/mode만 RAM tracker에 시작하고 FSM callback에서
+  phase를 메모리로만 기록한다. MQTT/TLS publish는 계속 IDLE safe-state의 단일 owner가 수행한다.
+  Signed arm 성공 `0x1e`, signed manual 성공 `0x18` terminal이 HMAC status로 전송되고 Backend/HA는
+  기존 Local GATT `0x1f`/`0x19`와 함께 성공으로 해석한다.
+- 관리자 화면은 signed terminal을 `모바일 수동 문열기` 또는 `모바일 출입 준비`로 구분하고,
+  HA는 새 boot/sequence marker로 세션당 한 번 Activity를 전진시킨다. Native C++ core와 focused
+  Backend/HA/admin 73 tests, 추가 UI/SQL 3 tests, `esp32c6_personal_production` build가 통과했다.
+- 아직 source/build 후보이며 protected-policy rotation, hosted merge, Backend 배포, Target signed OTA
+  install→reboot→health, 새 실제 출입 1회의 관리자 terminal row와 HA Activity 행은 남아 있다.
+
 ## 2026-09-03 asynchronous MQTT access-history visibility deployed
 
 - The owner repeated a manual local open at about 01:00 KST and observed the
