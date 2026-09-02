@@ -240,20 +240,24 @@ python scripts/migrate_home_assistant_discovery.py --broker-host <host> --broker
 파일 대신 `SGK_MQTT_USERNAME`, `SGK_MQTT_PASSWORD`, `SGK_MQTT_CA_FILE` 프로세스 환경 변수를
 사용할 수 있습니다. 동일 credential을 환경 변수와 파일 양쪽에 동시에 주면 모호성을 거부합니다.
 
-Migration은 기존 Home Assistant device identifier와 15개 read-only entity unique ID를 보존하고
-연결 상태 entity 1개를 추가해, 총 16개 read-only entity를 다음 source에 연결합니다.
+Migration은 기존 Home Assistant device identifier와 16개 read-only entity unique ID를 보존하고
+매 출입마다 고유한 완료 표식을 기록하는 `last_access_event` sensor 1개를 추가해, 총 17개
+read-only entity를 다음 source에 연결합니다.
 
-- access state sensor와 relay/pre-armed binary sensor:
+- access state/recent-access sensor와 relay/pre-armed binary sensor:
   `gatekeeper/v1/ha-bridge/<target_id>/verified-status`
 - IP/RSSI/heap/uptime/firmware/distance와 config diagnostic sensor:
   `gatekeeper/v1/targets/<target_id>/status`
 - 연결 상태 binary sensor 1개: retained
   `gatekeeper/v1/ha-bridge/<target_id>/availability`의 `online/offline`
-- 기존 15개 status-backed entity는 10초 주기 status에 `expire_after=30`을 적용
+- raw diagnostic entity 12개는 주기 status에 `expire_after=30`을 적용하고, 검증된 access entity
+  4개는 90.25초 bridge watchdog을 staleness authority로 사용
 
 `verified-status`는 Backend가 Target HMAC을 검증하고 DB high-water를 전진시킨 뒤 target/boot/count,
-access revision, FSM state, armed, relay command/pin만 allow-list한 projection이다. Terminal session,
-actor ref, HMAC tag, IP/RSSI/distance와 임의 raw field를 재발행하지 않는다. 반면 raw `/status`를 쓰는
+access revision, FSM state, armed, relay command/pin과 비식별 `boot_count-terminal_sequence` 완료 표식 및
+성공/종료 결과만 allow-list한 projection이다. `last_access_event`는 이 표식이 달라질 때만 상태가 바뀌어,
+출입 전후가 모두 `IDLE`이어도 Home Assistant Activity에 한 건을 남긴다. Terminal session, actor ref,
+reason, HMAC tag, IP/RSSI/distance와 임의 raw field는 재발행하지 않는다. 반면 raw `/status`를 쓰는
 진단 entity는 access 인증 근거가 아니며 HA broker principal의 exact read ACL이 설치된 경우에만
 허용한다. Source repository의 `security/target-acl`은 운영 broker 설정을 자동 변경하지 않으므로
 anonymous 및 cross-principal publish/subscribe 거부 readback 전에는 production trust를 주장하지 않는다.
@@ -268,7 +272,7 @@ Target의 `/availability`와 별도 `/config-state`는 MQTT connect 시 1회만 
 아니다. 따라서 migration 이후나 Home Assistant 재시작 뒤 이 메시지를 못 받아 entity가 영구
 unavailable/unknown이 되는 것을 피하려고 discovery는 두 토픽을 참조하지 않는다. 최신 Target의
 주기 `/status`에는 현재 Tx power, 거리 기준, pre-arm duration, relay cooldown도 포함된다. 세 주기를
-놓친 기존 15개 entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
+놓친 raw diagnostic entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
 별도 `[Gatekeeper] 연결 상태` entity는 `device_class: connectivity`와 retained bridge availability를
 직접 사용한다. 자기 자신에 availability gate나 `expire_after`를 적용하지 않으므로 offline일 때
 숨거나 unavailable이 되지 않고 HA에서 `연결 끊김`으로 지속 표시된다. Bridge는 Backend MQTT 연결과

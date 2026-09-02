@@ -26,18 +26,19 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.prefix = f"gatekeeper/v1/targets/{self.target_id}"
     self.plan = MIGRATION.build_plan(self.target_id)
 
-  def test_plan_updates_exactly_16_read_only_entities(self):
+  def test_plan_updates_exactly_17_read_only_entities(self):
     updates = [
         item for item in self.plan if item.payload and
         "command_topic" not in json.loads(item.payload)]
-    self.assertEqual(len(updates), 16)
+    self.assertEqual(len(updates), 17)
     self.assertEqual(
         sum("/binary_sensor/" in item.topic for item in updates), 3)
-    self.assertEqual(sum("/sensor/" in item.topic for item in updates), 13)
+    self.assertEqual(sum("/sensor/" in item.topic for item in updates), 14)
 
     object_ids = {item.topic.split("/")[-2] for item in updates}
     self.assertEqual(object_ids, {
-        "distance", "distance_cm", "state", "ip", "arm_remaining_s",
+        "distance", "distance_cm", "state", "last_access_event", "ip",
+        "arm_remaining_s",
         "wifi_rssi", "free_heap", "uptime_s", "firmware",
         "connectivity", "door_binary", "pre_armed", "cfg_tx_power",
         "cfg_distance_thresh", "cfg_prearm_duration",
@@ -77,7 +78,17 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         relay_status["name"], "[Gatekeeper] 릴레이 구동 상태")
     self.assertNotIn("device_class", relay_status)
     self.assertIn("RELAY_HOLD", relay_status["value_template"])
-    verified_access_ids = {"state", "door_binary", "pre_armed"}
+    last_access = updates["last_access_event"]
+    self.assertEqual(
+        last_access["name"], "[Gatekeeper] 최근 출입 결과")
+    self.assertIn(
+        "value_json.last_access_event_marker",
+        last_access["value_template"])
+    self.assertIn(
+        "value_json.last_access_result",
+        last_access["value_template"])
+    verified_access_ids = {
+        "state", "last_access_event", "door_binary", "pre_armed"}
     for object_id, config in updates.items():
       self.assertEqual(
           config["state_topic"],
@@ -163,8 +174,8 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
       ])
     output = stdout.getvalue()
     self.assertEqual(result, 0)
-    self.assertIn("DRY_RUN discovery_updates=22", output)
-    self.assertIn("secure_controls=6 read_only=16", output)
+    self.assertIn("DRY_RUN discovery_updates=23", output)
+    self.assertIn("secure_controls=6 read_only=17", output)
     self.assertIn("No network connection", output)
     self.assertNotIn(secret_user, output)
     self.assertNotIn(secret_password, output)
@@ -264,7 +275,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
           "example.invalid", 8883, self.plan,
           username="hidden-user", password="hidden-password")
 
-    self.assertEqual(len(calls), 29)
+    self.assertEqual(len(calls), 30)
     self.assertTrue(all(qos == 1 and retain for _, _, qos, retain in calls))
 
 

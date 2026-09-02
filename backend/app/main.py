@@ -1932,6 +1932,21 @@ def _verified_home_assistant_status_projection(
     relay_pin_level = (
         stored.get("relay_pin_level") if isinstance(stored, dict) else None
     )
+    terminal_sequence = (
+        stored.get("last_terminal_event_sequence")
+        if isinstance(stored, dict)
+        else None
+    )
+    terminal_code = (
+        stored.get("last_terminal_event_code")
+        if isinstance(stored, dict)
+        else None
+    )
+    terminal_phase_mask = (
+        stored.get("last_terminal_phase_mask")
+        if isinstance(stored, dict)
+        else None
+    )
     if (
         not isinstance(stored, dict)
         or stored.get("target_id") != target_id
@@ -1951,6 +1966,30 @@ def _verified_home_assistant_status_projection(
         or relay_pin_level not in (0, 1)
     ):
         return None
+    last_access_event_marker = None
+    last_access_result = None
+    if terminal_sequence is not None or terminal_code is not None:
+        if (
+            isinstance(terminal_sequence, bool)
+            or not isinstance(terminal_sequence, int)
+            or not 0 <= terminal_sequence <= (1 << 64) - 1
+            or terminal_code not in _ACCESS_TERMINAL_CODES
+            or isinstance(terminal_phase_mask, bool)
+            or not isinstance(terminal_phase_mask, int)
+            or not 0 <= terminal_phase_mask <= _ACCESS_TERMINAL_PHASE_MASK
+        ):
+            return None
+        last_access_event_marker = f"{boot_count}-{terminal_sequence}"
+        last_access_result = (
+            "SUCCEEDED"
+            if terminal_code == "ACCESS_SESSION_COMPLETED"
+            and (
+                terminal_phase_mask & _ACCESS_SUCCESS_PHASE_MASK
+            )
+            == _ACCESS_SUCCESS_PHASE_MASK
+            and not (terminal_phase_mask & _ACCESS_FAILSAFE_PHASE_MASK)
+            else "TERMINATED"
+        )
     document = {
         "target_id": target_id,
         "boot_id": stored["source_boot_id"],
@@ -1958,6 +1997,8 @@ def _verified_home_assistant_status_projection(
         "access_status_revision": revision,
         "state": stored["state"],
         "is_armed": stored["state"] == "ARMED",
+        "last_access_event_marker": last_access_event_marker,
+        "last_access_result": last_access_result,
         "relay_commanded_on": relay_commanded_on,
         "relay_pin_level": relay_pin_level,
     }

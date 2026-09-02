@@ -534,6 +534,14 @@ raw diagnostics는 기존 Target `/status`에서 계속 읽을 수 있지만 bro
 인증·relay readiness 근거가 아니다. Source change, key provisioning 또는 retained discovery만으로
 ACL 설치, NAS/HA 배포, phone/Target 설치나 실제 문 결과를 주장하지 않는다.
 
+Target의 access-critical 구간에는 MQTT socket 작업을 다시 넣지 않는다. 완료 후 가장 먼저 flush되는
+signed terminal/IDLE status의 `source_boot_count`와 `last_terminal_event_sequence`를 Backend가 검증하고
+`<boot_count>-<sequence>` 비식별 표식으로 투영한다. HA `last_access_event` sensor는 결과와 이 표식을
+state로 사용하므로 반복 성공이 같은 `IDLE`로 끝나도 한 세션당 한 번 Activity가 전진한다. 주기 status가
+같은 terminal summary를 반복해도 state는 같아 추가 이력을 만들지 않는다. Session UUID, credential/actor
+ref, reason과 HMAC tag는 HA projection에서 계속 제외한다. Canonical event outbox와 관리자 이력은 별도
+감사 경로이며 이 sensor가 누락 event를 합성하거나 물리 문 열림을 증명하지 않는다.
+
 HA relay binary sensor는 entity-registry 호환을 위해 historical object/unique ID의 `door_binary`를
 유지하지만 표시명은 `[Gatekeeper] 릴레이 구동 상태`이고 door `device_class`는 없다. ON은 검증된
 `RELAY_HOLD` projection일 뿐 독립 contact sensor나 물리 문짝 이동 증거가 아니다.

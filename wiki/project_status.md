@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-09-02
+updated: 2026-09-03
 source_of_truth: true
 applies_to:
   - firmware
@@ -17,6 +17,29 @@ applies_to:
 > 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐고 PR #297/Backend run `33314043691`이 `GK-*` 신청 저장 불일치를 교정·배포했다. 이후 owner의 접수와 관리자 승인은 완료됐지만 첫 `이 휴대폰 등록`은 단일-user compatibility mapping 때문에 HTTP 409로 실패했다. 승인된 추가 가족 행을 같은 personal tenant의 별도 public credential/door grant로 수용하는 PR #300이 exact main `38b90e5febc525c96a4013b737850fd6a90235d3`으로 병합됐고 Backend run `33315099974`가 NAS `status=deployed`, canonical loopback/public readiness와 독립 strict-TLS exact-build HTTP 200/all-checks-true를 통과했다. 이후 한 번의 owner retry로 A24가 `스마트키 사용 가능`, 등록 출입문 1, ACL 608이 됐으며 Activity가 credential 등록을 기록했다. Access-ready 계약상 exact signed ACL의 matching APPLIED Target ACK도 통과했다. 뒤이은 원격 개방은 MQTT broker 전달까지만 확인됐고 딸아이 휴대폰에서 실제 문이 열린 물리 관찰은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-09-03 asynchronous MQTT access-history visibility candidate
+
+- The owner repeated a manual local open at about 01:00 KST and observed the
+  physical door open, while Home Assistant added no Activity timestamp. The
+  deployed state entity renders only `value_json.state`; access-critical MQTT
+  deferral can collapse relay/cooldown snapshots into a final `IDLE`, so a new
+  `IDLE -> IDLE` access is invisible to that entity.
+- The source candidate keeps all MQTT socket work outside authentication,
+  sensor, relay and cooldown. Backend projects only the HMAC-covered terminal
+  boot count/sequence into a privacy-safe unique marker plus success/terminated,
+  and new `[Gatekeeper] 최근 출입 결과` discovery uses that changing value.
+  Repeated periodic status for the same terminal does not create duplicate HA
+  Activity rows.
+- Focused Backend, discovery-migration and Target network-deferral tests pass
+  59/59, and the full Backend suite passes 194 tests with two declared skips.
+  Repository discovery runs 342 tests: 337 pass, one environment-only case is
+  skipped and the four expected assertions fail only because the changed
+  protected Backend blobs still carry the previous trusted-policy hashes.
+  Protected review/policy rotation, exact Backend image publication, NAS
+  deployment, retained discovery readback and one new physical access/HA
+  Activity observation remain separate Gates. No Target or mobile OTA is
+  required by this Backend/HA-only candidate.
 
 ## 2026-09-02 transient mobile access-ready notification correction
 

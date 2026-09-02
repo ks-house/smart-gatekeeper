@@ -1064,6 +1064,8 @@ class TargetBootRegistryTest(unittest.TestCase):
                 "boot_count": 8,
                 "boot_id": BOOT_1,
                 "is_armed": True,
+                "last_access_event_marker": None,
+                "last_access_result": None,
                 "relay_commanded_on": False,
                 "relay_pin_level": 1,
                 "state": "ARMED",
@@ -1081,6 +1083,52 @@ class TargetBootRegistryTest(unittest.TestCase):
             "420",
         ):
             self.assertNotIn(private_value, serialized)
+
+    def test_home_assistant_projection_changes_once_per_terminal_session(self) -> None:
+        stored = {
+            "target_id": TARGET,
+            "source_boot_id": BOOT_1,
+            "source_boot_count": 8,
+            "status_revision": 43,
+            "state": "IDLE",
+            "relay_commanded_on": False,
+            "relay_pin_level": 1,
+            "last_terminal_session_id": SESSION_ID,
+            "last_terminal_event_sequence": 11,
+            "last_terminal_event_code": "ACCESS_SESSION_COMPLETED",
+            "last_terminal_reason_code": "ACCESS_GRANTED",
+            "last_terminal_credential_ref": "c_k1_0123456789abcdef01234567",
+            "last_terminal_phase_mask": 0x1F,
+        }
+        projection = main._verified_home_assistant_status_projection(
+            TARGET, stored
+        )
+        self.assertIsNotNone(projection)
+        document = json.loads(projection)
+        self.assertEqual("8-11", document["last_access_event_marker"])
+        self.assertEqual("SUCCEEDED", document["last_access_result"])
+        serialized = projection.decode("utf-8")
+        self.assertNotIn(SESSION_ID, serialized)
+        self.assertNotIn("c_k1_0123456789abcdef01234567", serialized)
+        self.assertNotIn("ACCESS_GRANTED", serialized)
+
+        failsafe = dict(stored, status_revision=44, last_terminal_phase_mask=0x3F)
+        failed_projection = main._verified_home_assistant_status_projection(
+            TARGET, failsafe
+        )
+        self.assertIsNotNone(failed_projection)
+        self.assertEqual(
+            "TERMINATED",
+            json.loads(failed_projection)["last_access_result"],
+        )
+
+        malformed = dict(
+            stored,
+            last_terminal_event_sequence="11",
+        )
+        self.assertIsNone(
+            main._verified_home_assistant_status_projection(TARGET, malformed)
+        )
 
     def test_target_gate_state_can_be_cleared_on_explicit_offline(self) -> None:
         registry = main._TargetGateStateRegistry()
