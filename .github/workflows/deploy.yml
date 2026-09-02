@@ -357,7 +357,7 @@ jobs:
           100644 199bd44240f7df0082ee065ac715f47c03ef893e7d86d9a129df820969e35164 include/RelayController.h
           100644 7d893a2d5114c4b6b7041d2c4a430d6110fcbdef2a68aa84d3b7ddb26eaedb86 include/TargetAccessFsm.h
           100644 72ae43ed6754c63d1b7fa2113504be8ea7f5b2865cfc9daf0c95917ae9894f81 include/TargetAclManager.h
-          100644 f5762255500b26937abfd5f5879b788251db61669eda77b502ebe9d1e01402c3 include/TargetCommandSecurity.h
+          100644 06ed8297492e8bd81c97d6e7b817a4dc3e11e4df1cb8e95f55439e97e44a534b include/TargetCommandSecurity.h
           100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
           100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
           100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
@@ -370,14 +370,14 @@ jobs:
           100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
           100644 4f8bf33f49ae28254b7fb124e229cf0f5d82b9b61df9f2d59a4ffbaff0fd2ebc src/GattProtocol.cpp
           100644 dcc4751f955552bd0db031b2d111ec988b1079f1631b3a7571ae831b3bdf4470 src/GattServer.cpp
-          100644 13c9b51c2af69a4c4fcc21edacaa630acd21fce185a4eb66c1da993ad4061319 src/MqttManager.cpp
+          100644 626fde4fc8d262d69e7a93ee4dd2a3b3f7315e8455f05919a43f9849fc89c2ac src/MqttManager.cpp
           100644 4f2508172140436df9b6d00504e367a36aba9c519f8c12cd7f09b0d2d31bed41 src/OfflineEventQueue.cpp
           100644 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7 src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
           100644 447ef319af59cc3316ec6e2e1bb2a62a5a8d2b33efecb399653234e321aa1fea src/RelayController.cpp
           100644 f976c8080e0c0bdf6dc58c4439c94166c76d8dec9351f810536be209d6a50921 src/TargetAccessFsm.cpp
           100644 7ce6135340065ef6f03afc2fa41a9ac79a04ac5a277d7edb946c388bd6eead61 src/TargetAclManager.cpp
-          100644 dc5d8a0bf2b1ef68cd3ea908d8fdd3275add55147e25e339909aa0fdc0be92f1 src/TargetCommandSecurity.cpp
+          100644 3022a4876962dfbd20b9e86e3008170b1fbf5c1945a397d1a8f02bdb6d2a1e10 src/TargetCommandSecurity.cpp
           100644 248edb5e1c5c67b1a87c4bb7fda2a9dead4eb6f043ef50e6a58c175634e0a291 src/TargetProofVerifier.cpp
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp

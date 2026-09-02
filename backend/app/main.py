@@ -66,6 +66,7 @@ try:
     from .command_security import build_signed_command
     from .home_assistant_bridge import (
         HomeAssistantCommandBridge,
+        bridge_access_event_topic,
         bridge_availability_topic,
         bridge_request_topic,
         bridge_result_topic,
@@ -105,6 +106,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
     from command_security import build_signed_command
     from home_assistant_bridge import (
         HomeAssistantCommandBridge,
+        bridge_access_event_topic,
         bridge_availability_topic,
         bridge_request_topic,
         bridge_result_topic,
@@ -648,6 +650,19 @@ _CANONICAL_ACTOR_EVENT_CODES = frozenset(
         "ACCESS_SESSION_TERMINATED",
     }
 )
+_SIGNED_COMMAND_TERMINAL_ROUTES = {
+    "ACCESS_SIGNED_ARM_COMPLETED": ("mqtt_prearm", "signed_mqtt"),
+    "ACCESS_SIGNED_ARM_TERMINATED": ("mqtt_prearm", "signed_mqtt"),
+    "ACCESS_SIGNED_MANUAL_COMPLETED": ("mqtt_manual_remote", "signed_mqtt"),
+    "ACCESS_SIGNED_MANUAL_TERMINATED": ("mqtt_manual_remote", "signed_mqtt"),
+}
+_CANONICAL_ACTIVITY_TERMINAL_CODES = frozenset(
+    {
+        "ACCESS_SESSION_COMPLETED",
+        "ACCESS_SESSION_TERMINATED",
+        *_SIGNED_COMMAND_TERMINAL_ROUTES,
+    }
+)
 _CANONICAL_OPAQUE_REF = re.compile(r"^[a-z][a-z0-9_-]{7,63}$")
 _CANONICAL_BOOT_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{7,63}$")
 _CANONICAL_TARGET_ACCESS_CODES = {
@@ -717,6 +732,20 @@ _CANONICAL_TARGET_ACCESS_CODES = {
             "RELAY_CONTROL_ERROR", "RESET_DURING_SESSION", "SESSION_TIMEOUT",
             "SESSION_SUPERSEDED", "USER_CANCELLED", "INTERNAL_ERROR",
         },
+    ),
+    "ACCESS_SIGNED_ARM_COMPLETED": (
+        "COMPLETE", {"SUCCEEDED"}, {"ACCESS_GRANTED"},
+    ),
+    "ACCESS_SIGNED_ARM_TERMINATED": (
+        "COMPLETE", {"FAILED", "TIMED_OUT"},
+        {"ARM_TIMEOUT", "RELAY_CONTROL_ERROR", "INTERNAL_ERROR"},
+    ),
+    "ACCESS_SIGNED_MANUAL_COMPLETED": (
+        "COMPLETE", {"SUCCEEDED"}, {"ACCESS_GRANTED"},
+    ),
+    "ACCESS_SIGNED_MANUAL_TERMINATED": (
+        "COMPLETE", {"FAILED"},
+        {"RELAY_CONTROL_ERROR", "INTERNAL_ERROR"},
     ),
 }
 
@@ -884,12 +913,15 @@ def _parse_canonical_target_access_event(payload: bytes) -> dict | None:
         return None
 
     attributes = event.get("attributes")
+    expected_path, expected_transport = _SIGNED_COMMAND_TERMINAL_ROUTES.get(
+        event.get("event_code"), ("local_gatt", "ble_gatt")
+    )
     if (
         not isinstance(attributes, dict)
         or not {"path", "transport"}.issubset(attributes)
         or set(attributes) - _CANONICAL_ACCESS_ATTRIBUTE_FIELDS
-        or attributes.get("path") != "local_gatt"
-        or attributes.get("transport") != "ble_gatt"
+        or attributes.get("path") != expected_path
+        or attributes.get("transport") != expected_transport
     ):
         return None
     limits = {
@@ -999,7 +1031,7 @@ def _authenticate_canonical_target_access_event(
 
 def _persist_canonical_target_access_event(
     topic: str, payload: bytes, *, retained: bool
-) -> bool | None:
+) -> dict | bool | None:
     """Persist one exact-topic canonical Target event idempotently."""
     topic_target_id = _exact_canonical_target_id(topic)
     if retained or topic_target_id is None:
@@ -1030,9 +1062,11 @@ def _persist_canonical_target_access_event(
         topic_target_id, _ops_hmac_key, "target"
     )
     event["collector_target_id"] = topic_target_id
+    ha_projection = _home_assistant_access_event_projection(event)
     conn = None
     try:
         conn = get_db()
+        conn.begin()
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO access_event_history "
@@ -1063,10 +1097,22 @@ def _persist_canonical_target_access_event(
                     event["integrity_status"],
                 ),
             )
-        return True
+            if ha_projection is not None:
+                cur.execute(
+                    "INSERT INTO ha_access_event_outbox "
+                    "(event_id,target_id,payload_json) VALUES (%s,%s,%s)",
+                    (
+                        event["event_id"],
+                        event["collector_target_id"],
+                        ha_projection.decode("utf-8"),
+                    ),
+                )
+        conn.commit()
+        return {"inserted": True, "event": event}
     except pymysql.err.IntegrityError as exc:
         if exc.args and exc.args[0] == 1062 and conn is not None:
             try:
+                conn.rollback()
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT event_id,session_id,source_component,"
@@ -1118,15 +1164,43 @@ def _persist_canonical_target_access_event(
                 if len(existing) == 1 and all(
                     existing[0].get(key) == value for key, value in expected.items()
                 ):
+                    if ha_projection is not None:
+                        conn.begin()
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "INSERT IGNORE INTO ha_access_event_outbox "
+                                "(event_id,target_id,payload_json) "
+                                "VALUES (%s,%s,%s)",
+                                (
+                                    event["event_id"],
+                                    event["collector_target_id"],
+                                    ha_projection.decode("utf-8"),
+                                ),
+                            )
+                        conn.commit()
                     return True
             except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 pass
             log.warning("[MQTT-AUDIT] canonical access event identity conflict")
             return None
         log.warning("[MQTT-AUDIT] canonical access event persistence rejected")
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return False
     except Exception:
         log.warning("[MQTT-AUDIT] canonical access event persistence unavailable")
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return False
     finally:
         if conn:
@@ -1558,9 +1632,11 @@ class _CanonicalAccessEventWorker:
         persist=_persist_canonical_target_access_event,
         capacity: int = 128,
         health=None,
+        on_insert=None,
     ):
         self._persist = persist
         self._health = health
+        self._on_insert = on_insert
         self._queue: queue.Queue[tuple[str, bytes, bool] | None] = queue.Queue(
             maxsize=capacity
         )
@@ -1600,7 +1676,13 @@ class _CanonicalAccessEventWorker:
                 topic, payload, retained = item
                 stored = self._persist(topic, payload, retained=retained)
                 if self._health is not None and stored is not None:
-                    self._health.note_writer_result(stored)
+                    self._health.note_writer_result(bool(stored))
+                if (
+                    isinstance(stored, dict)
+                    and stored.get("inserted") is True
+                    and self._on_insert is not None
+                ):
+                    self._on_insert(stored.get("event"))
                 if stored is None:
                     log.warning("[MQTT-AUDIT] rejected canonical Target access event")
                 elif not stored:
@@ -1628,6 +1710,116 @@ class _CanonicalAccessEventWorker:
         if self._stopping.is_set():
             return False
         return not self._started or self._thread.is_alive()
+
+
+class _HomeAssistantAccessEventOutboxWorker:
+    """Drain committed HA projections in ID order with broker PUBACK proof."""
+
+    def __init__(
+        self,
+        client,
+        *,
+        load=None,
+        mark_published=None,
+        note_attempt=None,
+        poll_seconds: float = 1.0,
+        publish_timeout: float = 5.0,
+    ):
+        self._client = client
+        self._load = load or _load_pending_home_assistant_access_event
+        self._mark_published = (
+            mark_published or _mark_home_assistant_access_event_published
+        )
+        self._note_attempt = (
+            note_attempt or _note_home_assistant_access_event_attempt
+        )
+        self._poll_seconds = max(0.01, poll_seconds)
+        self._publish_timeout = max(0.1, publish_timeout)
+        self._stopping = threading.Event()
+        self._wake = threading.Event()
+        self._start_lock = threading.Lock()
+        self._health_lock = threading.Lock()
+        self._started = False
+        self._failed = False
+        self._thread = threading.Thread(
+            target=self._run,
+            name="ha-access-event-outbox",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        with self._start_lock:
+            if not self._started:
+                self._thread.start()
+                self._started = True
+        self.wake()
+
+    def wake(self, _event: object = None) -> None:
+        if not self._stopping.is_set():
+            self._wake.set()
+
+    def _set_failed(self, failed: bool) -> None:
+        with self._health_lock:
+            self._failed = failed
+
+    def _publish(self, row: object) -> bool:
+        validated = _validated_home_assistant_access_event_outbox_row(row)
+        if validated is None:
+            return False
+        _outbox_id, target_id, payload = validated
+        try:
+            result = self._client.publish(
+                bridge_access_event_topic(target_id),
+                payload,
+                qos=1,
+                retain=False,
+            )
+            if getattr(result, "rc", 1) != 0:
+                return False
+            result.wait_for_publish(timeout=self._publish_timeout)
+            return bool(result.is_published())
+        except Exception:
+            return False
+
+    def _run(self) -> None:
+        while not self._stopping.is_set():
+            row = self._load()
+            if row is False:
+                self._set_failed(True)
+                self._wake.wait(self._poll_seconds)
+                self._wake.clear()
+                continue
+            if row is None:
+                self._set_failed(False)
+                self._wake.wait(self._poll_seconds)
+                self._wake.clear()
+                continue
+            outbox_id = row.get("id") if isinstance(row, dict) else None
+            if self._publish(row) and isinstance(outbox_id, int):
+                if self._mark_published(outbox_id):
+                    self._set_failed(False)
+                    continue
+            if isinstance(outbox_id, int) and outbox_id > 0:
+                self._note_attempt(outbox_id)
+            self._set_failed(True)
+            self._wake.wait(self._poll_seconds)
+            self._wake.clear()
+
+    def stop(self) -> None:
+        self._stopping.set()
+        self._wake.set()
+        if self._started:
+            self._thread.join(timeout=self._publish_timeout + 1.0)
+
+    @property
+    def healthy(self) -> bool:
+        with self._health_lock:
+            failed = self._failed
+        return (
+            not self._stopping.is_set()
+            and (not self._started or self._thread.is_alive())
+            and not failed
+        )
 
 
 class _CanonicalAccessCollectorHealth:
@@ -1736,6 +1928,7 @@ class _CanonicalAccessCollectorHealth:
 
 _canonical_access_collector_health = _CanonicalAccessCollectorHealth()
 _canonical_access_event_worker: _CanonicalAccessEventWorker | None = None
+_ha_access_event_outbox_worker: _HomeAssistantAccessEventOutboxWorker | None = None
 _authenticated_status_collector_health = _CanonicalAccessCollectorHealth()
 
 
@@ -2018,6 +2211,151 @@ def _verified_home_assistant_status_projection(
     return json.dumps(
         document, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
+
+
+def _home_assistant_access_event_projection(event: object) -> bytes | None:
+    """Build one non-identifying HA event after an authenticated DB insert."""
+
+    if not isinstance(event, dict):
+        return None
+    event_code = event.get("event_code")
+    outcome = event.get("event_outcome")
+    boot_count = event.get("source_boot_count")
+    sequence = event.get("source_sequence")
+    target_id = event.get("collector_target_id")
+    if (
+        event_code not in _CANONICAL_ACTIVITY_TERMINAL_CODES
+        or outcome not in {"SUCCEEDED", "DENIED", "FAILED", "TIMED_OUT", "CANCELLED"}
+        or isinstance(boot_count, bool)
+        or not isinstance(boot_count, int)
+        or boot_count < 1
+        or isinstance(sequence, bool)
+        or not isinstance(sequence, int)
+        or sequence < 0
+        or not isinstance(target_id, str)
+        or target_id not in _configured_target_ids()
+    ):
+        return None
+    document = {
+        "event_type": "succeeded" if outcome == "SUCCEEDED" else "terminated",
+        "access_event_marker": f"{boot_count}-{sequence}",
+        "access_result": "SUCCEEDED" if outcome == "SUCCEEDED" else "TERMINATED",
+        "access_path": event.get("event_path"),
+    }
+    return json.dumps(
+        document, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+
+
+def _load_pending_home_assistant_access_event() -> dict | None | bool:
+    """Load the oldest transactional HA projection; False means DB failure."""
+
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id,event_id,target_id,payload_json,publish_attempts "
+                "FROM ha_access_event_outbox WHERE published_at IS NULL "
+                "ORDER BY id ASC LIMIT 1"
+            )
+            return cur.fetchone()
+    except Exception:
+        log.warning("[MQTT-HA] access-event outbox read unavailable")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def _mark_home_assistant_access_event_published(outbox_id: int) -> bool:
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE ha_access_event_outbox SET "
+                "publish_attempts=publish_attempts+1,"
+                "last_attempt_at=UTC_TIMESTAMP(3),"
+                "published_at=UTC_TIMESTAMP(3) "
+                "WHERE id=%s AND published_at IS NULL",
+                (outbox_id,),
+            )
+            return cur.rowcount == 1
+    except Exception:
+        log.warning("[MQTT-HA] access-event outbox acknowledgement unavailable")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def _note_home_assistant_access_event_attempt(outbox_id: int) -> bool:
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE ha_access_event_outbox SET "
+                "publish_attempts=publish_attempts+1,"
+                "last_attempt_at=UTC_TIMESTAMP(3) "
+                "WHERE id=%s AND published_at IS NULL",
+                (outbox_id,),
+            )
+            return cur.rowcount == 1
+    except Exception:
+        log.warning("[MQTT-HA] access-event outbox retry evidence unavailable")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def _validated_home_assistant_access_event_outbox_row(
+    row: object,
+) -> tuple[int, str, bytes] | None:
+    if not isinstance(row, dict):
+        return None
+    outbox_id = row.get("id")
+    target_id = row.get("target_id")
+    payload_json = row.get("payload_json")
+    if (
+        isinstance(outbox_id, bool)
+        or not isinstance(outbox_id, int)
+        or outbox_id < 1
+        or not isinstance(target_id, str)
+        or target_id not in _configured_target_ids()
+        or not isinstance(payload_json, str)
+        or not 1 <= len(payload_json.encode("utf-8")) <= 512
+    ):
+        return None
+    try:
+        document = json.loads(payload_json)
+    except (TypeError, ValueError):
+        return None
+    if (
+        not isinstance(document, dict)
+        or set(document)
+        != {"event_type", "access_event_marker", "access_result", "access_path"}
+        or document.get("event_type") not in {"succeeded", "terminated"}
+        or document.get("access_result") not in {"SUCCEEDED", "TERMINATED"}
+        or document.get("access_path")
+        not in {"local_gatt", "mqtt_prearm", "mqtt_manual_remote"}
+        or not isinstance(document.get("access_event_marker"), str)
+        or re.fullmatch(r"[1-9][0-9]*-[0-9]+", document["access_event_marker"])
+        is None
+    ):
+        return None
+    if (document["event_type"] == "succeeded") != (
+        document["access_result"] == "SUCCEEDED"
+    ):
+        return None
+    canonical = json.dumps(
+        document, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    if not secrets.compare_digest(canonical, payload_json.encode("utf-8")):
+        return None
+    return outbox_id, target_id, canonical
 
 
 def _persist_authenticated_target_status(
@@ -2523,6 +2861,7 @@ _authenticated_target_status_worker: _AuthenticatedTargetStatusWorker | None = N
 
 def _start_target_boot_subscriber():
     global _canonical_access_event_worker, _authenticated_target_status_worker
+    global _ha_access_event_outbox_worker
     event_topics = {
         _canonical_target_event_topic(target_id)
         for target_id in _configured_target_ids()
@@ -2537,6 +2876,7 @@ def _start_target_boot_subscriber():
     )
     _canonical_access_event_worker = None
     _authenticated_target_status_worker = None
+    _ha_access_event_outbox_worker = None
     if _command_provisioning_error() is not None or not HAS_PAHO_MQTT:
         return None
     bridge = None
@@ -2600,9 +2940,17 @@ def _start_target_boot_subscriber():
             and secrets.compare_digest(live_boot_id, registered_boot_id)
         )
 
+    ha_outbox_worker = (
+        _HomeAssistantAccessEventOutboxWorker(client)
+        if bridge is not None
+        else None
+    )
+    _ha_access_event_outbox_worker = ha_outbox_worker
+
     event_worker = _CanonicalAccessEventWorker(
         persist=_persist_canonical_target_access_event,
         health=_canonical_access_collector_health,
+        on_insert=(ha_outbox_worker.wake if ha_outbox_worker is not None else None),
     )
     _canonical_access_event_worker = event_worker
 
@@ -2692,6 +3040,8 @@ def _start_target_boot_subscriber():
 
             if bridge is None:
                 return
+            if ha_outbox_worker is not None:
+                ha_outbox_worker.wake()
             if availability_expiry is not None:
                 availability_expiry.reset()
             bridge.reset_transport()
@@ -2937,9 +3287,12 @@ def _start_target_boot_subscriber():
     client.on_message = on_message
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
     client.loop_start()
+    if ha_outbox_worker is not None:
+        ha_outbox_worker.start()
     client._sgk_ha_bridge = bridge
     client._sgk_ha_availability_expiry = availability_expiry
     client._sgk_access_event_worker = event_worker
+    client._sgk_ha_access_event_outbox_worker = ha_outbox_worker
     client._sgk_authenticated_status_worker = status_worker
     return client
 
@@ -3173,6 +3526,11 @@ async def lifespan(app: FastAPI):
                     ).wait_for_publish(timeout=2.0)
                 except Exception:
                     pass
+            ha_access_event_outbox_worker = getattr(
+                boot_subscriber, "_sgk_ha_access_event_outbox_worker", None
+            )
+            if ha_access_event_outbox_worker is not None:
+                ha_access_event_outbox_worker.stop()
             boot_subscriber.loop_stop()
             boot_subscriber.disconnect()
             access_event_worker = getattr(
@@ -3970,6 +4328,13 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         checks["access_event_collector"] = (
             _canonical_access_collector_health.ready(
                 _canonical_access_event_worker
+            )
+            and (
+                not HA_BRIDGE_ENABLED
+                or (
+                    _ha_access_event_outbox_worker is not None
+                    and _ha_access_event_outbox_worker.healthy
+                )
             )
         )
         if not checks["access_event_collector"]:
@@ -5065,7 +5430,10 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "LEFT JOIN tenants t ON t.id=l.tenant_id "
     "UNION ALL "
     "SELECT 'canonical' AS record_kind,e.id,NULL AS tenant_id,"
-    "NULL AS tenant_name,NULL AS unit_number,'LOCAL_GATT' AS auth_method,"
+    "NULL AS tenant_name,NULL AS unit_number,CASE "
+    "WHEN e.event_path='mqtt_manual_remote' THEN 'MOBILE_REMOTE' "
+    "WHEN e.event_path='mqtt_prearm' THEN 'MOBILE_PREARM' "
+    "ELSE 'LOCAL_GATT' END AS auth_method,"
     "NULL AS is_success,e.distance_mm,NULL AS failure_reason,"
     "e.received_at AS created_at,e.event_id,e.session_id,"
     "e.source_component,e.source_instance_id,e.source_boot_id,"
@@ -5110,7 +5478,9 @@ _ADMIN_ACCESS_HISTORY_SQL = (
     "e.source_boot_id=s.source_boot_id AND "
     "e.source_sequence=s.terminal_event_sequence AND "
     "e.integrity_status='verified' AND "
-    "e.event_code IN ('ACCESS_SESSION_COMPLETED','ACCESS_SESSION_TERMINATED'))"
+    "e.event_code IN ('ACCESS_SESSION_COMPLETED','ACCESS_SESSION_TERMINATED',"
+    "'ACCESS_SIGNED_ARM_COMPLETED','ACCESS_SIGNED_ARM_TERMINATED',"
+    "'ACCESS_SIGNED_MANUAL_COMPLETED','ACCESS_SIGNED_MANUAL_TERMINATED'))"
     ") AS history ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s"
 )
 _ADMIN_ACCESS_TODAY_COUNT_SQL = (

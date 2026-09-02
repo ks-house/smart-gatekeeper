@@ -2624,6 +2624,59 @@ void testOfflineCanonicalV2CredentialRefOverlay() {
   CHECK(!queue2.push(noncanonical));
 }
 
+void testSignedMqttTerminalEventsSurviveRebootInOrder() {
+  TestQueueStorage storage;
+  sgk::OfflineEventQueue queue1(&storage);
+  queue1.begin();
+  const uint8_t tag[sgk::kAccessEvidenceTagSize] = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  const auto terminal = [&](const char* event_id, const char* session_id,
+                            const char* event_type, uint64_t sequence) {
+    sgk::CanonicalEvent event{};
+    event.is_canonical = 1;
+    event.code = 0x7f02;
+    event.monotonic_ms = 1000 + sequence;
+    event.sequence = sequence;
+    event.boot_count = 696;
+    event.attempt = 1;
+    std::snprintf(event.event_id, sizeof(event.event_id), "%s", event_id);
+    std::snprintf(event.session_id, sizeof(event.session_id), "%s", session_id);
+    std::snprintf(event.source_boot_id, sizeof(event.source_boot_id), "%s",
+                  "bc45dc394a658921ce75654d9f2570b7");
+    std::snprintf(event.target_ref, sizeof(event.target_ref), "%s",
+                  "c0feffe6ebac");
+    std::snprintf(event.event_type, sizeof(event.event_type), "%s", event_type);
+    std::snprintf(event.stage_text, sizeof(event.stage_text), "%s", "COMPLETE");
+    std::snprintf(event.outcome_text, sizeof(event.outcome_text), "%s",
+                  "SUCCEEDED");
+    CHECK(sgk::setCanonicalV2Detail(&event, "ACCESS_GRANTED", "a1", nullptr,
+                                    tag));
+    return event;
+  };
+  CHECK(queue1.push(terminal(
+      "11111111-1111-4111-8111-111111111111",
+      "21111111-1111-4111-8111-111111111111",
+      "ACCESS_SIGNED_MANUAL_COMPLETED", 1)));
+  CHECK(queue1.push(terminal(
+      "31111111-1111-4111-8111-111111111111",
+      "41111111-1111-4111-8111-111111111111",
+      "ACCESS_SIGNED_ARM_COMPLETED", 2)));
+
+  sgk::OfflineEventQueue queue2(&storage);
+  queue2.begin();
+  CHECK(queue2.size() == 2);
+  sgk::CanonicalEvent restored{};
+  CHECK(queue2.popFront(&restored));
+  CHECK(restored.sequence == 1);
+  CHECK(std::string(restored.event_type) ==
+        "ACCESS_SIGNED_MANUAL_COMPLETED");
+  CHECK(queue2.popFront(&restored));
+  CHECK(restored.sequence == 2);
+  CHECK(std::string(restored.event_type) ==
+        "ACCESS_SIGNED_ARM_COMPLETED");
+  CHECK(queue2.isEmpty());
+}
+
 void testProductionMainAuthAbortWiring() {
   std::ifstream file("src/main.cpp");
   CHECK(file.is_open());
@@ -2803,6 +2856,8 @@ void testSignedCommandAccessTracker() {
   sgk::SignedCommandAccessTracker::Terminal terminal{};
   CHECK(manual.finish(false, &terminal));
   CHECK(terminal.completed);
+  CHECK(terminal.mode ==
+        sgk::SignedCommandAccessTracker::Mode::kManualRemote);
   CHECK(terminal.phase_mask ==
         sgk::SignedCommandAccessTracker::kManualSuccessMask);
   CHECK(std::string(terminal.session_id) == kCanonicalSession);
@@ -2818,6 +2873,7 @@ void testSignedCommandAccessTracker() {
   CHECK(arm.noteRelayOff(false));
   CHECK(arm.finish(false, &terminal));
   CHECK(terminal.completed);
+  CHECK(terminal.mode == sgk::SignedCommandAccessTracker::Mode::kArm);
   CHECK(terminal.phase_mask ==
         sgk::SignedCommandAccessTracker::kArmSuccessMask);
 
@@ -2829,6 +2885,8 @@ void testSignedCommandAccessTracker() {
   CHECK(failsafe.noteRelayOff(true));
   CHECK(failsafe.finish(true, &terminal));
   CHECK(!terminal.completed);
+  CHECK(terminal.mode ==
+        sgk::SignedCommandAccessTracker::Mode::kManualRemote);
   CHECK(terminal.phase_mask ==
         (sgk::SignedCommandAccessTracker::kManualSuccessMask |
          sgk::SignedCommandAccessTracker::kRelayFailsafe));
@@ -2839,6 +2897,7 @@ void testSignedCommandAccessTracker() {
   CHECK(timeout.noteArmed());
   CHECK(timeout.finish(false, &terminal));
   CHECK(!terminal.completed);
+  CHECK(terminal.mode == sgk::SignedCommandAccessTracker::Mode::kArm);
   CHECK(terminal.phase_mask == sgk::SignedCommandAccessTracker::kArmed);
 }
 
@@ -3119,6 +3178,7 @@ int main() {
   testQueueMetaSemanticCorruptionMutations();
   testOfflineCanonicalEventReplayAndPreservation();
   testOfflineCanonicalV2CredentialRefOverlay();
+  testSignedMqttTerminalEventsSurviveRebootInOrder();
   testProtocolDisconnectHandoff();
   testCommittedActionSurvivesResultTransportFailure();
   testInvalidTypedCanonicalRecordQuarantine();

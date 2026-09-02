@@ -26,14 +26,15 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.prefix = f"gatekeeper/v1/targets/{self.target_id}"
     self.plan = MIGRATION.build_plan(self.target_id)
 
-  def test_plan_updates_exactly_17_read_only_entities(self):
+  def test_plan_updates_exactly_18_read_only_entities(self):
     updates = [
         item for item in self.plan if item.payload and
         "command_topic" not in json.loads(item.payload)]
-    self.assertEqual(len(updates), 17)
+    self.assertEqual(len(updates), 18)
     self.assertEqual(
         sum("/binary_sensor/" in item.topic for item in updates), 3)
     self.assertEqual(sum("/sensor/" in item.topic for item in updates), 14)
+    self.assertEqual(sum("/event/" in item.topic for item in updates), 1)
 
     object_ids = {item.topic.split("/")[-2] for item in updates}
     self.assertEqual(object_ids, {
@@ -42,7 +43,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         "wifi_rssi", "free_heap", "uptime_s", "firmware",
         "connectivity", "door_binary", "pre_armed", "cfg_tx_power",
         "cfg_distance_thresh", "cfg_prearm_duration",
-        "cfg_relay_cooldown",
+        "cfg_relay_cooldown", "access_terminal_event",
     })
     for publication in updates:
       config = json.loads(publication.payload)
@@ -63,6 +64,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         for item in self.plan if item.payload and
         "command_topic" not in json.loads(item.payload)}
     connectivity = updates.pop("connectivity")
+    terminal_event = updates.pop("access_terminal_event")
     self.assertEqual(
         connectivity["state_topic"],
         f"gatekeeper/v1/ha-bridge/{self.target_id}/availability")
@@ -71,6 +73,13 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.assertEqual(connectivity["payload_off"], "offline")
     self.assertNotIn("entity_category", connectivity)
     self.assertNotIn("expire_after", connectivity)
+    self.assertEqual(
+        terminal_event["state_topic"],
+        f"gatekeeper/v1/ha-bridge/{self.target_id}/access-event")
+    self.assertEqual(
+        terminal_event["event_types"], ["succeeded", "terminated"])
+    self.assertEqual(terminal_event["qos"], 1)
+    self.assertNotIn("expire_after", terminal_event)
     relay_status = updates["door_binary"]
     self.assertEqual(
         relay_status["unique_id"], "smart_gatekeeper_01_door_binary")
@@ -174,8 +183,8 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
       ])
     output = stdout.getvalue()
     self.assertEqual(result, 0)
-    self.assertIn("DRY_RUN discovery_updates=23", output)
-    self.assertIn("secure_controls=6 read_only=17", output)
+    self.assertIn("DRY_RUN discovery_updates=24", output)
+    self.assertIn("secure_controls=6 read_only=18", output)
     self.assertIn("No network connection", output)
     self.assertNotIn(secret_user, output)
     self.assertNotIn(secret_password, output)
@@ -275,7 +284,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
           "example.invalid", 8883, self.plan,
           username="hidden-user", password="hidden-password")
 
-    self.assertEqual(len(calls), 30)
+    self.assertEqual(len(calls), 31)
     self.assertTrue(all(qos == 1 and retain for _, _, qos, retain in calls))
 
 

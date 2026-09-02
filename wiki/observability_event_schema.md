@@ -67,9 +67,10 @@ change는 새 major schema로 낸다. Collector는 알 수 없는 major를 원�
 3. Android가 시작하지 않는 manual remote path는 Backend가, 완전 offline Target-local path는
    Target이 UUIDv4를 만든다.
 4. GATT proof, MQTT legacy arm 등 모든 protocol request/response에 `session_id`를 전달한다.
-5. 모든 session은 정확히 하나의 terminal event로 끝난다. 성공은
-   `ACCESS_SESSION_COMPLETED/ACCESS_GRANTED`, 나머지는
-   `ACCESS_SESSION_TERMINATED/<fixed reason>`이다.
+5. 모든 session은 정확히 하나의 terminal event로 끝난다. Local GATT 성공/종료는
+   `ACCESS_SESSION_COMPLETED|TERMINATED`, signed MQTT arm/manual은 MAC 입력에 경로까지
+   결합하기 위해 `ACCESS_SIGNED_ARM_*` 또는 `ACCESS_SIGNED_MANUAL_*`를 사용한다. 성공
+   reason은 `ACCESS_GRANTED`, 종료 reason은 catalog의 fixed code만 허용한다.
 
 UUIDv4는 wall clock에 의존하지 않으므로 RTC가 틀리거나 Target이 재부팅돼도 같은 ID가 다시
 생성되지 않는다. MAC, timestamp, 증가 counter만 조합해 session ID를 만들면 안 된다.
@@ -380,6 +381,8 @@ BLE 주소, raw credential/proof와 주민 이름은 immutable evidence table에
 | `ACCESS_SENSOR_DETECTED` | Target threshold 조건이 충족됨 | 현재 펌웨어 payload에는 실제 거리 값이 없어 화면은 `-`일 수 있음 |
 | `ACCESS_RELAY_ON/OFF` | Target software가 relay GPIO 동작 단계를 수행함 | 도어 접점·문짝의 물리 개방 확인은 아님 |
 | `ACCESS_SESSION_COMPLETED` | Target software access chain이 정상 종료됨 | 별도 door contact가 없는 현재 배선에서 물리 개방 성공은 아님 |
+| `ACCESS_SIGNED_ARM_COMPLETED/TERMINATED` | signed MQTT 출입 준비 세션의 Target terminal이 영속 큐와 Backend DB에 도달함 | 문짝 이동과 MQTT 요청자의 실명은 이 이벤트만으로 확인하지 않음 |
+| `ACCESS_SIGNED_MANUAL_COMPLETED/TERMINATED` | signed MQTT 수동 개방 세션의 relay lifecycle terminal이 영속 큐와 Backend DB에 도달함 | 별도 door contact가 없어 물리 문짝 이동은 확인하지 않음 |
 | legacy `MOBILE_REMOTE` success | Backend가 signed MQTT 전송을 접수함 | Target 수신·relay·물리 개방 성공은 아님 |
 
 Target canonical topic은 현재 QoS 0이며 offline queue도 bounded이므로 이 화면은 **수신 이벤트
@@ -460,10 +463,23 @@ Terminal phase bit는 다음처럼 고정한다.
 완료 성공 profile은 경로별 exact mask로 고정한다: Local GATT sensor `0x1f`, Local GATT manual
 `0x19`, signed MQTT arm+sensor `0x1e`, signed MQTT `manual_remote` `0x18`. 이 네 값이 아니거나
 `0x20`이 있으면 `ACCESS_SESSION_COMPLETED` 문자열만으로 성공으로 집계하지 않는다. Individual QoS 0 event가 유실됐더라도 같은 boot의 서명된 terminal
-요약은 별도 immutable summary로 보존할 수 있다. 그러나 Target의 최신 terminal 요약 자체는
-**동일 boot RAM best-effort**다. terminal 뒤 status가 Backend에 도착하기 전에 전원이 끊기면 그
-요약은 유실될 수 있고 다음 boot에서 성공으로 재구성하지 않는다. Durable event queue가 이 공백을
-줄이더라도 physical result를 추정하는 근거는 아니다.
+요약은 별도 immutable summary로 보존할 수 있다. 최신 terminal status 요약은 여전히
+**동일 boot RAM best-effort**지만, signed MQTT arm/manual terminal은 별도의 HMAC canonical event로
+terminal callback이 반환하기 전에 8-entry NVS queue에 먼저 기록되고, NVS write 자체가 실패한 경우에만
+16-entry RAM outbox로 fallback한다. 따라서 MQTT socket I/O를 control path에 넣지 않으면서 status 전송 전
+재부팅에도 Backend는 원래 boot/count/sequence의 terminal event를 재수집한다. Queue가 포화되면 기존
+`queue_overflow` gap 정책이 손실 범위를 명시하며, 무한 단절을 무손실이라고 주장하지 않는다.
+어느 경우에도 software terminal은 physical door 이동을 추정하는 근거가 아니다.
+
+Schema 013에서 Backend canonical worker는 HMAC 검증된 access-history 행과 HA projection outbox 행을
+한 DB transaction으로 commit한다. 별도 HA outbox worker가 commit된 oldest row만
+`event.smart_gatekeeper_01_access_terminal_event` 입력 topic으로 QoS 1/non-retained 발행하고 broker
+PUBACK을 확인한 뒤 `published_at`을 기록한다. API/broker가 중간에 재시작되면 미완료 row를 같은 event
+marker로 재시도한다. 따라서 DB commit 뒤 HA publish 전 crash의 영구 누락은 막지만, PUBACK 뒤 DB mark
+전 crash에는 동일 marker의 중복 전달이 가능한 **at-least-once** 계약이다. 동일 canonical event replay는
+outbox identity를 재사용하며 새 pending row를 만들지 않는다.
+기존 `[Gatekeeper] 최근 출입 결과` sensor는 signed status 기반 N/N-1 호환과 최신 결과 표시를
+그대로 유지한다.
 
 Backend 모바일 projection도 signed terminal phase에 `0x20`이 하나라도 있으면 다른 정상 phase bit와
 관계없이 `complete`가 아닌 실패 `terminated`로 분류한다. 이 실패 terminal 자체만으로 다음 인증을
@@ -488,10 +504,12 @@ OFF pin level이 모두 확인된 경우에만 참이다. 이 표시는 scanner�
 곧바로 최종 `complete`로 건너뛸 수 있다. 보장되는 사용자 의미는 exact-session terminal과 fresh
 IDLE을 함께 확인한 뒤의 `다음 인증 가능`이다.
 
-Target의 event producer는 access-critical callback/FSM에서 TLS를 호출하지 않고 bounded outbox에
-복사한다. 실제 PubSubClient connect/loop/publish는 기존 단일 owner가 access-critical phase 뒤
+Target의 일반 event producer는 access-critical callback/FSM에서 TLS를 호출하지 않고 bounded outbox에
+복사한다. Signed MQTT terminal은 완료 callback에서 bounded NVS queue에 먼저 commit하고 NVS 실패 때만
+RAM에 보존하지만 MQTT socket은 여전히 호출하지 않는다. 실제 PubSubClient connect/loop/publish는 기존 단일 owner가 access-critical phase 뒤
 safe state에서 수행해 sensor/relay 경로의 비핵심 비동기 경계가 된다. Backend에서도 Paho callback은
-bounded queue만 채우고 event/status DB I/O는 worker가 수행한다. QoS 0 누락 가능성과 broker principal
+bounded queue만 채우고 event/status DB I/O와 HA outbox delivery는 worker가 수행한다. Target publisher의
+QoS 0 전달 한계, 유한 NVS/RAM queue overflow 가능성과 broker principal
 인증은 별개다. 따라서 production에서는 Target/Backend/Home Assistant principal의 exact topic ACL을
 설치하고 anonymous/cross-principal publish·subscribe 거부를 확인해야 한다.
 
@@ -540,14 +558,17 @@ signed terminal/IDLE status의 `source_boot_count`와 `last_terminal_event_seque
 `<boot_count>-<sequence>` 비식별 표식으로 투영한다. HA `last_access_event` sensor는 결과와 이 표식을
 state로 사용하므로 반복 성공이 같은 `IDLE`로 끝나도 한 세션당 한 번 Activity가 전진한다. 주기 status가
 같은 terminal summary를 반복해도 state는 같아 추가 이력을 만들지 않는다. Session UUID, credential/actor
-ref, reason과 HMAC tag는 HA projection에서 계속 제외한다. Canonical event outbox와 관리자 이력은 별도
-감사 경로이며 이 sensor가 누락 event를 합성하거나 물리 문 열림을 증명하지 않는다.
+ref, reason과 HMAC tag는 HA projection에서 계속 제외한다. Canonical event와 관리자 이력은 별도 감사
+경로이며, schema 013 HA transaction outbox는 DB에 도달한 event의 Activity projection을 재시도한다.
+이 sensor/outbox 어느 쪽도 Target→broker QoS 0 구간의 누락을 합성하거나 물리 문 열림을 증명하지 않는다.
 
 Signed MQTT command는 callback에서 terminal event를 송신하지 않는다. 인증·replay 검증이 끝난 command의
 session UUID와 mode만 RAM에 보존하고 FSM event callback이 phase bit를 더한다. Relay OFF 뒤 terminal
-sequence와 summary를 완성하며 실제 signed status publish는 IDLE safe-state의 기존 단일 MQTT owner가
-수행한다. 이 경계는 비동기 동작을 유지하지만, status가 오기 전 power loss에는 완료 요약이 남지 않는
-best-effort 한계를 유지한다.
+sequence와 summary를 완성하고 path-specific canonical terminal은 NVS에 먼저 기록한다. 실제 signed
+event/status publish는 IDLE safe-state의 기존 단일 MQTT owner가 수행한다. 따라서 power loss에는 RAM
+latest-summary가 사라질 수 있어도 별도 canonical terminal은 재부팅 뒤 재전송된다. 단, 8-entry NVS와
+16-entry fallback은 bounded이며 Target publish QoS 0에는 Backend application ACK가 없으므로 무한 outage나
+broker가 수락한 뒤 subscriber에 전달하지 못한 구간까지 절대 무손실로 주장하지 않는다.
 
 HA relay binary sensor는 entity-registry 호환을 위해 historical object/unique ID의 `door_binary`를
 유지하지만 표시명은 `[Gatekeeper] 릴레이 구동 상태`이고 door `device_class`는 없다. ON은 검증된

@@ -60,6 +60,7 @@ class SignedCommandAccessTracker {
 
   struct Terminal {
     char session_id[37]{};
+    Mode mode = Mode::kNone;
     uint16_t phase_mask = 0;
     bool completed = false;
   };
