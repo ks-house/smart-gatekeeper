@@ -6334,3 +6334,15 @@
 - Policy PR #352 passed the hosted inert-byte trusted-base check and merge-committed normally as main `e2b07217a6d814c5fb19360e1c37128e6cb67362`.
 - Merged that exact policy main into the feature branch while preserving both append-only evidence histories. Immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` remains in ancestry and all candidate protected bytes remain the authorized set.
 - Merge-connected focused policy/GATT/manual/Target-publication coverage passed 90/90. Full repository discovery passed 344/344 with one declared environment-only skip; this is still source/test evidence, not publication or installation.
+
+## [2026-09-04] compile | Merge GATT v2 and rotate actual-main policy
+
+- Feature PR #353 passed the hosted Android, firmware, OTA P0, canonical protocol-vector and trusted-policy checks and merge-committed normally as actual feature main `3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957`.
+- Retired transition source `b5afa8f5660c53517e9bfabf18b5560ac874372d` and pinned the sole `current-main-baseline` to that actual feature merge. All 102 protected normalized blobs, seven workflows and the empty local-Action inventory remain byte-identical.
+- This policy-only rotation publishes and installs nothing. Exact-main signed personal Android/Target publication, install/reboot/health and physical latency evidence remain separate Gates.
+
+## [2026-09-04] test | Validate GATT v2 final policy rotation
+
+- Focused trusted-policy coverage passed 42/42 and full repository discovery passed 344/344 with one declared PowerShell-environment skip.
+- The authenticated live verifier selected `current-main-baseline` for actual feature main `3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957` and approved the complete 102-path GitHub object set. JSON structure and whitespace validation also passed.
+- These results authorize exact source bytes only; they are not Android installation, Target OTA installation/reboot/health or physical BLE latency evidence.
