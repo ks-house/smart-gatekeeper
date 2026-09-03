@@ -116,6 +116,10 @@ def bridge_verified_status_topic(target_id: str) -> str:
     return f"{bridge_prefix(target_id)}/verified-status"
 
 
+def bridge_access_event_topic(target_id: str) -> str:
+    return f"{bridge_prefix(target_id)}/access-event"
+
+
 def target_status_topic(target_id: str) -> str:
     _validate_target_id(target_id)
     return f"gatekeeper/v1/targets/{target_id}/status"
@@ -331,6 +335,25 @@ def build_discovery_plan(
         )
     )
 
+    access_event_config = _base_config(
+        "[Gatekeeper] 출입 완료 이벤트", "access_terminal_event"
+    )
+    access_event_config.update(
+        {
+            "state_topic": bridge_access_event_topic(target_id),
+            "event_types": ["succeeded", "terminated"],
+            "value_template": "{{ value_json.event_type }}",
+            "json_attributes_topic": bridge_access_event_topic(target_id),
+            "qos": 1,
+            "icon": "mdi:door-open",
+        }
+    )
+    read_only.append(
+        _discovery_publication(
+            "event", "access_terminal_event", access_event_config
+        )
+    )
+
     status_sensors = (
         (
             "distance",
@@ -356,6 +379,19 @@ def build_discovery_plan(
             "{{ value_json.state }}",
             None,
             "mdi:state-machine",
+            None,
+            None,
+        ),
+        (
+            "last_access_event",
+            "[Gatekeeper] 최근 출입 결과",
+            (
+                "{{ (value_json.last_access_result ~ ' #' ~ "
+                "value_json.last_access_event_marker) if "
+                "value_json.last_access_event_marker else 'NO_EVENT' }}"
+            ),
+            None,
+            "mdi:door-open",
             None,
             None,
         ),
@@ -429,7 +465,7 @@ def build_discovery_plan(
                 "icon": icon,
                 "state_topic": (
                     verified_status_topic
-                    if object_id == "state"
+                    if object_id in {"state", "last_access_event"}
                     else diagnostic_status_topic
                 ),
                 "value_template": value_template,
@@ -442,7 +478,7 @@ def build_discovery_plan(
         # legacy 30-second entity expiry here would show a false unavailable
         # state during a valid access session.  Raw diagnostics still use the
         # shorter expiry below.
-        if object_id != "state":
+        if object_id not in {"state", "last_access_event"}:
             config["expire_after"] = 30
         if unit is not None:
             config["unit_of_measurement"] = unit

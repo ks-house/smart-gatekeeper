@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-09-02 (authenticated actor/session-completion and fail-closed session ownership source candidates recorded; deployment and physical acceptance pending)
+> Last updated: 2026-09-03 (asynchronous MQTT terminal marker and HA per-access Activity candidate recorded; deployment acceptance pending)
 
 ## 1. 판정 원칙
 
@@ -858,6 +858,27 @@ keyring before Target N is built. Broker anonymous/crossover denial and
 legitimate Target/Backend/HA reconnect/readback are release prerequisites, not
 an inference from application HMAC tests.
 
+## 2026-09-02 HA verified access-state availability deployment
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Protected merge | PRs #335, #336 and #337 passed their required checks and merged normally. Exact feature main is `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`; final policy main `6530d5ca7facf0faee82d4b2944e7ddd65986047` pins the sole `current-main-baseline` with all 100 protected blobs unchanged from feature main | PASS for reviewed exact source and final policy identity |
+| Exact Backend deployment | Owner-approved run `33642436897` passed Backend security/MariaDB, evidence verification, immutable API/DB image publication and NAS deployment. Public `/live` and `/ready` returned HTTP 200 for exact `993c1b6`; every readiness check was true | PASS for exact deployed process and dependency readiness |
+| Retained discovery correction | Strict-TLS MQTTS read back retained configs for verified `state`, `door_binary` and `pre_armed`. Each points to `gatekeeper/v1/ha-bridge/c0feffe6ebac/verified-status` and omits `expire_after`; raw diagnostic expiry remains source-tested at 30 seconds | PASS for live retained input that removes the false 30-second HA entity expiry |
+| Bridge and Target state | Retained bridge availability was `online`; a fresh non-retained verified projection reported boot 695, revision 29189, `IDLE`, unarmed and relay OFF/pin 1 | PASS for current signed projection and fail-safe output command; no relay-contact/door motion implied |
+| Rendered and physical boundary | No authenticated HA frontend entity-registry read, over-30-second UI observation, new administrator history row, sensor passage, GPIO/contact measurement or door-leaf observation was performed after this deployment | PENDING one new family-phone access and rendered UI/physical acceptance |
+
+## 2026-09-02 mobile transient access-ready notification candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Stale-notification diagnosis | Native `출입 준비 완료` used one fixed notification ID and `setAutoCancel(true)` only; no timeout, region-exit cancellation or exact-session terminal cancellation existed | CONFIRMED source cause for a notice surviving until user interaction; not an OEM runtime trace |
+| Bounded fallback | The access-ready policy now supplies 65,000 ms to `NotificationCompat.setTimeoutAfter`, covering the Target's 60-second ARMED window plus delivery grace; attention-required failure notices remain unbounded under a separate notification ID | SOURCE CONTRACT; Android/OEM delivery must be observed on replacement APK |
+| Area exit | PendingIntent scan requests `FIRST_MATCH | MATCH_LOST`; valid match-lost dismisses the ready notice and does not invoke `BleGattWorkScheduler.onPresence`. Error callbacks do not infer exit | SOURCE CONTRACT; physical exit latency and OEM callback reliability pending |
+| Normal/terminal result | Exact-session polling dismissal runs only after the active Target session generation closes, including terminal result and bounded expiry | SOURCE CONTRACT; live Backend/mobile session result observation pending |
+| Local regression suites | Flutter analysis reported no issues; Flutter tests passed 97/97; Android targeted JVM tests passed 60/60; repository contracts passed 342/342 with one declared skip; `git diff --check` passed | PASS for local source/unit/contract evidence; hosted exact-head and physical behavior remain pending |
+| Safety boundary | No Target, Backend, HA, sensor, relay or door control semantics change | PASS by changed-file scope; signed publication/install and physical behavior remain pending |
+
 ## 2026-09-02 authenticated actor/result final-main rollout evidence
 
 | Test | Observed result | Verdict / boundary |
@@ -874,3 +895,99 @@ an inference from application HMAC tests.
 | Backend N final deployment | After the owner provisioned the root `a1` keyring/runtime and installed reviewed wrapper SHA-256 `ec7e7eaa...9806`, run `33555467447` deployed exact `b29cb2497c4adf151b3d60eeab31acb525555340`. Public `/live` and `/ready` returned 200 with database, schema, MQTT, event collector, runtime secrets, admin/ACL, actor-ref and evidence-integrity checks all true | PASS for exact Backend N deployment and dependency readiness |
 | Signed Target key agreement and HA readback | Read-only MQTTS received retained bridge `online` plus non-retained Backend `verified-status` for Target boot 695/revision 27868, IDLE and relay OFF/pin 1. The projection is emitted only after HMAC verification with the configured door scope, proving NAS and installed Target key agreement for ID `a1`. Retained state discovery pointed at `verified-status` but still carried `expire_after: 30` | PASS for live signed-status ingestion/key agreement and bridge publication; FAIL remains for false 30-second entity expiry until the tested source correction is reviewed/deployed/republished |
 | Physical access | No agent-controlled sensor passage, GPIO/contact measurement, actuator travel or door-leaf measurement was performed | PENDING; owner observation is not an instrumented physical acceptance result |
+
+## 2026-09-03 asynchronous MQTT per-access HA Activity candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Repeated physical observation | The owner reports that a manual local open at about 01:00 KST opened the door, while the HA state entity added no new Activity timestamp or row | OWNER-OBSERVED door-cycle pass and CONFIRMED HA visibility defect; no agent-controlled GPIO/contact trace |
+| Root cause | Target intentionally defers MQTT throughout the access-critical interval and coalesces status to the newest snapshot. HA rendered only `state`, so the final `IDLE` matched the previous `IDLE` | CONFIRMED by source; the missing HA row is not evidence that the relay failed |
+| Asynchronous correction | Backend derives a privacy-safe `<boot_count>-<terminal_sequence>` marker and `SUCCEEDED`/`TERMINATED` from HMAC-verified terminal status. New `[Gatekeeper] 최근 출입 결과` discovery renders that pair as its state | DEPLOYED SOURCE: every terminal session changes HA state once without adding MQTT socket work to authentication/sensor/relay/cooldown |
+| Privacy and duplication | Session UUID, credential/actor ref, reason and HMAC tag stay outside HA projection. Repeated periodic snapshots of the same terminal marker render the same state | PASS by focused projection/discovery tests; no personal identifier exposure or periodic Activity spam |
+| Focused regression | Home Assistant bridge, authenticated status registry, discovery migration and access-network-deferral suites passed 59/59 | PASS for local source contracts; one new physical Activity observation remains pending |
+| Full regression | Backend passed 194 tests with two declared skips. After policy rotation, repository discovery passed 342/342 with one declared environment-only skip | PASS for functional, security, OTA and trusted-policy contracts |
+| Release scope | No Target, mobile, GPIO, relay, sensor, ACL, command or OTA code changes | Backend/HA-only candidate; installed Target `2.1.422` remains protocol-compatible |
+| Normal merge | Policy PR #340, feature PR #341 and final-policy PR #342 passed hosted checks and merge-committed normally. Exact feature main is `a87ef21dc9f66b227831066f45fab8cf0176a0e7`; final policy pins that main with all 100 protected blobs exact | PASS for reviewed source, merge ancestry and final policy identity |
+| Exact Backend deployment | Owner-approved run `33654112042` passed Backend security/MariaDB, evidence verification, immutable image publication and NAS deployment. Deployment evidence records `status=deployed`, the exact feature SHA, loopback readiness and public readiness passed | PASS for exact NAS rollout |
+| Independent public readiness | Strict-TLS `/live` and `/ready` returned HTTP 200 with build SHA `a87ef21dc9f66b227831066f45fab8cf0176a0e7`; all checks were true, including MQTT and `access_event_collector` | PASS for deployed process and dependency readiness |
+| Discovery and physical boundary | Backend startup republishes the 17-entity retained discovery plan including `last_access_event` by source contract. No credentialed retained broker readback or post-deployment owner access/HA Activity row was observed in this verification | PENDING live retained discovery readback and one new owner-observed HA Activity timestamp; no physical door claim inferred from readiness |
+
+## 2026-09-03 signed MQTT manual/arm terminal completion candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Supplied administrator evidence | At 01:31:26 the only new row was `MOBILE_REMOTE`, actor `이승환 · 401호`, `서버 전송 접수`, `broker accepted; physical result unconfirmed`; no Target terminal row followed | CONFIRMED signed MQTT completion-evidence gap; the owner separately reports the door opened |
+| Supplied HA evidence | The Activity panel contained only older IDLE/unavailable state rows and no `[Gatekeeper] 최근 출입 결과` row for the manual request | CONFIRMED deployed Backend-only marker did not cover signed MQTT manual completion |
+| Source root cause | Existing `LocalGattLifecycleBridge` created terminal summaries only after verified Local GATT proof. Signed MQTT command callback retained no session lifecycle through relay OFF | CONFIRMED by source inspection |
+| Async correction | Signed command callback starts only an in-RAM session/mode tracker; FSM callbacks add phase bits without network I/O; IDLE safe-state MQTT owner later sends the existing HMAC status terminal summary | SOURCE CONTRACT preserves access-critical MQTT deferral |
+| Path/result projection | Backend recognizes exact success masks local sensor/manual `0x1f/0x19` and signed arm/manual `0x1e/0x18`; admin labels remote summaries `모바일 출입 준비`/`모바일 수동 문열기` and HA advances on boot/terminal sequence | PASS for focused Backend/UI source tests; no live row yet |
+| Native and firmware validation | Native production core plus focused network/backend/HA/admin suites passed 73/73; targeted UI/SQL/HA tests passed 3/3; `esp32c6_personal_production` compiled and linked at 75,896/327,680 RAM and 1,800,410/7,340,032 flash | PASS for host/build evidence only |
+| Runtime boundary | No candidate artifact is merged, published or installed; no post-candidate Target boot/status, admin terminal row, HA Activity row, relay contact or door-leaf observation exists | PENDING policy/CI, Backend deployment, Target signed OTA install/reboot/health and one new access observation |
+
+## 2026-09-03 signed MQTT terminal completion rollout
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Reviewed main | PRs #344, #345 and #346 passed required checks and merge-committed normally. Exact feature main is `3be8310d85ad7c37659576a0cda618ab693b9927`; final policy main is `531b15aba56d500078d09a0f3daf5a8b0597c275` and all 100 protected blobs are byte-identical to the immutable feature | PASS for reviewed source and protected main identity |
+| Exact Backend deployment | Owner-approved run `33658872347` completed immutable image publication and NAS deployment for exact feature main. Independent strict-TLS `/live` and `/ready` returned HTTP 200 with build SHA `3be8310d...`; all readiness checks were true, including MQTT, `access_event_collector`, schema and access-evidence integrity | PASS for deployed Backend process and dependencies |
+| Exact Target publication | Final-main run `33659186723` built, signed and atomically published `2.1.434+main.g531b15a`, build ID `main-434-531b15aba56d500078d09a0f3daf5a8b0597c275`. Sanitized evidence records a 1,869,620-byte artifact, atomic metadata swap and previous-valid retention | PASS for signed publication and HTTPS readback; publication alone is not installation |
+| Approved OTA install | One owner-approved HA `trigger_ota` ingress received QoS 1 PUBACK and Backend `broker_accepted`. Fresh MQTTS then advanced the Target from firmware `2.1.422`, boot 695 to exact `2.1.434+main.g531b15a`, boot 696 and boot ID `bc45dc394a658921ce75654d9f2570b7` | PASS for exact Target install and reboot identity |
+| Post-boot health | Ten consecutive one-second status samples at uptime 100--109 seconds retained the same boot identity, `IDLE`, unarmed, relay command OFF/pin high; signed status revision advanced 91--100. A later fresh sample remained on the same boot and safe state at uptime 325 seconds, beyond both the 30-second health-valid and 120-second rollback windows | PASS for post-install health, no rollback and safe output state; no GPIO voltage/contact or door motion measured |
+| Live HA contract | Retained `state` and `last_access_event` discovery both point at Backend `verified-status` and omit legacy `expire_after`; bridge availability is retained `online`. Fresh verified status reports boot 696/revision 139 and safe IDLE, but no terminal marker exists after the reboot | PASS for live HA discovery/state transport; one new access is still required to prove the new admin terminal row and HA Activity marker |
+| Supplied UI comparison | The administrator screenshot contains only the pre-fix 01:31:26 broker-accepted legacy row, and the HA screenshot contains only older IDLE/unavailable transitions | CONSISTENT with the pre-rollout defect; screenshots do not constitute a post-install access result |
+| Physical/access boundary | No agent-triggered relay, sensor passage or door movement was performed after installation | PENDING one owner-triggered mobile manual/pre-arm cycle followed by administrator and HA readback |
+
+## 2026-09-03 post-install signed MQTT manual completion
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner action | The owner reported completion of one post-install test. The agent did not issue a relay or door-open command | OWNER-TRIGGERED test; physical door movement is owner-observed rather than instrumented |
+| Target terminal | Fresh verified-TLS MQTTS on exact firmware `2.1.434+main.g531b15a`, boot 696 reported terminal sequence 1, exact signed-manual success mask `0x18`, event `ACCESS_SESSION_COMPLETED` and reason `ACCESS_GRANTED` | PASS for asynchronous Target relay ON/OFF terminal production without critical-path MQTT I/O |
+| Backend verified projection | On the same status revision 426, Backend `verified-status` reported `last_access_result=SUCCEEDED` and marker `696-1`; Target and projection were both fresh IDLE with relay OFF/pin high and bridge availability online | PASS for HMAC verification, persisted status high-water and Backend-to-HA MQTT publication |
+| HA retained contract | Live discovery binds `[Gatekeeper] 최근 출입 결과` to the verified-status marker/result without `expire_after`; the new broker payload therefore supplies `SUCCEEDED #696-1` to that entity | PASS for live HA MQTT input contract; authenticated HA state/recorder Activity readback remains pending |
+| Administrator UI | Backend persistence is required before verified-status publication by the deployed transaction contract, but the authenticated administrator endpoint could not be read from WSL and Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows local file URI | BACKEND persistence proven; rendered administrator completion row remains pending authenticated readback |
+
+## 2026-09-03 Home Assistant rendered access Activity proof
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Entity identity | The owner identified the older state entity as `sensor.smart_gatekeeper_gatekeeper_geiteukipeo_dongjag_sangtae`; that entity intentionally renders only the FSM state and is not the new access marker entity | EXPLAINS why filtering only the state entity does not show per-access marker changes |
+| Recent-access state | The authenticated HA entity page rendered `[Gatekeeper] 최근 출입 결과 = SUCCEEDED #696-1` five minutes after the owner test | PASS for HA MQTT entity state update matching Backend marker |
+| Entity Activity | The same page's Activity section recorded `SUCCEEDED #696-1` at 02:25:37, after `NO_EVENT` at 02:18:55 and prior boot marker `SUCCEEDED #695-17` at 01:24:24 | PASS for Home Assistant recorder/history of the post-install access completion |
+| Global Activity view | The supplied global Activity screenshot still showed only the older state entity rows because it was inspecting the state entity/device view rather than the separate recent-access entity change | UI selection/cache boundary; does not contradict the entity-specific recorded Activity proof |
+| Administrator view | The supplied administrator screenshot still showed only the 01:31:26 broker-accepted legacy row | PENDING a fresh `loadLogs()` readback after the 02:25 terminal event |
+
+## 2026-09-03 durable signed-MQTT terminal candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Consecutive terminal persistence | Native queue regression enqueued signed manual sequence 1 and signed arm sequence 2, reconstructed the NVS queue after a simulated reboot and drained both in original FIFO order | PASS for the existing 368-byte durable queue ABI and two-event replay; finite queue overflow remains explicitly gap-reported |
+| Backend insert/idempotency | Worker regression delivered two distinct inserted terminal events to HA in order and suppressed the callback for an identical replay. Route relabeling from signed MQTT to Local GATT was rejected | PASS for DB-first HA dispatch, replay dedupe and MAC-covered route semantics |
+| Backend regression | Full Backend discovery passed 197 tests with two explicit environment-only skips | PASS for parser, HMAC, DB worker, admin projection, HA discovery/event and N/N-1 latest-status compatibility |
+| Repository regression | Initial repository discovery ran 343 tests: 337 passed, one environment-only case skipped and six assertions identified only the expected protected-policy/build-input digest drift. The three exact Target build-input hashes were then refreshed and its focused 18-test contract passed | FUNCTIONAL PASS; trusted policy authorization still pending |
+| ESP32-C6 build | `esp32c6_personal_production` compiled and linked without warnings at 75,880/327,680 bytes RAM (23.2%) and 1,766,442/7,340,032 bytes application flash (24.1%) | PASS for local build and OTA partition fit; not a signed artifact, install, reboot or physical door result |
+| Deployment boundary | No GitHub push, Backend deployment, Target publication/OTA, relay command or physical access was performed | PENDING protected merge, exact deployment and at least two live consecutive accesses with admin/HA readback |
+
+## 2026-09-03 crash-durable terminal and HA projection candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner latest-result observation | The owner reported that the recent-access result changed after the latest test | POSITIVE runtime observation for the latest-status projection only; it does not prove every canonical event, administrator row or failure recovery |
+| Target production enqueue contract | Signed MQTT arm/manual terminal writes the exact HMAC canonical record to the 8-entry NVS queue before its callback returns, falling back to the 16-entry RAM outbox only if NVS rejects the write; no `client.publish` occurs in that producer | PASS for reboot-durable bounded enqueue without synchronous MQTT; finite overflow and QoS 0 delivery remain explicit gaps |
+| Backend atomicity | Regression commits `access_event_history` and `ha_access_event_outbox` in one transaction and rolls both back when outbox insertion fails | PASS for eliminating DB-row-without-pending-HA-record at commit time |
+| HA retry/PUBACK | Worker regression drained two consecutive committed rows in ID order, waited for QoS 1 PUBACK and marked each only afterwards; noncanonical/inconsistent stored payloads were rejected | PASS for restart-recoverable at-least-once HA projection; crash after PUBACK but before DB mark may repeat the same marker |
+| Schema migration | Real Docker/MariaDB run passed all 17 migration tests, including idempotent schema 013 up and N-1 rollback preservation of the pending-delivery table | PASS for host migration/rollback contract; live NAS backup/migration/readiness is separate |
+| Backend regression | Full Backend discovery passed 203 tests with two declared environment-only skips; the focused registry suite passed 38/38 including retry of the same row after a missing PUBACK | PASS for final local Backend source freeze |
+| ESP32-C6 build | `esp32c6_personal_production` compiled warning-free at 75,880/327,680 bytes RAM (23.2%) and 1,766,444/7,340,032 bytes application flash (24.1%) | PASS for local build/partition fit; not signed publication, installation, reboot/health or physical access |
+| End-to-end boundary | Target publisher remains QoS 0 with no Backend application ACK and both queues are finite | NOT absolute exactly-once; protected merge/deploy, outage/overflow soak and repeated live admin plus HA Activity correlation remain open |
+
+## 2026-09-03 crash-durable access Activity rollout
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Reviewed main | PRs #347, #348 and #349 passed hosted checks and merge-committed normally. Feature main is `6aa8d188f509f2135c1551abca9284022ef88e2d`; final policy main is `f4e22654eca1bce44044b5a461d2185c5982806a` | PASS for reviewed source and protected identity |
+| Backend schema 013 deployment | Run `33668277642` completed production deployment. Strict-TLS `/live` and `/ready` returned exact feature main with every readiness check true | PASS for deployed process, migration and dependencies; no access event is inferred from readiness |
+| Target OTA publication | Run `33668277535` published and HTTPS-read-back signed encrypted `2.1.436+main.g6aa8d18`, build ID `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d` | PASS for publication; install/reboot/health remains unproven |
+| Latest-result observation | The owner reports that the recent-access result changed | POSITIVE for the existing latest-status projection; not proof of every schema 013 canonical event or HA event outbox delivery |
+| Automated install attempt boundary | Windows Computer Use could not initialize from the WSL cwd; the constrained Target MQTT identity could not read state or write HA ingress, and station-local TCP/80 recovery timed out. No OTA request or unsafe fallback was issued | SAFE NO-CHANGE; one HA OTA button press and exact post-reboot readback remain required |
+| Delivery acceptance | No two consecutive post-`2.1.436` terminal events have yet been correlated across administrator history and HA Activity | PENDING repeated live test; finite Target queues/QoS 0 and at-least-once duplicate marker boundary remain explicit |

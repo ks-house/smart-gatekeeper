@@ -20,6 +20,11 @@ class PocketApproachContractTest(unittest.TestCase):
             / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/"
             "gatekeeper_app/blewake/BleWakeNativeEntrypoint.kt"
         ).read_text(encoding="utf-8")
+        cls.registrar = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/"
+            "gatekeeper_app/blewake/BleWakeRegistrar.kt"
+        ).read_text(encoding="utf-8")
         cls.worker = (
             ROOT
             / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/"
@@ -29,6 +34,14 @@ class PocketApproachContractTest(unittest.TestCase):
             ROOT
             / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/"
             "gatekeeper_app/MainActivity.kt"
+        ).read_text(encoding="utf-8")
+        cls.notifier = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/"
+            "gatekeeper_app/gattworker/AccessResultNotifier.kt"
+        ).read_text(encoding="utf-8")
+        cls.home = (
+            ROOT / "gatekeeper_app/lib/screens/smart_key_home_screen.dart"
         ).read_text(encoding="utf-8")
         cls.fsm_test = (ROOT / "tests/gatt_protocol_test.cpp").read_text(
             encoding="utf-8"
@@ -43,6 +56,26 @@ class PocketApproachContractTest(unittest.TestCase):
         self.assertIn("HAS_NETWORK_CONSTRAINT = false", self.worker)
         self.assertIn("GattProtocol.ACTION_ARM_FOR_SENSOR", self.worker)
         self.assertNotIn("GattProtocol.ACTION_OPEN_IMMEDIATELY", self.worker)
+
+    def test_native_match_lost_clears_ready_without_dispatching_access(self):
+        self.assertIn("ScanSettings.CALLBACK_TYPE_FIRST_MATCH", self.registrar)
+        self.assertIn("ScanSettings.CALLBACK_TYPE_MATCH_LOST", self.registrar)
+        exit_branch = self.entrypoint.split("BleWakeDispatchAction.EXIT -> {", 1)[1].split(
+            "BleWakeDispatchAction.PRESENCE -> {", 1
+        )[0]
+        self.assertIn("AccessResultNotifier.dismiss", exit_branch)
+        self.assertNotIn("BleGattWorkScheduler.onPresence", exit_branch)
+
+    def test_access_ready_notification_is_bounded_and_terminally_dismissed(self):
+        self.assertIn("ACCESS_READY_TIMEOUT_MS = 65_000L", self.notifier)
+        self.assertIn("builder::setTimeoutAfter", self.notifier)
+        dismiss = self.notifier.split("fun dismiss(context: Context)", 1)[1]
+        self.assertIn("ACCESS_READY_NOTIFICATION_ID", dismiss)
+        self.assertNotIn("ATTENTION_NOTIFICATION_ID", dismiss)
+        finish = self.home.split(
+            "void _finishAccessSessionPolling(String targetSessionId)", 1
+        )[1].split("void _stopAccessSessionPolling()", 1)[0]
+        self.assertIn("dismissAccessReadyNotification", finish)
 
     def test_enablement_registers_os_wake_and_disable_stops_it(self):
         control = self.main_activity.split('"setLocalGattEnabled" -> {', 1)[1].split(

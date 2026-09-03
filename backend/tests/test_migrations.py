@@ -52,6 +52,8 @@ ACCESS_HISTORY_UP = ROOT / "backend" / "db" / "migrations" / "011_access_event_h
 ACCESS_HISTORY_DOWN = ROOT / "backend" / "db" / "migrations" / "011_access_event_history_down.sql"
 ACCESS_ACTOR_UP = ROOT / "backend" / "db" / "migrations" / "012_access_event_actor_ref_up.sql"
 ACCESS_ACTOR_DOWN = ROOT / "backend" / "db" / "migrations" / "012_access_event_actor_ref_down.sql"
+HA_EVENT_OUTBOX_UP = ROOT / "backend" / "db" / "migrations" / "013_ha_access_event_outbox_up.sql"
+HA_EVENT_OUTBOX_DOWN = ROOT / "backend" / "db" / "migrations" / "013_ha_access_event_outbox_down.sql"
 PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
@@ -78,7 +80,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-012}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-013}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -253,6 +255,19 @@ class MigrationContractTest(unittest.TestCase):
             self.assertIn(required, runner)
         self.assertLess(runner.index("mariadb-dump"), runner.index("apply_up"))
 
+    def test_ha_access_event_outbox_is_additive_and_rollback_preserved(self) -> None:
+        up = HA_EVENT_OUTBOX_UP.read_text(encoding="utf-8")
+        down = HA_EVENT_OUTBOX_DOWN.read_text(encoding="utf-8")
+        dockerfile = DB_DOCKERFILE.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS ha_access_event_outbox", up)
+        self.assertIn("UNIQUE KEY uq_ha_access_event_outbox_event (event_id)", up)
+        self.assertIn("INDEX idx_ha_access_event_outbox_pending (published_at, id)", up)
+        self.assertIn("JSON_VALID(payload_json)", up)
+        self.assertIn("013_ha_access_event_outbox_up.sql", dockerfile)
+        self.assertIn("013_ha_access_event_outbox_down.sql", dockerfile)
+        self.assertNotIn("DROP TABLE", down.upper())
+        self.assertIn("ha_access_event_outbox_preserved", down)
+
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
         "set RUN_MARIADB_INTEGRATION=1 for production DB image migration test",
@@ -321,7 +336,7 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "012", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "013", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
                 state = docker(
@@ -329,15 +344,15 @@ class MigrationContractTest(unittest.TestCase):
                     "smart_gatekeeper", "-e",
                     "SELECT (SELECT COUNT(*) FROM tenants WHERE unit_number='E-1'),"
                     "(SELECT COUNT(*) FROM schema_migrations),"
-                    "(SELECT script_sha256 FROM schema_migrations WHERE version='012');",
+                    "(SELECT script_sha256 FROM schema_migrations WHERE version='013');",
                 ).stdout.strip().split("\t")
-                expected_012 = subprocess.run(
-                    ["sha256sum", str(ACCESS_ACTOR_UP)],
+                expected_013 = subprocess.run(
+                    ["sha256sum", str(HA_EVENT_OUTBOX_UP)],
                     text=True,
                     capture_output=True,
                     check=True,
                 ).stdout.split()[0]
-                self.assertEqual(["1", "11", expected_012], state)
+                self.assertEqual(["1", "12", expected_013], state)
                 inserted = docker(
                     "exec", name, "mariadb", "-uroot", f"-p{password}",
                     "smart_gatekeeper", "-e",
@@ -419,6 +434,14 @@ class MigrationContractTest(unittest.TestCase):
                     "SELECT COUNT(*) FROM access_event_history;",
                 )
                 self.assertEqual("1", preserved.stdout.strip())
+                outbox_preserved = docker(
+                    "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
+                    "smart_gatekeeper", "-e",
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    "WHERE TABLE_SCHEMA=DATABASE() "
+                    "AND TABLE_NAME='ha_access_event_outbox';",
+                )
+                self.assertEqual("1", outbox_preserved.stdout.strip())
             finally:
                 docker("rm", "-f", name, check=False)
                 docker("image", "rm", image, check=False)

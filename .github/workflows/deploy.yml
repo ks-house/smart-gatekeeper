@@ -347,8 +347,8 @@ jobs:
           100644 bab4d5f0cf614e0dfe060c7896ae0fc8be8b1cdaa86a8fe44437471ee9f03864 include/DurablePreferences.h
           100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
           100644 283518188b81b5bd9500c092bc36f806e3639f32741550fb54fedd11465f5d7b include/GattProtocol.h
-          100644 252f9dbd64cb3e54484906254d13e0d56c69ece91270c3b6f075c53d683de6e3 include/GattServer.h
-          100644 0d9f317ad0277032fea23ad8399df641033a03cadd54e77c0cdc558225b2c425 include/MqttManager.h
+          100644 e6a90298a16b8b9e0cf4cab317088aa04756c9fef0268c8dab092f85d7f89875 include/GattServer.h
+          100644 b31e54808f412f29a27256e24926895ecce0aaf4b1b7bdd64eda2b62dd67bfef include/MqttManager.h
           100644 a1976f3cd57dc9f2873ce651cccc212a39827c9d31a5a880c9029f89be0d735e include/OfflineEventQueue.h
           100644 a42780d48211f0306f8278298ee7b598d349c52b0ba2e4913223a60bf30426c1 include/OtaHealthPolicy.h
           100644 333dbe7e825443210fad253d11722b70b6df2067a2f888f2810f7adfa83d7d6f include/OtaManager.h
@@ -357,7 +357,7 @@ jobs:
           100644 199bd44240f7df0082ee065ac715f47c03ef893e7d86d9a129df820969e35164 include/RelayController.h
           100644 7d893a2d5114c4b6b7041d2c4a430d6110fcbdef2a68aa84d3b7ddb26eaedb86 include/TargetAccessFsm.h
           100644 72ae43ed6754c63d1b7fa2113504be8ea7f5b2865cfc9daf0c95917ae9894f81 include/TargetAclManager.h
-          100644 656941b67a9eef62964d8578d3959ded1a041b558d7caebe6ee14c1e4389108a include/TargetCommandSecurity.h
+          100644 06ed8297492e8bd81c97d6e7b817a4dc3e11e4df1cb8e95f55439e97e44a534b include/TargetCommandSecurity.h
           100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
           100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
           100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
@@ -369,20 +369,20 @@ jobs:
           100644 0a197ffa68213f1651f9b25a92256ef209b58dca1cf1dd7be77e3f861afffb96 src/ConfigManager.cpp
           100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
           100644 4f8bf33f49ae28254b7fb124e229cf0f5d82b9b61df9f2d59a4ffbaff0fd2ebc src/GattProtocol.cpp
-          100644 6ec34c5706d9cbd0410f7ca9f20a160920f6bb6332c52ef9ccce3c120d8b1cb4 src/GattServer.cpp
-          100644 7f62fb631048dd438c1ee7d63b0f9bb387ec54e6277a43b36a2267a433c86053 src/MqttManager.cpp
+          100644 dcc4751f955552bd0db031b2d111ec988b1079f1631b3a7571ae831b3bdf4470 src/GattServer.cpp
+          100644 626fde4fc8d262d69e7a93ee4dd2a3b3f7315e8455f05919a43f9849fc89c2ac src/MqttManager.cpp
           100644 4f2508172140436df9b6d00504e367a36aba9c519f8c12cd7f09b0d2d31bed41 src/OfflineEventQueue.cpp
           100644 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7 src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
           100644 447ef319af59cc3316ec6e2e1bb2a62a5a8d2b33efecb399653234e321aa1fea src/RelayController.cpp
           100644 f976c8080e0c0bdf6dc58c4439c94166c76d8dec9351f810536be209d6a50921 src/TargetAccessFsm.cpp
           100644 7ce6135340065ef6f03afc2fa41a9ac79a04ac5a277d7edb946c388bd6eead61 src/TargetAclManager.cpp
-          100644 b280393bfc93b0a3d09e6869621c3d8b8a27937f1d85f8afb6a24df204279596 src/TargetCommandSecurity.cpp
+          100644 3022a4876962dfbd20b9e86e3008170b1fbf5c1945a397d1a8f02bdb6d2a1e10 src/TargetCommandSecurity.cpp
           100644 248edb5e1c5c67b1a87c4bb7fda2a9dead4eb6f043ef50e6a58c175634e0a291 src/TargetProofVerifier.cpp
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp
           100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
-          100644 9532110d29f89ef6812e34008fe5d459f236804dca4907dc4bd2d45c86ef59cf src/main.cpp
+          100644 413b403a04ec595cd5d9f4984ddb70428ac82b6d19945cb286125a968000a0c1 src/main.cpp
           EOF
           )"
           test ! -e .pio

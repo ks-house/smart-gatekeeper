@@ -14,6 +14,7 @@ import com.kshouse.gatekeeper_app.gattworker.BleGattManualOpenExecutor
 import com.kshouse.gatekeeper_app.gattworker.RemoteManualOpenProofSigner
 import com.kshouse.gatekeeper_app.gattworker.AccountLogoutManager
 import com.kshouse.gatekeeper_app.gattworker.AccessSessionReadProofSigner
+import com.kshouse.gatekeeper_app.gattworker.AccessResultNotifier
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -86,6 +87,10 @@ class MainActivity: FlutterActivity() {
             when (call.method) {
                 "getHealth" -> {
                     result.success(BleGattHealthBridge.snapshot(applicationContext))
+                }
+                "dismissAccessReadyNotification" -> {
+                    AccessResultNotifier.dismiss(applicationContext)
+                    result.success(true)
                 }
                 "triggerLocalGattRetry" -> {
                     result.success(BleGattWorkScheduler.manualRetry(applicationContext).toMap())

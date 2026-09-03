@@ -17,14 +17,27 @@ data class UserAccessNotice(
   val title: String,
   val detail: String,
   val isFailure: Boolean,
+  val timeoutAfterMs: Long? = null,
 )
 
 object AccessResultNotificationPolicy {
+  const val ACCESS_READY_NOTIFICATION_ID = 7712
+  const val ATTENTION_NOTIFICATION_ID = 7713
+
+  // The Target accepts sensor input for at most 60 seconds after arming. Keep
+  // a small delivery grace, but never leave an access-ready notification as a
+  // stale all-day claim if Android does not deliver an earlier exit callback.
+  const val ACCESS_READY_TIMEOUT_MS = 65_000L
+
+  fun notificationIdFor(notice: UserAccessNotice): Int =
+    if (notice.isFailure) ATTENTION_NOTIFICATION_ID else ACCESS_READY_NOTIFICATION_ID
+
   fun forState(state: DurableSessionState, reason: String? = null): UserAccessNotice? = when (state) {
     DurableSessionState.SUCCEEDED -> UserAccessNotice(
       "출입 준비 완료",
       "Target 인증이 완료되었습니다. 문 앞 센서에 접근하세요.",
       false,
+      ACCESS_READY_TIMEOUT_MS,
     )
     DurableSessionState.PROOF_UNCERTAIN -> UserAccessNotice(
       "결과 확인 필요",
@@ -56,7 +69,6 @@ object AccessResultNotificationPolicy {
 
 object AccessResultNotifier {
   private const val CHANNEL_ID = "smart_key_access_result_v1"
-  private const val NOTIFICATION_ID = 7712
 
   fun createChannel(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -91,7 +103,7 @@ object AccessResultNotifier {
       intent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
-    val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+    val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
       .setSmallIcon(R.mipmap.ic_launcher)
       .setContentTitle(notice.title)
       .setContentText(notice.detail)
@@ -100,7 +112,21 @@ object AccessResultNotifier {
       .setAutoCancel(true)
       .setOnlyAlertOnce(true)
       .setContentIntent(pendingIntent)
-      .build()
-    NotificationManagerCompat.from(appContext).notify(NOTIFICATION_ID, notification)
+    notice.timeoutAfterMs?.let(builder::setTimeoutAfter)
+    val notification = builder.build()
+    val manager = NotificationManagerCompat.from(appContext)
+    if (notice.isFailure) {
+      manager.cancel(AccessResultNotificationPolicy.ACCESS_READY_NOTIFICATION_ID)
+    }
+    manager.notify(
+      AccessResultNotificationPolicy.notificationIdFor(notice),
+      notification,
+    )
+  }
+
+  fun dismiss(context: Context) {
+    NotificationManagerCompat.from(context.applicationContext).cancel(
+      AccessResultNotificationPolicy.ACCESS_READY_NOTIFICATION_ID,
+    )
   }
 }

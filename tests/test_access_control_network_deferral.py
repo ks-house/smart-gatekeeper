@@ -142,6 +142,49 @@ class AccessControlNetworkDeferralTests(unittest.TestCase):
             loop.index("if (!accessCritical)"),
         )
 
+    def test_signed_command_terminal_tracking_never_writes_mqtt_in_control_path(self) -> None:
+        tracker = self.mqtt.split(
+            "void MqttManager::noteSignedCommandArmed", 1
+        )[1].split("bool MqttManager::publishCanonicalEvent", 1)[0]
+        self.assertIn("signedCommandAccessTracker.noteRelayOn()", tracker)
+        self.assertIn("signedCommandAccessTracker.noteRelayOff", tracker)
+        self.assertIn("MqttManager::finishSignedCommandAccess", tracker)
+        self.assertIn("noteAccessTerminal(", tracker)
+        self.assertIn("enqueueSignedCommandTerminalEvent", tracker)
+        self.assertNotIn("client.publish", tracker)
+
+        deferred = self.mqtt.split(
+            "bool enqueueSignedCommandTerminalEvent", 1
+        )[1].split("bool enqueueEventOutbox", 1)[0]
+        self.assertIn("deriveAccessEventMac", deferred)
+        self.assertIn("setCanonicalV2Detail", deferred)
+        self.assertIn("g_offline_queue.push(event)", deferred)
+        self.assertIn("return enqueueEventOutbox(event)", deferred)
+        self.assertLess(
+            deferred.index("g_offline_queue.push(event)"),
+            deferred.index("return enqueueEventOutbox(event)"),
+        )
+        self.assertNotIn("client.publish", deferred)
+
+        update = self.mqtt.split("void MqttManager::update()", 1)[1]
+        update = update.split("void MqttManager::publishBootDiagnostics", 1)[0]
+        self.assertIn('attributes["transport"] = "signed_mqtt"', update)
+        self.assertIn('"mqtt_manual_remote"', update)
+        self.assertIn('"mqtt_prearm"', update)
+
+        callback = self.main.split(
+            "static sgk::TargetAccessFsm g_access_fsm", 1
+        )[1].split("// ─────────────────────────────────────────────────────────────", 1)[0]
+        for event in (
+            '"pre_armed"',
+            '"relay_on_manual"',
+            '"door_close"',
+            '"session_completed"',
+            '"session_terminated_failsafe"',
+        ):
+            self.assertIn(event, callback)
+        self.assertNotIn("MqttManager::update()", callback)
+
     def test_bounded_access_timing_outlives_keepalive_and_ha_grace(self) -> None:
         self.assertIn("PRE_ARM_MAX_DURATION_MS = 60000", self.config)
         self.assertIn("RELAY_COOLDOWN_MAX_MS = 10000", self.config)

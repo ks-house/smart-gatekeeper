@@ -23,7 +23,112 @@ void copyToken(char* destination, size_t capacity, const char* source) {
   std::snprintf(destination, capacity, "%s", source == nullptr ? "" : source);
 }
 
+bool lowerHex(char character) {
+  return (character >= '0' && character <= '9') ||
+         (character >= 'a' && character <= 'f');
+}
+
 }  // namespace
+
+bool SignedCommandAccessTracker::normalizeUuid4(const char* value,
+                                                char output[37]) {
+  if (value == nullptr || output == nullptr) return false;
+  const size_t length = std::strlen(value);
+  char compact[33]{};
+  size_t compact_index = 0;
+  if (length == 32) {
+    for (size_t index = 0; index < length; ++index) {
+      if (!lowerHex(value[index])) return false;
+      compact[compact_index++] = value[index];
+    }
+  } else if (length == 36) {
+    for (size_t index = 0; index < length; ++index) {
+      const bool separator =
+          index == 8 || index == 13 || index == 18 || index == 23;
+      if (separator) {
+        if (value[index] != '-') return false;
+        continue;
+      }
+      if (!lowerHex(value[index]) || compact_index >= 32) return false;
+      compact[compact_index++] = value[index];
+    }
+  } else {
+    return false;
+  }
+  if (compact_index != 32 || compact[12] != '4' ||
+      (compact[16] != '8' && compact[16] != '9' &&
+       compact[16] != 'a' && compact[16] != 'b')) {
+    return false;
+  }
+  const int written = std::snprintf(
+      output, 37, "%.8s-%.4s-%.4s-%.4s-%.12s", compact, compact + 8,
+      compact + 12, compact + 16, compact + 20);
+  return written == 36;
+}
+
+bool SignedCommandAccessTracker::begin(Mode mode,
+                                       const char* compact_session_id) {
+  if (mode == Mode::kNone || active()) return false;
+  char normalized[37]{};
+  if (!normalizeUuid4(compact_session_id, normalized)) return false;
+  mode_ = mode;
+  phase_mask_ = 0;
+  std::snprintf(session_id_, sizeof(session_id_), "%s", normalized);
+  return true;
+}
+
+bool SignedCommandAccessTracker::noteArmed() {
+  if (mode_ != Mode::kArm || phase_mask_ != 0) return false;
+  phase_mask_ = kArmed;
+  return true;
+}
+
+bool SignedCommandAccessTracker::noteSensorDetected() {
+  if (mode_ != Mode::kArm || phase_mask_ != kArmed) return false;
+  phase_mask_ |= kSensorDetected;
+  return true;
+}
+
+bool SignedCommandAccessTracker::noteRelayOn() {
+  const uint16_t expected =
+      mode_ == Mode::kArm ? static_cast<uint16_t>(kArmed | kSensorDetected)
+                          : 0;
+  if (!active() || phase_mask_ != expected) return false;
+  phase_mask_ |= kRelayOn;
+  return true;
+}
+
+bool SignedCommandAccessTracker::noteRelayOff(bool failsafe) {
+  if (!active() || (phase_mask_ & kRelayOn) == 0 ||
+      (phase_mask_ & (kRelayOff | kRelayFailsafe)) != 0) {
+    return false;
+  }
+  phase_mask_ |= kRelayOff;
+  if (failsafe) phase_mask_ |= kRelayFailsafe;
+  return true;
+}
+
+bool SignedCommandAccessTracker::finish(bool failsafe, Terminal* terminal) {
+  if (!active() || terminal == nullptr) return false;
+  if (failsafe) phase_mask_ |= kRelayFailsafe;
+  const uint16_t expected =
+      mode_ == Mode::kArm ? kArmSuccessMask : kManualSuccessMask;
+  Terminal result{};
+  std::snprintf(result.session_id, sizeof(result.session_id), "%s",
+                session_id_);
+  result.mode = mode_;
+  result.phase_mask = phase_mask_;
+  result.completed = !failsafe && phase_mask_ == expected;
+  *terminal = result;
+  cancel();
+  return true;
+}
+
+void SignedCommandAccessTracker::cancel() {
+  mode_ = Mode::kNone;
+  phase_mask_ = 0;
+  std::memset(session_id_, 0, sizeof(session_id_));
+}
 
 TargetCommandSecurity::TargetCommandSecurity(CommandReplayStorage* storage,
                                              CommandSignatureVerifier* verifier)

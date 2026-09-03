@@ -1612,3 +1612,196 @@ relay or physical door action. Normal policy review/merge, feature
 merge-connection and fresh CI, actual-main merge, exact Backend deployment,
 retained discovery readback and an over-30-second live HA observation remain
 separate Gates.
+
+## 55. Final HA verified access-state availability main baseline
+
+Feature PR #336 passed the Hosted Trusted, repository OTA/contract and Backend
+security checks, retained merge-connected head
+`65666ea535a9e73bac23ecb82939fc709c02304e`, and was merged normally as exact
+main `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`. The immutable feature
+`81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` and merge-connected head are both
+ancestors of that merge.
+
+All 100 protected normalized blobs are byte-identical across the immutable
+feature, merge-connected head and exact feature main. The transitional feature
+identity is retired in favor of the sole `current-main-baseline` pinned to that
+actual merge; the complete digest map, seven-workflow inventory and empty
+local-Action inventory remain unchanged.
+
+This final policy-only rotation deploys no Backend image and publishes no Home
+Assistant discovery payload. Hosted review and normal merge of this policy,
+exact Backend image publication/NAS deployment, retained discovery readback and
+an over-30-second live HA observation remain separate Gates.
+
+## 58. Signed MQTT terminal completion authorization candidate
+
+Immutable feature candidate
+`64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` retains the single safe-state
+MQTT owner while carrying signed `arm` and `manual_remote` command sessions
+through the Target FSM to a deferred HMAC terminal status. It also teaches the
+Backend and administrator projection the exact local/signed sensor/manual phase
+profiles so Home Assistant Activity can advance after a remote door cycle.
+
+The indivisible inventory remains 100 protected paths. Exactly five normalized
+protected blobs change together: the Target publisher workflow's exact build
+input digest map, Backend main/admin HTML and their two direct tests. The other
+95 protected bytes, seven-workflow inventory and empty local-Action inventory
+remain identical to trusted main. The sole
+`signed-mqtt-terminal-64a62fe-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+This policy-only authorization publishes no firmware or Backend image, deploys
+nothing and performs no physical action. Normal review/merge, feature
+merge-connection and fresh CI, actual-main merge, Backend deployment, signed
+Target OTA install/reboot/health and a new administrator/HA terminal observation
+remain separate Gates.
+
+## 59. Final signed MQTT terminal completion main baseline
+
+Feature PR #345 passed Hosted Trusted, Backend/MariaDB, OTA/schema and ESP32-C6
+canary checks at merge-connected head
+`9a415b690a28c5ff73add182326e2cd2fd740e5b`, and was merged normally as exact
+main `3be8310d85ad7c37659576a0cda618ab693b9927`. The immutable feature
+`64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` and merge-connected head are both
+ancestors of that merge.
+
+All 100 protected normalized blobs are byte-identical across immutable feature,
+merge-connected head and exact feature main. The transitional feature identity
+is retired in favor of the sole `current-main-baseline` pinned to that actual
+merge; the complete digest map, seven-workflow inventory and empty local-Action
+inventory remain unchanged.
+
+This final policy-only rotation publishes no firmware or Backend image, deploys
+nothing and changes no Target/HA/relay state. Hosted review/merge, exact Backend
+publication/NAS deployment, signed Target OTA install/reboot/health and one new
+administrator plus HA terminal observation remain separate Gates.
+
+## 56. Asynchronous MQTT per-access HA Activity authorization candidate
+
+Immutable feature candidate
+`94f473fc1373dd8c819ab2b3636372d7d6b2e374` keeps the Target's existing
+access-critical MQTT deferral and adds a Backend/Home Assistant completion
+surface that changes once for every HMAC-verified terminal session. Backend
+derives a non-identifying `<boot_count>-<terminal_sequence>` marker and
+`SUCCEEDED`/`TERMINATED`; the new `[Gatekeeper] 최근 출입 결과` discovery
+sensor renders that pair so repeated successful `IDLE -> IDLE` cycles still
+advance Home Assistant Activity without synchronous MQTT socket work.
+
+The indivisible inventory remains 100 protected paths. Exactly four normalized
+protected blobs change together: `backend/app/home_assistant_bridge.py`,
+`backend/app/main.py` and their two direct tests. The other 96 protected bytes,
+the seven-workflow inventory and empty local-Action inventory remain identical
+to trusted main. The sole
+`mqtt-access-history-94f473f-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+The projection excludes session UUID, credential/actor reference, reason and
+HMAC tag, and repeated periodic status for one terminal marker does not create
+duplicate Activity rows. This policy-only authorization publishes no discovery
+payload, deploys no Backend image, changes no Target/mobile/OTA/GPIO/relay code
+and performs no physical action. Normal policy review/merge, feature
+merge-connection and fresh CI, actual-main merge, exact Backend deployment,
+retained discovery readback and one new door-cycle/HA Activity observation
+remain separate Gates.
+
+## 57. Final asynchronous MQTT per-access HA Activity main baseline
+
+Feature PR #341 passed Hosted Trusted, Backend/MariaDB and OTA/schema checks,
+retained merge-connected head
+`e01057f98e64fcef2dff208a96124db8a3ffe547`, and was merged normally as exact
+main `a87ef21dc9f66b227831066f45fab8cf0176a0e7`. The immutable feature
+`94f473fc1373dd8c819ab2b3636372d7d6b2e374` and merge-connected head are both
+ancestors of that merge.
+
+All 100 protected normalized blobs are byte-identical across immutable feature,
+merge-connected head and exact feature main. The transitional feature identity
+is retired in favor of the sole `current-main-baseline` pinned to that actual
+merge; the complete digest map, seven-workflow inventory and empty local-Action
+inventory remain unchanged.
+
+This final policy-only rotation publishes no Home Assistant discovery payload,
+deploys no Backend image and changes no Target/mobile/OTA/GPIO/relay state.
+Hosted review and normal merge of this policy, exact Backend publication/NAS
+deployment, retained discovery readback and one new physical access/HA Activity
+observation remain separate Gates.
+
+## 60. Durable signed MQTT terminal-event authorization candidate
+
+Immutable feature candidate
+`f5e2528d47e657226354a1ff80f0f11d6fdab01a` preserves the Target's
+access-critical MQTT deferral while converting every authenticated signed
+`arm` and `manual_remote` terminal result into a separate HMAC-authenticated
+canonical event. The existing latest-result status remains available for N/N-1
+consumers, while Backend publishes a non-retained Home Assistant event only
+after a new canonical database insert; exact duplicate delivery is therefore
+idempotent and does not create a second HA event.
+
+The indivisible inventory remains 100 protected paths. Exactly six normalized
+protected blobs change together: the Target publisher workflow's exact build
+input digest map, Backend canonical-event ingestion, Home Assistant projection,
+administrator HTML and their two direct tests. The other 94 protected bytes,
+seven-workflow inventory and empty local-Action inventory remain identical to
+trusted main. The sole
+`durable-mqtt-terminal-f5e2528-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+The canonical queue is bounded and reboot-persistent; exhausted RAM/NVS
+capacity remains an explicit `queue_overflow` evidence condition rather than an
+unbounded lossless guarantee. The software terminal proves the authenticated
+Target FSM result, not physical door-leaf travel without a contact sensor. This
+policy-only authorization publishes no firmware or Backend image, deploys
+nothing and performs no Target, relay or physical action. Normal policy
+review/merge, feature merge-connection and fresh CI, actual-main merge, exact
+Backend deployment, signed Target OTA install/reboot/health and at least two
+consecutive administrator/HA event observations remain separate Gates.
+
+## 61. Crash-durable access Activity authorization candidate
+
+Immutable feature candidate
+`ca2977638c535aa8ba7bc4ddbeb07342051d1f50` supersedes the preceding local
+terminal candidate with two crash boundaries closed. Signed MQTT arm/manual
+terminal callbacks commit their HMAC canonical record to the bounded NVS queue
+before returning, without MQTT socket I/O. Backend schema 013 atomically commits
+canonical history and a Home Assistant projection outbox; an ordered worker
+waits for QoS 1 PUBACK before marking each projection delivered.
+
+The indivisible inventory expands from 100 to 102 protected paths by adding the
+schema 013 up/down migrations. Exactly 16 normalized protected blobs differ
+from trusted main: the prior six terminal-event paths plus schema identity,
+migration/deployment inventory, operations checks and direct migration/outbox
+tests. The other 86 protected bytes, seven-workflow inventory and empty
+local-Action inventory remain identical to trusted main. The sole
+`crash-durable-access-ca29776-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+Home Assistant delivery is deliberately at-least-once: restart before PUBACK or
+before the database delivery mark retries the stable marker, and a crash after
+PUBACK but before that mark may duplicate it. Target PubSubClient publication
+remains QoS 0 and both NVS/RAM queues are finite, so this authorization does not
+claim end-to-end exactly-once. It publishes or deploys nothing and performs no
+Target, relay or door action. Normal policy review/merge, feature merge-
+connection, fresh CI, actual-main merge, schema 013 NAS deployment, Target
+install/reboot/health and repeated administrator/HA runtime observations remain
+separate Gates.
+
+## 62. Final crash-durable access Activity main baseline
+
+Feature PR #348 passed the trusted policy, Backend/MariaDB, OTA/schema and
+firmware canary checks. Merge-connected head
+`365fc9790deaacc8a81ce78ac3979cb38198aee9` contains immutable feature
+`ca2977638c535aa8ba7bc4ddbeb07342051d1f50` and policy main
+`418f16a2787b7085978b85fc78b54899eb84b7f3`, and was merged normally as exact
+feature main `6aa8d188f509f2135c1551abca9284022ef88e2d`.
+
+All 102 protected normalized blobs are byte-identical across the immutable
+feature, merge-connected head and exact feature main. The transitional
+`crash-durable-access-ca29776-persistent-baseline` identity is retired in favor
+of the sole `current-main-baseline` pinned to that actual merge. The complete
+digest map, seven-workflow inventory and empty local-Action inventory remain
+unchanged.
+
+This final policy-only rotation publishes no Backend or Target artifact,
+migrates no NAS schema and changes no Home Assistant, relay or physical door
+state. Hosted review/normal merge, exact Backend schema 013 deployment, signed
+Target OTA publication/install/reboot/health and repeated live administrator/HA
+correlation remain separate Gates.

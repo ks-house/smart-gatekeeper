@@ -91,6 +91,8 @@ struct AccessTerminalSummary {
 };
 
 AccessTerminalSummary accessTerminalSummary{};
+sgk::SignedCommandAccessTracker signedCommandAccessTracker{};
+uint64_t accessEventSequenceHighWater = 0;
 
 bool parseLowerHex16(const char* value, std::array<uint8_t, 16>* output) {
     if (value == nullptr || output == nullptr || std::strlen(value) != 32) {
@@ -168,6 +170,124 @@ bool actorEventCodeAllowsCredentialRef(const char* code) {
            std::strcmp(code, "ACCESS_RELAY_OFF") == 0 ||
            std::strcmp(code, "ACCESS_SESSION_COMPLETED") == 0 ||
            std::strcmp(code, "ACCESS_SESSION_TERMINATED") == 0;
+}
+
+bool enqueueEventWithDurableSpill(const sgk::CanonicalEvent& event);
+bool enqueueEventOutbox(const sgk::CanonicalEvent& event);
+
+bool isSignedCommandTerminalCode(const char* code) {
+    return code != nullptr &&
+           (std::strcmp(code, "ACCESS_SIGNED_ARM_COMPLETED") == 0 ||
+            std::strcmp(code, "ACCESS_SIGNED_ARM_TERMINATED") == 0 ||
+            std::strcmp(code, "ACCESS_SIGNED_MANUAL_COMPLETED") == 0 ||
+            std::strcmp(code, "ACCESS_SIGNED_MANUAL_TERMINATED") == 0);
+}
+
+void uuidText(const std::array<uint8_t, 16>& value, char output[37]) {
+    std::snprintf(
+        output, 37,
+        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
+        "%02x%02x%02x%02x%02x%02x",
+        value[0], value[1], value[2], value[3], value[4], value[5],
+        value[6], value[7], value[8], value[9], value[10], value[11],
+        value[12], value[13], value[14], value[15]);
+}
+
+bool enqueueSignedCommandTerminalEvent(
+    const sgk::SignedCommandAccessTracker::Terminal& terminal,
+    uint64_t sequence, const char* reasonCode) {
+    if (!accessEvidenceReady || accessEvidenceBootCount > UINT32_MAX ||
+        sequence == 0 || reasonCode == nullptr ||
+        reasonCode[0] == '\0' ||
+        terminal.mode == sgk::SignedCommandAccessTracker::Mode::kNone) {
+        return false;
+    }
+    sgk::CanonicalEvent event{};
+    const size_t targetIdLength = std::strlen(accessEvidenceTargetId);
+    if (targetIdLength == 0 ||
+        targetIdLength >= sizeof(event.target_ref)) {
+        return false;
+    }
+    std::array<uint8_t, 16> sessionId{};
+    if (!parseLowerUuid4(terminal.session_id, &sessionId)) return false;
+
+    std::array<uint8_t, 16> eventId{};
+    bool eventIdReady = false;
+    for (size_t attempt = 0; attempt < 4; ++attempt) {
+        esp_fill_random(eventId.data(), eventId.size());
+        uint8_t aggregate = 0;
+        for (uint8_t value : eventId) aggregate |= value;
+        eventId[6] = static_cast<uint8_t>((eventId[6] & 0x0f) | 0x40);
+        eventId[8] = static_cast<uint8_t>((eventId[8] & 0x3f) | 0x80);
+        if (aggregate != 0) {
+            eventIdReady = true;
+            break;
+        }
+    }
+    if (!eventIdReady) return false;
+
+    const bool manual =
+        terminal.mode == sgk::SignedCommandAccessTracker::Mode::kManualRemote;
+    const char* eventCode = terminal.completed
+        ? (manual ? "ACCESS_SIGNED_MANUAL_COMPLETED"
+                  : "ACCESS_SIGNED_ARM_COMPLETED")
+        : (manual ? "ACCESS_SIGNED_MANUAL_TERMINATED"
+                  : "ACCESS_SIGNED_ARM_TERMINATED");
+    const char* outcome = terminal.completed
+        ? "SUCCEEDED"
+        : (std::strcmp(reasonCode, "ARM_TIMEOUT") == 0 ? "TIMED_OUT"
+                                                        : "FAILED");
+
+    event.is_canonical = 1;
+    event.code = manual ? 0x7f02 : 0x7f01;
+    event.monotonic_ms = millis();
+    event.sequence = sequence;
+    event.boot_count = static_cast<uint32_t>(accessEvidenceBootCount);
+    event.attempt = 1;
+    uuidText(eventId, event.event_id);
+    std::snprintf(event.session_id, sizeof(event.session_id), "%s",
+                  terminal.session_id);
+    std::snprintf(event.source_boot_id, sizeof(event.source_boot_id), "%s",
+                  accessEvidenceBootIdText);
+    std::memcpy(event.target_ref, accessEvidenceTargetId,
+                targetIdLength + 1);
+    std::snprintf(event.event_type, sizeof(event.event_type), "%s", eventCode);
+    std::snprintf(event.stage_text, sizeof(event.stage_text), "COMPLETE");
+    std::snprintf(event.outcome_text, sizeof(event.outcome_text), "%s",
+                  outcome);
+
+    sgk::AccessEventMacInput macInput{};
+    macInput.key_id = accessEvidenceKeyId;
+    macInput.topic_target_id = accessEvidenceTargetId;
+    macInput.door_id = accessEvidenceDoorId;
+    macInput.source_instance_id = accessEvidenceTargetId;
+    macInput.source_boot_id = accessEvidenceBootId;
+    macInput.source_boot_count = accessEvidenceBootCount;
+    macInput.event_id = eventId;
+    macInput.session_id = sessionId;
+    macInput.sequence = sequence;
+    macInput.attempt = 1;
+    macInput.event_code = eventCode;
+    macInput.stage = "COMPLETE";
+    macInput.outcome = outcome;
+    macInput.reason_code = reasonCode;
+    macInput.has_causation = false;
+    macInput.monotonic_ms = event.monotonic_ms;
+    macInput.credential_ref = "";
+    uint8_t eventTag[sgk::kAccessEvidenceTagSize] = {};
+    if (!sgk::deriveAccessEventMac(accessEvidenceKey, macInput, eventTag) ||
+        !sgk::setCanonicalV2Detail(&event, reasonCode, accessEvidenceKeyId,
+                                   nullptr, eventTag)) {
+        std::memset(eventTag, 0, sizeof(eventTag));
+        return false;
+    }
+    std::memset(eventTag, 0, sizeof(eventTag));
+    // A signed terminal is the one record the operator must not lose on a
+    // reset between relay completion and the next MQTT update. Persist it
+    // before returning from the terminal callback; if NVS itself is
+    // unavailable, retain the exact record in the bounded RAM outbox.
+    if (g_offline_queue.push(event)) return true;
+    return enqueueEventOutbox(event);
 }
 
 bool enqueueEventOutbox(const sgk::CanonicalEvent& event) {
@@ -334,7 +454,9 @@ void MqttManager::init() {
                 sizeof(accessEvidenceBootIdText));
     accessEvidenceBootCount = 0;
     accessStatusRevision = 0;
+    accessEventSequenceHighWater = 0;
     accessTerminalSummary = AccessTerminalSummary{};
+    signedCommandAccessTracker.cancel();
     wifiAvailableLastUpdate = false;
     eventOutboxHead = 0;
     eventOutboxCount = 0;
@@ -512,12 +634,23 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         return;
     }
     bool effectCompleted = true;
+    bool accessLifecycleStarted = false;
+    if (envelope.action == sgk::CommandAction::kArm ||
+        envelope.action == sgk::CommandAction::kManualRemote) {
+        const sgk::SignedCommandAccessTracker::Mode mode =
+            envelope.action == sgk::CommandAction::kArm
+                ? sgk::SignedCommandAccessTracker::Mode::kArm
+                : sgk::SignedCommandAccessTracker::Mode::kManualRemote;
+        accessLifecycleStarted =
+            signedCommandAccessTracker.begin(mode, envelope.session_id);
+        if (!accessLifecycleStarted) effectCompleted = false;
+    }
     switch (envelope.action) {
       case sgk::CommandAction::kArm:
-        effectCompleted = triggerArm();
+        if (effectCompleted) effectCompleted = triggerArm();
         break;
       case sgk::CommandAction::kManualRemote:
-        effectCompleted = triggerManualDoorOpen();
+        if (effectCompleted) effectCompleted = triggerManualDoorOpen();
         break;
       case sgk::CommandAction::kSetTxPower:
         if (envelope.value < -6 || envelope.value > 9) effectCompleted = false;
@@ -554,6 +687,9 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
       default:
         effectCompleted = false;
         break;
+    }
+    if (accessLifecycleStarted && !effectCompleted) {
+        signedCommandAccessTracker.cancel();
     }
     if (!commandSecurity.markCompleted(envelope)) {
         publishCommandAck(envelope,
@@ -733,8 +869,16 @@ void MqttManager::update() {
                     }
 
                     JsonObject attributes = doc.createNestedObject("attributes");
-                    attributes["path"] = "local_gatt";
-                    attributes["transport"] = "ble_gatt";
+                    if (isSignedCommandTerminalCode(evt.event_type)) {
+                        attributes["path"] =
+                            std::strstr(evt.event_type, "_MANUAL_") != nullptr
+                                ? "mqtt_manual_remote"
+                                : "mqtt_prearm";
+                        attributes["transport"] = "signed_mqtt";
+                    } else {
+                        attributes["path"] = "local_gatt";
+                        attributes["transport"] = "ble_gatt";
+                    }
                     if (authenticated && credential_ref[0] != '\0') {
                         attributes["credential_ref"] = credential_ref;
                     }
@@ -1068,7 +1212,8 @@ void MqttManager::noteAccessTerminal(const char* sessionId,
         credentialRef == nullptr || credentialRef[0] == '\0' ||
         sgk::isValidCanonicalCredentialRef(
             credentialRef, sgk::kAccessEventCredentialRefCapacity);
-    if (!accessEvidenceReady || !terminalCode || reasonCode == nullptr ||
+    if (!accessEvidenceReady || eventSequence == 0 || !terminalCode ||
+        reasonCode == nullptr ||
         reasonCode[0] == '\0' || std::strlen(eventCode) >= 32 ||
         std::strlen(reasonCode) >= 24 || phaseMask > 0x003f ||
         !credentialValid || !parseLowerUuid4(sessionId, &session)) {
@@ -1089,6 +1234,48 @@ void MqttManager::noteAccessTerminal(const char* sessionId,
                       credentialRef);
     }
     accessTerminalSummary = next;
+    if (eventSequence > accessEventSequenceHighWater) {
+        accessEventSequenceHighWater = eventSequence;
+    }
+}
+
+void MqttManager::noteSignedCommandArmed() {
+    signedCommandAccessTracker.noteArmed();
+}
+
+void MqttManager::noteSignedCommandSensorDetected() {
+    signedCommandAccessTracker.noteSensorDetected();
+}
+
+void MqttManager::noteSignedCommandRelayOn() {
+    signedCommandAccessTracker.noteRelayOn();
+}
+
+void MqttManager::noteSignedCommandRelayOff(bool failsafe) {
+    signedCommandAccessTracker.noteRelayOff(failsafe);
+}
+
+uint64_t MqttManager::finishSignedCommandAccess(bool failsafe,
+                                                const char* failureReason) {
+    sgk::SignedCommandAccessTracker::Terminal terminal{};
+    if (!signedCommandAccessTracker.finish(failsafe, &terminal) ||
+        accessEventSequenceHighWater == UINT64_MAX) {
+        return 0;
+    }
+    const uint64_t sequence = ++accessEventSequenceHighWater;
+    const char* reasonCode = terminal.completed
+        ? "ACCESS_GRANTED"
+        : (failureReason == nullptr ? "INTERNAL_ERROR" : failureReason);
+    noteAccessTerminal(
+        terminal.session_id, sequence,
+        terminal.completed ? "ACCESS_SESSION_COMPLETED"
+                           : "ACCESS_SESSION_TERMINATED",
+        reasonCode,
+        nullptr, terminal.phase_mask);
+    if (!enqueueSignedCommandTerminalEvent(terminal, sequence, reasonCode)) {
+        LOGF("[ERROR] Signed MQTT terminal canonical enqueue failed");
+    }
+    return sequence;
 }
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {

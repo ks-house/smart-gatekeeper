@@ -434,7 +434,11 @@
       ACCESS_RELAY_ON: '릴레이 ON 명령',
       ACCESS_RELAY_OFF: '릴레이 OFF 명령',
       ACCESS_SESSION_COMPLETED: 'Target 출입 흐름 완료',
-      ACCESS_SESSION_TERMINATED: 'Target 출입 흐름 종료'
+      ACCESS_SESSION_TERMINATED: 'Target 출입 흐름 종료',
+      ACCESS_SIGNED_ARM_COMPLETED: '모바일 출입 준비 완료',
+      ACCESS_SIGNED_ARM_TERMINATED: '모바일 출입 준비 종료',
+      ACCESS_SIGNED_MANUAL_COMPLETED: '모바일 수동 문열기 완료',
+      ACCESS_SIGNED_MANUAL_TERMINATED: '모바일 수동 문열기 종료'
     };
     const accessReasonLabels = {
       GATT_CONNECTED: 'BLE GATT 연결됨',
@@ -533,8 +537,13 @@
                         ? '<br><small>구형 unsigned 이벤트 · 인증자 표시 안 함</small>'
                     : '<br><small>인증 주체 확인 불가</small>')))
             : '';
+          const targetPathLabel = l.auth_method === 'MOBILE_REMOTE'
+            ? '모바일 수동 문열기'
+            : (l.auth_method === 'MOBILE_PREARM'
+                ? '모바일 출입 준비'
+                : '로컬 자동 출입');
           const pathText = targetEvidence
-            ? `로컬 자동 출입<br><small>Target ${escapeHtml(shortOpaqueRef(l.collector_target_ref))}</small>${actorText}`
+            ? `${targetPathLabel}<br><small>Target ${escapeHtml(shortOpaqueRef(l.collector_target_ref))}</small>${actorText}`
             : `${escapeHtml(l.auth_method)}${l.tenant_name ? `<br><small>${escapeHtml(l.tenant_name)} · ${escapeHtml(l.unit_number || '-')}</small>` : ''}`;
           const eventText = targetEvidence
             ? `${escapeHtml(accessEventLabels[l.event_code] || l.event_code)}<br><small>${signedSummary ? '서명 요약' : escapeHtml(l.event_stage)} · seq ${escapeHtml(String(l.source_sequence))}</small>`
@@ -545,7 +554,7 @@
             : (l.failure_reason || '정상 처리');
           if (signedSummary && (phaseMask & 0x20) !== 0) {
             reasonText = 'Target failsafe 종료 · 성공으로 표시하지 않음';
-          } else if (signedSummary && l.event_code === 'ACCESS_SESSION_COMPLETED' && (phaseMask & 0x1f) !== 0x1f) {
+          } else if (signedSummary && l.event_code === 'ACCESS_SESSION_COMPLETED' && ![0x18, 0x19, 0x1e, 0x1f].includes(phaseMask)) {
             reasonText = '필수 센서·릴레이 단계 미완료 · 성공 근거 부족';
           }
           const summaryBoundary = signedSummary

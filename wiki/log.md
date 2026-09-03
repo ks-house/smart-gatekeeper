@@ -6077,3 +6077,192 @@
 - The first merge-connected feature run correctly passed the protected policy and Backend bridge tests but exposed one stale repository-level discovery assertion that still required 30-second expiry on every non-connectivity entity.
 - Updated that non-protected contract test to require no `expire_after` for verified state, relay and pre-arm entities while continuing to require 30 seconds for raw diagnostics. No protected runtime byte or approved digest changed after policy authorization.
 - This test correction changes no Backend image, NAS/HA/broker runtime, Target, sensor, relay or physical door state. Fresh full-suite CI remains required before merge.
+
+## [2026-09-02] compile | Finalize HA verified access-state main policy
+
+- Policy PR #335 and feature PR #336 passed their required hosted checks and merge-committed normally. Exact feature main is `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`, with immutable feature `81ee01a2125f5d0ca26eae85cb9c4ca5c10f4b0c` and merge-connected head `65666ea535a9e73bac23ecb82939fc709c02304e` in its ancestry.
+- Retired the transitional HA candidate identity and pinned the sole `current-main-baseline` to the actual feature merge. All 100 protected normalized blobs remain byte-identical; the seven-workflow inventory and empty local-Action inventory are unchanged.
+- This final policy-only candidate changes no Backend/NAS/HA/broker runtime, Target, sensor, relay or physical door state. Hosted review/normal merge, Backend publication/deployment, retained discovery readback and live HA observation remain separate Gates.
+
+## [2026-09-02] test | Deploy and read back HA verified access-state availability
+
+- Owner-approved Backend run `33642436897` passed security/MariaDB, evidence verification, exact image publication and NAS deployment for feature main `993c1b6097992bce9fc4f7791a3033f9a34c7f9e`. Public `/live` and `/ready` returned HTTP 200 for that exact build with every readiness check true.
+- Strict-TLS MQTTS readback received retained discovery for verified state, relay and pre-arm. All three now omit `expire_after` and point to the Backend verified-status topic; retained bridge availability was `online`.
+- A fresh non-retained verified projection reported Target boot 695, revision 29189, IDLE, unarmed and relay OFF/pin 1. This closes exact Backend deployment and retained discovery correction, but not a rendered HA UI observation, new administrator history row, GPIO/contact or physical door result.
+
+## [2026-09-02] fix | Bound and dismiss transient mobile access-ready notification
+
+- Confirmed that native `출입 준비 완료` used only Android `autoCancel`, so it could survive from morning until the user tapped it. Added a 65-second OS timeout aligned to the Target's maximum 60-second ARMED sensor window plus delivery grace.
+- Expanded the OS PendingIntent scan from `FIRST_MATCH` to `FIRST_MATCH | MATCH_LOST`. A valid match-lost callback records privacy-safe exit state, dismisses the ready notice and never schedules another access; scan errors do not infer exit.
+- Added a bounded Flutter-to-native dismissal after exact Target-session polling closes on completion, termination, denial or deadline, and renders native exit as waiting. Target proof/ACL, Backend/HA, relay/sensor and OTA recovery paths are unchanged.
+
+## [2026-09-02] test | Add access-ready notification lifecycle regressions
+
+- Added JVM policy coverage for presence, match-lost exit and scan-error classification, plus notification-policy coverage for the bounded success timeout and unbounded attention-required failure.
+- Added Flutter bridge/detection tests and repository source contracts proving that match-lost cannot dispatch access and that exact-session closure invokes notification dismissal.
+- Host suites, protected merge, exact signed mobile OTA publication, phone replacement install and screen-off area-exit/normal-completion observations remain separate Gates.
+
+## [2026-09-03] test | Validate access-ready lifecycle candidate locally
+
+- Flutter formatting was clean, analysis reported no issues and 97 Flutter tests passed in the available local container. The targeted Gradle 9.1 Android JVM lane compiled the native change and passed 60/60 tests, including the new match-lost dispatch policy.
+- Repository discovery passed 342/342 contracts with one declared skip; focused pocket/mobile-ranging contracts had already passed 15/15, and `git diff --check` remained clean.
+- These are local source/unit/contract results. Hosted exact-head checks, protected merge, signed personal mobile OTA publication, replacement install and Samsung screen-off area-exit/normal-door observations remain separate Gates.
+
+## [2026-09-03] fix | Preserve attention notifications during ready dismissal
+
+- Split transient access-ready and attention-required failure/uncertainty notices into separate notification IDs. Exit and exact-session terminal callbacks cancel only the ready ID; posting a failure replaces any stale ready notice but later exit cannot erase the failure evidence.
+- Extended policy and source-contract assertions for this separation. Target, Backend, HA and physical control behavior remain unchanged.
+
+## [2026-09-03] fix | Record each deferred MQTT terminal session in HA Activity
+
+- The owner repeated a manual local open at about 01:00 KST, observed the physical door open and confirmed that the HA state entity added no new Activity timestamp. The deployed entity rendered only `state`, so an access collapsed by safe MQTT deferral to final `IDLE` was invisible as `IDLE -> IDLE`.
+- Kept all MQTT socket work outside auth, sensor, relay and cooldown. Backend now derives a privacy-safe `<boot_count>-<terminal_sequence>` marker and `SUCCEEDED`/`TERMINATED` from the HMAC-verified terminal summary, while excluding session UUID, credential/actor ref, reason and HMAC tag.
+- Added `[Gatekeeper] 최근 출입 결과` MQTT discovery on the verified-status topic. Its state changes once for each new terminal marker and remains stable across periodic repeats, producing one HA Activity record without synchronous MQTT or idle-state noise.
+- No Target/mobile/OTA/control-path source changed; installed Target 2.1.422 remains protocol-compatible.
+
+## [2026-09-03] test | Validate asynchronous MQTT terminal Activity candidate
+
+- Home Assistant bridge, authenticated Target status registry, discovery migration and access-network-deferral suites passed 59/59 after updating the read-only discovery inventory from 16 to 17 entities.
+- Projection tests cover success, failsafe termination, malformed terminal sequence rejection and exclusion of session, credential and reason material. Discovery tests bind the new entity only to Backend verified-status and keep it free of the raw 30-second diagnostic expiry.
+- The full Backend suite passed 194 tests with two declared skips. Repository discovery ran 342 tests: 337 passed, one environment-only case skipped and four expected assertions failed solely because the changed protected Backend files have not yet received trusted-policy rotation. Python compilation and whitespace validation passed.
+- These are local source/unit/contract results. Protected policy rotation, hosted full suites, exact Backend publication/NAS deployment, retained discovery readback and one new owner-observed HA Activity row remain separate Gates.
+
+## [2026-09-03] compile | Authorize asynchronous MQTT per-access HA Activity candidate
+
+- Bound immutable feature `94f473fc1373dd8c819ab2b3636372d7d6b2e374` to the sole `mqtt-access-history-94f473f-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly four protected blobs change: Backend verified-status projection, Home Assistant discovery and their two direct tests. The other 96 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The candidate preserves access-critical MQTT deferral, exposes only a non-identifying terminal marker/result and changes no Target/mobile/OTA/GPIO/relay source. This policy-only candidate performs no publication, deployment or physical action; normal review/merge, feature merge-connection, fresh CI, Backend deployment, retained discovery readback and one new HA Activity observation remain separate Gates.
+
+## [2026-09-03] test | Validate asynchronous MQTT Activity policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for the exact feature SHA, complete 100-path map, four changed protected blobs, seven-workflow inventory and empty local-Action inventory.
+- Full repository discovery passed 342/342 tests with one declared environment-only skip. Whitespace validation remained clean.
+- These are local policy/source contracts only; hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend deployment and HA runtime observation remain separate Gates.
+
+## [2026-09-03] compile | Finalize asynchronous MQTT Activity main policy
+
+- Policy PR #340 and feature PR #341 passed their hosted checks and merge-committed normally. Exact feature main is `a87ef21dc9f66b227831066f45fab8cf0176a0e7`, with immutable feature `94f473fc1373dd8c819ab2b3636372d7d6b2e374` and merge-connected head `e01057f98e64fcef2dff208a96124db8a3ffe547` in its ancestry.
+- Verified zero protected-path byte differences between immutable feature and exact feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to actual feature main; all 100 normalized blobs, seven workflows and the empty local-Action inventory remain exact.
+- This final policy-only candidate publishes or deploys nothing and changes no Target/mobile/OTA/GPIO/relay state. Hosted review/normal merge, exact Backend publication/NAS deployment, retained discovery readback and one new HA Activity observation remain separate Gates.
+
+## [2026-09-03] test | Deploy asynchronous MQTT per-access HA Activity Backend
+
+- Owner-approved run `33654112042` passed Backend security/MariaDB, evidence verification, immutable API/DB image publication and NAS deployment for exact feature main `a87ef21dc9f66b227831066f45fab8cf0176a0e7`. Deployment evidence recorded `status=deployed`, the matching source SHA, and both loopback and public readiness passed.
+- Independent strict-TLS `/live` and `/ready` returned HTTP 200 for the same exact SHA. Every readiness check was true, including MQTT and `access_event_collector`, so the asynchronous deferred-event consumer is live without any Target/mobile/GPIO/relay/OTA source change.
+- Backend startup republishes the 17-entity retained Home Assistant discovery plan, including `[Gatekeeper] 최근 출입 결과`, by tested source contract. A credentialed retained broker readback and one new owner-observed access/HA Activity timestamp remain separate runtime UI Gates; process readiness alone is not recorded as an Activity-row proof.
+
+## [2026-09-03] fix | Track signed MQTT access completion without critical-path network I/O
+
+- The supplied administrator view showed a 01:31:26 `MOBILE_REMOTE` legacy row and actor but only broker acceptance, while the supplied HA Activity had no matching recent-access row despite the owner's physical-open observation. Source inspection confirmed that deployed terminal summaries were generated only for verified Local GATT lifecycles.
+- Added a bounded in-RAM tracker for authenticated signed MQTT `arm` and `manual_remote` session UUIDs. FSM callbacks record ordered armed/sensor/relay ON/OFF/failsafe bits only; they never publish MQTT. Relay/session terminal allocates the shared boot-local sequence and updates the existing HMAC status summary for later safe-state publication by the single MQTT owner.
+- Backend success classification now accepts exact path profiles `0x1f`, `0x19`, `0x1e` and `0x18` while rejecting failsafe/incomplete summaries. Administrator projection distinguishes mobile manual/pre-arm terminal summaries and its HTML uses the same success profiles as HA and the database.
+- Native core plus focused Target-network/Backend/HA/admin tests passed 73/73, added UI/SQL/HA tests passed 3/3, the personal-production ESP32-C6 build succeeded, and whitespace validation was clean. These are source/build results; protected merge, Backend deployment, Target OTA install/reboot/health and one new administrator/HA terminal observation remain open.
+
+## [2026-09-03] compile | Authorize signed MQTT terminal completion candidate
+
+- Bound immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` to the sole `signed-mqtt-terminal-64a62fe-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly five protected blobs change: the Target publisher's exact build-input map, Backend main/admin projection and their two direct tests. The other 95 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The candidate preserves the single safe-state MQTT owner and OTA recovery contract. This policy-only candidate performs no publication, deployment or physical action; normal merge, Backend deployment, signed Target installation/reboot/health and one new administrator/HA terminal observation remain separate Gates.
+
+## [2026-09-03] compile | Finalize signed MQTT terminal completion main policy
+
+- Policy PR #344 and feature PR #345 passed required hosted checks and merge-committed normally. Exact feature main is `3be8310d85ad7c37659576a0cda618ab693b9927`, with immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc` and merge-connected head `9a415b690a28c5ff73add182326e2cd2fd740e5b` in its ancestry.
+- Verified zero protected-path byte differences between immutable feature and exact feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to actual feature main; all 100 normalized blobs, seven workflows and the empty local-Action inventory remain exact.
+- This final policy-only candidate publishes or deploys nothing and changes no Target/HA/relay state. Hosted review/merge, Backend deployment, signed Target installation/reboot/health and one new administrator/HA terminal observation remain open.
+
+## [2026-09-03] test | Deploy signed MQTT terminal completion Backend and Target
+
+- PRs #344, #345 and #346 passed required hosted checks and merged normally. Exact feature main is `3be8310d85ad7c37659576a0cda618ab693b9927`; final policy main is `531b15aba56d500078d09a0f3daf5a8b0597c275`, and the protected source blobs remained byte-identical to immutable feature `64a62fe0633f5aba0d58f81ee0ef2a19ae5565dc`.
+- Owner-approved Backend run `33658872347` completed NAS deployment. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for exact `3be8310d...`, with database/schema, MQTT, access-event collector, runtime secrets, actor reference and evidence integrity all ready.
+- Final-main Target run `33659186723` built, signed, atomically published and read back `2.1.434+main.g531b15a` while retaining the previous valid image. One owner-approved HA OTA request received QoS 1 PUBACK and Backend broker acceptance.
+- Read-only MQTTS observed the Target advance from `2.1.422`, boot 695 to exact `2.1.434+main.g531b15a`, boot 696 with a new boot ID. Ten consecutive samples at uptime 100--109 seconds remained IDLE, unarmed and relay OFF/pin high while signed status revision advanced; a later sample remained on that boot and safe state at uptime 325 seconds, beyond both health-valid and rollback windows.
+- Retained HA `state` and `last_access_event` discovery now point at Backend `verified-status` without the false 30-second expiry; bridge availability is online and fresh verified status matches boot 696. The supplied screenshots show only the old broker-accepted row and older unavailable transitions, so one new owner-triggered access plus administrator/HA readback remains the final runtime Gate. No relay or physical door action was initiated by the agent.
+
+## [2026-09-03] test | Recheck post-install terminal high-water
+
+- A fresh verified-TLS MQTTS read at Target uptime 398 seconds still reported exact `2.1.434+main.g531b15a`, boot 696, `IDLE`, unarmed and relay OFF/pin high. Raw signed status revision advanced to 384 and the Backend verified projection matched it with retained bridge availability online.
+- Both raw `last_terminal_event_sequence` and verified `last_access_event_marker` remained absent with phase mask zero. This is authoritative evidence that no post-reboot access terminal has occurred yet, not a failed Backend/HA projection. One owner-triggered access remains necessary; the agent did not send any relay or door-open command.
+
+## [2026-09-03] test | Verify first post-install signed MQTT manual terminal
+
+- After the owner reported one completed test, fresh verified-TLS MQTTS on exact Target `2.1.434+main.g531b15a`, boot 696 observed terminal sequence 1, exact signed-manual mask `0x18`, `ACCESS_SESSION_COMPLETED` and `ACCESS_GRANTED`. The Target had already returned to fresh IDLE with relay OFF/pin high.
+- Backend `verified-status` at the same signed status revision 426 reported `last_access_result=SUCCEEDED` and marker `696-1`, with bridge availability online. Because that projection is emitted only after HMAC verification and persisted high-water advancement, this closes the Target MQTT and Backend ingestion Gates.
+- Retained live discovery binds `[Gatekeeper] 최근 출입 결과` to the verified marker/result without the legacy entity expiry, so the HA MQTT input changed to `SUCCEEDED #696-1`. HA's authenticated REST state/recorder remained inaccessible without a session token.
+- The bundled Windows Computer Use path was attempted read-only and reset once, but both initializations failed before browser selection with `sandboxCwd is not a local file URI`. The authenticated administrator API likewise returned 401 outside its session boundary. No browser input, configuration change or control action occurred; rendered HA Activity and administrator completion-row evidence remain pending owner-supplied screenshots or a working authenticated browser readback.
+
+## [2026-09-03] test | Confirm rendered Home Assistant access Activity
+
+- The owner's authenticated HA entity screenshot rendered `[Gatekeeper] 최근 출입 결과 = SUCCEEDED #696-1`, exactly matching the Backend verified marker observed over MQTTS.
+- Its entity-specific Activity section recorded the new state at 02:25:37, following `NO_EVENT` at 02:18:55 and the prior boot's `SUCCEEDED #695-17`. This closes the Home Assistant state and recorder/history Gates for the post-install manual access.
+- The entity ID the owner first inspected belongs to the older FSM state sensor, which intentionally remains `IDLE`; filtering that entity cannot show the separate recent-access marker. The global Activity screenshot therefore does not contradict the new entity-specific history proof.
+- The supplied administrator screenshot still contained only the older 01:31:26 broker-accepted row. A fresh administrator `loadLogs()` readback remains required to close the rendered Backend terminal-row Gate.
+
+## [2026-09-03] fix | Preserve every signed MQTT terminal beyond the latest status
+
+- Added path-specific, HMAC-signed `ACCESS_SIGNED_ARM_*` and `ACCESS_SIGNED_MANUAL_*` canonical terminal events. FSM completion only enqueues them; MQTT/TLS remains deferred until the existing safe-state single owner drains the RAM/NVS queue.
+- Backend binds `mqtt_prearm` and `mqtt_manual_remote` routes to the MAC-covered event code, persists each event idempotently, labels the administrator path correctly and publishes a separate HA event only after a new DB insert. Identical replay cannot create a duplicate HA Activity event.
+- Kept the existing signed terminal status and `[Gatekeeper] 최근 출입 결과` sensor unchanged for Backend N / Target N-1 compatibility.
+
+## [2026-09-03] test | Validate durable signed MQTT terminal candidate
+
+- Native regression preserved two consecutive signed MQTT terminal records in FIFO order across simulated NVS reboot recovery; focused Target/network/Backend/HA tests passed 78/78.
+- The full Backend suite passed 197 tests with two declared environment-only skips. The personal-production ESP32-C6 build completed without warnings at 75,880/327,680 bytes RAM and 1,766,442/7,340,032 bytes application flash.
+- Repository discovery ran 343 tests: 337 passed, one environment-only case skipped and six expected assertions reported pre-authorization protected/build digest drift. The three exact Target build-input hashes were refreshed and the focused 18-test publication contract then passed.
+- These are local source/build results only. Trusted policy rotation, normal review/merge, exact Backend/Target publication and deployment, post-install health and repeated live administrator/HA Activity evidence remain separate Gates.
+
+## [2026-09-03] fix | Make signed terminal enqueue and HA projection crash durable
+
+- Changed signed MQTT arm/manual terminal production to commit the exact HMAC canonical record directly to the existing bounded NVS queue before returning, with RAM fallback only when NVS rejects the write. Authentication, sensor, relay and cooldown still perform no MQTT socket I/O.
+- Added schema 013 `ha_access_event_outbox`; the canonical access-history row and its Home Assistant projection now commit in one database transaction. A separate oldest-first worker waits for QoS 1 broker PUBACK before marking delivery and retries pending rows after API or broker restart.
+- Defined the projection as at-least-once: a crash after PUBACK but before the database mark may redeliver the stable event marker. Target PubSubClient publication remains QoS 0 and the NVS/RAM queues remain finite, so absolute end-to-end exactly-once is not claimed.
+
+## [2026-09-03] test | Validate crash-durable access Activity candidate
+
+- Focused Target deferral and Backend registry coverage passed, including NVS-first/no-MQTT production, atomic rollback, two consecutive oldest-first HA rows, PUBACK-before-mark and strict stored-payload validation.
+- The final full Backend suite passed 203 tests with two declared environment-only skips, and the focused registry suite passed 38/38 including retry of the same row after a missing PUBACK. A real Docker/MariaDB run passed all 17 migration tests including idempotent schema 013 and preservation of pending delivery state across N-1 rollback.
+- The personal-production ESP32-C6 build completed without warnings at 75,880 bytes RAM and 1,766,444 bytes application flash. The owner's latest-result change is recorded only as positive runtime evidence for the already-deployed status projection; no new candidate code is merged, deployed or installed by that observation.
+
+## [2026-09-03] compile | Authorize durable signed MQTT terminal-event candidate
+
+- Bound immutable feature `f5e2528d47e657226354a1ff80f0f11d6fdab01a` to the sole `durable-mqtt-terminal-f5e2528-persistent-baseline` with the complete ordered 100-path normalized digest map.
+- Exactly six protected blobs change: the Target publisher's exact build-input map, Backend canonical-event ingestion, Home Assistant projection, administrator HTML and their two direct tests. The other 94 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The candidate keeps MQTT socket work outside the access-critical path, stores one authenticated canonical event per signed terminal, publishes one non-retained HA event only after a new database insert and suppresses exact replay duplicates. Finite queue overflow stays explicitly auditable and no software event is described as physical door-leaf proof.
+- This policy-only candidate publishes or installs no artifact and changes no live Backend, HA, Target, relay or door state. Normal policy review/merge, feature merge-connection, fresh CI, actual-main merge, Backend deployment, signed Target install/reboot/health and two consecutive administrator/HA observations remain separate Gates.
+
+## [2026-09-03] test | Validate durable signed MQTT terminal-event policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for the exact feature SHA, complete 100-path map, six changed protected blobs, seven-workflow inventory and empty local-Action inventory.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend deployment, Target installation and consecutive administrator/HA runtime observations remain separate Gates.
+
+## [2026-09-03] compile | Authorize crash-durable access Activity candidate
+
+- Bound immutable feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50` to the sole `crash-durable-access-ca29776-persistent-baseline` with a complete ordered 102-path normalized digest map.
+- Expanded the protected inventory from 100 to 102 paths for schema 013 up/down. Sixteen protected blobs cover NVS-first terminal enqueue, transactional Home Assistant outbox, schema/deployment identity, operations inventory and direct tests; the other 86 bytes, seven workflows and empty local-Action inventory retain trusted-main content.
+- The policy records durable at-least-once HA delivery rather than exactly-once. It publishes and deploys nothing and changes no live Backend, Target, relay, Home Assistant or physical door state.
+
+## [2026-09-03] test | Validate crash-durable access Activity policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for exact feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50`, the complete 102-path map, 16 changed protected blobs, seven workflows and empty local-Action inventory.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and repository whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, fresh feature checks, Backend schema 013 deployment, Target installation and repeated administrator/HA runtime observations remain separate Gates.
+
+## [2026-09-03] compile | Finalize crash-durable access Activity main policy
+
+- Policy PR #347 and feature PR #348 passed their required hosted checks and merge-committed normally. Exact feature main is `6aa8d188f509f2135c1551abca9284022ef88e2d`, with immutable feature `ca2977638c535aa8ba7bc4ddbeb07342051d1f50` and merge-connected head `365fc9790deaacc8a81ce78ac3979cb38198aee9` in its ancestry.
+- Verified that all 102 protected normalized blobs are byte-identical across immutable feature, merge-connected head and actual feature main. Retired the transitional identity and pinned the sole `current-main-baseline` to that main; seven workflows and the empty local-Action inventory remain exact.
+- This final policy-only candidate publishes and deploys nothing. Backend schema 013 deployment, signed Target publication/install/reboot/health and repeated administrator/HA runtime evidence remain separate Gates.
+
+## [2026-09-03] test | Validate final crash-durable main policy candidate
+
+- All 42 focused trusted-policy tests passed with the sole `current-main-baseline` pinned to actual feature main `6aa8d188f509f2135c1551abca9284022ef88e2d` and all 102 protected paths locally exact.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON and whitespace validation passed.
+- This remains local final-policy evidence until hosted review and normal merge; it does not deploy schema 013 or publish/install the Target firmware.
+
+## [2026-09-03] test | Deploy crash-durable access Activity Backend and publish Target OTA
+
+- PRs #347, #348 and #349 passed hosted checks and merged normally. Exact feature main is `6aa8d188f509f2135c1551abca9284022ef88e2d`; final policy main is `f4e22654eca1bce44044b5a461d2185c5982806a` with all 102 protected blobs unchanged from the reviewed feature.
+- Owner-approved Backend run `33668277642` deployed schema 013. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for exact feature main with every readiness check true, including schema, MQTT, collector and evidence integrity.
+- Target run `33668277535` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.436+main.g6aa8d18`, build ID `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d`. Publication is not installation evidence.
+- The owner reported that the recent-access result changed. This is positive evidence for the already-deployed latest-status projection only; it does not yet prove every schema 013 canonical event, administrator row or HA Activity event.
+- Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows-local URI. The reviewed Target broker principal could not read status or publish HA ingress, and station-local TCP/80 recovery timed out. No duplicate OTA request, unsigned command, NVS erase, full flash or relay operation was attempted. One owner HA OTA press, exact post-reboot version/health readback and repeated administrator/HA correlation remain open.

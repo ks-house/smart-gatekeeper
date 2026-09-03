@@ -173,15 +173,30 @@ volatile overflow에서는 가장 오래된 record를 기존 durable NVS queue�
 동작 증거가 아니며 exact signed OTA install→reboot→health 후 같은 접근 시험이 필요하다.
 
 Authenticated event/status도 같은 경계를 따른다. GATT/FSM code는 actor ref와 MAC-covered record를
-bounded outbox에 넣을 뿐 TLS write를 기다리지 않는다. 기존 단일 loopTask의 PubSubClient owner가
+bounded outbox에 넣을 뿐 TLS write를 기다리지 않는다. Signed MQTT terminal은 relay lifecycle 종료 뒤
+8-entry NVS queue에 먼저 commit하고 NVS 실패 때만 RAM outbox로 fallback한다. 기존 단일 loopTask의 PubSubClient owner가
 safe phase에서 oldest-first publish하고, Backend Paho callback도 DB를 직접 쓰지 않고 bounded worker로
 넘긴다. 따라서 여기서 말하는 asynchronous/non-critical은 concurrent PubSubClient owner를 추가했다는
 뜻이 아니라 access-critical sensor/relay 진행이 socket/DB I/O를 기다리지 않는다는 뜻이다.
 
 최신 terminal summary는 같은 boot RAM에서 우선 status로 내보내고 Backend가 수신하면 immutable하게
 저장한다. 갑작스러운 power loss가 terminal 뒤 첫 signed status보다 먼저 발생하면 RAM summary는
-사라질 수 있다. 다음 boot나 이벤트 시각만으로 성공을 재구성하지 않으며, 이 best-effort 공백은
-door 결과를 추측해 메우지 않는다.
+사라질 수 있지만, signed MQTT arm/manual은 같은 terminal callback에서 별도 HMAC canonical event를
+NVS에 먼저 기록하므로 다음 boot에서 원래 source position으로 재전송한다. Local GATT latest-summary와
+유한 queue overflow에는 여전히 best-effort 경계가 있고, 어느 경로도 door 결과를 추측해 메우지 않는다.
+
+Signed MQTT `arm`과 `manual_remote`는 Local GATT proof lifecycle과 별도이므로 command callback에서
+인증된 command session UUID만 RAM tracker에 시작한다. FSM callback은 `ARMED`, sensor, relay ON/OFF와
+terminal bit만 메모리에 기록하고 MQTT/TLS를 호출하지 않는다. Terminal 뒤 global boot-local sequence를
+하나 배정해 기존 signed status summary에 넣으며, 단일 `loopTask`가 safe state에서 그 최신 status를
+전송한다. Local GATT sequence와 충돌하지 않도록 양쪽 high-water를 서로 전진시킨다. 따라서 command
+PUBACK/ACK는 즉시 유지되면서 실제 FSM 완료는 나중의 HMAC-verified terminal summary로 별도 관측된다.
+
+Backend schema 013은 인증된 canonical event history 행과 HA event projection outbox 행을 한 transaction으로
+commit한다. 별도 worker가 oldest pending row를 QoS 1/non-retained로 발행하고 broker PUBACK 뒤에만 완료로
+표시하므로 DB commit과 HA publish 사이의 API restart는 미완료 row 재시도로 복구된다. 이 구간은
+at-least-once이므로 PUBACK 직후 DB mark 전 crash에는 같은 marker가 중복 전달될 수 있다. Target→broker는
+여전히 PubSubClient QoS 0이고 queue도 유한하므로 schema 013이 end-to-end exactly-once를 뜻하지 않는다.
 - relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
   생겨도 timer task가 물리 출력을 OFF
 - relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소
@@ -240,23 +255,30 @@ python scripts/migrate_home_assistant_discovery.py --broker-host <host> --broker
 파일 대신 `SGK_MQTT_USERNAME`, `SGK_MQTT_PASSWORD`, `SGK_MQTT_CA_FILE` 프로세스 환경 변수를
 사용할 수 있습니다. 동일 credential을 환경 변수와 파일 양쪽에 동시에 주면 모호성을 거부합니다.
 
-Migration은 기존 Home Assistant device identifier와 15개 read-only entity unique ID를 보존하고
-연결 상태 entity 1개를 추가해, 총 16개 read-only entity를 다음 source에 연결합니다.
+Migration은 기존 Home Assistant device identifier와 16개 read-only entity unique ID를 보존하고
+매 출입마다 고유한 완료 표식을 기록하는 `last_access_event` sensor 1개를 추가해, 총 17개
+read-only entity를 다음 source에 연결합니다.
 
-- access state sensor와 relay/pre-armed binary sensor:
+- access state/recent-access sensor와 relay/pre-armed binary sensor:
   `gatekeeper/v1/ha-bridge/<target_id>/verified-status`
 - IP/RSSI/heap/uptime/firmware/distance와 config diagnostic sensor:
   `gatekeeper/v1/targets/<target_id>/status`
 - 연결 상태 binary sensor 1개: retained
   `gatekeeper/v1/ha-bridge/<target_id>/availability`의 `online/offline`
-- 기존 15개 status-backed entity는 10초 주기 status에 `expire_after=30`을 적용
+- raw diagnostic entity 12개는 주기 status에 `expire_after=30`을 적용하고, 검증된 access entity
+  4개는 90.25초 bridge watchdog을 staleness authority로 사용
 
 `verified-status`는 Backend가 Target HMAC을 검증하고 DB high-water를 전진시킨 뒤 target/boot/count,
-access revision, FSM state, armed, relay command/pin만 allow-list한 projection이다. Terminal session,
-actor ref, HMAC tag, IP/RSSI/distance와 임의 raw field를 재발행하지 않는다. 반면 raw `/status`를 쓰는
+access revision, FSM state, armed, relay command/pin과 비식별 `boot_count-terminal_sequence` 완료 표식 및
+성공/종료 결과만 allow-list한 projection이다. `last_access_event`는 이 표식이 달라질 때만 상태가 바뀌어,
+출입 전후가 모두 `IDLE`이어도 Home Assistant Activity에 한 건을 남긴다. Terminal session, actor ref,
+reason, HMAC tag, IP/RSSI/distance와 임의 raw field는 재발행하지 않는다. 반면 raw `/status`를 쓰는
 진단 entity는 access 인증 근거가 아니며 HA broker principal의 exact read ACL이 설치된 경우에만
 허용한다. Source repository의 `security/target-acl`은 운영 broker 설정을 자동 변경하지 않으므로
 anonymous 및 cross-principal publish/subscribe 거부 readback 전에는 production trust를 주장하지 않는다.
+Backend와 관리자 UI는 terminal phase profile로 local sensor/manual과 signed MQTT arm/manual을 구분한다.
+`manual_remote` terminal은 `모바일 수동 문열기`, signed arm terminal은 `모바일 출입 준비`로 표시하며
+둘 다 기존의 broker 접수 legacy row와 달리 Target FSM relay-OFF까지 도달한 서명 요약이다.
 
 기존 Home Assistant entity registry를 중복 생성 없이 갱신하기 위해 relay binary sensor의 historical
 object ID `door_binary`와 unique ID `smart_gatekeeper_01_door_binary`는 유지한다. 표시명은
@@ -268,7 +290,7 @@ Target의 `/availability`와 별도 `/config-state`는 MQTT connect 시 1회만 
 아니다. 따라서 migration 이후나 Home Assistant 재시작 뒤 이 메시지를 못 받아 entity가 영구
 unavailable/unknown이 되는 것을 피하려고 discovery는 두 토픽을 참조하지 않는다. 최신 Target의
 주기 `/status`에는 현재 Tx power, 거리 기준, pre-arm duration, relay cooldown도 포함된다. 세 주기를
-놓친 기존 15개 entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
+놓친 raw diagnostic entity만 unavailable이 되며 다음 status에서 상태와 설정이 함께 자동 복구된다.
 별도 `[Gatekeeper] 연결 상태` entity는 `device_class: connectivity`와 retained bridge availability를
 직접 사용한다. 자기 자신에 availability gate나 `expire_after`를 적용하지 않으므로 offline일 때
 숨거나 unavailable이 되지 않고 HA에서 `연결 끊김`으로 지속 표시된다. Bridge는 Backend MQTT 연결과

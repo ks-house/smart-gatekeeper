@@ -37,6 +37,54 @@ enum class CommandResult : uint8_t {
   kEffectRejected,
 };
 
+// A signed arm/manual command commits on the MQTT callback but its physical
+// lifecycle finishes later on loopTask. Keep only the authenticated command
+// session and software phase evidence in RAM; callers publish the terminal
+// summary after the FSM reaches relay OFF, never from the MQTT callback.
+class SignedCommandAccessTracker {
+ public:
+  enum class Mode : uint8_t {
+    kNone = 0,
+    kArm,
+    kManualRemote,
+  };
+
+  static constexpr uint16_t kArmed = 0x0002;
+  static constexpr uint16_t kSensorDetected = 0x0004;
+  static constexpr uint16_t kRelayOn = 0x0008;
+  static constexpr uint16_t kRelayOff = 0x0010;
+  static constexpr uint16_t kRelayFailsafe = 0x0020;
+  static constexpr uint16_t kArmSuccessMask =
+      kArmed | kSensorDetected | kRelayOn | kRelayOff;
+  static constexpr uint16_t kManualSuccessMask = kRelayOn | kRelayOff;
+
+  struct Terminal {
+    char session_id[37]{};
+    Mode mode = Mode::kNone;
+    uint16_t phase_mask = 0;
+    bool completed = false;
+  };
+
+  bool begin(Mode mode, const char* compact_session_id);
+  bool noteArmed();
+  bool noteSensorDetected();
+  bool noteRelayOn();
+  bool noteRelayOff(bool failsafe);
+  bool finish(bool failsafe, Terminal* terminal);
+  void cancel();
+
+  bool active() const { return mode_ != Mode::kNone; }
+  Mode mode() const { return mode_; }
+  uint16_t phaseMask() const { return phase_mask_; }
+
+ private:
+  Mode mode_ = Mode::kNone;
+  char session_id_[37]{};
+  uint16_t phase_mask_ = 0;
+
+  static bool normalizeUuid4(const char* value, char output[37]);
+};
+
 struct SignedCommandEnvelope {
   uint8_t schema_version = 0;
   char target_id[49]{};

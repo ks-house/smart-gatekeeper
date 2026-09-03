@@ -129,6 +129,63 @@ def signed_canonical_event_payload(
     return json.dumps(document, separators=(",", ":")).encode()
 
 
+def signed_remote_terminal_payload(*, manual=True, completed=True):
+    event_code = (
+        "ACCESS_SIGNED_MANUAL_COMPLETED"
+        if manual and completed
+        else "ACCESS_SIGNED_MANUAL_TERMINATED"
+        if manual
+        else "ACCESS_SIGNED_ARM_COMPLETED"
+        if completed
+        else "ACCESS_SIGNED_ARM_TERMINATED"
+    )
+    outcome = "SUCCEEDED" if completed else "FAILED"
+    reason_code = "ACCESS_GRANTED" if completed else "RELAY_CONTROL_ERROR"
+    attributes = {
+        "path": "mqtt_manual_remote" if manual else "mqtt_prearm",
+        "transport": "signed_mqtt",
+    }
+    document = json.loads(
+        canonical_event_payload(
+            event_code=event_code,
+            stage="COMPLETE",
+            outcome=outcome,
+            reason_code=reason_code,
+            attributes=attributes,
+        )
+    )
+    document["schema_version"] = "1.1"
+    document["target"]["boot_count"] = 8
+    canonical = build_access_event_mac_input(
+        key_id="k1",
+        topic_target_id=TARGET,
+        door_id=ACCESS_DOOR_ID,
+        source_instance_id=SOURCE_REF,
+        source_boot_id=BOOT_1,
+        source_boot_count=8,
+        event_id=EVENT_ID,
+        session_id=SESSION_ID,
+        sequence=7,
+        attempt=1,
+        event_code=event_code,
+        stage="COMPLETE",
+        outcome=outcome,
+        reason_code=reason_code,
+        causation_event_id=None,
+        monotonic_ms=12345,
+        credential_ref=None,
+        distance_mm=None,
+        duration_ms=None,
+        relay_hold_ms=None,
+    )
+    document["auth"] = {
+        "version": 1,
+        "key_id": "k1",
+        "tag": access_evidence_mac(ACCESS_REF_KEY, canonical),
+    }
+    return json.dumps(document, separators=(",", ":")).encode()
+
+
 def connection_with(row):
     connection = MagicMock()
     cursor = connection.cursor.return_value.__enter__.return_value
@@ -137,6 +194,297 @@ def connection_with(row):
 
 
 class TargetBootRegistryTest(unittest.TestCase):
+    def test_signed_mqtt_terminal_route_is_code_bound_and_private(self) -> None:
+        payload = signed_remote_terminal_payload()
+        parsed = main._parse_canonical_target_access_event(payload)
+        self.assertIsNotNone(parsed)
+        self.assertEqual("ACCESS_SIGNED_MANUAL_COMPLETED", parsed["event_code"])
+        self.assertEqual("mqtt_manual_remote", parsed["event_path"])
+        self.assertEqual("signed_mqtt", parsed["event_transport"])
+        self.assertIsNone(parsed["credential_ref"])
+
+        relabeled = json.loads(payload)
+        relabeled["attributes"]["path"] = "local_gatt"
+        relabeled["attributes"]["transport"] = "ble_gatt"
+        self.assertIsNone(
+            main._parse_canonical_target_access_event(
+                json.dumps(relabeled, separators=(",", ":")).encode()
+            )
+        )
+
+    def test_authenticated_terminal_projects_one_privacy_safe_ha_event(self) -> None:
+        parsed = main._parse_canonical_target_access_event(
+            signed_remote_terminal_payload()
+        )
+        self.assertIsNotNone(parsed)
+        parsed.update(
+            collector_target_id=TARGET,
+            source_boot_count=8,
+            source_sequence=7,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            projection = main._home_assistant_access_event_projection(parsed)
+        self.assertIsNotNone(projection)
+        document = json.loads(projection)
+        self.assertEqual("succeeded", document["event_type"])
+        self.assertEqual("8-7", document["access_event_marker"])
+        self.assertEqual("mqtt_manual_remote", document["access_path"])
+        self.assertNotIn("session", projection.decode())
+        self.assertNotIn("credential", projection.decode())
+
+    def test_canonical_worker_notifies_only_for_new_insert(self) -> None:
+        inserted = MagicMock()
+        events = [
+            {"event_code": "ACCESS_SIGNED_MANUAL_COMPLETED", "source_sequence": 1},
+            {"event_code": "ACCESS_SIGNED_ARM_COMPLETED", "source_sequence": 2},
+        ]
+        persisted = iter(
+            {"inserted": True, "event": event} for event in events
+        )
+        worker = main._CanonicalAccessEventWorker(
+            persist=lambda *_args, **_kwargs: next(persisted),
+            on_insert=inserted,
+        )
+        self.assertTrue(worker.request("topic", b"payload-1", False))
+        self.assertTrue(worker.request("topic", b"payload-2", False))
+        worker._queue.join()
+        worker.stop()
+        self.assertEqual(
+            [call(event) for event in events], inserted.call_args_list
+        )
+
+        replayed = MagicMock()
+        replay_worker = main._CanonicalAccessEventWorker(
+            persist=lambda *_args, **_kwargs: True,
+            on_insert=replayed,
+        )
+        self.assertTrue(replay_worker.request("topic", b"payload", False))
+        replay_worker._queue.join()
+        replay_worker.stop()
+        replayed.assert_not_called()
+
+    def test_terminal_event_and_ha_projection_commit_in_one_transaction(self) -> None:
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        with patch.multiple(
+            main,
+            COMMAND_TARGET_ID=TARGET,
+            COMMAND_DOOR_ID=ACCESS_DOOR_ID,
+            ACCESS_EVENT_REF_KEYS={"k1": ACCESS_REF_KEY},
+            _acl_target_credentials={},
+            _ops_hmac_key=b"k" * 32,
+        ), patch.object(main, "get_db", return_value=connection):
+            stored = main._persist_canonical_target_access_event(
+                main._canonical_target_event_topic(TARGET),
+                signed_remote_terminal_payload(),
+                retained=False,
+            )
+
+        self.assertIsInstance(stored, dict)
+        self.assertTrue(stored["inserted"])
+        connection.begin.assert_called_once_with()
+        connection.commit.assert_called_once_with()
+        connection.rollback.assert_not_called()
+        statements = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertEqual(2, len(statements))
+        self.assertIn("INSERT INTO access_event_history", statements[0])
+        self.assertIn("INSERT INTO ha_access_event_outbox", statements[1])
+        payload = json.loads(cursor.execute.call_args_list[1].args[1][2])
+        self.assertEqual("succeeded", payload["event_type"])
+        self.assertEqual("8-7", payload["access_event_marker"])
+
+    def test_terminal_event_rolls_back_if_ha_outbox_insert_fails(self) -> None:
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.execute.side_effect = [None, RuntimeError("outbox unavailable")]
+        with patch.multiple(
+            main,
+            COMMAND_TARGET_ID=TARGET,
+            COMMAND_DOOR_ID=ACCESS_DOOR_ID,
+            ACCESS_EVENT_REF_KEYS={"k1": ACCESS_REF_KEY},
+            _acl_target_credentials={},
+            _ops_hmac_key=b"k" * 32,
+        ), patch.object(main, "get_db", return_value=connection):
+            stored = main._persist_canonical_target_access_event(
+                main._canonical_target_event_topic(TARGET),
+                signed_remote_terminal_payload(),
+                retained=False,
+            )
+
+        self.assertFalse(stored)
+        connection.commit.assert_not_called()
+        connection.rollback.assert_called_once_with()
+
+    def test_ha_outbox_worker_recovers_consecutive_rows_in_order_with_puback(self) -> None:
+        row = {
+            "id": 9,
+            "event_id": EVENT_ID,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_manual_remote",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "publish_attempts": 0,
+        }
+
+        class Published:
+            rc = 0
+
+            def __init__(self):
+                self.waited = False
+
+            def wait_for_publish(self, timeout):
+                self.waited = timeout > 0
+
+            def is_published(self):
+                return self.waited
+
+        result = Published()
+        client = MagicMock()
+        client.publish.return_value = result
+        second = dict(
+            row,
+            id=10,
+            event_id="31111111-1111-4111-8111-111111111111",
+            payload_json=row["payload_json"].replace(
+                '"access_event_marker":"8-7"',
+                '"access_event_marker":"8-8"',
+            ).replace(
+                '"access_path":"mqtt_manual_remote"',
+                '"access_path":"mqtt_prearm"',
+            ),
+        )
+        pending = [row, second, None]
+        marked = threading.Event()
+        mark = MagicMock(
+            side_effect=lambda row_id: (marked.set() if row_id == 10 else None)
+            or True
+        )
+        worker = main._HomeAssistantAccessEventOutboxWorker(
+            client,
+            load=lambda: pending.pop(0) if pending else None,
+            mark_published=mark,
+            note_attempt=MagicMock(return_value=True),
+            poll_seconds=0.01,
+            publish_timeout=0.2,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            worker.start()
+            self.assertTrue(marked.wait(timeout=1.0))
+            worker.stop()
+
+        self.assertEqual(
+            [
+                call(
+                    f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+                    item["payload_json"].encode(),
+                    qos=1,
+                    retain=False,
+                )
+                for item in (row, second)
+            ],
+            client.publish.call_args_list,
+        )
+        self.assertEqual([call(9), call(10)], mark.call_args_list)
+        self.assertTrue(result.waited)
+
+    def test_ha_outbox_rejects_noncanonical_or_inconsistent_payload(self) -> None:
+        base = {
+            "id": 1,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_prearm",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        }
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            self.assertIsNotNone(
+                main._validated_home_assistant_access_event_outbox_row(base)
+            )
+            inconsistent = dict(
+                base,
+                payload_json=base["payload_json"].replace(
+                    '"event_type":"succeeded"',
+                    '"event_type":"terminated"',
+                ),
+            )
+            self.assertIsNone(
+                main._validated_home_assistant_access_event_outbox_row(
+                    inconsistent
+                )
+            )
+            reordered = dict(
+                base,
+                payload_json=json.dumps(json.loads(base["payload_json"])),
+            )
+            self.assertIsNone(
+                main._validated_home_assistant_access_event_outbox_row(reordered)
+            )
+
+    def test_ha_outbox_retries_same_row_after_missing_puback(self) -> None:
+        row = {
+            "id": 9,
+            "event_id": EVENT_ID,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_manual_remote",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "publish_attempts": 0,
+        }
+
+        class PublishResult:
+            rc = 0
+
+            def __init__(self, published: bool):
+                self._published = published
+
+            def wait_for_publish(self, timeout):
+                self._timeout = timeout
+
+            def is_published(self):
+                return self._published
+
+        marked = threading.Event()
+        client = MagicMock()
+        client.publish.side_effect = [PublishResult(False), PublishResult(True)]
+        note = MagicMock(return_value=True)
+        mark = MagicMock(side_effect=lambda row_id: marked.set() or True)
+        worker = main._HomeAssistantAccessEventOutboxWorker(
+            client,
+            load=lambda: None if marked.is_set() else row,
+            mark_published=mark,
+            note_attempt=note,
+            poll_seconds=0.01,
+            publish_timeout=0.2,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            worker.start()
+            self.assertTrue(marked.wait(timeout=1.0))
+            worker.stop()
+
+        self.assertEqual(2, client.publish.call_count)
+        note.assert_called_once_with(9)
+        mark.assert_called_once_with(9)
+
     def test_bridge_availability_expiry_replaces_stale_timers(self) -> None:
         timers = []
 
@@ -1064,6 +1412,8 @@ class TargetBootRegistryTest(unittest.TestCase):
                 "boot_count": 8,
                 "boot_id": BOOT_1,
                 "is_armed": True,
+                "last_access_event_marker": None,
+                "last_access_result": None,
                 "relay_commanded_on": False,
                 "relay_pin_level": 1,
                 "state": "ARMED",
@@ -1081,6 +1431,83 @@ class TargetBootRegistryTest(unittest.TestCase):
             "420",
         ):
             self.assertNotIn(private_value, serialized)
+
+    def test_home_assistant_projection_changes_once_per_terminal_session(self) -> None:
+        stored = {
+            "target_id": TARGET,
+            "source_boot_id": BOOT_1,
+            "source_boot_count": 8,
+            "status_revision": 43,
+            "state": "IDLE",
+            "relay_commanded_on": False,
+            "relay_pin_level": 1,
+            "last_terminal_session_id": SESSION_ID,
+            "last_terminal_event_sequence": 11,
+            "last_terminal_event_code": "ACCESS_SESSION_COMPLETED",
+            "last_terminal_reason_code": "ACCESS_GRANTED",
+            "last_terminal_credential_ref": "c_k1_0123456789abcdef01234567",
+            "last_terminal_phase_mask": 0x1F,
+        }
+        projection = main._verified_home_assistant_status_projection(
+            TARGET, stored
+        )
+        self.assertIsNotNone(projection)
+        document = json.loads(projection)
+        self.assertEqual("8-11", document["last_access_event_marker"])
+        self.assertEqual("SUCCEEDED", document["last_access_result"])
+        serialized = projection.decode("utf-8")
+        self.assertNotIn(SESSION_ID, serialized)
+        self.assertNotIn("c_k1_0123456789abcdef01234567", serialized)
+        self.assertNotIn("ACCESS_GRANTED", serialized)
+
+        for success_mask in (0x1F, 0x19, 0x1E, 0x18):
+            successful = dict(
+                stored,
+                status_revision=44 + success_mask,
+                last_terminal_event_sequence=12 + success_mask,
+                last_terminal_phase_mask=success_mask,
+            )
+            success_projection = main._verified_home_assistant_status_projection(
+                TARGET, successful
+            )
+            self.assertIsNotNone(success_projection)
+            self.assertEqual(
+                "SUCCEEDED",
+                json.loads(success_projection)["last_access_result"],
+            )
+
+        incomplete = dict(
+            stored,
+            status_revision=90,
+            last_terminal_event_sequence=90,
+            last_terminal_phase_mask=0x08,
+        )
+        incomplete_projection = main._verified_home_assistant_status_projection(
+            TARGET, incomplete
+        )
+        self.assertIsNotNone(incomplete_projection)
+        self.assertEqual(
+            "TERMINATED",
+            json.loads(incomplete_projection)["last_access_result"],
+        )
+
+        failsafe = dict(stored, status_revision=44, last_terminal_phase_mask=0x3F)
+        failed_projection = main._verified_home_assistant_status_projection(
+            TARGET, failsafe
+        )
+        self.assertIsNotNone(failed_projection)
+        self.assertEqual(
+            "TERMINATED",
+            json.loads(failed_projection)["last_access_result"],
+        )
+
+        malformed = dict(
+            stored,
+            last_terminal_event_sequence="11",
+        )
+        self.assertIsNone(
+            main._verified_home_assistant_status_projection(TARGET, malformed)
+        )
 
     def test_target_gate_state_can_be_cleared_on_explicit_offline(self) -> None:
         registry = main._TargetGateStateRegistry()
@@ -1661,6 +2088,7 @@ class TargetBootRegistryTest(unittest.TestCase):
             )
             signed.assert_called_once()
             client._sgk_ha_availability_expiry.stop()
+            client._sgk_ha_access_event_outbox_worker.stop()
             client._sgk_authenticated_status_worker.stop()
             self.assertEqual(("set_duration", 5000), signed.call_args.args)
             self.assertEqual(BOOT_2, signed.call_args.kwargs["expected_boot_id"])

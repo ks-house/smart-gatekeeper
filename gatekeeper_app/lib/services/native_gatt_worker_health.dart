@@ -180,6 +180,9 @@ class NativeGattWorkerHealth {
   TargetDetectionStage detectionStageAt(DateTime now) {
     final detection = latestDetection;
     if (detection == null) return TargetDetectionStage.waiting;
+    if (detection.source == 'ble_scan_exit') {
+      return TargetDetectionStage.waiting;
+    }
     final ageMs = now.millisecondsSinceEpoch - detection.receivedEpochMs;
     final freshnessMs = maxPresenceAgeMs ?? 45000;
     if (ageMs > freshnessMs) return TargetDetectionStage.waiting;
@@ -279,6 +282,17 @@ class NativeGattWorkerHealthBridge {
   Future<NativeGattWorkerHealth> read() async {
     final raw = await _channel.invokeMethod<Map<Object?, Object?>>('getHealth');
     return NativeGattWorkerHealth.fromMap(raw ?? const <Object?, Object?>{});
+  }
+
+  Future<bool> dismissAccessReadyNotification() async {
+    try {
+      return await _channel.invokeMethod<bool>(
+            'dismissAccessReadyNotification',
+          ) ==
+          true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<Map<Object?, Object?>> triggerLocalGattRetry() async {
