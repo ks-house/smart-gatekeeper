@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "b5afa8f5660c53517e9bfabf18b5560ac874372d"
-EXPECTED_BUNDLE_ID = "gatt-v2-fast-b5afa8f-persistent-baseline"
+MERGED_MAIN_COMMIT = "3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 0b66ef06b102db861c72e4eae617e240b9e86425bf0c42931b42bbff493d10de
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -123,9 +123,7 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 4677a99651767157abe826744018e052d31c754890ecd32cce5f24712b3c21eb
 tests/test_target_security_ota.py 34a98b9ae139d96e8a13611dc5c6f05c8d2b96cbd0538d7d09fe6ef3d627e8e3
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/deploy.yml",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -149,6 +147,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
 }
 RETIRED_SOURCE_COMMITS = {
     "d3d15d1f540950b1232b3ebf3ee5eb4614c19fac",
+    "b5afa8f5660c53517e9bfabf18b5560ac874372d",
     "8e0c02c415ac2f2214cca5393a2682fd4b6c3a85",
     "9291758c99fd21231ddb30fe029b3f6f11fb1de2",
     "15005944591a43a5437ccf33f9a945ab7b47809f",
@@ -1081,8 +1080,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 1)
-    self.assertEqual(len(locally_unchanged_protected), 101)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 102)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])

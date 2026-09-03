@@ -1829,3 +1829,24 @@ installs nothing and performs no relay or physical action. Normal policy review
 and merge, feature merge-connection and fresh CI, actual-main merge, final
 policy rotation, signed artifact publication, install/reboot/health and repeated
 same-phone latency measurement remain separate Gates.
+
+## 64. GATT v2 actual-main final rotation
+
+Policy PR #352 passed the hosted trusted-base check and merged normally before
+the feature branch was connected to that policy main. Feature PR #353 then
+passed the hosted Android, firmware, OTA P0, protocol-vector and trusted-policy
+checks and merged normally as actual main
+`3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957`.
+
+The transitional `gatt-v2-fast-b5afa8f-persistent-baseline` identity is retired
+in favor of the sole `current-main-baseline` pinned to that actual feature
+merge. All 102 normalized protected blobs are byte-identical between the
+reviewed merge-connected head and actual main; the seven-workflow inventory and
+empty local-Action inventory remain exact. The final-policy delta therefore
+changes only unprotected policy metadata, its regression fixture and wiki
+evidence.
+
+This final rotation does not publish or install either artifact and does not
+exercise BLE, relay or a physical door. Signed exact-main publication,
+installation, reboot/health confirmation and same-phone latency evidence remain
+separate release Gates.

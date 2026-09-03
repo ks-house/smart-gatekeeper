@@ -119,11 +119,11 @@
   },
   "approved_bundles": [
     {
-      "id": "gatt-v2-fast-b5afa8f-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "b5afa8f5660c53517e9bfabf18b5560ac874372d"
+        "commit": "3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957"
       },
       "files": {
         ".github/workflows/deploy.yml": "0b66ef06b102db861c72e4eae617e240b9e86425bf0c42931b42bbff493d10de",

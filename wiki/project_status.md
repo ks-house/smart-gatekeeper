@@ -30,6 +30,12 @@ applies_to:
 - Immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` is bound to a complete 102-path persistent policy bundle. The sole protected-byte change is `.github/workflows/deploy.yml`, whose exact Target build-input hashes cover the five changed firmware inputs.
 - This policy-only branch authorizes no artifact or runtime action. Hosted policy review/merge, feature merge-connection and fresh CI, final actual-main policy rotation, signed Target/mobile publication, installation and physical latency evidence remain separate Gates.
 
+## 2026-09-04 GATT v2 merged source and final policy rotation
+
+- Policy PR #352 and feature PR #353 were merge-committed normally. Actual feature main is `3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957` and contains immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` in its ancestry.
+- Feature PR hosted gates passed: Android build/unit/native GATT, firmware canary, OTA P0, canonical protocol vectors and trusted workflow policy. These prove source/build contracts, not signed personal publication or physical runtime.
+- The final policy candidate retires the feature transition identity and pins one `current-main-baseline` to actual feature main with all 102 protected bytes unchanged. Its local 42-policy and full 344-test suites passed with one declared environment skip, and the live verifier approved all 102 GitHub objects. Final-policy hosted review/merge and subsequent exact-main personal Android/Target publication remain pending.
+
 ## 2026-09-03 crash-durable access Activity candidate
 
 - 첫 post-install manual terminal과 HA entity-specific Activity가 실제로 갱신됐고, owner가 이번에도
