@@ -49,6 +49,7 @@ constexpr size_t kTargetHelloSize = 20;
 constexpr size_t kChallengeSize = 138;
 constexpr size_t kProofSize = 103;
 constexpr size_t kResultSize = 32;
+constexpr uint16_t kFastProtocolVersion = 2;
 constexpr uint32_t kAssemblyTimeoutMs = 2000;
 constexpr uint32_t kChallengeLifetimeMs = 5000;
 constexpr uint32_t kIndicationConfirmationTimeoutMs = 1200;
@@ -71,6 +72,9 @@ enum class MessageType : uint8_t {
   kChallenge = 0x10,
   kProof = 0x11,
   kResult = 0x12,
+  kFastChallenge = 0x20,
+  kFastProof = 0x21,
+  kFastResult = 0x22,
   kError = 0x7f,
 };
 
@@ -495,6 +499,10 @@ class ProtocolCore {
   bool receiveFrame(MessageType expected_type, const ConnectionToken& owner,
                     const uint8_t* frame, size_t frame_length,
                     uint32_t now_ms);
+  // Starts the v2 fast path after the single FAST_TX CCCD is enabled. No
+  // reusable proof or private key is cached on the Target; a fresh challenge
+  // and signature are still required for every access.
+  bool beginFastSession(const ConnectionToken& owner, uint32_t now_ms);
   bool popOutput(OutputMessage* output);
   bool hasOutput() const { return output_count_ != 0; }
   void tick(uint32_t now_ms);

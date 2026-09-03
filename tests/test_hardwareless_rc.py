@@ -387,8 +387,30 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         challenge = transport.split(
             "override suspend fun readChallenge(): ByteArray {", 1
         )[1].split("override suspend fun writeProof", 1)[0]
-        self.assertIn("awaitMessage(GattProtocol.CHALLENGE)", challenge)
+        self.assertIn("GattProtocol.FAST_CHALLENGE", challenge)
+        self.assertIn("GattProtocol.CHALLENGE", challenge)
         self.assertNotIn("readCharacteristic", challenge)
+
+    def test_v2_fast_path_uses_one_cccd_and_never_falls_back_after_selection(self):
+        transport = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/gattworker/AndroidBleGattTransport.kt"
+        ).read_text(encoding="utf-8")
+        engine = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/gattworker/GattSessionEngine.kt"
+        ).read_text(encoding="utf-8")
+        protocol = (
+            ROOT
+            / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/gattworker/GattProtocol.kt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("enableIndication(GattProtocol.FAST_TX_UUID)", transport)
+        self.assertIn("protocolMode == GattProtocolMode.FAST_V2", transport)
+        self.assertIn("v1 negotiation is not available after v2 selection", transport)
+        self.assertIn("selectGattProtocolMode(fastRxPresent, fastTxPresent)", transport)
+        self.assertIn("partial v2 service is invalid", protocol)
+        self.assertIn("transport.protocolMode == GattProtocolMode.FAST_V2", engine)
+        self.assertIn("negotiationMs = 0", engine)
 
     def test_android_gatt_latency_hints_fall_back_and_remain_observable(self):
         transport = (

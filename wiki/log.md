@@ -6266,3 +6266,52 @@
 - Target run `33668277535` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.436+main.g6aa8d18`, build ID `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d`. Publication is not installation evidence.
 - The owner reported that the recent-access result changed. This is positive evidence for the already-deployed latest-status projection only; it does not yet prove every schema 013 canonical event, administrator row or HA Activity event.
 - Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows-local URI. The reviewed Target broker principal could not read status or publish HA ingress, and station-local TCP/80 recovery timed out. No duplicate OTA request, unsigned command, NVS erase, full flash or relay operation was attempted. One owner HA OTA press, exact post-reboot version/health readback and repeated administrator/HA correlation remain open.
+
+## [2026-09-04] code | Add GATT protocol v2 fast path
+
+- Added Fast RX/TX characteristics and the single-CCCD `FAST_CHALLENGE -> FAST_PROOF -> FAST_RESULT` flow. The Target creates fresh session/nonce material when the accepted connection subscribes, and Result OK remains downstream of the actual Target FSM commit.
+- Added `SGKCHAL2` and `SGKPRF02` domain separation plus a fixed v2 negotiation transcript hash. Target still stores no mobile private key or reusable proof.
+- Android selects v2 when both fast characteristics exist, requests high connection priority before service discovery, skips Client/Target Hello and never falls back to v1 after v2 selection. The absence-only v1 path remains isolated for the OTA N/N-1 transition window.
+
+## [2026-09-04] test | Validate GATT v2 source and Target build candidate
+
+- Focused Hardwareless/native contract passed 16/16, including single-subscription v2 challenge/proof/result, protocol/domain binding and FSM action commit.
+- `esp32c6_personal_production` compiled and linked successfully with temporary example provisioning: RAM 75,912/327,680 bytes and application flash 1,768,106/7,340,032 bytes. The example `secrets.h` symlink was removed after the build.
+- Android v2 engine/vector unit coverage was added. The existing Flutter builder, repository-selected Gradle 9.1 and persistent package cache compiled app/main plus unit-test Kotlin and passed 19 suites/74 tests with zero failures, errors or skips. Generated dependency/desktop-plugin changes and temporary local properties were removed afterward.
+- Full repository discovery passed 342 tests, one environment-only skip, and one expected trusted-policy mismatch for the changed protected `deploy.yml` digest. No CI, signed artifact, OTA/APK install, Target reboot/health, physical access or latency improvement is claimed.
+
+## [2026-09-04] lint | Check v2 candidate scope and publication boundary
+
+- Markdown/manual link coverage passed 14/14 and `git diff --check` reported no whitespace errors. Temporary Flutter dependency outputs, platform registrants, local properties and example Target secrets were removed from the change set.
+- The exact Target build-input hashes in `deploy.yml` match the five changed firmware inputs. The sole remaining repository-test failure is the intentionally fail-closed trusted-policy digest for that protected workflow.
+- The required process `GITHUB_TOKEN` is absent. A stored `gh` login exists but project policy forbids using it as a fallback, so no staging, commit, policy rotation, push, CI publication, Target OTA or APK publication was performed.
+
+## [2026-09-04] lint | Reconfirm GitHub deployment authorization boundary
+
+- Rechecked the active Codex process after the owner's request to use the stored `gh` login and complete deployment; `GITHUB_TOKEN` is still absent.
+- The binding project instruction permits GitHub CLI and push only through the current process `GITHUB_TOKEN` and explicitly forbids stored-login fallback. The repository instruction was therefore not weakened or used to bootstrap its own authorization.
+- The validated GATT v2 candidate remains uncommitted and undeployed. Securely injecting `GITHUB_TOKEN` into the active task environment is the remaining prerequisite for trusted-policy rotation, normal review/merge, signed publication, installation and runtime verification.
+
+## [2026-09-04] lint | Audit live AGENTS instruction reload request
+
+- Confirmed that the separate root checkout has local commit `b2b415b` changing `AGENTS.md` to allow the user's stored `gh` authentication. That commit is not in `origin/main` or this v2 candidate worktree.
+- The current task still carries the previously injected developer-level `GITHUB_TOKEN`-only instruction, which cannot be dynamically replaced or weakened by a repository checkout change during the same task.
+- No GitHub write, trusted-policy change, artifact publication, installation or live device action was performed. A newly started task that loads the revised instruction, or injection of `GITHUB_TOKEN` into this task, is required to continue safely.
+
+## [2026-09-04] test | Rebase GATT v2 candidate onto revised main
+
+- Fetched `origin/main` at merge commit `791366e` (PR #351) and rebased `codex/gatt-fast-path-v2` from `b9180af` with an automatic stash; every uncommitted v2 source, test and wiki change was restored without conflict.
+- The only incoming path since the prior base is `AGENTS.md`, whose repository text now permits the user's stored `gh` authentication. `git diff --check` remains clean.
+- Rebase validation passed Hardwareless GATT 16/16, manual contract 14/14 and Target OTA publication contract 18/18. No GitHub write, CI publication, merge, install or live Target action is claimed by these local tests.
+
+## [2026-09-04] fix | Fail closed on partial GATT v2 service
+
+- Re-reviewed the preserved candidate after byte-identical transfer to a clean branch at exact `origin/main` `791366e`. Android now selects v2 only when both Fast RX and Fast TX exist, selects the N/N-1 v1 shim only when both are absent and treats a partial fast service as service-discovery failure.
+- Added Android selection vectors for both valid pairs and both partial-service failures. Added Target host vectors proving that a legacy message type or v1 protocol bytes in a v2 session never reach the proof verifier and return a v2-bound rejection.
+
+## [2026-09-04] test | Revalidate transferred GATT v2 candidate
+
+- Current-worktree focused Hardwareless/manual/Target-publication coverage passed 48/48; the broader security/OTA focused run passed 134/134.
+- Cached Flutter 3.47.1 plus repository-selected Gradle 9.1 compiled the app and passed `:app:testDebugUnitTest` with 19 suites/75 tests and zero failures, errors or skips. An unscoped all-dependency task separately failed only the external `url_launcher_android` Robolectric test because SDK 36 requires Java 21 while the builder has Java 17; hosted CI remains the release reproducibility authority.
+- ESP32-C6 personal-production pioarduino compile/link/factory image succeeded at 75,912/327,680 bytes RAM and 1,768,106/7,340,032 bytes application flash using an example provisioning link that was removed immediately afterward.
+- Repository discovery ran 344 tests: 342 passed, one declared environment-only case skipped and the sole failure was the expected fail-closed trusted-policy digest mismatch for modified protected `deploy.yml`. No CI, signed publication, install, reboot, health or physical latency improvement is claimed by these local results.

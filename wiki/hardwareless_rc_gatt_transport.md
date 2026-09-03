@@ -1,6 +1,6 @@
 # ESP32-C6 connectable GATT transport (Issue #18)
 
-> Updated: 2026-08-26
+> Updated: 2026-09-04
 > Status: **personal production action-1/action-2 has connected board-level evidence; issue #175 defers actionable BLE until the post-boot signed ACL is active, while the disconnected phone and absent sensor/contact fixture keep final physical acceptance open**
 > Tracking: GitHub [#18](https://github.com/ks-house/smart-gatekeeper/issues/18), Epic [#13](https://github.com/ks-house/smart-gatekeeper/issues/13)
 
@@ -8,7 +8,7 @@
 
 Issue #18 supplies the bounded BLE transport and authentication-session adapter needed by #20. It does not implement signed ACL storage, credential authorization, the Target-owned access FSM, or relay activation. The production/default `FailClosedProofVerifier` returns `ACL_UNAVAILABLE`; only native host tests inject a clearly test-only deterministic verifier.
 
-Local GATT accepts only protocol action `1` (hands-free/local open intent). Action `2` is rejected because authenticated `manual_remote` remains the independent explicit app button → Backend authorization → MQTT Target receipt path. No file in the GATT core or adapter calls relay code.
+Local GATT accepts action `1` (hands-free sensor ARM) and action `2` (explicit immediate local open). In both cases a successful cryptographic proof is insufficient by itself: Result OK is queued only after the Target control gate commits the requested transition into the actual FSM.
 
 ## 2. Feature gate
 
@@ -40,6 +40,8 @@ The Android `BleWakeContract` and production C++ `kIBeaconFilterPrefix` use thos
 | Challenge | `9f4d1002-7d9e-4fb1-9c54-6f4d53474b31` | read, indicate, user description, CCCD |
 | Proof | `9f4d1003-7d9e-4fb1-9c54-6f4d53474b31` | write, user description |
 | Result | `9f4d1004-7d9e-4fb1-9c54-6f4d53474b31` | indicate, user description, CCCD |
+| Fast RX | `9f4d1005-7d9e-4fb1-9c54-6f4d53474b31` | write, user description |
+| Fast TX | `9f4d1006-7d9e-4fb1-9c54-6f4d53474b31` | indicate, user description, CCCD |
 
 The Arduino-ESP32 supported BLE stack creates the server, callbacks, characteristics, and CCCDs. The adapter disconnects every rejected handle, binds each accepted handle to a monotonically increasing connection generation, and retains both values on queued writes and outputs. NimBLE writes from rejected/stale owners are ignored, and `ble_gatts_indicate_custom()` targets only the accepted peer after that peer subscribes to the relevant characteristic. `onStatus` records the ACK/error state only; the next MTU-sized fragment is drained by the Arduino loop task. Timeout/error aborts the output and core session. Disconnect restarts advertising.
 
@@ -48,6 +50,10 @@ The Arduino-ESP32 supported BLE stack creates the server, callbacks, characteris
 `src/GattProtocol.cpp` is a platform-independent C++17 core used unchanged by `src/GattServer.cpp` and the native host executable. BLE callbacks only copy bounded ATT writes plus the writer connection token into a four-entry queue; the main loop invokes the parser/session core under a critical section. Queue overflow clears/preempts all queued proof work before any verifier call. Authentication control effects are separated from telemetry: ProofRequested/ProofVerified update the FSM synchronously on the 16 KB loop task before Result output, while callback-originated abort and advertising restart are coalesced and drained by that loop. Canonical audit events use a separate bounded 16-entry queue, so telemetry overflow is explicit but cannot turn an `OK` Result into an unarmed Target. JSON/MQTTS publication also runs from the loop task. This keeps the 2.7 KB output-drain and 3.2 KB event-publication frames off NimBLE's 5 KB host stack.
 
 Framing is the frozen 10-byte `SG` v1 header with one 2,048-byte reassembly buffer, one message ID per connection, exact header consistency, sequential fragments, idempotent identical duplicate handling, changed-duplicate rejection, and a rollover-safe 2,000 ms assembly deadline. Hello, Target Hello, Challenge, Proof, and Result payloads are exactly 16, 20, 138, 103, and 32 bytes.
+
+Protocol v2 retains that strict framing and the 138/103/32-byte authenticated payload sizes, but removes normal-operation negotiation traffic. Enabling the one Fast TX CCCD schedules a fresh Target challenge on the Arduino loop; `FAST_CHALLENGE(0x20) → FAST_PROOF(0x21) → FAST_RESULT(0x22)` then completes on the two fast characteristics. The Target requests a 15 ms BLE connection interval as a non-authoritative hint, while Android requests high priority before service discovery. Correctness does not depend on either request being accepted.
+
+The v1 characteristics remain isolated only for the OTA N/N-1 transition window. Android selects v1 only when both fast characteristics are absent; a partial Fast RX/TX service fails closed. A v2-selected connection never falls back to v1 after an error. The fast session still generates fresh CSPRNG material, uses `SGKCHAL2`/`SGKPRF02` domain separation, verifies the current signed ACL, consumes proof once, and binds OK to the FSM commit. It does not cache an Android private key or reusable authorization on Target.
 
 Unsupported protocol/framing/range hello input returns unsupported negotiation without creating session, nonce, or challenge material. A valid hello creates a 16-byte session ID and 32-byte nonce from the hardware CSPRNG. A separate nonzero 16-byte boot ID is generated once per boot. Each session/nonce draw rejects all-zero and its immediately previous value for at most four attempts; exhausting those conservative guards disables authentication fail-closed. This is not a claim that arbitrary non-adjacent repeats are detected.
 
@@ -61,7 +67,7 @@ Production now installs a deferred canonical MQTT event sink for the GATT segmen
 
 ## 6. Executable evidence and remaining gates
 
-Native host tests compile `src/GattProtocol.cpp` directly and cover canonical SHA/framing/challenge vectors, N/N-1, strict lengths/ranges, malformed and deterministic fuzz inputs, maximum-size bounds, fragment sequence/duplicates/consistency, 2-second timeout, replay, second-peer rejection, disconnect/reconnect generation races, overflow-before-proof, ACK/error/timeout indication transitions, provisioned door fail-closed, same-core cross-door replay, canonical uint64/session/boot/sequence/causation fields, disable/reset, stale NVS under compile OFF, OTA busy, rollover, rate limiting, null/capacity outputs, fail-closed verifier, test-only allow/deny verifier, action 2 rejection, no relay integration, and advertisement/filter constants.
+Native host tests compile `src/GattProtocol.cpp` directly and cover canonical SHA/framing/challenge vectors, N/N-1, strict lengths/ranges, malformed and deterministic fuzz inputs, maximum-size bounds, fragment sequence/duplicates/consistency, 2-second timeout, replay, second-peer rejection, disconnect/reconnect generation races, overflow-before-proof, ACK/error/timeout indication transitions, provisioned door fail-closed, same-core cross-door replay, canonical uint64/session/boot/sequence/causation fields, disable/reset, stale NVS under compile OFF, OTA busy, rollover, rate limiting, null/capacity outputs, fail-closed verifier, test-only allow/deny verifier, v2 single-subscription challenge/proof/result and advertisement/filter constants.
 
 The feature-ON `esp32c6_personal_production` path first exposed a repeatable `nimble_host` stack-protection reset and then an Android mixed Challenge read/indication race. Exact main `db37bc2390efbf94bf1a9fca261834c3728606b5` included both corrections. Run `32777471683` published and HA OTA installed Target `2.1.262+main.gdb37bc2`; run `32777471718` produced the matching production Android APK and it was replacement-installed on SM-F966N. One foreground action-1 session completed with worker health `HEALTHY`, no failure/Target denial and 4,599 ms latency. HA independently recorded `AUTH_PENDING` at 06:27:33, `ARMED` at 06:27:36 and `IDLE` at 06:28:35, without a Target reset.
 

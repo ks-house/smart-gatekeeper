@@ -81,6 +81,8 @@ BLECharacteristic* hello_characteristic = nullptr;
 BLECharacteristic* challenge_characteristic = nullptr;
 BLECharacteristic* proof_characteristic = nullptr;
 BLECharacteristic* result_characteristic = nullptr;
+BLECharacteristic* fast_rx_characteristic = nullptr;
+BLECharacteristic* fast_tx_characteristic = nullptr;
 std::array<uint8_t, sgk::kMaxMessageSize + sgk::kFrameHeaderSize>
     challenge_read_value{};
 size_t challenge_read_length = 0;
@@ -97,6 +99,8 @@ sgk::IndicationToken in_flight_token_{};
 sgk::MessageType in_flight_type_{sgk::MessageType::kError};
 bool in_flight_valid_{false};
 bool advertising_restart_requested_{false};
+bool fast_start_requested_{false};
+sgk::ConnectionToken fast_start_owner_{};
 
 class CanonicalMqttEventSink final : public sgk::EventSink {
  public:
@@ -658,7 +662,11 @@ class ServerCallbacks final : public BLEServerCallbacks {
     const uint16_t connection_id = description->conn_handle;
     if (!GattServer::handleConnect(connection_id)) {
       server->disconnect(connection_id);
+      return;
     }
+    // Ask for a low-latency interval before Android begins service discovery.
+    // The phone may reject the hint; correctness never depends on acceptance.
+    server->requestConnParams(connection_id, 12, 12, 0, 200);
   }
 
   void onDisconnect(BLEServer*, ble_gap_conn_desc* description) override {
@@ -706,6 +714,39 @@ class WriteCallbacks final : public BLECharacteristicCallbacks {
   sgk::MessageType indication_type_;
 };
 
+class FastCallbacks final : public BLECharacteristicCallbacks {
+ public:
+#if defined(CONFIG_BLUEDROID_ENABLED)
+  void onWrite(BLECharacteristic* characteristic,
+               esp_ble_gatts_cb_param_t* parameters) override {
+    GattServer::handleWrite(parameters->write.conn_id,
+                            sgk::MessageType::kFastProof,
+                            characteristic->getData(),
+                            characteristic->getLength());
+  }
+#elif defined(CONFIG_NIMBLE_ENABLED)
+  void onWrite(BLECharacteristic* characteristic,
+               ble_gap_conn_desc* description) override {
+    GattServer::handleWrite(description->conn_handle,
+                            sgk::MessageType::kFastProof,
+                            characteristic->getData(),
+                            characteristic->getLength());
+  }
+
+  void onSubscribe(BLECharacteristic*, ble_gap_conn_desc* description,
+                   uint16_t sub_value) override {
+    GattServer::handleFastSubscribe(
+        description->conn_handle,
+        (sub_value & kNimbleSubscribeIndicate) != 0);
+  }
+#endif
+
+  void onStatus(BLECharacteristic*, Status status, uint32_t) override {
+    GattServer::handleCurrentIndicationStatus(
+        status == Status::SUCCESS_INDICATE);
+  }
+};
+
 ServerCallbacks server_callbacks;
 WriteCallbacks hello_callbacks(sgk::MessageType::kClientHello,
                                sgk::MessageType::kTargetHello);
@@ -715,6 +756,7 @@ WriteCallbacks challenge_callbacks(sgk::MessageType::kError,
                                    sgk::MessageType::kChallenge);
 WriteCallbacks result_callbacks(sgk::MessageType::kError,
                                 sgk::MessageType::kResult);
+FastCallbacks fast_callbacks;
 
 void addDescriptors(BLECharacteristic* characteristic, const char* label,
                     bool indication) {
@@ -733,6 +775,9 @@ BLECharacteristic* characteristicFor(sgk::MessageType type) {
     case sgk::MessageType::kResult:
     case sgk::MessageType::kError:
       return result_characteristic;
+    case sgk::MessageType::kFastChallenge:
+    case sgk::MessageType::kFastResult:
+      return fast_tx_characteristic;
     default:
       return nullptr;
   }
@@ -746,6 +791,8 @@ void GattServer::init() {
   deferred_event_sink.clear();
   production_lifecycle_sink.clear();
   advertising_restart_requested_ = false;
+  fast_start_requested_ = false;
+  fast_start_owner_ = {};
   if (core != nullptr) {
     delete core;
     core = nullptr;
@@ -795,6 +842,14 @@ void GattServer::update() {
   if (core == nullptr || !core->enabled()) return;
 
   const uint32_t now_ms = millis();
+  core_mutex.lock();
+  if (fast_start_requested_) {
+    const sgk::ConnectionToken owner = fast_start_owner_;
+    fast_start_requested_ = false;
+    fast_start_owner_ = {};
+    core->beginFastSession(owner, now_ms);
+  }
+  core_mutex.unlock();
   sgk::ConnectionToken overflow_owner;
   core_mutex.lock();
   const bool overflow = adapter_state.consumeOverflow(&overflow_owner);
@@ -1093,6 +1148,10 @@ void GattServer::handleDisconnect(uint16_t connection_id) {
   sgk::ConnectionToken owner;
   if (adapter_state.ownerForHandle(connection_id, &owner)) {
     in_flight_valid_ = false;
+    if (fast_start_owner_ == owner) {
+      fast_start_requested_ = false;
+      fast_start_owner_ = {};
+    }
     core->disconnect(owner, millis());
     adapter_state.disconnect(connection_id);
   }
@@ -1127,6 +1186,42 @@ void GattServer::handleSubscribe(uint16_t connection_id,
   (void)connection_id;
   (void)type;
   (void)subscribed;
+#endif
+}
+
+void GattServer::handleFastSubscribe(uint16_t connection_id,
+                                     bool subscribed) {
+#if ENABLE_HARDWARELESS_RC
+  core_mutex.lock();
+  sgk::ConnectionToken owner;
+  const bool accepted =
+      adapter_state.ownerForHandle(connection_id, &owner) &&
+      adapter_state.setSubscribed(connection_id,
+                                  sgk::MessageType::kFastChallenge,
+                                  subscribed);
+  if (accepted && subscribed) {
+    fast_start_owner_ = owner;
+    fast_start_requested_ = true;
+  } else if (!subscribed && fast_start_owner_ == owner) {
+    fast_start_requested_ = false;
+    fast_start_owner_ = {};
+  }
+  core_mutex.unlock();
+#else
+  (void)connection_id;
+  (void)subscribed;
+#endif
+}
+
+void GattServer::handleCurrentIndicationStatus(bool success) {
+#if ENABLE_HARDWARELESS_RC
+  sgk::MessageType type = sgk::MessageType::kError;
+  core_mutex.lock();
+  if (in_flight_valid_) type = in_flight_type_;
+  core_mutex.unlock();
+  handleIndicationStatus(type, success);
+#else
+  (void)success;
 #endif
 }
 
@@ -1193,7 +1288,7 @@ void GattServer::createService() {
   ble_server->setCallbacks(&server_callbacks);
   ble_server->advertiseOnDisconnect(false);
   auth_service = ble_server->createService(
-      BLEUUID(String(HARDWARELESS_SERVICE_UUID)), 20);
+      BLEUUID(String(HARDWARELESS_SERVICE_UUID)), 28);
   hello_characteristic = auth_service->createCharacteristic(
       HARDWARELESS_CHAR_HELLO_UUID,
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_INDICATE);
@@ -1204,14 +1299,22 @@ void GattServer::createService() {
       HARDWARELESS_CHAR_PROOF_UUID, BLECharacteristic::PROPERTY_WRITE);
   result_characteristic = auth_service->createCharacteristic(
       HARDWARELESS_CHAR_RESULT_UUID, BLECharacteristic::PROPERTY_INDICATE);
+  fast_rx_characteristic = auth_service->createCharacteristic(
+      HARDWARELESS_CHAR_FAST_RX_UUID, BLECharacteristic::PROPERTY_WRITE);
+  fast_tx_characteristic = auth_service->createCharacteristic(
+      HARDWARELESS_CHAR_FAST_TX_UUID, BLECharacteristic::PROPERTY_INDICATE);
   addDescriptors(hello_characteristic, "SGK target hello", true);
   addDescriptors(challenge_characteristic, "SGK challenge", true);
   addDescriptors(proof_characteristic, "SGK proof", false);
   addDescriptors(result_characteristic, "SGK result", true);
+  addDescriptors(fast_rx_characteristic, "SGK fast proof", false);
+  addDescriptors(fast_tx_characteristic, "SGK fast challenge/result", true);
   hello_characteristic->setCallbacks(&hello_callbacks);
   challenge_characteristic->setCallbacks(&challenge_callbacks);
   proof_characteristic->setCallbacks(&proof_callbacks);
   result_characteristic->setCallbacks(&result_callbacks);
+  fast_rx_characteristic->setCallbacks(&fast_callbacks);
+  fast_tx_characteristic->setCallbacks(&fast_callbacks);
   auth_service->start();
   BLEAdvertisementData scan_response;
   scan_response.setName("SmartGatekeeper");
@@ -1238,6 +1341,10 @@ void GattServer::destroyService() {
   challenge_characteristic = nullptr;
   proof_characteristic = nullptr;
   result_characteristic = nullptr;
+  fast_rx_characteristic = nullptr;
+  fast_tx_characteristic = nullptr;
+  fast_start_requested_ = false;
+  fast_start_owner_ = {};
   in_flight_valid_ = false;
   adapter_state.clear();
   // Keep the legacy iBeacon advertisement running, but remove the unavailable

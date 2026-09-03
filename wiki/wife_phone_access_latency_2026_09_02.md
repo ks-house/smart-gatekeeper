@@ -153,3 +153,18 @@ relay hold 1초, true-failsafe grace 250ms, cooldown 최대 10초로 clamp한다
 실행 수명주기의 5초 auth window는 하나이며, compile-time 상한은 추가 5초 안전 여유를
 유지해도 90초보다 작다. MQTT keepalive 120초와 HA 연결
 expiry 90.25초가 이 의도된 network deferral보다 길게 유지된다.
+
+## 8. 2026-09-04 pre-ARMED v2 fast-path 후보
+
+사용자가 현재 병목을 센서 이후가 아니라 `출입 준비 완료` 전으로 특정했으므로 GATT 직렬 왕복을
+직접 줄이는 v2 후보를 구현했다. 최신 조합은 하나의 Fast TX CCCD만 활성화하며 Target이 즉시 fresh
+challenge를 보내고, Android proof write와 Target Result로 끝난다. 기존 v1의 Hello/Challenge/Result
+CCCD 세 번, Client Hello write, Target Hello indication을 정상 경로에서 제거한다. Android high-priority
+요청은 service discovery 전에 수행하고 Target도 15ms connection interval을 요청하되, 양쪽 hint 거부는
+정확성 실패가 아니다.
+
+이 후보는 인증을 미리 승인하거나 Target에 private key/proof를 저장하지 않는다. signed ACL public
+credential만 Target에 남고 매 접근의 nonce/session/signature 검증과 실제 `ARMED` commit은 유지된다.
+Native host와 Target personal-production compile은 통과했지만 실제 wife phone/APK와 매립 Target의
+`presenceToDispatchMs`, `connectSetupMs`, `challengeMs`, `signingMs`, `resultWaitMs`,
+`presenceToArmedMs`는 아직 없다. 따라서 체감 개선은 설치 후 같은 조건의 여러 회 측정 전까지 가설이다.

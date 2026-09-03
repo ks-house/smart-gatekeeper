@@ -54,6 +54,8 @@ class GattServer {
                           const uint8_t* value, size_t length);
   static void handleSubscribe(uint16_t connection_id, sgk::MessageType type,
                               bool subscribed);
+  static void handleFastSubscribe(uint16_t connection_id, bool subscribed);
+  static void handleCurrentIndicationStatus(bool success);
   static void handleIndicationStatus(const sgk::IndicationToken& token,
                                      sgk::MessageType type, bool success);
   static void handleIndicationStatus(sgk::MessageType type, bool success);

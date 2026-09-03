@@ -285,10 +285,12 @@ std::array<uint8_t, 16> hello(uint16_t min = 1, uint16_t max = 1,
 }
 
 std::vector<uint8_t> proof(const std::array<uint8_t, 16>& session_id,
-                           uint8_t action = 1, size_t size = sgk::kProofSize) {
+                           uint8_t action = 1, size_t size = sgk::kProofSize,
+                           uint16_t protocol_version = 1) {
   std::vector<uint8_t> value(size, 0);
   if (size < 39) return value;
-  value[1] = 1;
+  value[0] = static_cast<uint8_t>(protocol_version >> 8);
+  value[1] = static_cast<uint8_t>(protocol_version);
   std::memcpy(value.data() + 2, session_id.data(), session_id.size());
   const auto credential = hex("aabbccddeeff00112233445566778899");
   std::memcpy(value.data() + 18, credential.data(), credential.size());
@@ -296,6 +298,99 @@ std::vector<uint8_t> proof(const std::array<uint8_t, 16>& session_id,
   value[38] = 3;
   for (size_t index = 39; index < value.size(); ++index) value[index] = 0x5A;
   return value;
+}
+
+bool send(sgk::ProtocolCore& core, sgk::MessageType type,
+          const uint8_t* payload, size_t length, uint32_t now,
+          size_t fragment_capacity, uint16_t message_id,
+          sgk::ConnectionToken owner);
+std::vector<sgk::OutputMessage> drain(sgk::ProtocolCore& core);
+void start(sgk::ProtocolCore& core, uint32_t now);
+
+void testFastV2SingleSubscriptionFlow() {
+  auto random = canonicalRandom();
+  FakeVerifier verifier(sgk::ResultReason::kOk);
+  FakeAuthControlGate control;
+  sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), nullptr,
+                             &control);
+  start(protocol, 1000);
+  const auto owner = protocol.connectionOwner();
+
+  sgk::AdapterState adapter;
+  CHECK(adapter.acceptConnection(owner));
+  CHECK(adapter.setSubscribed(owner.handle,
+                              sgk::MessageType::kFastChallenge, true));
+  CHECK(adapter.isSubscribed(owner, sgk::MessageType::kFastResult));
+
+  CHECK(protocol.beginFastSession(owner, 1100));
+  const auto challenge_outputs = drain(protocol);
+  CHECK(challenge_outputs.size() == 1);
+  CHECK(challenge_outputs[0].type == sgk::MessageType::kFastChallenge);
+  CHECK(challenge_outputs[0].length == sgk::kChallengeSize);
+  CHECK(std::memcmp(challenge_outputs[0].bytes.data(), "SGKCHAL2", 8) == 0);
+  CHECK(u16(challenge_outputs[0].bytes.data() + 8) ==
+        sgk::kFastProtocolVersion);
+
+  const auto fast_proof =
+      proof(protocol.sessionId(), 1, sgk::kProofSize,
+            sgk::kFastProtocolVersion);
+  CHECK(send(protocol, sgk::MessageType::kFastProof, fast_proof.data(),
+             fast_proof.size(), 1200, 502, 2, owner));
+  CHECK(verifier.calls == 1);
+  CHECK(verifier.last.protocol_version == sgk::kFastProtocolVersion);
+  CHECK(std::memcmp(verifier.last.signing_input.data(), "SGKPRF02", 8) == 0);
+  CHECK(control.commit_calls == 1);
+  const auto result_outputs = drain(protocol);
+  CHECK(result_outputs.size() == 1);
+  CHECK(result_outputs[0].type == sgk::MessageType::kFastResult);
+  CHECK(u16(result_outputs[0].bytes.data()) == sgk::kFastProtocolVersion);
+}
+
+void testFastV2RejectsLegacyTypeAndVersion() {
+  {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kOk);
+    FakeAuthControlGate control;
+    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), nullptr,
+                               &control);
+    start(protocol, 1000);
+    const auto owner = protocol.connectionOwner();
+    CHECK(protocol.beginFastSession(owner, 1100));
+    CHECK(drain(protocol).size() == 1);
+    const auto fast_proof =
+        proof(protocol.sessionId(), 1, sgk::kProofSize,
+              sgk::kFastProtocolVersion);
+    CHECK(!send(protocol, sgk::MessageType::kProof, fast_proof.data(),
+                fast_proof.size(), 1200, 502, 2, owner));
+    CHECK(verifier.calls == 0);
+    const auto outputs = drain(protocol);
+    CHECK(outputs.size() == 1);
+    CHECK(outputs[0].type == sgk::MessageType::kFastResult);
+    CHECK(u16(outputs[0].bytes.data() + 18) ==
+          static_cast<uint16_t>(sgk::ResultReason::kMalformed));
+  }
+
+  {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kOk);
+    FakeAuthControlGate control;
+    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), nullptr,
+                               &control);
+    start(protocol, 2000);
+    const auto owner = protocol.connectionOwner();
+    CHECK(protocol.beginFastSession(owner, 2100));
+    CHECK(drain(protocol).size() == 1);
+    const auto legacy_version_proof = proof(protocol.sessionId());
+    CHECK(!send(protocol, sgk::MessageType::kFastProof,
+                legacy_version_proof.data(), legacy_version_proof.size(),
+                2200, 502, 3, owner));
+    CHECK(verifier.calls == 0);
+    const auto outputs = drain(protocol);
+    CHECK(outputs.size() == 1);
+    CHECK(outputs[0].type == sgk::MessageType::kFastResult);
+    CHECK(u16(outputs[0].bytes.data() + 18) ==
+          static_cast<uint16_t>(sgk::ResultReason::kSessionInvalid));
+  }
 }
 
 bool send(sgk::ProtocolCore& core, sgk::MessageType type,
@@ -3141,6 +3236,8 @@ int main() {
       });
 
   testCanonicalVectorsAndFraming();
+  testFastV2SingleSubscriptionFlow();
+  testFastV2RejectsLegacyTypeAndVersion();
   testAccessEvidenceMacFixedVectors();
   testCanonicalSessionAndVerifier();
   testAuthenticatedActionControlBinding();

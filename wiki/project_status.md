@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-09-03
+updated: 2026-09-04
 source_of_truth: true
 applies_to:
   - firmware
@@ -17,6 +17,13 @@ applies_to:
 > 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐고 PR #297/Backend run `33314043691`이 `GK-*` 신청 저장 불일치를 교정·배포했다. 이후 owner의 접수와 관리자 승인은 완료됐지만 첫 `이 휴대폰 등록`은 단일-user compatibility mapping 때문에 HTTP 409로 실패했다. 승인된 추가 가족 행을 같은 personal tenant의 별도 public credential/door grant로 수용하는 PR #300이 exact main `38b90e5febc525c96a4013b737850fd6a90235d3`으로 병합됐고 Backend run `33315099974`가 NAS `status=deployed`, canonical loopback/public readiness와 독립 strict-TLS exact-build HTTP 200/all-checks-true를 통과했다. 이후 한 번의 owner retry로 A24가 `스마트키 사용 가능`, 등록 출입문 1, ACL 608이 됐으며 Activity가 credential 등록을 기록했다. Access-ready 계약상 exact signed ACL의 matching APPLIED Target ACK도 통과했다. 뒤이은 원격 개방은 MQTT broker 전달까지만 확인됐고 딸아이 휴대폰에서 실제 문이 열린 물리 관찰은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-09-04 GATT v2 fast-path source candidate
+
+- 최신 Android/Target 정상 경로를 `Fast TX CCCD 1회 → fresh challenge → signed proof → FSM-bound result`로 축소했다. 기존 v1 대비 CCCD 두 번과 Client/Target Hello 왕복을 제거한다.
+- v2 선택 뒤에는 v1으로 재시도하지 않는다. v1은 모바일과 Target 독립 OTA를 위한 한 release N/N-1 전환 shim으로만 남으며 fast characteristic이 모두 없는 구 Target에서만 새 앱이 선택한다. Fast RX/TX 중 하나만 보이는 부분 서비스는 fail-closed한다.
+- Android private key는 계속 AndroidKeyStore 안에 있고 Target은 signed ACL public credential만 보유한다. v2도 session/nonce를 매번 새로 생성하며 `SGKCHAL2`/`SGKPRF02` domain separation, 5초 deadline, single-use proof와 actual FSM commit-before-OK를 유지한다.
+- Native/contract 16 tests, Android `:app:testDebugUnitTest` 19 suite/75 tests와 ESP32-C6 personal-production compile이 통과했다. 해당 Target 빌드는 예제 secrets를 사용한 source compile proof일 뿐이다. CI, signed artifacts, Target OTA install/reboot/health, APK 설치와 동일 휴대폰 반복 latency 측정은 아직 수행하지 않았다.
 
 ## 2026-09-03 crash-durable access Activity candidate
 

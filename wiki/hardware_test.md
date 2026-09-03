@@ -1,9 +1,26 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-09-03 (asynchronous MQTT terminal marker and HA per-access Activity candidate recorded; deployment acceptance pending)
+> Last updated: 2026-09-04 (GATT v2 fast-path source/build evidence recorded; installation and physical latency pending)
 
 ## 1. 판정 원칙
 
 과거 VL53L0X/ESP32 BLE scanner 아키텍처의 PASS는 변경 이력으로 보존하지만, 현재 **iBeacon → Android → FastAPI → MQTT → AJ-SR04T → Relay** 경로의 합격 근거로 간주하지 않습니다. 소프트웨어 빌드 통과와 실기기 E2E 통과도 분리합니다.
+
+## 2026-09-04 GATT v2 fast-path 후보
+
+| 항목 | 관찰 결과 | 판정 |
+|---|---|---|
+| Target protocol/adapter host coverage | v2 single Fast-TX subscription, fresh `SGKCHAL2`, `FAST_PROOF`, `SGKPRF02` verifier input, FSM action commit, `FAST_RESULT`를 포함한 focused contract 16 tests 통과 | PASS (host source) |
+| Personal-production firmware compile | ESP32-C6 pioarduino `esp32c6_personal_production` compile/link/factory image 성공; RAM 75,912/327,680 bytes, application flash 1,768,106/7,340,032 bytes | PASS (example-provisioned build only) |
+| Android JVM suite | 기존 Flutter builder, repository 지정 Gradle 9.1과 persistent package cache로 `:app:testDebugUnitTest` 실행; app/main 및 unit-test Kotlin compile, 19 suites/75 tests, 0 failures/errors/skips | PASS (container/JVM) |
+| Installed Target/mobile latency | OTA/APK 설치, reboot health, `protocolMode=FAST_V2`, 동일 휴대폰의 presence→ARMED 반복 측정 미수행 | PENDING (physical/runtime) |
+
+예제 `secrets.h` 연결은 compile 동안만 사용하고 제거했다. 이 표는 실제 Target identity, ACL, Wi-Fi,
+MQTT, OTA artifact 또는 설치 결과를 증명하지 않는다.
+
+전체 Android dependency 모듈의 unscoped `testDebugUnitTest`는 SDK 36이 Java 21을 요구하는
+`url_launcher_android` Robolectric 외부 플러그인 시험 한 건에서 실패했다. 저장소 앱 범위
+`:app:testDebugUnitTest`는 위와 같이 통과했으며, release 재현성의 최종 판정은 고정된 hosted lane에
+맡긴다.
 
 ## 2026-08-30 wall Target manual-open transport split
 
