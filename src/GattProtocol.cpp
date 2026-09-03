@@ -26,6 +26,12 @@ constexpr char kAccessEventCredentialRefDomain[] =
     "SGK-CREDENTIAL-REF-V1";
 constexpr char kAccessEventMacDomain[] = "SGK-ACCESS-EVENT-MAC-V1";
 constexpr char kAccessStatusMacDomain[] = "SGK-ACCESS-STATUS-MAC-V1";
+constexpr uint8_t kFastNegotiationTranscript[] = {
+    'S', 'G', 'K', 'F', 'A', 'S', 'T', '2',
+    0x00, 0x02,  // protocol v2
+    0x01,        // framing v1
+    0x00, 0x03,  // Target capabilities
+};
 
 uint32_t rotateRight(uint32_t value, uint32_t bits) {
   return (value >> bits) | (value << (32 - bits));
@@ -696,6 +702,9 @@ uint8_t AdapterState::subscriptionBit(MessageType type) {
     case MessageType::kResult:
     case MessageType::kError:
       return 0x04;
+    case MessageType::kFastChallenge:
+    case MessageType::kFastResult:
+      return 0x08;
     default:
       return 0;
   }
@@ -1164,11 +1173,76 @@ bool ProtocolCore::processMessage(MessageType type, const uint8_t* payload,
   if (type == MessageType::kClientHello) {
     return processHello(payload, length, now_ms);
   }
-  if (type == MessageType::kProof) {
+  if (type == MessageType::kProof &&
+      selected_protocol_ != kFastProtocolVersion) {
+    return processProof(payload, length, now_ms);
+  }
+  if (type == MessageType::kFastProof &&
+      selected_protocol_ == kFastProtocolVersion) {
     return processProof(payload, length, now_ms);
   }
   reject(ResultReason::kMalformed, now_ms);
   return false;
+}
+
+bool ProtocolCore::beginFastSession(const ConnectionToken& owner,
+                                    uint32_t now_ms) {
+  if (!enabled() || !connection_active_ || owner != connectionOwner() ||
+      state_ != SessionState::kIdle) {
+    return false;
+  }
+  selected_protocol_ = kFastProtocolVersion;
+  if (!randomUnique(session_id_.data(), session_id_.size(),
+                    previous_session_id_.data()) ||
+      !randomUnique(nonce_.data(), nonce_.size(), previous_nonce_.data())) {
+    rng_ready_ = false;
+    enabled_ = false;
+    reject(ResultReason::kInternalFailClosed, now_ms);
+    return false;
+  }
+  previous_session_id_ = session_id_;
+  previous_nonce_ = nonce_;
+  active_acl_version_ = verifier_.activeAclVersion();
+  event_last_causation_sequence_ = 0;
+  emit(EventCode::kAccessGattConnected, ResultReason::kOk, now_ms);
+
+  if (ota_busy_) {
+    queueResult(ResultReason::kBusy, 1000, active_acl_version_);
+    emit(EventCode::kAccessSessionTerminated, ResultReason::kBusy, now_ms);
+    resetSessionPreservingOutputs();
+    return false;
+  }
+  if (!reached(now_ms, backoff_until_ms_) && failed_attempts_ >= 3) {
+    queueResult(ResultReason::kRateLimited,
+                static_cast<uint32_t>(backoff_until_ms_ - now_ms),
+                active_acl_version_);
+    emit(EventCode::kAccessSessionTerminated, ResultReason::kRateLimited,
+         now_ms);
+    resetSessionPreservingOutputs();
+    return false;
+  }
+
+  auth_control_active_ = auth_control_gate_ != nullptr;
+  if (!auth_control_active_ || !auth_control_gate_->beginAuth(now_ms)) {
+    abortAuthControl(now_ms);
+    queueResult(auth_control_gate_ == nullptr
+                    ? ResultReason::kInternalFailClosed
+                    : ResultReason::kBusy,
+                auth_control_gate_ == nullptr ? 0 : 1000,
+                active_acl_version_);
+    emit(EventCode::kAccessSessionTerminated,
+         auth_control_gate_ == nullptr ? ResultReason::kInternalFailClosed
+                                       : ResultReason::kBusy,
+         now_ms);
+    resetSessionPreservingOutputs();
+    return false;
+  }
+
+  sha256(kFastNegotiationTranscript, sizeof(kFastNegotiationTranscript),
+         negotiation_hash_.data());
+  state_ = SessionState::kHelloReceived;
+  buildChallenge(now_ms);
+  return true;
 }
 
 bool ProtocolCore::processHello(const uint8_t* payload, size_t length,
@@ -1252,7 +1326,10 @@ void ProtocolCore::buildChallenge(uint32_t now_ms) {
     return;
   }
   challenge_.fill(0);
-  std::memcpy(challenge_.data(), "SGKCHAL1", 8);
+  std::memcpy(challenge_.data(),
+              selected_protocol_ == kFastProtocolVersion ? "SGKCHAL2"
+                                                         : "SGKCHAL1",
+              8);
   writeU16(challenge_.data() + 8, selected_protocol_);
   std::memcpy(challenge_.data() + 10, door_id_.data(), door_id_.size());
   std::memcpy(challenge_.data() + 26, session_id_.data(), session_id_.size());
@@ -1264,7 +1341,10 @@ void ProtocolCore::buildChallenge(uint32_t now_ms) {
   std::memcpy(challenge_.data() + 106, negotiation_hash_.data(),
               negotiation_hash_.size());
   state_ = SessionState::kChallengeIssued;
-  queue(MessageType::kChallenge, challenge_.data(), challenge_.size());
+  queue(selected_protocol_ == kFastProtocolVersion
+            ? MessageType::kFastChallenge
+            : MessageType::kChallenge,
+        challenge_.data(), challenge_.size());
   emit(EventCode::kAccessProofRequested, ResultReason::kOk, now_ms);
 }
 
@@ -1304,7 +1384,10 @@ bool ProtocolCore::processProof(const uint8_t* payload, size_t length,
   request.client_capabilities = readU32(payload + 35);
   std::memcpy(request.signature_raw64.data(), payload + 39,
               request.signature_raw64.size());
-  std::memcpy(request.signing_input.data(), "SGKPRF01", 8);
+  std::memcpy(request.signing_input.data(),
+              selected_protocol_ == kFastProtocolVersion ? "SGKPRF02"
+                                                         : "SGKPRF01",
+              8);
   sha256(challenge_.data(), challenge_.size(), request.signing_input.data() + 8);
   std::memcpy(request.signing_input.data() + 40, request.credential_id.data(),
               request.credential_id.size());
@@ -1369,7 +1452,10 @@ void ProtocolCore::queueResult(ResultReason reason, uint32_t retry_after_ms,
   writeU16(payload + 18, static_cast<uint16_t>(reason));
   writeU32(payload + 20, retry_after_ms);
   writeU64(payload + 24, acl_version);
-  queue(MessageType::kResult, payload, sizeof(payload));
+  queue(selected_protocol_ == kFastProtocolVersion
+            ? MessageType::kFastResult
+            : MessageType::kResult,
+        payload, sizeof(payload));
 }
 
 bool ProtocolCore::queue(MessageType type, const uint8_t* payload,

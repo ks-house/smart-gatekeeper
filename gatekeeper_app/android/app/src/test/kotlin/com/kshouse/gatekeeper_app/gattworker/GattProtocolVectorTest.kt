@@ -13,6 +13,14 @@ class GattProtocolVectorTest {
   private val vector by lazy { loadVector() }
 
   @Test
+  fun protocolSelectionRejectsPartialV2Service() {
+    assertEquals(GattProtocolMode.LEGACY_V1, selectGattProtocolMode(false, false))
+    assertEquals(GattProtocolMode.FAST_V2, selectGattProtocolMode(true, true))
+    assertFails { selectGattProtocolMode(true, false) }
+    assertFails { selectGattProtocolMode(false, true) }
+  }
+
+  @Test
   fun exactCanonicalProofMatchesSharedVector() {
     val hello = vector.getJSONObject("hello")
     val challenge = vector.getJSONObject("challenge")
@@ -117,10 +125,11 @@ internal fun successResult(
   sessionId: ByteArray,
   reason: Int = 0,
   retryAfterMs: Long = if (reason == 9) 1000 else 0,
+  protocolVersion: Int = GattProtocol.PROTOCOL_VERSION,
 ): ByteArray = java.nio.ByteBuffer
   .allocate(32)
   .order(java.nio.ByteOrder.BIG_ENDIAN)
-  .putShort(1.toShort())
+  .putShort(protocolVersion.toShort())
   .put(sessionId)
   .putShort(reason.toShort())
   .putInt(retryAfterMs.toInt())

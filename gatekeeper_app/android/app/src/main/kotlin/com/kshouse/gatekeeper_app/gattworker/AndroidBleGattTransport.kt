@@ -311,7 +311,11 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
   private var mtu = DEFAULT_MTU
   @Volatile
   private var mtuStatus = MtuNegotiationStatus.NOT_REQUESTED
+  @Volatile
   private var highPriorityRequested = false
+  @Volatile
+  override var protocolMode: GattProtocolMode = GattProtocolMode.LEGACY_V1
+    private set
 
   override suspend fun connect(deviceAddress: String) {
     requireConnectPermission()
@@ -325,6 +329,7 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     mtu = DEFAULT_MTU
     mtuStatus = MtuNegotiationStatus.NOT_REQUESTED
     highPriorityRequested = false
+    protocolMode = GattProtocolMode.LEGACY_V1
     val callback = callback(newConnection)
     val newGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
@@ -339,17 +344,33 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
         ?: GattTransportException(TransportFailureCode.DISCONNECTED)
     }
     newConnection.connected.await()
-    highPriorityRequested = newGatt.requestConnectionPriority(
-      BluetoothGatt.CONNECTION_PRIORITY_HIGH,
-    )
     newConnection.servicesReady.await()
     negotiateMtu(newGatt, newConnection)
-    enableIndication(GattProtocol.HELLO_UUID)
-    enableIndication(GattProtocol.CHALLENGE_UUID)
-    enableIndication(GattProtocol.RESULT_UUID)
+    val service = newGatt.getService(GattProtocol.SERVICE_UUID)
+      ?: throw GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED)
+    val fastRxPresent = service.getCharacteristic(GattProtocol.FAST_RX_UUID) != null
+    val fastTxPresent = service.getCharacteristic(GattProtocol.FAST_TX_UUID) != null
+    protocolMode = try {
+      selectGattProtocolMode(fastRxPresent, fastTxPresent)
+    } catch (error: IllegalArgumentException) {
+      throw GattTransportException(
+        TransportFailureCode.SERVICE_DISCOVERY_FAILED,
+        cause = error,
+      )
+    }
+    if (protocolMode == GattProtocolMode.FAST_V2) {
+      enableIndication(GattProtocol.FAST_TX_UUID)
+    } else {
+      enableIndication(GattProtocol.HELLO_UUID)
+      enableIndication(GattProtocol.CHALLENGE_UUID)
+      enableIndication(GattProtocol.RESULT_UUID)
+    }
   }
 
   override suspend fun negotiate(clientHello: ByteArray): ByteArray {
+    check(protocolMode == GattProtocolMode.LEGACY_V1) {
+      "v1 negotiation is not available after v2 selection"
+    }
     writeMessage(GattProtocol.HELLO_UUID, GattProtocol.CLIENT_HELLO, clientHello)
     return activeConnection().mailbox.awaitMessage(GattProtocol.TARGET_HELLO)
   }
@@ -361,15 +382,31 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     // deliver it between indicated fragments and the strict reassembler must
     // reject that mixed stream.  The CCCD is enabled before CLIENT_HELLO, so a
     // single mailbox path is both lossless and deterministic here.
-    return activeConnection().mailbox.awaitMessage(GattProtocol.CHALLENGE)
+    return activeConnection().mailbox.awaitMessage(
+      if (protocolMode == GattProtocolMode.FAST_V2) {
+        GattProtocol.FAST_CHALLENGE
+      } else {
+        GattProtocol.CHALLENGE
+      },
+    )
   }
 
   override suspend fun writeProof(proof: ByteArray) {
-    writeMessage(GattProtocol.PROOF_UUID, GattProtocol.PROOF, proof)
+    if (protocolMode == GattProtocolMode.FAST_V2) {
+      writeMessage(GattProtocol.FAST_RX_UUID, GattProtocol.FAST_PROOF, proof)
+    } else {
+      writeMessage(GattProtocol.PROOF_UUID, GattProtocol.PROOF, proof)
+    }
   }
 
   override suspend fun awaitResult(): ByteArray =
-    activeConnection().mailbox.awaitMessage(GattProtocol.RESULT)
+    activeConnection().mailbox.awaitMessage(
+      if (protocolMode == GattProtocolMode.FAST_V2) {
+        GattProtocol.FAST_RESULT
+      } else {
+        GattProtocol.RESULT
+      },
+    )
 
   override fun close() {
     connection?.let(callbackCoordinator::close)
@@ -387,6 +424,7 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     negotiatedMtu = mtu,
     mtuStatus = mtuStatus,
     highPriorityRequested = highPriorityRequested,
+    protocolMode = protocolMode,
   )
 
   private suspend fun negotiateMtu(
@@ -523,8 +561,15 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
   private fun callback(connection: GattConnectionCoordinator.Connection) = object : BluetoothGattCallback() {
     override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
       if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
-        if (callbackCoordinator.onConnected(connection, gatt) && !gatt.discoverServices()) {
-          callbackCoordinator.onServicesFailed(connection, gatt, null)
+        if (callbackCoordinator.onConnected(connection, gatt)) {
+          highPriorityRequested = try {
+            gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+          } catch (_: SecurityException) {
+            false
+          }
+          if (!gatt.discoverServices()) {
+            callbackCoordinator.onServicesFailed(connection, gatt, null)
+          }
         }
       } else {
         callbackCoordinator.onDisconnected(connection, gatt, status)

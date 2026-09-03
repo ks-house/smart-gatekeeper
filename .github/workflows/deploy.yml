@@ -346,8 +346,8 @@ jobs:
           100644 9ebeac418fe2cd0c858889206bda9c4f0a45250eafe4c9276ba848ea0f09f29b include/DiagnosticsManager.h
           100644 bab4d5f0cf614e0dfe060c7896ae0fc8be8b1cdaa86a8fe44437471ee9f03864 include/DurablePreferences.h
           100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
-          100644 283518188b81b5bd9500c092bc36f806e3639f32741550fb54fedd11465f5d7b include/GattProtocol.h
-          100644 e6a90298a16b8b9e0cf4cab317088aa04756c9fef0268c8dab092f85d7f89875 include/GattServer.h
+          100644 0b8f6e85c19c7b15b9a07b6626a614b9ecd0c15a54a82b0a8d14e68e3e1a4bb3 include/GattProtocol.h
+          100644 f525c133dd2ac734fec13e85683c32254ea3eae148c714b840583a2d43889ba5 include/GattServer.h
           100644 b31e54808f412f29a27256e24926895ecce0aaf4b1b7bdd64eda2b62dd67bfef include/MqttManager.h
           100644 a1976f3cd57dc9f2873ce651cccc212a39827c9d31a5a880c9029f89be0d735e include/OfflineEventQueue.h
           100644 a42780d48211f0306f8278298ee7b598d349c52b0ba2e4913223a60bf30426c1 include/OtaHealthPolicy.h
@@ -361,15 +361,15 @@ jobs:
           100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
           100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
           100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
-          100644 065c1d96230b35b35d665d7dfc213b9608d4b9fd2b87cb5f981b93ec37efe769 include/config.h
+          100644 90d2f626db86287b15c96642d0c67718a54d003b67c72a8906d73fba2d851988 include/config.h
           100644 314da70cb34a86b5fdb6830f6c50ec2611ec69e38b964e476ee2bd79354a326a include/secrets.h.example
           100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock
           100644 20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv
           100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini
           100644 0a197ffa68213f1651f9b25a92256ef209b58dca1cf1dd7be77e3f861afffb96 src/ConfigManager.cpp
           100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
-          100644 4f8bf33f49ae28254b7fb124e229cf0f5d82b9b61df9f2d59a4ffbaff0fd2ebc src/GattProtocol.cpp
-          100644 dcc4751f955552bd0db031b2d111ec988b1079f1631b3a7571ae831b3bdf4470 src/GattServer.cpp
+          100644 a62ed9b32198c95da9350a661846bf0d245510cab26ec03f0735262aef3f20c8 src/GattProtocol.cpp
+          100644 0c2b96e1deb7f08c8e15c4155df815b5344e2b3c6730e0bd10d631db27cc1250 src/GattServer.cpp
           100644 626fde4fc8d262d69e7a93ee4dd2a3b3f7315e8455f05919a43f9849fc89c2ac src/MqttManager.cpp
           100644 4f2508172140436df9b6d00504e367a36aba9c519f8c12cd7f09b0d2d31bed41 src/OfflineEventQueue.cpp
           100644 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7 src/OtaManager.cpp

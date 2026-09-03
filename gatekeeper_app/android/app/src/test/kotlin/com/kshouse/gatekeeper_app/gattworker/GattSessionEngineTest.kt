@@ -68,6 +68,45 @@ class GattSessionEngineTest {
   }
 
   @Test
+  fun fastV2SkipsHelloRoundTripsAndUsesV2ProofDomain() = runBlocking {
+    val fastChallenge = challenge.copyOf().also {
+      "SGKCHAL2".toByteArray(Charsets.US_ASCII).copyInto(it, 0)
+      it[8] = 0
+      it[9] = GattProtocol.FAST_PROTOCOL_VERSION.toByte()
+      GattCanonicalCodec.fastNegotiationHash().copyInto(it, 106)
+    }
+    val transport = FakeTransport(
+      targetHello,
+      fastChallenge,
+      successResult(
+        fastChallenge.copyOfRange(26, 42),
+        protocolVersion = GattProtocol.FAST_PROTOCOL_VERSION,
+      ),
+      protocolMode = GattProtocolMode.FAST_V2,
+    )
+    val signer = DeterministicFakeCredentialSigner(fixtureSignature)
+
+    val result = GattSessionEngine(
+      transport,
+      signer,
+      timeoutMs = 1000,
+      clock = MonotonicClock { 100 },
+    ).run("00:11:22:33:44:55", credential)
+
+    assertTrue(result is SessionOutcome.Success)
+    assertEquals(0, transport.negotiations)
+    assertArrayEquals(
+      GattCanonicalCodec.proofSigningInput(
+        fastChallenge,
+        credential,
+        protocolVersion = GattProtocol.FAST_PROTOCOL_VERSION,
+      ),
+      signer.lastCanonical,
+    )
+    assertEquals(GattProtocol.FAST_PROTOCOL_VERSION, transport.proof?.get(1)?.toInt())
+  }
+
+  @Test
   fun manualOpenSignsAndWritesExplicitImmediateAction() = runBlocking {
     val transport = FakeTransport(
       targetHello,
@@ -282,19 +321,23 @@ private class FakeTransport(
   private val challenge: ByteArray,
   private val result: ByteArray,
   private val performance: GattTransportPerformance = GattTransportPerformance(),
+  override val protocolMode: GattProtocolMode = GattProtocolMode.LEGACY_V1,
 ) : BleGattTransport {
   var proof: ByteArray? = null
   var proofWrites = 0
   var closed = false
   var blockConnect = false
   var negotiateFailure: GattTransportException? = null
+  var negotiations = 0
 
   override suspend fun connect(deviceAddress: String) {
     if (blockConnect) delay(Long.MAX_VALUE)
   }
 
-  override suspend fun negotiate(clientHello: ByteArray): ByteArray =
-    negotiateFailure?.let { throw it } ?: targetHello.copyOf()
+  override suspend fun negotiate(clientHello: ByteArray): ByteArray {
+    negotiations += 1
+    return negotiateFailure?.let { throw it } ?: targetHello.copyOf()
+  }
   override suspend fun readChallenge(): ByteArray = challenge.copyOf()
   override suspend fun writeProof(proof: ByteArray) {
     proofWrites += 1

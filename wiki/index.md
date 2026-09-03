@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-09-04 (GATT v2 fast-path trusted-policy authorization candidate recorded)
+> Last updated: 2026-09-04 (GATT v2 fast-path feature and trusted-policy candidates connected)
 
 ---
 
@@ -53,13 +53,13 @@
 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) | 화면 OFF 출입 실패의 확정 증거, 원인 우선순위, 단계별 판별·실기기 수집 절차 |
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 | [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md) | 개인 PROD 모바일 등록·문 열기 배포와 매립 Target MQTT/Wi-Fi/OTA 장애 증거 및 재개 절차 |
-| [wife_phone_access_latency_2026_09_02.md](wife_phone_access_latency_2026_09_02.md) | 관리자/HA의 ARMED→RELAY 약 7초 증거, owner 재현 조건, access-critical MQTT deferral 후보와 설치 후 검증 Gate |
+| [wife_phone_access_latency_2026_09_02.md](wife_phone_access_latency_2026_09_02.md) | 관리자/HA의 ARMED→RELAY 약 7초 증거, access-critical MQTT deferral, pre-ARMED GATT v2 fast-path 후보와 설치 후 검증 Gate |
 | [ha_external_access_incident_2026_08_13.md](ha_external_access_incident_2026_08_13.md) | 2026-08-13 HA nginx 502의 upstream 장애 격리, 안전한 복구 순서와 2026-08-24 복구 경계 |
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
 | [android_ble_wake_adr.md](android_ble_wake_adr.md) | #14 PendingIntent filtered BLE wake 결정, #179 Bluetooth ON native re-registration, exact filter contract와 Samsung pending Gate |
-| [android_gatt_worker.md](android_gatt_worker.md) | #17/#133 signed default-OFF rollout, action-1 background ARM, action-2 terminal manual open, privacy-safe Target detection projection, BLE lease, crash boundary and pending physical gates |
-| [security_protocol.md](security_protocol.md) | Android Keystore/정규 proof, crash-safe ACL watermark, 증거 기반 RELAY-G0/G1/G2 fail-closed Gate, N/N-1과 공통 adversarial vector |
+| [android_gatt_worker.md](android_gatt_worker.md) | #17/#133 native worker, action-1/action-2, v2 single-CCCD fast path, privacy-safe projection, BLE lease, crash boundary and pending physical gates |
+| [security_protocol.md](security_protocol.md) | Android Keystore/정규 v1/v2 proof, v2 fast domain separation, crash-safe ACL watermark, RELAY-G Gates와 N/N-1 |
 | [backend_acl_management.md](backend_acl_management.md) | #19 public-key enrollment, credential-bound resident profile, admin lifecycle, signed ACL push/pull·ACK, migration/rollback과 OTA 독립성 |
 | [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
@@ -68,7 +68,7 @@
 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, Backend schema 013 canonical history/transactional HA outbox, immutable correlation, I7/I9/OTA 합격·증거 경계 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
-| [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 default-OFF connection-owned/ACK-gated GATT, OTA safe-state, provisioned door identity, host evidence and physical gates |
+| [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 connection-owned/ACK-gated GATT, v2 fast challenge/proof/result, OTA safe-state, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |
 | [flutter_thin_ui.md](flutter_thin_ui.md) | #21/#133 Flutter Thin UI, terminal 1-tap immediate local GATT open, enrollment, OEM recovery and independent OTA |
 | [mobile_commercial_ux.md](mobile_commercial_ux.md) | #51 capability-based recovery shell, per-phone resident identity privacy, fresh-install native wake, authenticated Target resolution, signed updater, truthful states/accessibility/localization |

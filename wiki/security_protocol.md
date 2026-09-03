@@ -1,4 +1,4 @@
-# security_protocol.md — Device key·BLE proof·signed ACL v1 규격
+# security_protocol.md — Device key·BLE proof·signed ACL v1/v2 규격
 
 > 상태: **Wave 0 규격 동결 후보**
 > 작성일: 2026-08-01
@@ -150,6 +150,8 @@ fail-closed하고 관리자 local recovery를 사용한다.
 | Challenge | `9f4d1002-7d9e-4fb1-9c54-6f4d53474b31` | read + indicate |
 | Proof | `9f4d1003-7d9e-4fb1-9c54-6f4d53474b31` | write |
 | Result | `9f4d1004-7d9e-4fb1-9c54-6f4d53474b31` | indicate |
+| Fast RX | `9f4d1005-7d9e-4fb1-9c54-6f4d53474b31` | write |
+| Fast TX | `9f4d1006-7d9e-4fb1-9c54-6f4d53474b31` | indicate |
 
 Service UUID와 advertisement는 발견자이지 자격이 아니다. BLE Secure Connections link encryption은
 privacy/DoS 완화를 위한 defense-in-depth로 사용할 수 있지만 app-layer proof 검증을 생략할 근거가
@@ -174,6 +176,8 @@ Bluetooth LE default ATT_MTU 23에서도 동작해야 하며 큰 MTU 성공을 �
 한 ATT value의 data capacity는 `ATT_MTU - 3 - 10`이다. v1 message type은
 `0x01 CLIENT_HELLO`, `0x02 TARGET_HELLO`, `0x10 CHALLENGE`, `0x11 PROOF`,
 `0x12 RESULT`, `0x7f ERROR`다.
+v2 fast-path message type은 `0x20 FAST_CHALLENGE`, `0x21 FAST_PROOF`,
+`0x22 FAST_RESULT`다. framing header 자체는 v1을 그대로 사용한다.
 
 Target은 연결당 한 reassembly buffer와 동시에 한 `message_id`만 허용한다. index가 연속 증가하지
 않거나 header가 fragment 사이에 달라지거나, 중복 fragment 내용이 다르거나, 누적 길이가 선언을
@@ -217,6 +221,27 @@ binding을 매 연결 다시 확인한다.
 
 `negotiation_hash = SHA256(CLIENT_HELLO payload || TARGET_HELLO payload)`이며 challenge와 proof에
 묶인다. hello 변조는 proof input을 바꾸거나 client security floor 검증에서 거부된다.
+
+### 4.3a v2 fast path
+
+최신 Android와 Target은 같은 primary service 안의 Fast RX/TX characteristic 존재를 확인하면
+v2를 선택한다. Android는 Fast TX CCCD 하나만 활성화하고 Target은 그 구독을 현재 connection
+generation에 결합해 fresh session ID와 nonce를 만든 뒤 즉시 `FAST_CHALLENGE`를 보낸다. 이어서
+Android가 `FAST_PROOF`를 쓰고 Target이 실제 FSM action commit 뒤 `FAST_RESULT`를 보낸다.
+따라서 정상 흐름에서 v1의 Hello CCCD, Challenge CCCD, Result CCCD, Client Hello와 Target Hello
+왕복이 모두 사라진다.
+
+v2의 고정 negotiation binding은
+`SHA256("SGKFAST2" || 0x0002 || 0x01 || 0x0003)`이다. Challenge magic은 `SGKCHAL2`,
+proof signing-domain magic은 `SGKPRF02`이므로 v1 bytes를 v2로 교차 재생할 수 없다. 나머지
+door/session/nonce/boot/deadline/ACL binding, 단일 사용, P-256 verification, Result-to-FSM commit
+순서는 v1과 동일하다. Target은 private key나 재사용 가능한 proof를 저장하지 않는다.
+
+N/N-1 OTA 전환 기간에는 새 앱이 Fast RX/TX가 모두 없는 구 Target에만 v1을 사용할 수 있고,
+새 Target도 구 앱의 v1 characteristic을 한 release window 동안 제공한다. 일단 앱이 v2를 선택한
+세션은 어떤 v2 오류 뒤에도 v1로 downgrade/retry하지 않는다. Fast RX/TX 중 하나만 발견되는
+부분 서비스는 v1으로 내리지 않고 service-discovery 실패로 닫는다. 이 전환 shim은 정상 v2 실행
+경로가 아니며 호환 matrix와 rollback 검증 뒤 별도 변경으로 제거한다.
 
 ### 4.4 실시간 relay/wormhole 경계와 배포 Gate
 
@@ -274,7 +299,7 @@ fatal auth disable 상태로 처리한다.
 
 | offset | size | field |
 |---:|---:|---|
-| 0 | 8 | ASCII `SGKCHAL1` |
+| 0 | 8 | v1 ASCII `SGKCHAL1`; v2 ASCII `SGKCHAL2` |
 | 8 | 2 | selected protocol_version |
 | 10 | 16 | door_id |
 | 26 | 16 | session_id |
@@ -294,7 +319,7 @@ Android가 `SHA256withECDSA`로 서명하는 bytes는 정확히 61 bytes다.
 
 | offset | size | field |
 |---:|---:|---|
-| 0 | 8 | ASCII `SGKPRF01` |
+| 0 | 8 | v1 ASCII `SGKPRF01`; v2 ASCII `SGKPRF02` |
 | 8 | 32 | SHA256(CHALLENGE canonical payload 138 bytes) |
 | 40 | 16 | credential_id |
 | 56 | 1 | action: `1=ARM_FOR_SENSOR`, `2=OPEN_IMMEDIATELY` |

@@ -14,6 +14,7 @@ data class GattTransportPerformance(
   val negotiatedMtu: Int = 23,
   val mtuStatus: MtuNegotiationStatus = MtuNegotiationStatus.NOT_REQUESTED,
   val highPriorityRequested: Boolean = false,
+  val protocolMode: GattProtocolMode = GattProtocolMode.LEGACY_V1,
 )
 
 data class GattSessionPerformance(
@@ -35,10 +36,12 @@ data class GattSessionPerformance(
     "negotiatedMtu" to transport.negotiatedMtu,
     "mtuStatus" to transport.mtuStatus.name,
     "highPriorityRequested" to transport.highPriorityRequested,
+    "protocolMode" to transport.protocolMode.name,
   )
 }
 
 interface BleGattTransport {
+  val protocolMode: GattProtocolMode
   suspend fun connect(deviceAddress: String)
   suspend fun negotiate(clientHello: ByteArray): ByteArray
   suspend fun readChallenge(): ByteArray
@@ -193,20 +196,31 @@ class GattSessionEngine(
       withTimeout(timeoutMs) {
         transport.connect(deviceAddress)
         connectSetupMs = markPhase()
-        val clientHello = GattCanonicalCodec.clientHello(mobileBuild)
-        val targetHelloBytes = transport.negotiate(clientHello)
-        val targetHello = GattCanonicalCodec.parseTargetHello(targetHelloBytes)
-        negotiationMs = markPhase()
-        val negotiationHash = GattCanonicalCodec.sha256(clientHello + targetHello.canonical)
+        val protocolVersion: Int
+        val negotiationHash: ByteArray
+        if (transport.protocolMode == GattProtocolMode.FAST_V2) {
+          protocolVersion = GattProtocol.FAST_PROTOCOL_VERSION
+          negotiationHash = GattCanonicalCodec.fastNegotiationHash()
+          negotiationMs = 0
+        } else {
+          protocolVersion = GattProtocol.PROTOCOL_VERSION
+          val clientHello = GattCanonicalCodec.clientHello(mobileBuild)
+          val targetHelloBytes = transport.negotiate(clientHello)
+          val targetHello = GattCanonicalCodec.parseTargetHello(targetHelloBytes)
+          negotiationMs = markPhase()
+          negotiationHash = GattCanonicalCodec.sha256(clientHello + targetHello.canonical)
+        }
         val challenge = GattCanonicalCodec.parseChallenge(
           transport.readChallenge(),
           negotiationHash,
+          protocolVersion,
         )
         challengeMs = markPhase()
         val canonical = GattCanonicalCodec.proofSigningInput(
           challenge.canonical,
           credentialId,
           action,
+          protocolVersion = protocolVersion,
         )
         val signature = signer.signCanonical(credentialId, canonical)
         signingMs = markPhase()
@@ -217,7 +231,11 @@ class GattSessionEngine(
         )
         proofWriteMs = markPhase()
         proofObserver.afterProofWrite()
-        val result = GattCanonicalCodec.parseResult(transport.awaitResult(), challenge.sessionId)
+        val result = GattCanonicalCodec.parseResult(
+          transport.awaitResult(),
+          challenge.sessionId,
+          protocolVersion,
+        )
         resultWaitMs = markPhase()
         proofObserver.afterResultReceived(result)
         val elapsed = elapsed(started)

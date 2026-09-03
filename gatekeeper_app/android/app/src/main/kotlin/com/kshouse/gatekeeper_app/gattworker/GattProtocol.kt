@@ -13,9 +13,12 @@ object GattProtocol {
   val CHALLENGE_UUID: UUID = UUID.fromString("9f4d1002-7d9e-4fb1-9c54-6f4d53474b31")
   val PROOF_UUID: UUID = UUID.fromString("9f4d1003-7d9e-4fb1-9c54-6f4d53474b31")
   val RESULT_UUID: UUID = UUID.fromString("9f4d1004-7d9e-4fb1-9c54-6f4d53474b31")
+  val FAST_RX_UUID: UUID = UUID.fromString("9f4d1005-7d9e-4fb1-9c54-6f4d53474b31")
+  val FAST_TX_UUID: UUID = UUID.fromString("9f4d1006-7d9e-4fb1-9c54-6f4d53474b31")
   val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
   const val PROTOCOL_VERSION = 1
+  const val FAST_PROTOCOL_VERSION = 2
   const val FRAMING_VERSION = 1
   const val MAX_MESSAGE_BYTES = 2048
   const val CLIENT_CAPABILITIES = 3L
@@ -26,6 +29,19 @@ object GattProtocol {
   const val CHALLENGE = 0x10
   const val PROOF = 0x11
   const val RESULT = 0x12
+  const val FAST_CHALLENGE = 0x20
+  const val FAST_PROOF = 0x21
+  const val FAST_RESULT = 0x22
+}
+
+enum class GattProtocolMode { LEGACY_V1, FAST_V2 }
+
+internal fun selectGattProtocolMode(
+  fastRxPresent: Boolean,
+  fastTxPresent: Boolean,
+): GattProtocolMode {
+  require(fastRxPresent == fastTxPresent) { "partial v2 service is invalid" }
+  return if (fastRxPresent) GattProtocolMode.FAST_V2 else GattProtocolMode.LEGACY_V1
 }
 
 data class Challenge(
@@ -56,8 +72,13 @@ class TargetHelloRejectedException(val status: Int) :
   IllegalArgumentException("target hello rejected with status $status")
 
 object GattCanonicalCodec {
-  private val challengeMagic = "SGKCHAL1".toByteArray(Charsets.US_ASCII)
-  private val proofMagic = "SGKPRF01".toByteArray(Charsets.US_ASCII)
+  private val fastNegotiationTranscript = byteArrayOf(
+    'S'.code.toByte(), 'G'.code.toByte(), 'K'.code.toByte(), 'F'.code.toByte(),
+    'A'.code.toByte(), 'S'.code.toByte(), 'T'.code.toByte(), '2'.code.toByte(),
+    0x00, 0x02, 0x01, 0x00, 0x03,
+  )
+
+  fun fastNegotiationHash(): ByteArray = sha256(fastNegotiationTranscript)
 
   fun clientHello(mobileBuild: Long = 0L): ByteArray = ByteBuffer.allocate(16)
     .order(ByteOrder.BIG_ENDIAN)
@@ -90,13 +111,22 @@ object GattCanonicalCodec {
     return TargetHello(bytes.copyOf(), selected, status, securityFloor)
   }
 
-  fun parseChallenge(bytes: ByteArray, expectedNegotiationHash: ByteArray): Challenge {
+  fun parseChallenge(
+    bytes: ByteArray,
+    expectedNegotiationHash: ByteArray,
+    expectedProtocol: Int = GattProtocol.PROTOCOL_VERSION,
+  ): Challenge {
     require(bytes.size == 138) { "malformed challenge length" }
-    require(bytes.copyOfRange(0, 8).contentEquals(challengeMagic)) { "malformed challenge magic" }
+    val expectedMagic = if (expectedProtocol == GattProtocol.FAST_PROTOCOL_VERSION) {
+      "SGKCHAL2"
+    } else {
+      "SGKCHAL1"
+    }.toByteArray(Charsets.US_ASCII)
+    require(bytes.copyOfRange(0, 8).contentEquals(expectedMagic)) { "malformed challenge magic" }
     val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
     buffer.position(8)
     val protocol = buffer.short.toInt() and 0xffff
-    require(protocol == GattProtocol.PROTOCOL_VERSION) { "unsupported challenge protocol" }
+    require(protocol == expectedProtocol) { "unsupported challenge protocol" }
     val door = ByteArray(16).also(buffer::get)
     val session = ByteArray(16).also(buffer::get)
     val nonce = ByteArray(32).also(buffer::get)
@@ -118,12 +148,19 @@ object GattCanonicalCodec {
     credentialId: ByteArray,
     action: Int = GattProtocol.ACTION_ARM_FOR_SENSOR,
     clientCapabilities: Long = GattProtocol.CLIENT_CAPABILITIES,
+    protocolVersion: Int = GattProtocol.PROTOCOL_VERSION,
   ): ByteArray {
     require(challengeCanonical.size == 138) { "challenge canonical length" }
     require(credentialId.size == 16) { "credential id length" }
     return ByteBuffer.allocate(61)
       .order(ByteOrder.BIG_ENDIAN)
-      .put(proofMagic)
+      .put(
+        if (protocolVersion == GattProtocol.FAST_PROTOCOL_VERSION) {
+          "SGKPRF02"
+        } else {
+          "SGKPRF01"
+        }.toByteArray(Charsets.US_ASCII),
+      )
       .put(sha256(challengeCanonical))
       .put(credentialId)
       .put(action.toByte())
@@ -151,7 +188,11 @@ object GattCanonicalCodec {
       .array()
   }
 
-  fun parseResult(bytes: ByteArray, expectedSessionId: ByteArray): TargetResult {
+  fun parseResult(
+    bytes: ByteArray,
+    expectedSessionId: ByteArray,
+    expectedProtocol: Int = GattProtocol.PROTOCOL_VERSION,
+  ): TargetResult {
     require(bytes.size == 32) { "malformed result length" }
     val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
     val protocol = buffer.short.toInt() and 0xffff
@@ -159,7 +200,7 @@ object GattCanonicalCodec {
     val reason = buffer.short.toInt() and 0xffff
     val retryAfter = buffer.int.toLong() and 0xffffffffL
     val aclVersion = buffer.long
-    require(protocol == GattProtocol.PROTOCOL_VERSION) { "unsupported result protocol" }
+    require(protocol == expectedProtocol) { "unsupported result protocol" }
     require(session.contentEquals(expectedSessionId)) { "result session mismatch" }
     require(reason in 0..10) { "unknown result reason" }
     require(aclVersion >= 0) { "invalid ACL version" }

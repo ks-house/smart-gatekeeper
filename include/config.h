@@ -144,6 +144,8 @@ constexpr const char* HARDWARELESS_CHAR_HELLO_UUID  = "9f4d1001-7d9e-4fb1-9c54-6
 constexpr const char* HARDWARELESS_CHAR_CHAL_UUID   = "9f4d1002-7d9e-4fb1-9c54-6f4d53474b31";
 constexpr const char* HARDWARELESS_CHAR_PROOF_UUID  = "9f4d1003-7d9e-4fb1-9c54-6f4d53474b31";
 constexpr const char* HARDWARELESS_CHAR_RESULT_UUID = "9f4d1004-7d9e-4fb1-9c54-6f4d53474b31";
+constexpr const char* HARDWARELESS_CHAR_FAST_RX_UUID = "9f4d1005-7d9e-4fb1-9c54-6f4d53474b31";
+constexpr const char* HARDWARELESS_CHAR_FAST_TX_UUID = "9f4d1006-7d9e-4fb1-9c54-6f4d53474b31";
 
 // 비콘 광고 인터벌 (ms) — 100ms: 반응성과 전력 균형
 constexpr uint32_t BLE_ADV_INTERVAL_MS = 100;
