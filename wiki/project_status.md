@@ -18,6 +18,11 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-04 GATT v2 trusted-policy authorization candidate
+
+- Immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` is bound to a complete 102-path persistent policy bundle. The sole protected-byte change is `.github/workflows/deploy.yml`, whose exact Target build-input hashes cover the five changed firmware inputs.
+- This policy-only branch authorizes no artifact or runtime action. Hosted policy review/merge, feature merge-connection and fresh CI, final actual-main policy rotation, signed Target/mobile publication, installation and physical latency evidence remain separate Gates.
+
 ## 2026-09-03 crash-durable access Activity candidate
 
 - 첫 post-install manual terminal과 HA entity-specific Activity가 실제로 갱신됐고, owner가 이번에도

@@ -1805,3 +1805,27 @@ migrates no NAS schema and changes no Home Assistant, relay or physical door
 state. Hosted review/normal merge, exact Backend schema 013 deployment, signed
 Target OTA publication/install/reboot/health and repeated live administrator/HA
 correlation remain separate Gates.
+
+## 63. GATT v2 fast-path authorization candidate
+
+Immutable feature candidate
+`b5afa8f5660c53517e9bfabf18b5560ac874372d` introduces the Android/Target
+single-CCCD `FAST_CHALLENGE -> FAST_PROOF -> FAST_RESULT` path while keeping the
+v1 characteristics only as the bounded N/N-1 OTA transition shim. The v2 path
+uses fresh session/nonce material, distinct challenge/proof domains, current
+signed ACL verification, single-use proof and actual FSM commit before OK.
+Android selects v1 only when both fast characteristics are absent and fails
+closed on a partial fast service; a v2-selected session never retries v1.
+
+The indivisible inventory remains 102 protected paths. Exactly one normalized
+protected blob changes: `.github/workflows/deploy.yml` updates the exact build-
+input hashes for five changed firmware files. The other 101 protected bytes,
+seven-workflow inventory and empty local-Action inventory remain identical to
+trusted main. The sole `gatt-v2-fast-b5afa8f-persistent-baseline` is pinned to
+the exact repository, immutable feature SHA and complete ordered digest map.
+
+This policy-only authorization publishes no Target firmware or Android APK,
+installs nothing and performs no relay or physical action. Normal policy review
+and merge, feature merge-connection and fresh CI, actual-main merge, final
+policy rotation, signed artifact publication, install/reboot/health and repeated
+same-phone latency measurement remain separate Gates.

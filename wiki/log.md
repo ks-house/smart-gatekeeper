@@ -6266,3 +6266,16 @@
 - Target run `33668277535` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.436+main.g6aa8d18`, build ID `main-436-6aa8d188f509f2135c1551abca9284022ef88e2d`. Publication is not installation evidence.
 - The owner reported that the recent-access result changed. This is positive evidence for the already-deployed latest-status projection only; it does not yet prove every schema 013 canonical event, administrator row or HA Activity event.
 - Windows Computer Use failed before browser selection because its sandbox cwd was not a Windows-local URI. The reviewed Target broker principal could not read status or publish HA ingress, and station-local TCP/80 recovery timed out. No duplicate OTA request, unsigned command, NVS erase, full flash or relay operation was attempted. One owner HA OTA press, exact post-reboot version/health readback and repeated administrator/HA correlation remain open.
+
+## [2026-09-04] compile | Authorize GATT v2 fast-path candidate
+
+- Bound immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` to the sole `gatt-v2-fast-b5afa8f-persistent-baseline` with the complete ordered 102-path normalized digest map.
+- Exactly one protected blob changes: `deploy.yml` refreshes the exact build-input hashes for five changed Target firmware inputs. The other 101 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The reviewed protocol keeps fresh per-access proof, v2 domain separation, signed ACL verification, FSM commit-before-OK, partial-service fail-closed behavior and a bounded absence-only v1 N/N-1 shim.
+- This policy-only candidate publishes and installs nothing and changes no live Target, mobile, relay or door state. Hosted policy review/merge, feature merge-connection/fresh CI, final main rotation, publication, installation and physical latency evidence remain separate Gates.
+
+## [2026-09-04] test | Validate GATT v2 trusted-policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d`, the complete 102-path map, one changed protected blob, seven-workflow inventory and empty local-Action inventory.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and repository whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, signed publication, installation and physical latency evidence remain separate Gates.
