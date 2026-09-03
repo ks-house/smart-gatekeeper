@@ -6315,3 +6315,22 @@
 - Cached Flutter 3.47.1 plus repository-selected Gradle 9.1 compiled the app and passed `:app:testDebugUnitTest` with 19 suites/75 tests and zero failures, errors or skips. An unscoped all-dependency task separately failed only the external `url_launcher_android` Robolectric test because SDK 36 requires Java 21 while the builder has Java 17; hosted CI remains the release reproducibility authority.
 - ESP32-C6 personal-production pioarduino compile/link/factory image succeeded at 75,912/327,680 bytes RAM and 1,768,106/7,340,032 bytes application flash using an example provisioning link that was removed immediately afterward.
 - Repository discovery ran 344 tests: 342 passed, one declared environment-only case skipped and the sole failure was the expected fail-closed trusted-policy digest mismatch for modified protected `deploy.yml`. No CI, signed publication, install, reboot, health or physical latency improvement is claimed by these local results.
+
+## [2026-09-04] compile | Authorize GATT v2 fast-path candidate
+
+- Bound immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` to the sole `gatt-v2-fast-b5afa8f-persistent-baseline` with the complete ordered 102-path normalized digest map.
+- Exactly one protected blob changes: `deploy.yml` refreshes the exact build-input hashes for five changed Target firmware inputs. The other 101 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- The reviewed protocol keeps fresh per-access proof, v2 domain separation, signed ACL verification, FSM commit-before-OK, partial-service fail-closed behavior and a bounded absence-only v1 N/N-1 shim.
+- This policy-only candidate publishes and installs nothing and changes no live Target, mobile, relay or door state. Hosted policy review/merge, feature merge-connection/fresh CI, final main rotation, publication, installation and physical latency evidence remain separate Gates.
+
+## [2026-09-04] test | Validate GATT v2 trusted-policy bundle
+
+- All 42 focused trusted-workflow policy tests passed for immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d`, the complete 102-path map, one changed protected blob, seven-workflow inventory and empty local-Action inventory.
+- Full repository discovery passed 343/343 tests with one declared environment-only skip. JSON syntax and repository whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, signed publication, installation and physical latency evidence remain separate Gates.
+
+## [2026-09-04] compile | Connect GATT v2 feature to trusted policy main
+
+- Policy PR #352 passed the hosted inert-byte trusted-base check and merge-committed normally as main `e2b07217a6d814c5fb19360e1c37128e6cb67362`.
+- Merged that exact policy main into the feature branch while preserving both append-only evidence histories. Immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` remains in ancestry and all candidate protected bytes remain the authorized set.
+- Merge-connected focused policy/GATT/manual/Target-publication coverage passed 90/90. Full repository discovery passed 344/344 with one declared environment-only skip; this is still source/test evidence, not publication or installation.

@@ -25,6 +25,11 @@ applies_to:
 - Android private key는 계속 AndroidKeyStore 안에 있고 Target은 signed ACL public credential만 보유한다. v2도 session/nonce를 매번 새로 생성하며 `SGKCHAL2`/`SGKPRF02` domain separation, 5초 deadline, single-use proof와 actual FSM commit-before-OK를 유지한다.
 - Native/contract 16 tests, Android `:app:testDebugUnitTest` 19 suite/75 tests와 ESP32-C6 personal-production compile이 통과했다. 해당 Target 빌드는 예제 secrets를 사용한 source compile proof일 뿐이다. CI, signed artifacts, Target OTA install/reboot/health, APK 설치와 동일 휴대폰 반복 latency 측정은 아직 수행하지 않았다.
 
+## 2026-09-04 GATT v2 trusted-policy authorization candidate
+
+- Immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` is bound to a complete 102-path persistent policy bundle. The sole protected-byte change is `.github/workflows/deploy.yml`, whose exact Target build-input hashes cover the five changed firmware inputs.
+- This policy-only branch authorizes no artifact or runtime action. Hosted policy review/merge, feature merge-connection and fresh CI, final actual-main policy rotation, signed Target/mobile publication, installation and physical latency evidence remain separate Gates.
+
 ## 2026-09-03 crash-durable access Activity candidate
 
 - 첫 post-install manual terminal과 HA entity-specific Activity가 실제로 갱신됐고, owner가 이번에도
