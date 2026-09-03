@@ -17,7 +17,6 @@ MCU       : ESP32-C6-DevKitC-1 (RISC-V, NOT Xtensa)
 금지 핀   : GPIO 4,5,8,9,15 (스트래핑), 17,18,19,20 (USB/UART)
 지식베이스: wiki/index.md 를 먼저 읽어라
 로그      : wiki/log.md 에 반드시 기록하라
-GitHub 인증: 프로세스 환경 변수 GITHUB_TOKEN만 사용 (출력·파일 저장 금지)
 OTA       : 모바일 앱·Target OTA/rollback 경로는 최상위 불변조건 (기능 변경으로 약화 금지)
 ```
 
@@ -234,9 +233,8 @@ lib_deps  = ArduinoJson, PubSubClient
 
 ## 11. GitHub 인증·게시 규칙
 
-1. 이 프로젝트의 GitHub CLI와 push 인증은 **현재 프로세스의 `GITHUB_TOKEN` 환경 변수**를 사용한다.
+1. 이 프로젝트의 GitHub CLI와 push 인증은 사용자의 gh 를 그대로 사용한다.
 2. 토큰 원문을 콘솔, 로그, wiki, 커밋, `.env`, Git remote URL에 출력하거나 저장하지 않는다.
 3. 게시 전에 토큰 존재 여부와 `gh auth status` 성공 여부를 확인한다. 확인 로그에는 원문 대신 존재 여부만 남긴다.
 4. sandbox의 socket/network 차단은 토큰 오류가 아니다. 연결 거부·timeout이 보이면 네트워크 권한을 적용해 `gh auth status`를 다시 실행하고, GitHub에 실제로 연결된 결과로 판단한다.
-5. GitHub 연결 후에도 401/invalid가 확인된 경우에만 토큰 만료·폐기·권한 부족으로 판정한다. 저장 계정이나 `gh auth login`으로 임의 우회하지 말고 사용자에게 환경 변수 갱신을 요청한다.
-6. 인증이 성공한 뒤에만 변경 범위 확인, 명시적 staging, commit, push를 수행한다.
+5. 인증이 성공한 뒤에만 변경 범위 확인, 명시적 staging, commit, push를 수행한다.
