@@ -6346,3 +6346,10 @@
 - Focused trusted-policy coverage passed 42/42 and full repository discovery passed 344/344 with one declared PowerShell-environment skip.
 - The authenticated live verifier selected `current-main-baseline` for actual feature main `3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957` and approved the complete 102-path GitHub object set. JSON structure and whitespace validation also passed.
 - These results authorize exact source bytes only; they are not Android installation, Target OTA installation/reboot/health or physical BLE latency evidence.
+
+## [2026-09-04] test | Publish final-main GATT v2 mobile and Target artifacts
+
+- Final policy PR #354 passed hosted trusted-base verification run `33783674874` and merge-committed normally as final main `9ef6b82b060d0a2e0ac7f3018ee3ae93db0536e2`.
+- Mobile run `33783754107` production-signed and atomically published `1.0.0-g9ef6b82` / 40701. Downloaded APK size 55,217,305 and SHA-256 `5e42c377eff7afcc2dd30f2c8112a40e5359cb166e78416eb8fd9d949c170f7d` match the signed manifest; primary/fallback HTTPS readback and previous-valid preservation passed.
+- Target run `33783754099` built, encrypted, signed and atomically published `2.1.442+main.g9ef6b82`, build ID `main-442-9ef6b82b060d0a2e0ac7f3018ee3ae93db0536e2`. Sanitized evidence binds the 1,873,332-byte encrypted artifact, SHA-256 `6e49ca70152ca85feef940455c915f768bfb1966670d0b791a93d2ea51da0363`, pinned NAS host identity, HTTPS readback and retained previous valid pair.
+- Windows ADB reported no connected devices. Computer Use initialization failed before listing windows because the helper rejected this task's WSL file URI, and read-only Windows LAN HTTP probes to the two last-known Target addresses timed out. No APK install, Target command, relay/door action, reboot or health confirmation is inferred from publication.

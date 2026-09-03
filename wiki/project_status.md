@@ -34,7 +34,13 @@ applies_to:
 
 - Policy PR #352 and feature PR #353 were merge-committed normally. Actual feature main is `3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957` and contains immutable feature `b5afa8f5660c53517e9bfabf18b5560ac874372d` in its ancestry.
 - Feature PR hosted gates passed: Android build/unit/native GATT, firmware canary, OTA P0, canonical protocol vectors and trusted workflow policy. These prove source/build contracts, not signed personal publication or physical runtime.
-- The final policy candidate retires the feature transition identity and pins one `current-main-baseline` to actual feature main with all 102 protected bytes unchanged. Its local 42-policy and full 344-test suites passed with one declared environment skip, and the live verifier approved all 102 GitHub objects. Final-policy hosted review/merge and subsequent exact-main personal Android/Target publication remain pending.
+- The final policy candidate retires the feature transition identity and pins one `current-main-baseline` to actual feature main with all 102 protected bytes unchanged. Its local 42-policy and full 344-test suites passed with one declared environment skip, and the live verifier approved all 102 GitHub objects. The hosted merge and publication outcomes are recorded immediately below.
+
+## 2026-09-04 GATT v2 final-main signed publication
+
+- Final policy PR #354 passed the hosted trusted-base check and merged normally as final main `9ef6b82b060d0a2e0ac7f3018ee3ae93db0536e2`.
+- Android run `33783754107` signed and atomically published `1.0.0-g9ef6b82` / 40701 to primary and fallback roots. Target run `33783754099` encrypted, signed and atomically published `2.1.442+main.g9ef6b82`; both runs preserved the previous valid pair and passed pinned-host NAS plus HTTPS readback.
+- Publication is not installation. Windows ADB had no connected device, Computer Use could not initialize from this WSL-backed task, and read-only LAN HTTP probes timed out. APK installation, Target install/reboot/health and same-phone `FAST_V2` latency therefore remain pending.
 
 ## 2026-09-03 crash-durable access Activity candidate
 

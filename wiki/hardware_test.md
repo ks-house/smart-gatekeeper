@@ -1,5 +1,5 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-09-04 (GATT v2 fast-path source/build evidence recorded; installation and physical latency pending)
+> Last updated: 2026-09-04 (GATT v2 final-main artifacts published; installation and physical latency pending)
 
 ## 1. 판정 원칙
 
@@ -12,6 +12,9 @@
 | Target protocol/adapter host coverage | v2 single Fast-TX subscription, fresh `SGKCHAL2`, `FAST_PROOF`, `SGKPRF02` verifier input, FSM action commit, `FAST_RESULT`를 포함한 focused contract 16 tests 통과 | PASS (host source) |
 | Personal-production firmware compile | ESP32-C6 pioarduino `esp32c6_personal_production` compile/link/factory image 성공; RAM 75,912/327,680 bytes, application flash 1,768,106/7,340,032 bytes | PASS (example-provisioned build only) |
 | Android JVM suite | 기존 Flutter builder, repository 지정 Gradle 9.1과 persistent package cache로 `:app:testDebugUnitTest` 실행; app/main 및 unit-test Kotlin compile, 19 suites/75 tests, 0 failures/errors/skips | PASS (container/JVM) |
+| Final-main policy and hosted CI | PRs #352, #353 and #354 passed protected review and normal merge; final main `9ef6b82b060d0a2e0ac7f3018ee3ae93db0536e2` retains one 102-path `current-main-baseline` sourced from actual feature main | PASS (repository/CI identity) |
+| Signed Android publication | Run `33783754107` production-signed and atomically published `1.0.0-g9ef6b82` / 40701. Downloaded artifact is 55,217,305 bytes with SHA-256 `5e42c377...c170f7d`; manifest and APK hash agree, signer certificate is the pinned `8bdbcf86...d7ba0`, both primary/fallback readback passed and the previous valid artifact was retained | PASS (signed publication/readback only); Windows ADB listed no connected device, so installation is not claimed |
+| Signed Target publication | Run `33783754099` built, encrypted, signed and atomically published `2.1.442+main.g9ef6b82`, build ID `main-442-9ef6b82b060d0a2e0ac7f3018ee3ae93db0536e2`. The 1,873,332-byte encrypted artifact SHA-256 is `6e49ca70...da0363`; pinned-host NAS and HTTPS readback passed with the previous valid pair retained | PASS (signed publication/readback only); install/reboot/health is not claimed |
 | Installed Target/mobile latency | OTA/APK 설치, reboot health, `protocolMode=FAST_V2`, 동일 휴대폰의 presence→ARMED 반복 측정 미수행 | PENDING (physical/runtime) |
 
 예제 `secrets.h` 연결은 compile 동안만 사용하고 제거했다. 이 표는 실제 Target identity, ACL, Wi-Fi,
