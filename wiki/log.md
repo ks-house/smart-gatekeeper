@@ -6346,3 +6346,15 @@
 - Focused trusted-policy coverage passed 42/42 and full repository discovery passed 344/344 with one declared PowerShell-environment skip.
 - The authenticated live verifier selected `current-main-baseline` for actual feature main `3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957` and approved the complete 102-path GitHub object set. JSON structure and whitespace validation also passed.
 - These results authorize exact source bytes only; they are not Android installation, Target OTA installation/reboot/health or physical BLE latency evidence.
+
+## [2026-09-04] compile | Authorize Target connectivity self-recovery candidate
+
+- Bound immutable feature `d0e43188449495ed33c860019fc1093b05491700` to the sole `target-recovery-d0e4318-persistent-baseline` with the complete ordered 102-path normalized digest map.
+- Exactly nine protected blobs change: the exact Target build map, Target OTA implementation, Backend/HA implementation and direct tests, and Target broker ACL/security contract. The other 93 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- This policy-only candidate publishes and installs nothing and changes no live Backend, Target, relay or door state. Hosted policy review/merge, feature merge-connection, final main rotation, deployment and physical health remain separate Gates.
+
+## [2026-09-04] test | Validate Target recovery trusted-policy bundle
+
+- All 42 focused trusted-policy tests passed for immutable feature `d0e43188449495ed33c860019fc1093b05491700`, its nine changed protected blobs and the other 93 current-main blobs.
+- Full repository discovery passed 344/344 tests with one declared PowerShell-environment skip. JSON syntax and repository whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, exact-main deployment and Target installation evidence remain separate Gates.
