@@ -22,6 +22,12 @@ class GattServer {
   static bool isEnabled();
   static void setEnabled(bool enabled);
   static bool isConnected();
+  // Snapshot used immediately before potentially blocking network work. True
+  // covers an accepted connection, an active protocol session, a queued fast
+  // start, and callback-enqueued/overflow-latched writes. The snapshot is
+  // serialized with NimBLE callbacks, but is not a reservation against a new
+  // callback that starts after this function returns.
+  static bool hasPendingIngress();
   static uint32_t getActiveConnections();
   static bool isOtaBusy();
   static void setOtaBusy(bool busy);
@@ -41,6 +47,14 @@ class GattServer {
   static void notifySessionCompleted(uint64_t now_ms);
   static void notifySessionTerminated(uint64_t now_ms,
                                       sgk::EventReason reason);
+  // Drain callback-deferred GATT evidence into the shared MQTT/NVS outbox and
+  // persist all volatile records before a controlled restart. No socket I/O is
+  // performed. False means at least one record could not be made durable.
+  static bool persistPendingEventsForRestart();
+  // Abort and physically disconnect the current pre-proof/idle transport.
+  // Used by the short unverified ingress lease; never call for an active
+  // verified ARMED/relay/cooldown session.
+  static bool abortUnverifiedIngress(uint32_t now_ms);
   // Keep local GATT canonical sequencing above a terminal position allocated
   // by the independent signed-command access path.
   static void advanceEventSequence(uint64_t used_sequence);

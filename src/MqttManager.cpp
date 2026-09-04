@@ -7,6 +7,7 @@
 #include "config.h"
 #include "ConfigManager.h"
 #include "DiagnosticsManager.h"
+#include "GattServer.h"
 #include "WifiManager.h"
 #include "OtaManager.h"
 #include "TargetAclManager.h"
@@ -14,20 +15,28 @@
 #include "TargetCommandSecurity.h"
 #include "FlatJsonObjectPolicy.h"
 #include "DurablePreferences.h"
+#include "RestartEvidenceRetention.h"
 
 #include <cstring>
 #include <ctime>
 #include <sys/time.h>
+#include <algorithm>
 #include <array>
+#include <new>
 
 #include <Preferences.h>
 #include <mbedtls/ecdsa.h>
 #include <mbedtls/ecp.h>
 
 #include <esp_arduino_version.h>
+#include <esp_attr.h>
+#include <esp_err.h>
 #include <esp_system.h>
+#include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <lwip/dns.h>
+#include <lwip/tcpip.h>
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -42,8 +51,19 @@ namespace {
 uint32_t mqttConnectAttempts = 0;
 uint32_t mqttConnectFailures = 0;
 int mqttLastError = 0;
+uint32_t mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS;
+uint32_t mqttNextConnectAttemptMs = 0;
+uint32_t mqttLastConnectDurationMs = 0;
+uint32_t mqttMaxConnectDurationMs = 0;
+uint32_t mqttConnectWorkerWatchdogFailures = 0;
 bool mqttSecurityReady = false;
 bool wifiAvailableLastUpdate = false;
+bool wifiLinkGenerationInitialized = false;
+uint32_t wifiLinkGenerationLastUpdate = 0;
+bool accessActionStartedDuringLoop = false;
+bool signedRestartPending = false;
+bool bootDiagnosticsPending = true;
+bool configStatePending = true;
 String commandTopic;
 String aclTopic;
 String commandAckTopic;
@@ -54,6 +74,134 @@ String canonicalEventTopic;
 String sensorTopic;
 String bootTopic;
 String configStateTopic;
+
+enum class MqttDnsState : uint8_t {
+    kIdle,
+    kPending,
+    kReady,
+    kFailed,
+};
+
+enum class MqttDnsPollResult : uint8_t {
+    kPending,
+    kReady,
+    kFailed,
+};
+
+portMUX_TYPE mqttDnsMux = portMUX_INITIALIZER_UNLOCKED;
+MqttDnsState mqttDnsState = MqttDnsState::kIdle;
+ip_addr_t mqttDnsAddress{};
+uint32_t mqttDnsGeneration = 0;
+uint32_t mqttDnsStartedMs = 0;
+
+enum class MqttConnectOutcome : uint8_t {
+    kSuccess,
+    kTlsFailed,
+    kMqttFailed,
+    kSubscribeFailed,
+    kAvailabilityFailed,
+    kStale,
+};
+
+struct MqttConnectRequest {
+    IPAddress broker_address;
+    uint32_t request_id = 0;
+    uint32_t wifi_link_generation = 0;
+    char client_id[96] = {};
+    char will_payload[192] = {};
+};
+
+struct MqttConnectResult {
+    MqttConnectOutcome outcome = MqttConnectOutcome::kTlsFailed;
+    uint32_t request_id = 0;
+    uint32_t wifi_link_generation = 0;
+    uint32_t duration_ms = 0;
+    int mqtt_error = MQTT_CONNECT_FAILED;
+    esp_err_t watchdog_error = ESP_OK;
+};
+
+portMUX_TYPE mqttConnectWorkerMux = portMUX_INITIALIZER_UNLOCKED;
+bool mqttConnectWorkerRunning = false;
+bool mqttConnectWorkerResultReady = false;
+bool mqttConnectWorkerCancelRequested = false;
+uint32_t mqttConnectWorkerRequestId = 0;
+MqttConnectResult mqttConnectWorkerResult{};
+
+struct PendingSignedAccessCommand {
+    bool ready = false;
+    sgk::SignedCommandEnvelope envelope{};
+};
+
+PendingSignedAccessCommand pendingSignedAccessCommand{};
+
+bool connectWorkerIsRunning() {
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    const bool running = mqttConnectWorkerRunning;
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+    return running;
+}
+
+uint32_t connectWorkerWatchdogFailuresSnapshot() {
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    const uint32_t failures = mqttConnectWorkerWatchdogFailures;
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+    return failures;
+}
+
+void requestConnectWorkerCancellation() {
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    if (mqttConnectWorkerRunning) mqttConnectWorkerCancelRequested = true;
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+}
+
+bool connectWorkerAttemptIsStale(uint32_t requestId,
+                                 uint32_t wifiLinkGeneration) {
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    const bool cancelled = mqttConnectWorkerCancelRequested ||
+        !mqttConnectWorkerRunning ||
+        mqttConnectWorkerRequestId != requestId;
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+    return cancelled ||
+           WifiManager::linkGeneration() != wifiLinkGeneration;
+}
+
+void completeConnectWorker(const MqttConnectResult& result) {
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    if (mqttConnectWorkerRunning &&
+        mqttConnectWorkerRequestId == result.request_id) {
+        mqttConnectWorkerResult = result;
+        mqttConnectWorkerResultReady = true;
+        mqttConnectWorkerRunning = false;
+        mqttConnectWorkerCancelRequested = false;
+    }
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+}
+
+bool takeConnectWorkerResult(MqttConnectResult* result) {
+    if (result == nullptr) return false;
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    const bool ready = mqttConnectWorkerResultReady;
+    if (ready) {
+        *result = mqttConnectWorkerResult;
+        mqttConnectWorkerResult = MqttConnectResult{};
+        mqttConnectWorkerResultReady = false;
+    }
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+    return ready;
+}
+
+const char* connectOutcomeName(MqttConnectOutcome outcome) {
+    switch (outcome) {
+      case MqttConnectOutcome::kSuccess: return "success";
+      case MqttConnectOutcome::kTlsFailed: return "tls_failed";
+      case MqttConnectOutcome::kMqttFailed: return "mqtt_failed";
+      case MqttConnectOutcome::kSubscribeFailed: return "subscribe_failed";
+      case MqttConnectOutcome::kAvailabilityFailed:
+        return "availability_failed";
+      case MqttConnectOutcome::kStale: return "stale";
+    }
+    return "unknown";
+}
 
 // Access events are produced by the gate-control loop and consumed by the same
 // Arduino loop only after the physical access-critical phase. Keeping this
@@ -66,7 +214,25 @@ size_t eventOutboxHead = 0;
 size_t eventOutboxCount = 0;
 uint32_t eventOutboxOverflowCount = 0;
 
-char pendingTelemetry[2048] = {};
+// A controlled software restart normally spills the volatile FIFO to NVS.
+// If that write path is unavailable, retain the exact remaining records in LP
+// SRAM across the restart. Keep this carrier trivially initialized: placing a
+// CanonicalEvent/std::array object directly in RTC_NOINIT could run a C++
+// constructor at boot and erase the evidence before validation.
+constexpr uint32_t kRtcEventFallbackMagic = 0x53475245;  // "SGRE"
+constexpr uint16_t kRtcEventFallbackVersion = 1;
+using RtcEventRetention = sgk::RestartEvidenceRetention<
+    sgk::CanonicalEvent, kEventOutboxCapacity,
+    kRtcEventFallbackMagic, kRtcEventFallbackVersion>;
+using RtcEventFallbackJournal = RtcEventRetention::Journal;
+static_assert(sizeof(RtcEventFallbackJournal) <= 12288,
+              "MQTT restart evidence journal exceeds RTC SRAM budget");
+RTC_NOINIT_ATTR RtcEventFallbackJournal rtcEventFallback;
+RtcEventRetention rtcEventRetention;
+uint32_t rtcEventFallbackRestoredCount = 0;
+bool rtcEventFallbackInvalid = false;
+
+char pendingTelemetry[2560] = {};
 bool pendingTelemetryValid = false;
 
 std::array<uint8_t, 32> accessEvidenceKey{};
@@ -93,6 +259,105 @@ struct AccessTerminalSummary {
 AccessTerminalSummary accessTerminalSummary{};
 sgk::SignedCommandAccessTracker signedCommandAccessTracker{};
 uint64_t accessEventSequenceHighWater = 0;
+
+void resetMqttDnsResolution() {
+    portENTER_CRITICAL(&mqttDnsMux);
+    ++mqttDnsGeneration;
+    if (mqttDnsGeneration == 0) ++mqttDnsGeneration;
+    mqttDnsState = MqttDnsState::kIdle;
+    mqttDnsStartedMs = 0;
+    ip_addr_set_zero(&mqttDnsAddress);
+    portEXIT_CRITICAL(&mqttDnsMux);
+}
+
+void completeMqttDnsResolution(uint32_t generation,
+                               const ip_addr_t* address) {
+    portENTER_CRITICAL(&mqttDnsMux);
+    if (mqttDnsState == MqttDnsState::kPending &&
+        mqttDnsGeneration == generation) {
+        if (address == nullptr || ip_addr_isany(address)) {
+            mqttDnsState = MqttDnsState::kFailed;
+        } else {
+            ip_addr_copy(mqttDnsAddress, *address);
+            mqttDnsState = MqttDnsState::kReady;
+        }
+    }
+    portEXIT_CRITICAL(&mqttDnsMux);
+}
+
+void mqttDnsFound(const char*, const ip_addr_t* address, void* callbackArg) {
+    const uint32_t generation = static_cast<uint32_t>(
+        reinterpret_cast<uintptr_t>(callbackArg));
+    completeMqttDnsResolution(generation, address);
+}
+
+MqttDnsPollResult pollMqttDns(IPAddress* resolvedAddress) {
+    if (resolvedAddress == nullptr) return MqttDnsPollResult::kFailed;
+
+    IPAddress literal;
+    if (literal.fromString(MQTT_HOST)) {
+        *resolvedAddress = literal;
+        return MqttDnsPollResult::kReady;
+    }
+
+    const uint32_t now = millis();
+    MqttDnsState state;
+    uint32_t generation;
+    uint32_t startedMs;
+    ip_addr_t address{};
+    portENTER_CRITICAL(&mqttDnsMux);
+    state = mqttDnsState;
+    generation = mqttDnsGeneration;
+    startedMs = mqttDnsStartedMs;
+    if (state == MqttDnsState::kReady) {
+        ip_addr_copy(address, mqttDnsAddress);
+    }
+    portEXIT_CRITICAL(&mqttDnsMux);
+
+    if (state == MqttDnsState::kReady) {
+        *resolvedAddress = IPAddress(&address);
+        return MqttDnsPollResult::kReady;
+    }
+    if (state == MqttDnsState::kFailed) {
+        resetMqttDnsResolution();
+        return MqttDnsPollResult::kFailed;
+    }
+    if (state == MqttDnsState::kPending) {
+        if (now - startedMs < MQTT_DNS_RESOLVE_TIMEOUT_MS) {
+            return MqttDnsPollResult::kPending;
+        }
+        resetMqttDnsResolution();
+        DiagnosticsManager::noteAction("mqtt_dns_timeout");
+        return MqttDnsPollResult::kFailed;
+    }
+
+    portENTER_CRITICAL(&mqttDnsMux);
+    ++mqttDnsGeneration;
+    if (mqttDnsGeneration == 0) ++mqttDnsGeneration;
+    generation = mqttDnsGeneration;
+    mqttDnsStartedMs = now;
+    mqttDnsState = MqttDnsState::kPending;
+    portEXIT_CRITICAL(&mqttDnsMux);
+
+    ip_addr_t immediate{};
+    LOCK_TCPIP_CORE();
+    const err_t result = dns_gethostbyname_addrtype(
+        MQTT_HOST, &immediate, mqttDnsFound,
+        reinterpret_cast<void*>(static_cast<uintptr_t>(generation)),
+        LWIP_DNS_ADDRTYPE_DEFAULT);
+    UNLOCK_TCPIP_CORE();
+    if (result == ERR_OK) {
+        completeMqttDnsResolution(generation, &immediate);
+        *resolvedAddress = IPAddress(&immediate);
+        return MqttDnsPollResult::kReady;
+    }
+    if (result == ERR_INPROGRESS) {
+        DiagnosticsManager::noteAction("mqtt_dns_started");
+        return MqttDnsPollResult::kPending;
+    }
+    completeMqttDnsResolution(generation, nullptr);
+    return MqttDnsPollResult::kFailed;
+}
 
 bool parseLowerHex16(const char* value, std::array<uint8_t, 16>* output) {
     if (value == nullptr || output == nullptr || std::strlen(value) != 32) {
@@ -173,7 +438,9 @@ bool actorEventCodeAllowsCredentialRef(const char* code) {
 }
 
 bool enqueueEventWithDurableSpill(const sgk::CanonicalEvent& event);
-bool enqueueEventOutbox(const sgk::CanonicalEvent& event);
+bool enqueueEventOutbox(const sgk::CanonicalEvent& event,
+                        bool useTerminalReserve = false);
+bool checkpointTerminalEvent(const sgk::CanonicalEvent& event);
 
 bool isSignedCommandTerminalCode(const char* code) {
     return code != nullptr &&
@@ -181,6 +448,13 @@ bool isSignedCommandTerminalCode(const char* code) {
             std::strcmp(code, "ACCESS_SIGNED_ARM_TERMINATED") == 0 ||
             std::strcmp(code, "ACCESS_SIGNED_MANUAL_COMPLETED") == 0 ||
             std::strcmp(code, "ACCESS_SIGNED_MANUAL_TERMINATED") == 0);
+}
+
+bool isAccessTerminalCheckpointCode(const char* code) {
+    return isSignedCommandTerminalCode(code) ||
+           (code != nullptr &&
+            (std::strcmp(code, "ACCESS_SESSION_COMPLETED") == 0 ||
+             std::strcmp(code, "ACCESS_SESSION_TERMINATED") == 0));
 }
 
 void uuidText(const std::array<uint8_t, 16>& value, char output[37]) {
@@ -283,15 +557,15 @@ bool enqueueSignedCommandTerminalEvent(
     }
     std::memset(eventTag, 0, sizeof(eventTag));
     // A signed terminal is the one record the operator must not lose on a
-    // reset between relay completion and the next MQTT update. Persist it
-    // before returning from the terminal callback; if NVS itself is
-    // unavailable, retain the exact record in the bounded RAM outbox.
-    if (g_offline_queue.push(event)) return true;
-    return enqueueEventOutbox(event);
+    // reset between relay completion and the next MQTT update. The shared
+    // checkpoint preserves older FIFO records first, then this exact terminal.
+    return checkpointTerminalEvent(event);
 }
 
-bool enqueueEventOutbox(const sgk::CanonicalEvent& event) {
-    if (eventOutboxCount == eventOutbox.size()) {
+bool enqueueEventOutbox(const sgk::CanonicalEvent& event,
+                        bool useTerminalReserve) {
+    const size_t limit = eventOutbox.size() - (useTerminalReserve ? 0 : 1);
+    if (eventOutboxCount >= limit) {
         ++eventOutboxOverflowCount;
         return false;
     }
@@ -311,6 +585,113 @@ void popEventOutbox() {
     if (eventOutboxCount == 0) return;
     eventOutboxHead = (eventOutboxHead + 1) % eventOutbox.size();
     --eventOutboxCount;
+    if (rtcEventRetention.frontRemoved()) {
+        // The last record represented by the RTC image has now either been
+        // published or durably migrated to NVS. Only this acknowledgement may
+        // clear the cross-reset copy.
+        RtcEventRetention::clearJournal(&rtcEventFallback);
+    }
+}
+
+void clearRtcEventFallback() {
+    RtcEventRetention::clearJournal(&rtcEventFallback);
+    rtcEventRetention.reset();
+}
+
+bool rtcEventFallbackIsValid() {
+    size_t newest = 0;
+    return RtcEventRetention::newestValidIndex(
+        rtcEventFallback, sgk::isValidCanonicalEventRecord, &newest);
+}
+
+bool saveEventOutboxToRtcFallback() {
+    if (eventOutboxCount == 0) {
+        clearRtcEventFallback();
+        return true;
+    }
+
+    rtcEventRetention.reset();
+    const bool saved = RtcEventRetention::saveJournal(
+        eventOutbox, eventOutboxHead, eventOutboxCount,
+        &rtcEventFallback, sgk::isValidCanonicalEventRecord);
+    if (saved) rtcEventRetention.retain(eventOutboxCount);
+    return saved;
+}
+
+void restoreEventOutboxFromRtcFallback() {
+    rtcEventFallbackRestoredCount = 0;
+    rtcEventFallbackInvalid = false;
+    if (!RtcEventRetention::hasRecognizedMagic(rtcEventFallback)) {
+        // RTC_NOINIT contents are unspecified after a cold power-on. Treat an
+        // unrelated signature as absence, not corrupted SGK evidence.
+        clearRtcEventFallback();
+        return;
+    }
+    if (!rtcEventFallbackIsValid()) {
+        rtcEventFallbackInvalid = true;
+        LOGF("[MQTT-ERROR] rejected invalid RTC restart evidence fallback");
+        clearRtcEventFallback();
+        return;
+    }
+
+    // MqttManager::init() precedes OfflineEventQueue::begin(). Restore to the
+    // empty volatile FIFO now; the existing update order drains the older NVS
+    // FIFO first, then these exact remaining records, preserving global order.
+    if (!RtcEventRetention::restoreNewest(
+            rtcEventFallback, &eventOutbox, &eventOutboxHead,
+            &eventOutboxCount, sgk::isValidCanonicalEventRecord)) {
+        rtcEventFallbackInvalid = true;
+        LOGF("[MQTT-ERROR] RTC restart evidence restore failed");
+        clearRtcEventFallback();
+        return;
+    }
+    rtcEventRetention.retain(eventOutboxCount);
+    rtcEventFallbackRestoredCount =
+        static_cast<uint32_t>(eventOutboxCount);
+    LOGF("[MQTT-WARN] restored %lu restart evidence record(s) from RTC SRAM; "
+         "retaining checkpoint until acknowledged",
+         static_cast<unsigned long>(rtcEventFallbackRestoredCount));
+}
+
+void removeEventOutboxTail() {
+    if (eventOutboxCount == 0) return;
+    const size_t tail =
+        (eventOutboxHead + eventOutboxCount - 1) % eventOutbox.size();
+    eventOutbox[tail] = sgk::CanonicalEvent{};
+    --eventOutboxCount;
+}
+
+bool checkpointTerminalEvent(const sgk::CanonicalEvent& event) {
+    // Establish a durable FIFO prefix before accepting a terminal. This keeps
+    // every older volatile record ahead of the terminal across a restart.
+    while (eventOutboxCount != 0) {
+        sgk::CanonicalEvent oldest{};
+        if (!peekEventOutbox(&oldest) || !g_offline_queue.push(oldest)) break;
+        popEventOutbox();
+    }
+    if (eventOutboxCount == 0 && g_offline_queue.push(event)) return true;
+
+    // NVS is full/unavailable. The ordinary producer path reserves one slot
+    // specifically for this terminal. Accept it only after checkpointing the
+    // complete remaining FIFO (including the terminal) to RTC SRAM.
+    DiagnosticsManager::markEvidencePersistenceFailure();
+    if (!enqueueEventOutbox(event, true)) return false;
+    if (saveEventOutboxToRtcFallback()) {
+        LOGF("[MQTT-WARN] terminal evidence accepted through RTC fallback; "
+             "NVS checkpoint unavailable records=%lu",
+             static_cast<unsigned long>(eventOutboxCount));
+        return true;
+    }
+
+    // Do not acknowledge a terminal whose restart checkpoint failed. Restore
+    // the previous FIFO-only checkpoint when possible so the upstream GATT
+    // deferred sink can retain and retry this terminal without duplicating it.
+    removeEventOutboxTail();
+    if (eventOutboxCount != 0 && !saveEventOutboxToRtcFallback()) {
+        LOGF("[MQTT-ERROR] failed to restore RTC checkpoint after terminal "
+             "acceptance rollback");
+    }
+    return false;
 }
 
 bool enqueueEventWithDurableSpill(const sgk::CanonicalEvent& event) {
@@ -424,12 +805,43 @@ bool parseSignatureHex(const char* value, std::array<uint8_t, 64>* output) {
 
 WiFiClientSecure MqttManager::wifiClient;
 PubSubClient MqttManager::client(wifiClient);
-uint32_t MqttManager::lastPublishMs = 0;
 bool MqttManager::connected = false;
 
-void MqttManager::publishCommandAck(
+bool MqttManager::isConnected() { return connected; }
+
+void MqttManager::deferForAccessCritical() {
+    requestConnectWorkerCancellation();
+}
+
+bool MqttManager::connectionAttemptInProgress() {
+    return connectWorkerIsRunning();
+}
+
+bool MqttManager::hasPendingRestartRequest() {
+    return signedRestartPending;
+}
+
+void MqttManager::performPendingRestart() {
+    if (!signedRestartPending) return;
+
+    // main invokes this only after it has blocked new GATT authentication,
+    // drained callback work, and re-proved an idle physical access path.
+    const bool evidenceDurable =
+        GattServer::persistPendingEventsForRestart();
+    if (!evidenceDurable) {
+        DiagnosticsManager::markEvidencePersistenceFailure();
+    }
+    signedRestartPending = false;
+    DiagnosticsManager::markPlannedRestart("signed_mqtt_reboot");
+    LOGF("[SYSTEM-WARN] signed MQTT reboot; evidence durable=%s",
+         evidenceDurable ? "yes" : "no");
+    delay(100);
+    ESP.restart();
+}
+
+bool MqttManager::publishCommandAck(
     const sgk::SignedCommandEnvelope& envelope, sgk::CommandResult result) {
-    if (!isConnected() || commandAckTopic.isEmpty()) return;
+    if (!isConnected() || commandAckTopic.isEmpty()) return false;
     StaticJsonDocument<384> document;
     document["schema_version"] = 1;
     document["target_id"] = DiagnosticsManager::targetId();
@@ -437,13 +849,250 @@ void MqttManager::publishCommandAck(
     document["nonce"] = envelope.nonce;
     document["result"] = static_cast<uint8_t>(result);
     char buffer[384]{};
-    if (serializeJson(document, buffer, sizeof(buffer)) > 0) {
-        client.publish(commandAckTopic.c_str(), buffer, false);
+    const size_t length = serializeJson(document, buffer, sizeof(buffer));
+    return !document.overflowed() && length > 0 && length < sizeof(buffer) &&
+           client.publish(commandAckTopic.c_str(), buffer, false);
+}
+
+bool MqttManager::startConnectWorker(const IPAddress& brokerAddress,
+                                     uint32_t wifiLinkGeneration) {
+    auto* request = new (std::nothrow) MqttConnectRequest{};
+    if (request == nullptr) return false;
+
+    request->broker_address = brokerAddress;
+    request->wifi_link_generation = wifiLinkGeneration;
+    std::snprintf(request->client_id, sizeof(request->client_id),
+                  "smart-gatekeeper-%s", DiagnosticsManager::targetId());
+    std::snprintf(
+        request->will_payload, sizeof(request->will_payload),
+        "{\"status\":\"offline\",\"scope\":\"mqtt_transport\","
+        "\"target_id\":\"%s\",\"boot_id\":\"%s\",\"boot_count\":%lu}",
+        DiagnosticsManager::targetId(), DiagnosticsManager::bootId(),
+        static_cast<unsigned long>(DiagnosticsManager::bootCount()));
+
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    if (mqttConnectWorkerRunning || mqttConnectWorkerResultReady) {
+        portEXIT_CRITICAL(&mqttConnectWorkerMux);
+        delete request;
+        return false;
+    }
+    ++mqttConnectWorkerRequestId;
+    if (mqttConnectWorkerRequestId == 0) ++mqttConnectWorkerRequestId;
+    request->request_id = mqttConnectWorkerRequestId;
+    mqttConnectWorkerCancelRequested = false;
+    mqttConnectWorkerRunning = true;
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+
+    const BaseType_t created = xTaskCreate(
+        connectWorkerEntry, "mqtt-connect", 12288, request,
+        tskIDLE_PRIORITY + 1, nullptr);
+    if (created == pdPASS) return true;
+
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    if (mqttConnectWorkerRunning &&
+        mqttConnectWorkerRequestId == request->request_id) {
+        mqttConnectWorkerRunning = false;
+        mqttConnectWorkerCancelRequested = false;
+    }
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+    delete request;
+    return false;
+}
+
+void MqttManager::connectWorkerEntry(void* argument) {
+    auto* allocated = static_cast<MqttConnectRequest*>(argument);
+    if (allocated == nullptr) {
+        vTaskDelete(nullptr);
+        return;
+    }
+    const MqttConnectRequest request = *allocated;
+    delete allocated;
+
+    const uint32_t startedMs = millis();
+    MqttConnectResult result{};
+    result.request_id = request.request_id;
+    result.wifi_link_generation = request.wifi_link_generation;
+
+    bool watchdogFailureCounted = false;
+    auto noteWatchdogFailure = [&](esp_err_t error, const char* phase) {
+        if (error == ESP_OK) return;
+        if (result.watchdog_error == ESP_OK) result.watchdog_error = error;
+        if (!watchdogFailureCounted) {
+            portENTER_CRITICAL(&mqttConnectWorkerMux);
+            ++mqttConnectWorkerWatchdogFailures;
+            portEXIT_CRITICAL(&mqttConnectWorkerMux);
+            watchdogFailureCounted = true;
+        }
+        LOGF("[MQTT-ERROR] connect worker watchdog %s failed: %s",
+             phase, esp_err_to_name(error));
+    };
+    const esp_err_t watchdogAddResult = esp_task_wdt_add(nullptr);
+    const bool watchdogEnrolled = watchdogAddResult == ESP_OK;
+    noteWatchdogFailure(watchdogAddResult, "add");
+    auto feedWatchdog = [&]() {
+        if (watchdogEnrolled) {
+            noteWatchdogFailure(esp_task_wdt_reset(), "reset");
+        }
+    };
+
+    auto finish = [&](MqttConnectOutcome outcome, int mqttError) {
+        result.outcome = outcome;
+        result.mqtt_error = mqttError;
+        result.duration_ms = millis() - startedMs;
+        if (outcome != MqttConnectOutcome::kSuccess) wifiClient.stop();
+        if (watchdogEnrolled) {
+            feedWatchdog();
+            // Relinquish the task watchdog before handing ownership of the
+            // transport/result back to loopTask. Every terminal path reaches
+            // this lambda, including stale and transport failures.
+            noteWatchdogFailure(esp_task_wdt_delete(nullptr), "delete");
+        }
+        completeConnectWorker(result);
+    };
+    auto stale = [&]() {
+        return connectWorkerAttemptIsStale(
+            request.request_id, request.wifi_link_generation);
+    };
+
+    if (stale()) {
+        finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    // DNS already completed on loopTask. This worker exclusively owns both
+    // transport objects until it publishes a terminal result, so loopTask and
+    // PubSubClient can never race the synchronous TCP/TLS/MQTT handshake.
+    const bool tlsConnected = wifiClient.connect(
+        request.broker_address, MQTT_PORT, MQTT_HOST, SECRET_ROOT_CA_CERT,
+        nullptr, nullptr) == 1;
+    if (!tlsConnected) {
+        finish(stale() ? MqttConnectOutcome::kStale
+                       : MqttConnectOutcome::kTlsFailed,
+               MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+    feedWatchdog();
+    if (stale()) {
+        finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    const bool sessionConnected = client.connect(
+        request.client_id, MQTT_USER, MQTT_PASSWORD,
+        availabilityTopic.c_str(), 1, true, request.will_payload);
+    if (!sessionConnected) {
+        const int state = client.state();
+        finish(stale() ? MqttConnectOutcome::kStale
+                       : MqttConnectOutcome::kMqttFailed,
+               state);
+        vTaskDelete(nullptr);
+        return;
+    }
+    feedWatchdog();
+    if (stale()) {
+        finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    const bool commandSubscribed = client.subscribe(commandTopic.c_str(), 1);
+    feedWatchdog();
+    const bool aclSubscribed = client.subscribe(aclTopic.c_str(), 1);
+    feedWatchdog();
+    if (!commandSubscribed || !aclSubscribed) {
+        finish(stale() ? MqttConnectOutcome::kStale
+                       : MqttConnectOutcome::kSubscribeFailed,
+               MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+    // PubSubClient 2.8 confirms only that each SUBSCRIBE packet was written;
+    // broker SUBACK is not observable. Retained availability therefore remains
+    // a transport signal, while signed status freshness proves readiness.
+    if (stale()) {
+        finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    char onlinePayload[192]{};
+    std::snprintf(
+        onlinePayload, sizeof(onlinePayload),
+        "{\"status\":\"online\",\"scope\":\"mqtt_transport\","
+        "\"target_id\":\"%s\",\"boot_id\":\"%s\",\"boot_count\":%lu}",
+        DiagnosticsManager::targetId(), DiagnosticsManager::bootId(),
+        static_cast<unsigned long>(DiagnosticsManager::bootCount()));
+    if (!client.publish(availabilityTopic.c_str(), onlinePayload, true)) {
+        finish(stale() ? MqttConnectOutcome::kStale
+                       : MqttConnectOutcome::kAvailabilityFailed,
+               MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+    feedWatchdog();
+    if (stale()) {
+        finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    finish(MqttConnectOutcome::kSuccess, 0);
+    vTaskDelete(nullptr);
+}
+
+void MqttManager::dispatchPendingAccessCommand() {
+    if (!pendingSignedAccessCommand.ready) return;
+    const PendingSignedAccessCommand pending = pendingSignedAccessCommand;
+    pendingSignedAccessCommand = PendingSignedAccessCommand{};
+
+    // client.loop() has returned, so PubSubClient has already emitted the
+    // inbound QoS1 PUBACK. Complete the application ACK write before entering
+    // ARMED/RELAY_HOLD; no TLS write is allowed after the physical transition.
+    if (!publishCommandAck(pending.envelope,
+                           sgk::CommandResult::kAccepted)) {
+        // The signed command remains authorized. Preserve the prior at-most-
+        // once physical behavior and leave queued audit evidence; exact-session
+        // status/event evidence resolves the transport uncertainty.
+        publishEvent(
+            "signed_command_ack_write_failed",
+            sgk::TargetCommandSecurity::actionName(pending.envelope.action));
+    }
+
+    bool effectCompleted = false;
+    if (pending.envelope.action == sgk::CommandAction::kArm) {
+        effectCompleted = triggerArm();
+    } else if (pending.envelope.action ==
+               sgk::CommandAction::kManualRemote) {
+        effectCompleted = triggerManualDoorOpen();
+    }
+
+    if (effectCompleted) {
+        accessActionStartedDuringLoop = true;
+        pendingTelemetryValid = false;
+    } else {
+        signedCommandAccessTracker.cancel();
+        publishEvent(
+            "signed_command_effect_rejected",
+            sgk::TargetCommandSecurity::actionName(pending.envelope.action));
+    }
+
+    // Authorization already committed replay state=1 before the application
+    // ACK. Move it to completed only after the physical effect attempt. A
+    // storage failure intentionally leaves DuplicateUncertain, preventing an
+    // unsafe replay; reporting is queued and performs no socket I/O here.
+    if (!commandSecurity.markCompleted(pending.envelope)) {
+        publishEvent(
+            "signed_command_completion_persist_failed",
+            sgk::TargetCommandSecurity::actionName(pending.envelope.action));
     }
 }
 
 void MqttManager::init() {
     mqttSecurityReady = false;
+    connected = false;
     accessEvidenceReady = false;
     accessEvidenceKey.fill(0);
     accessEvidenceDoorId.fill(0);
@@ -457,11 +1106,34 @@ void MqttManager::init() {
     accessEventSequenceHighWater = 0;
     accessTerminalSummary = AccessTerminalSummary{};
     signedCommandAccessTracker.cancel();
+    pendingSignedAccessCommand = PendingSignedAccessCommand{};
     wifiAvailableLastUpdate = false;
+    wifiLinkGenerationInitialized = false;
+    wifiLinkGenerationLastUpdate = 0;
+    accessActionStartedDuringLoop = false;
+    signedRestartPending = false;
+    portENTER_CRITICAL(&mqttConnectWorkerMux);
+    mqttConnectWorkerRunning = false;
+    mqttConnectWorkerResultReady = false;
+    mqttConnectWorkerCancelRequested = false;
+    mqttConnectWorkerResult = MqttConnectResult{};
+    portEXIT_CRITICAL(&mqttConnectWorkerMux);
+    resetMqttDnsResolution();
     eventOutboxHead = 0;
     eventOutboxCount = 0;
     eventOutboxOverflowCount = 0;
+    restoreEventOutboxFromRtcFallback();
     pendingTelemetryValid = false;
+    mqttConnectAttempts = 0;
+    mqttConnectFailures = 0;
+    mqttLastError = 0;
+    mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS;
+    mqttNextConnectAttemptMs = 0;
+    mqttLastConnectDurationMs = 0;
+    mqttMaxConnectDurationMs = 0;
+    mqttConnectWorkerWatchdogFailures = 0;
+    bootDiagnosticsPending = true;
+    configStatePending = true;
     const String targetId = DiagnosticsManager::targetId();
     const bool transportProvisioned =
         std::strlen(MQTT_HOST) > 0 && MQTT_PORT != 1883 &&
@@ -511,10 +1183,16 @@ void MqttManager::init() {
     bootTopic = prefix + "/boot";
     configStateTopic = prefix + "/config-state";
     wifiClient.setCACert(SECRET_ROOT_CA_CERT);
+    wifiClient.setConnectionTimeout(MQTT_TCP_CONNECT_TIMEOUT_MS);
+    wifiClient.setHandshakeTimeout(MQTT_TLS_HANDSHAKE_TIMEOUT_SECONDS);
     client.setServer(MQTT_HOST, MQTT_PORT);
-    client.setBufferSize(8192); // boot diagnostics, HA discovery, and 64-entry Signed ACL payload 수용
+    if (!client.setBufferSize(8192)) {
+        LOGF("[MQTT-SECURITY] MQTT buffer allocation failed; transport disabled");
+        return;
+    }
     client.setKeepAlive(MQTT_KEEP_ALIVE_SECONDS);
-    client.setSocketTimeout(15); // TLS Handshake 대기 타임아웃 15초로 확장 (rc=-4 방지)
+    // PubSubClient's timeout covers MQTT CONNACK/read, not TCP or TLS.
+    client.setSocketTimeout(MQTT_PROTOCOL_SOCKET_TIMEOUT_SECONDS);
     client.setCallback(callback);
     mqttSecurityReady = true;
 }
@@ -633,24 +1311,48 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         publishCommandAck(envelope, authorization);
         return;
     }
-    bool effectCompleted = true;
-    bool accessLifecycleStarted = false;
-    if (envelope.action == sgk::CommandAction::kArm ||
-        envelope.action == sgk::CommandAction::kManualRemote) {
+
+    const bool accessCommand =
+        envelope.action == sgk::CommandAction::kArm ||
+        envelope.action == sgk::CommandAction::kManualRemote;
+    if (accessCommand) {
         const sgk::SignedCommandAccessTracker::Mode mode =
             envelope.action == sgk::CommandAction::kArm
                 ? sgk::SignedCommandAccessTracker::Mode::kArm
                 : sgk::SignedCommandAccessTracker::Mode::kManualRemote;
-        accessLifecycleStarted =
+        // update() is entered only after main's access-critical guard observes
+        // an idle control path. The single bounded slot closes the remaining
+        // local preflight: no second command or lifecycle may be outstanding.
+        const bool preflightAccepted =
+            !pendingSignedAccessCommand.ready &&
+            !signedCommandAccessTracker.active() &&
             signedCommandAccessTracker.begin(mode, envelope.session_id);
-        if (!accessLifecycleStarted) effectCompleted = false;
+        if (!preflightAccepted) {
+            const bool completionStored = commandSecurity.markCompleted(envelope);
+            publishCommandAck(
+                envelope,
+                completionStored ? sgk::CommandResult::kEffectRejected
+                                 : sgk::CommandResult::kReplayStorageFailure);
+            publishEvent(
+                "signed_command_effect_rejected",
+                sgk::TargetCommandSecurity::actionName(envelope.action));
+            return;
+        }
+
+        pendingSignedAccessCommand.ready = true;
+        pendingSignedAccessCommand.envelope = envelope;
+        // Return to PubSubClient. Its inbound QoS1 PUBACK is emitted after this
+        // callback returns; update() sends the application ACK and dispatches
+        // the physical effect only after client.loop() itself has returned.
+        return;
     }
+
+    bool effectCompleted = true;
     switch (envelope.action) {
       case sgk::CommandAction::kArm:
-        if (effectCompleted) effectCompleted = triggerArm();
-        break;
       case sgk::CommandAction::kManualRemote:
-        if (effectCompleted) effectCompleted = triggerManualDoorOpen();
+        // Handled by the bounded post-PUBACK dispatch path above.
+        effectCompleted = false;
         break;
       case sgk::CommandAction::kSetTxPower:
         if (envelope.value < -6 || envelope.value > 9) effectCompleted = false;
@@ -679,17 +1381,13 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         break;
       }
       case sgk::CommandAction::kOtaCheck:
-        OtaManager::checkAndUpdate(true);
+        OtaManager::requestCheck();
         break;
       case sgk::CommandAction::kReboot:
-        DiagnosticsManager::markPlannedRestart("signed_mqtt_reboot");
         break;
       default:
         effectCompleted = false;
         break;
-    }
-    if (accessLifecycleStarted && !effectCompleted) {
-        signedCommandAccessTracker.cancel();
     }
     if (!commandSecurity.markCompleted(envelope)) {
         publishCommandAck(envelope,
@@ -699,9 +1397,11 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     publishCommandAck(
         envelope, effectCompleted ? sgk::CommandResult::kAccepted
                                   : sgk::CommandResult::kEffectRejected);
-    if (envelope.action == sgk::CommandAction::kReboot) {
-        delay(100);
-        ESP.restart();
+    if (effectCompleted &&
+        envelope.action == sgk::CommandAction::kReboot) {
+        signedRestartPending = true;
+        publishEvent("signed_command_reboot",
+                     "Authenticated reboot staged after MQTT PUBACK");
     }
     if (!effectCompleted) {
         publishEvent("signed_command_effect_rejected",
@@ -713,11 +1413,104 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 
 void MqttManager::update() {
     if (!mqttSecurityReady) return;
+    const uint32_t wifiLinkGeneration = WifiManager::linkGeneration();
+    bool wifiLinkChanged = false;
+    if (!wifiLinkGenerationInitialized) {
+        wifiLinkGenerationInitialized = true;
+        wifiLinkGenerationLastUpdate = wifiLinkGeneration;
+    } else if (wifiLinkGeneration != wifiLinkGenerationLastUpdate) {
+        wifiLinkGenerationLastUpdate = wifiLinkGeneration;
+        wifiLinkChanged = true;
+        connected = false;
+        wifiAvailableLastUpdate = false;
+        resetMqttDnsResolution();
+        mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS;
+        mqttNextConnectAttemptMs = millis();
+        DiagnosticsManager::noteAction("mqtt_wifi_generation_changed");
+    }
+
+    // While the worker owns the TLS and PubSubClient objects, loopTask must not
+    // call even connected()/stop(). Cancellation is cooperative and bounded by
+    // the configured TCP/TLS/MQTT phase deadlines.
+    if (connectWorkerIsRunning()) {
+        if (wifiLinkChanged || !WifiManager::isConnected()) {
+            requestConnectWorkerCancellation();
+        }
+        return;
+    }
+
+    MqttConnectResult workerResult{};
+    if (takeConnectWorkerResult(&workerResult)) {
+        mqttLastConnectDurationMs = workerResult.duration_ms;
+        if (workerResult.watchdog_error != ESP_OK) {
+            DiagnosticsManager::noteAction(
+                "mqtt_connect_worker_wdt_degraded");
+        }
+        if (mqttLastConnectDurationMs > mqttMaxConnectDurationMs) {
+            mqttMaxConnectDurationMs = mqttLastConnectDurationMs;
+        }
+        const uint32_t currentLinkGeneration = WifiManager::linkGeneration();
+        const bool resultCurrent =
+            workerResult.wifi_link_generation == currentLinkGeneration &&
+            workerResult.wifi_link_generation == wifiLinkGeneration &&
+            WifiManager::isConnected() && client.connected() &&
+            wifiClient.connected();
+        if (workerResult.outcome == MqttConnectOutcome::kSuccess &&
+            resultCurrent) {
+            connected = true;
+            wifiAvailableLastUpdate = true;
+            mqttLastError = 0;
+            mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS;
+            mqttNextConnectAttemptMs = 0;
+            bootDiagnosticsPending = true;
+            configStatePending = true;
+            DiagnosticsManager::noteMqttConnected();
+            DiagnosticsManager::noteAction("mqtt_connect_worker_adopted");
+            LOGF("[MQTT-SSL] worker connection adopted (%lu ms)",
+                 static_cast<unsigned long>(workerResult.duration_ms));
+            publishEvent(
+                "connected",
+                "ESP32-C6 v2.1 Online (SSL) — AJ-SR04T Ultrasonic Sensor");
+            return;
+        }
+
+        // The worker has published its terminal result and relinquished object
+        // ownership, so loopTask can now tear down a stale or failed socket.
+        wifiClient.stop();
+        connected = false;
+        resetMqttDnsResolution();
+        mqttLastError = workerResult.mqtt_error;
+        if (workerResult.outcome == MqttConnectOutcome::kStale ||
+            !resultCurrent) {
+            mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS;
+            mqttNextConnectAttemptMs = millis();
+            DiagnosticsManager::noteAction("mqtt_connect_worker_stale");
+        } else {
+            ++mqttConnectFailures;
+            mqttNextConnectAttemptMs = millis() + mqttReconnectDelayMs;
+            mqttReconnectDelayMs = std::min(
+                mqttReconnectDelayMs * 2, MQTT_RECONNECT_MAX_MS);
+            DiagnosticsManager::noteAction("mqtt_connect_worker_failed");
+        }
+        LOGF("[MQTT-ERROR] worker result=%s rc=%d duration=%lu ms",
+             connectOutcomeName(workerResult.outcome), workerResult.mqtt_error,
+             static_cast<unsigned long>(workerResult.duration_ms));
+        return;
+    }
+
+    if (wifiLinkChanged) {
+        // No worker owns the objects now. Close without MQTT DISCONNECT so a
+        // broker-side session from the old link cannot remain falsely online.
+        wifiClient.stop();
+    }
+
     const bool wifiAvailable = WifiManager::isConnected();
     if (!wifiAvailable) {
-        if (wifiAvailableLastUpdate || client.connected()) {
-            client.disconnect();
+        if (wifiAvailableLastUpdate || connected || client.connected()) {
+            // Close the transport without MQTT DISCONNECT so the broker emits
+            // the retained LWT instead of preserving a stale online snapshot.
             wifiClient.stop();
+            resetMqttDnsResolution();
             connected = false;
             DiagnosticsManager::noteAction("mqtt_wifi_lost");
         }
@@ -728,80 +1521,70 @@ void MqttManager::update() {
         client.disconnect();
         wifiClient.stop();
         connected = false;
-        lastPublishMs = millis() - 5001;
+        mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS;
+        mqttNextConnectAttemptMs = millis();
         wifiAvailableLastUpdate = true;
         DiagnosticsManager::noteAction("mqtt_wifi_recovered");
     }
 
     if (!client.connected()) {
-        uint32_t now = millis();
-        if (now - lastPublishMs > 5000) {
-            lastPublishMs = now;
-            String clientId =
-                "smart-gatekeeper-" + String(DiagnosticsManager::targetId());
-            
-            static int failCount = 0;
-
-            LOGF("[MQTT-SSL] 브로커 연결 시도 중... (%s:%d)", MQTT_HOST, MQTT_PORT);
-
-            char willPayload[192];
-            snprintf(willPayload, sizeof(willPayload),
-                     "{\"status\":\"offline\",\"target_id\":\"%s\","
-                     "\"boot_id\":\"%s\"}",
-                     DiagnosticsManager::targetId(),
-                     DiagnosticsManager::bootId());
-            mqttConnectAttempts++;
-
-            if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD,
-                               availabilityTopic.c_str(), 1, false,
-                               willPayload)) {
-                LOGF("[MQTT-SSL] 브로커 연결 성공!");
-                failCount = 0; // 성공 시 카운트 초기화
-                mqttLastError = 0;
-                connected = true;
-                DiagnosticsManager::noteMqttConnected();
-
-                char onlinePayload[192];
-                snprintf(onlinePayload, sizeof(onlinePayload),
-                         "{\"status\":\"online\",\"target_id\":\"%s\","
-                         "\"boot_id\":\"%s\",\"boot_count\":%lu}",
-                         DiagnosticsManager::targetId(),
-                         DiagnosticsManager::bootId(),
-                         static_cast<unsigned long>(
-                             DiagnosticsManager::bootCount()));
-                client.publish(availabilityTopic.c_str(), onlinePayload, false);
-
-                const bool commandSubscribed =
-                    client.subscribe(commandTopic.c_str(), 1);
-                const bool aclSubscribed = client.subscribe(aclTopic.c_str(), 1);
-                if (!commandSubscribed || !aclSubscribed) {
-                    LOGF("[MQTT-SECURITY] Exact Target subscriptions failed");
-                    client.disconnect();
-                    wifiClient.stop();
-                    return;
-                }
-                LOGF("[MQTT-SECURITY] Exact per-Target topics subscribed");
-
-                publishBootDiagnostics();
-                publishEvent("connected", "ESP32-C6 v2.1 Online (SSL) — AJ-SR04T Ultrasonic Sensor");
-
-                extern int g_tx_power_dbm;
-                extern uint16_t g_distance_threshold_cm;
-                extern uint32_t g_pre_arm_duration_ms;
-                extern uint32_t g_relay_cooldown_ms;
-                publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, g_relay_cooldown_ms);
+        connected = false;
+        const uint32_t now = millis();
+        if (mqttNextConnectAttemptMs == 0 ||
+            static_cast<int32_t>(now - mqttNextConnectAttemptMs) >= 0) {
+            IPAddress brokerAddress;
+            const MqttDnsPollResult dnsResult =
+                pollMqttDns(&brokerAddress);
+            if (dnsResult == MqttDnsPollResult::kPending) return;
+            if (dnsResult == MqttDnsPollResult::kFailed) {
+                ++mqttConnectAttempts;
+                ++mqttConnectFailures;
+                mqttLastError = MQTT_CONNECT_FAILED;
+                mqttNextConnectAttemptMs = millis() + mqttReconnectDelayMs;
+                mqttReconnectDelayMs = std::min(
+                    mqttReconnectDelayMs * 2, MQTT_RECONNECT_MAX_MS);
+                DiagnosticsManager::noteAction("mqtt_dns_failed");
+                LOGF("[MQTT-ERROR] bounded DNS resolution failed; retry in "
+                     "%lu ms",
+                     static_cast<unsigned long>(mqttReconnectDelayMs));
                 return;
-            } else {
-                failCount++;
-                mqttConnectFailures++;
-                mqttLastError = client.state();
-                connected = false;
-                LOGF("[MQTT-ERROR] 연결 실패 rc=%d (TLS 소켓 리셋, 누적 실패: %d회)", client.state(), failCount);
-                wifiClient.stop(); // 이전 소켓 핸들 및 SSL 핸드셰이크 찌꺼기 강제 정돈
             }
+
+            ++mqttConnectAttempts;
+            DiagnosticsManager::noteAction("mqtt_connect_start");
+            if (!startConnectWorker(brokerAddress, wifiLinkGeneration)) {
+                ++mqttConnectFailures;
+                mqttLastError = MQTT_CONNECT_FAILED;
+                mqttNextConnectAttemptMs = millis() + mqttReconnectDelayMs;
+                mqttReconnectDelayMs = std::min(
+                    mqttReconnectDelayMs * 2, MQTT_RECONNECT_MAX_MS);
+                DiagnosticsManager::noteAction(
+                    "mqtt_connect_worker_start_failed");
+                LOGF("[MQTT-ERROR] connect worker allocation/start failed");
+                return;
+            }
+            LOGF("[MQTT-SSL] background connect started (%s:%d link=%lu)",
+                 MQTT_HOST, MQTT_PORT,
+                 static_cast<unsigned long>(wifiLinkGeneration));
+            return;
         }
-    } else {
-        client.loop();
+        return;
+    }
+
+    connected = true;
+    accessActionStartedDuringLoop = false;
+    client.loop();
+    connected = client.connected() && wifiClient.connected();
+    dispatchPendingAccessCommand();
+    if (accessActionStartedDuringLoop || !connected) {
+        return;
+    }
+    if (signedRestartPending) {
+        // PubSubClient has emitted its inbound PUBACK. Main now owns the GATT
+        // quiesce/re-check gate and calls performPendingRestart() only after a
+        // racing verified action is either absent or terminal.
+        return;
+    }
 
         // Deliver the newest signed terminal/IDLE snapshot before draining the
         // audit backlog so the mobile exact-session poll is not delayed behind
@@ -811,6 +1594,21 @@ void MqttManager::update() {
             client.publish(statusTopic.c_str(), pendingTelemetry, false)) {
             pendingTelemetryValid = false;
             return;
+        }
+
+        if (bootDiagnosticsPending) {
+            publishBootDiagnostics();
+            if (!bootDiagnosticsPending) return;
+        }
+        if (configStatePending) {
+            extern int g_tx_power_dbm;
+            extern uint16_t g_distance_threshold_cm;
+            extern uint32_t g_pre_arm_duration_ms;
+            extern uint32_t g_relay_cooldown_ms;
+            publishConfigState(g_tx_power_dbm, g_distance_threshold_cm,
+                               g_pre_arm_duration_ms,
+                               g_relay_cooldown_ms);
+            if (!configStatePending) return;
         }
 
         extern sgk::OfflineEventQueue g_offline_queue;
@@ -946,13 +1744,13 @@ void MqttManager::update() {
             }
             return;
         }
-    }
 }
 
 void MqttManager::publishBootDiagnostics() {
+    bootDiagnosticsPending = true;
     if (!isConnected()) return;
 
-    StaticJsonDocument<1536> doc;
+    StaticJsonDocument<2304> doc;
     doc["target_id"] = DiagnosticsManager::targetId();
     doc["boot_id"] = DiagnosticsManager::bootId();
     doc["boot_count"] = DiagnosticsManager::bootCount();
@@ -993,7 +1791,6 @@ void MqttManager::publishBootDiagnostics() {
         DiagnosticsManager::coreDumpElfSha256();
 
     doc["ip"] = WifiManager::getIP();
-    doc["wifi_bssid"] = WiFi.BSSIDstr();
     doc["wifi_channel"] = WiFi.channel();
     doc["wifi_rssi"] = WiFi.RSSI();
     doc["free_heap"] = ESP.getFreeHeap();
@@ -1003,18 +1800,49 @@ void MqttManager::publishBootDiagnostics() {
     doc["mqtt_connect_attempts"] = mqttConnectAttempts;
     doc["mqtt_connect_failures"] = mqttConnectFailures;
     doc["mqtt_last_error"] = mqttLastError;
+    doc["mqtt_last_connect_ms"] = mqttLastConnectDurationMs;
+    doc["mqtt_max_connect_ms"] = mqttMaxConnectDurationMs;
+    doc["mqtt_connect_worker_wdt_failures"] =
+        connectWorkerWatchdogFailuresSnapshot();
     doc["mqtt_event_outbox_depth"] = eventOutboxCount;
     doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
+    doc["previous_evidence_persistence_failed"] =
+        DiagnosticsManager::previousEvidencePersistenceFailed();
+    doc["rtc_event_fallback_restored_count"] =
+        rtcEventFallbackRestoredCount;
+    doc["rtc_event_fallback_pending_count"] =
+        rtcEventRetention.retainedCount();
+    doc["rtc_event_fallback_invalid"] = rtcEventFallbackInvalid;
+    doc["loop_watchdog_enabled"] =
+        DiagnosticsManager::loopWatchdogEnabled();
+    doc["wifi_link_generation"] = WifiManager::linkGeneration();
+    doc["wifi_outage_count"] = WifiManager::outageCount();
+    doc["wifi_recovery_escalations"] =
+        WifiManager::recoveryEscalationCount();
+    doc["wifi_recovery_ap_failures"] =
+        WifiManager::recoveryApStartFailureCount();
+    doc["wifi_recovery_successes"] = WifiManager::recoverySuccessCount();
+    doc["wifi_recovery_phase"] = WifiManager::recoveryPhase();
+    doc["wifi_last_unplanned_disconnect_reason"] =
+        WifiManager::lastUnplannedDisconnectReason();
+    doc["wifi_current_outage_ms"] = WifiManager::currentOutageMs();
+    doc["wifi_last_outage_ms"] = WifiManager::lastOutageMs();
 
-    char buffer[1536];
+    char buffer[2304];
     size_t length = serializeJson(doc, buffer, sizeof(buffer));
-    bool ok = length > 0 &&
-              client.publish(bootTopic.c_str(), buffer, false);
+    bool ok = !doc.overflowed() && length > 0 &&
+              length < sizeof(buffer) &&
+              client.publish(bootTopic.c_str(), buffer, true);
+    if (ok) {
+        DiagnosticsManager::acknowledgePreviousEvidencePersistenceFailure();
+    }
+    bootDiagnosticsPending = !ok;
     LOGF("[MQTT-DIAG] retained boot diagnostics publish: %s (%u bytes)",
          ok ? "OK" : "FAIL", static_cast<unsigned int>(length));
 }
 
 void MqttManager::publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs) {
+    configStatePending = true;
     if (!isConnected()) return;
 
     StaticJsonDocument<256> doc;
@@ -1026,9 +1854,13 @@ void MqttManager::publishConfigState(int txPower, int distanceThresholdCm, uint3
     doc["status"] = "applied_nvs";
 
     char buffer[256];
-    serializeJson(doc, buffer);
-    client.publish(configStateTopic.c_str(), buffer, false);
-    LOGF("[MQTT-CONFIG] 📡 Retained Config State 발행 완료: %s", buffer);
+    const size_t length = serializeJson(doc, buffer, sizeof(buffer));
+    const bool ok = !doc.overflowed() && length > 0 &&
+                    length < sizeof(buffer) &&
+                    client.publish(configStateTopic.c_str(), buffer, true);
+    configStatePending = !ok;
+    LOGF("[MQTT-CONFIG] retained config state publish: %s (%u bytes)",
+         ok ? "OK" : "FAIL", static_cast<unsigned int>(length));
 }
 
 
@@ -1080,7 +1912,7 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     bytesToLowerHex(accessTag, sizeof(accessTag), accessTagHex,
                     sizeof(accessTagHex));
 
-    StaticJsonDocument<2048> doc;
+    StaticJsonDocument<2560> doc;
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
     doc["state"]           = stateStr ? stateStr : "UNKNOWN";
@@ -1136,8 +1968,33 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
         DiagnosticsManager::mqttConnectCount();
     doc["mqtt_connect_attempts"] = mqttConnectAttempts;
     doc["mqtt_connect_failures"] = mqttConnectFailures;
+    doc["mqtt_last_connect_ms"] = mqttLastConnectDurationMs;
+    doc["mqtt_max_connect_ms"] = mqttMaxConnectDurationMs;
+    doc["mqtt_connect_worker_wdt_failures"] =
+        connectWorkerWatchdogFailuresSnapshot();
     doc["mqtt_event_outbox_depth"] = eventOutboxCount;
     doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
+    doc["previous_evidence_persistence_failed"] =
+        DiagnosticsManager::previousEvidencePersistenceFailed();
+    doc["rtc_event_fallback_restored_count"] =
+        rtcEventFallbackRestoredCount;
+    doc["rtc_event_fallback_pending_count"] =
+        rtcEventRetention.retainedCount();
+    doc["rtc_event_fallback_invalid"] = rtcEventFallbackInvalid;
+    doc["loop_watchdog_enabled"] =
+        DiagnosticsManager::loopWatchdogEnabled();
+    doc["wifi_link_generation"] = WifiManager::linkGeneration();
+    doc["wifi_outage_count"] = WifiManager::outageCount();
+    doc["wifi_recovery_escalations"] =
+        WifiManager::recoveryEscalationCount();
+    doc["wifi_recovery_ap_failures"] =
+        WifiManager::recoveryApStartFailureCount();
+    doc["wifi_recovery_successes"] = WifiManager::recoverySuccessCount();
+    doc["wifi_recovery_phase"] = WifiManager::recoveryPhase();
+    doc["wifi_last_unplanned_disconnect_reason"] =
+        WifiManager::lastUnplannedDisconnectReason();
+    doc["wifi_current_outage_ms"] = WifiManager::currentOutageMs();
+    doc["wifi_last_outage_ms"] = WifiManager::lastOutageMs();
 
     const size_t telemetryBytes = measureJson(doc);
     pendingTelemetryValid = !doc.overflowed() && telemetryBytes > 0 &&
@@ -1193,6 +2050,9 @@ bool MqttManager::enqueueCanonicalEvent(const sgk::CanonicalEvent& event) {
              !actorEventCodeAllowsCredentialRef(event.event_type))) {
             return false;
         }
+    }
+    if (isAccessTerminalCheckpointCode(event.event_type)) {
+        return checkpointTerminalEvent(event);
     }
     return enqueueEventWithDurableSpill(event);
 }
@@ -1273,9 +2133,34 @@ uint64_t MqttManager::finishSignedCommandAccess(bool failsafe,
         reasonCode,
         nullptr, terminal.phase_mask);
     if (!enqueueSignedCommandTerminalEvent(terminal, sequence, reasonCode)) {
+        DiagnosticsManager::markEvidencePersistenceFailure();
         LOGF("[ERROR] Signed MQTT terminal canonical enqueue failed");
     }
     return sequence;
+}
+
+bool MqttManager::persistPendingEventsForRestart() {
+    extern sgk::OfflineEventQueue g_offline_queue;
+    while (eventOutboxCount != 0) {
+        sgk::CanonicalEvent event{};
+        if (!peekEventOutbox(&event) || !g_offline_queue.push(event)) {
+            const bool rtcSaved = saveEventOutboxToRtcFallback();
+            LOGF("[MQTT-%s] NVS restart evidence spill failed; "
+                 "RTC fallback=%s records=%lu",
+                 rtcSaved ? "WARN" : "ERROR",
+                 rtcSaved ? "saved" : "failed",
+                 static_cast<unsigned long>(eventOutboxCount));
+            // RTC SRAM is a software-reset recovery aid, not durable storage.
+            // Report failure even when captured so the next boot diagnostic
+            // exposes the degraded evidence path instead of claiming NVS
+            // durability.
+            DiagnosticsManager::markEvidencePersistenceFailure();
+            return false;
+        }
+        popEventOutbox();
+    }
+    clearRtcEventFallback();
+    return true;
 }
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {

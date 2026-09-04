@@ -8,8 +8,11 @@
 #include <esp_core_dump.h>
 #include <esp_err.h>
 #include <esp_system.h>
+#include <esp_task_wdt.h>
 
 #include "ConfigManager.h"
+#include "EvidencePersistenceFailureLatch.h"
+#include "config.h"
 
 namespace {
 
@@ -25,7 +28,7 @@ struct RtcBreadcrumb {
   uint8_t isArmed;
   uint8_t relayCommandedOn;
   int8_t relayPinLevel;
-  uint8_t reserved2;
+  uint8_t evidencePersistenceFailed;
   char state[16];
   char action[32];
 };
@@ -34,6 +37,7 @@ RTC_NOINIT_ATTR RtcBreadcrumb rtcBreadcrumb;
 
 RtcBreadcrumb previousBreadcrumb = {};
 bool previousBreadcrumbIsValid = false;
+sgk::EvidencePersistenceFailureLatch evidencePersistenceFailureLatch;
 
 char targetIdValue[16] = "unknown";
 char bootIdValue[33] = "unknown";
@@ -41,6 +45,7 @@ uint32_t bootCountValue = 0;
 esp_reset_reason_t resetReasonValue = ESP_RST_UNKNOWN;
 char plannedRestartValue[32] = "";
 uint32_t mqttConnectCountValue = 0;
+bool loopWatchdogEnabledValue = false;
 
 bool coreDumpValidValue = false;
 char coreDumpStatusValue[32] = "not_checked";
@@ -157,6 +162,9 @@ void DiagnosticsManager::begin() {
   if (previousBreadcrumbIsValid) {
     previousBreadcrumb = rtcBreadcrumb;
   }
+  evidencePersistenceFailureLatch.begin(
+      previousBreadcrumbIsValid &&
+      previousBreadcrumb.evidencePersistenceFailed != 0);
 
   uint64_t mac = ESP.getEfuseMac();
   snprintf(targetIdValue, sizeof(targetIdValue), "%012llx",
@@ -173,6 +181,8 @@ void DiagnosticsManager::begin() {
 
   memset(&rtcBreadcrumb, 0, sizeof(rtcBreadcrumb));
   rtcBreadcrumb.relayPinLevel = -1;
+  rtcBreadcrumb.evidencePersistenceFailed =
+      evidencePersistenceFailureLatch.active() ? 1 : 0;
   strlcpy(rtcBreadcrumb.state, "BOOTING", sizeof(rtcBreadcrumb.state));
   strlcpy(rtcBreadcrumb.action, "boot", sizeof(rtcBreadcrumb.action));
   commitBreadcrumb();
@@ -217,6 +227,26 @@ void DiagnosticsManager::noteRelayState(bool relayCommandedOn,
   noteAction(action);
 }
 
+void DiagnosticsManager::markEvidencePersistenceFailure() {
+  // This field is deliberately independent of action. markPlannedRestart()
+  // updates the action string immediately afterward, but must not erase the
+  // evidence-loss diagnostic consumed on the next boot.
+  evidencePersistenceFailureLatch.mark();
+  rtcBreadcrumb.evidencePersistenceFailed =
+      evidencePersistenceFailureLatch.active() ? 1 : 0;
+  rtcBreadcrumb.uptimeMs = millis();
+  commitBreadcrumb();
+}
+
+void DiagnosticsManager::acknowledgePreviousEvidencePersistenceFailure() {
+  if (!evidencePersistenceFailureLatch.carriedFailurePending()) return;
+  evidencePersistenceFailureLatch.acknowledgeCarriedFailure();
+  rtcBreadcrumb.evidencePersistenceFailed =
+      evidencePersistenceFailureLatch.active() ? 1 : 0;
+  rtcBreadcrumb.uptimeMs = millis();
+  commitBreadcrumb();
+}
+
 void DiagnosticsManager::markPlannedRestart(const char* reason) {
   const char* value = reason ? reason : "unspecified";
   ConfigManager::setPlannedRestartReason(value);
@@ -229,6 +259,55 @@ void DiagnosticsManager::markPlannedRestart(const char* reason) {
 void DiagnosticsManager::noteMqttConnected() {
   mqttConnectCountValue++;
   noteAction("mqtt_connected");
+}
+
+bool DiagnosticsManager::enableLoopWatchdog() {
+  esp_task_wdt_config_t watchdogConfig{};
+  watchdogConfig.timeout_ms = LOOP_TASK_WATCHDOG_TIMEOUT_MS;
+  watchdogConfig.idle_core_mask = 0;
+#if defined(CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0) && \
+    CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0
+  watchdogConfig.idle_core_mask |= 1U << 0;
+#endif
+#if defined(CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1) && \
+    CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
+  watchdogConfig.idle_core_mask |= 1U << 1;
+#endif
+  watchdogConfig.trigger_panic = true;
+
+  esp_err_t result = esp_task_wdt_reconfigure(&watchdogConfig);
+  if (result == ESP_ERR_INVALID_STATE) {
+    result = esp_task_wdt_init(&watchdogConfig);
+  }
+  if (result != ESP_OK) {
+    loopWatchdogEnabledValue = false;
+    noteAction("loop_watchdog_config_failed");
+    Serial.printf("[DIAG-ERROR] loop watchdog configure failed: %s\n",
+                  esp_err_to_name(result));
+    return false;
+  }
+
+  // Arduino keeps its own loopTaskWDTEnabled flag and feeds at the top of
+  // every completed loop iteration. Use that supported adapter only after the
+  // SDK timeout has been widened from its unsafe five-second default.
+  enableLoopWDT();
+  loopWatchdogEnabledValue = esp_task_wdt_status(nullptr) == ESP_OK;
+  noteAction(loopWatchdogEnabledValue ? "loop_watchdog_ready"
+                                     : "loop_watchdog_subscribe_failed");
+  Serial.printf("[DIAG] loop watchdog %s (timeout=%lu ms panic=true)\n",
+                loopWatchdogEnabledValue ? "enabled" : "unavailable",
+                static_cast<unsigned long>(LOOP_TASK_WATCHDOG_TIMEOUT_MS));
+  return loopWatchdogEnabledValue;
+}
+
+void DiagnosticsManager::feedLoopWatchdog() {
+  if (loopWatchdogEnabledValue) {
+    feedLoopWDT();
+  }
+}
+
+bool DiagnosticsManager::loopWatchdogEnabled() {
+  return loopWatchdogEnabledValue;
 }
 
 const char* DiagnosticsManager::targetId() {
@@ -282,6 +361,11 @@ bool DiagnosticsManager::previousRelayCommandedOn() {
 
 int DiagnosticsManager::previousRelayPinLevel() {
   return previousBreadcrumbIsValid ? previousBreadcrumb.relayPinLevel : -1;
+}
+
+bool DiagnosticsManager::previousEvidencePersistenceFailed() {
+  return previousBreadcrumbIsValid &&
+         previousBreadcrumb.evidencePersistenceFailed != 0;
 }
 
 uint32_t DiagnosticsManager::mqttConnectCount() {

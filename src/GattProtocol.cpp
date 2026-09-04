@@ -43,6 +43,22 @@ bool allZeroBytes(const uint8_t* value, size_t length) {
   return aggregate == 0;
 }
 
+bool isCanonicalProofRejection(ResultReason reason) {
+  switch (reason) {
+    case ResultReason::kUnsupportedVersion:
+    case ResultReason::kMalformed:
+    case ResultReason::kExpiredOrReplay:
+    case ResultReason::kAclUnavailable:
+    case ResultReason::kCredentialDenied:
+    case ResultReason::kProofInvalid:
+      return true;
+    default:
+      // Session/transport/internal failures belong to the terminal event. They
+      // are not proof verdicts in the canonical event catalog.
+      return false;
+  }
+}
+
 // Volatile writes provide the same optimization barrier required from
 // mbedtls_platform_zeroize while keeping native host tests dependency-free.
 void secureZeroBytes(void* value, size_t length) {
@@ -594,7 +610,10 @@ bool LocalGattLifecycleBridge::emitCompleted(uint64_t now_ms) {
 bool LocalGattLifecycleBridge::emitTerminated(uint64_t now_ms,
                                                EventReason reason) {
   return emitLifecycle(EventCode::kAccessSessionTerminated, reason,
-                       ResultReason::kExpiredOrReplay, now_ms, true);
+                       reason == EventReason::kInternalError
+                           ? ResultReason::kInternalFailClosed
+                           : ResultReason::kExpiredOrReplay,
+                       now_ms, true);
 }
 
 void LocalGattLifecycleBridge::clearVerifiedSession() {
@@ -965,12 +984,11 @@ bool ProtocolCore::connect(uint16_t connection_id, uint32_t now_ms,
 void ProtocolCore::disconnect(const ConnectionToken& owner, uint32_t now_ms) {
   if (!connection_active_ || owner != connectionOwner()) return;
   connection_active_ = false;
-  if (state_ != SessionState::kCompleted) {
+  if (state_ != SessionState::kIdle &&
+      state_ != SessionState::kCompleted) {
     emit(EventCode::kAccessGattFailed, ResultReason::kSessionInvalid, now_ms);
-    if (state_ != SessionState::kIdle) {
-      emit(EventCode::kAccessSessionTerminated, ResultReason::kSessionInvalid,
-           now_ms);
-    }
+    emit(EventCode::kAccessSessionTerminated, ResultReason::kSessionInvalid,
+         now_ms);
     abortAuthControl(now_ms);
   }
   resetSession();
@@ -1080,6 +1098,13 @@ bool ProtocolCore::receiveFrame(MessageType expected_type,
   }
   if (ota_busy_) {
     queueResult(ResultReason::kBusy, 1000, active_acl_version_);
+    return false;
+  }
+  if (state_ == SessionState::kCompleted) {
+    // The authenticated action is already irrevocably committed. A duplicate
+    // or malformed trailing write must neither execute it again nor fabricate
+    // a failed terminal that clears the verified lifecycle actor.
+    queueResult(ResultReason::kExpiredOrReplay, 0, active_acl_version_);
     return false;
   }
   if (reached(now_ms, backoff_until_ms_) == false && failed_attempts_ >= 3) {
@@ -1489,8 +1514,14 @@ void ProtocolCore::reject(ResultReason reason, uint32_t now_ms,
                           bool count_failure) {
   queueResult(reason, reason == ResultReason::kRateLimited ? 1000 : 0,
               active_acl_version_);
-  emit(EventCode::kAccessProofRejected, reason, now_ms);
-  emit(EventCode::kAccessSessionTerminated, reason, now_ms);
+  const bool has_session =
+      !allZeroBytes(session_id_.data(), session_id_.size());
+  if (has_session) {
+    if (isCanonicalProofRejection(reason)) {
+      emit(EventCode::kAccessProofRejected, reason, now_ms);
+    }
+    emit(EventCode::kAccessSessionTerminated, reason, now_ms);
+  }
   abortAuthControl(now_ms);
   if (count_failure) {
     if (failed_attempts_ == 0 ||

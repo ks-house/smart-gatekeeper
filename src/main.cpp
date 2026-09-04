@@ -33,6 +33,7 @@
 #include "OfflineEventQueue.h"
 #include "DurablePreferences.h"
 #include "BleStartupPolicy.h"
+#include "AccessCriticalLeasePolicy.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -270,6 +271,115 @@ static void clearI2CBus(uint8_t sdaPin, uint8_t sclPin) {
 // ─────────────────────────────────────────────────────────────
 static uint32_t lastMqttMs = 0;
 static GateState lastTelemetryState = GateState::IDLE;
+static uint32_t accessSessionGeneration = 0;
+static sgk::AccessCriticalLeasePolicy accessCriticalLease(
+    ACCESS_CRITICAL_HARD_TIMEOUT_MS, ACCESS_CRITICAL_REARM_QUIET_MS);
+
+static void noteAccessSessionStarted() {
+  ++accessSessionGeneration;
+  if (accessSessionGeneration == 0) accessSessionGeneration = 1;
+}
+
+static bool isAccessPathCritical() {
+  const GateState state = g_access_fsm.state();
+  const GattServer::Telemetry telemetry = GattServer::getTelemetry();
+  const bool protocolCritical =
+      (telemetry.session_state != sgk::SessionState::kIdle &&
+       telemetry.session_state != sgk::SessionState::kCompleted) ||
+      GattServer::hasActiveOutput();
+  return state == GateState::AUTH_PENDING || state == GateState::ARMED ||
+         state == GateState::RELAY_HOLD || state == GateState::COOLDOWN ||
+         protocolCritical || GattServer::hasPendingIngress();
+}
+
+static bool isVerifiedPhysicalAccessActive() {
+  const GateState state = g_access_fsm.state();
+  return state == GateState::ARMED || state == GateState::RELAY_HOLD ||
+         state == GateState::COOLDOWN || relay.isOn();
+}
+
+static bool servicePendingSignedRestart() {
+  if (!MqttManager::hasPendingRestartRequest()) return false;
+
+  // Take the same GATT admission lock used by NimBLE callbacks before deciding
+  // whether it is safe to honor the reboot. If an authenticated action won the
+  // race, its FSM state is visible after this call and the reboot remains
+  // pending until the physical session reaches its terminal state.
+  GattServer::setOtaBusy(true);
+  if (isVerifiedPhysicalAccessActive()) return false;
+
+  // No verified physical action is active. Give any pre-proof peer its bounded
+  // BUSY result, then disconnect it so a raw BLE link cannot hold the reboot
+  // pending. ota_busy prevents a new proof from committing after the check.
+  GattServer::flushOtaBusy(3000);
+  GattServer::update();
+  const uint32_t now = millis();
+  if (isVerifiedPhysicalAccessActive()) return false;
+  GattServer::abortUnverifiedIngress(now);
+  GattServer::update();
+  if (isVerifiedPhysicalAccessActive()) return false;
+
+  MqttManager::performPendingRestart();
+  return true;
+}
+
+static bool enforceAccessCriticalLease(uint32_t now, bool accessCritical) {
+  const bool verifiedPhysicalSession = isVerifiedPhysicalAccessActive();
+  const uint32_t timeoutMs =
+      verifiedPhysicalSession ? ACCESS_CRITICAL_HARD_TIMEOUT_MS
+                              : GATT_UNVERIFIED_CRITICAL_TIMEOUT_MS;
+  if (!accessCriticalLease.expired(
+          now, accessCritical, accessSessionGeneration, timeoutMs)) {
+    return false;
+  }
+
+  if (!verifiedPhysicalSession) {
+    // A nearby unauthenticated peer may consume only the short ingress budget.
+    // Disconnect that transport and resume network service; whole-device
+    // restart is reserved for a wedged verified physical session.
+    const bool disconnected = GattServer::abortUnverifiedIngress(now);
+    g_access_fsm.cleanupToIdle(now);
+    DiagnosticsManager::noteAction(
+        disconnected ? "gatt_unverified_lease_disconnected"
+                     : "gatt_unverified_lease_expired");
+    MqttManager::publishEvent(
+        "gatt_unverified_lease_expired",
+        disconnected ? "Unverified GATT ingress disconnected"
+                     : "Unverified access ingress expired");
+    return false;
+  }
+
+  // A wedged access path must fail closed without losing its terminal audit
+  // evidence. Network I/O remains forbidden here: all records are appended to
+  // the durable queue before the controlled restart.
+  const bool relayWasOn = relay.isOn();
+  g_access_fsm.cleanupToIdle(now);
+  if (relayWasOn) {
+    GattServer::notifyRelayOff(now, true);
+    MqttManager::noteSignedCommandRelayOff(true);
+  }
+  GattServer::notifySessionTerminated(now, sgk::EventReason::kInternalError);
+  const uint64_t remoteSequence =
+      MqttManager::finishSignedCommandAccess(true, "INTERNAL_ERROR");
+  if (remoteSequence != 0) {
+    GattServer::advanceEventSequence(remoteSequence);
+  }
+  MqttManager::publishEvent(
+      "access_critical_timeout",
+      "Access path exceeded hard lease; fail-closed restart");
+  const bool evidenceDurable =
+      GattServer::persistPendingEventsForRestart();
+  if (!evidenceDurable) {
+    DiagnosticsManager::markEvidencePersistenceFailure();
+  }
+  DiagnosticsManager::markPlannedRestart("access_critical_timeout");
+  LOGF("[SYSTEM-ERROR] access-critical lease exceeded; relay OFF, "
+       "evidence durable=%s, controlled restart",
+       evidenceDurable ? "yes" : "no");
+  delay(100);
+  ESP.restart();
+  return true;
+}
 
 // ─────────────────────────────────────────────────────────────
 // 엔지니어 원격 튜닝용 동적 설정 변수 (기본값: config.h 설정치, NVS 복원)
@@ -420,15 +530,16 @@ void setRelayCooldownMs(uint32_t cooldownMs) {
 // triggerArm() is called only after signed command authorization.
 // ─────────────────────────────────────────────────────────────
 static OtaSafeState currentOtaSafeState() {
-  // OtaManager is invoked from the MQTT callback and therefore temporarily
-  // owns loopTask. Advance only already-authorized/physical session expiry so
-  // manual_remote or legacy relay one-shots finish independently before OTA.
+  // Advance only already-authorized/physical session expiry so manual_remote
+  // or legacy relay one-shots finish independently before OTA. Forced checks
+  // are staged by the MQTT callback and consumed later by OtaManager::update().
   g_access_fsm.tick(millis());
   return g_access_fsm.otaSafeState();
 }
 
 bool triggerArm() {
   if (g_access_fsm.handlePreArm(millis(), g_pre_arm_duration_ms)) {
+    noteAccessSessionStarted();
     UltrasonicSensor::resetHistory();
     DiagnosticsManager::noteAction("pre_armed");
     LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! AJ-SR04T 초음파 센서 활성화 (%lu ms 유효)",
@@ -445,6 +556,7 @@ bool triggerArm() {
 // ─────────────────────────────────────────────────────────────
 bool triggerManualDoorOpen() {
   if (g_access_fsm.handleManualRemoteOpen(millis(), RELAY_HOLD_MS, g_relay_cooldown_ms)) {
+    noteAccessSessionStarted();
     DiagnosticsManager::noteAction("relay_on_manual");
     LOGF("[GATE-MANUAL] *** 원격/MQTT 명령으로 출입문 개방 릴레이 ON *** (딸깍!)");
     return true;
@@ -469,18 +581,26 @@ static void initBleAdvertiser() {
   GattServer::useProductionEventSink();
   GattServer::setProofVerifier(&g_proof_verifier);
   GattServer::setOnAuthPendingCallback([](uint32_t now_ms) {
-    return g_access_fsm.handleAuthPending(now_ms,
-                                          GATT_AUTH_PENDING_TIMEOUT_MS);
+    // An unauthenticated challenge is not allowed to renew the global hard
+    // lease. Repeated connect/expire cycles therefore remain bounded by the
+    // original access-critical start time.
+    return g_access_fsm.handleAuthPending(
+        now_ms, GATT_AUTH_PENDING_TIMEOUT_MS);
   });
   GattServer::setOnAuthGrantCallback([](sgk::LocalAccessAction action,
                                         uint32_t now_ms) {
     if (action == sgk::LocalAccessAction::kOpenImmediately) {
-      return g_access_fsm.handleLocalManualOpen(
+      const bool opened = g_access_fsm.handleLocalManualOpen(
           now_ms, RELAY_HOLD_MS, g_relay_cooldown_ms);
+      if (opened) noteAccessSessionStarted();
+      return opened;
     }
     const bool armed = g_access_fsm.handleAuthSuccess(
         now_ms, g_pre_arm_duration_ms, g_relay_cooldown_ms);
     if (armed) {
+      // Only a verified action commit earns a fresh physical-session lease.
+      // beginAuth itself is intentionally excluded above.
+      noteAccessSessionStarted();
       // A Local GATT action-1 starts a new physical passage session. Never let
       // valid samples retained by an earlier person satisfy this session's
       // five-sample median. Starting from five invalid sentinels requires at
@@ -629,6 +749,7 @@ void setup() {
   LOGF("============================================");
   LOGF(" [SYSTEM] setup() 초기화 완료! 메인 루프 진입");
   LOGF(" [SYSTEM] FSM 초기 상태: IDLE (MQTT Pre-arm 대기)");
+  DiagnosticsManager::enableLoopWatchdog();
   LOGF("============================================");
 }
 
@@ -699,29 +820,66 @@ void loop() {
                                   0, relay.isOn(), relay.pinLevel());
   }
 
-  const GateState postControlState = g_access_fsm.state();
-  const GattServer::Telemetry gattTelemetry = GattServer::getTelemetry();
-  const bool gattProtocolCritical =
-      (gattTelemetry.session_state != sgk::SessionState::kIdle &&
-       gattTelemetry.session_state != sgk::SessionState::kCompleted) ||
-      GattServer::hasActiveOutput();
-  const bool accessCritical =
-      postControlState == GateState::AUTH_PENDING ||
-      postControlState == GateState::ARMED ||
-      postControlState == GateState::RELAY_HOLD ||
-      postControlState == GateState::COOLDOWN ||
-      gattProtocolCritical;
+  bool accessCritical = isAccessPathCritical();
+  if (accessCritical) MqttManager::deferForAccessCritical();
 
-  // PubSubClient remains single-owner on loopTask, but no socket connect,
-  // read, publish or durable-queue flush is allowed to precede sensor/relay
-  // control or run while a local access session is active.
+  // A reboot command accepted in an earlier loop remains staged while a racing
+  // verified access finishes. This check runs even when accessCritical keeps
+  // all network owners below disabled.
+  if (MqttManager::hasPendingRestartRequest()) {
+    if (servicePendingSignedRestart()) return;
+    now = millis();
+    accessCritical = isAccessPathCritical();
+    if (accessCritical) MqttManager::deferForAccessCritical();
+  }
+
+  // Observe an outage continuously, including while the local access path
+  // owns the loop. Actual radio mutation remains below the safe-state guard.
+  WifiManager::observeConnectivity(now);
+
+  if (enforceAccessCriticalLease(now, accessCritical)) return;
+
+  // A bounded connection worker owns PubSubClient/TLS only while establishing
+  // a new session; loopTask owns the adopted steady-state client. No socket
+  // phase is allowed to precede sensor/relay control or run while a local
+  // access session is active.
   if (!accessCritical) {
-    WifiManager::handleClient();
-    MqttManager::update();
-    OtaManager::update();
-    if (g_ble_startup_policy.shouldStart(g_acl_manager.hasActiveAcl())) {
-      LOGF("[BLE-ADV] active signed ACL ready; starting advertising");
-      initBleAdvertiser();
+    WifiManager::serviceRecovery(now);
+
+    // A NimBLE callback can enqueue v2 work after the first snapshot. Drain
+    // and re-check immediately before each potentially blocking network
+    // owner so a connected phone is never knowingly placed behind TLS/OTA.
+    GattServer::update();
+    now = millis();
+    accessCritical = isAccessPathCritical();
+    if (accessCritical) MqttManager::deferForAccessCritical();
+    if (!accessCritical) {
+      WifiManager::handleClient();
+      GattServer::update();
+      now = millis();
+      accessCritical = isAccessPathCritical();
+      if (accessCritical) MqttManager::deferForAccessCritical();
+    }
+    if (!accessCritical) {
+      MqttManager::update();
+      GattServer::update();
+      now = millis();
+      accessCritical = isAccessPathCritical();
+      if (accessCritical) MqttManager::deferForAccessCritical();
+      if (MqttManager::hasPendingRestartRequest()) {
+        if (servicePendingSignedRestart()) return;
+        now = millis();
+        accessCritical = isAccessPathCritical();
+        if (accessCritical) MqttManager::deferForAccessCritical();
+      }
+    }
+    if (enforceAccessCriticalLease(now, accessCritical)) return;
+    if (!accessCritical) {
+      OtaManager::update();
+      if (g_ble_startup_policy.shouldStart(g_acl_manager.hasActiveAcl())) {
+        LOGF("[BLE-ADV] active signed ACL ready; starting advertising");
+        initBleAdvertiser();
+      }
     }
   }
 

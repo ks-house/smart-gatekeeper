@@ -506,7 +506,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    self.assertEqual(len(expected_build_rows), 42)
+    self.assertEqual(len(expected_build_rows), 45)
     self.assertEqual(expected_build_paths, sorted(expected_build_paths))
     self.assertEqual(expected_build_paths, tracked_build_paths)
     for _mode, expected_digest, path in expected_build_rows:
@@ -554,17 +554,17 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     )
     self.assertIn("src/OtaManager.cpp", privileged_verify)
     self.assertIn(
-        "36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7",
+        "d1ae427e08d363be527072fb1bd7074c609b07fa95614703dd521c7e3018a31f",
         privileged_verify,
     )
     self.assertIn("src/WifiManager.cpp", privileged_verify)
     self.assertIn(
-        "9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3",
+        "d47d4462d071e51afad98c1bff32476ca67f5345314eb2975f857b5b0cea2b91",
         privileged_verify,
     )
     self.assertIn("include/RecoveryRadioPolicy.h", privileged_verify)
     self.assertIn(
-        "3e25df300a313b8081e0c1bbba8b43e04aa5d8d439226c303d560d24e801ff79",
+        "8c0be800233019cf2edad1ffcec7d3d9eef9d1c85d0097f8ec78fdd62ee6a92d",
         privileged_verify,
     )
     self.assertIn("sitecustomize.py usercustomize.py", privileged_verify)

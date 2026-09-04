@@ -146,6 +146,58 @@ class OperationsApiTest(unittest.TestCase):
         self.assertTrue(checks["database"])
         self.assertFalse(checks["database_schema"])
 
+    def test_target_status_readiness_uses_verified_freshness_window(self):
+        with patch.object(main, "COMMAND_TARGET_ID", "target-a"), patch.object(
+            main._target_gate_states,
+            "live_evidence",
+            return_value={"state": "IDLE"},
+        ) as live:
+            self.assertTrue(main._target_status_fresh_for_readiness())
+        live.assert_called_once_with(
+            "target-a", main.HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS
+        )
+
+        with patch.object(main, "COMMAND_TARGET_ID", "target-a"), patch.object(
+            main._target_gate_states, "live_evidence", return_value=None
+        ):
+            self.assertFalse(main._target_status_fresh_for_readiness())
+
+    def test_target_status_is_a_gate_only_after_explicit_cutover(self):
+        with patch.object(
+            main, "ACCESS_SIGNED_STATUS_READINESS_REQUIRED", False
+        ), patch.object(
+            main, "_target_status_fresh_for_readiness", return_value=False
+        ), patch.object(
+            main, "_command_provisioning_error", return_value="test stop"
+        ), patch.object(main, "get_db", side_effect=RuntimeError("test")):
+            _, checks = main._readiness_snapshot()
+        self.assertNotIn("target_status_fresh", checks)
+
+        with patch.object(
+            main, "ACCESS_SIGNED_STATUS_READINESS_REQUIRED", True
+        ), patch.object(
+            main, "_target_status_fresh_for_readiness", return_value=False
+        ), patch.object(
+            main, "_command_provisioning_error", return_value="test stop"
+        ), patch.object(main, "get_db", side_effect=RuntimeError("test")):
+            ready, checks = main._readiness_snapshot()
+        self.assertFalse(ready)
+        self.assertFalse(checks["target_status_fresh"])
+
+    def test_readiness_response_reuses_one_target_freshness_snapshot(self):
+        with patch.object(
+            main, "_target_status_fresh_for_readiness", return_value=False
+        ) as freshness, patch.object(
+            main,
+            "_readiness_snapshot",
+            return_value=(True, {"database": True}),
+        ) as snapshot:
+            response = main.readiness_check()
+        freshness.assert_called_once_with()
+        snapshot.assert_called_once_with(target_status_fresh=False)
+        self.assertEqual(200, response.status_code)
+        self.assertIn(b'"fresh":false', response.body)
+
     def test_support_export_is_mtls_scoped_consent_bound_and_redacted(self):
         self.assertEqual(
             401,

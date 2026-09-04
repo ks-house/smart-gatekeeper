@@ -161,8 +161,8 @@ struct Event {
 };
 
 // Only these post-proof lifecycle codes may expose the session-scoped
-// pseudonym. In particular, a commit failure emits ACCESS_PROOF_REJECTED after
-// proof verification, but that rejection must remain actor-ref free.
+// pseudonym. A post-verification application commit failure is represented as
+// ACCESS_SESSION_TERMINATED/INTERNAL_ERROR, not as a false proof rejection.
 bool accessEventCodeAllowsCredentialRef(EventCode code);
 
 // Derives the bounded, pseudonymous identity stored on canonical access
@@ -432,6 +432,12 @@ class AdapterState {
 
   bool enqueueWrite(uint16_t handle, MessageType type, const uint8_t* value,
                     size_t length);
+  // True while a callback-enqueued frame or an overflow latch still requires
+  // loop-task processing. Callers that share AdapterState across tasks must
+  // hold the adapter's external serialization lock while reading this value.
+  bool hasPendingWrite() const {
+    return pending_count_ != 0 || pending_overflow_;
+  }
   // Overflow is fail-closed before queued writes: consuming it discards the
   // complete queue and returns the affected accepted connection generation.
   bool consumeOverflow(ConnectionToken* owner);

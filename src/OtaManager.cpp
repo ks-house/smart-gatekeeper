@@ -70,6 +70,17 @@ constexpr size_t kGcmBlockSize = 16;
 static_assert(kDecryptInputChunkSize % kGcmBlockSize == 0,
               "GCM streaming chunk must contain complete AES blocks");
 
+void preserveAccessEvidenceBeforeRestart(const char* context) {
+  const bool persisted = GattServer::persistPendingEventsForRestart();
+  if (!persisted) {
+    DiagnosticsManager::markEvidencePersistenceFailure();
+  }
+  LOGF("[OTA-%s] pre-restart access evidence=%s context=%s",
+       persisted ? "INFO" : "WARN",
+       persisted ? "durable" : "degraded-rtc-or-failed",
+       context == nullptr ? "unspecified" : context);
+}
+
 struct VerifiedManifest {
   String version;
   String artifact_url;
@@ -105,6 +116,7 @@ bool updateGcmInitialized = false;
 bool updateGcmStarted = false;
 bool updateOpen = false;
 uint32_t nextPeriodicCheckMs = kInitialPeriodicCheckMs;
+bool forcedCheckPending = false;
 
 class NvsOtaVersionFloorStorage final : public sgk::OtaVersionFloorStorage {
  public:
@@ -844,6 +856,9 @@ bool waitForSafeState() {
          !OtaManager::isSafeForOta()) {
     GattServer::update();
     if (millis() - started >= kOtaSafeStateTimeoutMs) return false;
+    // GATT returned and the explicit safe-state deadline is still live. This
+    // is intentional progress, unlike an unreturned GATT/TLS call.
+    DiagnosticsManager::feedLoopWatchdog();
     delay(10);
   }
   return OtaManager::isSafeForOta();
@@ -854,6 +869,7 @@ bool waitForSafeState() {
 void OtaManager::init() {
   status = OtaStatus::IDLE;
   lastError = "";
+  forcedCheckPending = false;
   if (!versionPolicy.begin(FIRMWARE_VERSION)) {
     status = OtaStatus::FAILED;
     lastError = "version floor storage";
@@ -872,6 +888,11 @@ void OtaManager::init() {
 
 void OtaManager::setSafeStateProvider(SafeStateProvider provider) {
   safeStateProvider = provider;
+}
+
+void OtaManager::requestCheck() {
+  forcedCheckPending = true;
+  DiagnosticsManager::noteAction("ota_check_queued");
 }
 
 bool OtaManager::isSafeForOta() {
@@ -896,26 +917,46 @@ void OtaManager::update() {
         LOGF("[OTA] running image marked VALID after health window");
       } else {
         status = OtaStatus::ROLLING_BACK;
+        preserveAccessEvidenceBeforeRestart("valid_mark_failed");
         DiagnosticsManager::markPlannedRestart("ota_valid_mark_failed");
         LOGF("[OTA-ERROR] valid mark failed; rolling back");
-        esp_ota_mark_app_invalid_rollback_and_reboot();
+        if (esp_ota_mark_app_invalid_rollback_and_reboot() != ESP_OK) {
+          LOGF("[OTA-ERROR] rollback API returned; forcing safe restart");
+          ESP.restart();
+        }
       }
     } else if (decision == sgk::OtaHealthDecision::kRollback) {
       status = OtaStatus::ROLLING_BACK;
+      preserveAccessEvidenceBeforeRestart("health_timeout");
       DiagnosticsManager::markPlannedRestart("ota_health_rollback");
       LOGF("[OTA-ERROR] health window timed out; rolling back");
-      esp_ota_mark_app_invalid_rollback_and_reboot();
+      if (esp_ota_mark_app_invalid_rollback_and_reboot() != ESP_OK) {
+        LOGF("[OTA-ERROR] rollback API returned; forcing safe restart");
+        ESP.restart();
+      }
     }
     return;
   }
   if (status == OtaStatus::DOWNLOADING || status == OtaStatus::VERIFYING ||
       status == OtaStatus::WAIT_SAFE_STATE) return;
-  if (WifiManager::isConnected() && static_cast<int32_t>(now - nextPeriodicCheckMs) >= 0) {
-    checkAndUpdate(false);
+  if (WifiManager::isConnected() &&
+      !MqttManager::connectionAttemptInProgress() &&
+      (forcedCheckPending ||
+       static_cast<int32_t>(now - nextPeriodicCheckMs) >= 0)) {
+    const bool force = forcedCheckPending;
+    forcedCheckPending = false;
+    checkAndUpdate(force);
   }
 }
 
 void OtaManager::checkAndUpdate(bool force) {
+  if (MqttManager::connectionAttemptInProgress()) {
+    // MQTT and OTA use separate clients but share one small radio/TLS heap.
+    // Wait for the bounded MQTT phase to hand ownership back instead of
+    // starting two handshakes concurrently.
+    if (force) forcedCheckPending = true;
+    return;
+  }
   LOGF("[OTA] %s update check started", force ? "forced" : "periodic");
   status = OtaStatus::WAIT_SAFE_STATE;
   struct BusyGuard {
@@ -942,7 +983,10 @@ void OtaManager::checkAndUpdate(bool force) {
   // ESP32-C6 never needs a second handshake against the long served chain.
   WiFiClientSecure otaClient;
   otaClient.setCACert(SECRET_ROOT_CA_CERT);
+  otaClient.setConnectionTimeout(OTA_TCP_CONNECT_TIMEOUT_MS);
+  otaClient.setHandshakeTimeout(OTA_TLS_HANDSHAKE_TIMEOUT_SECONDS);
   HTTPClient otaHttp;
+  otaHttp.setConnectTimeout(OTA_TCP_CONNECT_TIMEOUT_MS);
   otaHttp.setReuse(true);
   if (!otaHttp.begin(otaClient, OTA_VERSION_URL)) {
     status = OtaStatus::FAILED;
@@ -954,7 +998,10 @@ void OtaManager::checkAndUpdate(bool force) {
   otaHttp.setTimeout(10000);
   const char* responseHeaders[] = {"Date"};
   otaHttp.collectHeaders(responseHeaders, 1);
+  DiagnosticsManager::noteAction("ota_manifest_get");
+  DiagnosticsManager::feedLoopWatchdog();
   const int manifestCode = otaHttp.GET();
+  DiagnosticsManager::feedLoopWatchdog();
   if (manifestCode != HTTP_CODE_OK) {
     otaHttp.end();
     status = OtaStatus::FAILED;
@@ -1002,7 +1049,10 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   otaHttp.setTimeout(15000);
+  DiagnosticsManager::noteAction("ota_artifact_get");
+  DiagnosticsManager::feedLoopWatchdog();
   const int artifactCode = otaHttp.GET();
+  DiagnosticsManager::feedLoopWatchdog();
   const int receivedArtifactSize = otaHttp.getSize();
   if (artifactCode != HTTP_CODE_OK ||
       receivedArtifactSize != static_cast<int>(stagedManifest.artifact_size) ||
@@ -1026,6 +1076,12 @@ void OtaManager::checkAndUpdate(bool force) {
   const uint32_t downloadStartedMs = millis();
   uint32_t lastProgressMs = downloadStartedMs;
   while (updateBytes < stagedManifest.artifact_size) {
+    // Keep the local control plane responsive while the OTA body is streamed.
+    // ota_busy remains asserted, so new authentication attempts receive BUSY
+    // instead of waiting behind a multi-minute download or being mistaken for
+    // a dead Target.
+    GattServer::update();
+    DiagnosticsManager::feedLoopWatchdog();
     const uint32_t observedMs = millis();
     if (observedMs - downloadStartedMs >= kArtifactDownloadTimeoutMs ||
         observedMs - lastProgressMs >= kArtifactIdleTimeoutMs) {
@@ -1060,6 +1116,7 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   status = OtaStatus::PENDING_BOOT;
+  preserveAccessEvidenceBeforeRestart("pending_verify");
   DiagnosticsManager::markPlannedRestart("ota_pending_verify");
   LOGF("[OTA] verified inactive image; rebooting into pending slot");
   delay(250);
@@ -1087,6 +1144,10 @@ bool OtaManager::stageLocalManifest(const String& manifestJson) {
 }
 
 bool OtaManager::beginLocalUpload() {
+  if (MqttManager::connectionAttemptInProgress()) {
+    abortLocalUpload("MQTT connection attempt active");
+    return false;
+  }
   status = OtaStatus::WAIT_SAFE_STATE;
   if (!waitForSafeState()) {
     abortLocalUpload("WAIT_SAFE_STATE timeout");
@@ -1105,6 +1166,7 @@ bool OtaManager::writeLocalUploadChunk(const uint8_t* data, size_t length) {
     abortLocalUpload("local write failed");
     return false;
   }
+  DiagnosticsManager::feedLoopWatchdog();
   return true;
 }
 

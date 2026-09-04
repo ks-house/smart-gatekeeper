@@ -68,6 +68,8 @@ try:
         HomeAssistantCommandBridge,
         bridge_access_event_topic,
         bridge_availability_topic,
+        bridge_connectivity_diagnostic_payload,
+        bridge_connectivity_diagnostic_topic,
         bridge_request_topic,
         bridge_result_topic,
         bridge_verified_status_topic,
@@ -108,6 +110,8 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
         HomeAssistantCommandBridge,
         bridge_access_event_topic,
         bridge_availability_topic,
+        bridge_connectivity_diagnostic_payload,
+        bridge_connectivity_diagnostic_topic,
         bridge_request_topic,
         bridge_result_topic,
         bridge_verified_status_topic,
@@ -1713,7 +1717,7 @@ class _CanonicalAccessEventWorker:
 
 
 class _HomeAssistantAccessEventOutboxWorker:
-    """Drain committed HA projections in ID order with broker PUBACK proof."""
+    """Drain committed HA projections after an exact broker-routed receipt."""
 
     def __init__(
         self,
@@ -1724,6 +1728,8 @@ class _HomeAssistantAccessEventOutboxWorker:
         note_attempt=None,
         poll_seconds: float = 1.0,
         publish_timeout: float = 5.0,
+        receipt_topic: str | None = None,
+        retry_max_seconds: float = 30.0,
     ):
         self._client = client
         self._load = load or _load_pending_home_assistant_access_event
@@ -1735,10 +1741,31 @@ class _HomeAssistantAccessEventOutboxWorker:
         )
         self._poll_seconds = max(0.01, poll_seconds)
         self._publish_timeout = max(0.1, publish_timeout)
+        self._receipt_topic = receipt_topic or bridge_access_event_topic(
+            COMMAND_TARGET_ID
+        )
+        self._retry_max_seconds = max(
+            self._poll_seconds, retry_max_seconds
+        )
         self._stopping = threading.Event()
         self._wake = threading.Event()
         self._start_lock = threading.Lock()
         self._health_lock = threading.Lock()
+        self._receipt_condition = threading.Condition()
+        self._transport_generation = 0
+        self._transport_connected = False
+        self._awaiting_reconnect = False
+        self._receipt_subscription_mid: int | None = None
+        self._receipt_subscription_ready = False
+        self._subscription_request_in_progress = False
+        self._early_subscription_acks: dict[int, object] = {}
+        self._subscription_ack_deadline = 0.0
+        self._subscription_retry_delay = self._poll_seconds
+        self._subscription_retry_not_before = 0.0
+        self._publish_retry_delay = self._poll_seconds
+        self._publish_retry_not_before = 0.0
+        self._pending_receipt: tuple[str, bytes] | None = None
+        self._receipt_observed = False
         self._started = False
         self._failed = False
         self._thread = threading.Thread(
@@ -1762,27 +1789,329 @@ class _HomeAssistantAccessEventOutboxWorker:
         with self._health_lock:
             self._failed = failed
 
-    def _publish(self, row: object) -> bool:
+    def connect_transport(self, subscription_result: object) -> bool:
+        """Begin one MQTT generation and track its routed-receipt SUBACK."""
+
+        result_code, message_id = self._subscription_result(
+            subscription_result
+        )
+        with self._receipt_condition:
+            self._transport_generation += 1
+            self._transport_connected = True
+            self._awaiting_reconnect = False
+            self._subscription_request_in_progress = False
+            self._early_subscription_acks.clear()
+            self._subscription_retry_delay = self._poll_seconds
+            self._subscription_retry_not_before = 0.0
+            self._publish_retry_delay = self._poll_seconds
+            self._publish_retry_not_before = 0.0
+            self._receipt_subscription_mid = (
+                message_id if result_code == 0 and message_id > 0 else None
+            )
+            self._receipt_subscription_ready = False
+            if self._receipt_subscription_mid is None:
+                self._schedule_subscription_retry_locked()
+            else:
+                self._subscription_ack_deadline = (
+                    time.monotonic() + self._publish_timeout
+                )
+            self._pending_receipt = None
+            self._receipt_observed = False
+            self._receipt_condition.notify_all()
+            return self._receipt_subscription_mid is not None
+
+    def acknowledge_subscription(
+        self, message_id: object, granted_qos: object
+    ) -> bool:
+        """Accept only the current generation's successful receipt SUBACK."""
+
+        try:
+            mid = int(message_id)
+        except (TypeError, ValueError):
+            mid = -1
+        accepted = self._subscription_granted(granted_qos)
+        with self._receipt_condition:
+            if self._subscription_request_in_progress:
+                self._early_subscription_acks[mid] = granted_qos
+                return False
+            if (
+                not self._transport_connected
+                or self._receipt_subscription_mid != mid
+            ):
+                return False
+            self._receipt_subscription_mid = None
+            self._subscription_ack_deadline = 0.0
+            self._receipt_subscription_ready = accepted
+            if accepted:
+                self._subscription_retry_delay = self._poll_seconds
+                self._subscription_retry_not_before = 0.0
+            else:
+                self._schedule_subscription_retry_locked()
+            self._receipt_condition.notify_all()
+            return accepted
+
+    @staticmethod
+    def _subscription_result(result: object) -> tuple[int, int]:
+        try:
+            result_code, message_id = result
+            return int(result_code), int(message_id)
+        except (TypeError, ValueError):
+            return -1, -1
+
+    @staticmethod
+    def _subscription_granted(granted_qos: object) -> bool:
+        try:
+            grants = list(granted_qos)
+            value = getattr(grants[0], "value", grants[0]) if grants else 128
+            return int(value) in (0, 1, 2)
+        except (TypeError, ValueError):
+            return False
+
+    def _schedule_subscription_retry_locked(self) -> None:
+        self._receipt_subscription_mid = None
+        self._receipt_subscription_ready = False
+        self._subscription_ack_deadline = 0.0
+        self._subscription_retry_not_before = (
+            time.monotonic() + self._subscription_retry_delay
+        )
+        self._subscription_retry_delay = min(
+            self._subscription_retry_delay * 2,
+            self._retry_max_seconds,
+        )
+
+    def _schedule_publish_retry_locked(self) -> None:
+        self._publish_retry_not_before = (
+            time.monotonic() + self._publish_retry_delay
+        )
+        self._publish_retry_delay = min(
+            self._publish_retry_delay * 2,
+            self._retry_max_seconds,
+        )
+
+    def note_broker_receipt(
+        self, topic: object, payload: object, *, retained: bool = False
+    ) -> bool:
+        """Accept only the exact non-retained echo of the in-flight row."""
+
+        if retained or not isinstance(topic, str) or not isinstance(
+            payload, (bytes, bytearray)
+        ):
+            return False
+        candidate = (topic, bytes(payload))
+        with self._receipt_condition:
+            pending = self._pending_receipt
+            if (
+                pending is None
+                or not secrets.compare_digest(pending[0], candidate[0])
+                or not secrets.compare_digest(pending[1], candidate[1])
+            ):
+                return False
+            self._receipt_observed = True
+            self._receipt_condition.notify_all()
+            return True
+
+    def reset_transport(self) -> None:
+        """Release a receipt waiter immediately when its MQTT session ends."""
+
+        with self._receipt_condition:
+            self._transport_generation += 1
+            self._transport_connected = False
+            self._awaiting_reconnect = False
+            self._receipt_subscription_mid = None
+            self._receipt_subscription_ready = False
+            self._subscription_request_in_progress = False
+            self._early_subscription_acks.clear()
+            self._subscription_ack_deadline = 0.0
+            self._subscription_retry_not_before = 0.0
+            self._publish_retry_not_before = 0.0
+            self._pending_receipt = None
+            self._receipt_observed = False
+            self._receipt_condition.notify_all()
+
+    def _wait_for_ready_transport(self) -> int | None:
+        while not self._stopping.is_set():
+            retry_generation = None
+            with self._receipt_condition:
+                now = time.monotonic()
+                if (
+                    self._transport_connected
+                    and not self._awaiting_reconnect
+                    and self._receipt_subscription_ready
+                    and now >= self._publish_retry_not_before
+                ):
+                    return self._transport_generation
+                if (
+                    self._transport_connected
+                    and not self._awaiting_reconnect
+                    and self._receipt_subscription_mid is not None
+                    and self._subscription_ack_deadline > 0.0
+                    and now >= self._subscription_ack_deadline
+                ):
+                    # A broker that never returns SUBACK must not wedge the
+                    # durable outbox forever. Ignore any later stale MID and
+                    # retry the exact subscription with bounded backoff.
+                    self._schedule_subscription_retry_locked()
+                if (
+                    self._transport_connected
+                    and not self._awaiting_reconnect
+                    and not self._receipt_subscription_ready
+                    and self._receipt_subscription_mid is None
+                    and not self._subscription_request_in_progress
+                    and now >= self._subscription_retry_not_before
+                ):
+                    retry_generation = self._transport_generation
+                    self._subscription_request_in_progress = True
+                else:
+                    deadlines = [
+                        deadline
+                        for deadline in (
+                            self._subscription_retry_not_before,
+                            self._subscription_ack_deadline,
+                            self._publish_retry_not_before,
+                        )
+                        if deadline > now
+                    ]
+                    wait_for = self._poll_seconds
+                    if deadlines:
+                        wait_for = min(
+                            wait_for, max(0.01, min(deadlines) - now)
+                        )
+                    self._receipt_condition.wait(wait_for)
+                    continue
+
+            try:
+                subscription = self._client.subscribe(
+                    self._receipt_topic, qos=1
+                )
+            except Exception:
+                subscription = None
+            result_code, message_id = self._subscription_result(subscription)
+            early_ack = None
+            with self._receipt_condition:
+                self._subscription_request_in_progress = False
+                if (
+                    retry_generation != self._transport_generation
+                    or not self._transport_connected
+                    or self._awaiting_reconnect
+                ):
+                    self._early_subscription_acks.clear()
+                    continue
+                if result_code == 0 and message_id > 0:
+                    self._receipt_subscription_mid = message_id
+                    self._subscription_ack_deadline = (
+                        time.monotonic() + self._publish_timeout
+                    )
+                    early_ack = self._early_subscription_acks.pop(
+                        message_id, None
+                    )
+                else:
+                    self._schedule_subscription_retry_locked()
+                self._early_subscription_acks.clear()
+                self._receipt_condition.notify_all()
+            if early_ack is not None:
+                self.acknowledge_subscription(message_id, early_ack)
+        return None
+
+    def _publish(self, row: object, transport_generation: int) -> bool:
         validated = _validated_home_assistant_access_event_outbox_row(row)
         if validated is None:
             return False
         _outbox_id, target_id, payload = validated
+        topic = bridge_access_event_topic(target_id)
+        expected = (topic, payload)
+        deadline = time.monotonic() + self._publish_timeout
         try:
-            result = self._client.publish(
-                bridge_access_event_topic(target_id),
-                payload,
-                qos=1,
-                retain=False,
-            )
-            if getattr(result, "rc", 1) != 0:
+            # Hold the transport condition through publish() so an on_disconnect
+            # callback cannot invalidate this generation between the final gate
+            # and Paho accepting the message.  A concurrent loss can still make
+            # this one call return MQTT_ERR_NO_CONN, but that result blocks the
+            # generation until a real reconnect and prevents repeated offline
+            # queue growth.
+            with self._receipt_condition:
+                if not (
+                    self._transport_connected
+                    and self._receipt_subscription_ready
+                    and self._transport_generation == transport_generation
+                ):
+                    return False
+                self._pending_receipt = expected
+                self._receipt_observed = False
+                result = self._client.publish(
+                    topic,
+                    payload,
+                    qos=1,
+                    retain=False,
+                )
+            result_code = int(getattr(result, "rc", 1))
+            if result_code != 0:
+                with self._receipt_condition:
+                    if self._transport_generation == transport_generation:
+                        no_connection = getattr(
+                            mqtt, "MQTT_ERR_NO_CONN", 4
+                        )
+                        if result_code == int(no_connection):
+                            # The Paho network callback is authoritative for
+                            # connection state. Block this generation until a
+                            # real on_connect rather than enqueueing the same DB
+                            # row again while on_disconnect is still pending.
+                            self._awaiting_reconnect = True
+                            self._receipt_subscription_ready = False
+                            self._receipt_subscription_mid = None
+                        else:
+                            # QUEUE_SIZE and other local/transient rejections do
+                            # not imply a transport loss. Back off and recover
+                            # on this same acknowledged subscription.
+                            self._schedule_publish_retry_locked()
+                        self._receipt_condition.notify_all()
                 return False
-            result.wait_for_publish(timeout=self._publish_timeout)
-            return bool(result.is_published())
+            result.wait_for_publish(
+                timeout=max(0.0, deadline - time.monotonic())
+            )
+            if not result.is_published():
+                with self._receipt_condition:
+                    if self._transport_generation == transport_generation:
+                        self._schedule_publish_retry_locked()
+                return False
+            with self._receipt_condition:
+                while (
+                    self._pending_receipt == expected
+                    and not self._receipt_observed
+                    and not self._stopping.is_set()
+                ):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    self._receipt_condition.wait(remaining)
+                delivered = bool(
+                    self._pending_receipt == expected
+                    and self._receipt_observed
+                    and self._transport_connected
+                    and self._receipt_subscription_ready
+                    and self._transport_generation == transport_generation
+                )
+                if delivered:
+                    self._publish_retry_delay = self._poll_seconds
+                    self._publish_retry_not_before = 0.0
+                elif self._transport_generation == transport_generation:
+                    self._schedule_publish_retry_locked()
+                return delivered
         except Exception:
+            with self._receipt_condition:
+                if self._transport_generation == transport_generation:
+                    self._schedule_publish_retry_locked()
             return False
+        finally:
+            with self._receipt_condition:
+                if self._pending_receipt == expected:
+                    self._pending_receipt = None
+                    self._receipt_observed = False
+                self._receipt_condition.notify_all()
 
     def _run(self) -> None:
         while not self._stopping.is_set():
+            transport_generation = self._wait_for_ready_transport()
+            if transport_generation is None:
+                return
             row = self._load()
             if row is False:
                 self._set_failed(True)
@@ -1795,7 +2124,9 @@ class _HomeAssistantAccessEventOutboxWorker:
                 self._wake.clear()
                 continue
             outbox_id = row.get("id") if isinstance(row, dict) else None
-            if self._publish(row) and isinstance(outbox_id, int):
+            if self._publish(row, transport_generation) and isinstance(
+                outbox_id, int
+            ):
                 if self._mark_published(outbox_id):
                     self._set_failed(False)
                     continue
@@ -1808,6 +2139,7 @@ class _HomeAssistantAccessEventOutboxWorker:
     def stop(self) -> None:
         self._stopping.set()
         self._wake.set()
+        self.reset_transport()
         if self._started:
             self._thread.join(timeout=self._publish_timeout + 1.0)
 
@@ -1815,9 +2147,15 @@ class _HomeAssistantAccessEventOutboxWorker:
     def healthy(self) -> bool:
         with self._health_lock:
             failed = self._failed
+        with self._receipt_condition:
+            transport_ready = bool(
+                self._transport_connected
+                and self._receipt_subscription_ready
+            )
         return (
             not self._stopping.is_set()
             and (not self._started or self._thread.is_alive())
+            and transport_ready
             and not failed
         )
 
@@ -2233,7 +2571,10 @@ def _home_assistant_access_event_projection(event: object) -> bytes | None:
         or not isinstance(sequence, int)
         or sequence < 0
         or not isinstance(target_id, str)
-        or target_id not in _configured_target_ids()
+        # Discovery and the HA device identity are intentionally singleton in
+        # personal production.  Do not create an outbox row for an ACL-managed
+        # secondary Target that has no corresponding HA entity.
+        or not secrets.compare_digest(target_id, COMMAND_TARGET_ID)
     ):
         return None
     document = {
@@ -2257,7 +2598,8 @@ def _load_pending_home_assistant_access_event() -> dict | None | bool:
             cur.execute(
                 "SELECT id,event_id,target_id,payload_json,publish_attempts "
                 "FROM ha_access_event_outbox WHERE published_at IS NULL "
-                "ORDER BY id ASC LIMIT 1"
+                "AND target_id=%s ORDER BY id ASC LIMIT 1",
+                (COMMAND_TARGET_ID,),
             )
             return cur.fetchone()
     except Exception:
@@ -2324,7 +2666,7 @@ def _validated_home_assistant_access_event_outbox_row(
         or not isinstance(outbox_id, int)
         or outbox_id < 1
         or not isinstance(target_id, str)
-        or target_id not in _configured_target_ids()
+        or not secrets.compare_digest(target_id, COMMAND_TARGET_ID)
         or not isinstance(payload_json, str)
         or not 1 <= len(payload_json.encode("utf-8")) <= 512
     ):
@@ -2898,6 +3240,11 @@ def _start_target_boot_subscriber():
         tls_version=ssl.PROTOCOL_TLS_CLIENT,
     )
     client.tls_insecure_set(False)
+    # Paho 1.x otherwise keeps an unbounded QoS 1 offline queue.  The HA
+    # outbox worker also refuses to publish until its receipt subscription is
+    # SUBACKed, but this process-wide cap contains the final disconnect race
+    # and any other asynchronous publisher sharing this subscriber client.
+    client.max_queued_messages_set(64)
     if bridge is not None:
         client.will_set(
             bridge_availability_topic(COMMAND_TARGET_ID),
@@ -2905,15 +3252,42 @@ def _start_target_boot_subscriber():
             qos=1,
             retain=True,
         )
+
+    def publish_ephemeral_retained(
+        topic: str, payload: str | bytes, label: str
+    ) -> bool:
+        """Publish live HA state without creating a stale Paho replay queue."""
+
+        try:
+            result = client.publish(topic, payload, qos=0, retain=True)
+            accepted = int(getattr(result, "rc", 1)) == 0
+        except Exception:
+            accepted = False
+        if not accepted:
+            log.warning("[MQTT-HA] %s retained publish unavailable", label)
+        return accepted
+
+    def publish_connectivity_diagnostic(
+        status_value: str, reason: str
+    ) -> bool:
+        return publish_ephemeral_retained(
+            bridge_connectivity_diagnostic_topic(COMMAND_TARGET_ID),
+            bridge_connectivity_diagnostic_payload(status_value, reason),
+            "connectivity diagnostic",
+        )
+
+    def publish_stale_connectivity() -> None:
+        publish_ephemeral_retained(
+            bridge_availability_topic(COMMAND_TARGET_ID),
+            "offline",
+            "stale availability",
+        )
+        publish_connectivity_diagnostic("offline", "SIGNED_STATUS_STALE")
+
     availability_expiry = (
         _BridgeAvailabilityExpiry(
             HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS,
-            lambda: client.publish(
-                bridge_availability_topic(COMMAND_TARGET_ID),
-                "offline",
-                qos=1,
-                retain=True,
-            ),
+            publish_stale_connectivity,
         )
         if bridge is not None
         else None
@@ -2941,7 +3315,10 @@ def _start_target_boot_subscriber():
         )
 
     ha_outbox_worker = (
-        _HomeAssistantAccessEventOutboxWorker(client)
+        _HomeAssistantAccessEventOutboxWorker(
+            client,
+            receipt_topic=bridge_access_event_topic(COMMAND_TARGET_ID),
+        )
         if bridge is not None
         else None
     )
@@ -2978,21 +3355,30 @@ def _start_target_boot_subscriber():
         )
         if not expiry_armed:
             log.warning("[MQTT-HA] signed-status availability expiry unavailable")
-        client.publish(
+        projection_published = publish_ephemeral_retained(
             bridge_verified_status_topic(COMMAND_TARGET_ID),
             projection,
-            qos=1,
-            retain=False,
+            # This privacy-safe projection is the eventual state source for
+            # the HA "recent access result" sensor. Retention lets HA recover
+            # the latest marker after its own restart. QoS 0 is deliberate:
+            # Paho never replays a stale pre-disconnect online snapshot.
+            "verified status",
         )
-        client.publish(
-            bridge_availability_topic(COMMAND_TARGET_ID),
+        status_is_fresh = bool(
+            expiry_armed and bridge_boot_is_aligned() and projection_published
+        )
+        publish_connectivity_diagnostic(
+            "online" if status_is_fresh else "offline",
             (
-                "online"
-                if expiry_armed and bridge_boot_is_aligned()
-                else "offline"
+                "SIGNED_STATUS_FRESH"
+                if status_is_fresh
+                else "WAITING_FOR_SIGNED_STATUS"
             ),
-            qos=1,
-            retain=True,
+        )
+        publish_ephemeral_retained(
+            bridge_availability_topic(COMMAND_TARGET_ID),
+            "online" if status_is_fresh else "offline",
+            "fresh availability",
         )
 
     status_worker = _AuthenticatedTargetStatusWorker(
@@ -3040,11 +3426,16 @@ def _start_target_boot_subscriber():
 
             if bridge is None:
                 return
-            if ha_outbox_worker is not None:
-                ha_outbox_worker.wake()
             if availability_expiry is not None:
                 availability_expiry.reset()
             bridge.reset_transport()
+            if ha_outbox_worker is not None:
+                ha_outbox_worker.reset_transport()
+                receipt_subscription = connected_client.subscribe(
+                    bridge_access_event_topic(COMMAND_TARGET_ID), qos=1
+                )
+                ha_outbox_worker.connect_transport(receipt_subscription)
+                ha_outbox_worker.wake()
             connected_client.subscribe(
                 target_availability_topic(COMMAND_TARGET_ID), qos=1
             )
@@ -3052,11 +3443,13 @@ def _start_target_boot_subscriber():
             connected_client.subscribe(
                 bridge_request_topic(COMMAND_TARGET_ID, "+"), qos=1
             )
-            connected_client.publish(
+            publish_ephemeral_retained(
                 bridge_availability_topic(COMMAND_TARGET_ID),
                 "offline",
-                qos=1,
-                retain=True,
+                "connection availability barrier",
+            )
+            publish_connectivity_diagnostic(
+                "offline", "WAITING_FOR_SIGNED_STATUS"
             )
             for publication in build_discovery_plan(
                 COMMAND_TARGET_ID,
@@ -3075,6 +3468,8 @@ def _start_target_boot_subscriber():
             _target_gate_states.clear()
             if availability_expiry is not None:
                 availability_expiry.reset()
+            if ha_outbox_worker is not None:
+                ha_outbox_worker.reset_transport()
 
     def on_subscribe(
         _connected_client, _userdata, message_id, granted_qos, *args
@@ -3083,17 +3478,33 @@ def _start_target_boot_subscriber():
         _authenticated_status_collector_health.acknowledge(
             message_id, granted_qos
         )
+        if ha_outbox_worker is not None:
+            ha_outbox_worker.acknowledge_subscription(
+                message_id, granted_qos
+            )
 
     def on_disconnect(_connected_client, _userdata, _reason_code, *args):
         _canonical_access_collector_health.disconnect()
         _authenticated_status_collector_health.disconnect()
         status_worker.disconnect_transport()
         _target_gate_states.clear()
+        if ha_outbox_worker is not None:
+            ha_outbox_worker.reset_transport()
         if availability_expiry is not None:
             availability_expiry.reset()
 
     def on_message(connected_client, _userdata, message):
         payload = bytes(message.payload)
+        if message.topic.startswith("gatekeeper/v1/ha-bridge/") and (
+            message.topic.endswith("/access-event")
+        ):
+            if ha_outbox_worker is not None:
+                ha_outbox_worker.note_broker_receipt(
+                    message.topic,
+                    payload,
+                    retained=bool(getattr(message, "retain", False)),
+                )
+            return
         if message.topic.endswith("/canonical-event"):
             retained = bool(getattr(message, "retain", False))
             if (
@@ -3204,20 +3615,11 @@ def _start_target_boot_subscriber():
             state = bridge.note_target_availability(message.topic, payload)
             if state is not None:
                 # Raw Target availability is an unauthenticated LWT on the
-                # current broker.  Treat it only as a prompt to re-evaluate
-                # signed-status freshness; never let it invalidate verified
-                # mobile readiness or force HA offline while that status is
-                # still fresh.
-                connected_client.publish(
-                    bridge_availability_topic(COMMAND_TARGET_ID),
-                    (
-                        "online"
-                        if bridge_boot_is_aligned()
-                        else "offline"
-                    ),
-                    qos=1,
-                    retain=True,
-                )
+                # current broker.  Parsing it is useful for diagnostics, but
+                # it must not mutate HA state: the signed-status expiry owns
+                # the wider 90.25-second access-session grace, while command
+                # authorization intentionally expires after 15 seconds.
+                log.debug("[MQTT-HA] advisory Target availability=%s", state)
             return
 
         if message.topic == target_ack_topic(COMMAND_TARGET_ID):
@@ -3251,11 +3653,13 @@ def _start_target_boot_subscriber():
                     {"reason": decision.reason, "stage": "rejected"},
                 )
                 if decision.reason == "target_status_stale":
-                    connected_client.publish(
+                    publish_ephemeral_retained(
                         bridge_availability_topic(COMMAND_TARGET_ID),
                         "offline",
-                        qos=1,
-                        retain=True,
+                        "stale-command availability",
+                    )
+                    publish_connectivity_diagnostic(
+                        "offline", "SIGNED_STATUS_STALE"
                     )
                 return
             command = decision.command
@@ -3521,7 +3925,10 @@ async def lifespan(app: FastAPI):
                     boot_subscriber.publish(
                         bridge_availability_topic(COMMAND_TARGET_ID),
                         "offline",
-                        qos=1,
+                        # Live bridge authority uses QoS 0 retained state so
+                        # Paho cannot replay a stale online packet after a
+                        # disconnect. The broker LWT covers ungraceful loss.
+                        qos=0,
                         retain=True,
                     ).wait_for_publish(timeout=2.0)
                 except Exception:
@@ -4273,7 +4680,22 @@ def health_check():
     })
 
 
-def _readiness_snapshot() -> tuple[bool, dict]:
+def _target_status_fresh_for_readiness() -> bool:
+    return bool(
+        COMMAND_TARGET_ID
+        and _target_gate_states.live_evidence(
+            COMMAND_TARGET_ID,
+            HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS,
+        )
+        is not None
+    )
+
+
+def _readiness_snapshot(
+    *, target_status_fresh: bool | None = None
+) -> tuple[bool, dict]:
+    if target_status_fresh is None:
+        target_status_fresh = _target_status_fresh_for_readiness()
     checks = {
         "database": False,
         "database_schema": False,
@@ -4295,6 +4717,8 @@ def _readiness_snapshot() -> tuple[bool, dict]:
         "legacy_prearm_retired": not _legacy_prearm_authority_enabled(),
         "build_identity": bool(re.fullmatch(r"[a-f0-9]{40}", BUILD_SHA)),
     }
+    if ACCESS_SIGNED_STATUS_READINESS_REQUIRED:
+        checks["target_status_fresh"] = target_status_fresh
     conn = None
     try:
         conn = get_db()
@@ -4355,7 +4779,10 @@ def _legacy_prearm_authority_enabled() -> bool:
 
 @app.get("/ready")
 def readiness_check():
-    ready, checks = _readiness_snapshot()
+    target_status_fresh = _target_status_fresh_for_readiness()
+    ready, checks = _readiness_snapshot(
+        target_status_fresh=target_status_fresh
+    )
     return JSONResponse(
         status_code=200 if ready else 503,
         content={
@@ -4363,6 +4790,12 @@ def readiness_check():
             "service": "smart-gatekeeper-api",
             "build_sha": BUILD_SHA,
             "checks": checks,
+            "target_status": {
+                "evidence": "hmac_verified_advanced_status",
+                "fresh": target_status_fresh,
+                "max_age_seconds": HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS,
+                "required": ACCESS_SIGNED_STATUS_READINESS_REQUIRED,
+            },
         },
     )
 

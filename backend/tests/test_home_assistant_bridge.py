@@ -6,6 +6,8 @@ import unittest
 from backend.app.home_assistant_bridge import (
     HomeAssistantCommandBridge,
     bridge_availability_topic,
+    bridge_connectivity_diagnostic_payload,
+    bridge_connectivity_diagnostic_topic,
     bridge_request_topic,
     bridge_verified_status_topic,
     build_discovery_plan,
@@ -92,6 +94,10 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         self.assertEqual("connectivity", connectivity_config["device_class"])
         self.assertEqual("online", connectivity_config["payload_on"])
         self.assertEqual("offline", connectivity_config["payload_off"])
+        self.assertEqual(
+            bridge_connectivity_diagnostic_topic(TARGET),
+            connectivity_config["json_attributes_topic"],
+        )
         self.assertNotIn("availability_topic", connectivity_config)
         self.assertNotIn("entity_category", connectivity_config)
         self.assertNotIn("expire_after", connectivity_config)
@@ -163,6 +169,7 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
             "door_binary",
             "pre_armed",
         }
+        live_access_ids = {"state", "door_binary", "pre_armed"}
         for publication in read_only:
             object_id = publication.topic.split("/")[-2]
             config = json.loads(publication.payload)
@@ -170,6 +177,15 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
                 self.assertNotIn("expire_after", config)
             elif object_id not in {"connectivity", "access_terminal_event"}:
                 self.assertEqual(30, config["expire_after"])
+            if object_id in live_access_ids:
+                self.assertEqual(
+                    bridge_availability_topic(TARGET),
+                    config["availability_topic"],
+                )
+            elif object_id not in {
+                "connectivity",
+            }:
+                self.assertNotIn("availability_topic", config)
 
         for publication in read_only:
             config = json.loads(publication.payload)
@@ -188,6 +204,21 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
                     config["state_topic"],
                 )
             self.assertNotIn("command_topic", config)
+
+    def test_connectivity_diagnostic_is_bounded_backend_evidence(self) -> None:
+        payload = bridge_connectivity_diagnostic_payload(
+            "offline", "SIGNED_STATUS_STALE"
+        )
+        self.assertEqual(
+            {
+                "diagnostic_scope": "last_completed_backend_observation",
+                "last_signed_status_observation": "SIGNED_STATUS_STALE",
+                "schema_version": 1,
+            },
+            json.loads(payload),
+        )
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            bridge_connectivity_diagnostic_payload("offline", "TARGET_CRASHED")
 
     def test_request_requires_fresh_authenticated_status_and_safe_payload(self) -> None:
         topic = bridge_request_topic(TARGET, "config_duration_num")

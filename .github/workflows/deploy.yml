@@ -341,38 +341,41 @@ jobs:
           # Keep the auto-compiled Target tree closed so a newly added source,
           # local library or interpreter startup hook cannot reach later secrets.
           EXPECTED_BUILD_TREE="$(cat <<'EOF'
+          100644 2034c9b48587d00ee9f43d09fee06b6fefa1f7574f02fae6ec47f33a4f7e2635 include/AccessCriticalLeasePolicy.h
           100644 87508551abdc0eee107eb879bc979c7bb93e8032d166c716df159ad469602eac include/BleStartupPolicy.h
           100644 9979085720f5b860d8135737b64269cedc6ec42515c352e6a65ac7a6b1c9466f include/ConfigManager.h
-          100644 9ebeac418fe2cd0c858889206bda9c4f0a45250eafe4c9276ba848ea0f09f29b include/DiagnosticsManager.h
+          100644 73f61df6923e975da389a1c5028be0b7ba5f79c9c115d66b3171497af6718707 include/DiagnosticsManager.h
           100644 bab4d5f0cf614e0dfe060c7896ae0fc8be8b1cdaa86a8fe44437471ee9f03864 include/DurablePreferences.h
+          100644 71c08cdd79ba90487da979a8dd5ac3007344085e2253a4dd697c1c35834224e8 include/EvidencePersistenceFailureLatch.h
           100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
-          100644 0b8f6e85c19c7b15b9a07b6626a614b9ecd0c15a54a82b0a8d14e68e3e1a4bb3 include/GattProtocol.h
-          100644 f525c133dd2ac734fec13e85683c32254ea3eae148c714b840583a2d43889ba5 include/GattServer.h
-          100644 b31e54808f412f29a27256e24926895ecce0aaf4b1b7bdd64eda2b62dd67bfef include/MqttManager.h
+          100644 bb484a9a6cb32791984dd30c4c1325c64fcdd8213f434a317a763ef29e3d2851 include/GattProtocol.h
+          100644 5d9d279f847432827b8275e3b16118be9c232f0253f51fee902e126f4aea1053 include/GattServer.h
+          100644 632693bed77d2ab54fbf06926505fbaa105a2faa29bee7c554a88d7db1236e36 include/MqttManager.h
           100644 a1976f3cd57dc9f2873ce651cccc212a39827c9d31a5a880c9029f89be0d735e include/OfflineEventQueue.h
           100644 a42780d48211f0306f8278298ee7b598d349c52b0ba2e4913223a60bf30426c1 include/OtaHealthPolicy.h
-          100644 333dbe7e825443210fad253d11722b70b6df2067a2f888f2810f7adfa83d7d6f include/OtaManager.h
+          100644 4f490ff6be48e44d03082b55ffe83162cb5d1cebbf800ee15832d342787b70b7 include/OtaManager.h
           100644 ade406347069742dec9139e011e6a45a897a9f0a75f2e30a24debb9f7074d8aa include/OtaVersionPolicy.h
-          100644 3e25df300a313b8081e0c1bbba8b43e04aa5d8d439226c303d560d24e801ff79 include/RecoveryRadioPolicy.h
+          100644 8c0be800233019cf2edad1ffcec7d3d9eef9d1c85d0097f8ec78fdd62ee6a92d include/RecoveryRadioPolicy.h
           100644 199bd44240f7df0082ee065ac715f47c03ef893e7d86d9a129df820969e35164 include/RelayController.h
+          100644 61df9db68dfc499c1f892f0b507204b69f81d7808efd77d39efad5051cecfc9d include/RestartEvidenceRetention.h
           100644 7d893a2d5114c4b6b7041d2c4a430d6110fcbdef2a68aa84d3b7ddb26eaedb86 include/TargetAccessFsm.h
           100644 72ae43ed6754c63d1b7fa2113504be8ea7f5b2865cfc9daf0c95917ae9894f81 include/TargetAclManager.h
           100644 06ed8297492e8bd81c97d6e7b817a4dc3e11e4df1cb8e95f55439e97e44a534b include/TargetCommandSecurity.h
           100644 b565052cc9df2933376cd059c5d74dfc0e66af24e79a65caa5eec96a4db5880f include/TargetProofVerifier.h
           100644 83fd17527d6f4558ff868d58814ec69f3a38f75c220ea381531d1140a7c3085d include/TargetState.h
           100644 a46484bd8d6b2985378a50e1912778801dc78279ffc3abbe24242b4fc3309b3d include/UltrasonicSensor.h
-          100644 90d2f626db86287b15c96642d0c67718a54d003b67c72a8906d73fba2d851988 include/config.h
+          100644 9e523330f3377fc68276dbc90bf41240fba4f8939a01d0180b16eb286505ea74 include/config.h
           100644 314da70cb34a86b5fdb6830f6c50ec2611ec69e38b964e476ee2bd79354a326a include/secrets.h.example
           100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock
           100644 20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv
           100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini
           100644 0a197ffa68213f1651f9b25a92256ef209b58dca1cf1dd7be77e3f861afffb96 src/ConfigManager.cpp
-          100644 8c53bdaa676fc2f79014578233f2ac6ec961d1061d070b909f493439406ebc39 src/DiagnosticsManager.cpp
-          100644 a62ed9b32198c95da9350a661846bf0d245510cab26ec03f0735262aef3f20c8 src/GattProtocol.cpp
-          100644 0c2b96e1deb7f08c8e15c4155df815b5344e2b3c6730e0bd10d631db27cc1250 src/GattServer.cpp
-          100644 626fde4fc8d262d69e7a93ee4dd2a3b3f7315e8455f05919a43f9849fc89c2ac src/MqttManager.cpp
+          100644 fc3e6f45944929f5551424520fb23e3f9c1c26262884280ebc66a9a10c628a03 src/DiagnosticsManager.cpp
+          100644 d841d0e31d2e6ba89af45d8816bc42ac306d2262e414216ae171db2fdc7c249d src/GattProtocol.cpp
+          100644 7354652026c5aae65add70c11ac2a63533921ad35077819f7527b71266517ae7 src/GattServer.cpp
+          100644 e59882d8f3bf178f1737ef36ee0feeea82050a1c9a21d52017c9a373dacf1b38 src/MqttManager.cpp
           100644 4f2508172140436df9b6d00504e367a36aba9c519f8c12cd7f09b0d2d31bed41 src/OfflineEventQueue.cpp
-          100644 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7 src/OtaManager.cpp
+          100644 d1ae427e08d363be527072fb1bd7074c609b07fa95614703dd521c7e3018a31f src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
           100644 447ef319af59cc3316ec6e2e1bb2a62a5a8d2b33efecb399653234e321aa1fea src/RelayController.cpp
           100644 f976c8080e0c0bdf6dc58c4439c94166c76d8dec9351f810536be209d6a50921 src/TargetAccessFsm.cpp
@@ -380,9 +383,9 @@ jobs:
           100644 3022a4876962dfbd20b9e86e3008170b1fbf5c1945a397d1a8f02bdb6d2a1e10 src/TargetCommandSecurity.cpp
           100644 248edb5e1c5c67b1a87c4bb7fda2a9dead4eb6f043ef50e6a58c175634e0a291 src/TargetProofVerifier.cpp
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
-          100644 9f71191acdb9d068503f02feddf27d40b12f4fcbcf83b86a5df2e88c1439f1c3 src/WifiManager.cpp
-          100644 7a60cf5487282008b7dc8097e51d6d734ceeade429c7484bdeccfcb3e553072d src/WifiManager.h
-          100644 413b403a04ec595cd5d9f4984ddb70428ac82b6d19945cb286125a968000a0c1 src/main.cpp
+          100644 d47d4462d071e51afad98c1bff32476ca67f5345314eb2975f857b5b0cea2b91 src/WifiManager.cpp
+          100644 8e51d33c225123e82fbe582f45e2fd25783772c29e6da47760858564e8f58578 src/WifiManager.h
+          100644 363648ab9e39ac445bcee9d14390b19923b24d6e5f519d8223704d83a7dc7f0f src/main.cpp
           EOF
           )"
           test ! -e .pio

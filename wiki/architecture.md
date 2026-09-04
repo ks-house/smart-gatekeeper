@@ -1,5 +1,5 @@
 # architecture.md — 현재 시스템 아키텍처
-> Last updated: 2026-09-02 (authenticated actor/session completion source contract added; deployment and physical door evidence pending)
+> Last updated: 2026-09-04 (bounded Target recovery and broker-routed HA Activity receipt contract added; deployment and physical door evidence pending)
 >
 > 저장소 구현과 현장 배포 상태의 차이는 [project_status.md](project_status.md)를 먼저 확인한다.
 
@@ -151,39 +151,55 @@ GATT protocol update → ultrasonic sample/filter → relay/FSM transition
 
 GATT canonical event와 legacy event producer는 TLS socket을 호출하지 않고 16-entry fixed RAM outbox에
 복사한다. `AUTH_PENDING`, `ARMED`, `RELAY_HOLD`, `COOLDOWN`과 진행 중 GATT protocol output 동안
-Wi-Fi web handler, MQTT connect/read/publish/offline flush, OTA update는 보류된다. IDLE safe-state에서
-기존 loopTask 하나만 PubSubClient를 소유해 durable oldest event, volatile FIFO event, latest coalesced
-status 순으로 처리하며 audit event 전송은 loop pass당 한 건으로 제한한다.
+Wi-Fi web handler, MQTT connect/read/publish/offline flush, OTA update는 보류된다. DNS는 loopTask의
+generation-bound callback state로 진행하고, TCP/TLS/MQTT connect 동안에는 bounded FreeRTOS worker
+하나가 secure client와 PubSubClient를 단독 소유한다. Worker가 watchdog을 해제하고 terminal result를
+handoff한 뒤에만 loopTask가 steady-state `client.loop()`/publish owner가 된다. IDLE safe-state에서는
+latest coalesced signed terminal/IDLE status를 먼저 시도하고 boot/config 뒤 durable NVS event, volatile
+FIFO event 순으로 처리하며 audit event 전송은 loop pass당 한 건으로 제한한다.
 
 NVS와 모든 설정 진입점은 pre-arm을 1~60초, cooldown을 1~10초로 clamp한다. 한 번
 proof가 통과해 `ARMED`가 된 세션은 sensor wait, `RELAY_HOLD`, `COOLDOWN`을 마치고
 relay OFF인 fresh `IDLE`로 돌아올 때까지 새 `ClientHello`를 모두 busy로 거부한다. 따라서
 미인증 B가 A의 actor, deadline, phase, causal parent나 sensor/relay 완료를 교체할 수 없다.
-실행 수명주기에는 5초 auth window가 하나만 있다. Compile-time 상한은 추가 5초 안전
-여유를 유지해 60초 ARMED, 1초 relay hold, 250ms true-failsafe grace와 10초 cooldown을
-모두 더해도 90초 상태 grace보다 짧고, PubSubClient keepalive는
-120초로 둔다. 따라서 정상 access-critical deferral만으로 기존 30초
-keepalive가 만료되던 문제를 막으면서 socket `loop()`을 sensor/relay 경로에 다시 넣지 않는다.
+Pre-proof ingress는 두 번의 5초 auth window를 합친 하나의 10초 unverified lease만 가진다. 만료되면
+그 transport를 끊고 IDLE/network service를 재개하며 Target을 재부팅하지 않는다. 짧은 quiet gap은
+네트워크를 즉시 재개하지만 lease를 갱신하지 않고, 30초 연속 quiet 뒤에만 새 unverified epoch를 연다.
+Verified action generation은 별도의 85초 physical lease를 시작한다. 10초 pre-proof, 60초 ARMED,
+1초 relay hold, 250ms true-failsafe grace와 10초 cooldown의 compile-time 정상 상한 81.25초는 이 lease
+안에 있고 90.25초 상태 grace보다 짧다. PubSubClient keepalive는 120초로 두므로 정상 deferral을 위해
+socket `loop()`을 sensor/relay 경로에 다시 넣지 않는다.
 HA command acceptance는 여전히 15초 fresh status를 요구하지만 연결 entity의 signed-status expiry는
 90.25초여서 정상 60초 ARMED 동안 거짓 offline으로 바뀌지 않는다.
 
 volatile overflow에서는 가장 오래된 record를 기존 durable NVS queue로 먼저 spill해 순서를 유지한다.
-새 FreeRTOS MQTT task나 concurrent callback owner를 만들지 않으므로 FSM/ACL/OTA 동시 실행 race를
-추가하지 않는다. 이 source/build 계약은 installed Target latency, MQTT outage soak 또는 physical door
-동작 증거가 아니며 exact signed OTA install→reboot→health 후 같은 접근 시험이 필요하다.
+Connect worker와 loopTask는 동시에 PubSubClient를 소유하지 않는다. Worker는 TCP 4초, TLS 8초,
+MQTT read 3초 단계 사이에 45초 task WDT를 feed하고 모든 종료 경로에서 등록을 해제한다. Loop는 request
+ID와 Wi-Fi link generation이 모두 현재인 결과만 채택하고, access/link 변경으로 취소되거나 늦게 끝난
+결과는 stale로 닫는다. OTA periodic/local TLS도 worker가 terminal handoff하기 전에는 시작하지 않는다.
+이 source/build 계약은 installed Target latency, MQTT outage soak 또는 physical door 동작 증거가 아니며
+exact signed OTA install→reboot→health 후 같은 접근 시험이 필요하다.
 
 Authenticated event/status도 같은 경계를 따른다. GATT/FSM code는 actor ref와 MAC-covered record를
-bounded outbox에 넣을 뿐 TLS write를 기다리지 않는다. Signed MQTT terminal은 relay lifecycle 종료 뒤
-8-entry NVS queue에 먼저 commit하고 NVS 실패 때만 RAM outbox로 fallback한다. 기존 단일 loopTask의 PubSubClient owner가
-safe phase에서 oldest-first publish하고, Backend Paho callback도 DB를 직접 쓰지 않고 bounded worker로
-넘긴다. 따라서 여기서 말하는 asynchronous/non-critical은 concurrent PubSubClient owner를 추가했다는
-뜻이 아니라 access-critical sensor/relay 진행이 socket/DB I/O를 기다리지 않는다는 뜻이다.
+bounded outbox에 넣을 뿐 TLS write를 기다리지 않는다. Canonical terminal은 이전 volatile FIFO를
+oldest-first NVS 뒤에 append한 후 terminal 자체를 NVS에 기록한다. NVS가 막히면 reserved RAM tail의
+terminal을 포함한 complete remaining FIFO가 checksum-bound generation의 RTC_NOINIT A/B journal inactive
+slot에 기록되고 magic-last commit된 경우에만 수락한다. Torn replacement는 이전 valid generation을
+복원한다. Terminal handoff 뒤 loopTask owner가 safe phase에서 oldest-first publish하고, Backend Paho
+callback도 DB를 직접 쓰지 않고 bounded worker로 넘긴다. 따라서 여기서 말하는 asynchronous/non-critical은
+동시 PubSubClient owner를 허용한다는 뜻이 아니라 access-critical sensor/relay 진행이 socket/DB I/O를
+기다리지 않는다는 뜻이다.
 
 최신 terminal summary는 같은 boot RAM에서 우선 status로 내보내고 Backend가 수신하면 immutable하게
 저장한다. 갑작스러운 power loss가 terminal 뒤 첫 signed status보다 먼저 발생하면 RAM summary는
-사라질 수 있지만, signed MQTT arm/manual은 같은 terminal callback에서 별도 HMAC canonical event를
-NVS에 먼저 기록하므로 다음 boot에서 원래 source position으로 재전송한다. Local GATT latest-summary와
-유한 queue overflow에는 여전히 best-effort 경계가 있고, 어느 경로도 door 결과를 추측해 메우지 않는다.
+사라질 수 있지만, 별도 HMAC canonical terminal은 위 NVS/RTC journal에서 다음 software boot의 원래
+source position으로 재전송을 시도한다. 복원한 journal generation은 그 front records가 실제 publish 또는
+NVS migration으로 모두 제거될 때까지 지우지 않고, partial drain 뒤 재저장 시 exact remaining FIFO를
+inactive slot의 다음 generation으로 교체한다. Repeated soft reset은 duplicate를 만들 수 있지만 terminal을
+조용히 잃어서는 안 된다. RTC는 cold power-loss 저장소가 아니고 유한 queue overflow도 best-effort
+경계이며, 어느 경로도 door 결과를 추측해 메우지 않는다. `evidence_persistence_failed` breadcrumb는
+연속 software reset에 carry하고 retained boot diagnostics 성공은 previous-boot failure만 clear한다.
+같은 boot에서 새로 생긴 failure는 다음 reset까지 유지한다.
 
 Signed MQTT `arm`과 `manual_remote`는 Local GATT proof lifecycle과 별도이므로 command callback에서
 인증된 command session UUID만 RAM tracker에 시작한다. FSM callback은 `ARMED`, sensor, relay ON/OFF와
@@ -192,11 +208,29 @@ terminal bit만 메모리에 기록하고 MQTT/TLS를 호출하지 않는다. Te
 전송한다. Local GATT sequence와 충돌하지 않도록 양쪽 high-water를 서로 전진시킨다. 따라서 command
 PUBACK/ACK는 즉시 유지되면서 실제 FSM 완료는 나중의 HMAC-verified terminal summary로 별도 관측된다.
 
+Signed reboot도 MQTT callback에서 직접 실행하지 않는다. Inbound QoS 1 처리/PUBACK 경계 뒤 main이 새
+GATT 인증을 busy로 막고 callback work를 drain하며 unverified ingress만 bounded abort한 뒤 verified
+physical state를 다시 확인한다. Verified action이 경쟁에서 이겼으면 terminal까지 reboot pending을
+유지하고, 안전 상태에서는 전체 pending evidence와 planned-restart breadcrumb를 checkpoint한 뒤에만
+재부팅한다. Protocol 시작 전 raw link/malformed/overflow는 zero-session canonical terminal을 만들지
+않으며, committed action 뒤 duplicate frame은 replay transport 결과만 반환하고 false terminal이나
+중복 physical effect를 만들지 않는다.
+
 Backend schema 013은 인증된 canonical event history 행과 HA event projection outbox 행을 한 transaction으로
-commit한다. 별도 worker가 oldest pending row를 QoS 1/non-retained로 발행하고 broker PUBACK 뒤에만 완료로
-표시하므로 DB commit과 HA publish 사이의 API restart는 미완료 row 재시도로 복구된다. 이 구간은
-at-least-once이므로 PUBACK 직후 DB mark 전 crash에는 같은 marker가 중복 전달될 수 있다. Target→broker는
+commit한다. 별도 worker가 oldest pending row를 QoS 1/non-retained로 발행하고 local QoS 1
+completion과 Backend 자신이 구독한 exact non-retained `(topic, payload)` broker-routed receipt를 모두
+확인한 뒤에만 완료로 표시한다. Retained echo, 다른 topic, 다른 payload는 완료 증거가
+아니다. 따라서 DB commit과 broker route 사이의 API/broker restart는 미완료 row 재시도로
+복구된다. 이 구간은 at-least-once이므로 route receipt 직후 DB mark 전 crash에는 같은
+marker가 중복 전달될 수 있다. Target→broker는
 여전히 PubSubClient QoS 0이고 queue도 유한하므로 schema 013이 end-to-end exactly-once를 뜻하지 않는다.
+Worker는 exact personal Target receipt subscription의 successful SUBACK 전에는 DB row를 publish하지
+않고, SUBACK/queue failure를 1→30초 backoff로 재시도한다. `published_at`은 broker self-route 증거이지
+Home Assistant consumer/Recorder acknowledgement가 아니다. Event는 old Activity 재발화를 막기 위해
+non-retained이고, 별도의 privacy-safe verified-status/latest-result는 retained이므로 HA 재접속 뒤 최신
+marker를 복구한다. 이 bridge는 현재 `COMMAND_TARGET_ID` 단일 device와 API 단일 replica/non-overlap
+배포 계약이다. 다중 Target 또는 rolling overlap은 leader election, per-Target discovery와 outbox row
+claim이 추가되기 전 지원하지 않는다.
 - relay ON과 동시에 별도 `esp_timer` 1초 one-shot을 시작하므로 main loop block이나 state overwrite가
   생겨도 timer task가 물리 출력을 OFF
 - relay ON/hold 중 새 arm은 안전 인터록으로 거부하고 manual open은 기존 arm을 취소

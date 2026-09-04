@@ -444,6 +444,13 @@ causal parent를 바꾸거나 A의 terminal status summary를 덮을 수 없다.
 high-water를 올리더라도 A의 다음 lifecycle event는 고유한 새 source position과 A의 직전
 causal sequence를 유지한다.
 
+Protocol session이 시작되기 전 raw BLE link는 canonical `session_id`가 없다. 이 상태의 단순
+disconnect, malformed frame 또는 queue overflow는 transport 결과로만 닫고 zero-session
+`ACCESS_*` event/terminal을 만들지 않는다. 그렇지 않으면 표현 불가능한 record가 FIFO head를
+막고 뒤의 verified evidence까지 정지시킬 수 있다. 반대로 authenticated action이 이미 commit된
+`Completed` session의 duplicate/trailing frame은 `EXPIRED_OR_REPLAY` transport 결과만 반환하며,
+동일 action을 다시 실행하거나 실패 terminal을 합성하거나 physical lifecycle actor를 지우지 않는다.
+
 Terminal phase bit는 다음처럼 고정한다.
 
 | Bit | 확인된 Target software 단계 |
@@ -464,22 +471,40 @@ Terminal phase bit는 다음처럼 고정한다.
 `0x19`, signed MQTT arm+sensor `0x1e`, signed MQTT `manual_remote` `0x18`. 이 네 값이 아니거나
 `0x20`이 있으면 `ACCESS_SESSION_COMPLETED` 문자열만으로 성공으로 집계하지 않는다. Individual QoS 0 event가 유실됐더라도 같은 boot의 서명된 terminal
 요약은 별도 immutable summary로 보존할 수 있다. 최신 terminal status 요약은 여전히
-**동일 boot RAM best-effort**지만, signed MQTT arm/manual terminal은 별도의 HMAC canonical event로
-terminal callback이 반환하기 전에 8-entry NVS queue에 먼저 기록되고, NVS write 자체가 실패한 경우에만
-16-entry RAM outbox로 fallback한다. 따라서 MQTT socket I/O를 control path에 넣지 않으면서 status 전송 전
-재부팅에도 Backend는 원래 boot/count/sequence의 terminal event를 재수집한다. Queue가 포화되면 기존
-`queue_overflow` gap 정책이 손실 범위를 명시하며, 무한 단절을 무손실이라고 주장하지 않는다.
+**동일 boot RAM best-effort**지만, canonical terminal은 callback이 성공을 반환하기 전에 restart-safe
+ordered checkpoint를 통과한다. 먼저 이전 volatile FIFO를 oldest-first로 기존 NVS queue 뒤에 append하고,
+그 다음 terminal을 NVS에 기록한다. NVS가 terminal까지 수용하지 못하면 terminal을 reserved RAM tail에
+붙인 뒤 그 terminal을 포함한 남은 FIFO 전체를 checksum-bound generation의 RTC_NOINIT A/B journal에
+저장한 경우에만 terminal을 수락한다. Inactive slot에 records/checksum을 쓴 뒤 magic을 마지막으로
+commit하므로 replacement 도중 reset되면 이전 valid generation이 복원된다. 따라서 MQTT socket I/O를
+control path에 넣지 않으면서 software reset 뒤에도 원래 boot/count/sequence의 terminal 재수집을
+시도한다. RTC journal은 cold power loss 내구성이 아니며 queue가
+포화되면 기존 `queue_overflow` gap 정책이 손실 범위를 명시하므로, 무한 단절을 무손실이라고 주장하지 않는다.
 어느 경우에도 software terminal은 physical door 이동을 추정하는 근거가 아니다.
 
 Schema 013에서 Backend canonical worker는 HMAC 검증된 access-history 행과 HA projection outbox 행을
 한 DB transaction으로 commit한다. 별도 HA outbox worker가 commit된 oldest row만
 `event.smart_gatekeeper_01_access_terminal_event` 입력 topic으로 QoS 1/non-retained 발행하고 broker
-PUBACK을 확인한 뒤 `published_at`을 기록한다. API/broker가 중간에 재시작되면 미완료 row를 같은 event
-marker로 재시도한다. 따라서 DB commit 뒤 HA publish 전 crash의 영구 누락은 막지만, PUBACK 뒤 DB mark
-전 crash에는 동일 marker의 중복 전달이 가능한 **at-least-once** 계약이다. 동일 canonical event replay는
-outbox identity를 재사용하며 새 pending row를 만들지 않는다.
-기존 `[Gatekeeper] 최근 출입 결과` sensor는 signed status 기반 N/N-1 호환과 최신 결과 표시를
-그대로 유지한다.
+local publish completion과 Backend 자신의 exact non-retained `(topic, payload)` broker-routed echo를 모두
+확인한 뒤에만 `published_at`을 기록한다. Paho 1.6.1이 negative PUBACK reason을 충분히 노출하지 않는
+한계를 broker route receipt와 Backend read ACL로 보완한다. Retained echo, 다른 topic 또는 단 한 byte라도
+다른 payload는 완료 증거가 아니다. API/broker가 중간에 재시작되거나 receipt가 없으면 미완료 row를 같은
+event marker로 재시도한다. 따라서 DB commit 뒤 HA route 전 crash의 영구 누락은 막지만, route receipt 뒤
+DB mark 전 crash에는 동일 marker의 중복 전달이 가능한 **at-least-once** 계약이다. 동일 canonical event
+replay는 outbox identity를 재사용하며 새 pending row를 만들지 않는다.
+Worker는 성공한 CONNACK뿐 아니라 자신의 exact receipt topic SUBACK까지 받은 세대에서만 publish한다.
+SUBACK 거부/로컬 subscribe 실패는 1초에서 30초까지 제한된 backoff로 같은 연결에 재구독하고, Paho
+`QUEUE_SIZE`는 연결 손실로 오인하지 않고 같은 세대에서 backoff 재시도한다. `NO_CONN`은 새 CONNACK까지
+발행을 막으므로 장기 단절 중 같은 row가 Paho offline queue에 반복 누적되지 않는다.
+
+여기서 `published_at`은 이름과 달리 **Backend publish + broker self-route 완료**까지만 뜻한다. Home
+Assistant consumer가 그 순간 연결·구독·허가되어 Recorder에 기록했다는 acknowledgement는 MQTT event
+entity에 없으므로 HA Activity 자체는 여전히 consumer 관점 best-effort다. 대신 기존 `[Gatekeeper] 최근
+출입 결과` sensor의 privacy-safe verified-status를 retained state로 유지해 HA 재접속 뒤 최신 marker는
+복구한다. Activity event 자체는 과거 event 재발화를 막기 위해 non-retained다. 현재 discovery/device
+identity는 personal-production `COMMAND_TARGET_ID` 하나만 소유하므로 ACL에 등록된 보조 Target event는
+HA outbox에 넣지 않는다. 다중 Target/다중 Backend replica는 별도 device identity와 leader/row-claim
+계약 전까지 지원하지 않는다.
 
 Backend 모바일 projection도 signed terminal phase에 `0x20`이 하나라도 있으면 다른 정상 phase bit와
 관계없이 `complete`가 아닌 실패 `terminated`로 분류한다. 이 실패 terminal 자체만으로 다음 인증을
@@ -499,19 +524,35 @@ OFF pin level이 모두 확인된 경우에만 참이다. 이 표시는 scanner�
 거부된다.
 
 이 단계 목록은 실시간 delivery 계약이 아니다. Target는 access-critical 동안 모든 MQTT/TLS를
-보류하고 IDLE 뒤 persisted/volatile evidence와 최신 status를 순서대로 배출한다. 따라서 앱은 중간
+보류한다. IDLE 뒤에는 모바일 exact-session poll이 audit backlog에 막히지 않도록 최신 signed
+terminal/IDLE status를 먼저 시도하고 boot/config snapshot을 처리한다. 그 뒤 audit write는 update당
+총 한 record로 제한한다. Durable NVS FIFO가 있으면 그 front 한 건을 처리하고 즉시 반환하며, NVS가
+비었을 때만 volatile FIFO front 한 건을 처리한다. 따라서 앱은 중간
 `sensor_detected`/`relay_active`/`cooldown`을 관찰할 수도 있지만, 4초 polling 경계에서는 `armed`에서
 곧바로 최종 `complete`로 건너뛸 수 있다. 보장되는 사용자 의미는 exact-session terminal과 fresh
 IDLE을 함께 확인한 뒤의 `다음 인증 가능`이다.
 
 Target의 일반 event producer는 access-critical callback/FSM에서 TLS를 호출하지 않고 bounded outbox에
-복사한다. Signed MQTT terminal은 완료 callback에서 bounded NVS queue에 먼저 commit하고 NVS 실패 때만
-RAM에 보존하지만 MQTT socket은 여전히 호출하지 않는다. 실제 PubSubClient connect/loop/publish는 기존 단일 owner가 access-critical phase 뒤
-safe state에서 수행해 sensor/relay 경로의 비핵심 비동기 경계가 된다. Backend에서도 Paho callback은
+복사한다. Signed MQTT terminal도 위 ordered NVS/RTC checkpoint만 수행하며 MQTT socket은 호출하지 않는다.
+DNS는 generation-bound callback으로 loop task가 관리하고, TCP/TLS/MQTT handshake는 secure client와
+PubSubClient를 단독 소유하는 bounded worker 하나만 실행한다. Loop task는 worker 종료 전 그 객체를
+읽거나 쓰지 않고 request ID와 Wi-Fi link generation이 모두 현재인 결과만 채택한다. Access 진입이나
+link 변경이 요청한 취소 뒤 늦게 끝난 결과는 stale로 닫고, worker와 loop의 45초 WDT는 hard stall을
+fail-closed한다. OTA도 이 worker가 끝나기 전에는 별도 TLS를 시작하지 않는다. Backend에서도 Paho callback은
 bounded queue만 채우고 event/status DB I/O와 HA outbox delivery는 worker가 수행한다. Target publisher의
 QoS 0 전달 한계, 유한 NVS/RAM queue overflow 가능성과 broker principal
 인증은 별개다. 따라서 production에서는 Target/Backend/Home Assistant principal의 exact topic ACL을
 설치하고 anonymous/cross-principal publish·subscribe 거부를 확인해야 한다.
+
+미인증 GATT ingress는 최대 10초만 access-critical gate를 소유한다. 그 시간을 넘으면 transport를
+disconnect하고 unverified state를 IDLE로 정리한 뒤 네트워크를 즉시 재개하며 Target은 재부팅하지 않는다.
+짧은 non-critical gap도 네트워크는 재개하지만, 30초 연속 quiet가 되기 전에는 같은 unverified lease
+epoch를 유지해 connect/disconnect churn이 10초 예산을 반복 갱신하지 못하게 한다. Verified action
+generation이 생기면 별도의 85초 physical lease를 시작한다. 이 verified lease가 만료되는 비정상 경로도
+socket을 호출하지 않는다. Relay를 fail-closed OFF로 정리하고 Local GATT와 signed MQTT lifecycle에
+`INTERNAL_ERROR` terminal 및 일반 `access_critical_timeout` breadcrumb를 만든 뒤 ordered NVS/RTC
+checkpoint를 시도한다. 그 다음에만 controlled restart하며 persistence degradation은 boot/status 진단에
+남긴다.
 
 GATT `RESULT` indication은 authenticated action commit 뒤의 transport 확인일 뿐 이미 시작된 Target
 FSM을 취소하지 않는다. RESULT subscription 누락, indication 실패 또는 confirmation timeout이 action
@@ -531,10 +572,10 @@ A의 성공 phase를 합성하거나 B의 중간 상태를 A에게 노출하지 
 
 Target 설정은 pre-arm 1~60초와 cooldown 1~10초로 boot/NVS/MQTT/Web 진입점에서 clamp되고 relay hold는
 1초다. Verified `ARMED`부터 cooldown 종료까지는 새 인증을 모두 거부하므로 세션 교체가
-deferral을 늘리는 경로가 없다. 실행 수명주기의 5초 auth window는 하나이고,
-compile-time 상한은 추가 5초 안전 여유와 60초 arm, 1초 hold, 250ms failsafe grace,
-10초 cooldown을 합친 값도
-90초 access-status grace보다 짧으며 MQTT keepalive는 120초다. HA command는
+deferral을 늘리는 경로가 없다. Pre-proof는 두 번의 5초 auth window를 합친 10초 unverified lease이고,
+검증된 전체 정상 상한은 그 10초와 60초 arm, 1초 hold, 250ms failsafe grace, 10초 cooldown을 합친
+81.25초다. 따라서 verified hard lease 85초보다 짧고, 그 lease는 90.25초 access-status grace보다
+먼저 fail-closed한다. MQTT keepalive는 120초다. HA command는
 기존 15초 freshness를 계속 요구하고, 연결 entity만 90.25초 signed-status watchdog을 사용해 정상
 ARMED 중 false offline을 피한다. 이 grace는 broker 연결 자체를 새로 증명하거나 stale command를
 허용하지 않는다.
@@ -559,16 +600,34 @@ signed terminal/IDLE status의 `source_boot_count`와 `last_terminal_event_seque
 state로 사용하므로 반복 성공이 같은 `IDLE`로 끝나도 한 세션당 한 번 Activity가 전진한다. 주기 status가
 같은 terminal summary를 반복해도 state는 같아 추가 이력을 만들지 않는다. Session UUID, credential/actor
 ref, reason과 HMAC tag는 HA projection에서 계속 제외한다. Canonical event와 관리자 이력은 별도 감사
-경로이며, schema 013 HA transaction outbox는 DB에 도달한 event의 Activity projection을 재시도한다.
+경로이며, schema 013 HA transaction outbox는 DB에 도달한 event의 broker-route projection을 재시도한다.
 이 sensor/outbox 어느 쪽도 Target→broker QoS 0 구간의 누락을 합성하거나 물리 문 열림을 증명하지 않는다.
 
 Signed MQTT command는 callback에서 terminal event를 송신하지 않는다. 인증·replay 검증이 끝난 command의
 session UUID와 mode만 RAM에 보존하고 FSM event callback이 phase bit를 더한다. Relay OFF 뒤 terminal
-sequence와 summary를 완성하고 path-specific canonical terminal은 NVS에 먼저 기록한다. 실제 signed
-event/status publish는 IDLE safe-state의 기존 단일 MQTT owner가 수행한다. 따라서 power loss에는 RAM
-latest-summary가 사라질 수 있어도 별도 canonical terminal은 재부팅 뒤 재전송된다. 단, 8-entry NVS와
-16-entry fallback은 bounded이며 Target publish QoS 0에는 Backend application ACK가 없으므로 무한 outage나
-broker가 수락한 뒤 subscriber에 전달하지 못한 구간까지 절대 무손실로 주장하지 않는다.
+sequence와 summary를 완성하고 path-specific canonical terminal은 older volatile records 뒤의 ordered
+checkpoint로 수락한다. NVS append가 막히면 reserved RAM tail과 전체 remaining-FIFO RTC A/B journal
+generation을 함께 요구한다. 새 generation은 inactive slot의 checksum과 magic-last commit이 끝나기 전까지
+이전 valid slot을 훼손하지 않는다. 복원한 generation은 즉시 지우지 않고, 그 generation이 나타내는 front
+records가 실제 MQTT publish 또는 NVS migration으로 하나씩 제거되어 마지막 record가 확인될 때만 journal을
+지운다. 중간 일부만 NVS로 이동한 뒤 다시 실패하면 현재 head부터 exact remaining FIFO를 inactive slot의
+다음 generation으로 교체한다. 따라서 repeated soft reset은
+at-least-once duplicate를 만들 수 있지만 terminal을 조용히 잃어서는 안 된다. 실제 signed event/status
+publish는 IDLE safe-state의 loop-task owner가 수행한다. 단, NVS/RTC/RAM은 bounded이고 RTC는 cold power
+loss 저장소가 아니며 Target publish QoS 0에는 Backend application ACK가 없으므로 무한 outage나 broker가
+수락한 뒤 subscriber에 전달하지 못한 구간까지 절대 무손실로 주장하지 않는다.
+
+`evidence_persistence_failed` breadcrumb는 event journal과 별개로 연속 software reset에 carry된다. Retained
+boot diagnostics publish가 성공한 경우에만 previous-boot failure를 acknowledge/clear한다. 그 publish 전에
+같은 boot에서 새 persistence failure가 발생했다면 새 latch는 유지되어 다음 reset으로 넘어가므로, 과거
+경고의 전송 성공이 현재 boot의 새 failure를 지우지 않는다.
+
+Signed reboot도 command callback에서 `ESP.restart()`를 호출하지 않는다. Callback은 command completion과
+application ACK를 처리하고 reboot pending만 남긴다. Inbound QoS 1 PUBACK을 보낼 수 있도록
+`client.loop()`가 반환한 뒤 main이 GATT admission을 busy로 잠그고 callback work를 drain하며, unverified
+ingress만 bounded abort한 다음 verified physical session이 없음을 다시 확인한다. Verified action이
+경쟁에서 이겼으면 그 terminal까지 reboot를 보류하고, 안전 상태에서는 위 NVS/RTC evidence checkpoint와
+planned-restart breadcrumb를 남긴 뒤 재부팅한다.
 
 HA relay binary sensor는 entity-registry 호환을 위해 historical object/unique ID의 `door_binary`를
 유지하지만 표시명은 `[Gatekeeper] 릴레이 구동 상태`이고 door `device_class`는 없다. ON은 검증된

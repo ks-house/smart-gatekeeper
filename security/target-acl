@@ -24,13 +24,17 @@ topic read gatekeeper/v1/targets/+/status
 topic read gatekeeper/v1/targets/+/availability
 topic read gatekeeper/v1/targets/+/canonical-event
 topic read gatekeeper/v1/ha-bridge/+/request/+
+topic read gatekeeper/v1/ha-bridge/+/access-event
 topic write gatekeeper/v1/ha-bridge/+/availability
 topic write gatekeeper/v1/ha-bridge/+/result
 topic write gatekeeper/v1/ha-bridge/+/verified-status
+topic write gatekeeper/v1/ha-bridge/+/connectivity-diagnostic
+topic write gatekeeper/v1/ha-bridge/+/access-event
 topic write homeassistant/button/smart_gatekeeper_01/+/config
 topic write homeassistant/number/smart_gatekeeper_01/+/config
 topic write homeassistant/sensor/smart_gatekeeper_01/+/config
 topic write homeassistant/binary_sensor/smart_gatekeeper_01/+/config
+topic write homeassistant/event/smart_gatekeeper_01/+/config
 
 # Home Assistant can observe discovery/state and request only the backend
 # bridge. It can never publish a Target command or ACL directly.
@@ -43,4 +47,6 @@ topic read gatekeeper/v1/targets/+/status
 topic read gatekeeper/v1/ha-bridge/+/availability
 topic read gatekeeper/v1/ha-bridge/+/result
 topic read gatekeeper/v1/ha-bridge/+/verified-status
+topic read gatekeeper/v1/ha-bridge/+/connectivity-diagnostic
+topic read gatekeeper/v1/ha-bridge/+/access-event
 topic write gatekeeper/v1/ha-bridge/+/request/+

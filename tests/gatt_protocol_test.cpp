@@ -311,7 +311,8 @@ void testFastV2SingleSubscriptionFlow() {
   auto random = canonicalRandom();
   FakeVerifier verifier(sgk::ResultReason::kOk);
   FakeAuthControlGate control;
-  sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), nullptr,
+  EventRecorder events;
+  sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &events,
                              &control);
   start(protocol, 1000);
   const auto owner = protocol.connectionOwner();
@@ -344,6 +345,45 @@ void testFastV2SingleSubscriptionFlow() {
   CHECK(result_outputs.size() == 1);
   CHECK(result_outputs[0].type == sgk::MessageType::kFastResult);
   CHECK(u16(result_outputs[0].bytes.data()) == sgk::kFastProtocolVersion);
+
+  // A trailing retransmission after the action commit is transport noise. It
+  // must not turn an already successful access into a failed terminal or clear
+  // the actor retained for the physical FSM lifecycle.
+  const size_t committed_event_count = events.events.size();
+  CHECK(!send(protocol, sgk::MessageType::kFastProof, fast_proof.data(),
+              fast_proof.size(), 1300, 502, 3, owner));
+  CHECK(protocol.state() == sgk::SessionState::kCompleted);
+  CHECK(events.events.size() == committed_event_count);
+  const auto duplicate_outputs = drain(protocol);
+  CHECK(duplicate_outputs.size() == 1);
+  CHECK(u16(duplicate_outputs[0].bytes.data() + 18) ==
+        static_cast<uint16_t>(sgk::ResultReason::kExpiredOrReplay));
+}
+
+void testAdapterPendingWriteVisibility() {
+  sgk::AdapterState adapter;
+  const sgk::ConnectionToken owner{17, 3};
+  const uint8_t frame[] = {0x01, 0x02, 0x03};
+  sgk::PendingWrite pending;
+  sgk::ConnectionToken overflow_owner;
+
+  CHECK(!adapter.hasPendingWrite());
+  CHECK(adapter.acceptConnection(owner));
+  CHECK(!adapter.hasPendingWrite());
+  CHECK(adapter.enqueueWrite(owner.handle, sgk::MessageType::kFastProof,
+                             frame, sizeof(frame)));
+  CHECK(adapter.hasPendingWrite());
+  CHECK(adapter.popWrite(&pending));
+  CHECK(!adapter.hasPendingWrite());
+
+  // An overflow is itself pending ingress: the loop must consume the latch
+  // and fail the session closed before it may begin blocking network work.
+  CHECK(!adapter.enqueueWrite(owner.handle, sgk::MessageType::kFastProof,
+                              nullptr, 0));
+  CHECK(adapter.hasPendingWrite());
+  CHECK(adapter.consumeOverflow(&overflow_owner));
+  CHECK(overflow_owner == owner);
+  CHECK(!adapter.hasPendingWrite());
 }
 
 void testFastV2RejectsLegacyTypeAndVersion() {
@@ -351,7 +391,8 @@ void testFastV2RejectsLegacyTypeAndVersion() {
     auto random = canonicalRandom();
     FakeVerifier verifier(sgk::ResultReason::kOk);
     FakeAuthControlGate control;
-    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), nullptr,
+    EventRecorder events;
+    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &events,
                                &control);
     start(protocol, 1000);
     const auto owner = protocol.connectionOwner();
@@ -374,7 +415,8 @@ void testFastV2RejectsLegacyTypeAndVersion() {
     auto random = canonicalRandom();
     FakeVerifier verifier(sgk::ResultReason::kOk);
     FakeAuthControlGate control;
-    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), nullptr,
+    EventRecorder events;
+    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &events,
                                &control);
     start(protocol, 2000);
     const auto owner = protocol.connectionOwner();
@@ -390,6 +432,18 @@ void testFastV2RejectsLegacyTypeAndVersion() {
     CHECK(outputs[0].type == sgk::MessageType::kFastResult);
     CHECK(u16(outputs[0].bytes.data() + 18) ==
           static_cast<uint16_t>(sgk::ResultReason::kSessionInvalid));
+    CHECK(std::none_of(events.events.begin(), events.events.end(),
+                       [](const sgk::Event& event) {
+                         return event.code ==
+                                sgk::EventCode::kAccessProofRejected;
+                       }));
+    CHECK(std::any_of(events.events.begin(), events.events.end(),
+                      [](const sgk::Event& event) {
+                        return event.code ==
+                                   sgk::EventCode::kAccessSessionTerminated &&
+                               event.transport_reason ==
+                                   sgk::ResultReason::kSessionInvalid;
+                      }));
   }
 }
 
@@ -736,25 +790,20 @@ void testAuthenticatedActionControlBinding() {
     CHECK(output.size() == 1);
     CHECK(u16(output[0].bytes.data() + 18) ==
           static_cast<uint16_t>(sgk::ResultReason::kInternalFailClosed));
-    const auto rejected = std::find_if(
-        downstream.events.begin(), downstream.events.end(),
-        [](const sgk::Event& event) {
-          return event.code == sgk::EventCode::kAccessProofRejected;
-        });
     const auto terminated = std::find_if(
         downstream.events.begin(), downstream.events.end(),
         [](const sgk::Event& event) {
           return event.code == sgk::EventCode::kAccessSessionTerminated;
         });
-    CHECK(rejected != downstream.events.end());
+    CHECK(std::none_of(downstream.events.begin(), downstream.events.end(),
+                       [](const sgk::Event& event) {
+                         return event.code ==
+                                sgk::EventCode::kAccessProofRejected;
+                       }));
     CHECK(terminated != downstream.events.end());
-    CHECK(std::any_of(rejected->credential_id.begin(),
-                      rejected->credential_id.end(),
-                      [](uint8_t value) { return value != 0; }));
     CHECK(std::any_of(terminated->credential_id.begin(),
                       terminated->credential_id.end(),
                       [](uint8_t value) { return value != 0; }));
-    CHECK(!sgk::accessEventCodeAllowsCredentialRef(rejected->code));
     CHECK(sgk::accessEventCodeAllowsCredentialRef(terminated->code));
   }
 
@@ -1087,7 +1136,20 @@ void testVerifiedLocalGattLifecycleBridge() {
   CHECK(downstream.events.back().code ==
         sgk::EventCode::kAccessSessionTerminated);
   CHECK(downstream.events.back().reason == sgk::EventReason::kArmTimeout);
+  CHECK(downstream.events.back().transport_reason ==
+        sgk::ResultReason::kExpiredOrReplay);
   CHECK(!bridge.emitRelayOn(4001));
+
+  // A watchdog/failsafe termination is not proof expiry. Preserve the public
+  // INTERNAL_ERROR catalog mapping all the way into canonical event evidence.
+  proof.sequence = 50;
+  proof.session_id[15] ^= 0x02;
+  bridge.emit(proof);
+  CHECK(bridge.emitTerminated(5000, sgk::EventReason::kInternalError));
+  CHECK(!bridge.hasVerifiedSession());
+  CHECK(downstream.events.back().reason == sgk::EventReason::kInternalError);
+  CHECK(downstream.events.back().transport_reason ==
+        sgk::ResultReason::kInternalFailClosed);
 
   sgk::Event post_terminal{};
   post_terminal.code = sgk::EventCode::kAccessGattConnected;
@@ -2056,6 +2118,49 @@ void testProtocolDisconnectHandoff() {
 
   EventRecorder event_sink;
   FakeAuthControlGate auth_control;
+
+  // Case 0: A raw link that never starts a protocol session has no session ID
+  // and therefore must not enqueue an unrepresentable canonical failure that
+  // head-of-line blocks all later verified access evidence.
+  {
+    auto raw_random = canonicalRandom();
+    sgk::ProtocolCore protocol(raw_random, proof_verifier, door_A, &event_sink,
+                               &auth_control);
+    protocol.initialize();
+    protocol.setEnabled(true);
+    sgk::ConnectionToken owner;
+    CHECK(protocol.connect(0, 500, &owner));
+    event_sink.events.clear();
+    protocol.disconnect(owner, 600);
+    CHECK(event_sink.events.empty());
+    CHECK(!protocol.connected());
+  }
+
+  // Case 0b: malformed/overflow input before HELLO/fast-start likewise has no
+  // canonical session identity. It may receive a transport error, but cannot
+  // enqueue a zero-session event ahead of later valid evidence.
+  {
+    auto raw_random = canonicalRandom();
+    sgk::ProtocolCore protocol(raw_random, proof_verifier, door_A, &event_sink,
+                               &auth_control);
+    protocol.initialize();
+    protocol.setEnabled(true);
+    sgk::ConnectionToken owner;
+    CHECK(protocol.connect(9, 700, &owner));
+    event_sink.events.clear();
+    CHECK(!protocol.receiveFrame(sgk::MessageType::kFastProof, owner, nullptr,
+                                 0, 701));
+    CHECK(event_sink.events.empty());
+    CHECK(protocol.state() == sgk::SessionState::kIdle);
+    CHECK(drain(protocol).size() == 1);
+    CHECK(protocol.beginFastSession(owner, 702));
+    CHECK(!event_sink.events.empty());
+    CHECK(event_sink.events.back().code ==
+          sgk::EventCode::kAccessProofRequested);
+    CHECK(std::any_of(event_sink.events.back().session_id.begin(),
+                      event_sink.events.back().session_id.end(),
+                      [](uint8_t value) { return value != 0; }));
+  }
 
   // Case 1: Pre-verification disconnect emits ACCESS_GATT_FAILED & ACCESS_SESSION_TERMINATED
   {
@@ -3237,6 +3342,7 @@ int main() {
 
   testCanonicalVectorsAndFraming();
   testFastV2SingleSubscriptionFlow();
+  testAdapterPendingWriteVisibility();
   testFastV2RejectsLegacyTypeAndVersion();
   testAccessEvidenceMacFixedVectors();
   testCanonicalSessionAndVerifier();

@@ -116,6 +116,34 @@ def bridge_verified_status_topic(target_id: str) -> str:
     return f"{bridge_prefix(target_id)}/verified-status"
 
 
+def bridge_connectivity_diagnostic_topic(target_id: str) -> str:
+    return f"{bridge_prefix(target_id)}/connectivity-diagnostic"
+
+
+def bridge_connectivity_diagnostic_payload(status: str, reason: str) -> str:
+    allowed = {
+        ("offline", "WAITING_FOR_SIGNED_STATUS"),
+        ("online", "SIGNED_STATUS_FRESH"),
+        ("offline", "SIGNED_STATUS_STALE"),
+    }
+    if (status, reason) not in allowed:
+        raise ValueError("invalid connectivity diagnostic")
+    return json.dumps(
+        {
+            # The binary sensor state is the separate bridge availability
+            # topic, whose broker LWT can transition atomically when this
+            # process disappears.  Keep this retained document explicitly
+            # historical so a prior FRESH observation cannot contradict that
+            # authoritative offline state after an ungraceful disconnect.
+            "diagnostic_scope": "last_completed_backend_observation",
+            "last_signed_status_observation": reason,
+            "schema_version": 1,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
 def bridge_access_event_topic(target_id: str) -> str:
     return f"{bridge_prefix(target_id)}/access-event"
 
@@ -327,6 +355,8 @@ def build_discovery_plan(
             "payload_off": "offline",
             "payload_on": "online",
             "state_topic": bridge_availability_topic(target_id),
+            "json_attributes_topic":
+                bridge_connectivity_diagnostic_topic(target_id),
         }
     )
     read_only.append(
@@ -480,6 +510,8 @@ def build_discovery_plan(
         # shorter expiry below.
         if object_id not in {"state", "last_access_event"}:
             config["expire_after"] = 30
+        if object_id == "state":
+            config.update(_availability_config(target_id))
         if unit is not None:
             config["unit_of_measurement"] = unit
         if device_class is not None:
@@ -508,6 +540,7 @@ def build_discovery_plan(
         config = _base_config(name, object_id)
         config.update(
             {
+                **_availability_config(target_id),
                 "payload_off": "OFF",
                 "payload_on": "ON",
                 "state_topic": verified_status_topic,

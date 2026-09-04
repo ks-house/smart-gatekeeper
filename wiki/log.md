@@ -6347,6 +6347,103 @@
 - The authenticated live verifier selected `current-main-baseline` for actual feature main `3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957` and approved the complete 102-path GitHub object set. JSON structure and whitespace validation also passed.
 - These results authorize exact source bytes only; they are not Android installation, Target OTA installation/reboot/health or physical BLE latency evidence.
 
+## [2026-09-04] test | Prove live v2 Target MQTT and HA bridge path
+
+- Read-only public TLS subscription received installed Target `2.1.442+main.g9ef6b82`, boot 713,
+  `IDLE`, RSSI -55 dBm and status revisions advancing from 213 to 249. MQTT attempts/count were
+  1/1 with zero failures; event outbox depth and overflow were both zero.
+- Backend verified and projected the same revision 249 on its HA bridge, whose retained
+  availability was `online`. Public `/live` and `/ready` returned HTTP 200 for Backend
+  `6aa8d188` with MQTT, collector and evidence-integrity checks true. Current MQTT transport is
+  therefore live; no MQTT code regression is attributable to the GATT v2 feature diff.
+- GATT v2 remains a BLE protocol change while MQTT topics intentionally stay under
+  `gatekeeper/v1/...`. The earlier access-critical deferral can coalesce intermediate states into
+  the final IDLE snapshot; current boot 713 had no terminal summary at observation time, so one
+  synchronized post-boot access trace remains necessary if Activity is the missing output.
+- The no-credential diagnostic client was accepted for exact status topics, exposing a separate
+  broker read-ACL confidentiality gap. No message, command, runtime setting, broker state, HA
+  entity, Target state, relay or door was changed.
+- The reported outbox depth covers only the volatile RAM queue; durable NVS queue depth is not in
+  Target status. Network-deferral plus HA bridge coverage passed 19/19, manual/wiki contract passed
+  14/14 and `git diff --check` was clean.
+
+## [2026-09-04] test | Confirm later Target heartbeat outage and recovery gaps
+
+- The owner-provided 19:49 KST Home Assistant page showed all bridge-dependent controls disabled
+  and all 30-second raw Target diagnostics unavailable. Repeated read-only MQTTS windows spanning
+  19:51--19:57 connected to the broker with CONNACK 0 but received only retained bridge
+  `availability=offline`; no Target status or Backend verified-status arrived. Backend `/live` and
+  `/ready` remained HTTP 200 with all reported checks true.
+- This supersedes the earlier runtime conclusion only for the later observation window: the Target
+  status path worked on installed v2 boot 713 at 13:21--13:23 and was genuinely absent later. The
+  evidence does not yet distinguish power loss, hard hang/panic with failed recovery, Wi-Fi failure
+  or Target MQTTS failure. A single normal access-critical deferral cannot explain the persistent
+  shared offline state.
+- Source audit confirmed bounded GATT/FSM and relay handling, a Wi-Fi auto-reconnect watch, stale
+  TLS socket cleanup and five-second MQTT retries. It also found no explicit loop-task watchdog,
+  synchronous TLS connect with unchanged 30-second TCP/120-second handshake defaults, complete
+  Wi-Fi/MQTT/OTA starvation if `accessCritical` wedges, non-retained Target LWT/online/boot
+  diagnostics, and Target freshness being optional in Backend `/ready`.
+- Dependency-complete container coverage for connectivity recovery, access-control network
+  deferral, HA bridge and Target boot registry passed 76/76. These contracts do not prove current
+  physical power, Wi-Fi association or Target runtime recovery. No operational state was changed.
+
+## [2026-09-04] fix | Close powered-but-silent recovery and access-evidence loss paths
+
+- Replaced loop-blocking MQTT setup with generation-bound asynchronous DNS and one bounded
+  single-owner TCP/TLS/MQTT connect worker. Loop and worker use the 45-second task WDT; cancelled
+  or stale Wi-Fi generations are rejected, reconnect keeps the capped 5--30 second backoff, and
+  periodic/forced/local OTA cannot overlap the worker TLS phase.
+- Split callback-visible access control from socket work. Unverified GATT churn receives one
+  10-second lease and a 30-second quiet rearm, while verified physical work receives a separate
+  85-second fail-closed lease. Signed MQTT access/reboot effects wait beyond callback/PUBACK
+  processing, and signed reboot quiesces GATT, rechecks physical state and checkpoints evidence.
+- Prevented raw zero-session and post-completion duplicate frames from fabricating canonical
+  terminals. Terminal checkpointing preserves oldest-first NVS order and uses a checksum-bound
+  generation RTC A/B journal when NVS cannot accept the complete remaining FIFO. Inactive-slot
+  magic-last commit preserves the prior generation across a torn replacement; restored evidence
+  remains until actual publish or NVS migration.
+- Carried `evidence_persistence_failed` across repeated software resets and clear only a
+  previous-boot signal after retained boot diagnostics publish succeeds. Protected the MQTT worker
+  WDT diagnostic counter with the same worker mux for both reads and writes.
+- Backend HA Activity outbox completion now requires local QoS 1 completion plus the exact
+  non-retained broker-routed `(topic, payload)` receipt. Added the corresponding Backend and Home
+  Assistant repository ACL rules, retained latest-result recovery and connectivity diagnostics.
+
+## [2026-09-04] test | Validate Target recovery candidate without changing the live Target
+
+- Target/GATT/connectivity/restart focused coverage passed 77/77, Backend coverage passed 212 tests
+  with two declared skips, manual/wiki contract coverage passed 14/14, and prospective 45-input
+  exact Target publication-tree coverage passed 18/18 using an isolated temporary Git index.
+- Full repository discovery ran 367 tests. All functional contracts passed; the sole failing test
+  reported nine expected fail-closed protected digest mismatches for the changed candidate, and one
+  environment-only case was skipped. The trusted workflow policy and its test were not modified.
+- `esp32c6_personal_production` compiled and linked successfully: image 1,890,450 bytes, RAM
+  76,968/327,680 (23.5%), flash 1,818,658/7,340,032 (24.8%) and LP SRAM
+  11,880/16,384 (72.51%, 4,504 bytes free). `git diff --check` passed.
+- These are source, host-test and firmware-build results only. No commit, push, CI publication,
+  Backend/NAS ACL deployment, Target OTA/install/reboot, relay/door action or Home Assistant runtime
+  mutation was performed. Physical power, installed build, boot reason and outage recovery remain
+  owner-deferred runtime Gates.
+
+## [2026-09-04] test | Verify restarted Target transport and distinguish OTA evidence
+
+- After the owner restarted the silent Target, a strict-TLS exact-topic read-only subscription
+  received three consecutive Target status messages and matching Backend verified-status. Target
+  `c0feffe6ebac` is boot 715, `2.1.442+main.g9ef6b82`, uptime 1,230 seconds, RSSI -55 dBm, IDLE with
+  relay OFF, MQTT attempts/count 1/1, failures 0 and volatile event outbox depth/overflow 0/0.
+- Live bridge availability was `online`. Public Backend `/live` and `/ready` returned HTTP 200 for
+  deployed build `6aa8d188`, with all dependency/readiness checks true. Current MQTT communication
+  is restored; this does not reconstruct the earlier outage interval.
+- The public signed manifest and `origin/main` are both exact `9ef6b82`, version 2.1.442. Same-version
+  OTA is intentionally `UP_TO_DATE`, so the latest button action cannot install the local
+  self-recovery candidate, which remains uncommitted and unpublished. Current runtime health is
+  positive evidence for the installed image but not direct partition-VALID or download evidence.
+- Boot 715 reports `BROWNOUT`. Installed 442 has no retained Target boot message, so boot 714,
+  planned OTA restart, coredump and the exact earlier outage cause are unavailable after the fact.
+  No current-boot terminal summary was present. No command, OTA trigger, relay/door, broker, HA or
+  configuration mutation was performed by this verification.
+
 ## [2026-09-04] compile | Authorize Target connectivity self-recovery candidate
 
 - Bound immutable feature `d0e43188449495ed33c860019fc1093b05491700` to the sole `target-recovery-d0e4318-persistent-baseline` with the complete ordered 102-path normalized digest map.
@@ -6358,3 +6455,15 @@
 - All 42 focused trusted-policy tests passed for immutable feature `d0e43188449495ed33c860019fc1093b05491700`, its nine changed protected blobs and the other 93 current-main blobs.
 - Full repository discovery passed 344/344 tests with one declared PowerShell-environment skip. JSON syntax and repository whitespace validation also passed.
 - These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, exact-main deployment and Target installation evidence remain separate Gates.
+
+## [2026-09-04] compile | Connect Target recovery feature to trusted policy main
+
+- Policy PR #355 passed the hosted inert-byte trusted-base check and merge-committed normally as main `c0ee749b28cf6f9003c8a0a111cb4b363d29f797`.
+- Merged that exact policy main into the feature branch while preserving immutable feature `d0e43188449495ed33c860019fc1093b05491700`, both append-only histories and the authorized protected bytes.
+- This merge connection publishes or installs nothing. Fresh merge-connected CI, actual-main merge, final policy rotation, Backend deployment and Target OTA health remain separate Gates.
+
+## [2026-09-04] test | Validate merge-connected Target recovery candidate
+
+- Full repository discovery passed 367/367 tests with one declared PowerShell-environment skip after the trusted policy was connected; Backend coverage passed 212 tests with two declared skips.
+- Repository whitespace validation passed and the nine protected candidate blobs remain the authorized immutable feature bytes.
+- This remains merge-connected source/test evidence, not exact-main deployment or physical Target update evidence.

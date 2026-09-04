@@ -20,15 +20,20 @@
 
 - 저장된 Wi-Fi 자격 증명이 있으면 STA 연결을 무기한 재시도한다.
 - 부팅 시 첫 STA 연결이 실패해 recovery AP가 열리더라도 STA 재시도를 중단하지 않는다. recovery AP는 시간 제한과 인증을 가져야 하며 영구 AP trap이 되어서는 안 된다.
-- Wi-Fi disconnect/lost-IP/got-IP를 수명주기 사건으로 처리한다. lost-IP 때 기존 TLS socket을 닫고 got-IP 뒤 새 MQTTS session을 만든다.
-- Wi-Fi 상태 확인과 재접속은 비차단 방식으로 수행한다. 현재 구현 기준 확인 주기는 15초다.
-- MQTTS가 끊긴 동안에도 재접속을 계속한다. 현재 구현 기준 재시도 gate는 약 5초, keepalive는 30초다.
-- TLS/CONNACK 시도는 제한된 timeout과 backoff를 사용하며 relay/FSM loop를 장시간 막지 않는다.
+- Wi-Fi disconnect/lost-IP/got-IP callback은 edge와 link generation만 기록한다. Safe loop phase가 generation 변경을 관찰해 기존 TLS socket을 무효화하고, got-IP 뒤 단일-owner worker로 새 MQTTS session을 만든다.
+- Wi-Fi 상태는 매 loop에서 radio 변경 없이 관찰한다. 정상 STA 단절이 30초 동안 자동 복구되지 않으면 안전한 IDLE 구간에서 인증된 recovery AP로 승격하고, 실패한 AP 승격은 60초 뒤 재시도한다.
+- MQTTS가 끊긴 동안에도 재접속을 계속한다. 현재 구현 기준 재시도는 5초에서 시작해 30초까지 지수 backoff하며 keepalive는 120초다.
+- DNS는 lwIP callback과 generation token을 사용해 loop를 막지 않고 5초에 만료한다. TCP 4초, TLS handshake 8초, MQTT protocol read 3초 단계는 secure client와 PubSubClient를 단독 소유하는 bounded connect worker 하나에서만 실행한다. Loop task와 worker는 모두 45초 task watchdog 보호를 받으며, worker는 각 bounded 단계 사이에 feed하고 모든 종료 경로에서 watchdog 등록을 해제한 뒤 결과를 넘긴다.
+- Connect 결과는 request ID와 Wi-Fi link generation이 모두 현재값일 때만 loop task가 채택한다. Access 진입이나 link generation 변경은 worker 취소를 요청하고, 늦게 끝난 성공·실패는 stale로 폐기한 뒤 transport를 닫는다. Worker가 객체를 소유하는 동안 loop task는 TLS/PubSubClient를 읽거나 쓰지 않는다.
+- GATT 연결, fast-v2 start/write, 인증, ranging, relay hold/cooldown 동안 MQTT/HTTPS socket 작업을 보류한다. 미인증 ingress는 10초 lease를 초과하면 해당 transport만 끊고 네트워크를 즉시 재개하며 Target을 재부팅하지 않는다. 짧은 connect/disconnect 반복은 lease를 갱신하지 않고, 30초 연속 quiet 뒤에만 새 미인증 epoch를 연다. 실제 verified action generation은 별도의 85초 physical lease를 시작한다.
+- 각 blocking 단계 직전에 callback-visible ingress를 다시 확인하고 MQTT command가 access를 시작한 같은 loop에서는 stale IDLE/status flush와 OTA를 중단한다. OTA periodic/local TLS는 MQTT connect worker가 끝난 뒤에만 시작하므로 두 handshake가 겹치지 않는다.
 - 고유 Target client ID, hostname 검증 TLS, per-Target credential, signed command namespace를 유지한다.
-- availability LWT와 online, boot, status heartbeat를 발행한다. status는 현재 구현 기준 1초 주기다.
+- retained availability LWT/online은 `scope=mqtt_transport`만 의미한다. PubSubClient 2.8은 SUBACK reason을 노출하지 않으므로 broker의 command 구독 승인은 fresh HMAC-signed status와 실제 command/ACK로 별도 판정한다. Retained boot/config와 1초 non-retained status heartbeat를 발행한다.
 - MQTT와 무관하게 signed manifest 기반 HTTPS OTA를 부팅 후와 주기적으로 확인하고, 실패 시 bounded retry를 계속한다.
 - OTA는 inactive slot, health window, valid mark, 자동 rollback 계약을 유지한다.
 - Periodic HTTPS와 authenticated local recovery는 production Target에서 실제 제공되는 동일한 서명 provider를 사용한다. Provider 초기화나 manifest 검증 실패는 artifact 전송과 slot write 전에 중단하고 단계별 원인을 기록한다.
+- Signed reboot command는 MQTT callback에서 직접 재부팅하지 않는다. Inbound QoS 1 처리/PUBACK 경계 뒤 main이 새 GATT 인증을 차단하고 callback을 drain한 뒤 verified physical session이 없음을 다시 확인하며, pending access evidence를 checkpoint한 다음에만 재부팅한다.
+- Controlled restart 전에는 기존 volatile FIFO를 oldest-first NVS 뒤에 append한다. NVS가 terminal을 수용하지 못하면 reserved RAM tail의 terminal을 포함한 남은 FIFO 전체를 checksum-bound generation의 RTC A/B journal에 보존한다. Inactive slot을 magic-last로 commit하므로 교체 도중 reset되면 직전 valid generation을 복원한다. 이 journal은 cold power-loss 내구성이 아니라 반복 software reset을 위한 degraded recovery다.
 
 ### 2.2 NAS, broker, backend
 
@@ -357,3 +362,85 @@ No `PENDING_VERIFY` health-window or valid-mark trace appeared. Issue #172 owns
 that distinct bootloader/rollback Gate; install/reboot/current identity is not
 rollback evidence. Intended-wall RF margin, repeated AP/broker/WAN outage
 recovery, AJ-SR04T, relay contact and enclosure acceptance remain open.
+
+## 17. 2026-09-04 powered-but-silent recovery candidate
+
+The source candidate closes the software gaps found after the installed v2
+Target stopped producing heartbeat/status. DNS resolution is asynchronous with
+a real five-second generation-bound deadline. TCP (4 seconds), TLS (8 seconds)
+and MQTT protocol read (3 seconds) run in one bounded FreeRTOS connect worker
+that exclusively owns the secure client and PubSubClient until terminal
+handoff. The loop and worker are covered by the 45-second task watchdog. A
+result is adopted only when both its request ID and Wi-Fi link generation are
+current; cancelled or late-generation results are closed as stale. An outage
+counter is observed even while access owns the loop, so a disconnect and
+recovery that both happen during that interval still invalidate the old TLS
+socket before MQTT resumes. Failed reconnects continue indefinitely with the
+capped 5-to-30-second backoff.
+
+Normal STA recovery is separated into side-effect-free observation and a safe
+radio-mutation phase. A 30-second unresolved outage escalates to the existing
+authenticated recovery AP without erasing credentials. Internal recovery
+disconnects are explicitly marked and only an associated `ASSOC_LEAVE` event
+within the bounded marker window is classified as intentional, preserving the
+last genuine driver reason for diagnostics.
+
+Fast-v2 ingress now includes a connection, queued/overflowed write, fast-start
+latch and non-IDLE protocol state. The main loop drains and rechecks this
+snapshot before Web, MQTT and OTA work, and rechecks again after `client.loop()`.
+If a signed MQTT arm/manual callback changes the FSM, the stale pre-command
+telemetry is discarded and OTA is skipped. A forced OTA command only queues a
+check for the later safe network phase. Periodic and local OTA refuse to begin
+while the MQTT connect worker owns its TLS phase, preventing concurrent
+handshakes on the shared radio/heap.
+
+A raw or otherwise unverified peer may hold the access-critical gate for at
+most 10 seconds. Expiry disconnects only that ingress, cleans the unverified
+state and resumes network work without rebooting. Brief quiet gaps resume
+network service immediately but do not mint a fresh lease; only 30 continuous
+quiet seconds reset the unverified epoch, so reconnect churn cannot starve
+MQTT/OTA indefinitely. A verified action generation instead receives its own
+85-second physical lease. If that verified phase wedges, relay cleanup is
+followed by GATT and signed MQTT `INTERNAL_ERROR` terminal evidence plus an
+`access_critical_timeout` breadcrumb before a fail-closed controlled restart.
+The GATT transport reason is `INTERNAL_FAIL_CLOSED`, not the misleading
+`PROOF_EXPIRED` mapping. Availability LWT/online is retained but explicitly
+scoped to MQTT transport because PubSubClient cannot observe SUBACK rejection.
+
+Terminal checkpointing preserves causal FIFO order: older volatile records are
+first appended behind existing NVS records, then the terminal is committed. If
+NVS is full or unavailable, the terminal uses the reserved RAM tail only when
+the complete remaining FIFO, including that terminal, is saved in a
+checksum-bound generation of an RTC_NOINIT A/B journal. Replacement writes the
+inactive slot and commits its magic last, so a torn replacement leaves the
+previous valid generation restorable. The selected generation is kept after
+restore until every represented front record has actually published or
+migrated to NVS; a later partial drain writes the exact remaining FIFO as the
+next generation. Repeated software resets can replay duplicates but cannot
+silently discard the terminal. Cold power loss still exceeds this RTC
+fallback's durability claim.
+
+The `evidence_persistence_failed` breadcrumb is separately latched across
+repeated software resets. A successful retained boot-diagnostics publish may
+acknowledge and clear only the failure carried from the previous boot. A new
+failure raised in the current boot remains set for the next reset, so publishing
+an older warning cannot erase newer degradation evidence.
+
+Signed reboot is also staged rather than executed in the MQTT callback. After
+the inbound PUBACK boundary, main blocks new GATT authentication, drains pending
+callbacks, aborts only unverified ingress and rechecks that no verified physical
+action won the race. It persists the complete pending evidence set before the
+restart; a verified action keeps the reboot pending until its terminal state.
+
+A raw link, malformed write or overflow before fast-start has no canonical
+session identity, so it may receive a transport failure but cannot enqueue a
+zero-session terminal ahead of valid evidence. A trailing duplicate after a
+verified action is already committed likewise produces only a replay transport
+result; it cannot execute the action again, synthesize a failed terminal or
+clear the verified physical actor.
+
+These are source, host-test and ESP32-C6 build results only. The owner deferred
+physical Target inspection, so current power state, installed version, boot
+reason, Wi-Fi association, broker session, recovery-AP behavior, OTA
+install/reboot/health and repeated access latency remain unverified runtime
+Gates.

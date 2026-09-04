@@ -4,12 +4,13 @@ import json
 import ssl
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 from backend.app import main
 from backend.app.access_actor_ref import (
@@ -232,6 +233,16 @@ class TargetBootRegistryTest(unittest.TestCase):
         self.assertNotIn("session", projection.decode())
         self.assertNotIn("credential", projection.decode())
 
+        parsed["collector_target_id"] = f"{TARGET}-secondary"
+        with patch.object(
+            main,
+            "_configured_target_ids",
+            return_value={TARGET, parsed["collector_target_id"]},
+        ):
+            self.assertIsNone(
+                main._home_assistant_access_event_projection(parsed)
+            )
+
     def test_canonical_worker_notifies_only_for_new_insert(self) -> None:
         inserted = MagicMock()
         events = [
@@ -315,7 +326,9 @@ class TargetBootRegistryTest(unittest.TestCase):
         connection.commit.assert_not_called()
         connection.rollback.assert_called_once_with()
 
-    def test_ha_outbox_worker_recovers_consecutive_rows_in_order_with_puback(self) -> None:
+    def test_ha_outbox_worker_recovers_consecutive_rows_in_order_with_routed_receipt(
+        self,
+    ) -> None:
         row = {
             "id": 9,
             "event_id": EVENT_ID,
@@ -345,9 +358,9 @@ class TargetBootRegistryTest(unittest.TestCase):
             def is_published(self):
                 return self.waited
 
-        result = Published()
+        publish_results = []
+        receipt_results = []
         client = MagicMock()
-        client.publish.return_value = result
         second = dict(
             row,
             id=10,
@@ -366,8 +379,33 @@ class TargetBootRegistryTest(unittest.TestCase):
             side_effect=lambda row_id: (marked.set() if row_id == 10 else None)
             or True
         )
+        worker = None
+
+        def publish(topic, payload, *, qos, retain):
+            result = Published()
+            publish_results.append(result)
+            receipt_results.append(
+                (
+                    worker.note_broker_receipt(
+                        topic, payload, retained=True
+                    ),
+                    worker.note_broker_receipt(
+                        f"{topic}/wrong", payload, retained=False
+                    ),
+                    worker.note_broker_receipt(
+                        topic, payload + b" ", retained=False
+                    ),
+                    worker.note_broker_receipt(
+                        topic, payload, retained=False
+                    ),
+                )
+            )
+            return result
+
+        client.publish.side_effect = publish
         worker = main._HomeAssistantAccessEventOutboxWorker(
             client,
+            receipt_topic=f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
             load=lambda: pending.pop(0) if pending else None,
             mark_published=mark,
             note_attempt=MagicMock(return_value=True),
@@ -375,6 +413,8 @@ class TargetBootRegistryTest(unittest.TestCase):
             publish_timeout=0.2,
         )
         with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            self.assertTrue(worker.connect_transport((0, 71)))
+            self.assertTrue(worker.acknowledge_subscription(71, [1]))
             worker.start()
             self.assertTrue(marked.wait(timeout=1.0))
             worker.stop()
@@ -392,7 +432,12 @@ class TargetBootRegistryTest(unittest.TestCase):
             client.publish.call_args_list,
         )
         self.assertEqual([call(9), call(10)], mark.call_args_list)
-        self.assertTrue(result.waited)
+        self.assertEqual(
+            [(False, False, False, True), (False, False, False, True)],
+            receipt_results,
+        )
+        self.assertEqual(2, len(publish_results))
+        self.assertTrue(all(result.waited for result in publish_results))
 
     def test_ha_outbox_rejects_noncanonical_or_inconsistent_payload(self) -> None:
         base = {
@@ -433,7 +478,19 @@ class TargetBootRegistryTest(unittest.TestCase):
                 main._validated_home_assistant_access_event_outbox_row(reordered)
             )
 
-    def test_ha_outbox_retries_same_row_after_missing_puback(self) -> None:
+            secondary = dict(base, target_id=f"{TARGET}-secondary")
+            with patch.object(
+                main,
+                "_configured_target_ids",
+                return_value={TARGET, secondary["target_id"]},
+            ):
+                self.assertIsNone(
+                    main._validated_home_assistant_access_event_outbox_row(
+                        secondary
+                    )
+                )
+
+    def test_ha_outbox_retries_local_publish_without_routed_receipt(self) -> None:
         row = {
             "id": 9,
             "event_id": EVENT_ID,
@@ -465,11 +522,26 @@ class TargetBootRegistryTest(unittest.TestCase):
 
         marked = threading.Event()
         client = MagicMock()
-        client.publish.side_effect = [PublishResult(False), PublishResult(True)]
         note = MagicMock(return_value=True)
         mark = MagicMock(side_effect=lambda row_id: marked.set() or True)
+        publish_attempts = []
+        receipt_results = []
+        worker = None
+
+        def publish(topic, payload, *, qos, retain):
+            publish_attempts.append((topic, payload, qos, retain))
+            if len(publish_attempts) == 2:
+                receipt_results.append(
+                    worker.note_broker_receipt(
+                        topic, payload, retained=False
+                    )
+                )
+            return PublishResult(True)
+
+        client.publish.side_effect = publish
         worker = main._HomeAssistantAccessEventOutboxWorker(
             client,
+            receipt_topic=f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
             load=lambda: None if marked.is_set() else row,
             mark_published=mark,
             note_attempt=note,
@@ -477,13 +549,294 @@ class TargetBootRegistryTest(unittest.TestCase):
             publish_timeout=0.2,
         )
         with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            self.assertTrue(worker.connect_transport((0, 72)))
+            self.assertTrue(worker.acknowledge_subscription(72, [1]))
             worker.start()
             self.assertTrue(marked.wait(timeout=1.0))
             worker.stop()
 
         self.assertEqual(2, client.publish.call_count)
+        self.assertEqual([True], receipt_results)
         note.assert_called_once_with(9)
         mark.assert_called_once_with(9)
+
+    def test_ha_outbox_waits_for_current_successful_receipt_suback(self) -> None:
+        row = {
+            "id": 9,
+            "event_id": EVENT_ID,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_manual_remote",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "publish_attempts": 0,
+        }
+        loaded = threading.Event()
+        client = MagicMock()
+        client.subscribe.return_value = (0, 82)
+        worker = main._HomeAssistantAccessEventOutboxWorker(
+            client,
+            receipt_topic=f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+            load=lambda: loaded.set() or row,
+            mark_published=MagicMock(return_value=True),
+            note_attempt=MagicMock(return_value=True),
+            poll_seconds=0.01,
+            publish_timeout=0.2,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            worker.start()
+            self.assertFalse(loaded.wait(timeout=0.05))
+            client.publish.assert_not_called()
+
+            self.assertTrue(worker.connect_transport((0, 81)))
+            self.assertFalse(worker.acknowledge_subscription(81, [128]))
+            self.assertFalse(loaded.wait(timeout=0.05))
+            client.publish.assert_not_called()
+            deadline = time.monotonic() + 0.5
+            while client.subscribe.call_count == 0 and time.monotonic() < deadline:
+                threading.Event().wait(timeout=0.01)
+            client.subscribe.assert_called_once_with(
+                f"gatekeeper/v1/ha-bridge/{TARGET}/access-event", qos=1
+            )
+            self.assertTrue(worker.acknowledge_subscription(82, [1]))
+            self.assertTrue(loaded.wait(timeout=0.5))
+            worker.stop()
+
+        self.assertEqual(1, client.publish.call_count)
+
+    def test_ha_outbox_missing_suback_times_out_and_resubscribes(self) -> None:
+        row = {
+            "id": 9,
+            "event_id": EVENT_ID,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_manual_remote",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "publish_attempts": 0,
+        }
+        loaded = threading.Event()
+        client = MagicMock()
+        client.subscribe.return_value = (0, 122)
+        worker = main._HomeAssistantAccessEventOutboxWorker(
+            client,
+            receipt_topic=f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+            load=lambda: loaded.set() or row,
+            mark_published=MagicMock(return_value=True),
+            note_attempt=MagicMock(return_value=True),
+            poll_seconds=0.01,
+            publish_timeout=0.1,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            self.assertTrue(worker.connect_transport((0, 121)))
+            worker.start()
+            self.assertFalse(loaded.wait(timeout=0.05))
+            deadline = time.monotonic() + 0.5
+            while (
+                client.subscribe.call_count == 0
+                and time.monotonic() < deadline
+            ):
+                threading.Event().wait(timeout=0.01)
+            client.subscribe.assert_called_once_with(
+                f"gatekeeper/v1/ha-bridge/{TARGET}/access-event", qos=1
+            )
+            self.assertTrue(worker.acknowledge_subscription(122, [1]))
+            self.assertTrue(loaded.wait(timeout=0.5))
+            worker.stop()
+
+        self.assertEqual(1, client.publish.call_count)
+
+    def test_ha_outbox_disconnect_releases_receipt_waiter_and_stops_publish(self) -> None:
+        row = {
+            "id": 9,
+            "event_id": EVENT_ID,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_prearm",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "publish_attempts": 0,
+        }
+
+        class PublishedWithoutReceipt:
+            rc = 0
+
+            def wait_for_publish(self, timeout):
+                published.set()
+
+            @staticmethod
+            def is_published():
+                return True
+
+        published = threading.Event()
+        attempted = threading.Event()
+        client = MagicMock()
+        client.publish.return_value = PublishedWithoutReceipt()
+        worker = main._HomeAssistantAccessEventOutboxWorker(
+            client,
+            receipt_topic=f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+            load=lambda: row,
+            mark_published=MagicMock(return_value=True),
+            note_attempt=lambda _row_id: attempted.set() or True,
+            poll_seconds=0.01,
+            publish_timeout=2.0,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            self.assertTrue(worker.connect_transport((0, 91)))
+            self.assertTrue(worker.acknowledge_subscription(91, [1]))
+            worker.start()
+            self.assertTrue(published.wait(timeout=0.5))
+            worker.reset_transport()
+            self.assertTrue(attempted.wait(timeout=0.5))
+            publish_count = client.publish.call_count
+            self.assertFalse(worker.healthy)
+            self.assertFalse(threading.Event().wait(timeout=0.05))
+            self.assertEqual(publish_count, client.publish.call_count)
+            worker.stop()
+
+    def test_ha_outbox_queue_full_backs_off_and_recovers_same_connection(
+        self,
+    ) -> None:
+        row = {
+            "id": 9,
+            "event_id": EVENT_ID,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_prearm",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "publish_attempts": 0,
+        }
+        attempted = threading.Event()
+        marked = threading.Event()
+        client = MagicMock()
+        worker = None
+
+        class Published:
+            rc = 0
+
+            def wait_for_publish(self, timeout):
+                self._published = timeout > 0
+
+            def is_published(self):
+                return self._published
+
+        def publish(topic, payload, *, qos, retain):
+            if client.publish.call_count == 1:
+                return SimpleNamespace(rc=15)
+            result = Published()
+            self.assertTrue(
+                worker.note_broker_receipt(topic, payload, retained=False)
+            )
+            return result
+
+        client.publish.side_effect = publish
+        worker = main._HomeAssistantAccessEventOutboxWorker(
+            client,
+            receipt_topic=f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+            load=lambda: None if marked.is_set() else row,
+            mark_published=lambda _row_id: marked.set() or True,
+            note_attempt=lambda _row_id: attempted.set() or True,
+            poll_seconds=0.01,
+            publish_timeout=0.2,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            self.assertTrue(worker.connect_transport((0, 101)))
+            self.assertTrue(worker.acknowledge_subscription(101, [1]))
+            worker.start()
+            self.assertTrue(attempted.wait(timeout=0.5))
+            self.assertTrue(marked.wait(timeout=0.5))
+            self.assertEqual(2, client.publish.call_count)
+            self.assertTrue(worker.healthy)
+            worker.stop()
+
+    def test_ha_outbox_no_connection_waits_for_new_generation(self) -> None:
+        row = {
+            "id": 9,
+            "event_id": EVENT_ID,
+            "target_id": TARGET,
+            "payload_json": json.dumps(
+                {
+                    "access_event_marker": "8-7",
+                    "access_path": "mqtt_prearm",
+                    "access_result": "SUCCEEDED",
+                    "event_type": "succeeded",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "publish_attempts": 0,
+        }
+        attempted = threading.Event()
+        marked = threading.Event()
+        client = MagicMock()
+        worker = None
+
+        class Published:
+            rc = 0
+
+            def wait_for_publish(self, timeout):
+                self._published = timeout > 0
+
+            def is_published(self):
+                return self._published
+
+        def publish(topic, payload, *, qos, retain):
+            if client.publish.call_count == 1:
+                return SimpleNamespace(rc=4)
+            result = Published()
+            self.assertTrue(
+                worker.note_broker_receipt(topic, payload, retained=False)
+            )
+            return result
+
+        client.publish.side_effect = publish
+        worker = main._HomeAssistantAccessEventOutboxWorker(
+            client,
+            receipt_topic=f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+            load=lambda: None if marked.is_set() else row,
+            mark_published=lambda _row_id: marked.set() or True,
+            note_attempt=lambda _row_id: attempted.set() or True,
+            poll_seconds=0.01,
+            publish_timeout=0.2,
+        )
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            self.assertTrue(worker.connect_transport((0, 111)))
+            self.assertTrue(worker.acknowledge_subscription(111, [1]))
+            worker.start()
+            self.assertTrue(attempted.wait(timeout=0.5))
+            self.assertFalse(threading.Event().wait(timeout=0.05))
+            self.assertEqual(1, client.publish.call_count)
+
+            self.assertTrue(worker.connect_transport((0, 112)))
+            self.assertTrue(worker.acknowledge_subscription(112, [1]))
+            self.assertTrue(marked.wait(timeout=0.5))
+            self.assertEqual(2, client.publish.call_count)
+            worker.stop()
 
     def test_bridge_availability_expiry_replaces_stale_timers(self) -> None:
         timers = []
@@ -2032,7 +2385,7 @@ class TargetBootRegistryTest(unittest.TestCase):
                     and payload == "online"
                 ):
                     status_applied.set()
-                return MagicMock()
+                return SimpleNamespace(rc=0)
 
             client.publish.side_effect = publish_side_effect
             self.assertIs(client, main._start_target_boot_subscriber())
@@ -2042,12 +2395,16 @@ class TargetBootRegistryTest(unittest.TestCase):
                 qos=1,
                 retain=True,
             )
+            client.max_queued_messages_set.assert_called_once_with(64)
             client.on_connect(client, None, None, 0)
             subscribed = {
                 call.args[0] for call in client.subscribe.call_args_list
             }
             self.assertIn(
                 f"gatekeeper/v1/ha-bridge/{TARGET}/request/+", subscribed
+            )
+            self.assertIn(
+                f"gatekeeper/v1/ha-bridge/{TARGET}/access-event", subscribed
             )
             self.assertIn(f"gatekeeper/v1/targets/{TARGET}/status", subscribed)
             self.assertIn(
@@ -2058,6 +2415,28 @@ class TargetBootRegistryTest(unittest.TestCase):
             }
             self.assertNotIn(
                 f"gatekeeper/v1/targets/{TARGET}/command", published_topics
+            )
+
+            routed_receipt = MagicMock(return_value=True)
+            client._sgk_ha_access_event_outbox_worker.note_broker_receipt = (
+                routed_receipt
+            )
+            client.on_message(
+                client,
+                None,
+                SimpleNamespace(
+                    topic=(
+                        f"gatekeeper/v1/ha-bridge/{TARGET}/access-event"
+                    ),
+                    payload=b'{"access_event_marker":"8-7"}',
+                    retain=False,
+                    dup=False,
+                ),
+            )
+            routed_receipt.assert_called_once_with(
+                f"gatekeeper/v1/ha-bridge/{TARGET}/access-event",
+                b'{"access_event_marker":"8-7"}',
+                retained=False,
             )
 
             client.on_message(
@@ -2073,6 +2452,12 @@ class TargetBootRegistryTest(unittest.TestCase):
                 ),
             )
             self.assertTrue(status_applied.wait(timeout=1.0))
+            client.publish.assert_any_call(
+                f"gatekeeper/v1/ha-bridge/{TARGET}/verified-status",
+                ANY,
+                qos=0,
+                retain=True,
+            )
             client.on_message(
                 client,
                 None,
