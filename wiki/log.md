@@ -6443,3 +6443,27 @@
   planned OTA restart, coredump and the exact earlier outage cause are unavailable after the fact.
   No current-boot terminal summary was present. No command, OTA trigger, relay/door, broker, HA or
   configuration mutation was performed by this verification.
+
+## [2026-09-04] compile | Authorize Target connectivity self-recovery candidate
+
+- Bound immutable feature `d0e43188449495ed33c860019fc1093b05491700` to the sole `target-recovery-d0e4318-persistent-baseline` with the complete ordered 102-path normalized digest map.
+- Exactly nine protected blobs change: the exact Target build map, Target OTA implementation, Backend/HA implementation and direct tests, and Target broker ACL/security contract. The other 93 protected blobs, seven-workflow inventory and empty local-Action inventory retain trusted-main bytes.
+- This policy-only candidate publishes and installs nothing and changes no live Backend, Target, relay or door state. Hosted policy review/merge, feature merge-connection, final main rotation, deployment and physical health remain separate Gates.
+
+## [2026-09-04] test | Validate Target recovery trusted-policy bundle
+
+- All 42 focused trusted-policy tests passed for immutable feature `d0e43188449495ed33c860019fc1093b05491700`, its nine changed protected blobs and the other 93 current-main blobs.
+- Full repository discovery passed 344/344 tests with one declared PowerShell-environment skip. JSON syntax and repository whitespace validation also passed.
+- These are local policy/source contracts only. Hosted trusted-base review, normal merge, feature merge-connection, exact-main deployment and Target installation evidence remain separate Gates.
+
+## [2026-09-04] compile | Connect Target recovery feature to trusted policy main
+
+- Policy PR #355 passed the hosted inert-byte trusted-base check and merge-committed normally as main `c0ee749b28cf6f9003c8a0a111cb4b363d29f797`.
+- Merged that exact policy main into the feature branch while preserving immutable feature `d0e43188449495ed33c860019fc1093b05491700`, both append-only histories and the authorized protected bytes.
+- This merge connection publishes or installs nothing. Fresh merge-connected CI, actual-main merge, final policy rotation, Backend deployment and Target OTA health remain separate Gates.
+
+## [2026-09-04] test | Validate merge-connected Target recovery candidate
+
+- Full repository discovery passed 367/367 tests with one declared PowerShell-environment skip after the trusted policy was connected; Backend coverage passed 212 tests with two declared skips.
+- Repository whitespace validation passed and the nine protected candidate blobs remain the authorized immutable feature bytes.
+- This remains merge-connected source/test evidence, not exact-main deployment or physical Target update evidence.

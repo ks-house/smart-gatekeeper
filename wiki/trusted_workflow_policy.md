@@ -1850,3 +1850,25 @@ This final rotation does not publish or install either artifact and does not
 exercise BLE, relay or a physical door. Signed exact-main publication,
 installation, reboot/health confirmation and same-phone latency evidence remain
 separate release Gates.
+
+## 65. Target connectivity self-recovery authorization candidate
+
+Immutable feature `d0e43188449495ed33c860019fc1093b05491700` replaces loop-blocking
+MQTT connection setup with generation-bound asynchronous DNS and one bounded
+single-owner TCP/TLS/MQTT worker, adds task watchdog coverage and Wi-Fi recovery,
+and preserves pending access evidence across software restart. Backend Home
+Assistant outbox completion additionally requires the exact broker-routed receipt.
+
+The indivisible inventory remains 102 protected paths. Exactly nine normalized
+protected blobs change: the exact Target build map, `src/OtaManager.cpp`, the
+Backend/HA implementation and its direct tests, and the Target broker ACL plus
+its security contract. The other 93 protected bytes, seven-workflow inventory
+and empty local-Action inventory remain identical to trusted main. The sole
+`target-recovery-d0e4318-persistent-baseline` is pinned to the exact repository,
+immutable feature SHA and complete ordered digest map.
+
+This policy-only authorization publishes no Backend or Target artifact, installs
+nothing and performs no relay or physical action. Normal policy review/merge,
+feature merge-connection, actual-main merge, final policy rotation, exact-main
+Backend deployment, signed Target publication and install/reboot/health remain
+separate Gates.

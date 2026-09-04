@@ -17,10 +17,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "3bcac6e7ee66d0f7a9a60be1233e6d5bb63bf957"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "d0e43188449495ed33c860019fc1093b05491700"
+EXPECTED_BUNDLE_ID = "target-recovery-d0e4318-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
-.github/workflows/deploy.yml 0b66ef06b102db861c72e4eae617e240b9e86425bf0c42931b42bbff493d10de
+.github/workflows/deploy.yml c02bb8bf09f7786e0e6d48c72ae050f52effd2db867361b8c4ec60f91f5fab4d
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
 .github/workflows/personal_installation_firmware.yml d29439b9754c8baec015bcb19989ced81fa950da5dd800a5c6c8ee7515c97704
@@ -30,7 +30,7 @@ scripts/verify_trusted_workflow_policy.py 78a96058cd12cfadde01ac0c7aa733bfa96a43
 scripts/ota_contract_gate.py 4dd7914e2cb3e388bb1cb9d456dca93e1a00ded6584beb448d6a7aec39211065
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
-src/OtaManager.cpp 36f1db079f0ea65feb175c7fcf5d079b1e9952ad40e98607036874f252f3cea7
+src/OtaManager.cpp d1ae427e08d363be527072fb1bd7074c609b07fa95614703dd521c7e3018a31f
 .github/workflows/backend_security.yml 07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2
 .orca/scripts/setup_worktree.ps1 07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab
 scripts/ops_commercial_gate.py 06391a17506af7c0e44fd0efb7e2ef56b911a04a3425877440d2ad32af7f46e4
@@ -48,8 +48,8 @@ backend/app/acl_management.py 190b7c7891b46a7b313ca3876d0bfa552eeba62bc122d39cfb
 backend/app/access_actor_ref.py 5e02534777365be7fc9c9997d96dc22458c4292bd3c2f1998cacebc44034cd3d
 backend/app/admin_security.py f3f769eebea014f94b36cdba1bec4627b657094f2d5fa737f29f54a57db0d4c9
 backend/app/command_security.py 9b5c058fd8fe4d58c6c20a23548e803ddeb06b493a344f18e29453f599271e1c
-backend/app/home_assistant_bridge.py 8c89a034937534524ee319065bcc6eae5502892f46435e02e20a683847ef92e9
-backend/app/main.py afd0b0fc78fbcd77ecee6fcbb1f43f14f63176dbef9d9ff2d4f594ebd42d2451
+backend/app/home_assistant_bridge.py 551420239d2d0e172e35bffb218f04f50e0ca420945d3088d039a448c61571f8
+backend/app/main.py 6bcc3831fd3dcc9009ac306d46bd490a9eae3e365b354e43dc21cb82e6ffb5a5
 backend/app/ops_runtime.py 9aad988a7bd1c59d90d445ff3577e265289424c17e98c0b1f8311c1e14a58b26
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/requirements.txt 75bca144713e5c0ac8c09f2963cccb45e077e22b2f5a166a0db1fa28617595f7
@@ -108,22 +108,32 @@ backend/tests/test_acl_refresh.py 10fa6c79fd910e36c710d0b1fc1b96a16fb507a560dad7
 backend/tests/test_acl_management.py c1d476aad60f06aac4335a3b052135bf838739dbcc204996d33b1404eeb7ccc3
 backend/tests/test_access_actor_ref.py 3c983d400b6d140166611fbe182efbbfb8fcc141668e431d8407278ba02810fc
 backend/tests/test_admin_security.py f905d98bc2b073d04bf791e5c254a6cf0fd220c24dffd75cd2d3f07fe9b76a19
-backend/tests/test_home_assistant_bridge.py 6d74feb0521246be2855fceca23af3846cff578d224090814301c8b4048ef3d7
+backend/tests/test_home_assistant_bridge.py 6fe90332d10adf1e1a515305e9bf50f273d43230447876864d8270d450a6a5ef
 backend/tests/test_legacy_ota_independence.py 3aa3ab2a36926bb409949d18caaa9fd65234f3af45d687726660d249fe458a72
 backend/tests/test_migrations.py dd946cad0c5be1ea80d77e36b1ee3fe597ddd55239ff84e3e3ad03d79d9440ab
 backend/tests/test_mobile_remote_control.py 0d847814ec779b236f2bfd7b162bc555c00c7a352d66042ea9d9a575a820edaa
 backend/tests/test_nas_backend_deploy.py d71038e447fdb42283015323797f9ede6b5bcd0c440440698901909fce631ab9
-backend/tests/test_ops_api.py 43b81c0be0f6e1545306a48a8d9bfc7ac6c903a1c69b8d1a55a7170971fadc5b
+backend/tests/test_ops_api.py 82deaeeb999ab1ee40c9c5881416fd77e9766843fe5aceb771fb9f677f824d1f
 backend/tests/test_ops_commercial_gate.py a56ca1d6becf3361097b4e3bc0c7939494c1841860456447e070afe690e29d18
 backend/tests/test_ops_runtime.py 322d72efa0c1ebf8154992bea6c153ac6904eaf3fe61b2dee7dc779d5c131519
-backend/tests/test_target_boot_registry.py 8c4a2f2bb5cc11fa20415c7a53161d7a3808b42479a5a90e483a333f307fb861
+backend/tests/test_target_boot_registry.py bc539a56f4095c9e1fa05153254c95894b6f8894e9f62e495bacff2e2de3d3fb
 backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279ea3d7f11964a3265fd410acbf7b
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df532f4587
-security/target-acl 4677a99651767157abe826744018e052d31c754890ecd32cce5f24712b3c21eb
-tests/test_target_security_ota.py 34a98b9ae139d96e8a13611dc5c6f05c8d2b96cbd0538d7d09fe6ef3d627e8e3
+security/target-acl 75ac9ea696e0ae26f3cc6734113a5133c9cc1fc758ac93e1fc7f26fbe8f70902
+tests/test_target_security_ota.py a6b644a47a57ab44f4dd84885d2d165b640c41f620eca47e20fab2691cb7f167
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    ".github/workflows/deploy.yml",
+    "src/OtaManager.cpp",
+    "backend/app/home_assistant_bridge.py",
+    "backend/app/main.py",
+    "backend/tests/test_home_assistant_bridge.py",
+    "backend/tests/test_ops_api.py",
+    "backend/tests/test_target_boot_registry.py",
+    "security/target-acl",
+    "tests/test_target_security_ota.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -1080,8 +1090,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 102)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 9)
+    self.assertEqual(len(locally_unchanged_protected), 93)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
