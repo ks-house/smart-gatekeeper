@@ -6467,3 +6467,15 @@
 - Full repository discovery passed 367/367 tests with one declared PowerShell-environment skip after the trusted policy was connected; Backend coverage passed 212 tests with two declared skips.
 - Repository whitespace validation passed and the nine protected candidate blobs remain the authorized immutable feature bytes.
 - This remains merge-connected source/test evidence, not exact-main deployment or physical Target update evidence.
+
+## [2026-09-04] compile | Merge Target recovery and rotate actual-main policy
+
+- Feature PR #356 passed the hosted firmware canary, OTA/schema, Backend/MariaDB and trusted-policy checks and merge-committed normally as actual feature main `7774060ba580a64e925727dfbc17c7c045ed58e2`.
+- Retired transition source `d0e43188449495ed33c860019fc1093b05491700` and pinned the sole `current-main-baseline` to actual feature main. All 102 protected normalized blobs, seven workflows and the empty local-Action inventory remain byte-identical.
+- Exact Backend/NAS deployment, signed Target OTA publication and Target install/reboot/health remain separate runtime Gates.
+
+## [2026-09-04] test | Validate Target recovery final policy rotation
+
+- Focused trusted-policy coverage passed 42/42 and full repository discovery passed 367/367 with one declared PowerShell-environment skip.
+- The sole `current-main-baseline` is pinned to actual feature main `7774060ba580a64e925727dfbc17c7c045ed58e2`; all 102 protected blobs, JSON syntax and repository whitespace validation passed.
+- These results authorize exact source bytes only and do not substitute for Backend/NAS deployment or Target install/reboot/health evidence.

@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "d0e43188449495ed33c860019fc1093b05491700"
-EXPECTED_BUNDLE_ID = "target-recovery-d0e4318-persistent-baseline"
+MERGED_MAIN_COMMIT = "7774060ba580a64e925727dfbc17c7c045ed58e2"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml c02bb8bf09f7786e0e6d48c72ae050f52effd2db867361b8c4ec60f91f5fab4d
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -123,17 +123,7 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 75ac9ea696e0ae26f3cc6734113a5133c9cc1fc758ac93e1fc7f26fbe8f70902
 tests/test_target_security_ota.py a6b644a47a57ab44f4dd84885d2d165b640c41f620eca47e20fab2691cb7f167
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/deploy.yml",
-    "src/OtaManager.cpp",
-    "backend/app/home_assistant_bridge.py",
-    "backend/app/main.py",
-    "backend/tests/test_home_assistant_bridge.py",
-    "backend/tests/test_ops_api.py",
-    "backend/tests/test_target_boot_registry.py",
-    "security/target-acl",
-    "tests/test_target_security_ota.py",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -158,6 +148,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
 RETIRED_SOURCE_COMMITS = {
     "d3d15d1f540950b1232b3ebf3ee5eb4614c19fac",
     "b5afa8f5660c53517e9bfabf18b5560ac874372d",
+    "d0e43188449495ed33c860019fc1093b05491700",
     "8e0c02c415ac2f2214cca5393a2682fd4b6c3a85",
     "9291758c99fd21231ddb30fe029b3f6f11fb1de2",
     "15005944591a43a5437ccf33f9a945ab7b47809f",
@@ -1090,8 +1081,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 9)
-    self.assertEqual(len(locally_unchanged_protected), 93)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 102)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])

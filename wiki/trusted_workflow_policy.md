@@ -1872,3 +1872,22 @@ nothing and performs no relay or physical action. Normal policy review/merge,
 feature merge-connection, actual-main merge, final policy rotation, exact-main
 Backend deployment, signed Target publication and install/reboot/health remain
 separate Gates.
+
+## 66. Target connectivity self-recovery actual-main rotation
+
+Policy PR #355 passed the hosted trusted-base check and merged normally before
+the feature branch was connected to that policy main. Feature PR #356 then
+passed the hosted firmware canary, OTA/schema, Backend/MariaDB and trusted-policy
+checks and merged normally as actual feature main
+`7774060ba580a64e925727dfbc17c7c045ed58e2`.
+
+The transitional `target-recovery-d0e4318-persistent-baseline` identity is
+retired in favor of the sole `current-main-baseline` pinned to that actual
+feature merge. All 102 normalized protected blobs are byte-identical between
+the reviewed merge-connected head and actual main; the seven-workflow inventory
+and empty local-Action inventory remain exact.
+
+This final policy-only rotation does not itself prove Backend deployment or
+Target installation. Exact-main Backend/NAS readiness, signed Target artifact
+publication and Target install/reboot/health are separately observed release
+Gates.
