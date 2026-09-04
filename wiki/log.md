@@ -6479,3 +6479,12 @@
 - Focused trusted-policy coverage passed 42/42 and full repository discovery passed 367/367 with one declared PowerShell-environment skip.
 - The sole `current-main-baseline` is pinned to actual feature main `7774060ba580a64e925727dfbc17c7c045ed58e2`; all 102 protected blobs, JSON syntax and repository whitespace validation passed.
 - These results authorize exact source bytes only and do not substitute for Backend/NAS deployment or Target install/reboot/health evidence.
+
+## [2026-09-04] test | Deploy Target recovery and confirm exact OTA health
+
+- Final policy PR #357 merge-committed normally as main `57bfe105f005c9755e7765e6f1e28a2dd317b91c` after feature PR #356 established exact feature main `7774060ba580a64e925727dfbc17c7c045ed58e2`.
+- Owner-approved Backend run `33883869053` deployed exact feature main to the NAS. Independent strict-TLS `/live` and `/ready` returned HTTP 200 with all dependency, security, evidence and build-identity checks true.
+- Target run `33884109359` signed, encrypted, atomically published and HTTPS-read-back `2.1.445+main.g57bfe10`. Sent one non-retained QoS 1 HA-bridge OTA request; PUBACK and Backend `broker_accepted` arrived, but no Target ACK was observed in 25 seconds, so the request was not repeated.
+- Target `c0feffe6ebac` nevertheless advanced from boot 715 / `2.1.442+main.g9ef6b82` to boot 716 / exact `2.1.445+main.g57bfe10`. Retained boot evidence records a software `ota_pending_verify` restart and prior safe IDLE/relay-OFF state.
+- Observed 46 consecutive exact-version statuses over 45.9 seconds through uptime 112, exceeding the 30-second health threshold with no reset or rollback. Wi-Fi and HA bridge stayed online, Target and Backend boot identities matched, relay stayed OFF/pin high, and MQTT/WDT/Wi-Fi/evidence fallback failure counters remained clear.
+- No relay command, sensor passage, electrical measurement, physical door cycle, forced outage or long soak was performed. Those physical/resilience acceptance Gates remain open.

@@ -2043,3 +2043,28 @@ tracking.
   `current-main-baseline` to actual feature main with all 102 protected blobs unchanged.
 - Exact Backend/NAS deployment, signed OTA publication and Target install/reboot/health are still
   runtime Gates until their independent evidence is recorded.
+
+## 2026-09-04 Target connectivity self-recovery production rollout
+
+- Final policy PR #357 passed and merge-committed normally as final main
+  `57bfe105f005c9755e7765e6f1e28a2dd317b91c`; its sole current-main baseline remains pinned to
+  the exact feature main `7774060ba580a64e925727dfbc17c7c045ed58e2`.
+- Owner-approved Backend run `33883869053` published and deployed exact feature main `7774060b`
+  to the NAS. Independent strict-TLS `/live` and `/ready` returned HTTP 200 for that SHA with every
+  readiness check true, including MQTT, access-event collector, schema, evidence integrity and
+  build identity.
+- Target run `33884109359` built, encrypted, signed, atomically published and HTTPS-read-back exact
+  final main as `2.1.445+main.g57bfe10`. One QoS 1 HA-bridge OTA request received PUBACK and Backend
+  `broker_accepted`; no duplicate request was sent when a Target ACK was not observed within 25 seconds.
+- Fresh strict-TLS MQTTS proved installation: Target `c0feffe6ebac` advanced from boot 715 on
+  `2.1.442+main.g9ef6b82` to boot 716 on exact `2.1.445+main.g57bfe10`, with a new boot ID and retained
+  `SOFTWARE` / `ota_pending_verify` diagnostics. It then emitted 46 consecutive expected statuses
+  over 45.9 seconds through uptime 112, beyond the 30-second application health threshold, without
+  reboot or rollback.
+- The post-update window remained `IDLE`, relay command OFF/pin high, Wi-Fi connected and HA bridge
+  online. MQTT connection failures, MQTT worker WDT failures, Wi-Fi outages/recovery escalations,
+  restart-evidence failure and RTC fallback failure were all zero/false; Backend verified the same
+  boot identity and advancing status revisions.
+- This closes the bounded exact OTA install/reboot/post-boot transport-health Gate for this release.
+  No relay command, sensor passage, GPIO voltage/contact measurement, physical door cycle, forced
+  network outage or long soak was performed, so those physical/resilience Gates remain open.
