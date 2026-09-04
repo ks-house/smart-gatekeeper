@@ -2033,3 +2033,13 @@ tracking.
 - This is policy/source evidence only. Hosted policy and feature merges, actual-main rotation,
   Backend/NAS deployment, signed OTA publication, Target install/reboot and post-update health
   remain pending.
+
+## 2026-09-04 Target connectivity self-recovery actual-main merge
+
+- Policy PR #355 and feature PR #356 passed their hosted checks and merge-committed normally.
+  Actual feature main is `7774060ba580a64e925727dfbc17c7c045ed58e2`; immutable feature
+  `d0e43188449495ed33c860019fc1093b05491700` remains in ancestry.
+- The final policy candidate retires the transition identity and pins the sole
+  `current-main-baseline` to actual feature main with all 102 protected blobs unchanged.
+- Exact Backend/NAS deployment, signed OTA publication and Target install/reboot/health are still
+  runtime Gates until their independent evidence is recorded.

@@ -119,11 +119,11 @@
   },
   "approved_bundles": [
     {
-      "id": "target-recovery-d0e4318-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "d0e43188449495ed33c860019fc1093b05491700"
+        "commit": "7774060ba580a64e925727dfbc17c7c045ed58e2"
       },
       "files": {
         ".github/workflows/deploy.yml": "c02bb8bf09f7786e0e6d48c72ae050f52effd2db867361b8c4ec60f91f5fab4d",
