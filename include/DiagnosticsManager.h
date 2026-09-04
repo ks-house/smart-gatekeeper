@@ -17,8 +17,18 @@ class DiagnosticsManager {
   static void noteRelayState(bool relayCommandedOn,
                              int relayPinLevel,
                              const char* action);
+  // Preserve a restart-surviving, non-overwritable signal when exact access
+  // evidence could not be copied to NVS/RTC before a fail-closed restart.
+  static void markEvidencePersistenceFailure();
+  // Clear only a failure carried from the previous boot, and only after its
+  // boot diagnostics were accepted by the MQTT transport. A failure raised in
+  // this boot remains latched for the next reset.
+  static void acknowledgePreviousEvidencePersistenceFailure();
   static void markPlannedRestart(const char* reason);
   static void noteMqttConnected();
+  static bool enableLoopWatchdog();
+  static void feedLoopWatchdog();
+  static bool loopWatchdogEnabled();
 
   static const char* targetId();
   static const char* bootId();
@@ -34,6 +44,7 @@ class DiagnosticsManager {
   static bool previousArmed();
   static bool previousRelayCommandedOn();
   static int previousRelayPinLevel();
+  static bool previousEvidencePersistenceFailed();
 
   static uint32_t mqttConnectCount();
 

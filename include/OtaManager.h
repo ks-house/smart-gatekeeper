@@ -41,6 +41,9 @@ private:
 public:
     static void init();
     static void update();
+    // Queue a forced manifest check for the normal safe network phase. This
+    // is callback-safe and never performs HTTP/TLS work synchronously.
+    static void requestCheck();
     static void setSafeStateProvider(SafeStateProvider provider);
     static void checkAndUpdate(bool force = false);
     static bool stageLocalManifest(const String& manifestJson);

@@ -53,20 +53,23 @@ Wi-Fi STA와 MQTTS 자동 복구, availability/status last-seen 경보, periodic
 ### 3.1 Target 현재 기준선
 
 - 16 MB flash의 `app0`/`app1` dual OTA partition 사용
-- GitHub Actions가 firmware와 `version.json`을 NAS로 배포
-- MQTT `ota_update` 명령으로 `OtaManager::checkAndUpdate(true)` 실행
-- HTTPS Root CA 검증과 `HTTPUpdate` 사용
-- 성공 재부팅 전 `planned_restart=ota_update` 기록
-- OTA 설치와 새 boot/version 관측 실적 존재
+- GitHub Actions가 exact-main firmware를 signed/encrypted immutable artifact와 manifest로 NAS에 게시
+- boot/Wi-Fi 복구 뒤 periodic HTTPS, signed MQTT on-demand와 authenticated local recovery의 세 trigger가
+  같은 manifest 검증·inactive-slot engine을 사용
+- MQTT callback은 forced check를 queue할 뿐 HTTPS/TLS를 실행하지 않고, main의 network-safe phase에서만
+  `OtaManager::update()`가 소비
+- Root CA/hostname, manifest signature, board/protocol, authenticated ciphertext와 plaintext size/digest를
+  모두 검증한 뒤에만 inactive slot 선택
+- pending image의 연속 health window, explicit valid mark와 자동 rollback 구현
+- OTA/recovery 재부팅 전 `planned_restart`와 pending access evidence의 ordered NVS/RTC A/B journal checkpoint 수행
+- exact signed OTA install→new boot→health valid와 별도 pre-valid reset rollback 관측 실적 존재
 
 남은 공백:
 
-- `OtaManager::init()`은 주기 확인을 시작하지 않아 MQTT 명령이 유일한 실제 trigger다.
-- Target이 MQTT에서 이미 offline이면 원격 OTA 명령을 받을 수 없다.
-- dual partition은 있으나 새 image health 확인 뒤 valid mark와 자동 rollback 계약이 없다.
-- manifest/artifact의 hash·서명 검증 계약이 없다.
-- OTA 중 power loss, 잘못된 image, reset loop, NVS migration rollback 시험이 없다.
-- provisioning AP의 인증된 local wireless recovery 경로가 없다.
+- 2026-09-04 single-owner MQTT connect worker, OTA/TLS 비중첩, access lease와 RTC repeated-reset 보존은
+  source/build evidence이며 signed OTA install/reboot/health와 현장 access-during-update로 아직 확인하지 않았다.
+- hard power-removal, 장기 broker/WAN outage, intended-wall RF 환경과 반복 reset/rollback soak는 별도 Gate다.
+- RTC_NOINIT fallback은 controlled software reset 보조 수단일 뿐 cold power loss 내구성 증거가 아니다.
 
 ### 3.2 모바일 현재 기준선
 
@@ -134,11 +137,30 @@ IDLE
 - relay ON, RELAY_HOLD, active flash write와 개방 command를 겹치지 않는다.
 - OTA request가 오면 현재 물리 session을 안전하게 끝낸 뒤 bounded timeout 안에
   `WAIT_SAFE_STATE`로 진입한다.
+- 미인증 GATT ingress는 10초 뒤 transport만 끊고 Target을 재부팅하지 않으며, 30초 연속 quiet 뒤에만
+  새 unverified lease를 얻는다. Verified physical action은 별도의 85초 hard lease에서 끝나거나
+  relay-OFF/evidence checkpoint 뒤 fail-closed 재부팅되므로, raw BLE churn이나 wedged session이 OTA를
+  무기한 막아서는 안 된다.
 - OTA 대기·다운로드 중에도 별도 relay one-shot cutoff와 boot default OFF를 유지한다.
 - 새 command는 `OTA_BUSY`로 거부하거나 queue 정책에 따라 명확히 처리한다.
+- MQTT의 TCP/TLS/MQTT connect는 secure client/PubSubClient 단일-owner worker에서만 실행한다. Periodic
+  check, forced check와 authenticated local upload는 worker가 active인 동안 새 OTA TLS를 시작하지 않고,
+  access 진입이나 Wi-Fi generation 변경으로 늦어진 worker 결과는 stale로 폐기한다.
 - download/verify 실패는 active slot과 기존 NVS를 변경하지 않는다.
 - ACL/credential/NVS migration은 copy-on-write와 schema version을 사용하며 이전
   firmware가 읽을 수 없는 irreversible migration을 OTA valid mark 전에 commit하지 않는다.
+- Pending-slot, rollback, local recovery 또는 signed reboot의 controlled reset 전에는 pending access
+  evidence를 FIFO 순서로 NVS에 checkpoint한다. NVS가 남은 terminal을 수용하지 못하면 complete
+  remaining FIFO를 checksum-bound generation의 RTC A/B journal inactive slot에 쓰고 magic-last commit이
+  성공한 경우에만 degraded software-reset recovery로 진행한다. Torn replacement는 이전 valid generation을
+  복원하며, 이 경로를 cold power loss 내구성으로 과장하지 않는다.
+- `evidence_persistence_failed`는 연속 software reset에 carry한다. Retained boot diagnostics publish 성공만
+  previous-boot failure를 acknowledge/clear할 수 있고, 같은 boot에서 새로 생긴 failure latch는 다음 reset까지
+  유지한다.
+- Signed MQTT reboot는 receive callback에서 직접 실행하지 않는다. Inbound PUBACK 경계 뒤 main이 새
+  GATT 인증을 막고 callback을 drain하고 unverified ingress를 정리한 뒤 verified physical state를 다시
+  확인한다. Verified action이 있으면 terminal까지 기다리고, 안전 상태와 evidence checkpoint가 확인된
+  뒤에만 재부팅한다.
 
 ### 4.4 artifact 신뢰
 
@@ -680,3 +702,71 @@ separate 295 pre-VALID reset rollback and durable same-version replay refusal,
 this satisfies issue #172's connected positive and negative OTA acceptance.
 No factory erase or single-slot change occurred. Hard power-removal and the
 relay/sensor/door electrical-mechanical Gates remain separate.
+
+## 24. 2026-09-04 access-priority and bounded-network candidate
+
+Forced OTA commands no longer execute HTTPS/TLS inside the MQTT receive
+callback. They set a pending flag that `OtaManager::update()` consumes only in
+the normal network-safe phase; periodic checks use the same gate. Before OTA,
+the main loop drains and rechecks callback-visible fast-v2 GATT ingress and
+recomputes the access state after MQTT command processing. A newly accepted
+arm/manual action therefore prevents OTA from starting in that loop.
+
+Manifest and artifact HTTP connect use a four-second TCP limit and the secure
+client uses an eight-second handshake limit. MQTT DNS has a real five-second
+generation-bound deadline; its TCP (4 seconds), TLS (8 seconds) and MQTT read
+(3 seconds) phases run in one connect worker that exclusively owns the secure
+client/PubSubClient. The loop adopts only a matching request and Wi-Fi link
+generation and closes late/cancelled results as stale. The worker enrolls in
+the same 45-second task watchdog, feeds between bounded phases and deregisters
+before terminal handoff. The loop never uses those transport objects while the
+worker owns them.
+
+`OtaManager::update()`, the explicit forced-check execution path and authenticated local
+upload all reject/defer startup while that worker is active. Access ingress
+requests cooperative cancellation before physical control begins. This keeps
+MQTT and OTA from running concurrent TLS handshakes on the ESP32-C6 radio/heap.
+Download idle/total deadlines advance from actual byte progress. The loop WDT
+is fed only after each bounded GATT/download service iteration returns; that
+feed is liveness protection and is not artifact-progress evidence. Safe-state
+waiting likewise feeds only after GATT processing returns inside its bounded window.
+The independent 45-second loop watchdog stays enabled; it is a last-resort
+boundary, not a replacement for the normal inactive-slot, health-window and
+rollback state machine.
+
+Unverified BLE ingress has a 10-second budget and then disconnects without a
+whole-device reboot; 30 continuous quiet seconds are required before reconnect
+churn can earn another unverified epoch. A verified action generation owns the
+separate 85-second physical lease. Only that verified phase can reach the
+relay-OFF, `INTERNAL_ERROR`, evidence-checkpoint and controlled-restart
+fail-closed path.
+
+Every controlled OTA/recovery reset now calls the shared ordered evidence
+checkpoint first. Older volatile records are appended behind NVS before the
+terminal. If NVS is unavailable, the complete remaining FIFO including the
+reserved terminal must fit a checksum-bound generation in an RTC_NOINIT A/B
+journal. Replacement writes only the inactive slot and commits magic last, so
+a reset during replacement leaves the previous valid generation restorable.
+The selected generation is retained across repeated software resets until each
+represented front record is published or migrated to NVS; after a partial
+drain, the exact remaining FIFO is written as the next generation. This can
+replay duplicates and does not survive cold power loss, but it prevents a
+software reset from silently dropping the terminal.
+
+The `evidence_persistence_failed` breadcrumb also survives repeated software
+resets. Only a successful retained boot-diagnostics publish acknowledges the
+failure carried from the previous boot. If the current boot raises another
+persistence failure, that new latch remains set for the next reset instead of
+being erased by acknowledgement of the older report.
+
+Signed MQTT reboot uses the same safety boundary. It is staged in the callback,
+then after the inbound PUBACK boundary main blocks new GATT authentication,
+drains callbacks, aborts only unverified ingress and re-proves that no verified
+physical action is active. A racing verified action delays reboot until its
+terminal; evidence is checkpointed immediately before the eventual restart.
+
+This preserves both periodic HTTPS pull and authenticated local recovery, does
+not change the dual-slot layout or signed/encrypted artifact format, and has
+source/build evidence only. No new image was published or installed and the
+owner deferred physical Target validation, so install, reboot, health-valid,
+rollback and access-during-update behavior remain runtime Gates.

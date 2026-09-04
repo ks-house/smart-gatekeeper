@@ -15,6 +15,10 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     cls.mqtt = (ROOT / "src" / "MqttManager.cpp").read_text(encoding="utf-8")
     cls.main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
     cls.ota = (ROOT / "src" / "OtaManager.cpp").read_text(encoding="utf-8")
+    cls.config = (ROOT / "include" / "config.h").read_text(encoding="utf-8")
+    cls.diagnostics = (ROOT / "src" / "DiagnosticsManager.cpp").read_text(
+        encoding="utf-8"
+    )
 
   def test_provisioning_ap_uses_bounded_radio_policy(self):
     self.assertIn("WiFi.mode(WIFI_AP_STA)", self.wifi)
@@ -26,7 +30,9 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     self.assertNotIn("kStationRetryIntervalMs", self.wifi)
     self.assertNotIn("startNonBlockingStationAttempt", self.wifi)
     self.assertEqual(self.wifi.count("WiFi.begin(ssid.c_str(), pass.c_str());"), 1)
-    self.assertIn("[WIFI-DIAG] station disconnect reason=%u", self.wifi)
+    self.assertIn(
+        "[WIFI-DIAG] unplanned station disconnect reason=%u", self.wifi
+    )
     self.assertIn('noteAction("wifi_recovered_from_ap")', self.wifi)
 
   def test_idle_ap_client_hold_is_bounded_without_interrupting_active_work(self):
@@ -141,11 +147,45 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     self.assertNotIn("WiFi.begin(ssid.c_str(), pass.c_str(),", connect)
     self.assertIn('noteAction("wifi_sta_profile_degraded")', profile)
 
-  def test_disconnect_diagnostics_include_reason_name(self):
+  def test_disconnect_diagnostics_preserve_last_unplanned_reason(self):
     self.assertIn("WiFi.disconnectReasonName(reason)", self.wifi)
     self.assertIn(
-        "[WIFI-DIAG] station disconnect reason=%u (%s)", self.wifi
+        "[WIFI-DIAG] unplanned station disconnect reason=%u (%s)",
+        self.wifi,
     )
+    self.assertIn(
+        "[WIFI-DIAG] intentional station disconnect ", self.wifi
+    )
+    self.assertIn(
+        "wifiLastUnplannedDisconnectReason =", self.wifi
+    )
+    callback = self.wifi.split(
+        "ARDUINO_EVENT_WIFI_STA_DISCONNECTED", 1
+    )[0].rsplit("WiFi.onEvent(", 1)[1]
+    intentional = callback.split(
+        "if (intentional)", 1
+    )[1].split("wifiLastUnplannedDisconnectReason =", 1)[0]
+    self.assertIn("reason == WIFI_REASON_ASSOC_LEAVE", callback)
+    self.assertIn("clearIntentionalDisconnectMarker();", intentional)
+    self.assertIn("return;", intentional)
+    self.assertNotIn("wifiLastUnplannedDisconnectReason =", intentional)
+    self.assertIn(
+        "lastUnplannedDisconnectReason()", self.wifi
+    )
+
+  def test_every_internal_station_disconnect_uses_attribution_wrapper(self):
+    wrapper = self.wifi.split(
+        "void disconnectStationIntentionally", 1
+    )[1].split("void registerWifiDiagnostics", 1)[0]
+    self.assertEqual(self.wifi.count("WiFi.disconnect(false, false)"), 1)
+    self.assertIn("WiFi.disconnect(false, false)", wrapper)
+    self.assertEqual(
+        self.wifi.count("disconnectStationIntentionally("), 8
+    )
+    self.assertIn(
+        "kIntentionalDisconnectEventWindowMs = 2000", self.wifi
+    )
+    self.assertIn("recentIntentionalRequest", self.wifi)
 
   def test_recovery_ap_identity_is_single_sourced(self):
     self.assertIn(
@@ -169,7 +209,7 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     scan = self.wifi.split("void WifiManager::handleScan()", 1)[1]
     scan = scan.split("void WifiManager::handleSave()", 1)[0]
     pause = scan.index("WiFi.setAutoReconnect(false);")
-    disconnect = scan.index("WiFi.disconnect(false, false);")
+    disconnect = scan.index('disconnectStationIntentionally("recovery_scan");')
     first_scan = scan.index("WiFi.scanNetworks(false, false, false, 150)")
     retry_scan = scan.index("WiFi.scanNetworks(false, false, false, 250)")
     self.assertLess(pause, disconnect)
@@ -242,7 +282,19 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     self.assertIn('noteAction("mqtt_wifi_lost")', self.mqtt)
     self.assertIn('noteAction("mqtt_wifi_recovered")', self.mqtt)
     self.assertIn("wifiClient.stop();", self.mqtt)
-    self.assertIn("lastPublishMs = millis() - 5001", self.mqtt)
+    self.assertIn("mqttNextConnectAttemptMs = millis();", self.mqtt)
+    self.assertIn(
+        "mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS", self.mqtt
+    )
+    self.assertIn("WifiManager::linkGeneration()", self.mqtt)
+    self.assertIn('noteAction("mqtt_wifi_generation_changed")', self.mqtt)
+    generation = self.mqtt.split(
+        "wifiLinkGeneration != wifiLinkGenerationLastUpdate", 1
+    )[1].split("const bool wifiAvailable", 1)[0]
+    self.assertIn("requestConnectWorkerCancellation();", generation)
+    self.assertIn("resetMqttDnsResolution();", generation)
+    self.assertIn("workerResult.wifi_link_generation", generation)
+    self.assertIn("wifiClient.stop();", generation)
 
   def test_pending_ota_is_valid_only_with_wifi_and_mqtt(self):
     self.assertIn(
@@ -251,6 +303,217 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     health_block = self.ota.split("if (status == OtaStatus::HEALTH_WINDOW)", 1)[1]
     health_block = health_block.split("return;", 1)[0]
     self.assertNotIn("WifiManager::isAPMode()", health_block)
+
+  def test_normal_sta_outage_escalates_only_from_safe_service(self):
+    self.assertIn("StationRecoveryEscalationPolicy", self.policy)
+    self.assertIn("WIFI_STA_RECOVERY_GRACE_MS = 30000", self.config)
+    self.assertIn("WIFI_RECOVERY_AP_RETRY_MS = 60000", self.config)
+    observe = self.wifi.split(
+        "void WifiManager::observeConnectivity", 1
+    )[1].split("void WifiManager::serviceRecovery", 1)[0]
+    service = self.wifi.split(
+        "void WifiManager::serviceRecovery", 1
+    )[1].split("bool WifiManager::isConnected", 1)[0]
+    self.assertNotIn("WiFi.disconnect", observe)
+    self.assertNotIn("WiFi.mode", observe)
+    self.assertIn("stationRecoveryPolicy.actionDue(nowMs)", service)
+    self.assertIn("startRecoveryAP(false, 0)", service)
+    self.assertIn("stationRecoveryPolicy.escalationFailed(nowMs)", service)
+
+    loop = self.main.split("void loop()", 1)[1]
+    critical = loop.index("bool accessCritical = isAccessPathCritical()")
+    observe_call = loop.index("WifiManager::observeConnectivity(now)")
+    safe_guard = loop.index("if (!accessCritical)")
+    service_call = loop.index("WifiManager::serviceRecovery(now)")
+    self.assertLess(critical, observe_call)
+    self.assertLess(observe_call, safe_guard)
+    self.assertLess(safe_guard, service_call)
+
+  def test_mqtt_connect_has_layered_timeouts_and_capped_backoff(self):
+    for contract in (
+        "wifiClient.setConnectionTimeout(MQTT_TCP_CONNECT_TIMEOUT_MS)",
+        "wifiClient.setHandshakeTimeout(MQTT_TLS_HANDSHAKE_TIMEOUT_SECONDS)",
+        "client.setSocketTimeout(MQTT_PROTOCOL_SOCKET_TIMEOUT_SECONDS)",
+        "MQTT_RECONNECT_INITIAL_MS = 5000",
+        "MQTT_RECONNECT_MAX_MS = 30000",
+        "mqttReconnectDelayMs * 2",
+    ):
+      self.assertIn(contract, self.mqtt + self.config)
+    self.assertIn('noteAction("mqtt_connect_start")', self.mqtt)
+    self.assertIn('xTaskCreate(\n        connectWorkerEntry, "mqtt-connect"', self.mqtt)
+    self.assertIn("connectWorkerIsRunning()", self.mqtt)
+
+  def test_mqtt_dns_is_polled_with_a_real_deadline_before_tls(self):
+    self.assertIn("MQTT_DNS_RESOLVE_TIMEOUT_MS = 5000", self.config)
+    dns = self.mqtt.split("MqttDnsPollResult pollMqttDns", 1)[1]
+    dns = dns.split("bool parseLowerHex16", 1)[0]
+    self.assertIn("dns_gethostbyname_addrtype", dns)
+    self.assertIn("MQTT_DNS_RESOLVE_TIMEOUT_MS", dns)
+    self.assertIn("mqttDnsGeneration", dns)
+    self.assertNotIn("Network.hostByName", dns)
+    update = self.mqtt.split("void MqttManager::update()", 1)[1]
+    resolve = update.index("pollMqttDns(&brokerAddress)")
+    start = update.index("startConnectWorker(brokerAddress", resolve)
+    self.assertLess(resolve, start)
+    self.assertNotIn("wifiClient.connect(", update)
+    self.assertNotIn("client.connect(", update)
+
+    worker = self.mqtt.split(
+        "void MqttManager::connectWorkerEntry", 1
+    )[1].split("void MqttManager::dispatchPendingAccessCommand", 1)[0]
+    tls = worker.index("wifiClient.connect(")
+    mqtt = worker.index("client.connect(", tls)
+    self.assertLess(tls, mqtt)
+    self.assertIn(
+        "request.broker_address, MQTT_PORT, MQTT_HOST, SECRET_ROOT_CA_CERT",
+        worker,
+    )
+
+  def test_connect_worker_has_exclusive_generation_checked_handoff(self):
+    update = self.mqtt.split("void MqttManager::update()", 1)[1]
+    update = update.split("void MqttManager::publishBootDiagnostics", 1)[0]
+    running = update.index("if (connectWorkerIsRunning())")
+    cancel = update.index("requestConnectWorkerCancellation();", running)
+    take = update.index("takeConnectWorkerResult(&workerResult)", cancel)
+    first_client_access = update.index("client.connected()", take)
+    self.assertLess(running, cancel)
+    self.assertLess(cancel, take)
+    self.assertLess(take, first_client_access)
+    self.assertIn(
+        "workerResult.wifi_link_generation == currentLinkGeneration", update
+    )
+    self.assertIn("MqttConnectOutcome::kSuccess", update)
+    self.assertIn("mqtt_connect_worker_stale", update)
+
+    header = (ROOT / "include" / "MqttManager.h").read_text(
+        encoding="utf-8"
+    )
+    connected = header.split("static bool isConnected();", 1)[0]
+    self.assertNotIn("wifiClient.connected() && client.connected()", connected)
+    self.assertGreaterEqual(
+        self.mqtt.count('doc["wifi_link_generation"] = '
+                        'WifiManager::linkGeneration()'),
+        2,
+    )
+    self.assertGreaterEqual(
+        self.mqtt.count('doc["wifi_outage_count"] = '
+                        'WifiManager::outageCount()'),
+        2,
+    )
+
+  def test_connect_worker_has_hard_stall_watchdog_and_tls_coordination(self):
+    worker = self.mqtt.split(
+        "void MqttManager::connectWorkerEntry", 1
+    )[1].split("void MqttManager::dispatchPendingAccessCommand", 1)[0]
+    enroll = worker.index("esp_task_wdt_add(nullptr)")
+    tls = worker.index("wifiClient.connect(", enroll)
+    mqtt = worker.index("client.connect(", tls)
+    first_feed = worker.index("feedWatchdog();", tls)
+    self.assertLess(enroll, tls)
+    self.assertLess(tls, first_feed)
+    self.assertLess(first_feed, mqtt)
+
+    finish = worker.split("auto finish =", 1)[1].split("auto stale =", 1)[0]
+    delete = finish.index("esp_task_wdt_delete(nullptr)")
+    handoff = finish.index("completeConnectWorker(result)", delete)
+    self.assertLess(delete, handoff)
+    self.assertIn("watchdog_error", worker)
+
+  def test_connect_worker_watchdog_diagnostics_are_race_free(self):
+    snapshot = self.mqtt.split(
+        "uint32_t connectWorkerWatchdogFailuresSnapshot()", 1
+    )[1].split("void requestConnectWorkerCancellation", 1)[0]
+    self.assertIn("portENTER_CRITICAL(&mqttConnectWorkerMux)", snapshot)
+    self.assertIn("mqttConnectWorkerWatchdogFailures", snapshot)
+    self.assertIn("portEXIT_CRITICAL(&mqttConnectWorkerMux)", snapshot)
+    self.assertEqual(
+        self.mqtt.count("connectWorkerWatchdogFailuresSnapshot();"), 2
+    )
+    self.assertGreaterEqual(
+        self.mqtt.count('doc["mqtt_connect_worker_wdt_failures"] ='),
+        2,
+    )
+
+    self.assertIn("MqttManager::deferForAccessCritical();", self.main)
+    self.assertIn(
+        "bool MqttManager::connectionAttemptInProgress()", self.mqtt
+    )
+    self.assertGreaterEqual(
+        self.ota.count("MqttManager::connectionAttemptInProgress()"),
+        3,
+    )
+
+  def test_loop_watchdog_is_reconfigured_before_subscription(self):
+    reconfigure = self.diagnostics.index("esp_task_wdt_reconfigure")
+    enable = self.diagnostics.index("enableLoopWDT();")
+    status = self.diagnostics.index("esp_task_wdt_status(nullptr)")
+    self.assertLess(reconfigure, enable)
+    self.assertLess(enable, status)
+    self.assertIn("LOOP_TASK_WATCHDOG_TIMEOUT_MS = 45000", self.config)
+    self.assertIn("watchdogConfig.trigger_panic = true", self.diagnostics)
+    self.assertIn("DiagnosticsManager::enableLoopWatchdog();", self.main)
+    self.assertNotIn("disableLoopWDT", self.diagnostics + self.main + self.ota)
+
+  def test_ota_services_gatt_and_watchdog_under_bounded_deadlines(self):
+    self.assertIn(
+        "otaHttp.setConnectTimeout(OTA_TCP_CONNECT_TIMEOUT_MS)", self.ota
+    )
+    self.assertIn(
+        "otaClient.setHandshakeTimeout(OTA_TLS_HANDSHAKE_TIMEOUT_SECONDS)",
+        self.ota,
+    )
+    wait = self.ota.split("bool waitForSafeState()", 1)[1].split(
+        "}  // namespace", 1
+    )[0]
+    self.assertLess(
+        wait.index("kOtaSafeStateTimeoutMs"),
+        wait.index("DiagnosticsManager::feedLoopWatchdog();"),
+    )
+    download = self.ota.split(
+        "while (updateBytes < stagedManifest.artifact_size)", 1
+    )[1].split("otaHttp.end();", 1)[0]
+    gatt = download.index("GattServer::update();")
+    watchdog = download.index("DiagnosticsManager::feedLoopWatchdog();", gatt)
+    total_deadline = download.index("kArtifactDownloadTimeoutMs", watchdog)
+    idle_deadline = download.index("kArtifactIdleTimeoutMs", total_deadline)
+    no_data = download.index("if (available == 0)", idle_deadline)
+    write = download.index("writeImageChunk", no_data)
+    progress = download.index("lastProgressMs = millis();", write)
+    self.assertLess(gatt, watchdog)
+    self.assertLess(watchdog, total_deadline)
+    self.assertLess(total_deadline, idle_deadline)
+    self.assertLess(idle_deadline, no_data)
+    self.assertLess(no_data, write)
+    self.assertLess(write, progress)
+
+  def test_target_snapshots_are_retained_but_live_evidence_is_not(self):
+    worker = self.mqtt.split(
+        "void MqttManager::connectWorkerEntry", 1
+    )[1].split("void MqttManager::dispatchPendingAccessCommand", 1)[0]
+    self.assertIn(
+        "client.publish(availabilityTopic.c_str(), onlinePayload, true)",
+        worker,
+    )
+    self.assertIn(
+        "availabilityTopic.c_str(), 1, true, request.will_payload",
+        self.mqtt,
+    )
+    self.assertGreaterEqual(
+        self.mqtt.count('\\"scope\\":\\"mqtt_transport\\"'), 2
+    )
+    self.assertIn("SUBACK is not observable", self.mqtt)
+    self.assertIn("client.publish(bootTopic.c_str(), buffer, true)", self.mqtt)
+    self.assertIn(
+        "client.publish(configStateTopic.c_str(), buffer, true)", self.mqtt
+    )
+    self.assertIn(
+        "client.publish(statusTopic.c_str(), pendingTelemetry, false)",
+        self.mqtt,
+    )
+    self.assertIn(
+        "client.publish(canonicalEventTopic.c_str(), payload, false)",
+        self.mqtt,
+    )
 
 
 if __name__ == "__main__":

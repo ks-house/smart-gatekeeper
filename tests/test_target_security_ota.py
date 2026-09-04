@@ -175,6 +175,8 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         )[1].split("otaHttp.end()", 1)[0]
         self.assertIn("kArtifactIdleTimeoutMs", download_loop)
         self.assertIn("kArtifactDownloadTimeoutMs", download_loop)
+        self.assertIn("GattServer::update();", download_loop)
+        self.assertIn("DiagnosticsManager::feedLoopWatchdog();", download_loop)
         self.assertIn("observedMs - downloadStartedMs", download_loop)
         self.assertIn("observedMs - lastProgressMs", download_loop)
         self.assertIn("lastProgressMs = millis()", download_loop)
@@ -190,6 +192,85 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertLess(
             wifi.index("if (apSuccess)"),
             wifi.index("apModeActive = true", wifi.index("if (apSuccess)")),
+        )
+
+    def test_every_controlled_restart_preserves_access_evidence(self) -> None:
+        ota = (ROOT / "src/OtaManager.cpp").read_text(encoding="utf-8")
+        wifi = (ROOT / "src/WifiManager.cpp").read_text(encoding="utf-8")
+        mqtt = (ROOT / "src/MqttManager.cpp").read_text(encoding="utf-8")
+        main = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
+
+        for marker in (
+            'preserveAccessEvidenceBeforeRestart("valid_mark_failed")',
+            'preserveAccessEvidenceBeforeRestart("health_timeout")',
+            'preserveAccessEvidenceBeforeRestart("pending_verify")',
+        ):
+            self.assertIn(marker, ota)
+        self.assertEqual(ota.count("ESP.restart();"), 3)
+        self.assertEqual(
+            ota.count("esp_ota_mark_app_invalid_rollback_and_reboot()"), 2
+        )
+
+        for marker in (
+            'preserveAccessEvidenceBeforeRestart("provisioning_save")',
+            'preserveAccessEvidenceBeforeRestart("local_ota_pending_verify")',
+        ):
+            self.assertIn(marker, wifi)
+        self.assertEqual(wifi.count("ESP.restart();"), 2)
+
+        mqtt_restart = mqtt.split(
+            "void MqttManager::performPendingRestart()", 1
+        )[1].split("bool MqttManager::publishCommandAck", 1)[0]
+        self.assertLess(
+            mqtt_restart.index("GattServer::persistPendingEventsForRestart()"),
+            mqtt_restart.index("ESP.restart();"),
+        )
+
+        lease_restart = main.split(
+            "static bool enforceAccessCriticalLease", 1
+        )[1].split(
+            "// ─────────────────────────────────────────────────────────────", 1
+        )[0]
+        self.assertLess(
+            lease_restart.index("GattServer::persistPendingEventsForRestart()"),
+            lease_restart.index("ESP.restart();"),
+        )
+
+    def test_signed_reboot_quiesces_gatt_and_rechecks_physical_state(self) -> None:
+        main = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
+        mqtt = (ROOT / "src/MqttManager.cpp").read_text(encoding="utf-8")
+        helper = main.split("static bool servicePendingSignedRestart()", 1)[1]
+        helper = helper.split("static bool enforceAccessCriticalLease", 1)[0]
+
+        block_new_auth = helper.index("GattServer::setOtaBusy(true);")
+        first_physical_check = helper.index(
+            "isVerifiedPhysicalAccessActive()", block_new_auth
+        )
+        flush_busy = helper.index("GattServer::flushOtaBusy", first_physical_check)
+        disconnect_raw = helper.index(
+            "GattServer::abortUnverifiedIngress", flush_busy
+        )
+        final_physical_check = helper.index(
+            "isVerifiedPhysicalAccessActive()", disconnect_raw
+        )
+        perform = helper.index(
+            "MqttManager::performPendingRestart()", final_physical_check
+        )
+        self.assertLess(block_new_auth, first_physical_check)
+        self.assertLess(first_physical_check, flush_busy)
+        self.assertLess(flush_busy, disconnect_raw)
+        self.assertLess(disconnect_raw, final_physical_check)
+        self.assertLess(final_physical_check, perform)
+
+        update = mqtt.split("void MqttManager::update()", 1)[1]
+        update = update.split("void MqttManager::publishBootDiagnostics", 1)[0]
+        self.assertIn("if (signedRestartPending)", update)
+        self.assertNotIn("ESP.restart();", update)
+        self.assertGreaterEqual(
+            main.split("void loop()", 1)[1].count(
+                "MqttManager::hasPendingRestartRequest()"
+            ),
+            2,
         )
 
     def test_ota_runtime_decrypts_only_authenticated_envelopes(self) -> None:

@@ -31,6 +31,90 @@ enum class RecoveryRadioAction : uint8_t {
   kReleaseStaleClientsAndStartStationAttempt,
 };
 
+enum class StationRecoveryPhase : uint8_t {
+  kConnected = 0,
+  kAutoReconnectGrace,
+  kApRetryBackoff,
+  kRecoveryAp,
+};
+
+enum class StationRecoveryObservation : uint8_t {
+  kNone = 0,
+  kOutageStarted,
+  kRecovered,
+};
+
+// Pure policy for escalating a long-lived normal STA outage into the existing
+// authenticated Recovery AP. Wi-Fi mutation stays in WifiManager and is only
+// serviced while the access-control path is safe.
+class StationRecoveryEscalationPolicy {
+ public:
+  StationRecoveryEscalationPolicy(uint32_t grace_ms, uint32_t retry_ms)
+      : grace_ms_(grace_ms), retry_ms_(retry_ms) {}
+
+  StationRecoveryObservation observe(uint32_t now_ms, bool connected) {
+    if (connected) {
+      if (phase_ == StationRecoveryPhase::kConnected) {
+        return StationRecoveryObservation::kNone;
+      }
+      last_outage_ms_ = now_ms - outage_started_ms_;
+      phase_ = StationRecoveryPhase::kConnected;
+      outage_started_ms_ = 0;
+      phase_started_ms_ = now_ms;
+      return StationRecoveryObservation::kRecovered;
+    }
+    if (phase_ == StationRecoveryPhase::kConnected) {
+      phase_ = StationRecoveryPhase::kAutoReconnectGrace;
+      outage_started_ms_ = now_ms;
+      phase_started_ms_ = now_ms;
+      return StationRecoveryObservation::kOutageStarted;
+    }
+    return StationRecoveryObservation::kNone;
+  }
+
+  bool actionDue(uint32_t now_ms) const {
+    if (phase_ == StationRecoveryPhase::kAutoReconnectGrace) {
+      return now_ms - phase_started_ms_ >= grace_ms_;
+    }
+    if (phase_ == StationRecoveryPhase::kApRetryBackoff) {
+      return now_ms - phase_started_ms_ >= retry_ms_;
+    }
+    return false;
+  }
+
+  void escalationSucceeded() {
+    phase_ = StationRecoveryPhase::kRecoveryAp;
+    phase_started_ms_ = 0;
+  }
+
+  void escalationFailed(uint32_t now_ms) {
+    phase_ = StationRecoveryPhase::kApRetryBackoff;
+    phase_started_ms_ = now_ms;
+  }
+
+  void stop() {
+    phase_ = StationRecoveryPhase::kConnected;
+    outage_started_ms_ = 0;
+    phase_started_ms_ = 0;
+  }
+
+  uint32_t currentOutageMs(uint32_t now_ms) const {
+    return phase_ == StationRecoveryPhase::kConnected
+               ? 0
+               : now_ms - outage_started_ms_;
+  }
+  uint32_t lastOutageMs() const { return last_outage_ms_; }
+  StationRecoveryPhase phase() const { return phase_; }
+
+ private:
+  uint32_t grace_ms_ = 0;
+  uint32_t retry_ms_ = 0;
+  uint32_t outage_started_ms_ = 0;
+  uint32_t phase_started_ms_ = 0;
+  uint32_t last_outage_ms_ = 0;
+  StationRecoveryPhase phase_ = StationRecoveryPhase::kConnected;
+};
+
 // Pure timing policy for sharing one ESP32-C6 radio between the recovery AP
 // and a failed STA. The adapter owns Wi-Fi calls; this class only decides when
 // one bounded attempt may start or must stop.

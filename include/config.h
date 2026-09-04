@@ -39,6 +39,45 @@ constexpr uint16_t MQTT_KEEP_ALIVE_SECONDS = 120;
 constexpr uint32_t ACCESS_CRITICAL_STATUS_GRACE_MS = 90000;
 constexpr uint32_t GATT_AUTH_PENDING_TIMEOUT_MS = 5000;
 
+// A dedicated worker solely owns MQTT/TLS while establishing a new session;
+// loopTask owns the adopted steady-state client and the access-control FSM.
+// Bound each network phase, then let the task watchdog recover only a genuine
+// hard stall. Units intentionally follow the three underlying APIs.
+constexpr uint32_t LOOP_TASK_WATCHDOG_TIMEOUT_MS = 45000;
+constexpr uint32_t MQTT_TCP_CONNECT_TIMEOUT_MS = 4000;
+constexpr uint32_t MQTT_TLS_HANDSHAKE_TIMEOUT_SECONDS = 8;
+constexpr uint16_t MQTT_PROTOCOL_SOCKET_TIMEOUT_SECONDS = 3;
+// DNS is started through lwIP's callback API and polled from loopTask. This is
+// a real deadline, not merely watchdog budget: an unresolved lookup is
+// abandoned for the current reconnect attempt while any late callback is
+// rejected by its generation token.
+constexpr uint32_t MQTT_DNS_RESOLVE_TIMEOUT_MS = 5000;
+constexpr uint32_t MQTT_RECONNECT_INITIAL_MS = 5000;
+constexpr uint32_t MQTT_RECONNECT_MAX_MS = 30000;
+constexpr uint32_t OTA_TCP_CONNECT_TIMEOUT_MS = 4000;
+constexpr uint32_t OTA_TLS_HANDSHAKE_TIMEOUT_SECONDS = 8;
+
+// Normal access timings total at most 81.25 seconds. A continuously critical
+// interval beyond this ceiling is therefore a wedged/replaced-session fault,
+// not a valid reason to suppress Wi-Fi, MQTT and OTA forever.
+constexpr uint32_t ACCESS_CRITICAL_HARD_TIMEOUT_MS = 85000;
+// Pre-proof BLE work never owns the whole 85-second physical lease. A peer
+// that does not complete a verified action is disconnected after two auth
+// windows without rebooting the Target.
+constexpr uint32_t GATT_UNVERIFIED_CRITICAL_TIMEOUT_MS =
+    2 * GATT_AUTH_PENDING_TIMEOUT_MS;
+// A disconnected/idle gap must remain continuously quiet before an
+// unauthenticated BLE ingress can earn a new hard-lease epoch. Repeated short
+// connect/disconnect cycles therefore cannot reset the original 10 s budget,
+// while normal network service resumes immediately during every quiet gap.
+constexpr uint32_t ACCESS_CRITICAL_REARM_QUIET_MS = 30000;
+
+// Give the Arduino STA auto-reconnect path one bounded opportunity. If it
+// cannot recover, hand radio ownership to the existing authenticated recovery
+// AP policy without erasing stored credentials.
+constexpr uint32_t WIFI_STA_RECOVERY_GRACE_MS = 30000;
+constexpr uint32_t WIFI_RECOVERY_AP_RETRY_MS = 60000;
+
 // A production Target uses one broker principal and one exact topic namespace.
 // The broker ACL maps that principal to gatekeeper/v1/targets/<target-id>/#.
 #ifndef SECRET_TARGET_TENANT_ID
@@ -192,11 +231,34 @@ extern uint32_t g_relay_cooldown_ms;
 static_assert(2 * GATT_AUTH_PENDING_TIMEOUT_MS + PRE_ARM_MAX_DURATION_MS +
                   RELAY_HOLD_MS +
                   RELAY_FAILSAFE_GRACE_MS + RELAY_COOLDOWN_MAX_MS <
-              ACCESS_CRITICAL_STATUS_GRACE_MS,
-              "replacement access timing must remain below status grace");
+              ACCESS_CRITICAL_HARD_TIMEOUT_MS,
+              "normal access timing must remain below the hard lease");
+static_assert(ACCESS_CRITICAL_HARD_TIMEOUT_MS <
+                  ACCESS_CRITICAL_STATUS_GRACE_MS,
+              "access hard lease must expire before status grace");
+static_assert(ACCESS_CRITICAL_REARM_QUIET_MS <
+                  ACCESS_CRITICAL_HARD_TIMEOUT_MS,
+              "access lease quiet rearm must fit inside the hard lease");
+static_assert(GATT_UNVERIFIED_CRITICAL_TIMEOUT_MS <
+                  ACCESS_CRITICAL_HARD_TIMEOUT_MS,
+              "unverified ingress must expire before the physical lease");
 static_assert(ACCESS_CRITICAL_STATUS_GRACE_MS <
                   MQTT_KEEP_ALIVE_SECONDS * 1000UL,
               "MQTT keepalive must outlive access-critical deferral");
+static_assert(MQTT_TCP_CONNECT_TIMEOUT_MS +
+                  MQTT_TLS_HANDSHAKE_TIMEOUT_SECONDS * 1000UL +
+                  MQTT_PROTOCOL_SOCKET_TIMEOUT_SECONDS * 1000UL <
+              LOOP_TASK_WATCHDOG_TIMEOUT_MS,
+              "one post-DNS MQTT connection attempt must fit inside loop watchdog");
+static_assert(MQTT_DNS_RESOLVE_TIMEOUT_MS <
+                  LOOP_TASK_WATCHDOG_TIMEOUT_MS,
+              "asynchronous DNS deadline must fit inside loop watchdog");
+static_assert(MQTT_RECONNECT_INITIAL_MS <= MQTT_RECONNECT_MAX_MS,
+              "MQTT reconnect backoff bounds are inverted");
+static_assert(OTA_TCP_CONNECT_TIMEOUT_MS +
+                  OTA_TLS_HANDSHAKE_TIMEOUT_SECONDS * 1000UL <
+              LOOP_TASK_WATCHDOG_TIMEOUT_MS,
+              "one OTA connection phase must fit inside loop watchdog");
 
 // 초음파 폴링 인터벌 (ARMED 상태에서만 적용)
 constexpr uint32_t ULTRASONIC_POLL_INTERVAL_MS = 100;

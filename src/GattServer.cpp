@@ -143,8 +143,12 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
   }
 
   void emit(const sgk::Event& event) override {
+    (void)tryEmit(event);
+  }
+
+  bool tryEmit(const sgk::Event& event) {
     if (!configured_ || allZero(event.session_id.data(), event.session_id.size())) {
-      return;
+      return false;
     }
     std::array<uint8_t, 16> event_id{};
     bool event_id_ready = false;
@@ -159,7 +163,7 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         break;
       }
     }
-    if (!event_id_ready) return;
+    if (!event_id_ready) return false;
 
     std::array<uint8_t, 16> schema_session = event.session_id;
     schema_session[6] = static_cast<uint8_t>((schema_session[6] & 0x0f) | 0x40);
@@ -177,7 +181,7 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
                         last_event_id_[0] != '\0';
 
     StaticJsonDocument<256> document;
-    if (!addCatalogFields(document, event)) return;
+    if (!addCatalogFields(document, event)) return false;
 
     char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
     const bool has_credential_ref =
@@ -206,7 +210,7 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         event_id_text[0] == '\0' || session_id_text[0] == '\0' ||
         source_boot_id_text_[0] == '\0' || target_ref_[0] == '\0') {
       secureZero(credential_ref, sizeof(credential_ref));
-      return;
+      return false;
     }
     std::strncpy(queued_evt.event_type, ev_code_str,
                  sizeof(queued_evt.event_type) - 1);
@@ -259,10 +263,21 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
             has_credential_ref ? credential_ref : nullptr, event_tag)) {
       secureZero(event_tag, sizeof(event_tag));
       secureZero(credential_ref, sizeof(credential_ref));
-      return;
+      return false;
     }
     secureZero(event_tag, sizeof(event_tag));
 
+    if (!MqttManager::enqueueCanonicalEvent(queued_evt)) {
+      LOGF("[ERROR] CanonicalMqttEventSink: event outbox enqueue failed for %s",
+           ev_code_str);
+      secureZero(credential_ref, sizeof(credential_ref));
+      return false;
+    }
+
+    // Sequencing and terminal projection advance only after the exact
+    // canonical record is accepted by the shared outbox. A transient outbox
+    // failure can therefore retry the same logical GATT event without
+    // fabricating a causal predecessor or consuming its terminal phase.
     uint16_t terminal_phase_mask = 0;
     const bool verified_terminal =
         phase_tracker_.observe(event, &terminal_phase_mask);
@@ -271,16 +286,12 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
           session_id_text, event.sequence, ev_code_str, reason_str,
           has_credential_ref ? credential_ref : nullptr, terminal_phase_mask);
     }
-    if (!MqttManager::enqueueCanonicalEvent(queued_evt)) {
-      LOGF("[ERROR] CanonicalMqttEventSink: event outbox enqueue failed for %s",
-           ev_code_str);
-    }
-
     last_session_ = schema_session;
     last_sequence_ = event.sequence;
     last_event_id_bytes_ = event_id;
     std::strncpy(last_event_id_, event_id_text, sizeof(last_event_id_) - 1);
     secureZero(credential_ref, sizeof(credential_ref));
+    return true;
   }
 
  private:
@@ -494,13 +505,18 @@ CanonicalMqttEventSink production_event_sink;
 // bounded event copy and publish from the 16 KB Arduino loop task instead.
 class DeferredCanonicalEventSink final : public sgk::EventSink {
  public:
-  explicit DeferredCanonicalEventSink(sgk::EventSink* downstream)
+  explicit DeferredCanonicalEventSink(CanonicalMqttEventSink* downstream)
       : downstream_(downstream) {}
 
   void emit(const sgk::Event& event) override {
     portENTER_CRITICAL(&mux_);
-    if (count_ == events_.size()) {
+    if (sealed_for_restart_) {
+      // The fail-closed terminal was already enqueued before sealing. Ignore
+      // late BLE disconnect/status callbacks while the exact restart snapshot
+      // is being formed; they must not race behind the final drain.
+    } else if (count_ == events_.size()) {
       overflowed_ = true;
+      evidence_gap_ = true;
     } else {
       const size_t tail = (head_ + count_) % events_.size();
       events_[tail] = event;
@@ -509,7 +525,14 @@ class DeferredCanonicalEventSink final : public sgk::EventSink {
     portEXIT_CRITICAL(&mux_);
   }
 
-  void drain() {
+  void sealForRestart() {
+    portENTER_CRITICAL(&mux_);
+    sealed_for_restart_ = true;
+    portEXIT_CRITICAL(&mux_);
+  }
+
+  bool drain() {
+    bool complete = true;
     bool reported_overflow = false;
     while (true) {
       sgk::Event event{};
@@ -521,18 +544,30 @@ class DeferredCanonicalEventSink final : public sgk::EventSink {
       }
       if (count_ != 0) {
         event = events_[head_];
-        events_[head_] = sgk::Event{};
-        head_ = (head_ + 1) % events_.size();
-        --count_;
         available = true;
       }
       portEXIT_CRITICAL(&mux_);
       if (reported_overflow) {
         LOGF("[ERROR] GATT canonical event queue overflow; audit event dropped");
+        complete = false;
         reported_overflow = false;
       }
-      if (!available) return;
-      if (downstream_ != nullptr) downstream_->emit(event);
+      portENTER_CRITICAL(&mux_);
+      complete = complete && !evidence_gap_;
+      portEXIT_CRITICAL(&mux_);
+      if (!available) return complete;
+      if (downstream_ == nullptr || !downstream_->tryEmit(event)) {
+        // Leave the exact head record in place. Callback producers append only
+        // at the tail, so a later loop or restart-persistence pass can retry it
+        // without reordering or duplicating a successfully accepted record.
+        secureZeroEventCredential(&event);
+        return false;
+      }
+      portENTER_CRITICAL(&mux_);
+      events_[head_] = sgk::Event{};
+      head_ = (head_ + 1) % events_.size();
+      --count_;
+      portEXIT_CRITICAL(&mux_);
       secureZeroEventCredential(&event);
     }
   }
@@ -543,16 +578,20 @@ class DeferredCanonicalEventSink final : public sgk::EventSink {
     head_ = 0;
     count_ = 0;
     overflowed_ = false;
+    evidence_gap_ = false;
+    sealed_for_restart_ = false;
     portEXIT_CRITICAL(&mux_);
   }
 
  private:
   static constexpr size_t kCapacity = 16;
-  sgk::EventSink* downstream_ = nullptr;
+  CanonicalMqttEventSink* downstream_ = nullptr;
   std::array<sgk::Event, kCapacity> events_{};
   size_t head_ = 0;
   size_t count_ = 0;
   bool overflowed_ = false;
+  bool evidence_gap_ = false;
+  bool sealed_for_restart_ = false;
   portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
 };
 
@@ -934,6 +973,20 @@ void GattServer::setEnabled(bool enabled) {
 
 bool GattServer::isConnected() { return getActiveConnections() != 0; }
 
+bool GattServer::hasPendingIngress() {
+#if ENABLE_HARDWARELESS_RC
+  if (core == nullptr) return false;
+  core_mutex.lock();
+  const bool pending =
+      fast_start_requested_ || adapter_state.hasPendingWrite() ||
+      core->connected() || core->state() != sgk::SessionState::kIdle;
+  core_mutex.unlock();
+  return pending;
+#else
+  return false;
+#endif
+}
+
 uint32_t GattServer::getActiveConnections() {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return 0;
@@ -1093,6 +1146,52 @@ void GattServer::notifySessionTerminated(uint64_t now_ms,
   core_mutex.unlock();
 #else
   (void)reason;
+#endif
+}
+
+bool GattServer::persistPendingEventsForRestart() {
+#if ENABLE_HARDWARELESS_RC
+  // notifyRelayOff()/notifySessionTerminated() above enqueue into the
+  // callback-safe deferred sink. Convert those exact-session records before
+  // asking MqttManager to spill its volatile FIFO to NVS; otherwise an
+  // immediate watchdog restart would discard the GATT terminal evidence.
+  deferred_event_sink.sealForRestart();
+  const bool deferredComplete = deferred_event_sink.drain();
+#else
+  const bool deferredComplete = true;
+#endif
+  const bool durable = MqttManager::persistPendingEventsForRestart();
+  return deferredComplete && durable;
+}
+
+bool GattServer::abortUnverifiedIngress(uint32_t now_ms) {
+#if ENABLE_HARDWARELESS_RC
+  if (core == nullptr) return false;
+  uint16_t connection_id = 0;
+  bool aborted = false;
+  core_mutex.lock();
+  if (core->connected()) {
+    const sgk::ConnectionToken owner = core->connectionOwner();
+    connection_id = owner.handle;
+    in_flight_valid_ = false;
+    fast_start_requested_ = false;
+    fast_start_owner_ = {};
+    adapter_state.abortOutput();
+    adapter_state.clearWrites();
+    core->disconnect(owner, now_ms);
+    adapter_state.disconnect(connection_id);
+    aborted = true;
+  }
+  core_mutex.unlock();
+  if (aborted && ble_server != nullptr) {
+    // The asynchronous disconnect callback observes that adapter ownership was
+    // already cleared, so it cannot emit a duplicate terminal.
+    ble_server->disconnect(connection_id);
+  }
+  return aborted;
+#else
+  (void)now_ms;
+  return false;
 #endif
 }
 

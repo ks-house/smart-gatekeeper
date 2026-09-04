@@ -25,6 +25,8 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.target_id = "target_test"
     self.prefix = f"gatekeeper/v1/targets/{self.target_id}"
     self.plan = MIGRATION.build_plan(self.target_id)
+    self.broker_acl = (ROOT / "security" / "target-acl").read_text(
+        encoding="utf-8")
 
   def test_plan_updates_exactly_18_read_only_entities(self):
     updates = [
@@ -47,11 +49,17 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     })
     for publication in updates:
       config = json.loads(publication.payload)
+      object_id = publication.topic.split("/")[-2]
       self.assertEqual(
           config["device"]["identifiers"], ["smart_gatekeeper_01"])
       self.assertTrue(
           config["unique_id"].startswith("smart_gatekeeper_01_"))
-      self.assertNotIn("availability_topic", config)
+      if object_id in {"state", "door_binary", "pre_armed"}:
+        self.assertEqual(
+            config["availability_topic"],
+            f"gatekeeper/v1/ha-bridge/{self.target_id}/availability")
+      else:
+        self.assertNotIn("availability_topic", config)
       self.assertNotIn("availability_template", config)
       self.assertNotIn("command_topic", config)
       self.assertNotIn("payload_press", config)
@@ -71,6 +79,9 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.assertEqual(connectivity["device_class"], "connectivity")
     self.assertEqual(connectivity["payload_on"], "online")
     self.assertEqual(connectivity["payload_off"], "offline")
+    self.assertEqual(
+        connectivity["json_attributes_topic"],
+        f"gatekeeper/v1/ha-bridge/{self.target_id}/connectivity-diagnostic")
     self.assertNotIn("entity_category", connectivity)
     self.assertNotIn("expire_after", connectivity)
     self.assertEqual(
@@ -98,6 +109,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         last_access["value_template"])
     verified_access_ids = {
         "state", "last_access_event", "door_binary", "pre_armed"}
+    live_access_ids = {"state", "door_binary", "pre_armed"}
     for object_id, config in updates.items():
       self.assertEqual(
           config["state_topic"],
@@ -110,8 +122,34 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         self.assertNotIn("expire_after", config)
       else:
         self.assertEqual(config["expire_after"], 30)
+      if object_id in live_access_ids:
+        self.assertEqual(
+            config["availability_topic"],
+            f"gatekeeper/v1/ha-bridge/{self.target_id}/availability")
+      else:
+        self.assertNotIn("availability_topic", config)
       self.assertNotIn("smart-gatekeeper/", config["state_topic"])
       self.assertNotIn("gatekeeper/config/", config["state_topic"])
+
+  def test_broker_acl_covers_every_bridge_activity_topic(self):
+    backend_acl, home_assistant_acl = self.broker_acl.split(
+        "user homeassistant", 1)
+    self.assertIn(
+        "topic write gatekeeper/v1/ha-bridge/+/connectivity-diagnostic",
+        backend_acl)
+    self.assertIn(
+        "topic write gatekeeper/v1/ha-bridge/+/access-event", backend_acl)
+    self.assertIn(
+        "topic read gatekeeper/v1/ha-bridge/+/access-event", backend_acl)
+    self.assertIn(
+        "topic write homeassistant/event/smart_gatekeeper_01/+/config",
+        backend_acl)
+    self.assertIn(
+        "topic read gatekeeper/v1/ha-bridge/+/connectivity-diagnostic",
+        home_assistant_acl)
+    self.assertIn(
+        "topic read gatekeeper/v1/ha-bridge/+/access-event",
+        home_assistant_acl)
 
   def test_secure_controls_write_only_to_backend_bridge(self):
     plan = MIGRATION.build_plan(

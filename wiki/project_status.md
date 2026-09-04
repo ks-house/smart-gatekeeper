@@ -18,6 +18,33 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-04 23:13 KST Target restart and OTA status readback
+
+- Owner restarted the previously silent Target and reported that manual open works. A strict-TLS,
+  exact-topic read-only MQTTS sample then received three consecutive live status messages from
+  Target `c0feffe6ebac`. Current runtime is `2.1.442+main.g9ef6b82`, boot count 715, boot ID
+  `b3e6ca04ca2346cfc42d6e5377074993`, uptime 1,230 seconds, RSSI -55 dBm and `IDLE`; relay command
+  is false and the active-low relay pin is high/OFF.
+- The current boot reports MQTT attempts/count 1/1, failures 0, volatile event outbox depth 0 and
+  overflow 0. Backend verified-status followed the same boot at revision 1200 while Target advanced
+  to 1201, and live bridge availability was `online`. Public `/live` and `/ready` returned HTTP 200
+  for Backend `6aa8d188` with every readiness check true.
+- The public signed Target manifest is still exactly `2.1.442+main.g9ef6b82`, build ID
+  `main-442-9ef6b82b060d0a2e0ac7f3018ee3ae93db0536e2`, and `origin/main` is the same commit. Therefore
+  a new OTA request on this runtime selects `UP_TO_DATE` and does not reinstall the same image. The
+  powered-but-silent recovery candidate remains uncommitted/unpublished and is not installed.
+- Runtime version equality, more than 30 seconds of safe IDLE uptime and working Wi-Fi/MQTT are
+  strong evidence that the installed 442 image is operable and would have passed its pending-image
+  health window if this boot entered one. They do not prove that the owner's latest OTA action
+  downloaded an image or directly expose the running partition's ESP-IDF `VALID` state.
+- The current reset reason is `BROWNOUT`, not a planned OTA/software restart. Because installed 442
+  does not retain boot diagnostics, the previous boot 714, planned-restart marker, coredump and exact
+  cause of the earlier silence cannot be recovered after the fact. The current boot also has no
+  last-terminal summary; if the reported manual open occurred after boot 715, its Activity evidence
+  remains unproven on the installed release.
+- The probes connected and subscribed only. They sent no command, OTA trigger, Target restart,
+  relay action, broker/HA mutation or configuration change.
+
 ## 2026-09-04 GATT v2 fast-path source candidate
 
 - 최신 Android/Target 정상 경로를 `Fast TX CCCD 1회 → fresh challenge → signed proof → FSM-bound result`로 축소했다. 기존 v1 대비 CCCD 두 번과 Client/Target Hello 왕복을 제거한다.
@@ -36,7 +63,130 @@ applies_to:
 - Feature PR hosted gates passed: Android build/unit/native GATT, firmware canary, OTA P0, canonical protocol vectors and trusted workflow policy. These prove source/build contracts, not signed personal publication or physical runtime.
 - The final policy candidate retires the feature transition identity and pins one `current-main-baseline` to actual feature main with all 102 protected bytes unchanged. Its local 42-policy and full 344-test suites passed with one declared environment skip, and the live verifier approved all 102 GitHub objects. Final-policy hosted review/merge and subsequent exact-main personal Android/Target publication remain pending.
 
+## 2026-09-04 live GATT v2 MQTT diagnosis
+
+- At 13:21–13:23 KST, a bounded read-only client received live Target status from
+  `gatekeeper/v1/targets/c0feffe6ebac/status`. The installed Target identified itself as
+  `2.1.442+main.g9ef6b82`, boot count 713, IP `192.168.0.190`, RSSI -55 dBm and `IDLE`.
+  Status revision advanced from 213 to 249; MQTT connect attempts/count were 1/1, failures 0,
+  volatile RAM outbox depth 0 and overflow count 0. The status does not expose the separate
+  durable NVS queue depth, so it does not by itself prove that no older canonical event is pending.
+- The same revision 249 immediately appeared on the Backend-owned
+  `gatekeeper/v1/ha-bridge/c0feffe6ebac/verified-status`, while retained bridge availability
+  was `online`. Public Backend `/live` and `/ready` were HTTP 200 at deployed Backend
+  `6aa8d188`; every reported check, including MQTT, collector and evidence integrity, was true.
+  This proves the current Target → broker → Backend HMAC verification → HA bridge MQTT path is
+  communicating. It does not prove the Home Assistant frontend rendered the entity because its
+  authenticated API/browser session was unavailable to this WSL task.
+- GATT v2 did not change `MqttManager`, `OfflineEventQueue`, the main-loop network scheduler or
+  Backend MQTT/HA code. MQTT deliberately retains the `gatekeeper/v1/...` namespace; the `v2`
+  label applies to the local BLE authentication exchange, not to MQTT topics.
+- The existing access-critical deferral predates GATT v2. During GATT authentication, ARMED,
+  relay hold and cooldown, status snapshots are coalesced in memory and socket work resumes only
+  after the safe IDLE state. Therefore HA may show only IDLE even though revision advances, and
+  Activity appears only after the terminal event drains. At the observation point the current
+  boot reported no last terminal event. If a door cycle had already completed after boot 713,
+  the remaining incident is terminal-event production/drain rather than an MQTT connection loss.
+- The diagnostic client authenticated with no broker username or password and was allowed to
+  read the exact Target and HA-bridge status topics. This independently confirms transport but
+  also leaves a production confidentiality/ACL hardening issue; no broker configuration was
+  changed during this diagnosis.
+
+## 2026-09-04 19:49 KST Target heartbeat outage follow-up
+
+> 아래 항목은 고장 관찰 당시 설치본과 source gap의 진단 snapshot이다. 같은 날의
+> `Target self-recovery and HA Activity source candidate`가 source-level gap을 대체하지만,
+> 새 firmware 설치와 현장 recovery 결과는 아직 확인하지 않았다.
+
+- The owner-provided Home Assistant device page showed the shared controls disabled and every raw
+  firmware/uptime/heap/RSSI/config entity unavailable. Bounded read-only MQTTS observations from
+  19:51 through 19:57 KST repeatedly connected to the public broker with CONNACK 0 but received
+  only retained `gatekeeper/v1/ha-bridge/c0feffe6ebac/availability=offline`; no live Target
+  `/status` and no Backend `/verified-status` arrived. Public Backend `/live` and `/ready` remained
+  HTTP 200 with database, MQTT subscriber, collector and evidence-integrity checks true. This is a
+  real Target status-path outage, not only a Home Assistant rendering or stale-discovery problem.
+- The earlier 13:21--13:23 sample proves installed firmware `2.1.442+main.g9ef6b82` and MQTT were
+  working on boot 713 before the outage. The current observations cannot distinguish loss of Target
+  power, a panic/hard hang followed by failed recovery, Wi-Fi association/recovery failure, or
+  Target-side MQTTS reconnect/provisioning failure. A crash that rebooted and successfully rejoined
+  would expose a boot count of at least 714, but no such status or boot message was observed.
+- Home Assistant raw diagnostics use a 30-second expiry. Backend deliberately publishes the shared
+  bridge availability retained `offline` when HMAC-verified status is absent for 90.25 seconds.
+  One normal v2 GATT/access critical section is bounded below that window, so it cannot by itself
+  explain this persistent condition; chained sessions or a wedged GATT/FSM state remain distinct
+  possibilities.
+- Recovery handling is partial: normal GATT/FSM deadlines, relay independent cutoff, a 15-second
+  Wi-Fi auto-reconnect watch, TLS socket cleanup and five-second MQTT retry are implemented. The
+  loop task is not explicitly enrolled in or fed to a task watchdog, MQTT TLS connect remains
+  synchronous with the pinned client's 30-second TCP and 120-second handshake defaults, and all
+  Wi-Fi/MQTT/OTA maintenance is skipped while `accessCritical` remains true. These gaps permit a
+  powered-but-silent state that the Backend can detect but cannot remotely recover or classify.
+- Target LWT, online availability and boot diagnostics are passed to PubSubClient with
+  `retain=false`, despite source log text and older wiki statements describing retained boot
+  evidence. A late observer therefore cannot recover the last reset reason or coredump evidence.
+  Backend `/ready` also does not require fresh Target status by default, so its green result is not
+  Target-online proof.
+- The least destructive discriminator is to preserve the current state and check, at the Target
+  site, for the BLE advertisement, `SmartGatekeeper-Recovery` SSID and the router DHCP association.
+  If a power cycle becomes necessary, an exact-topic live subscriber must already be running so the
+  first new boot count, reset reason, planned-restart value and coredump summary are captured. No
+  command, publish, Target restart, relay/door operation, broker change or HA change was performed.
+
+## 2026-09-04 Target self-recovery and HA Activity source candidate
+
+- The powered-but-silent firmware gaps are implemented locally: generation-bound asynchronous DNS
+  expires at five seconds, while TCP 4 seconds, TLS 8 seconds and MQTT read 3 seconds run in one
+  bounded worker that exclusively owns the secure client/PubSubClient. Loop and worker use the
+  45-second task WDT. Loop adopts only a matching request/Wi-Fi generation and rejects a late or
+  cancelled result as stale; reconnect continues indefinitely with capped 5--30 second backoff.
+- Continuous Wi-Fi outage observation, 30-second authenticated recovery-AP escalation and TLS
+  invalidation by outage generation remain outside access control. Recovery-initiated
+  `ASSOC_LEAVE` events no longer overwrite the last unplanned disconnect reason.
+- Fast-v2 GATT connection/start/write/overflow state is rechecked before each network owner.
+  A signed MQTT arm/manual callback discards stale pre-command telemetry and forces the main loop to
+  recompute the access guard before OTA. Forced OTA commands are queued rather than running HTTP in
+  the MQTT callback. Periodic/forced/local OTA refuses to start another TLS client while the MQTT
+  worker is active, and access/link-generation changes cancel or stale-reject that worker.
+- Unverified GATT ingress has one shared 10-second lease. Expiry disconnects only that transport,
+  cleans to IDLE and resumes network work without rebooting. Short quiet gaps do not renew the
+  epoch; 30 continuous quiet seconds are required before rearm, preventing reconnect churn from
+  starving MQTT/OTA. A verified action generation instead receives its own 85-second physical
+  lease. Only a wedge in that verified phase performs relay-OFF cleanup, GATT/signed-MQTT
+  `INTERNAL_ERROR`, an `access_critical_timeout` breadcrumb, evidence checkpoint and controlled
+  restart. Internal failure is no longer mislabeled as proof expiry.
+- Canonical terminal checkpointing first appends older volatile records behind NVS. If NVS cannot
+  accept the reserved terminal, the exact remaining FIFO including that terminal must commit to a
+  checksum-bound generation of an RTC_NOINIT A/B journal. Replacement writes the inactive slot and
+  commits magic last, so a torn update restores the prior generation. Restored records remain
+  journaled until each front record publishes or migrates to NVS; repeated software reset may
+  replay but must not silently lose the terminal. RTC remains a cold-power-loss limitation.
+- `evidence_persistence_failed` carries across repeated software resets. Successful retained boot
+  diagnostics acknowledge only a previous-boot failure; a new same-boot failure remains latched for
+  the next reset. Signed reboot also waits beyond the inbound PUBACK boundary for main to block new
+  GATT auth, drain callbacks, abort only unverified ingress, recheck the physical state and
+  checkpoint evidence before restart.
+- Raw pre-session disconnect/malformed/overflow traffic has no canonical session ID and therefore
+  cannot create a zero-session terminal that blocks the queue. A duplicate frame after an action is
+  already committed returns only a replay transport result; it cannot execute twice, synthesize a
+  failure terminal or clear the verified lifecycle actor.
+- Target retained availability is explicitly transport-only because PubSubClient cannot expose
+  SUBACK refusal. Backend/HA authority stays on fresh HMAC-signed status. Backend readiness can
+  require that freshness and reports it from one consistent snapshot.
+- The missing strict broker ACL rules for Backend HA Activity publication/readback, Home Assistant
+  Activity read and event discovery were added to repository policy. The schema-013 worker now marks
+  a row delivered only after local QoS 1 completion **and** the exact non-retained event is routed
+  back by the broker; retained/wrong-topic/wrong-payload echoes are rejected. This closes the Paho
+  1.6.1 negative-PUBACK false-success gap in source, but the NAS ACL must be installed and read back
+  separately.
+- Local tests and a clean ESP32-C6 personal-production build prove source/build compatibility only.
+  Trusted protected-byte authorization, GitHub publication, Backend/NAS ACL deployment, Target OTA
+  install/reboot/health and physical recovery/latency evidence remain separate Gates. Per the owner's
+  direction, no live Target, relay, door, broker or HA state was changed in this work.
+
 ## 2026-09-03 crash-durable access Activity candidate
+
+> 이 절의 NVS-only/PUBACK-only 설명은 2026-09-03 당시 후보 기록이다. 현재 source 계약은 위
+> 2026-09-04 절의 ordered NVS + RTC A/B journal과 exact broker-routed receipt로 대체됐다.
 
 - 첫 post-install manual terminal과 HA entity-specific Activity가 실제로 갱신됐고, owner가 이번에도
   `[Gatekeeper] 최근 출입 결과` 변경을 확인했다. 이는 signed status→Backend→HA latest-result 경로의

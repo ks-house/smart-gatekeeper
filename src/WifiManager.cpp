@@ -4,6 +4,7 @@
 // =============================================================
 #include "WifiManager.h"
 #include "DiagnosticsManager.h"
+#include "GattServer.h"
 #include "OtaManager.h"
 #include "RecoveryRadioPolicy.h"
 #include "config.h"
@@ -23,6 +24,17 @@ static bool localUploadSucceeded = false;
 static bool wifiEventsRegistered = false;
 static bool recoveryOperationLeaseActive = false;
 static uint32_t recoveryOperationLastActivityMs = 0;
+static volatile uint32_t wifiLastUnplannedDisconnectReason = 0;
+static volatile bool wifiIntentionalDisconnectPending = false;
+static volatile uint32_t wifiIntentionalDisconnectMarkedAtMs = 0;
+static portMUX_TYPE wifiLinkGenerationMux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t wifiLinkGeneration = 0;
+static uint32_t wifiOutageCount = 0;
+static uint32_t wifiRecoveryEscalationCount = 0;
+static uint32_t wifiRecoveryApStartFailureCount = 0;
+static uint32_t wifiRecoverySuccessCount = 0;
+static bool wifiOutageNoticePending = false;
+static bool wifiRecoveryNoticePending = false;
 
 namespace {
 constexpr char kRecoveryApSsid[] = "SmartGatekeeper-Recovery";
@@ -33,20 +45,90 @@ constexpr uint32_t kRecoveryOperationLeaseMs = 30000;
 constexpr uint32_t kOperatorRecoveryWindowMs = 10UL * 60UL * 1000UL;
 constexpr uint32_t kRecoveryApClientHoldMs = kOperatorRecoveryWindowMs;
 constexpr uint32_t kRecoveryClientReleaseIntervalMs = 1000;
+// WiFi.disconnect() posts the station-disconnected event from the driver task.
+// Bound the attribution marker so an absent/delayed callback cannot suppress a
+// later genuine outage. The driver identifies a locally requested departure as
+// ASSOC_LEAVE, so a concurrent real failure is still retained as unplanned.
+constexpr uint32_t kIntentionalDisconnectEventWindowMs = 2000;
+
+void preserveAccessEvidenceBeforeRestart(const char* context) {
+  const bool persisted = GattServer::persistPendingEventsForRestart();
+  if (!persisted) {
+    DiagnosticsManager::markEvidencePersistenceFailure();
+  }
+  LOGF("[WIFI-%s] pre-restart access evidence=%s context=%s",
+       persisted ? "INFO" : "WARN",
+       persisted ? "durable" : "degraded-rtc-or-failed",
+       context == nullptr ? "unspecified" : context);
+}
 
 sgk::RecoveryRadioPolicy recoveryRadioPolicy(
     kRecoveryApQuietMs, kRecoveryStationAttemptMs,
     kRecoveryAuthenticatedHoldMs, kRecoveryApClientHoldMs,
     kRecoveryClientReleaseIntervalMs);
+sgk::StationRecoveryEscalationPolicy stationRecoveryPolicy(
+    WIFI_STA_RECOVERY_GRACE_MS, WIFI_RECOVERY_AP_RETRY_MS);
+
+void clearIntentionalDisconnectMarker() {
+    wifiIntentionalDisconnectPending = false;
+    wifiIntentionalDisconnectMarkedAtMs = 0;
+}
+
+void disconnectStationIntentionally(const char* context) {
+    // Mark before entering the driver because its event callback runs on a
+    // different task and may observe the disconnect before this call returns.
+    wifiIntentionalDisconnectMarkedAtMs = millis();
+    wifiIntentionalDisconnectPending = true;
+    if (WiFi.disconnect(false, false)) {
+        LOGF("[WIFI-DIAG] intentional station disconnect requested (%s)",
+             context);
+        return;
+    }
+
+    clearIntentionalDisconnectMarker();
+    LOGF("[WIFI-WARN] intentional station disconnect request failed (%s)",
+         context);
+}
 
 void registerWifiDiagnostics() {
     if (wifiEventsRegistered) return;
     wifiEventsRegistered = true;
     WiFi.onEvent(
         [](WiFiEvent_t, WiFiEventInfo_t info) {
+            // Capture the authoritative driver edge before any diagnostic
+            // classification. loopTask polling can miss a complete
+            // disconnect/reconnect pair while TLS or OTA is in progress; the
+            // generation lets every transport discard its pre-outage socket.
+            portENTER_CRITICAL(&wifiLinkGenerationMux);
+            ++wifiLinkGeneration;
+            if (wifiLinkGeneration == 0) ++wifiLinkGeneration;
+            portEXIT_CRITICAL(&wifiLinkGenerationMux);
             const auto reason = static_cast<wifi_err_reason_t>(
                 info.wifi_sta_disconnected.reason);
-            LOGF("[WIFI-DIAG] station disconnect reason=%u (%s)",
+            const uint32_t eventMs = millis();
+            const bool recentIntentionalRequest =
+                wifiIntentionalDisconnectPending &&
+                eventMs - wifiIntentionalDisconnectMarkedAtMs <=
+                    kIntentionalDisconnectEventWindowMs;
+            const bool intentional = recentIntentionalRequest &&
+                reason == WIFI_REASON_ASSOC_LEAVE;
+            if (intentional) {
+                clearIntentionalDisconnectMarker();
+                LOGF("[WIFI-DIAG] intentional station disconnect "
+                     "reason=%u (%s)",
+                     static_cast<unsigned int>(reason),
+                     WiFi.disconnectReasonName(reason));
+                return;
+            }
+
+            if (wifiIntentionalDisconnectPending &&
+                !recentIntentionalRequest) {
+                clearIntentionalDisconnectMarker();
+            }
+
+            wifiLastUnplannedDisconnectReason =
+                static_cast<uint32_t>(reason);
+            LOGF("[WIFI-DIAG] unplanned station disconnect reason=%u (%s)",
                  static_cast<unsigned int>(reason),
                  WiFi.disconnectReasonName(reason));
         },
@@ -126,7 +208,7 @@ void stopRecoveryStationAttemptForLocalWork(uint32_t nowMs) {
         return;
     }
     WiFi.setAutoReconnect(false);
-    WiFi.disconnect(false, false);
+    disconnectStationIntentionally("local_work_pause");
     recoveryRadioPolicy.pauseForLocalWork(nowMs);
     DiagnosticsManager::noteAction("wifi_sta_attempt_paused_for_local_work");
 }
@@ -144,7 +226,7 @@ void startBoundedRecoveryStationAttempt(uint32_t nowMs) {
              static_cast<unsigned long>(kRecoveryStationAttemptMs));
         return;
     }
-    WiFi.disconnect(false, false);
+    disconnectStationIntentionally("recovery_attempt_start_failed");
     recoveryRadioPolicy.stationAttemptFailed(nowMs);
     DiagnosticsManager::noteAction("wifi_recovery_sta_attempt_start_failed");
     LOGF("[WIFI-WARN] bounded STA recovery attempt did not start; "
@@ -225,7 +307,7 @@ bool WifiManager::connectSTA(uint32_t timeoutMs) {
     } else {
         connected = false;
         LOGF("[WIFI] 접속 실패! (타임아웃) -> STA 연결 시도 중단");
-        WiFi.disconnect(false, false);
+        disconnectStationIntentionally("boot_sta_timeout");
         delay(100);
         return false;
     }
@@ -250,7 +332,7 @@ bool WifiManager::startRecoveryAP(bool preserveStation, uint32_t durationMs) {
         WiFi.mode(WIFI_AP_STA);
     } else {
         WiFi.setAutoReconnect(false);
-        WiFi.disconnect(false, false);
+        disconnectStationIntentionally("recovery_ap_start");
         delay(100);
         WiFi.mode(WIFI_AP_STA);
     }
@@ -425,7 +507,7 @@ void WifiManager::handleScan() {
         stationCredentialsProvisioned();
     if (pauseDisconnectedStation) {
         WiFi.setAutoReconnect(false);
-        WiFi.disconnect(false, false);
+        disconnectStationIntentionally("recovery_scan");
         recoveryRadioPolicy.pauseForLocalWork(millis());
         delay(200);
         DiagnosticsManager::noteAction("wifi_scan_sta_paused");
@@ -508,6 +590,7 @@ void WifiManager::handleSave() {
                     "</div></body></html>");
     webServer.send(200, "text/html", html);
     delay(2000);
+    preserveAccessEvidenceBeforeRestart("provisioning_save");
     DiagnosticsManager::markPlannedRestart("provisioning_save");
     ESP.restart();
 }
@@ -609,6 +692,7 @@ void WifiManager::handleRecoveryUploadComplete() {
     }
     webServer.send(202, "text/plain", "Verified; rebooting into pending slot");
     delay(250);
+    preserveAccessEvidenceBeforeRestart("local_ota_pending_verify");
     ESP.restart();
 }
 
@@ -705,7 +789,7 @@ void WifiManager::handleClient() {
         if (recoveryRadioPolicy.phase() ==
             sgk::RecoveryRadioPhase::kInactive) {
             WiFi.setAutoReconnect(false);
-            WiFi.disconnect(false, false);
+            disconnectStationIntentionally("recovery_ap_quiet");
             recoveryRadioPolicy.begin(nowMs);
             DiagnosticsManager::noteAction("wifi_recovery_ap_quiet");
             LOGF("[WIFI-AP] station lost; discovery quiet window restarted");
@@ -721,7 +805,7 @@ void WifiManager::handleClient() {
             } else if (action ==
                        sgk::RecoveryRadioAction::kStopStationAttempt) {
                 WiFi.setAutoReconnect(false);
-                WiFi.disconnect(false, false);
+                disconnectStationIntentionally("recovery_attempt_timeout");
                 DiagnosticsManager::noteAction(
                     "wifi_recovery_sta_attempt_stopped");
                 LOGF("[WIFI-AP] bounded STA recovery attempt stopped; "
@@ -763,30 +847,71 @@ void WifiManager::handleClient() {
         }
     }
 
-    if (!apModeActive) {
-        // STA 모드 - Wi-Fi 연결 워치독 (Auto-Reconnect)
-        static uint32_t lastWifiCheckMs = 0;
-        if (nowMs - lastWifiCheckMs > 15000) {
-            lastWifiCheckMs = nowMs;
-            if (WiFi.status() != WL_CONNECTED) {
-                if (connected) {
-                    LOGF("[WIFI-WARN] ⚠️ 와이파이 연결 단절 감지! Auto-Reconnect 작동 시작...");
-                    connected = false;
-                }
-                // The Arduino core owns reconnect timing. Calling reconnect()
-                // here can race an in-flight attempt and return WIFI_STATE.
-                WiFi.setAutoReconnect(true);
-                DiagnosticsManager::noteAction("wifi_autoreconnect_watch");
-            } else {
-                if (!connected) {
-                    connected = true;
-                    stationIp = WiFi.localIP().toString();
-                    DiagnosticsManager::noteAction("wifi_reconnected");
-                    LOGF("[WIFI-INFO] ✅ 와이파이 자동 재접속 성공! IP: %s", stationIp.c_str());
-                }
-            }
-        }
+}
+
+void WifiManager::observeConnectivity(uint32_t nowMs) {
+    const bool stationConnected = WiFi.status() == WL_CONNECTED;
+    // A boot-time or operator-opened recovery AP owns disconnected-state
+    // timing already. A normal-STA outage promoted into that AP retains its
+    // policy state so a later association records the full outage duration.
+    if (apModeActive && !stationConnected &&
+        stationRecoveryPolicy.phase() !=
+            sgk::StationRecoveryPhase::kRecoveryAp) {
+        return;
     }
+
+    const sgk::StationRecoveryObservation observation =
+        stationRecoveryPolicy.observe(nowMs, stationConnected);
+    if (observation == sgk::StationRecoveryObservation::kOutageStarted) {
+        connected = false;
+        ++wifiOutageCount;
+        wifiOutageNoticePending = true;
+    } else if (observation ==
+               sgk::StationRecoveryObservation::kRecovered) {
+        connected = true;
+        stationIp = WiFi.localIP().toString();
+        ++wifiRecoverySuccessCount;
+        wifiRecoveryNoticePending = true;
+    }
+}
+
+void WifiManager::serviceRecovery(uint32_t nowMs) {
+    if (wifiOutageNoticePending) {
+        wifiOutageNoticePending = false;
+        // The Arduino core owns reconnect timing. Reasserting its policy is
+        // safe; calling reconnect() repeatedly can race an in-flight attempt.
+        WiFi.setAutoReconnect(true);
+        DiagnosticsManager::noteAction("wifi_autoreconnect_grace");
+        LOGF("[WIFI-WARN] station outage observed; auto-reconnect grace "
+             "started");
+    }
+    if (wifiRecoveryNoticePending) {
+        wifiRecoveryNoticePending = false;
+        DiagnosticsManager::noteAction("wifi_reconnected");
+        LOGF("[WIFI-INFO] station recovered after %lu ms; IP: %s",
+             static_cast<unsigned long>(stationRecoveryPolicy.lastOutageMs()),
+             stationIp.c_str());
+    }
+    if (apModeActive || WiFi.status() == WL_CONNECTED ||
+        !stationRecoveryPolicy.actionDue(nowMs)) {
+        return;
+    }
+
+    ++wifiRecoveryEscalationCount;
+    DiagnosticsManager::noteAction("wifi_recovery_ap_escalation");
+    LOGF("[WIFI-WARN] STA outage exceeded %lu ms; starting authenticated "
+         "Recovery AP",
+         static_cast<unsigned long>(WIFI_STA_RECOVERY_GRACE_MS));
+    if (startRecoveryAP(false, 0)) {
+        stationRecoveryPolicy.escalationSucceeded();
+        return;
+    }
+
+    ++wifiRecoveryApStartFailureCount;
+    stationRecoveryPolicy.escalationFailed(nowMs);
+    DiagnosticsManager::noteAction("wifi_recovery_ap_escalation_failed");
+    LOGF("[WIFI-ERROR] Recovery AP escalation failed; retry delayed %lu ms",
+         static_cast<unsigned long>(WIFI_RECOVERY_AP_RETRY_MS));
 }
 
 bool WifiManager::isConnected() {
@@ -799,4 +924,52 @@ bool WifiManager::isAPMode() {
 
 String WifiManager::getIP() {
     return stationIp;
+}
+
+uint32_t WifiManager::outageCount() { return wifiOutageCount; }
+
+uint32_t WifiManager::linkGeneration() {
+    portENTER_CRITICAL(&wifiLinkGenerationMux);
+    const uint32_t generation = wifiLinkGeneration;
+    portEXIT_CRITICAL(&wifiLinkGenerationMux);
+    return generation;
+}
+
+uint32_t WifiManager::recoveryEscalationCount() {
+    return wifiRecoveryEscalationCount;
+}
+
+uint32_t WifiManager::recoveryApStartFailureCount() {
+    return wifiRecoveryApStartFailureCount;
+}
+
+uint32_t WifiManager::recoverySuccessCount() {
+    return wifiRecoverySuccessCount;
+}
+
+uint32_t WifiManager::currentOutageMs() {
+    return stationRecoveryPolicy.currentOutageMs(millis());
+}
+
+uint32_t WifiManager::lastOutageMs() {
+    return stationRecoveryPolicy.lastOutageMs();
+}
+
+uint32_t WifiManager::lastUnplannedDisconnectReason() {
+    return wifiLastUnplannedDisconnectReason;
+}
+
+const char* WifiManager::recoveryPhase() {
+    if (apModeActive) return "RECOVERY_AP";
+    switch (stationRecoveryPolicy.phase()) {
+      case sgk::StationRecoveryPhase::kConnected:
+        return "CONNECTED";
+      case sgk::StationRecoveryPhase::kAutoReconnectGrace:
+        return "AUTO_RECONNECT_GRACE";
+      case sgk::StationRecoveryPhase::kApRetryBackoff:
+        return "AP_RETRY_BACKOFF";
+      case sgk::StationRecoveryPhase::kRecoveryAp:
+        return "RECOVERY_AP";
+    }
+    return "UNKNOWN";
 }
