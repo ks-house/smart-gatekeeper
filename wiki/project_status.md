@@ -1872,3 +1872,14 @@ tracking.
   attempted. One owner press of the HA OTA button and subsequent exact
   version/reboot/health readback remain the installation Gate; repeated live
   administrator/HA correlation remains the delivery Gate.
+
+## 2026-09-04 Target connectivity self-recovery authorization candidate
+
+- Immutable feature `d0e43188449495ed33c860019fc1093b05491700` contains the validated
+  asynchronous MQTT/TLS recovery, bounded access leases, staged signed reboot, restart-safe
+  access evidence, retained boot diagnostics and exact HA broker-receipt completion changes.
+- The trusted-policy candidate binds all 102 protected paths to that immutable feature; nine
+  protected blobs change and the other 93 retain current-main bytes.
+- This is policy/source evidence only. Hosted policy and feature merges, actual-main rotation,
+  Backend/NAS deployment, signed OTA publication, Target install/reboot and post-update health
+  remain pending.
