@@ -18,6 +18,16 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-05 field diagnostics policy authorization candidate
+
+- Policy candidate binds immutable feature
+  `cdcc757b856bc503e9d85b874d67adc425c74a49` to the complete 108-path
+  protected digest map. Sixteen protected paths are new or changed; the other
+  92 retain trusted-main bytes.
+- This is source authorization only. Schema 015 deployment, mobile publication
+  and installation, Target OTA/reboot/health, uploaded-record retention policy
+  and a physical field trial remain separate release Gates.
+
 ## 2026-09-04 23:13 KST Target restart and OTA status readback
 
 - Owner restarted the previously silent Target and reported that manual open works. A strict-TLS,

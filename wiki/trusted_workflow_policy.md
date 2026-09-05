@@ -1988,3 +1988,24 @@ remain exact.
 This final policy rotation deploys and installs nothing. Workflow publication,
 Backend deployment, Target OTA/reboot/health, controller advertising readback
 and an over-air phone trial remain separate runtime Gates.
+
+## 72. Field diagnostics D0-D2 authorization candidate
+
+Immutable feature `cdcc757b856bc503e9d85b874d67adc425c74a49` adds bounded,
+redacted Android GATT/wake journals, Target RAM/RTC stage breadcrumbs and an
+authenticated Backend correlation timeline. Mobile automatic upload remains
+OFF by default, HA remains low-cardinality, and the classifier explicitly stops
+short of inferring radio reception, relay actuation or physical door movement.
+
+The indivisible inventory expands from 104 to 108 protected paths by adding the
+strict mobile-diagnostics schema, schema-015 up/down migrations and their direct
+Backend test. Exactly 16 protected blobs are new or changed; the other 92
+protected bytes, seven-workflow inventory and empty local-Action inventory
+remain identical to trusted main. The sole
+`field-diagnostics-cdcc757-persistent-baseline` is pinned to the exact repository,
+immutable feature SHA and complete ordered digest map.
+
+This policy-only authorization deploys no schema, publishes or installs no APK
+or Target firmware, and sends no device command. Policy merge, feature history
+connection, hosted CI, actual-main rotation, owner retention choice and runtime
+field verification remain separate Gates.
