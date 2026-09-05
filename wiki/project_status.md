@@ -2193,3 +2193,16 @@ tracking.
   merge with all 104 protected bytes unchanged from the reviewed feature.
 - Publication/deployment, Target OTA/reboot/health, reported advertising state
   and physical RF/access verification are still independent runtime Gates.
+
+## 2026-09-05 BLE advertising rollout and brownout-safe retry
+
+- Backend run `33956526362` deployed exact feature main `1aacbaf0`; strict-TLS
+  `/ready` reported every dependency healthy. Final-main Target run `33956619291`
+  published signed `2.1.451+main.ga683832` with HTTPS readback.
+- One OTA request was broker- and Target-accepted. The pending candidate booted
+  as unobserved boot 724, reset after a 2,094 ms BOOTING breadcrumb with
+  `BROWNOUT`, and the bootloader safely restored `2.1.448` as boot 725.
+- Boot 725 remained online/IDLE beyond uptime 216 seconds with MQTT 1/1 and zero
+  failures. Because `2.1.451` is now rollback-quarantined, this docs-only exact-main
+  retry commit intentionally creates one strictly newer signed version; no second
+  device request occurs until its publication and stable-current evidence pass.

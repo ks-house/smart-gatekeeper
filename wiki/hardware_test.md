@@ -1054,3 +1054,15 @@ an inference from application HMAC tests.
 | Phone Activity correlation | Latest automatic rows were `RUNNING` 14:38:57 then `PROTOCOL_INCOMPATIBLE` 14:39:00; the next visible row was only manual remote at 17:13:07, with no automatic row for the after-17:00 entrance | Confirms radio/GATT response existed at 14:39 and no phone-side automatic session was created around 17:13; does not by itself distinguish stopped Target advertising from a dead Android scan registration |
 | Advertising self-heal candidate | ESP32-C6 controller `isAdvertising()` is checked every 2 seconds only with zero active GATT connections; stopped advertising is restarted with attempt/success/failure/watchdog counters, and raw Target status includes active ACL version/protocol range | PASS in focused 38-test run after one expected discovery-count update and production firmware link at 76,992/327,680 RAM, 1,820,028/7,340,032 app flash; connected Target behavior remains pending |
 | HA diagnostic candidate | Discovery adds `[Gatekeeper] BLE 광고 상태` from raw Target diagnostic status, with 30-second expiry and bridge availability | SOURCE ONLY; protected authorization, Backend deployment, Target OTA and live entity readback remain pending |
+
+## 2026-09-05 BLE advertising self-heal first OTA rollback
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Reviewed source | Policy PR #361, feature PR #362 and final-policy PR #363 passed required hosted checks; actual feature main is `1aacbaf073731c6ed8b3c703254d2e5e12bb9990` | PASS for reviewed source and trusted bytes |
+| Backend deployment | Owner-approved run `33956526362` deployed exact feature main; independent strict-TLS `/ready` returned that SHA and every check true | PASS for Backend and HA discovery code deployment |
+| Signed publication | Final-main run `33956619291` published and HTTPS-read-back `2.1.451+main.ga683832` | PASS for artifact publication only |
+| Single OTA request | One HA trigger received QoS 1 PUBACK, Backend `broker_accepted`, Target result 0 and `target_accepted`; no duplicate request was sent | PASS for request acceptance, not install health |
+| Pending-image boot | Target left boot 723 / `2.1.448`, then returned as boot 725 / `2.1.448`; boot 725 retained a valid previous-boot breadcrumb with state `BOOTING`, action `wifi_sta_profile_enabled` and uptime 2,094 ms | Boot 724 started but did not reach MQTT/health; previous image was restored |
+| Reset classification | Boot 725 reports `BROWNOUT`; it remained online/IDLE with MQTT 1/1, zero failures and advancing status beyond uptime 216 seconds | FAIL for first install; evidence indicates supply brownout during pending verification rather than an application panic |
+| Retry boundary | Booting the candidate advanced the version floor, so the unchanged `2.1.451` pointer is intentionally quarantined after rollback | A strictly newer exact-main build is required; retry only once after stable-current verification |
