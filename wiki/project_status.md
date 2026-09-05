@@ -2318,3 +2318,18 @@ tracking.
 - Repeated brownout diagnosis, supply/wiring measurement, mobile installation
   and a marked hands-free physical access trial remain separate owner field
   Gates. No physical door result is inferred from MQTT or retained status.
+
+## 2026-09-05 personal fast-lane policy candidate
+
+- The candidate narrows the exact trusted bundle from 108 normal runtime,
+  test, UI, migration and release files to 23 privilege-bearing workflow,
+  signing, dependency and NAS deployment inputs. Ordinary component code will
+  no longer require the policy-before / feature / policy-after PR cycle.
+- Target and Android main-push publishers gain exact component path allowlists.
+  Policy, wiki, test-only and unrelated changes will not publish either
+  artifact; relevant main pushes skip the duplicate public-canary build but
+  retain tests and exact-main personal build/sign/publish.
+- Exact-main identity, signed manifest and digest/readback, secret isolation,
+  dual-slot Target rollback, relay-safe boot and post-install health remain
+  mandatory. This is a source/policy candidate until hosted trusted and
+  component checks pass and main contains the reviewed bytes.

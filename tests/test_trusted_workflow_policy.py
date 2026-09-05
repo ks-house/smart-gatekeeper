@@ -17,9 +17,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "2be4c29b166f091ab6feb44301504a54330e5b53"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
-MERGED_MAIN_DIGEST_LINES = """\
+MERGED_MAIN_COMMIT = "8c50db8ce6d1557415171a0c8c2edc79371f2cf7"
+EXPECTED_BUNDLE_ID = "personal-fast-lane-baseline"
+LEGACY_FULL_BUNDLE_DIGEST_LINES = """\
 .github/workflows/deploy.yml 74fb06eef8e56cfd5f79f2c5bae4b6e41d798a5ccf2fb00c4aa30668db1f4dda
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
@@ -129,7 +129,36 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 75ac9ea696e0ae26f3cc6734113a5133c9cc1fc758ac93e1fc7f26fbe8f70902
 tests/test_target_security_ota.py f1c2e0ac5147e46c5ed23760eb829789520a55ffef8ff352c9da0169aa7b40d6
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+MERGED_MAIN_DIGEST_LINES = """\
+.github/workflows/backend_security.yml 07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2
+.github/workflows/build_app.yml f48c8b2843d29faab737971bc958a402525556f156899b3e44ad4d7ab5ffa39e
+.github/workflows/deploy.yml 8bd9ce87b2e50ef71275e429f63ba679519fb128b2c369322b8996cea6edac38
+.github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
+.github/workflows/personal_installation_firmware.yml d29439b9754c8baec015bcb19989ced81fa950da5dd800a5c6c8ee7515c97704
+.github/workflows/protocol.yml b60ce78c630c30f6ab5b5b3d23a042f08d125c6507ebd347e3fc4d0dc66b5740
+.github/workflows/trusted_workflow_policy.yml 79aaf7a773592ecf9156191f589a9ae3e3649b4de06a1b08034507c83184a658
+scripts/verify_trusted_workflow_policy.py 78a96058cd12cfadde01ac0c7aa733bfa96a43789a0a5173d02ffaea582e2641
+scripts/ota_contract_gate.py 92312413f71ae98c6e40a915c08fc1d66257941dd6991bf7b0448322a879e2f3
+scripts/verify_target_flash_layout.py e41a91cae8260ed54913b457345fe4b4f439e2c2e6dfdc4d98e0df27d98a0f22
+scripts/ops_commercial_gate.py 7ed564d02342adf6da84aede9c524d47bac4246a31521cf05143a380199a43d7
+ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
+ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
+backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
+backend/app/Dockerfile ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573
+backend/db/Dockerfile be3377a1fbbc113b86f62df4907eceb0b3fda443cda8589a80c70c23e31dcd9b
+backend/compose.production.yml 0f0d1bd3ff45635bf6cb17b79af7df1043d6814f70ebb728d8a41009570114e6
+backend/compose.synology.yml f90bc1675e97b6e0710deb415de32a6ce1dd22f21cb3cdf3b98fd7be5c50fcbd
+backend/deploy/create_release_bundle.py 2d82ba4421de9d3d487661b0e09a840b2b4d7e0527b03c4d8e7582d429747195
+backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
+backend/deploy/sgk_backend_deploy.sh ec7e7eaafa0db301440dcfe4643efde4ebb67cfda914f48d9a5d2b99e11a9806
+backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
+ops/backend_trusted_bundle_paths.json 50152cc8713ae0075b7f6bb4b90d60ea8468791a78d6747f40a4f929caab4d34
+"""
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    ".github/workflows/build_app.yml",
+    ".github/workflows/deploy.yml",
+    "scripts/ota_contract_gate.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -144,11 +173,11 @@ OLD_FIVE_PATHS = [
     "ota/requirements.txt",
 ]
 RETIRED_MAIN_SAMPLE_DIGESTS = {
-    ".github/workflows/backend_security.yml": (
-        "5ea77cd7444c7a284485acf65a24e265746bcde4fbb18fa30b1f6220b45053b0"
+    ".github/workflows/build_app.yml": (
+        "64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487"
     ),
-    "backend/app/main.py": (
-        "af96a303439e77fceb8cb781196f7558e768119ba0c5c03ed6331636fe721e80"
+    "scripts/ota_contract_gate.py": (
+        "4dd7914e2cb3e388bb1cb9d456dca93e1a00ded6584beb448d6a7aec39211065"
     ),
 }
 RETIRED_SOURCE_COMMITS = {
@@ -494,7 +523,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
   def assert_current_main_baseline_is_exact(self, policy):
     self.assertEqual(policy["format_version"], 3)
     self.assertEqual(policy["protected_paths"], list(MERGED_MAIN_DIGESTS))
-    self.assertEqual(len(policy["protected_paths"]), 108)
+    self.assertEqual(len(policy["protected_paths"]), 23)
     self.assertEqual(
         policy["protected_inventories"],
         {
@@ -1097,8 +1126,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 108)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 3)
+    self.assertEqual(len(locally_unchanged_protected), 20)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
@@ -1264,7 +1293,7 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
       self.verify_merged_main_digest_map(policy, mixed)
 
     partial = dict(MERGED_MAIN_DIGESTS)
-    del partial["backend/app/main.py"]
+    del partial["backend/deploy/sgk_backend_deploy.sh"]
     with self.assertRaises(KeyError):
       self.verify_merged_main_digest_map(policy, partial)
 
@@ -1280,7 +1309,9 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         ROOT / ".github/workflow-policy/trusted_workflow_policy.json"
     )
     mutated = copy.deepcopy(policy)
-    mutated["approved_bundles"][0]["files"]["backend/app/main.py"] = "0" * 64
+    mutated["approved_bundles"][0]["files"][
+        "backend/deploy/sgk_backend_deploy.sh"
+    ] = "0" * 64
     trusted.validate_policy(mutated)
     with self.assertRaises(AssertionError):
       self.assert_current_main_baseline_is_exact(mutated)
