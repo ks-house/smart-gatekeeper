@@ -2097,3 +2097,16 @@ trusted-main bytes.
 This policy-only authorization publishes nothing and sends no Target, relay or
 door action. Policy merge, feature CI/merge, final baseline rotation, strictly
 newer publication and one bounded install-health observation remain separate.
+
+## 78. OTA heap-headroom actual-main final rotation
+
+Feature PR #373 passed hosted firmware, OTA, Backend and trusted-policy checks
+and merge-committed normally as actual main
+`2be4c29b166f091ab6feb44301504a54330e5b53`. Immutable feature `c9e61cdd`
+and authorization main `bf5f7b0` remain in its ancestry.
+
+The transitional authorization is retired and the sole `current-main-baseline`
+is pinned to that actual merge. All 108 protected blobs and both workflow
+inventories remain byte-identical to the reviewed merge-connected head. This
+policy-only rotation installs nothing and sends no Target, relay or door action;
+final publication and one bounded OTA health result remain separate Gates.
