@@ -2265,3 +2265,21 @@ tracking.
   below the 45-second loop watchdog, and persists a specific rollback predicate.
   Focused tests and the production Target build pass; trusted review, a strictly
   newer artifact and one bounded OTA/install-health observation remain required.
+
+## 2026-09-05 OTA health second rollback and heap-headroom correction
+
+- Policy/feature/final PRs #369/#370/#371 merged the 5-second sample-gap
+  correction as final main `987bec7b`; run `33967140412` published exact signed
+  `2.1.459+main.g987bec7`.
+- One safe-preflight request moved the Target from stable boot 732 / 452 to boot
+  733 / exact 459. MQTT, BLE, IDLE and relay-OFF state held through uptime 61
+  seconds, but boot 734 restored 452 before the 120-second deadline. The new
+  breadcrumb is generic `ota_health_timeout`, proving no gap above five seconds
+  while also exposing that only the predicate at the final sample—not the last
+  predicate that reset continuity—was retained. No duplicate request was sent.
+- Recovered 452 reports steady free heap 80,972 B, largest block 73,716 B and
+  historical minimum 20,768 B. The next source candidate keeps continuous
+  health and rollback deadlines, changes the instantaneous heap requirement to
+  48 KiB aggregate plus 32 KiB contiguous headroom, and persists the last reset
+  predicate. Production build and focused 45 tests pass; protected review and
+  one strictly newer post-fix OTA remain required.

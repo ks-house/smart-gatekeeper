@@ -6755,3 +6755,10 @@
 - Feature PR #370 passed hosted firmware, OTA, Backend and trusted-policy checks and merge-committed as actual main `21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1`.
 - Retired the transitional feature authorization and pinned the sole `current-main-baseline` to that merge with all 108 protected blobs unchanged from review.
 - This policy-only rotation sends no Target request and changes no runtime, relay or door state. Final signed publication and one post-fix OTA/install-health observation remain separate Gates.
+
+## [2026-09-05] test | Reject sample-gap-only OTA diagnosis and preserve heap cause
+
+- Final main `987bec7b74519d4800b7d876585af7a45ad2a8c0` published signed `2.1.459+main.g987bec7`. One safe-preflight request advanced stable boot 732 / 452 to boot 733 / exact 459 with PUBACK, Backend `target_accepted` and Target result 0; no duplicate was sent.
+- Boot 733 kept exact 459, IDLE, relay OFF, MQTT 1/1 and BLE advertising active through uptime 61 seconds, then controlled rollback restored 452 as boot 734. Breadcrumb `ota_health_timeout` proves no sample gap exceeded five seconds but failed to retain the historical false predicate.
+- Recovered 452 reports free heap 80,972 B, largest block 73,716 B and historical minimum 20,768 B. The new candidate uses 48 KiB aggregate plus 32 KiB contiguous heap health and preserves the last safe/network/heap/sample-gap reset cause while retaining 30/120-second safety windows.
+- Production firmware builds at 26.9% RAM and 24.9% flash; focused 45 tests pass. Protected review, strictly newer publication and one single OTA remain pending.
