@@ -58,8 +58,12 @@ constexpr uint32_t kHealthTimeoutMs = 120000;
 // validate as the payload grows. Five seconds remains far below the 45-second
 // loop watchdog while tolerating bounded status publication latency.
 constexpr uint32_t kHealthMaxSampleGapMs = 5000;
+constexpr uint32_t kHealthMinFreeHeapBytes = 48UL * 1024UL;
+constexpr uint32_t kHealthMinLargestBlockBytes = 32UL * 1024UL;
 static_assert(kHealthMaxSampleGapMs < LOOP_TASK_WATCHDOG_TIMEOUT_MS,
               "OTA health sampling must remain stricter than loop watchdog");
+static_assert(kHealthMinLargestBlockBytes < kHealthMinFreeHeapBytes,
+              "OTA health requires aggregate and contiguous heap headroom");
 constexpr uint16_t kProtocolMin = 1;
 constexpr uint16_t kProtocolMax = 2;
 constexpr const char* kBoard = "esp32-c6-devkitc-1";
@@ -161,6 +165,7 @@ bool healthSampleSeen = false;
 uint32_t healthLastSampleMs = 0;
 uint32_t healthSampleGapResetCount = 0;
 uint32_t healthMaxObservedSampleGapMs = 0;
+const char* healthLastResetReason = "ota_health_timeout";
 
 bool asciiToken(const char* value, size_t maximum) {
   if (value == nullptr) return false;
@@ -887,6 +892,7 @@ void OtaManager::init() {
   healthLastSampleMs = 0;
   healthSampleGapResetCount = 0;
   healthMaxObservedSampleGapMs = 0;
+  healthLastResetReason = "ota_health_timeout";
   if (!versionPolicy.begin(FIRMWARE_VERSION)) {
     status = OtaStatus::FAILED;
     lastError = "version floor storage";
@@ -926,6 +932,7 @@ void OtaManager::update() {
           std::max(healthMaxObservedSampleGapMs, sampleGapMs);
       if (sampleGapMs > kHealthMaxSampleGapMs) {
         ++healthSampleGapResetCount;
+        healthLastResetReason = "ota_health_sample_gap";
       }
     }
     healthSampleSeen = true;
@@ -935,7 +942,16 @@ void OtaManager::update() {
     const bool networkHealthy =
         WifiManager::isConnected() && MqttManager::isConnected();
     const uint32_t freeHeap = ESP.getFreeHeap();
-    const bool heapHealthy = freeHeap >= 65536;
+    const uint32_t largestFreeBlock = ESP.getMaxAllocHeap();
+    const bool heapHealthy = freeHeap >= kHealthMinFreeHeapBytes &&
+                             largestFreeBlock >= kHealthMinLargestBlockBytes;
+    if (!safe) {
+      healthLastResetReason = "ota_health_safe_timeout";
+    } else if (!networkHealthy) {
+      healthLastResetReason = "ota_health_network_timeout";
+    } else if (!heapHealthy) {
+      healthLastResetReason = "ota_health_heap_timeout";
+    }
     const sgk::OtaHealthDecision decision =
         healthPolicy.update(now, safe && networkHealthy && heapHealthy);
     if (decision == sgk::OtaHealthDecision::kMarkValid) {
@@ -956,24 +972,23 @@ void OtaManager::update() {
       }
     } else if (decision == sgk::OtaHealthDecision::kRollback) {
       status = OtaStatus::ROLLING_BACK;
-      const char* rollbackReason = "ota_health_timeout";
+      const char* rollbackReason = healthLastResetReason;
       if (!safe) {
         rollbackReason = "ota_health_safe_timeout";
       } else if (!networkHealthy) {
         rollbackReason = "ota_health_network_timeout";
       } else if (!heapHealthy) {
         rollbackReason = "ota_health_heap_timeout";
-      } else if (healthSampleGapResetCount > 0) {
-        rollbackReason = "ota_health_sample_gap";
       }
       preserveAccessEvidenceBeforeRestart(rollbackReason);
       DiagnosticsManager::markPlannedRestart(rollbackReason);
       LOGF("[OTA-ERROR] health timeout reason=%s gaps=%lu "
-           "max_gap_ms=%lu free_heap=%lu; rolling back",
+           "max_gap_ms=%lu free_heap=%lu largest_block=%lu; rolling back",
            rollbackReason,
            static_cast<unsigned long>(healthSampleGapResetCount),
            static_cast<unsigned long>(healthMaxObservedSampleGapMs),
-           static_cast<unsigned long>(freeHeap));
+           static_cast<unsigned long>(freeHeap),
+           static_cast<unsigned long>(largestFreeBlock));
       if (esp_ota_mark_app_invalid_rollback_and_reboot() != ESP_OK) {
         LOGF("[OTA-ERROR] rollback API returned; forcing safe restart");
         ESP.restart();

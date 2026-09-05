@@ -426,9 +426,12 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("max_sample_gap_ms_", health_policy)
         ota = (ROOT / "src/OtaManager.cpp").read_text(encoding="utf-8")
         self.assertIn("kHealthMaxSampleGapMs = 5000", ota)
+        self.assertIn("kHealthMinFreeHeapBytes = 48UL * 1024UL", ota)
+        self.assertIn("kHealthMinLargestBlockBytes = 32UL * 1024UL", ota)
         self.assertIn("healthSampleGapResetCount", ota)
         self.assertIn("healthMaxObservedSampleGapMs", ota)
-        self.assertIn('rollbackReason = "ota_health_sample_gap"', ota)
+        self.assertIn("healthLastResetReason", ota)
+        self.assertIn('healthLastResetReason = "ota_health_sample_gap"', ota)
         self.assertIn("envelope, verificationTime, systemClockTrusted", mqtt)
         self.assertNotIn(": envelope.issued_at", mqtt)
         operator_transition = wifi.split("bool WifiManager::startRecoveryAP", 1)[1]
