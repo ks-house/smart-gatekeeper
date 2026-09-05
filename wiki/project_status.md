@@ -2206,3 +2206,18 @@ tracking.
   failures. Because `2.1.451` is now rollback-quarantined, this docs-only exact-main
   retry commit intentionally creates one strictly newer signed version; no second
   device request occurs until its publication and stable-current evidence pass.
+
+## 2026-09-05 BLE advertising self-heal installed
+
+- Run `33957358126` published signed exact-main `2.1.452+main.g2bedd83` after
+  boot 725 remained stable for 927 seconds. One new-version OTA request advanced
+  the Target once to boot 726, exact 452, SOFTWARE reset.
+- Boot 726 remained online/IDLE through uptime 139 seconds with MQTT 1/1, zero
+  failures and an empty outbox, exceeding both OTA health windows without rollback.
+- Target status now reports BLE advertising expected/active `true`, no client
+  connection and no restart failure, plus active ACL version 1331 at exact `2..2`.
+  HA retained discovery for `[Gatekeeper] BLE 광고 상태` is present with a
+  30-second expiry.
+- This closes source, Backend deployment, signed publication, Target installation
+  and controller-state readback. External RF reception, Android wake/authentication
+  and a physical hands-free door opening remain owner field evidence.

@@ -6616,3 +6616,19 @@
   single new request is considered.
 - Focused trusted-policy regression passed 42/42 and repository whitespace
   validation passed for the retry evidence commit; protected bytes are unchanged.
+
+## [2026-09-05] test | Install and verify BLE advertising self-heal
+
+- Run `33957358126` published and HTTPS-read-back signed
+  `2.1.452+main.g2bedd83`. After boot 725 remained stable through uptime 927
+  seconds, one new-version OTA request received PUBACK and both Backend and Target
+  acceptance; no further request was sent.
+- Target advanced to boot 726 / `b820fcff4cfd60dfcfd56ac4567d47bf`, exact
+  452 with SOFTWARE reset, and retained that identity online/IDLE through uptime
+  139 seconds with MQTT 1/1, zero failures and an empty event outbox.
+- Raw Target status reported BLE advertising expected and active, zero connected
+  clients and zero restart failures/recoveries. It also reported active ACL version
+  1331 with exact protocol range `2..2`.
+- Retained HA discovery for `[Gatekeeper] BLE 광고 상태` uses raw Target status,
+  device class `running` and 30-second expiry. Controller-state readback is not
+  external RF packet reception; a fresh phone hands-free trial remains pending.
