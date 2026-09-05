@@ -6799,3 +6799,9 @@
 - Prepared a reviewed component-scoped candidate: Target and Android main-push publishers use exact path allowlists and skip duplicate public-canary artifact builds on relevant main pushes while retaining tests and exact-main personal publication.
 - Narrowed the trusted digest bundle from 108 ordinary runtime, test, UI, migration and release paths to 23 privilege-bearing workflows, validators, signing dependencies and NAS deployment inputs. Normal runtime changes no longer need policy-before / feature / policy-after rotation.
 - The relaxation trusts the repository owner as reviewer but preserves exact-main identity, secret isolation, signed manifests, digest/readback, Target dual-slot rollback, relay-safe boot and post-install health evidence. No artifact was published, Target command sent or runtime changed by this policy-only authorization.
+
+## [2026-09-06] test | Install and verify personal fast lane
+
+- Policy PR #377 and feature PR #378 passed hosted checks and merged as main `0de3a3230a3e7b977319dc7799a02d85e5eb3a54`. The narrowed 23-path trusted check completed in 8 seconds; OTA contract, firmware canary and Android canary also passed.
+- The merge changed the shared protected OTA gate, so both component workflows correctly matched their security-input allowlist. Runs `33973501152` and `33973501202` were cancelled in their canary jobs before exact personal build, signing or publication; no Target command or installed runtime change occurred.
+- Future policy, wiki, test-only and unrelated-component main changes no longer publish Target or Android artifacts. Relevant component changes retain tests and exact-main personal publication while skipping the duplicate public-canary artifact build on main.
