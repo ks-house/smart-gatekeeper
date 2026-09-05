@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
-  def test_contract_test_path_triggers_both_producer_workflows(self):
+  def test_contract_test_path_triggers_pr_checks_without_main_publication(self):
     from scripts import ota_contract_gate as gate
 
     contract_path = "tests/test_nas_physical_test_delivery.py"
@@ -19,12 +19,10 @@ class NasPhysicalTestDeliveryContractTest(unittest.TestCase):
             relative, (ROOT / relative).read_text(encoding="utf-8")
         )
         self.assertIn(contract_path, workflow["on"]["pull_request"]["paths"])
-      if relative.endswith("build_app.yml"):
-        with self.subTest(workflow=relative, trigger="push"):
-          push = workflow["on"]["push"]
-          self.assertEqual(push["branches"], ["main"])
-          if "paths" in push:
-            self.assertIn(contract_path, push["paths"])
+      with self.subTest(workflow=relative, trigger="push"):
+        push = workflow["on"]["push"]
+        self.assertEqual(push["branches"], ["main"])
+        self.assertNotIn(contract_path, push["paths"])
 
   def test_delivery_guide_is_indexed_and_preserves_evidence_boundary(self):
     index = (ROOT / "wiki/index.md").read_text(encoding="utf-8")

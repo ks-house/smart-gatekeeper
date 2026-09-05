@@ -448,6 +448,21 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     auto = workflow["jobs"]["publish_personal_target_ota"]
     commercial = workflow["jobs"]["release_to_production"]
     self.assertEqual(
+        workflow["on"]["push"],
+        {
+            "branches": ["main"],
+            "paths": [
+                "include/**",
+                "src/**",
+                "platformio.ini",
+                "partitions_*MB_ota.csv",
+                "ota/**",
+                "scripts/ota_contract_gate.py",
+                "scripts/verify_target_flash_layout.py",
+            ],
+        },
+    )
+    self.assertEqual(
         " ".join(str(auto["if"]).split()),
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || "
         "(github.event_name == 'workflow_dispatch' && inputs.release_target == 'canary'))",
@@ -558,6 +573,22 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         privileged_verify,
     )
     self.assertIn("src/WifiManager.cpp", privileged_verify)
+    public_only_steps = {
+        "Create compile-only public canary secrets",
+        "Build ESP32-C6 firmware public canary",
+        "Prepare signed public firmware canary",
+        "Upload non-secret symbol map for remote crash analysis",
+        "Upload unsigned canary artifacts for physical Gate validation",
+    }
+    matched = {
+        step["name"]: step.get("if")
+        for step in workflow["jobs"]["test_and_build"]["steps"]
+        if step.get("name") in public_only_steps
+    }
+    self.assertEqual(set(matched), public_only_steps)
+    self.assertTrue(
+        all(condition == "github.event_name != 'push'" for condition in matched.values())
+    )
     self.assertIn(
         "d47d4462d071e51afad98c1bff32476ca67f5345314eb2975f857b5b0cea2b91",
         privileged_verify,

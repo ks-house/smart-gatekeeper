@@ -15,6 +15,14 @@ on:
       - 'tests/test_target_ota_autopublish.py'
   push:
     branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'src/**'
+      - 'platformio.ini'
+      - 'partitions_*MB_ota.csv'
+      - 'ota/**'
+      - 'scripts/ota_contract_gate.py'
+      - 'scripts/verify_target_flash_layout.py'
   workflow_dispatch:
     inputs:
       release_target:
@@ -58,9 +66,11 @@ jobs:
           python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Create compile-only public canary secrets
+        if: github.event_name != 'push'
         run: cp include/secrets.h.example include/secrets.h
 
       - name: Build ESP32-C6 firmware public canary
+        if: github.event_name != 'push'
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           FULL_VERSION="2.1.0-g${SHORT_SHA}"
@@ -70,6 +80,7 @@ jobs:
           pio run -e esp32c6
 
       - name: Prepare signed public firmware canary
+        if: github.event_name != 'push'
         run: |
           mkdir -p dist
           cp .pio/build/esp32c6/firmware.bin dist/gatekeeper-firmware.bin
@@ -97,6 +108,7 @@ jobs:
           ls -la dist/
 
       - name: Upload non-secret symbol map for remote crash analysis
+        if: github.event_name != 'push'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: target-symbol-map-${{ env.FULL_VERSION }}-attempt-${{ github.run_attempt }}
@@ -105,6 +117,7 @@ jobs:
           retention-days: 30
 
       - name: Upload unsigned canary artifacts for physical Gate validation
+        if: github.event_name != 'push'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: target-canary-attempt-${{ github.run_attempt }}
