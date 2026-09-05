@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "cdcc757b856bc503e9d85b874d67adc425c74a49"
-EXPECTED_BUNDLE_ID = "field-diagnostics-cdcc757-persistent-baseline"
+MERGED_MAIN_COMMIT = "c9aa85c31b0b7b1d04ea71970c720cf358805acc"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml 48c4b1865333a21bf7ad1a361409dffd55253174461116b186aa80519422a068
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -129,24 +129,7 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 75ac9ea696e0ae26f3cc6734113a5133c9cc1fc758ac93e1fc7f26fbe8f70902
 tests/test_target_security_ota.py a6b644a47a57ab44f4dd84885d2d165b640c41f620eca47e20fab2691cb7f167
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/deploy.yml",
-    "ops/backend_trusted_bundle_paths.json",
-    "backend/.env.example",
-    "backend/app/acl_api.py",
-    "backend/app/main.py",
-    "backend/app/mobile_diagnostics.py",
-    "backend/app/static/admin.html",
-    "backend/db/Dockerfile",
-    "backend/db/migrations/015_mobile_diagnostics_down.sql",
-    "backend/db/migrations/015_mobile_diagnostics_up.sql",
-    "backend/db/schema.env",
-    "backend/docker-compose.yml",
-    "backend/tests/test_migrations.py",
-    "backend/tests/test_mobile_diagnostics.py",
-    "backend/tests/test_nas_backend_deploy.py",
-    "backend/tests/test_target_boot_registry.py",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -169,6 +152,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "cdcc757b856bc503e9d85b874d67adc425c74a49",
     "1aacbaf073731c6ed8b3c703254d2e5e12bb9990",
     "148d7b6de6be476e9680da4bb98444dfc5a80899",
     "382c4f86a4ef4164acd32eecc29b7a4c6908354c",
@@ -1109,8 +1093,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 16)
-    self.assertEqual(len(locally_unchanged_protected), 92)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 108)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])

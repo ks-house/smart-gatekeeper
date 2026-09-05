@@ -2022,3 +2022,20 @@ while the other 92 resolve from trusted main. This history connection publishes,
 deploys and installs nothing. Fresh hosted feature CI, actual-main merge, final
 policy rotation, owner retention choice and runtime field evidence remain
 required.
+
+## 74. Field diagnostics actual-main final rotation
+
+Feature PR #367 passed Android/native GATT, firmware, Backend/MariaDB,
+OTA/schema and trusted-policy hosted Gates and merge-committed as actual main
+`c9aa85c31b0b7b1d04ea71970c720cf358805acc`. Immutable feature
+`cdcc757b856bc503e9d85b874d67adc425c74a49` and policy main `aa42864` remain
+in its ancestry.
+
+The transitional bundle is retired in favor of the sole
+`current-main-baseline` pinned to that actual merge. All 108 protected blobs are
+byte-identical to the reviewed candidate; the seven-workflow and empty local-
+Action inventories remain exact.
+
+This final rotation deploys or installs nothing. Schema-015 Backend deployment,
+mobile and Target publication/install, owner retention choice and a physical
+field trial remain independent runtime Gates.

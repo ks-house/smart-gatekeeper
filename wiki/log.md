@@ -6724,3 +6724,15 @@
 - Hosted Android canary found one wrapping-only `dart format` difference in the
   support-report opaque-reference validator. Applied the canonical formatter;
   no behavior, schema or protected policy blob changed.
+
+## [2026-09-05] compile | Merge field diagnostics and rotate actual-main policy
+
+- Feature PR #367 passed all hosted Android, firmware, Backend, OTA/schema and
+  trusted-policy Gates and merge-committed as actual main
+  `c9aa85c31b0b7b1d04ea71970c720cf358805acc`.
+- Retired the transitional feature identity and pinned the sole
+  `current-main-baseline` to that exact merge. All 108 protected blobs retain
+  the reviewed bytes.
+- This final policy change deploys no schema, publishes or installs no app or
+  firmware, and sends no Target command. The uploaded-record retention choice
+  and physical field evidence remain open runtime Gates.

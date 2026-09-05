@@ -125,11 +125,11 @@
   },
   "approved_bundles": [
     {
-      "id": "field-diagnostics-cdcc757-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "cdcc757b856bc503e9d85b874d67adc425c74a49"
+        "commit": "c9aa85c31b0b7b1d04ea71970c720cf358805acc"
       },
       "files": {
         ".github/workflows/deploy.yml": "48c4b1865333a21bf7ad1a361409dffd55253174461116b186aa80519422a068",
