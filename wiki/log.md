@@ -6488,3 +6488,16 @@
 - Backend discovery passed 213 tests with two declared skips. Target/common discovery had 355 functional passes and one skip; 12 expected trusted-policy digest assertions remain fail-closed pending normal authorization rotation.
 - Real Docker/MariaDB 013→014 migration and idempotent rerun passed, including `1..1` to `2..2` row upgrade and pending replacement-job proof. `esp32c6_personal_production` built successfully at 76,968 bytes RAM and 1,818,664 bytes application flash.
 - No corrected Backend, APK or Target artifact is yet merged, deployed or installed; no relay or physical door action was issued.
+
+## [2026-09-05] compile | Authorize immutable GATT v2 ACL correction
+
+- Expanded the trusted inventory from 102 to 104 paths for schema migration 014 up/down and pinned the sole `gatt-v2-acl-7edd3aa-persistent-baseline` to immutable feature `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5`.
+- Reviewed 14 changed/new normalized protected blobs; all other 90 blobs, seven workflows and the empty local-Action inventory retain trusted-main bytes.
+- Focused trusted-policy tests passed 42/42. The production verifier fetched the pushed immutable candidate through the GitHub API and approved all 104 protected paths.
+- This policy-only change deploys nothing and performs no Target, relay or physical-door action; normal policy merge and feature CI remain required.
+
+## [2026-09-05] compile | Connect GATT v2 ACL correction to trusted policy main
+
+- Policy PR #358 passed the hosted trusted-base check and merge-committed normally as main `f92e350`.
+- Merged that exact policy main into the feature history while preserving immutable authorized ancestor `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5`, both append-only histories and all reviewed protected bytes.
+- This merge connection deploys nothing; hosted feature CI, actual-main rotation, Backend migration and artifact installation remain separate Gates.

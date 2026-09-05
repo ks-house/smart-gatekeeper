@@ -2055,3 +2055,17 @@ tracking.
 | Host and DB validation | Backend discovery passed 213 tests with two declared skips; Target/common discovery had 355 functional passes and one declared skip, with only 12 expected pre-authorization digest failures; a real MariaDB image passed idempotent 013→014 upgrade of a live `1..1` credential to `2..2` plus replacement-job creation | FUNCTIONAL PASS; protected policy rotation remains required |
 | Firmware build | `esp32c6_personal_production` built successfully at 76,968/327,680 RAM and 1,818,664/7,340,032 application flash | PASS for compile/partition fit only; not signed publication or installation |
 | Runtime boundary | No corrected Backend, APK or Target artifact has yet been merged, deployed or installed; no post-fix phone access has been attempted | PENDING trusted-policy rotation, CI, Backend schema 014 deployment, mobile/Target publication, installation and owner access confirmation |
+
+## 2026-09-05 GATT v2 ACL protected authorization candidate
+
+- Immutable feature `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5` contains the
+  v2 personal enrollment contract, schema 014 credential upgrade and queued ACL
+  replacement, plus truthful Target protocol-mismatch reporting.
+- The trusted inventory expands from 102 to 104 paths for migration 014
+  up/down. Fourteen protected blobs change or are added; the remaining 90 and
+  the workflow/action inventories retain trusted-main bytes.
+- Focused policy tests passed 42/42, and the GitHub API verifier approved all
+  104 candidate paths under the sole exact persistent bundle.
+- This is source authorization only; feature CI/merge, Backend deployment,
+  signed APK/Target publication, installation and phone authentication remain
+  pending.
