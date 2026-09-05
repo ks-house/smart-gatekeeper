@@ -90,12 +90,12 @@ class LocalGattEnrollmentService {
       }
       final credentialId = material['credentialId']?.toString() ?? '';
       final publicKey = material['publicKeySec1']?.toString() ?? '';
-      final minProtocol = (material['minProtocol'] as num?)?.toInt() ?? 1;
-      final maxProtocol = (material['maxProtocol'] as num?)?.toInt() ?? 1;
+      final minProtocol = (material['minProtocol'] as num?)?.toInt() ?? 2;
+      final maxProtocol = (material['maxProtocol'] as num?)?.toInt() ?? 2;
       if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(credentialId) ||
           !RegExp(r'^04[0-9a-f]{128}$').hasMatch(publicKey) ||
-          minProtocol < 1 ||
-          maxProtocol < minProtocol) {
+          minProtocol != 2 ||
+          maxProtocol != 2) {
         return const LocalGattEnrollmentOutcome(
           accepted: false,
           reason: 'enrollment_material_invalid',

@@ -112,8 +112,8 @@ class AclManagementTest(unittest.TestCase):
             credential_id=credential_id,
             public_key_hex=device.public_key_sec1.hex(),
             actor_ref="personal:test",
-            min_protocol=1,
-            max_protocol=1,
+            min_protocol=2,
+            max_protocol=2,
         )
 
         first = self.service.bootstrap_personal_credential(**request)
@@ -134,6 +134,10 @@ class AclManagementTest(unittest.TestCase):
         self.assertNotEqual("DEV-PERSONAL-A", credential["legacy_device_ref"])
         self.assertEqual([DOOR_A], self.store.active_grant_doors(TENANT_A, credential_id))
         snapshot = self.publisher.messages[0][1]
+        self.assertEqual(2, snapshot["fields"]["min_protocol"])
+        self.assertEqual(2, snapshot["fields"]["max_protocol"])
+        self.assertEqual(2, snapshot["fields"]["entries"][0]["min_protocol"])
+        self.assertEqual(2, snapshot["fields"]["entries"][0]["max_protocol"])
         self.assertEqual(
             [credential_id],
             [entry["credential_id"] for entry in snapshot["fields"]["entries"]],

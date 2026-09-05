@@ -24,6 +24,7 @@ services:
       - ./db/migrations/011_access_event_history_up.sql:/docker-entrypoint-initdb.d/11_access_event_history.sql:ro
       - ./db/migrations/012_access_event_actor_ref_up.sql:/docker-entrypoint-initdb.d/12_access_event_actor_ref.sql:ro
       - ./db/migrations/013_ha_access_event_outbox_up.sql:/docker-entrypoint-initdb.d/13_ha_access_event_outbox.sql:ro
+      - ./db/migrations/014_gatt_v2_acl_contract_up.sql:/docker-entrypoint-initdb.d/14_gatt_v2_acl_contract.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD || mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
@@ -40,7 +41,7 @@ services:
       dockerfile: Dockerfile
     container_name: gatekeeper-db-migrate
     restart: "no"
-    command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-013}"]
+    command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-014}"]
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -101,8 +102,8 @@ services:
       GATEKEEPER_API_KEY: ${GATEKEEPER_API_KEY:-}
       OPS_HMAC_KEY: ${OPS_HMAC_KEY:-}
       BUILD_SHA: ${BUILD_SHA:-unknown}
-      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-013}
-      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-81b72652f467b45e0a95dc2d7a363905accd76b17d170bcb78f8d82148d04732}
+      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-014}
+      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-086bbc53126e98d3de5ae899040352c201e4c1d94cea1508ead477ef95d35e4d}
       ACCESS_EVENT_REF_KEYS_JSON: ${ACCESS_EVENT_REF_KEYS_JSON:-}
       ACCESS_STATUS_MAX_AGE_SECONDS: ${ACCESS_STATUS_MAX_AGE_SECONDS:-5}
       ACCESS_SIGNED_STATUS_READINESS_REQUIRED: ${ACCESS_SIGNED_STATUS_READINESS_REQUIRED:-false}

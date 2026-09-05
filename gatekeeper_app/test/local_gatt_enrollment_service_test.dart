@@ -20,8 +20,8 @@ void main() {
         'device_id': 'device-1',
         'credential_id': _credentialId,
         'public_key_sec1': _publicKey,
-        'min_protocol': 1,
-        'max_protocol': 1,
+        'min_protocol': 2,
+        'max_protocol': 2,
       });
       return http.Response(
         jsonEncode(<String, Object?>{
@@ -106,8 +106,8 @@ class _FakeNativeBridge extends NativeGattWorkerHealthBridge {
         'reason': 'enrollment_material_ready',
         'credentialId': _credentialId,
         'publicKeySec1': _publicKey,
-        'minProtocol': 1,
-        'maxProtocol': 1,
+        'minProtocol': 2,
+        'maxProtocol': 2,
       };
 
   @override

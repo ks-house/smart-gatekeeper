@@ -63,6 +63,22 @@ Every `connectGatt` call now owns a monotonic transport generation and a callbac
 
 The JVM fake signer is deterministic and holds test-only material. It verifies canonical compatibility without invoking AndroidKeyStore.
 
+### 4.1 Personal v2 ACL range invariant
+
+The personal enrollment surface and Android enrollment material use exact
+`min_protocol=2,max_protocol=2`. A phone that already owns a valid local
+AndroidKeyStore credential does not re-enroll on every app launch, so Backend
+schema migration 014 upgrades existing credential rows to `2/2`, clears any
+generated replacement version and queues every active granted door for a fresh
+signed snapshot. Backend startup lease refresh then publishes that v2 snapshot;
+an old signed ACL cannot silently remain the authorization source.
+
+The v1 GATT implementation remains only the OTA N/N-1 transport shim described
+above. It is not admitted into a personal v2 snapshot. If a future deployment
+reintroduces an ACL range mismatch, Target result reason 1 is preserved through
+the public Result as `UNSUPPORTED_VERSION` / `PROTOCOL_INCOMPATIBLE`; it must not
+be collapsed into `PROOF_INVALID` / `SIGNATURE_INVALID`.
+
 ## 5. Durable coalescing, migration, and diagnostics
 
 A duplicate fingerprint is an HMAC over the private address plus stable OS wake identity. Its HMAC key is non-exportable AndroidKeyStore material, not a SharedPreferences byte string. Repeated delivery of the same wake coalesces into the original durable session even after terminal completion; a distinct advertisement timestamp creates a separate session.

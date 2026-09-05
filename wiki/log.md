@@ -6480,9 +6480,24 @@
 - The sole `current-main-baseline` is pinned to actual feature main `7774060ba580a64e925727dfbc17c7c045ed58e2`; all 102 protected blobs, JSON syntax and repository whitespace validation passed.
 - These results authorize exact source bytes only and do not substitute for Backend/NAS deployment or Target install/reboot/health evidence.
 
+## [2026-09-05] fix | Align personal GATT v2 proofs with signed Target ACL
+
+- Confirmed the reported `SIGNATURE_INVALID` was a protocol-range defect: Android selected fast v2 while personal credentials and replacement snapshots remained `1..1`; the live Target stayed on the same healthy boot with MQTT connected.
+- Changed personal Android/Backend enrollment to exact `2..2`, added schema migration 014 to upgrade existing credentials and queue every active granted door, and made replacement refresh snapshots independent of stale v1 header ranges.
+- Preserved Target `kUnsupportedVersion` through the public Result so future range mismatch is reported as `PROTOCOL_INCOMPATIBLE`, not `SIGNATURE_INVALID`.
+- Backend discovery passed 213 tests with two declared skips. Target/common discovery had 355 functional passes and one skip; 12 expected trusted-policy digest assertions remain fail-closed pending normal authorization rotation.
+- Real Docker/MariaDB 013→014 migration and idempotent rerun passed, including `1..1` to `2..2` row upgrade and pending replacement-job proof. `esp32c6_personal_production` built successfully at 76,968 bytes RAM and 1,818,664 bytes application flash.
+- No corrected Backend, APK or Target artifact is yet merged, deployed or installed; no relay or physical door action was issued.
+
 ## [2026-09-05] compile | Authorize immutable GATT v2 ACL correction
 
 - Expanded the trusted inventory from 102 to 104 paths for schema migration 014 up/down and pinned the sole `gatt-v2-acl-7edd3aa-persistent-baseline` to immutable feature `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5`.
 - Reviewed 14 changed/new normalized protected blobs; all other 90 blobs, seven workflows and the empty local-Action inventory retain trusted-main bytes.
 - Focused trusted-policy tests passed 42/42. The production verifier fetched the pushed immutable candidate through the GitHub API and approved all 104 protected paths.
 - This policy-only change deploys nothing and performs no Target, relay or physical-door action; normal policy merge and feature CI remain required.
+
+## [2026-09-05] compile | Connect GATT v2 ACL correction to trusted policy main
+
+- Policy PR #358 passed the hosted trusted-base check and merge-committed normally as main `f92e350`.
+- Merged that exact policy main into the feature history while preserving immutable authorized ancestor `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5`, both append-only histories and all reviewed protected bytes.
+- This merge connection deploys nothing; hosted feature CI, actual-main rotation, Backend migration and artifact installation remain separate Gates.

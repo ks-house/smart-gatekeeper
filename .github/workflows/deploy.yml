@@ -371,7 +371,7 @@ jobs:
           100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini
           100644 0a197ffa68213f1651f9b25a92256ef209b58dca1cf1dd7be77e3f861afffb96 src/ConfigManager.cpp
           100644 fc3e6f45944929f5551424520fb23e3f9c1c26262884280ebc66a9a10c628a03 src/DiagnosticsManager.cpp
-          100644 d841d0e31d2e6ba89af45d8816bc42ac306d2262e414216ae171db2fdc7c249d src/GattProtocol.cpp
+          100644 d1ea1d60f5dac18eb9d53a3723265e6c84bc737ab5e1b42deee155e5d073b3ac src/GattProtocol.cpp
           100644 7354652026c5aae65add70c11ac2a63533921ad35077819f7527b71266517ae7 src/GattServer.cpp
           100644 e59882d8f3bf178f1737ef36ee0feeea82050a1c9a21d52017c9a373dacf1b38 src/MqttManager.cpp
           100644 4f2508172140436df9b6d00504e367a36aba9c519f8c12cd7f09b0d2d31bed41 src/OfflineEventQueue.cpp

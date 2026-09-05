@@ -73,8 +73,8 @@ class PersonalEnrollmentRequest(BaseModel):
     )
     credential_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     public_key_sec1: str = Field(pattern=r"^04[0-9a-f]{128}$")
-    min_protocol: Literal[1]
-    max_protocol: Literal[1]
+    min_protocol: Literal[2]
+    max_protocol: Literal[2]
 
 
 class PersonalStatusRequest(BaseModel):

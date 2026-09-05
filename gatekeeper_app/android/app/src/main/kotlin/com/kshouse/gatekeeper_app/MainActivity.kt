@@ -163,8 +163,8 @@ class MainActivity: FlutterActivity() {
                             "reason" to material.reason,
                             "credentialId" to material.credentialIdHex,
                             "publicKeySec1" to material.publicKeySec1Hex,
-                            "minProtocol" to 1,
-                            "maxProtocol" to 1,
+                            "minProtocol" to 2,
+                            "maxProtocol" to 2,
                         ),
                     )
                 }

@@ -1008,3 +1008,23 @@ an inference from application HMAC tests.
 | Latest-result observation | The owner reports that the recent-access result changed | POSITIVE for the existing latest-status projection; not proof of every schema 013 canonical event or HA event outbox delivery |
 | Automated install attempt boundary | Windows Computer Use could not initialize from the WSL cwd; the constrained Target MQTT identity could not read state or write HA ingress, and station-local TCP/80 recovery timed out. No OTA request or unsafe fallback was issued | SAFE NO-CHANGE; one HA OTA button press and exact post-reboot readback remain required |
 | Delivery acceptance | No two consecutive post-`2.1.436` terminal events have yet been correlated across administrator history and HA Activity | PENDING repeated live test; finite Target queues/QoS 0 and at-least-once duplicate marker boundary remain explicit |
+
+## 2026-09-05 GATT v2 ACL mismatch diagnosis and host validation
+
+- Owner screenshot recorded `SIGNATURE_INVALID` followed by repeated
+  `GATT_DISCONNECTED`. Read-only runtime correlation kept the Target on exact
+  `2.1.445+main.g57bfe10`, boot 720 and the same boot ID with fresh IDLE/MQTT
+  health, separating the failure from a crash or broker outage.
+- Source tracing found Android fast v2 proof against a retained Backend ACL
+  credential range `1..1`; the Target verifier's unsupported-version result was
+  then collapsed to signature-invalid by the public Result mapper.
+- Backend 213-test discovery passed with two declared environment skips. Target
+  and shared repository discovery produced 355 functional passes with one
+  declared skip; the remaining 12 failures were only the expected protected
+  digest authorization gate.
+- A real Docker/MariaDB image applied schema 013, inserted an active granted
+  `1..1` credential, applied schema 014 twice, and verified exact `2:2` plus a
+  pending `GATT_V2_CONTRACT` replacement job. The production Target environment
+  built successfully at 23.5% RAM and 24.8% application flash.
+- These are source/build/database results, not a deployed ACL ACK, phone
+  authentication, relay contact or physical door result.
