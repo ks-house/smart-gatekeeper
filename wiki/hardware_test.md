@@ -1028,3 +1028,16 @@ an inference from application HMAC tests.
   built successfully at 23.5% RAM and 24.8% application flash.
 - These are source/build/database results, not a deployed ACL ACK, phone
   authentication, relay contact or physical door result.
+
+## 2026-09-05 GATT v2 ACL production rollout
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Reviewed main | Policy PR #358, feature PR #359 and final policy PR #360 passed required hosted checks and merged normally; feature main is `382c4f86...54c` and final policy main is `6d8ab481...131` with all 104 protected blobs unchanged | PASS for reviewed source and trusted identity |
+| Backend schema 014 deployment | Owner-approved run `33942785068` created the pre-migration backup, passed `up 014`, deployed exact feature main and passed loopback/public readiness; independent `/ready` returned the same SHA and all checks true | PASS for immutable Backend deployment, schema 014 and live dependencies |
+| Signed Target publication | Run `33942948534` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.448+main.g6d8ab48`, build ID `main-448-6d8ab481afc7e4fc74636eef8be816f2dadd7131` | PASS for signed publication; not installation by itself |
+| Single OTA request | One HA bridge `trigger_ota` request received QoS 1 PUBACK, Backend `broker_accepted`, Target result 0 and Backend `target_accepted`; no duplicate request was sent | PASS for one signed boot-bound install trigger and Target acceptance |
+| Exact Target install | Target changed from boot 720 / `2.1.445+main.g57bfe10` to boot 721 / `2.1.448+main.g6d8ab48`, new boot ID `38f688d0768d84ad0b2b1a2b204f0662`, SOFTWARE reset, online and IDLE | PASS for exact installation and reboot identity |
+| Post-install health | Same boot/version remained IDLE and online through uptime 126 seconds; MQTT connect attempts/count were 1/1, failures 0, and Backend verified-status advanced with the Target | PASS beyond the 30-second valid-mark and 120-second rollback windows; no rollback observed |
+| Signed mobile publication | Run `33942948521` published `1.0.0-g6d8ab48` / 41501 and verified primary/fallback HTTPS copies | PASS for publication; phone install is pending |
+| ACL and physical acceptance | A passive ACL-ACK probe started after migration and observed no new message, so it cannot reconstruct an ACK that may have occurred earlier | PENDING one owner phone authentication plus Activity/result/door observation; no relay action was initiated by the agent |

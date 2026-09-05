@@ -6513,3 +6513,11 @@
 - Focused trusted-policy coverage passed 42/42 and full repository discovery passed 367/367 with one declared PowerShell-environment skip.
 - JSON parsing and repository whitespace validation passed. The sole `current-main-baseline` is pinned to exact feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`, with all 104 protected blobs unchanged from the reviewed feature.
 - These results validate source authorization only; exact-main Backend migration/deployment, signed artifact publication, Target install/reboot/health and owner authentication remain separate runtime Gates.
+
+## [2026-09-05] test | Deploy GATT v2 ACL contract and update Target
+
+- Owner-approved Backend run `33942785068` published immutable API/DB images, created a pre-migration backup, applied schema 014 and deployed exact feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`; canonical and independent strict-TLS readiness passed with every check true.
+- Final-main run `33942948534` signed and atomically published `2.1.448+main.g6d8ab48`. One HA `trigger_ota` request received QoS 1 PUBACK, Backend broker acceptance, Target result 0 and Backend Target acceptance; no duplicate request was sent.
+- Target `c0feffe6ebac` advanced from boot 720 / `2.1.445+main.g57bfe10` to boot 721 / exact `2.1.448+main.g6d8ab48`, boot ID `38f688d0768d84ad0b2b1a2b204f0662`, SOFTWARE reset and safe IDLE. It retained that identity through uptime 126 seconds with MQTT 1/1, zero failures and advancing Backend verified-status, beyond both OTA health windows.
+- Final-main mobile run `33942948521` signed and atomically published `1.0.0-g6d8ab48` / 41501 and passed primary/fallback HTTPS verification; no phone installation is claimed.
+- A passive ACL-ACK subscription started after migration and received no new message, so it cannot prove or disprove an earlier ACK. One fresh owner phone authentication remains required for credential/ACL acceptance and physical access; the agent issued no relay or door-open command.

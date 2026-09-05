@@ -2084,3 +2084,30 @@ tracking.
   bytes unchanged. Backend schema 014 deployment, signed Android/Target
   publication, installation, reboot/health and owner access confirmation remain
   separate pending Gates.
+
+## 2026-09-05 GATT v2 ACL production rollout
+
+- Owner-approved Backend run `33942785068` published immutable API/DB images,
+  created a pre-migration backup, applied schema `014`, and deployed exact
+  feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`. Canonical loopback/public
+  readiness passed; independent strict-TLS `/ready` returned that exact SHA
+  with every check true, including database schema, MQTT, collector and ACL
+  management.
+- Final-main Target run `33942948534` signed and atomically published encrypted
+  `2.1.448+main.g6d8ab48`. One owner-approved HA `trigger_ota` request received
+  QoS 1 PUBACK, Backend `broker_accepted`, Target command ACK result 0 and
+  Backend `target_accepted`; no duplicate request was sent.
+- The Target advanced from boot 720 / `2.1.445+main.g57bfe10` to boot 721 /
+  `2.1.448+main.g6d8ab48`, new boot ID
+  `38f688d0768d84ad0b2b1a2b204f0662`, SOFTWARE reset and IDLE. Read-only MQTTS
+  held the same version/boot through uptime 126 seconds, beyond the 30-second
+  valid-mark and 120-second rollback windows, with MQTT connect 1/1, failures
+  0 and Backend verified-status advancing.
+- Final-main mobile run `33942948521` signed and atomically published
+  `1.0.0-g6d8ab48` / version code 41501 and verified primary/fallback HTTPS
+  readback. Phone installation is not claimed.
+- The passive post-deploy ACL-ACK subscription began after schema migration and
+  received no new ACK in its bounded window, so exact migrated snapshot ACK is
+  not reconstructed from that observation. A fresh owner phone authentication
+  is still required to close the GATT v2 credential/ACL acceptance and physical
+  access Gate; the agent issued no relay or door-open action.
