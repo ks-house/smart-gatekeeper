@@ -6793,3 +6793,9 @@
 - A post-deployment readback found boot 737 still running exact `2.1.462+main.g6701f32`; retained diagnostics report `BROWNOUT`, `planned_restart=none`, previous uptime 353,573 ms and no coredump matching this reset.
 - At uptime 486 seconds the Target was online/IDLE with MQTT 1/1, zero failures, BLE advertising expected/active and relay OFF/pin high. The validated image remained installed, so this was not an OTA rollback.
 - Supply/wiring diagnosis and repeated power-stability evidence remain open electrical field Gates. No phone authentication, sensor passage, relay actuation or physical door result was claimed.
+
+## [2026-09-05] compile | Authorize single-owner personal fast lane
+
+- Prepared a reviewed component-scoped candidate: Target and Android main-push publishers use exact path allowlists and skip duplicate public-canary artifact builds on relevant main pushes while retaining tests and exact-main personal publication.
+- Narrowed the trusted digest bundle from 108 ordinary runtime, test, UI, migration and release paths to 23 privilege-bearing workflows, validators, signing dependencies and NAS deployment inputs. Normal runtime changes no longer need policy-before / feature / policy-after rotation.
+- The relaxation trusts the repository owner as reviewer but preserves exact-main identity, secret isolation, signed manifests, digest/readback, Target dual-slot rollback, relay-safe boot and post-install health evidence. No artifact was published, Target command sent or runtime changed by this policy-only authorization.

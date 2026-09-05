@@ -1,5 +1,34 @@
 # Trusted workflow policy bootstrap
 
+## 2026-09-05 personal fast-lane boundary
+
+The single-owner personal-production lane protects 23 privilege-bearing inputs
+instead of hashing ordinary runtime code, tests, static UI and every database
+migration into one 108-file release bundle. The protected set remains exact for
+all seven workflows, the trusted validator, signing/OTA gates and dependencies,
+Target flash validation, Backend release-bundle and NAS execution scripts,
+production Compose/Docker inputs and the Backend locked dependency set.
+
+Normal firmware, Android and Backend implementation changes now use ordinary PR
+review plus component tests and no longer require policy-before, feature and
+policy-after PR rotation. A protected workflow, signing gate, publisher
+dependency or NAS deployment-input change still requires a separately reviewed
+persistent-baseline transition. The reviewed feature commit may remain the
+persistent source for its same-byte descendants; the personal lane does not
+require an immediate actual-merge-SHA rotation.
+
+Target and Android push publishers use exact component path allowlists. A main
+push that changes only policy, wiki, tests or another component does not publish
+either artifact. On relevant main pushes, the PR/dispatch public-canary artifact
+build is skipped while tests still run and the exact-main personal artifact is
+built, signed and published once. Manual dispatch retains the public canary.
+
+This relaxation trusts the single repository owner as reviewer and risk owner.
+It does not relax exact-main identity, secret isolation, signed manifests,
+artifact digest/readback, Target dual-slot rollback, relay-safe boot, monotonic
+versions or post-install boot/version/health evidence. Commercial production
+remains outside this personal fast lane.
+
 ## 1. Trust boundary
 
 `.github/workflows/trusted_workflow_policy.yml` uses `pull_request_target` without `paths` or `paths-ignore` filters to prevent required-check deadlocks, ensuring `Verify protected files against trusted base policy` runs on all pull requests targeting `main` (including docs-only PRs). It never checks out or executes pull-request code. The workflow checks out only the trusted `base.sha` with credentials disabled and sparse paths limited to the base validator and policy. Candidate protected files are downloaded from the candidate repository and commit through the GitHub Contents API, decoded as inert bytes, normalized, and hashed. The same immutable candidate SHA is also read through GitHub's recursive Git Trees API so path inventory, Git object type, and mode are checked without checking out candidate code; a missing or truncated tree fails closed.
