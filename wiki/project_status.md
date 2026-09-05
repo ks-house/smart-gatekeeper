@@ -2305,3 +2305,16 @@ tracking.
   byte-identical primary/fallback manifests and APKs matching SHA-256
   `bcbb16c9...885c6`. Phone installation and a marked hands-free access trial
   remain owner actions and physical evidence Gates.
+
+## 2026-09-05 exact-final post-brownout recovery
+
+- A final readback after deployment found boot 737 still running exact
+  `2.1.462+main.g6701f32`. Retained diagnostics classify the reset as
+  `BROWNOUT` with `planned_restart=none`, previous uptime 353,573 ms and no
+  coredump matching this reset; the installed image did not roll back.
+- By uptime 486 seconds the Target had autonomously recovered online/IDLE,
+  MQTT 1/1 with zero failures, BLE advertising expected/active and relay
+  OFF/pin high. This closes recovery-state observation for that single reset.
+- Repeated brownout diagnosis, supply/wiring measurement, mobile installation
+  and a marked hands-free physical access trial remain separate owner field
+  Gates. No physical door result is inferred from MQTT or retained status.

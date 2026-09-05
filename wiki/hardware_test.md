@@ -1135,3 +1135,12 @@ an inference from application HMAC tests.
 | Health and rollback window | The same boot/version remained online and IDLE through uptime 137 seconds; MQTT stayed 1/1 with zero failures, BLE advertising stayed expected/active, and relay remained OFF/pin high | PASS beyond the 30-second valid mark and 120-second rollback deadline; no rollback observed |
 | Signed mobile publication | Run `33968334698` signed and atomically published exact-final `1.0.0-g6701f32` / version code 43001. Primary and fallback manifests were byte-identical; both 55,577,753-byte APKs matched manifest SHA-256 `bcbb16c9...885c6` over strict HTTPS | PASS for mobile publication/readback; user installation and first-run health remain pending |
 | Physical access boundary | No phone approach, authentication, sensor passage, relay actuation or physical door movement occurred during OTA verification | PENDING owner-installed mobile app and a marked hands-free field trial |
+
+## 2026-09-05 post-OTA brownout recovery readback
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Later boot identity | Target restarted as boot 737 / boot ID `d58fd2fb33e8a4d736f355b66e2fde03` but retained exact `2.1.462+main.g6701f32` | PASS for retaining the validated image; this was not an OTA rollback |
+| Reset classification | Retained diagnostics report `BROWNOUT`, `planned_restart=none`, previous uptime 353,573 ms and no coredump matching this reset | Electrical power interruption is the supported cause; no application panic is attributed to this boot |
+| Recovery state | At uptime 486 seconds the Target was online/IDLE, unarmed, relay OFF/pin high, MQTT 1/1 with zero failures and BLE advertising expected/active | PASS for autonomous control-plane recovery and safe output state after this reset |
+| Evidence boundary | No supply-voltage trace, wiring inspection, phone approach, authentication, sensor passage or physical door movement was captured | Q3 electrical stability and the marked hands-free field trial remain pending |
