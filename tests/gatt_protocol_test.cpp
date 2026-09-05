@@ -360,6 +360,40 @@ void testFastV2SingleSubscriptionFlow() {
         static_cast<uint16_t>(sgk::ResultReason::kExpiredOrReplay));
 }
 
+void testFastV2ReportsAclProtocolMismatch() {
+  auto random = canonicalRandom();
+  FakeVerifier verifier(sgk::ResultReason::kUnsupportedVersion);
+  FakeAuthControlGate control;
+  EventRecorder events;
+  sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &events,
+                             &control);
+  start(protocol, 1000);
+  const auto owner = protocol.connectionOwner();
+  CHECK(protocol.beginFastSession(owner, 1100));
+  CHECK(drain(protocol).size() == 1);
+
+  const auto fast_proof =
+      proof(protocol.sessionId(), 1, sgk::kProofSize,
+            sgk::kFastProtocolVersion);
+  CHECK(!send(protocol, sgk::MessageType::kFastProof, fast_proof.data(),
+              fast_proof.size(), 1200, 502, 2, owner));
+  const auto outputs = drain(protocol);
+  CHECK(outputs.size() == 1);
+  CHECK(outputs[0].type == sgk::MessageType::kFastResult);
+  CHECK(u16(outputs[0].bytes.data() + 18) ==
+        static_cast<uint16_t>(sgk::ResultReason::kUnsupportedVersion));
+  CHECK(std::any_of(events.events.begin(), events.events.end(),
+                    [](const sgk::Event& event) {
+                      return event.code ==
+                                 sgk::EventCode::kAccessProofRejected &&
+                             event.reason ==
+                                 sgk::EventReason::kProtocolIncompatible &&
+                             event.transport_reason ==
+                                 sgk::ResultReason::kUnsupportedVersion;
+                    }));
+  CHECK(control.commit_calls == 0);
+}
+
 void testAdapterPendingWriteVisibility() {
   sgk::AdapterState adapter;
   const sgk::ConnectionToken owner{17, 3};
@@ -974,6 +1008,13 @@ void testTargetProofVerifierIntegration() {
   result = proof_verifier.verify(request);
   CHECK(result.reason == sgk::ResultReason::kOk);
   CHECK(result.active_acl_version == 42);
+
+  // The legacy fixture ACL is 1/1. A v2 fast-path proof must report the
+  // protocol-range mismatch before signature verification.
+  request.protocol_version = sgk::kFastProtocolVersion;
+  result = proof_verifier.verify(request);
+  CHECK(result.reason == sgk::ResultReason::kUnsupportedVersion);
+  request.protocol_version = 1;
 
   // High-S signature rejection check
   auto high_s_request = request;
@@ -3342,6 +3383,7 @@ int main() {
 
   testCanonicalVectorsAndFraming();
   testFastV2SingleSubscriptionFlow();
+  testFastV2ReportsAclProtocolMismatch();
   testAdapterPendingWriteVisibility();
   testFastV2RejectsLegacyTypeAndVersion();
   testAccessEvidenceMacFixedVectors();

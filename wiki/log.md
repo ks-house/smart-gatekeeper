@@ -6479,3 +6479,12 @@
 - Focused trusted-policy coverage passed 42/42 and full repository discovery passed 367/367 with one declared PowerShell-environment skip.
 - The sole `current-main-baseline` is pinned to actual feature main `7774060ba580a64e925727dfbc17c7c045ed58e2`; all 102 protected blobs, JSON syntax and repository whitespace validation passed.
 - These results authorize exact source bytes only and do not substitute for Backend/NAS deployment or Target install/reboot/health evidence.
+
+## [2026-09-05] fix | Align personal GATT v2 proofs with signed Target ACL
+
+- Confirmed the reported `SIGNATURE_INVALID` was a protocol-range defect: Android selected fast v2 while personal credentials and replacement snapshots remained `1..1`; the live Target stayed on the same healthy boot with MQTT connected.
+- Changed personal Android/Backend enrollment to exact `2..2`, added schema migration 014 to upgrade existing credentials and queue every active granted door, and made replacement refresh snapshots independent of stale v1 header ranges.
+- Preserved Target `kUnsupportedVersion` through the public Result so future range mismatch is reported as `PROTOCOL_INCOMPATIBLE`, not `SIGNATURE_INVALID`.
+- Backend discovery passed 213 tests with two declared skips. Target/common discovery had 355 functional passes and one skip; 12 expected trusted-policy digest assertions remain fail-closed pending normal authorization rotation.
+- Real Docker/MariaDB 013→014 migration and idempotent rerun passed, including `1..1` to `2..2` row upgrade and pending replacement-job proof. `esp32c6_personal_production` built successfully at 76,968 bytes RAM and 1,818,664 bytes application flash.
+- No corrected Backend, APK or Target artifact is yet merged, deployed or installed; no relay or physical door action was issued.

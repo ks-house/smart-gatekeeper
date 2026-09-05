@@ -641,8 +641,8 @@ def contract() -> dict:
             errors.append(f"backend workflow omits fixed evidence producer token: {required}")
     if not re.search(r"^FROM mariadb@sha256:[a-f0-9]{64}$", db_dockerfile, re.MULTILINE):
         errors.append("migration database image base is not digest-pinned")
-    if "COPY migrations/013_ha_access_event_outbox_up.sql /opt/smart-gatekeeper/migrations/013_up.sql" not in db_dockerfile:
-        errors.append("migration database artifact omits the current HA access-event outbox migration")
+    if "COPY migrations/014_gatt_v2_acl_contract_up.sql /opt/smart-gatekeeper/migrations/014_up.sql" not in db_dockerfile:
+        errors.append("migration database artifact omits the current GATT v2 ACL migration")
     if "COPY schema.env /opt/smart-gatekeeper/schema.env" not in db_dockerfile:
         errors.append("migration database artifact omits its signed schema identity")
     if "production_schema.sql" not in db_dockerfile or re.search(

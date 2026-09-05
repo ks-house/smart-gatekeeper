@@ -120,9 +120,15 @@ class AclApiTest(unittest.TestCase):
             "device_id": device_id,
             "credential_id": "12" * 16,
             "public_key_sec1": device.public_key_sec1.hex(),
-            "min_protocol": 1,
-            "max_protocol": 1,
+            "min_protocol": 2,
+            "max_protocol": 2,
         }
+        legacy_contract = self.client.post(
+            "/api/v1/acl/personal/enroll",
+            json={**body, "min_protocol": 1, "max_protocol": 1},
+            headers={"X-API-KEY": "personal-api-key"},
+        )
+        self.assertEqual(422, legacy_contract.status_code)
         self.assertEqual(
             401,
             self.client.post("/api/v1/acl/personal/enroll", json=body).status_code,
@@ -323,8 +329,8 @@ class AclApiTest(unittest.TestCase):
                 "device_id": device_id,
                 "credential_id": old_credential_id,
                 "public_key_sec1": old_signer.public_key_sec1.hex(),
-                "min_protocol": 1,
-                "max_protocol": 1,
+                "min_protocol": 2,
+                "max_protocol": 2,
             },
             headers={"X-API-KEY": "personal-api-key"},
         )
@@ -354,8 +360,8 @@ class AclApiTest(unittest.TestCase):
                 "device_id": device_id,
                 "credential_id": new_credential_id,
                 "public_key_sec1": new_signer.public_key_sec1.hex(),
-                "min_protocol": 1,
-                "max_protocol": 1,
+                "min_protocol": 2,
+                "max_protocol": 2,
             },
             headers={"X-API-KEY": "personal-api-key"},
         )
@@ -462,8 +468,8 @@ class AclApiTest(unittest.TestCase):
                 "device_id": device_id,
                 "credential_id": "bc" * 16,
                 "public_key_sec1": device.public_key_sec1.hex(),
-                "min_protocol": 1,
-                "max_protocol": 1,
+                "min_protocol": 2,
+                "max_protocol": 2,
             },
             headers={"X-API-KEY": "personal-api-key"},
         )
@@ -505,8 +511,8 @@ class AclApiTest(unittest.TestCase):
                 "device_id": device_id,
                 "credential_id": "de" * 16,
                 "public_key_sec1": device.public_key_sec1.hex(),
-                "min_protocol": 1,
-                "max_protocol": 1,
+                "min_protocol": 2,
+                "max_protocol": 2,
             },
             headers={"X-API-KEY": "personal-api-key"},
         )
@@ -536,8 +542,8 @@ class AclApiTest(unittest.TestCase):
             "device_id": family_id,
             "credential_id": "ef" * 16,
             "public_key_sec1": device.public_key_sec1.hex(),
-            "min_protocol": 1,
-            "max_protocol": 1,
+            "min_protocol": 2,
+            "max_protocol": 2,
         }
         first = self.client.post(
             "/api/v1/acl/personal/enroll",
@@ -590,8 +596,8 @@ class AclApiTest(unittest.TestCase):
                 "device_id": "DEV-NOT-APPROVED",
                 "credential_id": "34" * 16,
                 "public_key_sec1": device.public_key_sec1.hex(),
-                "min_protocol": 1,
-                "max_protocol": 1,
+                "min_protocol": 2,
+                "max_protocol": 2,
             },
             headers={"X-API-KEY": "personal-api-key"},
         )
@@ -612,8 +618,8 @@ class AclApiTest(unittest.TestCase):
             "device_id": device_id,
             "credential_id": "56" * 16,
             "public_key_sec1": device.public_key_sec1.hex(),
-            "min_protocol": 1,
-            "max_protocol": 1,
+            "min_protocol": 2,
+            "max_protocol": 2,
         }
 
         class FailingPublisher:

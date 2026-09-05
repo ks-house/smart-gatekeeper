@@ -590,6 +590,21 @@ CI는 `.github/workflows/protocol.yml`에서 같은 명령을 실행한다. 실�
 
 ## 11. 구현 release gate
 
+### Personal GATT v2 ACL deployment rule
+
+- Personal Android enrollment emits only credential protocol range `2..2`.
+- Schema migration 014 upgrades existing credential rows to `2..2` and queues
+  replacement snapshots for active grants; the asynchronous lease worker
+  publishes the replacement after Backend startup.
+- Replacement/refresh snapshots are always signed as `2..2`, independent of a
+  preceding retained v1 snapshot. Explicit general management APIs keep their
+  bounded compatibility surface, but cannot weaken the personal enrollment
+  request contract.
+- `TargetProofVerifier` protocol-range rejection stays
+  `kUnsupportedVersion`. The public GATT Result and canonical event therefore
+  identify `PROTOCOL_INCOMPATIBLE`, while actual signature verification failure
+  remains `SIGNATURE_INVALID`.
+
 - Android: non-export key, enrollment possession proof, missing/invalidated key 재등록, DER strict parser,
   low-S raw64, secret redaction 시험
 - Target: RNG/boot ID, 5초 single-use session, strict reassembly, ACL atomic/high-watermark, clock/reset,

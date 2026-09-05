@@ -55,6 +55,8 @@
     "backend/db/migrations/012_access_event_actor_ref_up.sql",
     "backend/db/migrations/013_ha_access_event_outbox_down.sql",
     "backend/db/migrations/013_ha_access_event_outbox_up.sql",
+    "backend/db/migrations/014_gatt_v2_acl_contract_down.sql",
+    "backend/db/migrations/014_gatt_v2_acl_contract_up.sql",
     "backend/db/production_schema.sql",
     "backend/db/run_migrations.sh",
     "backend/db/schema.env",

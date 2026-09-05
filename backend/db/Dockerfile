@@ -25,6 +25,8 @@ COPY migrations/012_access_event_actor_ref_up.sql /opt/smart-gatekeeper/migratio
 COPY migrations/012_access_event_actor_ref_down.sql /opt/smart-gatekeeper/migrations/012_down.sql
 COPY migrations/013_ha_access_event_outbox_up.sql /opt/smart-gatekeeper/migrations/013_up.sql
 COPY migrations/013_ha_access_event_outbox_down.sql /opt/smart-gatekeeper/migrations/013_down.sql
+COPY migrations/014_gatt_v2_acl_contract_up.sql /opt/smart-gatekeeper/migrations/014_up.sql
+COPY migrations/014_gatt_v2_acl_contract_down.sql /opt/smart-gatekeeper/migrations/014_down.sql
 COPY schema.env /opt/smart-gatekeeper/schema.env
 COPY run_migrations.sh /usr/local/bin/sgk-migrate
 RUN chmod 0555 /usr/local/bin/sgk-migrate \

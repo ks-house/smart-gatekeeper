@@ -2043,3 +2043,15 @@ tracking.
   `current-main-baseline` to actual feature main with all 102 protected blobs unchanged.
 - Exact Backend/NAS deployment, signed OTA publication and Target install/reboot/health are still
   runtime Gates until their independent evidence is recorded.
+
+## 2026-09-05 GATT v2 ACL contract defect candidate
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner failure evidence | Smart Key Activity showed repeated `GATT_DISCONNECTED` plus one `SIGNATURE_INVALID` at 11:59 after the v2 rollout | CONFIRMED production authentication failure; no assumption about sensor dwell or phone handling |
+| Live Target separation | Target remained on exact `2.1.445+main.g57bfe10`, boot 720, same boot ID, fresh IDLE status, MQTT connected with zero connection failures | NOT a current Target crash or MQTT outage |
+| Source root cause | Android selects fast protocol v2 when Fast RX/TX exist, but personal enrollment and replacement ACL defaults remained `1..1`; `TargetProofVerifier` correctly returned unsupported version and `ProtocolCore` incorrectly exposed it as proof/signature invalid | ROOT CAUSE CONFIRMED across Android, Backend and Target source |
+| Corrective contract | Personal enrollment is exact `2..2`; migration 014 upgrades stored credentials and queues active doors; every replacement refresh signs `2..2`; Target preserves unsupported-version as protocol-incompatible | SOURCE FIX IMPLEMENTED; no credential private material or raw device identifier is migrated |
+| Host and DB validation | Backend discovery passed 213 tests with two declared skips; Target/common discovery had 355 functional passes and one declared skip, with only 12 expected pre-authorization digest failures; a real MariaDB image passed idempotent 013→014 upgrade of a live `1..1` credential to `2..2` plus replacement-job creation | FUNCTIONAL PASS; protected policy rotation remains required |
+| Firmware build | `esp32c6_personal_production` built successfully at 76,968/327,680 RAM and 1,818,664/7,340,032 application flash | PASS for compile/partition fit only; not signed publication or installation |
+| Runtime boundary | No corrected Backend, APK or Target artifact has yet been merged, deployed or installed; no post-fix phone access has been attempted | PENDING trusted-policy rotation, CI, Backend schema 014 deployment, mobile/Target publication, installation and owner access confirmation |

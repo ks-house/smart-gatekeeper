@@ -1429,7 +1429,9 @@ bool ProtocolCore::processProof(const uint8_t* payload, size_t length,
             ? ResultReason::kAclUnavailable
             : (result.reason == ResultReason::kCredentialDenied
                    ? ResultReason::kCredentialDenied
-                   : ResultReason::kProofInvalid);
+                   : (result.reason == ResultReason::kUnsupportedVersion
+                          ? ResultReason::kUnsupportedVersion
+                          : ResultReason::kProofInvalid));
     secureZeroBytes(&request, sizeof(request));
     reject(public_reason, now_ms);
     return false;

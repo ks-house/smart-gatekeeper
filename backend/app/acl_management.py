@@ -2079,8 +2079,8 @@ class AclManagementService:
         public_key_hex: str,
         *,
         actor_ref: str,
-        min_protocol: int = 1,
-        max_protocol: int = 1,
+        min_protocol: int = 2,
+        max_protocol: int = 2,
     ) -> dict[str, Any]:
         """Activate the app-selected public credential for one personal door.
 
@@ -2431,15 +2431,13 @@ class AclManagementService:
                     mqtt_failures += 1
                 envelopes.append(envelope)
                 continue
-            previous = self.store.latest_snapshot(tenant_id, door_id)
-            fields = previous["envelope"]["fields"] if previous else {}
             try:
                 envelope = self.publish_snapshot(
                     tenant_id,
                     door_id,
                     actor_ref=actor_ref,
-                    min_protocol=int(fields.get("min_protocol", 1)),
-                    max_protocol=int(fields.get("max_protocol", 1)),
+                    min_protocol=2,
+                    max_protocol=2,
                 )
             except MqttPublishError:
                 # publish_snapshot persists before push; continue so periodic pull is updated

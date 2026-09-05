@@ -54,6 +54,8 @@ ACCESS_ACTOR_UP = ROOT / "backend" / "db" / "migrations" / "012_access_event_act
 ACCESS_ACTOR_DOWN = ROOT / "backend" / "db" / "migrations" / "012_access_event_actor_ref_down.sql"
 HA_EVENT_OUTBOX_UP = ROOT / "backend" / "db" / "migrations" / "013_ha_access_event_outbox_up.sql"
 HA_EVENT_OUTBOX_DOWN = ROOT / "backend" / "db" / "migrations" / "013_ha_access_event_outbox_down.sql"
+GATT_V2_ACL_UP = ROOT / "backend" / "db" / "migrations" / "014_gatt_v2_acl_contract_up.sql"
+GATT_V2_ACL_DOWN = ROOT / "backend" / "db" / "migrations" / "014_gatt_v2_acl_contract_down.sql"
 PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
@@ -80,7 +82,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-013}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-014}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -268,6 +270,19 @@ class MigrationContractTest(unittest.TestCase):
         self.assertNotIn("DROP TABLE", down.upper())
         self.assertIn("ha_access_event_outbox_preserved", down)
 
+    def test_gatt_v2_acl_migration_upgrades_rows_and_queues_replacement(self) -> None:
+        up = GATT_V2_ACL_UP.read_text(encoding="utf-8")
+        down = GATT_V2_ACL_DOWN.read_text(encoding="utf-8")
+        dockerfile = DB_DOCKERFILE.read_text(encoding="utf-8")
+        self.assertIn("SET min_protocol = 2", up)
+        self.assertIn("max_protocol = 2", up)
+        self.assertIn("'GATT_V2_CONTRACT'", up)
+        self.assertIn("generated_version = NULL", up)
+        self.assertIn("014_gatt_v2_acl_contract_up.sql", dockerfile)
+        self.assertIn("014_gatt_v2_acl_contract_down.sql", dockerfile)
+        self.assertIn("SET min_protocol = 1", down)
+        self.assertIn("'GATT_V1_ROLLBACK'", down)
+
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
         "set RUN_MARIADB_INTEGRATION=1 for production DB image migration test",
@@ -333,10 +348,33 @@ class MigrationContractTest(unittest.TestCase):
                     "-e", f"MIGRATION_SOURCE_COMMIT={'a' * 40}",
                     "-e", "MIGRATION_BACKUP_DIR=/var/backups/smart-gatekeeper",
                 ]
+                migrated_013 = docker(
+                    "exec", *migration_env, name,
+                    "/usr/local/bin/sgk-migrate", "up", "013", check=False,
+                )
+                self.assertEqual(0, migrated_013.returncode, migrated_013.stderr)
+                docker(
+                    "exec", name, "mariadb", "-uroot", f"-p{password}",
+                    "smart_gatekeeper", "-e",
+                    "INSERT INTO acl_tenants "
+                    "(tenant_id,display_name,status,updated_at,created_at) VALUES "
+                    "('11111111111111111111111111111111','migration','ACTIVE',1,1);"
+                    "INSERT INTO credentials "
+                    "(credential_id,tenant_id,public_key_sec1,status,expires_at,"
+                    "legacy_device_ref,min_protocol,max_protocol,created_at,updated_at) VALUES "
+                    "('22222222222222222222222222222222',"
+                    "'11111111111111111111111111111111',CONCAT('04',REPEAT('1',128)),"
+                    "'ACTIVE',NULL,NULL,1,1,1,1);"
+                    "INSERT INTO credential_door_grants "
+                    "(tenant_id,door_id,credential_id,permissions,granted_at,revoked_at) VALUES "
+                    "('11111111111111111111111111111111',"
+                    "'33333333333333333333333333333333',"
+                    "'22222222222222222222222222222222',1,1,NULL);",
+                )
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "013", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "014", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
                 state = docker(
@@ -344,15 +382,23 @@ class MigrationContractTest(unittest.TestCase):
                     "smart_gatekeeper", "-e",
                     "SELECT (SELECT COUNT(*) FROM tenants WHERE unit_number='E-1'),"
                     "(SELECT COUNT(*) FROM schema_migrations),"
-                    "(SELECT script_sha256 FROM schema_migrations WHERE version='013');",
+                    "(SELECT script_sha256 FROM schema_migrations WHERE version='014'),"
+                    "(SELECT CONCAT(min_protocol,':',max_protocol) FROM credentials "
+                    "WHERE credential_id='22222222222222222222222222222222'),"
+                    "(SELECT CONCAT(reason,':',IF(generated_version IS NULL,'NULL','SET')) "
+                    "FROM acl_snapshot_jobs WHERE "
+                    "door_id='33333333333333333333333333333333');",
                 ).stdout.strip().split("\t")
-                expected_013 = subprocess.run(
-                    ["sha256sum", str(HA_EVENT_OUTBOX_UP)],
+                expected_014 = subprocess.run(
+                    ["sha256sum", str(GATT_V2_ACL_UP)],
                     text=True,
                     capture_output=True,
                     check=True,
                 ).stdout.split()[0]
-                self.assertEqual(["1", "12", expected_013], state)
+                self.assertEqual(
+                    ["1", "13", expected_014, "2:2", "GATT_V2_CONTRACT:NULL"],
+                    state,
+                )
                 inserted = docker(
                     "exec", name, "mariadb", "-uroot", f"-p{password}",
                     "smart_gatekeeper", "-e",
