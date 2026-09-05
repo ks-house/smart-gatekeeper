@@ -6787,3 +6787,9 @@
 - Final-main run `33968334698` passed Flutter/native GATT canary, built, signed and atomically published `1.0.0-g6701f32` / version code 43001.
 - Independent strict-HTTPS readback found byte-identical primary/fallback manifests and 55,577,753-byte APKs. Both APK digests match manifest SHA-256 `bcbb16c9e707e86f7bcaaff0c250e08b1f4d47b304f7fe2918370ec14ef885c6`.
 - Publication does not claim Android package installation, credential preservation, first-run health or a physical access result. The owner will update the mobile app separately.
+
+## [2026-09-05] test | Verify exact-final recovery after later brownout
+
+- A post-deployment readback found boot 737 still running exact `2.1.462+main.g6701f32`; retained diagnostics report `BROWNOUT`, `planned_restart=none`, previous uptime 353,573 ms and no coredump matching this reset.
+- At uptime 486 seconds the Target was online/IDLE with MQTT 1/1, zero failures, BLE advertising expected/active and relay OFF/pin high. The validated image remained installed, so this was not an OTA rollback.
+- Supply/wiring diagnosis and repeated power-stability evidence remain open electrical field Gates. No phone authentication, sensor passage, relay actuation or physical door result was claimed.
