@@ -88,6 +88,9 @@ class MainActivity: FlutterActivity() {
                 "getHealth" -> {
                     result.success(BleGattHealthBridge.snapshot(applicationContext))
                 }
+                "getRecentDiagnostics" -> {
+                    result.success(BleGattHealthBridge.recentDiagnostics(applicationContext))
+                }
                 "dismissAccessReadyNotification" -> {
                     AccessResultNotifier.dismiss(applicationContext)
                     result.success(true)

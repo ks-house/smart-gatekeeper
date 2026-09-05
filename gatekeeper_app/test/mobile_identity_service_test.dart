@@ -358,6 +358,37 @@ void main() {
     });
     expect(body, isNot(contains('open_door')));
   });
+
+  test(
+      'diagnostic upload uses authenticated personal endpoint and exact bundle',
+      () async {
+    final bundleRef = List<String>.filled(32, 'a').join();
+    late http.Request captured;
+    final service = MobileIdentityService(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          '{"accepted":true,"bundle_ref":"$bundleRef"}',
+          200,
+        );
+      }),
+      nativeBridge: _IdentityNativeBridge(),
+      deviceIdProvider: () async => 'legacy-device',
+      backendBaseUrl: 'https://example.test/api/v1',
+      apiKey: 'test-key',
+    );
+    final bundle = <String, Object?>{
+      'schema': 'sgk-mobile-support-v2',
+      'bundle_ref': bundleRef,
+    };
+
+    expect(await service.uploadDiagnostics(bundle), isTrue);
+    final body = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(captured.url.path, '/api/v1/acl/personal/diagnostics');
+    expect(body['bundle'], bundle);
+    expect(body['credential_id'], 'credential-1');
+    expect(body['public_key_sec1'], '04abc');
+  });
 }
 
 class _IdentityNativeBridge extends NativeGattWorkerHealthBridge {

@@ -53,4 +53,41 @@ class BleWakeJournalHealthProjectionTest {
     assertNull(result["strongestRssi"])
     assertEquals(3, result["errorCode"])
   }
+
+  @Test
+  fun recentRedactedIsBoundedNewestAndExcludesInternalIdentity() {
+    val result = BleWakeJournal.recentRedactedFromJson(
+      """[
+        {"source":"first","success":true,"received_epoch_ms":1000,
+         "received_elapsed_ms":10,"callback_type":1,"error_code":0,
+         "process_id":"private-a","device_address":"AA:BB:CC:DD:EE:FF"},
+        {"source":"second","success":false,"received_epoch_ms":2000,
+         "received_elapsed_ms":20,"callback_type":2,"error_code":3,
+         "process_id":"private-b","credential_id":"private-b"}
+      ]""",
+      1,
+    )
+
+    assertEquals(1, result.size)
+    assertEquals("second", result.single()["source"])
+    assertEquals(20L, result.single()["receivedElapsedMs"])
+    assertEquals(
+      setOf(
+        "source",
+        "processRef",
+        "success",
+        "receivedEpochMs",
+        "receivedElapsedMs",
+        "callbackLatencyMs",
+        "strongestRssi",
+        "screenInteractive",
+        "resultCount",
+        "callbackType",
+        "errorCode",
+      ),
+      result.single().keys,
+    )
+    assertEquals(16, result.single()["processRef"].toString().length)
+    assertFalse(result.single()["processRef"].toString().contains("private"))
+  }
 }

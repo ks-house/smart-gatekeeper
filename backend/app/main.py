@@ -89,6 +89,7 @@ try:
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
+    from .mobile_diagnostics import classify_bundle
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from access_actor_ref import (
         access_credential_ref_is_valid,
@@ -131,6 +132,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
+    from mobile_diagnostics import classify_bundle
 
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -2449,7 +2451,74 @@ def _parse_authenticated_target_status(
         canonical=canonical,
     ):
         return None
-    return {
+    controller_keys = {
+        "firmware",
+        "gatt_accepted_connections",
+        "gatt_disconnects",
+        "gatt_challenges_issued",
+        "gatt_proof_frames_received",
+        "gatt_proofs_verified",
+        "gatt_proofs_rejected",
+        "gatt_results_indicated",
+        "gatt_armed_entries",
+        "gatt_sensor_detections",
+        "gatt_relay_on_count",
+        "gatt_relay_off_count",
+        "gatt_terminal_count",
+        "gatt_last_stage_ms",
+        "gatt_last_stage",
+        "gatt_last_session_id",
+        "previous_access_valid",
+        "previous_access_uptime_ms",
+        "previous_access_stage",
+        "previous_access_session_id",
+    }
+    controller = None
+    diagnostic_presence_keys = controller_keys - {"firmware"}
+    present_controller_keys = diagnostic_presence_keys.intersection(document)
+    if present_controller_keys:
+        if not controller_keys.issubset(document):
+            return None
+        counter_keys = controller_keys - {
+            "firmware",
+            "gatt_last_stage",
+            "gatt_last_session_id",
+            "previous_access_valid",
+            "previous_access_stage",
+            "previous_access_session_id",
+        }
+        if any(
+            isinstance(document[key], bool)
+            or not isinstance(document[key], int)
+            or not 0 <= document[key] <= (1 << 32) - 1
+            for key in counter_keys
+        ):
+            return None
+        if (
+            not isinstance(document["firmware"], str)
+            or re.fullmatch(r"[A-Za-z0-9.+_-]{1,64}", document["firmware"])
+            is None
+            or not isinstance(document["gatt_last_stage"], str)
+            or re.fullmatch(r"[A-Z0-9_]{1,23}", document["gatt_last_stage"])
+            is None
+            or not isinstance(document["previous_access_valid"], bool)
+            or not isinstance(document["previous_access_stage"], str)
+            or re.fullmatch(r"[A-Za-z0-9_]{1,23}", document["previous_access_stage"])
+            is None
+        ):
+            return None
+        for session_key in (
+            "gatt_last_session_id",
+            "previous_access_session_id",
+        ):
+            session_value = document[session_key]
+            if session_value in (None, "none"):
+                continue
+            if not _is_lower_uuid4(session_value):
+                return None
+        controller = {key: document[key] for key in sorted(controller_keys)}
+
+    parsed = {
         "target_id": target_id,
         "source_boot_id": document["boot_id"],
         "source_boot_count": boot_count,
@@ -2466,6 +2535,9 @@ def _parse_authenticated_target_status(
         "integrity_key_id": access_auth["key_id"],
         "integrity_tag": bytes.fromhex(access_auth["tag"]),
     }
+    if controller is not None:
+        parsed["controller_diagnostics"] = controller
+    return parsed
 
 
 def _verified_home_assistant_status_projection(
@@ -3977,10 +4049,86 @@ _access_status_rate_limiter = SlidingWindowRateLimiter(
 _ops_hmac_key = OPS_HMAC_KEY if len(OPS_HMAC_KEY) >= 32 else secrets.token_bytes(32)
 
 
+def _store_mobile_diagnostics(
+    tenant_id: str, credential_id: str, bundle: dict
+) -> dict[str, object]:
+    """Append one authenticated redacted bundle without storing credential IDs."""
+
+    canonical = json.dumps(bundle, sort_keys=True, separators=(",", ":"))
+    if len(canonical.encode("utf-8")) > 65536:
+        raise ValueError("diagnostic bundle is too large")
+    created = datetime.fromisoformat(
+        str(bundle["created_at"]).replace("Z", "+00:00")
+    )
+    created_at_ms = int(created.timestamp() * 1000)
+    credential_ref = opaque_ref(
+        credential_id, _ops_hmac_key, "mobile-diagnostic-credential"
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    conn = None
+    try:
+        conn = get_db()
+        conn.begin()
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    "INSERT INTO mobile_diagnostic_bundles "
+                    "(tenant_id,credential_ref,bundle_ref,created_at_ms,payload_json,payload_sha256) "
+                    "VALUES (%s,%s,%s,%s,%s,%s)",
+                    (
+                        tenant_id,
+                        credential_ref,
+                        bundle["bundle_ref"],
+                        created_at_ms,
+                        canonical,
+                        digest,
+                    ),
+                )
+            except pymysql.err.IntegrityError as exc:
+                if not exc.args or exc.args[0] != 1062:
+                    raise
+                conn.rollback()
+                with conn.cursor() as lookup:
+                    lookup.execute(
+                        "SELECT payload_sha256 FROM mobile_diagnostic_bundles "
+                        "WHERE tenant_id=%s AND credential_ref=%s AND bundle_ref=%s",
+                        (tenant_id, credential_ref, bundle["bundle_ref"]),
+                    )
+                    existing = lookup.fetchone()
+                if not existing or not secrets.compare_digest(
+                    str(existing.get("payload_sha256") or ""), digest
+                ):
+                    raise RuntimeError("diagnostic bundle identity conflict")
+                return {
+                    "accepted": True,
+                    "bundle_ref": bundle["bundle_ref"],
+                    "deduplicated": True,
+                }
+        conn.commit()
+        return {
+            "accepted": True,
+            "bundle_ref": bundle["bundle_ref"],
+            "deduplicated": False,
+        }
+    except Exception as exc:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise RuntimeError("diagnostic persistence unavailable") from exc
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _route_group(path: str) -> str:
     if path.startswith("/api/v1/admin/control") or path == "/api/v1/door/open":
         return "control"
-    if path == "/api/v1/acl/personal/activity":
+    if path in {
+        "/api/v1/acl/personal/activity",
+        "/api/v1/acl/personal/diagnostics",
+    }:
         return "access_status"
     if path in {"/api/v1/door/prearm", "/api/v1/auth/verify"}:
         return "authentication"
@@ -4283,6 +4431,7 @@ if ACL_MANAGEMENT_ENABLED:
                         personal_tenant_id=ACL_PERSONAL_TENANT_ID,
                         personal_door_id=ACL_PERSONAL_DOOR_ID,
                         personal_access_session=_personal_access_session,
+                        personal_diagnostics_ingest=_store_mobile_diagnostics,
                     ),
                 )
             )
@@ -5996,6 +6145,141 @@ def get_all_access_events_admin(
     except Exception as exc:
         log.error("[ADMIN-DB] global access-event query unavailable")
         raise HTTPException(status_code=503, detail="global access-event query unavailable") from exc
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.get("/api/v1/admin/diagnostic-attempts")
+def get_diagnostic_attempts_admin(
+    request: Request,
+    limit: int = Query(30, ge=1, le=100),
+):
+    """Project consented mobile bundles against immutable Target evidence."""
+
+    _admin_principal(request, roles=(ROLE_ADMIN, ROLE_AUDITOR), tenant_scope="*")
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT credential_ref,bundle_ref,created_at_ms,payload_json,received_at "
+                "FROM mobile_diagnostic_bundles ORDER BY received_at DESC,id DESC LIMIT %s",
+                (limit,),
+            )
+            rows = cur.fetchall()
+            cur.execute(
+                "SELECT name,unit_number,credential_id FROM tenants "
+                "WHERE credential_id IS NOT NULL ORDER BY id ASC"
+            )
+            actors = cur.fetchall()
+            live_target = _target_gate_states.live_evidence(
+                COMMAND_TARGET_ID,
+                HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS,
+            )
+            live_controller = (
+                live_target.get("controller_diagnostics")
+                if live_target is not None
+                else None
+            )
+            attempts = []
+            for row in rows:
+                payload = row["payload_json"]
+                bundle = json.loads(payload) if isinstance(payload, str) else payload
+                session_ids = [
+                    item.get("target_session_id")
+                    for item in bundle.get("sessions", [])
+                    if item.get("target_session_id")
+                ]
+                target_events = []
+                if session_ids:
+                    placeholders = ",".join(["%s"] * len(session_ids))
+                    cur.execute(
+                        "SELECT session_id,event_code,reason_code,received_at "
+                        "FROM access_event_history WHERE integrity_status='verified' "
+                        f"AND session_id IN ({placeholders}) "
+                        "ORDER BY received_at ASC,id ASC",
+                        tuple(session_ids),
+                    )
+                    target_events = cur.fetchall()
+                actor_matches = [
+                    actor
+                    for actor in actors
+                    if secrets.compare_digest(
+                        row["credential_ref"],
+                        opaque_ref(
+                            actor["credential_id"],
+                            _ops_hmac_key,
+                            "mobile-diagnostic-credential",
+                        ),
+                    )
+                ]
+                controller_projection = {"fresh": False}
+                correlated_controller = None
+                if isinstance(live_controller, dict):
+                    current_session = live_controller.get("gatt_last_session_id")
+                    previous_session = live_controller.get(
+                        "previous_access_session_id"
+                    )
+                    matches_current = current_session in session_ids
+                    matches_previous = previous_session in session_ids
+                    correlated_controller = (
+                        live_controller
+                        if matches_current or matches_previous
+                        else None
+                    )
+                    controller_projection = {
+                        "fresh": True,
+                        "correlated": correlated_controller is not None,
+                        "firmware": live_controller.get("firmware"),
+                        "source_boot_count": str(
+                            live_target.get("source_boot_count")
+                        ),
+                        "source_boot_ref": opaque_ref(
+                            str(live_target.get("source_boot_id") or ""),
+                            _ops_hmac_key,
+                            "diagnostic-target-boot",
+                        ),
+                        "last_stage": live_controller.get("gatt_last_stage"),
+                        "previous_stage": live_controller.get(
+                            "previous_access_stage"
+                        ),
+                        "previous_access_valid": live_controller.get(
+                            "previous_access_valid"
+                        ),
+                    }
+                attempts.append(
+                    {
+                        "bundle_ref": row["bundle_ref"],
+                        "created_at_ms": str(row["created_at_ms"]),
+                        "received_at": row["received_at"].isoformat() + "Z",
+                        "actor_name": actor_matches[0]["name"]
+                        if len(actor_matches) == 1
+                        else None,
+                        "actor_unit_number": actor_matches[0]["unit_number"]
+                        if len(actor_matches) == 1
+                        else None,
+                        "actor_resolution": "verified"
+                        if len(actor_matches) == 1
+                        else "unresolved",
+                        "app": bundle.get("app", {}),
+                        "field_test": bundle.get("field_test"),
+                        "wake_count": len(bundle.get("wake_events", [])),
+                        "session_count": len(bundle.get("sessions", [])),
+                        "target_controller": controller_projection,
+                        "classification": classify_bundle(
+                            bundle,
+                            target_events,
+                            target_controller=correlated_controller,
+                        ),
+                    }
+                )
+        return {"attempts": attempts}
+    except Exception as exc:
+        log.error("[ADMIN-DB] diagnostic attempt query unavailable")
+        raise HTTPException(
+            status_code=503, detail="diagnostic attempt query unavailable"
+        ) from exc
     finally:
         if conn:
             conn.close()

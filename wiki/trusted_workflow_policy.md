@@ -2009,3 +2009,16 @@ This policy-only authorization deploys no schema, publishes or installs no APK
 or Target firmware, and sends no device command. Policy merge, feature history
 connection, hosted CI, actual-main rotation, owner retention choice and runtime
 field verification remain separate Gates.
+
+## 73. Field diagnostics merge connection
+
+Policy PR #366 passed the hosted inert-byte trusted-base verifier and merged as
+main `aa428649d75b77f91bcfba752a71f6ce05c0d1c6`. That exact policy main is
+merged into the feature history without rewriting immutable feature
+`cdcc757b856bc503e9d85b874d67adc425c74a49`.
+
+The 16 authorized protected blobs therefore remain the reviewed feature bytes
+while the other 92 resolve from trusted main. This history connection publishes,
+deploys and installs nothing. Fresh hosted feature CI, actual-main merge, final
+policy rotation, owner retention choice and runtime field evidence remain
+required.

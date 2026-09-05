@@ -1080,3 +1080,23 @@ an inference from application HMAC tests.
 | Active ACL | Raw Target status reported active ACL version 1331 with exact protocol range `2..2` | PASS; the earlier 14:39 `PROTOCOL_INCOMPATIBLE` stale-ACL hypothesis is no longer present in installed state |
 | HA discovery | Retained config named `[Gatekeeper] BLE 광고 상태`, used raw Target status, device class `running` and 30-second expiry | PASS for discovery contract and MQTT publication; HA UI rendering remains a separate observation |
 | Physical acceptance | No external BLE scanner or fresh hands-free phone approach was available in WSL | PENDING over-air reception and automatic Android authentication/door result |
+
+## 2026-09-05 live ACL 1340 reconciliation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| App identity card | Owner screenshot displayed `등록 출입문 1 · ACL 1340`, `스마트키 사용 가능` and the green access-ready mark | Backend personal-status projection is ACL 1340 and access-ready; the UI alone is not physical access proof |
+| Live Target readback | Target boot 727 reported exact firmware `2.1.452+main.g2bedd83`, active ACL 1340, protocol range `2..2`, IDLE, BLE advertising expected/active, and MQTT 1/1 with zero failures | MATCH: the app and Target currently agree on ACL 1340; the earlier ACL 1331 observation was the boot-726 post-install snapshot |
+| Backend readiness meaning | `access_ready` requires the latest Target ACK to be `APPLIED` for the same ACL version and SHA-256 digest | The green mark is backed by exact version/digest acknowledgement, not merely a phone-local display value |
+| Later reset boundary | Boot 727 reported `BROWNOUT` while retaining exact firmware 452 and ACL 1340 | Separate electrical field issue; not evidence of an ACL mismatch |
+
+## 2026-09-05 field diagnostics D0-D2 source verification
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Backend unit and contract suite | 222 tests passed; 2 optional environment tests skipped | PASS for strict bundle validation, authenticated/idempotent storage, first-missing-stage classification, admin projection and schema/deploy contracts |
+| Real MariaDB migration | Existing-volume upgrade through schema 015 and up/write/down/legacy-read scenarios both passed | PASS for the tested MariaDB migration and rollback compatibility paths; this is not a NAS deployment |
+| Flutter diagnostics | 27 focused tests passed and `dart analyze lib test` reported no issues | PASS for the default-OFF consent setting, bounded redacted report, field marker and non-blocking upload behavior |
+| Android native journal | Focused Gradle/JUnit test passed | PASS for newest-first 50-session/100-wake bounds and omission/hashing of phone/process identifiers |
+| Target firmware | Production `esp32c6` build passed at RAM 26.9% and flash 24.9%; exact Target OTA input contract passed | PASS for source/build and deferred telemetry contract; no Target OTA or physical access action was performed |
+| Evidence ceiling | No deployed phone bundle, installed firmware readback or new hands-free approach trial exists for this candidate | D3 PENDING; source tests do not prove phone RF reception, Target action or physical door movement |

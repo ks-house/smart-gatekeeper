@@ -18,6 +18,8 @@ namespace {
 
 constexpr uint32_t kBreadcrumbMagic = 0x474B4458;  // "GKDX"
 constexpr uint16_t kBreadcrumbVersion = 1;
+constexpr uint32_t kAccessBreadcrumbMagic = 0x474B4143;  // "GKAC"
+constexpr uint16_t kAccessBreadcrumbVersion = 1;
 
 struct RtcBreadcrumb {
   uint32_t magic;
@@ -35,8 +37,22 @@ struct RtcBreadcrumb {
 
 RTC_NOINIT_ATTR RtcBreadcrumb rtcBreadcrumb;
 
+struct RtcAccessBreadcrumb {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t reserved;
+  uint32_t checksum;
+  uint32_t uptimeMs;
+  char stage[24];
+  char sessionId[37];
+};
+
+RTC_NOINIT_ATTR RtcAccessBreadcrumb rtcAccessBreadcrumb;
+
 RtcBreadcrumb previousBreadcrumb = {};
 bool previousBreadcrumbIsValid = false;
+RtcAccessBreadcrumb previousAccessBreadcrumb = {};
+bool previousAccessBreadcrumbIsValid = false;
 sgk::EvidencePersistenceFailureLatch evidencePersistenceFailureLatch;
 
 char targetIdValue[16] = "unknown";
@@ -76,10 +92,34 @@ bool isBreadcrumbValid(const RtcBreadcrumb& value) {
          value.checksum == breadcrumbChecksum(value);
 }
 
+uint32_t accessBreadcrumbChecksum(const RtcAccessBreadcrumb& value) {
+  RtcAccessBreadcrumb copy = value;
+  copy.checksum = 0;
+  const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&copy);
+  uint32_t hash = 2166136261UL;
+  for (size_t i = 0; i < sizeof(copy); ++i) {
+    hash ^= bytes[i];
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
+bool isAccessBreadcrumbValid(const RtcAccessBreadcrumb& value) {
+  return value.magic == kAccessBreadcrumbMagic &&
+         value.version == kAccessBreadcrumbVersion &&
+         value.checksum == accessBreadcrumbChecksum(value);
+}
+
 void commitBreadcrumb() {
   rtcBreadcrumb.magic = kBreadcrumbMagic;
   rtcBreadcrumb.version = kBreadcrumbVersion;
   rtcBreadcrumb.checksum = breadcrumbChecksum(rtcBreadcrumb);
+}
+
+void commitAccessBreadcrumb() {
+  rtcAccessBreadcrumb.magic = kAccessBreadcrumbMagic;
+  rtcAccessBreadcrumb.version = kAccessBreadcrumbVersion;
+  rtcAccessBreadcrumb.checksum = accessBreadcrumbChecksum(rtcAccessBreadcrumb);
 }
 
 const char* resetReasonName(esp_reset_reason_t reason) {
@@ -162,6 +202,11 @@ void DiagnosticsManager::begin() {
   if (previousBreadcrumbIsValid) {
     previousBreadcrumb = rtcBreadcrumb;
   }
+  previousAccessBreadcrumbIsValid =
+      isAccessBreadcrumbValid(rtcAccessBreadcrumb);
+  if (previousAccessBreadcrumbIsValid) {
+    previousAccessBreadcrumb = rtcAccessBreadcrumb;
+  }
   evidencePersistenceFailureLatch.begin(
       previousBreadcrumbIsValid &&
       previousBreadcrumb.evidencePersistenceFailed != 0);
@@ -186,6 +231,11 @@ void DiagnosticsManager::begin() {
   strlcpy(rtcBreadcrumb.state, "BOOTING", sizeof(rtcBreadcrumb.state));
   strlcpy(rtcBreadcrumb.action, "boot", sizeof(rtcBreadcrumb.action));
   commitBreadcrumb();
+
+  memset(&rtcAccessBreadcrumb, 0, sizeof(rtcAccessBreadcrumb));
+  strlcpy(rtcAccessBreadcrumb.stage, "BOOTING",
+          sizeof(rtcAccessBreadcrumb.stage));
+  commitAccessBreadcrumb();
 
   inspectCoreDump();
 
@@ -225,6 +275,16 @@ void DiagnosticsManager::noteRelayState(bool relayCommandedOn,
   rtcBreadcrumb.relayCommandedOn = relayCommandedOn ? 1 : 0;
   rtcBreadcrumb.relayPinLevel = static_cast<int8_t>(relayPinLevel);
   noteAction(action);
+}
+
+void DiagnosticsManager::noteAccessStage(const char* stage,
+                                         const char* sessionId) {
+  strlcpy(rtcAccessBreadcrumb.stage, stage ? stage : "UNKNOWN",
+          sizeof(rtcAccessBreadcrumb.stage));
+  strlcpy(rtcAccessBreadcrumb.sessionId, sessionId ? sessionId : "",
+          sizeof(rtcAccessBreadcrumb.sessionId));
+  rtcAccessBreadcrumb.uptimeMs = millis();
+  commitAccessBreadcrumb();
 }
 
 void DiagnosticsManager::markEvidencePersistenceFailure() {
@@ -366,6 +426,29 @@ int DiagnosticsManager::previousRelayPinLevel() {
 bool DiagnosticsManager::previousEvidencePersistenceFailed() {
   return previousBreadcrumbIsValid &&
          previousBreadcrumb.evidencePersistenceFailed != 0;
+}
+
+bool DiagnosticsManager::previousAccessBreadcrumbValid() {
+  return previousAccessBreadcrumbIsValid;
+}
+
+uint32_t DiagnosticsManager::previousAccessUptimeMs() {
+  return previousAccessBreadcrumbIsValid
+             ? previousAccessBreadcrumb.uptimeMs
+             : 0;
+}
+
+const char* DiagnosticsManager::previousAccessStage() {
+  return previousAccessBreadcrumbIsValid
+             ? previousAccessBreadcrumb.stage
+             : "unknown";
+}
+
+const char* DiagnosticsManager::previousAccessSessionId() {
+  return previousAccessBreadcrumbIsValid &&
+                 previousAccessBreadcrumb.sessionId[0] != '\0'
+             ? previousAccessBreadcrumb.sessionId
+             : "none";
 }
 
 uint32_t DiagnosticsManager::mqttConnectCount() {

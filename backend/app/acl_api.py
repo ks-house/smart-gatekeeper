@@ -12,8 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from .acl_management import AclManagementService, CredentialConflictError
+    from .mobile_diagnostics import MobileDiagnosticBundle
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_management import AclManagementService, CredentialConflictError
+    from mobile_diagnostics import MobileDiagnosticBundle
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,9 @@ class AclApiConfig:
             [str, str, Optional[str], Optional[str], Optional[int], Optional[str]],
             Optional[dict[str, Any]],
         ]
+    ] = None
+    personal_diagnostics_ingest: Optional[
+        Callable[[str, str, dict[str, Any]], dict[str, Any]]
     ] = None
 
 
@@ -109,6 +114,12 @@ class PersonalActivityRequest(PersonalStatusRequest):
     access_signature_raw64: Optional[str] = Field(
         default=None, pattern=r"^[0-9a-f]{128}$"
     )
+
+
+class PersonalDiagnosticsRequest(PersonalStatusRequest):
+    credential_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    public_key_sec1: str = Field(pattern=r"^04[0-9a-f]{128}$")
+    bundle: MobileDiagnosticBundle
 
 
 class SnapshotPublishRequest(TenantRequest):
@@ -414,6 +425,33 @@ def create_acl_router(
                 else None
             )
         return response
+
+    @router.post("/api/v1/acl/personal/diagnostics")
+    def personal_diagnostics(
+        request: PersonalDiagnosticsRequest,
+        x_api_key: Optional[str] = Header(default=None, alias="X-API-KEY"),
+    ) -> dict[str, Any]:
+        require_personal(x_api_key)
+        # Reuse the established credential/public-key equality check. Diagnostic
+        # upload never changes authorization and is unavailable when storage is
+        # not explicitly configured.
+        _invoke(
+            service.personal_mobile_activity,
+            config.personal_tenant_id,
+            request.credential_id,
+            request.public_key_sec1,
+        )
+        if config.personal_diagnostics_ingest is None:
+            raise HTTPException(status_code=503, detail="diagnostic ingest is unavailable")
+        bundle = request.bundle.model_dump(by_alias=True, mode="json")
+        if len(str(bundle)) > 65536:
+            raise HTTPException(status_code=413, detail="diagnostic bundle is too large")
+        return _invoke(
+            config.personal_diagnostics_ingest,
+            config.personal_tenant_id,
+            request.credential_id,
+            bundle,
+        )
 
     def admin_status_change(
         request: CredentialActionRequest,

@@ -222,6 +222,22 @@
     </table>
   </div>
 
+  <div class="card">
+    <div class="card-title">
+      <span>🧭 현장 진단 타임라인 (휴대폰 동의 업로드)</span>
+      <button class="btn-action" style="background: var(--card-border); color: var(--text);" onclick="loadDiagnostics()">🔄 새로고침</button>
+    </div>
+    <p class="audit-note">첫 누락 단계를 표시합니다. Target 광고 활성은 컨트롤러 상태일 뿐 휴대폰의 RF 수신 증거가 아니며, 릴레이 완료도 실제 문짝 이동을 증명하지 않습니다.</p>
+    <table>
+      <thead>
+        <tr><th>시각</th><th>사용자 / 앱</th><th>표시</th><th>수집량</th><th>마지막 확인</th><th>첫 누락</th></tr>
+      </thead>
+      <tbody id="diagnosticsTableBody">
+        <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">동의하여 업로드된 진단이 없습니다.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
   <!-- 시스템 출입 이력 Audit Logs -->
   <div class="card">
     <div class="card-title">
@@ -579,6 +595,51 @@
       }
     }
 
+    async function loadDiagnostics() {
+      try {
+        const res = await fetch('/api/v1/admin/diagnostic-attempts?limit=50', {
+          headers: adminHeaders(), credentials: 'same-origin'
+        });
+        if (!res.ok) {
+          await showRequestFailure(res, '현장 진단 조회 실패');
+          return;
+        }
+        const attempts = (await res.json()).attempts || [];
+        const tbody = document.getElementById('diagnosticsTableBody');
+        tbody.innerHTML = '';
+        if (attempts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">동의하여 업로드된 진단이 없습니다.</td></tr>';
+          return;
+        }
+        attempts.forEach(item => {
+          const tr = document.createElement('tr');
+          const actor = item.actor_resolution === 'verified'
+            ? `${escapeHtml(item.actor_name)} · ${escapeHtml(item.actor_unit_number)}`
+            : '사용자 확인 불가';
+          const app = item.app || {};
+          const marker = item.field_test && item.field_test.ref
+            ? escapeHtml(item.field_test.ref)
+            : '일반 자동 수집';
+          const classification = item.classification || {};
+          const target = item.target_controller || {};
+          const targetEvidence = target.fresh
+            ? `Target ${target.correlated ? '연결됨' : '현재 상태만'} · ${escapeHtml(target.last_stage || '-')}`
+            : 'Target 상태 만료';
+          tr.innerHTML = `
+            <td>${new Date(Number(item.created_at_ms)).toLocaleString('ko-KR')}</td>
+            <td>${actor}<br><small>${escapeHtml(app.version || '-')}+${escapeHtml(app.build || '-')}</small></td>
+            <td>${marker}<br><small>bundle ${escapeHtml(shortOpaqueRef(item.bundle_ref))}</small></td>
+            <td>깨움 ${Number(item.wake_count || 0)} · 세션 ${Number(item.session_count || 0)}<br><small>${targetEvidence}</small></td>
+            <td>${escapeHtml(classification.last_stage || 'UNKNOWN')}</td>
+            <td><span class="badge badge-warning">${escapeHtml(classification.first_missing || 'UNKNOWN')}</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     // 마스터 개방은 서버의 GATEKEEPER_API_KEY 와 일치하는 키를 요구한다.
     // (issue.md P3-22 — 예전에는 device_id 없이 누구나 문을 열 수 있었다)
     // 키는 탭이 닫히면 사라지는 sessionStorage 에만 보관한다.
@@ -627,6 +688,7 @@
       bootstrapAdminSession().then(() => {
         loadTenants();
         loadLogs();
+        loadDiagnostics();
       }).catch((error) => alert(error.message));
     };
   </script>

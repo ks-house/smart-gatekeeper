@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-09-04
+updated: 2026-09-05
 source_of_truth: true
 applies_to:
   - firmware
@@ -18,15 +18,30 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-09-05 field diagnostics policy authorization candidate
+## 2026-09-05 field diagnostics D0-D2 source and policy-authorized candidate
 
-- Policy candidate binds immutable feature
-  `cdcc757b856bc503e9d85b874d67adc425c74a49` to the complete 108-path
-  protected digest map. Sixteen protected paths are new or changed; the other
-  92 retain trusted-main bytes.
-- This is source authorization only. Schema 015 deployment, mobile publication
-  and installation, Target OTA/reboot/health, uploaded-record retention policy
-  and a physical field trial remain separate release Gates.
+- Android now preserves and exports at most 50 redacted GATT sessions and 100
+  wake callbacks with app/SDK, opaque process reference, scheduler/GATT phase
+  times and fixed reason codes. A random 10-minute field marker can capture a
+  no-wake trial; automatic upload is independently OFF by default and requires
+  the phone owner to enable the disclosed setting.
+- Target source adds boot-local connection/challenge/proof/result/ARMED/sensor/
+  relay/terminal high-water counters plus last stage/session to the existing
+  deferred retained status. A separate RTC access breadcrumb preserves the last
+  stage across warm reset without changing the existing `GKDX` layout or doing
+  MQTT/NVS work from BLE, sensor or relay callbacks.
+- Backend schema 015 strictly validates and idempotently stores consented mobile
+  bundles, resolves the current actor, joins verified Target canonical events
+  and a fresh Target controller/reset breadcrumb, and renders the last proven
+  and first missing stage in the administrator page. HA remains a low-cardinality
+  operational summary and receives no attempt journal.
+- Local Python, Flutter/Kotlin and ESP32-C6 build evidence is recorded in
+  `hardware_test.md`. Policy PR #366 authorizes immutable feature
+  `cdcc757b856bc503e9d85b874d67adc425c74a49` with the complete 108-path
+  digest map (16 new/changed, 92 trusted-main bytes). This is not yet NAS schema
+  migration, APK installation, Target OTA or a physical owner/family trial.
+  Uploaded-record automatic retention duration is also still an owner/privacy
+  policy Gate and is disclosed in-app rather than silently invented.
 
 ## 2026-09-04 23:13 KST Target restart and OTA status readback
 

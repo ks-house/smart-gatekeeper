@@ -30,7 +30,7 @@ RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 DEPLOY_README = ROOT / "backend" / "deploy" / "README.md"
 LATEST_SCHEMA_UP = (
-    ROOT / "backend" / "db" / "migrations" / "014_gatt_v2_acl_contract_up.sql"
+    ROOT / "backend" / "db" / "migrations" / "015_mobile_diagnostics_up.sql"
 )
 DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 
@@ -38,7 +38,7 @@ DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 class NasBackendDeployContractTest(unittest.TestCase):
     def test_schema_identity_is_manifest_derived_and_image_bound(self):
         expected = hashlib.sha256(LATEST_SCHEMA_UP.read_bytes()).hexdigest()
-        self.assertEqual(("014", expected), create_release_bundle.schema_identity())
+        self.assertEqual(("015", expected), create_release_bundle.schema_identity())
         wrapper = WRAPPER.read_text(encoding="utf-8")
         self.assertIn("validate_db_image_schema_identity", wrapper)
         self.assertIn("schema downgrade is not admitted", wrapper)
@@ -313,8 +313,8 @@ class NasBackendDeployContractTest(unittest.TestCase):
                 "ADMIN_TRUSTED_PROXY_IPS": "127.0.0.1",
                 "ACL_SIGNING_KEY_ID": "1",
                 "BUILD_SHA": "c" * 40,
-                "SCHEMA_VERSION": "014",
-                "SCHEMA_SHA256": "086bbc53126e98d3de5ae899040352c201e4c1d94cea1508ead477ef95d35e4d",
+                "SCHEMA_VERSION": "015",
+                "SCHEMA_SHA256": "6b2358c69fb3ce0d3480a56481c97ab82ad0312aa18350be96ca6923cb8d5cf8",
                 "SGK_SECRET_DIR": "/tmp/sgk-ci-secrets",
                 "MARIADB_DATA_VOLUME": "existing-db",
                 "API_STATE_VOLUME": "api-state",

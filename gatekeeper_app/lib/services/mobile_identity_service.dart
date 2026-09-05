@@ -356,6 +356,25 @@ class MobileIdentityService {
     );
   }
 
+  Future<bool> uploadDiagnostics(Map<String, Object?> bundle) async {
+    if (_apiKey.isEmpty || bundle['schema'] != 'sgk-mobile-support-v2') {
+      return false;
+    }
+    try {
+      final body = await _identityBody();
+      if (!body.containsKey('credential_id') ||
+          !body.containsKey('public_key_sec1')) {
+        return false;
+      }
+      body['bundle'] = bundle;
+      final response = await _post('diagnostics', body);
+      return response?['accepted'] == true &&
+          response?['bundle_ref'] == bundle['bundle_ref'];
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String> requestRegistration({
     required String name,
     required String unitNumber,
