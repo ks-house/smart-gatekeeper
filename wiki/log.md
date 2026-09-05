@@ -6762,3 +6762,9 @@
 - Boot 733 kept exact 459, IDLE, relay OFF, MQTT 1/1 and BLE advertising active through uptime 61 seconds, then controlled rollback restored 452 as boot 734. Breadcrumb `ota_health_timeout` proves no sample gap exceeded five seconds but failed to retain the historical false predicate.
 - Recovered 452 reports free heap 80,972 B, largest block 73,716 B and historical minimum 20,768 B. The new candidate uses 48 KiB aggregate plus 32 KiB contiguous heap health and preserves the last safe/network/heap/sample-gap reset cause while retaining 30/120-second safety windows.
 - Production firmware builds at 26.9% RAM and 24.9% flash; focused 45 tests pass. Protected review, strictly newer publication and one single OTA remain pending.
+
+## [2026-09-05] compile | Authorize OTA heap-headroom health correction
+
+- Pinned `ota-health-headroom-c9e61cd-persistent-baseline` to immutable feature `c9e61cdd35be3b37c18ab3917fbb981116759338` after the second controlled rollback ruled out the five-second sample gap as the remaining cause.
+- Exactly three of 108 protected blobs change: Target publisher input digest, OTA health runtime and its direct security test; the other 105 and workflow inventories retain trusted-main identity.
+- The feature keeps the 30/120-second rollback contract, requires 48 KiB aggregate plus 32 KiB contiguous heap, and preserves the last predicate reset reason. This policy-only change deploys nothing and sends no device action.
