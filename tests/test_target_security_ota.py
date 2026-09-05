@@ -202,7 +202,7 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
 
         for marker in (
             'preserveAccessEvidenceBeforeRestart("valid_mark_failed")',
-            'preserveAccessEvidenceBeforeRestart("health_timeout")',
+            "preserveAccessEvidenceBeforeRestart(rollbackReason)",
             'preserveAccessEvidenceBeforeRestart("pending_verify")',
         ):
             self.assertIn(marker, ota)
@@ -424,6 +424,11 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertIn("seen & (1UL << field)", raw_command_policy)
         self.assertIn("elapsed_ms > timeout_ms_", health_policy)
         self.assertIn("max_sample_gap_ms_", health_policy)
+        ota = (ROOT / "src/OtaManager.cpp").read_text(encoding="utf-8")
+        self.assertIn("kHealthMaxSampleGapMs = 5000", ota)
+        self.assertIn("healthSampleGapResetCount", ota)
+        self.assertIn("healthMaxObservedSampleGapMs", ota)
+        self.assertIn('rollbackReason = "ota_health_sample_gap"', ota)
         self.assertIn("envelope, verificationTime, systemClockTrusted", mqtt)
         self.assertNotIn(": envelope.issued_at", mqtt)
         operator_transition = wifi.split("bool WifiManager::startRecoveryAP", 1)[1]

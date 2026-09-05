@@ -2247,3 +2247,21 @@ tracking.
 - This closes source, Backend deployment, signed publication, Target installation
   and controller-state readback. External RF reception, Android wake/authentication
   and a physical hands-free door opening remain owner field evidence.
+
+## 2026-09-05 field diagnostics deployment and Target rollback
+
+- Backend run `33965557195` deployed exact feature main `c9aa85c3` with schema
+  015; strict-TLS `/live` and `/ready` return that SHA and all readiness checks
+  true. Final-main Target run `33965654223` published exact signed
+  `2.1.456+main.gc1d58b1`.
+- One safe-preflight HA OTA request was accepted by Backend and Target. The
+  candidate booted as boot 730, restored MQTT and BLE advertising, and stayed
+  IDLE with relay OFF through uptime 75 seconds, but then the bootloader restored
+  exact `2.1.452` as boot 731. Retained diagnostics classify a controlled
+  `ota_health_rollback`, not a matching panic/WDT reset. No retry was sent.
+- Source correlation identified a fragile equality: the OTA health sampler
+  rejected gaps over 1,000 ms while expanded signed status publication also runs
+  every 1,000 ms. The corrective candidate tolerates up to 5,000 ms, still well
+  below the 45-second loop watchdog, and persists a specific rollback predicate.
+  Focused tests and the production Target build pass; trusted review, a strictly
+  newer artifact and one bounded OTA/install-health observation remain required.
