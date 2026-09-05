@@ -1066,3 +1066,17 @@ an inference from application HMAC tests.
 | Pending-image boot | Target left boot 723 / `2.1.448`, then returned as boot 725 / `2.1.448`; boot 725 retained a valid previous-boot breadcrumb with state `BOOTING`, action `wifi_sta_profile_enabled` and uptime 2,094 ms | Boot 724 started but did not reach MQTT/health; previous image was restored |
 | Reset classification | Boot 725 reports `BROWNOUT`; it remained online/IDLE with MQTT 1/1, zero failures and advancing status beyond uptime 216 seconds | FAIL for first install; evidence indicates supply brownout during pending verification rather than an application panic |
 | Retry boundary | Booting the candidate advanced the version floor, so the unchanged `2.1.451` pointer is intentionally quarantined after rollback | A strictly newer exact-main build is required; retry only once after stable-current verification |
+
+## 2026-09-05 BLE advertising self-heal installed health
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Retry publication | Docs-only exact-main `2bedd83cad02aabbd75c27e39655c61d7c9ed5e0` run `33957358126` built, signed, atomically published and HTTPS-read-back `2.1.452+main.g2bedd83` | PASS for a strictly newer artifact containing unchanged reviewed firmware source |
+| Pre-retry health | Recovered boot 725 stayed `2.1.448`, online/IDLE through uptime 927 seconds with MQTT 1/1 and zero failures | PASS for stable-current precondition after the first brownout rollback |
+| Single retry request | One new-version HA OTA request received PUBACK, Backend broker acceptance, Target result 0 and Target acceptance | PASS; no further request was sent |
+| Exact install | Target advanced once to boot 726 / boot ID `b820fcff4cfd60dfcfd56ac4567d47bf`, exact `2.1.452+main.g2bedd83`, SOFTWARE reset and `ota_pending_verify` breadcrumb | PASS for installed candidate identity |
+| Health/rollback window | The same boot/version remained online/IDLE through uptime 139 seconds, MQTT 1/1, failures 0 and outbox 0 | PASS beyond the 30-second valid mark and 120-second rollback timeout |
+| Advertising controller state | Raw Target status reported expected `true`, active `true`, zero GATT connections and restart attempts/successes/failures/watchdog recoveries all 0 | PASS for ESP32-C6 controller state; not direct proof that an external phone received packets |
+| Active ACL | Raw Target status reported active ACL version 1331 with exact protocol range `2..2` | PASS; the earlier 14:39 `PROTOCOL_INCOMPATIBLE` stale-ACL hypothesis is no longer present in installed state |
+| HA discovery | Retained config named `[Gatekeeper] BLE 광고 상태`, used raw Target status, device class `running` and 30-second expiry | PASS for discovery contract and MQTT publication; HA UI rendering remains a separate observation |
+| Physical acceptance | No external BLE scanner or fresh hands-free phone approach was available in WSL | PENDING over-air reception and automatic Android authentication/door result |
