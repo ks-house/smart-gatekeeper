@@ -6513,3 +6513,24 @@
 - Focused trusted-policy coverage passed 42/42 and full repository discovery passed 367/367 with one declared PowerShell-environment skip.
 - JSON parsing and repository whitespace validation passed. The sole `current-main-baseline` is pinned to exact feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`, with all 104 protected blobs unchanged from the reviewed feature.
 - These results validate source authorization only; exact-main Backend migration/deployment, signed artifact publication, Target install/reboot/health and owner authentication remain separate runtime Gates.
+
+## [2026-09-05] compile | Authorize BLE advertising self-heal candidate
+
+- Bound immutable feature `148d7b6de6be476e9680da4bb98444dfc5a80899` to the sole
+  `ble-advertising-self-heal-148d7b6-persistent-baseline` with the complete
+  ordered 104-path normalized digest map.
+- Exactly three protected blobs change: the exact Target build map, Home Assistant
+  BLE advertising discovery and its direct test. The other 101 protected blobs,
+  seven workflows and empty local-Action inventory retain trusted-main bytes.
+- This policy-only candidate sends no Target command and publishes, deploys or
+  installs nothing. Hosted review, merge-connected feature CI, final rotation,
+  Backend deployment, one Target OTA and physical over-air verification remain
+  separate Gates.
+
+## [2026-09-05] test | Validate BLE advertising policy candidate
+
+- Focused trusted-policy tests passed 42/42 and full repository discovery passed
+  367/367 with one declared PowerShell-environment skip.
+- Policy JSON parsing, repository whitespace and GitHub CLI authentication checks
+  passed. This validates source authorization only and does not prove publication,
+  installation, RF emission or physical access.
