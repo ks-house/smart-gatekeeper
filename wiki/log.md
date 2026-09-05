@@ -6736,3 +6736,9 @@
 - This final policy change deploys no schema, publishes or installs no app or
   firmware, and sends no Target command. The uploaded-record retention choice
   and physical field evidence remain open runtime Gates.
+
+## [2026-09-05] compile | Authorize OTA health sample-gap correction
+
+- Pinned the sole `ota-health-gap-b88e3ca-persistent-baseline` to immutable feature `b88e3ca7eb2827aea89513c398c6b77a4ba36f74` after the first diagnostic firmware controlled-rollback observation.
+- Exactly three of 108 protected blobs change: the Target publisher input digest, OTA health runtime and its direct security test. The other 105 protected bytes and workflow inventories retain trusted-main identity.
+- This policy-only authorization publishes or installs nothing and sends no device, relay or door command. Feature merge, final policy rotation, a strictly newer signed artifact and a single post-fix OTA health observation remain required.

@@ -17,10 +17,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "c9aa85c31b0b7b1d04ea71970c720cf358805acc"
-EXPECTED_BUNDLE_ID = "current-main-baseline"
+MERGED_MAIN_COMMIT = "b88e3ca7eb2827aea89513c398c6b77a4ba36f74"
+EXPECTED_BUNDLE_ID = "ota-health-gap-b88e3ca-persistent-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
-.github/workflows/deploy.yml 48c4b1865333a21bf7ad1a361409dffd55253174461116b186aa80519422a068
+.github/workflows/deploy.yml fae1f9f80297311d9ca636995c53a88fea9a639514d1a554004e7e4682d81f7c
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
 .github/workflows/personal_installation_firmware.yml d29439b9754c8baec015bcb19989ced81fa950da5dd800a5c6c8ee7515c97704
@@ -30,7 +30,7 @@ scripts/verify_trusted_workflow_policy.py 78a96058cd12cfadde01ac0c7aa733bfa96a43
 scripts/ota_contract_gate.py 4dd7914e2cb3e388bb1cb9d456dca93e1a00ded6584beb448d6a7aec39211065
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
-src/OtaManager.cpp d1ae427e08d363be527072fb1bd7074c609b07fa95614703dd521c7e3018a31f
+src/OtaManager.cpp 3f15abbcc0461ceedc82e4e7349cdbc72098e6bb88f7021e60fbb3f060245a58
 .github/workflows/backend_security.yml 07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2
 .orca/scripts/setup_worktree.ps1 07662269a4ee145547a6d0365764f4ab2d42d4234b64fe452b8a9bac4a6440ab
 scripts/ops_commercial_gate.py 7ed564d02342adf6da84aede9c524d47bac4246a31521cf05143a380199a43d7
@@ -127,9 +127,13 @@ backend/tests/test_target_acl_delivery.py f1b12c33a8adf1544a7f98acbbc6d468ef279e
 protocol/test_vectors/v1.json a60dfef0d23b8b3bd016e8f30e690609a82ff009ca90ff2c6aa5525d7539048f
 security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df532f4587
 security/target-acl 75ac9ea696e0ae26f3cc6734113a5133c9cc1fc758ac93e1fc7f26fbe8f70902
-tests/test_target_security_ota.py a6b644a47a57ab44f4dd84885d2d165b640c41f620eca47e20fab2691cb7f167
+tests/test_target_security_ota.py c0ccee41281095ee18ae6abd291c231e8c1efdc96f27d425771eb70849b07659
 """
-FEATURE_CHANGED_PROTECTED_PATHS = set()
+FEATURE_CHANGED_PROTECTED_PATHS = {
+    ".github/workflows/deploy.yml",
+    "src/OtaManager.cpp",
+    "tests/test_target_security_ota.py",
+}
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -152,6 +156,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "c9aa85c31b0b7b1d04ea71970c720cf358805acc",
     "cdcc757b856bc503e9d85b874d67adc425c74a49",
     "1aacbaf073731c6ed8b3c703254d2e5e12bb9990",
     "148d7b6de6be476e9680da4bb98444dfc5a80899",
@@ -1093,8 +1098,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
-    self.assertEqual(len(locally_unchanged_protected), 108)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 3)
+    self.assertEqual(len(locally_unchanged_protected), 105)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
