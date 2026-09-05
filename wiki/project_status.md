@@ -2069,3 +2069,18 @@ tracking.
 - This is source authorization only; feature CI/merge, Backend deployment,
   signed APK/Target publication, installation and phone authentication remain
   pending.
+
+## 2026-09-05 GATT v2 ACL merged source and final policy rotation
+
+- Policy PR #358 and feature PR #359 passed their required hosted checks and
+  merged normally. Exact feature main is
+  `382c4f86a4ef4164acd32eecc29b7a4c6908354c`, containing immutable reviewed
+  feature `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5` in its ancestry.
+- Android/native GATT, firmware canary, Backend/MariaDB, OTA/schema, canonical
+  vectors and trusted-policy checks all passed on the merge-connected feature.
+  These prove source/build contracts, not installed runtime behavior.
+- The final policy candidate retires the transitional identity and pins the
+  sole `current-main-baseline` to actual feature main with all 104 protected
+  bytes unchanged. Backend schema 014 deployment, signed Android/Target
+  publication, installation, reboot/health and owner access confirmation remain
+  separate pending Gates.
