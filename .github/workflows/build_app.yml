@@ -14,6 +14,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'gatekeeper_app/**'
+      - 'ota/**'
+      - 'scripts/ota_contract_gate.py'
   workflow_dispatch:
     inputs:
       release_target:
@@ -74,6 +78,7 @@ jobs:
         run: yes | flutter doctor --android-licenses || true
 
       - name: Install exact Android canary inspection tools
+        if: github.event_name != 'push'
         run: |
           ANDROID_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           test -n "$ANDROID_SDK"
@@ -144,6 +149,7 @@ jobs:
           PY
 
       - name: Build Android debug APK for public canary
+        if: github.event_name != 'push'
         run: |
           printf '%s\n' '${{ github.sha }}' > gatekeeper_app/assets/source_commit.txt
           cd gatekeeper_app
@@ -156,6 +162,7 @@ jobs:
             --dart-define=UPDATE_SIGNING_PUBLIC_KEY_B64="11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 
       - name: Prepare public mobile canary metadata
+        if: github.event_name != 'push'
         run: |
           mkdir -p dist
           cp gatekeeper_app/build/app/outputs/flutter-apk/app-debug.apk dist/ks-house-gatekeeper.apk
@@ -194,6 +201,7 @@ jobs:
           ls -la dist/
 
       - name: Upload artifact-bound canary for separate Gate validation
+        if: github.event_name != 'push'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: smart-key-app-canary-attempt-${{ github.run_attempt }}

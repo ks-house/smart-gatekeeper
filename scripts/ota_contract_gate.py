@@ -296,6 +296,24 @@ WORKFLOW_ARTIFACT_BINDINGS = {
     },
 }
 
+PERSONAL_MAIN_PUSH_PATHS = {
+    ".github/workflows/deploy.yml": [
+        "include/**",
+        "src/**",
+        "platformio.ini",
+        "partitions_*MB_ota.csv",
+        "ota/**",
+        "scripts/ota_contract_gate.py",
+        "scripts/verify_target_flash_layout.py",
+    ],
+    ".github/workflows/build_app.yml": [
+        "gatekeeper_app/**",
+        "ota/**",
+        "scripts/ota_contract_gate.py",
+    ],
+}
+PUBLIC_CANARY_CONDITION = "github.event_name != 'push'"
+
 
 class GateError(RuntimeError):
   """A release-contract violation."""
@@ -2444,12 +2462,15 @@ def validate_workflow_release_triggers(
       raise GateError(
           f"{path}: pull_request paths must include the NAS physical-test contract"
       )
-    if path.endswith("build_app.yml"):
-      push = triggers.get("push")
-      if push != {"branches": ["main"]}:
-        raise GateError(
-            f"{path}: every main push must run the personal mobile OTA workflow"
-        )
+    push = triggers.get("push")
+    expected_push = {
+        "branches": ["main"],
+        "paths": PERSONAL_MAIN_PUSH_PATHS[path],
+    }
+    if push != expected_push:
+      raise GateError(
+          f"{path}: personal main push scope must equal {expected_push}"
+      )
 
     dispatch_inputs = triggers.get("workflow_dispatch", {}).get("inputs", {})
     if set(dispatch_inputs) != {"release_target", "allow_unpinned_host_key"}:
@@ -2965,8 +2986,21 @@ def validate_firmware_build_workflow(
     ) != 1:
       raise GateError(f"{path}: firmware build contract requires exactly one '{name}' step")
   prepare = by_name["Prepare signed public firmware canary"]
-  if prepare.get("if") is not None or prepare.get("env"):
-    raise GateError(f"{path}: public firmware metadata producer must be unconditional and secret-free")
+  if prepare.get("if") != PUBLIC_CANARY_CONDITION or prepare.get("env"):
+    raise GateError(
+        f"{path}: public firmware metadata producer must be PR/dispatch-only and secret-free"
+    )
+  for name in (
+      "Create compile-only public canary secrets",
+      "Build ESP32-C6 firmware public canary",
+      "Prepare signed public firmware canary",
+      "Upload non-secret symbol map for remote crash analysis",
+      "Upload unsigned canary artifacts for physical Gate validation",
+  ):
+    if by_name[name].get("if") != PUBLIC_CANARY_CONDITION:
+      raise GateError(
+          f"{path}: public canary step '{name}' must be PR/dispatch-only"
+      )
   run_cmd = str(prepare.get("run", ""))
   for fragment in (
       "python scripts/ota_contract_gate.py target-manifest-create",
@@ -3057,8 +3091,13 @@ def validate_mobile_build_workflow(
           f"{path}: PR-reachable step '{step.get('name')}' references a production secret"
       )
   canary_tools = by_name["Install exact Android canary inspection tools"]
-  if canary_tools.get("if") is not None or canary_tools.get("env"):
-    raise GateError(f"{path}: public canary Android tool setup must be unconditional")
+  if (
+      canary_tools.get("if") != PUBLIC_CANARY_CONDITION
+      or canary_tools.get("env")
+  ):
+    raise GateError(
+        f"{path}: public canary Android tool setup must be PR/dispatch-only"
+    )
   canary_tools_run = str(canary_tools.get("run", ""))
   for fragment in (
       'SDKMANAGER="$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager"',
@@ -3092,8 +3131,10 @@ def validate_mobile_build_workflow(
       raise GateError(f"{path}: targeted native test evidence is incomplete: {fragment}")
 
   debug_step = by_name["Build Android debug APK for public canary"]
-  if debug_step.get("if") is not None or debug_step.get("env"):
-    raise GateError(f"{path}: public debug APK step must be unconditional and secret-free")
+  if debug_step.get("if") != PUBLIC_CANARY_CONDITION or debug_step.get("env"):
+    raise GateError(
+        f"{path}: public debug APK step must be PR/dispatch-only and secret-free"
+    )
   debug_run = str(debug_step.get("run", ""))
   for fragment in (
       "--dart-define=APK_VERSION_URL=\"https://pr-canary.invalid/",
@@ -3107,10 +3148,13 @@ def validate_mobile_build_workflow(
     raise GateError(f"{path}: PR APK does not embed exact source commit identity")
 
   prepare_step = by_name["Prepare public mobile canary metadata"]
-  if prepare_step.get("if") is not None:
-    raise GateError(f"{path}: public canary metadata step must be unconditional")
+  if prepare_step.get("if") != PUBLIC_CANARY_CONDITION:
+    raise GateError(f"{path}: public canary metadata step must be PR/dispatch-only")
   if prepare_step.get("env"):
     raise GateError(f"{path}: public PR metadata step must not define an env mapping")
+  upload_step = by_name["Upload artifact-bound canary for separate Gate validation"]
+  if upload_step.get("if") != PUBLIC_CANARY_CONDITION:
+    raise GateError(f"{path}: public canary upload must be PR/dispatch-only")
   prepare_run = str(prepare_step.get("run", ""))
   for fragment in (
       "python scripts/ota_contract_gate.py mobile-manifest-create",

@@ -26,10 +26,13 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
     unsigned_tail = cls.source.split(f"  {UNSIGNED_JOB}:\n", 1)[1]
     cls.unsigned_source, cls.auto_source = unsigned_tail.split(f"  {AUTO_JOB}:\n", 1)
 
-  def test_every_main_push_and_canary_dispatch_run_the_personal_publisher(self) -> None:
+  def test_relevant_main_push_and_canary_dispatch_run_the_personal_publisher(self) -> None:
     push = self.workflow["on"]["push"]
     self.assertEqual(push["branches"], ["main"])
-    self.assertNotIn("paths", push)
+    self.assertEqual(
+        push["paths"],
+        ["gatekeeper_app/**", "ota/**", "scripts/ota_contract_gate.py"],
+    )
     self.assertEqual(self.unsigned_job["needs"], "build_apk")
     self.assertEqual(self.auto_job["needs"], UNSIGNED_JOB)
     self.assertEqual(
@@ -47,6 +50,23 @@ class PersonalMobileAutoDeployTest(unittest.TestCase):
     )
     self.assertEqual(self.auto_job["environment"], "personal-auto-ota")
     self.assertNotIn("environment", self.unsigned_job)
+
+  def test_main_push_skips_duplicate_public_canary_build(self) -> None:
+    public_only_steps = {
+        "Install exact Android canary inspection tools",
+        "Build Android debug APK for public canary",
+        "Prepare public mobile canary metadata",
+        "Upload artifact-bound canary for separate Gate validation",
+    }
+    matched = {
+        step["name"]: step.get("if")
+        for step in self.jobs["build_apk"]["steps"]
+        if step.get("name") in public_only_steps
+    }
+    self.assertEqual(set(matched), public_only_steps)
+    self.assertTrue(
+        all(condition == "github.event_name != 'push'" for condition in matched.values())
+    )
 
   def test_repository_mobile_keys_cannot_be_shadowed_by_target_environment(self) -> None:
     self.assertIn("environment: personal-auto-ota", self.auto_source)
