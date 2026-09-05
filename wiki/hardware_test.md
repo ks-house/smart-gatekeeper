@@ -1100,3 +1100,15 @@ an inference from application HMAC tests.
 | Android native journal | Focused Gradle/JUnit test passed | PASS for newest-first 50-session/100-wake bounds and omission/hashing of phone/process identifiers |
 | Target firmware | Production `esp32c6` build passed at RAM 26.9% and flash 24.9%; exact Target OTA input contract passed | PASS for source/build and deferred telemetry contract; no Target OTA or physical access action was performed |
 | Evidence ceiling | No deployed phone bundle, installed firmware readback or new hands-free approach trial exists for this candidate | D3 PENDING; source tests do not prove phone RF reception, Target action or physical door movement |
+
+## 2026-09-05 field diagnostics first Target rollout and health rollback
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Backend deployment | Owner-approved run `33965557195` deployed exact feature main `c9aa85c31b0b7b1d04ea71970c720cf358805acc`; independent strict-TLS `/live` and `/ready` returned HTTP 200 for that SHA with every readiness check true | PASS for Backend schema-015 runtime and dependencies |
+| Signed Target publication | Final-main run `33965654223` signed, encrypted, atomically published and HTTPS-read-back `2.1.456+main.gc1d58b1` | PASS for exact artifact publication; not installation health |
+| Safe preflight and single request | Boot 729 / exact `2.1.452` was IDLE, unarmed, relay OFF, MQTT 1/1 with zero failures and BLE advertising active at uptime 1,195 seconds. One HA request received PUBACK, Backend `target_accepted` and Target ACK result 0 | PASS for one accepted OTA request; no duplicate was sent |
+| Candidate boot | Target advanced to boot 730 / exact `2.1.456`, SOFTWARE reset, IDLE and relay OFF; MQTT recovered to 1/1 with zero failures and BLE advertising became active by uptime 8 seconds | PASS for download, inactive-slot boot and initial control-plane recovery |
+| Health rollback | The same boot/version remained healthy in external status through uptime 75 seconds, then boot 731 restored exact `2.1.452`. Retained boot diagnostics report `planned_restart=ota_health_rollback`, SOFTWARE reset and no matching panic/WDT coredump | FAIL for candidate valid mark; PASS for automatic rollback and prior-slot service recovery |
+| Root-cause candidate | OTA health sampling allowed only a 1,000 ms gap while the main loop also serialized and published the expanded signed status every 1,000 ms. The diagnostic payload increase makes small TLS/scheduler overruns repeatedly reset the required 30-second healthy interval | Strong source/runtime correlation; exact per-sample gap was not retained by the rolled-back image |
+| Corrective source | Health sample tolerance is raised to 5,000 ms, still below the 45-second loop watchdog, and rollback breadcrumbs distinguish safe-state, network, heap and sample-gap timeout. Focused 45 tests and the production Target build pass at RAM 26.9%, flash 24.9% | SOURCE PASS; trusted authorization, strictly newer publication and one new OTA remain required |

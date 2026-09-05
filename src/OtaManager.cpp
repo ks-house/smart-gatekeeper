@@ -52,6 +52,14 @@ constexpr uint32_t kArtifactIdleTimeoutMs = 30UL * 1000UL;
 constexpr uint32_t kArtifactDownloadTimeoutMs = 5UL * 60UL * 1000UL;
 constexpr uint32_t kHealthStableMs = 30000;
 constexpr uint32_t kHealthTimeoutMs = 120000;
+// The main loop publishes a signed diagnostic snapshot every second. A TLS
+// write plus scheduler jitter can legitimately exceed that exact period, so a
+// 1,000 ms sample-gap ceiling makes an otherwise healthy image impossible to
+// validate as the payload grows. Five seconds remains far below the 45-second
+// loop watchdog while tolerating bounded status publication latency.
+constexpr uint32_t kHealthMaxSampleGapMs = 5000;
+static_assert(kHealthMaxSampleGapMs < LOOP_TASK_WATCHDOG_TIMEOUT_MS,
+              "OTA health sampling must remain stricter than loop watchdog");
 constexpr uint16_t kProtocolMin = 1;
 constexpr uint16_t kProtocolMax = 2;
 constexpr const char* kBoard = "esp32-c6-devkitc-1";
@@ -147,7 +155,12 @@ class NvsOtaVersionFloorStorage final : public sgk::OtaVersionFloorStorage {
 
 NvsOtaVersionFloorStorage versionFloorStorage;
 sgk::OtaVersionPolicy versionPolicy(&versionFloorStorage);
-sgk::OtaHealthPolicy healthPolicy(kHealthStableMs, kHealthTimeoutMs);
+sgk::OtaHealthPolicy healthPolicy(kHealthStableMs, kHealthTimeoutMs,
+                                  kHealthMaxSampleGapMs);
+bool healthSampleSeen = false;
+uint32_t healthLastSampleMs = 0;
+uint32_t healthSampleGapResetCount = 0;
+uint32_t healthMaxObservedSampleGapMs = 0;
 
 bool asciiToken(const char* value, size_t maximum) {
   if (value == nullptr) return false;
@@ -870,6 +883,10 @@ void OtaManager::init() {
   status = OtaStatus::IDLE;
   lastError = "";
   forcedCheckPending = false;
+  healthSampleSeen = false;
+  healthLastSampleMs = 0;
+  healthSampleGapResetCount = 0;
+  healthMaxObservedSampleGapMs = 0;
   if (!versionPolicy.begin(FIRMWARE_VERSION)) {
     status = OtaStatus::FAILED;
     lastError = "version floor storage";
@@ -903,12 +920,24 @@ bool OtaManager::isSafeForOta() {
 void OtaManager::update() {
   const uint32_t now = millis();
   if (status == OtaStatus::HEALTH_WINDOW) {
+    if (healthSampleSeen) {
+      const uint32_t sampleGapMs = now - healthLastSampleMs;
+      healthMaxObservedSampleGapMs =
+          std::max(healthMaxObservedSampleGapMs, sampleGapMs);
+      if (sampleGapMs > kHealthMaxSampleGapMs) {
+        ++healthSampleGapResetCount;
+      }
+    }
+    healthSampleSeen = true;
+    healthLastSampleMs = now;
     const bool safe = safeStateProvider != nullptr &&
                       safeStateProvider() == OtaSafeState::SAFE;
     const bool networkHealthy =
         WifiManager::isConnected() && MqttManager::isConnected();
-    const sgk::OtaHealthDecision decision = healthPolicy.update(
-        now, safe && networkHealthy && ESP.getFreeHeap() >= 65536);
+    const uint32_t freeHeap = ESP.getFreeHeap();
+    const bool heapHealthy = freeHeap >= 65536;
+    const sgk::OtaHealthDecision decision =
+        healthPolicy.update(now, safe && networkHealthy && heapHealthy);
     if (decision == sgk::OtaHealthDecision::kMarkValid) {
       if (versionPolicy.commit(FIRMWARE_VERSION) &&
           esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
@@ -927,9 +956,24 @@ void OtaManager::update() {
       }
     } else if (decision == sgk::OtaHealthDecision::kRollback) {
       status = OtaStatus::ROLLING_BACK;
-      preserveAccessEvidenceBeforeRestart("health_timeout");
-      DiagnosticsManager::markPlannedRestart("ota_health_rollback");
-      LOGF("[OTA-ERROR] health window timed out; rolling back");
+      const char* rollbackReason = "ota_health_timeout";
+      if (!safe) {
+        rollbackReason = "ota_health_safe_timeout";
+      } else if (!networkHealthy) {
+        rollbackReason = "ota_health_network_timeout";
+      } else if (!heapHealthy) {
+        rollbackReason = "ota_health_heap_timeout";
+      } else if (healthSampleGapResetCount > 0) {
+        rollbackReason = "ota_health_sample_gap";
+      }
+      preserveAccessEvidenceBeforeRestart(rollbackReason);
+      DiagnosticsManager::markPlannedRestart(rollbackReason);
+      LOGF("[OTA-ERROR] health timeout reason=%s gaps=%lu "
+           "max_gap_ms=%lu free_heap=%lu; rolling back",
+           rollbackReason,
+           static_cast<unsigned long>(healthSampleGapResetCount),
+           static_cast<unsigned long>(healthMaxObservedSampleGapMs),
+           static_cast<unsigned long>(freeHeap));
       if (esp_ota_mark_app_invalid_rollback_and_reboot() != ESP_OK) {
         LOGF("[OTA-ERROR] rollback API returned; forcing safe restart");
         ESP.restart();
