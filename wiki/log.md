@@ -6514,6 +6514,31 @@
 - JSON parsing and repository whitespace validation passed. The sole `current-main-baseline` is pinned to exact feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`, with all 104 protected blobs unchanged from the reviewed feature.
 - These results validate source authorization only; exact-main Backend migration/deployment, signed artifact publication, Target install/reboot/health and owner authentication remain separate runtime Gates.
 
+## [2026-09-05] test | Deploy GATT v2 ACL contract and update Target
+
+- Owner-approved Backend run `33942785068` published immutable API/DB images, created a pre-migration backup, applied schema 014 and deployed exact feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`; canonical and independent strict-TLS readiness passed with every check true.
+- Final-main run `33942948534` signed and atomically published `2.1.448+main.g6d8ab48`. One HA `trigger_ota` request received QoS 1 PUBACK, Backend broker acceptance, Target result 0 and Backend Target acceptance; no duplicate request was sent.
+- Target `c0feffe6ebac` advanced from boot 720 / `2.1.445+main.g57bfe10` to boot 721 / exact `2.1.448+main.g6d8ab48`, boot ID `38f688d0768d84ad0b2b1a2b204f0662`, SOFTWARE reset and safe IDLE. It retained that identity through uptime 126 seconds with MQTT 1/1, zero failures and advancing Backend verified-status, beyond both OTA health windows.
+- A later final readback found boot 722 / `e8c8d996c89184110d83c011a38a6ba0` with `BROWNOUT`, still on exact 448 and online/IDLE at uptime 344 seconds with MQTT 1/1 and zero failures. This is a separate field power/reset Gate after successful image validation, not an OTA rollback.
+- Final-main mobile run `33942948521` signed and atomically published `1.0.0-g6d8ab48` / 41501 and passed primary/fallback HTTPS verification; no phone installation is claimed.
+- A passive ACL-ACK subscription started after migration and received no new message, so it cannot prove or disprove an earlier ACK. One fresh owner phone authentication remains required for credential/ACL acceptance and physical access; the agent issued no relay or door-open command.
+
+## [2026-09-05] test | Separate hands-free no-response from successful manual fallback
+
+- Recorded the owner report that automatic entrance access produced no reaction while the app `문 열기` fallback opened the installed door.
+- Read-only MQTTS found Target boot 723 online/IDLE on exact `2.1.448+main.g6d8ab48` at uptime 9,266 seconds, MQTT attempts/connects 1/1, zero failures and event outbox depth 0; strict-TLS Backend `/ready` returned all checks true.
+- The retained terminal summary was `ACCESS_SESSION_COMPLETED / ACCESS_GRANTED` with phase mask 24 (`0x18`), exactly the signed MQTT manual-open success contract. It is not Local GATT success evidence.
+- The manual event overwrote the single retained terminal slot, so the current readback cannot distinguish a missing phone wake from a pre-terminal GATT failure. No door, OTA or configuration command was sent; same-cycle phone Activity or administrator history remains the minimum attribution evidence.
+
+## [2026-09-05] fix | Detect and recover a silently stopped BLE advertiser
+
+- Correlated the owner Activity capture: Target returned `PROTOCOL_INCOMPATIBLE` at 14:39 after a 14:38 `RUNNING` entry, proving radio/GATT operation at that time, but no automatic entry exists around the after-17:00 approach; 17:13 is only signed manual remote delivery.
+- Confirmed the ESP32-C6 discarded advertising start results and exposed no `isAdvertising()` watchdog or remote diagnostic, allowing a stopped advertiser to remain invisible behind healthy MQTT telemetry.
+- Added a two-second NimBLE advertising health check that runs only with zero active GATT connections, retries a stopped advertiser, and tracks restart attempts, successes, failures and watchdog recoveries. Existing connection ownership, authentication, sensor/relay, MQTT deferral and OTA paths are unchanged.
+- Added raw Target telemetry for advertiser state and active ACL version/min/max protocol, plus a read-only HA `[Gatekeeper] BLE 광고 상태` entity with 30-second expiry. These fields will also distinguish the still-visible 14:39 protocol mismatch from radio absence after deployment.
+- Focused Android/Target/HA source tests initially exposed one expected discovery-plan count update; after correcting that fixture, final rerun and full repository discovery remain pending. The production ESP32-C6 build linked successfully at 76,992 bytes RAM and 1,820,028 bytes application flash.
+- No live command, restart, OTA or door action was issued while implementing this candidate.
+
 ## [2026-09-05] compile | Authorize BLE advertising self-heal candidate
 
 - Bound immutable feature `148d7b6de6be476e9680da4bb98444dfc5a80899` to the sole
@@ -6534,3 +6559,21 @@
 - Policy JSON parsing, repository whitespace and GitHub CLI authentication checks
   passed. This validates source authorization only and does not prove publication,
   installation, RF emission or physical access.
+
+## [2026-09-05] compile | Connect BLE advertising self-heal to trusted policy main
+
+- Policy PR #361 passed the hosted trusted-base check and merge-committed normally
+  as main `89225afa162619f7f8448703b7b9b2775eb7b98e`.
+- Merged that exact policy main into the feature history while preserving immutable
+  feature `148d7b6de6be476e9680da4bb98444dfc5a80899`, both append-only histories
+  and all three reviewed protected bytes.
+- This merge connection sends no Target command and deploys or installs nothing;
+  fresh feature CI, actual-main rotation and runtime rollout remain separate Gates.
+
+## [2026-09-05] test | Validate merge-connected BLE advertising self-heal
+
+- Focused trusted-policy tests passed 42/42 and full repository discovery passed
+  368/368 with one declared PowerShell-environment skip after resolving append-only
+  wiki history in the merge connection.
+- Repository whitespace validation passed. This remains source/test evidence, not
+  signed publication, installed Target state or over-air BLE evidence.

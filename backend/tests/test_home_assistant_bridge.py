@@ -57,8 +57,8 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
     def test_discovery_controls_use_only_backend_ingress(self) -> None:
         default_plan = build_discovery_plan(TARGET)
         enabled_plan = build_discovery_plan(TARGET, allow_manual_remote=True)
-        self.assertEqual(31, len(default_plan))
-        self.assertEqual(32, len(enabled_plan))
+        self.assertEqual(32, len(default_plan))
+        self.assertEqual(33, len(enabled_plan))
         self.assertTrue(all(not item.payload for item in enabled_plan[:7]))
 
         updates = [item for item in enabled_plan if item.payload]
@@ -69,7 +69,7 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         ]
         read_only = [item for item in updates if item not in controls]
         self.assertEqual(7, len(controls))
-        self.assertEqual(18, len(read_only))
+        self.assertEqual(19, len(read_only))
         for publication in controls:
             config = json.loads(publication.payload)
             self.assertTrue(
@@ -169,7 +169,9 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
             "door_binary",
             "pre_armed",
         }
-        live_access_ids = {"state", "door_binary", "pre_armed"}
+        live_access_ids = {
+            "state", "door_binary", "pre_armed", "ble_advertising"
+        }
         for publication in read_only:
             object_id = publication.topic.split("/")[-2]
             config = json.loads(publication.payload)
@@ -204,6 +206,25 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
                     config["state_topic"],
                 )
             self.assertNotIn("command_topic", config)
+
+        ble_advertising = next(
+            item
+            for item in read_only
+            if item.topic.endswith("/ble_advertising/config")
+        )
+        ble_advertising_config = json.loads(ble_advertising.payload)
+        self.assertEqual(
+            "[Gatekeeper] BLE 광고 상태", ble_advertising_config["name"]
+        )
+        self.assertEqual(
+            target_status_topic(TARGET), ble_advertising_config["state_topic"]
+        )
+        self.assertEqual("running", ble_advertising_config["device_class"])
+        self.assertEqual(30, ble_advertising_config["expire_after"])
+        self.assertIn(
+            "value_json.ble_advertising_active",
+            ble_advertising_config["value_template"],
+        )
 
     def test_connectivity_diagnostic_is_bounded_backend_evidence(self) -> None:
         payload = bridge_connectivity_diagnostic_payload(

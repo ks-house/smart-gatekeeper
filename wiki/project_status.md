@@ -2085,6 +2085,79 @@ tracking.
   publication, installation, reboot/health and owner access confirmation remain
   separate pending Gates.
 
+## 2026-09-05 GATT v2 ACL production rollout
+
+- Owner-approved Backend run `33942785068` published immutable API/DB images,
+  created a pre-migration backup, applied schema `014`, and deployed exact
+  feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`. Canonical loopback/public
+  readiness passed; independent strict-TLS `/ready` returned that exact SHA
+  with every check true, including database schema, MQTT, collector and ACL
+  management.
+- Final-main Target run `33942948534` signed and atomically published encrypted
+  `2.1.448+main.g6d8ab48`. One owner-approved HA `trigger_ota` request received
+  QoS 1 PUBACK, Backend `broker_accepted`, Target command ACK result 0 and
+  Backend `target_accepted`; no duplicate request was sent.
+- The Target advanced from boot 720 / `2.1.445+main.g57bfe10` to boot 721 /
+  `2.1.448+main.g6d8ab48`, new boot ID
+  `38f688d0768d84ad0b2b1a2b204f0662`, SOFTWARE reset and IDLE. Read-only MQTTS
+  held the same version/boot through uptime 126 seconds, beyond the 30-second
+  valid-mark and 120-second rollback windows, with MQTT connect 1/1, failures
+  0 and Backend verified-status advancing.
+- Final-main mobile run `33942948521` signed and atomically published
+  `1.0.0-g6d8ab48` / version code 41501 and verified primary/fallback HTTPS
+  readback. Phone installation is not claimed.
+- The passive post-deploy ACL-ACK subscription began after schema migration and
+  received no new ACK in its bounded window, so exact migrated snapshot ACK is
+  not reconstructed from that observation. A fresh owner phone authentication
+  is still required to close the GATT v2 credential/ACL acceptance and physical
+  access Gate; the agent issued no relay or door-open action.
+- Final readback later found boot 722, boot ID
+  `e8c8d996c89184110d83c011a38a6ba0`, with reset reason `BROWNOUT`. It retained
+  exact `2.1.448+main.g6d8ab48`, was online/IDLE at uptime 344 seconds, reported
+  MQTT 1/1 with zero failures and continued Backend verified-status. This is a
+  separate electrical/reset event after the successful OTA health window, not
+  firmware rollback; the repeated brownout cause remains a field power Gate.
+
+## 2026-09-05 post-rollout hands-free no-response incident
+
+- The owner reported that a fresh entrance approach produced no automatic
+  reaction and that the authenticated app `문 열기` button was used successfully
+  to enter.
+- A read-only MQTTS readback at 17:28 KST found the Target online and IDLE on
+  boot 723, exact `2.1.448+main.g6d8ab48`, with uptime 9,266 seconds, MQTT
+  attempts/connects `1/1`, zero connection failures and an empty volatile event
+  outbox. Backend `/ready` returned every check true.
+- The retained terminal result was `ACCESS_SESSION_COMPLETED / ACCESS_GRANTED`
+  with phase mask 24 (`0x18`), which is the signed MQTT manual-open success
+  contract. This confirms the fallback path but is not hands-free GATT evidence.
+- No retained Local GATT terminal result followed the incident. Because the
+  manual result replaces the single last-terminal slot, the readback cannot say
+  whether an earlier phone wake never arrived, failed before a terminal Target
+  result, or was overwritten. The current boot uptime rules out a Target reboot
+  immediately around this incident, but historical administrator rows or the
+  phone Activity entry are still required to split BLE wake absence from GATT
+  dispatch/transport failure.
+- No access, OTA or configuration command was sent during diagnosis. A source
+  change is not attributed to this incident until the same-cycle phone Activity
+  or administrator history is correlated.
+- The subsequent owner Activity capture closes part of that gap: the most recent
+  automatic entries are `RUNNING` at 14:38:57 and
+  `PROTOCOL_INCOMPATIBLE` at 14:39:00, while 17:13:07 is only the manual remote
+  command. There is no automatic detection/authentication entry around the
+  after-17:00 entrance attempt. The 14:39 Target-originated protocol result
+  proves that iBeacon/GATT radio was available then, but not that advertising
+  restarted or remained active afterwards.
+- Source inspection found that the ESP32-C6 calls advertising start at boot and
+  after disconnect but discards the return value. It had no controller
+  `isAdvertising()` watchdog, recovery counter or MQTT diagnostic, so a silent
+  post-disconnect advertising stop can coexist with healthy Wi-Fi/MQTT status.
+- Candidate remediation now polls NimBLE advertising state every two seconds
+  only when no GATT connection is active, performs a bounded restart when the
+  controller reports stopped, and publishes advertising/restart plus active ACL
+  version and protocol range diagnostics. HA discovery adds a read-only
+  `[Gatekeeper] BLE 광고 상태` entity. This is source/build evidence until
+  reviewed, deployed and read back from the installed Target.
+
 ## 2026-09-05 BLE advertising self-heal authorization candidate
 
 - The 17:13 manual-open record proves Backend-to-broker delivery, while the last
@@ -2098,3 +2171,15 @@ tracking.
 - This is source authorization only. Exact-main publication, Backend/NAS
   deployment, Target OTA/reboot/health and an external BLE scan or fresh phone
   access remain separate runtime Gates.
+
+## 2026-09-05 BLE advertising self-heal merge connection
+
+- Policy PR #361 passed and merge-committed as main
+  `89225afa162619f7f8448703b7b9b2775eb7b98e`; that exact policy main is
+  merged into the feature history with immutable feature `148d7b6d` retained.
+- The next evidence Gate is fresh hosted feature CI over the merge-connected
+  source. Publication, Backend deployment, Target OTA, controller-state readback
+  and over-air emission remain unclaimed.
+- Local merge-connected validation passed 42/42 focused policy tests and 368/368
+  repository tests with one declared environment skip; hosted feature checks remain
+  the merge Gate.

@@ -1995,6 +1995,31 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
         WifiManager::lastUnplannedDisconnectReason();
     doc["wifi_current_outage_ms"] = WifiManager::currentOutageMs();
     doc["wifi_last_outage_ms"] = WifiManager::lastOutageMs();
+    const GattServer::Telemetry gattTelemetry = GattServer::getTelemetry();
+    doc["ble_advertising_expected"] =
+        gattTelemetry.advertising_expected;
+    doc["ble_advertising_active"] = gattTelemetry.advertising_active;
+    doc["ble_active_connections"] = gattTelemetry.active_connections;
+    doc["ble_advertising_restart_attempts"] =
+        gattTelemetry.advertising_restart_attempts;
+    doc["ble_advertising_restart_successes"] =
+        gattTelemetry.advertising_restart_successes;
+    doc["ble_advertising_restart_failures"] =
+        gattTelemetry.advertising_restart_failures;
+    doc["ble_advertising_watchdog_recoveries"] =
+        gattTelemetry.advertising_watchdog_recoveries;
+    extern sgk::TargetAclManager g_acl_manager;
+    doc["acl_active"] = g_acl_manager.hasActiveAcl();
+    doc["acl_version"] = g_acl_manager.activeAclVersion();
+    if (g_acl_manager.hasActiveAcl()) {
+        const sgk::TargetAclHeader& aclHeader =
+            g_acl_manager.activeSnapshot().header;
+        doc["acl_min_protocol"] = aclHeader.min_protocol;
+        doc["acl_max_protocol"] = aclHeader.max_protocol;
+    } else {
+        doc["acl_min_protocol"] = nullptr;
+        doc["acl_max_protocol"] = nullptr;
+    }
 
     const size_t telemetryBytes = measureJson(doc);
     pendingTelemetryValid = !doc.overflowed() && telemetryBytes > 0 &&

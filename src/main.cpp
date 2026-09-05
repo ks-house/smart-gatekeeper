@@ -622,6 +622,7 @@ static void initBleAdvertiser() {
   }
 
   setTxPower(g_tx_power_dbm);
+  GattServer::setAdvertisingExpected(true);
 
   LOGF("[BLE-ADV] ✅ iBeacon 발신 시작! UUID: %s (GATT Hardwareless RC: %s)",
        GATEKEEPER_BEACON_UUID, hwlessActive ? "ENABLED" : "DISABLED");

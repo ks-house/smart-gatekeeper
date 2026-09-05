@@ -1028,3 +1028,29 @@ an inference from application HMAC tests.
   built successfully at 23.5% RAM and 24.8% application flash.
 - These are source/build/database results, not a deployed ACL ACK, phone
   authentication, relay contact or physical door result.
+
+## 2026-09-05 GATT v2 ACL production rollout
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Reviewed main | Policy PR #358, feature PR #359 and final policy PR #360 passed required hosted checks and merged normally; feature main is `382c4f86...54c` and final policy main is `6d8ab481...131` with all 104 protected blobs unchanged | PASS for reviewed source and trusted identity |
+| Backend schema 014 deployment | Owner-approved run `33942785068` created the pre-migration backup, passed `up 014`, deployed exact feature main and passed loopback/public readiness; independent `/ready` returned the same SHA and all checks true | PASS for immutable Backend deployment, schema 014 and live dependencies |
+| Signed Target publication | Run `33942948534` built, encrypted, signed, atomically published and HTTPS-read-back `2.1.448+main.g6d8ab48`, build ID `main-448-6d8ab481afc7e4fc74636eef8be816f2dadd7131` | PASS for signed publication; not installation by itself |
+| Single OTA request | One HA bridge `trigger_ota` request received QoS 1 PUBACK, Backend `broker_accepted`, Target result 0 and Backend `target_accepted`; no duplicate request was sent | PASS for one signed boot-bound install trigger and Target acceptance |
+| Exact Target install | Target changed from boot 720 / `2.1.445+main.g57bfe10` to boot 721 / `2.1.448+main.g6d8ab48`, new boot ID `38f688d0768d84ad0b2b1a2b204f0662`, SOFTWARE reset, online and IDLE | PASS for exact installation and reboot identity |
+| Post-install health | Same boot/version remained IDLE and online through uptime 126 seconds; MQTT connect attempts/count were 1/1, failures 0, and Backend verified-status advanced with the Target | PASS beyond the 30-second valid-mark and 120-second rollback windows; no rollback observed |
+| Later boot readback | Final readback found boot 722 / `e8c8d996c89184110d83c011a38a6ba0`, reset reason `BROWNOUT`, still on exact `2.1.448+main.g6d8ab48`, online/IDLE at uptime 344 seconds with MQTT 1/1 and zero failures | PASS for retaining the validated image through a later power reset; repeated brownout diagnosis remains a separate electrical field Gate |
+| Signed mobile publication | Run `33942948521` published `1.0.0-g6d8ab48` / 41501 and verified primary/fallback HTTPS copies | PASS for publication; phone install is pending |
+| ACL and physical acceptance | A passive ACL-ACK probe started after migration and observed no new message, so it cannot reconstruct an ACK that may have occurred earlier | PENDING one owner phone authentication plus Activity/result/door observation; no relay action was initiated by the agent |
+
+## 2026-09-05 post-rollout entrance no-response readback
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Owner entrance attempt | Automatic hands-free access produced no visible reaction; the app `문 열기` fallback opened the installed door | FAIL for that hands-free trial; PASS only for the independently authenticated manual remote path |
+| Target/Backend health after report | Target boot 723 stayed on exact `2.1.448+main.g6d8ab48`, online/IDLE at uptime 9,266 seconds, MQTT 1/1 with zero failures and outbox depth 0; public `/ready` returned all checks true | No evidence of a current Target crash, broker outage or Backend readiness failure |
+| Latest terminal classification | Signed retained status showed `ACCESS_SESSION_COMPLETED`, `ACCESS_GRANTED`, phase mask 24 (`0x18`) | Confirms signed MQTT manual-open completion; does not prove a Local GATT attempt |
+| Hands-free failure boundary | The one-slot retained terminal summary was replaced by manual-open success and has no Local GATT terminal marker | UNRESOLVED before/within phone BLE wake and GATT; correlate the same-cycle mobile Activity or administrator history before assigning a code defect |
+| Phone Activity correlation | Latest automatic rows were `RUNNING` 14:38:57 then `PROTOCOL_INCOMPATIBLE` 14:39:00; the next visible row was only manual remote at 17:13:07, with no automatic row for the after-17:00 entrance | Confirms radio/GATT response existed at 14:39 and no phone-side automatic session was created around 17:13; does not by itself distinguish stopped Target advertising from a dead Android scan registration |
+| Advertising self-heal candidate | ESP32-C6 controller `isAdvertising()` is checked every 2 seconds only with zero active GATT connections; stopped advertising is restarted with attempt/success/failure/watchdog counters, and raw Target status includes active ACL version/protocol range | PASS in focused 38-test run after one expected discovery-count update and production firmware link at 76,992/327,680 RAM, 1,820,028/7,340,032 app flash; connected Target behavior remains pending |
+| HA diagnostic candidate | Discovery adds `[Gatekeeper] BLE 광고 상태` from raw Target diagnostic status, with 30-second expiry and bridge availability | SOURCE ONLY; protected authorization, Backend deployment, Target OTA and live entity readback remain pending |

@@ -1958,3 +1958,16 @@ Target command and performs no relay or physical action. Policy merge, feature
 merge-connection and CI, actual-main rotation, signed publication, Backend
 deployment, one Target OTA, reboot/health and an over-air phone trial remain
 separate Gates.
+
+## 70. BLE advertising self-heal merge connection
+
+Policy PR #361 passed the hosted trusted-base verifier and merge-committed as
+main `89225afa162619f7f8448703b7b9b2775eb7b98e`. That exact policy main is
+merged into the feature history without rewriting immutable feature
+`148d7b6de6be476e9680da4bb98444dfc5a80899`; the three authorized protected
+blobs therefore remain the reviewed feature bytes while the other 101 resolve
+from trusted main.
+
+This history connection itself publishes, deploys and installs nothing. Fresh
+feature CI, actual-main merge, final current-main rotation and runtime evidence
+remain required.
