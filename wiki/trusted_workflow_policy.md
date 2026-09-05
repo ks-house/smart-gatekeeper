@@ -1914,3 +1914,24 @@ approved all 104 paths. This policy-only authorization deploys no Backend,
 publishes or installs no APK/Target firmware, and performs no relay action.
 Policy merge, feature merge/CI, actual-main rotation, production migration and
 artifact installation remain separate Gates.
+
+## 68. GATT v2 ACL actual-main final rotation
+
+Policy PR #358 passed the hosted trusted-base check and merged normally before
+the feature history was connected to that exact policy main. Feature PR #359
+then passed the hosted Android/native GATT, firmware, Backend/MariaDB,
+OTA/schema, canonical-vector and trusted-policy checks and merge-committed as
+actual feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`.
+
+The transitional `gatt-v2-acl-7edd3aa-persistent-baseline` identity is retired
+in favor of the sole `current-main-baseline` pinned to that actual feature
+merge. All 104 normalized protected blobs are byte-identical between the
+reviewed immutable feature, merge-connected head and actual main; the seven
+workflow inventory and empty local-Action inventory remain exact. The final
+policy delta therefore changes only unprotected policy metadata, its regression
+fixture and wiki evidence.
+
+This final rotation does not deploy schema 014, publish or install either
+artifact, or exercise BLE, relay or a physical door. Exact-main Backend/NAS
+deployment, signed publication, Target install/reboot/health and a fresh owner
+authentication remain separate release Gates.

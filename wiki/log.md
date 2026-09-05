@@ -6501,3 +6501,15 @@
 - Policy PR #358 passed the hosted trusted-base check and merge-committed normally as main `f92e350`.
 - Merged that exact policy main into the feature history while preserving immutable authorized ancestor `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5`, both append-only histories and all reviewed protected bytes.
 - This merge connection deploys nothing; hosted feature CI, actual-main rotation, Backend migration and artifact installation remain separate Gates.
+
+## [2026-09-05] compile | Merge GATT v2 ACL correction and rotate actual-main policy
+
+- Feature PR #359 passed Android/native GATT, firmware canary, Backend/MariaDB, OTA/schema, canonical-vector and trusted-policy hosted checks and merge-committed normally as actual feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`.
+- Retired transition source `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5` and pinned the sole `current-main-baseline` to actual feature main. All 104 protected normalized blobs, seven workflows and the empty local-Action inventory remain byte-identical.
+- This final policy-only rotation deploys no schema, Backend, APK or Target artifact and proves no BLE or physical-door result. Focused policy validation, hosted policy review/merge and exact-main deployment remain separate Gates.
+
+## [2026-09-05] test | Validate GATT v2 ACL final policy rotation
+
+- Focused trusted-policy coverage passed 42/42 and full repository discovery passed 367/367 with one declared PowerShell-environment skip.
+- JSON parsing and repository whitespace validation passed. The sole `current-main-baseline` is pinned to exact feature main `382c4f86a4ef4164acd32eecc29b7a4c6908354c`, with all 104 protected blobs unchanged from the reviewed feature.
+- These results validate source authorization only; exact-main Backend migration/deployment, signed artifact publication, Target install/reboot/health and owner authentication remain separate runtime Gates.
