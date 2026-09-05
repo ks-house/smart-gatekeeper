@@ -6577,3 +6577,25 @@
   wiki history in the merge connection.
 - Repository whitespace validation passed. This remains source/test evidence, not
   signed publication, installed Target state or over-air BLE evidence.
+
+## [2026-09-05] compile | Merge BLE advertising self-heal and rotate actual-main policy
+
+- Feature PR #362 passed the hosted firmware, Backend, OTA and trusted-policy
+  checks and merge-committed normally as actual main
+  `1aacbaf073731c6ed8b3c703254d2e5e12bb9990`.
+- Retired the transitional feature identity and pinned the sole
+  `current-main-baseline` to the actual merge. All 104 protected blobs retain
+  the reviewed bytes.
+- This policy rotation deploys or installs nothing and sends no device command;
+  exact publication, Backend deployment, one Target OTA and runtime RF evidence
+  remain separate Gates.
+
+## [2026-09-05] test | Validate BLE advertising final policy rotation
+
+- Focused trusted-policy tests passed 42/42 and full repository discovery passed
+  368/368 with one declared PowerShell-environment skip.
+- JSON syntax and repository whitespace validation passed. The sole
+  `current-main-baseline` is pinned to exact feature main `1aacbaf073731c6ed8b3c703254d2e5e12bb9990`
+  with all 104 protected blobs unchanged from the reviewed feature.
+- These results authorize exact source bytes only and do not substitute for
+  Backend deployment, Target install/reboot/health or over-air BLE evidence.

@@ -1971,3 +1971,20 @@ from trusted main.
 This history connection itself publishes, deploys and installs nothing. Fresh
 feature CI, actual-main merge, final current-main rotation and runtime evidence
 remain required.
+
+## 71. BLE advertising self-heal actual-main final rotation
+
+Feature PR #362 passed firmware, Backend, OTA and trusted-policy checks and
+merge-committed normally as actual main
+`1aacbaf073731c6ed8b3c703254d2e5e12bb9990`. The immutable reviewed feature
+`148d7b6de6be476e9680da4bb98444dfc5a80899` remains in its ancestry.
+
+The transitional self-heal bundle is retired in favor of the sole
+`current-main-baseline` pinned to that actual merge. All 104 normalized
+protected blobs are byte-identical between the reviewed merge-connected head
+and actual main; the seven-workflow inventory and empty local-Action inventory
+remain exact.
+
+This final policy rotation deploys and installs nothing. Workflow publication,
+Backend deployment, Target OTA/reboot/health, controller advertising readback
+and an over-air phone trial remain separate runtime Gates.
