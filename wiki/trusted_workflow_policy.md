@@ -2076,3 +2076,24 @@ the seven-workflow inventory and empty local-Action inventory are byte-identical
 to the reviewed merge-connected head. This final policy rotation itself sends
 no Target request and changes no runtime, relay or door state; final exact-main
 publication, one OTA attempt and post-install health remain independent Gates.
+
+## 77. OTA health heap-headroom authorization candidate
+
+Exact `2.1.459+main.g987bec7` proved that the five-second sampler gap no longer
+reset health, but it still controlled-rolled back before the 120-second deadline.
+Its generic timeout means an intermediate predicate reset was not preserved.
+Recovered runtime telemetry shows only about 80 KiB steady free heap and a 20 KiB
+historical minimum, making the prior instantaneous 64 KiB threshold fragile
+after the field-diagnostics memory expansion.
+
+Immutable feature `c9e61cdd35be3b37c18ab3917fbb981116759338` retains the
+30-second continuous health and 120-second rollback contract, requires 48 KiB
+aggregate free heap plus a 32 KiB largest allocatable block, and retains the
+last safe/network/heap/sample-gap reset predicate for the next boot. Exactly
+three of 108 protected blobs change: Target publisher input digest, OTA runtime
+and its direct security test. The other 105 and both workflow inventories remain
+trusted-main bytes.
+
+This policy-only authorization publishes nothing and sends no Target, relay or
+door action. Policy merge, feature CI/merge, final baseline rotation, strictly
+newer publication and one bounded install-health observation remain separate.
