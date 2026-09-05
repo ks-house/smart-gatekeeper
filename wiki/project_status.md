@@ -2283,3 +2283,25 @@ tracking.
   48 KiB aggregate plus 32 KiB contiguous headroom, and persists the last reset
   predicate. Production build and focused 45 tests pass; protected review and
   one strictly newer post-fix OTA remain required.
+
+## 2026-09-05 OTA heap-headroom correction installed
+
+- Policy/feature/final PRs #372/#373/#374 merged the reviewed correction as
+  final main `6701f32b95116514698d7a66672738b31062b736`. Final Target run
+  `33968334706` signed and atomically published exact
+  `2.1.462+main.g6701f32`.
+- From stable recovered boot 735 / 452, one safe-preflight HA request received
+  PUBACK, Backend `target_accepted` and Target result 0. The Target advanced to
+  boot 736 / `c563d15ba2ebb669d6c77fc5d574acc6`, exact 462 and SOFTWARE reset.
+  No duplicate request was sent.
+- Exact 462 remained on the same boot through uptime 137 seconds, exceeding the
+  30-second valid and 120-second rollback windows. MQTT stayed 1/1 with zero
+  failures, BLE advertising expected/active, IDLE and relay OFF/pin high.
+  Runtime free heap was about 69 KiB and the largest block remained at least
+  38.9 KiB, satisfying the corrected 48/32 KiB headroom contract.
+- Backend remains exact `c9aa85c3` with strict-TLS `/live` and `/ready` HTTP
+  200 and every readiness check true. Mobile run `33968334698` published
+  exact-final `1.0.0-g6701f32` / 43001; independent strict-HTTPS readback found
+  byte-identical primary/fallback manifests and APKs matching SHA-256
+  `bcbb16c9...885c6`. Phone installation and a marked hands-free access trial
+  remain owner actions and physical evidence Gates.

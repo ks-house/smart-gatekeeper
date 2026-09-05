@@ -6774,3 +6774,16 @@
 - Feature PR #373 passed hosted firmware, OTA, Backend and trusted-policy checks and merge-committed as actual main `2be4c29b166f091ab6feb44301504a54330e5b53`.
 - Retired the transitional authorization and pinned the sole `current-main-baseline` to that merge with all 108 protected blobs unchanged from review.
 - This policy-only rotation installs nothing and sends no device action. Final signed publication and one bounded Target health result remain independent Gates.
+
+## [2026-09-05] test | Install OTA heap-headroom correction successfully
+
+- Final main `6701f32b95116514698d7a66672738b31062b736` Target run `33968334706` signed and atomically published exact `2.1.462+main.g6701f32`.
+- Stable recovered boot 735 / 452 passed IDLE, relay-OFF, MQTT 1/1 and BLE preflight at uptime 892 seconds. One HA request received PUBACK, Backend `target_accepted` and Target result 0; no duplicate was sent.
+- Target advanced to boot 736 / `c563d15ba2ebb669d6c77fc5d574acc6`, exact 462 and SOFTWARE reset. It stayed on that identity through uptime 137 seconds with MQTT 1/1, zero failures, BLE advertising active and relay OFF/pin high, passing both the 30-second valid and 120-second rollback windows.
+- Runtime free heap was about 69 KiB and largest block 38.9 KiB at the final readback, above the corrected 48/32 KiB contract. No phone authentication, sensor passage, relay actuation or physical door motion was performed.
+
+## [2026-09-05] test | Publish exact-final mobile diagnostics APK
+
+- Final-main run `33968334698` passed Flutter/native GATT canary, built, signed and atomically published `1.0.0-g6701f32` / version code 43001.
+- Independent strict-HTTPS readback found byte-identical primary/fallback manifests and 55,577,753-byte APKs. Both APK digests match manifest SHA-256 `bcbb16c9e707e86f7bcaaff0c250e08b1f4d47b304f7fe2918370ec14ef885c6`.
+- Publication does not claim Android package installation, credential preservation, first-run health or a physical access result. The owner will update the mobile app separately.
