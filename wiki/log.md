@@ -6688,3 +6688,33 @@
   or hands-free physical trial was performed by these source checks.
 - Automatic uploaded-record deletion remains unset and disclosed in-app. Selecting
   its retention period is an owner/privacy Gate before enabling production upload.
+
+## [2026-09-05] compile | Authorize field diagnostics D0-D2 candidate
+
+- Bound immutable feature `cdcc757b856bc503e9d85b874d67adc425c74a49` to
+  the sole `field-diagnostics-cdcc757-persistent-baseline` with the complete
+  ordered 108-path normalized digest map.
+- Expanded the protected inventory by four files: the strict Backend diagnostic
+  schema, schema-015 up/down migrations and their direct test. Exactly 16
+  protected blobs are new or changed; the other 92 retain trusted-main bytes.
+- This policy-only candidate deploys no schema, publishes or installs no app or
+  firmware, and sends no Target command. Runtime upload remains default-OFF and
+  the owner retention decision and physical field evidence remain open Gates.
+
+## [2026-09-05] test | Validate field diagnostics policy candidate
+
+- Focused trusted-policy tests passed 42/42; JSON parsing and repository
+  whitespace validation passed.
+- The immutable feature SHA is available from the authenticated GitHub remote.
+  Hosted policy review and merge remain pending at this point.
+
+## [2026-09-05] compile | Connect field diagnostics to authorized policy main
+
+- Policy PR #366 passed the hosted inert-byte verifier and merge-committed as
+  main `aa428649d75b77f91bcfba752a71f6ce05c0d1c6`.
+- Merged that exact main into the feature branch without rewriting immutable
+  feature `cdcc757b856bc503e9d85b874d67adc425c74a49`, preserving both append-only
+  diagnostic and authorization records in the wiki.
+- This history connection deploys no schema, publishes or installs no app or
+  firmware and sends no Target command. Hosted feature CI and runtime Gates
+  remain separate.

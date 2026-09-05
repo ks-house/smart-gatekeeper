@@ -18,7 +18,7 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-09-05 field diagnostics D0-D2 source candidate
+## 2026-09-05 field diagnostics D0-D2 source and policy-authorized candidate
 
 - Android now preserves and exports at most 50 redacted GATT sessions and 100
   wake callbacks with app/SDK, opaque process reference, scheduler/GATT phase
@@ -36,7 +36,9 @@ applies_to:
   and first missing stage in the administrator page. HA remains a low-cardinality
   operational summary and receives no attempt journal.
 - Local Python, Flutter/Kotlin and ESP32-C6 build evidence is recorded in
-  `hardware_test.md`. This is not yet trusted-policy authorization, NAS schema
+  `hardware_test.md`. Policy PR #366 authorizes immutable feature
+  `cdcc757b856bc503e9d85b874d67adc425c74a49` with the complete 108-path
+  digest map (16 new/changed, 92 trusted-main bytes). This is not yet NAS schema
   migration, APK installation, Target OTA or a physical owner/family trial.
   Uploaded-record automatic retention duration is also still an owner/privacy
   policy Gate and is disclosed in-app rather than silently invented.
