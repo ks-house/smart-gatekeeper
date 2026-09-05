@@ -2039,3 +2039,25 @@ Action inventories remain exact.
 This final rotation deploys or installs nothing. Schema-015 Backend deployment,
 mobile and Target publication/install, owner retention choice and a physical
 field trial remain independent runtime Gates.
+
+## 75. OTA health sample-gap correction authorization candidate
+
+Field rollout of exact `2.1.456+main.gc1d58b1` reached boot 730 with IDLE,
+relay OFF, MQTT and BLE advertising healthy through uptime 75 seconds, then
+controlled `ota_health_rollback` restored `2.1.452` as boot 731. The candidate
+did not panic; the existing 1,000 ms health-sample ceiling exactly matched the
+expanded signed telemetry cadence and therefore treated ordinary TLS/scheduler
+jitter as a loss of continuous health.
+
+Immutable feature `b88e3ca7eb2827aea89513c398c6b77a4ba36f74` raises the
+sample-gap ceiling to 5,000 ms, still far below the 45-second loop watchdog,
+and persists distinct safe-state, network, heap or sample-gap rollback reasons.
+The exact Target compiler inventory digest is updated with the source byte.
+
+Exactly three of 108 protected blobs change: the Target publisher workflow,
+`src/OtaManager.cpp`, and its security contract test. The other 105 protected
+bytes, seven-workflow inventory and empty local-Action inventory remain
+identical to trusted main. This policy-only authorization publishes no artifact,
+sends no Target request and changes no relay or door output; normal review,
+feature merge, final actual-main rotation, strictly newer publication and one
+bounded OTA health observation remain separate Gates.

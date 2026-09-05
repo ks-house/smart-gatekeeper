@@ -6743,3 +6743,9 @@
 - Target run `33965654223` signed and published exact `2.1.456+main.gc1d58b1`. From stable boot 729 / `2.1.452`, one safe-preflight HA OTA request received PUBACK, Backend `target_accepted` and Target ACK result 0; no duplicate was sent.
 - Candidate boot 730 reached exact 456, IDLE, relay OFF, MQTT 1/1 with zero failures and BLE advertising active. It retained that state through uptime 75 seconds, then controlled `ota_health_rollback` restored exact 452 as boot 731. The retained coredump does not match the SOFTWARE reset.
 - Correlation found the 1,000 ms health sample-gap ceiling equals the expanded 1,000 ms signed telemetry cadence, allowing TLS/scheduler jitter to continuously reset the 30-second valid interval. The corrective candidate uses 5,000 ms, below the 45-second loop watchdog, and records predicate-specific rollback reasons. Focused 45 tests and the production build passed; trusted review and a strictly newer single OTA remain pending.
+
+## [2026-09-05] compile | Authorize OTA health sample-gap correction
+
+- Pinned the sole `ota-health-gap-b88e3ca-persistent-baseline` to immutable feature `b88e3ca7eb2827aea89513c398c6b77a4ba36f74` after the first diagnostic firmware controlled-rollback observation.
+- Exactly three of 108 protected blobs change: the Target publisher input digest, OTA health runtime and its direct security test. The other 105 protected bytes and workflow inventories retain trusted-main identity.
+- This policy-only authorization publishes or installs nothing and sends no device, relay or door command. Feature merge, final policy rotation, a strictly newer signed artifact and a single post-fix OTA health observation remain required.
