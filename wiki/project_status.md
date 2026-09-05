@@ -2111,3 +2111,9 @@ tracking.
   not reconstructed from that observation. A fresh owner phone authentication
   is still required to close the GATT v2 credential/ACL acceptance and physical
   access Gate; the agent issued no relay or door-open action.
+- Final readback later found boot 722, boot ID
+  `e8c8d996c89184110d83c011a38a6ba0`, with reset reason `BROWNOUT`. It retained
+  exact `2.1.448+main.g6d8ab48`, was online/IDLE at uptime 344 seconds, reported
+  MQTT 1/1 with zero failures and continued Backend verified-status. This is a
+  separate electrical/reset event after the successful OTA health window, not
+  firmware rollback; the repeated brownout cause remains a field power Gate.
