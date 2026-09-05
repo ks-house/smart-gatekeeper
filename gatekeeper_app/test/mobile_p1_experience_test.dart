@@ -5,13 +5,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gatekeeper_app/l10n/generated/app_localizations.dart';
 import 'package:gatekeeper_app/screens/support_report_screen.dart';
 import 'package:gatekeeper_app/services/commercial_models.dart';
+import 'package:gatekeeper_app/services/field_diagnostics_service.dart';
 import 'package:gatekeeper_app/services/mobile_identity_service.dart';
 import 'package:gatekeeper_app/services/native_gatt_worker_health.dart';
 import 'package:gatekeeper_app/services/support_report_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     PackageInfo.setMockInitialValues(
       appName: 'Smart Key',
       packageName: 'com.kshouse.gatekeeper_app',
@@ -51,8 +54,8 @@ void main() {
     final report =
         await SupportReportService().build(identity: identity, health: health);
 
-    expect(report, contains('sgk-mobile-support-v1'));
-    expect(report, contains('event_ref'));
+    expect(report, contains('sgk-mobile-support-v2'));
+    expect(report, contains('bundle_ref'));
     expect(report, contains('"wake_registration_requested": true'));
     expect(report, contains('"wake_registration_reconciled": false'));
     expect(report, contains('"wake_registration_status": "reconciling"'));
@@ -71,12 +74,31 @@ void main() {
     }
   });
 
+  test('field diagnostics stay opt-in and markers clear only by matching ref',
+      () async {
+    final store = FieldDiagnosticsStore();
+    expect(await store.uploadEnabled(), isFalse);
+    final marker = await store.startMarker(
+      now: DateTime.utc(2026, 9, 5, 1),
+      duration: const Duration(minutes: 10),
+    );
+    expect(marker.ref, matches(RegExp(r'^[0-9a-f]{16}$')));
+    await store.clearMarker('0000000000000000');
+    expect((await store.readMarker())?.ref, marker.ref);
+    await store.clearMarker(marker.ref);
+    expect(await store.readMarker(), isNull);
+  });
+
   testWidgets('support copy requires explicit preview consent', (tester) async {
-    await tester.pumpWidget(const MaterialApp(
+    await tester.pumpWidget(MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      locale: Locale('ko'),
-      home: SupportReportScreen(identity: identity, health: null),
+      locale: const Locale('ko'),
+      home: SupportReportScreen(
+        identity: identity,
+        health: null,
+        service: _SupportReportServiceFake(),
+      ),
     ));
     await tester.pumpAndSettle();
 
@@ -107,4 +129,13 @@ void main() {
     expect(home, contains('SupportReportScreen('));
     expect(home, contains('readExperience()'));
   });
+}
+
+class _SupportReportServiceFake extends SupportReportService {
+  @override
+  Future<String> build({
+    required MobileIdentityStatus identity,
+    required NativeGattWorkerHealth? health,
+  }) async =>
+      '{"schema":"sgk-mobile-support-v2"}';
 }

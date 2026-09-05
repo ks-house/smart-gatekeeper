@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/access_session_polling_policy.dart';
 import '../services/commercial_models.dart';
+import '../services/field_diagnostics_service.dart';
 import '../services/home_message_projection.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/mobile_activity_store.dart';
 import '../services/mobile_identity_service.dart';
 import '../services/native_gatt_worker_health.dart';
 import '../services/remote_manual_open_service.dart';
+import '../services/support_report_service.dart';
 import '../services/update_checker.dart';
 import '../services/account_logout_service.dart';
 import 'mobile_admin_settings_screen.dart';
@@ -32,6 +34,11 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   final _updates = UpdateChecker();
   final _remoteOpen = RemoteManualOpenService();
   final _logout = AccountLogoutService();
+  final _diagnosticsStore = FieldDiagnosticsStore();
+  late final SupportReportService _supportReports = SupportReportService(
+    nativeBridge: _healthBridge,
+    diagnosticsStore: _diagnosticsStore,
+  );
 
   int _tab = 0;
   bool _busy = false;
@@ -46,10 +53,15 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   Timer? _identityTimer;
   Timer? _accessSessionTimer;
   Timer? _accessSessionExpiryTimer;
+  Timer? _fieldMarkerExpiryTimer;
   String? _activeAccessSessionId;
   String? _closedAccessSessionId;
   String? _accessSessionPollInFlightId;
   int _accessSessionTransientFailures = 0;
+  bool _diagnosticUploadEnabled = false;
+  FieldTestMarker? _fieldTestMarker;
+  bool _diagnosticSyncBusy = false;
+  String? _lastDiagnosticHealthFingerprint;
 
   @override
   void initState() {
@@ -73,6 +85,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
     _identityTimer?.cancel();
     _accessSessionTimer?.cancel();
     _accessSessionExpiryTimer?.cancel();
+    _fieldMarkerExpiryTimer?.cancel();
     super.dispose();
   }
 
@@ -81,11 +94,81 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   }
 
   Future<void> _loadAll() async {
+    final uploadEnabled = await _diagnosticsStore.uploadEnabled();
+    final marker = await _diagnosticsStore.readMarker();
+    if (mounted) {
+      setState(() {
+        _diagnosticUploadEnabled = uploadEnabled;
+        _fieldTestMarker = marker;
+      });
+      _scheduleFieldMarkerExpiry(marker);
+    }
     await Future.wait<void>([
       _refreshHealth(),
       _refreshIdentity(),
       _refreshUpdate(),
     ]);
+    await _syncDiagnosticsIfEnabled();
+  }
+
+  Future<void> _syncDiagnosticsIfEnabled() async {
+    if (!_diagnosticUploadEnabled || _diagnosticSyncBusy) return;
+    _diagnosticSyncBusy = true;
+    try {
+      final bundle = await _supportReports.buildMap(
+        identity: _identityStatus,
+        health: _health,
+      );
+      final bundleRef = bundle['bundle_ref']?.toString();
+      if (bundleRef == null ||
+          bundleRef == await _diagnosticsStore.lastUploadedRef()) {
+        return;
+      }
+      if (await _identity.uploadDiagnostics(bundle)) {
+        await _diagnosticsStore.markUploaded(bundleRef);
+        final fieldTest = bundle['field_test'];
+        if (fieldTest is Map && fieldTest['active'] == false) {
+          final markerRef = fieldTest['ref']?.toString();
+          if (markerRef != null) {
+            await _diagnosticsStore.clearMarker(markerRef);
+            if (mounted && _fieldTestMarker?.ref == markerRef) {
+              setState(() => _fieldTestMarker = null);
+            }
+          }
+        }
+      }
+    } finally {
+      _diagnosticSyncBusy = false;
+    }
+  }
+
+  Future<void> _setDiagnosticUpload(bool enabled) async {
+    await _diagnosticsStore.setUploadEnabled(enabled);
+    if (!mounted) return;
+    setState(() => _diagnosticUploadEnabled = enabled);
+    if (enabled) await _syncDiagnosticsIfEnabled();
+  }
+
+  Future<void> _startFieldTestMarker() async {
+    final marker = await _diagnosticsStore.startMarker();
+    if (!mounted) return;
+    setState(() => _fieldTestMarker = marker);
+    _scheduleFieldMarkerExpiry(marker);
+    await _syncDiagnosticsIfEnabled();
+  }
+
+  void _scheduleFieldMarkerExpiry(FieldTestMarker? marker) {
+    _fieldMarkerExpiryTimer?.cancel();
+    if (marker == null) return;
+    final delay = marker.expiresAt.difference(DateTime.now().toUtc());
+    if (delay <= Duration.zero) {
+      unawaited(_syncDiagnosticsIfEnabled());
+      return;
+    }
+    _fieldMarkerExpiryTimer = Timer(
+      delay + const Duration(milliseconds: 100),
+      () => _syncDiagnosticsIfEnabled(),
+    );
   }
 
   Future<void> _refreshUpdate() async {
@@ -104,6 +187,15 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
         _activity = activity;
       });
       _reconcileAccessSessionPolling(health);
+      final fingerprint = <Object?>[
+        health.latestDetection?.receivedEpochMs,
+        health.lastSessionUpdatedEpochMs,
+        health.lastSessionState,
+      ].join(':');
+      if (_lastDiagnosticHealthFingerprint != fingerprint) {
+        _lastDiagnosticHealthFingerprint = fingerprint;
+        unawaited(_syncDiagnosticsIfEnabled());
+      }
     } catch (_) {}
   }
 
@@ -680,6 +772,33 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
                 ),
               ),
             ),
+          ),
+        ),
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.monitor_heart_outlined),
+                title: const Text('현장 진단 자동 업로드'),
+                subtitle: const Text(
+                  '기본값은 꺼짐입니다. 켜면 비밀·기기 주소를 제외한 최근 BLE 단계와 지연만 관리자 화면에 보냅니다. 자동 삭제 기간은 아직 설정되지 않았습니다.',
+                ),
+                value: _diagnosticUploadEnabled,
+                onChanged: _setDiagnosticUpload,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: const Text('현장 테스트 표시'),
+                subtitle: Text(
+                  _fieldTestMarker?.isActiveAt(DateTime.now().toUtc()) == true
+                      ? '10분 표시 활성 · ${_fieldTestMarker!.ref}'
+                      : '다음 접근 테스트를 10분 동안 묶어 추적합니다.',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _startFieldTestMarker,
+              ),
+            ],
           ),
         ),
         if (_identityStatus.isMobileAdmin)

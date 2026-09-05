@@ -1,7 +1,7 @@
 # wiki/index.md — Navigation Map
 > Personal production: [personal_production_profile.md](personal_production_profile.md) — reduced single-owner phone and installed-Target release profile.
 > **Read this first.** All wiki pages are listed here with one-line summaries.
-> Last updated: 2026-09-05 (BLE advertising self-heal installed health)
+> Last updated: 2026-09-05 (field diagnostics D0-D2 source implementation)
 
 ---
 
@@ -67,6 +67,7 @@
 | [commercial_operations.md](commercial_operations.md) | #52 privacy-safe operations, bounded resilience, readiness/metrics/SLO, backup/restore, hardened production Compose, supply-chain and evidence Gates |
 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, Backend schema 013 canonical history/transactional HA outbox, immutable correlation, I7/I9/OTA 합격·증거 경계 |
+| [field_diagnostics_capture_plan.md](field_diagnostics_capture_plan.md) | Android rolling journal, Target checkpoint, 동의형 Backend correlation과 first-missing-stage D0-D2 구현 및 D3 현장 검증 경계 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 connection-owned/ACK-gated GATT, v2 fast challenge/proof/result, OTA safe-state, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |
@@ -133,6 +134,7 @@
 | Backend enrollment·ACL sync·revocation | [backend_acl_management.md](backend_acl_management.md) |
 | 모바일·Target OTA 최상위 계약 | [ota_reliability_contract.md](ota_reliability_contract.md) |
 | Cross-layer session/event code와 parser fixture | [observability_event_schema.md](observability_event_schema.md) |
+| 현장 테스트 사후 진단 수집 계획 | [field_diagnostics_capture_plan.md](field_diagnostics_capture_plan.md) |
 | OTA canary·rollback 운영 절차 | [ota_operations_runbook.md](ota_operations_runbook.md) |
 | Trusted workflow digest Gate와 policy rotation | [trusted_workflow_policy.md](trusted_workflow_policy.md) |
 | 비콘 미감지 신고 대응 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#9-신고-대응-순서) |

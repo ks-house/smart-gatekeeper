@@ -284,6 +284,13 @@ class NativeGattWorkerHealthBridge {
     return NativeGattWorkerHealth.fromMap(raw ?? const <Object?, Object?>{});
   }
 
+  Future<Map<Object?, Object?>> readRecentDiagnostics() async {
+    final raw = await _channel.invokeMethod<Map<Object?, Object?>>(
+      'getRecentDiagnostics',
+    );
+    return raw ?? const <Object?, Object?>{};
+  }
+
   Future<bool> dismissAccessReadyNotification() async {
     try {
       return await _channel.invokeMethod<bool>(

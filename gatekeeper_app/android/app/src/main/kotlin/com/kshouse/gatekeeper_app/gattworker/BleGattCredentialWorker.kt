@@ -467,6 +467,15 @@ object BleGattHealthBridge {
       "networkRequired" to BleGattWorkScheduler.HAS_NETWORK_CONSTRAINT,
     )
   }
+
+  fun recentDiagnostics(context: Context): Map<String, Any?> = mapOf(
+    "schema" to "sgk-native-diagnostics-v1",
+    "androidSdk" to Build.VERSION.SDK_INT,
+    "sessions" to SharedPreferencesSessionLedger(context.applicationContext)
+      .recent()
+      .map { it.redactedMap() },
+    "wakeEvents" to BleWakeJournal.recentRedacted(context.applicationContext),
+  )
 }
 
 object BleGattRuntimeEnvironment {

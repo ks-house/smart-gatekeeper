@@ -378,6 +378,7 @@ data class DurableGattSession(
 ) {
   fun redactedMap(): Map<String, Any?> = mapOf(
     "sessionId" to id,
+    "createdEpochMs" to createdEpochMs,
     "attempt" to attempt,
     "state" to state.name,
     "reasonCode" to reasonCode,
@@ -553,6 +554,10 @@ class SharedPreferencesSessionLedger(private val context: Context) : DurableSess
 
   @Synchronized
   override fun last(): DurableGattSession? = readAll().maxByOrNull { it.updatedEpochMs }
+
+  @Synchronized
+  fun recent(limit: Int = MAX_SESSIONS): List<DurableGattSession> =
+    readAll().sortedByDescending { it.updatedEpochMs }.take(limit.coerceIn(0, MAX_SESSIONS))
 
   fun clear(): Boolean = prefs.edit().clear().commit()
 

@@ -11,10 +11,12 @@ class SupportReportScreen extends StatefulWidget {
     super.key,
     required this.identity,
     required this.health,
+    this.service,
   });
 
   final MobileIdentityStatus identity;
   final NativeGattWorkerHealth? health;
+  final SupportReportService? service;
 
   @override
   State<SupportReportScreen> createState() => _SupportReportScreenState();
@@ -27,7 +29,7 @@ class _SupportReportScreenState extends State<SupportReportScreen> {
   @override
   void initState() {
     super.initState();
-    SupportReportService()
+    (widget.service ?? SupportReportService())
         .build(identity: widget.identity, health: widget.health)
         .then((value) {
       if (mounted) setState(() => _report = value);

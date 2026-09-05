@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
 
 object BleWakeJournal {
   private const val TAG = "BLE_WAKE_POC"
@@ -75,6 +76,14 @@ object BleWakeJournal {
       .getString(KEY_EVENTS, null),
   )
 
+  @Synchronized
+  fun recentRedacted(context: Context, limit: Int = 100): List<Map<String, Any?>> =
+    recentRedactedFromJson(
+      context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        .getString(KEY_EVENTS, null),
+      limit,
+    )
+
   internal fun latestRedactedFromJson(value: String?): Map<String, Any?>? {
     val events = readArray(value)
     if (events.length() == 0) return null
@@ -89,6 +98,35 @@ object BleWakeJournal {
       "resultCount" to event.optInt("result_count", 0),
       "errorCode" to event.optInt("error_code", 0),
     )
+  }
+
+  internal fun recentRedactedFromJson(
+    value: String?,
+    limit: Int,
+  ): List<Map<String, Any?>> {
+    if (limit <= 0) return emptyList()
+    val events = readArray(value)
+    val start = (events.length() - limit.coerceAtMost(100)).coerceAtLeast(0)
+    return buildList {
+      for (index in start until events.length()) {
+        val event = events.optJSONObject(index) ?: continue
+        add(
+          mapOf(
+            "source" to event.optString("source", "unknown"),
+            "processRef" to opaqueProcessRef(event.optString("process_id", "")),
+            "success" to event.optBoolean("success", false),
+            "receivedEpochMs" to event.optLong("received_epoch_ms", 0L),
+            "receivedElapsedMs" to event.optLong("received_elapsed_ms", 0L),
+            "callbackLatencyMs" to event.optDoubleOrNull("latency_ms"),
+            "strongestRssi" to event.optIntOrNull("strongest_rssi"),
+            "screenInteractive" to event.optBoolean("screen_interactive", true),
+            "resultCount" to event.optInt("result_count", 0),
+            "callbackType" to event.optInt("callback_type", 0),
+            "errorCode" to event.optInt("error_code", 0),
+          ),
+        )
+      }
+    }
   }
 
   fun logDump(context: Context) {
@@ -106,4 +144,12 @@ object BleWakeJournal {
 
   private fun JSONObject.optDoubleOrNull(key: String): Double? =
     if (!has(key) || isNull(key)) null else optDouble(key)
+
+  private fun opaqueProcessRef(value: String): String? {
+    if (value.isBlank()) return null
+    return MessageDigest.getInstance("SHA-256")
+      .digest("support-process:$value".toByteArray(Charsets.UTF_8))
+      .take(8)
+      .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+  }
 }

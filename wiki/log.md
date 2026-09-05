@@ -6632,3 +6632,59 @@
 - Retained HA discovery for `[Gatekeeper] BLE 광고 상태` uses raw Target status,
   device class `running` and 30-second expiry. Controller-state readback is not
   external RF packet reception; a fresh phone hands-free trial remains pending.
+
+## [2026-09-05] test | Reconcile app ACL 1340 with live Target state
+
+- The owner app screenshot displayed ACL 1340 with the access-ready mark. A fresh
+  read-only Target status check also reported active ACL 1340 with exact protocol
+  range `2..2`, BLE advertising expected/active, IDLE, and MQTT 1/1 with zero
+  failures on exact firmware `2.1.452+main.g2bedd83`.
+- The previously recorded ACL 1331 was a point-in-time boot-726 post-install
+  observation; it is not the current Target value. Backend code only exposes
+  access-ready after an `APPLIED` ACK matches both the latest ACL version and its
+  SHA-256 digest.
+- Boot 727 reported `BROWNOUT` while retaining firmware 452 and ACL 1340. This is
+  tracked as a separate electrical field Gate and does not indicate an ACL
+  mismatch. No authentication or relay action was initiated by this check.
+
+## [2026-09-05] compile | Plan bounded cross-layer field diagnostics capture
+
+- Added `field_diagnostics_capture_plan.md` after tracing the existing Android
+  50-session redacted ledger and support report, Target deferred canonical-event
+  and retained diagnostic paths, and Backend append-only access history/admin
+  projection.
+- The proposed design keeps a mobile attempt reference separate until the Target
+  v2 session is known, adds asynchronous Target stage checkpoints, and classifies
+  the first missing phone/Target/Backend stage without inferring RF reception or
+  physical door movement.
+- Delivery is split into schema/fixture, local capture, consented Backend
+  correlation and physical soak phases. Automatic mobile diagnostic upload and
+  retention remain explicit owner/privacy decisions; no runtime, deployment,
+  access authorization or OTA behavior changed in this documentation turn.
+
+## [2026-09-05] code | Implement bounded cross-layer field diagnostics D0-D2
+
+- Android now retains at most 50 redacted GATT sessions and 100 wake callbacks,
+  exports only bounded phase/reason metadata, and hashes the process reference.
+  Flutter builds a stable support bundle, provides a random 10-minute field
+  marker, and keeps automatic authenticated upload OFF per phone by default.
+- Target callbacks only update RAM counters and a separate RTC access breadcrumb;
+  the existing deferred MQTT task adds those checkpoints to retained status and
+  boot diagnostics. Existing OTA/rollback and `GKDX` layouts remain unchanged.
+- Backend schema 015 adds append-only, byte-identical-idempotent mobile diagnostic
+  storage. The authenticated personal endpoint and admin timeline correlate
+  verified Target events/controller state without treating them as authorization,
+  RF reception or physical door evidence. HA remains low-cardinality.
+
+## [2026-09-05] test | Verify field diagnostics source and migration boundaries
+
+- Backend discovery passed 222 tests with 2 optional environment skips. Two real
+  MariaDB scenarios passed: existing-volume upgrade through 015 and
+  up/write/down/legacy-read compatibility.
+- Flutter focused diagnostics tests passed 27 cases, `dart analyze lib test`
+  reported no issues, and the focused Android Gradle/JUnit journal test passed.
+- Production ESP32-C6 source built at 26.9% RAM and 24.9% flash; the exact Target
+  OTA input contract also passed. No NAS deployment, APK installation, Target OTA
+  or hands-free physical trial was performed by these source checks.
+- Automatic uploaded-record deletion remains unset and disclosed in-app. Selecting
+  its retention period is an owner/privacy Gate before enabling production upload.

@@ -232,7 +232,7 @@ RtcEventRetention rtcEventRetention;
 uint32_t rtcEventFallbackRestoredCount = 0;
 bool rtcEventFallbackInvalid = false;
 
-char pendingTelemetry[2560] = {};
+char pendingTelemetry[4096] = {};
 bool pendingTelemetryValid = false;
 
 std::array<uint8_t, 32> accessEvidenceKey{};
@@ -1750,7 +1750,8 @@ void MqttManager::publishBootDiagnostics() {
     bootDiagnosticsPending = true;
     if (!isConnected()) return;
 
-    StaticJsonDocument<2304> doc;
+    static StaticJsonDocument<2560> doc;
+    doc.clear();
     doc["target_id"] = DiagnosticsManager::targetId();
     doc["boot_id"] = DiagnosticsManager::bootId();
     doc["boot_count"] = DiagnosticsManager::bootCount();
@@ -1770,6 +1771,14 @@ void MqttManager::publishBootDiagnostics() {
         DiagnosticsManager::previousRelayCommandedOn();
     doc["previous_relay_pin"] =
         DiagnosticsManager::previousRelayPinLevel();
+    doc["previous_access_valid"] =
+        DiagnosticsManager::previousAccessBreadcrumbValid();
+    doc["previous_access_uptime_ms"] =
+        DiagnosticsManager::previousAccessUptimeMs();
+    doc["previous_access_stage"] =
+        DiagnosticsManager::previousAccessStage();
+    doc["previous_access_session_id"] =
+        DiagnosticsManager::previousAccessSessionId();
 
     doc["coredump_valid"] = DiagnosticsManager::coreDumpValid();
     int resetCode = DiagnosticsManager::resetReasonCode();
@@ -1828,7 +1837,7 @@ void MqttManager::publishBootDiagnostics() {
     doc["wifi_current_outage_ms"] = WifiManager::currentOutageMs();
     doc["wifi_last_outage_ms"] = WifiManager::lastOutageMs();
 
-    char buffer[2304];
+    static char buffer[2560];
     size_t length = serializeJson(doc, buffer, sizeof(buffer));
     bool ok = !doc.overflowed() && length > 0 &&
               length < sizeof(buffer) &&
@@ -1912,7 +1921,10 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     bytesToLowerHex(accessTag, sizeof(accessTag), accessTagHex,
                     sizeof(accessTagHex));
 
-    StaticJsonDocument<2560> doc;
+    // Main-loop-only reusable storage keeps the expanded diagnostic snapshot
+    // out of the loop task stack while TLS publication is still in scope.
+    static StaticJsonDocument<4096> doc;
+    doc.clear();
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
     doc["state"]           = stateStr ? stateStr : "UNKNOWN";
@@ -2008,6 +2020,33 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
         gattTelemetry.advertising_restart_failures;
     doc["ble_advertising_watchdog_recoveries"] =
         gattTelemetry.advertising_watchdog_recoveries;
+    doc["gatt_accepted_connections"] = gattTelemetry.accepted_connections;
+    doc["gatt_disconnects"] = gattTelemetry.disconnects;
+    doc["gatt_challenges_issued"] = gattTelemetry.challenges_issued;
+    doc["gatt_proof_frames_received"] = gattTelemetry.proofs_received;
+    doc["gatt_proofs_verified"] = gattTelemetry.proofs_verified;
+    doc["gatt_proofs_rejected"] = gattTelemetry.proofs_rejected;
+    doc["gatt_results_indicated"] = gattTelemetry.results_indicated;
+    doc["gatt_armed_entries"] = gattTelemetry.armed_entries;
+    doc["gatt_sensor_detections"] = gattTelemetry.sensor_detections;
+    doc["gatt_relay_on_count"] = gattTelemetry.relay_on_count;
+    doc["gatt_relay_off_count"] = gattTelemetry.relay_off_count;
+    doc["gatt_terminal_count"] = gattTelemetry.terminal_count;
+    doc["gatt_last_stage_ms"] = gattTelemetry.last_stage_ms;
+    doc["gatt_last_stage"] = gattTelemetry.last_stage;
+    if (gattTelemetry.last_session_id[0] != '\0') {
+      doc["gatt_last_session_id"] = gattTelemetry.last_session_id;
+    } else {
+      doc["gatt_last_session_id"] = nullptr;
+    }
+    doc["previous_access_valid"] =
+        DiagnosticsManager::previousAccessBreadcrumbValid();
+    doc["previous_access_uptime_ms"] =
+        DiagnosticsManager::previousAccessUptimeMs();
+    doc["previous_access_stage"] =
+        DiagnosticsManager::previousAccessStage();
+    doc["previous_access_session_id"] =
+        DiagnosticsManager::previousAccessSessionId();
     extern sgk::TargetAclManager g_acl_manager;
     doc["acl_active"] = g_acl_manager.hasActiveAcl();
     doc["acl_version"] = g_acl_manager.activeAclVersion();

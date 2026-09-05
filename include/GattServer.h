@@ -21,6 +21,21 @@ class GattServer {
     uint32_t advertising_restart_successes;
     uint32_t advertising_restart_failures;
     uint32_t advertising_watchdog_recoveries;
+    uint32_t accepted_connections;
+    uint32_t disconnects;
+    uint32_t challenges_issued;
+    uint32_t proofs_received;
+    uint32_t proofs_verified;
+    uint32_t proofs_rejected;
+    uint32_t results_indicated;
+    uint32_t armed_entries;
+    uint32_t sensor_detections;
+    uint32_t relay_on_count;
+    uint32_t relay_off_count;
+    uint32_t terminal_count;
+    uint32_t last_stage_ms;
+    char last_stage[24];
+    char last_session_id[37];
   };
 
   static void init();

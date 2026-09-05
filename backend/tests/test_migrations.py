@@ -56,6 +56,8 @@ HA_EVENT_OUTBOX_UP = ROOT / "backend" / "db" / "migrations" / "013_ha_access_eve
 HA_EVENT_OUTBOX_DOWN = ROOT / "backend" / "db" / "migrations" / "013_ha_access_event_outbox_down.sql"
 GATT_V2_ACL_UP = ROOT / "backend" / "db" / "migrations" / "014_gatt_v2_acl_contract_up.sql"
 GATT_V2_ACL_DOWN = ROOT / "backend" / "db" / "migrations" / "014_gatt_v2_acl_contract_down.sql"
+MOBILE_DIAGNOSTICS_UP = ROOT / "backend" / "db" / "migrations" / "015_mobile_diagnostics_up.sql"
+MOBILE_DIAGNOSTICS_DOWN = ROOT / "backend" / "db" / "migrations" / "015_mobile_diagnostics_down.sql"
 PRODUCTION_SCHEMA = ROOT / "backend" / "db" / "production_schema.sql"
 MIGRATION_RUNNER = ROOT / "backend" / "db" / "run_migrations.sh"
 DB_DOCKERFILE = ROOT / "backend" / "db" / "Dockerfile"
@@ -82,7 +84,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-014}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-015}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -283,6 +285,23 @@ class MigrationContractTest(unittest.TestCase):
         self.assertIn("SET min_protocol = 1", down)
         self.assertIn("'GATT_V1_ROLLBACK'", down)
 
+    def test_mobile_diagnostics_are_strict_append_only_and_preserved(self) -> None:
+        up = MOBILE_DIAGNOSTICS_UP.read_text(encoding="utf-8")
+        down = MOBILE_DIAGNOSTICS_DOWN.read_text(encoding="utf-8")
+        dockerfile = DB_DOCKERFILE.read_text(encoding="utf-8")
+        for required in (
+            "CREATE TABLE IF NOT EXISTS mobile_diagnostic_bundles",
+            "UNIQUE KEY uq_mobile_diagnostic_bundle",
+            "payload_json JSON NOT NULL",
+            "mobile_diagnostic_bundles_no_update",
+            "mobile_diagnostic_bundles_no_delete",
+            "015_mobile_diagnostics_up.sql",
+            "015_mobile_diagnostics_down.sql",
+        ):
+            self.assertIn(required, up + dockerfile)
+        self.assertIn("mobile_diagnostic_bundles_preserved", down)
+        self.assertNotIn("DROP TABLE", down.upper())
+
     @unittest.skipUnless(
         os.getenv("RUN_MARIADB_INTEGRATION") == "1",
         "set RUN_MARIADB_INTEGRATION=1 for production DB image migration test",
@@ -374,7 +393,7 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "014", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "015", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
                 state = docker(
@@ -396,7 +415,7 @@ class MigrationContractTest(unittest.TestCase):
                     check=True,
                 ).stdout.split()[0]
                 self.assertEqual(
-                    ["1", "13", expected_014, "2:2", "GATT_V2_CONTRACT:NULL"],
+                    ["1", "14", expected_014, "2:2", "GATT_V2_CONTRACT:NULL"],
                     state,
                 )
                 inserted = docker(

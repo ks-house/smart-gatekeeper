@@ -17,6 +17,9 @@ class DiagnosticsManager {
   static void noteRelayState(bool relayCommandedOn,
                              int relayPinLevel,
                              const char* action);
+  // Separate access breadcrumb so Wi-Fi/MQTT actions cannot overwrite the
+  // last local authentication stage before an unexpected reset.
+  static void noteAccessStage(const char* stage, const char* sessionId);
   // Preserve a restart-surviving, non-overwritable signal when exact access
   // evidence could not be copied to NVS/RTC before a fail-closed restart.
   static void markEvidencePersistenceFailure();
@@ -45,6 +48,10 @@ class DiagnosticsManager {
   static bool previousRelayCommandedOn();
   static int previousRelayPinLevel();
   static bool previousEvidencePersistenceFailed();
+  static bool previousAccessBreadcrumbValid();
+  static uint32_t previousAccessUptimeMs();
+  static const char* previousAccessStage();
+  static const char* previousAccessSessionId();
 
   static uint32_t mqttConnectCount();
 

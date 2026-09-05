@@ -105,10 +105,39 @@ uint32_t advertising_restart_attempts_{0};
 uint32_t advertising_restart_successes_{0};
 uint32_t advertising_restart_failures_{0};
 uint32_t advertising_watchdog_recoveries_{0};
+uint32_t accepted_connections_{0};
+uint32_t disconnects_{0};
+uint32_t challenges_issued_{0};
+uint32_t proofs_received_{0};
+uint32_t proofs_verified_{0};
+uint32_t proofs_rejected_{0};
+uint32_t results_indicated_{0};
+uint32_t armed_entries_{0};
+uint32_t sensor_detections_{0};
+uint32_t relay_on_count_{0};
+uint32_t relay_off_count_{0};
+uint32_t terminal_count_{0};
+uint32_t last_stage_ms_{0};
+char last_stage_[24] = "BOOTING";
+char last_session_id_[37] = "";
 bool fast_start_requested_{false};
 sgk::ConnectionToken fast_start_owner_{};
 
 constexpr uint32_t kAdvertisingHealthCheckIntervalMs = 2000;
+
+void noteDiagnosticStage(const char* stage, const char* session_id,
+                         uint32_t* counter = nullptr) {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  if (counter != nullptr) ++(*counter);
+  std::snprintf(last_stage_, sizeof(last_stage_), "%s",
+                stage ? stage : "UNKNOWN");
+  if (session_id != last_session_id_) {
+    std::snprintf(last_session_id_, sizeof(last_session_id_), "%s",
+                  session_id ? session_id : "");
+  }
+  last_stage_ms_ = millis();
+  DiagnosticsManager::noteAccessStage(last_stage_, last_session_id_);
+}
 
 class CanonicalMqttEventSink final : public sgk::EventSink {
  public:
@@ -280,6 +309,46 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
            ev_code_str);
       secureZero(credential_ref, sizeof(credential_ref));
       return false;
+    }
+
+    switch (event.code) {
+      case sgk::EventCode::kAccessGattConnected:
+        noteDiagnosticStage("GATT_CONNECTED", session_id_text);
+        break;
+      case sgk::EventCode::kAccessGattFailed:
+        noteDiagnosticStage("GATT_FAILED", session_id_text);
+        break;
+      case sgk::EventCode::kAccessProofRequested:
+        noteDiagnosticStage("CHALLENGE_ISSUED", session_id_text,
+                            &challenges_issued_);
+        break;
+      case sgk::EventCode::kAccessProofVerified:
+        noteDiagnosticStage("PROOF_VERIFIED", session_id_text,
+                            &proofs_verified_);
+        break;
+      case sgk::EventCode::kAccessProofRejected:
+        noteDiagnosticStage("PROOF_REJECTED", session_id_text,
+                            &proofs_rejected_);
+        break;
+      case sgk::EventCode::kAccessArmed:
+        noteDiagnosticStage("ARMED", session_id_text, &armed_entries_);
+        break;
+      case sgk::EventCode::kAccessSensorDetected:
+        noteDiagnosticStage("SENSOR_DETECTED", session_id_text,
+                            &sensor_detections_);
+        break;
+      case sgk::EventCode::kAccessRelayOn:
+        noteDiagnosticStage("RELAY_ON", session_id_text, &relay_on_count_);
+        break;
+      case sgk::EventCode::kAccessRelayOff:
+        noteDiagnosticStage("RELAY_OFF", session_id_text, &relay_off_count_);
+        break;
+      case sgk::EventCode::kAccessSessionCompleted:
+        noteDiagnosticStage("COMPLETED", session_id_text, &terminal_count_);
+        break;
+      case sgk::EventCode::kAccessSessionTerminated:
+        noteDiagnosticStage("TERMINATED", session_id_text, &terminal_count_);
+        break;
     }
 
     // Sequencing and terminal projection advance only after the exact
@@ -902,6 +971,21 @@ void GattServer::init() {
   advertising_restart_successes_ = 0;
   advertising_restart_failures_ = 0;
   advertising_watchdog_recoveries_ = 0;
+  accepted_connections_ = 0;
+  disconnects_ = 0;
+  challenges_issued_ = 0;
+  proofs_received_ = 0;
+  proofs_verified_ = 0;
+  proofs_rejected_ = 0;
+  results_indicated_ = 0;
+  armed_entries_ = 0;
+  sensor_detections_ = 0;
+  relay_on_count_ = 0;
+  relay_off_count_ = 0;
+  terminal_count_ = 0;
+  last_stage_ms_ = 0;
+  std::snprintf(last_stage_, sizeof(last_stage_), "BOOTING");
+  last_session_id_[0] = '\0';
   fast_start_requested_ = false;
   fast_start_owner_ = {};
   if (core != nullptr) {
@@ -1288,16 +1372,15 @@ void GattServer::advanceEventSequence(uint64_t used_sequence) {
 }
 
 GattServer::Telemetry GattServer::getTelemetry() {
-  Telemetry telemetry{0, 0, sgk::SessionState::kIdle, false,
-                      false, false, 0, 0, 0, 0};
+  Telemetry telemetry{};
+  telemetry.session_state = sgk::SessionState::kIdle;
 #if ENABLE_HARDWARELESS_RC
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
   if (core != nullptr) {
-    core_mutex.lock();
     telemetry.active_connections = core->connected() ? 1 : 0;
     telemetry.failed_attempts = core->failedAttempts();
     telemetry.session_state = core->state();
     telemetry.ota_busy = core->otaBusy();
-    core_mutex.unlock();
   }
   telemetry.advertising_expected = advertising_expected_;
   telemetry.advertising_active = advertisingActive();
@@ -1306,6 +1389,23 @@ GattServer::Telemetry GattServer::getTelemetry() {
   telemetry.advertising_restart_failures = advertising_restart_failures_;
   telemetry.advertising_watchdog_recoveries =
       advertising_watchdog_recoveries_;
+  telemetry.accepted_connections = accepted_connections_;
+  telemetry.disconnects = disconnects_;
+  telemetry.challenges_issued = challenges_issued_;
+  telemetry.proofs_received = proofs_received_;
+  telemetry.proofs_verified = proofs_verified_;
+  telemetry.proofs_rejected = proofs_rejected_;
+  telemetry.results_indicated = results_indicated_;
+  telemetry.armed_entries = armed_entries_;
+  telemetry.sensor_detections = sensor_detections_;
+  telemetry.relay_on_count = relay_on_count_;
+  telemetry.relay_off_count = relay_off_count_;
+  telemetry.terminal_count = terminal_count_;
+  telemetry.last_stage_ms = last_stage_ms_;
+  std::snprintf(telemetry.last_stage, sizeof(telemetry.last_stage), "%s",
+                last_stage_);
+  std::snprintf(telemetry.last_session_id,
+                sizeof(telemetry.last_session_id), "%s", last_session_id_);
 #endif
   return telemetry;
 }
@@ -1324,6 +1424,9 @@ bool GattServer::handleConnect(uint16_t connection_id) {
   core_mutex.unlock();
   LOGF("[INFO] GATT connection %u %s", connection_id,
        accepted ? "accepted" : "rejected (single-connection limit)");
+  if (accepted) {
+    noteDiagnosticStage("CONNECTION_ACCEPTED", "", &accepted_connections_);
+  }
   return accepted;
 #else
   (void)connection_id;
@@ -1344,6 +1447,7 @@ void GattServer::handleDisconnect(uint16_t connection_id) {
     }
     core->disconnect(owner, millis());
     adapter_state.disconnect(connection_id);
+    noteDiagnosticStage("DISCONNECTED", last_session_id_, &disconnects_);
   }
   core_mutex.unlock();
 #else
@@ -1356,7 +1460,14 @@ void GattServer::handleWrite(uint16_t connection_id, sgk::MessageType type,
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return;
   core_mutex.lock();
-  adapter_state.enqueueWrite(connection_id, type, value, length);
+  const bool accepted =
+      adapter_state.enqueueWrite(connection_id, type, value, length);
+  if (accepted &&
+      (type == sgk::MessageType::kProof ||
+       type == sgk::MessageType::kFastProof)) {
+    noteDiagnosticStage("PROOF_FRAME_RECEIVED", last_session_id_,
+                        &proofs_received_);
+  }
   core_mutex.unlock();
 #else
   (void)connection_id;
@@ -1434,7 +1545,6 @@ void GattServer::handleIndicationStatus(sgk::MessageType type, bool success) {
 void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
                                        sgk::MessageType type, bool success) {
 #if ENABLE_HARDWARELESS_RC
-  (void)type;
   sgk::ConnectionToken owner;
   sgk::IndicationResult result = sgk::IndicationResult::kIgnored;
   bool failure_after_action_commit = false;
@@ -1452,6 +1562,12 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
                          millis());
   }
   core_mutex.unlock();
+  if (success && result == sgk::IndicationResult::kMessageConfirmed &&
+      (type == sgk::MessageType::kResult ||
+       type == sgk::MessageType::kFastResult)) {
+    noteDiagnosticStage("RESULT_INDICATED", last_session_id_,
+                        &results_indicated_);
+  }
   if (result == sgk::IndicationResult::kAborted) {
     if (failure_after_action_commit) {
       LOGF("[WARN] GATT output failed after action commit; Target lifecycle continues");

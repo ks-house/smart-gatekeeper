@@ -1118,6 +1118,46 @@ class TargetBootRegistryTest(unittest.TestCase):
             parsed_status = main._parse_authenticated_target_status(
                 TARGET, status_payload
             )
+            diagnostic_status = dict(
+                status_document,
+                firmware="2.1.453+main.gdeadbee",
+                gatt_accepted_connections=2,
+                gatt_disconnects=1,
+                gatt_challenges_issued=1,
+                gatt_proof_frames_received=1,
+                gatt_proofs_verified=1,
+                gatt_proofs_rejected=0,
+                gatt_results_indicated=1,
+                gatt_armed_entries=1,
+                gatt_sensor_detections=0,
+                gatt_relay_on_count=0,
+                gatt_relay_off_count=0,
+                gatt_terminal_count=0,
+                gatt_last_stage_ms=12345,
+                gatt_last_stage="RESULT_INDICATED",
+                gatt_last_session_id=SESSION_ID,
+                previous_access_valid=True,
+                previous_access_uptime_ms=12000,
+                previous_access_stage="ARMED",
+                previous_access_session_id=SESSION_ID,
+            )
+            parsed_diagnostic_status = main._parse_authenticated_target_status(
+                TARGET,
+                json.dumps(diagnostic_status, separators=(",", ":")).encode(),
+            )
+            self.assertEqual(
+                "RESULT_INDICATED",
+                parsed_diagnostic_status["controller_diagnostics"][
+                    "gatt_last_stage"
+                ],
+            )
+            diagnostic_status.pop("gatt_terminal_count")
+            self.assertIsNone(
+                main._parse_authenticated_target_status(
+                    TARGET,
+                    json.dumps(diagnostic_status, separators=(",", ":")).encode(),
+                )
+            )
             status_connection = MagicMock()
             status_cursor = (
                 status_connection.cursor.return_value.__enter__.return_value
