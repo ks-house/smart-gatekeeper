@@ -125,11 +125,11 @@
   },
   "approved_bundles": [
     {
-      "id": "ota-health-headroom-c9e61cd-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "c9e61cdd35be3b37c18ab3917fbb981116759338"
+        "commit": "2be4c29b166f091ab6feb44301504a54330e5b53"
       },
       "files": {
         ".github/workflows/deploy.yml": "74fb06eef8e56cfd5f79f2c5bae4b6e41d798a5ccf2fb00c4aa30668db1f4dda",

@@ -6768,3 +6768,9 @@
 - Pinned `ota-health-headroom-c9e61cd-persistent-baseline` to immutable feature `c9e61cdd35be3b37c18ab3917fbb981116759338` after the second controlled rollback ruled out the five-second sample gap as the remaining cause.
 - Exactly three of 108 protected blobs change: Target publisher input digest, OTA health runtime and its direct security test; the other 105 and workflow inventories retain trusted-main identity.
 - The feature keeps the 30/120-second rollback contract, requires 48 KiB aggregate plus 32 KiB contiguous heap, and preserves the last predicate reset reason. This policy-only change deploys nothing and sends no device action.
+
+## [2026-09-05] compile | Finalize OTA heap-headroom actual-main policy
+
+- Feature PR #373 passed hosted firmware, OTA, Backend and trusted-policy checks and merge-committed as actual main `2be4c29b166f091ab6feb44301504a54330e5b53`.
+- Retired the transitional authorization and pinned the sole `current-main-baseline` to that merge with all 108 protected blobs unchanged from review.
+- This policy-only rotation installs nothing and sends no device action. Final signed publication and one bounded Target health result remain independent Gates.
