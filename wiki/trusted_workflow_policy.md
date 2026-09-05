@@ -2061,3 +2061,18 @@ identical to trusted main. This policy-only authorization publishes no artifact,
 sends no Target request and changes no relay or door output; normal review,
 feature merge, final actual-main rotation, strictly newer publication and one
 bounded OTA health observation remain separate Gates.
+
+## 76. OTA health sample-gap actual-main final rotation
+
+Feature PR #370 passed hosted firmware, OTA/schema, Backend and trusted-policy
+checks and merge-committed normally as actual main
+`21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1`. Immutable reviewed feature
+`b88e3ca7eb2827aea89513c398c6b77a4ba36f74` and policy main `502d40d`
+remain in its ancestry.
+
+The transitional authorization is retired in favor of the sole
+`current-main-baseline` pinned to that actual merge. All 108 protected blobs,
+the seven-workflow inventory and empty local-Action inventory are byte-identical
+to the reviewed merge-connected head. This final policy rotation itself sends
+no Target request and changes no runtime, relay or door state; final exact-main
+publication, one OTA attempt and post-install health remain independent Gates.

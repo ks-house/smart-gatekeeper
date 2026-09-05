@@ -125,11 +125,11 @@
   },
   "approved_bundles": [
     {
-      "id": "ota-health-gap-b88e3ca-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "b88e3ca7eb2827aea89513c398c6b77a4ba36f74"
+        "commit": "21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1"
       },
       "files": {
         ".github/workflows/deploy.yml": "fae1f9f80297311d9ca636995c53a88fea9a639514d1a554004e7e4682d81f7c",

@@ -6749,3 +6749,9 @@
 - Pinned the sole `ota-health-gap-b88e3ca-persistent-baseline` to immutable feature `b88e3ca7eb2827aea89513c398c6b77a4ba36f74` after the first diagnostic firmware controlled-rollback observation.
 - Exactly three of 108 protected blobs change: the Target publisher input digest, OTA health runtime and its direct security test. The other 105 protected bytes and workflow inventories retain trusted-main identity.
 - This policy-only authorization publishes or installs nothing and sends no device, relay or door command. Feature merge, final policy rotation, a strictly newer signed artifact and a single post-fix OTA health observation remain required.
+
+## [2026-09-05] compile | Finalize OTA health correction actual-main policy
+
+- Feature PR #370 passed hosted firmware, OTA, Backend and trusted-policy checks and merge-committed as actual main `21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1`.
+- Retired the transitional feature authorization and pinned the sole `current-main-baseline` to that merge with all 108 protected blobs unchanged from review.
+- This policy-only rotation sends no Target request and changes no runtime, relay or door state. Final signed publication and one post-fix OTA/install-health observation remain separate Gates.

@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "b88e3ca7eb2827aea89513c398c6b77a4ba36f74"
-EXPECTED_BUNDLE_ID = "ota-health-gap-b88e3ca-persistent-baseline"
+MERGED_MAIN_COMMIT = "21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1"
+EXPECTED_BUNDLE_ID = "current-main-baseline"
 MERGED_MAIN_DIGEST_LINES = """\
 .github/workflows/deploy.yml fae1f9f80297311d9ca636995c53a88fea9a639514d1a554004e7e4682d81f7c
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -129,11 +129,7 @@ security/mosquitto.conf 67037e4d68decfaab224781f2618cfd864686cfa90dd6ccc801b51df
 security/target-acl 75ac9ea696e0ae26f3cc6734113a5133c9cc1fc758ac93e1fc7f26fbe8f70902
 tests/test_target_security_ota.py c0ccee41281095ee18ae6abd291c231e8c1efdc96f27d425771eb70849b07659
 """
-FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/deploy.yml",
-    "src/OtaManager.cpp",
-    "tests/test_target_security_ota.py",
-}
+FEATURE_CHANGED_PROTECTED_PATHS = set()
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
 )
@@ -156,6 +152,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "b88e3ca7eb2827aea89513c398c6b77a4ba36f74",
     "c9aa85c31b0b7b1d04ea71970c720cf358805acc",
     "cdcc757b856bc503e9d85b874d67adc425c74a49",
     "1aacbaf073731c6ed8b3c703254d2e5e12bb9990",
@@ -1098,8 +1095,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 3)
-    self.assertEqual(len(locally_unchanged_protected), 105)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 0)
+    self.assertEqual(len(locally_unchanged_protected), 108)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
