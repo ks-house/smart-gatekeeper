@@ -15,10 +15,20 @@ class GattServer {
     uint32_t failed_attempts;
     sgk::SessionState session_state;
     bool ota_busy;
+    bool advertising_expected;
+    bool advertising_active;
+    uint32_t advertising_restart_attempts;
+    uint32_t advertising_restart_successes;
+    uint32_t advertising_restart_failures;
+    uint32_t advertising_watchdog_recoveries;
   };
 
   static void init();
   static void update();
+  // The iBeacon is expected after initBleAdvertiser() has installed the final
+  // payload. update() then verifies controller advertising state and retries a
+  // stopped advertiser only while no phone owns a GATT connection.
+  static void setAdvertisingExpected(bool expected);
   static bool isEnabled();
   static void setEnabled(bool enabled);
   static bool isConnected();

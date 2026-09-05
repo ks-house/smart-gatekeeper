@@ -222,6 +222,45 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("s_auth_grant_callback", control_gate)
         self.assertIn("production_lifecycle_sink.requestAbort", control_gate)
 
+    def test_idle_advertiser_is_observed_restarted_and_reported(self):
+        adapter = (ROOT / "src" / "GattServer.cpp").read_text(
+            encoding="utf-8"
+        )
+        header = (ROOT / "include" / "GattServer.h").read_text(
+            encoding="utf-8"
+        )
+        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+        mqtt = (ROOT / "src" / "MqttManager.cpp").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("advertising->isAdvertising()", adapter)
+        self.assertIn('restartAdvertising("watchdog", true)', adapter)
+        self.assertIn('restartAdvertising("disconnect", false)', adapter)
+        self.assertIn("kAdvertisingHealthCheckIntervalMs = 2000", adapter)
+        watchdog = adapter.split("void serviceAdvertisingHealth", 1)[1].split(
+            "class ServerCallbacks", 1
+        )[0]
+        self.assertIn("controllerHasActiveConnection()", watchdog)
+        self.assertIn("ble_server->getConnectedCount()", adapter)
+        self.assertIn("advertising->start()", adapter)
+        self.assertIn("advertising_restart_failures", header)
+        self.assertIn("GattServer::setAdvertisingExpected(true);", main)
+        for field in (
+            "ble_advertising_expected",
+            "ble_advertising_active",
+            "ble_active_connections",
+            "ble_advertising_restart_attempts",
+            "ble_advertising_restart_successes",
+            "ble_advertising_restart_failures",
+            "ble_advertising_watchdog_recoveries",
+            "acl_active",
+            "acl_version",
+            "acl_min_protocol",
+            "acl_max_protocol",
+        ):
+            self.assertIn(f'doc["{field}"]', mqtt)
+
     def test_verified_lifecycle_isolated_from_interleaved_unverified_sessions(self):
         shared = (ROOT / "include" / "GattProtocol.h").read_text(
             encoding="utf-8"

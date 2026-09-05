@@ -2117,3 +2117,43 @@ tracking.
   MQTT 1/1 with zero failures and continued Backend verified-status. This is a
   separate electrical/reset event after the successful OTA health window, not
   firmware rollback; the repeated brownout cause remains a field power Gate.
+
+## 2026-09-05 post-rollout hands-free no-response incident
+
+- The owner reported that a fresh entrance approach produced no automatic
+  reaction and that the authenticated app `문 열기` button was used successfully
+  to enter.
+- A read-only MQTTS readback at 17:28 KST found the Target online and IDLE on
+  boot 723, exact `2.1.448+main.g6d8ab48`, with uptime 9,266 seconds, MQTT
+  attempts/connects `1/1`, zero connection failures and an empty volatile event
+  outbox. Backend `/ready` returned every check true.
+- The retained terminal result was `ACCESS_SESSION_COMPLETED / ACCESS_GRANTED`
+  with phase mask 24 (`0x18`), which is the signed MQTT manual-open success
+  contract. This confirms the fallback path but is not hands-free GATT evidence.
+- No retained Local GATT terminal result followed the incident. Because the
+  manual result replaces the single last-terminal slot, the readback cannot say
+  whether an earlier phone wake never arrived, failed before a terminal Target
+  result, or was overwritten. The current boot uptime rules out a Target reboot
+  immediately around this incident, but historical administrator rows or the
+  phone Activity entry are still required to split BLE wake absence from GATT
+  dispatch/transport failure.
+- No access, OTA or configuration command was sent during diagnosis. A source
+  change is not attributed to this incident until the same-cycle phone Activity
+  or administrator history is correlated.
+- The subsequent owner Activity capture closes part of that gap: the most recent
+  automatic entries are `RUNNING` at 14:38:57 and
+  `PROTOCOL_INCOMPATIBLE` at 14:39:00, while 17:13:07 is only the manual remote
+  command. There is no automatic detection/authentication entry around the
+  after-17:00 entrance attempt. The 14:39 Target-originated protocol result
+  proves that iBeacon/GATT radio was available then, but not that advertising
+  restarted or remained active afterwards.
+- Source inspection found that the ESP32-C6 calls advertising start at boot and
+  after disconnect but discards the return value. It had no controller
+  `isAdvertising()` watchdog, recovery counter or MQTT diagnostic, so a silent
+  post-disconnect advertising stop can coexist with healthy Wi-Fi/MQTT status.
+- Candidate remediation now polls NimBLE advertising state every two seconds
+  only when no GATT connection is active, performs a bounded restart when the
+  controller reports stopped, and publishes advertising/restart plus active ACL
+  version and protocol range diagnostics. HA discovery adds a read-only
+  `[Gatekeeper] BLE 광고 상태` entity. This is source/build evidence until
+  reviewed, deployed and read back from the installed Target.

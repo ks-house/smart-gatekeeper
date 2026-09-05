@@ -99,8 +99,16 @@ sgk::IndicationToken in_flight_token_{};
 sgk::MessageType in_flight_type_{sgk::MessageType::kError};
 bool in_flight_valid_{false};
 bool advertising_restart_requested_{false};
+bool advertising_expected_{false};
+uint32_t advertising_last_health_check_ms_{0};
+uint32_t advertising_restart_attempts_{0};
+uint32_t advertising_restart_successes_{0};
+uint32_t advertising_restart_failures_{0};
+uint32_t advertising_watchdog_recoveries_{0};
 bool fast_start_requested_{false};
 sgk::ConnectionToken fast_start_owner_{};
+
+constexpr uint32_t kAdvertisingHealthCheckIntervalMs = 2000;
 
 class CanonicalMqttEventSink final : public sgk::EventSink {
  public:
@@ -680,6 +688,64 @@ bool consumeAdvertisingRestartRequest() {
   return requested;
 }
 
+bool advertisingActive() {
+  if (!advertising_expected_) return false;
+  BLEAdvertising* advertising = BLEDevice::getAdvertising();
+  if (advertising == nullptr) return false;
+#if defined(CONFIG_NIMBLE_ENABLED)
+  return advertising->isAdvertising();
+#else
+  // ESP32-C6 production uses NimBLE. Bluedroid has no public controller-state
+  // query, so its start result remains the best available evidence.
+  return advertising_restart_successes_ > 0;
+#endif
+}
+
+bool controllerHasActiveConnection() {
+  return ble_server != nullptr && ble_server->getConnectedCount() != 0;
+}
+
+bool restartAdvertising(const char* reason, bool watchdog_recovery) {
+  if (!advertising_expected_ || controllerHasActiveConnection()) {
+    return false;
+  }
+  BLEAdvertising* advertising = BLEDevice::getAdvertising();
+  if (advertising == nullptr) {
+    ++advertising_restart_attempts_;
+    ++advertising_restart_failures_;
+    LOGF("[ERROR] BLE advertiser unavailable during %s restart", reason);
+    return false;
+  }
+#if defined(CONFIG_NIMBLE_ENABLED)
+  if (advertising->isAdvertising()) return true;
+#endif
+  ++advertising_restart_attempts_;
+  const bool started = advertising->start();
+  if (started) {
+    ++advertising_restart_successes_;
+    if (watchdog_recovery) ++advertising_watchdog_recoveries_;
+    LOGF("[INFO] BLE advertising restarted (%s)", reason);
+  } else {
+    ++advertising_restart_failures_;
+    LOGF("[ERROR] BLE advertising restart failed (%s)", reason);
+  }
+  return started;
+}
+
+void serviceAdvertisingHealth(uint32_t now_ms) {
+  if (!advertising_expected_ || controllerHasActiveConnection() ||
+      now_ms - advertising_last_health_check_ms_ <
+          kAdvertisingHealthCheckIntervalMs) {
+    return;
+  }
+  advertising_last_health_check_ms_ = now_ms;
+#if defined(CONFIG_NIMBLE_ENABLED)
+  BLEAdvertising* advertising = BLEDevice::getAdvertising();
+  if (advertising != nullptr && advertising->isAdvertising()) return;
+  restartAdvertising("watchdog", true);
+#endif
+}
+
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
 #if defined(CONFIG_BLUEDROID_ENABLED)
@@ -830,6 +896,12 @@ void GattServer::init() {
   deferred_event_sink.clear();
   production_lifecycle_sink.clear();
   advertising_restart_requested_ = false;
+  advertising_expected_ = false;
+  advertising_last_health_check_ms_ = 0;
+  advertising_restart_attempts_ = 0;
+  advertising_restart_successes_ = 0;
+  advertising_restart_failures_ = 0;
+  advertising_watchdog_recoveries_ = 0;
   fast_start_requested_ = false;
   fast_start_owner_ = {};
   if (core != nullptr) {
@@ -868,6 +940,15 @@ void GattServer::init() {
        isEnabled() ? "enabled" : "disabled");
 }
 
+void GattServer::setAdvertisingExpected(bool expected) {
+#if ENABLE_HARDWARELESS_RC
+  advertising_expected_ = expected;
+  advertising_last_health_check_ms_ = millis();
+#else
+  (void)expected;
+#endif
+}
+
 void GattServer::update() {
 #if ENABLE_HARDWARELESS_RC
   // Flush control and telemetry effects produced by NimBLE callbacks before
@@ -876,8 +957,9 @@ void GattServer::update() {
   deferred_event_sink.drain();
   if (consumeAdvertisingRestartRequest() && isEnabled() &&
       getActiveConnections() == 0) {
-    BLEDevice::startAdvertising();
+    restartAdvertising("disconnect", false);
   }
+  serviceAdvertisingHealth(millis());
   if (core == nullptr || !core->enabled()) return;
 
   const uint32_t now_ms = millis();
@@ -1206,15 +1288,24 @@ void GattServer::advanceEventSequence(uint64_t used_sequence) {
 }
 
 GattServer::Telemetry GattServer::getTelemetry() {
-  Telemetry telemetry{0, 0, sgk::SessionState::kIdle, false};
+  Telemetry telemetry{0, 0, sgk::SessionState::kIdle, false,
+                      false, false, 0, 0, 0, 0};
 #if ENABLE_HARDWARELESS_RC
-  if (core == nullptr) return telemetry;
-  core_mutex.lock();
-  telemetry.active_connections = core->connected() ? 1 : 0;
-  telemetry.failed_attempts = core->failedAttempts();
-  telemetry.session_state = core->state();
-  telemetry.ota_busy = core->otaBusy();
-  core_mutex.unlock();
+  if (core != nullptr) {
+    core_mutex.lock();
+    telemetry.active_connections = core->connected() ? 1 : 0;
+    telemetry.failed_attempts = core->failedAttempts();
+    telemetry.session_state = core->state();
+    telemetry.ota_busy = core->otaBusy();
+    core_mutex.unlock();
+  }
+  telemetry.advertising_expected = advertising_expected_;
+  telemetry.advertising_active = advertisingActive();
+  telemetry.advertising_restart_attempts = advertising_restart_attempts_;
+  telemetry.advertising_restart_successes = advertising_restart_successes_;
+  telemetry.advertising_restart_failures = advertising_restart_failures_;
+  telemetry.advertising_watchdog_recoveries =
+      advertising_watchdog_recoveries_;
 #endif
   return telemetry;
 }

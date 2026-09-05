@@ -28,13 +28,13 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.broker_acl = (ROOT / "security" / "target-acl").read_text(
         encoding="utf-8")
 
-  def test_plan_updates_exactly_18_read_only_entities(self):
+  def test_plan_updates_exactly_19_read_only_entities(self):
     updates = [
         item for item in self.plan if item.payload and
         "command_topic" not in json.loads(item.payload)]
-    self.assertEqual(len(updates), 18)
+    self.assertEqual(len(updates), 19)
     self.assertEqual(
-        sum("/binary_sensor/" in item.topic for item in updates), 3)
+        sum("/binary_sensor/" in item.topic for item in updates), 4)
     self.assertEqual(sum("/sensor/" in item.topic for item in updates), 14)
     self.assertEqual(sum("/event/" in item.topic for item in updates), 1)
 
@@ -45,7 +45,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         "wifi_rssi", "free_heap", "uptime_s", "firmware",
         "connectivity", "door_binary", "pre_armed", "cfg_tx_power",
         "cfg_distance_thresh", "cfg_prearm_duration",
-        "cfg_relay_cooldown", "access_terminal_event",
+        "cfg_relay_cooldown", "access_terminal_event", "ble_advertising",
     })
     for publication in updates:
       config = json.loads(publication.payload)
@@ -54,7 +54,9 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
           config["device"]["identifiers"], ["smart_gatekeeper_01"])
       self.assertTrue(
           config["unique_id"].startswith("smart_gatekeeper_01_"))
-      if object_id in {"state", "door_binary", "pre_armed"}:
+      if object_id in {
+          "state", "door_binary", "pre_armed", "ble_advertising"
+      }:
         self.assertEqual(
             config["availability_topic"],
             f"gatekeeper/v1/ha-bridge/{self.target_id}/availability")
@@ -109,7 +111,9 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         last_access["value_template"])
     verified_access_ids = {
         "state", "last_access_event", "door_binary", "pre_armed"}
-    live_access_ids = {"state", "door_binary", "pre_armed"}
+    live_access_ids = {
+        "state", "door_binary", "pre_armed", "ble_advertising"
+    }
     for object_id, config in updates.items():
       self.assertEqual(
           config["state_topic"],
@@ -179,6 +183,13 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
         'doc["distance_threshold_cm"] = g_distance_threshold_cm;',
         'doc["duration_ms"] = g_pre_arm_duration_ms;',
         'doc["relay_cooldown_ms"] = g_relay_cooldown_ms;',
+        'doc["ble_advertising_active"] = gattTelemetry.advertising_active;',
+        'doc["ble_advertising_restart_failures"] =',
+        'doc["ble_advertising_watchdog_recoveries"] =',
+        'doc["acl_active"] = g_acl_manager.hasActiveAcl();',
+        'doc["acl_version"] = g_acl_manager.activeAclVersion();',
+        'doc["acl_min_protocol"] = aclHeader.min_protocol;',
+        'doc["acl_max_protocol"] = aclHeader.max_protocol;',
     ):
       self.assertIn(assignment, body)
     self.assertIn("pendingTelemetry", body)
@@ -221,8 +232,8 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
       ])
     output = stdout.getvalue()
     self.assertEqual(result, 0)
-    self.assertIn("DRY_RUN discovery_updates=24", output)
-    self.assertIn("secure_controls=6 read_only=18", output)
+    self.assertIn("DRY_RUN discovery_updates=25", output)
+    self.assertIn("secure_controls=6 read_only=19", output)
     self.assertIn("No network connection", output)
     self.assertNotIn(secret_user, output)
     self.assertNotIn(secret_password, output)
@@ -322,7 +333,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
           "example.invalid", 8883, self.plan,
           username="hidden-user", password="hidden-password")
 
-    self.assertEqual(len(calls), 31)
+    self.assertEqual(len(calls), 32)
     self.assertTrue(all(qos == 1 and retain for _, _, qos, retain in calls))
 
 

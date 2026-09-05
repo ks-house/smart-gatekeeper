@@ -535,6 +535,16 @@ def build_discovery_plan(
             "lock",
             "mdi:shield-check",
         ),
+        (
+            "ble_advertising",
+            "[Gatekeeper] BLE 광고 상태",
+            (
+                "{% if value_json.ble_advertising_expected and "
+                "value_json.ble_advertising_active %}ON{% else %}OFF{% endif %}"
+            ),
+            "running",
+            "mdi:bluetooth-connect",
+        ),
     )
     for object_id, name, value_template, device_class, icon in binary_sensors:
         config = _base_config(name, object_id)
@@ -543,10 +553,16 @@ def build_discovery_plan(
                 **_availability_config(target_id),
                 "payload_off": "OFF",
                 "payload_on": "ON",
-                "state_topic": verified_status_topic,
+                "state_topic": (
+                    diagnostic_status_topic
+                    if object_id == "ble_advertising"
+                    else verified_status_topic
+                ),
                 "value_template": value_template,
             }
         )
+        if object_id == "ble_advertising":
+            config["expire_after"] = 30
         if device_class is not None:
             config["device_class"] = device_class
         if icon is not None:

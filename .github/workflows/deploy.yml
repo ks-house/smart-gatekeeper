@@ -349,7 +349,7 @@ jobs:
           100644 71c08cdd79ba90487da979a8dd5ac3007344085e2253a4dd697c1c35834224e8 include/EvidencePersistenceFailureLatch.h
           100644 0b5d72d267b6cf82bbb51dada969b132ad8700517c7fa473b28c2dac4b45861e include/FlatJsonObjectPolicy.h
           100644 bb484a9a6cb32791984dd30c4c1325c64fcdd8213f434a317a763ef29e3d2851 include/GattProtocol.h
-          100644 5d9d279f847432827b8275e3b16118be9c232f0253f51fee902e126f4aea1053 include/GattServer.h
+          100644 2bbc343ebb35915e7c4333a2f0dca326e0b8af18ff9e1477a260b6d89dbaec12 include/GattServer.h
           100644 632693bed77d2ab54fbf06926505fbaa105a2faa29bee7c554a88d7db1236e36 include/MqttManager.h
           100644 a1976f3cd57dc9f2873ce651cccc212a39827c9d31a5a880c9029f89be0d735e include/OfflineEventQueue.h
           100644 a42780d48211f0306f8278298ee7b598d349c52b0ba2e4913223a60bf30426c1 include/OtaHealthPolicy.h
@@ -372,8 +372,8 @@ jobs:
           100644 0a197ffa68213f1651f9b25a92256ef209b58dca1cf1dd7be77e3f861afffb96 src/ConfigManager.cpp
           100644 fc3e6f45944929f5551424520fb23e3f9c1c26262884280ebc66a9a10c628a03 src/DiagnosticsManager.cpp
           100644 d1ea1d60f5dac18eb9d53a3723265e6c84bc737ab5e1b42deee155e5d073b3ac src/GattProtocol.cpp
-          100644 7354652026c5aae65add70c11ac2a63533921ad35077819f7527b71266517ae7 src/GattServer.cpp
-          100644 e59882d8f3bf178f1737ef36ee0feeea82050a1c9a21d52017c9a373dacf1b38 src/MqttManager.cpp
+          100644 c7d8448af86308c9ecadbbd03d0e075833c7f905e3656723e136c760b4fbfca1 src/GattServer.cpp
+          100644 bb5f6c91d7adadb70ff709dce35791568d6679fa670cf4fe90ed6f8c8bfea041 src/MqttManager.cpp
           100644 4f2508172140436df9b6d00504e367a36aba9c519f8c12cd7f09b0d2d31bed41 src/OfflineEventQueue.cpp
           100644 d1ae427e08d363be527072fb1bd7074c609b07fa95614703dd521c7e3018a31f src/OtaManager.cpp
           100644 a127d320e18e357ada7bcea38d9706cbd017ba78c6a9fb800c356766c33570af src/OtaVersionPolicy.cpp
@@ -385,7 +385,7 @@ jobs:
           100644 43cae85d91cdffc87a4c0905cc5812c0a715bb4bca0a6498194f5cf106bc76c7 src/UltrasonicSensor.cpp
           100644 d47d4462d071e51afad98c1bff32476ca67f5345314eb2975f857b5b0cea2b91 src/WifiManager.cpp
           100644 8e51d33c225123e82fbe582f45e2fd25783772c29e6da47760858564e8f58578 src/WifiManager.h
-          100644 363648ab9e39ac445bcee9d14390b19923b24d6e5f519d8223704d83a7dc7f0f src/main.cpp
+          100644 eb5b0b28e1eb072cab82303d2e937851d0b058a36a037cada8bf70d602c4fb2d src/main.cpp
           EOF
           )"
           test ! -e .pio
