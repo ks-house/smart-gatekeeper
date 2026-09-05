@@ -2319,7 +2319,7 @@ tracking.
   and a marked hands-free physical access trial remain separate owner field
   Gates. No physical door result is inferred from MQTT or retained status.
 
-## 2026-09-05 personal fast-lane policy candidate
+## 2026-09-06 personal fast lane installed
 
 - The candidate narrows the exact trusted bundle from 108 normal runtime,
   test, UI, migration and release files to 23 privilege-bearing workflow,
@@ -2331,5 +2331,10 @@ tracking.
   retain tests and exact-main personal build/sign/publish.
 - Exact-main identity, signed manifest and digest/readback, secret isolation,
   dual-slot Target rollback, relay-safe boot and post-install health remain
-  mandatory. This is a source/policy candidate until hosted trusted and
-  component checks pass and main contains the reviewed bytes.
+  mandatory. Policy PR #377 and feature PR #378 passed hosted checks and main
+  `0de3a3230a3e7b977319dc7799a02d85e5eb3a54` contains the reviewed bytes.
+- Hosted PR evidence was: trusted policy 8 seconds, OTA contract 45 seconds,
+  firmware canary 3 minutes 46 seconds and Android canary 6 minutes 4 seconds.
+  The merge-triggered Target/mobile runs were cancelled during their canary
+  jobs because the shared OTA gate itself changed; no exact build, signing,
+  publication, Target command or installed runtime change occurred.
