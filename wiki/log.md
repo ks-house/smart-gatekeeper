@@ -6599,3 +6599,20 @@
   with all 104 protected blobs unchanged from the reviewed feature.
 - These results authorize exact source bytes only and do not substitute for
   Backend deployment, Target install/reboot/health or over-air BLE evidence.
+
+## [2026-09-05] test | Deploy BLE diagnostics and classify first OTA rollback
+
+- Backend run `33956526362` deployed exact feature main `1aacbaf0`, and external
+  strict-TLS `/ready` returned that SHA with every check true. Final-main Target
+  run `33956619291` published and read back signed `2.1.451+main.ga683832`.
+- Sent one HA OTA request and received PUBACK, Backend broker acceptance, Target
+  result 0 and Target acceptance. No duplicate request was sent.
+- The Target advanced from boot 723 to boot 725 but returned on `2.1.448`. Boot
+  725 reported `BROWNOUT` and preserved boot 724's BOOTING / Wi-Fi-profile action
+  at 2,094 ms, proving early pending-image reset followed by safe rollback.
+- The recovered boot remained online/IDLE beyond 216 seconds with MQTT 1/1 and
+  zero failures. The failed candidate is intentionally version-floor quarantined;
+  a docs-only exact-main retry will publish one strictly newer version before a
+  single new request is considered.
+- Focused trusted-policy regression passed 42/42 and repository whitespace
+  validation passed for the retry evidence commit; protected bytes are unchanged.
