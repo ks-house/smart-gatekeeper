@@ -11,6 +11,14 @@ This profile is for one repository owner, one primary phone, and the ESP32-C6 Ta
 - No multi-OEM matrix, independent reviewer, 100-trial campaign, or 24-hour commercial soak is required.
 - Screen-off and Activity-terminated access are reduced to three observed passes each.
 - Target reboot and network reconnect are reduced to one observed pass each.
+- Ordinary firmware, Android and Backend runtime changes use one component PR;
+  whole-bundle policy rotation is limited to privilege-bearing workflow,
+  signing/publisher dependency and NAS deployment inputs.
+- Main-push publication is component-scoped. Policy, wiki, test-only and
+  unrelated-component changes do not create new Target or Android artifacts.
+- The reviewed persistent-baseline source may remain the authorization anchor
+  for same-byte descendants; no immediate post-feature policy rotation is
+  required in this personal lane.
 
 ## What remains mandatory
 
@@ -23,6 +31,8 @@ This profile is for one repository owner, one primary phone, and the ESP32-C6 Ta
 - Confirm relay OFF safety during Target boot.
 - Confirm the previous Target version remains recoverable.
 - After deployment, record expected version, boot ID, and health.
+- Protected workflow/signing/deployment changes still pass the inert-byte
+  trusted policy check before merge.
 
 ## Procedure
 
