@@ -2157,3 +2157,29 @@ tracking.
   version and protocol range diagnostics. HA discovery adds a read-only
   `[Gatekeeper] BLE 광고 상태` entity. This is source/build evidence until
   reviewed, deployed and read back from the installed Target.
+
+## 2026-09-05 BLE advertising self-heal authorization candidate
+
+- The 17:13 manual-open record proves Backend-to-broker delivery, while the last
+  automatic Target authentication at 14:39 proves BLE/GATT only at that earlier
+  time. No post-17:00 activity entry proves that the Target was still advertising.
+- Immutable feature `148d7b6de6be476e9680da4bb98444dfc5a80899` adds a no-client
+  advertising watchdog plus Target MQTT diagnostics for advertising state,
+  restart counters, physical connection count and the installed ACL protocol range.
+- The trusted-policy candidate changes exactly three of 104 protected blobs;
+  the other 101 and both workflow inventories retain trusted-main bytes.
+- This is source authorization only. Exact-main publication, Backend/NAS
+  deployment, Target OTA/reboot/health and an external BLE scan or fresh phone
+  access remain separate runtime Gates.
+
+## 2026-09-05 BLE advertising self-heal merge connection
+
+- Policy PR #361 passed and merge-committed as main
+  `89225afa162619f7f8448703b7b9b2775eb7b98e`; that exact policy main is
+  merged into the feature history with immutable feature `148d7b6d` retained.
+- The next evidence Gate is fresh hosted feature CI over the merge-connected
+  source. Publication, Backend deployment, Target OTA, controller-state readback
+  and over-air emission remain unclaimed.
+- Local merge-connected validation passed 42/42 focused policy tests and 368/368
+  repository tests with one declared environment skip; hosted feature checks remain
+  the merge Gate.

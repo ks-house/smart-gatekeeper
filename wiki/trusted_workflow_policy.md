@@ -1935,3 +1935,39 @@ This final rotation does not deploy schema 014, publish or install either
 artifact, or exercise BLE, relay or a physical door. Exact-main Backend/NAS
 deployment, signed publication, Target install/reboot/health and a fresh owner
 authentication remain separate release Gates.
+
+## 69. BLE advertising self-heal authorization candidate
+
+Immutable feature `148d7b6de6be476e9680da4bb98444dfc5a80899` detects a silent
+ESP32-C6 BLE advertising stop while no client is connected, performs a bounded
+restart, and publishes advertising, connection and active ACL-range diagnostics
+through the existing Target status path. Home Assistant gains one read-only,
+expiring BLE advertising binary sensor; access authorization, sensor, relay and
+OTA behavior are unchanged.
+
+The indivisible inventory remains 104 protected paths. Exactly three normalized
+protected blobs change: the exact Target build-input map, the Home Assistant
+discovery implementation and its direct test. The other 101 protected bytes,
+seven-workflow inventory and empty local-Action inventory remain identical to
+trusted main. The sole
+`ble-advertising-self-heal-148d7b6-persistent-baseline` is pinned to the exact
+repository, immutable feature SHA and complete ordered digest map.
+
+This policy-only authorization publishes or installs no artifact, sends no
+Target command and performs no relay or physical action. Policy merge, feature
+merge-connection and CI, actual-main rotation, signed publication, Backend
+deployment, one Target OTA, reboot/health and an over-air phone trial remain
+separate Gates.
+
+## 70. BLE advertising self-heal merge connection
+
+Policy PR #361 passed the hosted trusted-base verifier and merge-committed as
+main `89225afa162619f7f8448703b7b9b2775eb7b98e`. That exact policy main is
+merged into the feature history without rewriting immutable feature
+`148d7b6de6be476e9680da4bb98444dfc5a80899`; the three authorized protected
+blobs therefore remain the reviewed feature bytes while the other 101 resolve
+from trusted main.
+
+This history connection itself publishes, deploys and installs nothing. Fresh
+feature CI, actual-main merge, final current-main rotation and runtime evidence
+remain required.

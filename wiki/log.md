@@ -6538,3 +6538,42 @@
 - Added raw Target telemetry for advertiser state and active ACL version/min/max protocol, plus a read-only HA `[Gatekeeper] BLE 광고 상태` entity with 30-second expiry. These fields will also distinguish the still-visible 14:39 protocol mismatch from radio absence after deployment.
 - Focused Android/Target/HA source tests initially exposed one expected discovery-plan count update; after correcting that fixture, final rerun and full repository discovery remain pending. The production ESP32-C6 build linked successfully at 76,992 bytes RAM and 1,820,028 bytes application flash.
 - No live command, restart, OTA or door action was issued while implementing this candidate.
+
+## [2026-09-05] compile | Authorize BLE advertising self-heal candidate
+
+- Bound immutable feature `148d7b6de6be476e9680da4bb98444dfc5a80899` to the sole
+  `ble-advertising-self-heal-148d7b6-persistent-baseline` with the complete
+  ordered 104-path normalized digest map.
+- Exactly three protected blobs change: the exact Target build map, Home Assistant
+  BLE advertising discovery and its direct test. The other 101 protected blobs,
+  seven workflows and empty local-Action inventory retain trusted-main bytes.
+- This policy-only candidate sends no Target command and publishes, deploys or
+  installs nothing. Hosted review, merge-connected feature CI, final rotation,
+  Backend deployment, one Target OTA and physical over-air verification remain
+  separate Gates.
+
+## [2026-09-05] test | Validate BLE advertising policy candidate
+
+- Focused trusted-policy tests passed 42/42 and full repository discovery passed
+  367/367 with one declared PowerShell-environment skip.
+- Policy JSON parsing, repository whitespace and GitHub CLI authentication checks
+  passed. This validates source authorization only and does not prove publication,
+  installation, RF emission or physical access.
+
+## [2026-09-05] compile | Connect BLE advertising self-heal to trusted policy main
+
+- Policy PR #361 passed the hosted trusted-base check and merge-committed normally
+  as main `89225afa162619f7f8448703b7b9b2775eb7b98e`.
+- Merged that exact policy main into the feature history while preserving immutable
+  feature `148d7b6de6be476e9680da4bb98444dfc5a80899`, both append-only histories
+  and all three reviewed protected bytes.
+- This merge connection sends no Target command and deploys or installs nothing;
+  fresh feature CI, actual-main rotation and runtime rollout remain separate Gates.
+
+## [2026-09-05] test | Validate merge-connected BLE advertising self-heal
+
+- Focused trusted-policy tests passed 42/42 and full repository discovery passed
+  368/368 with one declared PowerShell-environment skip after resolving append-only
+  wiki history in the merge connection.
+- Repository whitespace validation passed. This remains source/test evidence, not
+  signed publication, installed Target state or over-air BLE evidence.
