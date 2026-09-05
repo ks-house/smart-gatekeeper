@@ -6755,3 +6755,9 @@
 - Feature PR #370 passed hosted firmware, OTA, Backend and trusted-policy checks and merge-committed as actual main `21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1`.
 - Retired the transitional feature authorization and pinned the sole `current-main-baseline` to that merge with all 108 protected blobs unchanged from review.
 - This policy-only rotation sends no Target request and changes no runtime, relay or door state. Final signed publication and one post-fix OTA/install-health observation remain separate Gates.
+
+## [2026-09-05] compile | Authorize OTA heap-headroom health correction
+
+- Pinned `ota-health-headroom-c9e61cd-persistent-baseline` to immutable feature `c9e61cdd35be3b37c18ab3917fbb981116759338` after the second controlled rollback ruled out the five-second sample gap as the remaining cause.
+- Exactly three of 108 protected blobs change: Target publisher input digest, OTA health runtime and its direct security test; the other 105 and workflow inventories retain trusted-main identity.
+- The feature keeps the 30/120-second rollback contract, requires 48 KiB aggregate plus 32 KiB contiguous heap, and preserves the last predicate reset reason. This policy-only change deploys nothing and sends no device action.
