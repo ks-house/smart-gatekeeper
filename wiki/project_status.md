@@ -2183,3 +2183,13 @@ tracking.
 - Local merge-connected validation passed 42/42 focused policy tests and 368/368
   repository tests with one declared environment skip; hosted feature checks remain
   the merge Gate.
+
+## 2026-09-05 BLE advertising self-heal actual-main merge
+
+- Feature PR #362 passed the hosted firmware, Backend, OTA and trusted-policy
+  checks and merge-committed normally as actual main
+  `1aacbaf073731c6ed8b3c703254d2e5e12bb9990`.
+- The final policy candidate pins the sole `current-main-baseline` to that exact
+  merge with all 104 protected bytes unchanged from the reviewed feature.
+- Publication/deployment, Target OTA/reboot/health, reported advertising state
+  and physical RF/access verification are still independent runtime Gates.

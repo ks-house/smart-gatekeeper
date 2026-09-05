@@ -121,11 +121,11 @@
   },
   "approved_bundles": [
     {
-      "id": "ble-advertising-self-heal-148d7b6-persistent-baseline",
+      "id": "current-main-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "148d7b6de6be476e9680da4bb98444dfc5a80899"
+        "commit": "1aacbaf073731c6ed8b3c703254d2e5e12bb9990"
       },
       "files": {
         ".github/workflows/deploy.yml": "1f1114f0190974253510a56ddd26797e1339317a75295a282b653e6360028a98",
