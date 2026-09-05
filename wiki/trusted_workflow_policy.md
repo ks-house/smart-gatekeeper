@@ -1891,3 +1891,26 @@ This final policy-only rotation does not itself prove Backend deployment or
 Target installation. Exact-main Backend/NAS readiness, signed Target artifact
 publication and Target install/reboot/health are separately observed release
 Gates.
+
+## 67. GATT v2 ACL contract authorization candidate
+
+Immutable feature `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5` binds personal
+Android enrollment, Backend credential migration/signed ACL replacement and
+Target result classification to the same GATT v2 contract. Schema migration
+014 upgrades existing credential rows to `2..2` and queues replacement
+snapshots without moving private key material.
+
+The indivisible inventory expands from 102 to 104 protected paths by adding the
+014 up/down migrations. Exactly 14 normalized protected blobs are new or
+changed: the exact Target build map, Backend ACL/API and migration inputs, the
+commercial trusted path inventory and direct tests. The other 90 protected
+bytes, seven-workflow inventory and empty local-Action inventory remain
+identical to trusted main. The sole
+`gatt-v2-acl-7edd3aa-persistent-baseline` is pinned to the exact repository,
+immutable feature SHA and complete ordered digest map.
+
+The remote verifier read the immutable candidate through the GitHub API and
+approved all 104 paths. This policy-only authorization deploys no Backend,
+publishes or installs no APK/Target firmware, and performs no relay action.
+Policy merge, feature merge/CI, actual-main rotation, production migration and
+artifact installation remain separate Gates.

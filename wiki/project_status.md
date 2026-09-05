@@ -2043,3 +2043,17 @@ tracking.
   `current-main-baseline` to actual feature main with all 102 protected blobs unchanged.
 - Exact Backend/NAS deployment, signed OTA publication and Target install/reboot/health are still
   runtime Gates until their independent evidence is recorded.
+
+## 2026-09-05 GATT v2 ACL protected authorization candidate
+
+- Immutable feature `7edd3aa39bd762c06e791ff2661b1b01f3d3a0c5` contains the
+  v2 personal enrollment contract, schema 014 credential upgrade and queued ACL
+  replacement, plus truthful Target protocol-mismatch reporting.
+- The trusted inventory expands from 102 to 104 paths for migration 014
+  up/down. Fourteen protected blobs change or are added; the remaining 90 and
+  the workflow/action inventories retain trusted-main bytes.
+- Focused policy tests passed 42/42, and the GitHub API verifier approved all
+  104 candidate paths under the sole exact persistent bundle.
+- This is source authorization only; feature CI/merge, Backend deployment,
+  signed APK/Target publication, installation and phone authentication remain
+  pending.
