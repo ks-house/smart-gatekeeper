@@ -6718,3 +6718,9 @@
 - This history connection deploys no schema, publishes or installs no app or
   firmware and sends no Target command. Hosted feature CI and runtime Gates
   remain separate.
+
+## [2026-09-05] fix | Apply canonical Dart format to support report
+
+- Hosted Android canary found one wrapping-only `dart format` difference in the
+  support-report opaque-reference validator. Applied the canonical formatter;
+  no behavior, schema or protected policy blob changed.

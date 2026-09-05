@@ -181,8 +181,7 @@ class SupportReportService {
 
   String? _safeOpaqueRef(Object? value, int length) {
     final text = value?.toString().toLowerCase();
-    if (text == null ||
-        !RegExp('^[0-9a-f]{$length}\$').hasMatch(text)) {
+    if (text == null || !RegExp('^[0-9a-f]{$length}\$').hasMatch(text)) {
       return null;
     }
     return text;
