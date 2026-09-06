@@ -189,3 +189,31 @@ Source validation: the dedicated host transition/interlock test passes; Android
 native unit tests pass. Live Target installation and phone update evidence are
 recorded separately after publication. No fixed Android discovery latency is
 claimed; one-to-three seconds remains the intended field measurement target.
+
+## Production evidence on September 6
+
+PR #381 merged as `6a45aecbdcadf1a50b020b2a9b67c0b3ae45d3a5`, after the
+independent policy authorization in PR #380. All final-main host tests pass
+(374 tests, one expected skip). Backend run `34012322823` deployed that exact
+source with strict readiness checks passing. Target run `34012322944` published
+`2.1.469+main.g6a45aec`; one OTA request advanced boot 739 to 740, with the new
+image observed through uptime 151 seconds without rollback, relay ON or MQTT/
+BLE failure. See [hardware evidence](hardware_test.md#2026-09-06-continuous-presence-rollout).
+
+An older Backend release had remained approval-waiting since September 5 and
+held the shared NAS deployment slot. Its source was an ancestor of this release
+and its deployment had not executed. It was cancelled, then the current exact
+release was approved under the owner's deployment authorization. No deployment
+protection was disabled. Future rollout preflight should inspect both waiting
+and pending runs, not only running jobs; never approve a superseded release to
+clear the queue.
+
+Before any new Target publication/install, the previous image reported another
+unplanned BROWNOUT reset (boot 738→739). Supply/wiring diagnosis is still a
+separate field gate. The new software does not establish electrical stability.
+Android run `34012322829` subsequently published `1.0.0-g6a45aec` / 43501.
+Publisher signature checks and independent primary/fallback source/metadata/APK
+hash verification passed. Final Target readback at uptime 453 seconds retained
+boot 740, the new version, MQTT/BLE and relay-OFF state. Owner mobile installation
+and physical testing remain separate evidence; no fixed discovery latency or
+electrical stability is claimed.

@@ -1,5 +1,20 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
-> Last updated: 2026-09-04 (GATT v2 fast-path source/build evidence recorded; installation and physical latency pending)
+> Last updated: 2026-09-06 (continuous-presence Target OTA verified; owner mobile/physical latency trial pending)
+
+## 2026-09-06 continuous-presence rollout
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Source regressions | Final-main host suite 374 tests, one expected skip; Backend 223 tests with two expected skips; Android native unit suite and hosted PR checks pass | PASS software checks; no radio/physical latency claim |
+| NAS Backend | Run `34012322823`, exact source `6a45aecbdcadf1a50b020b2a9b67c0b3ae45d3a5`; signed release status and strict public/loopback readiness pass | PASS deployed Backend |
+| Target publication | Run `34012322944`, signed/encrypted `2.1.469+main.g6a45aec`; independent signature verification and 1,900,500-byte artifact hash `52ff2d1f79cb537a3e83b1878d232398894b62b8a4ffc46e6c69c109bd02b2b7` pass | PASS exact publication |
+| Target OTA | One HA request, broker/Target acceptance, boot 739→740 / `ea27a33bcf2008dee93b82403d12a885`, `SOFTWARE` and `ota_pending_verify` | PASS exact installation/reboot correlation; no duplicate request |
+| Post-boot observation | 141 status samples across the request/boot observation; final new-image uptime 151 s, IDLE, relay OFF/pin high, MQTT failures 0, BLE advertising active, free heap 69,120 and largest block 34,804 bytes | PASS observed stability beyond health/rollback deadline; explicit mark-valid telemetry is not exposed |
+| Sensor diagnostics | Live MQTT now includes sample/valid/timeout/invalid counts and rearm-blocked state; all counts zero before new authentication | PASS telemetry field receipt; admin rendering and nonzero field trial pending |
+| Final Target readback | Same boot/version at uptime 453 seconds, HA bridge online, authenticated Backend status IDLE/relay OFF, MQTT failures 0 and BLE advertising active | PASS sustained post-install readback; no power-soak claim |
+| Mobile publication | Run `34012322829` passed; `1.0.0-g6a45aec` / 43501. Primary/fallback manifests match; both 55,577,753-byte APKs match SHA-256 `e7904aff461c4ff30d586aa8598d9ca0ea22c839810eb98f2581115a96d16776` | PASS publisher signatures and independent exact-source/hash readback; no user installation claim |
+| Prior electrical reset | Before OTA the old image moved boot 738→739 with BROWNOUT and no planned restart | Separate power/wiring investigation; not a crash caused by the new firmware |
+| Mobile / physical passage | Owner installs the published APK and tests continuous presence, expiry, repeat approach and multiple phones | PENDING; no door command or physical passage performed by this rollout |
 
 ## 1. 판정 원칙
 
