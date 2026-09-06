@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, Optional
@@ -444,7 +445,7 @@ def create_acl_router(
         if config.personal_diagnostics_ingest is None:
             raise HTTPException(status_code=503, detail="diagnostic ingest is unavailable")
         bundle = request.bundle.model_dump(by_alias=True, mode="json")
-        if len(str(bundle)) > 65536:
+        if len(json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 65536:
             raise HTTPException(status_code=413, detail="diagnostic bundle is too large")
         return _invoke(
             config.personal_diagnostics_ingest,

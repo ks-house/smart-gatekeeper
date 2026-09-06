@@ -277,3 +277,79 @@ Android's continuous callback early-return paths additionally journal fixed
 `BLE_SCAN_NO_READY_HINT`, `BLE_SCAN_NO_ADDRESS` and `BLE_SCAN_STALE` codes, bounded
 to one per reason per ten seconds. A missing ready hint can now be distinguished
 from an absent exported callback without recording raw advertisement data.
+
+## 10. Operator explanation: report, upload and test marker
+
+- Support Report is the phone-side diagnostic bundle that the owner can inspect
+  and explicitly copy/share. Opening or copying it does not itself upload it.
+- Automatic field-diagnostic upload is an independent, default-OFF consented
+  delivery path for the same kind of bounded diagnostic data to the Backend
+  administrator. It is driven by the app screen's refresh/sync lifecycle, not a
+  guaranteed always-running background uploader. Reopen the app after testing
+  to give queued local observations an opportunity to upload.
+- Field Test Marker labels a ten-minute observation window with a reference in
+  the report. It does not trigger authentication, open the door, alter scanning,
+  or extend access authorization. It also works in manually copied reports when
+  automatic upload is disabled.
+- For an isolated trial: clear the report view first, start the test marker,
+  perform the approach test, then reopen the app and upload or copy the report.
+  Clearing after starting the marker would remove that marker. Clearing the
+  report view does not remove already uploaded Backend records.
+
+## 11. Upload rejection diagnosis (2026-09-06)
+
+- Owner enabled upload but could not find the earlier support report. Verified
+  the production HTTPS OpenAPI schema read-only: diagnostic ingest exists, but
+  native `stage` and `wake_registration_status` accept uppercase codes only;
+  wake `strongest_rssi` accepts -127 through 20 or null.
+- The app report builder emits `detectionStage.name` and registration status
+  without uppercase normalization and passes RSSI integers through unchanged.
+  The supplied report contains `waiting`, `registered` and RSSI 127. These are
+  incompatible with both the current source and deployed schema. The latest
+  mobile publication still contains these serialization paths.
+- A local reproduction through the actual ACL router, with fake identity and
+  storage only, returned HTTP 422 for those three field paths and made zero
+  storage calls. Uppercase native codes and null for the out-of-range RSSI
+  returned HTTP 200 with one fake storage call. This proves the contract defect,
+  not observation of an individual live phone HTTP request.
+- `_post` discards non-2xx status/detail; `uploadDiagnostics` returns false and
+  the settings switch continues to display consent, not delivery success. No
+  last-error/last-success UI is exposed. Retry is triggered by subsequent sync
+  opportunities, not a durable delivery queue. Admin currently renders summary
+  rows, not the full copied-report JSON.
+- NAS SSH probes were refused, so production DB rows and phone-request access
+  logs were not inspected. No live upload, credential operation, settings
+  change, code fix or deployment was performed. Corrective work should align
+  producer/consumer codes and unknown RSSI handling, expose upload outcome,
+  retain bounded retry, and test real app-shaped reports against Backend ingest.
+
+## 12. Compatible upload correction (2026-09-06)
+
+- Backend normalizes bounded ASCII native stage/registration codes to uppercase
+  for already installed v2 clients, and maps only the integer RSSI sentinel 127
+  to null. All other field bounds, unknown-field rejection, credential matching
+  and consent remain intact. New mobile reports uppercase those native fields
+  and export unavailable/out-of-range RSSI as null.
+- Settings distinguish consent from delivery with persisted last-success time,
+  a safe error code (including HTTP 422), in-progress indication and a retry
+  button. Server response bodies and credentials are never retained in status.
+- While the screen is active, sync opportunities recur every 30 seconds and on
+  app resume. Failures back off at least 30 seconds and honor a longer numeric
+  Retry-After; automatic and manual attempts share the cooldown and in-flight
+  guard. Consent is rechecked after building the report. This is not an
+  always-running background uploader and does not alter BLE/control/OTA work.
+- Same-content retries can have a new export timestamp but the same bundle ref.
+  Backend now accepts this as a duplicate only when every other canonical byte
+  matches, preserving the first stored row. Changed diagnostic evidence under
+  the same ref is still rejected. This also supports old clients after a lost
+  HTTP acknowledgement without a database migration.
+- A shared synthetic report fixture is checked against the real Flutter report
+  producer and the authenticated Backend route with fake storage. Legacy
+  values, invalid data, changed-evidence conflicts, acknowledgement identity,
+  HTTP error handling and status persistence have regression coverage.
+- Dense full reports additionally discard oldest exported records until content
+  fits 60 KiB, leaving room inside the existing 64 KiB authenticated request
+  limit. Local operational history remains untouched. The route measures UTF-8
+  canonical JSON bytes consistently with storage, not Python string formatting.
+- Runtime implementation and local tests do not prove production deployment or
+  a real phone upload. Those outcomes are recorded separately below/in the log.

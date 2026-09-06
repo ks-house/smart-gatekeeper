@@ -26,7 +26,8 @@ class SmartKeyHomeScreen extends StatefulWidget {
   State<SmartKeyHomeScreen> createState() => _SmartKeyHomeScreenState();
 }
 
-class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
+class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
+    with WidgetsBindingObserver {
   final _identity = MobileIdentityService();
   final _enrollment = LocalGattEnrollmentService();
   final _healthBridge = NativeGattWorkerHealthBridge();
@@ -54,6 +55,10 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   Timer? _accessSessionTimer;
   Timer? _accessSessionExpiryTimer;
   Timer? _fieldMarkerExpiryTimer;
+  Timer? _diagnosticRetryTimer;
+  DateTime? _diagnosticNextAttempt;
+  DateTime? _diagnosticLastSuccess;
+  String? _diagnosticError;
   String? _activeAccessSessionId;
   String? _closedAccessSessionId;
   String? _accessSessionPollInFlightId;
@@ -66,6 +71,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _updates.downloadProgress.addListener(_refreshUpdateProgress);
     _loadAll();
     _healthTimer = Timer.periodic(
@@ -76,16 +82,30 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
       const Duration(seconds: 30),
       (_) => _refreshIdentity(),
     );
+    _diagnosticRetryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        unawaited(_syncDiagnosticsIfEnabled());
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncDiagnosticsIfEnabled());
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _updates.downloadProgress.removeListener(_refreshUpdateProgress);
     _healthTimer?.cancel();
     _identityTimer?.cancel();
     _accessSessionTimer?.cancel();
     _accessSessionExpiryTimer?.cancel();
     _fieldMarkerExpiryTimer?.cancel();
+    _diagnosticRetryTimer?.cancel();
     super.dispose();
   }
 
@@ -96,10 +116,14 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   Future<void> _loadAll() async {
     final uploadEnabled = await _diagnosticsStore.uploadEnabled();
     final marker = await _diagnosticsStore.readMarker();
+    final lastSuccess = await _diagnosticsStore.lastUploadSuccess();
+    final lastError = await _diagnosticsStore.lastUploadError();
     if (mounted) {
       setState(() {
         _diagnosticUploadEnabled = uploadEnabled;
         _fieldTestMarker = marker;
+        _diagnosticLastSuccess = lastSuccess;
+        _diagnosticError = lastError;
       });
       _scheduleFieldMarkerExpiry(marker);
     }
@@ -112,8 +136,13 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
   }
 
   Future<void> _syncDiagnosticsIfEnabled() async {
-    if (!_diagnosticUploadEnabled || _diagnosticSyncBusy) return;
-    _diagnosticSyncBusy = true;
+    if (!mounted ||
+        !_diagnosticUploadEnabled ||
+        _diagnosticSyncBusy ||
+        (_diagnosticNextAttempt?.isAfter(DateTime.now()) ?? false)) {
+      return;
+    }
+    setState(() => _diagnosticSyncBusy = true);
     try {
       final bundle = await _supportReports.buildMap(
         identity: _identityStatus,
@@ -124,8 +153,18 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
           bundleRef == await _diagnosticsStore.lastUploadedRef()) {
         return;
       }
-      if (await _identity.uploadDiagnostics(bundle)) {
+      // Consent may change while the asynchronous report is being built.
+      if (!mounted || !_diagnosticUploadEnabled) return;
+      final result = await _identity.uploadDiagnosticsResult(bundle);
+      if (result.accepted) {
         await _diagnosticsStore.markUploaded(bundleRef);
+        _diagnosticNextAttempt = null;
+        if (mounted) {
+          setState(() {
+            _diagnosticLastSuccess = DateTime.now();
+            _diagnosticError = null;
+          });
+        }
         final fieldTest = bundle['field_test'];
         if (fieldTest is Map && fieldTest['active'] == false) {
           final markerRef = fieldTest['ref']?.toString();
@@ -136,9 +175,18 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
             }
           }
         }
+      } else {
+        _diagnosticNextAttempt =
+            DateTime.now().add(Duration(seconds: result.retryAfterSeconds));
+        await _diagnosticsStore.recordUploadError(result.code);
+        if (mounted) setState(() => _diagnosticError = result.code);
       }
+    } catch (_) {
+      _diagnosticNextAttempt = DateTime.now().add(const Duration(seconds: 30));
+      if (mounted) setState(() => _diagnosticError = 'REPORT_OR_STORAGE_ERROR');
     } finally {
       _diagnosticSyncBusy = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -785,6 +833,35 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen> {
                 ),
                 value: _diagnosticUploadEnabled,
                 onChanged: _setDiagnosticUpload,
+              ),
+              ListTile(
+                leading: Icon(_diagnosticError == null
+                    ? Icons.cloud_done_outlined
+                    : Icons.cloud_off_outlined),
+                title: Text(_diagnosticSyncBusy
+                    ? '진단 업로드 중'
+                    : _diagnosticError != null
+                        ? '진단 업로드 실패 · $_diagnosticError'
+                        : _diagnosticLastSuccess == null
+                            ? '아직 업로드 성공 기록 없음'
+                            : '진단 업로드 완료'),
+                subtitle: Text([
+                  if (_diagnosticLastSuccess != null)
+                    '마지막 성공: ${_diagnosticLastSuccess!.toLocal().toString().split('.').first}',
+                  if (_diagnosticError == 'HTTP_422')
+                    '보고서 형식 오류 · 앱 업데이트를 확인하세요.',
+                  if (_diagnosticError != null) '실패한 전송은 앱 실행 중 다시 시도합니다.',
+                  if (!_diagnosticUploadEnabled) '자동 업로드 꺼짐',
+                ].join('\n')),
+                trailing: TextButton(
+                  onPressed: !_diagnosticUploadEnabled ||
+                          _diagnosticSyncBusy ||
+                          (_diagnosticNextAttempt?.isAfter(DateTime.now()) ??
+                              false)
+                      ? null
+                      : () => _syncDiagnosticsIfEnabled(),
+                  child: const Text('지금 재시도'),
+                ),
               ),
               const Divider(height: 1),
               ListTile(

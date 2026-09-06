@@ -43,6 +43,25 @@ class FieldDiagnosticsStore {
   static const _markerKey = 'field_diagnostics_marker_v1';
   static const _lastUploadedRefKey = 'field_diagnostics_last_uploaded_ref_v1';
   static const _reportSinceKey = 'field_diagnostics_report_since_ms_v1';
+  static const _uploadSuccessKey = 'field_diagnostics_upload_success_ms_v1';
+  static const _uploadErrorKey = 'field_diagnostics_upload_error_v1';
+
+  Future<DateTime?> lastUploadSuccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getInt(_uploadSuccessKey);
+    return value == null ? null : DateTime.fromMillisecondsSinceEpoch(value);
+  }
+
+  Future<String?> lastUploadError() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_uploadErrorKey);
+  }
+
+  Future<void> recordUploadError(String code) async {
+    if (!RegExp(r'^[A-Z0-9_]{1,64}$').hasMatch(code)) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_uploadErrorKey, code);
+  }
 
   Future<int> reportSinceEpochMs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -113,6 +132,9 @@ class FieldDiagnosticsStore {
     if (!_bundleRef.hasMatch(bundleRef)) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastUploadedRefKey, bundleRef);
+    await prefs.setInt(
+        _uploadSuccessKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.remove(_uploadErrorKey);
   }
 
   Future<void> clearMarker(String markerRef) async {

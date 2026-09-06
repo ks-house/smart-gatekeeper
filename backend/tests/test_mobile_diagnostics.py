@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 import hashlib
 import json
+from pathlib import Path
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -44,6 +45,25 @@ class FakeService:
 
 
 class MobileDiagnosticsTest(unittest.TestCase):
+    def test_real_mobile_report_fixture_and_legacy_values(self):
+        fixture = Path(__file__).resolve().parents[2] / "gatekeeper_app/test/fixtures/mobile_support_v2.json"
+        value = json.loads(fixture.read_text())
+        self.assertEqual(MobileDiagnosticBundle.model_validate(value).native.stage, "WAITING")
+        value["native"].update(stage="waiting", wake_registration_status="registered")
+        value["wake_events"][0]["strongest_rssi"] = 127
+        parsed = MobileDiagnosticBundle.model_validate(value)
+        self.assertEqual(parsed.native.wake_registration_status, "REGISTERED")
+        self.assertIsNone(parsed.wake_events[0].strongest_rssi)
+        for invalid in (21, 126, 128, -128):
+            value["wake_events"][0]["strongest_rssi"] = invalid
+            with self.assertRaises(ValidationError):
+                MobileDiagnosticBundle.model_validate(value)
+        value["wake_events"][0]["strongest_rssi"] = None
+        for invalid in ("secret value", "a" * 65, "ß"):
+            value["native"]["stage"] = invalid
+            with self.assertRaises(ValidationError):
+                MobileDiagnosticBundle.model_validate(value)
+
     def test_sensor_observation_is_optional_bounded_and_not_passage_proof(self):
         self.assertIsNone(sensor_observation({}))
         value = dict(sensor_samples=10, sensor_valid_samples=4, sensor_timeouts=5,
@@ -193,7 +213,8 @@ class MobileDiagnosticsTest(unittest.TestCase):
             "device_id": "DEV-TEST-1234",
             "credential_id": "1" * 32,
             "public_key_sec1": "04" + "2" * 128,
-            "bundle": bundle(),
+            "bundle": json.loads((Path(__file__).resolve().parents[2] /
+                "gatekeeper_app/test/fixtures/mobile_support_v2.json").read_text()),
         }
         client = TestClient(app)
         self.assertEqual(
@@ -208,6 +229,13 @@ class MobileDiagnosticsTest(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual("a" * 32, response.json()["bundle_ref"])
         self.assertEqual(1, len(captured))
+        request["bundle"]["native"].update(stage="waiting", wake_registration_status="registered")
+        request["bundle"]["wake_events"][0]["strongest_rssi"] = 127
+        response = client.post("/api/v1/acl/personal/diagnostics", json=request,
+                               headers={"X-API-KEY": "mobile-key"})
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("REGISTERED", captured[-1][2]["native"]["wake_registration_status"])
+        self.assertIsNone(captured[-1][2]["wake_events"][0]["strongest_rssi"])
 
     def test_admin_projection_keeps_physical_result_explicitly_unconfirmed(self) -> None:
         value = bundle()
@@ -278,6 +306,27 @@ class MobileDiagnosticsTest(unittest.TestCase):
         connection.rollback.assert_called_once()
         connection.commit.assert_not_called()
         self.assertNotIn("INSERT IGNORE", insert_cursor.execute.call_args.args[0])
+
+    def test_retry_export_time_can_change_but_evidence_cannot(self):
+        for changed_evidence in (False, True):
+            value = bundle()
+            previous = bundle()
+            value["created_at"] = "2026-09-06T11:00:00Z"
+            if changed_evidence:
+                value["native"]["healthy"] = False
+            connection = MagicMock()
+            insert_context, lookup_context = MagicMock(), MagicMock()
+            insert_context.__enter__.return_value.execute.side_effect = pymysql.err.IntegrityError(1062, "duplicate")
+            lookup_context.__enter__.return_value.fetchone.return_value = {
+                "payload_sha256": "0" * 64, "payload_json": json.dumps(previous)}
+            connection.cursor.side_effect = [insert_context, lookup_context]
+            with patch.object(main, "get_db", return_value=connection), patch.object(main, "_ops_hmac_key", b"o" * 32):
+                if changed_evidence:
+                    with self.assertRaises(RuntimeError):
+                        main._store_mobile_diagnostics("a" * 32, "1" * 32, value)
+                else:
+                    self.assertTrue(main._store_mobile_diagnostics("a" * 32, "1" * 32, value)["deduplicated"])
+            connection.commit.assert_not_called()
 
 
 if __name__ == "__main__":

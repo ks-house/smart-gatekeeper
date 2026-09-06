@@ -1,10 +1,18 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:http/http.dart' as http;
 
 import 'commercial_models.dart';
 import 'device_id_service.dart';
 import 'native_gatt_worker_health.dart';
+
+class DiagnosticUploadResult {
+  const DiagnosticUploadResult(this.code, {this.retryAfterSeconds = 30});
+  final String code;
+  final int retryAfterSeconds;
+  bool get accepted => code == 'ACCEPTED';
+}
 
 class MobileIdentityStatus {
   const MobileIdentityStatus({
@@ -357,21 +365,55 @@ class MobileIdentityService {
   }
 
   Future<bool> uploadDiagnostics(Map<String, Object?> bundle) async {
+    return (await uploadDiagnosticsResult(bundle)).accepted;
+  }
+
+  Future<DiagnosticUploadResult> uploadDiagnosticsResult(
+      Map<String, Object?> bundle) async {
     if (_apiKey.isEmpty || bundle['schema'] != 'sgk-mobile-support-v2') {
-      return false;
+      return const DiagnosticUploadResult('APP_AUTH_UNAVAILABLE');
     }
     try {
       final body = await _identityBody();
       if (!body.containsKey('credential_id') ||
           !body.containsKey('public_key_sec1')) {
-        return false;
+        return const DiagnosticUploadResult('IDENTITY_UNAVAILABLE');
       }
       body['bundle'] = bundle;
-      final response = await _post('diagnostics', body);
-      return response?['accepted'] == true &&
-          response?['bundle_ref'] == bundle['bundle_ref'];
+      final base = _backendBaseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+      final uri = Uri.tryParse('$base/acl/personal/diagnostics');
+      if (uri == null ||
+          uri.scheme != 'https' ||
+          uri.host.isEmpty ||
+          uri.userInfo.isNotEmpty) {
+        return const DiagnosticUploadResult('BACKEND_URL_INVALID');
+      }
+      final response = await _client
+          .post(uri,
+              headers: {
+                'Content-Type': 'application/json',
+                'X-API-KEY': _apiKey,
+              },
+              body: jsonEncode(body))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final delay = int.tryParse(response.headers['retry-after'] ?? '');
+        // Never retain server bodies, which may echo submitted identity data.
+        return DiagnosticUploadResult('HTTP_${response.statusCode}',
+            retryAfterSeconds: delay == null || delay < 30 ? 30 : delay);
+      }
+      final decoded = jsonDecode(response.body);
+      return DiagnosticUploadResult(decoded is Map &&
+              decoded['accepted'] == true &&
+              decoded['bundle_ref'] == bundle['bundle_ref']
+          ? 'ACCEPTED'
+          : 'INVALID_ACK');
+    } on TimeoutException {
+      return const DiagnosticUploadResult('TIMEOUT');
+    } on FormatException {
+      return const DiagnosticUploadResult('INVALID_ACK');
     } catch (_) {
-      return false;
+      return const DiagnosticUploadResult('NETWORK_OR_IDENTITY_ERROR');
     }
   }
 

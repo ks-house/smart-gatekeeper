@@ -68,7 +68,8 @@ class SupportReportService {
         'wake_registration_requested': currentHealth?.wakeRegistrationRequested,
         'wake_registration_reconciled':
             currentHealth?.wakeRegistrationReconciled,
-        'wake_registration_status': currentHealth?.wakeRegistrationStatus,
+        'wake_registration_status':
+            _safeCode(currentHealth?.wakeRegistrationStatus),
         'wake_registration_attempted_at_epoch_ms':
             currentHealth?.wakeRegistrationAttemptedAtEpochMs,
         'wake_registration_reconciled_at_epoch_ms':
@@ -76,7 +77,7 @@ class SupportReportService {
         'wake_registration_last_callback_at_epoch_ms':
             currentHealth?.wakeRegistrationLastCallbackAtEpochMs,
         'initial_work_expedited': currentHealth?.initialWorkExpedited,
-        'stage': currentHealth?.detectionStage.name,
+        'stage': _safeCode(currentHealth?.detectionStage.name),
         'reason': _safeCode(
           currentHealth?.currentBlockingReasonCode ??
               currentHealth?.lastReasonCode,
@@ -93,6 +94,25 @@ class SupportReportService {
       'sessions': sessions.take(fullHistory ? 50 : 10).toList(),
       'wake_events': wakeEvents.take(fullHistory ? 100 : 20).toList(),
     };
+    // Preserve newest evidence within the Backend's 64 KiB request budget,
+    // reserving room for the envelope and authenticated identity fields.
+    final boundedSessions = core['sessions'] as List<Map<String, Object?>>;
+    final boundedWakes = core['wake_events'] as List<Map<String, Object?>>;
+    while (utf8.encode(jsonEncode(core)).length > 60 * 1024 &&
+        (boundedSessions.isNotEmpty || boundedWakes.isNotEmpty)) {
+      final sessionTime = boundedSessions.isEmpty
+          ? null
+          : boundedSessions.last['updated_epoch_ms'] as int? ?? 0;
+      final wakeTime = boundedWakes.isEmpty
+          ? null
+          : boundedWakes.last['received_epoch_ms'] as int? ?? 0;
+      if (sessionTime != null &&
+          (wakeTime == null || sessionTime <= wakeTime)) {
+        boundedSessions.removeLast();
+      } else {
+        boundedWakes.removeLast();
+      }
+    }
     final bundleRef = sha256
         .convert(utf8.encode(jsonEncode(core)))
         .toString()
@@ -181,7 +201,7 @@ class SupportReportService {
               'received_epoch_ms': _safeInt(item['receivedEpochMs']),
               'received_elapsed_ms': _safeInt(item['receivedElapsedMs']),
               'callback_latency_ms': _safeNum(item['callbackLatencyMs']),
-              'strongest_rssi': _safeInt(item['strongestRssi']),
+              'strongest_rssi': _safeRssi(item['strongestRssi']),
               'screen_interactive': item['screenInteractive'] != false,
               'result_count': _safeInt(item['resultCount']),
               'callback_type': _safeInt(item['callbackType']),
@@ -191,6 +211,8 @@ class SupportReportService {
   }
 
   int? _safeInt(Object? value) => value is num ? value.toInt() : null;
+  int? _safeRssi(Object? value) =>
+      value is int && value >= -127 && value <= 20 ? value : null;
   num? _safeNum(Object? value) => value is num && value.isFinite ? value : null;
 
   String? _safeCode(Object? value) {
