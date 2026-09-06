@@ -6875,3 +6875,15 @@
 - Android native suite passes: 86 JUnit tests, zero failures/errors. New coverage includes early v2 BUSY/RATE_LIMITED/INTERNAL_FAIL_CLOSED, rejection of pre-proof success/malformed/version-mismatched results, no signing/proof on early BUSY, bounded fast recovery and backward-compatible persisted recovery state.
 - Full Flutter suite passes 101 tests, including signed update/recovery tests. Report regressions cover compact/full bounds, newest-first ordering, cutoff reset with new records after reset, preserved consent/source ledger, copy confirmation and bottom actions above a 48-pixel system navigation inset on a 360×640 viewport.
 - Targeted Dart analysis reports no issues. OTA contract gate, 78 focused OTA tests and the root unittest discovery suite pass; final git diff whitespace checks pass. Existing firmware, Backend and deployed app remain unchanged pending a separate publication/install step; no physical BLE success or resolution of error 133 is claimed.
+
+## [2026-09-06] test | Merge mobile recovery/report fixes and start owner-authorized publication
+
+- Owner requested publication for an imminent field test. PR #383 passed all hosted checks and merged as exact main `80569b1961edad512827a20829d73539c7de89dd`; mobile source bytes match tested feature commit `5f9103fe970a0ad184b4862d28c19c94b1176df3`.
+- Main mobile run `34018358565` passed the app validation job and advanced to personal release compilation, targeting `1.0.0-g80569b1` / 43701. Publication and phone installation are not yet established by this entry.
+- No Target or Backend release was triggered. Read-only Target observation retains `2.1.469+main.g6a45aec`, boot 743, uptime 4213 seconds, bridge online, relay OFF and controller advertising active. Accepted GATT counters remain zero; this is not evidence of successful phone authentication. No door command, reboot, reset or OTA request was issued.
+
+## [2026-09-06] test | Complete mobile-only signed OTA publication for immediate owner testing
+
+- Android run `34018358565` completed successfully at 16:25:53 KST, publishing exact main `80569b1961edad512827a20829d73539c7de89dd` as `1.0.0-g80569b1` / 43701. App validation, release compilation, pinned APK signing/manifest verification, atomic NAS publication and HTTPS readback all passed.
+- Independently fetched primary/fallback metadata and APKs over verified HTTPS. Both 55,594,137-byte files match SHA-256 `b053454696acd0e8a7739aa83acdd7822ae5087818f6b5a2bf0b954ac1aea8e1` and the exact-source manifest. No new credential or signing key was introduced.
+- Informed the owner that the update is available now. Installation, report-button rendering on the phone and physical access tests are still owner-side evidence; Target/Backend versions were not changed and no resolution of the physical 133 cause is claimed.

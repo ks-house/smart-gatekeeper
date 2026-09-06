@@ -342,3 +342,18 @@ Report UX, local history reset and validation are described in
 [field diagnostics](field_diagnostics_capture_plan.md#9-report-ux-and-history-reset-2026-09-06).
 These changes are local implementation/test evidence, not a new published APK,
 Target OTA or a successful physical re-entry trial.
+
+### Mobile-only publication completed
+
+PR #383 merged the follow-up as main `80569b1961edad512827a20829d73539c7de89dd`.
+Android run `34018358565` completed successfully at 16:25:53 KST on September 6,
+publishing **1.0.0-g80569b1 / 43701**. The personal publisher verified signing
+identity and the signed manifest; independent strict-HTTPS readback found the
+same exact-source manifest on primary/fallback and both 55,594,137-byte APKs
+matching SHA-256 `b053454696acd0e8a7739aa83acdd7822ae5087818f6b5a2bf0b954ac1aea8e1`.
+
+The owner can install through app Settings/update, reset report history and
+perform the next access trial. Publication is complete; owner installation and
+physical authentication/re-entry remain pending. Target/Backend were not
+republished, no Target reboot/OTA/door command was sent, and error 133's physical
+root cause remains unconfirmed.
