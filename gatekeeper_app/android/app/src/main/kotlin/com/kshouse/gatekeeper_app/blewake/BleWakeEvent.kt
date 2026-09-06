@@ -19,6 +19,8 @@ data class BleWakeEvent(
   val screenInteractive: Boolean,
   /** Internal transport locator. Intentionally omitted from journal/log JSON. */
   val deviceAddress: String? = null,
+  /** Advisory only, deliberately excluded from exported diagnostics. */
+  val readyHint: PresenceReadyHint? = null,
 ) {
   /** Stable only for duplicate delivery of one OS wake; persisted only through a keyed HMAC. */
   fun presenceEventId(): String = listOf(

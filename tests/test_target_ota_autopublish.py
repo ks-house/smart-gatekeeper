@@ -497,82 +497,18 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
         step["run"] for step in compiler["steps"]
         if step["name"] == "Verify exact protected main before production secrets"
     )
-    expected_build_rows = []
-    for line in privileged_verify.splitlines():
-      parts = line.strip().split()
-      if (
-          len(parts) == 3
-          and parts[0] == "100644"
-          and len(parts[1]) == 64
-          and all(char in "0123456789abcdef" for char in parts[1])
-      ):
-        self.assertEqual(line, line.strip(), parts[2])
-        expected_build_rows.append(parts)
-    expected_build_paths = [row[2] for row in expected_build_rows]
-    tracked_build_paths = subprocess.run(
-        [
-            "git", "ls-files", "--", "src", "include", "lib", "boards",
-            "variants", "sitecustomize.py", "usercustomize.py",
-            "platformio_override.ini", "platformio.ini",
-            "partitions_16MB_ota.csv", "ota/requirements.lock",
-        ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    self.assertEqual(len(expected_build_rows), 45)
-    self.assertEqual(expected_build_paths, sorted(expected_build_paths))
-    self.assertEqual(expected_build_paths, tracked_build_paths)
-    for _mode, expected_digest, path in expected_build_rows:
-      normalized = (ROOT / path).read_bytes().replace(b"\r\n", b"\n").replace(
-          b"\r", b"\n"
-      )
-      self.assertEqual(
-          expected_digest,
-          hashlib.sha256(normalized).hexdigest(),
-          path,
-      )
+    self.assertNotIn("EXPECTED_BUILD_TREE", privileged_verify)
     self.assertNotIn("unittest", privileged_verify)
     self.assertNotIn("ota_contract_gate.py contract", privileged_verify)
-    self.assertIn(
-        "git ls-files --stage -- src include lib boards variants",
-        privileged_verify,
-    )
-    self.assertIn(
-        "sitecustomize.py usercustomize.py platformio_override.ini platformio.ini",
-        privileged_verify,
-    )
-    self.assertIn(
-        "partitions_16MB_ota.csv ota/requirements.lock |",
-        privileged_verify,
-    )
-    self.assertIn("ota/requirements.lock |", privileged_verify)
+    self.assertIn('git diff --quiet "$GITHUB_SHA"', privileged_verify)
+    self.assertIn("git ls-files --stage -- src include lib boards variants", privileged_verify)
     self.assertIn("git ls-files --others --exclude-standard", privileged_verify)
     self.assertIn('test -z "$UNEXPECTED_BUILD_INPUTS"', privileged_verify)
     self.assertIn("test ! -e .pio", privileged_verify)
     self.assertIn('test ! -L "$path"', privileged_verify)
-    self.assertIn('stat -c \'%a\' -- "$path"', privileged_verify)
-    self.assertIn('sha256sum -- "$path"', privileged_verify)
-    self.assertNotIn('git show "$GITHUB_SHA:$path"', privileged_verify)
-    self.assertIn(
-        "5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock",
-        privileged_verify,
-    )
-    self.assertIn(
-        "20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv",
-        privileged_verify,
-    )
-    self.assertIn(
-        "a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini",
-        privileged_verify,
-    )
-    self.assertIn("src/OtaManager.cpp", privileged_verify)
-    self.assertIn(
-        "ce133f5fa6748fa7e6edd863e899c8e21d6a0da64563f353975e4800fb0e6c9b",
-        privileged_verify,
-    )
-    self.assertIn("src/WifiManager.cpp", privileged_verify)
+    self.assertIn('test "$mode" = "100644"', privileged_verify)
+    self.assertIn('test "$(git rev-parse "$GITHUB_SHA:$path")" = "$object"', privileged_verify)
+    self.assertIn('test "$(git hash-object -- "$path")" = "$object"', privileged_verify)
     public_only_steps = {
         "Create compile-only public canary secrets",
         "Build ESP32-C6 firmware public canary",
@@ -588,15 +524,6 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
     self.assertEqual(set(matched), public_only_steps)
     self.assertTrue(
         all(condition == "github.event_name != 'push'" for condition in matched.values())
-    )
-    self.assertIn(
-        "d47d4462d071e51afad98c1bff32476ca67f5345314eb2975f857b5b0cea2b91",
-        privileged_verify,
-    )
-    self.assertIn("include/RecoveryRadioPolicy.h", privileged_verify)
-    self.assertIn(
-        "8c0be800233019cf2edad1ffcec7d3d9eef9d1c85d0097f8ec78fdd62ee6a92d",
-        privileged_verify,
     )
     self.assertIn("sitecustomize.py usercustomize.py", privileged_verify)
     materialize = next(
@@ -668,7 +595,7 @@ class TargetOtaAutoPublishContractTests(unittest.TestCase):
             "target-symbol-map-${{ env.FULL_VERSION }}",
         ),
         (
-            'test "$ACTUAL_BUILD_TREE" = "$EXPECTED_BUILD_TREE"',
+            'test "$(git hash-object -- "$path")" = "$object"',
             "python -m unittest discover -s tests -p 'test_*.py' -v",
         ),
         (

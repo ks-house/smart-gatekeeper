@@ -89,7 +89,7 @@ try:
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
-    from .mobile_diagnostics import classify_bundle
+    from .mobile_diagnostics import classify_bundle, sensor_observation
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from access_actor_ref import (
         access_credential_ref_is_valid,
@@ -132,7 +132,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
-    from mobile_diagnostics import classify_bundle
+    from mobile_diagnostics import classify_bundle, sensor_observation
 
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -2517,6 +2517,9 @@ def _parse_authenticated_target_status(
             if not _is_lower_uuid4(session_value):
                 return None
         controller = {key: document[key] for key in sorted(controller_keys)}
+        sensor = sensor_observation(document)
+        if sensor is not None:
+            controller["sensor_observation"] = sensor
 
     parsed = {
         "target_id": target_id,
@@ -6241,6 +6244,7 @@ def get_diagnostic_attempts_admin(
                             "diagnostic-target-boot",
                         ),
                         "last_stage": live_controller.get("gatt_last_stage"),
+                        "sensor_observation": live_controller.get("sensor_observation"),
                         "previous_stage": live_controller.get(
                             "previous_access_stage"
                         ),

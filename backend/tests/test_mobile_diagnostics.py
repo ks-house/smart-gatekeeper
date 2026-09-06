@@ -13,7 +13,7 @@ import pymysql
 
 from backend.app.acl_api import AclApiConfig, create_acl_router
 from backend.app import main
-from backend.app.mobile_diagnostics import MobileDiagnosticBundle, classify_bundle
+from backend.app.mobile_diagnostics import MobileDiagnosticBundle, classify_bundle, sensor_observation
 
 
 def bundle() -> dict:
@@ -44,6 +44,17 @@ class FakeService:
 
 
 class MobileDiagnosticsTest(unittest.TestCase):
+    def test_sensor_observation_is_optional_bounded_and_not_passage_proof(self):
+        self.assertIsNone(sensor_observation({}))
+        value = dict(sensor_samples=10, sensor_valid_samples=4, sensor_timeouts=5,
+                     sensor_invalid_samples=1, sensor_min_cm=30.5, sensor_max_cm=150,
+                     sensor_rearm_blocked=True)
+        self.assertEqual(sensor_observation(value), value)
+        for key, invalid in (("sensor_samples", True), ("sensor_timeouts", -1),
+                             ("sensor_min_cm", float("nan")), ("sensor_max_cm", 1000),
+                             ("sensor_rearm_blocked", "true"), ("sensor_samples", 11)):
+            self.assertIsNone(sensor_observation({**value, key: invalid}))
+
     def test_strict_contract_rejects_unknown_and_secret_fields(self) -> None:
         value = bundle()
         value["token"] = "must-not-be-accepted"

@@ -1033,6 +1033,30 @@ void GattServer::setAdvertisingExpected(bool expected) {
 #endif
 }
 
+void GattServer::setPresenceReady(bool ready, uint32_t epoch, bool force) {
+#if ENABLE_HARDWARELESS_RC
+  static bool previous_ready = false;
+  static uint32_t previous_epoch = 0;
+  if (!isEnabled() || (!force && previous_ready == ready && previous_epoch == epoch)) return;
+  // 128-bit service data: version, ready flag, little-endian boot-seeded epoch.
+  // 24-byte AD element + five-byte short name fits the 31-byte scan response.
+  const uint8_t hint[] = {1, static_cast<uint8_t>(ready),
+                         static_cast<uint8_t>(epoch), static_cast<uint8_t>(epoch >> 8),
+                         static_cast<uint8_t>(epoch >> 16), static_cast<uint8_t>(epoch >> 24)};
+  BLEAdvertisementData response;
+  response.setName("SGK");
+  response.setServiceData(BLEUUID(HARDWARELESS_SERVICE_UUID),
+                         String(reinterpret_cast<const char*>(hint), sizeof(hint)));
+  if (!BLEDevice::getAdvertising()->setScanResponseData(response)) return;
+  previous_ready = ready;
+  previous_epoch = epoch;
+#else
+  (void)ready;
+  (void)epoch;
+  (void)force;
+#endif
+}
+
 void GattServer::update() {
 #if ENABLE_HARDWARELESS_RC
   // Flush control and telemetry effects produced by NimBLE callbacks before

@@ -34,6 +34,7 @@
 #include "DurablePreferences.h"
 #include "BleStartupPolicy.h"
 #include "AccessCriticalLeasePolicy.h"
+#include "PassageRearmPolicy.h"
 
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
@@ -131,10 +132,15 @@ static NvsQueueStorage g_nvs_queue_storage;
 
 static inline void relayOn();
 static inline void relayOff();
+static sgk::PassageRearmPolicy passageRearm;
+bool g_sensor_rearm_blocked = false;
 
 static sgk::TargetAccessFsm g_access_fsm(
     [](bool on) {
-      if (on) relayOn();
+      if (on) {
+        passageRearm.notePulse();
+        relayOn();
+      }
       else relayOff();
     },
     [](const char* event, const char* message) {
@@ -483,6 +489,7 @@ void setTxPower(int powerDbm) {
 
   pAdv->setAdvertisementData(oAdvertisementData);
   pAdv->setScanResponseData(oScanResponseData);
+  GattServer::setPresenceReady(false, 0, true);
   pAdv->start();
   LOGF("[CONFIG-TUNING] ⚙️ iBeacon 페이로드 (Measured Power %d) 업데이트 및 ADV 재시작 완료", measuredPower);
 }
@@ -781,7 +788,11 @@ void loop() {
     g_access_fsm.handleRelayFailsafeOff(now, g_relay_cooldown_ms);
   }
 
+  const bool previousPhysicalAccess = isVerifiedPhysicalAccessActive();
   g_access_fsm.tick(now);
+  if (previousPhysicalAccess && g_access_fsm.state() == GateState::IDLE) {
+    accessCriticalLease.retireVerifiedAction(accessSessionGeneration);
+  }
 
   // Process local authentication before any network/TLS work. Canonical and
   // legacy events only enter the bounded MQTT outbox on this path.
@@ -798,11 +809,29 @@ void loop() {
     // 20cm 미만 맹점은 -1.0f 반환되므로, 20cm ~ g_distance_threshold_cm 범위만 유효
     bool validReading = (distCm >= ULTRASONIC_MIN_DISTANCE_CM &&
                          distCm <= (float)g_distance_threshold_cm);
-    if (validReading) {
+    passageRearm.observe(UltrasonicSensor::lastRawDistanceCm() >
+                            static_cast<float>(g_distance_threshold_cm + 10) &&
+                        UltrasonicSensor::lastRawDistanceCm() <= 400.0f);
+    if (validReading && !passageRearm.blocked()) {
       LOGF("[GATE] ✅ ARMED 상태에서 초음파 %.1f cm 감지!", distCm);
       g_access_fsm.handleSensorTrigger(now, RELAY_HOLD_MS, g_relay_cooldown_ms);
     }
+  } else if (passageRearm.blocked() &&
+             (g_access_fsm.state() == GateState::IDLE ||
+              g_access_fsm.state() == GateState::COOLDOWN)) {
+    // Observe clearance after relay OFF too, so a person leaving during
+    // cooldown is not missed before the next person's approach. Invalid/no echo
+    // never unlocks a second automatic pulse.
+    const float clearDistance = UltrasonicSensor::readDistanceCmRaw();
+    passageRearm.observe(clearDistance > static_cast<float>(g_distance_threshold_cm + 10) &&
+                        clearDistance <= 400.0f);
   }
+  g_sensor_rearm_blocked = passageRearm.blocked();
+  static sgk::PresenceReadyPolicy presenceReady(esp_random());
+  const bool ready = presenceReady.update(now,
+      g_access_fsm.state() == GateState::IDLE && !relay.isOn() &&
+      !GattServer::isConnected() && !GattServer::isOtaBusy());
+  GattServer::setPresenceReady(ready, presenceReady.epoch());
 
   // ─── 1초 주기 MQTT 텔레메트리 발행 (실시간 센서값 모니터링) ────────────────────────────────
   const GateState telemetryState = g_access_fsm.state();

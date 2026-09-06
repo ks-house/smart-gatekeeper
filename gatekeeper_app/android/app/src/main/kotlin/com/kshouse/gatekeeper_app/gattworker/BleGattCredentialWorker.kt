@@ -17,6 +17,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.flutterbeacon.CrossProcessBleOwnerCoordinator
 import com.kshouse.gatekeeper_app.blewake.BleWakeJournal
+import com.kshouse.gatekeeper_app.blewake.ContinuousPresencePolicy
+import com.kshouse.gatekeeper_app.blewake.ContinuousPresenceTracker
 import java.util.concurrent.TimeUnit
 
 object BleGattWorkScheduler {
@@ -25,6 +27,7 @@ object BleGattWorkScheduler {
   const val RETRY_WORK_POLICY = "APPEND_OR_REPLACE"
   const val EXPEDITED_MIN_API = Build.VERSION_CODES.S
   private const val INPUT_SESSION_ID = "session_id"
+  private var lastContinuousCheckMs = 0L
 
   data class ManualRetryResult(
     val accepted: Boolean,
@@ -40,7 +43,21 @@ object BleGattWorkScheduler {
     )
   }
 
-  fun onPresence(context: Context, deviceAddress: String?, presenceEventId: String): String? {
+  @Synchronized
+  fun onContinuousPresence(context: Context, deviceAddress: String, epoch: Long): String? {
+    val elapsed = android.os.SystemClock.elapsedRealtime()
+    if (elapsed - lastContinuousCheckMs < 1_000) return null
+    lastContinuousCheckMs = elapsed
+    val ledger = SharedPreferencesSessionLedger(context.applicationContext)
+    val last = ledger.last()
+    if (!ContinuousPresencePolicy.maySchedule(last, System.currentTimeMillis())) return null
+    return onPresence(context, deviceAddress, ContinuousPresencePolicy.eventId(epoch, last),
+      requiresFreshPresence = true)
+  }
+
+  @Synchronized
+  fun onPresence(context: Context, deviceAddress: String?, presenceEventId: String,
+                 requiresFreshPresence: Boolean = false): String? {
     if (deviceAddress.isNullOrBlank() || presenceEventId.isBlank()) return null
     val appContext = context.applicationContext
     if (!BleGattFeatureFlagStore(appContext).decision().newWorkerEnabled) return null
@@ -52,6 +69,8 @@ object BleGattWorkScheduler {
         ledger,
         AndroidKeystorePresenceFingerprinter(appContext),
       ).enqueue(deviceAddress, presenceEventId, System.currentTimeMillis())
+      if (duplicate && !DurableAttemptPolicy.canExecute(session.state)) return session.id
+      if (requiresFreshPresence) ledger.update(session.copy(requiresFreshPresence = true))
       if (!duplicate) vault.store(session.id, LocatorSecret(deviceAddress, credentialId))
       WorkManager.getInstance(appContext).enqueueUniqueWork(
         workName(session.id),
@@ -206,6 +225,10 @@ class BleGattCredentialWorker(
         signer = AndroidKeystoreCredentialSigner(),
         proofObserver = object : ProofExecutionObserver {
           override fun beforeProofWrite() {
+            if (initial.requiresFreshPresence && !ContinuousPresenceTracker.fresh(
+                secret.deviceAddress, android.os.SystemClock.elapsedRealtime())) {
+              throw PresenceExpiredBeforeProofException()
+            }
             if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
               flagDisabledBeforeProof = true
               throw FeatureFlagDisabledBeforeProofException()

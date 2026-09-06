@@ -54,6 +54,7 @@
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 | [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md) | 개인 PROD 모바일 등록·문 열기 배포와 매립 Target MQTT/Wi-Fi/OTA 장애 증거 및 재개 절차 |
 | [wife_phone_access_latency_2026_09_02.md](wife_phone_access_latency_2026_09_02.md) | 관리자/HA의 ARMED→RELAY 약 7초 증거, access-critical MQTT deferral, pre-ARMED GATT v2 fast-path 후보와 설치 후 검증 Gate |
+| [continuous_presence_reauth_2026_09_06.md](continuous_presence_reauth_2026_09_06.md) | 문앞 지속 체류 시 재인증 연결 공백, 종료 후 Target lease 오판정 host 재현과 센서 진단 공백 |
 | [ha_external_access_incident_2026_08_13.md](ha_external_access_incident_2026_08_13.md) | 2026-08-13 HA nginx 502의 upstream 장애 격리, 안전한 복구 순서와 2026-08-24 복구 경계 |
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |

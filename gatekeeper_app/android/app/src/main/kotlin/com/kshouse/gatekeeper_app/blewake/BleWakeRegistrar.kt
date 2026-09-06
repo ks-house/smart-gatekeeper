@@ -125,8 +125,22 @@ object BleWakeRegistrar {
         // has fully released the cross-process lease. The durable native owner
         // marker prevents a new legacy lease after this temporary lock closes.
         scanner.stopScan(callbackIntent)
+        scanner.stopScan(callbackIntent(context, continuous = true))
         val errorCode = scanner.startScan(listOf(filter), settings, callbackIntent)
         if (errorCode == 0) {
+          // Preserve FIRST_MATCH/MATCH_LOST lifecycle and add packet delivery
+          // for Target readiness epochs. Both registrations have one native owner.
+          val continuousSettings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+            .build()
+          val continuousError = scanner.startScan(
+            listOf(filter), continuousSettings, callbackIntent(context, continuous = true),
+          )
+          if (continuousError != 0) {
+            scanner.stopScan(callbackIntent)
+            return fail(context, attempt, "scan_error", continuousError)
+          }
           val accepted = BleWakeReconciliationPolicy.accept(
             attempt,
             processId,
@@ -159,7 +173,11 @@ object BleWakeRegistrar {
       val scanner = context.getSystemService(BluetoothManager::class.java)
         ?.adapter
         ?.bluetoothLeScanner
-      if (scanner != null) scanner.stopScan(callbackIntent(context))
+      if (scanner != null) {
+        scanner.stopScan(callbackIntent(context))
+        scanner.stopScan(callbackIntent(context, continuous = true))
+      }
+      ContinuousPresenceTracker.exit(null)
       result(stopped)
     } catch (_: SecurityException) {
       // The durable request is already disabled. Report the platform stop
@@ -229,14 +247,14 @@ object BleWakeRegistrar {
     return registration
   }
 
-  internal fun callbackIntent(context: Context): PendingIntent {
+  internal fun callbackIntent(context: Context, continuous: Boolean = false): PendingIntent {
     val intent = Intent(context, BleWakeScanReceiver::class.java).setAction(ACTION_SCAN_RESULT)
     // BluetoothLeScanner must add ScanResult extras at delivery time. Android 12+
     // therefore needs a mutable PendingIntent; the explicit non-exported receiver
     // and fixed action constrain the mutable surface.
     val flags = PendingIntent.FLAG_UPDATE_CURRENT or
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-    return PendingIntent.getBroadcast(context, REQUEST_CODE, intent, flags)
+    return PendingIntent.getBroadcast(context, REQUEST_CODE + if (continuous) 1 else 0, intent, flags)
   }
 
   private fun fail(

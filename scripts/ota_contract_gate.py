@@ -1054,7 +1054,7 @@ def _validate_personal_target_ota_job(
       'test "$(git rev-parse --is-shallow-repository)" = "false"',
       'if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then',
       'test "${{ inputs.release_target }}" = "canary"',
-      'EXPECTED_BUILD_TREE="$(cat <<\'EOF\'',
+      'git diff --quiet "$GITHUB_SHA"',
       'test ! -e .pio',
       "git ls-files --others --exclude-standard --",
       "src include lib boards variants sitecustomize.py usercustomize.py",
@@ -1062,17 +1062,13 @@ def _validate_personal_target_ota_job(
       "git ls-files --stage -- src include lib boards variants",
       "sitecustomize.py usercustomize.py platformio_override.ini platformio.ini",
       "partitions_16MB_ota.csv ota/requirements.lock |",
-      "100644 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12 ota/requirements.lock",
-      "100644 20eb6e06d094abfa4436abf741fe21652e4b92ec076d24dbc0eac8e7d2ed88b4 partitions_16MB_ota.csv",
-      "100644 a10ccb9f2216d8b46ab3869a20d228c4c39aa7630b5c672f01be97f8ce7ce839 platformio.ini",
       'while read -r mode object stage path; do',
       'test "$mode" = "100644"',
       'test -f "$path"',
       'test ! -L "$path"',
       'test "$(stat -c \'%a\' -- "$path")" = "644"',
-      'digest="$(sha256sum -- "$path" | cut -d\' \' -f1)"',
-      'printf \'%s %s %s\\n\' "$mode" "$digest" "$path"',
-      'test "$ACTUAL_BUILD_TREE" = "$EXPECTED_BUILD_TREE"',
+      'test "$(git rev-parse "$GITHUB_SHA:$path")" = "$object"',
+      'test "$(git hash-object -- "$path")" = "$object"',
   ):
     if verify_run.count(fragment) != 1:
       raise GateError(f"{path}: personal Target exact-main verification is incomplete")

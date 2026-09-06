@@ -375,6 +375,7 @@ data class DurableGattSession(
   val activeAclVersion: Long? = null,
   val targetSessionId: String? = null,
   val gattPerformance: GattSessionPerformance? = null,
+  val requiresFreshPresence: Boolean = false,
 ) {
   fun redactedMap(): Map<String, Any?> = mapOf(
     "sessionId" to id,
@@ -449,6 +450,7 @@ object SessionLedgerCodec {
   private fun toJson(session: DurableGattSession): JSONObject = JSONObject()
     .put("id", session.id)
     .put("presence_fingerprint", session.presenceFingerprint)
+    .put("requires_fresh_presence", session.requiresFreshPresence)
     .put("created_epoch_ms", session.createdEpochMs)
     .put("updated_epoch_ms", session.updatedEpochMs)
     .put("attempt", session.attempt)
@@ -471,6 +473,7 @@ object SessionLedgerCodec {
   private fun fromJson(value: JSONObject): DurableGattSession = DurableGattSession(
     id = value.getString("id"),
     presenceFingerprint = value.getString("presence_fingerprint"),
+    requiresFreshPresence = value.optBoolean("requires_fresh_presence", false),
     createdEpochMs = value.getLong("created_epoch_ms"),
     updatedEpochMs = value.getLong("updated_epoch_ms"),
     attempt = value.getInt("attempt"),

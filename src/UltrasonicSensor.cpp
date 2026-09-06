@@ -8,6 +8,10 @@
 
 float UltrasonicSensor::history[5] = {999.0f, 999.0f, 999.0f, 999.0f, 999.0f};
 uint8_t UltrasonicSensor::historyIdx = 0;
+UltrasonicSensor::Diagnostics UltrasonicSensor::diagnostics;
+static float last_session_raw_cm = 999.0f;
+
+float UltrasonicSensor::lastRawDistanceCm() { return last_session_raw_cm; }
 
 void UltrasonicSensor::init() {
   pinMode(PIN_TRIG, OUTPUT);
@@ -24,6 +28,8 @@ void UltrasonicSensor::resetHistory() {
     history[i] = 999.0f;
   }
   historyIdx = 0;
+  diagnostics = {};
+  last_session_raw_cm = 999.0f;
 }
 
 float UltrasonicSensor::readDistanceCmRaw(unsigned long* outDurationUs) {
@@ -58,7 +64,18 @@ float UltrasonicSensor::readDistanceCmRaw(unsigned long* outDurationUs) {
 }
 
 float UltrasonicSensor::readDistanceCm(unsigned long* outDurationUs) {
-  float raw = readDistanceCmRaw(outDurationUs);
+  unsigned long duration = 0;
+  float raw = readDistanceCmRaw(&duration);
+  if (outDurationUs != nullptr) *outDurationUs = duration;
+  last_session_raw_cm = raw;
+  ++diagnostics.samples;
+  if (duration == 0) ++diagnostics.timeouts;
+  else if (raw > 400.0f) ++diagnostics.invalid;
+  else {
+    ++diagnostics.valid;
+    if (raw < diagnostics.minimum_cm) diagnostics.minimum_cm = raw;
+    if (raw > diagnostics.maximum_cm) diagnostics.maximum_cm = raw;
+  }
 
   history[historyIdx] = raw;
   historyIdx = (historyIdx + 1) % 5;
