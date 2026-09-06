@@ -49,8 +49,10 @@ object BleGattWorkScheduler {
     if (elapsed - lastContinuousCheckMs < 1_000) return null
     lastContinuousCheckMs = elapsed
     val ledger = SharedPreferencesSessionLedger(context.applicationContext)
-    if (!ContinuousPresencePolicy.maySchedule(ledger.last(), System.currentTimeMillis())) return null
-    return onPresence(context, deviceAddress, "ready-v1-$epoch", requiresFreshPresence = true)
+    val last = ledger.last()
+    if (!ContinuousPresencePolicy.maySchedule(last, System.currentTimeMillis())) return null
+    return onPresence(context, deviceAddress, ContinuousPresencePolicy.eventId(epoch, last),
+      requiresFreshPresence = true)
   }
 
   @Synchronized

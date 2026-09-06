@@ -6821,3 +6821,9 @@
 - Require valid sensor clearance before another automatic relay pulse; retain per-ARMED sensor counts and distance bounds and expose latest reference measurements in administrator diagnostics.
 - Discover and remove the leftover embedded runtime hash freeze in the personal Target publisher, replacing it with exact-main index/blob/on-disk verification. The changed privileged workflow and OTA validator still need trusted-policy authorization before merge.
 - Native Android unit tests and the personal firmware build pass. Publication, installed Target health and owner-installed Android physical trials remain separate rollout evidence.
+
+## [2026-09-06] fix | Finish reauthentication regression and trusted publisher authorization
+
+- Merged policy-only PR #380 authorizing the exact reviewed 23-path bundle at `f23239913cad533763007939f8ee9c37cdc8fe62`; policy publication did not trigger runtime deployment.
+- Fix same-ready-epoch known-failure coalescing: after the bounded 60-second failure backoff a new attempt is eligible, while completed epochs and uncertain proofs are not replayed.
+- Synchronize the trusted-policy regression fixture with the approved anchor. All 61 focused host/policy/publisher tests, OTA contract, incremental personal firmware build and Android native unit suite pass. Generated Flutter dependency/desktop artifacts are excluded from this change.

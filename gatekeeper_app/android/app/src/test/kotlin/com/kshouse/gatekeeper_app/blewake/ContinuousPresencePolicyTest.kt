@@ -40,4 +40,13 @@ class ContinuousPresencePolicyTest {
     ContinuousPresenceTracker.exit("fixture")
     assertFalse(ContinuousPresenceTracker.fresh("fixture", 100))
   }
+  @Test fun knownFailureCanRetrySameEpochWithoutReplayingSuccess() {
+    assertEquals("ready-v1-42", ContinuousPresencePolicy.eventId(42, null))
+    assertEquals("ready-v1-42", ContinuousPresencePolicy.eventId(42,
+      session(DurableSessionState.SUCCEEDED)))
+    assertEquals("ready-v1-42-after-s", ContinuousPresencePolicy.eventId(42,
+      session(DurableSessionState.FAILED)))
+    assertFalse(ContinuousPresencePolicy.maySchedule(
+      session(DurableSessionState.PROOF_UNCERTAIN), Long.MAX_VALUE))
+  }
 }

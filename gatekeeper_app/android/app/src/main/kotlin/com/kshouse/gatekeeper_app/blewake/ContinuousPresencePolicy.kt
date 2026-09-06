@@ -18,6 +18,11 @@ data class PresenceReadyHint(val ready: Boolean, val epoch: Long) {
 
 object ContinuousPresencePolicy {
   const val FRESH_MS = 5_000L
+  // A terminal failure must not permanently consume an otherwise unchanged
+  // ready epoch. Only call after maySchedule's failure backoff has elapsed.
+  fun eventId(epoch: Long, last: DurableGattSession?): String =
+    "ready-v1-$epoch" + if (last?.state == DurableSessionState.FAILED) "-after-${last.id}" else ""
+
   fun maySchedule(last: DurableGattSession?, now: Long): Boolean {
     if (last == null) return true
     val age = (now - last.updatedEpochMs).coerceAtLeast(0)

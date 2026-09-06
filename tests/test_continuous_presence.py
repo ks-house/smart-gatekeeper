@@ -16,4 +16,3 @@ class ContinuousPresenceTest(unittest.TestCase):
                  "-o", executable], cwd=ROOT, check=True, capture_output=True,
             )
             subprocess.run([executable], check=True, capture_output=True)
-

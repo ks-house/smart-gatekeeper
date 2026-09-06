@@ -167,6 +167,9 @@ The owner subsequently authorized implementation and deployment. The candidate:
   five seconds immediately before a continuous-presence proof. It never resolves
   PROOF_UNCERTAIN from an unsigned advertisement. Older Targets without the hint
   retain the original FIRST_MATCH flow; older apps retain v2 proof compatibility.
+  A known terminal failure may create a fresh attempt after 60 seconds even if
+  the ready epoch is unchanged; successful epochs remain coalesced. This avoids
+  turning temporary failures into an indefinite wait for a new radio match.
 - Separates the next authentication from another relay pulse. After any pulse,
   three consecutive valid readings beyond threshold plus 10 cm clear the
   automatic-passage latch. Invalid/no-echo samples do not clear it. Sampling for
