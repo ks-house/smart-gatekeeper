@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -45,6 +46,15 @@ class IdentitySnapshot(StrictModel):
 
 
 class NativeSnapshot(StrictModel):
+    @field_validator("stage", "wake_registration_status", mode="before")
+    @classmethod
+    def legacy_native_code(cls, value: Any) -> Any:
+        # Existing mobile v2 producers use Dart enum names (lower/camel case).
+        # Normalize only bounded ASCII codes, never arbitrary text or secrets.
+        if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
+            return value.upper()
+        return value
+
     healthy: Optional[bool] = None
     hands_free_ready: Optional[bool] = None
     wake_registered: Optional[bool] = None
@@ -123,6 +133,13 @@ class SessionSnapshot(StrictModel):
 
 
 class WakeSnapshot(StrictModel):
+    @field_validator("strongest_rssi", mode="before")
+    @classmethod
+    def unknown_rssi(cls, value: Any) -> Any:
+        # Legacy reports preserve the radio's unavailable sentinel. Do not
+        # interpret it as signal strength or widen the valid measurement range.
+        return None if type(value) is int and value == 127 else value
+
     source: Optional[Code] = Field(default=None, pattern=r"^[A-Z0-9_-]{1,64}$")
     process_ref: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{16}$")
     success: bool

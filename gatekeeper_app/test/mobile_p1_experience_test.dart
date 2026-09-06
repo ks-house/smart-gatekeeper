@@ -59,7 +59,7 @@ void main() {
     expect(report, contains('bundle_ref'));
     expect(report, contains('"wake_registration_requested": true'));
     expect(report, contains('"wake_registration_reconciled": false'));
-    expect(report, contains('"wake_registration_status": "reconciling"'));
+    expect(report, contains('"wake_registration_status": "RECONCILING"'));
     expect(report, isNot(contains('private-session-id')));
     expect(report, isNot(contains('must-not-be-exported')));
     for (final forbidden in <String>[
@@ -88,6 +88,39 @@ void main() {
     expect((await store.readMarker())?.ref, marker.ref);
     await store.clearMarker(marker.ref);
     expect(await store.readMarker(), isNull);
+    await store.recordUploadError('HTTP_422');
+    expect(await store.lastUploadError(), 'HTTP_422');
+    expect(await store.lastUploadSuccess(), isNull);
+    await store.markUploaded('a' * 32);
+    expect(await store.lastUploadError(), isNull);
+    expect(await store.lastUploadSuccess(), isNotNull);
+  });
+
+  test('real report producer agrees with shared backend fixture', () async {
+    final fixture = jsonDecode(
+        File('test/fixtures/mobile_support_v2.json').readAsStringSync()) as Map;
+    final report = await SupportReportService(nativeBridge: _ContractBridge())
+        .buildMap(identity: identity, health: null);
+    final native = report['native'] as Map;
+    for (final entry in (fixture['native'] as Map).entries) {
+      expect(native[entry.key], entry.value, reason: '${entry.key}');
+    }
+    expect(report['app'], fixture['app']);
+    expect(report['identity'], fixture['identity']);
+    expect(report['wake_events'], fixture['wake_events']);
+    expect(report['sessions'], fixture['sessions']);
+  });
+
+  test('dense full report fits ingest byte budget and keeps newest evidence',
+      () async {
+    final report = await SupportReportService(nativeBridge: _DenseBridge())
+        .buildMap(identity: identity, health: null);
+    expect(utf8.encode(jsonEncode(report)).length, lessThan(64 * 1024));
+    final sessions = report['sessions'] as List;
+    final wakes = report['wake_events'] as List;
+    expect(sessions.length + wakes.length, lessThan(150));
+    expect(wakes.first['received_epoch_ms'], 1788676100099);
+    expect(wakes, hasLength(100)); // Older sessions are removed first.
   });
 
   testWidgets('support copy requires explicit preview consent', (tester) async {
@@ -202,6 +235,75 @@ void main() {
     expect(home, contains('SupportReportScreen('));
     expect(home, contains('readExperience()'));
   });
+}
+
+class _ContractBridge extends NativeGattWorkerHealthBridge {
+  @override
+  Future<NativeGattWorkerHealth> read() async =>
+      NativeGattWorkerHealth.fromMap({
+        'healthy': false,
+        'handsFreeReady': true,
+        'wakeRegistered': true,
+        'wakeRegistrationRequested': true,
+        'wakeRegistrationReconciled': true,
+        'wakeRegistrationStatus': 'registered',
+        'lastReasonCode': 'GATT_DISCONNECTED',
+      });
+  @override
+  Future<Map<Object?, Object?>> readRecentDiagnostics() async => {
+        'androidSdk': 36,
+        'sessions': [],
+        'wakeEvents': [
+          {
+            'source': 'BLE_SCAN',
+            'success': true,
+            'receivedEpochMs': 1788676102363,
+            'strongestRssi': 127,
+            'screenInteractive': false,
+          }
+        ],
+      };
+}
+
+class _DenseBridge extends _ContractBridge {
+  @override
+  Future<Map<Object?, Object?>> readRecentDiagnostics() async => {
+        'androidSdk': 36,
+        'sessions': List.generate(
+            50,
+            (i) => {
+                  'sessionId': 'session-$i',
+                  'createdEpochMs': 1788676000000 + i,
+                  'updatedEpochMs': 1788676000000 + i,
+                  'state': 'FAILED',
+                  'reasonCode': 'GATT_DISCONNECTED',
+                  'targetReasonName': 'A' * 64,
+                  'transportReason': 'B' * 64,
+                  'latencyMs': 10000,
+                  'targetSessionId': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+                  'gattPerformance': {
+                    'connectSetupMs': 10000,
+                    'negotiatedMtu': 256,
+                    'mtuStatus': 'ACCEPTED',
+                    'highPriorityRequested': true
+                  },
+                }),
+        'wakeEvents': List.generate(
+            100,
+            (i) => {
+                  'source': 'BLE_SCAN',
+                  'processRef': 'a' * 16,
+                  'success': true,
+                  'receivedEpochMs': 1788676100000 + i,
+                  'receivedElapsedMs': 2214801056,
+                  'callbackLatencyMs': 12.345678,
+                  'strongestRssi': -95,
+                  'screenInteractive': false,
+                  'resultCount': 1,
+                  'callbackType': 2,
+                  'errorCode': 0,
+                }),
+      };
 }
 
 class _SupportReportServiceFake extends SupportReportService {

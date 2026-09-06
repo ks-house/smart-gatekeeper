@@ -1,0 +1,19 @@
+{
+  "schema": "sgk-mobile-support-v2",
+  "bundle_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "created_at": "2026-09-06T06:35:05.567513Z",
+  "app": {"version": "1.2.3", "build": "456", "android_sdk": 36},
+  "identity": {"enrollment_state": "approved", "access_ready": true, "door_count": 1, "target_synced": true, "acl_version": 12},
+  "native": {
+    "healthy": false, "hands_free_ready": true, "wake_registered": true,
+    "wake_registration_requested": true, "wake_registration_reconciled": true,
+    "wake_registration_status": "REGISTERED", "stage": "WAITING",
+    "reason": "GATT_DISCONNECTED"
+  },
+  "field_test": null,
+  "sessions": [],
+  "wake_events": [{"source": "BLE_SCAN", "process_ref": null, "success": true,
+    "received_epoch_ms": 1788676102363, "received_elapsed_ms": null,
+    "callback_latency_ms": null, "strongest_rssi": null, "screen_interactive": false,
+    "result_count": null, "callback_type": null, "error_code": null}]
+}

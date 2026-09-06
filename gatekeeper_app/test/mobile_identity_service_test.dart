@@ -8,6 +8,27 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('diagnostic failures preserve safe status, Retry-After and exact ACK',
+      () async {
+    for (final status in [401, 413, 422, 429, 503, 200]) {
+      final service = MobileIdentityService(
+          client: MockClient((_) async => http.Response(
+              status == 200
+                  ? '{"accepted":true,"bundle_ref":"wrong"}'
+                  : 'sensitive server body',
+              status,
+              headers: {'retry-after': '120'})),
+          nativeBridge: _IdentityNativeBridge(),
+          deviceIdProvider: () async => 'legacy-device',
+          backendBaseUrl: 'https://example.test/api/v1',
+          apiKey: 'test-key');
+      final result = await service.uploadDiagnosticsResult(
+          {'schema': 'sgk-mobile-support-v2', 'bundle_ref': 'a' * 32});
+      expect(result.accepted, isFalse);
+      expect(result.code, status == 200 ? 'INVALID_ACK' : 'HTTP_$status');
+      if (status != 200) expect(result.retryAfterSeconds, 120);
+    }
+  });
   test('status sends exact native credential identity to personal endpoint',
       () async {
     late http.Request captured;

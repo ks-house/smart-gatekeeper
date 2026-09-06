@@ -6887,3 +6887,26 @@
 - Android run `34018358565` completed successfully at 16:25:53 KST, publishing exact main `80569b1961edad512827a20829d73539c7de89dd` as `1.0.0-g80569b1` / 43701. App validation, release compilation, pinned APK signing/manifest verification, atomic NAS publication and HTTPS readback all passed.
 - Independently fetched primary/fallback metadata and APKs over verified HTTPS. Both 55,594,137-byte files match SHA-256 `b053454696acd0e8a7739aa83acdd7822ae5087818f6b5a2bf0b954ac1aea8e1` and the exact-source manifest. No new credential or signing key was introduced.
 - Informed the owner that the update is available now. Installation, report-button rendering on the phone and physical access tests are still owner-side evidence; Target/Backend versions were not changed and no resolution of the physical 133 cause is claimed.
+
+## [2026-09-06] compile | Clarify diagnostic upload, field marker and support report roles
+
+- Verified the current app's default-OFF upload setting, shared report builder, ten-minute marker and screen-driven upload lifecycle. Documented the difference between manual sharing, consented Backend delivery and test-window labeling.
+- Clarified Clear-before-marker test ordering and that report reset does not delete Backend records. No settings were enabled, reports uploaded, records cleared or runtime/deployment changes made for this explanation.
+
+## [2026-09-06] test | Diagnose enabled diagnostic upload rejected by deployed schema
+
+- Production OpenAPI readback confirms uppercase-only native codes and RSSI -127..20 bounds. The supplied report and current mobile serializer send lowercase waiting/registered and preserve RSSI 127.
+- Local actual-router reproduction with fake identity/storage returns 422 for these three fields and zero ingest calls; a normalized control returns 200. App upload errors are silently reduced to false while the consent switch remains enabled. Admin exposes summary rows only, not raw report JSON.
+- Corrected the prior explanation's implication that enabling upload establishes delivery. NAS SSH was refused, so no live DB/request-log readback or exact bundle absence is claimed. Documentation only; no runtime fix, live upload or deployment.
+
+## [2026-09-06] fix | Restore diagnostic upload compatibility and expose delivery status
+
+- Owner requested correction and deployment. Added bounded native-code/RSSI compatibility for existing mobile reports, corrected new mobile serialization, and retained privacy/authentication/data bounds.
+- Expose persisted upload success time, safe failure code and retry control; add foreground/resume retry opportunities with shared cooldown, numeric Retry-After and in-flight/consent checks. No BLE, relay, firmware, signing or OTA runtime changes.
+- Correct same-content retry identity when export timestamp changes without mutating stored rows; changed evidence remains rejected. Shared producer/consumer fixture and local authenticated route checks cover the original rejection and corrected acceptance; broader validation/publication follow separately.
+
+## [2026-09-06] test | Verify diagnostic producer-consumer compatibility before publication
+
+- Backend suite passed 225 tests with two existing real-MariaDB skips; root host suite passed 374 tests with one existing skip. OTA contract passed. Flutter full suite passed 103 tests, followed by eight focused report tests including the added dense-report byte-budget test; focused Dart analysis is clean.
+- The actual Flutter producer agrees with the shared Backend fixture; authenticated local ingest accepts both corrected and legacy native/RSSI values. Error/ACK handling, persisted upload status, immutable duplicate handling and changed-evidence rejection pass. Dense export preserves newest records within the unchanged 64 KiB transport budget.
+- Removed only this run's generated desktop/SDK lock drift. No signing/CI/deploy policy, firmware or schema migration change. Hosted merge checks, exact-main Backend deployment and signed APK publication remain next steps; real phone delivery remains a separate readback.

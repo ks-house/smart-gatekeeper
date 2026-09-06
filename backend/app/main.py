@@ -4093,14 +4093,27 @@ def _store_mobile_diagnostics(
                 conn.rollback()
                 with conn.cursor() as lookup:
                     lookup.execute(
-                        "SELECT payload_sha256 FROM mobile_diagnostic_bundles "
+                        "SELECT payload_sha256,payload_json FROM mobile_diagnostic_bundles "
                         "WHERE tenant_id=%s AND credential_ref=%s AND bundle_ref=%s",
                         (tenant_id, credential_ref, bundle["bundle_ref"]),
                     )
                     existing = lookup.fetchone()
-                if not existing or not secrets.compare_digest(
-                    str(existing.get("payload_sha256") or ""), digest
-                ):
+                same_payload = existing and secrets.compare_digest(
+                    str(existing.get("payload_sha256") or ""), digest)
+                if existing and not same_payload:
+                    # Mobile bundle_ref hashes content, not export time. A lost
+                    # ACK/restart can regenerate the same report at a new time.
+                    # Preserve the original immutable row and compare all other
+                    # fields, never accept changed evidence under the same ref.
+                    stored = existing.get("payload_json")
+                    if isinstance(stored, str):
+                        stored = json.loads(stored)
+                    same_payload = isinstance(stored, dict) and secrets.compare_digest(
+                        json.dumps({k: v for k, v in stored.items() if k != "created_at"},
+                                   sort_keys=True, separators=(",", ":")).encode(),
+                        json.dumps({k: v for k, v in bundle.items() if k != "created_at"},
+                                   sort_keys=True, separators=(",", ":")).encode())
+                if not same_payload:
                     raise RuntimeError("diagnostic bundle identity conflict")
                 return {
                     "accepted": True,
