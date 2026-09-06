@@ -71,6 +71,10 @@ data class TargetResult(
 class TargetHelloRejectedException(val status: Int) :
   IllegalArgumentException("target hello rejected with status $status")
 
+// A fresh v2 subscription may receive a negative RESULT before a challenge.
+// This exception never represents authorization or a completed proof.
+class EarlyTargetResultException(val result: TargetResult) : Exception("early target rejection")
+
 object GattCanonicalCodec {
   private val fastNegotiationTranscript = byteArrayOf(
     'S'.code.toByte(), 'G'.code.toByte(), 'K'.code.toByte(), 'F'.code.toByte(),
@@ -205,6 +209,15 @@ object GattCanonicalCodec {
     require(reason in 0..10) { "unknown result reason" }
     require(aclVersion >= 0) { "invalid ACL version" }
     return TargetResult(protocol, session, reason, retryAfter, aclVersion)
+  }
+
+  fun parseEarlyFastRejection(bytes: ByteArray): TargetResult {
+    require(bytes.size == 32) { "malformed early result length" }
+    // No challenge/session binding exists yet. Accept only the negative codes
+    // emitted by beginFastSession, never success or a post-proof result.
+    val result = parseResult(bytes, bytes.copyOfRange(2, 18), GattProtocol.FAST_PROTOCOL_VERSION)
+    require(result.reason in setOf(8, 9, 10)) { "invalid pre-challenge result" }
+    return result
   }
 
   /**

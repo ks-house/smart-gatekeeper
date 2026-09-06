@@ -217,3 +217,128 @@ hash verification passed. Final Target readback at uptime 453 seconds retained
 boot 740, the new version, MQTT/BLE and relay-OFF state. Owner mobile installation
 and physical testing remain separate evidence; no fixed discovery latency or
 electrical stability is claimed.
+
+## Owner-reported authentication failure after rollout
+
+The next owner screenshot shows native attempts at 15:28:22, 15:28:23 and
+15:28:26, ending in `GATT_DISCONNECTED` at 15:28:29 on September 6. A separate
+remote-open broker-delivery row is displayed at 15:30:02. This is a transport
+failure display, not a displayed signature/ACL denial; it does not identify the
+connection phase or Android GATT status number.
+
+Read-only observation around 15:30–15:31 found the exact installed `2.1.469`
+image, boot 743 / `bcd600b1b20b12fde3dfbc7ae9ae6914`, IDLE, relay commanded OFF,
+MQTT failures zero, advertising expected/active, and active ACL 1468 with v2/v2.
+Accepted GATT connections, disconnects, challenges, proofs, results and ARMED
+entries were all zero; the last GATT checkpoint was BOOTING. These counters
+cover accepted adapter connections, not every controller-level connection or
+rejected ingress, and advertising-active does not establish phone RF reception.
+
+Boot count increased from the rollout's 740 to 743. The latest retained reset
+reason is BROWNOUT with no planned restart and previous action
+`mqtt_connect_worker_adopted`. Uptime places that latest boot around 15:04,
+before the displayed 15:28 failure, so a reset during this specific attempt is
+not established. The other intervening reset reasons are not recovered here.
+Backend strict readiness still reports the deployed source and all checks true.
+
+The installed phone build and redacted Support Report are requested to determine
+connect/discovery/proof stage, native transport status and dispatch history.
+No root cause is assigned from the screenshot alone. No reboot, BLE setting,
+credential reset, door command, firmware change or repeat OTA was issued during
+this diagnosis.
+
+### Support report correlation, 15:35 KST
+
+The owner-supplied `sgk-mobile-support-v2` report confirms app
+`1.0.0-g6a45aec` / 43501, Android SDK 36, approved enrollment, one door and
+synchronized ACL 1468 at export. This establishes the installed app at export,
+not the app/Target versions of every historical session retained in the report.
+
+- At 15:28:22.363, a FIRST_MATCH wake callback received a beacon (RSSI -94).
+  The session was created at 15:28:22.410, 47 ms later. This is session creation,
+  not proof that the first worker had already dispatched.
+- The final, third attempt dispatched at 15:28:26.939 and failed at
+  15:28:29.272 with `DISCONNECTED`, Android status 133. Reported attempt latency
+  is 2329 ms; session creation to terminal update is 6862 ms. The 4529 ms
+  presence-to-dispatch field includes earlier attempts/backoff; it must not be
+  reported as a 4.5-second initial wake/WorkManager delay.
+- MTU remains the default 23 / NOT_REQUESTED; connection setup, challenge,
+  signing, proof and result timings are null. This is a pre-proof connection
+  setup failure, not a Target signature/ACL rejection or a sensor-trigger delay.
+  High-priority-request false supports an early connection failure but is not
+  independently proof that STATE_CONNECTED never happened: the request can
+  return false or throw a handled SecurityException.
+- A subsequent read-only sample retains boot 743 at uptime 2093 seconds,
+  advertising active, no accepted GATT/challenge/proof counters and IDLE/relay
+  OFF. ACL has advanced to 1469 since export; this is not evidence that the
+  failed attempt was rejected for ACL mismatch. No reset coincident with the
+  attempt is established. Phone-side beacon reception does not by itself bind
+  an unauthenticated advertised identity to this exact physical Target.
+
+[AOSP status definitions](https://android.googlesource.com/platform/packages/modules/Bluetooth/+/9afa02435692ca52952fe7158fcc162e05cff0fc/system/stack/include/gatt_api.h)
+identify 133 / 0x85 as generic GATT_ERROR and 147 / 0x93 as connection timeout.
+Neither identifies the root cause of this owner's current link failure.
+The status-147 session is from 13:50:05 and the preceding successful session
+from 13:49:28, before this rollout; they cannot validate the newly installed
+continuous-presence path. Historical successful sessions show substantial
+connection-setup cost while signing is only a few milliseconds.
+
+Two source-confirmed gaps must be separated from the unconfirmed cause of 133:
+
+1. **Early v2 result misclassification.** `ProtocolCore::beginFastSession`
+   can send FAST_RESULT before FAST_CHALLENGE for BUSY, RATE_LIMITED or
+   INTERNAL_FAIL_CLOSED. Android `readChallenge` waits only for FAST_CHALLENGE;
+   `GattCallbackMailbox.awaitMessage` throws UNEXPECTED_MESSAGE_TYPE and places
+   the received message type into the transport-status field. Thus the reported
+   historical `PROTOCOL_INCOMPATIBLE / 34` means SGK FAST_RESULT (0x22), not
+   Android connection status 34. Its actual result reason/retry interval is lost.
+   BUSY is a supported source path, not a recovered reason for those particular
+   historical frames. Correct early-result parsing must validate framing/version
+   and negative reason without accepting pre-proof success as authorization.
+2. **Continuous-presence observability gap.** All exported wake events are
+   FIRST_MATCH/MATCH_LOST, with no ALL_MATCHES. However the native entrypoint
+   returns before journaling an ALL_MATCHES callback lacking a ready hint (also
+   for missing address or stale timing). Absence from the report therefore does
+   not prove an unregistered/dead scanner. Add bounded counters for received,
+   hint-valid/missing, stale and dispatch-suppressed callbacks; expose Target
+   GATT service enable/init state and rejected connection reasons separately
+   from advertising-active and accepted-session counters.
+
+The immediate diagnostic boundary is Android-to-Target BLE setup. Distinguishing
+radio/controller failure, Target service availability or pre-accept rejection
+requires those missing connection-level observations. Do not infer user standing
+position, reset credentials, or declare continuous reauthentication operational
+from registration flags alone. This turn changes documentation only; runtime
+fixes, publication and physical recovery actions have not been performed.
+
+### Follow-up implementation: early rejection and bounded recovery
+
+The subsequent owner request authorizes defect/UX fixes plus report-button
+layout and Clear support. Android now recognizes pre-challenge FAST_RESULT
+only for v2 negative reasons BUSY, RATE_LIMITED and INTERNAL_FAIL_CLOSED. It
+validates the full result shape/version/reason/ACL range, preserves the Target
+reason and retry interval and never signs or writes proof on that path. An
+early success, post-proof-only reason, wrong version or malformed packet is
+still rejected. Normal post-proof results retain exact challenge-session binding.
+
+After an ordinary failed session with a transient link/BUSY reason, a fresh
+ready hint permits one recovery session after five seconds (or the longer
+Target-requested delay). If the recovery session also fails, the existing
+60-second quiet/backoff applies, leaving room for Target's 30-second unverified
+lease recovery. A backward-compatible `failure_recovery` ledger flag separates
+that recovery from an ordinary fresh-radio session and survives process restart.
+PROOF_UNCERTAIN, active work, same-epoch success coalescing, credential denials
+and the fresh-radio-before-proof requirement are unchanged. There is no timer
+that opens the door or dispatches without a new eligible radio observation.
+
+Skipped continuous callbacks now leave a bounded, privacy-safe source code for
+missing address, stale/invalid timing or missing ready hint, at most once per
+reason per ten seconds. Raw payloads/addresses are not logged. This closes the
+silent mobile early-return gap, but does not add Target controller rejection or
+GATT initialization telemetry. Android error 133's field root cause remains
+unconfirmed, and the latter Target diagnostics remain a follow-up gap.
+
+Report UX, local history reset and validation are described in
+[field diagnostics](field_diagnostics_capture_plan.md#9-report-ux-and-history-reset-2026-09-06).
+These changes are local implementation/test evidence, not a new published APK,
+Target OTA or a successful physical re-entry trial.

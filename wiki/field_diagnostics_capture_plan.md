@@ -246,3 +246,34 @@ privacy owner must select and execute the existing retention workflow before a
 production policy promises automatic deletion; the code does not invent a
 duration. This unresolved legal/operations policy does not weaken the default-
 OFF consent gate, but it remains a release disclosure and production Gate.
+
+## 9. Report UX and history reset (2026-09-06)
+
+- Support Report pins consent, copy and reset actions in a bottom SafeArea,
+  separate from scrolling JSON. A long report no longer requires scrolling
+  through all records to reach Copy, and Android navigation padding is reserved.
+- Manual copy defaults to the latest **10 sessions and 20 wake events**, sorted
+  newest first. An explicit full-history switch retains the previous 50/100
+  bounds. Consented automatic upload keeps its existing full bounded schema;
+  the Backend wire contract and upload consent are unchanged.
+- Refresh rebuilds the report and reads current native health when available,
+  falling back to the caller's snapshot on bridge failure. Changing the report
+  resets copy consent; load/copy/reset failures surface a retryable UI message.
+- Clear requires an in-app confirmation. It persists a report cutoff timestamp
+  and clears the local field-test marker. Reports omit older session updates and
+  wake events; new updates appear automatically, including a session that was
+  already running when Clear was pressed. Full-history mode honors the cutoff.
+- This is **diagnostic-view reset, not a security-ledger purge**. Credentials,
+  enrollment/ACL, upload consent, current health, active work, deduplication,
+  unresolved-proof state and server-uploaded records are preserved. The native
+  bounded ledger remains available to the worker; old versions can ignore the
+  new view preference without compromising access/OTA rollback.
+- No live phone records were cleared while implementing this feature. Tests use
+  mocked local preferences, fake native reports and a 360×640 viewport with a
+  48-pixel Android navigation inset; installation/rendering on the owner's phone
+  remains a separate check.
+
+Android's continuous callback early-return paths additionally journal fixed
+`BLE_SCAN_NO_READY_HINT`, `BLE_SCAN_NO_ADDRESS` and `BLE_SCAN_STALE` codes, bounded
+to one per reason per ten seconds. A missing ready hint can now be distinguished
+from an absent exported callback without recording raw advertisement data.

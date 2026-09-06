@@ -67,5 +67,13 @@
   "advancedDiagnostics": "Advanced diagnostics",
   "copyConsent": "I reviewed this redacted report and consent to copy it.",
   "copyReport": "Copy report",
+  "reportFullHistory": "Include full history (up to 50 sessions and 100 detections)",
+  "reportRecentHistory": "By default, includes only the latest 10 sessions and 20 detections.",
+  "reportClear": "Clear report history",
+  "reportClearConfirm": "Exclude earlier diagnostics from reports and clear the field-test marker. Credentials, access permissions, active authentication, replay-protection records and uploaded server records are preserved. Copy the report first if you need to keep it.",
+  "reportClearDone": "Report history cleared. New records will appear from now on.",
+  "reportActionFailed": "Could not complete the report action. Please try again.",
+  "reportCancel": "Cancel",
+  "reportRefresh": "Refresh report",
   "reportCopied": "Redacted report copied"
 }

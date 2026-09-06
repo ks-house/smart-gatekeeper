@@ -2,10 +2,49 @@ package com.kshouse.gatekeeper_app.blewake
 
 import com.kshouse.gatekeeper_app.gattworker.DurableGattSession
 import com.kshouse.gatekeeper_app.gattworker.DurableSessionState
+import com.kshouse.gatekeeper_app.gattworker.SessionLedgerCodec
 import org.junit.Assert.*
 import org.junit.Test
 
 class ContinuousPresencePolicyTest {
+  @Test fun transientFailureRecoversWithFreshReadyAfterFiveSecondsButHonorsTargetDelay() {
+    val failure = session(DurableSessionState.FAILED).copy(reasonCode = "GATT_DISCONNECTED")
+    assertFalse(ContinuousPresencePolicy.maySchedule(failure, 6_999))
+    assertTrue(ContinuousPresencePolicy.maySchedule(failure, 7_000))
+    assertFalse(ContinuousPresencePolicy.maySchedule(failure.copy(
+      reasonCode = "TARGET_BUSY", retryAfterMs = 20_000), 21_999))
+    assertTrue(ContinuousPresencePolicy.maySchedule(failure.copy(
+      reasonCode = "TARGET_BUSY", retryAfterMs = 20_000), 22_000))
+    assertFalse(ContinuousPresencePolicy.maySchedule(failure.copy(
+      reasonCode = "SIGNATURE_INVALID"), 7_000))
+    assertFalse(ContinuousPresencePolicy.maySchedule(failure.copy(
+      failureRecovery = true), 61_999))
+    assertTrue(ContinuousPresencePolicy.maySchedule(failure.copy(
+      failureRecovery = true), 62_000))
+    assertTrue(ContinuousPresencePolicy.maySchedule(failure.copy(
+      requiresFreshPresence = true), 7_000))
+  }
+
+  @Test fun recoveryBackoffSurvivesLedgerRoundTripAndLegacyRowsRemainReadable() {
+    val recovering = session(DurableSessionState.FAILED).copy(
+      reasonCode = "GATT_DISCONNECTED", failureRecovery = true, requiresFreshPresence = true)
+    val encoded = SessionLedgerCodec.encode(listOf(recovering))
+    val restored = SessionLedgerCodec.decode(encoded).sessions.single()
+    assertTrue(restored.failureRecovery)
+    assertFalse(ContinuousPresencePolicy.maySchedule(restored, 7_000))
+    val legacy = org.json.JSONArray(encoded).getJSONObject(0).apply { remove("failure_recovery") }
+    assertFalse(SessionLedgerCodec.decode(org.json.JSONArray().put(legacy).toString())
+      .sessions.single().failureRecovery)
+  }
+
+  @Test fun skipJournalBoundsWritesPerClosedReason() {
+    val policy = ContinuousSkipJournalPolicy()
+    assertTrue(policy.shouldRecord("ble_scan_no_ready_hint", 1))
+    assertFalse(policy.shouldRecord("ble_scan_no_ready_hint", 10_000))
+    assertTrue(policy.shouldRecord("ble_scan_no_ready_hint", 10_001))
+    assertTrue(policy.shouldRecord("ble_scan_stale", 2))
+    assertFalse(policy.shouldRecord("raw-secret", 3))
+  }
   private fun session(state: DurableSessionState) = DurableGattSession(
     "s", "f", 1_000, 2_000, 1, state,
   )

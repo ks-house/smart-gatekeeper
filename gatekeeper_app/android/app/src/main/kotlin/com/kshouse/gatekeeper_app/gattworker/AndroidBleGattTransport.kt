@@ -33,6 +33,9 @@ internal class GattCallbackMailbox(
       when (val event = events.receive()) {
         is GattCallbackEvent.Message -> {
           if (event.type == expectedType) return event.payload
+          if (expectedType == GattProtocol.FAST_CHALLENGE && event.type == GattProtocol.FAST_RESULT) {
+            throw EarlyTargetResultException(GattCanonicalCodec.parseEarlyFastRejection(event.payload))
+          }
           throw GattTransportException(TransportFailureCode.UNEXPECTED_MESSAGE_TYPE, event.type)
         }
         is GattCallbackEvent.Failure -> throw event.exception

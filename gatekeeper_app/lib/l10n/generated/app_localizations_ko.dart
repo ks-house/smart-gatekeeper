@@ -213,5 +213,30 @@ class AppLocalizationsKo extends AppLocalizations {
   String get copyReport => '보고서 복사';
 
   @override
+  String get reportFullHistory => '전체 기록 포함 (최대 인증 50건·감지 100건)';
+
+  @override
+  String get reportRecentHistory => '기본 보고서는 최근 인증 10건·감지 20건만 포함합니다.';
+
+  @override
+  String get reportClear => '보고서 기록 초기화';
+
+  @override
+  String get reportClearConfirm =>
+      '이전 진단 기록을 보고서에서 제외하고 현장 테스트 표시를 지웁니다. 인증키·출입 권한·진행 중 인증·중복 방지 기록과 서버에 전송된 기록은 유지됩니다. 초기화 전 필요하다면 보고서를 복사해 두세요.';
+
+  @override
+  String get reportClearDone => '보고서 기록을 초기화했습니다. 이후 기록부터 표시합니다.';
+
+  @override
+  String get reportActionFailed => '보고서 작업을 완료하지 못했습니다. 다시 시도해 주세요.';
+
+  @override
+  String get reportCancel => '취소';
+
+  @override
+  String get reportRefresh => '보고서 새로고침';
+
+  @override
   String get reportCopied => '익명 보고서를 복사했습니다';
 }

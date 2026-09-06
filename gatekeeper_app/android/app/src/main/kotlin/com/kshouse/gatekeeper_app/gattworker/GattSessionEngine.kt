@@ -258,6 +258,16 @@ class GattSessionEngine(
           )
         }
       }
+    } catch (error: EarlyTargetResultException) {
+      val targetReason = TargetResultReason.fromWireCode(error.result.reason)
+      SessionOutcome.Failure(
+        reason = targetReason.observabilityReason,
+        latencyMs = elapsed(started),
+        retryAfterMs = error.result.retryAfterMs,
+        targetReason = targetReason,
+        proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
+      )
     } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
       SessionOutcome.Failure(
         AccessReasonCode.GATT_TIMEOUT,

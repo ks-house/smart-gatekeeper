@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -113,6 +114,78 @@ void main() {
     expect(tester.widget<FilledButton>(copy).onPressed, isNotNull);
   });
 
+  test(
+      'clear hides old diagnostics but preserves consent and operational ledger',
+      () async {
+    final store = FieldDiagnosticsStore();
+    final bridge = _DiagnosticsBridgeFake();
+    final service =
+        SupportReportService(nativeBridge: bridge, diagnosticsStore: store);
+    await store.setUploadEnabled(true);
+    await store.startMarker();
+    final before = await service.buildMap(identity: identity, health: null);
+    expect((before['sessions'] as List).length, 50);
+    final compact =
+        jsonDecode(await service.build(identity: identity, health: null))
+            as Map;
+    expect((compact['sessions'] as List).length, 10);
+    expect((compact['wake_events'] as List).length, 20);
+    expect((compact['sessions'] as List).first['updated_epoch_ms'],
+        bridge.now + 50);
+
+    await store.clearReportHistory(
+        now: DateTime.fromMillisecondsSinceEpoch(bridge.now + 100));
+    final cleared = await service.buildMap(identity: identity, health: null);
+    expect(cleared['sessions'], isEmpty);
+    expect(cleared['wake_events'], isEmpty);
+    expect(cleared['field_test'], isNull);
+    expect(await store.uploadEnabled(), isTrue);
+    // The source ledger is untouched, including an unresolved proof row.
+    expect((await bridge.readRecentDiagnostics())['sessions'], hasLength(50));
+    bridge.now += 1000;
+    expect(
+        (await service.buildMap(identity: identity, health: null))['sessions'],
+        hasLength(50));
+  });
+
+  testWidgets(
+      'report actions stay above Android navigation with long content and clear requires confirmation',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(bottom: 48);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPadding);
+    final service = _SupportReportServiceFake();
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('ko'),
+      home: SupportReportScreen(
+          identity: identity, health: null, service: service),
+    ));
+    await tester.pumpAndSettle();
+    final copy = find.byKey(const Key('copy-redacted-support-report'));
+    final clear = find.byKey(const Key('clear-support-report'));
+    expect(tester.getBottomRight(copy).dy, lessThanOrEqualTo(592));
+    expect(tester.getBottomRight(clear).dy, lessThanOrEqualTo(592));
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
+    await tester.tap(clear);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(service.clears, 0);
+    await tester.tap(clear);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-clear-support-report')));
+    await tester.pumpAndSettle();
+    expect(service.clears, 1);
+    expect(tester.widget<FilledButton>(copy).onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   test('normal shell has generated ko and en resources plus accessible routes',
       () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
@@ -132,10 +205,37 @@ void main() {
 }
 
 class _SupportReportServiceFake extends SupportReportService {
+  int clears = 0;
+  @override
+  Future<void> clearHistory() async {
+    clears++;
+  }
+
   @override
   Future<String> build({
     required MobileIdentityStatus identity,
     required NativeGattWorkerHealth? health,
+    bool fullHistory = false,
   }) async =>
-      '{"schema":"sgk-mobile-support-v2"}';
+      List.filled(100, '{"schema":"sgk-mobile-support-v2"}').join('\n');
+}
+
+class _DiagnosticsBridgeFake extends NativeGattWorkerHealthBridge {
+  int now = DateTime.now().millisecondsSinceEpoch;
+  @override
+  Future<Map<Object?, Object?>> readRecentDiagnostics() async => {
+        'sessions': List.generate(
+            50,
+            (index) => {
+                  'sessionId': 'fixture-$index',
+                  'updatedEpochMs': now + index + 1,
+                  'state': 'PROOF_UNCERTAIN',
+                }),
+        'wakeEvents': List.generate(
+            100,
+            (index) => {
+                  'receivedEpochMs': now + index + 1,
+                  'source': 'BLE_SCAN',
+                }),
+      };
 }

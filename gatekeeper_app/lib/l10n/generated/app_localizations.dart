@@ -500,6 +500,54 @@ abstract class AppLocalizations {
   /// **'Copy report'**
   String get copyReport;
 
+  /// No description provided for @reportFullHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Include full history (up to 50 sessions and 100 detections)'**
+  String get reportFullHistory;
+
+  /// No description provided for @reportRecentHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'By default, includes only the latest 10 sessions and 20 detections.'**
+  String get reportRecentHistory;
+
+  /// No description provided for @reportClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear report history'**
+  String get reportClear;
+
+  /// No description provided for @reportClearConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude earlier diagnostics from reports and clear the field-test marker. Credentials, access permissions, active authentication, replay-protection records and uploaded server records are preserved. Copy the report first if you need to keep it.'**
+  String get reportClearConfirm;
+
+  /// No description provided for @reportClearDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Report history cleared. New records will appear from now on.'**
+  String get reportClearDone;
+
+  /// No description provided for @reportActionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not complete the report action. Please try again.'**
+  String get reportActionFailed;
+
+  /// No description provided for @reportCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get reportCancel;
+
+  /// No description provided for @reportRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh report'**
+  String get reportRefresh;
+
   /// No description provided for @reportCopied.
   ///
   /// In en, this message translates to:

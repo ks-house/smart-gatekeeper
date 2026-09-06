@@ -9,6 +9,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GattSessionEngineTest {
+  @Test fun earlyBusyDoesNotSignOrWriteProofAndRemainsRetryable() = runBlocking {
+    val transport = FakeTransport(targetHello, challenge, byteArrayOf(),
+      protocolMode = GattProtocolMode.FAST_V2)
+    transport.earlyResult = TargetResult(2, ByteArray(16), 8, 2500, 1468)
+    val signer = DeterministicFakeCredentialSigner(fixtureSignature)
+    val outcome = GattSessionEngine(transport, signer, clock = MonotonicClock { 100 })
+      .run("fixture", credential) as SessionOutcome.Failure
+    assertEquals(AccessReasonCode.TARGET_BUSY, outcome.reason)
+    assertEquals(TargetResultReason.BUSY, outcome.targetReason)
+    assertEquals(2500L, outcome.retryAfterMs)
+    assertTrue(outcome.retryable)
+    assertFalse(outcome.proofMayHaveExecuted)
+    assertEquals(null, signer.lastCanonical)
+    assertEquals(0, transport.proofWrites)
+    assertTrue(transport.closed)
+  }
   private val clientHello = GattCanonicalCodec.clientHello(100)
   private val targetHello = "0001000100010100080000000003000000c80001".hexToBytes()
   private val negotiationHash = GattCanonicalCodec.sha256(clientHello + targetHello)
@@ -329,6 +345,7 @@ private class FakeTransport(
   var blockConnect = false
   var negotiateFailure: GattTransportException? = null
   var negotiations = 0
+  var earlyResult: TargetResult? = null
 
   override suspend fun connect(deviceAddress: String) {
     if (blockConnect) delay(Long.MAX_VALUE)
@@ -338,7 +355,10 @@ private class FakeTransport(
     negotiations += 1
     return negotiateFailure?.let { throw it } ?: targetHello.copyOf()
   }
-  override suspend fun readChallenge(): ByteArray = challenge.copyOf()
+  override suspend fun readChallenge(): ByteArray {
+    earlyResult?.let { throw EarlyTargetResultException(it) }
+    return challenge.copyOf()
+  }
   override suspend fun writeProof(proof: ByteArray) {
     proofWrites += 1
     this.proof = proof.copyOf()
