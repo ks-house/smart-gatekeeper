@@ -20,6 +20,14 @@ applies_to:
 
 ## 2026-09-06 continuous-presence reauthentication rollout
 
+- **Latest mobile-only follow-up:** PR #383 / main `80569b1` and Android run
+  `34018358565` published `1.0.0-g80569b1` / **43701** at 16:25:53 KST.
+  Early v2 rejection handling, bounded fresh-radio recovery and report SafeArea,
+  recent/full view and Clear are included. Publisher signing checks and independent
+  primary/fallback metadata/APK hash readbacks pass. Owner installation and the
+  next physical trial remain pending; the reported Android 133 connection cause
+  is not claimed resolved. Target and Backend remain on the source below; neither
+  was republished or restarted for this mobile follow-up.
 - Policy PR #380 and implementation PR #381 are merged. Runtime source is
   exact main `6a45aecbdcadf1a50b020b2a9b67c0b3ae45d3a5`. Details and field
   boundaries: [continuous presence reauthentication](continuous_presence_reauth_2026_09_06.md).
