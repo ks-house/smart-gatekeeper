@@ -16,6 +16,7 @@
 #include "FlatJsonObjectPolicy.h"
 #include "DurablePreferences.h"
 #include "RestartEvidenceRetention.h"
+#include "UltrasonicSensor.h"
 
 #include <cstring>
 #include <ctime>
@@ -2032,6 +2033,15 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["gatt_relay_on_count"] = gattTelemetry.relay_on_count;
     doc["gatt_relay_off_count"] = gattTelemetry.relay_off_count;
     doc["gatt_terminal_count"] = gattTelemetry.terminal_count;
+    const auto& sensor = UltrasonicSensor::diagnostics;
+    doc["sensor_samples"] = sensor.samples;
+    doc["sensor_valid_samples"] = sensor.valid;
+    doc["sensor_timeouts"] = sensor.timeouts;
+    doc["sensor_invalid_samples"] = sensor.invalid;
+    doc["sensor_min_cm"] = sensor.minimum_cm;
+    doc["sensor_max_cm"] = sensor.maximum_cm;
+    extern bool g_sensor_rearm_blocked;
+    doc["sensor_rearm_blocked"] = g_sensor_rearm_blocked;
     doc["gatt_last_stage_ms"] = gattTelemetry.last_stage_ms;
     doc["gatt_last_stage"] = gattTelemetry.last_stage;
     if (gattTelemetry.last_session_id[0] != '\0') {

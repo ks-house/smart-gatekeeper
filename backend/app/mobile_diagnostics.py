@@ -11,6 +11,21 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 Code = str
 
 
+def sensor_observation(document: dict) -> dict | None:
+    """Optional latest sensor telemetry, never authentication or passage proof."""
+    counters = ("sensor_samples", "sensor_valid_samples", "sensor_timeouts", "sensor_invalid_samples")
+    distances = ("sensor_min_cm", "sensor_max_cm")
+    if not all(type(document.get(key)) is int and 0 <= document[key] <= 0xffffffff for key in counters):
+        return None
+    if not all(type(document.get(key)) in (int, float) and 0 <= document[key] <= 999 for key in distances):
+        return None
+    if type(document.get("sensor_rearm_blocked")) is not bool:
+        return None
+    if document["sensor_samples"] != sum(document[key] for key in counters[1:]):
+        return None
+    return {key: document[key] for key in (*counters, *distances, "sensor_rearm_blocked")}
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -318,6 +318,11 @@ class GattSessionEngine(
         proofMayHaveExecuted = proofMayHaveExecuted,
         performance = performance(),
       )
+    } catch (_: PresenceExpiredBeforeProofException) {
+      SessionOutcome.Failure(
+        AccessReasonCode.PRESENCE_EXPIRED, elapsed(started),
+        proofMayHaveExecuted = false, performance = performance(),
+      )
     } catch (_: FeatureFlagDisabledBeforeProofException) {
       SessionOutcome.Failure(
         AccessReasonCode.CREDENTIAL_INACTIVE,
@@ -341,6 +346,7 @@ class GattSessionEngine(
 }
 
 class FeatureFlagDisabledBeforeProofException : IllegalStateException("feature flag disabled before proof")
+class PresenceExpiredBeforeProofException : IllegalStateException("fresh presence required before proof")
 
 object DurableAttemptPolicy {
   fun canExecute(state: DurableSessionState): Boolean = state in setOf(

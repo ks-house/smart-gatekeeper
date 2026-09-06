@@ -6805,3 +6805,19 @@
 - Policy PR #377 and feature PR #378 passed hosted checks and merged as main `0de3a3230a3e7b977319dc7799a02d85e5eb3a54`. The narrowed 23-path trusted check completed in 8 seconds; OTA contract, firmware canary and Android canary also passed.
 - The merge changed the shared protected OTA gate, so both component workflows correctly matched their security-input allowlist. Runs `33973501152` and `33973501202` were cancelled in their canary jobs before exact personal build, signing or publication; no Target command or installed runtime change occurred.
 - Future policy, wiki, test-only and unrelated-component main changes no longer publish Target or Android artifacts. Relevant component changes retain tests and exact-main personal publication while skipping the duplicate public-canary artifact build on main.
+
+## [2026-09-06] compile | Analyze continuous-presence reauthentication delay
+
+- Recorded the owner's activity screenshot: 12:36:07 termination to 12:38:20 next authentication is a displayed 133-second gap; the next authentication itself takes about two seconds. Receipt/native timestamps do not establish exact Target execution times.
+- Traced FIRST_MATCH/MATCH_LOST wake, successful-worker termination, Target FSM and foreground Backend polling. No continuous-presence post-terminal authentication coordinator exists; next-auth-ready display does not enqueue authentication.
+- Reproduced a shared Target lease defect using the actual FSM/policy classes: after arm expiry or successful relay/cooldown completion, the next pre-proof attempt can inherit an expired physical epoch and be aborted. Existing recovery host tests pass 105 checks but omit this transition.
+- Documented per-session sensor diagnostic gaps and the separate need to investigate a full ARMED window without a qualifying trigger, accepting the owner's sustained presence without assuming excessive proximity. Added prioritized implementation proposals and explicit runtime evidence limits.
+- No runtime source, publisher, installed app/firmware, device setting or door action changed. Local analysis and index links were checked.
+
+## [2026-09-06] fix | Implement continuous-presence reauthentication and terminal lease reset
+
+- Retire only completed verified physical leases before the next GATT request; host tests cover arm expiry, successful sensor/relay/cooldown, and preservation of unverified reconnect limits.
+- Add advisory BLE ready epochs and native continuous-presence dispatch with five-second fresh-radio proof checks, same-epoch coalescing, uncertain-proof suppression and existing exit notifications. Keep v2 and N-1 Target/app behavior compatible.
+- Require valid sensor clearance before another automatic relay pulse; retain per-ARMED sensor counts and distance bounds and expose latest reference measurements in administrator diagnostics.
+- Discover and remove the leftover embedded runtime hash freeze in the personal Target publisher, replacing it with exact-main index/blob/on-disk verification. The changed privileged workflow and OTA validator still need trusted-policy authorization before merge.
+- Native Android unit tests and the personal firmware build pass. Publication, installed Target health and owner-installed Android physical trials remain separate rollout evidence.

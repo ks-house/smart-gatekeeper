@@ -352,6 +352,14 @@ docker compose run --rm flutter-builder flutter build apk --debug
 
 For issue #17 native GATT tests, Compose mounts the repository `protocol/` directory read-only at
 `/repo-protocol` so JVM tests consume the same canonical vector as firmware and backend tests. The
+Gradle wrapper executable/JAR may be absent in a fresh checkout. Use the CI
+wrapper-generation procedure, or copy the installed Flutter SDK's matching
+`bin/cache/artifacts/gradle_wrapper/gradlew` and `gradle/wrapper/gradle-wrapper.jar`
+assets to the ignored Android wrapper paths before running it. Run `flutter pub
+get` and Gradle in the same disposable container: `.flutter-plugins-dependencies`
+otherwise references a previous container's removed `/root/.pub-cache`.
+
+The
 named Gradle cache avoids re-downloading the Android toolchain. A forced, bounded targeted run is:
 
 ```bash

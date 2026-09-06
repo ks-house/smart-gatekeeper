@@ -622,6 +622,10 @@
             : '일반 자동 수집';
           const classification = item.classification || {};
           const target = item.target_controller || {};
+          const sensor = target.sensor_observation;
+          const sensorEvidence = sensor
+            ? `최근 센서 표본 ${Number(sensor.sensor_samples)} · 유효 ${Number(sensor.sensor_valid_samples)} · 무응답 ${Number(sensor.sensor_timeouts)} · 이상 ${Number(sensor.sensor_invalid_samples)} · 범위 ${Number(sensor.sensor_min_cm)}–${Number(sensor.sensor_max_cm)}cm · 재개방 ${sensor.sensor_rearm_blocked ? '센서 이탈 대기' : '가능'} (현재 참고값)`
+            : '';
           const targetEvidence = target.fresh
             ? `Target ${target.correlated ? '연결됨' : '현재 상태만'} · ${escapeHtml(target.last_stage || '-')}`
             : 'Target 상태 만료';
@@ -629,7 +633,7 @@
             <td>${new Date(Number(item.created_at_ms)).toLocaleString('ko-KR')}</td>
             <td>${actor}<br><small>${escapeHtml(app.version || '-')}+${escapeHtml(app.build || '-')}</small></td>
             <td>${marker}<br><small>bundle ${escapeHtml(shortOpaqueRef(item.bundle_ref))}</small></td>
-            <td>깨움 ${Number(item.wake_count || 0)} · 세션 ${Number(item.session_count || 0)}<br><small>${targetEvidence}</small></td>
+            <td>깨움 ${Number(item.wake_count || 0)} · 세션 ${Number(item.session_count || 0)}<br><small>${targetEvidence}</small><br><small>${sensorEvidence}</small></td>
             <td>${escapeHtml(classification.last_stage || 'UNKNOWN')}</td>
             <td><span class="badge badge-warning">${escapeHtml(classification.first_missing || 'UNKNOWN')}</span></td>
           `;

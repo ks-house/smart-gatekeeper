@@ -26,10 +26,12 @@ object BleWakeDispatchPolicy {
  * I4 integration seam. This native entrypoint must stay independent of Flutter and OTA UI state.
  */
 object BleWakeNativeEntrypoint {
+  private var lastContinuousJournalMs = 0L
   fun onWake(context: Context, event: BleWakeEvent) {
     val appContext = context.applicationContext
     when (BleWakeDispatchPolicy.classify(event)) {
       BleWakeDispatchAction.EXIT -> {
+        ContinuousPresenceTracker.exit(event.deviceAddress)
         BleWakeJournal.record(
           appContext,
           event.copy(source = "ble_scan_exit", success = false),
@@ -37,6 +39,21 @@ object BleWakeNativeEntrypoint {
         AccessResultNotifier.dismiss(appContext)
       }
       BleWakeDispatchAction.PRESENCE -> {
+        val continuous = event.callbackType == ScanSettings.CALLBACK_TYPE_ALL_MATCHES
+        if (continuous || event.readyHint != null) {
+          val address = event.deviceAddress ?: return
+          // Reject stale OS batches before treating them as current proximity.
+          if (event.latencyMs == null || event.latencyMs > ContinuousPresencePolicy.FRESH_MS) return
+          ContinuousPresenceTracker.observe(address, event.receivedElapsedMs - event.latencyMs.toLong())
+          val hint = event.readyHint ?: return // N-1 Target retains FIRST_MATCH only.
+          if (event.receivedElapsedMs - lastContinuousJournalMs >= 2_000) {
+            lastContinuousJournalMs = event.receivedElapsedMs
+            BleWakeJournal.record(appContext, event)
+            AuthenticatedTargetLocatorStore(appContext).record(address)
+          }
+          if (hint.ready) BleGattWorkScheduler.onContinuousPresence(appContext, address, hint.epoch)
+          return
+        }
         BleWakeJournal.record(appContext, event)
         event.deviceAddress?.let { AuthenticatedTargetLocatorStore(appContext).record(it) }
         BleGattWorkScheduler.onPresence(appContext, event.deviceAddress, event.presenceEventId())

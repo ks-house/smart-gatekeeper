@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
+import android.os.ParcelUuid
+import com.kshouse.gatekeeper_app.gattworker.GattProtocol
 import java.util.UUID
 import com.kshouse.gatekeeper_app.gattworker.BleGattRuntimeEnvironment
 
@@ -23,9 +25,17 @@ class BleWakeScanReceiver : BroadcastReceiver() {
           result.scanRecord?.getManufacturerSpecificData(BleWakeContract.APPLE_COMPANY_ID),
         )
       }
-      val newestTimestamp = matchingResults.maxOfOrNull { it.timestampNanos }
+      val selected = matchingResults.maxByOrNull { it.rssi }
+      val newestTimestamp = selected?.timestampNanos
       val errorCode = intent.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, ScanCallbackError.NONE)
-      BleWakeRegistrar.recordScanCallback(context.applicationContext, errorCode)
+      val callbackType = intent.getIntExtra(BluetoothLeScanner.EXTRA_CALLBACK_TYPE, 0)
+      // Packet callbacks can arrive ten times a second. Keep registration
+      // evidence bounded instead of synchronously committing preferences per packet.
+      if (errorCode != 0 || callbackType != 1 ||
+        SystemClock.elapsedRealtime() - lastContinuousRecordMs >= 2_000) {
+        lastContinuousRecordMs = SystemClock.elapsedRealtime()
+        BleWakeRegistrar.recordScanCallback(context.applicationContext, errorCode)
+      }
       val event = BleWakeEvent(
         source = "ble_scan",
         scenario = "field",
@@ -37,18 +47,21 @@ class BleWakeScanReceiver : BroadcastReceiver() {
         latencyMs = newestTimestamp?.let {
           ((receivedElapsedNanos - it).coerceAtLeast(0L)) / 1_000_000.0
         },
-        callbackType = intent.getIntExtra(BluetoothLeScanner.EXTRA_CALLBACK_TYPE, 0),
+        callbackType = callbackType,
         errorCode = errorCode,
         resultCount = matchingResults.size,
         strongestRssi = matchingResults.maxOfOrNull { it.rssi },
         processId = PROCESS_ID,
         screenInteractive = context.getSystemService(PowerManager::class.java)?.isInteractive ?: true,
         deviceAddress = try {
-          matchingResults.maxByOrNull { it.rssi }?.device?.address
+          selected?.device?.address
         } catch (_: SecurityException) {
           BleGattRuntimeEnvironment.recordBlocked(context, "PERMISSION_DENIED")
           null
         },
+        readyHint = PresenceReadyHint.parse(
+          selected?.scanRecord?.getServiceData(ParcelUuid(GattProtocol.SERVICE_UUID)),
+        ),
       )
       BleWakeNativeEntrypoint.onWake(context, event)
     } finally {
@@ -75,5 +88,6 @@ class BleWakeScanReceiver : BroadcastReceiver() {
 
   companion object {
     private val PROCESS_ID = UUID.randomUUID().toString()
+    private var lastContinuousRecordMs = 0L
   }
 }

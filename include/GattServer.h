@@ -10,6 +10,7 @@
 // host-testable sgk::ProtocolCore used by this production adapter.
 class GattServer {
  public:
+  static void setPresenceReady(bool ready, uint32_t epoch, bool force = false);
   struct Telemetry {
     uint32_t active_connections;
     uint32_t failed_attempts;

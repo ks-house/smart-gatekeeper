@@ -14,6 +14,10 @@ This profile is for one repository owner, one primary phone, and the ESP32-C6 Ta
 - Ordinary firmware, Android and Backend runtime changes use one component PR;
   whole-bundle policy rotation is limited to privilege-bearing workflow,
   signing/publisher dependency and NAS deployment inputs.
+- The personal Target compiler checks runtime files against the tested main
+  commit, instead of maintaining a second frozen runtime hash list inside its
+  workflow. This closes the leftover restriction discovered during the
+  September 6 continuous-presence fix; workflow/signing changes remain protected.
 - Main-push publication is component-scoped. Policy, wiki, test-only and
   unrelated-component changes do not create new Target or Android artifacts.
 - The reviewed persistent-baseline source may remain the authorization anchor

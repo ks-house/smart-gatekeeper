@@ -14,6 +14,16 @@ private:
   static uint8_t historyIdx;
 
 public:
+  struct Diagnostics {
+    uint32_t samples = 0;
+    uint32_t valid = 0;
+    uint32_t timeouts = 0;
+    uint32_t invalid = 0;
+    float minimum_cm = 999.0f;
+    float maximum_cm = 0.0f;
+  };
+  static Diagnostics diagnostics;
+  static float lastRawDistanceCm();
   /// GPIO 핀 초기화 (TRIG=OUTPUT, ECHO=INPUT)
   static void init();
 

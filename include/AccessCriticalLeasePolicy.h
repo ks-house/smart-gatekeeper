@@ -44,6 +44,15 @@ class AccessCriticalLeasePolicy {
   }
 
   bool epochActive() const { return epoch_active_; }
+  // Called exactly at the verified physical lifecycle's transition to IDLE,
+  // before accepting another peer. Unverified disconnects never earn this reset.
+  void retireVerifiedAction(uint32_t verified_action_generation) {
+    if (epoch_active_ && generation_ == verified_action_generation &&
+        verified_action_generation != 0) {
+      epoch_active_ = false;
+      quiet_active_ = false;
+    }
+  }
   uint32_t epochStartedMs() const { return epoch_started_ms_; }
 
  private:
