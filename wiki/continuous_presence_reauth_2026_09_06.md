@@ -211,4 +211,9 @@ clear the queue.
 Before any new Target publication/install, the previous image reported another
 unplanned BROWNOUT reset (boot 738→739). Supply/wiring diagnosis is still a
 separate field gate. The new software does not establish electrical stability.
-Mobile publication readback and owner physical testing remain separate evidence.
+Android run `34012322829` subsequently published `1.0.0-g6a45aec` / 43501.
+Publisher signature checks and independent primary/fallback source/metadata/APK
+hash verification passed. Final Target readback at uptime 453 seconds retained
+boot 740, the new version, MQTT/BLE and relay-OFF state. Owner mobile installation
+and physical testing remain separate evidence; no fixed discovery latency or
+electrical stability is claimed.

@@ -31,12 +31,15 @@ applies_to:
   verification passed. One HA OTA request received broker/Target acceptance.
   Target advanced boot 739 to 740, boot ID `ea27a33bcf2008dee93b82403d12a885`,
   with `SOFTWARE` / `ota_pending_verify`, and remained on the new image through
-  uptime 151 seconds. MQTT/BLE were healthy and relay stayed OFF; no rollback
+  uptime 453 seconds. MQTT/BLE were healthy and relay stayed OFF; no rollback
   was observed beyond the 120-second health deadline. New sensor counters are
   present in live MQTT (zero before a new ARMED trial).
-- Android publication run `34012322829` is still producing the release APK;
-  publication readback will be recorded below. Owner installation, foreground/
-  background latency, sensor-clear/re-approach and multi-phone trials remain open.
+- Android run `34012322829` published `1.0.0-g6a45aec` / version code 43501.
+  Publisher signature checks passed; independent primary/fallback metadata and
+  both 55,577,753-byte APK hashes match the exact source and manifest. Owner
+  installation, foreground/background latency, sensor-clear/re-approach and
+  multi-phone trials remain open. The phone update is required for continuous-
+  presence scheduling; the Target firmware alone does not replace FIRST_MATCH.
 - Before this OTA, the old `2.1.462` image independently advanced boot 738 to
   739 with `BROWNOUT` / no planned restart. Power/wiring stability remains an
   electrical field issue, distinct from the reauthentication correction. A

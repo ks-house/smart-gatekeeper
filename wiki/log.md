@@ -6840,3 +6840,9 @@
 - Target run `34012322944` published `2.1.469+main.g6a45aec`; independently verified signature and artifact hash/size. A single HA OTA request received broker and Target acceptance. Boot advanced 739→740 with `SOFTWARE` / `ota_pending_verify`; new version, MQTT/BLE and relay-OFF state remained stable through uptime 151 seconds, beyond the rollback deadline.
 - New sensor diagnostic fields are present in live MQTT. Android release publication is still running; owner APK installation and physical repeated-access measurements remain pending.
 - Separately observed an unplanned BROWNOUT reset of the previous image before OTA, boot 738→739. Power/wiring investigation remains open; no physical relay or door action was issued.
+
+## [2026-09-06] test | Complete signed mobile publication and final runtime readback
+
+- Mobile run `34012322829` successfully published `1.0.0-g6a45aec` / version code 43501 with publisher signature checks. Independent HTTPS reads confirm identical primary/fallback metadata, exact runtime source, and both 55,577,753-byte APKs matching SHA-256 `e7904aff461c4ff30d586aa8598d9ca0ea22c839810eb98f2581115a96d16776`.
+- Final strict-HTTPS Backend readiness retains exact source `6a45aecbdcadf1a50b020b2a9b67c0b3ae45d3a5` and all checks true. Target remains on boot 740 / `2.1.469+main.g6a45aec` through uptime 453 seconds, with HA bridge online, MQTT failures zero, BLE advertising active and relay OFF.
+- Owner APK installation and continuous-presence/re-approach/multiple-phone field measurements remain pending. Documented deployment evidence separately from physical results; this documentation-only record does not publish another runtime.
