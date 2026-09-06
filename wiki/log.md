@@ -6832,3 +6832,11 @@
 
 - Final scenario review found a missed-clearance window when the first person leaves during cooldown and the next arrives before IDLE. Continue bounded clearance sampling during relay-OFF COOLDOWN as well as IDLE/ARMED; keep RELAY_HOLD timing unchanged.
 - Add a wiring regression assertion alongside the real policy/FSM host tests. This does not authorize another pulse or bypass fresh proof and sensor approach.
+
+## [2026-09-06] test | Deploy continuous-presence Backend and verify Target OTA
+
+- All hosted checks passed; PR #381 merged as exact main `6a45aecbdcadf1a50b020b2a9b67c0b3ae45d3a5`. Final-main host suite passes 374 tests with one expected skip.
+- Cancelled superseded approval-waiting Backend run `33967052541`, which held the NAS deployment concurrency slot, then approved current run `34012322823` under the owner's request. Signed release status and loopback/public readiness confirm exact-source deployment with all checks true.
+- Target run `34012322944` published `2.1.469+main.g6a45aec`; independently verified signature and artifact hash/size. A single HA OTA request received broker and Target acceptance. Boot advanced 739→740 with `SOFTWARE` / `ota_pending_verify`; new version, MQTT/BLE and relay-OFF state remained stable through uptime 151 seconds, beyond the rollback deadline.
+- New sensor diagnostic fields are present in live MQTT. Android release publication is still running; owner APK installation and physical repeated-access measurements remain pending.
+- Separately observed an unplanned BROWNOUT reset of the previous image before OTA, boot 738→739. Power/wiring investigation remains open; no physical relay or door action was issued.
