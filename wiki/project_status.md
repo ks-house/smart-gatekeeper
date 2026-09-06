@@ -18,9 +18,28 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-06 diagnostic upload compatibility deployment
+
+- PR #385 / exact source `0c965d99632449d2d5a9b7e4c76f4c79d49b7644`
+  corrects legacy lowercase native codes/RSSI sentinel handling, new-app
+  serialization and export size bounds, delivery status/retry UX, and immutable
+  same-content retries. Details: [field diagnostics](field_diagnostics_capture_plan.md#12-compatible-upload-correction-2026-09-06).
+- Backend run `34033139623` deployed at 21:31:59 KST; NAS evidence and external
+  `/ready` agree on the exact source with all checks true. Live synthetic legacy
+  parsing passes to the retained authentication barrier; invalid RSSI still
+  fails. No synthetic report was stored.
+- Mobile run `34033139669` published **1.0.0-g0c965d9 / 43901** at 21:44:39 KST.
+  Publisher signing checks and independent primary/fallback metadata plus APK
+  hash readbacks pass. Both APKs are 55,594,137 bytes and match SHA-256
+  `b7932838db0eaf516dbcd3128a469367a09d0496e8c188c42663b136217c81c7`.
+- Phone installation and a real accepted diagnostic bundle/admin-row readback
+  remain user-side checks. Keep existing report history before this upload.
+  Target firmware/control and BLE authentication logic were not changed; no
+  physical-door success or resolution of GATT 133 is inferred.
+
 ## 2026-09-06 continuous-presence reauthentication rollout
 
-- **Latest mobile-only follow-up:** PR #383 / main `80569b1` and Android run
+- **Earlier mobile-only follow-up:** PR #383 / main `80569b1` and Android run
   `34018358565` published `1.0.0-g80569b1` / **43701** at 16:25:53 KST.
   Early v2 rejection handling, bounded fresh-radio recovery and report SafeArea,
   recent/full view and Clear are included. Publisher signing checks and independent

@@ -230,8 +230,8 @@ rollback and recovery remain independently usable.
 | D0 | Strict `sgk-mobile-support-v2` Pydantic schema, 64 KiB request ceiling, fixed 50-session/100-wake bounds, secret-field rejection and deterministic first-missing-stage classifier | Synthetic contract tests only; field classification accuracy is not yet measured |
 | D1 Android | MethodChannel exposes recent redacted sessions/wakes, app/SDK and opaque process reference; Support Report v2 includes phase timings; `현장 테스트 표시` creates a random 10-minute reference | Phone installation and screen-off/pocket capture remain pending |
 | D1 Target | Boot-local GATT/proof/ARMED/sensor/relay/terminal counters and last stage/session are copied into deferred retained status; a separate version-1 RTC access breadcrumb survives warm reset | Compile/contract proof only; Target OTA and reset readback remain pending |
-| D2 upload | Per-phone setting defaults OFF, discloses the fields and absent automatic-retention period, uploads only the strict redacted bundle using the established credential/public-key identity, and deduplicates by stable bundle digest | Enabling the switch is the phone-owner consent action; no phone has enabled or uploaded it yet |
-| D2 Backend/admin | Schema 015 append-only idempotent storage, actor resolution, verified canonical-event join, fresh controller/previous-reset correlation and admin timeline are implemented; HA stays low-cardinality | Trusted-policy review, NAS migration/deployment and rendered admin readback remain pending |
+| D2 upload | Per-phone setting defaults OFF, discloses the fields and absent automatic-retention period, uploads only the strict redacted bundle using the established credential/public-key identity, and deduplicates by stable bundle digest | Owner reports enabling upload; the September 6 contract rejection is corrected in section 12. A real accepted phone bundle/admin-row readback is still unconfirmed |
+| D2 Backend/admin | Schema 015 append-only idempotent storage, actor resolution, verified canonical-event join, fresh controller/previous-reset correlation and admin timeline are implemented; HA stays low-cardinality | NAS deployment and readiness are confirmed below; rendered real-phone admin-row readback remains separate |
 | D3 | No physical test was automated or claimed | Owner/wife/daughter marked trials, fault cases, latency percentiles and door observation remain pending |
 
 An expired field marker produces one final snapshot so `PHONE_WAKE_NOT_OBSERVED`
@@ -353,3 +353,27 @@ from an absent exported callback without recording raw advertisement data.
   canonical JSON bytes consistently with storage, not Python string formatting.
 - Runtime implementation and local tests do not prove production deployment or
   a real phone upload. Those outcomes are recorded separately below/in the log.
+
+### Exact Backend activation
+
+- Run `34033139623` deployed source
+  `0c965d99632449d2d5a9b7e4c76f4c79d49b7644` at
+  `2026-09-06T12:31:59Z` (21:31:59 KST). The NAS evidence says `deployed`,
+  loopback/public readiness passed, and independent public `/ready` returns
+  the same source with every check true.
+- A synthetic, unauthenticated live legacy-shaped request now reaches the
+  authentication rejection (401), while invalid RSSI 126 still returns 422.
+  No test report is persisted. This verifies deployed parsing and the retained
+  authentication barrier, not receipt of the owner's actual phone bundle.
+
+### Signed mobile publication
+
+- Run `34033139669` published the same exact source as
+  `1.0.0-g0c965d9` / 43901 at 21:44:39 KST. Publisher signing and NAS atomic
+  promotion/readback passed. Independent HTTPS downloads from primary/fallback
+  agree on metadata and both 55,594,137-byte APKs match manifest SHA-256
+  `b7932838db0eaf516dbcd3128a469367a09d0496e8c188c42663b136217c81c7`.
+- Update the phone without clearing report history, keep upload enabled, and
+  open the app to allow synchronization. Confirm last-success status and then
+  the real Backend admin row. Publication is not phone installation or evidence
+  that the owner's original report has already been stored.
