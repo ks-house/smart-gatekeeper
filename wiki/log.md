@@ -6846,3 +6846,32 @@
 - Mobile run `34012322829` successfully published `1.0.0-g6a45aec` / version code 43501 with publisher signature checks. Independent HTTPS reads confirm identical primary/fallback metadata, exact runtime source, and both 55,577,753-byte APKs matching SHA-256 `e7904aff461c4ff30d586aa8598d9ca0ea22c839810eb98f2581115a96d16776`.
 - Final strict-HTTPS Backend readiness retains exact source `6a45aecbdcadf1a50b020b2a9b67c0b3ae45d3a5` and all checks true. Target remains on boot 740 / `2.1.469+main.g6a45aec` through uptime 453 seconds, with HA bridge online, MQTT failures zero, BLE advertising active and relay OFF.
 - Owner APK installation and continuous-presence/re-approach/multiple-phone field measurements remain pending. Documented deployment evidence separately from physical results; this documentation-only record does not publish another runtime.
+
+## [2026-09-06] test | Inspect owner-reported post-rollout GATT disconnection
+
+- Owner screenshot shows repeated native attempts at 15:28:22–26 and final GATT_DISCONNECTED at 15:28:29; remote-open broker-delivery display is separately timestamped 15:30:02.
+- Read-only Target/Backend checks retain the deployed source, MQTT/advertising health and active v2 ACL. Current boot 743 has zero accepted GATT connection/challenge/proof/result counters and BOOTING checkpoint; raw rejected controller ingress is not covered by those counters.
+- Latest retained reset is BROWNOUT, but uptime places it around 15:04, before the reported attempt. Do not attribute this particular failure to power loss without time-correlated phone evidence. Boot count 740→743 does not reveal every intervening reset reason.
+- Requested installed app build and redacted Support Report. Root cause remains unconfirmed; no runtime mutation, reboot, door action or duplicate OTA was performed.
+
+## [2026-09-06] compile | Correlate support report with pre-proof BLE failure and v2 result handling
+
+- Owner report confirms installed app 43501 / g6a45aec and enrollment/ACL readiness. At 15:28, FIRST_MATCH to session creation is 47 ms; final third attempt fails with GATT 133 before MTU/challenge/proof. The 4529 ms dispatch field includes prior attempts, not solely initial scheduling delay.
+- Read-only Target observation retains boot 743 through uptime 2093 seconds, advertising active, accepted GATT counters zero and relay OFF. ACL advances from report 1468 to live 1469; neither version change nor prior BROWNOUT proves the reported failure cause.
+- Source inspection confirms pre-challenge FAST_RESULT is misclassified as PROTOCOL_INCOMPATIBLE with transport status 34 (wire type 0x22); actual rejection reason is discarded. This is separate from the current earlier-stage 133 failure.
+- Documented that ALL_MATCHES callbacks without ready hints are discarded before journaling, so absent exported callbacks do not prove scanner failure. Recommended bounded radio/hint/rejection diagnostics and validated early-result handling without weakening proof or OTA boundaries.
+- Updated the existing analysis page and index; no runtime edits, publication, credential reset or physical command. Root cause of the current radio/setup failure remains unconfirmed.
+
+## [2026-09-06] fix | Handle early v2 rejection and improve recovery and support-report UX
+
+- Implement the owner's follow-up: parse and preserve valid pre-challenge v2 BUSY/RATE_LIMITED/INTERNAL_FAIL_CLOSED instead of PROTOCOL_INCOMPATIBLE; never accept pre-proof success or bypass normal session-bound result validation.
+- Permit one fresh-radio recovery after five seconds for known transient failures, honoring longer Target retry delays. Persist a backward-compatible failure-recovery flag and return to 60-second backoff after recovery failure, preserving Target quiet recovery and PROOF_UNCERTAIN suppression.
+- Journal bounded closed-code continuous-scan skips that were previously invisible; do not claim the current 133 RF/setup root cause is fixed or that Target-side initialization/rejection diagnostics were added.
+- Pin support actions above system navigation; default manual copy to newest 10 sessions/20 wakes with optional full 50/100 history and refresh. Add confirmed Clear via a report cutoff and field-marker reset while preserving credentials, access/replay state, upload consent and server records.
+- Preserve existing wiki changes and remove only this turn's generated desktop/SDK dependency drift. No new dependency, firmware/Backend runtime edit, publication, live record deletion or physical action is included.
+
+## [2026-09-06] test | Verify early-result recovery and report reset/navigation regressions
+
+- Android native suite passes: 86 JUnit tests, zero failures/errors. New coverage includes early v2 BUSY/RATE_LIMITED/INTERNAL_FAIL_CLOSED, rejection of pre-proof success/malformed/version-mismatched results, no signing/proof on early BUSY, bounded fast recovery and backward-compatible persisted recovery state.
+- Full Flutter suite passes 101 tests, including signed update/recovery tests. Report regressions cover compact/full bounds, newest-first ordering, cutoff reset with new records after reset, preserved consent/source ledger, copy confirmation and bottom actions above a 48-pixel system navigation inset on a 360×640 viewport.
+- Targeted Dart analysis reports no issues. OTA contract gate, 78 focused OTA tests and the root unittest discovery suite pass; final git diff whitespace checks pass. Existing firmware, Backend and deployed app remain unchanged pending a separate publication/install step; no physical BLE success or resolution of error 133 is claimed.

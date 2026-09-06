@@ -9,6 +9,38 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class GattTransportCallbackTest {
+  @Test fun earlyV2ResultPreservesBusyRateLimitAndFailClosedReasons() = runBlocking {
+    for (reason in listOf(8, 9, 10)) {
+      val mailbox = GattCallbackMailbox()
+      val payload = java.nio.ByteBuffer.allocate(32).putShort(2)
+        .put(ByteArray(16) { 7 }).putShort(reason.toShort()).putInt(2500).putLong(1468).array()
+      GattFraming.fragment(GattProtocol.FAST_RESULT, 1, payload, 23).forEach(mailbox::onFrame)
+      try {
+        mailbox.awaitMessage(GattProtocol.FAST_CHALLENGE)
+        fail("expected early rejection")
+      } catch (error: EarlyTargetResultException) {
+        assertEquals(reason, error.result.reason)
+        assertEquals(2500L, error.result.retryAfterMs)
+      }
+    }
+  }
+
+  @Test fun earlyResultNeverAcceptsSuccessWrongVersionOrMalformedPayload() {
+    val payload = java.nio.ByteBuffer.allocate(32).putShort(2)
+      .put(ByteArray(16)).putShort(8).putInt(1000).putLong(1).array()
+    for (bad in listOf(
+      payload.copyOf(31),
+      payload.copyOf().also { it[1] = 1 },
+      payload.copyOf().also { it[19] = 0 },
+      payload.copyOf().also { it[19] = 7 },
+      payload.copyOf().also { it[24] = -1 },
+    )) {
+      try {
+        GattCanonicalCodec.parseEarlyFastRejection(bad)
+        fail("must reject pre-proof authorization or malformed result")
+      } catch (_: IllegalArgumentException) { }
+    }
+  }
   @Test
   fun disconnectCallbackPreservesGattStatusAndReason() = runBlocking {
     val mailbox = GattCallbackMailbox()

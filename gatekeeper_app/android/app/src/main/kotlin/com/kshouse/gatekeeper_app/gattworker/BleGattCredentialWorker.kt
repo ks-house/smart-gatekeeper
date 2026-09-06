@@ -52,12 +52,12 @@ object BleGattWorkScheduler {
     val last = ledger.last()
     if (!ContinuousPresencePolicy.maySchedule(last, System.currentTimeMillis())) return null
     return onPresence(context, deviceAddress, ContinuousPresencePolicy.eventId(epoch, last),
-      requiresFreshPresence = true)
+      requiresFreshPresence = true, failureRecovery = last?.state == DurableSessionState.FAILED)
   }
 
   @Synchronized
   fun onPresence(context: Context, deviceAddress: String?, presenceEventId: String,
-                 requiresFreshPresence: Boolean = false): String? {
+                 requiresFreshPresence: Boolean = false, failureRecovery: Boolean = false): String? {
     if (deviceAddress.isNullOrBlank() || presenceEventId.isBlank()) return null
     val appContext = context.applicationContext
     if (!BleGattFeatureFlagStore(appContext).decision().newWorkerEnabled) return null
@@ -70,7 +70,10 @@ object BleGattWorkScheduler {
         AndroidKeystorePresenceFingerprinter(appContext),
       ).enqueue(deviceAddress, presenceEventId, System.currentTimeMillis())
       if (duplicate && !DurableAttemptPolicy.canExecute(session.state)) return session.id
-      if (requiresFreshPresence) ledger.update(session.copy(requiresFreshPresence = true))
+      if (requiresFreshPresence) ledger.update(session.copy(
+        requiresFreshPresence = true,
+        failureRecovery = session.failureRecovery || failureRecovery,
+      ))
       if (!duplicate) vault.store(session.id, LocatorSecret(deviceAddress, credentialId))
       WorkManager.getInstance(appContext).enqueueUniqueWork(
         workName(session.id),

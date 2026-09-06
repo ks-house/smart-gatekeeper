@@ -230,5 +230,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get copyReport => 'Copy report';
 
   @override
+  String get reportFullHistory =>
+      'Include full history (up to 50 sessions and 100 detections)';
+
+  @override
+  String get reportRecentHistory =>
+      'By default, includes only the latest 10 sessions and 20 detections.';
+
+  @override
+  String get reportClear => 'Clear report history';
+
+  @override
+  String get reportClearConfirm =>
+      'Exclude earlier diagnostics from reports and clear the field-test marker. Credentials, access permissions, active authentication, replay-protection records and uploaded server records are preserved. Copy the report first if you need to keep it.';
+
+  @override
+  String get reportClearDone =>
+      'Report history cleared. New records will appear from now on.';
+
+  @override
+  String get reportActionFailed =>
+      'Could not complete the report action. Please try again.';
+
+  @override
+  String get reportCancel => 'Cancel';
+
+  @override
+  String get reportRefresh => 'Refresh report';
+
+  @override
   String get reportCopied => 'Redacted report copied';
 }

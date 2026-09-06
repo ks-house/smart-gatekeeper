@@ -42,6 +42,26 @@ class FieldDiagnosticsStore {
   static const _uploadEnabledKey = 'field_diagnostics_upload_enabled_v1';
   static const _markerKey = 'field_diagnostics_marker_v1';
   static const _lastUploadedRefKey = 'field_diagnostics_last_uploaded_ref_v1';
+  static const _reportSinceKey = 'field_diagnostics_report_since_ms_v1';
+
+  Future<int> reportSinceEpochMs() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_reportSinceKey) ?? 0;
+  }
+
+  /// Reset the diagnostic view, never the safety/replay ledger or credentials.
+  Future<void> clearReportHistory({DateTime? now}) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await prefs.setInt(
+      _reportSinceKey,
+      (now ?? DateTime.now()).millisecondsSinceEpoch,
+    )) {
+      throw StateError('Unable to reset report history');
+    }
+    if (!await prefs.remove(_markerKey)) {
+      throw StateError('Unable to reset field marker');
+    }
+  }
 
   Future<bool> uploadEnabled() async {
     final prefs = await SharedPreferences.getInstance();

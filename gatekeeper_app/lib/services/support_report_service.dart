@@ -20,8 +20,15 @@ class SupportReportService {
   Future<Map<String, Object?>> buildMap({
     required MobileIdentityStatus identity,
     required NativeGattWorkerHealth? health,
+    bool fullHistory = true,
   }) async {
     final package = await PackageInfo.fromPlatform();
+    var currentHealth = health;
+    try {
+      currentHealth = await _native.read();
+    } catch (_) {
+      // Preserve the caller's last snapshot if the native bridge is unavailable.
+    }
     Map<Object?, Object?> recent = const <Object?, Object?>{};
     try {
       recent = await _native.readRecentDiagnostics();
@@ -30,8 +37,17 @@ class SupportReportService {
     try {
       marker = await _diagnosticsStore.readMarker();
     } catch (_) {}
-    final sessions = _safeSessions(recent['sessions']);
-    final wakeEvents = _safeWakeEvents(recent['wakeEvents']);
+    final since = await _diagnosticsStore.reportSinceEpochMs();
+    final sessions = _safeSessions(recent['sessions'])
+        .where((item) => (item['updated_epoch_ms'] as int? ?? 0) > since)
+        .toList()
+      ..sort((a, b) => (b['updated_epoch_ms'] as int? ?? 0)
+          .compareTo(a['updated_epoch_ms'] as int? ?? 0));
+    final wakeEvents = _safeWakeEvents(recent['wakeEvents'])
+        .where((item) => (item['received_epoch_ms'] as int? ?? 0) > since)
+        .toList()
+      ..sort((a, b) => (b['received_epoch_ms'] as int? ?? 0)
+          .compareTo(a['received_epoch_ms'] as int? ?? 0));
     final core = <String, Object?>{
       'app': <String, Object?>{
         'version': package.version,
@@ -46,25 +62,27 @@ class SupportReportService {
         'acl_version': identity.aclVersion,
       },
       'native': <String, Object?>{
-        'healthy': health?.healthy,
-        'hands_free_ready': health?.handsFreeReady,
-        'wake_registered': health?.wakeRegistered,
-        'wake_registration_requested': health?.wakeRegistrationRequested,
-        'wake_registration_reconciled': health?.wakeRegistrationReconciled,
-        'wake_registration_status': health?.wakeRegistrationStatus,
+        'healthy': currentHealth?.healthy,
+        'hands_free_ready': currentHealth?.handsFreeReady,
+        'wake_registered': currentHealth?.wakeRegistered,
+        'wake_registration_requested': currentHealth?.wakeRegistrationRequested,
+        'wake_registration_reconciled':
+            currentHealth?.wakeRegistrationReconciled,
+        'wake_registration_status': currentHealth?.wakeRegistrationStatus,
         'wake_registration_attempted_at_epoch_ms':
-            health?.wakeRegistrationAttemptedAtEpochMs,
+            currentHealth?.wakeRegistrationAttemptedAtEpochMs,
         'wake_registration_reconciled_at_epoch_ms':
-            health?.wakeRegistrationReconciledAtEpochMs,
+            currentHealth?.wakeRegistrationReconciledAtEpochMs,
         'wake_registration_last_callback_at_epoch_ms':
-            health?.wakeRegistrationLastCallbackAtEpochMs,
-        'initial_work_expedited': health?.initialWorkExpedited,
-        'stage': health?.detectionStage.name,
+            currentHealth?.wakeRegistrationLastCallbackAtEpochMs,
+        'initial_work_expedited': currentHealth?.initialWorkExpedited,
+        'stage': currentHealth?.detectionStage.name,
         'reason': _safeCode(
-          health?.currentBlockingReasonCode ?? health?.lastReasonCode,
+          currentHealth?.currentBlockingReasonCode ??
+              currentHealth?.lastReasonCode,
         ),
-        'presence_to_dispatch_ms': health?.lastPresenceToDispatchMs,
-        'presence_to_armed_ms': health?.lastPresenceToArmedMs,
+        'presence_to_dispatch_ms': currentHealth?.lastPresenceToDispatchMs,
+        'presence_to_armed_ms': currentHealth?.lastPresenceToArmedMs,
       },
       'field_test': marker == null
           ? null
@@ -72,8 +90,8 @@ class SupportReportService {
               ...marker.toJson(),
               'active': marker.isActiveAt(DateTime.now().toUtc()),
             },
-      'sessions': sessions,
-      'wake_events': wakeEvents,
+      'sessions': sessions.take(fullHistory ? 50 : 10).toList(),
+      'wake_events': wakeEvents.take(fullHistory ? 100 : 20).toList(),
     };
     final bundleRef = sha256
         .convert(utf8.encode(jsonEncode(core)))
@@ -90,11 +108,15 @@ class SupportReportService {
   Future<String> build({
     required MobileIdentityStatus identity,
     required NativeGattWorkerHealth? health,
+    bool fullHistory = false,
   }) async {
     return const JsonEncoder.withIndent(' ').convert(
-      await buildMap(identity: identity, health: health),
+      await buildMap(
+          identity: identity, health: health, fullHistory: fullHistory),
     );
   }
+
+  Future<void> clearHistory() => _diagnosticsStore.clearReportHistory();
 
   List<Map<String, Object?>> _safeSessions(Object? raw) {
     if (raw is! List) return const [];

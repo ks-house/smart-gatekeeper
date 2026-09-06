@@ -54,7 +54,7 @@
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 | [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md) | 개인 PROD 모바일 등록·문 열기 배포와 매립 Target MQTT/Wi-Fi/OTA 장애 증거 및 재개 절차 |
 | [wife_phone_access_latency_2026_09_02.md](wife_phone_access_latency_2026_09_02.md) | 관리자/HA의 ARMED→RELAY 약 7초 증거, access-critical MQTT deferral, pre-ARMED GATT v2 fast-path 후보와 설치 후 검증 Gate |
-| [continuous_presence_reauth_2026_09_06.md](continuous_presence_reauth_2026_09_06.md) | 문앞 지속 체류 시 재인증 연결 공백, 종료 후 Target lease 오판정 host 재현과 센서 진단 공백 |
+| [continuous_presence_reauth_2026_09_06.md](continuous_presence_reauth_2026_09_06.md) | 지속 체류 재인증 개선·배포, 이후 GATT 133 지원 보고서 분석과 조기 v2 RESULT 오분류·진단 공백 |
 | [ha_external_access_incident_2026_08_13.md](ha_external_access_incident_2026_08_13.md) | 2026-08-13 HA nginx 502의 upstream 장애 격리, 안전한 복구 순서와 2026-08-24 복구 경계 |
 | [mobile_dependency_redesign.md](mobile_dependency_redesign.md) | 모바일 책임 과밀·화면 OFF 병목 분석과 Door Controller 로컬 인증 중심 재설계안 |
 | [mobile_hardwareless_implementation_plan.md](mobile_hardwareless_implementation_plan.md) | 추가 자격 하드웨어 보류 조건의 Android native wake·BLE GATT local auth 단계/병렬 구현 계획 |
@@ -68,7 +68,7 @@
 | [commercial_operations.md](commercial_operations.md) | #52 privacy-safe operations, bounded resilience, readiness/metrics/SLO, backup/restore, hardened production Compose, supply-chain and evidence Gates |
 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, Backend schema 013 canonical history/transactional HA outbox, immutable correlation, I7/I9/OTA 합격·증거 경계 |
-| [field_diagnostics_capture_plan.md](field_diagnostics_capture_plan.md) | Android rolling journal, Target checkpoint, 동의형 Backend correlation과 first-missing-stage D0-D2 구현 및 D3 현장 검증 경계 |
+| [field_diagnostics_capture_plan.md](field_diagnostics_capture_plan.md) | Android/Target 사후 진단, 보고서 최근·전체 보기와 안전한 Clear·하단 버튼 배치, 동의형 Backend correlation 및 현장 검증 경계 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 connection-owned/ACK-gated GATT, v2 fast challenge/proof/result, OTA safe-state, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |
