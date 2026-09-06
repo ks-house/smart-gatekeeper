@@ -6910,3 +6910,21 @@
 - Backend suite passed 225 tests with two existing real-MariaDB skips; root host suite passed 374 tests with one existing skip. OTA contract passed. Flutter full suite passed 103 tests, followed by eight focused report tests including the added dense-report byte-budget test; focused Dart analysis is clean.
 - The actual Flutter producer agrees with the shared Backend fixture; authenticated local ingest accepts both corrected and legacy native/RSSI values. Error/ACK handling, persisted upload status, immutable duplicate handling and changed-evidence rejection pass. Dense export preserves newest records within the unchanged 64 KiB transport budget.
 - Removed only this run's generated desktop/SDK lock drift. No signing/CI/deploy policy, firmware or schema migration change. Hosted merge checks, exact-main Backend deployment and signed APK publication remain next steps; real phone delivery remains a separate readback.
+
+## [2026-09-06] test | Merge diagnostic upload fixes and authorize exact-main NAS delivery
+
+- PR #385 merged as `0c965d99632449d2d5a9b7e4c76f4c79d49b7644` after hosted Backend/OTA/policy checks and Flutter/static/native-GATT tests passed. PR canary packaging completed successfully afterward; exact-main publication retains its own validation gate.
+- Backend run `34033139623` passed main security/real-MariaDB and provenance checks, published immutable images and reached the production environment. Approved that exact deployment under the owner's explicit request. Mobile publication run `34033139669` is in progress.
+- Before activation, external `/ready` still identified old Backend `6a45aecbdcadf1a50b020b2a9b67c0b3ae45d3a5` with all checks true. No Target OTA, door command or record deletion was sent. Actual NAS activation and APK publication are not yet established by this entry.
+
+## [2026-09-06] test | Confirm deployed Backend diagnostic compatibility and readiness
+
+- Run `34033139623` completed successfully. NAS evidence records exact source `0c965d99632449d2d5a9b7e4c76f4c79d49b7644`, deployment at 21:31:59 KST, API digest `2a7dbe386d14eff4bd63a6e0a19a7beb42eb01773e6dd5c1b89807e13b2e81c0`, and loopback/public readiness PASS. Independent HTTPS `/ready` matches that source and all checks are true.
+- Live synthetic legacy-shaped requests without credentials return 401 instead of the previous schema rejection; an invalid-RSSI negative control remains 422. Neither request reaches diagnostic storage. The owner's real bundle/administrator row has not been read back.
+- Main mobile validation passed and the release compiler is running. No phone installation or successful real diagnostic upload is claimed yet.
+
+## [2026-09-06] test | Complete signed diagnostic-upload mobile publication
+
+- Run `34033139669` completed successfully at 21:44:39 KST, publishing exact source `0c965d99632449d2d5a9b7e4c76f4c79d49b7644` as `1.0.0-g0c965d9` / 43901. Main tests, release compiler, pinned signing and atomic primary/fallback publication/readback passed.
+- Independent verified-HTTPS reads confirm equal primary/fallback manifests and both 55,594,137-byte APKs matching SHA-256 `b7932838db0eaf516dbcd3128a469367a09d0496e8c188c42663b136217c81c7`. Backend exact-source readiness was already verified separately.
+- Owner can update the app, preserve report history and check the new last-upload-success indicator. Real phone install, successful authenticated upload and administrator-row readback remain unconfirmed; no Target firmware, physical action or data deletion was performed.
