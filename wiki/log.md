@@ -6827,3 +6827,8 @@
 - Merged policy-only PR #380 authorizing the exact reviewed 23-path bundle at `f23239913cad533763007939f8ee9c37cdc8fe62`; policy publication did not trigger runtime deployment.
 - Fix same-ready-epoch known-failure coalescing: after the bounded 60-second failure backoff a new attempt is eligible, while completed epochs and uncertain proofs are not replayed.
 - Synchronize the trusted-policy regression fixture with the approved anchor. All 61 focused host/policy/publisher tests, OTA contract, incremental personal firmware build and Android native unit suite pass. Generated Flutter dependency/desktop artifacts are excluded from this change.
+
+## [2026-09-06] fix | Observe passage clearance during relay-off cooldown
+
+- Final scenario review found a missed-clearance window when the first person leaves during cooldown and the next arrives before IDLE. Continue bounded clearance sampling during relay-OFF COOLDOWN as well as IDLE/ARMED; keep RELAY_HOLD timing unchanged.
+- Add a wiring regression assertion alongside the real policy/FSM host tests. This does not authorize another pulse or bypass fresh proof and sensor approach.

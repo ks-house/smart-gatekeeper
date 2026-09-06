@@ -816,8 +816,11 @@ void loop() {
       LOGF("[GATE] ✅ ARMED 상태에서 초음파 %.1f cm 감지!", distCm);
       g_access_fsm.handleSensorTrigger(now, RELAY_HOLD_MS, g_relay_cooldown_ms);
     }
-  } else if (passageRearm.blocked() && g_access_fsm.state() == GateState::IDLE) {
-    // Continue bounded clearance observation between sessions. Invalid/no echo
+  } else if (passageRearm.blocked() &&
+             (g_access_fsm.state() == GateState::IDLE ||
+              g_access_fsm.state() == GateState::COOLDOWN)) {
+    // Observe clearance after relay OFF too, so a person leaving during
+    // cooldown is not missed before the next person's approach. Invalid/no echo
     // never unlocks a second automatic pulse.
     const float clearDistance = UltrasonicSensor::readDistanceCmRaw();
     passageRearm.observe(clearDistance > static_cast<float>(g_distance_threshold_cm + 10) &&

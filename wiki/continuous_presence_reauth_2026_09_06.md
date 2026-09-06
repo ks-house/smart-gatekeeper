@@ -173,7 +173,8 @@ The owner subsequently authorized implementation and deployment. The candidate:
 - Separates the next authentication from another relay pulse. After any pulse,
   three consecutive valid readings beyond threshold plus 10 cm clear the
   automatic-passage latch. Invalid/no-echo samples do not clear it. Sampling for
-  clearance also runs in IDLE; a fresh ARMED session still uses fresh median
+  clearance also runs in IDLE and relay-OFF COOLDOWN so an exit during cooldown
+  is not missed before the next person's approach; a fresh ARMED session uses fresh median
   history. Manual authenticated opening keeps its explicit semantics.
 - Retains the last ARMED window's sample, valid, timeout and invalid counts and
   distance bounds in deferred telemetry. The admin diagnostic table displays
