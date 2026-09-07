@@ -6969,3 +6969,11 @@
 - Feature PR #387 pins `1cecb4bdba04ba8f7acb93c561fd03dac89591dd`; separate policy-only admission updates exactly three protected input digests and retains all 23 paths, source identity and ancestry checks.
 - Reviewed Compose optional digest forwarding, NAS exact-key/digest validation and two Backend inventory additions. No signing/workflow/SSH command expansion. Local policy suite: 42 tests pass.
 - User requested deployment. GitHub authentication and fresh main verified; direct NAS SSH port 22 still refuses connection. Root wrapper installation and runtime digest activation are not claimed.
+
+## [2026-09-07] test | Deploy scan observation and read-only diagnostics Backend and APK
+
+- Policy PR #388 merged as `bb91a3f`; merge-connected feature PR #387 merged as `00bee34343827181cbaa449244dbfe96044a6e94`. Exact protected ancestry and all 23 digests remain intact. Hosted Backend, Flutter, native BLE/GATT, OTA and trusted policy checks passed; main repeated component gates before publication.
+- Backend run `34086666204` completed at 14:28 KST. API image digest `9c56cdb92797158dbfd31fef40f327336a26a3a59c79f64ab0c6fa60a86a6439`, NAS status deployed, loopback/public readiness passed. Independent HTTPS `/ready` identifies exact main with every check true.
+- Mobile run `34086666111` completed at 14:40:45 KST, publishing signed `1.0.0-g00bee34` / 44201. Independent primary/fallback and Backend metadata agree; both 55,610,521-byte APKs match SHA-256 `c607f9f027d5cbe010894ad36476664f31e9d63e81c5443c6e3181a7e99ea406`.
+- Dedicated diagnostic read route now returns 503 with `diagnostic read is not configured`, not an empty report list. Existing local token is readable and was not regenerated. Production variables identify SSH port 8822: reachable, but this PC's authentication is rejected. No root-wrapper/runtime edit was attempted through CI's restricted apply/status key. NAS activation and real uploaded-report readback remain blocked on administrative access.
+- Owner installs mobile update; no phone install, recovered incident-time BLE reception or physical access success is claimed. No Target OTA/reboot, door action, secret disclosure or data deletion. Updated current diagnostic documentation and checked linked page/heading targets and whitespace.

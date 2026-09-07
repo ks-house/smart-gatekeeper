@@ -447,5 +447,7 @@ a dead scanner when a phone may legitimately be out of range.
 
 The follow-up owner-authorized implementation now adds separate scan packet
 evidence, bounded lifecycle capture and truthful home/settings projections;
-see [field diagnostics](field_diagnostics_capture_plan.md#september-7-scan-observation-implementation-local-not-deployed).
-It does not claim a repaired 13:08 radio path or publish a release.
+see [field diagnostics](field_diagnostics_capture_plan.md#september-7-scan-observation-implementation).
+Backend `00bee34` is deployed; APK publication is recorded separately in the
+deployment log. This does not establish a repaired 13:08 radio path or a new
+successful physical approach.
