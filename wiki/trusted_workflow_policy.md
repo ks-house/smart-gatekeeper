@@ -31,6 +31,25 @@ remains outside this personal fast lane.
 
 ## 1. Trust boundary
 
+### 2026-09-07 diagnostics deployment admission
+
+Feature PR #387 is pinned to `1cecb4bdba04ba8f7acb93c561fd03dac89591dd`.
+This separate policy-only transition retains the exact 23-path inventory and
+admits that reviewed commit and same-byte descendants as the sole persistent
+baseline. Exactly three protected inputs change: production Compose passes an
+optional diagnostic-token digest, the NAS wrapper accepts only an empty or
+lowercase SHA-256 digest while preserving its other exact runtime keys, and the
+Backend inventory adds the read-only API module and its tests. No workflow,
+signing gate, SSH dispatcher or command authority changes.
+
+The reviewed hashes are `709f70c7683636a0eb34a9822212b4369d5e5b906bbdeae81c3e2307236f953a`
+(Compose), `c368931822e5bf6c2cb50b9d12f7b0fe372f61f47f03eb98245b9c0e48118003`
+(wrapper), and `b4512474c0bda2901b978b038f7dd47dd5b401066bb9521f2e4f8d4b7086db65`
+(inventory). Merge policy first with the trusted-base check passing, then
+merge-connect main into the feature without squash/rebase. The personal lane
+does not require another actual-merge-SHA rotation. This admission is not NAS
+configuration, deployment, phone installation or physical access evidence.
+
 `.github/workflows/trusted_workflow_policy.yml` uses `pull_request_target` without `paths` or `paths-ignore` filters to prevent required-check deadlocks, ensuring `Verify protected files against trusted base policy` runs on all pull requests targeting `main` (including docs-only PRs). It never checks out or executes pull-request code. The workflow checks out only the trusted `base.sha` with credentials disabled and sparse paths limited to the base validator and policy. Candidate protected files are downloaded from the candidate repository and commit through the GitHub Contents API, decoded as inert bytes, normalized, and hashed. The same immutable candidate SHA is also read through GitHub's recursive Git Trees API so path inventory, Git object type, and mode are checked without checking out candidate code; a missing or truncated tree fails closed.
 
 The job has only `contents: read`. Pull-request titles, branches, file contents, and other attacker-controlled values are never interpolated into an executable command. The actual head repository and immutable lowercase 40-hex head SHA are passed as separate quoted environment variables. The production decision validates both values, selects only bundles whose explicit source mode authorizes that identity, and only then downloads candidate bytes.

@@ -40,11 +40,11 @@
   },
   "approved_bundles": [
     {
-      "id": "personal-runtime-main-verification-baseline",
+      "id": "diagnostics-read-deployment-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "f23239913cad533763007939f8ee9c37cdc8fe62"
+        "commit": "1cecb4bdba04ba8f7acb93c561fd03dac89591dd"
       },
       "files": {
         ".github/workflows/backend_security.yml": "07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2",
@@ -63,13 +63,13 @@
         "backend/app/requirements.lock": "4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71",
         "backend/app/Dockerfile": "ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573",
         "backend/db/Dockerfile": "be3377a1fbbc113b86f62df4907eceb0b3fda443cda8589a80c70c23e31dcd9b",
-        "backend/compose.production.yml": "0f0d1bd3ff45635bf6cb17b79af7df1043d6814f70ebb728d8a41009570114e6",
+        "backend/compose.production.yml": "709f70c7683636a0eb34a9822212b4369d5e5b906bbdeae81c3e2307236f953a",
         "backend/compose.synology.yml": "f90bc1675e97b6e0710deb415de32a6ce1dd22f21cb3cdf3b98fd7be5c50fcbd",
         "backend/deploy/create_release_bundle.py": "2d82ba4421de9d3d487661b0e09a840b2b4d7e0527b03c4d8e7582d429747195",
         "backend/deploy/create_legacy_backup.sh": "7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54",
-        "backend/deploy/sgk_backend_deploy.sh": "ec7e7eaafa0db301440dcfe4643efde4ebb67cfda914f48d9a5d2b99e11a9806",
+        "backend/deploy/sgk_backend_deploy.sh": "c368931822e5bf6c2cb50b9d12f7b0fe372f61f47f03eb98245b9c0e48118003",
         "backend/deploy/sgk_backend_ssh_dispatch.sh": "6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98",
-        "ops/backend_trusted_bundle_paths.json": "50152cc8713ae0075b7f6bb4b90d60ea8468791a78d6747f40a4f929caab4d34"
+        "ops/backend_trusted_bundle_paths.json": "b4512474c0bda2901b978b038f7dd47dd5b401066bb9521f2e4f8d4b7086db65"
       }
     }
   ]
