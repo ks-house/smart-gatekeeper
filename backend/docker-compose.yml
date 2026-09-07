@@ -131,6 +131,7 @@ services:
       ADMIN_REAUTH_SECONDS: ${ADMIN_REAUTH_SECONDS:-900}
       ADMIN_TRUSTED_PROXY_IPS: ${ADMIN_TRUSTED_PROXY_IPS:-}
       PERSONAL_ADMIN_PASSWORD: ${PERSONAL_ADMIN_PASSWORD:-}
+      DIAGNOSTICS_READ_TOKEN_SHA256: ${DIAGNOSTICS_READ_TOKEN_SHA256:-}
     # Personal NAS PROD: expose only on the NAS/LAN so DSM reverse proxy can
     # terminate public TLS on 4442. Router port forwarding must not expose 8000.
     ports:

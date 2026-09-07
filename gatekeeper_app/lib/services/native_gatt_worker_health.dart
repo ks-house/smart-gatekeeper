@@ -120,6 +120,7 @@ class NativeGattWorkerHealth {
     this.lastSession,
     this.lastGattPerformance,
     this.currentBlockingReasonCode,
+    this.scanDiagnostics,
   });
 
   final bool featureEnabled;
@@ -155,6 +156,19 @@ class NativeGattWorkerHealth {
   final Map<Object?, Object?>? lastSession;
   final GattPerformanceSummary? lastGattPerformance;
   final String? currentBlockingReasonCode;
+  final Map<Object?, Object?>? scanDiagnostics;
+
+  int? get lastScanPacketEpochMs =>
+      (scanDiagnostics?['lastPacketAtEpochMs'] as num?)?.toInt();
+
+  /// Missing radio traffic is unknown, not proof of an unhealthy scanner.
+  String scanObservationAt(DateTime now) {
+    final packet = lastScanPacketEpochMs;
+    if (packet == null || packet <= 0) return 'NOT_OBSERVED';
+    final age = now.millisecondsSinceEpoch - packet;
+    if (age < 0) return 'CLOCK_UNCERTAIN';
+    return age <= 15000 ? 'RECENT_PACKET' : 'NO_RECENT_PACKET';
+  }
 
   /// Canonical Target event session UUID, not the Android WorkManager ledger ID.
   String? get lastTargetSessionId {
@@ -222,6 +236,9 @@ class NativeGattWorkerHealth {
       credentialProvisioned: value['credentialProvisioned'] == true,
       localConsentValid: value['localConsentValid'] == true,
       healthy: value['healthy'] != false,
+      scanDiagnostics: value['scanDiagnostics'] is Map
+          ? Map<Object?, Object?>.from(value['scanDiagnostics'] as Map)
+          : null,
       lastReasonCode: value['lastReasonCode']?.toString(),
       lastTargetReasonCode: (value['lastTargetReasonCode'] as num?)?.toInt(),
       lastTargetReasonName: value['lastTargetReasonName']?.toString(),

@@ -357,3 +357,95 @@ perform the next access trial. Publication is complete; owner installation and
 physical authentication/re-entry remain pending. Target/Backend were not
 republished, no Target reboot/OTA/door command was sent, and error 133's physical
 root cause remains unconfirmed.
+
+### September 7, 13:08 approach: read-only incident observation
+
+The owner's screenshot shows manual remote-command delivery at **13:08:09 KST**,
+after the last visible automatic authentication at 12:21:38, sensor-wait messages
+at 12:21:40–41 and flow completion at 12:22:00. The owner confirms manual opening
+worked. The screenshot alone does not establish whether the phone received a
+fresh advertisement or failed before recording an authentication attempt.
+
+Read-only production observation at **13:23:35–46 KST** found:
+
+- Backend `/ready` reports exact deployed source `0c965d99632449d2d5a9b7e4c76f4c79d49b7644`,
+  all readiness checks true and fresh verified Target status. This is current
+  health evidence, not historical proof for 13:08.
+- Twelve seconds of MQTT observation found Target `2.1.469+main.g6a45aec`, boot
+  count 760, boot ID `ba9a88fa6d08cbde44ba1d8e8ce51426`, uptime 6213–6224 seconds,
+  IDLE, relay commanded off, advertising expected/active and zero active BLE
+  connections. Advertising restart attempts/failures were 3/0.
+- Accepted connections/disconnects were 3/3; challenges/proofs verified were
+  2/2, rejected proofs 0; ARMED entries/sensor detections were 2/2. The last
+  diagnostic stage remained COMPLETED at uptime 2507499 ms, approximately
+  **12:21:50 KST** using observation time minus uptime. That is consistent with
+  the earlier access window, but screenshot receipt time is not Target event
+  time and exact session correlation has not been obtained.
+- Reset reason was BROWNOUT, with the current boot estimated around **11:40 KST**,
+  before the successful automatic session. It is a separate power-stability
+  observation, not evidence of a crash at 13:08.
+- Sensor totals were 60 samples, 5 valid, 55 timeouts and 0 invalid; passage
+  rearm was not blocked. These aggregate measurements include clearance polling
+  and have no 13:08 attribution. They warrant follow-up but do not establish
+  that this approach failed at the ultrasonic stage.
+
+The primary sensor trigger is read only while ARMED; IDLE clearance polling does
+not authorize opening. Prior completed authentication therefore cannot open on
+a later approach without a fresh authorized session. Current accepted-connection
+and stage evidence points first to the path **before new authentication/ARMED**,
+not a proven sensor failure. Rejected controller connections and failures before
+Target acceptance are not counted, so a stopped phone scanner, missing ready
+hint, suppressed dispatch and early GATT failure cannot yet be distinguished.
+The relevant Target source files are unchanged between `6a45aec` and current HEAD.
+
+Administrator diagnostic readback returned 401 (administrator session required),
+and the existing NAS SSH endpoint refused connection. No authentication bypass,
+credential change, device reboot, OTA, door command or synthetic report upload
+was attempted. Preserve the phone's report history and obtain a fresh support
+report, including installed app version, wake events and sessions around 13:08,
+before choosing a runtime fix. This incident update is documentation only.
+
+#### Owner report received at 13:34:05 KST
+
+Bundle `f862b8acc3eca9e8fb86885ad32c7705` identifies installed Android
+`1.0.0-g80569b1` / **43701**, not the published diagnostic-upload follow-up
+43901. It contains the exact Target session
+`fab94c3a-74ef-45d2-8392-e7cffdbb337a`: creation 12:21:38.219 and successful
+authentication 12:21:40.515 KST (2296 ms presence-to-armed). This now correlates
+the prior live Target's last-session identifier with the phone's last success.
+
+The newest packet callback is 12:21:55.773; the newest lifecycle callback is
+MATCH_LOST (`BLE_SCAN_EXIT`, type 4, error 0) at 12:22:05.772. The independent
+registration last-callback timestamp is 12:22:05.767. No newer authentication or
+recorded receiver callback appears through the 13:34 export. The report is the
+recent view (10 sessions/20 wake records), sorted newest first; ordinary truncation
+would discard older, not later, observations. Missing journal entries alone are
+not full radio evidence, but the separately maintained callback timestamp also
+remains old. Receiver registration evidence is updated before ready-hint/dispatch
+filtering, with continuous callbacks throttled to at most one write per two seconds.
+
+Registration attempted/reconciled timestamps are **13:34:01.560/.586**, after the
+incident, and only establish accepted registration at that later time. They do
+not prove continuous scanner operation at 13:08. Source inspection confirms
+`healthy` only excludes FAILED/PROOF_UNCERTAIN as the last durable session state;
+`handsFreeReady` checks configuration/registration/current blocking reasons, not
+recent successful radio reception. Therefore both true flags and the exported
+2296 ms latency must not be read as evidence of a successful 13:08 approach.
+The inspected native receiver/registrar/health source is unchanged from 80569b1.
+
+The incident is now localized first to **fresh BLE observation delivery before
+authentication dispatch**, not a recorded proof denial or sensor-wait timeout.
+An Android scan/delivery lifecycle problem versus absent/mismatched Target radio
+at the actual approach remains unresolved; later advertising-active telemetry
+does not establish over-air reception at 13:08. MATCH_LOST is an observation,
+not proof of a scan error, user movement or scanner termination. No claim is
+made that installing 43901 fixes this path; that release fixes upload/reporting.
+Next diagnostic improvements should separate configuration health, last packet
+age and authenticated-session outcome, and preserve bounded registration/stop/
+error/recovery lifecycle history. Absence of advertisements alone cannot prove
+a dead scanner when a phone may legitimately be out of range.
+
+The follow-up owner-authorized implementation now adds separate scan packet
+evidence, bounded lifecycle capture and truthful home/settings projections;
+see [field diagnostics](field_diagnostics_capture_plan.md#september-7-scan-observation-implementation-local-not-deployed).
+It does not claim a repaired 13:08 radio path or publish a release.

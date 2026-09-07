@@ -36,12 +36,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from .acl_refresh import AclRefreshWorker
+    from .diagnostics_read import create_diagnostics_read_router
     from .admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
     )
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_refresh import AclRefreshWorker
+    from diagnostics_read import create_diagnostics_read_router
     from admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -4042,6 +4044,9 @@ app = FastAPI(
 # Missing mTLS identity configuration leaves admin/control routes unavailable;
 # this is a deployment gate, not a development fallback.
 admin_security = AdminSecurity.from_environment()
+app.include_router(create_diagnostics_read_router(
+    lambda: get_db(), os.getenv("DIAGNOSTICS_READ_TOKEN_SHA256", ""),
+))
 _control_proposals: dict[str, dict] = {}
 _control_proposals_lock = threading.Lock()
 _ops_metrics = OperationalMetrics()

@@ -81,6 +81,7 @@ object BleWakeRegistrar {
   }
 
   private fun registerOnce(context: Context): BleWakeRegistrationResult {
+    BleScanDiagnostics.record(context, BleScanDiagnostics.Event.REGISTER_REQUESTED)
     // Persist user intent before touching the adapter. A Bluetooth-OFF attempt
     // must remain eligible for restoration when the adapter later reaches ON.
     val attempt = BleWakeReconciliationPolicy.begin(
@@ -147,6 +148,7 @@ object BleWakeRegistrar {
             System.currentTimeMillis(),
           )
           writeEvidence(context, accepted)
+          BleScanDiagnostics.record(context, BleScanDiagnostics.Event.REGISTER_ACCEPTED)
           result(accepted)
         } else {
           fail(context, attempt, "scan_error", errorCode)
@@ -161,6 +163,7 @@ object BleWakeRegistrar {
 
   @Synchronized
   fun stop(context: Context): BleWakeRegistrationResult {
+    BleScanDiagnostics.record(context, BleScanDiagnostics.Event.STOP_REQUESTED)
     // Disable semantics are durable even when the adapter/permission prevents
     // the best-effort platform stop call.
     val stopped = BleWakeReconciliationPolicy.stop(readEvidence(context), processId)
@@ -242,6 +245,7 @@ object BleWakeRegistrar {
     writeEvidence(context, updated)
     val registration = result(updated)
     if (errorCode != 0) {
+      BleScanDiagnostics.record(context, BleScanDiagnostics.Event.CALLBACK_ERROR, errorCode)
       BleWakeReconciliationScheduler.scheduleIfRetryable(context, registration)
     }
     return registration
@@ -264,12 +268,18 @@ object BleWakeRegistrar {
     errorCode: Int? = null,
   ): BleWakeRegistrationResult {
     val failed = BleWakeReconciliationPolicy.fail(previous, processId, status, errorCode)
+    if (previous.status == "reconciling") {
+      BleScanDiagnostics.record(context, BleScanDiagnostics.Event.REGISTER_FAILED, errorCode)
+    }
     writeEvidence(context, failed)
     return result(failed)
   }
 
   private fun invalidate(context: Context, status: String): BleWakeRegistrationResult {
     val previous = readEvidence(context)
+    if (previous.status != status) {
+      BleScanDiagnostics.record(context, BleScanDiagnostics.Event.INVALIDATED)
+    }
     val shouldSchedule = BleWakeReconciliationRetryPolicy.shouldScheduleInvalidation(
       previous,
       processId,

@@ -351,7 +351,15 @@ docker compose run --rm flutter-builder flutter build apk --debug
 ```
 
 For issue #17 native GATT tests, Compose mounts the repository `protocol/` directory read-only at
-`/repo-protocol` so JVM tests consume the same canonical vector as firmware and backend tests. The
+`/repo-protocol` so JVM tests consume the same canonical vector as firmware and backend tests.
+September 7 Compose also mounts `backend/` read-only at `/backend`, matching the
+Flutter WebView regression test's `../backend` lookup from `/workspace`.
+Paths such as `/opt/flutter` in generated `android/local.properties` belong to
+the builder container and must not be assumed to exist on the WSL host. Keep
+source stable during Kotlin compilation and run pub-get/native tests in the
+same container; do not concurrently regenerate Flutter plugin metadata.
+
+The
 Gradle wrapper executable/JAR may be absent in a fresh checkout. Use the CI
 wrapper-generation procedure, or copy the installed Flutter SDK's matching
 `bin/cache/artifacts/gradle_wrapper/gradlew` and `gradle/wrapper/gradle-wrapper.jar`

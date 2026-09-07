@@ -45,7 +45,23 @@ class IdentitySnapshot(StrictModel):
     acl_version: Optional[int] = Field(default=None, ge=0)
 
 
+class ScanLifecycleSnapshot(StrictModel):
+    event: Literal["REGISTER_REQUESTED", "REGISTER_ACCEPTED", "REGISTER_FAILED",
+                   "STOP_REQUESTED", "INVALIDATED", "CALLBACK_ERROR",
+                   "RECOVERY_ATTEMPT", "RECOVERY_EXHAUSTED"]
+    at_epoch_ms: int = Field(ge=0, strict=True)
+    error_code: Optional[int] = Field(default=None, ge=0, le=65535, strict=True)
+
+
+class ScanSnapshot(StrictModel):
+    observation: Literal["NOT_OBSERVED", "CLOCK_UNCERTAIN", "RECENT_PACKET", "NO_RECENT_PACKET"]
+    last_packet_at_epoch_ms: Optional[int] = Field(default=None, ge=1, strict=True)
+    lifecycle: list[ScanLifecycleSnapshot] = Field(max_length=32)
+
+
 class NativeSnapshot(StrictModel):
+    scan: Optional[ScanSnapshot] = None
+
     @field_validator("stage", "wake_registration_status", mode="before")
     @classmethod
     def legacy_native_code(cls, value: Any) -> Any:
