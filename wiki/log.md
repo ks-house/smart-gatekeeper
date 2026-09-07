@@ -6928,3 +6928,39 @@
 - Run `34033139669` completed successfully at 21:44:39 KST, publishing exact source `0c965d99632449d2d5a9b7e4c76f4c79d49b7644` as `1.0.0-g0c965d9` / 43901. Main tests, release compiler, pinned signing and atomic primary/fallback publication/readback passed.
 - Independent verified-HTTPS reads confirm equal primary/fallback manifests and both 55,594,137-byte APKs matching SHA-256 `b7932838db0eaf516dbcd3128a469367a09d0496e8c188c42663b136217c81c7`. Backend exact-source readiness was already verified separately.
 - Owner can update the app, preserve report history and check the new last-upload-success indicator. Real phone install, successful authenticated upload and administrator-row readback remain unconfirmed; no Target firmware, physical action or data deletion was performed.
+
+## [2026-09-07] test | Diagnose 13:08 failed automatic approach with read-only Target evidence
+
+- Owner confirms manual entry at 13:08; screenshot has no new automatic authentication after the 12:21–12:22 flow. Current Backend readiness and live MQTT show Target 2.1.469, IDLE and advertising active, with the last GATT stage approximately 12:21:50 and no later accepted connection stage evident.
+- Recorded boot 760 / BROWNOUT at an estimated 11:40, two verified proofs/two sensor detections, and aggregate 55/60 sensor timeouts without assigning those historical aggregates to the 13:08 approach. Current health is not historical radio proof; pre-accept GATT failures remain outside the counters.
+- Administrator diagnostic access returned 401 and NAS SSH refused connection. A fresh phone support report is needed to distinguish scan/hint/dispatch suppression from early connection failure. Preserved all records and device state; no runtime modification, deployment, reboot or door command. Updated the existing continuous-presence incident page; no new wiki page or index entry required.
+
+## [2026-09-07] compile | Clarify uploaded report storage versus administrator and agent read access
+
+- Verified accepted diagnostic bundles retain session/wake arrays in payload_json, while the administrator route/UI return summary projections only. Upload consent and last successful delivery remain distinct; screen/resume-driven syncing is not guaranteed continuous background delivery.
+- Rechecked live diagnostic listing: HTTP 401 administrator session required, not an empty result or missing-bundle finding. Documented that detailed stored evidence requires authorized DB read or an authenticated detail/export implementation; manual report copying is a fallback for the current access/inspection gap. No runtime or authentication changes made.
+
+## [2026-09-07] test | Correlate owner report with Target and isolate pre-auth observation gap
+
+- New 13:34 report identifies installed APK 43701 and matches the live Target's last session exactly: 12:21:38 authentication succeeded by 12:21:40.515. Latest packet/lifecycle callbacks are 12:21:55/12:22:05; no 13:08 session is recorded, and independent last-callback metadata is also stale.
+- Registration evidence is from 13:34, not incident time. Verified healthy=true reflects only last-session failure classification, not scanner liveness; hands-free readiness and old latency likewise do not prove current reception. Documented native lifecycle/health observability improvements and the unresolved phone delivery versus incident-time Target radio boundary.
+- No runtime fix or release performed. APK 43901's already published upload correction is distinct from this BLE observation failure; manual report is evidence for diagnosis, not proof of Backend upload.
+
+## [2026-09-07] fix | Separate scan registration from packet evidence and capture bounded lifecycle
+
+- Owner authorized the improvements. Added separate native last-matching-packet evidence and 32-entry registration/stop/invalidation/error/recovery history, with bounded duplicate writes. MATCH_LOST and error/empty callbacks cannot refresh positive reception evidence. Home/settings now distinguish configuration readiness from recent/absent/clock-uncertain reception; legacy healthy remains a last-session compatibility field.
+- Support reports export a closed optional native.scan object, apply the report Clear cutoff to lifecycle rows and preserve operational facts/consent/credentials. Backend validates the bounded extension, does not treat registration as a phone wake, and omits absent scan data from legacy canonical retry bytes. Backend-first publication is required; no deployment, phone install, Target change or physical action was performed.
+- Docker Flutter suite passed 106 tests; focused Dart analysis is clean. Native compilation and 84 BLE/GATT tests passed, including three new packet-evidence/projection tests. Backend suite ran 226 tests successfully with two existing real-MariaDB skips; OTA contract and git diff whitespace checks passed.
+- Corrected the Docker builder's missing read-only Backend mount after the full Flutter suite exposed its relative-path dependency. Host /opt SDK paths were container-only, and a native compile during source edits required a stable-source rerun. Validation-generated desktop registrants, analysis exclusions and SDK-driven lock changes were restored; no dependency upgrade is included. Production exact-source build and actual field recovery remain separate evidence gates.
+
+## [2026-09-07] compile | Explain local-PC history APIs and administrator environment credential use
+
+- Verified administrator history/diagnostic-summary routes use sgk_admin_session cookies; arbitrary Bearer tokens are not implemented. Documented local environment-variable-to-cookie use, actual process visibility, server-memory session expiration/restart limits and broader administrator authority.
+- Clarified that detailed mobile bundle retrieval and a dedicated read-only diagnostics token are not part of the completed scan-capture extension. No credentials read or changed, no authentication performed and no runtime/deployment changes made for this explanation.
+
+## [2026-09-07] code | Implement dedicated read-only report API and local diagnostic client
+
+- Owner approved the follow-up. Added separate token-authenticated GET list/detail routes with bounded pagination, strict stored-report projection, matching verified Target events, no-store responses and bounded rate limiting. The token cannot authenticate existing administrator routes or perform mutation/door/OTA operations. Backend stores only a configured SHA-256 verifier.
+- Added standard-library HTTPS client with environment/file credentials, redirect refusal, safe error output and private non-overwriting token initialization. Created the owner's local 0600 token outside the repository without printing its raw value; local token availability is confirmed, and the separate server snippet contains only its digest. No secret was put in Git or changed on the NAS.
+- Backend 233 tests pass with two existing real-MariaDB skips; four local client tests and OTA contract pass. Updated route-inventory tests to use OpenAPI rather than FastAPI's internal lazy-router shape. Registered new module/test paths in the Backend inventory.
+- The production Compose passthrough, backwards-compatible optional runtime-key validation and executable inventory are protected deployment inputs. Their candidate hashes and pending separate review are recorded in diagnostics_read_api.md; the existing trust-baseline check is intentionally not self-approved and remains failing for those changed bytes. Install the reviewed wrapper before adding the NAS runtime key. Live API probe still returns 404; publication, NAS configuration and real report readback are not complete.

@@ -63,6 +63,8 @@ class SupportReportService {
       },
       'native': <String, Object?>{
         'healthy': currentHealth?.healthy,
+        if (currentHealth?.scanDiagnostics != null)
+          'scan': _safeScan(currentHealth!, since),
         'hands_free_ready': currentHealth?.handsFreeReady,
         'wake_registered': currentHealth?.wakeRegistered,
         'wake_registration_requested': currentHealth?.wakeRegistrationRequested,
@@ -208,6 +210,46 @@ class SupportReportService {
               'error_code': _safeInt(item['errorCode']),
             })
         .toList(growable: false);
+  }
+
+  Map<String, Object?> _safeScan(NativeGattWorkerHealth health, int since) {
+    const events = {
+      'REGISTER_REQUESTED',
+      'REGISTER_ACCEPTED',
+      'REGISTER_FAILED',
+      'STOP_REQUESTED',
+      'INVALIDATED',
+      'CALLBACK_ERROR',
+      'RECOVERY_ATTEMPT',
+      'RECOVERY_EXHAUSTED'
+    };
+    final raw = health.scanDiagnostics?['lifecycle'];
+    final lifecycle = (raw is List ? raw : const [])
+        .whereType<Map>()
+        .where((e) =>
+            events.contains(e['event']) &&
+            e['atEpochMs'] is int &&
+            (e['atEpochMs'] as int) > since)
+        .map((e) => <String, Object?>{
+              'event': e['event'],
+              'at_epoch_ms': e['atEpochMs'],
+              'error_code': e['errorCode'] is int &&
+                      (e['errorCode'] as int) >= 0 &&
+                      (e['errorCode'] as int) <= 65535
+                  ? e['errorCode']
+                  : null,
+            })
+        .toList()
+      ..sort((a, b) =>
+          (b['at_epoch_ms'] as int).compareTo(a['at_epoch_ms'] as int));
+    return {
+      'observation': health.scanObservationAt(DateTime.now()),
+      'last_packet_at_epoch_ms': health.lastScanPacketEpochMs != null &&
+              health.lastScanPacketEpochMs! > 0
+          ? health.lastScanPacketEpochMs
+          : null,
+      'lifecycle': lifecycle.take(32).toList(),
+    };
   }
 
   int? _safeInt(Object? value) => value is num ? value.toInt() : null;

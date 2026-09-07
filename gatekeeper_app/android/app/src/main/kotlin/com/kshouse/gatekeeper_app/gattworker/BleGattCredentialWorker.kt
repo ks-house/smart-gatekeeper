@@ -453,6 +453,8 @@ object BleGattHealthBridge {
       "credentialProvisioned" to localConsent.credentialProvisioned,
       "localConsentValid" to localConsent.valid,
       "healthy" to (last?.state !in setOf(DurableSessionState.FAILED, DurableSessionState.PROOF_UNCERTAIN)),
+      // The legacy healthy flag is last-session outcome, NOT scanner liveness.
+      "scanDiagnostics" to com.kshouse.gatekeeper_app.blewake.BleScanDiagnostics.snapshot(context),
       "latestDetection" to BleWakeJournal.latestRedacted(context.applicationContext),
       "lastSession" to last?.redactedMap(),
       "lastReasonCode" to last?.reasonCode,

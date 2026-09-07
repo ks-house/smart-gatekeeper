@@ -4,6 +4,23 @@ import 'package:gatekeeper_app/services/native_gatt_worker_health.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('registration and old success do not establish current reception', () {
+    final now = DateTime.fromMillisecondsSinceEpoch(100000);
+    NativeGattWorkerHealth health(int? packet) =>
+        NativeGattWorkerHealth.fromMap({
+          'healthy': true,
+          'wakeRegistered': true,
+          'handsFreeReady': true,
+          'scanDiagnostics': {'lastPacketAtEpochMs': packet, 'lifecycle': []},
+        });
+    expect(health(null).scanObservationAt(now), 'NOT_OBSERVED');
+    expect(health(85000).scanObservationAt(now), 'RECENT_PACKET');
+    expect(health(84999).scanObservationAt(now), 'NO_RECENT_PACKET');
+    expect(health(100001).scanObservationAt(now), 'CLOCK_UNCERTAIN');
+    expect(health(0).scanObservationAt(now), 'NOT_OBSERVED');
+    expect(
+        health(1).handsFreeReady, isTrue); // Observation cannot disable access.
+  });
   const channel = MethodChannel(
     'com.kshouse.gatekeeper_app/ble_gatt_worker_health',
   );

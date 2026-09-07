@@ -485,7 +485,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
       return strings.statusCheckNeeded;
     }
     if (_identityStatus.accessReady && _health?.handsFreeReady == true) {
-      return strings.smartKeyAvailable;
+      return '스마트키 설정 준비됨';
     }
     if (_identityStatus.accessReady) return strings.setupCheckNeeded;
     return switch (_identityStatus.enrollmentState) {
@@ -499,7 +499,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
 
   String _readinessDetail(AppLocalizations strings) {
     if (_identityStatus.accessReady && _health?.handsFreeReady == true) {
-      return strings.smartKeyAvailableDetail;
+      return '자동 출입 설정이 준비되었습니다. 실제 Target 신호 수신 상태는 아래에서 확인하세요.';
     }
     final blocked = _health?.currentBlockingReasonCode;
     if (blocked != null) return friendlyFailure(blocked, strings);
@@ -592,6 +592,21 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     );
   }
 
+  String _scanStatusDetail() {
+    final health = _health;
+    if (health == null) return '스캔 상태 확인 중';
+    final registration = health.wakeRegistered ? '스캔 등록됨' : '스캔 등록 확인 필요';
+    final observation = switch (health.scanObservationAt(DateTime.now())) {
+      'RECENT_PACKET' => '최근 15초 내 Target 신호 수신',
+      'NO_RECENT_PACKET' => '최근 수신 없음 · 범위 밖이거나 수신 상태 확인 필요',
+      'CLOCK_UNCERTAIN' => '수신 시각 확인 필요',
+      _ => '실제 수신 기록 없음 · 스캔 고장 판정은 아님',
+    };
+    final packet = health.lastScanPacketEpochMs;
+    return '$registration\n$observation'
+        '${packet == null || packet <= 0 ? '' : '\n마지막 신호 ${_formatTime(DateTime.fromMillisecondsSinceEpoch(packet))}'}';
+  }
+
   Widget _home() {
     final strings = AppLocalizations.of(context);
     final ready =
@@ -650,10 +665,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
             child: ListTile(
               leading: const Icon(Icons.sensors),
               title: Text(_targetState(strings)),
-              subtitle: Text(_health?.latestDetection == null
-                  ? strings.noRecentDetection
-                  : '${strings.recentDetection} '
-                      '${_formatTime(_health!.latestDetection!.receivedAt)}'),
+              subtitle: Text(_scanStatusDetail()),
               trailing: _health?.detectionStage == TargetDetectionStage.armed
                   ? const Icon(Icons.check_circle, color: Colors.greenAccent)
                   : null,
@@ -738,8 +750,9 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
               ListTile(
                 leading: const Icon(Icons.security),
                 title: const Text('백그라운드 출입'),
-                subtitle: Text(
-                    _health?.handsFreeReady == true ? '사용 가능' : '설정 확인 필요'),
+                subtitle: Text(_health?.handsFreeReady == true
+                    ? '설정 준비됨 · 실제 감지는 별도 확인'
+                    : '설정 확인 필요'),
                 trailing: Icon(
                   _health?.handsFreeReady == true
                       ? Icons.check_circle
@@ -750,6 +763,11 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
                 ),
               ),
               const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.sensors),
+                title: const Text('BLE 수신 상태'),
+                subtitle: Text(_scanStatusDetail()),
+              ),
               ValueListenableBuilder<UpdateState>(
                 valueListenable: _updates.stateNotifier,
                 builder: (context, state, _) {

@@ -14,7 +14,7 @@ from backend.app import main
 
 class LegacyAndOtaIndependenceTest(unittest.TestCase):
     def test_force_open_is_admin_dual_control_and_legacy_device_route_is_removed(self) -> None:
-        paths = {route.path for route in main.app.routes}
+        paths = set(main.app.openapi()["paths"])
         self.assertIn("/api/v1/admin/control/force-open", paths)
         self.assertIn("/api/v1/admin/control/force-open/{approval_id}/approve", paths)
         self.assertIn("/api/v1/door/open", paths)
@@ -25,7 +25,7 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
         self.assertEqual(426, response.status_code)
 
     def test_ota_health_config_and_download_routes_do_not_depend_on_acl_feature(self) -> None:
-        paths = {route.path for route in main.app.routes}
+        paths = set(main.app.openapi()["paths"])
         self.assertIn("/health", paths)
         self.assertIn("/api/v1/config", paths)
         self.assertIn("/api/v1/download/apk", paths)
@@ -42,9 +42,10 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
             "sys.stdout.reconfigure(encoding='utf-8');"
             "sys.stderr.reconfigure(encoding='utf-8');"
             "from backend.app import main;"
-            "assert '/api/v1/door/open' in {r.path for r in main.app.routes};"
-            "assert '/api/v1/admin/control/force-open' in {r.path for r in main.app.routes};"
-            "assert any(r.path=='/api/v1/download/apk' for r in main.app.routes)"
+            "paths=set(main.app.openapi()['paths']);"
+            "assert '/api/v1/door/open' in paths;"
+            "assert '/api/v1/admin/control/force-open' in paths;"
+            "assert '/api/v1/download/apk' in paths"
         )
 
     def test_disabled_acl_invalid_integer_config_cannot_take_down_mobile_manual_remote(self) -> None:
@@ -121,7 +122,7 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
             [
                 sys.executable,
                 "-c",
-                "from backend.app import main; paths={r.path for r in main.app.routes}; "
+                "from backend.app import main; paths=set(main.app.openapi()['paths']); "
                 "assert '/api/v1/door/open' in paths; "
                 "assert '/api/v1/acl/enrollment/challenge' not in paths",
             ],
@@ -160,7 +161,7 @@ class LegacyAndOtaIndependenceTest(unittest.TestCase):
             [
                 sys.executable,
                 "-c",
-                "from backend.app import main; paths={r.path for r in main.app.routes}; "
+                "from backend.app import main; paths=set(main.app.openapi()['paths']); "
                 "assert '/api/v1/door/open' in paths; "
                 "assert '/api/v1/acl/enrollment/challenge' not in paths",
             ],

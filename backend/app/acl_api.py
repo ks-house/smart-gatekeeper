@@ -445,6 +445,9 @@ def create_acl_router(
         if config.personal_diagnostics_ingest is None:
             raise HTTPException(status_code=503, detail="diagnostic ingest is unavailable")
         bundle = request.bundle.model_dump(by_alias=True, mode="json")
+        # Optional diagnostics must not change canonical bytes of legacy retries.
+        if bundle["native"].get("scan") is None:
+            bundle["native"].pop("scan", None)
         if len(json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 65536:
             raise HTTPException(status_code=413, detail="diagnostic bundle is too large")
         return _invoke(

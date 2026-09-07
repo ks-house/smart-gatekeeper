@@ -96,6 +96,41 @@ void main() {
     expect(await store.lastUploadSuccess(), isNotNull);
   });
 
+  test('scan lifecycle is closed bounded and obeys report clear cutoff',
+      () async {
+    final store = FieldDiagnosticsStore();
+    final health = NativeGattWorkerHealth.fromMap({
+      'scanDiagnostics': {
+        'lastPacketAtEpochMs': 1,
+        'lifecycle': [
+          {'event': 'PRIVATE_TEXT', 'atEpochMs': 999},
+          for (var i = 1; i <= 40; i++)
+            {
+              'event': 'REGISTER_ACCEPTED',
+              'atEpochMs': i,
+              'errorCode': 999999,
+              'address': 'private'
+            },
+        ],
+      },
+    });
+    final report = await SupportReportService(diagnosticsStore: store)
+        .buildMap(identity: identity, health: health);
+    final scan = (report['native'] as Map)['scan'] as Map;
+    expect(scan['observation'], 'NO_RECENT_PACKET');
+    final events = scan['lifecycle'] as List;
+    expect(events, hasLength(32));
+    expect(events.first['at_epoch_ms'], 40);
+    expect(events.last['at_epoch_ms'], 9);
+    expect(events.first['error_code'], isNull);
+    expect(jsonEncode(scan), isNot(contains('private')));
+    await store.clearReportHistory(
+        now: DateTime.fromMillisecondsSinceEpoch(40));
+    final cleared = await SupportReportService(diagnosticsStore: store)
+        .buildMap(identity: identity, health: health);
+    expect(((cleared['native'] as Map)['scan'] as Map)['lifecycle'], isEmpty);
+  });
+
   test('real report producer agrees with shared backend fixture', () async {
     final fixture = jsonDecode(
         File('test/fixtures/mobile_support_v2.json').readAsStringSync()) as Map;

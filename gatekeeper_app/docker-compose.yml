@@ -8,6 +8,7 @@ services:
     volumes:
       - ./:/workspace
       - ../protocol:/repo-protocol:ro
+      - ../backend:/backend:ro
       - gradle-cache:/root/.gradle
     tty: true
     stdin_open: true

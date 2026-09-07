@@ -280,6 +280,71 @@ from an absent exported callback without recording raw advertisement data.
 
 ## 10. Operator explanation: report, upload and test marker
 
+### September 7 scan observation implementation (local, not deployed)
+
+#### Local-PC read authentication boundary
+
+Existing GET routes `/api/v1/admin/diagnostic-attempts` (summary) and
+`/api/v1/admin/access-events` (Target history) accept the `sgk_admin_session`
+cookie, not an arbitrary Bearer admin token. A local client may obtain that
+cookie through the existing personal-password login or use an already valid
+session. A proposed local variable such as `SGK_ADMIN_SESSION_COOKIE` is a
+client-side naming convention only: code must read it and send the cookie;
+setting it does not configure new Backend authorization. Sessions are held in
+server memory, expire according to server policy (default 900 seconds) and are
+lost on process restart. The environment must actually be visible to the tool
+process; exporting in an unrelated terminal does not update an existing process.
+
+Detailed stored mobile session/wake/lifecycle arrays still have no dedicated
+administrator read/export route. The scan-observation implementation above
+extends capture/ingest only. A durable diagnostics-only read token and detailed
+read route remain separate implementation work; existing administrator sessions
+have broader authority and must never be described as read-only tokens. Do not
+paste secrets into chat, print them or commit them.
+
+Follow-up owner approval implemented the separate
+[diagnostic read API and PC client](diagnostics_read_api.md). Its token is not an
+administrator session and grants only report-list/detail reads. This is local
+implementation; the deployed administrator-only service remains unchanged until
+Backend publication and NAS digest configuration are completed.
+
+- Native scan diagnostics keep a separate bounded 32-entry registration/stop/
+  invalidation/callback-error/recovery timeline. It cannot replace the presence
+  journal's latest event or trigger authentication. Repeated identical lifecycle
+  events are suppressed within ten seconds. Matching FIRST_MATCH/ALL_MATCHES
+  packets update a separate last-packet timestamp, at most once per two seconds;
+  MATCH_LOST, empty results and scan errors do not refresh packet evidence.
+- Home/settings separate accepted registration from recent packet observation
+  (15 seconds), no recent observation, absent evidence and uncertain clock. Old
+  successful authentication is no longer presented as proof of current radio
+  health. The legacy `healthy` field retains its last-session semantics for
+  compatibility; the new optional `native.scan` contains observation, last packet
+  timestamp and the closed, bounded lifecycle list. No address, credential,
+  arbitrary error text or radio payload is added.
+- Report Clear filters lifecycle rows using the same report cutoff; operational
+  registration/last-packet facts, consent, credentials and replay/uncertain-proof
+  state are not cleared. Recent/full reports both retain at most 32 lifecycle
+  rows under the existing total byte budget. Backend accepts this optional
+  extension, while omission preserves legacy canonical retry bytes.
+- Deploy the Backend schema extension **before** publishing the new APK. The
+  previously deployed strict Backend does not accept the added scan field; no
+  coordinated production rollout or phone installation is claimed in this entry.
+- Recovery still requires existing explicit scanner errors or lifecycle triggers,
+  with existing bounded retry/ownership behavior. No radio-silence watchdog,
+  periodic scan reset, Target reboot, authorization bypass or door action was
+  added. This closes observation gaps, not the unproven field root cause.
+
+September 7 clarification: accepted uploads persist their validated diagnostic
+bundle as `mobile_diagnostic_bundles.payload_json`, including the exported
+session/wake records. The administrator `diagnostic-attempts` endpoint and table
+currently expose summary/classification projections, not the detailed stored
+session/wake arrays. Raw-detail retrieval therefore needs an authorized database
+read or a separately implemented authenticated detail/export route. A live
+unauthenticated read on September 7 returned 401 `administrator session required`;
+this says nothing about whether the owner's bundle is stored. Agent access to
+Target MQTT does not confer administrator report access. Ask for manual copying
+only as a fallback, distinguishing missing read access from missing upload.
+
 - Support Report is the phone-side diagnostic bundle that the owner can inspect
   and explicitly copy/share. Opening or copying it does not itself upload it.
 - Automatic field-diagnostic upload is an independent, default-OFF consented

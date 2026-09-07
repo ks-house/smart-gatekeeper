@@ -45,6 +45,27 @@ class FakeService:
 
 
 class MobileDiagnosticsTest(unittest.TestCase):
+    def test_optional_scan_observation_is_bounded_and_not_a_wake(self):
+        value = bundle()
+        self.assertIsNone(MobileDiagnosticBundle.model_validate(value).native.scan)
+        value["native"]["scan"] = {
+            "observation": "NO_RECENT_PACKET", "last_packet_at_epoch_ms": 1,
+            "lifecycle": [{"event": "REGISTER_ACCEPTED", "at_epoch_ms": 2,
+                           "error_code": None}],
+        }
+        parsed = MobileDiagnosticBundle.model_validate(value)
+        self.assertEqual(parsed.native.scan.observation, "NO_RECENT_PACKET")
+        self.assertEqual(classify_bundle(value, [])["first_missing"], "PHONE_WAKE_NOT_OBSERVED")
+        for field, invalid in (("event", "PRIVATE_TEXT"), ("at_epoch_ms", -1),
+                               ("at_epoch_ms", True), ("error_code", 65536)):
+            bad = json.loads(json.dumps(value))
+            bad["native"]["scan"]["lifecycle"][0][field] = invalid
+            with self.assertRaises(ValidationError):
+                MobileDiagnosticBundle.model_validate(bad)
+        value["native"]["scan"]["lifecycle"] *= 33
+        with self.assertRaises(ValidationError):
+            MobileDiagnosticBundle.model_validate(value)
+
     def test_real_mobile_report_fixture_and_legacy_values(self):
         fixture = Path(__file__).resolve().parents[2] / "gatekeeper_app/test/fixtures/mobile_support_v2.json"
         value = json.loads(fixture.read_text())
@@ -229,6 +250,15 @@ class MobileDiagnosticsTest(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual("a" * 32, response.json()["bundle_ref"])
         self.assertEqual(1, len(captured))
+        self.assertNotIn("scan", captured[-1][2]["native"])
+        request["bundle"]["native"]["scan"] = {
+            "observation": "NO_RECENT_PACKET", "last_packet_at_epoch_ms": 1,
+            "lifecycle": [{"event": "REGISTER_ACCEPTED", "at_epoch_ms": 2, "error_code": None}],
+        }
+        response = client.post("/api/v1/acl/personal/diagnostics", json=request,
+                               headers={"X-API-KEY": "mobile-key"})
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("REGISTER_ACCEPTED", captured[-1][2]["native"]["scan"]["lifecycle"][0]["event"])
         request["bundle"]["native"].update(stage="waiting", wake_registration_status="registered")
         request["bundle"]["wake_events"][0]["strongest_rssi"] = 127
         response = client.post("/api/v1/acl/personal/diagnostics", json=request,

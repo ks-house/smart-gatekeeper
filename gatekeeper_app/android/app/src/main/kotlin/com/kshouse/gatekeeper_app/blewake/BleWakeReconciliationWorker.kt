@@ -23,6 +23,8 @@ class BleWakeReconciliationWorker(
   parameters: WorkerParameters,
 ) : Worker(context, parameters) {
   override fun doWork(): Result {
+    if (!BleWakeRegistrar.isEnabled(applicationContext)) return Result.success()
+    BleScanDiagnostics.record(applicationContext, BleScanDiagnostics.Event.RECOVERY_ATTEMPT)
     val registration =
       BleWakeRegistrar.reconcileRequestedWithoutScheduling(applicationContext)
     if (!registration.requested) return Result.success()
@@ -35,6 +37,7 @@ class BleWakeReconciliationWorker(
     ) {
       Result.retry()
     } else {
+      BleScanDiagnostics.record(applicationContext, BleScanDiagnostics.Event.RECOVERY_EXHAUSTED)
       Result.success()
     }
   }

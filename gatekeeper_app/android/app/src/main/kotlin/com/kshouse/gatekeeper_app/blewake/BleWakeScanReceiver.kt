@@ -29,6 +29,10 @@ class BleWakeScanReceiver : BroadcastReceiver() {
       val newestTimestamp = selected?.timestampNanos
       val errorCode = intent.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, ScanCallbackError.NONE)
       val callbackType = intent.getIntExtra(BluetoothLeScanner.EXTRA_CALLBACK_TYPE, 0)
+      // MATCH_LOST and error callbacks are not positive packet reception.
+      if (BleScanDiagnostics.isPacketObservation(errorCode, callbackType, matchingResults.size)) {
+        BleScanDiagnostics.packet(context.applicationContext)
+      }
       // Packet callbacks can arrive ten times a second. Keep registration
       // evidence bounded instead of synchronously committing preferences per packet.
       if (errorCode != 0 || callbackType != 1 ||
