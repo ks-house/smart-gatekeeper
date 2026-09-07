@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "f23239913cad533763007939f8ee9c37cdc8fe62"
-EXPECTED_BUNDLE_ID = "personal-runtime-main-verification-baseline"
+MERGED_MAIN_COMMIT = "1cecb4bdba04ba8f7acb93c561fd03dac89591dd"
+EXPECTED_BUNDLE_ID = "diagnostics-read-deployment-baseline"
 LEGACY_FULL_BUNDLE_DIGEST_LINES = """\
 .github/workflows/deploy.yml 74fb06eef8e56cfd5f79f2c5bae4b6e41d798a5ccf2fb00c4aa30668db1f4dda
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -146,18 +146,18 @@ ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/Dockerfile ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573
 backend/db/Dockerfile be3377a1fbbc113b86f62df4907eceb0b3fda443cda8589a80c70c23e31dcd9b
-backend/compose.production.yml 0f0d1bd3ff45635bf6cb17b79af7df1043d6814f70ebb728d8a41009570114e6
+backend/compose.production.yml 709f70c7683636a0eb34a9822212b4369d5e5b906bbdeae81c3e2307236f953a
 backend/compose.synology.yml f90bc1675e97b6e0710deb415de32a6ce1dd22f21cb3cdf3b98fd7be5c50fcbd
 backend/deploy/create_release_bundle.py 2d82ba4421de9d3d487661b0e09a840b2b4d7e0527b03c4d8e7582d429747195
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
-backend/deploy/sgk_backend_deploy.sh ec7e7eaafa0db301440dcfe4643efde4ebb67cfda914f48d9a5d2b99e11a9806
+backend/deploy/sgk_backend_deploy.sh c368931822e5bf6c2cb50b9d12f7b0fe372f61f47f03eb98245b9c0e48118003
 backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
-ops/backend_trusted_bundle_paths.json 50152cc8713ae0075b7f6bb4b90d60ea8468791a78d6747f40a4f929caab4d34
+ops/backend_trusted_bundle_paths.json b4512474c0bda2901b978b038f7dd47dd5b401066bb9521f2e4f8d4b7086db65
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/build_app.yml",
-    ".github/workflows/deploy.yml",
-    "scripts/ota_contract_gate.py",
+    "backend/compose.production.yml",
+    "backend/deploy/sgk_backend_deploy.sh",
+    "ops/backend_trusted_bundle_paths.json",
 }
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
