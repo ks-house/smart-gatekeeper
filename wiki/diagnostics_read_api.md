@@ -1,6 +1,7 @@
 # Local-PC diagnostic read API
 
-Status: implemented and locally tested; not deployed or enabled on the NAS yet.
+Status: Backend deployed as `00bee34343827181cbaa449244dbfe96044a6e94` via
+PR #387 at 14:28 KST on September 7. NAS token activation remains pending.
 This is separate from administrator cookie authentication and from door control.
 
 ## Scope
@@ -102,10 +103,9 @@ four PC-client tests pass, and the OTA contract passes. The new API/client tests
 account for seven/four tests respectively. Existing route inventory assertions
 now use OpenAPI paths rather than assuming every FastAPI router node has `.path`.
 
-The repository's protected-baseline test deliberately does not pass for the
-following not-yet-admitted deployment-input changes. No baseline digest was
-rewritten to approve the implementation itself. Separate protected transition
-review is required before publishing:
+The following deployment-input changes were separately admitted by policy
+PR #388 before merge-connecting that main into PR #387. Local policy tests and
+the hosted trusted-base check pass; all 23 protected paths remain enforced:
 
 | Protected candidate | SHA-256 |
 | --- | --- |
@@ -116,3 +116,17 @@ review is required before publishing:
 The unauthenticated live list-route probe returned 404 on September 7. The local
 token file exists with mode 0600 and `--check-token` succeeds, but neither proves
 NAS activation. Do not generate another token to resolve that 404.
+
+After deployment run `34086666204`, external `/ready` returns that exact source
+and all checks pass (DB, MQTT, collector, authentication and evidence integrity).
+API image digest is `9c56cdb92797158dbfd31fef40f327336a26a3a59c79f64ab0c6fa60a86a6439`.
+The dedicated PC token now receives 503, consistent with the deliberately
+disabled capability until NAS digest configuration. This is not an empty report
+list and does not establish real report readback.
+
+The current GitHub production variable identifies NAS SSH port **8822**.
+Port 22 refuses connections; port 8822 is reachable but this PC's available
+noninteractive authentication is rejected. CI's forced `apply`/`status` key
+does not authorize editing the root wrapper or runtime configuration. Owner
+setup must use the existing NAS administrative path and the previously created
+digest snippet; do not regenerate the PC token or loosen the forced key.

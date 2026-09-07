@@ -280,7 +280,7 @@ from an absent exported callback without recording raw advertisement data.
 
 ## 10. Operator explanation: report, upload and test marker
 
-### September 7 scan observation implementation (local, not deployed)
+### September 7 scan observation implementation
 
 #### Local-PC read authentication boundary
 
@@ -295,18 +295,13 @@ server memory, expire according to server policy (default 900 seconds) and are
 lost on process restart. The environment must actually be visible to the tool
 process; exporting in an unrelated terminal does not update an existing process.
 
-Detailed stored mobile session/wake/lifecycle arrays still have no dedicated
-administrator read/export route. The scan-observation implementation above
-extends capture/ingest only. A durable diagnostics-only read token and detailed
-read route remain separate implementation work; existing administrator sessions
-have broader authority and must never be described as read-only tokens. Do not
-paste secrets into chat, print them or commit them.
-
-Follow-up owner approval implemented the separate
+Existing administrator sessions have broader authority and must never be
+described as read-only tokens. Do not paste secrets into chat, print them or
+commit them. Follow-up owner approval implemented the separate
 [diagnostic read API and PC client](diagnostics_read_api.md). Its token is not an
-administrator session and grants only report-list/detail reads. This is local
-implementation; the deployed administrator-only service remains unchanged until
-Backend publication and NAS digest configuration are completed.
+administrator session and grants only report-list/detail reads. Backend
+`00bee34343827181cbaa449244dbfe96044a6e94` was deployed on September 7 with this
+route, but NAS digest activation is still pending (503, not an empty history).
 
 - Native scan diagnostics keep a separate bounded 32-entry registration/stop/
   invalidation/callback-error/recovery timeline. It cannot replace the presence
@@ -326,20 +321,30 @@ Backend publication and NAS digest configuration are completed.
   state are not cleared. Recent/full reports both retain at most 32 lifecycle
   rows under the existing total byte budget. Backend accepts this optional
   extension, while omission preserves legacy canonical retry bytes.
-- Deploy the Backend schema extension **before** publishing the new APK. The
-  previously deployed strict Backend does not accept the added scan field; no
-  coordinated production rollout or phone installation is claimed in this entry.
+- Deploy the Backend schema extension **before** publishing the new APK. This
+  extension is deployed in `00bee34`; APK publication is recorded separately.
+  Phone installation and actual field reception remain unverified.
 - Recovery still requires existing explicit scanner errors or lifecycle triggers,
   with existing bounded retry/ownership behavior. No radio-silence watchdog,
   periodic scan reset, Target reboot, authorization bypass or door action was
   added. This closes observation gaps, not the unproven field root cause.
 
+September 7 rollout: Backend run `34086666204` deployed `00bee34` at 14:28 KST
+with external readiness confirmed. Mobile run `34086666111` then published
+`1.0.0-g00bee34` / 44201 at 14:40:45 KST. Signing, primary/fallback publication
+and readback passed; independent HTTPS reads verify equal manifests and both
+55,610,521-byte APKs against SHA-256
+`c607f9f027d5cbe010894ad36476664f31e9d63e81c5443c6e3181a7e99ea406`.
+The owner installs the APK. NAS read-token activation, real report readback and
+actual post-update approach behavior remain unverified; see the
+[diagnostic read setup](diagnostics_read_api.md).
+
 September 7 clarification: accepted uploads persist their validated diagnostic
 bundle as `mobile_diagnostic_bundles.payload_json`, including the exported
 session/wake records. The administrator `diagnostic-attempts` endpoint and table
 currently expose summary/classification projections, not the detailed stored
-session/wake arrays. Raw-detail retrieval therefore needs an authorized database
-read or a separately implemented authenticated detail/export route. A live
+session/wake arrays. Detailed retrieval now uses the dedicated read-only route
+after NAS token activation, or an authorized database read. A pre-deployment live
 unauthenticated read on September 7 returned 401 `administrator session required`;
 this says nothing about whether the owner's bundle is stored. Agent access to
 Target MQTT does not confer administrator report access. Ask for manual copying
