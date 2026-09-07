@@ -6928,3 +6928,9 @@
 - Run `34033139669` completed successfully at 21:44:39 KST, publishing exact source `0c965d99632449d2d5a9b7e4c76f4c79d49b7644` as `1.0.0-g0c965d9` / 43901. Main tests, release compiler, pinned signing and atomic primary/fallback publication/readback passed.
 - Independent verified-HTTPS reads confirm equal primary/fallback manifests and both 55,594,137-byte APKs matching SHA-256 `b7932838db0eaf516dbcd3128a469367a09d0496e8c188c42663b136217c81c7`. Backend exact-source readiness was already verified separately.
 - Owner can update the app, preserve report history and check the new last-upload-success indicator. Real phone install, successful authenticated upload and administrator-row readback remain unconfirmed; no Target firmware, physical action or data deletion was performed.
+
+## [2026-09-07] compile | Admit reviewed diagnostics deployment inputs separately
+
+- Feature PR #387 pins `1cecb4bdba04ba8f7acb93c561fd03dac89591dd`; separate policy-only admission updates exactly three protected input digests and retains all 23 paths, source identity and ancestry checks.
+- Reviewed Compose optional digest forwarding, NAS exact-key/digest validation and two Backend inventory additions. No signing/workflow/SSH command expansion. Local policy suite: 42 tests pass.
+- User requested deployment. GitHub authentication and fresh main verified; direct NAS SSH port 22 still refuses connection. Root wrapper installation and runtime digest activation are not claimed.
