@@ -50,19 +50,33 @@ def initialize(path):
                                    hashlib.sha256(token.encode("ascii")).hexdigest()}}
 
 
-def endpoint(base, bundle_id, limit, before_id):
+def origin(base):
     parsed = urllib.parse.urlsplit(base)
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
             or parsed.password is not None or parsed.query or parsed.fragment
             or parsed.path not in ("", "/")):
         raise ValueError("base URL must be an HTTPS origin without credentials or query")
-    url = base.rstrip("/") + "/api/v1/diagnostics/bundles"
+    return base.rstrip("/")
+
+
+def endpoint(base, bundle_id, limit, before_id):
+    url = origin(base) + "/api/v1/diagnostics/bundles"
     if bundle_id is not None:
         return url + "/" + str(bundle_id)
     query = {"limit": limit}
     if before_id is not None:
         query["before_id"] = before_id
     return url + "?" + urllib.parse.urlencode(query)
+
+
+def access_events_endpoint(base, limit, before_id, **filters):
+    query = {"limit": limit}
+    if before_id is not None:
+        query["before_id"] = before_id
+    for key in ("since", "until", "target_id", "session_id", "boot_count", "event_code"):
+        if filters.get(key) is not None:
+            query[key] = filters[key]
+    return origin(base) + "/api/v1/diagnostics/access-events?" + urllib.parse.urlencode(query)
 
 
 def fetch(url, token):
@@ -88,21 +102,38 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--init-token", action="store_true", help="create local token without displaying it")
     mode.add_argument("--check-token", action="store_true", help="check local availability; no network")
+    mode.add_argument("--access-events", action="store_true", help="read verified Target events independently of mobile reports")
+    mode.add_argument("--bundle-id", type=positive)
     parser.add_argument("--token-file", type=Path, default=DEFAULT_TOKEN_FILE,
                         help="creation destination for --init-token only")
     parser.add_argument("--base-url", default="https://tworimpa.synology.me:4442")
-    parser.add_argument("--bundle-id", type=positive)
     parser.add_argument("--before-id", type=positive)
     parser.add_argument("--limit", type=int, default=20, choices=range(1, 101), metavar="1..100")
+    parser.add_argument("--since", help="access events: inclusive receipt time, ISO 8601 with timezone")
+    parser.add_argument("--until", help="access events: exclusive receipt time, ISO 8601 with timezone")
+    parser.add_argument("--target-id", help="access events: exact Target ID")
+    parser.add_argument("--session-id", help="access events: exact session UUID")
+    parser.add_argument("--boot-count", type=positive, help="access events: Target boot count")
+    parser.add_argument("--event-code", help="access events: exact event code")
     args = parser.parse_args(argv)
+    filters = {key: getattr(args, key) for key in
+               ("since", "until", "target_id", "session_id", "boot_count", "event_code")}
+    if not args.access_events and any(value is not None for value in filters.values()):
+        parser.error("event filters require --access-events")
+    if args.before_id is not None and (args.bundle_id is not None or args.init_token or args.check_token):
+        parser.error("--before-id requires a list query")
     try:
         if args.init_token:
             result = initialize(args.token_file)
         else:
             token = load_token()
-            result = {"token_available": True} if args.check_token else fetch(
-                endpoint(args.base_url, args.bundle_id, args.limit, args.before_id), token,
-            )
+            if args.check_token:
+                result = {"token_available": True}
+            else:
+                url = (access_events_endpoint(args.base_url, args.limit, args.before_id, **filters)
+                       if args.access_events else
+                       endpoint(args.base_url, args.bundle_id, args.limit, args.before_id))
+                result = fetch(url, token)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except urllib.error.HTTPError as error:
