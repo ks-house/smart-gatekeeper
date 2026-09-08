@@ -360,4 +360,10 @@ RAM 93,112B, Flash 1,842,052B다. OTA contract와 protocol 16개 시험도 PASS�
   이미 발행되는 retained `/boot`의 닫힌 참고 필드를 최대 32개 캐시에
   보관한 뒤 exact signed-status boot와 일치할 때만 이력에 연결한다.
   수신 시각/retained 여부/생성 시각 미관측/unsigned를 명시하고 boot authority나
-  liveness는 바꾸지 않는다. 이 후속 수정의 운영 배포 확인은 아직 진행 중이다.
+  liveness는 바꾸지 않는다. PR #393 / exact Backend
+  `a105539273f9eb2aeaf0362d17bcc967336d85a7` / run `34243125046`이
+  9월 9일 00:16:16 KST에 배포됐다. 네 진단 경로의 200/401/422 no-store,
+  기존 row 1/36 보존, 새 row 46의 동일 boot 784 unsigned 부팅 참고 정보
+  연결을 독립 HTTPS 조회로 검증했다. Backend/PC 274개(통합 선택 3개 skip),
+  root 391개(PowerShell 1개 skip) 회귀와 모든 PR/main 검사가 PASS했다.
+  앱/Target 게시 버전은 81fbc6d 그대로이며 재게시하지 않았다.

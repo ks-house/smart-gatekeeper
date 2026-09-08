@@ -1,7 +1,7 @@
 # Local-PC diagnostic read API
 
-Status: Backend `81fbc6dc9b9286b2d4375afeda9129566789ad2a` deployed via PR #392
-at 23:54 KST on September 8. Incident/health history, standalone access history
+Status: Backend `a105539273f9eb2aeaf0362d17bcc967336d85a7` deployed via PR #393
+at 00:16 KST on September 9. Incident/health history, standalone access history
 and existing report reads are verified using the same PC token activated on September 7.
 This is separate from administrator cookie authentication and from door control.
 
@@ -362,9 +362,9 @@ report row 143 arrived at 23:41:17 from old APK 44201 and is not native-outbox
 execution evidence. No synthetic production report or device command was sent.
 
 Live HTTPS testing found the common middleware overwrote diagnostic `no-store`
-with `no-cache`, although router-only tests passed. This additional defect is
-being corrected with full-app middleware regression and independent production
-header readback; the initial deployment does not satisfy that header contract.
+with `no-cache`, although router-only tests passed. This additional defect was
+corrected by the September 9 hotfix below; the initial deployment did not
+satisfy that header contract.
 
 ## September 9 operational readback corrections
 
@@ -392,6 +392,23 @@ are also retained instead of being discarded by the earlier projection.
 
 This is a Backend-only correction using schema 016; no additional migration,
 token/wrapper change or mobile/Target rebuild is required. Production readback
-of these corrections is pending. OTA in-flight stage and errors not emitted by
+of these corrections passed as recorded below. OTA in-flight stage and errors not emitted by
 the current Target remain unobservable; a retained boot receipt is not its
 generation timestamp and does not demonstrate a new reboot.
+
+PR #393 merged to exact `a105539273f9eb2aeaf0362d17bcc967336d85a7`; Backend
+run `34243125046` deployed between September 9 00:14:44 and 00:16:16 KST.
+Independent `/ready` matches the source, all 12 checks true and Target fresh.
+All four diagnostic routes returned exactly `Cache-Control: no-store` for
+200, missing-token 401, wrong-token 401 and invalid-query 422 responses.
+
+Historical rows 1 and 36 retain their original receipt/core/advisory data.
+New row 46 at 00:17:10.672 KST includes an exact same-boot-784 unsigned boot
+observation, retained=true, received at 00:16:07.306 KST. Its fields report
+`planned_restart=none`, `previous_action=https_date_clock_trusted`, previous
+IDLE/relay OFF and previous uptime 1,977,020 ms. The repeated BROWNOUT code 9
+belongs to that same boot and does not prove a new voltage drop at read time.
+The current periodic advisory shows old firmware `2.1.469+main.g6a45aec`,
+uptime 5,585 seconds, BLE expected/active=true, no current connections and zero
+current-boot GATT/auth/sensor/relay counts. These are not independent RF or
+physical-door observations. New firmware `2.1.480` installation is still unobserved.
