@@ -2,7 +2,7 @@ import hashlib
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -10,6 +10,116 @@ from fastapi.testclient import TestClient
 from backend.app.diagnostics_read import create_diagnostics_read_router
 from backend.app import main
 from backend.tests.test_mobile_diagnostics import bundle
+
+
+class DiagnosticsMainMiddlewareTest(unittest.TestCase):
+    """Exercise registered production routes through the real app middleware."""
+
+    def setUp(self):
+        self.token = "x" * 43
+        self.headers = {"Authorization": "Bearer " + self.token}
+        self.db = MagicMock()
+        self.cur = self.db.return_value.cursor.return_value.__enter__.return_value
+        self.cur.fetchall.return_value = []
+        self.cur.fetchone.return_value = None
+        configured = create_diagnostics_read_router(
+            self.db, hashlib.sha256(self.token.encode()).hexdigest(),
+        )
+        # Only inject the isolated test credential/limiter. Keep main.app's
+        # registered handlers, exception handling and middleware stack intact.
+        authorizer = configured.dependencies[0].dependency
+        def registered_routes(router):
+            for route in router.routes:
+                included = getattr(route, "original_router", None)
+                if included is not None:
+                    yield from registered_routes(included)
+                else:
+                    yield route
+        overrides = {
+            dependency.dependency: authorizer
+            for route in registered_routes(main.app)
+            if getattr(route, "path", "").startswith("/api/v1/diagnostics/")
+            for dependency in route.dependencies
+        }
+        self.assertTrue(overrides)
+        dependencies = patch.dict(main.app.dependency_overrides, overrides)
+        dependencies.start()
+        self.addCleanup(dependencies.stop)
+        database = patch.object(main, "get_db", self.db)
+        database.start()
+        self.addCleanup(database.stop)
+        # No context manager: production lifespan must not start MQTT/DB work.
+        self.client = TestClient(main.app)
+        self.addCleanup(self.client.close)
+
+    def assert_private(self, response, status_code):
+        self.assertEqual(status_code, response.status_code, response.text)
+        self.assertEqual("no-store", response.headers.get("cache-control"))
+
+    def test_success_through_global_middleware_preserves_router_no_store(self):
+        for route in ("bundles", "access-events", "health-history", "incidents"):
+            with self.subTest(route=route):
+                self.assert_private(self.client.get(
+                    "/api/v1/diagnostics/" + route, headers=self.headers), 200)
+
+    def test_auth_validation_and_storage_errors_are_no_store(self):
+        for route in ("bundles", "access-events", "health-history", "incidents"):
+            path = "/api/v1/diagnostics/" + route
+            with self.subTest(route=route):
+                self.assert_private(self.client.get(path), 401)
+                self.assert_private(self.client.get(path, headers={
+                    "Authorization": "Bearer " + "z" * 43}), 401)
+                self.assert_private(self.client.get(
+                    path, headers=self.headers, params={"limit": 0}), 422)
+        self.db.assert_not_called()
+        self.db.side_effect = RuntimeError("private database details")
+        for route in ("bundles", "access-events", "health-history", "incidents"):
+            response = self.client.get("/api/v1/diagnostics/" + route, headers=self.headers)
+            self.assert_private(response, 503)
+            self.assertNotIn("private database details", response.text)
+
+    def test_missing_details_routes_methods_and_rate_limit_are_no_store(self):
+        self.assert_private(self.client.get(
+            "/api/v1/diagnostics/bundles/1", headers=self.headers), 404)
+        self.assert_private(self.client.get(
+            "/api/v1/diagnostics/bundles/not-an-id", headers=self.headers), 422)
+        self.assert_private(self.client.post(
+            "/api/v1/diagnostics/bundles", headers=self.headers), 405)
+        self.assert_private(self.client.get("/api/v1/diagnostics/missing"), 404)
+        self.assert_private(self.client.get("/api/v1/diagnostics"), 404)
+        for _ in range(60):
+            self.client.get("/api/v1/diagnostics/bundles")
+        self.assert_private(self.client.get(
+            "/api/v1/diagnostics/bundles", headers=self.headers), 429)
+
+    def test_unexpected_diagnostic_failure_is_generic_and_no_store(self):
+        # A finally/connection-close failure bypasses the router's handled503.
+        self.db.return_value.close.side_effect = RuntimeError("private connection details")
+        with self.assertLogs(main.log, level="ERROR") as captured:
+            response = self.client.get("/api/v1/diagnostics/bundles", headers=self.headers)
+        self.assert_private(response, 500)
+        self.assertNotIn("private connection details", response.text)
+        self.assertNotIn("private connection details", "\n".join(captured.output))
+        self.assertIn("unhandled read failure", "\n".join(captured.output))
+
+    def test_unrelated_cache_policy_is_unchanged(self):
+        response = self.client.get("/live")
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("no-cache", response.headers.get("cache-control"))
+        response = self.client.get("/api/v1/diagnostics-other")
+        self.assertEqual(404, response.status_code)
+        self.assertEqual("no-cache", response.headers.get("cache-control"))
+
+    def test_existing_no_store_is_not_weakened_but_cacheable_header_is_not_enabled(self):
+        route = next(route for route in main.app.routes if getattr(route, "path", "") == "/live")
+        for existing, expected in (("private, no-store, max-age=0", "private, no-store, max-age=0"),
+                                   ("public, max-age=600", "no-cache")):
+            with patch.object(route.dependant, "call", lambda: main.JSONResponse(
+                {"status": "ok"}, headers={"Cache-Control": existing}
+            )):
+                response = self.client.get("/live")
+            self.assertEqual(200, response.status_code)
+            self.assertEqual(expected, response.headers.get("cache-control"))
 
 
 class DiagnosticsReadTest(unittest.TestCase):

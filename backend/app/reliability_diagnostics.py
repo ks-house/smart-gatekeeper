@@ -4,7 +4,10 @@ import hashlib
 import hmac
 import json
 import re
+import threading
+import time
 import uuid
+from collections import OrderedDict
 
 
 U64 = (1 << 64) - 1
@@ -25,14 +28,127 @@ SENSOR_FIELDS = (
 )
 MEASUREMENTS = ("min_raw_mm", "max_raw_mm", "last_raw_mm", "last_median_mm")
 DECIMAL_FIELDS = ("source_boot_count", "terminal_sequence", "started_monotonic_ms", "ended_monotonic_ms")
+RESET_REASONS = {"UNKNOWN", "POWERON", "EXTERNAL_PIN", "SOFTWARE", "PANIC", "INT_WDT", "TASK_WDT",
+                 "OTHER_WDT", "DEEPSLEEP", "BROWNOUT", "SDIO", "USB", "JTAG", "EFUSE", "POWER_GLITCH", "CPU_LOCKUP"}
+RESTART_REASONS = {"none", "unspecified", "signed_mqtt_reboot", "provisioning_save", "access_critical_timeout",
+                   "ota_pending_verify", "local_ota_pending_verify", "ota_valid_mark_failed", "ota_health_timeout",
+                   "ota_health_safe_timeout", "ota_health_network_timeout", "ota_health_heap_timeout", "ota_health_sample_gap"}
+# Closed diagnostic codes, not arbitrary firmware log strings. Unknown actions
+# remain unreported rather than becoming a free-text or secret side channel.
+ACTION_CODES = set("""unknown boot network_services_start mqtt_connected mqtt_dns_timeout mqtt_dns_started
+    mqtt_status_worker_failed mqtt_wifi_generation_changed mqtt_connect_worker_wdt_degraded
+    mqtt_connect_worker_adopted mqtt_connect_worker_stale mqtt_connect_worker_failed mqtt_wifi_lost
+    mqtt_wifi_recovered mqtt_dns_failed mqtt_connect_start mqtt_connect_worker_start_failed
+    https_date_clock_trusted ota_health_window ota_check_queued ota_mark_valid ota_manifest_get ota_artifact_get
+    loop_watchdog_config_failed loop_watchdog_ready loop_watchdog_subscribe_failed relay_on relay_off relay_off_boot
+    relay_on_duplicate pre_armed arm_rejected_not_idle relay_on_manual manual_open_rejected_not_idle
+    gatt_armed_fresh_sensor_history relay_timer_off relay_failsafe_off
+    wifi_sta_profile_degraded wifi_sta_profile_enabled wifi_sta_continuous_recovery recovery_operation_lease_expired
+    wifi_sta_attempt_paused_for_local_work wifi_recovery_sta_attempt_started wifi_recovery_sta_attempt_start_failed
+    wifi_connected provisioning_ap_start provisioning_ap_ready wifi_recovery_ap_quiet provisioning_ap_failed
+    wifi_scan_sta_paused wifi_scan_failed wifi_scan_complete wifi_save_rejected wifi_credentials_invalid
+    wifi_credentials_save wifi_credentials_write_failed web_config_save recovery_ap_window_closed
+    wifi_recovered_from_ap wifi_autoreconnect_grace wifi_reconnected wifi_recovery_ap_escalation
+    wifi_recovery_ap_escalation_failed wifi_recovery_sta_attempt_stopped wifi_recovery_idle_client_released
+    wifi_recovery_idle_client_release_failed wifi_recovery_stale_client_attempt_forced
+    gatt_unverified_lease_disconnected gatt_unverified_lease_expired
+    recovery_ap_deadline_deferred_for_local_operation""".split()) | {"restart:" + value for value in RESTART_REASONS}
+# DiagnosticsManager's RTC action buffer stores at most31 bytes. Preserve exact
+# known truncations as advisory tokens, without interpreting them as full codes.
+ACTION_CODES |= {value[:31] for value in ACTION_CODES}
+ACCESS_STAGES = {"unknown", "UNKNOWN", "BOOTING", "GATT_CONNECTED", "GATT_FAILED", "CHALLENGE_ISSUED",
+                 "PROOF_VERIFIED", "PROOF_REJECTED", "ARMED", "SENSOR_DETECTED", "RELAY_ON", "RELAY_OFF",
+                 "COMPLETED", "TERMINATED", "CONNECTION_ACCEPTED", "DISCONNECTED", "PROOF_FRAME_RECEIVED", "RESULT_INDICATED"}
 
 
-def advisory_projection(document):
+def boot_observation_projection(value, expected=None):
+    """Revalidate persisted nested advisory; never promote it to signed evidence."""
+    keys = {"provenance", "integrity_status", "target_id", "source_boot_id", "source_boot_count",
+            "received_epoch_ms", "retained", "generation_time", "fields"}
+    if (not isinstance(value, dict) or set(value) != keys
+            or value.get("provenance") != "MQTT_BOOT_ADVISORY" or value.get("integrity_status") != "UNSIGNED"
+            or value.get("generation_time") != "NOT_OBSERVED" or type(value.get("retained")) is not bool
+            or not isinstance(value.get("target_id"), str)
+            or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value["target_id"]) is None
+            or not isinstance(value.get("source_boot_id"), str)
+            or re.fullmatch(r"[0-9a-f]{32}", value["source_boot_id"]) is None
+            or not isinstance(value.get("fields"), dict)):
+        return None
+    try:
+        count = _decimal(value["source_boot_count"], 1)
+        _decimal(value["received_epoch_ms"], 0)
+        if expected is not None and (value["target_id"], value["source_boot_id"], count) != (
+                expected["target_id"], expected["source_boot_id"], int(expected["source_boot_count"])):
+            return None
+    except (ValueError, KeyError, TypeError):
+        return None
+    return {**value, "fields": advisory_projection(value["fields"])}
+
+
+class BootAdvisoryCache:
+    """Bounded untrusted boot notes; no DB, registry, freshness or control methods."""
+    def __init__(self, max_entries=32, clock=time.time):
+        if type(max_entries) is not int or not 1 <= max_entries <= 128:
+            raise ValueError("invalid advisory cache limit")
+        self._limit, self._clock = max_entries, clock
+        self._entries = OrderedDict()
+        self._lock = threading.Lock()
+
+    def observe(self, topic, payload, *, retained, configured_targets):
+        if (not isinstance(topic, str) or not isinstance(payload, bytes)
+                or not 1 <= len(payload) <= 4096 or type(retained) is not bool):
+            return False
+        match = re.fullmatch(r"gatekeeper/v1/targets/([A-Za-z0-9_-]{1,64})/boot", topic)
+        if match is None or match[1] not in configured_targets:
+            return False
+        def unique(pairs):
+            result = {}
+            for key, item in pairs:
+                if key in result:
+                    raise ValueError("duplicate boot field")
+                result[key] = item
+            return result
+        def invalid_number(_value):
+            raise ValueError("invalid number")
+        try:
+            doc = json.loads(payload.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid_number)
+            if (not isinstance(doc, dict) or doc.get("target_id") != match[1]
+                    or not isinstance(doc.get("boot_id"), str)
+                    or re.fullmatch(r"[0-9a-f]{32}", doc["boot_id"]) is None
+                    or type(doc.get("boot_count")) is not int or not 1 <= doc["boot_count"] <= U64):
+                return False
+            value = dict(provenance="MQTT_BOOT_ADVISORY", integrity_status="UNSIGNED", target_id=match[1],
+                source_boot_id=doc["boot_id"], source_boot_count=str(doc["boot_count"]),
+                received_epoch_ms=str(int(self._clock()*1000)), retained=retained,
+                generation_time="NOT_OBSERVED", fields=advisory_projection(doc))
+            value = boot_observation_projection(value)
+            if value is None:
+                return False
+        except (ValueError, TypeError, UnicodeError, RecursionError, OverflowError):
+            return False
+        identity = (value["target_id"], value["source_boot_id"], doc["boot_count"])
+        with self._lock:
+            self._entries[identity] = value
+            self._entries.move_to_end(identity)
+            while len(self._entries) > self._limit:
+                self._entries.popitem(last=False)
+        return True
+
+    def match_verified(self, status):
+        # Caller has already verified MAC and accepted high-water. Matching does
+        # not update the observation receipt time or the status registry.
+        identity = (status["target_id"], status["source_boot_id"], status["source_boot_count"])
+        with self._lock:
+            value = self._entries.get(identity)
+            return boot_observation_projection(value, status) if value is not None else None
+
+
+def advisory_projection(document, *, include_boot=False, expected=None):
     """Closed, explicitly unsigned fields useful for comparison, not authority."""
     if not isinstance(document, dict):
         return {}
     result = {}
-    for key in ("firmware", "reset_reason", "planned_restart"):
+    for key in ("firmware", "arduino_core", "idf_version"):
         value = document.get(key)
         if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.+-]{1,64}", value):
             result[key] = value
@@ -42,15 +158,56 @@ def advisory_projection(document):
                 "mqtt_status_worker_max_duration_ms", "mqtt_audit_receipts_accepted", "mqtt_audit_receipts_rejected",
                 "mqtt_audit_backpressure_count", "sensor_summary_capture_pending", "sensor_summary_capture_dropped",
                 "sensor_summary_pending", "sensor_summary_dropped", "sensor_summary_persistence_failures",
-                "sensor_summary_invalid_journals"):
+                "sensor_summary_invalid_journals", "largest_free_block", "loop_stack_hwm",
+                "mqtt_connect_count", "mqtt_connect_attempts", "mqtt_connect_failures", "mqtt_last_connect_ms",
+                "mqtt_max_connect_ms", "mqtt_connect_worker_wdt_failures", "mqtt_event_outbox_depth",
+                "mqtt_event_outbox_overflow_count", "mqtt_legacy_outbox_depth", "mqtt_legacy_outbox_dropped",
+                "rtc_event_fallback_restored_count", "rtc_event_fallback_pending_count", "wifi_link_generation",
+                "wifi_outage_count", "wifi_recovery_escalations", "wifi_recovery_ap_failures", "wifi_recovery_successes",
+                "wifi_last_unplanned_disconnect_reason", "wifi_current_outage_ms", "wifi_last_outage_ms",
+                "ble_active_connections", "ble_advertising_restart_attempts", "ble_advertising_restart_successes",
+                "ble_advertising_restart_failures", "ble_advertising_watchdog_recoveries", "gatt_accepted_connections",
+                "gatt_disconnects", "gatt_challenges_issued", "gatt_proof_frames_received", "gatt_proofs_verified",
+                "gatt_proofs_rejected", "gatt_results_indicated", "gatt_armed_entries", "gatt_sensor_detections",
+                "gatt_relay_on_count", "gatt_relay_off_count", "gatt_terminal_count", "gatt_last_stage_ms",
+                "previous_uptime_ms", "previous_access_uptime_ms"):
         value = document.get(key)
         if type(value) is int and 0 <= value <= U32:
             result[key] = value
-    for key in ("ble_advertising_active", "ble_advertising_expected", "sensor_rearm_blocked"):
+    for key in ("ble_advertising_active", "ble_advertising_expected", "sensor_rearm_blocked", "previous_valid",
+                "previous_armed", "previous_relay_on", "previous_access_valid", "previous_evidence_persistence_failed",
+                "rtc_event_fallback_invalid", "loop_watchdog_enabled"):
         if type(document.get(key)) is bool:
             result[key] = document[key]
     if type(document.get("wifi_rssi")) is int and -127 <= document["wifi_rssi"] <= 20:
         result["wifi_rssi"] = document["wifi_rssi"]
+    if type(document.get("mqtt_last_error")) is int and -128 <= document["mqtt_last_error"] <= 255:
+        result["mqtt_last_error"] = document["mqtt_last_error"]
+    if type(document.get("previous_relay_pin")) is int and document["previous_relay_pin"] in (-1, 0, 1):
+        result["previous_relay_pin"] = document["previous_relay_pin"]
+    for key, values in (("reset_reason", RESET_REASONS), ("planned_restart", RESTART_REASONS),
+                        ("previous_action", ACTION_CODES),
+                        ("previous_state", {"unknown", "UNKNOWN", "BOOTING", "IDLE", "AUTH_PENDING", "ARMED", "RELAY_HOLD", "RELAY_ON", "COOLDOWN"}),
+                        ("wifi_recovery_phase", {"CONNECTED", "AUTO_RECONNECT_GRACE", "AP_RETRY_BACKOFF", "RECOVERY_AP", "UNKNOWN"}),
+                        ("sensor_clearance_state", {"UNKNOWN", "CLEAR", "OCCUPIED", "FAULT"})):
+        value = document.get(key)
+        if isinstance(value, str) and value in values:
+            result[key] = value
+    for key in ("gatt_last_stage", "previous_access_stage"):
+        value = document.get(key)
+        if isinstance(value, str) and value in ACCESS_STAGES:
+            result[key] = value
+    for key in ("gatt_last_session_id", "previous_access_session_id"):
+        value = document.get(key)
+        if value is None or value == "none":
+            if key in document:
+                result[key] = None
+        elif isinstance(value, str) and UUID4.fullmatch(value):
+            result[key] = value
+    if include_boot:
+        boot = boot_observation_projection(document.get("boot_observation"), expected)
+        if boot is not None:
+            result["boot_observation"] = boot
     return result
 
 
@@ -181,7 +338,8 @@ def record_verified_health(cur, status: dict):
     """Called in the same transaction after authenticated highwater advances."""
     core = {key: status[key] for key in CORE_FIELDS}
     # Explicitly not authenticated by the access-status MAC. Never use for control.
-    advisory = status.get("advisory_diagnostics") or advisory_projection(status.get("controller_diagnostics"))
+    advisory = advisory_projection(status.get("advisory_diagnostics") or status.get("controller_diagnostics"),
+                                   include_boot=True, expected=status)
     cur.execute(
         "INSERT INTO target_health_history (target_id,source_boot_id,source_boot_count,"
         "status_revision,gate_state,terminal_session_id,relay_commanded_on,verified_json,advisory_json,received_at) "

@@ -2270,6 +2270,8 @@ class TargetBootRegistryTest(unittest.TestCase):
 
     def test_subscriber_uses_verified_backend_identity_and_treats_boot_as_advisory(self) -> None:
         with tempfile.NamedTemporaryFile() as ca, ExitStack() as stack:
+            advisory_cache = main.BootAdvisoryCache()
+            stack.enter_context(patch.object(main, "_boot_advisories", advisory_cache))
             values = {
                 "HAS_PAHO_MQTT": True,
                 "MQTT_HOST": "mqtt.example.test",
@@ -2323,6 +2325,12 @@ class TargetBootRegistryTest(unittest.TestCase):
             message = MagicMock(topic=f"gatekeeper/v1/targets/{TARGET}/boot", payload=payload)
             message.retain = False
             client.on_message(client, None, message)
+            message.retain = True
+            client.on_message(client, None, message)
+            observation = advisory_cache.match_verified(dict(
+                target_id=TARGET, source_boot_id=BOOT_2, source_boot_count=8))
+            self.assertTrue(observation["retained"])
+            self.assertEqual("UNSIGNED", observation["integrity_status"])
             persist.assert_not_called()
             request_refresh.assert_not_called()
             client._sgk_authenticated_status_worker.stop()
