@@ -6977,3 +6977,71 @@
 - Mobile run `34086666111` completed at 14:40:45 KST, publishing signed `1.0.0-g00bee34` / 44201. Independent primary/fallback and Backend metadata agree; both 55,610,521-byte APKs match SHA-256 `c607f9f027d5cbe010894ad36476664f31e9d63e81c5443c6e3181a7e99ea406`.
 - Dedicated diagnostic read route now returns 503 with `diagnostic read is not configured`, not an empty report list. Existing local token is readable and was not regenerated. Production variables identify SSH port 8822: reachable, but this PC's authentication is rejected. No root-wrapper/runtime edit was attempted through CI's restricted apply/status key. NAS activation and real uploaded-report readback remain blocked on administrative access.
 - Owner installs mobile update; no phone install, recovered incident-time BLE reception or physical access success is claimed. No Target OTA/reboot, door action, secret disclosure or data deletion. Updated current diagnostic documentation and checked linked page/heading targets and whitespace.
+
+## [2026-09-07] compile | Explain owner registration of the existing diagnostic read token
+
+- Rechecked the local token's 0600 permission and successful availability check, the separate hash-only snippet, and the admitted wrapper digest. Token generation is not required again; raw token remains on the PC.
+- Documented NAS SSH port 8822, optional legacy SCP transport, reviewed root-wrapper installation before the single runtime digest key, preservation of other runtime settings, and normal API recreation rather than plain restart. No NAS settings, credentials, Git publication or deployment changed during this explanation.
+
+## [2026-09-07] test | Activate owner-configured diagnostic token and verify real report reads
+
+- Owner confirmed NAS wrapper replacement and digest registration. Reused verified source `00bee34343827181cbaa449244dbfe96044a6e94` and immutable images by rerunning only NAS deploy job of run `34086666204`, attempt 2, with production approval. Newer main changes were documentation-only; no build or mobile publication was repeated.
+- NAS deployment completed at 16:08:15 KST; external readiness reports the same source with all checks true. The preexisting local PC token now reads report list and detail successfully. Latest inspected report received at 15:50:48 KST from app 44201 contains 12 sessions, 100 wake events, 11 scan lifecycle entries and 34 correlated verified Target events.
+- Missing/wrong tokens and diagnostic-token use on the existing administrator summary each return 401. No raw token output, token regeneration, admin credential change, Target command or report deletion. Actual physical success remains separate from receipt and correlation of diagnostic evidence.
+
+## [2026-09-07] test | Diagnose evening Target unavailability and retained brownout evidence
+
+- Owner's uptime screenshot prompted read-only checks. Backend public readiness/DB/MQTT remain healthy while authenticated Target freshness is false. Strict-TLS MQTT CONNECT and five SUBACKs succeed; 25 seconds yields retained offline/boot/verified-state records but no fresh Target status.
+- Latest retained firmware 2.1.469 boot 766 reports BROWNOUT (9), planned restart none; earlier 13:23 boot was 760. Six intervening counter increments are established, not six individually proven brownouts. Existing coredump explicitly does not match the latest reset. Latest mobile upload remains 15:50:48 and cannot explain the evening incident.
+- Documented Target power integrity as the leading investigation, current offline-cause uncertainty, HA generic expiry and Backend-versus-entry availability distinction. Recommended persistent boot/outage timelines and separate liveness dimensions without treating stale radio/heap snapshots as current facts. No operational writes or hardware commands; preserved existing worktree documentation changes.
+
+## [2026-09-07] test | Verify owner-reboot recovery and qualify supply replacement advice
+
+- At 22:17 KST, 25-second read-only observation received 24 fresh status messages from boot 768, firmware 2.1.469, with active BLE advertising and zero reported Wi-Fi outages/MQTT failures. Backend independently confirms fresh verified Target status. Recovery does not prove physical access or a long soak.
+- Retained latest reset remains BROWNOUT; boot 766→768 and prior ARMED/relay-OFF breadcrumb recorded. Manual power-cycle confounding and overwritten intermediate boot history prevent assigning all resets to a spontaneous fault; old coredump does not match. Latest mobile upload remains 15:50:48.
+- Recorded separate limited contiguous heap headroom, and deferred AC/DC module selection pending supply label, load and wiring evidence. Official board supply exclusivity checked; advised certified isolated supply comparison and qualified mains work. No reboot, relay, OTA, deployment or secret output. Preserved earlier documentation edits.
+
+## [2026-09-07] compile | Record approximate owner restart time without over-attributing resets
+
+- Owner clarified manual restart around 22:00 KST. Prior live uptime estimates latest boot at 22:07:37; approximate owner timing does not independently prove an intervening automatic reset. Power-cycle versus RESET-button method remains unconfirmed. Documentation only, no new runtime observation or command.
+
+## [2026-09-07] compile | Separate earlier outage evidence from confirmed manual power cycle
+
+- Owner confirms power OFF/ON around 22:00 and requests pre-action outage timestamps. Corrected diagnostic focus: boot 766 BROWNOUT was observed at 21:30 before that action, but its reset time and later disconnect onset remain unknown; post-action boot 768 cannot establish the earlier outage cause.
+- HA API authentication is unavailable (401); browser inspection failed before execution because the Computer Use bridge rejected the WSL cwd. No HA history was retrieved or browser credentials extracted. Confirmed Backend current-boot overwrite behavior and documented required HA connection/uptime history for 19:00–22:15. No reboot, command, deployment or configuration changes.
+
+## [2026-09-07] compile | Correlate owner HA outage timeline with Target uptime resets
+
+- Owner screenshots establish evening HA disconnection 20:22:39→21:47:10 (84 min 31 s); morning interval is 43 min 25 s. Short 14:28 and 16:08 intervals overlap documented Backend deployments and are not assigned to Target faults.
+- Uptime graph supports resets shortly before/around 19:00, low-uptime recovery around 21:47 and another reset around 22:07. Cross-checked boot 768 estimated time minus previous RTC uptime against the 21:47 recovery, with explicit heartbeat/downtime assumptions. Approximate manual power-cycle timing cannot classify recovery as automatic.
+- Distinguished HA expiry times, telemetry gaps, real reboot evidence and unproven electrical root cause. No claim that every reset is BROWNOUT or that the whole gap was power loss. Documentation only; no device commands, production writes or new deployment.
+
+## [2026-09-08] test | Audit work-time correlation against actual deployment steps
+
+- Queried September 7 KST Actions runs and both attempts of Backend run 34086666204. Deploy/readiness steps 14:27:35–14:28:41 and 16:07:39–16:08:17 enclose the HA 12-second and 11-second outages exactly. Bridge availability/LWT code supports deployment-induced HA interruption without requiring a Target reset.
+- Inspected latest 100 runs for evening updates/older-run reruns; no matching evening CI activity found in that set. Documented absence of a recorded simultaneous deploy at the 19:00 reset burst or 20:22 onset, and unique-ID subscription-only behavior of the later observer. This does not exclude delayed defects in already deployed software or unobserved external actions.
+- Updated incident analysis without firmware edits, Target commands, NAS changes or deployment. Existing documentation worktree changes preserved; whitespace validation passed.
+
+## [2026-09-08] compile | Correct runtime-log window and verify read-access limitations
+
+- Owner specifies today's morning through now; collected context is September 8 00:00–12:44 KST, not September 7 evening. Runtime log analysis is not completed and must not be substituted with deployment logs or mobile reports.
+- PC hostname resolution failed, while direct LAN HTTPS with certificate verification showed current Backend/DB/MQTT/Target freshness healthy. Existing trusted Tailscale SSH endpoint rejected noninteractive owner authentication; no host-key check bypass or credential/policy change.
+- Documented need for owner-exported API/DB timestamped logs or scoped read access. No runtime log content was obtained, so absence of morning errors is not claimed. Documentation only; no deployment or device commands.
+
+## [2026-09-08] compile | Exhaust existing local authentication paths for direct log collection
+
+- Owner requests Agent-direct Backend access. Checked Windows/WSL SSH configuration metadata and agents, task-specific credential filenames, and presence-only checks for named NAS environment credentials; no additional usable NAS authentication was found. Existing WSL key rejection remains the direct-access blocker.
+- Inspected existing CI publication/deployment authentication boundaries without dispatching jobs, accessing secret values or changing permissions. Requested a usable local authentication path rather than requiring the owner to gather logs. Runtime-log analysis remains incomplete; no operational mutation.
+
+## [2026-09-08] test | Correct SSH detour and directly read existing diagnostic API
+
+- Owner clarified the intended Backend-held diagnostic API. Successfully fetched latest 30 report rows and latest detail using the existing token, client-only LAN resolution and unchanged TLS verification. Earlier demands for SSH were unnecessary for this scope.
+- Latest report remains row 141 received September 7 15:50:48.856 KST; 12 sessions and 34 non-truncated correlated Target events contain no September 8 evidence. This does not prove no activity today or identify an upload failure cause.
+- Verified deployed-code upload lifecycle dependence and documented API-first triage, stale snapshot limitations and lack of independent durable background upload in this path. No source/runtime/auth changes or deployment. Preserved other documentation edits and checked whitespace.
+
+## [2026-09-08] code | Extend existing diagnostic token to independent verified access history
+
+- Added GET /api/v1/diagnostics/access-events with the existing read-token digest and shared rate limit. Queries verified Target history independently of mobile reports, with timezone-aware receipt windows (default 24 hours, maximum 31 days), Target/session/boot/event filters and descending ID pagination capped at 100 rows. No administrator/control authority, unsigned history, identity-name joins or secret material are exposed.
+- Extended scripts/read_diagnostics.py with --access-events and matching filters; preserved existing token file/environment, HTTPS verification and redirect refusal. Prevented mixed query/token modes and preserved large event IDs/boot counts/sequences/monotonic times as decimal strings. Documented receipt-time versus physical-event-time and empty-result evidence limits.
+- Validation: 21 focused API/client tests pass; Backend 239 tests with two existing real-MariaDB skips and no failures; root 382 tests with one PowerShell skip and no failures; OTA contract passes. The initial quiet-run command suppressed a log-assertion test; rerunning with only HTTP-client chatter suppressed passed without changing product code for that assertion.
+- Updated diagnostic API guide/index and preserved preexisting incident-analysis documentation. Local implementation only: no deployment, NAS wrapper/digest change, DB migration, mobile/Target update or device command. Production readback of the new route remains pending.

@@ -69,7 +69,7 @@
 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, Backend schema 013 canonical history/transactional HA outbox, immutable correlation, I7/I9/OTA 합격·증거 경계 |
 | [field_diagnostics_capture_plan.md](field_diagnostics_capture_plan.md) | Android/Target 사후 진단, 보고서 최근·전체 보기와 안전한 Clear·하단 버튼 배치, 동의형 Backend correlation 및 현장 검증 경계 |
-| [diagnostics_read_api.md](diagnostics_read_api.md) | 로컬 PC 전용 읽기 토큰, 지원 보고서 목록·상세/Target 상관 이력 API, 환경변수·폐기·활성화 절차 |
+| [diagnostics_read_api.md](diagnostics_read_api.md) | 로컬 PC 전용 읽기 토큰, 지원 보고서·독립 출입 이력 조회 API와 기간/Target 필터, 환경변수·활성화 절차 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, fallback과 OTA 운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 connection-owned/ACK-gated GATT, v2 fast challenge/proof/result, OTA safe-state, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |

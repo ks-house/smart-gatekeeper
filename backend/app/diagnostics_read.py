@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -16,8 +17,34 @@ except ImportError:
     from ops_runtime import SlidingWindowRateLimiter
 
 
+def _event_window(since: Optional[str], until: Optional[str]):
+    def parse(value):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("timezone required")
+        return parsed.astimezone(timezone.utc)
+
+    try:
+        end = parse(until) if until is not None else datetime.now(timezone.utc)
+        start = parse(since) if since is not None else end - timedelta(hours=24)
+        if (start.year < 1970 or end.year > 9998 or start >= end
+                or end - start > timedelta(days=31)):
+            raise ValueError("invalid window")
+        return start, end
+    except (ValueError, OverflowError):
+        raise HTTPException(422, "use timezone-aware since/until with a positive window of at most 31 days",
+                            headers={"Cache-Control": "no-store"}) from None
+
+
+def _utc_text(value: datetime) -> str:
+    # Database DATETIME values are stored as UTC without tzinfo.
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRouter:
-    """A separate token grants only these two GETs across opted-in bundles."""
+    """Read-only reports and verified access history; never command authority."""
     digest = token_sha256 if re.fullmatch(r"[0-9a-f]{64}", token_sha256) else None
     limiter = SlidingWindowRateLimiter(limit=60, window_seconds=60, max_keys=1024)
 
@@ -40,6 +67,67 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
         response.headers["Cache-Control"] = "no-store"
 
     router = APIRouter(prefix="/api/v1/diagnostics", dependencies=[Depends(authorize)])
+
+    @router.get("/access-events")
+    def list_access_events(
+        since: Optional[str] = Query(None, max_length=64),
+        until: Optional[str] = Query(None, max_length=64),
+        limit: int = Query(100, ge=1, le=100),
+        before_id: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+        target_id: Optional[str] = Query(None, pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+        session_id: Optional[str] = Query(None, pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        boot_count: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+        event_code: Optional[str] = Query(None, pattern=r"^[A-Z][A-Z0-9_]{0,63}$"),
+    ):
+        start, end = _event_window(since, until)
+        clauses = ["integrity_status='verified'", "received_at >= %s", "received_at < %s"]
+        args = [start.replace(tzinfo=None), end.replace(tzinfo=None)]
+        # Column names are constants, never caller-provided SQL.
+        for column, value in (("collector_target_id", target_id), ("session_id", session_id),
+                              ("source_boot_count", boot_count), ("event_code", event_code)):
+            if value is not None:
+                clauses.append(column + "=%s")
+                args.append(value)
+        if before_id is not None:
+            clauses.append("id < %s")
+            args.append(before_id)
+        columns = (
+            "id,event_id,session_id,source_boot_id,source_boot_count,source_sequence,"
+            "event_attempt,event_code,event_stage,event_outcome,reason_code,event_path,"
+            "event_transport,distance_mm,duration_ms,relay_hold_ms,monotonic_ms,clock_quality,"
+            "collector_target_id,credential_ref,integrity_status,received_at"
+        )
+        conn = None
+        try:
+            conn = get_db()
+            with conn.cursor() as cur:
+                cur.execute("SELECT " + columns + " FROM access_event_history WHERE "
+                            + " AND ".join(clauses) + " ORDER BY id DESC LIMIT %s",
+                            (*args, limit + 1))
+                rows = cur.fetchall()
+            events = []
+            for row in rows[:limit]:
+                # Explicit projection: no identity names, raw payloads or MAC/key material.
+                event = {key: row[key] for key in columns.split(",")}
+                for key in ("id", "source_boot_count", "source_sequence", "monotonic_ms"):
+                    if event[key] is not None:
+                        event[key] = str(event[key])
+                event["received_at"] = _utc_text(event["received_at"])
+                event["target_id"] = event.pop("collector_target_id")
+                events.append(event)
+            return {
+                "events": events,
+                "next_before_id": events[-1]["id"] if len(rows) > limit else None,
+                "since": _utc_text(start), "until": _utc_text(end),
+                "time_basis": "received_at", "order": "id_desc",
+                "integrity_status": "verified",
+            }
+        except Exception:
+            raise HTTPException(503, "access event storage unavailable",
+                                headers={"Cache-Control": "no-store"}) from None
+        finally:
+            if conn is not None:
+                conn.close()
 
     @router.get("/bundles")
     def list_bundles(

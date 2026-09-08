@@ -1,8 +1,42 @@
 # Local-PC diagnostic read API
 
-Status: Backend deployed as `00bee34343827181cbaa449244dbfe96044a6e94` via
-PR #387 at 14:28 KST on September 7. NAS token activation remains pending.
+Status: Backend `00bee34343827181cbaa449244dbfe96044a6e94` deployed via PR #387;
+NAS read token activated and real report list/detail verified at 16:08 KST on
+September 7, after the owner confirmed wrapper installation and digest setup.
 This is separate from administrator cookie authentication and from door control.
+
+September 8 extension: standalone verified access-event reads and PC filters are
+implemented locally; **not yet deployed**. Existing NAS digest/token remain
+unchanged. Only a normal Backend deployment is required for the new route;
+no new wrapper, migration, APK or Target firmware is required.
+
+## Agent triage: use this API before requesting NAS access
+
+When the owner asks to inspect Backend-held diagnostic history, first use the
+existing local token with the deployed routes below. After the September 8
+extension is deployed, also query standalone access events for the requested
+period even if the latest mobile report is old. Do not reinterpret that request
+as exclusively Docker stdout logs and prematurely require SSH or manual exports.
+Only distinguish unavailable runtime logs after actually checking available
+reports and correlated Target events.
+
+On September 8 around 13:00 KST, authenticated list/detail reads succeeded using
+the preexisting token. Temporary client-only resolution to the known NAS LAN
+address preserved the original HTTPS hostname, certificate checks and redirect
+refusal; no system DNS or credentials were changed. Latest stored row remained
+141, received **September 7 15:50:48.856 KST**, app 44201. Its latest session and
+correlated event were September 7 12:21:38 and 12:22:00.862 respectively; all 34
+returned Target events were historical, with truncation false. No new September 8
+report was returned. This is a diagnostic evidence gap, not proof of no access
+attempts, no Target events outside the report's sessions, or failed ingestion.
+
+Source at the deployed SHA still hosts upload orchestration in
+`SmartKeyHomeScreen`: initialization/resume, a resumed-only 30-second retry timer,
+and health-change/marker/settings callbacks. Upload is consent-gated, suppresses
+unchanged bundle references and stops with the screen lifecycle. There is no
+independent durable background uploader in this path. Missing new reports may
+involve lifecycle, unchanged contents, consent or network/auth errors; this API
+alone cannot select a cause. A stored `healthy=true` is not current liveness.
 
 ## Scope
 
@@ -12,6 +46,7 @@ The dedicated token can perform only these reads:
 | --- | --- |
 | `GET /api/v1/diagnostics/bundles?limit=20&before_id=…` | Most recently stored opted-in reports, receipt/export times, database row IDs and pagination cursor |
 | `GET /api/v1/diagnostics/bundles/{id}` | Validated report including sessions/wakes/optional scan lifecycle, plus up to 500 matching integrity-verified Target events |
+| `GET /api/v1/diagnostics/access-events` | Independent verified access history, receipt-time window and Target/session/boot/event filters, paginated by row ID; September 8 extension pending deployment |
 
 `id` is the decimal row ID returned by the list, not `bundle_ref`. Different
 phones can have identical content references, so the latter is not an exact
@@ -21,11 +56,70 @@ no physical action occurred. A successful mobile session still does not prove
 door movement.
 
 This capability reads all opted-in mobile bundles in this single-owner Backend,
-not only one phone. The list excludes tenant/credential IDs and names; the detail
+not only one phone. The September 8 owner-authorized extension also reads all
+integrity-verified Target access events independently of mobile upload consent
+or support-bundle availability. It does not enable new collection. The bundle
+list excludes tenant/credential IDs and names; the detail
 revalidates the closed support schema and excludes arbitrary DB columns. It is
 not a tenant-scoped commercial support credential. It cannot create admin
 sessions, read general admin routes, change settings, enroll devices, trigger
 OTA or open doors. There is no POST/PUT/DELETE route or command publisher here.
+
+## Independent access history (September 8 extension)
+
+`GET /api/v1/diagnostics/access-events` uses the same Bearer token and shared
+60/minute rate limit. No administrator cookie or new token registration is
+needed. Only `integrity_status='verified'` rows are returned; unsigned legacy
+events are intentionally excluded, including when no filter is supplied.
+
+- `since` / `until`: timezone-aware ISO 8601, inclusive start/exclusive end;
+  default end is request time and default start is 24 hours before end. Maximum
+  positive interval is 31 days. `Z` and `+09:00` are accepted; naive local times
+  are rejected. Invalid dates, ranges or filters return 422 without querying DB.
+- `target_id`, `session_id`, `boot_count`, `event_code`: optional exact filters.
+  `boot_count` should normally be paired with Target ID. Event code is the stored
+  uppercase code, e.g. `ACCESS_ARMED`; no filter returns all verified event kinds,
+  including failures and termination, not only successful entry.
+- `limit`: 1–100, API default 100 (PC client default 20).
+- `before_id`: exclusive descending database ID cursor. The response contains
+  `events`, `next_before_id` (null at the end), normalized UTC `since`/`until`,
+  `time_basis: received_at`, `order: id_desc`, `integrity_status: verified`.
+  Reuse the returned interval and all filters with each next cursor. Distinct
+  events with equal timestamps remain pageable. This is not an atomic snapshot
+  across concurrent requests; rerun a window to include late-ingested events.
+
+Each event exposes session/event IDs, Target ID, boot ID/count, source sequence,
+attempt, event code/stage/outcome/reason, access path/transport, distance,
+duration, relay hold, device monotonic time, clock quality, pseudonymous
+`credential_ref`, integrity status and Backend receipt time. Database ID, boot
+count, source sequence and monotonic milliseconds are decimal strings to avoid
+64-bit precision loss. No resident names/room numbers, raw payloads, integrity
+tags, signing keys or general administrator data are returned.
+
+**Time semantics:** filtering and ordering represent Backend ingestion, not
+necessarily physical sensor occurrence. Queued MQTT delivery can arrive later.
+Compare boot ID/count, monotonic time and sequence within the same boot to
+analyze ordering; never compare monotonic values across boots as wall time.
+An empty interval means no matching verified rows were returned, not proof of
+no physical entry, no firmware activity or a healthy collector. This endpoint
+does not expose Docker logs or a complete Wi-Fi/power/reset timeline.
+
+After deploying the extension, query on this WSL PC with its existing token:
+
+```bash
+python3 scripts/read_diagnostics.py --access-events --limit 100
+python3 scripts/read_diagnostics.py --access-events \
+  --since '2026-09-08T00:00:00+09:00' \
+  --until '2026-09-09T00:00:00+09:00' --limit 100
+```
+
+Use the actual date and optionally add `--target-id`, `--session-id`,
+`--boot-count` or `--event-code`. To continue a result, add `--before-id` with
+its returned `next_before_id` and preserve the exact returned `since`/`until`.
+The client URL-encodes timezone offsets so `+09:00` is not treated as whitespace.
+Do not combine `--access-events` with bundle detail or token initialization;
+event filters without `--access-events` are rejected rather than silently ignored.
+Output is inspection JSON, not public telemetry; keep any saved reports private.
 
 ## Server configuration and rollout
 
@@ -52,6 +146,31 @@ TLS is required on the public endpoint. Tokens must never be sent in a query
 string. Do not enable request-header/body logging for this endpoint.
 
 ## Local PC (WSL Bash)
+
+### Owner activation order for the existing PC token
+
+This is a NAS runtime setting, not a GitHub Secret, mobile setting or HA key.
+The existing PC token remains local; transfer only the approved
+`backend/deploy/sgk_backend_deploy.sh` and the hash-only
+`/home/sh-cat-lee/.config/smart-gatekeeper/diagnostics-read.server.env` snippet.
+Use the owner's SSH account on port 8822. If SCP reports an unavailable SFTP
+subsystem, the client's `scp -O -P 8822` uses the legacy SCP transport without
+disabling SSH host-key checks.
+
+Install the reviewed wrapper root-owned, mode 0755, at
+`/volume1/docker/smart-gatekeeper-backend/bin/sgk_backend_deploy.sh` **before**
+editing `/volume1/docker/smart-gatekeeper-backend/runtime.env`. Keep a backup of
+the existing wrapper first. Copy only the `DIAGNOSTICS_READ_TOKEN_SHA256=...`
+line from the snippet into that existing runtime file, replacing that key if
+already present and preserving all other keys and its root-only permissions.
+Never replace the full runtime file with the snippet.
+
+Saving the runtime file does not activate the running API. A plain Docker
+restart reuses its old environment; request normal Backend deployment/container
+recreation, then run the PC client with `--limit 1`. HTTP 200 with a list (even
+an empty one) proves read authorization; an empty list is not successful upload
+evidence. Local `--check-token` alone proves neither NAS activation nor upload.
+These are owner instructions, not a claim that remote settings were changed.
 
 One-time generation, without displaying the token:
 
@@ -91,12 +210,26 @@ generating another token or changing the administrator password.
 
 ## Validation and evidence boundary
 
+September 8 extension: 21 focused API/client tests pass (13 Backend, 8 PC),
+covering independent history, unchanged token authorization, parameterized
+filters, UTC/KST receipt windows, 31-day/page bounds, equal-time ID pagination,
+64-bit precision, closed projection, safe storage failures and shared rate
+limits. Full Backend suite: 239 tests, no failures, two existing real-MariaDB
+skips. Root suite: 382 tests, no failures, one PowerShell-availability skip.
+OTA contract passes. These are local automated results, not NAS route/readback
+or physical-entry evidence. New route deployment and actual stored-event query
+remain pending; existing mobile/Target ingestion paths are unchanged.
+
+The following results and rollout evidence describe the original September 7
+report API release, not deployment of the September 8 extension.
+
 Tests cover disabled/wrong credentials without DB calls, read-only methods and
 no administrator authority, list bounds/cursor, exact row retrieval, verified
 event correlation, malformed stored-report rejection, safe errors, rate limits,
 private non-overwriting token creation, env/file exclusivity, HTTPS and redirect
 guards. Existing administrator/mobile/OTA routes retain their own authorization.
-Live NAS activation and real uploaded-report readback remain pending.
+Live NAS activation and real uploaded-report list/detail readback are now
+verified; see the September 7 activation evidence below.
 
 Local results: 233 Backend tests complete with two existing real-MariaDB skips,
 four PC-client tests pass, and the OTA contract passes. The new API/client tests
@@ -130,3 +263,23 @@ noninteractive authentication is rejected. CI's forced `apply`/`status` key
 does not authorize editing the root wrapper or runtime configuration. Owner
 setup must use the existing NAS administrative path and the previously created
 digest snippet; do not regenerate the PC token or loosen the forced key.
+
+## September 7 owner-confirmed activation
+
+After the owner confirmed wrapper replacement and digest registration, only the
+NAS deployment job of verified run `34086666204` was rerun (attempt 2). The
+existing signed-source image was retained: newer main differed only in wiki
+documentation. No rebuild, APK publication, Target command or authorization
+policy change was needed. Deployment completed at `2026-09-07T07:08:15Z`.
+
+External `/ready` returns source `00bee34343827181cbaa449244dbfe96044a6e94` with
+all checks true. The preexisting PC token reads both list and detail successfully.
+Latest inspected stored report was received at 15:50:48 KST, from app build
+44201, with 12 sessions, 100 wake events, 11 scan lifecycle entries and 34
+correlated verified Target events. This proves an uploaded report is available
+for remote inspection, not that a particular physical approach succeeded.
+
+Missing/wrong diagnostic tokens and use of the diagnostic token on the existing
+administrator-summary route each return 401. The raw PC token was not printed,
+regenerated or sent to GitHub. Future uploaded reports can be inspected through
+the existing client; upload consent and actual last-success time still matter.
