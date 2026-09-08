@@ -27,7 +27,11 @@ applies_to:
 - Backend run `34240363175` deployed schema 016 at 23:54 KST. Independent
   `/ready` matches the source with all checks true; existing read token retrieves
   new incident/health APIs and real health rows increasing about every 30 seconds.
-  Full-app diagnostic cache-header correction found during live testing is pending.
+  Full-app diagnostic cache-header and discarded boot-advisory corrections were
+  subsequently deployed by PR #393/run `34243125046` at September 9 00:16 KST,
+  exact Backend source `a105539273f9eb2aeaf0362d17bcc967336d85a7`. Independent
+  readiness, all four diagnostic routes' 200/401/422 no-store headers, old-row
+  preservation and new same-boot unsigned boot-observation collection pass.
 - Target run `34240363227` published **2.1.480+main.g81fbc6d** at 23:51 KST,
   passing signature/encryption and exact HTTPS manifest/artifact readback.
   At 23:55 KST actual health advisory still reports **2.1.469+main.g6a45aec**,
