@@ -413,6 +413,17 @@ bool OfflineEventQueue::push(const CanonicalEvent& event) {
   CanonicalEvent gap_evt{};
 
   if (new_count >= kCapacity) {
+    // A successful canonical checkpoint must never mean that an older signed
+    // record was evicted. Apply backpressure before touching a durable slot;
+    // the caller retains this exact record in RAM/RTC and retries after drain.
+    // Old firmware's legacy-only diagnostic ring retains its bounded-loss
+    // behavior, but neither legacy input nor canonical input can evict audit.
+    if (incoming.is_canonical == 1 ||
+        buffer_[new_head].is_canonical == 1 ||
+        buffer_[(new_head + 1) % kCapacity].is_canonical == 1) {
+      if (backpressure_count_ != UINT32_MAX) ++backpressure_count_;
+      return false;
+    }
     overflow_occurred = true;
     CanonicalEvent dropped_evt1 = buffer_[new_head];
     CanonicalEvent dropped_evt2 = buffer_[(new_head + 1) % kCapacity];
@@ -591,6 +602,7 @@ void OfflineEventQueue::clear() {
   generation_ = 0;
   active_meta_slot_ = 0;
   overflow_count_ = 0;
+  backpressure_count_ = 0;
   torn_recovery_count_ = 0;
   if (storage_ != nullptr) {
     storage_->clearStorage();

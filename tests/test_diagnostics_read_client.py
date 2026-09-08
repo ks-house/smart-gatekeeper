@@ -118,3 +118,17 @@ class DiagnosticsClientTest(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(0, client.main(["--before-id", "123"]))
         self.assertTrue(fetch.call_args.args[0].endswith("/bundles?limit=20&before_id=123"))
+
+    def test_incident_and_health_modes_reuse_credential_and_limit_scope(self):
+        for mode in ("--incidents", "--health-history"):
+            with patch.object(client, "load_token", return_value="x" * 43), \
+                    patch.object(client, "fetch", return_value={}) as fetch, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, client.main([mode, "--target-id", "gatekeeper",
+                    "--since", "2026-09-08T00:00:00+09:00", "--before-id", "3"]))
+            self.assertEqual("/api/v1/diagnostics/" + mode[2:], urlsplit(fetch.call_args.args[0]).path)
+        for arguments in (["--incidents", "--access-events"], ["--incidents", "--event-code", "ACCESS_ARMED"],
+                          ["--health-history", "--session-id", "anything"], ["--incidents", "--boot-count", "2"]):
+            with patch.object(client, "load_token") as load, contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                client.main(arguments)
+            load.assert_not_called()

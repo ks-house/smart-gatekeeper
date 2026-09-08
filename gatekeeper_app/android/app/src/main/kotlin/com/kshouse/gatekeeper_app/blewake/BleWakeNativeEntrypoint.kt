@@ -5,6 +5,7 @@ import android.content.Context
 import com.kshouse.gatekeeper_app.gattworker.AccessResultNotifier
 import com.kshouse.gatekeeper_app.gattworker.BleGattWorkScheduler
 import com.kshouse.gatekeeper_app.gattworker.AuthenticatedTargetLocatorStore
+import com.kshouse.gatekeeper_app.gattworker.NativeDiagnostics
 
 enum class BleWakeDispatchAction {
   PRESENCE,
@@ -30,6 +31,8 @@ object BleWakeNativeEntrypoint {
   private val skippedJournal = ContinuousSkipJournalPolicy()
 
   private fun recordSkipped(context: Context, event: BleWakeEvent, reason: String) {
+    NativeDiagnostics.record(context, NativeDiagnostics.Event.DISPATCH_SKIPPED, reason,
+      ready = event.readyHint?.ready, epoch = event.readyHint?.epoch)
     if (skippedJournal.shouldRecord(reason, event.receivedElapsedMs)) {
       // Closed reason codes only; preserve radio success without pretending an
       // authentication was dispatched. No address/advertisement payload logged.
@@ -43,6 +46,7 @@ object BleWakeNativeEntrypoint {
     val appContext = context.applicationContext
     when (BleWakeDispatchPolicy.classify(event)) {
       BleWakeDispatchAction.EXIT -> {
+        NativeDiagnostics.record(appContext, NativeDiagnostics.Event.SCAN_EXIT)
         ContinuousPresenceTracker.exit(event.deviceAddress)
         BleWakeJournal.record(
           appContext,
@@ -74,6 +78,8 @@ object BleWakeNativeEntrypoint {
             AuthenticatedTargetLocatorStore(appContext).record(address)
           }
           if (hint.ready) BleGattWorkScheduler.onContinuousPresence(appContext, address, hint.epoch)
+          else NativeDiagnostics.record(appContext, NativeDiagnostics.Event.DISPATCH_SKIPPED,
+            "TARGET_NOT_READY", ready = false, epoch = hint.epoch)
           return
         }
         BleWakeJournal.record(appContext, event)

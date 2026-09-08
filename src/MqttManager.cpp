@@ -4,6 +4,7 @@
 // Verified per-Target MQTTS and signed command dispatch.
 // =============================================================
 #include "MqttManager.h"
+#include "MqttTelemetryWorker.h"
 #include "config.h"
 #include "ConfigManager.h"
 #include "DiagnosticsManager.h"
@@ -12,6 +13,9 @@
 #include "OtaManager.h"
 #include "TargetAclManager.h"
 #include "OfflineEventQueue.h"
+#include "LegacyEventQueue.h"
+#include "AccessEventReceipt.h"
+#include "SensorSessionDiagnostics.h"
 #include "TargetCommandSecurity.h"
 #include "FlatJsonObjectPolicy.h"
 #include "DurablePreferences.h"
@@ -214,6 +218,9 @@ std::array<sgk::CanonicalEvent, kEventOutboxCapacity> eventOutbox{};
 size_t eventOutboxHead = 0;
 size_t eventOutboxCount = 0;
 uint32_t eventOutboxOverflowCount = 0;
+sgk::LegacyEventQueue legacyEventOutbox;
+static_assert(sgk::OfflineEventQueue::kCapacity >= 8,
+              "one complete local access chain needs eight signed records");
 
 // A controlled software restart normally spills the volatile FIFO to NVS.
 // If that write path is unavailable, retain the exact remaining records in LP
@@ -233,8 +240,33 @@ RtcEventRetention rtcEventRetention;
 uint32_t rtcEventFallbackRestoredCount = 0;
 bool rtcEventFallbackInvalid = false;
 
-char pendingTelemetry[4096] = {};
+char pendingTelemetry[5632] = {};
 bool pendingTelemetryValid = false;
+uint32_t pendingTelemetryGeneration = 0;
+sgk::MqttTelemetryWorker telemetryWorker;
+uint32_t telemetryWorkerLinkGeneration = 0;
+uint32_t telemetryWorkerRetryAtMs = 0;
+uint32_t telemetryWorkerFailures = 0;
+uint32_t telemetryWorkerDeferred = 0;
+uint32_t telemetryWorkerPublished = 0;
+uint32_t telemetryWorkerMaxDurationMs = 0;
+uint32_t auditPublishRetryAtMs = 0;
+uint32_t auditReceiptsAccepted = 0;
+uint32_t auditReceiptRejected = 0;
+
+class NvsSensorSummaryStorage final : public sgk::SensorSummaryStorage {
+ public:
+    size_t read(uint8_t slot, void* output, size_t capacity) override {
+        return sgk::readDurableBlobWithLegacyFallback(
+            "sgk_sense", slot == 0 ? "journal_a" : "journal_b", output, capacity);
+    }
+    bool write(uint8_t slot, const void* bytes, size_t length) override {
+        return sgk::writeDurableBlob(
+            "sgk_sense", slot == 0 ? "journal_a" : "journal_b", bytes, length);
+    }
+};
+NvsSensorSummaryStorage sensorSummaryStorage;
+sgk::SensorSummaryQueue sensorSummaryQueue(&sensorSummaryStorage);
 
 std::array<uint8_t, 32> accessEvidenceKey{};
 char accessEvidenceKeyId[sgk::kAccessEvidenceKeyIdCapacity] = {};
@@ -708,6 +740,87 @@ bool enqueueEventWithDurableSpill(const sgk::CanonicalEvent& event) {
     return enqueueEventOutbox(event);
 }
 
+bool copyReceiptString(JsonVariantConst value, char* output, size_t capacity) {
+    if (!value.is<const char*>()) return false;
+    const char* text = value.as<const char*>();
+    const size_t length = std::strlen(text);
+    if (length == 0 || length >= capacity) return false;
+    std::memcpy(output, text, length + 1);
+    return true;
+}
+
+bool receiptDecimal(JsonVariantConst value, uint64_t* output) {
+    if (!value.is<const char*>() || output == nullptr) return false;
+    const char* text = value.as<const char*>();
+    if (text[0] < '1' || text[0] > '9') return false;
+    uint64_t result = 0;
+    for (size_t i = 0; text[i] != '\0'; ++i) {
+        if (i >= 20 || text[i] < '0' || text[i] > '9') return false;
+        const uint8_t digit = static_cast<uint8_t>(text[i] - '0');
+        if (result > (UINT64_MAX - digit) / 10) return false;
+        result = result * 10 + digit;
+    }
+    *output = result;
+    return true;
+}
+
+// Receipt schemas are independent of signed commands and can only retire an
+// exact retained diagnostic head. No replay ledger, FSM or relay is touched.
+bool consumeDiagnosticReceipt(const uint8_t* payload, size_t length) {
+    static constexpr const char* kEventFields[] = {
+        "type", "version", "target_id", "event_id", "source_boot_id",
+        "source_boot_count", "source_sequence", "event_tag", "key_id", "tag"};
+    static constexpr const char* kSensorFields[] = {
+        "type", "version", "target_id", "session_id", "source_boot_id",
+        "source_boot_count", "terminal_sequence", "summary_tag", "key_id", "tag"};
+    if (payload == nullptr || length == 0 || length > 1024) return false;
+    const bool sensor = sgk::hasExactUniqueFlatJsonFields(payload, length, kSensorFields, 10);
+    if (!sensor && !sgk::hasExactUniqueFlatJsonFields(payload, length, kEventFields, 10)) return false;
+    StaticJsonDocument<1024> doc;
+    if (deserializeJson(doc, payload, length)) return true;
+    if (!doc["version"].is<unsigned>() || doc["version"].as<unsigned>() != 1 ||
+        !doc["type"].is<const char*>() ||
+        std::strcmp(doc["type"].as<const char*>(), sensor ? "sensor_session_receipt" : "access_event_receipt") != 0) return true;
+    sgk::AccessEventReceipt receipt{};
+    std::array<uint8_t, 16> tag{}, evidenceTag{};
+    const char* evidenceTagName = sensor ? "summary_tag" : "event_tag";
+    if (!copyReceiptString(doc["key_id"], receipt.key_id, sizeof(receipt.key_id)) ||
+        !copyReceiptString(doc["target_id"], receipt.target_id, sizeof(receipt.target_id)) ||
+        !copyReceiptString(doc[sensor ? "session_id" : "event_id"], receipt.event_id, sizeof(receipt.event_id)) ||
+        !copyReceiptString(doc["source_boot_id"], receipt.source_boot_id, sizeof(receipt.source_boot_id)) ||
+        !receiptDecimal(doc["source_boot_count"], &receipt.source_boot_count) ||
+        !receiptDecimal(doc[sensor ? "terminal_sequence" : "source_sequence"], &receipt.source_sequence) ||
+        !doc[evidenceTagName].is<const char*>() ||
+        !parseLowerHex16(doc[evidenceTagName].as<const char*>(), &evidenceTag) ||
+        !doc["tag"].is<const char*>() || !parseLowerHex16(doc["tag"].as<const char*>(), &tag)) {
+        ++auditReceiptRejected;
+        return true;
+    }
+    std::memcpy(receipt.event_tag, evidenceTag.data(), evidenceTag.size());
+    std::memcpy(receipt.tag, tag.data(), tag.size());
+    bool retired = false;
+    if (sensor) {
+        const auto* head = sensorSummaryQueue.front();
+        if (head != nullptr && sgk::verifySensorSessionReceipt(accessEvidenceKey,
+                accessEvidenceTargetId, head->source_boot_id, head->source_boot_count,
+                head->session_id, head->terminal_sequence, head->key_id, head->tag, receipt)) {
+            retired = sensorSummaryQueue.pop();
+        }
+    } else {
+        sgk::CanonicalEvent head{};
+        const bool durable = g_offline_queue.peekFront(&head);
+        if ((durable || peekEventOutbox(&head)) &&
+            sgk::verifyAccessEventReceipt(accessEvidenceKey, accessEvidenceTargetId, head, receipt)) {
+            if (durable) retired = g_offline_queue.popFront();
+            else { popEventOutbox(); retired = true; }
+            if (retired) auditPublishRetryAtMs = 0;
+        }
+    }
+    if (retired) ++auditReceiptsAccepted;
+    else ++auditReceiptRejected;
+    return true;
+}
+
 class NvsCommandReplayStorage final : public sgk::CommandReplayStorage {
  public:
   bool readLedger(uint8_t slot, sgk::CommandReplayLedger* ledger) override {
@@ -810,12 +923,48 @@ bool MqttManager::connected = false;
 
 bool MqttManager::isConnected() { return connected; }
 
+void MqttManager::pollTelemetryWorker() {
+    sgk::MqttTelemetryWorker::Result result{};
+    if (!telemetryWorker.takeResult(&result)) return;
+    telemetryWorkerMaxDurationMs = std::max(
+        telemetryWorkerMaxDurationMs, result.duration_ms);
+    const bool current = WifiManager::isConnected() &&
+        telemetryWorkerLinkGeneration == WifiManager::linkGeneration();
+    if (result.published && result.watchdog_healthy && current) {
+        ++telemetryWorkerPublished;
+        if (result.generation == pendingTelemetryGeneration) {
+            pendingTelemetryValid = false;
+        }
+    } else {
+        ++telemetryWorkerFailures;
+        telemetryWorkerRetryAtMs = millis() + 2000;
+        DiagnosticsManager::noteAction("mqtt_status_worker_failed");
+    }
+    if (!result.transport_connected || !current) connected = false;
+}
+
 void MqttManager::deferForAccessCritical() {
     requestConnectWorkerCancellation();
+    pollTelemetryWorker();
+    if (!mqttSecurityReady || !connected || !pendingTelemetryValid ||
+        connectWorkerIsRunning() || telemetryWorker.ownsTransport() ||
+        signedRestartPending || GattServer::isConnected() ||
+        GattServer::hasPendingIngress() || GattServer::hasActiveOutput() ||
+        !WifiManager::isConnected() ||
+        (telemetryWorkerRetryAtMs != 0 &&
+         static_cast<int32_t>(millis() - telemetryWorkerRetryAtMs) < 0)) return;
+    // Only a prepared immutable status is handed to this worker. It does not
+    // run MQTT receive callbacks, ACL mutation, or actuator code during ARMED.
+    telemetryWorkerLinkGeneration = WifiManager::linkGeneration();
+    if (!telemetryWorker.start(client, statusTopic.c_str(), pendingTelemetry,
+                               pendingTelemetryGeneration)) {
+        ++telemetryWorkerDeferred;
+        telemetryWorkerRetryAtMs = millis() + 1000;
+    }
 }
 
 bool MqttManager::connectionAttemptInProgress() {
-    return connectWorkerIsRunning();
+    return connectWorkerIsRunning() || telemetryWorker.ownsTransport();
 }
 
 bool MqttManager::hasPendingRestartRequest() {
@@ -823,7 +972,8 @@ bool MqttManager::hasPendingRestartRequest() {
 }
 
 void MqttManager::performPendingRestart() {
-    if (!signedRestartPending) return;
+    pollTelemetryWorker();
+    if (!signedRestartPending || connectionAttemptInProgress()) return;
 
     // main invokes this only after it has blocked new GATT authentication,
     // drained callback work, and re-proved an idle physical access path.
@@ -842,7 +992,7 @@ void MqttManager::performPendingRestart() {
 
 bool MqttManager::publishCommandAck(
     const sgk::SignedCommandEnvelope& envelope, sgk::CommandResult result) {
-    if (!isConnected() || commandAckTopic.isEmpty()) return false;
+    if (!isConnected() || commandAckTopic.isEmpty() || connectionAttemptInProgress()) return false;
     StaticJsonDocument<384> document;
     document["schema_version"] = 1;
     document["target_id"] = DiagnosticsManager::targetId();
@@ -857,6 +1007,7 @@ bool MqttManager::publishCommandAck(
 
 bool MqttManager::startConnectWorker(const IPAddress& brokerAddress,
                                      uint32_t wifiLinkGeneration) {
+    if (telemetryWorker.ownsTransport()) return false;
     auto* request = new (std::nothrow) MqttConnectRequest{};
     if (request == nullptr) return false;
 
@@ -1123,6 +1274,11 @@ void MqttManager::init() {
     eventOutboxHead = 0;
     eventOutboxCount = 0;
     eventOutboxOverflowCount = 0;
+    legacyEventOutbox.clear();
+    auditPublishRetryAtMs = 0;
+    auditReceiptsAccepted = 0;
+    auditReceiptRejected = 0;
+    sensorSummaryQueue.begin();
     restoreEventOutboxFromRtcFallback();
     pendingTelemetryValid = false;
     mqttConnectAttempts = 0;
@@ -1227,6 +1383,8 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
         LOGF("[MQTT-SECURITY] Rejected message outside exact Target namespace");
         return;
     }
+
+    if (accessEvidenceReady && consumeDiagnosticReceipt(payload, length)) return;
 
     char message[1536];
     static constexpr const char* kCommandFields[] = {
@@ -1413,6 +1571,8 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void MqttManager::update() {
+    pollTelemetryWorker();
+    if (telemetryWorker.ownsTransport()) return;
     if (!mqttSecurityReady) return;
     const uint32_t wifiLinkGeneration = WifiManager::linkGeneration();
     bool wifiLinkChanged = false;
@@ -1730,26 +1890,45 @@ void MqttManager::update() {
         // before a new local access session.
         sgk::CanonicalEvent evt{};
         if (g_offline_queue.peekFront(&evt)) {
+            const bool requiresReceipt = sgk::canonicalEventRequiresCommitReceipt(evt);
+            if (requiresReceipt && static_cast<int32_t>(millis() - auditPublishRetryAtMs) < 0) return;
             if (publishEventRecord(evt)) {
-                g_offline_queue.popFront();
+                if (requiresReceipt) auditPublishRetryAtMs = millis() + 2000;
+                else g_offline_queue.popFront();
             }
             return;
         }
 
         if (peekEventOutbox(&evt)) {
+            const bool requiresReceipt = sgk::canonicalEventRequiresCommitReceipt(evt);
+            if (requiresReceipt && static_cast<int32_t>(millis() - auditPublishRetryAtMs) < 0) return;
             if (publishEventRecord(evt)) {
-                popEventOutbox();
+                if (requiresReceipt) auditPublishRetryAtMs = millis() + 2000;
+                else popEventOutbox();
             } else if (g_offline_queue.push(evt)) {
                 // Preserve the exact event and retry it from durable storage.
                 popEventOutbox();
             }
             return;
         }
+        // Text-only legacy diagnostics have their own bounded best-effort RAM
+        // queue. Never spill them into the canonical durable/RTC reserve.
+        sgk::LegacyEvent legacy{};
+        if (legacyEventOutbox.peek(&legacy)) {
+            sgk::CanonicalEvent textEvent{};
+            textEvent.monotonic_ms = legacy.monotonic_ms;
+            textEvent.boot_count = DiagnosticsManager::bootCount();
+            std::snprintf(textEvent.event_type, sizeof(textEvent.event_type),
+                          "%s", legacy.event_type);
+            std::snprintf(textEvent.detail, sizeof(textEvent.detail),
+                          "%s", legacy.detail);
+            if (publishEventRecord(textEvent)) legacyEventOutbox.pop();
+        }
 }
 
 void MqttManager::publishBootDiagnostics() {
     bootDiagnosticsPending = true;
-    if (!isConnected()) return;
+    if (!isConnected() || connectionAttemptInProgress()) return;
 
     static StaticJsonDocument<2560> doc;
     doc.clear();
@@ -1816,6 +1995,9 @@ void MqttManager::publishBootDiagnostics() {
         connectWorkerWatchdogFailuresSnapshot();
     doc["mqtt_event_outbox_depth"] = eventOutboxCount;
     doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
+    doc["mqtt_legacy_outbox_depth"] = legacyEventOutbox.size();
+    doc["mqtt_legacy_outbox_dropped"] = legacyEventOutbox.dropped();
+    doc["mqtt_audit_backpressure_count"] = g_offline_queue.backpressureCount();
     doc["previous_evidence_persistence_failed"] =
         DiagnosticsManager::previousEvidencePersistenceFailed();
     doc["rtc_event_fallback_restored_count"] =
@@ -1853,7 +2035,7 @@ void MqttManager::publishBootDiagnostics() {
 
 void MqttManager::publishConfigState(int txPower, int distanceThresholdCm, uint32_t durationMs, uint32_t relayCooldownMs) {
     configStatePending = true;
-    if (!isConnected()) return;
+    if (!isConnected() || connectionAttemptInProgress()) return;
 
     StaticJsonDocument<256> doc;
     doc["tx_power"] = txPower;
@@ -1886,6 +2068,10 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     extern uint16_t g_distance_threshold_cm;
     extern uint32_t g_pre_arm_duration_ms;
     extern uint32_t g_relay_cooldown_ms;
+
+    // Increment even on failed preparation so a late worker completion cannot
+    // consume or relabel a newer control-loop snapshot.
+    if (++pendingTelemetryGeneration == 0) ++pendingTelemetryGeneration;
 
     if (!accessEvidenceReady || stateStr == nullptr || stateStr[0] == '\0' ||
         (relayPinLevel != 0 && relayPinLevel != 1) ||
@@ -1924,7 +2110,7 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
 
     // Main-loop-only reusable storage keeps the expanded diagnostic snapshot
     // out of the loop task stack while TLS publication is still in scope.
-    static StaticJsonDocument<4096> doc;
+    static StaticJsonDocument<5632> doc;
     doc.clear();
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
@@ -1987,6 +2173,21 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
         connectWorkerWatchdogFailuresSnapshot();
     doc["mqtt_event_outbox_depth"] = eventOutboxCount;
     doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
+    doc["mqtt_status_worker_published"] = telemetryWorkerPublished;
+    doc["mqtt_status_worker_failures"] = telemetryWorkerFailures;
+    doc["mqtt_status_worker_deferred"] = telemetryWorkerDeferred;
+    doc["mqtt_status_worker_max_duration_ms"] = telemetryWorkerMaxDurationMs;
+    doc["mqtt_audit_receipts_accepted"] = auditReceiptsAccepted;
+    doc["mqtt_audit_receipts_rejected"] = auditReceiptRejected;
+    doc["mqtt_legacy_outbox_depth"] = legacyEventOutbox.size();
+    doc["mqtt_legacy_outbox_dropped"] = legacyEventOutbox.dropped();
+    doc["mqtt_audit_backpressure_count"] = g_offline_queue.backpressureCount();
+    doc["sensor_summary_pending"] = sensorSummaryQueue.size();
+    doc["sensor_summary_dropped"] = sensorSummaryQueue.dropped();
+    doc["sensor_summary_capture_pending"] = UltrasonicSensor::sessions.pending();
+    doc["sensor_summary_capture_dropped"] = UltrasonicSensor::sessions.dropped();
+    doc["sensor_summary_persistence_failures"] = sensorSummaryQueue.persistenceFailures();
+    doc["sensor_summary_invalid_journals"] = sensorSummaryQueue.invalidJournals();
     doc["previous_evidence_persistence_failed"] =
         DiagnosticsManager::previousEvidencePersistenceFailed();
     doc["rtc_event_fallback_restored_count"] =
@@ -2042,6 +2243,48 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["sensor_max_cm"] = sensor.maximum_cm;
     extern bool g_sensor_rearm_blocked;
     doc["sensor_rearm_blocked"] = g_sensor_rearm_blocked;
+    extern sgk::SensorClearanceState g_sensor_clearance_state;
+    doc["sensor_clearance_state"] = sgk::sensorClearanceName(g_sensor_clearance_state);
+    const auto* sensorRecord = sensorSummaryQueue.front();
+    if (sensorRecord != nullptr) {
+        const auto& s = sensorRecord->summary;
+        JsonObject summary = doc.createNestedObject("sensor_session_summary");
+        summary["schema_version"] = 1;
+        summary["session_id"] = sensorRecord->session_id;
+        summary["source_boot_id"] = sensorRecord->source_boot_id;
+        auto decimal = [&](const char* field, uint64_t value) {
+            char text[21]{};
+            std::snprintf(text, sizeof(text), "%llu", static_cast<unsigned long long>(value));
+            summary[field] = String(text);
+        };
+        decimal("source_boot_count", sensorRecord->source_boot_count);
+        decimal("terminal_sequence", sensorRecord->terminal_sequence);
+        decimal("started_monotonic_ms", s.started_monotonic_ms);
+        decimal("ended_monotonic_ms", s.ended_monotonic_ms);
+        summary["threshold_mm"] = s.threshold_mm;
+        summary["samples"] = s.samples;
+        summary["valid_samples"] = s.valid_samples;
+        summary["timeouts"] = s.timeouts;
+        summary["invalid_samples"] = s.invalid_samples;
+        summary["in_range_samples"] = s.in_range_samples;
+        summary["blocked_samples"] = s.blocked_samples;
+        summary["clear_samples"] = s.clear_samples;
+        const char* fields[] = {"min_raw_mm", "max_raw_mm", "last_raw_mm", "last_median_mm"};
+        const uint16_t values[] = {s.min_raw_mm, s.max_raw_mm, s.last_raw_mm, s.last_median_mm};
+        for (size_t i = 0; i < 4; ++i) {
+            if (values[i] == sgk::kNoSensorMeasurement) summary[fields[i]] = nullptr;
+            else summary[fields[i]] = values[i];
+        }
+        summary["blocked_at_start"] = s.blocked_at_start;
+        summary["blocked_at_end"] = s.blocked_at_end;
+        summary["clearance_state"] = sgk::sensorClearanceName(s.clearance_state);
+        JsonObject auth = doc.createNestedObject("sensor_summary_auth");
+        char tag[33]{};
+        bytesToLowerHex(sensorRecord->tag, sizeof(sensorRecord->tag), tag, sizeof(tag));
+        auth["version"] = 1;
+        auth["key_id"] = sensorRecord->key_id;
+        auth["tag"] = String(tag);
+    }
     doc["gatt_last_stage_ms"] = gattTelemetry.last_stage_ms;
     doc["gatt_last_stage"] = gattTelemetry.last_stage;
     if (gattTelemetry.last_session_id[0] != '\0') {
@@ -2081,20 +2324,14 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
 void MqttManager::publishEvent(const char* eventType, const char* detail) {
     if (!eventType) return;
 
-    sgk::CanonicalEvent event{};
+    sgk::LegacyEvent event{};
     event.monotonic_ms = millis();
-    event.boot_count = DiagnosticsManager::bootCount();
     std::strncpy(event.event_type, eventType, sizeof(event.event_type) - 1);
     if (detail != nullptr) {
         std::strncpy(event.detail, detail, sizeof(event.detail) - 1);
     }
-    std::strncpy(event.target_ref, DiagnosticsManager::targetId(),
-                 sizeof(event.target_ref) - 1);
-    std::strncpy(event.source_boot_id, DiagnosticsManager::bootId(),
-                 sizeof(event.source_boot_id) - 1);
-
-    if (!enqueueEventWithDurableSpill(event)) {
-        LOGF("[ERROR] MQTT event outbox and durable fallback are full");
+    if (!legacyEventOutbox.push(event)) {
+        LOGF("[WARN] Best-effort MQTT text queue full; signed audit retained");
     }
 }
 
@@ -2136,7 +2373,8 @@ void MqttManager::noteAccessTerminal(const char* sessionId,
                                      const char* eventCode,
                                      const char* reasonCode,
                                      const char* credentialRef,
-                                     uint16_t phaseMask) {
+                                     uint16_t phaseMask,
+                                     uint64_t terminalMonotonicMs) {
     std::array<uint8_t, 16> session{};
     const bool terminalCode =
         eventCode != nullptr &&
@@ -2168,6 +2406,19 @@ void MqttManager::noteAccessTerminal(const char* sessionId,
                       credentialRef);
     }
     accessTerminalSummary = next;
+    sgk::SensorSummaryRecord record{};
+    if (UltrasonicSensor::sessions.take(terminalMonotonicMs, &record.summary)) {
+        record.source_boot_count = accessEvidenceBootCount;
+        record.terminal_sequence = eventSequence;
+        std::snprintf(record.source_boot_id, sizeof(record.source_boot_id), "%s", accessEvidenceBootIdText);
+        std::snprintf(record.session_id, sizeof(record.session_id), "%s", sessionId);
+        std::snprintf(record.key_id, sizeof(record.key_id), "%s", accessEvidenceKeyId);
+        if (!sgk::deriveSensorSummaryMac(accessEvidenceKey, accessEvidenceTargetId, record, record.tag) ||
+            !sensorSummaryQueue.push(record)) {
+            DiagnosticsManager::markEvidencePersistenceFailure();
+            LOGF("[ERROR] Sensor session summary not durably queued");
+        }
+    }
     if (eventSequence > accessEventSequenceHighWater) {
         accessEventSequenceHighWater = eventSequence;
     }
@@ -2238,12 +2489,12 @@ bool MqttManager::persistPendingEventsForRestart() {
 }
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {
-    if (payload == nullptr || !client.connected()) return false;
+    if (payload == nullptr || connectionAttemptInProgress() || !client.connected()) return false;
     return client.publish(canonicalEventTopic.c_str(), payload, false);
 }
 
 void MqttManager::publishSensorInfo(unsigned long duration_us, float distance_cm) {
-    if (!isConnected()) return;
+    if (!isConnected() || connectionAttemptInProgress()) return;
 
     StaticJsonDocument<256> doc;
     doc["duration_us"] = duration_us;

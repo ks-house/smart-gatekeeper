@@ -1,4 +1,5 @@
 #include "GattProtocol.h"
+#include "SensorSessionDiagnostics.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -71,7 +72,7 @@ bool validAccessEvidenceKeyId(const char* value, size_t* length_out = nullptr) {
   if (length_out != nullptr) *length_out = 0;
   if (value == nullptr) return false;
   size_t length = 0;
-  while (value[length] != '\0' && length <= 4) {
+  while (length <= 4 && value[length] != '\0') {
     const char character = value[length];
     if (!((character >= 'a' && character <= 'z') ||
           (character >= '0' && character <= '9'))) {
@@ -415,6 +416,94 @@ bool deriveAccessStatusMac(
                                              canonical.size(), &length) &&
                   hmacSha256(key, canonical.data(), length, digest.data());
   if (ok) std::memcpy(output, digest.data(), kAccessEvidenceTagSize);
+  secureZeroBytes(canonical.data(), canonical.size());
+  secureZeroBytes(digest.data(), digest.size());
+  return ok;
+}
+
+bool buildSensorSummaryMacInput(const char* target_id,
+                               const SensorSummaryRecord& record,
+                               uint8_t* output, size_t capacity,
+                               size_t* written) {
+  if (written != nullptr) *written = 0;
+  if (written == nullptr || output == nullptr || capacity == 0 ||
+      target_id == nullptr ||
+      std::memchr(record.key_id, '\0', sizeof(record.key_id)) == nullptr ||
+      !validAccessEvidenceKeyId(record.key_id) ||
+      std::memchr(record.source_boot_id, '\0', sizeof(record.source_boot_id)) == nullptr ||
+      std::memchr(record.session_id, '\0', sizeof(record.session_id)) == nullptr ||
+      std::strlen(record.source_boot_id) != 32 || std::strlen(record.session_id) != 36 ||
+      record.source_boot_count == 0 || record.terminal_sequence == 0) return false;
+  bool boot_nonzero = false;
+  for (size_t i = 0; i < 32; ++i) {
+    const char c = record.source_boot_id[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    boot_nonzero = boot_nonzero || c != '0';
+  }
+  if (!boot_nonzero || record.session_id[14] != '4' ||
+      (record.session_id[19] != '8' && record.session_id[19] != '9' &&
+       record.session_id[19] != 'a' && record.session_id[19] != 'b')) return false;
+  for (size_t i = 0; i < 36; ++i) {
+    const char c = record.session_id[i];
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      if (c != '-') return false;
+    } else if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+  }
+  const size_t target_length = std::strlen(target_id);
+  if (target_length == 0 || target_length > 48) return false;
+  for (size_t i = 0; i < target_length; ++i) {
+    const char c = target_id[i];
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') || c == '_' || c == '-')) return false;
+  }
+  const auto& s = record.summary;
+  if (static_cast<uint8_t>(s.clearance_state) > 3 ||
+      s.threshold_mm < 200 || s.threshold_mm > 4000 ||
+      static_cast<uint64_t>(s.valid_samples) + s.timeouts + s.invalid_samples != s.samples ||
+      s.in_range_samples > s.valid_samples || s.clear_samples > s.valid_samples ||
+      s.blocked_samples > s.samples) return false;
+  char measurements[4][6]{};
+  const uint16_t values[] = {s.min_raw_mm, s.max_raw_mm, s.last_raw_mm, s.last_median_mm};
+  for (size_t i = 0; i < 4; ++i) {
+    if (values[i] == kNoSensorMeasurement) std::strcpy(measurements[i], "-");
+    else {
+      if (values[i] < 200 || values[i] > 4000) return false;
+      std::snprintf(measurements[i], sizeof(measurements[i]), "%u", values[i]);
+    }
+  }
+  const int length = std::snprintf(reinterpret_cast<char*>(output), capacity,
+      "SGK-SENSOR-SESSION-MAC-V1\n%s\n%s\n%s\n%llu\n%s\n%llu\n%u\n%u\n%u\n"
+      "%u\n%u\n%u\n%u\n%u\n%u\n%u\n%s\n%s\n%s\n%s\n%u\n%u\n%s",
+      record.key_id, target_id, record.source_boot_id,
+      static_cast<unsigned long long>(record.source_boot_count), record.session_id,
+      static_cast<unsigned long long>(record.terminal_sequence),
+      static_cast<unsigned>(s.started_monotonic_ms),
+      static_cast<unsigned>(s.ended_monotonic_ms),
+      static_cast<unsigned>(s.threshold_mm),
+      static_cast<unsigned>(s.samples), static_cast<unsigned>(s.valid_samples),
+      static_cast<unsigned>(s.timeouts), static_cast<unsigned>(s.invalid_samples),
+      static_cast<unsigned>(s.in_range_samples),
+      static_cast<unsigned>(s.blocked_samples), static_cast<unsigned>(s.clear_samples),
+      measurements[0], measurements[1], measurements[2], measurements[3],
+      s.blocked_at_start ? 1 : 0, s.blocked_at_end ? 1 : 0,
+      sensorClearanceName(s.clearance_state));
+  if (length <= 0 || static_cast<size_t>(length) >= capacity) return false;
+  *written = static_cast<size_t>(length);
+  return true;
+}
+
+bool deriveSensorSummaryMac(const std::array<uint8_t, 32>& key,
+                           const char* target_id,
+                           const SensorSummaryRecord& record,
+                           uint8_t output[16]) {
+  if (output == nullptr) return false;
+  secureZeroBytes(output, 16);
+  std::array<uint8_t, kAccessEventMacInputCapacity> canonical{};
+  std::array<uint8_t, 32> digest{};
+  size_t length = 0;
+  const bool ok = buildSensorSummaryMacInput(target_id, record, canonical.data(), canonical.size(), &length) &&
+                  hmacSha256(key, canonical.data(), length, digest.data());
+  if (ok) std::memcpy(output, digest.data(), 16);
   secureZeroBytes(canonical.data(), canonical.size());
   secureZeroBytes(digest.data(), digest.size());
   return ok;

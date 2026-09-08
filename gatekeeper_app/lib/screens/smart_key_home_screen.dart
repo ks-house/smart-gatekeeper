@@ -6,6 +6,7 @@ import '../l10n/generated/app_localizations.dart';
 import '../services/access_session_polling_policy.dart';
 import '../services/commercial_models.dart';
 import '../services/field_diagnostics_service.dart';
+import '../services/native_diagnostic_upload.dart';
 import '../services/home_message_projection.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/mobile_activity_store.dart';
@@ -66,6 +67,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   bool _diagnosticUploadEnabled = false;
   FieldTestMarker? _fieldTestMarker;
   bool _diagnosticSyncBusy = false;
+  bool _nativeDiagnosticTransport = false;
+  int _nativePendingUploads = 0;
   String? _lastDiagnosticHealthFingerprint;
 
   @override
@@ -132,6 +135,19 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
       _refreshIdentity(),
       _refreshUpdate(),
     ]);
+    if (!uploadEnabled) {
+      try {
+        await _identity.configureNativeDiagnostics(
+            enabled: false,
+            identity: _identityStatus,
+            sinceEpochMs: await _diagnosticsStore.reportSinceEpochMs());
+      } catch (_) {
+        // Diagnostics cannot prevent the home screen or APK recovery UI loading.
+        if (mounted) {
+          setState(() => _diagnosticError = 'DIAGNOSTIC_CONFIG_ERROR');
+        }
+      }
+    }
     await _syncDiagnosticsIfEnabled();
   }
 
@@ -144,6 +160,28 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     }
     setState(() => _diagnosticSyncBusy = true);
     try {
+      final native = await _identity.configureNativeDiagnostics(
+        enabled: true,
+        identity: _identityStatus,
+        sinceEpochMs: await _diagnosticsStore.reportSinceEpochMs(),
+        fieldTest: _fieldTestMarker?.toJson(),
+      );
+      if (native != null && native['supported'] == true) {
+        final success = (native['lastSuccessEpochMs'] as num?)?.toInt();
+        final code = native['lastCode']?.toString();
+        if (mounted) {
+          setState(() {
+            _nativeDiagnosticTransport = true;
+            _nativePendingUploads =
+                (native['pendingUploads'] as num?)?.toInt() ?? 0;
+            _diagnosticLastSuccess = success == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(success);
+            _diagnosticError = code == null || code == 'ACCEPTED' ? null : code;
+          });
+        }
+        return;
+      }
       final bundle = await _supportReports.buildMap(
         identity: _identityStatus,
         health: _health,
@@ -191,10 +229,24 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   }
 
   Future<void> _setDiagnosticUpload(bool enabled) async {
-    await _diagnosticsStore.setUploadEnabled(enabled);
-    if (!mounted) return;
-    setState(() => _diagnosticUploadEnabled = enabled);
-    if (enabled) await _syncDiagnosticsIfEnabled();
+    // Disable native transport before updating the UI preference. A cancellation
+    // failure must not display a successful opt-out.
+    try {
+      if (!enabled) {
+        await _identity.configureNativeDiagnostics(
+            enabled: false,
+            identity: _identityStatus,
+            sinceEpochMs: await _diagnosticsStore.reportSinceEpochMs());
+      }
+      await _diagnosticsStore.setUploadEnabled(enabled);
+      if (!mounted) return;
+      setState(() => _diagnosticUploadEnabled = enabled);
+      if (enabled) await _syncDiagnosticsIfEnabled();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _diagnosticError = 'DIAGNOSTIC_CONFIG_ERROR');
+      }
+    }
   }
 
   Future<void> _startFieldTestMarker() async {
@@ -868,7 +920,12 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
                     '마지막 성공: ${_diagnosticLastSuccess!.toLocal().toString().split('.').first}',
                   if (_diagnosticError == 'HTTP_422')
                     '보고서 형식 오류 · 앱 업데이트를 확인하세요.',
-                  if (_diagnosticError != null) '실패한 전송은 앱 실행 중 다시 시도합니다.',
+                  if (_nativeDiagnosticTransport)
+                    '화면과 무관하게 자동 전송 · 대기 $_nativePendingUploads건',
+                  if (_diagnosticError != null)
+                    _nativeDiagnosticTransport
+                        ? '네트워크 복구 후 자동 재시도합니다. Android 실행 제한 시 지연될 수 있습니다.'
+                        : '실패한 전송은 앱 실행 중 다시 시도합니다.',
                   if (!_diagnosticUploadEnabled) '자동 업로드 꺼짐',
                 ].join('\n')),
                 trailing: TextButton(
@@ -877,7 +934,12 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
                           (_diagnosticNextAttempt?.isAfter(DateTime.now()) ??
                               false)
                       ? null
-                      : () => _syncDiagnosticsIfEnabled(),
+                      : () async {
+                          if (_nativeDiagnosticTransport) {
+                            await NativeDiagnosticUpload().requestCapture();
+                          }
+                          await _syncDiagnosticsIfEnabled();
+                        },
                   child: const Text('지금 재시도'),
                 ),
               ),

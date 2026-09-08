@@ -62,6 +62,8 @@ class SupportReportService {
         'acl_version': identity.aclVersion,
       },
       'native': <String, Object?>{
+        if (recent['runtime'] is Map)
+          'runtime': _safeRuntime(recent['runtime'] as Map, since),
         'healthy': currentHealth?.healthy,
         if (currentHealth?.scanDiagnostics != null)
           'scan': _safeScan(currentHealth!, since),
@@ -210,6 +212,50 @@ class SupportReportService {
               'error_code': _safeInt(item['errorCode']),
             })
         .toList(growable: false);
+  }
+
+  Map<String, Object?> _safeRuntime(Map raw, int since) {
+    final result = <String, Object?>{};
+    for (final key in const [
+      'captured_epoch_ms',
+      'captured_elapsed_ms',
+      'pending_uploads',
+      'oldest_pending_epoch_ms',
+      'last_upload_success_epoch_ms',
+      'dropped_events',
+      'app_standby_bucket',
+      'previous_exit_reason',
+      'previous_exit_epoch_ms'
+    ]) {
+      result[key] = _safeInt(raw[key]);
+    }
+    for (final key in const [
+      'background_restricted',
+      'battery_optimization_exempt',
+      'device_idle',
+      'last_start_was_force_stopped'
+    ]) {
+      result[key] = raw[key] is bool ? raw[key] : null;
+    }
+    result['process_ref'] = _safeOpaqueRef(raw['process_ref'], 16);
+    result['last_upload_code'] = _safeCode(raw['last_upload_code']);
+    final events = raw['lifecycle'];
+    result['lifecycle'] = (events is List ? events : const [])
+        .whereType<Map>()
+        .where((event) => (_safeInt(event['at_epoch_ms']) ?? 0) > since)
+        .take(64)
+        .map((event) => <String, Object?>{
+              'event': _safeCode(event['event']),
+              'at_epoch_ms': _safeInt(event['at_epoch_ms']),
+              'elapsed_ms': _safeInt(event['elapsed_ms']),
+              'session_ref': _safeOpaqueRef(event['session_ref'], 16),
+              'reason': _safeCode(event['reason']),
+              'ready': event['ready'] is bool ? event['ready'] : null,
+              'ready_epoch': _safeInt(event['ready_epoch']),
+              'status': _safeInt(event['status']),
+            })
+        .toList();
+    return result;
   }
 
   Map<String, Object?> _safeScan(NativeGattWorkerHealth health, int since) {

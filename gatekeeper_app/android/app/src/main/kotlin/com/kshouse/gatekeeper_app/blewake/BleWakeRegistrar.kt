@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import com.flutterbeacon.CrossProcessBleOwnerCoordinator
+import com.kshouse.gatekeeper_app.gattworker.NativeDiagnostics
 import java.util.UUID
 
 data class BleWakeRegistrationResult(
@@ -149,6 +150,7 @@ object BleWakeRegistrar {
           )
           writeEvidence(context, accepted)
           BleScanDiagnostics.record(context, BleScanDiagnostics.Event.REGISTER_ACCEPTED)
+          NativeDiagnostics.record(context, NativeDiagnostics.Event.SCAN_REGISTRATION, "REGISTERED")
           result(accepted)
         } else {
           fail(context, attempt, "scan_error", errorCode)
@@ -268,6 +270,8 @@ object BleWakeRegistrar {
     errorCode: Int? = null,
   ): BleWakeRegistrationResult {
     val failed = BleWakeReconciliationPolicy.fail(previous, processId, status, errorCode)
+    NativeDiagnostics.record(context, NativeDiagnostics.Event.SCAN_REGISTRATION,
+      status.substringBefore(':'), status = errorCode)
     if (previous.status == "reconciling") {
       BleScanDiagnostics.record(context, BleScanDiagnostics.Event.REGISTER_FAILED, errorCode)
     }

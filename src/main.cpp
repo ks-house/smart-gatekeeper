@@ -134,6 +134,12 @@ static inline void relayOn();
 static inline void relayOff();
 static sgk::PassageRearmPolicy passageRearm;
 bool g_sensor_rearm_blocked = false;
+sgk::SensorClearanceState g_sensor_clearance_state = sgk::SensorClearanceState::kUnknown;
+
+static uint16_t measuredMillimeters(float cm) {
+  return cm >= ULTRASONIC_MIN_DISTANCE_CM && cm <= 400.0f
+      ? static_cast<uint16_t>(cm * 10.0f) : sgk::kNoSensorMeasurement;
+}
 
 static sgk::TargetAccessFsm g_access_fsm(
     [](bool on) {
@@ -146,6 +152,15 @@ static sgk::TargetAccessFsm g_access_fsm(
     [](const char* event, const char* message) {
       MqttManager::publishEvent(event, message);
       const uint64_t now_ms = millis();
+      if (std::strcmp(event, "session_completed") == 0 ||
+          std::strcmp(event, "session_terminated") == 0 ||
+          std::strcmp(event, "session_terminated_failsafe") == 0) {
+        if (UltrasonicSensor::sessions.active() &&
+            !UltrasonicSensor::sessions.finish(static_cast<uint32_t>(now_ms),
+                                               passageRearm.blocked(), passageRearm.state())) {
+          DiagnosticsManager::markEvidencePersistenceFailure();
+        }
+      }
       if (std::strcmp(event, "auth_verified_armed") == 0) {
         GattServer::notifyAccessArmed(now_ms);
       } else if (std::strcmp(event, "pre_armed") == 0) {
@@ -613,6 +628,8 @@ static void initBleAdvertiser() {
       // five-sample median. Starting from five invalid sentinels requires at
       // least three fresh, current-session valid measurements before relay ON.
       UltrasonicSensor::resetHistory();
+      UltrasonicSensor::sessions.begin(now_ms, g_distance_threshold_cm * 10,
+                                      passageRearm.blocked());
       DiagnosticsManager::noteAction("gatt_armed_fresh_sensor_history");
     }
     return armed;
@@ -809,28 +826,34 @@ void loop() {
     // 20cm 미만 맹점은 -1.0f 반환되므로, 20cm ~ g_distance_threshold_cm 범위만 유효
     bool validReading = (distCm >= ULTRASONIC_MIN_DISTANCE_CM &&
                          distCm <= (float)g_distance_threshold_cm);
-    passageRearm.observe(UltrasonicSensor::lastRawDistanceCm() >
-                            static_cast<float>(g_distance_threshold_cm + 10) &&
-                        UltrasonicSensor::lastRawDistanceCm() <= 400.0f);
+    const uint16_t raw_mm = measuredMillimeters(UltrasonicSensor::lastRawDistanceCm());
+    passageRearm.observeDistance(raw_mm, g_distance_threshold_cm * 10);
+    UltrasonicSensor::sessions.observe(durationUs != 0, raw_mm,
+        measuredMillimeters(distCm), passageRearm.blocked(), passageRearm.state());
     if (validReading && !passageRearm.blocked()) {
       LOGF("[GATE] ✅ ARMED 상태에서 초음파 %.1f cm 감지!", distCm);
       g_access_fsm.handleSensorTrigger(now, RELAY_HOLD_MS, g_relay_cooldown_ms);
     }
-  } else if (passageRearm.blocked() &&
-             (g_access_fsm.state() == GateState::IDLE ||
-              g_access_fsm.state() == GateState::COOLDOWN)) {
+  } else if (g_access_fsm.state() == GateState::IDLE ||
+             g_access_fsm.state() == GateState::COOLDOWN) {
     // Observe clearance after relay OFF too, so a person leaving during
     // cooldown is not missed before the next person's approach. Invalid/no echo
     // never unlocks a second automatic pulse.
-    const float clearDistance = UltrasonicSensor::readDistanceCmRaw();
-    passageRearm.observe(clearDistance > static_cast<float>(g_distance_threshold_cm + 10) &&
-                        clearDistance <= 400.0f);
+    static uint32_t lastHealthSampleMs = 0;
+    if (passageRearm.blocked() || now - lastHealthSampleMs >= 1000) {
+      lastHealthSampleMs = now;
+      const float clearDistance = UltrasonicSensor::readDistanceCmRaw();
+      passageRearm.observeDistance(measuredMillimeters(clearDistance),
+                                  g_distance_threshold_cm * 10);
+    }
   }
   g_sensor_rearm_blocked = passageRearm.blocked();
+  g_sensor_clearance_state = passageRearm.state();
   static sgk::PresenceReadyPolicy presenceReady(esp_random());
   const bool ready = presenceReady.update(now,
       g_access_fsm.state() == GateState::IDLE && !relay.isOn() &&
-      !GattServer::isConnected() && !GattServer::isOtaBusy());
+      !GattServer::isConnected() && !GattServer::isOtaBusy() &&
+      !passageRearm.blocked() && g_acl_manager.isLeaseValid(now));
   GattServer::setPresenceReady(ready, presenceReady.epoch());
 
   // ─── 1초 주기 MQTT 텔레메트리 발행 (실시간 센서값 모니터링) ────────────────────────────────
@@ -869,10 +892,10 @@ void loop() {
 
   if (enforceAccessCriticalLease(now, accessCritical)) return;
 
-  // A bounded connection worker owns PubSubClient/TLS only while establishing
-  // a new session; loopTask owns the adopted steady-state client. No socket
-  // phase is allowed to precede sensor/relay control or run while a local
-  // access session is active.
+  // Connect and immutable-status workers exclusively lease PubSubClient/TLS.
+  // During sensor waiting only prepared status can be written in the worker;
+  // main never waits for it or dispatches command/ACL callbacks in this phase.
+  // Idle receive/audit work adopts the socket only after worker completion.
   if (!accessCritical) {
     WifiManager::serviceRecovery(now);
 

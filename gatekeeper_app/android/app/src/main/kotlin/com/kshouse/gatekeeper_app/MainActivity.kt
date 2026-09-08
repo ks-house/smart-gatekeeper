@@ -15,6 +15,7 @@ import com.kshouse.gatekeeper_app.gattworker.RemoteManualOpenProofSigner
 import com.kshouse.gatekeeper_app.gattworker.AccountLogoutManager
 import com.kshouse.gatekeeper_app.gattworker.AccessSessionReadProofSigner
 import com.kshouse.gatekeeper_app.gattworker.AccessResultNotifier
+import com.kshouse.gatekeeper_app.gattworker.NativeDiagnostics
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -29,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity: FlutterActivity() {
     private val nativeActionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -48,6 +50,34 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger,
+            "com.kshouse.gatekeeper_app/native_diagnostics").setMethodCallHandler { call, result ->
+            nativeActionScope.launch {
+                try {
+                    val value = withContext(Dispatchers.IO) {
+                        when (call.method) {
+                            "configure" -> NativeDiagnostics.configure(applicationContext,
+                                call.argument<Boolean>("enabled") ?: false,
+                                call.argument<String>("baseUrl"), call.argument<String>("apiKey"),
+                                call.argument<String>("deviceId"), call.argument<Map<String, Any?>>("identity") ?: emptyMap<String, Any?>(),
+                                call.argument<Number>("sinceEpochMs")?.toLong() ?: 0,
+                                call.argument<Map<String, Any?>>("fieldTest"))
+                            "status" -> NativeDiagnostics.status(applicationContext)
+                            "requestCapture" -> {
+                                NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.CAPTURE_REQUESTED)
+                                NativeDiagnostics.status(applicationContext)
+                            }
+                            "clear" -> { NativeDiagnostics.clear(applicationContext); NativeDiagnostics.status(applicationContext) }
+                            else -> null
+                        }
+                    }
+                    if (value == null) result.notImplemented() else result.success(value)
+                } catch (_: Exception) {
+                    result.error("NATIVE_DIAGNOSTICS_UNAVAILABLE", "Native diagnostic configuration unavailable", null)
+                }
+            }
+        }
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

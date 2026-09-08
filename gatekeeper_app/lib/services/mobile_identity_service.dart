@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'commercial_models.dart';
 import 'device_id_service.dart';
 import 'native_gatt_worker_health.dart';
+import 'native_diagnostic_upload.dart';
 
 class DiagnosticUploadResult {
   const DiagnosticUploadResult(this.code, {this.retryAfterSeconds = 30});
@@ -245,6 +246,30 @@ class MobileIdentityService {
   final Future<String> Function() _deviceIdProvider;
   final String _backendBaseUrl;
   final String _apiKey;
+
+  Future<Map<Object?, Object?>?> configureNativeDiagnostics({
+    required bool enabled,
+    required MobileIdentityStatus identity,
+    required int sinceEpochMs,
+    Map<String, Object?>? fieldTest,
+  }) async =>
+      NativeDiagnosticUpload().configure(<String, Object?>{
+        'enabled': enabled,
+        if (enabled) ...<String, Object?>{
+          'baseUrl': _backendBaseUrl,
+          'apiKey': _apiKey,
+          'deviceId': await _deviceIdProvider(),
+        },
+        'sinceEpochMs': sinceEpochMs,
+        'fieldTest': fieldTest,
+        'identity': <String, Object?>{
+          'enrollment_state': identity.enrollmentState.name,
+          'access_ready': identity.accessReady,
+          'door_count': identity.doorCount,
+          'target_synced': identity.targetSynced,
+          'acl_version': identity.aclVersion,
+        },
+      });
 
   Future<Map<String, Object?>> _identityBody() async {
     final body = <String, Object?>{'device_id': await _deviceIdProvider()};

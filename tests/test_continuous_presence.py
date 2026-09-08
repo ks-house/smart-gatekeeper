@@ -10,9 +10,12 @@ class ContinuousPresenceTest(unittest.TestCase):
     def test_sensor_clearance_is_observed_during_relay_off_cooldown(self):
         source = (ROOT / "src/main.cpp").read_text()
         self.assertIn(
-            "(g_access_fsm.state() == GateState::IDLE ||\n"
-            "              g_access_fsm.state() == GateState::COOLDOWN)", source,
+            "g_access_fsm.state() == GateState::IDLE ||\n"
+            "             g_access_fsm.state() == GateState::COOLDOWN", source,
         )
+        self.assertIn("passageRearm.observeDistance", source)
+        self.assertIn("now - lastHealthSampleMs >= 1000", source)
+        self.assertIn("!passageRearm.blocked() && g_acl_manager.isLeaseValid(now)", source)
 
     def test_verified_terminal_reauthentication_and_passage_interlock(self):
         with tempfile.TemporaryDirectory() as directory:

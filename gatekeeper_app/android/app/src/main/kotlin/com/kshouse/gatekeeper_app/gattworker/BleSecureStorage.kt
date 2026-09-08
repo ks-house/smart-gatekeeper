@@ -469,7 +469,7 @@ class DeterministicPresenceFingerprinter(key: ByteArray) : PresenceFingerprinter
   }
 }
 
-private class NoBackupAeadStore(context: Context) {
+internal class NoBackupAeadStore(context: Context) {
   private val directory = File(context.noBackupFilesDir, "ble-gatt-secure-v1")
   private val aead = AndroidKeystoreAead()
 
