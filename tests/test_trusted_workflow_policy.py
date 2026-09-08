@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "1cecb4bdba04ba8f7acb93c561fd03dac89591dd"
-EXPECTED_BUNDLE_ID = "diagnostics-read-deployment-baseline"
+MERGED_MAIN_COMMIT = "6c42c45ed153a395bdff035267c415d53d23bdf7"
+EXPECTED_BUNDLE_ID = "reliability-history-deployment-baseline"
 LEGACY_FULL_BUNDLE_DIGEST_LINES = """\
 .github/workflows/deploy.yml 74fb06eef8e56cfd5f79f2c5bae4b6e41d798a5ccf2fb00c4aa30668db1f4dda
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -145,18 +145,17 @@ ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053c
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
 backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
 backend/app/Dockerfile ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573
-backend/db/Dockerfile be3377a1fbbc113b86f62df4907eceb0b3fda443cda8589a80c70c23e31dcd9b
+backend/db/Dockerfile 8c8699539f85ff7e397cecd32e6c431627af874d624389e724bd609311e9a39d
 backend/compose.production.yml 709f70c7683636a0eb34a9822212b4369d5e5b906bbdeae81c3e2307236f953a
 backend/compose.synology.yml f90bc1675e97b6e0710deb415de32a6ce1dd22f21cb3cdf3b98fd7be5c50fcbd
 backend/deploy/create_release_bundle.py 2d82ba4421de9d3d487661b0e09a840b2b4d7e0527b03c4d8e7582d429747195
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
 backend/deploy/sgk_backend_deploy.sh c368931822e5bf6c2cb50b9d12f7b0fe372f61f47f03eb98245b9c0e48118003
 backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
-ops/backend_trusted_bundle_paths.json b4512474c0bda2901b978b038f7dd47dd5b401066bb9521f2e4f8d4b7086db65
+ops/backend_trusted_bundle_paths.json 3263d24b527ba1d39926981bb21600a9150e2051560b3e1bc3383d74a9b6b8b6
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    "backend/compose.production.yml",
-    "backend/deploy/sgk_backend_deploy.sh",
+    "backend/db/Dockerfile",
     "ops/backend_trusted_bundle_paths.json",
 }
 MERGED_MAIN_DIGESTS = dict(
@@ -181,6 +180,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "1cecb4bdba04ba8f7acb93c561fd03dac89591dd",
     "c9e61cdd35be3b37c18ab3917fbb981116759338",
     "21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1",
     "b88e3ca7eb2827aea89513c398c6b77a4ba36f74",
@@ -1126,8 +1126,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 3)
-    self.assertEqual(len(locally_unchanged_protected), 20)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 2)
+    self.assertEqual(len(locally_unchanged_protected), 21)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])

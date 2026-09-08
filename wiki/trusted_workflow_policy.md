@@ -31,6 +31,25 @@ remains outside this personal fast lane.
 
 ## 1. Trust boundary
 
+### 2026-09-08 reliability history admission
+
+Reviewed feature commit `6c42c45ed153a395bdff035267c415d53d23bdf7` introduces
+screen-independent mobile evidence, exact Backend commit receipts, preserved
+Target audit/sensor journals and schema 016 incident/health reads. This separate
+policy-only admission keeps the same 23 protected paths and changes exactly two
+hashes: DB Dockerfile copies the two new migration files, and the Backend release
+inventory includes the new module, migrations and tests. Workflows, signing
+gates, SSH dispatcher, NAS wrapper and runtime secrets are unchanged.
+
+New DB Dockerfile hash is
+`8c8699539f85ff7e397cecd32e6c431627af874d624389e724bd609311e9a39d`;
+inventory hash is
+`3263d24b527ba1d39926981bb21600a9150e2051560b3e1bc3383d74a9b6b8b6`.
+Merge this policy with the trusted-base check passing, then merge-connect main
+into the reviewed feature without squash/rebase. No post-feature rotation is
+required for same-byte descendants. Admission is not deployment, Target health
+or physical-entry evidence.
+
 ### 2026-09-07 diagnostics deployment admission
 
 Feature PR #387 is pinned to `1cecb4bdba04ba8f7acb93c561fd03dac89591dd`.

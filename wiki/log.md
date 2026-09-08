@@ -7045,3 +7045,8 @@
 - Extended scripts/read_diagnostics.py with --access-events and matching filters; preserved existing token file/environment, HTTPS verification and redirect refusal. Prevented mixed query/token modes and preserved large event IDs/boot counts/sequences/monotonic times as decimal strings. Documented receipt-time versus physical-event-time and empty-result evidence limits.
 - Validation: 21 focused API/client tests pass; Backend 239 tests with two existing real-MariaDB skips and no failures; root 382 tests with one PowerShell skip and no failures; OTA contract passes. The initial quiet-run command suppressed a log-assertion test; rerunning with only HTTP-client chatter suppressed passed without changing product code for that assertion.
 - Updated diagnostic API guide/index and preserved preexisting incident-analysis documentation. Local implementation only: no deployment, NAS wrapper/digest change, DB migration, mobile/Target update or device command. Production readback of the new route remains pending.
+
+## [2026-09-08] compile | Admit reviewed reliability history deployment inputs
+
+- Policy-only transition pins reviewed feature 6c42c45ed153a395bdff035267c415d53d23bdf7 and same-byte descendants. Preserves all 23 protected paths; only DB migration image COPY inputs and Backend release inventory hashes change. No workflow, signing, SSH/NAS wrapper, runtime secret or command authority change.
+- Updated exact policy regression fixtures and trust-boundary guide. Merge policy first with trusted-base validation, then merge-connect main into the feature without squash/rebase. This transition does not deploy schema 016, change Target state or prove physical access; no after-merge rotation is required in the existing personal lane.
