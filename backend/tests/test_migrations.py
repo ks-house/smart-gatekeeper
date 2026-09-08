@@ -84,7 +84,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-015}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-016}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -393,7 +393,7 @@ class MigrationContractTest(unittest.TestCase):
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "015", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "016", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
                 state = docker(
@@ -415,7 +415,7 @@ class MigrationContractTest(unittest.TestCase):
                     check=True,
                 ).stdout.split()[0]
                 self.assertEqual(
-                    ["1", "14", expected_014, "2:2", "GATT_V2_CONTRACT:NULL"],
+                    ["1", "15", expected_014, "2:2", "GATT_V2_CONTRACT:NULL"],
                     state,
                 )
                 inserted = docker(

@@ -59,8 +59,39 @@ class ScanSnapshot(StrictModel):
     lifecycle: list[ScanLifecycleSnapshot] = Field(max_length=32)
 
 
+class RuntimeLifecycleSnapshot(StrictModel):
+    event: str = Field(pattern=r"^[A-Z0-9_]{1,64}$")
+    at_epoch_ms: int = Field(ge=0, strict=True)
+    elapsed_ms: int = Field(ge=0, strict=True)
+    session_ref: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{16}$")
+    reason: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9_]{1,64}$")
+    ready: Optional[bool] = Field(default=None, strict=True)
+    ready_epoch: Optional[int] = Field(default=None, ge=0, le=0xffffffff, strict=True)
+    status: Optional[int] = Field(default=None, ge=-1, le=65535, strict=True)
+
+
+class RuntimeSnapshot(StrictModel):
+    captured_epoch_ms: int = Field(ge=0, strict=True)
+    captured_elapsed_ms: int = Field(ge=0, strict=True)
+    process_ref: str = Field(pattern=r"^[0-9a-f]{16}$")
+    pending_uploads: int = Field(ge=0, le=1, strict=True)
+    oldest_pending_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_upload_success_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_upload_code: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9_]{1,64}$")
+    dropped_events: int = Field(ge=0, le=0xffffffff, strict=True)
+    lifecycle: list[RuntimeLifecycleSnapshot] = Field(max_length=64)
+    background_restricted: Optional[bool] = Field(default=None, strict=True)
+    battery_optimization_exempt: Optional[bool] = Field(default=None, strict=True)
+    device_idle: Optional[bool] = Field(default=None, strict=True)
+    app_standby_bucket: Optional[int] = Field(default=None, ge=0, le=100, strict=True)
+    previous_exit_reason: Optional[int] = Field(default=None, ge=0, le=255, strict=True)
+    previous_exit_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_start_was_force_stopped: Optional[bool] = Field(default=None, strict=True)
+
+
 class NativeSnapshot(StrictModel):
     scan: Optional[ScanSnapshot] = None
+    runtime: Optional[RuntimeSnapshot] = None
 
     @field_validator("stage", "wake_registration_status", mode="before")
     @classmethod

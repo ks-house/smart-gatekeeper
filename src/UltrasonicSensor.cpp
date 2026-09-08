@@ -9,6 +9,7 @@
 float UltrasonicSensor::history[5] = {999.0f, 999.0f, 999.0f, 999.0f, 999.0f};
 uint8_t UltrasonicSensor::historyIdx = 0;
 UltrasonicSensor::Diagnostics UltrasonicSensor::diagnostics;
+sgk::SensorSessionTracker UltrasonicSensor::sessions;
 static float last_session_raw_cm = 999.0f;
 
 float UltrasonicSensor::lastRawDistanceCm() { return last_session_raw_cm; }

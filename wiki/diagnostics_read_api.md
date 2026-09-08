@@ -1,20 +1,19 @@
 # Local-PC diagnostic read API
 
-Status: Backend `00bee34343827181cbaa449244dbfe96044a6e94` deployed via PR #387;
-NAS read token activated and real report list/detail verified at 16:08 KST on
-September 7, after the owner confirmed wrapper installation and digest setup.
+Status: Backend `3c08e6b8ce60fd693103df868715215e8fbfe2f2` deployed via PR #390
+at 18:50 KST on September 8. Standalone access history and existing report reads
+are verified using the same PC token activated on September 7.
 This is separate from administrator cookie authentication and from door control.
 
-September 8 extension: standalone verified access-event reads and PC filters are
-implemented locally; **not yet deployed**. Existing NAS digest/token remain
-unchanged. Only a normal Backend deployment is required for the new route;
-no new wrapper, migration, APK or Target firmware is required.
+September 8 extension is **deployed and independently read back**. Existing NAS
+digest/token remain unchanged. No new wrapper, migration, APK or Target firmware
+was needed.
 
 ## Agent triage: use this API before requesting NAS access
 
 When the owner asks to inspect Backend-held diagnostic history, first use the
-existing local token with the deployed routes below. After the September 8
-extension is deployed, also query standalone access events for the requested
+existing local token with the deployed routes below. Also query standalone
+access events for the requested
 period even if the latest mobile report is old. Do not reinterpret that request
 as exclusively Docker stdout logs and prematurely require SSH or manual exports.
 Only distinguish unavailable runtime logs after actually checking available
@@ -46,7 +45,9 @@ The dedicated token can perform only these reads:
 | --- | --- |
 | `GET /api/v1/diagnostics/bundles?limit=20&before_id=…` | Most recently stored opted-in reports, receipt/export times, database row IDs and pagination cursor |
 | `GET /api/v1/diagnostics/bundles/{id}` | Validated report including sessions/wakes/optional scan lifecycle, plus up to 500 matching integrity-verified Target events |
-| `GET /api/v1/diagnostics/access-events` | Independent verified access history, receipt-time window and Target/session/boot/event filters, paginated by row ID; September 8 extension pending deployment |
+| `GET /api/v1/diagnostics/access-events` | Independent verified access history, receipt-time window and Target/session/boot/event filters, paginated by row ID; deployed September 8 |
+| `GET /api/v1/diagnostics/health-history` | New reliability release: sampled verified state/boot history, separate unsigned advisory fields; deployment pending |
+| `GET /api/v1/diagnostics/incidents` | New reliability release: bounded Target sessions, independent mobile failure/skip observations and signed sensor summaries, explicit missing/stale evidence; deployment pending |
 
 `id` is the decimal row ID returned by the list, not `bundle_ref`. Different
 phones can have identical content references, so the latter is not an exact
@@ -66,6 +67,35 @@ sessions, read general admin routes, change settings, enroll devices, trigger
 OTA or open doors. There is no POST/PUT/DELETE route or command publisher here.
 
 ## Independent access history (September 8 extension)
+
+### Reliability release extension (implementation, rollout pending)
+
+The same read token adds `--incidents` and `--health-history` to the PC client.
+The new routes preserve the time-window, no-store, rate-limit and read-only
+boundaries. Incident responses are not atomic snapshots and report their coverage;
+Target events, mobile reports and sensor-only observations have independent
+pagination/coverage limits. A stale phone report is not evidence that the phone
+woke now. Backend receipt windows are not physical arrival windows.
+
+Schema 016 adds append-only sampled Target health and independently authenticated
+terminal sensor summaries. The old schema rollback preserves these evidence
+tables. Signed status core and unsigned advisory counters are returned separately;
+an ESP32 self-reported advertising flag does not prove RF reception, and commanded
+relay state does not prove actual door movement. Sensor summaries carry their own
+MAC and original boot/session/terminal position, including retransmission after a
+later boot. Exact duplicates can be acknowledged without refreshing core liveness.
+
+Mobile runtime observations are opt-in and now originate from a native durable
+outbox, independent of the Flutter screen. Only an exact server bundle receipt
+retires the pending immutable report. Clear, consent withdrawal, credential or
+upload-authority change invalidate the pending generation. No MAC address, keys,
+raw advertisement or exception text are added to the report. A phone that the OS
+does not run cannot be diagnosed as healthy merely because scheduling was registered.
+
+Target access and sensor receipts use existing command transport with distinct
+HMAC domains and exact original-record identity. They acknowledge DB commit only;
+they have no relay, authentication, OTA or replay-ledger authority. No NAS wrapper
+or token registration change is required for these routes.
 
 `GET /api/v1/diagnostics/access-events` uses the same Bearer token and shared
 60/minute rate limit. No administrator cookie or new token registration is
@@ -104,7 +134,7 @@ An empty interval means no matching verified rows were returned, not proof of
 no physical entry, no firmware activity or a healthy collector. This endpoint
 does not expose Docker logs or a complete Wi-Fi/power/reset timeline.
 
-After deploying the extension, query on this WSL PC with its existing token:
+Query on this WSL PC with its existing token:
 
 ```bash
 python3 scripts/read_diagnostics.py --access-events --limit 100
@@ -217,8 +247,8 @@ filters, UTC/KST receipt windows, 31-day/page bounds, equal-time ID pagination,
 limits. Full Backend suite: 239 tests, no failures, two existing real-MariaDB
 skips. Root suite: 382 tests, no failures, one PowerShell-availability skip.
 OTA contract passes. These are local automated results, not NAS route/readback
-or physical-entry evidence. New route deployment and actual stored-event query
-remain pending; existing mobile/Target ingestion paths are unchanged.
+or physical-entry evidence. Deployment and real stored-event query were
+subsequently verified below; existing mobile/Target ingestion paths are unchanged.
 
 The following results and rollout evidence describe the original September 7
 report API release, not deployment of the September 8 extension.
@@ -283,3 +313,28 @@ Missing/wrong diagnostic tokens and use of the diagnostic token on the existing
 administrator-summary route each return 401. The raw PC token was not printed,
 regenerated or sent to GitHub. Future uploaded reports can be inspected through
 the existing client; upload consent and actual last-success time still matter.
+
+## September 8 independent history rollout
+
+PR #390 merged the tested feature to exact main
+`3c08e6b8ce60fd693103df868715215e8fbfe2f2`. Read-only NAS preflight run
+`34211540652` passed before deployment. Main run `34211698089` passed Backend
+security and real-MariaDB checks, operations evidence and image publication;
+the separate main OTA contract run passed too. Owner-requested production
+deployment finished at 18:50 KST, with matching forced apply/status evidence.
+API digest: `6955b04f9275f2d20a3594b5376eb9bcf5bbc8b754991d241da1e6bd7a093f47`.
+
+At 18:50–18:51 KST, independent HTTPS `/ready` returned that exact source with
+all checks true and fresh authenticated Target status. System DNS resolved
+normally for the authenticated PC readback; no TLS bypass or token change.
+The same local token retrieved today's verified access history across two
+two-row pages with distinct IDs and a fixed receipt-time interval. Combined
+Target/session/boot/event filtering also succeeded. Latest inspected row was
+received September 8 **16:11:22.784 KST**, code `ACCESS_SESSION_COMPLETED`.
+This is a stored event, not independent proof of physical door movement.
+
+Existing bundle reads remained successful. Missing/wrong tokens on the new
+route and the diagnostic token on the administrator access-event route each
+returned 401. No new data collection, device command, APK publication or Target
+OTA was performed. Earlier stale-report evidence does not contradict today's
+standalone access rows: the new route no longer requires mobile-session linkage.

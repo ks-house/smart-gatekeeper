@@ -29,14 +29,16 @@ private:
     static bool startConnectWorker(const IPAddress& brokerAddress,
                                    uint32_t wifiLinkGeneration);
     static void connectWorkerEntry(void* argument);
+    static void pollTelemetryWorker();
 
 public:
     static void init();
     static void update();
     // These coordination hooks never inspect or mutate the transport objects.
     // main can request cooperative cancellation as soon as local access owns
-    // the control path; OTA can avoid starting a second TLS client while the
-    // MQTT worker is inside a bounded connect phase.
+    // the control path. During sensor waiting an immutable signed-status write
+    // may run under exclusive worker ownership; commands remain main-loop-only.
+    // OTA excludes both the connect and status-write worker ownership windows.
     static void deferForAccessCritical();
     static bool connectionAttemptInProgress();
     // Signed reboot is staged until main has blocked new GATT auth, drained
@@ -60,7 +62,8 @@ public:
                                    const char* eventCode,
                                    const char* reasonCode,
                                    const char* credentialRef,
-                                   uint16_t phaseMask);
+                                   uint16_t phaseMask,
+                                   uint64_t terminalMonotonicMs = UINT64_MAX);
     // Record only in-memory phase evidence for an already-authorized signed
     // arm/manual command. These methods never touch the MQTT/TLS socket.
     static void noteSignedCommandArmed();

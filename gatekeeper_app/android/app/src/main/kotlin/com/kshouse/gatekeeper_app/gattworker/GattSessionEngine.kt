@@ -138,6 +138,8 @@ fun interface MonotonicClock {
 }
 
 interface ProofExecutionObserver {
+  /** Correlation only. Observing a challenge is not a successful proof/result. */
+  fun onChallengeObserved(targetSessionId: String) {}
   /** Must durably commit PROOF_UNCERTAIN before returning. */
   fun beforeProofWrite()
   fun afterProofWrite() {}
@@ -216,6 +218,7 @@ class GattSessionEngine(
           protocolVersion,
         )
         challengeMs = markPhase()
+        proofObserver.onChallengeObserved(GattCanonicalCodec.canonicalSessionUuid(challenge.sessionId))
         val canonical = GattCanonicalCodec.proofSigningInput(
           challenge.canonical,
           credentialId,

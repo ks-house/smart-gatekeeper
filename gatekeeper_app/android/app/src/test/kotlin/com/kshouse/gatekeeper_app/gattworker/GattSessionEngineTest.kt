@@ -52,12 +52,22 @@ class GattSessionEngineTest {
     )
     val signer = DeterministicFakeCredentialSigner(fixtureSignature)
     var now = 100L
+    var observedSessionId: String? = null
     val result = GattSessionEngine(
       transport,
       signer,
       timeoutMs = 1000,
       clock = MonotonicClock { now.also { now += 25 } },
       mobileBuild = 100,
+      proofObserver = object : ProofExecutionObserver {
+        override fun onChallengeObserved(targetSessionId: String) {
+          assertEquals(0, transport.proofWrites)
+          assertEquals(null, signer.lastCanonical)
+          observedSessionId = targetSessionId
+        }
+        override fun beforeProofWrite() = Unit
+        override fun afterProofWrite() = Unit
+      },
     ).run("00:11:22:33:44:55", credential)
 
     assertTrue(result is SessionOutcome.Success)
@@ -71,6 +81,7 @@ class GattSessionEngineTest {
     assertTrue(transport.closed)
     val success = result as SessionOutcome.Success
     assertEquals("10213243-5465-4687-98a9-bacbdcedfe0f", success.targetSessionId)
+    assertEquals(success.targetSessionId, observedSessionId)
     val performance = success.performance!!
     assertEquals(25L, performance.connectSetupMs)
     assertEquals(25L, performance.negotiationMs)

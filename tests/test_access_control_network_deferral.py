@@ -43,7 +43,8 @@ class AccessControlNetworkDeferralTests(unittest.TestCase):
     def test_legacy_events_and_telemetry_do_not_write_socket(self) -> None:
         event = self.mqtt.split("void MqttManager::publishEvent(", 1)[1]
         event = event.split("bool MqttManager::enqueueCanonicalEvent", 1)[0]
-        self.assertIn("enqueueEventWithDurableSpill(event)", event)
+        self.assertIn("legacyEventOutbox.push(event)", event)
+        self.assertNotIn("enqueueEventWithDurableSpill", event)
         self.assertNotIn("client.publish", event)
 
         telemetry = self.mqtt.split("void MqttManager::publishTelemetry(", 1)[1]

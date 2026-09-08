@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 try:
     from .acl_refresh import AclRefreshWorker
     from .diagnostics_read import create_diagnostics_read_router
+    from .reliability_diagnostics import advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
     from .admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -44,6 +45,7 @@ try:
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_refresh import AclRefreshWorker
     from diagnostics_read import create_diagnostics_read_router
+    from reliability_diagnostics import advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
     from admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -1186,7 +1188,7 @@ def _persist_canonical_target_access_event(
                                 ),
                             )
                         conn.commit()
-                    return True
+                    return {"inserted": False, "event": event}
             except Exception:
                 try:
                     conn.rollback()
@@ -1641,10 +1643,12 @@ class _CanonicalAccessEventWorker:
         capacity: int = 128,
         health=None,
         on_insert=None,
+        on_commit=None,
     ):
         self._persist = persist
         self._health = health
         self._on_insert = on_insert
+        self._on_commit = on_commit
         self._queue: queue.Queue[tuple[str, bytes, bool] | None] = queue.Queue(
             maxsize=capacity
         )
@@ -1691,6 +1695,13 @@ class _CanonicalAccessEventWorker:
                     and self._on_insert is not None
                 ):
                     self._on_insert(stored.get("event"))
+                if isinstance(stored, dict) and self._on_commit is not None:
+                    try:
+                        self._on_commit(stored.get("event"))
+                    except Exception:
+                        # A failed receipt must not kill collection or discard the
+                        # Target journal. Exact replay reissues it after DB verification.
+                        log.warning("[MQTT-AUDIT] committed event receipt unavailable")
                 if stored is None:
                     log.warning("[MQTT-AUDIT] rejected canonical Target access event")
                 elif not stored:
@@ -2542,6 +2553,13 @@ def _parse_authenticated_target_status(
     }
     if controller is not None:
         parsed["controller_diagnostics"] = controller
+    advisory = advisory_projection(document)
+    if advisory:
+        parsed["advisory_diagnostics"] = advisory
+    sensor_summary = verified_sensor_summary(document, parsed, ACCESS_EVENT_REF_KEYS)
+    if sensor_summary is not None:
+        parsed["sensor_session_summary"] = sensor_summary
+        parsed["sensor_summary_auth"] = document["sensor_summary_auth"]
     return parsed
 
 
@@ -2865,6 +2883,7 @@ def _persist_authenticated_target_status(
                     int(time.time()),
                 ),
             )
+            record_sensor_summary(cur, status_value)
             if replay:
                 conn.commit()
                 return {
@@ -2971,6 +2990,7 @@ def _persist_authenticated_target_status(
                     "WHERE target_id=%s",
                     (collector_ref, *values, target_id),
                 )
+            record_verified_health(cur, status_value)
         conn.commit()
         return {
             **status_value,
@@ -3139,12 +3159,14 @@ class _AuthenticatedTargetStatusWorker:
         persist=_persist_authenticated_target_status,
         registry: _TargetGateStateRegistry = _target_gate_states,
         on_verified=None,
+        on_commit=None,
         health=None,
         capacity: int = 32,
     ) -> None:
         self._persist = persist
         self._registry = registry
         self._on_verified = on_verified
+        self._on_commit = on_commit
         self._health = health
         self._queue: queue.Queue[
             tuple[str, bytes, bool, int] | None
@@ -3237,6 +3259,11 @@ class _AuthenticatedTargetStatusWorker:
                                 )
                                 if isinstance(stored, dict):
                                     self._health.note_verified_evidence()
+                            if isinstance(stored, dict) and self._on_commit is not None:
+                                try:
+                                    self._on_commit(target_id, stored)
+                                except Exception:
+                                    log.warning("[MQTT-STATUS] committed sensor receipt unavailable")
                             if not (
                                 isinstance(stored, dict)
                                 and stored.get("advanced", False)
@@ -3401,10 +3428,20 @@ def _start_target_boot_subscriber():
     )
     _ha_access_event_outbox_worker = ha_outbox_worker
 
+    def publish_access_receipt(event):
+        payload = build_access_receipt(event, ACCESS_EVENT_REF_KEYS)
+        published = client.publish(
+            f"gatekeeper/v1/targets/{event['collector_target_id']}/command",
+            payload, qos=1, retain=False,
+        )
+        if getattr(published, "rc", None) != mqtt.MQTT_ERR_SUCCESS:
+            raise RuntimeError("receipt publish unavailable")
+
     event_worker = _CanonicalAccessEventWorker(
         persist=_persist_canonical_target_access_event,
         health=_canonical_access_collector_health,
         on_insert=(ha_outbox_worker.wake if ha_outbox_worker is not None else None),
+        on_commit=publish_access_receipt,
     )
     _canonical_access_event_worker = event_worker
 
@@ -3458,9 +3495,18 @@ def _start_target_boot_subscriber():
             "fresh availability",
         )
 
+    def publish_sensor_receipt(target_id, stored):
+        if stored.get("sensor_session_summary") is None:
+            return
+        payload = build_sensor_receipt(stored, ACCESS_EVENT_REF_KEYS)
+        published = client.publish(f"gatekeeper/v1/targets/{target_id}/command", payload, qos=1, retain=False)
+        if getattr(published, "rc", None) != mqtt.MQTT_ERR_SUCCESS:
+            raise RuntimeError("sensor receipt publish unavailable")
+
     status_worker = _AuthenticatedTargetStatusWorker(
         persist=_persist_authenticated_target_status,
         on_verified=accept_verified_status,
+        on_commit=publish_sensor_receipt,
         health=_authenticated_status_collector_health,
     )
     _authenticated_target_status_worker = status_worker

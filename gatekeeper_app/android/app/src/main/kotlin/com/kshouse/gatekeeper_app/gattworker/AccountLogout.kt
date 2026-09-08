@@ -60,6 +60,11 @@ object AccountLogoutManager {
   /** Called only after Backend revocation and account unlink succeeded. */
   fun clearLocalIdentity(context: Context): Map<String, Any?> {
     val app = context.applicationContext
+    // Consent and pending diagnostic transport must not survive account unlink,
+    // including the already-logged-out branch below.
+    runCatching { NativeDiagnostics.disable(app) }
+    app.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+      .putBoolean("flutter.field_diagnostics_upload_enabled_v1", false).commit()
     val credentialStore = BleCredentialConfigStore(app)
     val credential = credentialStore.credentialId()
       ?: return mapOf("accepted" to true, "reason" to "ALREADY_LOGGED_OUT")

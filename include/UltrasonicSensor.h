@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include "config.h"
+#include "SensorSessionDiagnostics.h"
 
 class UltrasonicSensor {
 private:
@@ -23,6 +24,7 @@ public:
     float maximum_cm = 0.0f;
   };
   static Diagnostics diagnostics;
+  static sgk::SensorSessionTracker sessions;
   static float lastRawDistanceCm();
   /// GPIO 핀 초기화 (TRIG=OUTPUT, ECHO=INPUT)
   static void init();

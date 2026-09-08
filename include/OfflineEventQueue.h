@@ -58,6 +58,15 @@ struct CanonicalEvent {
   uint32_t crc32 = 0;
 };
 
+// Old unsigned records cannot receive an authenticated Backend receipt. Keep
+// their N-1 best-effort retirement; authenticated records never use that path.
+inline bool canonicalEventRequiresCommitReceipt(const CanonicalEvent& event) {
+  return event.is_canonical == 1 &&
+      (event.schema_version == kCanonicalEventSchemaV2 ||
+       (event.schema_version == kCanonicalEventSchemaV1 &&
+        event.padding == kCanonicalV2OverlayMarker));
+}
+
 const char* canonicalEventReason(const CanonicalEvent& event);
 bool canonicalEventAccessAuth(
     const CanonicalEvent& event,
@@ -116,6 +125,7 @@ class OfflineEventQueue {
   bool isEmpty() const { return count_ == 0; }
   size_t size() const { return count_; }
   uint32_t overflowCount() const { return overflow_count_; }
+  uint32_t backpressureCount() const { return backpressure_count_; }
   uint32_t tornRecoveryCount() const { return torn_recovery_count_; }
   void clear();
 
@@ -130,6 +140,7 @@ class OfflineEventQueue {
   uint32_t generation_ = 0;
   uint8_t active_meta_slot_ = 0;
   uint32_t overflow_count_ = 0;
+  uint32_t backpressure_count_ = 0;
   uint32_t torn_recovery_count_ = 0;
 
   bool persistMeta(size_t head, size_t tail, size_t count, uint32_t overflow_count);

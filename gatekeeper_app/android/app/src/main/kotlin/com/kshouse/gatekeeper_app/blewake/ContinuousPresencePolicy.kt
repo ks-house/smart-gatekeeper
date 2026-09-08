@@ -35,13 +35,15 @@ object ContinuousPresencePolicy {
   fun eventId(epoch: Long, last: DurableGattSession?): String =
     "ready-v1-$epoch" + if (last?.state == DurableSessionState.FAILED) "-after-${last.id}" else ""
 
-  fun maySchedule(last: DurableGattSession?, now: Long): Boolean {
-    if (last == null) return true
+  fun maySchedule(last: DurableGattSession?, now: Long): Boolean = blockingReason(last, now) == null
+
+  fun blockingReason(last: DurableGattSession?, now: Long): String? {
+    if (last == null) return null
     val age = (now - last.updatedEpochMs).coerceAtLeast(0)
     return when (last.state) {
-      DurableSessionState.PROOF_UNCERTAIN -> false
+      DurableSessionState.PROOF_UNCERTAIN -> "PROOF_OUTCOME_UNCERTAIN"
       DurableSessionState.RUNNING, DurableSessionState.QUEUED,
-      DurableSessionState.RETRY_PENDING -> false
+      DurableSessionState.RETRY_PENDING -> "SESSION_ALREADY_ACTIVE"
       DurableSessionState.FAILED -> {
         // A new fresh ready advertisement can recover a known pre-proof link
         // failure without a minute-long dead period. Authorization denials keep
@@ -54,9 +56,9 @@ object ContinuousPresencePolicy {
         // quiet window rather than reconnecting every five seconds forever.
         val fastRecovery = transient && !last.failureRecovery
         val delay = maxOf(if (fastRecovery) 5_000L else 60_000L, last.retryAfterMs ?: 0L)
-        age >= delay
+        if (age >= delay) null else "FAILURE_BACKOFF"
       }
-      else -> age >= 2_000
+      else -> if (age >= 2_000) null else "SESSION_COOLDOWN"
     }
   }
 }

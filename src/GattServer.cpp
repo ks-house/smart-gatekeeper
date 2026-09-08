@@ -361,7 +361,8 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     if (verified_terminal) {
       MqttManager::noteAccessTerminal(
           session_id_text, event.sequence, ev_code_str, reason_str,
-          has_credential_ref ? credential_ref : nullptr, terminal_phase_mask);
+          has_credential_ref ? credential_ref : nullptr, terminal_phase_mask,
+          event.monotonic_ms);
     }
     last_session_ = schema_session;
     last_sequence_ = event.sequence;

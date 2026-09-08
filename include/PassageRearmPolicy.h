@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "SensorSessionDiagnostics.h"
 
 namespace sgk {
 
@@ -18,10 +19,25 @@ class PassageRearmPolicy {
     }
   }
   bool blocked() const { return blocked_; }
+  void observeDistance(uint16_t raw_mm, uint16_t threshold_mm) {
+    if (raw_mm == kNoSensorMeasurement) {
+      if (unknown_samples_ < 10) ++unknown_samples_;
+      state_ = unknown_samples_ >= 10 ? SensorClearanceState::kFault : SensorClearanceState::kUnknown;
+      observe(false);
+      return;
+    }
+    unknown_samples_ = 0;
+    const bool clear = raw_mm > threshold_mm + 100;
+    state_ = clear ? SensorClearanceState::kClear : SensorClearanceState::kOccupied;
+    observe(clear);
+  }
+  SensorClearanceState state() const { return state_; }
 
  private:
   bool blocked_ = false;
   uint8_t clear_samples_ = 0;
+  uint8_t unknown_samples_ = 0;
+  SensorClearanceState state_ = SensorClearanceState::kUnknown;
 };
 
 // Advisory radio hint only: GATT proof/ACL/FSM remain the authorization path.

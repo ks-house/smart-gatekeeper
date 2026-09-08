@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'native_diagnostic_upload.dart';
 
 class FieldTestMarker {
   const FieldTestMarker({
@@ -70,6 +71,7 @@ class FieldDiagnosticsStore {
 
   /// Reset the diagnostic view, never the safety/replay ledger or credentials.
   Future<void> clearReportHistory({DateTime? now}) async {
+    await NativeDiagnosticUpload().clear();
     final prefs = await SharedPreferences.getInstance();
     if (!await prefs.setInt(
       _reportSinceKey,
@@ -84,6 +86,7 @@ class FieldDiagnosticsStore {
 
   Future<bool> uploadEnabled() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
     return prefs.getBool(_uploadEnabledKey) ?? false;
   }
 
