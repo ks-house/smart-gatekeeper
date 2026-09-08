@@ -3,7 +3,7 @@ title: Hands-free entry reliability recovery and autonomous diagnosis
 type: proposal
 project: smart-gatekeeper
 status: in_progress
-updated: 2026-09-08
+updated: 2026-09-09
 source_of_truth: true
 applies_to: [android, target, backend, personal-production]
 ---
@@ -266,8 +266,9 @@ Android 15 이상 명시적 force-stop은 PendingIntent를 취소한다. 이 제
 
 소유자는 사용자 로그 추출에 의존하지 않는 개선 진행을 승인했다.
 `codex/hands-free-reliability-recovery`에서 모바일 native 전송, Target 기록 보존과
-센서 요약, Backend incident/health API를 병행 구현한다. 이 절은 진행 상태이며
-아직 병합·운영 배포·Target 설치 또는 실제 출입 성공을 뜻하지 않는다.
+센서 요약, Backend incident/health API를 병행 구현했다. PR #392가 exact main
+`81fbc6dc9b9286b2d4375afeda9129566789ad2a`으로 병합됐다. 배포·설치·실제 출입
+증거는 아래에서 별도로 구분한다.
 
 - `AccessEventReceipt`는 기존 command topic의 별도 진단 메시지로 수신한
   DB commit 응답만 검증한다. Target/event/boot/count/sequence/원래 event MAC을
@@ -304,10 +305,10 @@ Android 15 이상 명시적 force-stop은 PendingIntent를 취소한다. 이 제
   command 수신·ACL callback과 canonical 감사 이력 전송은 IDLE에서 처리한다.
   따라서 완전한 steady-state MQTT 비동기화나 즉시 모든 이벤트 도착을 주장하지 않는다.
 
-배포 전 현재 root 390개 회귀 시험은 보호 입력 2개(DB image migration 파일과
-Backend bundle 목록)의 사전 정책 회전이 필요한 assertion만 실패했다.
-배포 권한 범위를 넓히지 않고 기존 23-path 정책의 별도 baseline 검토 후
-병합 연결하며, 그 뒤 전체 회귀를 다시 실행한다. Target/app OTA 경로와
+보호 입력 2개(DB image migration 파일과 Backend bundle 목록)는 별도 정책
+PR #391에서 사전 승인한 뒤 main을 feature에 병합 연결했다. 기존 23-path
+범위와 배포 권한을 유지했으며 최종 root 391개 시험이 PASS했다(환경상
+PowerShell 1개 skip). 정책 42개와 PR의 모든 필수 검사도 PASS했다. Target/app OTA 경로와
 dual-slot rollback은 유지한다. 실제 폰 화면 OFF, 현장 RF/센서/릴레이와
 일상 출입 SLO는 소프트웨어 시험만으로 완료 처리하지 않는다.
 
@@ -324,3 +325,39 @@ RAM 93,112B, Flash 1,842,052B다. OTA contract와 protocol 16개 시험도 PASS�
 이관해야 한다. 이후 Flutter 화면은 전송 조건이 아니다. 상시 관측 동의,
 앱 설치·OS 실행 허용과 실제 수집 여부는 구분한다. 문 앞 재현 산책이나
 지원 보고서 복사를 배포 확인의 기본 요구로 삼지 않는다.
+
+## 9. Exact-main 배포 및 현장 증거
+
+- Source: PR #392, `81fbc6dc9b9286b2d4375afeda9129566789ad2a`.
+- Target run `34240363227`은 9월 8일 23:51 KST에
+  **2.1.480+main.g81fbc6d**를 게시했다. 서명/암호화 검증, NAS atomic publish,
+  실제 HTTPS manifest와 immutable firmware artifact exact readback을 통과했다.
+  이 결과는 Target 설치·재부팅·health confirmation이 아니다.
+- Backend run `34240363175`는 23:54:11 KST 배포 성공했고, 독립 `/ready`가
+  exact source/12개 check true/Target fresh를 반환했다. 실제 sampled health가
+  약 30초 간격으로 row 1→2→3 증가하고 사건 API와 구형 보고서 조회가
+  통과했다. 무토큰/잘못된 토큰은 401이다. 기존 PC 진단 토큰/NAS wrapper는
+  변경하지 않았다.
+- Mobile run `34240363172`는 9월 9일 00:02:20 KST에
+  **1.0.0-g81fbc6d / 44401** 게시를 완료했다. APK 서명 및 primary/fallback
+  atomic publish, 두 경로의 HTTPS metadata/APK exact-byte 검증이 모두
+  PASS했다. APK 55,659,673B, SHA-256
+  `d1efd6dfeb68b4885b1f229c3ccb665b72d283b8edcf262f46f6df78494138e4`다.
+  휴대폰 설치나 화면 OFF 동작 증거는 아니다.
+- 이번 작업에서 문 열기, 릴레이 시험 또는 수동 Target OTA trigger를
+  전송하지 않았다. Target의 기존 periodic HTTPS pull은 6시간 주기이므로
+  게시 시각을 장치 설치 시각으로 대체하지 않는다.
+- 실제 화면 OFF 자동 출입, 센서 재진입 회복, OTA 장기 health와 실제 문
+  움직임은 아직 현장 완료 증거가 없다. 새 자동 이력으로 자연 사용을
+  확인하며 사용자의 로그 복사나 재현 산책을 기본 전제에 두지 않는다.
+- 이 작업에 `SGK 출입 신뢰성 후속 진단` heartbeat(`sgk`)를 매시간 등록했다.
+  새 설치·장애·수집 원인을 기존 API로 읽고 의미 있는 변화만 알린다.
+  문 열기/OTA trigger/재부팅/설정 변경/자동 배포는 허용하지 않는다.
+  이 Agent 점검은 PC와 데스크톱 앱이 실행 중이어야 하며, NAS의 이력 저장과
+  모바일 native 수집을 대체하지 않는다. 동일 stale 상태를 반복 보고하지 않는다.
+- 운영 readback에서 발견한 두 공백을 Backend-only 후속 수정으로 처리한다.
+  전역 middleware의 no-store 덮어쓰기를 실제 app 경로 시험으로 고치고,
+  이미 발행되는 retained `/boot`의 닫힌 참고 필드를 최대 32개 캐시에
+  보관한 뒤 exact signed-status boot와 일치할 때만 이력에 연결한다.
+  수신 시각/retained 여부/생성 시각 미관측/unsigned를 명시하고 boot authority나
+  liveness는 바꾸지 않는다. 이 후속 수정의 운영 배포 확인은 아직 진행 중이다.

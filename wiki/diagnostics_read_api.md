@@ -1,13 +1,14 @@
 # Local-PC diagnostic read API
 
-Status: Backend `3c08e6b8ce60fd693103df868715215e8fbfe2f2` deployed via PR #390
-at 18:50 KST on September 8. Standalone access history and existing report reads
-are verified using the same PC token activated on September 7.
+Status: Backend `81fbc6dc9b9286b2d4375afeda9129566789ad2a` deployed via PR #392
+at 23:54 KST on September 8. Incident/health history, standalone access history
+and existing report reads are verified using the same PC token activated on September 7.
 This is separate from administrator cookie authentication and from door control.
 
-September 8 extension is **deployed and independently read back**. Existing NAS
-digest/token remain unchanged. No new wrapper, migration, APK or Target firmware
-was needed.
+The reliability extension is **deployed and independently read back** with schema
+016. Existing NAS digest/token/wrapper remain unchanged. New native phone capture
+and signed sensor summaries additionally require the independently published app
+and Target firmware to be installed; Backend deployment alone does not enable them.
 
 ## Agent triage: use this API before requesting NAS access
 
@@ -29,11 +30,11 @@ returned Target events were historical, with truncation false. No new September 
 report was returned. This is a diagnostic evidence gap, not proof of no access
 attempts, no Target events outside the report's sessions, or failed ingestion.
 
-Source at the deployed SHA still hosts upload orchestration in
+Historical source `3c08e6b` hosted upload orchestration in
 `SmartKeyHomeScreen`: initialization/resume, a resumed-only 30-second retry timer,
 and health-change/marker/settings callbacks. Upload is consent-gated, suppresses
 unchanged bundle references and stops with the screen lifecycle. There is no
-independent durable background uploader in this path. Missing new reports may
+independent durable background uploader in that older app path. Missing reports may
 involve lifecycle, unchanged contents, consent or network/auth errors; this API
 alone cannot select a cause. A stored `healthy=true` is not current liveness.
 
@@ -46,8 +47,8 @@ The dedicated token can perform only these reads:
 | `GET /api/v1/diagnostics/bundles?limit=20&before_id=…` | Most recently stored opted-in reports, receipt/export times, database row IDs and pagination cursor |
 | `GET /api/v1/diagnostics/bundles/{id}` | Validated report including sessions/wakes/optional scan lifecycle, plus up to 500 matching integrity-verified Target events |
 | `GET /api/v1/diagnostics/access-events` | Independent verified access history, receipt-time window and Target/session/boot/event filters, paginated by row ID; deployed September 8 |
-| `GET /api/v1/diagnostics/health-history` | New reliability release: sampled verified state/boot history, separate unsigned advisory fields; deployment pending |
-| `GET /api/v1/diagnostics/incidents` | New reliability release: bounded Target sessions, independent mobile failure/skip observations and signed sensor summaries, explicit missing/stale evidence; deployment pending |
+| `GET /api/v1/diagnostics/health-history` | Sampled verified state/boot history, separate unsigned advisory fields; deployed September 8 |
+| `GET /api/v1/diagnostics/incidents` | Bounded Target sessions, independent mobile failure/skip observations and signed sensor summaries, explicit missing/stale evidence; deployed September 8 |
 
 `id` is the decimal row ID returned by the list, not `bundle_ref`. Different
 phones can have identical content references, so the latter is not an exact
@@ -68,7 +69,7 @@ OTA or open doors. There is no POST/PUT/DELETE route or command publisher here.
 
 ## Independent access history (September 8 extension)
 
-### Reliability release extension (implementation, rollout pending)
+### Reliability release extension (Backend deployed; device installation separate)
 
 The same read token adds `--incidents` and `--health-history` to the PC client.
 The new routes preserve the time-window, no-store, rate-limit and read-only
@@ -338,3 +339,59 @@ route and the diagnostic token on the administrator access-event route each
 returned 401. No new data collection, device command, APK publication or Target
 OTA was performed. Earlier stale-report evidence does not contradict today's
 standalone access rows: the new route no longer requires mobile-session linkage.
+
+## September 8 reliability-history rollout
+
+PR #392 merged to `81fbc6dc9b9286b2d4375afeda9129566789ad2a` after policy
+admission PR #391. Backend run `34240363175` deployed schema 016 and the API
+between 23:52:33 and 23:54:11 KST. External `/ready` returned the exact source,
+all 12 checks true and fresh verified Target status.
+
+Independent authenticated reads observed health rows 1, 2 and 3 at
+23:54:06.207, 23:54:36.932 and 23:55:07.631 KST, with the same verified boot
+784 and increasing status revisions 4085, 4115 and 4145. Firmware advisory
+remained old `2.1.469+main.g6a45aec`, separate from newly published Target
+`2.1.480+main.g81fbc6d`; this is not new firmware installation evidence.
+
+The incident API returned the earlier boot-782 `ARM_TIMEOUT` and
+`GATT_DISCONNECTED` sessions, explicitly marking missing sensor evidence, stale
+pre-window mobile data and `mobile_reports_truncated=true`. Other inspected
+coverage flags were false. Existing report list/detail and access-events CLI
+reads passed; both new routes returned 401 for missing and wrong tokens. New
+report row 143 arrived at 23:41:17 from old APK 44201 and is not native-outbox
+execution evidence. No synthetic production report or device command was sent.
+
+Live HTTPS testing found the common middleware overwrote diagnostic `no-store`
+with `no-cache`, although router-only tests passed. This additional defect is
+being corrected with full-app middleware regression and independent production
+header readback; the initial deployment does not satisfy that header contract.
+
+## September 9 operational readback corrections
+
+The full-app middleware now preserves diagnostic `Cache-Control: no-store` on
+success, authentication/validation/routing errors, rate limit, handled storage
+failures and generic unexpected failures. The regression runs through actual
+`main.app`, not an isolated router. No exception detail is returned.
+
+The old Target already emits retained `/boot` diagnostic fields, but the old
+subscriber discarded them. A bounded cache now accepts only configured exact
+Target topics, payloads up to 4 KiB and closed projected fields, retaining at
+most 32 boot identities. It does not update the boot registry, liveness or
+command authority. A subsequent MAC-verified, high-water-accepted status can
+attach only the exact matching Target/boot ID/boot count observation to the
+existing health history. A replayed status does not create new health history.
+
+`unsigned_advisory.boot_observation` explicitly records `MQTT_BOOT_ADVISORY`,
+`UNSIGNED`, whether the message was retained, its server receipt time and
+`generation_time=NOT_OBSERVED`. Its reset/planned restart/previous action, heap,
+network and access breadcrumb fields remain advisory, not signed crash proof.
+The API revalidates the nested identity and closed projection. It excludes IP,
+BSSID, arbitrary exception/log strings, raw coredump contents and keys.
+Periodic status GATT/advertising/network counters and sensor-clearance codes
+are also retained instead of being discarded by the earlier projection.
+
+This is a Backend-only correction using schema 016; no additional migration,
+token/wrapper change or mobile/Target rebuild is required. Production readback
+of these corrections is pending. OTA in-flight stage and errors not emitted by
+the current Target remain unobservable; a retained boot receipt is not its
+generation timestamp and does not demonstrate a new reboot.

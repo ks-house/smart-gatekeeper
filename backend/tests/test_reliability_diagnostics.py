@@ -22,6 +22,7 @@ from backend.app.acl_api import AclApiConfig, create_acl_router
 from backend.app.diagnostics_read import create_diagnostics_read_router
 from backend.app.mobile_diagnostics import MobileDiagnosticBundle
 from backend.app.reliability_diagnostics import (
+    BootAdvisoryCache, advisory_projection, boot_observation_projection,
     build_access_receipt, build_sensor_receipt, classify_incident, sensor_mac_input,
     verified_sensor_summary, record_verified_health, record_sensor_summary,
 )
@@ -58,6 +59,84 @@ def sensor_document(summary=None):
 
 
 class ReliabilityContractTest(unittest.TestCase):
+    def test_boot_cache_retained_exact_match_and_closed_redaction(self):
+        cache = BootAdvisoryCache(clock=lambda: 123)
+        doc = dict(target_id=TARGET, boot_id=BOOT, boot_count=782, firmware="2.1.469+main.g6a45aec",
+            planned_restart="ota_pending_verify", previous_action="restart:ota_pending_verify",
+            reset_reason="BROWNOUT", previous_valid=True, previous_state="ARMED", previous_access_stage="CHALLENGE_ISSUED",
+            previous_access_session_id=SESSION, largest_free_block=16000, mqtt_last_error=-2,
+            sensor_clearance_state="OCCUPIED", gatt_proofs_verified=3,
+            ip="private", wifi_bssid="private", coredump_panic_reason="private", private_key="private",
+            boot_observation={"provenance": "forged"})
+        self.assertTrue(cache.observe(f"gatekeeper/v1/targets/{TARGET}/boot", json.dumps(doc).encode(),
+                                     retained=True, configured_targets={TARGET}))
+        value = cache.match_verified(status_value())
+        self.assertEqual("UNSIGNED", value["integrity_status"])
+        self.assertEqual("MQTT_BOOT_ADVISORY", value["provenance"])
+        self.assertEqual("123000", value["received_epoch_ms"])
+        self.assertTrue(value["retained"])
+        self.assertEqual("NOT_OBSERVED", value["generation_time"])
+        self.assertEqual("ota_pending_verify", value["fields"]["planned_restart"])
+        self.assertEqual("restart:ota_pending_verify", value["fields"]["previous_action"])
+        self.assertEqual(SESSION, value["fields"]["previous_access_session_id"])
+        self.assertEqual(-2, value["fields"]["mqtt_last_error"])
+        self.assertNotIn("private", json.dumps(value))
+        self.assertNotIn("boot_observation", value["fields"])
+        for mismatch in ({"source_boot_count": 783}, {"source_boot_id": "f"*32}, {"target_id": "other"}):
+            self.assertIsNone(cache.match_verified({**status_value(), **mismatch}))
+        value["fields"]["planned_restart"] = "mutated"
+        self.assertEqual("ota_pending_verify", cache.match_verified(status_value())["fields"]["planned_restart"])
+
+    def test_boot_cache_rejects_malformed_exact_topics_and_is_bounded(self):
+        cache = BootAdvisoryCache(max_entries=2)
+        doc = dict(target_id=TARGET, boot_id=BOOT, boot_count=782)
+        topic = f"gatekeeper/v1/targets/{TARGET}/boot"
+        for candidate, payload, allowed in ((topic+"/extra", json.dumps(doc).encode(), {TARGET}),
+                (topic, json.dumps(doc).encode(), {"other"}),
+                (topic, b" "*4097, {TARGET}), (topic, b'{"target_id":"a","target_id":"b"}', {TARGET}),
+                (topic, json.dumps({**doc, "boot_count": True}).encode(), {TARGET}),
+                (topic, json.dumps({**doc, "target_id": "other"}).encode(), {TARGET}),
+                (topic, json.dumps({**doc, "boot_id": "f"*64}).encode(), {TARGET}),
+                (topic, b'{"boot_count":NaN}', {TARGET})):
+            self.assertFalse(cache.observe(candidate, payload, retained=True, configured_targets=allowed))
+        for count in (782, 783, 784):
+            self.assertTrue(cache.observe(topic, json.dumps({**doc, "boot_count": count}).encode(),
+                                          retained=False, configured_targets={TARGET}))
+        self.assertIsNone(cache.match_verified(status_value()))
+        self.assertIsNotNone(cache.match_verified({**status_value(), "source_boot_count": 784}))
+        self.assertEqual({}, advisory_projection(dict(previous_action="PRIVATE_TOKEN", previous_access_stage="PRIVATE_TOKEN",
+             planned_restart="PRIVATE_TOKEN", reset_reason="PRIVATE_TOKEN", gatt_proofs_verified=True,
+             previous_access_session_id="PRIVATE_TOKEN", largest_free_block=-1)))
+
+    def test_boot_advisory_attaches_only_after_verified_accepted_status(self):
+        cache = BootAdvisoryCache(clock=lambda: 123)
+        doc = dict(target_id=TARGET, boot_id=BOOT, boot_count=782, planned_restart="ota_health_heap_timeout")
+        cache.observe(f"gatekeeper/v1/targets/{TARGET}/boot", json.dumps(doc).encode(),
+                      retained=True, configured_targets={TARGET})
+        conn = MagicMock()
+        cur = conn.cursor.return_value.__enter__.return_value
+        cur.fetchone.return_value = None
+        status = {**status_value(), "integrity_key_id": "a1", "integrity_tag": bytes(16)}
+        for key in ("last_terminal_session_id", "last_terminal_event_sequence", "last_terminal_event_code",
+                    "last_terminal_reason_code", "last_terminal_credential_ref"):
+            status[key] = None
+        status["last_terminal_phase_mask"] = 0
+        with patch.object(main, "_boot_advisories", cache), patch.object(main, "get_db", return_value=conn), \
+             patch.object(main, "_parse_authenticated_target_status", return_value=None):
+            self.assertIsNone(main._persist_authenticated_target_status(TARGET, b"unsigned", retained=False))
+        conn.begin.assert_not_called()
+        with patch.object(main, "_boot_advisories", cache), patch.object(main, "get_db", return_value=conn), \
+             patch.object(main, "_parse_authenticated_target_status", return_value=status):
+            result = main._persist_authenticated_target_status(TARGET, b"verified", retained=False)
+        self.assertTrue(result["advanced"])
+        conn.commit.assert_called_once()
+        insert = next(c for c in cur.execute.call_args_list if "INSERT INTO target_health_history" in c.args[0])
+        self.assertNotIn("boot_observation", json.loads(insert.args[1][7]))
+        stored = json.loads(insert.args[1][8])["boot_observation"]
+        self.assertEqual("UNSIGNED", stored["integrity_status"])
+        self.assertEqual("ota_health_heap_timeout", stored["fields"]["planned_restart"])
+        self.assertEqual([], classify_incident([])["explicit_reasons"])
+
     def test_native_producer_report_accepted_by_authenticated_api(self):
         result_xml = ROOT / "gatekeeper_app/build/app/test-results/testDebugUnitTest/TEST-com.kshouse.gatekeeper_app.gattworker.NativeDiagnosticsTest.xml"
         if not result_xml.exists():
@@ -237,6 +316,32 @@ class ReliabilityReadTest(unittest.TestCase):
             self.assertEqual(200, response.status_code)
             self.assertEqual("no-store", response.headers["cache-control"])
         self.assertTrue(response.json()["coverage"]["absence_is_not_success"])
+
+    def test_health_boot_advisory_reprojection_rejects_mismatch_and_private_fields(self):
+        cache = BootAdvisoryCache(clock=lambda: 123)
+        cache.observe(f"gatekeeper/v1/targets/{TARGET}/boot", json.dumps(dict(target_id=TARGET,
+            boot_id=BOOT, boot_count=782, planned_restart="ota_pending_verify")).encode(),
+            retained=True, configured_targets={TARGET})
+        boot = cache.match_verified(status_value())
+        boot["fields"].update(private_key="must-not-escape", previous_action="PRIVATE_TOKEN",
+                              previous_access_stage="PRIVATE_TOKEN")
+        for mismatch in (False, True):
+            item = json.loads(json.dumps(boot))
+            if mismatch:
+                item["source_boot_count"] = "781"
+            self.cur.fetchall.return_value = [dict(id=1, verified_json=json.dumps(status_value()),
+                advisory_json=json.dumps(dict(boot_observation=item)), received_at=datetime(2026, 9, 8))]
+            response = self.client.get("/api/v1/diagnostics/health-history", headers=self.headers)
+            self.assertEqual(200, response.status_code, response.text)
+            row = response.json()["history"][0]
+            self.assertNotIn("boot_observation", row["verified"])
+            self.assertNotIn("must-not-escape", response.text)
+            self.assertNotIn("PRIVATE_TOKEN", response.text)
+            if mismatch:
+                self.assertNotIn("boot_observation", row["unsigned_advisory"])
+            else:
+                self.assertEqual("UNSIGNED", row["unsigned_advisory"]["boot_observation"]["integrity_status"])
+                self.assertTrue(row["unsigned_advisory"]["boot_observation"]["retained"])
 
     def test_health_projection_and_filters_do_not_promote_unsigned_fields(self):
         self.cur.fetchall.return_value = [dict(id=2, verified_json=json.dumps(status_value()),

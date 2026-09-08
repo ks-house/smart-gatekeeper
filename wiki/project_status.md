@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-09-06
+updated: 2026-09-09
 source_of_truth: true
 applies_to:
   - firmware
@@ -17,6 +17,35 @@ applies_to:
 > 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐고 PR #297/Backend run `33314043691`이 `GK-*` 신청 저장 불일치를 교정·배포했다. 이후 owner의 접수와 관리자 승인은 완료됐지만 첫 `이 휴대폰 등록`은 단일-user compatibility mapping 때문에 HTTP 409로 실패했다. 승인된 추가 가족 행을 같은 personal tenant의 별도 public credential/door grant로 수용하는 PR #300이 exact main `38b90e5febc525c96a4013b737850fd6a90235d3`으로 병합됐고 Backend run `33315099974`가 NAS `status=deployed`, canonical loopback/public readiness와 독립 strict-TLS exact-build HTTP 200/all-checks-true를 통과했다. 이후 한 번의 owner retry로 A24가 `스마트키 사용 가능`, 등록 출입문 1, ACL 608이 됐으며 Activity가 credential 등록을 기록했다. Access-ready 계약상 exact signed ACL의 matching APPLIED Target ACK도 통과했다. 뒤이은 원격 개방은 MQTT broker 전달까지만 확인됐고 딸아이 휴대폰에서 실제 문이 열린 물리 관찰은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+## 2026-09-08 autonomous reliability recovery rollout
+
+- PR #391 admits the two reviewed deployment-input changes without expanding
+  the existing 23-path trust boundary. Feature PR #392 merged to exact source
+  `81fbc6dc9b9286b2d4375afeda9129566789ad2a`. Final root 391 tests (one
+  PowerShell skip), native 94, Flutter 110 and all required PR checks passed.
+- Backend run `34240363175` deployed schema 016 at 23:54 KST. Independent
+  `/ready` matches the source with all checks true; existing read token retrieves
+  new incident/health APIs and real health rows increasing about every 30 seconds.
+  Full-app diagnostic cache-header correction found during live testing is pending.
+- Target run `34240363227` published **2.1.480+main.g81fbc6d** at 23:51 KST,
+  passing signature/encryption and exact HTTPS manifest/artifact readback.
+  At 23:55 KST actual health advisory still reports **2.1.469+main.g6a45aec**,
+  verified boot 784. Target installation and health confirmation remain pending;
+  no manual OTA trigger or door command was sent.
+- Mobile run `34240363172` published **1.0.0-g81fbc6d / 44401** at September 9
+  00:02:20 KST. Signing and primary/fallback HTTPS exact-byte readbacks pass.
+  New native uploader requires user-managed APK installation and opening the app
+  once to synchronize existing consent/credentials; later uploads are independent
+  of Flutter screens. Phone installation remains unverified.
+- Read-only hourly follow-up is attached to this task. It checks actual versions,
+  newly observed failures and evidence gaps through existing APIs without asking
+  for copied logs. The local desktop/PC must run for that Agent check. Backend
+  evidence retention is independent of the Agent schedule. No silent-state or
+  synthetic-test inference of physical-door success.
+- Scope, tests and remaining actual-device gates:
+  [reliability recovery](hands_free_reliability_recovery_2026_09_08.md#9-exact-main-배포-및-현장-증거),
+  [PC diagnostic API](diagnostics_read_api.md#september-8-reliability-history-rollout).
 
 ## 2026-09-06 diagnostic upload compatibility deployment
 

@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 try:
     from .acl_refresh import AclRefreshWorker
     from .diagnostics_read import create_diagnostics_read_router
-    from .reliability_diagnostics import advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
+    from .reliability_diagnostics import BootAdvisoryCache, advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
     from .admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -45,7 +45,7 @@ try:
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_refresh import AclRefreshWorker
     from diagnostics_read import create_diagnostics_read_router
-    from reliability_diagnostics import advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
+    from reliability_diagnostics import BootAdvisoryCache, advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
     from admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -341,6 +341,7 @@ def get_db():
 
 
 _target_boot_registry = TargetBootRegistry(get_db)
+_boot_advisories = BootAdvisoryCache()
 _target_acl_delivery_tracker = TargetAclDeliveryTracker()
 _acl_refresh_worker: AclRefreshWorker | None = None
 _acl_target_credentials: dict[str, dict[str, str]] = {}
@@ -2883,6 +2884,9 @@ def _persist_authenticated_target_status(
                     int(time.time()),
                 ),
             )
+            boot_advisory = _boot_advisories.match_verified(status_value)
+            if boot_advisory is not None:
+                status_value.setdefault("advisory_diagnostics", {})["boot_observation"] = boot_advisory
             record_sensor_summary(cur, status_value)
             if replay:
                 conn.commit()
@@ -3645,27 +3649,14 @@ def _start_target_boot_subscriber():
                 log.warning("[MQTT-AUDIT] canonical access event queue unavailable")
             return
         if message.topic.endswith("/boot"):
-            boot_target_id = next(
-                (
-                    target_id
-                    for target_id in {
-                        COMMAND_TARGET_ID,
-                        *globals().get("_acl_target_credentials", {}).keys(),
-                    }
-                    if target_id
-                    and secrets.compare_digest(
-                        message.topic,
-                        f"gatekeeper/v1/targets/{target_id}/boot",
-                    )
-                ),
-                None,
-            )
-            if boot_target_id is None or bool(getattr(message, "retain", False)):
-                log.warning("[MQTT-BOOT] rejected boot refresh")
-                return
             # MQTT does not expose publisher identity to subscribers.  This
-            # legacy boot document is therefore advisory only; durable boot
-            # authority advances exclusively through a signed status envelope.
+            # document (including retained replay) is cached as unsigned advice
+            # only. Exact boot matching happens after status MAC/high-water
+            # verification; no boot authority, liveness or command is updated.
+            if not _boot_advisories.observe(message.topic, payload,
+                    retained=bool(getattr(message, "retain", False)),
+                    configured_targets={COMMAND_TARGET_ID, *globals().get("_acl_target_credentials", {}).keys()}):
+                log.warning("[MQTT-BOOT] rejected boot advisory")
             return
         if message.topic.endswith("/acl/ack"):
             ack = parse_target_acl_ack(
@@ -4228,6 +4219,7 @@ async def deny_by_default_admin_routes(request: Request, call_next):
     """
     started = time.monotonic()
     path = request.url.path
+    diagnostic_read = path == "/api/v1/diagnostics" or path.startswith("/api/v1/diagnostics/")
     route_group = _route_group(path)
     if route_group in {
         "control",
@@ -4265,16 +4257,32 @@ async def deny_by_default_admin_routes(request: Request, call_next):
             )
         except HTTPException as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        if not diagnostic_read:
+            raise
+        # The outer server-error handler cannot inherit this middleware's
+        # headers. Keep unexpected diagnostic failures private and generic.
+        log.error("[DIAGNOSTICS] unhandled read failure")
+        response = JSONResponse(status_code=500, content={"detail": "diagnostic read unavailable"})
     status_class = f"{response.status_code // 100}xx"
     _ops_metrics.request(route_group, status_class, time.monotonic() - started)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Cache-Control"] = (
-        "no-store"
-        if route_group in {"control", "authentication", "privacy", "access_status"}
+    if (
+        route_group in {"control", "authentication", "privacy", "access_status"}
         or path.startswith("/api/v1/admin/")
-        else "no-cache"
-    )
+        or diagnostic_read
+    ):
+        # Cover auth/validation/routing errors as well as successful reports.
+        response.headers["Cache-Control"] = "no-store"
+    elif "no-store" not in {
+        directive.strip().lower()
+        for directive in response.headers.get("Cache-Control", "").split(",")
+    }:
+        # Never weaken a handler's no-store directive. Other routes retain the
+        # existing no-cache policy rather than gaining cacheable responses.
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 
