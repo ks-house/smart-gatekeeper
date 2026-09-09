@@ -1188,3 +1188,14 @@ an inference from application HMAC tests.
 | Regression |396 tests run,395 pass/1 environment skip; OTA contract PASS | Source/host evidence only |
 | Production builds | BLE-disabled and personal ESP32-C6 builds pass | Local candidate, not signed publication or installation |
 | Physical acceptance | No new Target command or relay action | Pending initial candidate installation and subsequent OTA/install/boot/VALID |
+
+## 2026-09-10 OTA491 physical installation and health
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact publication | Main981520e/run34374312925/491; signed encrypted1924852B independent HTTPS binding verified | PASS publication |
+| Single safe reboot |01:10:14.922 signed intent accepted; boot813→814/SOFTWARE/signed_mqtt_reboot | PASS; no relay command |
+| Periodic OTA installation |01:11:57 new491/boot815/ota_pending_verify | PASS actual installation/new boot via old480 updater |
+| Health valid |01:12:27 stage11/running_image_valid=true/persisted;40s stable matching raw/verified IDLE/OFF | PASS observed health; not power-loss soak |
+| New updater check and API | HTTP200/stage14/error0/VALID preserved; TLS heap62388→105940B/MQTT restored; Backend2950–2952 | PASS metadata check/resource handoff/storage, not physical Range resume |
+| Remaining physical scope | No forced outage, supply measurement, local upload or door operation | Range resume/rollback/BROWNOUT root cause remain pending |

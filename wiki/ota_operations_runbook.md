@@ -346,6 +346,20 @@ artifact 단절 시 inactive write 전체를 버리는 경로가 남아 있었�
 OTA contract PASS. ESP TLS heap·전원 차단·실제 flash/재부팅/VALID는 미검증이다.
 
 PC에서 현재 NAS artifact에 Range0–63 요청은206/정확한 Content-Range/64B로
-확인했다. 이는 서버 지원 확인이지 ESP 성공이 아니다. 최종 Backend 확인은
+확인했다. 이는 서버 지원 확인이지 ESP 성공이 아니다. 초기 분석 종료 시 Backend 확인은
 00:55:08 KST480/boot813이며 새 코드가 old480의 updater를 소급 수정하지 못한다. 배포와
 최초 설치, 그 다음 릴리스의 OTA→재부팅→VALID까지 별도 확인해야 종료한다.
+
+## 11. 2026-09-10 OTA491 설치 후 운영 확인
+
+§10 후보는 main981520e/491로 게시됐고, 사용자 승인 safe reboot1회 뒤 old480의
+periodic HTTPS updater로 실제 설치됐다. 01:11:57 KST boot815/491,
+01:12:27 stage11/VALID, 이후40초 matching raw/verified IDLE/relay OFF를 확인했다.
+Backend rows2950–2952에 health와 새 updater의 current-version check 결과가 저장됐다.
+새 updater는 manifest HTTP200/stage14/error0으로 끝나고 MQTT를 복원했으며,
+자원 인계 전후 heap62388→105940B를 보고했다. 진행/정상 판정이 원격 조회되는
+경로가 이제 현장에 설치됐다. 상세는 [복구 기록](hands_free_reliability_recovery_2026_09_08.md).
+
+이는 Range 중단 재개, brownout 해결, 강제 전원 차단 rollback 또는 다음 image를
+새 downloader로 설치하는 실기기 시험을 대체하지 않는다. 추가 업그레이드가 없는
+current-version check에서 bytes/total0은 정상이며 이번 설치 파일을0B로 받은 뜻이 아니다.
