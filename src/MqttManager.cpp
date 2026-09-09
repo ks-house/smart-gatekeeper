@@ -245,7 +245,9 @@ bool rtcEventFallbackInvalid = false;
 
 // Full sensor summary plus OTA evidence and worst-case counters must coexist.
 // Keep below the existing 8192-byte MQTT packet buffer (topic/header included).
-char pendingTelemetry[6656] = {};
+char pendingTelemetry[sgk::MqttTelemetryWorker::kMaxPayloadBytes] = {};
+static_assert(sizeof(pendingTelemetry) + 160 + 5 < 8192,
+              "Prepared status plus MQTT topic/header must fit packet buffer");
 bool pendingTelemetryValid = false;
 uint32_t pendingTelemetryGeneration = 0;
 sgk::MqttTelemetryWorker telemetryWorker;
