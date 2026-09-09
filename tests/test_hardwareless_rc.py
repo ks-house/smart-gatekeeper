@@ -12,6 +12,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class HardwarelessRcProductionCoreTest(unittest.TestCase):
+    def test_periodic_status_includes_audit_queue_health(self):
+        source = (ROOT / "src/MqttManager.cpp").read_text()
+        status_body = source.split('doc["mqtt_audit_receipts_accepted"]', 1)[1]
+        for field in ("mqtt_audit_durable_depth", "mqtt_audit_pending_depth",
+                      "mqtt_audit_head_wait_ms", "mqtt_audit_head_publish_attempts",
+                      "mqtt_audit_head_boot_count", "mqtt_audit_stalled"):
+            self.assertIn('doc["' + field + '"]', status_body)
+
     def test_personal_production_enables_transport_with_fail_closed_default(self):
         platformio = (ROOT / "platformio.ini").read_text(encoding="utf-8")
         commercial = platformio.split("[env:esp32c6_production]", 1)[1].split(
@@ -242,6 +250,11 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
             "class ServerCallbacks", 1
         )[0]
         self.assertIn("controllerHasActiveConnection()", watchdog)
+        self.assertIn("std::lock_guard<std::recursive_mutex> lock(core_mutex)", watchdog)
+        guard = adapter.split("bool controllerHasActiveConnection()", 1)[1].split("bool restartAdvertising", 1)[0]
+        self.assertIn("core->connected()", guard)
+        restart = adapter.split("bool restartAdvertising", 1)[1].split("void serviceAdvertisingHealth", 1)[0]
+        self.assertLess(restart.index("lock(core_mutex)"), restart.index("controllerHasActiveConnection()"))
         self.assertIn("ble_server->getConnectedCount()", adapter)
         self.assertIn("advertising->start()", adapter)
         self.assertIn("advertising_restart_failures", header)

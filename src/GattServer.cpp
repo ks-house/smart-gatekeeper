@@ -36,6 +36,11 @@ extern sgk::OfflineEventQueue g_offline_queue;
 
 namespace {
 
+// Also present when BLE is disabled: manual MQTT access uses this same boot
+// allocator. Protocol callbacks and main-loop manual completion share the lock.
+std::recursive_mutex core_mutex;
+sgk::AccessEventSequence access_event_sequence;
+
 bool requested_enabled = false;
 sgk::FailClosedProofVerifier fail_closed_verifier;
 sgk::ProofVerifier* selected_verifier = &fail_closed_verifier;
@@ -94,7 +99,6 @@ size_t challenge_read_length = 0;
 // in task context, so a recursive task mutex safely serializes their bounded
 // adapter updates with loopTask protocol processing while allowing the FSM's
 // lifecycle callbacks to re-enter GattServer for sequence bookkeeping.
-std::recursive_mutex core_mutex;
 sgk::IndicationToken in_flight_token_{};
 sgk::MessageType in_flight_type_{sgk::MessageType::kError};
 bool in_flight_valid_{false};
@@ -772,10 +776,14 @@ bool advertisingActive() {
 }
 
 bool controllerHasActiveConnection() {
-  return ble_server != nullptr && ble_server->getConnectedCount() != 0;
+  // NimBLE invokes onConnect before incrementing its public connected count.
+  // Accepted protocol ownership already forbids a watchdog restart in that gap.
+  return (core != nullptr && core->connected()) ||
+      (ble_server != nullptr && ble_server->getConnectedCount() != 0);
 }
 
 bool restartAdvertising(const char* reason, bool watchdog_recovery) {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
   if (!advertising_expected_ || controllerHasActiveConnection()) {
     return false;
   }
@@ -803,6 +811,7 @@ bool restartAdvertising(const char* reason, bool watchdog_recovery) {
 }
 
 void serviceAdvertisingHealth(uint32_t now_ms) {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
   if (!advertising_expected_ || controllerHasActiveConnection() ||
       now_ms - advertising_last_health_check_ms_ <
           kAdvertisingHealthCheckIntervalMs) {
@@ -1010,7 +1019,8 @@ void GattServer::init() {
   adapter_state.clear();
   core = new sgk::ProtocolCore(random_source, *selected_verifier, door_id,
                                selected_event_sink,
-                               &production_auth_control_gate);
+                               &production_auth_control_gate,
+                               &access_event_sequence);
   if (!core->initialize()) {
     requested_enabled = false;
     LOGF("[FATAL] GATT CSPRNG boot ID initialization failed; auth disabled");
@@ -1387,13 +1397,13 @@ bool GattServer::abortUnverifiedIngress(uint32_t now_ms) {
 }
 
 void GattServer::advanceEventSequence(uint64_t used_sequence) {
-#if ENABLE_HARDWARELESS_RC
-  core_mutex.lock();
-  if (core != nullptr) core->advanceEventSequence(used_sequence);
-  core_mutex.unlock();
-#else
-  (void)used_sequence;
-#endif
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  access_event_sequence.advance(used_sequence);
+}
+
+uint64_t GattServer::allocateAccessEventSequence() {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  return access_event_sequence.next();
 }
 
 GattServer::Telemetry GattServer::getTelemetry() {

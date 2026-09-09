@@ -8,7 +8,8 @@
 
 namespace sgk {
 
-// Diagnostic-only Backend DB-commit receipt. This is not a command, an access
+// Diagnostic-only Backend DB-commit receipt (canonical history OR immutable
+// authenticated-conflict quarantine). This is not a command, an access
 // authorization, or a high-water ACK. The adapter must first validate the exact
 // JSON field set/version and canonical decimal-string representation.
 struct AccessEventReceipt {
