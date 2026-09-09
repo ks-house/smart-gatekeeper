@@ -1159,3 +1159,13 @@ an inference from application HMAC tests.
 | Reset classification | Retained diagnostics report `BROWNOUT`, `planned_restart=none`, previous uptime 353,573 ms and no coredump matching this reset | Electrical power interruption is the supported cause; no application panic is attributed to this boot |
 | Recovery state | At uptime 486 seconds the Target was online/IDLE, unarmed, relay OFF/pin high, MQTT 1/1 with zero failures and BLE advertising expected/active | PASS for autonomous control-plane recovery and safe output state after this reset |
 | Evidence boundary | No supply-voltage trace, wiring inspection, phone approach, authentication, sensor passage or physical door movement was captured | Q3 electrical stability and the marked hands-free field trial remain pending |
+
+## 2026-09-10 OTA489 publication and single reboot observation
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Exact publication | Run34367682991 publishes489/main1e8b8e1; independent strict HTTPS encrypted1922900B/hash match | PASS publication, not installation |
+| Approved single reboot | 00:13:51 KST signed request accepted; boot809→810, SOFTWARE/signed_mqtt_reboot, fresh IDLE/relay OFF | PASS for authorized single reboot; no door command |
+| Post-reboot automatic update window | Old480 remained; Backend status gap00:14:30–00:20:00 then same boot810/480 with increasing uptime | FAIL to establish candidate install; no observed crash/rollback during gap |
+| Resource observation | Historical minimum heap46184→2096B, largest block50164→33780B, MQTT connections1→2, Wi-Fi outages0 | Resource pressure candidate, not proven OTA failure cause |
+| Recovery readback | Fresh raw and authenticated bridge IDLE/relay OFF through00:21:32, Backend ready exact106a2d2/all12/fresh | PASS control-plane recovery;489 health and physical access remain pending |
