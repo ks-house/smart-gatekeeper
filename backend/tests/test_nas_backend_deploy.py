@@ -30,7 +30,7 @@ RUNTIME_EXAMPLE = ROOT / "backend" / "deploy" / "runtime.env.example"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "backend_security.yml"
 DEPLOY_README = ROOT / "backend" / "deploy" / "README.md"
 LATEST_SCHEMA_UP = (
-    ROOT / "backend" / "db" / "migrations" / "016_reliability_history_up.sql"
+    ROOT / "backend" / "db" / "migrations" / "017_access_event_conflicts_up.sql"
 )
 DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 
@@ -38,7 +38,7 @@ DEVELOPMENT_COMPOSE = ROOT / "backend" / "docker-compose.yml"
 class NasBackendDeployContractTest(unittest.TestCase):
     def test_schema_identity_is_manifest_derived_and_image_bound(self):
         expected = hashlib.sha256(LATEST_SCHEMA_UP.read_bytes()).hexdigest()
-        self.assertEqual(("016", expected), create_release_bundle.schema_identity())
+        self.assertEqual(("017", expected), create_release_bundle.schema_identity())
         wrapper = WRAPPER.read_text(encoding="utf-8")
         self.assertIn("validate_db_image_schema_identity", wrapper)
         self.assertIn("schema downgrade is not admitted", wrapper)

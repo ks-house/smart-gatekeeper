@@ -90,6 +90,19 @@ class DiagnosticsClientTest(unittest.TestCase):
         self.assertNotIn(token, output.getvalue())
         self.assertEqual([], json.loads(output.getvalue())["events"])
 
+    def test_audit_conflicts_use_existing_read_token(self):
+        output = io.StringIO()
+        with patch.object(client, "load_token", return_value="x" * 43), \
+                patch.object(client, "fetch", return_value={"conflicts": []}) as fetch, \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(0, client.main(["--audit-conflicts", "--target-id", "gatekeeper",
+                                           "--boot-count", "808", "--limit", "10"]))
+        url, token = fetch.call_args.args
+        self.assertEqual("/api/v1/diagnostics/audit-conflicts", urlsplit(url).path)
+        self.assertEqual(["808"], parse_qs(urlsplit(url).query)["boot_count"])
+        self.assertNotIn(token, output.getvalue())
+        self.assertEqual([], json.loads(output.getvalue())["conflicts"])
+
     def test_event_endpoint_keeps_origin_guard(self):
         for base in ("http://example.test", "https://user:secret@example.test", "https://example.test/path"):
             with self.assertRaises(ValueError):

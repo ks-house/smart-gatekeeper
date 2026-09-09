@@ -156,7 +156,9 @@ def advisory_projection(document, *, include_boot=False, expected=None):
                 "sensor_samples", "sensor_valid_samples", "sensor_timeouts", "sensor_invalid_samples",
                 "mqtt_status_worker_published", "mqtt_status_worker_failures", "mqtt_status_worker_deferred",
                 "mqtt_status_worker_max_duration_ms", "mqtt_audit_receipts_accepted", "mqtt_audit_receipts_rejected",
-                "mqtt_audit_backpressure_count", "sensor_summary_capture_pending", "sensor_summary_capture_dropped",
+                "mqtt_audit_backpressure_count", "mqtt_audit_durable_depth", "mqtt_audit_pending_depth",
+                "mqtt_audit_head_wait_ms", "mqtt_audit_head_publish_attempts", "mqtt_audit_head_boot_count",
+                "sensor_summary_capture_pending", "sensor_summary_capture_dropped",
                 "sensor_summary_pending", "sensor_summary_dropped", "sensor_summary_persistence_failures",
                 "sensor_summary_invalid_journals", "largest_free_block", "loop_stack_hwm",
                 "mqtt_connect_count", "mqtt_connect_attempts", "mqtt_connect_failures", "mqtt_last_connect_ms",
@@ -174,7 +176,7 @@ def advisory_projection(document, *, include_boot=False, expected=None):
         value = document.get(key)
         if type(value) is int and 0 <= value <= U32:
             result[key] = value
-    for key in ("ble_advertising_active", "ble_advertising_expected", "sensor_rearm_blocked", "previous_valid",
+    for key in ("mqtt_audit_stalled", "ble_advertising_active", "ble_advertising_expected", "sensor_rearm_blocked", "previous_valid",
                 "previous_armed", "previous_relay_on", "previous_access_valid", "previous_evidence_persistence_failed",
                 "rtc_event_fallback_invalid", "loop_watchdog_enabled"):
         if type(document.get(key)) is bool:

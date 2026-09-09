@@ -38,6 +38,7 @@ try:
     from .acl_refresh import AclRefreshWorker
     from .diagnostics_read import create_diagnostics_read_router
     from .reliability_diagnostics import BootAdvisoryCache, advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
+    from .access_event_conflicts import preserve_conflict
     from .admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -46,6 +47,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_refresh import AclRefreshWorker
     from diagnostics_read import create_diagnostics_read_router
     from reliability_diagnostics import BootAdvisoryCache, advisory_projection, build_access_receipt, build_sensor_receipt, record_verified_health, record_sensor_summary, verified_sensor_summary
+    from access_event_conflicts import preserve_conflict
     from admin_security import (
         ADMIN_SESSION_COOKIE, IDEMPOTENCY_HEADER, ROLE_ADMIN, ROLE_APPROVER,
         ROLE_AUDITOR, ROLE_OPERATOR, TENANT_HEADER, AdminPrincipal, AdminSecurity,
@@ -1190,6 +1192,13 @@ def _persist_canonical_target_access_event(
                             )
                         conn.commit()
                     return {"inserted": False, "event": event}
+                if existing:
+                    # The exact authenticated record survives outside canonical
+                    # history. Only durable custody may unblock the Target FIFO;
+                    # never re-number, overwrite, drop, or project it as success.
+                    stored = preserve_conflict(conn, event)
+                    log.warning("[MQTT-AUDIT] identity conflict durably quarantined")
+                    return stored
             except Exception:
                 try:
                     conn.rollback()

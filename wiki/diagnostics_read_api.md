@@ -368,6 +368,37 @@ satisfy that header contract.
 
 ## September 9 operational readback corrections
 
+### September 9 follow-up: audit conflict custody (local implementation, not deployed)
+
+Schema017 adds immutable `access_event_conflicts`, separately from normal access
+history. MAC-verified conflicting envelopes are durably preserved before the
+existing exact-event receipt may retire the Target head. This receipt means DB
+custody, not a successful canonical-history insert or physical entry. Quarantined
+events do not drive the HA success outbox. Commit failure never emits a receipt;
+replay checks the exact stored content. Application rollback preserves the table.
+
+The same read-only token can query `GET /api/v1/diagnostics/audit-conflicts`, or:
+
+```bash
+.venv/bin/python scripts/read_diagnostics.py --audit-conflicts --target-id c0feffe6ebac --boot-count 808
+```
+
+It returns `conflicts` and `next_before_id`, with `disposition=QUARANTINED` and
+`reason_code=IDENTITY_CONFLICT`. It accepts the same since/until/limit/before_id/
+target_id/session_id/boot_count/event_code filters as access history. Dates use
+server receipt time (default24h, maximum31d), not physical event time. No raw
+envelope, MAC or key material is exposed. Normal `--access-events` stays separate.
+
+New Target periodic status exposes durable/total pending audit depth, head wait,
+publish attempts, original head boot count and a15-second pending advisory flag.
+These appear under health-history `unsigned_advisory`, never the signed status
+core or the access verdict. Head wait is time observed **in the current boot**,
+not the old event's age. A healthy status stream alone is not audit progress.
+This extension needs Backend/schema017 deployment and a new Target for the added
+counters. The token and NAS wrapper registration do not change.
+
+### Previously deployed schema016 corrections
+
 The full-app middleware now preserves diagnostic `Cache-Control: no-store` on
 success, authentication/validation/routing errors, rate limit, handled storage
 failures and generic unexpected failures. The regression runs through actual

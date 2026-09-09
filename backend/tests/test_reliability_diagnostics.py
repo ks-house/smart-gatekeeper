@@ -59,6 +59,14 @@ def sensor_document(summary=None):
 
 
 class ReliabilityContractTest(unittest.TestCase):
+    def test_audit_health_projection_is_closed_unsigned(self):
+        value = dict(mqtt_audit_durable_depth=2, mqtt_audit_pending_depth=3,
+                     mqtt_audit_head_wait_ms=16000, mqtt_audit_head_publish_attempts=8,
+                     mqtt_audit_head_boot_count=808, mqtt_audit_stalled=True)
+        self.assertEqual(value, advisory_projection({**value, "private_key": "not exported"}))
+        self.assertEqual({}, advisory_projection(dict(mqtt_audit_stalled="true",
+                         mqtt_audit_durable_depth=-1, mqtt_audit_head_wait_ms=2**32)))
+
     def test_boot_cache_retained_exact_match_and_closed_redaction(self):
         cache = BootAdvisoryCache(clock=lambda: 123)
         doc = dict(target_id=TARGET, boot_id=BOOT, boot_count=782, firmware="2.1.469+main.g6a45aec",

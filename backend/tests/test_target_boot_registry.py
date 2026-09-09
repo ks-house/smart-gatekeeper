@@ -1359,6 +1359,7 @@ class TargetBootRegistryTest(unittest.TestCase):
         conflict_cursor.execute.side_effect = [
             main.pymysql.err.IntegrityError(1062, "duplicate"),
             None,
+            main.pymysql.err.OperationalError(1146, "custody table unavailable"),
         ]
         conflict_cursor.fetchall.return_value = [conflicting]
         with patch.multiple(
