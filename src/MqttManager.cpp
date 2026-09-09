@@ -69,6 +69,7 @@ bool wifiLinkGenerationInitialized = false;
 uint32_t wifiLinkGenerationLastUpdate = 0;
 bool accessActionStartedDuringLoop = false;
 bool signedRestartPending = false;
+bool otaTransportSuspended = false;
 bool bootDiagnosticsPending = true;
 bool configStatePending = true;
 String commandTopic;
@@ -242,7 +243,9 @@ RtcEventRetention rtcEventRetention;
 uint32_t rtcEventFallbackRestoredCount = 0;
 bool rtcEventFallbackInvalid = false;
 
-char pendingTelemetry[5632] = {};
+// Full sensor summary plus OTA evidence and worst-case counters must coexist.
+// Keep below the existing 8192-byte MQTT packet buffer (topic/header included).
+char pendingTelemetry[6656] = {};
 bool pendingTelemetryValid = false;
 uint32_t pendingTelemetryGeneration = 0;
 sgk::MqttTelemetryWorker telemetryWorker;
@@ -946,6 +949,7 @@ void MqttManager::pollTelemetryWorker() {
 }
 
 void MqttManager::deferForAccessCritical() {
+    if (otaTransportSuspended) return;
     requestConnectWorkerCancellation();
     pollTelemetryWorker();
     if (!mqttSecurityReady || !connected || !pendingTelemetryValid ||
@@ -967,6 +971,31 @@ void MqttManager::deferForAccessCritical() {
 
 bool MqttManager::connectionAttemptInProgress() {
     return connectWorkerIsRunning() || telemetryWorker.ownsTransport();
+}
+
+bool MqttManager::suspendForOta() {
+    pollTelemetryWorker();
+    if (otaTransportSuspended || connectionAttemptInProgress() ||
+        signedRestartPending || !OtaManager::isSafeForOta()) return false;
+    otaTransportSuspended = true;
+    // A completed but unadopted worker result cannot resurrect the old socket.
+    MqttConnectResult discarded{};
+    takeConnectWorkerResult(&discarded);
+    connected = false;
+    wifiClient.stop();  // Preserve LWT semantics while releasing TLS memory.
+    pendingTelemetryValid = false;
+    DiagnosticsManager::noteAction("mqtt_ota_suspend");
+    return true;
+}
+
+void MqttManager::resumeAfterOta() {
+    if (!otaTransportSuspended) return;
+    otaTransportSuspended = false;
+    mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS;
+    mqttNextConnectAttemptMs = millis();
+    bootDiagnosticsPending = true;
+    configStatePending = true;
+    DiagnosticsManager::noteAction("mqtt_ota_resume");
 }
 
 bool MqttManager::hasPendingRestartRequest() {
@@ -1572,6 +1601,7 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void MqttManager::update() {
+    if (otaTransportSuspended) return;
     pollTelemetryWorker();
     if (telemetryWorker.ownsTransport()) return;
     if (!mqttSecurityReady) return;
@@ -2327,6 +2357,7 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
         doc["acl_max_protocol"] = nullptr;
     }
 
+    OtaManager::appendDiagnostics(doc.createNestedObject("ota"));
     const size_t telemetryBytes = measureJson(doc);
     pendingTelemetryValid = !doc.overflowed() && telemetryBytes > 0 &&
         telemetryBytes < sizeof(pendingTelemetry) &&

@@ -685,3 +685,42 @@ Actions34361231654의 NAS 단계는23:08:05–23:10:01 KST 성공,
   largest free block19956B는 참고값일 뿐 TLS 실패나 전원 문제의 직접 증거가 아니다.
   새485 설치/새 boot/health는 아직 확인되지 않았다. 중복 OTA 요청, 임의 재부팅,
   recovery AP 전환, 모바일 변경이나 물리 문 개방 시험은 하지 않았다.
+
+## 14. 9월 9일 OTA 미설치 원인 조사 — 23:34 KST
+
+현재 결론은 **게시·명령 전달은 확인됐지만 Target 설치는 실패 또는 미진행이며,
+정확한 중단 단계를 원격으로 알 수 없는 OTA 진단 결함이 있다**이다. 수락 ACK를
+설치 성공으로 취급하지 않는다. 480→485의 `OtaManager.cpp`, `main.cpp`,
+`config.h` 차이는 없으므로 이번 allocator 변경에 의한 OTA 경로 변경은 아니다.
+
+- 23:17–23:29:38의 Backend 건강 이력25행은 cursor 소진까지 조회했다.
+  모두480/boot809/동일 boot ID/IDLE, MQTT 연결 횟수2, GATT accepted0이다.
+  23:18:05→23:18:35 loop stack watermark5956→3864 변화는 관측했지만,
+  OTA 실행 단계나 stack overflow의 직접 증거는 아니다. 재부팅·rollback은
+  이 관측 구간에서 확인되지 않았다.
+- 23:29:39 PC에서 엄격한 CA/호스트 검증을 유지한 HTTP/1.1 연결 하나로
+  manifest1118B와 artifact1918148B를 연속 GET했다. 서버 keep-alive timeout20,
+  같은 TCP socket, HTTP200와 기존 artifact digest 일치를 확인했다. 서버의
+  연결 재사용 불가 가설을 줄이지만 Target의 DNS/TLS/신뢰 CA/메모리 성공을
+  대신 증명하지 않는다.
+- 명령 처리 `MqttManager.cpp`의 kOtaCheck는 `requestCheck()`로 flag를 세운 뒤
+  accepted ACK를 보낸다. 실제 main-loop 시작/manifest 검증/다운로드/slot 기록/
+  새 boot/health-valid를 확인하는 응답이 아니다. OTA 실패 경로들은 내부
+  FAILED/lastError를 설정하고 대개15분 뒤 재시도하지만 printf 출력뿐이다.
+  status/API에는 현재 OTA 상태, HTTP/TLS 코드, 실패 단계, 진행 byte가 없다.
+  특히 flash 쓰기 시작 실패도 artifact HTTP/size 분기로 합쳐져 분류가 부정확하다.
+- 자동 실패 재시도가 가능할 시간대에 추가 명령 없이23:33:23.882–23:34:07.629
+  MQTT 비보존 상태41건을 관측했다. 모두480/boot809/IDLE/연결 횟수2다.
+  23:33:58.995 free heap54484B 이후63184B로 돌아왔으나 이것만으로 재시도
+  실행이나 TLS 실패를 확정하지 않는다. largest block19956B는 추가 TLS 작업의
+  메모리 위험 후보일 뿐이다. 현재48KiB total/32KiB contiguous health 기준은
+  **새 이미지 부팅 후** 판정이므로 이를 현 OTA 시작 차단 원인으로 설명하면 틀린다.
+
+우선 보강할 미구현 항목: (1) attempt ID와 요청/시작/검증/다운로드/쓰기/재부팅/
+health 결과 및 구분된 오류를 제한된 형태로 재부팅 후에도 보존하고 비동기 MQTT와
+기존 진단 API로 조회, (2) 현재 MQTT TLS 세션과 OTA의 메모리 경쟁을 계측한 뒤
+안전 상태에서 자원 인계·복원하는 경로 검증, (3) 실패 유형별 제한된 재시도와
+미완료 표시, (4) 단절·인증서·서명·flash 실패를 격리 시험하고 실제 설치/health로
+완료 판정. 서명·rollback·기존 bootable slot 보호를 낮추지 않는다. 재부팅은
+복구 실험일 뿐 원인 규명 대체가 아니다. 이번 턴은 읽기 전용 조사와 문서화이며,
+추가 OTA/재부팅/AP 전환/문 개방이나 코드 수정·배포는 수행하지 않았다.

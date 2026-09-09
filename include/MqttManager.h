@@ -41,6 +41,10 @@ public:
     // OTA excludes both the connect and status-write worker ownership windows.
     static void deferForAccessCritical();
     static bool connectionAttemptInProgress();
+    // Main-task-only safe OTA lease. Releases the established TLS allocation,
+    // not merely concurrent handshakes; all exits must resume normal reconnect.
+    static bool suspendForOta();
+    static void resumeAfterOta();
     // Signed reboot is staged until main has blocked new GATT auth, drained
     // callback work, and re-proved that the physical access path is idle.
     static bool hasPendingRestartRequest();

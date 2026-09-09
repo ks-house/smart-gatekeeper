@@ -59,6 +59,20 @@ def sensor_document(summary=None):
 
 
 class ReliabilityContractTest(unittest.TestCase):
+    def test_ota_projection_is_bounded_unsigned_and_revalidated(self):
+        ota = dict(schema=1, attempt=2, boot_count=809, updated_uptime_ms=3600000,
+                   stage=12, failed_stage=3, error=5, http_code=-1, transport_code=-9984,
+                   bytes=0, total=0, heap_before=63000, heap_after=120000, largest_after=60000,
+                   target_version="", persisted=True, restored=False, request_pending=False,
+                   runtime_status=11, rejection=0, flash_code=0, running_image_valid=True)
+        result = advisory_projection(dict(ota={**ota, "secret": "discard"}))
+        self.assertEqual(result, dict(ota=ota))
+        self.assertEqual(result, advisory_projection(result))
+        for key, bad in (("schema", True), ("stage", 16), ("error", 20),
+                         ("http_code", True), ("transport_code", 2**31), ("bytes", 1),
+                         ("target_version", "https://private"), ("persisted", "true")):
+            self.assertEqual({}, advisory_projection(dict(ota={**ota, key: bad})))
+
     def test_audit_health_projection_is_closed_unsigned(self):
         value = dict(mqtt_audit_durable_depth=2, mqtt_audit_pending_depth=3,
                      mqtt_audit_head_wait_ms=16000, mqtt_audit_head_publish_attempts=8,
