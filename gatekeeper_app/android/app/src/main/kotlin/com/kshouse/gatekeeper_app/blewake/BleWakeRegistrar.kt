@@ -63,7 +63,18 @@ object BleWakeRegistrar {
 
   @Synchronized
   fun register(context: Context): BleWakeRegistrationResult {
+    val current = status(context)
+    if (current.reconciled && !BleScanRecoveryPolicy.shouldRefresh(
+        System.currentTimeMillis(), current.reconciledAtEpochMs,
+        BleScanDiagnostics.snapshot(context)["lastPacketAtEpochMs"] as? Long)) {
+      BleWakeReconciliationScheduler.ensureWatchdog(context)
+      return current
+    }
+    if (current.reconciled) {
+      BleScanDiagnostics.record(context, BleScanDiagnostics.Event.RECOVERY_ATTEMPT)
+    }
     val result = registerOnce(context)
+    BleWakeReconciliationScheduler.ensureWatchdog(context)
     if (result.reconciled) {
       BleWakeReconciliationScheduler.cancel(context)
     } else {
@@ -171,6 +182,7 @@ object BleWakeRegistrar {
     val stopped = BleWakeReconciliationPolicy.stop(readEvidence(context), processId)
     writeEvidence(context, stopped)
     BleWakeReconciliationScheduler.cancel(context)
+    BleWakeReconciliationScheduler.cancelWatchdog(context)
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
       return result(stopped)
     }

@@ -18,6 +18,73 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+## 2026-09-10 morning hands-free incident: live evidence, not resolved
+
+Implementation follow-up: generic Target contention now emits TARGET_BUSY;
+actual OTA gating retains OTA_BUSY with the same numeric BLE wire result8.
+Mobile registration is idempotent within a fresh15-minute registration/reception
+window; an independent native periodic watchdog reconciles quiet scans without
+diagnostic-upload consent. Target host tests and personal firmware compile pass;
+mobile validation/publication and Target installation remain pending at this
+entry. Sensor no-echo and BROWNOUT are not declared fixed by these changes.
+
+- Read-only Backend and strict-TLS MQTT investigation around07:40–07:44 KST
+  confirms Backend8e4bd56 ready/all12/fresh and Target491/boot818/IDLE/relay OFF.
+  The HA UUID deployment does not establish hands-free reliability. No door,
+  reboot, OTA or other control command was sent during this investigation.
+- Report338 was captured07:39:35 today, but its last BLE packet is September9
+  08:20:09 and all included authentication sessions predate today. Registration
+  is reported successful; that is not reception evidence. Its historical
+  GATT_DISCONNECTED is not a newly observed morning authentication rejection.
+  Current upload works, while today's scan/session evidence is absent. Phone
+  owner and RF transmission/reception failure cannot be inferred from this alone.
+- Signed manual completion9094 was received07:33:28 (boot816). Health3701→3702
+  and3709→3710 establish new boots817 and818, approximately07:35:28 and07:39:14
+  from uptime. Matching boot advisories report BROWNOUT/no planned restart,
+  previous IDLE/relay OFF. Reset identity is authenticated; reset cause is an
+  unsigned device advisory, not measured supply voltage or a component diagnosis.
+- Boot817 sessionfd44f2d7-82bb-43cb-9a12-d5aaefb25480 authenticated then expired
+  with ARM_TIMEOUT. Signed sensor summary8 records453 samples/446 timeouts,
+  7 valid readings1853–2664mm and zero readings inside800mm; the60.088s window
+  started unblocked. This is mostly missing echo, not proof rejection or an
+  established user-distance error. Separate credential session617cc83f-8659-4dec-8d7e-fb33e08d1c4c
+  subsequently records threshold/relay/completion and5 in-range samples. It is
+  not attributed to the reporter and does not prove a physical door-contact event.
+- Boot817 session61d86388-dba2-49dd-a62b-40897eacb65b terminates at monotonic54627ms,
+  inside the first session's ARMED25416–85460ms interval. Source confirms generic
+  ResultReason::kBusy maps to OTA_BUSY even when beginAuth fails because the FSM
+  is not IDLE. The event therefore does not prove an OTA interruption; existing
+  ARMED contention fits the observed timeline. Distinct busy-cause instrumentation
+  is a confirmed pending fix. Source inspection is of the current checkout;
+  deployed firmware491 remains separately identified by status.
+- Current advertising_active is a software flag, not continuous RF proof;
+  clearance FAULT means repeated missing/invalid samples, and idle distance9990mm
+  is a sentinel. Current OTA reports CURRENT/HTTP200/error0/VALID, not an active
+  installation. Pending work: scan reception/liveness evidence, distinct busy
+  reasons, sensor no-echo diagnostics and brownout stability investigation.
+  Receipt times of delayed access events are not substituted for source monotonic
+  ordering. No runtime fix or physical acceptance is claimed by this diagnosis.
+
+## 2026-09-10 HA manual-command UUID correction deployed
+
+- PR405 merged to **8e4bd56a9099ba802f2edef74981eaaa0bedea21**. Backend run
+  **34379245548** completed restricted NAS deployment successfully.
+- At01:55:55 KST external HTTPS `/ready` reports that exact source, all12 checks
+  true and fresh authenticated Target status; repeated readback around01:56:45
+  remains healthy. NAS apply/status evidence matches byte-for-byte and reports
+  loopback/public readiness passed, API digest
+  `478b603f6cdb96abf0169937e54d7e3751e4b61902bdf69914939a13014365ac`.
+- HA sessions now use compact UUIDv4 while nonces remain128-bit random. The
+  captured invalid session/Target result13 is reproduced in the actual C++
+  tracker;32 generated HA sessions pass.173 focused tests and the full276-case
+  local Backend suite (4 integration/environment skips) pass; hosted Backend,
+  real MariaDB, OTA and protected-file checks pass.
+- MQTT bridge offline01:55:45.521→online01:55:54.889 during API replacement.
+  Target unchanged491/boot816/IDLE/relay OFF; health row3040 at01:56:44.811 shows
+  uptime2590s and OTA VALID. No Target/mobile update, reboot or agent door command.
+  A physical HA-opening pass after this correction is not yet observed. Durable
+  HA command-result history remains a separate pending improvement.
+
 ## 2026-09-10 OTA491 installed and health-confirmed
 
 - Exact-main **2.1.491+main.g981520e** / run34374312925 published at01:10:08 KST.
@@ -36,7 +103,7 @@ applies_to:
   says previous uptime104726ms/IDLE/relay OFF/mqtt_connect_worker_adopted.
   Row2960/01:16:46 confirms boot816/uptime191s. Installation succeeded, but
   availability/power integrity is not resolved; no further command was sent.
-- Backend remains **106a2d2fa7f635c05d21e77d6f3c2a4ac9bb616a**, all12 readiness
+- At that OTA observation, Backend remained **106a2d2fa7f635c05d21e77d6f3c2a4ac9bb616a**, all12 readiness
   checks true/Target fresh. Unneeded Backend deployment was cancelled before
   activation; APK unchanged and no door command. New downloader interruption/
   Range recovery and power-loss/long-soak physical gates remain open; earlier

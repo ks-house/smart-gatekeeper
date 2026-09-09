@@ -361,6 +361,31 @@ void testFastV2SingleSubscriptionFlow() {
         static_cast<uint16_t>(sgk::ResultReason::kExpiredOrReplay));
 }
 
+void testFastV2BusyCausePreservesWireCompatibility() {
+  for (bool ota_busy : {false, true}) {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kOk);
+    FakeAuthControlGate control;
+    control.begin_result = false;  // Existing physical session owns the FSM.
+    EventRecorder events;
+    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &events,
+                               &control);
+    start(protocol, 1000);
+    protocol.setOtaBusy(ota_busy, 1050);
+    CHECK(!protocol.beginFastSession(protocol.connectionOwner(), 1100));
+    const auto outputs = drain(protocol);
+    CHECK(outputs.size() == 1);
+    CHECK(outputs[0].type == sgk::MessageType::kFastResult);
+    CHECK(u16(outputs[0].bytes.data() + 18) ==
+          static_cast<uint16_t>(sgk::ResultReason::kBusy));
+    CHECK(events.events.back().code == sgk::EventCode::kAccessSessionTerminated);
+    CHECK(events.events.back().reason == (ota_busy ? sgk::EventReason::kOtaBusy
+                                                 : sgk::EventReason::kTargetBusy));
+    CHECK(control.commit_calls == 0);
+    CHECK(control.begin_calls == (ota_busy ? 0 : 1));
+  }
+}
+
 void testFastV2ReportsAclProtocolMismatch() {
   auto random = canonicalRandom();
   FakeVerifier verifier(sgk::ResultReason::kUnsupportedVersion);
@@ -3440,6 +3465,7 @@ int main() {
 
   testCanonicalVectorsAndFraming();
   testFastV2SingleSubscriptionFlow();
+  testFastV2BusyCausePreservesWireCompatibility();
   testFastV2ReportsAclProtocolMismatch();
   testAdapterPendingWriteVisibility();
   testFastV2RejectsLegacyTypeAndVersion();

@@ -1,5 +1,22 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-09-10 morning scan recovery correction
+
+Repeated native registration previously stopped/restarted both PendingIntent
+scans even after successful registration. Registration now returns the accepted
+current-process result without scanner mutation while registration or packet
+evidence is less than15 minutes old. A future packet timestamp is not liveness
+proof and cannot force an endless refresh loop after wall-clock correction.
+
+A unique15-minute native periodic Worker checks existing enrollment/feature and
+enabled intent, defers queued/running/retrying/uncertain proofs, and reconciles
+quiet scans. It is independent of Activity, Flutter and diagnostic-upload consent;
+disabling wake cancels it. Android may defer WorkManager in idle, so this is a
+bounded recovery path, not a15-minute delivery guarantee or continuous RF proof.
+Silence while away remains normal and is not reported as a hardware failure.
+Existing RECOVERY_ATTEMPT/REGISTER_* records remain compatible with the deployed
+Backend. Phone install and screen-off re-entry acceptance are separate gates.
+
 ## 2026-08-31 off-site native-owner false alert analysis
 
 The owner observed a foreground notification titled `BLE 비콘 스캔 초기화
