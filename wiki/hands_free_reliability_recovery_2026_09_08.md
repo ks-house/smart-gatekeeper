@@ -367,3 +367,282 @@ RAM 93,112B, Flash 1,842,052B다. OTA contract와 protocol 16개 시험도 PASS�
   연결을 독립 HTTPS 조회로 검증했다. Backend/PC 274개(통합 선택 3개 skip),
   root 391개(PowerShell 1개 skip) 회귀와 모든 PR/main 검사가 PASS했다.
   앱/Target 게시 버전은 81fbc6d 그대로이며 재게시하지 않았다.
+
+## 10. 9월 9일 분석 기반 디버깅 보강안 — 미구현 제안
+
+오늘의 관측과 원인 경계는 [작업 이력](log.md)의 `Evening manual-entry
+incident and BLE advertising recovery evidence`에 남겼다. 새 구현/배포 승인이나
+MQTT 계정 발급을 수행한 문서가 아니다. 이미 배포된 native outbox, signed
+sensor summary, health-history/incident API를 재구현하지 않고 남은 공백을 보강한다.
+
+| 우선순위 | 현재 공백 | 보강할 증거와 판별 가능해지는 문제 |
+| --- | --- | --- |
+| P0 | GATT 실패와 수동 개방의 event sequence 충돌 | Target 공통 allocator, RAM/NVS 각각 pending 수·최고 대기시간·head boot/sequence, 송신/DB ACK/충돌 수를 구분. Backend 거절 사유와 원본 식별자/제한된 digest 보존으로 미송신·수신거부·ACK 유실 구분 |
+| P0 | 광고 watchdog 증가만 있고 중단 이유 없음 | GAP 광고 완료/연결 실패/해제 reason, host reset/sync, SDK·SGK 양쪽 연결 수, 광고 restart 요청/실행/결과를 boot+단조시각으로 보존. 정상 연결 중단·복구 경쟁·장시간 광고 정지를 구분 |
+| P0 | 새 보고서 안에 오전 BLE/세션만 존재 | 보고서 capture와 별개로 마지막 scan 요청/승인/callback/packet, worker 실행/skip, journal 기록, 업로드 시도/ACK의 시각·지연·원인 보존. Backend가 자료 공백 자체를 사건으로 생성하고 복구 후 과거 backlog를 조회 |
+| P1 | 정상적인 재인증 차단과 센서 무응답이 섞임 | 기존 세션 summary를 유지하고 IDLE 실제 측정 경로에도 유효/timeout/범위·차단 전환·설정 버전의 저빈도 집계를 추가. 미측정·무응답·유효 범위 밖·재진입 차단을 분리 |
+| P1 | MQTT 실패 수가0이어도 재접속은 반복 | connect/disconnect, 예상된 정리 여부, TLS/socket/MQTT 단계별 reason, keepalive 지연, task/heap/최대연속블록, 마지막 성공 시각을 원인 이벤트로 보존. Broker 측 connection/ACL/keepalive 거절도 별도 수집 |
+| P1 | 가족별 귀속·발생 순서가 모호함 | 모바일 설치 단위 비식별 참조와 인증 후 세션 연결, boot/connection/attempt/session/sequence를 분리. 인증 전 미상 연결을 특정 가족으로 추정하지 않으며 device monotonic/clock quality/서버 receipt를 함께 반환 |
+
+공통 구현 경계: 고정 크기·속도 제한 journal, 중요 상태 전환 우선 보존,
+주기 집계와 유실 카운터, 장애 전후 제한된 구간 고정, 기존 consent/Clear 범위와
+보존 기한 유지. BLE callback/센서 루프에서 동기 MQTT나 매 샘플 flash 쓰기를
+하지 않는다. 오늘 관측한 낮은 minimum heap 때문에 RAM/stack/flash 마모 예산을
+먼저 측정하며, OTA 여유 공간·rollback·서명 검증과 relay interlock을 유지한다.
+
+NAS 상시 수집을 확장하는 것이 우선이다. 이미 있는 Backend subscriber의
+검증 전 수신 메타데이터와 검증 후 DB 저장 결과를 연결하고, 마지막 수신·
+거부 이유·누락 범위를 기존 진단 읽기 API로 노출한다. 원문 키/비밀번호,
+광고 원문/MAC, 임의 오류 본문은 저장하지 않는다. 수동 개방은 자동으로
+사건 전후 자료를 묶는 계기가 될 수 있으나, 모든 수동 개방을 자동 출입
+실패라고 분류하지 않는다. PC/Agent가 꺼져 있어도 NAS 수집은 계속되어야 한다.
+
+### MQTT 직접 조회에 필요한 구성
+
+- 기존 HTTPS 진단 토큰은 MQTT 인증 토큰이 아니다. 실제 broker TLS 호스트,
+  실제 포트와 서버 인증서 검증용 CA가 필요하다. 아래9월9일 실측에서
+  `tworimpa.synology.me:4883`의 익명 구독이 확인됐다. 전용 구독 계정/비밀번호는
+  현재 접속의 필수조건이 아니라 향후 broker 권한 강화를 위한 조건이다.
+  Backend HTTP4442/HA8123을 MQTT 포트로 사용하지 않는다.
+- LAN 또는 기존 사설 VPN 경로를 우선 사용하고 DNS/방화벽/TLS 이름을
+  검증한다. 새 공인 포트 개방이나 TLS 검증 해제는 기본 전제가 아니다.
+- 이 PC는 Paho 모듈과 기존 Target provisioning 파일을 가지고 있다.
+  이번에는 MQTT 관련 환경변수가 없고 provisioning 선언 존재만 확인했다.
+  과거 직접 구독 성공 이력은 있으나 현재 전용 진단 계정/실제 broker ACL을
+  검증한 것은 아니다. Target/Backend 계정이나 그 client ID를 재사용하지 않는다.
+- 기본 구독 allowlist는 `gatekeeper/v1/targets/<target-id>/` 아래
+  `status`, `availability`, `boot`, `canonical-event`, `command-ack`,
+  `acl/ack` 및 `gatekeeper/v1/ha-bridge/<target-id>/` 아래
+  `verified-status`, `connectivity-diagnostic`, `access-event`다.
+  기존 `event`/`sensor`는 필요할 때만 별도 허용한다. 송신은 모두 금지하고
+  command/acl/request/discovery 변경 및 전체 `#` 구독 권한을 주지 않는다.
+- **ACL 함정:** [현재 템플릿](../security/target-acl)의 전역 `pattern write`
+  규칙은 새 진단 계정에도 자기 이름 namespace 쓰기를 허용할 수 있다.
+  `user` 아래 read만 추가하는 것으로 완전 read-only가 되지 않는다.
+  실제 broker 버전/ACL 방식에 맞게 전역 pattern을 Target 전용 명시 규칙으로
+  제한하거나 해당 진단 principal에 publish 전체 거부를 적용하고 회귀 검증한다.
+  [Mosquitto 공식 ACL 설명](https://mosquitto.org/documentation/plugins/acl-file/)도
+  pattern 규칙이 모든 사용자에 적용됨을 명시한다. 운영 ACL 변경은 미실행이다.
+- 새 읽기 전용 클라이언트의 **제안 인터페이스**는
+  `SGK_MQTT_DIAG_HOST`, `SGK_MQTT_DIAG_PORT`, `SGK_MQTT_DIAG_USERNAME`,
+  `SGK_MQTT_DIAG_PASSWORD_FILE`, `SGK_MQTT_DIAG_CA_FILE`이다. 아직 구현된
+  변수 계약이 아니다. 비밀번호는 WSL의0600 파일에 저장하고 채팅/명령줄에
+  붙이지 않는다. 기존 `migrate_home_assistant_discovery.py --apply`는 쓰기
+  도구이므로 진단용으로 실행하지 않는다.
+- 고유 client ID, 유한 구독시간·메시지크기·출력 제한과 재접속을 사용한다.
+  CONNECT와 개별 SUBACK, retained 여부, 수신시각 및 source boot/sequence를
+  기록한다. MQTT retained 상태는 전체 과거 이력이나 현재 생성 시각의 증거가
+  아니므로 NAS 저장/API를 대체하지 않는다. MQTT 관찰만으로 Target→휴대폰 RF
+  수신 또는 브로커 자체 접속 거절 로그를 얻을 수도 없다.
+
+### 구현 순서와 완료 시험
+
+1. 공통 sequence와 영속 큐/수신 거절 관측을 먼저 수정하고 GATT pre-proof
+   실패8건 뒤 수동 완료2건이1…10으로 저장·ACK되는 host 회귀를 추가한다.
+2. 광고/모바일 실행 생명주기와 수집 공백 사건을 보강한다. 연결 callback과
+   watchdog 경쟁, OS worker 중단 후 복귀, 네트워크 유실/복구를 격리 시험한다.
+   OS가 실행하지 않은 구간은 이후 exit/복구 관측이 없으면 원인 미상으로 남긴다.
+3. 기존 NAS collector와 읽기 API를 확장하고 MQTT observer를 추가한다.
+   Broker 수신→검증거부/DB commit→ACK의 각 경계를 분리해 조회 가능해야 한다.
+   정상 토픽 읽기와 publish 금지/범위 밖 거부는 격리 broker에서 검증하며
+   실문 command에 시험 publish하지 않는다. 실서비스는 읽기 확인만 수행한다.
+4. 그 뒤에도 Target 광고 active와 폰 no-packet을 구분할 수 없다면 독립 BLE
+   관측기를 별도 결정한다. 이는 관측기 위치의 RF 증거이며 폰 도착 증거가
+   아니다. 문 접점/전원 계측 없이는 물리 개방·전압 강하를 확정하지 않는다.
+
+### 진단 계정 생성 안내 — Mosquitto password_file 방식에 한정
+
+운영 컨테이너명/버전/설정 파일 및 영속 mount는 아직 확인하지 않았다.
+아래는 현재 저장소 `security/mosquitto.conf`와 같은 password_file/acl_file
+방식을 사용하는 경우의 안내이며 HA add-on 또는 인증 plugin 구성에 그대로
+적용하지 않는다. NAS SSH에서 `sudo docker ps --format '{{.Names}}\t{{.Image}}'`로
+컨테이너를 식별하고 Container Manager의 볼륨/실제 활성 설정에서 password_file과
+acl_file 경로를 확인한다. 기존 두 파일을 권한을 보존한 비공개 사본으로 백업한다.
+
+컨테이너명이 `mosquitto`, 기존 영속 password_file이 `/mosquitto/config/passwords`인
+경우에만 아래 명령으로 새 사용자 `sgk-diagnostics`를 추가한다. 같은 사용자가
+이미 있으면 비밀번호 변경이 되므로 먼저 이름 중복 여부를 확인한다.
+
+```bash
+sudo docker exec -it mosquitto mosquitto_passwd /mosquitto/config/passwords sgk-diagnostics
+```
+
+비밀번호는 대화형으로 두 번 입력한다. 기존 파일을 덮어쓰는 `-c`와 비밀번호를
+명령줄에 싣는 `-b`를 사용하지 않는다. 파일 내용/비밀번호/hash는 채팅에 붙이지
+않는다. [공식 mosquitto_passwd 안내](https://mosquitto.org/man/mosquitto_passwd-1.html).
+
+기존 ACL을 보존하고 아래 사용자 블록을 추가한다. **현재 템플릿과 같은 전역
+pattern만 존재하는 조건**에서 자기 이름 namespace의 상속 권한을 deny로 막고
+실제 Target의 지정 토픽만 읽게 한다. 다른 global/plugin 허용이 있다면 별도
+검토해야 한다. `topic deny #`는 허용하려는 읽기까지 막으므로 대신 쓰지 않는다.
+
+```text
+user sgk-diagnostics
+topic deny gatekeeper/v1/targets/sgk-diagnostics/#
+topic read gatekeeper/v1/targets/c0feffe6ebac/status
+topic read gatekeeper/v1/targets/c0feffe6ebac/availability
+topic read gatekeeper/v1/targets/c0feffe6ebac/boot
+topic read gatekeeper/v1/targets/c0feffe6ebac/canonical-event
+topic read gatekeeper/v1/targets/c0feffe6ebac/command-ack
+topic read gatekeeper/v1/targets/c0feffe6ebac/acl/ack
+topic read gatekeeper/v1/ha-bridge/c0feffe6ebac/verified-status
+topic read gatekeeper/v1/ha-bridge/c0feffe6ebac/connectivity-diagnostic
+topic read gatekeeper/v1/ha-bridge/c0feffe6ebac/access-event
+```
+
+설정이 유효하고 Mosquitto가 컨테이너 PID1이며 파일 기반 인증/권한이 활성인 것을
+확인한 뒤 `sudo docker kill --signal=HUP mosquitto`로 reload한다. 이는 SIGKILL이나
+컨테이너 재시작이 아니다. 기존 Target/Backend 연결과 새 TLS CONNECT/SUBACK 및
+상태 수신을 확인한다. 권한 거부 시험은 격리 broker에서 수행하며 실제 문/OTA
+명령을 시험 publish하지 않는다. [공식 reload/ACL 설명](https://mosquitto.org/man/mosquitto-conf-5.html).
+계정 생성·reload·ACL 시험은 이번 안내에서 실행하지 않았다.
+
+### 소유자가 제공한 실제 설정에 따른 정정
+
+9월9일 후속 메시지의 설정은 listener1883/8883 모두 allow_anonymous=true,
+8883의 서버 certfile/cafile/keyfile만 포함하며 password_file/acl_file은 없다.
+이는 위 저장소 템플릿 조건과 다르므로 예시 계정/ACL/reload 절차를 그대로
+적용하지 않는다. 이 설정이 활성 설정 전체이고 별도 인증 plugin이 없다면
+익명 접속이 가능하며 토픽별 권한 제한도 없다. TLS는 통신 암호화/서버 인증이지
+클라이언트 계정 인증을 대신하지 않는다. 실제 외부 포트 mapping/도달성은 별도다.
+
+현재 진단용 구독에는 새 계정이 필수는 아니다. 다만 관찰 클라이언트가 읽기만
+수행하는 것과 broker가 쓰기를 차단하는 전용 principal은 다른 보장이다.
+인증 강화 시 기존 Target/HA/Backend 각각의 실제 credential 사용을 먼저 확인하고
+모든 필요한 named principal과 기존 토픽 권한을 준비한 뒤 password_file/acl_file을
+적용한다. allow_anonymous=true를 유지하더라도 기존 클라이언트가 username/password를
+보내면 새 password_file 검증의 영향을 받을 수 있으므로 임의 즉시 cutover하지 않는다.
+최종적으로 익명 허용을 제거하고 전용 계정 allowlist를 강제하며 기존 출입/OTA
+연결을 확인한다. 이 후속 안내에서 broker 접속/계정 생성/설정 변경은 수행하지 않았다.
+
+## 11. MQTT 직접 진단 후 보강 우선순위 — 9월9일 22:28 KST
+
+### 실제 수행 및 결과
+
+사용자 승인으로22:27:33.604–22:28:18.752 KST 동안45초 직접 관측했다.
+현재 WSL DNS가 정상 해석됐으며 기존 CA와 호스트명 검증을 유지한
+`tworimpa.synology.me:4883` TLS 익명 CONNECT가 성공했다. 임의 고유 client ID와
+clean session을 사용하고11개 exact topic의 SUBACK 모두QoS1 허용을 확인했다.
+Target status/availability/boot/canonical-event/command-ack/acl-ack,
+Backend verified-status/connectivity-diagnostic/access-event/availability와
+**DB commit receipt를 관찰하기 위한 Target command 토픽 구독**만 수행했다.
+명령 payload는 출력/보관하지 않았으며 publish, will, 계정/ACL/포트/설정 변경,
+문 개방/재부팅/OTA는 수행하지 않았다. 익명 발행 가능 여부는 시험하지 않았다.
+
+| 관측 | 결과 | 의미/한계 |
+| --- | --- | --- |
+| Target 실시간 status | non-retained42개, 최대 수신 간격1.292초 | 관측 구간의 MQTT 상태 전달은 정상. 장기간 RF/출입 성공 증거는 아님 |
+| Backend verified-status |43개 중 retained1개 | 상태 처리 경로가 동작함. 출입 이벤트 저장 경로의 성공과 별개 |
+| canonical-event | 같은 payload21회, 약2초 간격, 모두non-retained | retained 재생이 아니라 같은 출입 기록의 반복 전달 |
+| 반복 기록 | boot808/sequence1, ACCESS_SIGNED_MANUAL_COMPLETED, event34e02f7c-7bb5-46fa-b03f-cebe8712fd8e, session847902a3-7081-4513-9920-6401a4f3c683 |18:03 수동 개방 당시 signed terminal health의 session/sequence와 일치. MQTT 수신 원문 자체의MAC는 이번 PC에서 검증하지 못했으므로 signed DB 행과 구분 |
+| DB 대조 | boot808 전체8행/커서 종료, sequence1은 기존 ACCESS_GATT_CONNECTED, 수동 기록 없음 | 기존 이벤트와 source identity 충돌이 실제 수신 기록에도 존재 |
+| receipt 경로 |45초간 command/command-ack/access-event 메시지0, Target audit receipts0 | 관측 구간의 해당 이벤트 commit ACK 없음. Backend가 선택한 정확한 거절 분기는 별도 거절 관측이 없으므로 직접 확인 불가 |
+| 현재 장치 |480, boot809, IDLE, 광고active/expected=true, 연결0/GATT누계0 | 재부팅 뒤에도 boot808 기록 반복. 현재부팅의 광고 내부 플래그는 실제 폰 수신 증거가 아님 |
+| 큐 표시 |RAM outbox0, legacy1, audit backpressure0 | RAM0을 영속 큐 empty 또는 이벤트 정상 처리로 해석할 수 없음 |
+
+인증된 API는22:27:56 시점 exact Backend a105539/ready12개 check true/Target
+fresh를 반환했다. 추가33개 health 조회(22:12–22:29:04.734, 커서 종료)는
+boot809의 첫 수신22:19:07.076/uptime7초를 확인했다. 이는 정확한 reset 순간이나
+전압 원인의 증거가 아니다. 이전부터 관측한 BROWNOUT 참고값과 별도로 취급한다.
+이 Agent의 MQTT 연결은 그 뒤22:27에 시작했으므로 해당 부팅을 유발한 명령을
+실행하지 않았다.
+
+모바일 report177은22:27:42.838 capture/22:27:43.318 receipt, 앱44401이다.
+last packet08:20:09.457과 last session update08:20:02.903은 여전히 오래됐다.
+실시간 upload 성공을 당일 BLE 수집 성공으로 대체하지 않는다.
+
+소스 MqttManager.cpp1892–1919는 영속 큐 맨 앞 항목이 receipt를 받기 전까지
+2초 주기로 재송신하고 뒤 항목으로 진행하지 않는다. Backend main.py1123–1203은
+동일 source identity의 다른 event를 거부한다. 실측 반복 주기/과거 session/DB
+충돌은 **영속 큐 선두 정체와 일치**한다. 현행 진단 API에는 reject 원인과
+NVS head가 없어 실제 Backend 거절 분기까지 단정하지 않는다. 검증 단계까지
+구분할 필요가 있어 로컬MAC 검증도 시도했으나 필요한 provisioning 값 조합이
+없어 수행하지 않았고, 키 추출 확대/사용자 키 요청을 하지 않았다.
+
+### 우선순위 갱신 및 합격 기준
+
+1. **P0-A: 번호 충돌 수정 + 기존 정체 기록의 안전한 처리.** 모든 경로가
+   공통 allocator를 사용한다. 이미 생성된 충돌 자료는 원본/식별자를 보존해
+   격리하고, 검증 가능한 처리 결과와 중복방지 상태를 남긴 뒤 뒤 기록을
+   진행시키는 절차를 설계한다. 기존 서명 자료를 임의 재번호/삭제하거나
+   일반 실패 응답만으로 폐기하지 않는다. 재부팅·재전송·ACK 유실을 포함해
+   GATT실패→수동2건→후속정상기록까지 보존/처리되는 시험이 합격 조건이다.
+2. **P0-B: 상태 통신과 출입 감사 전송의 건강 상태 분리.** RAM/NVS별 depth,
+   head boot/sequence/event 참조, oldest age, 재시도/마지막 DB ACK,
+   parser/MAC/identity conflict/storage failure 분류를 수집한다. 동일 기록
+   반복과 미처리시간이 임계값을 넘으면 Backend/MQTT ready와 별개로 사건을
+   생성한다. 익명 publisher도 존재하므로 미검증 입력은 별도 제한된 메타데이터로
+   보존하고 정상 Target의 고장으로 자동 귀속하지 않는다.
+3. **P0-C: 광고/폰 미수신을 연결해 진단.** 광고 GAP reason/SDK·SGK 연결 상태와
+   native scan/worker/skip 원인 이력을 보강한다. 업로드 정상·BLE자료 stale을
+   별도 경고하며, 이전 오류를 신규 인증 실패로 표시하지 않는다. 이것은
+   감사 큐 수정과 별개의 자동 출입 장애 경로다.
+4. **P0-D: 반복 reset과 실제 센서 측정 경로 진단.** 이번 추가 boot809를 포함해
+   reset 직전 task/연결/heap 자료와 IDLE 실제 샘플 유효성·ARM 요약을 보존한다.
+   BROWNOUT/작은heap을 인과로 단정하거나 무응답을 clear로 바꾸지 않는다.
+5. **운영 보강: NAS 상시 수집과 MQTT 권한.** 이번 PC 관측은45초뿐이다.
+   기존 NAS subscriber에 검증 전후 결과 보존을 추가해 PC 미실행 중에도
+   동일 사건을 조회한다. 현재 익명 TLS 구독은 가능하지만 broker-enforced
+   read-only는 아니므로 기존 Target/HA/Backend 계정을 보존하는 권한 전환을
+   별도 수행한다. 실제 문/OTA 토픽에 쓰기 권한 시험을 하지 않는다.
+
+이번 변경은 직접 진단과 문서 우선순위 업데이트에 한정한다. 위 수정/시험/
+계정 전환은 아직 구현·실행하지 않았으며 MQTT 정상 수신을 물리 출입 성공으로
+보고하지 않는다.
+
+## 12. 9월 9일 번호 충돌·감사 전송 정체 수정 — 로컬 구현, 미배포
+
+§11의 실측에 따라 다음 범위를 구현했다. 모바일 미수신 전체 원인이나
+전압/센서 결함을 해결했다고 간주하지 않는다.
+
+- **Target 공통 번호 발급:** `AccessEventSequence` 한 인스턴스를 GATT core와
+  수동 MQTT terminal이 공유하고 같은 recursive task mutex로 직렬화한다.
+  proof 이전 실패·단절도 번호를 소비하므로 수동 경로가 1부터 다시 발급하지
+  않는다. 세션 종료/MQTT 재초기화에 초기화하지 않으며 uint64 초과 시 재사용하지
+  않는다. 예전 기록의 boot/sequence/event ID/MAC와 NVS 368-byte ABI는 그대로다.
+- **이미 충돌한 기록 보존:** Backend가 exact-topic/non-retained/형식/MAC 검증 후
+  canonical unique 충돌을 확인하면 schema017 `access_event_conflicts`에 전체
+  정규화 envelope와 MAC를 별도 보존한다. 이 테이블은 append-only이며 동일
+  Target/payload digest 재전송은 내용까지 비교해 중복 저장하지 않는다.
+  원래 canonical 행을 수정하거나 번호를 바꾸지 않는다.
+- **정확한 DB 수신 확인:** 격리 commit이 성공한 경우에만 기존 exact-event
+  receipt를 보낸다. 이는 정상 출입 성공이 아닌 **진단 기록의 영속 보관 확인**이다.
+  old Target도 원래 receipt 규칙으로 그 head 하나만 비울 수 있다. 저장 실패,
+  테이블 미존재, 불확실한 commit, 내용 불일치는 ACK하지 않는다. 격리 결과에는
+  `inserted=false, quarantined=true`를 사용해 정상 HA/출입 성공 콜백을 실행하지 않는다.
+- **원격 확인:** 기존 읽기 토큰에 `GET /api/v1/diagnostics/audit-conflicts`와
+  PC `--audit-conflicts` 조회를 추가했다. 원문/MAC/키는 API에서 제외하고
+  Target/boot/sequence/event/session/서버 수신 시각/IDENTITY_CONFLICT만 반환한다.
+  정상 `access-events` 목록과 분리하며 동일 기간/커서/60회 제한/no-store를 적용한다.
+- **전송 정체 표시:** periodic status에 `mqtt_audit_durable_depth`,
+  `mqtt_audit_pending_depth`, `mqtt_audit_head_wait_ms`,
+  `mqtt_audit_head_publish_attempts`, `mqtt_audit_head_boot_count`,
+  `mqtt_audit_stalled`를 추가했다. 15초 pending을 정체 참고값으로 나타내며
+  원인/출입 판정이 아니다. wait는 **이번 부팅에서 head를 관측한 뒤의 시간**이다.
+  이전 부팅의 event monotonic 값을 현재 uptime에서 빼지 않는다. Backend는
+  `health-history.unsigned_advisory`에 이 필드를 보존한다.
+- **BLE 광고 복구 조건:** SDK connected count뿐 아니라 이미 수락된 core 연결을
+  함께 확인하고 watchdog 검사/재시작을 core mutex 안에서 수행한다. NimBLE
+  onConnect와 SDK count 증가 사이의 알려진 소스 경합을 막는 변경이며,
+  저녁 폰 미수신의 원인 확정 또는 실제 RF 복구 증거는 아니다.
+
+검증: Backend 전체273 tests(환경 시험4 skip), 공통392 tests(환경 시험1 skip)
+통과. 별도 opt-in 실제 MariaDB 시험6 tests는 전부 실행/통과했다. 두 개의
+MAC-valid 수동 기록이 기존 source position과 충돌하는 경우 각각 보존하고,
+ACK 유실을 가정한 3회씩 재전송 후 격리2행/정상3행/HA outbox1행을 확인했다.
+격리 행 UPDATE/DELETE 거부, migration 재실행과 down 보존, DB 오류 시 ACK
+없음, 잘못된 인증/retained 거부도 검증했다. C++ 공통 allocator의 pre-proof
+단절/수동/후속 GATT interleave와 초과 방지, old-boot head의 wait/정체도 시험했다.
+
+`esp32c6_personal_production` 및 BLE 비활성 `esp32c6` 로컬 빌드와 OTA contract
+검사가 통과했다. 현재 Target 상태를 읽기 전용으로 1회 더 구독해 payload3119B,
+108개 최상위 필드임을 확인했다. 새6항목은 기존5632B 전송 한도 안에 들어가는
+분량이며 임의 명령/재부팅/OTA/브로커 설정 변경은 없었다.
+
+배포 순서는 **schema017 + Backend → 격리 보존/기존 큐 진행 확인 → 공통 allocator
+Target OTA → 새 boot/version/health 및 후속 사건 조회**다. 현재는 로컬 수정이며
+운영 설치를 수행하지 않았다. DB Dockerfile/Backend 입력 목록 두 보호 파일의
+변경은 현행 정책에 따른 별도 배포 승인이 필요하다. 서명/게시/정책 검사를
+우회하거나 승인된 baseline을 이 턴에서 바꾸지 않았다. 모바일 앱 변경,
+NAS 전체 거절 사유 수집, 독립 RF 관측, 센서/전원 장기 검증, MQTT 계정 전환은
+아직 미구현/미검증 범위로 남는다.

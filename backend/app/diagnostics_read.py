@@ -303,6 +303,58 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
             if conn is not None:
                 conn.close()
 
+    @router.get("/audit-conflicts")
+    def list_audit_conflicts(
+        since: Optional[str] = Query(None, max_length=64),
+        until: Optional[str] = Query(None, max_length=64),
+        limit: int = Query(100, ge=1, le=100),
+        before_id: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+        target_id: Optional[str] = Query(None, pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+        session_id: Optional[str] = Query(None, pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        boot_count: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+        event_code: Optional[str] = Query(None, pattern=r"^[A-Z][A-Z0-9_]{0,63}$"),
+    ):
+        start, end = _event_window(since, until)
+        clauses = ["received_at >= %s", "received_at < %s"]
+        args = [start.replace(tzinfo=None), end.replace(tzinfo=None)]
+        for column, value in (("target_id", target_id), ("session_id", session_id),
+                              ("source_boot_count", boot_count), ("event_code", event_code)):
+            if value is not None:
+                clauses.append(column + "=%s")
+                args.append(value)
+        if before_id is not None:
+            clauses.append("id < %s")
+            args.append(before_id)
+        columns = ("id,target_id,event_id,source_boot_id,source_boot_count,"
+                   "source_sequence,session_id,event_code,reason_code,received_at")
+        conn = None
+        try:
+            conn = get_db()
+            with conn.cursor() as cur:
+                cur.execute("SELECT " + columns + " FROM access_event_conflicts WHERE "
+                            + " AND ".join(clauses) + " ORDER BY id DESC LIMIT %s",
+                            (*args, limit + 1))
+                rows = cur.fetchall()
+            conflicts = []
+            for row in rows[:limit]:
+                # Custody metadata only: never expose raw envelope/MAC/key material.
+                item = {key: row[key] for key in columns.split(",")}
+                for key in ("id", "source_boot_count", "source_sequence"):
+                    item[key] = str(item[key])
+                item["received_at"] = _utc_text(item["received_at"])
+                item["disposition"] = "QUARANTINED"
+                conflicts.append(item)
+            return {"conflicts": conflicts,
+                    "next_before_id": str(rows[limit - 1]["id"]) if len(rows) > limit else None,
+                    "time_basis": "server_received_at",
+                    "access_success_confirmed": False}
+        except Exception:
+            raise HTTPException(503, "audit conflict evidence unavailable",
+                                headers={"Cache-Control": "no-store"}) from None
+        finally:
+            if conn is not None:
+                conn.close()
+
     @router.get("/access-events")
     def list_access_events(
         since: Optional[str] = Query(None, max_length=64),

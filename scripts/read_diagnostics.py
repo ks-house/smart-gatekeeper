@@ -70,7 +70,7 @@ def endpoint(base, bundle_id, limit, before_id):
 
 
 def history_endpoint(base, route, limit, before_id, **filters):
-    if route not in ("access-events", "health-history", "incidents"):
+    if route not in ("access-events", "health-history", "incidents", "audit-conflicts"):
         raise ValueError("unsupported read route")
     query = {"limit": limit}
     if before_id is not None:
@@ -109,6 +109,7 @@ def main(argv=None):
     mode.add_argument("--init-token", action="store_true", help="create local token without displaying it")
     mode.add_argument("--check-token", action="store_true", help="check local availability; no network")
     mode.add_argument("--access-events", action="store_true", help="read verified Target events independently of mobile reports")
+    mode.add_argument("--audit-conflicts", action="store_true", help="read durably quarantined audit conflicts, not access verdicts")
     mode.add_argument("--health-history", action="store_true", help="read sampled verified Target health history")
     mode.add_argument("--incidents", action="store_true", help="correlate bounded mobile/Target evidence and missing stages")
     mode.add_argument("--bundle-id", type=positive)
@@ -126,8 +127,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     filters = {key: getattr(args, key) for key in
                ("since", "until", "target_id", "session_id", "boot_count", "event_code")}
-    if not (args.access_events or args.health_history or args.incidents) and any(value is not None for value in filters.values()):
-        parser.error("event filters require --access-events, --health-history or --incidents")
+    if not (args.access_events or args.audit_conflicts or args.health_history or args.incidents) and any(value is not None for value in filters.values()):
+        parser.error("event filters require --access-events, --audit-conflicts, --health-history or --incidents")
     if args.health_history and (args.session_id is not None or args.event_code is not None):
         parser.error("--health-history does not accept session/event filters")
     if args.incidents and (args.boot_count is not None or args.event_code is not None):
@@ -142,7 +143,7 @@ def main(argv=None):
             if args.check_token:
                 result = {"token_available": True}
             else:
-                route = ("access-events" if args.access_events else "health-history" if args.health_history
+                route = ("audit-conflicts" if args.audit_conflicts else "access-events" if args.access_events else "health-history" if args.health_history
                          else "incidents" if args.incidents else None)
                 url = (history_endpoint(args.base_url, route, args.limit, args.before_id, **filters)
                        if route else endpoint(args.base_url, args.bundle_id, args.limit, args.before_id))

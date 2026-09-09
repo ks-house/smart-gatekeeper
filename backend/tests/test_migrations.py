@@ -84,7 +84,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-016}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-017}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",

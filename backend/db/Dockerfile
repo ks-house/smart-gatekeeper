@@ -32,6 +32,8 @@ COPY migrations/015_mobile_diagnostics_down.sql /opt/smart-gatekeeper/migrations
 COPY migrations/016_reliability_history_up.sql /opt/smart-gatekeeper/migrations/016_up.sql
 COPY migrations/016_reliability_history_down.sql /opt/smart-gatekeeper/migrations/016_down.sql
 COPY schema.env /opt/smart-gatekeeper/schema.env
+COPY migrations/017_access_event_conflicts_up.sql /opt/smart-gatekeeper/migrations/017_up.sql
+COPY migrations/017_access_event_conflicts_down.sql /opt/smart-gatekeeper/migrations/017_down.sql
 COPY run_migrations.sh /usr/local/bin/sgk-migrate
 RUN chmod 0555 /usr/local/bin/sgk-migrate \
     && chmod 0444 /opt/smart-gatekeeper/migrations/*.sql \

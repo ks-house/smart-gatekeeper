@@ -57,13 +57,13 @@ class DiagnosticsMainMiddlewareTest(unittest.TestCase):
         self.assertEqual("no-store", response.headers.get("cache-control"))
 
     def test_success_through_global_middleware_preserves_router_no_store(self):
-        for route in ("bundles", "access-events", "health-history", "incidents"):
+        for route in ("bundles", "access-events", "health-history", "incidents", "audit-conflicts"):
             with self.subTest(route=route):
                 self.assert_private(self.client.get(
                     "/api/v1/diagnostics/" + route, headers=self.headers), 200)
 
     def test_auth_validation_and_storage_errors_are_no_store(self):
-        for route in ("bundles", "access-events", "health-history", "incidents"):
+        for route in ("bundles", "access-events", "health-history", "incidents", "audit-conflicts"):
             path = "/api/v1/diagnostics/" + route
             with self.subTest(route=route):
                 self.assert_private(self.client.get(path), 401)
@@ -73,7 +73,7 @@ class DiagnosticsMainMiddlewareTest(unittest.TestCase):
                     path, headers=self.headers, params={"limit": 0}), 422)
         self.db.assert_not_called()
         self.db.side_effect = RuntimeError("private database details")
-        for route in ("bundles", "access-events", "health-history", "incidents"):
+        for route in ("bundles", "access-events", "health-history", "incidents", "audit-conflicts"):
             response = self.client.get("/api/v1/diagnostics/" + route, headers=self.headers)
             self.assert_private(response, 503)
             self.assertNotIn("private database details", response.text)
@@ -123,6 +123,31 @@ class DiagnosticsMainMiddlewareTest(unittest.TestCase):
 
 
 class DiagnosticsReadTest(unittest.TestCase):
+    def test_audit_conflicts_are_private_bounded_and_separate_from_access_success(self):
+        path = "/api/v1/diagnostics/audit-conflicts"
+        self.assertEqual(401, self.client.get(path).status_code)
+        self.assertEqual(405, self.client.post(path, headers=self.headers).status_code)
+        self.assertEqual(422, self.client.get(path + "?limit=101", headers=self.headers).status_code)
+        self.db.assert_not_called()
+        row = dict(id=9, target_id="target-a", event_id="e", source_boot_id="b",
+                   source_boot_count=808, source_sequence=1, session_id="s",
+                   event_code="ACCESS_SIGNED_MANUAL_COMPLETED", reason_code="IDENTITY_CONFLICT",
+                   received_at=datetime(2026, 9, 9), payload_json="must not be exposed")
+        self.cur.fetchall.return_value = [row, dict(row, id=8)]
+        response = self.client.get(path + "?target_id=target-a&boot_count=808&limit=1&before_id=10",
+                                   headers=self.headers)
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual("no-store", response.headers["cache-control"])
+        result = response.json()
+        self.assertEqual("9", result["next_before_id"])
+        self.assertEqual("QUARANTINED", result["conflicts"][0]["disposition"])
+        self.assertEqual("808", result["conflicts"][0]["source_boot_count"])
+        self.assertFalse(result["access_success_confirmed"])
+        self.assertNotIn("payload_json", response.text)
+        sql, params = self.cur.execute.call_args.args
+        self.assertIn("FROM access_event_conflicts", sql)
+        self.assertEqual(("target-a", 808, 10, 2), params[2:])
+
     def setUp(self):
         self.token = "x" * 43
         self.headers = {"Authorization": "Bearer " + self.token}
