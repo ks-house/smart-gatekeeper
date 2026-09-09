@@ -80,13 +80,23 @@ class SensorSessionDiagnosticsTest(unittest.TestCase):
             summary[key] = 4000
         status["sensor_session_summary"] = summary
         status["sensor_summary_auth"] = {"version": 1, "key_id": "aaaa", "tag": "a" * 32}
+        ota = (ROOT / "src/OtaManager.cpp").read_text().split(
+            "void OtaManager::appendDiagnostics", 1)[1].split(
+            "void OtaManager::setSafeStateProvider", 1)[0]
+        status["ota"] = {key: 0xFFFFFFFF for key in re.findall(r'destination\["([^"]+)"\]', ota)}
+        status["ota"]["target_version"] = "x" * 63
+        for key in ("transport_code", "http_code", "flash_code"):
+            status["ota"][key] = -2147483648
         payload_bytes = len(json.dumps(status, separators=(",", ":")).encode())
-        buffer_capacity = int(re.search(r'char pendingTelemetry\[(\d+)\]', source).group(1))
+        worker_header = (ROOT / "include/MqttTelemetryWorker.h").read_text()
+        buffer_capacity = int(re.search(r'kMaxPayloadBytes = (\d+)', worker_header).group(1))
+        self.assertIn("pendingTelemetry[sgk::MqttTelemetryWorker::kMaxPayloadBytes]", source)
         worker_source = (ROOT / "src/MqttTelemetryWorker.cpp").read_text()
-        worker_capacity = int(re.search(r'kMaxPayloadBytes = (\d+)', worker_source).group(1))
+        self.assertNotRegex(worker_source, r'kMaxPayloadBytes\s*=')
+        worker_capacity = buffer_capacity
         self.assertLess(payload_bytes, buffer_capacity)
         self.assertLess(payload_bytes, worker_capacity)
-        self.assertLess(buffer_capacity, 8192)  # Existing MQTT packet capacity.
+        self.assertLess(buffer_capacity + 160 + 5, 8192)  # Topic/header included.
 
 
 if __name__ == "__main__":
