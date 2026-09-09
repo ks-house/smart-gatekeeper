@@ -363,3 +363,8 @@ Backend rows2950–2952에 health와 새 updater의 current-version check 결과
 이는 Range 중단 재개, brownout 해결, 강제 전원 차단 rollback 또는 다음 image를
 새 downloader로 설치하는 실기기 시험을 대체하지 않는다. 추가 업그레이드가 없는
 current-version check에서 bytes/total0은 정상이며 이번 설치 파일을0B로 받은 뜻이 아니다.
+
+초기 VALID 안정 관측 뒤01:13:42 Backend에 boot816/491이 나타났고 matching
+advisory는 BROWNOUT/planned none을 기록했다. 01:16:46에도491/VALID가 유지됐다.
+이를 OTA rollback 또는 완료 실패로 오분류하지 않되, 가용성 정상화로도 보고하지
+않는다. 추가 device command 없이 전원 무결성 원인 조사가 별도로 필요하다.

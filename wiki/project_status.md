@@ -31,6 +31,11 @@ applies_to:
   current-version check: stage14/error0/HTTP200, VALID still true, MQTT restored,
   BLE advertising active. OTA TLS handoff heap62388→105940B is observed; it does
   not prove the exact cause of all preceding480 failures.
+- Later readback found a separate unplanned BROWNOUT: row2953/01:13:28 still
+  boot815, row2954/01:13:42 boot816, same491 and VALID preserved. Matching advisory
+  says previous uptime104726ms/IDLE/relay OFF/mqtt_connect_worker_adopted.
+  Row2960/01:16:46 confirms boot816/uptime191s. Installation succeeded, but
+  availability/power integrity is not resolved; no further command was sent.
 - Backend remains **106a2d2fa7f635c05d21e77d6f3c2a4ac9bb616a**, all12 readiness
   checks true/Target fresh. Unneeded Backend deployment was cancelled before
   activation; APK unchanged and no door command. New downloader interruption/

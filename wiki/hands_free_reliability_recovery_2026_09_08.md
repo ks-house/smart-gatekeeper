@@ -862,3 +862,11 @@ artifact 다운로드 실패 하나로 묶을 근거가 없다. boot812의 원�
   old480 updater가 수행했으므로491의 실제 Range 재개 시험을 대신하지 않는다.
   새 updater의 metadata 조회/자원 인계/MQTT 복원은 현장 확인했지만 단절 재개,
   전원 차단/rollback/장기 안정성은 별도이며 기존 BROWNOUT 원인도 미해결이다.
+- 종료 전 재조회에서 **491에서도 BROWNOUT이 다시 기록**됐다. row2953
+  01:13:28.947은 boot815/uptime99, row2954 01:13:42.360은 boot816/
+  `40a1afc1a1e41f6153566422ce29b78b`/uptime7이다. 동일 boot advisory는
+  BROWNOUT/planned none/previous_uptime104726ms/IDLE/relay OFF/
+  mqtt_connect_worker_adopted를 보존한다. row2960 01:16:46.496에도
+  boot816/491/uptime191/VALID=true/current stage14/error0이다. 초기40초
+  안정 관측 뒤의 별도 사건이며 이번 턴 추가 reboot 명령은 없었다. 설치는
+  유지됐고 rollback 증거는 없으나, 가용성/전원 문제가 해결됐다는 뜻은 아니다.

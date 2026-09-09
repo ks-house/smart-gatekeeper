@@ -1199,3 +1199,4 @@ an inference from application HMAC tests.
 | Health valid |01:12:27 stage11/running_image_valid=true/persisted;40s stable matching raw/verified IDLE/OFF | PASS observed health; not power-loss soak |
 | New updater check and API | HTTP200/stage14/error0/VALID preserved; TLS heap62388→105940B/MQTT restored; Backend2950–2952 | PASS metadata check/resource handoff/storage, not physical Range resume |
 | Remaining physical scope | No forced outage, supply measurement, local upload or door operation | Range resume/rollback/BROWNOUT root cause remain pending |
+| Later reset after initial stability |01:13:42 boot816/491; matching BROWNOUT/planned none, prior IDLE/relay OFF;01:16:46 still491/VALID | Installation retained; availability/power integrity NOT resolved; no additional command |
