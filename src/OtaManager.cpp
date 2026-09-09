@@ -19,6 +19,7 @@
 #include "OtaHealthPolicy.h"
 #include "OtaDiagnosticRecord.h"
 #include "OtaTransportLease.h"
+#include "OtaDownload.h"
 #include "OtaVersionPolicy.h"
 #include "WifiManager.h"
 #include "config.h"
@@ -177,6 +178,7 @@ OtaError otaFailureCode(const String& reason) {
   if (reason == "MQTT connection attempt active") return OtaError::kTransportBusy;
   if (reason == "manifest begin") return OtaError::kManifestBegin;
   if (reason == "manifest HTTP") return OtaError::kManifestHttp;
+  if (reason == "manifest size") return OtaError::kManifestRejected;
   if (otaDiagnostic.stage == OtaStage::kManifestVerify) return OtaError::kManifestRejected;
   if (reason == "artifact origin") return OtaError::kOrigin;
   if (reason == "artifact connection reuse") return OtaError::kConnectionReuse;
@@ -1195,9 +1197,8 @@ void OtaManager::checkAndUpdate(bool force) {
   otaDiagnostic.largest_after = ESP.getMaxAllocHeap();
   noteOtaStage(OtaStage::kManifestHttp);
   String payload;
-  // The production NAS keeps HTTP/1.1 connections alive. Preserve the one
-  // CA-verified manifest socket for the signed same-origin artifact so the
-  // ESP32-C6 never needs a second handshake against the long served chain.
+  // Prefer the authenticated manifest socket, but never require it to survive.
+  // Reconnect serially using this same CA-verified client under the MQTT lease.
   WiFiClientSecure otaClient;
   otaClient.setCACert(SECRET_ROOT_CA_CERT);
   otaClient.setConnectionTimeout(OTA_TCP_CONNECT_TIMEOUT_MS);
@@ -1213,8 +1214,9 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   otaHttp.setTimeout(10000);
-  const char* responseHeaders[] = {"Date"};
-  otaHttp.collectHeaders(responseHeaders, 1);
+  const char* responseHeaders[] = {"Date", "Transfer-Encoding", "Content-Encoding"};
+  otaHttp.collectHeaders(responseHeaders, 3);
+  otaHttp.addHeader("Accept-Encoding", "identity");
   DiagnosticsManager::noteAction("ota_manifest_get");
   DiagnosticsManager::feedLoopWatchdog();
   const int manifestCode = otaHttp.GET();
@@ -1231,7 +1233,26 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   setClockFromAuthenticatedHttpDate(otaHttp.header("Date"));
+  const int manifestSize = otaHttp.getSize();
+  // Bound allocation before HTTPClient::getString can reserve a server-supplied
+  // size. Chunked/unknown-size metadata is not part of our publication contract.
+  if (manifestSize <= 0 || manifestSize > 4096 ||
+      !sgk::otaResponseMatches(manifestCode, manifestSize, "",
+          otaHttp.header("Content-Encoding").c_str(), 0,
+          static_cast<uint32_t>(manifestSize),
+          otaHttp.header("Transfer-Encoding").c_str())) {
+    lastError = "manifest size";
+    status = OtaStatus::FAILED;
+    nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    return;
+  }
   payload = otaHttp.getString();
+  if (payload.length() != static_cast<size_t>(manifestSize)) {
+    lastError = "manifest size";
+    status = OtaStatus::FAILED;
+    nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    return;
+  }
   status = OtaStatus::VERIFYING;
   noteOtaStage(OtaStage::kManifestVerify);
   String reason;
@@ -1269,93 +1290,110 @@ void OtaManager::checkAndUpdate(bool force) {
     LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
-  if (!otaHttp.connected() || !otaHttp.setURL(stagedManifest.artifact_url)) {
-    otaHttp.end();
-    status = OtaStatus::FAILED;
-    lastError = "artifact connection reuse";
-    nextPeriodicCheckMs = millis() + kFailureRetryMs;
-    LOGF("[OTA-ERROR] %s", lastError.c_str());
-    return;
-  }
-  otaHttp.setTimeout(15000);
-  DiagnosticsManager::noteAction("ota_artifact_get");
-  DiagnosticsManager::feedLoopWatchdog();
-  const int artifactCode = otaHttp.GET();
-  otaDiagnostic.http_code = artifactCode;
-  otaDiagnostic.transport_code = otaClient.lastError(tlsError, sizeof(tlsError));
-  DiagnosticsManager::feedLoopWatchdog();
-  const int receivedArtifactSize = otaHttp.getSize();
-  if (artifactCode != HTTP_CODE_OK ||
-      receivedArtifactSize != static_cast<int>(stagedManifest.artifact_size)) {
-    otaHttp.end();
-    status = OtaStatus::FAILED;
-    lastError = artifactCode != HTTP_CODE_OK ? "artifact HTTP" : "artifact size";
-    nextPeriodicCheckMs = millis() + kFailureRetryMs;
-    LOGF("[OTA-ERROR] %s code=%d received=%d expected=%lu",
-         lastError.c_str(), artifactCode, receivedArtifactSize,
-         static_cast<unsigned long>(stagedManifest.artifact_size));
-    return;
-  }
-  noteOtaStage(OtaStage::kFlashBegin);
-  if (!beginImageWrite()) {
-    status = OtaStatus::FAILED;
-    lastError = "image begin";
-    nextPeriodicCheckMs = millis() + kFailureRetryMs;
-    return;
-  }
-  status = OtaStatus::DOWNLOADING;
-  noteOtaStage(OtaStage::kDownload);
-  LOGF("[OTA] encrypted artifact download started: %lu bytes",
-       static_cast<unsigned long>(stagedManifest.artifact_size));
-  WiFiClient* stream = otaHttp.getStreamPtr();
-  uint8_t buffer[4096]{};
-  bool downloadOk = true;
-  bool downloadTimedOut = false;
-  const uint32_t downloadStartedMs = millis();
-  uint32_t lastProgressMs = downloadStartedMs;
-  while (updateBytes < stagedManifest.artifact_size) {
-    // Keep the local control plane responsive while the OTA body is streamed.
-    // ota_busy remains asserted, so new authentication attempts receive BUSY
-    // instead of waiting behind a multi-minute download or being mistaken for
-    // a dead Target.
-    GattServer::update();
-    DiagnosticsManager::feedLoopWatchdog();
-    const uint32_t observedMs = millis();
-    if (observedMs - downloadStartedMs >= kArtifactDownloadTimeoutMs ||
-        observedMs - lastProgressMs >= kArtifactIdleTimeoutMs) {
-      downloadTimedOut = true;
-      downloadOk = false;
-      break;
+  // Adapter performs no authorization itself: immutable URL, total size and
+  // final hash/GCM tag come from the verified manifest above. A retry changes
+  // only transport offset; it never resets the writer or accepts a new manifest.
+  struct DownloadIO {
+    HTTPClient& http;
+    WiFiClientSecure& client;
+    WiFiClient* stream = nullptr;
+    bool first = true;
+    String error;
+    uint32_t now() { return millis(); }
+    void service() {
+      GattServer::update();
+      DiagnosticsManager::feedLoopWatchdog();
     }
-    const size_t remaining = stagedManifest.artifact_size - updateBytes;
-    const size_t available = stream->available();
-    if (available == 0) {
-      if (!otaHttp.connected()) {
-        lastError = "artifact disconnected";
-        downloadOk = false;
-        break;
+    void pause() { delay(1); }
+    void close() {
+      stream = nullptr;
+      client.stop();  // Free old TLS before any new handshake; do not drain body.
+      http.end();
+    }
+    sgk::OtaOpenResult open(uint32_t offset) {
+      bool reuse = first && http.connected() &&
+                   http.setURL(stagedManifest.artifact_url);
+      first = false;
+      if (!reuse) {
+        close();
+        if (!http.begin(client, stagedManifest.artifact_url)) {
+          error = "artifact HTTP";
+          return sgk::OtaOpenResult::kRetryable;
+        }
       }
-      delay(1);
-      continue;
+      http.setConnectTimeout(OTA_TCP_CONNECT_TIMEOUT_MS);
+      http.setTimeout(15000);
+      http.setReuse(true);
+      const char* headers[] = {"Content-Range", "Content-Encoding", "Transfer-Encoding"};
+      http.collectHeaders(headers, 3);
+      http.addHeader("Accept-Encoding", "identity");
+      http.addHeader("Range", "bytes=" + String(offset) + "-" +
+          String(stagedManifest.artifact_size - 1));
+      noteOtaStage(OtaStage::kArtifactHttp);
+      DiagnosticsManager::noteAction("ota_artifact_get");
+      DiagnosticsManager::feedLoopWatchdog();
+      const int code = http.GET();
+      otaDiagnostic.http_code = code;
+      char tlsError[1]{};
+      otaDiagnostic.transport_code = client.lastError(tlsError, sizeof(tlsError));
+      DiagnosticsManager::feedLoopWatchdog();
+      if (code < 0 || code == 408 || code == 429 || code >= 500) {
+        error = "artifact HTTP";
+        return sgk::OtaOpenResult::kRetryable;
+      }
+      if (code != HTTP_CODE_OK && code != HTTP_CODE_PARTIAL_CONTENT) {
+        error = "artifact HTTP";
+        return sgk::OtaOpenResult::kRejected;
+      }
+      if (!sgk::otaResponseMatches(code, http.getSize(),
+          http.header("Content-Range").c_str(), http.header("Content-Encoding").c_str(),
+          offset, stagedManifest.artifact_size,
+          http.header("Transfer-Encoding").c_str())) {
+        error = "artifact size";  // Includes ignored/overlapping/malformed Range.
+        return sgk::OtaOpenResult::kRejected;
+      }
+      if (!updateOpen) {
+        noteOtaStage(OtaStage::kFlashBegin);
+        if (!beginImageWrite()) {
+          error = "image begin";
+          return sgk::OtaOpenResult::kRejected;
+        }
+      }
+      stream = http.getStreamPtr();
+      if (stream == nullptr) {
+        error = "artifact disconnected";
+        return sgk::OtaOpenResult::kRetryable;
+      }
+      OtaManager::status = OtaStatus::DOWNLOADING;
+      noteOtaStage(OtaStage::kDownload);
+      error = "";
+      return sgk::OtaOpenResult::kReady;
     }
-    const size_t wanted = std::min(remaining, std::min(available, sizeof(buffer)));
-    const int received = stream->readBytes(buffer, wanted);
-    if (received <= 0 ||
-        !writeImageChunk(buffer, static_cast<size_t>(received))) {
-      downloadOk = false;
-      lastError = "image write";
-      break;
+    int available() { return stream ? stream->available() : -1; }
+    bool connected() { return stream && stream->connected(); }
+    int read(uint8_t* output, size_t size) { return stream->read(output, size); }
+    bool write(const uint8_t* input, size_t size) {
+      if (!writeImageChunk(input, size)) return false;
+      noteOtaProgress();
+      return true;
     }
-    lastProgressMs = millis();
-    noteOtaProgress();
+  } io{otaHttp, otaClient};
+  const sgk::OtaDownloadResult downloaded = sgk::downloadOta(
+      io, stagedManifest.artifact_size, kArtifactIdleTimeoutMs,
+      kArtifactDownloadTimeoutMs);
+  const bool downloadOk = downloaded == sgk::OtaDownloadResult::kComplete;
+  if (!downloadOk) {
+    if (downloaded == sgk::OtaDownloadResult::kTimeout) lastError = "artifact download timeout";
+    else if (downloaded == sgk::OtaDownloadResult::kWrite) lastError = "image write";
+    else lastError = io.error.isEmpty() ? "artifact disconnected" : io.error;
   }
+  io.close();
   otaHttp.end();
   if (downloadOk) noteOtaStage(OtaStage::kImageVerify);
   if (!downloadOk || !finishImageWrite()) {
     abortImageWrite();
     status = OtaStatus::FAILED;
-    if (downloadTimedOut) lastError = "artifact download timeout";
-    else if (lastError.isEmpty()) lastError = "image verify";
+    if (lastError.isEmpty()) lastError = "image verify";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
     LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;

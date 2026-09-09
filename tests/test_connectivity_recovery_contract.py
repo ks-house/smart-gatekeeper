@@ -469,22 +469,25 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
         wait.index("kOtaSafeStateTimeoutMs"),
         wait.index("DiagnosticsManager::feedLoopWatchdog();"),
     )
-    download = self.ota.split(
-        "while (updateBytes < stagedManifest.artifact_size)", 1
-    )[1].split("otaHttp.end();", 1)[0]
+    download = self.ota.split("struct DownloadIO", 1)[1].split(
+        "bool OtaManager::stageLocalManifest", 1)[0]
     gatt = download.index("GattServer::update();")
     watchdog = download.index("DiagnosticsManager::feedLoopWatchdog();", gatt)
-    total_deadline = download.index("kArtifactDownloadTimeoutMs", watchdog)
-    idle_deadline = download.index("kArtifactIdleTimeoutMs", total_deadline)
-    no_data = download.index("if (available == 0)", idle_deadline)
-    write = download.index("writeImageChunk", no_data)
-    progress = download.index("lastProgressMs = millis();", write)
     self.assertLess(gatt, watchdog)
-    self.assertLess(watchdog, total_deadline)
-    self.assertLess(total_deadline, idle_deadline)
-    self.assertLess(idle_deadline, no_data)
-    self.assertLess(no_data, write)
-    self.assertLess(write, progress)
+    self.assertIn("kArtifactIdleTimeoutMs", download)
+    self.assertIn("kArtifactDownloadTimeoutMs", download)
+    self.assertLess(download.index("writeImageChunk"), download.index("noteOtaProgress"))
+    pump = (ROOT / "include/OtaDownload.h").read_text()
+    service = pump.index("io.service();")
+    deadline = pump.index("if (timedOut())", service)
+    no_data = pump.index("if (available <= 0)", deadline)
+    idle = pump.index("io.now() - progress", no_data)
+    write = pump.index("io.write(buffer", idle)
+    self.assertLess(service, deadline)
+    self.assertLess(deadline, no_data)
+    self.assertLess(no_data, idle)
+    self.assertLess(idle, write)
+    # tests/ota_download_test.cpp executes these deadlines under injected faults.
 
   def test_target_snapshots_are_retained_but_live_evidence_is_not(self):
     worker = self.mqtt.split(

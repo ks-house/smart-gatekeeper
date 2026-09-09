@@ -28,7 +28,7 @@ class OtaDiagnosticsTest(unittest.TestCase):
         self.assertLess(check.index("OtaTransportLease<MqttManager>"), check.index("WiFiClientSecure otaClient"))
         self.assertIn("otaClient.lastError", check)
         self.assertNotIn("setInsecure", check)
-        self.assertIn('lastError = "image begin"', check)
+        self.assertIn('error = "image begin"', check)
         self.assertIn("noteOtaStage(OtaStage::kPendingBoot)", check)
         self.assertIn('doc.createNestedObject("ota")', mqtt)
         self.assertIn("runningImageValid = imageStateKnown && state == ESP_OTA_IMG_VALID", ota)

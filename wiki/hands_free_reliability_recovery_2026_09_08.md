@@ -768,3 +768,60 @@ health 결과 및 구분된 오류를 제한된 형태로 재부팅 후에도 �
   것이다. AP 활성화/현장 연결 등 별도 조작 권한은 이번 승인에 포함되지 않는다.
   이후 exact boot/version/VALID 및 API checkpoint를 확인해야 한다. 모바일 변경이나
   APK 업데이트는 없고 물리 출입도 시험하지 않았다.
+
+## 16. 9월 10일 사용자가 추가 승인한 OTA1회 — 다시480으로 상태 복귀
+
+- 게시489의 strict HTTPS manifest와 encrypted1922900B/digest를 다시 확인했다.
+  00:26:33.265 KST fresh raw/verified IDLE·relay OFF를 맞춘 뒤 OTA1회를 보냈다.
+  session `72055eb1b59b9be314ade0bbfae3eaab`는00:26:33.737 Target result0 및
+  target_accepted를 받았다. 추가 재전송·재부팅·AP 전환·문 개방은 없었다.
+- 요청 **직전** fresh 상태는 이미 boot811 / `e13f39998a061147494e7efd08f5ec90`,
+  old480, uptime12s, reset BROWNOUT이었다. boot810의 마지막 Backend 기록은
+  00:26:08.749/uptime736s이고 boot811 첫 기록은00:26:31.532/uptime10s다.
+  같은 boot811의 retained 진단은 planned_restart=none, previous_uptime747926ms,
+  previous_action=mqtt_connect_worker_adopted, previous_relay_on=false다.
+  coredump_valid=true지만 coredump_matches_reset=false이므로 과거 panic을 이
+  재부팅 원인으로 재사용하지 않는다. BROWNOUT은 요청 전에 발생한 별도 사건이며
+  전압 파형·전원 모듈·배선 중 어느 부분이 원인인지는 측정되지 않았다.
+- OTA 수락 후 raw 상태 공백,00:31:36.405 raw 및00:31:36.547 Backend row2882로
+  **같은 boot811/480**이 돌아왔다. 명령 후 약303초로5분 download 제한과
+  가깝지만 원격 오류 코드가 없어 timeout을 확정하지 않는다. 새 이미지 부팅이나
+  rollback은 관측되지 않았다. 상태는 IDLE·relay OFF였다.
+- preflight min_free_heap59880B/largest58356B에서 복귀 후 min1080B/largest29172B로
+  내려갔다. 00:32:07.143 row2883은 MQTT connection count2/Wi-Fi outages0,
+  uptime346s, 같은 boot/version이다. 메모리 압박 정황은 강화됐지만 할당 실패
+  또는 다운로드 실패의 직접 코드가 아니다. installed480에 `ota`는 여전히 없다.
+- 결론: **사용자가 승인한 재시도 수행·Target 수락·연결 복귀는 확인했으나489 설치는
+  확인되지 않았다.** 동일 요청을 자동 반복하지 않는다. 보강 코드 최초 설치 경로와
+  별개 BROWNOUT 전원 안정성 점검이 남는다. 사용자에게 로그 복사를 요청하지 않았다.
+
+## 17. 9월 10일 최신 코드의 OTA 구조 결함 수정 — 현장 원인과 분리
+
+사용자는 최신 버전에도 같은 OTA 문제가 남는지 근본 검토와 수정을 요청했다.
+489를 포함한 현재 원격 updater는 manifest socket 생존을 필수로 하고 단절된
+artifact를 같은 attempt에서 복구하지 못했다. 짧은 수신 조각도 그대로 writer로
+넘겼다. 이를 동일 TLS client 순차 재연결·검증된 Range 이어받기·4KiB 병합으로
+수정했다. manifest 크기/encoding도 할당 전에 제한했다. 상세와 시험은
+[OTA 운영 runbook §10](ota_operations_runbook.md#10-2026-09-10-중단-내성-다운로드--로컬-구현-현장-미설치)을 따른다.
+
+확정된 것은 위 코드 제약과 fault-injection에서의 수정 동작이다. 기존480의
+303초 상태 공백과 min heap1080B가 어느 내부 오류에 기인했는지는 원격 checkpoint
+부재로 미확정이다. BROWNOUT은 OTA 요청 전 별도 사건으로 남긴다. 이를 HTTP
+Range 부재만으로 설명하거나 최신 이미지 설치만으로 모두 해결된다고 선언하지 않는다.
+
+전체396 tests 실행(395 pass/1 skip), ASan/UBSan 엔진 시험, 두 production profile
+빌드와 OTA contract를 통과했다. 로컬 변경만 수행했으며 새 게시·Target 명령·
+재부팅·문 개방은 없다. 마지막 관측480과 게시489, 이번 미게시 수정본을 구분한다.
+최초 보강 코드 설치와 후속 업데이트의 실제 install→boot→VALID는 남아 있다.
+
+종료 전 읽기 전용 Backend 재조회에서 새로운 reset을 확인했다. row2926은
+00:54:07.009 KST480/boot811/uptime1665이고 row2927은00:54:37.960
+480/boot813/uptime8, row2928은00:55:08.643/uptime38이다. 새 verified boot ID는
+`458ca50e65931bf549131cee5ff32588`, IDLE/relay OFF다. 동일 boot의 unsigned
+MQTT_BOOT_ADVISORY는 reset_reason_code9/BROWNOUT, planned none,
+previous_uptime1991ms, previous_state BOOTING,
+previous_action wifi_sta_profile_enabled, previous_relay_on false를 기록했다.
+이전 부팅이 Wi-Fi 초기화 약2초 시점에서 끝났다는 기록으로, 이번 재부팅까지
+artifact 다운로드 실패 하나로 묶을 근거가 없다. boot812의 원격 상태·원인은
+수집되지 않았다. 이번 턴 device command는0회다. 전원 무결성 문제 가능성을
+별도 유지하되 사용자 현장 조작 여부나 고장 부품·전압 파형을 추정하지 않는다.
