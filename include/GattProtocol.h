@@ -144,6 +144,8 @@ enum class EventReason : uint8_t {
   kAccessGranted,
   kArmTimeout,
   kSessionSuperseded,
+  // Append only: keep existing persisted event reason values stable.
+  kTargetBusy,
 };
 
 struct Event {
@@ -613,7 +615,7 @@ class ProtocolCore {
   void abortAuthControl(uint32_t now_ms);
   void emit(EventCode code, ResultReason reason, uint32_t now_ms,
             const std::array<uint8_t, 16>* credential_id = nullptr);
-  static EventReason eventReason(EventCode code, ResultReason reason);
+  EventReason eventReason(EventCode code, ResultReason reason) const;
 };
 
 }  // namespace sgk

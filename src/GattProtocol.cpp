@@ -1674,7 +1674,7 @@ void ProtocolCore::emit(
   }
 }
 
-EventReason ProtocolCore::eventReason(EventCode code, ResultReason reason) {
+EventReason ProtocolCore::eventReason(EventCode code, ResultReason reason) const {
   if (code == EventCode::kAccessGattConnected) return EventReason::kGattConnected;
   if (code == EventCode::kAccessGattFailed) return EventReason::kGattDisconnected;
   if (code == EventCode::kAccessProofRequested) {
@@ -1695,7 +1695,7 @@ EventReason ProtocolCore::eventReason(EventCode code, ResultReason reason) {
     case ResultReason::kProofInvalid:
       return EventReason::kSignatureInvalid;
     case ResultReason::kBusy:
-      return EventReason::kOtaBusy;
+      return ota_busy_ ? EventReason::kOtaBusy : EventReason::kTargetBusy;
     case ResultReason::kRateLimited:
       return EventReason::kSessionTimeout;
     default:

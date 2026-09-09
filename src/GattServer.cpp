@@ -456,7 +456,7 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
       case sgk::ResultReason::kProofInvalid:
         return "SIGNATURE_INVALID";
       case sgk::ResultReason::kBusy:
-        return "OTA_BUSY";
+        return "TARGET_BUSY";
       case sgk::ResultReason::kRateLimited:
         return "SESSION_TIMEOUT";
       default:
@@ -556,7 +556,8 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
           document["reason_code"] = "RELAY_CONTROL_ERROR";
         } else {
           document["outcome"] = "FAILED";
-          document["reason_code"] = reasonCode(event.transport_reason);
+          document["reason_code"] = event.reason == sgk::EventReason::kOtaBusy
+              ? "OTA_BUSY" : reasonCode(event.transport_reason);
         }
         return true;
     }
