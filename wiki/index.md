@@ -69,7 +69,7 @@
 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, Backend schema 013 canonical history/transactional HA outbox, immutable correlation, I7/I9/OTA 합격·증거 경계 |
 | [field_diagnostics_capture_plan.md](field_diagnostics_capture_plan.md) | Android/Target 사후 진단, 보고서 최근·전체 보기와 안전한 Clear·하단 버튼 배치, 동의형 Backend correlation 및 현장 검증 경계 |
-| [hands_free_reliability_recovery_2026_09_08.md](hands_free_reliability_recovery_2026_09_08.md) | 무반응·MQTT 번호 충돌 실측, 공통 번호/충돌 보존 수정, Backend 배포와 실제 충돌 기록2건 복구 |
+| [hands_free_reliability_recovery_2026_09_08.md](hands_free_reliability_recovery_2026_09_08.md) | 무반응·감사 충돌 복구, OTA489 보강 게시, 단일 승인 재부팅 뒤480 유지와 설치 증거 공백 |
 | [diagnostics_read_api.md](diagnostics_read_api.md) | PC 읽기 토큰과 지원 보고서·출입/건강 이력 API, 배포된 schema017 충돌 격리 조회, 환경변수·활성화 절차 |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, OTA 영속 진단 코드와 TLS 자원 인계·운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 connection-owned/ACK-gated GATT, v2 fast challenge/proof/result, OTA safe-state, host evidence and physical gates |

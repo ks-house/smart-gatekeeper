@@ -724,3 +724,47 @@ health 결과 및 구분된 오류를 제한된 형태로 재부팅 후에도 �
 완료 판정. 서명·rollback·기존 bootable slot 보호를 낮추지 않는다. 재부팅은
 복구 실험일 뿐 원인 규명 대체가 아니다. 이번 턴은 읽기 전용 조사와 문서화이며,
 추가 OTA/재부팅/AP 전환/문 개방이나 코드 수정·배포는 수행하지 않았다.
+
+## 15. 9월 10일 OTA 보강 게시와 승인된 단일 재부팅 결과
+
+**489 게시와 Backend 배포는 완료됐지만 Target은480이다. 설치/health gate는 미완료다.**
+
+- PR399–401 최종 main `1e8b8e1d94d760fd698da1a4e01d868b091b6598`에 독립
+  NVS/CRC checkpoint, 실패 단계·HTTP/TLS/flash 코드·진행 byte·메모리 및 현재
+  slot VALID 표식을 추가했다. 안전 상태에서 MQTT TLS 자원을 OTA에 인계하고
+  OTA client 소멸 뒤 reconnect를 복원한다. Backend는 제한된 `ota` advisory를
+  저장·조회하며 서명된 출입 권한으로 승격하지 않는다. rollback 보호는 유지한다.
+- producer/worker telemetry 한도를 공통6656B로 통일하고 기존8192B packet
+  예산을 유지했다. 실제 worker6655B 수락/6656B 거절과 전체 sensor+OTA 예산을
+  시험했다. 488 CI는 기존 테스트 상수 파싱 실패로 게시 전에 중단됐고 교정한
+  489가 게시됐다. common395 tests(1 skip), Backend274 tests(4 skips),
+  personal/BLE-disabled 빌드 및 OTA contract PASS는 물리 설치 증거가 아니다.
+- Backend run34366134858 SHA는 `106a2d2fa7f635c05d21e77d6f3c2a4ac9bb616a`다.
+  마지막 두 PR은 Target/test-only다. Target run34367682991은00:11:24–00:12:07
+  KST에 `2.1.489+main.g1e8b8e1`을 게시했다. PC strict HTTPS readback도
+  encrypted1922900B와 SHA256
+  `56f9dda9284d86689c9884d03f5ea3189189996763708b4774b9a22d66ca6a6b`를 확인했다.
+- 9월9일23:56:15.052 새 OTA 요청은 signed session
+  `16b424ad5b4f7d3d38ff1ef71c087510` result0/target_accepted였지만480/boot809에
+  머물렀다. 사용자가 **안전 재부팅1회**를 명시 승인했다. 9월10일00:13:51.146
+  fresh raw/verified IDLE·relay OFF 확인 뒤 그1회를 보냈다. session
+  `a72ac2714c19fa7c037d5e20393723bc` result0/수락을 받았다. 그 이후 추가 OTA나
+  재부팅, AP 전환 또는 문 개방은 하지 않았다.
+- 00:13:59.615 boot810 / `98bf019432cbfb6abe8e1d785a8463c8`가 구버전480으로
+  보고됐다. SOFTWARE / planned `signed_mqtt_reboot`는 승인 조작과 일치한다.
+  uptime60s 자동 OTA 예정 구간부터 상태 공백이 생겼고 Backend는00:14:30.291
+  다음00:20:00.652에 상태를 저장했다. 같은 boot810/480, uptime37→368s로
+  증가했다. 새 이미지 부팅·rollback 또는 공백 중 MCU 재부팅 증거는 없다.
+- 공백 전후 min_free_heap46184→2096B, largest block50164→33780B,
+  MQTT connect count1→2, Wi-Fi outage count0이다. 약5분 download 제한과
+  맞는 시간대지만 **download timeout 또는 메모리 부족 원인 확정은 아니다**.
+  min_free_heap은 부팅 전체 역사적 최소치이며 allocation 실패 자체가 아니다.
+  00:21:32까지 fresh raw/verified IDLE·relay OFF가 복귀했고 Backend ready는
+  exact106a2d2/all12 checks/fresh Target을 다시 확인했다.
+- 480에는 새 checkpoint가 없으므로 `ota` 부재는 API 저장 결함의 증거가 아니다.
+  새 코드가 설치돼야 오류를 보존할 수 있다. 로컬 복구는 AP-active와 인증을
+  요구하며 관측된 LAN 주소의 HTTP 접근도 timeout이었다. 다음 단계는 접근 가능한
+  인증된 local recovery 또는 USB로 보강 이미지를 최초 설치할 경로를 확보하는
+  것이다. AP 활성화/현장 연결 등 별도 조작 권한은 이번 승인에 포함되지 않는다.
+  이후 exact boot/version/VALID 및 API checkpoint를 확인해야 한다. 모바일 변경이나
+  APK 업데이트는 없고 물리 출입도 시험하지 않았다.
