@@ -4,6 +4,7 @@
 #include <freertos/FreeRTOS.h>
 
 #include <cstdint>
+#include <cstddef>
 
 namespace sgk {
 
@@ -12,6 +13,7 @@ namespace sgk {
 // This worker never invokes client.loop(), command callbacks, or gate control.
 class MqttTelemetryWorker {
  public:
+  static constexpr size_t kMaxPayloadBytes = 6656;
   struct Result {
     uint32_t generation = 0;
     uint32_t duration_ms = 0;

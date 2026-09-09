@@ -25,6 +25,7 @@ class MqttTelemetryWorkerTest(unittest.TestCase):
         self.assertNotIn("client.publish", defer)
         self.assertIn("connectWorkerIsRunning() || telemetryWorker.ownsTransport()", source)
         self.assertIn("result.generation == pendingTelemetryGeneration", source)
+        self.assertIn("pendingTelemetry[sgk::MqttTelemetryWorker::kMaxPayloadBytes]", source)
         worker = (ROOT / "src/MqttTelemetryWorker.cpp").read_text()
         self.assertNotIn("client->loop", worker)
         self.assertNotIn("GattServer", worker)

@@ -11,7 +11,6 @@
 namespace sgk {
 namespace {
 constexpr size_t kMaxTopicBytes = 160;
-constexpr size_t kMaxPayloadBytes = 6144;
 constexpr uint32_t kStackBytes = 6144;
 // Do not consume the headroom needed by proof verification/relay control.
 constexpr size_t kRetainedHeapReserve = 49152;

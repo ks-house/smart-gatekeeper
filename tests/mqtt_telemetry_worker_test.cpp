@@ -110,4 +110,12 @@ int main() {
   assert(worker.takeResult(&result));
   assert(!result.published && !result.transport_connected);
   assert(result.generation == 46);
+  publish_ok = true;
+  const std::string oversized(sgk::MqttTelemetryWorker::kMaxPayloadBytes, 'x');
+  assert(!worker.start(client, topic, oversized.c_str(), 47));
+  const std::string maximum(sgk::MqttTelemetryWorker::kMaxPayloadBytes - 1, 'x');
+  assert(worker.start(client, topic, maximum.c_str(), 48));
+  task.join();
+  assert(worker.takeResult(&result) && result.published);
+  assert(written_payload == maximum);
 }
