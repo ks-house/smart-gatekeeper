@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import unittest
+import uuid
+
+from backend.app.acl_management import DeterministicP256Signer, verify_raw64
+from backend.app.command_security import build_signed_command, canonical_command
 
 from backend.app.home_assistant_bridge import (
     HomeAssistantCommandBridge,
@@ -340,6 +344,52 @@ class HomeAssistantCommandBridgeTest(unittest.TestCase):
         self.bridge.note_publish_failed(first.command)
         retry = self.bridge.accept_request(topic, b"PRESS")
         self.assertTrue(retry.accepted)
+
+    def test_default_sessions_are_uuid4_and_preserved_by_signer(self) -> None:
+        signer = DeterministicP256Signer(2, 7)
+        sessions = set()
+        for control in ("open_gate", "trigger_ota", "reboot"):
+            for _ in range(16):
+                bridge = HomeAssistantCommandBridge(TARGET, allow_manual_remote=True)
+                bridge.note_status(target_status_topic(TARGET), json.dumps(
+                    {"target_id": TARGET, "boot_id": BOOT}).encode())
+                decision = bridge.accept_request(bridge_request_topic(TARGET, control), b"PRESS")
+                self.assertTrue(decision.accepted)
+                command = decision.command
+                parsed = uuid.UUID(hex=command.session_id)
+                self.assertEqual(4, parsed.version)
+                self.assertEqual(uuid.RFC_4122, parsed.variant)
+                self.assertEqual(parsed.hex, command.session_id)
+                self.assertNotIn(command.session_id, sessions)
+                sessions.add(command.session_id)
+                self.assertRegex(command.nonce, r"^[0-9a-f]{32}$")
+                envelope = build_signed_command(
+                    signer=signer, target_id=TARGET, tenant_id="tenant-a", door_id="door-a",
+                    boot_id=command.expected_boot_id, action=command.action,
+                    session_id=command.session_id, nonce=command.nonce, ttl_seconds=15)
+                self.assertEqual(command.session_id, envelope["session_id"])
+                self.assertTrue(verify_raw64(signer.public_key_sec1, canonical_command(envelope),
+                                           bytes.fromhex(envelope["signature"])))
+
+    def test_invalid_session_rejected_before_reserving_request(self) -> None:
+        for invalid in ("4928b7ca412dd60e8b614b0e22394f08",  # observed field failure
+                        "4928b7ca412d460e0b614b0e22394f08",  # wrong variant
+                        "4928B7CA412D460E8B614B0E22394F08", None):
+            with self.subTest(invalid=invalid):
+                ids = iter((invalid, "4928b7ca412d460e8b614b0e22394f08"))
+                bridge = HomeAssistantCommandBridge(
+                    TARGET, allow_manual_remote=True, session_factory=lambda: next(ids),
+                    token_factory=lambda: "f" * 32)
+                bridge.note_status(target_status_topic(TARGET), json.dumps(
+                    {"target_id": TARGET, "boot_id": BOOT}).encode())
+                topic = bridge_request_topic(TARGET, "open_gate")
+                result = bridge.accept_request(topic, b"PRESS")
+                self.assertFalse(result.accepted)
+                self.assertIsNone(result.command)
+                self.assertEqual("token_generation_failed", result.reason)
+                retry = bridge.accept_request(topic, b"PRESS")
+                self.assertTrue(retry.accepted)
+                self.assertEqual("f" * 32, retry.command.nonce)
 
     def test_ack_must_match_published_session_nonce_and_live_boot(self) -> None:
         self.assertTrue(self.note_status())

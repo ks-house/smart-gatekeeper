@@ -12,6 +12,7 @@ import re
 import secrets
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -627,6 +628,7 @@ class HomeAssistantCommandBridge:
         status_max_age_seconds: float = 15.0,
         clock: Callable[[], float] = time.monotonic,
         token_factory: Callable[[], str] = lambda: secrets.token_hex(16),
+        session_factory: Callable[[], str] = lambda: uuid.uuid4().hex,
     ):
         _validate_target_id(target_id)
         if not 1.0 <= status_max_age_seconds <= 60.0:
@@ -636,6 +638,7 @@ class HomeAssistantCommandBridge:
         self.status_max_age_seconds = status_max_age_seconds
         self._clock = clock
         self._token_factory = token_factory
+        self._session_factory = session_factory
         self._lock = threading.Lock()
         self._boot_id: Optional[str] = None
         self._status_seen_at: Optional[float] = None
@@ -761,12 +764,16 @@ class HomeAssistantCommandBridge:
                 and now - last_action_at < definition.minimum_interval_seconds
             ):
                 return BridgeDecision(False, "rate_limited")
-            session_id = self._token_factory()
+            # Access tracking on deployed Targets requires compact UUIDv4,
+            # not merely 32 random hex digits. Nonces retain all 128 random bits.
+            session_id = self._session_factory()
             nonce = self._token_factory()
             if (
                 not isinstance(session_id, str)
                 or not isinstance(nonce, str)
-                or not re.fullmatch(r"[0-9a-f]{32}", session_id)
+                or not re.fullmatch(
+                    r"[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}", session_id
+                )
                 or not re.fullmatch(r"[0-9a-f]{32}", nonce)
             ):
                 return BridgeDecision(False, "token_generation_failed")
