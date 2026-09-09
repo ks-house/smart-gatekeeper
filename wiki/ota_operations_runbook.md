@@ -274,6 +274,9 @@ MQTT 재연결을 재개한다. 단절 동안 HA unavailable/LWT가 표시될 �
 이전 부팅 기록이다. 서버 수신 시각으로 해당 오류의 실제 발생 시각을 대체하지 않는다.
 `runtime_status`는 현재 OtaStatus enum(0–11), `request_pending`은 아직 실행되지
 않은 check flag이며, 요청 수락은 설치 시작·성공이 아니다.
+`running_image_valid`는 현재 slot의 ESP OTA VALID 상태를 boot 때 읽거나
+실제 mark-valid 성공 뒤 설정한 값이다. 다음 periodic check가 stage를 바꾸어도
+유지되며 과거 attempt의 성공을 현재 slot 성공으로 대신하지 않는다.
 
 | stage / failed_stage | 의미 |
 |---|---|

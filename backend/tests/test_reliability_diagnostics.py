@@ -64,7 +64,7 @@ class ReliabilityContractTest(unittest.TestCase):
                    stage=12, failed_stage=3, error=5, http_code=-1, transport_code=-9984,
                    bytes=0, total=0, heap_before=63000, heap_after=120000, largest_after=60000,
                    target_version="", persisted=True, restored=False, request_pending=False,
-                   runtime_status=11, rejection=0, flash_code=0)
+                   runtime_status=11, rejection=0, flash_code=0, running_image_valid=True)
         result = advisory_projection(dict(ota={**ota, "secret": "discard"}))
         self.assertEqual(result, dict(ota=ota))
         self.assertEqual(result, advisory_projection(result))

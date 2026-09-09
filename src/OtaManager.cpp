@@ -136,6 +136,7 @@ using sgk::OtaError;
 sgk::OtaDiagnosticRecord otaDiagnostic;
 bool otaDiagnosticPersisted = false;
 bool otaDiagnosticRestored = false;
+bool runningImageValid = false;
 uint32_t otaProgressCheckpoint = 0;
 
 void persistOtaDiagnostic() {
@@ -998,8 +999,10 @@ void OtaManager::init() {
   }
   const esp_partition_t* running = esp_ota_get_running_partition();
   esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
-  if (running != nullptr && esp_ota_get_state_partition(running, &state) == ESP_OK &&
-      state == ESP_OTA_IMG_PENDING_VERIFY) {
+  const bool imageStateKnown = running != nullptr &&
+      esp_ota_get_state_partition(running, &state) == ESP_OK;
+  runningImageValid = imageStateKnown && state == ESP_OTA_IMG_VALID;
+  if (imageStateKnown && state == ESP_OTA_IMG_PENDING_VERIFY) {
     status = OtaStatus::HEALTH_WINDOW;
     otaDiagnostic.boot_count = DiagnosticsManager::bootCount();
     strlcpy(otaDiagnostic.target_version, FIRMWARE_VERSION,
@@ -1039,6 +1042,7 @@ void OtaManager::appendDiagnostics(JsonObject destination) {
   destination["restored"] = otaDiagnosticRestored;
   destination["request_pending"] = forcedCheckPending;
   destination["runtime_status"] = static_cast<uint32_t>(status);
+  destination["running_image_valid"] = runningImageValid;
 }
 
 void OtaManager::setSafeStateProvider(SafeStateProvider provider) {
@@ -1090,6 +1094,7 @@ void OtaManager::update() {
       if (versionPolicy.commit(FIRMWARE_VERSION) &&
           esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
         status = OtaStatus::SUCCESS;
+        runningImageValid = true;
         noteOtaStage(OtaStage::kValid);
         DiagnosticsManager::noteAction("ota_mark_valid");
         LOGF("[OTA] running image marked VALID after health window");

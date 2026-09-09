@@ -165,7 +165,7 @@ def ota_advisory_projection(value):
         if type(item) is not int or not -(2**31) <= item < 2**31:
             return None
         result[key] = item
-    for key in ("persisted", "restored", "request_pending"):
+    for key in ("persisted", "restored", "request_pending", "running_image_valid"):
         if type(value.get(key)) is not bool:
             return None
         result[key] = value[key]

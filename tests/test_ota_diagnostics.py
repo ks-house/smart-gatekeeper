@@ -31,6 +31,8 @@ class OtaDiagnosticsTest(unittest.TestCase):
         self.assertIn('lastError = "image begin"', check)
         self.assertIn("noteOtaStage(OtaStage::kPendingBoot)", check)
         self.assertIn('doc.createNestedObject("ota")', mqtt)
+        self.assertIn("runningImageValid = imageStateKnown && state == ESP_OTA_IMG_VALID", ota)
+        self.assertIn('destination["running_image_valid"] = runningImageValid', ota)
 
 
 if __name__ == "__main__":
