@@ -7230,3 +7230,6 @@
 
 - Owner requested deployment. Refreshed root instructions, Wiki, live GitHub authentication and origin/main0066070; no remote advancement or overlapping code edits found. Keep unrelated continuous_presence_reauth notes unstaged.
 - Split Backend/schema017 custody deployment from Target allocator/advertising update so queued evidence can be verified before firmware publication. Move source-presence assertion to Target test suite while preserving Backend closed-projection checks; no runtime change. Prepare exact feature and separate two-input policy admission with ordinary checks, then Backend runtime readback and Target install/health observation. No device command or physical action at this preparation stage.
+## [2026-09-09] compile | Admit exact audit conflict Backend deployment inputs
+
+- Owner requested deployment of reviewed PR #395 at 8575dad998aeea55f0456af12abf9ee2d28721b0. Separate policy-only admission updates exactly DB Dockerfile and Backend inventory hashes for schema017 custody. Other21 protected hashes, workflows, signing gates, NAS wrapper and secrets remain unchanged. Merge-connect the feature after trusted-base checks; Backend runtime verification precedes Target publication. Admission alone is not deployment or physical proof.

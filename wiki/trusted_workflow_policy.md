@@ -31,6 +31,18 @@ remains outside this personal fast lane.
 
 ## 1. Trust boundary
 
+### 2026-09-09 audit conflict admission
+
+PR #395 commit `8575dad998aeea55f0456af12abf9ee2d28721b0` adds immutable
+schema017 custody for verified conflicting events and read-only conflict history.
+The separate policy admission retains all23 protected paths and changes only
+DB Dockerfile hash to `3bb65f50bae5078a7ee713078b562ba42aaace3ca56c8dfa922b6950bfb0bafe`
+and Backend inventory hash to `d1bf99e37addfa3553a1cfd8d5f35bd1cf772b7a126c1550fa1cf5e7abc77d06`.
+Other21 hashes, workflows, signing gates, NAS wrapper and secrets are unchanged.
+Merge policy after trusted-base checks, merge-connect main into the reviewed
+feature, and deploy Backend/schema first to verify queued event custody before
+publishing the separate Target update. Admission alone is not deployment proof.
+
 ### 2026-09-08 reliability history admission
 
 Reviewed feature commit `6c42c45ed153a395bdff035267c415d53d23bdf7` introduces
