@@ -394,8 +394,12 @@ publish attempts, original head boot count and a15-second pending advisory flag.
 These appear under health-history `unsigned_advisory`, never the signed status
 core or the access verdict. Head wait is time observed **in the current boot**,
 not the old event's age. A healthy status stream alone is not audit progress.
-This extension needs Backend/schema017 deployment and a new Target for the added
-counters. The token and NAS wrapper registration do not change.
+Backend/schema017 was deployed at23:10 KST September9 as exact main69f4703,
+run34361231654. The live API preserves two old boot808 identity conflicts;
+Target809 accepted both exact receipts without upgrading its480 firmware.
+Canonical boot808 still has8 original rows. Actual API200/401/422 responses are
+no-store. New audit counters need the separate Target485 update; its rollout is
+recorded in recovery section13. The token and NAS wrapper registration do not change.
 
 ### Previously deployed schema016 corrections
 
