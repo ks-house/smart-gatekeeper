@@ -64,6 +64,10 @@ Wi-Fi STA와 MQTTS 자동 복구, availability/status last-seen 경보, periodic
 - 2026-09-09 보강 후보: safe-state에서 기존 MQTT TLS 자원도 반환하고 scope-bound
   OTA 종료 후 재연결; 단계/오류/진행 checkpoint를 NVS와 원격 unsigned 진단에 보존.
   로컬 시험과 현장 설치는 구분하며 상세는 OTA 운영 runbook §9를 따른다.
+- 2026-09-10 로컬 후보: manifest socket 재사용을 필수 조건에서 최적화로 변경.
+  동일 CA 검증 client로 순차 재연결하며 immutable ciphertext의 정확한 Range만
+  이어받는다. 4KiB 수신 병합, 최대3회 재연결, 전체5분 상한을 적용한다.
+  재부팅을 넘는 이어받기는 아니며 runbook §10의 증거 경계를 따른다.
 - OTA/recovery 재부팅 전 `planned_restart`와 pending access evidence의 ordered NVS/RTC A/B journal checkpoint 수행
 - exact signed OTA install→new boot→health valid와 별도 pre-valid reset rollback 관측 실적 존재
 
@@ -452,6 +456,12 @@ N/N-1 불변조건은 G0-SW 작업으로 약화할 수 없다.
 The Target implementation now verifies Ed25519 manifests, downloads only over CA-verified HTTPS, writes the inactive OTA partition, checks exact size/SHA-256/image validity, selects the candidate only after verification, and uses pending-verify continuous-health marking or automatic rollback. Every failed health predicate resets the healthy-since window. A remote download that makes no progress for 30 seconds or exceeds five minutes aborts the inactive write and returns to the 15-minute retry schedule. Periodic HTTPS and authenticated local WPA2/Basic recovery are independent of MQTT; an authenticated station-local request can open a bounded AP+STA recovery window even while DNS, Backend, MQTT, or the manifest host is unavailable, while signed `ota_check` remains an optional trigger. Protocol overlap 1..2, a crash-safe strictly ordered SemVer floor, rejection of equal-precedence alternate and exact-current reflash identities, quarantine of the exact failed floor after bootloader rollback, the previously bootable slot, and manual local recovery preserve N/N-1 and rollback paths. A strictly newer version remains eligible after rollback so a corrected image can recover the installation.
 
 This is host/software evidence only. Real ESP32-C6 bootloader, partition, power-loss, health-valid, rollback, radio, broker certificate, local recovery, N/N-1, operator, and production evidence remains pending; OTA-G1..G4 and production authorization stay fail-closed. See [target_command_ota_security.md](target_command_ota_security.md).
+
+2026-09-10 local candidate update: the original immediate-abort-on-idle behavior
+above is replaced by at most three same-attempt authenticated Range reconnects.
+The overall five-minute deadline and terminal abort/15-minute retry remain.
+See [OTA operations runbook §10](ota_operations_runbook.md) for validation and
+the explicit non-persistent, not-yet-installed evidence boundary.
 
 ## 16. 2026-08-23 personal main-push OTA publishers
 

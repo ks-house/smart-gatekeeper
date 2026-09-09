@@ -1169,3 +1169,22 @@ an inference from application HMAC tests.
 | Post-reboot automatic update window | Old480 remained; Backend status gap00:14:30–00:20:00 then same boot810/480 with increasing uptime | FAIL to establish candidate install; no observed crash/rollback during gap |
 | Resource observation | Historical minimum heap46184→2096B, largest block50164→33780B, MQTT connections1→2, Wi-Fi outages0 | Resource pressure candidate, not proven OTA failure cause |
 | Recovery readback | Fresh raw and authenticated bridge IDLE/relay OFF through00:21:32, Backend ready exact106a2d2/all12/fresh | PASS control-plane recovery;489 health and physical access remain pending |
+
+## 2026-09-10 explicitly requested additional OTA attempt
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Pre-existing reset | Before request, boot811/480 reports BROWNOUT; matching retained boot says unplanned, previous relay OFF, coredump does not match reset | Separate pre-request reset; no supply waveform/component fault identification |
+| Single command | 00:26:33.265 KST fresh IDLE/relay OFF preflight; session72055eb1b59b9be314ade0bbfae3eaab Target result0/accepted | PASS delivery, not install |
+| Return after gap | 00:31:36 status returns on same boot811/480; Backend row2882 corroborates, row2883 at00:32:07 remains same | No489 installation/reboot observed; no rollback inferred |
+| Resource and safe state | Min heap1080B/largest29172B; MQTT reconnect count2, Wi-Fi outages0; IDLE/relay OFF | Memory pressure candidate, not exact OTA failure code; no physical door action |
+
+## 2026-09-10 interrupted OTA transport candidate — host/build only
+
+| Test | Observed result | Verdict / boundary |
+|---|---|---|
+| Actual C++ download pump under ASan/UBSan | 1922900B, five fragment sizes, mid-body disconnect with buffered bytes; exact output and470 writer calls | PASS host transport; not actual ESP flash call count/performance |
+| Failure injection | Short/zero read, failed open, invalid/ignored Range, transfer encoding, idle, retry budget, wrap-safe total timeout, slow open/read/write, flash failure | PASS host; no TLS/power-loss hardware proof |
+| Regression |396 tests run,395 pass/1 environment skip; OTA contract PASS | Source/host evidence only |
+| Production builds | BLE-disabled and personal ESP32-C6 builds pass | Local candidate, not signed publication or installation |
+| Physical acceptance | No new Target command or relay action | Pending initial candidate installation and subsequent OTA/install/boot/VALID |

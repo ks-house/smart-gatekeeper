@@ -1,6 +1,6 @@
 # OTA 운영 runbook
 
-> Last updated: 2026-08-31
+> Last updated: 2026-09-10
 > Scope: Android mobile, ESP32-C6 Target, Backend/NAS distribution, CI
 > Status: 절차 확정; OTA-G1~G4 실기기 증거 pending
 
@@ -250,7 +250,9 @@ Recovery 자동 판정은 `ota/recovery-matrix.json`의 allowlist outcome/action
   artifact URL to match the exact HTTPS authority of `OTA_VERSION_URL`, then
   changes path with `HTTPClient::setURL()` and downloads over the already
   CA/hostname-verified connection. If same-origin or connection reuse is not
-  available, fail closed and retry later. `setInsecure`, certificate bypass,
+  available, that historical implementation failed closed and retried later.
+  The 2026-09-10 local candidate in §10 supersedes the reuse-only restriction,
+  not the exact-origin requirement. `setInsecure`, certificate bypass,
   plaintext fallback and hostname-verification weakening remain forbidden.
 - A passing host test and ESP32-C6 build are candidate evidence only. Close the
   incident only after a strictly newer exact-main signed publication completes
@@ -306,3 +308,44 @@ MQTT 재연결을 재개한다. 단절 동안 HA unavailable/LWT가 표시될 �
 정상 종료에서 TLS 소멸 후 복원·busy 거부, Backend 재투영/개인 데이터 제외,
 기존 OTA 계약과 개인/기본 ESP32-C6 build를 포함한다. 이는 실제 저메모리 TLS,
 전원 차단 중 NVS, 물리 flash/rollback 시험을 대체하지 않는다.
+
+## 10. 2026-09-10 중단 내성 다운로드 — 로컬 구현, 현장 미설치
+
+489에도 manifest TLS socket이 살아 있어야 artifact GET을 시작하는 제약과,
+artifact 단절 시 inactive write 전체를 버리는 경로가 남아 있었다. 재사용은
+우선하되 불가능하면 기존 TLS를 종료한 **동일 CA/hostname 검증 client**로
+순차 재연결한다. MQTT 자원 lease와 same-origin 제약은 유지한다. §8에서 관측한
+구형 펌웨어의 두 번째 handshake 실패가 현장에서도 사라졌다는 증거는 아직 없다.
+
+- 다운로드 재연결은 한 attempt 안에서 최대3회(최초 포함 GET 최대4회)다.
+  수신한 암호문 위치부터 HTTP Range를 요청하며 해시/GCM 상태와 최대4095B
+  미기록 버퍼를 RAM에 유지한다. signed immutable URL/크기는 바꾸지 않는다.
+- `206`은 정확한 시작 위치·마지막 위치·전체 크기·Content-Length를 요구한다.
+  `200`은 offset0의 전체 응답에만 허용한다. 무시된/겹친 Range, 다른 전체 크기,
+  압축 또는 Transfer-Encoding 응답은 기록하지 않는다.
+- 작은 TCP/TLS 조각은 기존 크기인4KiB 버퍼에 병합한 뒤 기존 image writer로 보낸다.
+  별도 TLS client나 동적 수신 버퍼를 추가하지 않는다. manifest는 알려진
+  Content-Length1..4096 및 identity body만 받아 `getString` 전 크기를 제한한다.
+- 무진행30초/단절 시 bounded reconnect, 전체5분(artifact open/재연결 포함) 또는
+  재시도 예산 소진 시 abort 후 기존15분 retry schedule로 복귀한다. open/read는
+  별도 socket/handshake timeout을 유지하며 반환 직후 전체 deadline도 확인한다.
+- flash 쓰기 실패는 transport 재시도로 숨기지 않는다. 최종 ciphertext/plaintext
+  digest·GCM tag·image 검증 뒤에만 boot slot을 바꾼다. 기존 health/rollback,
+  periodic HTTPS와 인증 local recovery, 핀·릴레이 조건은 변경하지 않는다.
+- 이 resume은 **동일 부팅·동일 attempt 내 기능**이다. 전원 단절 뒤에는 이전
+  bootable slot에서 새 attempt를 시작한다. 전원 없는 상태의 업데이트 성공이나
+  재부팅을 넘는 다운로드 진척 보존을 보장하는 구현이 아니다.
+
+시험: production에서 호출하는 C++ 다운로드 엔진을 ASan/UBSan으로 실행했다.
+1922900B를1/15/16/17/4096B 조각으로 공급하고 중간 단절·부분 버퍼 재개 뒤
+원본과 정확히 같은 바이트를 얻으며 writer 호출은470회다(실제 flash 호출 횟수나
+현장 처리 시간 측정은 아님). 짧은 read/0-byte read/초기 open 실패, Range 거부,
+무진행·연결 실패 예산·millis wrap·open/read/write deadline·flash 오류도 검사했다.
+변조 바이트는 transport만으로 거부되지 않음을 명시하고 기존 최종 암호 검증을
+유지한다. 전체396 tests 실행/395 pass/1 skip, 두 ESP32-C6 profile build 및
+OTA contract PASS. ESP TLS heap·전원 차단·실제 flash/재부팅/VALID는 미검증이다.
+
+PC에서 현재 NAS artifact에 Range0–63 요청은206/정확한 Content-Range/64B로
+확인했다. 이는 서버 지원 확인이지 ESP 성공이 아니다. 최종 Backend 확인은
+00:55:08 KST480/boot813이며 새 코드가 old480의 updater를 소급 수정하지 못한다. 배포와
+최초 설치, 그 다음 릴리스의 OTA→재부팅→VALID까지 별도 확인해야 종료한다.

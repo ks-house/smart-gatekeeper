@@ -155,8 +155,8 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
             "sameHttpsAuthority(OTA_VERSION_URL, stagedManifest.artifact_url)",
             ota,
         )
-        self.assertIn("otaHttp.connected()", ota)
-        self.assertIn("otaHttp.setURL(stagedManifest.artifact_url)", ota)
+        self.assertIn("http.connected()", ota)
+        self.assertIn("http.setURL(stagedManifest.artifact_url)", ota)
         self.assertNotIn("WiFiClientSecure artifactClient", ota)
         self.assertNotIn("setInsecure", ota)
         safe_state_failure = ota.split("if (!waitForSafeState())", 1)[1].split(
@@ -170,21 +170,24 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         )
         self.assertIn("return;", safe_state_failure)
 
-        download_loop = ota.split(
-            "while (updateBytes < stagedManifest.artifact_size)", 1
-        )[1].split("otaHttp.end()", 1)[0]
-        self.assertIn("kArtifactIdleTimeoutMs", download_loop)
-        self.assertIn("kArtifactDownloadTimeoutMs", download_loop)
-        self.assertIn("GattServer::update();", download_loop)
-        self.assertIn("DiagnosticsManager::feedLoopWatchdog();", download_loop)
-        self.assertIn("observedMs - downloadStartedMs", download_loop)
-        self.assertIn("observedMs - lastProgressMs", download_loop)
-        self.assertIn("lastProgressMs = millis()", download_loop)
+        download = ota.split("struct DownloadIO", 1)[1].split(
+            "bool OtaManager::stageLocalManifest", 1)[0]
+        self.assertIn("kArtifactIdleTimeoutMs", download)
+        self.assertIn("kArtifactDownloadTimeoutMs", download)
+        self.assertIn("sgk::downloadOta(", download)
+        self.assertIn("sgk::otaResponseMatches(", download)
+        self.assertIn("GattServer::update();", download)
+        self.assertIn("DiagnosticsManager::feedLoopWatchdog();", download)
+        self.assertIn('http.addHeader("Range"', download)
+        self.assertIn("http.begin(client, stagedManifest.artifact_url)", download)
+        self.assertLess(download.index("client.stop()"), download.index("http.end()"))
+        self.assertLess(download.index("sgk::otaResponseMatches"), download.index("beginImageWrite()"))
+        self.assertLess(download.index("sgk::downloadOta"), download.index("finishImageWrite()"))
+        self.assertIn('"artifact download timeout"', download)
         download_failure = ota.split("if (!downloadOk || !finishImageWrite())", 1)[
             1
         ].split("}", 1)[0]
         self.assertIn("abortImageWrite()", download_failure)
-        self.assertIn('"artifact download timeout"', download_failure)
         self.assertIn(
             "nextPeriodicCheckMs = millis() + kFailureRetryMs",
             download_failure,
