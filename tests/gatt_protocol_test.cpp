@@ -1,4 +1,5 @@
 #include "GattProtocol.h"
+#include "AuditDeliveryHealth.h"
 #include "FlatJsonObjectPolicy.h"
 #include "OfflineEventQueue.h"
 #include "OtaHealthPolicy.h"
@@ -717,6 +718,62 @@ void testAccessEvidenceMacFixedVectors() {
   status.last_terminal_phase_mask = 0x0040;
   CHECK(!sgk::buildAccessStatusMacInput(
       status, status_canonical.data(), status_canonical.size(), &length));
+}
+
+void testSharedAccessEventSequence() {
+  auto random = canonicalRandom();
+  FakeVerifier verifier(sgk::ResultReason::kOk);
+  FakeAuthControlGate control;
+  EventRecorder events;
+  sgk::AccessEventSequence sequence;
+  sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events, &control,
+                         &sequence);
+  start(core, 100);
+  CHECK(core.beginFastSession(core.connectionOwner(), 101));
+  CHECK(events.events.front().sequence == 1);
+  core.disconnect(core.connectionOwner(), 102);  // No proof-verified terminal.
+  CHECK(events.events.size() == 4);
+  CHECK(events.events.back().sequence == 4);
+  CHECK(sequence.next() == 5);  // Manual completion uses the SAME allocator.
+  sequence.advance(2);  // A delayed projection cannot move it backward.
+  CHECK(core.connect(2, 110));
+  CHECK(core.beginFastSession(core.connectionOwner(), 110));
+  CHECK(events.events[4].sequence == 6);
+  core.disconnect(core.connectionOwner(), 111);
+  CHECK(sequence.next() == events.events.back().sequence + 1);
+  core.resetSession();
+  sequence.advance(UINT64_MAX - 1);
+  CHECK(sequence.next() == UINT64_MAX);
+  CHECK(sequence.next() == 0);
+  CHECK(sequence.next() == 0);  // Exhaustion stays latched, never wraps.
+  const size_t before = events.events.size();
+  CHECK(core.connect(3, 120));
+  CHECK(core.beginFastSession(core.connectionOwner(), 121));
+  CHECK(events.events.size() == before);
+}
+
+void testAuditDeliveryHealth() {
+  sgk::AuditDeliveryHealth health;
+  sgk::CanonicalEvent head{};
+  std::strcpy(head.event_id, "00000000-0000-4000-8000-000000000001");
+  head.boot_count = 808;
+  head.sequence = 1;
+  head.monotonic_ms = 7804960;  // Replayed old boot: not current uptime.
+  health.observe(&head, 100);
+  health.noteAttempt(head, 200);
+  health.noteAttempt(head, 2200);
+  CHECK(health.attempts() == 2);
+  health.observe(&head, 10000);  // RAM -> NVS keeps the same observation age.
+  CHECK(health.waitMs(15100) == 15000);
+  CHECK(health.stalled(15100));
+  CHECK(!health.stalled(15099));
+  CHECK(health.waitMs(UINT64_MAX) == UINT32_MAX);
+  ++head.sequence;
+  health.observe(&head, 16000);
+  CHECK(!health.stalled(16000));
+  CHECK(health.attempts() == 0);
+  health.observe(nullptr, 17000);
+  CHECK(health.waitMs(99000) == 0);
 }
 
 void testCanonicalSessionAndVerifier() {
@@ -3388,6 +3445,8 @@ int main() {
   testFastV2RejectsLegacyTypeAndVersion();
   testAccessEvidenceMacFixedVectors();
   testCanonicalSessionAndVerifier();
+  testSharedAccessEventSequence();
+  testAuditDeliveryHealth();
   testAuthenticatedActionControlBinding();
   testTargetAclManagerAndStorage();
   testTargetProofVerifierIntegration();

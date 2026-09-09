@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AccessEventSequence.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -485,7 +487,8 @@ class ProtocolCore {
   ProtocolCore(RandomSource& random, ProofVerifier& verifier,
                const std::array<uint8_t, 16>& door_id,
                EventSink* event_sink = nullptr,
-               AuthControlGate* auth_control_gate = nullptr);
+               AuthControlGate* auth_control_gate = nullptr,
+               AccessEventSequence* event_sequence = nullptr);
 
   bool initialize();
   void setEnabled(bool enabled);
@@ -521,7 +524,7 @@ class ProtocolCore {
   const std::array<uint8_t, 16>& sessionId() const { return session_id_; }
   uint32_t failedAttempts() const { return failed_attempts_; }
   void advanceEventSequence(uint64_t used_sequence) {
-    if (used_sequence > event_sequence_) event_sequence_ = used_sequence;
+    event_sequence_->advance(used_sequence);
   }
 
   static bool copyOutput(const OutputMessage& source, uint8_t* destination,
@@ -579,7 +582,8 @@ class ProtocolCore {
   std::array<OutputMessage, 4> outputs_{};
   size_t output_head_ = 0;
   size_t output_count_ = 0;
-  uint64_t event_sequence_ = 0;
+  AccessEventSequence local_event_sequence_{};
+  AccessEventSequence* event_sequence_ = &local_event_sequence_;
   uint64_t event_last_causation_sequence_ = 0;
   uint64_t event_monotonic_high_ = 0;
   uint32_t event_last_now_ms_ = 0;

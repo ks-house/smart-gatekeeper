@@ -1005,12 +1005,14 @@ void AdapterState::abortOutput() {
 ProtocolCore::ProtocolCore(RandomSource& random, ProofVerifier& verifier,
                            const std::array<uint8_t, 16>& door_id,
                            EventSink* event_sink,
-                           AuthControlGate* auth_control_gate)
+                           AuthControlGate* auth_control_gate,
+                           AccessEventSequence* event_sequence)
     : random_(random),
       verifier_(verifier),
       event_sink_(event_sink),
       auth_control_gate_(auth_control_gate),
       door_id_(door_id) {
+  if (event_sequence != nullptr) event_sequence_ = event_sequence;
   door_id_ready_ = !allZero(door_id_.data(), door_id_.size()) &&
                    !std::all_of(door_id_.begin(), door_id_.end(),
                                 [](uint8_t value) { return value == 0xff; });
@@ -1654,7 +1656,8 @@ void ProtocolCore::emit(
     }
     event_time_initialized_ = true;
     event_last_now_ms_ = now_ms;
-    const uint64_t sequence = ++event_sequence_;
+    const uint64_t sequence = event_sequence_->next();
+    if (sequence == 0) return;  // Do not emit a reused/wrapped identity.
     Event event{code,
                 eventReason(code, reason),
                 reason,

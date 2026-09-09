@@ -84,6 +84,7 @@ class GattServer {
   // Keep local GATT canonical sequencing above a terminal position allocated
   // by the independent signed-command access path.
   static void advanceEventSequence(uint64_t used_sequence);
+  static uint64_t allocateAccessEventSequence();
   static Telemetry getTelemetry();
 
   // Callback entrypoints are public only so the BLE callback shims can remain

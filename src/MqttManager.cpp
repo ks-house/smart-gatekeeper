@@ -15,6 +15,8 @@
 #include "OfflineEventQueue.h"
 #include "LegacyEventQueue.h"
 #include "AccessEventReceipt.h"
+#include "AuditDeliveryHealth.h"
+#include <esp_timer.h>
 #include "SensorSessionDiagnostics.h"
 #include "TargetCommandSecurity.h"
 #include "FlatJsonObjectPolicy.h"
@@ -251,6 +253,7 @@ uint32_t telemetryWorkerDeferred = 0;
 uint32_t telemetryWorkerPublished = 0;
 uint32_t telemetryWorkerMaxDurationMs = 0;
 uint32_t auditPublishRetryAtMs = 0;
+sgk::AuditDeliveryHealth auditDeliveryHealth;
 uint32_t auditReceiptsAccepted = 0;
 uint32_t auditReceiptRejected = 0;
 
@@ -291,7 +294,6 @@ struct AccessTerminalSummary {
 
 AccessTerminalSummary accessTerminalSummary{};
 sgk::SignedCommandAccessTracker signedCommandAccessTracker{};
-uint64_t accessEventSequenceHighWater = 0;
 
 void resetMqttDnsResolution() {
     portENTER_CRITICAL(&mqttDnsMux);
@@ -1255,7 +1257,6 @@ void MqttManager::init() {
                 sizeof(accessEvidenceBootIdText));
     accessEvidenceBootCount = 0;
     accessStatusRevision = 0;
-    accessEventSequenceHighWater = 0;
     accessTerminalSummary = AccessTerminalSummary{};
     signedCommandAccessTracker.cancel();
     pendingSignedAccessCommand = PendingSignedAccessCommand{};
@@ -1892,6 +1893,7 @@ void MqttManager::update() {
         if (g_offline_queue.peekFront(&evt)) {
             const bool requiresReceipt = sgk::canonicalEventRequiresCommitReceipt(evt);
             if (requiresReceipt && static_cast<int32_t>(millis() - auditPublishRetryAtMs) < 0) return;
+            auditDeliveryHealth.noteAttempt(evt, esp_timer_get_time() / 1000);
             if (publishEventRecord(evt)) {
                 if (requiresReceipt) auditPublishRetryAtMs = millis() + 2000;
                 else g_offline_queue.popFront();
@@ -1902,6 +1904,7 @@ void MqttManager::update() {
         if (peekEventOutbox(&evt)) {
             const bool requiresReceipt = sgk::canonicalEventRequiresCommitReceipt(evt);
             if (requiresReceipt && static_cast<int32_t>(millis() - auditPublishRetryAtMs) < 0) return;
+            auditDeliveryHealth.noteAttempt(evt, esp_timer_get_time() / 1000);
             if (publishEventRecord(evt)) {
                 if (requiresReceipt) auditPublishRetryAtMs = millis() + 2000;
                 else popEventOutbox();
@@ -2179,6 +2182,17 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["mqtt_status_worker_max_duration_ms"] = telemetryWorkerMaxDurationMs;
     doc["mqtt_audit_receipts_accepted"] = auditReceiptsAccepted;
     doc["mqtt_audit_receipts_rejected"] = auditReceiptRejected;
+    sgk::CanonicalEvent auditHead{};
+    const bool auditHeadDurable = g_offline_queue.peekFront(&auditHead);
+    const bool auditPending = auditHeadDurable || peekEventOutbox(&auditHead);
+    const uint64_t auditNow = esp_timer_get_time() / 1000;
+    auditDeliveryHealth.observe(auditPending ? &auditHead : nullptr, auditNow);
+    doc["mqtt_audit_durable_depth"] = g_offline_queue.size();
+    doc["mqtt_audit_pending_depth"] = g_offline_queue.size() + eventOutboxCount;
+    doc["mqtt_audit_head_wait_ms"] = auditDeliveryHealth.waitMs(auditNow);
+    doc["mqtt_audit_head_publish_attempts"] = auditDeliveryHealth.attempts();
+    doc["mqtt_audit_stalled"] = auditDeliveryHealth.stalled(auditNow);
+    doc["mqtt_audit_head_boot_count"] = auditPending ? auditHead.boot_count : 0;
     doc["mqtt_legacy_outbox_depth"] = legacyEventOutbox.size();
     doc["mqtt_legacy_outbox_dropped"] = legacyEventOutbox.dropped();
     doc["mqtt_audit_backpressure_count"] = g_offline_queue.backpressureCount();
@@ -2419,9 +2433,6 @@ void MqttManager::noteAccessTerminal(const char* sessionId,
             LOGF("[ERROR] Sensor session summary not durably queued");
         }
     }
-    if (eventSequence > accessEventSequenceHighWater) {
-        accessEventSequenceHighWater = eventSequence;
-    }
 }
 
 void MqttManager::noteSignedCommandArmed() {
@@ -2443,11 +2454,15 @@ void MqttManager::noteSignedCommandRelayOff(bool failsafe) {
 uint64_t MqttManager::finishSignedCommandAccess(bool failsafe,
                                                 const char* failureReason) {
     sgk::SignedCommandAccessTracker::Terminal terminal{};
-    if (!signedCommandAccessTracker.finish(failsafe, &terminal) ||
-        accessEventSequenceHighWater == UINT64_MAX) {
+    if (!signedCommandAccessTracker.finish(failsafe, &terminal)) {
         return 0;
     }
-    const uint64_t sequence = ++accessEventSequenceHighWater;
+    const uint64_t sequence = GattServer::allocateAccessEventSequence();
+    if (sequence == 0) {
+        DiagnosticsManager::markEvidencePersistenceFailure();
+        LOGF("[ERROR] Target access event sequence exhausted");
+        return 0;
+    }
     const char* reasonCode = terminal.completed
         ? "ACCESS_GRANTED"
         : (failureReason == nullptr ? "INTERNAL_ERROR" : failureReason);

@@ -7233,3 +7233,7 @@
 ## [2026-09-09] compile | Admit exact audit conflict Backend deployment inputs
 
 - Owner requested deployment of reviewed PR #395 at 8575dad998aeea55f0456af12abf9ee2d28721b0. Separate policy-only admission updates exactly DB Dockerfile and Backend inventory hashes for schema017 custody. Other21 protected hashes, workflows, signing gates, NAS wrapper and secrets remain unchanged. Merge-connect the feature after trusted-base checks; Backend runtime verification precedes Target publication. Admission alone is not deployment or physical proof.
+
+## [2026-09-09] code | Prepare shared audit sequence Target deployment candidate
+
+- Split the previously tested Target allocator, queue health and BLE advertising ownership guard into a separate deployment candidate. Backend schema017 custody must be deployed and observed before merging/publishing this candidate. Personal and BLE-disabled builds were verified during implementation; targeted hardwareless18 tests and OTA contract rechecked successfully during deployment. No mobile change or physical command; unrelated continuous-presence notes remain unstaged.
