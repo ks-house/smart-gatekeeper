@@ -7237,3 +7237,15 @@
 ## [2026-09-09] code | Prepare shared audit sequence Target deployment candidate
 
 - Split the previously tested Target allocator, queue health and BLE advertising ownership guard into a separate deployment candidate. Backend schema017 custody must be deployed and observed before merging/publishing this candidate. Personal and BLE-disabled builds were verified during implementation; targeted hardwareless18 tests and OTA contract rechecked successfully during deployment. No mobile change or physical command; unrelated continuous-presence notes remain unstaged.
+
+## [2026-09-09] test | Backend schema017 deployed and real blocked audit records recovered
+
+- Policy #396 passed trusted-base checks, then ancestry-preserved Backend #395 passed checks and merged69f4703a6e296d4e070ee0c38ada91bddce6ac24. Authorized production environment approval within the owner deployment request; run34361231654 NAS stage23:08:05–23:10:01 KST succeeded. Ready independently confirms exact SHA/all12 checks true/fresh verified Target after expected brief deployment503.
+- Actual MAC-verified boot808 sequence1/2 manual events preserved in immutable conflict rows1/2 at23:09:54.695/.997. Read-only MQTT23:09:52.225–23:10:37.636 sees one copy each, exact receipts2 and Target809 accepted0→2/rejected0; prior40s saw first event19 times. Same480 firmware/boot809/IDLE/relay OFF proves Backend-first queue recovery. Existing canonical8 rows unchanged; quarantine is not a success verdict. API200/401/422 each no-store.
+- Target #397 passed canary build, OTA contract and policy checks; mergeda7aec6fcca03ca3ed04a936b640697a7d597d013 only after recovery readback. Exact485 build/publication run34361916271 is in progress. Updated recovery/API/index; no mobile update, broker configuration change or door command. Target installation/health is not yet claimed.
+
+## [2026-09-09] test | Publish exact485 and observe single accepted OTA request without install proof
+
+- Target run34361916271 succeeded including exact-main485 build/sign/encrypt/atomic NAS publication and HTTPS exact-byte verification. Independent PC manifest and1918148B encrypted artifact SHA2561e38f14fc2d4adbea7c868a6a50757c8d0fac4d9595e70e1f81acd606014e37b match. Publication is complete, not a device-install claim.
+- At23:18:16.976 KST current raw/Backend-verified non-retained status aligned boot809/IDLE/relay OFF within5s. Sent one non-retained HA bridge trigger_ota intent; Backend signed session3c2e4695215867f491b7a6016450b15d returned broker_accepted, Target result0 and target_accepted. No direct unsigned Target command, retransmission, reboot/AP switch or physical door action. Subsequent50s remains480/boot809; installation is not confirmed.
+- Source audit shows existing480 lacks remote OTA status/error/mark-valid projection, with15m failure retry and5m download bound. Continuous old-version status does not identify the failure stage; largest-block19956B is advisory only. Updated recovery documentation to separate server recovery, artifact publication, command acceptance and missing installation evidence. local observation recorded.

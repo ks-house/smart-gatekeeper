@@ -590,7 +590,7 @@ NVS head가 없어 실제 Backend 거절 분기까지 단정하지 않는다. �
 계정 전환은 아직 구현·실행하지 않았으며 MQTT 정상 수신을 물리 출입 성공으로
 보고하지 않는다.
 
-## 12. 9월 9일 번호 충돌·감사 전송 정체 수정 — 로컬 구현, 미배포
+## 12. 9월 9일 번호 충돌·감사 전송 정체 수정 — 구현 및 로컬 검증 기록
 
 §11의 실측에 따라 다음 범위를 구현했다. 모바일 미수신 전체 원인이나
 전압/센서 결함을 해결했다고 간주하지 않는다.
@@ -646,3 +646,42 @@ Target OTA → 새 boot/version/health 및 후속 사건 조회**다. 현재는 
 우회하거나 승인된 baseline을 이 턴에서 바꾸지 않았다. 모바일 앱 변경,
 NAS 전체 거절 사유 수집, 독립 RF 관측, 센서/전원 장기 검증, MQTT 계정 전환은
 아직 미구현/미검증 범위로 남는다.
+
+## 13. 9월 9일 운영 배포 및 실제 충돌 큐 복구
+
+§12의 미배포 상태는 구현 당시 기록이며, 아래 운영 확인이 이를 갱신한다.
+정책 PR #396은 검토한 Backend #395의 두 배포 입력만 승인했고, 기존23개
+보호 경로/서명/복구/권한 범위를 유지했다. Backend #395는 main
+`69f4703a6e296d4e070ee0c38ada91bddce6ac24`로 배포됐다.
+Actions34361231654의 NAS 단계는23:08:05–23:10:01 KST 성공,
+독립 `/ready`는 exact SHA, 전체12개 검사 true, 서명된 Target 상태 fresh였다.
+
+- schema017 API는 두 수동 기록을 실제 MAC 검증 후 격리 보존했다.
+  boot808/sequence1 `34e02f7c-7bb5-46fa-b03f-cebe8712fd8e`는
+  23:09:54.695, sequence2 `b1ecb967-c5db-4ce0-94f6-95dc07d59f7a`는
+  23:09:54.997에 서버가 보관했다. 이 시각은 발생 시각이 아닌 서버 수신 시각이다.
+- 23:09:52.225–23:10:37.636 읽기 전용 TLS 구독에서 두 기록이 각각 한 번만
+  관측되고 exact receipt2건, Target accepted receipts0→2/rejected0을 확인했다.
+  배포 전40초 동안 첫 기록19회 반복과 달리 이후 반복이 멈췄다. 같은 Target
+  boot809/펌웨어480/IDLE/relay OFF를 유지하여 펌웨어 변경 전 복구임을 확인했다.
+- 기존 canonical boot808의8행은 그대로이며, 격리2행은 정상 출입 성공이나
+  HA 성공 콜백으로 승격되지 않았다. 조회 API200/무토큰401/잘못된 limit422
+  모두 실제 HTTPS에서 `Cache-Control: no-store`를 확인했다.
+- Target #397은 시험 빌드/OTA 계약/정책 검증 후 main
+  `a7aec6fcca03ca3ed04a936b640697a7d597d013`에 반영했다. Actions34361916271은
+  exact-main 운영 빌드, 서명·암호화, NAS 게시, HTTPS exact-byte 검증까지 성공했다.
+  공개 manifest는 `2.1.485+main.ga7aec6f`/해당 commit을 가리킨다. PC 독립
+  artifact readback1918148B/SHA256
+  `1e38f14fc2d4adbea7c868a6a50757c8d0fac4d9595e70e1f81acd606014e37b`도 일치했다.
+- 23:18:16.976 KST 동일 boot809의 live Target/Backend verified-status가
+  5초 이내이고 양쪽 IDLE/relay OFF임을 확인한 뒤 기존 HA bridge에
+  비보존 `trigger_ota` 요청을 **1회** 보냈다. Backend가 서명한
+  session `3c2e4695215867f491b7a6016450b15d`에 대해 broker 수락,
+  Target result0, bridge `target_accepted`를 관측했다. 이는 확인 요청 수락이지
+  다운로드·설치·health-valid 완료가 아니다. 후속50초 내 boot809/480은 유지됐다.
+- 현행480은 OTA 상태/최종 오류/mark-valid 결과를 원격 status/API에 노출하지
+  않는다. 소스의 실패 후 periodic retry는15분이며 artifact 다운로드 상한은5분이다.
+  요청 수락 뒤 기존 버전이 계속 보이는 이유는 이 정보만으로 확정할 수 없다.
+  largest free block19956B는 참고값일 뿐 TLS 실패나 전원 문제의 직접 증거가 아니다.
+  새485 설치/새 boot/health는 아직 확인되지 않았다. 중복 OTA 요청, 임의 재부팅,
+  recovery AP 전환, 모바일 변경이나 물리 문 개방 시험은 하지 않았다.
