@@ -257,3 +257,49 @@ Recovery 자동 판정은 `ota/recovery-matrix.json`의 allowlist outcome/action
   Target artifact download, inactive-slot verification, reboot and
   Wi-Fi/MQTTS/GATT recovery. Record health-valid separately unless the serial
   trace actually emits the valid mark.
+
+## 9. 2026-09-09 OTA 실행 진단·TLS 자원 인계 보강
+
+구현 후보이며 현장 설치/health 증거는 별도로 확인한다. 원격 check는 safe-state와
+MQTT worker 소유권 반환을 확인하고 **기존 MQTT TLS 연결도 종료**하여 OTA TLS
+메모리를 확보한다. OTA client 소멸 후 scope lease가 정상/오류 종료 모두에서
+MQTT 재연결을 재개한다. 단절 동안 HA unavailable/LWT가 표시될 수 있으며,
+실시간 MQTT 진행 전송을 보장하지 않는다. 다운로드는 기존30초 무진행/5분 전체
+상한을 유지한다. 인증된 same-origin HTTPS 재사용, 서명/GCM/hash/slot/rollback은
+변경하지 않는다. local upload는 TLS lease를 쓰지 않고 기존 인증·안전 경로를 유지한다.
+
+`health-history.history[].unsigned_advisory.ota`는 닫힌 schema1 진단 객체다.
+현재 access status MAC의 보장 범위 밖이므로 설치 권한·검증 성공으로 승격하지 않는다.
+`boot_count`/`updated_uptime_ms`는 기록 원천을 나타내며 `restored=true`이면
+이전 부팅 기록이다. 서버 수신 시각으로 해당 오류의 실제 발생 시각을 대체하지 않는다.
+`runtime_status`는 현재 OtaStatus enum(0–11), `request_pending`은 아직 실행되지
+않은 check flag이며, 요청 수락은 설치 시작·성공이 아니다.
+
+| stage / failed_stage | 의미 |
+|---|---|
+| 0 / 1 / 2 | 기록 없음 / 안전 상태 대기 / MQTT 자원 인계 |
+| 3 / 4 / 5 / 6 | manifest HTTPS / manifest 검증 / artifact HTTPS / flash 시작 |
+| 7 / 8 / 9 / 10 | 다운로드 / image 검증 / 다음 boot 선택 / 부팅 health 검사 |
+| 11 / 12 / 13 / 14 / 15 | valid mark 완료 / 실패 / rollback 요청 / 이미 최신 / 재부팅으로 중단된 이전 기록 |
+
+`error`: 0없음, 1안전 대기 초과, 2Wi-Fi, 3transport busy, 4manifest begin,
+5manifest HTTP, 6manifest 거부, 7origin, 8연결 재사용, 9artifact HTTP,
+10artifact 크기, 11flash 시작, 12다운로드 timeout, 13단절, 14image 쓰기,
+15image 검증, 16version 저장, 17valid mark, 18health, 19local/기타 중단.
+`rejection`: 0없음/분류 없음, 1JSON, 2schema, 3semantics, 4size, 5version policy,
+6downgrade, 7version identity conflict, 8signature, 9현재 버전 local 재설치 거부.
+`http_code`/`transport_code`/`flash_code`는 각각 마지막 HTTP/MbedTLS/ESP 오류이며
+없는 단계의0을 성공 증거로 해석하지 않는다. `heap_before`/`heap_after`/
+`largest_after`는 자원 인계 전후 메모리, `bytes`/`total`은 암호화 artifact 진행이다.
+
+별도 NVS namespace의 checksum-bound record는 단계 전환과256KiB마다만 저장한다.
+손상 기록은 로드하지 않고, 실패 후 원래 failed stage를 보존한다. `persisted=false`는
+저장이 확인되지 않았다는 뜻이며 진단 저장 실패로 서명/버전 보호를 우회하지 않는다.
+재연결 뒤 정상 비동기 status 경로로 결과를 전송하며 API는 저장/조회 양쪽에서 닫힌
+타입·범위를 재검증한다. 현재 한 개의 마지막 attempt snapshot을 유지하므로 재시도
+전의 모든 중간 단계를 영구 시계열로 보장하는 기능은 아니다.
+
+검증은 record byte corruption/잘못된 enum·크기, fake transport의8개 오류 종료와
+정상 종료에서 TLS 소멸 후 복원·busy 거부, Backend 재투영/개인 데이터 제외,
+기존 OTA 계약과 개인/기본 ESP32-C6 build를 포함한다. 이는 실제 저메모리 TLS,
+전원 차단 중 NVS, 물리 flash/rollback 시험을 대체하지 않는다.

@@ -17,6 +17,8 @@
 #include "GattServer.h"
 #include "MqttManager.h"
 #include "OtaHealthPolicy.h"
+#include "OtaDiagnosticRecord.h"
+#include "OtaTransportLease.h"
 #include "OtaVersionPolicy.h"
 #include "WifiManager.h"
 #include "config.h"
@@ -129,6 +131,81 @@ bool updateGcmStarted = false;
 bool updateOpen = false;
 uint32_t nextPeriodicCheckMs = kInitialPeriodicCheckMs;
 bool forcedCheckPending = false;
+using sgk::OtaStage;
+using sgk::OtaError;
+sgk::OtaDiagnosticRecord otaDiagnostic;
+bool otaDiagnosticPersisted = false;
+bool otaDiagnosticRestored = false;
+uint32_t otaProgressCheckpoint = 0;
+
+void persistOtaDiagnostic() {
+  otaDiagnostic.checksum = sgk::otaDiagnosticChecksum(otaDiagnostic);
+  Preferences preferences;
+  otaDiagnosticPersisted = preferences.begin("sgk_ota_diag", false);
+  if (otaDiagnosticPersisted) {
+    otaDiagnosticPersisted = preferences.putBytes(
+        "last", &otaDiagnostic, sizeof(otaDiagnostic)) == sizeof(otaDiagnostic);
+    preferences.end();
+  }
+  // Diagnostic storage failure never alters image/anti-rollback authority.
+}
+
+void noteOtaStage(OtaStage stage, OtaError error = OtaError::kNone) {
+  if (stage == OtaStage::kFailed || stage == OtaStage::kRollback)
+    otaDiagnostic.failed_stage = otaDiagnostic.stage;
+  otaDiagnostic.stage = stage;
+  otaDiagnostic.error = error;
+  otaDiagnostic.updated_uptime_ms = millis();
+  persistOtaDiagnostic();
+}
+
+void beginOtaDiagnostic() {
+  const uint32_t attempt = otaDiagnostic.attempt == UINT32_MAX
+      ? UINT32_MAX : otaDiagnostic.attempt + 1;
+  otaDiagnostic = {};
+  otaDiagnostic.attempt = attempt;
+  otaDiagnostic.boot_count = DiagnosticsManager::bootCount();
+  otaDiagnosticRestored = false;
+  otaProgressCheckpoint = 0;
+  noteOtaStage(OtaStage::kSafeState);
+}
+
+OtaError otaFailureCode(const String& reason) {
+  if (reason == "WAIT_SAFE_STATE timeout") return OtaError::kSafeTimeout;
+  if (reason == "Wi-Fi unavailable") return OtaError::kWifi;
+  if (reason == "MQTT connection attempt active") return OtaError::kTransportBusy;
+  if (reason == "manifest begin") return OtaError::kManifestBegin;
+  if (reason == "manifest HTTP") return OtaError::kManifestHttp;
+  if (otaDiagnostic.stage == OtaStage::kManifestVerify) return OtaError::kManifestRejected;
+  if (reason == "artifact origin") return OtaError::kOrigin;
+  if (reason == "artifact connection reuse") return OtaError::kConnectionReuse;
+  if (reason == "artifact HTTP") return OtaError::kArtifactHttp;
+  if (reason == "artifact size") return OtaError::kArtifactSize;
+  if (reason == "image begin") return OtaError::kFlashBegin;
+  if (reason == "artifact download timeout") return OtaError::kDownloadTimeout;
+  if (reason == "artifact disconnected") return OtaError::kDownloadDisconnected;
+  if (reason == "image write") return OtaError::kImageWrite;
+  if (reason == "image verify") return OtaError::kImageVerify;
+  return OtaError::kLocalAbort;
+}
+
+uint32_t manifestRejection(const String& reason) {
+  const char* reasons[] = {"manifest_json", "manifest_schema", "manifest_semantics",
+      "artifact_size", "version_policy", "downgrade", "version_identity_conflict",
+      "manifest_signature", "current version reflash denied"};
+  for (uint32_t i = 0; i < 9; ++i) if (reason == reasons[i]) return i + 1;
+  return 0;
+}
+
+void noteOtaProgress() {
+  otaDiagnostic.bytes = static_cast<uint32_t>(updateBytes);
+  otaDiagnostic.updated_uptime_ms = millis();
+  // At most one flash checkpoint per 256 KiB, not one per TCP chunk.
+  if (otaDiagnostic.bytes - otaProgressCheckpoint >= 256U * 1024U) {
+    otaProgressCheckpoint = otaDiagnostic.bytes;
+    persistOtaDiagnostic();
+  }
+}
 
 class NvsOtaVersionFloorStorage final : public sgk::OtaVersionFloorStorage {
  public:
@@ -582,6 +659,7 @@ bool decryptAndWriteCiphertext(const uint8_t* data, size_t length) {
   if (outputLength > 0) {
     const esp_err_t writeResult =
         esp_ota_write(updateHandle, updatePlaintextBuffer, outputLength);
+    otaDiagnostic.flash_code = writeResult;
     if (writeResult != ESP_OK) {
       LOGF("[OTA-ERROR] inactive-slot write failed rc=%d at %lu bytes",
            static_cast<int>(writeResult),
@@ -686,9 +764,15 @@ bool beginImageWrite() {
       stagedManifest.plaintext_size > updatePartition->size ||
       static_cast<uint64_t>(stagedManifest.artifact_size) !=
           static_cast<uint64_t>(stagedManifest.plaintext_size) +
-              kEnvelopeOverhead ||
-      esp_ota_begin(updatePartition, stagedManifest.plaintext_size,
-                    &updateHandle) != ESP_OK) {
+              kEnvelopeOverhead) {
+    otaDiagnostic.flash_code = ESP_ERR_INVALID_SIZE;
+    updatePartition = nullptr;
+    updateHandle = 0;
+    return false;
+  }
+  otaDiagnostic.flash_code = esp_ota_begin(
+      updatePartition, stagedManifest.plaintext_size, &updateHandle);
+  if (otaDiagnostic.flash_code != ESP_OK) {
     updatePartition = nullptr;
     updateHandle = 0;
     return false;
@@ -855,6 +939,7 @@ bool finishImageWrite() {
       endResult == ESP_OK && completedPartition != nullptr
           ? esp_ota_set_boot_partition(completedPartition)
           : ESP_FAIL;
+  otaDiagnostic.flash_code = endResult != ESP_OK ? endResult : bootResult;
   if (endResult != ESP_OK || completedPartition == nullptr ||
       bootResult != ESP_OK) {
     LOGF("[OTA-ERROR] inactive image finalize failed end=%d boot=%d",
@@ -893,9 +978,22 @@ void OtaManager::init() {
   healthSampleGapResetCount = 0;
   healthMaxObservedSampleGapMs = 0;
   healthLastResetReason = "ota_health_timeout";
+  Preferences diagnosticPreferences;
+  if (diagnosticPreferences.begin("sgk_ota_diag", true)) {
+    sgk::OtaDiagnosticRecord saved{};
+    if (diagnosticPreferences.getBytesLength("last") == sizeof(saved) &&
+        diagnosticPreferences.getBytes("last", &saved, sizeof(saved)) == sizeof(saved) &&
+        sgk::validOtaDiagnostic(saved)) {
+      otaDiagnostic = saved;
+      otaDiagnosticPersisted = true;
+      otaDiagnosticRestored = true;
+    }
+    diagnosticPreferences.end();
+  }
   if (!versionPolicy.begin(FIRMWARE_VERSION)) {
     status = OtaStatus::FAILED;
     lastError = "version floor storage";
+    noteOtaStage(OtaStage::kFailed, OtaError::kVersionStorage);
     return;
   }
   const esp_partition_t* running = esp_ota_get_running_partition();
@@ -903,10 +1001,44 @@ void OtaManager::init() {
   if (running != nullptr && esp_ota_get_state_partition(running, &state) == ESP_OK &&
       state == ESP_OTA_IMG_PENDING_VERIFY) {
     status = OtaStatus::HEALTH_WINDOW;
+    otaDiagnostic.boot_count = DiagnosticsManager::bootCount();
+    strlcpy(otaDiagnostic.target_version, FIRMWARE_VERSION,
+            sizeof(otaDiagnostic.target_version));
+    otaDiagnosticRestored = false;
+    noteOtaStage(OtaStage::kHealthWindow);
     healthPolicy.begin(millis());
     DiagnosticsManager::noteAction("ota_health_window");
     LOGF("[OTA] pending image health window started");
+  } else if (otaDiagnosticRestored && sgk::otaStageInFlight(otaDiagnostic.stage)) {
+    // Keep original attempt boot/time; do not relabel a pre-reset snapshot live.
+    otaDiagnostic.failed_stage = otaDiagnostic.stage;
+    otaDiagnostic.stage = OtaStage::kInterrupted;
+    persistOtaDiagnostic();
   }
+}
+
+void OtaManager::appendDiagnostics(JsonObject destination) {
+  destination["schema"] = 1;
+  destination["attempt"] = otaDiagnostic.attempt;
+  destination["boot_count"] = otaDiagnostic.boot_count;
+  destination["updated_uptime_ms"] = otaDiagnostic.updated_uptime_ms;
+  destination["stage"] = static_cast<uint32_t>(otaDiagnostic.stage);
+  destination["failed_stage"] = static_cast<uint32_t>(otaDiagnostic.failed_stage);
+  destination["error"] = static_cast<uint32_t>(otaDiagnostic.error);
+  destination["http_code"] = otaDiagnostic.http_code;
+  destination["transport_code"] = otaDiagnostic.transport_code;
+  destination["bytes"] = otaDiagnostic.bytes;
+  destination["total"] = otaDiagnostic.total;
+  destination["heap_before"] = otaDiagnostic.heap_before;
+  destination["heap_after"] = otaDiagnostic.heap_after;
+  destination["largest_after"] = otaDiagnostic.largest_after;
+  destination["rejection"] = otaDiagnostic.rejection;
+  destination["flash_code"] = otaDiagnostic.flash_code;
+  destination["target_version"] = otaDiagnostic.target_version;
+  destination["persisted"] = otaDiagnosticPersisted;
+  destination["restored"] = otaDiagnosticRestored;
+  destination["request_pending"] = forcedCheckPending;
+  destination["runtime_status"] = static_cast<uint32_t>(status);
 }
 
 void OtaManager::setSafeStateProvider(SafeStateProvider provider) {
@@ -958,10 +1090,12 @@ void OtaManager::update() {
       if (versionPolicy.commit(FIRMWARE_VERSION) &&
           esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
         status = OtaStatus::SUCCESS;
+        noteOtaStage(OtaStage::kValid);
         DiagnosticsManager::noteAction("ota_mark_valid");
         LOGF("[OTA] running image marked VALID after health window");
       } else {
         status = OtaStatus::ROLLING_BACK;
+        noteOtaStage(OtaStage::kRollback, OtaError::kMarkValid);
         preserveAccessEvidenceBeforeRestart("valid_mark_failed");
         DiagnosticsManager::markPlannedRestart("ota_valid_mark_failed");
         LOGF("[OTA-ERROR] valid mark failed; rolling back");
@@ -972,6 +1106,7 @@ void OtaManager::update() {
       }
     } else if (decision == sgk::OtaHealthDecision::kRollback) {
       status = OtaStatus::ROLLING_BACK;
+      noteOtaStage(OtaStage::kRollback, OtaError::kHealth);
       const char* rollbackReason = healthLastResetReason;
       if (!safe) {
         rollbackReason = "ota_health_safe_timeout";
@@ -1017,10 +1152,17 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   LOGF("[OTA] %s update check started", force ? "forced" : "periodic");
+  beginOtaDiagnostic();
+  lastError = "";
   status = OtaStatus::WAIT_SAFE_STATE;
   struct BusyGuard {
-    ~BusyGuard() { GattServer::setOtaBusy(false); }
+    ~BusyGuard() {
+      if (OtaManager::getStatus() == OtaManager::OtaStatus::FAILED)
+        noteOtaStage(OtaStage::kFailed, otaFailureCode(OtaManager::getLastError()));
+      GattServer::setOtaBusy(false);
+    }
   } guard;
+  sgk::OtaTransportLease<MqttManager> transportLease;
   if (!waitForSafeState()) {
     status = OtaStatus::FAILED;
     lastError = "WAIT_SAFE_STATE timeout";
@@ -1036,6 +1178,17 @@ void OtaManager::checkAndUpdate(bool force) {
     return;
   }
   status = OtaStatus::CHECKING;
+  noteOtaStage(OtaStage::kResourceHandoff);
+  otaDiagnostic.heap_before = ESP.getFreeHeap();
+  if (!transportLease.acquire()) {
+    status = OtaStatus::FAILED;
+    lastError = "MQTT connection attempt active";
+    nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    return;
+  }
+  otaDiagnostic.heap_after = ESP.getFreeHeap();
+  otaDiagnostic.largest_after = ESP.getMaxAllocHeap();
+  noteOtaStage(OtaStage::kManifestHttp);
   String payload;
   // The production NAS keeps HTTP/1.1 connections alive. Preserve the one
   // CA-verified manifest socket for the signed same-origin artifact so the
@@ -1060,6 +1213,9 @@ void OtaManager::checkAndUpdate(bool force) {
   DiagnosticsManager::noteAction("ota_manifest_get");
   DiagnosticsManager::feedLoopWatchdog();
   const int manifestCode = otaHttp.GET();
+  otaDiagnostic.http_code = manifestCode;
+  char tlsError[1]{};
+  otaDiagnostic.transport_code = otaClient.lastError(tlsError, sizeof(tlsError));
   DiagnosticsManager::feedLoopWatchdog();
   if (manifestCode != HTTP_CODE_OK) {
     otaHttp.end();
@@ -1072,8 +1228,10 @@ void OtaManager::checkAndUpdate(bool force) {
   setClockFromAuthenticatedHttpDate(otaHttp.header("Date"));
   payload = otaHttp.getString();
   status = OtaStatus::VERIFYING;
+  noteOtaStage(OtaStage::kManifestVerify);
   String reason;
   if (!verifyManifestJson(payload, &stagedManifest, &reason)) {
+    otaDiagnostic.rejection = manifestRejection(reason);
     otaHttp.end();
     status = OtaStatus::FAILED;
     lastError = reason;
@@ -1084,12 +1242,19 @@ void OtaManager::checkAndUpdate(bool force) {
   if (stagedManifest.version == FIRMWARE_VERSION) {
     otaHttp.end();
     status = OtaStatus::UP_TO_DATE;
+    strlcpy(otaDiagnostic.target_version, FIRMWARE_VERSION,
+            sizeof(otaDiagnostic.target_version));
+    noteOtaStage(OtaStage::kCurrent);
     nextPeriodicCheckMs = millis() + kPeriodicCheckMs;
     LOGF("[OTA] already current: %s", FIRMWARE_VERSION);
     return;
   }
 
   LOGF("[OTA] signed manifest accepted: %s", stagedManifest.version.c_str());
+  strlcpy(otaDiagnostic.target_version, stagedManifest.version.c_str(),
+          sizeof(otaDiagnostic.target_version));
+  otaDiagnostic.total = stagedManifest.artifact_size;
+  noteOtaStage(OtaStage::kArtifactHttp);
 
   if (!sameHttpsAuthority(OTA_VERSION_URL, stagedManifest.artifact_url)) {
     otaHttp.end();
@@ -1111,21 +1276,30 @@ void OtaManager::checkAndUpdate(bool force) {
   DiagnosticsManager::noteAction("ota_artifact_get");
   DiagnosticsManager::feedLoopWatchdog();
   const int artifactCode = otaHttp.GET();
+  otaDiagnostic.http_code = artifactCode;
+  otaDiagnostic.transport_code = otaClient.lastError(tlsError, sizeof(tlsError));
   DiagnosticsManager::feedLoopWatchdog();
   const int receivedArtifactSize = otaHttp.getSize();
   if (artifactCode != HTTP_CODE_OK ||
-      receivedArtifactSize != static_cast<int>(stagedManifest.artifact_size) ||
-      !beginImageWrite()) {
+      receivedArtifactSize != static_cast<int>(stagedManifest.artifact_size)) {
     otaHttp.end();
     status = OtaStatus::FAILED;
-    lastError = "artifact HTTP/size";
+    lastError = artifactCode != HTTP_CODE_OK ? "artifact HTTP" : "artifact size";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
     LOGF("[OTA-ERROR] %s code=%d received=%d expected=%lu",
          lastError.c_str(), artifactCode, receivedArtifactSize,
          static_cast<unsigned long>(stagedManifest.artifact_size));
     return;
   }
+  noteOtaStage(OtaStage::kFlashBegin);
+  if (!beginImageWrite()) {
+    status = OtaStatus::FAILED;
+    lastError = "image begin";
+    nextPeriodicCheckMs = millis() + kFailureRetryMs;
+    return;
+  }
   status = OtaStatus::DOWNLOADING;
+  noteOtaStage(OtaStage::kDownload);
   LOGF("[OTA] encrypted artifact download started: %lu bytes",
        static_cast<unsigned long>(stagedManifest.artifact_size));
   WiFiClient* stream = otaHttp.getStreamPtr();
@@ -1151,7 +1325,11 @@ void OtaManager::checkAndUpdate(bool force) {
     const size_t remaining = stagedManifest.artifact_size - updateBytes;
     const size_t available = stream->available();
     if (available == 0) {
-      if (!otaHttp.connected()) { downloadOk = false; break; }
+      if (!otaHttp.connected()) {
+        lastError = "artifact disconnected";
+        downloadOk = false;
+        break;
+      }
       delay(1);
       continue;
     }
@@ -1160,21 +1338,25 @@ void OtaManager::checkAndUpdate(bool force) {
     if (received <= 0 ||
         !writeImageChunk(buffer, static_cast<size_t>(received))) {
       downloadOk = false;
+      lastError = "image write";
       break;
     }
     lastProgressMs = millis();
+    noteOtaProgress();
   }
   otaHttp.end();
+  if (downloadOk) noteOtaStage(OtaStage::kImageVerify);
   if (!downloadOk || !finishImageWrite()) {
     abortImageWrite();
     status = OtaStatus::FAILED;
-    lastError = downloadTimedOut ? "artifact download timeout"
-                                 : "image write/hash";
+    if (downloadTimedOut) lastError = "artifact download timeout";
+    else if (lastError.isEmpty()) lastError = "image verify";
     nextPeriodicCheckMs = millis() + kFailureRetryMs;
     LOGF("[OTA-ERROR] %s", lastError.c_str());
     return;
   }
   status = OtaStatus::PENDING_BOOT;
+  noteOtaStage(OtaStage::kPendingBoot);
   preserveAccessEvidenceBeforeRestart("pending_verify");
   DiagnosticsManager::markPlannedRestart("ota_pending_verify");
   LOGF("[OTA] verified inactive image; rebooting into pending slot");
@@ -1183,6 +1365,8 @@ void OtaManager::checkAndUpdate(bool force) {
 }
 
 bool OtaManager::stageLocalManifest(const String& manifestJson) {
+  beginOtaDiagnostic();
+  noteOtaStage(OtaStage::kManifestVerify);
   String reason;
   bool valid = verifyManifestJson(manifestJson, &stagedManifest, &reason);
   if (valid && stagedManifest.version == FIRMWARE_VERSION) {
@@ -1191,10 +1375,15 @@ bool OtaManager::stageLocalManifest(const String& manifestJson) {
     stagedManifest = VerifiedManifest{};
   }
   if (!valid) {
+    otaDiagnostic.rejection = manifestRejection(reason);
     lastError = reason;
     status = OtaStatus::FAILED;
     LOGF("[OTA-ERROR] local manifest rejected: %s", lastError.c_str());
+    noteOtaStage(OtaStage::kFailed, OtaError::kManifestRejected);
   } else {
+    strlcpy(otaDiagnostic.target_version, stagedManifest.version.c_str(),
+            sizeof(otaDiagnostic.target_version));
+    otaDiagnostic.total = stagedManifest.artifact_size;
     status = OtaStatus::VERIFYING;
     LOGF("[OTA] local signed manifest accepted: %s",
          stagedManifest.version.c_str());
@@ -1208,15 +1397,18 @@ bool OtaManager::beginLocalUpload() {
     return false;
   }
   status = OtaStatus::WAIT_SAFE_STATE;
+  noteOtaStage(OtaStage::kSafeState);
   if (!waitForSafeState()) {
     abortLocalUpload("WAIT_SAFE_STATE timeout");
     return false;
   }
+  noteOtaStage(OtaStage::kFlashBegin);
   if (!beginImageWrite()) {
     abortLocalUpload("local begin failed");
     return false;
   }
   status = OtaStatus::DOWNLOADING;
+  noteOtaStage(OtaStage::kDownload);
   return true;
 }
 
@@ -1226,15 +1418,18 @@ bool OtaManager::writeLocalUploadChunk(const uint8_t* data, size_t length) {
     return false;
   }
   DiagnosticsManager::feedLoopWatchdog();
+  noteOtaProgress();
   return true;
 }
 
 bool OtaManager::finishLocalUpload() {
+  noteOtaStage(OtaStage::kImageVerify);
   if (!finishImageWrite()) {
     abortLocalUpload("local hash/image failed");
     return false;
   }
   status = OtaStatus::PENDING_BOOT;
+  noteOtaStage(OtaStage::kPendingBoot);
   DiagnosticsManager::markPlannedRestart("local_ota_pending_verify");
   GattServer::setOtaBusy(false);
   return true;
@@ -1246,6 +1441,7 @@ void OtaManager::abortLocalUpload(const char* reason) {
   lastError = reason == nullptr ? "local upload aborted" : reason;
   status = OtaStatus::FAILED;
   LOGF("[OTA-ERROR] %s", lastError.c_str());
+  noteOtaStage(OtaStage::kFailed, OtaError::kLocalAbort);
   GattServer::setOtaBusy(false);
 }
 

@@ -61,6 +61,9 @@ Wi-Fi STA와 MQTTS 자동 복구, availability/status last-seen 경보, periodic
 - Root CA/hostname, manifest signature, board/protocol, authenticated ciphertext와 plaintext size/digest를
   모두 검증한 뒤에만 inactive slot 선택
 - pending image의 연속 health window, explicit valid mark와 자동 rollback 구현
+- 2026-09-09 보강 후보: safe-state에서 기존 MQTT TLS 자원도 반환하고 scope-bound
+  OTA 종료 후 재연결; 단계/오류/진행 checkpoint를 NVS와 원격 unsigned 진단에 보존.
+  로컬 시험과 현장 설치는 구분하며 상세는 OTA 운영 runbook §9를 따른다.
 - OTA/recovery 재부팅 전 `planned_restart`와 pending access evidence의 ordered NVS/RTC A/B journal checkpoint 수행
 - exact signed OTA install→new boot→health valid와 별도 pre-valid reset rollback 관측 실적 존재
 

@@ -55,4 +55,6 @@ public:
     static bool isSafeForOta();
     static OtaStatus getStatus() { return status; }
     static String getLastError() { return lastError; }
+    // Advisory snapshot only; never grants command or image authority.
+    static void appendDiagnostics(JsonObject destination);
 };

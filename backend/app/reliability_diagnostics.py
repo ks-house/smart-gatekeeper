@@ -56,6 +56,7 @@ ACTION_CODES = set("""unknown boot network_services_start mqtt_connected mqtt_dn
 # DiagnosticsManager's RTC action buffer stores at most31 bytes. Preserve exact
 # known truncations as advisory tokens, without interpreting them as full codes.
 ACTION_CODES |= {value[:31] for value in ACTION_CODES}
+ACTION_CODES |= {"mqtt_ota_suspend", "mqtt_ota_resume"}
 ACCESS_STAGES = {"unknown", "UNKNOWN", "BOOTING", "GATT_CONNECTED", "GATT_FAILED", "CHALLENGE_ISSUED",
                  "PROOF_VERIFIED", "PROOF_REJECTED", "ARMED", "SENSOR_DETECTED", "RELAY_ON", "RELAY_OFF",
                  "COMPLETED", "TERMINATED", "CONNECTION_ACCEPTED", "DISCONNECTED", "PROOF_FRAME_RECEIVED", "RESULT_INDICATED"}
@@ -143,11 +144,48 @@ class BootAdvisoryCache:
             return boot_observation_projection(value, status) if value is not None else None
 
 
+def ota_advisory_projection(value):
+    """Versioned closed diagnostics, never image/command/health authority."""
+    if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
+        return None
+    result = {"schema": 1}
+    for key in ("attempt", "boot_count", "updated_uptime_ms", "bytes", "total",
+                "heap_before", "heap_after", "largest_after"):
+        item = value.get(key)
+        if type(item) is not int or not 0 <= item <= U32:
+            return None
+        result[key] = item
+    for key, upper in (("stage", 15), ("failed_stage", 15), ("error", 19), ("runtime_status", 11), ("rejection", 9)):
+        item = value.get(key)
+        if type(item) is not int or not 0 <= item <= upper:
+            return None
+        result[key] = item
+    for key in ("http_code", "transport_code", "flash_code"):
+        item = value.get(key)
+        if type(item) is not int or not -(2**31) <= item < 2**31:
+            return None
+        result[key] = item
+    for key in ("persisted", "restored", "request_pending"):
+        if type(value.get(key)) is not bool:
+            return None
+        result[key] = value[key]
+    version = value.get("target_version")
+    if not isinstance(version, str) or re.fullmatch(r"[A-Za-z0-9_.+-]{0,63}", version) is None:
+        return None
+    result["target_version"] = version
+    if result["bytes"] > result["total"]:
+        return None
+    return result
+
+
 def advisory_projection(document, *, include_boot=False, expected=None):
     """Closed, explicitly unsigned fields useful for comparison, not authority."""
     if not isinstance(document, dict):
         return {}
     result = {}
+    ota = ota_advisory_projection(document.get("ota"))
+    if ota is not None:
+        result["ota"] = ota
     for key in ("firmware", "arduino_core", "idf_version"):
         value = document.get(key)
         if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.+-]{1,64}", value):
