@@ -825,3 +825,48 @@ previous_action wifi_sta_profile_enabled, previous_relay_on false를 기록했�
 artifact 다운로드 실패 하나로 묶을 근거가 없다. boot812의 원격 상태·원인은
 수집되지 않았다. 이번 턴 device command는0회다. 전원 무결성 문제 가능성을
 별도 유지하되 사용자 현장 조작 여부나 고장 부품·전압 파형을 추정하지 않는다.
+
+## 18. 9월 10일 OTA491 설치·재부팅·VALID 확인
+
+- 사용자가 OTA/재부팅 등 가능한 안전한 방법으로 최신 설치를 명시 승인했다.
+  PR403/main `981520eb069117b967dfd0b5a0a124e65ce4870e`, run34374312925가
+  01:10:08 KST491 게시를 완료했다. 별도 strict HTTPS 검증에서 signature와
+  encrypted1924852B/SHA256
+  `46ad861cf052c6420114fd437c6c1563f372ccab17bac3936ce04cf08383ea1b`가 일치했다.
+- fresh raw/verified boot813/IDLE/relay OFF를 맞춘 뒤01:10:14.922 안전 reboot
+  1회를 보냈다. session `bac9582be89979a0f565fb18d154a143` Target result0 및
+  target_accepted. 01:10:23.978 boot814/`1465f25f841d3dbb40e668c31345e8c0`
+  old480 복귀, SOFTWARE/signed_mqtt_reboot. 수동 OTA를 겹쳐 보내지 않고
+  부팅 후60초 periodic check를 관찰했다.
+- 01:11:57.095 실제 새 version `2.1.491+main.g981520e`, boot815/
+  `4cb35dc4f56b05d4fb137d6a4acd657c`, uptime7, SOFTWARE/ota_pending_verify를
+  확인했다. 01:12:27.447 stage11/VALID/runtime_status10/
+  running_image_valid=true, persisted=true로 전환했고01:13:07.537까지
+  matching raw/verified safe state가40초 이상 유지됐다. 관찰 중 추가 reset이나
+  rollback은 없었다. Physical door command는0회다.
+- Backend rows2950/2951/2952는 각각01:11:57.298/01:12:27.650/01:12:58.233
+  health-check→VALID→current 확인을 보존한다. 새 firmware의 부팅 후 periodic
+  check도 attempt1/stage14/HTTP200/error0/VALID 유지로 끝났다. 이때 scoped
+  MQTT TLS handoff의 heap_before62388→heap_after105940B, largest_after56308B,
+  MQTT count1→2, BLE advertising active/연결0을 관측했다. transport_code49는
+  숫자 관측값이며 HTTP200/error0 성공을 TLS 실패로 바꿔 해석하지 않는다.
+- ready는 기존 Backend106a2d2/all12/fresh Target이다. 이번 Target-only 변경으로
+  부수 시작된 Backend run34374312931은 NAS 승인 대기에서 취소해 기존 runtime을
+  유지했다. 모바일 APK 배포·설치는 없다.
+- 대체 경로도 병렬 확인했다. old480은 인증된 AP+STA enable 뒤 STA 주소에서도
+  signed local upload가 가능하지만 PC→Target LAN은 timeout, NAS 기존 키는
+  거부, USB/HA 관리자 연결은 없었다. Windows 관리 화면 확인도 node 실행 환경의
+  WSL cwd 매핑 오류로 시작하지 못했고, 정상 OTA 성공 뒤 대체 경로 탐색을 종료했다.
+  강제 SSH dispatcher·읽기 토큰·CA·서명 보호를 우회하지 않았다.
+- **이번 목표인 최신491 설치·재부팅·health confirmation은 완료했다.** 다운로드는
+  old480 updater가 수행했으므로491의 실제 Range 재개 시험을 대신하지 않는다.
+  새 updater의 metadata 조회/자원 인계/MQTT 복원은 현장 확인했지만 단절 재개,
+  전원 차단/rollback/장기 안정성은 별도이며 기존 BROWNOUT 원인도 미해결이다.
+- 종료 전 재조회에서 **491에서도 BROWNOUT이 다시 기록**됐다. row2953
+  01:13:28.947은 boot815/uptime99, row2954 01:13:42.360은 boot816/
+  `40a1afc1a1e41f6153566422ce29b78b`/uptime7이다. 동일 boot advisory는
+  BROWNOUT/planned none/previous_uptime104726ms/IDLE/relay OFF/
+  mqtt_connect_worker_adopted를 보존한다. row2960 01:16:46.496에도
+  boot816/491/uptime191/VALID=true/current stage14/error0이다. 초기40초
+  안정 관측 뒤의 별도 사건이며 이번 턴 추가 reboot 명령은 없었다. 설치는
+  유지됐고 rollback 증거는 없으나, 가용성/전원 문제가 해결됐다는 뜻은 아니다.

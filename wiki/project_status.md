@@ -18,19 +18,29 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-09-10 OTA reinforcement: published, not installed
+## 2026-09-10 OTA491 installed and health-confirmed
 
-- Published Target **2.1.489+main.g1e8b8e1** (run34367682991), independently
-  verified encrypted artifact bytes/hash. Backend diagnostics deployed at
-  **106a2d2fa7f635c05d21e77d6f3c2a4ac9bb616a** and readiness passed.
-- Owner-approved single safe reboot at00:13:51 KST succeeded to boot810 but still
-  **2.1.480+main.g81fbc6d**. Automatic-check window had a status gap; by00:20:00
-  the same boot/version returned, IDLE/relay OFF. No installation or rollback is
-  observed. Minimum heap fell to2096B; exact OTA failure stage remains unavailable
-  in installed480. No additional reboot/OTA intent or physical door action.
-- Local recovery reachability/bootstrap remains unresolved. New persistent OTA
-  diagnostics require installation first; APK unchanged. See the
-  [deployment and recovery evidence](hands_free_reliability_recovery_2026_09_08.md#15-9월-10일-ota-보강-게시와-승인된-단일-재부팅-결과).
+- Exact-main **2.1.491+main.g981520e** / run34374312925 published at01:10:08 KST.
+  Independent strict HTTPS signature and encrypted1924852B/SHA256 binding pass.
+- Owner authorized active recovery. One safe signed reboot at01:10:14.922 changed
+  boot813→814. Boot-time periodic OTA then installed491: boot815/
+  `4cb35dc4f56b05d4fb137d6a4acd657c` appeared01:11:57 with
+  `ota_pending_verify`, then stage11/`running_image_valid=true` at01:12:27.
+  Matched fresh raw/verified IDLE/relay OFF remained stable for40s after VALID.
+- Backend rows2950–2952 preserve health transition and subsequent automatic
+  current-version check: stage14/error0/HTTP200, VALID still true, MQTT restored,
+  BLE advertising active. OTA TLS handoff heap62388→105940B is observed; it does
+  not prove the exact cause of all preceding480 failures.
+- Later readback found a separate unplanned BROWNOUT: row2953/01:13:28 still
+  boot815, row2954/01:13:42 boot816, same491 and VALID preserved. Matching advisory
+  says previous uptime104726ms/IDLE/relay OFF/mqtt_connect_worker_adopted.
+  Row2960/01:16:46 confirms boot816/uptime191s. Installation succeeded, but
+  availability/power integrity is not resolved; no further command was sent.
+- Backend remains **106a2d2fa7f635c05d21e77d6f3c2a4ac9bb616a**, all12 readiness
+  checks true/Target fresh. Unneeded Backend deployment was cancelled before
+  activation; APK unchanged and no door command. New downloader interruption/
+  Range recovery and power-loss/long-soak physical gates remain open; earlier
+  BROWNOUT is not declared fixed. See [recovery evidence](hands_free_reliability_recovery_2026_09_08.md).
 
 ## 2026-09-08 autonomous reliability recovery rollout
 
