@@ -1,5 +1,15 @@
+---
+title: 현재 개발·빌드 환경
+type: reference
+project: smart-gatekeeper
+status: active
+updated: 2026-09-12
+source_of_truth: true
+applies_to: [firmware, backend, mobile, windows, wsl]
+---
+
 # env_setup.md — 현재 개발·빌드 환경
-> Last updated: 2026-08-29 (Synology backend CI deployment and no-cutover legacy bootstrap candidate verified)
+> Last updated: 2026-09-12 (Windows native agent / WSL development command boundary checked)
 
 ## 1. 펌웨어
 
@@ -173,6 +183,47 @@ WSL에 attached한 상태에서 Windows ADB server를 시작했다. Phone은 aut
 실행할 수 있다는 증거지만 WSL-native Linux `adb`, Docker Flutter builder의 USB visibility 또는
 앱 기능 동작을 증명하지 않는다. Linux-native ADB가 필요할 때만 phone BUSID를 별도로 bind/attach하고
 WSL에 Android platform-tools를 설치한다.
+
+#### 1.0.3 Windows 네이티브 앱에서 WSL 저장소 개발
+
+**2026-09-12 사용자 지정 개발 규칙:** Git·GitHub CLI·Python·PlatformIO·빌드·테스트·Docker Compose는
+WSL 2 `Ubuntu-26.04`에서 실행한다. Windows 네이티브 앱에서는 아래 `wsl.exe` 명령을 사용한다.
+별도 worktree에서는 해당 checkout의 실제 Linux 경로를 확인하여 `--cd`에 전달한다.
+WSL 실행 실패를 Windows 도구나 전역 Git 신뢰/PATH 변경으로 우회하지 않는다.
+이 규칙은 [루트 AGENTS.md §6](../AGENTS.md)와 [자동 로드 지침](../.agents/AGENTS.md)에 반영했다.
+
+2026-09-12 현재 작업은 Windows PowerShell 7.6.5에서 실행되며 저장소는
+`\\wsl$\Ubuntu-26.04\home\sh-cat-lee\workspaces\smart-gatekeeper`로 접근한다.
+Windows에서 파일 읽기·검색은 성공했고, 개발 도구는 다음처럼 WSL 배포판과 작업 경로를
+명시해서 실행한다. 앱 실행 환경을 바꾸어도 WSL의 Linux 도구가 Windows PATH로 전환되지는 않는다.
+
+```powershell
+wsl.exe -d Ubuntu-26.04 --cd /home/sh-cat-lee/workspaces/smart-gatekeeper git status --short --branch
+wsl.exe -d Ubuntu-26.04 --cd /home/sh-cat-lee/workspaces/smart-gatekeeper .venv/bin/python -m unittest tests.test_hardwareless_rc
+wsl.exe -d Ubuntu-26.04 --cd /home/sh-cat-lee/workspaces/smart-gatekeeper env PLATFORMIO_BUILD_DIR=.pio/build-wsl-default .venv/bin/pio run -e esp32c6 -j 4
+```
+
+- Windows Git의 직접 `git status`는 `detected dubious ownership`으로 실패했다.
+  WSL Git은 동일 저장소를 정상 인식한다. 이 점검에서는 Git 신뢰 예외나 전역 설정을 변경하지 않았다.
+- Windows 기본 `python`은 Hermes 가상환경을 가리켰고 `pio`/`flutter`는 Windows PATH에서
+  발견되지 않았다. 프로젝트 Python은 WSL `.venv/bin/python`을 사용한다.
+- WSL Python 3.14.4 / PlatformIO 6.1.19와 Docker server 29.6.2 / Compose v5.3.1 응답을 확인했다.
+  C++ 코어 컴파일·실행을 포함한 `tests.test_hardwareless_rc` 18개가 통과했다.
+- 위 명령의 `esp32c6` 빌드는 41.785초에 성공했다. `GattServer.cpp`의 미사용 함수 경고
+  2개가 있었으며, 이는 개발용 기본 환경의 컴파일 증거이다. production/OTA 배포 검증은 아니다.
+- cached `gatekeeper_app-flutter-builder:latest`는 일회성 컨테이너에서 Flutter 3.47.1 /
+  Dart 3.13.1을 보고했다. 네트워크를 차단한 첫 probe의 Flutter tag fetch 경고는 의도한
+  network isolation의 결과이다. APK 전체 빌드나 CI 버전 일치의 증거는 아니다.
+- `docker compose ... images`는 기존 컨테이너가 참조하는 image ID 하나를 찾지 못했다.
+  이 결과와 현재 tag의 실행 가능 여부는 구분한다. 다른 컨테이너/이미지 정리는 하지 않는다.
+  이어 `docker compose -f gatekeeper_app/docker-compose.yml run --rm --no-deps --pull never
+  flutter-builder flutter --version`은 정상 종료했다. 기존 orphan 컨테이너 경고는 남아 있다.
+
+운영 원칙은 소스·Git·Python·펌웨어 빌드·Docker Compose를 WSL Linux 경로에서 유지하고,
+Windows 앱은 파일 편집과 Windows 전용 도구에 사용하는 것이다. 편집 시 UTF-8/LF와 기존 실행
+권한을 보존한다. 앱 내장 Git/worktree UI, 파일 감시 성능, USB/ADB 및 Computer Use는 이 점검의
+검증 범위에 포함하지 않는다. 공식 안내도 Linux 도구 또는 기존 WSL2 작업 흐름에 WSL을
+선택할 수 있다고 설명한다: [OpenAI Windows 안내](https://learn.chatgpt.com/docs/windows/windows-sandbox).
 
 ### 1.1 Windows에서 긴 PlatformIO 빌드가 timeout된 경우
 

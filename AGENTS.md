@@ -1,7 +1,7 @@
 # AGENTS.md — smart-gatekeeper Agent Collaboration Guide
 > **이 파일을 읽는 모든 AI 에이전트(Gemini, Claude, Antigravity 등)에게:**
 > 작업 시작 전 반드시 이 문서 전체를 읽고, 지침을 엄수하라.
-> Last updated: 2026-08-23
+> Last updated: 2026-09-12
 
 ---
 
@@ -12,6 +12,7 @@
 현재 단계 : 프로덕션 증거 수집 — 최신 코드와 현장 구형 Target 상태를 분리
 MCU       : ESP32-C6-DevKitC-1 (RISC-V, NOT Xtensa)
 플랫폼    : pioarduino (공식 espressif32 사용 금지)
+개발 실행 : WSL Ubuntu-26.04 — Windows 네이티브 앱에서도 Git·빌드·테스트는 WSL로 실행
 센서      : AJ-SR04T TRIG=GPIO10, ECHO=GPIO11 (5V ECHO 보호 필수)
 릴레이    : GPIO23 Active-LOW, OFF=INPUT High-Z (현장 전기 검증 필수)
 금지 핀   : GPIO 4,5,8,9,15 (스트래핑), 17,18,19,20 (USB/UART)
@@ -152,6 +153,34 @@ smart-gatekeeper/
 ---
 
 ## 6. 빌드 환경
+
+### 6.1 개발 명령은 WSL 환경 선택
+
+- 이 프로젝트의 기본 개발 실행 환경은 **WSL 2 `Ubuntu-26.04`**이다. Git, GitHub CLI,
+  Python, PlatformIO, 빌드·테스트 스크립트와 Docker Compose는 WSL에서 실행한다.
+- 현재 기본 checkout은 `/home/sh-cat-lee/workspaces/smart-gatekeeper`이다. 별도 worktree에서
+  작업할 때는 그 worktree의 실제 Linux 경로를 사용하고 `pwd`와 `git rev-parse --show-toplevel`로
+  확인한다. 기본 checkout 경로를 그대로 재사용하여 다른 작업 내용을 변경하지 않는다.
+- Windows 네이티브 앱/PowerShell에서 작업 중이면 아래처럼 `wsl.exe -d Ubuntu-26.04 --cd <Linux 경로>`로
+  개발 명령을 실행한다. 이미 WSL 안이면 같은 Linux 도구를 직접 실행한다.
+- 프로젝트 Python/PlatformIO는 `.venv/bin/python`과 `.venv/bin/pio`를 명시한다.
+  모바일 Flutter/Android 도구는 [환경 문서](wiki/env_setup.md)의 WSL Docker 경로를 따른다.
+- Windows 기본 `git.exe`, `python.exe`, `pio`로 WSL checkout의 개발 명령을 대체하지 않는다.
+  WSL 실행 실패 시 배포판·경로·도구를 진단하고, 자동으로 Windows 도구로 전환하거나
+  Git `safe.directory` 예외·전역 PATH 변경으로 우회하지 않는다.
+- Windows 파일 편집·검색과 Windows 전용 ADB/USB·UI 도구는 사용할 수 있다.
+  파일은 UTF-8/LF와 기존 실행 권한을 보존하고 Windows/Linux 빌드 캐시·가상환경을 혼용하지 않는다.
+  이 규칙은 개발 명령의 실행 위치를 정하며 앱 전역 설정 변경을 요구하지 않는다.
+
+**Windows PowerShell:**
+
+```powershell
+wsl.exe -d Ubuntu-26.04 --cd /home/sh-cat-lee/workspaces/smart-gatekeeper git status --short --branch
+wsl.exe -d Ubuntu-26.04 --cd /home/sh-cat-lee/workspaces/smart-gatekeeper .venv/bin/python -m unittest tests.test_hardwareless_rc
+wsl.exe -d Ubuntu-26.04 --cd /home/sh-cat-lee/workspaces/smart-gatekeeper env PLATFORMIO_BUILD_DIR=.pio/build-wsl-default .venv/bin/pio run -e esp32c6 -j 4
+```
+
+### 6.2 펌웨어 설정
 
 ```ini
 ; 올바른 platformio.ini (ESP32-C6)

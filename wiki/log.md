@@ -7389,3 +7389,20 @@
 - App registration previously always stopped/restarted both scans. Preserve a fresh accepted current-process registration, refresh only after15-minute registration/reception silence, and install a unique native periodic recovery worker independent of Flutter/upload consent. Disabled policy cancels/stops wake, active proof states defer refresh, existing diagnostic events preserve Backend compatibility. WorkManager execution is not an exact-time guarantee; quiet RF does not prove scanner failure.
 - Append internal kTargetBusy without renumbering persisted reasons. Generic admission contention emits TARGET_BUSY; ota_busy retains OTA_BUSY. Numeric BLE BUSY remains8 for existing APK compatibility. Production-core regression checks both event causes, unchanged result and no authorized action commit.
 - Target core18 tests, full root397 tests (one platform skip), and esp32c6_personal_production compile pass before final added wiring tests. Native build initially lacked the container package cache; restore dependencies using normal pub get and rerun in the same container. Mobile test/publication and installed Target health remain pending. Sensor no-echo and BROWNOUT still require evidence-backed physical cause isolation, not relaxed opening rules.
+
+## [2026-09-12] compile | Windows native app and WSL development compatibility checked
+
+- Current host is Windows PowerShell 7.6.5; UNC workspace reads/searches and environment-document edits work. Windows Git status fails with dubious ownership, whereas explicit Ubuntu-26.04 WSL Git works on HEAD7df3bfc. Windows default Python resolves to a Hermes venv; Windows PATH has no pio/flutter. Preserve WSL-native Git/toolchain execution with explicit distro and Linux cwd, UTF-8/LF, and existing file modes.
+- Through wsl.exe, Python3.14.4 / PlatformIO6.1.19 are callable; hardwareless C++ core suite passes18 tests in4.432s. Default esp32c6 firmware build succeeds in41.785s using .pio/build-wsl-default, with two unused-function warnings. This is local software evidence, not production/OTA or hardware proof.
+- Docker server29.6.2 / Compose5.3.1 respond. Cached Flutter3.47.1 / Dart3.13.1 runs both directly and via Compose one-off --rm/--no-deps/--pull never. Compose images reports a stale missing image ID and Compose run warns about existing orphan containers; no cleanup. Deliberately network-isolated first probe causes a Flutter tag-fetch warning; network-enabled Compose probe succeeds. APK/backend full build, app Git/worktree UI, watchers, USB/ADB and Computer Use remain untested.
+- Updated env_setup.md with observed boundaries and PowerShell commands; checked official OpenAI Windows guidance. Preserved pre-existing wiki changes. No global Git trust/PATH/app setting changes, runtime deployment, device commands, commit or push. Documentation whitespace and local-link checks pass.
+
+## [2026-09-12] compile | WSL 개발 실행 환경을 에이전트 필수 지침으로 지정
+
+- 사용자 요청에 따라 루트 AGENTS.md §6과 .agents/AGENTS.md에 Git·GitHub CLI·Python·PlatformIO·빌드·테스트·Docker Compose를 WSL Ubuntu-26.04에서 실행하는 규칙을 추가했다. Windows PowerShell의 wsl.exe 호출, 현재 worktree Linux 경로 확인, 프로젝트 가상환경 명시, Windows 도구 자동 대체/전역 신뢰·PATH 우회 금지를 포함한다.
+- Windows 파일 편집·검색과 Windows 전용 ADB/USB/UI 도구의 경계를 명시하고 env_setup.md 및 index.md를 동기화했다. 앱 전역 설정은 변경하지 않았다. 기존 위키 변경을 보존하고 문서 diff/링크/UTF-8·LF를 점검했다. 실행 코드 변경이 없어 빌드 재실행은 하지 않았으며 commit/push 없음.
+
+## [2026-09-12] compile | WSL development guidance publication preparation
+
+- User authorized git push. Verified WSL gh authentication and fetched origin; current branch matched origin/codex/fix-morning-scan-and-busy before staging. Commit scope is AGENTS.md, .agents/AGENTS.md, wiki/env_setup.md, wiki/index.md and only this conversation's appended wiki/log.md entries. Earlier unrelated wiki edits remain local.
+- Reused the verified 18-test and default firmware build evidence; documentation-only follow-up passed diff/whitespace and local-link checks. No device or deployment command. Publication outcome is reported after remote verification.
