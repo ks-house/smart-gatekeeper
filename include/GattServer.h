@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "GattProtocol.h"
+#include "PresenceAdvertisementPolicy.h"
 #include "config.h"
 
 // Thin Arduino BLE adapter. All parsing and session decisions live in the
@@ -22,6 +23,9 @@ class GattServer {
     uint32_t advertising_restart_successes;
     uint32_t advertising_restart_failures;
     uint32_t advertising_watchdog_recoveries;
+    sgk::PresenceAdvertisementPolicy presence;
+    uint32_t advertising_gap_ms;
+    const char* advertising_last_restart_reason;
     uint32_t accepted_connections;
     uint32_t disconnects;
     uint32_t challenges_issued;
@@ -63,7 +67,7 @@ class GattServer {
   static void setEventSink(sgk::EventSink* sink);
   static void setOnAuthPendingCallback(bool (*callback)(uint32_t now_ms));
   static void setOnAuthGrantCallback(
-      bool (*callback)(sgk::LocalAccessAction action, uint32_t now_ms));
+      sgk::ResultReason (*callback)(sgk::LocalAccessAction action, uint32_t now_ms));
   static void setOnAuthAbortCallback(void (*callback)(uint32_t now_ms));
   static void useProductionEventSink();
   static void notifyAccessArmed(uint64_t now_ms);

@@ -356,6 +356,11 @@ class AuthControlGate {
   virtual bool beginAuth(uint32_t now_ms) = 0;
   virtual bool commitAuthorizedAction(LocalAccessAction action,
                                       uint32_t now_ms) = 0;
+  // A verified action can be deferred by the automatic retry budget. Retain
+  // the existing BUSY wire reason; all other gate failures stay fail-closed.
+  virtual ResultReason commitRejectionReason() const {
+    return ResultReason::kInternalFailClosed;
+  }
   virtual void abortAuth(uint32_t now_ms) = 0;
 };
 

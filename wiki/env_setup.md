@@ -3,7 +3,7 @@ title: 현재 개발·빌드 환경
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-09-12
+updated: 2026-09-13
 source_of_truth: true
 applies_to: [firmware, backend, mobile, windows, wsl]
 ---
@@ -89,10 +89,13 @@ docker compose run --rm flutter-builder flutter --version
 
 `.env.example`은 Compose 구조·이미지 빌드 검증 입력일 뿐 실행용 비밀 설정이 아니다. 실제 backend를
 기동하려면 ignored `backend/.env`를 만들고 DB/MQTT/API 값과 인증서 host path를 검증한 뒤
-`docker compose up`을 실행한다. 2026-08-28 로컬 cached mobile builder는 Flutter 3.47.1을
-보고했지만 hosted Android lane은 Flutter 3.44.8을 고정한다. 현재 `gatekeeper_app/Dockerfile`의
-`stable` clone은 floating input이므로 이 cached builder 결과는 개발 편의 증거이며 CI/release
-재현성 증거가 아니다.
+`docker compose up`을 실행한다. 2026-09-13 `gatekeeper_app/Dockerfile`도 hosted Android lane과
+같은 Flutter3.44.8 tag로 고정했다. 기존 cached image는3.47.1일 수 있으므로 사용 전에 버전을
+확인하고 rebuild한다. `flutter pub get --enforce-lockfile`로 기존 의존성을 유지한다.
+로컬 Android 회귀시험은 `:app:testDebugUnitTest`를 사용한다. WorkManager2.9.1 실제 스케줄러
+검증을 위해 test-only `androidx.work:work-testing:2.9.1`과 `org.robolectric:robolectric:4.14.1`을
+추가했으며 production dependency나 API minSdk는 바꾸지 않았다. 이 시험은 phone OEM/전원/RF
+실기기 결과를 대신하지 않는다.
 
 당시 WSL에는 `/dev/ttyACM*` 또는 `/dev/ttyUSB*`가 없었다. 따라서 위 firmware 성공은 compiler와
 toolchain의 software evidence이고, Target upload/serial, Wi-Fi/MQTT/BLE, OTA, GPIO23 relay 또는

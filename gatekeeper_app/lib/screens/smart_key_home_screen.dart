@@ -7,6 +7,7 @@ import '../services/access_session_polling_policy.dart';
 import '../services/commercial_models.dart';
 import '../services/field_diagnostics_service.dart';
 import '../services/native_diagnostic_upload.dart';
+import '../services/diagnostic_upload_status.dart';
 import '../services/home_message_projection.dart';
 import '../services/local_gatt_enrollment_service.dart';
 import '../services/mobile_activity_store.dart';
@@ -68,7 +69,11 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   FieldTestMarker? _fieldTestMarker;
   bool _diagnosticSyncBusy = false;
   bool _nativeDiagnosticTransport = false;
-  int _nativePendingUploads = 0;
+  Map<Object?, Object?>? _nativeDiagnosticStatus;
+  DiagnosticUploadStatus get _diagnosticDisplay => DiagnosticUploadStatus(
+        _nativeDiagnosticStatus ?? {},
+        uploadEnabled: _diagnosticUploadEnabled,
+      );
   String? _lastDiagnosticHealthFingerprint;
 
   @override
@@ -172,8 +177,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
         if (mounted) {
           setState(() {
             _nativeDiagnosticTransport = true;
-            _nativePendingUploads =
-                (native['pendingUploads'] as num?)?.toInt() ?? 0;
+            _nativeDiagnosticStatus = native;
             _diagnosticLastSuccess = success == null
                 ? null
                 : DateTime.fromMillisecondsSinceEpoch(success);
@@ -240,7 +244,10 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
       }
       await _diagnosticsStore.setUploadEnabled(enabled);
       if (!mounted) return;
-      setState(() => _diagnosticUploadEnabled = enabled);
+      setState(() {
+        _diagnosticUploadEnabled = enabled;
+        if (!enabled) _nativeDiagnosticStatus = {'enabled': false};
+      });
       if (enabled) await _syncDiagnosticsIfEnabled();
     } catch (_) {
       if (mounted) {
@@ -255,6 +262,19 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     setState(() => _fieldTestMarker = marker);
     _scheduleFieldMarkerExpiry(marker);
     await _syncDiagnosticsIfEnabled();
+    unawaited(_captureDiagnosticContext('FIELD_TEST_START'));
+  }
+
+  Future<void> _captureDiagnosticContext(String reason) async {
+    if (!_diagnosticUploadEnabled) return;
+    try {
+      await NativeDiagnosticUpload().requestCapture(reason: reason);
+    } catch (_) {
+      // Evidence collection must never delay or hide the manual-open outcome.
+      if (mounted) {
+        setState(() => _diagnosticError = 'DIAGNOSTIC_CAPTURE_ERROR');
+      }
+    }
   }
 
   void _scheduleFieldMarkerExpiry(FieldTestMarker? marker) {
@@ -503,7 +523,12 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
         });
         return;
       }
+      unawaited(_captureDiagnosticContext('MANUAL_OPEN_START'));
       final outcome = await _remoteOpen.request();
+      unawaited(_captureDiagnosticContext(
+          outcome.state == RemoteManualOpenState.failed
+              ? 'MANUAL_OPEN_FAILED'
+              : 'MANUAL_OPEN_FINISHED'));
       List<MobileActivityItem>? activity;
       try {
         activity = await _activityStore.recordRemoteOpenResult(outcome);
@@ -905,26 +930,35 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
                 onChanged: _setDiagnosticUpload,
               ),
               ListTile(
-                leading: Icon(_diagnosticError == null
+                leading: Icon(_diagnosticUploadEnabled &&
+                        _nativeDiagnosticStatus != null &&
+                        _diagnosticDisplay.acknowledged
                     ? Icons.cloud_done_outlined
                     : Icons.cloud_off_outlined),
                 title: Text(_diagnosticSyncBusy
-                    ? '진단 업로드 중'
-                    : _diagnosticError != null
-                        ? '진단 업로드 실패 · $_diagnosticError'
-                        : _diagnosticLastSuccess == null
-                            ? '아직 업로드 성공 기록 없음'
-                            : '진단 업로드 완료'),
+                    ? '진단 전송 상태 확인 중'
+                    : !_diagnosticUploadEnabled
+                        ? '진단 자동 업로드 꺼짐'
+                        : _nativeDiagnosticStatus != null
+                            ? _diagnosticDisplay.title
+                            : _diagnosticError != null
+                                ? '진단 업로드 실패 · $_diagnosticError'
+                                : _diagnosticLastSuccess == null
+                                    ? '아직 업로드 성공 기록 없음'
+                                    : '마지막 서버 저장 기록 있음'),
                 subtitle: Text([
-                  if (_diagnosticLastSuccess != null)
-                    '마지막 성공: ${_diagnosticLastSuccess!.toLocal().toString().split('.').first}',
+                  if (_nativeDiagnosticStatus != null)
+                    ..._diagnosticDisplay.details,
+                  if (!_nativeDiagnosticTransport &&
+                      _diagnosticLastSuccess != null)
+                    '마지막 서버 저장: ${_diagnosticLastSuccess!.toLocal().toString().split('.').first}',
                   if (_diagnosticError == 'HTTP_422')
                     '보고서 형식 오류 · 앱 업데이트를 확인하세요.',
                   if (_nativeDiagnosticTransport)
-                    '화면과 무관하게 자동 전송 · 대기 $_nativePendingUploads건',
+                    '백그라운드 자동 전송 · 서버 저장 확인 시각을 기준으로 표시합니다.',
                   if (_diagnosticError != null)
                     _nativeDiagnosticTransport
-                        ? '네트워크 복구 후 자동 재시도합니다. Android 실행 제한 시 지연될 수 있습니다.'
+                        ? '일시적 통신 실패는 자동 재시도하며 형식·권한 오류는 별도로 표시합니다.'
                         : '실패한 전송은 앱 실행 중 다시 시도합니다.',
                   if (!_diagnosticUploadEnabled) '자동 업로드 꺼짐',
                 ].join('\n')),
@@ -949,7 +983,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
                 title: const Text('현장 테스트 표시'),
                 subtitle: Text(
                   _fieldTestMarker?.isActiveAt(DateTime.now().toUtc()) == true
-                      ? '10분 표시 활성 · ${_fieldTestMarker!.ref}'
+                      ? '10분 표시 활성 · ${_fieldTestMarker!.ref}\n${_diagnosticDisplay.fieldTestReadiness(_fieldTestMarker!.ref, _fieldTestMarker!.createdAt)}'
                       : '다음 접근 테스트를 10분 동안 묶어 추적합니다.',
                 ),
                 trailing: const Icon(Icons.chevron_right),

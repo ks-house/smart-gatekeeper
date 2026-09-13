@@ -9,6 +9,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GattSessionEngineTest {
+  @Test fun missingHintProbeCannotDowngradeToLegacyOrSignWithoutV2Service() = runBlocking {
+    val transport = FakeTransport(targetHello, challenge, byteArrayOf(), protocolMode = GattProtocolMode.LEGACY_V1)
+    val signer = DeterministicFakeCredentialSigner(fixtureSignature)
+    val outcome = GattSessionEngine(transport, signer, clock = MonotonicClock { 100 })
+      .run("fixture", credential, requireFastV2 = true) as SessionOutcome.Failure
+    assertEquals(TransportFailureCode.PROTOCOL_V2_REQUIRED, outcome.transportFailure)
+    assertEquals(AccessReasonCode.PROTOCOL_INCOMPATIBLE, outcome.reason)
+    assertEquals(0, transport.negotiations)
+    assertEquals(0, transport.proofWrites)
+    assertEquals(null, signer.lastCanonical)
+    assertFalse(outcome.proofMayHaveExecuted)
+    assertTrue(transport.closed)
+  }
+
   @Test fun earlyBusyDoesNotSignOrWriteProofAndRemainsRetryable() = runBlocking {
     val transport = FakeTransport(targetHello, challenge, byteArrayOf(),
       protocolMode = GattProtocolMode.FAST_V2)

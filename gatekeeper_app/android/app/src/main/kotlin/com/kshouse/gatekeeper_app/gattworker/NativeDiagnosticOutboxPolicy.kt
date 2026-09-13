@@ -23,9 +23,16 @@ internal object NativeDiagnosticOutboxPolicy {
     }
   }
 
-  fun bound(events: JSONArray): Int {
+  fun bound(events: JSONArray, onEvicted: (JSONObject) -> Unit = {}): Int {
     var dropped = 0
-    while (events.length() > MAX_EVENTS) { events.remove(0); dropped++ }
+    while (events.length() > MAX_EVENTS) {
+      // Keep terminal/dispatch/manual context before repetitive liveness noise.
+      val lowPriority = (0 until events.length()).firstOrNull {
+        events.getJSONObject(it).optString("event") in setOf("HEARTBEAT", "SCAN_REGISTRATION", "SCAN_EXIT")
+      } ?: 0
+      onEvicted(events.remove(lowPriority) as JSONObject)
+      dropped++
+    }
     return dropped
   }
 }

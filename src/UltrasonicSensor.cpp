@@ -10,9 +10,13 @@ float UltrasonicSensor::history[5] = {999.0f, 999.0f, 999.0f, 999.0f, 999.0f};
 uint8_t UltrasonicSensor::historyIdx = 0;
 UltrasonicSensor::Diagnostics UltrasonicSensor::diagnostics;
 sgk::SensorSessionTracker UltrasonicSensor::sessions;
+sgk::SensorObservation UltrasonicSensor::observation;
+sgk::SensorQualification UltrasonicSensor::qualification;
 static float last_session_raw_cm = 999.0f;
+static float last_session_median_cm = 999.0f;
 
 float UltrasonicSensor::lastRawDistanceCm() { return last_session_raw_cm; }
+float UltrasonicSensor::lastMedianDistanceCm() { return last_session_median_cm; }
 
 void UltrasonicSensor::init() {
   pinMode(PIN_TRIG, OUTPUT);
@@ -31,6 +35,7 @@ void UltrasonicSensor::resetHistory() {
   historyIdx = 0;
   diagnostics = {};
   last_session_raw_cm = 999.0f;
+  last_session_median_cm = 999.0f;
 }
 
 float UltrasonicSensor::readDistanceCmRaw(unsigned long* outDurationUs) {
@@ -97,5 +102,6 @@ float UltrasonicSensor::readDistanceCm(unsigned long* outDurationUs) {
     }
   }
 
-  return sorted[2]; // 5개 샘플 중 중앙값 반환
+  last_session_median_cm = sorted[2];
+  return last_session_median_cm; // 5개 샘플 중 중앙값 반환
 }

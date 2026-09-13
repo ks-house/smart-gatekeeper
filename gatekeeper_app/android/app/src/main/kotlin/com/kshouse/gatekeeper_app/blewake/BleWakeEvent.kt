@@ -21,6 +21,8 @@ data class BleWakeEvent(
   val deviceAddress: String? = null,
   /** Advisory only, deliberately excluded from exported diagnostics. */
   val readyHint: PresenceReadyHint? = null,
+  /** Present-but-invalid scan response must not be treated as a missing hint. */
+  val readyHintMalformed: Boolean = false,
 ) {
   /** Stable only for duplicate delivery of one OS wake; persisted only through a keyed HMAC. */
   fun presenceEventId(): String = listOf(

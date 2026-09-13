@@ -46,7 +46,7 @@ sgk::FailClosedProofVerifier fail_closed_verifier;
 sgk::ProofVerifier* selected_verifier = &fail_closed_verifier;
 sgk::EventSink* selected_event_sink = nullptr;
 static bool (*s_auth_pending_callback)(uint32_t now_ms) = nullptr;
-static bool (*s_auth_grant_callback)(sgk::LocalAccessAction action,
+static sgk::ResultReason (*s_auth_grant_callback)(sgk::LocalAccessAction action,
                                      uint32_t now_ms) = nullptr;
 static void (*s_auth_abort_callback)(uint32_t now_ms) = nullptr;
 
@@ -109,6 +109,8 @@ uint32_t advertising_restart_attempts_{0};
 uint32_t advertising_restart_successes_{0};
 uint32_t advertising_restart_failures_{0};
 uint32_t advertising_watchdog_recoveries_{0};
+sgk::PresenceAdvertisementPolicy presence_advertisement_;
+const char* advertising_last_restart_reason_ = "NONE";
 uint32_t accepted_connections_{0};
 uint32_t disconnects_{0};
 uint32_t challenges_issued_{0};
@@ -736,13 +738,18 @@ class ProductionAuthControlGate final : public sgk::AuthControlGate {
 
   bool commitAuthorizedAction(sgk::LocalAccessAction action,
                               uint32_t now_ms) override {
-    return s_auth_grant_callback != nullptr &&
-           s_auth_grant_callback(action, now_ms);
+    rejection_ = s_auth_grant_callback != nullptr ?
+        s_auth_grant_callback(action, now_ms) : sgk::ResultReason::kInternalFailClosed;
+    return rejection_ == sgk::ResultReason::kOk;
   }
+
+  sgk::ResultReason commitRejectionReason() const override { return rejection_; }
 
   void abortAuth(uint32_t now_ms) override {
     production_lifecycle_sink.requestAbort(now_ms);
   }
+ private:
+  sgk::ResultReason rejection_ = sgk::ResultReason::kInternalFailClosed;
 };
 
 ProductionAuthControlGate production_auth_control_gate;
@@ -783,9 +790,52 @@ bool controllerHasActiveConnection() {
       (ble_server != nullptr && ble_server->getConnectedCount() != 0);
 }
 
+class PresenceDriver final : public sgk::PresenceAdvertisementDriver {
+ public:
+  bool available() const override { return BLEDevice::getAdvertising() != nullptr; }
+  bool active() const override { return advertisingActive(); }
+  bool apply(bool ready, uint32_t epoch) override {
+    // Existing wire format: V1 advisory service data, V2 GATT authorization.
+    const uint8_t hint[] = {1, static_cast<uint8_t>(ready),
+        static_cast<uint8_t>(epoch), static_cast<uint8_t>(epoch >> 8),
+        static_cast<uint8_t>(epoch >> 16), static_cast<uint8_t>(epoch >> 24)};
+    BLEAdvertisementData response;
+    response.setName("SGK");
+    response.setServiceData(BLEUUID(HARDWARELESS_SERVICE_UUID),
+        String(reinterpret_cast<const char*>(hint), sizeof(hint)));
+    return BLEDevice::getAdvertising()->setScanResponseData(response);
+  }
+  bool stop() override {
+    advertising_last_restart_reason_ = "PRESENCE_APPLY";
+    return BLEDevice::getAdvertising()->stop();
+  }
+  bool start() override {
+    advertising_last_restart_reason_ = "PRESENCE_APPLY";
+    ++advertising_restart_attempts_;
+    const bool started = BLEDevice::getAdvertising()->start();
+    if (started) ++advertising_restart_successes_;
+    else ++advertising_restart_failures_;
+    return started;
+  }
+};
+
+void servicePresenceAdvertisement(uint32_t now_ms) {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  PresenceDriver driver;
+  const bool connected = controllerHasActiveConnection();
+  const bool ota_busy = core != nullptr && core->otaBusy();
+  presence_advertisement_.observeController(now_ms, advertisingActive(),
+      advertising_expected_ && !connected && !ota_busy);
+  presence_advertisement_.service(now_ms, advertising_expected_ && GattServer::isEnabled(),
+      connected, ota_busy, driver);
+  presence_advertisement_.observeController(millis(), advertisingActive(),
+      advertising_expected_ && !connected && !ota_busy);
+}
+
 bool restartAdvertising(const char* reason, bool watchdog_recovery) {
   std::lock_guard<std::recursive_mutex> lock(core_mutex);
-  if (!advertising_expected_ || controllerHasActiveConnection()) {
+  if (!advertising_expected_ || controllerHasActiveConnection() ||
+      (core != nullptr && core->otaBusy())) {
     return false;
   }
   BLEAdvertising* advertising = BLEDevice::getAdvertising();
@@ -798,7 +848,19 @@ bool restartAdvertising(const char* reason, bool watchdog_recovery) {
 #if defined(CONFIG_NIMBLE_ENABLED)
   if (advertising->isAdvertising()) return true;
 #endif
+  if (GattServer::isEnabled()) {
+    // A controller restart may have lost custom scan-response bytes even
+    // though the last apply succeeded. Reinstall them before restarting.
+    presence_advertisement_.request(presence_advertisement_.requested_ready,
+                                   presence_advertisement_.requested_epoch, true);
+    servicePresenceAdvertisement(millis());
+    const bool started = advertisingActive() && !presence_advertisement_.pending;
+    advertising_last_restart_reason_ = reason;
+    if (started && watchdog_recovery) ++advertising_watchdog_recoveries_;
+    return started;
+  }
   ++advertising_restart_attempts_;
+  advertising_last_restart_reason_ = reason;
   const bool started = advertising->start();
   if (started) {
     ++advertising_restart_successes_;
@@ -814,6 +876,8 @@ bool restartAdvertising(const char* reason, bool watchdog_recovery) {
 void serviceAdvertisingHealth(uint32_t now_ms) {
   std::lock_guard<std::recursive_mutex> lock(core_mutex);
   if (!advertising_expected_ || controllerHasActiveConnection() ||
+      (core != nullptr && core->otaBusy()) ||
+      (GattServer::isEnabled() && presence_advertisement_.pending) ||
       now_ms - advertising_last_health_check_ms_ <
           kAdvertisingHealthCheckIntervalMs) {
     return;
@@ -982,6 +1046,8 @@ void GattServer::init() {
   advertising_restart_successes_ = 0;
   advertising_restart_failures_ = 0;
   advertising_watchdog_recoveries_ = 0;
+  presence_advertisement_ = {};
+  advertising_last_restart_reason_ = "NONE";
   accepted_connections_ = 0;
   disconnects_ = 0;
   challenges_issued_ = 0;
@@ -1047,21 +1113,9 @@ void GattServer::setAdvertisingExpected(bool expected) {
 
 void GattServer::setPresenceReady(bool ready, uint32_t epoch, bool force) {
 #if ENABLE_HARDWARELESS_RC
-  static bool previous_ready = false;
-  static uint32_t previous_epoch = 0;
-  if (!isEnabled() || (!force && previous_ready == ready && previous_epoch == epoch)) return;
-  // 128-bit service data: version, ready flag, little-endian boot-seeded epoch.
-  // 24-byte AD element + five-byte short name fits the 31-byte scan response.
-  const uint8_t hint[] = {1, static_cast<uint8_t>(ready),
-                         static_cast<uint8_t>(epoch), static_cast<uint8_t>(epoch >> 8),
-                         static_cast<uint8_t>(epoch >> 16), static_cast<uint8_t>(epoch >> 24)};
-  BLEAdvertisementData response;
-  response.setName("SGK");
-  response.setServiceData(BLEUUID(HARDWARELESS_SERVICE_UUID),
-                         String(reinterpret_cast<const char*>(hint), sizeof(hint)));
-  if (!BLEDevice::getAdvertising()->setScanResponseData(response)) return;
-  previous_ready = ready;
-  previous_epoch = epoch;
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  presence_advertisement_.request(ready, epoch, force);
+  servicePresenceAdvertisement(millis());
 #else
   (void)ready;
   (void)epoch;
@@ -1075,8 +1129,9 @@ void GattServer::update() {
   // doing protocol work, then flush again below for this update pass.
   production_lifecycle_sink.drainControls();
   deferred_event_sink.drain();
+  servicePresenceAdvertisement(millis());
   if (consumeAdvertisingRestartRequest() && isEnabled() &&
-      getActiveConnections() == 0) {
+      getActiveConnections() == 0 && !presence_advertisement_.pending) {
     restartAdvertising("disconnect", false);
   }
   serviceAdvertisingHealth(millis());
@@ -1215,6 +1270,7 @@ void GattServer::setOtaBusy(bool busy) {
   core_mutex.lock();
   in_flight_valid_ = false;
   if (busy) {
+    presence_advertisement_.request(false, presence_advertisement_.requested_epoch);
     adapter_state.abortOutput();
     adapter_state.clearWrites();
   }
@@ -1270,7 +1326,7 @@ void GattServer::setOnAuthPendingCallback(bool (*callback)(uint32_t now_ms)) {
 }
 
 void GattServer::setOnAuthGrantCallback(
-    bool (*callback)(sgk::LocalAccessAction action, uint32_t now_ms)) {
+    sgk::ResultReason (*callback)(sgk::LocalAccessAction action, uint32_t now_ms)) {
   s_auth_grant_callback = callback;
 }
 
@@ -1425,6 +1481,9 @@ GattServer::Telemetry GattServer::getTelemetry() {
   telemetry.advertising_restart_failures = advertising_restart_failures_;
   telemetry.advertising_watchdog_recoveries =
       advertising_watchdog_recoveries_;
+  telemetry.presence = presence_advertisement_;
+  telemetry.advertising_gap_ms = presence_advertisement_.gapMs(millis());
+  telemetry.advertising_last_restart_reason = advertising_last_restart_reason_;
   telemetry.accepted_connections = accepted_connections_;
   telemetry.disconnects = disconnects_;
   telemetry.challenges_issued = challenges_issued_;

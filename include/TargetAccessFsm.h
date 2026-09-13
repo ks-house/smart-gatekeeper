@@ -20,6 +20,11 @@ class TargetAccessFsm {
   GateState state() const { return state_; }
   bool isArmed() const { return is_armed_; }
   bool isRelayOn() const { return relay_on_; }
+  uint32_t armRemainingMs(uint32_t now_ms) const {
+    if (state_ != GateState::ARMED || !is_armed_) return 0;
+    const uint32_t elapsed = now_ms - pre_arm_start_ms_;
+    return elapsed >= pre_arm_duration_ms_ ? 0 : pre_arm_duration_ms_ - elapsed;
+  }
 
   OtaSafeState otaSafeState() const;
 

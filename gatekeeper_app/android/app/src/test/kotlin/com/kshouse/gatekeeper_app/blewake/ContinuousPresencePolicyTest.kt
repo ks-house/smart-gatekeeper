@@ -7,6 +7,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContinuousPresencePolicyTest {
+  @Test fun missingHintProbeHonorsDurableCooldownTargetBackoffAndUncertainProof() {
+    assertNull(ContinuousPresencePolicy.missingHintBlockingReason(null, 100_000))
+    val succeeded = session(DurableSessionState.SUCCEEDED)
+    assertEquals("MISSING_HINT_PROBE_COOLDOWN", ContinuousPresencePolicy.missingHintBlockingReason(succeeded, 61_999))
+    assertNull(ContinuousPresencePolicy.missingHintBlockingReason(succeeded, 62_000))
+    val busy = session(DurableSessionState.FAILED).copy(reasonCode = "TARGET_BUSY", retryAfterMs = 120_000)
+    assertEquals("FAILURE_BACKOFF", ContinuousPresencePolicy.missingHintBlockingReason(busy, 121_999))
+    assertNull(ContinuousPresencePolicy.missingHintBlockingReason(busy, 122_000))
+    assertEquals("PROOF_OUTCOME_UNCERTAIN", ContinuousPresencePolicy.missingHintBlockingReason(
+      session(DurableSessionState.PROOF_UNCERTAIN), Long.MAX_VALUE))
+  }
+
+  @Test fun missingHintV2RestrictionSurvivesProcessDeathWithoutChangingLegacyRows() {
+    val probe = session(DurableSessionState.RETRY_PENDING).copy(requiresFreshPresence = true, requiresFastV2 = true)
+    val restored = SessionLedgerCodec.decode(SessionLedgerCodec.encode(listOf(probe))).sessions.single()
+    assertTrue(restored.requiresFastV2)
+    assertTrue(restored.requiresFreshPresence)
+    val legacy = org.json.JSONArray(SessionLedgerCodec.encode(listOf(probe))).getJSONObject(0)
+      .apply { remove("requires_fast_v2") }
+    assertFalse(SessionLedgerCodec.decode(org.json.JSONArray().put(legacy).toString()).sessions.single().requiresFastV2)
+  }
+
   @Test fun transientFailureRecoversWithFreshReadyAfterFiveSecondsButHonorsTargetDelay() {
     val failure = session(DurableSessionState.FAILED).copy(reasonCode = "GATT_DISCONNECTED")
     assertFalse(ContinuousPresencePolicy.maySchedule(failure, 6_999))

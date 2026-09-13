@@ -209,6 +209,9 @@ class FakeAuthControlGate final : public sgk::AuthControlGate {
     last_now_ms = now_ms;
   }
 
+  sgk::ResultReason commitRejectionReason() const override { return rejection_reason; }
+  sgk::ResultReason rejection_reason = sgk::ResultReason::kInternalFailClosed;
+
   bool begin_result = true;
   bool commit_result = true;
   bool active = false;
@@ -384,6 +387,30 @@ void testFastV2BusyCausePreservesWireCompatibility() {
     CHECK(control.commit_calls == 0);
     CHECK(control.begin_calls == (ota_busy ? 0 : 1));
   }
+  // An eager/hintless peer may authenticate action-1 in automatic retry quiet.
+  // Its valid proof must receive the existing BUSY reason, never a success or
+  // a false signature/ACL failure. The proof cannot be replayed into a grant.
+  auto random = canonicalRandom();
+  FakeVerifier verifier(sgk::ResultReason::kOk);
+  FakeAuthControlGate control;
+  control.commit_result = false;
+  control.rejection_reason = sgk::ResultReason::kBusy;
+  EventRecorder events;
+  sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &events, &control);
+  start(protocol, 1000);
+  const auto owner = protocol.connectionOwner();
+  CHECK(protocol.beginFastSession(owner, 1100));
+  CHECK(drain(protocol).size() == 1);
+  const auto value = proof(protocol.sessionId(), 1, sgk::kProofSize, sgk::kFastProtocolVersion);
+  CHECK(!send(protocol, sgk::MessageType::kFastProof, value.data(), value.size(), 1200, 502, 2, owner));
+  const auto outputs = drain(protocol);
+  CHECK(outputs.size() == 1 && outputs[0].type == sgk::MessageType::kFastResult);
+  CHECK(u16(outputs[0].bytes.data() + 18) == static_cast<uint16_t>(sgk::ResultReason::kBusy));
+  CHECK(events.events.back().reason == sgk::EventReason::kTargetBusy);
+  CHECK(control.abort_calls == 1 && !control.active);
+  control.commit_result = true;
+  CHECK(!send(protocol, sgk::MessageType::kFastProof, value.data(), value.size(), 1300, 502, 3, owner));
+  CHECK(control.commit_calls == 1);
 }
 
 void testFastV2ReportsAclProtocolMismatch() {
@@ -884,13 +911,14 @@ void testAuthenticatedActionControlBinding() {
     CHECK(u16(output[0].bytes.data() + 18) == 0);
   }
 
-  {
+  for (auto rejection : {sgk::ResultReason::kInternalFailClosed, sgk::ResultReason::kBusy}) {
     auto random = canonicalRandom();
     FakeVerifier verifier(sgk::ResultReason::kOk);
     EventRecorder downstream;
     sgk::LocalGattLifecycleBridge events(&downstream);
     FakeAuthControlGate control;
     control.commit_result = false;
+    control.rejection_reason = rejection;
     sgk::ProtocolCore core(random, verifier, canonicalDoor(), &events,
                            &control);
     start(core, 2000);
@@ -905,7 +933,7 @@ void testAuthenticatedActionControlBinding() {
     const auto output = drain(core);
     CHECK(output.size() == 1);
     CHECK(u16(output[0].bytes.data() + 18) ==
-          static_cast<uint16_t>(sgk::ResultReason::kInternalFailClosed));
+          static_cast<uint16_t>(rejection));
     const auto terminated = std::find_if(
         downstream.events.begin(), downstream.events.end(),
         [](const sgk::Event& event) {

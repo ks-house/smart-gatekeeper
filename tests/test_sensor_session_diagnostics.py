@@ -80,6 +80,23 @@ class SensorSessionDiagnosticsTest(unittest.TestCase):
             summary[key] = 4000
         status["sensor_session_summary"] = summary
         status["sensor_summary_auth"] = {"version": 1, "key_id": "aaaa", "tag": "a" * 32}
+        # Optional unsigned snapshots must fit alongside the full signed V1
+        # outbox head. Count nested fields, not just the old flat document.
+        for variable, key in (("rearm", "passage_rearm"),
+                              ("observation", "sensor_observation"),
+                              ("presence", "ble_presence")):
+            status[key] = {name: 0xFFFFFFFF for name in re.findall(
+                rf'{variable}\["([^"]+)"\]', body)}
+        status["sensor_observation"]["qualification"] = {
+            name: 0xFFFFFFFF for name in re.findall(r'qualification\["([^"]+)"\]', body)
+        }
+        for key, fields in {
+            "passage_rearm": {"auth_reason": 17, "pulse_reason": 28, "pulse_source": 13},
+            "sensor_observation": {"kind": 12, "phase": 11},
+            "ble_presence": {"status": 19, "last_result": 18, "restart_reason": 14},
+        }.items():
+            for field, length in fields.items():
+                status[key][field] = "x" * length
         ota = (ROOT / "src/OtaManager.cpp").read_text().split(
             "void OtaManager::appendDiagnostics", 1)[1].split(
             "void OtaManager::setSafeStateProvider", 1)[0]

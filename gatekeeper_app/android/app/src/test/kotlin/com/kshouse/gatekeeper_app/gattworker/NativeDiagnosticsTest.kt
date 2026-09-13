@@ -9,6 +9,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class NativeDiagnosticsTest {
+  @Test fun queuePressureEvictsHeartbeatBeforeFailureContext() {
+    val events = JSONArray().put(JSONObject().put("sequence", 1).put("event", "MANUAL_OPEN_CONTEXT"))
+    for (sequence in 2..257) events.put(JSONObject().put("sequence", sequence).put("event", "HEARTBEAT"))
+    assertEquals(1, NativeDiagnosticOutboxPolicy.bound(events))
+    assertEquals(1, events.getJSONObject(0).getInt("sequence"))
+    assertEquals(3, events.getJSONObject(1).getInt("sequence"))
+  }
   @Test(timeout = 5000) fun stalledJournalIsBoundedAndNeverExecutesOverflowOnTheCaller() {
     val journal = NativeDiagnosticJournal()
     val started = CountDownLatch(1)

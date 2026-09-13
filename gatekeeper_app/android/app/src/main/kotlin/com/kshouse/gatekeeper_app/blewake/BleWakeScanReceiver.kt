@@ -19,20 +19,26 @@ class BleWakeScanReceiver : BroadcastReceiver() {
     val pendingResult = goAsync()
     try {
       val receivedElapsedNanos = SystemClock.elapsedRealtimeNanos()
+      val receivedEpochMs = System.currentTimeMillis()
       val results = scanResults(intent)
       val matchingResults = results.filter { result ->
         BleWakeContract.matchesManufacturerData(
           result.scanRecord?.getManufacturerSpecificData(BleWakeContract.APPLE_COMPANY_ID),
         )
       }
-      val selected = matchingResults.maxByOrNull { it.rssi }
-      val newestTimestamp = selected?.timestampNanos
       val errorCode = intent.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, ScanCallbackError.NONE)
       val callbackType = intent.getIntExtra(BluetoothLeScanner.EXTRA_CALLBACK_TYPE, 0)
-      // MATCH_LOST and error callbacks are not positive packet reception.
-      if (BleScanDiagnostics.isPacketObservation(errorCode, callbackType, matchingResults.size)) {
-        BleScanDiagnostics.packet(context.applicationContext)
-      }
+      // A strong stale entry in an OS batch must not hide a weaker fresh packet.
+      val selected = BleScanObservationPolicy.selectMatching(matchingResults,
+        { BleScanObservationPolicy.ageMs(it.timestampNanos, receivedElapsedNanos) },
+        { it.rssi }, { it.timestampNanos })
+      val newestTimestamp = selected?.timestampNanos
+      val hintBytes = selected?.scanRecord?.getServiceData(ParcelUuid(GattProtocol.SERVICE_UUID))
+      BleScanDiagnostics.callback(context.applicationContext, errorCode, callbackType,
+        results.size, matchingResults.map { result ->
+          BleScanObservationPolicy.ageMs(result.timestampNanos, receivedElapsedNanos) to
+            BleScanObservationPolicy.hint(result.scanRecord?.getServiceData(ParcelUuid(GattProtocol.SERVICE_UUID)))
+        }, receivedEpochMs)
       // Packet callbacks can arrive ten times a second. Keep registration
       // evidence bounded instead of synchronously committing preferences per packet.
       if (errorCode != 0 || callbackType != 1 ||
@@ -45,16 +51,14 @@ class BleWakeScanReceiver : BroadcastReceiver() {
         scenario = "field",
         iteration = null,
         success = errorCode == ScanCallbackError.NONE && matchingResults.isNotEmpty(),
-        receivedEpochMs = System.currentTimeMillis(),
-        receivedElapsedMs = SystemClock.elapsedRealtime(),
+        receivedEpochMs = receivedEpochMs,
+        receivedElapsedMs = receivedElapsedNanos / 1_000_000L,
         scanTimestampNanos = newestTimestamp,
-        latencyMs = newestTimestamp?.let {
-          ((receivedElapsedNanos - it).coerceAtLeast(0L)) / 1_000_000.0
-        },
+        latencyMs = newestTimestamp?.let { BleScanObservationPolicy.ageMs(it, receivedElapsedNanos) },
         callbackType = callbackType,
         errorCode = errorCode,
         resultCount = matchingResults.size,
-        strongestRssi = matchingResults.maxOfOrNull { it.rssi },
+        strongestRssi = selected?.rssi,
         processId = PROCESS_ID,
         screenInteractive = context.getSystemService(PowerManager::class.java)?.isInteractive ?: true,
         deviceAddress = try {
@@ -63,9 +67,8 @@ class BleWakeScanReceiver : BroadcastReceiver() {
           BleGattRuntimeEnvironment.recordBlocked(context, "PERMISSION_DENIED")
           null
         },
-        readyHint = PresenceReadyHint.parse(
-          selected?.scanRecord?.getServiceData(ParcelUuid(GattProtocol.SERVICE_UUID)),
-        ),
+        readyHint = PresenceReadyHint.parse(hintBytes),
+        readyHintMalformed = BleScanObservationPolicy.hint(hintBytes) == BleScanObservationPolicy.Hint.MALFORMED,
       )
       BleWakeNativeEntrypoint.onWake(context, event)
     } finally {

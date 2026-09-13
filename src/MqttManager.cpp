@@ -23,6 +23,7 @@
 #include "DurablePreferences.h"
 #include "RestartEvidenceRetention.h"
 #include "UltrasonicSensor.h"
+#include "PassageRearmPolicy.h"
 
 #include <cstring>
 #include <ctime>
@@ -2145,7 +2146,7 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
 
     // Main-loop-only reusable storage keeps the expanded diagnostic snapshot
     // out of the loop task stack while TLS publication is still in scope.
-    static StaticJsonDocument<5632> doc;
+    static StaticJsonDocument<7168> doc;
     doc.clear();
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
@@ -2291,6 +2292,101 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["sensor_rearm_blocked"] = g_sensor_rearm_blocked;
     extern sgk::SensorClearanceState g_sensor_clearance_state;
     doc["sensor_clearance_state"] = sgk::sensorClearanceName(g_sensor_clearance_state);
+    // Optional unsigned observations; never include these in access_auth or
+    // the durable V1 sensor summary. Null means absent, never a 9990mm echo.
+    const uint32_t observed_now = millis();
+    extern sgk::PassageRearmTelemetry g_passage_rearm_telemetry;
+    const auto& r = g_passage_rearm_telemetry;
+    JsonObject rearm = doc.createNestedObject("passage_rearm");
+    rearm["auth_ready"] = r.auth_ready;
+    rearm["pulse_ready"] = r.pulse_ready;
+    rearm["auth_reason"] = r.auth_reason;
+    rearm["pulse_reason"] = r.pulse_reason;
+    rearm["blocked"] = g_sensor_rearm_blocked;
+    if (g_sensor_rearm_blocked) rearm["blocked_since_ms"] = r.blocked_since_ms;
+    else rearm["blocked_since_ms"] = nullptr;
+    rearm["blocked_age_ms"] = r.blocked_age_ms;
+    rearm["pulse_source"] = sgk::passagePulseSourceName(r.pulse_source);
+    if (r.pulse_source != sgk::PassagePulseSource::kNone) rearm["last_pulse_ms"] = r.last_pulse_ms;
+    else rearm["last_pulse_ms"] = nullptr;
+    rearm["clear_samples"] = r.clear_samples;
+    rearm["retry_after_ms"] = r.retry_after_ms;
+
+    const auto& o = UltrasonicSensor::observation;
+    JsonObject observation = doc.createNestedObject("sensor_observation");
+    observation["kind"] = sgk::sensorSampleKindName(o.kind);
+    observation["phase"] = o.sampled() ? sgk::sensorSamplePhaseName(o.phase) : "NOT_SAMPLED";
+    observation["valid"] = o.validNow();
+    if (o.sampled()) {
+      observation["sampled_ms"] = o.sampled_ms;
+      observation["sample_age_ms"] = observed_now - o.sampled_ms;
+      observation["echo_us"] = o.echo_us;
+    } else {
+      observation["sampled_ms"] = nullptr;
+      observation["sample_age_ms"] = nullptr;
+      observation["echo_us"] = nullptr;
+    }
+    if (o.raw_mm != sgk::kNoSensorMeasurement) observation["raw_mm"] = o.raw_mm;
+    else observation["raw_mm"] = nullptr;
+    if (o.last_valid_mm != sgk::kNoSensorMeasurement) {
+      observation["last_valid_mm"] = o.last_valid_mm;
+      observation["last_valid_age_ms"] = observed_now - o.last_valid_ms;
+    } else {
+      observation["last_valid_mm"] = nullptr;
+      observation["last_valid_age_ms"] = nullptr;
+    }
+    observation["idle_samples"] = o.idle_samples;
+    observation["armed_samples"] = o.armed_samples;
+    observation["cooldown_samples"] = o.cooldown_samples;
+    observation["no_echo"] = o.no_echo;
+    observation["out_of_range"] = o.out_of_range;
+    observation["valid_samples"] = o.valid;
+    observation["invalid_streak"] = o.invalid_streak;
+    const auto& q = UltrasonicSensor::qualification;
+    JsonObject qualification = observation.createNestedObject("qualification");
+    qualification["active"] = q.active;
+    if (q.active || q.samples != 0) qualification["started_ms"] = q.started_ms;
+    else qualification["started_ms"] = nullptr;
+    if (!q.active && q.samples != 0) qualification["ended_ms"] = q.ended_ms;
+    else qualification["ended_ms"] = nullptr;
+    if (q.median_mm != sgk::kNoSensorMeasurement) qualification["median_mm"] = q.median_mm;
+    else qualification["median_mm"] = nullptr;
+    if (q.samples != 0) qualification["median_age_ms"] = observed_now - q.median_ms;
+    else qualification["median_age_ms"] = nullptr;
+    qualification["samples"] = q.samples;
+    qualification["valid_streak"] = q.valid_streak;
+    qualification["max_valid_streak"] = q.max_valid_streak;
+    qualification["near_streak"] = q.near_streak;
+    qualification["max_near_streak"] = q.max_near_streak;
+    qualification["median_rejects"] = q.median_rejects;
+    qualification["candidates"] = q.candidates;
+    qualification["rearm_rejects"] = q.rearm_rejects;
+    qualification["fsm_rejects"] = q.fsm_rejects;
+    qualification["triggers"] = q.triggers;
+
+    const auto& p = gattTelemetry.presence;
+    JsonObject presence = doc.createNestedObject("ble_presence");
+    presence["requested_ready"] = p.requested_ready;
+    presence["requested_epoch"] = p.requested_epoch;
+    presence["applied_ready"] = p.applied_ready;
+    presence["applied_epoch"] = p.applied_epoch;
+    presence["applied_valid"] = p.applied_valid;
+    presence["pending"] = p.pending;
+    presence["status"] = p.status;
+    presence["last_result"] = p.last_result;
+    presence["attempts"] = p.attempts;
+    presence["failures"] = p.failures;
+    presence["retries"] = p.retries;
+    presence["stops"] = p.stops;
+    if (p.attempts != 0) presence["last_attempt_ms"] = p.last_attempt_ms;
+    else presence["last_attempt_ms"] = nullptr;
+    if (p.applied_valid) presence["applied_age_ms"] = observed_now - p.applied_ms;
+    else presence["applied_age_ms"] = nullptr;
+    presence["gap_count"] = p.gap_count;
+    presence["gap_ms"] = gattTelemetry.advertising_gap_ms;
+    presence["last_gap_ms"] = p.last_gap_ms;
+    presence["restart_reason"] = gattTelemetry.advertising_last_restart_reason != nullptr ?
+        gattTelemetry.advertising_last_restart_reason : "NONE";
     const auto* sensorRecord = sensorSummaryQueue.front();
     if (sensorRecord != nullptr) {
         const auto& s = sensorRecord->summary;

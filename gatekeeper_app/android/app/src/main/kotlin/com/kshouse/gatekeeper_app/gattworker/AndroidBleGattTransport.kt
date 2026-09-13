@@ -155,10 +155,13 @@ internal class GattConnectionCoordinator {
   }
 
   @Synchronized
-  fun onServicesFailed(connection: Connection, owner: Any, status: Int?): Boolean {
+  fun onServicesFailed(connection: Connection, owner: Any, status: Int?,
+                       failure: TransportFailureCode = if (status == null)
+                         TransportFailureCode.SERVICE_DISCOVERY_START_REJECTED
+                       else TransportFailureCode.SERVICE_DISCOVERY_CALLBACK_FAILED): Boolean {
     if (!acceptCallbackLocked(connection, owner)) return false
     return connection.servicesReady.completeExceptionally(
-      GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED, status),
+      GattTransportException(failure, status),
     )
   }
 
@@ -305,7 +308,10 @@ internal class GattConnectionCoordinator {
   }
 }
 
-class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
+class AndroidBleGattTransport @JvmOverloads constructor(
+  private val context: Context,
+  private val requireFastV2: Boolean = false,
+) : BleGattTransport {
   private val messageId = AtomicInteger(1)
   private val callbackCoordinator = GattConnectionCoordinator()
   private var connection: GattConnectionCoordinator.Connection? = null
@@ -349,17 +355,23 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     newConnection.connected.await()
     newConnection.servicesReady.await()
     negotiateMtu(newGatt, newConnection)
+    // A terminal callback retains its status even if cached services remain readable.
+    callbackCoordinator.currentFailure(newConnection)?.let { throw it }
     val service = newGatt.getService(GattProtocol.SERVICE_UUID)
-      ?: throw GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED)
+      ?: throw GattTransportException(TransportFailureCode.SERVICE_MISSING)
     val fastRxPresent = service.getCharacteristic(GattProtocol.FAST_RX_UUID) != null
     val fastTxPresent = service.getCharacteristic(GattProtocol.FAST_TX_UUID) != null
     protocolMode = try {
       selectGattProtocolMode(fastRxPresent, fastTxPresent)
     } catch (error: IllegalArgumentException) {
       throw GattTransportException(
-        TransportFailureCode.SERVICE_DISCOVERY_FAILED,
+        TransportFailureCode.CHARACTERISTIC_MISSING,
         cause = error,
       )
+    }
+    if (requireFastV2 && protocolMode != GattProtocolMode.FAST_V2) {
+      callbackCoordinator.currentFailure(newConnection)?.let { throw it }
+      throw GattTransportException(TransportFailureCode.PROTOCOL_V2_REQUIRED)
     }
     if (protocolMode == GattProtocolMode.FAST_V2) {
       enableIndication(GattProtocol.FAST_TX_UUID)
@@ -502,9 +514,13 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     }
   }
 
-  private fun characteristic(uuid: java.util.UUID): BluetoothGattCharacteristic =
-    gatt?.getService(GattProtocol.SERVICE_UUID)?.getCharacteristic(uuid)
-      ?: throw GattTransportException(TransportFailureCode.SERVICE_DISCOVERY_FAILED)
+  private fun characteristic(uuid: java.util.UUID): BluetoothGattCharacteristic {
+    val activeGatt = gatt ?: throw GattTransportException(TransportFailureCode.DISCONNECTED)
+    val service = activeGatt.getService(GattProtocol.SERVICE_UUID)
+      ?: throw GattTransportException(TransportFailureCode.SERVICE_MISSING)
+    return service.getCharacteristic(uuid)
+      ?: throw GattTransportException(TransportFailureCode.CHARACTERISTIC_MISSING)
+  }
 
   @Suppress("DEPRECATION")
   private fun writeCharacteristic(
@@ -580,10 +596,11 @@ class AndroidBleGattTransport(private val context: Context) : BleGattTransport {
     }
 
     override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-      if (status == BluetoothGatt.GATT_SUCCESS && gatt.getService(GattProtocol.SERVICE_UUID) != null) {
+      val failure = GattDiscoveryFailurePolicy.callback(status, gatt.getService(GattProtocol.SERVICE_UUID) != null)
+      if (failure == null) {
         callbackCoordinator.onServicesReady(connection, gatt)
       } else {
-        callbackCoordinator.onServicesFailed(connection, gatt, status)
+        callbackCoordinator.onServicesFailed(connection, gatt, status, failure)
       }
     }
 

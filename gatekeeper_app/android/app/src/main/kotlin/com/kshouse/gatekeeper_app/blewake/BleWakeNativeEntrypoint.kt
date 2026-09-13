@@ -18,7 +18,8 @@ object BleWakeDispatchPolicy {
     event.errorCode != 0 -> BleWakeDispatchAction.IGNORE
     event.callbackType and ScanSettings.CALLBACK_TYPE_MATCH_LOST != 0 ->
       BleWakeDispatchAction.EXIT
-    event.success -> BleWakeDispatchAction.PRESENCE
+    event.success && event.resultCount > 0 &&
+      BleScanObservationPolicy.positiveCallback(event.errorCode, event.callbackType) -> BleWakeDispatchAction.PRESENCE
     else -> BleWakeDispatchAction.IGNORE
   }
 }
@@ -31,6 +32,7 @@ object BleWakeNativeEntrypoint {
   private val skippedJournal = ContinuousSkipJournalPolicy()
 
   private fun recordSkipped(context: Context, event: BleWakeEvent, reason: String) {
+    BleScanDiagnostics.dispatch(context, BleDispatchDiagnostic.SKIPPED, reason.uppercase(java.util.Locale.ROOT))
     NativeDiagnostics.record(context, NativeDiagnostics.Event.DISPATCH_SKIPPED, reason,
       ready = event.readyHint?.ready, epoch = event.readyHint?.epoch)
     if (skippedJournal.shouldRecord(reason, event.receivedElapsedMs)) {
@@ -46,8 +48,13 @@ object BleWakeNativeEntrypoint {
     val appContext = context.applicationContext
     when (BleWakeDispatchPolicy.classify(event)) {
       BleWakeDispatchAction.EXIT -> {
+        val lostAt = event.scanTimestampNanos?.takeIf { it > 0 }?.div(1_000_000L)
+        if (!ContinuousPresenceTracker.exit(event.deviceAddress, lostAt)) {
+          BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.SKIPPED, "STALE_EXIT_CALLBACK")
+          NativeDiagnostics.record(appContext, NativeDiagnostics.Event.DISPATCH_SKIPPED, "STALE_EXIT_CALLBACK")
+          return
+        }
         NativeDiagnostics.record(appContext, NativeDiagnostics.Event.SCAN_EXIT)
-        ContinuousPresenceTracker.exit(event.deviceAddress)
         BleWakeJournal.record(
           appContext,
           event.copy(source = "ble_scan_exit", success = false),
@@ -55,36 +62,37 @@ object BleWakeNativeEntrypoint {
         AccessResultNotifier.dismiss(appContext)
       }
       BleWakeDispatchAction.PRESENCE -> {
-        val continuous = event.callbackType == ScanSettings.CALLBACK_TYPE_ALL_MATCHES
-        if (continuous || event.readyHint != null) {
-          val address = event.deviceAddress ?: run {
-            recordSkipped(appContext, event, "ble_scan_no_address")
-            return
-          }
-          // Reject stale OS batches before treating them as current proximity.
-          if (event.latencyMs == null || !event.latencyMs.isFinite() ||
-            event.latencyMs < 0 || event.latencyMs > ContinuousPresencePolicy.FRESH_MS) {
-            recordSkipped(appContext, event, "ble_scan_stale")
-            return
-          }
-          ContinuousPresenceTracker.observe(address, event.receivedElapsedMs - event.latencyMs.toLong())
-          val hint = event.readyHint ?: run {
-            recordSkipped(appContext, event, "ble_scan_no_ready_hint")
-            return // N-1 Target retains FIRST_MATCH only.
-          }
-          if (event.receivedElapsedMs - lastContinuousJournalMs >= 2_000) {
-            lastContinuousJournalMs = event.receivedElapsedMs
-            BleWakeJournal.record(appContext, event)
-            AuthenticatedTargetLocatorStore(appContext).record(address)
-          }
-          if (hint.ready) BleGattWorkScheduler.onContinuousPresence(appContext, address, hint.epoch)
-          else NativeDiagnostics.record(appContext, NativeDiagnostics.Event.DISPATCH_SKIPPED,
-            "TARGET_NOT_READY", ready = false, epoch = hint.epoch)
+        val address = event.deviceAddress ?: run {
+          recordSkipped(appContext, event, "ble_scan_no_address")
           return
         }
-        BleWakeJournal.record(appContext, event)
-        event.deviceAddress?.let { AuthenticatedTargetLocatorStore(appContext).record(it) }
-        BleGattWorkScheduler.onPresence(appContext, event.deviceAddress, event.presenceEventId())
+        // FIRST_MATCH has the same freshness requirement as ALL_MATCHES.
+        if (!BleScanObservationPolicy.fresh(event.latencyMs)) {
+          recordSkipped(appContext, event, "ble_scan_stale")
+          return
+        }
+        ContinuousPresenceTracker.observe(address, event.scanTimestampNanos?.takeIf { it > 0 }?.div(1_000_000L)
+          ?: (event.receivedElapsedMs - event.latencyMs!!.toLong()))
+        if (event.readyHintMalformed) {
+          recordSkipped(appContext, event, "ble_scan_malformed_ready_hint")
+          return
+        }
+        if (event.receivedElapsedMs - lastContinuousJournalMs >= 2_000) {
+          lastContinuousJournalMs = event.receivedElapsedMs
+          BleWakeJournal.record(appContext, event)
+          AuthenticatedTargetLocatorStore(appContext).record(address)
+        }
+        val hint = event.readyHint
+        if (hint == null) {
+          // Missing scan response is an optimization loss, never an ACL/proof.
+          BleGattWorkScheduler.onMissingReadyHint(appContext, address)
+        } else if (hint.ready) {
+          BleGattWorkScheduler.onContinuousPresence(appContext, address, hint.epoch)
+        } else {
+          BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.SKIPPED, "TARGET_NOT_READY")
+          NativeDiagnostics.record(appContext, NativeDiagnostics.Event.DISPATCH_SKIPPED,
+            "TARGET_NOT_READY", ready = false, epoch = hint.epoch)
+        }
       }
       BleWakeDispatchAction.IGNORE -> BleWakeJournal.record(appContext, event)
     }

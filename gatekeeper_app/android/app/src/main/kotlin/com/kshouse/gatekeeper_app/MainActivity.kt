@@ -33,6 +33,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity: FlutterActivity() {
+    override fun onResume() {
+        super.onResume()
+        runCatching {
+            com.kshouse.gatekeeper_app.blewake.BleWakeRegistrar.onAppForeground(applicationContext)
+        }.onFailure {
+            // Scanner recovery must never make the independent updater/UI unavailable.
+            runCatching { NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.ENQUEUE_FAILED,
+                "BLE_FOREGROUND_RECOVERY_ERROR") }
+        }
+    }
+
     private val nativeActionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private companion object {
@@ -65,7 +76,12 @@ class MainActivity: FlutterActivity() {
                                 call.argument<Map<String, Any?>>("fieldTest"))
                             "status" -> NativeDiagnostics.status(applicationContext)
                             "requestCapture" -> {
-                                NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.CAPTURE_REQUESTED)
+                                val reason = call.argument<String>("reason")?.takeIf {
+                                    it in setOf("USER_REQUEST", "MANUAL_OPEN_START", "MANUAL_OPEN_FINISHED", "MANUAL_OPEN_FAILED", "FIELD_TEST_START")
+                                } ?: "USER_REQUEST"
+                                if (reason.startsWith("MANUAL_OPEN_")) {
+                                    NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.MANUAL_OPEN_CONTEXT, reason)
+                                } else NativeDiagnostics.requestNow(applicationContext, reason)
                                 NativeDiagnostics.status(applicationContext)
                             }
                             "clear" -> { NativeDiagnostics.clear(applicationContext); NativeDiagnostics.status(applicationContext) }

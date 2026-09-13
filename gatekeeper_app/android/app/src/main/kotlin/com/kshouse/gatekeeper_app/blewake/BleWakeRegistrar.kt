@@ -11,6 +11,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import com.flutterbeacon.CrossProcessBleOwnerCoordinator
 import com.kshouse.gatekeeper_app.gattworker.NativeDiagnostics
+import com.kshouse.gatekeeper_app.gattworker.BleGattFeatureFlagStore
+import com.kshouse.gatekeeper_app.gattworker.SharedPreferencesSessionLedger
+import com.kshouse.gatekeeper_app.gattworker.DurableSessionState
 import java.util.UUID
 
 data class BleWakeRegistrationResult(
@@ -61,6 +64,32 @@ object BleWakeRegistrar {
   private const val REQUEST_CODE = 1414
   private val processId = UUID.randomUUID().toString()
 
+  /** Native foreground seam; registration is never reported as fresh RF evidence. */
+  fun onAppForeground(context: Context) {
+    recoverRequested(context.applicationContext, BleScanRecoveryReason.APP_FOREGROUND)
+  }
+
+  @Synchronized
+  internal fun recoverRequested(context: Context, reason: BleScanRecoveryReason): BleWakeRegistrationResult {
+    if (!isEnabled(context) || !BleGattFeatureFlagStore(context).decision().newWorkerEnabled) return status(context)
+    val current = status(context)
+    if (inFlightSession(context)) return current
+    val now = System.currentTimeMillis()
+    val scan = BleScanDiagnostics.snapshot(context)
+    if (current.reconciled && BleScanRecoveryPolicy.freshPacket(now, scan["lastPacketAtEpochMs"] as? Long)) return current
+    if (!BleScanRecoveryObserver.begin(context, reason)) return current
+    BleScanDiagnostics.record(context, BleScanDiagnostics.Event.RECOVERY_ATTEMPT)
+    val registration = registerOnce(context)
+    finishRegistration(context, registration)
+    return registration
+  }
+
+  private fun inFlightSession(context: Context): Boolean {
+    val last = SharedPreferencesSessionLedger(context).last()
+    return last?.state in setOf(DurableSessionState.QUEUED, DurableSessionState.RUNNING,
+      DurableSessionState.RETRY_PENDING, DurableSessionState.PROOF_UNCERTAIN)
+  }
+
   @Synchronized
   fun register(context: Context): BleWakeRegistrationResult {
     val current = status(context)
@@ -71,16 +100,23 @@ object BleWakeRegistrar {
       return current
     }
     if (current.reconciled) {
+      if (inFlightSession(context)) return current
       BleScanDiagnostics.record(context, BleScanDiagnostics.Event.RECOVERY_ATTEMPT)
     }
+    BleScanRecoveryObserver.begin(context, if (current.reconciled)
+      BleScanRecoveryReason.QUIET_REFRESH else BleScanRecoveryReason.PROCESS_START)
     val result = registerOnce(context)
+    finishRegistration(context, result)
+    return result
+  }
+
+  private fun finishRegistration(context: Context, result: BleWakeRegistrationResult) {
     BleWakeReconciliationScheduler.ensureWatchdog(context)
     if (result.reconciled) {
       BleWakeReconciliationScheduler.cancel(context)
     } else {
       BleWakeReconciliationScheduler.scheduleIfRetryable(context, result)
     }
-    return result
   }
 
   @Synchronized
@@ -89,6 +125,8 @@ object BleWakeRegistrar {
     if (!evidence.requested) {
       return result(evidence.copy(status = "not_registered"))
     }
+    if (inFlightSession(context)) return result(evidence.copy(status = "native_owner_unavailable"))
+    BleScanRecoveryObserver.begin(context, BleScanRecoveryReason.CALLBACK_ERROR)
     return registerOnce(context)
   }
 
@@ -115,8 +153,10 @@ object BleWakeRegistrar {
       val adapter = manager?.adapter ?: return fail(context, attempt, "bluetooth_unavailable")
       val scanner = adapter.bluetoothLeScanner
         ?: return fail(context, attempt, "bluetooth_off_or_scanner_unavailable")
-      val nativeLease = CrossProcessBleOwnerCoordinator.forContext(context).tryAcquireNative()
-        ?: return fail(context, attempt, "native_owner_unavailable")
+      val nativeLease = CrossProcessBleOwnerCoordinator.forContext(context).tryAcquireNative() ?: run {
+        BleScanDiagnostics.dispatch(context, BleDispatchDiagnostic.OWNER_WAIT, "NATIVE_OWNER_UNAVAILABLE")
+        return fail(context, attempt, "native_owner_unavailable")
+      }
       val filter = ScanFilter.Builder()
         .setManufacturerData(
           BleWakeContract.APPLE_COMPANY_ID,
@@ -183,6 +223,8 @@ object BleWakeRegistrar {
     writeEvidence(context, stopped)
     BleWakeReconciliationScheduler.cancel(context)
     BleWakeReconciliationScheduler.cancelWatchdog(context)
+    BleScanRecoveryObserver.cancel(context)
+    ContinuousPresenceTracker.exit(null)
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
       return result(stopped)
     }
@@ -194,7 +236,6 @@ object BleWakeRegistrar {
         scanner.stopScan(callbackIntent(context))
         scanner.stopScan(callbackIntent(context, continuous = true))
       }
-      ContinuousPresenceTracker.exit(null)
       result(stopped)
     } catch (_: SecurityException) {
       // The durable request is already disabled. Report the platform stop
@@ -259,8 +300,12 @@ object BleWakeRegistrar {
     writeEvidence(context, updated)
     val registration = result(updated)
     if (errorCode != 0) {
+      ContinuousPresenceTracker.exit(null)
       BleScanDiagnostics.record(context, BleScanDiagnostics.Event.CALLBACK_ERROR, errorCode)
-      BleWakeReconciliationScheduler.scheduleIfRetryable(context, registration)
+      BleScanRecoveryObserver.begin(context, BleScanRecoveryReason.CALLBACK_ERROR)
+      if (evidence.status != "scan_callback_error" || evidence.errorCode != errorCode || evidence.reconciled) {
+        BleWakeReconciliationScheduler.scheduleIfRetryable(context, registration)
+      }
     }
     return registration
   }

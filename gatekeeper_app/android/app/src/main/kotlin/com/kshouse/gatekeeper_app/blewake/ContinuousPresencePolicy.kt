@@ -20,7 +20,8 @@ data class PresenceReadyHint(val ready: Boolean, val epoch: Long) {
 class ContinuousSkipJournalPolicy {
   private val last = mutableMapOf<String, Long>()
   @Synchronized fun shouldRecord(reason: String, now: Long): Boolean {
-    if (reason !in setOf("ble_scan_no_address", "ble_scan_stale", "ble_scan_no_ready_hint")) return false
+    if (reason !in setOf("ble_scan_no_address", "ble_scan_stale", "ble_scan_no_ready_hint",
+        "ble_scan_malformed_ready_hint")) return false
     val previous = last[reason]
     if (previous != null && now >= previous && now - previous < 10_000) return false
     last[reason] = now
@@ -30,6 +31,16 @@ class ContinuousSkipJournalPolicy {
 
 object ContinuousPresencePolicy {
   const val FRESH_MS = 5_000L
+  // Without an epoch, permit at most one probe per minute, including after
+  // success/process restart. The durable last-session time bounds repeated RF.
+  const val MISSING_HINT_PROBE_COOLDOWN_MS = 60_000L
+
+  fun missingHintBlockingReason(last: DurableGattSession?, now: Long): String? =
+    blockingReason(last, now) ?: if (last != null &&
+      (now < last.updatedEpochMs || now - last.updatedEpochMs < MISSING_HINT_PROBE_COOLDOWN_MS))
+      "MISSING_HINT_PROBE_COOLDOWN" else null
+
+  fun missingHintEventId(now: Long): String = "missing-hint-v2-${now / MISSING_HINT_PROBE_COOLDOWN_MS}"
   // A terminal failure must not permanently consume an otherwise unchanged
   // ready epoch. Only call after maySchedule's failure backoff has elapsed.
   fun eventId(epoch: Long, last: DurableGattSession?): String =
@@ -71,8 +82,16 @@ object ContinuousPresenceTracker {
     if (seen.size >= 16 && address !in seen) seen.remove(seen.keys.first())
     seen[address] = now
   }
-  @Synchronized fun exit(address: String?) {
-    if (address == null) seen.clear() else seen.remove(address)
+  @Synchronized fun exit(address: String?, lostPacketElapsedMs: Long? = null): Boolean {
+    if (address == null) {
+      seen.clear()
+      return true
+    }
+    // FIRST_MATCH/MATCH_LOST and ALL_MATCHES are distinct OS deliveries. A
+    // delayed loss for an older advertisement cannot erase a newer matching RF sample.
+    if (lostPacketElapsedMs != null && (seen[address] ?: Long.MIN_VALUE) > lostPacketElapsedMs) return false
+    seen.remove(address)
+    return true
   }
   @Synchronized fun fresh(address: String, now: Long): Boolean =
     seen[address]?.let { now >= it && now - it <= ContinuousPresencePolicy.FRESH_MS } == true
