@@ -9,7 +9,10 @@
 | Flutter | 115 tests pass; analyzer reports no issues; ready→upload-disable clears readiness | UI/presentation regression only |
 | Target | Personal compile/link pass, RAM97400/327680 and flash1855872/7340032; unchanged pins, dual-slot OTA and sensor thresholds | Not an installed firmware or physical sensor proof |
 | MQTT capture | StrictTLS public4883, subscribe-only45s,4 allowlisted channels, one bounded segment/no eviction | Local capture path verified; no control command |
-| Rollout | Backend PR407 merged7afb9f7; exact-main deployment in progress; new app/Target not yet published | Device version/VALID and physical test remain separate |
+| Backend deployment | main7afb9f7/schema018 active22:25:32 KST, signed NAS apply/status match and public readiness12 checks; late rows1017–1020 and post-deploy N-1 row1049 verified | Server deployment PASS; old reports have explicit event gaps |
+| Mobile publication | main5ca450a/44801, primary and fallback each55659673B, SHA256270804ce20274a7a4320f692c6c16bf9fd4561c5a297b540a3f74ba1ec21bf38 | Publication PASS; owner installation unverified |
+| Target497 attempt | Exact signed497 installed/boot902, then health heap timeout restored494/boot903; unchanged497 quarantined | Installation NOT accepted; rollback/recovery observed, not BROWNOUT |
+| Corrective memory build | Resident97400→88120B, flash1856082/7340032B;412 root tests OK(1 skip), focused33/OTA contract PASS | Health thresholds and immutable wire unchanged; corrective installation pending |
 
 > Last updated: 2026-09-06 (continuous-presence Target OTA verified; owner mobile/physical latency trial pending)
 

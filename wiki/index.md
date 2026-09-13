@@ -71,7 +71,7 @@
 | [field_diagnostics_capture_plan.md](field_diagnostics_capture_plan.md) | Android/Target 사후 진단, 보고서 최근·전체 보기와 안전한 Clear·하단 버튼 배치, 동의형 Backend correlation 및 현장 검증 경계 |
 | [field_test_recovery_plan_2026_09_13.md](field_test_recovery_plan_2026_09_13.md) | 현장 ARMED 미진입·보고서 지연 분석: 성공 업로드의 지수 backoff, 늦은 자료 조회 누락, BLE wake·센서/rearm·진단 UI 수정 순서와 검증 계획 |
 | [hands_free_reliability_recovery_2026_09_08.md](hands_free_reliability_recovery_2026_09_08.md) | 무반응·감사 충돌 복구, OTA491 실제 설치·boot815·VALID 확인과 남은 단절/전원 시험 |
-| [diagnostics_read_api.md](diagnostics_read_api.md) | PC 읽기 토큰과 지원 보고서·출입/건강 이력 API, 배포된 schema017 충돌 격리 조회, 환경변수·활성화 절차 |
+| [diagnostics_read_api.md](diagnostics_read_api.md) | PC 읽기 토큰과 지원 보고서·출입/건강 이력 API, 배포된 schema018 늦은 자료·휴대폰별 cursor·공백 조회 및 읽기 전용 MQTT collector |
 | [ota_operations_runbook.md](ota_operations_runbook.md) | canary, release Gate, 장애 중단·rollback, OTA 영속 진단 코드와 TLS 자원 인계·운영 증거 절차 |
 | [hardwareless_rc_gatt_transport.md](hardwareless_rc_gatt_transport.md) | #18 connection-owned/ACK-gated GATT, v2 fast challenge/proof/result, OTA safe-state, host evidence and physical gates |
 | [target_acl_fsm.md](target_acl_fsm.md) | #20/#133 Target-owned ACL, proof-to-FSM Result binding, action-1 sensor ARM, action-2 immediate relay, interlock and evidence boundary |

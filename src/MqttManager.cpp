@@ -5,6 +5,7 @@
 // =============================================================
 #include "MqttManager.h"
 #include "MqttTelemetryWorker.h"
+#include "MqttDiagnosticScratch.h"
 #include "config.h"
 #include "ConfigManager.h"
 #include "DiagnosticsManager.h"
@@ -258,6 +259,24 @@ uint32_t telemetryWorkerFailures = 0;
 uint32_t telemetryWorkerDeferred = 0;
 uint32_t telemetryWorkerPublished = 0;
 uint32_t telemetryWorkerMaxDurationMs = 0;
+
+using TelemetryDocument = StaticJsonDocument<7168>;
+struct BootDiagnosticScratch {
+    StaticJsonDocument<2560> document;
+    char buffer[2560];
+};
+using DiagnosticScratch =
+    sgk::MqttDiagnosticScratch<TelemetryDocument, BootDiagnosticScratch>;
+// The builders run only on loopTask and finish serialization/publication before
+// releasing this scratch. Keep pendingTelemetry and the worker's immutable copy
+// separate: either may outlive a builder. Sharing the boot JSON/output lifetime
+// removes at least 5 KiB of resident RAM without moving it onto the loop stack
+// or adding heap allocations. Both JSON capacities and wire limits are retained.
+static_assert(sizeof(TelemetryDocument) + sizeof(BootDiagnosticScratch) >=
+                  sizeof(DiagnosticScratch) + 5120,
+              "Diagnostic scratch must reclaim the boot-only RAM footprint");
+DiagnosticScratch diagnosticScratch;
+
 uint32_t auditPublishRetryAtMs = 0;
 sgk::AuditDeliveryHealth auditDeliveryHealth;
 uint32_t auditReceiptsAccepted = 0;
@@ -1966,7 +1985,9 @@ void MqttManager::publishBootDiagnostics() {
     bootDiagnosticsPending = true;
     if (!isConnected() || connectionAttemptInProgress()) return;
 
-    static StaticJsonDocument<2560> doc;
+    auto scratch = diagnosticScratch.boot();
+    if (!scratch) return;
+    auto& doc = scratch->document;
     doc.clear();
     doc["target_id"] = DiagnosticsManager::targetId();
     doc["boot_id"] = DiagnosticsManager::bootId();
@@ -2056,7 +2077,7 @@ void MqttManager::publishBootDiagnostics() {
     doc["wifi_current_outage_ms"] = WifiManager::currentOutageMs();
     doc["wifi_last_outage_ms"] = WifiManager::lastOutageMs();
 
-    static char buffer[2560];
+    auto& buffer = scratch->buffer;
     size_t length = serializeJson(doc, buffer, sizeof(buffer));
     bool ok = !doc.overflowed() && length > 0 &&
               length < sizeof(buffer) &&
@@ -2144,9 +2165,15 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     bytesToLowerHex(accessTag, sizeof(accessTag), accessTagHex,
                     sizeof(accessTagHex));
 
-    // Main-loop-only reusable storage keeps the expanded diagnostic snapshot
-    // out of the loop task stack while TLS publication is still in scope.
-    static StaticJsonDocument<7168> doc;
+    // Only the serialized pending payload survives this main-task scratch lease.
+    // A worker owns its own immutable bytes, never this JSON document.
+    auto scratch = diagnosticScratch.status();
+    if (!scratch) {
+        pendingTelemetryValid = false;
+        pendingTelemetry[0] = '\0';
+        return;
+    }
+    auto& doc = *scratch;
     doc.clear();
     doc["distance_mm"]     = distance_mm;
     doc["distance_cm"]     = (float)distance_mm / 10.0f;
