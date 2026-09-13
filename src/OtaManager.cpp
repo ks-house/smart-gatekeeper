@@ -20,6 +20,7 @@
 #include "OtaDiagnosticRecord.h"
 #include "OtaTransportLease.h"
 #include "OtaDownload.h"
+#include "OtaPlaintextBuffer.h"
 #include "OtaVersionPolicy.h"
 #include "WifiManager.h"
 #include "config.h"
@@ -124,7 +125,7 @@ uint8_t updateTag[kEnvelopeTagSize]{};
 size_t updateTagBytes = 0;
 uint8_t updateCiphertextCarry[kGcmBlockSize]{};
 size_t updateCiphertextCarryBytes = 0;
-uint8_t updatePlaintextBuffer[kDecryptInputChunkSize + 15]{};
+sgk::OtaPlaintextBuffer<kDecryptInputChunkSize + 15> updatePlaintextBuffer;
 bool updateShaInitialized = false;
 bool updatePlaintextShaInitialized = false;
 bool updateGcmInitialized = false;
@@ -589,8 +590,7 @@ void resetUpdateState() {
   mbedtls_platform_zeroize(updateTag, sizeof(updateTag));
   mbedtls_platform_zeroize(updateCiphertextCarry,
                            sizeof(updateCiphertextCarry));
-  mbedtls_platform_zeroize(updatePlaintextBuffer,
-                           sizeof(updatePlaintextBuffer));
+  updatePlaintextBuffer.release();
 }
 
 void abortImageWrite() {
@@ -632,49 +632,46 @@ bool initializeEnvelopeCipher() {
 }
 
 bool decryptAndWriteCiphertext(const uint8_t* data, size_t length) {
-  if (!updateOpen || !updateGcmStarted || data == nullptr || length == 0 ||
+  if (!updateOpen || !updateGcmStarted || !updatePlaintextBuffer ||
+      data == nullptr || length == 0 ||
       length > kDecryptInputChunkSize) {
     return false;
   }
   size_t outputLength = 0;
   const int gcmResult =
-      mbedtls_gcm_update(&updateGcm, data, length, updatePlaintextBuffer,
-                         sizeof(updatePlaintextBuffer), &outputLength);
+      mbedtls_gcm_update(&updateGcm, data, length, updatePlaintextBuffer.data(),
+                         updatePlaintextBuffer.size(), &outputLength);
   if (gcmResult != 0 ||
       updatePlaintextBytes > stagedManifest.plaintext_size ||
       outputLength > stagedManifest.plaintext_size - updatePlaintextBytes) {
     LOGF("[OTA-ERROR] GCM update failed rc=%d input=%lu output=%lu",
          gcmResult, static_cast<unsigned long>(length),
          static_cast<unsigned long>(outputLength));
-    mbedtls_platform_zeroize(updatePlaintextBuffer,
-                             sizeof(updatePlaintextBuffer));
+    updatePlaintextBuffer.clear();
     return false;
   }
   if (outputLength > 0 &&
-      mbedtls_sha256_update(&updatePlaintextSha, updatePlaintextBuffer,
+      mbedtls_sha256_update(&updatePlaintextSha, updatePlaintextBuffer.data(),
                             outputLength) != 0) {
     LOGF("[OTA-ERROR] plaintext SHA update failed at %lu bytes",
          static_cast<unsigned long>(updatePlaintextBytes));
-    mbedtls_platform_zeroize(updatePlaintextBuffer,
-                             sizeof(updatePlaintextBuffer));
+    updatePlaintextBuffer.clear();
     return false;
   }
   if (outputLength > 0) {
     const esp_err_t writeResult =
-        esp_ota_write(updateHandle, updatePlaintextBuffer, outputLength);
+        esp_ota_write(updateHandle, updatePlaintextBuffer.data(), outputLength);
     otaDiagnostic.flash_code = writeResult;
     if (writeResult != ESP_OK) {
       LOGF("[OTA-ERROR] inactive-slot write failed rc=%d at %lu bytes",
            static_cast<int>(writeResult),
            static_cast<unsigned long>(updatePlaintextBytes));
-      mbedtls_platform_zeroize(updatePlaintextBuffer,
-                               sizeof(updatePlaintextBuffer));
+      updatePlaintextBuffer.clear();
       return false;
     }
   }
   updatePlaintextBytes += outputLength;
-  mbedtls_platform_zeroize(updatePlaintextBuffer,
-                           sizeof(updatePlaintextBuffer));
+  updatePlaintextBuffer.clear();
   return true;
 }
 
@@ -773,9 +770,19 @@ bool beginImageWrite() {
     updateHandle = 0;
     return false;
   }
+  // OTA-only plaintext workspace must not reserve4KiB throughout normal BLE/
+  // MQTT operation or the new-image health window. Exhaustion fails before
+  // flash erasure; resetUpdateState releases and zeroes every exit path.
+  if (!updatePlaintextBuffer.allocate()) {
+    otaDiagnostic.flash_code = ESP_ERR_NO_MEM;
+    updatePartition = nullptr;
+    updateHandle = 0;
+    return false;
+  }
   otaDiagnostic.flash_code = esp_ota_begin(
       updatePartition, stagedManifest.plaintext_size, &updateHandle);
   if (otaDiagnostic.flash_code != ESP_OK) {
+    updatePlaintextBuffer.release();
     updatePartition = nullptr;
     updateHandle = 0;
     return false;
@@ -802,8 +809,7 @@ bool beginImageWrite() {
   mbedtls_platform_zeroize(updateTag, sizeof(updateTag));
   mbedtls_platform_zeroize(updateCiphertextCarry,
                            sizeof(updateCiphertextCarry));
-  mbedtls_platform_zeroize(updatePlaintextBuffer,
-                           sizeof(updatePlaintextBuffer));
+  updatePlaintextBuffer.clear();
   return true;
 }
 

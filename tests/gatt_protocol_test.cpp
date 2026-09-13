@@ -3384,6 +3384,40 @@ void testOtaHealthRequiresContinuousPredicates() {
         sgk::OtaHealthDecision::kRollback);
 }
 
+void testOtaHealthRejectsHeapTroughsBetweenTelemetrySnapshots() {
+  // Field497: the status snapshot stayed above48KiB while allocations between
+  // snapshots reached43708B. A healthy status must not hide an unhealthy sample.
+  const auto healthyHeap = [](uint32_t freeBytes, uint32_t largestBytes) {
+    return freeBytes >= 48U * 1024U && largestBytes >= 32U * 1024U;
+  };
+  sgk::OtaHealthPolicy troughs(30000, 120000, 5000);
+  troughs.begin(0);
+  for (uint32_t now = 0; now < 120000; now += 100) {
+    const uint32_t freeBytes = now % 1000 == 100 ? 43708U : 60028U;
+    CHECK(troughs.update(now, healthyHeap(freeBytes, 42996)) ==
+          sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(troughs.update(120000, healthyHeap(60028, 42996)) ==
+        sgk::OtaHealthDecision::kRollback);
+
+  // Removing the allocation trough must earn the full continuous interval,
+  // not merely a single good sample. Contiguous memory remains mandatory too.
+  sgk::OtaHealthPolicy recovered(30000, 120000, 5000);
+  recovered.begin(0);
+  for (uint32_t now = 0; now < 30000; now += 100) {
+    CHECK(recovered.update(now, healthyHeap(60028, 42996)) ==
+          sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(recovered.update(30000, healthyHeap(60028, 32767)) ==
+        sgk::OtaHealthDecision::kWait);
+  for (uint32_t now = 30100; now < 60100; now += 100) {
+    CHECK(recovered.update(now, healthyHeap(60028, 42996)) ==
+          sgk::OtaHealthDecision::kWait);
+  }
+  CHECK(recovered.update(60100, healthyHeap(60028, 42996)) ==
+        sgk::OtaHealthDecision::kMarkValid);
+}
+
 void testOtaVersionFloorAndReplayMutations() {
   int comparison = 0;
   CHECK(sgk::OtaVersionPolicy::compare("2.2.0-rc.1", "2.2.0", &comparison));
@@ -3544,6 +3578,7 @@ int main() {
   testSignedCommandAccessTracker();
   testRawCommandSchemaRejectsEveryDuplicateField();
   testOtaHealthRequiresContinuousPredicates();
+  testOtaHealthRejectsHeapTroughsBetweenTelemetrySnapshots();
   testOtaVersionFloorAndReplayMutations();
   std::cout << "GattProtocol host tests passed: " << checks << " checks\n";
   return 0;

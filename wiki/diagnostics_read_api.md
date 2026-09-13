@@ -1,6 +1,62 @@
 # Local-PC diagnostic read API
 
-Status: Backend `a105539273f9eb2aeaf0362d17bcc967336d85a7` deployed via PR #393
+Current: Backend `7afb9f785c0a0a2c36248ee33d2dfef3bdd3f023` / schema018 deployed via
+PR407 at September13 22:25:32 KST. Signed NAS deployment/status receipts match;
+independent public readiness verifies all12 checks and fresh Target status.
+Existing token and wrapper are unchanged. New app/Target installation is separate.
+
+## Late evidence and per-phone incident paging (schema018)
+
+Keep `--since/--until` as the fixed Backend receipt-time incident window. Supply
+both `--occurred-since/--occurred-until` for the phone's event-time window and a
+later `--evidence-received-until` so a delayed report is not silently excluded.
+Phone clocks are unverified; this does not establish physical arrival time.
+
+```bash
+.venv/bin/python scripts/read_diagnostics.py --incidents \
+  --target-id c0feffe6ebac \
+  --since 2026-09-13T11:51:55.080479Z --until 2026-09-13T11:57:38.312036Z \
+  --occurred-since 2026-09-13T11:51:55.080479Z --occurred-until 2026-09-13T11:57:38.312036Z \
+  --evidence-received-until 2026-09-13T13:25:00Z --mobile-limit 20
+```
+
+`next_before_id` pages Target sessions; `next_mobile_before_id` independently
+pages mobile reports. Pass returned `mobile_ref` as `--mobile-ref` to isolate a
+phone and `--mobile-before-id` for its next page without attributing another
+family member's session to the reporter. Continue while a cursor/truncation is
+present; no data on a single page is not proof of absence. Legacy rows without
+the new nullable time index remain included, explicitly labelled as unknown
+index coverage, and their actual contents are projected at read time.
+
+Live readback recovered late rows1017–1020 using the original incident window;
+they contain zero recorded events within that window. The API returns
+`NO_EVENTS_IN_WINDOW` and manual-context evidence gaps, not automatic failure or
+success inferred from the manual open. No report upload was induced for this check.
+
+New native reports distinguish pending uploads/events, captured/ACK times,
+quarantine, accumulated loss, recovery and incident markers. An optional
+authenticated report ACK may contain a fresh authorized signed Target baseline;
+that is not an access grant or proof of door movement. Old ACK-only clients and
+the immutable report reference contract remain supported.
+
+For live subscribe-only correlation, use a new private output directory:
+
+```bash
+.venv/bin/python scripts/observe_diagnostics_mqtt.py --target-id c0feffe6ebac \
+  --host tworimpa.synology.me --port 4883 --duration-seconds 300 \
+  --output-dir /tmp/sgk-observation-unique-new-directory
+```
+
+The observer enforces TLS, bounded JSONL rotation, snapshot/delta and gap records,
+and allowlisted unsigned projections; it never publishes. CLI cursor flags only
+preserve the independent API checkpoint and never advance it. MQTT credentials,
+when required, use `SGK_MQTT_USERNAME/PASSWORD` or the respective `_FILE` variables,
+not command arguments. A retained message or advertising flag is not a new event
+or proof of RF reception.
+
+## Historical baseline
+
+Backend `a105539273f9eb2aeaf0362d17bcc967336d85a7` deployed via PR #393
 at 00:16 KST on September 9. Incident/health history, standalone access history
 and existing report reads are verified using the same PC token activated on September 7.
 This is separate from administrator cookie authentication and from door control.

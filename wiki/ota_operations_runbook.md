@@ -368,3 +368,50 @@ current-version check에서 bytes/total0은 정상이며 이번 설치 파일을
 advisory는 BROWNOUT/planned none을 기록했다. 01:16:46에도491/VALID가 유지됐다.
 이를 OTA rollback 또는 완료 실패로 오분류하지 않되, 가용성 정상화로도 보고하지
 않는다. 추가 device command 없이 전원 무결성 원인 조사가 별도로 필요하다.
+
+## 12. 2026-09-13 497 health rejection and preserved recovery
+
+- Exact-main `5ca450a69bd9919c850e2099fb1281c06d422817` / `2.1.497+main.g5ca450a`
+  publication and independent Ed25519/encrypted artifact SHA-256 verification passed.
+  A single signed HA-bridge OTA request was made at22:39:25 KST after fresh matching
+  raw/verified boot901 IDLE/relay OFF/not-armed/no BLE connection checks.
+- New497 boot902 first appeared at22:40:17.833. It did **not** complete its health
+  window. Boot903 restored494 at22:42:29.322. Matching boot advisory records
+  `SOFTWARE`, `ota_health_heap_timeout`, previous uptime122136ms, IDLE/relay OFF.
+  OTA persisted stage13/failed-stage10/error18 at122057ms. This is a health rollback,
+  not a new observed BROWNOUT or successful497 installation.
+- The passive observer captured107 raw497 status samples: status free heap minimum
+  50976B and largest block minimum42996B were above the48KiB/32KiB gates, but the
+  lifetime minimum free heap reached43708B. Status snapshots alone miss allocation
+  troughs; investigate allocation lifetime rather than lowering the health limits.
+- Restored494's next periodic check rejected the same497 candidate with
+  manifest rejection6. The persisted version floor quarantines an unconfirmed
+  candidate, preventing a repeated installation/rollback loop. Recovery needs a
+  strictly newer signed main version; do not reset this floor or replay497.
+- Source tests/publication remain separate from actual boot/VALID and physical
+  access. Existing power T1 at18:21:04/boot901 is retained; these two subsequent
+  boots are planned deployment/rollback events, not evidence of a power fault.
+
+### Corrective allocation lifetime changes
+
+497 increased the resident status JSON pool by1536B and pending payload by1280B.
+The telemetry worker additionally allocates its bounded immutable payload, Request
+and6144B task stack. No per-snapshot DynamicJsonDocument leak was found. The exact
+allocation responsible for a historical trough is not recorded; the health rejection
+and reduced headroom are established independently.
+
+The correction shares mutually exclusive main-task status/boot diagnostic scratch,
+keeping both JSON capacities and the immutable pending/worker storage unchanged.
+The4111B OTA plaintext workspace is allocated once before inactive-slot erasure,
+not at boot or per packet. Allocation failure returns ESP_ERR_NO_MEM before
+esp_ota_begin; failure/end/abort release the workspace after zeroization. GCM block
+alignment, output capacity, digest/tag verification, NVS and image-selection order
+are unchanged. No task stack or health threshold is reduced.
+
+The personal C6 build changes resident RAM97400→88120B (9280B reclaimed), application
+flash1856082/7340032B. Full412 root tests pass with1 platform skip; OTA contract PASS;
+focused33 tests include ASan/UBSan allocation-failure/zero-before-free/repeated-cleanup
+coverage and continuous-health rejection for troughs missed by status snapshots.
+An independent scoped review found no actionable P0/P1/P2. These are source/build
+results; strictly newer exact-main publication and actual health-to-VALID are still
+required before declaring corrective installation complete.

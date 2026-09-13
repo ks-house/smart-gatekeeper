@@ -18,13 +18,14 @@ applies_to:
 
 ## 0. 구현 및 배포 추적
 
-- Backend: schema018의 사건 시각 색인, late-evidence cutoff/휴대폰별 독립 cursor, 발생·capture·수신·신선도·자료 공백 표시, optional 새 모바일/Target 진단 필드, 권한 확인된 진단 ACK의 최신 signed Target baseline을 구현했다. 구앱 보고서/구 API 의미와 immutable ACK identity를 보존한다. DB/서버 배포는 기존 보호 입력 2개(DB Dockerfile/번들 목록)의 정확한 승인 절차 후 먼저 진행한다.
+- Backend: schema018의 사건 시각 색인, late-evidence cutoff/휴대폰별 독립 cursor, 발생·capture·수신·신선도·자료 공백 표시, optional 새 모바일/Target 진단 필드, 권한 확인된 진단 ACK의 최신 signed Target baseline을 구현했다. 구앱 보고서/구 API 의미와 immutable ACK identity를 보존한다. 보호 입력2개의 정확한 승인 후 main7afb9f7을22:25:32 KST에 배포했다. NAS 적용·상태 evidence와 public ready12개 검사, 늦게 도착한1017–1020 조회 및 N-1 보고서1049 저장을 확인했다.
 - Android: 성공 최대4묶음/30초 drain과 RUNNING predecessor 뒤 단일 continuation, v1 장기 backoff 이관, 실제 실패의 제한 backoff/Retry-After,401/403 보류와400/413/422 최대4건 격리, generation/늦은 ACK 방어, 손실별 카운터를 구현했다. 각 새 묶음은 현재 health snapshot과 순서대로 배출하는 과거 사건 최대64개를 함께 보내며 재시도 중인 bytes는 바꾸지 않는다.
 - 앱: 과거 ACK를 현재 성공으로 표시하지 않는다. 수동 요청 전후/실패 사건 수집,10분 incident ref, 미전송·권한·재시도·유실·서버 저장 상태 및 현장 marker와 새 보고서 ACK/Target baseline 준비 확인을 구분한다. BLE foreground 복구 오류는 updater/UI에 전파하지 않는다.
 - BLE: fresh matching packet과 등록/콜백을 분리하고, 필터/힌트/예약 카운터·30초 수신 확인을 추가했다. fresh 광고에 hint만 없을 때 분당 최대1회 V2 probe를 허용하되 malformed hint, stale packet, pending/uncertain proof, 기존 TARGET_BUSY/owner guard는 유지한다. 서비스 탐색 시작/콜백/서비스·특성 누락을 구분한다.
 - Target: 인증 허용과 자동 pulse 잠금 분리, 차단 중 ARM 최대5초·미해제 자동 시도 후30초 quiet, 공통 초음파 cadence/분류/median 및 거절 계측, 광고 requested/applied 상태와 bounded 재적용을 구현했다. no-echo/시간 경과로 pulse 잠금을 해제하지 않으며 기존 clear3회·임계값·핀·V2 proof·서명 V1/NVS·MQTT 비동기·dual-slot OTA를 유지한다.
-- 로컬 검증: personal firmware build PASS(RAM97,400/327,680B, flash1,855,872/7,340,032B); Target 호스트193 tests PASS; 실제 WorkManager2.9.1/Robolectric migration·late producer 시험 PASS; 전체 Android/Flutter/Backend 및 릴리스 검사는 최종 통합 결과에 추가한다. 읽기 전용 MQTT collector는4883/TLS 45초 실제 구독·4채널 관측,1개 bounded JSONL segment/eviction0을 확인했다.
-- 배포/물리 경계: 이 항목 작성 시점에는 새 Backend 활성화·새 APK 설치·Target 새 firmware/VALID는 아직 미확인이다. 기존 T1=18:21:04/boot901을 유지하며 OTA로 생기는 다음 부팅은 전원 원인과 분리한다. 센서 전기/RF와 실제 문 동작이 고쳐졌다고 소프트웨어 시험만으로 선언하지 않는다.
+- 로컬 검증: personal firmware build PASS(RAM97,400/327,680B, flash1,855,872/7,340,032B); Target 호스트193 tests PASS; Android133 tests PASS(실제 WorkManager2.9.1/Robolectric migration·late producer 포함); Flutter115 tests/analyzer PASS; root409 tests OK(1 platform skip), Backend310 OK(4 integration skip) 및 별도 실제 MariaDB017→018/N-1 writer PASS. 읽기 전용 MQTT collector는4883/TLS 실제 구독·4채널 관측을 확인했다.
+- 앱 배포: main5ca450a/44801(`1.0.0-g5ca450a`) 게시 완료. 기본·예비 HTTPS 경로 모두55,659,673B/SHA256 `270804ce20274a7a4320f692c6c16bf9fd4561c5a297b540a3f74ba1ec21bf38` 일치. 휴대폰 설치는 사용자 확인이 필요하며 아직 미확인이다.
+- Target 배포/물리 경계:497은 설치/boot902까지 진행했으나 health heap 검사 실패로494/boot903에 자동 복구됐다. 자세한 근거와 복구 절차는 [OTA runbook §12](ota_operations_runbook.md#12-2026-09-13-497-health-rejection-and-preserved-recovery)에 기록한다. 기존 T1=18:21:04/boot901을 유지하며 OTA·rollback 부팅은 전원 원인과 분리한다. 센서 전기/RF와 실제 문 동작이 고쳐졌다고 소프트웨어 시험만으로 선언하지 않는다.
 
 ## 1. 이번에 확인된 사실과 원인 판정
 
