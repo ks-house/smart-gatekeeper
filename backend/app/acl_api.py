@@ -13,10 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 try:
     from .acl_management import AclManagementService, CredentialConflictError
-    from .mobile_diagnostics import MobileDiagnosticBundle
+    from .mobile_diagnostics import MobileDiagnosticBundle, TargetDiagnosticBaseline, ingest_bundle_payload
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from acl_management import AclManagementService, CredentialConflictError
-    from mobile_diagnostics import MobileDiagnosticBundle
+    from mobile_diagnostics import MobileDiagnosticBundle, TargetDiagnosticBaseline, ingest_bundle_payload
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,7 @@ class AclApiConfig:
     personal_diagnostics_ingest: Optional[
         Callable[[str, str, dict[str, Any]], dict[str, Any]]
     ] = None
+    personal_diagnostics_baseline: Optional[Callable[[str, str], dict[str, Any]]] = None
 
 
 class TenantRequest(BaseModel):
@@ -444,18 +445,27 @@ def create_acl_router(
         )
         if config.personal_diagnostics_ingest is None:
             raise HTTPException(status_code=503, detail="diagnostic ingest is unavailable")
-        bundle = request.bundle.model_dump(by_alias=True, mode="json")
-        # Optional diagnostics must not change canonical bytes of legacy retries.
-        if bundle["native"].get("scan") is None:
-            bundle["native"].pop("scan", None)
+        bundle = ingest_bundle_payload(request.bundle)
         if len(json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")) > 65536:
             raise HTTPException(status_code=413, detail="diagnostic bundle is too large")
-        return _invoke(
+        response = _invoke(
             config.personal_diagnostics_ingest,
             config.personal_tenant_id,
             request.credential_id,
             bundle,
         )
+        if (config.personal_diagnostics_baseline is not None and response.get("accepted") is True
+                and response.get("bundle_ref") == bundle["bundle_ref"]):
+            # A baseline lookup failure cannot undo a committed bundle ACK.
+            # The callback must authorize this credential's exact configured
+            # door and read only fresh, accepted signed status, without refresh.
+            try:
+                baseline = TargetDiagnosticBaseline.model_validate(config.personal_diagnostics_baseline(
+                    config.personal_tenant_id, request.credential_id))
+            except Exception:
+                baseline = TargetDiagnosticBaseline(fresh=False)
+            response = {**response, "target_baseline": baseline.model_dump()}
+        return response
 
     def admin_status_change(
         request: CredentialActionRequest,

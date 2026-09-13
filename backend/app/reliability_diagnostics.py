@@ -178,11 +178,80 @@ def ota_advisory_projection(value):
     return result
 
 
+def _closed_observation(value, *, booleans=(), counters=(), nullable_counters=(), distances=(), codes=None):
+    """Exact typed fields only; reject a malformed group without rejecting signed core."""
+    if not isinstance(value, dict):
+        return None
+    result = {}
+    for key in booleans:
+        if type(value.get(key)) is not bool:
+            return None
+        result[key] = value[key]
+    for keys, nullable, maximum in ((counters, False, U32), (nullable_counters, True, U32), (distances, True, 65534)):
+        for key in keys:
+            if key not in value:
+                return None
+            item = value[key]
+            if not (nullable and item is None) and (type(item) is not int or not 0 <= item <= maximum):
+                return None
+            result[key] = item
+    for key, allowed in (codes or {}).items():
+        item = value.get(key)
+        if not isinstance(item, str) or item not in allowed:
+            return None
+        result[key] = item
+    return result
+
+
+def field_recovery_advisory_projection(document):
+    """September13 Target observations are unsigned, with uint32 uptime clocks.
+
+    auth_ready permits a fresh authentication attempt; pulse_ready describes the
+    separate sensor/rearm decision. Neither means the door physically moved.
+    """
+    if not isinstance(document, dict):
+        return {}
+    result = {}
+    rearm = _closed_observation(document.get("passage_rearm"),
+        booleans=("auth_ready", "pulse_ready", "blocked"),
+        counters=("blocked_age_ms", "clear_samples", "retry_after_ms"),
+        nullable_counters=("blocked_since_ms", "last_pulse_ms"),
+        codes=dict(auth_reason={"BOOTING", "GATT_DISABLED", "OTA_BUSY", "ACL_UNAVAILABLE", "FSM_BUSY", "CONNECTION_ACTIVE", "REAUTH_QUIET", "READY"},
+                   pulse_reason={"AUTH_REQUIRED", "SENSOR_CLEARANCE_UNCONFIRMED", "READY"},
+                   pulse_source={"NONE", "SENSOR", "LOCAL_MANUAL", "REMOTE_MANUAL"}))
+    if rearm is not None:
+        result["passage_rearm"] = rearm
+    sample = document.get("sensor_observation")
+    sensor = _closed_observation(sample, booleans=("valid",),
+        counters=("idle_samples", "armed_samples", "cooldown_samples", "no_echo", "out_of_range", "valid_samples", "invalid_streak"),
+        nullable_counters=("sampled_ms", "sample_age_ms", "echo_us", "last_valid_age_ms"),
+        distances=("raw_mm", "last_valid_mm"),
+        codes=dict(kind={"NOT_SAMPLED", "NO_ECHO", "OUT_OF_RANGE", "VALID_NEAR", "VALID_CLEAR", "VALID_BAND"},
+                   phase={"NOT_SAMPLED", "IDLE", "ARMED", "COOLDOWN"}))
+    qualification = _closed_observation(sample.get("qualification") if isinstance(sample, dict) else None,
+        booleans=("active",), nullable_counters=("started_ms", "ended_ms", "median_age_ms"), distances=("median_mm",),
+        counters=("samples", "valid_streak", "max_valid_streak", "near_streak", "max_near_streak", "median_rejects",
+                  "candidates", "rearm_rejects", "fsm_rejects", "triggers"))
+    if sensor is not None and qualification is not None:
+        result["sensor_observation"] = dict(sensor, qualification=qualification)
+    presence = _closed_observation(document.get("ble_presence"),
+        booleans=("requested_ready", "applied_ready", "applied_valid", "pending"),
+        counters=("requested_epoch", "applied_epoch", "attempts", "failures", "retries", "stops", "gap_count", "gap_ms", "last_gap_ms"),
+        nullable_counters=("last_attempt_ms", "applied_age_ms"),
+        codes=dict(status={"NOT_REQUESTED", "PENDING", "APPLIED", "DISABLED", "DEFERRED_CONNECTION", "DEFERRED_OTA", "RETRY_WAIT",
+                           "UNAVAILABLE", "STOP_FAILED", "APPLY_FAILED", "START_FAILED"},
+                   last_result={"NONE", "APPLIED", "UNAVAILABLE", "STOP_FAILED", "APPLY_FAILED", "APPLY_START_FAILED", "START_FAILED"},
+                   restart_reason={"NONE", "PRESENCE_APPLY", "watchdog", "disconnect"}))
+    if presence is not None:
+        result["ble_presence"] = presence
+    return result
+
+
 def advisory_projection(document, *, include_boot=False, expected=None):
     """Closed, explicitly unsigned fields useful for comparison, not authority."""
     if not isinstance(document, dict):
         return {}
-    result = {}
+    result = field_recovery_advisory_projection(document)
     ota = ota_advisory_projection(document.get("ota"))
     if ota is not None:
         result["ota"] = ota

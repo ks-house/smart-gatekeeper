@@ -10,11 +10,11 @@ from typing import Callable, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 try:
-    from .mobile_diagnostics import MobileDiagnosticBundle
+    from .mobile_diagnostics import MobileDiagnosticBundle, bundle_evidence_metadata
     from .ops_runtime import SlidingWindowRateLimiter
     from .reliability_diagnostics import CORE_FIELDS, advisory_projection, classify_incident, sensor_mac_input
 except ImportError:
-    from mobile_diagnostics import MobileDiagnosticBundle
+    from mobile_diagnostics import MobileDiagnosticBundle, bundle_evidence_metadata
     from ops_runtime import SlidingWindowRateLimiter
     from reliability_diagnostics import CORE_FIELDS, advisory_projection, classify_incident, sensor_mac_input
 
@@ -43,6 +43,47 @@ def _utc_text(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+MOBILE_REF_PATTERN = r"^mobile-diagnostic-credential_[0-9a-f]{24}$"
+
+
+def _incident_windows(since, until, occurred_since, occurred_until, evidence_received_until):
+    """Receipt defaults are unchanged; occurrence filtering is explicit opt-in."""
+    if (occurred_since is None) != (occurred_until is None):
+        raise HTTPException(422, "occurred_since and occurred_until must be supplied together",
+                            headers={"Cache-Control": "no-store"})
+    occurrence = _event_window(occurred_since, occurred_until) if occurred_since is not None else None
+    # Without explicit receipt bounds, a new occurrence query uses that same
+    # bounded window for Target receipt evidence. Target has no trusted wall clock.
+    receipt = occurrence if occurrence and since is None and until is None else _event_window(since, until)
+    occurrence = occurrence or receipt
+    evidence_end = receipt[1]
+    if evidence_received_until is not None:
+        _, evidence_end = _event_window(_utc_text(min(receipt[0], occurrence[0])), evidence_received_until)
+        if evidence_end < occurrence[1] or evidence_end < receipt[1]:
+            raise HTTPException(422, "evidence_received_until must not precede the window end",
+                                headers={"Cache-Control": "no-store"})
+    return receipt, occurrence, evidence_end
+
+
+def _mobile_where(evidence_end, mobile_ref, before_id, occurrence=None):
+    where, args = ["received_at < %s"], [evidence_end.replace(tzinfo=None)]
+    if mobile_ref is not None:
+        where.append("credential_ref=%s")
+        args.append(mobile_ref)
+    if before_id is not None:
+        where.append("id < %s")
+        args.append(before_id)
+    if occurrence is not None:
+        start_ms, end_ms = (int(value.timestamp() * 1000) for value in occurrence)
+        # Rows written before migration018 (or unindexable clocks) stay visible
+        # through the independent cursor. NULL does not mean no evidence.
+        where.append("(evidence_index_version IS NULL OR "
+                     "(event_first_epoch_ms < %s AND event_last_epoch_ms >= %s) OR "
+                     "(captured_epoch_ms >= %s AND captured_epoch_ms < %s))")
+        args.extend((end_ms, start_ms, start_ms, end_ms))
+    return where, args
 
 
 def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRouter:
@@ -136,8 +177,16 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
         session_id: Optional[str] = Query(None, pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
         limit: int = Query(20, ge=1, le=100),
         before_id: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+        occurred_since: Optional[str] = Query(None, max_length=64),
+        occurred_until: Optional[str] = Query(None, max_length=64),
+        evidence_received_until: Optional[str] = Query(None, max_length=64),
+        mobile_ref: Optional[str] = Query(None, pattern=MOBILE_REF_PATTERN),
+        mobile_limit: int = Query(20, ge=1, le=100),
+        mobile_before_id: Optional[int] = Query(None, ge=1, le=18446744073709551615),
     ):
-        start, end = _event_window(since, until)
+        (start, end), occurrence, evidence_end = _incident_windows(
+            since, until, occurred_since, occurred_until, evidence_received_until)
+        late_query = occurred_since is not None or evidence_received_until is not None
         since_db, until_db = start.replace(tzinfo=None), end.replace(tzinfo=None)
         where = ["integrity_status='verified'", "received_at >= %s", "received_at < %s"]
         args = [since_db, until_db]
@@ -179,10 +228,11 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                             "FROM target_sensor_session_history WHERE " + " AND ".join(summary_where)
                             + " ORDER BY id DESC LIMIT 101", tuple(summary_args))
                 summaries = cur.fetchall()
-                # The newest available report is visible even if stale. It never proves today's wake.
+                mobile_where, mobile_args = _mobile_where(
+                    evidence_end, mobile_ref, mobile_before_id, occurrence if late_query else None)
                 cur.execute("SELECT id,credential_ref,created_at_ms,payload_json,received_at "
-                            "FROM mobile_diagnostic_bundles WHERE received_at < %s ORDER BY id DESC LIMIT 21",
-                            (until_db,))
+                            "FROM mobile_diagnostic_bundles WHERE " + " AND ".join(mobile_where)
+                            + " ORDER BY id DESC LIMIT %s", (*mobile_args, mobile_limit + 1))
                 mobiles = cur.fetchall()
                 cur.execute("SELECT id,verified_json,advisory_json,received_at FROM target_health_history "
                             "WHERE received_at >= %s AND received_at < %s"
@@ -191,9 +241,11 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                 health = cur.fetchall()
             reports = []
             matches = {}
+            manual_contexts = {}
             mobile_incidents = {}
-            start_ms, end_ms = int(start.timestamp() * 1000), int(end.timestamp() * 1000)
-            for row in mobiles[:20]:
+            start_ms, end_ms = (int(value.timestamp() * 1000) for value in occurrence)
+            as_of_ms = int(evidence_end.timestamp() * 1000)
+            for row in mobiles[:mobile_limit]:
                 if not isinstance(row["credential_ref"], str) or re.fullmatch(
                         r"mobile-diagnostic-credential_[0-9a-f]{24}", row["credential_ref"]) is None:
                     raise ValueError("invalid mobile reference")
@@ -204,7 +256,8 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                 if runtime:
                     captured = runtime["captured_epoch_ms"]
                 age = end_ms - int(captured)
-                current = 0 <= age <= 300000
+                metadata = bundle_evidence_metadata(body, int(row["created_at_ms"]), row["received_at"], as_of_ms=as_of_ms)
+                current = metadata["freshness"] == "RECENT_REPORT"
                 valid_sessions = [s for s in body["sessions"] if
                                   start_ms <= (s.get("updated_epoch_ms") or s.get("created_epoch_ms") or -1) < end_ms]
                 for session in valid_sessions:
@@ -212,34 +265,47 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                         matches.setdefault(session["target_session_id"], []).append(str(row["id"]))
                 lifecycle = [item for item in (runtime or {}).get("lifecycle", [])
                              if start_ms <= item["at_epoch_ms"] < end_ms]
+                manual_contexts[str(row["id"])] = [item["at_epoch_ms"] for item in lifecycle
+                                                    if item["event"] == "MANUAL_OPEN_CONTEXT"]
+                wakes = [item for item in body["wake_events"] if
+                         start_ms <= (item.get("received_epoch_ms") if item.get("received_epoch_ms") is not None else -1) < end_ms]
+                scan_lifecycle = [item for item in (body["native"].get("scan") or {}).get("lifecycle", [])
+                                  if start_ms <= item["at_epoch_ms"] < end_ms]
                 for item in lifecycle:
-                    if item["event"] not in ("DISPATCH_SKIPPED", "ENQUEUE_FAILED", "WORKER_STOPPED", "ORPHAN_RECOVERED"):
+                    if item["event"] not in ("DISPATCH_SKIPPED", "ENQUEUE_FAILED", "WORKER_STOPPED", "ORPHAN_RECOVERED",
+                                             "MANUAL_OPEN_CONTEXT", "AUTH_FINAL_FAILURE", "SCAN_RECOVERY_FAILED", "INCIDENT_CAPTURE"):
                         continue
                     identity = json.dumps([row["credential_ref"], (runtime or {}).get("process_ref"), item],
                                           separators=(",", ":"), sort_keys=True)
                     key = hashlib.sha256(identity.encode()).hexdigest()[:32]
-                    mobile_incidents[key] = dict(incident_ref=key, report_id=str(row["id"]),
+                    mobile_incidents.setdefault(key, dict(incident_ref=key, report_id=str(row["id"]),
                         mobile_ref=row["credential_ref"], source="mobile_runtime", event=item,
-                        classification="DISPATCH_DECISION_OBSERVED", target_correlation="NOT_REQUIRED",
-                        physical_door="NOT_OBSERVABLE", arrival="NOT_OBSERVABLE")
+                        classification="MANUAL_OPEN_CONTEXT" if item["event"] == "MANUAL_OPEN_CONTEXT" else "DISPATCH_DECISION_OBSERVED",
+                        target_correlation="NOT_REQUIRED", automatic_failure_inferred=False,
+                        physical_door="NOT_OBSERVABLE", arrival="NOT_OBSERVABLE"))
                 for item in valid_sessions:
                     if item.get("state") not in ("FAILED", "CANCELLED", "PROOF_UNCERTAIN"):
                         continue
                     identity = json.dumps([row["credential_ref"], item.get("event_ref"), item.get("updated_epoch_ms")],
                                           separators=(",", ":"))
                     key = hashlib.sha256(identity.encode()).hexdigest()[:32]
-                    mobile_incidents[key] = dict(incident_ref=key, report_id=str(row["id"]),
+                    mobile_incidents.setdefault(key, dict(incident_ref=key, report_id=str(row["id"]),
                         mobile_ref=row["credential_ref"], source="mobile_session", session=item,
                         classification="MOBILE_FAILURE_OBSERVED", target_correlation="SESSION_ID" if item.get("target_session_id") else "NOT_OBSERVED",
-                        physical_door="NOT_OBSERVABLE", arrival="NOT_OBSERVABLE")
+                        physical_door="NOT_OBSERVABLE", arrival="NOT_OBSERVABLE"))
+                evidence_count = len(valid_sessions) + len(lifecycle) + len(wakes) + len(scan_lifecycle)
                 reports.append(dict(id=str(row["id"]), mobile_ref=row["credential_ref"], app=body["app"],
-                                    received_at=_utc_text(row["received_at"]), captured_epoch_ms=str(captured),
-                                    age_at_window_end_ms=age, freshness="RECENT_REPORT" if current else
-                                    "CLOCK_UNCERTAIN" if age < 0 else "STALE_REPORT",
+                                    **metadata, age_at_window_end_ms=age,
                                     sessions_in_window=valid_sessions[:20], runtime_lifecycle_in_window=lifecycle[-32:],
-                                    detail_truncated=len(valid_sessions) > 20 or len(lifecycle) > 32,
+                                    wake_events_in_window=wakes[:20], scan_lifecycle_in_window=scan_lifecycle,
+                                    evidence_count_in_window=evidence_count,
+                                    evidence_status="EVENTS_OBSERVED" if evidence_count else "NO_EVENTS_IN_WINDOW",
+                                    detail_truncated=len(valid_sessions) > 20 or len(lifecycle) > 32 or len(wakes) > 20,
+                                    detail_bundle_id=str(row["id"]), incident_ref=(runtime or {}).get("incident_ref"),
                                     explicit_runtime_reasons=sorted({item["reason"] for item in lifecycle if item.get("reason")}),
                                     scan=body["native"].get("scan") if current else None,
+                                    scan_snapshot=body["native"].get("scan"),
+                                    scan_is_historical=not current,
                                     silence_classification="NO_ARRIVAL_OR_WAKE_INFERENCE"))
             result = []
             sensor_observations = []
@@ -260,6 +326,17 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                 if sensor is not None:
                     sensor_mac_input(sensor, "a1", group["collector_target_id"])  # Strict stored projection.
                 decision = classify_incident(rows, sensor)
+                manual_context = any(e["event_code"] == "ACCESS_SIGNED_MANUAL_COMPLETED" for e in rows)
+                # Time proximity provides context only. It never maps a family
+                # member's completion to a different phone or implies a failure.
+                manual_times = [int(e["received_at"].replace(tzinfo=timezone.utc).timestamp() * 1000)
+                                for e in rows if e["event_code"] == "ACCESS_SIGNED_MANUAL_COMPLETED"]
+                manual_candidates = [r["id"] for r in reports if any(
+                    receipt_ms - 600000 <= at <= receipt_ms + 120000
+                    for at in manual_contexts[r["id"]] for receipt_ms in manual_times)]
+                missing_status = ("REPORTS_PENDING_PAGINATION" if len(mobiles) > mobile_limit else
+                                  "NO_MATCH_ON_THIS_PAGE" if mobile_before_id is not None else
+                                  "MANUAL_CONTEXT_NOT_OBSERVED" if reports else "DIAGNOSTIC_EVIDENCE_NOT_RECEIVED")
                 result.append(dict(id=str(group["latest_id"]), target_id=group["collector_target_id"],
                                    source_boot_id=group["source_boot_id"], session_id=group["session_id"],
                                    event_count=len(rows), event_codes=[e["event_code"] for e in rows],
@@ -267,7 +344,12 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                                    last_received_at=_utc_text(max(e["received_at"] for e in rows)) if rows else None,
                                    sensor_summary=sensor, sensor_integrity="verified" if sensor else "NOT_OBSERVED",
                                    sensor_span_ms=(int(sensor["ended_monotonic_ms"])-int(sensor["started_monotonic_ms"])) & 0xffffffff if sensor else None,
-                                   mobile_report_matches=matches.get(group["session_id"], []), **decision))
+                                   mobile_report_matches=list(dict.fromkeys(matches.get(group["session_id"], []))),
+                                   manual_context_report_candidates=manual_candidates,
+                                   manual_context_correlation="NEAR_RECEIPT_ONLY_OWNER_UNRESOLVED" if manual_candidates else "NOT_OBSERVED",
+                                   mobile_evidence_status=missing_status if manual_context and not manual_candidates else "SEE_MOBILE_OBSERVATIONS",
+                                   automatic_failure_inferred=False,
+                                   time_basis="BACKEND_RECEIPT_WITH_BOOT_SEQUENCE_NO_TRUSTED_OCCURRENCE", **decision))
             health_result = [health_row(row) for row in health[:100]]
             targets = []
             for name in sorted({row["verified"]["target_id"] for row in health_result}):
@@ -283,15 +365,32 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                                     freshness="RECENT_SIGNED_SAMPLE" if 0 <= age <= 90000 else "STALE_SIGNED_SAMPLE",
                                     boot_counts=sorted({row["verified"]["source_boot_count"] for row in samples}, key=int),
                                     observed_gaps=gaps, outage_cause="NOT_DETERMINED"))
+            evidence_gaps = [dict(source="manual_context", target_id=item["target_id"], session_id=item["session_id"],
+                                 mobile_ref=mobile_ref, classification=item["mobile_evidence_status"],
+                                 automatic_failure_inferred=False, evidence_scope="THIS_QUERY_PAGE")
+                             for item in result if item["mobile_evidence_status"] != "SEE_MOBILE_OBSERVATIONS"]
+            if not reports:
+                evidence_gaps.append(dict(source="mobile", mobile_ref=mobile_ref,
+                    classification="NO_REPORTS_ON_THIS_PAGE" if mobile_before_id is not None else "DIAGNOSTIC_EVIDENCE_NOT_RECEIVED",
+                    automatic_failure_inferred=False, evidence_scope="THIS_QUERY_PAGE"))
             return dict(incidents=result, mobile_incidents=list(mobile_incidents.values())[:100],
+                        evidence_gaps=evidence_gaps,
                         mobile_observations=reports, target_observations=targets,
                         sensor_observations=sensor_observations,
                         health_history=health_result,
                         next_before_id=str(result[-1]["id"]) if len(groups) > limit else None,
+                        next_mobile_before_id=str(mobiles[mobile_limit-1]["id"]) if len(mobiles) > mobile_limit else None,
+                        mobile_ref=mobile_ref,
                         since=_utc_text(start), until=_utc_text(end), time_basis="backend_received_at",
+                        occurred_since=_utc_text(occurrence[0]), occurred_until=_utc_text(occurrence[1]),
+                        evidence_received_until=_utc_text(evidence_end), mobile_time_basis="PHONE_WALL_CLOCK_UNVERIFIED",
+                        mobile_query_mode="OCCURRENCE_WITH_LATE_EVIDENCE" if late_query else "LEGACY_RECEIPT_CUTOFF",
+                        mobile_evidence_status="REPORTS_OBSERVED" if reports else
+                            "NO_REPORTS_ON_THIS_PAGE" if mobile_before_id is not None else "DIAGNOSTIC_EVIDENCE_NOT_RECEIVED",
                         source_order="boot_sequence", snapshot_atomic=False,
                         coverage=dict(events_truncated=len(event_rows) > 5000,
-                                      mobile_reports_truncated=len(mobiles) > 20,
+                                      mobile_reports_truncated=len(mobiles) > mobile_limit,
+                                      mobile_pagination_independent=True, legacy_event_index="UNKNOWN_ROWS_INCLUDED",
                                       mobile_incidents_truncated=len(mobile_incidents) > 100,
                                       sensor_summaries_truncated=len(summaries) > 100,
                                       health_truncated=len(health) > 100,
@@ -420,24 +519,53 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
     def list_bundles(
         limit: int = Query(20, ge=1, le=100),
         before_id: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+        mobile_ref: Optional[str] = Query(None, pattern=MOBILE_REF_PATTERN),
+        occurred_since: Optional[str] = Query(None, max_length=64),
+        occurred_until: Optional[str] = Query(None, max_length=64),
+        evidence_received_until: Optional[str] = Query(None, max_length=64),
     ):
+        occurrence = None
+        evidence_end = None
+        if occurred_since is not None or occurred_until is not None or evidence_received_until is not None:
+            _, occurrence, evidence_end = _incident_windows(
+                None, evidence_received_until if occurred_since is None else None,
+                occurred_since, occurred_until, evidence_received_until)
+            if occurred_since is None:
+                occurrence = None
         conn = None
         try:
             conn = get_db()
             with conn.cursor() as cur:
-                sql = "SELECT id,bundle_ref,created_at_ms,received_at FROM mobile_diagnostic_bundles"
-                args = []
-                if before_id is not None:
-                    sql += " WHERE id < %s"
-                    args.append(before_id)
+                sql = ("SELECT id,bundle_ref,credential_ref,created_at_ms,captured_epoch_ms,"
+                       "event_first_epoch_ms,event_last_epoch_ms,evidence_index_version,received_at "
+                       "FROM mobile_diagnostic_bundles")
+                if evidence_end is not None:
+                    where, args = _mobile_where(evidence_end, mobile_ref, before_id, occurrence)
+                else:
+                    where, args = [], []
+                    for column, value in (("id", before_id), ("credential_ref", mobile_ref)):
+                        if value is not None:
+                            where.append(column + (" < %s" if column == "id" else "=%s"))
+                            args.append(value)
+                if where:
+                    sql += " WHERE " + " AND ".join(where)
                 cur.execute(sql + " ORDER BY id DESC LIMIT %s", (*args, limit + 1))
                 rows = cur.fetchall()
                 items = [{"id": str(row["id"]), "bundle_ref": row["bundle_ref"],
                           "created_at_ms": str(row["created_at_ms"]),
-                          "received_at": row["received_at"].isoformat() + "Z"}
+                          "received_at": _utc_text(row["received_at"]),
+                          **({"mobile_ref": row["credential_ref"]} if row.get("credential_ref") else {}),
+                          "captured_epoch_ms": str(row["captured_epoch_ms"]) if row.get("captured_epoch_ms") is not None else None,
+                          "event_first_epoch_ms": str(row["event_first_epoch_ms"]) if row.get("event_first_epoch_ms") is not None else None,
+                          "event_last_epoch_ms": str(row["event_last_epoch_ms"]) if row.get("event_last_epoch_ms") is not None else None,
+                          "event_range_index": "INDEXED" if row.get("evidence_index_version") == 1 else "LEGACY_UNKNOWN_USE_DETAIL"}
                          for row in rows[:limit]]
                 return {"bundles": items, "next_before_id":
-                        items[-1]["id"] if len(rows) > limit else None}
+                        items[-1]["id"] if len(rows) > limit else None,
+                        "truncated": len(rows) > limit,
+                        "evidence_received_until": _utc_text(evidence_end) if evidence_end else None,
+                        "occurred_since": _utc_text(occurrence[0]) if occurrence else None,
+                        "occurred_until": _utc_text(occurrence[1]) if occurrence else None}
         except Exception:
             raise HTTPException(503, "diagnostic storage unavailable", headers={"Cache-Control": "no-store"}) from None
         finally:
@@ -479,8 +607,11 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                     )
                     target_events = cur.fetchall()
                 return {
-                    "id": str(row["id"]), "received_at": row["received_at"].isoformat() + "Z",
+                    "id": str(row["id"]), "received_at": _utc_text(row["received_at"]),
                     "bundle": bundle,
+                    "evidence": bundle_evidence_metadata(bundle,
+                        int(datetime.fromisoformat(bundle["created_at"].replace("Z", "+00:00")).timestamp() * 1000),
+                        row["received_at"], as_of_ms=int(datetime.now(timezone.utc).timestamp() * 1000)),
                     "target_events": [{"session_id": e["session_id"], "event_code": e["event_code"],
                                        "reason_code": e["reason_code"],
                                        "received_at": e["received_at"].isoformat() + "Z"}

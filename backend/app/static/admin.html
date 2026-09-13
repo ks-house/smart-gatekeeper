@@ -621,7 +621,34 @@
             ? escapeHtml(item.field_test.ref)
             : '일반 자동 수집';
           const classification = item.classification || {};
+          const evidence = item.evidence || {};
+          const upload = evidence.upload || {};
+          const evidenceTime = value => value == null ? '미관측'
+            : new Date(Number(value)).toLocaleString('ko-KR');
+          const freshness = {
+            RECENT_REPORT: '최근 건강 관측', STALE_REPORT: '관측 오래됨', CLOCK_UNCERTAIN: '휴대폰 시각 불확실',
+            HISTORICAL_EVIDENCE_ONLY: '과거 사건 묶음 · 현재 건강 미보고'
+          }[evidence.freshness] || '신선도 미확인';
+          const pending = upload.pending_events == null ? '미관측' : Number(upload.pending_events);
+          const gaps = (evidence.gaps || []).map(code => ({
+            COLLECTION_LOSS_REPORTED: '누적 수집 유실 보고', PENDING_AT_CAPTURE: '캡처 당시 미전송',
+            QUARANTINED_REPORTS: '격리된 보고서 있음', RUNTIME_NOT_REPORTED: '업로드 상태 미보고'
+          }[code] || code)).join(' · ');
+          const uploadEvidence = `캡처 당시 대기 사건 ${pending} · ${escapeHtml(upload.state || '미보고')} · 최근 서버 ACK ${evidenceTime(upload.last_server_ack_epoch_ms)}${upload.pending_age_at_capture_ms == null ? '' : ` · 당시 대기 ${Math.floor(Number(upload.pending_age_at_capture_ms) / 1000)}초`}`;
           const target = item.target_controller || {};
+          const advisory = item.target_unsigned_advisory || {};
+          const rearm = advisory.passage_rearm;
+          const rawSensor = advisory.sensor_observation;
+          const presence = advisory.ble_presence;
+          const rearmEvidence = rearm
+            ? `인증 준비 ${rearm.auth_ready ? '가능' : '대기'} (${escapeHtml(rearm.auth_reason)}) · 센서 개방 준비 ${rearm.pulse_ready ? '가능' : '대기'} (${escapeHtml(rearm.pulse_reason)})`
+            : '';
+          const rawSensorEvidence = rawSensor
+            ? `센서 ${escapeHtml(rawSensor.phase)} / ${escapeHtml(rawSensor.kind)} · ${rawSensor.raw_mm == null ? '거리 미측정' : `${Number(rawSensor.raw_mm)}mm`} · 표본 나이 ${rawSensor.sample_age_ms == null ? '미관측' : `${Number(rawSensor.sample_age_ms)}ms`}`
+            : '';
+          const presenceEvidence = presence
+            ? `광고 요청 ${presence.requested_ready ? '준비' : '대기'} / 적용 ${presence.applied_valid ? (presence.applied_ready ? '준비' : '대기') : '미확인'} · ${escapeHtml(presence.status)} · RF 수신 미확인`
+            : '';
           const sensor = target.sensor_observation;
           const sensorEvidence = sensor
             ? `최근 센서 표본 ${Number(sensor.sensor_samples)} · 유효 ${Number(sensor.sensor_valid_samples)} · 무응답 ${Number(sensor.sensor_timeouts)} · 이상 ${Number(sensor.sensor_invalid_samples)} · 범위 ${Number(sensor.sensor_min_cm)}–${Number(sensor.sensor_max_cm)}cm · 재개방 ${sensor.sensor_rearm_blocked ? '센서 이탈 대기' : '가능'} (현재 참고값)`
@@ -630,12 +657,12 @@
             ? `Target ${target.correlated ? '연결됨' : '현재 상태만'} · ${escapeHtml(target.last_stage || '-')}`
             : 'Target 상태 만료';
           tr.innerHTML = `
-            <td>${new Date(Number(item.created_at_ms)).toLocaleString('ko-KR')}</td>
+            <td>생성 ${evidenceTime(item.created_at_ms)}<br><small>서버 저장 ${new Date(item.received_at).toLocaleString('ko-KR')}</small><br><small>건강 캡처 ${evidenceTime(evidence.health_snapshot_epoch_ms)} · ${freshness}</small><br><small>포함 사건 ${evidenceTime(evidence.event_first_epoch_ms)} – ${evidenceTime(evidence.event_last_epoch_ms)}</small></td>
             <td>${actor}<br><small>${escapeHtml(app.version || '-')}+${escapeHtml(app.build || '-')}</small></td>
             <td>${marker}<br><small>bundle ${escapeHtml(shortOpaqueRef(item.bundle_ref))}</small></td>
-            <td>깨움 ${Number(item.wake_count || 0)} · 세션 ${Number(item.session_count || 0)}<br><small>${targetEvidence}</small><br><small>${sensorEvidence}</small></td>
+            <td>깨움 ${Number(item.wake_count || 0)} · 세션 ${Number(item.session_count || 0)}<br><small>${targetEvidence}</small><br><small>${sensorEvidence}</small><br><small>${uploadEvidence}</small><br><small>${escapeHtml(gaps)}</small>${rearm || rawSensor || presence ? `<br><small>최근 Target 참고 관측 (서명 범위 밖)<br>${rearmEvidence}<br>${rawSensorEvidence}<br>${presenceEvidence}</small>` : ''}</td>
             <td>${escapeHtml(classification.last_stage || 'UNKNOWN')}</td>
-            <td><span class="badge badge-warning">${escapeHtml(classification.first_missing || 'UNKNOWN')}</span></td>
+            <td><span class="badge badge-warning">${escapeHtml(classification.first_missing || 'UNKNOWN')}</span><br><small>보고서 당시 증거 · 수신 시각은 현재 건강이나 새 실패 시각이 아닙니다.</small></td>
           `;
           tbody.appendChild(tr);
         });
