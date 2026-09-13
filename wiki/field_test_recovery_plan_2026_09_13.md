@@ -2,7 +2,7 @@
 title: September 13 field failure and automatic diagnostic upload recovery plan
 type: proposal
 project: smart-gatekeeper
-status: implemented-source-deployment-in-progress
+status: deployed-field-acceptance-pending
 updated: 2026-09-13
 source_of_truth: true
 applies_to:
@@ -25,7 +25,7 @@ applies_to:
 - Target: 인증 허용과 자동 pulse 잠금 분리, 차단 중 ARM 최대5초·미해제 자동 시도 후30초 quiet, 공통 초음파 cadence/분류/median 및 거절 계측, 광고 requested/applied 상태와 bounded 재적용을 구현했다. no-echo/시간 경과로 pulse 잠금을 해제하지 않으며 기존 clear3회·임계값·핀·V2 proof·서명 V1/NVS·MQTT 비동기·dual-slot OTA를 유지한다.
 - 로컬 검증: personal firmware build PASS(RAM97,400/327,680B, flash1,855,872/7,340,032B); Target 호스트193 tests PASS; Android133 tests PASS(실제 WorkManager2.9.1/Robolectric migration·late producer 포함); Flutter115 tests/analyzer PASS; root409 tests OK(1 platform skip), Backend310 OK(4 integration skip) 및 별도 실제 MariaDB017→018/N-1 writer PASS. 읽기 전용 MQTT collector는4883/TLS 실제 구독·4채널 관측을 확인했다.
 - 앱 배포: main5ca450a/44801(`1.0.0-g5ca450a`) 게시 완료. 기본·예비 HTTPS 경로 모두55,659,673B/SHA256 `270804ce20274a7a4320f692c6c16bf9fd4561c5a297b540a3f74ba1ec21bf38` 일치. 휴대폰 설치는 사용자 확인이 필요하며 아직 미확인이다.
-- Target 배포/물리 경계:497은 설치/boot902까지 진행했으나 health heap 검사 실패로494/boot903에 자동 복구됐다. 자세한 근거와 복구 절차는 [OTA runbook §12](ota_operations_runbook.md#12-2026-09-13-497-health-rejection-and-preserved-recovery)에 기록한다. 기존 T1=18:21:04/boot901을 유지하며 OTA·rollback 부팅은 전원 원인과 분리한다. 센서 전기/RF와 실제 문 동작이 고쳐졌다고 소프트웨어 시험만으로 선언하지 않는다.
+- Target 배포/물리 경계:497의 health heap 실패/494 복구 뒤, 메모리 수명 수정 main7959962/498을 설치했다. boot904/23:27:08 KST VALID,23:30:44 uptime253초·IDLE·relay OFF·현재 버전 HTTPS 검사/error0·인증 준비/광고 반영을 Backend health13723으로 확인했다. 자세한 근거는 [OTA runbook §12](ota_operations_runbook.md#12-2026-09-13-497-health-rejection-and-preserved-recovery)에 기록한다. 기존 T1=18:21:04/boot901을 유지하며 OTA·rollback 부팅은 전원 원인과 분리한다. 센서 전기/RF와 실제 문 동작이 고쳐졌다고 소프트웨어·설치 시험만으로 선언하지 않는다.
 
 ## 1. 이번에 확인된 사실과 원인 판정
 
