@@ -7419,3 +7419,8 @@
 
 - Final Flutter115 tests and analyzer with zero issues pass after cached-readiness opt-out correction; native133/root409/Backend310 remain the integration baseline. New Kotlin tests are within the existing hosted gattworker selection; no CI workflow or OTA gate modifications. Pinned local Flutter3.44.8 and reverted task-generated non-Android plugin registration noise. Kept unrelated pre-existing wiki observations unstaged.
 - Separate policy408 admitted source9e58327 and feature407 merge-connected it with both append-only log sides retained; main7afb9f785c0a0a2c36248ee33d2dfef3bdd3f023 begins Backend exact-main build/deploy. Client/Target publication is held until Backend readiness/schema018 is confirmed. gh first rejected an abbreviated expectedHeadOid before any merge; fetched full SHA and retried once successfully. No device command or physical success claim.
+
+## [2026-09-13] compile | Admit exact schema018 field evidence deployment inputs
+
+- Owner authorized complete field recovery deployment. Policy-only admission for Backend PR407 source9e58327263213fbd98c32f208cf1b38068d853c3 changes only DB Dockerfile and Backend bundle inventory hashes. Remaining21 protected inputs, workflows, signing gates, NAS wrapper, credentials and persistent-baseline semantics are unchanged. Local42 policy regressions pass; trusted-base CI and ancestry-preserving merge precede deployment.
+- Backend/schema018 late-evidence storage and optional authorized diagnostic ACK baseline must be deployed before the new app/Target. Admission is not deployment, install, physical passage or electrical reliability evidence. This isolated worktree does not contain unrelated primary-worktree changes.
