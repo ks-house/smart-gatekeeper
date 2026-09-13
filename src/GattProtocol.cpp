@@ -1536,8 +1536,11 @@ bool ProtocolCore::processProof(const uint8_t* payload, size_t length,
       auth_control_gate_->commitAuthorizedAction(
           static_cast<LocalAccessAction>(action), now_ms);
   if (!action_committed) {
+    const ResultReason reason = auth_control_gate_ != nullptr &&
+        auth_control_gate_->commitRejectionReason() == ResultReason::kBusy ?
+        ResultReason::kBusy : ResultReason::kInternalFailClosed;
     abortAuthControl(now_ms);
-    reject(ResultReason::kInternalFailClosed, now_ms, false);
+    reject(reason, now_ms, false);
     return false;
   }
   auth_control_active_ = false;

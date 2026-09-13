@@ -13,7 +13,7 @@ namespace sgk {
 // This worker never invokes client.loop(), command callbacks, or gate control.
 class MqttTelemetryWorker {
  public:
-  static constexpr size_t kMaxPayloadBytes = 6656;
+  static constexpr size_t kMaxPayloadBytes = 7936;
   struct Result {
     uint32_t generation = 0;
     uint32_t duration_ms = 0;

@@ -1,4 +1,16 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
+
+## 2026-09-13 field recovery software verification
+
+| Test | Observed result | Boundary |
+|---|---|---|
+| Backend/root | 310 Backend tests (4 skips), 409 root tests (1 skip), no failures; separate real MariaDB017→018 repeat/N-1 writer pass | Software and isolated DB evidence |
+| Android native | 133 tests, no failures/errors/skips; actual WorkManager2.9.1 verifies delayed-v1 migration and exactly one successor for concurrent producers | No Samsung RF/OS scheduling guarantee |
+| Flutter | 115 tests pass; analyzer reports no issues; ready→upload-disable clears readiness | UI/presentation regression only |
+| Target | Personal compile/link pass, RAM97400/327680 and flash1855872/7340032; unchanged pins, dual-slot OTA and sensor thresholds | Not an installed firmware or physical sensor proof |
+| MQTT capture | StrictTLS public4883, subscribe-only45s,4 allowlisted channels, one bounded segment/no eviction | Local capture path verified; no control command |
+| Rollout | Backend PR407 merged7afb9f7; exact-main deployment in progress; new app/Target not yet published | Device version/VALID and physical test remain separate |
+
 > Last updated: 2026-09-06 (continuous-presence Target OTA verified; owner mobile/physical latency trial pending)
 
 ## 2026-09-06 continuous-presence rollout

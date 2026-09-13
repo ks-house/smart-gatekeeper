@@ -102,6 +102,7 @@ object BleWakeBluetoothStateMonitor {
     val featureEnabled = wakeRequested &&
       BleGattFeatureFlagStore(context).decision().newWorkerEnabled
     if (newState != BluetoothAdapter.STATE_ON && featureEnabled) {
+      ContinuousPresenceTracker.exit(null)
       BleWakeRegistrar.invalidateReconciliation(
         context,
         "bluetooth_off_or_scanner_unavailable",
@@ -119,6 +120,8 @@ object BleWakeBluetoothStateMonitor {
   }
 
   private fun restore(context: Context, source: String) {
+    BleScanRecoveryObserver.begin(context, if (source == "process_start")
+      BleScanRecoveryReason.PROCESS_START else BleScanRecoveryReason.BLUETOOTH_ON)
     val result = BleGattFeatureFlagStore(context).reconcileWakeRegistration()
     val message = "$source registration restore: ${result.status}" +
       (result.errorCode?.let { " ($it)" } ?: "")

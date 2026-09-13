@@ -81,12 +81,20 @@ internal object NativeDiagnosticReport {
       if (at > since) scanEvents.put(obj(mapOf("event" to code(event["event"]),
         "at_epoch_ms" to at, "error_code" to event["errorCode"])))
     }
-    native.put("scan", obj(mapOf("observation" to when {
+    val scanProjection = obj(mapOf("observation" to when {
       packet == null -> "NOT_OBSERVED"
       packet > now -> "CLOCK_UNCERTAIN"
       now - packet <= 30_000 -> "RECENT_PACKET"
       else -> "NO_RECENT_PACKET"
-    }, "last_packet_at_epoch_ms" to packet, "lifecycle" to scanEvents)))
+    }, "last_packet_at_epoch_ms" to packet, "lifecycle" to scanEvents))
+    scanFields.forEach { (wire, local) ->
+      val value = scan?.get(local)
+      scanProjection.put(wire, when {
+        value is Number -> value.toLong().takeIf { it >= 0 } ?: JSONObject.NULL
+        else -> code(value) ?: JSONObject.NULL
+      })
+    }
+    native.put("scan", scanProjection)
     native.put("runtime", runtime)
 
     val sessions = JSONArray()
@@ -119,8 +127,11 @@ internal object NativeDiagnosticReport {
         NativeDiagnosticReport.fieldTest(bridge(it) as? Map<*, *>, since, now)
       },
       "sessions" to sessions, "wake_events" to wakes))
+    var trimmed = 0
+    runtime.put("export_trimmed", trimmed)
     while (result.toString().toByteArray(Charsets.UTF_8).size > MAX_BYTES && (wakes.length() > 0 || sessions.length() > 0)) {
       if (wakes.length() > 0) wakes.remove(wakes.length() - 1) else sessions.remove(sessions.length() - 1)
+      runtime.put("export_trimmed", ++trimmed)
     }
     require(result.toString().toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "diagnostic projection too large" }
     val ref = MessageDigest.getInstance("SHA-256").digest(result.toString().toByteArray(Charsets.UTF_8))
@@ -141,4 +152,18 @@ internal object NativeDiagnosticReport {
   private val wakeFields = mapOf("source" to "source", "success" to "success", "received_epoch_ms" to "receivedEpochMs",
     "received_elapsed_ms" to "receivedElapsedMs", "callback_latency_ms" to "callbackLatencyMs",
     "screen_interactive" to "screenInteractive", "result_count" to "resultCount", "callback_type" to "callbackType", "error_code" to "errorCode")
+  private val scanFields = mapOf(
+    "callback_count" to "callbackCount", "empty_callback_count" to "emptyCallbackCount",
+    "result_count" to "resultCount", "filter_match_count" to "filterMatchCount",
+    "fresh_match_count" to "freshMatchCount", "stale_match_count" to "staleMatchCount",
+    "missing_ready_hint_count" to "missingReadyHintCount", "malformed_ready_hint_count" to "malformedReadyHintCount",
+    "target_not_ready_count" to "targetNotReadyCount", "callback_error_count" to "callbackErrorCount",
+    "dispatch_attempt_count" to "dispatchAttemptCount", "dispatch_enqueued_count" to "dispatchEnqueuedCount",
+    "dispatch_skipped_count" to "dispatchSkippedCount", "owner_wait_count" to "ownerWaitCount",
+    "enqueue_failure_count" to "enqueueFailureCount", "last_callback_at_epoch_ms" to "lastCallbackAtEpochMs",
+    "last_error_at_epoch_ms" to "lastErrorAtEpochMs", "last_error_code" to "lastErrorCode",
+    "last_dispatch_at_epoch_ms" to "lastDispatchAtEpochMs", "last_dispatch_reason" to "lastDispatchReason",
+    "recovery_started_at_epoch_ms" to "recoveryStartedAtEpochMs", "recovery_deadline_at_epoch_ms" to "recoveryDeadlineAtEpochMs",
+    "recovery_finished_at_epoch_ms" to "recoveryFinishedAtEpochMs", "recovery_reason" to "recoveryReason",
+    "recovery_outcome" to "recoveryOutcome")
 }

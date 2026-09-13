@@ -101,6 +101,11 @@ enum class TransportFailureCode(val observabilityReason: AccessReasonCode) {
   WRITE_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
   DESCRIPTOR_WRITE_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
   SERVICE_DISCOVERY_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
+  SERVICE_DISCOVERY_START_REJECTED(AccessReasonCode.GATT_CONNECT_FAILED),
+  SERVICE_DISCOVERY_CALLBACK_FAILED(AccessReasonCode.GATT_CONNECT_FAILED),
+  SERVICE_MISSING(AccessReasonCode.PROTOCOL_INCOMPATIBLE),
+  CHARACTERISTIC_MISSING(AccessReasonCode.PROTOCOL_INCOMPATIBLE),
+  PROTOCOL_V2_REQUIRED(AccessReasonCode.PROTOCOL_INCOMPATIBLE),
   MALFORMED_FRAME(AccessReasonCode.MALFORMED_PROOF),
   UNEXPECTED_MESSAGE_TYPE(AccessReasonCode.PROTOCOL_INCOMPATIBLE),
 }
@@ -164,6 +169,7 @@ class GattSessionEngine(
     deviceAddress: String,
     credentialId: ByteArray,
     action: Int = GattProtocol.ACTION_ARM_FOR_SENSOR,
+    requireFastV2: Boolean = false,
   ): SessionOutcome {
     require(
       action == GattProtocol.ACTION_ARM_FOR_SENSOR ||
@@ -198,6 +204,9 @@ class GattSessionEngine(
       withTimeout(timeoutMs) {
         transport.connect(deviceAddress)
         connectSetupMs = markPhase()
+        if (requireFastV2 && transport.protocolMode != GattProtocolMode.FAST_V2) {
+          throw GattTransportException(TransportFailureCode.PROTOCOL_V2_REQUIRED)
+        }
         val protocolVersion: Int
         val negotiationHash: ByteArray
         if (transport.protocolMode == GattProtocolMode.FAST_V2) {

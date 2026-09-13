@@ -5,11 +5,28 @@
 
 namespace sgk {
 
+enum class PassagePulseSource : uint8_t { kNone, kSensor, kLocalManual, kRemoteManual };
+inline const char* passagePulseSourceName(PassagePulseSource source) {
+  switch (source) {
+    case PassagePulseSource::kSensor: return "SENSOR";
+    case PassagePulseSource::kLocalManual: return "LOCAL_MANUAL";
+    case PassagePulseSource::kRemoteManual: return "REMOTE_MANUAL";
+    default: return "NONE";
+  }
+}
+
 // A new proof may renew readiness, but one occupied sensor episode gets one
 // automatic pulse. Missing/invalid echoes are never evidence of clearance.
 class PassageRearmPolicy {
  public:
-  void notePulse() { blocked_ = true; clear_samples_ = 0; }
+  void notePulse(uint32_t now_ms = 0,
+                 PassagePulseSource source = PassagePulseSource::kNone) {
+    if (!blocked_) blocked_since_ms_ = now_ms;
+    blocked_ = true;
+    clear_samples_ = 0;
+    last_pulse_ms_ = now_ms;
+    pulse_source_ = source;
+  }
   void observe(bool valid_clear) {
     if (!blocked_) return;
     clear_samples_ = valid_clear ? clear_samples_ + 1 : 0;
@@ -19,6 +36,13 @@ class PassageRearmPolicy {
     }
   }
   bool blocked() const { return blocked_; }
+  uint32_t blockedAgeMs(uint32_t now_ms) const {
+    return blocked_ ? now_ms - blocked_since_ms_ : 0;
+  }
+  uint32_t blockedSinceMs() const { return blocked_since_ms_; }
+  uint32_t lastPulseMs() const { return last_pulse_ms_; }
+  uint8_t clearSamples() const { return clear_samples_; }
+  PassagePulseSource pulseSource() const { return pulse_source_; }
   void observeDistance(uint16_t raw_mm, uint16_t threshold_mm) {
     if (raw_mm == kNoSensorMeasurement) {
       if (unknown_samples_ < 10) ++unknown_samples_;
@@ -38,19 +62,38 @@ class PassageRearmPolicy {
   uint8_t clear_samples_ = 0;
   uint8_t unknown_samples_ = 0;
   SensorClearanceState state_ = SensorClearanceState::kUnknown;
+  uint32_t blocked_since_ms_ = 0;
+  uint32_t last_pulse_ms_ = 0;
+  PassagePulseSource pulse_source_ = PassagePulseSource::kNone;
 };
 
 // Advisory radio hint only: GATT proof/ACL/FSM remain the authorization path.
 // Each eligible IDLE window has a new boot-random-seeded epoch. One second of
 // IDLE gives queued MQTT/OTA work a chance before continuous presence re-arms.
+// An automatic attempt without confirmed clearance earns a longer quiet
+// interval. The same admission is checked at the proof commit, so a missing
+// hint / eager phone cannot keep renewing ARMED behind a false radio hint.
 class PresenceReadyPolicy {
  public:
+  static constexpr uint32_t kIdleYieldMs = 1000;
+  static constexpr uint32_t kRetryQuietMs = 30000;
+  static constexpr uint32_t kBlockedArmMs = 5000;
   explicit PresenceReadyPolicy(uint32_t seed) : epoch_(seed) {}
   bool update(uint32_t now, bool idle) {
     if (!idle) { waiting_ = false; ready_ = false; return false; }
     if (!waiting_) { waiting_ = true; since_ = now; }
-    if (!ready_ && now - since_ >= 1000) { ++epoch_; ready_ = true; }
+    if (!ready_ && now - since_ >= quietMs()) { ++epoch_; ready_ = true; }
     return ready_;
+  }
+  void noteAutomaticArm() { retry_quiet_ = true; waiting_ = ready_ = false; }
+  void noteConfirmedClearance() { retry_quiet_ = false; }
+  uint32_t remainingMs(uint32_t now) const {
+    if (!waiting_) return quietMs();
+    const uint32_t elapsed = now - since_;
+    return elapsed >= quietMs() ? 0 : quietMs() - elapsed;
+  }
+  static uint32_t armDurationMs(uint32_t configured_ms, bool blocked) {
+    return blocked && configured_ms > kBlockedArmMs ? kBlockedArmMs : configured_ms;
   }
   bool ready() const { return ready_; }
   uint32_t epoch() const { return epoch_; }
@@ -59,6 +102,21 @@ class PresenceReadyPolicy {
   uint32_t since_ = 0;
   bool waiting_ = false;
   bool ready_ = false;
+  bool retry_quiet_ = false;
+  uint32_t quietMs() const { return retry_quiet_ ? kRetryQuietMs : kIdleYieldMs; }
+};
+
+struct PassageRearmTelemetry {
+  bool auth_ready = false;
+  bool pulse_ready = false;
+  const char* auth_reason = "BOOTING";
+  const char* pulse_reason = "AUTH_REQUIRED";
+  uint32_t retry_after_ms = 0;
+  uint32_t blocked_since_ms = 0;
+  uint32_t blocked_age_ms = 0;
+  uint32_t last_pulse_ms = 0;
+  uint8_t clear_samples = 0;
+  PassagePulseSource pulse_source = PassagePulseSource::kNone;
 };
 
 }  // namespace sgk

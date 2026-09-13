@@ -25,7 +25,8 @@ object BleWakeContract {
   }
 
   fun matchesManufacturerData(data: ByteArray?): Boolean {
-    if (data == null || data.size < manufacturerDataPrefix.size) return false
+    // Prefix is the OS filter; a received iBeacon also needs major/minor/Tx power.
+    if (data == null || data.size < manufacturerDataPrefix.size + 5) return false
     return manufacturerDataPrefix.indices.all { index ->
       (data[index].toInt() and manufacturerDataMask[index].toInt()) ==
         (manufacturerDataPrefix[index].toInt() and manufacturerDataMask[index].toInt())

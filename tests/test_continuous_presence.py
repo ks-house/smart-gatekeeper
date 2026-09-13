@@ -14,8 +14,12 @@ class ContinuousPresenceTest(unittest.TestCase):
             "             g_access_fsm.state() == GateState::COOLDOWN", source,
         )
         self.assertIn("passageRearm.observeDistance", source)
-        self.assertIn("now - lastHealthSampleMs >= 1000", source)
-        self.assertIn("!passageRearm.blocked() && g_acl_manager.isLeaseValid(now)", source)
+        self.assertIn("sensorCadence.take(now, interval_ms)", source)
+        readiness = source.split("const bool authWindowReady", 1)[1].split(
+            "GattServer::setPresenceReady", 1)[0]
+        self.assertNotIn("passageRearm.blocked()", readiness)
+        self.assertIn("g_acl_manager.isLeaseValid(now)", readiness)
+        self.assertIn("if (!automaticAuthAdmitted) return sgk::ResultReason::kBusy", source)
 
     def test_verified_terminal_reauthentication_and_passage_interlock(self):
         with tempfile.TemporaryDirectory() as directory:

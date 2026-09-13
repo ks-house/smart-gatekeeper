@@ -19,7 +19,12 @@ class NativeDiagnosticUpload {
 
   Future<Map<Object?, Object?>?> status() =>
       channel.invokeMapMethod<Object?, Object?>('status');
-  Future<void> requestCapture() => channel.invokeMethod<void>('requestCapture');
+  Future<void> requestCapture({String reason = 'USER_REQUEST'}) async {
+    // Native returns a status map; invokeMethod<void> incorrectly casts that
+    // response on some Flutter versions. This request does not prove an ACK.
+    await channel.invokeMethod<Object?>('requestCapture', {'reason': reason});
+  }
+
   Future<void> clear() async {
     try {
       await channel.invokeMethod<Object?>('clear');

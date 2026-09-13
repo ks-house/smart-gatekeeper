@@ -9,6 +9,36 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class GattTransportCallbackTest {
+  @Test fun transportKeepsSingleContextConstructorAlongsideExplicitV2Requirement() {
+    assertEquals(1, AndroidBleGattTransport::class.java
+      .getConstructor(android.content.Context::class.java).parameterCount)
+    assertEquals(2, AndroidBleGattTransport::class.java
+      .getConstructor(android.content.Context::class.java, Boolean::class.javaPrimitiveType!!).parameterCount)
+  }
+
+  @Test fun discoveryStartRejectionCallbackFailureMissingServiceAndDisconnectStayDistinct() = runBlocking {
+    for ((status, expected) in listOf(null to TransportFailureCode.SERVICE_DISCOVERY_START_REJECTED,
+        133 to TransportFailureCode.SERVICE_DISCOVERY_CALLBACK_FAILED)) {
+      val fixture = connectedFixture()
+      fixture.coordinator.onServicesFailed(fixture.connection, fixture.owner, status)
+      val failure = expectTransportFailure { fixture.connection.servicesReady.await() }
+      assertEquals(expected, failure.failureCode)
+      assertEquals(status, failure.gattStatus)
+    }
+    assertEquals(TransportFailureCode.SERVICE_MISSING, GattDiscoveryFailurePolicy.callback(0, false))
+    assertEquals(TransportFailureCode.SERVICE_DISCOVERY_CALLBACK_FAILED, GattDiscoveryFailurePolicy.callback(133, false))
+    assertEquals(null, GattDiscoveryFailurePolicy.callback(0, true))
+    val missing = connectedFixture()
+    missing.coordinator.onServicesFailed(missing.connection, missing.owner, 0, TransportFailureCode.SERVICE_MISSING)
+    assertEquals(TransportFailureCode.SERVICE_MISSING,
+      expectTransportFailure { missing.connection.servicesReady.await() }.failureCode)
+    val disconnected = connectedFixture()
+    disconnected.coordinator.onDisconnected(disconnected.connection, disconnected.owner, 147)
+    val failure = expectTransportFailure { disconnected.connection.servicesReady.await() }
+    assertEquals(TransportFailureCode.DISCONNECTED, failure.failureCode)
+    assertEquals(147, failure.gattStatus)
+  }
+
   @Test fun earlyV2ResultPreservesBusyRateLimitAndFailClosedReasons() = runBlocking {
     for (reason in listOf(8, 9, 10)) {
       val mailbox = GattCallbackMailbox()

@@ -133,6 +133,13 @@ static NvsQueueStorage g_nvs_queue_storage;
 static inline void relayOn();
 static inline void relayOff();
 static sgk::PassageRearmPolicy passageRearm;
+static sgk::PassagePulseSource nextPulseSource = sgk::PassagePulseSource::kNone;
+sgk::PassageRearmTelemetry g_passage_rearm_telemetry;
+static bool automaticAuthAdmitted = false;
+static sgk::PresenceReadyPolicy& presenceReadyPolicy() {
+  static sgk::PresenceReadyPolicy policy(esp_random());
+  return policy;
+}
 bool g_sensor_rearm_blocked = false;
 sgk::SensorClearanceState g_sensor_clearance_state = sgk::SensorClearanceState::kUnknown;
 
@@ -144,7 +151,8 @@ static uint16_t measuredMillimeters(float cm) {
 static sgk::TargetAccessFsm g_access_fsm(
     [](bool on) {
       if (on) {
-        passageRearm.notePulse();
+        passageRearm.notePulse(millis(), nextPulseSource);
+        nextPulseSource = sgk::PassagePulseSource::kNone;
         relayOn();
       }
       else relayOff();
@@ -155,6 +163,7 @@ static sgk::TargetAccessFsm g_access_fsm(
       if (std::strcmp(event, "session_completed") == 0 ||
           std::strcmp(event, "session_terminated") == 0 ||
           std::strcmp(event, "session_terminated_failsafe") == 0) {
+        UltrasonicSensor::qualification.finish(static_cast<uint32_t>(now_ms));
         if (UltrasonicSensor::sessions.active() &&
             !UltrasonicSensor::sessions.finish(static_cast<uint32_t>(now_ms),
                                                passageRearm.blocked(), passageRearm.state())) {
@@ -560,9 +569,20 @@ static OtaSafeState currentOtaSafeState() {
 }
 
 bool triggerArm() {
-  if (g_access_fsm.handlePreArm(millis(), g_pre_arm_duration_ms)) {
+  const uint32_t now_ms = millis();
+  // Signed legacy pre-arm uses the same automatic retry budget. Manual open
+  // remains independently authenticated and does not wait for this budget.
+  if (!presenceReadyPolicy().update(now_ms,
+          g_access_fsm.state() == GateState::IDLE && !relay.isOn() &&
+          !GattServer::isOtaBusy())) return false;
+  if (g_access_fsm.handlePreArm(now_ms, sgk::PresenceReadyPolicy::armDurationMs(
+          g_pre_arm_duration_ms, passageRearm.blocked()))) {
+    presenceReadyPolicy().noteAutomaticArm();
     noteAccessSessionStarted();
     UltrasonicSensor::resetHistory();
+    UltrasonicSensor::qualification.begin(now_ms);
+    UltrasonicSensor::sessions.begin(now_ms, g_distance_threshold_cm * 10,
+                                    passageRearm.blocked());
     DiagnosticsManager::noteAction("pre_armed");
     LOGF("[GATE] 🔑 PRE-ARMED 상태 진입! AJ-SR04T 초음파 센서 활성화 (%lu ms 유효)",
          (unsigned long)g_pre_arm_duration_ms);
@@ -577,6 +597,7 @@ bool triggerArm() {
 // triggerManualDoorOpen() — MQTT 원격 수동 개방 명령
 // ─────────────────────────────────────────────────────────────
 bool triggerManualDoorOpen() {
+  nextPulseSource = sgk::PassagePulseSource::kRemoteManual;
   if (g_access_fsm.handleManualRemoteOpen(millis(), RELAY_HOLD_MS, g_relay_cooldown_ms)) {
     noteAccessSessionStarted();
     DiagnosticsManager::noteAction("relay_on_manual");
@@ -606,20 +627,30 @@ static void initBleAdvertiser() {
     // An unauthenticated challenge is not allowed to renew the global hard
     // lease. Repeated connect/expire cycles therefore remain bounded by the
     // original access-critical start time.
+    // Capture automatic admission before entering AUTH_PENDING. Connections
+    // may still authenticate manual action-2 during automatic retry quiet.
+    automaticAuthAdmitted = presenceReadyPolicy().update(now_ms,
+        g_access_fsm.state() == GateState::IDLE && !relay.isOn() &&
+        !GattServer::isOtaBusy() && g_acl_manager.isLeaseValid(now_ms));
     return g_access_fsm.handleAuthPending(
         now_ms, GATT_AUTH_PENDING_TIMEOUT_MS);
   });
   GattServer::setOnAuthGrantCallback([](sgk::LocalAccessAction action,
                                         uint32_t now_ms) {
     if (action == sgk::LocalAccessAction::kOpenImmediately) {
+      nextPulseSource = sgk::PassagePulseSource::kLocalManual;
       const bool opened = g_access_fsm.handleLocalManualOpen(
           now_ms, RELAY_HOLD_MS, g_relay_cooldown_ms);
       if (opened) noteAccessSessionStarted();
-      return opened;
+      return opened ? sgk::ResultReason::kOk : sgk::ResultReason::kInternalFailClosed;
     }
+    if (!automaticAuthAdmitted) return sgk::ResultReason::kBusy;
+    automaticAuthAdmitted = false;
     const bool armed = g_access_fsm.handleAuthSuccess(
-        now_ms, g_pre_arm_duration_ms, g_relay_cooldown_ms);
+        now_ms, sgk::PresenceReadyPolicy::armDurationMs(
+            g_pre_arm_duration_ms, passageRearm.blocked()), g_relay_cooldown_ms);
     if (armed) {
+      presenceReadyPolicy().noteAutomaticArm();
       // Only a verified action commit earns a fresh physical-session lease.
       // beginAuth itself is intentionally excluded above.
       noteAccessSessionStarted();
@@ -628,13 +659,15 @@ static void initBleAdvertiser() {
       // five-sample median. Starting from five invalid sentinels requires at
       // least three fresh, current-session valid measurements before relay ON.
       UltrasonicSensor::resetHistory();
+      UltrasonicSensor::qualification.begin(now_ms);
       UltrasonicSensor::sessions.begin(now_ms, g_distance_threshold_cm * 10,
                                       passageRearm.blocked());
       DiagnosticsManager::noteAction("gatt_armed_fresh_sensor_history");
     }
-    return armed;
+    return armed ? sgk::ResultReason::kOk : sgk::ResultReason::kInternalFailClosed;
   });
   GattServer::setOnAuthAbortCallback([](uint32_t now_ms) {
+    automaticAuthAdmitted = false;
     g_access_fsm.handleAuthAbort(now_ms, "gatt_auth_aborted");
   });
   GattServer::init();
@@ -817,44 +850,81 @@ void loop() {
 
   now = millis();
 
-  // ─── 초음파 거리 측정 (ARMED 상태에서만 동작) ───
+  // One bounded trigger cadence across ARMED / IDLE / COOLDOWN. Neither a
+  // blocked passage nor a state transition may run pulseIn every loop.
   unsigned long durationUs = 0;
   float distCm = 999.0f;
+  static sgk::SensorSamplingCadence sensorCadence;
+  const bool wasBlocked = passageRearm.blocked();
 
   if (g_access_fsm.state() == GateState::ARMED) {
-    distCm = UltrasonicSensor::readDistanceCm(&durationUs);
-    // 20cm 미만 맹점은 -1.0f 반환되므로, 20cm ~ g_distance_threshold_cm 범위만 유효
-    bool validReading = (distCm >= ULTRASONIC_MIN_DISTANCE_CM &&
-                         distCm <= (float)g_distance_threshold_cm);
-    const uint16_t raw_mm = measuredMillimeters(UltrasonicSensor::lastRawDistanceCm());
-    passageRearm.observeDistance(raw_mm, g_distance_threshold_cm * 10);
-    UltrasonicSensor::sessions.observe(durationUs != 0, raw_mm,
-        measuredMillimeters(distCm), passageRearm.blocked(), passageRearm.state());
-    if (validReading && !passageRearm.blocked()) {
-      LOGF("[GATE] ✅ ARMED 상태에서 초음파 %.1f cm 감지!", distCm);
-      g_access_fsm.handleSensorTrigger(now, RELAY_HOLD_MS, g_relay_cooldown_ms);
+    distCm = UltrasonicSensor::lastMedianDistanceCm();
+    if (sensorCadence.take(now, ULTRASONIC_POLL_INTERVAL_MS)) {
+      distCm = UltrasonicSensor::readDistanceCm(&durationUs);
+      now = millis();
+      const uint16_t raw_mm = measuredMillimeters(UltrasonicSensor::lastRawDistanceCm());
+      const uint16_t median_mm = measuredMillimeters(distCm);
+      const uint16_t threshold_mm = g_distance_threshold_cm * 10;
+      UltrasonicSensor::observation.observe(now, sgk::SensorSamplePhase::kArmed,
+          durationUs, raw_mm, threshold_mm);
+      passageRearm.observeDistance(raw_mm, threshold_mm);
+      const bool blocked = passageRearm.blocked();
+      UltrasonicSensor::sessions.observe(durationUs != 0, raw_mm,
+          median_mm, blocked, passageRearm.state());
+      bool triggered = false;
+      if (median_mm != sgk::kNoSensorMeasurement && median_mm <= threshold_mm && !blocked) {
+        nextPulseSource = sgk::PassagePulseSource::kSensor;
+        triggered = g_access_fsm.handleSensorTrigger(now, RELAY_HOLD_MS, g_relay_cooldown_ms);
+      }
+      UltrasonicSensor::qualification.observe(now, raw_mm, median_mm,
+          threshold_mm, blocked, triggered);
     }
   } else if (g_access_fsm.state() == GateState::IDLE ||
              g_access_fsm.state() == GateState::COOLDOWN) {
     // Observe clearance after relay OFF too, so a person leaving during
     // cooldown is not missed before the next person's approach. Invalid/no echo
     // never unlocks a second automatic pulse.
-    static uint32_t lastHealthSampleMs = 0;
-    if (passageRearm.blocked() || now - lastHealthSampleMs >= 1000) {
-      lastHealthSampleMs = now;
-      const float clearDistance = UltrasonicSensor::readDistanceCmRaw();
-      passageRearm.observeDistance(measuredMillimeters(clearDistance),
-                                  g_distance_threshold_cm * 10);
+    const uint32_t interval_ms = passageRearm.blocked() ? ULTRASONIC_POLL_INTERVAL_MS : 1000;
+    if (sensorCadence.take(now, interval_ms)) {
+      distCm = UltrasonicSensor::readDistanceCmRaw(&durationUs);
+      now = millis();
+      const uint16_t raw_mm = measuredMillimeters(distCm);
+      const auto phase = g_access_fsm.state() == GateState::COOLDOWN ?
+          sgk::SensorSamplePhase::kCooldown : sgk::SensorSamplePhase::kIdle;
+      UltrasonicSensor::observation.observe(now, phase, durationUs,
+          raw_mm, g_distance_threshold_cm * 10);
+      passageRearm.observeDistance(raw_mm, g_distance_threshold_cm * 10);
+    } else if (UltrasonicSensor::observation.validNow()) {
+      distCm = UltrasonicSensor::observation.raw_mm / 10.0f;
     }
+  }
+  if (wasBlocked && !passageRearm.blocked()) {
+    presenceReadyPolicy().noteConfirmedClearance();
   }
   g_sensor_rearm_blocked = passageRearm.blocked();
   g_sensor_clearance_state = passageRearm.state();
-  static sgk::PresenceReadyPolicy presenceReady(esp_random());
-  const bool ready = presenceReady.update(now,
+  auto& presenceReady = presenceReadyPolicy();
+  const bool authWindowReady = presenceReady.update(now,
       g_access_fsm.state() == GateState::IDLE && !relay.isOn() &&
-      !GattServer::isConnected() && !GattServer::isOtaBusy() &&
-      !passageRearm.blocked() && g_acl_manager.isLeaseValid(now));
+      !GattServer::isOtaBusy() && (!GattServer::isEnabled() || g_acl_manager.isLeaseValid(now)));
+  const bool ready = authWindowReady && GattServer::isEnabled() && !GattServer::isConnected();
   GattServer::setPresenceReady(ready, presenceReady.epoch());
+  auto& rearm = g_passage_rearm_telemetry;
+  rearm.auth_ready = ready;
+  rearm.pulse_ready = g_access_fsm.isArmed() && !passageRearm.blocked();
+  rearm.auth_reason = !GattServer::isEnabled() ? "GATT_DISABLED" :
+      GattServer::isOtaBusy() ? "OTA_BUSY" :
+      !g_acl_manager.isLeaseValid(now) ? "ACL_UNAVAILABLE" :
+      g_access_fsm.state() != GateState::IDLE || relay.isOn() ? "FSM_BUSY" :
+      GattServer::isConnected() ? "CONNECTION_ACTIVE" : !ready ? "REAUTH_QUIET" : "READY";
+  rearm.pulse_reason = passageRearm.blocked() ? "SENSOR_CLEARANCE_UNCONFIRMED" :
+      rearm.pulse_ready ? "READY" : "AUTH_REQUIRED";
+  rearm.retry_after_ms = presenceReady.remainingMs(now);
+  rearm.blocked_since_ms = passageRearm.blockedSinceMs();
+  rearm.blocked_age_ms = passageRearm.blockedAgeMs(now);
+  rearm.last_pulse_ms = passageRearm.lastPulseMs();
+  rearm.pulse_source = passageRearm.pulseSource();
+  rearm.clear_samples = passageRearm.clearSamples();
 
   // ─── 1초 주기 MQTT 텔레메트리 발행 (실시간 센서값 모니터링) ────────────────────────────────
   const GateState telemetryState = g_access_fsm.state();
@@ -870,7 +940,7 @@ void loop() {
     DiagnosticsManager::heartbeat(stateStr, g_access_fsm.isArmed(), relay.isOn(),
                                   relay.pinLevel());
     MqttManager::publishTelemetry(distance_mm, stateStr, g_access_fsm.isArmed(),
-                                  0, relay.isOn(), relay.pinLevel());
+                                  g_access_fsm.armRemainingMs(now), relay.isOn(), relay.pinLevel());
   }
 
   bool accessCritical = isAccessPathCritical();

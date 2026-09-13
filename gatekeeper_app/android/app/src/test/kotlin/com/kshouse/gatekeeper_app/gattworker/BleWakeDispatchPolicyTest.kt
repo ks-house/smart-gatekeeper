@@ -8,6 +8,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class BleWakeDispatchPolicyTest {
+  @Test fun addressWithoutMatchingPacketOrPositiveCallbackDoesNotDispatch() {
+    assertEquals(BleWakeDispatchAction.IGNORE, BleWakeDispatchPolicy.classify(event(1).copy(resultCount = 0)))
+    assertEquals(BleWakeDispatchAction.IGNORE, BleWakeDispatchPolicy.classify(event(0)))
+    assertEquals(BleWakeDispatchAction.IGNORE, BleWakeDispatchPolicy.classify(event(1).copy(success = false)))
+  }
+
   @Test
   fun `first match dispatches presence`() {
     assertEquals(

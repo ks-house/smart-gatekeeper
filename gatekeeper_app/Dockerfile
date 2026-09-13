@@ -45,7 +45,9 @@ RUN yes | sdkmanager --sdk_root=${ANDROID_HOME} --licenses \
 # through the CI secret mount; this image never creates or substitutes a debug key.
 
 # 4. Flutter SDK Setup
-RUN git clone -b stable https://github.com/flutter/flutter.git ${FLUTTER_HOME} \
+# Keep local verification aligned with the release workflow, not moving stable.
+ARG FLUTTER_VERSION=3.44.8
+RUN git clone --depth 1 -b ${FLUTTER_VERSION} https://github.com/flutter/flutter.git ${FLUTTER_HOME} \
     && git config --global --add safe.directory ${FLUTTER_HOME} \
     && flutter precache \
     && flutter doctor

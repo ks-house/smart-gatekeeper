@@ -377,6 +377,7 @@ data class DurableGattSession(
   val gattPerformance: GattSessionPerformance? = null,
   val requiresFreshPresence: Boolean = false,
   val failureRecovery: Boolean = false,
+  val requiresFastV2: Boolean = false,
 ) {
   fun redactedMap(): Map<String, Any?> = mapOf(
     "sessionId" to id,
@@ -453,6 +454,7 @@ object SessionLedgerCodec {
     .put("presence_fingerprint", session.presenceFingerprint)
     .put("requires_fresh_presence", session.requiresFreshPresence)
     .put("failure_recovery", session.failureRecovery)
+    .put("requires_fast_v2", session.requiresFastV2)
     .put("created_epoch_ms", session.createdEpochMs)
     .put("updated_epoch_ms", session.updatedEpochMs)
     .put("attempt", session.attempt)
@@ -477,6 +479,7 @@ object SessionLedgerCodec {
     presenceFingerprint = value.getString("presence_fingerprint"),
     requiresFreshPresence = value.optBoolean("requires_fresh_presence", false),
     failureRecovery = value.optBoolean("failure_recovery", false),
+    requiresFastV2 = value.optBoolean("requires_fast_v2", false),
     createdEpochMs = value.getLong("created_epoch_ms"),
     updatedEpochMs = value.getLong("updated_epoch_ms"),
     attempt = value.getInt("attempt"),

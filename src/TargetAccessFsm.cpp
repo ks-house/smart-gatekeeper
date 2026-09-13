@@ -213,7 +213,8 @@ bool TargetAccessFsm::handlePreArm(uint32_t now_ms, uint32_t pre_arm_duration_ms
 bool TargetAccessFsm::handleSensorTrigger(uint32_t now_ms,
                                            uint32_t hold_duration_ms,
                                            uint32_t cooldown_duration_ms) {
-  if (state_ != GateState::ARMED || !is_armed_) {
+  if (state_ != GateState::ARMED || !is_armed_ ||
+      now_ms - pre_arm_start_ms_ >= pre_arm_duration_ms_) {
     return false;
   }
 

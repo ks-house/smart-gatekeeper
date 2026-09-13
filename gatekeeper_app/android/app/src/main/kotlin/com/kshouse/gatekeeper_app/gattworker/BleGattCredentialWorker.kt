@@ -19,6 +19,8 @@ import com.flutterbeacon.CrossProcessBleOwnerCoordinator
 import com.kshouse.gatekeeper_app.blewake.BleWakeJournal
 import com.kshouse.gatekeeper_app.blewake.ContinuousPresencePolicy
 import com.kshouse.gatekeeper_app.blewake.ContinuousPresenceTracker
+import com.kshouse.gatekeeper_app.blewake.BleScanDiagnostics
+import com.kshouse.gatekeeper_app.blewake.BleDispatchDiagnostic
 import java.util.concurrent.TimeUnit
 
 object BleGattWorkScheduler {
@@ -45,21 +47,37 @@ object BleGattWorkScheduler {
   }
 
   @Synchronized
-  fun onContinuousPresence(context: Context, deviceAddress: String, epoch: Long): String? {
+  fun onContinuousPresence(context: Context, deviceAddress: String, epoch: Long): String? =
+    scheduleFreshPresence(context, deviceAddress, epoch)
+
+  @Synchronized
+  fun onMissingReadyHint(context: Context, deviceAddress: String): String? =
+    scheduleFreshPresence(context, deviceAddress, null)
+
+  private fun scheduleFreshPresence(context: Context, deviceAddress: String, epoch: Long?): String? {
     val elapsed = android.os.SystemClock.elapsedRealtime()
     if (elapsed - lastContinuousCheckMs < 1_000) return null // normal packet coalescing, not a lost access decision
     lastContinuousCheckMs = elapsed
+    if (!ContinuousPresenceTracker.fresh(deviceAddress, elapsed)) {
+      BleScanDiagnostics.dispatch(context, BleDispatchDiagnostic.SKIPPED, "FRESH_PACKET_REQUIRED")
+      NativeDiagnostics.record(context, NativeDiagnostics.Event.DISPATCH_SKIPPED, "FRESH_PACKET_REQUIRED")
+      return null
+    }
     val ledger = SharedPreferencesSessionLedger(context.applicationContext)
     val last = ledger.last()
-    val blocked = ContinuousPresencePolicy.blockingReason(last, System.currentTimeMillis())
+    val now = System.currentTimeMillis()
+    val blocked = if (epoch == null) ContinuousPresencePolicy.missingHintBlockingReason(last, now)
+      else ContinuousPresencePolicy.blockingReason(last, now)
     if (blocked != null) {
+      BleScanDiagnostics.dispatch(context, BleDispatchDiagnostic.SKIPPED, blocked)
       NativeDiagnostics.record(context, NativeDiagnostics.Event.DISPATCH_SKIPPED, blocked,
-        sessionId = last?.id, ready = true, epoch = epoch)
+        sessionId = last?.id, ready = epoch?.let { true }, epoch = epoch)
       if (last != null && blocked == "SESSION_ALREADY_ACTIVE") reconcilePreProofOrphan(context, last)
       return null
     }
-    return onPresence(context, deviceAddress, ContinuousPresencePolicy.eventId(epoch, last),
-      requiresFreshPresence = true, failureRecovery = last?.state == DurableSessionState.FAILED)
+    return onPresence(context, deviceAddress, if (epoch == null) ContinuousPresencePolicy.missingHintEventId(now)
+      else ContinuousPresencePolicy.eventId(epoch, last), requiresFreshPresence = true,
+      failureRecovery = last?.state == DurableSessionState.FAILED, requiresFastV2 = epoch == null)
   }
 
   private fun reconcilePreProofOrphan(context: Context, observed: DurableGattSession) {
@@ -97,17 +115,23 @@ object BleGattWorkScheduler {
 
   @Synchronized
   fun onPresence(context: Context, deviceAddress: String?, presenceEventId: String,
-                 requiresFreshPresence: Boolean = false, failureRecovery: Boolean = false): String? {
+                 requiresFreshPresence: Boolean = false, failureRecovery: Boolean = false,
+                 requiresFastV2: Boolean = false): String? {
+    BleScanDiagnostics.dispatch(context, BleDispatchDiagnostic.ATTEMPT,
+      if (requiresFastV2) "MISSING_HINT_V2_PROBE" else "PRESENCE_DISPATCH")
     if (deviceAddress.isNullOrBlank() || presenceEventId.isBlank()) {
+      BleScanDiagnostics.dispatch(context, BleDispatchDiagnostic.SKIPPED, "LOCATOR_UNAVAILABLE")
       NativeDiagnostics.record(context, NativeDiagnostics.Event.DISPATCH_SKIPPED, "LOCATOR_UNAVAILABLE")
       return null
     }
     val appContext = context.applicationContext
     if (!BleGattFeatureFlagStore(appContext).decision().newWorkerEnabled) {
+      BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.SKIPPED, "NATIVE_GATT_DISABLED")
       NativeDiagnostics.record(appContext, NativeDiagnostics.Event.DISPATCH_SKIPPED, "NATIVE_GATT_DISABLED")
       return null
     }
     val credentialId = BleCredentialConfigStore(appContext).credentialId() ?: run {
+      BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.SKIPPED, "CREDENTIAL_UNAVAILABLE")
       NativeDiagnostics.record(appContext, NativeDiagnostics.Event.DISPATCH_SKIPPED, "CREDENTIAL_UNAVAILABLE")
       return null
     }
@@ -119,12 +143,14 @@ object BleGattWorkScheduler {
         AndroidKeystorePresenceFingerprinter(appContext),
       ).enqueue(deviceAddress, presenceEventId, System.currentTimeMillis())
       if (duplicate && !DurableAttemptPolicy.canExecute(session.state)) {
+        BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.SKIPPED, "DUPLICATE_TERMINAL_PRESENCE")
         NativeDiagnostics.record(appContext, NativeDiagnostics.Event.DISPATCH_SKIPPED, "DUPLICATE_TERMINAL_PRESENCE", session.id)
         return session.id
       }
       if (requiresFreshPresence) ledger.update(session.copy(
         requiresFreshPresence = true,
         failureRecovery = session.failureRecovery || failureRecovery,
+        requiresFastV2 = session.requiresFastV2 || requiresFastV2,
       ))
       if (!duplicate) vault.store(session.id, LocatorSecret(deviceAddress, credentialId))
       val operation = WorkManager.getInstance(appContext).enqueueUniqueWork(
@@ -135,13 +161,16 @@ object BleGattWorkScheduler {
       operation.result.addListener({
         try {
           operation.result.get() // listener only runs once completion is known; never wait on the BLE callback
+          BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.ENQUEUED, "WORK_ENQUEUED")
           NativeDiagnostics.record(appContext, NativeDiagnostics.Event.WORK_ENQUEUED, sessionId = session.id)
         } catch (_: Exception) {
+          BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.ENQUEUE_FAILED, "SCHEDULER_UNAVAILABLE")
           NativeDiagnostics.record(appContext, NativeDiagnostics.Event.ENQUEUE_FAILED, "SCHEDULER_UNAVAILABLE", session.id)
         }
       }, java.util.concurrent.Executor { it.run() })
       session.id
     } catch (_: Exception) {
+      BleScanDiagnostics.dispatch(appContext, BleDispatchDiagnostic.ENQUEUE_FAILED, "STORAGE_OR_SCHEDULER_UNAVAILABLE")
       NativeDiagnostics.record(appContext, NativeDiagnostics.Event.ENQUEUE_FAILED, "STORAGE_OR_SCHEDULER_UNAVAILABLE")
       null
     } finally {
@@ -271,6 +300,12 @@ class BleGattCredentialWorker(
         return Result.failure()
       }
       configuredCredential.fill(0)
+      if (initial.requiresFreshPresence && !ContinuousPresenceTracker.fresh(
+          secret.deviceAddress, android.os.SystemClock.elapsedRealtime())) {
+        secret.credentialId.fill(0)
+        terminateFailure(ledger, vault, initial, AccessReasonCode.PRESENCE_EXPIRED, "FRESH_PACKET_REQUIRED")
+        return Result.success()
+      }
       val attempt = initial.attempt + 1
       val runningEpochMs = System.currentTimeMillis()
       val running = initial.copy(
@@ -295,7 +330,7 @@ class BleGattCredentialWorker(
       ledger.update(running)
       var flagDisabledBeforeProof = false
       val outcome = GattSessionEngine(
-        transport = AndroidBleGattTransport(applicationContext),
+        transport = AndroidBleGattTransport(applicationContext, requireFastV2 = initial.requiresFastV2),
         signer = AndroidKeystoreCredentialSigner(),
         proofObserver = object : ProofExecutionObserver {
           override fun onChallengeObserved(targetSessionId: String) {
@@ -325,6 +360,7 @@ class BleGattCredentialWorker(
         secret.deviceAddress,
         secret.credentialId,
         GattProtocol.ACTION_ARM_FOR_SENSOR,
+        requireFastV2 = initial.requiresFastV2,
       )
       if (flagDisabledBeforeProof) {
         secret.credentialId.fill(0)
@@ -440,6 +476,9 @@ class BleGattCredentialWorker(
     ledger: DurableSessionLedger,
     session: DurableGattSession,
   ): Result {
+    BleScanDiagnostics.dispatch(applicationContext, BleDispatchDiagnostic.OWNER_WAIT, "BLE_OWNER_CONFLICT")
+    NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.DISPATCH_SKIPPED,
+      "BLE_OWNER_CONFLICT", session.id)
     val attempt = session.attempt + 1
     if (attempt >= RetryPolicy.MAX_ATTEMPTS) {
       ledger.update(

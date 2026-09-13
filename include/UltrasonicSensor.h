@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "SensorSessionDiagnostics.h"
+#include "SensorObservation.h"
 
 class UltrasonicSensor {
 private:
@@ -25,6 +26,9 @@ public:
   };
   static Diagnostics diagnostics;
   static sgk::SensorSessionTracker sessions;
+  static sgk::SensorObservation observation;
+  static sgk::SensorQualification qualification;
+  static float lastMedianDistanceCm();
   static float lastRawDistanceCm();
   /// GPIO 핀 초기화 (TRIG=OUTPUT, ECHO=INPUT)
   static void init();

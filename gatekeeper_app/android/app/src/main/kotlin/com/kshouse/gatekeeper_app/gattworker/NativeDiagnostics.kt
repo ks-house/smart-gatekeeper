@@ -16,11 +16,12 @@ import javax.net.ssl.HttpsURLConnection
 internal object NativeDiagnostics {
   enum class Event { PROCESS_STARTED, HEARTBEAT, CAPTURE_REQUESTED, DISPATCH_SKIPPED,
     WORK_ENQUEUED, ENQUEUE_FAILED, WORKER_STARTED, WORKER_FINISHED, WORKER_STOPPED,
-    SCAN_REGISTRATION, SCAN_EXIT, ORPHAN_RECOVERED }
+    SCAN_REGISTRATION, SCAN_EXIT, ORPHAN_RECOVERED, MANUAL_OPEN_CONTEXT, INCIDENT_CAPTURE }
   private const val PREFS = "native_diagnostic_outbox_v1"
   private const val CONFIG = "diagnostic-upload-config-v1"
   private val processRef = NativeDiagnosticReport.opaque("diagnostic-process:${UUID.randomUUID()}")
   private var connection: HttpsURLConnection? = null
+  private var connectionOwner: String? = null
   private val journal = NativeDiagnosticJournal()
   private val heartbeatExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
     Thread(runnable, "sgk-diagnostic-heartbeat").apply { isDaemon = true }
@@ -69,13 +70,14 @@ internal object NativeDiagnostics {
       if (changed) {
         val bytes = config.toString().toByteArray(Charsets.UTF_8)
         try { require(bytes.size <= 4000); NoBackupAeadStore(context).write(CONFIG, bytes) } finally { bytes.fill(0) }
+        prefs(context).edit().remove("auth_required").apply()
       }
       val p = prefs(context)
       if (since > p.getLong("since", 0)) clear(context, since)
       check(p.edit().putBoolean("enabled", true).commit())
+      NativeDiagnosticScheduler.ensurePeriodic(context)
+      startHeartbeat(context)
       if (changed) {
-        NativeDiagnosticScheduler.ensurePeriodic(context)
-        startHeartbeat(context)
         record(context, Event.CAPTURE_REQUESTED)
       }
       return status(context)
@@ -87,10 +89,13 @@ internal object NativeDiagnostics {
     // Revocation is durable before cancelling any work or dropping configuration.
     check(p.edit().putBoolean("enabled", false).putLong("generation", p.getLong("generation", 0) + 1)
       .remove("pending").remove("events").remove("pending_last_sequence")
-      .remove("last_success").remove("last_code").commit())
+      .remove("quarantine").remove("auth_required").remove("next_attempt").remove("upload_attempt")
+      .remove("last_ack_captured").remove("last_ack_field_ref").remove("last_target_baseline")
+      .remove("incident_ref").remove("incident_at").remove("last_success").remove("last_code").commit())
     journal.clearPending()
     connection?.disconnect()
     connection = null
+    connectionOwner = null
     heartbeat?.cancel(false)
     heartbeat = null
     NativeDiagnosticScheduler.cancel(context)
@@ -102,9 +107,15 @@ internal object NativeDiagnostics {
     val p = prefs(context)
     check(p.edit().putLong("since", since.coerceAtLeast(0)).putLong("generation", p.getLong("generation", 0) + 1)
       .remove("pending").remove("events").remove("pending_last_sequence").putLong("dropped", 0).commit())
+    check(p.edit().remove("quarantine").remove("auth_required").remove("next_attempt").remove("upload_attempt")
+      .remove("last_ack_captured").remove("last_ack_field_ref").remove("last_target_baseline")
+      .remove("incident_ref").remove("incident_at").remove("last_code").remove("last_success")
+      .remove("journal_dropped").remove("ring_dropped").remove("quarantined_dropped")
+      .remove("ring_drop_first").remove("ring_drop_last").commit())
     journal.clearPending()
     connection?.disconnect()
     connection = null
+    connectionOwner = null
     NativeDiagnosticScheduler.cancelImmediate(context)
   }
 
@@ -146,6 +157,15 @@ internal object NativeDiagnostics {
     journal.submit { recordNow(app, generation, now, elapsed, event, reason, sessionId, ready, epoch, status) }
   }
 
+  fun requestNow(context: Context, reason: String = "USER_REQUEST") {
+    if (!enabled(context)) return
+    // Do not override a server Retry-After or an active upload. A real pending
+    // failure remains scheduled; fresh capture is still durable and visible.
+    prefs(context).edit().remove("auth_required").apply()
+    record(context, Event.INCIDENT_CAPTURE, reason)
+    NativeDiagnosticScheduler.upload(context)
+  }
+
   @Synchronized private fun recordNow(context: Context, generation: Long, now: Long, elapsed: Long,
                          event: Event, reason: String?, sessionId: String?, ready: Boolean?, epoch: Long?, status: Int?) {
     if (!enabled(context) || prefs(context).getLong("generation", 0) != generation) return
@@ -168,13 +188,28 @@ internal object NativeDiagnostics {
         .put("status", status?.takeIf { it in -1..65535 } ?: JSONObject.NULL))
       val rejected = journal.drainDropped()
       try {
-        val dropped = p.getLong("dropped", 0) + NativeDiagnosticOutboxPolicy.bound(events) + rejected
-        check(p.edit().putString("events", events.toString()).putLong("sequence", sequence).putLong("dropped", dropped).commit())
+        val evictedTimes = mutableListOf<Long>()
+        val evicted = NativeDiagnosticOutboxPolicy.bound(events) { evictedTimes.add(it.optLong("at_epoch_ms", now)) }
+        val dropped = p.getLong("dropped", 0) + evicted + rejected
+        val edit = p.edit().putString("events", events.toString()).putLong("sequence", sequence).putLong("dropped", dropped)
+          .putLong("ring_dropped", p.getLong("ring_dropped", 0) + evicted)
+          .putLong("journal_dropped", p.getLong("journal_dropped", 0) + rejected)
+        if (evicted > 0) edit.putLong("ring_drop_first", minOf(p.getLong("ring_drop_first", Long.MAX_VALUE), evictedTimes.min()))
+          .putLong("ring_drop_last", maxOf(p.getLong("ring_drop_last", 0), evictedTimes.max()))
+        if (event == Event.MANUAL_OPEN_CONTEXT || event == Event.INCIDENT_CAPTURE ||
+            event == Event.WORKER_FINISHED && code !in setOf(null, "SUCCEEDED")) {
+          if (!p.contains("incident_ref") || now - p.getLong("incident_at", 0) !in 0..600_000L) {
+            edit.putString("incident_ref", NativeDiagnosticReport.opaque("incident:$processRef:$sequence"))
+              .putLong("incident_at", now)
+          }
+        }
+        check(edit.commit())
       } catch (failure: Exception) {
         journal.restoreDropped(rejected)
         throw failure
       }
       NativeDiagnosticScheduler.capture(context)
+      NativeDiagnosticScheduler.upload(context)
     } catch (_: Exception) {
       // Diagnostics failure must never throw through scan callbacks or authentication.
       prefs(context).edit().putString("last_code", "DIAGNOSTIC_STORAGE_ERROR").apply()
@@ -187,7 +222,39 @@ internal object NativeDiagnostics {
       "pendingUploads" to if (p.contains("pending")) 1 else 0,
       "pendingEvents" to runCatching { JSONArray(p.getString("events", "[]")).length() }.getOrDefault(0),
       "lastSuccessEpochMs" to p.getLong("last_success", 0).takeIf { it > 0 },
-      "lastCode" to p.getString("last_code", null), "droppedEvents" to journal.totalDropped(p.getLong("dropped", 0)))
+      "lastCode" to p.getString("last_code", null), "droppedEvents" to journal.totalDropped(p.getLong("dropped", 0)),
+      "oldestPendingEpochMs" to oldestPending(context), "nextAttemptEpochMs" to p.getLong("next_attempt", 0).takeIf { it > 0 },
+      "uploadAttempt" to p.getInt("upload_attempt", 0), "uploadState" to uploadState(context),
+      "lastAckCapturedEpochMs" to p.getLong("last_ack_captured", 0).takeIf { it > 0 },
+      "lastAckFieldTestRef" to p.getString("last_ack_field_ref", null),
+      "lastTargetBaseline" to p.getString("last_target_baseline", null)?.let { raw ->
+        val item = JSONObject(raw)
+        mapOf("fresh" to item.optBoolean("fresh"), "observedEpochMs" to item.optLong("observed_epoch_ms"),
+          "state" to item.optString("state"), "relayCommandedOn" to (item.opt("relay_commanded_on") as? Boolean))
+      },
+      "quarantinedCount" to JSONArray(p.getString("quarantine", "[]")).length())
+  }
+
+  private fun oldestPending(context: Context): Long? {
+    val p = prefs(context)
+    val events = JSONArray(p.getString("events", "[]"))
+    val event = events.optJSONObject(0)?.optLong("at_epoch_ms")?.takeIf { it > 0 }
+    val pending = p.getString("pending", null)?.let { java.time.Instant.parse(JSONObject(it).getString("created_at")).toEpochMilli() }
+    return listOfNotNull(event, pending).minOrNull()
+  }
+
+  private fun uploadState(context: Context): String {
+    val p = prefs(context)
+    return when {
+      !p.getBoolean("enabled", false) -> "DISABLED"
+      p.getBoolean("auth_required", false) -> "AUTH_REQUIRED"
+      connection != null -> "UPLOADING"
+      p.getLong("next_attempt", 0) > System.currentTimeMillis() -> "RETRY_WAIT"
+      p.contains("pending") || JSONArray(p.getString("events", "[]")).length() > 0 -> "QUEUED"
+      p.getLong("last_success", 0) == 0L -> "NOT_UPLOADED"
+      System.currentTimeMillis() - p.getLong("last_success", 0) > 300_000 -> "STALE"
+      else -> "ACKNOWLEDGED"
+    }
   }
 
   @Synchronized internal fun runtime(context: Context, now: Long): JSONObject {
@@ -196,13 +263,30 @@ internal object NativeDiagnostics {
     val events = JSONArray(p.getString("events", "[]"))
     val projected = JSONArray()
     for (index in 0 until minOf(64, events.length())) {
-      projected.put(JSONObject(events.getJSONObject(index).toString()).apply { remove("sequence") })
+      projected.put(JSONObject(events.getJSONObject(index).toString()))
     }
     return JSONObject().put("captured_epoch_ms", now).put("captured_elapsed_ms", SystemClock.elapsedRealtime())
       .put("process_ref", processRef).put("pending_uploads", if (pending == null) 0 else 1)
-      .put("oldest_pending_epoch_ms", if (pending == null) JSONObject.NULL else java.time.Instant.parse(pending.getString("created_at")).toEpochMilli())
+      .put("oldest_pending_epoch_ms", oldestPending(context) ?: JSONObject.NULL)
       .put("last_upload_success_epoch_ms", p.getLong("last_success", 0).takeIf { it > 0 } ?: JSONObject.NULL)
       .put("last_upload_code", p.getString("last_code", null) ?: JSONObject.NULL)
+      .put("generation", p.getLong("generation", 0)).put("pending_events", events.length())
+      .put("event_first_epoch_ms", projected.optJSONObject(0)?.optLong("at_epoch_ms") ?: JSONObject.NULL)
+      .put("event_last_epoch_ms", projected.optJSONObject(projected.length() - 1)?.optLong("at_epoch_ms") ?: JSONObject.NULL)
+      .put("last_enqueue_epoch_ms", p.getLong("last_enqueue", 0).takeIf { it > 0 } ?: JSONObject.NULL)
+      .put("last_worker_start_epoch_ms", p.getLong("last_worker_start", 0).takeIf { it > 0 } ?: JSONObject.NULL)
+      .put("last_worker_stop_epoch_ms", p.getLong("last_worker_stop", 0).takeIf { it > 0 } ?: JSONObject.NULL)
+      .put("last_upload_attempt_epoch_ms", p.getLong("last_attempt", 0).takeIf { it > 0 } ?: JSONObject.NULL)
+      .put("next_attempt_epoch_ms", p.getLong("next_attempt", 0).takeIf { it > 0 } ?: JSONObject.NULL)
+      .put("upload_attempt", p.getInt("upload_attempt", 0)).put("upload_state", uploadState(context))
+      .put("journal_dropped", journal.totalDropped(p.getLong("journal_dropped", 0)))
+      .put("ring_dropped", p.getLong("ring_dropped", 0))
+      .put("ring_drop_first_epoch_ms", p.getLong("ring_drop_first", 0).takeIf { it > 0 } ?: JSONObject.NULL)
+      .put("ring_drop_last_epoch_ms", p.getLong("ring_drop_last", 0).takeIf { it > 0 } ?: JSONObject.NULL)
+      .put("quarantined_count", JSONArray(p.getString("quarantine", "[]")).length())
+      .put("quarantined_dropped", p.getLong("quarantined_dropped", 0))
+      .put("latest_snapshot", true).put("incident_ref", p.getString("incident_ref", null)
+        ?.takeIf { now - p.getLong("incident_at", 0) in 0..600_000L } ?: JSONObject.NULL)
       .put("dropped_events", journal.totalDropped(p.getLong("dropped", 0))).put("lifecycle", projected).also { result ->
         NativeDiagnosticPlatform.snapshot(context).forEach { (key, value) -> result.put(key, value ?: JSONObject.NULL) }
       }
@@ -234,24 +318,77 @@ internal object NativeDiagnostics {
     val raw = p.getString("pending", null) ?: return null
     return Upload(p.getLong("generation", 0), raw, readConfig(context) ?: return null)
   }
-  @Synchronized internal fun beginHttp(context: Context, upload: Upload, http: HttpsURLConnection): Boolean {
-    if (!enabled(context) || prefs(context).getLong("generation", 0) != upload.generation) return false
+  @Synchronized internal fun beginHttp(context: Context, upload: Upload, http: HttpsURLConnection, owner: String = "legacy"): Boolean {
+    if (connection != null || !NativeDiagnosticOutboxPolicy.current(enabled(context),
+        prefs(context).getLong("generation", 0), upload.generation, prefs(context).getString("pending", null), upload.report)) return false
     connection = http
+    connectionOwner = owner
+    prefs(context).edit().putLong("last_attempt", System.currentTimeMillis()).apply()
     return true
   }
-  @Synchronized internal fun finishHttp(http: HttpsURLConnection) { if (connection === http) connection = null }
+  @Synchronized internal fun finishHttp(http: HttpsURLConnection) { if (connection === http) { connection = null; connectionOwner = null } }
+  @Synchronized internal fun stopHttp(owner: String) {
+    if (connectionOwner == owner) { connection?.disconnect(); connection = null; connectionOwner = null }
+  }
+  @Synchronized internal fun authRequired(context: Context) = prefs(context).getBoolean("auth_required", false)
+  @Synchronized internal fun nextAttemptDelay(context: Context) =
+    (prefs(context).getLong("next_attempt", 0) - System.currentTimeMillis()).coerceAtLeast(0)
+  internal fun schedulerEnqueued(context: Context) { prefs(context).edit().putLong("last_enqueue", System.currentTimeMillis()).apply() }
+  internal fun schedulerFailed(context: Context) { prefs(context).edit().putString("last_code", "SCHEDULER_OR_STORAGE_ERROR").apply() }
+  internal fun workerStarted(context: Context) { prefs(context).edit().putLong("last_worker_start", System.currentTimeMillis()).apply() }
+  internal fun workerStopped(context: Context) { prefs(context).edit().putLong("last_worker_stop", System.currentTimeMillis()).apply() }
 
-  @Synchronized internal fun complete(context: Context, upload: Upload, code: String, accepted: Boolean) {
+  @Synchronized internal fun completeAttempt(context: Context, upload: Upload, attempt: NativeDiagnosticDrain.Attempt) {
+    val p = prefs(context)
+    if (!NativeDiagnosticOutboxPolicy.current(enabled(context), p.getLong("generation", 0),
+        upload.generation, p.getString("pending", null), upload.report)) return
+    when (attempt.disposition) {
+      NativeDiagnosticDrain.Disposition.ACCEPTED -> complete(context, upload, attempt.code, true, attempt.targetBaseline)
+      NativeDiagnosticDrain.Disposition.RETRY -> {
+        val tries = (p.getInt("upload_attempt", 0) + 1).coerceAtMost(1000)
+        check(p.edit().putString("last_code", attempt.code).putInt("upload_attempt", tries)
+          .putLong("next_attempt", System.currentTimeMillis() + NativeDiagnosticDrain.delayMs(tries, attempt.retryAfterMs)).commit())
+      }
+      NativeDiagnosticDrain.Disposition.AUTH_REQUIRED -> check(p.edit().putString("last_code", attempt.code)
+        .putBoolean("auth_required", true).remove("next_attempt").commit())
+      NativeDiagnosticDrain.Disposition.QUARANTINE -> {
+        val rejected = JSONArray(p.getString("quarantine", "[]"))
+        rejected.put(JSONObject().put("report", JSONObject(upload.report)).put("code", attempt.code)
+          .put("at_epoch_ms", System.currentTimeMillis()))
+        var evicted = 0
+        while (rejected.length() > 4) { rejected.remove(0); evicted++ }
+        val remaining = NativeDiagnosticOutboxPolicy.retainAfterAck(JSONArray(p.getString("events", "[]")),
+          p.getLong("pending_last_sequence", 0))
+        // Rejected evidence is quarantined, NOT acknowledged. Never update last_success.
+        check(p.edit().putString("quarantine", rejected.toString()).putString("last_code", attempt.code)
+          .putLong("quarantined_dropped", p.getLong("quarantined_dropped", 0) + evicted)
+          .remove("pending").remove("pending_last_sequence").putString("events", remaining.toString())
+          .remove("next_attempt").putInt("upload_attempt", 0).commit())
+      }
+      NativeDiagnosticDrain.Disposition.CANCELLED -> Unit
+    }
+  }
+
+  @Synchronized internal fun complete(context: Context, upload: Upload, code: String, accepted: Boolean,
+                                      baseline: NativeDiagnosticBaseline? = null) {
     val p = prefs(context)
     if (!NativeDiagnosticOutboxPolicy.current(enabled(context), p.getLong("generation", 0),
         upload.generation, p.getString("pending", null), upload.report)) return
     val edit = p.edit().putString("last_code", code)
     if (accepted) {
+      val report = JSONObject(upload.report)
+      val captured = report.optJSONObject("native")?.optJSONObject("runtime")?.optLong("captured_epoch_ms")
+        ?: java.time.Instant.parse(report.getString("created_at")).toEpochMilli()
+      edit.putLong("last_ack_captured", captured)
+      val fieldRef = report.optJSONObject("field_test")?.optString("ref")?.takeIf { it.matches(Regex("[0-9a-f]{16}")) }
+      if (fieldRef == null) edit.remove("last_ack_field_ref") else edit.putString("last_ack_field_ref", fieldRef)
+      if (baseline == null) edit.remove("last_target_baseline") else edit.putString("last_target_baseline", baseline.json().toString())
       val acknowledged = p.getLong("pending_last_sequence", 0)
       val events = JSONArray(p.getString("events", "[]"))
       val remaining = NativeDiagnosticOutboxPolicy.retainAfterAck(events, acknowledged)
       edit.remove("pending").remove("pending_last_sequence").putString("events", remaining.toString())
-        .putLong("last_success", System.currentTimeMillis())
+        .putLong("last_success", System.currentTimeMillis()).putInt("upload_attempt", 0)
+        .remove("next_attempt").remove("auth_required")
     }
     check(edit.commit())
     // ACK does not itself create a new diagnostic event or an endless upload loop.

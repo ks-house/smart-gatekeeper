@@ -50,7 +50,27 @@ class PocketApproachContractTest(unittest.TestCase):
 
     def test_native_wake_routes_without_flutter_or_network_to_action_one(self):
         self.assertIn("BleWakeNativeEntrypoint.onWake(context, event)", self.receiver)
-        self.assertIn("BleGattWorkScheduler.onPresence", self.entrypoint)
+        presence = self.entrypoint.split("BleWakeDispatchAction.PRESENCE -> {", 1)[1].split(
+            "BleWakeDispatchAction.IGNORE ->", 1
+        )[0]
+        fresh = presence.index("BleScanObservationPolicy.fresh(event.latencyMs)")
+        observe = presence.index("ContinuousPresenceTracker.observe(")
+        missing_hint = presence.index("BleGattWorkScheduler.onMissingReadyHint")
+        ready_hint = presence.index("BleGattWorkScheduler.onContinuousPresence")
+        self.assertLess(fresh, observe)
+        self.assertLess(observe, missing_hint)
+        self.assertLess(observe, ready_hint)
+        self.assertLess(presence.index("event.readyHintMalformed"), missing_hint)
+        self.assertIn("else if (hint.ready)", presence)
+        self.assertNotIn(".resolve()", presence)
+        dispatch = self.worker.split("private fun scheduleFreshPresence(", 1)[1].split(
+            "private fun reconcilePreProofOrphan", 1
+        )[0]
+        self.assertLess(dispatch.index("ContinuousPresenceTracker.fresh("), dispatch.index("return onPresence("))
+        self.assertIn("ContinuousPresencePolicy.missingHintBlockingReason(last, now)", dispatch)
+        self.assertIn("ContinuousPresencePolicy.blockingReason(last, now)", dispatch)
+        self.assertIn("requiresFreshPresence = true", dispatch)
+        self.assertIn("requiresFastV2 = epoch == null", dispatch)
         self.assertNotIn("io.flutter", self.entrypoint)
         self.assertNotIn("MethodChannel", self.entrypoint)
         self.assertIn("HAS_NETWORK_CONSTRAINT = false", self.worker)
@@ -64,7 +84,8 @@ class PocketApproachContractTest(unittest.TestCase):
             "BleWakeDispatchAction.PRESENCE -> {", 1
         )[0]
         self.assertIn("AccessResultNotifier.dismiss", exit_branch)
-        self.assertNotIn("BleGattWorkScheduler.onPresence", exit_branch)
+        self.assertIn("ContinuousPresenceTracker.exit(event.deviceAddress, lostAt)", exit_branch)
+        self.assertNotIn("BleGattWorkScheduler.", exit_branch)
 
     def test_access_ready_notification_is_bounded_and_terminally_dismissed(self):
         self.assertIn("ACCESS_READY_TIMEOUT_MS = 65_000L", self.notifier)
@@ -92,6 +113,21 @@ class PocketApproachContractTest(unittest.TestCase):
         self.assertIn("HandsFreeDispatchPolicy.isFresh", self.worker)
         self.assertIn("AccessReasonCode.PRESENCE_EXPIRED", self.worker)
         self.assertIn('"PRESENCE_AGE_EXCEEDED"', self.worker)
+        run = self.worker.split("private suspend fun runSession()", 1)[1]
+        self.assertLess(
+            run.index("initial.requiresFreshPresence && !ContinuousPresenceTracker.fresh("),
+            run.index("transport = AndroidBleGattTransport("),
+        )
+        self.assertLess(
+            run.index("!configuredCredential.contentEquals(secret.credentialId)"),
+            run.index("transport = AndroidBleGattTransport("),
+        )
+        proof = run.split("override fun beforeProofWrite()", 1)[1].split(").run(", 1)[0]
+        self.assertLess(proof.index("ContinuousPresenceTracker.fresh("), proof.index("ledgerUpdateUncertain("))
+        self.assertLess(proof.index("decision().newWorkerEnabled"), proof.index("ledgerUpdateUncertain("))
+        self.assertIn("requireFastV2 = initial.requiresFastV2", run)
+        self.assertIn("outcome.proofMayHaveExecuted && outcome.targetReason == null", run)
+        self.assertIn("DurableSessionState.PROOF_UNCERTAIN", run)
 
     def test_target_remains_relay_off_until_ultrasonic_trigger(self):
         flow = self.fsm_test.split(
@@ -105,9 +141,13 @@ class PocketApproachContractTest(unittest.TestCase):
         self.assertLess(armed, relay_off)
         self.assertLess(relay_off, sensor)
         self.assertLess(sensor, relay_on)
-        self.assertIn("if (g_access_fsm.state() == GateState::ARMED)", self.target_main)
-        self.assertIn("distCm <= (float)g_distance_threshold_cm", self.target_main)
-        self.assertIn("g_access_fsm.handleSensorTrigger", self.target_main)
+        armed_source = self.target_main.split(
+            "if (g_access_fsm.state() == GateState::ARMED) {", 1
+        )[1].split("} else if (g_access_fsm.state() == GateState::IDLE", 1)[0]
+        self.assertIn("const uint16_t median_mm = measuredMillimeters(distCm)", armed_source)
+        self.assertIn("const uint16_t threshold_mm = g_distance_threshold_cm * 10", armed_source)
+        guard = "median_mm != sgk::kNoSensorMeasurement && median_mm <= threshold_mm && !blocked"
+        self.assertLess(armed_source.index(guard), armed_source.index("g_access_fsm.handleSensorTrigger"))
 
 
 if __name__ == "__main__":
