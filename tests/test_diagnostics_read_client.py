@@ -145,3 +145,33 @@ class DiagnosticsClientTest(unittest.TestCase):
             with patch.object(client, "load_token") as load, contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 client.main(arguments)
             load.assert_not_called()
+
+    def test_late_evidence_and_mobile_cursor_survive_client_round_trip(self):
+        mobile = "mobile-diagnostic-credential_" + "a" * 24
+        with patch.object(client, "load_token", return_value="x" * 43), \
+                patch.object(client, "fetch", return_value={"next_mobile_before_id": "7"}) as fetch, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, client.main(["--incidents", "--occurred-since", "2026-09-13T11:50:00Z",
+                "--occurred-until", "2026-09-13T12:00:00Z", "--evidence-received-until", "2026-09-13T13:00:00Z",
+                "--mobile-ref", mobile, "--mobile-before-id", "8", "--mobile-limit", "50", "--before-id", "99"]))
+        query = parse_qs(urlsplit(fetch.call_args.args[0]).query)
+        self.assertEqual(["8"], query["mobile_before_id"])
+        self.assertEqual(["99"], query["before_id"])
+        self.assertEqual(["50"], query["mobile_limit"])
+        self.assertEqual([mobile], query["mobile_ref"])
+        self.assertEqual(["2026-09-13T13:00:00Z"], query["evidence_received_until"])
+        with patch.object(client, "load_token", return_value="x" * 43), \
+                patch.object(client, "fetch", return_value={}) as fetch, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, client.main(["--mobile-ref", mobile, "--before-id", "8"]))
+        self.assertIn("/bundles?", fetch.call_args.args[0])
+        self.assertEqual([mobile], parse_qs(urlsplit(fetch.call_args.args[0]).query)["mobile_ref"])
+
+    def test_invalid_mobile_filters_fail_before_network(self):
+        for args in (["--access-events", "--mobile-ref", "private-name"], ["--incidents", "--mobile-ref", "invalid"],
+                     ["--mobile-before-id", "8"], ["--incidents", "--occurred-since", "2026-09-13T11:50:00Z"],
+                     ["--health-history", "--evidence-received-until", "2026-09-13T13:00:00Z"],
+                     ["--bundle-id", "1", "--mobile-limit", "2"]):
+            with self.subTest(args=args), patch.object(client, "load_token") as load, \
+                    contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                client.main(args)
+            load.assert_not_called()

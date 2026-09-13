@@ -13,6 +13,15 @@ wiki/index.md   → 전체 지식 지도
 wiki/log.md     → 직전 에이전트 작업 내용
 ```
 
+### 1.1 개발 실행 환경 — WSL 필수
+- Git·GitHub CLI·Python·PlatformIO·빌드·테스트·Docker Compose는 **WSL 2 `Ubuntu-26.04`**에서 실행한다.
+- Windows PowerShell에서는 `wsl.exe -d Ubuntu-26.04 --cd <현재 checkout의 Linux 경로> <명령>`을 사용한다.
+  기본 경로는 `/home/sh-cat-lee/workspaces/smart-gatekeeper`; 별도 worktree는 그 실제 경로를 확인한다.
+- Python/PlatformIO는 WSL `.venv/bin/python` / `.venv/bin/pio`, 모바일 도구는 WSL Docker를 사용한다.
+- Windows 기본 Git/Python으로 대체하거나 WSL 실패를 Git 신뢰 예외·전역 PATH 변경으로 우회하지 않는다.
+- Windows 파일 편집·검색 및 Windows 전용 ADB/USB·UI 도구는 허용하며 UTF-8/LF·실행 권한을 보존한다.
+- 상세 규칙과 실행 예시는 루트 [AGENTS.md §6](../AGENTS.md)와 [환경 문서](../wiki/env_setup.md)를 따른다.
+
 ### 2. 하드웨어 절대 규칙
 - MCU: **ESP32-C6** (RISC-V). 구형 ESP32(Xtensa) 핀 번호 사용 금지.
 - 현재 센서: AJ-SR04T `TRIG=GPIO10`, `ECHO=GPIO11`; 5 V ECHO 직결 금지.

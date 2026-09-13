@@ -42,7 +42,7 @@ services:
       dockerfile: Dockerfile
     container_name: gatekeeper-db-migrate
     restart: "no"
-    command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-017}"]
+    command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-018}"]
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -103,8 +103,8 @@ services:
       GATEKEEPER_API_KEY: ${GATEKEEPER_API_KEY:-}
       OPS_HMAC_KEY: ${OPS_HMAC_KEY:-}
       BUILD_SHA: ${BUILD_SHA:-unknown}
-      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-017}
-      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-5e2e4d33e8089fd00a1db81a7e0cda42935b10a34b34066ebcf7fbbd2ab3cccf}
+      EXPECTED_DB_SCHEMA_VERSION: ${EXPECTED_DB_SCHEMA_VERSION:-018}
+      EXPECTED_DB_SCHEMA_SHA256: ${EXPECTED_DB_SCHEMA_SHA256:-b2a248482b4312fe03952e81d50e87585cd6bad919682054f91f592766d884c1}
       ACCESS_EVENT_REF_KEYS_JSON: ${ACCESS_EVENT_REF_KEYS_JSON:-}
       ACCESS_STATUS_MAX_AGE_SECONDS: ${ACCESS_STATUS_MAX_AGE_SECONDS:-5}
       ACCESS_SIGNED_STATUS_READINESS_REQUIRED: ${ACCESS_SIGNED_STATUS_READINESS_REQUIRED:-false}

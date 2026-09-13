@@ -59,13 +59,16 @@ def origin(base):
     return base.rstrip("/")
 
 
-def endpoint(base, bundle_id, limit, before_id):
+def endpoint(base, bundle_id, limit, before_id, **filters):
     url = origin(base) + "/api/v1/diagnostics/bundles"
     if bundle_id is not None:
         return url + "/" + str(bundle_id)
     query = {"limit": limit}
     if before_id is not None:
         query["before_id"] = before_id
+    for key in ("mobile_ref", "occurred_since", "occurred_until", "evidence_received_until"):
+        if filters.get(key) is not None:
+            query[key] = filters[key]
     return url + "?" + urllib.parse.urlencode(query)
 
 
@@ -75,7 +78,10 @@ def history_endpoint(base, route, limit, before_id, **filters):
     query = {"limit": limit}
     if before_id is not None:
         query["before_id"] = before_id
-    for key in ("since", "until", "target_id", "session_id", "boot_count", "event_code"):
+    keys = ("since", "until", "target_id", "session_id", "boot_count", "event_code")
+    if route == "incidents":
+        keys += ("occurred_since", "occurred_until", "evidence_received_until", "mobile_ref", "mobile_before_id", "mobile_limit")
+    for key in keys:
         if filters.get(key) is not None:
             query[key] = filters[key]
     return origin(base) + "/api/v1/diagnostics/" + route + "?" + urllib.parse.urlencode(query)
@@ -118,8 +124,14 @@ def main(argv=None):
     parser.add_argument("--base-url", default="https://tworimpa.synology.me:4442")
     parser.add_argument("--before-id", type=positive)
     parser.add_argument("--limit", type=int, default=20, choices=range(1, 101), metavar="1..100")
-    parser.add_argument("--since", help="access events: inclusive receipt time, ISO 8601 with timezone")
-    parser.add_argument("--until", help="access events: exclusive receipt time, ISO 8601 with timezone")
+    parser.add_argument("--since", help="inclusive Backend receipt time, ISO 8601 with timezone")
+    parser.add_argument("--until", help="exclusive Backend receipt time; existing semantics unchanged")
+    parser.add_argument("--occurred-since", help="incidents/bundles: inclusive phone event time; supply both occurrence bounds")
+    parser.add_argument("--occurred-until", help="incidents/bundles: exclusive phone event time")
+    parser.add_argument("--evidence-received-until", help="incidents/bundles: exclusive later receipt cutoff for delayed evidence")
+    parser.add_argument("--mobile-ref", help="exact opaque mobile reference returned by bundles/incidents")
+    parser.add_argument("--mobile-before-id", type=positive, help="incidents: independent mobile report cursor")
+    parser.add_argument("--mobile-limit", type=int, choices=range(1, 101), metavar="1..100", help="incidents: reports per page (default 20)")
     parser.add_argument("--target-id", help="access events: exact Target ID")
     parser.add_argument("--session-id", help="access events: exact session UUID")
     parser.add_argument("--boot-count", type=positive, help="access events: Target boot count")
@@ -133,6 +145,19 @@ def main(argv=None):
         parser.error("--health-history does not accept session/event filters")
     if args.incidents and (args.boot_count is not None or args.event_code is not None):
         parser.error("--incidents does not accept boot/event filters")
+    mobile_filters = {key: getattr(args, key) for key in
+                      ("occurred_since", "occurred_until", "evidence_received_until", "mobile_ref", "mobile_before_id", "mobile_limit")}
+    bundle_list = not any((args.access_events, args.audit_conflicts, args.health_history, args.incidents,
+                          args.init_token, args.check_token, args.bundle_id is not None))
+    if any(value is not None for value in mobile_filters.values()) and not (args.incidents or bundle_list):
+        parser.error("mobile evidence filters require --incidents or a bundle list")
+    if not args.incidents and (args.mobile_before_id is not None or args.mobile_limit is not None):
+        parser.error("--mobile-before-id/--mobile-limit require --incidents; bundles use --before-id/--limit")
+    if (args.occurred_since is None) != (args.occurred_until is None):
+        parser.error("supply both --occurred-since and --occurred-until")
+    if args.mobile_ref is not None and not re.fullmatch(r"mobile-diagnostic-credential_[0-9a-f]{24}", args.mobile_ref):
+        parser.error("invalid opaque mobile reference")
+    filters.update(mobile_filters)
     if args.before_id is not None and (args.bundle_id is not None or args.init_token or args.check_token):
         parser.error("--before-id requires a list query")
     try:
@@ -146,7 +171,7 @@ def main(argv=None):
                 route = ("audit-conflicts" if args.audit_conflicts else "access-events" if args.access_events else "health-history" if args.health_history
                          else "incidents" if args.incidents else None)
                 url = (history_endpoint(args.base_url, route, args.limit, args.before_id, **filters)
-                       if route else endpoint(args.base_url, args.bundle_id, args.limit, args.before_id))
+                       if route else endpoint(args.base_url, args.bundle_id, args.limit, args.before_id, **mobile_filters))
                 result = fetch(url, token)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0

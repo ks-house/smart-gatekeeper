@@ -185,8 +185,10 @@ class ReliabilityContractTest(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         self.assertIs(True, response.json()["accepted"])
         self.assertEqual(payload["bundle_ref"], response.json()["bundle_ref"])
-        self.assertEqual(MobileDiagnosticBundle.model_validate(payload).native.runtime.model_dump(),
-                         captured[0][2]["native"]["runtime"])
+        # Every producer field survives; absent new optional fields are not
+        # injected into an older immutable report during an N-1 retry.
+        for field, value in payload["native"]["runtime"].items():
+            self.assertEqual(value, captured[0][2]["native"]["runtime"][field])
 
     def test_access_receipt_cross_language_vector_and_domain_separation(self):
         event = dict(collector_target_id=TARGET, event_id=SESSION, source_boot_id=BOOT,
@@ -475,7 +477,8 @@ class ReliabilityMariaDbTest(unittest.TestCase):
             prerequisites = "\n".join((ROOT / "backend/db/migrations" / path).read_text() for path in (
                 "011_access_event_history_up.sql", "012_access_event_actor_ref_up.sql", "015_mobile_diagnostics_up.sql"))
             docker("exec", "-i", name, "mariadb", "-uroot", "-p" + password,
-                   input_text="CREATE DATABASE smart_gatekeeper;\n" + prerequisites + "\n" + up + "\n" + up)
+                   input_text="CREATE DATABASE smart_gatekeeper;\n" + prerequisites + "\n" + up + "\n" + up + "\n" +
+                   (ROOT / "backend/db/migrations/018_mobile_evidence_window_up.sql").read_text())
             conn.select_db("smart_gatekeeper")
             with conn.cursor() as cur:
                 record_verified_health(cur, status_value())

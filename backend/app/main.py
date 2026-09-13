@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 import pymysql
@@ -95,7 +95,7 @@ try:
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
-    from .mobile_diagnostics import classify_bundle, sensor_observation
+    from .mobile_diagnostics import classify_bundle, sensor_observation, bundle_event_bounds, bundle_evidence_metadata
 except ImportError:  # Docker runs uvicorn with /app as the import root.
     from access_actor_ref import (
         access_credential_ref_is_valid,
@@ -138,7 +138,7 @@ except ImportError:  # Docker runs uvicorn with /app as the import root.
         OperationalMetrics, PersistentMqttPublisher, PrivacyLogFilter,
         SlidingWindowRateLimiter, opaque_ref, support_export,
     )
-    from mobile_diagnostics import classify_bundle, sensor_observation
+    from mobile_diagnostics import classify_bundle, sensor_observation, bundle_event_bounds, bundle_evidence_metadata
 
 # ─── 로거 설정 ────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -3042,6 +3042,9 @@ class _TargetGateStateRegistry:
         ):
             return False
         stored = dict(status_value)
+        # Server observation time at DB-advanced acceptance, never a Target wall
+        # clock or a timestamp supplied by an upload/retained MQTT document.
+        stored["_server_observed_epoch_ms"] = int(time.time() * 1000)
         stored.pop("integrity_tag", None)
         stored.pop("integrity_key_id", None)
         stored.pop("advanced", None)
@@ -4103,6 +4106,44 @@ _access_status_rate_limiter = SlidingWindowRateLimiter(
 _ops_hmac_key = OPS_HMAC_KEY if len(OPS_HMAC_KEY) >= 32 else secrets.token_bytes(32)
 
 
+def _personal_diagnostic_target_baseline(tenant_id: str, credential_id: str) -> dict:
+    """Read-only baseline for an authenticated phone with an active door grant."""
+    absent = dict(fresh=False, observed_epoch_ms=None, state=None, relay_commanded_on=None)
+    owner = globals().get("_acl_target_credentials", {}).get(COMMAND_TARGET_ID)
+    if (not isinstance(owner, dict) or owner.get("tenant_id") != tenant_id
+            or tenant_id != ACL_PERSONAL_TENANT_ID or owner.get("door_id") != ACL_PERSONAL_DOOR_ID
+            or _configured_target_door_id(COMMAND_TARGET_ID) != ACL_PERSONAL_DOOR_ID):
+        return absent
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute("SELECT c.credential_id FROM credentials c "
+                        "JOIN acl_tenants t ON t.tenant_id=c.tenant_id AND t.status='ACTIVE' "
+                        "JOIN credential_door_grants g ON g.tenant_id=c.tenant_id AND g.credential_id=c.credential_id "
+                        "WHERE c.tenant_id=%s AND c.credential_id=%s AND c.status='ACTIVE' "
+                        "AND (c.expires_at IS NULL OR c.expires_at>%s) "
+                        "AND g.door_id=%s AND g.permissions=1 AND g.revoked_at IS NULL LIMIT 1",
+                        (tenant_id, credential_id, int(time.time()), ACL_PERSONAL_DOOR_ID))
+            if cur.fetchone() is None:
+                return absent
+        observed = _target_gate_states.live_evidence(COMMAND_TARGET_ID, ACCESS_STATUS_MAX_AGE_SECONDS)
+        if observed is None:
+            return absent
+        timestamp = observed.get("_server_observed_epoch_ms")
+        if (type(timestamp) is not int or not 0 <= timestamp <= int(time.time() * 1000)
+                or observed.get("state") not in _ACCESS_GATE_STATES
+                or type(observed.get("relay_commanded_on")) is not bool):
+            return absent
+        return dict(fresh=True, observed_epoch_ms=timestamp, state=observed["state"],
+                    relay_commanded_on=observed["relay_commanded_on"])
+    except Exception:
+        return absent
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _store_mobile_diagnostics(
     tenant_id: str, credential_id: str, bundle: dict
 ) -> dict[str, object]:
@@ -4115,6 +4156,10 @@ def _store_mobile_diagnostics(
         str(bundle["created_at"]).replace("Z", "+00:00")
     )
     created_at_ms = int(created.timestamp() * 1000)
+    event_first, event_last = bundle_event_bounds(bundle)
+    captured_ms = ((bundle.get("native") or {}).get("runtime") or {}).get("captured_epoch_ms", created_at_ms)
+    indexable = all(value is None or 0 <= value <= 0xffffffffffffffff
+                    for value in (event_first, event_last, captured_ms))
     credential_ref = opaque_ref(
         credential_id, _ops_hmac_key, "mobile-diagnostic-credential"
     )
@@ -4127,8 +4172,9 @@ def _store_mobile_diagnostics(
             try:
                 cur.execute(
                     "INSERT INTO mobile_diagnostic_bundles "
-                    "(tenant_id,credential_ref,bundle_ref,created_at_ms,payload_json,payload_sha256) "
-                    "VALUES (%s,%s,%s,%s,%s,%s)",
+                    "(tenant_id,credential_ref,bundle_ref,created_at_ms,payload_json,payload_sha256,"
+                    "event_first_epoch_ms,event_last_epoch_ms,captured_epoch_ms,evidence_index_version) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         tenant_id,
                         credential_ref,
@@ -4136,6 +4182,10 @@ def _store_mobile_diagnostics(
                         created_at_ms,
                         canonical,
                         digest,
+                        event_first if indexable else None,
+                        event_last if indexable else None,
+                        captured_ms if indexable else None,
+                        1 if indexable else None,
                     ),
                 )
             except pymysql.err.IntegrityError as exc:
@@ -4516,6 +4566,7 @@ if ACL_MANAGEMENT_ENABLED:
                         personal_door_id=ACL_PERSONAL_DOOR_ID,
                         personal_access_session=_personal_access_session,
                         personal_diagnostics_ingest=_store_mobile_diagnostics,
+                        personal_diagnostics_baseline=_personal_diagnostic_target_baseline,
                     ),
                 )
             )
@@ -6266,6 +6317,7 @@ def get_diagnostic_attempts_admin(
                 if live_target is not None
                 else None
             )
+            live_advisory = advisory_projection((live_target or {}).get("advisory_diagnostics") or {})
             attempts = []
             for row in rows:
                 payload = row["payload_json"]
@@ -6352,6 +6404,10 @@ def get_diagnostic_attempts_admin(
                         "wake_count": len(bundle.get("wake_events", [])),
                         "session_count": len(bundle.get("sessions", [])),
                         "target_controller": controller_projection,
+                        "target_unsigned_advisory": live_advisory if live_target is not None else None,
+                        "target_advisory_integrity": "UNSIGNED_NOT_USED_FOR_CLASSIFICATION",
+                        "evidence": bundle_evidence_metadata(bundle, int(row["created_at_ms"]),
+                            row["received_at"], as_of_ms=int(datetime.now(timezone.utc).timestamp() * 1000)),
                         "classification": classify_bundle(
                             bundle,
                             target_events,

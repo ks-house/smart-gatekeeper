@@ -19,7 +19,7 @@
 
 | Page | Summary |
 |------|---------|
-| [env_setup.md](env_setup.md) | Ubuntu 26.04 WSL 2와 현재 firmware/backend/Android 빌드, Windows PlatformIO 안전 복구, OTA 서명·CI/CD·GITHUB_TOKEN 가이드 |
+| [env_setup.md](env_setup.md) | Ubuntu 26.04 WSL 2 개발 명령 실행 규칙, Windows 네이티브 앱 호출 예시, firmware/backend/Android 빌드·OTA 서명·CI/CD 가이드 |
 | [orca_development_environment.md](orca_development_environment.md) | Orca 워크트리 자동 setup, doctor/validation, 프로파일 작업 시작과 안전한 완료 수명주기 |
 | [orca_lifecycle_incident.md](orca_lifecycle_incident.md) | #55 post-merge packaged worker-start 재발, staged-launcher workaround, 장기 lifecycle transport 증거와 fail-closed 복구 경계 |
 

@@ -84,7 +84,7 @@ class MigrationContractTest(unittest.TestCase):
         migrate = compose[migrate_start:api_start]
         api = compose[api_start:]
         for required in (
-            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-017}"]',
+            'command: ["/usr/local/bin/sgk-migrate", "up", "${SCHEMA_VERSION:-018}"]',
             "DB_MIGRATION_PASSWORD_FILE: /run/secrets/db_root_password",
             "MIGRATION_SOURCE_COMMIT: ${BUILD_SHA:?exact 40-hex BUILD_SHA is required}",
             "MIGRATION_BACKUP_DIR: /var/backups/smart-gatekeeper",
@@ -329,6 +329,7 @@ class MigrationContractTest(unittest.TestCase):
             )
             docker(
                 "run", "--rm", "-d", "--name", name,
+                "--memory", "384m", "--cpus", "1", "--pids-limit", "128", "--network", "none",
                 "-e", f"MARIADB_ROOT_PASSWORD={password}",
                 "-v", f"{secret.resolve()}:/run/secrets/db_root_password:ro",
                 "-v", f"{backup.resolve()}:/var/backups/smart-gatekeeper",
@@ -390,12 +391,39 @@ class MigrationContractTest(unittest.TestCase):
                     "'33333333333333333333333333333333',"
                     "'22222222222222222222222222222222',1,1,NULL);",
                 )
+                migrated_previous = docker(
+                    "exec", *migration_env, name,
+                    "/usr/local/bin/sgk-migrate", "up", "017", check=False,
+                )
+                self.assertEqual(0, migrated_previous.returncode, migrated_previous.stderr)
+                legacy_insert = (
+                    "INSERT INTO mobile_diagnostic_bundles "
+                    "(tenant_id,credential_ref,bundle_ref,created_at_ms,payload_json,payload_sha256) "
+                    "VALUES (REPEAT('a',32),CONCAT('mobile-diagnostic-credential_',REPEAT('b',24)),"
+                    "REPEAT('{ref}',32),1,JSON_OBJECT('schema','sgk-mobile-support-v2'),REPEAT('c',64));"
+                )
+                docker("exec", name, "mariadb", "-uroot", f"-p{password}", "smart_gatekeeper", "-e",
+                       legacy_insert.format(ref="d"))
                 for _ in range(2):
                     migrated = docker(
                         "exec", *migration_env, name,
-                        "/usr/local/bin/sgk-migrate", "up", "016", check=False,
+                        "/usr/local/bin/sgk-migrate", "up", "018", check=False,
                     )
                     self.assertEqual(0, migrated.returncode, migrated.stderr)
+                # N-1 SQL writers omit the new nullable columns after upgrade.
+                docker("exec", name, "mariadb", "-uroot", f"-p{password}", "smart_gatekeeper", "-e",
+                       legacy_insert.format(ref="e"))
+                old_rows = docker("exec", name, "mariadb", "-N", "-uroot", f"-p{password}", "smart_gatekeeper", "-e",
+                    "SELECT COUNT(*) FROM mobile_diagnostic_bundles WHERE evidence_index_version IS NULL "
+                    "AND event_first_epoch_ms IS NULL AND event_last_epoch_ms IS NULL AND captured_epoch_ms IS NULL "
+                    "AND payload_sha256=REPEAT('c',64);"
+                    "SELECT COUNT(*) FROM schema_migrations WHERE version IN ('017','018');").stdout.strip()
+                self.assertEqual("2\n2", old_rows)
+                for sql in ("UPDATE mobile_diagnostic_bundles SET captured_epoch_ms=5 WHERE id=1;",
+                            "DELETE FROM mobile_diagnostic_bundles WHERE id=1;"):
+                    immutable_mobile = docker("exec", name, "mariadb", "-uroot", f"-p{password}", "smart_gatekeeper", "-e", sql, check=False)
+                    self.assertNotEqual(0, immutable_mobile.returncode)
+                    self.assertIn("append-only", immutable_mobile.stderr)
                 state = docker(
                     "exec", name, "mariadb", "-N", "-uroot", f"-p{password}",
                     "smart_gatekeeper", "-e",
@@ -415,7 +443,7 @@ class MigrationContractTest(unittest.TestCase):
                     check=True,
                 ).stdout.split()[0]
                 self.assertEqual(
-                    ["1", "15", expected_014, "2:2", "GATT_V2_CONTRACT:NULL"],
+                    ["1", "17", expected_014, "2:2", "GATT_V2_CONTRACT:NULL"],
                     state,
                 )
                 inserted = docker(

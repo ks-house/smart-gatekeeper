@@ -57,9 +57,36 @@ class ScanSnapshot(StrictModel):
     observation: Literal["NOT_OBSERVED", "CLOCK_UNCERTAIN", "RECENT_PACKET", "NO_RECENT_PACKET"]
     last_packet_at_epoch_ms: Optional[int] = Field(default=None, ge=1, strict=True)
     lifecycle: list[ScanLifecycleSnapshot] = Field(max_length=32)
+    # Optional counters describe observed boundaries, never radio health.
+    callback_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    empty_callback_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    result_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    filter_match_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    fresh_match_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    stale_match_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    missing_ready_hint_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    malformed_ready_hint_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    target_not_ready_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    callback_error_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    dispatch_attempt_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    dispatch_enqueued_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    dispatch_skipped_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    owner_wait_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    enqueue_failure_count: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_callback_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_error_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_error_code: Optional[int] = Field(default=None, ge=0, le=65535, strict=True)
+    last_dispatch_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_dispatch_reason: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9_]{1,64}$")
+    recovery_started_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    recovery_deadline_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    recovery_finished_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    recovery_reason: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9_]{1,64}$")
+    recovery_outcome: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9_]{1,64}$")
 
 
 class RuntimeLifecycleSnapshot(StrictModel):
+    sequence: Optional[int] = Field(default=None, ge=0, strict=True)
     event: str = Field(pattern=r"^[A-Z0-9_]{1,64}$")
     at_epoch_ms: int = Field(ge=0, strict=True)
     elapsed_ms: int = Field(ge=0, strict=True)
@@ -68,6 +95,7 @@ class RuntimeLifecycleSnapshot(StrictModel):
     ready: Optional[bool] = Field(default=None, strict=True)
     ready_epoch: Optional[int] = Field(default=None, ge=0, le=0xffffffff, strict=True)
     status: Optional[int] = Field(default=None, ge=-1, le=65535, strict=True)
+    incident_ref: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{16}$")
 
 
 class RuntimeSnapshot(StrictModel):
@@ -87,7 +115,29 @@ class RuntimeSnapshot(StrictModel):
     previous_exit_reason: Optional[int] = Field(default=None, ge=0, le=255, strict=True)
     previous_exit_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
     last_start_was_force_stopped: Optional[bool] = Field(default=None, strict=True)
-
+    event_first_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    event_last_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    pending_events: Optional[int] = Field(default=None, ge=0, le=256, strict=True)
+    last_enqueue_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_worker_start_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_worker_stop_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    last_upload_attempt_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    next_attempt_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    upload_attempt: Optional[int] = Field(default=None, ge=0, strict=True)
+    upload_state: Optional[Literal[
+        "DISABLED", "AUTH_REQUIRED", "UPLOADING", "RETRY_WAIT", "QUEUED",
+        "NOT_UPLOADED", "STALE", "ACKNOWLEDGED",
+    ]] = None
+    journal_dropped: Optional[int] = Field(default=None, ge=0, strict=True)
+    ring_dropped: Optional[int] = Field(default=None, ge=0, strict=True)
+    export_trimmed: Optional[int] = Field(default=None, ge=0, strict=True)
+    quarantined_count: Optional[int] = Field(default=None, ge=0, le=4, strict=True)
+    quarantined_dropped: Optional[int] = Field(default=None, ge=0, strict=True)
+    ring_drop_first_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    ring_drop_last_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    generation: Optional[int] = Field(default=None, ge=0, strict=True)
+    latest_snapshot: Optional[bool] = Field(default=None, strict=True)
+    incident_ref: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{16}$")
 
 class NativeSnapshot(StrictModel):
     scan: Optional[ScanSnapshot] = None
@@ -214,9 +264,141 @@ class MobileDiagnosticBundle(StrictModel):
     @field_validator("created_at")
     @classmethod
     def utc_timestamp(cls, value: str) -> str:
-        if not value.endswith("Z") and "+00:00" not in value:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("created_at must be an ISO-8601 UTC timestamp") from None
+        if parsed.utcoffset() != timezone.utc.utcoffset(None) or parsed.year < 1970:
             raise ValueError("created_at must be UTC")
         return value
+
+
+def ingest_bundle_payload(bundle: MobileDiagnosticBundle) -> dict[str, Any]:
+    """Keep pre-extension default serialization stable for in-flight N-1 retries.
+
+    Older ingesters populated defaults for the original schema2 fields. Keep
+    those defaults, but never inject newly introduced NULL fields into an old
+    immutable bundle identity. Explicit optional NULLs from new apps survive.
+    """
+    body = bundle.model_dump(by_alias=True, mode="json")
+    scan = bundle.native.scan
+    if scan is None:
+        body["native"].pop("scan", None)
+    else:
+        for field in ScanSnapshot.model_fields.keys() - {"observation", "last_packet_at_epoch_ms", "lifecycle"}:
+            if field not in scan.model_fields_set:
+                body["native"]["scan"].pop(field, None)
+    runtime = bundle.native.runtime
+    if runtime is not None:
+        legacy = {"captured_epoch_ms", "captured_elapsed_ms", "process_ref", "pending_uploads",
+                  "oldest_pending_epoch_ms", "last_upload_success_epoch_ms", "last_upload_code", "dropped_events",
+                  "lifecycle", "background_restricted", "battery_optimization_exempt", "device_idle", "app_standby_bucket",
+                  "previous_exit_reason", "previous_exit_epoch_ms", "last_start_was_force_stopped"}
+        for field in RuntimeSnapshot.model_fields.keys() - legacy:
+            if field not in runtime.model_fields_set:
+                body["native"]["runtime"].pop(field, None)
+        for model, row in zip(runtime.lifecycle, body["native"]["runtime"]["lifecycle"]):
+            for field in ("sequence", "incident_ref"):
+                if field not in model.model_fields_set:
+                    row.pop(field, None)
+    return body
+
+
+class TargetDiagnosticBaseline(StrictModel):
+    fresh: bool = Field(strict=True)
+    observed_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    state: Optional[Literal["IDLE", "AUTH_PENDING", "ARMED", "RELAY_HOLD", "COOLDOWN"]] = None
+    relay_commanded_on: Optional[bool] = Field(default=None, strict=True)
+
+    @model_validator(mode="after")
+    def freshness_has_observation(self) -> "TargetDiagnosticBaseline":
+        if self.fresh and (self.observed_epoch_ms is None or self.state is None or self.relay_commanded_on is None):
+            raise ValueError("fresh baseline requires a complete signed observation")
+        if not self.fresh:
+            self.observed_epoch_ms = self.state = self.relay_commanded_on = None
+        return self
+
+
+def bundle_event_bounds(bundle: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Index included evidence, independently of capture/export/receipt times.
+
+    Legacy bundles have no declared range; derive it from their bounded arrays.
+    Neither an empty report nor a capture timestamp invents an event.
+    """
+    native = bundle.get("native") or {}
+    runtime, scan = native.get("runtime") or {}, native.get("scan") or {}
+    times = [runtime.get("event_first_epoch_ms"), runtime.get("event_last_epoch_ms")]
+    times += [item.get("at_epoch_ms") for item in runtime.get("lifecycle", [])]
+    times += [item.get("at_epoch_ms") for item in scan.get("lifecycle", [])]
+    times += [scan.get("last_packet_at_epoch_ms")]
+    times += [item.get("received_epoch_ms") for item in bundle.get("wake_events", [])]
+    for item in bundle.get("sessions", []):
+        times += [item.get(key) for key in ("created_epoch_ms", "updated_epoch_ms", "dispatch_started_epoch_ms")]
+    # BIGINT UNSIGNED index ceiling; valid but unindexable clocks stay in the
+    # explicit legacy/unindexed fallback and remain available by mobile cursor.
+    known = [value for value in times if type(value) is int and value >= 0]
+    return (min(known), max(known)) if known else (None, None)
+
+
+def bundle_evidence_metadata(bundle: dict[str, Any], created_at_ms: int,
+                             received_at: datetime, *, as_of_ms: int) -> dict[str, Any]:
+    """Truthful report freshness and upload snapshot, not an access verdict."""
+    if received_at.tzinfo is None:
+        received_at = received_at.replace(tzinfo=timezone.utc)
+    received_ms = int(received_at.timestamp() * 1000)
+    runtime = (bundle.get("native") or {}).get("runtime") or {}
+    captured = runtime.get("captured_epoch_ms", created_at_ms)
+    first, last = bundle_event_bounds(bundle)
+    clock_uncertain = (captured > received_ms + 60000 or created_at_ms > received_ms + 60000
+                       or captured > as_of_ms or (last is not None and last > captured + 60000)
+                       or (runtime.get("event_first_epoch_ms") is not None
+                           and runtime.get("event_last_epoch_ms") is not None
+                           and runtime["event_first_epoch_ms"] > runtime["event_last_epoch_ms"]))
+    age = as_of_ms - captured
+    freshness = "CLOCK_UNCERTAIN" if clock_uncertain else "RECENT_REPORT" if age <= 300000 else "STALE_REPORT"
+    if not clock_uncertain and runtime.get("latest_snapshot") is False:
+        freshness = "HISTORICAL_EVIDENCE_ONLY"
+    dropped = {key: runtime.get(key) for key in
+               ("dropped_events", "journal_dropped", "ring_dropped", "export_trimmed", "quarantined_dropped")}
+    reasons = []
+    if freshness != "RECENT_REPORT":
+        reasons.append(freshness)
+    if any((value or 0) > 0 for value in dropped.values()):
+        reasons.append("COLLECTION_LOSS_REPORTED")
+    if (runtime.get("pending_events") or 0) > 0 or (runtime.get("pending_uploads") or 0) > 0:
+        reasons.append("PENDING_AT_CAPTURE")
+    if (runtime.get("quarantined_count") or 0) > 0:
+        reasons.append("QUARANTINED_REPORTS")
+    if not runtime:
+        reasons.append("RUNTIME_NOT_REPORTED")
+    oldest = runtime.get("oldest_pending_epoch_ms")
+    return dict(
+        report_created_epoch_ms=str(created_at_ms), captured_epoch_ms=str(captured),
+        event_first_epoch_ms=str(first) if first is not None else None,
+        event_last_epoch_ms=str(last) if last is not None else None,
+        health_snapshot_epoch_ms=str(captured) if runtime.get("latest_snapshot") is not False else None,
+        latest_snapshot=runtime.get("latest_snapshot"), snapshot_age_ms=age,
+        freshness=freshness, clock_basis="PHONE_WALL_CLOCK_UNVERIFIED",
+        received_at=received_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        server_storage_confirmed=True, receipt_is_current_health=False,
+        capture_to_receipt_ms=received_ms - captured,
+        gaps=reasons, loss_counters=dropped, loss_scope="CUMULATIVE_NOT_INCIDENT_LOSS",
+        ring_drop_first_epoch_ms=runtime.get("ring_drop_first_epoch_ms"),
+        ring_drop_last_epoch_ms=runtime.get("ring_drop_last_epoch_ms"),
+        upload=dict(state=runtime.get("upload_state", "NOT_REPORTED"),
+                    pending_uploads=runtime.get("pending_uploads"), pending_events=runtime.get("pending_events"),
+                    oldest_pending_epoch_ms=oldest,
+                    pending_age_at_capture_ms=(captured - oldest) if oldest is not None and oldest <= captured else None,
+                    last_server_ack_epoch_ms=runtime.get("last_upload_success_epoch_ms"),
+                    last_code=runtime.get("last_upload_code"), attempt=runtime.get("upload_attempt"),
+                    last_enqueue_epoch_ms=runtime.get("last_enqueue_epoch_ms"),
+                    last_worker_start_epoch_ms=runtime.get("last_worker_start_epoch_ms"),
+                    last_worker_stop_epoch_ms=runtime.get("last_worker_stop_epoch_ms"),
+                    last_upload_attempt_epoch_ms=runtime.get("last_upload_attempt_epoch_ms"),
+                    next_attempt_epoch_ms=runtime.get("next_attempt_epoch_ms"),
+                    quarantined_count=runtime.get("quarantined_count"),
+                    values_are_capture_snapshot=True, next_attempt_is_os_guarantee=False),
+    )
 
 
 def classify_bundle(
@@ -253,7 +435,10 @@ def classify_bundle(
     if not wakes:
         if marker and (now_ms or int(datetime.now(timezone.utc).timestamp() * 1000)) < end_ms:
             return {"last_stage": "FIELD_MARKER", "first_missing": "FIELD_WINDOW_OPEN"}
-        return {"last_stage": "FIELD_MARKER", "first_missing": "PHONE_WAKE_NOT_OBSERVED"}
+        manual_context = any(item.get("event") == "MANUAL_OPEN_CONTEXT" for item in
+                             ((bundle.get("native") or {}).get("runtime") or {}).get("lifecycle", []))
+        return {"last_stage": "MANUAL_OPEN_CONTEXT" if manual_context else "FIELD_MARKER" if marker else "MOBILE_SNAPSHOT",
+                "first_missing": "PHONE_WAKE_NOT_OBSERVED"}
     if not sessions:
         return {"last_stage": "PHONE_WAKE", "first_missing": "ANDROID_DISPATCH_NOT_OBSERVED"}
 
