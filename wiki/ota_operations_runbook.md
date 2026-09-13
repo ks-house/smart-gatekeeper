@@ -415,3 +415,30 @@ coverage and continuous-health rejection for troughs missed by status snapshots.
 An independent scoped review found no actionable P0/P1/P2. These are source/build
 results; strictly newer exact-main publication and actual health-to-VALID are still
 required before declaring corrective installation complete.
+
+### Actual corrective498 acceptance
+
+- PR410 merged exact main `7959962aaa71d6b6011959a8006cfeab179d048b`.
+  Main run34762207772 succeeded. Independent Ed25519 and encrypted1932708B
+  artifact SHA256 `663e9ee0e8bc8398e35e8a53b2034e3d6b3270b3305a5321d50d3544e6ecb839`
+  matched the immutable public URL and `2.1.498+main.g7959962` manifest.
+- One request at23:25:35.165 KST followed matching fresh raw/bridge/API boot903
+  IDLE/relay OFF/no ARM/no BLE connection/no pending update checks. New boot904
+  first appeared23:26:38.221, and stage11/VALID at23:27:08.701
+  (health updated_uptime_ms37705). No duplicate OTA/reboot/door request was issued.
+  The one-off ACK observer incorrectly filtered `ota_update`; the bridge's
+  actual action is `ota_check`. It did not correlate the ACK and did not resend.
+  Acceptance here rests on the subsequent actual boot/VALID observations, not
+  that filter or broker PUBACK.
+- Health13723 at23:30:44.477 confirms same904/version, uptime253s, relay OFF/IDLE,
+  VALID retained through its own periodic HTTPS CURRENT/error0/persisted result.
+  Boot advisory says SOFTWARE/ota_pending_verify. Advertising applied-ready has
+  no failure/gap; local auth is ready/unblocked. This does not prove RF reception
+  or sensor/relay/door passage.
+- Health-window minimum free heap53024B improved from497's43708B trough. A later
+  periodic TLS operation brought the lifetime minimum to40852B; current free68612B
+  and largest45044B remain separate samples. Do not claim a global53024B floor,
+  treat the scheduled check as a new crash, or infer supply voltage from heap.
+  Both bounded observer sessions completed with zero segment eviction; later
+  Backend readback covers the post-observer interval. No perpetual observer is
+  implied. The power-monitoring heartbeat was found PAUSED and was not resumed.

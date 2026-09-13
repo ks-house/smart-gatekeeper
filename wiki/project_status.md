@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-09-10
+updated: 2026-09-13
 source_of_truth: true
 applies_to:
   - firmware
@@ -18,7 +18,35 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
-## 2026-09-10 morning hands-free incident: live evidence, not resolved
+## 2026-09-13 field recovery deployed; physical acceptance pending
+
+- Backend `7afb9f7` / schema018 is deployed;23:30 KST public readiness remains
+  ready/all12 checks/fresh HMAC-verified advanced Target status. Existing PC read
+  token now retrieves late evidence and independent per-phone pages. N-1 reports
+  continue to be stored after the migration.
+- Mobile `1.0.0-g5ca450a` /44801 is published on both exact-hash HTTPS origins.
+  Native upload drain/backoff/queue migration, BLE reception/recovery evidence,
+  incident capture and accurate report/marker readiness UI are included. Phone
+  installation and OS/RF behavior are not inferred from publication.
+- Target `2.1.498+main.g7959962` is installed, boot904
+  `d9bdea98f4dc1fb0f2675b4c2f20e898`, with stage11/VALID observed23:27:08 KST.
+  Backend health13723 at23:30:44 confirms uptime253s, same boot/version/VALID,
+  IDLE/relay OFF, advertising apply ready/no failures, auth readiness and no
+  passage lock. Its own periodic HTTPS check returned CURRENT/error0 with
+  persisted diagnostics and restored MQTT. This is installation/health evidence,
+  not a physical passage or proof of over-air reception.
+- The497 candidate was rejected by the unchanged memory health gate and restored
+  494; no power fault was inferred. Corrective lifetime changes reclaim9280B of
+  resident RAM without reducing capacities, stacks, crypto or rollback safeguards.
+  The health-window minimum was53024B; a later periodic TLS check lowered the
+  lifetime minimum to40852B, with current free68612B/largest45044B. These phases
+  must not be conflated or treated as supply-voltage measurements.
+- Details and evidence boundaries: [recovery plan](field_test_recovery_plan_2026_09_13.md),
+  [OTA runbook](ota_operations_runbook.md), [test evidence](hardware_test.md).
+  Actual sensor/phone passage, electrical conditions and the power T1 soak remain
+  separate acceptance work; no autonomous door opening was used for validation.
+
+## 2026-09-10 morning hands-free incident: historical evidence
 
 Implementation follow-up: generic Target contention now emits TARGET_BUSY;
 actual OTA gating retains OTA_BUSY with the same numeric BLE wire result8.
