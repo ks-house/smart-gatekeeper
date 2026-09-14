@@ -98,6 +98,20 @@ Android 공식 선택지인 **CompanionDeviceManager + CompanionDeviceService**�
 - Backend는 `native.scan.alternative_*`, `native.location_services_enabled`, Target의 별도 `ble_advertisement` optional projection을 저장·조회한다. 구버전 immutable 보고서에는 새 NULL 필드를 주입하지 않는다. 이전 성공보다 최근의 명시적 NO_MATCHING_PACKET을 우선 분류하며, 단순 침묵을 사용자 도착 실패로 추론하지 않는다.
 - 23:00KST 현장 관측 창을 종료하고 임시 heartbeat `sgk-2`만 PAUSED로 변경했다. 원래 전원 관측 `sgk`는 변경하지 않았다. 종료 기준 health16469/boot905/500/IDLE/relayOFF, 새 인증0; mobile1639는23:00:12 저장됨. 배포·개방·재부팅은 아직 수행하지 않았다.
 
+## 배포 확인 — 2026-09-14 (게시 및 Target 설치 완료)
+
+- PR414의 모든 CI 통과 후23:34:10KST exact main `73f8e7ad12193982cc03b60e23ecf8bb0a3bb2fc`에 병합했다. 아래 결과는 최초 분석의500/44801 기준과 구분한다.
+- Backend run34856629599 성공. NAS apply/status receipt가 같은 source/image/bundle digest와23:41:45KST를 가리킨다. 독립 HTTPS `/ready`에서 exact SHA,12checks true, fresh signed Target status 확인. DB schema018, 읽기 토큰과 wrapper는 그대로다.
+- Target run34856629638 성공. 독립 Ed25519 서명 및 실제 encrypted artifact 검증: `2.1.502+main.g73f8e7a`,1933188B, SHA256 `1cba976bd549ded4892d6e74777335bf1613676a13345ca70a01214770376bd0`. 이전 정상 이미지/manifest가 보존된 atomic publication receipt 확인.
+- health16553의 fresh signed IDLE/relayOFF와 advisory BLE links0을 확인하고23:44:11KST non-retained bridge OTA 확인 요청1회만 전송했다. 별도 재부팅/문열기 명령 없음. health16554는 새boot906 설치를 보였고, health16555/23:45:19KST에502, stage11/error0/running_image_valid=true 확인. Boot ID `b3302662f31549c7895675e142ca11ef`.
+- 같은 health16555에서 primary30/response29bytes 모두 applied, generation2/errorNONE, 실패counter0을 Backend API로 조회했다. 이는 컨트롤러 API 적용 증거이며 실제 RF 수신/물리 출입 성공은 아니다. 앱45001 운영 빌드·게시와 주기적 refresh 관측은 후속 확인 중이다.
+- health16557/23:46:16KST부터 `CHECKED_REFRESH`가 저장됐다. health16561/23:48:19KST는 같은boot906, refresh6/generation10, primary/response failures0, MQTT unplanned disconnect0/flappingfalse를 보인다. 예정된 HTTPS no-update 점검으로 OTA_SUSPEND1회 후 재접속했으며 추가 OTA/재부팅 명령을 보내지 않았다. 이 수분 관측을 장기 RF·전원 안정성으로 확대 해석하지 않는다.
+- Backend 배포 후 구버전 앱44801 보고서1657이23:45:12KST에 저장됐다. 기존 optional 누락 형식도 수용하며 최근 ACK ACCEPTED가 보고됐다. 사용자 앱45001 설치/새 스캔 실기기 결과는 아직 확인되지 않았다.
+- 로컬 배포 receipt: `/tmp/sgk-ble-deployment-evidence-20260914`; bounded600s subscribe-only collector: `/tmp/sgk-ble-rollout-20260914-2342`. 기존 장기/현장 heartbeat는 재활성화하지 않았다.
+- App run34856629513의 서명/게시 job은23:54:16KST 성공했다. `1.0.0-g73f8e7a / 45001`,55676057B, SHA256 `e19360f826811378a7a8dc24d40010ba7068fb996cd50c3490899cb208fd1cac`. 같은 Android signer/package/source와 기본·예비 APK HTTPS 검증이 CI에서 통과했다. 독립적으로 읽은 기본 고정 manifest와 양쪽 immutable manifest의 SHA256이 publication receipt `f68cb258456419ac5fb4359f03298251a61d0232a4597070012512f21f7b1dbf`와 모두 일치한다. APK 설치는 사용자가 수행하며 설치 확인은 아직 없다.
+- 최종 health16574/23:54:58KST: 같은boot906/502/VALID/IDLE/relayOFF, checked refresh19/generation23, 두 payload applied, 적용실패0. MQTT 비계획 끊김0/예정OTA handoff1/flappingfalse, event outbox overflow0. Collector는23:53:20KST DURATION_COMPLETE,6channels/rejected0/eviction0로 정상 종료했다. 실제 모바일 RF 수신·자동 인증·센서 개방의 실기기 합격은 미확인이다.
+- Friction 정정: `gh run view/list`가 수분간 게시 job을 queued/steps없음으로 반환해 대기 지연이라고 안내했다. 완료 후 직접 job API는23:49:43부터 실행,23:50:26–23:54:00 양쪽 업로드 중이었음을 보여준다. 실행 실패/재시도는 없었으며 상태 조회의 늦은 반영과 실제 업로드 시간을 구분한다. 독립 GitHub 상태 페이지는 장애를 공지하지 않았지만 개별 조회 정체 원인을 확정하지 않는다.
+
 ## 관련 문서
 
 - [MQTT 안정성 및 오늘 현장 관측](mqtt_stability_analysis_2026_09_14.md)
