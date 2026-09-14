@@ -36,6 +36,9 @@ constexpr const char* MQTT_PASSWORD = SECRET_MQTT_PASSWORD;
 // the longest normal access-critical interval without moving socket I/O back
 // onto the sensor/relay path.
 constexpr uint16_t MQTT_KEEP_ALIVE_SECONDS = 120;
+constexpr uint32_t MQTT_TELEMETRY_INTERVAL_MS = 5000;
+static_assert(MQTT_TELEMETRY_INTERVAL_MS < MQTT_KEEP_ALIVE_SECONDS * 1000UL,
+              "MQTT status cadence must remain below keepalive");
 constexpr uint32_t ACCESS_CRITICAL_STATUS_GRACE_MS = 90000;
 constexpr uint32_t GATT_AUTH_PENDING_TIMEOUT_MS = 5000;
 

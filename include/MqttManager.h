@@ -30,6 +30,11 @@ private:
                                    uint32_t wifiLinkGeneration);
     static void connectWorkerEntry(void* argument);
     static void pollTelemetryWorker();
+    static void invalidatePublishTransport(size_t payloadBytes,
+                                           const char* diagnosticAction);
+    static bool publishPacket(const char* topic, const char* payload,
+                              bool retained, size_t payloadBytes,
+                              const char* diagnosticAction);
 
 public:
     static void init();

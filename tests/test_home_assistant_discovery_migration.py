@@ -196,7 +196,7 @@ class HomeAssistantDiscoveryMigrationTests(unittest.TestCase):
     self.assertNotIn("client.publish", body)
     update = source[source.index("void MqttManager::update()") : start]
     self.assertIn(
-        "client.publish(statusTopic.c_str(), pendingTelemetry, false)", update
+            "publishPacket(statusTopic.c_str(), pendingTelemetry, false", update
     )
 
   def test_plan_removes_all_seven_legacy_plaintext_controls(self):

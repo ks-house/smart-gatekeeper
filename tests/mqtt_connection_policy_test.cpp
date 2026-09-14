@@ -77,5 +77,7 @@ int main() {
   MqttConnectionDiagnostics maximal;
   maximal.record(MqttLossReason::kWorkerStartFailed, -128, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX);
   assert(std::strlen(maximal.edge(0)) < MqttConnectionDiagnostics::kEdgeBytes - 1);
+  assert(std::strcmp(mqttLossName(MqttLossReason::kPublishFailed),
+                     "PUBLISH_FAILED") == 0);
   std::printf("connection policy/diagnostics PASS (%zu bytes)\n", sizeof(d));
 }

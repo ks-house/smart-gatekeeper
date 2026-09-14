@@ -16,7 +16,7 @@ MQTT_REASONS = (
     "NONE", "CONNECT_TLS_FAILED", "CONNECT_MQTT_FAILED", "CONNECT_SUBSCRIBE_FAILED",
     "CONNECT_AVAILABILITY_FAILED", "CONNECT_ADOPTION_LOST", "TRANSPORT_LOST",
     "LOOP_FAILED", "WIFI_LOST", "OTA_SUSPEND", "STALE_RESULT", "DNS_FAILED",
-    "WORKER_START_FAILED",
+    "WORKER_START_FAILED", "PUBLISH_FAILED",
 )
 MQTT_COUNTERS = (
     "generation", "disconnects", "planned_disconnects", "last_disconnect_ms",
@@ -43,7 +43,7 @@ def mqtt_edge_projection(value):
         if re.fullmatch(pattern, part) is None:
             return None
         number = int(part)
-        low, high = (-128, 255) if key == "last_error" else (1, 12) if key == "reason_code" else (0, U32)
+        low, high = (-128, 255) if key == "last_error" else (1, 13) if key == "reason_code" else (0, U32)
         if not low <= number <= high:
             return None
         result[key] = number
@@ -334,7 +334,9 @@ def advisory_projection(document, *, include_boot=False, expected=None):
     for key in ("uptime_s", "free_heap", "min_free_heap", "reset_reason_code",
                 "sensor_samples", "sensor_valid_samples", "sensor_timeouts", "sensor_invalid_samples",
                 "mqtt_status_worker_published", "mqtt_status_worker_failures", "mqtt_status_worker_deferred",
-                "mqtt_status_worker_max_duration_ms", "mqtt_audit_receipts_accepted", "mqtt_audit_receipts_rejected",
+                "mqtt_status_worker_max_duration_ms", "mqtt_publish_failures",
+                "mqtt_last_failed_payload_bytes", "mqtt_status_payload_bytes",
+                "mqtt_max_status_payload_bytes", "mqtt_audit_receipts_accepted", "mqtt_audit_receipts_rejected",
                 "mqtt_audit_backpressure_count", "mqtt_audit_durable_depth", "mqtt_audit_pending_depth",
                 "mqtt_audit_head_wait_ms", "mqtt_audit_head_publish_attempts", "mqtt_audit_head_boot_count",
                 "sensor_summary_capture_pending", "sensor_summary_capture_dropped",

@@ -82,6 +82,10 @@ void recordMqttLoss(sgk::MqttLossReason reason, int error, uint32_t now) {
 uint32_t mqttLastConnectDurationMs = 0;
 uint32_t mqttMaxConnectDurationMs = 0;
 uint32_t mqttConnectWorkerWatchdogFailures = 0;
+uint32_t mqttPublishFailures = 0;
+uint32_t mqttLastFailedPayloadBytes = 0;
+uint32_t mqttStatusPayloadBytes = 0;
+uint32_t mqttMaxStatusPayloadBytes = 0;
 bool mqttSecurityReady = false;
 bool wifiAvailableLastUpdate = false;
 bool wifiLinkGenerationInitialized = false;
@@ -967,6 +971,37 @@ bool MqttManager::connected = false;
 
 bool MqttManager::isConnected() { return connected; }
 
+void MqttManager::invalidatePublishTransport(
+    size_t payloadBytes, const char* diagnosticAction) {
+    if (mqttPublishFailures != UINT32_MAX) ++mqttPublishFailures;
+    mqttLastFailedPayloadBytes = static_cast<uint32_t>(
+        std::min(payloadBytes, static_cast<size_t>(UINT32_MAX)));
+    mqttLastError = client.state();
+    // PubSubClient performs one stream write per packet. A false return can mean
+    // that only a prefix reached TLS; appending another MQTT frame would corrupt
+    // broker framing. Never reuse a stream after an uncertain write.
+    if (mqttConnection.live()) {
+        recordMqttLoss(sgk::MqttLossReason::kPublishFailed,
+                       mqttLastError, millis());
+    } else {
+        mqttReconnect.failed(millis(), esp_random());
+    }
+    connected = false;
+    wifiClient.stop();
+    DiagnosticsManager::noteAction(
+        diagnosticAction != nullptr ? diagnosticAction : "mqtt_publish_failed");
+}
+
+bool MqttManager::publishPacket(const char* topic, const char* payload,
+                                bool retained, size_t payloadBytes,
+                                const char* diagnosticAction) {
+    if (topic == nullptr || payload == nullptr || !isConnected() ||
+        connectionAttemptInProgress()) return false;
+    if (client.publish(topic, payload, retained)) return true;
+    invalidatePublishTransport(payloadBytes, diagnosticAction);
+    return false;
+}
+
 void MqttManager::pollTelemetryWorker() {
     sgk::MqttTelemetryWorker::Result result{};
     if (!telemetryWorker.takeResult(&result)) return;
@@ -983,6 +1018,11 @@ void MqttManager::pollTelemetryWorker() {
         ++telemetryWorkerFailures;
         telemetryWorkerRetryAtMs = millis() + 2000;
         DiagnosticsManager::noteAction("mqtt_status_worker_failed");
+    }
+    if (result.publish_attempted && !result.published) {
+        invalidatePublishTransport(result.payload_bytes,
+                                   "mqtt_status_worker_write_failed");
+        return;
     }
     if (!result.transport_connected || !current) connected = false;
 }
@@ -1078,7 +1118,8 @@ bool MqttManager::publishCommandAck(
     char buffer[384]{};
     const size_t length = serializeJson(document, buffer, sizeof(buffer));
     return !document.overflowed() && length > 0 && length < sizeof(buffer) &&
-           client.publish(commandAckTopic.c_str(), buffer, false);
+           publishPacket(commandAckTopic.c_str(), buffer, false, length,
+                         "mqtt_command_ack_write_failed");
 }
 
 bool MqttManager::startConnectWorker(const IPAddress& brokerAddress,
@@ -1446,7 +1487,8 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
             char ackBuf[256] = {};
             serializeJson(ackDoc, ackBuf, sizeof(ackBuf));
             String ackTopic = aclTopic + "/ack";
-            client.publish(ackTopic.c_str(), ackBuf, false);
+            publishPacket(ackTopic.c_str(), ackBuf, false,
+                          std::strlen(ackBuf), "mqtt_acl_ack_write_failed");
         } else {
             LOGF("[MQTT-ACL] ⚠️ Signed ACL 적용 거부 (reason code: %u)",
                  static_cast<unsigned int>(res));
@@ -1840,11 +1882,14 @@ void MqttManager::update() {
 
         // Deliver the newest signed terminal/IDLE snapshot before draining the
         // audit backlog so the mobile exact-session poll is not delayed behind
-        // every QoS0 lifecycle event. A failed status publish does not block the
-        // durable event queue from making its own bounded retry.
-        if (pendingTelemetryValid &&
-            client.publish(statusTopic.c_str(), pendingTelemetry, false)) {
-            pendingTelemetryValid = false;
+        // every QoS0 lifecycle event. A failed status write invalidates the TLS
+        // stream, so no later frame may be appended until a clean reconnect.
+        if (pendingTelemetryValid) {
+            const size_t payloadBytes = std::strlen(pendingTelemetry);
+            if (publishPacket(statusTopic.c_str(), pendingTelemetry, false,
+                              payloadBytes, "mqtt_status_write_failed")) {
+                pendingTelemetryValid = false;
+            }
             return;
         }
 
@@ -1969,7 +2014,9 @@ void MqttManager::update() {
                 if (bytes_needed > 0 && bytes_needed < sizeof(buf)) {
                     size_t written = serializeJson(doc, buf, sizeof(buf));
                     if (written > 0) {
-                        pub_ok = client.publish(eventTopic.c_str(), buf, false);
+                        pub_ok = MqttManager::publishPacket(
+                            eventTopic.c_str(), buf, false, written,
+                            "mqtt_event_write_failed");
                     }
                 }
             }
@@ -2088,6 +2135,10 @@ void MqttManager::publishBootDiagnostics() {
     doc["mqtt_max_connect_ms"] = mqttMaxConnectDurationMs;
     doc["mqtt_connect_worker_wdt_failures"] =
         connectWorkerWatchdogFailuresSnapshot();
+    doc["mqtt_publish_failures"] = mqttPublishFailures;
+    doc["mqtt_last_failed_payload_bytes"] = mqttLastFailedPayloadBytes;
+    doc["mqtt_status_payload_bytes"] = mqttStatusPayloadBytes;
+    doc["mqtt_max_status_payload_bytes"] = mqttMaxStatusPayloadBytes;
     doc["mqtt_event_outbox_depth"] = eventOutboxCount;
     doc["mqtt_event_outbox_overflow_count"] = eventOutboxOverflowCount;
     doc["mqtt_legacy_outbox_depth"] = legacyEventOutbox.size();
@@ -2119,7 +2170,8 @@ void MqttManager::publishBootDiagnostics() {
     size_t length = serializeJson(doc, buffer, sizeof(buffer));
     bool ok = !doc.overflowed() && length > 0 &&
               length < sizeof(buffer) &&
-              client.publish(bootTopic.c_str(), buffer, true);
+              publishPacket(bootTopic.c_str(), buffer, true, length,
+                            "mqtt_boot_write_failed");
     if (ok) {
         DiagnosticsManager::acknowledgePreviousEvidencePersistenceFailure();
     }
@@ -2144,7 +2196,8 @@ void MqttManager::publishConfigState(int txPower, int distanceThresholdCm, uint3
     const size_t length = serializeJson(doc, buffer, sizeof(buffer));
     const bool ok = !doc.overflowed() && length > 0 &&
                     length < sizeof(buffer) &&
-                    client.publish(configStateTopic.c_str(), buffer, true);
+                    publishPacket(configStateTopic.c_str(), buffer, true,
+                                  length, "mqtt_config_write_failed");
     configStatePending = !ok;
     LOGF("[MQTT-CONFIG] retained config state publish: %s (%u bytes)",
          ok ? "OK" : "FAIL", static_cast<unsigned int>(length));
@@ -2278,6 +2331,10 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["mqtt_status_worker_failures"] = telemetryWorkerFailures;
     doc["mqtt_status_worker_deferred"] = telemetryWorkerDeferred;
     doc["mqtt_status_worker_max_duration_ms"] = telemetryWorkerMaxDurationMs;
+    doc["mqtt_publish_failures"] = mqttPublishFailures;
+    doc["mqtt_last_failed_payload_bytes"] = mqttLastFailedPayloadBytes;
+    doc["mqtt_status_payload_bytes"] = mqttStatusPayloadBytes;
+    doc["mqtt_max_status_payload_bytes"] = mqttMaxStatusPayloadBytes;
     doc["mqtt_audit_receipts_accepted"] = auditReceiptsAccepted;
     doc["mqtt_audit_receipts_rejected"] = auditReceiptRejected;
     sgk::CanonicalEvent auditHead{};
@@ -2527,6 +2584,10 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     sgk::appendBleAdvertisementJson(doc, advertisementDiagnostics,
         observed_now, sizeof(pendingTelemetry));
     const size_t telemetryBytes = measureJson(doc);
+    mqttStatusPayloadBytes = static_cast<uint32_t>(
+        std::min(telemetryBytes, static_cast<size_t>(UINT32_MAX)));
+    mqttMaxStatusPayloadBytes = std::max(
+        mqttMaxStatusPayloadBytes, mqttStatusPayloadBytes);
     pendingTelemetryValid = !doc.overflowed() && telemetryBytes > 0 &&
         telemetryBytes < sizeof(pendingTelemetry) &&
         serializeJson(doc, pendingTelemetry, sizeof(pendingTelemetry)) ==
@@ -2704,7 +2765,9 @@ bool MqttManager::persistPendingEventsForRestart() {
 
 bool MqttManager::publishCanonicalEvent(const char* payload) {
     if (payload == nullptr || connectionAttemptInProgress() || !client.connected()) return false;
-    return client.publish(canonicalEventTopic.c_str(), payload, false);
+    const size_t payloadBytes = std::strlen(payload);
+    return publishPacket(canonicalEventTopic.c_str(), payload, false,
+                         payloadBytes, "mqtt_canonical_write_failed");
 }
 
 void MqttManager::publishSensorInfo(unsigned long duration_us, float distance_cm) {
@@ -2718,6 +2781,7 @@ void MqttManager::publishSensorInfo(unsigned long duration_us, float distance_cm
     serializeJson(doc, buf, sizeof(buf));
 
     if (isConnected()) {
-        client.publish(sensorTopic.c_str(), buf, false);
+        publishPacket(sensorTopic.c_str(), buf, false, std::strlen(buf),
+                      "mqtt_sensor_write_failed");
     }
 }

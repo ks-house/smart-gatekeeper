@@ -57,14 +57,15 @@ class MqttReconnectPolicy {
 enum class MqttLossReason : uint8_t {
   kNone, kTlsFailed, kMqttFailed, kSubscribeFailed, kAvailabilityFailed,
   kAdoptionLost, kTransportLost, kLoopFailed, kWifiLost, kOtaSuspend,
-  kStaleResult, kDnsFailed, kWorkerStartFailed,
+  kStaleResult, kDnsFailed, kWorkerStartFailed, kPublishFailed,
 };
 inline const char* mqttLossName(MqttLossReason reason) {
   static constexpr const char* names[] = {
       "NONE", "CONNECT_TLS_FAILED", "CONNECT_MQTT_FAILED",
       "CONNECT_SUBSCRIBE_FAILED", "CONNECT_AVAILABILITY_FAILED",
       "CONNECT_ADOPTION_LOST", "TRANSPORT_LOST", "LOOP_FAILED", "WIFI_LOST",
-      "OTA_SUSPEND", "STALE_RESULT", "DNS_FAILED", "WORKER_START_FAILED"};
+      "OTA_SUSPEND", "STALE_RESULT", "DNS_FAILED", "WORKER_START_FAILED",
+      "PUBLISH_FAILED"};
   return names[static_cast<uint8_t>(reason)];
 }
 

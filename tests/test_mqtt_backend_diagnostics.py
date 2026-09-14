@@ -97,7 +97,7 @@ class MqttWireTest(unittest.TestCase):
         self.assertIsNotNone(mqtt_connection_projection({**value, "edges": []}))
 
     def test_exact_nine_ascii_decimal_fields_and_reason_mapping(self):
-        for reason in range(1, 13):
+        for reason in range(1, 14):
             parts = [U32, U32, reason, -128, U32, U32, U32, U32, U32]
             edge = mqtt_edge_projection(",".join(map(str, parts)))
             self.assertEqual(parts, [edge[key] for key in MQTT_EDGE_FIELDS])
@@ -113,7 +113,7 @@ class MqttWireTest(unittest.TestCase):
             with self.subTest(bad=str(bad)[:70]):
                 self.assertIsNone(mqtt_edge_projection(bad))
         for index, key in enumerate(MQTT_EDGE_FIELDS):
-            invalid = (-129, 256) if key == "last_error" else (0, 13) if key == "reason_code" else (-1, U32 + 1)
+            invalid = (-129, 256) if key == "last_error" else (0, 14) if key == "reason_code" else (-1, U32 + 1)
             for bad in invalid:
                 parts = valid.split(",")
                 parts[index] = str(bad)

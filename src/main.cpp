@@ -833,9 +833,10 @@ void loop() {
   rearm.pulse_source = passageRearm.pulseSource();
   rearm.clear_samples = passageRearm.clearSamples();
 
-  // ─── 1초 주기 MQTT 텔레메트리 발행 (실시간 센서값 모니터링) ────────────────────────────────
+  // ─── 상태 변경 즉시 + 유휴 5초 주기 MQTT 텔레메트리 ─────────────────────────────────────
   const GateState telemetryState = g_access_fsm.state();
-  if (now - lastMqttMs >= 1000 || telemetryState != lastTelemetryState) {
+  if (now - lastMqttMs >= MQTT_TELEMETRY_INTERVAL_MS ||
+      telemetryState != lastTelemetryState) {
     lastMqttMs = now;
     lastTelemetryState = telemetryState;
     const char* stateStr =

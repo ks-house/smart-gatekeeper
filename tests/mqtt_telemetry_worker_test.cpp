@@ -18,6 +18,7 @@ bool release_write = false;
 bool task_create_ok = true;
 bool watchdog_ok = true;
 bool publish_ok = true;
+bool transport_connected = true;
 size_t free_heap = 100000;
 size_t largest_block = 20000;
 std::atomic<int> writes{0};
@@ -49,7 +50,7 @@ bool PubSubClient::publish(const char* topic, const char* payload, bool retained
   ++writes;
   return publish_ok;
 }
-bool PubSubClient::connected() { return publish_ok; }
+bool PubSubClient::connected() { return transport_connected; }
 
 int main() {
   sgk::MqttTelemetryWorker worker;
@@ -81,6 +82,7 @@ int main() {
   assert(worker.takeResult(&result));
   assert(!worker.ownsTransport());
   assert(result.published && result.transport_connected && result.watchdog_healthy);
+  assert(result.publish_attempted && result.payload_bytes == 5);
   assert(result.generation == 42);
   assert(written_payload == "ARMED" && written_topic == "target/status");
   assert(!worker.takeResult(&result));
@@ -101,14 +103,15 @@ int main() {
   assert(worker.start(client, topic, payload, 45));
   task.join();
   assert(worker.takeResult(&result));
-  assert(!result.published && !result.watchdog_healthy);
+  assert(!result.publish_attempted && !result.published && !result.watchdog_healthy);
   assert(writes == 1);  // Enrollment failure never starts socket I/O.
   watchdog_ok = true;
   publish_ok = false;
   assert(worker.start(client, topic, payload, 46));
   task.join();
   assert(worker.takeResult(&result));
-  assert(!result.published && !result.transport_connected);
+  assert(result.publish_attempted && !result.published && result.transport_connected);
+  assert(result.payload_bytes == 4);
   assert(result.generation == 46);
   publish_ok = true;
   const std::string oversized(sgk::MqttTelemetryWorker::kMaxPayloadBytes, 'x');
