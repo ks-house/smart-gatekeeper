@@ -47,7 +47,7 @@
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |
 | [embedded_target_connectivity_policy.md](embedded_target_connectivity_policy.md) | 벽 매립형 Target의 Wi-Fi/MQTTS 상시 연결 SLO, 자동 복구, 경보, 매립 승인 Gate와 현재 P0 공백 |
-| [mqtt_stability_analysis_2026_09_14.md](mqtt_stability_analysis_2026_09_14.md) | Target498 간헐 MQTT 재접속 분석; 1차 backoff·연결 edge·관측·조회 구현(미배포), broker 증거와 장기 검증 잔여 |
+| [mqtt_stability_analysis_2026_09_14.md](mqtt_stability_analysis_2026_09_14.md) | Target498 간헐 MQTT 재접속 분석; 1차 보완 Backend 배포·Target500 VALID·진단 API 확인, broker 증거와 장기 검증 잔여 |
 | [mobile_app_scenario.md](mobile_app_scenario.md) | Step 6 기획 이력과 현재 hands-free Local GATT / 수동 Backend-signed-MQTTS 전송 경계 |
 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md) | 서비스-isolate monitoring/ranging, native-wake 위임, 상태바 알림·IPC 복구, 화면 OFF 진단, bounded BLE ownership recovery와 foreground Target 상태 카드 |
 | [mobile_app_background_audit.md](mobile_app_background_audit.md) | 화면 OFF·앱 종료 구현 감사와 P0/P1 수정 결과, 남은 플랫폼 제약·실기기 검증표 |

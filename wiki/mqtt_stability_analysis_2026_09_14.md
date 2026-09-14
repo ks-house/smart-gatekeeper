@@ -181,7 +181,7 @@ Target JSON과 bridge 문자열을 채널별로 처리하고 target/boot/scope,
 - [기존 연결 정책](embedded_target_connectivity_policy.md),
   [진단 조회 API](diagnostics_read_api.md), [OTA 계약](ota_reliability_contract.md).
 
-## 8. 1차 구현 — 로컬 검증, 미배포
+## 8. 1차 구현 — 로컬 검증 기록 (후속 배포는 §9)
 
 - `MqttConnectionPolicy`가 실패 outcome과 stale/link-generation을 분리한다.
   짧은 성공 후 단절도 backoff를 유지하며 60초 연속 연결 뒤 초기화한다.
@@ -237,3 +237,41 @@ TLS 상세 errno hook, filtered broker 로그 수집, 진단 저주기 분리, �
 - 새 cross-layer API/CLI 검증은 root tests에 두어 보호된 Backend 배포 inventory,
   workflow/policy/서명 gate를 변경하지 않았다. 임시 provisioning symlink는 제거했다.
   Git push, 배포, OTA, 재부팅 및 문 개방은 수행하지 않았다.
+
+## 9. 9월14일 배포·설치 확인
+
+- PR [412](https://github.com/ks-house/smart-gatekeeper/pull/412)를 일반 CI 통과 후
+  main `c74a5573555248b5f7a48e8d0bbf268fa05009b3`로 병합했다.
+  초기 firmware CI의 FastAPI 부재는 root cross-layer test의 환경 의존 문제였다.
+  firmware-only 환경에서만 명시적으로 skip하고, 기존 Backend test module의
+  `load_tests`가 동일 테스트를 반드시 실행하도록 수정했다. 집중47개 시험 통과,
+  이후 PR의 firmware/OTA/Backend/policy 검사가 모두 통과했다.
+- Backend run [34814216681](https://github.com/ks-house/smart-gatekeeper/actions/runs/34814216681)
+  성공. NAS apply/status receipt가 같은 source/image/bundle을 가리키며
+  `2026-09-14T06:46:27Z` (15:46:27 KST) 배포를 확인한다. 독립 `/ready`도
+  exact SHA, 12개 정상 check 및 fresh HMAC Target 상태를 반환했다.
+- Target publisher run [34814216700](https://github.com/ks-house/smart-gatekeeper/actions/runs/34814216700)
+  성공. provisioning의 공개 signer key로 manifest 서명을 검증하고 immutable
+  artifact 1,935,044B의 SHA256
+  `2e1d6f71002adf9b9a721cbbfbad8acd87a0e0765d3dc36253db8d5155eedee0`을 직접 확인했다.
+- 15:47:31 KST, fresh signed health15625와 live Target/bridge의 IDLE·relay OFF·
+  BLE 연결0을 확인하고 기존 bridge OTA 경로에 비-retained 요청을 **1회** 보냈다.
+  boot904/498에서 boot905/`2.1.500+main.gc74a557`로 전환했고,
+  15:48:37 live 상태 및 health15627(15:48:36 수신)에서 `running_image_valid=true`,
+  stage11/error0을 확인했다. 새 boot ID는 `918df53eca9fc25d7c7160a19566ab27`이다.
+- 같은 토큰의 `/mqtt-history`는 새 boot의 `source_status=AVAILABLE`, schema1
+  진단을 반환했다. 초기 연결 generation1, 계획 외 단절0, flapping=false이며
+  아직 실제 단절 edge의 전달을 검증한 것은 아니다. heap68836B, lifetime min52444B,
+  largest63476B는 해당 초기 snapshot일 뿐 장기 최저치가 아니다.
+- 후속 health15634(15:51:42 KST)에서 실제 edge 두 개가 저장·조회됐다:
+  sequence1 `OTA_SUSPEND`(계획 단절), sequence2 `TRANSPORT_LOST/-3`(계획 외).
+  후자는 uptime217910ms, 직전 연결152149ms, heap104564/largest39924B,
+  loop-gap 최대2488ms, Wi-Fi generation0으로 기록됐다. health15636은 같은 boot에서
+  연결 generation3/last_connected225128ms를 반환하므로 진단값 기준 **7.218초 후
+  자동 재연결**했다. VALID·IDLE·relay OFF도 유지됐다. 최저 heap은40264B로
+  내려갔으나 이 값만으로 단절 원인이나 전압 강하를 확정할 수 없다.
+  이번 보완으로 실제 사건 보존과 복구는 확인했지만 단절 자체가 제거된 것은 아니다.
+- 앱 변경/업데이트, 수동 문 개방, 추가 재부팅, broker 설정 변경은 하지 않았다.
+  기존 PAUSED 관측 설정도 유지했다. broker reader는 `NOT_CONFIGURED`,
+  최초 단절 원인과 24/72시간 안정성, 센서 NO_ECHO/ARM_TIMEOUT의 물리 출입
+  문제는 여전히 별도 검증 대상이다. 설치 성공을 전체 출입 성공으로 해석하지 않는다.
