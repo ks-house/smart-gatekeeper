@@ -282,10 +282,8 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     self.assertIn('noteAction("mqtt_wifi_lost")', self.mqtt)
     self.assertIn('noteAction("mqtt_wifi_recovered")', self.mqtt)
     self.assertIn("wifiClient.stop();", self.mqtt)
-    self.assertIn("mqttNextConnectAttemptMs = millis();", self.mqtt)
-    self.assertIn(
-        "mqttReconnectDelayMs = MQTT_RECONNECT_INITIAL_MS", self.mqtt
-    )
+    self.assertIn("mqttReconnect.immediate(millis());", self.mqtt)
+    self.assertIn("mqttReconnect.stable(millis());", self.mqtt)
     self.assertIn("WifiManager::linkGeneration()", self.mqtt)
     self.assertIn('noteAction("mqtt_wifi_generation_changed")', self.mqtt)
     generation = self.mqtt.split(
@@ -336,7 +334,7 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
         "client.setSocketTimeout(MQTT_PROTOCOL_SOCKET_TIMEOUT_SECONDS)",
         "MQTT_RECONNECT_INITIAL_MS = 5000",
         "MQTT_RECONNECT_MAX_MS = 30000",
-        "mqttReconnectDelayMs * 2",
+        "mqttReconnect.failed(now, esp_random())",
     ):
       self.assertIn(contract, self.mqtt + self.config)
     self.assertIn('noteAction("mqtt_connect_start")', self.mqtt)

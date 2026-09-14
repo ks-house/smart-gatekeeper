@@ -9,6 +9,9 @@ All MQTT evidence is labelled unverified by this observer, including bridge
 assertions. A retained snapshot, reconnect gap or silence proves no new boot,
 arrival, radio failure or door movement. API cursor flags preserve the separate
 read API checkpoint; this process never advances those cursors or calls the API.
+Target availability accepts a strict boot-labelled mqtt_transport JSON document
+or legacy online/offline bytes with no boot claim. Bridge availability remains
+plain online/offline; its connectivity diagnostic is a historical assertion.
 """
 
 import argparse
@@ -33,8 +36,12 @@ from backend.app.reliability_diagnostics import advisory_projection  # noqa: E40
 
 
 MAX_PAYLOAD = 65536
+MAX_AVAILABILITY_PAYLOAD = 512
 U64 = (1 << 64) - 1
 STATES = {"BOOTING", "IDLE", "AUTH_PENDING", "ARMED", "RELAY_HOLD", "RELAY_ON", "COOLDOWN"}
+CHANNELS = {"target_status", "target_availability", "target_boot", "bridge_status",
+            "bridge_availability", "bridge_connectivity"}
+CONNECTIVITY_REASONS = {"WAITING_FOR_SIGNED_STATUS", "SIGNED_STATUS_FRESH", "SIGNED_STATUS_STALE"}
 
 
 def topics(target_id):
@@ -56,14 +63,24 @@ def _integer(value):
     return None
 
 
-def project_message(channel, payload):
+def project_message(channel, payload, *, target_id=None):
+    if channel not in CHANNELS:
+        raise ValueError("invalid observation channel")
+    if target_id is not None:
+        topics(target_id)
     if not isinstance(payload, bytes) or not 1 <= len(payload) <= MAX_PAYLOAD:
         raise ValueError("invalid payload size")
-    if channel.endswith("availability"):
-        value = payload.decode("ascii")
-        if value not in ("online", "offline"):
+    if channel in ("target_availability", "bridge_availability"):
+        if len(payload) > MAX_AVAILABILITY_PAYLOAD:
+            raise ValueError("invalid availability size")
+        if payload in (b"online", b"offline"):
+            result = {"availability": payload.decode("ascii")}
+            if channel == "target_availability":
+                # N-1 Target compatibility: transport only, with no boot claim.
+                result.update(scope="mqtt_transport", payload_format="legacy_plain")
+            return result
+        if channel == "bridge_availability":
             raise ValueError("invalid availability")
-        return {"availability": value}
 
     def unique(pairs):
         result = {}
@@ -79,6 +96,36 @@ def project_message(channel, payload):
     doc = json.loads(payload.decode("utf-8"), object_pairs_hook=unique, parse_constant=invalid_constant)
     if not isinstance(doc, dict):
         raise ValueError("invalid JSON object")
+    if "target_id" in doc and (not isinstance(doc["target_id"], str)
+            or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", doc["target_id"]) is None
+            or (target_id is not None and doc["target_id"] != target_id)):
+        raise ValueError("mismatched Target identity")
+    if channel == "target_availability":
+        # MqttManager::startConnectWorker/connectWorkerEntry emit these exact
+        # fields for the offline LWT and retained online transport announcement.
+        if (target_id is None
+                or set(doc) != {"status", "scope", "target_id", "boot_id", "boot_count"}
+                or doc["status"] not in ("online", "offline")
+                or doc["scope"] != "mqtt_transport"
+                or not isinstance(doc["boot_id"], str)
+                or re.fullmatch(r"[0-9a-f]{32}", doc["boot_id"]) is None
+                or type(doc["boot_count"]) is not int
+                or not 1 <= doc["boot_count"] <= (1 << 32) - 1):
+            raise ValueError("invalid Target availability")
+        return dict(availability=doc["status"], scope="mqtt_transport", target_id=target_id,
+                    boot_id=doc["boot_id"], boot_count=str(doc["boot_count"]), payload_format="target_json")
+    if channel == "bridge_connectivity":
+        # home_assistant_bridge.bridge_connectivity_diagnostic_payload emits a
+        # historical Backend observation, not a current online/readiness claim.
+        if (set(doc) != {"schema_version", "diagnostic_scope", "last_signed_status_observation"}
+                or type(doc["schema_version"]) is not int or doc["schema_version"] != 1
+                or doc["diagnostic_scope"] != "last_completed_backend_observation"
+                or not isinstance(doc["last_signed_status_observation"], str)
+                or doc["last_signed_status_observation"] not in CONNECTIVITY_REASONS):
+            raise ValueError("invalid bridge connectivity diagnostic")
+        return doc
+    if doc.get("scope") == "mqtt_transport" or "diagnostic_scope" in doc:
+        raise ValueError("wrong observation channel")
     result = advisory_projection(doc)
     for key in ("source_boot_count", "boot_count", "status_revision", "access_status_revision", "monotonic_ms"):
         value = _integer(doc.get(key))
@@ -88,18 +135,13 @@ def project_message(channel, payload):
         value = doc.get(key)
         if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{32}", value):
             result[key] = value
-    if doc.get("state") in STATES:
+    if isinstance(doc.get("state"), str) and doc["state"] in STATES:
         result["state"] = doc["state"]
     for key in ("relay_commanded_on", "is_armed"):
         if type(doc.get(key)) is bool:
             result[key] = doc[key]
     if type(doc.get("relay_pin_level")) is int and doc["relay_pin_level"] in (-1, 0, 1, 2):
         result["relay_pin_level"] = doc["relay_pin_level"]
-    if channel == "bridge_connectivity":
-        for key, codes in (("status", {"online", "offline"}),
-                           ("reason", {"WAITING_FOR_SIGNED_STATUS", "SIGNED_STATUS_FRESH", "SIGNED_STATUS_STALE"})):
-            if isinstance(doc.get(key), str) and doc[key] in codes:
-                result[key] = doc[key]
     if not result:
         raise ValueError("no allowed observation")
     return result
@@ -188,17 +230,23 @@ class Observer:
         self.subscription_ever_accepted = False
         self.gap_started = self.monotonic()
         self.rejected, self.lock = 0, threading.RLock()
+        self.rejected_by_channel = {channel: 0 for channel in self.channels.values()}
 
     def snapshot(self):
         now = self.monotonic()
         return dict(target_id=self.target_id, connected=self.connected, subscribed=self.subscribed,
                     connection_count=self.connection_count, rejected_messages=self.rejected,
+                    rejected_messages_by_channel=dict(self.rejected_by_channel),
                     api_cursors=self.cursors, api_cursors_advanced=False,
                     evidence_integrity="UNVERIFIED_MQTT_OBSERVATION",
                     gap_duration_ms=int((now - self.gap_started) * 1000) if self.gap_started is not None else None,
                     observations={channel: dict(**value, duplicates_suppressed=self.repeats.get(channel, 0),
                         receipt_age_ms=int((now - self.received[channel]) * 1000),
-                        freshness="RETAINED_ONLY" if channel not in self.live_received else
+                        # Channel receipt history is separate from this value:
+                        # a replay may contain another boot and is never live.
+                        live_receipt_age_ms=int((now - self.live_received[channel]) * 1000)
+                            if channel in self.live_received else None,
+                        freshness="RETAINED_ONLY" if value["retained"] else
                                   "NO_RECENT_MESSAGE" if now - self.live_received[channel] > 90 else "RECENT_MESSAGE")
                         for channel, value in self.state.items()},
                     missing_channels=sorted(set(self.channels.values()) - set(self.state)),
@@ -246,9 +294,10 @@ class Observer:
             if channel is None:
                 return False
             try:
-                fields = project_message(channel, payload)
+                fields = project_message(channel, payload, target_id=self.target_id)
             except (ValueError, TypeError, UnicodeError, RecursionError, OverflowError):
                 self.rejected += 1
+                self.rejected_by_channel[channel] += 1
                 # Aggregate rejected payloads; never copy payload/exception text.
                 return False
             now = self.monotonic()
@@ -401,6 +450,8 @@ def run(args, mqtt, *, monotonic=time.monotonic, sleep=time.sleep):
             "history_evicted_through_sequence": writer.evicted_through,
             "subscribed": observer.subscribed, "observed_channels": len(observer.state),
             "subscription_ever_accepted": observer.subscription_ever_accepted,
+            "rejected_messages": observer.rejected,
+            "rejected_messages_by_channel": dict(observer.rejected_by_channel),
             "observation_status": "MESSAGES_OBSERVED" if observer.state else "NO_MESSAGES_OBSERVED",
             "api_cursors_advanced": False, "evidence_integrity": "UNVERIFIED_MQTT_OBSERVATION"}
 

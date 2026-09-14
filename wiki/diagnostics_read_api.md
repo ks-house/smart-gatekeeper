@@ -5,6 +5,47 @@ PR407 at September13 22:25:32 KST. Signed NAS deployment/status receipts match;
 independent public readiness verifies all12 checks and fresh Target status.
 Existing token and wrapper are unchanged. New app/Target installation is separate.
 
+## MQTT connection history — September14 local implementation, not deployed
+
+`GET /api/v1/diagnostics/mqtt-history` adds a read-only view of the existing health
+table. The same token, `target_id`, `boot_count`, receipt `since/until`, `limit`
+(1–100) and `before_id` apply. No token/wrapper change, new DB table or migration.
+
+```bash
+.venv/bin/python scripts/read_diagnostics.py --mqtt-history \
+  --target-id c0feffe6ebac --since 2026-09-14T00:00:00Z \
+  --until 2026-09-14T15:00:00Z --limit 100
+```
+
+Keep the fixed time window and follow `next_before_id` until exhausted. These
+are **health observations**, not one row per disconnection. Deduplicate
+`history[].edges[].identity` by Target + boot ID/count + sequence across pages.
+`mqtt_connection` preserves bounded schema-1 wire strings; `edges` additionally
+decodes their reason and integer fields. Occurrence milliseconds are boot-relative
+U32 values, not wall time. The firmware saturates sequence instead of reusing IDs.
+
+The enclosing health core is verified; these connection fields are **unsigned**
+and never acquire command/access authority. Old/invalid/omitted diagnostics are
+`SOURCE_UNAVAILABLE`, not zero errors or healthy. Flapping is independent of
+signed state freshness. Ring overwrites, sequence gaps, partial coverage and
+missing edges are explicit. The four-entry Target RAM ring has no dedicated
+server ACK or cold-reboot persistence; sampled history is not complete delivery.
+The optional advisory is omitted if it would overflow the existing status buffer.
+
+Unchanged signed health keeps the existing30-second sampling interval. A validated
+new head edge can request a snapshot after at least5 seconds since that Target's
+last stored health row. Repeated edges, mutable counters or flapping alone cannot
+bypass this bound. Signed boot/state/terminal/relay transitions keep their existing
+immediate capture. Suppression does not advance the persisted edge checkpoint;
+a later advancing signed status can retry. This reduces, but does not eliminate,
+short-lived/offline/reboot loss. The latest committed row is the checkpoint, so
+the existing transaction rollback/highwater serialization remains authoritative.
+
+`broker_history.operation_status=NOT_CONFIGURED` means no broker log reader is
+wired. It is not evidence that the broker saw no disconnect. New data requires
+both Backend deployment and installation of the new Target firmware; old498
+does not emit this schema. See [MQTT hardening plan](mqtt_stability_analysis_2026_09_14.md).
+
 ## Late evidence and per-phone incident paging (schema018)
 
 Keep `--since/--until` as the fixed Backend receipt-time incident window. Supply
@@ -104,6 +145,7 @@ The dedicated token can perform only these reads:
 | `GET /api/v1/diagnostics/bundles/{id}` | Validated report including sessions/wakes/optional scan lifecycle, plus up to 500 matching integrity-verified Target events |
 | `GET /api/v1/diagnostics/access-events` | Independent verified access history, receipt-time window and Target/session/boot/event filters, paginated by row ID; deployed September 8 |
 | `GET /api/v1/diagnostics/health-history` | Sampled verified state/boot history, separate unsigned advisory fields; deployed September 8 |
+| `GET /api/v1/diagnostics/mqtt-history` | Bounded unsigned MQTT connection observations within health rows; September14 local implementation, not deployed |
 | `GET /api/v1/diagnostics/incidents` | Bounded Target sessions, independent mobile failure/skip observations and signed sensor summaries, explicit missing/stale evidence; deployed September 8 |
 
 `id` is the decimal row ID returned by the list, not `bundle_ref`. Different

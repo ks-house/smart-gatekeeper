@@ -73,7 +73,7 @@ def endpoint(base, bundle_id, limit, before_id, **filters):
 
 
 def history_endpoint(base, route, limit, before_id, **filters):
-    if route not in ("access-events", "health-history", "incidents", "audit-conflicts"):
+    if route not in ("access-events", "health-history", "mqtt-history", "incidents", "audit-conflicts"):
         raise ValueError("unsupported read route")
     query = {"limit": limit}
     if before_id is not None:
@@ -117,6 +117,7 @@ def main(argv=None):
     mode.add_argument("--access-events", action="store_true", help="read verified Target events independently of mobile reports")
     mode.add_argument("--audit-conflicts", action="store_true", help="read durably quarantined audit conflicts, not access verdicts")
     mode.add_argument("--health-history", action="store_true", help="read sampled verified Target health history")
+    mode.add_argument("--mqtt-history", action="store_true", help="read unsigned MQTT diagnostics sampled from health history")
     mode.add_argument("--incidents", action="store_true", help="correlate bounded mobile/Target evidence and missing stages")
     mode.add_argument("--bundle-id", type=positive)
     parser.add_argument("--token-file", type=Path, default=DEFAULT_TOKEN_FILE,
@@ -139,15 +140,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     filters = {key: getattr(args, key) for key in
                ("since", "until", "target_id", "session_id", "boot_count", "event_code")}
-    if not (args.access_events or args.audit_conflicts or args.health_history or args.incidents) and any(value is not None for value in filters.values()):
-        parser.error("event filters require --access-events, --audit-conflicts, --health-history or --incidents")
-    if args.health_history and (args.session_id is not None or args.event_code is not None):
-        parser.error("--health-history does not accept session/event filters")
+    if not (args.access_events or args.audit_conflicts or args.health_history or args.mqtt_history or args.incidents) and any(value is not None for value in filters.values()):
+        parser.error("event filters require --access-events, --audit-conflicts, --health-history, --mqtt-history or --incidents")
+    if (args.health_history or args.mqtt_history) and (args.session_id is not None or args.event_code is not None):
+        parser.error("health/MQTT history does not accept session/event filters")
     if args.incidents and (args.boot_count is not None or args.event_code is not None):
         parser.error("--incidents does not accept boot/event filters")
     mobile_filters = {key: getattr(args, key) for key in
                       ("occurred_since", "occurred_until", "evidence_received_until", "mobile_ref", "mobile_before_id", "mobile_limit")}
-    bundle_list = not any((args.access_events, args.audit_conflicts, args.health_history, args.incidents,
+    bundle_list = not any((args.access_events, args.audit_conflicts, args.health_history, args.mqtt_history, args.incidents,
                           args.init_token, args.check_token, args.bundle_id is not None))
     if any(value is not None for value in mobile_filters.values()) and not (args.incidents or bundle_list):
         parser.error("mobile evidence filters require --incidents or a bundle list")
@@ -169,7 +170,7 @@ def main(argv=None):
                 result = {"token_available": True}
             else:
                 route = ("audit-conflicts" if args.audit_conflicts else "access-events" if args.access_events else "health-history" if args.health_history
-                         else "incidents" if args.incidents else None)
+                         else "mqtt-history" if args.mqtt_history else "incidents" if args.incidents else None)
                 url = (history_endpoint(args.base_url, route, args.limit, args.before_id, **filters)
                        if route else endpoint(args.base_url, args.bundle_id, args.limit, args.before_id, **mobile_filters))
                 result = fetch(url, token)
