@@ -10,8 +10,11 @@ STOP_FAILED, RELEASE_FAILED and RESTORE_PENDING display a distinct restoration
 warning. Current ready status supersedes historical scan/recovery evidence.
 Native readiness, scan ownership, authentication and OTA behavior are unchanged.
 Local validation: Flutter121 tests pass, focused health16 tests pass, analyzer
-clean. This correction is not yet published or installed; APK45001 retains the
-old wording until a subsequent app release.
+clean. PR416 merged exact main7b924b6639cf97f0f7007a65e7152a82dde91473.
+App run34862936846 published1.0.0-g7b924b6/build45201 on2026-09-15;
+primary/fallback HTTPS APKs and all three update manifests independently match
+the signed CI artifacts. Previous valid pairs remain retained. Publication is
+verified; phone installation and the corrected physical UI remain unconfirmed.
 
 ## 2026-09-15 diagnosis: misleading settings warning during alternative scan
 
