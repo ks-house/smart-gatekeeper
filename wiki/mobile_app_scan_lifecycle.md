@@ -1,5 +1,33 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-09-15 correction: separate settings and temporary discovery
+
+The settings card now uses a presentation-only BackgroundAccessStatus. Active
+SCANNING plus FOREGROUND_DISCOVERY registration with enabled credentials and
+requested registration displays blue `Target 신호 확인 중` guidance. Unknown
+health displays `상태 확인 중`. Current blockers/location-off remain warnings;
+STOP_FAILED, RELEASE_FAILED and RESTORE_PENDING display a distinct restoration
+warning. Current ready status supersedes historical scan/recovery evidence.
+Native readiness, scan ownership, authentication and OTA behavior are unchanged.
+Local validation: Flutter121 tests pass, focused health16 tests pass, analyzer
+clean. This correction is not yet published or installed; APK45001 retains the
+old wording until a subsequent app release.
+
+## 2026-09-15 diagnosis: misleading settings warning during alternative scan
+
+APK45001's settings card maps every false `handsFreeReady` to `설정 확인 필요`.
+`pauseForAlternative` intentionally sets registration `reconciled=false` and
+`foreground_discovery`; the readiness projection depends on that registration.
+Thus a normal exclusive foreground scan is mislabeled as a settings problem.
+Read-only Backend reports1679/1680 confirm the transition at00:03:16–17KST:
+SCANNING/readinessfalse/locationtrue/reasonnull, then CANCELLED_ACTIVITY_STOP,
+RESTORED/REGISTERED/readinesstrue. The latter window recorded29 observations,
+zero iBeacon candidates/matches/errors; it does not prove Target reception.
+Recommended UI correction: separate temporary discovery/registration handoff
+from actionable permission/BT/location failures and cleanup/restore failures.
+Do not force readiness true merely to hide the warning. Diagnosis only;
+no runtime edit, publication or device command was performed in this turn.
+
 ## 2026-09-14 P0 foreground alternative discovery
 
 The existing native PendingIntent registrations remain the background discovery

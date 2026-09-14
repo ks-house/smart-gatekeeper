@@ -839,6 +839,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
 
   Widget _settings() {
     final strings = AppLocalizations.of(context);
+    final backgroundStatus =
+        _health?.backgroundAccessStatus ?? BackgroundAccessStatus.checking;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -848,16 +850,18 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
               ListTile(
                 leading: const Icon(Icons.security),
                 title: const Text('백그라운드 출입'),
-                subtitle: Text(_health?.handsFreeReady == true
-                    ? '설정 준비됨 · 실제 감지는 별도 확인'
-                    : '설정 확인 필요'),
+                subtitle: Text(backgroundStatus.label),
                 trailing: Icon(
-                  _health?.handsFreeReady == true
+                  backgroundStatus == BackgroundAccessStatus.ready
                       ? Icons.check_circle
-                      : Icons.info_outline,
-                  color: _health?.handsFreeReady == true
+                      : backgroundStatus.needsAttention
+                          ? Icons.info_outline
+                          : Icons.sensors,
+                  color: backgroundStatus == BackgroundAccessStatus.ready
                       ? Colors.greenAccent
-                      : Colors.amberAccent,
+                      : backgroundStatus.needsAttention
+                          ? Colors.amberAccent
+                          : Colors.lightBlueAccent,
                 ),
               ),
               const Divider(height: 1),
