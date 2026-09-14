@@ -22,7 +22,11 @@ import 'registration_screen.dart';
 import 'support_report_screen.dart';
 
 class SmartKeyHomeScreen extends StatefulWidget {
-  const SmartKeyHomeScreen({super.key});
+  const SmartKeyHomeScreen(
+      {super.key, this.identityService, this.updateChecker});
+
+  final MobileIdentityService? identityService;
+  final UpdateChecker? updateChecker;
 
   @override
   State<SmartKeyHomeScreen> createState() => _SmartKeyHomeScreenState();
@@ -30,11 +34,11 @@ class SmartKeyHomeScreen extends StatefulWidget {
 
 class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     with WidgetsBindingObserver {
-  final _identity = MobileIdentityService();
+  late final _identity = widget.identityService ?? MobileIdentityService();
   final _enrollment = LocalGattEnrollmentService();
   final _healthBridge = NativeGattWorkerHealthBridge();
   final _activityStore = MobileActivityStore();
-  final _updates = UpdateChecker();
+  late final _updates = widget.updateChecker ?? UpdateChecker();
   final _remoteOpen = RemoteManualOpenService();
   final _logout = AccountLogoutService();
   final _diagnosticsStore = FieldDiagnosticsStore();
@@ -557,14 +561,22 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     }
   }
 
+  BackgroundAccessStatus get _backgroundStatus =>
+      _health?.backgroundAccessStatus ?? BackgroundAccessStatus.checking;
+
   String _readinessTitle(AppLocalizations strings) {
     if (_identityStatus.nextAction == 'status_unavailable') {
       return strings.statusCheckNeeded;
     }
-    if (_identityStatus.accessReady && _health?.handsFreeReady == true) {
-      return '스마트키 설정 준비됨';
+    if (_identityStatus.accessReady) {
+      return switch (_backgroundStatus) {
+        BackgroundAccessStatus.ready => '스마트키 설정 준비됨',
+        BackgroundAccessStatus.discovering => 'Target 신호 확인 중',
+        BackgroundAccessStatus.checking => '상태 확인 중',
+        BackgroundAccessStatus.recoveryRequired => '기본 스캔 복원 확인 필요',
+        BackgroundAccessStatus.settingsRequired => strings.setupCheckNeeded,
+      };
     }
-    if (_identityStatus.accessReady) return strings.setupCheckNeeded;
     return switch (_identityStatus.enrollmentState) {
       EnrollmentState.pending => strings.registrationPending,
       EnrollmentState.readyToEnroll => strings.readyToEnroll,
@@ -575,14 +587,25 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   }
 
   String _readinessDetail(AppLocalizations strings) {
-    if (_identityStatus.accessReady && _health?.handsFreeReady == true) {
-      return '자동 출입 설정이 준비되었습니다. 실제 Target 신호 수신 상태는 아래에서 확인하세요.';
-    }
-    final blocked = _health?.currentBlockingReasonCode;
-    if (blocked != null) return friendlyFailure(blocked, strings);
     if (_identityStatus.nextAction == 'status_unavailable') {
       return strings.backendStatusUnavailableDetail;
     }
+    if (_identityStatus.accessReady) {
+      switch (_backgroundStatus) {
+        case BackgroundAccessStatus.ready:
+          return '자동 출입 설정이 준비되었습니다. 실제 Target 신호 수신 상태는 아래에서 확인하세요.';
+        case BackgroundAccessStatus.discovering:
+          return '대체 스캔으로 신호를 확인하고 있습니다. 완료 후 기본 스캔이 자동 복원됩니다.';
+        case BackgroundAccessStatus.checking:
+          return '휴대폰의 출입 준비 상태를 확인하고 있습니다.';
+        case BackgroundAccessStatus.recoveryRequired:
+          return '대체 스캔 종료 후 기본 스캔 복원이 확인되지 않았습니다. 고급 진단에서 복원 상태를 확인하세요.';
+        case BackgroundAccessStatus.settingsRequired:
+          break;
+      }
+    }
+    final blocked = _health?.currentBlockingReasonCode;
+    if (blocked != null) return friendlyFailure(blocked, strings);
     return switch (_identityStatus.nextAction) {
       'request_registration' => strings.requestRegistrationDetail,
       'wait_for_approval' => strings.waitForApprovalDetail,
@@ -672,7 +695,12 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   String _scanStatusDetail() {
     final health = _health;
     if (health == null) return '스캔 상태 확인 중';
-    final registration = health.wakeRegistered ? '스캔 등록됨' : '스캔 등록 확인 필요';
+    final registration = switch (_backgroundStatus) {
+      BackgroundAccessStatus.discovering => '대체 스캔 중 · 기본 스캔 일시 전환',
+      BackgroundAccessStatus.recoveryRequired => '기본 스캔 복원 확인 필요',
+      BackgroundAccessStatus.settingsRequired => '스캔 설정 확인 필요',
+      _ => health.wakeRegistered ? '스캔 등록됨' : '스캔 등록 확인 필요',
+    };
     final observation = switch (health.scanObservationAt(DateTime.now())) {
       'RECENT_PACKET' => '최근 15초 내 Target 신호 수신',
       'NO_RECENT_PACKET' => '최근 수신 없음 · 범위 밖이거나 수신 상태 확인 필요',
@@ -681,15 +709,23 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     };
     final packet = health.lastScanPacketEpochMs;
     final recovery = switch (health.discoveryRecoveryStage) {
-      'SCANNING' => '\n전면 대체 발견 확인 중 · 최대 12초',
+      'SCANNING' => _backgroundStatus == BackgroundAccessStatus.discovering
+          ? '\n전면 대체 발견 확인 중 · 최대 12초'
+          : '',
       'NO_MATCHING_PACKET' => '\n전면 대체 스캔에서도 Target 미수신 · 원인 미확정',
       'MATCH_OBSERVED' => '\n전면 확인 창에서 Target 신호 관측',
-      'SCAN_ERROR' => '\n전면 대체 스캔 오류 · 기본 스캔 복원 상태 확인 필요',
+      'SCAN_ERROR' => _backgroundStatus == BackgroundAccessStatus.ready
+          ? '\n이전 대체 스캔 오류 · 현재 기본 스캔 복원됨'
+          : '\n전면 대체 스캔 오류 · 기본 스캔 복원 상태 확인 필요',
       'STOP_FAILED' ||
       'RELEASE_FAILED' =>
-        '\nBLE 정리 실패 · Bluetooth를 껐다 켜서 복구 필요',
+        _backgroundStatus == BackgroundAccessStatus.ready
+            ? '\n이전 BLE 정리 실패 · 현재 기본 스캔 복원됨'
+            : '\nBLE 정리 실패 · Bluetooth를 껐다 켜서 복구 필요',
       'OWNER_BUSY' => '\n다른 BLE 작업 진행 중 · 대체 스캔 보류',
-      'ENVIRONMENT_BLOCKED' => '\n휴대폰 BLE·위치 서비스 상태 확인 필요',
+      'ENVIRONMENT_BLOCKED' => _backgroundStatus == BackgroundAccessStatus.ready
+          ? ''
+          : '\n휴대폰 BLE·위치 서비스 상태 확인 필요',
       _ => '',
     };
     final history = health.lastSessionState == 'SUCCEEDED' &&
@@ -707,8 +743,10 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
 
   Widget _home() {
     final strings = AppLocalizations.of(context);
-    final ready =
-        _identityStatus.accessReady && _health?.handsFreeReady == true;
+    final eligible = _identityStatus.accessReady &&
+        _identityStatus.nextAction != 'status_unavailable';
+    final ready = eligible && _backgroundStatus == BackgroundAccessStatus.ready;
+    final informational = eligible && !_backgroundStatus.needsAttention;
     return RefreshIndicator(
       onRefresh: _loadAll,
       child: ListView(
@@ -724,9 +762,17 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Icon(
-                      ready ? Icons.verified_user : Icons.info_outline,
+                      ready
+                          ? Icons.verified_user
+                          : informational
+                              ? Icons.sensors
+                              : Icons.info_outline,
                       size: 48,
-                      color: ready ? Colors.greenAccent : Colors.amberAccent,
+                      color: ready
+                          ? Colors.greenAccent
+                          : informational
+                              ? Colors.lightBlueAccent
+                              : Colors.amberAccent,
                     ),
                     const SizedBox(height: 12),
                     Text(_readinessTitle(strings),
@@ -839,8 +885,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
 
   Widget _settings() {
     final strings = AppLocalizations.of(context);
-    final backgroundStatus =
-        _health?.backgroundAccessStatus ?? BackgroundAccessStatus.checking;
+    final backgroundStatus = _backgroundStatus;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
