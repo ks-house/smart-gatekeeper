@@ -3,6 +3,83 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gatekeeper_app/services/native_gatt_worker_health.dart';
 
 void main() {
+  group('background access presentation', () {
+    NativeGattWorkerHealth health({
+      Map<String, Object?> overrides = const {},
+      String stage = 'SCANNING',
+      String? restore,
+    }) =>
+        NativeGattWorkerHealth.fromMap({
+          'featureEnabled': true,
+          'credentialProvisioned': true,
+          'localConsentValid': true,
+          'wakeRegistrationRequested': true,
+          'wakeRegistrationStatus': 'foreground_discovery',
+          'locationServicesEnabled': true,
+          'scanDiagnostics': {
+            'alternativeStage': stage,
+            'alternativeRestoreStatus': restore,
+          },
+          ...overrides,
+        });
+
+    test('exclusive foreground scan is informational, not settings failure',
+        () {
+      final value = health();
+      expect(value.backgroundAccessStatus, BackgroundAccessStatus.discovering);
+      expect(value.backgroundAccessStatus.needsAttention, isFalse);
+      expect(value.backgroundAccessStatus.label, contains('Target 신호 확인 중'));
+      expect(value.handsFreeReady, isFalse);
+      expect(value.wakeRegistrationReconciled, isFalse);
+    });
+
+    test('real blockers and missing credentials are not hidden by scanning',
+        () {
+      for (final overrides in <Map<String, Object?>>[
+        {'currentBlockingReasonCode': 'BLUETOOTH_OFF'},
+        {'locationServicesEnabled': false},
+        {'credentialProvisioned': false},
+        {'localConsentValid': false},
+        {'featureEnabled': false},
+        {'wakeRegistrationRequested': false},
+      ]) {
+        expect(health(overrides: overrides).backgroundAccessStatus,
+            BackgroundAccessStatus.settingsRequired);
+      }
+    });
+
+    test('cleanup and restore failures have a distinct warning', () {
+      for (final stage in ['STOP_FAILED', 'RELEASE_FAILED']) {
+        expect(health(stage: stage).backgroundAccessStatus,
+            BackgroundAccessStatus.recoveryRequired);
+      }
+      expect(
+          health(stage: 'CANCELLED_ACTIVITY_STOP', restore: 'RESTORE_PENDING')
+              .backgroundAccessStatus,
+          BackgroundAccessStatus.recoveryRequired);
+    });
+
+    test('restored readiness supersedes old scan or recovery evidence', () {
+      for (final stage in [
+        'SCANNING',
+        'STOP_FAILED',
+        'CANCELLED_ACTIVITY_STOP'
+      ]) {
+        expect(
+            health(stage: stage, overrides: {
+              'handsFreeReady': true,
+              'wakeRegistrationStatus': 'registered',
+            }).backgroundAccessStatus,
+            BackgroundAccessStatus.ready);
+      }
+      expect(
+          health(overrides: {'wakeRegistrationStatus': 'not_registered'})
+              .backgroundAccessStatus,
+          BackgroundAccessStatus.settingsRequired);
+      expect(health(stage: 'PROCESS_INTERRUPTED').backgroundAccessStatus,
+          BackgroundAccessStatus.settingsRequired);
+    });
+  });
   test('old success and future timestamps cannot establish current discovery',
       () {
     final now = DateTime.fromMillisecondsSinceEpoch(100000);

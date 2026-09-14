@@ -9,6 +9,18 @@ enum TargetDetectionStage {
   disabled,
 }
 
+enum BackgroundAccessStatus {
+  checking('상태 확인 중', false),
+  ready('설정 준비됨 · 실제 감지는 별도 확인', false),
+  discovering('Target 신호 확인 중 · 완료 후 기본 스캔 자동 복원', false),
+  recoveryRequired('기본 스캔 복원 확인 필요', true),
+  settingsRequired('설정 확인 필요', true);
+
+  const BackgroundAccessStatus(this.label, this.needsAttention);
+  final String label;
+  final bool needsAttention;
+}
+
 class TargetDetectionSummary {
   const TargetDetectionSummary({
     required this.source,
@@ -167,6 +179,32 @@ class NativeGattWorkerHealth {
 
   String? get discoveryRecoveryStage =>
       scanDiagnostics?['alternativeStage']?.toString();
+
+  /// Presentation only: never change the native registration/readiness contract.
+  BackgroundAccessStatus get backgroundAccessStatus {
+    if ((currentBlockingReasonCode?.isNotEmpty ?? false) ||
+        locationServicesEnabled == false) {
+      return BackgroundAccessStatus.settingsRequired;
+    }
+    // A successful current registration supersedes historical recovery evidence.
+    if (handsFreeReady) return BackgroundAccessStatus.ready;
+    final stage = discoveryRecoveryStage?.toUpperCase();
+    final restore =
+        scanDiagnostics?['alternativeRestoreStatus']?.toString().toUpperCase();
+    if (stage == 'STOP_FAILED' ||
+        stage == 'RELEASE_FAILED' ||
+        restore == 'RESTORE_PENDING') {
+      return BackgroundAccessStatus.recoveryRequired;
+    }
+    if (featureEnabled &&
+        credentialRegistered &&
+        wakeRegistrationRequested &&
+        wakeRegistrationStatus.toUpperCase() == 'FOREGROUND_DISCOVERY' &&
+        stage == 'SCANNING') {
+      return BackgroundAccessStatus.discovering;
+    }
+    return BackgroundAccessStatus.settingsRequired;
+  }
 
   /// Historical session success is independent of present radio observation.
   bool hasRecentSessionSuccessAt(DateTime now) {
