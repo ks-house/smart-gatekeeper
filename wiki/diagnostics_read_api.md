@@ -1,11 +1,12 @@
 # Local-PC diagnostic read API
 
-Current: Backend `7afb9f785c0a0a2c36248ee33d2dfef3bdd3f023` / schema018 deployed via
-PR407 at September13 22:25:32 KST. Signed NAS deployment/status receipts match;
+Current: Backend `c74a5573555248b5f7a48e8d0bbf268fa05009b3` / schema018 deployed via
+PR412 at September14 15:46:27 KST. NAS deployment/status receipts match;
 independent public readiness verifies all12 checks and fresh Target status.
-Existing token and wrapper are unchanged. New app/Target installation is separate.
+Existing token and wrapper are unchanged. Target500 boot905 reached VALID at
+15:48:37 KST; the new MQTT history API returned its schema1 advisory. No app update.
 
-## MQTT connection history — September14 local implementation, not deployed
+## MQTT connection history — September14 deployed, Target500 installed
 
 `GET /api/v1/diagnostics/mqtt-history` adds a read-only view of the existing health
 table. The same token, `target_id`, `boot_count`, receipt `since/until`, `limit`
@@ -145,7 +146,7 @@ The dedicated token can perform only these reads:
 | `GET /api/v1/diagnostics/bundles/{id}` | Validated report including sessions/wakes/optional scan lifecycle, plus up to 500 matching integrity-verified Target events |
 | `GET /api/v1/diagnostics/access-events` | Independent verified access history, receipt-time window and Target/session/boot/event filters, paginated by row ID; deployed September 8 |
 | `GET /api/v1/diagnostics/health-history` | Sampled verified state/boot history, separate unsigned advisory fields; deployed September 8 |
-| `GET /api/v1/diagnostics/mqtt-history` | Bounded unsigned MQTT connection observations within health rows; September14 local implementation, not deployed |
+| `GET /api/v1/diagnostics/mqtt-history` | Bounded unsigned MQTT connection observations within health rows; September14 deployed with Target500 schema1 readback |
 | `GET /api/v1/diagnostics/incidents` | Bounded Target sessions, independent mobile failure/skip observations and signed sensor summaries, explicit missing/stale evidence; deployed September 8 |
 
 `id` is the decimal row ID returned by the list, not `bundle_ref`. Different
