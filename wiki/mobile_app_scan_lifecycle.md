@@ -1,5 +1,103 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-09-14 P0 foreground alternative discovery
+
+The existing native PendingIntent registrations remain the background discovery
+path. On Activity resume, one 3-second primary grace window checks for a fresh
+matching packet. If none arrives, an eligible screen-ON foreground Activity may
+run one unfiltered LOW_LATENCY ScanCallback window for at most 12 seconds.
+The 3-second foreground grace is independent of the existing 30-second recovery
+observer and does not add 30 seconds to an explicit foreground entry.
+There is no timer loop: another attempt requires a new foreground entry and the
+durable 60-second cooldown. Silence away from the Target is unknown/out of range,
+not proof of a phone or Target radio fault.
+
+The experiment serializes with BleWakeRegistrar, defers unfinished GATT work,
+acquires the existing cross-process native BLE lease, and stops BOTH native
+PendingIntent registrations before starting ScanCallback. The native ownership
+marker continues excluding the legacy Flutter/AltBeacon scanner. Late
+PendingIntent deliveries are ignored during the experiment. At completion the
+exact callback is stopped, its lease released, and background registration is
+restored using existing bounded reconciliation. If callback stop or lease release
+throws, STOP_FAILED/RELEASE_FAILED retains ownership with RESTORE_PENDING and
+does not restore primary scans or dispatch GATT. The coordinator's file lock
+rejects even same-role native reentry. Later explicit lifecycle cleanup can retry
+stop; confirmed Bluetooth STATE_OFF permits release even when stopScan throws.
+No automatic cleanup/scan retry loop is introduced. Screen OFF, Activity stop,
+Bluetooth disable, native disable/logout, updater handoff and real GATT work
+cancel the experiment and its timers. Bluetooth OFF/disable do not restart scans;
+existing Bluetooth-ON/process-start registration restores enabled intent.
+
+Only the existing complete Apple iBeacon prefix/Target UUID payload, with a
+valid fresh timestamp from the current experiment, may enter the ordinary
+receiver dispatch. The callback is stopped BEFORE that dispatch. Existing
+readiness parsing, missing-hint policy, V2 authentication, ACL, proof, ARM and
+manual-open behavior are unchanged. Legacy primary bytes and N/N-1 discovery
+compatibility remain in force; SGK Service Data primary migration is deferred.
+The separate known-address connect-only probe is explicitly deferred: it would
+require a dedicated non-authenticating transport contract. No diagnostic probe
+was added that can write proof/ARM/manual-open messages.
+
+Privacy: count only observations, Apple iBeacon candidates (02 15 prefix), and
+fresh exact Target matches; unrelated addresses, names and raw payloads are
+never persisted or exported. Counts saturate at 1,000,000 and aggregate writes
+are coalesced at two seconds with a final flush. At most 64 entries of an Android
+batch are examined, so aggregates are bounded observations rather than a complete
+RF census. A new foreground window resets prior counts/results/timestamps;
+primary reception before alternative scan leaves alternative-start time null.
+Clear support report removes these observations, preserves cooldown/ownership,
+and prevents a pre-clear active window or pending journal stage from resurfacing.
+The existing bounded native
+diagnostic journal receives stage transitions and captures the latest aggregate
+snapshot through the existing upload queue.
+
+Exact additive `sgk-mobile-support-v2` wire schema:
+
+| JSON path | Type / meaning |
+|---|---|
+| `native.scan.alternative_stage` | nullable closed stage code |
+| `native.scan.alternative_result_count` | integer 0..1000000, observations in latest experiment |
+| `native.scan.alternative_candidate_count` | integer 0..1000000, Apple iBeacon prefix observations |
+| `native.scan.alternative_match_count` | integer 0..1000000, fresh exact Target observations |
+| `native.scan.alternative_error_count` | integer 0..1000000 |
+| `native.scan.alternative_error_code` | nullable Android scan error, 0..65535 |
+| `native.scan.alternative_started_at_epoch_ms` | nullable positive epoch-ms; not callback arrival proof |
+| `native.scan.alternative_finished_at_epoch_ms` | nullable positive epoch-ms |
+| `native.scan.alternative_restore_status` | nullable RESTORED / RESTORE_PENDING / NOT_REQUESTED |
+| `native.location_services_enabled` | nullable boolean from Android LocationManager |
+
+Stages: WAITING_PRIMARY, SCANNING, MATCH_OBSERVED, NO_MATCHING_PACKET,
+SCAN_ERROR, OWNER_BUSY, ENVIRONMENT_BLOCKED, CANCELLED_SCREEN_OFF,
+CANCELLED_ACTIVITY_STOP, CANCELLED_BLUETOOTH_OFF, CANCELLED_UPDATE,
+CANCELLED_DISABLED, CANCELLED_GATT, PROCESS_INTERRUPTED, STOP_FAILED,
+RELEASE_FAILED. The native bridge uses
+the corresponding camelCase keys in `scanDiagnostics`. Missing new fields are
+omitted when serializing older input; immutable pending upload bodies are not
+rewritten. Location OFF yields `LOCATION_SERVICES_DISABLED` in the existing
+runtime blocking reason / `native.reason`. Location permission and the location
+services switch are separate facts.
+
+The home screen separately shows current packet freshness, the last experiment
+result and historical authentication success. Future timestamps cannot project
+an ARMED/detected success. An accepted registration or old SUCCEEDED remains
+insufficient evidence of current discovery or physical entry.
+
+Validation on 2026-09-14 in a dedicated WSL Docker builder, Flutter 3.44.8:
+`dart analyze lib test` reported no issues; the full Flutter suite passed 117
+tests. Gradle `:app:testDebugUnitTest --tests com.kshouse.gatekeeper_app.gattworker.*
+--tests com.kshouse.gatekeeper_app.blewake.* --rerun-tasks` passed 147 tests in
+30 fresh JUnit suites, zero failures/errors/skips, with all 208 tasks executed.
+New executable tests cover 11 owner-transaction/error/deadline cases, five
+Robolectric lifecycle/recreation/location/Clear cases, and three bounded native
+wire-projection cases. The real file-lock test now asserts native/native
+non-reentrancy. Dart tests cover historical/future success, privacy/omission and
+Clear cutoff even when a failed native read falls back to an old UI snapshot.
+Generated platform registration files and incidental lock/config changes were
+restored; `git diff --check` passed. These are source/build/test results.
+Device commands, APK installation, independent RF observation and
+physical hands-free acceptance are outside this implementation task. Main owns
+combined release docs, index/log updates and deployment.
+
 ## 2026-09-10 morning scan recovery correction
 
 Repeated native registration previously stopped/restarted both PendingIntent

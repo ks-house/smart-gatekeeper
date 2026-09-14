@@ -96,12 +96,54 @@ void main() {
     expect(await store.lastUploadSuccess(), isNotNull);
   });
 
+  test(
+      'alternative report fields are bounded and absent old fields stay absent',
+      () async {
+    final service = SupportReportService();
+    final health = NativeGattWorkerHealth.fromMap({
+      'locationServicesEnabled': false,
+      'scanDiagnostics': {
+        'alternativeStage': 'NO_MATCHING_PACKET',
+        'alternativeResultCount': 1000001,
+        'alternativeCandidateCount': -1,
+        'alternativeStartedAtEpochMs': 0,
+        'alternativeFinishedAtEpochMs': 253402300800000,
+        'alternativeErrorCode': 65536,
+        'address': 'private-address',
+      },
+    });
+    final report = await service.buildMap(identity: identity, health: health);
+    final native = report['native'] as Map;
+    final scan = native['scan'] as Map;
+    expect(native['location_services_enabled'], false);
+    expect(scan['alternative_stage'], 'NO_MATCHING_PACKET');
+    expect(scan['alternative_result_count'], 1000000);
+    expect(scan['alternative_candidate_count'], 0);
+    expect(scan['alternative_started_at_epoch_ms'], isNull);
+    expect(scan['alternative_finished_at_epoch_ms'], isNull);
+    expect(scan['alternative_error_code'], isNull);
+    expect(jsonEncode(report), isNot(contains('private-address')));
+    final old = await service.buildMap(
+        identity: identity,
+        health: NativeGattWorkerHealth.fromMap({'scanDiagnostics': {}}));
+    expect(
+        (old['native'] as Map).containsKey('location_services_enabled'), false);
+    expect(
+        ((old['native'] as Map)['scan'] as Map)
+            .containsKey('alternative_stage'),
+        false);
+  });
+
   test('scan lifecycle is closed bounded and obeys report clear cutoff',
       () async {
     final store = FieldDiagnosticsStore();
     final health = NativeGattWorkerHealth.fromMap({
       'scanDiagnostics': {
         'lastPacketAtEpochMs': 1,
+        'alternativeStage': 'NO_MATCHING_PACKET',
+        'alternativeStartedAtEpochMs': 1,
+        'alternativeFinishedAtEpochMs': 10,
+        'alternativeResultCount': 12,
         'lifecycle': [
           {'event': 'PRIVATE_TEXT', 'atEpochMs': 999},
           for (var i = 1; i <= 40; i++)
@@ -129,6 +171,10 @@ void main() {
     final cleared = await SupportReportService(diagnosticsStore: store)
         .buildMap(identity: identity, health: health);
     expect(((cleared['native'] as Map)['scan'] as Map)['lifecycle'], isEmpty);
+    expect(
+        ((cleared['native'] as Map)['scan'] as Map)
+            .containsKey('alternative_result_count'),
+        false);
   });
 
   test('real report producer agrees with shared backend fixture', () async {

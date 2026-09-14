@@ -25,6 +25,10 @@ class BleOwnershipCoordinatorTest {
       legacyLease!!.close()
       val nativeLease = nativeProcess.tryAcquireNative()
       assertNotNull(nativeLease)
+      // A retained alternative-scan lease excludes both same-instance and
+      // same-role native workers; native ownership is not reentrant.
+      assertNull(nativeProcess.tryAcquireNative())
+      assertNull(CrossProcessBleOwnerCoordinator(directory).tryAcquireNative())
       assertNull(legacyProcess.tryAcquireLegacy())
 
       assertTrue(nativeProcess.setNativeRequested(false))

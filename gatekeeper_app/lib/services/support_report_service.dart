@@ -65,6 +65,8 @@ class SupportReportService {
         if (recent['runtime'] is Map)
           'runtime': _safeRuntime(recent['runtime'] as Map, since),
         'healthy': currentHealth?.healthy,
+        if (currentHealth?.locationServicesStatusAvailable == true)
+          'location_services_enabled': currentHealth?.locationServicesEnabled,
         if (currentHealth?.scanDiagnostics != null)
           'scan': _safeScan(currentHealth!, since),
         'hands_free_ready': currentHealth?.handsFreeReady,
@@ -295,7 +297,50 @@ class SupportReportService {
           ? health.lastScanPacketEpochMs
           : null,
       'lifecycle': lifecycle.take(32).toList(),
+      ..._safeAlternative(health.scanDiagnostics, since),
     };
+  }
+
+  Map<String, Object?> _safeAlternative(Map<Object?, Object?>? raw, int since) {
+    // Native bridge failure may leave an old caller snapshot after Clear.
+    // Apply the report cutoff before exporting that fallback's observations.
+    if (since > 0) {
+      final times = [
+        raw?['alternativeStartedAtEpochMs'],
+        raw?['alternativeFinishedAtEpochMs']
+      ].whereType<int>().where((at) => at > 0 && at <= 253402300799999);
+      if (!times.any((at) => at > since)) return {};
+    }
+    const fields = {
+      'alternative_stage': 'alternativeStage',
+      'alternative_result_count': 'alternativeResultCount',
+      'alternative_candidate_count': 'alternativeCandidateCount',
+      'alternative_match_count': 'alternativeMatchCount',
+      'alternative_error_count': 'alternativeErrorCount',
+      'alternative_error_code': 'alternativeErrorCode',
+      'alternative_started_at_epoch_ms': 'alternativeStartedAtEpochMs',
+      'alternative_finished_at_epoch_ms': 'alternativeFinishedAtEpochMs',
+      'alternative_restore_status': 'alternativeRestoreStatus',
+    };
+    final result = <String, Object?>{};
+    for (final entry in fields.entries) {
+      if (raw?.containsKey(entry.value) != true) continue;
+      final value = raw![entry.value];
+      if (entry.key.endsWith('_count')) {
+        result[entry.key] = value is int ? value.clamp(0, 1000000) : null;
+      } else if (entry.key.endsWith('_epoch_ms')) {
+        result[entry.key] =
+            value is int && value > 0 && value <= 253402300799999
+                ? value
+                : null;
+      } else if (entry.key.endsWith('_error_code')) {
+        result[entry.key] =
+            value is int && value >= 0 && value <= 65535 ? value : null;
+      } else {
+        result[entry.key] = _safeCode(value);
+      }
+    }
+    return result;
   }
 
   int? _safeInt(Object? value) => value is num ? value.toInt() : null;

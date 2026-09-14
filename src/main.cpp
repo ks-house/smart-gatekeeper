@@ -13,9 +13,7 @@
 
 // BLE Beacon Advertiser — Arduino-ESP32 내장 Bluedroid BLE
 #include <BLEDevice.h>
-#include <BLEAdvertising.h>
 #include <BLEUtils.h>
-#include <BLEBeacon.h>
 
 #include "config.h"
 #include "ConfigManager.h"
@@ -421,101 +419,10 @@ int      g_tx_power_dbm           = 9;
 
 void setTxPower(int powerDbm) {
   g_tx_power_dbm = powerDbm;
-  esp_power_level_t pwrLevel = ESP_PWR_LVL_P9;
-  if (powerDbm <= -6)      pwrLevel = ESP_PWR_LVL_N6;
-  else if (powerDbm <= 0)  pwrLevel = ESP_PWR_LVL_N0;
-  else if (powerDbm <= 3)  pwrLevel = ESP_PWR_LVL_P3;
-  else if (powerDbm <= 6)  pwrLevel = ESP_PWR_LVL_P6;
-  else                     pwrLevel = ESP_PWR_LVL_P9;
-
-  BLEDevice::setPower(pwrLevel, ESP_BLE_PWR_TYPE_ADV);
   ConfigManager::setTxPower(powerDbm);
+  GattServer::requestAdvertisingTxPower(powerDbm);
   MqttManager::publishConfigState(g_tx_power_dbm, g_distance_threshold_cm, g_pre_arm_duration_ms, g_relay_cooldown_ms);
-  LOGF("[CONFIG-TUNING] ⚙️ BLE Tx Power 동적 변경 & NVS 저장: %d dBm", powerDbm);
-
-  // iBeacon payload needs to be updated with the new "Measured Power"
-  BLEAdvertising* pAdv = BLEDevice::getAdvertising();
-  pAdv->stop();
-
-  BLEBeacon oBeacon = BLEBeacon();
-  // BLEBeacon::setManufacturerId() byte-swaps its argument before getData()
-  // returns the packed raw advertisement bytes.  Pass the wire-order value
-  // used by the pinned pioarduino example so Apple company ID 0x004C is
-  // emitted as the standard iBeacon prefix 4C 00 (not 00 4C).
-  oBeacon.setManufacturerId(0x4C00);
-  BLEUUID bleUUID(GATEKEEPER_BEACON_UUID);
-
-  // ─────────────────────────────────────────────────────────────
-  // ⚠️ 검증 필요 (issue.md P2-13a) — 실측 전까지 이 블록을 고치지 말 것
-  //
-  // Apple iBeacon 은 UUID 를 MSB-first 로 광고한다. BLE 스택은 내부적으로
-  // LSB-first 로 저장하므로 반전이 필요하다. 아래 조합
-  //   (수동 16바이트 반전) + BLEUUID(..., msbFirst=false)
-  // 은 내부 저장이 LSB-first 라는 전제에서 이론상 올바르다.
-  //
-  // 그러나 이 저장 순서는 BLE 스택(Bluedroid vs NimBLE)과 Arduino-ESP32
-  // 버전에 따라 달라진다. 아래 getNative()->u128.value 는 NimBLE 타입
-  // 필드인데(Bluedroid 는 ->uuid.uuid128) 주변 주석은 Bluedroid 라고 적고
-  // 있어 실제 링크되는 스택이 불명확하다. (issue.md P2-13b)
-  //
-  // 틀리면 앱의 Region 필터가 절대 매칭되지 않아 RSSI 가 단 한 번도
-  // 올라오지 않는다. 검증 방법은 하나뿐이다:
-  //
-  //   nRF Connect(또는 btmon)로 raw advertising 을 열어
-  //   `4C 00 02 15` 다음 16바이트가 정확히 아래와 같은지 눈으로 확인한다.
-  //     A1 B2 C3 D4 E5 F6 78 90 AB CD EF 12 34 56 78 90
-  //   (UUID 가 회문이 아니므로 반전 여부가 즉시 구분된다)
-  //
-  //   역순으로 보이면 → 아래 반전 루프를 제거하거나 msbFirst 를 true 로.
-  // ─────────────────────────────────────────────────────────────
-  uint8_t uuid_bytes[16];
-  memcpy(uuid_bytes, bleUUID.getNative()->u128.value, 16);
-  for(int i=0; i<8; i++){
-    uint8_t temp = uuid_bytes[i];
-    uuid_bytes[i] = uuid_bytes[15-i];
-    uuid_bytes[15-i] = temp;
-  }
-
-  oBeacon.setProximityUUID(BLEUUID(uuid_bytes, 16, false));
-  // ⚠️ Arduino BLEBeacon 의 major/minor 는 엔디안 처리에 알려진 이슈가 있다.
-  //    현재 앱은 major/minor 로 필터하지 않으므로 무해하지만, 나중에 필터를
-  //    추가하면 ENDIAN_CHANGE_U16 처리가 필요하다. (issue.md P2-13e)
-  oBeacon.setMajor(1);
-  oBeacon.setMinor(1);
-  // Approximate measured power (1m RSSI) based on TX power
-  // A typical mapping: at 0 dBm, 1m RSSI is around -59 dBm.
-  // ⚠️ 이 값은 추정치다. accuracy(거리) 값을 신뢰하려면 실제 1m RSSI 를
-  //    측정해 보정해야 한다. 현재 앱은 RSSI 임계값만 쓰므로 영향은 없다.
-  //    (issue.md P2-13d)
-  int8_t measuredPower = -59 + powerDbm;
-  oBeacon.setSignalPower(measuredPower);
-
-  BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
-  BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
-
-  // 표준 iBeacon 의 AD Flags 는 0x1A 다 (issue.md P2-13c):
-  //   0x02 LE General Discoverable Mode
-  //   0x18 BR/EDR Not Supported (0x04) + Simultaneous LE/BR-EDR (Controller/Host)
-  // 기존 0x04 는 BR/EDR Not Supported 만 세팅해 non-discoverable 광고였다.
-  // AltBeacon 은 manufacturer data 를 직접 파싱하므로 대개 동작하지만,
-  // 일부 OEM BLE 스택이 non-discoverable 광고를 걸러낼 수 있다.
-  // 페이로드 여유: flags 3B + manufacturer 27B = 30B ≤ 31B.
-  oAdvertisementData.setFlags(0x1A);
-  oAdvertisementData.setManufacturerData(oBeacon.getData());
-
-  oScanResponseData.setName("SmartGatekeeper");
-  if (GattServer::isEnabled()) {
-    oScanResponseData.setCompleteServices(BLEUUID(HARDWARELESS_SERVICE_UUID));
-  }
-
-  pAdv->setMinInterval(160);
-  pAdv->setMaxInterval(160);
-
-  pAdv->setAdvertisementData(oAdvertisementData);
-  pAdv->setScanResponseData(oScanResponseData);
-  GattServer::setPresenceReady(false, 0, true);
-  pAdv->start();
-  LOGF("[CONFIG-TUNING] ⚙️ iBeacon 페이로드 (Measured Power %d) 업데이트 및 ADV 재시작 완료", measuredPower);
+  LOGF("[CONFIG-TUNING] BLE Tx Power saved/requested: %d dBm", powerDbm);
 }
 
 void setDistanceThresholdCm(int distanceCm) {
@@ -681,7 +588,7 @@ static void initBleAdvertiser() {
   setTxPower(g_tx_power_dbm);
   GattServer::setAdvertisingExpected(true);
 
-  LOGF("[BLE-ADV] ✅ iBeacon 발신 시작! UUID: %s (GATT Hardwareless RC: %s)",
+  LOGF("[BLE-ADV] iBeacon apply queued; UUID: %s (GATT Hardwareless RC: %s)",
        GATEKEEPER_BEACON_UUID, hwlessActive ? "ENABLED" : "DISABLED");
 }
 

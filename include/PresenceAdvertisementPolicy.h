@@ -35,13 +35,18 @@ class PresenceAdvertisementPolicy {
   uint32_t applied_ms = 0;
   uint32_t gap_count = 0;
   uint32_t last_gap_ms = 0;
+  // No public chained host-sync notification exists in Arduino BLE 3.3.9.
+  // Reapply BOTH custom payloads even if active stayed true across host sync.
+  static constexpr uint32_t kRefreshIntervalMs = 30000;
+  uint32_t refresh_count = 0;
+  uint32_t applied_generation = 0;
 
   void request(bool ready, uint32_t epoch, bool force = false) {
     if (requested_ && !force && requested_ready == ready && requested_epoch == epoch) return;
     requested_ = true;
     requested_ready = ready;
     requested_epoch = epoch;
-    if (force) applied_valid = false;  // Another owner rebuilt the scan response.
+    if (force) applied_valid = false;
     pending = !applied_valid || applied_ready != ready || applied_epoch != epoch;
     status = pending ? "PENDING" : "APPLIED";
   }
@@ -68,9 +73,20 @@ class PresenceAdvertisementPolicy {
   void service(uint32_t now_ms, bool enabled, bool connected, bool ota_busy,
                PresenceAdvertisementDriver& driver) {
     if (!requested_) return;
+    if (!pending && applied_valid &&
+        now_ms - applied_ms >= kRefreshIntervalMs) {
+      increment(refresh_count);
+      pending = true;
+      applied_valid = false;
+    }
     if (!enabled) { status = "DISABLED"; return; }
     if (connected) { status = "DEFERRED_CONNECTION"; return; }
     if (ota_busy) { status = "DEFERRED_OTA"; return; }
+    // Inactive is an immediate checked reapply, not an unchecked start.
+    if (!pending && !driver.active()) {
+      pending = true;
+      applied_valid = false;
+    }
     if (!pending) { status = "APPLIED"; return; }
     if (failed_attempt_ && now_ms - last_attempt_ms < retry_ms_) {
       status = "RETRY_WAIT";
@@ -90,16 +106,17 @@ class PresenceAdvertisementPolicy {
     if (!driver.apply(requested_ready, requested_epoch)) {
       applied_valid = false;
       fail("APPLY_FAILED");
-      // Preserve discoverability even if the replacement payload failed.
-      // This restart is still under the caller's connection/OTA mutex guard.
-      if (!driver.active() && !driver.start()) last_result = "APPLY_START_FAILED";
+      // Never start an empty/partially installed replacement. A still-active
+      // controller may retain its old data; it is not labeled applied.
       return;
     }
+    if (!driver.active() && !driver.start()) { fail("START_FAILED"); return; }
+    if (!driver.active()) { fail("INACTIVE_AFTER_START"); return; }
     applied_ready = requested_ready;
     applied_epoch = requested_epoch;
     applied_valid = true;
     applied_ms = now_ms;
-    if (!driver.active() && !driver.start()) { fail("START_FAILED"); return; }
+    applied_generation = attempts;
     observeController(now_ms, driver.active(), true);
     pending = false;
     failed_attempt_ = false;
@@ -115,6 +132,7 @@ class PresenceAdvertisementPolicy {
   uint32_t gap_since_ms_ = 0;
   static void increment(uint32_t& counter) { if (counter != UINT32_MAX) ++counter; }
   void fail(const char* result) {
+    applied_valid = false;
     increment(failures);
     status = last_result = result;
     if (failed_attempt_ && retry_ms_ < 5000) {

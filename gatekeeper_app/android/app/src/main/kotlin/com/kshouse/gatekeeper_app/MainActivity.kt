@@ -33,6 +33,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity: FlutterActivity() {
+    override fun onStop() {
+        com.kshouse.gatekeeper_app.blewake.BleForegroundDiscovery.onBackground(applicationContext)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         runCatching {
@@ -270,6 +275,10 @@ class MainActivity: FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
+                    "prepareUpdate" -> {
+                        com.kshouse.gatekeeper_app.blewake.BleForegroundDiscovery.cancel(applicationContext, "CANCELLED_UPDATE")
+                        result.success(true)
+                    }
                     "apkCertificateSha256" -> {
                         val path = call.argument<String>("path")
                         if (path.isNullOrBlank() || !File(path).isFile) {

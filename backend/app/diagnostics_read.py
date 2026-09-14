@@ -351,7 +351,9 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
                     key = hashlib.sha256(identity.encode()).hexdigest()[:32]
                     mobile_incidents.setdefault(key, dict(incident_ref=key, report_id=str(row["id"]),
                         mobile_ref=row["credential_ref"], source="mobile_runtime", event=item,
-                        classification="MANUAL_OPEN_CONTEXT" if item["event"] == "MANUAL_OPEN_CONTEXT" else "DISPATCH_DECISION_OBSERVED",
+                        classification=("MANUAL_OPEN_CONTEXT" if item["event"] == "MANUAL_OPEN_CONTEXT" else
+                                        "SCAN_RECOVERY_FAILURE_OBSERVED" if item["event"] == "SCAN_RECOVERY_FAILED" else
+                                        "DISPATCH_DECISION_OBSERVED"),
                         target_correlation="NOT_REQUIRED", automatic_failure_inferred=False,
                         physical_door="NOT_OBSERVABLE", arrival="NOT_OBSERVABLE"))
                 for item in valid_sessions:

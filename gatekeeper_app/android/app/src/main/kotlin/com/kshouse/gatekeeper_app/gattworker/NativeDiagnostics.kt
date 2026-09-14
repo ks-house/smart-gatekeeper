@@ -104,6 +104,7 @@ internal object NativeDiagnostics {
 
   /** Clear report history, never the authentication ledger, replay state or key. */
   @Synchronized fun clear(context: Context, since: Long = System.currentTimeMillis()) {
+    com.kshouse.gatekeeper_app.blewake.BleForegroundDiscoveryStore.clear(context, since.coerceAtLeast(0))
     val p = prefs(context)
     check(p.edit().putLong("since", since.coerceAtLeast(0)).putLong("generation", p.getLong("generation", 0) + 1)
       .remove("pending").remove("events").remove("pending_last_sequence").putLong("dropped", 0).commit())

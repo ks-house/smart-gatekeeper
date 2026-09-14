@@ -6403,6 +6403,8 @@ def get_diagnostic_attempts_admin(
                         "field_test": bundle.get("field_test"),
                         "wake_count": len(bundle.get("wake_events", [])),
                         "session_count": len(bundle.get("sessions", [])),
+                        "mobile_scan_snapshot": (bundle.get("native") or {}).get("scan"),
+                        "mobile_location_services_enabled": (bundle.get("native") or {}).get("location_services_enabled"),
                         "target_controller": controller_projection,
                         "target_unsigned_advisory": live_advisory if live_target is not None else None,
                         "target_advisory_integrity": "UNSIGNED_NOT_USED_FOR_CLASSIFICATION",

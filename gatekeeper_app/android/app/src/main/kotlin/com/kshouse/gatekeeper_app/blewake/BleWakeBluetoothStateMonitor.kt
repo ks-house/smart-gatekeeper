@@ -96,6 +96,9 @@ object BleWakeBluetoothStateMonitor {
   @Synchronized
   private fun handleState(context: Context, action: String?, newState: Int) {
     if (action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+    if (newState != BluetoothAdapter.STATE_ON)
+      BleForegroundDiscovery.cancel(context, "CANCELLED_BLUETOOTH_OFF", restore = false,
+        radioDisabled = newState == BluetoothAdapter.STATE_OFF)
     val oldState = previousObservedState
     previousObservedState = newState
     val wakeRequested = BleWakeRegistrar.isEnabled(context)

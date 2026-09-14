@@ -275,3 +275,26 @@ TLS 상세 errno hook, filtered broker 로그 수집, 진단 저주기 분리, �
   기존 PAUSED 관측 설정도 유지했다. broker reader는 `NOT_CONFIGURED`,
   최초 단절 원인과 24/72시간 안정성, 센서 NO_ECHO/ARM_TIMEOUT의 물리 출입
   문제는 여전히 별도 검증 대상이다. 설치 성공을 전체 출입 성공으로 해석하지 않는다.
+
+## 10. 20:37 KST 상태 조회 — 운영 읽기 전용
+
+- `/ready`는 Backend c74a557, 12개 check 정상 및 fresh signed Target 상태였다.
+  health16188(20:36:53 수신)은 Target500/boot905/VALID/IDLE/relay OFF,
+  uptime17335초로 배포 후 같은 부팅을 유지했다. 새 재부팅/BROWNOUT 기록은 없다.
+- 15:48부터20:37까지 `/mqtt-history` 6페이지564행을 조회했다. 모두 boot905,
+  최대 저장 수신 간격33.296초. 계획 OTA 단절1회, TRANSPORT_LOST/-3 두 회이며
+  후자는 각각7.218초와6.472초 후 재연결했다. 최신 snapshot 기준 마지막 연결 후
+  약4시간44분 동안 추가 단절은 없고 flapping=false, Wi-Fi outage0/RSSI -55dBm.
+  broker reader 미구성과 unsigned 진단의 증거 한계는 그대로다.
+- Target BLE 광고는 active이나 해당 boot의 GATT 연결·인증·센서 trigger는0이다.
+  같은 시간 범위의 verified access-events도 비어 있다. 실제 접근 여부는 자료로
+  알 수 없으므로 이것만으로 광고/휴대폰 실패를 판정하지 않는다.
+- 초음파는 NO_ECHO/FAULT snapshot:16212회 중15998회 no echo(98.68%),
+  유효214회, 마지막 유효 거리는3024mm였다. 모든 측정은 IDLE이며 ARMED 측정은0.
+  물체 부재와 배선/센서 고장을 이 값만으로 구분할 수 없다. 센서 기반 출입은 미검증.
+- 모바일44801 보고서1574가20:37:50 서버에 저장됐다(보고서 capture→receipt380ms).
+  최근 여러 보고서가 수신되어 업로드 경로는 동작한다. 해당 휴대폰 마지막 BLE
+  packet은08:46:28, 최근 scan은 NO_RECENT_PACKET/NO_MATCHING_PACKET이다.
+  저장된 SUCCEEDED는08:45 세션으로 현재 접근 성공이 아니다. 현재 위치 미확인.
+- heap68028B/min40264B/largest46068B, 감사 대기0/정체false/overflow0.
+  코드·배포·설정·기기 제어·모니터 상태 변경 없이 조회했다.

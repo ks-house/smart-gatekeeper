@@ -72,6 +72,8 @@ internal object NativeDiagnosticReport {
       "presence_to_dispatch_ms" to "lastPresenceToDispatchMs", "presence_to_armed_ms" to "lastPresenceToArmedMs",
     ))
     native.put("stage", code((health["lastSession"] as? Map<*, *>)?.get("state")) ?: "WAITING")
+    if (health.containsKey("locationServicesEnabled"))
+      native.put("location_services_enabled", health["locationServicesEnabled"] as? Boolean ?: JSONObject.NULL)
     native.put("reason", code(health["currentBlockingReasonCode"] ?: health["lastReasonCode"]) ?: JSONObject.NULL)
     val scan = health["scanDiagnostics"] as? Map<*, *>
     val packet = (scan?.get("lastPacketAtEpochMs") as? Number)?.toLong()?.takeIf { it > 0 }
@@ -91,6 +93,16 @@ internal object NativeDiagnosticReport {
       val value = scan?.get(local)
       scanProjection.put(wire, when {
         value is Number -> value.toLong().takeIf { it >= 0 } ?: JSONObject.NULL
+        else -> code(value) ?: JSONObject.NULL
+      })
+    }
+    alternativeFields.forEach { (wire, local) ->
+      if (scan?.containsKey(local) != true) return@forEach
+      val value = scan?.get(local)
+      scanProjection.put(wire, when {
+        wire.endsWith("_count") -> (value as? Number)?.toLong()?.coerceIn(0, 1_000_000) ?: JSONObject.NULL
+        wire.endsWith("_epoch_ms") -> (value as? Number)?.toLong()?.takeIf { it in 1..253402300799999L } ?: JSONObject.NULL
+        wire.endsWith("_error_code") -> (value as? Number)?.toInt()?.takeIf { it in 0..65535 } ?: JSONObject.NULL
         else -> code(value) ?: JSONObject.NULL
       })
     }
@@ -166,4 +178,14 @@ internal object NativeDiagnosticReport {
     "recovery_started_at_epoch_ms" to "recoveryStartedAtEpochMs", "recovery_deadline_at_epoch_ms" to "recoveryDeadlineAtEpochMs",
     "recovery_finished_at_epoch_ms" to "recoveryFinishedAtEpochMs", "recovery_reason" to "recoveryReason",
     "recovery_outcome" to "recoveryOutcome")
+  private val alternativeFields = mapOf(
+    "alternative_stage" to "alternativeStage",
+    "alternative_result_count" to "alternativeResultCount",
+    "alternative_candidate_count" to "alternativeCandidateCount",
+    "alternative_match_count" to "alternativeMatchCount",
+    "alternative_error_count" to "alternativeErrorCount",
+    "alternative_error_code" to "alternativeErrorCode",
+    "alternative_started_at_epoch_ms" to "alternativeStartedAtEpochMs",
+    "alternative_finished_at_epoch_ms" to "alternativeFinishedAtEpochMs",
+    "alternative_restore_status" to "alternativeRestoreStatus")
 }

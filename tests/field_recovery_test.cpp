@@ -229,7 +229,7 @@ static void testAdvertisementApplyRecovery() {
   radio.running = false; radio.start_ok = false;
   policy.request(false, 44);
   policy.service(1000, true, false, false, radio);
-  assert(policy.applied_valid && !policy.applied_ready && policy.pending);
+  assert(!policy.applied_valid && policy.pending);
   assert(std::strcmp(policy.last_result, "START_FAILED") == 0);
   const uint32_t mutations = radio.applies + radio.starts + radio.stops;
   policy.service(2000, true, true, false, radio);
@@ -249,7 +249,7 @@ static void testAdvertisementApplyRecovery() {
   }
   assert(broken.pending && !broken.applied_valid && broken.failures <= 16);
   assert(broken.retries + 1 == broken.attempts);
-  assert(failed.starts == failed.stops && failed.running);
+  assert(failed.starts == 0 && failed.stops == 1 && !failed.running);
   // No controller access when disabled, missing advertiser or stop failure.
   sgk::PresenceAdvertisementPolicy absent;
   Radio unavailable;
