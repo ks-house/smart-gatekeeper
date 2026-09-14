@@ -4,12 +4,16 @@ import contextlib
 import hashlib
 import hmac
 import io
+import importlib.util
 import json
 import sqlite3
 import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
+
+if importlib.util.find_spec("fastapi") is None:
+    raise unittest.SkipTest("Backend integration runs in backend CI with its locked dependencies")
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
