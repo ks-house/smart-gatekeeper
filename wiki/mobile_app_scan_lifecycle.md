@@ -1,5 +1,33 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+## 2026-09-15 home integration correction (local, not published)
+
+Home title/detail/icon, settings card and scan-registration description now use
+the same BackgroundAccessStatus. Exclusive discovery is blue informational;
+actual blockers, identity-unavailable and restoration failures remain warnings.
+Historical SCANNING/error evidence no longer requests recovery after readiness
+is restored; lack of Target observations remains visible and is not relabeled
+as successful discovery. Optional identity/updater injection enables actual
+SmartKeyHomeScreen widget tests without contacting production or changing
+default runtime services. Five new widget tests pass, full Flutter126 passes,
+analyzer and OTA contract pass. APK45201 remains the published version; this
+follow-up code has not been deployed.
+
+## 2026-09-15 follow-up: home projection remains inconsistent in45201
+
+Owner screenshot02:15KST and Backend reports1743–1746 confirm the new app is
+installed, but only the settings card consumes BackgroundAccessStatus. Home
+_readinessTitle/_readinessDetail/_home still map false handsFreeReady to a
+generic amber setup warning, and _scanStatusDetail maps false wakeRegistered
+to registration-check guidance during the intentional exclusive scan handoff.
+At02:15:08–19KST registration is FOREGROUND_DISCOVERY with location enabled and
+reasonnull; at02:15:20KST registration/readiness are restored. The completed
+12-second window reports774 observations but zero candidates/matches/errors.
+This proves a missed UI integration, not a required owner settings change or
+Target reception. The previous model tests and full Flutter suite did not cover
+these home projections. Follow-up must unify home/settings/scan-card state and
+add actual home-widget regression coverage. No new runtime change in this audit.
+
 ## 2026-09-15 correction: separate settings and temporary discovery
 
 The settings card now uses a presentation-only BackgroundAccessStatus. Active
