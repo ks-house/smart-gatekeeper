@@ -25,11 +25,16 @@ class MqttTelemetryWorkerTest(unittest.TestCase):
         self.assertNotIn("client.publish", defer)
         self.assertIn("connectWorkerIsRunning() || telemetryWorker.ownsTransport()", source)
         self.assertIn("result.generation == pendingTelemetryGeneration", source)
+        self.assertIn("result.publish_attempted && !result.published", source)
+        self.assertIn("invalidatePublishTransport(result.payload_bytes", source)
+        self.assertIn("Never reuse a stream after an uncertain write", source)
         self.assertIn("pendingTelemetry[sgk::MqttTelemetryWorker::kMaxPayloadBytes]", source)
         worker = (ROOT / "src/MqttTelemetryWorker.cpp").read_text()
         self.assertNotIn("client->loop", worker)
         self.assertNotIn("GattServer", worker)
         self.assertNotIn("triggerArm", worker)
+        self.assertIn("result.publish_attempted = true", worker)
+        self.assertIn("result.payload_bytes", worker)
 
     def test_blocked_socket_keeps_control_free_and_payload_immutable(self):
         with tempfile.TemporaryDirectory() as directory:

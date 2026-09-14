@@ -3,7 +3,7 @@ title: MQTT intermittent reconnect analysis and hardening plan
 type: proposal
 project: smart-gatekeeper
 status: in-progress
-updated: 2026-09-14
+updated: 2026-09-15
 source_of_truth: true
 applies_to: [target, backend, mqtt-broker, diagnostic-read-client]
 ---
@@ -298,3 +298,35 @@ TLS 상세 errno hook, filtered broker 로그 수집, 진단 저주기 분리, �
   저장된 SUCCEEDED는08:45 세션으로 현재 접근 성공이 아니다. 현재 위치 미확인.
 - heap68028B/min40264B/largest46068B, 감사 대기0/정체false/overflow0.
   코드·배포·설정·기기 제어·모니터 상태 변경 없이 조회했다.
+
+## 11. 9월15일 TLS 전송 수명 근본 결함 수정
+
+운영 브로커의 `Protocol error`와 Target의 `TRANSPORT_LOST/-3` 시각을 대조하고,
+설치된 PubSubClient 2.8의 송신 구현을 다시 확인했다. 이 구현은 MQTT packet 전체를
+TLS stream의 단일 `write`로 넘긴다. TLS가 일부 바이트만 수락하면 `publish()`는
+실패를 반환하지만 기존 Target은 socket을 계속 연결 상태로 볼 수 있었다. 그 직후
+status, boot, config 또는 event packet을 같은 stream에 이어 쓰면 브로커는 잘린
+packet 뒤의 바이트를 이전 packet의 나머지로 해석해 protocol error로 종료할 수 있다.
+이는 Wi-Fi 단절, 120초 keepalive 또는 다른 프로젝트의 client ID 충돌 없이도 관측된
+패턴을 설명하는 소스상 결함이다.
+
+수정은 모든 runtime publish를 하나의 fail-closed 경로로 통합한다. publish 실패는
+성공 여부와 무관한 불확실 전송으로 취급하여 `PUBLISH_FAILED` edge와 payload 크기를
+기록하고, 즉시 TLS socket을 닫아 bounded reconnect를 예약한다. 실패한 status 뒤에
+다른 MQTT frame을 같은 update에서 붙이지 않는다. access-critical telemetry worker도
+전송 시도 여부와 크기를 main owner에게 반환하며 실패 시 같은 폐기 규칙을 적용한다.
+연결 worker의 최초 retained availability만 별도 direct publish를 유지한다. 그 단계의
+실패는 기존처럼 연결 시도 전체를 실패 처리하고 socket을 닫기 때문이다.
+
+노출을 줄이기 위해 큰 상태 payload는 상태 전이 때 즉시, IDLE에서는 5초마다 만든다.
+120초 keepalive와 출입 중 network deferral 상한은 변경하지 않았다. 진단에는 누적
+publish 실패, 마지막 실패 payload 크기, 현재/최대 status 크기를 추가했다. 이 값은
+원인 분석용 unsigned advisory이고 출입 권한이나 성공 증거가 아니다.
+
+로컬에서 전체 root 425개(2 skip), Backend 340개(5 skip), OTA contract와 whitespace
+검사를 통과했다. 기존 로컬 provisioning 파일을 내용 출력 없이 일시 참조한 production
+ESP32-C6 build도 RAM 88712/327680B, flash 1858000/7340032B로 통과했고 참조는 즉시
+제거했다. Signed artifact는 hosted exact-head CI가 확인해야 한다. 아직
+배포·OTA·재부팅·문 개방은 수행하지 않았고,
+설치 뒤 `PUBLISH_FAILED`가 증가하면서 broker protocol error가 사라지는지 및 24/72시간
+계획 외 단절0을 별도로 확인해야 한다.

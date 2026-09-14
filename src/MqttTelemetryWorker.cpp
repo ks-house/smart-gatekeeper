@@ -89,11 +89,13 @@ void MqttTelemetryWorker::run(void* argument) {
   MqttTelemetryWorker* owner = request->owner;
   Result result{};
   result.generation = request->generation;
+  result.payload_bytes = std::strlen(request->payload);
   const uint32_t started = millis();
   const bool enrolled = esp_task_wdt_add(nullptr) == ESP_OK;
   // Socket deadlines are configured by MqttManager; watchdog is a second bound.
   // If watchdog enrollment fails, do not begin an unmonitored TLS write.
   if (enrolled) {
+    result.publish_attempted = true;
     result.published = request->client->publish(request->topic, request->payload, false);
     result.transport_connected = request->client->connected();
     const bool reset_ok = esp_task_wdt_reset() == ESP_OK;

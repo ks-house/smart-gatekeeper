@@ -83,7 +83,7 @@ class EvidencePersistenceFailureLatchTests(unittest.TestCase):
 
         publish = mqtt.split("void MqttManager::publishBootDiagnostics()", 1)[1]
         publish = publish.split("void MqttManager::publishConfigState", 1)[0]
-        socket_publish = publish.index("client.publish(bootTopic.c_str()")
+        socket_publish = publish.index("publishPacket(bootTopic.c_str()")
         success_guard = publish.index("if (ok)", socket_publish)
         acknowledge_call = publish.index(
             "DiagnosticsManager::acknowledgePreviousEvidencePersistenceFailure()",

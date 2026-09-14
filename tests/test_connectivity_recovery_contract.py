@@ -503,16 +503,16 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
         self.mqtt.count('\\"scope\\":\\"mqtt_transport\\"'), 2
     )
     self.assertIn("SUBACK is not observable", self.mqtt)
-    self.assertIn("client.publish(bootTopic.c_str(), buffer, true)", self.mqtt)
+    self.assertIn("publishPacket(bootTopic.c_str(), buffer, true", self.mqtt)
     self.assertIn(
-        "client.publish(configStateTopic.c_str(), buffer, true)", self.mqtt
+        "publishPacket(configStateTopic.c_str(), buffer, true", self.mqtt
     )
     self.assertIn(
-        "client.publish(statusTopic.c_str(), pendingTelemetry, false)",
+        "publishPacket(statusTopic.c_str(), pendingTelemetry, false",
         self.mqtt,
     )
     self.assertIn(
-        "client.publish(canonicalEventTopic.c_str(), payload, false)",
+        "publishPacket(canonicalEventTopic.c_str(), payload, false",
         self.mqtt,
     )
 

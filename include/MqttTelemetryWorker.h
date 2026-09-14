@@ -17,6 +17,8 @@ class MqttTelemetryWorker {
   struct Result {
     uint32_t generation = 0;
     uint32_t duration_ms = 0;
+    size_t payload_bytes = 0;
+    bool publish_attempted = false;
     bool published = false;
     bool transport_connected = false;
     bool watchdog_healthy = false;
