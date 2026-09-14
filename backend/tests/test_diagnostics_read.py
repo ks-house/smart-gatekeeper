@@ -355,3 +355,11 @@ class DiagnosticsReadTest(unittest.TestCase):
         response = self.client.get("/api/v1/diagnostics/access-events", headers=self.headers)
         self.assertEqual(429, response.status_code)
         self.db.assert_not_called()
+
+
+def load_tests(loader, suite, pattern):
+    # Run the cross-layer API/CLI regression in the Backend dependency lane.
+    # Firmware-only discovery intentionally has no FastAPI installation.
+    from tests import test_mqtt_backend_diagnostics
+    suite.addTests(loader.loadTestsFromModule(test_mqtt_backend_diagnostics))
+    return suite

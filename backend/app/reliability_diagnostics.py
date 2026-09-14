@@ -12,6 +12,62 @@ from collections import OrderedDict
 
 U64 = (1 << 64) - 1
 U32 = (1 << 32) - 1
+MQTT_REASONS = (
+    "NONE", "CONNECT_TLS_FAILED", "CONNECT_MQTT_FAILED", "CONNECT_SUBSCRIBE_FAILED",
+    "CONNECT_AVAILABILITY_FAILED", "CONNECT_ADOPTION_LOST", "TRANSPORT_LOST",
+    "LOOP_FAILED", "WIFI_LOST", "OTA_SUSPEND", "STALE_RESULT", "DNS_FAILED",
+    "WORKER_START_FAILED",
+)
+MQTT_COUNTERS = (
+    "generation", "disconnects", "planned_disconnects", "last_disconnect_ms",
+    "last_connected_ms", "last_connection_duration_ms", "retry_in_ms",
+    "loop_gap_max_ms", "edge_sequence", "edge_overwritten",
+)
+MQTT_EDGE_FIELDS = (
+    "sequence", "occurred_ms", "reason_code", "last_error", "connection_duration_ms",
+    "free_heap", "largest_block", "loop_gap_ms", "wifi_generation",
+)
+
+
+def mqtt_edge_projection(value):
+    """Decode one bounded schema-1 wire edge; reject the whole malformed edge."""
+    # Seven U32s, reason (2), error (4), and eight commas: at most 84 ASCII bytes.
+    if not isinstance(value, str) or len(value) > 84:
+        return None
+    parts = value.split(",")
+    if len(parts) != len(MQTT_EDGE_FIELDS):
+        return None
+    result = {}
+    for key, part in zip(MQTT_EDGE_FIELDS, parts):
+        pattern = r"(?:0|[1-9][0-9]{0,9})" if key != "last_error" else r"(?:0|-?[1-9][0-9]{0,2})"
+        if re.fullmatch(pattern, part) is None:
+            return None
+        number = int(part)
+        low, high = (-128, 255) if key == "last_error" else (1, 12) if key == "reason_code" else (0, U32)
+        if not low <= number <= high:
+            return None
+        result[key] = number
+    result["reason"] = MQTT_REASONS[result["reason_code"]]
+    return result
+
+
+def mqtt_connection_projection(value):
+    """Closed unsigned wire view, idempotent through ingest, storage and reads."""
+    if (not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1
+            or type(value.get("flapping")) is not bool
+            or not isinstance(value.get("last_reason"), str) or value["last_reason"] not in MQTT_REASONS
+            or type(value.get("last_error")) is not int or not -128 <= value["last_error"] <= 255):
+        return None
+    if any(type(value.get(key)) is not int or not 0 <= value[key] <= U32 for key in MQTT_COUNTERS):
+        return None
+    edges = value.get("edges")
+    if (not isinstance(edges, list) or len(edges) > 4
+            or any(mqtt_edge_projection(edge) is None for edge in edges)):
+        return None
+    return {**{key: value[key] for key in ("schema", *MQTT_COUNTERS, "last_reason", "last_error", "flapping")},
+            "edges": list(edges)}
+
+
 UUID4 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 CORE_FIELDS = (
     "target_id", "source_boot_id", "source_boot_count", "status_revision", "state",
@@ -252,6 +308,9 @@ def advisory_projection(document, *, include_boot=False, expected=None):
     if not isinstance(document, dict):
         return {}
     result = field_recovery_advisory_projection(document)
+    mqtt = mqtt_connection_projection(document.get("mqtt_connection"))
+    if mqtt is not None:
+        result["mqtt_connection"] = mqtt
     ota = ota_advisory_projection(document.get("ota"))
     if ota is not None:
         result["ota"] = ota
@@ -444,24 +503,45 @@ def verified_sensor_summary(document: dict, status: dict, keyring: dict) -> dict
 
 
 def record_verified_health(cur, status: dict):
-    """Called in the same transaction after authenticated highwater advances."""
+    """Sample health after authenticated highwater advances, in its transaction.
+
+    Existing signed boot/state/terminal/relay transitions always insert. Otherwise
+    unchanged health is sampled every 30s; a new MQTT edge may insert after 5s
+    since this Target's latest persisted health row. Only a validated edge whose
+    sequence matches the advertised head can request that bypass. Other changing
+    unsigned counters, edge contents and flapping cannot create extra writes.
+
+    The committed health row is the checkpoint, not the last observed message.
+    Suppression and transaction rollback do not consume an edge: a subsequent
+    advancing signed status carrying it retries once the gate elapses. This is
+    bounded snapshot capture, not a durable edge queue or an edge ACK guarantee.
+    Callers serialize per Target with the existing signed highwater row lock.
+    """
     core = {key: status[key] for key in CORE_FIELDS}
     # Explicitly not authenticated by the access-status MAC. Never use for control.
     advisory = advisory_projection(status.get("advisory_diagnostics") or status.get("controller_diagnostics"),
                                    include_boot=True, expected=status)
+    mqtt = advisory.get("mqtt_connection")
+    edge_sequence = 0
+    if mqtt is not None and any(mqtt_edge_projection(edge)["sequence"] == mqtt["edge_sequence"]
+                                for edge in mqtt["edges"]):
+        edge_sequence = mqtt["edge_sequence"]
     cur.execute(
         "INSERT INTO target_health_history (target_id,source_boot_id,source_boot_count,"
         "status_revision,gate_state,terminal_session_id,relay_commanded_on,verified_json,advisory_json,received_at) "
         "SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(3) FROM DUAL WHERE NOT EXISTS ("
-        "SELECT 1 FROM (SELECT source_boot_id,gate_state,terminal_session_id,relay_commanded_on,received_at "
+        "SELECT 1 FROM (SELECT source_boot_id,gate_state,terminal_session_id,relay_commanded_on,received_at,advisory_json "
         "FROM target_health_history WHERE target_id=%s ORDER BY id DESC LIMIT 1) AS recent "
         "WHERE source_boot_id=%s AND gate_state=%s AND terminal_session_id <=> %s "
-        "AND relay_commanded_on=%s AND received_at > UTC_TIMESTAMP(3) - INTERVAL 30 SECOND)",
+        "AND relay_commanded_on=%s AND received_at > UTC_TIMESTAMP(3) - INTERVAL 30 SECOND "
+        "AND (received_at > UTC_TIMESTAMP(3) - INTERVAL 5 SECOND OR %s <= "
+        "COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(advisory_json, '$.mqtt_connection.edge_sequence')) "
+        "AS UNSIGNED), 0)))",
         (status["target_id"], status["source_boot_id"], status["source_boot_count"], status["status_revision"],
          status["state"], status["last_terminal_session_id"], status["relay_commanded_on"],
          json.dumps(core, separators=(",", ":")), json.dumps(advisory, separators=(",", ":")) if advisory else None,
          status["target_id"], status["source_boot_id"], status["state"], status["last_terminal_session_id"],
-         status["relay_commanded_on"]),
+         status["relay_commanded_on"], edge_sequence),
     )
     # Bounded maintenance of operational tables only. Security/access/mobile history is untouched.
     if isinstance(cur.rowcount, int) and cur.rowcount > 0:

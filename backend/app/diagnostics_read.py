@@ -12,11 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 try:
     from .mobile_diagnostics import MobileDiagnosticBundle, bundle_evidence_metadata
     from .ops_runtime import SlidingWindowRateLimiter
-    from .reliability_diagnostics import CORE_FIELDS, advisory_projection, classify_incident, sensor_mac_input
+    from .reliability_diagnostics import (
+        CORE_FIELDS, U32, advisory_projection, classify_incident, mqtt_edge_projection, sensor_mac_input,
+    )
 except ImportError:
     from mobile_diagnostics import MobileDiagnosticBundle, bundle_evidence_metadata
     from ops_runtime import SlidingWindowRateLimiter
-    from reliability_diagnostics import CORE_FIELDS, advisory_projection, classify_incident, sensor_mac_input
+    from reliability_diagnostics import (
+        CORE_FIELDS, U32, advisory_projection, classify_incident, mqtt_edge_projection, sensor_mac_input,
+    )
 
 
 def _event_window(since: Optional[str], until: Optional[str]):
@@ -46,6 +50,47 @@ def _utc_text(value: datetime) -> str:
 
 
 MOBILE_REF_PATTERN = r"^mobile-diagnostic-credential_[0-9a-f]{24}$"
+
+
+def _mqtt_observation(sample):
+    """Boot identity is enclosing verified context, not authentication of an edge."""
+    core = sample["verified"]
+    mqtt = (sample["unsigned_advisory"] or {}).get("mqtt_connection")
+    identity = {key: core[key] for key in ("target_id", "source_boot_id", "source_boot_count")}
+    edges = []
+    gaps = []
+    coverage = "SOURCE_UNAVAILABLE"
+    if mqtt is not None:
+        for wire in mqtt["edges"]:
+            edge = mqtt_edge_projection(wire)
+            edges.append({**edge, "identity": {**identity, "sequence": edge["sequence"]},
+                          "integrity_status": "UNSIGNED"})
+        # Inspect only this advertised ring, independent of wire order. Serial
+        # arithmetic permits U32 wrap; half-range ambiguity is not called loss.
+        ages = sorted({(mqtt["edge_sequence"] - edge["sequence"]) & U32 for edge in edges}, reverse=True)
+        coverage = "BOUNDED_RING_ONLY"
+        if any(age >= 1 << 31 for age in ages) or len(ages) != len(edges):
+            coverage = "SEQUENCE_ORDER_AMBIGUOUS"
+        elif ages:
+            for older, newer in zip(ages, ages[1:] + [-1]):
+                if older - newer > 1:
+                    gaps.append(dict(first_sequence=(mqtt["edge_sequence"] - older + 1) & U32,
+                                     last_sequence=(mqtt["edge_sequence"] - newer - 1) & U32,
+                                     count=older - newer - 1))
+        elif mqtt["edge_sequence"] or mqtt["edge_overwritten"]:
+            coverage = "REPORTED_EDGES_UNAVAILABLE"
+    return dict(id=sample["id"], received_at=sample["received_at"], **identity,
+                source="TARGET_HEALTH_ADVISORY", integrity_status="UNSIGNED",
+                identity_binding="ENCLOSING_VERIFIED_HEALTH_NOT_EDGE_AUTHENTICATION",
+                source_status="AVAILABLE" if mqtt is not None else "SOURCE_UNAVAILABLE",
+                source_unavailable_reason=None if mqtt is not None else "MQTT_CONNECTION_ABSENT_OR_INVALID",
+                mqtt_connection=mqtt, edges=edges,
+                flapping=mqtt["flapping"] if mqtt is not None else None,
+                flapping_basis="UNSIGNED_TARGET_REPORT_INDEPENDENT_OF_SIGNED_STATE",
+                edge_overwritten=mqtt["edge_overwritten"] if mqtt is not None else None,
+                overwrite_semantics="TARGET_RING_OVERWRITES_NOT_PROVEN_DELIVERY_LOSS",
+                sequence_coverage=coverage, sequence_gaps=gaps,
+                missing_edges_possible=True, broker_cause="NOT_OBSERVED", edge_ack="NOT_IMPLEMENTED")
 
 
 def _incident_windows(since, until, occurred_since, occurred_until, evidence_received_until):
@@ -168,6 +213,32 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
         finally:
             if conn is not None:
                 conn.close()
+
+    @router.get("/mqtt-history")
+    def mqtt_history(
+        since: Optional[str] = Query(None, max_length=64),
+        until: Optional[str] = Query(None, max_length=64),
+        target_id: Optional[str] = Query(None, pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+        boot_count: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+        limit: int = Query(100, ge=1, le=100),
+        before_id: Optional[int] = Query(None, ge=1, le=18446744073709551615),
+    ):
+        page = health_history(since=since, until=until, target_id=target_id,
+                              boot_count=boot_count, limit=limit, before_id=before_id)
+        observations = [_mqtt_observation(sample) for sample in page["history"]]
+        return dict(history=observations, next_before_id=page["next_before_id"],
+                    since=page["since"], until=page["until"], time_basis="received_at",
+                    edge_time_basis="UNSIGNED_BOOT_MONOTONIC_U32_MS_NOT_WALL_CLOCK",
+                    edge_identity_scope="TARGET_BOOT_SEQUENCE_MAY_REPEAT_ACROSS_HEALTH_ROWS",
+                    retention_days=page["retention_days"], steady_sample_seconds=page["steady_sample_seconds"],
+                    historical_coverage="SINCE_MQTT_DIAGNOSTICS_FEATURE_INSTALL_ONLY",
+                    source_status="AVAILABLE" if any(row["mqtt_connection"] is not None for row in observations)
+                                  else "SOURCE_UNAVAILABLE",
+                    integrity_status="UNSIGNED", authority="NONE",
+                    coverage="SAMPLED_HEALTH_ROWS_NOT_COMPLETE_CONNECTION_HISTORY",
+                    missing_edges_possible=True, edge_ack="NOT_IMPLEMENTED",
+                    broker_history=dict(operation_status="NOT_CONFIGURED", source_available=False,
+                                        reason="BROKER_LOG_READER_NOT_WIRED", events=[]))
 
     @router.get("/incidents")
     def incidents(
