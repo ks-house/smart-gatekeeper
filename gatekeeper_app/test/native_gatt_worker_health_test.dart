@@ -3,6 +3,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gatekeeper_app/services/native_gatt_worker_health.dart';
 
 void main() {
+  test('old success and future timestamps cannot establish current discovery',
+      () {
+    final now = DateTime.fromMillisecondsSinceEpoch(100000);
+    NativeGattWorkerHealth health(int detected, int succeeded) =>
+        NativeGattWorkerHealth.fromMap({
+          'healthy': true,
+          'lastPresenceToArmedMs': 10,
+          'scanDiagnostics': {'alternativeStage': 'NO_MATCHING_PACKET'},
+          'latestDetection': {
+            'source': 'ble_scan',
+            'success': true,
+            'receivedEpochMs': detected,
+          },
+          'lastSession': {'state': 'SUCCEEDED', 'updatedEpochMs': succeeded},
+        });
+    expect(health(1, 2).hasRecentSessionSuccessAt(now), isFalse);
+    expect(health(1, 2).detectionStageAt(now), TargetDetectionStage.waiting);
+    expect(health(100001, 100002).detectionStageAt(now),
+        TargetDetectionStage.waiting);
+    expect(health(99999, 100002).detectionStageAt(now),
+        TargetDetectionStage.detected);
+    expect(health(99999, 100000).detectionStageAt(now),
+        TargetDetectionStage.armed);
+    expect(health(1, 2).scanObservationAt(now), 'NOT_OBSERVED');
+    expect(health(1, 2).discoveryRecoveryStage, 'NO_MATCHING_PACKET');
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
   test('registration and old success do not establish current reception', () {
     final now = DateTime.fromMillisecondsSinceEpoch(100000);

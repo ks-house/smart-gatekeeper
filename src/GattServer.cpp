@@ -6,6 +6,10 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <BLEAdvertising.h>
+#include <BLEDevice.h>
+
+#include "AdvertisementPayload.h"
 
 #include "ConfigManager.h"
 #include "DiagnosticsManager.h"
@@ -16,9 +20,7 @@ extern sgk::OfflineEventQueue g_offline_queue;
 
 #if ENABLE_HARDWARELESS_RC
 #include <BLE2901.h>
-#include <BLEAdvertising.h>
 #include <BLECharacteristic.h>
-#include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEService.h>
 #include <esp_random.h>
@@ -40,6 +42,22 @@ namespace {
 // allocator. Protocol callbacks and main-loop manual completion share the lock.
 std::recursive_mutex core_mutex;
 sgk::AccessEventSequence access_event_sequence;
+
+bool advertising_restart_requested_{false};
+bool advertising_expected_{false};
+bool advertising_ota_busy_{false};
+int advertising_tx_power_dbm_ = 9;
+uint32_t advertising_restart_attempts_{0};
+uint32_t advertising_restart_successes_{0};
+uint32_t advertising_restart_failures_{0};
+uint32_t advertising_watchdog_recoveries_{0};
+sgk::PresenceAdvertisementPolicy presence_advertisement_;
+GattServer::Diagnostics advertisement_diagnostics_{};
+const char* advertising_last_restart_reason_ = "NONE";
+
+void incrementAdvertisingCounter(uint32_t& value) {
+  if (value != UINT32_MAX) ++value;
+}
 
 bool requested_enabled = false;
 sgk::FailClosedProofVerifier fail_closed_verifier;
@@ -102,15 +120,6 @@ size_t challenge_read_length = 0;
 sgk::IndicationToken in_flight_token_{};
 sgk::MessageType in_flight_type_{sgk::MessageType::kError};
 bool in_flight_valid_{false};
-bool advertising_restart_requested_{false};
-bool advertising_expected_{false};
-uint32_t advertising_last_health_check_ms_{0};
-uint32_t advertising_restart_attempts_{0};
-uint32_t advertising_restart_successes_{0};
-uint32_t advertising_restart_failures_{0};
-uint32_t advertising_watchdog_recoveries_{0};
-sgk::PresenceAdvertisementPolicy presence_advertisement_;
-const char* advertising_last_restart_reason_ = "NONE";
 uint32_t accepted_connections_{0};
 uint32_t disconnects_{0};
 uint32_t challenges_issued_{0};
@@ -128,8 +137,6 @@ char last_stage_[24] = "BOOTING";
 char last_session_id_[37] = "";
 bool fast_start_requested_{false};
 sgk::ConnectionToken fast_start_owner_{};
-
-constexpr uint32_t kAdvertisingHealthCheckIntervalMs = 2000;
 
 void noteDiagnosticStage(const char* stage, const char* session_id,
                          uint32_t* counter = nullptr) {
@@ -757,139 +764,135 @@ sgk::LocalGattLifecycleBridge production_lifecycle_bridge(
     &production_lifecycle_sink);
 
 void requestAdvertisingRestart() {
-  core_mutex.lock();
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
   advertising_restart_requested_ = true;
-  core_mutex.unlock();
 }
-
-bool consumeAdvertisingRestartRequest() {
-  core_mutex.lock();
-  const bool requested = advertising_restart_requested_;
-  advertising_restart_requested_ = false;
-  core_mutex.unlock();
-  return requested;
-}
+#endif  // ENABLE_HARDWARELESS_RC: advertiser also serves legacy-only builds.
 
 bool advertisingActive() {
-  if (!advertising_expected_) return false;
+  if (!advertising_expected_ || !BLEDevice::getInitialized()) return false;
   BLEAdvertising* advertising = BLEDevice::getAdvertising();
   if (advertising == nullptr) return false;
 #if defined(CONFIG_NIMBLE_ENABLED)
   return advertising->isAdvertising();
 #else
-  // ESP32-C6 production uses NimBLE. Bluedroid has no public controller-state
-  // query, so its start result remains the best available evidence.
   return advertising_restart_successes_ > 0;
 #endif
 }
 
 bool controllerHasActiveConnection() {
-  // NimBLE invokes onConnect before incrementing its public connected count.
-  // Accepted protocol ownership already forbids a watchdog restart in that gap.
+#if ENABLE_HARDWARELESS_RC
+  // Accepted ownership covers onConnect before the server increments its count.
   return (core != nullptr && core->connected()) ||
       (ble_server != nullptr && ble_server->getConnectedCount() != 0);
+#else
+  return false;
+#endif
 }
 
 class PresenceDriver final : public sgk::PresenceAdvertisementDriver {
  public:
-  bool available() const override { return BLEDevice::getAdvertising() != nullptr; }
+  bool available() const override {
+    // Called once for each counted policy attempt, including unavailable/stop
+    // failures. Stage flags must never leak forward from an older attempt.
+    advertisement_diagnostics_.primary_applied = false;
+    advertisement_diagnostics_.response_applied = false;
+    return BLEDevice::getInitialized() && BLEDevice::getAdvertising() != nullptr;
+  }
   bool active() const override { return advertisingActive(); }
   bool apply(bool ready, uint32_t epoch) override {
-    // Existing wire format: V1 advisory service data, V2 GATT authorization.
-    const uint8_t hint[] = {1, static_cast<uint8_t>(ready),
-        static_cast<uint8_t>(epoch), static_cast<uint8_t>(epoch >> 8),
-        static_cast<uint8_t>(epoch >> 16), static_cast<uint8_t>(epoch >> 24)};
-    BLEAdvertisementData response;
-    response.setName("SGK");
-    response.setServiceData(BLEUUID(HARDWARELESS_SERVICE_UUID),
-        String(reinterpret_cast<const char*>(hint), sizeof(hint)));
-    return BLEDevice::getAdvertising()->setScanResponseData(response);
+    auto& diagnostics = advertisement_diagnostics_;
+    diagnostics.primary_applied = diagnostics.response_applied = false;
+    diagnostics.last_error = "NONE";
+    // Retain deterministic source bytes for BOTH halves on every attempt.
+    const auto primary = sgk::primaryAdvertisement(advertising_tx_power_dbm_);
+    const auto response = sgk::responseAdvertisement(GattServer::isEnabled(), ready, epoch);
+    diagnostics.primary_length = primary.length;
+    diagnostics.response_length = response.length;
+    BLEAdvertisementData primary_data, response_data;
+    primary_data.addData(String(reinterpret_cast<const char*>(primary.bytes.data()), primary.length));
+    response_data.addData(String(reinterpret_cast<const char*>(response.bytes.data()), response.length));
+    // Arduino String allocation/addData can silently produce a shorter value.
+    if (!matches(primary_data, primary)) {
+      incrementAdvertisingCounter(diagnostics.primary_apply_failures);
+      diagnostics.last_error = "PRIMARY_ENCODING_FAILED";
+      return false;
+    }
+    if (!matches(response_data, response)) {
+      incrementAdvertisingCounter(diagnostics.response_apply_failures);
+      diagnostics.last_error = "RESPONSE_ENCODING_FAILED";
+      return false;
+    }
+    esp_power_level_t power = ESP_PWR_LVL_P9;
+    if (advertising_tx_power_dbm_ <= -6) power = ESP_PWR_LVL_N6;
+    else if (advertising_tx_power_dbm_ <= 0) power = ESP_PWR_LVL_N0;
+    else if (advertising_tx_power_dbm_ <= 3) power = ESP_PWR_LVL_P3;
+    else if (advertising_tx_power_dbm_ <= 6) power = ESP_PWR_LVL_P6;
+    // setPower's vendor API is void; this is a request, not measured TX power.
+    BLEDevice::setPower(power, ESP_BLE_PWR_TYPE_ADV);
+    BLEAdvertising* advertising = BLEDevice::getAdvertising();
+    advertising->setMinInterval(160);
+    advertising->setMaxInterval(160);
+    diagnostics.primary_applied = advertising->setAdvertisementData(primary_data);
+    if (!diagnostics.primary_applied) {
+      incrementAdvertisingCounter(diagnostics.primary_apply_failures);
+      diagnostics.last_error = "PRIMARY_APPLY_FAILED";
+      return false;
+    }
+    diagnostics.response_applied = advertising->setScanResponseData(response_data);
+    if (!diagnostics.response_applied) {
+      incrementAdvertisingCounter(diagnostics.response_apply_failures);
+      diagnostics.last_error = "RESPONSE_APPLY_FAILED";
+      return false;
+    }
+    return true;
   }
-  bool stop() override {
-    advertising_last_restart_reason_ = "PRESENCE_APPLY";
-    return BLEDevice::getAdvertising()->stop();
-  }
+  bool stop() override { return BLEDevice::getAdvertising()->stop(); }
   bool start() override {
-    advertising_last_restart_reason_ = "PRESENCE_APPLY";
-    ++advertising_restart_attempts_;
-    const bool started = BLEDevice::getAdvertising()->start();
-    if (started) ++advertising_restart_successes_;
-    else ++advertising_restart_failures_;
+    incrementAdvertisingCounter(advertising_restart_attempts_);
+    BLEAdvertising* advertising = BLEDevice::getAdvertising();
+    const bool started = advertising->start();
+    if (started) incrementAdvertisingCounter(advertising_restart_successes_);
+    else incrementAdvertisingCounter(advertising_restart_failures_);
     return started;
+  }
+ private:
+  static bool matches(BLEAdvertisementData& data,
+                      const sgk::AdvertisementPayload& expected) {
+    const String actual = data.getPayload();
+    return expected.length <= 31 && actual.length() == expected.length &&
+        std::memcmp(actual.c_str(), expected.bytes.data(), expected.length) == 0;
   }
 };
 
 void servicePresenceAdvertisement(uint32_t now_ms) {
   std::lock_guard<std::recursive_mutex> lock(core_mutex);
-  PresenceDriver driver;
   const bool connected = controllerHasActiveConnection();
-  const bool ota_busy = core != nullptr && core->otaBusy();
-  presence_advertisement_.observeController(now_ms, advertisingActive(),
-      advertising_expected_ && !connected && !ota_busy);
-  presence_advertisement_.service(now_ms, advertising_expected_ && GattServer::isEnabled(),
-      connected, ota_busy, driver);
-  presence_advertisement_.observeController(millis(), advertisingActive(),
-      advertising_expected_ && !connected && !ota_busy);
-}
-
-bool restartAdvertising(const char* reason, bool watchdog_recovery) {
-  std::lock_guard<std::recursive_mutex> lock(core_mutex);
-  if (!advertising_expected_ || controllerHasActiveConnection() ||
-      (core != nullptr && core->otaBusy())) {
-    return false;
-  }
-  BLEAdvertising* advertising = BLEDevice::getAdvertising();
-  if (advertising == nullptr) {
-    ++advertising_restart_attempts_;
-    ++advertising_restart_failures_;
-    LOGF("[ERROR] BLE advertiser unavailable during %s restart", reason);
-    return false;
-  }
-#if defined(CONFIG_NIMBLE_ENABLED)
-  if (advertising->isAdvertising()) return true;
-#endif
-  if (GattServer::isEnabled()) {
-    // A controller restart may have lost custom scan-response bytes even
-    // though the last apply succeeded. Reinstall them before restarting.
+  const bool unleased = advertising_expected_ && !connected && !advertising_ota_busy_;
+  const bool was_inactive = unleased && !advertisingActive();
+  if (advertising_restart_requested_) {
+    // Keep the request pending through connection/OTA leases and backoff.
     presence_advertisement_.request(presence_advertisement_.requested_ready,
                                    presence_advertisement_.requested_epoch, true);
-    servicePresenceAdvertisement(millis());
-    const bool started = advertisingActive() && !presence_advertisement_.pending;
-    advertising_last_restart_reason_ = reason;
-    if (started && watchdog_recovery) ++advertising_watchdog_recoveries_;
-    return started;
+    advertising_restart_requested_ = false;
+    advertising_last_restart_reason_ = "disconnect";
+  } else if (was_inactive) {
+    advertising_last_restart_reason_ = "watchdog";
+  } else if (!presence_advertisement_.pending &&
+             now_ms - presence_advertisement_.applied_ms >=
+                 sgk::PresenceAdvertisementPolicy::kRefreshIntervalMs) {
+    advertising_last_restart_reason_ = "CHECKED_REFRESH";
   }
-  ++advertising_restart_attempts_;
-  advertising_last_restart_reason_ = reason;
-  const bool started = advertising->start();
-  if (started) {
-    ++advertising_restart_successes_;
-    if (watchdog_recovery) ++advertising_watchdog_recoveries_;
-    LOGF("[INFO] BLE advertising restarted (%s)", reason);
-  } else {
-    ++advertising_restart_failures_;
-    LOGF("[ERROR] BLE advertising restart failed (%s)", reason);
-  }
-  return started;
+  PresenceDriver driver;
+  presence_advertisement_.observeController(now_ms, advertisingActive(), unleased);
+  presence_advertisement_.service(now_ms, advertising_expected_,
+      connected, advertising_ota_busy_, driver);
+  if (was_inactive && advertisingActive() && !presence_advertisement_.pending)
+    incrementAdvertisingCounter(advertising_watchdog_recoveries_);
+  presence_advertisement_.observeController(millis(), advertisingActive(), unleased);
 }
 
-void serviceAdvertisingHealth(uint32_t now_ms) {
-  std::lock_guard<std::recursive_mutex> lock(core_mutex);
-  if (!advertising_expected_ || controllerHasActiveConnection() ||
-      (core != nullptr && core->otaBusy()) ||
-      (GattServer::isEnabled() && presence_advertisement_.pending) ||
-      now_ms - advertising_last_health_check_ms_ <
-          kAdvertisingHealthCheckIntervalMs) {
-    return;
-  }
-  advertising_last_health_check_ms_ = now_ms;
-#if defined(CONFIG_NIMBLE_ENABLED)
-  BLEAdvertising* advertising = BLEDevice::getAdvertising();
-  if (advertising != nullptr && advertising->isAdvertising()) return;
-  restartAdvertising("watchdog", true);
-#endif
-}
-
+#if ENABLE_HARDWARELESS_RC
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
 #if defined(CONFIG_BLUEDROID_ENABLED)
@@ -1036,18 +1039,19 @@ BLECharacteristic* characteristicFor(sgk::MessageType type) {
 }  // namespace
 
 void GattServer::init() {
-#if ENABLE_HARDWARELESS_RC
-  deferred_event_sink.clear();
-  production_lifecycle_sink.clear();
   advertising_restart_requested_ = false;
   advertising_expected_ = false;
-  advertising_last_health_check_ms_ = 0;
+  advertising_ota_busy_ = false;
   advertising_restart_attempts_ = 0;
   advertising_restart_successes_ = 0;
   advertising_restart_failures_ = 0;
   advertising_watchdog_recoveries_ = 0;
   presence_advertisement_ = {};
+  advertisement_diagnostics_ = {};
   advertising_last_restart_reason_ = "NONE";
+#if ENABLE_HARDWARELESS_RC
+  deferred_event_sink.clear();
+  production_lifecycle_sink.clear();
   accepted_connections_ = 0;
   disconnects_ = 0;
   challenges_issued_ = 0;
@@ -1103,38 +1107,31 @@ void GattServer::init() {
 }
 
 void GattServer::setAdvertisingExpected(bool expected) {
-#if ENABLE_HARDWARELESS_RC
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
   advertising_expected_ = expected;
-  advertising_last_health_check_ms_ = millis();
-#else
-  (void)expected;
-#endif
+  presence_advertisement_.request(presence_advertisement_.requested_ready,
+                                 presence_advertisement_.requested_epoch, true);
+}
+
+void GattServer::requestAdvertisingTxPower(int power_dbm) {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  advertising_tx_power_dbm_ = power_dbm;
+  presence_advertisement_.request(presence_advertisement_.requested_ready,
+                                 presence_advertisement_.requested_epoch, true);
 }
 
 void GattServer::setPresenceReady(bool ready, uint32_t epoch, bool force) {
-#if ENABLE_HARDWARELESS_RC
   std::lock_guard<std::recursive_mutex> lock(core_mutex);
   presence_advertisement_.request(ready, epoch, force);
-  servicePresenceAdvertisement(millis());
-#else
-  (void)ready;
-  (void)epoch;
-  (void)force;
-#endif
 }
 
 void GattServer::update() {
+  servicePresenceAdvertisement(millis());
 #if ENABLE_HARDWARELESS_RC
   // Flush control and telemetry effects produced by NimBLE callbacks before
   // doing protocol work, then flush again below for this update pass.
   production_lifecycle_sink.drainControls();
   deferred_event_sink.drain();
-  servicePresenceAdvertisement(millis());
-  if (consumeAdvertisingRestartRequest() && isEnabled() &&
-      getActiveConnections() == 0 && !presence_advertisement_.pending) {
-    restartAdvertising("disconnect", false);
-  }
-  serviceAdvertisingHealth(millis());
   if (core == nullptr || !core->enabled()) return;
 
   const uint32_t now_ms = millis();
@@ -1257,14 +1254,13 @@ uint32_t GattServer::getActiveConnections() {
 }
 
 bool GattServer::isOtaBusy() {
-#if ENABLE_HARDWARELESS_RC
-  return core != nullptr && core->otaBusy();
-#else
-  return false;
-#endif
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  return advertising_ota_busy_;
 }
 
 void GattServer::setOtaBusy(bool busy) {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  advertising_ota_busy_ = busy;
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return;
   core_mutex.lock();
@@ -1466,14 +1462,16 @@ uint64_t GattServer::allocateAccessEventSequence() {
 GattServer::Telemetry GattServer::getTelemetry() {
   Telemetry telemetry{};
   telemetry.session_state = sgk::SessionState::kIdle;
-#if ENABLE_HARDWARELESS_RC
   std::lock_guard<std::recursive_mutex> lock(core_mutex);
+#if ENABLE_HARDWARELESS_RC
   if (core != nullptr) {
     telemetry.active_connections = core->connected() ? 1 : 0;
     telemetry.failed_attempts = core->failedAttempts();
     telemetry.session_state = core->state();
     telemetry.ota_busy = core->otaBusy();
   }
+#endif
+  telemetry.ota_busy = advertising_ota_busy_;
   telemetry.advertising_expected = advertising_expected_;
   telemetry.advertising_active = advertisingActive();
   telemetry.advertising_restart_attempts = advertising_restart_attempts_;
@@ -1484,6 +1482,7 @@ GattServer::Telemetry GattServer::getTelemetry() {
   telemetry.presence = presence_advertisement_;
   telemetry.advertising_gap_ms = presence_advertisement_.gapMs(millis());
   telemetry.advertising_last_restart_reason = advertising_last_restart_reason_;
+#if ENABLE_HARDWARELESS_RC
   telemetry.accepted_connections = accepted_connections_;
   telemetry.disconnects = disconnects_;
   telemetry.challenges_issued = challenges_issued_;
@@ -1503,6 +1502,24 @@ GattServer::Telemetry GattServer::getTelemetry() {
                 sizeof(telemetry.last_session_id), "%s", last_session_id_);
 #endif
   return telemetry;
+}
+
+GattServer::Diagnostics GattServer::getDiagnostics() {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  Diagnostics result = advertisement_diagnostics_;
+  const bool current = advertising_expected_ && presence_advertisement_.applied_valid &&
+      !presence_advertisement_.pending;
+  result.primary_applied = current && result.primary_applied;
+  result.response_applied = current && result.response_applied;
+  result.payload_generation = presence_advertisement_.attempts;
+  result.applied_generation = presence_advertisement_.applied_generation;
+  result.refresh_count = presence_advertisement_.refresh_count;
+  result.last_apply_ms = presence_advertisement_.applied_ms;
+  result.refresh_interval_ms = sgk::PresenceAdvertisementPolicy::kRefreshIntervalMs;
+  const char* outcome = presence_advertisement_.last_result;
+  if (std::strcmp(outcome, "APPLY_FAILED") != 0)
+    result.last_error = std::strcmp(outcome, "APPLIED") == 0 ? "NONE" : outcome;
+  return result;
 }
 
 bool GattServer::handleConnect(uint16_t connection_id) {
@@ -1717,11 +1734,7 @@ void GattServer::createService() {
   fast_rx_characteristic->setCallbacks(&fast_callbacks);
   fast_tx_characteristic->setCallbacks(&fast_callbacks);
   auth_service->start();
-  BLEAdvertisementData scan_response;
-  scan_response.setName("SmartGatekeeper");
-  scan_response.setCompleteServices(BLEUUID(String(HARDWARELESS_SERVICE_UUID)));
-  BLEDevice::getAdvertising()->setScanResponseData(scan_response);
-  BLEDevice::startAdvertising();
+  setPresenceReady(false, presence_advertisement_.requested_epoch, true);
   LOGF("[INFO] GATT primary auth service started");
 #endif
 }
@@ -1729,7 +1742,6 @@ void GattServer::createService() {
 void GattServer::destroyService() {
 #if ENABLE_HARDWARELESS_RC
   if (auth_service == nullptr) return;
-  BLEDevice::getAdvertising()->stop();
   if (ble_server != nullptr) {
     for (const auto& peer : ble_server->getPeerDevices(false)) {
       ble_server->disconnect(peer.first);
@@ -1750,10 +1762,7 @@ void GattServer::destroyService() {
   adapter_state.clear();
   // Keep the legacy iBeacon advertisement running, but remove the unavailable
   // GATT service UUID from the scan response.
-  BLEAdvertisementData scan_response;
-  scan_response.setName("SmartGatekeeper");
-  BLEDevice::getAdvertising()->setScanResponseData(scan_response);
-  BLEDevice::startAdvertising();
+  setPresenceReady(false, presence_advertisement_.requested_epoch, true);
   LOGF("[INFO] GATT auth service disabled and session reset");
 #endif
 }

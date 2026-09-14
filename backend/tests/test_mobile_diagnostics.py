@@ -14,7 +14,8 @@ import pymysql
 
 from backend.app.acl_api import AclApiConfig, create_acl_router
 from backend.app import main
-from backend.app.mobile_diagnostics import MobileDiagnosticBundle, classify_bundle, sensor_observation
+from backend.app.mobile_diagnostics import (MobileDiagnosticBundle, classify_bundle, sensor_observation,
+                                          ingest_bundle_payload, bundle_event_bounds)
 
 
 def bundle() -> dict:
@@ -45,6 +46,58 @@ class FakeService:
 
 
 class MobileDiagnosticsTest(unittest.TestCase):
+    def test_alternative_scan_contract_is_bounded_private_and_backward_compatible(self):
+        value = bundle()
+        value["native"]["scan"] = dict(observation="NO_RECENT_PACKET", lifecycle=[],
+            alternative_stage="NO_MATCHING_PACKET", alternative_result_count=1000000,
+            alternative_candidate_count=3, alternative_match_count=0, alternative_error_count=0,
+            alternative_error_code=None, alternative_started_at_epoch_ms=100,
+            alternative_finished_at_epoch_ms=12100, alternative_restore_status="RESTORED")
+        parsed = MobileDiagnosticBundle.model_validate(value)
+        self.assertEqual(value["native"]["scan"],
+                         {k: v for k, v in ingest_bundle_payload(parsed)["native"]["scan"].items()
+                          if k != "last_packet_at_epoch_ms"})
+        self.assertEqual((100, 12100), bundle_event_bounds(value))
+        for field, invalid in (("alternative_stage", "SECRET"), ("alternative_result_count", True),
+                               ("alternative_candidate_count", 1000001), ("alternative_match_count", -1),
+                               ("alternative_error_code", 65536), ("alternative_restore_status", "SECRET"),
+                               ("alternative_started_at_epoch_ms", "100"), ("device_address", "private")):
+            changed = json.loads(json.dumps(value))
+            changed["native"]["scan"][field] = invalid
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                MobileDiagnosticBundle.model_validate(changed)
+        value["native"]["scan"] = dict(observation="NOT_OBSERVED", lifecycle=[])
+        old = ingest_bundle_payload(MobileDiagnosticBundle.model_validate(value))
+        self.assertFalse(any(k.startswith("alternative_") for k in old["native"]["scan"]))
+        value["native"]["runtime"] = dict(captured_epoch_ms=100, captured_elapsed_ms=1,
+            process_ref="a" * 16, pending_uploads=0, dropped_events=0, lifecycle=[])
+        self.assertNotIn("location_services_enabled", ingest_bundle_payload(
+            MobileDiagnosticBundle.model_validate(value))["native"])
+        value["native"]["location_services_enabled"] = False
+        self.assertIs(ingest_bundle_payload(MobileDiagnosticBundle.model_validate(value))[
+            "native"]["location_services_enabled"], False)
+
+    def test_later_scan_recovery_is_not_hidden_by_old_success(self):
+        value = bundle()
+        value["native"]["scan"] = dict(observation="NO_RECENT_PACKET", lifecycle=[],
+            last_packet_at_epoch_ms=1000, recovery_started_at_epoch_ms=2000,
+            recovery_finished_at_epoch_ms=32000, recovery_outcome="NO_MATCHING_PACKET")
+        value["sessions"] = [dict(state="SUCCEEDED", created_epoch_ms=1000,
+            updated_epoch_ms=1200, target_session_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")]
+        value["wake_events"] = [dict(source="BLE_SCAN", success=True, received_epoch_ms=900)]
+        self.assertEqual(dict(last_stage="MOBILE_SCAN_RECOVERY", first_missing="TARGET_ADVERTISEMENT_NOT_OBSERVED"),
+                         classify_bundle(value, [], now_ms=40000))
+        # A later session or a fresh packet invalidates the old recovery failure.
+        value["sessions"][0]["updated_epoch_ms"] = 33000
+        self.assertNotEqual("MOBILE_SCAN_RECOVERY", classify_bundle(value, [], now_ms=40000)["last_stage"])
+        value["sessions"][0]["updated_epoch_ms"] = 1200
+        value["native"]["scan"]["last_packet_at_epoch_ms"] = 33000
+        self.assertNotEqual("MOBILE_SCAN_RECOVERY", classify_bundle(value, [], now_ms=40000)["last_stage"])
+        value["native"]["scan"]["last_packet_at_epoch_ms"] = 1000
+        for end in (True, 1999, 50000):
+            value["native"]["scan"]["recovery_finished_at_epoch_ms"] = end
+            self.assertNotEqual("MOBILE_SCAN_RECOVERY", classify_bundle(value, [], now_ms=40000)["last_stage"])
+
     def test_optional_scan_observation_is_bounded_and_not_a_wake(self):
         value = bundle()
         self.assertIsNone(MobileDiagnosticBundle.model_validate(value).native.scan)

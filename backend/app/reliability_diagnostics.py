@@ -295,11 +295,24 @@ def field_recovery_advisory_projection(document):
         counters=("requested_epoch", "applied_epoch", "attempts", "failures", "retries", "stops", "gap_count", "gap_ms", "last_gap_ms"),
         nullable_counters=("last_attempt_ms", "applied_age_ms"),
         codes=dict(status={"NOT_REQUESTED", "PENDING", "APPLIED", "DISABLED", "DEFERRED_CONNECTION", "DEFERRED_OTA", "RETRY_WAIT",
-                           "UNAVAILABLE", "STOP_FAILED", "APPLY_FAILED", "START_FAILED"},
-                   last_result={"NONE", "APPLIED", "UNAVAILABLE", "STOP_FAILED", "APPLY_FAILED", "APPLY_START_FAILED", "START_FAILED"},
-                   restart_reason={"NONE", "PRESENCE_APPLY", "watchdog", "disconnect"}))
+                           "UNAVAILABLE", "STOP_FAILED", "APPLY_FAILED", "START_FAILED", "INACTIVE_AFTER_START"},
+                   last_result={"NONE", "APPLIED", "UNAVAILABLE", "STOP_FAILED", "APPLY_FAILED", "APPLY_START_FAILED", "START_FAILED", "INACTIVE_AFTER_START"},
+                   restart_reason={"NONE", "PRESENCE_APPLY", "CHECKED_REFRESH", "watchdog", "disconnect"}))
     if presence is not None:
         result["ble_presence"] = presence
+    advertisement_source = document.get("ble_advertisement")
+    advertisement = _closed_observation(advertisement_source,
+        booleans=("primary_applied", "response_applied"),
+        counters=("payload_generation", "applied_generation", "refresh_count",
+                  "primary_apply_failures", "response_apply_failures", "primary_length",
+                  "response_length", "refresh_interval_ms"), nullable_counters=("last_apply_age_ms",),
+        codes=dict(last_error={"NONE", "UNAVAILABLE", "STOP_FAILED", "START_FAILED", "APPLY_FAILED", "INACTIVE_AFTER_START",
+                               "PRIMARY_ENCODING_FAILED", "RESPONSE_ENCODING_FAILED",
+                               "PRIMARY_APPLY_FAILED", "RESPONSE_APPLY_FAILED"}))
+    if (advertisement is not None and type(advertisement_source.get("schema")) is int
+            and advertisement_source["schema"] == 1
+            and advertisement["primary_length"] <= 31 and advertisement["response_length"] <= 31):
+        result["ble_advertisement"] = dict(schema=1, **advertisement)
     return result
 
 

@@ -33,6 +33,10 @@ def observations():
             applied_epoch=4, applied_valid=False, pending=True, status="RETRY_WAIT", last_result="APPLY_FAILED",
             attempts=2, failures=1, retries=1, stops=0, last_attempt_ms=4000,
             applied_age_ms=None, gap_count=1, gap_ms=20, last_gap_ms=10, restart_reason="PRESENCE_APPLY"),
+        ble_advertisement=dict(schema=1, primary_applied=True, response_applied=False,
+            payload_generation=2, applied_generation=1, refresh_count=1, last_apply_age_ms=5000,
+            primary_apply_failures=0, response_apply_failures=1, primary_length=30,
+            response_length=29, refresh_interval_ms=30000, last_error="RESPONSE_APPLY_FAILED"),
     )
 
 
@@ -55,7 +59,10 @@ class FieldRecoveryAdvisoryTest(unittest.TestCase):
         for group, key, invalid in (("passage_rearm", "auth_ready", 1), ("passage_rearm", "auth_reason", "SECRET"),
                                    ("passage_rearm", "blocked_age_ms", -1), ("sensor_observation", "idle_samples", 2**32),
                                    ("sensor_observation", "raw_mm", 65535), ("sensor_observation", "kind", "BROKEN_HARDWARE"),
-                                   ("ble_presence", "applied_age_ms", True), ("ble_presence", "restart_reason", "https://secret")):
+                                   ("ble_presence", "applied_age_ms", True), ("ble_presence", "restart_reason", "https://secret"),
+                                   ("ble_advertisement", "schema", True), ("ble_advertisement", "schema", 2),
+                                   ("ble_advertisement", "primary_length", 32), ("ble_advertisement", "last_error", "secret"),
+                                   ("ble_advertisement", "refresh_count", 2**32), ("ble_advertisement", "response_applied", 1)):
             value = observations()
             value[group][key] = invalid
             with self.subTest(group=group, key=key):
@@ -66,6 +73,13 @@ class FieldRecoveryAdvisoryTest(unittest.TestCase):
         value = observations()
         value["passage_rearm"].update(blocked=False, blocked_since_ms=None, last_pulse_ms=None)
         value["ble_presence"].update(last_attempt_ms=None, applied_age_ms=None)
+        self.assertEqual(value, advisory_projection(value))
+
+    def test_checked_refresh_and_inactive_controller_codes_survive_projection(self):
+        value = observations()
+        value["ble_presence"].update(status="INACTIVE_AFTER_START",
+                                     last_result="INACTIVE_AFTER_START", restart_reason="CHECKED_REFRESH")
+        value["ble_advertisement"]["last_error"] = "INACTIVE_AFTER_START"
         self.assertEqual(value, advisory_projection(value))
 
     def test_actual_signed_parser_keeps_advisory_outside_mac_and_classification(self):

@@ -12,6 +12,26 @@
 class GattServer {
  public:
   static void setPresenceReady(bool ready, uint32_t epoch, bool force = false);
+  // Requests only: controller power/payload changes run in update() under the
+  // same connection/OTA guard as advertising recovery.
+  static void requestAdvertisingTxPower(int power_dbm);
+  struct Diagnostics {
+    // True only for a completed, still-valid application of the requested
+    // payloads. Neither these flags nor the historical timestamp proves RF.
+    bool primary_applied;
+    bool response_applied;
+    uint32_t payload_generation;
+    uint32_t applied_generation;
+    uint32_t refresh_count;
+    uint32_t last_apply_ms;
+    uint32_t primary_apply_failures;
+    uint32_t response_apply_failures;
+    uint8_t primary_length;
+    uint8_t response_length;
+    uint32_t refresh_interval_ms;
+    const char* last_error;
+  };
+  static Diagnostics getDiagnostics();
   struct Telemetry {
     uint32_t active_connections;
     uint32_t failed_attempts;
@@ -45,9 +65,8 @@ class GattServer {
 
   static void init();
   static void update();
-  // The iBeacon is expected after initBleAdvertiser() has installed the final
-  // payload. update() then verifies controller advertising state and retries a
-  // stopped advertiser only while no phone owns a GATT connection.
+  // Arm the lifecycle owner after BLE initialization. update() installs and
+  // refreshes both payloads, including active-but-data-lost host-sync recovery.
   static void setAdvertisingExpected(bool expected);
   static bool isEnabled();
   static void setEnabled(bool enabled);

@@ -121,6 +121,8 @@ class NativeGattWorkerHealth {
     this.lastGattPerformance,
     this.currentBlockingReasonCode,
     this.scanDiagnostics,
+    this.locationServicesEnabled,
+    this.locationServicesStatusAvailable = false,
   });
 
   final bool featureEnabled;
@@ -157,9 +159,22 @@ class NativeGattWorkerHealth {
   final GattPerformanceSummary? lastGattPerformance;
   final String? currentBlockingReasonCode;
   final Map<Object?, Object?>? scanDiagnostics;
+  final bool? locationServicesEnabled;
+  final bool locationServicesStatusAvailable;
 
   int? get lastScanPacketEpochMs =>
       (scanDiagnostics?['lastPacketAtEpochMs'] as num?)?.toInt();
+
+  String? get discoveryRecoveryStage =>
+      scanDiagnostics?['alternativeStage']?.toString();
+
+  /// Historical session success is independent of present radio observation.
+  bool hasRecentSessionSuccessAt(DateTime now) {
+    final at = lastSessionUpdatedEpochMs;
+    if (lastSessionState != 'SUCCEEDED' || at == null) return false;
+    final age = now.millisecondsSinceEpoch - at;
+    return age >= 0 && age <= (maxPresenceAgeMs ?? 45000);
+  }
 
   /// Missing radio traffic is unknown, not proof of an unhealthy scanner.
   String scanObservationAt(DateTime now) {
@@ -199,7 +214,7 @@ class NativeGattWorkerHealth {
     }
     final ageMs = now.millisecondsSinceEpoch - detection.receivedEpochMs;
     final freshnessMs = maxPresenceAgeMs ?? 45000;
-    if (ageMs > freshnessMs) return TargetDetectionStage.waiting;
+    if (ageMs < 0 || ageMs > freshnessMs) return TargetDetectionStage.waiting;
     if (!detection.success) return TargetDetectionStage.failed;
 
     final session = lastSession;
@@ -214,7 +229,7 @@ class NativeGattWorkerHealth {
       case 'RETRY_PENDING':
         return TargetDetectionStage.authenticating;
       case 'SUCCEEDED':
-        return lastPresenceToArmedMs != null
+        return hasRecentSessionSuccessAt(now) && lastPresenceToArmedMs != null
             ? TargetDetectionStage.armed
             : TargetDetectionStage.detected;
       case 'DISABLED':
@@ -236,6 +251,11 @@ class NativeGattWorkerHealth {
       credentialProvisioned: value['credentialProvisioned'] == true,
       localConsentValid: value['localConsentValid'] == true,
       healthy: value['healthy'] != false,
+      locationServicesStatusAvailable:
+          value.containsKey('locationServicesEnabled'),
+      locationServicesEnabled: value['locationServicesEnabled'] is bool
+          ? value['locationServicesEnabled'] as bool
+          : null,
       scanDiagnostics: value['scanDiagnostics'] is Map
           ? Map<Object?, Object?>.from(value['scanDiagnostics'] as Map)
           : null,

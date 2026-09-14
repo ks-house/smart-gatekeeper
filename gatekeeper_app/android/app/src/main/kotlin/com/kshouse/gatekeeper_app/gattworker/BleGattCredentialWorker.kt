@@ -273,6 +273,7 @@ class BleGattCredentialWorker(
       BleGattWorkScheduler.enqueueRetry(applicationContext, initial.id, remainingDelayMs)
       return Result.success()
     }
+    com.kshouse.gatekeeper_app.blewake.BleForegroundDiscovery.cancel(applicationContext, "CANCELLED_GATT")
     val ownerLease = CrossProcessBleOwnerCoordinator.forContext(applicationContext).tryAcquireNative()
       ?: return scheduleOwnershipRetry(ledger, initial)
     try {
@@ -599,6 +600,7 @@ object BleGattHealthBridge {
       ),
       "maxPresenceAgeMs" to HandsFreeDispatchPolicy.MAX_PRESENCE_AGE_MS,
       "currentBlockingReasonCode" to blockingReason,
+      "locationServicesEnabled" to BleGattRuntimeEnvironment.locationServicesEnabled(context),
       "forceStopReasonCode" to AccessReasonCode.FORCE_STOPPED.schemaReason,
       "reasonCodeMap" to mapOf(
         "permission" to AccessReasonCode.PERMISSION_DENIED.schemaReason,
@@ -625,6 +627,13 @@ object BleGattHealthBridge {
 }
 
 object BleGattRuntimeEnvironment {
+  fun locationServicesEnabled(context: Context): Boolean? = try {
+    val location = context.getSystemService(android.location.LocationManager::class.java)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) location?.isLocationEnabled
+    else location?.let { it.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+      it.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) }
+  } catch (_: RuntimeException) { null }
+
   fun currentBlockingReason(context: Context): String? {
     val appContext = context.applicationContext
     if (
@@ -644,6 +653,7 @@ object BleGattRuntimeEnvironment {
     ) return AccessReasonCode.PERMISSION_DENIED.schemaReason
     val adapter = appContext.getSystemService(BluetoothManager::class.java)?.adapter
     if (adapter == null || !adapter.isEnabled) return AccessReasonCode.BLUETOOTH_DISABLED.schemaReason
+    if (locationServicesEnabled(appContext) == false) return "LOCATION_SERVICES_DISABLED"
     val power = appContext.getSystemService(PowerManager::class.java)
     if (
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&

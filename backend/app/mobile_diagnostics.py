@@ -83,6 +83,19 @@ class ScanSnapshot(StrictModel):
     recovery_finished_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
     recovery_reason: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9_]{1,64}$")
     recovery_outcome: Optional[str] = Field(default=None, pattern=r"^[A-Z0-9_]{1,64}$")
+    alternative_stage: Optional[Literal[
+        "WAITING_PRIMARY", "SCANNING", "MATCH_OBSERVED", "NO_MATCHING_PACKET", "SCAN_ERROR",
+        "OWNER_BUSY", "ENVIRONMENT_BLOCKED", "STOP_FAILED", "RELEASE_FAILED", "CANCELLED_SCREEN_OFF", "CANCELLED_ACTIVITY_STOP",
+        "CANCELLED_BLUETOOTH_OFF", "CANCELLED_UPDATE", "CANCELLED_DISABLED", "CANCELLED_GATT", "PROCESS_INTERRUPTED",
+    ]] = None
+    alternative_result_count: Optional[int] = Field(default=None, ge=0, le=1000000, strict=True)
+    alternative_candidate_count: Optional[int] = Field(default=None, ge=0, le=1000000, strict=True)
+    alternative_match_count: Optional[int] = Field(default=None, ge=0, le=1000000, strict=True)
+    alternative_error_count: Optional[int] = Field(default=None, ge=0, le=1000000, strict=True)
+    alternative_error_code: Optional[int] = Field(default=None, ge=0, le=65535, strict=True)
+    alternative_started_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    alternative_finished_at_epoch_ms: Optional[int] = Field(default=None, ge=0, strict=True)
+    alternative_restore_status: Optional[Literal["RESTORED", "RESTORE_PENDING", "NOT_REQUESTED"]] = None
 
 
 class RuntimeLifecycleSnapshot(StrictModel):
@@ -142,6 +155,7 @@ class RuntimeSnapshot(StrictModel):
 class NativeSnapshot(StrictModel):
     scan: Optional[ScanSnapshot] = None
     runtime: Optional[RuntimeSnapshot] = None
+    location_services_enabled: Optional[bool] = Field(default=None, strict=True)
 
     @field_validator("stage", "wake_registration_status", mode="before")
     @classmethod
@@ -281,6 +295,8 @@ def ingest_bundle_payload(bundle: MobileDiagnosticBundle) -> dict[str, Any]:
     immutable bundle identity. Explicit optional NULLs from new apps survive.
     """
     body = bundle.model_dump(by_alias=True, mode="json")
+    if "location_services_enabled" not in bundle.native.model_fields_set:
+        body["native"].pop("location_services_enabled", None)
     scan = bundle.native.scan
     if scan is None:
         body["native"].pop("scan", None)
@@ -331,6 +347,8 @@ def bundle_event_bounds(bundle: dict[str, Any]) -> tuple[int | None, int | None]
     times += [item.get("at_epoch_ms") for item in runtime.get("lifecycle", [])]
     times += [item.get("at_epoch_ms") for item in scan.get("lifecycle", [])]
     times += [scan.get("last_packet_at_epoch_ms")]
+    times += [scan.get(key) for key in ("recovery_started_at_epoch_ms", "recovery_finished_at_epoch_ms",
+                                      "alternative_started_at_epoch_ms", "alternative_finished_at_epoch_ms")]
     times += [item.get("received_epoch_ms") for item in bundle.get("wake_events", [])]
     for item in bundle.get("sessions", []):
         times += [item.get(key) for key in ("created_epoch_ms", "updated_epoch_ms", "dispatch_started_epoch_ms")]
@@ -432,6 +450,28 @@ def classify_bundle(
             for item in wakes
             if start_ms <= int(item.get("received_epoch_ms") or 0) <= end_ms
         ]
+    # An explicitly observed later recovery failure must not be hidden by a
+    # successful session retained from hours earlier. Silence alone is not a
+    # failed arrival, and a later packet/session supersedes this observation.
+    scan = (bundle.get("native") or {}).get("scan") or {}
+    recovery_start = scan.get("recovery_started_at_epoch_ms")
+    recovery_end = scan.get("recovery_finished_at_epoch_ms")
+    captured_ms = int(datetime.fromisoformat(bundle["created_at"].replace("Z", "+00:00")).timestamp() * 1000)
+    clock_ceiling = min(captured_ms, now_ms) if now_ms is not None else captured_ms
+    if (scan.get("recovery_outcome") == "NO_MATCHING_PACKET"
+            and type(recovery_start) is int and type(recovery_end) is int
+            and 0 < recovery_start < recovery_end <= clock_ceiling
+            and (not marker or start_ms <= recovery_start <= recovery_end <= end_ms)):
+        session_times = [item.get(key) for item in sessions for key in
+                         ("created_epoch_ms", "updated_epoch_ms", "dispatch_started_epoch_ms")]
+        packet_times = [scan.get("last_packet_at_epoch_ms")]
+        packet_times += [item.get("received_epoch_ms") for item in wakes
+                         if item.get("success") is True and item.get("source") != "BLE_SCAN_EXIT"]
+        known_times = [value for value in (*session_times, *packet_times) if type(value) is int]
+        unknown_session_clock = any(not any(type(item.get(key)) is int for key in
+            ("created_epoch_ms", "updated_epoch_ms", "dispatch_started_epoch_ms")) for item in sessions)
+        if not unknown_session_clock and all(value < recovery_start for value in known_times):
+            return {"last_stage": "MOBILE_SCAN_RECOVERY", "first_missing": "TARGET_ADVERTISEMENT_NOT_OBSERVED"}
     if not wakes:
         if marker and (now_ms or int(datetime.now(timezone.utc).timestamp() * 1000)) < end_ms:
             return {"last_stage": "FIELD_MARKER", "first_missing": "FIELD_WINDOW_OPEN"}

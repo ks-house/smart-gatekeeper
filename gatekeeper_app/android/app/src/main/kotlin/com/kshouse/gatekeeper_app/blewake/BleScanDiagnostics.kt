@@ -110,7 +110,8 @@ internal object BleScanDiagnostics {
   fun snapshot(context: Context): Map<String, Any?> {
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     initialize(context)
-    return latest.toMap() + counters!!.snapshot() + BleScanRecoveryObserver.snapshot(context) + mapOf(
+    return latest.toMap() + counters!!.snapshot() + BleScanRecoveryObserver.snapshot(context) +
+      BleForegroundDiscovery.snapshot(context) + mapOf(
       "lifecycle" to project(prefs.getString(EVENTS, null)),
     )
   }

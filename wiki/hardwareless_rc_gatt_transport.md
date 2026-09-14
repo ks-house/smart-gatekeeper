@@ -31,7 +31,7 @@ manufacturer prefix: 02 15 a1 b2 c3 d4 e5 f6 78 90 ab cd ef 12 34 56 78 90
 AD flags: 0x1a
 ```
 
-The Android `BleWakeContract` and production C++ `kIBeaconFilterPrefix` use those exact bytes. Hardwareless mode adds the stable service UUID only to the scan response.
+The Android `BleWakeContract` and production C++ `kIBeaconFilterPrefix` use those exact bytes. Hardwareless mode carries the stable service UUID in scan-response V1 Service Data (`SGK` name, ready bit and little-endian readiness epoch). GATT authorization remains V2. Primary SGK Service Data migration is deferred; the installed APK44801 manufacturer filter remains compatible.
 
 | GATT object | UUID | properties/descriptors |
 |---|---|---|
@@ -85,3 +85,89 @@ Issue #175 added the one-shot ACL-gated startup policy and merged through PR #17
 - Relay input is authoritative GPIO23, active-low assumption, boot OFF safety retained.
 - AJ-SR04T remains GPIO10/11 in the current firmware.
 - Physical relay polarity, electrical safety, and GPIO23 behavior remain unverified after the source restoration.
+
+## 8. P0 checked advertisement recovery (2026-09-14 source change)
+
+`GattServer::update()` owns controller advertisement and power requests in both
+personal GATT and legacy-only builds. Startup, runtime service enable/disable,
+readiness changes, disconnect and Tx-power tuning queue desired state. The
+main-loop owner reconstructs both primary and response from the bounded wire
+encoder in `AdvertisementPayload.h`, checks Arduino String encoding against the
+original bytes, checks both set-data returns, and only completes an application
+after start succeeds when needed and the advertiser reports active. A failed
+replacement is never knowingly started with missing/partial data. Existing
+active data can remain until the retry stops and reapplies it; it is not labeled
+success. The primary remains the exact 30-byte iBeacon (flags `1a`, company
+`4c 00`, unchanged UUID, big-endian major/minor 1, legacy estimated power).
+Response is 29 bytes with Hardwareless enabled, or 17 bytes containing only the
+legacy name with it disabled. No UUID-list overflow or protocol migration is
+introduced.
+
+The inspected pinned framework is Arduino-ESP32 3.3.9 at
+`~/.platformio/packages/framework-arduinoespressif32/libraries/BLE/src`:
+`BLEDevice.cpp::onSync/onReset` owns `ble_hs_cfg.sync_cb/reset_cb` and its private
+sync flag. `BLEAdvertising.cpp::onHostSync` resets only `m_advDataSet` then
+automatically starts indefinite advertisements; `start` skips reconstruction
+when `m_customAdvData` is set. The set-data methods set custom flags even on
+failure and do not retain an application-owned raw copy for this restart.
+There is no public chainable host-sync/reset observer in this API; a custom GAP
+handler is not an exhaustive host-sync notification. This implementation does
+not override callbacks, edit the vendor cache, or claim to count host resets.
+
+Every successful full application schedules another checked application after
+30,000 ms, **including when active remains true**. Thus active-but-lost data
+causes a recovery attempt no later than the next serviced main loop after that
+deadline. No-connection and no-OTA guards cover all controller mutations under
+the callback-shared mutex; the accepted owner covers the server-count update
+gap, and the server count also excludes other connected peers. Leased time and
+main-loop scheduling delay extend the bound. An inactive controller triggers
+an immediate full application on the next unleased loop. Failed attempts wait
+500, 1,000, 2,000, 4,000 then at most 5,000 ms between tries; changing readiness,
+power, forced requests or epochs cannot bypass this spacing. If an in-place
+application is rejected, the next permitted retry stops, applies both payloads
+and starts. Repeated API failures have no promised time-to-success. Counters
+saturate and elapsed-time checks handle `millis()` wrap.
+
+Compact optional JSON serialization is owned by the integration agent through
+`GattServer::getDiagnostics()` returning `GattServer::Diagnostics`:
+
+| Field | Meaning |
+|---|---|
+| `primary_applied`, `response_applied` | Both set-data calls and start/active confirmation completed for the current request. False on any failure, pending request/refresh, reconfiguration or expected=false. This is application validity, not controller payload readback or RF reception. |
+| `payload_generation` | Saturating policy attempt count, including unavailable/stop failures; not a host generation. |
+| `applied_generation`, `last_apply_ms` | Latest attempt/time at which both payloads and start/active confirmation succeeded. Zero before first success; milliseconds are boot-relative and wrap. A later failure does not erase the last successful timestamp. |
+| `refresh_count` | Periodic refresh requests, including a request deferred by a lease; not reset count or proven fault count. |
+| `primary_apply_failures`, `response_apply_failures` | Saturating encoding/set-data failures for each half. |
+| `primary_length`, `response_length` | Expected byte lengths from the last encoding attempt, initially zero. |
+| `refresh_interval_ms` | 30,000 ms. |
+| `last_error` | Latest attempted outcome; `NONE` initially/after success, or a closed error listed below. During defer/retry wait, the last outcome is retained. |
+
+Closed error strings: `NONE`, `UNAVAILABLE`, `STOP_FAILED`,
+`PRIMARY_ENCODING_FAILED`, `RESPONSE_ENCODING_FAILED`, `PRIMARY_APPLY_FAILED`,
+`RESPONSE_APPLY_FAILED`, `START_FAILED`, `INACTIVE_AFTER_START`.
+The existing `presence.status` exposes lease/pending/backoff state; its internal
+`APPLY_FAILED` maps to the component-specific diagnostic error above.
+`presence.applied_valid` now requires successful full application and active
+confirmation; start failure no longer leaves a valid applied state. Neither
+this flag, the active bit, nor the timestamp is fresh physical RF proof.
+
+Native fault replays in `tests/advertisement_recovery_test.cpp` cover exact
+primary/response golden bytes and AD budgets, both data failures, start/stop
+failures, a lying start, active-but-lost primary+response after simulated host
+sync, rejected live updates, connection/OTA/disabled deferral, unchanged-epoch
+restart, retry and refresh rollover, saturation and forced-request backoff.
+Existing field-recovery expectations are tightened for partial/start failures.
+These model/source tests do not inject a real NimBLE host reset or measure RF.
+Production compilation, independent RF packet capture, installed firmware
+health, phone reception and physical hands-free passage remain distinct claims.
+
+Local WSL verification on this shared branch: focused 25 tests passed; root
+discovery ran 451 tests with 450 passed/1 skipped; `git diff --check` passed.
+Arduino 3.3.9 `esp32c6_personal_production` compiled with RAM 88,696 B and
+flash 1,856,790 B; `esp32c6_production` compiled with RAM 80,200 B and flash
+1,815,636 B. The latter retains two existing unused GATT-helper warnings.
+Builds use `.pio/build-ble-p0` and the existing private provisioning include
+directory via a build-local `-I` flag; no credential file, framework cache,
+workflow, platform pin or signing input was edited. These are local unsigned
+builds, not published or installed firmware. The main agent owns combined
+log/index entries, MQTT/Backend serialization and deployment decisions.

@@ -680,8 +680,29 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
       _ => '실제 수신 기록 없음 · 스캔 고장 판정은 아님',
     };
     final packet = health.lastScanPacketEpochMs;
+    final recovery = switch (health.discoveryRecoveryStage) {
+      'SCANNING' => '\n전면 대체 발견 확인 중 · 최대 12초',
+      'NO_MATCHING_PACKET' => '\n전면 대체 스캔에서도 Target 미수신 · 원인 미확정',
+      'MATCH_OBSERVED' => '\n전면 확인 창에서 Target 신호 관측',
+      'SCAN_ERROR' => '\n전면 대체 스캔 오류 · 기본 스캔 복원 상태 확인 필요',
+      'STOP_FAILED' ||
+      'RELEASE_FAILED' =>
+        '\nBLE 정리 실패 · Bluetooth를 껐다 켜서 복구 필요',
+      'OWNER_BUSY' => '\n다른 BLE 작업 진행 중 · 대체 스캔 보류',
+      'ENVIRONMENT_BLOCKED' => '\n휴대폰 BLE·위치 서비스 상태 확인 필요',
+      _ => '',
+    };
+    final history = health.lastSessionState == 'SUCCEEDED' &&
+            !health.hasRecentSessionSuccessAt(DateTime.now())
+        ? '\n이전 인증 성공 기록 · 현재 발견 상태와 별개'
+        : '';
+    final blocked =
+        health.currentBlockingReasonCode == 'LOCATION_SERVICES_DISABLED'
+            ? '\n휴대폰 위치 서비스 꺼짐'
+            : '';
     return '$registration\n$observation'
-        '${packet == null || packet <= 0 ? '' : '\n마지막 신호 ${_formatTime(DateTime.fromMillisecondsSinceEpoch(packet))}'}';
+        '${packet == null || packet <= 0 ? '' : '\n마지막 신호 ${_formatTime(DateTime.fromMillisecondsSinceEpoch(packet))}'}'
+        '$recovery$history$blocked';
   }
 
   Widget _home() {

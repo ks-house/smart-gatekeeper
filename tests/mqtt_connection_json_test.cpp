@@ -1,4 +1,5 @@
 #include "MqttConnectionJson.h"
+#include "BleAdvertisementJson.h"
 #include <cassert>
 #include <string>
 
@@ -36,4 +37,31 @@ int main() {
   short_wire["signed_state"] = "unchanged";
   assert(!sgk::appendMqttConnectionJson(short_wire, d, 0, 0, 1024));
   assert(!short_wire.overflowed() && !short_wire.containsKey("mqtt_connection"));
+
+  struct Advertisement {
+    bool primary_applied = true, response_applied = true;
+    uint32_t payload_generation = UINT32_MAX, applied_generation = UINT32_MAX;
+    uint32_t refresh_count = UINT32_MAX, last_apply_ms = 0;
+    uint32_t primary_apply_failures = UINT32_MAX, response_apply_failures = UINT32_MAX;
+    uint8_t primary_length = 31, response_length = 31;
+    uint32_t refresh_interval_ms = UINT32_MAX;
+    const char* last_error = "RESPONSE_ENCODING_FAILED";
+  } advertisement;
+  StaticJsonDocument<2048> adv;
+  adv["signed_state"] = "unchanged";
+  const auto adv_before = measureJson(adv);
+  assert(sgk::appendBleAdvertisementJson(adv, advertisement, UINT32_MAX, 7936));
+  assert(!adv.overflowed() && measureJson(adv) - adv_before < 640);
+  assert(adv["ble_advertisement"]["last_apply_age_ms"].as<uint32_t>() == UINT32_MAX);
+  assert(adv["signed_state"] == "unchanged");
+  assert(!sgk::appendBleAdvertisementJson(small, advertisement, 0, 7936));
+  assert(!small.overflowed() && !small.containsKey("ble_advertisement"));
+  assert(!sgk::appendBleAdvertisementJson(short_wire, advertisement, 0, 640));
+  assert(!short_wire.overflowed() && !short_wire.containsKey("ble_advertisement"));
+  adv.clear();
+  advertisement.applied_generation = 0;
+  advertisement.last_error = nullptr;
+  assert(sgk::appendBleAdvertisementJson(adv, advertisement, 0, 7936));
+  assert(adv["ble_advertisement"]["last_apply_age_ms"].isNull());
+  assert(adv["ble_advertisement"]["last_error"] == "NONE");
 }

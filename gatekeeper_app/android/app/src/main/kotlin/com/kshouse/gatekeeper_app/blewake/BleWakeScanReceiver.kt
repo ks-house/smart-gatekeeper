@@ -18,16 +18,29 @@ class BleWakeScanReceiver : BroadcastReceiver() {
     if (intent.action != BleWakeRegistrar.ACTION_SCAN_RESULT) return
     val pendingResult = goAsync()
     try {
+      // Late PendingIntent deliveries from the suspended generation cannot
+      // compete with the foreground experiment or dispatch authentication.
+      if (BleForegroundDiscovery.busy()) return
+      processResults(context, scanResults(intent),
+        intent.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, ScanCallbackError.NONE),
+        intent.getIntExtra(BluetoothLeScanner.EXTRA_CALLBACK_TYPE, 0))
+    } finally {
+      pendingResult.finish()
+    }
+  }
+
+  companion object {
+    private val PROCESS_ID = UUID.randomUUID().toString()
+    private var lastContinuousRecordMs = 0L
+
+    internal fun processResults(context: Context, results: List<ScanResult>, errorCode: Int, callbackType: Int) {
       val receivedElapsedNanos = SystemClock.elapsedRealtimeNanos()
       val receivedEpochMs = System.currentTimeMillis()
-      val results = scanResults(intent)
       val matchingResults = results.filter { result ->
         BleWakeContract.matchesManufacturerData(
           result.scanRecord?.getManufacturerSpecificData(BleWakeContract.APPLE_COMPANY_ID),
         )
       }
-      val errorCode = intent.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, ScanCallbackError.NONE)
-      val callbackType = intent.getIntExtra(BluetoothLeScanner.EXTRA_CALLBACK_TYPE, 0)
       // A strong stale entry in an OS batch must not hide a weaker fresh packet.
       val selected = BleScanObservationPolicy.selectMatching(matchingResults,
         { BleScanObservationPolicy.ageMs(it.timestampNanos, receivedElapsedNanos) },
@@ -71,8 +84,6 @@ class BleWakeScanReceiver : BroadcastReceiver() {
         readyHintMalformed = BleScanObservationPolicy.hint(hintBytes) == BleScanObservationPolicy.Hint.MALFORMED,
       )
       BleWakeNativeEntrypoint.onWake(context, event)
-    } finally {
-      pendingResult.finish()
     }
   }
 
@@ -93,8 +104,4 @@ class BleWakeScanReceiver : BroadcastReceiver() {
     const val NONE = 0
   }
 
-  companion object {
-    private val PROCESS_ID = UUID.randomUUID().toString()
-    private var lastContinuousRecordMs = 0L
-  }
 }

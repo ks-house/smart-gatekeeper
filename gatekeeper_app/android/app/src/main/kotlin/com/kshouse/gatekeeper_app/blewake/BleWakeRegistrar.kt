@@ -67,10 +67,12 @@ object BleWakeRegistrar {
   /** Native foreground seam; registration is never reported as fresh RF evidence. */
   fun onAppForeground(context: Context) {
     recoverRequested(context.applicationContext, BleScanRecoveryReason.APP_FOREGROUND)
+    BleForegroundDiscovery.onForeground(context.applicationContext)
   }
 
   @Synchronized
   internal fun recoverRequested(context: Context, reason: BleScanRecoveryReason): BleWakeRegistrationResult {
+    if (BleForegroundDiscovery.busy()) return status(context)
     if (!isEnabled(context) || !BleGattFeatureFlagStore(context).decision().newWorkerEnabled) return status(context)
     val current = status(context)
     if (inFlightSession(context)) return current
@@ -84,7 +86,7 @@ object BleWakeRegistrar {
     return registration
   }
 
-  private fun inFlightSession(context: Context): Boolean {
+  internal fun inFlightSession(context: Context): Boolean {
     val last = SharedPreferencesSessionLedger(context).last()
     return last?.state in setOf(DurableSessionState.QUEUED, DurableSessionState.RUNNING,
       DurableSessionState.RETRY_PENDING, DurableSessionState.PROOF_UNCERTAIN)
@@ -92,6 +94,7 @@ object BleWakeRegistrar {
 
   @Synchronized
   fun register(context: Context): BleWakeRegistrationResult {
+    if (BleForegroundDiscovery.busy()) return status(context)
     val current = status(context)
     if (current.reconciled && !BleScanRecoveryPolicy.shouldRefresh(
         System.currentTimeMillis(), current.reconciledAtEpochMs,
@@ -121,6 +124,7 @@ object BleWakeRegistrar {
 
   @Synchronized
   internal fun reconcileRequestedWithoutScheduling(context: Context): BleWakeRegistrationResult {
+    if (BleForegroundDiscovery.busy()) return status(context)
     val evidence = readEvidence(context)
     if (!evidence.requested) {
       return result(evidence.copy(status = "not_registered"))
@@ -214,6 +218,18 @@ object BleWakeRegistrar {
     }
   }
 
+  internal fun pauseForAlternative(context: Context) {
+    val previous = readEvidence(context)
+    writeEvidence(context, previous.copy(reconciled = false, status = "foreground_discovery"))
+  }
+
+  internal fun restoreAfterAlternative(context: Context): BleWakeRegistrationResult {
+    if (!isEnabled(context)) return status(context)
+    val restored = registerOnce(context)
+    finishRegistration(context, restored)
+    return restored
+  }
+
   @Synchronized
   fun stop(context: Context): BleWakeRegistrationResult {
     BleScanDiagnostics.record(context, BleScanDiagnostics.Event.STOP_REQUESTED)
@@ -221,6 +237,7 @@ object BleWakeRegistrar {
     // the best-effort platform stop call.
     val stopped = BleWakeReconciliationPolicy.stop(readEvidence(context), processId)
     writeEvidence(context, stopped)
+    BleForegroundDiscovery.cancel(context, "CANCELLED_DISABLED", restore = false)
     BleWakeReconciliationScheduler.cancel(context)
     BleWakeReconciliationScheduler.cancelWatchdog(context)
     BleScanRecoveryObserver.cancel(context)
@@ -289,6 +306,7 @@ object BleWakeRegistrar {
     context: Context,
     errorCode: Int,
   ): BleWakeRegistrationResult {
+    if (BleForegroundDiscovery.busy()) return status(context)
     val evidence = readEvidence(context)
     if (!evidence.requested) return result(evidence.copy(status = "not_registered"))
     val updated = BleWakeReconciliationPolicy.recordCallback(

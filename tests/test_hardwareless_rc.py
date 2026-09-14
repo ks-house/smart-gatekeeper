@@ -243,18 +243,16 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         )
 
         self.assertIn("advertising->isAdvertising()", adapter)
-        self.assertIn('restartAdvertising("watchdog", true)', adapter)
-        self.assertIn('restartAdvertising("disconnect", false)', adapter)
-        self.assertIn("kAdvertisingHealthCheckIntervalMs = 2000", adapter)
-        watchdog = adapter.split("void serviceAdvertisingHealth", 1)[1].split(
+        self.assertIn('advertising_last_restart_reason_ = "watchdog"', adapter)
+        self.assertIn('advertising_last_restart_reason_ = "disconnect"', adapter)
+        watchdog = adapter.split("void servicePresenceAdvertisement", 1)[1].split(
             "class ServerCallbacks", 1
         )[0]
         self.assertIn("controllerHasActiveConnection()", watchdog)
         self.assertIn("std::lock_guard<std::recursive_mutex> lock(core_mutex)", watchdog)
-        guard = adapter.split("bool controllerHasActiveConnection()", 1)[1].split("bool restartAdvertising", 1)[0]
+        guard = adapter.split("bool controllerHasActiveConnection()", 1)[1].split("class PresenceDriver", 1)[0]
         self.assertIn("core->connected()", guard)
-        restart = adapter.split("bool restartAdvertising", 1)[1].split("void serviceAdvertisingHealth", 1)[0]
-        self.assertLess(restart.index("lock(core_mutex)"), restart.index("controllerHasActiveConnection()"))
+        self.assertLess(watchdog.index("lock(core_mutex)"), watchdog.index("controllerHasActiveConnection()"))
         self.assertIn("ble_server->getConnectedCount()", adapter)
         self.assertIn("advertising->start()", adapter)
         self.assertIn("advertising_restart_failures", header)
@@ -542,14 +540,11 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
             / "gatekeeper_app/android/app/src/main/kotlin/com/kshouse/gatekeeper_app/blewake/BleWakeContract.kt"
         ).read_text(encoding="utf-8")
         header = (ROOT / "include" / "GattProtocol.h").read_text(encoding="utf-8")
-        main = (ROOT / "src" / "main.cpp").read_text(encoding="utf-8")
+        payload = (ROOT / "include" / "AdvertisementPayload.h").read_text(encoding="utf-8")
         self.assertIn('TARGET_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"', android)
-        # The pinned pioarduino BLEBeacon setter swaps this argument before
-        # serializing its packed struct.  0x4C00 therefore emits the standard
-        # little-endian Apple company bytes 4C 00 consumed by Android's
-        # manufacturer ID 0x004C filter.  Passing 0x004C emits 00 4C instead.
-        self.assertIn("setManufacturerId(0x4C00)", main)
-        self.assertNotIn("setManufacturerId(0x004C)", main)
+        # Explicit wire encoder is covered by the full native golden fixture.
+        self.assertIn("0xff, 0x4c, 0x00", payload)
+        self.assertIn("kIBeaconFilterPrefix", payload)
         for token in ("0x02", "0x15", "0xA1", "0xB2", "0x90"):
             self.assertIn(token, header)
 

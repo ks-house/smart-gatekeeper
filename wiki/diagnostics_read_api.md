@@ -546,3 +546,35 @@ The current periodic advisory shows old firmware `2.1.469+main.g6a45aec`,
 uptime 5,585 seconds, BLE expected/active=true, no current connections and zero
 current-boot GATT/auth/sensor/relay counts. These are not independent RF or
 physical-door observations. New firmware `2.1.480` installation is still unobserved.
+
+## 2026-09-14 BLE discovery recovery extension (implementation candidate)
+
+No new token, wrapper, database migration or write capability is required.
+Optional `native.scan.alternative_*` fields preserve the finite foreground
+scanner's stage, aggregate result/candidate/exact-fresh-match/error counts,
+start/end clocks and primary-registration restoration status. Counters are
+bounded to1,000,000; arbitrary codes, raw packets and other-device identifiers
+are rejected. `native.location_services_enabled` is nullable and does not
+claim the physical cause of an earlier failure. These new fields remain absent
+when ingesting an old immutable report, so N-1 retry identity is stable.
+
+Target `unsigned_advisory.ble_advertisement` retains schema1 primary/response
+application flags, attempt/applied generations, periodic refresh count/interval,
+last successful application age, payload lengths and closed error codes.
+The controller applies deterministic bytes again without relying solely on its
+active flag. Refresh count is NOT a host-reset count, applied flags are NOT RF
+reception evidence, and busy connection/OTA periods defer refresh. The MQTT
+serializer omits this optional block if JSON/wire budgets cannot accommodate it;
+required signed status/OTA information is preserved. Missing old/new optional
+fields mean unavailable evidence, not zero failures or healthy radio.
+
+Admin attempts show these observations separately from signed Target state.
+A completed NO_MATCHING_PACKET recovery newer than all known session/packet
+timestamps is classified MOBILE_SCAN_RECOVERY → TARGET_ADVERTISEMENT_NOT_OBSERVED.
+A later packet/session, uncertain clock or unrelated field window prevents that
+override. Incidents label SCAN_RECOVERY_FAILED as scan recovery evidence, not
+Android dispatch evidence. Neither classifier infers arrival or physical opening.
+
+Location-service gating follows the current location-dependent beacon manifest;
+it does not introduce neverForLocation or change remote MQTT/update authority.
+[AOSP BLE scanning requirements](https://source.android.com/docs/core/connect/bluetooth/ble)

@@ -8,6 +8,7 @@
 #include "MqttDiagnosticScratch.h"
 #include "MqttConnectionPolicy.h"
 #include "MqttConnectionJson.h"
+#include "BleAdvertisementJson.h"
 #include "config.h"
 #include "ConfigManager.h"
 #include "DiagnosticsManager.h"
@@ -2522,6 +2523,9 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     OtaManager::appendDiagnostics(doc.createNestedObject("ota"));
     sgk::appendMqttConnectionJson(doc, mqttConnection,
         mqttReconnect.remaining(millis()), millis(), sizeof(pendingTelemetry));
+    const auto advertisementDiagnostics = GattServer::getDiagnostics();
+    sgk::appendBleAdvertisementJson(doc, advertisementDiagnostics,
+        observed_now, sizeof(pendingTelemetry));
     const size_t telemetryBytes = measureJson(doc);
     pendingTelemetryValid = !doc.overflowed() && telemetryBytes > 0 &&
         telemetryBytes < sizeof(pendingTelemetry) &&

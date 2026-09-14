@@ -190,6 +190,14 @@ class UpdateChecker {
     return _fail(finalFailure);
   }
 
+  Future<void> _prepareUpdate() async {
+    try {
+      await _securityChannel
+          .invokeMethod<bool>('prepareUpdate')
+          .timeout(const Duration(seconds: 1));
+    } catch (_) {}
+  }
+
   Future<bool> downloadUpdate({String? overrideUrl}) async {
     if (state == UpdateState.downloading || state == UpdateState.verifying) {
       return false;
@@ -211,6 +219,7 @@ class UpdateChecker {
     }.toList();
     if (urls.isEmpty) return _fail('NO_UPDATE_URL');
     _transition(UpdateState.downloading);
+    await _prepareUpdate();
     downloadProgress.value = 0;
     final tempDir = await getTemporaryDirectory();
     final candidatePath = '${tempDir.path}/smart-gatekeeper-update.apk.part';
@@ -261,6 +270,9 @@ class UpdateChecker {
           'update_pending_requested_at',
           DateTime.now().toUtc().toIso8601String(),
         );
+        // Best-effort cancellation only. A missing scanner bridge must never
+        // prevent the independently verified APK from reaching the installer.
+        await _prepareUpdate();
         final result = await OpenFilex.open(verifiedPath);
         if (result.type != ResultType.done) {
           lastFailureReason = 'INSTALLER_${result.type}';

@@ -35,6 +35,7 @@ object BleGattManualOpenExecutor {
       ?: return ManualOpenResult(false, "TARGET_UNAVAILABLE")
     val credentialId = BleCredentialConfigStore(appContext).credentialId()
       ?: return ManualOpenResult(false, "CREDENTIAL_UNAVAILABLE")
+    com.kshouse.gatekeeper_app.blewake.BleForegroundDiscovery.cancel(appContext, "CANCELLED_GATT")
     val ownerLease = CrossProcessBleOwnerCoordinator.forContext(appContext).tryAcquireNative()
       ?: run {
         credentialId.fill(0)
