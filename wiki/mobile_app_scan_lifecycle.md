@@ -1,6 +1,6 @@
 # 모바일 앱 비콘 스캔 생애주기
 
-## 2026-09-15 home integration correction (local, not published)
+## 2026-09-15 home integration correction (published45401)
 
 Home title/detail/icon, settings card and scan-registration description now use
 the same BackgroundAccessStatus. Exclusive discovery is blue informational;
@@ -10,8 +10,12 @@ is restored; lack of Target observations remains visible and is not relabeled
 as successful discovery. Optional identity/updater injection enables actual
 SmartKeyHomeScreen widget tests without contacting production or changing
 default runtime services. Five new widget tests pass, full Flutter126 passes,
-analyzer and OTA contract pass. APK45201 remains the published version; this
-follow-up code has not been deployed.
+analyzer and OTA contract pass. PR418 merged exact main
+ea563a1034bfa4d5ce2dc4b8c6be9754cd495394; mobile34875488269 published
+1.0.0-gea563a1/build45401. Independent HTTPS checks at approximately02:51KST
+match both complete APKs and three manifests to the signed CI artifact. Previous
+valid pairs are retained. Phone installation remains unverified; publication
+does not establish actual Target reception or physical entry.
 
 ## 2026-09-15 follow-up: home projection remains inconsistent in45201
 
