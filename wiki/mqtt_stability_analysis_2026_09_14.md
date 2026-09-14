@@ -263,6 +263,14 @@ TLS 상세 errno hook, filtered broker 로그 수집, 진단 저주기 분리, �
   진단을 반환했다. 초기 연결 generation1, 계획 외 단절0, flapping=false이며
   아직 실제 단절 edge의 전달을 검증한 것은 아니다. heap68836B, lifetime min52444B,
   largest63476B는 해당 초기 snapshot일 뿐 장기 최저치가 아니다.
+- 후속 health15634(15:51:42 KST)에서 실제 edge 두 개가 저장·조회됐다:
+  sequence1 `OTA_SUSPEND`(계획 단절), sequence2 `TRANSPORT_LOST/-3`(계획 외).
+  후자는 uptime217910ms, 직전 연결152149ms, heap104564/largest39924B,
+  loop-gap 최대2488ms, Wi-Fi generation0으로 기록됐다. health15636은 같은 boot에서
+  연결 generation3/last_connected225128ms를 반환하므로 진단값 기준 **7.218초 후
+  자동 재연결**했다. VALID·IDLE·relay OFF도 유지됐다. 최저 heap은40264B로
+  내려갔으나 이 값만으로 단절 원인이나 전압 강하를 확정할 수 없다.
+  이번 보완으로 실제 사건 보존과 복구는 확인했지만 단절 자체가 제거된 것은 아니다.
 - 앱 변경/업데이트, 수동 문 개방, 추가 재부팅, broker 설정 변경은 하지 않았다.
   기존 PAUSED 관측 설정도 유지했다. broker reader는 `NOT_CONFIGURED`,
   최초 단절 원인과 24/72시간 안정성, 센서 NO_ECHO/ARM_TIMEOUT의 물리 출입
