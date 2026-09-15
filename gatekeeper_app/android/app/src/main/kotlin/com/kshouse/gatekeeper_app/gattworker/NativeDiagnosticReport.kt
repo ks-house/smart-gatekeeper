@@ -160,7 +160,10 @@ internal object NativeDiagnosticReport {
   private val performanceFields = mapOf("connect_setup_ms" to "connectSetupMs", "negotiation_ms" to "negotiationMs",
     "challenge_ms" to "challengeMs", "signing_ms" to "signingMs", "proof_write_ms" to "proofWriteMs",
     "result_wait_ms" to "resultWaitMs", "negotiated_mtu" to "negotiatedMtu", "mtu_status" to "mtuStatus",
-    "high_priority_requested" to "highPriorityRequested")
+    "high_priority_requested" to "highPriorityRequested", "protocol_mode" to "protocolMode",
+    "link_connect_ms" to "linkConnectMs", "service_discovery_ms" to "serviceDiscoveryMs",
+    "mtu_negotiation_ms" to "mtuNegotiationMs", "indication_setup_ms" to "indicationSetupMs",
+    "setup_phase" to "setupPhase")
   private val wakeFields = mapOf("source" to "source", "success" to "success", "received_epoch_ms" to "receivedEpochMs",
     "received_elapsed_ms" to "receivedElapsedMs", "callback_latency_ms" to "callbackLatencyMs",
     "screen_interactive" to "screenInteractive", "result_count" to "resultCount", "callback_type" to "callbackType", "error_code" to "errorCode")

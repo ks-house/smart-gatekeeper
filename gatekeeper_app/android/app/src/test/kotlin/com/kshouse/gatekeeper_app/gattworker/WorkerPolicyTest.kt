@@ -131,6 +131,12 @@ class WorkerPolicyTest {
           negotiatedMtu = 247,
           mtuStatus = MtuNegotiationStatus.ACCEPTED,
           highPriorityRequested = true,
+          protocolMode = GattProtocolMode.FAST_V2,
+          linkConnectMs = 70,
+          serviceDiscoveryMs = 20,
+          mtuNegotiationMs = 10,
+          indicationSetupMs = 20,
+          setupPhase = GattSetupPhase.READY,
         ),
       ),
     )
@@ -150,6 +156,12 @@ class WorkerPolicyTest {
     assertEquals(247, decoded.gattPerformance?.transport?.negotiatedMtu)
     assertEquals(MtuNegotiationStatus.ACCEPTED, decoded.gattPerformance?.transport?.mtuStatus)
     assertTrue(decoded.gattPerformance?.transport?.highPriorityRequested == true)
+    assertEquals(GattProtocolMode.FAST_V2, decoded.gattPerformance?.transport?.protocolMode)
+    assertEquals(70L, decoded.gattPerformance?.transport?.linkConnectMs)
+    assertEquals(20L, decoded.gattPerformance?.transport?.serviceDiscoveryMs)
+    assertEquals(10L, decoded.gattPerformance?.transport?.mtuNegotiationMs)
+    assertEquals(20L, decoded.gattPerformance?.transport?.indicationSetupMs)
+    assertEquals(GattSetupPhase.READY, decoded.gattPerformance?.transport?.setupPhase)
     assertFalse(SessionLedgerCodec.encode(listOf(session)).contains("device_address"))
   }
 

@@ -46,6 +46,44 @@ class FakeService:
 
 
 class MobileDiagnosticsTest(unittest.TestCase):
+    def test_gatt_setup_breakdown_is_bounded_and_backward_compatible(self):
+        value = bundle()
+        value["sessions"] = [{
+            "state": "SUCCEEDED",
+            "gatt_performance": {
+                "connect_setup_ms": 120,
+                "negotiated_mtu": 247,
+                "mtu_status": "ACCEPTED",
+                "high_priority_requested": True,
+                "protocol_mode": "FAST_V2",
+                "link_connect_ms": 70,
+                "service_discovery_ms": 20,
+                "mtu_negotiation_ms": 10,
+                "indication_setup_ms": 20,
+                "setup_phase": "READY",
+            },
+        }]
+        parsed = MobileDiagnosticBundle.model_validate(value)
+        performance = ingest_bundle_payload(parsed)["sessions"][0]["gatt_performance"]
+        self.assertEqual("FAST_V2", performance["protocol_mode"])
+        self.assertEqual(70, performance["link_connect_ms"])
+        self.assertEqual("READY", performance["setup_phase"])
+
+        old = bundle()
+        old["sessions"] = [{"state": "SUCCEEDED", "gatt_performance": {
+            "connect_setup_ms": 120, "high_priority_requested": False,
+        }}]
+        self.assertIsNone(MobileDiagnosticBundle.model_validate(
+            old).sessions[0].gatt_performance.link_connect_ms)
+
+        for field, invalid in (("link_connect_ms", -1),
+                               ("service_discovery_ms", 3600001),
+                               ("setup_phase", "private text")):
+            changed = json.loads(json.dumps(value))
+            changed["sessions"][0]["gatt_performance"][field] = invalid
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                MobileDiagnosticBundle.model_validate(changed)
+
     def test_alternative_scan_contract_is_bounded_private_and_backward_compatible(self):
         value = bundle()
         value["native"]["scan"] = dict(observation="NO_RECENT_PACKET", lifecycle=[],

@@ -10,11 +10,25 @@ enum class MtuNegotiationStatus {
   TIMED_OUT,
 }
 
+enum class GattSetupPhase {
+  NOT_STARTED,
+  LINK_CONNECT,
+  SERVICE_DISCOVERY,
+  MTU_NEGOTIATION,
+  INDICATION_SETUP,
+  READY,
+}
+
 data class GattTransportPerformance(
   val negotiatedMtu: Int = 23,
   val mtuStatus: MtuNegotiationStatus = MtuNegotiationStatus.NOT_REQUESTED,
   val highPriorityRequested: Boolean = false,
   val protocolMode: GattProtocolMode = GattProtocolMode.LEGACY_V1,
+  val linkConnectMs: Long? = null,
+  val serviceDiscoveryMs: Long? = null,
+  val mtuNegotiationMs: Long? = null,
+  val indicationSetupMs: Long? = null,
+  val setupPhase: GattSetupPhase = GattSetupPhase.NOT_STARTED,
 )
 
 data class GattSessionPerformance(
@@ -37,6 +51,11 @@ data class GattSessionPerformance(
     "mtuStatus" to transport.mtuStatus.name,
     "highPriorityRequested" to transport.highPriorityRequested,
     "protocolMode" to transport.protocolMode.name,
+    "linkConnectMs" to transport.linkConnectMs,
+    "serviceDiscoveryMs" to transport.serviceDiscoveryMs,
+    "mtuNegotiationMs" to transport.mtuNegotiationMs,
+    "indicationSetupMs" to transport.indicationSetupMs,
+    "setupPhase" to transport.setupPhase.name,
   )
 }
 

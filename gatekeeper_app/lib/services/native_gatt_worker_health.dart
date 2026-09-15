@@ -67,9 +67,15 @@ class GattPerformanceSummary {
     this.signingMs,
     this.proofWriteMs,
     this.resultWaitMs,
+    this.linkConnectMs,
+    this.serviceDiscoveryMs,
+    this.mtuNegotiationMs,
+    this.indicationSetupMs,
     required this.negotiatedMtu,
     required this.mtuStatus,
     required this.highPriorityRequested,
+    required this.protocolMode,
+    required this.setupPhase,
   });
 
   final int? connectSetupMs;
@@ -78,9 +84,15 @@ class GattPerformanceSummary {
   final int? signingMs;
   final int? proofWriteMs;
   final int? resultWaitMs;
+  final int? linkConnectMs;
+  final int? serviceDiscoveryMs;
+  final int? mtuNegotiationMs;
+  final int? indicationSetupMs;
   final int negotiatedMtu;
   final String mtuStatus;
   final bool highPriorityRequested;
+  final String protocolMode;
+  final String setupPhase;
 
   factory GattPerformanceSummary.fromMap(Map<Object?, Object?> value) {
     return GattPerformanceSummary(
@@ -90,9 +102,15 @@ class GattPerformanceSummary {
       signingMs: (value['signingMs'] as num?)?.toInt(),
       proofWriteMs: (value['proofWriteMs'] as num?)?.toInt(),
       resultWaitMs: (value['resultWaitMs'] as num?)?.toInt(),
+      linkConnectMs: (value['linkConnectMs'] as num?)?.toInt(),
+      serviceDiscoveryMs: (value['serviceDiscoveryMs'] as num?)?.toInt(),
+      mtuNegotiationMs: (value['mtuNegotiationMs'] as num?)?.toInt(),
+      indicationSetupMs: (value['indicationSetupMs'] as num?)?.toInt(),
       negotiatedMtu: (value['negotiatedMtu'] as num?)?.toInt() ?? 23,
       mtuStatus: value['mtuStatus']?.toString() ?? 'NOT_REQUESTED',
       highPriorityRequested: value['highPriorityRequested'] == true,
+      protocolMode: value['protocolMode']?.toString() ?? 'LEGACY_V1',
+      setupPhase: value['setupPhase']?.toString() ?? 'NOT_STARTED',
     );
   }
 }

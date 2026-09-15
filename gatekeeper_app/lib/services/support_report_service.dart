@@ -189,6 +189,14 @@ class SupportReportService {
                 'mtu_status': _safeCode(performance['mtuStatus']),
                 'high_priority_requested':
                     performance['highPriorityRequested'] == true,
+                'protocol_mode': _safeCode(performance['protocolMode']),
+                'link_connect_ms': _safeInt(performance['linkConnectMs']),
+                'service_discovery_ms':
+                    _safeInt(performance['serviceDiscoveryMs']),
+                'mtu_negotiation_ms': _safeInt(performance['mtuNegotiationMs']),
+                'indication_setup_ms':
+                    _safeInt(performance['indicationSetupMs']),
+                'setup_phase': _safeCode(performance['setupPhase']),
               }
             : null,
       };

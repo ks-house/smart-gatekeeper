@@ -192,6 +192,20 @@ void main() {
     expect(report['sessions'], fixture['sessions']);
   });
 
+  test('support report keeps bounded GATT setup phase timings', () async {
+    final report = await SupportReportService(nativeBridge: _GattPerfBridge())
+        .buildMap(identity: identity, health: null);
+    final sessions = report['sessions'] as List;
+    final performance = (sessions.single as Map)['gatt_performance'] as Map;
+
+    expect(performance['protocol_mode'], 'FAST_V2');
+    expect(performance['link_connect_ms'], 1234);
+    expect(performance['service_discovery_ms'], 321);
+    expect(performance['mtu_negotiation_ms'], 87);
+    expect(performance['indication_setup_ms'], 45);
+    expect(performance['setup_phase'], 'READY');
+  });
+
   test('dense full report fits ingest byte budget and keeps newest evidence',
       () async {
     final report = await SupportReportService(nativeBridge: _DenseBridge())
@@ -384,6 +398,30 @@ class _DenseBridge extends _ContractBridge {
                   'callbackType': 2,
                   'errorCode': 0,
                 }),
+      };
+}
+
+class _GattPerfBridge extends _ContractBridge {
+  @override
+  Future<Map<Object?, Object?>> readRecentDiagnostics() async => {
+        'androidSdk': 36,
+        'sessions': [
+          {
+            'sessionId': 'gatt-performance-session',
+            'createdEpochMs': 4102444800000,
+            'updatedEpochMs': 4102444800000,
+            'state': 'SUCCEEDED',
+            'gattPerformance': {
+              'protocolMode': 'FAST_V2',
+              'linkConnectMs': 1234,
+              'serviceDiscoveryMs': 321,
+              'mtuNegotiationMs': 87,
+              'indicationSetupMs': 45,
+              'setupPhase': 'READY',
+            },
+          },
+        ],
+        'wakeEvents': <Map<String, Object?>>[],
       };
 }
 

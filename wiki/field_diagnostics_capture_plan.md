@@ -45,6 +45,13 @@ synchronous network work to the BLE/sensor/relay critical path.
 | HA | Latest state, availability and selected diagnostics are projected | HA is an operator summary, not the forensic store; high-cardinality attempt traces must not be added as entities |
 | Physical door | Sensor and relay FSM events exist | Without an independent door-contact input, relay completion cannot prove that the door leaf opened |
 
+Android support bundles now retain a bounded breakdown of GATT setup as
+`link_connect_ms`, `service_discovery_ms`, `mtu_negotiation_ms`, and
+`indication_setup_ms`, together with the last `setup_phase` and negotiated
+`protocol_mode`. Backend validation accepts these optional fields without
+rejecting older installed apps. The app exposes them only in advanced
+diagnostics; HA remains a low-cardinality operational summary.
+
 Repository source contains a Support Report and Advanced Diagnostics surface,
 but installation on each family phone is a separate fact to verify. The plan
 extends those surfaces instead of creating an unrelated diagnostic application.
