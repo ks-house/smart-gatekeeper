@@ -11,6 +11,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
@@ -323,6 +324,16 @@ class AndroidBleGattTransport @JvmOverloads constructor(
   @Volatile
   private var highPriorityRequested = false
   @Volatile
+  private var linkConnectMs: Long? = null
+  @Volatile
+  private var serviceDiscoveryMs: Long? = null
+  @Volatile
+  private var mtuNegotiationMs: Long? = null
+  @Volatile
+  private var indicationSetupMs: Long? = null
+  @Volatile
+  private var setupPhase = GattSetupPhase.NOT_STARTED
+  @Volatile
   override var protocolMode: GattProtocolMode = GattProtocolMode.LEGACY_V1
     private set
 
@@ -338,7 +349,13 @@ class AndroidBleGattTransport @JvmOverloads constructor(
     mtu = DEFAULT_MTU
     mtuStatus = MtuNegotiationStatus.NOT_REQUESTED
     highPriorityRequested = false
+    linkConnectMs = null
+    serviceDiscoveryMs = null
+    mtuNegotiationMs = null
+    indicationSetupMs = null
+    setupPhase = GattSetupPhase.LINK_CONNECT
     protocolMode = GattProtocolMode.LEGACY_V1
+    var phaseStarted = SystemClock.elapsedRealtime()
     val callback = callback(newConnection)
     val newGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
@@ -353,8 +370,17 @@ class AndroidBleGattTransport @JvmOverloads constructor(
         ?: GattTransportException(TransportFailureCode.DISCONNECTED)
     }
     newConnection.connected.await()
+    linkConnectMs = elapsedSince(phaseStarted)
+    phaseStarted = SystemClock.elapsedRealtime()
+    setupPhase = GattSetupPhase.SERVICE_DISCOVERY
     newConnection.servicesReady.await()
+    serviceDiscoveryMs = elapsedSince(phaseStarted)
+    phaseStarted = SystemClock.elapsedRealtime()
+    setupPhase = GattSetupPhase.MTU_NEGOTIATION
     negotiateMtu(newGatt, newConnection)
+    mtuNegotiationMs = elapsedSince(phaseStarted)
+    phaseStarted = SystemClock.elapsedRealtime()
+    setupPhase = GattSetupPhase.INDICATION_SETUP
     // A terminal callback retains its status even if cached services remain readable.
     callbackCoordinator.currentFailure(newConnection)?.let { throw it }
     val service = newGatt.getService(GattProtocol.SERVICE_UUID)
@@ -380,6 +406,8 @@ class AndroidBleGattTransport @JvmOverloads constructor(
       enableIndication(GattProtocol.CHALLENGE_UUID)
       enableIndication(GattProtocol.RESULT_UUID)
     }
+    indicationSetupMs = elapsedSince(phaseStarted)
+    setupPhase = GattSetupPhase.READY
   }
 
   override suspend fun negotiate(clientHello: ByteArray): ByteArray {
@@ -440,7 +468,15 @@ class AndroidBleGattTransport @JvmOverloads constructor(
     mtuStatus = mtuStatus,
     highPriorityRequested = highPriorityRequested,
     protocolMode = protocolMode,
+    linkConnectMs = linkConnectMs,
+    serviceDiscoveryMs = serviceDiscoveryMs,
+    mtuNegotiationMs = mtuNegotiationMs,
+    indicationSetupMs = indicationSetupMs,
+    setupPhase = setupPhase,
   )
+
+  private fun elapsedSince(startedMs: Long): Long =
+    (SystemClock.elapsedRealtime() - startedMs).coerceAtLeast(0)
 
   private suspend fun negotiateMtu(
     activeGatt: BluetoothGatt,

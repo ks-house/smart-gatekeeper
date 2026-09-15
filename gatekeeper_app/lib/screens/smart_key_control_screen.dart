@@ -513,8 +513,18 @@ class _SmartKeyControlScreenState extends State<SmartKeyControlScreen> {
                                       color: Colors.white70, fontSize: 11)),
                               const SizedBox(height: 4),
                               Text(
+                                  'GATT setup (ms): link ${_workerHealth!.lastGattPerformance!.linkConnectMs?.toString() ?? "-"} · '
+                                  'services ${_workerHealth!.lastGattPerformance!.serviceDiscoveryMs?.toString() ?? "-"} · '
+                                  'MTU ${_workerHealth!.lastGattPerformance!.mtuNegotiationMs?.toString() ?? "-"} · '
+                                  'CCCD ${_workerHealth!.lastGattPerformance!.indicationSetupMs?.toString() ?? "-"} '
+                                  '(${_workerHealth!.lastGattPerformance!.setupPhase})',
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 11)),
+                              const SizedBox(height: 4),
+                              Text(
                                   'GATT link: MTU ${_workerHealth!.lastGattPerformance!.negotiatedMtu} '
                                   '(${_workerHealth!.lastGattPerformance!.mtuStatus}) · '
+                                  '${_workerHealth!.lastGattPerformance!.protocolMode} · '
                                   'high priority ${_workerHealth!.lastGattPerformance!.highPriorityRequested ? "REQUESTED" : "UNAVAILABLE"}',
                                   style: const TextStyle(
                                       color: Colors.white70, fontSize: 11)),

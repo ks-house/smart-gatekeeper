@@ -174,7 +174,24 @@ not guarantee OS radio discovery time or Samsung background scheduling. A phone
 was not connected for this change, and AJ-SR04T/GPIO3 were not wired, so pocket,
 screen-off, sensor and physical relay timing remain field gates.
 
-### 9.1. Transient access-ready notification lifecycle
+### 9.1. GATT setup latency breakdown
+
+The durable session performance record additionally divides `connectSetupMs`
+into `linkConnectMs`, `serviceDiscoveryMs`, `mtuNegotiationMs`, and
+`indicationSetupMs`. `setupPhase` retains the last phase reached when setup
+fails, and `protocolMode` distinguishes the v2 fast path from the legacy OTA
+compatibility shim. These bounded fields are included in the redacted support
+report, accepted by Backend diagnostics ingestion, and shown only in the
+advanced diagnostic surface.
+
+This instrumentation deliberately keeps the existing low-power OS-managed
+presence scan and one-shot GATT lifetime. It does not hold a persistent BLE
+connection, enable continuous low-latency scanning, or add network work to the
+access path. One successful physical trial can therefore identify whether link
+establishment, service discovery, MTU negotiation, or indication setup owns the
+setup delay before a narrower latency optimization is selected.
+
+### 9.2. Transient access-ready notification lifecycle
 
 `출입 준비 완료` represents only the bounded Target `ARMED` sensor window; it
 is not a durable success record and does not claim that the physical door

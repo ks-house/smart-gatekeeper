@@ -510,6 +510,12 @@ object SessionLedgerCodec {
     .put("negotiated_mtu", performance.transport.negotiatedMtu)
     .put("mtu_status", performance.transport.mtuStatus.name)
     .put("high_priority_requested", performance.transport.highPriorityRequested)
+    .put("protocol_mode", performance.transport.protocolMode.name)
+    .put("link_connect_ms", performance.transport.linkConnectMs)
+    .put("service_discovery_ms", performance.transport.serviceDiscoveryMs)
+    .put("mtu_negotiation_ms", performance.transport.mtuNegotiationMs)
+    .put("indication_setup_ms", performance.transport.indicationSetupMs)
+    .put("setup_phase", performance.transport.setupPhase.name)
 
   private fun performanceFromJson(value: JSONObject): GattSessionPerformance = GattSessionPerformance(
     connectSetupMs = value.optionalLong("connect_setup_ms"),
@@ -524,6 +530,16 @@ object SessionLedgerCodec {
         MtuNegotiationStatus.valueOf(value.optString("mtu_status"))
       }.getOrDefault(MtuNegotiationStatus.NOT_REQUESTED),
       highPriorityRequested = value.optBoolean("high_priority_requested", false),
+      protocolMode = runCatching {
+        GattProtocolMode.valueOf(value.optString("protocol_mode"))
+      }.getOrDefault(GattProtocolMode.LEGACY_V1),
+      linkConnectMs = value.optionalLong("link_connect_ms"),
+      serviceDiscoveryMs = value.optionalLong("service_discovery_ms"),
+      mtuNegotiationMs = value.optionalLong("mtu_negotiation_ms"),
+      indicationSetupMs = value.optionalLong("indication_setup_ms"),
+      setupPhase = runCatching {
+        GattSetupPhase.valueOf(value.optString("setup_phase"))
+      }.getOrDefault(GattSetupPhase.NOT_STARTED),
     ),
   )
 

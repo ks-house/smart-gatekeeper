@@ -359,9 +359,15 @@ void main() {
         'signingMs': 10,
         'proofWriteMs': 60,
         'resultWaitMs': 90,
+        'linkConnectMs': 70,
+        'serviceDiscoveryMs': 20,
+        'mtuNegotiationMs': 10,
+        'indicationSetupMs': 20,
         'negotiatedMtu': 247,
         'mtuStatus': 'ACCEPTED',
         'highPriorityRequested': true,
+        'protocolMode': 'FAST_V2',
+        'setupPhase': 'READY',
       },
     });
 
@@ -370,6 +376,12 @@ void main() {
     expect(health.lastGattPerformance?.negotiatedMtu, 247);
     expect(health.lastGattPerformance?.mtuStatus, 'ACCEPTED');
     expect(health.lastGattPerformance?.highPriorityRequested, isTrue);
+    expect(health.lastGattPerformance?.linkConnectMs, 70);
+    expect(health.lastGattPerformance?.serviceDiscoveryMs, 20);
+    expect(health.lastGattPerformance?.mtuNegotiationMs, 10);
+    expect(health.lastGattPerformance?.indicationSetupMs, 20);
+    expect(health.lastGattPerformance?.protocolMode, 'FAST_V2');
+    expect(health.lastGattPerformance?.setupPhase, 'READY');
   });
 
   test('non-canonical Target session IDs are not exposed for Backend lookup',

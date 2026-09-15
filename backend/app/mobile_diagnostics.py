@@ -216,6 +216,12 @@ class GattPerformance(StrictModel):
     negotiated_mtu: Optional[int] = Field(default=None, ge=0, le=517)
     mtu_status: Optional[Code] = Field(default=None, pattern=r"^[A-Z0-9_-]{1,64}$")
     high_priority_requested: bool = False
+    protocol_mode: Optional[Code] = Field(default=None, pattern=r"^[A-Z0-9_-]{1,64}$")
+    link_connect_ms: Optional[int] = Field(default=None, ge=0, le=3600000)
+    service_discovery_ms: Optional[int] = Field(default=None, ge=0, le=3600000)
+    mtu_negotiation_ms: Optional[int] = Field(default=None, ge=0, le=3600000)
+    indication_setup_ms: Optional[int] = Field(default=None, ge=0, le=3600000)
+    setup_phase: Optional[Code] = Field(default=None, pattern=r"^[A-Z0-9_-]{1,64}$")
 
 
 class SessionSnapshot(StrictModel):
