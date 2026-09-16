@@ -289,6 +289,19 @@ def field_recovery_advisory_projection(document):
         counters=("samples", "valid_streak", "max_valid_streak", "near_streak", "max_near_streak", "median_rejects",
                   "candidates", "rearm_rejects", "fsm_rejects", "triggers"))
     if sensor is not None and qualification is not None:
+        source = sample["qualification"]
+        timing_keys = ("first_valid_after_ms", "first_near_after_ms", "near_streak_started_after_ms",
+                       "first_candidate_after_ms", "trigger_after_ms")
+        timing = _closed_observation(source, nullable_counters=timing_keys)
+        if type(source.get("timing_schema")) is int and source["timing_schema"] == 1 and timing is not None:
+            valid, near, streak, candidate, trigger = (timing[key] for key in timing_keys)
+            # Invalid optional evidence must not erase the older valid counters.
+            ordered = ((near is None or valid is not None and valid <= near)
+                       and (streak is None or near is not None and near <= streak)
+                       and (candidate is None or valid is not None and valid <= candidate)
+                       and (trigger is None or candidate is not None and candidate <= trigger))
+            if ordered:
+                qualification.update(timing_schema=1, **timing)
         result["sensor_observation"] = dict(sensor, qualification=qualification)
     presence = _closed_observation(document.get("ble_presence"),
         booleans=("requested_ready", "applied_ready", "applied_valid", "pending"),
@@ -401,6 +414,37 @@ def _decimal(value, minimum=0):
     if not minimum <= number <= U64:
         raise ValueError("invalid decimal")
     return number
+
+
+def interpret_sensor_observation(advisory: dict | None) -> dict:
+    """Historical unsigned measurement interpretation, never a hardware verdict.
+
+    No physical-arrival clock exists. Even first-near to trigger can include
+    interrupted presence. Call with the closed advisory projection only.
+    """
+    sensor = (advisory or {}).get("sensor_observation") or {}
+    q = sensor.get("qualification") or {}
+    near = q.get("first_near_after_ms")
+    trigger = q.get("trigger_after_ms")
+    streak = q.get("near_streak_started_after_ms")
+    has_timing = q.get("timing_schema") == 1
+    return dict(
+        evidence="UNSIGNED_OBSERVATION", scope="LATEST_ARM_WINDOW_IN_REPORTED_BOOT",
+        started_ms=q.get("started_ms"), ended_ms=q.get("ended_ms"),
+        current_observation=sensor.get("kind", "NOT_SAMPLED"),
+        hardware_fault="UNDETERMINED", physical_arrival="NOT_OBSERVED",
+        arm_window=("TRIGGER_OBSERVED" if q.get("triggers", 0) > 0 else
+                    "WAITING_FOR_TRIGGER" if q.get("active") else
+                    "ENDED_WITHOUT_TRIGGER" if q.get("samples", 0) > 0 else "NOT_OBSERVED"),
+        timing_available=has_timing,
+        arm_to_first_near_ms=near if has_timing else None,
+        first_near_to_trigger_ms=(trigger - near if has_timing and near is not None
+                                  and trigger is not None and trigger >= near else None),
+        triggering_streak_to_trigger_ms=(trigger - streak if has_timing and streak is not None
+                                         and trigger is not None and trigger >= streak else None),
+        limitations=["ARM_WAIT_INCLUDES_APPROACH_TIME", "NO_ECHO_DOES_NOT_PROVE_HARDWARE_FAILURE",
+                     "TIMEOUT_DOES_NOT_PROVE_ATTEMPTED_PASSAGE", "NEAR_INTERVAL_MAY_INCLUDE_INTERRUPTED_PRESENCE"],
+    )
 
 
 def _receipt(event: dict, keyring: dict, domain: bytes) -> dict:
@@ -631,5 +675,10 @@ def classify_incident(events: list[dict], sensor: dict | None = None) -> dict:
                 access_path=next(iter(paths)) if len(paths) == 1 else "UNKNOWN",
                 explicit_reasons=sorted(set(reasons)), sensor_boundary=sensor_boundary,
                 classification="EXPLICIT_FAILURE" if reasons else "FLOW_REPORTED_COMPLETE" if terminal and terminal_codes & codes else "INCOMPLETE_EVIDENCE",
+                interpretation=("ARM_WINDOW_EXPIRED_WITHOUT_SENSOR_TRIGGER" if set(reasons) == {"ARM_TIMEOUT"}
+                                and "ACCESS_SENSOR_DETECTED" not in codes else
+                                "FLOW_COMPLETION_REPORTED" if terminal_codes & codes else "SEE_OBSERVED_STAGES"),
+                physical_failure="UNDETERMINED",
+                source_span_meaning="RECORDED_STAGE_SPAN_NOT_USER_WAIT",
                 missing_events_possible=True, source_span_ms=span,
                 physical_door="NOT_OBSERVABLE", arrival="NOT_OBSERVABLE", owner_attribution="UNRESOLVED")

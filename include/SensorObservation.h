@@ -117,18 +117,34 @@ struct SensorQualification {
   uint32_t rearm_rejects = 0;
   uint32_t fsm_rejects = 0;
   uint32_t triggers = 0;
+  // Offsets from begin(), not arrival times. UINT32_MAX means unobserved;
+  // subtraction remains valid across millis() rollover for bounded sessions.
+  uint32_t first_valid_after_ms = UINT32_MAX;
+  uint32_t first_near_after_ms = UINT32_MAX;
+  uint32_t near_streak_started_after_ms = UINT32_MAX;
+  uint32_t first_candidate_after_ms = UINT32_MAX;
+  uint32_t trigger_after_ms = UINT32_MAX;
 
   void begin(uint32_t now_ms) { *this = {}; started_ms = now_ms; active = true; }
   void finish(uint32_t now_ms) { if (active) { ended_ms = now_ms; active = false; } }
   void observe(uint32_t now_ms, uint16_t raw, uint16_t median, uint16_t threshold,
                bool blocked, bool triggered) {
     if (!active) return;
+    const uint32_t elapsed = now_ms - started_ms;
     incrementSensorCounter(samples);
     median_mm = median;
     median_ms = now_ms;
     if (raw != kNoSensorMeasurement) incrementSensorCounter(valid_streak);
     else valid_streak = 0;
     const bool raw_near = raw != kNoSensorMeasurement && raw <= threshold;
+    if (raw != kNoSensorMeasurement && first_valid_after_ms == UINT32_MAX)
+      first_valid_after_ms = elapsed;
+    if (raw_near) {
+      if (first_near_after_ms == UINT32_MAX) first_near_after_ms = elapsed;
+      if (near_streak == 0) near_streak_started_after_ms = elapsed;
+    } else {
+      near_streak_started_after_ms = UINT32_MAX;
+    }
     if (raw_near) incrementSensorCounter(near_streak);
     else near_streak = 0;
     if (valid_streak > max_valid_streak) max_valid_streak = valid_streak;
@@ -136,10 +152,14 @@ struct SensorQualification {
     const bool candidate = median != kNoSensorMeasurement && median <= threshold;
     if (raw_near && !candidate) incrementSensorCounter(median_rejects);
     if (candidate) {
+      if (first_candidate_after_ms == UINT32_MAX) first_candidate_after_ms = elapsed;
       incrementSensorCounter(candidates);
       if (blocked) incrementSensorCounter(rearm_rejects);
       else if (!triggered) incrementSensorCounter(fsm_rejects);
-      else incrementSensorCounter(triggers);
+      else {
+        incrementSensorCounter(triggers);
+        if (trigger_after_ms == UINT32_MAX) trigger_after_ms = elapsed;
+      }
     }
   }
 };
