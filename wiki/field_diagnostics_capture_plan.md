@@ -456,7 +456,11 @@ only as a fallback, distinguishing missing read access from missing upload.
   that the owner's original report has already been stored.
 # September 16: measured approach and qualified-trigger evidence
 
-Implemented in `codex/sensor-evidence-20260916`; deployment/installation pending.
+PR422 merged as `fbfda68da15ae773ce3176a3c962c7aca364dba6`. Backend deployed
+September16 23:48:25 KST; Target510 installed as boot908 with VALID confirmed.
+Mobile45701 (`1.0.0-gfbfda68`) publication and independent primary/fallback/proxy
+readback completed by September17 00:01 KST. Phone installation and a new physical
+passage remain distinct from these software checks.
 
 - Target `sensor_observation.qualification` optionally includes `timing_schema=1`
   and nullable `first_valid_after_ms`, `first_near_after_ms`,
@@ -485,3 +489,7 @@ Implemented in `codex/sensor-evidence-20260916`; deployment/installation pending
 - Admin shows timing availability, unsigned scope and these limitations. Mobile
   home explains that no recent BLE packet can be normal outside radio range;
   registration errors and actual environmental blockers retain their existing handling.
+
+Production health22244 at23:52:56 KST reports the new nullable timing schema and
+interpretation. No ARMED window has been observed in that boot, so all timing
+values remain null and the window is NOT_OBSERVED, not a zero-latency success.
