@@ -2485,6 +2485,19 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     qualification["rearm_rejects"] = q.rearm_rejects;
     qualification["fsm_rejects"] = q.fsm_rejects;
     qualification["triggers"] = q.triggers;
+    // Optional advisory timing, scoped to qualification.started_ms in this boot.
+    // Do not change the signed summary/NVS ABI or infer physical arrival.
+    qualification["timing_schema"] = 1;
+    if (q.first_valid_after_ms != UINT32_MAX) qualification["first_valid_after_ms"] = q.first_valid_after_ms;
+    else qualification["first_valid_after_ms"] = nullptr;
+    if (q.first_near_after_ms != UINT32_MAX) qualification["first_near_after_ms"] = q.first_near_after_ms;
+    else qualification["first_near_after_ms"] = nullptr;
+    if (q.near_streak_started_after_ms != UINT32_MAX) qualification["near_streak_started_after_ms"] = q.near_streak_started_after_ms;
+    else qualification["near_streak_started_after_ms"] = nullptr;
+    if (q.first_candidate_after_ms != UINT32_MAX) qualification["first_candidate_after_ms"] = q.first_candidate_after_ms;
+    else qualification["first_candidate_after_ms"] = nullptr;
+    if (q.trigger_after_ms != UINT32_MAX) qualification["trigger_after_ms"] = q.trigger_after_ms;
+    else qualification["trigger_after_ms"] = nullptr;
 
     const auto& p = gattTelemetry.presence;
     JsonObject presence = doc.createNestedObject("ble_presence");

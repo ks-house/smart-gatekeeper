@@ -187,6 +187,23 @@ static void testActualSensorAndObservation() {
   q.finish(1000);
   q.observe(1100, 400, 400, 500, false, true);
   assert(q.triggers == 1 && q.ended_ms == 1000 && !q.active);
+  assert(q.first_valid_after_ms == 0 && q.first_near_after_ms == 0);
+  assert(q.first_candidate_after_ms == 200 && q.trigger_after_ms == 400);
+  assert(q.near_streak_started_after_ms == 400);  // Gap resets the streak, not first-near.
+  q.begin(UINT32_MAX - 99);
+  assert(q.first_near_after_ms == UINT32_MAX && q.trigger_after_ms == UINT32_MAX);
+  q.observe(0, sgk::kNoSensorMeasurement, sgk::kNoSensorMeasurement, 500, false, false);
+  assert(q.first_valid_after_ms == UINT32_MAX);
+  q.observe(100, 900, 900, 500, false, false);
+  q.observe(12000, 400, 900, 500, false, false);
+  q.observe(12200, 400, 400, 500, false, true);
+  assert(q.first_valid_after_ms == 200);
+  assert(q.first_near_after_ms == 12100);
+  assert(q.trigger_after_ms - q.first_near_after_ms == 200);
+  q.finish(12300);
+  q.begin(20000);
+  q.finish(80000);  // No samples does not invent zero latency.
+  assert(q.first_valid_after_ms == UINT32_MAX && q.trigger_after_ms == UINT32_MAX);
   const auto observed_before_reset = observation;
   UltrasonicSensor::resetHistory();
   echo_us = 0;

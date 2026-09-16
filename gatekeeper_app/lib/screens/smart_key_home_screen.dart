@@ -703,7 +703,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     };
     final observation = switch (health.scanObservationAt(DateTime.now())) {
       'RECENT_PACKET' => '최근 15초 내 Target 신호 수신',
-      'NO_RECENT_PACKET' => '최근 수신 없음 · 범위 밖이거나 수신 상태 확인 필요',
+      'NO_RECENT_PACKET' => '최근 Target 신호 없음 · 범위 밖에서는 정상일 수 있습니다',
       'CLOCK_UNCERTAIN' => '수신 시각 확인 필요',
       _ => '실제 수신 기록 없음 · 스캔 고장 판정은 아님',
     };

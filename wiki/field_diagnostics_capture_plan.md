@@ -454,3 +454,34 @@ only as a fallback, distinguishing missing read access from missing upload.
   open the app to allow synchronization. Confirm last-success status and then
   the real Backend admin row. Publication is not phone installation or evidence
   that the owner's original report has already been stored.
+# September 16: measured approach and qualified-trigger evidence
+
+Implemented in `codex/sensor-evidence-20260916`; deployment/installation pending.
+
+- Target `sensor_observation.qualification` optionally includes `timing_schema=1`
+  and nullable `first_valid_after_ms`, `first_near_after_ms`,
+  `near_streak_started_after_ms`, `first_candidate_after_ms`, `trigger_after_ms`.
+  These are milliseconds since that window's `started_ms`, with wrap-safe
+  subtraction. Zero is a measured immediate sample; null means unobserved.
+  A missing timing schema on older firmware is unavailable evidence, not zero.
+- The first-near clock survives invalid/distant samples; the current near-streak
+  start resets on either. After a successful trigger, no further ARMED samples
+  change this window. A new arm resets all offsets. Existing thresholds,
+  sampling frequency, median, authentication, rearm and relay behavior are unchanged.
+- The fields are unsigned advisory, scoped to the reported boot and latest
+  ARMED window. Match `(boot ID, started_ms)` with the signed session summary
+  before associating a window with a person. The signed V1 summary and NVS ABI
+  are unchanged. Backend health sampling retains observed snapshots; a window
+  overwritten before transmission, or a reboot, can lose these optional timings.
+  This is not a new durable per-session capture guarantee.
+- Health API adds `observation_interpretation`: measured arm-to-first-near,
+  first-near-to-trigger and triggering-streak-to-trigger intervals, plus explicit
+  unknown arrival/hardware-fault verdicts. Incident API preserves existing codes
+  and adds interpretation/physical-failure/source-span semantics.
+- ARMED-to-trigger includes possible approach time. First-near-to-trigger can
+  include interrupted presence. Neither equals a person's physical waiting time.
+  `ARM_TIMEOUT` proves expiry without completion, not attempted passage failure.
+  `NO_ECHO`/clearance `FAULT` cannot by themselves establish damaged hardware.
+- Admin shows timing availability, unsigned scope and these limitations. Mobile
+  home explains that no recent BLE packet can be normal outside radio range;
+  registration errors and actual environmental blockers retain their existing handling.

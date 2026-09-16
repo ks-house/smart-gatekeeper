@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import main
 from backend.app.diagnostics_read import create_diagnostics_read_router
-from backend.app.reliability_diagnostics import CORE_FIELDS, advisory_projection
+from backend.app.reliability_diagnostics import CORE_FIELDS, advisory_projection, interpret_sensor_observation
 from backend.tests.test_mobile_diagnostics import bundle
 from backend.tests.test_reliability_diagnostics import KEY, TARGET, BOOT, status_value
 
@@ -41,6 +41,44 @@ def observations():
 
 
 class FieldRecoveryAdvisoryTest(unittest.TestCase):
+    def test_approach_wait_is_not_sensor_latency(self):
+        value = observations()
+        timing = dict(timing_schema=1, first_valid_after_ms=100,
+                      first_near_after_ms=12000, near_streak_started_after_ms=12300,
+                      first_candidate_after_ms=12500, trigger_after_ms=12500)
+        value["sensor_observation"]["qualification"].update(timing, triggers=1)
+        projected = advisory_projection(value)
+        self.assertEqual(value, projected)
+        meaning = interpret_sensor_observation(projected)
+        self.assertEqual(12000, meaning["arm_to_first_near_ms"])
+        self.assertEqual(500, meaning["first_near_to_trigger_ms"])
+        self.assertEqual(200, meaning["triggering_streak_to_trigger_ms"])
+        self.assertEqual("TRIGGER_OBSERVED", meaning["arm_window"])
+        self.assertEqual("UNDETERMINED", meaning["hardware_fault"])
+        self.assertEqual("NOT_OBSERVED", meaning["physical_arrival"])
+
+    def test_legacy_and_invalid_timing_do_not_invent_latency_or_erase_evidence(self):
+        value = observations()
+        q = value["sensor_observation"]["qualification"]
+        legacy = copy.deepcopy(q)
+        timing = dict(timing_schema=1, first_valid_after_ms=0, first_near_after_ms=10,
+                      near_streak_started_after_ms=10, first_candidate_after_ms=20, trigger_after_ms=30)
+        for key, invalid in (("timing_schema", True), ("timing_schema", 2),
+                             ("first_valid_after_ms", True), ("first_near_after_ms", -1),
+                             ("trigger_after_ms", 2**32), ("trigger_after_ms", 5)):
+            q.clear()
+            q.update(legacy, **timing)
+            q[key] = invalid
+            projected = advisory_projection(value)
+            self.assertEqual(legacy, projected["sensor_observation"]["qualification"])
+            self.assertFalse(interpret_sensor_observation(projected)["timing_available"])
+        q.clear()
+        q.update(legacy, timing_schema=1, **{key: None for key in timing if key != "timing_schema"})
+        meaning = interpret_sensor_observation(advisory_projection(value))
+        self.assertIsNone(meaning["first_near_to_trigger_ms"])
+        self.assertEqual("ENDED_WITHOUT_TRIGGER", meaning["arm_window"])
+        self.assertEqual("UNDETERMINED", meaning["hardware_fault"])
+
     def test_exact_nested_shapes_round_trip_without_auth_or_pulse_conflation(self):
         value = observations()
         self.assertEqual(value, advisory_projection(value))
@@ -119,6 +157,8 @@ class FieldRecoveryAdvisoryTest(unittest.TestCase):
         self.assertEqual(observations(), sample["unsigned_advisory"])
         self.assertEqual("UNSIGNED_NOT_USED_FOR_CLASSIFICATION", sample["advisory_integrity"])
         self.assertNotIn("passage_rearm", sample["verified"])
+        self.assertEqual("UNDETERMINED", sample["observation_interpretation"]["hardware_fault"])
+        self.assertIsNone(sample["observation_interpretation"]["first_near_to_trigger_ms"])
         cur.fetchall.side_effect = [[dict(credential_ref="opaque", bundle_ref="a" * 32,
             created_at_ms=100, payload_json=bundle(), received_at=datetime(2026, 9, 13, 12))], []]
         with patch.object(main, "get_db", return_value=conn), patch.object(main, "_admin_principal"), \

@@ -1217,3 +1217,9 @@ an inference from application HMAC tests.
 | New updater check and API | HTTP200/stage14/error0/VALID preserved; TLS heap62388→105940B/MQTT restored; Backend2950–2952 | PASS metadata check/resource handoff/storage, not physical Range resume |
 | Remaining physical scope | No forced outage, supply measurement, local upload or door operation | Range resume/rollback/BROWNOUT root cause remain pending |
 | Later reset after initial stability |01:13:42 boot816/491; matching BROWNOUT/planned none, prior IDLE/relay OFF;01:16:46 still491/VALID | Installation retained; availability/power integrity NOT resolved; no additional command |
+
+## 2026-09-16 sensor timing instrumentation (local verification)
+
+- ESP32-C6 personal production build: PASS; RAM88736/327680B, flash1858368/7340032B.
+- Host regression covers zero-offset observation, interrupted near streaks, unobserved/new-window reset and millis rollover; root451 tests pass with2 environment skips.
+- Added observation offsets only; existing sensor qualification and relay policies unchanged. No physical trial or OTA performed. First-near to trigger is a measurement interval, not proof of user arrival or uninterrupted presence.

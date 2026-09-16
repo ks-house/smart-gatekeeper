@@ -638,12 +638,21 @@
           const target = item.target_controller || {};
           const mobileScan = item.mobile_scan_snapshot || {};
           const locationServices = item.mobile_location_services_enabled;
-          const mobileScanEvidence = `보고서 당시 BLE ${escapeHtml(mobileScan.observation || '미보고')} · 마지막 패킷 ${evidenceTime(mobileScan.last_packet_at_epoch_ms)} · 위치 서비스 ${locationServices == null ? '미보고' : locationServices ? '켜짐' : '꺼짐'}`;
+          const scanMeaning = mobileScan.observation === 'NO_RECENT_PACKET' ? '최근 수신 없음 (범위 밖일 수 있음 · 고장 미확정)' : mobileScan.observation;
+          const mobileScanEvidence = `보고서 당시 BLE ${escapeHtml(scanMeaning || '미보고')} · 마지막 패킷 ${evidenceTime(mobileScan.last_packet_at_epoch_ms)} · 위치 서비스 ${locationServices == null ? '미보고' : locationServices ? '켜짐' : '꺼짐'}`;
           const alternativeEvidence = mobileScan.alternative_stage
             ? `별도 수신 검사 ${escapeHtml(mobileScan.alternative_stage)} · 수신 ${Number(mobileScan.alternative_result_count || 0)} / 후보 ${Number(mobileScan.alternative_candidate_count || 0)} / 일치 ${Number(mobileScan.alternative_match_count || 0)} · 복원 ${escapeHtml(mobileScan.alternative_restore_status || '미보고')} · 종료 ${evidenceTime(mobileScan.alternative_finished_at_epoch_ms)}` : '';
           const advisory = item.target_unsigned_advisory || {};
           const rearm = advisory.passage_rearm;
           const rawSensor = advisory.sensor_observation;
+          const qualification = rawSensor?.qualification;
+          const timingText = value => value == null ? '미관측' : `${Number(value)}ms`;
+          const nearToTrigger = qualification?.first_near_after_ms != null && qualification?.trigger_after_ms != null
+            && qualification.trigger_after_ms >= qualification.first_near_after_ms
+            ? qualification.trigger_after_ms - qualification.first_near_after_ms : null;
+          const sensorTiming = qualification?.timing_schema === 1
+            ? ` · 최근 ARMED 창 시작 ${timingText(qualification.started_ms)} (장치 가동 시각) · 시작 후 첫 유효 ${timingText(qualification.first_valid_after_ms)} / 첫 근접 ${timingText(qualification.first_near_after_ms)} / 필터 통과 ${timingText(qualification.first_candidate_after_ms)} / 트리거 ${timingText(qualification.trigger_after_ms)} · 첫 근접→트리거 ${timingText(nearToTrigger)} (중간 이탈 포함 가능)`
+            : ' · 근접 시점 계측 없음';
           const presence = advisory.ble_presence;
           const advertisement = advisory.ble_advertisement;
           const advertisementEvidence = advertisement
@@ -652,7 +661,7 @@
             ? `인증 준비 ${rearm.auth_ready ? '가능' : '대기'} (${escapeHtml(rearm.auth_reason)}) · 센서 개방 준비 ${rearm.pulse_ready ? '가능' : '대기'} (${escapeHtml(rearm.pulse_reason)})`
             : '';
           const rawSensorEvidence = rawSensor
-            ? `센서 ${escapeHtml(rawSensor.phase)} / ${escapeHtml(rawSensor.kind)} · ${rawSensor.raw_mm == null ? '거리 미측정' : `${Number(rawSensor.raw_mm)}mm`} · 표본 나이 ${rawSensor.sample_age_ms == null ? '미관측' : `${Number(rawSensor.sample_age_ms)}ms`}`
+            ? `센서 ${escapeHtml(rawSensor.phase)} / ${escapeHtml(rawSensor.kind)} · ${rawSensor.raw_mm == null ? '거리 미측정' : `${Number(rawSensor.raw_mm)}mm`} · 표본 나이 ${rawSensor.sample_age_ms == null ? '미관측' : `${Number(rawSensor.sample_age_ms)}ms`}${sensorTiming} · 무반사/FAULT만으로 하드웨어 고장 확정 불가 · ARMED 대기는 접근 시간 포함 가능`
             : '';
           const presenceEvidence = presence
             ? `광고 요청 ${presence.requested_ready ? '준비' : '대기'} / 적용 ${presence.applied_valid ? (presence.applied_ready ? '준비' : '대기') : '미확인'} · ${escapeHtml(presence.status)} · RF 수신 미확인`

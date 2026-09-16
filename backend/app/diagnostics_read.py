@@ -13,13 +13,13 @@ try:
     from .mobile_diagnostics import MobileDiagnosticBundle, bundle_evidence_metadata
     from .ops_runtime import SlidingWindowRateLimiter
     from .reliability_diagnostics import (
-        CORE_FIELDS, U32, advisory_projection, classify_incident, mqtt_edge_projection, sensor_mac_input,
+        CORE_FIELDS, U32, advisory_projection, classify_incident, mqtt_edge_projection, sensor_mac_input, interpret_sensor_observation,
     )
 except ImportError:
     from mobile_diagnostics import MobileDiagnosticBundle, bundle_evidence_metadata
     from ops_runtime import SlidingWindowRateLimiter
     from reliability_diagnostics import (
-        CORE_FIELDS, U32, advisory_projection, classify_incident, mqtt_edge_projection, sensor_mac_input,
+        CORE_FIELDS, U32, advisory_projection, classify_incident, mqtt_edge_projection, sensor_mac_input, interpret_sensor_observation,
     )
 
 
@@ -172,11 +172,12 @@ def create_diagnostics_read_router(get_db: Callable, token_sha256: str) -> APIRo
         # Integers can exceed Javascript precision; booleans remain booleans.
         core = {key: str(value) if type(value) is int and key not in
                 ("relay_pin_level", "last_terminal_phase_mask") else value for key, value in core.items()}
+        advisory = advisory_projection(json_object(row["advisory_json"]), include_boot=True, expected=core) if row.get("advisory_json") else None
         return dict(id=str(row["id"]), received_at=_utc_text(row["received_at"]),
                     integrity_status="verified", verified=core,
                     # Legacy controller extras were never part of the status MAC.
-                    unsigned_advisory=advisory_projection(json_object(row["advisory_json"]),
-                                                         include_boot=True, expected=core) if row.get("advisory_json") else None,
+                    unsigned_advisory=advisory,
+                    observation_interpretation=interpret_sensor_observation(advisory),
                     advisory_available=row.get("advisory_json") is not None,
                     advisory_integrity="UNSIGNED_NOT_USED_FOR_CLASSIFICATION")
 
