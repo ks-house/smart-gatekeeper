@@ -188,3 +188,12 @@ applies_to:
 - **개방 정책은 변경하지 않았다.** raw 거리 `threshold+100mm` 초과3회 연속, no-echo/invalid는 clear로 인정하지 않음, 차단 시 최대5초 ARMED와30초 재시도 quiet, 수동 경로·인증·OTA 안전 조건을 그대로 둔다. 현재800mm threshold라면 clear는900mm 초과지만 다른 설정에도 같은 일반 규칙을 적용한다.
 - 로컬 host replay는 322mm 근접39회에도 차단 유지, 무효/근접/경계 거리/추가 수동 pulse에 의한 partial streak 초기화,3회 clear 해제, ring overwrite, millis wrap과 reboot reset을 검증한다. 실제 사람 이탈 후에도 no-echo가 지속되는 설치 상태의 적정성은 아직 별도 현장 증거가 필요하다.
 - Backend optional 수용을 먼저 배포한 뒤 Target signed OTA/boot/VALID를 따로 확인하는 순서를 유지한다. 이번 작업은 구현·로컬 시험까지이며 배포·개방 명령을 수행하지 않았다. [API 필드와 증거 한계](diagnostics_read_api.md#2026-09-24-rearm-timeout-detail-and-bounded-history-local-candidate)를 따른다.
+
+### 후속 배포 확인 — 2026-09-24 KST
+
+사용자의 별도 배포 요청으로 PR424/main `9ec90ce`를 반영했다. Backend는00:26:29 배포,
+공개 readiness12항목 및 fresh Target 상태가 확인됐다. 한 번의 안전 상태 OTA 요청 후
+00:29:47 Target512/boot909가 관측됐고00:30:21 VALID,00:31:18 주기 HTTPS CURRENT/error0와
+VALID 유지가 확인됐다. 과거 차단 세션의 새 상세 분류와 새 history schema1의 서버 수집을
+실제로 확인했다. 새 boot의 이력은 아직0건이며 자연 출입에 따른 block/reset/clear의
+현장 검증이나 실제 문 개방 시험은 수행하지 않았다. 개방 기준과 APK는 그대로다.
