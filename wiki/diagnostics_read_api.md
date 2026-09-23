@@ -581,6 +581,14 @@ it does not introduce neverForLocation or change remote MQTT/update authority.
 
 ## 2026-09-24: rearm timeout detail and bounded history (local candidate)
 
+Deployment update (2026-09-24 KST): PR424 exact main `9ec90ce` is deployed to
+Backend and Target `2.1.512+main.g9ec90ce`, boot909. Health42436 confirms VALID;
+42438 confirms subsequent periodic HTTPS CURRENT/error0 and retained VALID.
+The September23 20:29 timeout now returns `REARM_CLEARANCE_UNCONFIRMED` from its
+matching verified summary (5051ms), without changing `ARM_TIMEOUT` or asserting
+physical failure. New history schema1 is collected through the health API;
+the fresh boot's empty ring is initialization evidence, not a physical edge test.
+
 The signed event reason remains `ARM_TIMEOUT`. `/api/v1/diagnostics/incidents`
 adds `arm_timeout_detail`, `arm_timeout_window_ms` and `arm_timeout_detail_source`.
 The detail is populated only from a verified sensor summary matching the terminal
@@ -625,3 +633,7 @@ BLE/ACL/signed-summary/NVS change, APK rebuild or new phone permission is requir
 Old firmware supports the new timeout detail if its matching signed summary was
 retained; new history requires updated Target firmware. Old Backend ignores history.
 This is local implementation/test evidence, not publication or installation proof.
+
+The implementation paragraph above describes the original candidate boundary;
+the deployment update and [hardware record](hardware_test.md) separately establish
+the later Backend deployment and Target installation/health observations.

@@ -1230,3 +1230,20 @@ an inference from application HMAC tests.
 - Root451 tests pass (1 environment skip), Backend346 tests pass (5 opt-in/environment skips), OTA contract PASS. Actual C++ replay covers blocked near/no-echo, streak resets, unchanged three-clear rule, manual pulse reset, bounded history, rollover, saturation and reboot-local reset. Real ArduinoJson tests cover maximum values, copied edge lifetime and pool/wire exhaustion without losing existing status.
 - API tests verify terminal-summary matching, wrong-sequence rejection, unsigned history persistence/reprojection and legacy optional-field handling. Five checks execute the actual Admin history formatter; no full browser/UI trial claimed.
 - No APK source changed. Signed BLE/event/summary formats, NVS layout, access policy, periodic OTA and rollback code unchanged. No publication, installation, forced reset, door command or physical trial performed.
+
+## 2026-09-24 rearm evidence deployment (KST)
+
+| Layer | Observed result | Boundary |
+|---|---|---|
+| Source/CI | PR424 exact main9ec90ce; Backend35880801893, Target35880801925, OTA35880801890 success | Existing protected policy unchanged; personal release, not commercial authorization |
+| Backend | NAS receipt/status agree; deployed00:26:29, exact source and immutable images; loopback/public readiness passed | After initial startup freshness gap, public12 checks and fresh verified Target status recovered |
+| Target publication | 2.1.512+main.g9ec90ce;1936292B encrypted artifact; independent HTTPS bytes and Ed25519/exact-main verification pass | Receipt reports previous valid artifact/manifest retained; publishing alone is not installation |
+| Installation | One non-retained OTA request00:29:09.625 after matching fresh API/live IDLE/OFF/no BLE connection; Backend and Target ACK observed; first new health00:29:47.342, boot908→909 | No door command, extra reboot or resend |
+| Health | Health42436 at00:30:21.540: stage11, error0, persisted VALID, IDLE/OFF | Actual installed healthy runtime, not physical passage proof |
+| Post-install updater | Health42438 at00:31:18.485: same boot909, uptime98s, stage14/CURRENT, HTTP200/error0, persisted VALID | Independent periodic HTTPS path exercised after installation |
+| New evidence | API returns history schema1/sequence0; previous blocked timeout returns REARM_CLEARANCE_UNCONFIRMED/5051ms from matching verified summary | Empty new-boot ring does not demonstrate physical transitions; mobile evidence was intentionally bounded |
+
+- Artifact SHA256:4855d934b81fa81a6a7fccc37dad578cd8b936225dd12884c008b8a528356edb.
+- Manifest SHA256:464eb16fafd378adf075078cbdc1a70a0dd6268b35618266bddf145ab2555ca8.
+- Boot909 identity:5a0a9679a089ca75e9dbb9b9aec27f56. Live boot advisory reports SOFTWARE/ota_pending_verify; not an unplanned power reset.
+- Local sanitized evidence: `/tmp/sgk-rearm-release-evidence-20260924` and bounded MQTT recording `/tmp/sgk-rearm-release-observation-20260924`. No APK publication, physical door test or rollback interruption performed.
