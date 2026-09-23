@@ -26,6 +26,10 @@ class MqttConnectionPolicyTests(unittest.TestCase):
         self.assertIn("const bool socketAlive = successful && sameLink && wifiUp", adoption)
         self.assertNotIn("mqttLastError = 0", source.split("void recordMqttLoss", 1)[1].split("uint32_t mqttLastConnect", 1)[0])
         self.assertIn("sgk::appendMqttConnectionJson(doc, mqttConnection", source)
+        self.assertLess(source.index("sgk::appendBleAdvertisementJson(doc"),
+                        source.index("sgk::appendRearmHistoryJson(doc"))
+        self.assertLess(source.index("sgk::appendRearmHistoryJson(doc"),
+                        source.index("const size_t telemetryBytes = measureJson(doc)"))
         teardown = source.split("// The worker has published its terminal", 1)[1]
         self.assertLess(teardown.index("const int terminalError"), teardown.index("wifiClient.stop();"))
         self.assertIn("? client.state() : workerResult.mqtt_error", teardown)

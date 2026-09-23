@@ -296,6 +296,16 @@
       node.textContent = String(value ?? '');
       return node.innerHTML;
     }
+    function rearmHistoryEvidence(history) {
+      if (!history) return ' · 차단 이력 미보고 (구형 펌웨어 또는 전송 예산 부족 가능)';
+      const kind = {1: '차단 시작', 2: '연속 이탈 초기화', 3: '차단 해제'};
+      const reason = {1: '펄스', 2: '무효 표본', 3: '근접', 4: '경계 거리', 5: '연속 이탈 3회'};
+      const edges = history.edges.map((edge, i) => {
+        const [at, k, r, prior] = edge.split(',').map(Number);
+        return `#${history.sequence - history.edges.length + i + 1} ${kind[k]} (${reason[r]}, 이전 ${prior}) @${at}ms`;
+      }).join(' / ');
+      return ` · 부팅 내 최근 이력 ${edges || '없음'} · 덮어씀 ${history.overwritten}건${history.sequence === 4294967295 ? ' · 계수 포화 이후 이력 중단' : ''} · 마지막 해제 ${history.last_clear_ms == null ? '미관측' : `${history.last_clear_ms}ms`} (장치 가동 시각·서명 밖·현재 사건과 연결 미확인)`;
+    }
     async function loadTenants() {
       try {
         const res = await fetch('/api/v1/admin/tenants');
@@ -658,7 +668,7 @@
           const advertisementEvidence = advertisement
             ? `광고 본문 ${advertisement.primary_applied ? '적용' : '미적용'} / 응답 ${advertisement.response_applied ? '적용' : '미적용'} · 재적용 ${Number(advertisement.refresh_count)}회 · ${escapeHtml(advertisement.last_error)} · 실제 RF 수신 증거 아님` : '';
           const rearmEvidence = rearm
-            ? `인증 준비 ${rearm.auth_ready ? '가능' : '대기'} (${escapeHtml(rearm.auth_reason)}) · 센서 개방 준비 ${rearm.pulse_ready ? '가능' : '대기'} (${escapeHtml(rearm.pulse_reason)})`
+            ? `인증 준비 ${rearm.auth_ready ? '가능' : '대기'} (${escapeHtml(rearm.auth_reason)}) · 센서 개방 준비 ${rearm.pulse_ready ? '가능' : '대기'} (${escapeHtml(rearm.pulse_reason === 'SENSOR_CLEARANCE_UNCONFIRMED' ? '센서 이탈 미확인 · 재개방 차단' : rearm.pulse_reason)}) · 연속 이탈 표본 ${Number(rearm.clear_samples)}/3${rearmHistoryEvidence(rearm.history)}`
             : '';
           const rawSensorEvidence = rawSensor
             ? `센서 ${escapeHtml(rawSensor.phase)} / ${escapeHtml(rawSensor.kind)} · ${rawSensor.raw_mm == null ? '거리 미측정' : `${Number(rawSensor.raw_mm)}mm`} · 표본 나이 ${rawSensor.sample_age_ms == null ? '미관측' : `${Number(rawSensor.sample_age_ms)}ms`}${sensorTiming} · 무반사/FAULT만으로 하드웨어 고장 확정 불가 · ARMED 대기는 접근 시간 포함 가능`

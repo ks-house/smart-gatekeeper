@@ -578,3 +578,50 @@ Android dispatch evidence. Neither classifier infers arrival or physical opening
 Location-service gating follows the current location-dependent beacon manifest;
 it does not introduce neverForLocation or change remote MQTT/update authority.
 [AOSP BLE scanning requirements](https://source.android.com/docs/core/connect/bluetooth/ble)
+
+## 2026-09-24: rearm timeout detail and bounded history (local candidate)
+
+The signed event reason remains `ARM_TIMEOUT`. `/api/v1/diagnostics/incidents`
+adds `arm_timeout_detail`, `arm_timeout_window_ms` and `arm_timeout_detail_source`.
+The detail is populated only from a verified sensor summary matching the terminal
+event's boot, session and sequence within the selected Target group. Missing or
+mismatched evidence leaves it null with source `NOT_OBSERVED`; current unsigned
+telemetry never determines the historical session result.
+
+| Detail | Evidence meaning |
+|---|---|
+| `REARM_CLEARANCE_UNCONFIRMED` | Rearm remained blocked at the end of this window, even when all samples were invalid |
+| `SENSOR_SAMPLING_NOT_OBSERVED` | No samples recorded in an unblocked-ending window |
+| `SENSOR_VALID_SAMPLE_NOT_OBSERVED` | Samples but no valid distance recorded |
+| `SENSOR_IN_RANGE_NOT_OBSERVED` | Valid distances but none within the trigger range |
+| `SENSOR_QUALIFICATION_NOT_OBSERVED` | In-range samples but no reported trigger; insufficient to reconstruct qualification |
+
+These describe recorded boundaries, not a physical root cause, waiting time,
+or failed human passage. The measured window uses uint32 monotonic subtraction;
+it is not inferred to be exactly 5 or 60 seconds. A window that cleared near its
+end may have started with the existing shortened rearm deadline.
+
+Optional `unsigned_advisory.passage_rearm.history` schema1 contains `sequence`,
+`overwritten`, nullable `last_clear_ms`, and at most four oldest-first `edges`.
+Each edge is `uptime_ms,kind,reason,prior_clear_samples`; kind1=blocked,
+2=partial clearance streak reset,3=cleared; reason1=pulse,2=invalid raw sample,
+3=near,4=hysteresis band,5=three consecutive clear samples. Edge sequence is
+`sequence - len(edges) + index + 1`. Zero uptime is an observation, not null.
+Invalid/unknown optional history is dropped without discarding legacy rearm fields.
+
+History is RAM-only, boot-local and unsigned, not a durable queue or a new signed
+session format. It survives intervening sensor samples, but can be overwritten
+before collection, lost on restart, or omitted when the existing JSON/wire budget
+is exhausted. The sequence saturates at uint32 max and then stops recording edges;
+the independent last-clear timestamp still updates. Compare sequence coverage only
+within a matching boot; an overwritten entry may already exist in an older health
+row, so `overwritten` is not a server-loss counter. Existing health sampling (30s
+for unchanged signed state) and 31-day retention are unchanged. No complete edge
+coverage, physical clearance, or absence-of-failure claim follows from this ring.
+
+Backend stores/reprojects it through existing `advisory_json`; Admin labels it as
+recent Target reference evidence, not the incident's cause. No schema migration,
+BLE/ACL/signed-summary/NVS change, APK rebuild or new phone permission is required.
+Old firmware supports the new timeout detail if its matching signed summary was
+retained; new history requires updated Target firmware. Old Backend ignores history.
+This is local implementation/test evidence, not publication or installation proof.

@@ -1,5 +1,6 @@
 #include "MqttConnectionJson.h"
 #include "BleAdvertisementJson.h"
+#include "RearmHistoryJson.h"
 #include <cassert>
 #include <string>
 
@@ -64,4 +65,38 @@ int main() {
   assert(sgk::appendBleAdvertisementJson(adv, advertisement, 0, 7936));
   assert(adv["ble_advertisement"]["last_apply_age_ms"].isNull());
   assert(adv["ble_advertisement"]["last_error"] == "NONE");
+
+  sgk::RearmHistory history;
+  for (int i = 0; i < 4; ++i)
+    history.record(UINT32_MAX - i, sgk::RearmEdgeKind::kCleared, sgk::RearmEdgeReason::kClear, 3);
+  history.sequence = UINT32_MAX;
+  history.last_clear_ms = UINT32_MAX;
+  StaticJsonDocument<2048> rearm;
+  rearm.createNestedObject("passage_rearm")["blocked"] = false;
+  rearm["signed_state"] = "unchanged";
+  const auto rearm_before = measureJson(rearm);
+  const auto rearm_pool = rearm.memoryUsage();
+  assert(sgk::appendRearmHistoryJson(rearm, history, 7936));
+  assert(!rearm.overflowed() && measureJson(rearm) - rearm_before < 256);
+  assert(rearm.memoryUsage() - rearm_pool <= JSON_OBJECT_SIZE(6) + JSON_ARRAY_SIZE(4) + 4 * 17);
+  assert(rearm["passage_rearm"]["history"]["edges"][0] == "4294967295,3,5,3");
+  assert(rearm["passage_rearm"]["history"]["edges"][3] == "4294967292,3,5,3");
+  assert(rearm["signed_state"] == "unchanged");
+  std::string rearm_wire;
+  serializeJson(rearm, rearm_wire);
+  history = {};
+  std::string after_reset;
+  serializeJson(rearm, after_reset);
+  assert(rearm_wire == after_reset); // JSON owns copies, even after the ring changes.
+  StaticJsonDocument<JSON_OBJECT_SIZE(2)> rearm_small;
+  rearm_small.createNestedObject("passage_rearm")["blocked"] = false;
+  assert(!sgk::appendRearmHistoryJson(rearm_small, history, 7936));
+  assert(!rearm_small.overflowed() && !rearm_small["passage_rearm"].containsKey("history"));
+  rearm.clear();
+  rearm.createNestedObject("passage_rearm")["blocked"] = false;
+  assert(!sgk::appendRearmHistoryJson(rearm, history, 256));
+  assert(!rearm.overflowed() && !rearm["passage_rearm"].containsKey("history"));
+  assert(sgk::appendRearmHistoryJson(rearm, history, 7936));
+  assert(rearm["passage_rearm"]["history"]["last_clear_ms"].isNull());
+  assert(rearm["passage_rearm"]["history"]["edges"].size() == 0);
 }

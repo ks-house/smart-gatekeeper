@@ -9,6 +9,7 @@
 #include "MqttConnectionPolicy.h"
 #include "MqttConnectionJson.h"
 #include "BleAdvertisementJson.h"
+#include "RearmHistoryJson.h"
 #include "config.h"
 #include "ConfigManager.h"
 #include "DiagnosticsManager.h"
@@ -2596,6 +2597,7 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     const auto advertisementDiagnostics = GattServer::getDiagnostics();
     sgk::appendBleAdvertisementJson(doc, advertisementDiagnostics,
         observed_now, sizeof(pendingTelemetry));
+    sgk::appendRearmHistoryJson(doc, r.history, sizeof(pendingTelemetry));
     const size_t telemetryBytes = measureJson(doc);
     mqttStatusPayloadBytes = static_cast<uint32_t>(
         std::min(telemetryBytes, static_cast<size_t>(UINT32_MAX)));

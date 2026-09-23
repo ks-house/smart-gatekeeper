@@ -180,3 +180,11 @@ applies_to:
 - [WorkManager 2.9.1 공식 sources JAR](https://dl.google.com/dl/android/maven2/androidx/work/work-runtime/2.9.1/work-runtime-2.9.1-sources.jar): 설치 앱 의존성과 일치하는 `WorkRequest.kt`의 최대5시간 상수, `WorkSpec.kt`의 지수식을 확인했다. 이 확인은 코드 경로 설명이지 휴대폰 scheduler DB를 읽은 결과가 아니다.
 - [Android BLE background guidance](https://developer.android.com/develop/connectivity/bluetooth/ble/background): PendingIntent scan과 background 실행 경계를 적용하고, 등록만으로 실제 RF 수신을 추론하지 않는다.
 - [기존 자동 진단 설계와 구현 이력](field_diagnostics_capture_plan.md), [PC 진단 읽기 API](diagnostics_read_api.md), [신뢰성 복구 이력](hands_free_reliability_recovery_2026_09_08.md), [개인 프로젝트 검증 범위](personal_production_profile.md). 3A 전원 관찰은 기존 T1(9월13일18:21:04 KST)을 유지하며 계획된 OTA 재부팅과 비의도 재부팅을 구분한다.
+
+## 10. 2026-09-24 재개방 관측 보강 — 로컬 구현
+
+- 기존 `ARM_TIMEOUT`을 유지하고, 같은 Target·boot·session·terminal sequence의 검증된 센서 요약이 있을 때만 종료 상세를 제공한다. 종료 시 차단 중이면 무효 표본만 있어도 `REARM_CLEARANCE_UNCONFIRMED`로 구분한다. 이것은 센서 이탈 미확인 상태이며, 실제 사람이 떠나지 않았거나 차단만이 미개방 원인이었다는 단정이 아니다.
+- Target은 차단 시작·부분 clear streak 초기화·3회 clear 해제를 최근4건 RAM 이력으로 보존한다. sample마다 기록하거나 NVS에 쓰지 않는다. 덮어씀·부팅별 sequence·마지막 해제 시각을 함께 내보내고 Admin은 서명 밖/사건 연결 미확인으로 표시한다. 전송 공간이 부족하면 이력만 생략해 기존 서명 상태와 OTA 자료를 보존한다.
+- **개방 정책은 변경하지 않았다.** raw 거리 `threshold+100mm` 초과3회 연속, no-echo/invalid는 clear로 인정하지 않음, 차단 시 최대5초 ARMED와30초 재시도 quiet, 수동 경로·인증·OTA 안전 조건을 그대로 둔다. 현재800mm threshold라면 clear는900mm 초과지만 다른 설정에도 같은 일반 규칙을 적용한다.
+- 로컬 host replay는 322mm 근접39회에도 차단 유지, 무효/근접/경계 거리/추가 수동 pulse에 의한 partial streak 초기화,3회 clear 해제, ring overwrite, millis wrap과 reboot reset을 검증한다. 실제 사람 이탈 후에도 no-echo가 지속되는 설치 상태의 적정성은 아직 별도 현장 증거가 필요하다.
+- Backend optional 수용을 먼저 배포한 뒤 Target signed OTA/boot/VALID를 따로 확인하는 순서를 유지한다. 이번 작업은 구현·로컬 시험까지이며 배포·개방 명령을 수행하지 않았다. [API 필드와 증거 한계](diagnostics_read_api.md#2026-09-24-rearm-timeout-detail-and-bounded-history-local-candidate)를 따른다.

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import main
 from backend.app.diagnostics_read import create_diagnostics_read_router
-from backend.app.reliability_diagnostics import CORE_FIELDS, advisory_projection, interpret_sensor_observation
+from backend.app.reliability_diagnostics import CORE_FIELDS, advisory_projection, interpret_sensor_observation, record_verified_health
 from backend.tests.test_mobile_diagnostics import bundle
 from backend.tests.test_reliability_diagnostics import KEY, TARGET, BOOT, status_value
 
@@ -41,6 +41,27 @@ def observations():
 
 
 class FieldRecoveryAdvisoryTest(unittest.TestCase):
+    def test_rearm_history_is_bounded_optional_and_survives_projection(self):
+        value = observations()
+        history = dict(schema=1, sequence=5, overwritten=1, last_clear_ms=0,
+                       edges=["4294967295,2,2,1", "0,3,5,3", "1,1,1,0", "8,2,4,2"])
+        value["passage_rearm"]["history"] = history
+        self.assertEqual(value, advisory_projection(value))
+        self.assertEqual(value, advisory_projection(advisory_projection(value)))
+        self.assertEqual(value, advisory_projection(json.loads(json.dumps(value))))
+        for change in (dict(schema=True), dict(schema=2), dict(sequence=True),
+                       dict(sequence=2**32), dict(overwritten=0), dict(last_clear_ms=-1),
+                       dict(last_clear_ms=True), dict(edges=history["edges"] * 2),
+                       dict(edges=["0,1,1,0"] * 3), dict(edges=["0,3,2,3"] * 4),
+                       dict(edges=["0,2,2,0"] * 4), dict(edges=["secret"] * 4),
+                       dict(edges=["4294967296,1,1,0"] * 4), dict(edges=["00,1,1,0"] * 4),
+                       dict(edges=["9" * 1000] * 4)):
+            value["passage_rearm"]["history"] = dict(history, **change)
+            with self.subTest(change=change):
+                self.assertEqual(observations(), advisory_projection(value))
+        value["passage_rearm"]["history"] = dict(schema=1, sequence=0, overwritten=0, last_clear_ms=None, edges=[])
+        self.assertEqual(value, advisory_projection(value))
+
     def test_approach_wait_is_not_sensor_latency(self):
         value = observations()
         timing = dict(timing_schema=1, first_valid_after_ms=100,
@@ -144,17 +165,24 @@ class FieldRecoveryAdvisoryTest(unittest.TestCase):
             self.assertNotIn("passage_rearm", malformed["advisory_diagnostics"])
 
     def test_health_read_and_admin_keep_unsigned_label_and_nullable_distances(self):
+        value = observations()
+        value["passage_rearm"]["history"] = dict(schema=1, sequence=1, overwritten=0,
+                                               last_clear_ms=None, edges=["1000,1,1,0"])
         conn = MagicMock()
         cur = conn.cursor.return_value.__enter__.return_value
+        cur.rowcount = 0
+        record_verified_health(cur, dict(status_value(), advisory_diagnostics=value))
+        self.assertEqual(value, json.loads(cur.execute.call_args.args[1][8]))
+        self.assertNotIn("passage_rearm", json.loads(cur.execute.call_args.args[1][7]))
         cur.fetchall.return_value = [dict(id=1, received_at=datetime(2026, 9, 13, 12),
-            verified_json=json.dumps(status_value()), advisory_json=json.dumps(observations()))]
+            verified_json=json.dumps(status_value()), advisory_json=json.dumps(value))]
         app = FastAPI()
         app.include_router(create_diagnostics_read_router(lambda: conn, hashlib.sha256(b"x" * 43).hexdigest()))
         with TestClient(app) as client:
             response = client.get("/api/v1/diagnostics/health-history", headers={"Authorization": "Bearer " + "x" * 43})
         self.assertEqual(200, response.status_code, response.text)
         sample = response.json()["history"][0]
-        self.assertEqual(observations(), sample["unsigned_advisory"])
+        self.assertEqual(value, sample["unsigned_advisory"])
         self.assertEqual("UNSIGNED_NOT_USED_FOR_CLASSIFICATION", sample["advisory_integrity"])
         self.assertNotIn("passage_rearm", sample["verified"])
         self.assertEqual("UNDETERMINED", sample["observation_interpretation"]["hardware_fault"])
@@ -162,7 +190,7 @@ class FieldRecoveryAdvisoryTest(unittest.TestCase):
         cur.fetchall.side_effect = [[dict(credential_ref="opaque", bundle_ref="a" * 32,
             created_at_ms=100, payload_json=bundle(), received_at=datetime(2026, 9, 13, 12))], []]
         with patch.object(main, "get_db", return_value=conn), patch.object(main, "_admin_principal"), \
-             patch.object(main._target_gate_states, "live_evidence", return_value={"advisory_diagnostics": observations()}):
+             patch.object(main._target_gate_states, "live_evidence", return_value={"advisory_diagnostics": value}):
             attempt = main.get_diagnostic_attempts_admin(MagicMock(), limit=20)["attempts"][0]
-        self.assertEqual(observations(), attempt["target_unsigned_advisory"])
+        self.assertEqual(value, attempt["target_unsigned_advisory"])
         self.assertEqual("UNSIGNED_NOT_USED_FOR_CLASSIFICATION", attempt["target_advisory_integrity"])

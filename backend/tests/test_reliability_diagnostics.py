@@ -283,6 +283,35 @@ class ReliabilityContractTest(unittest.TestCase):
         self.assertEqual("UNRESOLVED", result["owner_attribution"])
         self.assertEqual("NOT_OBSERVABLE", result["physical_door"])
 
+    def test_timeout_detail_requires_matching_terminal_and_prioritizes_rearm(self):
+        sensor = sensor_value()
+        event = dict(event_code="ACCESS_SESSION_TERMINATED", event_outcome="TIMED_OUT",
+                     reason_code="ARM_TIMEOUT", session_id=sensor["session_id"],
+                     source_boot_id=sensor["source_boot_id"], source_sequence=sensor["terminal_sequence"])
+        sensor.update(samples=38, valid_samples=0, in_range_samples=0, blocked_samples=38,
+                      started_monotonic_ms="4294967000", ended_monotonic_ms="4704")
+        result = classify_incident([event], sensor)
+        self.assertEqual("REARM_CLEARANCE_UNCONFIRMED", result["arm_timeout_detail"])
+        self.assertEqual("SENSOR_REARM_BLOCK_OBSERVED", result["sensor_boundary"])
+        self.assertEqual(5000, result["arm_timeout_window_ms"])
+        self.assertEqual(["ARM_TIMEOUT"], result["explicit_reasons"])
+        self.assertEqual("MATCHED_VERIFIED_SENSOR_SUMMARY", result["arm_timeout_detail_source"])
+        self.assertEqual("UNDETERMINED", result["physical_failure"])
+        sensor.update(blocked_at_end=False, blocked_samples=0)
+        self.assertEqual("SENSOR_VALID_SAMPLE_NOT_OBSERVED", classify_incident([event], sensor)["arm_timeout_detail"])
+        sensor.update(valid_samples=4)
+        self.assertEqual("SENSOR_IN_RANGE_NOT_OBSERVED", classify_incident([event], sensor)["arm_timeout_detail"])
+        sensor.update(in_range_samples=4)
+        self.assertEqual("SENSOR_QUALIFICATION_NOT_OBSERVED", classify_incident([event], sensor)["arm_timeout_detail"])
+        sensor.update(samples=0)
+        self.assertEqual("SENSOR_SAMPLING_NOT_OBSERVED", classify_incident([event], sensor)["arm_timeout_detail"])
+        for key in ("session_id", "source_boot_id", "source_sequence", "reason_code"):
+            unmatched = dict(event, **{key: "mismatch"})
+            self.assertIsNone(classify_incident([unmatched], sensor)["arm_timeout_detail"])
+        for evidence in (None,):
+            self.assertIsNone(classify_incident([event], evidence)["arm_timeout_detail"])
+        self.assertIsNone(classify_incident([event, dict(event_code="ACCESS_SENSOR_DETECTED")], sensor)["arm_timeout_detail"])
+
     def test_manual_flow_does_not_require_gatt_and_event_millis_wrap_is_bounded(self):
         events = [dict(event_code=code, event_path="mqtt_manual_remote", event_outcome="SUCCEEDED",
                        reason_code="ACCESS_GRANTED", monotonic_ms=when)
@@ -411,6 +440,25 @@ class ReliabilityReadTest(unittest.TestCase):
         self.assertEqual("STALE_REPORT", data["mobile_observations"][0]["freshness"])
         self.assertIsNone(data["mobile_observations"][0]["scan"])
         self.assertFalse(data["snapshot_atomic"])
+
+    def test_incident_timeout_detail_survives_read_api_only_for_matching_summary(self):
+        group = dict(collector_target_id=TARGET, source_boot_id=BOOT, session_id=SESSION, latest_id=8)
+        event = dict(id=8, collector_target_id=TARGET, source_boot_id=BOOT, source_boot_count=782,
+                     session_id=SESSION, event_code="ACCESS_SESSION_TERMINATED", event_outcome="TIMED_OUT",
+                     reason_code="ARM_TIMEOUT", monotonic_ms=61013, source_sequence=8,
+                     credential_ref=None, received_at=datetime(2026, 9, 8, 12))
+        for terminal_sequence in ("8", "7"):
+            sensor = dict(sensor_value(), terminal_sequence=terminal_sequence)
+            row = dict(id=1, target_id=TARGET, source_boot_id=BOOT, session_id=SESSION,
+                       received_at=datetime(2026, 9, 8, 12), summary_json=json.dumps(sensor))
+            self.cur.fetchall.side_effect = [[group], [event], [row], [], []]
+            response = self.client.get("/api/v1/diagnostics/incidents", headers=self.headers)
+            self.assertEqual(200, response.status_code, response.text)
+            incident = response.json()["incidents"][0]
+            self.assertEqual("verified", incident["sensor_integrity"])
+            self.assertEqual("REARM_CLEARANCE_UNCONFIRMED" if terminal_sequence == "8" else None,
+                             incident["arm_timeout_detail"])
+            self.assertFalse(incident["automatic_failure_inferred"])
 
     def test_invalid_window_and_storage_failure_are_safe(self):
         for route in ("incidents", "health-history"):
