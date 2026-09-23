@@ -1223,3 +1223,10 @@ an inference from application HMAC tests.
 - ESP32-C6 personal production build: PASS; RAM88736/327680B, flash1858368/7340032B.
 - Host regression covers zero-offset observation, interrupted near streaks, unobserved/new-window reset and millis rollover; root451 tests pass with2 environment skips.
 - Added observation offsets only; existing sensor qualification and relay policies unchanged. No physical trial or OTA performed. First-near to trigger is a measurement interval, not proof of user arrival or uninterrupted presence.
+
+## 2026-09-24 rearm evidence (local verification only)
+
+- ESP32-C6 personal production build PASS: RAM88824/327680B, flash1859532/7340032B. Static RAM delta +88B versus the preceding sensor-timing build; existing JSON/MQTT buffers and OTA partitions unchanged. Temporary ignored provisioning symlink removed; original provisioning untouched.
+- Root451 tests pass (1 environment skip), Backend346 tests pass (5 opt-in/environment skips), OTA contract PASS. Actual C++ replay covers blocked near/no-echo, streak resets, unchanged three-clear rule, manual pulse reset, bounded history, rollover, saturation and reboot-local reset. Real ArduinoJson tests cover maximum values, copied edge lifetime and pool/wire exhaustion without losing existing status.
+- API tests verify terminal-summary matching, wrong-sequence rejection, unsigned history persistence/reprojection and legacy optional-field handling. Five checks execute the actual Admin history formatter; no full browser/UI trial claimed.
+- No APK source changed. Signed BLE/event/summary formats, NVS layout, access policy, periodic OTA and rollback code unchanged. No publication, installation, forced reset, door command or physical trial performed.

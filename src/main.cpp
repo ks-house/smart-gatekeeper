@@ -774,7 +774,7 @@ void loop() {
       const uint16_t threshold_mm = g_distance_threshold_cm * 10;
       UltrasonicSensor::observation.observe(now, sgk::SensorSamplePhase::kArmed,
           durationUs, raw_mm, threshold_mm);
-      passageRearm.observeDistance(raw_mm, threshold_mm);
+      passageRearm.observeDistance(raw_mm, threshold_mm, now);
       const bool blocked = passageRearm.blocked();
       UltrasonicSensor::sessions.observe(durationUs != 0, raw_mm,
           median_mm, blocked, passageRearm.state());
@@ -800,7 +800,7 @@ void loop() {
           sgk::SensorSamplePhase::kCooldown : sgk::SensorSamplePhase::kIdle;
       UltrasonicSensor::observation.observe(now, phase, durationUs,
           raw_mm, g_distance_threshold_cm * 10);
-      passageRearm.observeDistance(raw_mm, g_distance_threshold_cm * 10);
+      passageRearm.observeDistance(raw_mm, g_distance_threshold_cm * 10, now);
     } else if (UltrasonicSensor::observation.validNow()) {
       distCm = UltrasonicSensor::observation.raw_mm / 10.0f;
     }
@@ -832,6 +832,7 @@ void loop() {
   rearm.last_pulse_ms = passageRearm.lastPulseMs();
   rearm.pulse_source = passageRearm.pulseSource();
   rearm.clear_samples = passageRearm.clearSamples();
+  rearm.history = passageRearm.history();
 
   // ─── 상태 변경 즉시 + 유휴 5초 주기 MQTT 텔레메트리 ─────────────────────────────────────
   const GateState telemetryState = g_access_fsm.state();

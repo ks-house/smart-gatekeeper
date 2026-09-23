@@ -259,6 +259,30 @@ def _closed_observation(value, *, booleans=(), counters=(), nullable_counters=()
     return result
 
 
+def rearm_history_projection(value):
+    """Bounded, unsigned boot-local edges, not a durable/session-correlated log."""
+    if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
+        return None
+    result = _closed_observation(value, counters=("sequence", "overwritten"),
+                                 nullable_counters=("last_clear_ms",))
+    edges = value.get("edges")
+    if result is None or not isinstance(edges, list) or len(edges) != min(result["sequence"], 4):
+        return None
+    if result["overwritten"] != result["sequence"] - len(edges):
+        return None
+    for edge in edges:
+        if not isinstance(edge, str) or len(edge) > 16 or not re.fullmatch(r"[0-9]+,[123],[12345],[0123]", edge):
+            return None
+        at, kind, reason, prior = map(int, edge.split(","))
+        if at > U32 or str(at) != edge.split(",")[0]:
+            return None
+        if not ((kind == 1 and reason == 1 and prior == 0)
+                or (kind == 2 and reason in (1, 2, 3, 4) and prior in (1, 2))
+                or (kind == 3 and reason == 5 and prior == 3)):
+            return None
+    return dict(result, schema=1, edges=list(edges))
+
+
 def field_recovery_advisory_projection(document):
     """September13 Target observations are unsigned, with uint32 uptime clocks.
 
@@ -276,6 +300,9 @@ def field_recovery_advisory_projection(document):
                    pulse_reason={"AUTH_REQUIRED", "SENSOR_CLEARANCE_UNCONFIRMED", "READY"},
                    pulse_source={"NONE", "SENSOR", "LOCAL_MANUAL", "REMOTE_MANUAL"}))
     if rearm is not None:
+        history = rearm_history_projection(document["passage_rearm"].get("history"))
+        if history is not None:
+            rearm["history"] = history
         result["passage_rearm"] = rearm
     sample = document.get("sensor_observation")
     sensor = _closed_observation(sample, booleans=("valid",),
@@ -656,8 +683,27 @@ def classify_incident(events: list[dict], sensor: dict | None = None) -> dict:
     terminal = next((e for e in reversed(events) if e["event_code"] in terminal_codes | termination_codes), None)
     first_missing = next((name for name, code in stages if code not in codes), "DOOR_CONTACT")
     sensor_boundary = None
+    timeout_detail = None
+    timeout_window_ms = None
+    # Only the matching verified terminal summary can explain this timeout.
+    # Latest unsigned telemetry and summaries for another window are not causes.
+    if (sensor is not None and terminal is not None
+            and terminal.get("reason_code") == "ARM_TIMEOUT"
+            and "ACCESS_SENSOR_DETECTED" not in codes
+            and all(terminal.get(event_key) is not None and
+                    str(terminal[event_key]) == str(sensor.get(summary_key))
+                    for event_key, summary_key in (("session_id", "session_id"),
+                        ("source_boot_id", "source_boot_id"), ("source_sequence", "terminal_sequence")))):
+        timeout_detail = ("REARM_CLEARANCE_UNCONFIRMED" if sensor["blocked_at_end"] else
+                          "SENSOR_SAMPLING_NOT_OBSERVED" if sensor["samples"] == 0 else
+                          "SENSOR_VALID_SAMPLE_NOT_OBSERVED" if sensor["valid_samples"] == 0 else
+                          "SENSOR_IN_RANGE_NOT_OBSERVED" if sensor["in_range_samples"] == 0 else
+                          "SENSOR_QUALIFICATION_NOT_OBSERVED")
+        timeout_window_ms = (int(sensor["ended_monotonic_ms"]) - int(sensor["started_monotonic_ms"])) & U32
     if sensor is not None and "ARM_TIMEOUT" in reasons:
-        if sensor["samples"] == 0:
+        if sensor["blocked_at_end"]:
+            sensor_boundary = "SENSOR_REARM_BLOCK_OBSERVED"
+        elif sensor["samples"] == 0:
             sensor_boundary = "SENSOR_SAMPLING_NOT_OBSERVED"
         elif sensor["valid_samples"] == 0:
             sensor_boundary = "SENSOR_VALID_SAMPLE_NOT_OBSERVED"
@@ -674,6 +720,8 @@ def classify_incident(events: list[dict], sensor: dict | None = None) -> dict:
     return dict(observed_stages=observed, first_missing_stage=first_missing,
                 access_path=next(iter(paths)) if len(paths) == 1 else "UNKNOWN",
                 explicit_reasons=sorted(set(reasons)), sensor_boundary=sensor_boundary,
+                arm_timeout_detail=timeout_detail, arm_timeout_window_ms=timeout_window_ms,
+                arm_timeout_detail_source="MATCHED_VERIFIED_SENSOR_SUMMARY" if timeout_detail else "NOT_OBSERVED",
                 classification="EXPLICIT_FAILURE" if reasons else "FLOW_REPORTED_COMPLETE" if terminal and terminal_codes & codes else "INCOMPLETE_EVIDENCE",
                 interpretation=("ARM_WINDOW_EXPIRED_WITHOUT_SENSOR_TRIGGER" if set(reasons) == {"ARM_TIMEOUT"}
                                 and "ACCESS_SENSOR_DETECTED" not in codes else

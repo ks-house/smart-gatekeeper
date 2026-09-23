@@ -290,7 +290,52 @@ static void testAdvertisementApplyRecovery() {
   assert(gap.gap_count == 1);  // Connected/OTA exclusion is not a radio gap.
 }
 
+static void testRearmHistory() {
+  using namespace sgk;
+  PassageRearmPolicy p;
+  assert(p.history().sequence == 0 && !p.history().has_clear);
+  p.notePulse(UINT32_MAX - 100, PassagePulseSource::kSensor);
+  for (int i = 0; i < 39; ++i) p.observeDistance(322, 800, i);
+  assert(p.blocked() && p.history().sequence == 1); // Near samples cannot reopen.
+  assert(p.blockedAgeMs(20) == 121);
+  uint32_t now = 100;
+  for (auto raw : {kNoSensorMeasurement, uint16_t(800), uint16_t(900)}) {
+    p.observeDistance(901, 800, now++);
+    p.observeDistance(1200, 800, now++);
+    assert(p.clearSamples() == 2 && p.blocked());
+    p.observeDistance(raw, 800, now++);
+    assert(p.clearSamples() == 0 && p.blocked());
+    assert(p.history().edges[p.history().count - 1].prior_clear_samples == 2);
+  }
+  assert(p.history().edges[1].reason == RearmEdgeReason::kInvalid);
+  assert(p.history().edges[2].reason == RearmEdgeReason::kNear);
+  assert(p.history().edges[3].reason == RearmEdgeReason::kBand);
+  p.observeDistance(901, 800, now++);
+  p.notePulse(now++, PassagePulseSource::kRemoteManual);
+  assert(p.history().sequence == 5 && p.history().count == 4);
+  assert(p.history().edges[3].reason == RearmEdgeReason::kPulse);
+  p.observeDistance(901, 800, now++);
+  p.observeDistance(901, 800, now++);
+  p.observeDistance(901, 800, now);
+  assert(!p.blocked() && p.history().has_clear && p.history().last_clear_ms == now);
+  assert(p.history().edges[3].kind == RearmEdgeKind::kCleared);
+  assert(p.history().edges[3].prior_clear_samples == 3);
+  for (int i = 0; i < 8; ++i) {
+    p.notePulse(++now);
+    p.observe(true); p.observe(true); p.observe(true, ++now);
+  }
+  assert(p.history().sequence == 22 && p.history().count == 4);
+  RearmHistory saturated = p.history();
+  saturated.sequence = UINT32_MAX;
+  saturated.record(0, RearmEdgeKind::kCleared, RearmEdgeReason::kClear, 3);
+  assert(saturated.sequence == UINT32_MAX && saturated.count == 4);
+  assert(saturated.has_clear && saturated.last_clear_ms == 0); // zero is observed
+  p = {};
+  assert(p.history().sequence == 0 && !p.history().has_clear); // boot-local only
+}
+
 int main() {
+  testRearmHistory();
   testBoundedReauthentication();
   testActualSensorAndObservation();
   testAdvertisementApplyRecovery();
