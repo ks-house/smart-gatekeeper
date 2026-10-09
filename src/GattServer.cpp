@@ -1,4 +1,6 @@
 #include "GattServer.h"
+#include "AccessEventCatalog.h"
+#include "DeferredAccessQueue.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -121,6 +123,7 @@ sgk::IndicationToken in_flight_token_{};
 sgk::MessageType in_flight_type_{sgk::MessageType::kError};
 bool in_flight_valid_{false};
 uint32_t accepted_connections_{0};
+uint32_t transport_aborts_{0};
 uint32_t disconnects_{0};
 uint32_t challenges_issued_{0};
 uint32_t proofs_received_{0};
@@ -196,13 +199,22 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     (void)tryEmit(event);
   }
 
-  bool tryEmit(const sgk::Event& event) {
-    if (!configured_ || allZero(event.session_id.data(), event.session_id.size())) {
-      return false;
+  sgk::AccessDeliveryResult tryEmit(const sgk::Event& event) {
+    sgk::AccessCatalog fields;
+    if (!sgk::validDeferredAccessEvent(event) ||
+        !sgk::buildAccessCatalog(event, &fields)) {
+      return sgk::AccessDeliveryResult::kInvalid;
     }
-    std::array<uint8_t, 16> event_id{};
-    bool event_id_ready = false;
-    for (size_t attempt = 0; attempt < 4; ++attempt) {
+    if (!configured_) return sgk::AccessDeliveryResult::kRetry;
+    // Keep identity across outbox backpressure. Causal state advances only
+    // after acceptance, so re-encoding yields the exact same signed record.
+    if (pending_sequence_ != event.sequence) {
+      pending_sequence_ = 0;
+      pending_event_id_ = {};
+    }
+    std::array<uint8_t, 16> event_id = pending_event_id_;
+    bool event_id_ready = pending_sequence_ == event.sequence;
+    for (size_t attempt = 0; !event_id_ready && attempt < 4; ++attempt) {
       esp_fill_random(event_id.data(), event_id.size());
       const bool random_nonzero =
           !allZero(event_id.data(), event_id.size());
@@ -213,7 +225,9 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         break;
       }
     }
-    if (!event_id_ready) return false;
+    if (!event_id_ready) return sgk::AccessDeliveryResult::kRetry;
+    pending_event_id_ = event_id;
+    pending_sequence_ = event.sequence;
 
     std::array<uint8_t, 16> schema_session = event.session_id;
     schema_session[6] = static_cast<uint8_t>((schema_session[6] & 0x0f) | 0x40);
@@ -231,7 +245,7 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
                         last_event_id_[0] != '\0';
 
     StaticJsonDocument<256> document;
-    if (!addCatalogFields(document, event)) return false;
+    if (!addCatalogFields(document, event)) return sgk::AccessDeliveryResult::kRetry;
 
     char credential_ref[sgk::kAccessEventCredentialRefCapacity] = {};
     const bool has_credential_ref =
@@ -260,7 +274,7 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         event_id_text[0] == '\0' || session_id_text[0] == '\0' ||
         source_boot_id_text_[0] == '\0' || target_ref_[0] == '\0') {
       secureZero(credential_ref, sizeof(credential_ref));
-      return false;
+      return sgk::AccessDeliveryResult::kRetry;
     }
     std::strncpy(queued_evt.event_type, ev_code_str,
                  sizeof(queued_evt.event_type) - 1);
@@ -313,15 +327,19 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
             has_credential_ref ? credential_ref : nullptr, event_tag)) {
       secureZero(event_tag, sizeof(event_tag));
       secureZero(credential_ref, sizeof(credential_ref));
-      return false;
+      return sgk::AccessDeliveryResult::kRetry;
     }
     secureZero(event_tag, sizeof(event_tag));
 
+    if (!sgk::isValidCanonicalEventRecord(queued_evt)) {
+      secureZero(credential_ref, sizeof(credential_ref));
+      return sgk::AccessDeliveryResult::kInvalid;
+    }
     if (!MqttManager::enqueueCanonicalEvent(queued_evt)) {
       LOGF("[ERROR] CanonicalMqttEventSink: event outbox enqueue failed for %s",
            ev_code_str);
       secureZero(credential_ref, sizeof(credential_ref));
-      return false;
+      return sgk::AccessDeliveryResult::kRetry;
     }
 
     switch (event.code) {
@@ -382,7 +400,9 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
     last_event_id_bytes_ = event_id;
     std::strncpy(last_event_id_, event_id_text, sizeof(last_event_id_) - 1);
     secureZero(credential_ref, sizeof(credential_ref));
-    return true;
+    pending_sequence_ = 0;
+    pending_event_id_ = {};
+    return sgk::AccessDeliveryResult::kAccepted;
   }
 
  private:
@@ -448,131 +468,18 @@ class CanonicalMqttEventSink final : public sgk::EventSink {
         value[13], value[14], value[15]);
   }
 
-  static const char* reasonCode(sgk::ResultReason reason) {
-    switch (reason) {
-      case sgk::ResultReason::kUnsupportedVersion:
-        return "PROTOCOL_INCOMPATIBLE";
-      case sgk::ResultReason::kMalformed:
-        return "MALFORMED_PROOF";
-      case sgk::ResultReason::kSessionInvalid:
-        return "GATT_DISCONNECTED";
-      case sgk::ResultReason::kExpiredOrReplay:
-        return "PROOF_EXPIRED";
-      case sgk::ResultReason::kAclUnavailable:
-        return "ACL_NOT_FOUND";
-      case sgk::ResultReason::kCredentialDenied:
-        return "CREDENTIAL_INACTIVE";
-      case sgk::ResultReason::kProofInvalid:
-        return "SIGNATURE_INVALID";
-      case sgk::ResultReason::kBusy:
-        return "TARGET_BUSY";
-      case sgk::ResultReason::kRateLimited:
-        return "SESSION_TIMEOUT";
-      default:
-        return "INTERNAL_ERROR";
-    }
+  static bool addCatalogFields(JsonDocument& document, const sgk::Event& event) {
+    sgk::AccessCatalog fields;
+    if (!sgk::buildAccessCatalog(event, &fields)) return false;
+    document["event_code"] = fields.event_code;
+    document["stage"] = fields.stage;
+    document["outcome"] = fields.outcome;
+    document["reason_code"] = fields.reason_code;
+    return true;
   }
 
-  static bool addCatalogFields(JsonDocument& document,
-                               const sgk::Event& event) {
-    switch (event.code) {
-      case sgk::EventCode::kAccessGattConnected:
-        document["event_code"] = "ACCESS_GATT_CONNECTED";
-        document["stage"] = "GATT_CONNECT";
-        document["outcome"] = "SUCCEEDED";
-        document["reason_code"] = "GATT_CONNECTED";
-        return true;
-      case sgk::EventCode::kAccessGattFailed:
-        document["event_code"] = "ACCESS_GATT_FAILED";
-        document["stage"] = "GATT_CONNECT";
-        document["outcome"] = "FAILED";
-        document["reason_code"] = "GATT_DISCONNECTED";
-        return true;
-      case sgk::EventCode::kAccessProofRequested:
-        document["event_code"] = "ACCESS_PROOF_REQUESTED";
-        document["stage"] = "PROOF";
-        document["outcome"] = "STARTED";
-        document["reason_code"] = "PROOF_CHALLENGE_ISSUED";
-        return true;
-      case sgk::EventCode::kAccessProofVerified:
-        document["event_code"] = "ACCESS_PROOF_VERIFIED";
-        document["stage"] = "PROOF";
-        document["outcome"] = "SUCCEEDED";
-        document["reason_code"] = "PROOF_VALID";
-        return true;
-      case sgk::EventCode::kAccessArmed:
-        document["event_code"] = "ACCESS_ARMED";
-        document["stage"] = "ARMED";
-        document["outcome"] = "SUCCEEDED";
-        document["reason_code"] = "ARM_ACCEPTED";
-        return true;
-      case sgk::EventCode::kAccessSensorDetected:
-        document["event_code"] = "ACCESS_SENSOR_DETECTED";
-        document["stage"] = "SENSOR";
-        document["outcome"] = "SUCCEEDED";
-        document["reason_code"] = "SENSOR_THRESHOLD_MET";
-        return true;
-      case sgk::EventCode::kAccessRelayOn:
-        document["event_code"] = "ACCESS_RELAY_ON";
-        document["stage"] = "RELAY_ON";
-        document["outcome"] = "SUCCEEDED";
-        document["reason_code"] = "RELAY_ACTIVATED";
-        return true;
-      case sgk::EventCode::kAccessRelayOff:
-        document["event_code"] = "ACCESS_RELAY_OFF";
-        document["stage"] = "RELAY_OFF";
-        document["outcome"] = "SUCCEEDED";
-        document["reason_code"] =
-            event.reason == sgk::EventReason::kRelayFailsafeCutoff
-                ? "RELAY_FAILSAFE_CUTOFF"
-                : "RELAY_HOLD_COMPLETE";
-        return true;
-      case sgk::EventCode::kAccessSessionCompleted:
-        document["event_code"] = "ACCESS_SESSION_COMPLETED";
-        document["stage"] = "COMPLETE";
-        document["outcome"] = "SUCCEEDED";
-        document["reason_code"] = "ACCESS_GRANTED";
-        return true;
-      case sgk::EventCode::kAccessProofRejected:
-        if (event.transport_reason == sgk::ResultReason::kAclUnavailable ||
-            event.transport_reason == sgk::ResultReason::kCredentialDenied) {
-          document["event_code"] = "ACCESS_ACL_REJECTED";
-          document["stage"] = "ACL";
-        } else {
-          if (event.transport_reason != sgk::ResultReason::kUnsupportedVersion &&
-              event.transport_reason != sgk::ResultReason::kMalformed &&
-              event.transport_reason != sgk::ResultReason::kExpiredOrReplay &&
-              event.transport_reason != sgk::ResultReason::kProofInvalid) {
-            return false;
-          }
-          document["event_code"] = "ACCESS_PROOF_REJECTED";
-          document["stage"] = "PROOF";
-        }
-        document["outcome"] = "DENIED";
-        document["reason_code"] = reasonCode(event.transport_reason);
-        return true;
-      case sgk::EventCode::kAccessSessionTerminated:
-        document["event_code"] = "ACCESS_SESSION_TERMINATED";
-        document["stage"] = "COMPLETE";
-        if (event.reason == sgk::EventReason::kArmTimeout) {
-          document["outcome"] = "TIMED_OUT";
-          document["reason_code"] = "ARM_TIMEOUT";
-        } else if (event.reason == sgk::EventReason::kSessionSuperseded) {
-          document["outcome"] = "FAILED";
-          document["reason_code"] = "SESSION_SUPERSEDED";
-        } else if (event.reason == sgk::EventReason::kRelayFailsafeCutoff) {
-          document["outcome"] = "FAILED";
-          document["reason_code"] = "RELAY_CONTROL_ERROR";
-        } else {
-          document["outcome"] = "FAILED";
-          document["reason_code"] = event.reason == sgk::EventReason::kOtaBusy
-              ? "OTA_BUSY" : reasonCode(event.transport_reason);
-        }
-        return true;
-    }
-    return false;
-  }
-
+  uint64_t pending_sequence_ = 0;
+  std::array<uint8_t, 16> pending_event_id_{};
   bool configured_ = false;
   char target_ref_[32] = {};
   char topic_target_id_[49] = {};
@@ -599,91 +506,52 @@ class DeferredCanonicalEventSink final : public sgk::EventSink {
  public:
   explicit DeferredCanonicalEventSink(CanonicalMqttEventSink* downstream)
       : downstream_(downstream) {}
-
   void emit(const sgk::Event& event) override {
     portENTER_CRITICAL(&mux_);
-    if (sealed_for_restart_) {
-      // The fail-closed terminal was already enqueued before sealing. Ignore
-      // late BLE disconnect/status callbacks while the exact restart snapshot
-      // is being formed; they must not race behind the final drain.
-    } else if (count_ == events_.size()) {
-      overflowed_ = true;
-      evidence_gap_ = true;
-    } else {
-      const size_t tail = (head_ + count_) % events_.size();
-      events_[tail] = event;
-      ++count_;
-    }
+    queue_.push(event, millis());
     portEXIT_CRITICAL(&mux_);
   }
-
   void sealForRestart() {
     portENTER_CRITICAL(&mux_);
-    sealed_for_restart_ = true;
+    queue_.seal();
     portEXIT_CRITICAL(&mux_);
   }
-
   bool drain() {
-    bool complete = true;
-    bool reported_overflow = false;
-    while (true) {
+    // Bounded work per loop; callbacks append without mutating the head.
+    for (size_t i = 0; i < sgk::DeferredAccessQueue::kCapacity; ++i) {
       sgk::Event event{};
-      bool available = false;
       portENTER_CRITICAL(&mux_);
-      if (overflowed_ && !reported_overflow) {
-        overflowed_ = false;
-        reported_overflow = true;
-      }
-      if (count_ != 0) {
-        event = events_[head_];
-        available = true;
-      }
-      portEXIT_CRITICAL(&mux_);
-      if (reported_overflow) {
-        LOGF("[ERROR] GATT canonical event queue overflow; audit event dropped");
-        complete = false;
-        reported_overflow = false;
-      }
-      portENTER_CRITICAL(&mux_);
-      complete = complete && !evidence_gap_;
+      const bool available = queue_.front(&event);
+      const bool complete = queue_.empty() && !queue_.evidenceGap();
       portEXIT_CRITICAL(&mux_);
       if (!available) return complete;
-      if (downstream_ == nullptr || !downstream_->tryEmit(event)) {
-        // Leave the exact head record in place. Callback producers append only
-        // at the tail, so a later loop or restart-persistence pass can retry it
-        // without reordering or duplicating a successfully accepted record.
-        secureZeroEventCredential(&event);
-        return false;
-      }
+      const auto result = downstream_ == nullptr
+          ? sgk::AccessDeliveryResult::kRetry : downstream_->tryEmit(event);
       portENTER_CRITICAL(&mux_);
-      events_[head_] = sgk::Event{};
-      head_ = (head_ + 1) % events_.size();
-      --count_;
+      queue_.resolve(result, millis());
       portEXIT_CRITICAL(&mux_);
       secureZeroEventCredential(&event);
+      if (result == sgk::AccessDeliveryResult::kRetry) return false;
     }
+    portENTER_CRITICAL(&mux_);
+    const bool complete = queue_.empty() && !queue_.evidenceGap();
+    portEXIT_CRITICAL(&mux_);
+    return complete;
   }
-
+  sgk::DeferredAccessHealth health(uint32_t now_ms) {
+    portENTER_CRITICAL(&mux_);
+    const auto result = queue_.health(now_ms);
+    portEXIT_CRITICAL(&mux_);
+    return result;
+  }
   void clear() {
     portENTER_CRITICAL(&mux_);
-    events_.fill(sgk::Event{});
-    head_ = 0;
-    count_ = 0;
-    overflowed_ = false;
-    evidence_gap_ = false;
-    sealed_for_restart_ = false;
+    queue_.clear();
     portEXIT_CRITICAL(&mux_);
   }
-
  private:
-  static constexpr size_t kCapacity = 16;
   CanonicalMqttEventSink* downstream_ = nullptr;
-  std::array<sgk::Event, kCapacity> events_{};
-  size_t head_ = 0;
-  size_t count_ = 0;
-  bool overflowed_ = false;
-  bool evidence_gap_ = false;
-  bool sealed_for_restart_ = false;
+  sgk::DeferredAccessQueue queue_;
   portMUX_TYPE mux_ = portMUX_INITIALIZER_UNLOCKED;
 };
 
@@ -1179,6 +1047,7 @@ void GattServer::update() {
     adapter_state.clearWrites();
     timeout_after_action_commit =
         core->state() == sgk::SessionState::kCompleted;
+    if (transport_aborts_ != UINT32_MAX) ++transport_aborts_;
     core->abortTransport(timeout_owner,
                          sgk::ResultReason::kInternalFailClosed, millis());
     indication_timeout = true;
@@ -1483,6 +1352,8 @@ GattServer::Telemetry GattServer::getTelemetry() {
   telemetry.advertising_gap_ms = presence_advertisement_.gapMs(millis());
   telemetry.advertising_last_restart_reason = advertising_last_restart_reason_;
 #if ENABLE_HARDWARELESS_RC
+  telemetry.deferred = deferred_event_sink.health(millis());
+  telemetry.deferred.transport_aborts = transport_aborts_;
   telemetry.accepted_connections = accepted_connections_;
   telemetry.disconnects = disconnects_;
   telemetry.challenges_issued = challenges_issued_;
@@ -1670,6 +1541,7 @@ void GattServer::handleIndicationStatus(const sgk::IndicationToken& token,
     adapter_state.clearWrites();
     failure_after_action_commit =
         core->state() == sgk::SessionState::kCompleted;
+    if (transport_aborts_ != UINT32_MAX) ++transport_aborts_;
     core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                          millis());
   }
@@ -1791,6 +1663,7 @@ void GattServer::drainOutputs() {
       adapter_state.clearWrites();
       failure_after_action_commit =
           core->state() == sgk::SessionState::kCompleted;
+      if (transport_aborts_ != UINT32_MAX) ++transport_aborts_;
       core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                            millis());
       stage_failed = true;
@@ -1814,6 +1687,7 @@ void GattServer::drainOutputs() {
       adapter_state.clearWrites();
       failure_after_action_commit =
           core->state() == sgk::SessionState::kCompleted;
+      if (transport_aborts_ != UINT32_MAX) ++transport_aborts_;
       core->abortTransport(owner, sgk::ResultReason::kInternalFailClosed,
                            millis());
       begin_failed = true;

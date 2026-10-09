@@ -406,20 +406,22 @@ class AccessControlNetworkDeferralTests(unittest.TestCase):
         self.assertNotIn("noteAccessSessionStarted();", pending_callback)
         self.assertIn("noteAccessSessionStarted();", grant_callback)
 
-    def test_deferred_gatt_evidence_is_removed_only_after_outbox_accepts_it(self) -> None:
+    def test_deferred_gatt_evidence_retries_or_explicitly_quarantines(self) -> None:
         deferred = self.gatt.split(
             "class DeferredCanonicalEventSink final", 1
         )[1].split("DeferredCanonicalEventSink deferred_event_sink", 1)[0]
-        delivery = deferred.index("downstream_->tryEmit(event)")
-        removal = deferred.index("events_[head_] = sgk::Event{};", delivery)
-        decrement = deferred.index("--count_;", removal)
-        self.assertLess(delivery, removal)
-        self.assertLess(removal, decrement)
-        self.assertIn("evidence_gap_ = true", deferred)
-        self.assertIn("return false;", deferred[delivery:removal])
-
+        self.assertLess(deferred.index("downstream_->tryEmit(event)"),
+                        deferred.index("queue_.resolve(result"))
+        queue = (ROOT / "include/DeferredAccessQueue.h").read_text()
+        resolve = queue.split("void resolve(", 1)[1].split("DeferredAccessHealth health", 1)[0]
+        retry = resolve.split("AccessDeliveryResult::kRetry", 1)[1].split(
+            "AccessDeliveryResult::kInvalid", 1)[0]
+        self.assertIn("return;", retry)
+        self.assertNotIn("--count_", retry)
+        self.assertIn("evidence_gap_ = true", resolve)
+        self.assertLess(resolve.index("quarantine_["), resolve.index("--count_"))
         canonical = self.gatt.split(
-            "bool tryEmit(const sgk::Event& event)", 1
+            "AccessDeliveryResult tryEmit(const sgk::Event& event)", 1
         )[1].split("private:", 1)[0]
         enqueue = canonical.index("MqttManager::enqueueCanonicalEvent(queued_evt)")
         terminal = canonical.index("phase_tracker_.observe", enqueue)

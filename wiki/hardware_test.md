@@ -1247,3 +1247,19 @@ an inference from application HMAC tests.
 - Manifest SHA256:464eb16fafd378adf075078cbdc1a70a0dd6268b35618266bddf145ab2555ca8.
 - Boot909 identity:5a0a9679a089ca75e9dbb9b9aec27f56. Live boot advisory reports SOFTWARE/ota_pending_verify; not an unplanned power reset.
 - Local sanitized evidence: `/tmp/sgk-rearm-release-evidence-20260924` and bounded MQTT recording `/tmp/sgk-rearm-release-observation-20260924`. No APK publication, physical door test or rollback interruption performed.
+
+
+## 2026-10-09 — #426 access evidence recovery candidate
+
+| Validation | Result | Scope / limitation |
+|---|---|---|
+| Root unittest suite | 452 tests, 1 environment skip, PASS | Host/source regression, not device passage |
+| Backend unittest suite | 348 tests, 5 opt-in/environment skips, PASS | Includes existing commit-only receipts and new catalog/unsigned health projection |
+| Final affected suites after transport counter | 71 tests, 2 environment skips, PASS | Actual production sink retry identity, protocol aborts, queue bounds, orphan policy and API roundtrip |
+| ArduinoJson host admission | PASS | Optional queue health respects pool/wire bounds and preserves signed fields |
+| OTA contract | PASS | Source contract; installed rollback/health still pending |
+| ESP32-C6 personal production build | PASS; RAM89008/327680B, flash1859988/7340032B | Existing ignored provisioning referenced temporarily, then removed |
+| Admin visual/device validation | Pending | Existing diagnostics rendering extended; no physical/UI acceptance claim |
+
+See [access_evidence_recovery.md](access_evidence_recovery.md). No Backend release,
+APK publication, Target OTA/reboot or door command occurred in this work.

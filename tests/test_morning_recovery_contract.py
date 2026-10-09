@@ -13,10 +13,10 @@ class MorningRecoveryContractTest(unittest.TestCase):
         text = json.dumps(catalog)
         self.assertIn('"TARGET_BUSY"', text)
         self.assertIn('"OTA_BUSY"', text)
-        source = (ROOT / "src/GattServer.cpp").read_text()
+        source = (ROOT / "include/AccessEventCatalog.h").read_text()
         self.assertIn('event.reason == sgk::EventReason::kOtaBusy', source)
-        self.assertIn('? "OTA_BUSY" : reasonCode(event.transport_reason)', source)
-        self.assertIn('case sgk::ResultReason::kBusy:\n        return "TARGET_BUSY";', source)
+        self.assertIn('? "OTA_BUSY" : accessTransportReasonName(event.transport_reason)', source)
+        self.assertIn('case sgk::ResultReason::kBusy:\n      return "TARGET_BUSY";', source)
 
     def test_watchdog_does_not_restore_disabled_or_active_proof(self):
         source = (BLE / "BleWakeReconciliationWorker.kt").read_text()

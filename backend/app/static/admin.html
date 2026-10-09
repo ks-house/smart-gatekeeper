@@ -653,6 +653,10 @@
           const alternativeEvidence = mobileScan.alternative_stage
             ? `별도 수신 검사 ${escapeHtml(mobileScan.alternative_stage)} · 수신 ${Number(mobileScan.alternative_result_count || 0)} / 후보 ${Number(mobileScan.alternative_candidate_count || 0)} / 일치 ${Number(mobileScan.alternative_match_count || 0)} · 복원 ${escapeHtml(mobileScan.alternative_restore_status || '미보고')} · 종료 ${evidenceTime(mobileScan.alternative_finished_at_epoch_ms)}` : '';
           const advisory = item.target_unsigned_advisory || {};
+          const accessEvidence = advisory.access_evidence;
+          const accessEvidenceText = accessEvidence
+            ? `감사 수집 ${accessEvidence.stalled ? '정체' : accessEvidence.deferred_depth > 0 ? '대기' : '대기 없음'} · 전송 중단 ${Number(accessEvidence.transport_aborts)} · 큐 ${Number(accessEvidence.deferred_depth)} · 선두 ${Number(accessEvidence.head_age_ms)}ms / 재시도 ${Number(accessEvidence.head_retries)} · 격리 ${Number(accessEvidence.invalid_count)} / 넘침 ${Number(accessEvidence.overflow_count)} / 센서 고아 만료 ${Number(accessEvidence.capture_orphaned)} · ${escapeHtml(accessEvidence.last_failure)}${accessEvidence.evidence_gap ? ' · 증거 공백 있음' : ''} (서명 범위 밖 · 서버 저장/실출입 증명 아님)`
+            : '감사 수집 큐 관측 없음';
           const rearm = advisory.passage_rearm;
           const rawSensor = advisory.sensor_observation;
           const qualification = rawSensor?.qualification;
@@ -688,7 +692,7 @@
             <td>${actor}<br><small>${escapeHtml(app.version || '-')}+${escapeHtml(app.build || '-')}</small></td>
             <td>${marker}<br><small>bundle ${escapeHtml(shortOpaqueRef(item.bundle_ref))}</small></td>
             <td>깨움 ${Number(item.wake_count || 0)} · 세션 ${Number(item.session_count || 0)}<br><small>${targetEvidence}</small><br><small>${sensorEvidence}</small><br><small>${uploadEvidence}</small><br><small>${escapeHtml(gaps)}</small>${rearm || rawSensor || presence ? `<br><small>최근 Target 참고 관측 (서명 범위 밖)<br>${rearmEvidence}<br>${rawSensorEvidence}<br>${presenceEvidence}</small>` : ''}</td>
-            <td>${escapeHtml(classification.last_stage || 'UNKNOWN')}<br><small>${mobileScanEvidence}</small><br><small>${alternativeEvidence}</small><br><small>${advertisementEvidence}</small></td>
+            <td>${escapeHtml(classification.last_stage || 'UNKNOWN')}<br><small>${mobileScanEvidence}</small><br><small>${alternativeEvidence}</small><br><small>${advertisementEvidence}</small><br><small>${accessEvidenceText}</small></td>
             <td><span class="badge badge-warning">${escapeHtml(classification.first_missing || 'UNKNOWN')}</span><br><small>보고서 당시 증거 · 수신 시각은 현재 건강이나 새 실패 시각이 아닙니다.</small></td>
           `;
           tbody.appendChild(tr);

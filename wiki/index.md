@@ -44,6 +44,7 @@
 | [project_status.md](project_status.md) | 저장소 구현·검증 증거·현장 배포를 분리한 현재 프로젝트 대시보드와 열린 Gate |
 | [architecture.md](architecture.md) | Legacy HTTPS/MQTT, personal-production Backend ACL enrollment/ACK → local GATT action-1/action-2, typed Target access-event 수집과 비식별 HA 완료 표식을 구분한 출입·진단 구조 |
 | [commercial_release_program.md](commercial_release_program.md) | 상용 출시 목표, 작업 DAG, 보안·핵심·모바일·매뉴얼·실기기·production 완료 Gate |
+| [access_evidence_recovery.md](access_evidence_recovery.md) | #426 sessionless-terminal FIFO recovery, bounded invalid quarantine, retry identity, orphan policy and unsigned queue health; field acceptance pending |
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |
 | [embedded_target_connectivity_policy.md](embedded_target_connectivity_policy.md) | 벽 매립형 Target의 Wi-Fi/MQTTS 상시 연결 SLO, 자동 복구, 경보, 매립 승인 Gate와 현재 P0 공백 |

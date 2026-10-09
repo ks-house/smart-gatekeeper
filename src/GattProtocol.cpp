@@ -1092,7 +1092,9 @@ void ProtocolCore::abortTransport(const ConnectionToken& owner,
   // Losing that indication must not fabricate a failed access terminal or
   // clear the verified actor while ARMED/RELAY_HOLD continues independently.
   if (state_ != SessionState::kCompleted) {
-    emit(EventCode::kAccessSessionTerminated, reason, now_ms);
+    if (!allZeroBytes(session_id_.data(), session_id_.size())) {
+      emit(EventCode::kAccessSessionTerminated, reason, now_ms);
+    }
     abortAuthControl(now_ms);
   }
   resetSession();
@@ -1653,7 +1655,9 @@ void ProtocolCore::resetSessionPreservingOutputs() {
 void ProtocolCore::emit(
     EventCode code, ResultReason reason, uint32_t now_ms,
     const std::array<uint8_t, 16>* credential_id) {
-  if (event_sink_ != nullptr) {
+  // Transport without an allocated session is not canonical access evidence.
+  if (event_sink_ != nullptr &&
+      !allZeroBytes(session_id_.data(), session_id_.size())) {
     if (event_time_initialized_ && now_ms < event_last_now_ms_) {
       event_monotonic_high_ += (uint64_t{1} << 32);
     }

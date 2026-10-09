@@ -73,6 +73,40 @@ class ReliabilityContractTest(unittest.TestCase):
                          ("target_version", "https://private"), ("persisted", "true")):
             self.assertEqual({}, advisory_projection(dict(ota={**ota, key: bad})))
 
+    def test_production_catalog_combinations_match_backend_validator(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            binary = str(Path(directory) / "catalog")
+            result = subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                "-Iinclude", "tests/access_event_catalog_test.cpp", "-o", binary],
+                cwd=ROOT, capture_output=True, text=True, timeout=30)
+            self.assertEqual(0, result.returncode, result.stderr)
+            result = subprocess.run([binary], capture_output=True, text=True, timeout=10)
+            self.assertEqual(0, result.returncode, result.stderr)
+        rows = result.stdout.splitlines()
+        self.assertGreater(len(rows), 2000)
+        for row in rows:
+            code, stage, outcome, reason = row.split("|")
+            allowed_stage, outcomes, reasons = main._CANONICAL_TARGET_ACCESS_CODES[code]
+            self.assertEqual(stage, allowed_stage, row)
+            self.assertIn(outcome, outcomes, row)
+            self.assertIn(reason, reasons, row)
+
+    def test_deferred_access_health_is_bounded_unsigned_and_idle_is_not_stalled(self):
+        value = dict(schema=1, transport_aborts=2, deferred_depth=1, head_age_ms=16000, head_retries=2,
+                     retry_count=3, invalid_count=1, overflow_count=0, evidence_gap=True,
+                     stalled=True, last_failure="DOWNSTREAM_RETRY",
+                     capture_oldest_age_ms=9000, capture_orphaned=0)
+        projected = advisory_projection(dict(access_evidence={**value, "credential": "discard"}))
+        self.assertEqual(dict(access_evidence=value), projected)
+        self.assertEqual(projected, advisory_projection(projected))
+        for key, bad in (("schema", True), ("deferred_depth", 17), ("head_age_ms", -1),
+                         ("head_retries", True), ("stalled", False), ("evidence_gap", 1),
+                         ("last_failure", "https://private"), ("capture_orphaned", 2**32)):
+            self.assertEqual({}, advisory_projection(dict(access_evidence={**value, key: bad})))
+        idle = {**value, "deferred_depth": 0, "head_retries": 0, "head_age_ms": 0, "stalled": False}
+        self.assertFalse(advisory_projection(dict(access_evidence=idle))["access_evidence"]["stalled"])
+
     def test_audit_health_projection_is_closed_unsigned(self):
         value = dict(mqtt_audit_durable_depth=2, mqtt_audit_pending_depth=3,
                      mqtt_audit_head_wait_ms=16000, mqtt_audit_head_publish_attempts=8,
@@ -400,9 +434,13 @@ class ReliabilityReadTest(unittest.TestCase):
                 self.assertTrue(row["unsigned_advisory"]["boot_observation"]["retained"])
 
     def test_health_projection_and_filters_do_not_promote_unsigned_fields(self):
+        evidence = dict(schema=1, transport_aborts=2, deferred_depth=1, head_age_ms=16000, head_retries=2,
+                        retry_count=3, invalid_count=1, overflow_count=0, evidence_gap=True,
+                        stalled=True, last_failure="DOWNSTREAM_RETRY",
+                        capture_oldest_age_ms=9000, capture_orphaned=0)
         self.cur.fetchall.return_value = [dict(id=2, verified_json=json.dumps(status_value()),
             advisory_json=json.dumps(dict(firmware="test", reset_reason="BROWNOUT", private_key="must-not-escape",
-                mqtt_status_worker_published=3, mqtt_audit_receipts_accepted=4, sensor_summary_capture_pending=1)),
+                mqtt_status_worker_published=3, mqtt_audit_receipts_accepted=4, sensor_summary_capture_pending=1, access_evidence={**evidence, "private": "must-not-escape"})),
             received_at=datetime(2026, 9, 8, 12)), dict(id=1)]
         response = self.client.get("/api/v1/diagnostics/health-history", headers=self.headers,
             params=dict(since="2026-09-08T00:00:00+09:00", until="2026-09-09T00:00:00+09:00",
@@ -415,6 +453,8 @@ class ReliabilityReadTest(unittest.TestCase):
         self.assertEqual(3, data["history"][0]["unsigned_advisory"]["mqtt_status_worker_published"])
         self.assertEqual(4, data["history"][0]["unsigned_advisory"]["mqtt_audit_receipts_accepted"])
         self.assertEqual(1, data["history"][0]["unsigned_advisory"]["sensor_summary_capture_pending"])
+        self.assertEqual(evidence, data["history"][0]["unsigned_advisory"]["access_evidence"])
+        self.assertNotIn("access_evidence", data["history"][0]["verified"])
         self.assertNotIn("must-not-escape", response.text)
         self.assertEqual((datetime(2026, 9, 7, 15), datetime(2026, 9, 8, 15), TARGET, 782, 3, 2),
                          self.cur.execute.call_args.args[1])

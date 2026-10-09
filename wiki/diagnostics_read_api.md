@@ -637,3 +637,15 @@ This is local implementation/test evidence, not publication or installation proo
 The implementation paragraph above describes the original candidate boundary;
 the deployment update and [hardware record](hardware_test.md) separately establish
 the later Backend deployment and Target installation/health observations.
+
+
+## 2026-10-09 — access evidence queue candidate (#426)
+
+See [access_evidence_recovery.md](access_evidence_recovery.md) for optional schema1
+unsigned_advisory.access_evidence: deferred depth/head age/retries, invalid and
+overflow loss, transport aborts, orphan capture age/expiry, bounded failure enum,
+stalled and evidence gap. The read API revalidates the closed projection and
+never inserts these fields into verified. Quiet idle is not stalled. These
+fields require the candidate Backend/firmware; publication and installation
+remain pending. Server receipt, canonical occurrence monotonic time and enqueue
+age retain separate meanings.
