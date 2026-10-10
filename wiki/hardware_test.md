@@ -1,5 +1,20 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
 
+
+## 2026-10-10 access evidence recovery deployment
+
+| Test | Observed result | Boundary |
+|---|---|---|
+| Source/hosted checks | PR #427 exact-head checks PASS; merged release bf6100c; main Backend38039839789, Target38039839795 and OTA38039839806 SUCCESS | Runtime source and existing protected checks |
+| NAS deployment | Exact-source signed deployment/status receipts match; loopback/public readiness pass; independent public readiness all 12 checks/fresh authenticated Target | Backend installation and runtime readiness |
+| Target publication | Signed/encrypted2.1.514+main.gbf6100c; independent Ed25519/schema-v2/exact-byte checks;1,937,108 bytes and artifact SHA256 10de4813c27465c8a935a218403b54f6de6edcd3835282c59dc1ca74d7733091 | Publication with prior valid pair retained; personal profile, no commercial authorization claim |
+| Target installation | One non-retained ota_check; broker/Backend/Target accepted; new boot514 and persisted stage11/VALID/running_image_valid=true | Install/reboot/health confirmed; no separate reboot or door command |
+| Post-install recovery path | Same new boot at uptime 220s; periodic HTTPS stage14/CURRENT/HTTP 200/error 0; IDLE/relay OFF, MQTT/BLE status restored | Observed software health, not a power soak or radio/physical-door proof |
+| New queue telemetry | Backend health persists unsigned schema 1 access_evidence; depth/retries/invalid/overflow0, stalled=false, evidence_gap=false, last_failure=NONE at idle | API roundtrip and quiet-idle state only; historical loss is not reconstructed |
+| Remaining acceptance | Natural event/terminal/sensor summary through DB commit ACK; offline/screen-off/process-death replay; independent #54 sensor/door evidence | PENDING under #426; no physical passage claimed |
+
+Release details: [access_evidence_recovery.md](access_evidence_recovery.md).
+
 ## 2026-09-13 field recovery software verification
 
 | Test | Observed result | Boundary |
