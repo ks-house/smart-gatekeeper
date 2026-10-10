@@ -1,6 +1,7 @@
 #include "MqttConnectionJson.h"
 #include "BleAdvertisementJson.h"
 #include "RearmHistoryJson.h"
+#include "AccessEvidenceJson.h"
 #include <cassert>
 #include <string>
 
@@ -99,4 +100,22 @@ int main() {
   assert(sgk::appendRearmHistoryJson(rearm, history, 7936));
   assert(rearm["passage_rearm"]["history"]["last_clear_ms"].isNull());
   assert(rearm["passage_rearm"]["history"]["edges"].size() == 0);
+  sgk::DeferredAccessHealth evidence;
+  evidence.transport_aborts = UINT32_MAX;
+  evidence.depth = 16;
+  evidence.head_age_ms = evidence.head_retries = evidence.retry_count = UINT32_MAX;
+  evidence.invalid_count = evidence.overflow_count = UINT32_MAX;
+  evidence.evidence_gap = evidence.stalled = true;
+  evidence.last_failure = sgk::AccessDeliveryFailure::kDownstream;
+  StaticJsonDocument<2048> audit;
+  audit["signed_state"] = "unchanged";
+  const auto audit_before = measureJson(audit);
+  assert(sgk::appendAccessEvidenceJson(audit, evidence, UINT32_MAX, UINT32_MAX, 7936));
+  assert(!audit.overflowed() && measureJson(audit) - audit_before < 480);
+  assert(audit["signed_state"] == "unchanged");
+  assert(audit["access_evidence"]["last_failure"] == "DOWNSTREAM_RETRY");
+  assert(!sgk::appendAccessEvidenceJson(small, evidence, 0, 0, 7936));
+  assert(!small.overflowed() && !small.containsKey("access_evidence"));
+  assert(!sgk::appendAccessEvidenceJson(short_wire, evidence, 0, 0, 480));
+  assert(!short_wire.overflowed() && !short_wire.containsKey("access_evidence"));
 }

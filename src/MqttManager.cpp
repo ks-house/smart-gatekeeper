@@ -10,6 +10,7 @@
 #include "MqttConnectionJson.h"
 #include "BleAdvertisementJson.h"
 #include "RearmHistoryJson.h"
+#include "AccessEvidenceJson.h"
 #include "config.h"
 #include "ConfigManager.h"
 #include "DiagnosticsManager.h"
@@ -2352,6 +2353,9 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     doc["mqtt_legacy_outbox_depth"] = legacyEventOutbox.size();
     doc["mqtt_legacy_outbox_dropped"] = legacyEventOutbox.dropped();
     doc["mqtt_audit_backpressure_count"] = g_offline_queue.backpressureCount();
+    const GattServer::Telemetry gattTelemetry = GattServer::getTelemetry();
+    UltrasonicSensor::sessions.expireOrphans(
+        millis(), gattTelemetry.deferred.depth == 0);
     doc["sensor_summary_pending"] = sensorSummaryQueue.size();
     doc["sensor_summary_dropped"] = sensorSummaryQueue.dropped();
     doc["sensor_summary_capture_pending"] = UltrasonicSensor::sessions.pending();
@@ -2379,7 +2383,6 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
         WifiManager::lastUnplannedDisconnectReason();
     doc["wifi_current_outage_ms"] = WifiManager::currentOutageMs();
     doc["wifi_last_outage_ms"] = WifiManager::lastOutageMs();
-    const GattServer::Telemetry gattTelemetry = GattServer::getTelemetry();
     doc["ble_advertising_expected"] =
         gattTelemetry.advertising_expected;
     doc["ble_advertising_active"] = gattTelemetry.advertising_active;
@@ -2598,6 +2601,9 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     sgk::appendBleAdvertisementJson(doc, advertisementDiagnostics,
         observed_now, sizeof(pendingTelemetry));
     sgk::appendRearmHistoryJson(doc, r.history, sizeof(pendingTelemetry));
+    auto& captures = UltrasonicSensor::sessions;
+    sgk::appendAccessEvidenceJson(doc, gattTelemetry.deferred,
+        captures.oldestAgeMs(observed_now), captures.orphaned(), sizeof(pendingTelemetry));
     const size_t telemetryBytes = measureJson(doc);
     mqttStatusPayloadBytes = static_cast<uint32_t>(
         std::min(telemetryBytes, static_cast<size_t>(UINT32_MAX)));

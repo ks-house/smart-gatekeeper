@@ -306,13 +306,15 @@ class HardwarelessRcProductionCoreTest(unittest.TestCase):
         self.assertIn("phase_tracker_.observe(event", canonical_sink)
         self.assertIn("if (verified_terminal)", canonical_sink)
         self.assertNotIn("void updatePhase", canonical_sink)
-        self.assertIn("SESSION_SUPERSEDED", canonical_sink)
+        catalog = (ROOT / "include/AccessEventCatalog.h").read_text()
+        self.assertIn("buildAccessCatalog(event", canonical_sink)
+        self.assertIn("SESSION_SUPERSEDED", catalog)
         self.assertIn(
             "event.reason == sgk::EventReason::kRelayFailsafeCutoff",
-            canonical_sink,
+            catalog,
         )
         self.assertIn(
-            'document["reason_code"] = "RELAY_CONTROL_ERROR"', canonical_sink
+            'fields->reason_code = "RELAY_CONTROL_ERROR"', catalog
         )
         self.assertNotIn("supersedeVerifiedSession", adapter_header)
         self.assertNotIn("supersedeVerifiedSession", adapter)

@@ -110,6 +110,20 @@ int main() {
   }
   assert(!stalled.take(450, &frozen));
 
+  // Retained deferred terminals protect older captures from age-only expiry.
+  sgk::SensorSessionTracker orphan;
+  orphan.begin(100, 500, false);
+  assert(orphan.finish(150, false, sgk::SensorClearanceState::kUnknown));
+  orphan.expireOrphans(400000, false);
+  assert(orphan.pending() == 1 && orphan.orphaned() == 0);
+  orphan.expireOrphans(400000, true);
+  assert(orphan.pending() == 0 && orphan.orphaned() == 1);
+  orphan.begin(400010, 500, false);
+  assert(orphan.finish(400050, false, sgk::SensorClearanceState::kUnknown));
+  assert(!orphan.take(150, &frozen));
+  assert(orphan.oldestAgeMs(400060) == 10);
+  assert(orphan.take(400050, &frozen));
+
   Storage storage;
   sgk::SensorSummaryQueue queue(&storage);
   queue.begin();

@@ -356,11 +356,34 @@ def field_recovery_advisory_projection(document):
     return result
 
 
+def access_evidence_projection(value):
+    """Unsigned queue health, never proof of access or durable server commit."""
+    if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
+        return None
+    counters = ("transport_aborts", "deferred_depth", "head_age_ms", "head_retries", "retry_count",
+                "invalid_count", "overflow_count", "capture_oldest_age_ms", "capture_orphaned")
+    if any(type(value.get(key)) is not int or not 0 <= value[key] <= U32 for key in counters):
+        return None
+    if value["deferred_depth"] > 16:
+        return None
+    if any(type(value.get(key)) is not bool for key in ("evidence_gap", "stalled")):
+        return None
+    if value.get("last_failure") not in {"NONE", "DOWNSTREAM_RETRY", "INVALID_EVENT", "QUEUE_FULL"}:
+        return None
+    stalled = value["deferred_depth"] > 0 and value["head_retries"] > 0 and value["head_age_ms"] >= 15000
+    if value["stalled"] != stalled:
+        return None
+    return {key: value[key] for key in ("schema", *counters, "evidence_gap", "stalled", "last_failure")}
+
+
 def advisory_projection(document, *, include_boot=False, expected=None):
     """Closed, explicitly unsigned fields useful for comparison, not authority."""
     if not isinstance(document, dict):
         return {}
     result = field_recovery_advisory_projection(document)
+    evidence = access_evidence_projection(document.get("access_evidence"))
+    if evidence is not None:
+        result["access_evidence"] = evidence
     mqtt = mqtt_connection_projection(document.get("mqtt_connection"))
     if mqtt is not None:
         result["mqtt_connection"] = mqtt

@@ -1,4 +1,5 @@
 #include "GattProtocol.h"
+#include "DeferredAccessQueue.h"
 #include "AuditDeliveryHealth.h"
 #include "FlatJsonObjectPolicy.h"
 #include "OfflineEventQueue.h"
@@ -2372,6 +2373,94 @@ void testProtocolDisconnectHandoff() {
   }
 }
 
+void testTransportWithoutSessionCannotPoisonEvidence() {
+  for (const auto reason : {sgk::ResultReason::kSessionInvalid,
+                            sgk::ResultReason::kInternalFailClosed,
+                            sgk::ResultReason::kExpiredOrReplay}) {
+    auto random = canonicalRandom();
+    FakeVerifier verifier(sgk::ResultReason::kProofInvalid);
+    EventRecorder recorder;
+    FakeAuthControlGate control;
+    sgk::ProtocolCore protocol(random, verifier, canonicalDoor(), &recorder, &control);
+    CHECK(protocol.initialize());
+    protocol.setEnabled(true);
+    sgk::ConnectionToken owner;
+    CHECK(protocol.connect(30, 100, &owner));
+    protocol.abortTransport(owner, reason, 101);
+    CHECK(recorder.events.empty());
+    CHECK(control.abort_calls == 0);
+    const auto client = hello();
+    CHECK(send(protocol, sgk::MessageType::kClientHello, client.data(),
+               client.size(), 200, 502, 1, owner));
+    drain(protocol);
+    const auto invalid_proof = proof(protocol.sessionId());
+    CHECK(!send(protocol, sgk::MessageType::kProof, invalid_proof.data(),
+               invalid_proof.size(), 210, 502, 2, owner));
+    const auto events = recorder.events.size();
+    CHECK(events >= 2);
+    CHECK(recorder.events.back().code == sgk::EventCode::kAccessSessionTerminated);
+    // Rejected RESULT delivery fails/times out after rejection cleared secrets.
+    protocol.abortTransport(owner, reason, 211);
+    protocol.disconnect(owner, 212);
+    CHECK(recorder.events.size() == events);
+    for (const auto& event : recorder.events) CHECK(sgk::validDeferredAccessEvent(event));
+  }
+}
+
+void testDeferredEvidenceQuarantineRetryAndBounds() {
+  sgk::DeferredAccessQueue queue;
+  CHECK(!queue.health(400000).stalled);
+  sgk::Event invalid{};
+  invalid.sequence = 1;
+  sgk::Event valid{};
+  valid.code = sgk::EventCode::kAccessArmed;
+  valid.reason = sgk::EventReason::kArmAccepted;
+  valid.session_id[0] = 1;
+  valid.sequence = 2;
+  valid.monotonic_ms = 50;
+  valid.credential_id.fill(7);
+  CHECK(queue.push(invalid, 100));
+  CHECK(queue.push(valid, 101));
+  sgk::Event head{};
+  CHECK(queue.front(&head) && !sgk::validDeferredAccessEvent(head));
+  queue.resolve(sgk::AccessDeliveryResult::kInvalid, 102);
+  CHECK(queue.evidenceGap() && queue.health(102).invalid_count == 1);
+  CHECK(queue.quarantine()[0].sequence == 1);
+  CHECK(queue.front(&head) && sgk::validDeferredAccessEvent(head));
+  for (int i = 0; i < 3; ++i) {
+    queue.resolve(sgk::AccessDeliveryResult::kRetry, 103 + i);
+    CHECK(queue.front(&head));
+    CHECK(head.sequence == 2 && head.monotonic_ms == 50);
+    CHECK(head.session_id == valid.session_id && head.credential_id == valid.credential_id);
+  }
+  CHECK(!queue.health(15100).stalled);
+  CHECK(queue.health(15101).stalled && queue.health(15101).head_retries == 3);
+  queue.resolve(sgk::AccessDeliveryResult::kAccepted, 15102);
+  CHECK(queue.empty() && !queue.health(400000).stalled && queue.evidenceGap());
+  // Duplicates/reordering remain untouched for authenticated receiver policy.
+  valid.sequence = 5;
+  CHECK(queue.push(valid, UINT32_MAX - 5));
+  CHECK(queue.push(valid, UINT32_MAX - 4));
+  valid.sequence = 4;
+  CHECK(queue.push(valid, UINT32_MAX - 3));
+  queue.resolve(sgk::AccessDeliveryResult::kRetry, 1);
+  CHECK(queue.health(10).head_age_ms == 16);
+  for (auto sequence : {5U, 5U, 4U}) {
+    CHECK(queue.front(&head) && head.sequence == sequence);
+    queue.resolve(sgk::AccessDeliveryResult::kAccepted, 20);
+  }
+  for (size_t i = 0; i < sgk::DeferredAccessQueue::kCapacity; ++i) CHECK(queue.push(valid, 100));
+  CHECK(!queue.push(valid, 101) && queue.health(101).overflow_count == 1);
+  queue.seal();
+  CHECK(!queue.push(valid, 102));
+  for (size_t i = 0; i < sgk::DeferredAccessQueue::kCapacity; ++i)
+    queue.resolve(sgk::AccessDeliveryResult::kInvalid, 103);
+  CHECK(queue.health(103).invalid_count == 17);
+  CHECK(queue.empty() && queue.evidenceGap());
+  queue.clear();
+  CHECK(!queue.evidenceGap() && queue.health(104).invalid_count == 0);
+}
+
 void testCommittedActionSurvivesResultTransportFailure() {
   for (const bool subscribe_to_result : {false, true}) {
     auto random = canonicalRandom();
@@ -3572,6 +3661,8 @@ int main() {
   testOfflineCanonicalV2CredentialRefOverlay();
   testSignedMqttTerminalEventsSurviveRebootInOrder();
   testProtocolDisconnectHandoff();
+  testTransportWithoutSessionCannotPoisonEvidence();
+  testDeferredEvidenceQuarantineRetryAndBounds();
   testCommittedActionSurvivesResultTransportFailure();
   testInvalidTypedCanonicalRecordQuarantine();
   testSignedCommandDurableReplayAndMutations();

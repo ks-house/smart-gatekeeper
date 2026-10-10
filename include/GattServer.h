@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "GattProtocol.h"
+#include "DeferredAccessQueue.h"
 #include "PresenceAdvertisementPolicy.h"
 #include "config.h"
 
@@ -33,6 +34,7 @@ class GattServer {
   };
   static Diagnostics getDiagnostics();
   struct Telemetry {
+    sgk::DeferredAccessHealth deferred;
     uint32_t active_connections;
     uint32_t failed_attempts;
     sgk::SessionState session_state;

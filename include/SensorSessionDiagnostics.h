@@ -93,6 +93,26 @@ class SensorSessionTracker {
     }
     return false;
   }
+  // Only call once all deferred terminals are resolved. A retained deferred
+  // head can still refer to an older capture; never expire it on age alone.
+  void expireOrphans(uint32_t now_ms, bool deferred_empty) {
+    if (!deferred_empty) return;
+    for (size_t i = 0; i < pending_count_;) {
+      if (now_ms - pending_[i].ended_monotonic_ms < kOrphanRetentionMs) {
+        ++i;
+        continue;
+      }
+      for (size_t next = i + 1; next < pending_count_; ++next)
+        pending_[next - 1] = pending_[next];
+      pending_[--pending_count_] = {};
+      if (orphaned_ != UINT32_MAX) ++orphaned_;
+    }
+  }
+  uint32_t oldestAgeMs(uint32_t now_ms) const {
+    return pending_count_ == 0 ? 0 : now_ms - pending_[0].ended_monotonic_ms;
+  }
+  uint32_t orphaned() const { return orphaned_; }
+  static constexpr uint32_t kOrphanRetentionMs = 300000;
   bool active() const { return active_; }
   size_t pending() const { return pending_count_; }
   uint32_t dropped() const { return dropped_; }
@@ -103,6 +123,7 @@ class SensorSessionTracker {
   std::array<SensorSessionSummary, kPendingCapacity> pending_{};
   size_t pending_count_ = 0;
   uint32_t dropped_ = 0;
+  uint32_t orphaned_ = 0;
   bool active_ = false;
 };
 
