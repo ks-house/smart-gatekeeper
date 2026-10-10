@@ -1278,3 +1278,19 @@ an inference from application HMAC tests.
 
 See [access_evidence_recovery.md](access_evidence_recovery.md). No Backend release,
 APK publication, Target OTA/reboot or door command occurred in this work.
+
+
+## 2026-10-10 — #426 isolated acceptance follow-up
+
+| Validation | Result | Scope / limitation |
+|---|---|---|
+| Actual firmware sink/serializer → MariaDB commit → receipt consumer | PASS | Pre-commit rollback/no ACK, lost ACK, worker restart, exact replay, wrong/forged ACK and storage-write failure; six unique signed events/one terminal outbox/one matching sensor summary |
+| Sensor summary | PASS | Actual MAC/receipt and SQL rollback/deduplication; full authenticated MQTT status worker and MCU NVS power interruption are not exercised |
+| Related regression suite | 51 tests, 1 environment skip, no failures | Includes opt-in real MariaDB, existing mobile late query, host sink and receipt tests |
+| OTA contract | PASS | Source contract; no new firmware or APK publication |
+| Admin browser rendering | PASS with synthetic local responses | Absent/idle/pending/stalled/gap and unsigned boundary; no production login/control |
+| Finite natural-use readback | 47 health rows; no new access events; cursors exhausted | Same installed boot, latest IDLE/OFF and no advisory queue gap; natural-session commit ACK has no sample |
+
+See [access_evidence_recovery.md](access_evidence_recovery.md) for the opt-in command and proof boundaries.
+Android screen-off/offline/process-death and physical #54 acceptance remain pending.
+No field command, runtime change, reboot or additional deployment occurred.

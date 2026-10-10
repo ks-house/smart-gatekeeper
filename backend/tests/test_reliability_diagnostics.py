@@ -543,6 +543,10 @@ class ReliabilityReadTest(unittest.TestCase):
 
 @unittest.skipUnless(os.getenv("RUN_MARIADB_INTEGRATION") == "1", "set RUN_MARIADB_INTEGRATION=1")
 class ReliabilityMariaDbTest(unittest.TestCase):
+    def test_production_sink_to_commit_receipt_after_failure_and_replay(self):
+        from backend.tests.access_evidence_commit_harness import exercise
+        exercise(self)
+
     def test_real_migration_sampling_immutability_retention_and_sensor_replay(self):
         name = "sgk-reliability-test-" + uuid.uuid4().hex[:10]
         password = "isolated-test-only"
