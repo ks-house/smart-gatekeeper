@@ -22,7 +22,7 @@ from backend.app.reliability_diagnostics import (
     verified_sensor_summary,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 KEY = bytes(range(1, 33))
 TARGET = "test-target"
 DOOR = "01" + "00" * 15

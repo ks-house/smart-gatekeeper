@@ -7649,3 +7649,11 @@
 - Related local suite51tests/1environment skip/no failures and OTA source contract PASS. This MariaDB integration is opt-in and was run locally; default hosted tests may skip it. Existing mobile late-evidence query tests remain distinct from real-device retransmission.
 - computer-use browser check of unchanged Admin HTML with synthetic loopback-only responses confirms absent/idle/pending/stalled/gap states and unsigned provenance boundary. No production login/control. Finite fixed post-install readback has47verified health rows on the same boot and no new access events, both cursors exhausted; no natural-session ACK sample is available. Latest state IDLE/OFF and advisory queue gap absent.
 - Updated existing recovery/index/hardware pages. #426/#54 remain open for natural same-session ACK, real screen-off/offline/process-death replay and physical observation. No new production deployment, APK, door command, extra reboot or installed-device fault injection. Added-link and whitespace validation precedes publication.
+
+
+## [2026-10-10] fix | Keep host integration helper outside protected Backend input bundle
+
+- First PR429 Backend CI exposed the exact-input completeness check because a new helper was placed under backend. Moved the host-only helper to tests and updated its import/root; fixed allowlist and protected workflow policies remain unchanged.
+- This is a test-file placement correction, not a runtime or access-policy change. Re-run the new real-MariaDB integration and operations contract tests, then recheck exact-head hosted CI.
+
+- Placement correction validation: the new opt-in real-MariaDB integration plus10 operations-gate tests all PASS (11total); protected inputs remain unchanged. Local primary hardware evidence links to its existing issue briefing, avoiding a link to an isolated-checkout-only page.
