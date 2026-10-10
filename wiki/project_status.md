@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-09-13
+updated: 2026-10-10
 source_of_truth: true
 applies_to:
   - firmware
@@ -17,6 +17,15 @@ applies_to:
 > 관측 기준: 모바일 remote authorization 교정은 PR #290과 Backend run `33311924158`로 NAS 배포된 뒤 owner의 한 번의 모바일 버튼→Backend→signed MQTTS→Target→relay→실제 문 열림 관찰을 통과했다. Fresh A24 onboarding은 PR #295 배포 후 등록 폼까지 복구됐고 PR #297/Backend run `33314043691`이 `GK-*` 신청 저장 불일치를 교정·배포했다. 이후 owner의 접수와 관리자 승인은 완료됐지만 첫 `이 휴대폰 등록`은 단일-user compatibility mapping 때문에 HTTP 409로 실패했다. 승인된 추가 가족 행을 같은 personal tenant의 별도 public credential/door grant로 수용하는 PR #300이 exact main `38b90e5febc525c96a4013b737850fd6a90235d3`으로 병합됐고 Backend run `33315099974`가 NAS `status=deployed`, canonical loopback/public readiness와 독립 strict-TLS exact-build HTTP 200/all-checks-true를 통과했다. 이후 한 번의 owner retry로 A24가 `스마트키 사용 가능`, 등록 출입문 1, ACL 608이 됐으며 Activity가 credential 등록을 기록했다. Access-ready 계약상 exact signed ACL의 matching APPLIED Target ACK도 통과했다. 뒤이은 원격 개방은 MQTT broker 전달까지만 확인됐고 딸아이 휴대폰에서 실제 문이 열린 물리 관찰은 별도 Gate다. Target 공개 manifest 게시도 설치·재부팅·health confirmation은 아니므로 현재 Target runtime version과 별도 물리 동작은 계속 별도 Gate다.
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
+
+
+## 2026-10-10 access evidence recovery deployed
+
+- Release [PR #427](https://github.com/ks-house/smart-gatekeeper/pull/427) is merged at bf6100c440af3a1e8f9b8a20d9bb74870fe910d8. Existing main workflows passed; NAS Backend receipts and independent public readiness confirm that exact release/all 12 checks/fresh authenticated Target status.
+- Target 2.1.514+main.gbf6100c is installed on a new boot with persisted VALID/running_image_valid=true, followed by its own periodic HTTPS CURRENT/HTTP 200/error 0 check. IDLE/relay OFF and the new unsigned queue diagnostics are observed in live MQTT and persisted Backend health.
+- Source/CI, publication and installation/health are verified separately. No APK change or door command was included. Empty boot-local queues do not recover lost history or prove natural access delivery.
+- Next: natural sessions through actual DB commit ACK; offline/screen-off/process-death replay and late-query acceptance; independent sensor/door proof under #54. [#426](https://github.com/ks-house/smart-gatekeeper/issues/426) remains open.
+- Exact release evidence and limits: [access_evidence_recovery.md](access_evidence_recovery.md), [hardware_test.md](hardware_test.md).
 
 ## 2026-09-13 field recovery deployed; physical acceptance pending
 
