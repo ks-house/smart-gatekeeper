@@ -157,6 +157,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Link this phone\'s secure key to the approved account.';
 
   @override
+  String get waitForAclTitle => 'Waiting for access permissions';
+
+  @override
   String get waitForAclDetail =>
       'Wait until the Target applies the latest access policy.';
 

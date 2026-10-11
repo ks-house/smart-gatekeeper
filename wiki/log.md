@@ -7640,3 +7640,16 @@
 - New unsigned access_evidence schema1 survives MQTT→Backend health storage→read API: depth/head age/retries/invalid/overflow/capture-orphaned0, stalled=false, evidence_gap=false, last_failure=NONE at idle. Reboot-empty queues do not reconstruct history or prove a natural session commit ACK. #426 stays open for natural DB-commit ACK, offline/screen-off/process-death replay, #54 physical acceptance and later latency measurement.
 - Bounded subscribe-only MQTT collection stopped: all6 allowlisted channels,1segment,0rejected messages,0history eviction. Local evidence remains under /tmp/sgk-access-release-20261010; no continuing monitor was created. No APK change, door command, extra reboot or installed-device fault injection occurred.
 - Updated recovery, project status, hardware evidence and index; existing primary-checkout changes preserved. Documentation-only whitespace and added-link validation run before publication.
+
+## [2026-10-11] fix | Recover MQTT collector exceptions and clarify approved ACL waiting state
+
+- Owner requests normal operation from an approved-phone ACL-wait screenshot. Existing read-only diagnostics and bounded subscribe-only MQTT show a receive/commit gap with stale stored health despite increasing live Target status. Independently verified live MAC against authentic released provisioning; deployed Backend key agreement and mobile proof rejection remain unconfirmed causes.
+- Isolated latest main e2bc3a0 in codex/fix-smartkey-recovery-20261011, preserving the dirty primary checkout. Reproduced uncaught ACL snapshot DB lookup error; moved lookup into the exact durable-ACK exception boundary. Canonical/status writers survive unexpected persistence errors without false receipts/freshness, and committed projection failures do not stop collection or suppress the exact commit receipt.
+- Added privacy-safe aggregate /ready collector barriers and an approved/wait_for_acl title rather than registration required. Authentication, lease/expiry, replay/generation, opening policy and OTA/update paths remain unchanged.
+- Backend351 tests PASS (5 expected skips) and OTA contract PASS; further root/Flutter/hosted checks and runtime recovery evidence are pending at this entry. Cached Flutter version differed from CI; switched only the disposable tool container to exact Flutter3.44.8, preserving the dependency lock.
+- Registered issue430 with source reproduction and bounded acceptance. Updated recovery, ACL, mobile UX and hardware evidence pages; no new wiki page/index link needed. No Target reboot/OTA resend or door command.
+
+## [2026-10-11] test | Validate collector recovery and ACL-wait presentation
+
+- Root452 tests PASS (3 environment skips), Backend351 PASS (5 skips), OTA contract PASS. Disposable exact Flutter3.44.8 uses the unchanged dependency lock; focused23 widget/identity/message tests PASS and Dart analyzer reports no issues.
+- Localization regenerated using exact Flutter. Removed only this run's unrelated generated desktop registrant changes from the previously clean isolated checkout. Diff whitespace and edited-page local-link checks PASS. Hosted MariaDB/native/APK checks and runtime recovery remain pending.

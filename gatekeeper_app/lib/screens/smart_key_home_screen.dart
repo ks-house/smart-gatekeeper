@@ -577,6 +577,10 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
         BackgroundAccessStatus.settingsRequired => strings.setupCheckNeeded,
       };
     }
+    if (_identityStatus.enrollmentState == EnrollmentState.approved &&
+        _identityStatus.nextAction == 'wait_for_acl') {
+      return strings.waitForAclTitle;
+    }
     return switch (_identityStatus.enrollmentState) {
       EnrollmentState.pending => strings.registrationPending,
       EnrollmentState.readyToEnroll => strings.readyToEnroll,

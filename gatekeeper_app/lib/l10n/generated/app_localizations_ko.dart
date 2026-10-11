@@ -144,6 +144,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get enrollCredentialDetail => '승인된 계정에 이 휴대폰의 보안 키를 연결해주세요.';
 
   @override
+  String get waitForAclTitle => '출입 권한 동기화 대기';
+
+  @override
   String get waitForAclDetail => 'Target이 최신 출입 권한을 적용할 때까지 기다려주세요.';
 
   @override

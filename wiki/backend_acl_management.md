@@ -337,3 +337,7 @@ $env:RUN_MARIADB_INTEGRATION = "1"
 python -m unittest backend.tests.test_migrations -v
 Remove-Item Env:RUN_MARIADB_INTEGRATION
 ```
+
+## Collector failure recovery (#430)
+
+ACL ACK snapshot lookup and ACK persistence share the same exception boundary: a transient database failure cannot escape the MQTT callback or mark the Target applied. Exact retries still require the published version/digest and a durable ACK. Canonical/status workers retain failed records on the Target journal by withholding receipts, continue processing later retries and recover writer health only after successful persistence. Authenticated status generation, MAC/high-watermark and lease rules are unchanged. Aggregate receive/commit barriers are exposed in /ready.collectors; publisher readiness alone is not subscriber readiness. See [access evidence recovery](access_evidence_recovery.md).

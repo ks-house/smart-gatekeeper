@@ -182,3 +182,7 @@ Independent primary/fallback manifests matched each other and exact commit
 Publication and installation are separate evidence; no phone
 logout, fresh registration rendering, or `TENANT_ADMIN` navigation is claimed
 until observed on an updated device.
+
+## Approved phone awaiting ACL (#430)
+
+An approved credential with next_action=wait_for_acl shows **출입 권한 동기화 대기 / Waiting for access permissions**, with status refresh and amber informational state. It does not ask the resident to register again. Access remains unavailable until the existing exact Target application check passes. The independent updater, enrollment, proof format and scan behavior are unchanged.

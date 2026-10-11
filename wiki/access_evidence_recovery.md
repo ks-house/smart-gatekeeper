@@ -58,3 +58,15 @@ This change does not reconstruct lost historical events. Remaining issue #426 wo
 No mobile source or APK release is included. No door command, extra reboot, threshold change or fault injection on the installed Target was used. Natural new-session commit ACK and offline/screen-off/process-death/physical acceptance remain pending under #426/#54.
 
 Final bounded readback confirms the same new boot at uptime 220s, persisted valid image, CURRENT/HTTP 200/error 0, IDLE/relay OFF and fresh authenticated Backend health. The completed subscribe-only observer saw all6 allowlisted channels, one segment, zero rejected messages and zero history eviction. Observation has stopped; this is not an ongoing monitor or power soak.
+
+## 2026-10-11 collector recovery candidate — issue #430
+
+The reported phone remains approved while its exact Target ACL application is unconfirmed. Live receive/commit collector readiness is unavailable although the database and independent MQTT publisher pass. A bounded subscribe-only observation receives increasing Target status revisions; independent verification against the authentic signed released image's provisioned key validates the live status MAC. This does not establish agreement with the deployed Backend keyring. The last database health snapshot is stale and cannot substitute for current Target state. Mobile proof rejection is a separate observed stage, not proof of a sensor or phone-settings cause.
+
+Reproduction injects a database failure into ACL ACK snapshot lookup. The exception escapes the Paho callback, whose default exception handling rethrows; the lookup is now inside the persistence failure boundary. Application acknowledgement is still recorded only after the exact snapshot ACK is durably stored.
+
+Canonical and authenticated-status workers now survive unexpected persistence exceptions, leave failed writes unacknowledged and mark writer health failed. A subsequent successful write can recover health; status effects still require the current transport generation and an advanced authenticated status. Post-commit projection failure no longer suppresses the committed canonical receipt or stops later events. The Target's retained journal and exact replay remain the recovery source.
+
+The readiness response adds aggregate collector metadata: connection, expected/accepted subscription counts, subscription failure, writer failure/liveness and verified-evidence barriers. It includes no Target IDs, topic names, credentials or payloads. Existing readiness requirements are unchanged.
+
+Local Backend tests pass (351 tests, five expected environment skips), including lookup failure then exact retry, worker failure with no false receipt/freshness, subsequent recovery and projection failure. OTA contract passes. Hosted CI, deployment, runtime collector recovery, natural phone proof and physical access are separate acceptance steps. Track [#430](https://github.com/ks-house/smart-gatekeeper/issues/430); #426/#54 remain open.

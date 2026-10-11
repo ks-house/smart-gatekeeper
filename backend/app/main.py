@@ -1696,7 +1696,12 @@ class _CanonicalAccessEventWorker:
                 if item is None:
                     return
                 topic, payload, retained = item
-                stored = self._persist(topic, payload, retained=retained)
+                try:
+                    stored = self._persist(topic, payload, retained=retained)
+                except Exception:
+                    # Leave the Target journal unacknowledged and keep draining.
+                    stored = False
+                    log.warning("[MQTT-AUDIT] canonical writer call failed")
                 if self._health is not None and stored is not None:
                     self._health.note_writer_result(bool(stored))
                 if (
@@ -1704,7 +1709,12 @@ class _CanonicalAccessEventWorker:
                     and stored.get("inserted") is True
                     and self._on_insert is not None
                 ):
-                    self._on_insert(stored.get("event"))
+                    try:
+                        self._on_insert(stored.get("event"))
+                    except Exception:
+                        # Projection failure cannot undo a committed audit row
+                        # or prevent its exact commit receipt from being sent.
+                        log.warning("[MQTT-AUDIT] committed event projection unavailable")
                 if isinstance(stored, dict) and self._on_commit is not None:
                     try:
                         self._on_commit(stored.get("event"))
@@ -2272,6 +2282,19 @@ class _CanonicalAccessCollectorHealth:
 
         with self._lock:
             self._verified_evidence_seen = True
+
+    def snapshot(self, worker) -> dict:
+        with self._lock:
+            return {
+                "connected": self._connected,
+                "expected_subscriptions": len(self._expected),
+                "accepted_subscriptions": len(self._accepted),
+                "subscription_failed": self._subscription_failed,
+                "writer_failed": self._writer_failed,
+                "writer_alive": worker is not None and worker.healthy,
+                "verified_evidence_required": self._require_verified_evidence,
+                "verified_evidence_seen": self._verified_evidence_seen,
+            }
 
     def ready(self, worker: _CanonicalAccessEventWorker | None) -> bool:
         with self._lock:
@@ -3254,7 +3277,11 @@ class _AuthenticatedTargetStatusWorker:
                 if item is None:
                     return
                 target_id, payload, retained, generation = item
-                stored = self._persist(target_id, payload, retained=retained)
+                try:
+                    stored = self._persist(target_id, payload, retained=retained)
+                except Exception:
+                    stored = False
+                    log.warning("[MQTT-STATUS] authenticated writer call failed")
                 if stored is False:
                     log.warning("[MQTT-STATUS] authenticated status was not stored")
                 elif stored is None:
@@ -3683,15 +3710,15 @@ def _start_target_boot_subscriber():
             if ack is None or authorization is None or acl_service is None:
                 log.warning("[MQTT-ACL] rejected unauthenticated or malformed Target ACK")
                 return
-            snapshot = acl_service.store.snapshot_by_version(
-                authorization["tenant_id"],
-                authorization["door_id"],
-                ack.acl_version,
-            )
-            if snapshot is None:
-                log.warning("[MQTT-ACL] rejected ACK for unknown snapshot")
-                return
             try:
+                snapshot = acl_service.store.snapshot_by_version(
+                    authorization["tenant_id"],
+                    authorization["door_id"],
+                    ack.acl_version,
+                )
+                if snapshot is None:
+                    log.warning("[MQTT-ACL] rejected ACK for unknown snapshot")
+                    return
                 acl_service.ack_snapshot(
                     authorization["tenant_id"],
                     ack.target_id,
@@ -5074,6 +5101,14 @@ def readiness_check():
             "service": "smart-gatekeeper-api",
             "build_sha": BUILD_SHA,
             "checks": checks,
+            "collectors": {
+                "access_events": _canonical_access_collector_health.snapshot(
+                    _canonical_access_event_worker
+                ),
+                "authenticated_status": _authenticated_status_collector_health.snapshot(
+                    _authenticated_target_status_worker
+                ),
+            },
             "target_status": {
                 "evidence": "hmac_verified_advanced_status",
                 "fresh": target_status_fresh,
