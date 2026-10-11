@@ -368,6 +368,81 @@ class AclManagementTest(unittest.TestCase):
         )
         self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
 
+    def test_expired_generated_refresh_is_replaced_with_a_fresh_signed_version(self) -> None:
+        credential_id = self.enroll(max_protocol=2)
+        self.service.approve_credential(TENANT_A, credential_id, actor_ref="admin:test")
+        self.service.grant_credential_to_door(
+            TENANT_A, DOOR_A, credential_id, actor_ref="admin:test"
+        )
+
+        class FailingPublisher:
+            def publish(self, _topic: str, _envelope: dict) -> bool:
+                return False
+
+        self.service.publisher = FailingPublisher()
+        with self.assertRaisesRegex(RuntimeError, "pull is current"):
+            self.service.refresh_snapshot(
+                TENANT_A, DOOR_A, actor_ref="system:lease_refresh",
+                reason="ACL_LEASE_REFRESH",
+            )
+        job = self.store.snapshot_job(TENANT_A, DOOR_A)
+        old_version = int(job["generated_version"])
+        old = self.store.snapshot_by_version(TENANT_A, DOOR_A, old_version)["envelope"]
+        self.clock.value = old["fields"]["expires_at_epoch_s"]
+        # A replacement that still fails delivery must become the one durable
+        # retry identity; it must not be falsely acknowledged or discarded.
+        with self.assertRaisesRegex(RuntimeError, "pull is current"):
+            self.service.refresh_snapshot(
+                TENANT_A, DOOR_A, actor_ref="system:lease_refresh",
+                reason="ACL_LEASE_REFRESH",
+            )
+        replacement_job = self.store.snapshot_job(TENANT_A, DOOR_A)
+        new_version = int(replacement_job["generated_version"])
+        self.assertGreater(new_version, old_version)
+        fresh = self.store.snapshot_by_version(TENANT_A, DOOR_A, new_version)["envelope"]
+        self.assertEqual(self.clock.value + 900, fresh["fields"]["expires_at_epoch_s"])
+        self.assertEqual(
+            "activate",
+            verify_snapshot_envelope(
+                fresh,
+                trusted_signing_keys={7: self.signer.public_key_sec1},
+                expected_door_id=DOOR_A,
+                target_min_protocol=2,
+                target_max_protocol=2,
+                trusted_now_epoch_s=self.clock.value,
+                current_boot_id="boot-a",
+                receipt_boot_id="boot-a",
+                effective_high_watermark=old_version,
+                current_digest=old["sha256"],
+            ),
+        )
+        self.assertEqual(
+            [credential_id], [entry["credential_id"] for entry in fresh["fields"]["entries"]]
+        )
+        recovered = RecordingPublisher()
+        self.service.publisher = recovered
+        retry = self.service.refresh_snapshot(
+            TENANT_A, DOOR_A, actor_ref="system:lease_refresh",
+            reason="ACL_LEASE_REFRESH",
+        )
+        self.assertEqual(fresh, retry)
+        self.assertEqual(fresh, recovered.messages[0][1])
+        self.assertIsNone(self.store.snapshot_job(TENANT_A, DOOR_A))
+
+    def test_expiry_invalidation_cannot_overwrite_a_newer_replacement_job(self) -> None:
+        self.store.queue_snapshot_job_if_absent(
+            TENANT_A, DOOR_A, "ACL_LEASE_REFRESH", NOW
+        )
+        self.assertTrue(self.store.mark_snapshot_job_generated(TENANT_A, DOOR_A, 7, 1))
+        self.store.supersede_snapshot_job(
+            TENANT_A, DOOR_A, "CREDENTIAL_REVOKED", NOW + 1
+        )
+        before = self.store.snapshot_job(TENANT_A, DOOR_A)
+        self.assertFalse(
+            self.store.expire_snapshot_job_artifact(TENANT_A, DOOR_A, 7, 1)
+        )
+        self.assertEqual(before, self.store.snapshot_job(TENANT_A, DOOR_A))
+
     def test_boot_supersedes_ack_lost_version_above_persisted_target_watermark(self) -> None:
         credential_id = self.enroll()
         self.service.approve_credential(

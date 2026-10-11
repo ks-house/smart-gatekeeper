@@ -362,6 +362,12 @@ abstract class AppLocalizations {
   /// **'Link this phone\'s secure key to the approved account.'**
   String get enrollCredentialDetail;
 
+  /// No description provided for @waitForAclTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for access permissions'**
+  String get waitForAclTitle;
+
   /// No description provided for @waitForAclDetail.
   ///
   /// In en, this message translates to:

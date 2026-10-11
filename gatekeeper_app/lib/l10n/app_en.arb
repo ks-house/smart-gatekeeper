@@ -44,6 +44,7 @@
   "requestRegistrationDetail": "Enter registration details and request administrator approval.",
   "waitForApprovalDetail": "This screen refreshes after approval.",
   "enrollCredentialDetail": "Link this phone's secure key to the approved account.",
+  "waitForAclTitle": "Waiting for access permissions",
   "waitForAclDetail": "Wait until the Target applies the latest access policy.",
   "advancedDiagnosticsDetail": "Detailed status is available in Advanced diagnostics.",
   "requestRegistration": "Request registration",

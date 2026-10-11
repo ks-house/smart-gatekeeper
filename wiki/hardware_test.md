@@ -1,5 +1,18 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
 
+## 2026-10-11 collector exception regression
+
+| Test | Result | Boundary |
+|---|---|---|
+| ACL ACK lookup database failure | Reproduced escaping callback before fix; retry succeeds after fix without early applied signal | Isolated synthetic database/client |
+| Backend suite | 351 tests pass, five expected skips | Real MariaDB acceptance remains hosted |
+| Writer/projection exceptions | Failed persistence sends no receipt/freshness; later retry works; committed projection failure preserves receipt | No device fault injection |
+| OTA contract / root suite | PASS / 452 tests, three environment skips | No partition, Target code or proof change |
+| Flutter | Exact3.44.8, focused23 tests and analyzer PASS; lock unchanged | UI/service regression, installation pending |
+| Expired queued ACL | Exact expiry reproduced replaying old version; replacement and revision-race regressions added | No lease/security relaxation |
+| Existing runtime recovery | Before new deployment: fresh status, same boot910, 12 commit receipts, queue0, ACL6470/auth_ready | Not attributed to this PR; same-phone/physical proof pending |
+
+
 
 ## 2026-10-10 access evidence recovery deployment
 

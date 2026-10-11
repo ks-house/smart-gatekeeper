@@ -2747,6 +2747,95 @@ class TargetBootRegistryTest(unittest.TestCase):
         self.assertTrue(health.ready(worker))
         worker.stop()
 
+    def test_writer_exceptions_recover_without_false_commit_or_freshness(self) -> None:
+        for status in (False, True):
+            with self.subTest(status=status):
+                health = MagicMock()
+                receipt = MagicMock()
+                registry = MagicMock()
+                verified = MagicMock()
+                failed = threading.Event()
+                recovered = threading.Event()
+
+                def writer_result(stored):
+                    (recovered if stored else failed).set()
+
+                health.note_writer_result.side_effect = writer_result
+                row = {"advanced": True, "inserted": True, "event": {"sequence": 7}}
+                persist = MagicMock(side_effect=[RuntimeError("cleanup failed"), row])
+                if status:
+                    worker = main._AuthenticatedTargetStatusWorker(
+                        persist=persist, health=health, registry=registry,
+                        on_commit=receipt, on_verified=verified,
+                    )
+                    worker.connect_transport()
+                else:
+                    worker = main._CanonicalAccessEventWorker(
+                        persist=persist, health=health, on_commit=receipt,
+                    )
+                try:
+                    self.assertTrue(worker.request(TARGET, b"first", False))
+                    self.assertTrue(failed.wait(timeout=1.0))
+                    self.assertTrue(worker.healthy)
+                    receipt.assert_not_called()
+                    registry.note_verified.assert_not_called()
+                    health.note_verified_evidence.assert_not_called()
+                    self.assertTrue(worker.request(TARGET, b"retry", False))
+                    self.assertTrue(recovered.wait(timeout=1.0))
+                    worker._queue.join()
+                    receipt.assert_called_once()
+                    if status:
+                        registry.note_verified.assert_called_once_with(TARGET, row)
+                        verified.assert_called_once()
+                        health.note_verified_evidence.assert_called_once()
+                    self.assertTrue(worker.healthy)
+                finally:
+                    worker.stop()
+
+    def test_projection_failure_preserves_commit_receipt_and_next_event(self) -> None:
+        done = threading.Event()
+        receipt = MagicMock(side_effect=lambda _event: done.set())
+        health = MagicMock()
+        projection = MagicMock(side_effect=RuntimeError("projection unavailable"))
+        worker = main._CanonicalAccessEventWorker(
+            persist=MagicMock(return_value={"inserted": True, "event": {"sequence": 7}}),
+            health=health, on_insert=projection, on_commit=receipt,
+        )
+        try:
+            for count in (1, 2):
+                done.clear()
+                self.assertTrue(worker.request(TARGET, b"event", False))
+                self.assertTrue(done.wait(timeout=1.0))
+                worker._queue.join()
+                self.assertEqual(receipt.call_count, count)
+                self.assertTrue(worker.healthy)
+            health.note_writer_result.assert_has_calls([call(True), call(True)])
+        finally:
+            worker.stop()
+
+    def test_collector_snapshot_explains_barriers_without_identifiers(self) -> None:
+        health = main._CanonicalAccessCollectorHealth()
+        topic = main.target_status_topic(TARGET)
+        health.configure({topic}, require_verified_evidence=True)
+        health.begin_connection()
+        health.track_subscription(topic, (0, 91))
+        health.acknowledge(91, [1])
+        worker = MagicMock(healthy=True)
+        snapshot = health.snapshot(worker)
+        self.assertEqual(snapshot, {
+            "connected": True, "expected_subscriptions": 1,
+            "accepted_subscriptions": 1, "subscription_failed": False,
+            "writer_failed": False, "writer_alive": True,
+            "verified_evidence_required": True, "verified_evidence_seen": False,
+        })
+        self.assertFalse(health.ready(worker))
+        health.note_verified_evidence()
+        self.assertTrue(health.ready(worker))
+        health.note_writer_result(False)
+        self.assertTrue(health.snapshot(worker)["writer_failed"])
+        self.assertFalse(health.ready(worker))
+        self.assertNotIn(TARGET, json.dumps(snapshot))
+
     def test_subscriber_persists_exact_target_acl_ack_before_delivery_signal(self) -> None:
         tenant = "1" * 32
         door = "2" * 32
@@ -2803,6 +2892,26 @@ class TargetBootRegistryTest(unittest.TestCase):
                 f"gatekeeper/v1/targets/{TARGET}/acl/ack",
                 {call.args[0] for call in client.subscribe.call_args_list},
             )
+            service.store.snapshot_by_version.side_effect = RuntimeError("database unavailable")
+            client.on_message(
+                client,
+                None,
+                SimpleNamespace(
+                    topic=f"gatekeeper/v1/targets/{TARGET}/acl/ack",
+                    payload=json.dumps(
+                        {
+                            "status": "applied",
+                            "acl_version": 7,
+                            "high_watermark": 7,
+                        }
+                    ).encode(),
+                    retain=False,
+                    dup=False,
+                ),
+            )
+            service.ack_snapshot.assert_not_called()
+            self.assertFalse(tracker.wait_for([TARGET], 7, timeout_seconds=0.01))
+            service.store.snapshot_by_version.side_effect = None
             client.on_message(
                 client,
                 None,
