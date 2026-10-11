@@ -174,6 +174,24 @@ void main() {
     await disposeHome(tester);
   });
 
+  testWidgets('approved phone waits for ACL without asking to enroll again',
+      (tester) async {
+    identity.value = const MobileIdentityStatus(
+      enrollmentState: EnrollmentState.approved,
+      accessReady: false,
+      nextAction: 'wait_for_acl',
+      doorCount: 1,
+      targetSynced: false,
+      aclVersion: 7,
+    );
+    await showHome(tester);
+    expect(find.text('출입 권한 동기화 대기'), findsOneWidget);
+    expect(find.text('스마트키 등록 필요'), findsNothing);
+    expect(find.text('상태 새로고침'), findsOneWidget);
+    expect(headlineIcon(tester).color, Colors.amberAccent);
+    await disposeHome(tester);
+  });
+
   testWidgets('unavailable identity is not hidden by scan state',
       (tester) async {
     identity.value = MobileIdentityStatus.unavailable;

@@ -1,5 +1,18 @@
 # hardware_test.md — 테스트 증거와 현재 검증 상태
 
+## 2026-10-11 collector exception regression
+
+| Test | Result | Boundary |
+|---|---|---|
+| ACL ACK lookup database failure | Reproduced escaping callback before fix; retry succeeds after fix without early applied signal | Isolated synthetic database/client |
+| Backend suite | 351 tests pass, five expected skips | Real MariaDB acceptance remains hosted |
+| Writer/projection exceptions | Failed persistence sends no receipt/freshness; later retry works; committed projection failure preserves receipt | No device fault injection |
+| OTA contract / root suite | PASS / 452 tests, three environment skips | No partition, Target code or proof change |
+| Flutter | Exact3.44.8, focused23 tests and analyzer PASS; lock unchanged | UI/service regression, installation pending |
+| Expired queued ACL | Exact expiry reproduced replaying old version; replacement and revision-race regressions added | No lease/security relaxation |
+| Existing runtime recovery | Before new deployment: fresh status, same boot910, 12 commit receipts, queue0, ACL6470/auth_ready | Not attributed to this PR; same-phone/physical proof pending |
+
+
 
 ## 2026-10-10 access evidence recovery deployment
 
@@ -1294,3 +1307,24 @@ APK publication, Target OTA/reboot or door command occurred in this work.
 See [access_evidence_recovery.md](access_evidence_recovery.md) for the opt-in command and proof boundaries.
 Android screen-off/offline/process-death and physical #54 acceptance remain pending.
 No field command, runtime change, reboot or additional deployment occurred.
+
+## 2026-10-11 Smart Key readiness recovery deployment
+
+| Validation | Result | Scope / limitation |
+|---|---|---|
+| Final local regressions | Backend353 tests/5 environment skips, root452/3 skips, OTA contract PASS; exact Flutter3.44.8 focused23/analyzer PASS | Reproduced ACK lookup exception and exact-expiry ACL retry before fixing; no device fault injection |
+| Final-head hosted checks | PR431/c790424: Backend/MariaDB, Android Flutter/native/APK, OTA and protected policy PASS | Merged release5053a3a; existing release protections unchanged |
+| Backend deployment |38147664233 SUCCESS; identical exact-source apply/status receipts and independent all12 readiness checks | Fresh authenticated status/live collectors; does not identify original field exception conclusively |
+| Signed mobile publication |38147664244 SUCCESS;1.0.0-g5053a3a/46101,55,692,441B; both origins match signed manifest/hash/source | Actual APK signer certificate/package/version/build verified; previous valid artifact retained |
+| Owner UI acceptance | Status refresh now shows Smart Key ready | Existing app; new46101 installation and fresh same-phone proof unverified |
+| Existing Target | Firmware514/boot910, IDLE/relay OFF; pending0,12 cumulative receipts | Natural backlog receipts predate this release; no Target OTA/reboot/door command |
+| Remaining field acceptance | Phone installation, same-phone authentication, physical passage and offline/screen-off/process-death replay | #430/#426/#54 remain open; publication/UI readiness do not close these gates |
+
+See [access_evidence_recovery.md](access_evidence_recovery.md) for exact hashes and evidence boundaries.
+
+## 2026-10-12 PR429 reconciliation verification
+
+- Backend354 tests PASS, one environment skip, with opt-in real MariaDB enabled; the production sink/serializer/commit/receipt integration executes.
+- Review configuration leakage reproduced with a different valid caller ACL_PERSONAL_DOOR_ID (failure before any valid receipt). Patching both fixture door-ID sources makes the identical conflicting-environment integration PASS.
+- Root452 tests PASS, one environment skip; OTA contract PASS. Runtime source and release policies unchanged. Hosted exact-head acceptance remains a merge prerequisite.
+- Independent public readiness confirms deployed5053a3a/all12 checks and fresh authenticated Target status. Recent sampled phone evidence remains45701; new46101 installation and physical passage are unverified. No door/reboot/OTA command or field fault injection.

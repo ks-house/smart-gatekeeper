@@ -79,3 +79,48 @@ SGK_ARDUINOJSON_INCLUDE can be omitted when headers are present under .pio/libde
 - Finite post-install readback: 47 verified health rows, exhausted cursor, same installed boot, latest IDLE/relay OFF and unsigned queue depth/retry/loss/gap zero. The fixed approximately24-minute window has zero access events and an exhausted access cursor. This is an absence of a natural-session validation sample, not proof of physical failure or successful delivery.
 
 Natural same-session packet-to-terminal commit ACK, real Android screen-off/offline/process-death retransmission and independent physical acceptance under #54 remain open. Local late-query and storage reconstruction tests cannot close those field gates. No APK, runtime policy, firmware artifact or production service was changed by this follow-up.
+
+## 2026-10-11 collector recovery candidate — issue #430
+
+The reported phone remains approved while its exact Target ACL application is unconfirmed. Live receive/commit collector readiness is unavailable although the database and independent MQTT publisher pass. A bounded subscribe-only observation receives increasing Target status revisions; independent verification against the authentic signed released image's provisioned key validates the live status MAC. This does not establish agreement with the deployed Backend keyring. The last database health snapshot is stale and cannot substitute for current Target state. Mobile proof rejection is a separate observed stage, not proof of a sensor or phone-settings cause.
+
+Reproduction injects a database failure into ACL ACK snapshot lookup. The exception escapes the Paho callback, whose default exception handling rethrows; the lookup is now inside the persistence failure boundary. Application acknowledgement is still recorded only after the exact snapshot ACK is durably stored.
+
+Canonical and authenticated-status workers now survive unexpected persistence exceptions, leave failed writes unacknowledged and mark writer health failed. A subsequent successful write can recover health; status effects still require the current transport generation and an advanced authenticated status. Post-commit projection failure no longer suppresses the committed canonical receipt or stops later events. The Target's retained journal and exact replay remain the recovery source.
+
+The readiness response adds aggregate collector metadata: connection, expected/accepted subscription counts, subscription failure, writer failure/liveness and verified-evidence barriers. It includes no Target IDs, topic names, credentials or payloads. Existing readiness requirements are unchanged.
+
+Local Backend tests pass (351 tests, five expected environment skips), including lookup failure then exact retry, worker failure with no false receipt/freshness, subsequent recovery and projection failure. OTA contract passes. Hosted CI, deployment, runtime collector recovery, natural phone proof and physical access are separate acceptance steps. Track [#430](https://github.com/ks-house/smart-gatekeeper/issues/430); #426/#54 remain open.
+
+### Expired queued ACL retry
+
+A second reproduction advances the clock to the exact expiry of a generated ACL whose MQTT application ACK was not received. Previously, lease refresh replayed the expired signed version indefinitely. Retry now preserves a still-valid envelope byte-for-byte, but conditionally retires an expired generated version and builds a higher signed version from current authoritative grants. A revision/version compare-and-swap preserves a newer revocation job. Failed delivery of the replacement retains its new exact retry identity; lease duration, signature, high-watermark and ACK rules are unchanged.
+
+## 2026-10-11 authorized recovery rollout
+
+[PR #431](https://github.com/ks-house/smart-gatekeeper/pull/431) passed all four final-head checks and merged as 5053a3a32fcd78e216f8c34d8dacacf5f2ebc674. The final local Backend suite has353 tests (five environment skips); hosted security/MariaDB, Flutter/native/APK, OTA P0 and protected-policy checks passed on c790424. The owner authorized the update and deployment; existing release protections remain unchanged.
+
+- [Backend run38147664233](https://github.com/ks-house/smart-gatekeeper/actions/runs/38147664233): SUCCESS; exact-source NAS deployment/status receipts match, loopback/public readiness pass. Independent public API confirms release5053a3a, all12 checks, connected/subscribed/live writers and fresh authenticated status. Same Target boot910/firmware514 remains IDLE/OFF, auth READY, pending audit0 and12 cumulative receipts.
+- [Mobile run38147664244](https://github.com/ks-house/smart-gatekeeper/actions/runs/38147664244): SUCCESS; signed personal APK1.0.0-g5053a3a/build46101 is published on both updater origins. Independent strict-HTTPS readback verifies identical signed metadata, Ed25519 signature, APK size/hash, actual Android signature/certificate continuity, package/version/build and embedded exact source. APK55,692,441B / SHA2569044a27751fc046f6529782874785072f45837d55b364ffef88856939faef09c; manifest SHA256576c719cfb1d4d1765858aa160a88be36f739636d9fa51877545003f5df235f3. Publisher receipt matches and retains the previous valid artifact.
+- [OTA run38147664247](https://github.com/ks-house/smart-gatekeeper/actions/runs/38147664247): SUCCESS; exact-main contract check.
+- Target firmware remains514 on the existing boot; no Target OTA request/restart or door command is included. Phone installation and same-phone proof/physical access remain unverified.
+
+The reporting owner explicitly confirms that status refresh now shows **Smart Key ready** on the existing phone app. This closes the reported home-readiness symptom; it does not establish installation of46101, a fresh same-phone GATT success or physical passage. No connected ADB device was available. Install46101 through Settings → App update; #430 remains open for installation/field acceptance, with #426/#54 tracking independent replay and physical evidence.
+
+The old bf6100c Backend had already recovered collectors and12 natural backlog receipts before5053a3a was deployed. Those receipts are not attributed retroactively to this release or treated as a new successful access session. This release fixes reproduced exception/retry defects; the original field collector failure cause is not conclusively identified.
+
+## 2026-10-12 PR reconciliation and remaining work
+
+PR429 is the only open implementation follow-up. Reconciliation retains both its isolated commit/receipt evidence and the later PR431/432 deployment history; runtime source, protected inputs and access policy match current main.
+
+One unresolved review correctly identified caller-configuration leakage: a valid different ACL_PERSONAL_DOOR_ID made the fixture reject every event. The failure was reproduced, then the isolated harness patched both door-ID sources to its synthetic fixture ID. The same conflicting-environment MariaDB test now passes. Local Backend354 tests pass with one environment skip (real MariaDB opt-in enabled), root452 pass with one environment skip, and OTA contract passes. Hosted checks must pass the updated exact head before merge.
+
+Fresh bounded readback confirms Backend5053a3a/all12 readiness checks, live subscribed collectors and fresh authenticated Target status. Existing Target514/boot910 remains IDLE/relay OFF, with no pending/gap/stall advisory and no newly verified proof on this boot. Recent mobile evidence still includes45701;46101 installation is not established and the five-bundle listing is truncated, so no all-phone installation conclusion is made.
+
+Completed onboarding issue293 was closed using recorded merged/deployed and owner-confirmed credential/door/ACL acceptance. Remaining open work is prioritized as:
+1. #328: confirm and remediate broker anonymous access/topic-principal isolation with a tested rollback and legitimate client recovery.
+2. #430/#426:46101 installation and same-phone natural proof/event/terminal/sensor/commit-receipt evidence; actual screen-off/offline/process-death replay and late query.
+3. #179/#51/#54: Bluetooth restoration/OEM background and independent sensor/relay/physical acceptance, including electrical/OTA failure trials in an appropriate supervised environment.
+4. #50/#52/#53/#48: remaining hardening, soak/SLO, independent restore/operator drills and user/admin/installer walkthrough; GATT latency optimization only after the reliability evidence.
+
+This test/documentation merge does not require republishing unchanged Backend, APK or Target runtime. Existing released5053a3a/APK46101/Target514 identities remain the deployment baseline. No device command or field fault injection is included.

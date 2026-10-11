@@ -7657,3 +7657,62 @@
 - This is a test-file placement correction, not a runtime or access-policy change. Re-run the new real-MariaDB integration and operations contract tests, then recheck exact-head hosted CI.
 
 - Placement correction validation: the new opt-in real-MariaDB integration plus10 operations-gate tests all PASS (11total); protected inputs remain unchanged. Local primary hardware evidence links to its existing issue briefing, avoiding a link to an isolated-checkout-only page.
+
+## [2026-10-11] fix | Recover MQTT collector exceptions and clarify approved ACL waiting state
+
+- Owner requests normal operation from an approved-phone ACL-wait screenshot. Existing read-only diagnostics and bounded subscribe-only MQTT show a receive/commit gap with stale stored health despite increasing live Target status. Independently verified live MAC against authentic released provisioning; deployed Backend key agreement and mobile proof rejection remain unconfirmed causes.
+- Isolated latest main e2bc3a0 in codex/fix-smartkey-recovery-20261011, preserving the dirty primary checkout. Reproduced uncaught ACL snapshot DB lookup error; moved lookup into the exact durable-ACK exception boundary. Canonical/status writers survive unexpected persistence errors without false receipts/freshness, and committed projection failures do not stop collection or suppress the exact commit receipt.
+- Added privacy-safe aggregate /ready collector barriers and an approved/wait_for_acl title rather than registration required. Authentication, lease/expiry, replay/generation, opening policy and OTA/update paths remain unchanged.
+- Backend351 tests PASS (5 expected skips) and OTA contract PASS; further root/Flutter/hosted checks and runtime recovery evidence are pending at this entry. Cached Flutter version differed from CI; switched only the disposable tool container to exact Flutter3.44.8, preserving the dependency lock.
+- Registered issue430 with source reproduction and bounded acceptance. Updated recovery, ACL, mobile UX and hardware evidence pages; no new wiki page/index link needed. No Target reboot/OTA resend or door command.
+
+## [2026-10-11] test | Validate collector recovery and ACL-wait presentation
+
+- Root452 tests PASS (3 environment skips), Backend351 PASS (5 skips), OTA contract PASS. Disposable exact Flutter3.44.8 uses the unchanged dependency lock; focused23 widget/identity/message tests PASS and Dart analyzer reports no issues.
+- Localization regenerated using exact Flutter. Removed only this run's unrelated generated desktop registrant changes from the previously clean isolated checkout. Diff whitespace and edited-page local-link checks PASS. Hosted MariaDB/native/APK checks and runtime recovery remain pending.
+
+## [2026-10-11] fix | Regenerate expired queued ACL and separate observed runtime recovery
+
+- Before this PR was deployed, existing bf6100c runtime recovered collector readiness and fresh authenticated status. Same Target boot910 retained firmware514, received12 natural commit receipts and drained its durable/pending outboxes to0. A later live read shows ACL6470/auth_ready=true. This recovery is not attributed to the undeployed changes; same-phone access/physical passage is not yet verified.
+- Source tracing shows public PROOF_INVALID also covers expired lease/replay, while Android labels it SIGNATURE_INVALID. The observed mobile error does not by itself prove cryptographic mismatch. Existing stable error codes and proof security remain unchanged.
+- Reproduced another availability defect: an ACK-lost generated ACL is replayed after exact lease expiry. Retire only that observed generated version/revision using conditional SQL, preserve stronger/newer replacement jobs, regenerate a higher signed version from authoritative grants and retain exact retry identity on further delivery failure. No expired lease is extended or admitted.
+
+## [2026-10-11] test | Validate expired ACL regeneration and protected retry behavior
+
+- Final Backend353 tests PASS (5 expected environment skips), including a failed generated ACL at exact expiry, higher freshly signed replacement, replacement delivery failure then byte-identical retry, and preservation of a newer revocation revision. Existing valid-envelope retries and boot high-watermark tests remain PASS.
+- Root452/OTA contract and exact Flutter focused23/analyzer evidence from this PR remains applicable; no further app or Target source changes. Final hosted checks will run on the new exact head.
+
+## [2026-10-11] test | Merge collector and ACL recovery after exact-head checks
+
+- PR431 final head c790424 passed Backend security/real MariaDB, Flutter/native/APK canary, OTA P0 and trusted-policy checks. Merged as exact release5053a3a32fcd78e216f8c34d8dacacf5f2ebc674. Existing main Backend38147664233, Mobile38147664244 and OTA38147664247 lanes are running.
+- Owner-authorized existing production review was approved for this exact Backend source only. No protected-policy changes, Target OTA/reboot or door command. Windows ADB read-only device listing succeeded after local socket sandbox retry and returned no connected device; phone installation cannot be claimed.
+- Existing published APK/hash/manifest signature and certificate verified as a comparison baseline. New signed APK publication and independent exact-source readback are pending. Do not advance remote main with follow-up documentation until these exact-main publishers finish.
+
+## [2026-10-11] test | Verify deployed Backend collector and permission recovery
+
+- Backend38147664233 SUCCESS. Downloaded NAS apply/status evidence matches byte-for-byte: deployed, exact release5053a3a, loopback/public readiness passed. Independent strict-TLS /ready confirms all12 checks, connected acknowledged subscriptions, live canonical/status writers, no writer/subscription failure and verified current-connection status evidence.
+- Read API health91207 remains verified boot910/firmware514, IDLE/relay OFF, advisory auth READY, pending audit0 and12 cumulative receipts. Those natural backlog receipts were already observed before this deployment; do not attribute them retroactively to this fix or count them as a successful physical session.
+- Exact-main OTA38147664247 SUCCESS. Signed mobile46101 publication and owner installation remain pending. No Target reboot/OTA resend or door command.
+
+## [2026-10-11] test | Owner confirms Smart Key ready after status refresh
+
+- After deployed Backend5053a3a recovery, the reporting owner explicitly confirmed that pressing status refresh changed the phone home to Smart Key ready. This is owner-reported UI readiness on the existing app; new APK installation, fresh GATT proof and physical passage are not inferred.
+- Signed mobile publication/readback continues. No physical test or device command was requested.
+
+## [2026-10-11] test | Verify signed mobile publication and document remaining field acceptance
+
+- Mobile38147664244 SUCCESS: personal1.0.0-g5053a3a/46101 from exact release5053a3a,55,692,441B. Independent strict-HTTPS primary/fallback signed metadata and APK downloads agree; Ed25519 manifest signature/schema, exact SHA256/source and actual Android signer certificate/package/version/build pass. Publisher receipt matches both manifest/artifact hashes and confirms previous valid artifact retained.
+- Owner reports Smart Key ready after status refresh on the existing app. New46101 installation, fresh same-phone GATT success and physical passage remain unverified; Windows ADB has no connected device. Settings/App update is the available installation path.
+- Updated recovery/status/hardware/index and appended this log. #430/#426/#54 retain field acceptance scope. Old-runtime recovery/backlog receipts predate this release and are not attributed to this fix. No Target command, door operation or protected-policy change.
+
+## [2026-10-12] fix | Reconcile PR429 conflicts and isolate caller door configuration
+
+- Owner requests PR cleanup and remaining-work audit. Verified live GitHub: only PR429 open, conflicting with later deployment docs, and one unresolved review. Retained both historical evidence branches and current main runtime; no primary-checkout reset/staging.
+- Reproduced the review with a different valid ACL_PERSONAL_DOOR_ID: no valid receipt and IndexError. Isolated harness now patches both COMMAND_DOOR_ID and ACL_PERSONAL_DOOR_ID; identical conflicting-environment opt-in MariaDB integration PASS.
+- Backend354 tests PASS/1 environment skip with real MariaDB enabled; root452 PASS/1 skip and OTA contract PASS. Hosted exact-head checks remain required before merge. Updated recovery/index/hardware/status and retained append-only log history.
+
+## [2026-10-12] compile | Audit remaining issues and refresh live evidence boundaries
+
+- Closed completed fresh-install onboarding293 using merged295/297/300, exact deployed Backend and recorded owner credential/door/ACL acceptance. Physical movement is separate and unclaimed. Ten remaining issues retain their pending field/security/operations scope.
+- Fresh strict-HTTPS readiness confirms deployed5053a3a/all12, connected acknowledged subscriptions/live writers and fresh authenticated Target status. Sampled existing514/boot910 remains IDLE/OFF and advisory auth READY/no pending gap/stall. Latest sampled phone evidence45701 does not prove46101 installation; bounded five-bundle listing is truncated, no all-phone claim.
+- Priority: broker auth/topic isolation328; installation/natural same-phone commit/replay430/426; OEM/Bluetooth/independent physical179/51/54; hardening/soak/restore/operator/manual50/52/53/48. No Target command, door operation, field fault injection or unnecessary runtime republishing.

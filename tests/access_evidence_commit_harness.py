@@ -220,7 +220,7 @@ def exercise(test):
                 return receipts[start:]
 
             with patch.multiple(main, COMMAND_TARGET_ID=TARGET, COMMAND_DOOR_ID=DOOR,
-                    ACCESS_EVENT_REF_KEYS={"a1": KEY}, _acl_target_credentials={},
+                    ACL_PERSONAL_DOOR_ID=DOOR, ACCESS_EVENT_REF_KEYS={"a1": KEY}, _acl_target_credentials={},
                     _ops_hmac_key=b"k" * 32), patch.object(main, "get_db", side_effect=database):
                 worker = main._CanonicalAccessEventWorker(on_commit=committed)
                 # Real INSERT transaction rolls back; no callback/receipt may escape.
