@@ -7653,3 +7653,14 @@
 
 - Root452 tests PASS (3 environment skips), Backend351 PASS (5 skips), OTA contract PASS. Disposable exact Flutter3.44.8 uses the unchanged dependency lock; focused23 widget/identity/message tests PASS and Dart analyzer reports no issues.
 - Localization regenerated using exact Flutter. Removed only this run's unrelated generated desktop registrant changes from the previously clean isolated checkout. Diff whitespace and edited-page local-link checks PASS. Hosted MariaDB/native/APK checks and runtime recovery remain pending.
+
+## [2026-10-11] fix | Regenerate expired queued ACL and separate observed runtime recovery
+
+- Before this PR was deployed, existing bf6100c runtime recovered collector readiness and fresh authenticated status. Same Target boot910 retained firmware514, received12 natural commit receipts and drained its durable/pending outboxes to0. A later live read shows ACL6470/auth_ready=true. This recovery is not attributed to the undeployed changes; same-phone access/physical passage is not yet verified.
+- Source tracing shows public PROOF_INVALID also covers expired lease/replay, while Android labels it SIGNATURE_INVALID. The observed mobile error does not by itself prove cryptographic mismatch. Existing stable error codes and proof security remain unchanged.
+- Reproduced another availability defect: an ACK-lost generated ACL is replayed after exact lease expiry. Retire only that observed generated version/revision using conditional SQL, preserve stronger/newer replacement jobs, regenerate a higher signed version from authoritative grants and retain exact retry identity on further delivery failure. No expired lease is extended or admitted.
+
+## [2026-10-11] test | Validate expired ACL regeneration and protected retry behavior
+
+- Final Backend353 tests PASS (5 expected environment skips), including a failed generated ACL at exact expiry, higher freshly signed replacement, replacement delivery failure then byte-identical retry, and preservation of a newer revocation revision. Existing valid-envelope retries and boot high-watermark tests remain PASS.
+- Root452/OTA contract and exact Flutter focused23/analyzer evidence from this PR remains applicable; no further app or Target source changes. Final hosted checks will run on the new exact head.

@@ -70,3 +70,7 @@ Canonical and authenticated-status workers now survive unexpected persistence ex
 The readiness response adds aggregate collector metadata: connection, expected/accepted subscription counts, subscription failure, writer failure/liveness and verified-evidence barriers. It includes no Target IDs, topic names, credentials or payloads. Existing readiness requirements are unchanged.
 
 Local Backend tests pass (351 tests, five expected environment skips), including lookup failure then exact retry, worker failure with no false receipt/freshness, subsequent recovery and projection failure. OTA contract passes. Hosted CI, deployment, runtime collector recovery, natural phone proof and physical access are separate acceptance steps. Track [#430](https://github.com/ks-house/smart-gatekeeper/issues/430); #426/#54 remain open.
+
+### Expired queued ACL retry
+
+A second reproduction advances the clock to the exact expiry of a generated ACL whose MQTT application ACK was not received. Previously, lease refresh replayed the expired signed version indefinitely. Retry now preserves a still-valid envelope byte-for-byte, but conditionally retires an expired generated version and builds a higher signed version from current authoritative grants. A revision/version compare-and-swap preserves a newer revocation job. Failed delivery of the replacement retains its new exact retry identity; lease duration, signature, high-watermark and ACK rules are unchanged.

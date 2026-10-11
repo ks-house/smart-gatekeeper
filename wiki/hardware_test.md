@@ -9,7 +9,8 @@
 | Writer/projection exceptions | Failed persistence sends no receipt/freshness; later retry works; committed projection failure preserves receipt | No device fault injection |
 | OTA contract / root suite | PASS / 452 tests, three environment skips | No partition, Target code or proof change |
 | Flutter | Exact3.44.8, focused23 tests and analyzer PASS; lock unchanged | UI/service regression, installation pending |
-| Field recovery | Pending deployed collector freshness/receipt and same-phone proof | No physical passage claim |
+| Expired queued ACL | Exact expiry reproduced replaying old version; replacement and revision-race regressions added | No lease/security relaxation |
+| Existing runtime recovery | Before new deployment: fresh status, same boot910, 12 commit receipts, queue0, ACL6470/auth_ready | Not attributed to this PR; same-phone/physical proof pending |
 
 
 

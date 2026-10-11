@@ -1589,6 +1589,23 @@ class AclStore:
             )
         self._write(statement, (tenant_id, door_id, reason, now))
 
+    def expire_snapshot_job_artifact(
+        self, tenant_id: str, door_id: str, version: int, revision: int
+    ) -> bool:
+        """Retire only the expired artifact observed by this retry.
+
+        Keep a newer revocation/replacement job intact if another writer has
+        already superseded this revision. The next generation uses current
+        authoritative grants and allocates a higher signed version.
+        """
+
+        _, count = self._write(
+            "UPDATE acl_snapshot_jobs SET generated_version=NULL, revision=revision + 1 "
+            "WHERE tenant_id=? AND door_id=? AND generated_version=? AND revision=?",
+            (tenant_id, door_id, version, revision),
+        )
+        return count == 1
+
     def mark_snapshot_job_generated(
         self, tenant_id: str, door_id: str, version: int, revision: int
     ) -> bool:
@@ -2424,13 +2441,20 @@ class AclManagementService:
                 if generated is None:
                     raise RuntimeError("queued ACL snapshot artifact is missing")
                 envelope = generated["envelope"]
-                topic = f"gatekeeper/acl/v1/{tenant_id}/{door_id}"
-                if self.publisher.publish(topic, envelope):
-                    self.store.delete_snapshot_job(tenant_id, door_id, job_revision)
+                if int(envelope["fields"]["expires_at_epoch_s"]) <= self.clock():
+                    if not self.store.expire_snapshot_job_artifact(
+                        tenant_id, door_id, int(job["generated_version"]), job_revision
+                    ):
+                        raise RuntimeError("ACL replacement changed during expiry recovery")
+                    job_revision += 1
                 else:
-                    mqtt_failures += 1
-                envelopes.append(envelope)
-                continue
+                    topic = f"gatekeeper/acl/v1/{tenant_id}/{door_id}"
+                    if self.publisher.publish(topic, envelope):
+                        self.store.delete_snapshot_job(tenant_id, door_id, job_revision)
+                    else:
+                        mqtt_failures += 1
+                    envelopes.append(envelope)
+                    continue
             try:
                 envelope = self.publish_snapshot(
                     tenant_id,
