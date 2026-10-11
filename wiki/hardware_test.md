@@ -1291,3 +1291,17 @@ an inference from application HMAC tests.
 
 See [access_evidence_recovery.md](access_evidence_recovery.md). No Backend release,
 APK publication, Target OTA/reboot or door command occurred in this work.
+
+## 2026-10-11 Smart Key readiness recovery deployment
+
+| Validation | Result | Scope / limitation |
+|---|---|---|
+| Final local regressions | Backend353 tests/5 environment skips, root452/3 skips, OTA contract PASS; exact Flutter3.44.8 focused23/analyzer PASS | Reproduced ACK lookup exception and exact-expiry ACL retry before fixing; no device fault injection |
+| Final-head hosted checks | PR431/c790424: Backend/MariaDB, Android Flutter/native/APK, OTA and protected policy PASS | Merged release5053a3a; existing release protections unchanged |
+| Backend deployment |38147664233 SUCCESS; identical exact-source apply/status receipts and independent all12 readiness checks | Fresh authenticated status/live collectors; does not identify original field exception conclusively |
+| Signed mobile publication |38147664244 SUCCESS;1.0.0-g5053a3a/46101,55,692,441B; both origins match signed manifest/hash/source | Actual APK signer certificate/package/version/build verified; previous valid artifact retained |
+| Owner UI acceptance | Status refresh now shows Smart Key ready | Existing app; new46101 installation and fresh same-phone proof unverified |
+| Existing Target | Firmware514/boot910, IDLE/relay OFF; pending0,12 cumulative receipts | Natural backlog receipts predate this release; no Target OTA/reboot/door command |
+| Remaining field acceptance | Phone installation, same-phone authentication, physical passage and offline/screen-off/process-death replay | #430/#426/#54 remain open; publication/UI readiness do not close these gates |
+
+See [access_evidence_recovery.md](access_evidence_recovery.md) for exact hashes and evidence boundaries.
