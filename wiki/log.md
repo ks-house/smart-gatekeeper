@@ -7716,3 +7716,8 @@
 - Closed completed fresh-install onboarding293 using merged295/297/300, exact deployed Backend and recorded owner credential/door/ACL acceptance. Physical movement is separate and unclaimed. Ten remaining issues retain their pending field/security/operations scope.
 - Fresh strict-HTTPS readiness confirms deployed5053a3a/all12, connected acknowledged subscriptions/live writers and fresh authenticated Target status. Sampled existing514/boot910 remains IDLE/OFF and advisory auth READY/no pending gap/stall. Latest sampled phone evidence45701 does not prove46101 installation; bounded five-bundle listing is truncated, no all-phone claim.
 - Priority: broker auth/topic isolation328; installation/natural same-phone commit/replay430/426; OEM/Bluetooth/independent physical179/51/54; hardening/soak/restore/operator/manual50/52/53/48. No Target command, door operation, field fault injection or unnecessary runtime republishing.
+
+## [2026-10-12] fix | Correct merged-PR documentation review findings
+
+- Audited recent merged427/428/431/432 review threads. Three documentation findings remain: preserve the Admin production/device acceptance Gate, distinguish Target firmware514 from boot910, and describe APK46101 as published while phone installation is unverified.
+- Recovery/status navigation and hardware evidence now retain these boundaries. Earlier synthetic Admin browser rendering is PASS; authenticated production/device Admin acceptance remains pending. No runtime, release policy or physical behavior changed.

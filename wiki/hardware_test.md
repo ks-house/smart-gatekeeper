@@ -21,7 +21,7 @@
 | Source/hosted checks | PR #427 exact-head checks PASS; merged release bf6100c; main Backend38039839789, Target38039839795 and OTA38039839806 SUCCESS | Runtime source and existing protected checks |
 | NAS deployment | Exact-source signed deployment/status receipts match; loopback/public readiness pass; independent public readiness all 12 checks/fresh authenticated Target | Backend installation and runtime readiness |
 | Target publication | Signed/encrypted2.1.514+main.gbf6100c; independent Ed25519/schema-v2/exact-byte checks;1,937,108 bytes and artifact SHA256 10de4813c27465c8a935a218403b54f6de6edcd3835282c59dc1ca74d7733091 | Publication with prior valid pair retained; personal profile, no commercial authorization claim |
-| Target installation | One non-retained ota_check; broker/Backend/Target accepted; new boot514 and persisted stage11/VALID/running_image_valid=true | Install/reboot/health confirmed; no separate reboot or door command |
+| Target installation | One non-retained ota_check; broker/Backend/Target accepted; Target firmware514 on new boot910 and persisted stage11/VALID/running_image_valid=true | Install/reboot/health confirmed; no separate reboot or door command |
 | Post-install recovery path | Same new boot at uptime 220s; periodic HTTPS stage14/CURRENT/HTTP 200/error 0; IDLE/relay OFF, MQTT/BLE status restored | Observed software health, not a power soak or radio/physical-door proof |
 | New queue telemetry | Backend health persists unsigned schema 1 access_evidence; depth/retries/invalid/overflow0, stalled=false, evidence_gap=false, last_failure=NONE at idle | API roundtrip and quiet-idle state only; historical loss is not reconstructed |
 | Remaining acceptance | Natural event/terminal/sensor summary through DB commit ACK; offline/screen-off/process-death replay; independent #54 sensor/door evidence | PENDING under #426; no physical passage claimed |
@@ -1287,7 +1287,7 @@ an inference from application HMAC tests.
 | ArduinoJson host admission | PASS | Optional queue health respects pool/wire bounds and preserves signed fields |
 | OTA contract | PASS | Source contract; installed rollback/health still pending |
 | ESP32-C6 personal production build | PASS; RAM89008/327680B, flash1859988/7340032B | Existing ignored provisioning referenced temporarily, then removed |
-| Admin visual/device validation | Pending | Existing diagnostics rendering extended; no physical/UI acceptance claim |
+| Admin visual/device validation | Synthetic browser rendering passed in the follow-up below; authenticated production/device acceptance pending | No production Admin login or device acceptance claim |
 
 See [access_evidence_recovery.md](access_evidence_recovery.md). No Backend release,
 APK publication, Target OTA/reboot or door command occurred in this work.

@@ -1,6 +1,6 @@
 # Access evidence recovery — issue #426
 
-- Status: PR #427 merged; Backend deployed and Target 514 installed with persisted VALID health on 2026-10-10. Natural access/ACK, retransmission and physical acceptance remain open.
+- Status: PR #427 merged; Backend deployed and Target 514 installed with persisted VALID health on 2026-10-10. Natural access/ACK, retransmission, authenticated production/device Admin acceptance and physical acceptance remain open.
 - Tracking: [#426](https://github.com/ks-house/smart-gatekeeper/issues/426).
 - Baseline: main 3426298; existing dirty field-recovery checkout is preserved.
 - Scope: P0 producer/deferred-queue recovery and visibility. No opening-policy, pin, radio scanning, signed wire ABI, durable journal, or OTA partition change.
@@ -43,7 +43,7 @@ Quiet idle with no retained head does not become stalled solely because the last
 
 Local validation results are recorded in [hardware_test.md](hardware_test.md) and [log.md](log.md). Host execution verifies pre-session abort, rejection then transport loss, disconnect, retained verified action, bounded quarantine/overflow, FIFO duplicate/reorder preservation, transient signed-record identity, terminal-to-capture matching, orphan expiry and real ArduinoJson admission. Backend tests cover catalog compatibility, strict unsigned redaction, health-history roundtrip and the existing DB-commit-only receipt behavior.
 
-This change does not reconstruct lost historical events. Remaining issue #426 work includes natural access evidence through actual DB commit ACK, offline/screen-off/process-death retransmission acceptance, and physical sensor/door proof under #54. P1 physical diagnosis and P2 latency optimization remain separate. Do not close #426 based only on deployment or idle queue health.
+This change does not reconstruct lost historical events. Remaining issue #426 work includes authenticated production/device Admin acceptance (synthetic browser rendering is separately recorded below), natural access evidence through actual DB commit ACK, offline/screen-off/process-death retransmission acceptance, and physical sensor/door proof under #54. P1 physical diagnosis and P2 latency optimization remain separate. Do not close #426 based only on deployment or idle queue health.
 
 ## 2026-10-10 authorized deployment
 
@@ -78,7 +78,7 @@ SGK_ARDUINOJSON_INCLUDE can be omitted when headers are present under .pio/libde
 - Browser rendering: unchanged deployed Admin HTML with synthetic local responses displays absent, idle, pending, stalled and evidence-gap states, including the unsigned/server-storage/physical-proof boundary. No production Admin login or control action was performed.
 - Finite post-install readback: 47 verified health rows, exhausted cursor, same installed boot, latest IDLE/relay OFF and unsigned queue depth/retry/loss/gap zero. The fixed approximately24-minute window has zero access events and an exhausted access cursor. This is an absence of a natural-session validation sample, not proof of physical failure or successful delivery.
 
-Natural same-session packet-to-terminal commit ACK, real Android screen-off/offline/process-death retransmission and independent physical acceptance under #54 remain open. Local late-query and storage reconstruction tests cannot close those field gates. No APK, runtime policy, firmware artifact or production service was changed by this follow-up.
+Authenticated production/device Admin acceptance, natural same-session packet-to-terminal commit ACK, real Android screen-off/offline/process-death retransmission and independent physical acceptance under #54 remain open. Local late-query and storage reconstruction tests cannot close those field gates. No APK, runtime policy, firmware artifact or production service was changed by this follow-up.
 
 ## 2026-10-11 collector recovery candidate — issue #430
 
@@ -119,7 +119,7 @@ Fresh bounded readback confirms Backend5053a3a/all12 readiness checks, live subs
 
 Completed onboarding issue293 was closed using recorded merged/deployed and owner-confirmed credential/door/ACL acceptance. Remaining open work is prioritized as:
 1. #328: confirm and remediate broker anonymous access/topic-principal isolation with a tested rollback and legitimate client recovery.
-2. #430/#426:46101 installation and same-phone natural proof/event/terminal/sensor/commit-receipt evidence; actual screen-off/offline/process-death replay and late query.
+2. #430/#426: authenticated production/device Admin acceptance,46101 installation and same-phone natural proof/event/terminal/sensor/commit-receipt evidence; actual screen-off/offline/process-death replay and late query.
 3. #179/#51/#54: Bluetooth restoration/OEM background and independent sensor/relay/physical acceptance, including electrical/OTA failure trials in an appropriate supervised environment.
 4. #50/#52/#53/#48: remaining hardening, soak/SLO, independent restore/operator drills and user/admin/installer walkthrough; GATT latency optimization only after the reliability evidence.
 
