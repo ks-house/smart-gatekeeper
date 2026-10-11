@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-10-10
+updated: 2026-10-11
 source_of_truth: true
 applies_to:
   - firmware
@@ -18,6 +18,14 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+
+## 2026-10-11 Smart Key readiness recovery deployed
+
+- [PR #431](https://github.com/ks-house/smart-gatekeeper/pull/431) merged as release5053a3a32fcd78e216f8c34d8dacacf5f2ebc674 after all four final-head checks. It contains MQTT collector exception recovery, expired generated-ACL regeneration with version/revision protection, and accurate approved/ACL-wait wording.
+- Backend38147664233 deployed that exact source; NAS apply/status receipts match and independent public readiness passes all12 checks with fresh authenticated Target status and live/subscribed collectors.
+- Mobile38147664244 published signed personal APK1.0.0-g5053a3a/build46101 on both updater origins. Independent manifest/signature/hash/source and actual APK certificate/package/version/build checks pass; previous valid artifact is retained. Phone installation remains unverified.
+- The reporting owner confirms status refresh now shows **Smart Key ready** on the existing app. Target remains2.1.514 on boot910, IDLE/relay OFF; no Target command or physical door trial was included. New same-phone proof/physical passage and offline/screen-off/process-death replay remain separate acceptance under [#430](https://github.com/ks-house/smart-gatekeeper/issues/430), #426 and #54.
+- Evidence and attribution limits: [access_evidence_recovery.md](access_evidence_recovery.md), [hardware_test.md](hardware_test.md).
 
 ## 2026-10-10 access evidence recovery deployed
 

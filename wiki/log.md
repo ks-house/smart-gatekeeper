@@ -7664,3 +7664,26 @@
 
 - Final Backend353 tests PASS (5 expected environment skips), including a failed generated ACL at exact expiry, higher freshly signed replacement, replacement delivery failure then byte-identical retry, and preservation of a newer revocation revision. Existing valid-envelope retries and boot high-watermark tests remain PASS.
 - Root452/OTA contract and exact Flutter focused23/analyzer evidence from this PR remains applicable; no further app or Target source changes. Final hosted checks will run on the new exact head.
+
+## [2026-10-11] test | Merge collector and ACL recovery after exact-head checks
+
+- PR431 final head c790424 passed Backend security/real MariaDB, Flutter/native/APK canary, OTA P0 and trusted-policy checks. Merged as exact release5053a3a32fcd78e216f8c34d8dacacf5f2ebc674. Existing main Backend38147664233, Mobile38147664244 and OTA38147664247 lanes are running.
+- Owner-authorized existing production review was approved for this exact Backend source only. No protected-policy changes, Target OTA/reboot or door command. Windows ADB read-only device listing succeeded after local socket sandbox retry and returned no connected device; phone installation cannot be claimed.
+- Existing published APK/hash/manifest signature and certificate verified as a comparison baseline. New signed APK publication and independent exact-source readback are pending. Do not advance remote main with follow-up documentation until these exact-main publishers finish.
+
+## [2026-10-11] test | Verify deployed Backend collector and permission recovery
+
+- Backend38147664233 SUCCESS. Downloaded NAS apply/status evidence matches byte-for-byte: deployed, exact release5053a3a, loopback/public readiness passed. Independent strict-TLS /ready confirms all12 checks, connected acknowledged subscriptions, live canonical/status writers, no writer/subscription failure and verified current-connection status evidence.
+- Read API health91207 remains verified boot910/firmware514, IDLE/relay OFF, advisory auth READY, pending audit0 and12 cumulative receipts. Those natural backlog receipts were already observed before this deployment; do not attribute them retroactively to this fix or count them as a successful physical session.
+- Exact-main OTA38147664247 SUCCESS. Signed mobile46101 publication and owner installation remain pending. No Target reboot/OTA resend or door command.
+
+## [2026-10-11] test | Owner confirms Smart Key ready after status refresh
+
+- After deployed Backend5053a3a recovery, the reporting owner explicitly confirmed that pressing status refresh changed the phone home to Smart Key ready. This is owner-reported UI readiness on the existing app; new APK installation, fresh GATT proof and physical passage are not inferred.
+- Signed mobile publication/readback continues. No physical test or device command was requested.
+
+## [2026-10-11] test | Verify signed mobile publication and document remaining field acceptance
+
+- Mobile38147664244 SUCCESS: personal1.0.0-g5053a3a/46101 from exact release5053a3a,55,692,441B. Independent strict-HTTPS primary/fallback signed metadata and APK downloads agree; Ed25519 manifest signature/schema, exact SHA256/source and actual Android signer certificate/package/version/build pass. Publisher receipt matches both manifest/artifact hashes and confirms previous valid artifact retained.
+- Owner reports Smart Key ready after status refresh on the existing app. New46101 installation, fresh same-phone GATT success and physical passage remain unverified; Windows ADB has no connected device. Settings/App update is the available installation path.
+- Updated recovery/status/hardware/index and appended this log. #430/#426/#54 retain field acceptance scope. Old-runtime recovery/backlog receipts predate this release and are not attributed to this fix. No Target command, door operation or protected-policy change.

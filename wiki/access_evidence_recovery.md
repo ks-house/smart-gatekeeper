@@ -74,3 +74,16 @@ Local Backend tests pass (351 tests, five expected environment skips), including
 ### Expired queued ACL retry
 
 A second reproduction advances the clock to the exact expiry of a generated ACL whose MQTT application ACK was not received. Previously, lease refresh replayed the expired signed version indefinitely. Retry now preserves a still-valid envelope byte-for-byte, but conditionally retires an expired generated version and builds a higher signed version from current authoritative grants. A revision/version compare-and-swap preserves a newer revocation job. Failed delivery of the replacement retains its new exact retry identity; lease duration, signature, high-watermark and ACK rules are unchanged.
+
+## 2026-10-11 authorized recovery rollout
+
+[PR #431](https://github.com/ks-house/smart-gatekeeper/pull/431) passed all four final-head checks and merged as 5053a3a32fcd78e216f8c34d8dacacf5f2ebc674. The final local Backend suite has353 tests (five environment skips); hosted security/MariaDB, Flutter/native/APK, OTA P0 and protected-policy checks passed on c790424. The owner authorized the update and deployment; existing release protections remain unchanged.
+
+- [Backend run38147664233](https://github.com/ks-house/smart-gatekeeper/actions/runs/38147664233): SUCCESS; exact-source NAS deployment/status receipts match, loopback/public readiness pass. Independent public API confirms release5053a3a, all12 checks, connected/subscribed/live writers and fresh authenticated status. Same Target boot910/firmware514 remains IDLE/OFF, auth READY, pending audit0 and12 cumulative receipts.
+- [Mobile run38147664244](https://github.com/ks-house/smart-gatekeeper/actions/runs/38147664244): SUCCESS; signed personal APK1.0.0-g5053a3a/build46101 is published on both updater origins. Independent strict-HTTPS readback verifies identical signed metadata, Ed25519 signature, APK size/hash, actual Android signature/certificate continuity, package/version/build and embedded exact source. APK55,692,441B / SHA2569044a27751fc046f6529782874785072f45837d55b364ffef88856939faef09c; manifest SHA256576c719cfb1d4d1765858aa160a88be36f739636d9fa51877545003f5df235f3. Publisher receipt matches and retains the previous valid artifact.
+- [OTA run38147664247](https://github.com/ks-house/smart-gatekeeper/actions/runs/38147664247): SUCCESS; exact-main contract check.
+- Target firmware remains514 on the existing boot; no Target OTA request/restart or door command is included. Phone installation and same-phone proof/physical access remain unverified.
+
+The reporting owner explicitly confirms that status refresh now shows **Smart Key ready** on the existing phone app. This closes the reported home-readiness symptom; it does not establish installation of46101, a fresh same-phone GATT success or physical passage. No connected ADB device was available. Install46101 through Settings → App update; #430 remains open for installation/field acceptance, with #426/#54 tracking independent replay and physical evidence.
+
+The old bf6100c Backend had already recovered collectors and12 natural backlog receipts before5053a3a was deployed. Those receipts are not attributed retroactively to this release or treated as a new successful access session. This release fixes reproduced exception/retry defects; the original field collector failure cause is not conclusively identified.
