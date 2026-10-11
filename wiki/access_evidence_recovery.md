@@ -1,6 +1,6 @@
 # Access evidence recovery — issue #426
 
-- Status: PR #427 merged; Backend deployed and Target 514 installed with persisted VALID health on 2026-10-10. Natural access/ACK, retransmission and physical acceptance remain open.
+- Status: PR #427 merged; Backend deployed and Target 514 installed with persisted VALID health on 2026-10-10. Natural access/ACK, retransmission, authenticated production/device Admin acceptance and physical acceptance remain open.
 - Tracking: [#426](https://github.com/ks-house/smart-gatekeeper/issues/426).
 - Baseline: main 3426298; existing dirty field-recovery checkout is preserved.
 - Scope: P0 producer/deferred-queue recovery and visibility. No opening-policy, pin, radio scanning, signed wire ABI, durable journal, or OTA partition change.
@@ -43,7 +43,7 @@ Quiet idle with no retained head does not become stalled solely because the last
 
 Local validation results are recorded in [hardware_test.md](hardware_test.md) and [log.md](log.md). Host execution verifies pre-session abort, rejection then transport loss, disconnect, retained verified action, bounded quarantine/overflow, FIFO duplicate/reorder preservation, transient signed-record identity, terminal-to-capture matching, orphan expiry and real ArduinoJson admission. Backend tests cover catalog compatibility, strict unsigned redaction, health-history roundtrip and the existing DB-commit-only receipt behavior.
 
-This change does not reconstruct lost historical events. Remaining issue #426 work includes natural access evidence through actual DB commit ACK, offline/screen-off/process-death retransmission acceptance, and physical sensor/door proof under #54. P1 physical diagnosis and P2 latency optimization remain separate. Do not close #426 based only on deployment or idle queue health.
+This change does not reconstruct lost historical events. Remaining issue #426 work includes authenticated production/device Admin acceptance (synthetic browser rendering is separately recorded below), natural access evidence through actual DB commit ACK, offline/screen-off/process-death retransmission acceptance, and physical sensor/door proof under #54. P1 physical diagnosis and P2 latency optimization remain separate. Do not close #426 based only on deployment or idle queue health.
 
 ## 2026-10-10 authorized deployment
 
@@ -58,6 +58,27 @@ This change does not reconstruct lost historical events. Remaining issue #426 wo
 No mobile source or APK release is included. No door command, extra reboot, threshold change or fault injection on the installed Target was used. Natural new-session commit ACK and offline/screen-off/process-death/physical acceptance remain pending under #426/#54.
 
 Final bounded readback confirms the same new boot at uptime 220s, persisted valid image, CURRENT/HTTP 200/error 0, IDLE/relay OFF and fresh authenticated Backend health. The completed subscribe-only observer saw all6 allowlisted channels, one segment, zero rejected messages and zero history eviction. Observation has stopped; this is not an ongoing monitor or power soak.
+
+
+## 2026-10-10 isolated commit/receipt acceptance
+
+A new opt-in integration compiles the actual CanonicalMqttEventSink, MQTT event/sensor serializers, receipt parser, MAC implementation and durable queue implementations. Platform, persistent-byte storage and delivery are host seams; no production secret, broker, GPIO or installed Target is used. Source extraction fails visibly if its anchors move.
+
+The real isolated MariaDB writer is exercised through a pre-commit failure (rollback and no ACK), lost ACK, Backend worker restart, exact replay/deduplication, out-of-order and forged receipts, and local storage-write failure. Six causally linked signed events, one terminal outbox item and one matching signed sensor summary remain in SQL exactly once; verified receipts retire only the exact persisted heads. Sensor SQL rollback/replay and MAC/receipt validation execute directly; this does not exercise the full authenticated MQTT status worker or an actual NVS power failure.
+
+Run from a WSL checkout with the project Python environment, Docker, g++, Backend dependencies and ArduinoJson headers installed:
+
+~~~sh
+RUN_MARIADB_INTEGRATION=1 SGK_ARDUINOJSON_INCLUDE=/path/to/ArduinoJson/src /path/to/.venv/bin/python -m unittest backend.tests.test_reliability_diagnostics.ReliabilityMariaDbTest.test_production_sink_to_commit_receipt_after_failure_and_replay -v
+~~~
+
+SGK_ARDUINOJSON_INCLUDE can be omitted when headers are present under .pio/libdeps. The test uses an isolated container bound only to loopback and removes it afterward. This opt-in test was run locally; hosted default suites may skip it and do not constitute a hosted MariaDB integration result.
+
+- Related local suite: 51 tests, 1 expected environment skip, no failures. Includes real MariaDB reliability/conflict tests, mobile late-evidence query regression and firmware sink/receipt fixtures. OTA source contract also passes.
+- Browser rendering: unchanged deployed Admin HTML with synthetic local responses displays absent, idle, pending, stalled and evidence-gap states, including the unsigned/server-storage/physical-proof boundary. No production Admin login or control action was performed.
+- Finite post-install readback: 47 verified health rows, exhausted cursor, same installed boot, latest IDLE/relay OFF and unsigned queue depth/retry/loss/gap zero. The fixed approximately24-minute window has zero access events and an exhausted access cursor. This is an absence of a natural-session validation sample, not proof of physical failure or successful delivery.
+
+Authenticated production/device Admin acceptance, natural same-session packet-to-terminal commit ACK, real Android screen-off/offline/process-death retransmission and independent physical acceptance under #54 remain open. Local late-query and storage reconstruction tests cannot close those field gates. No APK, runtime policy, firmware artifact or production service was changed by this follow-up.
 
 ## 2026-10-11 collector recovery candidate — issue #430
 
@@ -87,3 +108,19 @@ A second reproduction advances the clock to the exact expiry of a generated ACL 
 The reporting owner explicitly confirms that status refresh now shows **Smart Key ready** on the existing phone app. This closes the reported home-readiness symptom; it does not establish installation of46101, a fresh same-phone GATT success or physical passage. No connected ADB device was available. Install46101 through Settings → App update; #430 remains open for installation/field acceptance, with #426/#54 tracking independent replay and physical evidence.
 
 The old bf6100c Backend had already recovered collectors and12 natural backlog receipts before5053a3a was deployed. Those receipts are not attributed retroactively to this release or treated as a new successful access session. This release fixes reproduced exception/retry defects; the original field collector failure cause is not conclusively identified.
+
+## 2026-10-12 PR reconciliation and remaining work
+
+PR429 is the only open implementation follow-up. Reconciliation retains both its isolated commit/receipt evidence and the later PR431/432 deployment history; runtime source, protected inputs and access policy match current main.
+
+One unresolved review correctly identified caller-configuration leakage: a valid different ACL_PERSONAL_DOOR_ID made the fixture reject every event. The failure was reproduced, then the isolated harness patched both door-ID sources to its synthetic fixture ID. The same conflicting-environment MariaDB test now passes. Local Backend354 tests pass with one environment skip (real MariaDB opt-in enabled), root452 pass with one environment skip, and OTA contract passes. Hosted checks must pass the updated exact head before merge.
+
+Fresh bounded readback confirms Backend5053a3a/all12 readiness checks, live subscribed collectors and fresh authenticated Target status. Existing Target514/boot910 remains IDLE/relay OFF, with no pending/gap/stall advisory and no newly verified proof on this boot. Recent mobile evidence still includes45701;46101 installation is not established and the five-bundle listing is truncated, so no all-phone installation conclusion is made.
+
+Completed onboarding issue293 was closed using recorded merged/deployed and owner-confirmed credential/door/ACL acceptance. Remaining open work is prioritized as:
+1. #328: confirm and remediate broker anonymous access/topic-principal isolation with a tested rollback and legitimate client recovery.
+2. #430/#426: authenticated production/device Admin acceptance,46101 installation and same-phone natural proof/event/terminal/sensor/commit-receipt evidence; actual screen-off/offline/process-death replay and late query.
+3. #179/#51/#54: Bluetooth restoration/OEM background and independent sensor/relay/physical acceptance, including electrical/OTA failure trials in an appropriate supervised environment.
+4. #50/#52/#53/#48: remaining hardening, soak/SLO, independent restore/operator drills and user/admin/installer walkthrough; GATT latency optimization only after the reliability evidence.
+
+This test/documentation merge does not require republishing unchanged Backend, APK or Target runtime. Existing released5053a3a/APK46101/Target514 identities remain the deployment baseline. No device command or field fault injection is included.

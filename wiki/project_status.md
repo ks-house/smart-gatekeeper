@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-10-11
+updated: 2026-10-12
 source_of_truth: true
 applies_to:
   - firmware
@@ -18,6 +18,13 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+
+## 2026-10-12 PR cleanup and pending acceptance
+
+- PR429 conflict/review reconciliation adds only tests and evidence documentation; final hosted checks gate merging. Deployed Backend5053a3a, APK46101 and installed Target514 remain the runtime baseline.
+- Fresh public readiness remains12/12 with live collectors/fresh authenticated status. Recent sampled mobile evidence still includes45701;46101 installation and new same-phone proof/physical passage remain pending.
+- Completed fresh-install onboarding #293 is closed from recorded owner acceptance. Remaining priorities: broker principal/topic isolation #328; installation/natural commit/replay #430/#426; Bluetooth/OEM and independent physical Gate #179/#51/#54; then hardening/soak/restore/operator/manual work #50/#52/#53/#48.
+- Details: [access_evidence_recovery.md](access_evidence_recovery.md). No runtime redeployment or physical command is required for this test/documentation cleanup.
 
 ## 2026-10-11 Smart Key readiness recovery deployed
 

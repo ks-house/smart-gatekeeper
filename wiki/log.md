@@ -7641,6 +7641,23 @@
 - Bounded subscribe-only MQTT collection stopped: all6 allowlisted channels,1segment,0rejected messages,0history eviction. Local evidence remains under /tmp/sgk-access-release-20261010; no continuing monitor was created. No APK change, door command, extra reboot or installed-device fault injection occurred.
 - Updated recovery, project status, hardware evidence and index; existing primary-checkout changes preserved. Documentation-only whitespace and added-link validation run before publication.
 
+
+## [2026-10-10] test | Exercise access evidence DB commit and receipt replay in isolation
+
+- Continued #426 from current main in codex/access-evidence-acceptance-426, preserving the dirty primary checkout. Added an opt-in cross-layer host/MariaDB integration using actual firmware producer, serializers, MACs, durable queue implementations and receipt parser with synthetic identities/keys and host storage/delivery seams.
+- Verified pre-commit rollback suppresses ACK, lost ACK plus Backend worker restart reissues an identical receipt without duplicate storage, reordered/forged receipts cannot retire the wrong head, and storage-write failure preserves pending evidence. Six signed causal events, one terminal outbox item and one matching signed sensor summary persist once. Sensor SQL rollback/replay executes directly; full MQTT status worker, real NVS power failure and Android process death are not claimed.
+- Related local suite51tests/1environment skip/no failures and OTA source contract PASS. This MariaDB integration is opt-in and was run locally; default hosted tests may skip it. Existing mobile late-evidence query tests remain distinct from real-device retransmission.
+- computer-use browser check of unchanged Admin HTML with synthetic loopback-only responses confirms absent/idle/pending/stalled/gap states and unsigned provenance boundary. No production login/control. Finite fixed post-install readback has47verified health rows on the same boot and no new access events, both cursors exhausted; no natural-session ACK sample is available. Latest state IDLE/OFF and advisory queue gap absent.
+- Updated existing recovery/index/hardware pages. #426/#54 remain open for natural same-session ACK, real screen-off/offline/process-death replay and physical observation. No new production deployment, APK, door command, extra reboot or installed-device fault injection. Added-link and whitespace validation precedes publication.
+
+
+## [2026-10-10] fix | Keep host integration helper outside protected Backend input bundle
+
+- First PR429 Backend CI exposed the exact-input completeness check because a new helper was placed under backend. Moved the host-only helper to tests and updated its import/root; fixed allowlist and protected workflow policies remain unchanged.
+- This is a test-file placement correction, not a runtime or access-policy change. Re-run the new real-MariaDB integration and operations contract tests, then recheck exact-head hosted CI.
+
+- Placement correction validation: the new opt-in real-MariaDB integration plus10 operations-gate tests all PASS (11total); protected inputs remain unchanged. Local primary hardware evidence links to its existing issue briefing, avoiding a link to an isolated-checkout-only page.
+
 ## [2026-10-11] fix | Recover MQTT collector exceptions and clarify approved ACL waiting state
 
 - Owner requests normal operation from an approved-phone ACL-wait screenshot. Existing read-only diagnostics and bounded subscribe-only MQTT show a receive/commit gap with stale stored health despite increasing live Target status. Independently verified live MAC against authentic released provisioning; deployed Backend key agreement and mobile proof rejection remain unconfirmed causes.
@@ -7687,3 +7704,20 @@
 - Mobile38147664244 SUCCESS: personal1.0.0-g5053a3a/46101 from exact release5053a3a,55,692,441B. Independent strict-HTTPS primary/fallback signed metadata and APK downloads agree; Ed25519 manifest signature/schema, exact SHA256/source and actual Android signer certificate/package/version/build pass. Publisher receipt matches both manifest/artifact hashes and confirms previous valid artifact retained.
 - Owner reports Smart Key ready after status refresh on the existing app. New46101 installation, fresh same-phone GATT success and physical passage remain unverified; Windows ADB has no connected device. Settings/App update is the available installation path.
 - Updated recovery/status/hardware/index and appended this log. #430/#426/#54 retain field acceptance scope. Old-runtime recovery/backlog receipts predate this release and are not attributed to this fix. No Target command, door operation or protected-policy change.
+
+## [2026-10-12] fix | Reconcile PR429 conflicts and isolate caller door configuration
+
+- Owner requests PR cleanup and remaining-work audit. Verified live GitHub: only PR429 open, conflicting with later deployment docs, and one unresolved review. Retained both historical evidence branches and current main runtime; no primary-checkout reset/staging.
+- Reproduced the review with a different valid ACL_PERSONAL_DOOR_ID: no valid receipt and IndexError. Isolated harness now patches both COMMAND_DOOR_ID and ACL_PERSONAL_DOOR_ID; identical conflicting-environment opt-in MariaDB integration PASS.
+- Backend354 tests PASS/1 environment skip with real MariaDB enabled; root452 PASS/1 skip and OTA contract PASS. Hosted exact-head checks remain required before merge. Updated recovery/index/hardware/status and retained append-only log history.
+
+## [2026-10-12] compile | Audit remaining issues and refresh live evidence boundaries
+
+- Closed completed fresh-install onboarding293 using merged295/297/300, exact deployed Backend and recorded owner credential/door/ACL acceptance. Physical movement is separate and unclaimed. Ten remaining issues retain their pending field/security/operations scope.
+- Fresh strict-HTTPS readiness confirms deployed5053a3a/all12, connected acknowledged subscriptions/live writers and fresh authenticated Target status. Sampled existing514/boot910 remains IDLE/OFF and advisory auth READY/no pending gap/stall. Latest sampled phone evidence45701 does not prove46101 installation; bounded five-bundle listing is truncated, no all-phone claim.
+- Priority: broker auth/topic isolation328; installation/natural same-phone commit/replay430/426; OEM/Bluetooth/independent physical179/51/54; hardening/soak/restore/operator/manual50/52/53/48. No Target command, door operation, field fault injection or unnecessary runtime republishing.
+
+## [2026-10-12] fix | Correct merged-PR documentation review findings
+
+- Audited recent merged427/428/431/432 review threads. Three documentation findings remain: preserve the Admin production/device acceptance Gate, distinguish Target firmware514 from boot910, and describe APK46101 as published while phone installation is unverified.
+- Recovery/status navigation and hardware evidence now retain these boundaries. Earlier synthetic Admin browser rendering is PASS; authenticated production/device Admin acceptance remains pending. No runtime, release policy or physical behavior changed.
