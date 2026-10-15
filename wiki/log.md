@@ -7816,3 +7816,23 @@
 ## [2026-10-16] compile | Record broker access source fix publication
 
 - Installer loopback regression PR439 merged after hosted trusted-policy check38822110797 SUCCESS; merge commit a63ca4189d1629213e7b6da8493a9a87d9e888f9. Dedicated NAS access remains independently verified after closing the temporary password-authenticated master. Actual isolated16-case broker stage PASS; no operating client credential publication or cutover performed. SmartBoxPR6 remains open for coordinated device rollout.
+
+## [2026-10-16] compile | Start coordinated broker credential firmware publication
+
+- Previous goal turn made verified progress: dedicated gateway access and16-case private TLS/auth stage passed. Fresh Backend /ready now passes all12 checks at5053a3a; latest verified Target remains514/boot910, IDLE/commandedOFF. Subscribe-only SmartBox evidence confirms retained0.1.0-g632f004 version and fresh IDLE telemetry.
+- Preserved existing SmartBox firmware/version privately before publication with SHA256e152da765110050a15e6dca745b8d7e69aa39a59ca4014385a027bd2270a564c. New external-origin probe38823150167 passes anonymousHEAD/GET refusal; publication skipped in that read-only run.
+- Provisioned eight GitHub secret entries over stdin: Target USER/PASSWORD in repository, personal-auto-ota and production scopes, and SmartBox USER/PASS in its repository. Values were never emitted. This changes build provisioning, not installed clients or broker authentication.
+- SmartBoxPR6 merged5e5e334 with existing organization-admin bypass after the update-lock ruleset rejected ordinary merge. Ruleset and protection remain intact; exact-head native/origin/target checks already passed. Main publication38823428021 and Target exact-main canary/personal-auto-OTA38823340730 are live. Install/reboot/health and operating cutover are not yet claimed.
+
+
+## [2026-10-16] test | Verify Target525 installation and isolate SmartBox OTA gap
+
+- Target exact-main publication38823340730 PASS. Independently verified production signature, encrypted/plaintext hashes and matching private MQTT provisioning; temporary plaintext removed. One signed bridge ota_check yields accepted Target ACK and observed525 install/reboot/VALID. Backend fresh verified IDLE/OFF at boot911, advisory firmware525/VALID, pending0/gapfalse; all12 readiness checks PASS.
+- SmartBoxPR6/main5e5e334 publication38823428021 PASS; original artifact preserved and new private artifact matches staged credentials. One OTA request did not produce new-version reconnect within180s; fresh old-version IDLE continues. Non-effecting unknown-command warning proves reception, embedded CA verifies both TLS endpoints, installed version URL returns new manifest.
+- Owner confirms same network as Target. Device reports a different LAN from the original NAS-origin allowlist; actual device download response/source is not observed. New SmartBox issue7 records this gap. Prepare pinned private-LAN guard correction with full-config/actualHTTP/rollback validation; operating broker and collector stay unchanged.
+
+
+## [2026-10-16] compile | Publish reviewed private origin network correction
+
+- SmartBox issue7 and PR8/9a8aa50 capture the installed-device OTA gap and bounded LAN correction. Local Python12 PASS (actual nginx28 existing/30 extended cases, rollback, stale binding), native13 PASS and ESP32-C6 target build PASS. User confirms same network as Target; no actual SmartBox HTTP failure code is claimed.
+- Prepared update-ota-network.sh with captured immutable source/plan and exact old guard hashes. One-time nginx administrator input is required because the dedicated key intentionally permits only six broker commands; no new SSH/sudo authority is requested. Owner execution is pending; do not apply broker cutover or resend OTA before the route changes and is checked.
