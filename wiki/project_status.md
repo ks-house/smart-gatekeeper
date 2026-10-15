@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-10-15
+updated: 2026-10-16
 source_of_truth: true
 applies_to:
   - firmware
@@ -18,6 +18,13 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+
+## 2026-10-16 broker isolation source fix; operating migration pending
+
+- Fresh strict-TLS public CONNECT still accepts anonymous clients. The local NAS owner key is rejected despite a matching pinned server key; no administrator browser session is open. Live broker version/config/password inventory and cutover remain unverified.
+- Fixed the repository ACL's global Target-pattern inheritance: explicit named role/Target topics plus a bounded private-inventory renderer replace the leaked HA/Backend/diagnostic Target grants. Actual pinned Mosquitto2.1.2 reproduces old behavior and verifies new authorization and retained discovery.
+- Final local root473 tests/one environment skip, actual12-case renderer/broker matrix and OTA contract PASS. Existing Backend CI entry point now enforces the real matrix. No operating broker/HA/Target credential or state has changed.
+- Full migration/rollback and remaining #328 gates: [broker_security_migration.md](broker_security_migration.md). Named-client compatibility and authorized administrator access are required before removing anonymous access.
 
 ## 2026-10-15 first sensor-analysis task
 

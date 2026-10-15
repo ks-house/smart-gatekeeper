@@ -7729,6 +7729,37 @@
 - New host-only scripts/analyze_sensor_windows.py consumes bounded saved responses, exactly matches Target/boot ID+counter/start/end/inactive windows, rejects conflicting/invalid observations and omits source identities/timestamps from output. Unsigned timing stays unsigned; supplied-page coverage is explicit. No network/device calls, storage format, access policy or runtime changes.
 - Focused7/root459 tests with1 environment skip and OTA contract PASS; final hosted validation follows. Updated recovery/diagnostics/index/hardware/status and appended this log. No app/Target publication, deployment or physical command.
 
+## [2026-10-15] fix | Remove inherited Target grants from broker role principals and stage migration
+
+- Active goal continues issue-by-issue after merged sensor analysis433. Current source6cf5962b and fresh read-only strict-TLS public MQTT confirm anonymous CONNECT0; disconnected without SUBSCRIBE/PUBLISH/LWT/control. Private NAS SSH is reachable and existing pinned server key matches; local owner public-key authentication is rejected. Restricted Backend deploy authority is not broadened or used as a broker shell.
+- Isolated codex/broker-principal-isolation-328 reproduces the reference ACL's global %u grant leak on immutable Mosquitto2.1.2: HA/Backend/diagnostic principals each publish a canonical-event into their role-name pseudo Target namespace. This is broker authorization evidence, not a successful application/door effect. Official ACL semantics verified.
+- Replaced reference global patterns with named-user topics; new bounded scripts/render_broker_acl.py requires exact Target/Backend/HA/diagnostic inventory, rejects collisions/injection/password/extra fields and writes only a new0600 candidate with digest/count-only stdout. Actual live names/credentials are not guessed or changed.
+- Focused21 PASS:6 renderer regressions,5 opt-in real-broker authorization methods and10 existing Target security/OTA contracts. Synthetic loopback fixture uses ordered delivery barriers, not PUBACK/SUBACK as proof; containers/files are cleaned. Full root/OTA and hosted validation follow.
+- Added broker_security_migration wiki/index link and synced Target security/hardware evidence. Full operating inventory/backup/version/credential/compatibility/listener/old-session-eviction/reconnect/rollback/retained/readback gates remain open under328. No NAS broker/Target/HA state, password, deployment or door command changed.
+
+## [2026-10-16] test | Validate real broker isolation and preserve retained HA discovery
+
+- Final local root472 tests PASS/one environment skip and OTA contract PASS. Actual pinned Mosquitto2.1.2 integration now includes retained discovery delivery to late HA; six renderer plus six broker cases are enforced through the existing Backend CI Target-security test in CI or local opt-in. Child matrix12 tests/no skips PASS.
+- No privileged workflow or protected deployment input change. Reference security config/ACL and ordinary security test update require normal hosted checks. New migration page is linked in index/project status/security/hardware docs; host-only credentials remain synthetic.
+- Browser inventory finds no open administrator DSM session; no browser sign-in or UI mutation attempted. Owner SSH authentication remains unavailable. Live328 acceptance is incomplete; source fix/staging is not broker deployment or issue closure.
+
+## [2026-10-16] fix | Scope broker integration to Backend CI and verify Tailscale forced status
+
+- Initial hosted Backend38756745868 SUCCESS and its actual12-case broker matrix PASS. OTA38756743848 failed because generic CI selection executed MQTT integration without paho in the OTA-only dependency tier (also exercised by the manual walkthrough). Restricted automatic execution to the exact Backend workflow or explicit local opt-in; added tier-routing regression. Local OTA-tier security/walkthrough13 tests PASS/1 deliberate integration skip.
+- A subsequent local fixture startup returned Docker125 without exposed daemon details; removed the bind/close/start port-allocation window by using Docker's atomic loopback assignment and retained bounded stderr. This is fixture reliability, not a production broker failure diagnosis. Final regression/hosted rerun follows.
+- User points to Tailscale and confirms SSH8822. Verified NAS online, private pinned server identity, and successful authentication with existing forced Backend deploy key; status reports deployed5053a3a and loopback/public passed. Owner administration key is rejected; port22 refuses. Official Synology documentation confirms Tailscale transport does not replace DSM SSH authentication. No attempt to broaden/bypass the restricted key or change a credential.
+
+## [2026-10-16] test | Pass final broker regression after fixture and dependency-tier corrections
+
+- Final local root473 tests PASS/1 environment skip, actual child renderer/broker matrix12/no skips, OTA contract PASS. OTA-tier manual/security13 tests PASS/1 deliberate broker skip. No runtime/source ACL behavior change beyond the already tested explicit-principal policy.
+- Diff whitespace and wiki links checked before final-head publication. Hosted Backend/OTA/policy rerun will bind the corrected exact head; live NAS migration remains gated by administrator access, actual image/client inventory and named-credential/rollback verification.
+
+## [2026-10-16] fix | Trigger broker security CI for all renderer and matrix inputs
+
+- Review P1 dependency-tier finding is corrected1398374: Backend/OTA final-head checks pass with the real broker matrix confined to its owning dependency tier. Review P2 correctly finds renderer/test-only changes would not trigger the owning workflow.
+- Reproduced the missing input filter before correction; dynamic source/test path regression7th renderer test now passes after adding exactly three paths to both PR and main-push filters. Only backend_security.yml protected bytes change; no permission/job/release condition changes. Separate23-file persistent-baseline policy admission is required before feature merge; no protection bypass.
+- User confirms Tailscale/8822 and suggests github-nas-deploy/setup if needed. Actual configured deployment user remains noty00 with a forced key/status; github-nas-deploy rejects the existing deploy key. No account/key/sudo/SSH configuration is changed. User later withdraws the Gemini shared-link reference after content could not be read; no old-chat instruction or credential was used.
+
 ## [2026-10-16] compile | Admit exact broker CI trigger bytes in a separate persistent policy transition
 
 - Independently inspected PR434 reviewed feature 394e4c30a267d0d1705a8fc989ed521d24785fd3: only protected backend_security.yml changes, by adding three existing broker source/test paths to PR/push filters. All23 Git modes/types are preserved; all22 other normalized hashes/inventories match the trusted baseline. No job/permission/dependency/publisher/NAS-wrapper change.

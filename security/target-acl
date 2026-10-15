@@ -1,19 +1,22 @@
-# Per-Target broker usernames are the exact Target ID. Mosquitto substitutes %u
-# in pattern rules, preventing credential crossover between Target namespaces.
-pattern read gatekeeper/v1/targets/%u/command
-pattern read gatekeeper/v1/targets/%u/acl
-pattern write gatekeeper/v1/targets/%u/command-ack
-pattern write gatekeeper/v1/targets/%u/acl/ack
-pattern write gatekeeper/v1/targets/%u/availability
-pattern write gatekeeper/v1/targets/%u/status
-pattern write gatekeeper/v1/targets/%u/event
-pattern write gatekeeper/v1/targets/%u/canonical-event
-pattern write gatekeeper/v1/targets/%u/sensor
-pattern write gatekeeper/v1/targets/%u/boot
-pattern write gatekeeper/v1/targets/%u/config-state
+# Reference only: render with scripts/render_broker_acl.py and a private inventory.
+# Never copy this example directly over a running broker ACL.
+# Named Target users receive only their own explicit namespace. Global pattern
+# rules are forbidden because Mosquitto applies them to every named principal.
+user target-example
+topic read gatekeeper/v1/targets/target-example/command
+topic read gatekeeper/v1/targets/target-example/acl
+topic write gatekeeper/v1/targets/target-example/command-ack
+topic write gatekeeper/v1/targets/target-example/acl/ack
+topic write gatekeeper/v1/targets/target-example/availability
+topic write gatekeeper/v1/targets/target-example/status
+topic write gatekeeper/v1/targets/target-example/event
+topic write gatekeeper/v1/targets/target-example/canonical-event
+topic write gatekeeper/v1/targets/target-example/sensor
+topic write gatekeeper/v1/targets/target-example/boot
+topic write gatekeeper/v1/targets/target-example/config-state
 
 # Backend/release identities are provisioned explicitly, never by wildcard
-# Target credentials. Replace these sample principals in deployment overlays.
+# Target credentials. The renderer replaces these named role examples.
 user gatekeeper-backend
 topic write gatekeeper/v1/targets/+/command
 topic write gatekeeper/v1/targets/+/acl
