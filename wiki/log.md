@@ -7721,3 +7721,10 @@
 
 - Audited recent merged427/428/431/432 review threads. Three documentation findings remain: preserve the Admin production/device acceptance Gate, distinguish Target firmware514 from boot910, and describe APK46101 as published while phone installation is unverified.
 - Recovery/status navigation and hardware evidence now retain these boundaries. Earlier synthetic Admin browser rendering is PASS; authenticated production/device Admin acceptance remains pending. No runtime, release policy or physical behavior changed.
+
+## [2026-10-15] code | Add offline exact-window sensor timing analysis for first follow-up task
+
+- Owner asks to work through issues one at a time. Started with sensor-stage timeouts/long waiting, preserving dirty primary work in isolated codex/sensor-window-analysis-20261015 at main493cec5a. Installed bf6100c and current main Target sources are identical.
+- Existing timing evidence already separates waiting from post-near qualification:13 signed summaries match2722 supplied health rows. The56.153s session first sees near at54.641s after ARM, then triggers231ms later; five completed flows have231–362ms near-to-trigger. Eight timeouts split1 no-valid/3 no-in-range/4 unqualified-near, without initial/sample rearm block. Physical arrival/electrical fault/person failure is unproved.
+- New host-only scripts/analyze_sensor_windows.py consumes bounded saved responses, exactly matches Target/boot ID+counter/start/end/inactive windows, rejects conflicting/invalid observations and omits source identities/timestamps from output. Unsigned timing stays unsigned; supplied-page coverage is explicit. No network/device calls, storage format, access policy or runtime changes.
+- Focused7/root459 tests with1 environment skip and OTA contract PASS; final hosted validation follows. Updated recovery/diagnostics/index/hardware/status and appended this log. No app/Target publication, deployment or physical command.

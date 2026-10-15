@@ -3,7 +3,7 @@ title: smart-gatekeeper current project status
 type: reference
 project: smart-gatekeeper
 status: active
-updated: 2026-10-12
+updated: 2026-10-15
 source_of_truth: true
 applies_to:
   - firmware
@@ -18,6 +18,13 @@ applies_to:
 >
 > 이 문서는 **저장소 최신 구현**, **검증 증거**, **현장 배포 상태**를 분리해 보여 주는 시작점이다. 세부 계약은 링크된 문서와 코드를 따른다.
 
+
+## 2026-10-15 first sensor-analysis task
+
+- Offline exact-window analysis correlates13 signed summaries and2722 recorded health rows with unchanged Target source. Five completed flows trigger231–362ms after first near; the longest session first detects near54.641s after ARM, then triggers231ms later.
+- Eight sensor-stage timeouts split1 no-valid/3 no-in-range/4 near-but-not-qualified, with no observed initial/sample rearm block. Arrival/electrical/physical cause remains unconfirmed; no threshold or access-policy change is justified.
+- Added bounded read-only saved-response analyzer, focused7/root459 regressions and OTA contract. No Backend runtime/APK/Target deployment is needed. Phone46101 installation, independent physical/OEM/replay and broker328 acceptance remain separate.
+- Evidence and command: [access_evidence_recovery.md](access_evidence_recovery.md#2026-10-15-step-1-sensor-window-attribution).
 
 ## 2026-10-12 PR cleanup and pending acceptance
 

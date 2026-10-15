@@ -124,3 +124,26 @@ Completed onboarding issue293 was closed using recorded merged/deployed and owne
 4. #50/#52/#53/#48: remaining hardening, soak/SLO, independent restore/operator drills and user/admin/installer walkthrough; GATT latency optimization only after the reliability evidence.
 
 This test/documentation merge does not require republishing unchanged Backend, APK or Target runtime. Existing released5053a3a/APK46101/Target514 identities remain the deployment baseline. No device command or field fault injection is included.
+
+## 2026-10-15 step 1: sensor-window attribution
+
+The next bounded task is to separate pre-detection ARM waiting from processing after the first near measurement. Existing firmware already records the unsigned first-valid/near/candidate/trigger offsets. There is no basis to relax distance, median, rearm or access policy from the reported total session duration.
+
+The saved fixed-day dataset contains14 incidents,13 signed sensor summaries and2722 health rows. The offline analyzer matches all13 summaries to an inactive qualification record using exact Target, source boot ID AND counter, start and end. It rejects adjacent/latest windows, different boots, unverified status sources, inconsistent offsets and conflicting duplicate timings. Matching does not promote unsigned timing to signed evidence or independently reverify the input MAC.
+
+- The longest completed source session is56.153s; its signed ARM window is55.911s. First near appears54.641s after ARM and trigger follows231ms later. All five completed windows have first-near-to-trigger231–362ms. Arrival was not independently observed, so the preceding wait cannot be labelled measured user-facing door latency or a hardware fault.
+- Eight signed timeouts comprise1 no-valid sample,3 valid-but-not-near,4 near samples without the five-sample median qualification. Their matched qualification counters show zero candidate/rearm/FSM rejection triggers; no initial rearm block or blocked sample is observed. The four near-but-not-qualified windows reach only1–2 consecutive near samples, which is an observation, not a replacement policy: production still uses its existing five-sample median.
+- The no-valid window has457/457 no echoes. Empty/out-of-range approach conditions, sensor direction/electrical integrity and a person actually waiting remain unobserved alternatives. Sensor replacement, threshold changes and a no-echo unlock are not justified by this dataset.
+- Existing signature rejection counters did not increase while13 proofs/ARM windows were verified. A different family's successful flow is not attributed to the reporting owner. Independent physical and real-device replay acceptance remains open under #426/#54.
+
+The host-only command reads saved API responses without network or device access:
+
+~~~sh
+.venv/bin/python scripts/analyze_sensor_windows.py \
+  --incidents /private/evidence/incidents.json \
+  --health /private/evidence/health.json /private/evidence/health-page-*.json
+~~~
+
+Use the project Python absolute path when running in an isolated worktree. Inputs are bounded to64 health files/10000 rows,8MiB per file/64MiB total. Output omits Target/boot/session/phone identifiers and operating timestamps. It exposes supplied-page coverage and unavailable/conflicting timing explicitly; an exhausted page alone is not claimed to prove all health history was supplied.
+
+Local focused7 and root459 tests/one environment skip plus OTA source contract pass. Regression checks cover exact attribution, different Target/boot counter/ID/start/end, active windows, unverified sources, duplicate disagreement, zero offsets/rollover, impossible offsets and CLI identity omission. No firmware, signed summary/NVS ABI, Backend runtime or APK changed; no physical command or new deployment is needed for this analysis tool. Hardware/user-arrival causality remains unconfirmed.
