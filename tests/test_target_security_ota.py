@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -83,7 +87,9 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         acl = (ROOT / "security/target-acl").read_text(encoding="utf-8")
         self.assertIn("retain_available true", config)
         self.assertIn("allow_anonymous false", config)
-        self.assertIn("pattern read gatekeeper/v1/targets/%u/command", acl)
+        self.assertIn("user target-example", acl)
+        self.assertIn("topic read gatekeeper/v1/targets/target-example/command", acl)
+        self.assertFalse(any(line.startswith("pattern ") for line in acl.splitlines()))
         self.assertIn(
             "topic read gatekeeper/v1/targets/+/canonical-event", acl
         )
@@ -104,6 +110,21 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertNotIn("/acl", home_assistant_acl)
         self.assertNotIn("/canonical-event", home_assistant_acl)
         self.assertNotIn("pattern readwrite gatekeeper/#", acl)
+
+    def test_real_broker_principal_delivery_matrix(self) -> None:
+        if os.getenv("CI") != "true" and os.getenv("RUN_MQTT_ACL_INTEGRATION") != "1":
+            self.skipTest("real broker runs in Backend CI or explicit local opt-in")
+        self.assertIsNotNone(shutil.which("docker"), "real broker CI requires Docker")
+        environment = dict(os.environ, RUN_MQTT_ACL_INTEGRATION="1")
+        result = subprocess.run(
+            [sys.executable, "-m", "unittest", "tests.test_broker_acl_renderer",
+             "tests.test_broker_acl_integration", "-v"],
+            cwd=ROOT, env=environment, capture_output=True, text=True, timeout=90)
+        self.assertEqual(0, result.returncode, (result.stdout + result.stderr)[-4000:])
+        self.assertNotIn("skipped=", result.stdout + result.stderr)
+        summary = [line for line in (result.stdout + result.stderr).splitlines()
+                   if line.startswith(("Ran ", "OK"))]
+        print("Real broker ACL matrix: " + "; ".join(summary), flush=True)
 
     def test_ota_runtime_uses_one_verified_inactive_slot_engine(self) -> None:
         ota = (ROOT / "src/OtaManager.cpp").read_text(encoding="utf-8")

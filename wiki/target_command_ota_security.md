@@ -52,3 +52,9 @@ Local recovery is independent of DNS, MQTT, Backend, and manifest-host availabil
 ## 7. Evidence boundary
 
 Software evidence for this change consists of host command replay/mutation/fault tests, delayed-first-command rejection, blocked-control-plane recovery seams, continuous-health transient/late-recovery state tests, crash-safe SemVer floor/replay mutations, OTA contract tests, backend tests, static insecure-path checks, and an ESP32-C6 PlatformIO build. It does not prove real broker certificate deployment, credential crossover rejection on the NAS, ESP32-C6 radio operation, local recovery on a device, inactive-slot boot, valid marking, power-loss behavior, automatic rollback, eFuse/debug hardening, N/N-1 device interop, relay safety, operator runbook acceptance, or production authorization. OTA-G1..G4, RELAY-G0..G2, physical soak, and production deployment therefore remain pending and fail-closed.
+
+## 2026-10-15 explicit broker principals
+
+The old global Target %u pattern grants also applied to Backend/HA/diagnostic principals, reproduced with real isolated Mosquitto2.1.2. The reference ACL now uses explicit example users; render it with scripts/render_broker_acl.py and an exact private inventory before installation. Candidate output is create-only0600 and excludes password fields; role collisions and global pattern directives fail closed. Do not deploy the synthetic reference unchanged.
+
+[Broker migration](broker_security_migration.md) records actual delivery/denial tests and the full live inventory, named-credential overlap, per-listener/TLS, old-session eviction, rollback and readiness gates. Fresh public TLS still accepts anonymous CONNECT; local owner SSH authentication is unavailable and live policy has not changed. #328 remains open; a Backend release does not install this separate broker policy.
