@@ -146,3 +146,7 @@
 | OTA canary·rollback 운영 절차 | [ota_operations_runbook.md](ota_operations_runbook.md) |
 | Trusted workflow digest Gate와 policy rotation | [trusted_workflow_policy.md](trusted_workflow_policy.md) |
 | 비콘 미감지 신고 대응 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#9-신고-대응-순서) |
+
+## Dedicated broker operations
+
+- [nas_broker_automation.md](nas_broker_automation.md): owner-requested restricted SSH/sudo gateway, typed private staging, detached activation and retained-container rollback boundaries.

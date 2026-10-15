@@ -121,3 +121,20 @@ Schema2 example additions (keep all existing schema1 fields and set schema_versi
 The extra isolated-broker matrix verifies all six collector deliveries, write denials, HA command/device read delivery, non-command readers, exact20 discovery paths, other-device discovery denial and absence of inherited Target namespaces. Fixture commands target only synthetic loopback brokers; no production actuator command is sent.
 
 Operating rollout must also protect the SmartBox firmware download route before publishing any fresh credential-bearing image. A strict-TLS anonymous HEAD currently obtains its firmware artifact; the existing SmartBox updater does not establish encrypted-artifact support. Authenticated MQTT alone cannot make a credential-bearing public artifact private. Verify current client download routing and a compatible protected origin before credential rotation/publication; preserve the installed updater's recovery route.
+
+## 2026-10-16 authenticated automation preparation
+
+The owner requests a dedicated maintenance route to remove repeated sudo handoffs.
+The [broker automation runbook](nas_broker_automation.md) describes the restricted
+key and six exact root-owned operations. Existing Backend deployment authority
+is preserved. The private stage failed before live changes because Synology Docker
+top requires a PID column; the installed helper includes it and preserves errors.
+One-time key/sudo registration and actual isolated TLS staging are pending.
+
+Separately, SmartBox origin protection is installed: native nginx whole-config
+validation/28 HTTP cases and local strict-TLS paths pass. Independent external
+GitHub probe38776457429 succeeds for anonymous HEAD/GET refusal, with publication
+skipped. Fresh MQTT credentials have not been published. Shared policy PR437
+merged acf6982 after exact-head Backend/OTA/trusted checks and reserved-discovery
+collision RED/GREEN correction. Redundant main Backend38778457186 cancellation
+was requested before any deployment; read final state before claiming cancelled.

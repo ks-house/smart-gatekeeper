@@ -7791,3 +7791,17 @@
 ## [2026-10-16] fix | Reject cross-project discovery identity collision
 
 - PR437 review identifies schema2 discovery_device_id=smartbox_01 as a valid but overlapping Backend discovery grant. New regression is RED before/GREEN after rejecting that reserved ID. Existing operating inventory already uses a distinct ID; private candidate unchanged. Renderer9 cases PASS; Backend hosted/OTA revalidation follows.
+
+## [2026-10-16] code | Prepare owner-requested restricted NAS broker automation
+
+- Owner explicitly asks to let the agent perform later maintenance without repeated passwords. Created a separate local Ed25519 key and pinned client; existing forced Backend key unchanged. One-time source-hash-checked bootstrap installs root-owned code outside shared config, tailnet-only forced SSH command and six exact sudo commands, with actual policy/no-TTY validation and registration rollback.
+- Typed receive preserves Backend/registered Target, rejects password/namespace/path injection and controls candidate invalidation. Detached bounded workers serialize stage/apply/rollback. Candidate stage uses real Mosquitto password utility/TLS and PID-bearing Synology Docker top. Initial private stage06 failed at missing PID before credential installation or live service change.
+- Activation requires matching installed versions/fresh idle evidence and staged16-case auth proof. Private overlays retain exact original broker/collector containers and restore images/mounts/restart policies; backup restart is disabled. No arbitrary shell, filesystem API, Docker group or SSH policy broadening. HA startup/reconnect and physical/power-loss gates are not claimed.
+- Local full488/1skip and OTA contract PASS; final focused9 PASS includes actual isolated Docker replacement/rollback and embedded worker compile. One-time NAS installation and actual TLS stage remain pending at source preparation. No new MQTT publication, live broker/collector replacement, Target or actuator command.
+- SmartBox origin guard receipt confirms native full config/28 policy cases/local strict-TLS paths; external read-only GHA38776457429 verifies HEAD/GET denial. Shared policy437 merged acf6982 with fixed discovery collision and exact hosted checks. Main redundant Backend38778457186 cancel requested, not yet counted complete. New runbook linked; documentation lint follows.
+
+## [2026-10-16] fix | Capture installed bytes and publish one atomic maintenance bundle
+
+- PR438 review identifies a staged-payload TOCTOU and interrupted multi-file receive. Paused the unexecuted setup launcher; dedicated NAS key registration remains unconfirmed. Bootstrap now reads a pinned bounded manifest, captures each payload once and installs/executes only validated captured bytes. The updated launcher will pass immutable trusted code via isolated interpreter arguments, not execute a mutable NAS staging entrypoint.
+- Receive writes a complete versioned private bundle and atomically switches one pointer. Inventory/credentials/ACL/expected versions share the evidence digest; even version-only updates require restaging. An interrupted write preserves the previous complete active input, and stale evidence cannot activate a mixed policy.
+- Added captured-byte/manifest substitution, interrupted-bundle and all-field digest regressions; local real-container rollback remains enabled. Revalidation and updated one-time launcher follow before administrator registration. No live broker/client or new credential publication.
