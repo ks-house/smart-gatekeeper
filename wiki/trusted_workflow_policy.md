@@ -2189,3 +2189,9 @@ is pinned to that actual merge. All 108 protected blobs and both workflow
 inventories remain byte-identical to the reviewed merge-connected head. This
 policy-only rotation installs nothing and sends no Target, relay or door action;
 final publication and one bounded OTA health result remain separate Gates.
+
+## 2026-10-16 broker input-trigger admission
+
+Reviewed feature PR434 commit 394e4c30a267d0d1705a8fc989ed521d24785fd3 adds only three broker renderer/matrix paths to each existing Backend workflow PR/push trigger. Permissions, steps, jobs, secrets, dependency locks, publisher/deployment conditions and other22 protected inputs are unchanged. Keep all23 protected paths, their Git modes and both inventories exact; replace only backend_security.yml digest with f591db5553905da4372c8906f66490742c6d9e0cd33b0685461c48678226cccf.
+
+This separate policy-only transition pins that exact reviewed feature and its same-byte descendants. Admission is not NAS/broker deployment. Merge this policy after its trusted-base check; merge-connect main into the feature without squash/rebase, rerun exact-head checks, then merge-commit the feature to preserve the reviewed ancestor. Regression fixtures require exact predecessor OR admitted bytes for the changed path, not arbitrary nonmatching bytes. No branch protection or status producer is changed.
