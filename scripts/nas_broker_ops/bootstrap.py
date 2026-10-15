@@ -15,11 +15,18 @@ import uuid
 ROOT=Path("/usr/local/lib/smart-gatekeeper-broker-ops")
 OWNER=None
 COMMANDS=("status","receive","stage","apply","rollback","diagnose")
+# Synology userspace Tailscale proxies SSH through IPv4 loopback.
+SSH_SOURCE_RANGES=("100.64.0.0/10","127.0.0.1")
 PROGRAM=ROOT/"bin/broker_ops.py"
 DESTINATIONS={"broker_ops.py":ROOT/"bin/broker_ops.py",
  "ssh_dispatch.sh":ROOT/"bin/ssh_dispatch.sh","stage.py":ROOT/"lib/stage.py",
  "activate.py":ROOT/"lib/activate.py","render_broker_acl.py":ROOT/"lib/render_broker_acl.py",
  "target-acl":ROOT/"security/target-acl"}
+
+
+def restricted_key_line(key):
+    return ('restrict,from="'+",".join(SSH_SOURCE_RANGES)+'",command="'+
+            str(ROOT/"bin/ssh_dispatch.sh")+'" '+key+"\n").encode()
 
 
 def write(path,data,uid=0,gid=0,mode=0o600):
@@ -146,14 +153,15 @@ def install(package,manifest_sha256):
         previous=authorized.read_bytes() if authorized.exists() else b""
         if authorized.exists():auth_info=authorized.stat()
         write(ROOT/"state/authorized_keys.original",previous)
-        restricted=('restrict,from="100.64.0.0/10",command="'+str(ROOT/"bin/ssh_dispatch.sh")+'" '+key+"\n").encode()
+        restricted=restricted_key_line(key)
         if key.split()[1].encode() in previous:raise RuntimeError("dedicated key already present")
         write(authorized,previous+(b"\n" if previous and not previous.endswith(b"\n") else b"")+restricted,
               user.pw_uid,user.pw_gid,0o600)
         added=True
         receipt={"schema_version":1,"installed":True,"owner":OWNER,"commands":list(COMMANDS),
                  "general_shell":False,"docker_group_added":False,
-                 "existing_deploy_key_preserved":True,"tailnet_only":True,
+                 "existing_deploy_key_preserved":True,
+                 "ssh_source_ranges":list(SSH_SOURCE_RANGES),
                  "source_hashes":{name:manifest[name] for name in DESTINATIONS}}
         output=Path("/var/run/sgk-broker-audit/broker-ops-setup.json")
         write(output,json.dumps(receipt,sort_keys=True).encode(),user.pw_uid,user.pw_gid)

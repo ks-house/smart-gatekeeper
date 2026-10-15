@@ -17,8 +17,16 @@ program or parent directories. Root-owned code lives outside the shared Docker
 configuration directory. Operator name, host, new passwords and private key are
 private setup data and are absent from repository examples.
 
-The added public key is restricted to the tailnet, disallows PTY/forwarding/user
-startup files and forces one dispatcher. SSH original-command strings must
+The added public key accepts tailnet source addresses and exact IPv4 loopback
+127.0.0.1, disallows PTY/forwarding/user startup files and forces one dispatcher.
+The installed Synology Tailscale daemon uses userspace networking: its NAS SSH
+connection has both endpoints 127.0.0.1. Restricting the key to 100.64.0.0/10
+therefore rejects a valid tailnet connection. The loopback exception also permits
+NAS-local connections possessing the dedicated private key; it does not grant
+direct LAN/public source access. The private key remains on the WSL client.
+Installation receipts now enumerate accepted source ranges; the initial live
+receipt's legacy tailnet_only flag predates this correction and must not be
+treated as proof of excluding NAS-local peers. SSH original-command strings must
 exactly equal status, receive, stage, apply, rollback or diagnose. The sudo rule
 names the root-owned program plus these exact arguments. A command-specific
 no-TTY setting permits unattended use. The actual complete NAS sudo policy
@@ -104,9 +112,17 @@ asserted or silently started. The corresponding #328 acceptance remains open.
 - Forced-command injection, unrecognized input/identity/password/path fields,
   byte bounds, protected mounts and version-only versus credential-stage
   invalidation are verified.
-- NAS key/sudo installation and subsequent actual16-case stage verification are
-  pending at this source checkpoint. No new MQTT credential was published and no
-  broker/collector replacement or physical command occurred.
+- Owner completed NAS installation. Fresh key-only status succeeds after narrowly
+  correcting the dedicated authorized-key source range; existing keys are byte
+  preserved and general command id returns126. Installed executable hashes match
+  the pinned package. Six exact sudo commands work without password prompts.
+- Actual NAS stage succeeded at 2026-10-16 08:09 KST: all16 named,
+  anonymous and wrong-password cases passed across both isolated listeners;
+  real TLS hostname/chain verified. Runtime broker UID/GID1883 measured.
+  Operating broker config hash remains unchanged and new_credentials_installed
+  is false. No new MQTT credential was published and no broker/collector
+  replacement or physical command occurred. Coordinated device publication,
+  installed-version/health proof, restaging and live cutover remain pending.
 
 See [broker migration](broker_security_migration.md) for the operating gates and
 [OTA contract](ota_reliability_contract.md) for independent device recovery.
