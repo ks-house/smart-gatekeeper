@@ -7836,3 +7836,8 @@
 
 - SmartBox issue7 and PR8/9a8aa50 capture the installed-device OTA gap and bounded LAN correction. Local Python12 PASS (actual nginx28 existing/30 extended cases, rollback, stale binding), native13 PASS and ESP32-C6 target build PASS. User confirms same network as Target; no actual SmartBox HTTP failure code is claimed.
 - Prepared update-ota-network.sh with captured immutable source/plan and exact old guard hashes. One-time nginx administrator input is required because the dedicated key intentionally permits only six broker commands; no new SSH/sudo authority is requested. Owner execution is pending; do not apply broker cutover or resend OTA before the route changes and is checked.
+
+## [2026-10-16] compile | Merge guarded device-network updater and rollout evidence
+
+- SmartBoxPR8 merged after exact-head hosted native/origin/target CI38826365345 PASS; source-only updater and private immutable operator launcher are ready. Gatekeeper evidencePR440 mergedc8cb880 after trusted-policy PASS. Both repositories have no open PR at this checkpoint.
+- Native13, Python12 and ESP32-C6 local gates PASS. Administrator application of update-ota-network.sh remains pending because nginx lies outside the six fixed broker commands. No broker cutover or second SmartBox OTA request before that protected route changes and is verified.
