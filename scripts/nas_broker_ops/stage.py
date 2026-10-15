@@ -29,7 +29,7 @@ def metadata(path):
 def report(data,suffix):
  output=STATE/('stage-'+suffix+'.json')
  temporary=STATE/('report-'+uuid.uuid4().hex)
- data['input_sha256']=hashlib.sha256((BASE/'inventory.json').read_bytes()+b'\0'+(BASE/'credentials-new.json').read_bytes()).hexdigest()
+ data['input_sha256']=hashlib.sha256(b'\0'.join((BASE/name).read_bytes() for name in ('inventory.json','credentials-new.json','acl.candidate','expected.json'))).hexdigest()
  write(temporary,json.dumps(data,sort_keys=True))
  os.replace(str(temporary),str(output))
 SDK=r"""

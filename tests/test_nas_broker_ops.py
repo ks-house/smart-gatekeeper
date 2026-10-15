@@ -1,5 +1,6 @@
 """Closed NAS inputs, forced-command boundary and isolated container rollback."""
 import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -25,7 +26,7 @@ class NasGatewayInputTest(unittest.TestCase):
   from scripts import render_broker_acl
   self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
   self.gateway=module("broker_ops")
-  self.gateway.INCOMING=self.root/"incoming";self.gateway.INCOMING.mkdir()
+  self.gateway.INCOMING=self.root/"incoming"
   self.gateway.STATE=self.root/"state";self.gateway.STATE.mkdir()
   self.gateway.RUNTIME=self.root/"runtime.env"
   self.gateway.RUNTIME.write_text("MQTT_USER=backend\nCOMMAND_TARGET_ID=target-a\n")
@@ -49,16 +50,37 @@ class NasGatewayInputTest(unittest.TestCase):
   value=bundle();value["inventory"]["discovery_device_id"]="smartbox_01";cases.append(value)
   for value in cases:
    with self.subTest(value=value),self.assertRaises(ValueError):self.receive(value)
-   self.assertEqual([],list(self.gateway.INCOMING.iterdir()))
+   self.assertFalse(self.gateway.INCOMING.exists())
  def test_input_byte_bound(self):
   with self.assertRaises(ValueError):self.gateway.receive(b"x"*(self.gateway.MAX_INPUT+1))
-  self.assertEqual([],list(self.gateway.INCOMING.iterdir()))
- def test_version_only_update_preserves_stage_but_password_change_invalidates_it(self):
+  self.assertFalse(self.gateway.INCOMING.exists())
+ def test_every_complete_bundle_change_invalidates_stage(self):
   value=bundle();self.receive(value)
   evidence=self.gateway.STATE/"stage-evidence.json";evidence.write_text("{}")
   value["expected_versions"]={"target":"2.1.515+main.gabc","smartbox":"0.1.0-gabc"}
-  self.receive(value);self.assertTrue(evidence.exists())
+  self.receive(value);self.assertFalse(evidence.exists())
+  evidence.write_text("{}")
   value["credentials"]["diag"]="b"*64;self.receive(value);self.assertFalse(evidence.exists())
+ def test_interrupted_bundle_write_keeps_previous_complete_input(self):
+  value=bundle();self.receive(value)
+  before=self.gateway.INCOMING.resolve()
+  snapshot={path.name:path.read_bytes() for path in self.gateway.INCOMING.iterdir()}
+  original=self.gateway.atomic
+  def fail_at_acl(path,content,*args,**kwargs):
+   if path.name=="acl.candidate":raise OSError("synthetic interrupted write")
+   return original(path,content,*args,**kwargs)
+  self.gateway.atomic=fail_at_acl
+  value["inventory"]["discovery_device_id"]="different"
+  with self.assertRaises(OSError):self.receive(value)
+  self.assertEqual(before,self.gateway.INCOMING.resolve())
+  self.assertEqual(snapshot,{path.name:path.read_bytes() for path in self.gateway.INCOMING.iterdir()})
+ def test_validated_digest_includes_acl_and_expected_version(self):
+  self.receive(bundle());first=self.gateway.input_hash()
+  (self.gateway.INCOMING/"acl.candidate").write_text("synthetic changed policy")
+  self.assertNotEqual(first,self.gateway.input_hash())
+  self.receive(bundle());first=self.gateway.input_hash()
+  (self.gateway.INCOMING/"expected.json").write_text('{"target":"changed"}')
+  self.assertNotEqual(first,self.gateway.input_hash())
  def test_forced_dispatcher_rejects_shell_injection(self):
   marker=self.root/"not-created"
   for command in ["id","sh","status; touch "+str(marker),"status\nid","receive $(id)",
@@ -86,6 +108,26 @@ class NasGatewayInputTest(unittest.TestCase):
   source=self.root/"outside";source.write_text("fixture")
   original={"Config":{},"HostConfig":{},"Image":"fixture","NetworkSettings":{}}
   with self.assertRaises(ValueError):activate.copy_create_payload(original,{"/config":str(source)})
+class NasSetupCaptureTest(unittest.TestCase):
+ def test_package_bytes_cannot_change_after_validation(self):
+  bootstrap=module("bootstrap")
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)
+   names=set(bootstrap.DESTINATIONS)|{"initial-input.json","config.json","broker-key.pub"}
+   originals={name:("original-"+name).encode() for name in names}
+   for name,data in originals.items():(root/name).write_bytes(data)
+   manifest={name:hashlib.sha256(data).hexdigest() for name,data in originals.items()}
+   raw=json.dumps(manifest).encode();(root/"manifest.json").write_bytes(raw)
+   approved,captured=bootstrap.capture_package(root,hashlib.sha256(raw).hexdigest())
+   (root/"broker_ops.py").write_bytes(b"substituted-untrusted-code")
+   self.assertEqual(originals["broker_ops.py"],captured["broker_ops.py"])
+   self.assertEqual(manifest,approved)
+ def test_manifest_substitution_is_rejected(self):
+  bootstrap=module("bootstrap")
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);(root/"manifest.json").write_text("{}")
+   with self.assertRaises(ValueError):bootstrap.capture_package(root,"0"*64)
+
 @unittest.skipUnless(os.getenv("RUN_NAS_BROKER_OPS_INTEGRATION")=="1",
                      "set RUN_NAS_BROKER_OPS_INTEGRATION=1 for local Docker rollback")
 class NasContainerRollbackIntegrationTest(unittest.TestCase):

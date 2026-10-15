@@ -246,8 +246,8 @@ def activate():
     stage=json.loads((STATE/"stage-evidence.json").read_text())
     expected=json.loads((INCOMING/"expected.json").read_text())
     if expected is None:raise ValueError("installed device versions must be supplied before activation")
-    source_hash=hashlib.sha256((INCOMING/"inventory.json").read_bytes()+b"\0"+
-                              (INCOMING/"credentials-new.json").read_bytes()).hexdigest()
+    source_hash=hashlib.sha256(b"\0".join((INCOMING/name).read_bytes() for name in
+                              ("inventory.json","credentials-new.json","acl.candidate","expected.json"))).hexdigest()
     if stage["input_sha256"]!=source_hash or stage["validation"]["isolated_auth_cases"]!=16:
         raise ValueError("matching successful private candidate required")
     previous=json.loads((STATE/"current.json").read_text()) if (STATE/"current.json").exists() else None

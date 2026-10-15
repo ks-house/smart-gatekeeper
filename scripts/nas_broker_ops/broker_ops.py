@@ -98,10 +98,21 @@ def receive(raw):
     old = hashlib.sha256(b"").hexdigest()
     if (INCOMING/"inventory.json").exists() and (INCOMING/"credentials-new.json").exists():
         old = input_hash()
-    atomic(INCOMING/"inventory.json", json.dumps(profile, sort_keys=True))
-    atomic(INCOMING/"credentials-new.json", json.dumps(values, sort_keys=True))
-    atomic(INCOMING/"acl.candidate", rendered)
-    atomic(INCOMING/"expected.json", json.dumps(versions, sort_keys=True))
+    bundles = INCOMING.parent/"bundles"
+    bundles.mkdir(mode=0o700,exist_ok=True)
+    destination = Path(tempfile.mkdtemp(prefix="input-",dir=str(bundles)))
+    contents = {"inventory.json":json.dumps(profile,sort_keys=True),
+                "credentials-new.json":json.dumps(values,sort_keys=True),
+                "acl.candidate":rendered,
+                "expected.json":json.dumps(versions,sort_keys=True)}
+    for name,content in contents.items():
+        atomic(destination/name,content)
+    pointer = INCOMING.parent/(".input-pointer-"+uuid.uuid4().hex)
+    try:
+        os.symlink(str(destination),str(pointer))
+        os.replace(str(pointer),str(INCOMING))
+    finally:
+        if pointer.is_symlink():pointer.unlink()
     new = input_hash()
     if old != new and (STATE/"stage-evidence.json").exists():
         (STATE/"stage-evidence.json").unlink()
@@ -110,8 +121,8 @@ def receive(raw):
 
 
 def input_hash():
-    return hashlib.sha256((INCOMING/"inventory.json").read_bytes()+b"\0"+
-                          (INCOMING/"credentials-new.json").read_bytes()).hexdigest()
+    return hashlib.sha256(b"\0".join((INCOMING/name).read_bytes() for name in
+                          ("inventory.json","credentials-new.json","acl.candidate","expected.json"))).hexdigest()
 
 
 def docker(*arguments):

@@ -40,22 +40,34 @@ def run(arguments,**kwargs):
     return result
 
 
-def install(package):
-    if os.geteuid()!=0:raise RuntimeError("one-time administrator authentication required")
-    manifest=json.loads((package/"manifest.json").read_text())
+def capture_package(package,manifest_sha256):
+    with (package/"manifest.json").open("rb") as stream:manifest_bytes=stream.read(131073)
+    if len(manifest_bytes)>131072 or hashlib.sha256(manifest_bytes).hexdigest()!=manifest_sha256:
+        raise ValueError("pinned manifest mismatch")
+    manifest=json.loads(manifest_bytes)
     expected=set(DESTINATIONS)|{"initial-input.json","config.json","broker-key.pub"}
     if set(manifest)!=expected:raise ValueError("unexpected setup manifest")
+    captured={}
     for name,digest in manifest.items():
         path=package/name
-        if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:
+        if path.is_symlink():raise ValueError("staged payload cannot be a symlink")
+        with path.open("rb") as stream:data=stream.read(262145)
+        if len(data)>262144 or hashlib.sha256(data).hexdigest()!=digest:
             raise ValueError("setup source hash mismatch")
+        captured[name]=data
+    return manifest,captured
+
+
+def install(package,manifest_sha256):
+    if os.geteuid()!=0:raise RuntimeError("one-time administrator authentication required")
+    manifest,captured=capture_package(package,manifest_sha256)
     global OWNER
-    configuration=json.loads((package/"config.json").read_text())
+    configuration=json.loads(captured["config.json"])
     OWNER=configuration["owner"]
     if not isinstance(OWNER,str) or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]{0,31}",OWNER) is None:
         raise ValueError("invalid operator name")
     user=pwd.getpwnam(OWNER)
-    key=(package/"broker-key.pub").read_text().strip()
+    key=captured["broker-key.pub"].decode().strip()
     if re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/=]+(?: [A-Za-z0-9_.-]+)?",key) is None:
         raise ValueError("invalid dedicated public key")
     marker={"owner":OWNER,"public_key_sha256":hashlib.sha256(key.encode()).hexdigest()}
@@ -70,11 +82,16 @@ def install(package):
     ROOT.mkdir(mode=0o755,exist_ok=True)
     for leaf in ("bin","lib","security"):
         (ROOT/leaf).mkdir(mode=0o755,exist_ok=True)
-    for leaf in ("state","incoming"):
+    for leaf in ("state","bundles"):
         (ROOT/leaf).mkdir(mode=0o700,exist_ok=True)
     write(ROOT/"state/installing.json",json.dumps(marker,sort_keys=True).encode())
+    incoming=ROOT/"incoming"
+    if incoming.exists() and not incoming.is_symlink():
+        if not incoming.is_dir() or incoming.stat().st_uid!=0:
+            raise RuntimeError("unsafe legacy input directory")
+        os.rename(str(incoming),str(ROOT/"bundles"/("legacy-"+uuid.uuid4().hex)))
     for name,destination in DESTINATIONS.items():
-        data=(package/name).read_bytes()
+        data=captured[name]
         if destination.suffix==".py":compile(data,str(destination),"exec")
         write(destination,data,mode=0o755 if destination.parent.name=="bin" else 0o644)
     import importlib.util
@@ -82,9 +99,9 @@ def install(package):
         spec=importlib.util.spec_from_file_location("setup_"+name,ROOT/"lib"/(name+".py"))
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         compile(module.SDK,name+"-embedded-worker","exec")
-    write(ROOT/"config.json",(package/"config.json").read_bytes())
+    write(ROOT/"config.json",captured["config.json"])
     receive=run(["/usr/bin/python3","-I",str(PROGRAM),"receive"],
-                input=(package/"initial-input.json").read_bytes())
+                input=captured["initial-input.json"])
     if not json.loads(receive.stdout)["received"]:raise RuntimeError("private input not accepted")
 
     def demote():
@@ -155,8 +172,9 @@ def install(package):
 if __name__=="__main__":
     try:
         import sys
-        if len(sys.argv)!=2:raise ValueError("exact staged package directory required")
-        install(Path(sys.argv[1]))
+        if len(sys.argv)!=3 or re.fullmatch(r"[a-f0-9]{64}",sys.argv[2]) is None:
+            raise ValueError("exact package and pinned manifest required")
+        install(Path(sys.argv[1]),sys.argv[2])
     except Exception as error:
         print("setup_failed="+type(error).__name__+": "+str(error))
         raise SystemExit(1)

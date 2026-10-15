@@ -8,7 +8,10 @@ are preserved.
 ## Scope and installation
 
 scripts/nas_broker_ops/bootstrap.py is a one-time operator-authenticated installer.
-It verifies the private package hashes, compiles server and embedded SDK code,
+It captures bounded package bytes once, verifies the pinned manifest/payload
+hashes and installs those exact immutable captured bytes. Trusted bootstrap code
+is passed from the local client through an isolated interpreter command rather
+than executed from a mutable NAS staging file. It compiles server/embedded SDK code,
 checks typed initial inputs and confirms the operator cannot write the root
 program or parent directories. Root-owned code lives outside the shared Docker
 configuration directory. Operator name, host, new passwords and private key are
@@ -51,9 +54,10 @@ rollback assumption.
 
 Stage/apply/rollback run under an exclusive lock in detached, time-bounded
 workers, surviving SSH disconnect. Status is read-only and exposes selected
-metadata, validation results and private error summaries. New stage data
-invalidates a previous candidate; version-only updates keep the same credential
-candidate.
+metadata, validation results and private error summaries. Each receive writes a complete versioned root-private bundle, then atomically
+publishes one pointer. A digest binds inventory, credentials, ACL and expected
+versions together. Every bundle change, including version-only updates,
+invalidates the previous stage; restaging is unattended.
 
 ## Staging and activation contract
 
