@@ -109,6 +109,18 @@ class NasGatewayInputTest(unittest.TestCase):
   original={"Config":{},"HostConfig":{},"Image":"fixture","NetworkSettings":{}}
   with self.assertRaises(ValueError):activate.copy_create_payload(original,{"/config":str(source)})
 class NasSetupCaptureTest(unittest.TestCase):
+ def test_synology_proxy_source_accepts_only_tailnet_and_exact_loopback(self):
+  import ipaddress
+  bootstrap=module("bootstrap")
+  networks=[ipaddress.ip_network(value) for value in bootstrap.SSH_SOURCE_RANGES]
+  for address,expected in [("100.95.243.92",True),("127.0.0.1",True),
+                           ("127.0.0.2",False),("192.168.55.10",False),
+                           ("203.0.113.10",False),("::1",False)]:
+   with self.subTest(address=address):
+    self.assertEqual(expected,any(ipaddress.ip_address(address) in net for net in networks))
+  line=bootstrap.restricted_key_line("ssh-ed25519 AAAA fixture").decode()
+  self.assertIn('restrict,from="100.64.0.0/10,127.0.0.1",command="',line)
+  self.assertIn(str(bootstrap.ROOT/"bin/ssh_dispatch.sh"),line)
  def test_package_bytes_cannot_change_after_validation(self):
   bootstrap=module("bootstrap")
   with tempfile.TemporaryDirectory() as tmp:
