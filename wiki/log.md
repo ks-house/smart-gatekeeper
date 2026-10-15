@@ -7777,3 +7777,17 @@
 ## [2026-10-16] compile | Owner authorizes combined SmartBox broker migration
 
 - Owner chooses to include SmartBox producers and Telegraf in the same authenticated broker transition. Scope is now authorized; all-client provisioning and no-break compatibility remain pending. No operating activation or credentials change yet.
+
+## [2026-10-16] code | Add explicit SmartBox and collector scopes for combined broker migration
+
+- Owner authorizes including legacy SmartBox clients. Schema2 extends the exact private inventory with distinct device/telemetry principals, fixed single-controller topic inventory and20 existing discovery configs. Existing schema1 output and Target isolation remain unchanged; Backend/Target/diagnostic get no new SmartBox permissions.
+- Real loopback broker validates telemetry deliveries/read-only denials, HA commands/device receive, state/log restrictions, exact20 discovery paths and cross-project/pseudo-Target rejection. Focused31 PASS, including independent child19-case matrix; full root and OTA contract validation follows.
+- Live subscribe-only observation receives new SmartBox telemetry/current-main retained version. Existing firmware anonymous HTTPS HEAD succeeds, so fresh credential-bearing publication requires compatible origin protection first. No credentials, firmware, broker/client settings or physical commands changed.
+
+- Final full root480 tests/1environment skip and OTA contract PASS. Two earlier full opt-in attempts exposed Docker cleanup/start scheduling deadlines; bounded cleanup30s/start20s and explicit cleanup status/log details retain failures rather than silently skipping. Real19-case child matrix executes successfully in the final run. No production effect.
+
+- Final affected19-case broker matrix additionally proves real Backend wildcard status/canonical subscriptions and the existing Telegraf smartbox/event/# filter deliver under exact read grants. Renderer/runtime behavior unchanged; no production commands or policy activation.
+
+## [2026-10-16] fix | Reject cross-project discovery identity collision
+
+- PR437 review identifies schema2 discovery_device_id=smartbox_01 as a valid but overlapping Backend discovery grant. New regression is RED before/GREEN after rejecting that reserved ID. Existing operating inventory already uses a distinct ID; private candidate unchanged. Renderer9 cases PASS; Backend hosted/OTA revalidation follows.

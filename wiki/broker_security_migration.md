@@ -95,3 +95,29 @@ This changes only path triggers in one of the23 protected files. Permissions, jo
 Final connected feature fba753a passed the local474-test root suite (one environment skip), OTA contract and exact-head hosted Backend/OTA/trusted checks. The hosted Backend child ran all13 renderer/broker cases rather than skipping them. Main OTA38762364009 succeeded. The redundant main Backend run38762364029 passed security, attestation and operations verification but failed later while pulling the upstream DockerHub Buildx image with HTTP502; deploy was skipped. No Backend or broker deployment followed that run.
 
 The live image/config snapshot is verified, while the combined operating rollback task remains unchecked because restore/config activation has not been exercised. All eight operating acceptance tasks in #328 stay open. The owner explicitly selected a combined SmartBox and Smart Gatekeeper migration. Next are exact Target/SmartBox provisioning, named-client/TLS readiness, private candidate/restore validation and bounded activation/reconnect/independent readback. No Target reboot, OTA trigger, door action or physical acceptance occurred.
+
+## Shared SmartBox policy candidate (inventory schema2)
+
+The owner authorizes a combined migration. The renderer accepts the existing exact schema1 unchanged, or schema2 with one additional smartbox object containing exactly device_username and telemetry_username. Those names must be distinct from every Target, Backend, HA and diagnostic principal; passwords remain forbidden inventory fields.
+
+The currently supported SmartBox is the single-controller namespace implemented in ks-house/smartbox source632f004. This does not provide per-device isolation for multiple SmartBox units sharing that namespace.
+
+| Principal | Additional permitted path |
+|---|---|
+| SmartBox device | Read smartbox/command; write its exact status/config/log, two telemetry and four event topics; write exactly20 existing smartbox_01 discovery configs |
+| Telegraf collector | Read only the two telemetry and four known event topics; no command, state/log/discovery or write access |
+| HA | Read SmartBox telemetry/state/log; write smartbox/command, retaining the existing SmartBox control authority |
+| Backend/Target/diagnostic | No new SmartBox permissions |
+
+Schema2 example additions (keep all existing schema1 fields and set schema_version to2):
+
+~~~json
+"smartbox": {
+  "device_username": "smartbox-device",
+  "telemetry_username": "smartbox-telemetry"
+}
+~~~
+
+The extra isolated-broker matrix verifies all six collector deliveries, write denials, HA command/device read delivery, non-command readers, exact20 discovery paths, other-device discovery denial and absence of inherited Target namespaces. Fixture commands target only synthetic loopback brokers; no production actuator command is sent.
+
+Operating rollout must also protect the SmartBox firmware download route before publishing any fresh credential-bearing image. A strict-TLS anonymous HEAD currently obtains its firmware artifact; the existing SmartBox updater does not establish encrypted-artifact support. Authenticated MQTT alone cannot make a credential-bearing public artifact private. Verify current client download routing and a compatible protected origin before credential rotation/publication; preserve the installed updater's recovery route.

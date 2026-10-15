@@ -1372,3 +1372,11 @@ Details: [access_evidence_recovery.md](access_evidence_recovery.md#2026-10-15-st
 | Broker activation | Not performed; both listeners still anonymous | Legacy-client scope or separation, provisioning, rollback, eviction/reconnect and independent readback pending |
 
 No Target command, reboot, OTA trigger, relay action or physical success is inferred. [Migration runbook](broker_security_migration.md).
+
+## 2026-10-16 combined broker policy isolation
+
+- Schema1 unchanged; strict schema2 adds distinct single-SmartBox and read-only Telegraf roles. Focused31 tests PASS with real-broker opt-in; owning Target-security entrypoint independently runs the actual19-case renderer/shared-broker matrix.
+- Actual broker tests cover all20 SmartBox discovery topics, six telemetry/event delivery paths, read-only collector denials, HA command/device receive, cross-project and unknown namespace refusal. Isolated fixtures only; no production command.
+- Subscribe-only live SmartBox observation receives fresh non-retained telemetry plus retained current-main version. Anonymous strict-TLS HEAD obtains the existing firmware artifact; origin protection and installed credentials remain operating prerequisites.
+
+- Final full root480 tests/1environment skip and OTA contract PASS, with actual19-case child broker matrix. Earlier fixture deadline failures were corrected and are not counted as successful runs.
