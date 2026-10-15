@@ -7765,3 +7765,15 @@
 - Independently inspected PR434 reviewed feature 394e4c30a267d0d1705a8fc989ed521d24785fd3: only protected backend_security.yml changes, by adding three existing broker source/test paths to PR/push filters. All23 Git modes/types are preserved; all22 other normalized hashes/inventories match the trusted baseline. No job/permission/dependency/publisher/NAS-wrapper change.
 - Separate policy-only branch updates the sole persistent source and one workflow digest; regression fixtures pin the exact23-file map and exact old/new transition bytes and retire the previous source identity. Merge-connect feature ancestry and final-head validation remain mandatory; no squash/rebase or protection bypass.
 - Broker runtime migration/account setup and whole active issue-remediation goal remain incomplete. No NAS/credential/Target/door change.
+
+
+## [2026-10-16] compile | Record merged broker policy and authenticated live snapshot boundaries
+
+- PR434/bcc79f8 merged after policy PR435/8e6932d. Exact feature hosted Backend13-case broker matrix/OTA/trusted PASS; local root474/1skip and OTA contract PASS. Main OTA SUCCESS. Redundant main Backend security/verification passed, later upstream DockerHub502 stopped image publication; deployment skipped.
+- Owner completed pinned DSM SSH and one-shot sudo metadata/client audits. Exact operating Mosquitto2.1.2 digest matches tested fixture, root-private config/TLS backup hash verified; configuration unchanged on later read. No credentials printed or service/settings/account changes.
+- Backend named credentials exist; local Target provisioning differs but installed binding is unverified. Recent bounded connection log has no matches and is not absence-of-client proof. Running Telegraf depends on anonymous legacy SmartBox topics; stored HA is anonymous but no running NAS HA/local upstream was observed.
+- Operating #328 remains open with8 unchecked gates. Authorized scope of legacy-client migration or a separate broker must precede global anonymous refusal. No Target/door command, OTA or physical acceptance. Preserved dirty primary separately; documentation links/whitespace checked before publication.
+
+## [2026-10-16] compile | Owner authorizes combined SmartBox broker migration
+
+- Owner chooses to include SmartBox producers and Telegraf in the same authenticated broker transition. Scope is now authorized; all-client provisioning and no-break compatibility remain pending. No operating activation or credentials change yet.

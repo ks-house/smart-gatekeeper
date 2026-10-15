@@ -2582,3 +2582,11 @@ tracking.
   The merge-triggered Target/mobile runs were cancelled during their canary
   jobs because the shared OTA gate itself changed; no exact build, signing,
   publication, Target command or installed runtime change occurred.
+
+
+## 2026-10-16 broker operating audit follow-up
+
+- Principal-isolation PR434/bcc79f8 and trigger-policy PR435/8e6932d are merged. Exact connected feature Backend/OTA/trusted checks, hosted actual13-case broker matrix, local root474/skip1 and OTA contract pass; main OTA succeeds. Redundant main Backend publication hit upstream DockerHub502 after security/verification passed; deployment skipped.
+- Owner-authenticated live audit matches Mosquitto2.1.2/pinned digest and hash-verifies root-private original config/TLS backup. Both listeners remain anonymous without password/ACL policy. Backend named credentials exist; actual installed Target credential binding and tested rollback remain pending.
+- A running Telegraf subscribes anonymously to a separate SmartBox topic family. Stored HA configuration also has no auth, but HA is absent from running NAS inventory/local upstream. The owner explicitly authorized including SmartBox in the same broker migration; device/client provisioning and independent reconnect remain pending.
+- #328 remains OPEN, all8 operating tasks pending. No runtime settings/credentials/services, Target/door commands or OTA were changed. See [broker migration](broker_security_migration.md).
