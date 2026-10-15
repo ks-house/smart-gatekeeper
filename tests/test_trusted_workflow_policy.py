@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "9e58327263213fbd98c32f208cf1b38068d853c3"
-EXPECTED_BUNDLE_ID = "field-evidence-018-deployment-baseline"
+MERGED_MAIN_COMMIT = "394e4c30a267d0d1705a8fc989ed521d24785fd3"
+EXPECTED_BUNDLE_ID = "broker-acl-ci-trigger-baseline"
 LEGACY_FULL_BUNDLE_DIGEST_LINES = """\
 .github/workflows/deploy.yml 74fb06eef8e56cfd5f79f2c5bae4b6e41d798a5ccf2fb00c4aa30668db1f4dda
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -130,7 +130,7 @@ security/target-acl 75ac9ea696e0ae26f3cc6734113a5133c9cc1fc758ac93e1fc7f26fbe8f7
 tests/test_target_security_ota.py f1c2e0ac5147e46c5ed23760eb829789520a55ffef8ff352c9da0169aa7b40d6
 """
 MERGED_MAIN_DIGEST_LINES = """\
-.github/workflows/backend_security.yml 07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2
+.github/workflows/backend_security.yml f591db5553905da4372c8906f66490742c6d9e0cd33b0685461c48678226cccf
 .github/workflows/build_app.yml f48c8b2843d29faab737971bc958a402525556f156899b3e44ad4d7ab5ffa39e
 .github/workflows/deploy.yml 8a74156938dcc8ace3af68f75ccf9fb972abe4f237b0766f673f1089f0df1b79
 .github/workflows/ota_contract.yml ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d
@@ -155,8 +155,10 @@ backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1
 ops/backend_trusted_bundle_paths.json 0e8994c8b9308f9f4f9c10428a5ac28c26d27fb9144be4eacebb14a602e8c7db
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    "backend/db/Dockerfile",
-    "ops/backend_trusted_bundle_paths.json",
+    ".github/workflows/backend_security.yml",
+}
+PREDECESSOR_CHANGED_DIGESTS = {
+    ".github/workflows/backend_security.yml": "07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2",
 }
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
@@ -180,6 +182,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "9e58327263213fbd98c32f208cf1b38068d853c3",
     "1cecb4bdba04ba8f7acb93c561fd03dac89591dd",
     "c9e61cdd35be3b37c18ab3917fbb981116759338",
     "21e93da6fa24a74c55f5bed0fb1c9a6c7e1d78f1",
@@ -1126,8 +1129,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 2)
-    self.assertEqual(len(locally_unchanged_protected), 21)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 1)
+    self.assertEqual(len(locally_unchanged_protected), 22)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
@@ -1135,17 +1138,13 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
           protected[path],
           trusted.normalized_sha256((ROOT / path).read_bytes()),
         )
-    candidate_matches = []
-    for path in FEATURE_CHANGED_PROTECTED_PATHS:
-      local_path = ROOT / path
-      candidate_matches.append(
-          local_path.exists()
-          and protected[path] == trusted.normalized_sha256(local_path.read_bytes())
-      )
-    self.assertTrue(
-        all(candidate_matches) or not any(candidate_matches),
-        "candidate protected bytes must be wholly policy-only or wholly merge-connected",
-    )
+    observed = {
+        path: trusted.normalized_sha256((ROOT / path).read_bytes())
+        for path in FEATURE_CHANGED_PROTECTED_PATHS
+    }
+    admitted = {path: protected[path] for path in FEATURE_CHANGED_PROTECTED_PATHS}
+    self.assertIn(observed, (admitted, PREDECESSOR_CHANGED_DIGESTS),
+                  "transition must contain exact predecessor or reviewed feature bytes")
 
   def test_publisher_requirements_lock_cannot_be_removed_or_modified(self):
     policy = trusted.load_policy(

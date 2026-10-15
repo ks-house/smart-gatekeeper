@@ -40,14 +40,14 @@
   },
   "approved_bundles": [
     {
-      "id": "field-evidence-018-deployment-baseline",
+      "id": "broker-acl-ci-trigger-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "9e58327263213fbd98c32f208cf1b38068d853c3"
+        "commit": "394e4c30a267d0d1705a8fc989ed521d24785fd3"
       },
       "files": {
-        ".github/workflows/backend_security.yml": "07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2",
+        ".github/workflows/backend_security.yml": "f591db5553905da4372c8906f66490742c6d9e0cd33b0685461c48678226cccf",
         ".github/workflows/build_app.yml": "f48c8b2843d29faab737971bc958a402525556f156899b3e44ad4d7ab5ffa39e",
         ".github/workflows/deploy.yml": "8a74156938dcc8ace3af68f75ccf9fb972abe4f237b0766f673f1089f0df1b79",
         ".github/workflows/ota_contract.yml": "ea1e3180ab1865b43df368cdb09b7eda162cc7e027752aaf2a87e4ee4f76e92d",
