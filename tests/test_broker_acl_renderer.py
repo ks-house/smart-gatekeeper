@@ -1,6 +1,8 @@
 """Exact principal scope, injection and candidate-file preservation regressions."""
 import copy
 import json
+import inspect
+import re
 from pathlib import Path
 import stat
 import subprocess
@@ -17,6 +19,18 @@ PROFILE = dict(schema_version=1, targets=["target-a", "target-b"],
 
 
 class BrokerAclRendererTest(unittest.TestCase):
+    def test_renderer_and_matrix_inputs_trigger_security_ci(self):
+        from tests import test_broker_acl_integration
+        required = {Path(inspect.getfile(render_acl)).relative_to(ROOT).as_posix(),
+                    Path(__file__).relative_to(ROOT).as_posix(),
+                    Path(test_broker_acl_integration.__file__).relative_to(ROOT).as_posix()}
+        workflow = (ROOT / ".github/workflows/backend_security.yml").read_text()
+        for event in ("pull_request", "push"):
+            match = re.search(r"^  " + event + r":\n((?:    .*\n|\n)+)", workflow, re.M)
+            self.assertIsNotNone(match, event)
+            paths = set(re.findall(r"^\s+- '([^']+)'$", match.group(1), re.M))
+            self.assertTrue(required <= paths, f"{event} omits broker inputs: {sorted(required-paths)}")
+
     def test_expands_exact_targets_and_preserves_backend_and_ha_flows(self):
         acl = render_acl(PROFILE)
         self.assertFalse(any(line.startswith("pattern ") for line in acl.splitlines()))

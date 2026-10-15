@@ -7753,3 +7753,9 @@
 
 - Final local root473 tests PASS/1 environment skip, actual child renderer/broker matrix12/no skips, OTA contract PASS. OTA-tier manual/security13 tests PASS/1 deliberate broker skip. No runtime/source ACL behavior change beyond the already tested explicit-principal policy.
 - Diff whitespace and wiki links checked before final-head publication. Hosted Backend/OTA/policy rerun will bind the corrected exact head; live NAS migration remains gated by administrator access, actual image/client inventory and named-credential/rollback verification.
+
+## [2026-10-16] fix | Trigger broker security CI for all renderer and matrix inputs
+
+- Review P1 dependency-tier finding is corrected1398374: Backend/OTA final-head checks pass with the real broker matrix confined to its owning dependency tier. Review P2 correctly finds renderer/test-only changes would not trigger the owning workflow.
+- Reproduced the missing input filter before correction; dynamic source/test path regression7th renderer test now passes after adding exactly three paths to both PR and main-push filters. Only backend_security.yml protected bytes change; no permission/job/release condition changes. Separate23-file persistent-baseline policy admission is required before feature merge; no protection bypass.
+- User confirms Tailscale/8822 and suggests github-nas-deploy/setup if needed. Actual configured deployment user remains noty00 with a forced key/status; github-nas-deploy rejects the existing deploy key. No account/key/sudo/SSH configuration is changed. User later withdraws the Gemini shared-link reference after content could not be read; no old-chat instruction or credential was used.
