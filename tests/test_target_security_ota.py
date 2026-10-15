@@ -15,6 +15,12 @@ from backend.app.command_security import build_signed_command, canonical_command
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def broker_matrix_enabled(environment):
+    return (environment.get("RUN_MQTT_ACL_INTEGRATION") == "1"
+            or environment.get("CI") == "true"
+            and environment.get("GITHUB_WORKFLOW") == "Backend security and MariaDB")
+
+
 class TargetSecurityAndOtaTest(unittest.TestCase):
     def test_signed_command_is_target_boot_and_freshness_bound(self) -> None:
         signer = DeterministicP256Signer(2, 7)
@@ -111,8 +117,16 @@ class TargetSecurityAndOtaTest(unittest.TestCase):
         self.assertNotIn("/canonical-event", home_assistant_acl)
         self.assertNotIn("pattern readwrite gatekeeper/#", acl)
 
+    def test_broker_matrix_runs_in_its_dependency_tier(self) -> None:
+        self.assertTrue(broker_matrix_enabled(
+            {"CI": "true", "GITHUB_WORKFLOW": "Backend security and MariaDB"}))
+        self.assertFalse(broker_matrix_enabled(
+            {"CI": "true", "GITHUB_WORKFLOW": "OTA P0 Contract Gate"}))
+        self.assertFalse(broker_matrix_enabled({}))
+        self.assertTrue(broker_matrix_enabled({"RUN_MQTT_ACL_INTEGRATION": "1"}))
+
     def test_real_broker_principal_delivery_matrix(self) -> None:
-        if os.getenv("CI") != "true" and os.getenv("RUN_MQTT_ACL_INTEGRATION") != "1":
+        if not broker_matrix_enabled(os.environ):
             self.skipTest("real broker runs in Backend CI or explicit local opt-in")
         self.assertIsNotNone(shutil.which("docker"), "real broker CI requires Docker")
         environment = dict(os.environ, RUN_MQTT_ACL_INTEGRATION="1")

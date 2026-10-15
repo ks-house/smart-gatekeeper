@@ -7742,3 +7742,14 @@
 - Final local root472 tests PASS/one environment skip and OTA contract PASS. Actual pinned Mosquitto2.1.2 integration now includes retained discovery delivery to late HA; six renderer plus six broker cases are enforced through the existing Backend CI Target-security test in CI or local opt-in. Child matrix12 tests/no skips PASS.
 - No privileged workflow or protected deployment input change. Reference security config/ACL and ordinary security test update require normal hosted checks. New migration page is linked in index/project status/security/hardware docs; host-only credentials remain synthetic.
 - Browser inventory finds no open administrator DSM session; no browser sign-in or UI mutation attempted. Owner SSH authentication remains unavailable. Live328 acceptance is incomplete; source fix/staging is not broker deployment or issue closure.
+
+## [2026-10-16] fix | Scope broker integration to Backend CI and verify Tailscale forced status
+
+- Initial hosted Backend38756745868 SUCCESS and its actual12-case broker matrix PASS. OTA38756743848 failed because generic CI selection executed MQTT integration without paho in the OTA-only dependency tier (also exercised by the manual walkthrough). Restricted automatic execution to the exact Backend workflow or explicit local opt-in; added tier-routing regression. Local OTA-tier security/walkthrough13 tests PASS/1 deliberate integration skip.
+- A subsequent local fixture startup returned Docker125 without exposed daemon details; removed the bind/close/start port-allocation window by using Docker's atomic loopback assignment and retained bounded stderr. This is fixture reliability, not a production broker failure diagnosis. Final regression/hosted rerun follows.
+- User points to Tailscale and confirms SSH8822. Verified NAS online, private pinned server identity, and successful authentication with existing forced Backend deploy key; status reports deployed5053a3a and loopback/public passed. Owner administration key is rejected; port22 refuses. Official Synology documentation confirms Tailscale transport does not replace DSM SSH authentication. No attempt to broaden/bypass the restricted key or change a credential.
+
+## [2026-10-16] test | Pass final broker regression after fixture and dependency-tier corrections
+
+- Final local root473 tests PASS/1 environment skip, actual child renderer/broker matrix12/no skips, OTA contract PASS. OTA-tier manual/security13 tests PASS/1 deliberate broker skip. No runtime/source ACL behavior change beyond the already tested explicit-principal policy.
+- Diff whitespace and wiki links checked before final-head publication. Hosted Backend/OTA/policy rerun will bind the corrected exact head; live NAS migration remains gated by administrator access, actual image/client inventory and named-credential/rollback verification.

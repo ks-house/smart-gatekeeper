@@ -48,14 +48,16 @@ class BrokerFixture:
                         "--entrypoint", "mosquitto_passwd", IMAGE]
                 self.docker(*args, *(["-c"] if index == 0 else []),
                             "-b", "/fixtures/passwords", user, PASSWORD)
-            with socket.socket() as probe:
-                probe.bind(("127.0.0.1", 0))
-                self.port = probe.getsockname()[1]
             self.docker("run", "--rm", "-d", "--name", self.name, "--user", self.uid,
-                        "--entrypoint", "mosquitto", "-p", f"127.0.0.1:{self.port}:1883",
+                        "--entrypoint", "mosquitto", "-p", "127.0.0.1::1883",
                         "-v", str(self.directory)+":/fixtures:ro", IMAGE,
                         "-c", "/fixtures/mosquitto.conf")
             self.started = True
+            mapping = self.docker("port", self.name, "1883/tcp").strip()
+            host, port = mapping.rsplit(":", 1)
+            if host != "127.0.0.1" or not port.isdecimal():
+                raise RuntimeError("fixture broker must bind only loopback")
+            self.port = int(port)
             deadline = time.monotonic() + 6
             while True:
                 try:
@@ -76,8 +78,10 @@ class BrokerFixture:
             raise
 
     def docker(self, *args):
-        return subprocess.run(["docker", *args], capture_output=True, text=True,
-                              check=True, timeout=30).stdout
+        result = subprocess.run(["docker", *args], capture_output=True, text=True, timeout=30)
+        if result.returncode:
+            raise RuntimeError("isolated Docker fixture failed: " + result.stderr[-2000:])
+        return result.stdout
 
     def connect(self, username, password=PASSWORD):
         ready = threading.Event()

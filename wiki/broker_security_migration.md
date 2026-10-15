@@ -2,7 +2,7 @@
 
 ## Current evidence and scope
 
-A fresh read-only strict-TLS connection on2026-10-15 confirms anonymous CONNECT is still accepted on the public MQTTS listener. No subscribe, publish, LWT, broker change or Target command was sent. Private NAS SSH is reachable and its server public key matches the existing pin, but the local owner key is not authorized. The separate restricted Backend deploy key is not a broker administration channel. Live image/config/password/ACL snapshots and operating client credentials have not been read or changed.
+A fresh read-only strict-TLS connection on2026-10-15 confirms anonymous CONNECT is still accepted on the public MQTTS listener. No subscribe, publish, LWT, broker change or Target command was sent. Private NAS SSH is reachable and its server public key matches the existing pin, but the local owner key is not authorized. The separate restricted Backend deploy key authenticates successfully over the configured Tailscale SSH port8822 and its forced status command confirms deployed5053a3a with loopback/public readiness passed. That key is not a broker administration channel. Live image/config/password/ACL snapshots and operating client credentials have not been read or changed.
 
 The old repository ACL used global %u patterns. In pinned isolated Mosquitto2.1.2, Home Assistant, Backend and a read-only diagnostic password principal could each publish a canonical-event to the pseudo Target namespace named after that principal. Application MAC/Target validation is a separate boundary; this is not evidence of a successful door command.
 
@@ -50,7 +50,7 @@ RUN_MQTT_ACL_INTEGRATION=1 /path/to/project/.venv/bin/python \
   tests.test_target_security_ota -v
 ~~~
 
-The integration runs immutable image eclipse-mosquitto@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797 (local verified version2.1.2), bound only to loopback with synthetic names/passwords. It tests actual message delivery and ordered barriers rather than treating SUBACK/PUBACK alone as authorization. A test-only observer and fixture/barrier namespace never appear in generated production ACLs. Temporary containers/files are removed. The existing Backend CI Target-security entry point also runs the actual12-test renderer/broker matrix in a child process (CI or explicit local opt-in); it does not require a privileged workflow change.
+The integration runs immutable image eclipse-mosquitto@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797 (local verified version2.1.2), bound only to loopback with synthetic names/passwords. It tests actual message delivery and ordered barriers rather than treating SUBACK/PUBACK alone as authorization. A test-only observer and fixture/barrier namespace never appear in generated production ACLs. Temporary containers/files are removed. The existing Backend security CI Target-security entry point also runs the actual12-test renderer/broker matrix in a child process (the Backend dependency tier or explicit local opt-in); it does not require a privileged workflow change.
 
 Anonymous/wrong-password refusal, own Target writes/reads, cross-Target denial, Backend canonical collection/command/ACL, HA bridge/retained discovery for late subscribers, diagnostic read-only behavior and absence of inherited role-name Target writes pass. This validates the candidate policy on2.1.2; it does not identify the live NAS image/version, prove its TLS configuration/client compatibility or complete a live cutover.
 
@@ -68,3 +68,9 @@ Anonymous/wrong-password refusal, own Target writes/reads, cross-Target denial, 
 ## Completion boundaries
 
 Source policy, renderer and isolated broker regression are completed separately from production installation. Live #328 acceptance remains open until the authorized inventory/backup, compatible named credentials, every enabled listener, old-session eviction, legitimate reconnect/rollback, retained audit and independent public/private readback are verified. No NAS/broker/HA/Target state or credential was changed by this work. Physical door behavior remains a separate #54 gate.
+
+## 2026-10-16 Tailscale authentication and CI follow-up
+
+The user confirms DSM SSH port8822. Tailscale reports the NAS online, the pinned private OpenSSH transport works, and the existing forced Backend key returns valid deployment status. Port22 refuses connections. [Tailscale's Synology documentation](https://tailscale.com/docs/integrations/synology) distinguishes access over Tailscale from its separate Tailscale SSH server feature, which does not run on Synology; DSM SSH still requires its own allowed credentials. Do not broaden the forced Backend key or disable host-key checks to obtain broker authority.
+
+The first Backend hosted check executed the actual12-case broker matrix successfully. The separate OTA-only lane lacked MQTT dependencies, so real integration now runs only when GITHUB_WORKFLOW identifies the Backend security lane or local opt-in is explicit; a regression covers the tier selection. The OTA/manual walkthrough stays reproducible without pulling in Backend-only packages. Docker assigns fixture ports atomically and verifies loopback mapping, replacing a bind/close/start window; bounded Docker error details are retained on startup failure.

@@ -23,7 +23,7 @@ applies_to:
 
 - Fresh strict-TLS public CONNECT still accepts anonymous clients. The local NAS owner key is rejected despite a matching pinned server key; no administrator browser session is open. Live broker version/config/password inventory and cutover remain unverified.
 - Fixed the repository ACL's global Target-pattern inheritance: explicit named role/Target topics plus a bounded private-inventory renderer replace the leaked HA/Backend/diagnostic Target grants. Actual pinned Mosquitto2.1.2 reproduces old behavior and verifies new authorization and retained discovery.
-- Final local root472 tests/one environment skip, actual12-case renderer/broker matrix and OTA contract PASS. Existing Backend CI entry point now enforces the real matrix. No operating broker/HA/Target credential or state has changed.
+- Final local root473 tests/one environment skip, actual12-case renderer/broker matrix and OTA contract PASS. Existing Backend CI entry point now enforces the real matrix. No operating broker/HA/Target credential or state has changed.
 - Full migration/rollback and remaining #328 gates: [broker_security_migration.md](broker_security_migration.md). Named-client compatibility and authorized administrator access are required before removing anonymous access.
 
 ## 2026-10-15 first sensor-analysis task

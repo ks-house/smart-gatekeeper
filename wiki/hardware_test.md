@@ -1353,3 +1353,9 @@ Details: [access_evidence_recovery.md](access_evidence_recovery.md#2026-10-15-st
 - Local full root472 tests PASS/one environment skip with real-broker opt-in enabled; existing Target-security CI entry point independently executes12 renderer/actual-broker child tests with no skips. OTA contract PASS.
 - Added actual retained discovery delivery to a late HA subscriber. Test-only ordered barriers/observer remain outside generated production grants; isolated containers are removed.
 - Candidate is source/staging evidence only. Exact live-image/credential/client compatibility, secure installation, anonymous-session eviction, reconnect/rollback and public/private operating acceptance remain pending under328. No production deployment or door/Target command.
+
+## 2026-10-16 corrected CI tier and final broker-source validation
+
+- Final local root473 tests PASS/1 environment skip and OTA contract PASS. Separate OTA-tier/manual-walkthrough13 tests PASS/1 deliberate broker skip; Backend CI remains required to execute the actual12-case renderer/broker matrix with no skips.
+- Docker's daemon allocates test ports atomically and returned mapping must be127.0.0.1. This avoids the fixture bind/close/start window; no production listener is changed.
+- Tailscale/8822 authentication with the restricted Backend key returns deployed5053a3a/loopback/public passed; source administrative owner-key authentication is still rejected. No live broker inventory/change or issue closure is implied.
