@@ -127,13 +127,13 @@ class BrokerFixture:
         client.disconnect()
         return (topic, token) in self.messages
 
-    def readable(self, username, topic, writer):
+    def readable(self, username, topic, writer, subscription=None):
         client, rc = self.connect(username)
         if rc != 0:
             raise RuntimeError("fixture principal rejected")
         received = []
         client.on_message = lambda c, u, message: received.append(bytes(message.payload))
-        self.subscribe(client, topic)
+        self.subscribe(client, subscription or topic)
         marker_topic = "fixture/barrier/" + uuid.uuid4().hex
         self.subscribe(client, marker_topic)
         publisher, rc = self.connect(writer)
@@ -251,6 +251,12 @@ class BrokerAclIntegrationTest(unittest.TestCase):
                          "gatekeeper/v1/targets/target-a/command", "gatekeeper-backend"))
         self.assertTrue(self.broker.readable("gatekeeper-backend",
                         "gatekeeper/v1/targets/target-a/canonical-event", "target-a"))
+        self.assertTrue(self.broker.readable("gatekeeper-backend",
+                        "gatekeeper/v1/targets/target-a/canonical-event", "target-a",
+                        subscription="gatekeeper/v1/targets/+/canonical-event"))
+        self.assertTrue(self.broker.readable("gatekeeper-backend",
+                        "gatekeeper/v1/targets/target-a/status", "target-a",
+                        subscription="gatekeeper/v1/targets/+/status"))
         self.assertTrue(self.broker.readable("homeassistant",
                         "gatekeeper/v1/targets/target-a/status", "target-a"))
         self.assertFalse(self.broker.readable("homeassistant",
@@ -282,7 +288,8 @@ class SharedSmartBoxAclIntegrationTest(unittest.TestCase):
         from scripts.render_broker_acl import SMARTBOX_TELEMETRY
         for topic in SMARTBOX_TELEMETRY:
             with self.subTest(topic=topic):
-                self.assertTrue(self.broker.readable("box-telemetry", topic, "box-device"))
+                self.assertTrue(self.broker.readable("box-telemetry", topic, "box-device",
+                                subscription=("smartbox/event/#" if "/event/" in topic else topic)))
                 self.assertFalse(self.broker.delivered("box-telemetry", topic))
         for topic in ["smartbox/command", "smartbox/event/unknown",
                       "gatekeeper/v1/targets/target-a/canonical-event"]:

@@ -7785,3 +7785,5 @@
 - Live subscribe-only observation receives new SmartBox telemetry/current-main retained version. Existing firmware anonymous HTTPS HEAD succeeds, so fresh credential-bearing publication requires compatible origin protection first. No credentials, firmware, broker/client settings or physical commands changed.
 
 - Final full root480 tests/1environment skip and OTA contract PASS. Two earlier full opt-in attempts exposed Docker cleanup/start scheduling deadlines; bounded cleanup30s/start20s and explicit cleanup status/log details retain failures rather than silently skipping. Real19-case child matrix executes successfully in the final run. No production effect.
+
+- Final affected19-case broker matrix additionally proves real Backend wildcard status/canonical subscriptions and the existing Telegraf smartbox/event/# filter deliver under exact read grants. Renderer/runtime behavior unchanged; no production commands or policy activation.
