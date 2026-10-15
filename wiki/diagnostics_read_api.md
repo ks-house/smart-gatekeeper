@@ -649,3 +649,9 @@ never inserts these fields into verified. Quiet idle is not stalled. These
 fields require the candidate Backend/firmware; publication and installation
 remain pending. Server receipt, canonical occurrence monotonic time and enqueue
 age retain separate meanings.
+
+## 2026-10-15 offline sensor-window analysis
+
+Use scripts/analyze_sensor_windows.py on saved incidents and health-history responses to compare signed sensor-window bounds with matching unsigned qualification timing. It performs no network/device call and emits no raw Target/boot/session/phone identity or operating timestamps. Exact Target, boot ID/counter, start/end and inactive-window agreement is required; stale adjacent windows or conflicting duplicate offsets remain unavailable. File/row/byte bounds are enforced.
+
+The result distinguishes ARM-to-first-near waiting from first-near-to-trigger time. It never infers physical arrival, passage or a hardware fault, and reports health coverage as supplied pages only. Full command, tested evidence boundaries and the56s-session/231ms-after-near finding are in [access_evidence_recovery.md](access_evidence_recovery.md#2026-10-15-step-1-sensor-window-attribution). This does not replace authenticated diagnostics collection or cryptographically reverify saved source files.

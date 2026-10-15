@@ -1328,3 +1328,15 @@ See [access_evidence_recovery.md](access_evidence_recovery.md) for exact hashes 
 - Review configuration leakage reproduced with a different valid caller ACL_PERSONAL_DOOR_ID (failure before any valid receipt). Patching both fixture door-ID sources makes the identical conflicting-environment integration PASS.
 - Root452 tests PASS, one environment skip; OTA contract PASS. Runtime source and release policies unchanged. Hosted exact-head acceptance remains a merge prerequisite.
 - Independent public readiness confirms deployed5053a3a/all12 checks and fresh authenticated Target status. Recent sampled phone evidence remains45701; new46101 installation and physical passage are unverified. No door/reboot/OTA command or field fault injection.
+
+## 2026-10-15 offline sensor-window analysis
+
+| Validation | Result | Boundary |
+|---|---|---|
+| Exact recorded-window attribution |13 signed summaries matched against2722 supplied health rows | Target/boot ID+counter/start/end/inactive equality; unsigned offsets stay unsigned |
+| Longest completed session |56.153s source session; first near54.641s after ARM, trigger231ms after near | No independent arrival/physical contact; not measured arrival-to-door latency |
+| Timeouts |1 no-valid,3 no-in-range,4 unqualified near; no initial/sample rearm block | No hardware cause or human failure rate inferred; median/distance policy unchanged |
+| Focused regressions |7 PASS | Wrong identity/window/integrity, conflicting duplicates, rollover/zero, offset ordering and CLI identity omission |
+| Root and OTA |459 tests,1 environment skip, PASS; OTA contract PASS | Host-only diagnostics tool; no firmware/APK/Backend runtime changes or device command |
+
+Details: [access_evidence_recovery.md](access_evidence_recovery.md#2026-10-15-step-1-sensor-window-attribution).
