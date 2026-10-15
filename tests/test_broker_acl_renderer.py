@@ -117,6 +117,9 @@ class BrokerAclRendererTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             render_acl({**PROFILE, "schema_version": 2})
 
+        with self.assertRaises(ValueError):
+            render_acl({**valid, "discovery_device_id": "smartbox_01"})
+
     def test_cli_creates_private_candidate_and_never_overwrites_existing_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             inventory = Path(tmp) / "inventory.json"

@@ -62,6 +62,8 @@ def inventory(profile):
             raise ValueError("SmartBox fields must be exact named principals")
         principals.extend(name(smartbox[key])
                           for key in ("device_username", "telemetry_username"))
+        if profile["discovery_device_id"] == "smartbox_01":
+            raise ValueError("Gatekeeper and reserved SmartBox discovery IDs must differ")
     if len(set(principals)) != len(principals):
         raise ValueError("principal roles/Target usernames must be distinct")
     name(profile["discovery_device_id"])

@@ -7787,3 +7787,7 @@
 - Final full root480 tests/1environment skip and OTA contract PASS. Two earlier full opt-in attempts exposed Docker cleanup/start scheduling deadlines; bounded cleanup30s/start20s and explicit cleanup status/log details retain failures rather than silently skipping. Real19-case child matrix executes successfully in the final run. No production effect.
 
 - Final affected19-case broker matrix additionally proves real Backend wildcard status/canonical subscriptions and the existing Telegraf smartbox/event/# filter deliver under exact read grants. Renderer/runtime behavior unchanged; no production commands or policy activation.
+
+## [2026-10-16] fix | Reject cross-project discovery identity collision
+
+- PR437 review identifies schema2 discovery_device_id=smartbox_01 as a valid but overlapping Backend discovery grant. New regression is RED before/GREEN after rejecting that reserved ID. Existing operating inventory already uses a distinct ID; private candidate unchanged. Renderer9 cases PASS; Backend hosted/OTA revalidation follows.
