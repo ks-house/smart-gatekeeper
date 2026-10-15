@@ -138,3 +138,27 @@ skipped. Fresh MQTT credentials have not been published. Shared policy PR437
 merged acf6982 after exact-head Backend/OTA/trusted checks and reserved-discovery
 collision RED/GREEN correction. Redundant main Backend38778457186 cancellation
 was requested before any deployment; read final state before claiming cancelled.
+
+
+## 2026-10-16 installed client rollout checkpoint
+
+Dedicated restricted NAS access and isolated16-case authentication/TLS staging
+are verified. Eight build-provisioning secret entries were registered without
+logging values, covering Target repo/personal-auto-ota/production and SmartBox.
+Target signed/encrypted publication38823340730 passed, independent artifact
+signature/hash/provisioning readback passed, and one signed-bridge OTA check
+yielded2.1.525/boot911. Fresh verified Backend state is IDLE/OFF; accompanying
+firmware/VALID advisory is consistent, with pending0/gapfalse and all12 ready checks.
+
+SmartBoxPR6 merged5e5e334 and publication38823428021 passed, but the device remains
+on0.1.0-g632f004 after one bounded request. Command reception and installed CA/current
+URL are verified. Owner confirms the same network as Target; reported LAN is outside
+the initial private-origin allowlist. SmartBox issue7 tracks protected route
+compatibility, remote OTA diagnostics and actual install health. A pinned private
+LAN-only updater is being validated; actual NAS application remains pending.
+
+Both operating listeners still allow anonymous clients and the collector is
+unchanged. Do not bind the old SmartBox version to authorize a premature cutover.
+After installed health: supply exact prepared versions, restage16 cases, then
+activate/verify bounded rollback, legitimate reconnect and independent refusal.
+HA remains absent; no HA reconnect, physical access or whole328 completion claim.
