@@ -2,7 +2,16 @@
 
 ## Current evidence and scope
 
-A fresh read-only strict-TLS connection on2026-10-15 confirms anonymous CONNECT is still accepted on the public MQTTS listener. No subscribe, publish, LWT, broker change or Target command was sent. Private NAS SSH is reachable and its server public key matches the existing pin, but the local owner key is not authorized. The separate restricted Backend deploy key authenticates successfully over the configured Tailscale SSH port8822 and its forced status command confirms deployed5053a3a with loopback/public readiness passed. That key is not a broker administration channel. Live image/config/password/ACL snapshots and operating client credentials have not been read or changed.
+Source remediation is merged: PR434/bcc79f8 after the separate one-file workflow-trigger admission PR435/8e6932d. Operating authentication/ACL activation is still pending under #328.
+
+Owner-authenticated read-only audits on2026-10-16 identify the live broker as Mosquitto2.1.2, with the same immutable image digest used by the isolated regression. Both enabled listeners still permit anonymous access and have no password/ACL policy. Original active config and TLS references were copied to root-private durable storage, restricted to0700 directories/0600 files and independently hash-verified. Configuration hash was unchanged on later readback. This is a completed snapshot, not a tested rollback or a production cutover.
+
+Pinned DSM SSH works over Tailscale on the configured port. The owner entered login/sudo passwords directly into an interactive terminal; no password was collected in chat or printed by the audit. The existing forced Backend deploy key remains restricted to its original commands. No account, SSH/sudo policy, broker configuration, credentials or service was changed.
+
+The Backend has a distinct configured MQTT username and a nonempty password secret on its TLS route. Local Target provisioning differs from the operating Target ID and Backend identity/password; it has not been bound to the installed firmware's actual credentials. Do not treat the local file as proof that the installed Target will authenticate after cutover. The bounded recent connection-log query produced no matching connection records, so current client identities remain unproved by that path.
+
+The running Telegraf configuration subscribes anonymously over the plaintext listener to a separate legacy SmartBox telemetry/event topic family. Stored Home Assistant MQTT configuration also has no credentials, but HA is absent from the running NAS container inventory and its local upstream port is closed. This establishes stored configuration and a running dependent service, not current HA use of this broker. Before global anonymous refusal, include all legacy producers/consumers in the authorized migration scope or choose a separate authenticated Smart Gatekeeper broker route; do not silently break unrelated telemetry.
+
 
 The old repository ACL used global %u patterns. In pinned isolated Mosquitto2.1.2, Home Assistant, Backend and a read-only diagnostic password principal could each publish a canonical-event to the pseudo Target namespace named after that principal. Application MAC/Target validation is a separate boundary; this is not evidence of a successful door command.
 
@@ -50,9 +59,9 @@ RUN_MQTT_ACL_INTEGRATION=1 /path/to/project/.venv/bin/python \
   tests.test_target_security_ota -v
 ~~~
 
-The integration runs immutable image eclipse-mosquitto@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797 (local verified version2.1.2), bound only to loopback with synthetic names/passwords. It tests actual message delivery and ordered barriers rather than treating SUBACK/PUBACK alone as authorization. A test-only observer and fixture/barrier namespace never appear in generated production ACLs. Temporary containers/files are removed. The existing Backend security CI Target-security entry point also runs the actual12-test renderer/broker matrix in a child process (the Backend dependency tier or explicit local opt-in); it does not require a privileged workflow change.
+The integration runs immutable image eclipse-mosquitto@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797 (local verified version2.1.2), bound only to loopback with synthetic names/passwords. It tests actual message delivery and ordered barriers rather than treating SUBACK/PUBACK alone as authorization. A test-only observer and fixture/barrier namespace never appear in generated production ACLs. Temporary containers/files are removed. The existing Backend security CI Target-security entry point also runs the actual13-test renderer/broker matrix in a child process (the Backend dependency tier or explicit local opt-in); it does not require a privileged workflow change.
 
-Anonymous/wrong-password refusal, own Target writes/reads, cross-Target denial, Backend canonical collection/command/ACL, HA bridge/retained discovery for late subscribers, diagnostic read-only behavior and absence of inherited role-name Target writes pass. This validates the candidate policy on2.1.2; it does not identify the live NAS image/version, prove its TLS configuration/client compatibility or complete a live cutover.
+Anonymous/wrong-password refusal, own Target writes/reads, cross-Target denial, Backend canonical collection/command/ACL, HA bridge/retained discovery for late subscribers, diagnostic read-only behavior and absence of inherited role-name Target writes pass. The later owner-authenticated audit matches the live image/version to this2.1.2 fixture. The synthetic matrix does not prove live TLS configuration/client compatibility or complete a live cutover.
 
 ## Required operating sequence and rollback
 
@@ -80,3 +89,9 @@ The first Backend hosted check executed the actual12-case broker matrix successf
 A later renderer/test-only PR must still start its owning security workflow. Both pull-request and main-push path filters now include the renderer and its two direct regression files. The routing test derives those input paths from the imported implementation and test modules; it fails against the previous filters and passes after the additions.
 
 This changes only path triggers in one of the23 protected files. Permissions, jobs, dependencies, image publication/deployment conditions, signing gates and the22 other protected bytes stay identical. The reviewed feature SHA and complete23-file map must be admitted in a separate policy-only PR before this feature merges. The feature must preserve ancestry (merge-connect main, then merge-commit; no squash/rebase) under the persistent-baseline contract.
+
+## 2026-10-16 merged validation and remaining operating work
+
+Final connected feature fba753a passed the local474-test root suite (one environment skip), OTA contract and exact-head hosted Backend/OTA/trusted checks. The hosted Backend child ran all13 renderer/broker cases rather than skipping them. Main OTA38762364009 succeeded. The redundant main Backend run38762364029 passed security, attestation and operations verification but failed later while pulling the upstream DockerHub Buildx image with HTTP502; deploy was skipped. No Backend or broker deployment followed that run.
+
+The live image/config snapshot is verified, while the combined operating rollback task remains unchecked because restore/config activation has not been exercised. All eight operating acceptance tasks in #328 stay open. The next decision is authorized scope for the legacy SmartBox dependency versus a separate broker, followed by exact Target provisioning, named-client/TLS readiness, private candidate/restore validation and bounded activation/reconnect/independent readback. No Target reboot, OTA trigger, door action or physical acceptance occurred.

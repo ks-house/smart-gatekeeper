@@ -1359,3 +1359,16 @@ Details: [access_evidence_recovery.md](access_evidence_recovery.md#2026-10-15-st
 - Final local root473 tests PASS/1 environment skip and OTA contract PASS. Separate OTA-tier/manual-walkthrough13 tests PASS/1 deliberate broker skip; Backend CI remains required to execute the actual12-case renderer/broker matrix with no skips.
 - Docker's daemon allocates test ports atomically and returned mapping must be127.0.0.1. This avoids the fixture bind/close/start window; no production listener is changed.
 - Tailscale/8822 authentication with the restricted Backend key returns deployed5053a3a/loopback/public passed; source administrative owner-key authentication is still rejected. No live broker inventory/change or issue closure is implied.
+
+
+## 2026-10-16 actual broker snapshot and dependent-client inventory
+
+| Check | Result | Boundary |
+|---|---|---|
+| Live immutable image/version | Matches isolated Mosquitto2.1.2 regression | Candidate source validation, no installed ACL |
+| Original config/TLS snapshot | Root-private0700/0600 backup, hashes verified; config unchanged on readback | Restore/config activation not exercised |
+| Backend configured identity | Distinct username/nonempty password, TLS route | Actual installed Target credential agreement remains unproved |
+| Dependent clients | Running anonymous legacy Telegraf subscription; stored anonymous HA config without running HA container/local upstream | All-client inventory/current HA use not established |
+| Broker activation | Not performed; both listeners still anonymous | Legacy-client scope or separation, provisioning, rollback, eviction/reconnect and independent readback pending |
+
+No Target command, reboot, OTA trigger, relay action or physical success is inferred. [Migration runbook](broker_security_migration.md).
