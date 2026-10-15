@@ -7773,3 +7773,7 @@
 - Owner completed pinned DSM SSH and one-shot sudo metadata/client audits. Exact operating Mosquitto2.1.2 digest matches tested fixture, root-private config/TLS backup hash verified; configuration unchanged on later read. No credentials printed or service/settings/account changes.
 - Backend named credentials exist; local Target provisioning differs but installed binding is unverified. Recent bounded connection log has no matches and is not absence-of-client proof. Running Telegraf depends on anonymous legacy SmartBox topics; stored HA is anonymous but no running NAS HA/local upstream was observed.
 - Operating #328 remains open with8 unchecked gates. Authorized scope of legacy-client migration or a separate broker must precede global anonymous refusal. No Target/door command, OTA or physical acceptance. Preserved dirty primary separately; documentation links/whitespace checked before publication.
+
+## [2026-10-16] compile | Owner authorizes combined SmartBox broker migration
+
+- Owner chooses to include SmartBox producers and Telegraf in the same authenticated broker transition. Scope is now authorized; all-client provisioning and no-break compatibility remain pending. No operating activation or credentials change yet.
