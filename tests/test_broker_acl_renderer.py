@@ -77,6 +77,46 @@ class BrokerAclRendererTest(unittest.TestCase):
         reordered["targets"].reverse()
         self.assertEqual(render_acl(PROFILE), render_acl(reordered))
 
+    def test_shared_schema_keeps_telemetry_read_only_and_device_discovery_exact(self):
+        from scripts.render_broker_acl import SMARTBOX_DISCOVERY
+        profile = {**PROFILE, "schema_version": 2,
+                   "smartbox": {"device_username": "box-device",
+                                "telemetry_username": "box-telemetry"}}
+        acl = render_acl(profile)
+        telemetry = acl.split("user box-telemetry", 1)[1].split("user read-only")[0]
+        self.assertEqual(6, telemetry.count("topic read "))
+        self.assertNotIn("topic write ", telemetry)
+        self.assertNotIn("smartbox/command", telemetry)
+        device = acl.split("user box-device", 1)[1].split("user box-telemetry")[0]
+        self.assertEqual(20, device.count("/smartbox_01/"))
+        self.assertEqual(20, sum(map(len, SMARTBOX_DISCOVERY.values())))
+        self.assertNotIn("+", device)
+        self.assertNotIn("#", device)
+        self.assertIn("topic read smartbox/command", device)
+        self.assertNotIn("topic write smartbox/command", device)
+        self.assertIn("topic write smartbox/command",
+                      acl.split("user ha-user")[1].split("user box-device")[0])
+        self.assertNotIn("smartbox/", acl.split("user backend-user")[1].split("user ha-user")[0])
+
+    def test_shared_inventory_rejects_unknown_fields_and_role_collisions(self):
+        valid = {**PROFILE, "schema_version": 2,
+                 "smartbox": {"device_username": "box-device",
+                              "telemetry_username": "box-telemetry"}}
+        cases = [None, {}, {"device_username": "box-device"},
+                 {**valid["smartbox"], "password": "fixture"},
+                 {**valid["smartbox"], "telemetry_username": "box-device"},
+                 {**valid["smartbox"], "device_username": "target-a"},
+                 {**valid["smartbox"], "device_username": "ha-user"},
+                 {**valid["smartbox"], "telemetry_username": "read-only"},
+                 {**valid["smartbox"], "device_username": "bad/#"}]
+        for value in cases:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                render_acl({**valid, "smartbox": value})
+        with self.assertRaises(ValueError):
+            render_acl({**PROFILE, "smartbox": valid["smartbox"]})
+        with self.assertRaises(ValueError):
+            render_acl({**PROFILE, "schema_version": 2})
+
     def test_cli_creates_private_candidate_and_never_overwrites_existing_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             inventory = Path(tmp) / "inventory.json"

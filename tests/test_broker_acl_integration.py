@@ -19,7 +19,7 @@ PROFILE = dict(schema_version=1, targets=["target-a", "target-b"],
 
 
 class BrokerFixture:
-    def __init__(self, acl):
+    def __init__(self, acl, profile=PROFILE):
         import paho.mqtt.client as mqtt
         self.mqtt = mqtt
         self.clients = []
@@ -31,8 +31,10 @@ class BrokerFixture:
         self.uid = str(os.getuid()) + ":" + str(os.getgid())
         try:
             # Test-only observer/barrier permissions never cover production topics.
-            fixture_users = [*PROFILE["targets"], PROFILE["backend_username"],
-                             PROFILE["ha_username"], "diag-read"]
+            fixture_users = [*profile["targets"], profile["backend_username"],
+                             profile["ha_username"], *profile["diagnostic_usernames"]]
+            if profile["schema_version"] == 2:
+                fixture_users.extend(profile["smartbox"].values())
             barriers = "".join("\nuser " + user + "\ntopic readwrite fixture/barrier/#\n"
                                for user in fixture_users)
             (self.directory / "acl").write_text(
@@ -41,8 +43,7 @@ class BrokerFixture:
                 "listener 1883 0.0.0.0\nallow_anonymous false\n"
                 "password_file /fixtures/passwords\nacl_file /fixtures/acl\n"
                 "persistence false\nlog_dest stdout\n")
-            users = [*PROFILE["targets"], PROFILE["backend_username"],
-                     PROFILE["ha_username"], "diag-read", "fixture-observer"]
+            users = [*fixture_users, "fixture-observer"]
             for index, user in enumerate(users):
                 args = ["run", "--rm", "--user", self.uid, "-v", str(self.directory)+":/fixtures",
                         "--entrypoint", "mosquitto_passwd", IMAGE]
@@ -58,14 +59,15 @@ class BrokerFixture:
             if host != "127.0.0.1" or not port.isdecimal():
                 raise RuntimeError("fixture broker must bind only loopback")
             self.port = int(port)
-            deadline = time.monotonic() + 6
+            deadline = time.monotonic() + 20
             while True:
                 try:
                     with socket.create_connection(("127.0.0.1", self.port), timeout=0.2):
                         break
                 except OSError:
                     if time.monotonic() >= deadline:
-                        raise RuntimeError("isolated broker did not listen")
+                        details = self.docker("logs", "--tail", "30", self.name)
+                        raise RuntimeError("isolated broker did not listen: " + details[-2000:])
                     time.sleep(0.05)
             observer, rc = self.connect("fixture-observer")
             if rc != 0:
@@ -156,7 +158,10 @@ class BrokerFixture:
             client.disconnect()
             client.loop_stop()
         if self.started:
-            subprocess.run(["docker", "rm", "-f", self.name], capture_output=True, timeout=10)
+            removed = subprocess.run(["docker", "rm", "-f", self.name],
+                                     capture_output=True, text=True, timeout=30)
+            if removed.returncode:
+                raise RuntimeError("isolated broker cleanup failed: " + removed.stderr[-500:])
         self.temp.cleanup()
 
 
@@ -256,6 +261,64 @@ class BrokerAclIntegrationTest(unittest.TestCase):
                          "gatekeeper/v1/targets/target-a/command", "gatekeeper-backend"))
         self.assertFalse(self.broker.readable("target-a",
                          "gatekeeper/v1/targets/target-b/acl", "gatekeeper-backend"))
+
+
+@unittest.skipUnless(os.getenv("RUN_MQTT_ACL_INTEGRATION") == "1",
+                     "set RUN_MQTT_ACL_INTEGRATION=1 for isolated real broker")
+class SharedSmartBoxAclIntegrationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from scripts.render_broker_acl import render_acl
+        cls.profile = {**PROFILE, "schema_version": 2,
+                       "smartbox": {"device_username": "box-device",
+                                    "telemetry_username": "box-telemetry"}}
+        cls.broker = BrokerFixture(render_acl(cls.profile), cls.profile)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.broker.close()
+
+    def test_device_telemetry_delivery_and_collector_write_denial(self):
+        from scripts.render_broker_acl import SMARTBOX_TELEMETRY
+        for topic in SMARTBOX_TELEMETRY:
+            with self.subTest(topic=topic):
+                self.assertTrue(self.broker.readable("box-telemetry", topic, "box-device"))
+                self.assertFalse(self.broker.delivered("box-telemetry", topic))
+        for topic in ["smartbox/command", "smartbox/event/unknown",
+                      "gatekeeper/v1/targets/target-a/canonical-event"]:
+            self.assertFalse(self.broker.delivered("box-device", topic))
+            self.assertFalse(self.broker.delivered("box-telemetry", topic))
+
+    def test_ha_command_and_device_state_keep_existing_control_boundary(self):
+        self.assertTrue(self.broker.readable("box-device", "smartbox/command", "homeassistant"))
+        self.assertFalse(self.broker.readable("box-telemetry", "smartbox/command", "homeassistant"))
+        self.assertFalse(self.broker.readable("gatekeeper-backend", "smartbox/command", "homeassistant"))
+        for topic in ["smartbox/status", "smartbox/config/state", "smartbox/log"]:
+            self.assertTrue(self.broker.readable("homeassistant", topic, "box-device"))
+            self.assertFalse(self.broker.readable("box-telemetry", topic, "box-device"))
+        self.assertFalse(self.broker.delivered("target-a", "smartbox/command"))
+        self.assertFalse(self.broker.delivered("gatekeeper-backend", "smartbox/command"))
+
+    def test_all_twenty_discovery_topics_are_delivered_without_other_device_rights(self):
+        from scripts.render_broker_acl import SMARTBOX_DISCOVERY
+        for component, objects in SMARTBOX_DISCOVERY.items():
+            for object_id in objects:
+                topic = f"homeassistant/{component}/smartbox_01/{object_id}/config"
+                with self.subTest(topic=topic):
+                    self.assertTrue(self.broker.readable("homeassistant", topic, "box-device"))
+        for topic in ["homeassistant/sensor/other-device/state/config",
+                      "homeassistant/sensor/smartbox_01/unknown/config",
+                      "homeassistant/sensor/smart_gatekeeper_01/state/config"]:
+            self.assertFalse(self.broker.delivered("box-device", topic))
+        self.assertFalse(self.broker.delivered("homeassistant", "smartbox/status"))
+
+    def test_new_principals_cannot_inherit_target_namespaces(self):
+        for user in self.profile["smartbox"].values():
+            for suffix in ["status", "canonical-event", "command", "acl"]:
+                self.assertFalse(self.broker.delivered(
+                    user, "gatekeeper/v1/targets/" + user + "/" + suffix))
+        self.assertFalse(self.broker.readable(
+            "box-device", "gatekeeper/v1/targets/target-a/command", "gatekeeper-backend"))
 
 
 if __name__ == "__main__":
