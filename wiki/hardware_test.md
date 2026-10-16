@@ -1390,3 +1390,11 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | Backend unit discovery | PASS382 total/9 explicit skips | Default suite; separate opt-in HA fixtures pass |
 | OTA contract | PASS | No mobile/Target OTA path changed |
 | Operating repeated log marker observation | Pending cause; no marker after more than8min | No device action/settings change; HA restored, broker cutover pending |
+
+
+## 2026-10-17 dedicated HA operations preparation
+
+| Check | Result | Scope |
+|---|---|---|
+| HA/forced-key operations suite | PASS42 | Includes actual Mosquitto HUP with unchanged held connection, archive/owner and root key-install rollback fixtures |
+| Current NAS environment | Installation pending | Existing keys unchanged; no logging reload/account migration by preparation |
