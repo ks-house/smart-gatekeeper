@@ -7864,3 +7864,14 @@
 - Separate policyPR443/608c977 passes trusted-base38909569843 and merges825057e. Feature merges main preserving b836d7e ancestry and unchanged protected bytes. Initial Backend CI passed; prior OTA/trusted failures matched only the unadmitted inventory.
 - Review identifies Docker AutoRemove as a stop-time deletion risk. Require AutoRemove=false before any HA stop, alongside exact running container/image/mount/root-process checks. Add wrong-network/user/container/image regression checks. All21 HA tests PASS including actual Mosquitto; no live HA/broker change.
 - Existing private captured operator is refreshed to the same approved scope and latest reviewed source bytes. No persistent key authority, HA restart policy or device action change.
+
+
+## [2026-10-16] fix | Accept the verified operator-owned HA mount parent
+
+- Owner executes the merged HA operator. Its preflight rejects the mounted share parent owner before any stop or configuration write. Actual readback proves original configuration hash6001bb71 unchanged, storage root0777/file root0644, mounted parent owned by the NAS operator, and HA HTTP200.
+- The source incorrectly required that unrelated shared parent to belong to root. Preserve its ownership while retaining root-owned non-symlink credential storage/file, exact Docker /config bind, root Python identity and AutoRemove=false checks.
+- Add an isolated no-network/root Docker filesystem fixture for the full preflight with the actual ownership topology: operator-owned share, root-owned storage/config and private staged inputs. Positive preflight passes; changed storage owner and symlink storage are refused. All22 HA tests PASS including real Mosquitto and this full ownership fixture.
+- No operating HA/broker setting or device action has occurred. Existing sudo authentication remains channel-scoped/unavailable for automatic retry; prepare a fresh captured report key while retaining failed attempt01.
+
+
+- Reuse the previously measured Synology Docker-top PID requirement: query pid,uid,comm and read UID from its proper column. The full preflight fixture asserts the exact query and row layout, preventing a second predictable operator failure before retry. No runtime changes.

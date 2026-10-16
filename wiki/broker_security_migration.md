@@ -173,3 +173,8 @@ SmartBox0.1.0-ge0323a0 is installed with fresh reconnect/IDLE and an authenticat
 Acceptance requires a fresh exact MQTT client/username connection record and HTTPS HA readiness. On initial failure, restore managed settings and modes only after credential removal; preserve unrelated HA changes and refuse concurrent identity overwrite. An independent300s watchdog recovers interrupted adoption. Successful adoption leaves named credentials/private storage installed and observes up to600s for a later authenticated-broker reconnect. That later audit requires a changed broker container, two anonymous=false directives, current file hash/stage bindings and a new HA connection since broker start. It does not itself apply broker settings.
 
 Pre-cutover username transmission on an anonymous broker is not authentication proof. No physical commands are sent. HA restart policy/stop-cause issue441 remains separate; user-only administrator authentication is required for this helper because the dedicated key has no HA editing authority.
+
+
+### HA mount ownership preflight repair
+
+The initial administrator invocation refused before changes because it assumed the mounted Synology share was root-owned. Actual storage/config remain root-owned, but the share belongs to the NAS operator. Preserve that parent ownership; require a real directory and exact existing Docker bind, while the credential-bearing child/file still require root ownership and private modes during adoption. A full root filesystem preflight fixture with this ownership split passes and rejects a changed child owner or symlink. Initial HA config hash and HTTP availability are unchanged.
