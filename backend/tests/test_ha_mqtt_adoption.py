@@ -98,6 +98,10 @@ class ConfigurationTest(unittest.TestCase):
         frame = b"\x01\x00\x00\x00"+len(line.encode()).to_bytes(4, "big")+line.encode()
         self.assertTrue(m.named_connection(m.docker_log_text(frame), IDENTITY["username"], 1792156000))
         with self.assertRaises(ValueError):m.docker_log_text(frame[:-1])
+        formatted = "2026-10-16T13:00:01.123456789Z 2026-10-16T22:00:01: New client connected from 127.0.0.1:3000 as "+m.CLIENT_ID+" (p5, c1, k60, u'ha-example')."
+        self.assertTrue(m.named_connection(formatted, IDENTITY["username"], 1792155600.5))
+        self.assertFalse(m.named_connection(formatted, IDENTITY["username"], 1792155602))
+        self.assertFalse(m.named_connection(formatted.split(" ", 1)[1], IDENTITY["username"], 1792155600))
         for value in (line.replace(m.CLIENT_ID, "other"), line.replace("ha-example", "other"),
                       line.replace("1792156000", "1792155998")):
             self.assertFalse(m.named_connection(value, IDENTITY["username"], 1792155999.9))
@@ -168,7 +172,7 @@ class TransactionTest(unittest.TestCase):
             self.events.append("start");self.running = True
         self.patches = [
             patch.object(self.m, "CONFIG", self.config),
-            patch.object(self.m, "regular", side_effect=lambda p, *a: p.read_bytes()),
+            patch.object(self.m, "regular", side_effect=lambda p, *a, **kw: p.read_bytes()),
             patch.object(self.m, "atomic", side_effect=atomic),
             patch.object(self.m, "private_directory", side_effect=lambda p:self.assertEqual(0o700, stat.S_IMODE(p.stat().st_mode))),
             patch.object(self.m, "stopped", side_effect=stop),
@@ -274,14 +278,14 @@ class CutoverEvidenceTest(unittest.TestCase):
         config = "allow_anonymous false\nallow_anonymous false\n"
         current = {"authenticated_policy_installed": True, "active_config_file": "/private/active.conf",
                    "current_config_sha256": m.digest(config.encode()), "stage_root": "/private/stage"}
-        evidence = {"stage_root": "/private/stage", "input_sha256": "c"*64}
+        evidence = {"stage_root": "/private/stage", "input_sha256": "c"*64, "broker_uid": 1883}
         files = {m.docker.STATE/"current.json": json.dumps(current).encode(),
                  m.docker.STATE/"stage-evidence.json": json.dumps(evidence).encode(),
                  Path("/private/active.conf"): config.encode()}
         broker = {"Id": "new-broker", "State": {"StartedAt": "2026-10-16T13:00:00.123456789Z"}}
         state = {"original_broker_id": "old-broker", "expected_input_sha256": "c"*64,
                  "ha_origin": "https://example.test:4123/"}
-        with patch.object(m, "regular", side_effect=lambda p:files[p]), \
+        with patch.object(m, "regular", side_effect=lambda p, **kw:files[p]), \
              patch.object(m.docker, "inspect", return_value=broker), \
              patch.object(m, "log_data", return_value="fixture"), \
              patch.object(m, "named_connection", return_value=True) as named, \
@@ -308,18 +312,31 @@ class ActualNamedConnectionTest(unittest.TestCase):
         from scripts.render_broker_acl import render_acl
         m = load();fixture = BrokerFixture(render_acl(PROFILE))
         try:
+            config = fixture.directory/"mosquitto.conf"
+            with config.open("a") as stream:stream.write("log_timestamp_format %Y-%m-%dT%H:%M:%S\n")
+            fixture.docker("restart", fixture.name)
+            fixture.port = int(fixture.docker("port", fixture.name, "1883/tcp").strip().rsplit(":", 1)[1])
             since = time.time();ready = threading.Event();results = []
             client = fixture.mqtt.Client(client_id=m.CLIENT_ID, protocol=fixture.mqtt.MQTTv5)
             client.username_pw_set(PROFILE["ha_username"], PASSWORD)
             client.on_connect = lambda c, u, f, rc, *args:(results.append(rc), ready.set())
             fixture.clients.append(client);client.connect("127.0.0.1", fixture.port, keepalive=60)
             client.loop_start();self.assertTrue(ready.wait(3));self.assertEqual(0, results[0])
+            real_http = m.docker.DockerHTTP
+            class FixtureHTTP(real_http):
+                def request(self, method, url, *args, **kwargs):
+                    self_test.assertTrue(url.startswith("/containers/mosquitto/logs?"))
+                    self_test.assertIn("timestamps=1", url)
+                    return super().request(method, url.replace("/containers/mosquitto/",
+                        "/containers/"+fixture.name+"/", 1), *args, **kwargs)
+            self_test = self
             until = time.monotonic()+3;found = False
-            while time.monotonic()<until:
-                if m.named_connection(fixture.docker("logs", "--tail", "100", fixture.name),
-                                      PROFILE["ha_username"], since):
-                    found = True;break
-                time.sleep(0.1)
+            with patch.object(m.docker, "DockerHTTP", FixtureHTTP):
+                while time.monotonic()<until:
+                    if m.named_connection(m.log_data({"docker": True}, since),
+                                          PROFILE["ha_username"], since):
+                        found = True;break
+                    time.sleep(0.1)
             self.assertTrue(found, "actual MQTTv5 named connection must qualify")
             self.assertNotEqual(0, fixture.connect(PROFILE["ha_username"], "wrong-password")[1])
         finally:
@@ -357,14 +374,39 @@ with tempfile.TemporaryDirectory(prefix='ha-owner-preflight-') as tmp:
  write(state/'stage-evidence.json',json.dumps({'input_sha256':digest,'validation':{'isolated_auth_cases':16}}).encode())
  write(ops/'config.json',json.dumps({'owner':'root','readiness_url':'https://fixture.test:4442/ready'}).encode())
  m.BROKER_CONFIG=root/'mosquitto.conf';conf=b'allow_anonymous true\nlog_dest stdout\n';write(m.BROKER_CONFIG,conf)
+ os.chown(m.BROKER_CONFIG,1026,0);m.BROKER_CONFIG.chmod(0o777)
+ evidence=json.loads((state/'stage-evidence.json').read_bytes())
+ evidence.update(originals={str(m.BROKER_CONFIG):{'uid':1026}},broker_uid=1883,stage_root=str(m.PRIVATE/'stage'))
+ write(state/'stage-evidence.json',json.dumps(evidence).encode())
  ha={'Name':'/homeassistant','Id':'ha-fixture','Image':'fixture-image','State':{'Running':True},'Config':{'User':''},'HostConfig':{'AutoRemove':False,'NetworkMode':'host'},'Mounts':[{'Destination':'/config','Source':str(mounted),'RW':True}]}
  m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Mounts':[]}
  def top(method,path,*args):
   assert method=='GET' and path.endswith('/top?ps_args=-eo%20pid,uid,comm')
   return {'Processes':[['4321','0','python3']]}
  m.docker.api=top
+ m.log_data=lambda *args:''
  plan={'expected_config_sha256':m.digest(raw),'expected_input_sha256':digest,'expected_broker_config_sha256':m.digest(conf),'report_key':'ha-mqtt-adopt-fixture-01','report_owner':'root','ha_origin':'https://fixture.test:4123/'}
  assert m.preflight(plan)[0]['Id']=='ha-fixture'
+ os.chown(m.BROKER_CONFIG,1033,0)
+ try:m.preflight(plan)
+ except ValueError:pass
+ else:raise AssertionError('unexpected legacy broker owner accepted')
+ os.chown(m.BROKER_CONFIG,1026,0)
+ secured=b'allow_anonymous false\nallow_anonymous false\n'
+ active=m.PRIVATE/'active.conf';write(active,secured);os.chown(active,1883,1883)
+ current={'authenticated_policy_installed':True,'active_config_file':str(active),'current_config_sha256':m.digest(secured),'stage_root':evidence['stage_root']}
+ write(state/'current.json',json.dumps(current).encode())
+ m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Id':'new-broker','State':{'StartedAt':'2026-10-16T13:00:00.000000000Z'}}
+ m.log_data=lambda *args:'1792155601: New client connected from 127.0.0.1:3000 as '+m.CLIENT_ID+" (p5, c1, k60, u'ha-fixture').\n"
+ m.http_ready=lambda *args:True
+ verify_state={'original_broker_id':'old-broker','expected_input_sha256':digest,'ha_origin':plan['ha_origin']}
+ assert m.verify_cutover(verify_state,{}, {'username':'ha-fixture'})
+ os.chown(active,1026,0)
+ try:m.verify_cutover(verify_state,{}, {'username':'ha-fixture'})
+ except ValueError:pass
+ else:raise AssertionError('unexpected active broker owner accepted')
+ (state/'current.json').unlink()
+ m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Mounts':[]}
  assert mounted.stat().st_uid==1026 and storage.stat().st_uid==0
  os.chown(storage,1026,0)
  try:m.preflight(plan)

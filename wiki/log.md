@@ -7875,3 +7875,13 @@
 
 
 - Reuse the previously measured Synology Docker-top PID requirement: query pid,uid,comm and read UID from its proper column. The full preflight fixture asserts the exact query and row layout, preventing a second predictable operator failure before retry. No runtime changes.
+
+
+## [2026-10-16] fix | Bind HA preflight to actual broker data owners and log clock
+
+- Administrator attempt02 again stops before any HA write/fork. Readback proves original HA hash6001bb71 and broker hashdedbac76 unchanged. The legacy broker data file belongs to the NAS operator, while new private active broker config belongs to runtime UID1883; applying a root-only data check to both was incorrect.
+- Keep root-owned HA/private input requirements. Read legacy broker config only under its UID recorded by the root-owned stage evidence; read active config under the separately recorded broker UID. Both remain bounded regular/non-symlink data with exact hash/stage bindings, never executable input. Full root filesystem fixture now covers real operator-owned777 legacy data and service-owned600 active data, refusing unexpected owners in both phases.
+- Actual config enables stdout/file notice logs with ISO local timestamps. Prefer Docker stdout with its explicit UTC transport timestamp, decode real multiplex frames, and use that UTC clock for fresh exact-client/username acceptance. Plain ambiguous ISO file timestamps cannot qualify. Read the bounded log transport before any HA stop.
+- All22 HA cases PASS including actual pinned Mosquitto formatted logs through the Docker HTTP API, UTC/old-record cases, wrong-owner refusals, privacy ordering and rollback/watchdog checks. A fixture's literal backslash-n was corrected to a real newline for strict message matching.
+- Read-only retained snapshot:54 scoped records, no retained Target/SmartBox commands or HA bridge requests, no publishes, bounded65536B packet scope and no row truncation. This is a current bounded snapshot, not a full historical exposure audit.
+- No operating HA/broker setting or device action by these fixes. Prepare a fresh captured attempt03 after source validation; prior failed packets/reports remain private.
