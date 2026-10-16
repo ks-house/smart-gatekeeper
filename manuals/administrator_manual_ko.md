@@ -117,3 +117,10 @@ Target은 MAC-derived Target ID와 동일한 broker username, `gatekeeper/v1/tar
 Tenant/door/Target 폐기 전에 access·command credential을 revoke하고, broker ACL과 signer trust를 제거하고, mobile binding을 해제하고, retention/legal hold에 따라 export/delete하며, Target/NVS의 secure erase 또는 RMA quarantine을 기록한다. 마지막 단계는 Target이 명령과 출입을 실제 거부하는지 현장에서 확인하는 것이다. 이 증거가 없으면 `DECOMMISSION_PENDING`이다.
 
 접근성: 관리자 UI는 keyboard/TalkBack label, 200% 글자 크기, focus order, danger confirmation, ko/en 상태, audit link를 검증해야 한다. 현재 API security host evidence와 admin HTML의 상용 operator UX는 별도이며 `GAP-53-02`로 남는다.
+
+
+## 공유 MQTT 전환 시 Home Assistant 계정 준비
+
+SmartBox와 Target의 설치·OTA 상태를 확인한 뒤, 운영 브로커의 익명 접속을 끄기 전에 HA에도 준비된 전용 계정을 적용한다. [HA 전환 도구](../ops/ha_mqtt_adoption.py)는 기존 HA 컨테이너를 잠깐 중지하고 설정을 비공개로 백업한 후, 저장 경로 권한을 보호하고 같은 컨테이너를 시작한다. 초기 적용 실패에는 설정·권한 복구를 수행하며 다른 통합의 변경을 덮어쓰지 않는다.
+
+계정 적용 직후의 MQTT 연결 확인과 브로커 차단 적용 후의 인증 재접속 확인을 구분한다. 기존 전용 키 권한은 그대로이며 이 단계에는 관리자 터미널 인증이 필요하다. HA 자동 재시작 정책과 NAS 재부팅 복구 검증은 별도 작업이다.
