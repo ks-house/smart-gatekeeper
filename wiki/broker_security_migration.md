@@ -185,3 +185,12 @@ The initial administrator invocation refused before changes because it assumed t
 Legacy broker config is operator-owned data; the private replacement is owned by the broker runtime UID. The HA operator binds each to the owner recorded in root-owned stage evidence and its reviewed content hash, retaining root-only checks for HA credentials and private control inputs. The full root filesystem fixture exercises both ownership cases and rejects wrong owners.
 
 The measured broker writes ISO local timestamps to stdout and a file. Its connection proof now uses explicit UTC Docker transport timestamps and real multiplex decoding, validated before any HA stop. This avoids assuming the broker container and NAS use the same timezone. Ambiguous plain ISO file records do not qualify as fresh acceptance. Latest retained snapshot finds no retained effectful command/request on the scoped prefixes; no messages were published.
+
+
+### 2026-10-17: prove observation and mounted configuration before stopping HA
+
+The standalone HA operator now compares the actual container configuration views with the bounded NAS files through Docker's read-only archive API. It accepts only one regular file with the expected owner/name/size and hashes the bytes without extracting archive paths. A bind-source label alone cannot establish that the running container sees the same file.
+
+Before stopping HA, a random MQTT5 client sends only CONNECT/DISCONNECT on the legacy local listener. It has no password, will, subscription or publication and does not reuse HA's client ID. Its exact named connection notice must appear with an unambiguous fresh timestamp within15 seconds; a missing/refused marker fails preflight before any HA stop or credential write. HA's own exact client/username reconnect and post-cutover authentication checks remain required separately.
+
+The operating diagnostic accepted a connect-only marker but did not observe it through the bounded API/CLI log paths, including repeated collection beyond8 minutes. Current HA logs contain naturally received MQTT event warnings, so absence of the migration client's notice is not proof that HA cannot connect. The precise broker logging/container-view cause remains pending; no logging reload, HA retry or broker cutover is claimed by this source repair.

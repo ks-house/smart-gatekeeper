@@ -1380,3 +1380,13 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 - Subscribe-only live SmartBox observation receives fresh non-retained telemetry plus retained current-main version. Anonymous strict-TLS HEAD obtains the existing firmware artifact; origin protection and installed credentials remain operating prerequisites.
 
 - Final full root480 tests/1environment skip and OTA contract PASS, with actual19-case child broker matrix. Earlier fixture deadline failures were corrected and are not counted as successful runs.
+
+
+## 2026-10-17 HA observation preflight regression
+
+| Check | Result | Scope |
+|---|---|---|
+| HA operator isolated suite including real pinned Mosquitto, mounted Docker archive and root ownership fixture | PASS28 cases | Local fixtures; not NAS migration completion |
+| Backend unit discovery | PASS382 total/9 explicit skips | Default suite; separate opt-in HA fixtures pass |
+| OTA contract | PASS | No mobile/Target OTA path changed |
+| Operating repeated log marker observation | Pending cause; no marker after more than8min | No device action/settings change; HA restored, broker cutover pending |

@@ -3,18 +3,22 @@
 from datetime import datetime, timezone
 import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import pwd
 import re
 import signal
+import socket
 import ssl
 import stat
 import tempfile
+import tarfile
 import time
 import urllib.parse
 import urllib.request
+import uuid
 try:
     from scripts.nas_broker_ops import activate as docker
 except ImportError:
@@ -64,6 +68,33 @@ def atomic(path, raw, mode=0o600, uid=0, gid=0):
     finally:
         if os.path.exists(name):
             os.unlink(name)
+
+
+def container_file(container_id, path, owner):
+    # Read the actual mounted view, without exec or extracting archive paths.
+    conn = docker.DockerHTTP("localhost", timeout=10)
+    try:
+        query = urllib.parse.urlencode({"path": str(path)})
+        conn.request("GET", "/containers/"+container_id+"/archive?"+query)
+        response = conn.getresponse()
+        raw = response.read(8*1024*1024+1)
+        if response.status != 200 or len(raw) > 8*1024*1024:
+            raise ValueError("bounded container configuration read failed")
+    finally:
+        conn.close()
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+        members = archive.getmembers()
+        if (len(members) != 1 or members[0].name != Path(path).name
+                or not members[0].isfile() or members[0].uid != owner
+                or members[0].size > 4*1024*1024):
+            raise ValueError("reviewed regular container configuration required")
+        stream = archive.extractfile(members[0])
+        return stream.read(4*1024*1024+1)
+
+
+def require_container_view(container_id, path, expected, owner):
+    if digest(container_file(container_id, path, owner)) != digest(expected):
+        raise ValueError("container and NAS configuration views differ: "+Path(path).name)
 
 
 def mqtt_entry(document):
@@ -226,10 +257,10 @@ def log_data(binding, since):
         conn.close()
 
 
-def named_connection(text, username, since):
+def named_connection(text, username, since, client_id=CLIENT_ID):
     message = re.compile(
         r"^(?P<time>[0-9]{9,12}|[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}): "
-        r"New client connected from [^\r\n]* as "+re.escape(CLIENT_ID)+r" \([^\r\n]*u'"
+        r"New client connected from [^\r\n]* as "+re.escape(client_id)+r" \([^\r\n]*u'"
         +re.escape(username)+r"'\)\.$")
     transport = re.compile(
         r"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z) ")
@@ -250,6 +281,38 @@ def named_connection(text, username, since):
         elif match.group("time").isdigit() and int(match.group("time")) >= int(since):
             return True
     return False
+
+
+def verify_observation(binding):
+    # Legacy preparation only: no publication, subscription, will or HA client ID.
+    client_id = "ha-log-probe-"+uuid.uuid4().hex[:12]
+    username = client_id
+    def field(value):
+        raw = value.encode()
+        return len(raw).to_bytes(2, "big")+raw
+    body = (field("MQTT")+bytes([5, 130, 0, 10, 0])
+            +field(client_id)+field(username))
+    since = time.time()
+    with socket.create_connection(("127.0.0.1", 1883), timeout=3) as sock:
+        sock.settimeout(3)
+        sock.sendall(bytes([16, len(body)])+body)
+        # MQTT5 CONNACK has flags/reason/properties after the fixed header.
+        reply = b""
+        while len(reply) < 5:
+            part = sock.recv(128-len(reply))
+            if not part:
+                break
+            reply += part
+        if (len(reply) < 5 or reply[0] != 32 or reply[1] & 128
+                or reply[1] < 3 or reply[2] != 0 or reply[3] != 0):
+            raise ValueError("non-effecting legacy log probe was refused")
+        sock.sendall(bytes([224, 0]))
+    deadline = time.monotonic()+15
+    while time.monotonic() < deadline:
+        if named_connection(log_data(binding, since), username, since, client_id):
+            return
+        time.sleep(0.5)
+    raise ValueError("fresh broker connection log unavailable; HA was not stopped")
 
 
 def preflight(plan):
@@ -310,8 +373,11 @@ def preflight(plan):
     if not python_rows or any(row[1] != "0" for row in python_rows):
         raise ValueError("actual HA Python root identity required for private storage")
     candidate(raw, identity)
-    binding = log_binding(config.decode(), docker.inspect("mosquitto"))
-    log_data(binding, time.time()-5)  # Validate bounded observation before any HA stop.
+    broker = docker.inspect("mosquitto")
+    require_container_view(original["Id"], "/config/.storage/core.config_entries", raw, 0)
+    require_container_view(broker["Id"], "/mosquitto/config/mosquitto.conf", config, owner)
+    binding = log_binding(config.decode(), broker)
+    verify_observation(binding)  # Prove a fresh notice before any HA stop.
     return original, identity, binding, raw
 
 

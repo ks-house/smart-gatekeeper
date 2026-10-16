@@ -7885,3 +7885,12 @@
 - All22 HA cases PASS including actual pinned Mosquitto formatted logs through the Docker HTTP API, UTC/old-record cases, wrong-owner refusals, privacy ordering and rollback/watchdog checks. A fixture's literal backslash-n was corrected to a real newline for strict message matching.
 - Read-only retained snapshot:54 scoped records, no retained Target/SmartBox commands or HA bridge requests, no publishes, bounded65536B packet scope and no row truncation. This is a current bounded snapshot, not a full historical exposure audit.
 - No operating HA/broker setting or device action by these fixes. Prepare a fresh captured attempt03 after source validation; prior failed packets/reports remain private.
+
+
+## [2026-10-17] fix | Validate HA mounted views and fresh broker logs before mutation
+
+- Operating read-only audit accepts a connect-only marker, but API/CLI logs do not show it; repeated samples beyond8min retain the same old broker tail. Fresh HA MQTT event warnings show reception in the original restored configuration. Do not treat missing connection notices as proof of HA network/authentication failure or blame Synology's driver without further evidence.
+- Add bounded read-only Docker archive comparisons for actual HA/broker mounted configuration bytes, expected file names/owners and sizes, with no extraction or exec. Reject mismatched views before HA stop.
+- Replace the empty-success log query preflight with a random named MQTT5 CONNECT/DISCONNECT marker and bounded fresh timestamped notice check. No password, LWT, PUBLISH, SUBSCRIBE or HA client-ID collision. Refusal/missing log fails before HA mutation; existing exact HA reconnect, rollback and post-cutover authentication checks remain.
+- Isolated28 cases PASS including actual pinned legacy Mosquitto marker, actual Docker archive transport and root ownership fixture. Backend382 default tests PASS/9 explicit skips; OTA contract PASS. New regressions refuse archive owner/link/path/duplicate drift, missing notice and connection rejection while checking absence of HA stop.
+- No NAS setting, service reload, HA adoption retry, broker apply or physical command for this source change. Permanent six-command SSH authority and trusted workflow inventory remain unchanged.
