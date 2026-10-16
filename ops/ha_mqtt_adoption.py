@@ -33,10 +33,12 @@ def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def regular(path, limit=4*1024*1024):
+def regular(path, limit=4*1024*1024, owner=0):
     info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0:
-        raise ValueError("root-owned regular configuration required")
+    if type(owner) is not int or owner < 0:
+        raise ValueError("bound configuration owner required")
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != owner:
+        raise ValueError("bound-owner regular configuration required: "+path.name)
     raw = path.read_bytes()
     if len(raw) > limit:
         raise ValueError("configuration byte bound")
@@ -157,6 +159,18 @@ def http_ready(origin):
 def log_binding(configuration, broker):
     if re.search(r"(?m)^\s*connection_messages\s+false\s*$", configuration):
         raise ValueError("broker connection observation disabled")
+    if re.search(r"(?m)^\s*log_timestamp\s+false\s*$", configuration):
+        raise ValueError("timestamped broker connection observation required")
+    types = re.findall(r"(?m)^\s*log_type\s+(\w+)\s*$", configuration)
+    if types and not set(types) & {"all", "notice"}:
+        raise ValueError("broker connection notice observation required")
+    formats = re.findall(r"(?m)^\s*log_timestamp_format\s+(.+?)\s*$", configuration)
+    if formats and formats != ["%Y-%m-%dT%H:%M:%S"]:
+        raise ValueError("reviewed broker timestamp format required")
+    if re.search(r"(?m)^\s*log_dest\s+stdout\s*$", configuration):
+        return {"docker": True}
+    if formats:
+        raise ValueError("formatted broker logs require timestamped Docker stdout")
     files = re.findall(r"(?m)^\s*log_dest\s+file\s+(\S+)\s*$", configuration)
     if len(files) > 1:
         raise ValueError("one bounded broker log required")
@@ -202,7 +216,7 @@ def log_data(binding, since):
             return stream.read(262144).decode("utf-8", "replace")
     conn = docker.DockerHTTP("localhost", timeout=10)
     try:
-        conn.request("GET", "/containers/mosquitto/logs?stdout=1&stderr=1&tail=200&since="+str(int(since)))
+        conn.request("GET", "/containers/mosquitto/logs?stdout=1&stderr=1&timestamps=1&tail=200&since="+str(int(since)))
         response = conn.getresponse()
         raw = response.read(262145)
         if response.status != 200 or len(raw) > 262144:
@@ -213,10 +227,29 @@ def log_data(binding, since):
 
 
 def named_connection(text, username, since):
-    pattern = (r"(?m)(?:^|[\x00-\x1f])([0-9]{9,12}): New client connected from "
-               r"[^\r\n]* as "+re.escape(CLIENT_ID)+r" \([^\r\n]*u'"
-               +re.escape(username)+r"'\)\.")
-    return any(int(match.group(1)) >= int(since) for match in re.finditer(pattern, text))
+    message = re.compile(
+        r"^(?P<time>[0-9]{9,12}|[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}): "
+        r"New client connected from [^\r\n]* as "+re.escape(CLIENT_ID)+r" \([^\r\n]*u'"
+        +re.escape(username)+r"'\)\.$")
+    transport = re.compile(
+        r"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z) ")
+    for line in text.splitlines():
+        engine = transport.match(line)
+        epoch = None
+        if engine:
+            base, dot, fraction = engine.group(1)[:-1].partition(".")
+            value = base+("."+fraction[:6].ljust(6, "0") if dot else "")+"+00:00"
+            epoch = datetime.fromisoformat(value).timestamp()
+            line = line[engine.end():]
+        match = message.fullmatch(line)
+        if not match:
+            continue
+        if epoch is not None:
+            if epoch >= since:
+                return True
+        elif match.group("time").isdigit() and int(match.group("time")) >= int(since):
+            return True
+    return False
 
 
 def preflight(plan):
@@ -262,9 +295,11 @@ def preflight(plan):
     if parsed.hostname != ready_host or settings["owner"] != plan["report_owner"]:
         raise ValueError("reviewed NAS origin/owner required")
     live = BROKER_CONFIG
+    owner = evidence["originals"][str(live)]["uid"]
     if (docker.STATE/"current.json").exists():
         live = Path(json.loads(regular(docker.STATE/"current.json"))["active_config_file"])
-    config = regular(live)
+        owner = evidence["broker_uid"]
+    config = regular(live, owner=owner)
     if digest(config) != plan["expected_broker_config_sha256"]:
         raise ValueError("broker configuration drift")
     original = container()
@@ -276,6 +311,7 @@ def preflight(plan):
         raise ValueError("actual HA Python root identity required for private storage")
     candidate(raw, identity)
     binding = log_binding(config.decode(), docker.inspect("mosquitto"))
+    log_data(binding, time.time()-5)  # Validate bounded observation before any HA stop.
     return original, identity, binding, raw
 
 
@@ -360,13 +396,13 @@ def adopt(work, original, identity, binding, origin, notify):
 
 def verify_cutover(state, binding, identity):
     current = json.loads(regular(docker.STATE/"current.json"))
-    config = regular(Path(current["active_config_file"])).decode()
+    evidence = json.loads(regular(docker.STATE/"stage-evidence.json"))
+    config = regular(Path(current["active_config_file"]), owner=evidence["broker_uid"]).decode()
     if (current.get("authenticated_policy_installed") is not True
             or re.findall(r"(?m)^\s*allow_anonymous\s+(\w+)", config) != ["false", "false"]):
         raise ValueError("operating authenticated broker required")
     if digest(config.encode()) != current["current_config_sha256"]:
         raise ValueError("operating broker hash changed")
-    evidence = json.loads(regular(docker.STATE/"stage-evidence.json"))
     if (current["stage_root"] != evidence["stage_root"]
             or evidence["input_sha256"] != state["expected_input_sha256"]):
         raise ValueError("authenticated broker stage binding changed")
