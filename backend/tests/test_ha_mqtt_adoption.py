@@ -326,5 +326,61 @@ class ActualNamedConnectionTest(unittest.TestCase):
             fixture.close()
 
 
+
+@unittest.skipUnless(os.getenv("RUN_HA_PREFLIGHT_DOCKER") == "1",
+                     "root filesystem preflight fixture opt-in")
+class ActualStorageOwnershipPreflightTest(unittest.TestCase):
+    def test_root_storage_in_operator_owned_share_and_refusal_cases(self):
+        import subprocess
+        image = subprocess.check_output(
+            ["docker", "image", "inspect", "python:3.12.13-slim-bookworm",
+             "--format", "{{.Id}}"], text=True).strip()
+        self.assertRegex(image, r"^sha256:[a-f0-9]{64}$")
+        code = r"""
+import hashlib,json,os,pathlib,sys,tempfile
+sys.path.insert(0,'/repo')
+from ops import ha_mqtt_adoption as m
+def write(path,data):
+ path.write_bytes(data);path.chmod(0o600)
+with tempfile.TemporaryDirectory(prefix='ha-owner-preflight-') as tmp:
+ root=pathlib.Path(tmp);mounted=root/'homeassistant';mounted.mkdir();os.chown(mounted,1026,0);mounted.chmod(0o777)
+ storage=mounted/'.storage';storage.mkdir();storage.chmod(0o777)
+ m.CONFIG=storage/'core.config_entries'
+ doc={'data':{'entries':[{'domain':'mqtt','entry_id':'fixture','version':2,'minor_version':1,'disabled_by':None,'data':{'broker':'localhost','port':1883,'protocol':'5'},'options':{}}]}}
+ raw=json.dumps(doc).encode();write(m.CONFIG,raw);m.CONFIG.chmod(0o644)
+ m.PRIVATE=root/'private';m.PRIVATE.mkdir(mode=0o700)
+ ops=root/'ops';ops.mkdir();incoming=ops/'incoming';incoming.mkdir();state=ops/'state';state.mkdir()
+ m.docker.OPS=ops;m.docker.INCOMING=incoming;m.docker.STATE=state
+ contents={'inventory.json':json.dumps({'ha_username':'ha-fixture'}).encode(),'credentials-new.json':json.dumps({'ha-fixture':'a'*64}).encode(),'acl.candidate':b'fixture-only','expected.json':b'null'}
+ for name,value in contents.items():write(incoming/name,value)
+ digest=hashlib.sha256(b'\0'.join(contents[name] for name in ('inventory.json','credentials-new.json','acl.candidate','expected.json'))).hexdigest()
+ write(state/'stage-evidence.json',json.dumps({'input_sha256':digest,'validation':{'isolated_auth_cases':16}}).encode())
+ write(ops/'config.json',json.dumps({'owner':'root','readiness_url':'https://fixture.test:4442/ready'}).encode())
+ m.BROKER_CONFIG=root/'mosquitto.conf';conf=b'allow_anonymous true\nlog_dest stdout\n';write(m.BROKER_CONFIG,conf)
+ ha={'Name':'/homeassistant','Id':'ha-fixture','Image':'fixture-image','State':{'Running':True},'Config':{'User':''},'HostConfig':{'AutoRemove':False,'NetworkMode':'host'},'Mounts':[{'Destination':'/config','Source':str(mounted),'RW':True}]}
+ m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Mounts':[]}
+ m.docker.api=lambda *args:{'Processes':[['0','python3']]}
+ plan={'expected_config_sha256':m.digest(raw),'expected_input_sha256':digest,'expected_broker_config_sha256':m.digest(conf),'report_key':'ha-mqtt-adopt-fixture-01','report_owner':'root','ha_origin':'https://fixture.test:4123/'}
+ assert m.preflight(plan)[0]['Id']=='ha-fixture'
+ assert mounted.stat().st_uid==1026 and storage.stat().st_uid==0
+ os.chown(storage,1026,0)
+ try:m.preflight(plan)
+ except ValueError:pass
+ else:raise AssertionError('operator-owned credential storage accepted')
+ os.chown(storage,0,0);storage.rename(mounted/'saved-storage');storage.symlink_to(mounted/'saved-storage',target_is_directory=True)
+ try:m.preflight(plan)
+ except ValueError:pass
+ else:raise AssertionError('symlink storage accepted')
+ print('mixed_owner_full_preflight_and_refusals_verified=true')
+"""
+        result = subprocess.run(
+            ["docker", "run", "--rm", "-i", "--network", "none", "--read-only",
+             "--user", "0:0", "--tmpfs", "/tmp:rw,nosuid,nodev",
+             "-v", str(ROOT)+":/repo:ro", "--entrypoint", "python", image,
+             "-B", "-I", "-"], input=code, capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr[-1600:])
+        self.assertIn("mixed_owner_full_preflight_and_refusals_verified=true", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

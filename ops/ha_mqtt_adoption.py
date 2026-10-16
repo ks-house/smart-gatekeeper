@@ -233,10 +233,13 @@ def preflight(plan):
             or parsed.query or parsed.fragment or parsed.username is not None):
         raise ValueError("fixed HTTPS HA route required")
     private_directory(PRIVATE)
-    for directory in (CONFIG.parent, CONFIG.parent.parent):
-        info = directory.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0:
-            raise ValueError("root-owned non-symlink HA storage required")
+    storage = CONFIG.parent.lstat()
+    mounted = CONFIG.parent.parent.lstat()
+    # Synology's mounted share belongs to its operator. Only the credential
+    # storage must belong to root; the exact parent bind is checked below.
+    if (not stat.S_ISDIR(storage.st_mode) or storage.st_uid != 0
+            or not stat.S_ISDIR(mounted.st_mode)):
+        raise ValueError("root-owned real HA storage and real mounted directory required")
     raw = regular(CONFIG)
     if digest(raw) != plan["expected_config_sha256"]:
         raise ValueError("HA configuration drift")
