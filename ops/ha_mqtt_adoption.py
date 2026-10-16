@@ -270,9 +270,9 @@ def preflight(plan):
     original = container()
     if not original["State"]["Running"]:
         raise ValueError("existing HA must already be running")
-    top = docker.api("GET", "/containers/"+original["Id"]+"/top?ps_args=-eo%20uid,comm")
+    top = docker.api("GET", "/containers/"+original["Id"]+"/top?ps_args=-eo%20pid,uid,comm")
     python_rows = [row for row in top["Processes"] if row[-1] in ("python", "python3")]
-    if not python_rows or any(row[0] != "0" for row in python_rows):
+    if not python_rows or any(row[1] != "0" for row in python_rows):
         raise ValueError("actual HA Python root identity required for private storage")
     candidate(raw, identity)
     binding = log_binding(config.decode(), docker.inspect("mosquitto"))

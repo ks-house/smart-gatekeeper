@@ -359,7 +359,10 @@ with tempfile.TemporaryDirectory(prefix='ha-owner-preflight-') as tmp:
  m.BROKER_CONFIG=root/'mosquitto.conf';conf=b'allow_anonymous true\nlog_dest stdout\n';write(m.BROKER_CONFIG,conf)
  ha={'Name':'/homeassistant','Id':'ha-fixture','Image':'fixture-image','State':{'Running':True},'Config':{'User':''},'HostConfig':{'AutoRemove':False,'NetworkMode':'host'},'Mounts':[{'Destination':'/config','Source':str(mounted),'RW':True}]}
  m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Mounts':[]}
- m.docker.api=lambda *args:{'Processes':[['0','python3']]}
+ def top(method,path,*args):
+  assert method=='GET' and path.endswith('/top?ps_args=-eo%20pid,uid,comm')
+  return {'Processes':[['4321','0','python3']]}
+ m.docker.api=top
  plan={'expected_config_sha256':m.digest(raw),'expected_input_sha256':digest,'expected_broker_config_sha256':m.digest(conf),'report_key':'ha-mqtt-adopt-fixture-01','report_owner':'root','ha_origin':'https://fixture.test:4123/'}
  assert m.preflight(plan)[0]['Id']=='ha-fixture'
  assert mounted.stat().st_uid==1026 and storage.stat().st_uid==0

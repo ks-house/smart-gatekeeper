@@ -7872,3 +7872,6 @@
 - The source incorrectly required that unrelated shared parent to belong to root. Preserve its ownership while retaining root-owned non-symlink credential storage/file, exact Docker /config bind, root Python identity and AutoRemove=false checks.
 - Add an isolated no-network/root Docker filesystem fixture for the full preflight with the actual ownership topology: operator-owned share, root-owned storage/config and private staged inputs. Positive preflight passes; changed storage owner and symlink storage are refused. All22 HA tests PASS including real Mosquitto and this full ownership fixture.
 - No operating HA/broker setting or device action has occurred. Existing sudo authentication remains channel-scoped/unavailable for automatic retry; prepare a fresh captured report key while retaining failed attempt01.
+
+
+- Reuse the previously measured Synology Docker-top PID requirement: query pid,uid,comm and read UID from its proper column. The full preflight fixture asserts the exact query and row layout, preventing a second predictable operator failure before retry. No runtime changes.
