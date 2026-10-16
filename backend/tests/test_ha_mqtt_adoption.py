@@ -1,13 +1,15 @@
 """HA account adoption, privacy ordering, bounded rollback and reconnect evidence."""
 import copy
+import io
 import importlib.util
 import json
 import os
 from pathlib import Path
 import stat
 import tempfile
+import tarfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -29,6 +31,84 @@ def document():
 
 
 IDENTITY = {"username": "ha-example", "password": "a"*64}
+
+
+
+class ContainerViewTest(unittest.TestCase):
+    def archive(self, name="core.config_entries", uid=0, link=False, duplicate=False):
+        out = io.BytesIO()
+        with tarfile.open(fileobj=out, mode="w") as archive:
+            info = tarfile.TarInfo(name);info.uid = uid
+            info.size = 2
+            if link:
+                info.type = tarfile.SYMTYPE;info.linkname = "/unreviewed";info.size = 0
+            archive.addfile(info, None if link else io.BytesIO(b"{}"))
+            if duplicate:
+                archive.addfile(info, io.BytesIO(b"{}"))
+        return out.getvalue()
+
+    def response(self, m, raw):
+        conn = MagicMock()
+        conn.getresponse.return_value.status = 200
+        conn.getresponse.return_value.read.return_value = raw
+        return patch.object(m.docker, "DockerHTTP", return_value=conn)
+
+    def test_actual_view_is_hashed_and_drift_refused(self):
+        m = load()
+        with self.response(m, self.archive()):
+            m.require_container_view("ha", "/config/.storage/core.config_entries", b"{}", 0)
+            with self.assertRaisesRegex(ValueError, "configuration views differ"):
+                m.require_container_view("ha", "/config/.storage/core.config_entries", b"other", 0)
+
+    def test_wrong_owner_link_path_and_duplicate_refused_without_extraction(self):
+        m = load()
+        for raw in (self.archive(uid=1026), self.archive(link=True),
+                    self.archive(name="../core.config_entries"), self.archive(duplicate=True)):
+            with self.subTest(), self.response(m, raw), self.assertRaises(ValueError):
+                m.container_file("ha", "/config/.storage/core.config_entries", 0)
+
+
+class ObservationPreflightTest(unittest.TestCase):
+    def fixture(self, m):
+        sock = MagicMock()
+        sock.recv.return_value = b"\x20\x03\x00\x00\x00"
+        sock.__enter__.return_value = sock
+        return sock
+
+    def test_delayed_fresh_notice_qualifies_without_publish_subscribe_or_ha_identity(self):
+        m = load();sock = self.fixture(m)
+        with patch.object(m.socket, "create_connection", return_value=sock), \
+             patch.object(m.time, "time", return_value=1000), \
+             patch.object(m.time, "monotonic", side_effect=[0, 0, 1]), \
+             patch.object(m.time, "sleep"), \
+             patch.object(m, "log_data", side_effect=["", "fresh"]), \
+             patch.object(m, "named_connection", side_effect=[False, True]) as match:
+            m.verify_observation({"docker": True})
+        packets = [call.args[0] for call in sock.sendall.call_args_list]
+        self.assertEqual([16, 224], [packet[0] for packet in packets])
+        self.assertNotIn(m.CLIENT_ID.encode(), packets[0])
+        self.assertTrue(match.call_args.args[3].startswith("ha-log-probe-"))
+        self.assertEqual(1000, match.call_args.args[2])
+
+    def test_missing_notice_stops_before_ha_adoption(self):
+        m = load();sock = self.fixture(m)
+        with patch.object(m.socket, "create_connection", return_value=sock), \
+             patch.object(m.time, "monotonic", side_effect=[0, 0, 16]), \
+             patch.object(m.time, "sleep"), patch.object(m, "log_data", return_value=""), \
+             patch.object(m, "named_connection", return_value=False), \
+             patch.object(m, "stopped") as stop, \
+             self.assertRaisesRegex(ValueError, "HA was not stopped"):
+            m.verify_observation({"docker": True})
+        stop.assert_not_called()
+
+    def test_refused_connection_never_reaches_log_or_stop(self):
+        m = load();sock = self.fixture(m)
+        sock.recv.return_value = b"\x20\x03\x00\x87\x00"
+        with patch.object(m.socket, "create_connection", return_value=sock), \
+             patch.object(m, "log_data") as logs, \
+             self.assertRaisesRegex(ValueError, "probe was refused"):
+            m.verify_observation({"docker": True})
+        logs.assert_not_called()
 
 
 class ConfigurationTest(unittest.TestCase):
@@ -305,6 +385,36 @@ class CutoverEvidenceTest(unittest.TestCase):
 @unittest.skipUnless(os.getenv("RUN_MQTT_ACL_INTEGRATION") == "1",
                      "isolated real broker opt-in")
 class ActualNamedConnectionTest(unittest.TestCase):
+    def test_real_legacy_connect_only_marker_proves_transport_before_ha_stop(self):
+        import socket
+        from tests.test_broker_acl_integration import BrokerFixture, PROFILE
+        from scripts.render_broker_acl import render_acl
+        m = load();fixture = BrokerFixture(render_acl(PROFILE))
+        try:
+            config = fixture.directory/"mosquitto.conf"
+            config.write_text("listener 1883\nallow_anonymous true\npersistence false\n"
+                              "connection_messages true\nlog_dest stdout\nlog_type notice\n"
+                              "log_timestamp_format %Y-%m-%dT%H:%M:%S\n")
+            fixture.docker("restart", fixture.name)
+            fixture.port = int(fixture.docker("port", fixture.name, "1883/tcp").strip().rsplit(":", 1)[1])
+            real_http = m.docker.DockerHTTP
+            class FixtureHTTP(real_http):
+                def request(self, method, url, *args, **kwargs):
+                    return super().request(method, url.replace("/containers/mosquitto/",
+                        "/containers/"+fixture.name+"/", 1), *args, **kwargs)
+            connect = socket.create_connection
+            def isolated_connect(address, *args, **kwargs):
+                if address == ("127.0.0.1", 1883):
+                    address = ("127.0.0.1", fixture.port)
+                return connect(address, *args, **kwargs)
+            with patch.object(m.docker, "DockerHTTP", FixtureHTTP), \
+                 patch.object(m.socket, "create_connection", side_effect=isolated_connect), \
+                 patch.object(m, "stopped") as stop:
+                m.verify_observation({"docker": True})
+            stop.assert_not_called()
+        finally:
+            fixture.close()
+
     def test_real_v5_named_connection_log_matches_adoption_verifier(self):
         import threading
         import time
@@ -338,6 +448,8 @@ class ActualNamedConnectionTest(unittest.TestCase):
                         found = True;break
                     time.sleep(0.1)
             self.assertTrue(found, "actual MQTTv5 named connection must qualify")
+            m.require_container_view(fixture.name, "/fixtures/mosquitto.conf",
+                                     config.read_bytes(), os.getuid())
             self.assertNotEqual(0, fixture.connect(PROFILE["ha_username"], "wrong-password")[1])
         finally:
             fixture.close()
@@ -379,12 +491,14 @@ with tempfile.TemporaryDirectory(prefix='ha-owner-preflight-') as tmp:
  evidence.update(originals={str(m.BROKER_CONFIG):{'uid':1026}},broker_uid=1883,stage_root=str(m.PRIVATE/'stage'))
  write(state/'stage-evidence.json',json.dumps(evidence).encode())
  ha={'Name':'/homeassistant','Id':'ha-fixture','Image':'fixture-image','State':{'Running':True},'Config':{'User':''},'HostConfig':{'AutoRemove':False,'NetworkMode':'host'},'Mounts':[{'Destination':'/config','Source':str(mounted),'RW':True}]}
- m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Mounts':[]}
+ m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Id':'fixture-broker','Mounts':[]}
  def top(method,path,*args):
   assert method=='GET' and path.endswith('/top?ps_args=-eo%20pid,uid,comm')
   return {'Processes':[['4321','0','python3']]}
  m.docker.api=top
  m.log_data=lambda *args:''
+ m.require_container_view=lambda *args:None
+ m.verify_observation=lambda *args:None
  plan={'expected_config_sha256':m.digest(raw),'expected_input_sha256':digest,'expected_broker_config_sha256':m.digest(conf),'report_key':'ha-mqtt-adopt-fixture-01','report_owner':'root','ha_origin':'https://fixture.test:4123/'}
  assert m.preflight(plan)[0]['Id']=='ha-fixture'
  os.chown(m.BROKER_CONFIG,1033,0)
@@ -406,7 +520,7 @@ with tempfile.TemporaryDirectory(prefix='ha-owner-preflight-') as tmp:
  except ValueError:pass
  else:raise AssertionError('unexpected active broker owner accepted')
  (state/'current.json').unlink()
- m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Mounts':[]}
+ m.docker.inspect=lambda name:ha if name=='homeassistant' else {'Id':'fixture-broker','Mounts':[]}
  assert mounted.stat().st_uid==1026 and storage.stat().st_uid==0
  os.chown(storage,1026,0)
  try:m.preflight(plan)
