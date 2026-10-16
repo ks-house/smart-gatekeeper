@@ -7836,3 +7836,10 @@
 
 - SmartBox issue7 and PR8/9a8aa50 capture the installed-device OTA gap and bounded LAN correction. Local Python12 PASS (actual nginx28 existing/30 extended cases, rollback, stale binding), native13 PASS and ESP32-C6 target build PASS. User confirms same network as Target; no actual SmartBox HTTP failure code is claimed.
 - Prepared update-ota-network.sh with captured immutable source/plan and exact old guard hashes. One-time nginx administrator input is required because the dedicated key intentionally permits only six broker commands; no new SSH/sudo authority is requested. Owner execution is pending; do not apply broker cutover or resend OTA before the route changes and is checked.
+
+
+## [2026-10-16] compile | Admit exact HA adoption inventory bytes independently
+
+- Independently inspect immutable PR442 featureb836d7e: all23 protected blob modes/inventories remain exact. Only Backend trusted-input inventory digest changes to e9080dbfcd8c76d874cb908ae7e238481070f8668e4c87b84bb77902693f6852, adding the HA operator and its backend-discovered tests; other22 inputs unchanged.
+- Separate policy-only transition pins that reviewed feature as the sole persistent source. Regression constants retain exact predecessor/admitted inventory bytes; no arbitrary digest bypass. Policy merge, ancestry-preserving feature merge-connect and final exact-head checks remain required.
+- Backend feature hosted tests pass; OTA/trusted failures are the expected unadmitted protected inventory. No NAS HA/broker change, key expansion or device command by this admission.
