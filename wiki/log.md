@@ -7894,3 +7894,11 @@
 - Replace the empty-success log query preflight with a random named MQTT5 CONNECT/DISCONNECT marker and bounded fresh timestamped notice check. No password, LWT, PUBLISH, SUBSCRIBE or HA client-ID collision. Refusal/missing log fails before HA mutation; existing exact HA reconnect, rollback and post-cutover authentication checks remain.
 - Isolated28 cases PASS including actual pinned legacy Mosquitto marker, actual Docker archive transport and root ownership fixture. Backend382 default tests PASS/9 explicit skips; OTA contract PASS. New regressions refuse archive owner/link/path/duplicate drift, missing notice and connection rejection while checking absence of HA stop.
 - No NAS setting, service reload, HA adoption retry, broker apply or physical command for this source change. Permanent six-command SSH authority and trusted workflow inventory remain unchanged.
+
+
+## [2026-10-17] code | Prepare owner-requested unattended HA operations
+
+- Owner explicitly requests autonomous NAS commands to avoid repeated administrator input. Add a separate dedicated HA key/client, forced dispatcher and six exact sudo operations: status, diagnose, refresh-logging, adopt, verify, rollback. Preserve existing deploy/broker keys and do not grant a general shell, arbitrary path/code/MQTT API or Docker group.
+- Root-owned captured source/configuration hashes, fixed HA/image/stage bindings, detached bounded jobs and root-journaled rollback/verification protect the operation boundary. Installation changes access files only; privileged registration failure restores previous key and complete sudo policy bytes.
+- Use HA's reviewed MQTT endpoint for the connect-only observation marker. Logging recovery validates the unchanged broker/TLS capture on an isolated pinned image, then sends HUP and requires same container/start plus a fresh named record before HA adoption. No account change or anonymous-session eviction is claimed by HUP.
+- Isolated42 tests PASS including actual pinned broker HUP/held-session continuity, mounted archive/root ownership, forced-command/client refusal and root filesystem installation/key preservation/registration rollback. Backend and hosted checks are next; no NAS installation, reload or account adoption by this source preparation.

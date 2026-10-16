@@ -293,7 +293,7 @@ def verify_observation(binding):
     body = (field("MQTT")+bytes([5, 130, 0, 10, 0])
             +field(client_id)+field(username))
     since = time.time()
-    with socket.create_connection(("127.0.0.1", 1883), timeout=3) as sock:
+    with socket.create_connection((binding.get("probe_host", "127.0.0.1"), 1883), timeout=3) as sock:
         sock.settimeout(3)
         sock.sendall(bytes([16, len(body)])+body)
         # MQTT5 CONNACK has flags/reason/properties after the fixed header.
@@ -315,7 +315,7 @@ def verify_observation(binding):
     raise ValueError("fresh broker connection log unavailable; HA was not stopped")
 
 
-def preflight(plan):
+def preflight(plan, *, prove_observation=True):
     fields = {"expected_config_sha256", "expected_input_sha256",
               "expected_broker_config_sha256", "report_key", "report_owner", "ha_origin"}
     if os.geteuid() != 0 or not isinstance(plan, dict) or set(plan) != fields:
@@ -377,7 +377,9 @@ def preflight(plan):
     require_container_view(original["Id"], "/config/.storage/core.config_entries", raw, 0)
     require_container_view(broker["Id"], "/mosquitto/config/mosquitto.conf", config, owner)
     binding = log_binding(config.decode(), broker)
-    verify_observation(binding)  # Prove a fresh notice before any HA stop.
+    binding["probe_host"] = mqtt_entry(json.loads(raw))["data"]["broker"]
+    if prove_observation:
+        verify_observation(binding)  # Prove a fresh notice before any HA stop.
     return original, identity, binding, raw
 
 

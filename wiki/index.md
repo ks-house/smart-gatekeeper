@@ -150,3 +150,5 @@
 ## Dedicated broker operations
 
 - [nas_broker_automation.md](nas_broker_automation.md): owner-requested restricted SSH/sudo gateway, typed private staging, detached activation and retained-container rollback boundaries.
+
+- [nas_ha_automation.md](nas_ha_automation.md): owner-requested dedicated HA key, six fixed operations, root journal verification and one-time installation.

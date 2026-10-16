@@ -385,6 +385,49 @@ class CutoverEvidenceTest(unittest.TestCase):
 @unittest.skipUnless(os.getenv("RUN_MQTT_ACL_INTEGRATION") == "1",
                      "isolated real broker opt-in")
 class ActualNamedConnectionTest(unittest.TestCase):
+    def test_real_hup_recovers_notices_without_evicting_existing_connection(self):
+        import socket
+        from tests.test_broker_acl_integration import BrokerFixture, PROFILE
+        from scripts.render_broker_acl import render_acl
+        m = load();fixture = BrokerFixture(render_acl(PROFILE))
+        try:
+            config = fixture.directory/"mosquitto.conf"
+            config.write_text("listener 1883\nallow_anonymous true\npersistence false\n"
+                              "connection_messages false\nlog_dest stdout\nlog_type notice\n"
+                              "log_timestamp_format %Y-%m-%dT%H:%M:%S\n")
+            fixture.docker("restart", fixture.name)
+            fixture.port = int(fixture.docker("port", fixture.name, "1883/tcp").strip().rsplit(":", 1)[1])
+            def field(value):
+                raw = value.encode();return len(raw).to_bytes(2, "big")+raw
+            body = field("MQTT")+bytes([5, 2, 0, 30, 0])+field("fixture-held-connection")
+            with socket.create_connection(("127.0.0.1", fixture.port), timeout=3) as held:
+                held.settimeout(3);held.sendall(bytes([16, len(body)])+body)
+                self.assertEqual(0, held.recv(128)[3])
+                before = m.docker.inspect(fixture.name)
+                config.write_text(config.read_text().replace("connection_messages false", "connection_messages true"))
+                m.docker.api("POST", "/containers/"+fixture.name+"/kill?signal=HUP")
+                after = m.docker.inspect(fixture.name)
+                self.assertEqual(before["Id"], after["Id"])
+                self.assertEqual(before["State"]["StartedAt"], after["State"]["StartedAt"])
+                held.sendall(bytes([192, 0]));self.assertEqual(bytes([208, 0]), held.recv(128))
+                real_http = m.docker.DockerHTTP
+                class FixtureHTTP(real_http):
+                    def request(self, method, url, *args, **kwargs):
+                        return super().request(method, url.replace("/containers/mosquitto/",
+                            "/containers/"+fixture.name+"/", 1), *args, **kwargs)
+                connect = socket.create_connection
+                def isolated_connect(address, *args, **kwargs):
+                    if address == ("fixture-nas", 1883):
+                        address = ("127.0.0.1", fixture.port)
+                    return connect(address, *args, **kwargs)
+                with patch.object(m.docker, "DockerHTTP", FixtureHTTP), \
+                     patch.object(m.socket, "create_connection", side_effect=isolated_connect):
+                    m.verify_observation({"docker": True, "probe_host": "fixture-nas"})
+                held.sendall(bytes([224, 0]))
+        finally:
+            fixture.close()
+
+
     def test_real_legacy_connect_only_marker_proves_transport_before_ha_stop(self):
         import socket
         from tests.test_broker_acl_integration import BrokerFixture, PROFILE
@@ -540,6 +583,246 @@ with tempfile.TemporaryDirectory(prefix='ha-owner-preflight-') as tmp:
         self.assertEqual(0, result.returncode, result.stderr[-1600:])
         self.assertIn("mixed_owner_full_preflight_and_refusals_verified=true", result.stdout)
 
+
+
+
+class FixedHaGatewayTest(unittest.TestCase):
+    def load_gateway(self):
+        spec = importlib.util.spec_from_file_location(
+            "fixed_ha_gateway_test", ROOT/"scripts/nas_ha_ops/ha_ops.py")
+        m = importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+        return m
+
+    def test_dispatch_rejects_shell_files_arguments_and_unknown_operations(self):
+        import subprocess
+        script = ROOT/"scripts/nas_ha_ops/ssh_dispatch.sh"
+        for command in ("", "id", "sudo -n sh", "status; id", "adopt /tmp/plan",
+                        "diagnose --all", "refresh-logging\nid", "$(id)"):
+            env = dict(os.environ);env["SSH_ORIGINAL_COMMAND"] = command
+            result = subprocess.run(["sh", str(script)], env=env, capture_output=True)
+            self.assertEqual(126, result.returncode, command)
+
+    def test_client_refuses_wrong_permissions_and_never_uses_password_fallback(self):
+        spec = importlib.util.spec_from_file_location(
+            "fixed_ha_client_test", ROOT/"scripts/nas_ha_ops/client.py")
+        m = importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory/"connection.json").write_text(json.dumps(
+                {"host": "100.95.243.92", "port": 8822, "username": "fixture"}))
+            (directory/"connection.json").chmod(0o600)
+            (directory/"nas-ha-ops-ed25519").write_text("fixture-not-a-real-key")
+            (directory/"nas-ha-ops-ed25519").chmod(0o600)
+            args = m.ssh_arguments(directory)
+            self.assertIn("BatchMode=yes", args)
+            self.assertIn("PasswordAuthentication=no", args)
+            self.assertIn("IdentitiesOnly=yes", args)
+            self.assertEqual(("status", "diagnose", "refresh-logging", "adopt", "verify", "rollback"), m.COMMANDS)
+            (directory/"nas-ha-ops-ed25519").chmod(0o644)
+            with self.assertRaises(ValueError):
+                m.ssh_arguments(directory)
+
+    def test_authenticated_broker_blocks_ha_credential_removal(self):
+        m = self.load_gateway()
+        helper = MagicMock()
+        with tempfile.TemporaryDirectory() as tmp:
+            helper.docker.STATE = Path(tmp)
+            (Path(tmp)/"current.json").write_text("{}")
+            with patch.object(m, "bindings", return_value=({}, {}, {})), \
+                 self.assertRaisesRegex(ValueError, "roll back the authenticated broker"):
+                m.rollback({}, helper)
+        helper.restore.assert_not_called()
+
+    def test_unfinished_adoption_is_left_to_its_guarded_watchdog(self):
+        m = self.load_gateway();helper = MagicMock()
+        with tempfile.TemporaryDirectory() as tmp:
+            helper.docker.STATE = Path(tmp)
+            with patch.object(m, "bindings", return_value=({}, {}, {})), \
+                 patch.object(m, "session", return_value={"work": "/private/ha-adopt-fixture"}), \
+                 patch.object(m, "journal", return_value={"phase": "identity_installed"}), \
+                 self.assertRaisesRegex(ValueError, "existing watchdog"):
+                m.rollback({}, helper)
+        helper.restore.assert_not_called()
+
+    def test_repeated_adoption_never_restarts_an_already_adopted_ha(self):
+        m = self.load_gateway();helper = MagicMock()
+        with patch.object(m, "bindings", return_value=({}, {}, {})), \
+             patch.object(m, "session", return_value={"work": "/private/ha-adopt-fixture"}), \
+             patch.object(m, "journal", return_value={"adoption_completed": True}):
+            result = m.adopt({}, helper, "a"*32)
+        self.assertEqual({"already_adopted": True, "no_restart": True}, result)
+        helper.start_session.assert_not_called()
+
+    def test_owner_report_alone_cannot_authorize_authenticated_verification(self):
+        m = self.load_gateway();helper = MagicMock()
+        with patch.object(m, "bindings", return_value=({}, {}, {})), \
+             patch.object(m, "session", return_value={"work": "/private/ha-adopt-fixture"}), \
+             patch.object(m, "journal", return_value={"phase": "prepared"}), \
+             self.assertRaisesRegex(ValueError, "root-journaled"):
+            m.verify({}, helper)
+        helper.verify_cutover.assert_not_called()
+
+    def test_wrong_operation_cannot_reach_any_docker_or_ha_method(self):
+        m = self.load_gateway();helper = MagicMock()
+        for operation in ("apply", "sh", "receive", "adopt /tmp/input"):
+            with self.assertRaises(ValueError):
+                m.perform(operation, "a"*32, {}, helper)
+        helper.docker.api.assert_not_called()
+        helper.start_session.assert_not_called()
+
+    def test_failure_records_a_bounded_job_without_printing_staged_secrets(self):
+        m = self.load_gateway()
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(m, "STATE", Path(tmp)), \
+             patch.object(m, "perform", side_effect=ValueError("fixed refusal")), \
+             patch.object(m.signal, "signal"), patch.object(m.signal, "alarm"):
+            m.worker("adopt", "a"*32, {}, MagicMock())
+            result = json.loads((Path(tmp)/"job.json").read_text())
+            self.assertEqual("failed", result["state"])
+            self.assertEqual("ValueError", result["error_type"])
+            self.assertEqual(0o600, stat.S_IMODE((Path(tmp)/"job.json").stat().st_mode))
+
+    def test_adoption_entrypoint_always_requires_fresh_observation(self):
+        m = load()
+        with patch.object(m, "preflight", side_effect=ValueError("fixture refusal")) as preflight:
+            with self.assertRaises(ValueError):
+                m.start_session({"fixture": True}, apply=True)
+        preflight.assert_called_once_with({"fixture": True})
+
+
+@unittest.skipUnless(os.getenv("RUN_HA_PREFLIGHT_DOCKER") == "1",
+                     "root forced-key installation fixture opt-in")
+class ActualHaKeyBootstrapTest(unittest.TestCase):
+    def test_install_preserves_old_keys_and_rolls_back_failed_privilege_registration(self):
+        import subprocess
+        image = subprocess.check_output(
+            ["docker", "image", "inspect", "python:3.12.13-slim-bookworm",
+             "--format", "{{.Id}}"], text=True).strip()
+        code = r"""
+import hashlib,importlib.util,json,os,pathlib,pwd,subprocess,sys,tempfile,types
+sys.path.insert(0,'/repo')
+spec=importlib.util.spec_from_file_location('ha_boot','/repo/scripts/nas_ha_ops/bootstrap.py')
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+real_pwd=pwd.getpwnam
+with tempfile.TemporaryDirectory(prefix='ha-fixed-key-fixture-') as tmp:
+ base=pathlib.Path(tmp);base.chmod(0o711)
+ local=base/'usr/local/lib';local.mkdir(parents=True)
+ for p in (base/'usr',base/'usr/local',local):p.chmod(0o755)
+ home=base/'home';home.mkdir();home.chmod(0o755)
+ user_home=home/'operator';user_home.mkdir(mode=0o700);os.chown(user_home,65534,65534)
+ ssh=user_home/'.ssh';ssh.mkdir(mode=0o700);os.chown(ssh,65534,65534)
+ auth=ssh/'authorized_keys';original=b'ssh-ed25519 existing-deploy-key\nssh-ed25519 existing-broker-key\n'
+ auth.write_bytes(original);auth.chmod(0o600);os.chown(auth,65534,65534)
+ etc=base/'etc';etc.mkdir();sudoers=etc/'sudoers';sudo_original=b'root ALL=(ALL) ALL\n';sudoers.write_bytes(sudo_original);sudoers.chmod(0o440)
+ m.ROOT=local/'smart-gatekeeper-ha-ops';m.PROGRAM=m.ROOT/'bin/ha_ops.py';m.SUDOERS=sudoers;m.PYTHON=sys.executable
+ m.DESTINATIONS={name:m.ROOT/relative for name,relative in {'ha_ops.py':'bin/ha_ops.py','ssh_dispatch.sh':'bin/ssh_dispatch.sh','activate.py':'lib/activate.py','ha_mqtt_adoption.py':'lib/ha_mqtt_adoption.py'}.items()}
+ audit=pathlib.Path('/var/run/sgk-broker-audit');audit.mkdir(parents=True,exist_ok=True)
+ user=types.SimpleNamespace(pw_uid=65534,pw_gid=65534,pw_dir=str(user_home))
+ m.pwd.getpwnam=lambda name:user if name=='nobody' else real_pwd(name)
+ package=base/'package';package.mkdir()
+ payload={'ha_ops.py':b'print("{}")\n','ssh_dispatch.sh':b'#!/bin/sh\nexit 126\n','activate.py':b'# fixture\n','ha_mqtt_adoption.py':b'# fixture\n','config.json':json.dumps({'owner':'nobody'}).encode(),'ha-key.pub':b'ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA fixture-key'}
+ manifest={}
+ for name,raw in payload.items():(package/name).write_bytes(raw);manifest[name]=hashlib.sha256(raw).hexdigest()
+ raw=json.dumps(manifest).encode();(package/'manifest.json').write_bytes(raw);pin=hashlib.sha256(raw).hexdigest()
+ fail={'enabled':True};seen=[]
+ def run(args,**kw):
+  seen.append(args)
+  if fail['enabled'] and args[:3]==['/usr/bin/sudo','-n',str(m.PROGRAM)]:
+   raise RuntimeError('injected no-password sudo refusal')
+  return types.SimpleNamespace(stdout=b'{"schema_version":1}',stderr=b'',returncode=0)
+ m.run=run
+ try:m.install(package,pin)
+ except RuntimeError as e:assert 'injected' in str(e)
+ else:raise AssertionError('failed registration unexpectedly succeeded')
+ assert sudoers.read_bytes()==sudo_original and auth.read_bytes()==original
+ assert not (m.ROOT/'state/setup.json').exists()
+ fail['enabled']=False;m.install(package,pin)
+ contents=auth.read_bytes()
+ assert contents.startswith(original) and contents.count(b'fixture-key')==1
+ assert b'restrict,from="100.64.0.0/10,127.0.0.1",command="' in contents
+ receipt=json.loads((m.ROOT/'state/setup.json').read_text())
+ assert receipt['general_shell'] is False and receipt['existing_broker_key_preserved'] is True
+ assert len(receipt['commands'])==6
+ assert auth.stat().st_uid==65534 and (auth.stat().st_mode&0o777)==0o600
+ assert sudoers.read_bytes().startswith(sudo_original)
+ assert b'NOPASSWD:' in sudoers.read_bytes() and b' ha_ops.py *' not in sudoers.read_bytes()
+ print('fixed_ha_install_preservation_and_registration_rollback_passed=true')
+"""
+        result = subprocess.run(
+            ["docker", "run", "--rm", "-i", "--read-only", "--network", "none",
+             "--user", "0:0", "--tmpfs", "/tmp:rw,nosuid,nodev",
+             "--tmpfs", "/run:rw,nosuid,nodev", "-v", str(ROOT)+":/repo:ro",
+             "--entrypoint", "python", image, "-B", "-I", "-"],
+            input=code, capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr[-2500:])
+        self.assertIn("fixed_ha_install_preservation_and_registration_rollback_passed=true", result.stdout)
+
+
+
+
+class HaLoggingRecoveryTest(unittest.TestCase):
+    load_gateway = FixedHaGatewayTest.load_gateway
+    def fixture(self, tmp):
+        import hashlib
+        m = self.load_gateway();helper = MagicMock()
+        root = Path(tmp);state = root/"broker-state";state.mkdir()
+        config_dir = root/"broker-config";config_dir.mkdir()
+        text = b"connection_messages true\nlog_dest stdout\nlistener 1883\nallow_anonymous true\nlistener 8883\nallow_anonymous true\n"
+        files = {"mosquitto.conf": text, "cert.pem": b"fixture-cert",
+                 "chain.pem": b"fixture-chain", "privkey.pem": b"fixture-key"}
+        evidence = {"broker_uid": 1883, "broker_gid": 1883, "originals": {}}
+        for name, raw in files.items():
+            path = config_dir/name;path.write_bytes(raw)
+            evidence["originals"][str(path)] = {"uid": 1000, "sha256": hashlib.sha256(raw).hexdigest()}
+        (state/"stage-evidence.json").write_text(json.dumps(evidence))
+        helper.BROKER_CONFIG = config_dir/"mosquitto.conf";helper.docker.STATE = state
+        helper.regular.side_effect = lambda path, **kw:Path(path).read_bytes()
+        helper.digest.side_effect = lambda raw:hashlib.sha256(raw).hexdigest()
+        helper.atomic.side_effect = lambda path, raw, **kw:Path(path).write_bytes(raw)
+        helper.preflight.return_value = ({}, {}, {"docker": True, "probe_host": "fixture-nas"}, b"{}")
+        helper.docker.DOCKER = "/fixture/docker"
+        broker = {"Id": "broker-fixture", "Image": "sha256:"+"b"*64,
+                  "State": {"Running": True, "StartedAt": "fixture-start"}}
+        helper.docker.inspect.return_value = broker
+        return m, helper, broker, evidence, files
+
+    def test_same_config_hup_has_no_ha_stop_and_uses_isolated_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m, helper, broker, evidence, files = self.fixture(tmp)
+            before = {name:(helper.BROKER_CONFIG.parent/name).read_bytes() for name in files}
+            with patch.object(m, "STATE", Path(tmp)), \
+                 patch.object(m, "bindings", return_value=({}, broker, {})), \
+                 patch.object(m.os, "chown"), patch.object(m.time, "sleep"), \
+                 patch.object(m.subprocess, "run", return_value=MagicMock(returncode=0)) as run:
+                result = m.refresh_logging({"plan": {"fixture": True}}, helper)
+            helper.preflight.assert_called_once_with({"fixture": True}, prove_observation=False)
+            helper.docker.api.assert_called_once_with("POST", "/containers/broker-fixture/kill?signal=HUP")
+            helper.stopped.assert_not_called()
+            args = run.call_args.args[0]
+            self.assertIn("--read-only", args);self.assertIn("none", args)
+            self.assertIn("--test-config", args);self.assertIn(broker["Image"], args)
+            self.assertFalse(result["ha_stopped"]);self.assertFalse(result["credentials_changed"])
+            self.assertEqual(before, {name:(helper.BROKER_CONFIG.parent/name).read_bytes() for name in files})
+
+    def test_tls_drift_blocks_validation_and_reload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m, helper, broker, evidence, files = self.fixture(tmp)
+            (helper.BROKER_CONFIG.parent/"privkey.pem").write_bytes(b"changed")
+            with patch.object(m, "bindings", return_value=({}, broker, {})), \
+                 self.assertRaisesRegex(ValueError, "broker/TLS file changed"):
+                m.refresh_logging({"plan": {}}, helper)
+            helper.docker.api.assert_not_called()
+
+    def test_invalid_configuration_never_sends_hup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            m, helper, broker, evidence, files = self.fixture(tmp)
+            with patch.object(m, "STATE", Path(tmp)), \
+                 patch.object(m, "bindings", return_value=({}, broker, {})), \
+                 patch.object(m.os, "chown"), \
+                 patch.object(m.subprocess, "run", return_value=MagicMock(returncode=1)), \
+                 self.assertRaisesRegex(ValueError, "did not validate"):
+                m.refresh_logging({"plan": {}}, helper)
+            helper.docker.api.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
