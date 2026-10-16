@@ -7857,3 +7857,10 @@
 - New fixed HA operator preserves the existing container/image/mount/network/restart policy, snapshots configuration privately, stops/starts only that HA container and requires fresh exact-client/username broker log plus HTTPS HA readiness. Pre-cutover named connection is explicitly not authentication proof.
 - Initial failure restores the managed settings and permission order, preserves unrelated HA updates, refuses concurrent identity overwrite and keeps storage private on conflict. A300s independent watchdog handles interrupted adoption. A600s read-only observer can verify fresh HA reconnect only after actual new authenticated broker/current-stage bindings.
 - Local19 HA tests (one real pinned Mosquitto MQTTv5 connection, password refusal, parser/rollback/privacy/watchdog cases) and existing isolated broker/container rollback tests pass. Broader Backend373 PASS/skip7 after extending trusted-input inventory; OTA contract suite passed. Final source/CI/operator capture still pending; no HA runtime change or broker apply.
+
+
+## [2026-10-16] fix | Refuse destructive HA container stop modes
+
+- Separate policyPR443/608c977 passes trusted-base38909569843 and merges825057e. Feature merges main preserving b836d7e ancestry and unchanged protected bytes. Initial Backend CI passed; prior OTA/trusted failures matched only the unadmitted inventory.
+- Review identifies Docker AutoRemove as a stop-time deletion risk. Require AutoRemove=false before any HA stop, alongside exact running container/image/mount/root-process checks. Add wrong-network/user/container/image regression checks. All21 HA tests PASS including actual Mosquitto; no live HA/broker change.
+- Existing private captured operator is refreshed to the same approved scope and latest reviewed source bytes. No persistent key authority, HA restart policy or device action change.

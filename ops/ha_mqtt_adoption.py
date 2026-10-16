@@ -121,6 +121,7 @@ def container():
     if (value["Name"] != "/"+HA or len(mounts) != 1
             or Path(mounts[0]["Source"]).resolve() != CONFIG.parent.parent.resolve()
             or not mounts[0].get("RW") or value["HostConfig"]["NetworkMode"] != "host"
+            or value["HostConfig"].get("AutoRemove") is not False
             or value["Config"].get("User", "") not in ("", "0", "0:0", "root")):
         raise ValueError("reviewed existing root HA container required")
     return value

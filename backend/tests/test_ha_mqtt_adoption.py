@@ -115,6 +115,33 @@ class ConfigurationTest(unittest.TestCase):
             with self.assertRaises(ValueError):m.log_binding("log_dest file /unmapped/log\n", mounts)
 
 
+class ContainerIdentityTest(unittest.TestCase):
+    def test_auto_remove_or_wrong_binding_refused_before_stop(self):
+        m = load()
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp)/"storage"/"core.config_entries";config.parent.mkdir()
+            original = {"Id": "ha-id", "Image": "same-image", "Name": "/homeassistant",
+                        "Mounts": [{"Destination": "/config", "Source": tmp, "RW": True}],
+                        "HostConfig": {"NetworkMode": "host", "AutoRemove": False},
+                        "Config": {"User": ""}}
+            with patch.object(m, "CONFIG", config), patch.object(m.docker, "inspect") as inspect:
+                inspect.return_value = original
+                self.assertEqual("ha-id", m.container()["Id"])
+                for field, value in (("AutoRemove", True), ("NetworkMode", "bridge")):
+                    altered = copy.deepcopy(original);altered["HostConfig"][field] = value
+                    inspect.return_value = altered
+                    with self.assertRaises(ValueError):m.container()
+                altered = copy.deepcopy(original);altered["Config"]["User"] = "1000"
+                inspect.return_value = altered
+                with self.assertRaises(ValueError):m.container()
+
+    def test_changed_container_or_image_refused(self):
+        m = load();original = {"Id": "same", "Image": "image"}
+        for changed in ({"Id": "other", "Image": "image"}, {"Id": "same", "Image": "new"}):
+            with patch.object(m, "container", return_value=changed):
+                with self.assertRaises(ValueError):m.same_container(original)
+
+
 class TransactionTest(unittest.TestCase):
     def setUp(self):
         self.m = load();self.temp = tempfile.TemporaryDirectory()
