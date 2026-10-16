@@ -2195,3 +2195,10 @@ final publication and one bounded OTA health result remain separate Gates.
 Reviewed feature PR434 commit 394e4c30a267d0d1705a8fc989ed521d24785fd3 adds only three broker renderer/matrix paths to each existing Backend workflow PR/push trigger. Permissions, steps, jobs, secrets, dependency locks, publisher/deployment conditions and other22 protected inputs are unchanged. Keep all23 protected paths, their Git modes and both inventories exact; replace only backend_security.yml digest with f591db5553905da4372c8906f66490742c6d9e0cd33b0685461c48678226cccf.
 
 This separate policy-only transition pins that exact reviewed feature and its same-byte descendants. Admission is not NAS/broker deployment. Merge this policy after its trusted-base check; merge-connect main into the feature without squash/rebase, rerun exact-head checks, then merge-commit the feature to preserve the reviewed ancestor. Regression fixtures require exact predecessor OR admitted bytes for the changed path, not arbitrary nonmatching bytes. No branch protection or status producer is changed.
+
+
+## 2026-10-16 HA account adoption input admission
+
+PR442 reviewed feature b836d7edbee25f495e8228997ff0bac6e5f9a1df adds a fixed administrator HA credential/rollback operator and backend-discovered tests. Its Backend trusted-input inventory changes to e9080dbfcd8c76d874cb908ae7e238481070f8668e4c87b84bb77902693f6852. All23 protected paths, Git modes, seven-workflow/empty-local-action inventories and22 other protected hashes stay identical.
+
+This policy-only transition admits the exact feature and same-byte descendants as the sole persistent baseline. It does not install HA credentials or change SSH/broker authority. Merge policy after trusted-base checks, merge-connect main into the feature without squash/rebase, rerun exact-head checks, then merge-commit the feature.

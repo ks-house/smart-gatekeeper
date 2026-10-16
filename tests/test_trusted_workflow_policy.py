@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "394e4c30a267d0d1705a8fc989ed521d24785fd3"
-EXPECTED_BUNDLE_ID = "broker-acl-ci-trigger-baseline"
+MERGED_MAIN_COMMIT = "b836d7edbee25f495e8228997ff0bac6e5f9a1df"
+EXPECTED_BUNDLE_ID = "ha-mqtt-adoption-input-baseline"
 LEGACY_FULL_BUNDLE_DIGEST_LINES = """\
 .github/workflows/deploy.yml 74fb06eef8e56cfd5f79f2c5bae4b6e41d798a5ccf2fb00c4aa30668db1f4dda
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -152,13 +152,13 @@ backend/deploy/create_release_bundle.py 2d82ba4421de9d3d487661b0e09a840b2b4d7e05
 backend/deploy/create_legacy_backup.sh 7a6323dd90dab2494bad2c2afdc9eb348def38a0c4b98852f4d7f2f575631a54
 backend/deploy/sgk_backend_deploy.sh c368931822e5bf6c2cb50b9d12f7b0fe372f61f47f03eb98245b9c0e48118003
 backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1176bd54c99c44704e0e3ff2ff98
-ops/backend_trusted_bundle_paths.json 0e8994c8b9308f9f4f9c10428a5ac28c26d27fb9144be4eacebb14a602e8c7db
+ops/backend_trusted_bundle_paths.json e9080dbfcd8c76d874cb908ae7e238481070f8668e4c87b84bb77902693f6852
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    ".github/workflows/backend_security.yml",
+    "ops/backend_trusted_bundle_paths.json",
 }
 PREDECESSOR_CHANGED_DIGESTS = {
-    ".github/workflows/backend_security.yml": "07289ce868ed24464d95fd3735e20511756a78588d37eaae321d29c557df98f2",
+    "ops/backend_trusted_bundle_paths.json": "0e8994c8b9308f9f4f9c10428a5ac28c26d27fb9144be4eacebb14a602e8c7db",
 }
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
